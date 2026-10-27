@@ -8,9 +8,12 @@ import (
 	"reflect"
 	"testing"
 
+	"portico.local/server/internal/catalog"
 	"portico.local/server/internal/catalogtest"
 	"portico.local/server/internal/compactcatalog"
+	"portico.local/server/internal/dbwork"
 	"portico.local/server/internal/persistence"
+	"portico.local/server/internal/storage"
 )
 
 type completeFixture struct {
@@ -19,6 +22,7 @@ type completeFixture struct {
 	root, source, inc, library, job string
 	handle                          int64
 	serial                          int
+	kind                            compactcatalog.Kind
 }
 type completePublication struct {
 	item, asset              int64
@@ -31,7 +35,7 @@ func newCompleteFixture(t *testing.T, c *catalogtest.Catalog, name string) *comp
 	if c == nil {
 		c = catalogtest.Open(t)
 	}
-	f := &completeFixture{t: t, c: c, root: t.TempDir(), library: name, job: "job-" + name}
+	f := &completeFixture{t: t, c: c, root: t.TempDir(), library: name, job: "job-" + name, kind: compactcatalog.Ebook}
 	f.handle = c.Library(name, name, "book", f.root)
 	if err := c.DB.QueryRow(`SELECT id,incarnation FROM library_sources WHERE library_id=?`, name).Scan(&f.source, &f.inc); err != nil {
 		t.Fatal(err)
@@ -45,13 +49,13 @@ func (f *completeFixture) add(relative, format string, item int64) completePubli
 	f.t.Helper()
 	f.serial++
 	if item == 0 {
-		item = f.c.Entity(compactcatalog.Entity{Library: f.handle, Kind: compactcatalog.Ebook, Key: fmt.Sprint(f.serial), Title: relative}, nil).ID
+		item = f.c.Entity(compactcatalog.Entity{Library: f.handle, Kind: f.kind, Key: fmt.Sprint(f.serial), Title: relative}, nil).ID
 	}
 	asset, token := f.c.File(item, filepath.Join(f.root, filepath.FromSlash(relative)), 0)
 	object := fmt.Sprintf("%s-%06d", f.library, f.serial)
 	f.c.Exec(`INSERT INTO inventory_objects(id,source_id,asset_id,root_incarnation,relative_path,directory_path,revision,evidence_json,size,modified_ns,seen_job) VALUES(?,?,?,?,?,?,'r1','{}',1,1,?)`, object, f.source, token, f.inc, filepath.FromSlash(relative), filepath.Dir(filepath.FromSlash(relative)), f.job)
 	f.c.Exec(`INSERT INTO reading_publications VALUES(?,?,?)`, item, asset, format)
-	return completePublication{item, asset, object, relative, format, compactcatalog.Ebook}
+	return completePublication{item, asset, object, relative, format, f.kind}
 }
 func (f *completeFixture) settle() {
 	f.c.Exec(`DELETE FROM catalog_dirty WHERE domain IN(20,28)`)
@@ -161,6 +165,15 @@ func TestReadingCompletePureRuleCorpusAndUnchangedRescan(t *testing.T) {
 	beforeSeq := scalar(t, f.c.DB, `SELECT sequence FROM reading_path_clock`)
 	beforeInput := scalar(t, f.c.DB, `SELECT revision FROM reading_path_inputs WHERE library_id=?`, f.handle)
 	beforeDesired := scalar(t, f.c.DB, `SELECT sum(desired) FROM reading_path_scope`)
+	// Marker-only availability settlement can race an unchanged observation.
+	// Its scope counter changes, never desired/input or publication sequence.
+	f.c.Exec(`INSERT INTO catalog_dirty VALUES(20,?,1)`, pubs[0].item)
+	f.c.Write(func(ctx context.Context, tx *sql.Tx) error {
+		return compactcatalog.ReadingNormalizeObjectTx(ctx, tx, pubs[0].object)
+	})
+	f.c.Exec(`DELETE FROM catalog_dirty WHERE domain=20 AND entity_id=?`, pubs[0].item)
+	completeDrain(t, f.c)
+
 	f.c.Exec(`UPDATE inventory_objects SET seen_job='unchanged',analysis_state='done' WHERE source_id=?`, f.source)
 	if got := scalar(t, f.c.DB, `SELECT count(*) FROM reading_path_dirty_work`); got != 0 {
 		t.Fatalf("unchanged scan queued %d fanouts", got)
@@ -181,6 +194,9 @@ func TestReadingCompleteIndependentCoverageAndAvailabilityFailure(t *testing.T) 
 	generic := f.add("Generic/Series 01.epub", "epub", 0)
 	f.add("Generic/Books/Series 02.epub", "epub", 0)
 	failed := f.add("Failed/Book.epub", "epub", 0)
+	independent := f.add("Generic/Other/Other 01.epub", "epub", 0)
+	f.add("Generic/Other/Other 02.epub", "epub", 0)
+
 	f.settle()
 	f.c.Write(func(ctx context.Context, tx *sql.Tx) error {
 		if err := compactcatalog.ReadingPathBlockTx(ctx, tx, f.job, "Unreadable", "directory_unreadable"); err != nil {
@@ -192,11 +208,15 @@ func TestReadingCompleteIndependentCoverageAndAvailabilityFailure(t *testing.T) 
 	f.seal()
 	f.c.Exec(`UPDATE jobs SET status='complete' WHERE id=?`, f.job)
 	completeUntil(t, f.c, func() bool {
-		return scalar(t, f.c.DB, `SELECT count(*) FROM reading_path_scope WHERE directory_key='Good/Series' AND desired=completed`) == 1 && scalar(t, f.c.DB, `SELECT count(*) FROM reading_path_dirty_work`) == 0 && scalar(t, f.c.DB, `SELECT count(*) FROM reading_path_build`) == 0
+		return scalar(t, f.c.DB, `SELECT count(*) FROM reading_path_scope WHERE directory_key IN('Good/Series','Generic/Other') AND desired=completed`) == 2 && scalar(t, f.c.DB, `SELECT count(*) FROM reading_path_dirty_work`) == 0 && scalar(t, f.c.DB, `SELECT count(*) FROM reading_path_build`) == 0
 	})
 	v := completeValues(t, f.c, good.item)
 	if v.Author == nil || v.Author.Value != "Good" || v.Series == nil || v.Series.Value != "Series" {
 		t.Fatalf("healthy folder held back: %+v", v)
+	}
+	v2 := completeValues(t, f.c, independent.item)
+	if v2.Series == nil || v2.Series.Value != "Other" {
+		t.Fatal("unreadable generic subtree held back an independent nested scope")
 	}
 	for _, p := range []completePublication{blocked, generic, failed} {
 		if scalar(t, f.c.DB, `SELECT count(*) FROM reading_path_head WHERE item_id=? AND author_source='folder'`, p.item) != 0 {
@@ -643,9 +663,20 @@ func TestReadingCompleteProducerAndSealSubcursorsRestart(t *testing.T) {
 	// Deep logical paths force coverage reduction itself to persist a subcursor.
 	f := newCompleteFixture(t, nil, "producer")
 	p := f.add("A/B/C/D/E/F/Series/Series 01.epub", "epub", 0)
-	f.add("A/B/C/D/E/F/Series/Series 02.epub", "epub", p.item)
+	second := f.add("A/B/C/D/E/F/Series/Series 02.epub", "epub", p.item)
 	f.settle()
+	f.c.Write(func(ctx context.Context, tx *sql.Tx) error {
+		for _, object := range []string{p.object, second.object} {
+			if err := compactcatalog.ReadingNormalizeObjectTx(ctx, tx, object); err != nil {
+				return err
+			}
+		}
+		return compactcatalog.FlushReadingPathSemanticTx(ctx, tx)
+	})
 	f.seal()
+	f.c.Exec(`UPDATE catalog_entities SET retired=1 WHERE id=?`, p.item)
+	f.c.Exec(`UPDATE catalog_entities SET retired=0 WHERE id=?`, p.item)
+	f.settle()
 	seen := map[string]bool{}
 	for i := 0; i < 500; i++ {
 		completeStep(t, f.c, 1)
@@ -699,4 +730,169 @@ func TestReadingCompleteProducerAndSealSubcursorsRestart(t *testing.T) {
 		}
 	}
 	completeDrain(t, f.c)
+}
+
+func TestReadingCompleteCanonicalObjectSwapPreservesAvailabilityDependency(t *testing.T) {
+	f := newCompleteFixture(t, nil, "alias")
+	p := f.add("Writer/Series/Series 01.epub", "epub", 0)
+	f.add("Writer/Series/Series 02.epub", "epub", 0)
+	f.c.Exec(`UPDATE inventory_objects SET retired=1 WHERE id=?`, p.object)
+	f.c.Exec(`INSERT INTO inventory_objects(id,source_id,asset_id,root_incarnation,relative_path,directory_path,revision,evidence_json,size,modified_ns) SELECT '000-alias',source_id,asset_id,root_incarnation,relative_path,directory_path,'alias-revision','{}',1,1 FROM inventory_objects WHERE id=?`, p.object)
+	f.settle()
+	f.seal()
+	completeDrain(t, f.c)
+	if scalar(t, f.c.DB, `SELECT count(*) FROM reading_path_head WHERE item_id=? AND object_id='000-alias'`, p.item) != 1 {
+		t.Fatal("first canonical object was not selected")
+	}
+	f.c.Exec(`INSERT INTO catalog_derivation_failures VALUES(20,?,'permanent',1,1)`, p.item)
+	f.c.Exec(`UPDATE inventory_objects SET retired=1 WHERE id='000-alias'`)
+	f.c.Exec(`UPDATE inventory_objects SET retired=0 WHERE id=?`, p.object)
+	completeUntil(t, f.c, func() bool {
+		return scalar(t, f.c.DB, `SELECT count(*) FROM reading_path_dirty_work`) == 0 && scalar(t, f.c.DB, `SELECT count(*) FROM reading_path_build`) == 0
+	})
+	if scalar(t, f.c.DB, `SELECT pending FROM reading_path_scope WHERE directory_key='Writer/Series'`) == 0 {
+		t.Fatal("canonical swap lost the failed entity dependency")
+	}
+	f.c.Exec(`DELETE FROM catalog_dirty WHERE domain=20`)
+	f.c.Exec(`DELETE FROM catalog_derivation_failures WHERE domain=20`)
+	completeDrain(t, f.c)
+	if scalar(t, f.c.DB, `SELECT count(*) FROM reading_path_head WHERE item_id=? AND object_id=?`, p.item, p.object) != 1 {
+		t.Fatal("canonical replacement never published")
+	}
+}
+
+func TestReadingCompleteQueuedCoverageAndLateSealDrift(t *testing.T) {
+	f := newCompleteFixture(t, nil, "latecoverage")
+	p := f.add("Generic/Series 01.epub", "epub", 0)
+	f.add("Generic/Books/Series 02.epub", "epub", 0)
+	independent := f.add("Generic/Other/Other 01.epub", "epub", 0)
+	f.add("Generic/Other/Other 02.epub", "epub", 0)
+	f.settle()
+	f.seal()
+	completeUntil(t, f.c, func() bool {
+		return scalar(t, f.c.DB, `SELECT count(*) FROM reading_path_build b JOIN reading_path_scope s ON s.id=b.scope_id WHERE b.phase='ready' AND s.directory_key='Generic'`) == 1
+	})
+	f.c.Write(func(ctx context.Context, tx *sql.Tx) error {
+		return catalog.InventoryIssueTx(ctx, tx, f.job, storage.InventoryIssue{Path: "Generic/Books", Reason: "directory_unreadable", Protect: true, Warning: true})
+	})
+	f.c.Exec(`UPDATE jobs SET status='complete' WHERE id=?`, f.job)
+	completeUntil(t, f.c, func() bool {
+		return scalar(t, f.c.DB, `SELECT count(*) FROM reading_path_dirty_work`) == 0 && scalar(t, f.c.DB, `SELECT count(*) FROM reading_path_build`) == 0 && scalar(t, f.c.DB, `SELECT count(*) FROM reading_path_scope WHERE directory_key='Generic/Other' AND completed=desired`) == 1 && scalar(t, f.c.DB, `SELECT count(*) FROM inventory_scan_issues WHERE job_id=? AND relative_path='Generic' AND reason='reading_path_directory_unreadable'`, f.job) == 1
+	})
+	if v := completeValues(t, f.c, independent.item); v.Series == nil || v.Series.Value != "Other" {
+		t.Fatalf("late generic coverage blocked independent nested scope: %+v", v)
+	}
+	if v := completeValues(t, f.c, p.item); v.Author != nil || v.Series != nil {
+		t.Fatal("late untrusted scope activated staged facts")
+	}
+	if scalar(t, f.c.DB, `SELECT count(*) FROM inventory_scan_issues WHERE job_id=? AND relative_path='Generic' AND reason='reading_path_directory_unreadable'`, f.job) == 0 {
+		t.Fatal("late coverage reason missing from job history")
+	}
+}
+
+func TestReadingCompleteComicPureRuleCorpus(t *testing.T) {
+	f := newCompleteFixture(t, nil, "comics")
+	f.kind = compactcatalog.Comic
+	f.c.Exec(`UPDATE libraries SET kind='comic' WHERE id=?`, f.library)
+	var pubs []completePublication
+	for _, r := range []struct{ path, format string }{{"Nemo/Nemo 01.cbz", "cbz"}, {"Nemo/Books/Nemo 02.pdf", "pdf"}, {"作者/シリーズ/シリーズ 01.cb7", "cb7"}, {"作者/シリーズ/シリーズ 02.cbr", "cbr"}, {"Books/Artist - Root #03.cbz", "cbz"}} {
+		pubs = append(pubs, f.add(r.path, r.format, 0))
+	}
+	f.settle()
+	f.seal()
+	completeDrain(t, f.c)
+	inputs := make([]compactcatalog.ReadingRuleInput, 0, len(pubs))
+	for _, p := range pubs {
+		inputs = append(inputs, compactcatalog.ReadingRuleInput{Item: p.item, SourceRoot: f.source, RelativePath: p.relative, Kind: p.kind})
+	}
+	want, err := compactcatalog.ReadingPathValues(inputs)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, p := range pubs {
+		assertCompleteValue(t, f.c, p, want[p.item])
+	}
+}
+
+func TestReadingCompleteFanoutRetainsCapturedFenceUntilEOF(t *testing.T) {
+	f := newCompleteFixture(t, nil, "fanout")
+	p := f.add("Shelf/Series 01.epub", "epub", 0)
+	for i := 0; i < 10; i++ {
+		f.add(fmt.Sprintf("Shelf/Books/Series %02d.pdf", i), "pdf", p.item)
+	}
+	f.settle()
+	f.seal()
+	completeDrain(t, f.c)
+	f.c.Exec(`UPDATE catalog_entities SET retired=1 WHERE id=?`, p.item)
+	f.c.Exec(`UPDATE catalog_entities SET retired=0 WHERE id=?`, p.item)
+	f.settle()
+	var captured, fence int64
+	var cursor string
+	completeUntil(t, f.c, func() bool {
+		err := f.c.DB.QueryRow(`SELECT captured,fence_asset,after_object FROM reading_path_dirty_work WHERE kind='item' AND work_key=? AND phase=0 AND after_object<>''`, fmt.Sprint(p.item)).Scan(&captured, &fence, &cursor)
+		return err == nil
+	})
+	added := f.add("Shelf/Books/New version.pdf", "pdf", p.item)
+	// A real item-wide request is coalesced while the old pass is incomplete.
+	f.c.Exec(`UPDATE catalog_entities SET retired=1 WHERE id=?`, p.item)
+	f.c.Exec(`UPDATE catalog_entities SET retired=0 WHERE id=?`, p.item)
+	f.settle()
+	preserved := false
+	for i := 0; i < 100; i++ {
+		completeStep(t, f.c, 1)
+		var nowCaptured, nowFence, phase int64
+		var nowCursor string
+		err := f.c.DB.QueryRow(`SELECT captured,fence_asset,after_object,phase FROM reading_path_dirty_work WHERE kind='item' AND work_key=?`, fmt.Sprint(p.item)).Scan(&nowCaptured, &nowFence, &nowCursor, &phase)
+		if err == sql.ErrNoRows {
+			break
+		}
+		if err != nil {
+			t.Fatal(err)
+		}
+		if nowCaptured == captured {
+			if nowFence != fence {
+				t.Fatal("in-flight raw fence moved on a newer request")
+			}
+			if phase == 0 && nowCursor < cursor {
+				t.Fatal("new request reset the in-flight prefix")
+			}
+			preserved = true
+		}
+		if nowCaptured == 0 || nowCaptured != captured {
+			break
+		}
+	}
+	if !preserved || added.asset <= fence {
+		t.Fatal("test did not establish a newer input beyond the captured fence")
+	}
+	completeDrain(t, f.c)
+}
+
+func TestReadingCompleteAcceptedPageUsesBatchedCanonicalAndBundleReads(t *testing.T) {
+	f := newCompleteFixture(t, nil, "batchread")
+	var ids []int64
+	for i := 0; i < 12; i++ {
+		p := f.add(fmt.Sprintf("Writer/Series/Series %02d.epub", i), "epub", 0)
+		ids = append(ids, p.item)
+	}
+	f.settle()
+	f.seal()
+	completeDrain(t, f.c)
+	for _, items := range [][]int64{ids[:1], ids} {
+		ctx, cost := dbwork.Measure(context.Background())
+		f.c.Write(func(_ context.Context, tx *sql.Tx) error {
+			got, err := compactcatalog.ReadingAcceptedValuesTx(ctx, tx, items)
+			if err == nil {
+				for _, id := range items {
+					if got[id].Series == nil || got[id].Series.Value != "Series" {
+						t.Fatal("batched reader lost an accepted bundle")
+					}
+				}
+			}
+			return err
+		})
+		if got := cost().Statements; got > 5 {
+			t.Fatalf("%d selected titles issued %d reads, expected constant batched queries", len(items), got)
+		}
+	}
 }

@@ -10048,7 +10048,7 @@ CREATE TABLE reading_path_scope(
  incarnation TEXT NOT NULL,root_prefix TEXT NOT NULL,directory_key TEXT NOT NULL,rule_version INTEGER NOT NULL DEFAULT 1,
  desired INTEGER NOT NULL DEFAULT 1,completed INTEGER NOT NULL DEFAULT 0,queued INTEGER NOT NULL DEFAULT 1 CHECK(queued IN(0,1)),
  served INTEGER NOT NULL DEFAULT 0,pending INTEGER NOT NULL DEFAULT 0 CHECK(pending>=0),
- seal_job TEXT NOT NULL DEFAULT '',seal_cursor INTEGER NOT NULL DEFAULT 0,sealed INTEGER NOT NULL DEFAULT 0 CHECK(sealed IN(0,1)),reason TEXT NOT NULL DEFAULT '',
+ seal_job TEXT NOT NULL DEFAULT '',seal_revision INTEGER NOT NULL DEFAULT 0,seal_cursor INTEGER NOT NULL DEFAULT 0,sealed INTEGER NOT NULL DEFAULT 0 CHECK(sealed IN(0,1)),reason TEXT NOT NULL DEFAULT '',
  UNIQUE(source_id,incarnation,root_prefix,directory_key,rule_version)) STRICT;
 CREATE INDEX reading_path_scope_source ON reading_path_scope(source_id,id);
 CREATE INDEX reading_path_scope_library ON reading_path_scope(library_id,id);
@@ -10056,16 +10056,17 @@ CREATE INDEX reading_path_scope_pending ON reading_path_scope(queued,served,id);
 CREATE TABLE reading_path_object_keys(
  object_id TEXT PRIMARY KEY REFERENCES inventory_objects(id) ON DELETE CASCADE,
  scope_id INTEGER NOT NULL REFERENCES reading_path_scope(id),item_id INTEGER NOT NULL DEFAULT 0,
- pending INTEGER NOT NULL DEFAULT 0 CHECK(pending IN(0,1)),context_active INTEGER NOT NULL DEFAULT 0 CHECK(context_active IN(0,1))) WITHOUT ROWID, STRICT;
+ context_active INTEGER NOT NULL DEFAULT 0 CHECK(context_active IN(0,1)),asset_id INTEGER NOT NULL DEFAULT 0,source_revision TEXT NOT NULL DEFAULT '',relative_path TEXT NOT NULL DEFAULT '') WITHOUT ROWID, STRICT;
 CREATE INDEX reading_path_object_scope ON reading_path_object_keys(scope_id,object_id);
 CREATE INDEX reading_path_object_item ON reading_path_object_keys(item_id,object_id);
 CREATE INDEX inventory_objects_reading_asset_object ON inventory_objects(asset_id,id);
 CREATE INDEX inventory_objects_reading_source_object ON inventory_objects(source_id,id);
 CREATE INDEX inventory_objects_reading_first ON inventory_objects(asset_id,source_id,root_incarnation,relative_path,id) WHERE retired=0;
-CREATE TABLE reading_path_source_barrier(source_id TEXT PRIMARY KEY,job_id TEXT NOT NULL,incarnation TEXT NOT NULL,source_generation INTEGER NOT NULL,phase TEXT NOT NULL CHECK(phase IN('open','sealed','cancelled')),reason TEXT NOT NULL DEFAULT '') WITHOUT ROWID, STRICT;
-CREATE TABLE reading_path_block(id INTEGER PRIMARY KEY AUTOINCREMENT,job_id TEXT NOT NULL,source_id TEXT NOT NULL,directory_key TEXT NOT NULL,reason TEXT NOT NULL,UNIQUE(source_id,job_id,directory_key)) STRICT;
+CREATE TABLE reading_path_source_barrier(source_id TEXT PRIMARY KEY,job_id TEXT NOT NULL,incarnation TEXT NOT NULL,source_generation INTEGER NOT NULL,root_identity TEXT NOT NULL,root TEXT NOT NULL,coverage_revision INTEGER NOT NULL DEFAULT 0,after_issue INTEGER NOT NULL DEFAULT 0,phase TEXT NOT NULL CHECK(phase IN('open','sealed','cancelled')),reason TEXT NOT NULL DEFAULT '') WITHOUT ROWID, STRICT;
+CREATE INDEX reading_path_barrier_job ON reading_path_source_barrier(job_id);
+CREATE TABLE reading_path_block(id INTEGER PRIMARY KEY AUTOINCREMENT,job_id TEXT NOT NULL,source_id TEXT NOT NULL,directory_key TEXT NOT NULL,mode TEXT NOT NULL CHECK(mode IN('scope','subtree')),reason TEXT NOT NULL,UNIQUE(source_id,job_id,directory_key,mode)) STRICT;
 CREATE INDEX reading_path_block_source ON reading_path_block(source_id,id);
-CREATE TABLE reading_path_dirty_work(library_id INTEGER NOT NULL,kind TEXT NOT NULL CHECK(kind IN('object','asset','item','source','library','pending','report','coverage')),work_key TEXT NOT NULL,requested INTEGER NOT NULL DEFAULT 1,captured INTEGER NOT NULL DEFAULT 0,after_object TEXT NOT NULL DEFAULT '',after_asset INTEGER NOT NULL DEFAULT 0,after_scope INTEGER NOT NULL DEFAULT 0,phase INTEGER NOT NULL DEFAULT 0,served INTEGER NOT NULL DEFAULT 0,PRIMARY KEY(kind,work_key)) WITHOUT ROWID, STRICT;
+CREATE TABLE reading_path_dirty_work(library_id INTEGER NOT NULL,kind TEXT NOT NULL CHECK(kind IN('object','asset','item','source','library','pending','report','coverage','blocks')),work_key TEXT NOT NULL,requested INTEGER NOT NULL DEFAULT 1,captured INTEGER NOT NULL DEFAULT 0,after_object TEXT NOT NULL DEFAULT '',after_asset INTEGER NOT NULL DEFAULT 0,after_scope INTEGER NOT NULL DEFAULT 0,phase INTEGER NOT NULL DEFAULT 0,served INTEGER NOT NULL DEFAULT 0,fence_object TEXT NOT NULL DEFAULT '',fence_asset INTEGER NOT NULL DEFAULT 0,fence_scope INTEGER NOT NULL DEFAULT 0,PRIMARY KEY(kind,work_key)) WITHOUT ROWID, STRICT;
 CREATE INDEX reading_path_work_library ON reading_path_dirty_work(library_id,kind,work_key);
 CREATE INDEX reading_path_work_turn ON reading_path_dirty_work(served,kind,work_key);
 CREATE TABLE reading_path_availability_pending(entity_id INTEGER PRIMARY KEY,library_id INTEGER NOT NULL) STRICT;
@@ -10073,11 +10074,11 @@ CREATE INDEX reading_path_availability_library ON reading_path_availability_pend
 CREATE TABLE reading_path_semantic_pending(library_id INTEGER PRIMARY KEY) STRICT;
 CREATE TABLE reading_path_build(
  id INTEGER PRIMARY KEY AUTOINCREMENT,scope_id INTEGER NOT NULL REFERENCES reading_path_scope(id),desired INTEGER NOT NULL,input_revision INTEGER NOT NULL,
- source_generation INTEGER NOT NULL,root_identity TEXT NOT NULL,job_id TEXT NOT NULL,
+ source_generation INTEGER NOT NULL,root_identity TEXT NOT NULL,job_id TEXT NOT NULL,coverage_revision INTEGER NOT NULL DEFAULT 0,
  phase TEXT NOT NULL CHECK(phase IN('capture','stage','ready','flatten','cleanup','abort')),
  after_object TEXT NOT NULL DEFAULT '',after_item INTEGER NOT NULL DEFAULT 0,after_asset INTEGER NOT NULL DEFAULT 0,
  title_count INTEGER NOT NULL DEFAULT 0,non_series_count INTEGER NOT NULL DEFAULT 0,
- publish_sequence INTEGER,after_flatten_item INTEGER NOT NULL DEFAULT 0,after_flatten_asset INTEGER NOT NULL DEFAULT 0) STRICT;
+ publish_sequence INTEGER CHECK(publish_sequence IS NULL OR publish_sequence>0),after_flatten_item INTEGER NOT NULL DEFAULT 0,after_flatten_asset INTEGER NOT NULL DEFAULT 0) STRICT;
 CREATE INDEX reading_path_build_scope ON reading_path_build(scope_id,id);
 CREATE TABLE reading_path_slot(singleton INTEGER PRIMARY KEY CHECK(singleton=1),build_id INTEGER REFERENCES reading_path_build(id),overlay_id INTEGER REFERENCES reading_path_build(id),CHECK(overlay_id IS NULL OR overlay_id=build_id)) STRICT;
 INSERT INTO reading_path_slot(singleton) VALUES(1);
@@ -10112,11 +10113,26 @@ CREATE TABLE reading_path_stage(
  FOREIGN KEY(item_id,asset_id) REFERENCES reading_publications(item_id,asset_id) ON DELETE CASCADE,
  CHECK((author IS NULL)=(author_source IS NULL)),CHECK((series IS NULL)=(series_source IS NULL))) WITHOUT ROWID, STRICT;
 CREATE INDEX reading_path_stage_publication ON reading_path_stage(item_id,asset_id,build_id);
+CREATE TABLE reading_path_scope_entities(
+ scope_id INTEGER NOT NULL REFERENCES reading_path_scope(id),entity_id INTEGER NOT NULL,objects INTEGER NOT NULL CHECK(objects>=0),pending INTEGER NOT NULL CHECK(pending IN(0,1)),PRIMARY KEY(scope_id,entity_id)) WITHOUT ROWID, STRICT;
+CREATE INDEX reading_path_scope_entity ON reading_path_scope_entities(entity_id,scope_id);
+CREATE TRIGGER reading_path_scope_entity_insert AFTER INSERT ON reading_path_scope_entities BEGIN
+ UPDATE reading_path_scope SET pending=pending+NEW.pending WHERE id=NEW.scope_id;
+END;
+CREATE TRIGGER reading_path_scope_entity_delete AFTER DELETE ON reading_path_scope_entities BEGIN
+ UPDATE reading_path_scope SET pending=pending-OLD.pending WHERE id=OLD.scope_id;
+END;
+CREATE TRIGGER reading_path_scope_entity_pending AFTER UPDATE OF pending ON reading_path_scope_entities WHEN OLD.pending IS NOT NEW.pending BEGIN
+ UPDATE reading_path_scope SET pending=pending-OLD.pending+NEW.pending WHERE id=NEW.scope_id;
+END;
 CREATE TRIGGER reading_path_key_insert AFTER INSERT ON reading_path_object_keys BEGIN
- UPDATE reading_path_scope SET pending=pending+NEW.pending,desired=desired+1,queued=1 WHERE id=NEW.scope_id;
+ UPDATE reading_path_scope SET desired=desired+1,queued=1 WHERE id=NEW.scope_id;
+ INSERT INTO reading_path_scope_entities(scope_id,entity_id,objects,pending) SELECT NEW.scope_id,NEW.item_id,1,EXISTS(SELECT 1 FROM reading_path_availability_pending WHERE entity_id=NEW.item_id) WHERE NEW.context_active=1 AND NEW.item_id>0 ON CONFLICT(scope_id,entity_id) DO UPDATE SET objects=objects+1,pending=excluded.pending;
 END;
 CREATE TRIGGER reading_path_key_delete AFTER DELETE ON reading_path_object_keys BEGIN
- UPDATE reading_path_scope SET pending=pending-OLD.pending,desired=desired+1,queued=1 WHERE id=OLD.scope_id;
+ UPDATE reading_path_scope SET desired=desired+1,queued=1 WHERE id=OLD.scope_id;
+ UPDATE reading_path_scope_entities SET objects=objects-1 WHERE scope_id=OLD.scope_id AND entity_id=OLD.item_id AND OLD.context_active=1;
+ DELETE FROM reading_path_scope_entities WHERE scope_id=OLD.scope_id AND entity_id=OLD.item_id AND objects=0;
 END;
 CREATE TRIGGER reading_path_inventory_insert AFTER INSERT ON inventory_objects BEGIN
 INSERT INTO reading_path_inputs(library_id,revision) SELECT (SELECT cl.id FROM library_sources s JOIN catalog_libraries cl ON cl.library_id=s.library_id JOIN libraries l ON l.id=s.library_id WHERE s.id=NEW.source_id AND l.kind IN('book','comic')),1 WHERE (SELECT cl.id FROM library_sources s JOIN catalog_libraries cl ON cl.library_id=s.library_id JOIN libraries l ON l.id=s.library_id WHERE s.id=NEW.source_id AND l.kind IN('book','comic')) IS NOT NULL ON CONFLICT(library_id) DO UPDATE SET revision=revision+1;
@@ -10150,31 +10166,31 @@ INSERT INTO reading_path_inputs(library_id,revision) SELECT (SELECT e.library_id
 END;
 CREATE TRIGGER reading_path_catalog_asset_links_insert AFTER INSERT ON catalog_asset_links BEGIN
 INSERT INTO reading_path_inputs(library_id,revision) SELECT (SELECT library_id FROM catalog_entities WHERE id=NEW.entity_id AND kind IN(20,21)),1 WHERE (SELECT library_id FROM catalog_entities WHERE id=NEW.entity_id AND kind IN(20,21)) IS NOT NULL ON CONFLICT(library_id) DO UPDATE SET revision=revision+1;
- INSERT INTO reading_path_dirty_work(library_id,kind,work_key) SELECT (SELECT library_id FROM catalog_entities WHERE id=NEW.entity_id AND kind IN(20,21)),'item',CAST(NEW.entity_id AS TEXT) WHERE (SELECT library_id FROM catalog_entities WHERE id=NEW.entity_id AND kind IN(20,21)) IS NOT NULL ON CONFLICT(kind,work_key) DO UPDATE SET requested=requested+1;
+ INSERT INTO reading_path_dirty_work(library_id,kind,work_key) SELECT (SELECT library_id FROM catalog_entities WHERE id=NEW.entity_id AND kind IN(20,21)),'asset',(SELECT token FROM catalog_assets WHERE id=NEW.asset_id) WHERE (SELECT library_id FROM catalog_entities WHERE id=NEW.entity_id AND kind IN(20,21)) IS NOT NULL AND EXISTS(SELECT 1 FROM catalog_assets WHERE id=NEW.asset_id) ON CONFLICT(kind,work_key) DO UPDATE SET requested=requested+1;
 END;
 CREATE TRIGGER reading_path_catalog_asset_links_update AFTER UPDATE OF entity_id,asset_id,available ON catalog_asset_links WHEN (OLD.entity_id IS NOT NEW.entity_id OR OLD.asset_id IS NOT NEW.asset_id OR OLD.available IS NOT NEW.available) BEGIN
 INSERT INTO reading_path_inputs(library_id,revision) SELECT (SELECT library_id FROM catalog_entities WHERE id=OLD.entity_id AND kind IN(20,21)),1 WHERE (SELECT library_id FROM catalog_entities WHERE id=OLD.entity_id AND kind IN(20,21)) IS NOT NULL ON CONFLICT(library_id) DO UPDATE SET revision=revision+1;
- INSERT INTO reading_path_dirty_work(library_id,kind,work_key) SELECT (SELECT library_id FROM catalog_entities WHERE id=OLD.entity_id AND kind IN(20,21)),'item',CAST(OLD.entity_id AS TEXT) WHERE (SELECT library_id FROM catalog_entities WHERE id=OLD.entity_id AND kind IN(20,21)) IS NOT NULL ON CONFLICT(kind,work_key) DO UPDATE SET requested=requested+1;
+ INSERT INTO reading_path_dirty_work(library_id,kind,work_key) SELECT (SELECT library_id FROM catalog_entities WHERE id=OLD.entity_id AND kind IN(20,21)),'asset',(SELECT token FROM catalog_assets WHERE id=OLD.asset_id) WHERE (SELECT library_id FROM catalog_entities WHERE id=OLD.entity_id AND kind IN(20,21)) IS NOT NULL AND EXISTS(SELECT 1 FROM catalog_assets WHERE id=OLD.asset_id) ON CONFLICT(kind,work_key) DO UPDATE SET requested=requested+1;
 INSERT INTO reading_path_inputs(library_id,revision) SELECT (SELECT library_id FROM catalog_entities WHERE id=NEW.entity_id AND kind IN(20,21)),1 WHERE (SELECT library_id FROM catalog_entities WHERE id=NEW.entity_id AND kind IN(20,21)) IS NOT NULL ON CONFLICT(library_id) DO UPDATE SET revision=revision+1;
- INSERT INTO reading_path_dirty_work(library_id,kind,work_key) SELECT (SELECT library_id FROM catalog_entities WHERE id=NEW.entity_id AND kind IN(20,21)),'item',CAST(NEW.entity_id AS TEXT) WHERE (SELECT library_id FROM catalog_entities WHERE id=NEW.entity_id AND kind IN(20,21)) IS NOT NULL ON CONFLICT(kind,work_key) DO UPDATE SET requested=requested+1;
+ INSERT INTO reading_path_dirty_work(library_id,kind,work_key) SELECT (SELECT library_id FROM catalog_entities WHERE id=NEW.entity_id AND kind IN(20,21)),'asset',(SELECT token FROM catalog_assets WHERE id=NEW.asset_id) WHERE (SELECT library_id FROM catalog_entities WHERE id=NEW.entity_id AND kind IN(20,21)) IS NOT NULL AND EXISTS(SELECT 1 FROM catalog_assets WHERE id=NEW.asset_id) ON CONFLICT(kind,work_key) DO UPDATE SET requested=requested+1;
 END;
 CREATE TRIGGER reading_path_catalog_asset_links_delete AFTER DELETE ON catalog_asset_links BEGIN
 INSERT INTO reading_path_inputs(library_id,revision) SELECT (SELECT library_id FROM catalog_entities WHERE id=OLD.entity_id AND kind IN(20,21)),1 WHERE (SELECT library_id FROM catalog_entities WHERE id=OLD.entity_id AND kind IN(20,21)) IS NOT NULL ON CONFLICT(library_id) DO UPDATE SET revision=revision+1;
- INSERT INTO reading_path_dirty_work(library_id,kind,work_key) SELECT (SELECT library_id FROM catalog_entities WHERE id=OLD.entity_id AND kind IN(20,21)),'item',CAST(OLD.entity_id AS TEXT) WHERE (SELECT library_id FROM catalog_entities WHERE id=OLD.entity_id AND kind IN(20,21)) IS NOT NULL ON CONFLICT(kind,work_key) DO UPDATE SET requested=requested+1;
+ INSERT INTO reading_path_dirty_work(library_id,kind,work_key) SELECT (SELECT library_id FROM catalog_entities WHERE id=OLD.entity_id AND kind IN(20,21)),'asset',(SELECT token FROM catalog_assets WHERE id=OLD.asset_id) WHERE (SELECT library_id FROM catalog_entities WHERE id=OLD.entity_id AND kind IN(20,21)) IS NOT NULL AND EXISTS(SELECT 1 FROM catalog_assets WHERE id=OLD.asset_id) ON CONFLICT(kind,work_key) DO UPDATE SET requested=requested+1;
 END;
 CREATE TRIGGER reading_path_reading_publications_insert AFTER INSERT ON reading_publications BEGIN
 INSERT INTO reading_path_inputs(library_id,revision) SELECT (SELECT library_id FROM catalog_entities WHERE id=NEW.item_id),1 WHERE (SELECT library_id FROM catalog_entities WHERE id=NEW.item_id) IS NOT NULL ON CONFLICT(library_id) DO UPDATE SET revision=revision+1;
- INSERT INTO reading_path_dirty_work(library_id,kind,work_key) SELECT (SELECT library_id FROM catalog_entities WHERE id=NEW.item_id),'item',CAST(NEW.item_id AS TEXT) WHERE (SELECT library_id FROM catalog_entities WHERE id=NEW.item_id) IS NOT NULL ON CONFLICT(kind,work_key) DO UPDATE SET requested=requested+1;
+ INSERT INTO reading_path_dirty_work(library_id,kind,work_key) SELECT (SELECT library_id FROM catalog_entities WHERE id=NEW.item_id),'asset',(SELECT token FROM catalog_assets WHERE id=NEW.asset_id) WHERE (SELECT library_id FROM catalog_entities WHERE id=NEW.item_id) IS NOT NULL AND EXISTS(SELECT 1 FROM catalog_assets WHERE id=NEW.asset_id) ON CONFLICT(kind,work_key) DO UPDATE SET requested=requested+1;
 END;
 CREATE TRIGGER reading_path_reading_publications_update AFTER UPDATE OF item_id,asset_id,format ON reading_publications WHEN (OLD.item_id IS NOT NEW.item_id OR OLD.asset_id IS NOT NEW.asset_id OR OLD.format IS NOT NEW.format) BEGIN
 INSERT INTO reading_path_inputs(library_id,revision) SELECT (SELECT library_id FROM catalog_entities WHERE id=OLD.item_id),1 WHERE (SELECT library_id FROM catalog_entities WHERE id=OLD.item_id) IS NOT NULL ON CONFLICT(library_id) DO UPDATE SET revision=revision+1;
- INSERT INTO reading_path_dirty_work(library_id,kind,work_key) SELECT (SELECT library_id FROM catalog_entities WHERE id=OLD.item_id),'item',CAST(OLD.item_id AS TEXT) WHERE (SELECT library_id FROM catalog_entities WHERE id=OLD.item_id) IS NOT NULL ON CONFLICT(kind,work_key) DO UPDATE SET requested=requested+1;
+ INSERT INTO reading_path_dirty_work(library_id,kind,work_key) SELECT (SELECT library_id FROM catalog_entities WHERE id=OLD.item_id),'asset',(SELECT token FROM catalog_assets WHERE id=OLD.asset_id) WHERE (SELECT library_id FROM catalog_entities WHERE id=OLD.item_id) IS NOT NULL AND EXISTS(SELECT 1 FROM catalog_assets WHERE id=OLD.asset_id) ON CONFLICT(kind,work_key) DO UPDATE SET requested=requested+1;
 INSERT INTO reading_path_inputs(library_id,revision) SELECT (SELECT library_id FROM catalog_entities WHERE id=NEW.item_id),1 WHERE (SELECT library_id FROM catalog_entities WHERE id=NEW.item_id) IS NOT NULL ON CONFLICT(library_id) DO UPDATE SET revision=revision+1;
- INSERT INTO reading_path_dirty_work(library_id,kind,work_key) SELECT (SELECT library_id FROM catalog_entities WHERE id=NEW.item_id),'item',CAST(NEW.item_id AS TEXT) WHERE (SELECT library_id FROM catalog_entities WHERE id=NEW.item_id) IS NOT NULL ON CONFLICT(kind,work_key) DO UPDATE SET requested=requested+1;
+ INSERT INTO reading_path_dirty_work(library_id,kind,work_key) SELECT (SELECT library_id FROM catalog_entities WHERE id=NEW.item_id),'asset',(SELECT token FROM catalog_assets WHERE id=NEW.asset_id) WHERE (SELECT library_id FROM catalog_entities WHERE id=NEW.item_id) IS NOT NULL AND EXISTS(SELECT 1 FROM catalog_assets WHERE id=NEW.asset_id) ON CONFLICT(kind,work_key) DO UPDATE SET requested=requested+1;
 END;
 CREATE TRIGGER reading_path_reading_publications_delete AFTER DELETE ON reading_publications BEGIN
 INSERT INTO reading_path_inputs(library_id,revision) SELECT (SELECT library_id FROM catalog_entities WHERE id=OLD.item_id),1 WHERE (SELECT library_id FROM catalog_entities WHERE id=OLD.item_id) IS NOT NULL ON CONFLICT(library_id) DO UPDATE SET revision=revision+1;
- INSERT INTO reading_path_dirty_work(library_id,kind,work_key) SELECT (SELECT library_id FROM catalog_entities WHERE id=OLD.item_id),'item',CAST(OLD.item_id AS TEXT) WHERE (SELECT library_id FROM catalog_entities WHERE id=OLD.item_id) IS NOT NULL ON CONFLICT(kind,work_key) DO UPDATE SET requested=requested+1;
+ INSERT INTO reading_path_dirty_work(library_id,kind,work_key) SELECT (SELECT library_id FROM catalog_entities WHERE id=OLD.item_id),'asset',(SELECT token FROM catalog_assets WHERE id=OLD.asset_id) WHERE (SELECT library_id FROM catalog_entities WHERE id=OLD.item_id) IS NOT NULL AND EXISTS(SELECT 1 FROM catalog_assets WHERE id=OLD.asset_id) ON CONFLICT(kind,work_key) DO UPDATE SET requested=requested+1;
 END;
 CREATE TRIGGER reading_path_catalog_entities_update AFTER UPDATE OF library_id,kind,retired ON catalog_entities WHEN (OLD.library_id IS NOT NEW.library_id OR OLD.kind IS NOT NEW.kind OR OLD.retired IS NOT NEW.retired) AND (OLD.kind IN(20,21) OR NEW.kind IN(20,21)) BEGIN
 INSERT INTO reading_path_inputs(library_id,revision) SELECT OLD.library_id,1 WHERE OLD.library_id IS NOT NULL ON CONFLICT(library_id) DO UPDATE SET revision=revision+1;
@@ -10238,9 +10254,6 @@ END;
 CREATE TRIGGER reading_path_pending_delete AFTER DELETE ON reading_path_availability_pending BEGIN
  INSERT INTO reading_path_dirty_work(library_id,kind,work_key) VALUES(OLD.library_id,'pending',CAST(OLD.entity_id AS TEXT)) ON CONFLICT(kind,work_key) DO UPDATE SET requested=requested+1;
 END;
-CREATE TRIGGER reading_path_key_pending AFTER UPDATE OF pending ON reading_path_object_keys WHEN OLD.pending IS NOT NEW.pending BEGIN
- UPDATE reading_path_scope SET pending=pending-OLD.pending+NEW.pending WHERE id=NEW.scope_id;
-END;
 CREATE TRIGGER reading_path_entity_pending_delete BEFORE DELETE ON catalog_entities BEGIN
  DELETE FROM reading_path_availability_pending WHERE entity_id=OLD.id;
 END;
@@ -10251,7 +10264,7 @@ END;
 CREATE TRIGGER reading_path_run_open AFTER INSERT ON inventory_runs BEGIN
  INSERT INTO reading_path_dirty_work(library_id,kind,work_key) SELECT cl.id,'coverage',NEW.source_id FROM library_sources s JOIN catalog_libraries cl ON cl.library_id=s.library_id JOIN libraries l ON l.id=s.library_id WHERE s.id=NEW.source_id AND l.kind IN('book','comic') ON CONFLICT(kind,work_key) DO UPDATE SET requested=requested+1;
 
- INSERT INTO reading_path_source_barrier SELECT NEW.source_id,NEW.job_id,NEW.root_incarnation,NEW.source_generation,'open','' WHERE EXISTS(SELECT 1 FROM library_sources s JOIN libraries l ON l.id=s.library_id WHERE s.id=NEW.source_id AND l.kind IN('book','comic')) ON CONFLICT(source_id) DO UPDATE SET job_id=excluded.job_id,incarnation=excluded.incarnation,source_generation=excluded.source_generation,phase='open',reason='';
+ INSERT INTO reading_path_source_barrier SELECT NEW.source_id,NEW.job_id,NEW.root_incarnation,NEW.source_generation,NEW.root_identity,(SELECT root FROM library_sources WHERE id=NEW.source_id),0,0,'open','' WHERE EXISTS(SELECT 1 FROM library_sources s JOIN libraries l ON l.id=s.library_id WHERE s.id=NEW.source_id AND l.kind IN('book','comic')) ON CONFLICT(source_id) DO UPDATE SET job_id=excluded.job_id,incarnation=excluded.incarnation,source_generation=excluded.source_generation,root_identity=excluded.root_identity,root=excluded.root,coverage_revision=0,after_issue=0,phase='open',reason='';
 END;
 CREATE TRIGGER reading_path_run_seal AFTER UPDATE OF phase ON inventory_runs WHEN NEW.phase IN('sidecars','analysis_enqueue') AND OLD.phase IN('reconciling','verifying') BEGIN
  UPDATE reading_path_source_barrier SET phase='sealed',reason=CASE WHEN NEW.authoritative=1 THEN '' ELSE 'untrusted_coverage' END WHERE source_id=NEW.source_id AND job_id=NEW.job_id;
@@ -10264,4 +10277,27 @@ CREATE TRIGGER reading_path_scan_report AFTER UPDATE OF status ON jobs WHEN NEW.
 END;
 CREATE TRIGGER reading_path_work_enqueued AFTER INSERT ON reading_path_dirty_work BEGIN
  UPDATE reading_path_dirty_work SET served=(SELECT turn FROM reading_path_clock WHERE singleton=1) WHERE kind=NEW.kind AND work_key=NEW.work_key;
+END;
+CREATE TRIGGER reading_path_run_identity AFTER UPDATE OF root_identity ON inventory_runs WHEN OLD.root_identity IS NOT NEW.root_identity BEGIN
+ UPDATE reading_path_source_barrier SET root_identity=NEW.root_identity WHERE source_id=NEW.source_id AND job_id=NEW.job_id AND phase='open';
+END;
+CREATE TRIGGER reading_path_inventory_canonical_insert AFTER INSERT ON inventory_objects BEGIN
+ INSERT INTO reading_path_inputs(library_id,revision) SELECT (SELECT cl.id FROM library_sources s JOIN catalog_libraries cl ON cl.library_id=s.library_id JOIN libraries l ON l.id=s.library_id WHERE s.id=NEW.source_id AND l.kind IN('book','comic')),1 WHERE (SELECT cl.id FROM library_sources s JOIN catalog_libraries cl ON cl.library_id=s.library_id JOIN libraries l ON l.id=s.library_id WHERE s.id=NEW.source_id AND l.kind IN('book','comic')) IS NOT NULL ON CONFLICT(library_id) DO UPDATE SET revision=revision+1;
+ INSERT INTO reading_path_dirty_work(library_id,kind,work_key) SELECT (SELECT cl.id FROM library_sources s JOIN catalog_libraries cl ON cl.library_id=s.library_id JOIN libraries l ON l.id=s.library_id WHERE s.id=NEW.source_id AND l.kind IN('book','comic')),'asset',NEW.asset_id WHERE (SELECT cl.id FROM library_sources s JOIN catalog_libraries cl ON cl.library_id=s.library_id JOIN libraries l ON l.id=s.library_id WHERE s.id=NEW.source_id AND l.kind IN('book','comic')) IS NOT NULL ON CONFLICT(kind,work_key) DO UPDATE SET requested=requested+1;
+END;
+CREATE TRIGGER reading_path_inventory_canonical_update AFTER UPDATE OF id,asset_id,source_id,root_incarnation,relative_path,retired ON inventory_objects WHEN OLD.id IS NOT NEW.id OR OLD.asset_id IS NOT NEW.asset_id OR OLD.source_id IS NOT NEW.source_id OR OLD.root_incarnation IS NOT NEW.root_incarnation OR OLD.relative_path IS NOT NEW.relative_path OR OLD.retired IS NOT NEW.retired BEGIN
+ INSERT INTO reading_path_inputs(library_id,revision) SELECT (SELECT cl.id FROM library_sources s JOIN catalog_libraries cl ON cl.library_id=s.library_id JOIN libraries l ON l.id=s.library_id WHERE s.id=OLD.source_id AND l.kind IN('book','comic')),1 WHERE (SELECT cl.id FROM library_sources s JOIN catalog_libraries cl ON cl.library_id=s.library_id JOIN libraries l ON l.id=s.library_id WHERE s.id=OLD.source_id AND l.kind IN('book','comic')) IS NOT NULL ON CONFLICT(library_id) DO UPDATE SET revision=revision+1;
+ INSERT INTO reading_path_dirty_work(library_id,kind,work_key) SELECT (SELECT cl.id FROM library_sources s JOIN catalog_libraries cl ON cl.library_id=s.library_id JOIN libraries l ON l.id=s.library_id WHERE s.id=OLD.source_id AND l.kind IN('book','comic')),'asset',OLD.asset_id WHERE (SELECT cl.id FROM library_sources s JOIN catalog_libraries cl ON cl.library_id=s.library_id JOIN libraries l ON l.id=s.library_id WHERE s.id=OLD.source_id AND l.kind IN('book','comic')) IS NOT NULL ON CONFLICT(kind,work_key) DO UPDATE SET requested=requested+1;
+ INSERT INTO reading_path_inputs(library_id,revision) SELECT (SELECT cl.id FROM library_sources s JOIN catalog_libraries cl ON cl.library_id=s.library_id JOIN libraries l ON l.id=s.library_id WHERE s.id=NEW.source_id AND l.kind IN('book','comic')),1 WHERE (SELECT cl.id FROM library_sources s JOIN catalog_libraries cl ON cl.library_id=s.library_id JOIN libraries l ON l.id=s.library_id WHERE s.id=NEW.source_id AND l.kind IN('book','comic')) IS NOT NULL ON CONFLICT(library_id) DO UPDATE SET revision=revision+1;
+ INSERT INTO reading_path_dirty_work(library_id,kind,work_key) SELECT (SELECT cl.id FROM library_sources s JOIN catalog_libraries cl ON cl.library_id=s.library_id JOIN libraries l ON l.id=s.library_id WHERE s.id=NEW.source_id AND l.kind IN('book','comic')),'asset',NEW.asset_id WHERE (SELECT cl.id FROM library_sources s JOIN catalog_libraries cl ON cl.library_id=s.library_id JOIN libraries l ON l.id=s.library_id WHERE s.id=NEW.source_id AND l.kind IN('book','comic')) IS NOT NULL ON CONFLICT(kind,work_key) DO UPDATE SET requested=requested+1;
+END;
+CREATE TRIGGER reading_path_inventory_canonical_delete AFTER DELETE ON inventory_objects BEGIN
+ INSERT INTO reading_path_inputs(library_id,revision) SELECT (SELECT cl.id FROM library_sources s JOIN catalog_libraries cl ON cl.library_id=s.library_id JOIN libraries l ON l.id=s.library_id WHERE s.id=OLD.source_id AND l.kind IN('book','comic')),1 WHERE (SELECT cl.id FROM library_sources s JOIN catalog_libraries cl ON cl.library_id=s.library_id JOIN libraries l ON l.id=s.library_id WHERE s.id=OLD.source_id AND l.kind IN('book','comic')) IS NOT NULL ON CONFLICT(library_id) DO UPDATE SET revision=revision+1;
+ INSERT INTO reading_path_dirty_work(library_id,kind,work_key) SELECT (SELECT cl.id FROM library_sources s JOIN catalog_libraries cl ON cl.library_id=s.library_id JOIN libraries l ON l.id=s.library_id WHERE s.id=OLD.source_id AND l.kind IN('book','comic')),'asset',OLD.asset_id WHERE (SELECT cl.id FROM library_sources s JOIN catalog_libraries cl ON cl.library_id=s.library_id JOIN libraries l ON l.id=s.library_id WHERE s.id=OLD.source_id AND l.kind IN('book','comic')) IS NOT NULL ON CONFLICT(kind,work_key) DO UPDATE SET requested=requested+1;
+END;
+CREATE TRIGGER reading_path_overlay_update BEFORE UPDATE OF overlay_id ON reading_path_slot WHEN NEW.overlay_id IS NOT NULL AND NOT EXISTS(SELECT 1 FROM reading_path_build WHERE id=NEW.overlay_id AND phase='flatten' AND publish_sequence>0) BEGIN
+ SELECT RAISE(ABORT,'Reading overlay requires a published build');
+END;
+CREATE TRIGGER reading_path_overlay_insert BEFORE INSERT ON reading_path_slot WHEN NEW.overlay_id IS NOT NULL AND NOT EXISTS(SELECT 1 FROM reading_path_build WHERE id=NEW.overlay_id AND phase='flatten' AND publish_sequence>0) BEGIN
+ SELECT RAISE(ABORT,'Reading overlay requires a published build');
 END;

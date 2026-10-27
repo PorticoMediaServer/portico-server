@@ -18,12 +18,12 @@ func InventoryIssueTx(ctx context.Context, tx *sql.Tx, job string, issue storage
 	if err != nil {
 		return err
 	}
-	if issue.Protect {
-		if err = compactcatalog.ReadingPathBlockTx(ctx, tx, job, issue.Path, issue.Reason); err != nil {
+	n, _ := result.RowsAffected()
+	if n > 0 && issue.Protect {
+		if err = compactcatalog.ReadingQueuePathCoverageTx(ctx, tx, job); err != nil {
 			return err
 		}
 	}
-	n, _ := result.RowsAffected()
 	if n > 0 && issue.Warning {
 		_, err = tx.ExecContext(ctx, `UPDATE inventory_runs SET warnings=warnings+1 WHERE job_id=?`, job)
 	}

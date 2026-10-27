@@ -52,6 +52,9 @@ func bundle(object, revision string, v ReadingValues) (pathBundle, error) {
 		out.Date = sql.NullString{String: v.IssueDate.Value, Valid: true}
 	}
 	if v.SeriesNumber != nil {
+		if v.SeriesNumber.Source != ReadingFileName {
+			return out, ErrReadingValue
+		}
 		n := v.SeriesNumber.Value
 		if n < 0 || math.IsNaN(n) || math.IsInf(n, 0) {
 			return out, ErrReadingValue
@@ -226,43 +229,65 @@ func ReadingNormalizeObjectTx(ctx context.Context, tx *sql.Tx, id string) error 
 	if err != nil {
 		return err
 	}
-	key, err := ReadingDirectoryKey(filepath.ToSlash(filepath.Dir(v.Relative)))
-	if err != nil {
-		return err
+	key, parseErr := ReadingDirectoryKey(filepath.ToSlash(filepath.Dir(v.Relative)))
+	invalid := parseErr != nil || !utf8.ValidString(v.Relative) || len(v.Relative) > 4096 || !filepath.IsLocal(v.Relative) || filepath.Clean(v.Relative) != v.Relative || strings.ContainsAny(filepath.ToSlash(v.Relative), "\\\x00")
+	if parseErr != nil {
+		key = filepath.ToSlash(filepath.Dir(v.Relative))
 	}
 	var scope int64
-	err = tx.QueryRowContext(ctx, `INSERT INTO reading_path_scope(library_id,source_id,incarnation,root_prefix,directory_key,rule_version) VALUES(?,?,?,?,?,?) ON CONFLICT(source_id,incarnation,root_prefix,directory_key,rule_version) DO UPDATE SET library_id=excluded.library_id RETURNING id`, v.Library, v.Source, v.Incarnation, rootPrefix(v.Root), key, readingPathRule).Scan(&scope)
+	err = tx.QueryRowContext(ctx, `SELECT id FROM reading_path_scope WHERE source_id=? AND incarnation=? AND root_prefix=? AND directory_key=? AND rule_version=?`, v.Source, v.Incarnation, rootPrefix(v.Root), key, readingPathRule).Scan(&scope)
+	if errors.Is(err, sql.ErrNoRows) {
+		err = tx.QueryRowContext(ctx, `INSERT INTO reading_path_scope(library_id,source_id,incarnation,root_prefix,directory_key,rule_version) VALUES(?,?,?,?,?,?) RETURNING id`, v.Library, v.Source, v.Incarnation, rootPrefix(v.Root), key, readingPathRule).Scan(&scope)
+	}
 	if err != nil {
 		return err
 	}
-	var pending bool
-	if v.Item != 0 && v.Context {
-		if err = tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM reading_path_availability_pending WHERE entity_id=?)`, v.Item).Scan(&pending); err != nil {
-			return err
-		}
+	if _, err = tx.ExecContext(ctx, `UPDATE reading_path_scope SET library_id=? WHERE id=? AND library_id IS NOT ?`, v.Library, scope, v.Library); err != nil {
+		return err
 	}
-	var oldScope, oldItem int64
-	var oldPending, oldContext bool
-	err = tx.QueryRowContext(ctx, `SELECT scope_id,item_id,pending,context_active FROM reading_path_object_keys WHERE object_id=?`, id).Scan(&oldScope, &oldItem, &oldPending, &oldContext)
+	var oldScope, oldItem, oldAsset int64
+	var oldRevision, oldRelative string
+	var oldContext bool
+	err = tx.QueryRowContext(ctx, `SELECT scope_id,item_id,context_active,asset_id,source_revision,relative_path FROM reading_path_object_keys WHERE object_id=?`, id).Scan(&oldScope, &oldItem, &oldContext, &oldAsset, &oldRevision, &oldRelative)
 	if err != nil && !errors.Is(err, sql.ErrNoRows) {
 		return err
 	}
-	if oldScope != scope || oldItem != v.Item || oldPending != pending || oldContext != v.Context {
+	changed := oldScope != scope || oldItem != v.Item || oldContext != v.Context || oldAsset != v.Asset || oldRevision != v.Revision || oldRelative != v.Relative
+	if oldScope != scope || oldItem != v.Item || oldContext != v.Context {
 		if _, err = tx.ExecContext(ctx, `DELETE FROM reading_path_object_keys WHERE object_id=?`, id); err != nil {
 			return err
 		}
-		if _, err = tx.ExecContext(ctx, `INSERT INTO reading_path_object_keys VALUES(?,?,?,?,?)`, id, scope, v.Item, pending, v.Context); err != nil {
+		if _, err = tx.ExecContext(ctx, `INSERT INTO reading_path_object_keys VALUES(?,?,?,?,?,?,?)`, id, scope, v.Item, v.Context, v.Asset, v.Revision, v.Relative); err != nil {
 			return err
+		}
+	}
+	if oldScope == scope && (oldAsset != v.Asset || oldRevision != v.Revision || oldRelative != v.Relative) {
+		if _, err = tx.ExecContext(ctx, `UPDATE reading_path_object_keys SET asset_id=?,source_revision=?,relative_path=? WHERE object_id=?`, v.Asset, v.Revision, v.Relative, id); err != nil {
+			return err
+		}
+	}
+	if invalid && v.Context {
+		// A malformed witness quarantines only its logical context. It cannot
+		// poison the global worker or an unrelated folder/library.
+		r, e := tx.ExecContext(ctx, `INSERT OR IGNORE INTO reading_path_block(job_id,source_id,directory_key,mode,reason) SELECT job_id,source_id,?,'scope','invalid_reading_path' FROM reading_path_source_barrier WHERE source_id=?`, key, v.Source)
+		if e != nil {
+			return e
+		}
+		n, _ := r.RowsAffected()
+		if n > 0 {
+			if _, e = tx.ExecContext(ctx, `UPDATE reading_path_source_barrier SET coverage_revision=coverage_revision+1 WHERE source_id=?`, v.Source); e != nil {
+				return e
+			}
 		}
 	}
 	// Relevant object changes already dirtied the old scope synchronously. A new
 	// scope has desired=1. Fanouts dirty retained keys even when membership agrees.
 	if key == "" {
-		if _, err = tx.ExecContext(ctx, `UPDATE reading_path_scope SET completed=desired,queued=0 WHERE id=?`, scope); err != nil {
+		if _, err = tx.ExecContext(ctx, `UPDATE reading_path_scope SET completed=desired,queued=0 WHERE id=? AND (completed<>desired OR queued<>0)`, scope); err != nil {
 			return err
 		}
 	}
-	if !v.Eligible {
+	if !v.Eligible || !changed || invalid {
 		return nil
 	}
 	old, exists, err := pathWinner(ctx, tx, v.Item, v.Asset)
@@ -297,45 +322,71 @@ func ReadingNormalizeObjectTx(ctx context.Context, tx *sql.Tx, id string) error 
 // ReadingPathBlockTx stores one normalized coverage dependency. Generic
 // descendants map to their parent logical scope; non-generic subtrees do not
 // hold back the parent's independent direct/generic publications.
+func ReadingQueuePathCoverageTx(ctx context.Context, tx *sql.Tx, job string) error {
+	_, err := tx.ExecContext(ctx, `INSERT INTO reading_path_dirty_work(library_id,kind,work_key) SELECT cl.id,'blocks',r.job_id FROM inventory_runs r JOIN library_sources s ON s.id=r.source_id JOIN catalog_libraries cl ON cl.library_id=s.library_id JOIN libraries l ON l.id=s.library_id WHERE r.job_id=? AND l.kind IN('book','comic') ON CONFLICT(kind,work_key) DO UPDATE SET requested=requested+1`, job)
+	return err
+}
 func ReadingPathBlockTx(ctx context.Context, tx *sql.Tx, job, relative, reason string) error {
+	physical := filepath.ToSlash(filepath.Clean(relative))
+	if physical == "." {
+		physical = ""
+	}
+	logical, err := ReadingDirectoryKey(filepath.ToSlash(filepath.Clean(relative)))
+	if err != nil {
+		logical = physical
+	}
+	type dependency struct{ key, mode string }
+	deps := []dependency{{physical, "subtree"}}
+	if logical != physical {
+		deps = append(deps, dependency{logical, "scope"})
+	}
 	ext := strings.ToLower(filepath.Ext(relative))
 	if (strings.HasPrefix(reason, "entry_") || strings.HasPrefix(reason, "symlink_")) && (ext == ".epub" || ext == ".pdf" || ext == ".cbz" || ext == ".cb7" || ext == ".cbr") {
-		parent := filepath.Dir(relative)
-		if parent != relative {
-			if err := ReadingPathBlockTx(ctx, tx, job, parent, "unknown_entry_"+reason); err != nil {
-				return err
+		parent, e := ReadingDirectoryKey(filepath.ToSlash(filepath.Dir(relative)))
+		if e == nil {
+			deps = append(deps, dependency{parent, "scope"})
+		}
+	}
+	for _, d := range deps {
+		r, e := tx.ExecContext(ctx, `INSERT OR IGNORE INTO reading_path_block(job_id,source_id,directory_key,mode,reason) SELECT ?,source_id,?,?,? FROM inventory_runs WHERE job_id=?`, job, d.key, d.mode, reason, job)
+		if e != nil {
+			return e
+		}
+		n, _ := r.RowsAffected()
+		if n > 0 {
+			if _, e = tx.ExecContext(ctx, `UPDATE reading_path_source_barrier SET coverage_revision=coverage_revision+1 WHERE source_id=(SELECT source_id FROM inventory_runs WHERE job_id=?1) AND job_id=?1`, job); e != nil {
+				return e
 			}
 		}
 	}
-	key, err := ReadingDirectoryKey(filepath.ToSlash(filepath.Clean(relative)))
-	if err != nil {
-		key = filepath.ToSlash(filepath.Clean(relative))
-		reason = "untrusted_coverage"
-	}
-	_, err = tx.ExecContext(ctx, `INSERT INTO reading_path_block(job_id,source_id,directory_key,reason) SELECT ?,source_id,?,? FROM inventory_runs WHERE job_id=? ON CONFLICT(source_id,job_id,directory_key) DO UPDATE SET reason=excluded.reason`, job, key, reason, job)
-	return err
+	return nil
 }
 
 type pathWork struct {
-	Library, Requested, Captured, Asset, Scope, Phase int64
-	Kind, Key, Object                                 string
+	Library, Requested, Captured, Asset, Scope, Phase, FenceAsset, FenceScope int64
+	Kind, Key, Object, FenceObject                                            string
 }
 
 func pathWorkStep(ctx context.Context, tx *sql.Tx, limit int, turn int64) (int, error) {
 	var w pathWork
-	err := tx.QueryRowContext(ctx, `SELECT library_id,kind,work_key,requested,captured,after_object,after_asset,after_scope,phase FROM reading_path_dirty_work ORDER BY served,kind,work_key LIMIT 1`).Scan(&w.Library, &w.Kind, &w.Key, &w.Requested, &w.Captured, &w.Object, &w.Asset, &w.Scope, &w.Phase)
+	err := tx.QueryRowContext(ctx, `SELECT library_id,kind,work_key,requested,captured,after_object,after_asset,after_scope,phase,fence_object,fence_asset,fence_scope FROM reading_path_dirty_work ORDER BY served,kind,work_key LIMIT 1`).Scan(&w.Library, &w.Kind, &w.Key, &w.Requested, &w.Captured, &w.Object, &w.Asset, &w.Scope, &w.Phase, &w.FenceObject, &w.FenceAsset, &w.FenceScope)
 	if errors.Is(err, sql.ErrNoRows) {
 		return 0, nil
 	}
 	if err != nil {
 		return 0, err
 	}
-	if w.Requested != w.Captured {
+	if w.Captured == 0 {
 		w.Captured = w.Requested
-		w.Object = ""
-		w.Asset = 0
-		w.Scope = 0
-		w.Phase = 0
+		if w.Kind != "blocks" {
+			w.Object = ""
+			w.Asset = 0
+			w.Scope = 0
+			w.Phase = 0
+		}
+		if err = pathWorkFence(ctx, tx, &w); err != nil {
+			return 0, err
+		}
 	}
 	done := false
 	n := 0
@@ -357,12 +408,12 @@ func pathWorkStep(ctx context.Context, tx *sql.Tx, limit int, turn int64) (int, 
 		n = 1
 	case "asset", "source":
 		if w.Phase == 0 {
-			q := `SELECT id FROM inventory_objects INDEXED BY inventory_objects_reading_asset_object WHERE asset_id=? AND id>? ORDER BY id LIMIT ?`
+			q := `SELECT id FROM inventory_objects INDEXED BY inventory_objects_reading_asset_object WHERE asset_id=? AND id>? AND id<=? ORDER BY id LIMIT ?`
 			if w.Kind == "source" {
-				q = `SELECT id FROM inventory_objects INDEXED BY inventory_objects_reading_source_object WHERE source_id=? AND id>? ORDER BY id LIMIT ?`
+				q = `SELECT id FROM inventory_objects INDEXED BY inventory_objects_reading_source_object WHERE source_id=? AND id>? AND id<=? ORDER BY id LIMIT ?`
 			}
 			var ids []string
-			ids, err = pathStrings(ctx, tx, q, w.Key, w.Object, limit)
+			ids, err = pathStrings(ctx, tx, q, w.Key, w.Object, w.FenceObject, limit)
 			n = len(ids)
 			if err == nil {
 				err = normalize(ids)
@@ -376,7 +427,7 @@ func pathWorkStep(ctx context.Context, tx *sql.Tx, limit int, turn int64) (int, 
 			}
 		} else {
 			var ids []int64
-			ids, err = scanIDs(ctx, tx, `SELECT id FROM reading_path_scope WHERE source_id=? AND id>? ORDER BY id LIMIT ?`, w.Key, w.Scope, limit)
+			ids, err = scanIDs(ctx, tx, `SELECT id FROM reading_path_scope WHERE source_id=? AND id>? AND id<=? ORDER BY id LIMIT ?`, w.Key, w.Scope, w.FenceScope, limit)
 			n = len(ids)
 			for _, id := range ids {
 				if err != nil {
@@ -386,11 +437,14 @@ func pathWorkStep(ctx context.Context, tx *sql.Tx, limit int, turn int64) (int, 
 				w.Scope = id
 			}
 			done = n == 0
+			if done {
+				_, err = tx.ExecContext(ctx, `INSERT INTO reading_path_dirty_work(library_id,kind,work_key) VALUES(?,'coverage',?) ON CONFLICT(kind,work_key) DO UPDATE SET requested=requested+1`, w.Library, w.Key)
+			}
 		}
 	case "item":
 		if w.Phase == 0 {
 			var ids []string
-			ids, err = pathStrings(ctx, tx, `SELECT object_id FROM reading_path_object_keys WHERE item_id=? AND object_id>? ORDER BY object_id LIMIT ?`, w.Key, w.Object, limit)
+			ids, err = pathStrings(ctx, tx, `SELECT object_id FROM reading_path_object_keys WHERE item_id=? AND object_id>? AND object_id<=? ORDER BY object_id LIMIT ?`, w.Key, w.Object, w.FenceObject, limit)
 			n = len(ids)
 			if err == nil {
 				err = normalize(ids)
@@ -403,7 +457,7 @@ func pathWorkStep(ctx context.Context, tx *sql.Tx, limit int, turn int64) (int, 
 			}
 		} else if w.Phase == 1 {
 			var next int64
-			err = tx.QueryRowContext(ctx, `SELECT asset_id FROM reading_publications WHERE item_id=? AND asset_id>? ORDER BY asset_id LIMIT 1`, w.Key, w.Asset).Scan(&next)
+			err = tx.QueryRowContext(ctx, `SELECT asset_id FROM reading_publications WHERE item_id=? AND asset_id>? AND asset_id<=? ORDER BY asset_id LIMIT 1`, w.Key, w.Asset, w.FenceAsset).Scan(&next)
 			if errors.Is(err, sql.ErrNoRows) {
 				err = nil
 				done = true
@@ -411,11 +465,12 @@ func pathWorkStep(ctx context.Context, tx *sql.Tx, limit int, turn int64) (int, 
 				w.Asset = next
 				w.Phase = 2
 				w.Object = ""
+				err = tx.QueryRowContext(ctx, `SELECT COALESCE((SELECT o.id FROM catalog_assets a CROSS JOIN inventory_objects o INDEXED BY inventory_objects_reading_asset_object ON o.asset_id=a.token WHERE a.id=? ORDER BY o.id DESC LIMIT 1),'')`, next).Scan(&w.FenceObject)
 			}
 			n = 1
 		} else {
 			var ids []string
-			ids, err = pathStrings(ctx, tx, `SELECT o.id FROM catalog_assets a CROSS JOIN inventory_objects o INDEXED BY inventory_objects_reading_asset_object ON o.asset_id=a.token WHERE a.id=? AND o.id>? ORDER BY o.id LIMIT ?`, w.Asset, w.Object, limit)
+			ids, err = pathStrings(ctx, tx, `SELECT o.id FROM catalog_assets a CROSS JOIN inventory_objects o INDEXED BY inventory_objects_reading_asset_object ON o.asset_id=a.token WHERE a.id=? AND o.id>? AND o.id<=? ORDER BY o.id LIMIT ?`, w.Asset, w.Object, w.FenceObject, limit)
 			n = len(ids)
 			if err == nil {
 				err = normalize(ids)
@@ -428,15 +483,15 @@ func pathWorkStep(ctx context.Context, tx *sql.Tx, limit int, turn int64) (int, 
 			}
 		}
 	case "pending":
-		var ids []string
-		ids, err = pathStrings(ctx, tx, `SELECT object_id FROM reading_path_object_keys WHERE item_id=? AND object_id>? ORDER BY object_id LIMIT ?`, w.Key, w.Object, limit)
+		var ids []int64
+		ids, err = scanIDs(ctx, tx, `SELECT scope_id FROM reading_path_scope_entities WHERE entity_id=? AND scope_id>? AND scope_id<=? ORDER BY scope_id LIMIT ?`, w.Key, w.Scope, w.FenceScope, limit)
 		n = len(ids)
 		for _, id := range ids {
 			if err != nil {
 				break
 			}
-			_, err = tx.ExecContext(ctx, `UPDATE reading_path_object_keys SET pending=context_active AND EXISTS(SELECT 1 FROM reading_path_availability_pending WHERE entity_id=item_id) WHERE object_id=?`, id)
-			w.Object = id
+			_, err = tx.ExecContext(ctx, `UPDATE reading_path_scope_entities SET pending=EXISTS(SELECT 1 FROM reading_path_availability_pending WHERE entity_id=reading_path_scope_entities.entity_id) WHERE entity_id=? AND scope_id=?`, w.Key, id)
+			w.Scope = id
 		}
 		done = n == 0
 	case "report":
@@ -451,7 +506,7 @@ func pathWorkStep(ctx context.Context, tx *sql.Tx, limit int, turn int64) (int, 
 			break
 		}
 		var ids []int64
-		ids, err = scanIDs(ctx, tx, `SELECT id FROM reading_path_scope WHERE source_id=? AND id>? ORDER BY id LIMIT ?`, source, w.Scope, limit)
+		ids, err = scanIDs(ctx, tx, `SELECT id FROM reading_path_scope WHERE source_id=? AND id>? AND id<=? ORDER BY id LIMIT ?`, source, w.Scope, w.FenceScope, limit)
 		n = len(ids)
 		for _, id := range ids {
 			if err != nil {
@@ -479,8 +534,47 @@ func pathWorkStep(ctx context.Context, tx *sql.Tx, limit int, turn int64) (int, 
 			w.Scope = id
 		}
 		done = n == 0
+	case "blocks":
+		// Raw issue windows include non-protecting records. At most three bounded
+		// dependency rows are emitted per issue, so cap output as well as input.
+		rows, e := tx.QueryContext(ctx, `SELECT sequence,relative_path,reason,protect FROM inventory_scan_issues WHERE job_id=? AND sequence>? AND sequence<=? ORDER BY sequence LIMIT ?`, w.Key, w.Scope, w.FenceScope, max(1, min(limit, 42)))
+		if e != nil {
+			return 0, e
+		}
+		type issue struct {
+			seq          int64
+			path, reason string
+			protect      bool
+		}
+		var batch []issue
+		for rows.Next() {
+			var v issue
+			if e = rows.Scan(&v.seq, &v.path, &v.reason, &v.protect); e != nil {
+				rows.Close()
+				return 0, e
+			}
+			batch = append(batch, v)
+		}
+		e = rows.Err()
+		rows.Close()
+		if e != nil {
+			return 0, e
+		}
+		for _, v := range batch {
+			if v.protect {
+				if err = ReadingPathBlockTx(ctx, tx, w.Key, v.path, v.reason); err != nil {
+					break
+				}
+			}
+			w.Scope = v.seq
+		}
+		if err == nil {
+			_, err = tx.ExecContext(ctx, `UPDATE reading_path_source_barrier SET after_issue=? WHERE source_id=(SELECT source_id FROM inventory_runs WHERE job_id=?) AND job_id=?`, w.Scope, w.Key, w.Key)
+		}
+		n = len(batch)
+		done = n == 0
 	case "coverage":
-		rows, e := tx.QueryContext(ctx, `SELECT id,job_id FROM reading_path_block WHERE source_id=? AND id>? ORDER BY id LIMIT ?`, w.Key, w.Scope, limit)
+		rows, e := tx.QueryContext(ctx, `SELECT id,job_id FROM reading_path_block WHERE source_id=? AND id>? AND id<=? ORDER BY id LIMIT ?`, w.Key, w.Scope, w.FenceScope, limit)
 		if e != nil {
 			return 0, e
 		}
@@ -503,7 +597,7 @@ func pathWorkStep(ctx context.Context, tx *sql.Tx, limit int, turn int64) (int, 
 			return 0, e
 		}
 		var job string
-		err = tx.QueryRowContext(ctx, `SELECT COALESCE((SELECT job_id FROM reading_path_source_barrier WHERE source_id=?),'')`, w.Key).Scan(&job)
+		err = tx.QueryRowContext(ctx, `SELECT COALESCE((SELECT b.job_id FROM reading_path_source_barrier b JOIN library_sources s ON s.id=b.source_id WHERE b.source_id=?),'')`, w.Key).Scan(&job)
 		for _, v := range batch {
 			if err != nil {
 				break
@@ -515,10 +609,13 @@ func pathWorkStep(ctx context.Context, tx *sql.Tx, limit int, turn int64) (int, 
 		}
 		n = len(batch)
 		done = n == 0
+		if done {
+			_, err = tx.ExecContext(ctx, `DELETE FROM reading_path_source_barrier WHERE source_id=? AND NOT EXISTS(SELECT 1 FROM library_sources WHERE id=?)`, w.Key, w.Key)
+		}
 	case "library":
 		if w.Phase == 0 {
 			var ids []string
-			ids, err = pathStrings(ctx, tx, `SELECT s.id FROM catalog_libraries cl CROSS JOIN library_sources s ON s.library_id=cl.library_id WHERE cl.id=? AND s.id>? ORDER BY s.id LIMIT ?`, w.Library, w.Object, limit)
+			ids, err = pathStrings(ctx, tx, `SELECT s.id FROM catalog_libraries cl CROSS JOIN library_sources s ON s.library_id=cl.library_id WHERE cl.id=? AND s.id>? AND s.id<=? ORDER BY s.id LIMIT ?`, w.Library, w.Object, w.FenceObject, limit)
 			n = len(ids)
 			for _, id := range ids {
 				if err != nil {
@@ -532,7 +629,7 @@ func pathWorkStep(ctx context.Context, tx *sql.Tx, limit int, turn int64) (int, 
 			}
 		} else {
 			var ids []int64
-			ids, err = scanIDs(ctx, tx, `SELECT id FROM reading_path_scope WHERE library_id=? AND id>? ORDER BY id LIMIT ?`, w.Library, w.Scope, limit)
+			ids, err = scanIDs(ctx, tx, `SELECT id FROM reading_path_scope WHERE library_id=? AND id>? AND id<=? ORDER BY id LIMIT ?`, w.Library, w.Scope, w.FenceScope, limit)
 			n = len(ids)
 			for _, id := range ids {
 				if err != nil {
@@ -548,12 +645,42 @@ func pathWorkStep(ctx context.Context, tx *sql.Tx, limit int, turn int64) (int, 
 	if err != nil {
 		return 0, err
 	}
+	if done && w.Requested != w.Captured {
+		w.Captured = 0
+		done = false
+	}
 	if done {
 		_, err = tx.ExecContext(ctx, `DELETE FROM reading_path_dirty_work WHERE kind=? AND work_key=? AND requested=?`, w.Kind, w.Key, w.Captured)
 	} else {
-		_, err = tx.ExecContext(ctx, `UPDATE reading_path_dirty_work SET captured=?,after_object=?,after_asset=?,after_scope=?,phase=?,served=? WHERE kind=? AND work_key=?`, w.Captured, w.Object, w.Asset, w.Scope, w.Phase, turn, w.Kind, w.Key)
+		_, err = tx.ExecContext(ctx, `UPDATE reading_path_dirty_work SET captured=?,after_object=?,after_asset=?,after_scope=?,phase=?,served=?,fence_object=?,fence_asset=?,fence_scope=? WHERE kind=? AND work_key=?`, w.Captured, w.Object, w.Asset, w.Scope, w.Phase, turn, w.FenceObject, w.FenceAsset, w.FenceScope, w.Kind, w.Key)
+	}
+	if err == nil && done {
+		err = pathRetireInput(ctx, tx, w.Library)
 	}
 	return max(1, n), err
+}
+
+func pathWorkFence(ctx context.Context, tx *sql.Tx, w *pathWork) error {
+	var err error
+	switch w.Kind {
+	case "asset":
+		err = tx.QueryRowContext(ctx, `SELECT COALESCE((SELECT id FROM inventory_objects INDEXED BY inventory_objects_reading_asset_object WHERE asset_id=? ORDER BY id DESC LIMIT 1),'')`, w.Key).Scan(&w.FenceObject)
+	case "source":
+		err = tx.QueryRowContext(ctx, `SELECT COALESCE((SELECT id FROM inventory_objects INDEXED BY inventory_objects_reading_source_object WHERE source_id=?1 ORDER BY id DESC LIMIT 1),''),COALESCE((SELECT id FROM reading_path_scope WHERE source_id=?1 ORDER BY id DESC LIMIT 1),0)`, w.Key).Scan(&w.FenceObject, &w.FenceScope)
+	case "item":
+		err = tx.QueryRowContext(ctx, `SELECT COALESCE((SELECT object_id FROM reading_path_object_keys WHERE item_id=?1 ORDER BY object_id DESC LIMIT 1),''),COALESCE((SELECT asset_id FROM reading_publications WHERE item_id=?1 ORDER BY asset_id DESC LIMIT 1),0)`, w.Key).Scan(&w.FenceObject, &w.FenceAsset)
+	case "pending":
+		err = tx.QueryRowContext(ctx, `SELECT COALESCE((SELECT scope_id FROM reading_path_scope_entities WHERE entity_id=? ORDER BY scope_id DESC LIMIT 1),0)`, w.Key).Scan(&w.FenceScope)
+	case "report":
+		err = tx.QueryRowContext(ctx, `SELECT COALESCE((SELECT id FROM reading_path_scope WHERE source_id=(SELECT source_id FROM inventory_runs WHERE job_id=?) ORDER BY id DESC LIMIT 1),0)`, w.Key).Scan(&w.FenceScope)
+	case "blocks":
+		err = tx.QueryRowContext(ctx, `SELECT COALESCE((SELECT sequence FROM inventory_scan_issues WHERE job_id=?1 ORDER BY sequence DESC LIMIT 1),0),COALESCE((SELECT after_issue FROM reading_path_source_barrier WHERE job_id=?1),?2)`, w.Key, w.Scope).Scan(&w.FenceScope, &w.Scope)
+	case "coverage":
+		err = tx.QueryRowContext(ctx, `SELECT COALESCE((SELECT id FROM reading_path_block WHERE source_id=? ORDER BY id DESC LIMIT 1),0)`, w.Key).Scan(&w.FenceScope)
+	case "library":
+		err = tx.QueryRowContext(ctx, `SELECT COALESCE((SELECT s.id FROM catalog_libraries cl CROSS JOIN library_sources s ON s.library_id=cl.library_id WHERE cl.id=?1 ORDER BY s.id DESC LIMIT 1),''),COALESCE((SELECT id FROM reading_path_scope WHERE library_id=?1 ORDER BY id DESC LIMIT 1),0)`, w.Library).Scan(&w.FenceObject, &w.FenceScope)
+	}
+	return err
 }
 
 // A quantum may finish several tiny coalesced feed keys. The aggregate raw
@@ -597,15 +724,15 @@ func pathStrings(ctx context.Context, tx *sql.Tx, q string, args ...any) ([]stri
 }
 
 type pathScope struct {
-	ID, Library, Desired, Completed, Pending, SealCursor, Revision, Generation                 int64
-	Source, Incarnation, Root, Key, SealJob, Reason, Job, Barrier, BarrierReason, RootIdentity string
-	Sealed                                                                                     bool
+	ID, Library, Desired, Completed, Pending, SealCursor, Revision, Generation, SealRevision, CoverageRevision int64
+	Source, Incarnation, Root, Key, SealJob, Reason, Job, Barrier, BarrierReason, RootIdentity                 string
+	Sealed                                                                                                     bool
 }
 
 func pathScopeRead(ctx context.Context, tx *sql.Tx, id int64) (pathScope, error) {
 	var s pathScope
-	err := tx.QueryRowContext(ctx, `SELECT q.id,q.library_id,q.desired,q.completed,q.pending,q.seal_cursor,q.source_id,q.incarnation,q.root_prefix,q.directory_key,q.seal_job,q.reason,q.sealed,COALESCE(i.revision,0),COALESCE(b.job_id,''),COALESCE(b.phase,'open'),COALESCE(b.reason,''),COALESCE(src.generation,0),COALESCE(src.root_identity,'')
- FROM reading_path_scope q LEFT JOIN reading_path_inputs i ON i.library_id=q.library_id LEFT JOIN reading_path_source_barrier b ON b.source_id=q.source_id LEFT JOIN library_sources src ON src.id=q.source_id WHERE q.id=?`, id).Scan(&s.ID, &s.Library, &s.Desired, &s.Completed, &s.Pending, &s.SealCursor, &s.Source, &s.Incarnation, &s.Root, &s.Key, &s.SealJob, &s.Reason, &s.Sealed, &s.Revision, &s.Job, &s.Barrier, &s.BarrierReason, &s.Generation, &s.RootIdentity)
+	err := tx.QueryRowContext(ctx, `SELECT q.id,q.library_id,q.desired,q.completed,q.pending,q.seal_cursor,q.source_id,q.incarnation,q.root_prefix,q.directory_key,q.seal_job,q.reason,q.sealed,COALESCE(i.revision,0),COALESCE(b.job_id,''),COALESCE(b.phase,'open'),COALESCE(b.reason,''),COALESCE(src.generation,0),COALESCE(src.root_identity,''),q.seal_revision,COALESCE(b.coverage_revision,0)
+ FROM reading_path_scope q LEFT JOIN reading_path_inputs i ON i.library_id=q.library_id LEFT JOIN reading_path_source_barrier b ON b.source_id=q.source_id LEFT JOIN library_sources src ON src.id=q.source_id WHERE q.id=?`, id).Scan(&s.ID, &s.Library, &s.Desired, &s.Completed, &s.Pending, &s.SealCursor, &s.Source, &s.Incarnation, &s.Root, &s.Key, &s.SealJob, &s.Reason, &s.Sealed, &s.Revision, &s.Job, &s.Barrier, &s.BarrierReason, &s.Generation, &s.RootIdentity, &s.SealRevision, &s.CoverageRevision)
 	return s, err
 }
 func scopeLive(ctx context.Context, tx *sql.Tx, s pathScope) (bool, error) {
@@ -619,7 +746,7 @@ func scopeLive(ctx context.Context, tx *sql.Tx, s pathScope) (bool, error) {
 }
 func scopeReady(ctx context.Context, tx *sql.Tx, s pathScope) (string, error) {
 	var current bool
-	if err := tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM reading_path_source_barrier WHERE source_id=? AND incarnation=? AND source_generation=?)`, s.Source, s.Incarnation, s.Generation).Scan(&current); err != nil {
+	if err := tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM reading_path_source_barrier b JOIN library_sources src ON src.id=b.source_id WHERE b.source_id=? AND b.incarnation=? AND b.source_generation=? AND b.root_identity=src.root_identity AND b.root=src.root)`, s.Source, s.Incarnation, s.Generation).Scan(&current); err != nil {
 		return "", err
 	}
 	if !current {
@@ -631,7 +758,7 @@ func scopeReady(ctx context.Context, tx *sql.Tx, s pathScope) (string, error) {
 	if s.BarrierReason != "" {
 		return s.BarrierReason, nil
 	}
-	if !s.Sealed || s.SealJob != s.Job {
+	if !s.Sealed || s.SealJob != s.Job || s.SealRevision != s.CoverageRevision {
 		return "coverage_pending", nil
 	}
 	if s.Reason != "" {
@@ -682,23 +809,24 @@ func pathReport(ctx context.Context, tx *sql.Tx, s pathScope, reason string) err
 // blocked generic descendant is the same key; a blocked non-generic subtree is
 // an ancestor only of contexts that actually depend on that subtree.
 func pathSealStep(ctx context.Context, tx *sql.Tx, s pathScope, limit int) (int, error) {
-	if s.SealJob != s.Job {
+	if s.SealJob != s.Job || s.SealRevision != s.CoverageRevision {
 		s.SealCursor = 0
 		s.Reason = ""
 	}
-	keys := []string{""}
+	type dependency struct{ key, mode string }
+	keys := []dependency{{s.Key, "scope"}, {"", "subtree"}}
 	if s.Key != "" {
 		for i := range s.Key {
 			if s.Key[i] == '/' {
-				keys = append(keys, s.Key[:i])
+				keys = append(keys, dependency{s.Key[:i], "subtree"})
 			}
 		}
-		keys = append(keys, s.Key)
+		keys = append(keys, dependency{s.Key, "subtree"})
 	}
 	n := 0
 	for int(s.SealCursor) < len(keys) && n < limit {
 		var reason string
-		err := tx.QueryRowContext(ctx, `SELECT reason FROM reading_path_block WHERE source_id=? AND job_id=? AND directory_key=?`, s.Source, s.Job, keys[s.SealCursor]).Scan(&reason)
+		err := tx.QueryRowContext(ctx, `SELECT reason FROM reading_path_block WHERE source_id=? AND job_id=? AND directory_key=? AND mode=?`, s.Source, s.Job, keys[s.SealCursor].key, keys[s.SealCursor].mode).Scan(&reason)
 		if err != nil && !errors.Is(err, sql.ErrNoRows) {
 			return 0, err
 		}
@@ -709,7 +837,10 @@ func pathSealStep(ctx context.Context, tx *sql.Tx, s pathScope, limit int) (int,
 		n++
 	}
 	sealed := int(s.SealCursor) == len(keys)
-	_, err := tx.ExecContext(ctx, `UPDATE reading_path_scope SET seal_job=?,seal_cursor=?,sealed=?,reason=? WHERE id=?`, s.Job, s.SealCursor, sealed, s.Reason, s.ID)
+	_, err := tx.ExecContext(ctx, `UPDATE reading_path_scope SET seal_job=?,seal_revision=?,seal_cursor=?,sealed=?,reason=? WHERE id=?`, s.Job, s.CoverageRevision, s.SealCursor, sealed, s.Reason, s.ID)
+	if err == nil && sealed && s.Reason != "" {
+		err = pathReport(ctx, tx, s, s.Reason)
+	}
 	return max(n, 1), err
 }
 
@@ -718,6 +849,13 @@ func pathSealStep(ctx context.Context, tx *sql.Tx, s pathScope, limit int) (int,
 // genuine churn cannot monopolize the slot or prevent queue normalization.
 func StepReadingPaths(ctx context.Context, tx *sql.Tx, limit int) (int, error) {
 	limit = max(1, min(limit, readingPathBatch))
+	var pending bool
+	if err := tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM reading_path_dirty_work) OR EXISTS(SELECT 1 FROM reading_path_slot WHERE singleton=1 AND build_id IS NOT NULL) OR EXISTS(SELECT 1 FROM reading_path_scope WHERE queued=1)`).Scan(&pending); err != nil {
+		return 0, err
+	}
+	if !pending {
+		return 0, nil
+	}
 	turn, err := pathTurn(ctx, tx)
 	if err != nil {
 		return 0, err
@@ -761,7 +899,14 @@ func StepReadingPaths(ctx context.Context, tx *sql.Tx, limit int) (int, error) {
 		_, err = tx.ExecContext(ctx, `UPDATE reading_path_scope SET completed=desired,queued=0 WHERE id=?`, s.ID)
 		return 1, err
 	}
-	if s.Barrier == "sealed" && (s.SealJob != s.Job || !s.Sealed) {
+	if s.Barrier == "sealed" && (s.SealJob != s.Job || !s.Sealed || s.SealRevision != s.CoverageRevision) {
+		var pending bool
+		if err = tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM reading_path_dirty_work WHERE kind='blocks' AND work_key=?)`, s.Job).Scan(&pending); err != nil {
+			return 0, err
+		}
+		if pending {
+			return pathWorkQuantum(ctx, tx, limit, turn)
+		}
 		return pathSealStep(ctx, tx, s, limit)
 	}
 	reason, err := scopeReady(ctx, tx, s)
@@ -778,7 +923,7 @@ func StepReadingPaths(ctx context.Context, tx *sql.Tx, limit int) (int, error) {
 		return 0, err
 	}
 	var bid int64
-	err = tx.QueryRowContext(ctx, `INSERT INTO reading_path_build(scope_id,desired,input_revision,source_generation,root_identity,job_id,phase) VALUES(?,?,?,?,?,?,'capture') RETURNING id`, s.ID, s.Desired, s.Revision, s.Generation, s.RootIdentity, s.Job).Scan(&bid)
+	err = tx.QueryRowContext(ctx, `INSERT INTO reading_path_build(scope_id,desired,input_revision,source_generation,root_identity,job_id,coverage_revision,phase) VALUES(?,?,?,?,?,?,?,'capture') RETURNING id`, s.ID, s.Desired, s.Revision, s.Generation, s.RootIdentity, s.Job, s.CoverageRevision).Scan(&bid)
 	if err != nil {
 		return 0, err
 	}
@@ -795,19 +940,29 @@ func pathRetireScope(ctx context.Context, tx *sql.Tx, s pathScope, limit int) (i
 	if n > 0 {
 		return int(n), nil
 	}
+	if _, err = tx.ExecContext(ctx, `INSERT INTO reading_path_dirty_work(library_id,kind,work_key) VALUES(?,'coverage',?) ON CONFLICT(kind,work_key) DO UPDATE SET requested=requested+1`, s.Library, s.Source); err != nil {
+		return 0, err
+	}
 	_, err = tx.ExecContext(ctx, `DELETE FROM reading_path_scope WHERE id=?`, s.ID)
+	if err == nil {
+		err = pathRetireInput(ctx, tx, s.Library)
+	}
 	return 1, err
+}
+func pathRetireInput(ctx context.Context, tx *sql.Tx, library int64) error {
+	_, err := tx.ExecContext(ctx, `DELETE FROM reading_path_inputs WHERE library_id=?1 AND NOT EXISTS(SELECT 1 FROM catalog_libraries WHERE id=?1) AND NOT EXISTS(SELECT 1 FROM reading_path_scope WHERE library_id=?1) AND NOT EXISTS(SELECT 1 FROM reading_path_dirty_work WHERE library_id=?1)`, library)
+	return err
 }
 
 type pathBuild struct {
-	ID, Scope, Desired, Revision, Generation, Item, Asset, Titles, NonSeries, Sequence, FlatItem, FlatAsset int64
-	RootIdentity, Job, Phase, Object                                                                        string
+	ID, Scope, Desired, Revision, Generation, Item, Asset, Titles, NonSeries, Sequence, FlatItem, FlatAsset, CoverageRevision int64
+	RootIdentity, Job, Phase, Object                                                                                          string
 }
 
 func pathBuildStep(ctx context.Context, tx *sql.Tx, id int64, limit int) (int, error) {
 	var b pathBuild
 	b.ID = id
-	err := tx.QueryRowContext(ctx, `SELECT scope_id,desired,input_revision,source_generation,root_identity,job_id,phase,after_object,after_item,after_asset,title_count,non_series_count,COALESCE(publish_sequence,0),after_flatten_item,after_flatten_asset FROM reading_path_build WHERE id=?`, id).Scan(&b.Scope, &b.Desired, &b.Revision, &b.Generation, &b.RootIdentity, &b.Job, &b.Phase, &b.Object, &b.Item, &b.Asset, &b.Titles, &b.NonSeries, &b.Sequence, &b.FlatItem, &b.FlatAsset)
+	err := tx.QueryRowContext(ctx, `SELECT scope_id,desired,input_revision,source_generation,root_identity,job_id,phase,after_object,after_item,after_asset,title_count,non_series_count,COALESCE(publish_sequence,0),after_flatten_item,after_flatten_asset,coverage_revision FROM reading_path_build WHERE id=?`, id).Scan(&b.Scope, &b.Desired, &b.Revision, &b.Generation, &b.RootIdentity, &b.Job, &b.Phase, &b.Object, &b.Item, &b.Asset, &b.Titles, &b.NonSeries, &b.Sequence, &b.FlatItem, &b.FlatAsset, &b.CoverageRevision)
 	if err != nil {
 		return 0, err
 	}
@@ -824,7 +979,7 @@ func pathBuildStep(ctx context.Context, tx *sql.Tx, id int64, limit int) (int, e
 		if e != nil {
 			return 0, e
 		}
-		if reason != "" || !live || b.Desired != s.Desired || b.Revision != s.Revision || b.Generation != s.Generation || b.RootIdentity != s.RootIdentity || b.Job != s.Job {
+		if reason != "" || !live || b.Desired != s.Desired || b.Revision != s.Revision || b.Generation != s.Generation || b.RootIdentity != s.RootIdentity || b.Job != s.Job || b.CoverageRevision != s.CoverageRevision {
 			_, err = tx.ExecContext(ctx, `UPDATE reading_path_build SET phase='abort' WHERE id=?`, id)
 			return 1, err
 		}
@@ -1033,30 +1188,79 @@ func pathFlattenStep(ctx context.Context, tx *sql.Tx, b pathBuild, limit int) (i
 	return len(batch), err
 }
 
-func readingPathAutomaticTx(ctx context.Context, tx *sql.Tx, items []int64, out map[int64]ReadingValues) error {
-	for _, item := range items {
-		var asset int64
-		err := tx.QueryRowContext(ctx, `SELECT p.asset_id FROM catalog_entities e JOIN reading_publications p ON p.item_id=e.id WHERE e.id=? AND ((e.kind=20 AND p.format IN('epub','pdf','mobi','azw3')) OR(e.kind=21 AND p.format IN('cbz','pdf','cb7','cbr'))) ORDER BY EXISTS(SELECT 1 FROM inventory_item_availability av WHERE av.item_id=p.item_id AND av.asset_id=(SELECT token FROM catalog_assets WHERE id=p.asset_id) AND av.available=1) DESC,p.asset_id LIMIT 1`, item).Scan(&asset)
-		if errors.Is(err, sql.ErrNoRows) {
-			continue
-		}
-		if err != nil {
-			return err
-		}
-		winner, exists, err := pathWinner(ctx, tx, item, asset)
-		if err != nil {
-			return err
-		}
-		if !exists {
-			continue
-		}
-		accepted, err := pathAccepted(ctx, tx, item, asset, winner)
-		if err != nil {
-			return err
-		}
-		if accepted {
-			out[item] = winner.values()
-		}
+type readingPrimary struct{ item, asset int64 }
+
+func readingPrimaryPublicationsTx(ctx context.Context, tx *sql.Tx, marks string, args []any) ([]readingPrimary, error) {
+	rows, err := tx.QueryContext(ctx, `SELECT e.id,p.asset_id FROM catalog_entities e JOIN reading_publications p ON p.item_id=e.id AND p.asset_id=(SELECT v.asset_id FROM reading_publications v WHERE v.item_id=e.id AND ((e.kind=20 AND v.format IN('epub','pdf','mobi','azw3')) OR(e.kind=21 AND v.format IN('cbz','pdf','cb7','cbr'))) ORDER BY EXISTS(SELECT 1 FROM inventory_item_availability av WHERE av.item_id=v.item_id AND av.asset_id=(SELECT token FROM catalog_assets WHERE id=v.asset_id) AND av.available=1) DESC,v.asset_id LIMIT 1) WHERE e.id IN (`+marks+`)`, args...)
+	if err != nil {
+		return nil, err
 	}
-	return nil
+	var out []readingPrimary
+	for rows.Next() {
+		var p readingPrimary
+		if err = rows.Scan(&p.item, &p.asset); err != nil {
+			rows.Close()
+			return nil, err
+		}
+		out = append(out, p)
+	}
+	err = rows.Err()
+	rows.Close()
+	return out, err
+}
+func readingPrimaryBindings(items []readingPrimary) (string, []any) {
+	if len(items) == 0 {
+		return "SELECT 0,0 WHERE 0", nil
+	}
+	args := make([]any, 0, len(items)*2)
+	for _, p := range items {
+		args = append(args, p.item, p.asset)
+	}
+	return "VALUES " + strings.TrimSuffix(strings.Repeat("(?,?),", len(items)), ","), args
+}
+func readingPathAutomaticTx(ctx context.Context, tx *sql.Tx, items []readingPrimary, out map[int64]ReadingValues) error {
+	if len(items) == 0 {
+		return nil
+	}
+	chosen, args := readingPrimaryBindings(items)
+	fields := strings.Split(pathColumns, ",")
+	for i, col := range fields {
+		fields[i] = "CASE WHEN v.item_id IS NOT NULL AND (h.item_id IS NULL OR b.publish_sequence>h.publisher_sequence) THEN v." + col + " ELSE h." + col + " END AS " + col
+	}
+	rows, err := tx.QueryContext(ctx, `WITH chosen(item_id,asset_id) AS (`+chosen+`),
+ bundles AS MATERIALIZED (SELECT c.item_id,c.asset_id,`+strings.Join(fields, ",")+`
+ FROM chosen c CROSS JOIN reading_path_slot z ON z.singleton=1
+ LEFT JOIN reading_path_build b ON b.id=z.overlay_id
+ LEFT JOIN reading_path_head h ON h.item_id=c.item_id AND h.asset_id=c.asset_id
+ LEFT JOIN reading_path_stage v ON v.build_id=z.overlay_id AND v.item_id=c.item_id AND v.asset_id=c.asset_id)
+ SELECT w.item_id,`+prefixColumns("w")+` FROM bundles w
+ CROSS JOIN reading_publications p ON p.item_id=w.item_id AND p.asset_id=w.asset_id
+ CROSS JOIN catalog_asset_links link ON link.entity_id=p.item_id AND link.asset_id=p.asset_id
+ CROSS JOIN catalog_assets a ON a.id=p.asset_id
+ CROSS JOIN catalog_entities e ON e.id=p.item_id
+ CROSS JOIN catalog_libraries cl ON cl.id=e.library_id
+ CROSS JOIN libraries lib ON lib.id=cl.library_id
+ CROSS JOIN inventory_objects o ON o.id=w.object_id AND o.revision=w.source_revision AND o.asset_id=a.token AND o.retired=0
+ CROSS JOIN library_sources s ON s.id=o.source_id AND s.library_id=cl.library_id AND s.incarnation=o.root_incarnation
+ WHERE e.retired=0 AND cl.retired=0 AND ((e.kind=20 AND lib.kind='book' AND p.format IN('epub','pdf','mobi','azw3')) OR(e.kind=21 AND lib.kind='comic' AND p.format IN('cbz','pdf','cb7','cbr')))`, args...)
+	if err != nil {
+		return err
+	}
+	for rows.Next() {
+		var item int64
+		var v pathBundle
+		if err = rows.Scan(append([]any{&item}, v.scan()...)...); err != nil {
+			rows.Close()
+			return err
+		}
+		values := v.values()
+		if _, err = bundle(v.Object, v.Revision, values); err != nil {
+			rows.Close()
+			return err
+		}
+		out[item] = values
+	}
+	err = rows.Err()
+	rows.Close()
+	return err
 }
