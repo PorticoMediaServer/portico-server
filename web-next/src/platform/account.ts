@@ -2,6 +2,7 @@ import {apiRoot, routePath} from '../../../packages/contracts/src/hosted/routes.
 import {parseBrowserCredentialRecord} from '@core/credential-format.ts';
 import {installationHeaders} from '@core/installation.ts';
 import {browserAccountOrigin} from './account-origin.ts';
+import {browserCsrfCookieName, browserCsrfShape, exactBrowserCsrfCookie} from './account-csrf.ts';
 import {parseAccountSession} from '@core/hosted-security.ts';
 import {
   ApiError,
@@ -42,8 +43,7 @@ export class BrowserCredentialStorage implements CredentialStorage<BrowserAuthor
 
 }
 
-/** A double-submit CSRF token has this shape (Hosted `security.RandomID`). */
-const csrfShape=/^[A-Za-z0-9_-]{43}$/;
+type BrowserAccountContext = Readonly<{callerOrigin?:string}>;
 
 /** The only Hosted requests that create a device row: each completes a sign-in and
  * inserts a session family. Ordinary management reads and refresh/revoke carry no
@@ -75,12 +75,19 @@ export class BrowserAccountApi implements CredentialApi<BrowserAuthority> {
   readonly origin:string;
   private pending=new Set<Promise<unknown>>();
   private readonly csrfKey:string;
-  constructor(origin:string) {
+  private csrfCookie:string|undefined;
+  private metadataFlight:Promise<void>|undefined;
+  private readonly readableCookie:boolean;
+  constructor(origin:string,context:BrowserAccountContext={}) {
     const url=new URL(origin);
     if(url.protocol!=='https:'&&!(url.protocol==='http:'&&['127.0.0.1','localhost','[::1]'].includes(url.hostname)))
       throw new Error('Portico Accounts require an HTTPS service.');
     this.origin=url.origin;
-    this.csrfKey='portico.account.csrf.v1:'+this.origin;
+    // Capture these once: later page/config changes cannot borrow another origin's token.
+    const caller=new URL(context.callerOrigin??globalThis.location?.origin??this.origin);
+    this.csrfKey='portico.account.csrf.v2:'+JSON.stringify([this.origin,caller.origin]);
+    try{this.csrfCookie=browserCsrfCookieName(localStorage.getItem(this.csrfKey+':name'));}catch{}
+    this.readableCookie=caller.hostname===url.hostname&&caller.protocol===url.protocol;
   }
 
   /**
@@ -90,21 +97,36 @@ export class BrowserAccountApi implements CredentialApi<BrowserAuthority> {
    * cookie). When the web shares Hosted's host (web.getportico.tv, or a loopback dev origin) the
    * cookie itself is read; otherwise the last header value, kept in localStorage across reloads.
    */
-  private csrfToken():string|undefined {
-    // The cookie is always the current value when this page can read it (same host as Hosted);
-    // otherwise the last value Hosted sent in X-CSRF-Token.
-    try{
-      for(const part of document.cookie.split(';')){
-        const [name,...value]=part.trim().split('=');
-        if((name.startsWith('__Host-portico_refresh')||name.startsWith('portico_refresh'))&&name.endsWith('_csrf')){const v=value.join('=');if(csrfShape.test(v))return v;}
-      }
-    }catch{}
-    try{const kept=localStorage.getItem(this.csrfKey);if(kept&&csrfShape.test(kept))return kept;}catch{}
+  private async csrfToken(signal?:AbortSignal):Promise<string|undefined> {
+    if(this.readableCookie){
+      if(!this.csrfCookie)await this.learnCsrfCookie();
+      signal?.throwIfAborted();
+      // Missing/malformed/duplicate expected cookies cannot borrow stored or foreign values.
+      try{return this.csrfCookie?exactBrowserCsrfCookie(document.cookie,this.csrfCookie):undefined;}catch{return;}
+    }
+    try{const kept=localStorage.getItem(this.csrfKey);if(kept&&browserCsrfShape.test(kept))return kept;}catch{}
     return undefined;
   }
-  private keepCsrf(response:Response) {
+  private learnCsrfCookie():Promise<void> {
+    if(this.metadataFlight)return this.metadataFlight;
+    // Anonymous metadata only. Never retry a credential command to discover its cookie.
+    const flight=(async()=>{
+      const response=await fetch(this.origin+routePath('session_refresh'),{
+        method:'OPTIONS',mode:'cors',credentials:'omit',redirect:'error',cache:'no-store',signal:AbortSignal.timeout(15000),
+      });
+      if(!response.ok)throw new ApiError(response.status,'csrf_metadata_unavailable','Could not reach your Portico Account.',response.status>=500,retryAfterSecondsFrom(response.headers.get('Retry-After')));
+      this.keepCsrf(response,false);
+      if(!this.csrfCookie)throw new ApiError(503,'csrf_metadata_unavailable','Could not reach your Portico Account.',true);
+    })();
+    this.metadataFlight=flight;
+    void flight.finally(()=>{if(this.metadataFlight===flight)this.metadataFlight=undefined;}).catch(()=>{});
+    return flight;
+  }
+  private keepCsrf(response:Response,keepToken=true) {
+    const name=browserCsrfCookieName(response.headers.get('X-Portico-CSRF-Cookie'));
+    if(name){this.csrfCookie=name;try{localStorage.setItem(this.csrfKey+':name',name);}catch{}}
     const token=response.headers.get('X-CSRF-Token');
-    if(token&&csrfShape.test(token)){try{localStorage.setItem(this.csrfKey,token);}catch{}}
+    if(keepToken&&token&&browserCsrfShape.test(token)){try{localStorage.setItem(this.csrfKey,token);}catch{}}
   }
 
   request<T>(path:string,body:unknown,signal?:AbortSignal):Promise<T> {
@@ -124,12 +146,16 @@ export class BrowserAccountApi implements CredentialApi<BrowserAuthority> {
 
   private async perform<T>(path:string,method:string,body:unknown,signal?:AbortSignal,token?:string):Promise<T> {
     if(!path.startsWith(apiRoot))throw new Error('Invalid account request.');
-    const csrf=method==='GET'?undefined:this.csrfToken();
+    // Freeze command intent before metadata can yield to another UI action.
+    const payload=body===undefined?undefined:transportJSON(body);
+    signal?.throwIfAborted();
+    const csrf=method==='GET'?undefined:await this.csrfToken(signal);
+    signal?.throwIfAborted();
     const installation=issuesHostedCredentials(path,method)?hostedInstallationHeaders():{};
     const response=await fetch(this.origin+path,{
       method,credentials:'include',redirect:'error',
       signal:signal?AbortSignal.any([signal,AbortSignal.timeout(15000)]):AbortSignal.timeout(15000),
-      headers:{'Content-Type':'application/json',...installation,...(token?{Authorization:'Bearer '+token}:{}),...(csrf?{'X-CSRF-Token':csrf}:{})},...(body===undefined?{}:{body:transportJSON(body)}),
+      headers:{'Content-Type':'application/json',...installation,...(token?{Authorization:'Bearer '+token}:{}),...(csrf?{'X-CSRF-Token':csrf}:{})},...(payload===undefined?{}:{body:payload}),
     });
     this.keepCsrf(response);
     if(!response.ok){
@@ -156,7 +182,7 @@ export class BrowserAccountApi implements CredentialApi<BrowserAuthority> {
 let instance:{api:BrowserAccountApi;service:CredentialSessionService<BrowserAuthority>}|undefined;
 export function browserAccount() {
   if(instance)return instance;
-  const api=new BrowserAccountApi(browserAccountOrigin(import.meta.env, location));
+  const api=new BrowserAccountApi(browserAccountOrigin(import.meta.env, location),{callerOrigin:location.origin});
   const key='portico.account.v1:'+api.origin;
   const storage=new BrowserCredentialStorage({getItem:name=>localStorage.getItem(name),setItem:(name,value)=>localStorage.setItem(name,value)},key);
   const service=new CredentialSessionService(api,storage,async()=>crypto.randomUUID(),15000,{

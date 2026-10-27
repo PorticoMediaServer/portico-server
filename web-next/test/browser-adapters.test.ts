@@ -53,13 +53,13 @@ test('freshness pools are scoped to server/viewer and browser signals clean up',
   two.pool.dispose(); two.hub.dispose();
 });
 test('account transport sends CSRF/credentials, refuses redirects and excludes refresh tokens', async t => {
-  replace(t, 'document', {cookie: 'portico_refresh_csrf=' + 'a'.repeat(43)});
+  replace(t, 'document', {cookie: '__Host-portico_refresh_csrf=' + 'a'.repeat(43)});
   const storage = new Map<string, string>(); replace(t, 'localStorage', {getItem: (key: string) => storage.get(key) ?? null, setItem: (key: string, value: string) => storage.set(key, value)});
   let request: RequestInit | undefined;
-  t.mock.method(globalThis, 'fetch', async (_url: unknown, init: RequestInit) => { request = init; return new Response(null, {status: 204, headers: {'X-CSRF-Token': 'b'.repeat(43)}}); });
+  t.mock.method(globalThis, 'fetch', async (_url: unknown, init: RequestInit) => { request = init; return new Response(null, {status: 204, headers: {'X-CSRF-Token': 'b'.repeat(43),'X-Portico-CSRF-Cookie':'__Host-portico_refresh_csrf'}}); });
   const api = new BrowserAccountApi('https://accounts.example'); await api.send('/v1/sessions', 'POST', {code: 'synthetic'});
   assert.equal(request?.credentials, 'include'); assert.equal(request?.redirect, 'error'); assert.equal((request?.headers as Record<string, string>)['X-CSRF-Token'], 'a'.repeat(43));
-  assert.equal(storage.get('portico.account.csrf.v1:https://accounts.example'), 'b'.repeat(43));
+  assert.equal(storage.get('portico.account.csrf.v2:'+JSON.stringify(['https://accounts.example','https://accounts.example'])), 'b'.repeat(43));
   assert.throws(() => new BrowserAccountApi('http://accounts.example'), /HTTPS/);
   assert.throws(() => api.authorityFromSession({familyId: 'family', refreshToken: 'native-secret'} as never), /native credential/);
   await assert.rejects(api.send('https://elsewhere.example', 'GET'), /Invalid account request/);
