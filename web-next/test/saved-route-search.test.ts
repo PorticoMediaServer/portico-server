@@ -5,7 +5,9 @@ import {parseSavedScreenRoute} from '../src/screens/saved/route.ts';
 test('Saved URL policy keeps opaque resources and drops unowned raw query state', () => {
   assert.deepEqual(parseSavedScreenRoute({resourceId: 'view:opaque/a', token: 'unowned', unexpected: true}), {view: 'resource', resourceId: 'view:opaque/a'});
   assert.deepEqual(parseSavedScreenRoute({view: 'playlist', playlistId: 'opaque:list', shape: 'squares'}), {view: 'playlist', playlistId: 'opaque:list'});
-  assert.deepEqual(parseSavedScreenRoute({}), {view: 'watchlist'});
+  // A bare /saved is the phone directory; unowned raw keys never name a view.
+  assert.deepEqual(parseSavedScreenRoute({}), {view: 'home'});
+  assert.deepEqual(parseSavedScreenRoute({token: 'unowned', unexpected: true}), {view: 'home'});
 });
 test('Saved filters and shapes remain bound to the real destination', () => {
   assert.deepEqual(parseSavedScreenRoute({view: 'watchlist', filter: 'unwatched', shape: 'posters', direction: 'desc', sort: 'added'}),
