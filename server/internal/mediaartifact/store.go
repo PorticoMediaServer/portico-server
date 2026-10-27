@@ -46,6 +46,7 @@ type Store struct {
 	readers                map[string]int
 	writers                map[*Writer]bool
 	closed                 bool
+	opening                sync.WaitGroup
 }
 
 func New(root string) (*Store, error) { return newStore(root, syncDirectory) }
@@ -332,20 +333,48 @@ func openVerified(ctx context.Context, path string, object Object) (*os.File, er
 // Open verifies closed bytes and retains an independent descriptor. The caller
 // must first resolve an authorized committed publication record to this Object.
 func (s *Store) Open(ctx context.Context, object Object) (*Reader, error) {
+	return s.open(ctx, object, openVerified)
+}
+
+func (s *Store) open(ctx context.Context, object Object, verify func(context.Context, string, Object) (*os.File, error)) (*Reader, error) {
 	if !validObject(object) {
 		return nil, ErrIdentity
 	}
 	s.mu.Lock()
-	defer s.mu.Unlock()
 	if s.closed {
+		s.mu.Unlock()
 		return nil, ErrState
 	}
-	file, err := openVerified(ctx, filepath.Join(s.objects, object.Digest), object)
+	// Reserve this exact object before releasing the store lock. Collection
+	// must not retire it while the original descriptor is being verified, but
+	// hashing gigabytes must not hold unrelated readers or writers behind it.
+	s.readers[object.Digest]++
+	// Add under the lock that closes admission, so Close can safely wait
+	// without racing a new zero-to-one Add.
+	s.opening.Add(1)
+	s.mu.Unlock()
+	defer s.opening.Done()
+	transferred := false
+	defer func() {
+		if !transferred {
+			s.releaseReader(object.Digest)
+		}
+	}()
+	file, err := verify(ctx, filepath.Join(s.objects, object.Digest), object)
 	if err != nil {
 		return nil, err
 	}
-	s.readers[object.Digest]++
+	transferred = true
 	return &Reader{file: file, store: s, digest: object.Digest}, nil
+}
+
+func (s *Store) releaseReader(digest string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.readers[digest]--
+	if s.readers[digest] == 0 {
+		delete(s.readers, digest)
+	}
 }
 
 type Reader struct {
@@ -361,12 +390,7 @@ func (r *Reader) ReadAt(data []byte, offset int64) (int, error) { return r.file.
 func (r *Reader) Close() error {
 	r.once.Do(func() {
 		r.err = r.file.Close()
-		r.store.mu.Lock()
-		r.store.readers[r.digest]--
-		if r.store.readers[r.digest] == 0 {
-			delete(r.store.readers, r.digest)
-		}
-		r.store.mu.Unlock()
+		r.store.releaseReader(r.digest)
 	})
 	return r.err
 }
@@ -438,6 +462,9 @@ func (s *Store) Close() error {
 		writers = append(writers, writer)
 	}
 	s.mu.Unlock()
+	// Existing readers outlive Close, as before. Admitted Open calls first
+	// finish verification or fail, preserving the old shutdown barrier.
+	s.opening.Wait()
 	var result error
 	for _, writer := range writers {
 		if writer.retained {
