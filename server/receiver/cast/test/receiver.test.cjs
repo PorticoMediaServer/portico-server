@@ -47,7 +47,9 @@ async function harness(fixture={}){
    if(fixture.preparingResponses?.length){const next=fixture.preparingResponses.shift();return reply(typeof next==='function'?next(sessionFor(body,body.startPositionMs)):next,202);}
    if(fixture.prepareTerminal)return reply({error:{code:'preparation_failed'}},409);
    if(preparing){preparing=false;return reply({retryAfterMs:500},202);}
-   return reply(sessionFor(body,body.startPositionMs),201);
+   const accepted=reply(sessionFor(body,body.startPositionMs),201);
+   if(fixture.retireAfterAccepted){const stream=accepted.body;Object.defineProperty(accepted,'body',{value:{getReader(){const reader=stream.getReader();return {read:()=>reader.read(),releaseLock(){reader.releaseLock();queueMicrotask(()=>queueMicrotask(()=>fixture.retireAfterAccepted()));}}}}});}
+   return accepted;
   }
   if(path.endsWith('/timeline')){if(fixture.timelineDown)throw new Error('network down');if(fixture.revoked)return reply({error:{code:'unauthorized'}},401);if(fixture.expired&&!expired){expired=true;return reply({error:{code:'unauthorized'}},401)};return reply({},204);}
   if(path==='/v1/playback/sessions/ps_1'&&options.method==='PATCH'){
@@ -885,4 +887,11 @@ test('real 202 requires the authoritative preparation session domain',async()=>{
   const h=await harness({preparingResponses:[response]});await h.receiver.redeem('ABCD');
   await assert.rejects(h.receiver.startPlayback('movie'),/invalid_preparation/);assert.equal(h.loads.length,0);
  }
+});
+
+test('accepted start retired after the inner response check cleans only its original occurrence',async()=>{
+ let h;const fixture={retireAfterAccepted:()=>h.ctxEvents.disconnect({senderId:'phone'})};h=await harness(fixture);h.senders.push('phone');
+ await h.message('phone',{type:'pair',code:'ABCD',origin:''});await h.message('phone',{type:'load',itemId:'movie',requestId:'late-accepted'});await settle0();
+ const cleanup=h.calls.filter(x=>x.method==='DELETE'&&x.url.endsWith('/v1/playback/sessions/ps_1'));
+ assert.equal(cleanup.length,1);assert.equal(cleanup[0].headers.Authorization,'Bearer bearer-ABCD');assert.equal(h.loads.length,0);
 });
