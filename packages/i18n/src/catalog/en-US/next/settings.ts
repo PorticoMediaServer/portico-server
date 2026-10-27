@@ -157,7 +157,7 @@ export const settingsMessages = {
   'next.settings.people.porticoUsernameHelp': 'Leave it blank to let anyone holding the invitation join.',
   'next.settings.people.create': 'Create invitation',
   'next.settings.people.createFailed': 'The invitation could not be created.',
-  'next.settings.people.unsureCreate': 'We could not confirm whether this invitation was created. Try the same invitation again, or dismiss and check the list.',
+  'next.settings.people.unsureCreate': 'We could not confirm whether this invitation was created. Retry this same invitation, or dismiss and check the list.',
   'next.settings.people.retryCreate': 'Try again',
   'next.settings.people.dismiss': 'Dismiss',
   'next.settings.peopleCount': '{matched} of {total, plural, one {# person} other {# people}}',
@@ -232,5 +232,5 @@ export const settingsMessages = {
   'next.settings.librarySonic.complete': 'All {total} songs analyzed',
   'next.settings.librarySonic.unavailable': 'Can’t run on this server: the analysis engine didn’t load.',
   'next.settings.librarySonic.retryUnavailable': 'Still can’t load. The log in Troubleshooting has the reason.',
-  'next.settings.changeOwnerLocalBody': 'Another server account becomes the owner. You become a member.',
+  'next.settings.changeOwnerLocalBody': 'Another local account becomes the owner. You become a member.',
 } as const;

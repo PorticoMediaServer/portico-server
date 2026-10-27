@@ -1,6 +1,6 @@
 import {useEffect, useRef, useState, type ReactNode} from 'react';
 import {defaultI18n} from '@i18n';
-import {playbackFailure} from '@core/presentation/playback-failure.ts';
+import {playbackFailure} from '../../../../web/src/player/failure';
 import {Button} from '../controls';
 import styles from './playback-failure.module.css';
 const t = defaultI18n.t;

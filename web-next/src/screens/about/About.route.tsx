@@ -6,7 +6,7 @@ import {currentWebEnvironment} from '../../platform/environment';
 import {Button} from '../../kit/controls';
 import {Licences} from '../../kit/states/Licences';
 import {router} from '../../router';
-import tmdbLogo from '../../kit/assets/tmdb.svg';
+import tmdbLogo from '../../../../web/public/assets/tmdb.svg';
 import styles from './about.module.css';
 const t = defaultI18n.t;
 function About() {

@@ -4,7 +4,6 @@
 import {readdirSync, readFileSync, statSync} from 'node:fs';
 import {join, relative} from 'node:path';
 import {fileURLToPath} from 'node:url';
-import {parseSync} from 'rolldown/utils';
 
 const design = await import('../../packages/design/src/index.ts');
 const grid = new Set(design.spacingGrid);
@@ -31,40 +30,17 @@ const boundaryRules = [
   [/\bfontFamily\s*:\s*['"`]/, 'fontFamily literal (use kit typography)'],
   [/(?:font-size|font-weight|line-height|letter-spacing)\s*:\s*-?\d/, 'raw typography (use type tokens)'],
   [/\b(?:fontSize|fontWeight|lineHeight|letterSpacing)\s*:\s*(?:['"`]|-?\d)/, 'raw inline typography (use kit typography)'],
-  [/font-family\s*:(?!\s*(?:var\(|(?:inherit|initial|unset|revert|revert-layer)\s*[;}]))/, 'font-family literal (use --font tokens)'],
+  [/font-family\s*:(?!\s*var\()/, 'font-family literal (use --font tokens)'],
   [/z-index\s*:\s*(?:[2-9]|\d{2,})/, 'numeric z-index (use --layer-* tokens; 0 and 1 are local stacking)'],
 ];
 
 // Every custom property defined anywhere in the app (CSS declarations, and
 // inline style keys such as {'--dialog-width': …} or style.setProperty('--x', …)).
 // Radix sets its own --radix-* properties at runtime.
-// Spec anchors in comments are documentation, not CSS colors. Mask only real
-// comments, preserving line positions and quoted CSS strings/URLs for diagnostics.
-function withoutComments(text, file) {
-  const ranges = [];
-  if (file.endsWith('.css')) {
-    let quote = '';
-    for (let i = 0; i < text.length; i++) {
-      if (quote) {if (text[i] === '\\') i++; else if (text[i] === quote) quote = ''; continue;}
-      if (text[i] === '"' || text[i] === "'") {quote = text[i]; continue;}
-      if (text[i] === '/' && text[i + 1] === '*') {
-        const end = text.indexOf('*/', i + 2);
-        ranges.push({start: i, end: end < 0 ? text.length : end + 2});
-        i = ranges.at(-1).end - 1;
-      }
-    }
-  } else {
-    const parsed = parseSync(file.endsWith('.tsx') ? 'design.tsx' : 'design.ts', text, {sourceType: 'unambiguous'});
-    if (parsed.errors.length) throw new Error(`Design lint cannot parse ${file}`);
-    ranges.push(...parsed.comments);
-  }
-  for (const {start, end} of ranges.reverse()) text = text.slice(0, start) + text.slice(start, end).replace(/[^\r\n]/g, ' ') + text.slice(end);
-  return text;
-}
 const defined = new Set();
 const sources = new Map();
 for (const file of files) {
-  const text = withoutComments(readFileSync(file, 'utf8'), file);
+  const text = readFileSync(file, 'utf8');
   sources.set(file, text);
   const decl = file.endsWith('.css') ? /(--[A-Za-z0-9_-]+)\s*:/g : /['"`](--[A-Za-z0-9_-]+)['"`]\s*[:,]/g;
   for (const m of text.matchAll(decl)) defined.add(m[1]);

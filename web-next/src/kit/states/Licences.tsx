@@ -12,7 +12,7 @@ export function Licences({open, onOpenChange}: {open: boolean; onOpenChange: (op
   useEffect(() => {
     if (!open) return;
     let current = true; setFailed(false); setSelected(undefined);
-    void import('../../generated/licences.json').then(module => {
+    void import('../../../../web/src/generated/licences.json').then(module => {
       const next = parseLicenceData(module.default);
       if (!next) throw new Error('invalid_licences');
       if (current) setData(next);

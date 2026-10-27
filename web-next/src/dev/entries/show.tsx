@@ -160,13 +160,13 @@ function episodeDetail(index = 0) {
 }
 
 const simpsonsSeasons = [
-  {id: 'simpsons-season-1', showId: simpsonsId, number: 1, title: 'Season 1', episodeCount: 13, watchedCount: 13, unwatchedCount: 0, firstAired: '1989-12-17', lastAired: '1990-05-13'}, // lint-strings-allow specimen catalogue data, not interface copy
-  {id: 'simpsons-season-2', showId: simpsonsId, number: 2, title: 'Season 2', episodeCount: 22, watchedCount: 22, unwatchedCount: 0, firstAired: '1990-10-11', lastAired: '1991-07-11'}, // lint-strings-allow specimen catalogue data, not interface copy
-  {id: simpsonsSeasonId, showId: simpsonsId, number: 3, title: 'Season 3', episodeCount: 24, watchedCount: 4, unwatchedCount: 20, firstAired: '1991-09-19', lastAired: '1992-05-14'}, // lint-strings-allow specimen catalogue data, not interface copy
-  {id: 'simpsons-season-4', showId: simpsonsId, number: 4, title: 'Season 4', episodeCount: 22, watchedCount: 0, unwatchedCount: 22, firstAired: '1992-09-24', lastAired: '1993-05-13'}, // lint-strings-allow specimen catalogue data, not interface copy
-  {id: 'simpsons-season-5', showId: simpsonsId, number: 5, title: 'Season 5', episodeCount: 22, watchedCount: 0, unwatchedCount: 22, firstAired: '1993-09-30', lastAired: '1994-05-19'}, // lint-strings-allow specimen catalogue data, not interface copy
-  {id: 'simpsons-season-6', showId: simpsonsId, number: 6, title: 'Season 6', episodeCount: 25, watchedCount: 0, unwatchedCount: 25, firstAired: '1994-09-04', lastAired: '1995-05-21'}, // lint-strings-allow specimen catalogue data, not interface copy
-  {id: 'simpsons-specials', showId: simpsonsId, number: 0, title: 'Specials', episodeCount: 12, watchedCount: 0, unwatchedCount: 12}, // lint-strings-allow specimen catalogue data, not interface copy
+  {id: 'simpsons-season-1', showId: simpsonsId, number: 1, title: 'Season 1', episodeCount: 13, watchedCount: 13, unwatchedCount: 0, firstAired: '1989-12-17', lastAired: '1990-05-13'},
+  {id: 'simpsons-season-2', showId: simpsonsId, number: 2, title: 'Season 2', episodeCount: 22, watchedCount: 22, unwatchedCount: 0, firstAired: '1990-10-11', lastAired: '1991-07-11'},
+  {id: simpsonsSeasonId, showId: simpsonsId, number: 3, title: 'Season 3', episodeCount: 24, watchedCount: 4, unwatchedCount: 20, firstAired: '1991-09-19', lastAired: '1992-05-14'},
+  {id: 'simpsons-season-4', showId: simpsonsId, number: 4, title: 'Season 4', episodeCount: 22, watchedCount: 0, unwatchedCount: 22, firstAired: '1992-09-24', lastAired: '1993-05-13'},
+  {id: 'simpsons-season-5', showId: simpsonsId, number: 5, title: 'Season 5', episodeCount: 22, watchedCount: 0, unwatchedCount: 22, firstAired: '1993-09-30', lastAired: '1994-05-19'},
+  {id: 'simpsons-season-6', showId: simpsonsId, number: 6, title: 'Season 6', episodeCount: 25, watchedCount: 0, unwatchedCount: 25, firstAired: '1994-09-04', lastAired: '1995-05-21'},
+  {id: 'simpsons-specials', showId: simpsonsId, number: 0, title: 'Specials', episodeCount: 12, watchedCount: 0, unwatchedCount: 12},
 ] as const;
 const simpsonsEpisodeFacts = [
   ['Stark Raving Dad', '1991-09-19', true],
@@ -189,7 +189,7 @@ function simpsonsWorkspace() {
   const revision = {catalog: 1, viewer: 1};
   return {
     scope: {serverId, libraryId, viewerFence}, revision,
-    show: {id: simpsonsId, libraryId, title: 'The Simpsons', year: 1989, libraryKind: 'tv', providerMatchStatus: 'matched', // lint-strings-allow specimen catalogue data, not interface copy
+    show: {id: simpsonsId, libraryId, title: 'The Simpsons', year: 1989, libraryKind: 'tv', providerMatchStatus: 'matched',
       overview: 'The satirical adventures of the Simpson family in Springfield.', network: 'Fox', studio: 'Gracie Films', contentRating: 'TV-14',
       status: 'Continuing', firstAired: '1989-12-17', originalLanguage: 'en', addedAt: '2026-10-17T00:00:00Z', episodeCount: 24, genres: ['Animation', 'Comedy'], // lint-strings-allow fixture data
       posterUrl: imageArt('poster', simpsonsId), backdropUrl: imageArt('backdrop', simpsonsId)},

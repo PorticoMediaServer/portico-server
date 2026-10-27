@@ -45,7 +45,7 @@ export function DiscoverTuners({api, serverId, isCurrent, reportError, openingId
   const searchAgain = () => {if (admitted.current()) void admitted.controller.search();};
   /** The press must still belong to the drawn result, with this exact resident tuner still
    * unconfigured and no search in flight; retire this opening before handing it to the page. */
-  const chooseTuner = (tuner: NonNullable<typeof result>['devices'][number]) => {
+  const useThis = (tuner: NonNullable<typeof result>['devices'][number]) => {
     if (!admitted.current()) return;
     const snapshot = admitted.controller.getSnapshot();
     if (!drawnActionAllowed(snapshot, state, !snapshot.busy && !!snapshot.result && snapshot.result === result && snapshot.result.devices.includes(tuner) && !tuner.configured)) return;
@@ -60,7 +60,7 @@ export function DiscoverTuners({api, serverId, isCurrent, reportError, openingId
       {result?.discoveryEnabled && !result.devices.length && <p>{t('web.liveSource.noTuners')}</p>}
       {result?.devices.map(tuner => <SettingsRow key={tuner.deviceId || tuner.address} label={tuner.friendlyName || tuner.model || t('web.liveSource.tunerFallback')}
         help={[tuner.model, tuner.address, tuner.tunerCount ? t('server.live.tunerCount', {count: tuner.tunerCount}) : ''].filter(Boolean).join(' · ')}>
-        {tuner.configured ? <span className={styles.badge}>{t('web.liveSource.alreadyAdded')}</span> : <Button size="small" onClick={() => chooseTuner(tuner)}>{t('web.liveSource.useThis')}</Button>}
+        {tuner.configured ? <span className={styles.badge}>{t('web.liveSource.alreadyAdded')}</span> : <Button size="small" onClick={() => useThis(tuner)}>{t('web.liveSource.useThis')}</Button>}
       </SettingsRow>)}
     </div>
   </Dialog>;

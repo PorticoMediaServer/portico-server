@@ -2,12 +2,12 @@
 .drawer { position: absolute; z-index: var(--layer-hero-navigation); left: 0; right: 0; bottom: 0; height: 480px; padding: 74px 0 0; pointer-events: auto;
   background: linear-gradient(180deg, transparent 0, color-mix(in srgb, var(--color-ink) 84%, transparent) 90px, color-mix(in srgb, var(--color-ink) 97%, transparent) 230px); }
 .head { display: flex; align-items: center; gap: 16px; padding: 0 40px; margin-bottom: 12px; }
-.head h3 { margin: 0; font-size: var(--type-fixed-size-26px); line-height: var(--type-fixed-line-1point-2); font-weight: var(--type-fixed-weight-800); letter-spacing: var(--type-fixed-tracking-minus-point-025em); }
-.chip { display: inline-flex; align-items: center; gap: 6px; height: 34px; padding: 0 12px; border: 0; border-radius: 17px; font: inherit; font-size: var(--type-fixed-size-14px); font-weight: var(--type-fixed-weight-700);
+.head h3 { margin: 0; font-size: 26px; line-height: 1.2; font-weight: 800; letter-spacing: -.025em; }
+.chip { display: inline-flex; align-items: center; gap: 6px; height: 34px; padding: 0 12px; border: 0; border-radius: 17px; font: inherit; font-size: 14px; font-weight: 700;
   color: var(--color-text); background: color-mix(in srgb, var(--color-text) 10%, transparent); cursor: pointer; }
 .chip:hover { background: color-mix(in srgb, var(--color-text) 18%, transparent); }
-.season { font-size: var(--type-fixed-size-14px); font-weight: var(--type-fixed-weight-700); color: var(--color-text-secondary); }
-.count { font-size: var(--type-fixed-size-14px); color: var(--color-text-tertiary); }
+.season { font-size: 14px; font-weight: 700; color: var(--color-text-secondary); }
+.count { font-size: 14px; color: var(--color-text-tertiary); }
 .close { margin-left: auto; display: grid; place-items: center; width: 40px; height: 40px; padding: 0; border: 0; border-radius: 50%; color: var(--color-text); background: none; cursor: pointer; }
 .close:hover { background: color-mix(in srgb, var(--color-text) 14%, transparent); }
 .track { display: flex; gap: 16px; padding: 12px 40px 14px; overflow-x: auto; scroll-padding: 0 40px; scrollbar-width: none; }
@@ -19,24 +19,24 @@
 .ep:focus-visible { outline: none; }
 .ep:focus-visible .still { outline: 3px solid var(--color-focus); outline-offset: 3px; }
 .blank { position: absolute; inset: 0; background: radial-gradient(70% 120% at 85% 10%, color-mix(in srgb, var(--color-accent) 55%, transparent) 0, transparent 60%), var(--color-raised); }
-.playing { position: absolute; z-index: var(--layer-content); left: 12px; top: 12px; display: inline-flex; align-items: center; gap: 6px; padding: 4px 9px 4px 8px; border-radius: 7px;
-  font-size: var(--type-fixed-size-12px); font-weight: var(--type-fixed-weight-800); color: var(--color-ink); background: var(--color-text); }
-.watched { position: absolute; z-index: var(--layer-content); left: 12px; top: 12px; display: inline-flex; align-items: center; gap: 6px; padding: 4px 9px 4px 8px; border-radius: 7px;
-  font-size: var(--type-fixed-size-12px); font-weight: var(--type-fixed-weight-800); color: var(--color-text); background: color-mix(in srgb, var(--color-ink) 70%, transparent); }
+.playing { position: absolute; z-index: 2; left: 12px; top: 12px; display: inline-flex; align-items: center; gap: 6px; padding: 4px 9px 4px 8px; border-radius: 7px;
+  font-size: 12px; font-weight: 800; color: var(--color-ink); background: var(--color-text); }
+.watched { position: absolute; z-index: 2; left: 12px; top: 12px; display: inline-flex; align-items: center; gap: 6px; padding: 4px 9px 4px 8px; border-radius: 7px;
+  font-size: 12px; font-weight: 800; color: var(--color-text); background: color-mix(in srgb, var(--color-ink) 70%, transparent); }
 .eq { display: inline-flex; align-items: flex-end; gap: 3px; height: 12px; }
 .eq i { width: 3px; border-radius: 1.5px; background: var(--color-ink); }
 .eq i:nth-child(1) { height: 55%; } .eq i:nth-child(2) { height: 100%; } .eq i:nth-child(3) { height: 38%; }
-.duration { position: absolute; z-index: var(--layer-content); right: 12px; top: 12px; padding: 3px 8px; border-radius: 6px; font-size: var(--type-fixed-size-12px); font-weight: var(--type-fixed-weight-700);
+.duration { position: absolute; z-index: 2; right: 12px; top: 12px; padding: 3px 8px; border-radius: 6px; font-size: 12px; font-weight: 700;
   color: var(--color-text); background: color-mix(in srgb, var(--color-ink) 65%, transparent); }
-.partBackground, .part { position: absolute; z-index: var(--layer-content); left: 0; bottom: 0; height: 4px; }
+.partBackground, .part { position: absolute; z-index: 2; left: 0; bottom: 0; height: 4px; }
 .partBackground { right: 0; background: color-mix(in srgb, var(--color-text) 20%, transparent); }
 .part { background: var(--color-accent-strong); }
-.title { display: block; margin: 14px 0 0; font-size: var(--type-fixed-size-16px); font-weight: var(--type-fixed-weight-700); letter-spacing: var(--type-fixed-tracking-minus-point-01em); color: var(--color-text); }
-.when { display: block; margin-top: 3px; font-size: var(--type-fixed-size-13px); color: var(--color-text-tertiary); }
-.when b { color: var(--color-accent-strong); font-weight: var(--type-fixed-weight-700); }
+.title { display: block; margin: 14px 0 0; font-size: 16px; font-weight: 700; letter-spacing: -.01em; color: var(--color-text); }
+.when { display: block; margin-top: 3px; font-size: 13px; color: var(--color-text-tertiary); }
+.when b { color: var(--color-accent-strong); font-weight: 700; }
 .when .gap { display: inline-block; width: 8px; }
-.left { color: var(--color-text-secondary); font-weight: var(--type-fixed-weight-700); }
-.overview { display: -webkit-box; margin: 8px 0 0; font-size: var(--type-fixed-size-14px); line-height: var(--type-fixed-line-1point-5); color: var(--color-text-secondary); -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; }
+.left { color: var(--color-text-secondary); font-weight: 700; }
+.overview { display: -webkit-box; margin: 8px 0 0; font-size: 14px; line-height: 1.5; color: var(--color-text-secondary); -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; }
 @media (max-width: 1023px) {
   .drawer { height: auto; max-height: 72vh; padding: 56px 0 max(12px, env(safe-area-inset-bottom)); overflow-y: auto; }
   .head { padding: 0 20px; }

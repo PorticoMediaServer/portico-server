@@ -214,7 +214,7 @@ export const selectionMessages = {
   'next.selection.collectionOwnerOnly': 'Only the owner can create a collection.',
   'next.selection.deleteFailed': 'The title could not be deleted.',
   'next.selection.deleteNotReady': 'The delete preview changed. Reopen Delete to try again.',
-  'next.selection.deleteUncertain': 'The delete is unconfirmed. Try again to check its receipt.',
+  'next.selection.deleteUncertain': 'The delete is unconfirmed. Retry to check its receipt.',
   'next.selection.fileChanged': 'Kept, because the file on disk is not the one in the library. Scan the library and try again.',
   'next.selection.fileNotRemoved': 'Kept, because the file could not be deleted. Check that the folder can be written to.',
   'next.selection.fileKept': 'This title was kept.',

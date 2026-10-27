@@ -13,8 +13,8 @@
   color: var(--color-healthy);
   flex: none;
 }
-.hero h3 { margin: 0; font-size: var(--type-fixed-size-30px); font-weight: var(--type-fixed-weight-800); letter-spacing: var(--type-fixed-tracking-minus-point-035em); line-height: var(--type-fixed-line-1point-1); }
-.hero p { margin: 6px 0 0; font-size: var(--type-fixed-size-15px); color: var(--color-text-secondary); line-height: var(--type-fixed-line-1point-5); }
+.hero h3 { margin: 0; font-size: 30px; font-weight: 800; letter-spacing: -.035em; line-height: 1.1; }
+.hero p { margin: 6px 0 0; font-size: 15px; color: var(--color-text-secondary); line-height: 1.5; }
 .rows {
   margin: 0;
   padding: 0;

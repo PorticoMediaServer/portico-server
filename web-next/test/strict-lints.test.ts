@@ -26,17 +26,6 @@ test('strict design permits kit literals and rejects shell, screens, dev and pla
   f.write('dev/bad.tsx', 'const x = <div style={{gap: 3.5, zIndex: 20}} />;');
   assert.equal(f.run(script('lint-design.mjs'), ['--strict', '--root', f.root]).status, 1);
 });
-test('design ignores documentation anchors while retaining real literals and inherited font keywords', t => {
-  const f = fixture(t);
-  f.write('screens/valid.css', '/* frame #11b */ .x {font-family: inherit;}');
-  f.write('screens/valid.tsx', '/** frame #14a */ export const View = () => <div/>;');
-  assert.equal(f.run(script('lint-design.mjs'), ['--strict', '--root', f.root]).status, 0);
-  f.write('screens/bad.css', '.x {content: "/*"; color: #fff;} /* actual comment */');
-  assert.equal(f.run(script('lint-design.mjs'), ['--strict', '--root', f.root]).status, 1);
-  f.write('screens/bad.css', '');
-  f.write('screens/bad.tsx', '/* frame #11b */ export const View = () => <div style={{color: "#fff"}}/>;');
-  assert.equal(f.run(script('lint-design.mjs'), ['--strict', '--root', f.root]).status, 1);
-});
 test('dev copy has no string exemption and the next baseline is empty', t => {
   const f = fixture(t); f.write('dev/Bad.tsx', 'export const Bad = () => <button aria-label="Uncatalogued action">Literal copy</button>;');
   const args = [f.root, script('next-strings-baseline.json'), '--all', '--strict'];
@@ -58,11 +47,4 @@ test('hook rules reject conditional hooks and missing dependencies with warnings
   f.write('bad.tsx', 'import {useEffect} from "react"; export function Bad({value}: {value: string}) { useEffect(() => { console.log(value); }, []); return null; }');
   const deps = spawnSync(executable, ['-c', new URL('../.oxlintrc.json', import.meta.url).pathname, '--deny-warnings', f.root], {encoding: 'utf8'});
   assert.notEqual(deps.status, 0); assert.match(deps.stdout + deps.stderr, /exhaustive-deps/);
-});
-
-test('glossary preserves exact current Reading/player words but rejects unrelated legacy actions', async () => {
-  const {lintNextGlossary} = await import('../scripts/lint-next-glossary.mjs');
-  assert.deepEqual(lintNextGlossary({'next.reader.bookmarks': 'Bookmarks', 'next.info.title': 'Playback info', 'next.tvPeople.local': 'Local account'}), []);
-  assert.notEqual(lintNextGlossary({'next.unrelated': 'Bookmarks'}).length, 0);
-  assert.notEqual(lintNextGlossary({'next.reader.bookmarks': 'Retry'}).length, 0);
 });

@@ -203,7 +203,7 @@ export const shared = {
   'next.watch.goToArtist': 'Go to the artist',
   'next.watch.info.source': 'In the file',
   'next.watch.info.delivered': 'Playing here',
-  'next.watch.info.unavailable': 'Information about this playback is not available.',
+  'next.watch.info.unavailable': 'Playback information is not available for this session.',
   'next.watch.info.codec': 'Codec',
   'next.watch.info.bitDepth': 'Bit depth',
   'next.watch.info.screen': 'Screen',

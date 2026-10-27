@@ -1,7 +1,7 @@
 // Generates the web app's open-source licence list (Settings › About › Open-source licenses):
 //
-//   node --experimental-strip-types web/scripts/licences.ts           # write both web inventories
-//   node --experimental-strip-types web/scripts/licences.ts --check   # fail if either file differs from a fresh run
+//   node --experimental-strip-types web/scripts/licences.ts           # write web/src/generated/licences.json
+//   node --experimental-strip-types web/scripts/licences.ts --check   # fail if the file differs from a fresh run
 //
 // What it lists, from the real inventories:
 //   * Portico itself (LICENSE, GPL-3.0-or-later) and where its source is published.
@@ -20,29 +20,15 @@
 // Go's module cache (both present after the usual `npm ci` and a server build); no network.
 import {createHash} from 'node:crypto';
 import {execFileSync} from 'node:child_process';
-import {existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync} from 'node:fs';
+import {existsSync, readdirSync, readFileSync, writeFileSync} from 'node:fs';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {buildLicenceData, licenceFiles, lockPackages, productionPackages, serialiseLicenceData, type CollectedComponent} from '../../packages/client-core/src/licences/inventory.ts';
 import {standardLicenceText} from '../../packages/client-core/src/licences/standard-texts.ts';
-import {parseLicenceData, type LicenceData, type LicenceSource} from '../../packages/client-core/src/presentation/licences.ts';
+import type {LicenceSource} from '../../packages/client-core/src/presentation/licences.ts';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 export const OUTPUT = 'web/src/generated/licences.json';
-export const OUTPUTS = [OUTPUT, 'web-next/src/generated/licences.json'] as const;
-
-/** Other-platform optional packages are absent after a normal host npm ci. Retain
- * their already-recorded full notices only when the complete lock is identical. */
-export function retainedOptionalNotice(data: LicenceData | undefined, lockText: string, packagePath: string): CollectedComponent | undefined {
-  if (!data || data.inputs['package-lock.json'] !== createHash('sha256').update(lockText).digest('hex')) return;
-  const entry = JSON.parse(lockText).packages?.[packagePath];
-  if (!entry?.optional) return;
-  const id = `npm:${packagePath.replace(/^node_modules\//, '')}@${entry.version}`;
-  const component = data.components.find(component => component.id === id);
-  if (!component || component.version !== entry.version || component.group !== 'packages' || component.licence !== entry.license
-    || typeof component.text !== 'number' || !data.texts[component.text]) return;
-  return {...component, text: data.texts[component.text], copyright: component.copyright ? [...component.copyright] : undefined};
-}
 
 const PORTICO_SOURCE = 'https://github.com/PorticoMediaServer/portico-server';
 
@@ -71,18 +57,13 @@ function folderLicence(dir: string): string | undefined {
 }
 
 function npmComponents(read: (rel: string) => string): CollectedComponent[] {
-  const lockText = read('package-lock.json'), lock = JSON.parse(lockText);
-  const retained = existsSync(path.join(root, OUTPUT)) ? parseLicenceData(JSON.parse(readOutside(path.join(root, OUTPUT)))) ?? undefined : undefined;
+  const lock = JSON.parse(read('package-lock.json'));
   const out: CollectedComponent[] = [];
   for (const p of productionPackages(lockPackages(lock))) {
     if (p.name.startsWith('@portico/') || p.name === 'portico-web') continue;
     const dir = path.join(root, p.path);
     const installed = existsSync(path.join(dir, 'package.json')) ? JSON.parse(readOutside(path.join(dir, 'package.json'))) : undefined;
-    if (!installed) {
-      const notice = retainedOptionalNotice(retained, lockText, p.path);
-      if (!notice) throw new Error(`licences: ${p.path} is not installed and has no identical-lock optional notice`);
-      out.push(notice); continue;
-    }
+    if (!installed) throw new Error(`licences: ${p.path} is not installed (run npm ci)`);
     if (installed.version !== p.version) throw new Error(`licences: ${p.path} is ${installed.version}, the lockfile says ${p.version} (run npm ci)`);
     const vendored = p.resolved?.startsWith('file:') && p.name === 'hls.js';
     const own = vendored ? read('third_party/hls.js/LICENSE') : folderLicence(dir);
@@ -188,20 +169,17 @@ export function generate() {
 
 if (process.argv[1] && fileURLToPath(import.meta.url) === path.resolve(process.argv[1])) {
   const text = serialiseLicenceData(generate());
-  for (const output of OUTPUTS) {
-    const file = path.join(root, output);
-    if (process.argv.includes('--check')) {
-      const current = existsSync(file) ? readFileSync(file, 'utf8') : '';
-      if (current !== text) {
-        console.error(`licences: ${output} is out of date. Run: node --experimental-strip-types web/scripts/licences.ts`);
-        process.exit(1);
-      }
-      console.log(`licences: ${output} is up to date`);
-    } else {
-      mkdirSync(path.dirname(file), {recursive: true});
-      writeFileSync(file, text);
-      const data = JSON.parse(text);
-      console.log(`licences: wrote ${output} (${data.components.length} components, ${data.texts.length} distinct texts, ${Math.round(text.length / 1024)} KB)`);
+  const file = path.join(root, OUTPUT);
+  if (process.argv.includes('--check')) {
+    const current = existsSync(file) ? readFileSync(file, 'utf8') : '';
+    if (current !== text) {
+      console.error(`licences: ${OUTPUT} is out of date. Run: node --experimental-strip-types web/scripts/licences.ts`);
+      process.exit(1);
     }
+    console.log(`licences: ${OUTPUT} is up to date`);
+  } else {
+    writeFileSync(file, text);
+    const data = JSON.parse(text);
+    console.log(`licences: wrote ${OUTPUT} (${data.components.length} components, ${data.texts.length} distinct texts, ${Math.round(text.length / 1024)} KB)`);
   }
 }

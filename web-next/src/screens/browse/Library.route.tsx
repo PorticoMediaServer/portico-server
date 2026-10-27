@@ -2,7 +2,7 @@ import {LibraryMetadataMenu} from '../metadata/LibraryMetadataMenu';
 import {ReadSeriesEntry} from '../read/ReadSeriesEntry';
 import {ReadPeriodicalEntry} from '../read/ReadPeriodicalEntry';
 import type {ReadingPeriodicalType} from '@portico/client-core';
-import {useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore} from 'react';
+import {useEffect, useLayoutEffect, useMemo, useState, useSyncExternalStore} from 'react';
 import {useLocation, useParams, useSearch} from '@tanstack/react-router';
 import {defaultI18n} from '@i18n';
 import type {Library} from '@core/index.ts';
@@ -110,46 +110,21 @@ function CommittedReadingLibrary({captured, library, search, onMarked, context, 
 function LiveReadingLibrary({captured, library, search, onMarked, context, life}: {captured: ProtectedLibraryScreen; library: Library; search: LibraryScreenSearch; onMarked: () => void; context: ScreenContext; life: ReturnType<typeof screenLifetime>}) {
   const appearance = useScreenAppearance(captured.context)!, width = useShellWidth();
   const markAll = useReadingMarkAll(context, library.id, JSON.stringify(search), onMarked);
-  type Attempt = {context: ProtectedLibraryScreen['context']; screen: ScreenContext; life: typeof life; libraryId: string; kind: string; controller: AbortController; active: boolean; phase: 'loading' | 'error' | 'ready'};
-  const [retry, setRetry] = useState(0), attempt = useRef<Attempt | null>(null);
-  const [capabilitySnapshot, setCapabilities] = useState<Readonly<{attempt: Attempt; phase: 'loading' | 'error' | 'ready'; data?: BrowseCapabilities; error?: unknown}>>();
-  const snapshot = capabilitySnapshot?.attempt.context === captured.context && capabilitySnapshot.attempt.screen === context
-    && capabilitySnapshot.attempt.life === life && capabilitySnapshot.attempt.libraryId === library.id && capabilitySnapshot.attempt.kind === library.kind
-    ? capabilitySnapshot : undefined;
-  const capabilities = snapshot?.phase === 'ready' ? snapshot.data : undefined;
+  const [capabilitySnapshot, setCapabilities] = useState<Readonly<{context: ProtectedLibraryScreen['context']; data: BrowseCapabilities}>>();
+  const capabilities = capabilitySnapshot?.context === captured.context && capabilitySnapshot.data.library.id === library.id && capabilitySnapshot.data.library.kind === library.kind ? capabilitySnapshot.data : undefined;
   /** desktop-read 1b/2/2c draw the library's own wash and its classified count line, and
    *  phone-read 1b lists every library in the switcher with its own count. */
   const {wash, counts, libraryCounts} = useReadLibrarySummary({context: captured.context, libraryId: library.id, artwork: context.artwork,
     api: life.api, signal: life.signal, isCurrent: life.current, reportError: context.effects.reportError, enabled: true});
   const libraryChoices = (context.identity?.libraries ?? []).map(choice => ({...choice, count: libraryCounts.find(row => row.id === choice.id)?.text}));
-  useLayoutEffect(() => {
-    const original: Attempt = {context: captured.context, screen: context, life, libraryId: library.id, kind: library.kind, controller: new AbortController(), active: true, phase: 'loading'};
-    attempt.current = original;
-    const current = () => original.active && attempt.current === original && !original.controller.signal.aborted && life.current() && original.active && attempt.current === original;
-    const retire = () => {original.active = false; if (attempt.current === original) attempt.current = null; original.controller.abort();};
-    setCapabilities({attempt: original, phase: 'loading'});
+  useEffect(() => {
+    let active = true;
     void (async () => {
-      const raw = await life.api.request(browseCapabilitiesPath(original.libraryId, original.kind === 'comic' ? 'comics' : 'books'), 'GET', undefined, original.controller.signal);
-      if (!current()) return;
-      const data = parseBrowseCapabilities(raw);
-      if (data.library.id !== original.libraryId || data.library.kind !== original.kind) throw new Error('Reading capability library mismatch');
-      if (!current()) return;
-      original.phase = 'ready'; setCapabilities({attempt: original, phase: 'ready', data});
-    })().catch(error => {
-      if (!current()) return;
-      original.phase = 'error'; setCapabilities({attempt: original, phase: 'error', error});
-      context.effects.reportError(error);
-    });
-    return retire;
-  }, [captured.context, context, life, library.id, library.kind, retry]);
-  const retryCapabilities = () => {
-    const original = snapshot?.attempt;
-    if (!original || snapshot.phase !== 'error' || original.phase !== 'error' || !original.active || attempt.current !== original || !life.current()
-      || !original.active || attempt.current !== original) return;
-    original.active = false; attempt.current = null; original.controller.abort();
-    if (attempt.current !== null || !life.current() || attempt.current !== null) return;
-    setCapabilities(undefined); setRetry(value => value + 1);
-  };
+      const raw = await life.api.request(browseCapabilitiesPath(library.id, library.kind === 'comic' ? 'comics' : 'books'), 'GET');
+      if (active && life.current()) setCapabilities({context: captured.context, data: parseBrowseCapabilities(raw)});
+    })().catch(error => {if (active && life.current()) context.effects.reportError(error);});
+    return () => {active = false;};
+  }, [captured.context, context, life, library.id, library.kind]);
   /** Root §3: the server's published pivots decide the reading tabs; older servers keep the authored pair. */
   const tabs = useMemo(() => readingTabs(capabilities, library.kind), [capabilities, library.kind]);
   const periodicalPivot = search.pivot === 'magazines' || search.pivot === 'newspapers' ? search.pivot : undefined;
@@ -168,7 +143,7 @@ function LiveReadingLibrary({captured, library, search, onMarked, context, life}
     onLibraries={() => {if (context.isCurrent()) void router.navigate({to: '/libraries'}).catch(context.effects.reportError);}}/>;
   const request = useMemo<FacetRequest>(() => (path, method, body, signal) => life.api.request(path, method, body, signal), [life]);
   if (periodicalPivot) {
-    if (!capabilities) return <>{header}{snapshot?.phase === 'error' ? <StateView title={t('next.states.pageFailed')} body={t('next.states.pageFailedBody')} primary={{id: 'retry', label: t('next.states.tryAgain'), onPress: retryCapabilities}}/> : <Skeleton height={320}/>}</>;
+    if (!capabilities) return <>{header}<Skeleton height={320}/></>;
     if (selected.shows !== 'periodicals' || selected.id !== periodicalPivot || search.query || search.sort?.length || search.q) return <>{header}<StateView title={t('title.nothingHere')}/></>;
     return <>{header}<ReadPeriodicalEntry libraryId={library.id} kind={selected.publicationType} seriesId={search.entityId}/></>;
   }

@@ -9,7 +9,7 @@ import rowStyles from './source-advanced-rows.module.css';
 import styles from './remote-sources.module.css';
 
 const t = defaultI18n.t;
-const formatBytes = defaultI18n.bytes;
+const formatBytes = (bytes: number) => bytes >= 1024 ** 3 ? `${(bytes / 1024 ** 3).toFixed(1)} GB` : bytes >= 1024 ** 2 ? `${Math.round(bytes / 1024 ** 2)} MB` : `${Math.round(bytes / 1024)} KB`;
 
 /** The drawn Advanced groups (remote-sources.html#4b, #4c), over the values the
  * server actually applies: the folders' check interval, the start and watch
@@ -106,17 +106,17 @@ export function SourceAdvancedRows({values, cacheSupported, transportSupported, 
         <span>{t('next.settingsSpec.server.remote-sources.panels.source.tabs.3.groups.1.rows.2.control.columns.1.label')}</span>
       </div>
       {([
-        ['seekPreviews', 'next.settingsSpec.server.remote-sources.panels.source.tabs.3.groups.1.rows.2.control.items.0.label'],
-        ['chapterImages', 'next.settingsSpec.server.remote-sources.panels.source.tabs.3.groups.1.rows.2.control.items.1.label'],
-        ['waveforms', 'next.settingsSpec.server.remote-sources.panels.source.tabs.3.groups.1.rows.2.control.items.2.label'],
-        ['loudness', 'next.settingsSpec.server.remote-sources.panels.source.tabs.3.groups.1.rows.2.control.items.3.label'],
-        ['checksums', 'next.settingsSpec.server.remote-sources.panels.source.tabs.3.groups.1.rows.2.control.items.4.label'],
-      ] as const).map(([key, label]) => row(key, <div key={key} className={[styles.runSkipRow,
+        ['seekPreviews', 'next.settingsSpec.server.remote-sources.panels.source.tabs.3.groups.1.rows.2.control.items.0.label', 'Seek-bar pictures'],
+        ['chapterImages', 'next.settingsSpec.server.remote-sources.panels.source.tabs.3.groups.1.rows.2.control.items.1.label', 'Chapter pictures'],
+        ['waveforms', 'next.settingsSpec.server.remote-sources.panels.source.tabs.3.groups.1.rows.2.control.items.2.label', 'Waveforms'],
+        ['loudness', 'next.settingsSpec.server.remote-sources.panels.source.tabs.3.groups.1.rows.2.control.items.3.label', 'Loudness'],
+        ['checksums', 'next.settingsSpec.server.remote-sources.panels.source.tabs.3.groups.1.rows.2.control.items.4.label', 'Checksums and fingerprints'],
+      ] as const).map(([key, label, name]) => row(key, <div key={key} className={[styles.runSkipRow,
         markers?.applicable.includes(key) && markers.changed.includes(key) ? markerStyles.analysisChanged : undefined].filter(Boolean).join(' ')}>
         <span>{t(label)}</span>
-        <button type="button" role="radio" aria-checked={values[key]} aria-label={`${t(label)}: ${t('next.settingsSpec.server.remote-sources.panels.source.tabs.3.groups.1.rows.2.control.columns.0.label')}`}
+        <button type="button" role="radio" aria-checked={values[key]} aria-label={`${name}: ${t('next.settingsSpec.server.remote-sources.panels.source.tabs.3.groups.1.rows.2.control.columns.0.label')}`}
           className={styles.runSkipChoice} data-picked={values[key] || undefined} disabled={disabled} onClick={() => set(key, true)}>{t('next.settingsSpec.server.remote-sources.panels.source.tabs.3.groups.1.rows.2.control.columns.0.label')}</button>
-        <button type="button" role="radio" aria-checked={!values[key]} aria-label={`${t(label)}: ${t('next.settingsSpec.server.remote-sources.panels.source.tabs.3.groups.1.rows.2.control.columns.1.label')}`}
+        <button type="button" role="radio" aria-checked={!values[key]} aria-label={`${name}: ${t('next.settingsSpec.server.remote-sources.panels.source.tabs.3.groups.1.rows.2.control.columns.1.label')}`}
           className={styles.runSkipChoice} data-picked={!values[key] || undefined} disabled={disabled} onClick={() => set(key, false)}>{t('next.settingsSpec.server.remote-sources.panels.source.tabs.3.groups.1.rows.2.control.columns.1.label')}</button>
       </div>))}
     </div>

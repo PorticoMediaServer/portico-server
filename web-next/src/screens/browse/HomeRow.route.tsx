@@ -74,7 +74,7 @@ function CommittedHomeRow({captured, context, row, owner, continuity, presentati
   const state = useSyncExternalStore(owner.controller.subscribe, owner.controller.getSnapshot, owner.controller.getSnapshot);
   const page = useSyncExternalStore(owner.controller.collection.subscribe, owner.controller.collection.getSnapshot, owner.controller.collection.getSnapshot);
   // The controller's real applied state, in the same vocabulary as the address.
-  const controllerQuery = useMemo<RowQuery | undefined>(() => { /* Preserve the original ownership/invalidation keys. */ void state.queryRevision;
+  const controllerQuery = useMemo<RowQuery | undefined>(() => {
     if (state.phase !== 'ready') return undefined;
     try {
       const sorts = owner.controller.query().sort ?? [];

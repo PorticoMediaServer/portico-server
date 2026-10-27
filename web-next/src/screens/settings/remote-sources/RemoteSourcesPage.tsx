@@ -1216,7 +1216,7 @@ function ManageSourceLoaded({service, source, api, serverId, viewerId, openSecti
   const [attachNote, setAttachNote] = useState('');
   const testAttempt = useRef(0), active = useRef(true), pending = useRef(false), lifetime = useRef(0);
   const attemptGuard = () => { const captured = lifetime.current; return () => active.current && lifetime.current === captured && isCurrent(); };
-  const profileCurrent = useCallback(() => { /* Preserve the original ownership/invalidation keys. */ void openingId; return active.current && isCurrent(); }, [isCurrent, openingId]);
+  const profileCurrent = useCallback(() => active.current && isCurrent(), [isCurrent, openingId]);
   // The dialog's admission is layout-owned: a replayed mount admits again, and
   // the cleanup retires this exact render synchronously.
   useLayoutEffect(() => {

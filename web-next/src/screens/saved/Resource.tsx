@@ -162,7 +162,7 @@ const historyItemKey = (item: HistoryItem) => item.key;
 type HistoryRemoval = Readonly<{scope: object; apply(keys: ReadonlySet<string>): void}>;
 export function SavedHistory({bindings}: {bindings: SavedViewBindings}) {
   const service = bindings.runtime.personal;
-  const scope = useMemo(() => { /* Preserve the original ownership/invalidation keys. */ void bindings.artwork; void bindings.effects; void service; void bindings.operations; void bindings.runtime; return Object.freeze({}); }, [service, bindings.runtime, bindings.operations, bindings.artwork, bindings.effects]);
+  const scope = useMemo(() => Object.freeze({}), [service, bindings.runtime, bindings.operations, bindings.artwork, bindings.effects]);
   const clear = useRef<HTMLButtonElement>(null);
   const snapshot = useSyncExternalStore(service.subscribe, service.getSnapshot, service.getSnapshot), [confirm, setConfirm] = useState(false), [busy, setBusy] = useState(false), cancel = useRef<HTMLButtonElement>(null);
   const wash = useMemo(() => {
@@ -171,13 +171,13 @@ export function SavedHistory({bindings}: {bindings: SavedViewBindings}) {
     const urls = snapshot.entries.flatMap(entry => { const media = entry.media, url = media && (media.backdropUrl ?? media.posterUrl); return url ? [url] : []; });
     return [...new Set(urls)].slice(0, 3).flatMap(url => { const source = bindings.artwork.ambient(url); return source ? [source] : []; });
   }, [bindings.presentation.backdrops, bindings.presentation.backdrop, bindings.artwork, snapshot.entries]);
-  const items = useMemo<readonly HistoryItem[]>(() => { /* Preserve the original ownership/invalidation keys. */ void scope; return snapshot.entries.flatMap(entry => {
+  const items = useMemo<readonly HistoryItem[]>(() => snapshot.entries.flatMap(entry => {
     if (!entry.media || !entry.updatedAt) return [];
     const day = new Date(entry.updatedAt);if (!Number.isFinite(day.getTime())) return [];
     const media = entry.media, square = shapeFor(media.kind) === 'square';
     return [{key: entry.id, dayKey: day.toDateString(), day, entry, media, bindings,
       source: bindings.artwork.foreground(square ? media.posterUrl : media.backdropUrl ?? media.posterUrl, 320, square ? 1 : 16 / 9)}];
-  }); }, [snapshot.entries, scope]);
+  }), [snapshot.entries, scope]);
   if (!sameSavedRoute(snapshot.route, bindings.route)) return null;
   const period = bindings.route.view === 'history' ? bindings.route.period ?? '30d' : '30d';
   const empty = snapshot.error && !snapshot.entries.length ? <StateView title={t('saved.historyLoadFailed')} primary={{id: 'retry', label: t('action.tryAgain'), onPress: () => { void service.retryRead(); }}} />

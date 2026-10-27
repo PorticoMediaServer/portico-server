@@ -8,6 +8,7 @@ import {finishRouteMotion, routeMotionOwnedByBrowser} from './route-motion';
 import {webScreens, WebRetainedScreenHosts, useWebAction} from '../route-registry-view';
 import {webScreenIdForRoute} from '../route-registry';
 import {BootstrapContent} from './BootstrapState';
+import {DestinationErrorBoundary, type DestinationRecoveryWitness} from './DestinationError';
 import {useShellWidth} from './viewport';
 import {useServerAway} from './ConnectionAway';
 
@@ -23,10 +24,18 @@ function RouteContent() {
     const entry = event.toLocation.state.__TSR_key;
     if (typeof entry === 'string' && entry.length) listener(JSON.stringify([event.toLocation.href, entry]));
   })}); }, [router, owner]);
+  // The recovery witness is selected from the actual location object, independently of the
+  // optional motion route key above: a missing history entry must not collapse every href, and a
+  // new location object with the same href is still a new recovery lifetime.
+  const location = useRouterState({select: state => state.location});
+  const recovery = useMemo<DestinationRecoveryWitness>(() => {
+    const entry = location.state.__TSR_key;
+    return Object.freeze({location, href: location.href, entry: typeof entry === 'string' && entry.length ? entry : undefined, scopeKey: owner?.scopeKey});
+  }, [location, owner?.scopeKey]);
   const target = useMemo(() => ({get current() { return routeMotionOwnedByBrowser() ? null : content.current; }}), []);
   useRouteFade(target, routeKey, commits);
   useLayoutEffect(() => { finishRouteMotion(); }, [routeKey]);
-  return <main id="portico-content" ref={content} data-route-content data-shell-page tabIndex={-1}><BootstrapContent><Outlet /></BootstrapContent></main>;
+  return <main id="portico-content" ref={content} data-route-content data-shell-page tabIndex={-1}><BootstrapContent><DestinationErrorBoundary witness={recovery}><Outlet /></DestinationErrorBoundary></BootstrapContent></main>;
 }
 export function ShellRoot() {
   const binding = useShellBindings();

@@ -40,7 +40,7 @@ export function AccountProfilesView({binding, onSwitchServer}: {binding: Profile
   const [selection, setSelection] = useState<Selection>(), [remember, setRemember] = useState(false), [recovery, setRecovery] = useState<RecoveryOpening>();
   const [lock, setLock] = useState<Readonly<{error: unknown; until: number}>>(), [now, setNow] = useState(Date.now);
   const activeRecovery = useRef<RecoveryOpening | undefined>(undefined), selectedNow = useRef(selection);
-  const owner = useMemo<ViewOwner>(() => { /* Preserve the original ownership/invalidation keys. */ void binding; void state.snapshot; void state.phase; void state.server; return ({retired: false}); }, [binding, state.snapshot, state.server, state.phase]);
+  const owner = useMemo<ViewOwner>(() => ({retired: false}), [binding, state.snapshot, state.server, state.phase]);
   const rendered = useRef(owner), [flight, setFlight] = useState<{live: boolean}>();
   if (rendered.current !== owner) {rendered.current.retired = true; if (rendered.current.active) rendered.current.active.live = false; rendered.current = owner;}
   const retire = (opening: RecoveryOpening) => {

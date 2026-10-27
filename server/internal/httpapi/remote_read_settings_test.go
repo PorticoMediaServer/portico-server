@@ -8,7 +8,6 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
-	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -86,14 +85,13 @@ func TestSourceReadSettingsHTTPUsesCurrentOwnerCASAndDurableReceipt(t *testing.T
 	if err = json.Unmarshal(w.Body.Bytes(), &before); err != nil || w.Code != 200 || before.Settings.Saved || before.Settings.Values.ScanDepth != "file_list_only" || before.Settings.Revision != 0 || before.Settings.Generation != "1" {
 		t.Fatal("read inferred a saved profile", w.Code, before, err)
 	}
-	advanced := false
-	change := remotesources.SourceReadSettingsChange{OperationID: fmt.Sprintf("%013d-00000000-0000-4000-8000-000000000801", time.Now().UnixMilli()), ExpectedGeneration: "1", Values: remotesources.SourceReadValues{ScanDepth: "basic", WholeFileReads: false, Connections: 4, RequestsPerSecond: 4, BytesPerSecond: 0, AllowAdvancedMediaAnalysis: &advanced}}
+	change := remotesources.SourceReadSettingsChange{OperationID: fmt.Sprintf("%013d-00000000-0000-4000-8000-000000000801", time.Now().UnixMilli()), ExpectedGeneration: "1", Values: remotesources.SourceReadValues{ScanDepth: "basic", WholeFileReads: false, Connections: 4, RequestsPerSecond: 4, BytesPerSecond: 0}}
 	if w = request("PUT", path, member.AccessToken, change); w.Code != 403 {
 		t.Fatal("member changed source settings", w.Code, w.Body.String())
 	}
 	w = request("PUT", path, owner.AccessToken, change)
 	var receipt SourceReadSettingsReceiptResponse
-	if err = json.Unmarshal(w.Body.Bytes(), &receipt); err != nil || w.Code != 200 || receipt.Receipt.ReadSettings == nil || receipt.Receipt.ReadSettings.Revision != 1 || !reflect.DeepEqual(receipt.Receipt.ReadSettings.Values, change.Values) {
+	if err = json.Unmarshal(w.Body.Bytes(), &receipt); err != nil || w.Code != 200 || receipt.Receipt.ReadSettings == nil || receipt.Receipt.ReadSettings.Revision != 1 || receipt.Receipt.ReadSettings.Values != change.Values {
 		t.Fatal("owner save did not publish exact settings", w.Code, receipt, err)
 	}
 	if w = request("PUT", path, owner.AccessToken, change); w.Code != 200 {

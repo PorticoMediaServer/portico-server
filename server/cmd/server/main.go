@@ -1261,8 +1261,6 @@ func run() (runErr error) {
 	if e != nil {
 		return e
 	}
-	apiDependencies.DiscCaptures = ownedCaptures
-	var conditional playback.DiscConditionalSource
 	if ownedCaptures != nil {
 		defer ownedCaptures.Close()
 		defer func() {
@@ -1271,13 +1269,13 @@ func run() (runErr error) {
 			_ = player.CloseDiscPlay(stop)
 		}()
 		ownedCaptures.Start(ctx)
-		discConditional, err := remotesources.NewDiscConditionalSource(remotesources.CaptureProducerOptions{Sources: sources, Identities: ident, AuthorizeTx: apiDependencies.AuthorizeSubtitles})
+		apiDependencies.DiscCaptures = ownedCaptures
+		conditional, err := remotesources.NewDiscConditionalSource(remotesources.CaptureProducerOptions{Sources: sources, Identities: ident, AuthorizeTx: apiDependencies.AuthorizeSubtitles})
 		if err != nil {
 			return err
 		}
-		conditional = discConditional
+		apiDependencies.DiscConditional = conditional
 	}
-	apiDependencies.DiscConditional = conditional
 	readingService := httpapi.NewReadingService(apiDependencies)
 	// The worker distinguishes bytes the artwork pipeline refused as an image
 	// from transient acquisition failures, without the reading package

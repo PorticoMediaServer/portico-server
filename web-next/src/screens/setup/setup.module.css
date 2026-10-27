@@ -42,7 +42,7 @@
 .step[data-state="done"] .stepNumber { background: color-mix(in srgb, var(--color-healthy) 16%, transparent); color: var(--color-healthy); box-shadow: none; }
 .okline { display: flex; align-items: center; gap: 10px; margin: 0 0 14px; font-size: var(--type-body-size); font-weight: var(--type-row-heading-weight); color: var(--color-healthy); }
 .kinds { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 8px; margin-bottom: 10px; }
-.kindDescription { margin: 0 0 22px; font-size: var(--type-synopsis-size); line-height: var(--type-fixed-line-1point-5); color: var(--color-text-secondary); }
+.kindDescription { margin: 0 0 22px; font-size: var(--type-synopsis-size); line-height: 1.5; color: var(--color-text-secondary); }
 .kindDescription b { color: var(--color-text); font-weight: var(--type-row-heading-weight); }
 .kind { height: 96px; border: 0; border-radius: 14px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; font: inherit; font-size: calc(var(--type-body-size) * 29 / 30); font-weight: var(--type-row-heading-weight); color: var(--color-text-secondary); background: color-mix(in srgb, var(--color-text) 6%, transparent); cursor: pointer; }
 .kind svg { color: var(--color-text-tertiary); }
@@ -67,5 +67,5 @@
 .setupFolder > span { flex: 1; min-width: 0; overflow-wrap: anywhere; }
 .setupFolder > svg { flex: none; color: var(--color-text-tertiary); }
 .folderChoose { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
-.folderChoose small { min-width: 0; font-size: var(--type-chip-size); line-height: var(--type-fixed-line-1point-45); color: var(--color-text-tertiary); }
+.folderChoose small { min-width: 0; font-size: var(--type-chip-size); line-height: 1.45; color: var(--color-text-tertiary); }
 .setupFolder .folderClass { flex: none; font-size: var(--type-chip-size); font-weight: var(--type-body-strong-weight); color: var(--color-text-tertiary); }

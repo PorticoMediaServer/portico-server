@@ -110,5 +110,5 @@
 
 /* desktop-app.html frame 5 .capshade: the authored 52 px gradient from the page's
    ink, ending clear, so the Windows caption symbols stay readable over a scroll. */
-.captionShade { position: fixed; inset: 0 0 auto var(--shell-nav-width); height: 52px; z-index: var(--layer-navigation); pointer-events: none; opacity: 0; background: linear-gradient(180deg, color-mix(in srgb, var(--color-ink) 90%, transparent) 0, color-mix(in srgb, var(--color-ink) 66%, transparent) 30px, color-mix(in srgb, var(--color-ink) 0%, transparent) 52px); }
+.captionShade { position: fixed; inset: 0 0 auto var(--shell-nav-width); height: 52px; z-index: var(--layer-navigation); pointer-events: none; opacity: 0; background: linear-gradient(180deg, rgba(7,16,24,.9) 0, rgba(7,16,24,.66) 30px, rgba(7,16,24,0) 52px); }
 .captionShade[data-on] { opacity: 1; }

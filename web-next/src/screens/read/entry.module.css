@@ -1,9 +1,9 @@
 .seriesSelect { display: inline-flex; align-items: center; gap: 6px; margin-left: auto; padding: 6px 10px; border: 0; border-radius: 8px;
-  background: color-mix(in srgb, var(--color-text) 8%, transparent); color: var(--color-text-secondary); font: inherit; font-size: var(--type-fixed-size-13px); cursor: pointer; }
+  background: color-mix(in srgb, var(--color-text) 8%, transparent); color: var(--color-text-secondary); font: inherit; font-size: 13px; cursor: pointer; }
 .seriesSelect[aria-pressed='true'] { background: color-mix(in srgb, var(--color-accent-strong) 18%, transparent); color: var(--color-text); }
 .loading { position: relative; min-height: 100dvh; background: var(--color-ink); }
 /* A reader that is still opening, or that could not open, keeps the drawn way back. */
-.escape { position: absolute; top: 16px; left: 16px; z-index: var(--layer-content); }
+.escape { position: absolute; top: 16px; left: 16px; z-index: 2; }
 .host { position: fixed; inset: 0; z-index: var(--layer-menu); background: var(--color-ink); }
 .host[hidden] { display: none; }
 
@@ -15,8 +15,8 @@
 
 /* phone-read 4/4c: the series' own name and count head its volume grid. */
 .seriesHeading { display: flex; align-items: baseline; gap: 10px; margin: 24px var(--shell-gutter, var(--gutter-desktop)) 8px; }
-.seriesHeading h2 { margin: 0; font-size: var(--type-fixed-size-20px); font-weight: var(--type-fixed-weight-700); color: var(--color-text); }
-.seriesHeading span { font-size: var(--type-fixed-size-14px); font-weight: var(--type-fixed-weight-600); color: var(--color-text-tertiary); }
+.seriesHeading h2 { margin: 0; font-size: 20px; font-weight: 700; color: var(--color-text); }
+.seriesHeading span { font-size: 14px; font-weight: 600; color: var(--color-text-tertiary); }
 @media (max-width: 1023px) { .seriesHeading { margin-inline: 20px; } }
 
 .dateFilter { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; margin: 20px var(--shell-gutter, var(--gutter-desktop)); }
