@@ -82,7 +82,12 @@ test('an in-flight old review cannot publish or shorten a newer pending capture'
   const blocked = new Promise<void>(resolve => {release = resolve;}), started = new Promise<void>(resolve => {entered = resolve;});
   a.intercept(async () => {entered(); await blocked;});
   const controller = scopedHostedOwnerClaim(a.account, f.store, pending!), old = controller.review(), rejected = assert.rejects(old);
-  await started; const next = await restoreHostedOwnerPending(f.store, origin, capture()); release(); await rejected;
+  // The old review stays in flight until its own response is released. Racing
+  // the entry gate with the review keeps a premature settlement a named failure
+  // instead of leaving `started` pending and stalling the whole file.
+  const outcome = await Promise.race([started.then(() => 'started'), old.then(() => 'settled', () => 'settled')]);
+  assert.equal(outcome, 'started', 'the old review cannot settle before its released response');
+  const next = await restoreHostedOwnerPending(f.store, origin, capture()); release(); await rejected;
   assert.equal(f.saved()?.attemptId, next?.attemptId); assert.equal(f.saved()?.deadline, next?.deadline); controller.dispose();
 });
 test('explicit denial retires only its pending; a successful return spends its pending without creating a Server session', async () => {
