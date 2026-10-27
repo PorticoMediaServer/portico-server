@@ -1,4 +1,4 @@
-import {type CastControllerContext, CastController, type CastApi, type CastChoices, type CastMetadata, type CastSnapshot} from '@core/cast/index.ts';
+import {type CastControllerContext, type CastRemoteIdentity, CastController, sameCastRemote, type CastApi, type CastChoices, type CastMetadata, type CastSnapshot} from '@core/cast/index.ts';
 import {castDisplayName, currentCastBrowser, isCastBrowser, loadCastSdk, type CastBrowser, type CastContext, type CastFramework, type CastSession, type CastSessionEvent} from './sdk';
 import {castTransportFor, confirmedCastDevice, type ConfirmedCastDevice} from './transport';
 
@@ -42,7 +42,9 @@ export class WebCastSender {
   private readonly listeners = new Set<() => void>();
   private snapshot: WebCastSnapshot = unavailable;
   private device?: ConfirmedCastDevice;
-  private receiver?: ConfirmedCastPlayback;
+  /** The last complete receiver clock with the exact remote occurrence that reported it; a
+   * successor occurrence, generation or controller on the same item is not this clock. */
+  private receiver?: Readonly<{identity?: CastRemoteIdentity; clock: ConfirmedCastPlayback}>;
   private context?: CastContext;
   private framework?: CastFramework;
   private preparation?: Promise<boolean>;
@@ -73,14 +75,18 @@ export class WebCastSender {
     if (this.disposed) return;
     const state = this.controller?.getSnapshot() ?? unavailable;
     if(state.disclosureRefused){this.receiver=undefined;this.device=undefined;}
-    else if((state.phase==='casting'||state.remoteStopped)&&state.reported)this.receiver=state.reported;
+    else if((state.phase==='casting'||state.remoteStopped)&&state.reported)
+      this.receiver=Object.freeze({...(state.remoteIdentity?{identity:state.remoteIdentity}:{}),clock:state.reported});
     else if(state.remoteStopped)this.receiver=undefined;
-    // Only a complete receiver clock is a continuation fact. An incomplete
-    // status, or an idle status without an item identity, is not a position and
-    // cannot erase the last one; stop/replacement retains it, a new start or an
-    // explicit displacement clears it above.
-    const receiver = this.receiver;
-    const samePlayback = receiver && (state.phase === 'off' || state.phase === 'replaced' || state.itemId === receiver.itemId);
+    // Only a complete receiver clock is a continuation fact. An incomplete status of the same
+    // occurrence, or an idle status without an item identity, is not a position and cannot
+    // erase the last one; stop/replacement retains it, a new start clears it above. A successor
+    // occurrence, generation or controller that plays the same item is a different fact: its
+    // own clock is unknown until it reports, so the predecessor's clock must go.
+    else if(state.remoteIdentity&&this.receiver&&!sameCastRemote(state.remoteIdentity,this.receiver.identity))this.receiver=undefined;
+    const retained=this.receiver, receiver=retained?.clock;
+    const samePlayback = receiver && (state.phase === 'off' || state.phase === 'replaced'
+      || (retained?.identity||state.remoteIdentity ? sameCastRemote(state.remoteIdentity,retained?.identity) : state.itemId === receiver.itemId));
     this.snapshot = Object.freeze({
       ...state,controlRevision:this.operation,
       ...(samePlayback ? {positionSeconds: receiver.positionSeconds, durationSeconds: receiver.durationSeconds} : {}),
