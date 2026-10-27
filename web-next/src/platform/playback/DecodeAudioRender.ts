@@ -213,10 +213,11 @@ export class DecodeAudioRender {
 
   private resumeContext(hold?: BufferHold): boolean {
     if (this.hold && this.hold !== hold || hold && !this.holdCurrent(hold) || this.resumePending) return false;
+    const before = this.service.getSnapshot(), key = sessionKey(before.session);
+    if (before.intent !== 'playing' || before.seekError || !this.primary || this.primary.key !== key) return false;
     const context = this.context, graph = this.graph, pending = {};
     this.resumePending = pending;
     const attempt = ++this.resumeAttempt, revision = this.revision;
-    const before = this.service.getSnapshot(), key = sessionKey(before.session);
     const refused = () => {
       const current = this.service.getSnapshot();
       if (this.disposed || attempt !== this.resumeAttempt || revision !== this.revision || current.intentId !== before.intentId || sessionKey(current.session) !== key || current.intent !== 'playing') return;
@@ -305,7 +306,9 @@ export class DecodeAudioRender {
     // A boundary promotes the committed deck (same key); anything else that moves the track starts over.
     if (this.primary?.key !== key || (seek && seekKey !== this.seekKey) || rateChanged) {
       const position = seek?.positionSeconds ?? (this.primary?.key === key ? this.position() : s.positionSeconds);
+      const resetRevision = this.revision + 1;
       this.reset();
+      if (this.revision !== resetRevision || !this.renderWitness(s)()) return;
       this.seekKey = seekKey; this.lastRate = s.audioEffects.rate;
       void this.start(plan, key, Math.max(0, Math.min(plan.durationFrames - 1, Math.round(position * plan.sampleRate))), s);
       return;
