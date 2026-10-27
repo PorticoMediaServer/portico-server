@@ -272,7 +272,6 @@ jobs:
 
   clients-tests:
     env:
-      TMPDIR: ${{ runner.temp }}
       PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH: /usr/bin/google-chrome
     runs-on: ubuntu-24.04
     timeout-minutes: 180
@@ -292,6 +291,8 @@ jobs:
           node --version || true
           go version || true
       - run: npm ci --no-audit --no-fund
+      - name: Use the runner temp directory for portable browser fixtures
+        run: echo "TMPDIR=$RUNNER_TEMP" >> "$GITHUB_ENV"
       - name: Install media fixture tools when not already provisioned
         run: |
           if command -v ffmpeg >/dev/null; then
