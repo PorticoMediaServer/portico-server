@@ -83,7 +83,28 @@ export function createRenderer(options = {}) {
     pending = [];
     return tree;
   };
-  return {react, render, focused};
+  // Unmount: the cleanups the screen's effects returned. A screen that is never unmounted leaves
+  // whatever it started (a listener, a deadline) behind, and the file cannot leave the runner. The
+  // order is React's for passive effects: the deepest component lets go first, so a child's
+  // subscription ends before its parent's, and within one component in declaration order. Every
+  // cleanup runs even if an earlier one throws; the first failure is raised afterwards.
+  const dispose = () => {
+    let failure;
+    for (const key of [...fibers.keys()].reverse()) {
+      const f = fibers.get(key);
+      for (let index = 0; index < f.effects.length; index++) {
+        const held = f.effects[index];
+        if (!held) continue;
+        f.effects[index] = undefined;
+        try { held.cleanup?.(); } catch (error) { failure ??= error; }
+      }
+      f.cursor = 0;
+    }
+    fibers.clear();
+    pending = [];
+    if (failure) throw failure;
+  };
+  return {react, render, dispose, focused};
 }
 
 /** Every element in a rendered tree, depth first, including the actions a dialog is given. */
