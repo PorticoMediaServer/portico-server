@@ -42,35 +42,29 @@ func (s *Service) tvdbEpisodeCreditsStep(ctx context.Context) error {
 		item       int64
 		providerID int64
 	}
-	gated, err := dbwork.Begin(ctx, s.db, dbwork.ClassBackgroundMedia)
-	if err != nil {
-		return err
-	}
-	tx := gated.Tx()
-	defer gated.Rollback()
-	rows, err := tx.QueryContext(ctx, `SELECT pe.item_id,pe.provider_id FROM provider_evidence pe JOIN catalog_episodes e ON e.entity_id=pe.item_id JOIN catalog_entities i ON i.id=pe.item_id JOIN catalog_libraries cl ON cl.id=i.library_id JOIN tvdb_provider_policies tp ON tp.library_id=cl.library_id AND tp.enabled=1 WHERE pe.provider='tvdb' AND pe.provider_id>0 AND i.kind=4 AND NOT EXISTS(SELECT 1 FROM tvdb_episode_credit_evidence ce WHERE ce.item_id=pe.item_id AND ce.provider_id=pe.provider_id AND ce.credits IS NOT NULL) AND COALESCE((SELECT ce.attempts FROM tvdb_episode_credit_evidence ce WHERE ce.item_id=pe.item_id AND ce.provider_id=pe.provider_id),0)<? ORDER BY pe.item_id LIMIT ?`, tvdbEpisodeCreditAttempts, tvdbEpisodeCreditPage)
-	if err != nil {
-		return err
-	}
 	claims := []claim{}
-	for rows.Next() {
-		var c claim
-		if err = rows.Scan(&c.item, &c.providerID); err != nil {
-			rows.Close()
+	// This is a read-pick, not a reservation. Admit the catalogue walk as
+	// background reading and close its snapshot before fetching or publishing.
+	err := dbwork.WithReadSnapshot(dbwork.WithClass(ctx, dbwork.ClassBackgroundMedia), s.db, func(readCtx context.Context) error {
+		rows, err := dbwork.Query(readCtx, s.db, `SELECT pe.item_id,pe.provider_id FROM provider_evidence pe JOIN catalog_episodes e ON e.entity_id=pe.item_id JOIN catalog_entities i ON i.id=pe.item_id JOIN catalog_libraries cl ON cl.id=i.library_id JOIN tvdb_provider_policies tp ON tp.library_id=cl.library_id AND tp.enabled=1 WHERE pe.provider='tvdb' AND pe.provider_id>0 AND i.kind=4 AND NOT EXISTS(SELECT 1 FROM tvdb_episode_credit_evidence ce WHERE ce.item_id=pe.item_id AND ce.provider_id=pe.provider_id AND ce.credits IS NOT NULL) AND COALESCE((SELECT ce.attempts FROM tvdb_episode_credit_evidence ce WHERE ce.item_id=pe.item_id AND ce.provider_id=pe.provider_id),0)<? ORDER BY pe.item_id LIMIT ?`, tvdbEpisodeCreditAttempts, tvdbEpisodeCreditPage)
+		if err != nil {
 			return err
 		}
-		claims = append(claims, c)
-	}
-	err = rows.Err()
-	rows.Close()
+		defer rows.Close()
+		for rows.Next() {
+			var c claim
+			if err := rows.Scan(&c.item, &c.providerID); err != nil {
+				return err
+			}
+			claims = append(claims, c)
+		}
+		return rows.Err()
+	})
 	if err != nil {
 		return err
 	}
-	if err = gated.Commit(); err != nil {
-		return err
-	}
-	// Fetches run outside the claim transaction: one slow episode must not hold
-	// the write gate while TVDB answers.
+	// Fetches run outside the read snapshot. Publication retains the original
+	// context and all its lookup guards, never the closed read transaction.
 	type result struct {
 		credits []metadataprovider.TVDBEpisodeCharacter
 		err     error
