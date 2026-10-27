@@ -541,10 +541,23 @@ func (s *Service) processQuantum(ctx context.Context, id, library string) bool {
 	// A panic-injection point for a background batch: the scan must survive one
 	// quantum failing, and the job must not be left claimed.
 	supervise.Chaos("ingestion.quantum")
-	if _, err := dbwork.ExecWrite(ctx, s.db, dbwork.ClassBackgroundMedia, `UPDATE jobs SET status='running' WHERE id=? AND status='queued'`, id); err != nil {
-		return false
-	}
-	if _, err := dbwork.ExecWrite(ctx, s.db, dbwork.ClassBackgroundMedia, `UPDATE inventory_runs SET last_turn=? WHERE job_id=?`, time.Now().UTC().Format(time.RFC3339Nano), id); err != nil {
+	// The claim is one transaction: the job becomes running and the run's
+	// fairness turn moves together, or neither does. Grouping exactly these two
+	// statements removes one writer admission per quantum without changing what
+	// either means. The conditional status update is unchanged, so a pause or
+	// cancel that committed first is still not overwritten and the read below
+	// still sees the committed status. The turn is sampled immediately after the
+	// status statement, inside the writer, so it records entry to this quantum
+	// rather than time spent queued for the gate. If either statement fails both
+	// roll back, which leaves the job truthfully queued instead of possibly
+	// running with no work in flight; no work has begun at this point either way.
+	if err := dbwork.WithWriteTx(ctx, s.db, dbwork.ClassBackgroundMedia, func(tx *sql.Tx) error {
+		if _, err := tx.ExecContext(ctx, `UPDATE jobs SET status='running' WHERE id=? AND status='queued'`, id); err != nil {
+			return err
+		}
+		_, err := tx.ExecContext(ctx, `UPDATE inventory_runs SET last_turn=? WHERE job_id=?`, time.Now().UTC().Format(time.RFC3339Nano), id)
+		return err
+	}); err != nil {
 		return false
 	}
 	var sourceID, status, phase string
