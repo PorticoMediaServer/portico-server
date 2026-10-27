@@ -520,3 +520,52 @@ for (const seam of ['apply-processing', 'initial-processing', 'ready', 'seekAppl
     }
   });
 }
+
+for (const drift of ['replace', 'pause', 'close-replace'] as const) {
+  test(`reset ${drift} owns only its captured epoch and cannot open the superseded seek reader`, bounded, async ctx => {
+    const {PlaybackService} = await import('../../packages/client-core/src/index.ts');
+    const {DecodeAudioRender} = await import('../src/platform/playback/DecodeAudioRender.ts');
+    const t = setup(), rate = 44100;
+    const service = new PlaybackService({progressPlayback: async () => {}, stopPlayback: async () => {}, createPlayback: async () => {throw new Error('no server create');}} as any, () => 'fixture', {deferRecovery: true});
+    const plan = {...t.a, durationFrames: rate * 4, gain: {trackDb: -6, trackPeak: .5}};
+    (service as any).snapshot = {...service.getSnapshot(), ...t.get(), phase: 'starting', session: {...t.get().session, id: 'original', audio: plan, resumeSeconds: 0, duration: 4}, duration: 4,
+      audioEffects: {...t.get().audioEffects, settings: {...t.get().audioEffects.settings, normalization: 'track'}}};
+    const render = new DecodeAudioRender(service, p => p, {addEventListener() {}, removeEventListener() {}, volume: 1, muted: false} as any);
+    ctx.after(() => render.dispose()); ctx.after(() => (service as any).clearSeek()); clearInterval((render as any).timer);
+    let armed = false, retired = false, processing = false;
+    const opens: {id: string; from: number; intent: string}[] = [];
+    const retire = () => {
+      if (!armed) return;
+      armed = false; retired = true;
+      const before = service.getSnapshot();
+      if (drift === 'pause') {service.pause(); assert.equal(service.getSnapshot().intentId, before.intentId);}
+      else (service as any).update({intentId: before.intentId + 1, phase: 'starting', intent: 'paused', pendingSeek: undefined,
+        session: {...before.session, id: 'replacement', generation: 2, audio: {...plan, id: 'replacement-render'}}});
+    };
+    (render as any).reader = (audio: any) => {
+      let pcm: ReturnType<typeof stalledPcm> | undefined;
+      return {unlock() {}, prefetchAll: async () => {}, close() {pcm?.source.close(); if (drift === 'close-replace') retire();},
+        open: async (from: number) => {opens.push({id: audio.id, from, intent: service.getSnapshot().intent}); pcm = stalledPcm(rate, audio.durationFrames - from, audio.durationFrames - from); return pcm.source;}};
+    };
+    const original = service.audioProcessingApplied.bind(service);
+    service.audioProcessingApplied = (...args) => {const previous = processing; processing = true; try {return original(...args);} finally {processing = previous;}};
+    const off = service.subscribe(() => {if (drift !== 'close-replace' && armed && processing && !(render as any).graph) retire();}); ctx.after(off);
+    const detach = service.attachAdapter({apply: (s: any) => render.apply(s)} as any); ctx.after(detach);
+    await settle();
+    assert.equal(service.getSnapshot().audioEffects.levelingApplied, true, 'reset will publish removal of real applied normalization');
+    const oldGraph = (render as any).graph, firstOpenCount = opens.length;
+    armed = true; service.seek(1); await settle();
+    assert.equal(retired, true, 'retirement occurred during reset, before a new graph was installed');
+    assert.equal(opens.slice(firstOpenCount).some(open => open.id === plan.id && open.intent === 'playing'), false, 'no old-call reader captures the successor revision');
+    assert.throws(() => oldGraph.preview(rate), /retired/);
+    if (drift === 'pause') {
+      assert.equal(service.getSnapshot().intent, 'paused');
+      assert.equal((render as any).primary.key, 'original:1');
+      assert(opens.slice(firstOpenCount).every(open => open.intent === 'paused'), 'only independently witnessed paused readiness proceeds');
+    } else {
+      assert.deepEqual(opens.slice(firstOpenCount).map(open => open.id), ['replacement-render']);
+      assert.equal((render as any).primary.key, 'replacement:2', 'old cleanup cannot clear the successor primary');
+      assert.equal((render as any).primary.deck.closed, false);
+    }
+  });
+}
