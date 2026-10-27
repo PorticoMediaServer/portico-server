@@ -23,22 +23,32 @@ const PROVIDERS = ['tmdb', 'tvdb', 'anilist'] as const;
 export function NeedsAttention({libraryId, libraryName, api, onOpen, onEdit, artwork}: {artwork?: ShellArtwork; libraryId: string; libraryName?: string; api: Api; onOpen?: (entry: AttentionEntry) => void; onEdit?: (entry: AttentionEntry, anchor: HTMLElement, matching?: boolean) => void}) {
   const service = useMemo(() => metadataAttentionService(<T,>(path: string, method?: string, body?: unknown) => api.request<T>(path, method, body), libraryId), [api, libraryId]);
   const [page, setPage] = useState<AttentionPage>(), [cursors, setCursors] = useState<readonly string[]>([]), [cursor, setCursor] = useState('');
-  const [loading, setLoading] = useState(true), [error, setError] = useState<unknown>();
+  const [loading, setLoading] = useState(true), [error, setError] = useState<unknown>(), [readError, setReadError] = useState<unknown>();
+
   const [busy, setBusy] = useState<string>(), [notice, setNotice] = useState<string>();
   const [searching, setSearching] = useState<AttentionEntry>(), [identifying, setIdentifying] = useState<AttentionEntry>();
   const [query, setQuery] = useState(''), [typed, setTyped] = useState(''), [provider, setProvider] = useState<(typeof PROVIDERS)[number]>('tmdb');
-  const generation = useRef(0);
+  const [retryCursor, setRetryCursor] = useState<string>();
+  // Read generations and the one-flight flag are mutable page state, not rendered values.
+  const track = useMemo(() => ({generation: 0, reading: false}), []);
   const searchInput = useRef<HTMLInputElement>(null), idInput = useRef<HTMLInputElement>(null);
   const load = useCallback(async (next: string) => {
-    const current = ++generation.current;
-    setLoading(true); setError(undefined);
+    if (track.reading) return;
+    const current = ++track.generation;
+    track.reading = true;
+    setLoading(true); setError(undefined); setReadError(undefined); setRetryCursor(undefined);
     try {
       const value = await service.list(next, 25, true);
-      if (current === generation.current) {setPage(value); setCursor(next);}
-    } catch (value) {if (current === generation.current) setError(value);}
-    finally {if (current === generation.current) setLoading(false);}
-  }, [service]);
-  useEffect(() => {void load('');}, [load]);
+      if (current === track.generation) {setPage(value); setCursor(next);}
+    } catch (value) {
+      // The failed list attempt stays retryable at its own cursor; accepted rows and pager stay.
+      if (current === track.generation) {setReadError(value); setRetryCursor(next);}
+    }
+    finally {if (current === track.generation) {track.reading = false; setLoading(false);}}
+  }, [service, track]);
+  // A new service/library mount retires the previous read generation, including its late results.
+  useEffect(() => {void load(''); return () => {track.generation++; track.reading = false;};}, [load, track]);
+  const retryRead = () => {if (track.reading || retryCursor === undefined) return; void load(retryCursor);};
   // A search or a match settles on the server; the list reloads until it does.
   const settling = !!page?.entries.some(entry => attentionInProgress(entry.reason));
   useEffect(() => {
@@ -62,6 +72,10 @@ export function NeedsAttention({libraryId, libraryName, api, onOpen, onEdit, art
   const id = typedProviderId(typed), bare = !!id && /^\d+$/.test(id);
   return <section className={styles.attention}>
     {error ? <HostedError error={error} /> : null}
+    {readError ? <div role="group">
+      <HostedError error={readError} />
+      <Button size="small" icon="i-retry" disabled={loading} loading={loading} onClick={retryRead}>{t('next.browse.retry')}</Button>
+    </div> : null}
     {notice ? <p className={styles.notice} role="status">{notice}</p> : null}
     <div className={styles.listBox}>{page?.entries.map(entry => <Row key={entry.entityId} entry={entry} artwork={artwork} busy={busy === entry.entityId}
       onUse={(candidateKey, order) => void send(entry, {action: 'accept', candidateKey, ...(order ? {order} : {})}, t('server.attention.matched', {title: entry.candidates.find(value => value.key === candidateKey)?.title ?? entry.title}))}
