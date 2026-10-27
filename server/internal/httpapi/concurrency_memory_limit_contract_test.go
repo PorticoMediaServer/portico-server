@@ -23,6 +23,7 @@ func TestConcurrencyDiagnosticsMemoryLimitWire(t *testing.T) {
 	d, session, _ := hostedAdministrationFixture(t, "owner")
 	mux := http.NewServeMux()
 	d.foundationRoutes(mux)
+	d.concurrencyRoutes(mux)
 	original := debug.SetMemoryLimit(-1)
 	t.Cleanup(func() { debug.SetMemoryLimit(original) })
 	recordingDir := os.Getenv("PORTICO_CONCURRENCY_DIAGNOSTICS_FIXTURE_DIR")

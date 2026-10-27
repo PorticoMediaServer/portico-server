@@ -16,6 +16,10 @@ import (
 // ConsoleClient. Both envelopes must describe the same original viewer.
 func TestSettingsConfigurationSharesLegacyConsoleViewerFence(t *testing.T) {
 	f := administrationFixtureNew(t)
+	// Explicitly designated representative request class for this test;
+	// the generic issued tokens do not establish a device platform.
+	const deviceClass = "web"
+	const preferencesPath = "/v1/preferences?deviceClass=" + deviceClass
 	readScope := func(path, token string) ConsoleReplyScope {
 		t.Helper()
 		response := f.call("GET", path, token, "")
@@ -31,7 +35,7 @@ func TestSettingsConfigurationSharesLegacyConsoleViewerFence(t *testing.T) {
 		}
 		return envelope.Scope
 	}
-	want := readScope("/v1/preferences", f.owner)
+	want := readScope(preferencesPath, f.owner)
 	for _, path := range []string{
 		"/v1/console/registry",
 		"/v1/admin/console/settings",
@@ -50,7 +54,7 @@ func TestSettingsConfigurationSharesLegacyConsoleViewerFence(t *testing.T) {
 	if got := readScope("/v1/admin/settings/configuration", successor.AccessToken); got != want {
 		t.Fatal("a same-viewer credential changed the configuration fence")
 	}
-	if got := readScope("/v1/preferences", f.member); got == want {
+	if got := readScope(preferencesPath, f.member); got == want {
 		t.Fatal("another viewer inherited the owner's console fence")
 	}
 }

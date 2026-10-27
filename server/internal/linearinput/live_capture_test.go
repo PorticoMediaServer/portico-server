@@ -66,6 +66,7 @@ func rollingLiveCapture(t *testing.T, fragmented bool, sourceClockSeconds int, p
 	ticker := time.NewTicker(100 * time.Millisecond)
 	defer ticker.Stop()
 	inputURL := publicURL
+	approvalURL := inputURL
 	if inputURL == "" {
 		pattern := filepath.Join(dir, "pattern.mp4")
 		generate := exec.CommandContext(ctx, ffmpeg, "-nostdin", "-v", "error", "-f", "lavfi", "-i", "testsrc2=size=160x90:rate=25", "-f", "lavfi", "-i", "sine=frequency=440:sample_rate=48000", "-t", "6", "-c:v", "libx264", "-threads:v", "1", "-g", "50", "-keyint_min", "50", "-sc_threshold", "0", "-pix_fmt", "yuv420p", "-c:a", "aac", pattern)
@@ -99,8 +100,11 @@ func rollingLiveCapture(t *testing.T, fragmented bool, sourceClockSeconds int, p
 		server := httptest.NewServer(http.FileServer(http.Dir(dir)))
 		defer server.Close()
 		inputURL = server.URL + "/index.m3u8"
+		// This procedural origin owns the manifest and its sibling segments.
+		// Keep its directory approval separate from the exact manifest input.
+		approvalURL = server.URL + "/"
 	}
-	approval, err := (remotemedia.Policy{}).Approve(ctx, inputURL)
+	approval, err := (remotemedia.Policy{}).Approve(ctx, approvalURL)
 	if err != nil {
 		t.Fatal(err)
 	}
