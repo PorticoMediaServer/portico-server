@@ -11,14 +11,14 @@ import styles from './listening-panel.module.css';
 const t = defaultI18n.t;
 /** All callbacks capture the drawn host opening and the original service page. */
 export function ListeningPanels({host, snapshot, reportError}: {host: ListeningHost; snapshot: WebPlaybackRuntimeSnapshot; reportError(error: unknown): void}) {
-  const {owner, state} = host, run = (task: () => unknown) => {try {void Promise.resolve(task()).catch(error => {if (owner.current()) reportError(error);});} catch (error) {if (owner.current()) reportError(error);}};
+  const {owner, state} = host, run = (task: () => unknown) => {try {void Promise.resolve(task()).catch(error => {if (owner.canReport(state,true)) reportError(error);});} catch (error) {if (owner.canReport(state,true)) reportError(error);}};
   const list = state.queue;
   if (state.panel === 'lyrics') return <LyricsPanel snapshot={state.lyrics ?? {data: null, candidates: [], warnings: [], preview: null, busy: false, error: '', generation: 0}}
     positionSeconds={snapshot.presentation?.positionSeconds ?? 0} enabled={owner.lyricsOffered()} canSeek={snapshot.presentation?.controls.includes('seek') === true}
-    onRetry={() => run(() => owner.lyricsRetry(state))} onChoose={(shown,resource)=>run(()=>owner.chooseLyric(state,shown,resource))} onSeek={(shown, index) => run(() => owner.lyric(state, shown, index))}/>;
+    onRetry={() => run(() => owner.lyricsRetry(state))} onChoose={state.lyrics?.data?.source&&state.lyrics.data.librarySelection===undefined?(shown,resource)=>run(()=>owner.chooseLyric(state,shown,resource)):undefined} onSeek={(shown, index) => run(() => owner.lyric(state, shown, index))}/>;
   if (state.panel === 'chapters') return <ListeningChapters host={host} snapshot={snapshot} reportError={reportError}/>;
-  if (state.panel === 'speed') return <Segmented aria-label={t('player.opt.speed')} value={String(snapshot.presentation?.rate ?? 1)} items={owner.speeds().map(rate => ({value: String(rate), label: `${rate}×`}))} onValueChange={value => run(() => owner.setSpeed(state, snapshot, Number(value)))}/>;
-  if (state.panel === 'sleep') return <Segmented aria-label={t('player.opt.sleepTimer')} value={String(owner.sleepMinutes())} items={(owner.sleepOffered() ? listeningSleepChoices : []).map(minutes => ({value: String(minutes), label: minutes ? t('player.opt.minutes', {count: minutes}) : t('player.opt.off')}))} onValueChange={value => run(() => owner.setSleep(state, snapshot, Number(value)))}/>;
+  if (state.panel === 'speed') return <Segmented aria-label={t('player.opt.speed')} value={String(snapshot.presentation?.rate ?? 1)} items={owner.speeds().map(rate => ({value: String(rate), label: `${rate}×`}))} onValueChange={value => run(() => owner.setSpeed(state, snapshot, Number(value),true))}/>;
+  if (state.panel === 'sleep') return <Segmented aria-label={t('player.opt.sleepTimer')} value={String(owner.sleepMinutes())} items={(owner.sleepOffered() ? listeningSleepChoices : []).map(minutes => ({value: String(minutes), label: minutes ? t('player.opt.minutes', {count: minutes}) : t('player.opt.off')}))} onValueChange={value => run(() => owner.setSleep(state, snapshot, Number(value),true))}/>;
   if(state.panel==='options')return <div className={styles.tabs}>
     {!!owner.speeds().length&&<Button onClick={()=>owner.show(state,'speed')}>{t('player.opt.speed')}</Button>}
     {owner.sleepOffered()&&<Button onClick={()=>owner.show(state,'sleep')}>{t('player.opt.sleepTimer')}</Button>}

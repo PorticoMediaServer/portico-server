@@ -19,7 +19,7 @@ export function AudiobookHost({binding, snapshot, expanded, phone, host, playOn}
   const p=snapshot.presentation;
   if(!expanded||p?.kind!=='audiobook'||!owner||!state?.opening||snapshot.disposed||snapshot.dock.remote)return null;
   const identity=playbackIdentity(p.subject,'full',binding.environment),cover=binding.artwork.foreground(p.posterUrl??p.backdropUrl,600,1);
-  const run=(work:()=>unknown)=>{try{void Promise.resolve(work()).catch(error=>{if(owner.current())binding.reportError(error);});}catch(error){if(owner.current())binding.reportError(error);}};
+  const run=(work:()=>unknown)=>{try{void Promise.resolve(work()).catch(error=>{if(owner.canReport(state))binding.reportError(error);});}catch(error){if(owner.canReport(state))binding.reportError(error);}};
   const title=state.panel==='speed'?t('player.opt.speed'):state.panel==='sleep'?t('player.opt.sleepTimer'):state.panel==='queue'?t('next.music.upNext'):state.panel==='options'?t('player.more'):t('player.opt.chapters');
   const panels=<ListeningPanels host={host!} snapshot={snapshot} reportError={binding.reportError}/>;
   return <>

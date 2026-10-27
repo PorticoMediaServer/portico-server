@@ -211,7 +211,7 @@ export function WatchPlayback({binding, context, surfaces, geometry, live}: Watc
   const dockBinding: DockBinding | undefined = useMemo(() => runtime && binding ? {
     getSnapshot: () => runtime.dock.getSnapshot(), onAction: action => {
       if(!action.remote&&['lyrics','queue','chapters','speed','sleep'].includes(action.kind)){
-        if(listening&&snapshot?.fence&&sameFence(snapshot.fence,action.fence)){try{listening.owner.requestDock(listening.state,action.kind as 'lyrics'|'queue'|'chapters'|'speed'|'sleep',document.activeElement instanceof HTMLElement?document.activeElement:undefined);}catch(error){if(listening.owner.current())binding.reportError(error);}}
+        if(listening&&snapshot?.fence&&sameFence(snapshot.fence,action.fence)){try{listening.owner.requestDock(listening.state,action.kind as 'lyrics'|'queue'|'chapters'|'speed'|'sleep',document.activeElement instanceof HTMLElement?document.activeElement:undefined);}catch(error){if(listening.owner.canReportDock(listening.state))binding.reportError(error);}}
       }else if (!action.remote && (action.kind === 'subtitles-audio' || action.kind === 'options')) {
         if (dockPanels && sameFence(dockPanels.fence, action.fence)) dockPanels.request(action.kind);
       } else if (action.kind === 'play-on' && cast && castAvailable) {

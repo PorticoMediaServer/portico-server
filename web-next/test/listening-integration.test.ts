@@ -31,6 +31,7 @@ function harness({kind='audiobook' as 'music'|'audiobook',lyricsEnabled=true,exp
   const authority={serverId:'server',authority:'local' as const,accountId:'account',profileId:'profile',epoch:1,viewerFence:'viewer'};
   const original=makeFence();let current=true,version='1',counter=0,returning=false,failChapters=false,failEdit=false,lyricMode:'lrc'|'text'|'404'|'error'='lrc';
   let chapterWait:ReturnType<typeof deferred<unknown>>|undefined,lyricWait:ReturnType<typeof deferred<unknown>>|undefined,saveWait:ReturnType<typeof deferred<QueuePlaylistSave>>|undefined;
+  let editDispose:(()=>void)|undefined,saveAbort:(()=>void)|undefined,policyWait:ReturnType<typeof deferred<void>>|undefined;
   let selectionRevision=1;let choiceWait:ReturnType<typeof deferred<unknown>>|undefined;
   const sourceToken={};let source:object=sourceToken;let onCurrent:(()=>void)|undefined;
   const runtimeListeners=new Set<()=>void>(),listListeners=new Set<()=>void>();
@@ -66,17 +67,17 @@ function harness({kind='audiobook' as 'music'|'audiobook',lyricsEnabled=true,exp
         makeLyrics:api=>new LyricsService(api,{serverId:'server',viewerId:'viewer'},{libraryId:'library',itemId:'item',sessionId:'session',sessionGeneration:2,sourceId:'source'}),
         lyricsEnabled:()=>lyricsEnabled,observe:retire=>{const check=()=>{if(!owns())retire();};runtimeListeners.add(check);return()=>{runtimeListeners.delete(check);};},queue:rawList,
         seek:async(seconds,command)=>{if(!command.isCurrent()||command.signal.aborted)throw new DOMException('Aborted','AbortError');calls.seek.push(seconds);},
-        policy:async(_target,revision,intent,command)=>{if(!command.isCurrent())throw new DOMException('Aborted','AbortError');assert.equal(revision,list.revision);calls.policies.push(intent);live={...live,queueView:{queue:{...live.queueView.queue,...intent.action==='repeat'?{repeat:intent.repeat}:{shuffled:intent.shuffled}}}};updateQueue();},
-        save:async(queueId,name,command,onProgress)=>saveQueueAsPlaylist({saveAsPlaylist:async(id,frozenName,key)=>{
+        policy:async(_target,revision,intent,command)=>{if(!command.isCurrent())throw new DOMException('Aborted','AbortError');assert.equal(revision,list.revision);calls.policies.push(intent);if(policyWait)await policyWait.promise;live={...live,queueView:{queue:{...live.queueView.queue,...intent.action==='repeat'?{repeat:intent.repeat}:{shuffled:intent.shuffled}}}};updateQueue();},
+        save:async(queueId,name,command,onProgress)=>{command.signal.addEventListener('abort',()=>saveAbort?.(),{once:true});return saveQueueAsPlaylist({saveAsPlaylist:async(id,frozenName,key)=>{
           command.signal.throwIfAborted();assert.equal(queueId,'queue');assert.equal(id,queueId);calls.saveKeys.push(key!);calls.saveNames.push(frozenName);
           if(calls.saveKeys.length===1&&saveWait)return{playlistId:'playlist',revision:'1',entries:1,total:81,state:'saving'};
           return saveWait?await saveWait.promise:{playlistId:'playlist',revision:'2',entries:81,total:81,state:'saved'};
-        }},queueId,name,{signal:command.signal,onProgress,waitMs:()=>0}),
+        }},queueId,name,{signal:command.signal,onProgress,waitMs:()=>0});},
         openEdit:(_shown,command)=>{let page:V1QueueEditPage|undefined,disposed=false;
           const issue=(start:number):V1QueueEditPage=>Object.freeze({start,total:81,revision:version,items:Object.freeze(rows(start)),canPrevious:start>0,...start<50?{nextCursor:'offered-edit-50'}:{}});
           const check=()=>{if(disposed||!owns()||!command.isCurrent()||command.signal.aborted)throw new DOMException('Aborted','AbortError');};
           const reader:V1QueueEditReader={read:async()=>{check();calls.reads++;return page=issue(0);},next:async shown=>{check();assert.equal(shown,page);calls.next++;return page=issue(50);},previous:async shown=>{check();assert.equal(shown,page);calls.previous++;return page=issue(0);},
-            edit:async(shown,intent)=>{check();assert.equal(shown,page);calls.edits.push({shown,intent});if(failEdit)throw new Error('edit_refused');updateQueue();return page=issue(shown.start);},dispose(){disposed=true;}};
+            edit:async(shown,intent)=>{check();assert.equal(shown,page);calls.edits.push({shown,intent});if(failEdit)throw new Error('edit_refused');updateQueue();return page=issue(shown.start);},dispose(){disposed=true;editDispose?.();}};
           return createQueueEditOpening({reader,current:owns,lifetime:command,currentEntryId:'entry',hidden:()=>false});},
       });
     },
@@ -86,7 +87,7 @@ function harness({kind='audiobook' as 'music'|'audiobook',lyricsEnabled=true,exp
     failChapters(value:boolean){failChapters=value;},failEdit(value:boolean){failEdit=value;},lyricsMode(value:typeof lyricMode){lyricMode=value;},holdChapters(){return chapterWait=deferred<unknown>();},holdLyrics(){return lyricWait=deferred<unknown>();},holdChoice(){return choiceWait=deferred<unknown>();},holdSave(){return saveWait=deferred<QueuePlaylistSave>();},
     retire(){current=false;emit();},remote(){live={...live,dock:{...live.dock,remote:{phase:'playing'}}};emit();},
     replace(){source={};const fence=makeFence('successor','new-source');live={...live,fence,presentation:{...live.presentation,fence}};emit();},
-    set onCurrent(fn:(()=>void)|undefined){onCurrent=fn;},get expanded(){return live.dock.local.expanded;},set onRead(fn:(()=>void)|undefined){runtime.getSnapshot=()=>{if(!returning){returning=true;try{fn?.();}finally{returning=false;}}return live;};},
+    set onEditDispose(fn:(()=>void)|undefined){editDispose=fn;},set onSaveAbort(fn:(()=>void)|undefined){saveAbort=fn;},holdPolicy(){return policyWait=deferred<void>();},set onCurrent(fn:(()=>void)|undefined){onCurrent=fn;},get expanded(){return live.dock.local.expanded;},set onRead(fn:(()=>void)|undefined){runtime.getSnapshot=()=>{if(!returning){returning=true;try{fn?.();}finally{returning=false;}}return live;};},
   };
 }
 
@@ -209,6 +210,65 @@ test('a true external predicate that replaces the original source cannot revive 
     await assert.rejects(owner.policy(shown,shown.queue!,{action:'repeat',repeat:'all'}),{name:'AbortError'});
     assert.equal(f.calls.policies.length,0);assert.equal(owner.getSnapshot().current,false);
   }finally{owner.dispose();}
+});
+
+// Corrective owner-review vectors. Authored against the actual controller and
+// public service/adapter composition; no additional behavioral run requested.
+test('panel-origin speed, sleep and chapters cannot act through a replaced panel while persistent main controls retain their view',async()=>{
+  const f=harness(),owner=f.owner();try{
+    owner.commitExpanded(true);await tick();const main=owner.getSnapshot();
+    owner.show(main,'speed');const speed=owner.getSnapshot();owner.show(speed,'sleep');const sleep=owner.getSnapshot();
+    assert.throws(()=>owner.setSpeed(speed,f.snapshot,1.25,true),{name:'AbortError'});
+    owner.show(sleep,'chapters');const chapters=owner.getSnapshot();assert.throws(()=>owner.setSleep(sleep,f.snapshot,15,true),{name:'AbortError'});
+    owner.show(chapters,'queue');const live=owner.getSnapshot();
+    await assert.rejects(owner.chapter(chapters,chapters.chapters!,chapters.chapters!.data!.chapters[0],true),{name:'AbortError'});
+    await assert.rejects(owner.chapterPage(chapters,chapters.chapters!,'next',true),{name:'AbortError'});
+    assert.equal(f.calls.chapters.length,1);assert.equal(f.calls.seek.length,0);assert.equal(f.calls.actions.length,0);
+    owner.setSpeed(main,f.snapshot,1.25);assert.equal(f.snapshot.presentation!.rate,1.25);
+    owner.show(live,'chapters');const current=owner.getSnapshot();await owner.chapter(current,current.chapters!,current.chapters!.data!.chapters[0],true);assert.deepEqual(f.calls.seek,[0]);
+    assert.equal(owner.canReport(chapters,true),false);assert.equal(owner.canReport(main),true);
+  }finally{owner.dispose();}
+});
+
+test('original editor disposal and save abort cleanup cannot detach a reentrant successor panel or dialog',async()=>{
+  const f=harness({kind:'music'}),owner=f.owner();try{
+    owner.commitExpanded(true);await tick();let once=true;
+    f.onEditDispose=()=>{if(once){once=false;owner.show(owner.getSnapshot(),'queue');}};
+    owner.show(owner.getSnapshot(),'lyrics');await tick();assert.equal(owner.getSnapshot().panel,'queue');assert.equal(owner.getSnapshot().window!.phase,'ready');
+    let shown=owner.getSnapshot();owner.openSave(shown,shown.queue!);owner.saveName(owner.getSnapshot(),'Old');shown=owner.getSnapshot();
+    const held=f.holdSave(),saving=owner.save(shown,shown.save!.list,'Old').catch(()=>{});await tick();
+    f.onSaveAbort=()=>{const live=owner.getSnapshot();owner.openSave(live,live.queue!);owner.saveName(owner.getSnapshot(),'Successor');};
+    owner.closeSave(owner.getSnapshot());const successor=owner.getSnapshot().save!;assert.equal(successor.name,'Successor');
+    held.resolve({playlistId:'old',revision:'2',entries:81,total:81,state:'saved'});await saving;assert.equal(owner.getSnapshot().save,successor);
+  }finally{f.onEditDispose=undefined;f.onSaveAbort=undefined;owner.dispose();}
+});
+
+test('old close cannot collapse a view installed synchronously from original cleanup',async()=>{
+  const f=harness({kind:'music'}),owner=f.owner();try{
+    owner.commitExpanded(true);await tick();const old=owner.getSnapshot();let once=true;
+    f.onEditDispose=()=>{if(once){once=false;owner.commitExpanded(true);}};
+    owner.close(old);await tick();assert.equal(f.calls.collapses,0);assert.equal(f.expanded,true);assert.ok(owner.getSnapshot().opening);assert.notEqual(owner.getSnapshot().opening,old.opening);
+  }finally{f.onEditDispose=undefined;owner.dispose();}
+});
+
+test('dock busy publication can install a successor without an old expand or panel replacement',async()=>{
+  const f=harness({kind:'music',expanded:false}),owner=f.owner();try{
+    owner.commitExpanded(false);const old=owner.getSnapshot();let once=true;
+    const off=owner.subscribe(()=>{if(once&&!owner.getSnapshot().dockOpening){once=false;f.runtime.open(f.snapshot.fence!);owner.commitExpanded(true);owner.show(owner.getSnapshot(),'queue');}});
+    assert.equal(owner.requestDock(old,'lyrics'),false);off();await tick();assert.equal(f.calls.opens,1);assert.equal(owner.getSnapshot().panel,'queue');assert.equal(f.calls.lyrics,1);
+  }finally{owner.dispose();}
+});
+
+test('policy final-currentness reentry preserves the successor operation busy state and command slot',async()=>{
+  const f=harness({kind:'music'}),owner=f.owner();let successor:Promise<void>|undefined,held:ReturnType<typeof deferred<void>>|undefined;
+  try{
+    owner.commitExpanded(true);await tick();const reload=owner.reloadQueue.bind(owner);let final=false,once=true;
+    owner.reloadQueue=async shown=>{await reload(shown);final=true;};
+    f.onCurrent=()=>{if(final&&once){once=false;owner.show(owner.getSnapshot(),'queue');held=f.holdPolicy();const shown=owner.getSnapshot();successor=owner.policy(shown,shown.queue!,{action:'repeat',repeat:'one'});}};
+    const shown=owner.getSnapshot();await owner.policy(shown,shown.queue!,{action:'repeat',repeat:'all'});await tick();
+    assert.equal(owner.getSnapshot().policyBusy,true);assert.equal(f.calls.policies.length,2);
+    held!.resolve();await successor;assert.equal(owner.getSnapshot().policyBusy,false);
+  }finally{f.onCurrent=undefined;held?.resolve();await successor?.catch(()=>{});owner.dispose();}
 });
 
 /** Actual persistent WatchPlayback + actual committed host hook + audiobook
