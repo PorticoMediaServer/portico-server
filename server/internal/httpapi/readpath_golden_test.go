@@ -978,7 +978,10 @@ func goldenSearchEpisodeFacts(t *testing.T, f *goldenFixture, c goldenCase, want
 }
 
 // applySearchEpisodeFacts states exactly the episode facts the fixture holds.
-// Absent facts stay absent; a non-episode entry is untouched.
+// A fact the fixture lacks stays absent: ContentEntry publishes special and
+// dateBased as omitempty booleans and the numbers as omitempty pointers, so a
+// recorded value there contradicts the answer the server can produce, null
+// included. A non-episode entry is untouched.
 func applySearchEpisodeFacts(entry map[string]any, facts goldenEpisodeFacts) error {
 	if kind, _ := entry["kind"].(string); kind != "episode" {
 		return nil
@@ -1043,20 +1046,24 @@ func setGoldenDerivedNumber(entry map[string]any, key string, want *int) error {
 
 func setGoldenDerivedBool(entry map[string]any, key string, want bool) error {
 	existing, present := entry[key]
-	if !want {
-		if present && existing != nil {
-			return fmt.Errorf("%s is %v but the fixture holds no such fact", key, existing)
+	if want {
+		if present {
+			value, ok := existing.(bool)
+			if !ok || !value {
+				return fmt.Errorf("%s is %v, not the fixture's true", key, existing)
+			}
+			return nil
 		}
+		entry[key] = true
 		return nil
 	}
+	// ContentEntry publishes special and dateBased as omitempty booleans
+	// (content_types.go), so the false fact is an absent field and never a
+	// recorded value: an explicit false, a null, a non-bool or a true the
+	// fixture contradicts are all changes to specify, as is any other shape.
 	if present {
-		value, ok := existing.(bool)
-		if !ok || !value {
-			return fmt.Errorf("%s is %v, not the fixture's true", key, existing)
-		}
-		return nil
+		return fmt.Errorf("%s is %v but the fixture publishes no such fact", key, existing)
 	}
-	entry[key] = true
 	return nil
 }
 
@@ -1117,6 +1124,61 @@ func TestGoldenSearchEpisodeFactsBoundaries(t *testing.T) {
 	date := episode()
 	if err := applySearchEpisodeFacts(date, goldenEpisodeFacts{season: number(2023), episode: number(14), numbering: "date"}); err != nil || date["dateBased"] != true {
 		t.Fatalf("date numbering: %v %v", err, date["dateBased"])
+	}
+	// special and dateBased are omitempty: the false fact is absent from the
+	// published entry, so every recorded shape of it is a change to specify.
+	for _, recorded := range []struct {
+		name  string
+		value any
+	}{
+		{"explicit false", false},
+		{"null", nil},
+		{"true", true},
+		{"non-bool", 0},
+		{"string", "false"},
+	} {
+		special := episode()
+		special["special"] = recorded.value
+		if err := applySearchEpisodeFacts(special, goldenEpisodeFacts{season: number(1)}); err == nil {
+			t.Fatalf("a recorded %s special was accepted when the fixture publishes none", recorded.name)
+		}
+		dateBased := episode()
+		dateBased["dateBased"] = recorded.value
+		if err := applySearchEpisodeFacts(dateBased, goldenEpisodeFacts{numbering: "seasonal"}); err == nil {
+			t.Fatalf("a recorded %s dateBased was accepted when the fixture publishes none", recorded.name)
+		}
+	}
+	keptAbsent := episode()
+	if err := applySearchEpisodeFacts(keptAbsent, goldenEpisodeFacts{season: number(1), episode: number(1), numbering: "seasonal"}); err != nil {
+		t.Fatal(err)
+	}
+	for _, absent := range []string{"special", "dateBased", "absoluteNumber"} {
+		if _, present := keptAbsent[absent]; present {
+			t.Fatalf("a false/absent %s was recorded: %v", absent, keptAbsent)
+		}
+	}
+	// A true fact the fixture holds is the only accepted recorded truth.
+	trueSpecial := episode()
+	trueSpecial["special"] = true
+	if err := applySearchEpisodeFacts(trueSpecial, goldenEpisodeFacts{season: number(0), episode: number(1)}); err != nil || trueSpecial["special"] != true {
+		t.Fatalf("agreeing special: %v %v", err, trueSpecial["special"])
+	}
+	nullTrue := episode()
+	nullTrue["dateBased"] = nil
+	if err := applySearchEpisodeFacts(nullTrue, goldenEpisodeFacts{numbering: "date"}); err == nil {
+		t.Fatal("a null dateBased was accepted where the fixture publishes true")
+	}
+	// Ground the absent-false rule in the published schema rather than in an
+	// observation of the current answer: both fields are omitempty booleans, so
+	// marshalling a false one publishes no key at all.
+	falseJSON, err := json.Marshal(catalog.ContentEntry{ID: "show-000000-s01-e001", Kind: "episode"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, absent := range []string{`"special":`, `"dateBased":`} {
+		if strings.Contains(string(falseJSON), absent) {
+			t.Fatalf("ContentEntry no longer omits a false %s: %s", absent, falseJSON)
+		}
 	}
 	if err := applySearchEpisodeFacts(map[string]any{"id": "movie-0000000", "kind": "movie"}, goldenEpisodeFacts{season: number(1)}); err != nil {
 		t.Fatal("a title result must be left alone:", err)
