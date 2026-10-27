@@ -18,6 +18,16 @@ test('generated builders encode raw parameters once and preserve existing encodi
  assert.throws(() => routePath('get_items_id_detail', {id:'a', extra:'b'} as never));
 });
 
+test('the migrated manual paths are the canonical generated routes', () => {
+ const encoded=(value:string)=>encodeURIComponent(value);
+ assert.equal(routePath('social_post_v1_cast_controllers_validate'),'/v1/cast/controllers/validate');
+ assert.equal(routePath('get_reading_search'),'/v1/reading/search');
+ assert.equal(encodedRoutePath('post_items_itemId_reading_reread',{itemId:encoded('item/one two')}),'/v1/items/item%2Fone%20two/reading/reread');
+ assert.equal(encodedRoutePath('get_libraries_libraryId_reading_mark_all',{libraryId:encoded('lib/one')}),'/v1/libraries/lib%2Fone/reading/mark-all');
+ assert.equal(encodedRoutePath('post_libraries_libraryId_reading_mark_all',{libraryId:encoded('lib/one')}),'/v1/libraries/lib%2Fone/reading/mark-all');
+ assert.equal(encodedRoutePath('test_storage_source',{id:encoded('source/one')}),'/v1/storage/sources/source%2Fone/test');
+});
+
 test('development routes have their own contract and none is a production route',async()=>{
  const development=await import('../../contracts/src/development/routes.ts');
  const production=await import('../../contracts/src/routes.ts');

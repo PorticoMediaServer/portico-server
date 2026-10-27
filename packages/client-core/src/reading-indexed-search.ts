@@ -1,4 +1,4 @@
-import {decodeGetReadingSearchResponse, routePath, routes, type GetReadingSearchResponse} from '../../contracts/src/index.ts';
+import {decodeGetReadingSearchResponse, routePath, routePattern, routes, type GetReadingSearchResponse} from '../../contracts/src/index.ts';
 
 /** The published global Reading-index anchor; never a session page or search group. */
 export type ReadingIndexedSearchAnchor = Readonly<{normalization: 'xhtml-body-blockspace-fields-v1'; offsetUnit: 'utf16'; matchUnit: 'utf16'}>;
@@ -47,8 +47,8 @@ const cancelled = (): never => {throw Object.assign(new Error('reading_indexed_s
 /** The official path only; an older contract withholds the action. */
 export function readingIndexedSearchPath(): string | undefined {
   const descriptor = publishedRoutes.find(route => route.id === 'get_reading_search');
-  if (!descriptor || descriptor.method !== 'GET' || descriptor.path !== '/v1/reading/search') return undefined;
-  return descriptor.path;
+  if (!descriptor || descriptor.method !== 'GET' || descriptor.path !== routePattern('get_reading_search')) return undefined;
+  return routePath('get_reading_search');
 }
 
 /** The same member grammar as reading.ts: one relative archive path, no scheme/question/fragment. */

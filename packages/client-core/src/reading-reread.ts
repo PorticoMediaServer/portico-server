@@ -1,4 +1,4 @@
-import {routes} from '../../contracts/src/index.ts';
+import {encodedRoutePath, routePattern, routes} from '../../contracts/src/index.ts';
 
 /** The only fact families a reread may report; the server sends a partition. */
 export type ReadingRereadField = 'author' | 'series' | 'seriesNumber';
@@ -28,8 +28,8 @@ const cancelled = (): never => {throw Object.assign(new Error('reading_reread_ca
 export function readingRereadPath(itemId: string): string | undefined {
   if (!identifier(itemId)) return undefined;
   const descriptor = publishedRoutes.find(route => route.id === 'post_items_itemId_reading_reread');
-  if (!descriptor || descriptor.method !== 'POST' || descriptor.path !== '/v1/items/{itemId}/reading/reread') return undefined;
-  return descriptor.path.replace('{itemId}', encodeURIComponent(itemId));
+  if (!descriptor || descriptor.method !== 'POST' || descriptor.path !== routePattern('post_items_itemId_reading_reread')) return undefined;
+  return encodedRoutePath('post_items_itemId_reading_reread', {itemId: encodeURIComponent(itemId)});
 }
 
 /** The server's partition: each known family once, disjoint, covering all three. */

@@ -1,4 +1,4 @@
-import {routes} from '../../contracts/src/index.ts';
+import {encodedRoutePath, routePattern, routes} from '../../contracts/src/index.ts';
 
 // Older published contracts intentionally withhold this action. Read their common
 // descriptor shape so that absence remains a runtime check across generated cohorts.
@@ -23,10 +23,10 @@ const samePair = (a: ReadingMarkAllPair, b: ReadingMarkAllPair) => a.catalog ===
  * withholds this action instead of manufacturing a route or authority. */
 export function readingMarkAllPath(method: 'GET' | 'POST', libraryId: string): string | undefined {
   if (!identifier(libraryId)) return undefined;
-  const operation: string = method === 'GET' ? 'get_libraries_libraryId_reading_mark_all' : 'post_libraries_libraryId_reading_mark_all';
+  const operation = method === 'GET' ? 'get_libraries_libraryId_reading_mark_all' : 'post_libraries_libraryId_reading_mark_all';
   const descriptor = publishedOperations.find(route => route.id === operation);
-  if (!descriptor || descriptor.method !== method || descriptor.path !== '/v1/libraries/{libraryId}/reading/mark-all') return undefined;
-  return descriptor.path.replace('{libraryId}', encodeURIComponent(libraryId));
+  if (!descriptor || descriptor.method !== method || descriptor.path !== routePattern(operation)) return undefined;
+  return encodedRoutePath(operation, {libraryId: encodeURIComponent(libraryId)});
 }
 function projection(value: Record<string, unknown>, serverId: string, libraryId: string): ReadingMarkAllProjection {
   if (!identifier(serverId) || !identifier(libraryId) || value.serverId !== serverId || value.libraryId !== libraryId
