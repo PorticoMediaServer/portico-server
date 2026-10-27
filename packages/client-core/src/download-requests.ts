@@ -167,8 +167,10 @@ export async function pollDownloadRequest(api:DownloadRequestsApi,requestId:stri
   if(isDownloadRequestTerminal(request.state))return request;
   if(Date.now()-started>timeoutMs)throw Object.assign(new Error('The download is still preparing. Reopen Downloads to check it.'),{code:'download_poll_timeout',request});
   await new Promise<void>((resolve,reject)=>{
-   const timer=setTimeout(resolve,intervalMs);
-   options.signal?.addEventListener('abort',()=>{clearTimeout(timer);reject(Object.assign(new Error('The download was cancelled.'),{code:'cancelled'}));},{once:true});
+   let timer:ReturnType<typeof setTimeout>|undefined;const signal=options.signal;
+   const cancel=()=>{if(timer!==undefined)clearTimeout(timer);signal?.removeEventListener('abort',cancel);reject(Object.assign(new Error('The download was cancelled.'),{code:'cancelled'}));};
+   timer=setTimeout(()=>{signal?.removeEventListener('abort',cancel);resolve();},intervalMs);
+   signal?.addEventListener('abort',cancel,{once:true});
   });
  }
 }
