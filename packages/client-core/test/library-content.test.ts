@@ -165,6 +165,55 @@ test('a continuation the server no longer honours restarts the list from its fir
   }
 });
 
+test('the original continuation promise stays pending until its recovered head finishes', async () => {
+  const head = deferred<any>();
+  let calls = 0, settled = false, recoveryPath = '';
+  const nav = service(async path => {
+    calls++;
+    if (path.includes('cursor=')) throw Object.assign(new Error('changed'), {code: 'stale_continuation', status: 409});
+    if (calls > 1) {recoveryPath = path; return head.promise;}
+    const data = projection(path); data.sections[0].nextCursor = 'old'; return data;
+  });
+  try {
+    await nav.select(route);
+    const next = nav.next('server-grid').then(() => {settled = true;});
+    for (let turn = 0; turn < 20 && calls < 3; turn++) await Promise.resolve();
+    assert.equal(calls, 3, 'the same continuation started its real replacement head');
+    await Promise.resolve();
+    assert.equal(settled, false, 'next() does not report completion while its own head is pending');
+    assert.equal(nav.getSnapshot().phase, 'loading');
+    head.resolve(projection(recoveryPath));
+    await next;
+    assert.equal(settled, true);
+    assert.equal(nav.getSnapshot().phase, 'ready');
+    assert.equal(nav.getSnapshot().pagination.cursor, null);
+  } finally {nav.dispose(); head.resolve(recoveryPath ? projection(recoveryPath) : undefined);}
+});
+
+test('a continuation recovery cannot replace a successor admitted during its original abort', async () => {
+  const paths: string[] = [];
+  let successor: Promise<void> | undefined;
+  const nav = service(async (path, signal) => {
+    paths.push(path);
+    if (path.includes('cursor=')) {
+      assert.ok(signal);
+      signal.addEventListener('abort', () => {successor = nav.select({libraryId: 'other', view: 'browse'});}, {once: true});
+      throw Object.assign(new Error('changed'), {code: 'stale_continuation', status: 409});
+    }
+    const data = projection(path); data.sections[0].nextCursor = 'old'; return data;
+  });
+  try {
+    await nav.select(route);
+    await nav.next('server-grid');
+    assert.ok(successor, 'the original abort admitted the actual successor');
+    await successor;
+    assert.equal(nav.getSnapshot().phase, 'ready');
+    assert.equal(nav.getSnapshot().route?.libraryId, 'other');
+    assert.equal(paths.length, 3, 'the retired fallback never dispatches over the successor');
+    assert.ok(paths[2].includes('/libraries/other/'));
+  } finally {nav.dispose();}
+});
+
 test('a continuation read after the library moved is still a page; only another viewer\'s answer restarts the list', async () => {
   for (const mutate of [(d: any) => { d.revision.catalog++; }, (d: any) => { d.revision.viewer++; }]) {
     const nav = service(async path => { const data = projection(path); data.sections[0].nextCursor = 'next'; if (path.includes('cursor=')) { mutate(data); data.sections[0].nextCursor = ''; } return data; });

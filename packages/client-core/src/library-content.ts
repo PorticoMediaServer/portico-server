@@ -658,7 +658,19 @@ export class LibraryContentService {
         return;
       }
       // The existing restart policy keeps the supplied opening; a dead opening cannot start an unscoped fallback.
-      if (stale && op.page.cursor) { if (!checkFailure()) return; await this.load({ route: op.route, page: { cursor: null }, history: [], fence: null }, context); return; }
+      if (stale && op.page.cursor) {
+        if (!checkFailure()) return;
+        // This recovery belongs to the original next() promise. Retire its flight
+        // before abort can reenter, but let fetch settle that promise only after
+        // its own replacement head finishes; load() must not settle it as a
+        // superseded independent request while the screen is still loading.
+        const recoveryGeneration = ++this.generation;
+        this.release(flight);
+        controller.abort();
+        if (this.disposed || this.generation !== recoveryGeneration || this.flight) return;
+        await this.load({ route: op.route, page: { cursor: null }, history: [], fence: null }, context);
+        return;
+      }
       const code = string(e?.code) && e?.code ? e.code : 'request_failed';
       const transient = !stale && code !== 'invalid_projection' && e?.status !== 401 && e?.status !== 403 && (e?.retryable === true || code === 'timeout' || error instanceof TypeError || typeof e?.status === 'number' && (e.status >= 500 || e.status === 408 || e.status === 429));
       this.publish({ phase: stale ? 'refresh-required' : 'error', projection: transient ? checkpoint.snapshot.projection : null, sections: transient ? checkpoint.snapshot.sections : Object.freeze([]), appended: transient ? checkpoint.snapshot.appended : Object.freeze([]), error: Object.freeze({ code, message: stale ? 'The library changed. Refresh to continue.' : error instanceof Error ? error.message : 'Could not load this library.', retryable: stale || transient }), pagination: Object.freeze({ cursor: op.page.cursor, canPrevious: false, next: Object.freeze([]) }) });
