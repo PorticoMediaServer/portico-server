@@ -48,37 +48,29 @@ export function CardFrame({children, kind, primaryClassName, playIcon = 'i-play'
   const auxiliaryRef = useRef<HTMLSpanElement>(null);
   const shadowRef = useRef<HTMLSpanElement>(null);
   useLayoutEffect(() => {
-    const art = artworkRef?.current, frame = auxiliaryRef.current;
-    if (!hasAuxiliary || !art || !frame) return;
+    const art = artworkRef?.current, frame = hasAuxiliary ? auxiliaryRef.current : null, shadow = shadowRef.current;
+    if (!art || (!frame && !shadow)) return;
     const primary = art.parentElement!;
+    let live = true;
+    // The auxiliary buttons and the fading shadow layer match the artwork's own
+    // box. One observer and one layout read serve both; a late callback may only
+    // write the exact nodes this effect aligned, never a replacement.
     const align = () => {
+      if (!live || art !== artworkRef?.current) return;
       // offsetTop includes the browser button's genuine content-centering inset.
       // Read layout geometry: hover transforms must not feed back into this frame.
       const bounds = getComputedStyle(art);
-      Object.assign(frame.style, {left: `${art.offsetLeft}px`, top: `${art.offsetTop}px`, width: bounds.width, height: bounds.height});
+      const box = {left: `${art.offsetLeft}px`, top: `${art.offsetTop}px`, width: bounds.width, height: bounds.height};
+      if (frame && frame === auxiliaryRef.current) Object.assign(frame.style, box);
+      if (shadow && shadow === shadowRef.current) Object.assign(shadow.style, box);
     };
     align();
     const observer = new ResizeObserver(align);
     // Caption/font changes can move art within a fixed-height primary target.
     observer.observe(primary);
     for (const child of primary.children) observer.observe(child);
-    return () => observer.disconnect();
+    return () => {live = false; observer.disconnect();};
   }, [artworkRef, hasAuxiliary]);
-  // The fading shadow layer matches the artwork's own box, read from layout only.
-  useLayoutEffect(() => {
-    const art = artworkRef?.current, shadow = shadowRef.current;
-    if (!art || !shadow) return;
-    const primary = art.parentElement!;
-    const align = () => {
-      const bounds = getComputedStyle(art);
-      Object.assign(shadow.style, {left: `${art.offsetLeft}px`, top: `${art.offsetTop}px`, width: bounds.width, height: bounds.height});
-    };
-    align();
-    const observer = new ResizeObserver(align);
-    observer.observe(primary);
-    for (const child of primary.children) observer.observe(child);
-    return () => observer.disconnect();
-  }, [artworkRef]);
   const rangeInteraction = useSelectionRangePreview(selection, disabled);
   const selectionHintId = useId();
   const selectionHint = selection?.hint ?? (selection && !selection.active ? {text: defaultI18n.t('next.selection.select')} : undefined);
