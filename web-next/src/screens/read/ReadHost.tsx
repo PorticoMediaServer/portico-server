@@ -34,15 +34,22 @@ export function ReadHost() {
     && published.location === location && published.itemId === itemId && published.sourceId === sourceId ? published : undefined;
   const onClose = () => {
     if (!original) return;
-    const matchesOriginal = () => original.live && !original.claimed && committed.current === original
+    const matchesOriginal = () => original.live && committed.current === original
       && router.state.location === original.location && original.location.pathname === `/read/${encodeURIComponent(original.itemId)}`
       && readSearch(original.location.search).sourceId === original.sourceId;
-    if (!matchesOriginal() || !original.context.isCurrent() || !matchesOriginal()) return;
+    if (original.claimed || !matchesOriginal() || !original.context.isCurrent() || !matchesOriginal() || original.claimed) return;
     original.claimed = true;
-    void router.navigate({to: '/item/$itemId', params: {itemId: original.itemId}, replace: true}).catch(error => {
-      if (original.context.isCurrent()) original.binding.home.effects.reportError(error);
-    });
-    setRetained(previous => committed.current === original && original.live && previous === original.target ? undefined : previous);
+    const settle = (failed: boolean, error?: unknown) => {
+      // A navigation result owns only its original still-visible receipt, never
+      // a replacement or a later entry with the same URL.
+      if (!original.claimed || !matchesOriginal() || !original.context.isCurrent() || !matchesOriginal() || !original.claimed) return;
+      original.claimed = false;
+      if (failed) original.binding.home.effects.reportError(error);
+    };
+    try {
+      void Promise.resolve(router.navigate({to: '/item/$itemId', params: {itemId: original.itemId}, replace: true}))
+        .then(() => settle(false), error => settle(true, error));
+    } catch (error) {settle(true, error);}
   };
   return <div className={styles.host} hidden={!visible} inert={!visible} aria-hidden={!visible}>
     <ReadEntry key={JSON.stringify([retained.itemId, retained.sourceId])} captured={captured} itemId={retained.itemId} sourceId={retained.sourceId} active={visible} onClose={onClose}/>
