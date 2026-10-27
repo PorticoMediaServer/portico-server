@@ -145,12 +145,18 @@ export function SettingsEntry() {
   const raw = Object.fromEntries(new URLSearchParams(location.searchStr));
   const route = settingsLocationRoute(location);
   const facts = settingsBuildFacts(context);
+  const [buildPrimary, buildServer, buildPeople, buildSignIn, buildKind, buildRole, buildServerId, buildAuthority, buildAccountId, buildProfileId] = facts;
+  const routeScope = route.scope, routeSection = route.section, hasPreferences = !!preferences;
   // Keep the original build dependencies: ordinary preference confirmations and
   // row-only deep links keep their controller, forms and outstanding intents.
   const inputs = [context, retry, route.scope, route.section, !!preferences, reportTimeZone, ...facts] as const;
   const reportCarry = useRef<Readonly<{inputs: readonly unknown[]; report: ReportContext}> | undefined>(undefined);
   const mediaRuntime = protectedContext?.binding.playback?.runtime;
+  // Setup samples these committed ports once; the exact scalar owner keys below govern retirement.
+  const setupPorts = useRef({preferences, route, facts, inputs, mediaRuntime});
+  useLayoutEffect(() => {setupPorts.current = {preferences, route, facts, inputs, mediaRuntime};});
   useLayoutEffect(() => {
+    const {preferences, route, facts, inputs, mediaRuntime} = setupPorts.current;
     const reader = context?.preferences, snapshot = preferences;
     if (!context || !reader || !snapshot || !context.isCurrent() || transferredOwnerContexts.has(context)) return;
     let active = true;
@@ -630,7 +636,8 @@ export function SettingsEntry() {
     return () => {active = false;offPreferenceFence();pinRequest = undefined;lifetime.abort();setProfilePIN(held => held?.source === profiles ? undefined : held);profileDevices?.dispose();otherDeviceSignOut?.dispose();offRestrictions?.();restrictions?.dispose();offProfileFailures?.();profiles?.dispose();previewLife.abort();signinStorage?.dispose();signIn?.dispose();memberResetCodes?.dispose();people?.invitations?.dispose();people?.client.dispose();for (const listener of authorityListeners) {try {listener();} catch { /* Retire the other captured readers too. */ }}authorityListeners.clear();dashboard?.dispose();libraries?.dispose();privacy.dispose();intros?.dispose();server?.dispose();troubleshooting?.dispose();playbackProblems?.dispose();live?.dispose();integrationKeys?.dispose();webhooks?.dispose();updates?.dispose();missing?.dispose();hardware?.dispose();remoteForm?.dispose();controller.dispose();};
   // Each setup owns and retires exactly its own sources. No shared "latest"
   // slot participates in cleanup, including the owner's update reader.
-  }, inputs);
+  }, [context, retry, routeScope, routeSection, hasPreferences, reportTimeZone,
+    buildPrimary, buildServer, buildPeople, buildSignIn, buildKind, buildRole, buildServerId, buildAuthority, buildAccountId, buildProfileId]);
   const selected = protectedContext && owned && sameBuildInputs(owned.inputs, inputs) && owned.current() ? owned : undefined;
   if (!selected) return null;
   const navigate = (next: Parameters<typeof SettingsScreen>[0]['route']) => {if (selected.current()) void router.navigate({to: '/settings', search: () => next});};
