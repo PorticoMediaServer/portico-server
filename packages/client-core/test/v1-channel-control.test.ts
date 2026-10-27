@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {PlaybackService, tunerHandover} from '../src/index.ts';
 import {V1ChannelControl, channelEndMessage, parseChannelSession, v1ChannelId, type OriginalChannelStart} from '../src/playback-v1/channel-control.ts';
+import {parseStartPreparation} from '../src/playback-v1/sessions.ts';
 import type {V1Http, V1Request} from '../src/playback-v1/http.ts';
 import type {ChannelReference} from '../src/playback/linear-protocol.ts';
 
@@ -220,14 +221,24 @@ function preparationQueue() {
     pending: () => jobs.size, cleared};
 }
 
-/** A complete official channel session, as §18.6 serves it, before any freeze. */
-function completeChannelBody(id: string, url = ''): Record<string, unknown> {
+/** An official channel session as §18.6 serves it at 201. `cold` is the first
+ * projection the start returns: generation 0, no stream yet, linear preparing.
+ * `active` is that same session after the producer's buffer exists: generation
+ * 1 with its own canonical linear media URL
+ * (`/v1/media/linear/<id>/<generation>/<token>/index.m3u8`). A channel 202 is
+ * retry-only; the declared session-backed 202 variants remain vod/audio. */
+function channelBody(id: string, shape: 'cold' | 'active'): Record<string, unknown> {
+  const active = shape === 'active';
   return {id, revision: '1', kind: 'channel', role: 'local', state: 'playing', channelId: v1ChannelId(channel),
     lease: {expiresAt: '2030-01-01T00:00:00Z', reportEveryMs: 10_000},
-    presentation: {generation: 1, mode: 'stream', engine: 'native', url, startPositionMs: 0, quality: {mode: 'original'}, subtitles: [],
+    presentation: {generation: active ? 1 : 0, mode: 'stream', engine: 'native', startPositionMs: 0, quality: {mode: 'original'}, subtitles: [],
+      url: active ? `/v1/media/linear/${id}/1/original-grant/index.m3u8` : '',
       decision: {video: {action: 'copy', reasons: []}, audio: {action: 'copy', reasons: []}},
-      linear: {name: 'News', programme: {id: 'p1', title: 'Morning', startMs: 0, endMs: 3_600_000}, originMs: 1000, windowStartMs: 0, windowEndMs: 0, liveEdgeMs: 0, state: 'preparing'}}};
+      linear: {name: 'News', programme: {id: 'p1', title: 'Morning', startMs: 0, endMs: 3_600_000}, originMs: 1000,
+        windowStartMs: 0, windowEndMs: active ? 120_000 : 0, liveEdgeMs: active ? 60_000 : 0, state: active ? 'active' : 'preparing'}}};
 }
+const coldChannelBody = (id: string) => channelBody(id, 'cold');
+const activeChannelBody = (id: string) => channelBody(id, 'active');
 
 test('a channel retry-only 202 prepares the original start before any channel state', async () => {
   const server = new ChannelServer(), clock = preparationQueue();
@@ -265,32 +276,88 @@ test('a channel retry-only 202 prepares the original start before any channel st
   } finally { control.close(); await opening?.catch(() => {}); }
 });
 
-test('a channel real-session 202 keeps one original ownership receipt and the actual projection', async () => {
+test('a channel retry-only 202 keeps one original start and publishes the actual 201 projection once', async () => {
   const clock = preparationQueue();
-  let posts = 0, captures = 0, abandoned = 0;
+  let posts = 0, preparingOffers = 0, abandoned = 0;
+  const sent: V1Request[] = [];
   const http: V1Http = {send: async request => {
     if (request.method !== 'POST' || request.path !== '/v1/playback/sessions') return {status: 204, headers: {}};
-    posts++;
-    if (posts === 1) return {status: 202, headers: {}, body: {...completeChannelBody('ps_1'), retryAfterMs: 500}};
-    return {status: 201, headers: {}, body: completeChannelBody('ps_1')};
+    sent.push(request); posts++;
+    if (posts === 1) return {status: 202, headers: {}, body: {retryAfterMs: 500}};
+    return {status: 201, headers: {}, body: coldChannelBody('ps_1')};
   }};
   const control = new V1ChannelControl({http, key: () => 'channel-key-0000002', pollMs: 10_000, timers: clock.timers});
   const states: any[] = [], errors: string[] = [], preparation: any[] = [];
   let opening: Promise<void> | undefined;
   try {
     opening = control.open(channel, {state: value => states.push(value), error: message => errors.push(message), preparation: value => preparation.push(value)},
-      {capturePreparing: () => {captures++; return () => {abandoned++;};}});
+      {capturePreparing: () => {preparingOffers++; return () => {abandoned++;};}});
     await settle();
-    assert.equal(captures, 1, 'the complete real 202 session is the original ownership receipt');
+    // The channel branch of the 202 union is retry-only: no declared session is
+    // offered, so no preparing resource can be captured or abandoned.
+    assert.equal(preparingOffers, 0, 'a channel 202 is retry-only and offers no preparing session');
     assert.deepEqual(preparation, [{messageId: 'player.preparing.slowStart', retryAfterMs: 500}]);
-    assert.deepEqual(states, []);
+    assert.deepEqual(states, [], 'no channel state exists before the real 201');
+    assert.equal(clock.pending(), 1);
     clock.fire(); await settle(); await opening;
     assert.equal(posts, 2); assert.equal(abandoned, 0);
+    assert.equal(sent.length, 2);
+    for (const request of sent) {
+      assert.equal(request, sent[0], 'the retry is the same original request');
+      assert.deepEqual(request.body, {channelId: v1ChannelId(channel), channelGeneration: 'g1', state: 'playing'});
+      assert.equal(request.headers?.['Idempotency-Key'], 'channel-key-0000002');
+    }
+    assert.equal(preparation.at(-1), undefined, 'acceptance clears the notice');
     assert.equal(states.length, 1);
     assert.equal(states[0].playbackId, 'ps_1');
     assert.equal(states[0].linear.name, 'News');
     assert.deepEqual(errors, []);
   } finally { control.close(); await opening?.catch(() => {}); }
+});
+
+test('caller retirement during a channel retry-only 202 wait clears its timer and sends nothing more', async () => {
+  const clock = preparationQueue(), life = new AbortController();
+  let posts = 0;
+  const http: V1Http = {send: async request => {
+    if (request.method === 'POST' && request.path === '/v1/playback/sessions') {posts++; return {status: 202, headers: {}, body: {retryAfterMs: 500}};}
+    return {status: 204, headers: {}};
+  }};
+  const control = new V1ChannelControl({http, key: () => 'channel-key-0000005', pollMs: 10_000, timers: clock.timers});
+  const states: any[] = [], errors: string[] = [], preparation: any[] = [];
+  const opening = control.open(channel, {state: value => states.push(value), error: (message, terminal) => errors.push(`${message}:${terminal}`),
+    preparation: value => preparation.push(value)}, {signal: life.signal});
+  try {
+    await settle();
+    assert.equal(posts, 1); assert.equal(clock.pending(), 1);
+    assert.deepEqual(preparation, [{messageId: 'player.preparing.slowStart', retryAfterMs: 500}]);
+    life.abort(); await opening; await settle();
+    assert.equal(clock.pending(), 0); assert.ok(clock.cleared.length >= 1);
+    assert.equal(posts, 1, 'a retry-only wait owns no resource and dispatches nothing more');
+    assert.deepEqual(states, []); assert.deepEqual(errors, []);
+    assert.deepEqual(preparation, [{messageId: 'player.preparing.slowStart', retryAfterMs: 500}, undefined], 'the retirement clears the notice');
+  } finally { control.close(); await opening.catch(() => {}); }
+});
+
+test('an impossible channel session 202 is refused by the strict start decoder without install, timer or cleanup', async () => {
+  const clock = preparationQueue();
+  let posts = 0;
+  const http: V1Http = {send: async request => {
+    if (request.method === 'POST' && request.path === '/v1/playback/sessions') {posts++; return {status: 202, headers: {},
+      body: {...coldChannelBody('ps_impossible'), retryAfterMs: 500}};}
+    return {status: 204, headers: {}};
+  }};
+  const control = new V1ChannelControl({http, key: () => 'channel-key-0000006', pollMs: 10_000, timers: clock.timers});
+  const states: any[] = [], errors: {message: string; terminal: boolean}[] = [], preparation: any[] = [];
+  const opening = control.open(channel, {state: value => states.push(value),
+    error: (message, terminal) => errors.push({message, terminal}), preparation: value => preparation.push(value)});
+  try {
+    assert.throws(() => parseStartPreparation({...coldChannelBody('ps_impossible'), retryAfterMs: 500}), {name: 'ContractError'},
+      'only vod/audio may carry a session in a 202');
+    await opening; await settle();
+    assert.equal(posts, 1); assert.equal(clock.pending(), 0); assert.deepEqual(states, []);
+    assert.deepEqual(preparation, [undefined]);
+    assert.equal(errors.length, 1); assert.equal(errors[0].terminal, true); assert.ok(errors[0].message.length > 0);
+  } finally { control.close(); await opening.catch(() => {}); }
 });
 
 test('closing a channel during a valid preparation wait clears its timer and sends nothing more', async () => {
@@ -344,8 +411,8 @@ test('an older channel completion cannot publish over its successor', async () =
     requests.push(request);
     if (request.method === 'POST' && request.path === '/v1/playback/sessions') {
       posts++;
-      if (posts === 1) {await held; return {status: 201, headers: {}, body: completeChannelBody('ps_old')};}
-      return {status: 201, headers: {}, body: completeChannelBody('ps_new')};
+      if (posts === 1) {await held; return {status: 201, headers: {}, body: coldChannelBody('ps_old')};}
+      return {status: 201, headers: {}, body: coldChannelBody('ps_new')};
     }
     return {status: 204, headers: {}};
   }};
@@ -376,33 +443,36 @@ test('an older channel completion cannot publish over its successor', async () =
 
 test('the channel receipt issuer captures the actual original key and body before dispatch', async () => {
   const clock = preparationQueue(), originals: OriginalChannelStart[] = [], sent: V1Request[] = [];
-  let keys = 0, captured = 0, abandoned = 0, finished = 0;
+  let keys = 0, preparingOffers = 0, abandoned = 0, finished = 0, installed: unknown;
+  const accepted = coldChannelBody('ps_original');
   const control = new V1ChannelControl({key: () => {keys++; return 'channel-original-key-0001';}, timers: clock.timers, pollMs: 10_000,
     http: {send: async request => {
       if (request.method !== 'POST') return {status: 204, headers: {}};
       assert.equal(originals.length, 1, 'host custody exists before the first POST');
       sent.push(request);
-      return sent.length === 1 ? {status: 202, headers: {}, body: {...completeChannelBody('ps_original'), retryAfterMs: 500}}
-        : {status: 201, headers: {}, body: completeChannelBody('ps_original')};
+      return sent.length === 1 ? {status: 202, headers: {}, body: {retryAfterMs: 500}}
+        : {status: 201, headers: {}, body: accepted};
     }}});
   let opening: Promise<void> | undefined;
   try {
     opening = control.open(channel, {state: () => {}, error: message => assert.fail(message)}, {captureStart: original => {
       assert.equal(sent.length, 0); originals.push(original);
-      return {isCurrent: original.isCurrent, capturePreparing: offered => {
-        captured++; assert.equal(offered.channelId, original.body.channelId);
-        return () => {abandoned++;};
-      }, claimInstall: () => true, retireUninstalled: () => {assert.fail('the accepted original needs no retirement');}, finish: () => {finished++;}};
+      return {isCurrent: original.isCurrent, capturePreparing: () => {
+        preparingOffers++; return () => {abandoned++;};
+      }, claimInstall: session => {installed = session; return true;}, retireUninstalled: () => {assert.fail('the accepted original needs no retirement');}, finish: () => {finished++;}};
     }});
     await settle();
-    assert.equal(originals.length, 1); assert.equal(keys, 1); assert.equal(captured, 1); assert.equal(finished, 0);
+    // The channel 202 is retry-only: the receipt is never offered a session to capture.
+    assert.equal(originals.length, 1); assert.equal(keys, 1); assert.equal(preparingOffers, 0); assert.equal(finished, 0);
     const original = originals[0];
     assert.ok(Object.isFrozen(original)); assert.ok(Object.isFrozen(original.body));
     assert.deepEqual(original.body, {channelId: v1ChannelId(channel), channelGeneration: 'g1', state: 'playing'});
     assert.equal(original.key, 'channel-original-key-0001'); assert.equal(original.isCurrent(), true);
     clock.fire(); await opening;
-    assert.equal(sent.length, 2); assert.equal(keys, 1); assert.equal(captured, 1); assert.equal(abandoned, 0); assert.equal(finished, 1);
+    assert.equal(sent.length, 2); assert.equal(keys, 1); assert.equal(preparingOffers, 0); assert.equal(abandoned, 0); assert.equal(finished, 1);
+    assert.ok(Object.isFrozen(installed)); assert.deepEqual(installed, {id: 'ps_original', generation: 0});
     for (const request of sent) {
+      assert.equal(request, sent[0], 'the retry is the same original request');
       assert.deepEqual(request.body, original.body); assert.equal(request.headers?.['Idempotency-Key'], original.key);
       assert.equal(request.signal, original.signal);
     }
@@ -429,7 +499,8 @@ test('a late channel 201 uses the original host refusal without a bare stop fall
   const deletes: string[] = [], refused: Readonly<{id: string; generation: number}>[] = [];
   const control = new V1ChannelControl({key: () => 'channel-original-shared-key', pollMs: 10_000, http: {send: async request => {
     if (request.method === 'DELETE') {deletes.push(request.path); return {status: 204, headers: {}};}
-    const body = completeChannelBody('ps_shared');
+    const body = activeChannelBody('ps_shared');
+    if (request.method === 'PATCH') return {status: 200, headers: {}, body};
     if (++posts === 1) {enter(); await held;}
     return {status: 201, headers: {}, body};
   }}});
@@ -458,7 +529,7 @@ test('channel installation is claimed before the internal go-live PATCH, with th
   const events: string[] = [];
   let enter!: () => void, release!: () => void;
   const entered = new Promise<void>(resolve => {enter = resolve;}), held = new Promise<void>(resolve => {release = resolve;});
-  const body = completeChannelBody('ps_install', '/actual-channel-stream');
+  const body = activeChannelBody('ps_install');
   const receipt = {isCurrent: () => true, capturePreparing: () => undefined,
     claimInstall: (session: Readonly<{id: string; generation: number}>) => {
       assert.ok(Object.isFrozen(session)); assert.deepEqual(session, {id: 'ps_install', generation: 1});
@@ -486,7 +557,7 @@ for (const refusal of ['false', 'throw', 'retire'] as const) {
   test(`a channel install claim that ${refusal === 'retire' ? 'retires the original' : `returns ${refusal}`} cannot adopt or use bare cleanup`, async () => {
     const requests: V1Request[] = [], retired: Readonly<{id: string; generation: number}>[] = [];
     let claims = 0, finished = 0;
-    const body = completeChannelBody('ps_refused', '/actual-channel-stream');
+    const body = activeChannelBody('ps_refused');
     const control = new V1ChannelControl({key: () => 'channel-install-key-0002', pollMs: 60_000, http: {send: async request => {
       requests.push(request); return {status: 201, headers: {}, body};
     }}});
