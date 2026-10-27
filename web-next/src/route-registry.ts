@@ -9,7 +9,7 @@ export const webScreenPaths = Object.freeze({
   player: '/player', settings: '/settings', dashboard: '/dashboard', notifications: '/notifications',
   setup: '/setup', profiles: '/profiles', servers: '/servers', account: '/account', signIn: '/sign-in',
   together: '/watch-together', help: '/help', about: '/about',
-  person: '/person/$personId', read: '/read/$itemId',
+  person: '/person/$personId', read: '/read/$itemId', device: '/device',
 } as const);
 export type WebScreenId = keyof typeof webScreenPaths;
 export type WebScreenChrome = 'shell' | 'standalone' | 'player';
@@ -89,7 +89,7 @@ export function createWebScreenRegistry(modules: Readonly<Record<string, WebScre
     },
     missing: () => (Object.keys(webScreenPaths) as WebScreenId[]).filter(id => !definitions.has(id)),
     chrome: (id: WebScreenId): WebScreenChrome => definitions.get(id)?.chrome
-      ?? (['setup', 'signIn', 'profiles', 'servers', 'account', 'read'].includes(id) ? 'standalone' : id === 'player' ? 'player' : 'shell'),
+      ?? (['setup', 'signIn', 'profiles', 'servers', 'account', 'read', 'device'].includes(id) ? 'standalone' : id === 'player' ? 'player' : 'shell'),
     phoneChrome: (id: WebScreenId): 'shell' | 'standalone' => definitions.get(id)?.phoneChrome ?? 'shell',
   });
 }

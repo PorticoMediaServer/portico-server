@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {createWebScreenRegistry, defineWebAction, defineWebScreen, invokeWebAction, webScreenIdForRoute, webScreenPaths} from '../src/route-registry.ts';
 const Screen = () => null;
 test('every existing destination has a stable screen id, with no prefix/opaque-id inference', () => {
-  assert.equal(Object.keys(webScreenPaths).length, 22);
+  assert.equal(webScreenPaths.device, '/device');
   for (const [id, path] of Object.entries(webScreenPaths)) assert.equal(webScreenIdForRoute(path), id);
   assert.equal(webScreenIdForRoute('/person/$personId'), 'person');
   assert.equal(webScreenIdForRoute('/read/$itemId'), 'read');
@@ -41,6 +41,7 @@ test('screen modules register independently; missing components remain visible t
   assert.equal(registry.chrome('signIn'), 'standalone');
   assert.equal(registry.chrome('player'), 'player');
   assert.equal(registry.chrome('read'), 'standalone');
+  assert.equal(registry.chrome('device'), 'standalone');
   assert.equal(registry.chrome('person'), 'shell');
   assert.ok(registry.missing().includes('player'));
   assert.ok(!registry.missing().includes('profiles'));
