@@ -3,10 +3,24 @@ package identity
 import (
 	"context"
 	"errors"
+	"strings"
 	"testing"
 	"time"
 )
 
+// castScreen is one television in these tests. A device registration is only
+// accepted under the production installation grammar, so each screen carries
+// its own well-formed installation id rather than a short label.
+func castScreen(t *testing.T, label, name string) context.Context {
+	t.Helper()
+	return onDevice(t, "cast-"+label+"-"+strings.Repeat("0", 32), name)
+}
+
+// issueCastTarget issues a screen's session exactly as pairing does, then reads
+// back the genuine facts a reconnect depends on: its own device record bound to
+// the new family, the cast-target grant, a live unrevoked family horizon and no
+// ordinary refresh credential. A fixture that never published these fails here
+// instead of passing a later assertion for the wrong reason.
 func issueCastTarget(t *testing.T, s *Service, ctx context.Context, account, profile, derivedFrom string) Envelope {
 	t.Helper()
 	tx, err := s.db.Begin()
@@ -20,6 +34,27 @@ func issueCastTarget(t *testing.T, s *Service, ctx context.Context, account, pro
 	}
 	if err = tx.Commit(); err != nil {
 		t.Fatal(err)
+	}
+	var devices, bindings, grants, refreshes, revoked int
+	var horizon string
+	err = s.db.QueryRow(`SELECT
+		(SELECT count(*) FROM identity_devices WHERE id=? AND authority='local' AND account_id=?),
+		(SELECT count(*) FROM identity_device_families WHERE family_id=? AND device_id=?),
+		(SELECT count(*) FROM authorization_family_grants WHERE family_id=? AND grant_kind=?),
+		(SELECT count(*) FROM identity_refresh_credentials WHERE family_id=?),
+		COALESCE((SELECT revoked FROM authorization_session_families WHERE id=?),-1),
+		COALESCE((SELECT authorization_horizon FROM authorization_session_families WHERE id=?),'')`,
+		out.DeviceID, account, out.SessionFamilyID, out.DeviceID,
+		out.SessionFamilyID, GrantCastTarget, out.SessionFamilyID, out.SessionFamilyID, out.SessionFamilyID).
+		Scan(&devices, &bindings, &grants, &refreshes, &revoked, &horizon)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if devices != 1 || bindings != 1 || grants != 1 || refreshes != 0 || revoked != 0 {
+		t.Fatalf("cast target published devices=%d bindings=%d grants=%d refreshes=%d revoked=%d", devices, bindings, grants, refreshes, revoked)
+	}
+	if live, err := time.Parse(time.RFC3339, horizon); err != nil || !live.After(time.Now()) {
+		t.Fatalf("cast target horizon %q: %v", horizon, err)
 	}
 	return out
 }
@@ -35,10 +70,10 @@ func TestACastTargetSessionIsAMembersAndOnlyForPlayback(t *testing.T) {
 		t.Fatalf("pairing: %+v %v", pairing, err)
 	}
 	// A member's screen is not held by the approval rule: the paired device vouches for it.
-	screenCtx := onDevice(t, "cast-0000000000000000000000000000000000000001", "Living room TV")
+	screenCtx := castScreen(t, "member-living-room", "Living room TV")
 	member := issueCastTarget(t, s, screenCtx, "linked", "linked-profile", pairing.Session.SessionFamilyID)
 	// The owner's screen is a member's too.
-	ownerScreen := issueCastTarget(t, s, onDevice(t, "cast-0000000000000000000000000000000000000002", "Den TV"), owner.Account.ID, owner.Account.PrimaryProfileID, "")
+	ownerScreen := issueCastTarget(t, s, castScreen(t, "owner-den", "Den TV"), owner.Account.ID, owner.Account.PrimaryProfileID, "")
 	if ownerScreen.Viewer.Role != TierMember || member.Viewer.Role != TierMember || ownerScreen.RefreshToken != "" {
 		t.Fatalf("issued: owner's screen role=%q refresh=%q; member's screen role=%q", ownerScreen.Viewer.Role, ownerScreen.RefreshToken, member.Viewer.Role)
 	}
@@ -102,9 +137,12 @@ func TestACastTargetSessionIsAMembersAndOnlyForPlayback(t *testing.T) {
 func TestCastTargetParentAllowsOnlyAccessExpiry(t *testing.T) {
 	ctx := context.Background()
 	s, db, owner := directFixture(t)
-	screen := issueCastTarget(t, s, onDevice(t, "cast-parent-test-1", "TV"), owner.Account.ID, owner.Account.PrimaryProfileID, owner.Session.SessionFamilyID)
+	screen := issueCastTarget(t, s, castScreen(t, "parent-test", "TV"), owner.Account.ID, owner.Account.PrimaryProfileID, owner.Session.SessionFamilyID)
 	expired := time.Now().Add(-time.Minute).UTC().Format(time.RFC3339)
-	if _, err := db.Exec(`UPDATE authorization_family_tokens SET expires_at=? WHERE family_id=?; UPDATE authorization_access SET expires_at=? WHERE hash=?`, expired, screen.SessionFamilyID, expired, Digest(screen.AccessToken)); err != nil {
+	// authorization_access is a read projection of the family token, so the
+	// exact access token's own row is what expires; the family, its horizon,
+	// device credential and grant stay live for a device-token reconnect.
+	if _, err := db.Exec(`UPDATE authorization_family_tokens SET expires_at=? WHERE token_hash=?`, expired, Digest(screen.AccessToken)); err != nil {
 		t.Fatal(err)
 	}
 	expected := Principal{Viewer: screen.Viewer, Epoch: 1, Grant: GrantCastTarget}
@@ -131,7 +169,7 @@ func TestCastTargetParentAllowsOnlyAccessExpiry(t *testing.T) {
 func TestCastTargetParentRefusesChangedFactsAndRetiredToken(t *testing.T) {
 	ctx := context.Background()
 	s, db, owner := directFixture(t)
-	screen := issueCastTarget(t, s, onDevice(t, "cast-parent-fence-1", "TV"), owner.Account.ID, owner.Account.PrimaryProfileID, owner.Session.SessionFamilyID)
+	screen := issueCastTarget(t, s, castScreen(t, "parent-fence", "TV"), owner.Account.ID, owner.Account.PrimaryProfileID, owner.Session.SessionFamilyID)
 	expected := Principal{Viewer: screen.Viewer, Epoch: 1, Grant: GrantCastTarget}
 	tx, err := db.BeginTx(ctx, nil)
 	if err != nil {
@@ -172,7 +210,7 @@ func TestCastTargetLocalParentHorizonDoesNotExtend(t *testing.T) {
 	if _, err := db.Exec(`UPDATE authorization_session_families SET authorization_horizon=? WHERE id=?`, horizon, owner.Session.SessionFamilyID); err != nil {
 		t.Fatal(err)
 	}
-	child := issueCastTarget(t, s, onDevice(t, "cast-local-horizon-1", "TV"), owner.Account.ID, owner.Account.PrimaryProfileID, owner.Session.SessionFamilyID)
+	child := issueCastTarget(t, s, castScreen(t, "local-horizon", "TV"), owner.Account.ID, owner.Account.PrimaryProfileID, owner.Session.SessionFamilyID)
 	var childHorizon string
 	if err := db.QueryRow(`SELECT authorization_horizon FROM authorization_session_families WHERE id=?`, child.SessionFamilyID).Scan(&childHorizon); err != nil {
 		t.Fatal(err)

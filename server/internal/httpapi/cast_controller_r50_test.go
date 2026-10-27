@@ -40,8 +40,10 @@ func TestReturningCastControllerRequiresOriginalAndCurrentBothFamilies(t *testin
 		t.Fatalf("invented ticket: %d", w.Code)
 	}
 	// A replacement receiver family/generation cannot recover the original proof.
+	// authorization_access derives its expiry from the family token row, so
+	// expiring that exact token is the whole fact; the projection is never written.
 	expired := time.Now().Add(-time.Minute).UTC().Format(time.RFC3339)
-	if _, err := f.db.Exec(`UPDATE authorization_family_tokens SET expires_at=? WHERE token_hash=?; UPDATE authorization_access SET expires_at=? WHERE hash=?`, expired, identity.Digest(target.Session.AccessToken), expired, identity.Digest(target.Session.AccessToken)); err != nil {
+	if _, err := f.db.Exec(`UPDATE authorization_family_tokens SET expires_at=? WHERE token_hash=?`, expired, identity.Digest(target.Session.AccessToken)); err != nil {
 		t.Fatal(err)
 	}
 	var renewed social.CastReceiverSession
@@ -81,7 +83,7 @@ func TestCastRotationDoesNotCarryExpiredSender(t *testing.T) {
 	var bound social.CastControllerResponse
 	f.decode(f.as(target.Session.AccessToken, "POST", "/v1/cast/controllers/register", social.CastControllerRegister{BootstrapID: boot.Bootstrap.ID, ControlToken: proof}), 200, &bound)
 	expired := time.Now().Add(-time.Minute).UTC().Format(time.RFC3339)
-	if _, err := f.db.Exec(`UPDATE authorization_family_tokens SET expires_at=? WHERE token_hash=?; UPDATE authorization_access SET expires_at=? WHERE hash=?`, expired, identity.Digest(f.token), expired, identity.Digest(f.token)); err != nil {
+	if _, err := f.db.Exec(`UPDATE authorization_family_tokens SET expires_at=? WHERE token_hash=?`, expired, identity.Digest(f.token)); err != nil {
 		t.Fatal(err)
 	}
 	var renewed social.CastReceiverSession

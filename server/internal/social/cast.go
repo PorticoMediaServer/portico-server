@@ -440,6 +440,13 @@ func (s *Store) issueCast(ctx context.Context, tx *sql.Tx, id castIdentity, devi
 		}
 		expected := identity.Principal{Viewer: identity.Viewer{ServerID: s.Identity.ID(), Authority: id.authority, AccountID: id.account, ProfileID: id.profile, Role: identity.TierMember}, Epoch: id.epoch, Grant: identity.GrantCastTarget}
 		parent, err := s.Identity.CastTargetParentTx(ctx, tx, priorFamily, expected)
+		if errors.Is(err, identity.ErrUnauthorized) || errors.Is(err, identity.ErrForbidden) {
+			// The device credential was proved; what ended is the pairing
+			// authority behind it. That is a refusal of this receiver, not a
+			// missing credential, so it answers as redeem does for the same
+			// ended pairing rather than borrowing an unauthenticated 401.
+			return out, credentialFault("cast_access_ended", 403, "This pairing authority has ended.")
+		}
 		if err != nil {
 			return out, err
 		}
