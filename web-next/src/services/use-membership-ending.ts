@@ -7,7 +7,7 @@ import {accountIdentity, sameAccount, type AccountIdentity, type ServicesAccount
  * the reservation without marking an abandoned fetch as shown. */
 export function useMembershipEnding(account: ServicesAccount, identity: AccountIdentity, notice: MembershipEndingNotice | undefined, sourceCurrent: () => boolean) {
   const event = notice && membershipEndingIdentity(notice);
-  const opening = useMemo(() => ({notice, event, shownHere: false}), [notice, event, account, identity.accountId, identity.familyId, sourceCurrent]);
+  const opening = useMemo(() => { /* Preserve the original ownership/invalidation keys. */ void identity.familyId; void sourceCurrent; void account; void identity.accountId; return ({notice, event, shownHere: false}); }, [notice, event, account, identity.accountId, identity.familyId, sourceCurrent]);
   type Flight = {live: boolean; abort: AbortController; confirm?: (shown: boolean) => void};
   const mount = useRef<HTMLDivElement | null>(null);
   const active = useRef<Flight | null>(null), [visible, setVisible] = useState<{opening: typeof opening; flight: Flight}>();

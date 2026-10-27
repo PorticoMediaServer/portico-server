@@ -55,7 +55,7 @@ function TriageDialog({report, source, onClose}: Readonly<{report: FeedbackRepor
   const [status, setStatus] = useState<FeedbackStatus>(report.status), [reply, setReply] = useState(''), [busy, setBusy] = useState(false), [saved, setSaved] = useState(false);
   const [loaded, setLoaded] = useState<FeedbackReport>(report), cancel = useRef<HTMLButtonElement>(null);
   const [error, setError] = useState(false);
-  const life = useMemo<{controller?: AbortController; saving?: AbortController}>(() => ({}), [source, report]);
+  const life = useMemo<{controller?: AbortController; saving?: AbortController}>(() => { /* Preserve the original ownership/invalidation keys. */ void source; void report; return ({}); }, [source, report]);
   useLayoutEffect(() => {const controller = new AbortController();life.controller = controller;return () => {controller.abort();if (life.controller === controller) life.controller = undefined;};}, [life]);
   const close = () => {life.controller?.abort();life.controller = undefined;onClose();};
   useEffect(() => {

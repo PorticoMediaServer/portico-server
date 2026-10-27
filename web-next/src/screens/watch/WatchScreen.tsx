@@ -302,7 +302,7 @@ export function WatchScreen({binding, snapshot, expanded, onCollapse, onControls
     if (!gestureGate.current) videoGesture?.port?.cancel();});
   useLayoutEffect(() => videoGesture?.admit(() => gestureGate.current), [videoGesture?.admit, binding, sourceKey]);
 
-  const promptSource = useMemo<Omit<PromptFocusHost, 'source' | 'seekPresent' | 'focusAllowed' | 'controlsVisible'> | undefined>(() => {
+  const promptSource = useMemo<Omit<PromptFocusHost, 'source' | 'seekPresent' | 'focusAllowed' | 'controlsVisible'> | undefined>(() => { /* Preserve the original ownership/invalidation keys. */ void sourceKey;
     if (!fence) return;
     const original = {binding, authority: snapshot.authority, fence, intentId: snapshot.playback.intentId, run: snapshot.playback.playbackRun};
     return {root, seek: promptSeek, current: () => {

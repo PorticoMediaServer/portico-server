@@ -38,7 +38,7 @@ export function WindowedGrid<T>({collection, renderItem, renderPlaceholder, labe
   const initialPosition = useRef<WindowedCollection<T> | undefined>(undefined);
   const root = useRef<HTMLDivElement>(null), pendingFocus = useRef<number | null>(null), [viewport, setViewport] = useState({width: 0, height: 0, top: 0});
   const [focused, setFocused] = useState<string | null>(null), motion = useLayoutMotion(reducedMotion);
-  const focusOwner = useMemo(() => new RemovalFocusOwner(), [collection, paintScope]);
+  const focusOwner = useMemo(() => { /* Preserve the original ownership/invalidation keys. */ void collection; void paintScope; return new RemovalFocusOwner(); }, [collection, paintScope]);
   useLayoutEffect(() => {pendingFocus.current = null;setFocused(null);}, [focusOwner]);
   const snapshot = useSyncExternalStore(collection.subscribe, collection.getSnapshot, collection.getSnapshot);
   const total = snapshot.total ?? collection.pageSize, columns = gridColumns(viewport.width, cardWidth, gap), pitch = rowHeight + rowGap;
@@ -88,7 +88,7 @@ export function WindowedGrid<T>({collection, renderItem, renderPlaceholder, labe
     const target = slot.querySelector<HTMLElement>('[data-layout-primary],button:not(:disabled),a[href],[tabindex="0"]') ?? slot;
     target.focus({preventScroll: true}); pendingFocus.current = null;
   }, [range.renderFirst, range.renderLast, pages, viewport]);
-  const {items, keys} = useMemo(() => {
+  const {items, keys} = useMemo(() => { /* Preserve the original ownership/invalidation keys. */ void pages; void snapshot.generation;
     const items: PaintSlot[] = [], keys = new Set<string>();
     for (let index = range.renderFirst; index <= range.renderLast; index++) {
       const slot = collection.slotAt(index), row = Math.floor(index / columns), column = index % columns;

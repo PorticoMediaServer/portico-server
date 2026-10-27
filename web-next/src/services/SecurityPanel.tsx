@@ -70,10 +70,10 @@ export function SecurityPanel({account, api, identity, username, identityTransac
     const next = await api.security(signal);
     if (!signal.aborted) { setState(next); setDisconnecting(undefined); }
   });
-  const taskCurrent = useMemo(() => () => {
+  const taskCurrent = useMemo(() => { /* Preserve the original ownership/invalidation keys. */ void scope; return () => {
     const session = account.service.getSnapshot().session;
     return !!life.current && !life.current.signal.aborted && !!session && sameAccount(accountIdentity(session), identity);
-  }, [account, scope, identity]);
+  }; }, [account, scope, identity]);
   const credentialAvailable = !retained && state && (state.hasPassword || providerReady && state.providers.some(v => v.revision && offered.includes(v.provider)));
   const onlyProvider = state && !state.hasPassword && state.providers.length === 1;
   return <>{parentError || error ? <HostedError error={parentError ?? error} /> : null}
