@@ -20,7 +20,7 @@ async function fixture({strict = false} = {}) {
   let binding = {home: {effects: {reportError: error => errors.push(error)}}};
   const makeLocation = (path = '/read/book', search = {sourceId: source}) => ({pathname: path, search});
   let location = makeLocation();
-  const router = {state: {location}, history: {location: {state: {__TSR_index: 0}}, back: () => calls.push({back: true})}, navigate: target => {calls.push(target); onNavigate?.(); return Promise.resolve();}};
+  const router = {state: {location}, history: {location: {state: {__TSR_index: 0}}, back: () => calls.push({back: true})}, navigate: target => {calls.push(target); return onNavigate ? onNavigate() : Promise.resolve();}};
   const react = {...h.react};
   if (strict) react.useLayoutEffect = (effect, deps) => h.react.useLayoutEffect(() => {let cleanup = effect(); cleanup?.(); cleanup = effect(); replayers.push(() => {cleanup?.(); cleanup = effect();}); return () => cleanup?.();}, deps);
   const component = await componentModule(new URL('../../src/screens/read/ReadHost.tsx', import.meta.url), {
@@ -79,4 +79,33 @@ test('same matched item on the wrong pathname is refused; encoded Reader path is
   f.change('book', 'source', '/not-the-reader', true); old(); f.close()(); assert.deepEqual(f.calls, []);
   f.change('book space/é', 'source'); f.close()();
   assert.deepEqual(f.calls, [{to: '/item/$itemId', params: {itemId: 'book space/é'}, replace: true}]);
+});
+
+
+function deferred() {
+  let resolve, reject;
+  const promise = new Promise((accept, fail) => {resolve = accept; reject = fail;});
+  return {promise, resolve, reject};
+}
+
+test('rejection, no-commit resolution and synchronous throw keep the Reader and allow explicit retry', async t => {
+  installHistory(t); const f = await fixture(), pending = deferred(); f.setNavigate(() => pending.promise);
+  const close = f.close(); close(); close(); assert.equal(f.calls.length, 1);
+  assert.equal(one(f.settle(), 'ReadEntry').props.itemId, 'book');
+  const failure = new Error('refused'); pending.reject(failure); await Promise.resolve();
+  assert.deepEqual(f.errors, [failure]); assert.equal(one(f.settle(), 'ReadEntry').props.itemId, 'book');
+  const noCommit = deferred(); f.setNavigate(() => noCommit.promise); f.close()(); assert.equal(f.calls.length, 2);
+  noCommit.resolve(); await Promise.resolve(); assert.equal(one(f.settle(), 'ReadEntry').props.itemId, 'book');
+  f.setNavigate(() => {throw new Error('sync');}); f.close()(); assert.equal(f.calls.length, 3); assert.equal(f.errors.length, 2);
+  f.setNavigate(undefined); f.close()(); assert.equal(f.calls.length, 4);
+});
+
+test('actual committed leave retires retained book; old rejection cannot alter a pending successor', async t => {
+  installHistory(t); const f = await fixture(), oldPending = deferred(); f.setNavigate(() => oldPending.promise); f.close()();
+  f.change('successor'); const next = deferred(); f.setNavigate(() => next.promise); const nextClose = f.close(); nextClose();
+  oldPending.reject(new Error('old')); await Promise.resolve(); assert.deepEqual(f.errors, []);
+  nextClose(); assert.equal(f.calls.length, 2, 'old settlement cannot unclaim successor');
+  assert.equal(one(f.settle(), 'ReadEntry').props.itemId, 'successor');
+  f.change('successor', 'source', '/item/successor', false); assert.equal(f.settle().some(node => node.type === 'ReadEntry'), false);
+  next.resolve(); await Promise.resolve(); assert.equal(f.settle().some(node => node.type === 'ReadEntry'), false);
 });
