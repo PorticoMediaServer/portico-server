@@ -52,6 +52,7 @@ test('controller: quality steps, a fixed quality and a player failure re-plan th
   const server = new FakePlaybackServer();
   const p = player();
   const controller = new PlaybackSessionController({http: fakeHttp(server), player: p});
+  try {
   await controller.start({itemId: 'movie-1'}, {quality: {mode: 'automatic'}, throughputKbps: 30_000});
   const id = controller.getSnapshot().session!.id;
   assert.equal(controller.getSnapshot().session!.presentation.engine, 'native');
@@ -77,17 +78,20 @@ test('controller: quality steps, a fixed quality and a player failure re-plan th
   await assert.rejects(controller.playerFailed('decode_error'), (e: unknown) => e instanceof PlaybackApiError && e.code === 'unsupported_media', 'nothing left to try is said plainly');
   assert.equal(controller.getSnapshot().session!.id, id, 'and the session is left as it is');
   await settle();
+  } finally { controller.dispose(); p.dispose(); }
 });
 
 test('controller: a quality the measured connection cannot carry is refused and the session plays on', async () => {
   const server = new FakePlaybackServer({neededKbps: 20_000});
   const p = player();
   const controller = new PlaybackSessionController({http: fakeHttp(server), player: p});
+  try {
   await controller.start({itemId: 'movie-1'}, {quality: {mode: 'fixed', id: '720p-high'}});
   const before = controller.getSnapshot().session!;
   await assert.rejects(controller.setQuality({mode: 'original'}, 5000), (e: unknown) => e instanceof PlaybackApiError && e.code === 'connection_too_slow');
   assert.equal(controller.getSnapshot().session!.presentation.generation, before.presentation.generation);
   assert.equal(p.loads.length, 1);
+  } finally { controller.dispose(); p.dispose(); }
 });
 
 test('bridge: a player failure re-plans the session in place and tells the session’s owner; a stale revision is retried silently', async () => {
