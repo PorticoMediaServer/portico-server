@@ -14,7 +14,11 @@ export function FeedbackHost() {
   const captured = useProtectedWebScreenContext();
   const [published, publish] = useState<FeedbackLease>(), generation = useRef(0);
   const context = captured?.context, session = context?.session(), viewer = session?.viewer;
+  // Publish only at commit, then sample once for this setup's original lifetime.
+  const setupPorts = useRef({session});
+  useLayoutEffect(() => {setupPorts.current = {session};});
   useLayoutEffect(() => {
+    const {session} = setupPorts.current;
     if (!context?.isCurrent() || !session) return;
     const original: FeedbackSession = {sessionFamilyId: session.sessionFamilyId, viewer: {...session.viewer}};
     let live = true;

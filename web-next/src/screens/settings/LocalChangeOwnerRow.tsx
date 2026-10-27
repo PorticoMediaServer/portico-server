@@ -47,7 +47,11 @@ export function LocalChangeOwnerRow({source, isCurrent, onError}: {
     held.port = undefined;
     owned?.close();
   };
+  // Publish only at commit, then sample once for this setup's original lifetime.
+  const setupPorts = useRef({onError});
+  useLayoutEffect(() => {setupPorts.current = {onError};});
   useLayoutEffect(() => {
+    const {onError} = setupPorts.current;
     const fresh: Admission = {source, isCurrent, onError, live: true};
     admissionRef.current = fresh;
     setAdmission(fresh);

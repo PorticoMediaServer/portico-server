@@ -106,7 +106,11 @@ function InvitationTable({view, invitations, libraries, authority, version, open
       if (view.refuseRead(ticket)) {setBusy(before => before === ticket ? undefined : before);failure(value, ticket.scope);}
     });
   };
+  // Publish only at commit, then sample once for this setup's original lifetime.
+  const setupPorts = useRef({read});
+  useLayoutEffect(() => {setupPorts.current = {read};});
   useLayoutEffect(() => {
+    const {read} = setupPorts.current;
     const owned = view.replace(query);
     setScope(owned);setResident(undefined);setBusy(owned);setError(undefined);setConfirming(undefined);setRunning(undefined);
     const timer = setTimeout(() => {

@@ -25,7 +25,11 @@ export function SkippedFiles({libraryId, api, service, isCurrent, label}: Readon
     } catch { if (current(capture)) setFailed(true); }
     finally { if (current(capture)) {running.current = false; setBusy(false);} }
   };
+  // Publish only at commit, then sample once for this setup's original lifetime.
+  const setupPorts = useRef({current, load});
+  useEffect(() => {setupPorts.current = {current, load};});
   useEffect(() => {
+    const {current, load} = setupPorts.current;
     if (!open) return;
     const capture = new AbortController(); lifetime.current = capture; running.current = false; job.current = undefined;
     setPage(undefined); setLibraryName(''); setFailed(false); setBusy(true);

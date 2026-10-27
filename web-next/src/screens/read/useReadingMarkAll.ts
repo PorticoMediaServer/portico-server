@@ -20,7 +20,11 @@ export function useReadingMarkAll(context: ScreenContext, libraryId: string, rou
   const publish = (next: View) => {shown.current = next; setView(next);};
   const current = (held: Opening) => held.live && opening.current === held && held.life.current()
     && inputs.current.context === held.context && inputs.current.libraryId === held.libraryId && inputs.current.routeKey === held.routeKey;
+  // Publish only at commit, then sample once for this setup's original lifetime.
+  const setupPorts = useRef({onCommitted});
+  useLayoutEffect(() => {setupPorts.current = {onCommitted};});
   useLayoutEffect(() => {
+    const {onCommitted} = setupPorts.current;
     const viewer = context.identity?.viewer, readPath = readingMarkAllPath('GET', libraryId), writePath = readingMarkAllPath('POST', libraryId);
     if (!viewer || !['local', 'hosted'].includes(viewer.authority) || !viewer.accountId || !viewer.profileId
       || !['owner', 'admin', 'member'].includes(viewer.role) || !readPath || !writePath) {publish({}); return;}
