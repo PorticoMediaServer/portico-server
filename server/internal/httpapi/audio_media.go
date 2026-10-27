@@ -207,17 +207,18 @@ func (d Dependencies) audioDecodeRoutes(mux *http.ServeMux) {
 		w.Header().Set("Cache-Control", "private, no-store")
 		body := withRollingDeadline(w)
 		defer body.release()
-		var sink io.Writer = body
+		authority := newStreamAuthority(func() error {
+			_, principal, currentItem, e := d.Playback.ResolveDecodeGrantContext(r.Context(), grant)
+			if e == nil {
+				e = d.itemAccess(r.Context(), principal, currentItem)
+			}
+			return e
+		})
+		var sink io.Writer = &authorityWriter{w: body, ctx: r.Context(), check: authority.check}
 		if private {
 			retire := d.Playback.RetainPrefetch(session)
 			defer retire()
-			sink = &budgetWriter{w: body, ctx: r.Context(), check: newStreamAuthority(func() error {
-				_, principal, currentItem, e := d.Playback.ResolveDecodeGrantContext(r.Context(), grant)
-				if e == nil {
-					e = d.itemAccess(r.Context(), principal, currentItem)
-				}
-				return e
-			}).check, take: func(n int64) int64 { return d.Playback.PrefetchTake(session, n, plan.PrefetchBytes) }, refund: func(n int64) { d.Playback.PrefetchRefund(session, n) }}
+			sink = &budgetWriter{w: body, ctx: r.Context(), check: authority.check, take: func(n int64) int64 { return d.Playback.PrefetchTake(session, n, plan.PrefetchBytes) }, refund: func(n int64) { d.Playback.PrefetchRefund(session, n) }}
 		}
 		if err := d.AudioMedia.ConvertAudio(r.Context(), item, aid, spec, sink); err != nil && r.Context().Err() == nil {
 			// Headers are gone; the stream just ends early and the client falls back (§18.3).
