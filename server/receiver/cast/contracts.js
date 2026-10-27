@@ -183351,6 +183351,19 @@ var PorticoCastContracts = (function(exports) {
 		const [stepNumerator, stepDenominator] = decimalRatio(step);
 		return numerator * stepDenominator % (denominator * stepNumerator) === 0n;
 	}
+	/** Counts Unicode code points exactly as Array.from(input).length does, without allocating the array. */
+	function codePointLength(input) {
+		let length = 0;
+		for (let index = 0; index < input.length; index++) {
+			const code = input.charCodeAt(index);
+			if (code >= 55296 && code <= 56319 && index + 1 < input.length) {
+				const next = input.charCodeAt(index + 1);
+				if (next >= 56320 && next <= 57343) index++;
+			}
+			length++;
+		}
+		return length;
+	}
 	/** Objects accept additive fields unless explicitly closed. Optional nulls are absent unless explicitly allowed by the field schema. */
 	function value(schema, input, path) {
 		const reject = () => {
@@ -183360,8 +183373,11 @@ var PorticoCastContracts = (function(exports) {
 		if ("const" in schema && input !== schema.const) return reject();
 		if (schema.enum && !schema.enum.some((entry) => entry === input)) return reject();
 		if (typeof input === "string") {
-			const length = Array.from(input).length;
-			if (schema.minLength !== void 0 && length < schema.minLength || schema.maxLength !== void 0 && length > schema.maxLength || schema.pattern !== void 0 && !new RegExp(schema.pattern, "u").test(input)) return reject();
+			if (schema.minLength !== void 0 || schema.maxLength !== void 0) {
+				const length = codePointLength(input);
+				if (schema.minLength !== void 0 && length < schema.minLength || schema.maxLength !== void 0 && length > schema.maxLength) return reject();
+			}
+			if (schema.pattern !== void 0 && !new RegExp(schema.pattern, "u").test(input)) return reject();
 		}
 		if (typeof input === "number" && (schema.minimum !== void 0 && input < schema.minimum || schema.maximum !== void 0 && input > schema.maximum)) return reject();
 		if (typeof input === "number" && schema.multipleOf !== void 0 && !isMultipleOf(input, schema.multipleOf)) return reject();

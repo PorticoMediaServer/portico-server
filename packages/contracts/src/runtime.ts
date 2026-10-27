@@ -24,6 +24,19 @@ function isMultipleOf(input: number, step: number): boolean {
   const [stepNumerator, stepDenominator] = decimalRatio(step);
   return numerator * stepDenominator % (denominator * stepNumerator) === 0n;
 }
+/** Counts Unicode code points exactly as Array.from(input).length does, without allocating the array. */
+function codePointLength(input: string): number {
+  let length = 0;
+  for (let index = 0; index < input.length; index++) {
+    const code = input.charCodeAt(index);
+    if (code >= 0xd800 && code <= 0xdbff && index + 1 < input.length) {
+      const next = input.charCodeAt(index + 1);
+      if (next >= 0xdc00 && next <= 0xdfff) index++;
+    }
+    length++;
+  }
+  return length;
+}
 /** Objects accept additive fields unless explicitly closed. Optional nulls are absent unless explicitly allowed by the field schema. */
 function value(schema: Schema, input: unknown, path: string): unknown {
   const reject = (): never => { throw new Error(`Invalid contract value at ${path}`); };
@@ -31,8 +44,11 @@ function value(schema: Schema, input: unknown, path: string): unknown {
   if ('const' in schema && input !== schema.const) return reject();
   if (schema.enum && !schema.enum.some(entry => entry === input)) return reject();
   if (typeof input === 'string') {
-    const length = Array.from(input).length;
-    if (schema.minLength !== undefined && length < schema.minLength || schema.maxLength !== undefined && length > schema.maxLength || schema.pattern !== undefined && !new RegExp(schema.pattern, 'u').test(input)) return reject();
+    if (schema.minLength !== undefined || schema.maxLength !== undefined) {
+      const length = codePointLength(input);
+      if (schema.minLength !== undefined && length < schema.minLength || schema.maxLength !== undefined && length > schema.maxLength) return reject();
+    }
+    if (schema.pattern !== undefined && !new RegExp(schema.pattern, 'u').test(input)) return reject();
   }
   if (typeof input === 'number' && (schema.minimum !== undefined && input < schema.minimum || schema.maximum !== undefined && input > schema.maximum)) return reject();
   if (typeof input === 'number' && schema.multipleOf !== undefined && !isMultipleOf(input, schema.multipleOf)) return reject();
