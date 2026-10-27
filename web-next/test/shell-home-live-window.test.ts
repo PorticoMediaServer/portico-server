@@ -14,7 +14,10 @@ import type {ShellAssemblyContext} from '../src/shell/bootstrap';
 const key = '__porticoHomeLiveWindowRegression';
 const bridge: any = {frame: null, quiet: null, width: 1440, router: {state: {location: {pathname: '/', href: '/'}}, subscribe: () => () => {}, navigate() {}}};
 (globalThis as any)[key] = bridge;
-const hooks = 'data:text/javascript,' + encodeURIComponent(`const b=globalThis.${key};${['useRef','useMemo','useCallback','useState','useEffect','useSyncExternalStore'].map(name => `export const ${name}=(...args)=>b.frame.${name}(...args);`).join('')}`);
+const reactModule = import.meta.resolve('react');
+// Bind the real React namespace (Fragment, elements, every other export) and override only the
+// lifecycle hooks this frame owns, so the actual screen's effect semantics are the frame's.
+const hooks = 'data:text/javascript,' + encodeURIComponent(`import * as real from ${JSON.stringify(reactModule)};export * from ${JSON.stringify(reactModule)};const b=globalThis.${key};${['useRef','useMemo','useCallback','useState','useEffect','useSyncExternalStore'].map(name => `export const ${name}=(...args)=>b.frame.${name}(...args);`).join('')}`);
 const loader = registerHooks({load(url, context, next) {
   const module = (source: string) => ({format: 'module' as const, source, shortCircuit: true});
   if (url.endsWith('.module.css')) return module('export default new Proxy({}, {get:(_,key)=>String(key)});');
