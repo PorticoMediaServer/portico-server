@@ -158,10 +158,31 @@ export class ServicesAuthFlow {
       if (!signal.aborted) { this.ids.clear('registration'); this.publish({mode: 'verify', registration: value, resends: 0}); }
     });
   }
-  verify(code: string) { return this.run(async signal => { const registration = this.state.registration; if (registration) await this.authenticate(inner => this.account.client.verifyRegistration(registration.registrationId, {code: code.trim()}, AbortSignal.any([signal, inner])), true); }); }
+  verify(code: string, username?: string, displayName?: string) {
+    return this.run(async signal => {
+      const registration = this.state.registration;
+      if (this.state.mode !== 'verify' || !registration) return;
+      const current = () => !this.disposed && !signal.aborted && this.state.mode === 'verify' && this.state.registration === registration;
+      if (username !== undefined && (!registration.contactVerified || !(Date.parse(registration.expiresAt) > Date.now()))) return;
+      try {
+        await this.account.service.authenticateIfSignedOut(inner => this.account.client.verifyRegistration(registration.registrationId,
+          {code: code.trim(), ...(username !== undefined ? {username: username.trim().toLowerCase(), displayName: displayName?.trim()} : {})}, AbortSignal.any([signal, inner])), {}, current);
+      } catch (error) {
+        if (error instanceof ApiError && error.status === 409 && error.code === 'username_unavailable' && current()) {
+          const fresh = await this.account.client.registration(registration.registrationId, signal);
+          if (!current()) return;
+          if (!fresh || fresh.registrationId !== registration.registrationId || fresh.revision !== registration.revision || fresh.expiresAt !== registration.expiresAt || fresh.maskedAddress !== registration.maskedAddress || fresh.status === 'completed' || !fresh.contactVerified || !(Date.parse(fresh.expiresAt) > Date.now()))
+            throw new CodedError('account_changed', 'The registration changed.');
+          this.publish({registration: fresh});
+        }
+        throw error;
+      }
+      if (current()) { this.ids.clear(); this.signedIn(true); }
+    });
+  }
   resend() {
     return this.run(async signal => {
-      const registration = this.state.registration; if (!registration || this.state.resends >= 5) return;
+      const registration = this.state.registration; if (!registration || registration.contactVerified || this.state.resends >= 5) return;
       const value = await this.account.client.resendRegistration(registration.registrationId, await this.ids.for('resend', {id: registration.registrationId, count: this.state.resends}), signal);
       if (!signal.aborted) this.publish({registration: value, resends: this.state.resends + 1});
     });
