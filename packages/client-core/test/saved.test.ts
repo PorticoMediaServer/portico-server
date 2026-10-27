@@ -376,3 +376,109 @@ test('Reading Saved facts survive without AV progress or playback',async()=>{
  assert.equal(entry.posterUrl,'/art/cover');assert.equal(entry.navigation.view,'item');assert.equal('progressSeconds' in entry,false);assert.equal('playback' in entry,false);
  s.dispose();
 });
+
+test('reversed quiet Saved replies keep the later accepted answer',async()=>{
+ const reads:ReturnType<typeof deferred>[]=[];let initial=true;
+ const s=setup(async p=>{if(isContent(p)){if(initial){initial=false;return projection('watchlist',0,[media('a')]);}const read=deferred();reads.push(read);return read.promise;}throw new Error(p);});
+ await s.select({view:'watchlist'});
+ const older=s.revalidate(),newer=s.revalidate();
+ reads[1]!.resolve(projection('watchlist',3,[media('new')]));
+ await newer;
+ reads[0]!.resolve(projection('watchlist',1,[media('old')]));
+ await older;
+ assert.equal(s.getSnapshot().projection!.sections[0].entries[0]!.id,'new','a delayed older answer cannot replace the later one');
+ s.dispose();
+});
+
+test('a delayed failure from a superseded quiet Saved read leaves the successor shown',async()=>{
+ const reads:ReturnType<typeof deferred>[]=[];let initial=true;
+ const s=setup(async p=>{if(isContent(p)){if(initial){initial=false;return projection('watchlist',0,[media('a')]);}const read=deferred();reads.push(read);return read.promise;}throw new Error(p);});
+ await s.select({view:'watchlist'});
+ const older=s.revalidate(),newer=s.revalidate();
+ reads[1]!.resolve(projection('watchlist',2,[media('new')]));
+ await newer;
+ reads[0]!.resolve(Promise.reject(Object.assign(new Error('forbidden'),{status:403,code:'forbidden'})));
+ await older;
+ assert.equal(s.getSnapshot().phase,'ready');
+ assert.equal(s.getSnapshot().projection!.sections[0].entries[0]!.id,'new');
+ assert.equal(s.getSnapshot().error,null);
+ s.dispose();
+});
+
+test('a settle already pending cannot let its older Saved answer publish after a successor',async()=>{
+ const reads:ReturnType<typeof deferred>[]=[];let initial=true,release!:()=>void;
+ const s=setup(async p=>{if(isContent(p)){if(initial){initial=false;return projection('watchlist',0,[media('a')]);}const read=deferred();reads.push(read);return read.promise;}throw new Error(p);});
+ await s.select({view:'watchlist'});
+ const older=s.revalidate({settle:()=>new Promise<void>(resolve=>{release=resolve;})});
+ reads[0]!.resolve(projection('watchlist',1,[media('mid')]));
+ await tick();
+ const newer=s.revalidate();
+ reads[1]!.resolve(projection('watchlist',4,[media('new')]));
+ await newer;
+ release();await older;
+ assert.equal(s.getSnapshot().projection!.sections[0].entries[0]!.id,'new','the post-settle check rejects the older commit');
+ s.dispose();
+});
+
+test('an explicit refresh invalidates an older quiet Saved read',async()=>{
+ const reads:ReturnType<typeof deferred>[]=[];let initial=true;
+ const s=setup(async p=>{if(isContent(p)){if(initial){initial=false;return projection('watchlist',0,[media('a')]);}const read=deferred();reads.push(read);return read.promise;}throw new Error(p);});
+ await s.select({view:'watchlist'});
+ const quiet=s.revalidate();
+ const refreshed=s.refresh();
+ reads[1]!.resolve(projection('watchlist',5,[media('loaded')]));
+ await refreshed;
+ reads[0]!.resolve(projection('watchlist',1,[media('stale')]));
+ await quiet;
+ assert.equal(s.getSnapshot().projection!.sections[0].entries[0]!.id,'loaded');
+ s.dispose();
+});
+
+test('a retired post-mutation deep failure does not trigger recovery; a current one still does',async()=>{
+ const first=Array.from({length:41},(_,i)=>occurrence('e'+i));
+ async function run(superseded:boolean,code='stale_continuation',post=false){
+  let mode='first',deepReads:ReturnType<typeof deferred>[]=[],refreshes=0;
+  const s=setup(async (p:string,method?:string,body?:any)=>{
+   if(method==='PATCH'&&p.includes('/v1/playlists/playlist'))return receipt({operationId:body.operationId},2);
+   if(p.includes('/content')){
+    const cursor=new URL(p,'https://x').searchParams.get('cursor');
+    if(mode==='first')return cursor?projection('playlist',0,[occurrence('last')],''):projection('playlist',0,first,'more');
+    if(mode==='quiet'){ if(!cursor)return projection('playlist',2,first,'more'); const read=deferred();deepReads.push(read);return read.promise; }
+    if(mode==='recover'||mode==='newer'){refreshes++;}
+    return projection('playlist',5,[occurrence('newer')],'');
+   }
+   return resource(mode==='newer'||mode==='recover'?5:mode==='quiet'?2:0,41);
+  });
+  await s.select({view:'playlist',playlistId:'playlist'});
+  await s.next('entries');
+  assert.equal(s.getSnapshot().projection!.sections[0].entries.length,1);
+  mode='quiet';
+  const mutation=s.mutate({action:'rename',name:'Renamed'});
+  for(let i=0;i<30&&!deepReads.length;i++)await tick();
+  if(superseded){ mode='newer'; await s.refresh(); }
+  assert.equal(deepReads.length,1,'the post-mutation deep read is in flight');
+  refreshes=0;
+  if(post){ mode='newer'; deepReads[0]!.resolve(Promise.reject(Object.assign(new Error(code),{code,retryable:true}))); queueMicrotask(()=>{void s.refresh();}); }
+  else { if(!superseded) mode='recover'; deepReads[0]!.resolve(Promise.reject(Object.assign(new Error(code),{code,retryable:true}))); }
+  await mutation.catch(()=>{});
+  for(let i=0;i<20&&s.getSnapshot().projection!.sections[0].entries[0]?.id!=='newer';i++)await tick();
+  const requestsAfter=refreshes;
+  if(post){
+   assert.equal(requestsAfter,1,'only the successor refresh runs after the retired failure');
+   assert.equal(s.getSnapshot().projection!.sections[0].entries[0]!.id,'newer');
+  }else if(superseded){
+   assert.equal(requestsAfter,0,'a retired deep failure adds no recovery read');
+   assert.equal(s.getSnapshot().projection!.sections[0].entries[0]!.id,'newer');
+  }else{
+   assert.ok(requestsAfter>=1,'a current deep failure still refreshes');
+   assert.equal(s.getSnapshot().projection!.sections[0].entries[0]!.id,'newer');
+  }
+  s.dispose();
+ }
+ await run(true);
+ await run(false);
+ await run(true,'timeout');
+ await run(false,'timeout');
+ await run(true,'stale_continuation',true);
+ await run(true,'timeout',true);
+});

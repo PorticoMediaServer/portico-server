@@ -250,7 +250,7 @@ function intent(v: SavedIntent): SavedIntent {
 const SAVED_PAGE = 40, SAVED_DEEP_PAGES = 25;
 export class SavedService {
  private api: SavedApi; private bound: SavedScope; private requestId: () => Promise<string>; private timeoutMs: number;
- private generation = 0; private readGeneration = 0; private candidateGeneration = 0; private orderGeneration = 0; private controllers = new Set<AbortController>();
+ private generation = 0; private readGeneration = 0; /** Quiet reads are numbered so an older answer cannot publish after a newer accepted one. */ private quiet = 0; private candidateGeneration = 0; private orderGeneration = 0; private controllers = new Set<AbortController>();
  private readController?: AbortController; private candidateController?: AbortController; private orderController?: AbortController; private disposed = false; private running = false;
   private commands: Command[] = []; private listeners = new Set<() => void>(); private state: SavedSnapshot; private history: (string|null)[] = []; private readPromise?: Promise<void>; private requestKey = ''; private retryCursor: string|null = null; private retryMove?: 'next'|'previous'; private seen = 0;
   /** Q7: the last failed command, kept for explicit retryMutation with the same
@@ -268,7 +268,7 @@ export class SavedService {
  subscribe = (listener: () => void): (() => void) => { if (this.disposed) return () => {}; this.listeners.add(listener); return () => { this.listeners.delete(listener); }; };
  private publish(patch: Partial<SavedSnapshot> = {}): void { if (this.disposed) return; this.state = freeze({ ...this.state, ...patch, pending: this.commands.map(c => ({ intent: c.intent, phase: c.phase })) }); for (const listener of this.listeners) listener(); }
   private active(): void { if (this.disposed) throw new Error('Saved service is disposed.'); }
-  private fence(): void { this.generation++; this.readGeneration++; this.candidateGeneration++; this.orderGeneration++; for (const c of this.controllers) c.abort(); for (const c of this.commands) c.resolve(); this.commands = []; this.lastFailure = undefined; this.history = []; this.running = false; this.readPromise = undefined; this.requestKey = ''; }
+  private fence(): void { this.generation++; this.quiet++; this.readGeneration++; this.candidateGeneration++; this.orderGeneration++; for (const c of this.controllers) c.abort(); for (const c of this.commands) c.resolve(); this.commands = []; this.lastFailure = undefined; this.history = []; this.running = false; this.readPromise = undefined; this.requestKey = ''; }
  select(input: SavedRoute, restore: SavedRestore = {}): Promise<void> {
   this.active(); const selected = route(input), cursor = restore.cursor ?? null, history = restore.history ?? [];
   if (!Array.isArray(history) || history.length > 64 || history.some(value => value !== null && (!text(value, 4096) || !value)) || cursor !== null && (!text(cursor, 4096) || !cursor)) throw new Error('Invalid bounded Saved cursor restoration.');
@@ -289,28 +289,30 @@ export class SavedService {
   if (!selected || this.state.phase !== 'ready' || !this.state.projection || this.commands.length || ['collections','views','history','resource'].includes(selected.view)) return;
   const controller = new AbortController(), stop = () => controller.abort(); this.controllers.add(controller);
   context?.signal?.addEventListener('abort', stop, { once: true });
-  const generation = this.generation, read = this.readGeneration, api = this.api, bound = this.bound;
+  const generation = this.generation, read = this.readGeneration, ticket = ++this.quiet, api = this.api, bound = this.bound;
+  const live = () => !this.disposed && generation === this.generation && read === this.readGeneration && ticket === this.quiet && !controller.signal.aborted;
   try {
    // Paged past the first page (or shown as one long first page since): every page on screen is read again, not only the last one.
-   if ((cursor !== null || this.seen > SAVED_PAGE) && await this.readThrough(controller, context?.settle)) return;
-   if (this.disposed || generation !== this.generation || read !== this.readGeneration || controller.signal.aborted) return;
+   if ((cursor !== null || this.seen > SAVED_PAGE) && await this.readThrough(controller, context?.settle, ticket)) return;
+   if (!live()) return;
    const params = new URLSearchParams({ limit: '40' }); if (cursor) params.set('cursor', cursor);
    let path: string;
    if (selected.view === 'playlist') path = encodedRoutePath("get_playlists_id_content", {"id": encodeURIComponent(selected.playlistId)});
    else { path = routePath("get_saved_content"); params.set('view', selected.view); if (selected.sort) params.set('sort', selected.sort); if (selected.direction) params.set('direction', selected.direction); if('shape'in selected&&selected.shape)params.set('shape',selected.shape); if ('filter' in selected && selected.filter) params.set('filter', selected.filter); }
    const [raw, rawResource] = await this.deadline(Promise.all([api.request<unknown>(path + '?' + params, 'GET', undefined, controller.signal), selected.view === 'playlist' ? api.request<RouteResponse<"get_playlists_id">>(encodedRoutePath("get_playlists_id", {"id": encodeURIComponent(selected.playlistId)}), 'GET', undefined, controller.signal) : Promise.resolve(null)]), controller);
-   if (this.disposed || generation !== this.generation || read !== this.readGeneration) return;
+   if (!live()) return;
    const parsed = projection(raw, bound, selected), playlist = selected.view === 'playlist' ? resource(rawResource, bound, selected.playlistId) : null;
    // Two reads that disagree with each other, or one older than a change confirmed here, are not shown; the next hint reads again.
    if (playlist && (playlist.viewerFence !== parsed.scope.viewerFence || playlist.revision !== parsed.playlistRevision || this.state.lastReceipt?.playlistId === playlist.id && playlist.revision < this.state.lastReceipt.revision)) return;
+   if (!live()) return;
    await context?.settle?.();
-   if (this.disposed || generation !== this.generation || read !== this.readGeneration || controller.signal.aborted || this.commands.length || this.state.phase !== 'ready') return;
+   if (!live() || this.commands.length || this.state.phase !== 'ready') return;
    // A playlist whose order moved elsewhere: the order loaded for arranging it here no longer describes it.
    if (JSON.stringify(parsed) === JSON.stringify(this.state.projection) && JSON.stringify(playlist) === JSON.stringify(this.state.playlist)) return;
    const moved = !!playlist && !!this.state.playlist && playlist.revision !== this.state.playlist.revision;
    this.publish({ projection: parsed, playlist, ...(moved ? { order: null, orderLoading: false, orderError: null } : {}), pagination: { ...this.state.pagination, next: parsed.sections.filter(s => s.nextCursor).map(s => ({ sectionId: s.id, cursor: s.nextCursor })) } });
   } catch (error) {
-   if (this.disposed || generation !== this.generation || read !== this.readGeneration || controller.signal.aborted) return;
+   if (!live()) return;
    const e = errorInfo(error);
    if (['unauthorized','forbidden','not_found','playlist_forbidden','playlist_not_found','policy_expired','stale_continuation','invalid_cursor'].includes(e.code)) { await this.refresh(); return; }
    throw error;
@@ -323,11 +325,11 @@ export class SavedService {
   * cursor. False when the list on screen is longer than that bound or the pages caught the list
   * mid-change; the caller then reads only the page in view, or reloads, as before.
   */
- private async readThrough(controller: AbortController, settle?: () => Promise<void>): Promise<boolean> {
+ private async readThrough(controller: AbortController, settle?: () => Promise<void>, ticket?: number): Promise<boolean> {
   const selected = this.state.route, want = this.seen;
   if (!selected || want > SAVED_DEEP_PAGES * SAVED_PAGE) return false;
   const generation = this.generation, read = this.readGeneration, api = this.api, bound = this.bound;
-  const live = () => !this.disposed && generation === this.generation && read === this.readGeneration && !controller.signal.aborted;
+  const live = () => !this.disposed && generation === this.generation && read === this.readGeneration && (ticket === undefined || ticket === this.quiet) && !controller.signal.aborted;
   const pathOf = (cursor: string | null) => {
    const params = new URLSearchParams({ limit: String(SAVED_PAGE) }); if (cursor) params.set('cursor', cursor);
    if (selected.view === 'playlist') return encodedRoutePath("get_playlists_id_content", {"id": encodeURIComponent(selected.playlistId)}) + '?' + params;
@@ -348,7 +350,15 @@ export class SavedService {
    const followed = paged.nextCursor;
    let page: SavedProjection;
    try { page = projection(await this.deadline(api.request<unknown>(pathOf(followed), 'GET', undefined, controller.signal), controller), bound, selected); }
-   catch (error) { if (['stale_continuation', 'invalid_cursor'].includes(errorInfo(error).code)) return false; throw error; }
+   catch (error) {
+   const owned = !this.disposed && generation === this.generation && read === this.readGeneration && (ticket === undefined || ticket === this.quiet);
+   if (!owned) return true;
+   // The private deadline aborts this same controller for a genuine timeout; that is a current failure, not retirement.
+   if (error instanceof Error && (error as {code?:unknown}).code === 'timeout') throw error;
+   if (!live()) return true;
+   if (['stale_continuation', 'invalid_cursor'].includes(errorInfo(error).code)) return false;
+   throw error;
+  }
    if (!live()) return true;
    if (page.scope.viewerFence !== first.scope.viewerFence || page.savedRevision !== first.savedRevision || playlist && page.playlistRevision !== playlist.revision) return false;
    for (const part of page.sections) {
@@ -364,6 +374,7 @@ export class SavedService {
    // A page that answered for none of the sections ends the list where it is.
    if (paged.nextCursor === followed) paged.nextCursor = '';
   }
+  if (!live()) return true;
   await settle?.();
   if (!live() || this.commands.length || this.state.phase !== 'ready') return true;
   const parsed = freeze({ ...first, sections });
@@ -373,9 +384,18 @@ export class SavedService {
   return true;
  }
  /** readThrough on its own deadline, for after a change made here; false on any failure. */
- private async quietThrough(): Promise<boolean> {
-  const controller = new AbortController(); this.controllers.add(controller);
-  try { return await this.readThrough(controller); } catch { return false; } finally { this.controllers.delete(controller); }
+ private async quietThrough(): Promise<Readonly<{recovered: boolean; current: () => boolean}>> {
+  const controller = new AbortController(); this.controllers.add(controller); const ticket = ++this.quiet;
+  const generation = this.generation, read = this.readGeneration;
+  const current = () => !this.disposed && generation === this.generation && read === this.readGeneration && ticket === this.quiet;
+  try {
+    const result = await this.readThrough(controller, undefined, ticket);
+    // A retired quiet read is already handled: its successor owns recovery. The
+    // caller rechecks this exact failure ownership at fallback admission.
+    return {recovered: current() ? result : true, current};
+  } catch {
+    return {recovered: current() ? false : true, current};
+  } finally { this.controllers.delete(controller); }
  }
  next(sectionId: string): Promise<void> { this.active(); if (this.state.phase !== 'ready') return Promise.resolve(); const next = this.state.pagination.next.find(n => n.sectionId === sectionId); if (!next) return Promise.resolve(); return this.read(next.cursor, 'next'); }
  previous(): Promise<void> { this.active(); if (this.state.phase !== 'ready' || !this.history.length) return Promise.resolve(); return this.read(this.history.at(-1)!, 'previous'); }
@@ -457,6 +477,7 @@ export class SavedService {
    const reuse = this.lastFailure?.kind === 'retry-required' && JSON.stringify(this.lastFailure.intent) === JSON.stringify(checked) ? this.lastFailure : undefined;
    if (reuse) this.lastFailure = undefined;
    const orderRevision = reuse?.orderRevision !== undefined ? reuse.orderRevision : checked.action === 'reorder' ? this.state.playlist!.revision : undefined;
+   this.quiet++;
    this.commands.push({ intent: checked, ...(orderRevision !== undefined ? {orderRevision} : {}), ...(reuse?.operationId ? {operationId: reuse.operationId} : {}), ...(reuse?.body ? {body: {...reuse.body}} : {}), phase: 'queued', promise, resolve, reject }); this.publish(); void this.pump(); return promise;
   }
   retryMutation(): Promise<void> {
@@ -475,6 +496,7 @@ export class SavedService {
    if (failed.kind === 'conflict') this.allowed(failed.intent);
    let resolve!: () => void; let reject!: (error: unknown) => void; const promise = new Promise<void>((res, rej) => { resolve = res; reject = rej; }); promise.catch(() => {});
    const orderRevision = failed.kind === 'conflict' && failed.intent.action === 'reorder' ? this.state.playlist!.revision : failed.orderRevision;
+   this.quiet++;
    this.commands.unshift({intent: failed.intent, ...(orderRevision !== undefined ? {orderRevision} : {}), ...(failed.kind === 'conflict' ? {} : {...(failed.operationId ? {operationId: failed.operationId} : {}), ...(failed.body ? {body: {...failed.body}} : {})}), phase: 'queued', promise, resolve, reject});
    this.lastFailure = undefined;
    this.publish({mutationError: null}); void this.pump(); return promise;
@@ -506,7 +528,15 @@ export class SavedService {
    this.commands.shift(); this.publish({ lastReceipt: receipt, mutationError: null, candidates: null, candidatesLoading: false, order: null, orderLoading: false, orderError: null });
    if (receipt.deleted && selected.view === 'playlist') { for (const pending of this.commands) pending.resolve(); this.commands = []; this.lastFailure = undefined; this.readController?.abort(); this.readGeneration++; this.publish({ phase: 'ready', projection: null, playlist: null, pagination: { cursor: null, history: [], canPrevious: false, next: [] } }); c.resolve(); }
    // A list paged further than its first page stays where the viewer is (a removal deep in a playlist).
-   else { if (!((this.history.length || this.seen > SAVED_PAGE) && await this.quietThrough())) await this.refresh(); c.resolve(); }
+   else {
+    if (this.history.length || this.seen > SAVED_PAGE) {
+     const outcome = await this.quietThrough();
+     // A newer quiet read may have begun/committed while this await resolved;
+     // only the exact failed ticket may ask for recovery.
+     if (!outcome.recovered && outcome.current()) await this.refresh();
+    } else await this.refresh();
+    c.resolve();
+   }
    } catch (error) {
     if (this.disposed || generation !== this.generation) return;
     const e = errorInfo(error);
