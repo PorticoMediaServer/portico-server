@@ -1,6 +1,7 @@
 // Foliate paginator, MIT, Copyright (c) 2022 John Factotum.
 // Pinned upstream and scoped adaptations: see SOURCES.md and LICENSE.
 import { unprefixEpubCss, lastLinearIndex } from './compat.js'
+import { createPageTurnAnimation, pageGesture } from '../page-motion.ts'
 const wait = ms => new Promise(resolve => setTimeout(resolve, ms))
 
 // Only renderer-owned styles receive the trusted app document's nonce. Never
@@ -484,6 +485,11 @@ export class Paginator extends HTMLElement {
     #touchState
     #touchScrolled
     #lastVisibleRange
+    #pageMotion
+    #pageMotionSerial = 0
+    #navigationSerial = 0
+    #gestureTranslation = 0
+    #gestureVelocity = 0
     constructor() {
         super()
         const style = rendererStyle(this.ownerDocument, this.ownerDocument)
@@ -606,10 +612,13 @@ export class Paginator extends HTMLElement {
         this.addEventListener('touchstart', this.#onTouchStart.bind(this), opts)
         this.addEventListener('touchmove', this.#onTouchMove.bind(this), opts)
         this.addEventListener('touchend', this.#onTouchEnd.bind(this))
+        this.addEventListener('touchcancel', () => {this.#touchState = undefined;this.#cancelPageMotion()})
         this.addEventListener('load', ({ detail: { doc } }) => {
-            doc.addEventListener('touchstart', this.#onTouchStart.bind(this), opts)
-            doc.addEventListener('touchmove', this.#onTouchMove.bind(this), opts)
-            doc.addEventListener('touchend', this.#onTouchEnd.bind(this))
+            const current = () => !this.#destroyed && this.#view?.document === doc
+            doc.addEventListener('touchstart', event => {if (current()) this.#onTouchStart(event)}, opts)
+            doc.addEventListener('touchmove', event => {if (current()) this.#onTouchMove(event)}, opts)
+            doc.addEventListener('touchend', event => {if (current()) this.#onTouchEnd(event)})
+            doc.addEventListener('touchcancel', () => {if (current()) {this.#touchState = undefined;this.#cancelPageMotion()}})
         })
 
         this.addEventListener('relocate', ({ detail }) => {
@@ -703,6 +712,7 @@ export class Paginator extends HTMLElement {
         this.#transformTarget?.addEventListener('data', this.#transformDataListener)
     }
     #createView() {
+        this.#cancelPageMotion()
         if (this.#view) {
             this.#view.destroy()
             this.#view.element.remove()
@@ -715,6 +725,7 @@ export class Paginator extends HTMLElement {
         return this.#view
     }
     #beforeRender({ vertical, rtl, background }) {
+        this.#cancelPageMotion()
         this.#vertical = vertical
         this.#rtl = rtl
         this.#top.classList.toggle('vertical', vertical)
@@ -860,7 +871,58 @@ export class Paginator extends HTMLElement {
             })
         })
     }
+    #cancelPageMotion() {
+        const original = this.#pageMotion
+        this.#pageMotion = undefined
+        this.#pageMotionSerial++
+        this.#touchState = undefined
+        if (original) this.#locked = false
+        original?.cancel()
+        this.#gestureTranslation = 0
+        this.#gestureVelocity = 0
+        if (this.#view?.element) {
+            this.#view.element.style.transform = ''
+            this.#view.element.style.opacity = ''
+        }
+    }
+    #gestureCurrent(state) {
+        return !this.#destroyed && state && this.#touchState === state
+            && this.#view?.element === state.view
+    }
+    #finishPorticoGesture(event) {
+        const state = this.#touchState
+        this.#touchScrolled = false
+        if (!this.#gestureCurrent(state) || !state.dragging) return
+        this.#touchState = undefined
+        const serial = ++this.#pageMotionSerial, navigation = ++this.#navigationSerial, view = state.view
+        if (event.timeStamp - state.t > 80) this.#gestureVelocity = 0
+        const originalIndex = this.#index, originalPage = state.page
+        const dir = pageGesture(this.size, this.#gestureTranslation, this.#gestureVelocity, this.#rtl)
+        const target = Math.max(0, Math.min(this.pages - 1, originalPage + dir))
+        this.#locked = true
+        void this.#scrollToPage(target, 'snap', true).then(async accepted => {
+            if (accepted === false || this.#destroyed || serial !== this.#pageMotionSerial || this.#view?.element !== view) return
+            const crossing = target <= 0 ? -1 : target >= this.pages - 1 ? 1 : 0
+            const destination = crossing ? this.#adjacentIndex(crossing) : this.#index
+            if (crossing && destination != null) await this.#goTo({index: destination, anchor: crossing < 0 ? () => 1 : () => 0})
+            if (this.#destroyed || navigation !== this.#navigationSerial || this.#index !== destination) return
+            if (originalIndex !== this.#index || originalPage !== this.page)
+                this.dispatchEvent(new Event('portico-turn'))
+        }).catch(() => {}).finally(() => {
+            if (navigation === this.#navigationSerial) this.#locked = false
+        })
+    }
     #onTouchStart(e) {
+        if (this.hasAttribute('portico-motion')) {
+            if (this.#locked || this.#destroyed || !this.#view?.element || !Number.isFinite(this.size) || this.size <= 0 || this.scrolled || e.touches?.length !== 1 ||
+                e.target?.closest?.('a[href],button,input,textarea,select,[contenteditable="true"]')) return
+            const touch = e.changedTouches[0]
+            this.#touchState = {identifier: touch.identifier, x: touch.screenX, y: touch.screenY,
+                startX: touch.screenX, startY: touch.screenY, t: e.timeStamp, vx: 0, vy: 0,
+                view: this.#view?.element, page: this.page, dragging: false}
+            this.#gestureTranslation = 0;this.#gestureVelocity = 0
+            return
+        }
         const touch = e.changedTouches[0]
         this.#touchState = {
             x: touch?.screenX, y: touch?.screenY,
@@ -869,6 +931,29 @@ export class Paginator extends HTMLElement {
         }
     }
     #onTouchMove(e) {
+        if (this.hasAttribute('portico-motion')) {
+            const state = this.#touchState
+            if (!this.#gestureCurrent(state) || this.#locked || this.scrolled) return
+            const selection = e.target?.ownerDocument?.defaultView?.getSelection?.()
+            if (e.touches?.length !== 1 || (globalThis.visualViewport?.scale ?? 1) > 1 || selection && !selection.isCollapsed) {
+                this.#touchState = undefined;this.#cancelPageMotion();return
+            }
+            const touch = Array.from(e.changedTouches).find(value => value.identifier === state.identifier)
+            if (!touch) return
+            const totalX = touch.screenX - state.startX, totalY = touch.screenY - state.startY
+            const primary = this.#vertical ? totalY : totalX, cross = this.#vertical ? totalX : totalY
+            if (!state.dragging && (Math.abs(primary) <= 10 || Math.abs(primary) <= Math.abs(cross) * 1.5)) return
+            state.dragging = true;e.preventDefault();this.#touchScrolled = true
+            const elapsed = e.timeStamp - state.t, delta = this.#vertical ? touch.screenY - state.y : touch.screenX - state.x
+            this.#gestureVelocity = elapsed > 0 ? delta / elapsed * 1000 : 0
+            state.x = touch.screenX;state.y = touch.screenY;state.t = e.timeStamp
+            const logical = primary * (this.#rtl ? -1 : 1)
+            const permitted = logical > 0 ? !this.atStart : !this.atEnd
+            if (!permitted) this.#gestureVelocity = 0
+            this.#gestureTranslation = permitted ? Math.max(-this.size, Math.min(this.size, primary)) : 0
+            state.view.style.transform = this.#vertical ? `translate3d(0, ${this.#gestureTranslation}px, 0)` : `translate3d(${this.#gestureTranslation}px, 0, 0)`
+            return
+        }
         const state = this.#touchState
         if (state.pinched) return
         state.pinched = globalThis.visualViewport.scale > 1
@@ -890,7 +975,8 @@ export class Paginator extends HTMLElement {
         this.#touchScrolled = true
         this.scrollBy(dx, dy)
     }
-    #onTouchEnd() {
+    #onTouchEnd(event) {
+        if (this.hasAttribute('portico-motion')) {this.#finishPorticoGesture(event);return}
         this.#touchScrolled = false
         if (this.scrolled) return
 
@@ -931,13 +1017,42 @@ export class Paginator extends HTMLElement {
     async #scrollTo(offset, reason, smooth) {
         const element = this.#container
         const { scrollProp, size } = this
-        if (element[scrollProp] === offset) {
+        if (element[scrollProp] === offset && !this.#gestureTranslation) {
             this.#scrollBounds = [offset, this.atStart ? 0 : size, this.atEnd ? 0 : size]
             this.#afterScroll(reason)
             return
         }
         // FIXME: vertical-rl only, not -lr
         if (this.scrolled && this.#vertical) offset = -offset
+        if (!this.scrolled && this.hasAttribute('portico-motion') && (reason === 'snap' || smooth)) {
+            const view = this.#view?.element
+            if (!view || this.#destroyed) return false
+            const origin = element[scrollProp], serial = this.#pageMotionSerial
+            const previous = this.#pageMotion
+            this.#pageMotion = undefined
+            previous?.cancel()
+            const current = () => !this.#destroyed && this.#view?.element === view
+                && serial === this.#pageMotionSerial && this.#pageMotion === turn
+            const turn = createPageTurnAnimation({from: this.#gestureTranslation, to: -(offset - origin), offset,
+                velocity: this.#gestureVelocity, spring: reason === 'snap', ports: {
+                    frame: callback => requestAnimationFrame(callback), cancelFrame: id => cancelAnimationFrame(id), current,
+                    reduced: () => this.hasAttribute('reduced-motion'),
+                    paint: ({translation, opacity}) => {
+                        if (!current()) return
+                        view.style.transform = this.#vertical ? `translate3d(0, ${translation}px, 0)` : `translate3d(${translation}px, 0, 0)`
+                        view.style.opacity = String(opacity)
+                    },
+                    commit: value => {if (current()) element[scrollProp] = value},
+                }})
+            this.#pageMotion = turn;turn.start()
+            const accepted = await turn.finished
+            if (!accepted || !current()) return false
+            this.#pageMotion = undefined;this.#gestureTranslation = 0;this.#gestureVelocity = 0
+            view.style.transform = '';view.style.opacity = ''
+            this.#scrollBounds = [offset, this.atStart ? 0 : size, this.atEnd ? 0 : size]
+            this.#afterScroll(reason)
+            return true
+        }
         if ((reason === 'snap' || smooth) && this.hasAttribute('animated')) return animate(
             element[scrollProp], offset, 300, easeOutQuad,
             x => element[scrollProp] = x,
@@ -1066,6 +1181,7 @@ export class Paginator extends HTMLElement {
     async goTo(target) {
         if (this.#destroyed) return
         if (this.#locked) return
+        this.#navigationSerial++
         const resolved = await target
         if (this.#destroyed) return
         if (this.#canGoToIndex(resolved.index)) return this.#goTo(resolved)
@@ -1079,7 +1195,7 @@ export class Paginator extends HTMLElement {
         }
         if (this.atStart) return
         const page = this.page - 1
-        return this.#scrollToPage(page, 'page', true).then(() => page <= 0)
+        return this.#scrollToPage(page, 'page', true).then(accepted => accepted !== false && page <= 0)
     }
     #scrollNext(distance) {
         if (!this.#view) return true
@@ -1091,7 +1207,7 @@ export class Paginator extends HTMLElement {
         if (this.atEnd) return
         const page = this.page + 1
         const pages = this.pages
-        return this.#scrollToPage(page, 'page', true).then(() => page >= pages - 1)
+        return this.#scrollToPage(page, 'page', true).then(accepted => accepted !== false && page >= pages - 1)
     }
     get atStart() {
         return this.#adjacentIndex(-1) == null && this.page <= 1
@@ -1104,16 +1220,16 @@ export class Paginator extends HTMLElement {
             if (this.sections[index]?.linear !== 'no') return index
     }
     async #turnPage(dir, distance) {
-        if (this.#locked) return
+        if (this.#locked || this.#destroyed) return
         this.#locked = true
-        const prev = dir === -1
-        const shouldGo = await (prev ? this.#scrollPrev(distance) : this.#scrollNext(distance))
-        if (shouldGo) await this.#goTo({
-            index: this.#adjacentIndex(dir),
-            anchor: prev ? () => 1 : () => 0,
-        })
-        if (shouldGo || !this.hasAttribute('animated')) await wait(100)
-        this.#locked = false
+        const serial = ++this.#pageMotionSerial, prev = dir === -1
+        const navigation = ++this.#navigationSerial
+        try {
+            const shouldGo = await (prev ? this.#scrollPrev(distance) : this.#scrollNext(distance))
+            if (this.#destroyed || serial !== this.#pageMotionSerial) return
+            if (shouldGo) await this.#goTo({index: this.#adjacentIndex(dir), anchor: prev ? () => 1 : () => 0})
+            if (!this.hasAttribute('portico-motion') && (shouldGo || !this.hasAttribute('animated'))) await wait(100)
+        } finally {if (navigation === this.#navigationSerial) this.#locked = false}
     }
     prev(distance) {
         return this.#turnPage(-1, distance)
@@ -1167,6 +1283,7 @@ export class Paginator extends HTMLElement {
     destroy() {
         if (this.#destroyed) return
         this.#destroyed = true
+        this.#cancelPageMotion()
         this.#observer.disconnect()
         this.#mediaQuery.removeEventListener('change', this.#mediaQueryListener)
         this.#transformTarget?.removeEventListener('data', this.#transformDataListener)

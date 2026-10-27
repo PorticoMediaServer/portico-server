@@ -1,12 +1,13 @@
 import type {ReaderAdapter, ReaderDocument, ReaderFormat, ReaderLocation, ReaderNavigation, ReaderMetadata,
   ReaderSearchOptions, ReaderSearchResult, ReaderSnapshot, ReaderSource, ReaderView, ReaderViewport,
-  ReaderZoom, ReaderSurfaceInput, ReaderPageImage, ReaderContentsTarget} from './ports.ts';
+  ReaderZoom, ReaderSurfaceInput, ReaderPageImage, ReaderContentsTarget, ReaderMotionPolicy} from './ports.ts';
 import {ReaderError, readerErrorCode, throwIfAborted} from './errors.ts';
 import {validateSource} from './source.ts';
 import {validateViewport} from './layout.ts';
+import {captureReaderMotion} from './motion-policy.ts';
 import {abortScope} from './abort.ts';
 
-type Session<P extends object> = {abort: AbortController; detachAuthority?:()=>void; document?: ReaderDocument<P>; view?: ReaderView<P>; tail: Promise<void>};
+type Session<P extends object> = {abort: AbortController; detachAuthority?:()=>void; document?: ReaderDocument<P>; view?: ReaderView<P>; tail: Promise<void>; turn?: Promise<void>};
 const empty = Object.freeze([]);
 function copy<P extends object>(value: P): Readonly<P> { return Object.freeze({...value}); }
 export function validateLocation(location: ReaderLocation, format: ReaderFormat): void {
@@ -65,7 +66,8 @@ export class ReaderController<P extends object> {
   protected preferencesAtOpen(): Readonly<P> { return this.base; }
   async open(options: Readonly<{source: ReaderSource; format: ReaderFormat; container: HTMLElement; location?: ReaderLocation; viewport?: ReaderViewport; metadata?: ReaderMetadata;
     /** Retire cached pages, DOM and engine work with the authorised session. */
-    signal?:AbortSignal}>): Promise<void> {
+    signal?:AbortSignal; motion?:ReaderMotionPolicy}>): Promise<void> {
+    const originalMotion = captureReaderMotion(options.motion);
     const lifecycleVersion = ++this.lifecycleVersion;
     // Invalidate before waiting for disposal, so simultaneous opens cannot adopt
     // a stale document/view. A late adapter result is disposed in its own turn.
@@ -102,7 +104,7 @@ export class ReaderController<P extends object> {
       const metadata = copy(options.metadata === undefined ? document.metadata : {...document.metadata, ...options.metadata,
         title: options.metadata.title, author: options.metadata.author, language: options.metadata.language});
       const view = await document.mount({container: options.container, preferences: this.snapshot.preferences,
-        viewport: this.viewport, metadata, signal: session.abort.signal,
+        viewport: this.viewport, metadata, motion: originalMotion, signal: session.abort.signal,
         onLocation: location => {
           if (!this.current(session)) return;
           validateLocation(location, options.format);
@@ -196,11 +198,20 @@ export class ReaderController<P extends object> {
     if (captured.kind === 'location') validateLocation(captured.location, this.snapshot.format!);
     if (captured.kind === 'progression' && (!Number.isFinite(captured.value) || captured.value < 0 || captured.value > 1))
       return Promise.reject(new ReaderError('invalid_location'));
-    return this.enqueue(async (view, signal) => {
+    const session = this.session, turn = captured.kind === 'next' || captured.kind === 'previous';
+    // Physical held keys/taps never accumulate behind an in-flight page turn.
+    if (turn && session?.turn && this.current(session)) return callerSignal?.aborted ? Promise.reject(new ReaderError('aborted')) : Promise.resolve();
+    const operation = this.enqueue(async (view, signal) => {
       const task = abortScope([signal, ...(callerSignal ? [callerSignal] : [])]);
       try {throwIfAborted(task.signal); await view.navigate(captured, task.signal); throwIfAborted(task.signal);}
       finally {task.dispose();}
     });
+    if (turn && session) {
+      session.turn = operation;
+      const clear = () => {if (session.turn === operation) session.turn = undefined;};
+      void operation.then(clear, clear);
+    }
+    return operation;
   }
   /** Only an actual result of this exact session/query can request a search mark. */
   navigateSearchResult(result: ReaderSearchResult, callerSignal?: AbortSignal): Promise<void> {

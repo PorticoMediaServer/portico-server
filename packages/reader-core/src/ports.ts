@@ -101,10 +101,13 @@ export interface ReaderView<Preferences extends object> {
   pan?(offset: Readonly<{x: number; y: number}>, signal: AbortSignal): Promise<void>;
   dispose(): void | Promise<void>;
 }
+/** Original host motion policy only; renderer always ORs real system reduction. */
+export type ReaderMotionPolicy = Readonly<{reduced(): boolean; subscribe(changed: () => void): () => void}>;
 export type ReaderMount<Preferences extends object> = Readonly<{
   container: HTMLElement; preferences: Readonly<Preferences>; viewport: ReaderViewport;
   /** Resolved catalogue identity, including authoritative omitted fields. */
   metadata?: ReaderMetadata;
+  motion?: ReaderMotionPolicy;
   signal: AbortSignal; onLocation(location: ReaderLocation): void;
   onSelection(selection: ReaderSelection | null): void;
   onSurfaceInput?(input: ReaderSurfaceInput): void;
@@ -137,6 +140,8 @@ export type ReaderSurfaceInput =
   | Readonly<{kind: 'tap'; fraction: number}>
   | Readonly<{kind: 'swipe'; direction: 'left' | 'right'}>
   | Readonly<{kind: 'activity'}>
+  /** A renderer already committed an original gesture turn. Never navigate again. */
+  | Readonly<{kind: 'turned'}>
   | Readonly<{kind: 'key'; key: string; shift: boolean; alt: boolean; ctrl: boolean; meta: boolean; editable: boolean; preventDefault(): void}>;
 export type ReaderSnapshot<Preferences extends object> = Readonly<{
   status: 'closed' | 'opening' | 'ready' | 'error';

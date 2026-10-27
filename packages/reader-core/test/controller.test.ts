@@ -312,3 +312,28 @@ test('outline failure from a closed document cannot replace the closed snapshot'
   reject(new ReaderError('invalid_book')); await new Promise(resolve => setImmediate(resolve));
   assert.equal(f.controller.getSnapshot(), closed);
 });
+
+test('held page keys never queue behind the original in-flight turn', async () => {
+  const f = fixture(), pending = deferred<void>();let calls = 0;
+  f.view.navigate = async () => {calls++;await pending.promise;};
+  await f.controller.open({source, format: 'epub', container});
+  const first = f.controller.navigate({kind: 'next'});
+  await Promise.resolve();
+  await Promise.all([f.controller.navigate({kind: 'next'}), f.controller.navigate({kind: 'previous'}), f.controller.navigate({kind: 'next'})]);
+  assert.equal(calls, 1);pending.resolve();await first;
+  await f.controller.navigate({kind: 'next'});assert.equal(calls, 2);await f.controller.close();
+});
+
+test('the original mount policy methods are captured before adapter IO, without changing source retirement', async () => {
+  const f = fixture(), pending = deferred<ReaderDocument<Prefs>>();let reduced = false, stops = 0;
+  f.adapter.open = async () => pending.promise;
+  const policy = {reduced: () => reduced, subscribe: (_changed: () => void) => () => {stops++;}};
+  const opening = f.controller.open({source, format: 'epub', container, motion: policy});
+  policy.reduced = () => true;policy.subscribe = () => () => {stops += 100;};
+  pending.resolve(f.document);await opening;
+  assert.equal(f.mount.motion!.reduced(), false);reduced = true;assert.equal(f.mount.motion!.reduced(), true);
+  f.mount.motion!.subscribe(() => {})();assert.equal(stops, 1);
+  const old = f.mount;let turns = 0;f.controller.subscribeSurfaceInput(input => {if (input.kind === 'turned') turns++;});
+  old.onSurfaceInput?.({kind: 'turned'});assert.equal(turns, 1);
+  await f.controller.close();old.onSurfaceInput?.({kind: 'turned'});assert.equal(turns, 1);
+});

@@ -105,14 +105,15 @@ export function ReaderChrome({title, subtitle, copy, chapter, pages, remainingIn
     if (turn && pageTurnsEnabled) { input.preventDefault(); onTurn(turn); }
   }, [panel, onPanelDismiss, direction, onTurn, pageTurnsEnabled, textSelectionActive]);
   useEffect(() => subscribeSurfaceInput?.(input => {
-    if (input.kind === 'tap') tap(input.fraction);
+    if (input.kind === 'turned') {if (!held && !textSelectionActive) setVisible(false);}
+    else if (input.kind === 'tap') tap(input.fraction);
     else if (input.kind === 'swipe') {
       if (panel) {onPanelDismiss?.('outside'); return;}
       const turn = readTapTurn(input.direction === 'left' ? 1 : 0, direction);
       if ((turn === 'next' || turn === 'previous') && pageTurnsEnabled && !textSelectionActive) onTurn(turn);
     }
     else if (input.kind === 'key') key(input);
-  }), [subscribeSurfaceInput, tap, key, panel, onPanelDismiss, direction, pageTurnsEnabled, textSelectionActive, onTurn]);
+  }), [subscribeSurfaceInput, tap, key, panel, onPanelDismiss, direction, pageTurnsEnabled, textSelectionActive, onTurn, held]);
   const shown = visible || held, progress = observedProgress(progression);
   useReaderChromeMotion(root, shown, reducedMotion);
   const customFixedFooter = fixedPage && fixedPageFooter != null;

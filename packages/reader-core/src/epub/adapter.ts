@@ -3,6 +3,7 @@ import {EPUB} from 'foliate-js/epub.js';
 import './vendor/paginator.js';
 import {fromRange, joinIndir} from 'foliate-js/epubcfi.js';
 import {ReaderError, throwIfAborted} from '../errors.ts';
+import {watchReaderMotion} from '../motion-policy.ts';
 import {abortScope} from '../abort.ts';
 import type {ReaderAdapter, ReaderDocument, ReaderLocation, ReaderMetadata, ReaderMount,
   ReaderNavigation, ReaderIndexedSearchHit, ReaderSearchOptions, ReaderSearchResult, ReaderTocItem, ReaderView, ReaderViewport} from '../ports.ts';
@@ -356,10 +357,12 @@ export function createBrowserEpubAdapter<P extends EpubDisplayPreferences>(optio
 async function mountEpub<P extends EpubDisplayPreferences>(book:Book,mount:ReaderMount<P>,options:EpubAdapterOptions,tocBySection:Map<number,{label:string;cfi:string}[]>,parent:AbortSignal,unchanged:()=>void):Promise<ReaderView<P>> {
   const abort=new AbortController(),scope=abortScope([parent,mount.signal,abort.signal]),signal=scope.signal;
   const renderer=document.createElement('foliate-paginator') as Paginator;
+  renderer.setAttribute('portico-motion','');
   const surface=document.createElement('div');surface.style.cssText='position:relative;width:100%;height:100%;overflow:hidden;';
   renderer.style.cssText='display:block;position:absolute;left:0;right:0;width:100%;';
   const urls={literata:URL.createObjectURL(options.fonts.literata),manrope:URL.createObjectURL(options.fonts.manrope)};
   let location:ReaderLocation|null=null,relocated:Relocate|undefined,preferences=mount.preferences,viewport=mount.viewport,dead=false;
+  let motionWatch: ReturnType<typeof watchReaderMotion> | undefined;
   let cleanupDoc:()=>void=()=>{};
   let clearSearchMark:()=>void=()=>{};
   function current(){throwIfAborted(signal);if(dead)throw new ReaderError('closed');unchanged();}
@@ -409,6 +412,10 @@ async function mountEpub<P extends EpubDisplayPreferences>(book:Book,mount:Reade
       const dx=event.clientX-start.x,dy=event.clientY-start.y,elapsed=performance.now()-start.at;
       // One physical gesture emits one intent. A preceding activity wake would
       // turn a centre tap's toggle into an unconditional hide.
+      // Touch dragging is already handled and committed by this paginator. A
+      // second host swipe intent would advance twice. Mouse/keyboard retain
+      // their original intent path.
+      if(preferences.layout==='pages'&&event.pointerType==='touch'&&Math.hypot(dx,dy)>10)return;
       if(preferences.layout==='pages'&&elapsed<=600&&Math.abs(dx)>=48&&Math.abs(dx)>Math.abs(dy)*1.5) {
         mount.onSurfaceInput?.({kind:'swipe',direction:dx<0?'left':'right'});return;
       }
@@ -425,10 +432,15 @@ async function mountEpub<P extends EpubDisplayPreferences>(book:Book,mount:Reade
       if(target){clearSearchMark();void cancellable(renderer.goTo(target),signal).catch(()=>{});}
     },opts);
   };
-  renderer.addEventListener('relocate',relocate);renderer.addEventListener('load',load);
-  const dispose=()=>{if(dead)return;dead=true;abort.abort();scope.dispose();clearSearchMark();cleanupDoc();renderer.removeEventListener('relocate',relocate);renderer.removeEventListener('load',load);
+  const turned=()=>{if(!dead&&!signal.aborted){try{unchanged();if(!dead&&!signal.aborted)mount.onSurfaceInput?.({kind:'turned'});}catch{/* Original publication retired. */}}};
+  renderer.addEventListener('relocate',relocate);renderer.addEventListener('load',load);renderer.addEventListener('portico-turn',turned);
+  const dispose=()=>{if(dead)return;dead=true;abort.abort();scope.dispose();motionWatch?.dispose();clearSearchMark();cleanupDoc();renderer.removeEventListener('relocate',relocate);renderer.removeEventListener('load',load);renderer.removeEventListener('portico-turn',turned);
     try{renderer.destroy();}finally{surface.remove();URL.revokeObjectURL(urls.literata);URL.revokeObjectURL(urls.manrope);}};
   signal.addEventListener('abort',dispose,{once:true});
+  let system: MediaQueryList | undefined;try{system=renderer.ownerDocument.defaultView?.matchMedia('(prefers-reduced-motion: reduce)');}catch{/* Unknown system policy reduces. */}
+  motionWatch=watchReaderMotion(mount.motion,system,value=>{if(!dead&&!signal.aborted)renderer.toggleAttribute('reduced-motion',value);});
+  if(dead||signal.aborted){motionWatch.dispose();throw new ReaderError('closed');}
+  renderer.toggleAttribute('reduced-motion',motionWatch.reduced());
   const view:ReaderView<P>={
     async navigate(target:ReaderNavigation,callerSignal) {
       current();const task=abortScope([signal,callerSignal]),active=task.signal;

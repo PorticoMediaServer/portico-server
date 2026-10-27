@@ -1,3 +1,4 @@
+import {webReaderMotion} from './motion-policy';
 import {readerErrorCode, type ReaderController, type ReaderCrease, type ReaderErrorCode, type ReaderFormat, type ReaderLocation, type ReaderMetadata, type ReaderSource, type ReaderViewport} from '@portico/reader-core';
 
 export type ReaderMountAuthority = Readonly<{
@@ -94,7 +95,7 @@ export function mountReaderSurface<P extends object>({controller, source, format
     width = container.clientWidth; height = container.clientHeight;
     opening = true;
     const openedCrease = crease;
-    await controller.open({source, format, container, metadata, signal, location: initialLocation, viewport: viewport()});
+    await controller.open({source, format, container, metadata, signal, motion: webReaderMotion(container.ownerDocument), location: initialLocation, viewport: viewport()});
     opening = false;
     if (current()) {engineKey = key(openedCrease);}
     if (!current()) { await close(); return; }
