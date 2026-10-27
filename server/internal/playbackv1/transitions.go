@@ -404,6 +404,9 @@ func (s *Service) CommitNext(ctx context.Context, c Caller, id string, req Commi
 		}
 		var mediaGeneration int
 		if err = tx.QueryRowContext(ctx, `SELECT generation FROM playback_sessions WHERE id=? AND account_id=? AND profile_id=? AND state NOT IN('stopped','ended','failed')`, p.media, c.Principal.AccountID, c.Principal.ProfileID).Scan(&mediaGeneration); err != nil {
+			if errors.Is(err, sql.ErrNoRows) {
+				return fail("source_changed")
+			}
 			return err
 		}
 		if view.Generation < 1 || mediaGeneration != view.Generation {
