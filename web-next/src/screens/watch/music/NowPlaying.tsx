@@ -4,11 +4,14 @@ import {playbackIdentity} from '@core/presentation/kit-model/index.ts';
 import {Artwork} from '../../../kit/artwork';
 import {Icon} from '../../../kit/Icon';
 import {Slider} from '../../../kit/controls';
+import {Menu} from '../../../kit/overlays';
+import {router} from '../../../router';
 import {ListeningNotice, SignalLine, SignalPath} from '../../../kit/media';
 import {dispatchWatch, watchClock, watchSeek, watchSeekBounds, type WatchIntent} from '../model';
 import {watchQueueNeighbours} from '../queue-neighbours';
 import {watchMusicSignal} from './signal';
 import {readWatchMusicAudioFacts} from './audio-facts';
+import {WatchEqualizerPanel} from './EqualizerPanel';
 import type {WatchBindings, WatchScreenProps} from '../types';
 import styles from './now-playing.module.css';
 import type {MusicExpansion} from './expansion-owner';
@@ -27,12 +30,13 @@ export function WatchMusicNowPlaying({binding, snapshot, expanded, onCollapse, p
   const settings = useSyncExternalStore(equalizer?.subscribe ?? noSubscribe, equalizer?.getSnapshot ?? noEqualizer, noEqualizer);
   useEffect(() => { if (!equalizer) return; return equalizer.start(); }, [equalizer]);
   const [signalOpen, setSignalOpen] = useState(false);
-  const signalAnchor = useRef<HTMLButtonElement>(null);
+  const [eqOpen, setEqOpen] = useState(false), [moreOpen, setMoreOpen] = useState(false);
+  const signalAnchor = useRef<HTMLButtonElement>(null), moreAnchor = useRef<HTMLButtonElement>(null);
   const signal = watchMusicSignal(snapshot, settings, readWatchMusicAudioFacts(binding.runtime, snapshot));
   const identity = presentation ? playbackIdentity(presentation.subject, 'full', environment) : undefined;
   const artworkSource = presentation ? binding.artwork.foreground(presentation.posterUrl ?? presentation.backdropUrl, 560, 1, {group: 'playback', priority: 'high'}) : undefined;
   const open = expanded && presentation?.kind === 'music' && !!identity && (!isCurrent || isCurrent()) && (!motion || !!motion.scope);
-  useLayoutEffect(() => {if (!open) setSignalOpen(false);}, [open]);
+  useLayoutEffect(() => {if (!open) {setSignalOpen(false); setEqOpen(false); setMoreOpen(false);}}, [open]);
   const present = motion ? motion.present : open;
   if (!present || !presentation || !identity || isCurrent && !isCurrent()) return null;
   const send = (intent: WatchIntent) => { if (!open || motion?.scope && !motion.scope.current()) return;void dispatchWatch(binding.runtime, snapshot, intent).catch(binding.reportError); };
@@ -54,6 +58,11 @@ export function WatchMusicNowPlaying({binding, snapshot, expanded, onCollapse, p
         errorShown={snapshot.playback.phase === 'error' || !!snapshot.playback.error || !!snapshot.problem}
         expanded layout={phone ? 'phone' : 'desktop'} translate={t} />
       <span className={styles.spacer} />
+      {equalizer ? <button ref={moreAnchor} type="button" className={styles.glass} aria-label={t('player.more')} aria-haspopup="menu" aria-expanded={moreOpen}
+        onClick={() => {if (open) setMoreOpen(value => !value);}}><Icon name="i-more" size={18} /></button> : null}
+      {equalizer ? <Menu open={moreOpen && open} onOpenChange={setMoreOpen} title={t('player.more')} anchorRef={moreAnchor} returnFocusRef={moreAnchor} presentation="anchored" width={280}
+        items={[{id: 'equalizer', label: t('next.media.eq.title'), description: t(settings?.enabled === true ? 'next.settings.on' : 'next.settings.off'),
+          onSelect: () => {setMoreOpen(false); if (open) setEqOpen(true);}}]} /> : null}
       {can('pause') || can('play') ? <button type="button" className={styles.glass} onClick={() => send({kind: presentation.playing ? 'pause' : 'play'})}>
         <Icon name={presentation.playing ? 'i-pause' : 'i-play'} size={18} />{presentation.playing ? t('next.dock.pause') : t('next.dock.play')}</button> : null}
     </header>
@@ -83,12 +92,17 @@ export function WatchMusicNowPlaying({binding, snapshot, expanded, onCollapse, p
           <Slider min={0} max={1} step={.01} value={presentation.muted ? 0 : presentation.volume} aria-label={t('player.volume')} onValueChange={volume => send({kind: 'volume', volume})} /></div>}
       </div>
     </div>
-    <aside className={styles.side} aria-label={t('next.music.upNext')}>
+    <aside className={styles.side} aria-label={eqOpen ? t('next.media.eq.title') : t('next.music.upNext')}>
+      {eqOpen && equalizer ? <WatchEqualizerPanel runtime={binding.runtime} snapshot={snapshot} port={equalizer}
+        hostCurrent={() => open && (!motion?.scope || motion.scope.current())} close={() => setEqOpen(false)}
+        openSettings={() => {if (!open) return; void router.navigate({to: '/settings', search: () => ({scope: 'account' as const, section: 'music'})});}} />
+        : <>
         <h2>{t('next.music.upNext')}</h2>
         <p className={styles.section}>{t('next.music.nowPlaying')}</p>
         <div className={styles.queueRow}><span className={styles.eq} aria-hidden="true"><i /><i /><i /></span><span><b>{identity.title}</b><small>{artist}</small></span><span className={styles.duration}>{watchClock(duration)}</span></div>
         {neighbours.next && <div className={styles.fade3} data-music-content-group="2"><p className={styles.section}>{t('next.dock.next')}</p>
           <div className={styles.queueRow}><span><b>{neighbours.next}</b></span></div></div>}
+        </>}
     </aside>
   </section>;
 }
