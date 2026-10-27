@@ -5,6 +5,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {componentModule} from '../../web/test/helpers/component-harness.mjs';
 import {all, createRenderer, one, tree, textOf} from '../../web/test/helpers/interaction-harness.mjs';
+import * as retryAdmission from '../src/screens/saved/retry-admission.ts';
 
 const route = {view: 'watchlist', sort: 'added', direction: 'desc'} as const;
 const artwork = {foreground: () => undefined, ambient: () => undefined, backdrop: () => undefined};
@@ -12,17 +13,29 @@ const presentation = {view: 'grid' as const, cardWidth: 160, setView() {}, backd
 const section = (id: string, count: number) => ({id, heading: {label: id}, totalCount: count,
   entries: count ? [{kind: 'movie' as const, id: `${id}-entry`, title: id}] : [], nextCursor: null});
 const projection = (sections: any[]) => ({sections, sorts: [], filters: [], query: {sort: 'added', direction: 'desc'}, actions: []});
-
-type Shape = 'posters' | 'squares' | undefined;
-function snapshot(shape: Shape, phase: 'idle' | 'loading' | 'ready' | 'error', sections: any[] = []) {
+function snapshot(shape: 'posters' | 'squares' | undefined, phase: 'idle' | 'loading' | 'ready' | 'error', sections: any[] = []) {
   return {phase, route: shape ? {...route, shape} : {...route}, projection: phase === 'ready' ? projection(sections) : null, error: phase === 'error' ? {code: 'failed'} : null};
 }
-function service(name: 'posters' | 'squares' | 'saved', shape: Shape, initial: any, calls: Record<string, number>) {
-  let current = initial, next = initial;
+function deferred<T>() {
+  let resolve!: (value: T) => void, reject!: (error: unknown) => void;
+  const promise = new Promise<T>((res, rej) => {resolve = res; reject = rej;});
+  return {promise, resolve, reject};
+}
+function service(name: 'posters' | 'squares' | 'saved', shape: 'posters' | 'squares' | undefined, initial: any, calls: Record<string, number>) {
+  let current = initial, next = initial, behavior: (() => Promise<void>) | undefined;
   return {getSnapshot: () => current, subscribe: () => () => {},
-    select: async () => {calls[name] = (calls[name] ?? 0) + 1; current = next;},
+    select: async () => {calls[name] = (calls[name] ?? 0) + 1; if (behavior) {await behavior(); return;} current = next;},
     revalidate: async () => {}, next: async () => {}, retry: async () => {}, retryRead: async () => {},
-    set(value: any) {current = value;}, plan(value: any) {next = value;}};
+    set(value: any) {current = value;}, plan(value: any) {next = value;}, behavior(value: () => Promise<void>) {behavior = value;}};
+}
+
+function stubGlobals(t: any) {
+  const saved = {ResizeObserver: (globalThis as any).ResizeObserver, window: (globalThis as any).window, devicePixelRatio: (globalThis as any).devicePixelRatio};
+  class FakeResizeObserver {observe() {} disconnect() {} unobserve() {}}
+  (globalThis as any).ResizeObserver = FakeResizeObserver;
+  (globalThis as any).window = {innerHeight: 900};
+  (globalThis as any).devicePixelRatio = 2;
+  t.after(() => Object.assign(globalThis, saved));
 }
 
 async function mount(initial: {posters: any; squares: any}) {
@@ -31,12 +44,13 @@ async function mount(initial: {posters: any; squares: any}) {
   const squares = service('squares', 'squares', initial.squares, calls);
   const saved = service('saved', undefined, snapshot(undefined, 'ready', [section('saved', 0)]), calls);
   const operations = {current: true, run: async (run: (signal: AbortSignal) => Promise<void>) => run(new AbortController().signal), dispose() {}};
-  const runtime: any = {scope: {authority: 'local', serverId: 's', accountId: 'a', profileId: 'p', sessionFamilyId: 'f'},
+  let runtime: any = {scope: {authority: 'local', serverId: 's', accountId: 'a', profileId: 'p', sessionFamilyId: 'f'},
     operations, posters, squares, saved, select: async () => {},
     summary: {subscribe: () => () => {}, getSnapshot: () => ({value: null, error: null}), refresh: async () => {}},
     personal: {subscribe: () => () => {}, getSnapshot: () => ({route: null, resources: []})},
     downloads: {}, installReadyDownloads() {}, dispose() {}};
-  const effects = {openEntry() {}, playEntry: async () => {}, selectRoute() {}, openItem() {}, saveFile: async () => {},
+  let currentRoute: any = route;
+  let effects: any = {openEntry() {}, playEntry: async () => {}, selectRoute() {}, openItem() {}, saveFile: async () => {},
     reportError(error: unknown) {errors.push(error);}};
   const app = await componentModule(new URL('../src/screens/saved/Saved.tsx', import.meta.url), {
     react: h.react,
@@ -68,27 +82,25 @@ async function mount(initial: {posters: any; squares: any}) {
     './SavedPhoneDirectory': {SavedPhoneDirectory: 'SavedPhoneDirectory'},
     './SavedPhoneNav': {SavedPhoneNav: 'SavedPhoneNav'},
     './route.ts': {sameSavedRoute: (left: any, right: any) => JSON.stringify(left) === JSON.stringify(right), savedViewKey: () => 'view'},
+    './retry-admission.ts': retryAdmission,
     './use-view-operations.ts': {useSavedViewOperations: () => operations},
     './saved.module.css': {default: {}},
     './ReadingGroupCard': {ReadingGroupCard: 'ReadingGroupCard'},
   });
-  const flat = () => tree(h.render(() => app.SavedScreen({runtime, route, online: true, downloadsOffered: false,
+  const flat = () => tree(h.render(() => app.SavedScreen({runtime, route: currentRoute, online: true, downloadsOffered: false,
     artwork, preparationArtwork: artwork, presentation, effects})));
   flat();
-  return {flat, runtime, posters, squares, saved, calls, errors};
+  return {flat, posters, squares, saved, calls, errors,
+    setRuntime(value: any) {runtime = value;}, runtime: () => runtime,
+    setRoute(value: any) {currentRoute = value;},
+    setReportError(value: (error: unknown) => void) {effects = {...effects, reportError: value};}};
 }
 
 const compact = (f: any) => all(f.flat(), 'StateView').filter((node: any) => node.props.variant === 'compact');
 const retryOf = (node: any) => node.props.primary;
 
 test('actual SavedLists keeps the healthy poster rows beside a square reader failure', async t => {
-  const savedGlobals = {ResizeObserver: (globalThis as any).ResizeObserver, window: (globalThis as any).window, devicePixelRatio: (globalThis as any).devicePixelRatio};
-  class FakeResizeObserver {observe() {} disconnect() {} unobserve() {}}
-  (globalThis as any).ResizeObserver = FakeResizeObserver;
-  (globalThis as any).window = {innerHeight: 900};
-  (globalThis as any).devicePixelRatio = 2;
-  t.after(() => Object.assign(globalThis, savedGlobals));
-
+  stubGlobals(t);
   const f = await mount({posters: snapshot('posters', 'ready', [section('posters', 1)]), squares: snapshot('squares', 'error')});
   const failures = compact(f);
   assert.equal(failures.length, 1);
@@ -98,13 +110,7 @@ test('actual SavedLists keeps the healthy poster rows beside a square reader fai
 });
 
 test('actual SavedLists shows the empty state only when both readers are ready and empty', async t => {
-  const savedGlobals = {ResizeObserver: (globalThis as any).ResizeObserver, window: (globalThis as any).window, devicePixelRatio: (globalThis as any).devicePixelRatio};
-  class FakeResizeObserver {observe() {} disconnect() {} unobserve() {}}
-  (globalThis as any).ResizeObserver = FakeResizeObserver;
-  (globalThis as any).window = {innerHeight: 900};
-  (globalThis as any).devicePixelRatio = 2;
-  t.after(() => Object.assign(globalThis, savedGlobals));
-
+  stubGlobals(t);
   const partial = await mount({posters: snapshot('posters', 'loading'), squares: snapshot('squares', 'ready', [])});
   assert.equal(compact(partial).length, 0);
   assert.equal(all(partial.flat(), 'StateView').some((node: any) => node.props.title === 'web.saved.empty.watchlist'), false);
@@ -120,13 +126,7 @@ test('actual SavedLists shows the empty state only when both readers are ready a
 });
 
 test('actual SavedLists shows one scoped recovery per failed reader and coalesces retry', async t => {
-  const savedGlobals = {ResizeObserver: (globalThis as any).ResizeObserver, window: (globalThis as any).window, devicePixelRatio: (globalThis as any).devicePixelRatio};
-  class FakeResizeObserver {observe() {} disconnect() {} unobserve() {}}
-  (globalThis as any).ResizeObserver = FakeResizeObserver;
-  (globalThis as any).window = {innerHeight: 900};
-  (globalThis as any).devicePixelRatio = 2;
-  t.after(() => Object.assign(globalThis, savedGlobals));
-
+  stubGlobals(t);
   const f = await mount({posters: snapshot('posters', 'error'), squares: snapshot('squares', 'error')});
   const failures = compact(f);
   assert.equal(failures.length, 2);
@@ -142,20 +142,95 @@ test('actual SavedLists shows one scoped recovery per failed reader and coalesce
   assert.ok(textOf(f.flat()).includes('lib.count'), 'both ready restores the exact combined total');
 });
 
-test('an old failure retry cannot request into a successor route', async t => {
-  const savedGlobals = {ResizeObserver: (globalThis as any).ResizeObserver, window: (globalThis as any).window, devicePixelRatio: (globalThis as any).devicePixelRatio};
-  class FakeResizeObserver {observe() {} disconnect() {} unobserve() {}}
-  (globalThis as any).ResizeObserver = FakeResizeObserver;
-  (globalThis as any).window = {innerHeight: 900};
-  (globalThis as any).devicePixelRatio = 2;
-  t.after(() => Object.assign(globalThis, savedGlobals));
+test('actual SavedLists attempts both failed readers even when the first rejects', async t => {
+  stubGlobals(t);
+  const f = await mount({posters: snapshot('posters', 'error'), squares: snapshot('squares', 'error')});
+  const poster = deferred<void>();
+  f.posters.behavior(() => poster.promise);
+  const retry = retryOf(compact(f)[0]!);
+  retry.onPress();
+  poster.reject(new Error('poster failed'));
+  await Promise.resolve(); await Promise.resolve(); await Promise.resolve(); f.flat();
+  assert.equal(f.calls.posters, 1);
+  assert.equal(f.calls.squares, 1, 'the sibling reader is attempted after the first rejection');
+  assert.equal(f.errors.length, 1, 'the first rejection is reported once');
+});
 
+test('an old failure retry cannot adopt a same-route runtime replacement', async t => {
+  stubGlobals(t);
   const f = await mount({posters: snapshot('posters', 'error'), squares: snapshot('squares', 'error')});
   const oldRetry = retryOf(compact(f)[0]!);
-  // The successor route commits; the old retained handler must see the replaced routes.
-  f.posters.set({...snapshot('posters', 'error'), route: {view: 'favorites', sort: 'added', direction: 'desc', shape: 'posters'}});
-  f.squares.set({...snapshot('squares', 'error'), route: {view: 'favorites', sort: 'added', direction: 'desc', shape: 'squares'}});
-  f.flat();
+  const original = f.runtime();
+  f.setRuntime({...original, operations: {...original.operations}}); f.flat();
   oldRetry.onPress();
-  assert.deepEqual(f.calls, {}, 'the retired route callback requested nothing');
+  assert.deepEqual(f.calls, {}, 'the captured old admission does not adopt the replacement runtime');
+  retryOf(compact(f)[0]!).onPress();
+  assert.deepEqual(f.calls, {posters: 1, squares: 1}, 'the current published admission works');
+});
+
+test('a replay across runtime replacement leaves the old callback dead and the fresh one live', async t => {
+  stubGlobals(t);
+  const f = await mount({posters: snapshot('posters', 'error'), squares: snapshot('squares', 'error')});
+  const oldRetry = retryOf(compact(f)[0]!);
+  const original = f.runtime();
+  f.setRuntime({...original, operations: {...original.operations}}); f.flat();
+  f.setRuntime(original); f.flat();
+  oldRetry.onPress();
+  assert.deepEqual(f.calls, {}, 'the old Strict/replay callback never adopts the fresh admission');
+  retryOf(compact(f)[0]!).onPress();
+  assert.deepEqual(f.calls, {posters: 1, squares: 1}, 'the fresh layout admission is live');
+});
+
+test('an old retry after an equal-route ticket replacement is inert and the current one works', async t => {
+  stubGlobals(t);
+  const f = await mount({posters: snapshot('posters', 'error'), squares: snapshot('squares', 'error')});
+  const oldRetry = retryOf(compact(f)[0]!);
+  f.setReportError(() => {}); f.flat();
+  oldRetry.onPress();
+  assert.deepEqual(f.calls, {}, 'the old ticket is dead after the same-route replacement');
+  retryOf(compact(f)[0]!).onPress();
+  assert.deepEqual(f.calls, {posters: 1, squares: 1});
+});
+
+test('a late rejection after route retirement neither reports nor starts the sibling', async t => {
+  stubGlobals(t);
+  const f = await mount({posters: snapshot('posters', 'error'), squares: snapshot('squares', 'error')});
+  const pending = deferred<void>();
+  f.posters.behavior(() => pending.promise);
+  const oldRetry = retryOf(compact(f)[0]!);
+  oldRetry.onPress();
+  const next = {view: 'favorites', sort: 'added', direction: 'desc'} as const;
+  f.setRoute(next);
+  f.posters.set({...snapshot('posters', 'error'), route: {...next, shape: 'posters'}});
+  f.squares.set({...snapshot('squares', 'error'), route: {...next, shape: 'squares'}});
+  f.flat();
+  pending.reject(new Error('late'));
+  await Promise.resolve(); await Promise.resolve(); await Promise.resolve(); f.flat();
+  assert.deepEqual(f.errors, [], 'the dead admission never reports into the successor route');
+  assert.equal(f.calls.squares, undefined, 'no sibling select starts after retirement');
+});
+
+test('a synchronous first-select route replacement stops the sibling select', async t => {
+  stubGlobals(t);
+  const f = await mount({posters: snapshot('posters', 'error'), squares: snapshot('squares', 'error')});
+  const next = {view: 'favorites', sort: 'added', direction: 'desc'} as const;
+  f.posters.behavior(async () => {
+    f.squares.set({...snapshot('squares', 'error'), route: {...next, shape: 'squares'}});
+  });
+  retryOf(compact(f)[0]!).onPress();
+  assert.equal(f.calls.posters, 1);
+  assert.equal(f.calls.squares, undefined, 'the sibling is not started against successor-owned readers');
+  assert.deepEqual(f.errors, []);
+});
+
+test('a Strict replay publishes a fresh live admission for the same ticket', () => {
+  const fake = (shape: 'posters' | 'squares' | undefined) => ({getSnapshot: () => ({route: shape ? {...route, shape} : {...route}, phase: 'error'}), select: async () => {}});
+  const ticket = {runtime: {operations: {current: true}}, route: {...route}, routeKey: JSON.stringify(route),
+    posters: fake('posters'), squares: fake('squares'), saved: fake(undefined), reportError() {}};
+  const first = retryAdmission.createSavedRetryAdmission(ticket);
+  retryAdmission.retireSavedRetryAdmission(first);
+  const second = retryAdmission.createSavedRetryAdmission(ticket);
+  assert.equal(first.live, false, 'the first setup is dead');
+  assert.equal(second.live, true, 'the Strict second setup is live');
+  assert.equal(retryAdmission.savedRetryCurrent(second), true);
 });
