@@ -8,6 +8,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"reflect"
+	"strings"
 	"testing"
 	"time"
 
@@ -281,16 +282,46 @@ func completeCrashCheckpoint(t *testing.T, f *completeFixture, target string) {
 		pubs = append(pubs, f.add(fmt.Sprintf("Author/Series/Series %02d.epub", i), "epub", 0))
 	}
 	f.settle()
-	f.seal()
+	if strings.HasPrefix(target, "work-") || target == "seal-partial" {
+		f.c.Write(func(ctx context.Context, tx *sql.Tx) error {
+			for _, p := range pubs {
+				if err := compactcatalog.ReadingNormalizeObjectTx(ctx, tx, p.object); err != nil {
+					return err
+				}
+			}
+			return compactcatalog.FlushReadingPathSemanticTx(ctx, tx)
+		})
+		f.c.Exec(`UPDATE catalog_entities SET retired=1 WHERE id=?`, pubs[0].item)
+		f.c.Exec(`UPDATE catalog_entities SET retired=0 WHERE id=?`, pubs[0].item)
+		f.c.Exec(`UPDATE catalog_libraries SET root=root||'/temporary' WHERE id=?`, f.handle)
+		f.c.Exec(`UPDATE catalog_libraries SET root=? WHERE id=?`, f.root, f.handle)
+		for i := 0; i < 3; i++ {
+			f.c.Exec(`INSERT INTO reading_path_block(job_id,source_id,directory_key,mode,reason) VALUES('obsolete',?,?,'subtree','old')`, f.source, fmt.Sprintf("Old/%d", i))
+		}
+		f.c.Write(func(ctx context.Context, tx *sql.Tx) error {
+			return catalog.InventoryIssueTx(ctx, tx, f.job, storage.InventoryIssue{Path: "Unused/Unreadable", Reason: "directory_unreadable", Protect: true, Warning: true})
+		})
+		f.settle()
+	}
+	if target != "source-open" {
+		f.seal()
+	}
+	if target == "source-cancelled" {
+		f.c.Exec(`UPDATE jobs SET status='cancelled' WHERE id=?`, f.job)
+	}
 	reached := false
 	for i := 0; i < 2000; i++ {
 		var phase string
-		var capture, stage, flat int64
-		err := f.c.DB.QueryRow(`SELECT phase,(SELECT count(*) FROM reading_path_capture WHERE build_id=b.id),(SELECT count(*) FROM reading_path_stage WHERE build_id=b.id),after_flatten_item FROM reading_path_build b LIMIT 1`).Scan(&phase, &capture, &stage, &flat)
+		var capture, stage, flat, representatives int64
+		err := f.c.DB.QueryRow(`SELECT phase,(SELECT count(*) FROM reading_path_capture WHERE build_id=b.id),(SELECT count(*) FROM reading_path_stage WHERE build_id=b.id),after_flatten_item,(SELECT count(*) FROM reading_path_representative WHERE build_id=b.id) FROM reading_path_build b LIMIT 1`).Scan(&phase, &capture, &stage, &flat, &representatives)
 		if err != nil && err != sql.ErrNoRows {
 			t.Fatal(err)
 		}
 		switch target {
+		case "source-open", "source-cancelled":
+			reached = i == 0
+		case "seal-partial":
+			reached = scalar(t, f.c.DB, `SELECT count(*) FROM reading_path_scope WHERE seal_cursor>0 AND sealed=0`) > 0
 		case "pending":
 			reached = i == 0
 		case "seal":
@@ -305,6 +336,10 @@ func completeCrashCheckpoint(t *testing.T, f *completeFixture, target string) {
 			reached = phase == "flatten" && flat > 0 && scalar(t, f.c.DB, `SELECT count(*) FROM reading_path_head WHERE author_source='folder'`) < 10
 		case "cleanup-partial":
 			reached = phase == "cleanup" && capture > 0 && capture < 10
+		case "cleanup-representatives-partial":
+			reached = phase == "cleanup" && capture == 0 && representatives > 0 && representatives < 10
+		case "cleanup-stage-partial":
+			reached = phase == "cleanup" && capture == 0 && representatives == 0 && stage > 0 && stage < 10
 		case "abort", "abort-partial":
 			if phase == "stage" && stage > 0 {
 				f.c.Exec(`UPDATE inventory_objects SET revision='new' WHERE id=?`, pubs[0].object)
@@ -312,10 +347,18 @@ func completeCrashCheckpoint(t *testing.T, f *completeFixture, target string) {
 			}
 			reached = phase == "abort" && (target == "abort" || capture > 0 && capture < 10)
 		}
+		if strings.HasPrefix(target, "work-") {
+			parts := strings.Split(target, "-")
+			reached = scalar(t, f.c.DB, `SELECT count(*) FROM reading_path_dirty_work WHERE kind=? AND phase=? AND captured>0 AND (after_object<>'' OR after_asset>0 OR after_scope>0)`, parts[1], parts[2]) > 0
+		}
 		if reached {
 			break
 		}
-		completeStep(t, f.c, 3)
+		budget := 3
+		if strings.HasPrefix(target, "work-") || target == "seal-partial" {
+			budget = 1
+		}
+		completeStep(t, f.c, budget)
 	}
 	if !reached {
 		t.Fatal("never reached durable checkpoint")
@@ -340,7 +383,7 @@ func TestReadingCompleteCrashWriterProcess(t *testing.T) {
 	os.Exit(91)
 }
 func TestReadingCompleteRestartEveryDurablePhase(t *testing.T) {
-	for _, target := range []string{"pending", "seal", "capture", "capture-partial", "stage", "stage-partial", "ready", "flatten", "flatten-partial", "cleanup", "cleanup-partial", "abort", "abort-partial"} {
+	for _, target := range []string{"pending", "seal", "capture", "capture-partial", "stage", "stage-partial", "ready", "flatten", "flatten-partial", "cleanup", "cleanup-partial", "cleanup-representatives-partial", "cleanup-stage-partial", "abort", "abort-partial", "source-open", "source-cancelled", "seal-partial", "work-asset-0", "work-item-0", "work-item-1", "work-item-2", "work-source-0", "work-source-1", "work-library-0", "work-library-1", "work-pending-0", "work-blocks-0", "work-coverage-0"} {
 		t.Run(target, func(t *testing.T) {
 			root := t.TempDir()
 			ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
@@ -362,6 +405,14 @@ func TestReadingCompleteRestartEveryDurablePhase(t *testing.T) {
 			}
 			defer db.Close()
 			c := catalogtest.New(t, db)
+			if target == "source-cancelled" {
+				c.Exec(`INSERT INTO jobs(id,library_id,status,created_at) VALUES('recovery-job','restart','running','now')`)
+				c.Exec(`INSERT INTO inventory_runs(job_id,source_id,source_generation,root_incarnation,root_identity,policy_revision) SELECT 'recovery-job',id,generation,incarnation,root_identity,1 FROM library_sources WHERE library_id='restart'`)
+			}
+			if target == "source-open" || target == "source-cancelled" {
+				c.Exec(`UPDATE inventory_runs SET phase='reconciling',authoritative=1 WHERE job_id=(SELECT job_id FROM reading_path_source_barrier)`)
+				c.Exec(`UPDATE inventory_runs SET phase='sidecars' WHERE job_id=(SELECT job_id FROM reading_path_source_barrier)`)
+			}
 			completeDrain(t, c)
 			var ids []int64
 			rows, err := db.Query(`SELECT id FROM catalog_entities WHERE kind=20 ORDER BY id`)
