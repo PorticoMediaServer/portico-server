@@ -48,24 +48,25 @@ function MountedAuthForm({account, flow, initialUsername = '', embedded = false,
   const errorCode = (state.error as {code?: string} | undefined)?.code;
   const codeRejected = mode === 'verify' && errorCode === 'challenge_invalid';
   const mailDown = mode === 'create' && errorCode === 'mail_unavailable';
-  const nameTaken = (mode === 'create' || mode === 'provider') && errorCode === 'username_unavailable' && submittedUsername !== '' && username.trim().toLowerCase() === submittedUsername;
+  const chooseRegistrationName = mode === 'verify' && state.registration?.contactVerified === true;
+  const nameTaken = (mode === 'create' || mode === 'provider' || chooseRegistrationName) && errorCode === 'username_unavailable' && submittedUsername !== '' && username.trim().toLowerCase() === submittedUsername;
   const back = <button type="button" disabled={busy} onClick={() => flow.go('signin')}>{t('auth.backToSignIn')}</button>;
   // Frame 7 draws the create form's way back with the same left arrow the provider
   // screen's Cancel uses; the code and reset screens draw it as plain text.
   const backAction = <button type="button" disabled={busy} onClick={() => flow.go('signin')}><ServicesBackAction>{t('auth.backToSignIn')}</ServicesBackAction></button>;
-  const title = mode === 'create' ? t('auth.createYourAccount') : mode === 'verify' || mode === 'sent' ? t('auth.checkEmail') : mode === 'forgot' ? t('auth.forgotPasswordTitle') : mode === 'factor' ? t('auth.enterVerificationCode') : mode === 'recovery' ? t('services.signin.recovery') : mode === 'provider' ? t('auth.chooseUsername') : mode === 'ready' ? t('services.provider.ready') : heading ?? t('auth.welcomeHome');
-  const body = mode === 'create' ? t('auth.oneAccount') : mode === 'verify' && state.registration ? t('auth.codeSentTo', {address: state.registration.maskedAddress}) : mode === 'sent' ? t('auth.resetLinkSent') : mode === 'forgot' ? t('auth.resetLinkLede') : mode === 'factor' ? t('services.signin.twoStep') : mode === 'recovery' ? t('services.signin.recoveryBody') : mode === 'provider' ? t('services.provider.lastThing') : mode === 'ready' ? t('services.provider.readyBody') : lead ?? t('auth.accountLead');
+  const title = mode === 'create' ? t('auth.createYourAccount') : chooseRegistrationName ? t('auth.chooseUsername') : mode === 'verify' || mode === 'sent' ? t('auth.checkEmail') : mode === 'forgot' ? t('auth.forgotPasswordTitle') : mode === 'factor' ? t('auth.enterVerificationCode') : mode === 'recovery' ? t('services.signin.recovery') : mode === 'provider' ? t('auth.chooseUsername') : mode === 'ready' ? t('services.provider.ready') : heading ?? t('auth.welcomeHome');
+  const body = chooseRegistrationName ? t('services.provider.lastThing') : mode === 'create' ? t('auth.oneAccount') : mode === 'verify' && state.registration ? t('auth.codeSentTo', {address: state.registration.maskedAddress}) : mode === 'sent' ? t('auth.resetLinkSent') : mode === 'forgot' ? t('auth.resetLinkLede') : mode === 'factor' ? t('services.signin.twoStep') : mode === 'recovery' ? t('services.signin.recoveryBody') : mode === 'provider' ? t('services.provider.lastThing') : mode === 'ready' ? t('services.provider.readyBody') : lead ?? t('auth.accountLead');
   const providers = state.options?.providers.filter(item => item.enabled).sort((a, b) => a.id.localeCompare(b.id)) ?? [];
   // auth5 draws the full sign-in page's own labels ("Sign in with"), distinct from
   // the create and invitation pages' "Continue with" wording in account/connect.
   const signIn = mode === 'signin' && !embedded && !invitation;
   const providerButtons = <>{providers.map(item => <ServicesProviderButton key={item.id} provider={item.id} disabled={busy} onClick={() => void flow.provider(item.id)}>{t(item.id === 'apple' ? (signIn ? 'auth.signInWithApple' : 'services.provider.apple') : (signIn ? 'auth.signInWithGoogle' : 'services.provider.google'))}</ServicesProviderButton>)}{providers.length > 0 && state.options?.password && <div className={mode === 'signin' ? signInStyles.divider : undefined}><ServicesDivider>{t(mode === 'create' ? 'services.provider.createDivider' : 'auth.orWithEmail')}</ServicesDivider></div>}</>;
   const content = <>
-    {mode === 'verify' && <ServicesStateIcon tone="info" icon="i-mail" size={32} />}
+    {mode === 'verify' && !chooseRegistrationName && <ServicesStateIcon tone="info" icon="i-mail" size={32} />}
     {mode === 'sent' && <ServicesStateIcon tone="info" icon="i-mail" size={26} />}
     {mode === 'ready' && <ServicesStateIcon />}
     {mode === 'provider' && state.provider && <ServicesProviderContext provider={state.provider} email={state.verifiedEmail} />}
-    {!(invitation && mode === 'signin') && <><ServicesHeading singleLine phoneAccountForm={mode === 'forgot' || mode === 'create' && !nameTaken}>{title}</ServicesHeading>{mode === 'verify' && state.registration ? <ServicesRegistrationLead address={state.registration.maskedAddress} /> : mode !== 'provider-stopped' && <ServicesLead>{body}</ServicesLead>}</>}
+    {!(invitation && mode === 'signin') && <><ServicesHeading singleLine phoneAccountForm={mode === 'forgot' || mode === 'create' && !nameTaken}>{title}</ServicesHeading>{mode === 'verify' && state.registration && !chooseRegistrationName ? <ServicesRegistrationLead address={state.registration.maskedAddress} /> : mode !== 'provider-stopped' && <ServicesLead>{body}</ServicesLead>}</>}
     {mode === 'signin' && before}
     {mode === 'provider-stopped' && state.provider && <>
       <ServicesNotice icon="i-clock">{t('services.provider.stopped', {provider: t(state.provider === 'apple' ? 'accounts.provider.apple' : 'accounts.provider.google')})}</ServicesNotice>
@@ -73,7 +74,7 @@ function MountedAuthForm({account, flow, initialUsername = '', embedded = false,
       {state.options?.password && <ServicesActions><Button disabled={busy} onClick={() => {if (flow.getSnapshot() === state) flow.go('signin');}}>{t('services.provider.useEmail')}</Button></ServicesActions>}
     </>}
     {(mode === 'signin' || mode === 'create') && providerButtons}
-    {state.error && !codeRejected && !(errorCode === 'username_unavailable' && (mode === 'create' || mode === 'provider')) ? state.retryAt > 0 ? <ServicesNotice tone="error">{t('services.signin.tooMany')}</ServicesNotice> : errorCode === 'invalid_credentials' ? <ServicesNotice tone="error">{t('services.signin.credentials')}</ServicesNotice> : mailDown ? <ServicesNotice icon="i-clock">{t('services.signup.mailUnavailable')}</ServicesNotice> : <HostedError error={state.error} /> : null}
+    {state.error && !codeRejected && !(errorCode === 'username_unavailable' && (mode === 'create' || mode === 'provider' || chooseRegistrationName)) ? state.retryAt > 0 ? <ServicesNotice tone="error">{t('services.signin.tooMany')}</ServicesNotice> : errorCode === 'invalid_credentials' ? <ServicesNotice tone="error">{t('services.signin.credentials')}</ServicesNotice> : mailDown ? <ServicesNotice icon="i-clock">{t('services.signup.mailUnavailable')}</ServicesNotice> : <HostedError error={state.error} /> : null}
     {!state.options && state.optionsFailed && <ServicesActions>
       <Button loading={busy} disabled={blocked} onClick={() => {if (flow.getSnapshot() === state) void flow.retryInitialization();}}>{retrySeconds > 0 ? retryLabel : t('action.tryAgain')}</Button>
     </ServicesActions>}
@@ -99,12 +100,12 @@ function MountedAuthForm({account, flow, initialUsername = '', embedded = false,
       <AuthLinks>{backAction}</AuthLinks><ServicesTerms />
     </>}
     {mode === 'verify' && state.registration && <>
-      <form className={styles.form} onSubmit={submit(() => flow.verify(code))}>
-        <ServicesVerificationCode><AuthCodeBoxes length={6} value={code} onChange={setCode} onComplete={() => {}} label={t('auth.code')} disabled={busy} error={codeRejected ? t('services.signup.codeInvalid') : undefined} /></ServicesVerificationCode>
-        <ServicesActions><Button variant="primary" type="submit" loading={busy} disabled={blocked || code.length !== 6}>{retrySeconds ? retryLabel : t('auth.createAccount')}</Button></ServicesActions>
+      <form className={styles.form} onSubmit={submit(() => {if (flow.getSnapshot() !== state) return Promise.resolve(); if (chooseRegistrationName) setSubmittedUsername(username.trim().toLowerCase()); return flow.verify(chooseRegistrationName ? '' : code, chooseRegistrationName ? username : undefined, chooseRegistrationName ? name : undefined);})}>
+        {chooseRegistrationName ? <><TextField variant="auth" label={t('auth.username')} name="username" autoComplete="username" autoCapitalize="off" spellCheck={false} value={username} onChange={event => setUsername(event.currentTarget.value)} minLength={3} maxLength={32} required disabled={busy} error={nameTaken ? t('web.signIn.error.accountTaken') : undefined} /><TextField variant="auth" label={<ServicesLabel detail={t('field.optional')}>{t('auth.yourName')}</ServicesLabel>} name="name" autoComplete="name" value={name} onChange={event => setName(event.currentTarget.value)} maxLength={80} disabled={busy} /><ServicesHint>{t('auth.usernameHelp')}</ServicesHint></> : <ServicesVerificationCode><AuthCodeBoxes length={6} value={code} onChange={setCode} onComplete={() => {}} label={t('auth.code')} disabled={busy} error={codeRejected ? t('services.signup.codeInvalid') : undefined} /></ServicesVerificationCode>}
+        <ServicesActions><Button variant="primary" type="submit" loading={busy} disabled={blocked || (chooseRegistrationName ? username.trim().length < 3 : code.length !== 6)}>{retrySeconds ? retryLabel : t('auth.createAccount')}</Button></ServicesActions>
       </form>
-      <AuthLinks><button type="button" disabled={blocked || state.resends >= 5} onClick={() => void flow.resend()}>{t('auth.sendCodeAgain')}</button><ServicesQuiet>{t('services.signup.resendLimit')}</ServicesQuiet></AuthLinks>
-      <AuthLinks><button type="button" disabled={busy} onClick={() => flow.startAgain()}>{t('services.signup.startAgain')}</button>{back}</AuthLinks><ServicesQuiet>{t('services.signup.codeHelp')}</ServicesQuiet>
+      {!chooseRegistrationName && <AuthLinks><button type="button" disabled={blocked || state.resends >= 5} onClick={() => void flow.resend()}>{t('auth.sendCodeAgain')}</button><ServicesQuiet>{t('services.signup.resendLimit')}</ServicesQuiet></AuthLinks>}
+      <AuthLinks>{!chooseRegistrationName && <button type="button" disabled={busy} onClick={() => flow.startAgain()}>{t('services.signup.startAgain')}</button>}{back}</AuthLinks>{!chooseRegistrationName && <ServicesQuiet>{t('services.signup.codeHelp')}</ServicesQuiet>}
     </>}
     {mode === 'forgot' && state.options?.recovery && <>
       <form className={styles.form} onSubmit={submit(() => flow.getSnapshot() === state ? flow.recover(username, email) : Promise.resolve())}>

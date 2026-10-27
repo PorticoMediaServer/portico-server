@@ -155,13 +155,39 @@ export class ServicesAuthFlow {
   create(input: {username: string; displayName: string; contactAddress: string; password: string}) {
     return this.run(async signal => {
       const value = await this.account.client.register({...input, username: input.username.trim().toLowerCase(), displayName: input.displayName.trim() || input.username.trim(), contactAddress: input.contactAddress.trim(), requestId: await this.ids.for('registration', input)}, signal);
-      if (!signal.aborted) { this.ids.clear('registration'); this.publish({mode: 'verify', registration: value, resends: 0}); }
+      if (!signal.aborted) { this.ids.clear('registration'); this.publish({mode: 'verify', registration: Object.freeze({...value}), resends: 0}); }
     });
   }
-  verify(code: string) { return this.run(async signal => { const registration = this.state.registration; if (registration) await this.authenticate(inner => this.account.client.verifyRegistration(registration.registrationId, {code: code.trim()}, AbortSignal.any([signal, inner])), true); }); }
+  verify(code: string, username?: string, displayName?: string) {
+    return this.run(async signal => {
+      const registration = this.state.registration;
+      if (this.state.mode !== 'verify' || !registration) return;
+      // Freeze the issued scalar authority and request before coordinator admission can yield.
+      const original = Object.freeze({...registration});
+      const input = Object.freeze({code: code.trim(), ...(username !== undefined ? {username: username.trim().toLowerCase(), displayName: displayName?.trim()} : {})});
+      const current = () => !this.disposed && !signal.aborted && this.state.mode === 'verify' && this.state.registration === registration;
+      if (username !== undefined && (!original.contactVerified || !(Date.parse(original.expiresAt) > Date.now()))) return;
+      try {
+        await this.account.service.authenticateIfSignedOut(inner => {
+          if (!current()) throw new CodedError('account_changed', 'The registration changed.');
+          return this.account.client.verifyRegistration(original.registrationId, input, AbortSignal.any([signal, inner]));
+        }, {}, current);
+      } catch (error) {
+        if (error instanceof ApiError && error.status === 409 && error.code === 'username_unavailable' && current()) {
+          const fresh = await this.account.client.registration(original.registrationId, signal);
+          if (!current()) return;
+          if (!fresh || fresh.registrationId !== original.registrationId || fresh.revision !== original.revision || fresh.expiresAt !== original.expiresAt || fresh.maskedAddress !== original.maskedAddress || fresh.status === 'completed' || !fresh.contactVerified || !(Date.parse(fresh.expiresAt) > Date.now()))
+            throw new CodedError('account_changed', 'The registration changed.');
+          this.publish({registration: Object.freeze({...fresh})});
+        }
+        throw error;
+      }
+      if (current()) { this.ids.clear(); this.signedIn(true); }
+    });
+  }
   resend() {
     return this.run(async signal => {
-      const registration = this.state.registration; if (!registration || this.state.resends >= 5) return;
+      const registration = this.state.registration; if (!registration || registration.contactVerified || this.state.resends >= 5) return;
       const value = await this.account.client.resendRegistration(registration.registrationId, await this.ids.for('resend', {id: registration.registrationId, count: this.state.resends}), signal);
       if (!signal.aborted) this.publish({registration: value, resends: this.state.resends + 1});
     });
