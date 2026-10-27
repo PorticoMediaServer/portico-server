@@ -22,6 +22,12 @@ func conditionalSelectionFixture(t *testing.T) (observationFixture, *DiscConditi
 	if _, err := f.s.db.Exec(`UPDATE remote_sources SET range_support='conditional' WHERE id='remote'`); err != nil {
 		t.Fatal(err)
 	}
+	// A conditional disc read requires the folder's last scan to have published
+	// the healthy state (the observation fixture records facts without running
+	// the scan's finish step, which would otherwise leave the pre-scan default).
+	if _, err := f.s.db.Exec(`UPDATE library_sources SET health='healthy' WHERE remote_source_id='remote'`); err != nil {
+		t.Fatal(err)
+	}
 	// Conditional ranges require their real source limits, not a full-capture
 	// cache reservation or advanced-analysis consent.
 	if _, err := f.s.db.Exec(`DELETE FROM remote_source_settings WHERE source_id='remote'`); err != nil {
@@ -101,7 +107,7 @@ func TestConditionalDiscSelectionRefusesDriftWithoutAdoptingReplacement(t *testi
 		{"unqualified range", `UPDATE remote_sources SET range_support='unsupported' WHERE id='remote'`},
 		{"weak validator", `UPDATE remote_scan_observations SET provider_etag='W/"provider-iso"' WHERE source_id='remote'`},
 		{"disabled physical source", `UPDATE library_sources SET enabled=0 WHERE remote_source_id='remote'`},
-		{"new inventory object", `INSERT INTO inventory_objects(id,source_id,asset_id,root_incarnation,relative_path,revision,evidence_json,size,modified_ns,state,unsupported_reason) SELECT 'replacement-object',source_id,asset_id,root_incarnation,relative_path,revision,evidence_json,size,modified_ns,state,unsupported_reason FROM inventory_objects WHERE id='disc-object'; UPDATE inventory_objects SET retired=1 WHERE id='disc-object'`},
+		{"new inventory object", `INSERT INTO inventory_objects(id,source_id,asset_id,root_incarnation,relative_path,revision,evidence_json,size,modified_ns,state,unsupported_reason) SELECT 'replacement-object',source_id,asset_id,root_incarnation,'disc-replacement.iso',revision,evidence_json,size,modified_ns,state,unsupported_reason FROM inventory_objects WHERE id='disc-object'; UPDATE inventory_objects SET retired=1 WHERE id='disc-object'`},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			f, d, principal, witness := conditionalSelectionFixture(t)
@@ -134,7 +140,9 @@ func TestConditionalDiscResolveRequiresRealActorAndUniqueOriginalSelection(t *te
 	d.authority.authorize = func(_ context.Context, _ *sql.Tx, p identity.Principal, _ string) (identity.Principal, error) {
 		return p, nil
 	}
-	if _, err := f.s.db.Exec(`INSERT INTO inventory_objects(id,source_id,asset_id,root_incarnation,relative_path,revision,evidence_json,size,modified_ns,state,unsupported_reason) SELECT 'duplicate-object',source_id,asset_id,root_incarnation,relative_path,revision,evidence_json,size,modified_ns,state,unsupported_reason FROM inventory_objects WHERE id='disc-object'`); err != nil {
+	// The schema already forbids the same physical path twice in one source, so
+	// the ambiguous selection is a real second copy of the asset at another path.
+	if _, err := f.s.db.Exec(`INSERT INTO inventory_objects(id,source_id,asset_id,root_incarnation,relative_path,revision,evidence_json,size,modified_ns,state,unsupported_reason) SELECT 'duplicate-object',source_id,asset_id,root_incarnation,'disc-copy.iso',revision,evidence_json,size,modified_ns,state,unsupported_reason FROM inventory_objects WHERE id='disc-object'`); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := resolveConditionalSelection(t, f, d, principal, witness); err == nil {
