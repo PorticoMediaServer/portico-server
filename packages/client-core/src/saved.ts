@@ -528,15 +528,16 @@ export class SavedService {
    const recoveryCurrent = () => !this.disposed && generation === this.generation && recoveryRead === this.readGeneration
      && recoveryTicket === this.quiet && this.state.route === selected;
    const deepRecovery = this.history.length > 0 || this.seen > SAVED_PAGE;
+   const settleCommitted = () => {const index = this.commands.indexOf(c); if (index >= 0) this.commands.splice(index, 1); c.resolve();};
    this.candidateController?.abort();
-   if (!recoveryCurrent()) {c.resolve(); return;}
+   if (!recoveryCurrent()) {settleCommitted(); return;}
    this.candidateGeneration++; this.orderController?.abort();
-   if (!recoveryCurrent()) {c.resolve(); return;}
+   if (!recoveryCurrent()) {settleCommitted(); return;}
    this.orderGeneration++;
    this.commands.shift(); this.publish({ lastReceipt: receipt, mutationError: null, candidates: null, candidatesLoading: false, order: null, orderLoading: false, orderError: null });
    // Receipt subscribers may replace this read/route or begin a newer quiet
    // read. A committed command settles, but cannot borrow that successor.
-   if (!recoveryCurrent()) {c.resolve(); return;}
+   if (!recoveryCurrent()) {settleCommitted(); return;}
    if (receipt.deleted && selected.view === 'playlist') { for (const pending of this.commands) pending.resolve(); this.commands = []; this.lastFailure = undefined; this.readController?.abort(); this.readGeneration++; this.publish({ phase: 'ready', projection: null, playlist: null, pagination: { cursor: null, history: [], canPrevious: false, next: [] } }); c.resolve(); }
    // A list paged further than its first page stays where the viewer is (a removal deep in a playlist).
    else {
