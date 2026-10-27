@@ -12,8 +12,12 @@ export function holdPaused(service: {getSnapshot(): {itemId?: string | null; pha
   const release = () => {
     if (!live) return;
     live = false;
-    off?.();
-    if (deadline !== undefined) { clearTimeout(deadline); deadline = undefined; }
+    const stop = off;
+    off = undefined;
+    // The deadline is cleared even when the service's unsubscribe throws: the hold is over either way.
+    try { stop?.(); } finally {
+      if (deadline !== undefined) { clearTimeout(deadline); deadline = undefined; }
+    }
   };
   const hold = () => {
     const now = service.getSnapshot();
@@ -24,9 +28,13 @@ export function holdPaused(service: {getSnapshot(): {itemId?: string | null; pha
   };
   const stop = service.subscribe(hold);
   off = stop;
-  // A service that answered during subscribe released before its own unsubscribe was known.
-  if (!live) stop();
-  hold();
-  // A start that never begins is not waited on for ever.
-  if (live) deadline = setTimeout(release, 60000);
+  if (!live) {
+    // The service answered during subscribe and the hold has already ended. Its unsubscribe is
+    // known only now, and the retired hold must not read or pause a start that followed it.
+    stop();
+  } else {
+    hold();
+    // A start that never begins is not waited on for ever.
+    if (live) deadline = setTimeout(release, 60000);
+  }
 }

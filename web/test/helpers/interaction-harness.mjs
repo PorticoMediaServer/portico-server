@@ -85,24 +85,28 @@ export function createRenderer(options = {}) {
   };
   // Unmount: the cleanups the screen's effects returned. A screen that is never unmounted leaves
   // whatever it started (a listener, a deadline) behind, and the file cannot leave the runner. The
-  // order is React's for passive effects: the deepest component lets go first, so a child's
-  // subscription ends before its parent's, and within one component in declaration order. Every
-  // cleanup runs even if an earlier one throws; the first failure is raised afterwards.
+  // order is React's for a deleted subtree: the parent lets go first, then its children in tree
+  // order, and within one component in declaration order. react-dom 19.2.8 destroys the fiber
+  // before descending to fiber.child in commitPassiveUnmountEffectsInsideOfDeletedTree_begin (and
+  // the insertion/layout destroys in commitDeletionEffectsOnFiber do the same). Fibers are created
+  // in that same pre-order, so creation order is unmount order. Every cleanup runs even if an
+  // earlier one throws; the first thrown value is raised afterwards, falsy or not.
   const dispose = () => {
     let failure;
-    for (const key of [...fibers.keys()].reverse()) {
+    let failed = false;
+    for (const key of [...fibers.keys()]) {
       const f = fibers.get(key);
       for (let index = 0; index < f.effects.length; index++) {
         const held = f.effects[index];
         if (!held) continue;
         f.effects[index] = undefined;
-        try { held.cleanup?.(); } catch (error) { failure ??= error; }
+        try { held.cleanup?.(); } catch (error) { if (!failed) { failed = true; failure = error; } }
       }
       f.cursor = 0;
     }
     fibers.clear();
     pending = [];
-    if (failure) throw failure;
+    if (failed) throw failure;
   };
   return {react, render, dispose, focused};
 }
