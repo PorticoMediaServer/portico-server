@@ -240,3 +240,22 @@ test('the vocabulary reads the published document through the same scope', async
   const malformed = createNotificationScope(transport(() => envelope(firstFence, {...publishedVocabulary, maxLimit: 0})).api, lifetime());
   await assert.rejects(malformed.vocabulary(), error => codeOf(error) === 'invalid_document');
 });
+
+test('parser programmer errors and transport failures keep their exact original identity',async()=>{
+ for(const failure of [new TypeError('not a validation refusal'),new Error('unexpected parser failure')]){
+  const raw=payload(unread);Object.defineProperty(raw,'revision',{get(){throw failure;}});
+  const scoped=createNotificationScope(transport(()=>envelope(firstFence,raw)).api,lifetime());
+  await assert.rejects(scoped.request(unread),error=>error===failure);scoped.dispose();
+ }
+ const failure=new Error('Invalid notification response.');
+ const scoped=createNotificationScope(transport(()=>{throw failure;}).api,lifetime());
+ await assert.rejects(scoped.request(unread),error=>error===failure);scoped.dispose();
+});
+
+test('retirement during document parsing takes precedence over validation classification',async()=>{
+ const controller=new AbortController(),raw=payload(unread);
+ Object.defineProperty(raw,'revision',{get(){controller.abort();throw new Error('Invalid notification response.');}});
+ const {api,calls}=transport(()=>envelope(firstFence,raw));const scoped=createNotificationScope(api,lifetime({signal:controller.signal}));
+ await assert.rejects(scoped.request(unread),error=>(error as Error).name==='AbortError');
+ await assert.rejects(scoped.request(unread),error=>(error as Error).name==='AbortError');assert.equal(calls.length,1);scoped.dispose();
+});

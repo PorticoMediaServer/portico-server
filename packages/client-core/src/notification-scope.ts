@@ -93,10 +93,19 @@ export function createNotificationScope(api: InboxApi, lifetime: NotificationSco
    // A malformed first payload cannot admit its viewer fence. Keep each
    // canonical parser's tolerant-item/strict-document policy, then return the
    // original envelope for the service's normal adoption.
-   if(inbox)parseNotificationInbox(raw.data);
-   else if(unread)parseNotificationSummary(raw.data);
-   else if(action)parseNotificationBatchResult(raw.data);
-   else parseNotificationVocabulary(raw.data);
+   try {
+    if(inbox)parseNotificationInbox(raw.data);
+    else if(unread)parseNotificationSummary(raw.data);
+    else if(action)parseNotificationBatchResult(raw.data);
+    else parseNotificationVocabulary(raw.data);
+   } catch (error) {
+    check();throwIfAborted(owned.signal);
+    // Only the canonical parsers' shared validation refusal is a definite
+    // document error. Transport, authority, cancellation and programmer errors
+    // never acquire this classification or admit the envelope's fence.
+    if(error instanceof Error && error.constructor===Error && error.message==='Invalid notification response.') throw invalid();
+    throw error;
+   }
    fence = scope.viewerFence;
    check();throwIfAborted(owned.signal);
    return raw as T;
