@@ -865,3 +865,24 @@ test('late renewal ticket cannot admit a replacement SDK connection',async()=>{
  h.ctxEvents.disconnect({senderId:'phone'});h.ctxEvents.connect({senderId:'phone'});release();await settle0();
  assert(!h.sent.some(x=>x.body.type==='renewal-complete'));assert.equal(h.receiver.state().playbackId,'ps_1');
 });
+
+test('real 202 requires the authoritative preparation session domain',async()=>{
+ const valid=session=>({...session,state:'preparing',retryAfterMs:500,lease:{expiresAt:'2099-01-01T00:00:00Z',reportEveryMs:10000},presentation:{...session.presentation,engine:'native'}});
+ const bad=[
+  session=>{const value=valid(session);value.lease.expiresAt='not-a-time';return value},
+  session=>{const value=valid(session);value.lease.reportEveryMs=-1;return value},
+  session=>{const value=valid(session);value.presentation.startPositionMs=-1;return value},
+  session=>({...valid(session),kind:'unknown-kind'}),
+  session=>({...valid(session),role:'unknown-role'}),
+  session=>{const value=valid(session);value.presentation.mode='unknown-mode';return value},
+  session=>{const value=valid(session);value.presentation.engine='unknown-engine';return value},
+  session=>{const value=valid(session);value.presentation.decision={};return value},
+  session=>{const value=valid(session);value.presentation.decision={video:{action:'copy',reasons:[42]}};return value},
+  session=>{const value=valid(session);value.lease.unexpected=true;return value},
+  ()=>({retryAfterMs:500,id:'partial-resource'})
+ ];
+ for(const response of bad){
+  const h=await harness({preparingResponses:[response]});await h.receiver.redeem('ABCD');
+  await assert.rejects(h.receiver.startPlayback('movie'),/invalid_preparation/);assert.equal(h.loads.length,0);
+ }
+});
