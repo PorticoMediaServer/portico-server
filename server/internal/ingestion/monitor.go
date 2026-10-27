@@ -222,7 +222,7 @@ func (s *Service) runMonitor(ctx context.Context) {
 func (s *Service) monitorConfiguration(ctx context.Context) (map[string]monitorSource, storage.WatchRequest, error) {
 	sources := map[string]monitorSource{}
 	request := storage.WatchRequest{}
-	rows, err := s.db.QueryContext(ctx, `SELECT s.id,s.library_id,s.root,s.root_identity,s.incarnation,s.classification,s.generation,s.follow_symlinks,COALESCE(s.remote_source_id,'') FROM library_sources s LEFT JOIN admin_documents d ON d.scope='library:'||s.library_id WHERE s.enabled=1 AND COALESCE(json_extract(d.body,'$.monitorChanges'),1)=1 AND NOT EXISTS(SELECT 1 FROM dvr_private_libraries p WHERE p.library_id=s.library_id) ORDER BY s.id LIMIT 4096`)
+	rows, err := s.db.QueryContext(ctx, `SELECT s.id,s.library_id,s.root,s.root_identity,s.incarnation,s.classification,s.generation,s.follow_symlinks,s.remote_source_id IS NOT NULL FROM library_sources s LEFT JOIN admin_documents d ON d.scope='library:'||s.library_id WHERE s.enabled=1 AND COALESCE(json_extract(d.body,'$.monitorChanges'),1)=1 AND NOT EXISTS(SELECT 1 FROM dvr_private_libraries p WHERE p.library_id=s.library_id) ORDER BY s.id LIMIT 4096`)
 	if err != nil {
 		return sources, request, err
 	}
@@ -233,12 +233,12 @@ func (s *Service) monitorConfiguration(ctx context.Context) (map[string]monitorS
 	all := []sourceRow{}
 	for rows.Next() {
 		var source sourceRow
-		var binding string
-		if err = rows.Scan(&source.SourceID, &source.library, &source.Root, &source.RootIdentity, &source.incarnation, &source.classification, &source.generation, &source.FollowSymlinks, &binding); err != nil {
+		var bound bool
+		if err = rows.Scan(&source.SourceID, &source.library, &source.Root, &source.RootIdentity, &source.incarnation, &source.classification, &source.generation, &source.FollowSymlinks, &bound); err != nil {
 			rows.Close()
 			return sources, request, err
 		}
-		source.remoteOwned = binding != "" || (s.storage != nil && s.storage.IsRemote(source.Root))
+		source.remoteOwned = bound || (s.storage != nil && s.storage.IsRemote(source.Root))
 		all = append(all, source)
 	}
 	err = rows.Err()

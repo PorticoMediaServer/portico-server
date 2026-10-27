@@ -65,6 +65,9 @@ func TestMonitorExcludesRemoteOwnedSourcesAndKeepsLocalStartupAndFallback(t *tes
 	useMonitorTestClock(t, clock)
 	remoteRoot := filepath.Join(string(filepath.Separator), "remote", "library")
 	f.exec(`INSERT INTO remote_sources(id,kind,name,root) VALUES('bound-source','rclone','Bound','/bound')`)
+	f.exec(`INSERT INTO remote_sources(id,kind,name,root) VALUES('','rclone','Empty identity','/empty-binding')`)
+	f.exec(`INSERT INTO libraries(id,name,kind,root) VALUES('lib-empty-bound','Empty bound','movie',?)`, filepath.Join(f.root, "empty-bound"))
+	f.exec(`UPDATE library_sources SET root_identity='empty-bound-identity',remote_source_id='' WHERE library_id='lib-empty-bound'`)
 	// Bound but adapter-local: the binding alone must make it remote-owned.
 	f.exec(`INSERT INTO libraries(id,name,kind,root) VALUES('lib-bound','Bound','movie',?)`, filepath.Join(f.root, "bound"))
 	f.exec(`UPDATE library_sources SET root_identity='bound-identity',remote_source_id='bound-source' WHERE library_id='lib-bound'`)
@@ -77,8 +80,8 @@ func TestMonitorExcludesRemoteOwnedSourcesAndKeepsLocalStartupAndFallback(t *tes
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(sources) != 3 {
-		t.Fatalf("monitor sources=%d, want all three kept for map parity", len(sources))
+	if len(sources) != 4 {
+		t.Fatalf("monitor sources=%d, want all four kept for map parity", len(sources))
 	}
 	if len(request.Roots) != 1 || request.Roots[0].SourceID != f.source {
 		t.Fatalf("watch roots=%+v, want only the local source %q", request.Roots, f.source)
@@ -132,7 +135,7 @@ func TestMonitorExcludesRemoteOwnedSourcesAndKeepsLocalStartupAndFallback(t *tes
 	waitForMonitor(t, "local startup queue", func() bool {
 		return f.count(`SELECT count(*) FROM jobs WHERE library_id=?`, f.library) > 0
 	})
-	if n := f.count(`SELECT count(*) FROM jobs WHERE library_id IN('lib-bound','lib-remote')`); n != 0 {
+	if n := f.count(`SELECT count(*) FROM jobs WHERE library_id IN('lib-bound','lib-remote','lib-empty-bound')`); n != 0 {
 		t.Fatalf("remote-owned sources queued %d startup jobs", n)
 	}
 
@@ -147,10 +150,10 @@ func TestMonitorExcludesRemoteOwnedSourcesAndKeepsLocalStartupAndFallback(t *tes
 		clock.advance(3 * time.Second)
 		time.Sleep(1200 * time.Millisecond)
 	}
-	if n := f.count(`SELECT count(*) FROM jobs WHERE library_id IN('lib-bound','lib-remote')`); n != 0 {
+	if n := f.count(`SELECT count(*) FROM jobs WHERE library_id IN('lib-bound','lib-remote','lib-empty-bound')`); n != 0 {
 		t.Fatalf("remote-owned sources queued %d fallback jobs", n)
 	}
-	if n := f.count(`SELECT count(*) FROM inventory_path_notices WHERE source_id IN(SELECT id FROM library_sources WHERE library_id IN('lib-bound','lib-remote'))`); n != 0 {
+	if n := f.count(`SELECT count(*) FROM inventory_path_notices WHERE source_id IN(SELECT id FROM library_sources WHERE library_id IN('lib-bound','lib-remote','lib-empty-bound'))`); n != 0 {
 		t.Fatalf("remote-owned sources emitted %d notices", n)
 	}
 }
@@ -163,6 +166,7 @@ func TestMonitorPurgesPendingLocalNoticeWhenRootBecomesRemote(t *testing.T) {
 	f.s.SetStorage(&storage.Client{Remote: monitorTestRemote{root: filepath.Join(string(filepath.Separator), "remote", "library")}})
 
 	started := make(chan struct{}, 1)
+	watchStopped := make(chan struct{})
 	emitters := make(chan func(storage.InventoryChange), 1)
 	previousWatch := monitorWatch
 	monitorWatch = func(_ *Service, ctx context.Context, _ storage.WatchRequest, emit func(storage.InventoryChange)) error {
@@ -175,6 +179,7 @@ func TestMonitorPurgesPendingLocalNoticeWhenRootBecomesRemote(t *testing.T) {
 		default:
 		}
 		<-ctx.Done()
+		close(watchStopped)
 		return ctx.Err()
 	}
 	t.Cleanup(func() { monitorWatch = previousWatch })
@@ -209,6 +214,11 @@ func TestMonitorPurgesPendingLocalNoticeWhenRootBecomesRemote(t *testing.T) {
 	}
 	if _, err := dbwork.ExecWrite(context.Background(), f.db, dbwork.ClassInteractive, `UPDATE library_sources SET remote_source_id='bound-source' WHERE id=?`, f.source); err != nil {
 		t.Fatal(err)
+	}
+	select {
+	case <-watchStopped:
+	case <-time.After(3 * time.Second):
+		t.Fatal("monitor did not consume remote ownership reconfiguration")
 	}
 	// Past both the reconfiguration wake and the 5-minute safety tick, and far
 	// past the 10-second pending-notice delay. A stale notice would emit here.
