@@ -52,6 +52,10 @@ def connect(base,cfg):
 def start(client,item,converted=False,extra=None):
     body={'itemId':item,'startFrom':'beginning'}
     body.update(extra or {})
+    if 'startPositionMs' in body:body.pop('startFrom',None)
+    if 'channelId' in body:
+        body.pop('itemId',None)
+        body['startFrom']='live'
     if converted: body['quality']={'mode':'limit','maxVideoBitrateKbps':180,'maxHeight':360,'maxAudioBitrateKbps':32}
     key={'Idempotency-Key':str(uuid.uuid4())}
     deadline=time.monotonic()+90
@@ -68,10 +72,12 @@ def stop(client,session):
     if session:client.call('DELETE','/v1/playback/sessions/'+session['id'],ok=(204,))
 
 
-def decode(ffmpeg,url,log,seconds=2):
+def decode(ffmpeg,url,log,seconds=2,seek_ms=0):
     with log.open('wb') as stream:
-        r=subprocess.run([ffmpeg,'-hide_banner','-loglevel','error','-nostdin','-threads','1',
-            '-rw_timeout','20000000','-i',url,'-t',str(seconds),'-f','null','-'],stdout=subprocess.DEVNULL,stderr=stream,timeout=60)
+        args=[ffmpeg,'-hide_banner','-loglevel','error','-nostdin','-threads','1','-rw_timeout','20000000']
+        if seek_ms:args+=['-ss',str(seek_ms/1000)]
+        args+=['-i',url,'-t',str(seconds),'-f','null','-']
+        r=subprocess.run(args,stdout=subprocess.DEVNULL,stderr=stream,timeout=60)
     return r.returncode==0
 
 
@@ -82,6 +88,7 @@ def main():
     p.add_argument('--report',type=Path,required=True)
     p.add_argument('--ffmpeg',default=shutil.which('ffmpeg'))
     p.add_argument('--manifest',type=Path,default=Path(__file__).with_name('manifest.json'))
+    p.add_argument('--libraries',type=Path,help='Optional known library declarations with id/kind, during a global catalogue fence')
     p.add_argument('--concurrency-seconds',type=int,default=600)
     p.add_argument('--clients',type=int,default=10)
     args=p.parse_args(); cfg=private_json(args.credentials)
@@ -90,7 +97,7 @@ def main():
     report={'checks':[],'concurrency':{},'errors':[]};client=None
     try:
         client=connect(args.base,cfg)
-        libraries=items(client.read('/v1/libraries'))
+        libraries=(json.loads(args.libraries.read_text()) if args.libraries else items(client.read('/v1/libraries')))
         films=[];episodes=[];songs=[];books=[]
         from seed_state import library_items
         for lib in libraries:
@@ -126,6 +133,10 @@ def main():
                 audiobook=entry;book_extra={'startPositionMs':chapters[1]['startMs']};break
         selected=[('film',films[0],{}),('episode',episode,episode_extra),
                   ('song',songs[0] if songs else None,{}),('audiobook',audiobook,book_extra)]
+        guide=client.read('/v1/guide/channels?limit=100').get('directory',{})
+        live=next((channel for channel in guide.get('channels',[])
+                   if channel.get('name')=='Harbour Workshop'),None)
+        selected.append(('live',live,{'channelId':live['id'],'channelGeneration':live['generation']} if live else {}))
         for kind,entry,extra in selected:
             if not entry:
                 report['errors'].append({'step':kind,'error':'missing_item'});continue
@@ -135,7 +146,7 @@ def main():
                     s=start(client,entry['id'],converted,extra)
                     presentation=s['presentation'];mode=presentation['mode']
                     url=client.base+presentation['url']
-                    passed=decode(args.ffmpeg,url,scratch/(kind+str(converted)+'.log'))
+                    passed=decode(args.ffmpeg,url,scratch/(kind+str(converted)+'.log'),seek_ms=(extra.get('startPositionMs',0) if mode=='direct' else 0))
                     actions={k:v.get('action') for k,v in (presentation.get('decision') or {}).items() if isinstance(v,dict)}
                     rendered=(presentation.get('audioRender') or {}).get('mode')
                     did_convert='transcode' in actions.values() or rendered=='converted'
@@ -145,7 +156,8 @@ def main():
                         with client.opener.open(req,timeout=30) as response:subtitle_bytes+=len(response.read(1024*1024))
                     if kind=='episode' and not presentation.get('subtitle'):raise RuntimeError('Selected subtitles missing')
                     if converted and not did_convert:raise RuntimeError('Conversion not applied')
-                    if not converted and mode!='direct':raise RuntimeError('Original route was not direct')
+                    if not converted and kind!='live' and mode!='direct':raise RuntimeError('Original route was not direct')
+                    if not converted and kind=='live' and did_convert:raise RuntimeError('Live original unexpectedly converted')
                     report['checks'].append({'kind':kind,'requested':'conversion' if converted else 'original','mode':mode,'actions':actions,'audioRender':rendered,'subtitleBytes':subtitle_bytes,'chapterStartMs':extra.get('startPositionMs'),'decoded':passed})
                     if not passed:report['errors'].append({'step':kind,'error':'decode_failed','converted':converted})
                 except Exception as e:
@@ -187,6 +199,8 @@ def main():
                 results=list(pool.map(worker,range(args.clients)))
             report['concurrency']={'clients':args.clients,'targetSeconds':args.concurrency_seconds,'results':results,
                 'passed':all(not r['errors'] and r['durationSeconds']>=args.concurrency_seconds for r in results)}
+    except Exception as e:
+        report['errors'].append({'step':'setup','error':getattr(e,'code',type(e).__name__),'status':getattr(e,'status',None)})
     finally:
         if client:
             try:client.call('DELETE','/v1/devices/'+client.device,ok=(204,))

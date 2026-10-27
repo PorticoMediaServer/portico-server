@@ -1,11 +1,12 @@
 #!/usr/bin/env python3
 """Build the original, local-only Portico v3 sample media library.
 
-Install Pillow==12.1.1 in an isolated Python environment. Run from a checkout:
+Install requirements.txt in an isolated Python environment. Run from a checkout:
   python generate.py --root /absolute/empty/library --ffmpeg /qualified/bin/ffmpeg
 The existing committed fixtures/video/hdr-generated and fixtures/discs inputs
-are procedural GPL fixtures. Dolby Vision requires the qualified dovi_profile
-bitstream filter. No network, commercial media or design assets are read.
+are procedural fixtures. Dolby Vision reuses the committed procedural MEL/FEL
+MP4 containers, preserving their actual Dolby Vision configuration record.
+No network, commercial media or design assets are read.
 All generated media and per-section manifests belong on the test host.
 Use seed_state.py on the operator host to populate state through the real API;
 credentials remain in the operator's private file. Use verify.py and
