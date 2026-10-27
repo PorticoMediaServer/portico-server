@@ -369,6 +369,15 @@ func goldenLibraryKind(t *testing.T, f *goldenFixture, library string) string {
 // aggregate key; a conflicting, malformed or misplaced recorded value is an
 // error rather than something to overwrite. Every other recorded field of the
 // card is left exactly as it was.
+//
+// The recorded baseline is the destination every grouping card published before
+// c60d8961c: view "browse" and no browse query. Music's genre cards are the one
+// authorized transition, from that recorded "browse" to "releases" plus the
+// Album query. A card that already carries the derived facts is accepted
+// unchanged. A card whose view is absent, null, of another type or any other
+// string is a change to specify, not one to absorb: ContentNavigation.View is a
+// plain string the server always publishes, so a missing one is not a recorded
+// shape, and only the two named destinations are authorized.
 func applyAggregateCardFacts(entry map[string]any, library, libraryKind, aggregate string) error {
 	id, ok := entry["id"].(string)
 	if !ok {
@@ -392,7 +401,7 @@ func applyAggregateCardFacts(entry map[string]any, library, libraryKind, aggrega
 	if category, _ := navigation["category"].(string); category != id {
 		return fmt.Errorf("grouping card %q navigates to category %q", id, category)
 	}
-	view, destination := "browse", any(nil)
+	view, destination := "browse", (map[string]any)(nil)
 	if cardAggregate == "genre" && libraryKind == "music" {
 		view = "releases"
 		destination = map[string]any{
@@ -401,10 +410,16 @@ func applyAggregateCardFacts(entry map[string]any, library, libraryKind, aggrega
 			"sort":  []any{map[string]any{"field": "title", "direction": "asc"}},
 		}
 	}
-	if existing, present := navigation["view"]; present {
-		if _, ok := existing.(string); !ok {
-			return fmt.Errorf("grouping card %q has a malformed destination view %v", id, existing)
-		}
+	existing, present := navigation["view"]
+	if !present {
+		return fmt.Errorf("grouping card %q has no destination view, want the recorded %q", id, "browse")
+	}
+	recorded, ok := existing.(string)
+	if !ok {
+		return fmt.Errorf("grouping card %q has a malformed destination view %v", id, existing)
+	}
+	if recorded != "browse" && recorded != view {
+		return fmt.Errorf("grouping card %q records destination view %q, want the recorded %q", id, recorded, "browse")
 	}
 	navigation["view"] = view
 	if destination != nil {
@@ -412,7 +427,10 @@ func applyAggregateCardFacts(entry map[string]any, library, libraryKind, aggrega
 			return fmt.Errorf("grouping card %q has a conflicting Album destination %v", id, existing)
 		}
 		navigation["browse"] = destination
-	} else if existing, present := navigation["browse"]; present && existing != nil {
+	} else if existing, present := navigation["browse"]; present {
+		// ContentNavigation.Browse is an omitempty pointer: a card with no Album
+		// destination publishes no browse key at all, so a recorded one here is
+		// a change to specify.
 		return fmt.Errorf("grouping card %q unexpectedly carries a browse destination %v", id, existing)
 	}
 	switch existing, present := entry["libraryId"]; {
@@ -595,5 +613,74 @@ func TestGoldenAggregateCardFactsBoundaries(t *testing.T) {
 	badView["navigation"].(map[string]any)["view"] = 3
 	if err := applyAggregateCardFacts(badView, "fixture-movies", "movie", "decade"); err == nil {
 		t.Fatal("malformed destination view was accepted")
+	}
+	nullView := card("decade:1950", "category", "browse")
+	nullView["navigation"].(map[string]any)["view"] = nil
+	if err := applyAggregateCardFacts(nullView, "fixture-movies", "movie", "decade"); err == nil {
+		t.Fatal("an explicitly null destination view was accepted")
+	}
+	missingView := card("decade:1950", "category", "browse")
+	delete(missingView["navigation"].(map[string]any), "view")
+	if err := applyAggregateCardFacts(missingView, "fixture-movies", "movie", "decade"); err == nil {
+		t.Fatal("a card with no destination view was accepted")
+	}
+	// Only Music's genre cards may leave the recorded "browse" destination: a
+	// title-library card naming Music's derived view is a change to specify.
+	foreignView := card("decade:1950", "category", "releases")
+	if err := applyAggregateCardFacts(foreignView, "fixture-movies", "movie", "decade"); err == nil {
+		t.Fatal("a movie card recording Music's releases view was accepted")
+	}
+	foreignGenreView := card("genre:Action", "category", "category")
+	if err := applyAggregateCardFacts(foreignGenreView, "fixture-music", "music", "genre"); err == nil {
+		t.Fatal("a Music genre card recording an unrelated view was accepted")
+	}
+	musicMissingView := card("genre:Action", "category", "browse")
+	delete(musicMissingView["navigation"].(map[string]any), "view")
+	if err := applyAggregateCardFacts(musicMissingView, "fixture-music", "music", "genre"); err == nil {
+		t.Fatal("a Music genre card with no destination view was accepted")
+	}
+	musicNullView := card("genre:Action", "category", "browse")
+	musicNullView["navigation"].(map[string]any)["view"] = nil
+	if err := applyAggregateCardFacts(musicNullView, "fixture-music", "music", "genre"); err == nil {
+		t.Fatal("a Music genre card with a null destination view was accepted")
+	}
+	// The legacy recorded "browse" is exactly the value that transitions to
+	// releases; the derived view itself is accepted unchanged.
+	alreadyExact := card("genre:Action", "category", "releases")
+	if err := applyAggregateCardFacts(alreadyExact, "fixture-music", "music", "genre"); err != nil {
+		t.Fatalf("already exact Music genre card: %v", err)
+	}
+	exactNavigation := alreadyExact["navigation"].(map[string]any)
+	if exactNavigation["view"] != "releases" || !reflect.DeepEqual(exactNavigation["browse"], albumDestination("Action")) {
+		t.Fatalf("already exact Music genre card was not completed: %v", alreadyExact)
+	}
+	// A title-library card keeps the exact recorded "browse" view and gains no
+	// Album destination, including from an explicit null browse key.
+	movieKept := card("genre:Drama", "category", "browse")
+	if err := applyAggregateCardFacts(movieKept, "fixture-movies", "movie", "genre"); err != nil {
+		t.Fatalf("movie genre card: %v", err)
+	}
+	if movieKept["navigation"].(map[string]any)["view"] != "browse" {
+		t.Fatalf("movie genre card's recorded view changed: %v", movieKept)
+	}
+	nullBrowse := card("decade:1950", "category", "browse")
+	nullBrowse["navigation"].(map[string]any)["browse"] = nil
+	if err := applyAggregateCardFacts(nullBrowse, "fixture-movies", "movie", "decade"); err == nil {
+		t.Fatal("an explicitly null browse destination on a title library was accepted")
+	}
+
+	// Ground both rules in the published schema: ContentNavigation.View is a
+	// plain string field, so the server never omits it; ContentNavigation.Browse
+	// is an omitempty pointer, so a card without an Album destination has no
+	// browse key at all.
+	view, err := json.Marshal(catalog.ContentNavigation{View: "browse"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(view), `"view":"browse"`) {
+		t.Fatalf("ContentNavigation.View is no longer always published: %s", view)
+	}
+	if strings.Contains(string(view), `"browse":`) {
+		t.Fatalf("ContentNavigation.Browse is no longer omitted when absent: %s", view)
 	}
 }
