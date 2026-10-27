@@ -100,7 +100,9 @@ jobs:
 
   security:
     runs-on: ubuntu-24.04
-    timeout-minutes: 40
+    timeout-minutes: 60
+    env:
+      CI_TEST_REPORT_DIR: ${{ runner.temp }}/ci-security-report
     strategy:
       fail-fast: false
       matrix: {area: [auth, media]}
@@ -135,6 +137,7 @@ jobs:
           name: ci-${{ github.job }}-${{ strategy.job-index || '0' }}
           path: |
             ${{ runner.temp }}/full-ci.log
+            ${{ runner.temp }}/ci-security-report/**
             ${{ runner.temp }}/go-build.log
             ${{ runner.temp }}/types*.log
           if-no-files-found: ignore
@@ -172,13 +175,6 @@ jobs:
           npm run lint:strings --workspace portico-web-next || status=1
           npm run lint:boundary --workspace portico-web-next || status=1
           exit "$status"
-      - if: ${{ !cancelled() }}
-        name: Full-tree tests plus mandatory account/session/privacy checks
-        run: |
-          status=0
-          python3 scripts/ci-affected.py js > "$RUNNER_TEMP/full-ci.log" 2>&1 || status=$?
-          tail -n 20 "$RUNNER_TEMP/full-ci.log"
-          exit "$status"
       - name: Retain full diagnostics
         if: ${{ always() }}
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
@@ -191,3 +187,39 @@ jobs:
           if-no-files-found: ignore
           retention-days: 7
 
+
+  clients-tests:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [0, 1, 2, 3]
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with: {ref: '${{ inputs.ref || github.sha }}', fetch-depth: 0}
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with: {node-version-file: .node-version, cache: npm}
+      - uses: actions/setup-go@d35c59abb061a4a6fb18e82ac0862c26744d6ab5
+        with: {go-version-file: server/go.mod, cache-dependency-path: server/go.sum}
+      - run: npm ci --no-audit --no-fund
+      - name: Complete test shard plus mandatory account/session/privacy checks
+        env:
+          CI_SHARD_INDEX: ${{ matrix.shard }}
+          CI_SHARD_TOTAL: '4'
+          CI_TEST_REPORT_DIR: ${{ runner.temp }}/ci-report
+        run: |
+          status=0
+          python3 scripts/ci-affected.py js > "$RUNNER_TEMP/full-ci.log" 2>&1 || status=$?
+          tail -n 40 "$RUNNER_TEMP/full-ci.log"
+          exit "$status"
+      - name: Retain per-test results and file diagnostics
+        if: ${{ always() }}
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: ci-clients-tests-${{ matrix.shard }}
+          path: |
+            ${{ runner.temp }}/full-ci.log
+            ${{ runner.temp }}/ci-report/**
+          if-no-files-found: error
+          retention-days: 7

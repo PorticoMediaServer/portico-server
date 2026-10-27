@@ -1,4 +1,6 @@
+import signal
 import contextlib
+import shutil
 import importlib.util
 import io
 import json
@@ -10,6 +12,8 @@ import tempfile
 import time
 import unittest
 from unittest.mock import patch
+
+REPORTER = Path(__file__).with_name("test-events.mjs")
 
 spec = importlib.util.spec_from_file_location("affected", Path(__file__).with_name("ci-affected.py"))
 ci = importlib.util.module_from_spec(spec)
@@ -573,6 +577,401 @@ class ShardTests(unittest.TestCase):
         with patch.dict(ci.os.environ, environment, clear=True):
             self.assertEqual(ci.shard_settings(), (0, 1))
             self.assertEqual(ci.shard(["./a", "./b"]), ["./a", "./b"])
+
+class JsShardTests(unittest.TestCase):
+    """Every selected file belongs to exactly one deterministic shard."""
+
+    def test_shard_assignment_is_stable_disjoint_and_covers_every_file(self):
+        names = [f"apps/native/test/file-{index}.test.ts" for index in range(40)]
+        for total in (1, 2, 3, 4, 7):
+            shards = [[name for name in names if ci.shard_of(name, total) == index]
+                      for index in range(total)]
+            union = [name for shard in shards for name in shard]
+            self.assertEqual(sorted(union), sorted(names))
+            self.assertEqual(len(union), len(set(union)))
+            self.assertEqual(shards[0], [name for name in names if ci.shard_of(name, total) == 0])
+
+    def test_shard_settings_default_to_one_and_reject_unsafe_values(self):
+        with patch.dict(ci.os.environ, {"CI_SHARD_INDEX": "", "CI_SHARD_TOTAL": ""}):
+            self.assertEqual(ci.js_shard_settings(), (0, 1))
+        for values in ({"CI_SHARD_INDEX": "0"}, {"CI_SHARD_TOTAL": "4"},
+                       {"CI_SHARD_INDEX": "4", "CI_SHARD_TOTAL": "4"},
+                       {"CI_SHARD_INDEX": "-1", "CI_SHARD_TOTAL": "4"},
+                       {"CI_SHARD_INDEX": "0", "CI_SHARD_TOTAL": "0"},
+                       {"CI_SHARD_INDEX": "x", "CI_SHARD_TOTAL": "4"}):
+            with patch.dict(ci.os.environ, {"CI_SHARD_INDEX": "", "CI_SHARD_TOTAL": "", **values}):
+                with self.assertRaises(SystemExit):
+                    ci.js_shard_settings()
+
+    def test_mandatory_security_files_appear_once_and_only_once_in_the_union(self):
+        temp = tempfile.TemporaryDirectory()
+        self.addCleanup(temp.cleanup)
+        root = Path(temp.name)
+        for name in ci.MANDATORY_TESTS[True]:
+            path = root / name
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text("// mandatory security fixture")
+        tracked = [str(path.relative_to(root)) for path in root.rglob("*") if path.is_file()]
+        with patch.object(ci, "ROOT", root), patch.object(ci, "git", return_value=tracked):
+            selected = ci.js_plan(set(), native=True)
+            shards = [ci.shard_files(selected, index, 4) for index in range(4)]
+        union = [file for shard in shards for file in shard]
+        self.assertEqual(sorted(union), sorted(selected))
+        self.assertEqual(len(union), len(set(union)))
+        mandatory = {root / name for name in ci.MANDATORY_TESTS[True]}
+        self.assertEqual(mandatory, set(union))
+        for name in ci.MANDATORY_TESTS[True]:
+            self.assertEqual(sum(1 for file in union if file == root / name), 1)
+
+
+class JsCommandTests(unittest.TestCase):
+    """The per-file command keeps the suite's exact loader and isolation flags."""
+
+    def test_native_file_keeps_transform_types_register_and_the_bounds(self):
+        with patch.object(ci, "ROOT", Path("/repo")):
+            argv = ci.js_command("apps/native", "test/next-account-proof-entry.test.ts")
+        self.assertEqual(argv[:5], ["node", "--experimental-transform-types", "--import", "./test/register.mjs",
+                                    f"--test-timeout={ci.TEST_TIMEOUT_MS}"])
+        self.assertEqual(argv[5], "--test-reporter=/repo/scripts/test-events.mjs")
+        self.assertEqual(argv[-3:], ["--test-concurrency=1", "--test", "test/next-account-proof-entry.test.ts"])
+
+    def test_package_file_keeps_strip_types_without_the_native_register(self):
+        argv = ci.js_command("packages/client-core", "test/account-sessions.test.ts")
+        self.assertEqual(argv[:2], ["node", "--experimental-strip-types"])
+        self.assertNotIn("./test/register.mjs", argv)
+        self.assertIn("--test-concurrency=1", argv)
+
+
+class ShardedJsChecksTests(unittest.TestCase):
+    """js_checks hands each shard only its files, with the union unchanged."""
+
+    class FakeRunner:
+        instances = []
+
+        def __init__(self, directory, **options):
+            self.directory = Path(directory)
+            self.context = options.get("context")
+            self.entries = []
+            self.results = []
+            self.elapsed = 0.0
+            self.exit_code = 0
+            self.interrupted = None
+            ShardedJsChecksTests.FakeRunner.instances.append(self)
+
+        def run(self, entries, argv_for):
+            self.entries = list(entries)
+            self.argv_for = argv_for
+            return self
+
+    def test_source_lint_keeps_args_then_cwd_order_and_its_exact_command(self):
+        temp = tempfile.TemporaryDirectory()
+        self.addCleanup(temp.cleanup)
+        root = Path(temp.name)
+        source = root / "apps/native/src-next/port.ts"
+        source.parent.mkdir(parents=True)
+        source.write_text("export const value = 1;\n")
+        with patch.object(ci, "ROOT", root), \
+                patch.object(ci, "changed", return_value={"apps/native/src-next/port.ts"}), \
+                patch.object(ci, "js_plan", return_value=[]), \
+                patch.object(ci, "report_directory", return_value=(root / "report", False)), \
+                patch.object(ci.test_watchdog, "Runner", self.FakeRunner), \
+                patch.object(ci, "run") as run, \
+                patch.dict(ci.os.environ, {"CI_SHARD_INDEX": "0", "CI_SHARD_TOTAL": "1"}), \
+                contextlib.redirect_stdout(io.StringIO()):
+            ci.js_checks(True)
+        self.assertEqual(run.call_count, 1)
+        args, cwd = run.call_args.args
+        self.assertEqual(cwd, root / "apps/native")
+        self.assertEqual(args[:4], ["npx", "--no-install", "eslint", "--no-eslintrc"])
+        self.assertEqual(args[-1], "src-next/port.ts")
+
+    def test_source_lint_is_deferred_to_shard_zero_not_dropped(self):
+        temp = tempfile.TemporaryDirectory()
+        self.addCleanup(temp.cleanup)
+        root = Path(temp.name)
+        source = root / "apps/native/src-next/port.ts"
+        source.parent.mkdir(parents=True)
+        source.write_text("export const value = 1;\n")
+        with patch.object(ci, "ROOT", root), \
+                patch.object(ci, "changed", return_value={"apps/native/src-next/port.ts"}), \
+                patch.object(ci, "js_plan", return_value=[]), \
+                patch.object(ci, "report_directory", return_value=(root / "report", False)), \
+                patch.object(ci.test_watchdog, "Runner", self.FakeRunner), \
+                patch.object(ci, "run") as run, \
+                patch.dict(ci.os.environ, {"CI_SHARD_INDEX": "1", "CI_SHARD_TOTAL": "4"}), \
+                contextlib.redirect_stdout(io.StringIO()) as output:
+            ci.js_checks(True)
+        self.assertEqual(run.call_count, 0)
+        self.assertIn("source lint runs once in shard 0", output.getvalue())
+
+    def test_four_shards_are_disjoint_and_cover_the_whole_selection(self):
+        temp = tempfile.TemporaryDirectory()
+        self.addCleanup(temp.cleanup)
+        root = Path(temp.name)
+        selection = []
+        for name in ci.MANDATORY_TESTS[True]:
+            selection.append(root / name)
+        for index in range(8):
+            selection.append(root / f"apps/native/test/next-extra-{index}.test.ts")
+        self.assertEqual(len(selection), 12)
+        selections = []
+        for shard in range(4):
+            self.FakeRunner.instances.clear()
+            output = io.StringIO()
+            with patch.object(ci, "ROOT", root), \
+                    patch.object(ci, "changed", return_value=set()), \
+                    patch.object(ci, "js_plan", return_value=list(selection)), \
+                    patch.object(ci, "report_directory", return_value=(root / "report", False)), \
+                    patch.object(ci.test_watchdog, "Runner", self.FakeRunner), \
+                    patch.dict(ci.os.environ, {"CI_SHARD_INDEX": str(shard), "CI_SHARD_TOTAL": "4"}), \
+                    contextlib.redirect_stdout(output):
+                ci.js_checks(True)
+            self.assertEqual(len(self.FakeRunner.instances), 1)
+            runner = self.FakeRunner.instances[0]
+            selections.append({(group, file) for group, _, file in runner.entries})
+            text = output.getvalue()
+            self.assertIn(f"shard {shard} of 4", text)
+            self.assertIn("MANDATORY apps/native/test/next-accounts-entry.test.ts", text)
+            self.assertEqual(runner.context["shard"], f"{shard}/4")
+            group, cwd, file = runner.entries[0]
+            argv = runner.argv_for(group, cwd, file)
+            self.assertEqual(argv[1], "--experimental-transform-types")
+            self.assertIn("--import", argv)
+            self.assertEqual(argv[-2:], ["--test", file])
+        union = [item for shard in selections for item in shard]
+        self.assertEqual(len(union), len(set(union)))
+        expected = {("apps/native", f"test/{path.name}") for path in selection}
+        self.assertEqual(set(union), expected)
+
+
+class WatchdogTests(unittest.TestCase):
+    """Tiny controlled fixtures prove a hang/leak is named and the rest still runs."""
+
+    def setUp(self):
+        node = shutil.which("node")
+        if not node:
+            self.fail("node is required for the per-file runner regressions")
+        self.node = node
+        self.temp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.temp.cleanup)
+        self.root = Path(self.temp.name)
+        self.files = self.root / "files"
+        self.files.mkdir()
+        self.report = self.root / "report"
+
+    def fixture(self, name, text):
+        path = self.files / name
+        path.write_text(text)
+        return path
+
+    def run_files(self, names, *, extra=(), file_seconds=15.0, exit_grace=1.0, stop=None):
+        runner = ci.test_watchdog.Runner(self.report, file_seconds=file_seconds,
+                                         exit_grace=exit_grace)
+        def argv(group, cwd, file):
+            return [self.node, f"--test-reporter={REPORTER}", *extra, "--test", file]
+        entries = [("fixture", self.files, name) for name in names]
+        output = io.StringIO()
+        with contextlib.redirect_stdout(output):
+            runner.run(entries, argv, stop=stop)
+        return runner, output.getvalue()
+
+    @staticmethod
+    def events(result):
+        return [json.loads(line) for line in Path(result.events).read_text().splitlines()]
+
+    def assert_gone(self, pid):
+        for _ in range(200):
+            try:
+                with open(f"/proc/{pid}/stat") as stat:
+                    if stat.read().split()[2] == "Z":
+                        return
+            except OSError:
+                pass
+            try:
+                os.kill(pid, 0)
+            except ProcessLookupError:
+                return
+            time.sleep(0.05)
+        self.fail(f"process {pid} outlived the per-file watchdog")
+
+    def test_per_test_results_are_recorded_incrementally_and_a_failure_does_not_stop_the_run(self):
+        self.fixture("passes.test.mjs",
+                     "import {test} from 'node:test';\n"
+                     "test('passes', () => {});\ntest('also passes', () => {});\n")
+        self.fixture("fails.test.mjs",
+                     "import {test} from 'node:test';\nimport assert from 'node:assert';\n"
+                     "test('fails clearly', () => { assert.equal(1, 2); });\n")
+        runner, _ = self.run_files(["passes.test.mjs", "fails.test.mjs"])
+        self.assertEqual([result.status for result in runner.results],
+                         [ci.test_watchdog.PASS, ci.test_watchdog.FAIL])
+        self.assertEqual(runner.exit_code, 1)
+        first = self.events(runner.results[0])
+        second = self.events(runner.results[1])
+        self.assertTrue(any(event["type"] == "test:start" for event in first))
+        self.assertTrue(any(event["type"] == "test:pass" for event in first))
+        passes = [event for event in first if event["type"] == "test:pass"]
+        self.assertTrue(isinstance(passes[0]["data"].get("duration_ms"), (int, float)))
+        self.assertTrue(any(event["type"] == "test:fail" for event in second))
+        self.assertIn("fails clearly", " ".join(runner.results[1].failures))
+        self.assertIn("1 == 2", " ".join(runner.results[1].failures))
+        self.assertEqual(runner.results[1].tests, 1)
+        live = [json.loads(line) for line in (self.report / "live.jsonl").read_text().splitlines()]
+        self.assertTrue(any(event["data"].get("name") == "fails clearly" for event in live))
+
+    def test_per_test_timeout_is_a_named_failure_for_its_file_only(self):
+        self.fixture("hangs.test.mjs",
+                     "import {test} from 'node:test';\n"
+                     "test('hangs', async () => { await new Promise(() => {}); });\n")
+        self.fixture("passes.test.mjs", "import {test} from 'node:test';\ntest('passes', () => {});\n")
+        runner, _ = self.run_files(["hangs.test.mjs", "passes.test.mjs"],
+                                   extra=("--test-timeout=300",), exit_grace=0.3)
+        self.assertEqual([result.status for result in runner.results],
+                         [ci.test_watchdog.FAIL, ci.test_watchdog.PASS])
+        self.assertIn("timed out after 300ms", " ".join(runner.results[0].failures))
+        self.assertEqual(runner.results[0].failed, 1)
+        self.assertEqual(runner.exit_code, 1)
+
+    def test_blocked_file_is_named_with_its_active_test_and_descendants_are_stopped(self):
+        marker = self.root / "pids"
+        self.fixture("blocked.test.mjs",
+                     "import {test} from 'node:test';\nimport {writeFileSync} from 'node:fs';\n"
+                     "import {spawn} from 'node:child_process';\n"
+                     "test('blocked test', async () => {\n"
+                     "  const child = spawn(process.execPath, ['-e', 'setInterval(() => {}, 1000)'], {stdio: 'ignore'});\n"
+                     "  writeFileSync(process.env.PIDS, `${process.pid} ${child.pid}`);\n"
+                     "  await new Promise(() => {});\n"
+                     "});\n")
+        self.fixture("passes.test.mjs", "import {test} from 'node:test';\ntest('passes', () => {});\n")
+        with patch.dict(os.environ, {"PIDS": str(marker)}):
+            started = time.monotonic()
+            runner, output = self.run_files(["blocked.test.mjs", "passes.test.mjs"],
+                                            file_seconds=0.8, exit_grace=0.3)
+            elapsed = time.monotonic() - started
+        self.assertEqual([result.status for result in runner.results],
+                         [ci.test_watchdog.HANG, ci.test_watchdog.PASS])
+        self.assertEqual(runner.results[0].active_test, "blocked test")
+        self.assertIn("active test: blocked test", " ".join(runner.results[0].notes))
+        self.assertLess(elapsed, 15)
+        leader, descendant = (int(pid) for pid in marker.read_text().split())
+        for pid in (leader, descendant):
+            self.assert_gone(pid)
+        self.assertIn("HANG blocked.test.mjs", output)
+
+    def test_leaked_handle_after_passing_tests_is_a_named_failure_not_a_pass(self):
+        self.fixture("leaks.test.mjs",
+                     "import {test} from 'node:test';\ntest('passes but leaks', () => { setInterval(() => {}, 1000); });\n")
+        self.fixture("passes.test.mjs", "import {test} from 'node:test';\ntest('passes', () => {});\n")
+        started = time.monotonic()
+        runner, output = self.run_files(["leaks.test.mjs", "passes.test.mjs"],
+                                        file_seconds=30, exit_grace=0.4)
+        elapsed = time.monotonic() - started
+        self.assertEqual([result.status for result in runner.results],
+                         [ci.test_watchdog.FAIL, ci.test_watchdog.PASS])
+        self.assertEqual(runner.results[0].passed, 1)
+        self.assertTrue(any("leaked handle" in note for note in runner.results[0].notes))
+        self.assertEqual(runner.exit_code, 1)
+        self.assertLess(elapsed, 15)
+        leaks = self.events(runner.results[0])
+        self.assertTrue(leaks)
+        self.assert_gone(leaks[0]["pid"])
+
+    def test_runner_fault_is_named_and_the_remaining_files_still_run(self):
+        self.fixture("passes.test.mjs", "import {test} from 'node:test';\ntest('passes', () => {});\n")
+        self.fixture("later.test.mjs", "import {test} from 'node:test';\ntest('later', () => {});\n")
+        runner = ci.test_watchdog.Runner(self.report, file_seconds=10, exit_grace=0.3)
+        def argv(group, cwd, file):
+            if file == "broken.test.mjs":
+                raise OSError("fixture command is unavailable")
+            return [self.node, f"--test-reporter={REPORTER}", "--test", file]
+        entries = [("fixture", self.files, name)
+                   for name in ("passes.test.mjs", "broken.test.mjs", "later.test.mjs")]
+        with contextlib.redirect_stdout(io.StringIO()) as output:
+            runner.run(entries, argv)
+        self.assertEqual([result.status for result in runner.results],
+                         [ci.test_watchdog.PASS, ci.test_watchdog.FAIL, ci.test_watchdog.PASS])
+        self.assertIn("runner error", runner.results[1].notes[0])
+        self.assertEqual(runner.not_run, [])
+        self.assertNotIn("NOT RUN", output.getvalue())
+        self.assertNotEqual(runner.exit_code, 0)
+
+    def test_interruption_reports_results_and_the_exact_never_ran_inventory(self):
+        marker = self.root / "started"
+        self.fixture("blocked.test.mjs",
+                     "import {test} from 'node:test';\nimport {writeFileSync} from 'node:fs';\n"
+                     f"test('blocked test', () => {{ writeFileSync({str(marker)!r}, ''); for (;;) {{}} }});\n")
+        self.fixture("later-one.test.mjs", "import {test} from 'node:test';\ntest('one', () => {});\n")
+        self.fixture("later-two.test.mjs", "import {test} from 'node:test';\ntest('two', () => {});\n")
+        runner, output = self.run_files(
+            ["blocked.test.mjs", "later-one.test.mjs", "later-two.test.mjs"],
+            file_seconds=30, exit_grace=0.3, stop=marker.exists)
+        self.assertEqual(runner.results[0].status, ci.test_watchdog.INTERRUPTED)
+        self.assertEqual([file for _, _, file in runner.not_run],
+                         ["later-one.test.mjs", "later-two.test.mjs"])
+        self.assertIn("NOT RUN later-one.test.mjs", output)
+        self.assertIn("NOT RUN later-two.test.mjs", output)
+        self.assertNotEqual(runner.exit_code, 0)
+        summary = json.loads((self.report / "summary.json").read_text())
+        self.assertEqual([entry["file"] for entry in summary["not_run"]],
+                         ["later-one.test.mjs", "later-two.test.mjs"])
+        self.assertEqual(summary["results"][0]["status"], ci.test_watchdog.INTERRUPTED)
+
+    def test_sigterm_stops_the_live_file_and_prints_the_never_ran_inventory(self):
+        bootstrap = f"""
+import importlib.util, sys
+from pathlib import Path
+spec = importlib.util.spec_from_file_location("watchdog", {str(Path(__file__).with_name('test_watchdog.py'))!r})
+watchdog = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(watchdog)
+started = Path({str(self.root / 'current')!r})
+entries = [("fixture", {str(self.files)!r}, name) for name in ("one.test.mjs", "two.test.mjs", "three.test.mjs")]
+def argv_for(group, cwd, file):
+    started.write_text(file)
+    return [sys.executable, "-c", "import time; time.sleep(60)"]
+runner = watchdog.Runner({str(self.report)!r}, file_seconds=60, exit_grace=1)
+runner.run(entries, argv_for)
+sys.exit(runner.exit_code)
+"""
+        process = subprocess.Popen([sys.executable, "-c", bootstrap], stdout=subprocess.PIPE,
+                                   stderr=subprocess.STDOUT, text=True)
+        header = process.stdout.readline()
+        self.assertIn("WATCHDOG", header)
+        deadline = time.monotonic() + 20
+        while not (self.root / "current").exists() and time.monotonic() < deadline:
+            time.sleep(0.05)
+        self.assertEqual((self.root / "current").read_text(), "one.test.mjs")
+        process.send_signal(signal.SIGTERM)
+        output, _ = process.communicate(timeout=30)
+        self.assertEqual(process.returncode, 143)
+        text = header + output
+        self.assertIn("INTERRUPTED one.test.mjs", text)
+        self.assertIn("NOT RUN two.test.mjs", text)
+        self.assertIn("NOT RUN three.test.mjs", text)
+        summary = json.loads((self.report / "summary.json").read_text())
+        self.assertEqual(summary["outcome"], "interrupted")
+        self.assertEqual(len(summary["not_run"]), 2)
+
+    def test_reporter_flushes_start_cancel_and_live_events_incrementally(self):
+        events_path = self.root / "events.jsonl"
+        live_path = self.root / "live.jsonl"
+        script = (
+            f"import report from {json.dumps(REPORTER.as_uri())};\n"
+            "const events = [\n"
+            "  {type: 'test:start', data: {name: 'one', nesting: 0, file: '/f.test.mjs'}},\n"
+            "  {type: 'test:pass', data: {name: 'one', nesting: 0, file: '/f.test.mjs',\n"
+            "     details: {duration_ms: 12.5}}},\n"
+            "  {type: 'test:cancel', data: {name: 'one', nesting: 0, file: '/f.test.mjs'}},\n"
+            "  {type: 'test:not-recorded', data: {name: 'ignored'}},\n"
+            "];\n"
+            "async function* source() { for (const event of events) yield event; }\n"
+            "for await (const _ of report(source())) {}\n")
+        environment = dict(os.environ, PORTICO_TEST_EVENTS=str(events_path),
+                           PORTICO_TEST_LIVE_EVENTS=str(live_path))
+        subprocess.run([self.node, "--input-type=module", "-e", script], check=True,
+                       env=environment, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        lines = [json.loads(line) for line in events_path.read_text().splitlines()]
+        self.assertEqual([line["type"] for line in lines], ["test:start", "test:pass", "test:cancel"])
+        self.assertEqual(lines[1]["data"]["duration_ms"], 12.5)
+        self.assertEqual(len(live_path.read_text().splitlines()), 3)
 
 
 if __name__ == "__main__":

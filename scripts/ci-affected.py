@@ -1,6 +1,9 @@
 #!/usr/bin/env python3
 """Full hourly checks, with bounded selection retained for explicit local use."""
 import argparse
+import test_watchdog
+import shutil
+import hashlib
 import json
 import os
 from pathlib import Path
@@ -40,6 +43,34 @@ GO_LIST_TIMEOUT = 5 * 60
 COMMAND_TIMEOUT = 15 * 60
 TERMINATE_GRACE = 5
 TAIL = 6
+
+
+# JavaScript files are supervised one process at a time (test_watchdog.Runner).
+# The per-test limit turns a slow test into a named failure for its own file; the
+# per-file watchdog names a hung file and continues; the exit grace turns a leaked
+# handle into a named failure instead of a suite-wide stall.
+TEST_TIMEOUT_MS = test_watchdog.DEFAULT_TEST_TIMEOUT_MS
+TEST_FILE_SECONDS = test_watchdog.DEFAULT_FILE_SECONDS
+TEST_EXIT_GRACE = test_watchdog.DEFAULT_EXIT_GRACE
+
+MANDATORY_TESTS = {
+    False: (
+        "packages/client-core/test/account-sessions.test.ts",
+        "packages/client-core/test/session-refresh.test.ts",
+        "packages/client-core/test/identity-restrictions.test.ts",
+        "packages/client-core/test/profiles-membership.test.ts",
+        "packages/client-core/test/generated-routes.test.ts",
+        "packages/client-core/test/credential-scoped-logout.test.ts",
+        "web-next/test/account-entry-authority.test.ts",
+        "web-next/test/viewer-storage.test.ts",
+    ),
+    True: (
+        "apps/native/test/next-accounts-entry.test.ts",
+        "apps/native/test/next-local-session-renewal.test.ts",
+        "apps/native/test/next-account-proof-entry.test.ts",
+        "apps/native/test/next-shell-tv-profile-menu.test.ts",
+    ),
+}
 
 
 class CommandTimeout(subprocess.CalledProcessError):
@@ -732,24 +763,70 @@ def js_plan(paths, native=False):
             break
         impacted.update(more)
     tests = {p for p in impacted if re.search(r"\.test\.(?:[cm]?js|tsx?)$", str(p)) and p.is_file()}
-    mandatory = (["apps/native/test/next-accounts-entry.test.ts", "apps/native/test/next-local-session-renewal.test.ts",
-                  "apps/native/test/next-account-proof-entry.test.ts", "apps/native/test/next-shell-tv-profile-menu.test.ts"] if native else [
-        "packages/client-core/test/account-sessions.test.ts", "packages/client-core/test/session-refresh.test.ts",
-        "packages/client-core/test/identity-restrictions.test.ts", "packages/client-core/test/profiles-membership.test.ts",
-        "packages/client-core/test/generated-routes.test.ts", "packages/client-core/test/credential-scoped-logout.test.ts",
-        "web-next/test/account-entry-authority.test.ts", "web-next/test/viewer-storage.test.ts",
-    ])
-    for name in mandatory:
+    for name in MANDATORY_TESTS[bool(native)]:
         if not (ROOT / name).is_file():
             raise RuntimeError("missing mandatory security test: " + name)
         tests.add(ROOT / name)
     return sorted(tests)
 
 
+def js_shard_settings():
+    """Read CI_SHARD_INDEX/CI_SHARD_TOTAL; absent means one shard (everything)."""
+    index_text = os.environ.get("CI_SHARD_INDEX", "").strip()
+    total_text = os.environ.get("CI_SHARD_TOTAL", "").strip()
+    if not index_text and not total_text:
+        return 0, 1
+    if not index_text or not total_text:
+        raise SystemExit("CI_SHARD_INDEX and CI_SHARD_TOTAL must be set together")
+    try:
+        index, total = int(index_text), int(total_text)
+    except ValueError:
+        raise SystemExit("CI_SHARD_INDEX and CI_SHARD_TOTAL must be integers") from None
+    if total < 1 or index < 0 or index >= total:
+        raise SystemExit(f"invalid shard {index} of {total}")
+    return index, total
+
+
+def shard_of(name, total):
+    """Stable assignment of one repository-relative path to a shard."""
+    digest = hashlib.sha256(name.encode("utf-8")).digest()
+    return int.from_bytes(digest[:8], "big") % total
+
+
+def shard_files(files, index, total):
+    """The files owned by this shard; every selected file belongs to exactly one."""
+    return [file for file in files
+            if shard_of(file.relative_to(ROOT).as_posix(), total) == index]
+
+
+def report_directory(index, total):
+    """Persistent report directory (check-jobs.py provides CI_TEST_REPORT_DIR)."""
+    base = os.environ.get("CI_TEST_REPORT_DIR") or os.environ.get("PORTICO_TEST_EVENTS_DIR")
+    if base:
+        directory = Path(base) / f"js-tests-shard{index}-of{total}"
+        directory.mkdir(parents=True, exist_ok=True)
+        return directory, False
+    return Path(tempfile.mkdtemp(prefix="portico-test-events-")), True
+
+
+def js_command(group, file):
+    """The exact per-file command: same loader/flags as the suite, one file wide."""
+    if group in ("apps/native", "web", "web-next"):
+        args = ["node", "--experimental-transform-types", "--import", "./test/register.mjs"]
+    else:
+        args = ["node", "--experimental-strip-types"]
+    return [*args, f"--test-timeout={TEST_TIMEOUT_MS}",
+            f"--test-reporter={ROOT / 'scripts/test-events.mjs'}",
+            "--test-concurrency=1", "--test", file]
+
+
 def js_checks(native):
     paths = changed()
+    index, total = js_shard_settings()
+    selected = js_plan(paths, native)
+    owned = shard_files(selected, index, total)
     groups = {}
-    for file in js_plan(paths, native):
+    for file in owned:
         relative = file.relative_to(ROOT)
         if native and relative.parts[:3] == ("apps", "native", "test"):
             group = "apps/native"
@@ -764,19 +841,48 @@ def js_checks(native):
         else:
             continue
         groups.setdefault(group, []).append(str(file.relative_to(ROOT / group)))
+
+    print(f"SELECTED {len(owned)} of {len(selected)} test files (shard {index} of {total})", flush=True)
+    for group, files in sorted(groups.items()):
+        for file in files:
+            print(f"  {group}/{file}", flush=True)
+    for name in MANDATORY_TESTS[bool(native)]:
+        print(f"MANDATORY {name} -> shard {shard_of(name, total)} of {total}", flush=True)
+
+    failed = False
     commands = []
     if native:
         source = [str(Path(p).relative_to("apps/native")) for p in sorted(paths)
                   if p.startswith("apps/native/") and p.endswith((".ts", ".tsx"))
                   and (ROOT / p).is_file() and (p.startswith("apps/native/src-next/") or p == "apps/native/App.tsx")]
         if source:
-            commands.append((["npx", "--no-install", "eslint", "--no-eslintrc", "-c", ".eslintrc.hooks.cjs", *source], ROOT / "apps/native"))
-    for group, files in sorted(groups.items()):
-        args = ["node", "--experimental-strip-types"]
-        if group in ("apps/native", "web", "web-next"):
-            args = ["node", "--experimental-transform-types", "--import", "./test/register.mjs"]
-        commands.append(([*args, "--test-concurrency=1", "--test", *files], ROOT / group))
-    run_all(commands)
+            if total == 1 or index == 0:
+                commands.append((["npx", "--no-install", "eslint", "--no-eslintrc", "-c", ".eslintrc.hooks.cjs", *source], ROOT / "apps/native"))
+            else:
+                print("NOTE source lint runs once in shard 0; this shard runs tests only", flush=True)
+    for args, cwd in commands:
+        try:
+            run(args, cwd)
+        except subprocess.CalledProcessError as error:
+            failed = True
+            print(f"FAIL command exited {error.returncode}: {' '.join(args)}", flush=True)
+    directory, ephemeral = report_directory(index, total)
+    runner = test_watchdog.Runner(
+        directory, file_seconds=TEST_FILE_SECONDS, test_timeout_ms=TEST_TIMEOUT_MS,
+        exit_grace=TEST_EXIT_GRACE,
+        context={"suite": "native-js" if native else "js", "shard": f"{index}/{total}",
+                 "selected": len(owned), "selection": len(selected)})
+    entries = [(group, ROOT / group, file) for group, files in sorted(groups.items()) for file in files]
+    runner.run(entries, lambda group, cwd, file: js_command(group, file))
+    if not runner.exit_code:
+        print(f"TEST FILES PASS: {len(owned)} files, shard {index} of {total}, {runner.elapsed:.1f}s", flush=True)
+    else:
+        failed = True
+        print(f"TEST FILES FAIL: exit {runner.exit_code}, shard {index} of {total}, {runner.elapsed:.1f}s", flush=True)
+    if failed:
+        raise SystemExit(1 if not runner.interrupted else runner.exit_code)
+    if ephemeral and all(result.ok for result in runner.results):
+        shutil.rmtree(directory, ignore_errors=True)
 
 
 if __name__ == "__main__":
