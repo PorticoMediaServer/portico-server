@@ -3,13 +3,21 @@ import {defaultI18n} from '@i18n';
 import {StateLayout} from '../kit/states';
 import {router} from '../router';
 
+/**
+ * The destination recovery witness: the actual Router location object, its href, the actual history
+ * entry key when the router supplies one, and the captured owner scope. Identity is the recovery
+ * lifetime — a new location object (including a same-href fresh entry), a real entry change or a
+ * scope replacement creates a new witness; a missing entry key never collapses the href.
+ */
+export type DestinationRecoveryWitness = Readonly<{
+  location: unknown;
+  href: string;
+  entry?: string;
+  scopeKey?: string;
+}>;
+
 export type DestinationErrorProps = Readonly<{
-  /**
-   * The recovery lifetime of the destination entry: the actual route key (href plus the router's
-   * history entry) combined with the captured owner scope. A fresh entry with the same href, or an
-   * authority/scope replacement, changes this value and unlatches a failed destination.
-   */
-  lifetime: string;
+  witness: DestinationRecoveryWitness;
   children: ReactNode;
   /** Test/owner port: defaults to the existing router's Home navigation. */
   onHome?: () => void;
@@ -27,9 +35,9 @@ export class DestinationErrorBoundary extends Component<DestinationErrorProps, D
   static getDerivedStateFromError(): DestinationErrorState { return {failed: true}; }
   componentDidCatch(_error: Error, _info: ErrorInfo) { /* The presenter is the report; nothing else is replaced. */ }
   componentDidUpdate(previous: DestinationErrorProps) {
-    // A fresh entry (same href, new history entry) or a scope replacement is a new recovery
-    // lifetime: the failed destination must not stay latched across it.
-    if (previous.lifetime !== this.props.lifetime && this.state.failed) this.setState({failed: false});
+    // A new witness is a new recovery lifetime: a same-href fresh entry, an actual entry change or
+    // a scope replacement must not leave the failed destination latched.
+    if (previous.witness !== this.props.witness && this.state.failed) this.setState({failed: false});
   }
   private reset = () => this.setState({failed: false});
   private home = () => {
