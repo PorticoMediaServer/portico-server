@@ -151,6 +151,30 @@ function SavedLists(bindings: SavedViewBindings & {onCreate: () => void}) {
   const routeMatches = route.view === 'watchlist' || route.view === 'favorites'
     ? sameSavedRoute(primary.route, {...route, shape: 'posters'}) && sameSavedRoute(squares.route, {...route, shape: 'squares'}) : sameSavedRoute(primary.route, route);
   const split = route.view === 'watchlist' || route.view === 'favorites', projection = primary.projection ?? (split ? squares.projection : null);
+  // One guarded recovery owner for this render. Retired callbacks and delayed results
+  // must not request or publish into a successor route.
+  const live = useRef(true), retryGuard = useRef(false), [retryBusy, setRetryBusy] = useState(false);
+  useEffect(() => () => { live.current = false; }, []);
+  const retry = useCallback(() => {
+    if (!live.current || retryGuard.current || !runtime.operations.current) return;
+    if (route.view === 'home' || route.view === 'downloads') return;
+    if (split) {
+      if (!sameSavedRoute(runtime.posters.getSnapshot().route, {...route, shape: 'posters'})
+        || !sameSavedRoute(runtime.squares.getSnapshot().route, {...route, shape: 'squares'})) return;
+    } else if (!sameSavedRoute(runtime.saved.getSnapshot().route, route)) return;
+    retryGuard.current = true; setRetryBusy(true);
+    const tasks: Promise<void>[] = [];
+    if (split) {
+      if (runtime.posters.getSnapshot().phase === 'error') tasks.push(runtime.posters.select({...route, shape: 'posters'}));
+      if (runtime.squares.getSnapshot().phase === 'error') tasks.push(runtime.squares.select({...route, shape: 'squares'}));
+    } else tasks.push(runtime.saved.select(route));
+    void Promise.all(tasks).catch(error => { if (live.current && runtime.operations.current) effects.reportError(error); })
+      .finally(() => { retryGuard.current = false; if (live.current && runtime.operations.current) setRetryBusy(false); });
+  }, [route, runtime, split, effects.reportError]);
+  const failures = split ? [
+    ...(primary.phase === 'error' ? [{id: 'posters'}] : []),
+    ...(squares.phase === 'error' ? [{id: 'squares'}] : []),
+  ] : [];
   // The frame's wash comes from the list's own first titles. The canonical
   // library treatment carries it; no separate artwork request or tint is made.
   const wash = useMemo(() => {
@@ -166,9 +190,13 @@ function SavedLists(bindings: SavedViewBindings & {onCreate: () => void}) {
   const list = route.view === 'favorites' ? 'favorites' : route.view === 'playlists' ? 'playlists' : 'watchlist';
   const total = split ? primary.phase === 'ready' && squares.phase === 'ready' ? [...(primary.projection?.sections ?? []), ...(squares.projection?.sections ?? [])].reduce((sum, section) => sum + section.totalCount, 0) : undefined : projection?.sections.reduce((sum, section) => sum + section.totalCount, 0);
   const hasContent = !!primary.projection?.sections.some(section => section.entries.length) || split && !!squares.projection?.sections.some(section => section.entries.length);
-  if (!projection && primary.phase === 'error') return <StateView title={t('saved.loadFailed')} primary={{id: 'retry', label: t('action.tryAgain'), onPress: () => { void runtime.select(route); }}} />;
+  if (!split && !projection && primary.phase === 'error') return <StateView title={t('saved.loadFailed')} primary={{id: 'retry', label: t('action.tryAgain'), onPress: retry, loading: retryBusy}} />;
   return <>
     {wash.length ? <div className={styles.wash} aria-hidden="true"><AmbientArt sources={wash} treatment="library" height={640} /></div> : null}
+    {failures.length ? <div className={styles.readerFailures} data-saved-reader-failures>
+      {failures.map(failure => <StateView key={failure.id} variant="compact" className={styles.readerFailure}
+        title={t('saved.listLoadFailed')} primary={{id: `retry-${failure.id}`, label: t('action.tryAgain'), onPress: retry, loading: retryBusy}} />)}
+    </div> : null}
     {list === 'playlists'
       ? <div className={styles.toolbar}>
           {projection?.sorts.length ? <SortMenu variant="saved" sorts={projection.sorts.map(sort => ({...sort, defaultDirection: sort.directions[0] ?? 'asc', expensive: false, applicableKinds: []}))}
