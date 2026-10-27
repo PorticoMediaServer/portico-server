@@ -1,4 +1,4 @@
-import test from 'node:test';import assert from 'node:assert/strict';
+import test,{type TestContext} from 'node:test';import {getEventListeners} from 'node:events';import assert from 'node:assert/strict';
 import {LibraryManagementService,fetchEpisodeIssues} from '../src/library-management.ts';
 const scope={serverId:'server',viewerId:JSON.stringify(['local','owner','profile'])},wireScope={serverId:'server',viewerFence:'owner-fence'};
 function library(id='one',name='Named library',revision=1):any{return {id,name,kind:'movie',revision,source:{path:'/owner/source/'+id,availability:'unknown',basis:'not_checked'},lastScan:null,actions:['rename','scan']};}
@@ -71,3 +71,65 @@ test('files needing attention are read from the library, a full scan names its m
 });
 test('create carries the metadata language only when shown, and an unoffered language is a definite refusal',async()=>{const bodies:unknown[]=[];const s=service(async(p,m,b)=>{if(m==='POST'){bodies.push(b);return {id:'created'+bodies.length,name:(b as any).name,kind:(b as any).kind,defaultView:'discover'};}return data(p);});await s.loadLibraries();await s.createLibrary({name:'Movies',kind:'movie',path:'/server/movies',metadataAgent:'online',metadataLanguage:'ja'});await s.createLibrary({name:'Home videos',kind:'movie',path:'/server/home'});assert.deepEqual(bodies,[{name:'Movies',kind:'movie',path:'/server/movies',metadataAgent:'online',metadataLanguage:'ja'},{name:'Home videos',kind:'movie',path:'/server/home'}]);for(const bad of ['en-US','EN','e','eng',''])assert.throws(()=>s.createLibrary({name:'Bad',kind:'movie',path:'/x',metadataLanguage:bad}));s.dispose();const refused=service(async(p,m)=>{if(m==='POST')throw Object.assign(new Error('Choose a metadata language offered for this library.'),{status:400,code:'invalid_metadata_language'});return data(p);});await refused.loadLibraries();await refused.createLibrary({name:'Movies',kind:'movie',path:'/server/movies',metadataLanguage:'xx'});assert.equal(refused.getSnapshot().mutation.phase,'error');assert.equal(refused.getSnapshot().mutation.error?.code,'invalid_metadata_language');refused.dispose();});
 test('create sends all selected folders in one operation and keeps the metadata language',async()=>{const bodies:unknown[]=[];const s=service(async(p,m,b)=>{if(m==='POST'){bodies.push(b);return {id:'created',name:(b as any).name,kind:(b as any).kind};}return data(p);});await s.createLibrary({name:'Films',kind:'movie',folders:['/disk/a','/disk/b'],metadataAgent:'online',metadataLanguage:'en'});assert.deepEqual(bodies,[{name:'Films',kind:'movie',folders:['/disk/a','/disk/b'],metadataAgent:'online',metadataLanguage:'en'}]);assert.equal(s.getSnapshot().mutation.phase,'complete');s.dispose();});
+
+// Drive the actual service's request and retry clocks without a wall-clock wait.
+function retryClock(t:TestContext){
+ let next=0;const pending=new Map<number,{fn:()=>void;ms:number}>();
+ t.mock.method(globalThis,'setTimeout',(fn:()=>void,ms:number)=>{pending.set(++next,{fn,ms});return next;});
+ t.mock.method(globalThis,'clearTimeout',(id:number)=>{pending.delete(id);});
+ return {pending,fire(){assert.equal(pending.size,1);const [id,timer]=[...pending][0];pending.delete(id);timer.fn();}};
+}
+const settleRetries=async()=>{for(let i=0;i<16;i++)await Promise.resolve();};
+function retryFailure(after?:unknown,extra:Record<string,unknown>={}){return Object.assign(new Error('Server asks the same request to wait'),{status:503,code:'server_busy',retry:'same_request',retryable:true,retryAfterSeconds:after,...extra});}
+
+test('library reads preserve server Retry-After floors, local backoff and the original request',async t=>{
+ const clock=retryClock(t);
+ for(const [after,expected] of [[60,60000],[0.25,1000],[undefined,1000],[0,1000],[-1,1000],['60',1000],[NaN,1000],[Infinity,1000],[1.0001,1001]] as const){
+  const calls:{path:string;method:string;body:unknown;signal?:AbortSignal}[]=[];
+  const s=service(async(path,method,body,signal)=>{calls.push({path,method,body,signal});if(calls.length===1)throw retryFailure(after);return data(path);});
+  try{
+   const read=s.loadLibraries();await settleRetries();
+   assert.equal(calls.length,1);assert.deepEqual([...clock.pending.values()].map(t=>t.ms),[expected]);
+   assert.equal(getEventListeners(calls[0].signal!,'abort').length,1);
+   clock.fire();await read;
+   assert.equal(s.getSnapshot().directory.phase,'ready');assert.equal(calls.length,2);
+   assert.deepEqual(calls[1],calls[0]);assert.equal(clock.pending.size,0);
+   assert.equal(getEventListeners(calls[0].signal!,'abort').length,0);
+  }finally{s.dispose();}
+ }
+});
+
+test('an unrepresentable server retry floor surfaces the original failure without a timer or follow-up',async t=>{
+ const clock=retryClock(t);
+ for(const after of [2147483.648,Number.MAX_VALUE]){
+  let calls=0;const failure=retryFailure(after);const s=service(async()=>{calls++;throw failure;});
+  try{await s.loadLibraries();assert.equal(calls,1);assert.equal(clock.pending.size,0);assert.deepEqual(s.getSnapshot().directory.error,{code:failure.code,message:failure.message,retryable:true});}
+  finally{s.dispose();}
+ }
+});
+
+test('dispose, cancel, scope replacement and a replacement read clear retry timers and listeners',async t=>{
+ const clock=retryClock(t);
+ for(const retire of ['dispose','cancel','scope','reload'] as const){
+  let calls=0,signal:AbortSignal|undefined;
+  const s=service(async(p,_m,_b,a)=>{calls++;signal??=a;if(calls===1)throw retryFailure(60);return data(p);});
+  try{
+   const read=s.loadLibraries();await settleRetries();assert.equal(clock.pending.size,1);
+   if(retire==='dispose')s.dispose();else if(retire==='cancel')s.cancel();
+   else if(retire==='scope')s.setScope({...scope,viewerId:'replacement'},{request:async<T>()=>{throw new Error('old retry must not call replacement API');}});
+   else await s.loadLibraries();
+   await read;assert.equal(calls,retire==='reload'?2:1);assert.equal(clock.pending.size,0);
+   assert.equal(signal!.aborted,true);assert.equal(getEventListeners(signal!,'abort').length,0);
+  }finally{s.dispose();}
+ }
+});
+
+test('retry eligibility refuses never, false and authorization failures and preserves the three-retry bound',async t=>{
+ const clock=retryClock(t);
+ for(const extra of [{retry:'never'},{retry:false,status:503,retryable:false},{status:403,code:'forbidden'},{status:401,code:'unauthorized'}]){
+  let calls=0;const s=service(async()=>{calls++;throw retryFailure(60,extra);});
+  try{await s.loadLibraries();assert.equal(calls,1);assert.equal(clock.pending.size,0);assert.equal(s.getSnapshot().directory.phase,'error');}finally{s.dispose();}
+ }
+ let calls=0;const s=new LibraryManagementService({scope,retryBaseMs:4000,api:{request:async<T>()=>{calls++;throw retryFailure();}}});
+ try{const read=s.loadLibraries();await settleRetries();for(const expected of [4000,8000,8000]){assert.deepEqual([...clock.pending.values()].map(t=>t.ms),[expected]);clock.fire();await settleRetries();}await read;assert.equal(calls,4);assert.equal(s.getSnapshot().directory.phase,'error');assert.equal(clock.pending.size,0);}finally{s.dispose();}
+});

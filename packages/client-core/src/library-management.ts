@@ -89,7 +89,25 @@ export class LibraryManagementService{
  private mutate(kind:'create'|'rename'|'scan'|'cancel',libraryId:string,method:string,path:string,body?:unknown):Promise<void>{const key=JSON.stringify([kind,libraryId,body,path]);if(this.mutationPromise){if(this.mutationKey===key)return this.mutationPromise;throw new Error('Wait for the current library command to finish.');}const epoch=this.epoch,c=new AbortController();let selected=this.state.selectedLibraryId;this.mutationController=c;this.mutationKey=key;this.publish({mutation:Object.freeze({phase:'pending',kind,error:null})});const promise=(async()=>{try{const raw=await this.request(this.api,path,method,body,c);if(this.disposed||epoch!==this.epoch||c.signal.aborted||selected!==this.state.selectedLibraryId)return;if(kind==='create'){const submitted=body as {name:string;kind:string};if(!object(raw)||!id(raw.id)||raw.name!==submitted.name||raw.kind!==submitted.kind)invalid();selected=raw.id;this.publish({selectedLibraryId:selected,selected:blank(),jobs:blank(),jobFilter:Object.freeze({libraryId:selected})});}else if(kind==='rename'){if(!object(raw))invalid();const scope=parseScope(raw.scope,this.scope);this.fence(scope.viewerFence);const library=parseLibrary(raw.library);if(library.id!==libraryId||library.name!==(body as {name:string}).name||library.revision<(body as {expectedRevision:number}).expectedRevision)invalid();}else if(kind==='scan'&&!path.endsWith('/pause')&&!path.endsWith('/resume')&&(!object(raw)||!id(raw.id)||!integer(raw.processed)))invalid();await this.reconcile();if(!this.disposed&&epoch===this.epoch&&!c.signal.aborted)this.publish({mutation:Object.freeze({phase:'complete',kind,error:null})});}catch(e){if(this.disposed||epoch!==this.epoch||c.signal.aborted&&this.mutationController!==c||selected!==this.state.selectedLibraryId)return;const error=errorInfo(e);if(this.denied(e)){this.stop();this.publish({...this.empty(),mutation:Object.freeze({phase:'error',kind,error})});return;}const definite=['source_changed','library_configuration_conflict','source_already_configured','invalid_request','invalid_metadata_language','not_found','forbidden','unauthorized'].includes(error.code);this.publish({mutation:Object.freeze({phase:definite?'error':'ambiguous',kind,error})});}finally{if(this.mutationController===c){this.mutationPromise=undefined;this.mutationKey='';}}})();this.mutationPromise=promise;return promise;}
  /** A read the server says may be repeated (`retry: same_request`, a 5xx or 429) is tried again
   * with backoff, honouring Retry-After, before the page shows its error with Try again. */
- private async readRetrying(api:LibraryContentApi,path:string,c:AbortController):Promise<unknown>{for(let attempt=0;;attempt++){try{return await this.request(api,path,'GET',undefined,c);}catch(e){if(attempt>=this.readRetries||c.signal.aborted||!sameRequest(e))throw e;const after=(e as {retryAfterSeconds?:unknown}).retryAfterSeconds;const wait=Math.min(8000,Math.max(typeof after==='number'&&after>0?after*1000:0,this.retryBaseMs*2**attempt));await new Promise<void>(resolve=>{const t=setTimeout(done,wait);function done(){clearTimeout(t);c.signal.removeEventListener('abort',done);resolve();}c.signal.addEventListener('abort',done,{once:true});});if(c.signal.aborted)throw e;}}}
+ private async readRetrying(api:LibraryContentApi,path:string,c:AbortController):Promise<unknown>{
+  for(let attempt=0;;attempt++){
+   try{return await this.request(api,path,'GET',undefined,c);}
+   catch(e){
+    if(attempt>=this.readRetries||c.signal.aborted||this.denied(e)||!sameRequest(e))throw e;
+    const after=(e as {retryAfterSeconds?:unknown}).retryAfterSeconds;
+    const floor=typeof after==='number'&&Number.isFinite(after)&&after>0?after*1000:0;
+    // Never shorten a server floor into the platform's maximum timer delay.
+    if(!Number.isFinite(floor)||floor>2147483647)throw e;
+    const wait=Math.ceil(Math.max(floor,Math.min(8000,this.retryBaseMs*2**attempt)));
+    await new Promise<void>(resolve=>{
+     const t=setTimeout(done,wait);
+     function done(){clearTimeout(t);c.signal.removeEventListener('abort',done);resolve();}
+     c.signal.addEventListener('abort',done,{once:true});
+    });
+    if(c.signal.aborted)throw e;
+   }
+  }
+ }
  private async request(api:LibraryContentApi,path:string,method:string,body:unknown,c:AbortController):Promise<unknown>{let timer:ReturnType<typeof setTimeout>|undefined;let abort=()=>{};try{return await Promise.race([api.request(path,method,body,c.signal),new Promise<never>((_,reject)=>{abort=()=>reject(new Failure('cancelled','Library request cancelled.'));c.signal.addEventListener('abort',abort,{once:true});timer=setTimeout(()=>{reject(new Failure('timeout','The server took too long. Refresh to check the current state.',true));c.abort();},this.timeoutMs);})]);}finally{if(timer)clearTimeout(timer);c.signal.removeEventListener('abort',abort);}}
 }
 
