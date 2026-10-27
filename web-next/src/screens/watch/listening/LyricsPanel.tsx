@@ -11,7 +11,7 @@ const t = defaultI18n.t;
 export function LyricsPanel({snapshot, positionSeconds, enabled, canSeek, onRetry, onChoose, onSeek, librarySettings}: Readonly<{
   snapshot: LyricsSnapshot; positionSeconds: number; enabled: boolean; canSeek: boolean;
   onRetry: (shown: LyricsSnapshot) => void;
-  onChoose: (shown: LyricsSnapshot, resource: LyricRevision | null) => void;
+  onChoose?: (shown: LyricsSnapshot, resource: LyricRevision | null) => void;
   onSeek: (shown: LyricsSnapshot, index: number) => void;
   /** Already permission-checked by the original owner; absent means no action. */
   librarySettings?: () => void;
@@ -34,7 +34,7 @@ export function LyricsPanel({snapshot, positionSeconds, enabled, canSeek, onRetr
           : <p key={index} className={styles.line} data-active={index === active || undefined}>{line.text}</p>;
       })}
     </div> : null}
-    {!!data?.resources.length && <fieldset className={styles.resources} disabled={snapshot.busy}>
+    {!!data?.resources.length && onChoose && <fieldset className={styles.resources} disabled={snapshot.busy}>
       <legend>{t('player.chooseLyrics')}</legend>
       {data.resources.map(resource => <button type="button" className={styles.resource} key={`${resource.id}:${resource.revision}`}
         aria-pressed={resource.id === selected?.id && resource.revision === selected?.revision} onClick={() => onChoose(snapshot, resource)}>

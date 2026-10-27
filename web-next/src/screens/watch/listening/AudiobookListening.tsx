@@ -53,12 +53,12 @@ export function AudiobookListening({snapshot, title, subtitle, cover, chapters, 
         <span>{watchClock(p.durationSeconds)}</span>
       </div>
       <div className={styles.transport}>
-        <Button variant="ghost" icon="i-prev" aria-label={t('next.dock.previous')} disabled={!chapters || !previous || !can('seek')} onClick={() => {if (chapters && previous) onChapter(chapters, previous);}}/>
-        <button type="button" className={styles.skip} aria-label={t('next.dock.back', {seconds: skips.back})} disabled={!can('seek') || !bounds} onClick={() => seek(p.positionSeconds - skips.back)}><Icon name="i-back" size={34}/><span>{skips.back}</span></button>
-        <Button variant="glass" icon={p.playing ? 'i-pause' : 'i-play'} aria-label={t(p.playing ? 'next.dock.pause' : 'next.dock.play')}
+        <Button variant="ghost" className={styles.control} iconOnly iconSize={phone ? 28 : 24} icon="i-prev" aria-label={t('next.dock.previous')} disabled={!chapters || !previous || !can('seek')} onClick={() => {if (chapters && previous) onChapter(chapters, previous);}}/>
+        <button type="button" className={styles.skip} aria-label={t('next.dock.back', {seconds: skips.back})} disabled={!can('seek') || !bounds} onClick={() => seek(p.positionSeconds - skips.back)}><Icon name="i-back" size={phone ? 38 : 34}/><span>{skips.back}</span></button>
+        <Button variant="primary" className={styles.playPause} iconOnly iconSize={phone ? 34 : 30} icon={p.playing ? 'i-pause' : 'i-play'} aria-label={t(p.playing ? 'next.dock.pause' : 'next.dock.play')}
           disabled={!can(p.playing ? 'pause' : 'play')} onClick={() => onIntent(snapshot, {kind: p.playing ? 'pause' : 'play'})}/>
-        <button type="button" className={styles.skip} aria-label={t('next.dock.forward', {seconds: skips.forward})} disabled={!can('seek') || !bounds} onClick={() => seek(p.positionSeconds + skips.forward)}><Icon name="i-fwd" size={34}/><span>{skips.forward}</span></button>
-        <Button variant="ghost" icon="i-next" aria-label={t('next.dock.next')} disabled={!chapters || !next || !can('seek')} onClick={() => {if (chapters && next) onChapter(chapters, next);}}/>
+        <button type="button" className={styles.skip} aria-label={t('next.dock.forward', {seconds: skips.forward})} disabled={!can('seek') || !bounds} onClick={() => seek(p.positionSeconds + skips.forward)}><Icon name="i-fwd" size={phone ? 38 : 34}/><span>{skips.forward}</span></button>
+        <Button variant="ghost" className={styles.control} iconOnly iconSize={phone ? 28 : 24} icon="i-next" aria-label={t('next.dock.next')} disabled={!chapters || !next || !can('seek')} onClick={() => {if (chapters && next) onChapter(chapters, next);}}/>
       </div>
       {!phone && <div className={styles.options}>
         {!!speedChoices.length && <div className={styles.option}><b>{t('player.opt.speed')}</b><Segmented className={styles.segments} aria-label={t('player.opt.speed')} value={String(p.rate)} items={speedChoices.map(rate => ({value: String(rate), label: `${defaultI18n.region.formatLocale ? new Intl.NumberFormat(defaultI18n.region.formatLocale).format(rate) : rate}×`}))}
@@ -85,7 +85,7 @@ export function AudiobookListening({snapshot, title, subtitle, cover, chapters, 
               : chapters.data?.status === 'none' ? <StateView title={t('player.opt.noChapters')}/> : null}
         <div role="list">{rows.map(chapter => <div role="listitem" key={chapter.id} className={styles.chapterRow} data-current={chapter === active || undefined}>
           <button type="button" disabled={!can('seek') || chapters?.phase !== 'ready'} onClick={() => {if (chapters) onChapter(chapters, chapter);}} aria-current={chapter === active ? 'true' : undefined}>
-            <span>{chapter === active ? <Icon name={p.playing ? 'i-play' : 'i-pause'} size={16}/> : chapter.index + 1}</span><b>{chapter.title}</b><small>{watchClock(chapter.endSeconds - chapter.startSeconds)}</small>
+            <span>{chapter === active ? <Icon name={p.playing ? 'i-play' : 'i-pause'} size={16}/> : chapter.index}</span><b>{chapter.title}</b><small>{watchClock(chapter.endSeconds - chapter.startSeconds)}</small>
           </button>
         </div>)}</div>
         {chapters && <div className={styles.pager}>

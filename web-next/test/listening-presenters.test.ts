@@ -1,5 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import type {PlayerChapter, PlayerChaptersSnapshot} from '@core/player-chapters.ts';
+import {readFileSync} from 'node:fs';
 import {registerHooks} from 'node:module';
 import {Children, isValidElement, type ReactNode} from 'react';
 import {transformTsx} from './transform-tsx.mjs';
@@ -17,19 +19,19 @@ const loader = registerHooks({load(url, context, next) {
 const {AudiobookListening} = await import('../src/screens/watch/listening/AudiobookListening.tsx');
 const {LyricsPanel} = await import('../src/screens/watch/listening/LyricsPanel.tsx');
 const {ListeningQueue} = await import('../src/screens/watch/listening/ListeningQueue.tsx');
-function elements(tree: ReactNode): any[] {const result: any[] = [];Children.forEach(tree, child => {if (isValidElement<any>(child)) {result.push(child);result.push(...elements(child.props.children));}});return result;}
+function elements(tree: ReactNode): any[] {const result: any[] = [];Children.forEach(tree, child => {if (isValidElement<any>(child)) {result.push(child);result.push(...elements((child as import('react').ReactElement<{children?: ReactNode}>).props.children));}});return result;}
 const noop = () => {};
-const chapter = (id: string, start: number, end: number) => ({id, index: start / 10, title: id, startSeconds: start, endSeconds: end, action: {id: 'seek', positionSeconds: start}});
-const chapters: any = {generation: 1, phase: 'ready', target: {}, scope: {}, pagination: {cursor: null, canPrevious: true}, error: null,
-  data: {status: 'available', totalCount: 101, nextCursor: 'opaque-2', revision: 'original', duration: 100, chapters: [chapter('first', 0, 10), chapter('second', 10, 20)]}};
-const playback: any = {disposed: false, dock: {}, presentation: {kind: 'audiobook', expanded: true, playing: true, positionSeconds: 12, durationSeconds: 100, rate: 1.25, volume: .5, muted: false, controls: ['seek', 'pause', 'volume']}};
+const chapter = (index: number, start: number, end: number): PlayerChapter => ({id: `source:${index}`, index, title: `Chapter ${index}`, startSeconds: start, endSeconds: end, action: {id: 'seek', positionSeconds: start}});
+const chapters: PlayerChaptersSnapshot = {generation: 1, phase: 'ready', target: {libraryId: 'library', itemId: 'book', sessionId: 'session', sessionGeneration: 1, sourceId: 'source'}, scope: {serverId: 'server', viewerId: 'viewer'}, pagination: {cursor: null, canPrevious: true}, error: null,
+  data: {scope: {serverId: 'server', libraryId: 'library', itemId: 'book', viewerFence: 'viewer', sessionId: 'session', generation: 1, sourceId: 'source'}, reason: null, status: 'available', totalCount: 101, nextCursor: 'opaque-2', revision: 'original', duration: 1010, chapters: [chapter(1, 0, 10), chapter(2, 10, 20)]}};
+const playback: any = {disposed: false, dock: {}, presentation: {kind: 'audiobook', expanded: true, playing: true, positionSeconds: 12, durationSeconds: 1010, rate: 1.25, volume: .5, muted: false, controls: ['seek', 'pause', 'volume']}};
 const book = (patch: any = {}) => ({snapshot: playback, title: 'A real title', subtitle: 'A real author', chapters, speedChoices: [.75, 1, 1.25], sleepChoices: [0, 15, 30], sleepMinutes: 0, skips: {back: 15, forward: 30}, onIntent: noop, onSpeed: noop, onSleep: noop, onChapter: noop, onChapterPage: noop, onChapterRetry: noop, onCollapse: noop, ...patch});
 
 test('audiobook view uses actual part-local chapters and only offered pages/rates with original witnesses', () => {
   const calls: unknown[] = [], props = book({onChapter: (...args: unknown[]) => calls.push(args), onChapterPage: (...args: unknown[]) => calls.push(args), onSpeed: (...args: unknown[]) => calls.push(args)});
   const tree = elements(AudiobookListening(props));
   tree.find(e => e.type === 'button' && e.props['aria-current']).props.onClick();
-  assert.deepEqual(calls.shift(), [chapters, chapters.data.chapters[1]]);
+  assert.deepEqual(calls.shift(), [chapters, chapters.data!.chapters[1]]);
   const pages = tree.filter(e => e.type === 'button' && e.props.children === 'Show more');pages[0].props.onClick();
   assert.deepEqual(calls.shift(), [chapters, 'next']);
   const speed = tree.find(e => e.type === 'segmented' && e.props['aria-label'] === 'Speed');speed.props.onValueChange('2');assert.equal(calls.length, 0);
@@ -107,3 +109,33 @@ test('queue save uses canonical progress and the rendered occurrence/revision wi
   const activeDialog = active.find(e => e.type === 'dialog');assert.equal(elements(activeDialog.props.footer).find(e => e.props.variant === 'primary').props.disabled, true);
 });
 test.after(() => loader.deregister());
+
+
+test('published one-based chapter numbers stay exact on the first and later pages', () => {
+  const first = elements(AudiobookListening(book()));
+  assert.ok(first.some(e => e.type === 'span' && e.props.children === 1));
+  const later: PlayerChaptersSnapshot = {...chapters, data: {...chapters.data!, chapters: [chapter(101, 1000, 1010)]}};
+  let received: unknown[] = [];
+  const tree = elements(AudiobookListening(book({chapters: later, onChapter: (...args: unknown[]) => {received = args;}})));
+  const number = tree.find(e => e.type === 'span' && e.props.children === 101);assert.ok(number);
+  const row = tree.find(e => e.type === 'button' && elements(e.props.children).includes(number));row.props.onClick();
+  assert.deepEqual(received, [later, later.data!.chapters[0]]);
+});
+
+test('desktop/phone transports use local authored geometry and explicit icon sizes', () => {
+  for (const phone of [false, true]) {
+    const tree = elements(AudiobookListening(book({phone})));
+    for (const icon of ['i-prev', 'i-next']) {const button = tree.find(e => e.props.icon === icon);assert.equal(button.props.className, 'control');assert.equal(button.props.iconOnly, true);assert.equal(button.props.iconSize, phone ? 28 : 24);}
+    const play = tree.find(e => e.props.className === 'playPause');assert.equal(play.props.iconSize, phone ? 34 : 30);assert.equal(play.props.iconOnly, true);assert.equal(play.props.variant, 'primary');
+  }
+  const css = readFileSync(new URL('../src/screens/watch/listening/audiobook-listening.module.css', import.meta.url), 'utf8');
+  assert.match(css, /\.frame \.transport \.control \{ width: 50px; height: 50px; padding: 0; border-radius: 50%;/);
+  assert.match(css, /\.frame \.transport \.playPause \{ width: 74px; height: 74px; padding: 0; border-radius: 50%;/);
+});
+
+test('absent canonical lyrics choice capability offers no resource action', () => {
+  const snapshot = lyrics(), tree = elements(LyricsPanel({snapshot, positionSeconds: 2.5, enabled: true, canSeek: false, onRetry: noop, onSeek: noop}));
+  assert.equal(tree.some(e => e.type === 'button'), false);
+  assert.equal(tree.some(e => e.props['aria-pressed'] !== undefined), false);
+  assert.ok(tree.some(e => e.props.children === 'Second'));
+});
