@@ -32,7 +32,7 @@ import {readBackCommit, readRetireAttempt, readRouteEntry, readVersionCanChoose,
 import styles from './read-item.module.css';
 
 type Captured = NonNullable<ReturnType<typeof useProtectedWebScreenContext>>;
-type ReadAttempt = {readonly context: Captured['context']; readonly sourceId: string | undefined; readonly retry: number; readonly fileLife: AbortController; session?: ReadingSession; saving?: boolean; rereading?: boolean; live: boolean; ready: boolean; target?: (index: number) => ReaderContentsTarget};
+type ReadAttempt = {readonly context: Captured['context']; readonly entry: typeof router.state.location; readonly sourceId: string | undefined; readonly retry: number; readonly fileLife: AbortController; session?: ReadingSession; saving?: boolean; rereading?: boolean; live: boolean; ready: boolean; target?: (index: number) => ReaderContentsTarget};
 const {t} = defaultI18n;
 /** The primary Item registration supplies a genuine Reading resource result. */
 export function ReadItemEntry({itemId, eligibility}: {itemId: string; eligibility: ReadItemEligibility}) {
@@ -44,7 +44,8 @@ function BoundReadItem({captured, eligibility}: {captured: Captured; eligibility
   const phone = usePhone();
   // The entry this render was produced on, committed by layout. A reused component with
   // a new __TSR_key renders new callbacks; callbacks from the old entry refuse.
-  const routeEntry = readRouteEntry(useLocation());
+  const routeLocation = useLocation();
+  const routeEntry = readRouteEntry(routeLocation);
   const committedEntry = useRef<ReadRouteEntry | undefined>(undefined);
   useLayoutEffect(() => {committedEntry.current = routeEntry;}, [routeEntry?.href, routeEntry?.key]);
   const [editing, setEditing] = useState(false), [more, setMore] = useState(false);
@@ -57,11 +58,10 @@ function BoundReadItem({captured, eligibility}: {captured: Captured; eligibility
   const attemptRef = useRef<ReadAttempt | undefined>(undefined);
   const committed = useRef<ReadVersionSource | undefined>(undefined);
   useLayoutEffect(() => {committed.current = {context: captured.context, sourceId, versions: eligibility.versions};}, [captured.context, sourceId, eligibility.versions]);
-  const renderIdentity = useRef({context: captured.context, sourceId, retry});
-  renderIdentity.current = {context: captured.context, sourceId, retry};
   const [detail, setDetail] = useState<Readonly<{attempt?: ReadAttempt; manifest?: ReadingManifest; progress?: ReadingProgress; client?: ReturnType<typeof createReadBindings>['client']; targets?: readonly ReaderContentsTarget[]; failed?: boolean}>>({});
   const current = (value: ReadAttempt | undefined): value is ReadAttempt => !!value && value.live && attemptRef.current === value
-    && renderIdentity.current.context === value.context && renderIdentity.current.sourceId === value.sourceId && renderIdentity.current.retry === value.retry && value.context.isCurrent();
+    && value.entry === router.state.location && value.context === captured.context
+    && value.sourceId === sourceId && value.retry === retry && value.context.isCurrent();
   const retire = (value: ReadAttempt) => readRetireAttempt(value,
     () => {if (attemptRef.current === value) attemptRef.current = undefined;}, () => value.fileLife.abort());
   const refresh = (value: ReadAttempt | undefined) => {if (!current(value)) return; retire(value); setRetry(count => count + 1);};
@@ -72,10 +72,10 @@ function BoundReadItem({captured, eligibility}: {captured: Captured; eligibility
     reportError: error => errorSink.current(error),
   });
   useLayoutEffect(() => {
-    const value: ReadAttempt = {context: captured.context, sourceId, retry, fileLife: new AbortController(), live: true, ready: false};
+    const value: ReadAttempt = {context: captured.context, entry: routeLocation, sourceId, retry, fileLife: new AbortController(), live: true, ready: false};
     attemptRef.current = value; setAttempt(value); setSaving(false); setRereading(false);
     return () => retire(value);
-  }, [captured.context, sourceId, retry]);
+  }, [captured.context, eligibility.itemId, routeLocation, sourceId, retry]);
   const anchor = useRef<HTMLButtonElement>(null);
   const chooserAnchor = useRef<HTMLButtonElement>(null);
   const [chooserMenu, setChooserMenu] = useState(false);
