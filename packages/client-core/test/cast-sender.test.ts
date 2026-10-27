@@ -181,7 +181,8 @@ test('Root50: legacy/mismatched original scope and unstable receivers disclose n
 test('Root50: fresh sender validation precedes proof disclosure, correlated receiver admission and content read precede publication',async()=>{
  let release!:()=>void,describe!:()=>void;
  const h=returning({validate:()=>new Promise<void>(r=>{release=r;}),describe:()=>new Promise<string>(r=>{describe=()=>r('Film');})}),tv=receiver('TV','tv-a');
- const adopted=h.controller.adopt(tv.transport);assert.equal(h.requests.length,1);assert.deepEqual(tv.sent,[]);release();await settle();
+ const emptyCommands:CastCommand[]=[];
+ const adopted=h.controller.adopt(tv.transport);assert.equal(h.requests.length,1);assert.deepEqual(tv.sent,emptyCommands);release();await settle();
  const command=tv.sent[0];assert.equal(command.type,'adopt');if(command.type!=='adopt')throw new Error('no adoption');
  const status={type:'status',controller:controllerStamp,occurrence,itemId:'movie',positionSeconds:80,durationSeconds:600,paused:false,audioTracks:[],textTracks:[]};
  tv.reply({...status,attemptId:'other-attempt'});assert.equal(h.controller.getSnapshot().phase,'off');
