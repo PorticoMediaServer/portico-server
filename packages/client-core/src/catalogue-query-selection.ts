@@ -1,3 +1,4 @@
+import {clonePortableDto} from './clone-portable-dto.ts';
 import {parseBrowseNode} from './browse.ts';
 import type {CatalogueSelectionLifetime, CatalogueSelectionQueuePort} from './catalogue-selection.ts';
 import type {SegmentInput} from './playback-v1/queue.ts';
@@ -26,7 +27,7 @@ export function catalogueQuerySelectionSegments<C>(target: QuerySelectionTarget<
     return {...value};
   });
   return freeze<readonly SegmentInput[]>([{source: {query: {libraryId: query.libraryId, pivot: query.pivot,
-    ...(query.filter === undefined || query.filter === null ? {} : {query: parseBrowseNode(structuredClone(query.filter))}),
+    ...(query.filter === undefined || query.filter === null ? {} : {query: parseBrowseNode(clonePortableDto(query.filter))}),
     ...(sort?.length ? {sort} : {}), selectionRevision: checked.expected.catalogRevision}}, order: {mode: 'source'}}]);
 }
 function current(lifetime: CatalogueSelectionLifetime) {

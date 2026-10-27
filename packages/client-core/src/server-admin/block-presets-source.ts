@@ -1,3 +1,4 @@
+import {clonePortableDto} from '../clone-portable-dto.ts';
 import {linkAbortSignals, throwIfAborted} from '../abort-lifetime.ts';
 import type {ChannelApi} from '../channel-guide.ts';
 import {browseCapabilitiesPath, parseBrowseCapabilities, validateBrowseQuery, type BrowseNode} from '../browse.ts';
@@ -53,7 +54,7 @@ export class BlockPresetsSource {
       if(applicationOrders!==undefined&&(applicationOrders.length>4||new Set(applicationOrders).size!==applicationOrders.length||applicationOrders.some(order=>!orders.includes(order))))throw new Error('invalid_block_preset_application_orders');
       const items=more?[...before,...page.items]:page.items;
       if(items.length>2000||new Set(items.map(item=>item.id)).size!==items.length||items.some(item=>!this.validRecord(item)))throw new Error('invalid_block_preset_page');
-      this.publish({items:freeze(structuredClone(items)),cursor:page.nextCursor||undefined,loaded:true,applicationOrders:applicationOrders===undefined?undefined:Object.freeze([...applicationOrders]),reconcile:false});
+      this.publish({items:freeze(clonePortableDto(items)),cursor:page.nextCursor||undefined,loaded:true,applicationOrders:applicationOrders===undefined?undefined:Object.freeze([...applicationOrders]),reconcile:false});
     }catch(error){if(owns())this.failure(error);}finally{if(this.flight===flight){this.flight=undefined;this.publish({busy:false});}}
   };
   private validBody(body:BlockPresetBody){return safe(body.libraryId,128)&&safe(body.description,400)&&orders.includes(body.order)&&Number.isInteger(body.durationMinutes)&&body.durationMinutes>=5&&body.durationMinutes<=1440&&Number.isInteger(body.startMinute)&&body.startMinute>=-1&&body.startMinute<=1439&&body.days.length<=7&&new Set(body.days).size===body.days.length&&body.days.every(day=>days.includes(day))&&body.criteria.length<=16&&body.criteria.every(row=>!!row.field&&safe(row.field,64)&&['includes','excludes'].includes(row.operator)&&row.values.length>0&&row.values.length<=200&&row.values.every(value=>!!value&&safe(value,200)));}
@@ -62,7 +63,7 @@ export class BlockPresetsSource {
   save=async(original:BlockPreset|undefined,name:string,body:BlockPresetBody):Promise<boolean>=>{
     if(!this.current()||this.flight||this.intent||this.state.reconcile||!this.state.loaded||original&&!this.state.items.includes(original)||!name.trim()||!safe(name,120)||!this.validBody(body))return false;
     const list=this.state.items;let intent:Intent;
-    try{intent=freeze({id:original?.id,body:{expectedRevision:original?.revision??0,operationId:this.operationId(),name,body:structuredClone(body)}});}catch{this.publish({error:true});return false;}
+    try{intent=freeze({id:original?.id,body:{expectedRevision:original?.revision??0,operationId:this.operationId(),name,body:clonePortableDto(body)}});}catch{this.publish({error:true});return false;}
     if(!this.current()||this.flight||this.intent||this.state.items!==list||original&&!list.includes(original))return false;
     this.intent=intent;return this.run(intent);
   };
@@ -106,7 +107,7 @@ export class BlockPresetsSource {
   apply=async(record:BlockPreset,config:LibraryChannelConfig,block:LibraryChannelBlock,caller:AbortSignal,callerCurrent:()=>boolean):Promise<LibraryChannelConfig|undefined>=>{
     if(!this.current()||this.flight||this.intent||!this.state.loaded||this.state.reconcile||caller.aborted||!callerCurrent()||!this.state.items.includes(record)||record.body.order==='least-played'&&!this.state.applicationOrders?.includes('least-played')||!record.body.libraryId||config.rules.length>=16)return;
     let ruleId:string,definition:BlockPresetBody,baseline:LibraryChannelConfig;
-    try{ruleId='rule-'+this.operationId().slice(0,24);definition=freeze(structuredClone(record.body));baseline=structuredClone(config);}catch{return;}
+    try{ruleId='rule-'+this.operationId().slice(0,24);definition=freeze(clonePortableDto(record.body));baseline=clonePortableDto(config);}catch{return;}
     const list=this.state.items;
     if(!this.current()||this.flight||this.intent||caller.aborted||!callerCurrent()||this.state.items!==list||!list.includes(record))return;
     const flight=new AbortController();this.flight=flight;

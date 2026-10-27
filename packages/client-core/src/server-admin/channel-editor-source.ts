@@ -1,3 +1,4 @@
+import {clonePortableDto} from '../clone-portable-dto.ts';
 import {previewLibraryChannel,readLibraryDefaults,saveLibraryChannel,type LibraryChannel,type LibraryChannelConfig,type LibraryChannelPreview,type LibraryChannelTemplate} from '../library-channels.ts';
 import {channelRequestID} from '../live-source-draft.ts';
 import type {ChannelApi} from '../channel-guide.ts';
@@ -31,24 +32,24 @@ export class SettingsChannelEditorSource {
   blank=async(timezone:string):Promise<void>=>{
     const opening=this.begin();if(!opening)return;const owns=()=>this.current()&&this.opening===opening&&!opening.signal.aborted;
     this.publish({...empty,phase:'loading'});if(!owns())return;
-    try{const config=await readLibraryDefaults(this.transport(owns),this.serverId,timezone,opening.signal);if(owns())this.publish({phase:'editing',config:frozen(structuredClone(config))});}
+    try{const config=await readLibraryDefaults(this.transport(owns),this.serverId,timezone,opening.signal);if(owns())this.publish({phase:'editing',config:frozen(clonePortableDto(config))});}
     catch(error){if(owns())this.failure(error,'read');}
   };
   template=(template:LibraryChannelTemplate,timezone:string):void=>{
     if(!this.current()||!template.applicable||!this.reader.getSnapshot().templates?.includes(template))return;
     let config:LibraryChannelConfig;
-    try{config=frozen({...structuredClone(template.config),id:'lc-'+this.operationId().slice(0,24),timezone,templateId:template.id});}catch(error){this.failure(error,'read');return;}
+    try{config=frozen({...clonePortableDto(template.config),id:'lc-'+this.operationId().slice(0,24),timezone,templateId:template.id});}catch(error){this.failure(error,'read');return;}
     const opening=this.begin();if(!opening)return;this.publish({...empty,phase:'editing',config,templateName:template.name});
   };
   edit=(channel:LibraryChannel):void=>{
     if(!this.current()||!this.reader.getSnapshot().channels?.includes(channel))return;
     const opening=this.begin();if(!opening)return;this.original=channel;this.revision=channel.revision;
-    this.publish({...empty,phase:'editing',config:frozen(structuredClone(channel.config))});
+    this.publish({...empty,phase:'editing',config:frozen(clonePortableDto(channel.config))});
   };
   change=(update:(config:LibraryChannelConfig)=>LibraryChannelConfig):void=>{
     const before=this.state.config;if(!this.current()||this.flight||this.intent||!before||this.state.phase!=='editing')return;
-    const next=update(structuredClone(before));if(!this.current()||this.state.config!==before||next.id!==before.id)return;
-    this.previewRead?.abort();this.previewRead=undefined;this.publish({config:frozen(structuredClone(next)),preview:undefined,previewLoading:false,error:undefined});
+    const next=update(clonePortableDto(before));if(!this.current()||this.state.config!==before||next.id!==before.id)return;
+    this.previewRead?.abort();this.previewRead=undefined;this.publish({config:frozen(clonePortableDto(next)),preview:undefined,previewLoading:false,error:undefined});
   };
   preview=async():Promise<void>=>{
     const config=this.state.config;if(!this.current()||this.flight||!config||this.state.phase!=='editing')return;
@@ -62,7 +63,7 @@ export class SettingsChannelEditorSource {
   save=async():Promise<LibraryChannel|undefined>=>{
     const config=this.state.config;if(!this.current()||this.flight||this.intent||!config||this.state.phase!=='editing')return;
     if(this.original&&!this.reader.getSnapshot().channels?.includes(this.original)){this.publish({error:'changed'});return;}
-    let intent:Intent;try{intent=Object.freeze({config:frozen(structuredClone(config)),revision:this.revision,requestId:this.operationId()});}catch(error){this.failure(error,'save');return;}
+    let intent:Intent;try{intent=Object.freeze({config:frozen(clonePortableDto(config)),revision:this.revision,requestId:this.operationId()});}catch(error){this.failure(error,'save');return;}
     if(!this.current()||this.state.config!==config||this.flight||this.intent)return;this.intent=intent;return this.performSave(intent);
   };
   retry=async():Promise<LibraryChannel|undefined>=>{const intent=this.intent;return intent?this.performSave(intent):undefined;};
@@ -72,7 +73,7 @@ export class SettingsChannelEditorSource {
     this.publish({busy:true,pending:true,error:undefined,previewLoading:false});let saved:LibraryChannel|undefined;
     try{if(!owns())return;const response=await saveLibraryChannel(this.transport(owns),this.serverId,intent.config,intent.revision,intent.requestId,flight.signal);if(!owns())return;
       if(response.config.id!==intent.config.id||response.revision<=intent.revision)throw new Error('invalid_channel_save_receipt');
-      saved=response;this.intent=undefined;this.original=undefined;this.revision=response.revision;this.opening?.abort();this.opening=undefined;this.publish({phase:'closed',pending:false,config:frozen(structuredClone(response.config))});
+      saved=response;this.intent=undefined;this.original=undefined;this.revision=response.revision;this.opening?.abort();this.opening=undefined;this.publish({phase:'closed',pending:false,config:frozen(clonePortableDto(response.config))});
     }catch(error){if(owns()){const status=(error&&typeof error==='object'?error:{}) as {status?:number};if([400,412,422].includes(status.status??0)){this.intent=undefined;this.publish({pending:false});}this.failure(error,status.status===412?'changed':'save');}}
     finally{if(this.flight===flight){this.flight=undefined;this.publish({busy:false});}}
     if(saved&&this.current())await this.reader.load();return this.current()?saved:undefined;

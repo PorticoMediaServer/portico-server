@@ -1,3 +1,4 @@
+import {clonePortableDto} from './clone-portable-dto.ts';
 import type {ReadingAnnotation, ReadingAnnotationContent, ReadingAnnotationPort, ReadingAnnotationsPage} from './reading-annotations.ts';
 
 export type ReadingAnnotationIntent = Readonly<{revision: number | undefined; signal: AbortSignal; isCurrent: () => boolean}>;
@@ -36,7 +37,7 @@ export class ReadingAnnotationService {
   write = async (content: ReadingAnnotationContent | Readonly<{id: string; remove: true}>, intent: ReadingAnnotationIntent): Promise<boolean> => {
     const admitted = () => this.current() && !intent.signal.aborted && intent.isCurrent();
     if (!admitted() || this.request || intent.revision === undefined || this.state.revision !== intent.revision) return false;
-    const expectedRevision = intent.revision, captured = structuredClone(content);
+    const expectedRevision = intent.revision, captured = clonePortableDto(content);
     const mutation = 'remove' in captured ? {operation: 'delete' as const, expectedRevision, id: captured.id}
       : {...captured, operation: 'upsert' as const, expectedRevision};
     const request = new AbortController();this.request = request;
