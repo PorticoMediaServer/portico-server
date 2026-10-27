@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
+	"os"
 	"portico.local/apikit/contract"
 	"portico.local/server/internal/playback"
 	"strings"
@@ -35,8 +36,10 @@ func TestPlaybackDiagnosticsOwnerScopeAndFreshness(t *testing.T) {
 			t.Fatalf("unavailable hardware omitted its declared %s list", field)
 		}
 	}
-	if e := contract.Record("../../testdata/contracts/get-admin-playback-diagnostics.json", "GetAdminPlaybackDiagnosticsResponse", "GET", path, nil, w, "owner"); e != nil {
-		t.Fatal(e)
+	if os.Getenv("PORTICO_CONTRACT_UPDATE") == "1" {
+		if e := contract.Record("../../testdata/contracts/get-admin-playback-diagnostics.json", "GetAdminPlaybackDiagnosticsResponse", "GET", path, nil, w, "owner"); e != nil {
+			t.Fatal(e)
+		}
 	}
 	var out struct {
 		Scope                  struct{ ServerID, ViewerFence string }

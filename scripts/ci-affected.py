@@ -5,10 +5,28 @@ import json
 import os
 from pathlib import Path
 import re
+import signal
 import subprocess
+import sys
+import time
 
 ROOT = Path(__file__).resolve().parents[1]
 TEST = re.compile(r"^func (Test[A-Z]\w*)\(", re.M)
+
+
+# Per-command bound. This is a hang guard for one suite invocation, not a scope
+# filter or a test deadline: the full-tree and mandatory security commands stay
+# exactly as selected, and each still gets the whole window.
+COMMAND_TIMEOUT = 15 * 60
+TERMINATE_GRACE = 5
+
+
+class CommandTimeout(subprocess.CalledProcessError):
+    """A command outlived COMMAND_TIMEOUT; its process group was terminated."""
+
+    def __init__(self, argv, timeout):
+        super().__init__(124, argv)  # 124 is the conventional timeout exit status
+        self.timeout = timeout
 
 
 def git(*args):
@@ -25,20 +43,76 @@ def changed():
     return set(git("diff", "--name-only", "--diff-filter=ACMRTD", base, "HEAD", "--"))
 
 
-def run(args, cwd=ROOT):
-    print("+", " ".join(map(str, args)), flush=True)
-    subprocess.run(list(map(str, args)), cwd=cwd, check=True)
+def _signal_group(process, sig):
+    try:
+        os.killpg(process.pid, sig)
+    except ProcessLookupError:
+        pass
+
+
+def _group_alive(process):
+    try:
+        os.killpg(process.pid, 0)
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        return True
+    return True
+
+
+def _await_group(process, seconds):
+    """Wait up to `seconds` for the whole command group to empty, reaping its leader."""
+    deadline = time.monotonic() + seconds
+    while _group_alive(process):
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            return False
+        process.poll()  # reap the leader as soon as it exits
+        time.sleep(min(0.05, remaining))
+    process.wait()
+    return True
+
+
+def _stop_group(process):
+    """TERM the command's own group, give it a bounded grace, then KILL what remains."""
+    _signal_group(process, signal.SIGTERM)
+    _await_group(process, TERMINATE_GRACE)
+    # The grace is for the group, not only its leader: a leader that exits on TERM
+    # must not hide a descendant that ignores it, so the group is always confirmed
+    # with KILL. Both waits stay bounded, and a command that cannot be killed is
+    # reported by the failing timeout rather than hanging this runner again.
+    _signal_group(process, signal.SIGKILL)
+    _await_group(process, TERMINATE_GRACE)
+
+
+def run(args, cwd=ROOT, timeout=None):
+    argv = list(map(str, args))
+    limit = COMMAND_TIMEOUT if timeout is None else timeout
+    print("+", " ".join(argv), flush=True)
+    process = subprocess.Popen(argv, cwd=cwd, start_new_session=True)
+    try:
+        code = process.wait(timeout=limit)
+    except subprocess.TimeoutExpired:
+        _stop_group(process)
+        print(f"timed out after {limit:g}s, command terminated: {' '.join(argv)}",
+              file=sys.stderr, flush=True)
+        raise CommandTimeout(argv, limit) from None
+    if code:
+        raise subprocess.CalledProcessError(code, argv)
+    return code
 
 
 def run_all(commands):
     failed = False
+    timed_out = False
     for args, cwd in commands:
         try:
             run(args, cwd)
-        except subprocess.CalledProcessError:
+        except subprocess.CalledProcessError as error:
             failed = True
+            timed_out = timed_out or isinstance(error, CommandTimeout)
     if failed:
-        raise SystemExit(1)
+        raise SystemExit(124 if timed_out else 1)
 
 
 def test_names(files):
