@@ -6,6 +6,13 @@
 // started, passed, failed or were cancelled before it stopped, and the watchdog
 // uses the same stream to name a test that is still running when its file hangs.
 //
+// A file that never loads reports no failing test, only a generic "test failed":
+// the real error arrives as test:stderr/test:stdout/test:diagnostic text. Those
+// are recorded like every other event, and their message is yielded so the
+// runner writes it to the run's own output, which the watchdog keeps as the
+// per-file log. The actual Error, ERR_MODULE_NOT_FOUND and SyntaxError frames
+// therefore survive instead of being replaced by "test failed".
+//
 // This replaces the human-readable spec reporter for supervised runs: the caller
 // prints the per-file result and failure messages from these events, and the
 // watchdog keeps the per-file stdout/stderr log next to them.
@@ -25,7 +32,12 @@ const liveFd = live ? openSync(live, 'a') : null;
 const RECORDED = new Set([
   'test:enqueue', 'test:dequeue', 'test:start', 'test:pass', 'test:fail',
   'test:cancel', 'test:complete', 'test:summary',
+  // The file's own output. Without these a load failure leaves an empty log.
+  'test:stdout', 'test:stderr', 'test:diagnostic',
 ]);
+// The text events whose message is also written to the run's output.
+const TEXT = new Set(['test:stdout', 'test:stderr', 'test:diagnostic']);
+const MESSAGE_LIMIT = 4000;
 
 const detail = data => {
   const error = data.details && data.details.error;
@@ -34,6 +46,9 @@ const detail = data => {
     nesting: data.nesting,
     file: data.file,
     testNumber: data.testNumber,
+    // 'suite' for a describe() block, 'test' for a test and for the file's own
+    // node. The watchdog reports an aggregate node once, by the tests it wraps.
+    node: data.details && data.details.type,
     // Per-test duration is on details.duration_ms; the file summary carries it
     // on the event data itself.
     duration_ms: (data.details && data.details.duration_ms) ?? data.duration_ms,
@@ -41,6 +56,8 @@ const detail = data => {
     todo: data.todo,
     counts: data.counts,
     success: data.success,
+    // Captured file/test output arrives as text, never as an error object.
+    message: typeof data.message === 'string' ? data.message.slice(0, MESSAGE_LIMIT) : undefined,
     error: error && {
       message: error.message,
       failureType: error.failureType,
@@ -53,11 +70,16 @@ export default async function* report(source) {
   try {
     for await (const event of source) {
       if (!RECORDED.has(event.type)) continue;
+      const data = event.data || {};
       // One writeSync per event: a partial line is impossible, and nothing is
       // buffered in userspace when the run is stopped between two events.
-      const line = JSON.stringify({type: event.type, at: Date.now(), pid: process.pid, data: detail(event.data || {})}) + '\n';
+      const line = JSON.stringify({type: event.type, at: Date.now(), pid: process.pid, data: detail(data)}) + '\n';
       writeSync(fd, line);
       if (liveFd !== null) writeSync(liveFd, line);
+      if (!TEXT.has(event.type) || typeof data.message !== 'string' || !data.message) continue;
+      // Yielding is how a reporter writes to the run's own output; the watchdog
+      // redirects that to the per-file log, so the diagnostic is kept verbatim.
+      yield data.message.endsWith('\n') ? data.message : data.message + '\n';
     }
   } finally {
     closeSync(fd);

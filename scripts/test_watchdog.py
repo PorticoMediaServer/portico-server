@@ -8,6 +8,14 @@ process group instead, with:
 
 * the Node test runner's structured reporter appending one JSON line per test
   start/pass/fail/cancel, so a stopped run still shows every result gathered;
+* counts that name their own source: when Node emitted a summary (including the
+  process-wide summary a file that never loaded produces) its totals are used
+  exactly as reported; with no summary at all, the counts are the test nodes that
+  reported a result, with the enqueued/started/never-reported inventory beside
+  them. A describe() block is never a test in that fallback;
+* a failure is named once and never hidden: aggregate and file-node failures are
+  kept beside the counts, and a test Node counted as cancelled but reported as a
+  test:fail still names its failure and fails its file;
 * a per-test limit (`--test-timeout`, passed by the caller) that turns a slow test
   into a named failure for that file only;
 * a per-file watchdog that stops only the file that hangs, names the file and the
@@ -63,8 +71,10 @@ class FileResult:
     """One test file's outcome, including the events that justify it."""
 
     def __init__(self, group, file, status, *, tests=0, passed=0, failed=0,
-                 cancelled=0, skipped=0, duration=0.0, active_test=None,
-                 notes=None, failures=None, log=None, events=None, survivors=None):
+                 cancelled=0, skipped=0, todo=0, duration=0.0, active_test=None,
+                 counts_source=None, enqueued=0, started=0, unfinished=None,
+                 notes=None, failures=None, wrapper_failures=None,
+                 summary_counts=None, log=None, events=None, survivors=None):
         self.group = group
         self.file = file
         self.status = status
@@ -73,10 +83,27 @@ class FileResult:
         self.failed = failed
         self.cancelled = cancelled
         self.skipped = skipped
+        self.todo = todo
         self.duration = duration
         self.active_test = active_test
+        # Where the counts came from, so a report never implies more evidence
+        # than the file produced: "summary:file", "summary:global" (the file
+        # process's only summary, e.g. a module-load failure) or "events" (no
+        # terminal summary at all: the counts are the tests that finished).
+        self.counts_source = counts_source
+        # Event-stream inventory (test nodes, the file's own node excluded): what
+        # was selected, what started, and what never reported a result.
+        self.enqueued = enqueued
+        self.started = started
+        self.unfinished = list(unfinished or [])
         self.notes = list(notes or [])
         self.failures = list(failures or [])
+        # Aggregate nodes (a failing describe() suite, or a parent test whose only
+        # error is "subtestsFailed") are reported once, by the tests they wrap.
+        # They are kept here so nothing the stream contained is lost.
+        self.wrapper_failures = list(wrapper_failures or [])
+        # The Node summary's own numbers, unchanged, whatever the counts above use.
+        self.summary_counts = summary_counts
         self.log = log
         self.events = events
         # Identities this file owned that were still running after cleanup. A
@@ -97,9 +124,16 @@ class FileResult:
             "failed": self.failed,
             "cancelled": self.cancelled,
             "skipped": self.skipped,
+            "todo": self.todo,
+            "counts_source": self.counts_source,
+            "enqueued": self.enqueued,
+            "started": self.started,
+            "unfinished": self.unfinished,
             "duration_seconds": round(self.duration, 3),
             "active_test": self.active_test,
             "failures": self.failures,
+            "wrapper_failures": self.wrapper_failures,
+            "summary_counts": self.summary_counts,
             "notes": self.notes,
             "survivors": self.survivors,
             "log": str(self.log) if self.log else None,
@@ -464,7 +498,10 @@ class Runner:
 
     def _run_entry(self, entry, argv_for, stop):
         group, cwd, file = entry
-        stem = "%s__%s" % (group.replace("/", "_") or "root", Path(file).name)
+        # "." is the working directory itself (repository root); name its report
+        # files for the root rather than with a leading dot.
+        label = "root" if group in ("", ".") else group.replace("/", "_")
+        stem = "%s__%s" % (label, Path(file).name)
         digest = hashlib.sha256(("%s\0%s" % (group, file)).encode("utf-8")).hexdigest()[:8]
         base = "%s-%s" % (Path(stem).stem[:80], digest)
         events_path = self.events_dir / (base + ".jsonl")
@@ -492,7 +529,7 @@ class Runner:
             owned = _Owned(process)
             fault = None
             try:
-                outcome = self._supervise(process, reader, started, stop, owned)
+                outcome = self._supervise(process, reader, started, stop, owned, file)
             except Exception as error:  # a supervision fault must not leak the tree
                 fault = error
                 outcome = None
@@ -521,11 +558,18 @@ class Runner:
             time.sleep(min(POLL_SECONDS, max(0.0, deadline - time.monotonic())))
         return owned.survivors()
 
-    def _supervise(self, process, reader, started, stop, owned):
-        running = {}
-        counts = {"tests": 0, "passed": 0, "failed": 0, "cancelled": 0, "skipped": 0}
+    def _supervise(self, process, reader, started, stop, owned, file):
+        running = {}      # (nesting, name) -> (name, since)
+        counts = {"tests": 0, "passed": 0, "failed": 0, "cancelled": 0,
+                  "skipped": 0, "todo": 0}
         failures = []
-        summary = None
+        wrapper_failures = []
+        event_failed = 0       # test:fail nodes, whatever Node's own categories say
+        enqueued = {}          # (nesting, name) -> name, the file's own node excluded
+        started_tests = {}
+        finished = set()
+        summary = None         # a summary that names this file
+        summary_global = None  # the process-wide summary, used only when it is the only one
         summary_at = None
         last_event = started
         terminal_tests = 0
@@ -533,35 +577,74 @@ class Runner:
         stray = []
 
         def consume():
-            nonlocal summary, summary_at, last_event, terminal_tests
+            nonlocal summary, summary_global, summary_at, last_event, terminal_tests
+            nonlocal event_failed
             for event in reader.pump():
                 data = event.get("data") or {}
                 kind = event.get("type")
-                name = data.get("name")
-                nesting = data.get("nesting", 0)
-                key = (data.get("file"), name, nesting)
-                last_event = time.monotonic()
-                if self._is_file_event(data, name, nesting):
-                    if kind == "test:fail":
-                        failures.append(self._text(self._error_of(data)))
+                if kind == "test:summary":
+                    # A file that fails to load emits one process-wide summary and
+                    # no per-file summary, so keep the fileless one and use it when
+                    # it is the only summary this process produced. A summary is
+                    # never summed with the event stream.
+                    if isinstance(data.get("counts"), dict):
+                        if data.get("file"):
+                            summary = data
+                        else:
+                            summary_global = data
+                        summary_at = time.monotonic()
                     continue
-                if kind in ("test:dequeue", "test:start"):
+                name = data.get("name")
+                if name is None:
+                    continue
+                last_event = time.monotonic()
+                nesting = data.get("nesting") or 0
+                key = (nesting, name)
+                if self._is_file_event(data, file):
+                    # The file's own synthetic node, whatever Node spells it as.
+                    # Node does not count it as a test (except when it is a file
+                    # that never loaded, and then its summary says so), so it is
+                    # reported through the summary and named here, never added to
+                    # the counts.
+                    if kind == "test:fail":
+                        wrapper_failures.append("file: " + self._text(self._error_of(data)))
+                    continue
+                if kind == "test:enqueue":
+                    enqueued.setdefault(key, name)
+                elif kind in ("test:dequeue", "test:start"):
                     # Node reports a test as started only as its result is sent;
                     # the dequeue is the live "this test is the one running" signal.
                     running[key] = (name, time.monotonic())
+                    started_tests.setdefault(key, name)
                 elif kind in _TERMINAL_EVENTS:
                     running.pop(key, None)
+                    finished.add(key)
+                    if self._node_role(data) == "suite":
+                        # A describe() block is not a test: Node counts its tests
+                        # and its suites separately, so it is never a test node in
+                        # the stream-only fallback either. Its failure is kept, not
+                        # counted.
+                        enqueued.pop(key, None)
+                        started_tests.pop(key, None)
+                        if kind == "test:fail":
+                            wrapper_failures.append(self._failure_text(data))
+                        continue
                     terminal_tests += 1
                     if kind == "test:pass":
-                        counts["passed"] += 1
+                        # Node's own categories: a skipped or todo node reports as
+                        # passed on the stream, and only the stream has it here.
+                        if data.get("skip"):
+                            counts["skipped"] += 1
+                        elif data.get("todo"):
+                            counts["todo"] += 1
+                        else:
+                            counts["passed"] += 1
                     elif kind == "test:fail":
                         counts["failed"] += 1
+                        event_failed += 1
                         failures.append(self._failure_text(data))
                     else:
                         counts["cancelled"] += 1
-                elif kind == "test:summary" and data.get("file") and data.get("counts"):
-                    summary = data
-                    summary_at = time.monotonic()
 
         while True:
             consume()
@@ -593,36 +676,77 @@ class Runner:
             time.sleep(min(POLL_SECONDS, max(0.0, self.file_seconds - (now - started))))
         consume()  # keep the last events written just before the group was stopped
 
-        if summary and isinstance(summary.get("counts"), dict):
-            # The summary is authoritative for the number of tests and skips; the
-            # per-event stream is authoritative for pass/fail/cancel, because Node
-            # counts a timed-out test as "cancelled" there while its own test:fail
-            # event (and the runner's exit status) say it failed.
-            if summary["counts"].get("tests") is not None:
-                counts["tests"] = summary["counts"]["tests"]
-            if summary["counts"].get("skipped") is not None:
-                counts["skipped"] = summary["counts"]["skipped"]
+        # One authoritative source per file, never a blend: when Node emitted a
+        # summary its totals are the counts, exactly as reported (a test Node
+        # classifies as cancelled is cancelled, even where the stream also
+        # recorded a test:fail; the failure is still named and the file still
+        # fails). Only with no summary at all are the counts the test nodes the
+        # stream observed.
+        role = None
+        if summary is not None:
+            role = "file"
+        elif summary_global is not None:
+            role = "global"
+            summary = summary_global
+        if summary is not None:
+            numbers = summary["counts"]
+            for key in ("tests", "passed", "failed", "cancelled", "skipped", "todo"):
+                if isinstance(numbers.get(key), int):
+                    counts[key] = numbers[key]
+        else:
+            # No terminal summary at all (a hang, an interruption or a killed
+            # process): report exactly the test nodes that reached a result.
+            counts["tests"] = terminal_tests
         active = None
         active_age = 0.0
         if running:
             active, active_since = list(running.values())[-1]
             active_age = max(0.0, time.monotonic() - active_since)
+        unfinished = [name for key, name in started_tests.items() if key not in finished]
+        unfinished += [name for key, name in enqueued.items()
+                       if key not in started_tests and key not in finished]
         return {
             "verdict": verdict,
             "counts": counts,
+            "counts_source": "events" if summary is None else "summary:" + str(role),
+            "event_failed": event_failed,
             "failures": failures[:_FAILURE_LIMIT],
+            "wrapper_failures": wrapper_failures[:_FAILURE_LIMIT],
+            "summary": summary,
+            "enqueued": len(enqueued),
+            "started": len(started_tests),
+            "unfinished": unfinished,
             "active_test": active,
             "active_seconds": active_age,
-            "summary": summary,
             "stray": stray,
         }
 
     @staticmethod
-    def _is_file_event(data, name, nesting):
-        file = data.get("file")
-        if not file or nesting:
+    def _is_file_event(data, file):
+        """True for the synthetic node Node reports for the test file itself.
+
+        Node spells that node's name three ways depending on how the file was
+        given to the command (its basename, its path as passed, or the absolute
+        path it resolved), so all of them name the same wrapper here.
+        """
+        name = data.get("name")
+        if not name or data.get("nesting"):
             return False
-        return name == Path(file).name or name == file
+        return name == file or Path(name).name == Path(file).name
+
+    def _node_role(self, data):
+        """'suite' for a describe() block, else 'test'.
+
+        Node counts tests and suites separately, so a suite is never a test. The
+        kind is on every event the current reporter records; an older stream that
+        lacks it can only be read by its one reliable signal, the aggregate
+        "subtestsFailed" error a suite always reports.
+        """
+        if data.get("node"):
+            return "suite" if data["node"] == "suite" else "test"
+        if self._error_of(data).get("failureType") == "subtestsFailed":
+            return "suite"
+        return "test"
 
     @staticmethod
     def _error_of(data):
@@ -675,7 +799,7 @@ class Runner:
             # test bug and must never be reported as a passing file.
             status = FAIL
             notes.append(
-                f"all {counts['passed']} test(s) finished but the process did not exit "
+                f"all {counts['tests']} test(s) finished but the process did not exit "
                 f"within {self.exit_grace:g}s (leaked handle or timer)")
         elif code:
             status = FAIL
@@ -693,11 +817,52 @@ class Runner:
                              "flushed its events (module load, or a synchronous block)")
         if counts["cancelled"]:
             notes.append(f"{counts['cancelled']} cancelled")
+        if outcome["summary"] is None:
+            # Say plainly what the numbers are: the tests that finished, not the
+            # tests the file selected, plus the inventory of what never reported.
+            notes.append(
+                f"no terminal summary: counts are the {counts['tests']} test(s) that "
+                f"reported a result ({outcome['enqueued']} enqueued, "
+                f"{outcome['started']} started)")
+        elif outcome["counts_source"] == "summary:global":
+            notes.append("no per-file summary: the process-wide summary is the only one "
+                         "this file produced")
+        if outcome["unfinished"]:
+            notes.append("no result reported for: " + ", ".join(outcome["unfinished"]))
+        file_failures = [item for item in outcome["wrapper_failures"]
+                         if item.startswith("file: ")]
+        suites = [item for item in outcome["wrapper_failures"]
+                  if not item.startswith("file: ")]
+        if file_failures:
+            notes.append("the file's own node failed: "
+                         + "; ".join(item[len("file: "):] for item in file_failures)
+                         + " (Node reported it for the file, not for a test; the log keeps "
+                           "its diagnostic)")
+        if suites:
+            notes.append("describe() suite failure(s), counted by their tests not by the "
+                         "suite: " + "; ".join(suites))
+        if outcome["event_failed"] > counts["failed"]:
+            # Never hide a failure the other source saw, and never recount it:
+            # Node's categories stand, the failure is named above.
+            notes.append(
+                f"the event stream recorded {outcome['event_failed']} failing test(s); "
+                f"Node counted {counts['failed']} failed and {counts['cancelled']} "
+                f"cancelled, and those are the totals kept")
+        results = (counts["passed"] + counts["failed"] + counts["cancelled"]
+                   + counts["skipped"] + counts["todo"])
+        if outcome["summary"] is not None and results != counts["tests"]:
+            notes.append(
+                f"the summary's own totals do not add up: {counts['tests']} test(s) but "
+                f"{results} result(s); both are kept in the report and the events")
         return FileResult(
             group, file, status, tests=counts["tests"], passed=counts["passed"],
             failed=counts["failed"], cancelled=counts["cancelled"],
-            skipped=counts["skipped"], duration=duration,
-            active_test=outcome["active_test"], notes=notes, failures=failures,
+            skipped=counts["skipped"], todo=counts["todo"], duration=duration,
+            active_test=outcome["active_test"], counts_source=outcome["counts_source"],
+            enqueued=outcome["enqueued"], started=outcome["started"],
+            unfinished=outcome["unfinished"], notes=notes, failures=failures,
+            wrapper_failures=outcome["wrapper_failures"],
+            summary_counts=outcome["summary"]["counts"] if outcome["summary"] else None,
             log=log, events=events, survivors=survivors)
 
     # -- stop --------------------------------------------------------------

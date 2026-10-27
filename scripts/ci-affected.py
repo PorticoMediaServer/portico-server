@@ -1070,7 +1070,47 @@ def dependencies(file, known, workspaces):
     return result
 
 
-def js_plan(paths, native=False):
+EXCLUDED_TREES = {"apps/vega/": "Vega needs Amazon's SDK; the nightly vega job runs it unchanged"}
+
+def out_of_scope(file):
+    """Why this campaign does not run `file`, or None when it does.
+
+    Exclusion is decided here, before the selection is counted, so a file that
+    this campaign will not run is never reported as selected and never reaches
+    the executor only to be dropped there.
+    """
+    relative = file.relative_to(ROOT).as_posix()
+    for prefix, reason in EXCLUDED_TREES.items():
+        if relative.startswith(prefix):
+            return reason
+    return None
+
+def route(relative, native):
+    """The group - its name is also its working directory - that runs one file.
+
+    Every selected file has exactly one route, or an error names it. Selection
+    and execution therefore cover the same set: a selected file is never dropped
+    silently between the two.
+    """
+    parts = relative.parts
+    if native and parts[:3] == ("apps", "native", "test"):
+        return "apps/native"
+    if parts[:2] == ("web-next", "test"):
+        return "web-next"
+    if parts[:2] == ("web", "test"):
+        return "web"
+    if parts[0] == "packages" and len(parts) > 2:
+        return "/".join(parts[:2])
+    if parts[:4] == ("server", "receiver", "cast", "test"):
+        return "."
+    if parts[:2] == ("scripts", "test"):
+        # Repository-level script regressions run from the repository root: the
+        # fixture they build resolves its own sources, so the root is their group.
+        return "."
+    raise RuntimeError("selected test file has no route in this campaign: "
+                       + relative.as_posix())
+
+def js_plan(paths, native=False, excluded=None):
     files = {ROOT / name for name in git("ls-files")
              if Path(name).suffix in {".ts", ".tsx", ".js", ".mjs", ".cjs", ".json"}
              and (ROOT / name).is_file()}
@@ -1097,6 +1137,12 @@ def js_plan(paths, native=False):
         if not (ROOT / name).is_file():
             raise RuntimeError("missing mandatory security test: " + name)
         tests.add(ROOT / name)
+    for file in sorted(tests):
+        reason = out_of_scope(file)
+        if reason:
+            tests.discard(file)
+            if excluded is not None:
+                excluded.append((file.relative_to(ROOT).as_posix(), reason))
     return sorted(tests)
 
 
@@ -1144,6 +1190,9 @@ def js_command(group, file):
     if group in ("apps/native", "web", "web-next"):
         args = ["node", "--experimental-transform-types", "--import", "./test/register.mjs"]
     else:
+        # Package sources may use syntax strip-only mode refuses - a constructor
+        # parameter property, for instance - so package files load in transform
+        # mode, without the Native register. Nothing about the sources changes.
         args = ["node", "--experimental-transform-types"]
     return [*args, f"--test-timeout={TEST_TIMEOUT_MS}",
             f"--test-reporter={ROOT / 'scripts/test-events.mjs'}",
@@ -1153,33 +1202,43 @@ def js_command(group, file):
 def js_checks(native):
     paths = changed()
     index, total = js_shard_settings()
-    selected = js_plan(paths, native)
+    excluded = []
+    selected = js_plan(paths, native, excluded)
     owned = shard_files(selected, index, total)
     groups = {}
+    unrouted = []
     for file in owned:
         relative = file.relative_to(ROOT)
-        if native and relative.parts[:3] == ("apps", "native", "test"):
-            group = "apps/native"
-        elif str(relative).startswith("web-next/test/"):
-            group = "web-next"
-        elif str(relative).startswith("web/test/"):
-            group = "web"
-        elif str(relative).startswith("packages/"):
-            group = "/".join(relative.parts[:2])
-        elif str(relative).startswith("server/receiver/cast/test/"):
-            group = "."
-        else:
+        try:
+            group = route(relative, native)
+        except RuntimeError as error:
+            unrouted.append(str(error))
             continue
         groups.setdefault(group, []).append(str(file.relative_to(ROOT / group)))
 
-    print(f"SELECTED {len(owned)} of {len(selected)} test files (shard {index} of {total})", flush=True)
+    print(f"SELECTED {len(selected)} eligible test files of "
+          f"{len(selected) + len(excluded)} in the tree; shard {index} of {total} "
+          f"owns {len(owned)}", flush=True)
+    if excluded:
+        print(f"OUT OF SCOPE {len(excluded)} selected file(s) are not run by this "
+              f"campaign (their own workflow keeps them):", flush=True)
+        for name, reason in excluded:
+            print(f"  {name}: {reason}", flush=True)
     for group, files in sorted(groups.items()):
         for file in files:
             print(f"  {group}/{file}", flush=True)
+    if unrouted:
+        for name in unrouted:
+            print(f"UNROUTED {name}", flush=True)
+    routed = sum(len(files) for files in groups.values())
+    if routed + len(unrouted) != len(owned):
+        raise RuntimeError(
+            f"{len(owned) - routed - len(unrouted)} selected file(s) disappeared "
+            "between selection and execution")
     for name in MANDATORY_TESTS[bool(native)]:
         print(f"MANDATORY {name} -> shard {shard_of(name, total)} of {total}", flush=True)
 
-    failed = False
+    failed = bool(unrouted)
     commands = []
     if native:
         source = [str(Path(p).relative_to("apps/native")) for p in sorted(paths)
@@ -1201,11 +1260,12 @@ def js_checks(native):
         directory, file_seconds=TEST_FILE_SECONDS, test_timeout_ms=TEST_TIMEOUT_MS,
         exit_grace=TEST_EXIT_GRACE,
         context={"suite": "native-js" if native else "js", "shard": f"{index}/{total}",
-                 "selected": len(owned), "selection": len(selected)})
+                 "selected": len(owned), "eligible": len(selected),
+                 "excluded": len(excluded)})
     entries = [(group, ROOT / group, file) for group, files in sorted(groups.items()) for file in files]
     runner.run(entries, lambda group, cwd, file: js_command(group, file))
     if not runner.exit_code:
-        print(f"TEST FILES PASS: {len(owned)} files, shard {index} of {total}, {runner.elapsed:.1f}s", flush=True)
+        print(f"TEST FILES PASS: {len(entries)} files, shard {index} of {total}, {runner.elapsed:.1f}s", flush=True)
     else:
         failed = True
         print(f"TEST FILES FAIL: exit {runner.exit_code}, shard {index} of {total}, {runner.elapsed:.1f}s", flush=True)

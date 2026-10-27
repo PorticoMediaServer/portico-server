@@ -214,7 +214,15 @@ jobs:
           CI_TEST_REPORT_DIR: ${{ runner.temp }}/ci-report
         run: |
           status=0
-          python3 scripts/ci-affected.py js > "$RUNNER_TEMP/full-ci.log" 2>&1 || status=$?
+          # Cross-language contract vectors come from the actual current Go HTTP
+          # producer, never hand-written successful responses. A producer failure
+          # is retained while the remainder of the JS selection still runs.
+          export PORTICO_CONCURRENCY_DIAGNOSTICS_FIXTURE_DIR="$RUNNER_TEMP/client-fixtures/concurrency"
+          export PORTICO_CONSOLE_REGISTRY_FIXTURE_DIR="$RUNNER_TEMP/client-fixtures/registry"
+          export PORTICO_READING_HOME_FIXTURE_DIR="$RUNNER_TEMP/client-fixtures/reading-home"
+          mkdir -p "$PORTICO_CONCURRENCY_DIAGNOSTICS_FIXTURE_DIR" "$PORTICO_CONSOLE_REGISTRY_FIXTURE_DIR" "$PORTICO_READING_HOME_FIXTURE_DIR" "$CI_TEST_REPORT_DIR/producers"
+          (cd server && go test -json -count=1 -timeout=180s ./internal/httpapi -run '^(TestConcurrencyDiagnosticsMemoryLimitWire|TestConsoleRegistryProducerRecordsNullableDefaults|TestHomeReadingSavedDeferredHTTP)$') > "$CI_TEST_REPORT_DIR/producers/httpapi.jsonl" 2>&1 || status=1
+          python3 scripts/ci-affected.py js > "$RUNNER_TEMP/full-ci.log" 2>&1 || status=1
           tail -n 40 "$RUNNER_TEMP/full-ci.log"
           exit "$status"
       - name: Retain per-test results and file diagnostics

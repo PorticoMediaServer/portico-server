@@ -140,6 +140,22 @@ class SelectionTests(unittest.TestCase):
             self.assertEqual(ci.changed(), {"src/a.ts"})
             self.assertEqual(git.call_args.args[:4], ("diff", "--name-only", "--diff-filter=ACMRTD", "HEAD^"))
 
+    def test_every_selected_test_tree_has_an_explicit_route(self):
+        self.assertEqual(ci.route(Path("scripts/test/shared-packages.test.mjs"), True), ".")
+        self.assertEqual(ci.route(Path("scripts/test/shared-packages.test.mjs"), False), ".")
+        self.assertEqual(ci.route(Path("apps/native/test/next-selection.test.ts"), True),
+                         "apps/native")
+        self.assertEqual(ci.route(Path("packages/player-core/test/choices.test.ts"), True),
+                         "packages/player-core")
+        self.assertEqual(ci.route(Path("web-next/test/viewer-storage.test.ts"), True), "web-next")
+        self.assertEqual(ci.route(Path("web/test/entry.test.ts"), True), "web")
+        self.assertEqual(ci.route(Path("server/receiver/cast/test/cast.test.ts"), False), ".")
+
+    def test_an_unrouted_file_is_refused_by_name(self):
+        with self.assertRaisesRegex(RuntimeError, r"apps/other/test/broken\.test\.ts"):
+            ci.route(Path("apps/other/test/broken.test.ts"), True)
+
+
 
 class ProcessChecks:
     """Assertions about processes left behind by a stopped command."""
@@ -839,11 +855,48 @@ class JsCommandTests(unittest.TestCase):
         self.assertEqual(argv[5], "--test-reporter=/repo/scripts/test-events.mjs")
         self.assertEqual(argv[-3:], ["--test-concurrency=1", "--test", "test/next-account-proof-entry.test.ts"])
 
-    def test_package_file_keeps_strip_types_without_the_native_register(self):
+    def test_package_file_uses_transform_types_without_the_native_register(self):
+        # A package test may import a constructor parameter property, which
+        # strip-only mode refuses to load; transform mode runs it and needs no
+        # Native register.
         argv = ci.js_command("packages/client-core", "test/account-sessions.test.ts")
         self.assertEqual(argv[:2], ["node", "--experimental-transform-types"])
         self.assertNotIn("./test/register.mjs", argv)
+        self.assertNotIn("--experimental-strip-types", argv)
         self.assertIn("--test-concurrency=1", argv)
+
+    def test_package_command_really_loads_a_constructor_parameter_property(self):
+        node = shutil.which("node")
+        if not node:
+            self.fail("node is required for the per-file command regressions")
+        temp = tempfile.TemporaryDirectory()
+        self.addCleanup(temp.cleanup)
+        root = Path(temp.name)
+        (root / "holder.ts").write_text(
+            "export class Holder {\n"
+            "  constructor(private readonly value: number) {}\n"
+            "  get valueSeen() { return this.value; }\n"
+            "}\n")
+        (root / "holder.test.ts").write_text(
+            "import {test} from 'node:test';\nimport assert from 'node:assert/strict';\n"
+            "import {Holder} from './holder.ts';\n"
+            "test('a constructor parameter property loads', () => {\n"
+            "  assert.equal(new Holder(7).valueSeen, 7);\n"
+            "});\n")
+        events = root / "events.jsonl"
+        environment = dict(os.environ, PORTICO_TEST_EVENTS=str(events))
+        argv = ci.js_command("packages/client-core", "holder.test.ts")
+        ran = subprocess.run([node, *argv[1:]], cwd=root, env=environment,
+                             stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+        self.assertEqual(ran.returncode, 0, ran.stdout)
+        self.assertIn("test:pass", events.read_text())
+        # The same file under strip-only mode is refused: this is why the package
+        # command transforms instead, with the product source left unchanged.
+        stripped = subprocess.run(
+            [node, "--experimental-strip-types", *argv[2:]], cwd=root, env=environment,
+            stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+        self.assertNotEqual(stripped.returncode, 0)
+        self.assertIn("parameter property", stripped.stdout)
 
 
 class ShardedJsChecksTests(unittest.TestCase):
@@ -866,6 +919,81 @@ class ShardedJsChecksTests(unittest.TestCase):
             self.entries = list(entries)
             self.argv_for = argv_for
             return self
+
+    def test_a_repository_script_test_runs_from_the_root_group(self):
+        temp = tempfile.TemporaryDirectory()
+        self.addCleanup(temp.cleanup)
+        root = Path(temp.name)
+        script = root / "scripts/test/shared-packages.test.mjs"
+        script.parent.mkdir(parents=True)
+        script.write_text("// repository script regression\n")
+        with patch.object(ci, "ROOT", root), \
+                patch.object(ci, "changed", return_value=set()), \
+                patch.object(ci, "js_plan", return_value=[script]), \
+                patch.object(ci, "report_directory", return_value=(root / "report", False)), \
+                patch.object(ci.test_watchdog, "Runner", self.FakeRunner), \
+                patch.dict(ci.os.environ, {"CI_SHARD_INDEX": "0", "CI_SHARD_TOTAL": "1"}), \
+                contextlib.redirect_stdout(io.StringIO()) as output:
+            ci.js_checks(True)
+        runner = self.FakeRunner.instances[-1]
+        # The root group: cwd is the repository root and the file is its path.
+        self.assertEqual(runner.entries,
+                         [(".", root, "scripts/test/shared-packages.test.mjs")])
+        argv = runner.argv_for(*runner.entries[0])
+        self.assertEqual(argv[-1], "scripts/test/shared-packages.test.mjs")
+        self.assertIn("--test", argv)
+        self.assertEqual(runner.context["selected"], 1)
+        self.assertIn("scripts/test/shared-packages.test.mjs", output.getvalue())
+
+    def test_out_of_scope_files_are_reported_instead_of_counted_as_selected(self):
+        temp = tempfile.TemporaryDirectory()
+        self.addCleanup(temp.cleanup)
+        root = Path(temp.name)
+        def plan(paths, native=False, excluded=None):
+            excluded.append(("apps/vega/test/hls.test.ts", ci.EXCLUDED_TREES["apps/vega/"]))
+            return [root / "apps/native/test/next-thing.test.ts"]
+        with patch.object(ci, "ROOT", root), \
+                patch.object(ci, "changed", return_value=set()), \
+                patch.object(ci, "js_plan", side_effect=plan), \
+                patch.object(ci, "report_directory", return_value=(root / "report", False)), \
+                patch.object(ci.test_watchdog, "Runner", self.FakeRunner), \
+                patch.dict(ci.os.environ, {"CI_SHARD_INDEX": "0", "CI_SHARD_TOTAL": "1"}), \
+                contextlib.redirect_stdout(io.StringIO()) as output:
+            ci.js_checks(True)
+        text = output.getvalue()
+        self.assertIn("SELECTED 1 eligible test files of 2 in the tree", text)
+        self.assertIn("OUT OF SCOPE 1 selected file(s)", text)
+        self.assertIn("apps/vega/test/hls.test.ts", text)
+        runner = self.FakeRunner.instances[-1]
+        self.assertEqual(runner.context["eligible"], 1)
+        self.assertEqual(runner.context["excluded"], 1)
+
+    def test_an_unrouted_selected_file_is_named_and_fails_the_step(self):
+        temp = tempfile.TemporaryDirectory()
+        self.addCleanup(temp.cleanup)
+        root = Path(temp.name)
+        routed = root / "apps/native/test/next-thing.test.ts"
+        unrouted = root / "apps/other/test/broken.test.ts"
+        for file in (routed, unrouted):
+            file.parent.mkdir(parents=True, exist_ok=True)
+            file.write_text("// fixture\n")
+        with patch.object(ci, "ROOT", root), \
+                patch.object(ci, "changed", return_value=set()), \
+                patch.object(ci, "js_plan", return_value=[routed, unrouted]), \
+                patch.object(ci, "report_directory", return_value=(root / "report", False)), \
+                patch.object(ci.test_watchdog, "Runner", self.FakeRunner), \
+                patch.dict(ci.os.environ, {"CI_SHARD_INDEX": "0", "CI_SHARD_TOTAL": "1"}), \
+                contextlib.redirect_stdout(io.StringIO()) as output:
+            with self.assertRaises(SystemExit) as raised:
+                ci.js_checks(True)
+        self.assertEqual(raised.exception.code, 1)
+        text = output.getvalue()
+        self.assertIn("UNROUTED selected test file has no route in this campaign: "
+                      "apps/other/test/broken.test.ts", text)
+        # The routed file still runs; the step fails because one file has no route.
+        runner = self.FakeRunner.instances[-1]
+        self.assertEqual([file for _, _, file in runner.entries],
+                         ["test/next-thing.test.ts"])
 
     def test_source_lint_keeps_args_then_cwd_order_and_its_exact_command(self):
         temp = tempfile.TemporaryDirectory()
@@ -1000,6 +1128,158 @@ class WatchdogTests(unittest.TestCase):
             time.sleep(0.05)
         self.fail(f"process {pid} outlived the per-file watchdog")
 
+    def test_the_file_wrapper_is_recognised_however_node_spells_it(self):
+        # The campaign runs a file as "<group>/<file>", so Node names the file's
+        # own node with a directory in it. That node is the file, not an extra
+        # failing test: a file that never loads is one test, counted once.
+        directory = self.files / "test"
+        directory.mkdir()
+        (directory / "loaderror.test.mjs").write_text("import './missing-module.mjs';\n")
+        runner, output = self.run_files(["test/loaderror.test.mjs"])
+        result = runner.results[0]
+        self.assertEqual(result.status, ci.test_watchdog.FAIL)
+        self.assertEqual((result.tests, result.passed, result.failed), (1, 0, 1))
+        self.assertEqual(result.counts_source, "summary:global")
+        self.assertEqual(result.summary_counts,
+                         {"tests": 1, "failed": 1, "passed": 0, "cancelled": 0,
+                          "skipped": 0, "todo": 0, "topLevel": 1, "suites": 0})
+        self.assertTrue(any(name.startswith("file:") for name in result.wrapper_failures))
+        self.assertIn("process-wide summary", " ".join(result.notes))
+        self.assertIn("FAIL test/loaderror.test.mjs (1 tests, 1 failed", output)
+
+    def test_a_file_that_never_loads_reports_its_counterpart_summary_once(self):
+        # Same failure with the file named by its bare basename: the summary is
+        # still the only evidence and is still used once, not added to the node.
+        self.fixture("loaderror.test.mjs", "import './missing-module.mjs';\n")
+        runner, _ = self.run_files(["loaderror.test.mjs"])
+        result = runner.results[0]
+        self.assertEqual((result.tests, result.failed), (1, 1))
+        self.assertEqual(result.counts_source, "summary:global")
+        self.assert_node_totals(result)
+
+    def assert_node_totals(self, result):
+        """The reported totals are the summary's own, and they add up."""
+        self.assertIsNotNone(result.summary_counts, "expected a Node summary")
+        for key in ("tests", "passed", "failed", "cancelled", "skipped", "todo"):
+            self.assertEqual(getattr(result, key), result.summary_counts[key], key)
+        total = (result.passed + result.failed + result.cancelled
+                 + result.skipped + result.todo)
+        self.assertEqual(total, result.tests)
+
+    def test_a_parent_test_keeps_nodes_count_whether_it_passes_or_fails(self):
+        # Node counts a parent test as a test of its own: two children plus the
+        # parent is three tests. The passing and the failing case are counted
+        # the same way, and the summary's totals are kept exactly.
+        self.fixture("nested-pass.test.mjs",
+                     "import {test} from 'node:test';\n"
+                     "test('parent passes', async (t) => {\n"
+                     "  await t.test('child one', () => {});\n"
+                     "  await t.test('child two', () => {});\n"
+                     "});\n")
+        self.fixture("nested-fail.test.mjs",
+                     "import {test} from 'node:test';\nimport assert from 'node:assert';\n"
+                     "test('parent with subtests', async (t) => {\n"
+                     "  await t.test('child passes', () => {});\n"
+                     "  await t.test('child fails', () => { assert.equal(1, 2); });\n"
+                     "});\n")
+        runner, _ = self.run_files(["nested-pass.test.mjs", "nested-fail.test.mjs"])
+        passed, failed = runner.results
+        self.assertEqual(passed.status, ci.test_watchdog.PASS)
+        self.assertEqual((passed.tests, passed.passed, passed.failed), (3, 3, 0))
+        self.assert_node_totals(passed)
+        self.assertEqual(failed.status, ci.test_watchdog.FAIL)
+        # The parent is counted as Node counts it, and both failures are named.
+        self.assertEqual((failed.tests, failed.passed, failed.failed), (3, 1, 2))
+        self.assert_node_totals(failed)
+        self.assertTrue(any("child fails" in text for text in failed.failures))
+        self.assertTrue(any("parent with subtests" in text for text in failed.failures))
+
+    def test_a_describe_suite_is_never_counted_as_a_test(self):
+        self.fixture("suite.test.mjs",
+                     "import {describe, it} from 'node:test';\nimport assert from 'node:assert';\n"
+                     "describe('suite that passes', () => { it('passes inside', () => {}); });\n"
+                     "describe('suite that fails', () => { it('fails inside', () => { assert.equal(1, 2); }); });\n")
+        runner, _ = self.run_files(["suite.test.mjs"])
+        result = runner.results[0]
+        self.assertEqual(result.status, ci.test_watchdog.FAIL)
+        # Node counts the two tests and the two suites separately; identified by
+        # kind, so a suite never adds a test even when it fails.
+        self.assertEqual((result.tests, result.passed, result.failed), (2, 1, 1))
+        self.assert_node_totals(result)
+        self.assertIn("suite that fails", " ".join(result.wrapper_failures))
+        self.assertIn("describe() suite failure", " ".join(result.notes))
+
+    def test_skipped_and_todo_tests_are_counted_once_from_the_summary(self):
+        self.fixture("skips.test.mjs",
+                     "import {test} from 'node:test';\n"
+                     "test('runs and passes', () => {});\n"
+                     "test('skipped one', {skip: 'not today'}, () => {});\n"
+                     "test('todo one', {todo: 'later'}, () => {});\n")
+        runner, _ = self.run_files(["skips.test.mjs"])
+        result = runner.results[0]
+        self.assertEqual(result.status, ci.test_watchdog.PASS)
+        self.assertEqual((result.tests, result.passed, result.failed, result.skipped,
+                          result.todo), (3, 1, 0, 1, 1))
+        self.assertEqual(result.counts_source, "summary:file")
+
+    def test_a_hung_file_reports_what_finished_and_names_what_never_did(self):
+        self.fixture("partial.test.mjs",
+                     "import {test} from 'node:test';\n"
+                     "test('one', () => {});\ntest('two', () => {});\n"
+                     "test('never reports', async () => { await new Promise(() => {}); });\n")
+        runner, output = self.run_files(["partial.test.mjs"], file_seconds=1.0, exit_grace=0.3)
+        result = runner.results[0]
+        self.assertEqual(result.status, ci.test_watchdog.HANG)
+        # No summary was ever emitted: the counts are exactly what finished.
+        self.assertEqual((result.tests, result.passed, result.failed), (2, 2, 0))
+        self.assertEqual(result.counts_source, "events")
+        self.assertIsNone(result.summary_counts)
+        self.assertEqual(result.enqueued, 3)
+        self.assertEqual(result.started, 3)
+        self.assertEqual(result.unfinished, ["never reports"])
+        notes = " ".join(result.notes)
+        self.assertIn("no terminal summary", notes)
+        self.assertIn("no result reported for: never reports", notes)
+        self.assertIn("HANG partial.test.mjs (2 tests", output)
+        self.assertNotIn("0 tests", output)
+
+    def test_every_unfinished_name_is_kept_beyond_the_failure_preview_limit(self):
+        queued = [f"queued {i}" for i in range(ci.test_watchdog._FAILURE_LIMIT + 5)]
+        self.fixture("inventory.test.mjs",
+                     "import {test} from 'node:test';\n"
+                     "test('blocked', async () => { await new Promise(() => {}); });\n"
+                     + "".join(f"test({name!r}, () => {{}});\n" for name in queued))
+        runner, _ = self.run_files(["inventory.test.mjs"], file_seconds=1.0, exit_grace=0.3)
+        result = runner.results[0]
+        self.assertEqual(result.status, ci.test_watchdog.HANG)
+        self.assertEqual(result.unfinished, ["blocked", *queued])
+        self.assertEqual(result.as_dict()["unfinished"], ["blocked", *queued])
+
+    def test_an_interrupted_file_keeps_its_finished_counts_and_its_inventory(self):
+        marker = self.root / "interrupt"
+        # The blocked test yields, so Node keeps flushing the results that had
+        # already finished: those are the counts the report must keep.
+        self.fixture("partial.test.mjs",
+                     "import {test} from 'node:test';\nimport {writeFileSync} from 'node:fs';\n"
+                     "test('one', () => {});\ntest('two', () => {});\n"
+                     # The block starts late enough that the two finished results are
+                     # on disk before the interruption, which is what this proves.
+                     f"test('stops here', async () => {{ "
+                     f"await new Promise((done) => setTimeout(done, 300)); "
+                     f"writeFileSync({str(marker)!r}, ''); "
+                     "await new Promise(() => {}); });\n")
+        self.fixture("later.test.mjs", "import {test} from 'node:test';\ntest('later', () => {});\n")
+        runner, output = self.run_files(["partial.test.mjs", "later.test.mjs"],
+                                        file_seconds=30, exit_grace=0.3, stop=marker.exists)
+        result = runner.results[0]
+        self.assertEqual(result.status, ci.test_watchdog.INTERRUPTED)
+        self.assertEqual((result.tests, result.passed, result.failed), (2, 2, 0))
+        self.assertEqual(result.counts_source, "events")
+        self.assertEqual(result.unfinished, ["stops here"])
+        self.assertIn("no terminal summary", " ".join(result.notes))
+        self.assertEqual([file for _, _, file in runner.not_run], ["later.test.mjs"])
+        self.assertIn("NOT RUN later.test.mjs", output)
+
     def test_per_test_results_are_recorded_incrementally_and_a_failure_does_not_stop_the_run(self):
         self.fixture("passes.test.mjs",
                      "import {test} from 'node:test';\n"
@@ -1021,6 +1301,7 @@ class WatchdogTests(unittest.TestCase):
         self.assertIn("fails clearly", " ".join(runner.results[1].failures))
         self.assertIn("1 == 2", " ".join(runner.results[1].failures))
         self.assertEqual(runner.results[1].tests, 1)
+        self.assertEqual(runner.results[1].counts_source, "summary:file")
         live = [json.loads(line) for line in (self.report / "live.jsonl").read_text().splitlines()]
         self.assertTrue(any(event["data"].get("name") == "fails clearly" for event in live))
 
@@ -1034,7 +1315,19 @@ class WatchdogTests(unittest.TestCase):
         self.assertEqual([result.status for result in runner.results],
                          [ci.test_watchdog.FAIL, ci.test_watchdog.PASS])
         self.assertIn("timed out after 300ms", " ".join(runner.results[0].failures))
-        self.assertEqual(runner.results[0].failed, 1)
+        # A file stopped at its per-test limit always reports that one test, never
+        # "0 tests". If Node got its summary out first, its totals are kept exactly
+        # (a timed-out test is then counted as cancelled) and the failure is still
+        # named; a killed file has no summary and reports the test it saw fail.
+        result = runner.results[0]
+        self.assertEqual(result.tests, 1)
+        self.assertIn(result.counts_source, {"summary:file", "events"})
+        self.assertEqual(result.passed + result.failed + result.cancelled
+                         + result.skipped + result.todo, result.tests)
+        if result.counts_source == "summary:file":
+            self.assert_node_totals(result)
+            self.assertEqual(result.cancelled, 1)
+            self.assertIn("those are the totals kept", " ".join(result.notes))
         self.assertEqual(runner.exit_code, 1)
 
     def test_blocked_file_is_named_with_its_active_test_and_descendants_are_stopped(self):
@@ -1223,6 +1516,67 @@ sys.exit(runner.exit_code)
         summary = json.loads((self.report / "summary.json").read_text())
         self.assertEqual(summary["outcome"], "interrupted")
         self.assertEqual(len(summary["not_run"]), 2)
+
+    def test_a_file_that_fails_to_import_keeps_its_real_diagnostic_and_summary(self):
+        self.fixture("importfail.test.mjs", "import './definitely-missing-module.mjs';\n")
+        runner, _ = self.run_files(["importfail.test.mjs"])
+        result = runner.results[0]
+        self.assertEqual(result.status, ci.test_watchdog.FAIL)
+        # Node reports only "test failed" for the file's own node; the fileless
+        # summary is still the only evidence and is used once, unchanged.
+        self.assertEqual((result.tests, result.passed, result.failed), (1, 0, 1))
+        self.assertEqual(result.counts_source, "summary:global")
+        self.assert_node_totals(result)
+        log = Path(result.log).read_text()
+        # The actual error survives in the per-file log, not just "test failed".
+        self.assertIn("ERR_MODULE_NOT_FOUND", log)
+        self.assertIn("definitely-missing-module.mjs", log)
+        events = self.events(result)
+        stderr = [event for event in events if event["type"] == "test:stderr"]
+        self.assertTrue(any("ERR_MODULE_NOT_FOUND" in (event["data"].get("message") or "")
+                            for event in stderr))
+        self.assertTrue(any(event["type"] == "test:diagnostic" for event in events))
+
+    def test_a_file_with_a_syntax_error_keeps_the_offending_line_and_its_counts(self):
+        self.fixture("syntaxfail.test.mjs",
+                     "import {test} from 'node:test';\n"
+                     "test('broken', () => {\n  const = 1;\n});\n")
+        runner, _ = self.run_files(["syntaxfail.test.mjs"])
+        result = runner.results[0]
+        self.assertEqual(result.status, ci.test_watchdog.FAIL)
+        self.assertEqual((result.tests, result.failed), (1, 1))
+        log = Path(result.log).read_text()
+        self.assertIn("SyntaxError", log)
+        self.assertIn("const = 1;", log)
+
+    def test_reporter_yields_file_output_to_the_run_output(self):
+        events_path = self.root / "events.jsonl"
+        live_path = self.root / "live.jsonl"
+        script = (
+            f"import report from {json.dumps(REPORTER.as_uri())};\n"
+            "const events = [\n"
+            "  {type: 'test:stderr', data: {file: '/f.test.mjs', message: 'Error [ERR_MODULE_NOT_FOUND]: missing\\n'}},\n"
+            "  {type: 'test:diagnostic', data: {nesting: 0, message: 'tests 1'}},\n"
+            "  {type: 'test:stdout', data: {file: '/f.test.mjs', message: 'logged\\n'}},\n"
+            "  {type: 'test:pass', data: {name: 'one', nesting: 0, file: '/f.test.mjs'}},\n"
+            "];\n"
+            "async function* source() { for (const event of events) yield event; }\n"
+            "const chunks = [];\n"
+            "for await (const chunk of report(source())) chunks.push(chunk);\n"
+            "process.stdout.write(JSON.stringify(chunks));\n")
+        environment = dict(os.environ, PORTICO_TEST_EVENTS=str(events_path),
+                           PORTICO_TEST_LIVE_EVENTS=str(live_path))
+        finished = subprocess.run([self.node, "--input-type=module", "-e", script], check=True,
+                                  env=environment, stdout=subprocess.PIPE,
+                                  stderr=subprocess.PIPE, text=True)
+        self.assertEqual(json.loads(finished.stdout),
+                         ["Error [ERR_MODULE_NOT_FOUND]: missing\n", "tests 1\n", "logged\n"])
+        lines = [json.loads(line) for line in events_path.read_text().splitlines()]
+        self.assertEqual([line["type"] for line in lines],
+                         ["test:stderr", "test:diagnostic", "test:stdout", "test:pass"])
+        self.assertEqual(lines[0]["data"]["message"],
+                         "Error [ERR_MODULE_NOT_FOUND]: missing\n")
+        self.assertEqual(len(live_path.read_text().splitlines()), 4)
 
     def test_reporter_flushes_start_cancel_and_live_events_incrementally(self):
         events_path = self.root / "events.jsonl"
