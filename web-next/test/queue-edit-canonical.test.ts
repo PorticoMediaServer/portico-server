@@ -46,8 +46,9 @@ test('a first-page adjacent pair moves through the canonical plan with only that
     const after = port.getSnapshot().page!;
     assert.equal(port.getSnapshot().phase, 'ready');
     assert.notEqual(after.revision, first.revision);
-    assert.equal(after.rows[0].entryId, first.rows[1].entryId);
-    assert.equal(after.rows[1].entryId, first.rows[0].entryId);
+    assert.equal(after.rows[0].entryId, first.rows[0].entryId);   // the current row is unchanged
+    assert.equal(after.rows[1].entryId, first.rows[2].entryId);   // the offered pair swapped
+    assert.equal(after.rows[2].entryId, first.rows[1].entryId);
   } finally {port.dispose(); f.stop();}
 });
 
@@ -66,12 +67,15 @@ test('page two edits through the canonical plan using the opening anchor, not a 
 });
 
 test('a retired opening lifetime cannot mutate: zero canonical IO and no accepted publication', async () => {
-  const f = await fixture(), state = {current: true}, port = opening(f, state);
+  const counter = {calls: 0};
+  const f = await fixture(320, counter), state = {current: true}, port = opening(f, state);
   try {
     await port.open();
     const shown = port.getSnapshot().page!;
     state.current = false;
+    const before = counter.calls;
     await assert.rejects(() => port.remove(shown, shown.rows[1].entryId), /queue_edit_stale/);
+    assert.equal(counter.calls, before);      // no canonical queue IO for the refused mutation
     assert.equal(port.getSnapshot().phase, 'retired');
   } finally {port.dispose(); f.stop();}
 });
@@ -103,7 +107,11 @@ test('a local dock that becomes remote during the getters refuses with no local 
       viewQueueId: 'queue', viewEntryId: 'entry', playbackRun: 4} as WebQueueEditOutputRead), dockRemote: reads > 1};}});
   assert.equal(flip.kind, 'unknown');
   assert.equal(witness({...state, group: true}, target, fence).kind, 'unknown');
-  assert.equal(witness({...state, stack: {}}, target, fence).kind, 'unknown');
+  const successor = localEditOutput({originalStack: stack, originalSource: source, fence, target, same: (a, b) => a === b,
+    read: () => ({stack: {}, source, current: true, fence, presentation: true, dockLocalFence: fence, dockRemote: false, group: false,
+      session: {id: 'session', role: 'local', kind: 'audio', itemId: 'item', versionId: 'version', generation: 2, queueId: 'queue', entryId: 'entry'},
+      viewQueueId: 'queue', viewEntryId: 'entry', playbackRun: 4})});
+  assert.equal(successor.kind, 'unknown');   // a replacement stack is not the captured one
 });
 
 test('a takeover during the getters refuses the opening with zero canonical queue IO', async () => {
@@ -136,6 +144,12 @@ test('a last-read owner flip is refused, not sampled once (pure tail)', () => {
   const tail = localEditOutput({originalStack: stack, originalSource: source, fence, target, same: (a, b) => a === b,
     read: () => {reads++; return {...local(), ...(reads > 1 ? {group: true} : {})};}});
   assert.equal(tail.kind, 'unknown');
+});
+
+test('a command predicate that retires the owner and still answers true is refused', () => {
+  let live = true;
+  const command = {signal: new AbortController().signal, isCurrent: () => {live = false; return true;}};
+  assert.equal(admitCommand(() => live, command), false);
 });
 
 test('a command predicate that retires the owner after it was proved still refuses', () => {
