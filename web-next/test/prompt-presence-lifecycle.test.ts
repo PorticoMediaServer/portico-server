@@ -2,7 +2,8 @@ import test, {type TestContext} from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import {registerHooks} from 'node:module';
-import {Children, isValidElement, type ReactNode} from 'react';
+import * as React from 'react';
+import {Children, isValidElement, type Context, type ReactNode} from 'react';
 import {easings, reducedMotion, springs, springTiming} from '@design';
 import type {QueuePlaybackFence} from '../../packages/player-core/src/index.ts';
 import type {WebPlaybackRuntimeSnapshot} from '../src/platform/playback/types.ts';
@@ -15,9 +16,18 @@ type Effect = {deps?: readonly unknown[]; cleanup?: () => void; phase: 'layout' 
 const changed = (a: readonly unknown[] | undefined, b: readonly unknown[] | undefined) => !a || !b || a.length !== b.length || a.some((value, index) => !Object.is(value, b[index]));
 
 const bridgeKey = '__porticoPromptRegressionHooks';
+const reactKey = '__porticoPromptRegressionReact';
 const bridge = {current: undefined as HookFrame | undefined};
-(globalThis as Record<string, unknown>)[bridgeKey] = bridge;
-const hookModule = 'data:text/javascript,' + encodeURIComponent(`const bridge = globalThis.${bridgeKey}; ${['useRef', 'useState', 'useMemo', 'useEffect', 'useLayoutEffect'].map(name => `export const ${name} = (...args) => bridge.current.${name}(...args);`).join('\n')}`);
+const hostGlobals = globalThis as Record<string, unknown>;
+hostGlobals[bridgeKey] = bridge;
+hostGlobals[reactKey] = React;
+// The fixture is the renderer, so every hook the real prompt modules call must
+// reach this frame. The non-hook exports they also import need no dispatcher.
+const hookNames = ['useRef', 'useState', 'useMemo', 'useEffect', 'useLayoutEffect', 'useContext'];
+const hookModule = 'data:text/javascript,' + encodeURIComponent(`const bridge = globalThis.${bridgeKey}, react = globalThis.${reactKey};
+${hookNames.map(name => `export const ${name} = (...args) => bridge.current.${name}(...args);`).join('\n')}
+export const createContext = react.createContext;
+export const Component = react.Component;`);
 
 const loader = registerHooks({load(url, context, next) {
   const module = (source: string, format = 'module') => ({format, source, shortCircuit: true});
@@ -28,6 +38,11 @@ const loader = registerHooks({load(url, context, next) {
       .replace("export {useReducedMotion as usePromptReducedMotion} from '../../kit/overlays/shared';",
         'export const usePromptReducedMotion = () => !!globalThis.__promptReduced;');
     return module(source, 'module-typescript');
+  }
+  // The prompt's context/provider boundary and retirement lifecycle, on this frame.
+  if (url.endsWith('/src/screens/watch/prompt-focus.tsx')) {
+    const source = transformTsx(url).replace(/from (['"])react\1/g, `from ${JSON.stringify(hookModule)}`);
+    return module(source);
   }
   if (url.endsWith('/src/screens/watch/UpNextPrompt.tsx')) {
     const source = transformTsx(url).replace(/from (['"])react\1/g, `from ${JSON.stringify(hookModule)}`);
@@ -43,7 +58,8 @@ const {WatchUndoPrompt} = await import('../src/screens/watch/UndoPrompt.tsx');
 const {WatchUpNextPrompt} = await import('../src/screens/watch/UpNextPrompt.tsx');
 test.after(() => {
   loader.deregister();
-  delete (globalThis as Record<string, unknown>)[bridgeKey];
+  delete hostGlobals[bridgeKey];
+  delete hostGlobals[reactKey];
   delete (globalThis as Record<string, unknown>).__promptReduced;
 });
 
@@ -56,6 +72,10 @@ class HookFrame {
   private dirty = false;
   private mounted = true;
   private queued: {effect: Effect; run: () => void | (() => void)}[] = [];
+  private classes = new Map<number, {type: unknown; props: any; instance: any}>();
+  private classCursor = 0;
+  private mounts: any[] = [];
+  private updates: {instance: any; previous: any}[] = [];
   private readonly nodes = new Map<Ref, PromptNode>();
   private readonly keys = new Map<Ref, string | null>();
   useRef(value: unknown) { const i = this.cursor++; return this.slots[i] ??= {current: value}; }
@@ -75,6 +95,11 @@ class HookFrame {
   }
   useLayoutEffect(run: () => void | (() => void), deps?: readonly unknown[]) { this.effect('layout', run, deps); }
   useEffect(run: () => void | (() => void), deps?: readonly unknown[]) { this.effect('passive', run, deps); }
+  /** No WatchPromptFocus provider is committed above these prompt trees, so the
+   * actual read is the context's own declared default — exactly what React answers. */
+  useContext<T>(context: Context<T>): T {
+    return (context as unknown as {_currentValue: T})._currentValue;
+  }
   private effect(phase: Effect['phase'], run: () => void | (() => void), deps?: readonly unknown[]) {
     const i = this.cursor++, previous: Effect | undefined = this.slots[i];
     if (!previous || changed(previous.deps, deps)) {
@@ -84,7 +109,10 @@ class HookFrame {
   render(component: () => ReactNode): ReactNode {
     for (let attempt = 0; attempt < 8; attempt++) {
       bridge.current = this; this.cursor = 0; this.dirty = false; this.queued = [];
-      const result = component(), seen = new Set<Ref>();
+      this.classCursor = 0; this.mounts = []; this.updates = [];
+      const result = this.resolve(component()), seen = new Set<Ref>();
+      // React's before-mutation lifecycle sees the old focused prompt, before refs move.
+      for (const job of this.updates) job.instance.getSnapshotBeforeUpdate?.(job.previous);
       const commit = (children: ReactNode) => Children.forEach(children, child => {
         if (!isValidElement<any>(child)) return;
         const ref = child.props.ref;
@@ -100,6 +128,8 @@ class HookFrame {
       });
       commit(result);
       for (const [ref, node] of this.nodes) if (!seen.has(ref)) { ref.current = null; node.connected = false; }
+      for (const instance of this.mounts) instance.componentDidMount?.();
+      for (const job of this.updates) job.instance.componentDidUpdate?.(job.previous);
       for (const phase of ['layout', 'passive'] as const) {
         const pending = this.queued.filter(job => job.effect.phase === phase);
         pending.forEach(job => job.effect.cleanup?.());
@@ -109,10 +139,42 @@ class HookFrame {
     }
     throw new Error('Prompt effects did not settle within eight renders');
   }
+  /** The real component chain above the painted prompt, resolved the way the app's
+   * own renderer would: functions are called, class boundaries are instantiated and
+   * rendered. The promise is the prompt element the original assertions read. */
+  private resolve(node: ReactNode): ReactNode {
+    let current = node;
+    for (let depth = 0; depth < 16; depth++) {
+      if (!isValidElement<any>(current)) return current;
+      const type = current.type as any;
+      if (typeof type === 'string' || type === null || type === undefined) return current;
+      if (typeof type === 'object' && typeof type.render === 'function') { current = type.render(current.props); continue; }
+      if (typeof type !== 'function') return current;
+      if (type.prototype?.isReactComponent) { current = this.instantiate(type, current.props).render(current.props); continue; }
+      current = type(current.props);
+    }
+    throw new Error('Prompt component chain did not reach an element within sixteen components');
+  }
+  private instantiate(type: any, props: any) {
+    const slot = this.classCursor++;
+    let held = this.classes.get(slot);
+    if (!held || held.type !== type) {
+      held = {type, props, instance: new type(props)};
+      this.classes.set(slot, held);
+      this.mounts.push(held.instance);
+    } else if (held.props !== props) {
+      this.updates.push({instance: held.instance, previous: held.props});
+      held.props = props;
+    }
+    held.instance.props = props;
+    return held.instance;
+  }
   unmount() {
     if (!this.mounted) return;
     this.mounted = false;
     for (const slot of this.slots) { slot?.cleanup?.(); slot.cleanup = undefined; }
+    for (const held of this.classes.values()) held.instance.componentWillUnmount?.();
+    this.classes.clear();
   }
 }
 
