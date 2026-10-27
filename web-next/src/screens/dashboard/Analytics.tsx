@@ -1,6 +1,6 @@
 import {Artwork} from '../../kit/artwork/Artwork';
 import {accountAvatarStyle} from '../../kit/settings/account-avatar';
-import {useState, type CSSProperties} from 'react';
+import {useMemo, useState, type CSSProperties} from 'react';
 import {defaultI18n} from '@i18n';
 import type {DashboardHistory, DashboardTopKind} from '@core/admin/dashboard.ts';
 import type {PlayHistoryPeriod} from '@core/play-history.ts';
@@ -9,7 +9,7 @@ import {Icon} from '../../kit/Icon';
 import type {DashboardBindings} from './bindings';
 import type {DashboardAccounts} from './use-read';
 import type {DashboardReportController} from './use-report';
-import {fmtDur, fmtHrs, formatReportBucketTitle, formatHourOrdinal, formatQuietHours, niceScale} from './format';
+import {fmtDur, fmtHrs, formatReportBucketTitle, formatQuietHours, heatMapLabels, niceScale} from './format';
 import {curveSegments, historyAxisTicks, plotLine, hours, mediaKinds, quietestHours} from './model';
 import {FloatingTip, type TipPoint} from './FloatingTip';
 import {mediaLabel, Range, ReadFeedback, Section, t} from './shared';
@@ -55,10 +55,12 @@ export function Analytics({bindings: b, report, accounts}: {bindings: DashboardB
 }
 function HistoryCharts({history: h, media}: {history: DashboardHistory; media: string}) {
   const [focus, setFocus] = useState<number | undefined>(), [cell, setCell] = useState<{day: number; hour: number; point: TipPoint} | undefined>();
+  // Bounded per component: one table per locale, so moving the pointer across the grid
+  // re-renders the charts without rebuilding a weekday or hour formatter per cell.
+  const labels = useMemo(() => heatMapLabels(), [defaultI18n.locale]);
   const total = h.buckets.reduce((s, b) => s + b.kinds.reduce((sum, k) => sum + k.watchedMs, 0), 0), scale = niceScale(Math.max(.5, ...h.buckets.map(b => hours(b.kinds.reduce((sum, k) => sum + k.watchedMs, 0)))) * 1.06, 4), max = scale.top * 3_600_000;
   const kinds = historyKinds.filter(kind => media === 'all' || media === kind);
   const quiet = quietestHours(h.busiestTimes), heatMax = Math.max(1, ...h.busiestTimes.flat());
-  const hour = formatHourOrdinal;
   const bucketTitle = (bucket: DashboardHistory['buckets'][number]) => formatReportBucketTitle(h, Date.parse(bucket.start), true);
   return <><div className={styles.card}><h4>{t('next.dashboard.timePlayed')}</h4>{total ? <div className={styles.plot} tabIndex={0} role="group" aria-label={t('next.dashboard.timePlayed')}
     onBlur={() => setFocus(undefined)} onPointerLeave={() => setFocus(undefined)} onPointerMove={event => {const rect = event.currentTarget.getBoundingClientRect(); setFocus(Math.max(0, Math.min(h.buckets.length - 1, Math.round(((event.clientX - rect.left) / rect.width * 912 - 50) / 854 * (h.buckets.length - 1)))));}}
@@ -80,11 +82,11 @@ function HistoryCharts({history: h, media}: {history: DashboardHistory; media: s
     </div>
     <div className={styles.card}><div className={styles.heading}><h4>{t('next.dashboard.busiest')}</h4>{quiet !== undefined && <span className={styles.quiet}>{t('next.dashboard.quietest')} <b>{formatQuietHours(quiet)}</b></span>}</div>
       <div className={styles.heatScroll}><svg className={`${styles.chart} ${styles.heat}`} viewBox="0 0 912 203" role="group" aria-label={t('next.dashboard.busiest')}>
-        {h.busiestTimes.map((day, d) => <g key={d}><text x="32" y={19 + d * 25} textAnchor="end">{new Intl.DateTimeFormat(defaultI18n.locale, {weekday: 'short', timeZone: 'UTC'}).format(Date.UTC(2026, 0, 5 + d))}</text>{day.map((ms, hour) => <rect tabIndex={0} role="button" key={hour} className={styles.heatCell} x={(44 + hour * 868 / 24).toFixed(1)} y={4 + d * 25} width={(868 / 24 - 3).toFixed(1)} height="22" rx="5" style={{'--heat-intensity': `${(.06 + .94 * Math.pow(ms / heatMax, .8)) * 100}%`} as CSSProperties} aria-label={`${new Intl.DateTimeFormat(defaultI18n.locale, {weekday: 'long', timeZone: 'UTC'}).format(Date.UTC(2026, 0, 5 + d))} ${formatHourOrdinal(hour)}: ${duration(ms)}`} onFocus={event => {const r = event.currentTarget.getBoundingClientRect(); setCell({day: d, hour, point: {x: r.left + r.width / 2, y: r.bottom}});}} onBlur={() => setCell(undefined)} onPointerMove={event => setCell({day: d, hour, point: {x: event.clientX, y: event.clientY}})} onPointerLeave={() => setCell(undefined)} />)}</g>)}
-        {[0, 3, 6, 9, 12, 15, 18, 21].map(h => <text x={(44 + h * 868 / 24).toFixed(1)} y="197" key={h}>{hour(h)}</text>)}
+        {h.busiestTimes.map((day, d) => <g key={d}><text x="32" y={19 + d * 25} textAnchor="end">{labels.weekdayShort[d]}</text>{day.map((ms, hour) => <rect tabIndex={0} role="button" key={hour} className={styles.heatCell} x={(44 + hour * 868 / 24).toFixed(1)} y={4 + d * 25} width={(868 / 24 - 3).toFixed(1)} height="22" rx="5" style={{'--heat-intensity': `${(.06 + .94 * Math.pow(ms / heatMax, .8)) * 100}%`} as CSSProperties} aria-label={`${labels.weekdayLong[d]} ${labels.hour[hour]}: ${duration(ms)}`} onFocus={event => {const r = event.currentTarget.getBoundingClientRect(); setCell({day: d, hour, point: {x: r.left + r.width / 2, y: r.bottom}});}} onBlur={() => setCell(undefined)} onPointerMove={event => setCell({day: d, hour, point: {x: event.clientX, y: event.clientY}})} onPointerLeave={() => setCell(undefined)} />)}</g>)}
+        {[0, 3, 6, 9, 12, 15, 18, 21].map(h => <text x={(44 + h * 868 / 24).toFixed(1)} y="197" key={h}>{labels.hour[h]}</text>)}
         {quiet !== undefined && <rect className={styles.quietOutline} x={(44 + quiet * 868 / 24 - 2).toFixed(1)} y="1" width={(3 * 868 / 24 + 1).toFixed(1)} height="178" rx="8" />}
       </svg></div>
-      <FloatingTip point={cell?.point}>{cell && <><b>{new Intl.DateTimeFormat(defaultI18n.locale, {weekday: 'long', timeZone: 'UTC'}).format(Date.UTC(2026, 0, 5 + cell.day))} {hour(cell.hour)}</b><span data-series="movies"><i />{t('next.dashboard.played')}<strong>{duration(h.busiestTimes[cell.day][cell.hour])}</strong></span></>}</FloatingTip>
+      <FloatingTip point={cell?.point}>{cell && <><b>{labels.weekdayLong[cell.day]} {labels.hour[cell.hour]}</b><span data-series="movies"><i />{t('next.dashboard.played')}<strong>{duration(h.busiestTimes[cell.day][cell.hour])}</strong></span></>}</FloatingTip>
       <div className={styles.heatLegend}>{t('next.dashboard.quieter')}{[.08, .28, .5, .75, 1].map(intensity => <i key={intensity} style={{'--heat-intensity': `${intensity * 100}%`} as CSSProperties} />)}{t('next.dashboard.busier')}</div>
     </div></>;
 }
