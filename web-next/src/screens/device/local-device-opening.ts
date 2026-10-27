@@ -11,7 +11,7 @@ export type LocalDeviceOpening = Readonly<{
   dispose(): void;
 }>;
 const retired = () => new DOMException('Device approval entry retired', 'AbortError');
-const paths = new Set([routePath('post_quick_connect_review'), routePath('post_quick_connect_decision')]);
+const paths = new Set<string>([routePath('post_quick_connect_review'), routePath('post_quick_connect_decision')]);
 
 /** Original local page/API/session only. This creates no session or approval and
  * cannot substitute the Hosted DevicePage or another selected server. */
