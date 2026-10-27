@@ -53,7 +53,7 @@ import {browserClientProfile} from './client-profile.ts';
 import {selectionSegments, selectionStartSeconds} from './selection.ts';
 import {captureQueueSource, type WebPlaybackQueueSource} from './queue-source.ts';
 import {createWebListeningPort, type WebListeningLifetime, type WebListeningPort} from './listening-port.ts';
-import {createQueueEditOpening} from './queue-edit-adapter.ts';
+import {createQueueEditOpening, localEditOutput} from './queue-edit-adapter.ts';
 import type {WebQueueListSnapshot} from './queue-list.ts';
 import {PlayerChaptersService} from '@core/player-chapters.ts';
 import {LyricsService} from '@core/lyrics.ts';
@@ -1471,35 +1471,18 @@ export class WebShellPlaybackRuntime {
         if (!reprove()) throw new Error('stale_listening_port');
         const v1Target = {sessionId: target.sessionId, generation: target.sessionGeneration, playbackRun: target.playbackRun,
           itemId: target.itemId, versionId: target.versionId, queueId: target.queueId, entryId: target.entryId};
-        /** Local is derived from this exact server stack and dock after every getter; never a constant witness. */
-        const readOutput = () => {
-          const stackNow = this.stack;
-          const sessionNow = stackNow.queue.currentSession(), viewNow = stackNow.queue.getSnapshot().view, playbackNow = stackNow.service.getSnapshot();
-          const dock = this.dock.getSnapshot(), snap = this.snapshot;
-          const local = this.current(stackNow) && stackNow === stack && this.source === source && stackNow.mode === 'server'
-            && !this.group?.active() && !this.group?.matches(fence)
-            && !!snap.fence && sameFence(snap.fence, fence) && !!snap.presentation
-            && !!dock.local && !!dock.local.fence && sameFence(dock.local.fence, fence) && dock.remote === null
-            && !!sessionNow && sessionNow.id === target.sessionId && sessionNow.role === 'local'
-            && (sessionNow.kind === 'vod' || sessionNow.kind === 'audio')
-            && sessionNow.itemId === target.itemId && sessionNow.versionId === target.versionId
-            && sessionNow.presentation.generation === target.sessionGeneration
-            && sessionNow.queue?.queueId === target.queueId && sessionNow.queue.entryId === target.entryId
-            && viewNow?.queue.id === target.queueId && viewNow.queue.currentEntryId === target.entryId
-            && playbackNow.playbackRun === target.playbackRun;
-          if (!local) return Object.freeze({kind: 'unknown' as const});
-          // Re-read the original stack/output/fence/run after the getters above; a successor
-          // output or remote/group takeover must not be accepted from the earlier snapshot.
-          const dockAgain = this.dock.getSnapshot(), snapAgain = this.snapshot;
-          const sessionAgain = this.stack.queue.currentSession(), playbackAgain = this.stack.service.getSnapshot();
-          const again = this.stack === stack && this.current(stack) && this.source === source
-            && !!snapAgain.fence && sameFence(snapAgain.fence, fence) && !!snapAgain.presentation
-            && !!dockAgain.local && !!dockAgain.local.fence && sameFence(dockAgain.local.fence, fence) && dockAgain.remote === null
-            && !this.group?.active() && !this.group?.matches(fence)
-            && !!sessionAgain && sessionAgain.id === target.sessionId && sessionAgain.queue?.queueId === target.queueId
-            && sessionAgain.queue.entryId === target.entryId && playbackAgain.playbackRun === target.playbackRun;
-          return again ? Object.freeze({kind: 'local' as const, target: Object.freeze({...v1Target})}) : Object.freeze({kind: 'unknown' as const});
-        };
+        /** Local proof from the exact original server stack and dock, re-read after every getter. */
+        const readOutput = () => localEditOutput({originalStack: stack, originalSource: source, fence, target, same: sameFence,
+          read: () => {
+            const stackNow = this.stack, dock = this.dock.getSnapshot(), snap = this.snapshot;
+            const session = stackNow.queue.currentSession(), view = stackNow.queue.getSnapshot().view, playback = stackNow.service.getSnapshot();
+            return {stack: stackNow, source: this.source, current: this.current(stackNow), fence: snap.fence, presentation: !!snap.presentation,
+              dockLocalFence: dock.local?.fence, dockRemote: dock.remote !== null,
+              group: !!this.group?.active() || !!this.group?.matches(fence),
+              session: session ? {id: session.id, role: session.role, kind: session.kind, itemId: session.itemId, versionId: session.versionId,
+                generation: session.presentation.generation, queueId: session.queue?.queueId, entryId: session.queue?.entryId} : undefined,
+              viewQueueId: view?.queue.id, viewEntryId: view?.queue.currentEntryId ?? undefined, playbackRun: playback.playbackRun};
+          }});
         const reader = stack.queue.captureEditWindow(v1Target, shown.revision ?? '', {signal: combined(command.signal),
           isCurrent: () => reprove() && !command.signal.aborted && command.isCurrent(), readOutput});
         return createQueueEditOpening({reader, current: reprove, lifetime: command, currentEntryId: target.entryId,

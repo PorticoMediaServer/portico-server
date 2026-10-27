@@ -1,5 +1,7 @@
 import type {QueueEntry} from '@core/playback-v1/types.ts';
-import type {V1QueueEditIntent, V1QueueEditPage, V1QueueEditReader} from '@core/playback-v1/v1-queue-player.ts';
+import type {V1PlaybackTarget, V1QueueEditIntent, V1QueueEditPage, V1QueueEditReader} from '@core/playback-v1/v1-queue-player.ts';
+import type {PlaybackFence} from '../../../../packages/player-core/src/index.ts';
+import type {WebListeningTarget} from './listening-port.ts';
 
 /** One row of one actually issued canonical page, kept truthful for presentation. */
 export type WebQueueEditRow = Readonly<{
@@ -201,4 +203,44 @@ export function createQueueEditOpening(input: WebQueueEditInput): WebQueueEditOp
     },
     dispose: retire,
   });
+}
+
+/** One reading of the original output. Reads may call arbitrary getters, so the caller
+ * supplies the same witness twice; a stale dock that became remote, a successor stack/source,
+ * a changed fence/run/session or a group takeover reports unknown. */
+export type WebQueueEditOutputRead = Readonly<{
+  stack: object; source: object; current: boolean; fence?: PlaybackFence; presentation: boolean;
+  dockLocalFence?: PlaybackFence; dockRemote: boolean; group: boolean;
+  session?: Readonly<{id: string; role: string; kind: string; itemId?: string; versionId?: string; generation: number; queueId?: string; entryId?: string}>;
+  viewQueueId?: string; viewEntryId?: string; playbackRun?: number;
+}>;
+
+export type WebQueueEditOutputProof = Readonly<{
+  originalStack: object; originalSource: object; fence: PlaybackFence; target: WebListeningTarget;
+  same(a: PlaybackFence | undefined, b: PlaybackFence): boolean;
+  read(): WebQueueEditOutputRead;
+}>;
+
+const v1TargetOf = (target: WebListeningTarget): V1PlaybackTarget => Object.freeze({sessionId: target.sessionId, generation: target.sessionGeneration,
+  playbackRun: target.playbackRun, itemId: target.itemId, versionId: target.versionId, queueId: target.queueId, entryId: target.entryId});
+
+/** Local proof for one edit opening: exact server stack, local dock fence, no remote/group,
+ * the original accepted session/queue occurrence/run/source/version, re-read after getters. */
+export function localEditOutput(proof: WebQueueEditOutputProof): Readonly<{kind: 'local'; target: V1PlaybackTarget}> | Readonly<{kind: 'unknown'}> {
+  const unknown = Object.freeze({kind: 'unknown' as const});
+  const accept = (r: WebQueueEditOutputRead): boolean =>
+    r.stack === proof.originalStack && r.source === proof.originalSource && r.current && r.presentation
+    && !!r.fence && proof.same(r.fence, proof.fence)
+    && !!r.dockLocalFence && proof.same(r.dockLocalFence, proof.fence) && !r.dockRemote && !r.group
+    && !!r.session && r.session.role === 'local' && (r.session.kind === 'vod' || r.session.kind === 'audio')
+    && r.session.id === proof.target.sessionId && r.session.itemId === proof.target.itemId
+    && r.session.versionId === proof.target.versionId && r.session.generation === proof.target.sessionGeneration
+    && r.session.queueId === proof.target.queueId && r.session.entryId === proof.target.entryId
+    && r.viewQueueId === proof.target.queueId && r.viewEntryId === proof.target.entryId
+    && r.playbackRun === proof.target.playbackRun;
+  const first = proof.read();
+  if (!accept(first)) return unknown;
+  const second = proof.read();
+  if (!accept(second)) return unknown;
+  return Object.freeze({kind: 'local' as const, target: v1TargetOf(proof.target)});
 }

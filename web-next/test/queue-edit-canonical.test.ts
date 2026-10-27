@@ -6,11 +6,13 @@ import {V1PlaybackApi} from '@core/playback-v1/legacy-bridge.ts';
 import {V1QueuePlayer} from '@core/playback-v1/v1-queue-player.ts';
 import {queueItemInput} from '@core/queue-controller.ts';
 import type {V1PlaybackTarget} from '@core/playback-v1/v1-queue-player.ts';
-import {createQueueEditOpening, type WebQueueEditPage} from '../src/platform/playback/queue-edit-adapter.ts';
+import {createQueueEditOpening, localEditOutput, type WebQueueEditPage, type WebQueueEditOutputRead} from '../src/platform/playback/queue-edit-adapter.ts';
+import type {PlaybackFence} from '../../packages/player-core/src/index.ts';
 
 /** Composition through the REAL public captureEditWindow reader and parsed wire facts. */
-async function fixture(count = 320) {
-  const server = new FakePlaybackServer({itemKind: () => 'movie'}), http = fakeHttp(server);
+async function fixture(count = 320, counter?: {calls: number}) {
+  const server = new FakePlaybackServer({itemKind: () => 'movie'}), inner = fakeHttp(server);
+  const http = counter ? {send: async (request: never) => {counter.calls++; return inner.send(request);}} as ReturnType<typeof fakeHttp> : inner;
   let serial = 0;
   const api = new V1PlaybackApi(http, {key: () => `api-${++serial}`});
   const playback = new PlaybackService(api, () => `run-${++serial}`);
@@ -20,7 +22,7 @@ async function fixture(count = 320) {
   const session = player.currentSession()!, view = player.getSnapshot().view!;
   const target: V1PlaybackTarget = {sessionId: session.id, generation: session.presentation.generation, playbackRun: playback.getSnapshot().playbackRun,
     itemId: session.itemId!, versionId: session.versionId!, queueId: session.queue!.queueId, entryId: session.queue!.entryId};
-  return {player, playback, stop, target, revision: view.queue.revision};
+  return {player, playback, stop, target, revision: view.queue.revision, counter};
 }
 
 function opening(f: Awaited<ReturnType<typeof fixture>>, state: {current: boolean}) {
@@ -72,4 +74,52 @@ test('a retired opening lifetime cannot mutate: zero canonical IO and no accepte
     await assert.rejects(() => port.remove(shown, shown.rows[1].entryId), /queue_edit_stale/);
     assert.equal(port.getSnapshot().phase, 'retired');
   } finally {port.dispose(); f.stop();}
+});
+
+/** The runtime's local witness, driven by a controlled read so a getter can flip the dock. */
+function witness(state: {dockRemote: boolean; stack: object; source: object; current: boolean; group: boolean},
+  target: Parameters<typeof localEditOutput>[0]['target'], fence: PlaybackFence) {
+  const read = (): WebQueueEditOutputRead => ({stack: state.stack, source: state.source, current: state.current, fence, presentation: true,
+    dockLocalFence: fence, dockRemote: state.dockRemote, group: state.group,
+    session: {id: target.sessionId, role: 'local', kind: 'audio', itemId: target.itemId, versionId: target.versionId,
+      generation: target.sessionGeneration, queueId: target.queueId, entryId: target.entryId},
+    viewQueueId: target.queueId, viewEntryId: target.entryId, playbackRun: target.playbackRun});
+  return localEditOutput({originalStack: state.stack, originalSource: state.source, fence, target, same: (a, b) => a === b, read});
+}
+
+test('a local dock that becomes remote during the getters refuses with no local proof', () => {
+  const stack = {}, source = {};
+  const target = {libraryId: 'library', itemId: 'item', sessionId: 'session', sessionGeneration: 2, sourceId: 'source',
+    versionId: 'version', playbackRun: 4, queueId: 'queue', entryId: 'entry'};
+  const fence = {kind: 'queue', sessionId: 'session', generation: 2, itemId: 'item', entryId: 'entry', sourceId: 'source'} as unknown as PlaybackFence;
+  const state = {dockRemote: false, stack, source, current: true, group: false};
+  const baseline = witness(state, target, fence);
+  assert.equal(baseline.kind, 'local');
+  // The second read happens after the getters: the dock turned remote (or a successor took over).
+  let reads = 0;
+  const flip = localEditOutput({originalStack: stack, originalSource: source, fence, target, same: (a, b) => a === b,
+    read: () => {reads++; return {...({stack, source, current: true, fence, presentation: true, dockLocalFence: fence, group: false,
+      session: {id: 'session', role: 'local', kind: 'audio', itemId: 'item', versionId: 'version', generation: 2, queueId: 'queue', entryId: 'entry'},
+      viewQueueId: 'queue', viewEntryId: 'entry', playbackRun: 4} as WebQueueEditOutputRead), dockRemote: reads > 1};}});
+  assert.equal(flip.kind, 'unknown');
+  assert.equal(witness({...state, group: true}, target, fence).kind, 'unknown');
+  assert.equal(witness({...state, stack: {}}, target, fence).kind, 'unknown');
+});
+
+test('a takeover during the getters refuses the opening with zero canonical queue IO', async () => {
+  const counter = {calls: 0};
+  const f = await fixture(320, counter);
+  let reads = 0, takeover = false;
+  const context = {signal: new AbortController().signal,
+    isCurrent: () => true,
+    readOutput: () => {reads++; if (takeover && reads > 1) return {kind: 'unknown' as const};
+      return {kind: 'local' as const, target: f.target};}};
+  try {
+    const reader = f.player.captureEditWindow(f.target, f.revision, context);
+    const page = await reader.read();
+    takeover = true;                        // the dock turned remote / a successor took over after the first read
+    const before = counter.calls;
+    await assert.rejects(() => reader.edit(page, {action: 'remove', entryId: page.items[1]!.entryId}));
+    assert.equal(counter.calls, before);    // no canonical queue IO for the refused edit
+  } finally {f.stop();}
 });
