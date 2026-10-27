@@ -233,7 +233,7 @@ test('actual bound AirPlay availability and activation both refuse page captions
  const listeners=new Set<()=>void>();let live=snapshot(),ready=true,valid=true,picks=0,requests=0;
  const runtime={getSnapshot:()=>live,browserMediaReady:()=>ready,subscribe:(changed:()=>void)=>{listeners.add(changed);return()=>{listeners.delete(changed);};}} as unknown as WebShellPlaybackRuntime;
  class AirVideo extends EventTarget{webkitShowPlaybackTargetPicker=()=>{picks++;};}
- const context={api:{baseUrl:'https://portico.test',request:async()=>{requests++;throw Error('unexpected API read');}},session:()=>({viewer:authority}),isCurrent:()=>valid,epoch:1};
+ const context={api:{baseUrl:'https://portico.test',getRouteConnection:()=>({pin:{publicKey:'route-pin'}}),request:async()=>{requests++;throw Error('unexpected API read');}},session:()=>({viewer:authority}),isCurrent:()=>valid,epoch:1};
  const binding={runtime,reportError:(error:unknown)=>{throw error;}};
  const owner=createWatchPlayOn(context as never,binding as never,new AirVideo() as unknown as HTMLVideoElement);
  const changed=()=>{for(const listener of [...listeners])listener();};
