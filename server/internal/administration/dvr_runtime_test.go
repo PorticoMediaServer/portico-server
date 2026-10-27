@@ -3,6 +3,8 @@ package administration
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -71,6 +73,67 @@ func TestAdministrativeGroupOwnsRealRuleAndLegacyRemainsDisabled(t *testing.T) {
 			t.Fatal(g)
 		}
 	}
+	// A rule created through the DVR API can carry criteria and options that
+	// are absent from the administrative projection.
+	var raw string
+	if err = db.QueryRow(`SELECT config_json FROM dvr_rules WHERE id=?`, rule.ID).Scan(&raw); err != nil {
+		t.Fatal(err)
+	}
+	var original dvr.RuleConfig
+	if err = json.Unmarshal([]byte(raw), &original); err != nil {
+		t.Fatal(err)
+	}
+	original.AllowedChannels = []string{ch}
+	original.BlockedChannels = []string{strings.Repeat("f", 64)}
+	original.BlockedKeywords = []string{"repeat"}
+	original.Keywords = []string{"episode"}
+	original.Options = dvr.Options{BeforeMs: 3600000, AfterMs: 7200000, Priority: 500, RetentionDays: 30, EpisodeLimit: 5000}
+	direct, err := s.DVR.SaveRule(ctx, groupAuthority(allow), c.Owner, dvr.RuleInput{ID: rule.ID, Mutation: dvr.Mutation{ExpectedRevision: rule.Revision, RequestID: strings.Repeat("e", 48)}, Config: original})
+	if err != nil {
+		t.Fatal(err)
+	}
+	projected := groupFromRule(direct, c.Owner)
+	c.ExpectedRevision, c.OperationID, c.Options, c.Name = direct.Revision, "rename-rule", projected.Options, "Renamed"
+	updated, err := s.SaveRecordingGroup(ctx, allow, rule.ID, c)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = db.QueryRow(`SELECT config_json FROM dvr_rules WHERE id=?`, rule.ID).Scan(&raw); err != nil {
+		t.Fatal(err)
+	}
+	var retained dvr.RuleConfig
+	if err = json.Unmarshal([]byte(raw), &retained); err != nil {
+		t.Fatal(err)
+	}
+	original.Name = "Renamed"
+	if !reflect.DeepEqual(retained, original) {
+		t.Fatalf("projection lost original config: got %+v want %+v", retained, original)
+	}
+	if _, err = s.SaveRecordingGroup(ctx, allow, rule.ID, c); err != nil {
+		t.Fatalf("idempotent replay: %v", err)
+	}
+	stale := c
+	stale.OperationID = "stale-edit"
+	if _, err = s.SaveRecordingGroup(ctx, allow, rule.ID, stale); err != ErrConflict {
+		t.Fatalf("stale edit: %v", err)
+	}
+	c.ExpectedRevision, c.OperationID = updated.Revision, "change-policy"
+	c.Options.Keep = &KeepPolicy{Mode: "keep-days", KeepDays: 14}
+	updated, err = s.SaveRecordingGroup(ctx, allow, rule.ID, c)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = db.QueryRow(`SELECT config_json FROM dvr_rules WHERE id=?`, rule.ID).Scan(&raw); err != nil {
+		t.Fatal(err)
+	}
+	if err = json.Unmarshal([]byte(raw), &retained); err != nil {
+		t.Fatal(err)
+	}
+	original.Options.RetentionDays, original.Options.EpisodeLimit = 14, 0
+	if !reflect.DeepEqual(retained, original) {
+		t.Fatalf("policy edit changed other config: got %+v want %+v", retained, original)
+	}
+	rule = updated
 	c.ExpectedRevision = rule.Revision
 	c.OperationID = "enable-rule"
 	c.Enabled = true

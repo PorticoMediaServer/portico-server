@@ -460,19 +460,20 @@ func validateGroup(c *RecordingGroupChange) error {
 	if c.Options.FolderTemplate != "" && !validTemplate(c.Options.FolderTemplate) {
 		fields = append(fields, "options.folderTemplate")
 	}
-	if c.Options.PrePaddingMs != nil && (*c.Options.PrePaddingMs < 0 || *c.Options.PrePaddingMs > 1800000) {
+	if c.Options.PrePaddingMs != nil && (*c.Options.PrePaddingMs < 0 || *c.Options.PrePaddingMs > 21600000) {
 		fields = append(fields, "options.prePaddingMs")
 	}
-	if c.Options.PostPaddingMs != nil && (*c.Options.PostPaddingMs < 0 || *c.Options.PostPaddingMs > 7200000) {
+	if c.Options.PostPaddingMs != nil && (*c.Options.PostPaddingMs < 0 || *c.Options.PostPaddingMs > 21600000) {
 		fields = append(fields, "options.postPaddingMs")
 	}
 	if len(fields) > 0 {
 		return invalid(fields...)
 	}
-	clampInt(&c.Options.Priority, -100, 100)
-	if c.Options.Keep != nil {
-		clampInt(&c.Options.Keep.KeepCount, 0, 1000)
-		clampInt(&c.Options.Keep.KeepDays, 0, 3650)
+	if c.Options.Priority < -1000 || c.Options.Priority > 1000 {
+		return invalid("options.priority")
+	}
+	if c.Options.Keep != nil && (c.Options.Keep.KeepCount < 0 || c.Options.Keep.KeepCount > 100000 || c.Options.Keep.KeepDays < 0 || c.Options.Keep.KeepDays > 3650) {
+		return invalid("options.keepPolicy")
 	}
 	return nil
 }
