@@ -253104,20 +253104,34 @@ export const schemas = {
     "type": "object"
   },
   "StopPlaybackSessionRequest": {
-    "additionalProperties": false,
-    "properties": {
-      "expectedGeneration": {
-        "maximum": 9007199254740991,
-        "minimum": 1,
-        "type": "integer"
+    "oneOf": [
+      {
+        "additionalProperties": false,
+        "properties": {
+          "positionMs": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "nullable": true,
+            "type": "integer"
+          }
+        },
+        "type": "object"
       },
-      "positionMs": {
-        "maximum": 9007199254740991,
-        "minimum": -9007199254740991,
-        "type": "integer"
+      {
+        "additionalProperties": false,
+        "properties": {
+          "expectedGeneration": {
+            "maximum": 9007199254740991,
+            "minimum": 1,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "expectedGeneration"
+        ],
+        "type": "object"
       }
-    },
-    "type": "object"
+    ]
   },
   "StopPlaybackSessionResponse": {
     "properties": {},

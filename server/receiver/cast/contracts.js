@@ -181470,22 +181470,25 @@ var PorticoCastContracts = (function(exports) {
 			"required": [],
 			"type": "object"
 		},
-		"StopPlaybackSessionRequest": {
+		"StopPlaybackSessionRequest": { "oneOf": [{
 			"additionalProperties": false,
-			"properties": {
-				"expectedGeneration": {
-					"maximum": 9007199254740991,
-					"minimum": 1,
-					"type": "integer"
-				},
-				"positionMs": {
-					"maximum": 9007199254740991,
-					"minimum": -9007199254740991,
-					"type": "integer"
-				}
-			},
+			"properties": { "positionMs": {
+				"maximum": 9007199254740991,
+				"minimum": -9007199254740991,
+				"nullable": true,
+				"type": "integer"
+			} },
 			"type": "object"
-		},
+		}, {
+			"additionalProperties": false,
+			"properties": { "expectedGeneration": {
+				"maximum": 9007199254740991,
+				"minimum": 1,
+				"type": "integer"
+			} },
+			"required": ["expectedGeneration"],
+			"type": "object"
+		}] },
 		"StopPlaybackSessionResponse": {
 			"properties": {},
 			"required": [],
