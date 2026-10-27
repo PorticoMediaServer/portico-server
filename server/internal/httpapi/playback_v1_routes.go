@@ -28,6 +28,9 @@ import (
 // v1Route registers one route, failing registry construction loudly: a route
 // that cannot be registered is a programming error, not a runtime condition.
 func v1Route[Req, Resp any](r *apikit.Registry, m apikit.Metadata, h func(context.Context, *http.Request, Req) (Resp, error)) {
+	if !slices.Contains(m.Errors, "timeout") {
+		m.Errors = append(m.Errors, "timeout")
+	}
 	if err := apikit.Register(r, apikit.Route[Req, Resp]{Metadata: m, Handler: func(ctx context.Context, q *http.Request, in Req) (Resp, error) {
 		out, err := h(ctx, q, in)
 		return out, v1Error(err)

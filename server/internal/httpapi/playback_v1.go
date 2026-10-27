@@ -37,6 +37,7 @@ func callerFrom(ctx context.Context) v1Caller {
 // Messages are US English fallbacks; clients localise by code.
 func v1ErrorDefinitions() []apierror.Definition {
 	return []apierror.Definition{
+		{Code: "timeout", Status: 503, Message: "The operation timed out. Retry shortly.", Retry: apierror.SameRequest},
 		{Code: "access_refused", Status: 403, Message: identity.ErrAccessRefused.Error(), Retry: apierror.Never},
 		{Code: "move_collision", Status: 409, Message: identity.ErrMoveCollision.Error(), Retry: apierror.Never},
 		{Code: "move_confirmation", Status: 409, Message: identity.ErrMoveConfirmation.Error(), Retry: apierror.Never},
@@ -211,6 +212,8 @@ func v1Error(err error) error {
 		}
 	case errors.As(err, new(*playbackv1.ThroughputError)):
 		code = "connection_too_slow"
+	case errors.Is(err, context.DeadlineExceeded):
+		return &apierror.Error{Code: "timeout", RetryAfterSeconds: 2, Cause: err}
 	default:
 		return err
 	}

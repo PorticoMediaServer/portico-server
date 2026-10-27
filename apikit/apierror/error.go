@@ -139,7 +139,11 @@ func (r *Registry) Write(w http.ResponseWriter, requestID string, err error) {
 	// the log once, under the request id the body carries, so a report of "the
 	// request could not be completed" can be traced.
 	if d.Status >= 500 && err != nil {
-		log.Printf("request %s failed (%d %s): %v", requestID, d.Status, d.Code, err)
+		cause := err
+		if public != nil && public.Cause != nil {
+			cause = public.Cause
+		}
+		log.Printf("request %s failed (%d %s): %v", requestID, d.Status, d.Code, cause)
 	}
 	if out.RetryAfterSeconds > 0 {
 		w.Header().Set("Retry-After", strconv.Itoa(out.RetryAfterSeconds))
