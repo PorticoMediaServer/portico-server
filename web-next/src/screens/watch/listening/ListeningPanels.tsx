@@ -12,6 +12,10 @@ const t = defaultI18n.t;
 /** All callbacks capture the drawn host opening and the original service page. */
 export function ListeningPanels({host, snapshot, reportError}: {host: ListeningHost; snapshot: WebPlaybackRuntimeSnapshot; reportError(error: unknown): void}) {
   const {owner, state} = host, run = (task: () => unknown) => {try {void Promise.resolve(task()).catch(error => {if (owner.canReport(state,true)) reportError(error);});} catch (error) {if (owner.canReport(state,true)) reportError(error);}};
+  // Save and editor methods publish failures only while their own command receipt
+  // is live. Their rejected predecessor promises must not report through a panel
+  // token that also belongs to a later dialog or edit opening.
+  const inline=(task:()=>Promise<unknown>)=>{try{void task().catch(()=>{});}catch{/* Owned inline state, or an already retired command. */}};
   const list = state.queue;
   if (state.panel === 'lyrics') return <LyricsPanel snapshot={state.lyrics ?? {data: null, candidates: [], warnings: [], preview: null, busy: false, error: '', generation: 0}}
     positionSeconds={snapshot.presentation?.positionSeconds ?? 0} enabled={owner.lyricsOffered()} canSeek={snapshot.presentation?.controls.includes('seek') === true}
@@ -27,12 +31,12 @@ export function ListeningPanels({host, snapshot, reportError}: {host: ListeningH
   if (!owner.queueOffered() || !list?.current) return <StateView title={t('player.queueUnavailable')}/>;
   const policy = snapshot.queueView?.queue;
   return <ListeningQueue snapshot={list} policy={policy ? {repeat: policy.repeat, shuffled: policy.shuffled} : undefined} policyBusy={state.policyBusy}
-    onPolicy={(shown, intent) => run(() => owner.policy(state, shown, intent))} onRefresh={() => run(() => owner.reloadQueue(state))}
+    onPolicy={(shown, intent) => inline(() => owner.policy(state, shown, intent))} onRefresh={() => inline(() => owner.reloadQueue(state))}
     window={{snapshot: state.window, retained: state.retainedWindow, anchor: state.anchor, error: state.queueError, busy: state.policyBusy,
-      onRetry: () => run(() => owner.reloadQueue(state)), onEdit: (page, entryId, action) => run(() => owner.queueEdit(state, page, entryId, action))}}
+      onRetry: () => inline(() => owner.reloadQueue(state)), onEdit: (page, entryId, action) => inline(() => owner.queueEdit(state, page, entryId, action))}}
     save={{open: !!state.save, name: state.save?.name ?? '', progress: state.save?.progress ?? null, original: state.save?.list,
       busy: state.save?.busy, error: state.save?.error,
-      openDialog: shown => owner.openSave(state, shown), close: () => owner.closeSave(state), changeName: name => owner.saveName(state, name), confirm: (shown, name) => run(() => owner.save(state, shown, name))}}/>;
+      openDialog: shown => owner.openSave(state, shown), close: () => owner.closeSave(state), changeName: name => owner.saveName(state, name), confirm: (shown, name) => inline(() => owner.save(state, shown, name))}}/>;
 }
 export function ListeningTabs({host}: {host: ListeningHost}) {
   const {owner, state} = host;

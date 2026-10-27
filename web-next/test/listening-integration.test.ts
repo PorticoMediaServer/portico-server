@@ -16,7 +16,7 @@ import {PlaybackPresentations,fenceKey,localVideoSurfaceActive,playbackPresentat
 import {dispatchWatch,watchClock,watchSeek,watchSeekBounds} from '../src/screens/watch/model.ts';
 import {defaultI18n} from '@i18n';
 const tick=async()=>{for(let i=0;i<60;i++)await Promise.resolve();};
-function deferred<T>(){let resolve!:(value:T)=>void;const promise=new Promise<T>(r=>{resolve=r;});return{promise,resolve};}
+function deferred<T>(){let resolve!:(value:T)=>void,reject!:(error:unknown)=>void;const promise=new Promise<T>((r,e)=>{resolve=r;reject=e;});return{promise,resolve,reject};}
 const scope=queueScope({serverId:'server',authority:'local',accountId:'account',profileId:'profile',controllerId:'controller',controllerEpoch:'epoch',commandLaneId:'lane'});
 function makeFence(itemId='item',sourceId='source'):QueuePlaybackFence{return playbackFence({kind:'queue',playback:{scope,run:7},sessionId:'session',generation:2,itemId,entryId:'entry',sourceId});}
 function chaptersWire(later=false){const indexes=later?[101]:[1,2];return{scope:{serverId:'server',libraryId:'library',itemId:'item',sessionId:'session',generation:2,sourceId:'source',viewerFence:'viewer'},revision:'revision',status:'available',reason:null,durationMs:3030000,
@@ -30,6 +30,7 @@ function lyricsWire(plain=false){
 function harness({kind='audiobook' as 'music'|'audiobook',lyricsEnabled=true,expanded=true}={}){
   const authority={serverId:'server',authority:'local' as const,accountId:'account',profileId:'profile',epoch:1,viewerFence:'viewer'};
   const original=makeFence();let current=true,version='1',counter=0,returning=false,failChapters=false,failEdit=false,lyricMode:'lrc'|'text'|'404'|'error'='lrc';
+  let editWait:ReturnType<typeof deferred<void>>|undefined;
   let chapterWait:ReturnType<typeof deferred<unknown>>|undefined,lyricWait:ReturnType<typeof deferred<unknown>>|undefined,saveWait:ReturnType<typeof deferred<QueuePlaylistSave>>|undefined;
   let editDispose:(()=>void)|undefined,saveAbort:(()=>void)|undefined,policyWait:ReturnType<typeof deferred<void>>|undefined;
   let selectionRevision=1;let choiceWait:ReturnType<typeof deferred<unknown>>|undefined;
@@ -77,14 +78,14 @@ function harness({kind='audiobook' as 'music'|'audiobook',lyricsEnabled=true,exp
           const issue=(start:number):V1QueueEditPage=>Object.freeze({start,total:81,revision:version,items:Object.freeze(rows(start)),canPrevious:start>0,...start<50?{nextCursor:'offered-edit-50'}:{}});
           const check=()=>{if(disposed||!owns()||!command.isCurrent()||command.signal.aborted)throw new DOMException('Aborted','AbortError');};
           const reader:V1QueueEditReader={read:async()=>{check();calls.reads++;return page=issue(0);},next:async shown=>{check();assert.equal(shown,page);calls.next++;return page=issue(50);},previous:async shown=>{check();assert.equal(shown,page);calls.previous++;return page=issue(0);},
-            edit:async(shown,intent)=>{check();assert.equal(shown,page);calls.edits.push({shown,intent});if(failEdit)throw new Error('edit_refused');updateQueue();return page=issue(shown.start);},dispose(){disposed=true;editDispose?.();}};
+            edit:async(shown,intent)=>{check();assert.equal(shown,page);calls.edits.push({shown,intent});if(editWait){await editWait.promise;check();}if(failEdit)throw new Error('edit_refused');updateQueue();return page=issue(shown.start);},dispose(){disposed=true;editDispose?.();}};
           return createQueueEditOpening({reader,current:owns,lifetime:command,currentEntryId:'entry',hidden:()=>false});},
       });
     },
   };
   const owner=()=>new ListeningOwner({runtime,snapshot:live,isCurrent:()=>{onCurrent?.();return current;},lyricsEnabled});
   return{runtime:runtime as WebShellPlaybackRuntime,owner,calls,get snapshot(){return live as WebPlaybackRuntimeSnapshot;},get list(){return list;},
-    failChapters(value:boolean){failChapters=value;},failEdit(value:boolean){failEdit=value;},lyricsMode(value:typeof lyricMode){lyricMode=value;},holdChapters(){return chapterWait=deferred<unknown>();},holdLyrics(){return lyricWait=deferred<unknown>();},holdChoice(){return choiceWait=deferred<unknown>();},holdSave(){return saveWait=deferred<QueuePlaylistSave>();},
+    failChapters(value:boolean){failChapters=value;},failEdit(value:boolean){failEdit=value;},lyricsMode(value:typeof lyricMode){lyricMode=value;},holdChapters(){return chapterWait=deferred<unknown>();},holdLyrics(){return lyricWait=deferred<unknown>();},releaseEdit(){editWait=undefined;},holdEdit(){return editWait=deferred<void>();},holdChoice(){return choiceWait=deferred<unknown>();},holdSave(){return saveWait=deferred<QueuePlaylistSave>();},
     retire(){current=false;emit();},remote(){live={...live,dock:{...live.dock,remote:{phase:'playing'}}};emit();},
     replace(){source={};const fence=makeFence('successor','new-source');live={...live,fence,presentation:{...live.presentation,fence}};emit();},
     set onEditDispose(fn:(()=>void)|undefined){editDispose=fn;},set onSaveAbort(fn:(()=>void)|undefined){saveAbort=fn;},holdPolicy(){return policyWait=deferred<void>();},set onCurrent(fn:(()=>void)|undefined){onCurrent=fn;},get expanded(){return live.dock.local.expanded;},set onRead(fn:(()=>void)|undefined){runtime.getSnapshot=()=>{if(!returning){returning=true;try{fn?.();}finally{returning=false;}}return live;};},
@@ -142,7 +143,7 @@ test('disabled lyrics issue no read and a pending old view cannot publish after 
   }finally{owner.dispose();}
 });
 
-test('actual canonical edit opening pages without draining, restricts current/unavailable rows and keeps occurrence identity',async()=>{
+test('actual Web adapter over a supplied V1QueueEditReader pages without draining, restricts current/unavailable rows and keeps occurrence identity',async()=>{
   const f=harness({kind:'music'}),owner=f.owner();try{
     owner.commitExpanded(true);await tick();let shown=owner.getSnapshot(),page=shown.window!.page!;assert.equal(page.rows.length,50);assert.equal(f.calls.next,0);
     await assert.rejects(owner.queueEdit(shown,page,'entry','remove'));await assert.rejects(owner.queueEdit(shown,page,'entry-4','remove'));
@@ -269,6 +270,26 @@ test('policy final-currentness reentry preserves the successor operation busy st
     assert.equal(owner.getSnapshot().policyBusy,true);assert.equal(f.calls.policies.length,2);
     held!.resolve();await successor;assert.equal(owner.getSnapshot().policyBusy,false);
   }finally{f.onCurrent=undefined;held?.resolve();await successor?.catch(()=>{});owner.dispose();}
+});
+
+test('actual ListeningPanels callbacks consume retired save/editor failures while current failures remain inline',async()=>{
+  const f=harness({kind:'music'}),owner=f.owner(),reports:unknown[]=[];
+  const h=createRenderer(),panels=await componentModule(new URL('../src/screens/watch/listening/ListeningPanels.tsx',import.meta.url),{
+    react:h.react,'@i18n':{defaultI18n},'./ListeningQueue':{ListeningQueue:'ListeningQueue'},'./listening-owner':{listeningSleepChoices:[0,15,30,45,60,90]},
+    './listening-panel.module.css':{default:{}},
+  });
+  const draw=()=>one(tree(h.render(()=>panels.ListeningPanels({host:{owner,state:owner.getSnapshot()},snapshot:f.snapshot,reportError:(e:unknown)=>reports.push(e)}))),'ListeningQueue').props;
+  try{
+    owner.commitExpanded(true);await tick();let props=draw();props.save.openDialog(props.snapshot);draw().save.changeName('Old');props=draw();
+    const save=f.holdSave();props.save.confirm(props.save.original,props.save.name);await tick();draw().save.close();props=draw();props.save.openDialog(props.snapshot);draw().save.changeName('Successor');
+    const successor=owner.getSnapshot().save!;save.reject(new Error('old_save_rejected'));await tick();assert.equal(owner.getSnapshot().save,successor);assert.deepEqual(reports,[]);
+    draw().save.close();props=draw();const edit=f.holdEdit();props.window.onEdit(props.window.snapshot.page,'entry-2','remove');await tick();draw().window.onRetry();await tick();
+    const fresh=owner.getSnapshot().window;edit.reject(new Error('old_edit_rejected'));await tick();assert.equal(owner.getSnapshot().window,fresh);assert.equal(owner.getSnapshot().queueError,false);assert.deepEqual(reports,[]);
+    f.releaseEdit();f.failEdit(true);props=draw();props.window.onEdit(props.window.snapshot.page,'entry-3','remove');await tick();assert.equal(owner.getSnapshot().queueError,true);assert.deepEqual(reports,[]);
+    // The live failure is visible through the admitted inline model; no global
+    // predecessor reporter is needed, and no error-class filtering is involved.
+    assert.equal(draw().window.error,true);
+  }finally{owner.dispose();}
 });
 
 /** Actual persistent WatchPlayback + actual committed host hook + audiobook

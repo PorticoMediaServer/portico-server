@@ -263,16 +263,20 @@ export class ListeningOwner {
     const lifetime = this.lifetime(shown, true), queue = this.port?.queue;if (!queue) return;
     const token={};this.editRequest=token;const cleanup=this.detachEditor();cleanup();
     const owns=()=>this.editRequest===token&&this.admit(shown,true)&&this.editRequest===token;
-    if(!owns())return;const list=queue.list.getSnapshot();
-    if(!list.current||!owns())return;
-    const editor=queue.edit(list,lifetime);
-    if(!owns()){editor.dispose();return;}
-    this.editor=editor;const off=editor.subscribe(()=>this.editorChanged(editor));
-    if(!owns()||this.editor!==editor){try{off();}finally{editor.dispose();}return;}
-    this.editorOff=off;this.publish({window:editor.getSnapshot(),anchor:undefined,queueError:false});
-    if(!owns()||this.editor!==editor){editor.dispose();return;}
-    try {await editor.open();} catch (error) {if (this.admit(shown, true) && this.editor === editor) this.publish({queueError: true});throw error;}
+    let editor:WebQueueEditOpening|undefined;
+    try{
+      if(!owns())return;const list=queue.list.getSnapshot();
+      if(!list.current||!owns())return;
+      editor=queue.edit(list,lifetime);const captured=editor;
+      if(!owns()){captured.dispose();return;}
+      this.editor=captured;const off=captured.subscribe(()=>this.editorChanged(captured));
+      if(!owns()||this.editor!==captured){try{off();}finally{captured.dispose();}return;}
+      this.editorOff=off;this.publish({window:captured.getSnapshot(),anchor:undefined,queueError:false});
+      if(!owns()||this.editor!==captured){captured.dispose();return;}
+      await captured.open();
+    }catch(error){if(owns()&&(!editor||this.editor===editor))this.publish({queueError:true});throw error;}
   }
+
   async queueEdit(shown: ListeningState, page: WebQueueEditPage, entryId: string, action: 'remove' | -1 | 1 | 'next' | 'previous') {
     const editor = this.editor;
     if (!this.admit(shown, true) || !editor || editor.getSnapshot().page !== page || !this.admit(shown, true) || this.editor !== editor) stale();
@@ -287,6 +291,8 @@ export class ListeningOwner {
     try {
       if (!lifetime.isCurrent() || this.operation !== token) stale();await queue.policy(list, intent, lifetime);
       if (!lifetime.isCurrent() || this.operation !== token) stale();await this.reloadQueue(this.state);
+    } catch(error){
+      if(this.operation===token&&lifetime.isCurrent()&&this.operation===token)this.publish({queueError:true});throw error;
     } finally {
       // Keep the slot reserved through external predicates; a retired predecessor
       // cannot publish idle over a successor started from that predicate.
