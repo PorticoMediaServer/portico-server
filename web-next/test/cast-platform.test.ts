@@ -215,3 +215,41 @@ test('takeover replacement retains the last real clock; disposal removes SDK and
   assert.equal(service.getSnapshot().phase, 'replaced'); assert.equal(service.getSnapshot().receiver?.positionSeconds, 9);
   service.dispose(); assert.equal(h.listeners.size, 0); assert.equal(h.contextListeners.size, 0);
 });
+
+test('a same-item successor occurrence never borrows the predecessor’s clock', async t => {
+  const {h, service} = await prepared(t); h.acknowledge = true;
+  assert.equal(await service.start('item', {title: 'Song'}, 0), true);
+  const controller = {bindingId: 'binding', controllerGeneration: 1, connectionGeneration: 1};
+  const occurrence = {sessionId: 'receiver', generation: 1, itemId: 'item'};
+  h.reply({type: 'status', controller, occurrence, itemId: 'item', positionSeconds: 61, durationSeconds: 180, paused: false});
+  assert.deepEqual(service.getSnapshot().remoteIdentity, {controller, occurrence});
+  assert.deepEqual(service.getSnapshot().receiver, {itemId: 'item', positionSeconds: 61, durationSeconds: 180, paused: false});
+  assert.equal(service.getSnapshot().positionSeconds, 61);
+
+  // The receiver's next occurrence of the same item reports without a complete clock. The exact
+  // stamps name a different fact, so the predecessor's 61 seconds are not its position.
+  const successor = {...occurrence, generation: 2};
+  h.reply({type: 'status', controller, occurrence: successor, itemId: 'item'});
+  assert.deepEqual(service.getSnapshot().remoteIdentity, {controller, occurrence: successor});
+  assert.equal(service.getSnapshot().receiver, undefined);
+  assert.equal(service.getSnapshot().positionSeconds, 0);
+
+  // That occurrence's own incomplete status still is not a clock, and cannot erase the complete
+  // clock it did report.
+  h.reply({type: 'status', controller, occurrence: successor, itemId: 'item', positionSeconds: 12, durationSeconds: 180, paused: false});
+  assert.equal(service.getSnapshot().receiver?.positionSeconds, 12);
+  h.reply({type: 'status', controller, occurrence: successor, itemId: 'item'});
+  assert.equal(service.getSnapshot().receiver?.positionSeconds, 12, 'the same occurrence keeps its last complete clock');
+
+  // A new controller is a different occurrence witness even when it names the same session/item.
+  const successorController = {bindingId: 'binding', controllerGeneration: 2, connectionGeneration: 1};
+  h.reply({type: 'status', controller: successorController, occurrence: successor, itemId: 'item'});
+  assert.deepEqual(service.getSnapshot().remoteIdentity, {controller: successorController, occurrence: successor});
+  assert.equal(service.getSnapshot().receiver, undefined, 'a new controller’s clock is unknown until it reports');
+
+  // Stop/replacement still retains the last complete clock for the continuation offer.
+  h.reply({type: 'status', controller: successorController, occurrence: successor, itemId: 'item', positionSeconds: 20, durationSeconds: 180, paused: true});
+  h.reply({type: 'replaced'});
+  assert.equal(service.getSnapshot().phase, 'replaced');
+  assert.deepEqual(service.getSnapshot().receiver, {itemId: 'item', positionSeconds: 20, durationSeconds: 180, paused: true});
+});

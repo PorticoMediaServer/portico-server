@@ -1,4 +1,5 @@
-import React, {createContext, useContext, useEffect, useMemo, useRef, useState, useSyncExternalStore} from 'react';
+import React, {createContext, useContext, useEffect, useMemo, useState, useSyncExternalStore} from 'react';
+import {castContext} from '@core/cast/index.ts';
 import {CastSender, type CastSnapshot} from '../bridge/cast';
 import {Artwork, Button, Dialog, IconButton, Menu, Text, type MenuItem} from '../ui';
 import {castMeta} from '@core/presentation/index.ts';
@@ -16,20 +17,23 @@ export function CastProvider({children}: {children: React.ReactNode}) {
   const {api, session} = useSession();
   // D-FEAT-1: Cast is offered whenever the server has a secure HTTPS address, however the viewer
   // signed in; `prepare()` checks the address and the server's Cast configuration.
-  const key = session ? `${session.viewer.serverId}/${session.viewer.profileId}` : '';
-  // The original session identity is captured when the sender is made; a later
-  // token refresh does not invent a new pairing proof or a different receiver.
-  const currentSession = useRef(session);
-  currentSession.current = session;
-  const sender = useMemo(() => {
-    if (!key) return null;
-    const original = currentSession.current, pin = api.getRouteConnection()?.pin;
-    const controllerContext = original && pin && pin.serverId === original.viewer.serverId && original.deviceId
-      ? {origin: new URL(api.baseUrl).origin, publicKey: pin.publicKey, serverId: original.viewer.serverId, authority: original.viewer.authority,
-        accountId: original.viewer.accountId, profileId: original.viewer.profileId, senderDeviceId: original.deviceId, senderFamilyId: original.sessionFamilyId}
-      : undefined;
-    return new CastSender(api, undefined, controllerContext);
-  }, [api, key]);
+  // Root50: a pairing proof belongs to the exact sign-in that made it — server, authority,
+  // account, profile, this installation, the session family, the pinned server key and the
+  // origin. This sender is created from one such capture and is replaced, with its proof, when
+  // any of those facts changes; an access-token rotation is the same sign-in and keeps it.
+  const viewer = session?.viewer, pin = api.getRouteConnection()?.pin, baseUrl = api.baseUrl;
+  const serverId = viewer?.serverId, authority = viewer?.authority, accountId = viewer?.accountId, profileId = viewer?.profileId;
+  const deviceId = session?.deviceId, sessionFamilyId = session?.sessionFamilyId, signedIn = session !== undefined;
+  const pinServerId = pin?.serverId, publicKey = pin?.publicKey;
+  const controllerContext = useMemo(() => {
+    // The capture is the proof's own context, so a pin for another server or a missing device is
+    // not turned into a sender identity: that sender can pair, but never claims a controller.
+    if (!serverId || !authority || !accountId || !profileId || !deviceId || !sessionFamilyId || !publicKey || pinServerId !== serverId) return undefined;
+    let origin: string;
+    try { origin = new URL(baseUrl).origin; } catch { return undefined; }
+    return castContext({origin, publicKey, serverId, authority, accountId, profileId, senderDeviceId: deviceId, senderFamilyId: sessionFamilyId});
+  }, [serverId, authority, accountId, profileId, deviceId, sessionFamilyId, pinServerId, publicKey, baseUrl]);
+  const sender = useMemo(() => (signedIn ? new CastSender(api, undefined, controllerContext) : null), [api, signedIn, controllerContext]);
   // PERF-25: the server check and Google's sender script wait for an idle
   // moment or the first player open, never the launch path.
   const playerOpen = usePlayer().active;
