@@ -80,7 +80,7 @@ func TestStopGenerationOriginalAndEndedReplay(t *testing.T) {
 }
 
 func TestStopGenerationRefusalsHaveNoOccurrenceEffects(t *testing.T) {
-	for _, kind := range []string{"generation", "device", "owner", "missing_callback", "refusing_callback", "item_refusal", "same_writer_revoke", "same_writer_physical_drift", "same_writer_rollback"} {
+	for _, kind := range []string{"generation", "device", "owner", "missing_callback", "refusing_callback", "item_refusal", "same_writer_revoke", "same_writer_physical_drift", "same_writer_successor", "same_writer_rollback"} {
 		t.Run(kind, func(t *testing.T) {
 			f, v := stopGenerationFixture(t)
 			ctx := context.Background()
@@ -111,7 +111,7 @@ func TestStopGenerationRefusalsHaveNoOccurrenceEffects(t *testing.T) {
 					}
 					return original(ctx, item)
 				}
-			case "same_writer_physical_drift":
+			case "same_writer_physical_drift", "same_writer_successor":
 				// The first check is before FenceTx. The second is its mandatory original
 				// callback, after the claim froze the immutable physical/source tuple.
 				original := c.AuthorizeItem
@@ -120,7 +120,11 @@ func TestStopGenerationRefusalsHaveNoOccurrenceEffects(t *testing.T) {
 					if dbwork.InWriteTx(ctx) {
 						calls++
 						if calls == 2 {
-							if _, err := dbwork.Snapshot(ctx).ExecContext(ctx, `UPDATE playback_source_pins SET modified_ns=modified_ns+1 WHERE session_id=(SELECT media_session_id FROM playback_v1_sessions WHERE id=?)`, v.ID); err != nil {
+							query := `UPDATE playback_source_pins SET modified_ns=modified_ns+1 WHERE session_id=(SELECT media_session_id FROM playback_v1_sessions WHERE id=?)`
+							if kind == "same_writer_successor" {
+								query = `UPDATE playback_sessions SET generation=generation+1,grant_hash='successor-grant' WHERE id=(SELECT media_session_id FROM playback_v1_sessions WHERE id=?)`
+							}
+							if _, err := dbwork.Snapshot(ctx).ExecContext(ctx, query, v.ID); err != nil {
 								return err
 							}
 						}
@@ -140,6 +144,19 @@ func TestStopGenerationRefusalsHaveNoOccurrenceEffects(t *testing.T) {
 					return original(ctx, item)
 				}
 			}
+			r, err := loadRow(ctx, f.catalog.DB, v.ID)
+			if err != nil {
+				t.Fatal(err)
+			}
+			owned, err := f.service.Playback.RetainPreparation(ctx, r.media, r.mediaGen)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer owned.Close()
+			if !f.service.Playback.PrefetchCharge(r.media, 37, 100) {
+				t.Fatal("budget fixture")
+			}
+			queueBefore := stopQueueSnapshot(t, f)
 			before := stopGenerationSnapshot(t, f, v.ID)
 			if err := f.service.StopGeneration(ctx, c, v.ID, generation); err == nil {
 				t.Fatal("invalid cleanup accepted")
@@ -147,9 +164,19 @@ func TestStopGenerationRefusalsHaveNoOccurrenceEffects(t *testing.T) {
 			if after := stopGenerationSnapshot(t, f, v.ID); after != before {
 				t.Fatalf("refusal changed original: %s -> %s", before, after)
 			}
+			if owned.Context().Err() != nil {
+				t.Fatal("refusing held claim cancelled original work")
+			}
+			if stopQueueSnapshot(t, f) != queueBefore {
+				t.Fatal("refusal changed queue/event/process/artifact facts")
+			}
+			if n := f.service.Playback.PrefetchTake(r.media, 100, 100); n != 63 {
+				t.Fatalf("refusal changed original retained budget: %d", n)
+			}
+			owned.Close() // a later valid Stop may now join this original owner
 			// Aborted process-side reservations do not poison an independently valid
 			// retry; restore only this fixture's callback, not another writer's state.
-			if kind == "same_writer_revoke" || kind == "same_writer_rollback" || kind == "same_writer_physical_drift" {
+			if kind == "same_writer_revoke" || kind == "same_writer_rollback" || kind == "same_writer_physical_drift" || kind == "same_writer_successor" {
 				if err := f.service.StopGeneration(ctx, f.caller, v.ID, v.Presentation.Generation); err != nil {
 					t.Fatalf("rollback left closed admission: %v", err)
 				}
@@ -267,4 +294,13 @@ func TestStopGenerationCapturesOnlyOriginalPreparedChildSet(t *testing.T) {
 			}
 		})
 	}
+}
+
+func stopQueueSnapshot(t *testing.T, f *carryFixture) string {
+	t.Helper()
+	var value string
+	if err := f.catalog.DB.QueryRow(`SELECT json_array((SELECT json_group_array(json_array(id,revision,current_entry_id,current_position,session_id,custody_generation)) FROM queues_v1),(SELECT count(*) FROM api_events),(SELECT count(*) FROM playback_artifacts),(SELECT count(*) FROM playback_vod_intervals),(SELECT count(*) FROM playback_v1_prepared))`).Scan(&value); err != nil {
+		t.Fatal(err)
+	}
+	return value
 }

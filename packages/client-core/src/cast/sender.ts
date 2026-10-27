@@ -97,7 +97,7 @@ export class CastController {
   private detach: (() => void)[] = [];
   private startGeneration = 0;
   private requestSequence = 0;
-  private loads = new Map<string, {resolve(itemId: string): void; reject(error: Error): void}>();
+  private loads = new Map<string, {resolve(itemId: string): void; reject(error: Error): void; pending(event: Extract<CastEvent,{type:'load-pending'}>):void}>();
   private waiting?: {resolve(): void; reject(e: Error): void};
   private adopting = false;
   private adoptTimer?: unknown;
@@ -116,17 +116,30 @@ export class CastController {
   private expectedPairId?:string;
   private stopping?:{requestId:string;target:CastRemoteIdentity;transport:CastTransport;generation:number;timer:unknown};
   private current(){return !this.disposed&&this.callerCurrent();}
-  private proof(transport:CastTransport){
-    const context=this.proofContext;if(!context||!transport.deviceId||!this.current())return;
-    try{return readCastProof(this.controllerStorage?.get(castProofKey(context,transport.deviceId)),context,transport.deviceId);}catch{return;}
+  /** External caller/storage ports never get to change the operation being proved. */
+  private original(transport=this.transport,generation=this.startGeneration,controller=this.acceptedController){
+    const pure=()=>!this.disposed&&this.transport===transport&&this.startGeneration===generation&&this.acceptedController===controller;
+    return {pure,current:()=>pure()&&this.current()&&pure()};
   }
-  private async validate(binding:CastControllerBinding,attemptId:string){
-    if(!this.proofContext||!this.current()||!castScopeEqual(binding.scope,this.proofContext)||binding.receiverId!==this.transport?.deviceId)throw new Error('cast_scope_changed');
-    // Source route registration is canonical; official catalogue generation is
-    // Release's normal cohort. No generated route/type workaround is emitted.
+  private proof(transport:CastTransport){
+    const original=this.original(),context=this.proofContext;
+    if(!context||!transport.deviceId||!original.current())return;
+    try{
+      const raw=this.controllerStorage?.get(castProofKey(context,transport.deviceId));
+      if(!original.pure())return;
+      return readCastProof(raw,context,transport.deviceId);
+    }catch{return;}
+  }
+  private async validate(binding:CastControllerBinding,attemptId:string,admit?:()=>boolean){
+    const original=this.original();
+    const current=()=>original.current()&&(!admit||admit())&&original.pure();
+    if(!this.proofContext||!current()||!castScopeEqual(binding.scope,this.proofContext)||binding.receiverId!==this.transport?.deviceId)throw new Error('cast_scope_changed');
+    // The final external current predicate is followed by the original pure
+    // proof BEFORE validation IO; a same-device successor cannot borrow it.
+    if(!current())throw new Error('cast_scope_changed');
     const result=await this.api.request<{binding?:unknown;attemptId?:unknown;ticket?:unknown}>('/v1/cast/controllers/validate','POST',{binding,attemptId});
     const accepted=castBinding(result.binding);
-    if(!this.current()||!accepted||JSON.stringify(accepted)!==JSON.stringify(binding)||result.attemptId!==attemptId||typeof result.ticket!=='string'||!/^[A-Za-z0-9_-]{43,256}$/.test(result.ticket))throw new Error('cast_validation_refused');
+    if(!current()||!accepted||JSON.stringify(accepted)!==JSON.stringify(binding)||result.attemptId!==attemptId||typeof result.ticket!=='string'||!/^[A-Za-z0-9_-]{43,256}$/.test(result.ticket))throw new Error('cast_validation_refused');
     return result.ticket;
   }
 
@@ -146,8 +159,8 @@ export class CastController {
 
   getSnapshot = (): CastSnapshot => this.state;
   subscribe = (fn: () => void) => { this.listeners.add(fn); return () => { this.listeners.delete(fn); }; };
-  private publish(patch: Partial<CastSnapshot>) {
-    if (!this.current()) return;
+  private publish(patch: Partial<CastSnapshot>, admit?:()=>boolean) {
+    if (!this.current() || (admit && !admit())) return;
     this.state = Object.freeze({...this.state, ...patch});
     for (const fn of [...this.listeners]) fn();
   }
@@ -170,7 +183,7 @@ export class CastController {
       }catch{this.fail('cast.error.unreachable');}
       return false;
     }
-    this.release(false);
+    if(this.release(false)!==this.startGeneration)return false;
     const generation = this.startGeneration;
     choices=captureCastChoices(choices);meta=Object.freeze({...meta});
     const flight:CastTransferFlight|undefined=choices?.source?{transport,source:choices.source,itemId,position:Math.max(0,startSeconds)}:undefined;
@@ -225,7 +238,7 @@ export class CastController {
               this.send({type:'status'});return true;
             }
           }catch{
-            if(generation===this.startGeneration){this.transferFlight=undefined;this.recoveryTransfer=flight;this.release(false);this.fail('cast.error.unreachable');}
+            if(generation===this.startGeneration){this.transferFlight=undefined;this.recoveryTransfer=flight;if(this.release(false)===this.startGeneration)this.fail('cast.error.unreachable');}
             return false;
           }
         }
@@ -240,7 +253,7 @@ export class CastController {
         }
       } else if (loading) this.send({type: 'stop'});
       if(generation!==this.startGeneration)return false;
-      this.release(false);
+      if(this.release(false)!==this.startGeneration)return false;
       const id: MessageId = e instanceof CastFailure ? e.messageId : 'cast.error.unreachable';
       this.publish({phase: 'error', takeover: undefined, errorId: id, error: e instanceof CastFailure ? serviceText(id) : serviceProblem(e, 'playback', id)});
       return false;
@@ -261,7 +274,8 @@ export class CastController {
     const active=()=>this.adopting&&this.transport===transport&&generation===this.startGeneration;
     const current=()=>this.current()&&active();
     return new Promise<boolean>(resolve=>{
-      const give=(ok:boolean)=>{if(!this.adopting)return;this.clearTimer(this.adoptTimer);this.adopting=false;this.settleAdoption=undefined;resolve(ok);};
+      let settled=false;
+      const give=(ok:boolean)=>{if(settled)return;settled=true;if(this.settleAdoption===give){const timer=this.adoptTimer;this.adoptTimer=undefined;this.adopting=false;this.settleAdoption=undefined;this.clearTimer(timer);}resolve(ok);};
       const refuse=()=>{if(!active())return;give(false);this.release(false,false);};
       this.settleAdoption=give;
       this.detach.push(transport.onMessage(raw=>{
@@ -321,44 +335,82 @@ export class CastController {
   }
   /** Replay the same command; resolve uncertain commits with the original authenticated receipt. */
   private load(command: Extract<CastCommand, {type: 'load'}>): Promise<string> {
-    if (this.loads.size >= 8 || !this.transport) return Promise.reject(new CastFailure('cast.error.busy'));
-    const requestId = 'load-' + (++this.requestSequence),transport=this.transport,controller=this.acceptedController;
+    if(this.loads.size>=8||!this.transport)return Promise.reject(new CastFailure('cast.error.busy'));
+    const requestId='load-'+(++this.requestSequence),transport=this.transport,controller=this.acceptedController,original=this.original();
     const queue=command.queue&&typeof command.queue==='object'&&'queueId' in command.queue?command.queue:undefined,transferId=queue?.transferId;
-    return new Promise<string>((resolve, reject) => {
+    return new Promise<string>((resolve,reject)=>{
       const retries:unknown[]=[];
-      const finish = (error?: Error, itemId = command.itemId) => { if (!this.loads.delete(requestId)) return; this.clearTimer(timer);for(const retry of retries)this.clearTimer(retry);if (error) reject(error); else resolve(itemId); };
-      const recover=async()=>{try{
-        const receipt=typeof transferId==='string'?await this.transferStatus(transferId):undefined;
-        if(receipt?.state==='committed'&&receipt.itemId===command.itemId){finish(undefined,receipt.itemId);return;}
-        finish(new CastFailure('cast.error.noAnswer'));
-      }catch{finish(new CastFailure('cast.error.unreachable'));}};
-      const timer = this.setTimer(() => {void recover();}, 150_000);
-      this.loads.set(requestId, {resolve: itemId => finish(undefined, itemId), reject: error => finish(error)});
-      const send=()=>{if(this.loads.has(requestId)&&this.transport===transport)void transport.send({...command,requestId,...(controller?{controller}:{})}).catch(()=>{if(!transferId)finish(new CastFailure('cast.error.unreachable'));});};
-      if(transferId)for(const delay of [10_000,30_000])retries.push(this.setTimer(send,delay));
+      let timer:unknown,settled=false,startId:string|undefined,sequence=0,deadline=0;
+      const pure=()=>!settled&&original.pure()&&this.loads.get(requestId)===flight;
+      const current=()=>pure()&&this.current()&&pure();
+      const finish=(error?:Error,itemId=command.itemId)=>{
+        if(settled)return;
+        settled=true;deadline++;
+        if(this.loads.get(requestId)===flight)this.loads.delete(requestId);
+        const oldTimer=timer;timer=undefined;
+        this.clearTimer(oldTimer);for(const retry of retries)this.clearTimer(retry);
+        if(error)reject(error);else resolve(itemId);
+      };
+      const recover=async(expected:number)=>{
+        if(expected!==deadline||!current())return;
+        try{
+          const receipt=typeof transferId==='string'?await this.transferStatus(transferId):undefined;
+          if(expected!==deadline||!current())return;
+          if(receipt?.state==='committed'&&receipt.itemId===command.itemId){finish(undefined,receipt.itemId);return;}
+          finish(new CastFailure('cast.error.noAnswer'));
+        }catch{if(expected===deadline&&current())finish(new CastFailure('cast.error.unreachable'));}
+      };
+      const arm=()=>{
+        if(!current())return;
+        const expected=++deadline,old=timer;timer=undefined;this.clearTimer(old);
+        if(!current())return;
+        const next=this.setTimer(()=>{void recover(expected);},150_000);
+        if(!pure()){this.clearTimer(next);return;}
+        timer=next;
+      };
+      const flight={resolve:(itemId:string)=>finish(undefined,itemId),reject:(error:Error)=>finish(error),pending:(event:Extract<CastEvent,{type:'load-pending'}>)=>{
+        if(!current()||!controller||!sameCastController(controller,event.controller)||event.itemId!==command.itemId||event.sequence<=sequence||(startId!==undefined&&event.startId!==startId))return;
+        startId=event.startId;sequence=event.sequence;
+        // Only a new, original-correlated validated-202 observation re-arms
+        // the finite no-answer deadline. It never completes this LOAD.
+        arm();
+      }};
+      if(!original.pure()){finish(new CastFailure('cast.error.noAnswer'));return;}
+      this.loads.set(requestId,flight);arm();
+      const send=()=>{if(current())void transport.send({...command,requestId,...(controller?{controller}:{})}).catch(()=>{if(!transferId&&pure())finish(new CastFailure('cast.error.unreachable'));});};
+      if(transferId)for(const delay of [10_000,30_000]){
+        if(!current())break;
+        const retry=this.setTimer(send,delay);
+        if(!pure()){this.clearTimer(retry);break;}
+        retries.push(retry);
+      }
       send();
     });
   }
 
   private receive(e: CastEvent) {
-    if(!this.current())return;
+    const original=this.original();
+    if(!original.current())return;
     switch (e.type) {
       case 'renewal-offer': {
         const transport=this.transport, context=this.proofContext, accepted=this.acceptedController;
+        const generation=this.startGeneration;
         const proof=transport&&this.proof(transport), next=e.binding;
-        if(!transport||!context||!proof||!accepted||!sameCastController(e.previousController,accepted)||e.controller.bindingId!==accepted.bindingId||e.controller.connectionGeneration!==accepted.connectionGeneration||e.controller.controllerGeneration!==accepted.controllerGeneration+1||this.renewal)return;
+        if(!original.pure())return;
+        if(this.state.phase!=='casting'||!transport||!context||!proof||!accepted||!sameCastController(e.previousController,accepted)||e.controller.bindingId!==accepted.bindingId||e.controller.connectionGeneration!==accepted.connectionGeneration||e.controller.controllerGeneration!==accepted.controllerGeneration+1||this.renewal)return;
         const old=proof.binding;
         if(next.id!==old.id||next.bootstrapId!==old.bootstrapId||next.receiverId!==old.receiverId||next.targetId!==old.targetId||!castScopeEqual(next.scope,old.scope)||next.targetFamilyId===old.targetFamilyId||BigInt(next.targetGeneration)<=BigInt(old.targetGeneration))return;
-        const generation=this.startGeneration;
         const pending={attemptId:e.attemptId,binding:next,proof,transport,generation,controller:e.controller,timer:undefined as unknown};
-        const current=()=>this.current()&&this.renewal===pending&&this.transport===transport&&this.startGeneration===generation&&sameCastController(this.acceptedController,accepted);
-        this.renewal=pending;this.statusRevision++;this.publish({controlPending:true});
+        const pure=()=>original.pure()&&this.state.phase==='casting'&&this.renewal===pending&&sameCastController(this.acceptedController,accepted);
+        const current=()=>pure()&&this.current()&&pure();
+        if(!original.pure())return;
+        this.renewal=pending;this.statusRevision++;this.publish({controlPending:true},pure);
         if(!current())return;
         const timer=this.setTimer(()=>{if(current())this.redacted(transport,generation,++this.statusRevision);},15000);
         if(!current()){this.clearTimer(timer);return;}
         pending.timer=timer;
         if(!current())return;
-        void this.validate(next,e.attemptId).then(ticket=>{
+        void this.validate(next,e.attemptId,pure).then(ticket=>{
           if(!current())return;
           return transport.send({type:'renewal-ack',bindingId:next.id,attemptId:e.attemptId,ticket,controlToken:proof.controlToken});
         }).catch(()=>{if(current())this.redacted(transport,generation,++this.statusRevision);});
@@ -367,7 +419,8 @@ export class CastController {
       case 'renewal-complete': {
         const pending=this.renewal;
         if(!pending||pending.attemptId!==e.attemptId||!sameCastController(e.controller,pending.controller))return;
-        const current=()=>this.current()&&this.renewal===pending&&this.transport===pending.transport&&this.startGeneration===pending.generation;
+        const pure=()=>original.pure()&&this.state.phase==='casting'&&this.renewal===pending&&this.transport===pending.transport&&this.startGeneration===pending.generation;
+        const current=()=>pure()&&this.current()&&pure();
         if(!current())return;
         const proof:CastControllerProof=Object.freeze({...pending.proof,binding:pending.binding});
         try{this.controllerStorage?.set(castProofKey(proof.context,pending.transport.deviceId!),JSON.stringify(proof));}catch{if(current())this.redacted(pending.transport,pending.generation,++this.statusRevision);return;}
@@ -398,7 +451,8 @@ export class CastController {
       case 'pair-pending': if (this.state.phase === 'pairing') this.publish({phase: 'waiting'}); return;
       case 'pair-failed': this.waiting?.reject(new CastFailure(e.code === 'tv_busy' ? 'cast.error.tvBusy' : 'cast.error.refused')); this.waiting = undefined; return;
       case 'busy': this.fail('cast.error.busy'); return;
-      case 'pair-required': this.release(false,false);this.publish({phase:'off',disclosureRefused:true,remoteIdentity:undefined,remoteStopped:undefined,controlPending:false,itemId:undefined,title:undefined,reported:undefined,audioTracks:[],textTracks:[],positionSeconds:0,durationSeconds:0});return;
+      case 'pair-required': if(this.release(false,false)!==this.startGeneration)return;this.publish({phase:'off',disclosureRefused:true,remoteIdentity:undefined,remoteStopped:undefined,controlPending:false,itemId:undefined,title:undefined,reported:undefined,audioTracks:[],textTracks:[],positionSeconds:0,durationSeconds:0});return;
+      case 'load-pending': this.loads.get(e.requestId)?.pending(e);return;
       case 'loaded': this.loads.get(e.requestId)?.resolve(e.itemId); return;
       case 'load-failed': if (e.requestId) this.loads.get(e.requestId)?.reject(new CastFailure('cast.error.loadFailed')); else this.fail('cast.error.loadFailed'); return;
       case 'takeover-requested': {
@@ -411,7 +465,7 @@ export class CastController {
       }
       case 'replaced':
         this.clearTimer(this.takeoverTimer);
-        this.release(false);
+        if(this.release(false)!==this.startGeneration)return;
         this.publish({phase:'replaced',remoteIdentity:undefined,remoteStopped:undefined,controlPending:false,takeover:undefined});
         return;
       case 'stopped': case 'control-failed': {
@@ -451,35 +505,41 @@ export class CastController {
 
   private redacted(transport:CastTransport|undefined,generation:number,revision:number){
     if(!this.current()||this.transport!==transport||generation!==this.startGeneration||revision!==this.statusRevision)return;
-    this.release(false,false);this.publish({phase:'off',disclosureRefused:true,remoteIdentity:undefined,remoteStopped:undefined,controlPending:false,itemId:undefined,title:undefined,reported:undefined,audioTracks:[],textTracks:[],positionSeconds:0,durationSeconds:0});
+    if(this.release(false,false)!==this.startGeneration)return;this.publish({phase:'off',disclosureRefused:true,remoteIdentity:undefined,remoteStopped:undefined,controlPending:false,itemId:undefined,title:undefined,reported:undefined,audioTracks:[],textTracks:[],positionSeconds:0,durationSeconds:0});
   }
-  private fail(id: MessageId) { this.publish({phase: 'error', errorId: id, error: serviceText(id)}); }
+  private fail(id: MessageId,admit?:()=>boolean) { this.publish({phase: 'error', errorId: id, error: serviceText(id)},admit); }
 
   private sessionEnded() {
-    this.release(false, false);
+    if(this.release(false,false)!==this.startGeneration)return;
     if (this.state.phase !== 'error' && this.state.phase !== 'replaced') this.publish({phase:'off',remoteIdentity:undefined,remoteStopped:undefined,controlPending:false,itemId:undefined,title:undefined,deviceName:undefined,takeover:undefined});
   }
 
   /** Detach from the transport; `stopReceiver` closes Portico on the TV. */
-  private release(stopReceiver: boolean, end = true) {
-    this.startGeneration++;this.statusRevision++;
-    if(this.renewal)this.clearTimer(this.renewal.timer);this.renewal=undefined;
-    if(this.stopping)this.clearTimer(this.stopping.timer);this.stopping=undefined;this.acceptedController=undefined;this.expectedPairId=undefined;
-    this.clearTimer(this.adoptTimer);this.settleAdoption?.(false);
-    const flight=this.transferFlight;this.transferFlight=undefined;const released=this.startGeneration;
+  private release(stopReceiver: boolean, end = true):number {
+    const released=++this.startGeneration;this.statusRevision++;
+    // Detach every old handle before the first injected cleanup port. Cleanup
+    // may synchronously start a successor; nothing below selects latest state.
+    const renewal=this.renewal,stopping=this.stopping,adoptTimer=this.adoptTimer,settle=this.settleAdoption;
+    const flight=this.transferFlight,transport=this.transport,waiting=this.waiting,loads=[...this.loads.values()],detach=this.detach.splice(0);
+    this.renewal=undefined;this.stopping=undefined;this.acceptedController=undefined;this.expectedPairId=undefined;
+    this.adoptTimer=undefined;this.settleAdoption=undefined;this.adopting=false;
+    this.transferFlight=undefined;this.transport=undefined;this.waiting=undefined;this.loads.clear();
     if(flight?.id)this.recoveryTransfer=flight;
+    if(renewal)this.clearTimer(renewal.timer);
+    if(stopping)this.clearTimer(stopping.timer);
+    this.clearTimer(adoptTimer);settle?.(false);
+    const original=()=>!this.disposed&&!this.transport&&this.startGeneration===released;
     if(flight)void this.cancelTransfer(flight).then(receipt=>{
-      if(this.disposed||this.transport||this.startGeneration!==released)return;
-      if(receipt?.state==='committed'&&receipt.itemId===flight.itemId)this.publish({acceptedSource:flight.source});
-      this.recoveryTransfer=undefined;this.publish({phase:'off',acceptedSource:undefined,transferPending:false});
-    },()=>{if(!this.disposed&&!this.transport&&this.startGeneration===released){this.recoveryTransfer=flight;this.fail('cast.error.unreachable');}});
-    for (const off of this.detach.splice(0)) off();
-    this.waiting?.reject(new CastFailure('cast.error.noAnswer'));
-    this.waiting = undefined;
-    for (const pending of [...this.loads.values()]) pending.reject(new CastFailure('cast.error.noAnswer'));
-    const t = this.transport;
-    this.transport = undefined;
-    if (t && end) t.end(stopReceiver);
+      if(!original())return;
+      if(receipt?.state==='committed'&&receipt.itemId===flight.itemId)this.publish({acceptedSource:flight.source},original);
+      if(!original())return;
+      this.recoveryTransfer=undefined;this.publish({phase:'off',acceptedSource:undefined,transferPending:false},original);
+    },()=>{if(original()){this.recoveryTransfer=flight;this.fail('cast.error.unreachable',original);}});
+    for(const off of detach)off();
+    waiting?.reject(new CastFailure('cast.error.noAnswer'));
+    for(const pending of loads)pending.reject(new CastFailure('cast.error.noAnswer'));
+    if(this.startGeneration===released&&transport&&end)transport.end(stopReceiver);
+    return released;
   }
 
   private send(message: CastCommand) { if(this.current())void this.transport?.send(message.type==='status'&&this.acceptedController?{...message,controller:this.acceptedController}:message).catch(() => {}); }
@@ -523,9 +583,9 @@ export class CastController {
       void this.cancelTransfer(flight).then(receipt=>{
         if(this.disposed||generation!==this.startGeneration||this.transport!==undefined&&this.transport!==flight.transport)return;
         if(receipt?.state==='committed'&&receipt.itemId===flight.itemId)this.publish({acceptedSource:flight.source});
-        this.recoveryTransfer=undefined;this.release(false);
+        this.recoveryTransfer=undefined;if(this.release(false)!==this.startGeneration)return;
         this.publish({phase:'off',acceptedSource:undefined,transferPending:false,itemId:undefined,title:undefined,deviceName:undefined,error:undefined,errorId:undefined,takeover:undefined});
-      },()=>{if(!this.disposed&&generation===this.startGeneration){this.recoveryTransfer=flight;this.release(false);this.fail('cast.error.unreachable');}});
+      },()=>{if(!this.disposed&&generation===this.startGeneration){this.recoveryTransfer=flight;if(this.release(false)===this.startGeneration)this.fail('cast.error.unreachable');}});
       return;
     }
     const target=expected??this.state.remoteIdentity,transport=this.transport;
@@ -544,7 +604,7 @@ export class CastController {
       const generation=this.startGeneration;this.redacted(this.transport,generation,this.statusRevision);return;
     }
     this.send({type: 'stop'});
-    this.release(true);
+    if(this.release(true)!==this.startGeneration)return;
     this.publish({phase: 'off', transferPending:false,itemId: undefined, title: undefined, deviceName: undefined, error: undefined, errorId: undefined, takeover: undefined});
   }
   dismiss() { if(this.state.transferPending){this.stop();return;}this.publish({phase:'off',remoteIdentity:undefined,remoteStopped:undefined,controlPending:false,error:undefined,errorId:undefined}); }

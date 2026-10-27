@@ -61,6 +61,8 @@ export type CastEvent =
   | {type: 'pair-required'}
   | {type: 'load-failed'; requestId?: string}
   | {type: 'loaded'; requestId: string; itemId: string}
+  /** Original valid-202 observation only; no playback/credential authority. */
+  | {type:'load-pending';requestId:string;itemId:string;startId:string;sequence:number;controller:CastControllerStamp}
   | {type:'takeover-requested';requester:string;controller?:CastControllerStamp;requestId?:string}
   | {type: 'replaced'}
   | {type:'stopped';requestId:string;target:CastRemoteIdentity;positionSeconds?:number;durationSeconds?:number}
@@ -93,6 +95,11 @@ export function parseCastEvent(raw: unknown): CastEvent | undefined {
     }
     case 'paired': return {type:'paired',...(castControllerStamp(o.controller)?{controller:castControllerStamp(o.controller)}:{}),...(castBinding(o.binding)?{binding:castBinding(o.binding)}:{}),...(typeof o.controlToken==='string'&&/^[a-f0-9]{48}$/.test(o.controlToken)?{controlToken:o.controlToken}:{})};
     case 'load-failed': return {type: 'load-failed', ...(typeof o.requestId === 'string' && trackIdPattern.test(o.requestId) ? {requestId: o.requestId} : {})};
+    case 'load-pending': {
+      const controller=castControllerStamp(o.controller);
+      if(!controller||typeof o.requestId!=='string'||!trackIdPattern.test(o.requestId)||typeof o.itemId!=='string'||!trackIdPattern.test(o.itemId)||typeof o.startId!=='string'||!trackIdPattern.test(o.startId)||!Number.isSafeInteger(o.sequence)||(o.sequence as number)<1)return;
+      return {type:'load-pending',requestId:o.requestId,itemId:o.itemId,startId:o.startId,sequence:o.sequence as number,controller};
+    }
     case 'loaded': return typeof o.requestId === 'string' && trackIdPattern.test(o.requestId) && typeof o.itemId === 'string' && trackIdPattern.test(o.itemId) ? {type: 'loaded', requestId: o.requestId, itemId: o.itemId} : undefined;
     case 'pair-pending': case 'busy': case 'pair-required': case 'replaced':
       return {type: o.type};

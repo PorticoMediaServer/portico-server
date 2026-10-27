@@ -784,7 +784,7 @@
   }
   /** Starts a v1 session for the item and answers CAF's load request for it. A session already
    * playing here is replaced in the same request, so this TV holds one playback slot. */
-  async function resolvePlayback(itemId, startSeconds, identity, subtitleTrackId, queue,lease) {
+  async function resolvePlayback(itemId, startSeconds, identity, subtitleTrackId, queue,lease,pending) {
     requireLease(lease);
     if (!session || !manager || !/^[A-Za-z0-9_-]{1,128}$/.test(itemId)) throw new Error('playback_unavailable');
     clearTimeout(reportTimer); clearTimeout(bufferingTimer);
@@ -813,7 +813,7 @@
       if(captured.body)body=captured.body;else captured.body=Object.freeze(body);
       key='cast-'+queue.transferId;
     }
-    var cleanupWitness={origin:startOrigin,bearer:startSession&&startSession.accessToken},ownedStart=null;
+    var cleanupWitness={origin:startOrigin,bearer:startSession&&startSession.accessToken},ownedStart=null,pendingSequence=0;
     function observeStart(result){
       // Body authority comes only from the complete canonical schema graph.
       // Status is a separate protocol fence: a valid 202 never completes LOAD.
@@ -847,6 +847,9 @@
         requireStart();
         answer=await api('/v1/playback/sessions',{body:body,headers:{'Idempotency-Key':key},noRenew:true,observeAnswer:observeStart},lease);
         if(answer.status!==202)break;
+        // Only an actually decoded real resource supplies progress evidence.
+        // Retry-only bodies own no resource and cannot prolong sender LOAD.
+        if(ownedStart&&Object.prototype.hasOwnProperty.call(answer.body,'id')&&pending){requireStart();pending({startId:key,sequence:++pendingSequence});requireStart();}
         preparing();await wait(Math.max(250,answer.body.retryAfterMs));requireStart();
       }
       requireStart();stopPreparing();
@@ -868,7 +871,7 @@
     reportSeq = 0; reportFailures = 0;
     return load;
   }
-  function startPlayback(itemId,startSeconds,identity,subtitleTrackId,queue,lease) { return commandQueue(lease,async function(){
+  function startPlayback(itemId,startSeconds,identity,subtitleTrackId,queue,lease,pending) { return commandQueue(lease,async function(){
     requireLease(lease);recoveries=0;
     var captured;
     if(queue&&queue.transferId){
@@ -879,7 +882,7 @@
       if(captured&&captured.accepted)return captured.accepted;
       if(!captured){if(transferStarts.size>=8)throw new Error('cast_transfer_busy');captured={digest:digest,scope:scope,origin:base,expires:now+180000};transferStarts.set(queue.transferId,captured);}
     }
-    try{var load=await resolvePlayback(itemId,startSeconds,identity,subtitleTrackId,queue,lease);var startedOwner=playback;await loadMedia(load,lease);requireLease(lease);if(playback!==startedOwner)throw new Error('occurrence_replaced');showPlaying();scheduleReport(0);refreshCatalogueDisplay({id:playback.id,itemId:playback.itemId,presentation:{generation:playback.generation}},load.media.contentId,lease);if(captured)captured.accepted=playback;return playback;}
+    try{var load=await resolvePlayback(itemId,startSeconds,identity,subtitleTrackId,queue,lease,pending);var startedOwner=playback;await loadMedia(load,lease);requireLease(lease);if(playback!==startedOwner)throw new Error('occurrence_replaced');showPlaying();scheduleReport(0);refreshCatalogueDisplay({id:playback.id,itemId:playback.itemId,presentation:{generation:playback.generation}},load.media.contentId,lease);if(captured)captured.accepted=playback;return playback;}
     catch(e){if(leaseCurrent(lease)){if(startedOwner&&playback===startedOwner)await stopPlayback(false,lease,startedOwner).catch(function(){});showError(e&&(e.code||e.message));}throw e;}
   }); }
 
@@ -1303,7 +1306,10 @@
       switch (message.type) {
         case 'load':
           if(message.queue!==undefined&&!queueRef(message.queue)){reply({type:'load-failed',requestId:message.requestId});break;}
-          startPlayback(String(message.itemId || ''), typeof message.startSeconds === 'number' ? message.startSeconds : undefined, displayMeta(message), message.subtitleTrackId, queueRef(message.queue),commandLease).then(function (accepted) {
+          startPlayback(String(message.itemId || ''), typeof message.startSeconds === 'number' ? message.startSeconds : undefined, displayMeta(message), message.subtitleTrackId, queueRef(message.queue),commandLease,function(evidence){
+            requireLease(commandLease);
+            if(typeof message.requestId==='string'&&/^[A-Za-z0-9._:-]{1,128}$/.test(message.requestId))reply({type:'load-pending',requestId:message.requestId,itemId:String(message.itemId||''),startId:evidence.startId,sequence:evidence.sequence,controller:controllerStamp(commandLease)});
+          }).then(function (accepted) {
             requireLease(commandLease);
             if (typeof message.requestId === 'string' && /^[A-Za-z0-9._:-]{1,128}$/.test(message.requestId)) reply({type:'loaded',requestId:message.requestId,itemId:accepted ? accepted.itemId : ''});
             broadcast();
