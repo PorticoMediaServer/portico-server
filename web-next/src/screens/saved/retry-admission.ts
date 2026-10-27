@@ -27,12 +27,26 @@ export function retireSavedRetryAdmission(value: SavedRetryAdmission): void {
 }
 
 /** The original route/readers must still own the current runtime, not merely the
- * parent's global operations flag. */
+ * parent's global operations flag. Every external getter is followed by a liveness
+ * recheck: a getter may synchronously retire the admission and still return old
+ * matching data. */
 export function savedRetryCurrent(value: SavedRetryAdmission): boolean {
-  if (!value.live || !value.ticket.runtime.operations.current) return false;
+  if (!value.live) return false;
+  const runtime = value.ticket.runtime;
+  if (!runtime.operations.current) return false;
+  if (!value.live) return false;
   const route = value.ticket.route;
-  if (route.view === 'watchlist' || route.view === 'favorites')
-    return sameSavedRoute(value.ticket.posters.getSnapshot().route, {...route, shape: 'posters'})
-      && sameSavedRoute(value.ticket.squares.getSnapshot().route, {...route, shape: 'squares'});
-  return sameSavedRoute(value.ticket.saved.getSnapshot().route, route);
+  if (route.view === 'watchlist' || route.view === 'favorites') {
+    if (!value.live) return false;
+    const poster = value.ticket.posters.getSnapshot();
+    if (!value.live) return false;
+    const square = value.ticket.squares.getSnapshot();
+    if (!value.live) return false;
+    return sameSavedRoute(poster.route, {...route, shape: 'posters'})
+      && sameSavedRoute(square.route, {...route, shape: 'squares'});
+  }
+  if (!value.live) return false;
+  const saved = value.ticket.saved.getSnapshot();
+  if (!value.live) return false;
+  return sameSavedRoute(saved.route, route);
 }
