@@ -398,10 +398,15 @@ export class DecodeAudioRender {
     const committed = s.audioEffects.committed, c = this.candidate, p = this.primary;
     if (this.hold || !this.graph || !committed || !c || committed.token !== c.token || !c.ready || this.incoming || !p || p.deck.endFrame === undefined) return;
     if (committed.session.audio?.id !== c.plan.id) { this.service.audioRenderFailed('audio_render_failed'); return; }
+    const current = this.renderWitness(s);
+    if (!current()) return;
     // The whole next file may now be fetched; bring it into the cache before its edge.
     c.reader.unlock();
+    if (!current()) return;
     void c.reader.prefetchAll();
+    if (!current()) return;
     const sameAlbum = this.sameAlbum(s.itemId, committed.itemId);
+    if (!current()) return;
     const graph = this.graph;
     const contextNow = this.contextFrame();
     // Never link at a past physical time, or change an interval already heard.
@@ -414,6 +419,7 @@ export class DecodeAudioRender {
     const edge = linkDecks(this.context, p.deck, c.deck, {crossfadeSeconds: Math.min(12, s.audioEffects.settings.crossfadeSeconds), sameAlbum, earliest});
     graph.admit(this.logicalFrame() + Math.round(AHEAD_SECONDS * this.context.sampleRate));
     if (edge.late) listeningDiagnostic('audio_edge_late', undefined, this.recordDiagnostic);
+    if (!current()) return;
     this.incoming = {...c, edge: edge.start, fade: edge.fade};
     this.candidate = undefined;
   }
@@ -443,27 +449,48 @@ export class DecodeAudioRender {
     this.lag = this.lag === 0 ? sample.seconds : this.lag + (sample.seconds - this.lag) * 0.1;
   }
 
+  /** Notifications are synchronous and may pause without changing intentId or the deck.
+   * Retain this tick's original control state; never continue by adopting a subscriber's state. */
+  private renderWitness(s: PlaybackSnapshot): () => boolean {
+    const primary = this.primary, incoming = this.incoming, retiring = this.retiring, graph = this.graph;
+    const context = this.context, revision = this.revision, seek = this.seekKey;
+    return () => {
+      const current = this.service.getSnapshot();
+      return !this.disposed && this.primary === primary && this.incoming === incoming && this.retiring === retiring &&
+        this.graph === graph && this.context === context && this.revision === revision && this.seekKey === seek &&
+        current.intent === s.intent && current.intentId === s.intentId && current.phase === s.phase &&
+        current.session === s.session && sessionKey(current.session) === sessionKey(s.session) &&
+        current.pendingSeek === s.pendingSeek && current.seekRevision === s.seekRevision &&
+        current.seekError === s.seekError && current.failedSeek === s.failedSeek &&
+        current.audioEffects.rendering === s.audioEffects.rendering && current.audioEffects.rate === s.audioEffects.rate &&
+        current.audioEffects.prepared === s.audioEffects.prepared && current.audioEffects.committed === s.audioEffects.committed;
+    };
+  }
+
   private tick() {
     if (this.disposed) return;
-    const s = this.service.getSnapshot(), p = this.primary, graph = this.graph, revision = this.revision;
+    const s = this.service.getSnapshot(), p = this.primary, graph = this.graph, current = this.renderWitness(s);
     this.reportProcessing();
-    if (p !== this.primary || graph !== this.graph || revision !== this.revision) return;
+    if (!current()) return;
     if (!p || !graph || s.phase === 'error' || s.phase === 'ended' || this.starting) return;
     this.measureLag();
+    if (!current()) return;
     const decks = this.decks();
     for (const deck of decks) {
-      if (deck.failure) { this.service.audioRenderFailed('audio_render_failed'); this.reset(); return; }
+      if (deck.failure) { this.service.audioRenderFailed('audio_render_failed'); if (current()) this.reset(); return; }
       // Exact shared pump promise: ticks never create an awaiting continuation for stalled IO.
       void deck.pump(AHEAD_SECONDS);
     }
     if (this.hold) {
       this.service.audioRenderStatus?.(0, true);
+      if (!current() || !this.hold) return;
       this.recoverHold(this.hold);
       return;
     }
     const frame = this.logicalFrame(), heard = this.logicalFrame(this.heardTime());
     if (!this.incoming && frame >= p.deck.tailDeadlineSeconds * this.context.sampleRate) p.deck.finishTail();
     const endOfMix = Math.max(...decks.map(d => d.endFrame ?? frame));
+    if (!current()) return;
     graph.admit(Math.min(endOfMix, frame + Math.round(AHEAD_SECONDS * this.context.sampleRate)));
     const missing = decks.some(d => !d.sourceComplete || graph.clock.frontier < (d.endFrame ?? 0));
     // Nodes are already bounded by the common frontier, so even a late tick cannot overshoot.
@@ -471,27 +498,34 @@ export class DecodeAudioRender {
       this.beginHold(); return;
     }
     const next = this.incoming;
-    if (next && this.context.state === 'running' && heard >= next.edge) {
+    if (!current()) return;
+    if (next && s.intent === 'playing' && !s.pendingSeek && !s.seekError && this.context.state === 'running' && heard >= next.edge) {
       this.retiring = p;
       this.primary = {deck: next.deck, plan: next.plan, key: sessionKey(s.audioEffects.committed?.session), fromFrame: 0, reader: next.reader, token: next.token, speed: next.speed};
       this.incoming = undefined; this.committing = undefined; this.seekKey = '';
       this.service.audioBoundary(next.token, this.position());
       return;
     }
-    if (this.retiring && this.retiring.deck.sourceComplete && heard >= (this.retiring.deck.endFrame ?? Infinity)) { this.closePlaying(this.retiring); this.retiring = undefined; }
+    if (this.retiring && this.retiring.deck.sourceComplete && heard >= (this.retiring.deck.endFrame ?? Infinity)) {
+      this.closePlaying(this.retiring);
+      if (!current()) return;
+      this.retiring = undefined;
+      return;
+    }
     const playing = s.intent === 'playing' && this.context.state === 'running' && this.contextFrame() >= graph.clock.contextStart && p.deck.startFrame !== undefined && frame >= p.deck.startFrame;
     this.service.audioRenderStatus?.(playing ? s.audioEffects.rate : 0, false);
-    if (p !== this.primary || graph !== this.graph || revision !== this.revision || this.service.getSnapshot().intentId !== s.intentId) return;
+    if (!current()) return;
     const end = p.deck.endFrame ?? Infinity;
     if (playing && !s.pendingSeek) {
       const position = this.position();
       if (p.deck.sourceComplete && heard >= end && !this.incoming && !this.committing && !s.audioEffects.prepared) this.service.fact(s.intentId, position, 'ended');
       else if (s.intentId !== this.factIntent || Math.abs(position - this.factPosition) >= 0.25) { this.factIntent = s.intentId; this.factPosition = position; this.service.fact(s.intentId, position, 'playing'); }
     }
-    if (p !== this.primary || graph !== this.graph || revision !== this.revision) return;
+    if (!current()) return;
     graph.discardBefore(heard, this.contextFrame(this.heardTime()));
     // Link a deferred original candidate only after actual overlap PCM becomes ready.
     this.committed(s);
+    if (!current()) return;
     const c = this.candidate;
     if (s.intent === 'playing' && c?.ready && !this.committing && end !== Infinity) {
       const fade = Math.min(s.audioEffects.settings.crossfadeSeconds, 12);

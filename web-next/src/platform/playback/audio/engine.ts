@@ -67,6 +67,7 @@ export class Deck {
   private requestedAhead = 0;
   private continuation?: {previous: Deck; tail: {channels: Float32Array[]; frames: number}};
   private exhausted = false;
+  private inputRead = 0;
   failure?: unknown;
 
   constructor(context: BaseAudioContext, destination: AudioNode, source: PcmSource, o: DeckOptions) {
@@ -124,12 +125,18 @@ export class Deck {
         const block = await this.source.read(Math.round(this.source.sampleRate / 4));
         if (this.closed) return;
         if (!block) {
+          // Finite plan lengths are source facts, not permission to complete a truncated stream.
+          // Validate input before flushing or handing a resampler tail to another deck.
+          if (this.inputRead !== this.inputFrames) throw new Error('audio_source_ended_early');
           this.exhausted = true;
           this.tailPending = !!this.resampler;
           if (!this.holdTail) this.finishTail();
           if (!this.tailPending) this.finishChunk();
           break;
         }
+        if (!Number.isSafeInteger(block.frames) || block.frames <= 0 || block.frames > this.inputFrames - this.inputRead ||
+            block.channels.length !== this.source.channels || block.channels.some(channel => channel.length < block.frames)) throw new Error('audio_source_length_invalid');
+        this.inputRead += block.frames;
         if (this.predecessor) {
           const previous = this.predecessor; this.predecessor = undefined;
           if (previous.tailPending && previous.resampler) {
@@ -237,12 +244,12 @@ export class Deck {
   }
 
   /** True only after the source and its real resampler tail have finished. */
-  get sourceComplete() { return this.exhausted && !this.tailPending && !this.chunk; }
+  get sourceComplete() { return !this.failure && this.exhausted && this.inputRead === this.inputFrames && !this.tailPending && !this.chunk && this.decoded === this.outFrames; }
 
   /** The audio is exhausted and every scheduled frame has been handed to the clock. */
   get complete() {
     const handed = this.graph && this.startFrame !== undefined ? Math.max(0, this.graph.clock.frontier - this.startFrame) : this.scheduled;
-    return this.exhausted && !this.tailPending && !this.chunk && this.held.length === 0 && handed >= this.decoded;
+    return this.sourceComplete && this.held.length === 0 && handed >= this.decoded;
   }
 
   /** Ramps the normalization gain (20 ms, §9.6 rule 7). */
