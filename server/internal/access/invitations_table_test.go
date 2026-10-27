@@ -44,6 +44,7 @@ func TestInvitationTablePagesSearchStatusCountsAndPrivateScope(t *testing.T) {
 	states := map[string]int{"pending": 0, "accepted": 0, "revoked": 0, "expired": 0}
 	wantCreated := map[string]int64{}
 	var hidden Invitation
+	var pendingBeyondFirst string
 	for i := 0; i < 137; i++ {
 		// Several records share exact milliseconds; others share only the wire
 		// timestamp's second. Both must page without a duplicate or omission.
@@ -67,6 +68,9 @@ func TestInvitationTablePagesSearchStatusCountsAndPrivateScope(t *testing.T) {
 		}
 		if i == 5 {
 			hidden = v
+		}
+		if i == 21 {
+			pendingBeyondFirst = v.ID
 		}
 		wantCreated[v.ID] = created.UnixMilli()
 		state := "pending"
@@ -126,6 +130,44 @@ func TestInvitationTablePagesSearchStatusCountsAndPrivateScope(t *testing.T) {
 					t.Fatalf("read %d invitations", len(seen))
 				}
 			})
+		}
+	}
+	// A pending record outside the unfiltered first page remains discoverable
+	// when filtering happens before pagination, for both authorised roles.
+	for _, reader := range []struct {
+		principal identity.Principal
+		authorize Authorize
+	}{{owner, authorize}, {admin, authorizeAdmin}} {
+		unfiltered, _, _, e := s.InvitationTable(ctx, reader.authorize, reader.principal, InvitationQuery{Limit: "50"}, "", "sent", "desc")
+		if e != nil {
+			t.Fatal(e)
+		}
+		for _, row := range unfiltered.Items {
+			if row.ID == pendingBeyondFirst {
+				t.Fatal("pending record unexpectedly in first unfiltered page")
+			}
+		}
+		cursor, found := "", false
+		for {
+			page, _, _, e := s.InvitationTable(ctx, reader.authorize, reader.principal, InvitationQuery{State: "pending", Limit: "50", Cursor: cursor}, "", "sent", "desc")
+			if e != nil {
+				t.Fatal(e)
+			}
+			for _, row := range page.Items {
+				if row.State != "pending" {
+					t.Fatal("non-pending row", row.ID)
+				}
+				if row.ID == pendingBeyondFirst {
+					found = true
+				}
+			}
+			cursor = page.NextCursor
+			if cursor == "" {
+				break
+			}
+		}
+		if !found {
+			t.Fatal("pending record beyond unfiltered first page was lost")
 		}
 	}
 	for state, want := range states {
