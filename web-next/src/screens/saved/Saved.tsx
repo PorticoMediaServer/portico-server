@@ -171,45 +171,54 @@ function SavedLists(bindings: SavedViewBindings & {onCreate: () => void}) {
       setPublished(previous => previous === created ? undefined : previous);
     };
   }, [ticket]);
+  const active = published && published.ticket === ticket ? published : undefined;
   const retry = useCallback(() => {
-    const value = published;
-    if (!value || !value.live || value.pending || !savedRetryCurrent(value)) return;
+    const value = active;
+    if (!value || !value.live || value.pending) return;
+    if (!savedRetryCurrent(value)) return;
+    if (!value.live || value.pending) return;
     const token = Symbol('saved-retry');
     value.pending = token;
     setRetryBusy(true);
-    const current = () => value.live && value.pending === token && savedRetryCurrent(value);
+    const current = () => {
+      if (!value.live || value.pending !== token) return false;
+      if (!savedRetryCurrent(value)) return false;
+      return value.live && value.pending === token;
+    };
     const report = (error: unknown) => {
-      if (current()) value.ticket.reportError(error);
+      if (!value.live || value.pending !== token) return;
+      if (!savedRetryCurrent(value)) return;
+      if (!value.live || value.pending !== token) return;
+      value.ticket.reportError(error);
     };
     const unlock = () => {
-      if (value.pending !== token) return;
+      if (!value.live || value.pending !== token) return;
+      if (!savedRetryCurrent(value)) {
+        if (value.pending === token) value.pending = undefined;
+        return;
+      }
+      if (!value.live || value.pending !== token) return;
       value.pending = undefined;
-      if (value.live && savedRetryCurrent(value)) setRetryBusy(false);
+      setRetryBusy(false);
     };
-    const attempt = async (select: () => Promise<void>) => {
+    const tasks: Promise<void>[] = [];
+    const start = (select: () => Promise<void>) => {
       if (!current()) return;
       let task: Promise<void>;
       try {task = select();}
       catch (error) {report(error); return;}
       // A synchronous route/opening replacement stops the sibling before it starts.
       if (!current()) {void task.catch(() => {}); return;}
-      try {await task;}
-      catch (error) {report(error);}
+      tasks.push(task.catch(error => {report(error);}));
     };
     const run = async () => {
       try {
         const exact = value.ticket.route;
         if (exact.view === 'watchlist' || exact.view === 'favorites') {
-          if (current() && value.ticket.posters.getSnapshot().phase === 'error') {
-            await attempt(() => value.ticket.posters.select({...exact, shape: 'posters'}));
-            if (!current()) return;
-          }
-          if (current() && value.ticket.squares.getSnapshot().phase === 'error') {
-            await attempt(() => value.ticket.squares.select({...exact, shape: 'squares'}));
-          }
-        } else if (current()) {
-          await attempt(() => value.ticket.saved.select(exact));
-        }
+          if (current() && value.ticket.posters.getSnapshot().phase === 'error') start(() => value.ticket.posters.select({...exact, shape: 'posters'}));
+          if (current() && value.ticket.squares.getSnapshot().phase === 'error') start(() => value.ticket.squares.select({...exact, shape: 'squares'}));
+        } else if (current()) start(() => value.ticket.saved.select(exact));
+        await Promise.all(tasks);
       } catch (error) {
         report(error);
       } finally {
@@ -217,7 +226,7 @@ function SavedLists(bindings: SavedViewBindings & {onCreate: () => void}) {
       }
     };
     void run();
-  }, [published]);
+  }, [active]);
   const failures = split ? [
     ...(primary.phase === 'error' ? [{id: 'posters'}] : []),
     ...(squares.phase === 'error' ? [{id: 'squares'}] : []),
