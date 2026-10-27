@@ -21,12 +21,12 @@ func TestCaptureServeSourcePreservesConfigurationAndExactGeneration(t *testing.T
 	if err != nil {
 		t.Fatal(err)
 	}
-	if source.Generation != "1" || source.Remote != input.Remote || string(source.Configuration) != input.Config || source.Program.Path != input.Executable {
+	if source.Generation != "1" || source.Remote != input.Remote || string(source.Configuration) != input.Config || source.Program.Path != input.Executable || source.Program.Included != input.UseIncluded {
 		t.Fatal("configuration capture mismatch")
 	}
-	digest, err := executableDigest(input.Executable)
-	if err != nil || source.ApprovedProgramDigest != digest || len(digest) != 64 {
-		t.Fatal("capture lost the actual owner-approved program image", err)
+	// A new B-42 version-only approval records no image digest.
+	if source.ApprovedProgramDigest != "" {
+		t.Fatal("version-only approval invented a program digest")
 	}
 	clear(source.Configuration)
 	stored, err := os.ReadFile(filepath.Join(s.private, row.ID+".conf"))
