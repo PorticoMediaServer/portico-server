@@ -75,6 +75,8 @@ export const nextMessages = {
   ...settingsMessages,
   ...settingsSpecMessages,
   ...readerMessages,
+  'next.reading.savedOnlySettingsTitle': 'Reading settings',
+  'next.reading.savedOnlySettingsBody': 'Reading settings aren’t available in this saved-only opening.',
   ...searchMessages,
   ...showMessages,
   ...remoteSourcesMessages,
