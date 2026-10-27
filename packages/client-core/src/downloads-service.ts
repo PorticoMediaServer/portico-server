@@ -71,11 +71,11 @@ export class DownloadsService{
     void this.api.request<RouteResponse<"get_download_usage">>(routePath("get_download_usage")).then(raw=>{try{if(generation===this.generation)this.publish({usage:parseDownloadUsage(raw)});}catch{}},()=>{});
   }catch(e){
    if(generation!==this.generation)return;
-   const status=(e as {status?:number}|null)?.status;
-   // 404/503 here means this server does not offer downloads at all, which is a fact to show
-   // plainly, not an error to retry.
-   if(status===404||status===503&&!this.state.items.length){this.failures=0;this.publish({phase:'ready',unavailable:true,error:undefined,failure:undefined});}
-   else{this.failures++;this.publish({phase:this.state.items.length?'ready':'error',error:say(e,'downloads.error.load'),failure:e});}
+   const status=(e as {status?:number}|null)?.status, code=(e as {code?:string}|null)?.code;
+   // Feature absence is only the unsupported route or the server's explicit canonical code.
+   // A generic 503 (server_busy/timeout) is a transient failure and keeps its retry path.
+   if(status===404||code==='downloads_unavailable'){this.failures=0;this.publish({phase:'ready',unavailable:true,error:undefined,failure:undefined});}
+   else{this.failures++;this.publish({phase:this.state.items.length?'ready':'error',error:say(e,'downloads.error.load'),failure:e,unavailable:false});}
   }
   this.schedule(generation);
  }
