@@ -1,4 +1,6 @@
 import {Resampler} from './resampler';
+import type {MixGraph} from './mix-graph';
+import {gainAt, rebuildGain, type GainKnot} from './mix-gain';
 import type {Planar} from './decoder';
 
 /**
@@ -26,6 +28,8 @@ export type DeckOptions = Readonly<{
   label?: string;
   /** Hold the final filter taps briefly for a gapless successor. */
   holdTail?: boolean;
+  /** Shared logical mix graph; an unlinked candidate only retains decoded PCM. */
+  graph?: MixGraph;
 }>;
 
 const now = (c: BaseAudioContext) => c.currentTime;
@@ -57,15 +61,17 @@ export class Deck {
   private readonly holdTail: boolean;
   private predecessor?: Deck;
   private readonly context: BaseAudioContext;
+  private graph?: MixGraph;
   private readonly nodes = new Set<AudioBufferSourceNode>();
-  private pumping = false;
-  private pumpWaiters: (() => void)[] = [];
+  private pumpRun?: Promise<void>;
+  private requestedAhead = 0;
   private continuation?: {previous: Deck; tail: {channels: Float32Array[]; frames: number}};
   private exhausted = false;
   failure?: unknown;
 
   constructor(context: BaseAudioContext, destination: AudioNode, source: PcmSource, o: DeckOptions) {
     this.context = context;
+    this.graph = o.graph;
     this.source = source;
     this.label = o.label ?? '';
     this.inputFrames = o.frames; this.holdTail = o.holdTail === true;
@@ -73,6 +79,7 @@ export class Deck {
     this.fade = context.createGain();
     this.norm.gain.value = o.gain;
     this.gainValue = o.gain;
+    this.gainInitial = o.gain;
     this.norm.connect(this.fade);
     this.fade.connect(destination);
     const rate = context.sampleRate;
@@ -82,26 +89,38 @@ export class Deck {
   }
 
   get rate() { return this.context.sampleRate; }
+  get mixGraph() { return this.graph; }
   /** Context time of the frame after this deck's last. */
   get endFrame(): number | undefined { return this.startFrame === undefined ? undefined : this.startFrame + this.outFrames; }
   /** Seconds decoded past the playhead (or held, before starting). */
   get aheadSeconds(): number {
     if (this.startFrame === undefined) return this.decoded / this.rate;
-    return Math.max(0, (this.startFrame + this.decoded) / this.rate - now(this.context));
+    const position = this.graph ? this.graph.clock.at(Math.floor(now(this.context) * this.rate)) : Math.floor(now(this.context) * this.rate);
+    return Math.max(0, (this.startFrame + this.decoded - position) / this.rate);
   }
   /** Frames of this track played by context time `at` (now by default), at the context rate. */
   playedFrames(at = now(this.context)): number {
     if (this.startFrame === undefined) return 0;
-    return Math.max(0, Math.min(this.outFrames, Math.floor(at * this.rate) - this.startFrame));
+    const frame = Math.floor(at * this.rate);
+    const position = this.graph ? this.graph.clock.at(frame) : frame;
+    return Math.max(0, Math.min(this.outFrames, position - this.startFrame));
   }
 
   /** Decodes until `seconds` of audio lie ahead of the playhead (or are held), then stops. */
-  async pump(seconds: number): Promise<void> {
-    if (this.closed) return;
-    if (this.pumping) { await new Promise<void>(resolve => this.pumpWaiters.push(resolve)); return this.pump(seconds); }
-    this.pumping = true;
+  pump(seconds: number): Promise<void> {
+    if (this.closed || this.failure) return this.pumpRun ?? Promise.resolve();
+    this.requestedAhead = Math.max(this.requestedAhead, Math.min(30, Math.max(0, Number.isNaN(seconds) ? 0 : seconds)));
+    if (this.pumpRun) return this.pumpRun;
+    const run = Promise.resolve().then(() => this.drain(() => {
+      if (this.pumpRun === run) { this.pumpRun = undefined; this.requestedAhead = 0; }
+    }));
+    this.pumpRun = run;
+    return run;
+  }
+
+  private async drain(finish: () => void): Promise<void> {
     try {
-      while (!this.closed && !this.exhausted && this.aheadSeconds < seconds) {
+      while (!this.closed && !this.exhausted && this.aheadSeconds < this.requestedAhead) {
         const block = await this.source.read(Math.round(this.source.sampleRate / 4));
         if (this.closed) return;
         if (!block) {
@@ -126,8 +145,9 @@ export class Deck {
     } catch (e) {
       this.failure = e;
     } finally {
-      this.pumping = false;
-      const waiters = this.pumpWaiters; this.pumpWaiters = []; for (const wake of waiters) wake();
+      // Clear while the drain is still on the stack: a subsequent caller must not join an
+      // already-finished run whose promise has yet to propagate its completion microtask.
+      finish();
     }
   }
 
@@ -179,6 +199,7 @@ export class Deck {
     const frames = this.chunkFill;
     this.chunkFill = 0;
     if (this.startFrame === undefined) this.held.push(buffer);
+    else if (this.graph) this.graph.addPacket(this, {start: this.startFrame + this.decoded, end: this.startFrame + this.decoded + frames, offset: 0, buffer});
     else this.play(buffer);
     this.decoded += frames;
   }
@@ -197,20 +218,76 @@ export class Deck {
   /** Puts the deck on the clock at integer context frame `frame`. */
   start(frame: number) {
     if (this.startFrame !== undefined || this.closed) return;
-    this.startFrame = frame;
     const held = this.held;
+    if (this.graph) {
+      let cursor = frame;
+      const packets = held.map(buffer => { const start = cursor; cursor += buffer.length; return {start, end: cursor, offset: 0, buffer}; });
+      if (frame < this.graph.clock.frontier) this.graph.linkVoice(this, frame, frame + this.outFrames, this.norm, packets);
+      else {
+        this.graph.addVoice(this, frame, frame + this.outFrames, this.norm);
+        for (const packet of packets) this.graph.addPacket(this, packet);
+      }
+      this.startFrame = frame;
+      this.held = [];
+      return;
+    }
+    this.startFrame = frame;
     this.held = [];
     for (const b of held) this.play(b);
   }
 
+  /** True only after the source and its real resampler tail have finished. */
+  get sourceComplete() { return this.exhausted && !this.tailPending && !this.chunk; }
+
   /** The audio is exhausted and every scheduled frame has been handed to the clock. */
-  get complete() { return this.exhausted && !this.tailPending && !this.chunk && this.held.length === 0 && this.scheduled >= this.decoded; }
+  get complete() {
+    const handed = this.graph && this.startFrame !== undefined ? Math.max(0, this.graph.clock.frontier - this.startFrame) : this.scheduled;
+    return this.exhausted && !this.tailPending && !this.chunk && this.held.length === 0 && handed >= this.decoded;
+  }
 
   /** Ramps the normalization gain (20 ms, §9.6 rule 7). */
   private gainValue?: number;
+  private gainInitial = 1;
+  private gainKnots: GainKnot[] = [];
+  private fadeInitial = 1;
+  private fadeKnots: GainKnot[] = [];
+
+  /** Attach a candidate or primary before it takes its place in the original mix. */
+  attachGraph(graph: MixGraph) {
+    if (this.closed || this.startFrame !== undefined || (this.graph && this.graph !== graph)) throw new Error('deck already belongs to a mix');
+    this.graph = graph;
+  }
+
+  private gainTime(held: number, frame: number): number {
+    return (this.graph!.clock.contextAt(held) + frame - held) / this.rate;
+  }
+
+  /** Restore only this deck's owned gain automation after its graph epoch is retired. */
+  rebuildAutomation(held: number) {
+    if (!this.graph || this.closed) return;
+    const time = (frame: number) => this.gainTime(held, frame);
+    rebuildGain(this.norm.gain, held, this.gainInitial, this.gainKnots, time);
+    rebuildGain(this.fade.gain, held, this.fadeInitial, this.fadeKnots, time);
+  }
+
+  setFadeTimeline(initial: number, knots: readonly GainKnot[]) {
+    if (!this.graph || this.closed) throw new Error('deck has no mix graph');
+    this.fadeInitial = initial; this.fadeKnots = [...knots];
+    const held = this.graph.clock.at(Math.floor(now(this.context) * this.rate));
+    rebuildGain(this.fade.gain, held, initial, this.fadeKnots, frame => this.gainTime(held, frame));
+  }
+
   setGain(value: number) {
     if (value === this.gainValue) return;
     this.gainValue = value;
+    if (this.graph) {
+      const held = this.graph.clock.at(Math.floor(now(this.context) * this.rate));
+      const current = gainAt(held, this.gainInitial, this.gainKnots);
+      this.gainInitial = current;
+      this.gainKnots = [{frame: held, value: current}, {frame: held + Math.max(1, Math.round(this.rate * 0.02)), value}];
+      rebuildGain(this.norm.gain, held, current, this.gainKnots, frame => this.gainTime(held, frame));
+      return;
+    }
     const t = now(this.context), g = this.norm.gain;
     g.cancelScheduledValues(t);
     g.setValueAtTime(g.value, t);
@@ -223,6 +300,7 @@ export class Deck {
     this.continuation = undefined; this.predecessor = undefined;
     for (const n of this.nodes) { n.onended = null; try { n.stop(); } catch { /* not started */ } n.disconnect(); }
     this.nodes.clear();
+    this.graph?.removeVoice(this);
     this.held = [];
     this.chunk = undefined;
     this.norm.disconnect();
@@ -257,6 +335,21 @@ export function linkDecks(context: BaseAudioContext, current: Deck, next: Deck, 
   const planned = edgeFrames({endFrame: end, outFrames: current.outFrames}, next, {...o, rate: context.sampleRate});
   const late = o.earliest !== undefined && planned.start < o.earliest;
   const edge = late ? {start: o.earliest!, fade: Math.max(0, Math.min(planned.fade, end - o.earliest!))} : planned;
+  if (current.mixGraph || next.mixGraph) {
+    if (!current.mixGraph || current.mixGraph !== next.mixGraph) throw new Error('linked decks require one mix graph');
+    // Prove incoming coverage of every already admitted overlap before changing either gain or
+    // consuming a predecessor continuation. A failed link leaves the old accepted mix alone.
+    next.start(edge.start);
+    next.commitContinuation(current);
+    current.finishTail();
+    if (edge.fade > 0) {
+      const {fadeIn, fadeOut} = equalPower(Math.min(64, edge.fade + 1));
+      const knots = (curve: Float32Array) => Array.from(curve, (value, index) => ({frame: edge.start + Math.round(edge.fade * index / (curve.length - 1)), value}));
+      next.setFadeTimeline(0, knots(fadeIn));
+      current.setFadeTimeline(1, knots(fadeOut));
+    }
+    return {...edge, late};
+  }
   if (edge.fade > 0) {
     const {fadeIn, fadeOut} = equalPower();
     const t = edge.start / context.sampleRate, d = edge.fade / context.sampleRate;
