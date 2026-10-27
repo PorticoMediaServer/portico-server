@@ -4,6 +4,7 @@ import {registerHooks} from 'node:module';
 import {createElement} from 'react';
 import {renderToStaticMarkup} from 'react-dom/server';
 import {transformTsx} from './transform-tsx.mjs';
+import type {LibrarySelection} from '../src/screens/browse/selection.tsx';
 
 registerHooks({load(url, context, next) {
   if (url.endsWith('.module.css')) return {format: 'module', source: 'export default new Proxy({}, {get: (_, key) => String(key)});', shortCircuit: true};
@@ -11,6 +12,12 @@ registerHooks({load(url, context, next) {
   return next(url, context);
 }});
 const {createLibrarySelection} = await import('../src/screens/browse/selection.tsx');
+const {PhoneSelectionProvider} = await import('../src/kit/selection/index.ts');
+
+/** The shell wraps every screen it draws in the phone selection store, and the
+ * bar publishes its live count and actions to it. A bar rendered outside that
+ * shell is an arrangement the app never produces, so draw the real provider. */
+const rendered = (adapter: Pick<LibrarySelection, 'toolbar'>) => renderToStaticMarkup(createElement(PhoneSelectionProvider, null, createElement('div', null, adapter.toolbar)));
 
 const capabilities = {play: true, queue: true, playlist: true, myList: true, watched: true, collection: true, favorite: true, download: false, edit: true, refresh: true, delete: true};
 const entry = {id: 'm1', kind: 'movie', title: 'Alpha', libraryId: 'a'};
@@ -50,7 +57,7 @@ const fake = (over: Record<string, unknown> = {}, host: Record<string, unknown> 
 test('no bar and no checked circle before selection is active', () => {
   const {selection} = fake({selection: {active: false, summary: {count: 0, types: [], library: {kind: 'none'}, every: {}}, selectedKeys: [], version: 1, registeredWindowCount: 1, registeredItemCount: 1, lastSectionId: null, target: null}});
   const adapter = createLibrarySelection({playSelection: selection, reportError: () => {}});
-  assert.equal(renderToStaticMarkup(createElement('div', null, adapter.toolbar)), '<div></div>');
+  assert.equal(rendered(adapter), '<div></div>');
   const card = adapter.entry({membershipId: 'm1', entry} as never, 0);
   assert.equal(card?.active, false);
   assert.equal(card?.checked, false);
@@ -59,7 +66,7 @@ test('no bar and no checked circle before selection is active', () => {
 test('the bar counts the real selection and offers only what the adapter can perform', () => {
   const {selection, calls} = fake();
   const adapter = createLibrarySelection({playSelection: selection, reportError: () => {}});
-  const html = renderToStaticMarkup(createElement('div', null, adapter.toolbar));
+  const html = rendered(adapter);
   assert.match(html, /1 selected/);
   assert.match(html, />Play</);
   // Whole-view Select all N is not offered until the descriptor cohort is wired here.
@@ -73,7 +80,7 @@ test('the bar counts the real selection and offers only what the adapter can per
 test('the window registers through the play adapter so ranges are real', () => {
   const {selection, calls} = fake();
   const adapter = createLibrarySelection({playSelection: selection, reportError: () => {}});
-  const html = renderToStaticMarkup(createElement('div', null, adapter.toolbar));
+  const html = rendered(adapter);
   assert.match(html, />Done</);
   adapter.registerWindow(0, 40);
   assert.deepEqual(calls, ['registerWindow']);
@@ -83,7 +90,7 @@ test('a selection with nothing playable hides Play rather than pretending', () =
   const {selection} = fake({selection: {active: true, summary: {count: 1, types: [{kind: 'movie', count: 1}], library: {kind: 'single', libraryId: 'a'},
     every: {...capabilities, play: false}}, selectedKeys: ['key-0'], version: 1, registeredWindowCount: 1, registeredItemCount: 1, lastSectionId: 'library', target: null}});
   const adapter = createLibrarySelection({playSelection: selection, reportError: () => {}});
-  const html = renderToStaticMarkup(createElement('div', null, adapter.toolbar));
+  const html = rendered(adapter);
   assert.doesNotMatch(html, />Play</);
   assert.match(html, /1 selected/);
 });
@@ -94,13 +101,13 @@ test('whole-view Select all appears only with the server descriptor and a model 
     types: [{kind: 'movie', count: 48000, capabilities: capabilities, libraries: [{libraryId: 'a', count: 48000}]}]};
   const withWhole = fake({}, {selectWhole: () => {}});
   const adapter = createLibrarySelection({playSelection: withWhole.selection, descriptor: () => whole as never, reportError: () => {}});
-  const html = renderToStaticMarkup(createElement('div', null, adapter.toolbar));
+  const html = rendered(adapter);
   assert.match(html, /Select all 48,000/);
   // Without a descriptor, or without the model capability, nothing is offered.
   const noDescriptor = createLibrarySelection({playSelection: withWhole.selection, reportError: () => {}});
-  assert.doesNotMatch(renderToStaticMarkup(createElement('div', null, noDescriptor.toolbar)), /Select all/);
+  assert.doesNotMatch(rendered(noDescriptor), /Select all/);
   const noModel = createLibrarySelection({playSelection: fake().selection, descriptor: () => whole as never, reportError: () => {}});
-  assert.doesNotMatch(renderToStaticMarkup(createElement('div', null, noModel.toolbar)), /Select all/);
+  assert.doesNotMatch(rendered(noModel), /Select all/);
 });
 
 test('range eligibility paints only the actual hovered interval', () => {
@@ -131,7 +138,7 @@ test('Watched and My List appear only with real job ports, and the job carries t
   };
   const {selection} = fake();
   const adapter = createLibrarySelection({playSelection: selection, actions: actions as never, reportError: () => {}});
-  const html = renderToStaticMarkup(createElement('div', null, adapter.toolbar));
+  const html = rendered(adapter);
   assert.match(html, />Watched</);
   assert.match(html, />My List</);
   await adapter.personal({watched: true});
@@ -140,7 +147,7 @@ test('Watched and My List appear only with real job ports, and the job carries t
   assert.deepEqual((requests[0]?.body as {args: unknown}).args, {watched: true});
   // Without the ports the bar offers no personal action at all.
   const bare = createLibrarySelection({playSelection: fake().selection, reportError: () => {}});
-  assert.doesNotMatch(renderToStaticMarkup(createElement('div', null, bare.toolbar)), />Watched</);
+  assert.doesNotMatch(rendered(bare), />Watched</);
 });
 
 test('a container without the canonical selection grant never becomes a personal job', async () => {
@@ -151,7 +158,7 @@ test('a container without the canonical selection grant never becomes a personal
   const {selection} = fake({selection: {active: true, summary: {count: 1, types: [{kind: 'show', count: 1}], library: {kind: 'single', libraryId: 'a'}, every: unavailable},
     selectedKeys: ['key-0'], version: 1, registeredWindowCount: 1, registeredItemCount: 1, lastSectionId: 'library', target: containerTarget}});
   const adapter = createLibrarySelection({playSelection: selection, actions: actions as never, reportError: () => {}});
-  const html = renderToStaticMarkup(createElement('div', null, adapter.toolbar));
+  const html = rendered(adapter);
   assert.doesNotMatch(html, />Watched</);
   await assert.rejects(adapter.personal({watched: true}), /selection-grant-unavailable/);
   assert.equal(requested, 0);
@@ -163,7 +170,7 @@ test('Play is offered for explicit picks only until a whole view can be queued',
   const {selection} = fake({selection: {active: true, summary: {count: 48000, types: [{kind: 'movie', count: 48000}], library: {kind: 'single', libraryId: 'a'}, every: capabilities},
     selectedKeys: [], version: 2, registeredWindowCount: 1, registeredItemCount: 1, lastSectionId: 'library', target: whole}});
   const adapter = createLibrarySelection({playSelection: selection, reportError: () => {}});
-  const html = renderToStaticMarkup(createElement('div', null, adapter.toolbar));
+  const html = rendered(adapter);
   assert.match(html, /48,000 selected/);
   assert.doesNotMatch(html, />Play</);
 });
@@ -178,7 +185,7 @@ test('Queue and the destination pickers take the explicit leaf ids in order', as
   const {selection} = fake();
   const actions = {signal: new AbortController().signal, isCurrent: () => true};
   const adapter = createLibrarySelection({playSelection: selection, enqueue, destinations, actions: actions as never, reportError: () => {}});
-  const html = renderToStaticMarkup(createElement('div', null, adapter.toolbar));
+  const html = rendered(adapter);
   assert.match(html, />Add to queue</);
   assert.match(html, />Add to playlist</);
   const anchor = {} as HTMLElement;
@@ -201,7 +208,7 @@ test('ungranted containers refuse Queue and legacy destinations stay leaf-only',
   const container = fake({selection: {active: true, summary: {count: 1, types: [{kind: 'show', count: 1}], library: {kind: 'single', libraryId: 'a'}, every: ungranted},
     selectedKeys: ['key-0'], version: 1, registeredWindowCount: 1, registeredItemCount: 1, lastSectionId: 'library', target: containerTarget}});
   const adapter = createLibrarySelection({playSelection: container.selection, enqueue, destinations, actions: {signal: new AbortController().signal, isCurrent: () => true} as never, reportError: () => {}});
-  const html = renderToStaticMarkup(createElement('div', null, adapter.toolbar));
+  const html = rendered(adapter);
   assert.doesNotMatch(html, />Add to queue</);
   assert.doesNotMatch(html, />Add to playlist</);
   await assert.rejects(adapter.queue('next'), /leaf-explicit-selection-required/);
@@ -213,7 +220,7 @@ test('ungranted containers refuse Queue and legacy destinations stay leaf-only',
   let queued: readonly string[] | undefined;
   const allowed = createLibrarySelection({playSelection: granted.selection, enqueue: async input => {queued = input.items; assert.equal(input.isCurrent(), true);},
     actions: {signal: new AbortController().signal, isCurrent: () => true} as never, reportError: () => {}});
-  assert.match(renderToStaticMarkup(createElement('div', null, allowed.toolbar)), />Add to queue</);
+  assert.match(rendered(allowed), />Add to queue</);
   await allowed.queue('next');
   assert.deepEqual(queued, ['s1']); // The actual granted parent, never its first episode.
 });
@@ -234,7 +241,7 @@ test('personal actions require a model operation lease', async () => {
     requestId: async () => 'op', isCurrent: () => true, reportError: () => {}};
   for (const host of [{captureOperation: undefined}, {isOperationCurrent: undefined}]) {
     const adapter = createLibrarySelection({playSelection: fake({}, host).selection, actions: actions as never, reportError: () => {}});
-    assert.doesNotMatch(renderToStaticMarkup(createElement('div', null, adapter.toolbar)), />Watched</);
+    assert.doesNotMatch(rendered(adapter), />Watched</);
     await assert.rejects(adapter.personal({watched: true}), /selection-actions-unavailable/);
   }
 });
@@ -257,12 +264,12 @@ test('queue requires both a model operation and the route lifetime', async () =>
   for (const host of [{captureOperation: undefined}, {isOperationCurrent: undefined}]) {
     const adapter = createLibrarySelection({playSelection: fake({}, host).selection, enqueue,
       actions: {signal: new AbortController().signal, isCurrent: () => true} as never, reportError: () => {}});
-    assert.doesNotMatch(renderToStaticMarkup(createElement('div', null, adapter.toolbar)), />Add to queue</);
+    assert.doesNotMatch(rendered(adapter), />Add to queue</);
     await assert.rejects(adapter.queue('end'), /selection-queue-unavailable/);
   }
   for (const actions of [undefined, {isCurrent: () => true}]) {
     const adapter = createLibrarySelection({playSelection: fake().selection, enqueue, actions: actions as never, reportError: () => {}});
-    assert.doesNotMatch(renderToStaticMarkup(createElement('div', null, adapter.toolbar)), />Add to queue</);
+    assert.doesNotMatch(rendered(adapter), />Add to queue</);
     await assert.rejects(adapter.queue('end'), /selection-queue-unavailable/);
   }
   assert.equal(dispatched, 0);
@@ -308,7 +315,7 @@ test('queue never enters its executor after the captured operation or route reti
     if (retired === 'signal') life.abort();
     const adapter = createLibrarySelection({playSelection: fake({}, {isOperationCurrent: () => retired !== 'model'}).selection,
       enqueue: async () => {dispatched++;}, actions: {signal: life.signal, isCurrent: () => retired !== 'route'} as never, reportError: () => {}});
-    assert.doesNotMatch(retired === 'model' ? '' : renderToStaticMarkup(createElement('div', null, adapter.toolbar)), />Add to queue</);
+    assert.doesNotMatch(retired === 'model' ? '' : rendered(adapter), />Add to queue</);
     await assert.rejects(adapter.queue('next'), {name: 'AbortError'});
     assert.equal(dispatched, 0);
   }
@@ -332,7 +339,7 @@ test('an unrefined whole view sends its exact selector and catalog revision as o
   const target = queryTarget();
   const {selection} = fake(wholeSnapshot(target));
   const adapter = createLibrarySelection({playSelection: selection, actions: actions as never, reportError: () => {}});
-  const html = renderToStaticMarkup(createElement('div', null, adapter.toolbar));
+  const html = rendered(adapter);
   assert.match(html, />Watched</);
   await adapter.personal({watched: true});
   assert.equal(requests.length, 1);
@@ -350,14 +357,14 @@ test('a refined whole view withholds the action and submits nothing', async () =
     const target = queryTarget(over);
     const {selection} = fake(wholeSnapshot(target));
     const adapter = createLibrarySelection({playSelection: selection, actions: actions as never, reportError: () => {}});
-    assert.doesNotMatch(renderToStaticMarkup(createElement('div', null, adapter.toolbar)), />Watched</);
+    assert.doesNotMatch(rendered(adapter), />Watched</);
     await assert.rejects(adapter.personal({watched: true}), /query-refinement-required/);
   }
   // A snapshot whose every-watched grant is false is refused by the producer too.
   const denied = fake({...wholeSnapshot(queryTarget()), selection: {...(wholeSnapshot(queryTarget()).selection as object), summary: {count: 48000, types: [{kind: 'movie', count: 48000}],
     library: {kind: 'single', libraryId: 'a'}, every: {...capabilities, watched: false}}}});
   const deniedAdapter = createLibrarySelection({playSelection: denied.selection, actions: actions as never, reportError: () => {}});
-  assert.doesNotMatch(renderToStaticMarkup(createElement('div', null, deniedAdapter.toolbar)), />Watched</);
+  assert.doesNotMatch(rendered(deniedAdapter), />Watched</);
   await assert.rejects(deniedAdapter.personal({watched: true}), /selection-grant-unavailable/);
   assert.equal(requests, 0);
 });
