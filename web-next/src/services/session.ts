@@ -1,6 +1,6 @@
 import {HostedAccountClient} from '@core/hosted-security.ts';
 import {browserAccount} from '../platform/account';
-export {accountIdentity, sameAccount, currentAccountWork} from '../platform/account-work';
+export {accountIdentity, sameAccount, currentAccountWork, currentAccountRead} from '../platform/account-work';
 export type {AccountIdentity} from '../platform/account-work';
 
 /** The Services root shares the browser's one cookie coordinator with the server app. */

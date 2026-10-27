@@ -2,7 +2,7 @@ import {parseMembershipEndingNotice} from '@core/membership-ending.ts';
 import {decodeServersListResponse} from '../../../packages/contracts/src/hosted/decoders.ts';
 import {routePath} from '../../../packages/contracts/src/hosted/routes.ts';
 import type {browserAccount} from './account';
-import {currentAccountWork, type AccountIdentity} from './account-work';
+import {currentAccountRead, type AccountIdentity} from './account-work';
 
 type AccountPort = Pick<ReturnType<typeof browserAccount>, 'api' | 'service'>;
 /** Inert binding over the caller's existing browserAccount singleton. No UI,
@@ -13,7 +13,7 @@ export function createAccountServerDirectory(account: AccountPort, scope: Accoun
     scope: captured,
     read: async (signal?: AbortSignal) => {
       signal?.throwIfAborted();
-      const result = await currentAccountWork(account, async session => {
+      const result = await currentAccountRead(account, async session => {
         signal?.throwIfAborted();
         const raw = await account.api.send(routePath('servers_list'), 'GET', undefined, signal, session.accessToken);
         signal?.throwIfAborted();
@@ -27,7 +27,7 @@ export function createAccountServerDirectory(account: AccountPort, scope: Accoun
           return {...result, membershipEnding: ending};
         }
         return {...decodeServersListResponse(raw), membershipEnding: undefined};
-      }, captured);
+      }, captured, signal);
       signal?.throwIfAborted();
       return result;
     },

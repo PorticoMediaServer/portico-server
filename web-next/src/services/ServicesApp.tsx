@@ -72,15 +72,16 @@ function ServicesRoot() {
 function useAccount() {
   const {account} = root.useRouteContext<ServicesRouter>();
   const state = useSyncExternalStore(account.service.subscribe, account.service.getSnapshot);
-  return {account, session: state.session};
+  return {account, session: state.session, ended: state.phase === 'signedOut' && Boolean(state.error)};
 }
 function HomeRoute() {
-  const {account, session} = useAccount();
+  const {account, session, ended} = useAccount();
+  const {t} = servicesI18n();
   const [authenticating, setAuthenticating] = useState(() => !session);
   useEffect(() => { if (!session) setAuthenticating(true); }, [session]);
   // Explicit recovery/create links do not resume a different transaction from the cookie.
   const mode = new URLSearchParams(location.search).get('mode');
-  if (!session || authenticating) return <ServicesAuthForm account={account} initialMode={mode === 'forgot' || mode === 'create' ? mode : 'signin'} onSignedIn={() => setAuthenticating(false)} />;
+  if (!session || authenticating) return <ServicesAuthForm account={account} before={ended ? <ServicesNotice>{t('services.signin.ended')}</ServicesNotice> : undefined} initialMode={mode === 'forgot' || mode === 'create' ? mode : 'signin'} onSignedIn={() => setAuthenticating(false)} />;
   return <ServicesHomePage account={account} session={session} />;
 }
 function AccountRoute() {

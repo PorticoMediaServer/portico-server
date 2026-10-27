@@ -1,6 +1,6 @@
 import type {HostedRequestApi} from '@core/portico-servers.ts';
 import type {browserAccount} from './account';
-import {accountIdentity, currentAccountWork, sameAccount, type AccountIdentity} from './account-work';
+import {accountIdentity, currentAccountWork, currentAccountRead, sameAccount, type AccountIdentity} from './account-work';
 
 export type AccountServerAccess = Readonly<{
   origin: string; accountId: string; request: HostedRequestApi['request'];
@@ -20,10 +20,10 @@ export function createAccountServerAccess(account: Pick<ReturnType<typeof browse
     observe: (changed: () => void) => account.service.subscribe(changed),
     request: async <T,>(path: string, method = 'GET', body?: unknown, signal?: AbortSignal): Promise<T> => {
       signal?.throwIfAborted();
-      const value = await currentAccountWork(account, async session => {
+      const value = await (method === 'GET' && body === undefined ? currentAccountRead : currentAccountWork)(account, async session => {
         signal?.throwIfAborted();
         return account.api.send<T>(path, method, body, signal, session.accessToken);
-      }, captured);
+      }, captured, signal);
       signal?.throwIfAborted();
       return value;
     },

@@ -11,6 +11,8 @@ import {
   type HostedServer,
 } from "./index.ts";
 export type CredentialContext = { profileId?: string; server?: HostedServer };
+/** Attenuate a rejected request's renewal to its original family and access. */
+export type CredentialAccessExpectation = Readonly<{accountId: string; familyId: string; accessToken: string}>;
 export type CredentialRecord<Authority = string> = {
   version: 1;
   active?: {
@@ -294,14 +296,30 @@ export class CredentialSessionService<Authority = string> {
     await this.retryInside();
   }
   async updateContext(context:CredentialContext){const generation=this.generation;await this.ready;return this.coordinator.runExclusive(async()=>{await this.reload(false);if(generation!==this.generation||!this.record.active)return;this.record.active={...this.record.active,context};await this.persist();if(generation===this.generation)this.publish()});}
-  async accessSession(forceRefresh=false):Promise<Omit<HostedSession,"refreshToken">>{
+  async accessSession(forceRefresh=false,expected?:CredentialAccessExpectation):Promise<Omit<HostedSession,"refreshToken">>{
+    const original=expected?{accountId:expected.accountId,familyId:expected.familyId,accessToken:expected.accessToken}:undefined;
+    const originalGeneration=original?this.generation:undefined;
+    const check=(session:HostedSession|undefined)=>{
+      if(original&&(!original.accountId||!original.familyId||!original.accessToken||!session||session.account.id!==original.accountId||session.familyId!==original.familyId))
+        throw new CodedError('account_session_changed',"Session changed.");
+    };
     await this.ready;
-    if(this.flight?.generation===this.generation)return this.flight.promise;
+    if(originalGeneration!==undefined&&originalGeneration!==this.generation)throw new CodedError('account_session_changed',"Session changed.");
+    check(this.record.active?.session);
+    if(this.flight?.generation===this.generation){const session=await this.flight.promise;check(session);return session;}
     const generation=this.generation;
     const promise=this.coordinator.runExclusive(async()=>{
       if(generation!==this.generation)throw new CodedError('account_session_changed',"Session changed.");
-      await this.reload(false);if(generation!==this.generation)throw new CodedError('account_session_changed',"Session changed.");this.publish();const active=this.record.active;
+      await this.reload(false);if(generation!==this.generation)throw new CodedError('account_session_changed',"Session changed.");
+      const active=this.record.active;check(active?.session);this.publish();
+      if(generation!==this.generation)throw new CodedError('account_session_changed',"Session changed.");
       if(!active)throw new CodedError('account_signed_out',"Sign in with your Portico Account.");
+      // A different request already renewed this family. A stale 401 must not
+      // rotate that newer credential again; the caller may retry its safe read once.
+      if(original&&active.session.accessToken!==original.accessToken){
+        if(!active.session.accessToken||Date.parse(active.session.expiresAt)<=Date.now())throw new CodedError('account_session_changed',"Session changed.");
+        return this.publicSession(active.session);
+      }
       if(!forceRefresh&&!active.pendingRequestId&&active.session.accessToken&&Date.parse(active.session.expiresAt)>Date.now()+60000)return this.publicSession(active.session);
       return this.rotate(this.generation);
     });
