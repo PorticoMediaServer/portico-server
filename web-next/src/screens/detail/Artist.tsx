@@ -1,6 +1,8 @@
 import {Fragment, useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore} from 'react';
 import {t} from './text';
 import {defaultI18n} from '@i18n';
+import {useLocation} from '@tanstack/react-router';
+import {router} from '../../router';
 import type {FactPart} from '@core/presentation/kit-model';
 import {clockText} from '@core/presentation/kit-model/text.ts';
 import {LibraryContentService, readListeningSimilar, type ContentEntry, type ContentProjection, type ContentSection, type LibraryContentApi} from '@core/library-content.ts';
@@ -10,7 +12,7 @@ import {AmbientArt, CircleArt} from '../../kit/artwork';
 import {Button} from '../../kit/controls';
 import {Lockup} from '../../kit/layout';
 import {TitleFactsLine} from '../../kit/title/TitleParts';
-import {StateView} from '../../kit/states';
+import {ScreenProblem} from './ScreenProblem';
 import {TrackTable, type TrackRowData} from '../../kit/browse';
 import {Menu} from '../../kit/overlays';
 import {useShellWidth} from '../../shell/viewport';
@@ -25,41 +27,53 @@ export type ArtistScreenProps = Readonly<{context: ScreenContext; libraryId: str
 
 /** One page's own content lease: a fresh guarded service, admission signal and lifetime, owned by a
  * layout effect so a replayed setup never reuses a disposed one. */
-type Lease = Readonly<{service: LibraryContentService; api: LibraryContentApi; signal: AbortSignal; isCurrent: () => boolean; dispose: () => void}>;
+type Lease = {service: LibraryContentService; api: LibraryContentApi; signal: AbortSignal; context: ScreenContext; libraryId: string; artistId: string; entry: typeof router.state.location; retry: number; onBack?: () => void; live: boolean; claimed: boolean; isCurrent: () => boolean; dispose: () => void};
 type Witness = () => boolean;
 type Similar = Readonly<{page: ContentProjection; token: object; bySound: boolean; entries: readonly ContentEntry[]}>;
 
 /** desktop-listen's artist page on its canonical library route (`?view=artist&entityId=`): the
  * artist's circle, the facts the view publishes, Play/Shuffle of the whole server-side artist
  * container, the server-ranked Top songs, then the artist's albums. */
-export function ArtistScreen({context, libraryId, artistId}: ArtistScreenProps) {
-  const [lease, setLease] = useState<Lease>();
+export function ArtistScreen({context, libraryId, artistId, onBack}: ArtistScreenProps) {
+  const entry = useLocation({select: value => value});
+  const [retry, setRetry] = useState(0), [lease, setLease] = useState<Lease>();
+  const committed = useRef<Lease | undefined>(undefined);
   useLayoutEffect(() => {
     const scope = screenLifetime(context), life = new AbortController();
     const service = new LibraryContentService({api: scope.api, scope: {serverId: context.scope.serverId, viewerId: context.scope.viewerId}});
-    const next: Lease = Object.freeze({service, api: scope.api, signal: life.signal,
-      isCurrent: () => !life.signal.aborted && scope.current() && context.isCurrent(),
-      dispose: () => { life.abort(); service.cancel(); service.dispose(); scope.dispose(); }});
+    const next: Lease = {service, api: scope.api, signal: life.signal, context, libraryId, artistId, entry, retry, onBack, live: true, claimed: false,
+      isCurrent: () => {
+        if (!next.live || committed.current !== next || router.state.location !== entry || life.signal.aborted) return false;
+        if (!scope.current() || !context.isCurrent()) return false;
+        return next.live && committed.current === next && router.state.location === entry && !life.signal.aborted;
+      },
+      dispose: () => {next.live = false; if (committed.current === next) committed.current = undefined; life.abort(); service.cancel(); service.dispose(); scope.dispose();}};
+    committed.current = next;
     setLease(next);
-    return () => { next.dispose(); setLease(current => current === next ? undefined : current); };
-  }, [context, libraryId, artistId]);
-  if (!lease) return <p className={styles.loading} role="status">{t('music.loading')}</p>;
-  return <ArtistBody context={context} libraryId={libraryId} artistId={artistId} lease={lease} />;
+    return () => {next.dispose(); setLease(current => current === next ? undefined : current);};
+  }, [context, libraryId, artistId, entry, retry]);
+  const active = lease && lease.live && lease.context === context && lease.libraryId === libraryId && lease.artistId === artistId && lease.entry === entry && lease.retry === retry ? lease : undefined;
+  const back = () => {if (active?.isCurrent()) active.onBack?.();};
+  const retryOriginal = (failureCurrent: () => boolean) => {if (!active || active.claimed || !active.isCurrent() || !failureCurrent() || !active.isCurrent() || !failureCurrent()) return; active.claimed = true; active.live = false; setRetry(value => value === active.retry ? value + 1 : value);};
+  return <div className={styles.page}>
+    {active ? <ArtistBody context={context} libraryId={libraryId} artistId={artistId} lease={active} retry={retryOriginal} back={back} /> : <><div className={styles.bar}>{onBack && <Button variant="icon" icon="i-left" iconOnly aria-label={t('next.states.back')} disabled onClick={back}/>}</div><p className={styles.loading} role="status">{t('music.loading')}</p></>}
+  </div>;
 }
 
-function ArtistBody({context, libraryId, artistId, lease}: {context: ScreenContext; libraryId: string; artistId: string; lease: Lease}) {
+function ArtistBody({context, libraryId, artistId, lease, retry, back}: {context: ScreenContext; libraryId: string; artistId: string; lease: Lease; retry: (failureCurrent: () => boolean) => void; back: () => void}) {
   const phone = useShellWidth() < 1024, {service} = lease;
   const [menu, setMenu] = useState<{page: ContentProjection; anchor: HTMLButtonElement}>(), more = useRef<HTMLButtonElement>(null);
   const content = useSyncExternalStore(service.subscribe, service.getSnapshot, service.getSnapshot);
-  const [failed, setFailed] = useState(false);
+  const [failed, setFailed] = useState<{lease: Lease; snapshot: ReturnType<LibraryContentService['getSnapshot']>; error: unknown}>();
+  const failureRef = useRef<typeof failed>(undefined);
   useEffect(() => {
     let active = true;
-    setFailed(false);
+    failureRef.current = undefined; setFailed(undefined);
     void service.select({libraryId, view: 'artist', entityId: artistId}).then(() => {
       if (!active || !lease.isCurrent()) return;
       const value = service.getSnapshot(), projection = value.projection;
-      if (value.phase !== 'ready' || !projection || projection.entity?.id !== artistId || projection.scope.libraryId !== libraryId || projection.scope.view !== 'artist' || projection.scope.entityId !== artistId) setFailed(true);
-    }, error => { if (active && lease.isCurrent()) { setFailed(true); context.effects.reportError(error); } });
+      if (value.phase !== 'ready' || !projection || projection.entity?.kind !== 'artist' || projection.entity.id !== artistId || projection.scope.libraryId !== libraryId || projection.scope.view !== 'artist' || projection.scope.entityId !== artistId) {const failure = {lease, snapshot: value, error: value.error ?? new Error('Artist projection did not match its opening')}; failureRef.current = failure; setFailed(failure);}
+    }, error => { if (active && lease.isCurrent()) { const failure = {lease, snapshot: service.getSnapshot(), error}; failureRef.current = failure; setFailed(failure); context.effects.reportError(error); } });
     return () => { active = false; };
   }, [service, lease, libraryId, artistId, context]);
   useFreshDocument(() => [dependsOn.libraries], async refresh => { if (lease.isCurrent()) await service.revalidate(refresh); }, () => lease.isCurrent() && service.getSnapshot().phase === 'ready');
@@ -94,9 +108,19 @@ function ArtistBody({context, libraryId, artistId, lease}: {context: ScreenConte
   }, [lease, artistId, libraryId, context, projection, admitted?.catalog, admitted?.viewer]);
   const section = (id: string): ContentSection | undefined => projection && admitted
     ? (content.appended.find(value => value.id === id) ?? projection.sections.find(value => value.id === id)) : undefined;
-  if (!projection || !artist || !admitted) return failed || content.phase === 'error' || content.phase === 'refresh-required'
-    ? <StateView title={t('title.nothingHere')} />
-    : <p className={styles.loading} role="status">{t('music.loading')}</p>;
+  const recoveryContext: ScreenContext = {...context, isCurrent: lease.isCurrent, effects: {...context.effects,
+    back: lease.onBack ? () => {if (lease.isCurrent()) lease.onBack?.();} : undefined,
+    openHome: context.effects.openHome ? () => {if (lease.isCurrent()) context.effects.openHome?.();} : undefined,
+    chooseProfile: context.effects.chooseProfile ? () => {if (lease.isCurrent()) context.effects.chooseProfile?.();} : undefined}};
+  const localFailure = failed?.lease === lease && failed.snapshot === content ? failed : undefined;
+  const readFailure = content.phase === 'error' || content.phase === 'refresh-required';
+  const failureCurrent = () => service.getSnapshot() === content && (readFailure
+    ? content.phase === 'error' || content.phase === 'refresh-required'
+    : !!localFailure && failureRef.current === localFailure && localFailure.lease === lease);
+  const bar = <div className={styles.bar}>{lease.onBack && <Button variant="icon" icon="i-left" iconOnly aria-label={t('next.states.back')} onClick={back}/>} {admitted && artist && <span className={styles.barTitle}>{artist.title}</span>}</div>;
+  if (!projection || !artist || !admitted) return <>{bar}{localFailure || readFailure
+    ? <ScreenProblem context={recoveryContext} error={content.error ?? localFailure?.error} retry={() => retry(failureCurrent)} />
+    : <p className={styles.loading} role="status">{t('music.loading')}</p>}</>;
   const albumsSection = section('items'), top = section('top_songs');
   const albums: readonly ContentEntry[] = albumsSection?.entries ?? [];
   const playArtist = context.effects.playArtist;
@@ -118,7 +142,8 @@ function ArtistBody({context, libraryId, artistId, lease}: {context: ScreenConte
   const long = artist.title.length > 24, details: [string, string][] = [];
   if (artist.artistType) details.push([t('title.albumType'), artist.artistType]);
   if (artist.genres?.length) details.push([t('title.genres'), artist.genres.filter(Boolean).join(', ')]);
-  return <div className={styles.page} data-layout={phone ? 'phone' : 'desktop'}>
+  return <div data-layout={phone ? 'phone' : 'desktop'}>
+    {bar}
     <header className={styles.hero}>
       <span className={styles.disc}><AmbientArt className={styles.ambient} treatment="phone" source={context.artwork.ambient(cover)} foreground={discArt} />
         <CircleArt covers={discArt ? [discArt] : []} initials={artist.title.split(/\s+/).filter(Boolean).slice(0, 2).map(word => Array.from(word)[0]).join('')} alt="" /></span>
