@@ -1,4 +1,4 @@
-import {useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore} from 'react';
+import {useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore} from 'react';
 import {defaultI18n} from '@i18n';
 import {playbackIdentity} from '@core/presentation/kit-model/index.ts';
 import {Artwork} from '../../../kit/artwork';
@@ -6,13 +6,13 @@ import {Icon} from '../../../kit/Icon';
 import {Slider} from '../../../kit/controls';
 import {Menu} from '../../../kit/overlays';
 import {router} from '../../../router';
-import {sameFence} from '../../../../../packages/player-core/src/index.ts';
 import {ListeningNotice, SignalLine, SignalPath} from '../../../kit/media';
 import {dispatchWatch, watchClock, watchSeek, watchSeekBounds, type WatchIntent} from '../model';
 import {watchQueueNeighbours} from '../queue-neighbours';
 import {watchMusicSignal} from './signal';
 import {readWatchMusicAudioFacts} from './audio-facts';
-import {WatchEqualizerPanel, equalizerHostCurrent} from './EqualizerPanel';
+import {fenceKey} from '../../../shell/playback-model';
+import {WatchEqualizerPanel, equalizerAdmit, type WatchEqualizerOpening} from './EqualizerPanel';
 import type {WatchBindings, WatchScreenProps} from '../types';
 import styles from './now-playing.module.css';
 import type {MusicExpansion} from './expansion-owner';
@@ -38,12 +38,29 @@ export function WatchMusicNowPlaying({binding, snapshot, expanded, onCollapse, p
   const artworkSource = presentation ? binding.artwork.foreground(presentation.posterUrl ?? presentation.backdropUrl, 560, 1, {group: 'playback', priority: 'high'}) : undefined;
   const open = expanded && presentation?.kind === 'music' && !!identity && (!isCurrent || isCurrent()) && (!motion || !!motion.scope);
   useLayoutEffect(() => {if (!open) {setSignalOpen(false); setEqOpen(false); setMoreOpen(false);}}, [open]);
+  // One layout-committed host opening: rendered source facts only, so ordinary position updates
+  // keep it while a source/run/host change retires it before the next action.
+  const [hostOpening, setHostOpening] = useState<WatchEqualizerOpening | null>(null);
+  const publishedOpening = useRef<WatchEqualizerOpening | null>(null);
+  const fenceAt = snapshot?.fence ? fenceKey(snapshot.fence) : '', presentationAt = snapshot?.presentation?.fence ? fenceKey(snapshot.presentation.fence) : '';
+  const presentationKind = snapshot?.presentation?.kind, authority = snapshot?.authority, playbackRun = snapshot?.playback.playbackRun;
+  const scope = motion?.scope;
+  const candidate = useMemo<WatchEqualizerOpening | null>(() => !open || !equalizer || presentationKind !== 'music' || !fenceAt || !presentationAt || fenceAt !== presentationAt
+    ? null : {runtime: binding.runtime, port: equalizer, authority, fenceAt, presentationAt, run: playbackRun, ...(isCurrent ? {isCurrent} : {}), ...(scope ? {scope} : {}), live: true},
+    [open, equalizer, presentationKind, fenceAt, presentationAt, binding.runtime, authority, playbackRun, isCurrent, scope]);
+  useLayoutEffect(() => {
+    if (!candidate) {
+      const old = publishedOpening.current; publishedOpening.current = null; if (old) old.live = false;
+      setHostOpening(null); setEqOpen(false); setMoreOpen(false); return;
+    }
+    candidate.live = true;
+    publishedOpening.current = candidate;
+    setHostOpening(candidate); setEqOpen(false); setMoreOpen(false);
+    return () => {candidate.live = false; if (publishedOpening.current === candidate) publishedOpening.current = null;};
+  }, [candidate]);
   const present = motion ? motion.present : open;
   if (!present || !presentation || !identity || isCurrent && !isCurrent()) return null;
   const send = (intent: WatchIntent) => { if (!open || motion?.scope && !motion.scope.current()) return;void dispatchWatch(binding.runtime, snapshot, intent).catch(binding.reportError); };
-  // This render's own host opening: a saved menu callback can only act on the playback it was
-  // drawn for, never on a successor that reused the expanded host.
-  const hostOpening = () => !!equalizer && equalizerHostCurrent(binding.runtime, equalizer, snapshot, open, motion?.scope);
   const bounds = watchSeekBounds(snapshot), at = presentation.positionSeconds, duration = presentation.durationSeconds;
   const can = (kind: string) => presentation.controls.includes(kind as never);
   const canSeek = can('seek') && !!bounds;
@@ -63,10 +80,10 @@ export function WatchMusicNowPlaying({binding, snapshot, expanded, onCollapse, p
         expanded layout={phone ? 'phone' : 'desktop'} translate={t} />
       <span className={styles.spacer} />
       {equalizer ? <button ref={moreAnchor} type="button" className={styles.glass} aria-label={t('player.more')} aria-haspopup="menu" aria-expanded={moreOpen}
-        onClick={() => {if (hostOpening()) setMoreOpen(value => !value);}}><Icon name="i-more" size={18} /></button> : null}
-      {equalizer ? <Menu open={moreOpen && open} onOpenChange={value => {if (!value || hostOpening()) setMoreOpen(value);}} title={t('player.more')} anchorRef={moreAnchor} returnFocusRef={moreAnchor} presentation="anchored" width={280}
+        onClick={() => {if (equalizerAdmit(hostOpening, publishedOpening, candidate)) setMoreOpen(value => !value);}}><Icon name="i-more" size={18} /></button> : null}
+      {equalizer ? <Menu open={moreOpen && open} onOpenChange={value => {if (equalizerAdmit(hostOpening, publishedOpening, candidate)) setMoreOpen(value);}} title={t('player.more')} anchorRef={moreAnchor} returnFocusRef={moreAnchor} presentation="anchored" width={280}
         items={[{id: 'equalizer', label: t('next.media.eq.title'), description: t(settings?.enabled === true ? 'next.settings.on' : 'next.settings.off'),
-          onSelect: () => {if (!hostOpening()) return; setMoreOpen(false); setEqOpen(true);}}]} /> : null}
+          onSelect: () => {if (!equalizerAdmit(hostOpening, publishedOpening, candidate)) return; setMoreOpen(false); setEqOpen(true);}}]} /> : null}
       {can('pause') || can('play') ? <button type="button" className={styles.glass} onClick={() => send({kind: presentation.playing ? 'pause' : 'play'})}>
         <Icon name={presentation.playing ? 'i-pause' : 'i-play'} size={18} />{presentation.playing ? t('next.dock.pause') : t('next.dock.play')}</button> : null}
     </header>
@@ -97,8 +114,9 @@ export function WatchMusicNowPlaying({binding, snapshot, expanded, onCollapse, p
       </div>
     </div>
     <aside className={styles.side} aria-label={eqOpen ? t('next.media.eq.title') : t('next.music.upNext')}>
-      {eqOpen && equalizer ? <WatchEqualizerPanel runtime={binding.runtime} snapshot={snapshot} port={equalizer}
-        active={open} {...(motion?.scope ? {scope: motion.scope} : {})} close={() => setEqOpen(false)}
+      {eqOpen && equalizer && hostOpening ? <WatchEqualizerPanel opening={hostOpening} rendered={candidate} published={publishedOpening}
+        runtime={binding.runtime} port={equalizer} {...(isCurrent ? {isCurrent} : {})} {...(scope ? {scope} : {})}
+        close={() => setEqOpen(false)}
         openSettings={() => {if (!open) return; void router.navigate({to: '/settings', search: () => ({scope: 'account' as const, section: 'music'})});}} />
         : <>
         <h2>{t('next.music.upNext')}</h2>

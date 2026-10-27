@@ -1,89 +1,73 @@
-import {useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore} from 'react';
+import {useMemo, useRef, useState, useSyncExternalStore, type RefObject} from 'react';
 import {defaultI18n} from '@i18n';
 import {Button} from '../../../kit/controls';
 import {DeviceEqualizer, type EqualizerPort} from '../../../kit/media';
-import {sameFence, type PlaybackFence} from '../../../../../packages/player-core/src/index.ts';
+import {sameFence} from '../../../../../packages/player-core/src/index.ts';
 import {fenceKey} from '../../../shell/playback-model';
 import type {WebPlaybackRuntimeSnapshot, WebShellPlaybackRuntime} from '../../../platform/playback';
 
 const t = defaultI18n.t;
 
-/** The immutable facts of one rendered host opening. They come from this render's snapshot,
- * never from a later runtime read; the published admission and its callbacks close over them. */
-type Facts = Readonly<{
-  runtime: WebShellPlaybackRuntime; port: EqualizerPort; authority: object; fence: PlaybackFence;
-  run: number; active: boolean; scope?: Readonly<{current(): boolean}>;
-}>;
-type Admission = Facts & {key: string; live: boolean};
-type HostScope = Readonly<{current(): boolean}>;
-const keyOf = (value: Facts) => `${fenceKey(value.fence)}|${value.run}|${value.active ? 1 : 0}`;
-/** The exact host opening a More entry or panel callback was drawn for. */
-export const equalizerHostCurrent = (runtime: WebShellPlaybackRuntime, port: EqualizerPort, snapshot: WebPlaybackRuntimeSnapshot, active: boolean, scope?: HostScope): boolean => {
-  if (!active || (scope && !scope.current())) return false;
-  const value = runtime.getSnapshot();
-  return !value.disposed && value.authority === snapshot.authority && !!value.fence && !!snapshot.fence && sameFence(value.fence, snapshot.fence)
-    && value.playback.playbackRun === snapshot.playback.playbackRun && value.presentation?.kind === 'music'
-    && !!value.presentation.fence && sameFence(value.presentation.fence, value.fence) && runtime.equalizerPort === port;
+/** One published host opening, minted in layout from the rendered playback facts. */
+export type WatchEqualizerOpening = {
+  runtime: WebShellPlaybackRuntime; port: EqualizerPort; authority: object;
+  fenceAt: string; presentationAt: string; run: number;
+  isCurrent?: () => boolean; scope?: Readonly<{current(): boolean}>;
+  live: boolean;
 };
-const factsOf = (runtime: WebShellPlaybackRuntime, port: EqualizerPort, snapshot: WebPlaybackRuntimeSnapshot, active: boolean, scope?: HostScope): Facts | undefined => {
-  if (snapshot.disposed || !snapshot.fence || snapshot.fence.kind !== 'queue' || snapshot.presentation?.kind !== 'music'
-    || !snapshot.presentation.fence || !sameFence(snapshot.presentation.fence, snapshot.fence) || runtime.equalizerPort !== port) return undefined;
-  return {runtime, port, authority: snapshot.authority, fence: snapshot.fence, run: snapshot.playback.playbackRun, active, ...(scope ? {scope} : {})};
+
+/** The live source still being the admitted one. Position/preference updates never replace it. */
+export const equalizerFactsCurrent = (held: WatchEqualizerOpening): boolean => {
+  if (!held.live) return false;
+  const value = held.runtime.getSnapshot();
+  return !value.disposed && value.authority === held.authority && !!value.fence && fenceKey(value.fence) === held.fenceAt
+    && value.playback.playbackRun === held.run && value.presentation?.kind === 'music'
+    && !!value.presentation.fence && fenceKey(value.presentation.fence) === held.presentationAt
+    && held.runtime.equalizerPort === held.port;
+};
+
+/** The original host (isCurrent + scope) and published receipt, checked before and after the
+ * facts read so a predicate that reenters or retires cannot slip a write through. */
+export const equalizerAdmit = (held: WatchEqualizerOpening | null, published: RefObject<WatchEqualizerOpening | null>, rendered: WatchEqualizerOpening | null): held is WatchEqualizerOpening => {
+  if (!held || !rendered || held !== rendered || published.current !== held || !held.live) return false;
+  if (held.isCurrent && !held.isCurrent()) return false;
+  if (held.scope && !held.scope.current()) return false;
+  if (!equalizerFactsCurrent(held)) return false;
+  if (published.current !== held) return false;
+  if (held.isCurrent && !held.isCurrent()) return false;
+  if (held.scope && !held.scope.current()) return false;
+  return equalizerFactsCurrent(held);
 };
 
 /** The drawn More › Equalizer panel (music-plus frame 12): the side panel swaps Up next for the
- * same device record Settings edits. One committed opening owns its writes, Back and Settings;
- * ordinary position renders never mint a new admission. */
-export function WatchEqualizerPanel({runtime, snapshot, port, active, scope, close, openSettings}: Readonly<{
-  runtime: WebShellPlaybackRuntime; snapshot: WebPlaybackRuntimeSnapshot; port: EqualizerPort;
-  active: boolean; scope?: HostScope; close: () => void; openSettings: () => void;
+ * same device record Settings edits. The parent owns the published opening; this view only shows
+ * it while the render facts are that opening and every action closes over it. */
+export function WatchEqualizerPanel({opening, rendered, published, runtime, port, isCurrent, scope, close, openSettings}: Readonly<{
+  opening: WatchEqualizerOpening | null; rendered: WatchEqualizerOpening | null;
+  published: RefObject<WatchEqualizerOpening | null>;
+  runtime: WebShellPlaybackRuntime; port: EqualizerPort;
+  isCurrent?: () => boolean; scope?: Readonly<{current(): boolean}>;
+  close: () => void; openSettings: () => void;
 }>) {
-  const [admission, setAdmission] = useState<Admission | null>(null), [error, setError] = useState<unknown>();
-  const published = useRef<Admission | null>(null);
-  // The rendered facts of this commit: a changed source/run/scope mints a new admission;
-  // an ordinary position render keeps the same key and leaves the admission alone.
-  const source = useRef(snapshot); source.current = snapshot;
-  const facts = factsOf(runtime, port, snapshot, active, scope);
-  const key = facts ? keyOf(facts) : '';
-  // Setup mints the one admission for these rendered facts and publishes it. Its cleanup retires
-  // exactly that receipt. A changed source/run/scope withholds the panel until the next commit.
-  useLayoutEffect(() => {
-    const rendered = factsOf(runtime, port, source.current, active, scope);
-    if (!rendered) {published.current = null; setAdmission(null); return;}
-    const minted: Admission = {...rendered, key, live: true};
-    published.current = minted;
-    setAdmission(minted);
-    setError(undefined);
-    return () => {minted.live = false; if (published.current === minted) published.current = null;};
-  }, [runtime, port, active, key, scope, snapshot.authority]);
-  const shown = admission && published.current === admission && admission.live && keyOf(admission) === key ? admission : null;
-  const liveFacts = (held: Admission) => {
-    if (!held.live) return false;
-    const value = held.runtime.getSnapshot();
-    return !value.disposed && value.authority === held.authority && !!value.fence && sameFence(value.fence, held.fence)
-      && value.playback.playbackRun === held.run && value.presentation?.kind === 'music'
-      && !!value.presentation.fence && sameFence(value.presentation.fence, held.fence)
-      && held.runtime.equalizerPort === held.port;
-  };
-  // Exact identity + the original host predicate, then the same facts again before acting.
-  const admit = (held: Admission) => liveFacts(held) && held.active && (!held.scope || held.scope.current()) && liveFacts(held);
+  const [error, setError] = useState<unknown>();
+  const matches = (held: WatchEqualizerOpening | null) => !!held && held.runtime === runtime && held.port === port
+    && held.isCurrent === isCurrent && held.scope === scope;
+  const shown = matches(opening) && opening === rendered && published.current === opening ? opening : null;
   const guarded = useMemo<EqualizerPort>(() => ({
     getSnapshot: () => port.getSnapshot(), subscribe: listener => port.subscribe(listener), start: () => port.start(),
     change: async value => {
-      const held = shown;
-      if (!held || !admit(held)) throw new DOMException('Equalizer opening retired', 'AbortError');
-      return held.port.change(value);
+      if (!equalizerAdmit(opening, published, rendered)) throw new DOMException('Equalizer opening retired', 'AbortError');
+      return port.change(value);
     },
     reset: async () => {
-      const held = shown;
-      if (!held || !admit(held)) throw new DOMException('Equalizer opening retired', 'AbortError');
-      return held.port.reset();
+      if (!equalizerAdmit(opening, published, rendered)) throw new DOMException('Equalizer opening retired', 'AbortError');
+      return port.reset();
     },
-  }), [shown, port]);
+  }), [opening, rendered, published, port]);
   const value = useSyncExternalStore(guarded.subscribe, guarded.getSnapshot, () => null);
-  const back = () => {const held = shown; if (held && admit(held)) close();};
-  const settings = () => {const held = shown; if (held && admit(held)) openSettings();};
-  const report = (failure: unknown) => {const held = shown; if (held && admit(held)) setError(failure);};
+  const back = () => {if (equalizerAdmit(opening, published, rendered)) close();};
+  const settings = () => {if (equalizerAdmit(opening, published, rendered)) openSettings();};
+  const report = (failure: unknown) => {if (equalizerAdmit(opening, published, rendered)) setError(failure);};
   return <div data-watch-equalizer data-layout="panel">
     {shown && value ? <DeviceEqualizer port={guarded} layout="panel" reportError={report} onBack={back} onOpenSettings={settings} />
       : shown ? <div><p role="status">{t('next.states.loading')}</p><Button size="small" onClick={back}>{t('next.media.eq.backQueue')}</Button></div> : null}
