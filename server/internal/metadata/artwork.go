@@ -252,8 +252,11 @@ func (s *Service) entityArtworkVariant(ctx context.Context, t RepairTarget, role
 }
 
 // Generate a missing width from the selected full object outside any read or
-// write transaction. Concurrent requests may encode the same content, but the
-// first published mapping wins and the unused object is ordinary cleanup work.
+// write transaction. Requests that need the same width of the same source
+// serialize on the decoder gate, which the encoder holds until its mapping is
+// published: a waiter re-checks the exact published variant before decoding, so
+// each source and width is encoded, installed and mapped once rather than once
+// per concurrent request that missed the cache at the same moment.
 func (s *Service) ensureArtworkVariant(ctx context.Context, source string, width int, replaceMissing string) error {
 	f, err := s.openArtworkObject(source)
 	if err != nil {
@@ -271,7 +274,19 @@ func (s *Service) ensureArtworkVariant(ctx context.Context, source string, width
 	if err != nil {
 		return err
 	}
+	// The gate is held until the mapping is committed below. Releasing it after
+	// the encode would let the next waiter read the database before this
+	// request's mapping exists and encode the same bytes again.
 	defer release()
+	// A peer may have published this exact variant while this request waited for
+	// the gate. The check mirrors the serving selection and opens the installed
+	// object, so a mapped-but-missing file still repairs instead of reporting a
+	// variant that cannot be served.
+	if published, checkErr := s.artworkVariantPublished(ctx, source, width); checkErr != nil {
+		return checkErr
+	} else if published {
+		return nil
+	}
 	decoded, format, err := image.Decode(f)
 	if err != nil {
 		return ErrArtworkPending
@@ -287,7 +302,6 @@ func (s *Service) ensureArtworkVariant(ctx context.Context, source string, width
 	if err != nil {
 		return ErrArtworkPending
 	}
-	release()
 	if err = ctx.Err(); err != nil {
 		return err
 	}
@@ -302,6 +316,35 @@ func (s *Service) ensureArtworkVariant(ctx context.Context, source string, width
 		_, err := tx.ExecContext(ctx, `INSERT INTO artwork_variants(source_digest,width,digest) VALUES(?,?,?) ON CONFLICT(source_digest,width) DO UPDATE SET digest=excluded.digest WHERE artwork_variants.digest=?`, source, width, installed.digest, replaceMissing)
 		return err
 	})
+}
+
+// artworkVariantPublished reports whether the variant this request would
+// generate is already mapped to an installed object. It mirrors the serving
+// selection in entityArtworkVariant rather than trusting the mapping row alone,
+// so a digest whose file cannot be opened is reported as missing and rebuilt.
+// A source at or below the requested edge is served directly and needs no
+// variant, so that case never counts as published.
+func (s *Service) artworkVariantPublished(ctx context.Context, source string, width int) (bool, error) {
+	var sourceWidth, sourceHeight int
+	var digest, mime sql.NullString
+	var variantWidth, variantHeight sql.NullInt64
+	if err := s.db.QueryRowContext(ctx, `SELECT src.width,src.height,v.digest,dst.mime,dst.width,dst.height FROM artwork_objects src LEFT JOIN artwork_variants v ON v.source_digest=src.digest AND v.width=? LEFT JOIN artwork_objects dst ON dst.digest=v.digest AND dst.status='ready' WHERE src.digest=? AND src.status='ready'`, width, source).Scan(&sourceWidth, &sourceHeight, &digest, &mime, &variantWidth, &variantHeight); err != nil {
+		if ctx.Err() != nil {
+			return false, ctx.Err()
+		}
+		// Nothing publishable is visible: the ordinary generate path stays
+		// authoritative, including its own error reporting.
+		return false, nil
+	}
+	if max(sourceWidth, sourceHeight) <= width || !digest.Valid || !mime.Valid || !variantWidth.Valid || !variantHeight.Valid || max(variantWidth.Int64, variantHeight.Int64) > int64(width) || !artDigest(digest.String) {
+		return false, nil
+	}
+	f, err := s.openArtworkObject(digest.String)
+	if err != nil {
+		return false, nil
+	}
+	f.Close()
+	return true, nil
 }
 func (s *Service) verifyRestorableArtwork(choices []ArtworkChoice) error {
 	for _, choice := range choices {
