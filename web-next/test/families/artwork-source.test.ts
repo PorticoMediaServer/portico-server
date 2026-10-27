@@ -71,6 +71,39 @@ test('disposing an authority releases an in-flight result and never delivers it 
   assert.deepEqual(released, ['blob:old-authority']); assert.equal(states.some(value => value.image), false);
 });
 
+test('per-key source wrappers from one factory share the retention token their lease keys on', () => {
+  const runtime = createArtworkRuntime({scopeKey: 'server/account/profile/authority', load: async ({url}) => ({src: url}), classify: () => ({retryable: false})});
+  const token = (source: unknown) => (source as {retainScope?: object}).retainScope;
+  // Every render mints a new frozen wrapper; the equivalence above must not be
+  // read from the wrapper identity or the fresh closure it carries.
+  const first = runtime.source({url: '/same-art', cacheKey: 'digest'}), second = runtime.source({url: '/same-art', cacheKey: 'digest'});
+  assert.notEqual(first, second); assert.notEqual(first.retain, second.retain); assert.equal(first.key, second.key);
+  assert.ok(token(first)); assert.equal(token(first), token(second));
+  // Foreground and ambient stay separate keys but keep one factory lifetime.
+  const ambient = runtime.ambient({url: '/same-art', cacheKey: 'digest', variant: 'ambient-v1', maxEdge: 64, version: 'v1'});
+  assert.equal(token(ambient), token(first)); assert.notEqual(ambient.key, first.key);
+  // A changed authority factory, and every external producer, must not look equal.
+  const other = createArtworkRuntime({scopeKey: 'server/account/profile/authority', load: async () => ({src: 'blob:other'}), classify: () => ({retryable: false})});
+  assert.notEqual(token(other.source({url: '/same-art', cacheKey: 'digest'})), token(first));
+  assert.equal('retainScope' in {scheduler: runtime.scheduler, key: 'external-producer', retain: () => () => {}}, false);
+  runtime.dispose(); other.dispose();
+});
+
+test('replacing a wrapper keeps one real interest until the last original mount leaves', async () => {
+  const released: string[] = [];
+  const runtime = createArtworkRuntime({scopeKey: 'authority', load: async ({url}) => ({src: url, bytes: 8}), classify: () => ({retryable: false}), release: image => released.push(image.src), policy: {maxBytes: 16}});
+  const first = runtime.source({url: '/held-art', cacheKey: 'held'}), second = runtime.source({url: '/held-art', cacheKey: 'held'});
+  const leaveFirst = first.retain!(), leaveSecond = second.retain!();
+  await runtime.scheduler.load(first.key);
+  leaveFirst(); // an ordinary parent render's cleanup for a wrapper it no longer holds
+  await runtime.scheduler.load(runtime.source({url: '/next-art', cacheKey: 'next'}).key);
+  assert.deepEqual(released, [], 'the surviving lease still pins the mounted image');
+  leaveSecond();
+  await runtime.scheduler.load(runtime.source({url: '/third-art', cacheKey: 'third'}).key);
+  assert.deepEqual(released, ['/held-art']);
+  runtime.dispose();
+});
+
 test('accepted ambient helper provenance and foreground identity remain separate', async () => {
   const url = routePath('get_items_id_art_kind', {id: 'selected', kind: 'poster'}) + '?v=' + 'a'.repeat(64) + '&w=800';
   const ambient = ambientArtworkSource(url, {serverId: 'server', viewerId: 'profile', authorityKey: 'authority'}); assert.ok(ambient);
