@@ -74,7 +74,7 @@ test('actual block preset save captures the original nested draft and publishes 
   let stored: BlockPreset | undefined, captured: BlockPresetBody | undefined, release!: () => void;
   const held = new Promise<void>(resolve => {release = resolve;}); let posts = 0;
   const source = new BlockPresetsSource({request: async <T>(path: string, method?: string, raw?: unknown): Promise<T> => {
-    if(path.includes('/browse/capabilities'))return {library:{id:'library',name:'Movies',kind:'movie',defaultView:'discover'},pivots:[],fields:[{id:'genre',labelKey:'browse.field.genre',type:'identity-set',operators:['contains-any'],controlHint:'facet-multi-select',complexity:'quick',cost:'indexed-join',applicableKinds:['movie']}],sorts:[],quickFilters:[],queryLimits:{maximumDepth:5,maximumClauses:40,maximumBytes:65536,maximumSorts:3,defaultLimit:40,maximumLimit:100,cursorTtlMs:1800000}} as T;
+    if(path==='/v1/libraries/library/browse-capabilities?pivot=')return {library:{id:'library',name:'Movies',kind:'movie',defaultView:'discover',pinned:false},pivots:[],fields:[{id:'genre',labelKey:'browse.field.genre',type:'identity-set',operators:['contains-any'],controlHint:'facet-multi-select',complexity:'quick',cost:'indexed-join',applicableKinds:['movie']}],sorts:[],quickFilters:[],surfaces:[],queryLimits:{maximumDepth:5,maximumClauses:40,maximumBytes:65536,maximumSorts:3,defaultLimit:40,maximumLimit:100,cursorTtlMs:1800000}} as T;
     if (method === 'POST' || method === 'PUT') {
       posts++; const mutation = raw as {body: BlockPresetBody; name: string; expectedRevision: number; operationId: string};
       assert.equal(mutation.expectedRevision, stored?.revision??0); assert.equal(mutation.operationId, 'operation-original');
