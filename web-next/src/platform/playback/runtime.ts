@@ -1471,17 +1471,29 @@ export class WebShellPlaybackRuntime {
         if (!reprove()) throw new Error('stale_listening_port');
         const v1Target = {sessionId: target.sessionId, generation: target.sessionGeneration, playbackRun: target.playbackRun,
           itemId: target.itemId, versionId: target.versionId, queueId: target.queueId, entryId: target.entryId};
-        /** Local proof from the exact original server stack and dock, re-read after every getter. */
+        /** Local proof from the exact original server stack and dock. Every external getter —
+         * including the group callbacks — runs before one final pure owner/output sample that is
+         * the value returned, so a takeover inside a getter cannot ride a stale earlier sample. */
         const readOutput = () => localEditOutput({originalStack: stack, originalSource: source, fence, target, same: sameFence,
           read: () => {
-            const stackNow = this.stack, dock = this.dock.getSnapshot(), snap = this.snapshot;
-            const session = stackNow.queue.currentSession(), view = stackNow.queue.getSnapshot().view, playback = stackNow.service.getSnapshot();
-            return {stack: stackNow, source: this.source, current: this.current(stackNow), fence: snap.fence, presentation: !!snap.presentation,
-              dockLocalFence: dock.local?.fence, dockRemote: dock.remote !== null,
-              group: !!this.group?.active() || !!this.group?.matches(fence),
-              session: session ? {id: session.id, role: session.role, kind: session.kind, itemId: session.itemId, versionId: session.versionId,
-                generation: session.presentation.generation, queueId: session.queue?.queueId, entryId: session.queue?.entryId} : undefined,
-              viewQueueId: view?.queue.id, viewEntryId: view?.queue.currentEntryId ?? undefined, playbackRun: playback.playbackRun};
+            const owner = () => {
+              const stackNow = this.stack, dock = this.dock.getSnapshot(), snap = this.snapshot;
+              const session = stackNow.queue.currentSession(), view = stackNow.queue.getSnapshot().view, playback = stackNow.service.getSnapshot();
+              return {stack: stackNow, source: this.source, fence: snap.fence, presentation: !!snap.presentation,
+                dockLocalFence: dock.local?.fence, dockRemote: dock.remote !== null,
+                session: session ? {id: session.id, role: session.role, kind: session.kind, itemId: session.itemId, versionId: session.versionId,
+                  generation: session.presentation.generation, queueId: session.queue?.queueId, entryId: session.queue?.entryId} : undefined,
+                viewQueueId: view?.queue.id, viewEntryId: view?.queue.currentEntryId ?? undefined, playbackRun: playback.playbackRun};
+            };
+            const before = owner();
+            const groupTaken = !!this.group?.active() || !!this.group?.matches(fence);
+            // Runtime currentness is evaluated after the group callbacks, then one pure sample follows.
+            const currentAfter = this.current(before.stack);
+            const after = owner();
+            const stable = after.stack === before.stack && after.playbackRun === before.playbackRun
+              && after.dockLocalFence === before.dockLocalFence && after.fence === before.fence
+              && after.viewQueueId === before.viewQueueId && after.viewEntryId === before.viewEntryId;
+            return {...after, group: groupTaken, current: currentAfter && !groupTaken && stable};
           }});
         const reader = stack.queue.captureEditWindow(v1Target, shown.revision ?? '', {signal: combined(command.signal),
           isCurrent: () => admitCommand(reprove, command), readOutput});
