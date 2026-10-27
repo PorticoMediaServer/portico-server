@@ -2,6 +2,7 @@ import {useReadingFavorite} from './useReadingFavorite';
 import {ReadSavedAction} from './ReadSavedAction';
 import {ReadMarkAction} from './ReadMarkAction';
 import {useEffect, useLayoutEffect, useRef, useState, type CSSProperties} from 'react';
+import {useLocation} from '@tanstack/react-router';
 import {defaultI18n} from '@i18n';
 import {generatedCoverTint} from '@design';
 import {ApiError} from '@core/index.ts';
@@ -18,6 +19,8 @@ import {router} from '../../router';
 import {Icon} from '../../kit/Icon';
 import {Button, ResumeButton} from '../../kit/controls';
 import {Menu, MenuGroup, MenuItem} from '../../kit/overlays';
+import {usePhone} from '../../kit/overlays/shared';
+import {runScreenCommand} from '../detail/context';
 import {Skeleton, StateView} from '../../kit/states';
 import {ReadBookFacts, ReadBookHero, ReadBookSections} from '../../kit/reader/ReadBookHero';
 import {ServerMark} from '../../kit/shell';
@@ -25,10 +28,11 @@ import {useLibraryScreenContext} from '../browse/screen-context';
 import {ReadMetadata} from './ReadMetadata';
 import {createReadBindings} from './bindings';
 import {readDestination, type ReadItemEligibility} from './navigation';
+import {readBackCommit, readRetireAttempt, readRouteEntry, readVersionCanChoose, readVersionRecovery, type ReadRouteEntry, type ReadVersion, type ReadVersionSource} from './read-version-choice';
 import styles from './read-item.module.css';
 
 type Captured = NonNullable<ReturnType<typeof useProtectedWebScreenContext>>;
-type ReadAttempt = {readonly context: Captured['context']; readonly sourceId: string | undefined; readonly retry: number; readonly fileLife: AbortController; session?: ReadingSession; saving?: boolean; rereading?: boolean; live: boolean; ready: boolean; target?: (index: number) => ReaderContentsTarget};
+type ReadAttempt = {readonly context: Captured['context']; readonly entry: typeof router.state.location; readonly sourceId: string | undefined; readonly retry: number; readonly fileLife: AbortController; session?: ReadingSession; saving?: boolean; rereading?: boolean; live: boolean; ready: boolean; target?: (index: number) => ReaderContentsTarget};
 const {t} = defaultI18n;
 /** The primary Item registration supplies a genuine Reading resource result. */
 export function ReadItemEntry({itemId, eligibility}: {itemId: string; eligibility: ReadItemEligibility}) {
@@ -37,6 +41,13 @@ export function ReadItemEntry({itemId, eligibility}: {itemId: string; eligibilit
 }
 function BoundReadItem({captured, eligibility}: {captured: Captured; eligibility: ReadItemEligibility}) {
   const context = useLibraryScreenContext(captured);
+  const phone = usePhone();
+  // The entry this render was produced on, committed by layout. A reused component with
+  // a new __TSR_key renders new callbacks; callbacks from the old entry refuse.
+  const routeLocation = useLocation();
+  const routeEntry = readRouteEntry(routeLocation);
+  const committedEntry = useRef<ReadRouteEntry | undefined>(undefined);
+  useLayoutEffect(() => {committedEntry.current = routeEntry;}, [routeEntry?.href, routeEntry?.key]);
   const [editing, setEditing] = useState(false), [more, setMore] = useState(false);
   const editorAnchor = useRef<HTMLButtonElement>(null);
   const errorSink = useRef(captured.binding.home.effects.reportError); errorSink.current = captured.binding.home.effects.reportError;
@@ -45,12 +56,14 @@ function BoundReadItem({captured, eligibility}: {captured: Captured; eligibility
   const [saving, setSaving] = useState(false), [rereading, setRereading] = useState(false);
   const [attempt, setAttempt] = useState<ReadAttempt>();
   const attemptRef = useRef<ReadAttempt | undefined>(undefined);
-  const renderIdentity = useRef({context: captured.context, sourceId, retry});
-  renderIdentity.current = {context: captured.context, sourceId, retry};
+  const committed = useRef<ReadVersionSource | undefined>(undefined);
+  useLayoutEffect(() => {committed.current = {context: captured.context, sourceId, versions: eligibility.versions};}, [captured.context, sourceId, eligibility.versions]);
   const [detail, setDetail] = useState<Readonly<{attempt?: ReadAttempt; manifest?: ReadingManifest; progress?: ReadingProgress; client?: ReturnType<typeof createReadBindings>['client']; targets?: readonly ReaderContentsTarget[]; failed?: boolean}>>({});
   const current = (value: ReadAttempt | undefined): value is ReadAttempt => !!value && value.live && attemptRef.current === value
-    && renderIdentity.current.context === value.context && renderIdentity.current.sourceId === value.sourceId && renderIdentity.current.retry === value.retry && value.context.isCurrent();
-  const retire = (value: ReadAttempt) => {value.fileLife.abort(); value.live = false; value.ready = false; value.rereading = false; value.target = undefined; if (attemptRef.current === value) attemptRef.current = undefined;};
+    && value.entry === router.state.location && value.context === captured.context
+    && value.sourceId === sourceId && value.retry === retry && value.context.isCurrent();
+  const retire = (value: ReadAttempt) => readRetireAttempt(value,
+    () => {if (attemptRef.current === value) attemptRef.current = undefined;}, () => value.fileLife.abort());
   const refresh = (value: ReadAttempt | undefined) => {if (!current(value)) return; retire(value); setRetry(count => count + 1);};
   const favorite = useReadingFavorite({
     client: current(detail.attempt) && detail.attempt.ready && detail.manifest?.sourceId === sourceId ? detail.client : undefined,
@@ -59,11 +72,13 @@ function BoundReadItem({captured, eligibility}: {captured: Captured; eligibility
     reportError: error => errorSink.current(error),
   });
   useLayoutEffect(() => {
-    const value: ReadAttempt = {context: captured.context, sourceId, retry, fileLife: new AbortController(), live: true, ready: false};
+    const value: ReadAttempt = {context: captured.context, entry: routeLocation, sourceId, retry, fileLife: new AbortController(), live: true, ready: false};
     attemptRef.current = value; setAttempt(value); setSaving(false); setRereading(false);
     return () => retire(value);
-  }, [captured.context, sourceId, retry]);
+  }, [captured.context, eligibility.itemId, routeLocation, sourceId, retry]);
   const anchor = useRef<HTMLButtonElement>(null);
+  const chooserAnchor = useRef<HTMLButtonElement>(null);
+  const [chooserMenu, setChooserMenu] = useState(false);
   useEffect(() => {
     if (!current(attempt)) return;
     const original = attempt;
@@ -89,10 +104,62 @@ function BoundReadItem({captured, eligibility}: {captured: Captured; eligibility
     })().catch(error => {if (live()) {errorSink.current(error); original.ready = false; original.target = undefined; setDetail({attempt: original, failed: true});} void bindings.close().catch(() => {});});
     return () => {active = false; original.ready = false; original.target = undefined; publication?.dispose(); off(); void bindings.dispose().catch(() => {});};
   }, [attempt, eligibility.itemId]);
-  if (current(attempt) && detail.attempt === attempt && detail.failed) return <StateView title={t('next.states.pageFailed')} body={t('next.states.pageFailedBody')}
-    primary={{id: 'retry', label: t('next.states.tryAgain'), onPress: () => refresh(attempt)}}/>;
-  const manifest = current(attempt) && detail.attempt === attempt ? detail.manifest : undefined, version = eligibility.versions.find(version => version.sourceId === sourceId);
-  if (!manifest || !version || manifest.sourceId !== sourceId) return <Skeleton height={480}/>;
+  // The reading branch owns no shell navigation on a phone, so the page keeps one
+  // Back of its own before loading, failure and ready content alike.
+  const phoneBack = phone && context.effects.back ? <div className={styles.phoneTopBar} data-read-phone-back>
+    <Button className={styles.phoneBack} size="small" variant="icon" icon="i-left" iconOnly aria-label={t('next.states.back')}
+      onClick={() => runScreenCommand(context, () => {
+        if (!context.isCurrent()) return;
+        // The callback's own entry must still be committed and live; then choose Back or Home.
+        const destination = readBackCommit(routeEntry, committedEntry.current, readRouteEntry(router.state.location), router.history.canGoBack());
+        if (destination === 'back') context.effects.back?.();
+        else if (destination === 'home') context.effects.openHome?.();
+      })}/>
+  </div> : null;
+  const version = eligibility.versions.find(candidate => candidate.sourceId === sourceId);
+  /** An explicit version recovery is permitted while the original attempt is failed or not
+   * ready; factsCurrent() is deliberately not the gate because it can never become true then.
+   * Pre-retire admission requires the original route/context/source/list and the real live
+   * attempt; post-retire admission requires only that unchanged witness and no successor,
+   * because retirement necessarily clears the attempt's liveness and ref. */
+  const pickVersion = (candidate: ReadVersion, renderedAttempt: ReadAttempt | undefined, renderedSourceId: string | undefined) => {
+    if (!renderedAttempt) return;
+    const admitted = readVersionRecovery({
+      liveRoute: context.isCurrent(),
+      route: routeEntry,
+      committedRoute: committedEntry.current,
+      currentRoute: readRouteEntry(router.state.location),
+      rendered: {context: captured.context, sourceId: renderedSourceId, versions: eligibility.versions, attempt: renderedAttempt},
+      committed: committed.current,
+      currentAttempt: attemptRef.current,
+      attemptLive: renderedAttempt.live && !renderedAttempt.fileLife.signal.aborted,
+      candidate,
+      retire: attempt => {if (attempt === renderedAttempt) retire(renderedAttempt);},
+      afterRetire: () => ({liveRoute: context.isCurrent(), committedRoute: committedEntry.current,
+        currentRoute: readRouteEntry(router.state.location), successor: attemptRef.current, committed: committed.current}),
+    });
+    if (!admitted) return;
+    setDetail({});
+    setSaving(false); setRereading(false);
+    setMenu(false); setChooserMenu(false);
+    setSourceId(candidate.sourceId);
+  };
+  const versionChooser = readVersionCanChoose(eligibility.versions) ? <div className={styles.versionRow}>
+    <Button ref={chooserAnchor} size="small" variant="glass" onClick={() => setChooserMenu(value => !value)} aria-label={t('next.reader.version')}>
+      {version?.format.toUpperCase() ?? t('next.reader.version')}<Icon name="i-down" size={14}/></Button>
+    <Menu open={chooserMenu} onOpenChange={setChooserMenu} title={t('next.reader.version')} anchorRef={chooserAnchor}>
+      {eligibility.versions.map(candidate => <MenuItem key={candidate.sourceId} selected={candidate.sourceId === sourceId} disabled={!candidate.inventoryAvailable}
+        onSelect={() => pickVersion(candidate, attempt, sourceId)} description={defaultI18n.bytes(candidate.size)}>{candidate.format.toUpperCase()}</MenuItem>)}
+    </Menu>
+  </div> : null;
+  if (current(attempt) && detail.attempt === attempt && detail.failed) return <>
+    {phoneBack}
+    <StateView title={t('next.states.pageFailed')} body={t('next.states.pageFailedBody')}
+      primary={{id: 'retry', label: t('next.states.tryAgain'), onPress: () => refresh(attempt)}}/>
+    {versionChooser}
+  </>;
+  const manifest = current(attempt) && detail.attempt === attempt ? detail.manifest : undefined;
+  if (!manifest || !version || manifest.sourceId !== sourceId) return <>{phoneBack}{<Skeleton height={480}/>}{versionChooser}</>;
   const title = manifest.metadata.title ?? '', author = manifest.metadata.author;
   const metadata = manifest.metadata, series = metadata.series;
   const original = detail.attempt;
@@ -175,7 +242,7 @@ function BoundReadItem({captured, eligibility}: {captured: Captured; eligibility
     {id: 'format', label: t('next.reader.format'), value: manifest.format.toUpperCase()},
     {id: 'size', label: t('next.reader.fileSize'), value: defaultI18n.bytes(manifest.size)},
   ]}/>;
-  return <><ReadBookHero cover={context.artwork.foreground(manifest.metadata.coverUrl, 784, 2 / 3)} title={title} author={author ? {name: author} : undefined} series={seriesPresentation} facts={[
+  return <>{phoneBack}<ReadBookHero cover={context.artwork.foreground(manifest.metadata.coverUrl, 784, 2 / 3)} title={title} author={author ? {name: author} : undefined} series={seriesPresentation} facts={[
       ...(metadata.wordCount !== undefined ? [{id: 'words', text: t('next.reader.wordCount', {count: metadata.wordCount}), role: 'context' as const}] : []),
       ...(metadata.pageCount !== undefined ? [{id: 'pages', text: t('next.reader.pageCount', {count: metadata.pageCount}), role: 'context' as const}] : []),
       ...(metadata.estimatedSeconds !== undefined && metadata.estimatedSeconds > 0 ? [{id: 'estimate', text: t('next.reader.aboutDuration', {duration: defaultI18n.duration(metadata.estimatedSeconds)}), role: 'context' as const}] : []),
@@ -186,7 +253,7 @@ function BoundReadItem({captured, eligibility}: {captured: Captured; eligibility
     under={<>{(canEdit || canSaveFile || favorite) && <><Button ref={editorAnchor} size="small" variant="glass" icon="i-more" iconOnly aria-label={t('next.controls.more')} onClick={() => setMore(value => !value)}/><Menu open={more} onOpenChange={setMore} title={title} anchorRef={editorAnchor}>{favorite && <MenuItem icon="i-heart" selected={favorite.selected} disabled={favorite.busy} onSelect={favorite.onSelect}>{favorite.label}</MenuItem>}{canSaveFile && <MenuItem disabled={saving} onSelect={() => {void saveFile();}}>{t('next.reader.saveFile')}</MenuItem>}{canEdit && <MenuGroup ownerOnly label={<span>{t('next.browse.server')}<ServerMark size={22}/></span>}><MenuItem onSelect={() => {if (context.isCurrent()) setEditing(true);}}>{t('entry.editMetadata')}</MenuItem><MenuItem disabled={rereading} onSelect={() => {if (context.isCurrent()) void reread();}}>{t('next.reader.readFileAgain')}</MenuItem></MenuGroup>}</Menu></>}{chooseVersion ? <><Button ref={anchor} size="small" variant="glass" onClick={() => setMenu(value => !value)} aria-label={t('next.reader.version')}>
       {version.format.toUpperCase()}<Icon name="i-down" size={14}/></Button>
       <Menu open={menu} onOpenChange={setMenu} title={t('next.reader.version')} anchorRef={anchor}>{eligibility.versions.map(candidate => <MenuItem key={candidate.sourceId}
-        selected={candidate.sourceId === sourceId} disabled={!candidate.inventoryAvailable} onSelect={() => {if (candidate.sourceId === sourceId || !factsCurrent() || !original) return; retire(original); setSourceId(candidate.sourceId);}} description={defaultI18n.bytes(candidate.size)}>
+        selected={candidate.sourceId === sourceId} disabled={!candidate.inventoryAvailable} onSelect={() => {if (!factsCurrent()) return; pickVersion(candidate, attempt, sourceId);}} description={defaultI18n.bytes(candidate.size)}>
         {candidate.format.toUpperCase()}</MenuItem>)}</Menu></> : null}</>}/>
     {editing && canEdit && <ReadMetadata context={context} reading={captured.context} sourceId={manifest.sourceId} format={manifest.format} itemId={eligibility.itemId} anchor={editorAnchor} onClose={() => {if (!current(original)) return; setEditing(false); refresh(original);}}/>}
     <ReadBookSections contents={detail.targets?.length ? <><h2>{t('next.reader.contents')}</h2><ReaderContents entries={detailContents(manifest.contents ?? [], index => open(index))}/></> : <span hidden/>} details={details}/></>;
