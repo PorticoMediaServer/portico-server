@@ -14,8 +14,8 @@ import (
 
 // browseRowCountStatements classifies the two whole-set count shapes an
 // unfiltered browse can issue: the exact count of the eligible set, and the
-// capped count a posted filter uses. A Reading continuation must carry the
-// exact total instead of running either.
+// capped count a posted filter uses. An unrestricted Reading continuation
+// must carry the exact total instead of running either.
 func browseRowCountStatements(queries []string) (whole, capped int) {
 	for _, query := range queries {
 		query = strings.Join(strings.Fields(query), " ")

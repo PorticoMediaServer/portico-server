@@ -525,11 +525,11 @@ func (s *Service) browseSelect(request BrowseRequest) (BrowseResult, []browseRow
 	// The viewer's content restriction is the last clause, after the authorized
 	// library scope and the client's own query, so neither can widen it.
 	live, liveArgs := EntityRestrictionSQL("e.entity_id", request.Restrictions)
-	// A live restriction reads the mutable rating classification at query time,
-	// and that classification can move without moving the cursor's revision
-	// fence. A total counted under such a predicate is a snapshot of the
-	// classification, not a revision-bound invariant, so it may not be carried
-	// to a later page. Only the literal "1" clause — no live restriction at
+	// A live restriction reads mutable classification and attribute facts.
+	// Normal age writes clear the envelope's total through the raw library
+	// revision, but not every live input advances that revision or the order
+	// fingerprint (for example, an attribute term's value_key). Until all of
+	// those inputs have a complete fence, a restricted total must be recounted. Only the literal "1" clause — no live restriction at
 	// all — is revision-invariant. This is deliberately the compiled clause,
 	// not Restriction.Active(): a predicate that compiles to SQL matters even
 	// when some individual switch does not change membership.
