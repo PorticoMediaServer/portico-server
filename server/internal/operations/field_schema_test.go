@@ -15,8 +15,23 @@ func TestFieldSchemaAdmitsOnlyTheRequiredDefaultNull(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if shape["type"] != "object" || shape["additionalProperties"] != false {
-		t.Fatalf("field schema is not a closed object: %v", shape)
+	ordinary, err := apikit.Schema(reflect.TypeFor[fieldShape]())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if shape["type"] != "object" || ordinary["type"] != "object" {
+		t.Fatalf("field schema is not an object: %v", shape)
+	}
+	// Field preserves the ordinary method-free alias, including its additive
+	// object semantics. The only change is that the required default admits null.
+	expectedDefault := map[string]any{}
+	for name, value := range ordinary["properties"].(map[string]any)["default"].(map[string]any) {
+		expectedDefault[name] = value
+	}
+	expectedDefault["nullable"] = true
+	ordinary["properties"].(map[string]any)["default"] = expectedDefault
+	if !reflect.DeepEqual(shape, ordinary) {
+		t.Fatalf("field schema changed beyond its nullable default: got %#v, want %#v", shape, ordinary)
 	}
 	required := map[string]bool{}
 	for _, name := range shape["required"].([]string) {
@@ -33,18 +48,9 @@ func TestFieldSchemaAdmitsOnlyTheRequiredDefaultNull(t *testing.T) {
 		}
 	}
 	properties := shape["properties"].(map[string]any)
-	for name, raw := range properties {
-		property := raw.(map[string]any)
-		nullable, _ := property["nullable"].(bool)
-		if name == "default" {
-			if property["type"] != "any" || !nullable {
-				t.Fatalf("default does not admit null: %v", property)
-			}
-			continue
-		}
-		if nullable {
-			t.Fatalf("%s unexpectedly admits null: %v", name, property)
-		}
+	defaultProperty := properties["default"].(map[string]any)
+	if defaultProperty["type"] != "any" || defaultProperty["nullable"] != true {
+		t.Fatalf("default does not admit null: %v", defaultProperty)
 	}
 
 	var nullableIntegers, otherDefaults int
