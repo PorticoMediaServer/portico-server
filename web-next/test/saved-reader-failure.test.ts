@@ -121,7 +121,9 @@ test('actual SavedLists shows the empty state only when both readers are ready a
   const inverse = await mount({posters: snapshot('posters', 'error'), squares: snapshot('squares', 'ready', [section('squares', 1)])});
   assert.equal(compact(inverse).length, 1);
   assert.equal(retryOf(compact(inverse)[0]!).id, 'retry-posters');
-  assert.ok(all(inverse.flat(), 'WindowedGrid').some((node: any) => node.props.label === 'squares'), 'the healthy squares section stays mounted');
+  // The split reader's squares half is published under the screen's own "Music and
+  // audiobooks" heading, not the raw section id; its presence is the mounted witness.
+  assert.ok(all(inverse.flat(), 'WindowedGrid').some((node: any) => node.props.label === 'next.saved.musicAndAudiobooks'), 'the healthy squares section stays mounted');
   assert.equal(textOf(inverse.flat()).includes('lib.count'), false);
 });
 
