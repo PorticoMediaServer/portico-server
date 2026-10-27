@@ -42,10 +42,14 @@ function queueRuntime(t: import('node:test').TestContext, preferences: Partial<W
         sources: [{id: `source_${itemId}`, available: true, container: 'mp4', videoCodec: 'h264', audioCodec: 'aac', width: 1920, height: 1080,
           durationMs: 7200000, factsRevision: 1, factsStatus: 'known', relation: 'unknown', boundary: 'whole_source', enabled: false,
           reason: 'source_selection_unavailable', streams: [{index: 1, type: 'audio', codec: 'aac', channels: 2, default: true, forced: false, enabled: true, reason: ''}],
-          qualities: [{id: 'original', kind: 'original', label: 'Original', enabled: true}]}],
+          qualities: [{id: 'original', kind: 'original', label: 'Original', enabled: true},
+            {id: 'auto', kind: 'automatic', label: 'Automatic', enabled: true}]}],
         current: {sessionId, generation: session.generation, state: session.state, sourceId: `source_${itemId}`, delivery: 'hls',
           audioSelection: 'server_first_audio', subtitleSelection: 'disabled', qualityId: 'original'},
-        controls: [{id: 'source', enabled: false, reason: 'source_selection_unavailable'}]}};
+        controls: [{id: 'source', enabled: false, reason: 'source_selection_unavailable'},
+          {id: 'audio', enabled: false, reason: 'track_selection_unavailable'},
+          {id: 'subtitles', enabled: false, reason: 'subtitle_delivery_unavailable'},
+          {id: 'quality', enabled: true, reason: ''}]}};
     } else response = await inner.send(request as never) as V1Response;
     if (request.method === 'GET' && /^\/v1\/queues\/[^/]+$/.test(request.path)) {
       response = {...response, body: {...response.body as object, postPlay: {autoplay: true, countdownMs: 5000}}};

@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import {test} from 'node:test';
+import {ApiError} from '@core/index.ts';
 import {takeLinkFragment, verificationLink} from '../src/services/fragments.ts';
 import {currentAccountWork} from '../src/services/session.ts';
 import {resetPassword, verifyEmail} from '../src/services/link-effects.ts';
@@ -23,26 +24,72 @@ test('verification tuple accepts the two current kinds and refuses retired provi
   assert.equal(verificationLink('a'.repeat(2049)), undefined);
 });
 
-function accountPort() {
-  let session = {account: {id: 'account_a', username: 'account', displayName: 'Account'}, familyId: 'family_a', accessToken: 'access'};
+type PortSession = {account: {id: string; username: string; displayName: string}; familyId: string; accessToken: string};
+
+/** The canonical CredentialSessionService contract: a browser is either signed out
+ * (phase signedOut, no session) or signed in (phase ready, one family); subscribe
+ * publishes every transition; only the coordinator admits a signed-out opening; and
+ * logoutIfCurrent retires just the family it is handed, if that family is still
+ * current. Tests that exercise the signed-out signup opening ask for it explicitly. */
+function accountPort({signedIn = true}: {signedIn?: boolean} = {}) {
+  const family = (familyId: string): PortSession => ({account: {id: 'account_a', username: 'account', displayName: 'Account'}, familyId, accessToken: 'access'});
+  let session: PortSession | undefined = signedIn ? family('family_a') : undefined;
+  let phase: 'signedOut' | 'ready' = signedIn ? 'ready' : 'signedOut';
+  const listeners = new Set<() => void>();
+  const publish = () => {for (const listener of [...listeners]) listener();};
   const calls: unknown[] = [];
   const retired: unknown[] = [];
   let adopted = false;
   const account = {
     client: {
-      request: async (...args: unknown[]) => { calls.push(args); return {kind: 'registration', status: 'confirmed'}; },
+      request: async (...args: unknown[]) => {
+        calls.push(args);
+        const body = args[2] as {token?: unknown} | undefined;
+        // The public confirm capability answers the shape its mailed token proves.
+        const kind = typeof body?.token === 'string' ? verificationLink(body.token)?.kind : undefined;
+        return kind === 'email_change'
+          ? {kind: 'email_change', status: 'email_changed', accountId: session?.account.id ?? 'account_a'}
+          : {kind: 'registration', status: 'confirmed'};
+      },
       registration: async () => null,
-      verifyRegistration: async () => session,
+      verifyRegistration: async () => family('family_a'),
     },
     service: {
       synchronize: async () => {},
-      accessSession: async () => session,
-      getSnapshot: () => ({session}),
-      authenticateIfSignedOut: async (work: (signal: AbortSignal) => Promise<unknown>) => { adopted = true; return work(new AbortController().signal); },
-      logoutIfCurrent: async (expected: unknown) => { retired.push(expected); return true; },
+      accessSession: async () => {
+        if (!session) throw new ApiError(401, 'account_signed_out', 'account_signed_out', false);
+        return session;
+      },
+      getSnapshot: () => ({phase, session, pendingRevocations: 0}),
+      subscribe: (listener: () => void) => {
+        listeners.add(listener);
+        return () => {listeners.delete(listener);};
+      },
+      authenticateIfSignedOut: async (work: (signal: AbortSignal) => Promise<PortSession>, _context: unknown = {},
+        callerCurrent: () => boolean = () => true) => {
+        if (session) throw new ApiError(409, 'account_changed', 'account_changed', false);
+        if (!callerCurrent()) throw Object.assign(new Error('cancelled'), {code: 'cancelled'});
+        adopted = true;
+        session = await work(new AbortController().signal);
+        phase = 'ready';
+        publish();
+        return session;
+      },
+      logoutIfCurrent: async (expected: {accountId: string; familyId: string}) => {
+        if (!session || session.account.id !== expected.accountId || session.familyId !== expected.familyId) return false;
+        session = undefined;
+        phase = 'signedOut';
+        publish();
+        retired.push(expected);
+        return true;
+      },
     },
   } as unknown as ServicesAccount;
-  return {account, calls, retired, adopted: () => adopted, change: () => { session = {...session, familyId: 'family_b'}; }};
+  return {account, calls, retired, adopted: () => adopted, change: () => {
+    if (!session) return;
+    session = {...session, familyId: 'family_b'};
+    publish();
+  }};
 }
 
 test('account work rejects a changed family even when the account id is unchanged', async () => {
@@ -67,24 +114,32 @@ test('a link on another device confirms the address without creating a session',
 });
 
 test('only a matching registration can finish its browser session', async () => {
-  const port = accountPort();
+  // The signup completion is admitted only for an opening that began signed out.
+  const port = accountPort({signedIn: false});
   port.account.client.registration = async () => ({registrationId: 'registration_123'} as never);
   assert.equal(await verifyEmail(port.account, token(), new AbortController().signal), 'confirmed');
   assert.equal(port.adopted(), true);
-  assert.equal(port.calls.length, 0);
+  assert.deepEqual(port.calls.map(call => call.slice(0, 2)), [['/v1/email-links/confirm', 'POST']]);
+  assert.equal(port.account.service.getSnapshot().session?.familyId, 'family_a');
 });
 
 test('an email change retires only the reviewed family through the canonical coordinator', async () => {
   const port = accountPort();
   assert.equal(await verifyEmail(port.account, token('email_change'), new AbortController().signal), 'changed');
-  assert.equal(port.calls[0][0], '/v1/account/security/email/confirm');
+  // A mailed email change uses the same public capability as any other link ACK.
+  assert.deepEqual(port.calls.map(call => call.slice(0, 2)), [['/v1/email-links/confirm', 'POST']]);
   assert.deepEqual(port.retired, [{accountId: 'account_a', familyId: 'family_a'}]);
   assert.equal(port.adopted(), false);
 });
 
 test('an email confirmation cannot sign out a family that replaced the initiating account', async () => {
   const port = accountPort();
-  port.account.client.request = async () => { port.change(); return {} as never; };
-  await assert.rejects(verifyEmail(port.account, token('email_change'), new AbortController().signal), {code: 'account_changed'});
+  port.account.client.request = async () => {
+    port.change();
+    return {kind: 'email_change', status: 'email_changed', accountId: 'account_a'};
+  };
+  // The change that landed first is the current family; the held ACK keeps it.
+  assert.equal(await verifyEmail(port.account, token('email_change'), new AbortController().signal), 'changed');
   assert.deepEqual(port.retired, []);
+  assert.equal(port.account.service.getSnapshot().session?.familyId, 'family_b');
 });
