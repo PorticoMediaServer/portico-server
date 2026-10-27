@@ -2,7 +2,7 @@ import {ReadingGroupCard} from './ReadingGroupCard';
 import type {SavedReadingGroupCard} from '@core/reading-saved-group.ts';
 import type {SavedCatalogueSelection} from './catalogue-selection';
 import {CatalogueSelectionEntry, useCatalogueSelectionActive} from '../browse/document-selection';
-import {useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactNode} from 'react';
+import {useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactNode} from 'react';
 import {defaultI18n} from '@i18n';
 import type {ContentEntry} from '@core/library-content.ts';
 import type {SavedEntry, SavedListFilter, SavedProjection, SavedRoute, SavedService} from '@core/saved.ts';
@@ -38,6 +38,7 @@ import type {SavedPresentation} from './presentation.ts';
 export type {SavedPresentation} from './presentation.ts';
 import type {SavedOperations} from './operations.ts';
 import {sameSavedRoute, savedViewKey} from './route.ts';
+import {createSavedRetryAdmission, retireSavedRetryAdmission, savedRetryCurrent, type SavedRetryAdmission, type SavedRetryTicket} from './retry-admission.ts';
 import {useSavedViewOperations} from './use-view-operations.ts';
 import styles from './saved.module.css';
 
@@ -151,26 +152,72 @@ function SavedLists(bindings: SavedViewBindings & {onCreate: () => void}) {
   const routeMatches = route.view === 'watchlist' || route.view === 'favorites'
     ? sameSavedRoute(primary.route, {...route, shape: 'posters'}) && sameSavedRoute(squares.route, {...route, shape: 'squares'}) : sameSavedRoute(primary.route, route);
   const split = route.view === 'watchlist' || route.view === 'favorites', projection = primary.projection ?? (split ? squares.projection : null);
-  // One guarded recovery owner for this render. Retired callbacks and delayed results
-  // must not request or publish into a successor route.
-  const live = useRef(true), retryGuard = useRef(false), [retryBusy, setRetryBusy] = useState(false);
-  useEffect(() => () => { live.current = false; }, []);
+  const retryRoute = route.view === 'home' || route.view === 'downloads' ? undefined : route;
+  const routeKey = retryRoute ? JSON.stringify(retryRoute) : '';
+  const ticket = useMemo<SavedRetryTicket | undefined>(() => retryRoute ? {
+    runtime, route: retryRoute, routeKey, posters: runtime.posters, squares: runtime.squares, saved: runtime.saved, reportError: effects.reportError,
+  } : undefined, [runtime, routeKey, runtime.posters, runtime.squares, runtime.saved, effects.reportError]);
+  const [published, setPublished] = useState<SavedRetryAdmission | undefined>(undefined), [retryBusy, setRetryBusy] = useState(false);
+  // A fresh layout-owned admission per exact ticket. Strict setup→cleanup→setup
+  // publishes a live admission for this render; an old callback captured the old
+  // admission object and never adopts the fresh one.
+  useLayoutEffect(() => {
+    if (!ticket) {setPublished(undefined); return;}
+    const created = createSavedRetryAdmission(ticket);
+    setPublished(created);
+    setRetryBusy(false);
+    return () => {
+      retireSavedRetryAdmission(created);
+      setPublished(previous => previous === created ? undefined : previous);
+    };
+  }, [ticket]);
   const retry = useCallback(() => {
-    if (!live.current || retryGuard.current || !runtime.operations.current) return;
-    if (route.view === 'home' || route.view === 'downloads') return;
-    if (split) {
-      if (!sameSavedRoute(runtime.posters.getSnapshot().route, {...route, shape: 'posters'})
-        || !sameSavedRoute(runtime.squares.getSnapshot().route, {...route, shape: 'squares'})) return;
-    } else if (!sameSavedRoute(runtime.saved.getSnapshot().route, route)) return;
-    retryGuard.current = true; setRetryBusy(true);
-    const tasks: Promise<void>[] = [];
-    if (split) {
-      if (runtime.posters.getSnapshot().phase === 'error') tasks.push(runtime.posters.select({...route, shape: 'posters'}));
-      if (runtime.squares.getSnapshot().phase === 'error') tasks.push(runtime.squares.select({...route, shape: 'squares'}));
-    } else tasks.push(runtime.saved.select(route));
-    void Promise.all(tasks).catch(error => { if (live.current && runtime.operations.current) effects.reportError(error); })
-      .finally(() => { retryGuard.current = false; if (live.current && runtime.operations.current) setRetryBusy(false); });
-  }, [route, runtime, split, effects.reportError]);
+    const value = published;
+    if (!value || !value.live || value.pending || !savedRetryCurrent(value)) return;
+    const token = Symbol('saved-retry');
+    value.pending = token;
+    setRetryBusy(true);
+    const current = () => value.live && value.pending === token && savedRetryCurrent(value);
+    const report = (error: unknown) => {
+      if (current()) value.ticket.reportError(error);
+    };
+    const unlock = () => {
+      if (value.pending !== token) return;
+      value.pending = undefined;
+      if (value.live && savedRetryCurrent(value)) setRetryBusy(false);
+    };
+    const attempt = async (select: () => Promise<void>) => {
+      if (!current()) return;
+      let task: Promise<void>;
+      try {task = select();}
+      catch (error) {report(error); return;}
+      // A synchronous route/opening replacement stops the sibling before it starts.
+      if (!current()) {void task.catch(() => {}); return;}
+      try {await task;}
+      catch (error) {report(error);}
+    };
+    const run = async () => {
+      try {
+        const exact = value.ticket.route;
+        if (exact.view === 'watchlist' || exact.view === 'favorites') {
+          if (current() && value.ticket.posters.getSnapshot().phase === 'error') {
+            await attempt(() => value.ticket.posters.select({...exact, shape: 'posters'}));
+            if (!current()) return;
+          }
+          if (current() && value.ticket.squares.getSnapshot().phase === 'error') {
+            await attempt(() => value.ticket.squares.select({...exact, shape: 'squares'}));
+          }
+        } else if (current()) {
+          await attempt(() => value.ticket.saved.select(exact));
+        }
+      } catch (error) {
+        report(error);
+      } finally {
+        unlock();
+      }
+    };
+    void run();
+  }, [published]);
   const failures = split ? [
     ...(primary.phase === 'error' ? [{id: 'posters'}] : []),
     ...(squares.phase === 'error' ? [{id: 'squares'}] : []),
