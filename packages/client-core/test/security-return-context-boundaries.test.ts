@@ -123,7 +123,8 @@ test('a context that was valid is refused once the held clock passes its expiry'
 });
 
 test('expired, overlong or future-issued contexts are refused', async () => {
-  for (const [issuedAt, expiresAt] of [[stamp(-1000), stamp(-1)], [stamp(0), stamp(300001)], [stamp(61000), stamp(120000)]]) {
+  // Producer timestamps use whole seconds, so the over-limit fixture must survive stamp() rounding.
+  for (const [issuedAt, expiresAt] of [[stamp(-1000), stamp(-1)], [stamp(0), stamp(301000)], [stamp(61000), stamp(120000)]]) {
     const variant = signed(payload({issuedAt, expiresAt}));
     await assert.rejects(verifySecurityContext(variant, pin, {...expected, prepare: {...prepare, expiresAt}}, {now, crypto}), issuedAt + ' ' + expiresAt);
   }
@@ -152,7 +153,7 @@ test('a wrong transaction, digest, kind, expiry or bytes are refused', async () 
     confirmation({contextDigest: routeBase64(new Uint8Array(32))}),
     confirmation({codeDigest: routeBase64(new Uint8Array(32))}),
     confirmation({kind: 'portico.security-return-confirm.v2'}),
-    confirmation({issuedAt: stamp(0), expiresAt: stamp(60001)}),
+    confirmation({issuedAt: stamp(0), expiresAt: stamp(61000)}),
     confirmation({issuedAt: stamp(0), expiresAt: stamp(121000)}),
     confirmation({issuedAt: stamp(0), expiresAt: stamp(86401000)}),
     confirmation({issuedAt: stamp(-1000), expiresAt: stamp(-1)}),

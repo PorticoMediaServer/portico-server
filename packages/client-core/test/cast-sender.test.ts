@@ -89,7 +89,7 @@ test('status updates position, pause and tracks; commands go to the TV', async (
   assert.deepEqual(s.textTracks.map(t => t.id), [3], 'malformed tracks are dropped');
   h.controller.toggle(); h.controller.seek(-5); h.controller.setAudioTrack(1); h.controller.setSubtitleTrack(3); h.controller.setSubtitleTrack(null);
   await settle();
-  assert.deepEqual(r.sent.slice(2), [{type: 'play'}, {type: 'seek', positionSeconds: 0}, {type: 'audio', trackId: 1}, {type: 'subtitles', trackIds: [3]}, {type: 'subtitles', trackIds: []}]);
+  assert.deepEqual(r.sent.slice(2), [{type: 'status'}, {type: 'play'}, {type: 'seek', positionSeconds: 0}, {type: 'audio', trackId: 1}, {type: 'subtitles', trackIds: [3]}, {type: 'subtitles', trackIds: []}]);
   h.controller.stop(); await settle();
   assert.deepEqual(r.sent.at(-1), {type: 'stop'});
   assert.equal(r.ended, true, 'stop closes Portico on the TV');
@@ -127,7 +127,7 @@ test('takeover: the controller is asked, answers, and the prompt expires after 3
   const started = h.controller.start(r.transport, 'item-1', meta, 0);
   await settle(); r.reply({type: 'paired'}); await started;
   r.reply({type: 'takeover-requested', requester: '  Sam’s iPhone  '});
-  assert.deepEqual(h.controller.getSnapshot().takeover, {requester: 'Sam’s iPhone'});
+  assert.deepEqual(h.controller.getSnapshot().takeover, {requester: 'Sam’s iPhone', controller: undefined, requestId: undefined});
   h.controller.answerTakeover(false); await settle();
   assert.deepEqual(r.sent.at(-1), {type: 'takeover', allow: false});
   assert.equal(h.controller.getSnapshot().takeover, undefined);

@@ -1,7 +1,7 @@
 // Authored source vectors; execution is deliberately separate from this change.
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {RemoteSourceService,type SourceAdvanced,type SourceAdvancedSettings,type SourceReadSettings,type SourceChoiceOpening} from '../src/remote-sources.ts';
+import {RemoteSourceService,sourceReadPreset,type SourceAdvanced,type SourceAdvancedSettings,type SourceReadSettings,type SourceChoiceOpening} from '../src/remote-sources.ts';
 import type {LibraryContentApi} from '../src/library-content.ts';
 import {parseSourceChoiceBaseline,sourceChoiceAccepted,sourceChoiceAdopt,sourceChoiceCommand,sourceChoiceComparison,sourceChoiceFields,sourceChoicePutBody,sourceChoiceResetDefinition,type SourceChoiceBaseline,type SourceChoiceDefinition,type SourceChoiceField} from '../src/remote-source-choice.ts';
 
@@ -9,7 +9,7 @@ const scope={serverId:'server',viewerId:'owner'},wire={serverId:'server',viewerF
 const operation='1788580000000-12345678-1234-1234-1234-123456789012';
 const reading={scanDepth:'basic',wholeFileReads:false,connections:4,requestsPerSecond:4,bytesPerSecond:0} as const;
 const advanced:SourceAdvanced={scanIntervalSeconds:21600,watchForChanges:false,scanOnStart:false,fullRecheckDays:0,cacheBytes:0,cacheFloorBytes:0,seekPreviews:true,chapterImages:true,waveforms:true,loudness:true,checksums:true,introsMode:'inherit',doubleCheckFolders:false,dirCacheSeconds:0,readBufferBytes:0,connectTimeoutSeconds:0,idleTimeoutSeconds:0,retries:0,lowLevelRetries:0};
-const definitions:readonly SourceChoiceDefinition[]=Object.freeze(['list','once','everything','ask'].map(name=>Object.freeze({name:name as SourceChoiceDefinition['name'],definitionRevision:1,reading:Object.freeze({...reading}),advanced:Object.freeze({...advanced})})));
+const definitions:readonly SourceChoiceDefinition[]=Object.freeze(['list','once','everything','ask'].map(name=>Object.freeze({name:name as SourceChoiceDefinition['name'],definitionRevision:1,reading:Object.freeze(sourceReadPreset(name as SourceChoiceDefinition['name'])),advanced:Object.freeze({...advanced})})));
 // This fixture is the server's published direct-DAV set, not a client classifier.
 const applicable=Object.freeze(sourceChoiceFields.filter(field=>!['dirCacheSeconds','readBufferBytes','connectTimeoutSeconds','idleTimeoutSeconds','retries','lowLevelRetries'].includes(field)));
 const originalAdvanced={...advanced,dirCacheSeconds:123,retries:7};
@@ -245,7 +245,7 @@ const scope={serverId:'server',viewerId:'owner'},wire={serverId:'server',viewerF
 const reading={scanDepth:'basic',wholeFileReads:false,connections:4,requestsPerSecond:4,bytesPerSecond:0} as const;
 const advanced={scanIntervalSeconds:21600,watchForChanges:false,scanOnStart:false,fullRecheckDays:0,cacheBytes:0,cacheFloorBytes:0,seekPreviews:true,chapterImages:true,waveforms:true,loudness:true,checksums:true,introsMode:'inherit',doubleCheckFolders:false,dirCacheSeconds:0,readBufferBytes:0,connectTimeoutSeconds:0,idleTimeoutSeconds:0,retries:0,lowLevelRetries:0} as const;
 const names=['list','once','everything','ask'] as const;
-const definitions:SourceChoiceDefinition[]=names.map(name=>Object.freeze({name,definitionRevision:1,reading:Object.freeze({...reading}),advanced:Object.freeze({...advanced})}));
+const definitions:SourceChoiceDefinition[]=names.map(name=>Object.freeze({name,definitionRevision:1,reading:Object.freeze(sourceReadPreset(name as SourceChoiceDefinition['name'])),advanced:Object.freeze({...advanced})}));
 const applicable=Object.freeze(sourceChoiceFields.filter(field=>!['dirCacheSeconds','readBufferBytes','connectTimeoutSeconds','idleTimeoutSeconds','retries','lowLevelRetries'].includes(field)) as SourceChoiceField[]);
 const currentAdvanced=Object.freeze({...advanced,loudness:false});
 const baseline:SourceChoiceBaseline=Object.freeze({sourceId:'dav',generation:'7',configurationGeneration:'11',name:'once',definitionRevision:1,
