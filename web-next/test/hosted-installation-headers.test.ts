@@ -26,7 +26,7 @@ test('Hosted device headers map once and reach only the requests that create a s
       'X-Portico-Device-Platform': 'web', 'X-Portico-App': 'Portico Web', 'X-Portico-App-Version': '1.2.3',
     }), expected);
     setInstallationIdentity(identity);
-    const api = new BrowserAccountApi('https://accounts.example');
+    const api = new BrowserAccountApi('https://accounts.example',{callerOrigin:'https://media.example'});
     for (const request of [
       ['/v1/sessions', 'POST', {}],
       ['/v1/registrations/reg_1/verify', 'POST', {code: '123456'}],
