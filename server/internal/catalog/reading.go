@@ -73,7 +73,13 @@ func attachReadingTx(ctx context.Context, tx *sql.Tx, library, libraryKind, asse
 	if err = compactcatalog.LinkAssetTx(ctx, tx, item, assetID, compactcatalog.Link{}); err != nil {
 		return 0, err
 	}
-	if _, err = tx.ExecContext(ctx, `INSERT INTO reading_publications(item_id,asset_id,format) VALUES(?,?,?) ON CONFLICT(item_id,asset_id) DO UPDATE SET format=excluded.format`, item, assetID, format); err != nil {
+	if newPublication {
+		_, err = tx.ExecContext(ctx, `INSERT INTO reading_publications(item_id,asset_id,format) VALUES(?,?,?)`, item, assetID, format)
+	} else {
+		// An unchanged attachment must not run the BEFORE INSERT trigger.
+		_, err = tx.ExecContext(ctx, `UPDATE reading_publications SET format=? WHERE item_id=? AND asset_id=? AND format IS NOT ?`, format, item, assetID, format)
+	}
+	if err != nil {
 		return 0, err
 	}
 	if newPublication {

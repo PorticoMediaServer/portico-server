@@ -9014,7 +9014,10 @@ END;
 CREATE TRIGGER reading_attribution_inventory_objects_delete BEFORE DELETE ON inventory_objects BEGIN
  UPDATE reading_attribution_state SET input_generation=input_generation+1,phase='scan' WHERE (library_id IN(SELECT cl.id FROM catalog_libraries cl JOIN library_sources src ON src.library_id=cl.library_id WHERE src.id=OLD.source_id));
 END;
-CREATE TRIGGER reading_attribution_inventory_objects_update BEFORE UPDATE OF id,source_id,asset_id,root_incarnation,relative_path,revision,state,retired,unsupported_reason ON inventory_objects BEGIN
+CREATE TRIGGER reading_attribution_inventory_objects_update BEFORE UPDATE OF id,source_id,asset_id,root_incarnation,relative_path,revision,state,retired,unsupported_reason ON inventory_objects
+ WHEN OLD.id IS NOT NEW.id OR OLD.source_id IS NOT NEW.source_id OR OLD.asset_id IS NOT NEW.asset_id
+ OR OLD.root_incarnation IS NOT NEW.root_incarnation OR OLD.relative_path IS NOT NEW.relative_path OR OLD.revision IS NOT NEW.revision
+ OR OLD.state IS NOT NEW.state OR OLD.retired IS NOT NEW.retired OR OLD.unsupported_reason IS NOT NEW.unsupported_reason BEGIN
  UPDATE reading_attribution_state SET input_generation=input_generation+1,phase='scan' WHERE (library_id IN(SELECT cl.id FROM catalog_libraries cl JOIN library_sources src ON src.library_id=cl.library_id WHERE src.id=OLD.source_id)) OR (library_id IN(SELECT cl.id FROM catalog_libraries cl JOIN library_sources src ON src.library_id=cl.library_id WHERE src.id=NEW.source_id));
 END;
 CREATE TRIGGER reading_attribution_source_insert BEFORE INSERT ON library_sources BEGIN

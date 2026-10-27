@@ -275,3 +275,37 @@ func TestReadingOwnerCanonicalAbsenceClearsStaleAutomatic(t *testing.T) {
 		})
 	}
 }
+
+func TestReadingRepeatedOwnerEditKeepsAttributionInputAndUpdatesAccounting(t *testing.T) {
+	_, c, target := readingOwnerFixture(t, compactcatalog.Ebook, "book")
+	entity := c.ID(target.ID)
+	current := RepairField{Value: "Same Author", Automatic: "", Locked: true}
+	value := current.Value
+	spec := RepairFieldSpec{Type: "text"}
+	write := func(actor, at string) {
+		c.Write(func(ctx context.Context, tx *sql.Tx) error {
+			return applyRepairField(ctx, tx, target, "author", spec, current, RepairFieldEdit{Value: &value}, actor, at)
+		})
+	}
+	write("first-owner", "first-time")
+	var before, after int64
+	if err := c.DB.QueryRow(`SELECT input_generation FROM reading_attribution_state WHERE library_id=(SELECT library_id FROM catalog_entities WHERE id=?)`, entity).Scan(&before); err != nil {
+		t.Fatal(err)
+	}
+	write("second-owner", "second-time")
+	if err := c.DB.QueryRow(`SELECT input_generation FROM reading_attribution_state WHERE library_id=(SELECT library_id FROM catalog_entities WHERE id=?)`, entity).Scan(&after); err != nil {
+		t.Fatal(err)
+	}
+	if after != before {
+		t.Fatalf("same effective owner edit invalidated: %d -> %d", before, after)
+	}
+	var actor, at string
+	if err := c.DB.QueryRow(`SELECT actor,observed_at FROM metadata_owner_fields WHERE kind='item' AND entity_id=? AND field='author'`, entity).Scan(&actor, &at); err != nil || actor != "second-owner" || at != "second-time" {
+		t.Fatalf("accounting=%s/%s err=%v", actor, at, err)
+	}
+	value = "Changed Author"
+	write("second-owner", "third-time")
+	if err := c.DB.QueryRow(`SELECT input_generation FROM reading_attribution_state WHERE library_id=(SELECT library_id FROM catalog_entities WHERE id=?)`, entity).Scan(&after); err != nil || after <= before {
+		t.Fatalf("real owner change did not invalidate: %d -> %d err=%v", before, after, err)
+	}
+}

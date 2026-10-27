@@ -677,19 +677,23 @@ func newPersonToken() string {
 // UpsertAssetTx records a file's evidence (by path) and marks it available.
 // It returns the asset's integer id and its public token.
 func UpsertAssetTx(ctx context.Context, tx *sql.Tx, a Asset) (int64, string, error) {
-	var id int64
-	var token string
-	// An upsert makes the file available; one that was unavailable changes its
-	// items' availability, which re-derives from the links.
-	var wasUnavailable bool
-	if err := tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM catalog_assets WHERE path=? AND available=0)`, a.Path).Scan(&wasUnavailable); err != nil {
+	id, token, err := AssetByPathTx(ctx, tx, a.Path)
+	if err != nil {
 		return 0, "", err
 	}
-	err := tx.QueryRowContext(ctx, `INSERT INTO catalog_assets(token,path,size,modified_ns,container,video_codec,audio_codec,width,height,duration,available)
- VALUES(?,?,?,?,?,?,?,?,?,?,1)
- ON CONFLICT(path) DO UPDATE SET size=excluded.size,modified_ns=excluded.modified_ns,container=excluded.container,video_codec=excluded.video_codec,audio_codec=excluded.audio_codec,width=excluded.width,height=excluded.height,duration=excluded.duration,available=1
- RETURNING id,token`, NewAssetToken(), a.Path, a.Size, a.ModifiedNS, a.Container, a.VideoCodec, a.AudioCodec, a.Width, a.Height, a.Duration).Scan(&id, &token)
-	if err != nil {
+	if id == 0 {
+		token = NewAssetToken()
+		id, err = CreateAssetTx(ctx, tx, token, a, true)
+		return id, token, err
+	}
+	var wasUnavailable bool
+	if err = tx.QueryRowContext(ctx, `SELECT available=0 FROM catalog_assets WHERE id=?`, id).Scan(&wasUnavailable); err != nil {
+		return 0, "", err
+	}
+	// Compare before UPDATE so identical evidence never names the watched
+	// availability column. Preserve the original reappearance settlement path.
+	if _, err = tx.ExecContext(ctx, `UPDATE catalog_assets SET size=?2,modified_ns=?3,container=?4,video_codec=?5,audio_codec=?6,width=?7,height=?8,duration=?9,available=1
+ WHERE id=?1 AND (size IS NOT ?2 OR modified_ns IS NOT ?3 OR container IS NOT ?4 OR video_codec IS NOT ?5 OR audio_codec IS NOT ?6 OR width IS NOT ?7 OR height IS NOT ?8 OR duration IS NOT ?9 OR available<>1)`, id, a.Size, a.ModifiedNS, a.Container, a.VideoCodec, a.AudioCodec, a.Width, a.Height, a.Duration); err != nil {
 		return 0, "", err
 	}
 	if wasUnavailable {
@@ -903,12 +907,20 @@ func LinkAssetTx(ctx context.Context, tx *sql.Tx, item, asset int64, l Link) err
 	if l.End != nil {
 		end = *l.End
 	}
-	res, err := tx.ExecContext(ctx, `INSERT INTO catalog_asset_links(entity_id,asset_id,part_index,available,start_seconds,end_seconds,edition)
- SELECT ?1,?2,?3,a.available,?4,?5,?6 FROM catalog_assets a WHERE a.id=?2
- ON CONFLICT(entity_id,asset_id) DO UPDATE SET part_index=excluded.part_index,start_seconds=excluded.start_seconds,end_seconds=excluded.end_seconds,
- edition=CASE WHEN excluded.edition='' THEN catalog_asset_links.edition ELSE excluded.edition END
- WHERE catalog_asset_links.part_index IS NOT excluded.part_index OR catalog_asset_links.start_seconds IS NOT excluded.start_seconds OR catalog_asset_links.end_seconds IS NOT excluded.end_seconds
- OR (excluded.edition<>'' AND catalog_asset_links.edition IS NOT excluded.edition)`, item, asset, l.Part, l.Start, end, l.Edition)
+	var exists bool
+	if err := tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM catalog_asset_links WHERE entity_id=? AND asset_id=?)`, item, asset).Scan(&exists); err != nil {
+		return err
+	}
+	var res sql.Result
+	var err error
+	if exists {
+		res, err = tx.ExecContext(ctx, `UPDATE catalog_asset_links SET part_index=?3,start_seconds=?4,end_seconds=?5,
+ edition=CASE WHEN ?6='' THEN edition ELSE ?6 END WHERE entity_id=?1 AND asset_id=?2
+ AND (part_index IS NOT ?3 OR start_seconds IS NOT ?4 OR end_seconds IS NOT ?5 OR (?6<>'' AND edition IS NOT ?6))`, item, asset, l.Part, l.Start, end, l.Edition)
+	} else {
+		res, err = tx.ExecContext(ctx, `INSERT INTO catalog_asset_links(entity_id,asset_id,part_index,available,start_seconds,end_seconds,edition)
+ SELECT ?1,?2,?3,a.available,?4,?5,?6 FROM catalog_assets a WHERE a.id=?2`, item, asset, l.Part, l.Start, end, l.Edition)
+	}
 	if err != nil {
 		return err
 	}
