@@ -6,7 +6,10 @@ import {WindowedGrid, type GridItemContext, type WindowedGridHandle} from '../..
 import {mountGridOutgoingHarness} from './grid-outgoing';
 import '../../src/kit/tokens.css';
 
-const CARD = 80.23, GAP = .37, ROW = 56.3, ROW_GAP = .27, STICKY = 7.13, PITCH = ROW + ROW_GAP;
+const CARD = 80.23, GAP = .37, ROW = 56.3, ROW_GAP = .27, STICKY = 7.13;
+/** Mutable per-mount card geometry; changing it must not require a new renderItem. */
+type GridGeometry = Readonly<{cardWidth: number; rowHeight: number; gap: number; rowGap: number; stickyOffset: number}>;
+const DEFAULT_GEOMETRY: GridGeometry = {cardWidth: CARD, rowHeight: ROW, gap: GAP, rowGap: ROW_GAP, stickyOffset: STICKY};
 type Item = Readonly<{id: string; revision: number}>;
 const frame = () => new Promise<void>(resolve => requestAnimationFrame(() => resolve()));
 const settle = async () => {await frame();await frame();await frame();};
@@ -43,19 +46,20 @@ function mount(totalItems: number, initialIndex?: number, zoom = 1) {
   const makePlaceholder = () => {const captured = placeholderCallback;return (index: number) => {placeholders++;return <span data-placeholder={index} data-callback={captured}/>;};};
   const makeFocus = () => {const captured = focusCallback;return () => {focusEvents.push(captured);};};
   let renderItem = makeRender(), renderPlaceholder = makePlaceholder(), onItemFocus = makeFocus();
+  const geom = {...DEFAULT_GEOMETRY}, pitch = () => geom.rowHeight + geom.rowGap;
   const onVisibleRange = (first: number, last: number) => visible.push([first, last]);
-  const draw = () => flushSync(() => root.render(<WindowedGrid collection={collection} retainRemovals={zoom !== 1} paintScope={collection} ref={handle} label="Content fixture" height={360} cardWidth={CARD} rowHeight={ROW}
-    gap={GAP} rowGap={ROW_GAP} stickyOffset={STICKY} initialIndex={initialIndex} onVisibleRange={onVisibleRange} onItemFocus={onItemFocus}
+  const draw = () => flushSync(() => root.render(<WindowedGrid collection={collection} retainRemovals={zoom !== 1} paintScope={collection} ref={handle} label="Content fixture" height={360} cardWidth={geom.cardWidth} rowHeight={geom.rowHeight}
+    gap={geom.gap} rowGap={geom.rowGap} stickyOffset={geom.stickyOffset} initialIndex={initialIndex} onVisibleRange={onVisibleRange} onItemFocus={onItemFocus}
     renderItem={renderItem} renderPlaceholder={renderPlaceholder}/>));
   draw();
   const grid = () => host.querySelector<HTMLElement>('[role="list"]')!;
   const stats = () => ({calls, children, placeholders, mounts, unmounts, visible: visible.length, ensured: ensured.length});
   const range = () => {
-    const element = grid(), columns = Math.max(1, Math.floor((element.clientWidth + GAP) / (CARD + GAP)));
-    const height = Math.ceil(total / columns) * PITCH - ROW_GAP, usable = element.clientHeight - STICKY;
+    const element = grid(), columns = Math.max(1, Math.floor((element.clientWidth + geom.gap) / (geom.cardWidth + geom.gap)));
+    const height = Math.ceil(total / columns) * pitch() - geom.rowGap, usable = element.clientHeight - geom.stickyOffset;
     const logicalTop = element.scrollTop * Math.max(1, height - usable) / Math.max(1, Math.min(8_000_000, height) - usable);
-    const first = Math.min(Math.ceil(total / columns) - 1, Math.floor(logicalTop / PITCH));
-    const last = Math.min(Math.ceil(total / columns) - 1, Math.max(first, Math.ceil((logicalTop + usable) / PITCH) - 1));
+    const first = Math.min(Math.ceil(total / columns) - 1, Math.floor(logicalTop / pitch()));
+    const last = Math.min(Math.ceil(total / columns) - 1, Math.max(first, Math.ceil((logicalTop + usable) / pitch()) - 1));
     return {columns, logicalTop, first: first * columns, last: Math.min(total - 1, (last + 1) * columns - 1),
       renderFirst: Math.max(0, first - 1) * columns, renderLast: Math.min(total - 1, (last + 2) * columns - 1)};
   };
@@ -73,8 +77,8 @@ function mount(totalItems: number, initialIndex?: number, zoom = 1) {
       const index = Number(node.dataset.gridIndex), row = Math.floor(index / expected.columns), column = index % expected.columns;
       const old = document.createElement('div');old.className = node.className;
       // Deliberately spell the pre-fix formula in its original evaluation order.
-      Object.assign(old.style, {width: `${CARD}px`, height: `${ROW}px`, left: `${column * (CARD + GAP)}px`,
-        top: `${row * PITCH - expected.logicalTop + element.scrollTop + STICKY}px`});
+      Object.assign(old.style, {width: `${geom.cardWidth}px`, height: `${geom.rowHeight}px`, left: `${column * (geom.cardWidth + geom.gap)}px`,
+        top: `${row * pitch() - expected.logicalTop + element.scrollTop + geom.stickyOffset}px`});
       extent.append(old);pairs.push([node, old]);
     }
     reference.scrollTop = element.scrollTop;
@@ -96,6 +100,9 @@ function mount(totalItems: number, initialIndex?: number, zoom = 1) {
     placeholderCallback: () => {placeholderCallback++;renderPlaceholder = makePlaceholder();draw();},
     focusCallback: () => {focusCallback++;onItemFocus = makeFocus();draw();},
     total: async (value: number) => {total = value;await source.revalidate({fetchPage});await settle();},
+    /** Change only card geometry and redraw with the very same renderItem identity. */
+    setGeometry: (next: Partial<GridGeometry>) => {Object.assign(geom, next);draw();},
+    geometryValues: () => ({...geom}), renderer: () => renderItem,
     draw, dispose: () => {flushSync(() => root.unmount());source.dispose();host.remove();},
   };
 }
@@ -149,8 +156,44 @@ export async function checkGridContent() {
     before = fixture.stats();fixture.placeholderCallback();await settle();check(fixture.stats().placeholders > before.placeholders, 'placeholder callback changes render');
     equal(fixture.grid().querySelector<HTMLElement>('[data-placeholder]')?.dataset.callback, '1', 'new placeholder original props');
     before = fixture.stats();fixture.release();await fixture.ready();await settle();check(fixture.stats().children > before.children, 'page version publication renders loaded content');fixture.verifyRange();
-    proof.push({invalidation: ['parent-stable', 'render-callback', 'focus-callback', 'focused', 'generation', 'total', 'placeholder-callback', 'page-version']});
   } finally {fixture.dispose();}
+  // Real browser, geometry-only invalidation: the same renderItem identity and the
+  // same render/visible range, but a changed card width and sticky offset must still
+  // rebuild content and reposition every wrapper with the original expression/order.
+  const geometryOnly = mount(1000);
+  try {
+    await geometryOnly.ready();await settle();
+    geometryOnly.grid().querySelector<HTMLButtonElement>('[data-content="item-8"]')!.focus({preventScroll: true});await settle();
+    const beforeGeometry = geometryOnly.stats(), rangeBefore = geometryOnly.range(), renderer = geometryOnly.renderer();
+    const slotCount = geometryOnly.grid().querySelectorAll('[data-grid-index]').length;
+    const sample = geometryOnly.grid().querySelector<HTMLElement>('[data-grid-index="9"]')!, oldLeft = sample.style.left, oldTop = sample.style.top;
+    check(geometryOnly.grid().querySelector<HTMLElement>('[data-content][data-focused="true"]')?.dataset.content === 'item-8', 'geometry case starts with a real focused slot');
+    geometryOnly.setGeometry({cardWidth: 79.5, stickyOffset: STICKY + 1});await settle();
+    const afterGeometry = geometryOnly.stats(), rangeAfter = geometryOnly.range();
+    check(geometryOnly.renderer() === renderer, 'same renderItem identity across the geometry change');
+    check(afterGeometry.calls > beforeGeometry.calls, 'geometry-only change reinvokes renderItem');
+    equal([rangeAfter.first, rangeAfter.last, rangeAfter.renderFirst, rangeAfter.renderLast],
+      [rangeBefore.first, rangeBefore.last, rangeBefore.renderFirst, rangeBefore.renderLast], 'geometry change keeps the same range');
+    equal(geometryOnly.grid().querySelectorAll('[data-grid-index]').length, slotCount, 'geometry change keeps the same slot count');
+    equal(geometryOnly.geometry(), slotCount, 'every wrapper matches the original expression at the new geometry');
+    const index = Number(sample.dataset.gridIndex), row = Math.floor(index / rangeAfter.columns), column = index % rangeAfter.columns;
+    check(sample.style.left !== oldLeft && sample.style.top !== oldTop, 'wrapper actually adopted the new geometry');
+    equal(sample.style.left, `${column * (79.5 + GAP)}px`, 'wrapper left keeps original arithmetic order');
+    equal(sample.style.top, `${row * (ROW + ROW_GAP) - rangeAfter.logicalTop + geometryOnly.grid().scrollTop + STICKY + 1}px`, 'wrapper top keeps original arithmetic order');
+    for (const node of geometryOnly.grid().querySelectorAll<HTMLElement>('[data-grid-index]')) {
+      const at = Number(node.dataset.gridIndex);
+      equal(node.dataset.itemId, `item-${at}`, 'wrapper keeps its live item id');
+      equal(node.querySelector<HTMLElement>('[data-content]')?.dataset.content, `item-${at}`, 'slot content matches its live index');
+    }
+    equal(geometryOnly.grid().querySelectorAll('[data-content][data-focused="true"]').length, 1, 'exactly one live focus context');
+    equal(geometryOnly.grid().querySelector<HTMLElement>('[data-content][data-focused="true"]')?.dataset.content, 'item-8', 'focus stays on the same original item');
+    for (const node of geometryOnly.grid().querySelectorAll<HTMLElement>('[data-content]')) {
+      equal([node.dataset.callback, node.dataset.revision], ['0', '0'], 'no stale page version or item revision props');
+    }
+    equal(geometryOnly.grid().querySelectorAll('[data-grid-leaving]').length, 0, 'geometry change creates no outgoing nodes');
+    equal(afterGeometry.visible, beforeGeometry.visible, 'geometry change does not republish the authority range');
+  } finally {geometryOnly.dispose();}
+  proof.push({invalidation: ['parent-stable', 'render-callback', 'focus-callback', 'focused', 'generation', 'total', 'placeholder-callback', 'page-version', 'geometry-only']});
   const initial = mount(1000, 400);
   try {
     await initial.ready();await until(() => initial.grid().scrollTop > 0, 'initial index scroll');await settle();
@@ -187,9 +230,12 @@ export async function checkGridContentRetention() {
     await ready();await settle();
     slot('a-0').querySelector<HTMLButtonElement>('button')!.focus();await settle();document.activeElement!.dispatchEvent(new KeyboardEvent('keydown', {key: 'Shift', bubbles: true}));
     await replace(Array.from({length: 99}, (_, i) => `a-${i + 1}`));
+    await until(() => !!document.querySelector('[data-grid-leaving]'), 'first removal cohort appears');
     check(slot('a-1').contains(document.activeElement), 'focus transferred to next original item');equal(beforeInert.at(-1), false, 'native focus witness before inert');
     await until(() => !document.querySelector('[data-grid-leaving]'), 'first cohort retires');
-    await replace(Array.from({length: 96}, (_, i) => `a-${i + 4}`));await settle();
+    await replace(Array.from({length: 96}, (_, i) => `a-${i + 4}`));
+    await until(() => !!document.querySelector('[data-grid-leaving]'), 'move cohort appears');
+    await settle();
     window.gridOutgoingHarness!.publish();await settle();
     equal(slot('a-4').querySelector<HTMLElement>('[data-original-card]')?.dataset.publication, '1', 'live props update during retention');
     await until(() => !document.querySelector('[data-grid-leaving]'), 'move cohort retires');

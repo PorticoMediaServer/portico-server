@@ -100,7 +100,9 @@ export function WindowedGrid<T>({collection, renderItem, renderPlaceholder, labe
       contents.push({slot, index, content, onFocusCapture});
     }
     return {contents, keys};
-  }, [collection, pages, snapshot.generation, snapshot.total, range.renderFirst, range.renderLast, focused, onItemFocus, renderItem, renderPlaceholder]);
+  }, [collection, pages, snapshot.generation, snapshot.total, range.renderFirst, range.renderLast,
+    // Restore every original rare geometry invalidator; keep raw scroll (logicalTop/viewport.top) out.
+    columns, cardWidth, rowHeight, gap, pitch, stickyOffset, focused, onItemFocus, renderItem, renderPlaceholder]);
   const items = useMemo(() => contents.map(({slot, index, content, onFocusCapture}): PaintSlot => {
     const row = Math.floor(index / columns), column = index % columns;
     // Keep the exact arithmetic order, including fractional/compressed scrolling.
