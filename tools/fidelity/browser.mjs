@@ -1,19 +1,42 @@
 import {spawn} from 'node:child_process';
 import {once} from 'node:events';
 import {mkdtemp, rm} from 'node:fs/promises';
+import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import {measureScreen} from './measure-screen.mjs';
 import {observeRenderedFonts} from './resolved-fonts.mjs';
 import {fontFamilyMetadata} from './font-family-metadata.mjs';
 
+// Linux Chrome keeps its process-singleton socket at
+// <TMPDIR>/com.google.Chrome.XXXXXX/SingletonSocket and aborts with
+// "Socket path too long" once that passes the kernel's 107-byte sun_path
+// limit. An owned runner scratch is usually deeper than that, so the child
+// gets its own short temp directory while its retention profile stays in the
+// caller's scratch.
+const singletonSocketLimit = 107;
+const chromeTempSuffix = join('fidelity-chrome-XXXXXX', 'com.google.Chrome.XXXXXX', 'SingletonSocket').length + 1;
+function chromeTempBase(scratch) {
+  const base = [scratch, tmpdir(), '/tmp'].find(value => typeof value === 'string' && value.length + chromeTempSuffix <= singletonSocketLimit);
+  if (!base) throw new Error('A Chromium temp directory within the process-singleton socket limit is required');
+  return base;
+}
+
 /** An owned, isolated measurement browser. No cookies, auth state, or screenshots. */
 export async function withMeasurementBrowser({scratch, executable, viewport, allowedOrigins}, run) {
   if (!scratch || !executable) throw new Error('Explicit owned scratch and Chromium executable required');
   const allowed = new Set(allowedOrigins.map(value => new URL(value).origin));
+  let chromeTemp;
   const profile = await mkdtemp(join(scratch, 'fidelity-browser-'));
+  try {
+    chromeTemp = await mkdtemp(join(chromeTempBase(scratch), 'fidelity-chrome-'));
+  } catch (error) {
+    await rm(profile, {recursive: true, force: true});
+    throw error;
+  }
   const chrome = spawn(executable, ['--headless=new', '--no-sandbox', '--disable-dev-shm-usage', '--disable-gpu',
     '--renderer-process-limit=1', '--no-first-run', '--no-default-browser-check', '--remote-debugging-address=127.0.0.1',
-    '--remote-debugging-port=0', `--user-data-dir=${profile}`, 'about:blank'], {stdio: ['ignore', 'ignore', 'pipe'], detached: true});
+    '--remote-debugging-port=0', `--user-data-dir=${profile}`, 'about:blank'], {stdio: ['ignore', 'ignore', 'pipe'], detached: true,
+    env: {...process.env, TMPDIR: chromeTemp}});
   let socket, session, sequence = 0;
   const pending = new Map(), blocked = [], pageErrors = [];
   const fontResources = new Map(), fontRegistrations = new Map(); let excessiveFonts = false;
@@ -31,11 +54,12 @@ export async function withMeasurementBrowser({scratch, executable, viewport, all
     return result.result.value;
   }
   try {
+    let stderr = '';
     const endpoint = await new Promise((resolve, reject) => {
-      let stderr = '';
-      const timer = setTimeout(() => reject(new Error('Measurement Chromium startup timeout')), 15_000);
+      const detail = () => stderr.trim() ? `: ${stderr.trim().slice(-4000)}` : '';
+      const timer = setTimeout(() => reject(new Error(`Measurement Chromium startup timeout${detail()}`)), 15_000);
       chrome.once('error', error => {clearTimeout(timer); reject(error);});
-      chrome.once('exit', code => {clearTimeout(timer); reject(new Error(`Measurement Chromium exited ${code}`));});
+      chrome.once('exit', (code, signal) => {clearTimeout(timer); reject(new Error(`Measurement Chromium exited ${code ?? signal}${detail()}`));});
       chrome.stderr.on('data', bytes => {
         stderr = (stderr + bytes.toString()).slice(-8192);
         const match = stderr.match(/DevTools listening on (ws:\/\/[^\s]+)/);
@@ -126,5 +150,6 @@ export async function withMeasurementBrowser({scratch, executable, viewport, all
       if (chrome.exitCode === null && chrome.signalCode === null) try {process.kill(-chrome.pid, 'SIGKILL');} catch {}
     }
     await rm(profile, {recursive: true, force: true});
+    await rm(chromeTemp, {recursive: true, force: true});
   }
 }
