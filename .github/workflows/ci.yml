@@ -28,6 +28,8 @@ jobs:
         with: {ref: '${{ inputs.ref || github.sha }}', fetch-depth: 0}
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
         with: {node-version-file: .node-version}
+      - uses: actions/setup-go@d35c59abb061a4a6fb18e82ac0862c26744d6ab5
+        with: {go-version-file: server/go.mod, cache-dependency-path: server/go.sum}
       - name: Actual job toolchain
         run: |
           node --version || true

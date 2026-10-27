@@ -280,6 +280,7 @@ DECLARED = dict([
     ("fail-detail", ["TestBad"]),
     ("fail-group", ["TestOne", "TestTwo"]),
     ("fail-many", ["TestCase%02d" % index for index in range(12)]),
+    ("fail-long", ["TestLong"]),
     ("build-fail", []),
     ("deadline", ["TestStuck", "TestAfter"]),
     ("deadline-nolist", ["TestStuck", "TestAfter"]),
@@ -360,10 +361,24 @@ elif mode == "fail-many":
     emit(Action="fail", Elapsed=0.02)
     raise SystemExit(1)
 elif mode == "build-fail":
-    emit(Action="output", Output="# example.com/m/" + package + "\\n")
-    emit(Action="output", Output="./broken.go:9:2: undefined: missingThing\\n")
-    emit(Action="output", Output="FAIL\\texample.com/m/" + package + " [build failed]\\n")
+    # Go 1.26 reports a package that will not compile through `build-output`
+    # events, each with the compiler's own Output, and then `build-fail`.
+    broken = "example.com/m/" + package + " [example.com/m/" + package + ".test]"
+    emit(Action="build-output", ImportPath=broken,
+         Output="# example.com/m/" + package + "\\n")
+    emit(Action="build-output", ImportPath=broken,
+         Output="a/broken.go:9:2: undefined: missingThing\\n")
     emit(Action="build-fail")
+    emit(Action="output", Output="FAIL\\texample.com/m/" + package + " [build failed]\\n")
+    emit(Action="fail", Elapsed=0.02)
+    raise SystemExit(1)
+elif mode == "fail-long":
+    emit(Action="run", Test="TestLong")
+    for index in range(60):
+        emit(Action="output", Test="TestLong",
+             Output="    long_test.go:%d: detail line %d\\n" % (10 + index, index))
+    emit(Action="fail", Test="TestLong", Elapsed=0.01)
+    emit(Action="fail", Elapsed=0.02)
     raise SystemExit(1)
 elif mode in ("deadline", "deadline-nolist"):
     emit(Action="run", Test="TestStuck")
@@ -494,9 +509,108 @@ class GoPackageRunnerTests(ProcessChecks, unittest.TestCase):
             self.assertEqual(ci.go_test("server", [("./a", None)]), 1)
         text = shown.getvalue()
         self.assertIn("FAIL  ./a", text)
-        self.assertIn("FAIL  (package)  ./a: undefined: missingThing", text)
-        self.assertIn("broken.go:9", text)
-        self.assertIn("::error file=server/a::./a: undefined: missingThing", text)
+        # Go 1.26's build-output is decoded like test output: the file:line and
+        # message survive, not just the package directory.
+        self.assertIn("a/broken.go:9:2: undefined: missingThing", text)
+        self.assertIn("FAIL  (package)  ./a  server/a/broken.go:9", text)
+        self.assertIn("      undefined: missingThing", text)
+        self.assertIn("::error file=server/a/broken.go,line=9::./a: undefined: missingThing", text)
+
+    def test_step_summary_and_record_keep_a_build_failure_source_line(self):
+        summary = self.root / "step-summary.md"
+        results = self.root / "results.jsonl"
+        self.install_go(["a"], {"a": "build-fail"})
+        with contextlib.redirect_stdout(io.StringIO()), \
+                patch.dict(ci.os.environ, {"CI_GO_RESULTS": str(results),
+                                           "GITHUB_STEP_SUMMARY": str(summary)}):
+            self.assertEqual(ci.go_test("server", [("./a", None)]), 1)
+        text = summary.read_text()
+        self.assertIn("| ./a | (package) | undefined: missingThing | "
+                      "server/a/broken.go:9 |", text)
+        self.assertIn("a/broken.go:9:2: undefined: missingThing", text)
+        records = [json.loads(line) for line in results.read_text().splitlines()]
+        package = next(record for record in records if record["record"] == "package")
+        self.assertEqual(package["package_failure"],
+                         {"message": "undefined: missingThing",
+                          "file": "server/a/broken.go", "line": 9})
+
+    def test_a_real_go_build_failure_keeps_file_line_and_message_everywhere(self):
+        """A real broken package, not a scripted event stream.
+
+        Go reports a package that will not compile as `build-output` events
+        carrying the compiler's own file:line and message. Both must reach the
+        console, this run's compact JSONL record, the raw event stream, the
+        step summary and the annotation, and the next package must still run.
+        """
+        if not shutil.which("go"):
+            self.skipTest("a real go toolchain is required for the compiler probe")
+        module = "probe"
+        tree = self.root / module
+        for name, text in (
+            ("go.mod", "module example.com/probe\n\ngo 1.26.10\n"),
+            ("broken/broken.go",
+             "package broken\n\nfunc Use() int { return missingIdentifier() }\n"),
+            ("broken/broken_test.go",
+             'package broken\n\nimport "testing"\n\nfunc TestBroken(t *testing.T) {}\n'),
+            ("later/later_test.go",
+             'package later\n\nimport "testing"\n\nfunc TestLater(t *testing.T) {\n'
+             '\tt.Fatal("the package after a build failure still ran")\n}\n'),
+        ):
+            path = tree / name
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(text, encoding="utf-8")
+        home = self.root / "home"
+        home.mkdir()
+        results = self.root / "real-results.jsonl"
+        summary = self.root / "real-summary.md"
+        environment = {"HOME": str(home), "GOCACHE": str(home / "cache"),
+                       "GOPATH": str(home / "go"), "GOTOOLCHAIN": "local",
+                       "GOPROXY": "off", "GOFLAGS": "",
+                       "CI_GO_RESULTS": str(results),
+                       "GITHUB_STEP_SUMMARY": str(summary)}
+        with patch.dict(ci.os.environ, environment), \
+                contextlib.redirect_stdout(io.StringIO()) as shown:
+            status = ci.go_test(module, [("./broken", None), ("./later", None)])
+        self.assertEqual(status, 1)
+        console = shown.getvalue()
+        # The console keeps the compiler's own text, then this run's decoded
+        # package block and its annotation.
+        self.assertIn("broken/broken.go:3:25: undefined: missingIdentifier", console)
+        self.assertIn("FAIL  (package)  ./broken  probe/broken/broken.go:3", console)
+        self.assertIn("      undefined: missingIdentifier", console)
+        self.assertIn("::error file=probe/broken/broken.go,line=3::"
+                      "./broken: undefined: missingIdentifier", console)
+        # The compact, per-run JSONL record names the broken source line.
+        records = [json.loads(line) for line in results.read_text().splitlines()]
+        broken = next(record for record in records
+                      if record["record"] == "package" and record["package"] == "./broken")
+        self.assertEqual(broken["status"], "fail")
+        self.assertEqual(broken["failed"], [])
+        self.assertEqual(broken["failures"], [])
+        self.assertEqual(broken["package_failure"],
+                         {"message": "undefined: missingIdentifier",
+                          "file": "probe/broken/broken.go", "line": 3})
+        self.assertTrue(any("broken/broken.go:3:25" in line
+                            for line in broken["package_output"]))
+        # The raw, incremental event stream keeps Go's build-output events.
+        events = results.with_name(results.stem + "-events" + results.suffix)
+        raw = [json.loads(line) for line in events.read_text().splitlines()]
+        build = [record["event"] for record in raw
+                 if record["event"].get("Action") == "build-output"]
+        self.assertTrue(build)
+        self.assertTrue(any("broken/broken.go:3:25: undefined: missingIdentifier"
+                            in (event.get("Output") or "") for event in build))
+        # The job page names the real file and line, not just the directory.
+        summary_text = summary.read_text()
+        self.assertIn("| ./broken | (package) | undefined: missingIdentifier | "
+                      "probe/broken/broken.go:3 |", summary_text)
+        self.assertIn("broken/broken.go:3:25: undefined: missingIdentifier", summary_text)
+        # The rest of the selection still ran after the build failure.
+        later = next(record for record in records
+                     if record["record"] == "package" and record["package"] == "./later")
+        self.assertEqual(later["status"], "fail")
+        self.assertEqual(later["failed"], ["TestLater"])
+        self.assertIn("the package after a build failure still ran", console)
 
     def test_step_summary_gets_package_test_message_and_location(self):
         summary = self.root / "step-summary.md"
@@ -511,6 +625,56 @@ class GoPackageRunnerTests(ProcessChecks, unittest.TestCase):
         self.assertIn("| Package | Test | First message | Location |", text)
         self.assertIn("| ./a | TestBad | invalid device record | server/a/foo_test.go:63 |", text)
 
+    def test_step_summary_also_carries_the_decoded_block_as_fenced_text(self):
+        summary = self.root / "step-summary.md"
+        results = self.root / "results.jsonl"
+        self.install_go(["a"], {"a": "fail-group"})
+        with contextlib.redirect_stdout(io.StringIO()), \
+                patch.dict(ci.os.environ, {"CI_GO_RESULTS": str(results),
+                                           "GITHUB_STEP_SUMMARY": str(summary)}):
+            self.assertEqual(ci.go_test("server", [("./a", None)]), 1)
+        text = summary.read_text()
+        # Both members of the identical-message group keep their own block.
+        self.assertIn("**FAIL  ./a TestOne", text)
+        self.assertIn("**FAIL  ./a TestTwo", text)
+        self.assertIn("```text", text)
+        self.assertIn("same_test.go:63: seed fixture", text)
+        self.assertIn("same_test.go:64: seed fixture", text)
+        self.assertIn("same message in 2 tests", text)
+
+    def test_step_summary_bounds_long_blocks_but_keeps_every_raw_event(self):
+        summary = self.root / "step-summary.md"
+        results = self.root / "results.jsonl"
+        self.install_go(["a"], {"a": "fail-long"})
+        with contextlib.redirect_stdout(io.StringIO()), \
+                patch.dict(ci.os.environ, {"CI_GO_RESULTS": str(results),
+                                           "GITHUB_STEP_SUMMARY": str(summary)}), \
+                patch.object(ci, "STEP_SUMMARY_BLOCK_LINES", 4):
+            self.assertEqual(ci.go_test("server", [("./a", None)]), 1)
+        text = summary.read_text()
+        self.assertIn("more output line(s)", text)
+        self.assertIn("see go-results JSONL", text)
+        # Head and tail survive, and every event still exists in the JSONL.
+        self.assertIn("detail line 0", text)
+        self.assertIn("detail line 59", text)
+        events = results.with_name(results.stem + "-events" + results.suffix)
+        raw = [json.loads(line) for line in events.read_text().splitlines()]
+        outputs = [record["event"].get("Output") for record in raw
+                   if record["event"].get("Action") == "output"]
+        self.assertEqual(sum(1 for output in outputs if output and "detail line" in output), 60)
+
+    def test_step_summary_with_no_failures_still_names_halted_packages(self):
+        summary = self.root / "step-summary.md"
+        self.install_go(["a"], {"a": "deadline"})
+        with contextlib.redirect_stdout(io.StringIO()), \
+                patch.dict(ci.os.environ, {"GITHUB_STEP_SUMMARY": str(summary)}):
+            self.assertEqual(ci.go_test("server", [("./a", None)]), 124)
+        text = summary.read_text()
+        self.assertNotIn("No failing tests.\n", text)
+        self.assertIn("No failing tests were decoded", text)
+        self.assertIn("Halted packages:", text)
+        self.assertIn("TIMEOUT `./a`", text)
+
     def test_step_summary_reports_a_passing_run(self):
         summary = self.root / "step-summary.md"
         self.install_go(["a"], {"a": "pass"})
@@ -518,6 +682,7 @@ class GoPackageRunnerTests(ProcessChecks, unittest.TestCase):
                 patch.dict(ci.os.environ, {"GITHUB_STEP_SUMMARY": str(summary)}):
             self.assertEqual(ci.go_test("server", [("./a", None)]), 0)
         self.assertIn("No failing tests.", summary.read_text())
+        self.assertNotIn("No failing tests were decoded", summary.read_text())
 
     def test_annotations_are_bounded_and_escape_workflow_command_values(self):
         self.install_go(["a"], {"a": "fail-many"})
@@ -559,6 +724,22 @@ class GoPackageRunnerTests(ProcessChecks, unittest.TestCase):
         self.assertIn(f"node version: {expected_node}", text)
         self.assertIn("go version: go version go1.99.0 linux/amd64", text)
         self.assertLess(text.index("node version:"), text.index("+ go test"))
+
+    def test_version_calls_are_bounded_and_cannot_fail_the_run(self):
+        self.install_go(["a"], {"a": "pass"})
+        with patch.object(ci, "run_capture", side_effect=RuntimeError("no toolchain")), \
+                contextlib.redirect_stdout(io.StringIO()) as shown:
+            self.assertEqual(ci.go_test("server", [("./a", None)]), 0)
+        text = shown.getvalue()
+        self.assertIn("node version unavailable: no toolchain", text)
+        self.assertIn("go version unavailable: no toolchain", text)
+        with patch.object(ci, "run_capture", return_value="x" * 5000), \
+                contextlib.redirect_stdout(io.StringIO()) as shown:
+            self.assertEqual(ci.go_test("server", [("./a", None)]), 0)
+        line = next(line for line in shown.getvalue().splitlines()
+                    if line.startswith("node version:"))
+        self.assertLessEqual(len(line), len("node version: ") + ci.VERSION_LINE_LIMIT)
+        self.assertTrue(line.endswith("..."))
 
     def test_a_package_deadline_is_named_with_its_never_ran_tests(self):
         self.install_go(["a"], {"a": "deadline"})
@@ -841,6 +1022,8 @@ class GoPackageRunnerTests(ProcessChecks, unittest.TestCase):
         with patch.object(ci, "go_test"), patch.object(ci, "run_all_status"):
             with self.assertRaisesRegex(RuntimeError, "missing mandatory security test"):
                 ci.go_checks("server", "auth")
+
+
 
 
 class GoSignalTests(ProcessChecks, unittest.TestCase):

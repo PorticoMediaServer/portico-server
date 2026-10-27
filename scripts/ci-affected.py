@@ -65,6 +65,9 @@ MAX_OUTPUT_LINES = 8_000
 PACKAGE_OUTPUT_LIMIT = 40
 BLOCK_LINES = 20
 STEP_SUMMARY_ROWS = 200
+STEP_SUMMARY_BLOCKS = 20
+STEP_SUMMARY_BLOCK_LINES = 40
+VERSION_LINE_LIMIT = 300
 VERSION_TIMEOUT = 60
 
 
@@ -537,14 +540,15 @@ def explain(lines):
     return message or "test failed", file, line
 
 
-def bound_output(lines, limit=OUTPUT_LIMIT):
+def bound_output(lines, limit=OUTPUT_LIMIT, reference="raw go events"):
     """Keep a readable head and tail of one block; the raw stream keeps all."""
     if len(lines) <= limit:
         return list(lines)
     head = limit // 2
     tail = limit - head
     omitted = len(lines) - limit
-    return [*lines[:head], f"... {omitted} output line(s) omitted; see raw go events ...",
+    return [*lines[:head],
+            f"... {omitted} more output line(s); see {reference} ...",
             *lines[-tail:]]
 
 
@@ -677,9 +681,16 @@ class PackageResult:
                          "output": bound_output(lines)})
         return rows
 
-    def package_reason(self):
-        """The first real reason in the package's own, non-test output."""
-        return explain(self.package_output)[0] if self.package_output else "test failed"
+    def package_failure(self):
+        """The decoded reason and source location in the package's own output.
+
+        Go 1.26 reports a package that will not compile as `build-output` events
+        carrying `file.go:line:col: message`, then `build-fail`. That output is
+        decoded like a test's own output, so the location opens the broken file
+        rather than only the package directory.
+        """
+        message, file, line = explain(self.package_output or [])
+        return {"message": message, "file": self.location(file), "line": line}
 
     def record(self):
         return {"record": "package", "module": self.module,
@@ -690,6 +701,9 @@ class PackageResult:
                 "tests": self.tests, "failed": self.failed(), "unfinished": self.unfinished(),
                 "failures": self.failures(),
                 "package_output": self.package_output[-PACKAGE_OUTPUT_LIMIT:],
+                "package_failure": (self.package_failure()
+                                    if self.status() == "fail" and not self.failed()
+                                    else None),
                 "inventory": self.inventory, "declared": self.declared,
                 "selected": sorted(self.selected) if self.selected is not None else None,
                 "expected": self.expected, "never_ran": self.never_ran}
@@ -757,7 +771,10 @@ def feed(result, line, report, event=None):
                 result.timed_out = True
         return
     action = event.get("Action", "")
-    if action == "output":
+    if action in {"output", "build-output"}:
+        # Go 1.26 puts a package that will not compile in `build-output`
+        # events; they carry the same `Output` as a test's own output, so both
+        # reach the console, the package record and the raw stream unchanged.
         output = event.get("Output") or ""
         if not isinstance(output, str):
             output = str(output)
@@ -893,15 +910,17 @@ class GoReport:
                              "line": failure["line"], "output": failure["output"],
                              "status": result.status()})
             if result.status() == "fail" and not result.failed():
+                failure = result.package_failure()
                 rows.append({"package": result.package, "test": "",
-                             "message": result.package_reason(),
-                             "file": result.package_path(), "line": 0,
+                             "message": failure["message"],
+                             "file": failure["file"] or result.package_path(),
+                             "line": failure["line"],
                              "output": result.package_output[-BLOCK_LINES:],
                              "status": "fail"})
         return rows
 
     def write_step_summary(self, results, never, interrupted):
-        """Append the package/test/message/location table to the GitHub job page."""
+        """Append the table and the decoded failure blocks to the GitHub job page."""
         path = os.environ.get("GITHUB_STEP_SUMMARY")
         if not path:
             return
@@ -921,6 +940,35 @@ class GoReport:
             if len(rows) > STEP_SUMMARY_ROWS:
                 remaining = len(rows) - STEP_SUMMARY_ROWS
                 lines.append(f"| \u2026 | {remaining} more failures | see go-results JSONL | \u2014 |")
+            # The table names the failure; the fenced block carries the real
+            # decoded go output. Both are bounded; the JSONL keeps every event.
+            groups = {}
+            for row in rows:
+                groups.setdefault(normal_message(row["message"]), []).append(row)
+            lines += ["", "Decoded failure output:", ""]
+            for row in rows[:STEP_SUMMARY_BLOCKS]:
+                test = row["test"] or "(package)"
+                location = (f"{row['file']}:{row['line']}"
+                            if row["file"] and row["line"] else row["file"])
+                shared = len(groups[normal_message(row["message"])])
+                note = f" (same message in {shared} tests)" if shared > 1 else ""
+                lines.append(f"**FAIL  {row['package']} {test}**"
+                             + (f"  `{location}`" if location else "") + note)
+                block = bound_output(row["output"], STEP_SUMMARY_BLOCK_LINES,
+                                     "go-results JSONL")
+                if block:
+                    lines += ["```text", *block, "```", ""]
+                else:
+                    lines += ["```text", row["message"], "```", ""]
+            if len(rows) > STEP_SUMMARY_BLOCKS:
+                remaining = len(rows) - STEP_SUMMARY_BLOCKS
+                lines.append(f"\u2026 {remaining} more failure block(s); "
+                             f"see go-results JSONL")
+        elif halted or never or interrupted:
+            # A halted run must never read as a clean one just because no test
+            # reported a failure before it stopped.
+            lines.append("No failing tests were decoded; the run was halted or "
+                         "did not start every package.")
         else:
             lines.append("No failing tests.")
         if halted:
@@ -987,8 +1035,12 @@ class GoReport:
                             lines.append(f"      ... {len(block) - BLOCK_LINES} more "
                                          f"line(s); see raw go events ...")
                 if result.status() == "fail" and not failures:
-                    lines.append(f"    FAIL  (package)  {result.package}: "
-                                 f"{result.package_reason()}")
+                    failure = result.package_failure()
+                    location = (f"{failure['file']}:{failure['line']}"
+                                if failure["file"] and failure["line"] else failure["file"])
+                    heading = result.package + (f"  {location}" if location else "")
+                    lines.append(f"    FAIL  (package)  {heading}")
+                    lines.append(f"      {failure['message']}")
                     lines.extend("      " + item
                                  for item in result.package_output[-BLOCK_LINES:])
             # A package with no record after the plan record was never started.
@@ -1162,7 +1214,8 @@ def execute_package(module, result, report):
                 # The compact record and console get decoded text; the complete
                 # event goes to its own JSONL so the console is plain go output.
                 report.raw_event(result, event)
-                if event.get("Action") == "output" and isinstance(event.get("Output"), str):
+                if (event.get("Action") in {"output", "build-output"}
+                        and isinstance(event.get("Output"), str)):
                     report.write(event["Output"])
             else:
                 report.raw_event(result, line=text)
@@ -1239,14 +1292,22 @@ def _interrupt(signum, frame):
 
 
 def print_tool_versions(report):
-    """Record the actual go and node builds running this entry log."""
+    """Record the actual go and node builds running this entry log.
+
+    A version probe is diagnostic only. Any failure or an oversized line is
+    named and bounded here so it can never change the run's own result.
+    """
     for name, argv in (("node", ["node", "--version"]), ("go", ["go", "version"])):
         try:
-            text = run_capture(argv, ROOT, VERSION_TIMEOUT).strip()
-        except (OSError, subprocess.CalledProcessError, CommandTimeout) as error:
+            text = run_capture(argv, ROOT, VERSION_TIMEOUT)
+        except Exception as error:  # the probe must never mask a test result
             report.note(f"{name} version unavailable: {error}")
             continue
-        report.write(f"{name} version: {text.splitlines()[0] if text else '(no output)'}\n")
+        first = next((line.strip() for line in text.splitlines() if line.strip()),
+                     "(no output)")
+        if len(first) > VERSION_LINE_LIMIT:
+            first = first[:VERSION_LINE_LIMIT - 3] + "..."
+        report.write(f"{name} version: {first}\n")
 
 
 def go_test(module, selection, shard_index=0, shard_total=1):
