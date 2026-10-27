@@ -206,8 +206,9 @@ test('a late rejection after route retirement neither reports nor starts the sib
   f.flat();
   pending.reject(new Error('late'));
   await Promise.resolve(); await Promise.resolve(); await Promise.resolve(); f.flat();
+  assert.equal(f.calls.posters, 1, 'no extra post-retirement request');
   assert.deepEqual(f.errors, [], 'the dead admission never reports into the successor route');
-  assert.equal(f.calls.squares, undefined, 'no sibling select starts after retirement');
+  assert.equal(f.calls.squares, 1, 'the sibling started before retirement and is not restarted');
 });
 
 test('a synchronous first-select route replacement stops the sibling select', async t => {
@@ -223,7 +224,7 @@ test('a synchronous first-select route replacement stops the sibling select', as
   assert.deepEqual(f.errors, []);
 });
 
-test('a Strict replay publishes a fresh live admission for the same ticket', () => {
+test('admission factory setup/cleanup/setup (helper vector, not actual-component replay) leaves the first dead and the second live', () => {
   const fake = (shape: 'posters' | 'squares' | undefined) => ({getSnapshot: () => ({route: shape ? {...route, shape} : {...route}, phase: 'error'}), select: async () => {}});
   const ticket = {runtime: {operations: {current: true}}, route: {...route}, routeKey: JSON.stringify(route),
     posters: fake('posters'), squares: fake('squares'), saved: fake(undefined), reportError() {}};
@@ -233,4 +234,45 @@ test('a Strict replay publishes a fresh live admission for the same ticket', () 
   assert.equal(first.live, false, 'the first setup is dead');
   assert.equal(second.live, true, 'the Strict second setup is live');
   assert.equal(retryAdmission.savedRetryCurrent(second), true);
+});
+
+
+test('both independent reader retries start before the first settles', async t => {
+  stubGlobals(t);
+  const f = await mount({posters: snapshot('posters', 'error'), squares: snapshot('squares', 'error')});
+  const pending = deferred<void>();
+  f.posters.behavior(() => pending.promise);
+  retryOf(compact(f)[0]!).onPress();
+  assert.equal(f.calls.posters, 1);
+  assert.equal(f.calls.squares, 1, 'the second reader starts while the first is still pending');
+  pending.resolve();
+  await Promise.resolve(); await Promise.resolve(); f.flat();
+  assert.deepEqual(f.calls, {posters: 1, squares: 1});
+});
+
+test('unlock does not clear a fresh retry admitted by its own currentness predicate', async t => {
+  stubGlobals(t);
+  const f = await mount({posters: snapshot('posters', 'error'), squares: snapshot('squares', 'error')});
+  const retry = retryOf(compact(f)[0]!);
+  const originalGet = f.posters.getSnapshot;
+  let reenter = false, fired = false;
+  f.posters.getSnapshot = () => {
+    if (reenter && !fired) {fired = true; retry.onPress();}
+    return originalGet();
+  };
+  f.posters.behavior(async () => {await Promise.resolve(); reenter = true;});
+  retry.onPress();
+  await Promise.resolve(); await Promise.resolve(); await Promise.resolve(); await Promise.resolve(); f.flat();
+  assert.deepEqual(f.calls, {posters: 1, squares: 1}, 'the reentrant retry did not own a fresh token');
+  assert.deepEqual(f.errors, []);
+});
+
+test('savedRetryCurrent rechecks liveness after a replacing getter (helper vector)', () => {
+  const fake = (shape: 'posters' | 'squares' | undefined) => ({getSnapshot: () => ({route: shape ? {...route, shape} : {...route}, phase: 'error'}), select: async () => {}});
+  let admission: any;
+  const runtime = {operations: {get current() {retryAdmission.retireSavedRetryAdmission(admission); return true;}}};
+  const ticket = {runtime, route: {...route}, routeKey: JSON.stringify(route), posters: fake('posters'), squares: fake('squares'), saved: fake(undefined), reportError() {}};
+  admission = retryAdmission.createSavedRetryAdmission(ticket);
+  assert.equal(retryAdmission.savedRetryCurrent(admission), false, 'the getter retired the original and the recheck caught it');
+  assert.equal(admission.live, false);
 });
