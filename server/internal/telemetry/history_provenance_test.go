@@ -43,7 +43,7 @@ func TestHistoryPointsCarryOwnProvenanceAndOmitWarmup(t *testing.T) {
 	c := New(Options{Now: func() time.Time { return time.UnixMilli(at + 4000) }})
 	c.detail = []Sample{warm, measured}
 	for _, window := range []string{"live", "10m"} {
-		out, ok := c.Read(window, "UTC", "")
+		out, ok := c.Read(window, "UTC", time.UnixMilli(at).UTC().Format(time.RFC3339Nano))
 		if !ok || len(out.Series["cpu"]) != 1 {
 			t.Fatal("warm-up was charted or the actual point was lost", window, out)
 		}

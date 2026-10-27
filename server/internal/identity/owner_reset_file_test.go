@@ -197,6 +197,9 @@ func TestResetFileRefusesUnsafeFilesAndParents(t *testing.T) {
 				if e := os.WriteFile(path, []byte("preserved"), 0644); e != nil {
 					t.Fatal(e)
 				}
+				if e := os.Chmod(path, 0644); e != nil {
+					t.Fatal(e)
+				}
 			case "directory":
 				if e := os.Mkdir(path, 0700); e != nil {
 					t.Fatal(e)

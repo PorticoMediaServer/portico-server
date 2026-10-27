@@ -86,6 +86,8 @@ func newDiscFixture(t *testing.T) *discFixture {
 	exec(`INSERT INTO catalog_entities(id,public_id,library_id,kind,title,sort_title,sort_key,sort_head,year) VALUES(7,?,?,1,'Dune: Part Two','Dune Part Two','dune part two','D',2024)`, publicID, catalogLibraryID)
 	exec(`INSERT INTO catalog_assets(id,token,path,size,modified_ns,container,video_codec,audio_codec,width,height,duration,available) VALUES(11,?,'/discs/dune.iso',?,?,'iso','hevc','truehd',1920,1080,5400.0,1)`, discAssetID, discSize, discModifiedNS)
 	exec(`INSERT INTO remote_sources(id,kind,name,root,generation,state,range_support,removed) VALUES(?,'webdav','Discs','/discs',9,'ready','conditional',0)`, discRemoteSource)
+	// Replace the trigger-created local folder with this fixture's one remote folder.
+	exec(`DELETE FROM library_sources WHERE id=? AND library_id=?`, discLibraryID, discLibraryID)
 	exec(`INSERT INTO library_sources(id,library_id,kind,name,configured_root,root,classification,generation,incarnation,root_identity,identity_confirmed,health,enabled,remote_source_id) VALUES(?,?,'remote','Discs','/discs','/discs','network',12,'incarnation-test','root-identity-test',1,'healthy',1,?)`, discLibrarySource, discLibraryID, discRemoteSource)
 	exec(`INSERT INTO inventory_objects(id,source_id,asset_id,root_incarnation,relative_path,revision,evidence_json,size,modified_ns,state,retired,unsupported_reason) VALUES(?,?,?,'incarnation-test','Dune.iso',?,'{}',?,?,'available',0,'')`, discObjectID, discLibrarySource, discAssetID, discInventoryRev, discSize, discModifiedNS)
 	exec(`INSERT INTO remote_source_read_profiles(source_id,revision,scan_depth,whole_file_reads,allow_advanced_media_analysis,connections,requests_per_second,bytes_per_second) VALUES(?,4,'basic',0,0,4,8,0)`, discRemoteSource)

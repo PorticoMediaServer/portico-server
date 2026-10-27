@@ -109,7 +109,7 @@ func newNamingFixture(t *testing.T, kind, relative string) namingFixture {
 	if _, err = db.Exec(`INSERT INTO inventory_runs(job_id,source_id,source_generation,root_incarnation,root_identity,policy_revision,phase,scan_mode) VALUES(?,?,1,'incarnation','identity',?,'analysis','incremental')`, job, sourceID, policy); err != nil {
 		t.Fatal(err)
 	}
-	if _, err = db.Exec(`INSERT INTO remote_scan_generations(job_id,source_id,generation) VALUES(?,?,'1')`, job, sourceID); err != nil {
+	if _, err = db.Exec(`INSERT INTO remote_scan_generations(job_id,source_id,generation) VALUES(?,'remote','1')`, job); err != nil {
 		t.Fatal(err)
 	}
 	asset := "naming-asset"
