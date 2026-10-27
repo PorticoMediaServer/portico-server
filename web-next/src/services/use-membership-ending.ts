@@ -6,25 +6,26 @@ import {accountIdentity, sameAccount, type AccountIdentity, type ServicesAccount
  * the notice's actual committed layout. Retiring before that commit releases
  * the reservation without marking an abandoned fetch as shown. */
 export function useMembershipEnding(account: ServicesAccount, identity: AccountIdentity, notice: MembershipEndingNotice | undefined, sourceCurrent: () => boolean) {
-  const event = notice && membershipEndingIdentity(notice);
-  const opening = useMemo(() => { /* Preserve the original ownership/invalidation keys. */ void identity.familyId; void sourceCurrent; void account; void identity.accountId; return ({notice, event, shownHere: false}); }, [notice, event, account, identity.accountId, identity.familyId, sourceCurrent]);
+  const event = notice && membershipEndingIdentity(notice), {accountId, familyId} = identity;
+  const opening = useMemo(() => ({notice, event, shownHere: false, accountId,
+    current: () => {
+      const session = account.service.getSnapshot().session;
+      return Boolean(sourceCurrent() && session?.familyId && sameAccount(accountIdentity(session), {accountId, familyId}) && notice && Date.parse(notice.expiresAt) > Date.now());
+    },
+  }), [notice, event, account, accountId, familyId, sourceCurrent]);
   type Flight = {live: boolean; abort: AbortController; confirm?: (shown: boolean) => void};
   const mount = useRef<HTMLDivElement | null>(null);
   const active = useRef<Flight | null>(null), [visible, setVisible] = useState<{opening: typeof opening; flight: Flight}>();
-  const current = () => {
-    const session = account.service.getSnapshot().session;
-    return Boolean(sourceCurrent() && session?.familyId && sameAccount(accountIdentity(session), identity) && opening.notice && Date.parse(opening.notice.expiresAt) > Date.now());
-  };
   useLayoutEffect(() => {
     const flight: Flight = {live: true, abort: new AbortController()}; active.current = flight;
-    const live = () => flight.live && active.current === flight && !flight.abort.signal.aborted && current();
+    const live = () => flight.live && active.current === flight && !flight.abort.signal.aborted && opening.current();
     if (opening.notice && live()) {
       if (opening.shownHere) setVisible({opening, flight});
       else if (navigator.locks) {
-        void navigator.locks.request('portico.services.ending-shown.v1:' + identity.accountId, {signal: flight.abort.signal}, async () => {
+        void navigator.locks.request('portico.services.ending-shown.v1:' + opening.accountId, {signal: flight.abort.signal}, async () => {
           if (!live() || !opening.notice) return;
           const store = window.localStorage;
-          if (membershipEndingWasShown(store, identity.accountId, opening.notice, Date.now())) return;
+          if (membershipEndingWasShown(store, opening.accountId, opening.notice, Date.now())) return;
           // Keep the cross-tab lock until the layout below confirms DOM mount,
           // or cleanup explicitly releases an opening that never mounted.
           await new Promise<boolean>(resolve => {flight.confirm = resolve; setVisible({opening, flight});});
@@ -46,11 +47,13 @@ export function useMembershipEnding(account: ServicesAccount, identity: AccountI
     if (visible?.opening !== opening || visible.flight !== flight || !flight?.live || !flight.confirm) return;
     const confirm = flight.confirm; flight.confirm = undefined;
     let recorded = false;
-    try {if (mount.current?.isConnected && current() && opening.notice) recorded = recordMembershipEndingShown(window.localStorage, identity.accountId, opening.notice, Date.now());}
+    try {if (mount.current?.isConnected && opening.current() && opening.notice) recorded = recordMembershipEndingShown(window.localStorage, opening.accountId, opening.notice, Date.now());}
     catch { /* A failed or malformed durable store suppresses repetition. */ }
     if (recorded) opening.shownHere = true;
     else setVisible(undefined);
     confirm(recorded);
-  });
-  return {mount, visible: visible?.opening === opening && visible.flight === active.current && active.current?.live === true && current()};
+    // A confirm is installed only alongside a fresh visible object above, and
+    // consumed once here. Unrelated commits cannot introduce another confirm.
+  }, [visible, opening]);
+  return {mount, visible: visible?.opening === opening && visible.flight === active.current && active.current?.live === true && opening.current()};
 }

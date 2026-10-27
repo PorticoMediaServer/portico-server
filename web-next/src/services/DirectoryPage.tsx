@@ -1,4 +1,4 @@
-import {useLayoutEffect, useMemo, useState, useSyncExternalStore, type ReactNode} from 'react';
+import {useRef, useLayoutEffect, useMemo, useState, useSyncExternalStore, type ReactNode} from 'react';
 import type {HostedSession} from '@core/index.ts';
 import {ServicesServerDirectory} from '../kit/accounts/ServerDirectory';
 import {ServicesAuthStage, HostedError} from '../kit/accounts/ServicesAuth';
@@ -15,12 +15,17 @@ import type {WorkspaceApi, WorkspaceServers} from './workspace-api';
 
 type Props = {account: ServicesAccount; session: Omit<HostedSession,'refreshToken'>; api: WorkspaceApi; initial: WorkspaceServers; sourceCurrent: () => boolean; header: ReactNode; onEmpty: () => void; onJoin: () => void; onSetup: () => void; onLocal: () => void};
 export function ServicesDirectoryPage(props: Props) {
-  const source = useMemo(() => ({account: props.account, identity: accountIdentity(props.session), api: props.api, initial: props.initial, current: props.sourceCurrent, empty: props.onEmpty, local: props.onLocal}), [props.account, props.session.account.id, props.session.familyId, props.api, props.initial, props.sourceCurrent, props.onEmpty, props.onLocal]);
+  const {accountId, familyId} = accountIdentity(props.session);
+  const source = useMemo(() => ({account: props.account, identity: {accountId, familyId}, api: props.api, initial: props.initial, current: props.sourceCurrent, empty: props.onEmpty, local: props.onLocal}), [props.account, accountId, familyId, props.api, props.initial, props.sourceCurrent, props.onEmpty, props.onLocal]);
   const [instance, setInstance] = useState<{source: typeof source; flow: ServicesDirectoryFlow}>();
+  // Each directory setup samples its own committed session, never a successor's token.
+  const setupSession = useRef(props.session);
+  useLayoutEffect(() => {setupSession.current = props.session;});
   useLayoutEffect(() => {
+    const session = setupSession.current;
     let live = true;
     const current = () => {const session = source.account.service.getSnapshot().session; return Boolean(live && source.current() && session?.familyId && sameAccount(accountIdentity(session), source.identity));};
-    const flow = new ServicesDirectoryFlow(source.initial, {current, read: source.api.servers, connect: servicesDirectoryConnection(source.account, props.session),
+    const flow = new ServicesDirectoryFlow(source.initial, {current, read: source.api.servers, connect: servicesDirectoryConnection(source.account, session),
       navigate: (origin, purpose) => {if (current()) location.assign(origin + (purpose === 'owner-recovery' ? '/sign-in' : '/'));}, localRecovery: () => {if (current()) source.local();}, empty: () => {if (current()) source.empty();}});
     setInstance({source, flow});
     return () => {live = false; flow.dispose();};
