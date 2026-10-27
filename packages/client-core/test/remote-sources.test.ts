@@ -218,7 +218,7 @@ test('read-profile reads the server values and the four drawn presets match its 
  const {sourceReadPreset,sourceReadPresetName}=await import('../src/remote-sources.ts');
  assert.deepEqual(sourceReadPreset('list'),{scanDepth:'file_list_only',wholeFileReads:false,connections:2,requestsPerSecond:2,bytesPerSecond:0});
  assert.deepEqual(sourceReadPreset('once'),{scanDepth:'basic',wholeFileReads:false,connections:4,requestsPerSecond:4,bytesPerSecond:0});
- assert.deepEqual(sourceReadPreset('everything'),{scanDepth:'complete',wholeFileReads:true,connections:8,requestsPerSecond:10,bytesPerSecond:0});
+ assert.deepEqual(sourceReadPreset('everything'),{scanDepth:'complete',wholeFileReads:false,connections:8,requestsPerSecond:10,bytesPerSecond:0});
  assert.deepEqual(sourceReadPreset('ask'),{scanDepth:'basic',wholeFileReads:false,connections:2,requestsPerSecond:2,bytesPerSecond:0});
  assert.equal(sourceReadPresetName(sourceReadPreset('once')),'once');assert.equal(sourceReadPresetName({...sourceReadPreset('once'),connections:5}),undefined);
  const settings={sourceId:'dav',generation:'1',revision:2,saved:true,values:sourceReadPreset('everything')};

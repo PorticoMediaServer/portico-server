@@ -232,7 +232,7 @@ export const accountMessages = {
   'accounts.recovery.expiredTitle': 'This code has expired.',
   'accounts.recovery.expiredBody': 'Codes last 15 minutes. Write a new file to get another.',
   'accounts.recovery.limitedTitle': 'Too many tries.',
-  'accounts.recovery.limitedBody': 'That code is cancelled. You can write a new file in a moment.',
+  'accounts.recovery.limitedBody': 'That code is canceled. You can write a new file in a moment.',
   'accounts.recovery.writeTitle': 'Portico couldn’t write the reset file.',
   'accounts.recovery.writeBody': 'Check that the server’s data folder can be written to, then try again.',
   'accounts.recovery.writeNewIn': 'Write a new file in {time}',

@@ -2,9 +2,11 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {formatMessage} from '../../i18n/src/messageformat.ts';
 import {shared} from '../../i18n/src/catalog/en-US/next/shared.ts';
+import {searchMessages} from '../../i18n/src/catalog/en-US/next/search.ts';
 import {cardText, titleFactParts, episodeLabel, playbackIdentity, timelineFacts, type CardContext, type EpisodeNumbering, type FactPart, type KitTranslate} from '../src/presentation/kit-model/index.ts';
 
-const t: KitTranslate = (id, ...args) => formatMessage(shared[id], args[0]);
+const messages = {...shared, ...searchMessages};
+const t: KitTranslate = (id, ...args) => formatMessage(messages[id], args[0]);
 const env = {t, locale: 'en-US'};
 const parts = (p: readonly FactPart[]) => p.map(x => [x.id, x.text, x.role]);
 
