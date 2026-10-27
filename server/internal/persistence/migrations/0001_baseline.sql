@@ -9965,3 +9965,71 @@ CREATE TRIGGER identity_security_return_confirmation_complete BEFORE UPDATE ON i
 WHEN NEW.phase='confirmed' AND (length(NEW.transaction_id)<20 OR length(NEW.code_digest)<>43
  OR NEW.confirmation_payload='' OR NEW.confirmation_signature='')
 BEGIN SELECT RAISE(ABORT,'Security return confirmation requires its complete original tuple'); END;
+
+-- Reverse FK keys: every foreign-key child column set leads an index (or is a rowid
+-- alias or a partial index whose only exclusion is NULL child values). A parent
+-- delete or cascade otherwise scans the whole child table; PERF-DB-006.
+CREATE INDEX analysis_heads_result_id_fk ON analysis_heads(result_id);
+CREATE INDEX asset_subtitles_sidecar_id_fk ON asset_subtitles(sidecar_id);
+CREATE INDEX catalog_book_context_library_id_fk ON catalog_book_context(library_id);
+CREATE INDEX console_report_events_report_id_fk ON console_report_events(report_id);
+CREATE INDEX credit_owner_entries_source_row_id_entity_id_fk ON credit_owner_entries(source_row_id,entity_id);
+CREATE INDEX credit_source_heads_publication_id_entity_id_provider_fk ON credit_source_heads(publication_id,entity_id,provider);
+CREATE INDEX credit_source_publication_members_publication_id_entity_id_provider_fk ON credit_source_publication_members(publication_id,entity_id,provider);
+CREATE INDEX credit_source_publication_members_source_row_id_entity_id_provider_fk ON credit_source_publication_members(source_row_id,entity_id,provider);
+CREATE INDEX download_receipts_key_id_fk ON download_receipts(key_id);
+CREATE INDEX dvr_recordings_source_id_fk ON dvr_recordings(source_id);
+CREATE INDEX dvr_rules_source_id_fk ON dvr_rules(source_id);
+CREATE INDEX identity_browser_accounts_account_id_fk ON identity_browser_accounts(account_id);
+CREATE INDEX identity_factor_challenges_account_id_fk ON identity_factor_challenges(account_id);
+CREATE INDEX identity_move_codes_move_id_fk ON identity_move_codes(move_id);
+CREATE INDEX identity_owner_completions_move_id_fk ON identity_owner_completions(move_id);
+CREATE INDEX identity_owner_completions_owner_id_fk ON identity_owner_completions(owner_id);
+CREATE INDEX identity_owner_completions_owner_profile_id_fk ON identity_owner_completions(owner_profile_id);
+CREATE INDEX inventory_disc_title_requests_object_id_title_key_fk ON inventory_disc_title_requests(object_id,title_key);
+CREATE INDEX inventory_operation_jobs_job_id_fk ON inventory_operation_jobs(job_id);
+CREATE INDEX lc_generations_channel_id_fk ON lc_generations(channel_id);
+CREATE INDEX lc_template_installs_channel_id_fk ON lc_template_installs(channel_id);
+CREATE INDEX library_navigation_library_id_fk ON library_navigation(library_id);
+CREATE INDEX listening_metadata_attention_library_id_fk ON listening_metadata_attention(library_id);
+CREATE INDEX live_enable_receipts_source_id_fk ON live_enable_receipts(source_id);
+CREATE INDEX live_generations_source_id_fk ON live_generations(source_id);
+CREATE INDEX live_operations_generation_id_fk ON live_operations(generation_id);
+CREATE INDEX live_operations_source_id_fk ON live_operations(source_id);
+CREATE INDEX live_reservations_source_id_fk ON live_reservations(source_id);
+CREATE INDEX lyric_selections_resource_id_lyric_revision_fk ON lyric_selections(resource_id,lyric_revision);
+CREATE INDEX mb_album_links_release_revision_release_id_fk ON mb_album_links(release_revision,release_id);
+CREATE INDEX mb_album_reconciliations_release_revision_fk ON mb_album_reconciliations(release_revision);
+CREATE INDEX mb_publication_operations_accepted_recording_revision_fk ON mb_publication_operations(accepted_recording_revision);
+CREATE INDEX mb_publication_operations_accepted_release_revision_fk ON mb_publication_operations(accepted_release_revision);
+CREATE INDEX mb_publication_operations_result_recording_revision_fk ON mb_publication_operations(result_recording_revision);
+CREATE INDEX mb_publication_operations_result_release_revision_fk ON mb_publication_operations(result_release_revision);
+CREATE INDEX mb_recording_aliases_evidence_revision_canonical_id_fk ON mb_recording_aliases(evidence_revision,canonical_id);
+CREATE INDEX mb_release_aliases_evidence_revision_canonical_id_fk ON mb_release_aliases(evidence_revision,canonical_id);
+CREATE INDEX mb_song_links_recording_revision_recording_id_fk ON mb_song_links(recording_revision,recording_id);
+CREATE INDEX mb_song_links_release_revision_release_id_fk ON mb_song_links(release_revision,release_id);
+CREATE INDEX mb_song_links_release_revision_track_id_fk ON mb_song_links(release_revision,track_id);
+CREATE INDEX media_analysis_item_mappings_publication_id_stream_index_fk ON media_analysis_item_mappings(publication_id,stream_index);
+CREATE INDEX member_password_resets_issuer_id_fk ON member_password_resets(issuer_id);
+CREATE INDEX networking_claim_authority_operation_id_server_id_account_id_local_generation_claim_generation_credential_generation_fk ON networking_claim_authority(operation_id,server_id,account_id,local_generation,claim_generation,credential_generation);
+CREATE INDEX networking_claim_identity_server_id_public_key_fk ON networking_claim_identity(server_id,public_key);
+CREATE INDEX networking_claim_intents_server_id_public_key_fk ON networking_claim_intents(server_id,public_key);
+CREATE INDEX owner_reset_file_account_id_fk ON owner_reset_file(account_id);
+CREATE INDEX playback_disc_capture_inputs_capture_id_fk ON playback_disc_capture_inputs(capture_id);
+CREATE INDEX playback_manifest_subtitles_resource_id_resource_revision_fk ON playback_manifest_subtitles(resource_id,resource_revision);
+CREATE INDEX playback_observed_acquisitions_attempt_id_fk ON playback_observed_acquisitions(attempt_id);
+CREATE INDEX playback_preparation_dependencies_acquisition_id_attempt_id_fk ON playback_preparation_dependencies(acquisition_id,attempt_id);
+CREATE INDEX playback_preparation_dependencies_source_version_id_fk ON playback_preparation_dependencies(source_version_id);
+CREATE INDEX playback_v1_prepared_queue_id_fk ON playback_v1_prepared(queue_id);
+CREATE INDEX prepared_media_versions_job_id_fk ON prepared_media_versions(job_id);
+CREATE INDEX progress_activity_library_id_fk ON progress_activity(library_id);
+CREATE INDEX queue_v1_segments_snapshot_id_fk ON queue_v1_segments(snapshot_id);
+CREATE INDEX reading_source_values_inventory_object ON reading_source_values(inventory_object_id);
+CREATE INDEX remote_source_choice_refs_name_definition_revision_fk ON remote_source_choice_refs(name,definition_revision);
+CREATE INDEX screen_metadata_attention_library_id_fk ON screen_metadata_attention(library_id);
+CREATE INDEX screen_metadata_attention_target_kind_entity_id_fk ON screen_metadata_attention(target_kind,entity_id);
+CREATE INDEX social_cast_controllers_target_id_fk ON social_cast_controllers(target_id);
+CREATE INDEX social_handoffs_receiver_id_fk ON social_handoffs(receiver_id);
+CREATE INDEX subtitle_selection_operations_session_id_fk ON subtitle_selection_operations(session_id);
+CREATE INDEX tvdb_evidence_page_ownership_show_id_set_incarnation_generation_fk ON tvdb_evidence_page_ownership(show_id,set_incarnation,generation);
+CREATE INDEX viewer_revisions_library_id_fk ON viewer_revisions(library_id);
