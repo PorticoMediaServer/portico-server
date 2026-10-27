@@ -227,7 +227,7 @@ test('a synchronous first-select route replacement stops the sibling select', as
 test('admission factory setup/cleanup/setup (helper vector, not actual-component replay) leaves the first dead and the second live', () => {
   const fake = (shape: 'posters' | 'squares' | undefined) => ({getSnapshot: () => ({route: shape ? {...route, shape} : {...route}, phase: 'error'}), select: async () => {}});
   const ticket = {runtime: {operations: {current: true}}, route: {...route}, routeKey: JSON.stringify(route),
-    posters: fake('posters'), squares: fake('squares'), saved: fake(undefined), reportError() {}};
+    posters: fake('posters'), squares: fake('squares'), saved: fake(undefined), reportError() {}} as any;
   const first = retryAdmission.createSavedRetryAdmission(ticket);
   retryAdmission.retireSavedRetryAdmission(first);
   const second = retryAdmission.createSavedRetryAdmission(ticket);
@@ -276,7 +276,7 @@ test('savedRetryCurrent rechecks liveness after a replacing getter (helper vecto
   const fake = (shape: 'posters' | 'squares' | undefined) => ({getSnapshot: () => ({route: shape ? {...route, shape} : {...route}, phase: 'error'}), select: async () => {}});
   let admission: any;
   const runtime = {operations: {get current() {retryAdmission.retireSavedRetryAdmission(admission); return true;}}};
-  const ticket = {runtime, route: {...route}, routeKey: JSON.stringify(route), posters: fake('posters'), squares: fake('squares'), saved: fake(undefined), reportError() {}};
+  const ticket = {runtime, route: {...route}, routeKey: JSON.stringify(route), posters: fake('posters'), squares: fake('squares'), saved: fake(undefined), reportError() {}} as any;
   admission = retryAdmission.createSavedRetryAdmission(ticket);
   assert.equal(retryAdmission.savedRetryCurrent(admission), false, 'the getter retired the original and the recheck caught it');
   assert.equal(admission.live, false);
