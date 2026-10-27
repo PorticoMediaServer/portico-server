@@ -843,15 +843,46 @@ test('a new media generation retires chooser facts, and a fresh title without a 
   assert.equal(f.runtime.getSnapshot().session!.versionId, 'v2');
 });
 
-test('a refused actual version start rejects rather than reporting an accepted chooser selection', async t => {
+test('a refused actual version start stays unaccepted until its original failure is cancelled', async t => {
   const f = setup(t); await f.runtime.play('movie', 25); await f.arrive(); const fence = f.runtime.getSnapshot().fence!;
   if (fence.kind !== 'queue') assert.fail('queue fence required');
   const fixture = versionFixture(f), signal = new AbortController().signal, choices = await f.runtime.readVersions(fence, signal); assert.ok(choices);
   f.intercept(async (request, response) => request.method === 'POST' && request.path === '/v1/playback/sessions' && (request.body as {versionId?: string})?.versionId === 'v2'
     ? {status: 422, headers: {}, body: {error: {code: 'unsupported_media', retry: 'never', requestId: 'request'}}} : fixture.handle(request, response));
-  await assert.rejects(f.runtime.playVersion({choices, versionId: 'v2', signal}), /playback_version_failed/);
-  assert.equal(choices.isCurrent(), false);
-  assert.notEqual(f.runtime.getSnapshot().session?.versionId, 'v2');
+  type StartFailure = NonNullable<ReturnType<typeof f.runtime.getSnapshot>['startFailure']>;
+  let off = () => {}, rejectPublication!: (error: unknown) => void;
+  const published = new Promise<StartFailure>((resolve, reject) => {
+    rejectPublication = reject;
+    off = f.runtime.subscribe(() => {
+      const failure = f.runtime.getSnapshot().startFailure;
+      if (failure) {off(); resolve(failure);}
+    });
+  });
+  const engines = f.hls.instances.length;
+  const starts = () => f.log.filter(request => request.method === 'POST' && request.path === '/v1/playback/sessions'
+    && (request.body as {versionId?: string})?.versionId === 'v2');
+  let settled = false;
+  const pending = f.runtime.playVersion({choices, versionId: 'v2', signal});
+  // Observe the original promise before any cancellation or fixture cleanup.
+  void pending.then(() => {settled = true; rejectPublication(new Error('A refused version was accepted'));}, error => {settled = true; rejectPublication(error);});
+  const rejected = assert.rejects(pending, /stale_playback_command/);
+  try {
+    const failure = await published;
+    assert.equal(failure.code, 'unsupported_media'); assert.equal(failure.retryable, false); assert.equal(failure.isCurrent(), true);
+    assert.equal(settled, false, 'the original first-start failure remains owned while its failure is drawn');
+    assert.equal(choices.isCurrent(), false);
+    assert.notEqual(f.runtime.getSnapshot().session?.versionId, 'v2');
+    assert.equal(f.runtime.getSnapshot().fence, undefined, 'a refused version supplies no admitted playback fence');
+    assert.equal(f.hls.instances.length, engines, 'no v2 media engine is created or adopted');
+    assert.equal(starts().length, 1);
+    await assert.rejects(failure.retry(), error => error instanceof DOMException && error.name === 'AbortError');
+    assert.equal(starts().length, 1, 'a permanent refusal has no retry authority');
+    failure.cancel();
+    await rejected;
+    assert.equal(failure.isCurrent(), false); assert.equal(f.runtime.getSnapshot().startFailure, undefined);
+    assert.notEqual(f.runtime.getSnapshot().session?.versionId, 'v2'); assert.equal(f.runtime.getSnapshot().fence, undefined);
+    assert.equal(f.hls.instances.length, engines); assert.equal(starts().length, 1);
+  } finally {off(); f.runtime.dispose(); await rejected;}
 });
 
 test('late chooser reads and click reads cannot cross abort, source replacement or authority retirement', async t => {
