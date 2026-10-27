@@ -1,34 +1,34 @@
-import {useEffect, useMemo, useState, useSyncExternalStore} from 'react';
+import {useEffect, useState, useSyncExternalStore} from 'react';
 import type {ReactNode} from 'react';
 import {defaultI18n} from '@i18n';
 import {routePath} from '../../../../../packages/contracts/src/routes.ts';
-import {loadRemoteAccess, remoteAccessSummary, type RemoteAccess} from '@core/remote-access.ts';
+import {remoteAccessSummary} from '@core/remote-access.ts';
 import {parseConnectivityStatus, type ConnectivityStatus} from '@core/server-administration.ts';
-import {remoteAccessForm} from '@core/server-admin/server-forms.ts';
-import {Button, Switch, TextField} from '../../../kit/controls';
-import {SettingNumber} from '../../../kit/settings';
+import type {RemoteFormSource} from './remote-form-source';
+import {Banner} from '../../../kit/overlays';
+import {Button} from '../../../kit/controls';
 import styles from './server-remote.module.css';
 
 const t = defaultI18n.t;
+const noSubscribe = () => () => {};
+const noSnapshot = () => undefined;
 
 /** Server › Remote: the section's status facts from the server's own producers,
  * over the canonical settings rows. Certificate and connection rows read the
  * connectivity status; remote reachability reads the remote-access status. */
-export function ServerRemotePage({api, isCurrent, account, openSection, groups, advanced}: Readonly<{
+export function ServerRemotePage({api, isCurrent, source, account, openSection, groups, advanced}: Readonly<{
   api: Readonly<{request: <T>(path: string, method: string, body?: unknown, signal?: AbortSignal) => Promise<T>}>;
   isCurrent: () => boolean;
+  source?: RemoteFormSource;
   account?: Readonly<{signIn: 'portico' | 'local'; authority?: string; serverName?: string}>;
   openSection?: (section: string) => void;
   groups: ReactNode; advanced: ReactNode;
 }>) {
-  const form = useMemo(() => remoteAccessForm({api} as Parameters<typeof remoteAccessForm>[0]), [api]);
-  const formState = useSyncExternalStore(form.subscribe, form.getSnapshot, form.getSnapshot);
-  useEffect(() => () => form.dispose(), [form]);
-  const [remote, setRemote] = useState<RemoteAccess>();
+  const formState = useSyncExternalStore(source?.subscribe ?? noSubscribe, source?.getSnapshot ?? noSnapshot, source?.getSnapshot ?? noSnapshot);
+  const remote = formState?.status;
   const [connectivity, setConnectivity] = useState<ConnectivityStatus>();
   useEffect(() => {
     const active = new AbortController();
-    void loadRemoteAccess(api as Parameters<typeof loadRemoteAccess>[0], active.signal).then(value => {if (!active.signal.aborted && isCurrent()) setRemote(value);}).catch(() => {});
     void api.request(routePath('get_connectivity_status'), 'GET', undefined, active.signal)
       .then(value => {if (!active.signal.aborted && isCurrent()) setConnectivity(parseConnectivityStatus(value));}).catch(() => {});
     return () => active.abort();
@@ -54,30 +54,6 @@ export function ServerRemotePage({api, isCurrent, account, openSection, groups, 
       <ul className={styles.addressList}>{connectivity.addresses.map(entry => <li key={`${entry.address}-${entry.source}`}>
         <span className={styles.mono}>{entry.address}</span><small>{entry.class}{entry.family ? ` · ${entry.family}` : ''}</small></li>)}</ul>
     </section>}
-    {formState.draft && <section className={styles.controls}>
-      <label className={styles.switchRow}><span>{t('web.network.remoteTitle')}<small className={styles.note}>{t('web.network.remoteHelp')}</small></span>
-        <Switch aria-label={t('web.network.remoteTitle')} checked={formState.draft.enabled} disabled={formState.saving} onCheckedChange={value => form.set({enabled: value})}/></label>
-      <label className={styles.switchRow}><span>{t('web.network.ipv6')}<small className={styles.note}>{t('web.network.ipv6Help')}</small></span>
-        <Switch aria-label={t('web.network.ipv6')} checked={formState.draft.ipv6Open} disabled={formState.saving} onCheckedChange={value => form.set({ipv6Open: value})}/></label>
-      <label className={styles.switchRow}><span>{t('web.network.mappingTitle')}<small className={styles.note}>{t('web.network.mappingHelp')}</small></span>
-        <Switch aria-label={t('web.network.mappingTitle')} checked={formState.draft.mapping} disabled={formState.saving} onCheckedChange={value => form.set({mapping: value})}/></label>
-      {formState.draft.mapping && <>
-        <label className={styles.switchRow}><span>{t('settings.server.mapping.pcp')}</span>
-          <Switch aria-label={t('settings.server.mapping.pcp')} checked={formState.draft.pcp} disabled={formState.saving} onCheckedChange={value => form.set({pcp: value})}/></label>
-        <label className={styles.switchRow}><span>{t('settings.server.mapping.natpmp')}</span>
-          <Switch aria-label={t('settings.server.mapping.natpmp')} checked={formState.draft.natpmp} disabled={formState.saving} onCheckedChange={value => form.set({natpmp: value})}/></label>
-        <label className={styles.switchRow}><span>{t('settings.server.mapping.upnp')}</span>
-          <Switch aria-label={t('settings.server.mapping.upnp')} checked={formState.draft.upnp} disabled={formState.saving} onCheckedChange={value => form.set({upnp: value})}/></label>
-      </>}
-      <div className={styles.numberRow}>
-        <SettingNumber label={t('web.network.publicPort')} value={formState.draft.publicPort} min={1} max={65535} disabled={formState.saving}
-          onCommit={value => {if (value !== null) form.set({publicPort: Math.round(value)});}}/>
-        <TextField label={t('web.network.gateway')} value={formState.draft.gateway} disabled={formState.saving}
-          placeholder={t('web.network.gatewayHelp')} onChange={event => form.set({gateway: event.currentTarget.value})}/>
-      </div>
-      {formState.loadError !== undefined && <p className={styles.error} role="alert">{t('next.remoteStatus.failed')}</p>}
-      {formState.dirty && <Button size="compact" variant="primary" loading={formState.saving} onClick={() => {void form.save().catch(() => {});}}>{t('next.remoteStatus.save')}</Button>}
-    </section>}
 
     {account && <section className={styles.controls}>
       <h3 className={styles.subtitle}>{t('web.general.accountConnection')}</h3>
@@ -89,5 +65,11 @@ export function ServerRemotePage({api, isCurrent, account, openSection, groups, 
     </section>}
     {groups}
     {advanced}
+    {formState?.unavailable && <Banner action={{label: t('next.states.tryAgain'), onAction: () => {if (source?.current()) void source.load();}}}>{t('next.remoteStatus.failed')}</Banner>}
+    {formState?.saveError !== undefined && <Banner>{t('next.remoteStatus.failed')}</Banner>}
+    {source && formState?.dirty && <div className={styles.controls}>
+      <Button variant="glass" disabled={formState.saving} onClick={() => source.discard(formState)}>{t('action.discard')}</Button>
+      <Button variant="primary" loading={formState.saving} onClick={() => {void source.save(formState).catch(() => {});}}>{t('action.save')}</Button>
+    </div>}
   </div>;
 }
