@@ -36,7 +36,17 @@ export class ServicesAuthFlow {
   subscribe = (listener: () => void) => { this.listeners.add(listener); return () => { this.listeners.delete(listener); }; };
   private publish(value: Partial<AuthSnapshot>) { if (this.disposed) return; this.state = {...this.state, ...value}; for (const listener of this.listeners) listener(); }
   dispose() { this.disposed = true; this.operation?.abort(); this.listeners.clear(); this.initialContinuation = undefined; this.challenge = undefined; this.transaction = undefined; this.providerRefresh = undefined; this.ids.clear(); }
-  go(mode: AuthMode) { if (this.operation) return; if (this.initialContinuation && mode !== this.state.mode) this.initialContinuationRetired = true; this.challenge = undefined; this.publish({mode, error: undefined, retryAt: 0}); }
+  go(mode: AuthMode) {
+    if (this.operation) return;
+    if (this.initialContinuation && mode !== this.state.mode) this.initialContinuationRetired = true;
+    // An explicit Back/Start again abandons this password login's MFA challenge.
+    // Retire only that challenge and its login request id (never another attempt's
+    // ids), and keep any account-wide cool-off; the next explicit submit is a new intent.
+    if (this.challenge !== undefined && mode !== 'factor' && mode !== 'recovery') this.ids.clear('login');
+    this.challenge = undefined;
+    // An account-wide cool-off is a deadline, not a mode: navigation never shortens it.
+    this.publish({mode, error: undefined, retryAt: this.state.retryAt > Date.now() ? this.state.retryAt : 0});
+  }
   recovery() { if (!this.operation && this.challenge) this.publish({mode: this.state.mode === 'factor' ? 'recovery' : 'factor', error: undefined}); }
   startAgain() { if (!this.operation) { this.publish({registration: undefined, resends: 0}); this.go('create'); } }
   initialize(): Promise<void> {
