@@ -639,6 +639,10 @@ func TestReadPathGoldenEquivalence(t *testing.T) {
 		want.Response = goldenUnselectedDetailArtwork(t, f, actual, want.Response)
 		want.Response = goldenBrowseExtension(t, f, actual, want.Response)
 		want.Response = goldenListeningExtension(t, f, actual, want.Response)
+		// Both extensions run after the ones that compose the page, so a
+		// generated section carries the same published card facts.
+		want.Response = goldenAggregateCardFacts(t, f, actual, want.Response)
+		want.Response = goldenSearchEpisodeFacts(t, f, actual, want.Response)
 		if want.Status != actual.Status {
 			differences++
 			t.Errorf("%s: status %d, golden %d\n  body: %s", actual.Name, actual.Status, want.Status, truncate(actual.Response))
@@ -646,9 +650,13 @@ func TestReadPathGoldenEquivalence(t *testing.T) {
 		}
 		if want.Response != actual.Response {
 			differences++
+			// Name every changed case with its changed paths, not only the
+			// first few: the bodies stay a bounded preview, the diff does not.
+			t.Logf("%s: changed JSON paths: %s", actual.Name, goldenChangedPaths(actual.Response, want.Response))
 			if differences <= 8 {
-				t.Logf("%s: changed JSON paths: %s", actual.Name, goldenChangedPaths(actual.Response, want.Response))
 				t.Errorf("%s: the answer changed\n  now:    %s\n  golden: %s", actual.Name, truncate(actual.Response), truncate(want.Response))
+			} else {
+				t.Errorf("%s: the answer changed", actual.Name)
 			}
 		}
 	}
@@ -891,4 +899,226 @@ func goldenUnselectedDetailArtwork(t *testing.T, f *goldenFixture, actual golden
 		t.Fatal(err)
 	}
 	return canonical(string(encoded))
+}
+
+// fb1946430 publishes an admitted episode's season and episode numbers (and
+// their numbering form) on indexed Search results. Derive those from the
+// fixture's own episode rows: the recorded group membership, order, counts and
+// every other field stay exact, and a recorded number the fixture contradicts
+// is an error rather than something to overwrite.
+type goldenEpisodeFacts struct {
+	season, episode *int
+	numbering       string
+}
+
+func goldenSearchEpisodeFacts(t *testing.T, f *goldenFixture, c goldenCase, want string) string {
+	t.Helper()
+	if c.Status != 200 || !strings.HasPrefix(c.Name, "search:") {
+		return want
+	}
+	var doc map[string]any
+	if err := json.Unmarshal([]byte(want), &doc); err != nil {
+		t.Fatal(err)
+	}
+	groups, ok := doc["groups"].([]any)
+	if !ok {
+		return want
+	}
+	for _, raw := range groups {
+		group, ok := raw.(map[string]any)
+		if !ok {
+			continue
+		}
+		items, ok := group["items"].([]any)
+		if !ok {
+			continue
+		}
+		for _, rawItem := range items {
+			entry, ok := rawItem.(map[string]any)
+			if !ok {
+				continue
+			}
+			if kind, _ := entry["kind"].(string); kind != "episode" {
+				continue
+			}
+			id, _ := entry["id"].(string)
+			public := f.public[id]
+			if public == "" {
+				t.Fatalf("%s: %q is not a fixture identity", c.Name, id)
+			}
+			var season, episode sql.NullInt64
+			var numbering string
+			err := f.db.QueryRow(`SELECT s.number,ep.number,COALESCE(ep.numbering,'')
+ FROM catalog_episodes ep JOIN catalog_entities e ON e.id=ep.entity_id
+ JOIN catalog_entities show ON show.id=ep.show_id AND show.library_id=e.library_id
+ LEFT JOIN catalog_seasons s ON s.entity_id=ep.season_id AND s.show_id=ep.show_id
+ WHERE e.public_id=pid_blob(?)`, public).Scan(&season, &episode, &numbering)
+			if err != nil {
+				t.Fatalf("%s: %v", c.Name, err)
+			}
+			facts := goldenEpisodeFacts{numbering: numbering}
+			if season.Valid {
+				number := int(season.Int64)
+				facts.season = &number
+			}
+			if episode.Valid {
+				number := int(episode.Int64)
+				facts.episode = &number
+			}
+			if err := applySearchEpisodeFacts(entry, facts); err != nil {
+				t.Fatalf("%s: %v", c.Name, err)
+			}
+		}
+	}
+	encoded, err := json.Marshal(doc)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return canonical(string(encoded))
+}
+
+// applySearchEpisodeFacts states exactly the episode facts the fixture holds.
+// Absent facts stay absent; a non-episode entry is untouched.
+func applySearchEpisodeFacts(entry map[string]any, facts goldenEpisodeFacts) error {
+	if kind, _ := entry["kind"].(string); kind != "episode" {
+		return nil
+	}
+	special := facts.season != nil && *facts.season == 0
+	absolute := (*int)(nil)
+	if facts.episode != nil && facts.numbering == "absolute" {
+		absolute = facts.episode
+	}
+	for _, derived := range []struct {
+		key  string
+		want *int
+	}{
+		{"seasonNumber", facts.season},
+		{"episodeNumber", facts.episode},
+		{"absoluteNumber", absolute},
+	} {
+		if err := setGoldenDerivedNumber(entry, derived.key, derived.want); err != nil {
+			return err
+		}
+	}
+	for _, derived := range []struct {
+		key  string
+		want bool
+	}{
+		{"special", special},
+		{"dateBased", facts.numbering == "date"},
+	} {
+		if err := setGoldenDerivedBool(entry, derived.key, derived.want); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func setGoldenDerivedNumber(entry map[string]any, key string, want *int) error {
+	existing, present := entry[key]
+	if want == nil {
+		if present {
+			return fmt.Errorf("%s is %v but the fixture holds no such fact", key, existing)
+		}
+		return nil
+	}
+	if present {
+		switch number := existing.(type) {
+		case float64:
+			if number != float64(*want) {
+				return fmt.Errorf("%s is %v, not the fixture's %d", key, existing, *want)
+			}
+		case int:
+			if number != *want {
+				return fmt.Errorf("%s is %v, not the fixture's %d", key, existing, *want)
+			}
+		default:
+			return fmt.Errorf("%s is a malformed %v", key, existing)
+		}
+		return nil
+	}
+	entry[key] = *want
+	return nil
+}
+
+func setGoldenDerivedBool(entry map[string]any, key string, want bool) error {
+	existing, present := entry[key]
+	if !want {
+		if present && existing != nil {
+			return fmt.Errorf("%s is %v but the fixture holds no such fact", key, existing)
+		}
+		return nil
+	}
+	if present {
+		value, ok := existing.(bool)
+		if !ok || !value {
+			return fmt.Errorf("%s is %v, not the fixture's true", key, existing)
+		}
+		return nil
+	}
+	entry[key] = true
+	return nil
+}
+
+// The extension is bounded: it fills absent facts, accepts the facts it
+// derives, and refuses anything the fixture contradicts. These controls run
+// without a catalogue.
+func TestGoldenSearchEpisodeFactsBoundaries(t *testing.T) {
+	number := func(value int) *int { return &value }
+	episode := func() map[string]any { return map[string]any{"id": "show-000000-s01-e001", "kind": "episode"} }
+	entry := episode()
+	if err := applySearchEpisodeFacts(entry, goldenEpisodeFacts{season: number(1), episode: number(1), numbering: "seasonal"}); err != nil {
+		t.Fatalf("absent facts: %v", err)
+	}
+	if entry["seasonNumber"] != 1 || entry["episodeNumber"] != 1 {
+		t.Fatalf("facts were not published: %v", entry)
+	}
+	for _, absent := range []string{"absoluteNumber", "special", "dateBased"} {
+		if _, present := entry[absent]; present {
+			t.Fatalf("%s was invented: %v", absent, entry)
+		}
+	}
+	recorded := episode()
+	recorded["seasonNumber"], recorded["episodeNumber"] = float64(1), float64(1)
+	if err := applySearchEpisodeFacts(recorded, goldenEpisodeFacts{season: number(1), episode: number(1)}); err != nil || recorded["seasonNumber"] != float64(1) {
+		t.Fatalf("agreeing facts: %v %v", err, recorded["seasonNumber"])
+	}
+	conflict := episode()
+	conflict["seasonNumber"] = float64(2)
+	if err := applySearchEpisodeFacts(conflict, goldenEpisodeFacts{season: number(1), episode: number(1)}); err == nil {
+		t.Fatal("conflicting season number was accepted")
+	}
+	invented := episode()
+	invented["episodeNumber"] = float64(1)
+	if err := applySearchEpisodeFacts(invented, goldenEpisodeFacts{numbering: "date"}); err == nil {
+		t.Fatal("a recorded fact the fixture lacks was accepted")
+	}
+	null := episode()
+	null["seasonNumber"] = nil
+	if err := applySearchEpisodeFacts(null, goldenEpisodeFacts{numbering: "date"}); err == nil {
+		t.Fatal("an explicitly null season number was accepted")
+	}
+	malformed := episode()
+	malformed["seasonNumber"] = "1"
+	if err := applySearchEpisodeFacts(malformed, goldenEpisodeFacts{season: number(1)}); err == nil {
+		t.Fatal("malformed season number was accepted")
+	}
+	special := episode()
+	if err := applySearchEpisodeFacts(special, goldenEpisodeFacts{season: number(0), episode: number(1)}); err != nil || special["special"] != true {
+		t.Fatalf("special card: %v %v", err, special["special"])
+	}
+	absolute := episode()
+	if err := applySearchEpisodeFacts(absolute, goldenEpisodeFacts{season: number(1), episode: number(1043), numbering: "absolute"}); err != nil {
+		t.Fatalf("absolute numbering: %v", err)
+	}
+	if absolute["absoluteNumber"] != 1043 {
+		t.Fatalf("absolute numbering was not published: %v", absolute)
+	}
+	date := episode()
+	if err := applySearchEpisodeFacts(date, goldenEpisodeFacts{season: number(2023), episode: number(14), numbering: "date"}); err != nil || date["dateBased"] != true {
+		t.Fatalf("date numbering: %v %v", err, date["dateBased"])
+	}
+	if err := applySearchEpisodeFacts(map[string]any{"id": "movie-0000000", "kind": "movie"}, goldenEpisodeFacts{season: number(1)}); err != nil {
+		t.Fatal("a title result must be left alone:", err)
+	}
 }

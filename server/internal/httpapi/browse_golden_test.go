@@ -3,7 +3,9 @@ package httpapi
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/url"
+	"reflect"
 	"sort"
 	"strings"
 	"testing"
@@ -322,4 +324,276 @@ func goldenNewBrowseFacets(t *testing.T, f *goldenFixture, c goldenCase) (golden
 	c.Status = 200
 	c.Response = canonical(string(raw))
 	return c, true
+}
+
+// aggregateCardKinds is the entry kind each grouping aggregate publishes: a
+// decade or genre grouping is a category card, a book series card names its
+// series. Only these aggregates are grouping cards; a studio card is a
+// different navigation and is never extended here.
+var aggregateCardKinds = map[string]string{"decade": "category", "genre": "category", "series": "book_series"}
+
+// browsePivotAggregates is the one aggregate each aggregate browse pivot
+// publishes. A grouping card of another aggregate on that page is a change to
+// specify, not one to absorb.
+var browsePivotAggregates = map[string]string{"categories": "decade", "genres": "genre", "series": "series"}
+
+// goldenCaseLibrary is the fixture library a browse or content request names.
+func goldenCaseLibrary(t *testing.T, f *goldenFixture, c goldenCase) string {
+	t.Helper()
+	rest, ok := strings.CutPrefix(c.Path, "/v1/libraries/")
+	if !ok {
+		t.Fatalf("%s: expected a library page, got %q", c.Name, c.Path)
+	}
+	library := strings.SplitN(rest, "/", 2)[0]
+	for _, candidate := range []string{f.library.Movies, f.library.Shows, f.library.Music, f.library.Books} {
+		if library == candidate {
+			return library
+		}
+	}
+	t.Fatalf("%s: %q is not one of the fixture's libraries", c.Name, library)
+	return ""
+}
+
+func goldenLibraryKind(t *testing.T, f *goldenFixture, library string) string {
+	t.Helper()
+	var kind string
+	if err := f.db.QueryRow(`SELECT kind FROM libraries WHERE id=?`, library).Scan(&kind); err != nil {
+		t.Fatal(err)
+	}
+	return kind
+}
+
+// applyAggregateCardFacts states the library a published grouping card belongs
+// to and, for Music's genre cards, the Album releases destination c60d8961c
+// authors. Both are derived from the request's library and the card's own
+// aggregate key; a conflicting, malformed or misplaced recorded value is an
+// error rather than something to overwrite. Every other recorded field of the
+// card is left exactly as it was.
+func applyAggregateCardFacts(entry map[string]any, library, libraryKind, aggregate string) error {
+	id, ok := entry["id"].(string)
+	if !ok {
+		return nil
+	}
+	cardAggregate, value, found := strings.Cut(id, ":")
+	wantKind, isAggregate := aggregateCardKinds[cardAggregate]
+	if !found || value == "" || !isAggregate {
+		return nil
+	}
+	if aggregate == "" || cardAggregate != aggregate {
+		return fmt.Errorf("grouping card %q appears on a page that publishes no %s grouping", id, cardAggregate)
+	}
+	if kind, _ := entry["kind"].(string); kind != wantKind {
+		return fmt.Errorf("grouping card %q is a %q, want %q", id, kind, wantKind)
+	}
+	navigation, ok := entry["navigation"].(map[string]any)
+	if !ok {
+		return fmt.Errorf("grouping card %q has no navigation", id)
+	}
+	if category, _ := navigation["category"].(string); category != id {
+		return fmt.Errorf("grouping card %q navigates to category %q", id, category)
+	}
+	view, destination := "browse", any(nil)
+	if cardAggregate == "genre" && libraryKind == "music" {
+		view = "releases"
+		destination = map[string]any{
+			"pivot": "albums",
+			"query": map[string]any{"field": "genre", "operator": "equals", "value": value},
+			"sort":  []any{map[string]any{"field": "title", "direction": "asc"}},
+		}
+	}
+	if existing, present := navigation["view"]; present {
+		if _, ok := existing.(string); !ok {
+			return fmt.Errorf("grouping card %q has a malformed destination view %v", id, existing)
+		}
+	}
+	navigation["view"] = view
+	if destination != nil {
+		if existing, present := navigation["browse"]; present && !reflect.DeepEqual(existing, destination) {
+			return fmt.Errorf("grouping card %q has a conflicting Album destination %v", id, existing)
+		}
+		navigation["browse"] = destination
+	} else if existing, present := navigation["browse"]; present && existing != nil {
+		return fmt.Errorf("grouping card %q unexpectedly carries a browse destination %v", id, existing)
+	}
+	switch existing, present := entry["libraryId"]; {
+	case !present:
+		entry["libraryId"] = library
+	case existing == nil:
+		return fmt.Errorf("grouping card %q has a null libraryId", id)
+	default:
+		text, ok := existing.(string)
+		if !ok {
+			return fmt.Errorf("grouping card %q has a malformed libraryId %v", id, existing)
+		}
+		if text != library {
+			return fmt.Errorf("grouping card %q names library %q, not its own %q", id, text, library)
+		}
+	}
+	return nil
+}
+
+// c60d8961c publishes libraryId on every browse grouping card and gives Music's
+// genre cards an exact Album releases destination. Apply that to the recorded
+// answer for the pages the browse aggregate produces, and to Discover's genre
+// rail, which reuses the same listing; the recorded matrix itself is unchanged.
+func goldenAggregateCardFacts(t *testing.T, f *goldenFixture, c goldenCase, want string) string {
+	t.Helper()
+	if c.Status != 200 {
+		return want
+	}
+	browse := strings.HasPrefix(c.Name, "browse:")
+	if !browse && !strings.HasPrefix(c.Name, "content:") {
+		return want
+	}
+	library := goldenCaseLibrary(t, f, c)
+	libraryKind := goldenLibraryKind(t, f, library)
+	var doc map[string]any
+	if err := json.Unmarshal([]byte(want), &doc); err != nil {
+		t.Fatal(err)
+	}
+	apply := func(entries []any, aggregate string) {
+		for _, raw := range entries {
+			entry, ok := raw.(map[string]any)
+			if !ok {
+				continue
+			}
+			if err := applyAggregateCardFacts(entry, library, libraryKind, aggregate); err != nil {
+				t.Fatalf("%s: %v", c.Name, err)
+			}
+		}
+	}
+	if browse {
+		var request struct {
+			Pivot string `json:"pivot"`
+		}
+		if err := json.Unmarshal([]byte(c.Body), &request); err != nil {
+			t.Fatal(err)
+		}
+		entries, ok := doc["entries"].([]any)
+		if !ok {
+			return want
+		}
+		apply(entries, browsePivotAggregates[request.Pivot])
+	} else {
+		touched := false
+		sections, _ := doc["sections"].([]any)
+		for _, raw := range sections {
+			section, ok := raw.(map[string]any)
+			if !ok {
+				continue
+			}
+			if id, _ := section["id"].(string); id != "genres" {
+				continue
+			}
+			entries, ok := section["entries"].([]any)
+			if !ok {
+				continue
+			}
+			apply(entries, "genre")
+			touched = true
+		}
+		if !touched {
+			return want
+		}
+	}
+	encoded, err := json.Marshal(doc)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return canonical(string(encoded))
+}
+
+// The extension is bounded: it fills an absent value, accepts the value it
+// derives, and refuses anything else. These controls run without a catalogue.
+func TestGoldenAggregateCardFactsBoundaries(t *testing.T) {
+	card := func(id, kind, view string) map[string]any {
+		return map[string]any{
+			"id": id, "kind": kind, "title": "Card",
+			"navigation": map[string]any{"category": id, "view": view},
+		}
+	}
+	albumDestination := func(value string) map[string]any {
+		return map[string]any{
+			"pivot": "albums",
+			"query": map[string]any{"field": "genre", "operator": "equals", "value": value},
+			"sort":  []any{map[string]any{"field": "title", "direction": "asc"}},
+		}
+	}
+	decade := card("decade:1950", "category", "browse")
+	if err := applyAggregateCardFacts(decade, "fixture-movies", "movie", "decade"); err != nil {
+		t.Fatalf("absent libraryId: %v", err)
+	}
+	if decade["libraryId"] != "fixture-movies" || decade["navigation"].(map[string]any)["view"] != "browse" {
+		t.Fatalf("decade card was not extended: %v", decade)
+	}
+	if _, present := decade["navigation"].(map[string]any)["browse"]; present {
+		t.Fatalf("decade card gained an Album destination: %v", decade)
+	}
+	recorded := card("decade:1950", "category", "browse")
+	recorded["libraryId"] = "fixture-movies"
+	if err := applyAggregateCardFacts(recorded, "fixture-movies", "movie", "decade"); err != nil || recorded["libraryId"] != "fixture-movies" {
+		t.Fatalf("agreeing libraryId: %v %v", err, recorded["libraryId"])
+	}
+	conflict := card("decade:1950", "category", "browse")
+	conflict["libraryId"] = "fixture-tv"
+	if err := applyAggregateCardFacts(conflict, "fixture-movies", "movie", "decade"); err == nil {
+		t.Fatal("conflicting libraryId was accepted")
+	}
+	null := card("decade:1950", "category", "browse")
+	null["libraryId"] = nil
+	if err := applyAggregateCardFacts(null, "fixture-movies", "movie", "decade"); err == nil {
+		t.Fatal("null libraryId was accepted")
+	}
+	malformed := card("decade:1950", "category", "browse")
+	malformed["libraryId"] = 7
+	if err := applyAggregateCardFacts(malformed, "fixture-movies", "movie", "decade"); err == nil {
+		t.Fatal("non-string libraryId was accepted")
+	}
+	if err := applyAggregateCardFacts(card("decade:1950", "movie", "browse"), "fixture-movies", "movie", "decade"); err == nil {
+		t.Fatal("wrongly typed grouping card was accepted")
+	}
+	if err := applyAggregateCardFacts(card("decade:1950", "category", "browse"), "fixture-movies", "movie", "genre"); err == nil {
+		t.Fatal("card on a page publishing another aggregate was accepted")
+	}
+	if err := applyAggregateCardFacts(card("decade:1950", "category", "browse"), "fixture-movies", "movie", ""); err == nil {
+		t.Fatal("grouping card on a non-aggregate page was accepted")
+	}
+	broken := card("decade:1950", "category", "browse")
+	broken["navigation"].(map[string]any)["category"] = "decade:1960"
+	if err := applyAggregateCardFacts(broken, "fixture-movies", "movie", "decade"); err == nil {
+		t.Fatal("card navigating to another category was accepted")
+	}
+	if err := applyAggregateCardFacts(map[string]any{"id": "movie-0000000", "kind": "movie"}, "fixture-movies", "movie", "decade"); err != nil {
+		t.Fatal("a title card must be left alone:", err)
+	}
+	genre := card("genre:Action", "category", "browse")
+	if err := applyAggregateCardFacts(genre, "fixture-music", "music", "genre"); err != nil {
+		t.Fatalf("music genre card: %v", err)
+	}
+	navigation := genre["navigation"].(map[string]any)
+	if genre["libraryId"] != "fixture-music" || navigation["view"] != "releases" || !reflect.DeepEqual(navigation["browse"], albumDestination("Action")) {
+		t.Fatalf("music genre card was not extended: %v", genre)
+	}
+	movieGenre := card("genre:Drama", "category", "browse")
+	if err := applyAggregateCardFacts(movieGenre, "fixture-movies", "movie", "genre"); err != nil {
+		t.Fatalf("movie genre card: %v", err)
+	}
+	if movieGenre["libraryId"] != "fixture-movies" || movieGenre["navigation"].(map[string]any)["view"] != "browse" {
+		t.Fatalf("movie genre card took Music's destination: %v", movieGenre)
+	}
+	foreign := card("genre:Action", "category", "browse")
+	foreign["navigation"].(map[string]any)["browse"] = albumDestination("Comedy")
+	if err := applyAggregateCardFacts(foreign, "fixture-music", "music", "genre"); err == nil {
+		t.Fatal("conflicting Album destination was accepted")
+	}
+	unexpected := card("genre:Action", "category", "browse")
+	unexpected["navigation"].(map[string]any)["browse"] = albumDestination("Action")
+	if err := applyAggregateCardFacts(unexpected, "fixture-movies", "movie", "genre"); err == nil {
+		t.Fatal("movie genre card with an Album destination was accepted")
+	}
+	badView := card("decade:1950", "category", "browse")
+	badView["navigation"].(map[string]any)["view"] = 3
+	if err := applyAggregateCardFacts(badView, "fixture-movies", "movie", "decade"); err == nil {
+		t.Fatal("malformed destination view was accepted")
+	}
 }
