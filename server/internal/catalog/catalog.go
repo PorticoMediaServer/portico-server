@@ -299,6 +299,12 @@ func (s *Service) List(viewer Viewer, library, cursor string, limit int) ([]Item
 	return out, next, nil
 }
 func (s *Service) Get(profile, id string) (Item, error) {
+	return s.getItem(profile, id, true)
+}
+
+// getItem shares every item fact and enrichment between the full item endpoint
+// and Detail, which does not publish the source-detail array.
+func (s *Service) getItem(profile, id string, includeSources bool) (Item, error) {
 	i, e := s.itemFacts(profile, id)
 	if e != nil {
 		return i, e
@@ -308,7 +314,11 @@ func (s *Service) Get(profile, id string) (Item, error) {
 		return i, err
 	}
 	i.Missing = since != ""
-	i.Sources, i.Available, i.Duration, e = s.compactItemAssets(id)
+	if includeSources {
+		i.Sources, i.Available, i.Duration, e = s.compactItemAssets(id)
+	} else {
+		i.Available, i.Duration, e = s.compactItemAssetSummary(id)
+	}
 	if e != nil {
 		return i, e
 	}

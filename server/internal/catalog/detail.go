@@ -25,7 +25,7 @@ func (s *Service) detailOnce(viewer Viewer, server, item string, owner bool) (De
 	}
 	out.Scope = DetailScope{server, library, item, fence}
 	out.Revision = before
-	out.Item, e = s.Get(profile, item)
+	out.Item, e = s.getItem(profile, item, false)
 	if e != nil {
 		return out, e
 	}
@@ -76,7 +76,6 @@ func (s *Service) detailOnce(viewer Viewer, server, item string, owner bool) (De
 	if out.Facts, e = s.titleFacts(item); e != nil {
 		return out, e
 	}
-	out.Item.Sources = nil
 	if out.Languages, e = s.detailLanguages(item); e != nil {
 		return out, e
 	}
