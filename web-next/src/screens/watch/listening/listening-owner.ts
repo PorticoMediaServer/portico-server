@@ -1,6 +1,6 @@
 import {sameFence, type PlaybackFence} from '../../../../../packages/player-core/src/index.ts';
 import type {PlayerChapter, PlayerChaptersSnapshot} from '@core/player-chapters.ts';
-import type {LyricsSnapshot} from '@core/lyrics.ts';
+import type {LyricRevision, LyricsSnapshot} from '@core/lyrics.ts';
 import type {QueuePlaylistSave} from '@core/playback-v1/queue.ts';
 import type {V1QueuePolicyIntent} from '@core/playback-v1/v1-queue-player.ts';
 import type {WebPlaybackRuntimeSnapshot, WebShellPlaybackRuntime, WebListeningPort, WebListeningLifetime, WebQueueListSnapshot,
@@ -206,6 +206,7 @@ export class ListeningOwner {
     if (direction === 'retry') {if(snapshot.phase==='refresh-required')await this.port.chapters.refresh();else await this.port.chapters.retry();}else if (direction === 'next') await this.port.chapters.next();else await this.port.chapters.previous();
   }
   async lyricsRetry(shown: ListeningState) {if (!this.admit(shown, true) || !this.lyricsOffered() || !this.admit(shown, true)) stale();await this.port!.lyrics.refresh();}
+  async chooseLyric(shown: ListeningState, snapshot: LyricsSnapshot, resource: LyricRevision | null) {const lifetime=this.lifetime(shown,true);if(!this.lyricsOffered())stale();await this.port!.lyrics.choose(snapshot,resource,lifetime);}
   async lyric(shown: ListeningState, snapshot: LyricsSnapshot, index: number) {const lifetime = this.lifetime(shown, true);if (!this.lyricsOffered()) stale();await this.port!.lyrics.seek(snapshot, index, lifetime);}
   private editorChanged = (editor: WebQueueEditOpening) => {
     if (!this.current() || this.editor !== editor) return;

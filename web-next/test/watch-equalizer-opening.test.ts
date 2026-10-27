@@ -136,7 +136,7 @@ test('an absent device record offers Back while it loads', async () => {
   held.value = null;
   const v = setup();
   assert.equal(all(v.tree, 'DeviceEqualizer').length, 0);
-  assert.ok(all(v.tree, 'Button').some(node => (Array.isArray(node.props.children) ? node.props.children.join('') : node.props.children) === 'next.media.eq.backQueue'));
+  assert.ok(all(v.tree, 'Button').some((node: ReturnType<typeof tree>[number]) => (Array.isArray(node.props.children) ? node.props.children.join('') : node.props.children) === 'next.media.eq.backQueue'));
 });
 
 async function nowPlaying() {
@@ -173,7 +173,7 @@ async function nowPlaying() {
 }
 
 const panelHost = (v: any[]) => all(v, 'DeviceEqualizer')[0];
-const moreButton = (v: any[]) => all(v, 'button').find(node => node.props['aria-label'] === 'player.more');
+const moreButton = (v: any[]) => all(v, 'button').find((node: ReturnType<typeof tree>[number]) => node.props['aria-label'] === 'player.more');
 const menu = (v: any[]) => one(v, 'Menu').props;
 const openMenu = (show: any) => {let v = show(); moreButton(v)!.props.onClick(); return show();};
 const selectEq = (show: any) => {let v = openMenu(show); menu(v).items[0].onSelect(); return show();};
@@ -222,7 +222,7 @@ test('actual panel under NowPlaying: saved A Back/Settings/report/write cannot t
   await assert.rejects(panelA.props.port.change(equalizer(false)), /retired/i);
   assert.equal(changes.length, 0, 'saved A never writes the device port');
   const afterAlert = show();
-  assert.equal(all(afterAlert, 'p').filter(node => node.props.role === 'alert').length, 0, 'saved A error publishes no alert');
+  assert.equal(all(afterAlert, 'p').filter((node: ReturnType<typeof tree>[number]) => node.props.role === 'alert').length, 0, 'saved A error publishes no alert');
   await panelB.props.port.change(equalizer(false));
   assert.equal(changes.length, 1, 'live B writes its own port');
   panelB.props.onOpenSettings();

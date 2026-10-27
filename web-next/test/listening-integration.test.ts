@@ -31,9 +31,10 @@ function harness({kind='audiobook' as 'music'|'audiobook',lyricsEnabled=true,exp
   const authority={serverId:'server',authority:'local' as const,accountId:'account',profileId:'profile',epoch:1,viewerFence:'viewer'};
   const original=makeFence();let current=true,version='1',counter=0,returning=false,failChapters=false,failEdit=false,lyricMode:'lrc'|'text'|'404'|'error'='lrc';
   let chapterWait:ReturnType<typeof deferred<unknown>>|undefined,lyricWait:ReturnType<typeof deferred<unknown>>|undefined,saveWait:ReturnType<typeof deferred<QueuePlaylistSave>>|undefined;
+  let selectionRevision=1;let choiceWait:ReturnType<typeof deferred<unknown>>|undefined;
   const sourceToken={};let source:object=sourceToken;let onCurrent:(()=>void)|undefined;
   const runtimeListeners=new Set<()=>void>(),listListeners=new Set<()=>void>();
-  const calls={chapters:[] as string[],lyrics:0,seek:[] as number[],actions:[] as any[],captures:0,opens:0,collapses:0,mounts:0,unmounts:0,edits:[] as unknown[],policies:[] as unknown[],saveKeys:[] as string[],saveNames:[] as string[],reads:0,next:0,previous:0};
+  const calls={chapters:[] as string[],lyrics:0,choices:[] as unknown[],seek:[] as number[],actions:[] as any[],captures:0,opens:0,collapses:0,mounts:0,unmounts:0,edits:[] as unknown[],policies:[] as unknown[],saveKeys:[] as string[],saveNames:[] as string[],reads:0,next:0,previous:0};
   const subject={kind,item:{id:'item',kind:kind==='music'?'song':'audiobook_file',title:'Actual title',artist:'Artist',author:'Author',narrator:'Narrator'}};
   let live:any={authority,sequence:1,disposed:false,nativeVideoSurfaceActive:false,fence:original,subject,playback:{playbackRun:4,phase:'ready',intent:'playing',positionSeconds:12,duration:3030},
     presentation:{fence:original,subject,kind,expanded,playing:true,positionSeconds:12,durationSeconds:3030,rate:1,volume:.5,muted:false,controls:['play','pause','seek','volume'],policy:null},
@@ -58,7 +59,7 @@ function harness({kind='audiobook' as 'music'|'audiobook',lyricsEnabled=true,exp
       calls.captures++;const captured=live,capturedSource=source;
       const owns=()=>current&&source===capturedSource&&live.authority===captured.authority&&sameFence(live.fence,fence)&&live.playback.playbackRun===captured.playback.playbackRun&&!live.dock.remote;
       const api={request:async<T,>(path:string,_method?:string,_body?:unknown,signal?:AbortSignal)=>{signal?.throwIfAborted();calls.chapters.push(path);if(failChapters)throw new Error('read_failed');return(chapterWait?await chapterWait.promise:chaptersWire(path.includes('cursor=')))as T;},
-        requestLyrics:async<T,>(_path:string,_method?:string,_body?:unknown,signal?:AbortSignal)=>{signal?.throwIfAborted();calls.lyrics++;if(lyricMode==='404')throw Object.assign(new Error('empty'),{status:404});if(lyricMode==='error')throw new Error('failed');return(lyricWait?await lyricWait.promise:lyricsWire(lyricMode==='text'))as T;}};
+        requestLyrics:async<T,>(_path:string,method?:string,body?:unknown,signal?:AbortSignal)=>{signal?.throwIfAborted();if(method==='PUT'){calls.choices.push(body);selectionRevision++;return (choiceWait?await choiceWait.promise:{revision:selectionRevision,resource:lyricsWire().resources[0]}) as T;}calls.lyrics++;if(lyricMode==='404')throw Object.assign(new Error('empty'),{status:404});if(lyricMode==='error')throw new Error('failed');const wire=lyricsWire(lyricMode==='text');wire.selection.revision=selectionRevision;return(lyricWait?await lyricWait.promise:wire)as T;}};
       return createWebListeningPort({fence,lifetime,target:{libraryId:'library',itemId:'item',sessionId:'session',sessionGeneration:2,sourceId:'source',versionId:'version',playbackRun:4,queueId:'queue',entryId:'entry'},current:owns,
         request:api.request,requestLyrics:api.requestLyrics,chaptersTarget:{libraryId:'library',itemId:'item',sessionId:'session',sessionGeneration:2,sourceId:'source'},
         makeChapters:api=>new PlayerChaptersService({api,scope:{serverId:'server',viewerId:'viewer'},timeoutMs:1000}),
@@ -82,7 +83,7 @@ function harness({kind='audiobook' as 'music'|'audiobook',lyricsEnabled=true,exp
   };
   const owner=()=>new ListeningOwner({runtime,snapshot:live,isCurrent:()=>{onCurrent?.();return current;},lyricsEnabled});
   return{runtime:runtime as WebShellPlaybackRuntime,owner,calls,get snapshot(){return live as WebPlaybackRuntimeSnapshot;},get list(){return list;},
-    failChapters(value:boolean){failChapters=value;},failEdit(value:boolean){failEdit=value;},lyricsMode(value:typeof lyricMode){lyricMode=value;},holdChapters(){return chapterWait=deferred<unknown>();},holdLyrics(){return lyricWait=deferred<unknown>();},holdSave(){return saveWait=deferred<QueuePlaylistSave>();},
+    failChapters(value:boolean){failChapters=value;},failEdit(value:boolean){failEdit=value;},lyricsMode(value:typeof lyricMode){lyricMode=value;},holdChapters(){return chapterWait=deferred<unknown>();},holdLyrics(){return lyricWait=deferred<unknown>();},holdChoice(){return choiceWait=deferred<unknown>();},holdSave(){return saveWait=deferred<QueuePlaylistSave>();},
     retire(){current=false;emit();},remote(){live={...live,dock:{...live.dock,remote:{phase:'playing'}}};emit();},
     replace(){source={};const fence=makeFence('successor','new-source');live={...live,fence,presentation:{...live.presentation,fence}};emit();},
     set onCurrent(fn:(()=>void)|undefined){onCurrent=fn;},get expanded(){return live.dock.local.expanded;},set onRead(fn:(()=>void)|undefined){runtime.getSnapshot=()=>{if(!returning){returning=true;try{fn?.();}finally{returning=false;}}return live;};},
@@ -117,6 +118,18 @@ for(const mode of ['lrc','text','404','error'] as const)test(`actual lyrics serv
     else if(mode==='error'){assert.ok(shown.lyrics?.error);f.lyricsMode('lrc');await owner.lyricsRetry(shown);assert.ok(owner.getSnapshot().lyrics?.data);}
     else if(mode==='lrc'){await owner.lyric(shown,shown.lyrics!,1);assert.deepEqual(f.calls.seek,[5.5]);}
     else await assert.rejects(owner.lyric(shown,shown.lyrics!,0),/unavailable/);
+  }finally{owner.dispose();}
+});
+
+test('the published scoped lyrics choice uses the exact drawn resource and refuses an old panel through pending PUT',async()=>{
+  const f=harness({kind:'music'}),owner=f.owner();try{
+    owner.commitExpanded(true);owner.show(owner.getSnapshot(),'lyrics');await tick();let shown=owner.getSnapshot();
+    await owner.chooseLyric(shown,shown.lyrics!,shown.lyrics!.data!.resources[0]);assert.equal(f.calls.choices.length,1);
+    assert.equal(owner.getSnapshot().lyrics!.data!.selection.revision,2);assert.equal(f.calls.lyrics,2);
+    shown=owner.getSnapshot();const held=f.holdChoice(),choice=owner.chooseLyric(shown,shown.lyrics!,shown.lyrics!.data!.resources[0]);
+    const rejected=assert.rejects(choice);owner.show(owner.getSnapshot(),'queue');held.resolve({revision:3,resource:lyricsWire().resources[0]});await rejected;await tick();
+    assert.equal(f.calls.lyrics,2);assert.equal(owner.getSnapshot().panel,'queue');assert.equal(owner.getSnapshot().lyrics!.data!.selection.revision,2);
+    await assert.rejects(owner.chooseLyric(shown,shown.lyrics!,shown.lyrics!.data!.resources[0]),{name:'AbortError'});assert.equal(f.calls.choices.length,2);
   }finally{owner.dispose();}
 });
 

@@ -15,7 +15,7 @@ export function ListeningPanels({host, snapshot, reportError}: {host: ListeningH
   const list = state.queue;
   if (state.panel === 'lyrics') return <LyricsPanel snapshot={state.lyrics ?? {data: null, candidates: [], warnings: [], preview: null, busy: false, error: '', generation: 0}}
     positionSeconds={snapshot.presentation?.positionSeconds ?? 0} enabled={owner.lyricsOffered()} canSeek={snapshot.presentation?.controls.includes('seek') === true}
-    onRetry={() => run(() => owner.lyricsRetry(state))} onSeek={(shown, index) => run(() => owner.lyric(state, shown, index))}/>;
+    onRetry={() => run(() => owner.lyricsRetry(state))} onChoose={(shown,resource)=>run(()=>owner.chooseLyric(state,shown,resource))} onSeek={(shown, index) => run(() => owner.lyric(state, shown, index))}/>;
   if (state.panel === 'chapters') return <ListeningChapters host={host} snapshot={snapshot} reportError={reportError}/>;
   if (state.panel === 'speed') return <Segmented aria-label={t('player.opt.speed')} value={String(snapshot.presentation?.rate ?? 1)} items={owner.speeds().map(rate => ({value: String(rate), label: `${rate}×`}))} onValueChange={value => run(() => owner.setSpeed(state, snapshot, Number(value)))}/>;
   if (state.panel === 'sleep') return <Segmented aria-label={t('player.opt.sleepTimer')} value={String(owner.sleepMinutes())} items={(owner.sleepOffered() ? listeningSleepChoices : []).map(minutes => ({value: String(minutes), label: minutes ? t('player.opt.minutes', {count: minutes}) : t('player.opt.off')}))} onValueChange={value => run(() => owner.setSleep(state, snapshot, Number(value)))}/>;
