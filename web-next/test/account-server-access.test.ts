@@ -7,7 +7,7 @@ function fixture(){
   let family='actual-family',gate:Promise<void>|undefined,release!:()=>void,started!:()=>void;
   const listeners=new Set<()=>void>(),calls:unknown[][]=[];
   const account={api:{origin:'https://accounts.test',send:async(...args:unknown[])=>{calls.push(args);started?.();await gate;return {actual:true};}},
-    service:{getSnapshot:()=>({session:{account:{id:'actual-account'},familyId:family}}),synchronize:async()=>{},accessSession:async()=>({account:{id:'actual-account'},familyId:family,accessToken:'actual-private-bearer'}),
+    service:{getSnapshot:()=>({session:{account:{id:'actual-account'},familyId:family,accessToken:'actual-private-bearer'}}),synchronize:async()=>{},accessSession:async()=>({account:{id:'actual-account'},familyId:family,accessToken:'actual-private-bearer'}),
       subscribe:(listener:()=>void)=>{listeners.add(listener);return()=>listeners.delete(listener);}}} as unknown as ReturnType<typeof browserAccount>;
   return {account,calls,replace:()=>{family='successor-family';for(const listener of listeners)listener();},hold:()=>{gate=new Promise(resolve=>{release=resolve;});return new Promise<void>(resolve=>{started=resolve;});},release:()=>release()};
 }
