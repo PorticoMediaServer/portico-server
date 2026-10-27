@@ -21,6 +21,7 @@ const iso = (ms: number) => new Date(ms).toISOString().replace(/\.\d+Z$/, 'Z');
 class FakeAuthServer {
  role=viewer.role;
   generation = 1;
+  fixedHorizon?: number;
   access = new Map<string, {generation: number; expires: number}>();
   refresh = 'refresh_000000000001';
   receipts = new Map<string, {requestId: string; response: unknown; until: number}>();
@@ -37,7 +38,7 @@ class FakeAuthServer {
   headers: Record<string, string>[] = [];
   constructor() { this.access.set('access_1', {generation: 1, expires: clock + 15 * MIN}); }
   envelope(access: string, refresh: string, generation: number) {
-    return {accessToken: access, refreshToken: refresh, deviceId: 'dev_1', expiresAt: iso(this.access.get(access)!.expires), viewer:{...viewer,role:this.role}, sessionFamilyId: 'family_1', tokenGeneration: String(generation), authorizationHorizon: iso(clock + 90 * 24 * 60 * MIN)};
+    return {accessToken: access, refreshToken: refresh, deviceId: 'dev_1', expiresAt: iso(this.access.get(access)!.expires), viewer:{...viewer,role:this.role}, sessionFamilyId: 'family_1', tokenGeneration: String(generation), authorizationHorizon: iso(this.fixedHorizon ?? clock + 90 * 24 * 60 * MIN)};
   }
   initial(): LocalSession { return parseLocalSession(this.envelope('access_1', this.refresh, 1)); }
   expireAccess() { for (const v of this.access.values()) v.expires = clock - 1; }
@@ -59,7 +60,7 @@ class FakeAuthServer {
       if (q.refreshToken === this.refresh) {
         for (const v of this.access.values()) v.expires = Math.min(v.expires, clock - 1); // predecessor access retired
         const g = ++this.generation, access = 'access_' + g, next = 'refresh_' + String(g).padStart(12, '0');
-        this.access.set(access, {generation: g, expires: clock + 15 * MIN});
+        this.access.set(access, {generation: g, expires: Math.min(clock + 15 * MIN, this.fixedHorizon ?? Infinity)});
         this.refresh = next;
         this.rotations++;
         const response = this.envelope(access, next, g);
@@ -469,4 +470,40 @@ test('live role changes refresh the viewer and protected record before token ren
 test('credential renewal accepts the server’s current role without changing viewer identity',async t=>{
  const {server,tab}=setup(t);const {refresher}=tab();server.role='member';server.expireAccess();
  await refresher.recover('access_1');assert.equal(refresher.current().viewer.role,'member');assert.equal(server.rotations,1);
+});
+
+
+test('fixed short authorization horizon rotates once proactively, then waits for expiry while 401 still recovers', async t => {
+  t.mock.method(Date, 'now', () => clock);
+  const horizon = clock + 90_000;
+  const initialServer = new FakeAuthServer();
+  initialServer.fixedHorizon = horizon;
+  initialServer.access.get('access_1')!.expires = horizon;
+  const {server, timers, events, tab} = setup(t, {session: initialServer.initial()});
+  server.fixedHorizon = horizon;
+  const {refresher} = tab();
+  t.after(() => refresher.stop());
+  timers.advance(0); await settle();
+  assert.equal(server.refreshCalls, 1);
+  for (let i = 0; i < 8; i++) {refresher.wake(); await refresher.token(refresher.current().accessToken); timers.advance(1_000); await settle();}
+  assert.equal(server.refreshCalls, 1, 'unchanged expiry cannot cause another proactive rotation');
+  const rejected = refresher.current().accessToken;
+  const recovered = await Promise.all([refresher.recover(rejected), refresher.recover(rejected)]);
+  assert.ok(recovered[0]); assert.equal(recovered[0], recovered[1]);
+  assert.equal(server.refreshCalls, 2, 'concurrent rejected bearer recovery joins one flight');
+  refresher.wake(); timers.advance(1_000); await settle(); assert.equal(server.refreshCalls, 2);
+  server.revoked = true; timers.advance(horizon - clock); await settle();
+  assert.equal(server.refreshCalls, 3); assert.equal(events.signedOut.length, 1);
+});
+
+test('an initially short sliding family still gets its first proactive renewal', async t => {
+  t.mock.method(Date, 'now', () => clock);
+  const initialServer = new FakeAuthServer(); initialServer.access.get('access_1')!.expires = clock + 90_000;
+  const {server, timers, tab} = setup(t, {session: initialServer.initial()});
+  const {refresher} = tab(); t.after(() => refresher.stop());
+  timers.advance(0); await settle();
+  assert.equal(server.refreshCalls, 1);
+  assert.ok(Date.parse(refresher.current().expiresAt) > clock + 90_000);
+  timers.advance(13 * MIN); await settle();
+  assert.equal(server.refreshCalls, 2, 'advancing expiry schedules normal proactive refresh');
 });
