@@ -113,9 +113,12 @@ export class QueueClient {
         if (header.current) return header;
         if (!header.segments.some(s => s.state === 'building')) throw new PlaybackApiError(409, 'queue_ended', 'never');
         await new Promise<void>(resolve => {
-          const timer = setTimeout(resolve, Math.max(50, options.intervalMs ?? 1000));
-          wake = () => { clearTimeout(timer); resolve(); };
-          options.signal?.addEventListener('abort', () => { clearTimeout(timer); resolve(); }, {once: true});
+          let timer: ReturnType<typeof setTimeout> | undefined;
+          const signal = options.signal;
+          const settle = () => { if (timer !== undefined) clearTimeout(timer); signal?.removeEventListener('abort', settle); resolve(); };
+          timer = setTimeout(settle, Math.max(50, options.intervalMs ?? 1000));
+          wake = () => { settle(); };
+          signal?.addEventListener('abort', settle, {once: true});
         });
       }
     })();
