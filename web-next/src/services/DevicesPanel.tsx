@@ -1,4 +1,4 @@
-import {HostedError, ServicesQuiet, ServicesNotice} from '../kit/accounts/ServicesAuth';
+import {HostedError, ServicesActions, ServicesQuiet, ServicesNotice} from '../kit/accounts/ServicesAuth';
 import {useCallback, useEffect, useMemo, useState, useSyncExternalStore, type ReactNode} from 'react';
 import {ApiError} from '@core/index.ts';
 import type {AccountSessionReviewService} from '@core/account-sessions.ts';
@@ -47,14 +47,26 @@ function BoundDevicesPanel({api, frame, service}: Props & {service: AccountSessi
   const metadata = new Map(devices?.items.map(item => [item.familyId, item]));
   const name = (id: string) => metadata.get(id)?.name || t(state.items.find(row => row.id === id)?.mode === 'browser' ? 'web.hostedAccount.aBrowser' : 'web.hostedAccount.anApp');
   const busy = state.pending !== null || allBusy;
+  // While an ambiguous revoke retains its exact family, ordinary revokes stay closed
+  // and only the authored retry can settle it. Read-only paging stays available.
+  const locked = busy || Boolean(state.retryId);
+  const retryRevoke = async () => {
+    const id = state.retryId;
+    if (!id) return;
+    // Only this opening's retained family may be retried; a newer ambiguity owns its own intent.
+    if (service.getSnapshot().retryId !== id) return;
+    try { await service.retryRevoke(); } catch (value) { setError(value); }
+  };
+  const revoke = (id: string) => { try { void service.revoke(id).catch(setError); } catch (value) { setError(value); } };
   const endOthers = async () => {
     setAll(false); setAllBusy(true); setError(undefined);
     try { await signOutOtherDevices(service); } catch (value) { setError(value); }
     finally { setAllBusy(false); }
   };
-  const actions = <Button size="small" disabled={busy || !active.some(item => !item.current) && !state.nextCursor} onClick={() => setAll(true)}>{t('web.hostedAccount.signOutOthers')}</Button>;
+  const actions = <Button size="small" disabled={locked || !active.some(item => !item.current) && !state.nextCursor} onClick={() => setAll(true)}>{t('web.hostedAccount.signOutOthers')}</Button>;
   return frame(<>
     {error ? <HostedError error={error} /> : null}{state.error ? <HostedError error={state.error} /> : null}{state.mutationError ? <HostedError error={state.mutationError} /> : null}
+    {state.retryId && <ServicesActions><Button size="small" disabled={busy} onClick={() => void retryRevoke()}>{t('next.states.tryAgain')}</Button></ServicesActions>}
     {state.notice && <ServicesNotice tone="info">{state.notice}</ServicesNotice>}
     {active.length > 0 && <ServicesGroup>{active.map(item => {
       const device = metadata.get(item.id);
@@ -65,12 +77,12 @@ function BoundDevicesPanel({api, frame, service}: Props & {service: AccountSessi
       const phoneApp = device?.platform === 'tvos' ? t('services.platform.tvos') : device?.platform === 'androidtv' ? t('services.platform.androidtv') : device?.platform === 'web' ? '' : app;
       const help = <ServicesDeviceFacts desktop={[app, signedIn, lastUsed]} phone={[item.current ? signedIn : phoneApp, lastUsed]} />;
       return <ServicesWorkspaceRow key={item.id} icon={icon} title={name(item.id)} help={help} badge={item.current ? <ServicesBadge tone="accent">{t('web.hostedAccount.thisBrowser')}</ServicesBadge> : undefined}>
-        {!item.current && <Button size="small" loading={state.pending === item.id} disabled={busy} onClick={() => setEnding(item.id)}>{t('action.signOut')}</Button>}
+        {!item.current && <Button size="small" loading={state.pending === item.id} disabled={locked} onClick={() => setEnding(item.id)}>{t('action.signOut')}</Button>}
       </ServicesWorkspaceRow>;
     })}</ServicesGroup>}
     {(state.hasPrevious || state.nextCursor) && <div className={styles.pager}><Button size="small" disabled={busy || !state.hasPrevious} onClick={() => void service.previous()}>{t('web.hostedAccount.newer')}</Button><Button size="small" disabled={busy || !state.nextCursor} onClick={() => void service.next()}>{t('web.hostedAccount.older')}</Button></div>}
     <Dialog open={Boolean(ending)} onOpenChange={open => { if (!open) setEnding(undefined); }} title={t('web.hostedAccount.signOutDeviceTitle', {device: ending ? name(ending) : ''})} description={t('web.hostedAccount.signOutBody')} showCloseButton={false} stackFooter className={styles.overlaySpacing}
-      footer={<><Button size="small" onClick={() => setEnding(undefined)}>{t('action.cancel')}</Button><ServicesDangerAction onClick={() => { const id = ending!; setEnding(undefined); void service.revoke(id); }}>{t('action.signOut')}</ServicesDangerAction></>}><></></Dialog>
+      footer={<><Button size="small" onClick={() => setEnding(undefined)}>{t('action.cancel')}</Button><ServicesDangerAction onClick={() => { const id = ending!; setEnding(undefined); revoke(id); }}>{t('action.signOut')}</ServicesDangerAction></>}><></></Dialog>
     <Dialog open={all} onOpenChange={open => { if (!open) setAll(false); }} title={t('web.hostedAccount.signOutOthersTitle')} description={t('web.hostedAccount.signOutOthersBody')} showCloseButton={false} stackFooter className={styles.overlaySpacing}
       footer={<><Button size="small" onClick={() => setAll(false)}>{t('action.cancel')}</Button><ServicesDangerAction onClick={() => void endOthers()}>{t('web.hostedAccount.signOutOthers')}</ServicesDangerAction></>}><></></Dialog>
   </>, actions);
