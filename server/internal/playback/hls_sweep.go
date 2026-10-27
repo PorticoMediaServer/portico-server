@@ -169,6 +169,7 @@ func placeholders(n int) string {
 // does not need.
 func (h *HLS) sweep(ctx context.Context) {
 	ids := h.activeSnapshot()
+	var measured map[string]hlsMeasured
 	if len(ids) > 0 {
 		if states := h.sessionStates(ctx, ids); states != nil {
 			for _, id := range ids {
@@ -178,19 +179,41 @@ func (h *HLS) sweep(ctx context.Context) {
 				}
 			}
 		}
-		h.enforceSessionCeilings(ids)
+		measured = h.enforceSessionCeilings(ids)
 		// A conversion nobody is fetching from is a processor this server is
 		// spending on somebody who is not there. Reclaimed without ending the
 		// session: the segments stay, and asking for one restarts the producer.
 		h.reclaimAbandoned()
 	}
-	h.enforceGlobalBudget(ctx)
+	h.enforceGlobalBudgetMeasured(ctx, measured)
+}
+
+// hlsMeasured is one successful directory measurement from this tick's
+// per-session pass. It is held by value so the global budget never reaches
+// through a live usage pointer outside the mutex.
+type hlsMeasured struct {
+	bytes int64
+	files int
+}
+
+// measureOutput is the one place a sweep walks a session directory. A nil seam
+// is production; a test replaces it to count the walks.
+func (h *HLS) measureOutput(dir string) (int64, int, error) {
+	if h.measure != nil {
+		return h.measure(dir)
+	}
+	return measureDirectory(dir)
 }
 
 // enforceSessionCeilings measures each live session's directory, amortised, and
-// stops a producer that has run away.
-func (h *HLS) enforceSessionCeilings(ids []string) {
+// stops a producer that has run away. It returns the measurements it took this
+// tick so the global budget can count exactly those directories without walking
+// them again. Directories it skipped as fresh, failed to measure, or found
+// absent are deliberately absent from the result: the budget measures those
+// itself rather than trusting a stale or incomplete count.
+func (h *HLS) enforceSessionCeilings(ids []string) map[string]hlsMeasured {
 	now := time.Now()
+	measured := make(map[string]hlsMeasured, len(ids))
 	for _, id := range ids {
 		h.mu.Lock()
 		usage := h.usage[id]
@@ -198,7 +221,7 @@ func (h *HLS) enforceSessionCeilings(ids []string) {
 		if usage != nil && now.Sub(usage.measured) < hlsUsageInterval {
 			continue
 		}
-		bytes, files, err := measureDirectory(filepath.Join(h.root, id))
+		bytes, files, err := h.measureOutput(filepath.Join(h.root, id))
 		if err != nil && !os.IsNotExist(err) {
 			h.cancelSession(id)
 			continue
@@ -214,10 +237,14 @@ func (h *HLS) enforceSessionCeilings(ids []string) {
 			bytes, files = reclaimPlayedForBudget(filepath.Join(h.root, id), served, bytes, limit, files, fileLimit)
 		}
 		h.recordUsage(id, bytes, files, now)
+		if err == nil {
+			measured[id] = hlsMeasured{bytes: bytes, files: files}
+		}
 		if bytes > limit || files > fileLimit {
 			h.cancelSession(id)
 		}
 	}
+	return measured
 }
 
 func (h *HLS) recordUsage(id string, bytes int64, files int, at time.Time) {
@@ -258,8 +285,21 @@ func (h *HLS) noteSessionServedLocked(id string) {
 }
 
 // enforceGlobalBudget keeps <state>/hls inside one ceiling across every session,
-// evicting the least recently served completed sessions first.
+// evicting the least recently served completed sessions first. It measures every
+// generated directory itself; a sweep tick that already measured its live
+// sessions passes those measurements to enforceGlobalBudgetMeasured.
 func (h *HLS) enforceGlobalBudget(ctx context.Context) {
+	h.enforceGlobalBudgetMeasured(ctx, nil)
+}
+
+// enforceGlobalBudgetMeasured is enforceGlobalBudget with this tick's
+// per-session measurements. An entry in measured was taken successfully in this
+// same sweep, after any played-output reclaim, and is counted without a second
+// walk. Every other generated directory — unknown, retained, unfinished, or one
+// whose measurement failed — is measured here. Active and served state is still
+// rechecked under h.mu exactly as before, so a session that started or was
+// watched between the two phases is never evicted on the earlier snapshot.
+func (h *HLS) enforceGlobalBudgetMeasured(ctx context.Context, measured map[string]hlsMeasured) {
 	now := time.Now()
 	h.mu.Lock()
 	due := now.Sub(h.budgetSwept) >= hlsUsageInterval
@@ -299,12 +339,16 @@ func (h *HLS) enforceGlobalBudget(ctx context.Context) {
 		}
 		id := entry.Name()
 		present[id] = true
-		bytes, files, measureErr := measureDirectory(filepath.Join(h.root, id))
-		if measureErr != nil {
-			continue
+		measuredUsage, known := measured[id]
+		if !known {
+			bytes, files, measureErr := h.measureOutput(filepath.Join(h.root, id))
+			if measureErr != nil {
+				continue
+			}
+			measuredUsage = hlsMeasured{bytes: bytes, files: files}
 		}
-		total += bytes
-		h.recordUsage(id, bytes, files, now)
+		total += measuredUsage.bytes
+		h.recordUsage(id, measuredUsage.bytes, measuredUsage.files, now)
 		h.mu.Lock()
 		live := h.sessionActiveLocked(id)
 		served := time.Time{}
@@ -317,7 +361,7 @@ func (h *HLS) enforceGlobalBudget(ctx context.Context) {
 			// per-session ceiling's job, not the budget's.
 			continue
 		}
-		candidates = append(candidates, candidate{id: id, bytes: bytes, served: served})
+		candidates = append(candidates, candidate{id: id, bytes: measuredUsage.bytes, served: served})
 	}
 	// Sessions whose directories have gone leave nothing behind: this map would
 	// otherwise grow with every session the server has ever converted.

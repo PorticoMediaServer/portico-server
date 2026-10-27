@@ -90,6 +90,10 @@ type HLS struct {
 	budgetSwept time.Time
 	orphanMu    sync.Mutex
 	orphanDir   *os.File
+	// measure is the sweep's directory-measurement seam. It is nil in
+	// production, where measureDirectory runs; a test replaces it to count the
+	// walks a sweep actually performs. Nothing else writes it.
+	measure func(dir string) (int64, int, error)
 	// producers joins every produce goroutine, so shutdown can wait for the
 	// converters it just cancelled instead of leaving them to be killed with the
 	// process and orphan their ffmpeg children.
