@@ -23,21 +23,26 @@ func TestRecoveryCodesRouteRequiresOrdinarySession(t *testing.T) {
 		{"DELETE", "/v1/direct/two-factor"},
 	}
 	for _, target := range targets {
+		requestBody := body
+		if target.path == "/v1/direct/password" {
+			// Password change has its own wire shape; keep the original wrong proof.
+			requestBody = `{"currentPassword":"Testing1!","newPassword":"Testing2!","code":"000000"}`
+		}
 		for _, credential := range []struct{ name, secret string }{
 			{"api-key", key.Secret},
 			{"personal-token", token.Secret},
 		} {
-			w := f.call(target.method, target.path, credential.secret, body)
+			w := f.call(target.method, target.path, credential.secret, requestBody)
 			if w.Code != 403 || registryErrorCode(t, w) != "session_required" {
 				t.Fatalf("%s %s with a %s: %d %s", target.method, target.path, credential.name, w.Code, w.Body)
 			}
 		}
-		if w := f.call(target.method, target.path, "", body); w.Code != 401 {
+		if w := f.call(target.method, target.path, "", requestBody); w.Code != 401 {
 			t.Fatalf("%s %s unauthenticated: %d %s", target.method, target.path, w.Code, w.Body)
 		}
 		// An ordinary session clears the credential gate; whatever the task itself
 		// then decides (missing factor, wrong proof) must not be the gate's answer.
-		if w := f.call(target.method, target.path, f.owner, body); w.Code == 403 && registryErrorCode(t, w) == "session_required" {
+		if w := f.call(target.method, target.path, f.owner, requestBody); w.Code == 403 && registryErrorCode(t, w) == "session_required" {
 			t.Fatalf("%s %s refused an ordinary session as a credential: %d %s", target.method, target.path, w.Code, w.Body)
 		}
 	}

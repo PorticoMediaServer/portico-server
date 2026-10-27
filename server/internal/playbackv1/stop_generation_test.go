@@ -190,7 +190,7 @@ func TestStopGenerationReplanKeepsSuccessorUnchanged(t *testing.T) {
 	ctx := context.Background()
 	c := f.caller
 	c.AuthorizeItem = nil
-	next, err := f.service.Patch(ctx, c, v.ID, v.Revision, Change{Seek: &SeekRequest{PositionMs: 12000, ID: "seek-successor"}})
+	next, err := f.service.Patch(ctx, c, v.ID, v.Revision, Change{Replan: true, Seek: &SeekRequest{PositionMs: 12000, ID: "seek-successor"}})
 	if err != nil {
 		t.Fatal(err)
 	}

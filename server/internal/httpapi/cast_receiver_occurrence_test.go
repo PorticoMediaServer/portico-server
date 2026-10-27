@@ -68,7 +68,8 @@ func castReceiverCurrentOccurrenceRoutes(t *testing.T, reportedEnded bool) {
 	var head playbackv1.QueueView
 	f.callAs(bearer, "GET", base, nil, nil, 200, &head)
 	var next playbackv1.QueueReply
-	w := f.callAs(bearer, "POST", base+":advance", map[string]string{"If-Match": head.Revision, "Idempotency-Key": "receiver-completion-current-001"}, map[string]any{"reason": "completion"}, 0, nil)
+	completion := map[string]any{"reason": "completion", "completionSessionId": current.ID, "completionGeneration": current.Presentation.Generation}
+	w := f.callAs(bearer, "POST", base+":advance", map[string]string{"If-Match": head.Revision, "Idempotency-Key": "receiver-completion-current-001"}, completion, 0, nil)
 	if w.Code != 200 {
 		t.Errorf("current receiver ordinary completion: %d %s", w.Code, w.Body.String())
 	} else {
@@ -83,7 +84,7 @@ func castReceiverCurrentOccurrenceRoutes(t *testing.T, reportedEnded bool) {
 			t.Errorf("receiver escaped its occurrence with GET %s: %d", path, w.Code)
 		}
 	}
-	if w := f.callAs(bearer, "POST", "/v1/queues/"+other.Queue.ID+":advance", map[string]string{"If-Match": other.Queue.Revision}, map[string]any{"reason": "completion"}, 0, nil); w.Code != 403 {
+	if w := f.callAs(bearer, "POST", "/v1/queues/"+other.Queue.ID+":advance", map[string]string{"If-Match": other.Queue.Revision}, completion, 0, nil); w.Code != 403 {
 		t.Errorf("receiver advanced a different device queue: %d", w.Code)
 	}
 	f.callAs(bearer, "DELETE", "/v1/playback/sessions/"+current.ID, nil, nil, 204, nil)

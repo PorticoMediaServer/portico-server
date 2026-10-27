@@ -20,6 +20,8 @@ func TestSavedCollectionAdmitsReadingAndProjectsReadingFacts(t *testing.T) {
 				kind = "comic"
 			}
 			r := newReadingFixture(t, kind, format)
+			// A completed scan still needs the real catalog worker to publish ready Reading facts.
+			readingSeriesDrain(t, r)
 			h := New(r.d)
 			token := r.f.owner.AccessToken
 			var created struct{ Receipt catalog.SavedResourceReceipt }

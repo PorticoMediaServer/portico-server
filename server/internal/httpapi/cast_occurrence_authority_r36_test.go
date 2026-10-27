@@ -67,7 +67,7 @@ func TestCastOccurrenceAllowsOnlyAdoptedItemAndQueueCompletion(t *testing.T) {
 	}
 	f.callAs(bearer, "GET", "/v1/queues/"+queue.Queue.ID, nil, nil, 200, &head)
 	var next playbackv1.QueueReply
-	f.callAs(bearer, "POST", "/v1/queues/"+queue.Queue.ID+":advance", map[string]string{"If-Match": head.Revision, "Idempotency-Key": "cast-complete-current"}, map[string]string{"reason": "completion"}, 200, &next)
+	f.callAs(bearer, "POST", "/v1/queues/"+queue.Queue.ID+":advance", map[string]string{"If-Match": head.Revision, "Idempotency-Key": "cast-complete-current"}, map[string]any{"reason": "completion", "completionSessionId": session.ID, "completionGeneration": session.Presentation.Generation}, 200, &next)
 	if next.Session == nil || next.Session.ID == session.ID || next.Session.ItemID != f.items[1] {
 		t.Fatal("completion did not adopt real next occurrence")
 	}
@@ -138,7 +138,7 @@ func TestCastOccurrenceLiveTransactionFences(t *testing.T) {
 }
 
 func TestCastCompletionRechecksCurrentFamilyInQueueWriter(t *testing.T) {
-	f, bearer, p, queue, _ := castOccurrenceFixture(t)
+	f, bearer, p, queue, session := castOccurrenceFixture(t)
 	previous := f.v1.CastQueueAuthority
 	called := false
 	f.v1.CastQueueAuthority = func(ctx context.Context, tx *sql.Tx, c playbackv1.Caller, id string) error {
@@ -148,7 +148,7 @@ func TestCastCompletionRechecksCurrentFamilyInQueueWriter(t *testing.T) {
 		}
 		return previous(ctx, tx, c, id)
 	}
-	w := f.raw("POST", "/v1/queues/"+queue.Queue.ID+":advance", bearer, map[string]string{"If-Match": queue.Queue.Revision}, map[string]string{"reason": "completion"})
+	w := f.raw("POST", "/v1/queues/"+queue.Queue.ID+":advance", bearer, map[string]string{"If-Match": queue.Queue.Revision}, map[string]any{"reason": "completion", "completionSessionId": session.ID, "completionGeneration": session.Presentation.Generation})
 	if !called || w.Code < 400 || w.Code >= 500 {
 		t.Fatalf("late family revocation not refused: called=%v %d %s", called, w.Code, w.Body.String())
 	}
