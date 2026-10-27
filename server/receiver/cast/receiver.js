@@ -221,11 +221,11 @@
   // gates; an external JSON request cannot reproduce their private identity.
   var localRequests = new WeakSet(), localRequestId = 0;
   var cafOccurrence = null,platformOccurrence=null;
-  async function loadMedia(request,lease) {
+  async function loadMedia(request,lease,attempt) {
     requireLease(lease);
     // Bind the single CAF deck to the exact accepted server presentation.
     var owner=playback, occurrence={id:owner&&owner.id,generation:owner&&owner.generation,contentId:request.media.contentId,finished:false};
-    cafOccurrence=null;platformOccurrence=occurrence;localRequests.add(request);
+    cafOccurrence=null;platformOccurrence=occurrence;if(attempt)attempt.caf=occurrence;localRequests.add(request);
     await manager.load(request);
     requireLease(lease);
     if(playback&&owner&&playback.id===owner.id&&playback.generation===owner.generation)cafOccurrence=occurrence;
@@ -308,11 +308,32 @@
   function sameRemoteIdentity(a,b){return !!a&&!!b&&sameControllerStamp(a.controller,b.controller)&&!!a.occurrence&&!!b.occurrence&&a.occurrence.sessionId===b.occurrence.sessionId&&a.occurrence.generation===b.occurrence.generation&&a.occurrence.itemId===b.occurrence.itemId;}
   function requireLease(lease){if(!leaseCurrent(lease)){var e=new Error('controller_retired');e.retired=true;throw e;}}
   function commandQueue(lease,work){return serial(function(){requireLease(lease);if(lease&&playback!==lease.occurrence)throw new Error('occurrence_replaced');return work();});}
+  async function cleanupResource(owned,witness){
+    // Final refusal stays final. Never renew, get latest, send progress or
+    // downgrade this captured original generation to an ordinary Stop.
+    if(!witness||!owned||!Number.isSafeInteger(owned.generation)||owned.generation<1)return;
+    await request(sessionPath(owned.id),{method:'DELETE',origin:witness.origin,bearer:witness.bearer,body:{expectedGeneration:owned.generation}}).catch(function(){});
+  }
   async function cleanupOccurrence(owned,lease){
-    // The original generation is checked by the server in the accepting
-    // writer. Refusal is final: never retry against a later occurrence.
-    if(!lease||!owned||!Number.isSafeInteger(owned.generation)||owned.generation<1||playback&&playback.id===owned.id)return;
-    await request(sessionPath(owned.id),{method:'DELETE',origin:lease.origin,bearer:lease.bearer,body:{expectedGeneration:owned.generation}}).catch(function(){});
+    if(playback&&owned&&playback.id===owned.id)return;
+    await cleanupResource(owned,lease);
+  }
+  async function cleanupFailedLoad(attempt){
+    if(!attempt||attempt.adopted||attempt.cleaned||!attempt.owner||!attempt.owned)return;
+    attempt.cleaned=true;
+    // A distinct local owner may already hold this exact durable resource.
+    // Never retire that installed handoff as the failed attempt's cleanup.
+    if(playback&&playback!==attempt.owner&&playback.id===attempt.owned.id&&playback.generation===attempt.owned.generation)return;
+    if(playback===attempt.owner){
+      playback=null;meta=null;
+      var oldReport=reportTimer,oldBuffering=bufferingTimer;
+      reportTimer=null;bufferingTimer=null;
+      if(cafOccurrence===attempt.caf)cafOccurrence=null;
+      if(platformOccurrence===attempt.caf)platformOccurrence=null;
+      clearTimeout(oldReport);clearTimeout(oldBuffering);
+    }
+    if(attempt.contentId)mediaAddresses.delete(attempt.contentId);
+    await cleanupResource(attempt.owned,attempt.witness);
   }
   /** One request, bounded in time and size. Resolves {status, body} for 2xx; throws with
    * {code, status, current} otherwise (`current` is a 412's session). */
@@ -784,7 +805,7 @@
   }
   /** Starts a v1 session for the item and answers CAF's load request for it. A session already
    * playing here is replaced in the same request, so this TV holds one playback slot. */
-  async function resolvePlayback(itemId, startSeconds, identity, subtitleTrackId, queue,lease,pending) {
+  async function resolvePlayback(itemId, startSeconds, identity, subtitleTrackId, queue,lease,pending,attempt) {
     requireLease(lease);
     if (!session || !manager || !/^[A-Za-z0-9_-]{1,128}$/.test(itemId)) throw new Error('playback_unavailable');
     clearTimeout(reportTimer); clearTimeout(bufferingTimer);
@@ -868,12 +889,13 @@
     }
 
     playback = track(started);
+    if(attempt){attempt.owner=playback;attempt.owned=ownedStart;attempt.witness=cleanupWitness;attempt.contentId=load.media.contentId;}
     reportSeq = 0; reportFailures = 0;
     return load;
   }
   function startPlayback(itemId,startSeconds,identity,subtitleTrackId,queue,lease,pending) { return commandQueue(lease,async function(){
     requireLease(lease);recoveries=0;
-    var captured;
+    var captured,attempt={adopted:false};
     if(queue&&queue.transferId){
       var digest=JSON.stringify({itemId:itemId,startSeconds:startSeconds,subtitleTrackId:subtitleTrackId,queue:queue}),now=Date.now();
       transferStarts.forEach(function(value,key){if(value.expires<=now)transferStarts.delete(key);});
@@ -882,8 +904,8 @@
       if(captured&&captured.accepted)return captured.accepted;
       if(!captured){if(transferStarts.size>=8)throw new Error('cast_transfer_busy');captured={digest:digest,scope:scope,origin:base,expires:now+180000};transferStarts.set(queue.transferId,captured);}
     }
-    try{var load=await resolvePlayback(itemId,startSeconds,identity,subtitleTrackId,queue,lease,pending);var startedOwner=playback;await loadMedia(load,lease);requireLease(lease);if(playback!==startedOwner)throw new Error('occurrence_replaced');showPlaying();scheduleReport(0);refreshCatalogueDisplay({id:playback.id,itemId:playback.itemId,presentation:{generation:playback.generation}},load.media.contentId,lease);if(captured)captured.accepted=playback;return playback;}
-    catch(e){if(leaseCurrent(lease)){if(startedOwner&&playback===startedOwner)await stopPlayback(false,lease,startedOwner).catch(function(){});showError(e&&(e.code||e.message));}throw e;}
+    try{var load=await resolvePlayback(itemId,startSeconds,identity,subtitleTrackId,queue,lease,pending,attempt);var startedOwner=attempt.owner;if(playback!==startedOwner)throw new Error('occurrence_replaced');await loadMedia(load,lease,attempt);requireLease(lease);if(playback!==startedOwner)throw new Error('occurrence_replaced');attempt.adopted=true;showPlaying();scheduleReport(0);refreshCatalogueDisplay({id:playback.id,itemId:playback.itemId,presentation:{generation:playback.generation}},load.media.contentId,lease);if(captured)captured.accepted=playback;return playback;}
+    catch(e){await cleanupFailedLoad(attempt);if(leaseCurrent(lease)&&(!attempt.owner||!playback||playback===attempt.owner))showError(e&&(e.code||e.message));throw e;}
   }); }
 
   // V1 music is progressive: the next server occurrence starts only after the

@@ -292,7 +292,7 @@ func (f *FiniteHLS) publishPreparation(ctx context.Context, id string, a *finite
 		if e != nil {
 			return e
 		}
-		if !os.SameFile(existing, current) {
+		if !os.SameFile(existing, current) || existing.Size() != current.Size() || !existing.ModTime().Equal(current.ModTime()) {
 			return ErrOccurrenceChanged
 		}
 	} else if err = os.Link(staged, path); err != nil {
