@@ -34,7 +34,12 @@ export function WatchStillWatchingPrompt({binding, snapshot, environment, expand
   const [pending, setPending] = useState<Pending | null>(null);
   // A refused action re-admits through this layout rather than re-arming its own spent object.
   const [generation, setGeneration] = useState(0);
+  // The admitted offer belongs to the tuple that keyed it; the committed pass below
+  // is its only source and a later observation tick cannot replace it.
+  const admittedOffer = useRef(offer);
+  useLayoutEffect(() => {admittedOffer.current = offer;});
   useLayoutEffect(() => {
+    const offer = admittedOffer.current;
     if (!offer || !tuple) {
       const old = openingRef.current;
       if (old) {old.live = false;openingRef.current = null;setOpening(current => current === old ? null : current);}

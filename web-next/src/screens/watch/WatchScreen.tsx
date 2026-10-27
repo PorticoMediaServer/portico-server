@@ -50,7 +50,8 @@ export function WatchScreen({binding, snapshot, expanded, onCollapse, onControls
   const size = useSyncExternalStore(subscribeWindow, windowSize, serverSize).split(':').map(Number), width = size[0]!, height = size[1]!;
   const coarsePointer = useCoarsePointer(), touchTablet = coarsePointer && width >= 600;
   const root = useRef<HTMLDivElement>(null), chrome = useRef<HTMLDivElement>(null), body = useRef<HTMLDivElement>(null), panelAnchor = useRef<HTMLButtonElement>(null), moreAnchor = useRef<HTMLButtonElement>(null);
-  const attachRoot = useCallback((node: HTMLDivElement | null) => {root.current = node;if (videoGesture) videoGesture.screen.current = node;}, [videoGesture?.screen]);
+  const gestureScreen = videoGesture?.screen;
+  const attachRoot = useCallback((node: HTMLDivElement | null) => {root.current = node;if (gestureScreen) gestureScreen.current = node;}, [gestureScreen]);
   const gestureInput = useRef<{id: number; port: NonNullable<WatchScreenProps['videoGesture']>['port']} | undefined>(undefined);
   const gestureClick = useRef(false), gestureGate = useRef(false);
   const promptSeek = useRef<HTMLInputElement | null>(null);
@@ -177,7 +178,12 @@ export function WatchScreen({binding, snapshot, expanded, onCollapse, onControls
   const dockPanels = (surfaces?.available ?? []).filter((panel): panel is WatchDockPanel => panel === 'options' || panel === 'subtitles-audio');
   const dockPanelKey = dockPanels.join('|');
   const dockAdmitted = !!dockPanelsCurrent && dockPanelsCurrent() && !surfaces?.modal && !mobile && valid;
+  // The panel opening keeps the fence, dock panels and showing port of the commit
+  // that admitted it; a later render's closures cannot widen its authority.
+  const dockAdmission = useRef({fence, dockPanels, showPanel});
+  useLayoutEffect(() => {dockAdmission.current = {fence, dockPanels, showPanel};});
   useLayoutEffect(() => {
+    const {fence, dockPanels, showPanel} = dockAdmission.current;
     if (!publishDockPanels || !dockPanelsCurrent || !dockAdmitted || !fence || presentation?.kind !== 'video' || !dockPanelKey) return;
     const owner = new WatchDockPanelOpening({binding, authority: snapshot.authority, fence, panels: dockPanels,
       snapshot: binding.runtime.getSnapshot, isCurrent: () => dockOwnerRef.current === owner && dockPanelsCurrent(),
@@ -300,7 +306,8 @@ export function WatchScreen({binding, snapshot, expanded, onCollapse, onControls
   useLayoutEffect(() => {gestureGate.current = valid && mobile && !panel && !externalPanel && !more && !shortcuts
     && !liveGuideOpen && !scrubDrag.current && !stillWatching && !presentation?.finished && snapshot.playback.phase !== 'error';
     if (!gestureGate.current) videoGesture?.port?.cancel();});
-  useLayoutEffect(() => videoGesture?.admit(() => gestureGate.current), [videoGesture?.admit, binding, sourceKey]);
+  const admitGesture = videoGesture?.admit;
+  useLayoutEffect(() => admitGesture?.(() => gestureGate.current), [admitGesture, binding, sourceKey]);
 
   const promptSource = useMemo<Omit<PromptFocusHost, 'source' | 'seekPresent' | 'focusAllowed' | 'controlsVisible'> | undefined>(() => { /* Preserve the original ownership/invalidation keys. */ void sourceKey;
     if (!fence) return;
@@ -314,10 +321,12 @@ export function WatchScreen({binding, snapshot, expanded, onCollapse, onControls
           && live.dock.local?.expanded === true && sameFence(live.dock.local.fence, original.fence) && live.dock.remote?.phase !== 'playing';
       } catch {return false;}
     }};
-  }, [binding, snapshot.authority, sourceKey, snapshot.playback.intentId, snapshot.playback.playbackRun]);
-  const promptHost = useMemo<PromptFocusHost | undefined>(() => promptSource ? {...promptSource, source: promptSource, seekPresent: !endCard && chromeVisible && !!bounds,
-    controlsVisible: chromeVisible, focusAllowed: !videoGesture?.active && !panel && !externalPanel && !more && !shortcuts && !stillWatching} : undefined,
-  [promptSource, !!endCard, !!bounds, chromeVisible, panel, externalPanel, more, shortcuts, stillWatching, videoGesture?.active]);
+  }, [binding, snapshot.authority, sourceKey, fence, snapshot.playback.intentId, snapshot.playback.playbackRun]);
+  const seekPresent = !endCard && chromeVisible && !!bounds, gestureInactive = !videoGesture?.active;
+  const promptFocusAllowed = gestureInactive && !panel && !externalPanel && !more && !shortcuts && !stillWatching;
+  const promptHost = useMemo<PromptFocusHost | undefined>(() => promptSource ? {...promptSource, source: promptSource, seekPresent,
+    controlsVisible: chromeVisible, focusAllowed: promptFocusAllowed} : undefined,
+  [promptSource, seekPresent, chromeVisible, promptFocusAllowed]);
   return <div ref={attachRoot} className={styles.watch} hidden={!open && !videoGesture?.preview} inert={!open || undefined} aria-hidden={!open || undefined} data-video-preview={!open && videoGesture?.preview || undefined} tabIndex={-1} data-watch-screen data-mode={mode} data-still-watching={stillWatching || undefined} data-touch-expanded={coarsePointer && width >= 1024 || undefined} data-controls-visible={chromeVisible} data-controls-exit={controlsExit} data-panel-open={!!panel} data-scrubbing={!!activeScrub && mobile}
     onPointerDownCapture={() => { keyboardFocus.current = false; }}
     onPointerMove={event => { if (event.pointerType === 'mouse') reveal(); }} onFocusCapture={reveal}>

@@ -121,7 +121,8 @@ export function createWebListeningPort(input: WebListeningInput): WebListeningPo
     if (!input.current() || dead || record.signal.aborted) {retire(); return false;}
     return true;
   };
-  const require = () => {if (!guard()) stale();};
+  /** Admission only: never execute a command under a retired record. */
+  const admit = () => {if (!guard()) stale();};
   const command = (lifetime: WebListeningLifetime) => {
     const controller = new AbortController();
     const onAbort = () => controller.abort();
@@ -172,13 +173,13 @@ export function createWebListeningPort(input: WebListeningInput): WebListeningPo
   const chaptersPort = Object.freeze({
     getSnapshot: () => guard() ? chapters.getSnapshot() : neutralChapters,
     subscribe: subscribe(chapters),
-    load: async () => {require(); const c = command(input.lifetime); try {await settled(chapters.select(input.chaptersTarget), c.isCurrent);} finally {c.done();}},
-    retry: async () => {require(); const c = command(input.lifetime); try {await settled(chapters.retry(), c.isCurrent);} finally {c.done();}},
-    refresh: async () => {require(); const c = command(input.lifetime); try {await settled(chapters.refresh(), c.isCurrent);} finally {c.done();}},
-    next: async () => {require(); const c = command(input.lifetime); try {await settled(chapters.next(), c.isCurrent);} finally {c.done();}},
-    previous: async () => {require(); const c = command(input.lifetime); try {await settled(chapters.previous(), c.isCurrent);} finally {c.done();}},
+    load: async () => {admit(); const c = command(input.lifetime); try {await settled(chapters.select(input.chaptersTarget), c.isCurrent);} finally {c.done();}},
+    retry: async () => {admit(); const c = command(input.lifetime); try {await settled(chapters.retry(), c.isCurrent);} finally {c.done();}},
+    refresh: async () => {admit(); const c = command(input.lifetime); try {await settled(chapters.refresh(), c.isCurrent);} finally {c.done();}},
+    next: async () => {admit(); const c = command(input.lifetime); try {await settled(chapters.next(), c.isCurrent);} finally {c.done();}},
+    previous: async () => {admit(); const c = command(input.lifetime); try {await settled(chapters.previous(), c.isCurrent);} finally {c.done();}},
     seek: async (shown: PlayerChaptersSnapshot, chapter: PlayerChapter, lifetime: WebListeningLifetime) => {
-      require();
+      admit();
       if (lifetime.signal.aborted || !lifetime.isCurrent()) stale();
       const snapshot = chapters.getSnapshot();
       if (shown !== snapshot || snapshot.phase !== 'ready' || !snapshot.data) unavailable();
@@ -196,15 +197,15 @@ export function createWebListeningPort(input: WebListeningInput): WebListeningPo
     getSnapshot: () => guard() ? lyrics.getSnapshot() : emptyLyrics,
     subscribe: subscribe(lyrics),
     refresh: async () => {
-      require();
+      admit();
       if (!input.lyricsEnabled()) unavailable();
       const c = command(input.lifetime);
       try {await settled(lyrics.refresh(), c.isCurrent);} finally {c.done();}
     },
     choose: async (shown: LyricsSnapshot, resource: LyricRevision | null, lifetime: WebListeningLifetime) => {
-      require();
+      admit();
       if (input.lyricsEnabled() !== true) unavailable();
-      require();
+      admit();
       const c = command(lifetime);
       try {
         if (!c.isCurrent()) stale();
@@ -221,7 +222,7 @@ export function createWebListeningPort(input: WebListeningInput): WebListeningPo
       } finally {c.done();}
     },
     seek: async (shown: LyricsSnapshot, index: number, lifetime: WebListeningLifetime) => {
-      require();
+      admit();
       if (!input.lyricsEnabled() || lifetime.signal.aborted || !lifetime.isCurrent()) unavailable();
       if (shown !== lyrics.getSnapshot() || !shown.data || !shown.data.source) unavailable();
       const selected = shown.data.selection.resource, line = selected?.document?.lines[index];
@@ -266,7 +267,7 @@ export function createWebListeningPort(input: WebListeningInput): WebListeningPo
   const queue = list ? Object.freeze({
     list,
     edit: (shown: WebQueueListSnapshot, lifetime: WebListeningLifetime) => {
-      require();
+      admit();
       if (lifetime.signal.aborted || !lifetime.isCurrent() || shown !== list.getSnapshot()) stale();
       if (!shown.queueId || !shown.revision || shown.queueId !== input.target.queueId) unavailable();
       const opening = input.openEdit(shown, lifetime);
@@ -284,7 +285,7 @@ export function createWebListeningPort(input: WebListeningInput): WebListeningPo
       return owned;
     },
     policy: async (shown: WebQueueListSnapshot, intent: V1QueuePolicyIntent, lifetime: WebListeningLifetime) => {
-      require();
+      admit();
       if (lifetime.signal.aborted || !lifetime.isCurrent() || shown !== list.getSnapshot()) stale();
       if (!shown.queueId || !shown.revision || shown.queueId !== input.target.queueId) unavailable();
       const target = Object.freeze({sessionId: input.target.sessionId, generation: input.target.sessionGeneration, playbackRun: input.target.playbackRun,
@@ -293,7 +294,7 @@ export function createWebListeningPort(input: WebListeningInput): WebListeningPo
       try {await settled(input.policy(target, shown.revision, intent, {signal: c.signal, isCurrent: c.isCurrent}), c.isCurrent);} finally {c.done();}
     },
     save: async (shown: WebQueueListSnapshot, name: string, lifetime: WebListeningLifetime, onProgress?: (save: QueuePlaylistSave) => void) => {
-      require();
+      admit();
       if (lifetime.signal.aborted || !lifetime.isCurrent() || shown !== list.getSnapshot()) stale();
       if (!shown.queueId || shown.queueId !== input.target.queueId) unavailable();
       const frozen = name.trim();

@@ -1,9 +1,12 @@
-import {useLayoutEffect, useState} from 'react';
+import {useLayoutEffect, useRef, useState} from 'react';
 
 export type OwnedResource<T> = Readonly<{value: T; id: number}>;
 /** `live` is the one intentionally mutable field: retirement happens in place
  * in the cleanup, so the tuple it publishes keeps its identity. */
 type Held<T> = {readonly value: T; readonly deps: readonly unknown[]; readonly id: number; live: boolean};
+/** One admitted dependency tuple: a new object for each distinct element-wise set,
+ * so the create/retire pass can name one dependency. */
+type Admission = {readonly deps: readonly unknown[]};
 let nextOwnedId = 1;
 
 const sameDeps = (a: readonly unknown[], b: readonly unknown[]) => a.length === b.length && a.every((value, index) => Object.is(value, b[index]));
@@ -18,8 +21,17 @@ export function useOwnedResource<T>(
   create: () => T, dispose: (value: T) => void, deps: readonly unknown[], onMount?: (value: T) => void,
 ): OwnedResource<T> | undefined {
   const [held, setHeld] = useState<Held<T> | null>(null);
+  // A changed tuple admits a new identity before this render commits; the layout
+  // pass below then runs exactly once for the resource's own dependency set.
+  const [admitted, admit] = useState<Admission>(() => ({deps}));
+  if (!sameDeps(admitted.deps, deps)) admit({deps});
+  // The pass keeps this render's own factories; their identity is not part of the
+  // resource's lifetime.
+  const factories = useRef({create, dispose, onMount});
+  useLayoutEffect(() => {factories.current = {create, dispose, onMount};});
   useLayoutEffect(() => {
-    const entry: Held<T> = {value: create(), deps: [...deps], live: true, id: nextOwnedId++};
+    const {create, dispose, onMount} = factories.current;
+    const entry: Held<T> = {value: create(), deps: [...admitted.deps], live: true, id: nextOwnedId++};
     setHeld(entry);
     onMount?.(entry.value);
     return () => {
@@ -27,8 +39,6 @@ export function useOwnedResource<T>(
       dispose(entry.value);
       setHeld(current => current === entry ? null : current);
     };
-    // The dependency list is the resource's identity; it is passed through by design.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, deps);
+  }, [admitted]);
   return held && held.live && sameDeps(held.deps, deps) ? {value: held.value, id: held.id} : undefined;
 }

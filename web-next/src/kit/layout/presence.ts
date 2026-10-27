@@ -56,7 +56,12 @@ export function useLayoutPresence<T>(items: readonly T[], getKey: (item: T) => s
     reconcile();
     return () => {if (owner.current === identity) owner.current = null;if (timer !== undefined) clearTimeout(timer);};
   }, [items, getKey, reduced, exitMs, max, stagger, visibleOnly, scope, beforeLeave, admitNew, visibleRoot]);
+  // The move pass reads this commit's leaving set; a fresh Set identity per render
+  // must not restart an already running reorder.
+  const leavingNow = useRef(leaving);
+  useLayoutEffect(() => {leavingNow.current = leaving;});
   useLayoutEffect(() => {
+    const leaving = leavingNow.current;
     if (moveMs <= 0) {
       for (const animation of animations.current.values()) animation.cancel();
       animations.current.clear();targets.current.clear();return;

@@ -44,8 +44,13 @@ function RegisteredWatchPlayback({binding}: {binding: WatchBindings | undefined}
   const [collectionNext, setCollectionNext] = useState<WatchCollectionNext | undefined>(undefined);
   const collection = detail?.data?.collections?.[0], finishKey = snapshot?.presentation?.finished ? `${collection?.id ?? ''}:${detail?.data?.item.id ?? ''}` : '';
   const completedFence = snapshot?.presentation?.fence, completedFenceKey = completedFence ? fenceKey(completedFence) : '';
+  // The finishing pass keeps the detail data and collection row of the commit that
+  // admitted its finish key; later retained reads cannot replace that witness.
+  const finishAdmission = useRef({detail, collection});
+  useLayoutEffect(() => {finishAdmission.current = {detail, collection};});
   useEffect(() => {
     setCollectionNext(undefined);
+    const {detail, collection} = finishAdmission.current;
     const body = held, context = body?.context, data = detail?.data, card = collection, api = context?.api, playback = runtime;
     if (!body || !context || !data || !card || !api || !playback || !finishKey || card.position >= card.memberCount) return;
     const life = new AbortController(), run = playback.getSnapshot().playback.playbackRun;
@@ -84,7 +89,12 @@ function RegisteredWatchPlayback({binding}: {binding: WatchBindings | undefined}
     if (detail?.data?.item.id !== member.titleId || collectionNext !== member.collectionNext) return false;
     return true;
   };
+  // The next-member lease is built from the same committed detail read and witness
+  // that admitted this collection's finish.
+  const memberAdmission = useRef({detail, memberWitness});
+  useLayoutEffect(() => {memberAdmission.current = {detail, memberWitness};});
   useLayoutEffect(() => {
+    const {detail, memberWitness} = memberAdmission.current;
     if (!collectionNext || !held || !runtime || !detail?.data) return;
     const completed = detail.data, context = held.context, live = runtime.getSnapshot(), liveFence = live.presentation?.fence;
     if (!liveFence || liveFence.kind !== 'queue' || liveFence.itemId !== completed.item.id || live.presentation?.finished !== true) return;

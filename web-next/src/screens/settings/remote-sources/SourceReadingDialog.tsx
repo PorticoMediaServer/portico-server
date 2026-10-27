@@ -1,4 +1,4 @@
-import {useLayoutEffect, useSyncExternalStore} from 'react';
+import {useLayoutEffect, useSyncExternalStore, useCallback} from 'react';
 import {defaultI18n} from '@i18n';
 import type {RemoteSource, RemoteSourceService} from '@core/remote-sources.ts';
 import {router} from '../../../router';
@@ -43,8 +43,8 @@ function ReadingBody({reader, service, embedded, onClose, reportError, errorText
   const state = useSyncExternalStore(reader.subscribe, reader.getSnapshot, reader.getSnapshot);
   const sourceState = useSyncExternalStore(service.subscribe, service.getSnapshot, service.getSnapshot);
   const phone = usePhone();
-  const close = () => {if (reader.current()) {reader.retire();onClose();}};
-  useLayoutEffect(() => {if (state.kind === 'saved' && !embedded) close();}, [state, reader, embedded]);
+  const close = useCallback(() => {if (reader.current()) {reader.retire();onClose();}}, [reader, onClose]);
+  useLayoutEffect(() => {if (state.kind === 'saved' && !embedded) close();}, [state, reader, embedded, close]);
   useLayoutEffect(() => {
     if (state.kind === 'failed' && reader.current() && isAuthFailure(state.error)) {
       reader.retire();reportError(state.error);

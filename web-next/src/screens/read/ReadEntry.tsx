@@ -39,6 +39,10 @@ export function ReadEntry(props: ReadEntryProps) {
   const [published, publish] = useState<ReceiverOpening>();
   const [navigationRevision, invalidateNavigation] = useState(0);
   const owned = useRef<ReceiverOpening | undefined>(undefined), generation = useRef(0);
+  // The opening keeps this commit's shell reporting port; a later binding identity must
+  // not rebuild the received reading target.
+  const shellEffects = useRef(captured.binding.home.effects);
+  useLayoutEffect(() => {shellEffects.current = captured.binding.home.effects;});
   const context = captured.context;
   useLayoutEffect(() => {
     const held = owned.current, same = held?.context === context && held.itemId === itemId && held.sourceId === sourceId;
@@ -51,7 +55,7 @@ export function ReadEntry(props: ReadEntryProps) {
     held?.retire();
     const received = receiveIndexedReadingTarget(context, itemId, sourceId, location);
     if (received.kind === 'pending') return;
-    const session = context.session(), viewer = {...session.viewer}, report = captured.binding.home.effects.reportError;
+    const session = context.session(), viewer = {...session.viewer}, report = shellEffects.current.reportError;
     let off = () => {};
     const authority = () => {
       if (!context.isCurrent()) return false;

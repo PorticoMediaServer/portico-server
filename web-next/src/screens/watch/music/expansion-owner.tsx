@@ -31,7 +31,7 @@ export function useMusicExpansion(binding: WatchBindings | undefined, snapshot: 
           && !live.dock.remote && JSON.stringify([fenceKey(live.fence), value.subject.item.id, live.playback.intentId, live.playback.playbackRun, value.posterUrl, value.backdropUrl]) === original;
       } catch {return false;}
     }};
-  }, [binding, key, authority, localCurrent, music]);
+  }, [binding, key, fence, authority, localCurrent, music, presentation?.posterUrl, presentation?.backdropUrl]);
   const [held, setHeld] = useState<Scope>();
   const admitted = scope?.current() ? scope : undefined;
   const open = !!admitted && !!snapshot?.dock.local?.expanded;
@@ -51,9 +51,9 @@ export function MusicExpansionSurface({motion}: {motion: MusicExpansion}) {
 function OwnedMusicCover({scope, motion}: {scope: Scope; motion: MusicExpansion}) {
   const surface = useRef<HTMLDivElement | null>(null), reduced = useDockReducedMotion(surface);
   const owner = useRef<MusicExpansionPaint | null>(null), refresh = useRef<() => void>(() => {});
-  const source = scope.artwork;
+  const source = scope.artwork, settled = motion.settled;
   useLayoutEffect(() => {
-    const original = new MusicExpansionPaint(scope.current, () => motion.settled(scope));owner.current = original;
+    const original = new MusicExpansionPaint(scope.current, () => settled(scope));owner.current = original;
     let expanded = scope.binding.runtime.getSnapshot().dock.local?.expanded;
     const off = scope.binding.runtime.subscribe(() => {
       if (!scope.current()) {original.dispose();return;}
@@ -61,7 +61,7 @@ function OwnedMusicCover({scope, motion}: {scope: Scope; motion: MusicExpansion}
       if (next !== expanded) {expanded = next;original.freeze();}
     });
     return () => {off();if (owner.current === original) owner.current = null;original.dispose();};
-  }, [scope, motion.settled]);
+  }, [scope, settled]);
   useLayoutEffect(() => {
     const original = owner.current, element = surface.current, dock = motion.dock.current;
     if (!original || !element || !dock || !scope.current()) return;
