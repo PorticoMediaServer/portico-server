@@ -525,7 +525,16 @@ func (s *Service) browseSelect(request BrowseRequest) (BrowseResult, []browseRow
 	// The viewer's content restriction is the last clause, after the authorized
 	// library scope and the client's own query, so neither can widen it.
 	live, liveArgs := EntityRestrictionSQL("e.entity_id", request.Restrictions)
-	if live != "1" {
+	// A live restriction reads the mutable rating classification at query time,
+	// and that classification can move without moving the cursor's revision
+	// fence. A total counted under such a predicate is a snapshot of the
+	// classification, not a revision-bound invariant, so it may not be carried
+	// to a later page. Only the literal "1" clause — no live restriction at
+	// all — is revision-invariant. This is deliberately the compiled clause,
+	// not Restriction.Active(): a predicate that compiles to SQL matters even
+	// when some individual switch does not change membership.
+	restrictionBound := live != "1"
+	if restrictionBound {
 		// The published class refuses a title the viewer may see none of by
 		// one key lookup, before the live test walks a refused show's every
 		// episode; the live test still decides for the titles it holds.
@@ -629,24 +638,38 @@ func (s *Service) browseSelect(request BrowseRequest) (BrowseResult, []browseRow
 				return out, nil, err
 			}
 		}
-		if !counted && cursor.Total > 0 {
+		if !counted && cursor.Total > 0 && !restrictionBound {
 			total, counted = cursor.Total, true
 		}
 	}
 	if !counted {
-		if request.Query == nil {
+		switch {
+		case request.Query == nil:
 			// An unfiltered Reading continuation whose cursor cannot carry the
-			// total (a page from before totals were carried, or a zero/absent
-			// count) still owes the exact total, never the capped filter count.
+			// total (a page from before totals were carried, a zero/absent
+			// count, or a restriction-bound page) still owes the exact total,
+			// never the capped filter count.
 			if err = s.read().QueryRow(`SELECT count(*) FROM catalog_browse_rows e WHERE `+where, args...).Scan(&total); err != nil {
 				return out, nil, err
 			}
-		} else if cached, hit := s.cachedBrowseTotal(revision); hit {
-			total = cached
-		} else if err = s.read().QueryRow(`SELECT count(*) FROM (SELECT 1 FROM catalog_browse_rows e WHERE `+where+` LIMIT `+strconv.Itoa(browseTotalThreshold+1)+`)`, args...).Scan(&total); err != nil {
-			return out, nil, err
-		} else {
-			s.storeBrowseTotal(revision, total)
+		case restrictionBound:
+			// The carried total was refused above because the live restriction
+			// is not revision-invariant, so this page recounts after every
+			// cursor check. A posted filter keeps its existing capped count and
+			// lower-bound meaning, but the result is not published to the
+			// revision-keyed cache: the classification can change without that
+			// revision, so that entry could only ever be stale.
+			if err = s.read().QueryRow(`SELECT count(*) FROM (SELECT 1 FROM catalog_browse_rows e WHERE `+where+` LIMIT `+strconv.Itoa(browseTotalThreshold+1)+`)`, args...).Scan(&total); err != nil {
+				return out, nil, err
+			}
+		default:
+			if cached, hit := s.cachedBrowseTotal(revision); hit {
+				total = cached
+			} else if err = s.read().QueryRow(`SELECT count(*) FROM (SELECT 1 FROM catalog_browse_rows e WHERE `+where+` LIMIT `+strconv.Itoa(browseTotalThreshold+1)+`)`, args...).Scan(&total); err != nil {
+				return out, nil, err
+			} else {
+				s.storeBrowseTotal(revision, total)
+			}
 		}
 	}
 	lowerBound := request.Query != nil && !summary.exact && total > browseTotalThreshold
