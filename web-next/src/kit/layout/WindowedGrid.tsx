@@ -88,23 +88,33 @@ export function WindowedGrid<T>({collection, renderItem, renderPlaceholder, labe
     const target = slot.querySelector<HTMLElement>('[data-layout-primary],button:not(:disabled),a[href],[tabindex="0"]') ?? slot;
     target.focus({preventScroll: true}); pendingFocus.current = null;
   }, [range.renderFirst, range.renderLast, pages, viewport]);
-  const {items, keys} = useMemo(() => { /* Preserve the original ownership/invalidation keys. */ void pages; void snapshot.generation;
-    const items: PaintSlot[] = [], keys = new Set<string>();
+  const {contents, keys} = useMemo(() => { /* Preserve the original ownership/invalidation keys. */ void pages; void snapshot.generation;
+    const contents = [], keys = new Set<string>();
     for (let index = range.renderFirst; index <= range.renderLast; index++) {
-      const slot = collection.slotAt(index), row = Math.floor(index / columns), column = index % columns;
+      const slot = collection.slotAt(index);
       if (slot.kind === 'item') keys.add(slot.key);
       const content = slot.kind === 'item' ? renderItem(slot.item, {index, key: slot.key, focused: slot.key === focused}) : renderPlaceholder(index);
-      // The exact original React child and its Artwork/source/action props stay with this slot.
-      const node = <div key={slot.key} className={styles.gridItem} role="listitem" aria-posinset={index + 1} aria-setsize={snapshot.total ?? -1}
-        tabIndex={-1} data-grid-index={index} data-item-id={slot.kind === 'item' ? slot.key : undefined} data-layout-item={slot.kind === 'item' ? slot.key : undefined}
-        style={{width: cardWidth, height: rowHeight, left: column * (cardWidth + gap), top: row * pitch - logicalTop + viewport.top + stickyOffset}}
-        onFocusCapture={() => {if (slot.kind === 'item') {setFocused(slot.key);onItemFocus?.(slot.item, index);}}}>
-        <RetainedLayoutPaint.Provider value={false}>{content}</RetainedLayoutPaint.Provider>
-      </div>;
-      items.push({key: slot.key, node, content});
+      // Capture the original content and focus callback together. Pixel scrolling only
+      // repositions their wrappers; a new page/generation/callback still rebuilds them.
+      const onFocusCapture = () => {if (slot.kind === 'item') {setFocused(slot.key);onItemFocus?.(slot.item, index);}};
+      contents.push({slot, index, content, onFocusCapture});
     }
-    return {items, keys};
-  }, [collection, pages, snapshot.generation, snapshot.total, range.renderFirst, range.renderLast, columns, cardWidth, rowHeight, gap, pitch, logicalTop, viewport.top, stickyOffset, focused, onItemFocus, renderItem, renderPlaceholder]);
+    return {contents, keys};
+  }, [collection, pages, snapshot.generation, snapshot.total, range.renderFirst, range.renderLast,
+    // Restore every original rare geometry invalidator; keep raw scroll (logicalTop/viewport.top) out.
+    columns, cardWidth, rowHeight, gap, pitch, stickyOffset, focused, onItemFocus, renderItem, renderPlaceholder]);
+  const items = useMemo(() => contents.map(({slot, index, content, onFocusCapture}): PaintSlot => {
+    const row = Math.floor(index / columns), column = index % columns;
+    // Keep the exact arithmetic order, including fractional/compressed scrolling.
+    // The exact original React child and its Artwork/source/action props stay with this slot.
+    const node = <div key={slot.key} className={styles.gridItem} role="listitem" aria-posinset={index + 1} aria-setsize={snapshot.total ?? -1}
+      tabIndex={-1} data-grid-index={index} data-item-id={slot.kind === 'item' ? slot.key : undefined} data-layout-item={slot.kind === 'item' ? slot.key : undefined}
+      style={{width: cardWidth, height: rowHeight, left: column * (cardWidth + gap), top: row * pitch - logicalTop + viewport.top + stickyOffset}}
+      onFocusCapture={onFocusCapture}>
+      <RetainedLayoutPaint.Provider value={false}>{content}</RetainedLayoutPaint.Provider>
+    </div>;
+    return {key: slot.key, node, content};
+  }), [contents, snapshot.total, columns, cardWidth, rowHeight, gap, pitch, logicalTop, viewport.top, stickyOffset]);
   const paintOwner = useMemo(() => ({collection, paintScope}), [collection, paintScope]);
   // Scrolling, a different original source, or a layout replacement is not a removal animation.
   const paintWindow = useMemo(() => ({owner: paintOwner, width: viewport.width, height: viewport.height, top: viewport.top, cardWidth, rowHeight, gap, rowGap, stickyOffset}),
