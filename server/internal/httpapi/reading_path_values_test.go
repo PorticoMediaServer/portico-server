@@ -194,7 +194,7 @@ func TestReadingPrivatePathCandidatesAndCurrentAssociation(t *testing.T) {
 	id := readingPathItem(t, r, name)
 	var item, asset int64
 	var object, revision string
-	if err := r.f.db.QueryRow(`SELECT v.item_id,v.asset_id,v.inventory_object_id,v.source_revision FROM reading_source_values v JOIN catalog_entities e ON e.id=v.item_id WHERE e.public_id=pid_blob(?) AND v.field='author' AND v.source='folder'`, id).Scan(&item, &asset, &object, &revision); err != nil {
+	if err := r.f.db.QueryRow(`SELECT v.item_id,v.asset_id,v.object_id,v.source_revision FROM reading_path_head v JOIN catalog_entities e ON e.id=v.item_id WHERE e.public_id=pid_blob(?) AND v.author_source='folder'`, id).Scan(&item, &asset, &object, &revision); err != nil {
 		t.Fatal("real ingest did not publish provenance", err)
 	}
 	automatic := func() compactcatalog.ReadingValues {
@@ -215,7 +215,7 @@ func TestReadingPrivatePathCandidatesAndCurrentAssociation(t *testing.T) {
 	if _, err := r.f.db.Exec(`INSERT INTO reading_source_values(item_id,asset_id,field,text_value,source,inventory_object_id,source_revision) VALUES(?,?,'author','Embedded attribution','file-metadata',?,?)`, item, asset, object, revision); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := r.f.db.Exec(`UPDATE reading_source_values SET text_value='Previous path guess' WHERE item_id=? AND field='author' AND source='folder'`, item); err != nil {
+	if _, err := r.f.db.Exec(`UPDATE reading_path_head SET author='Previous path guess' WHERE item_id=? AND author_source='folder'`, item); err != nil {
 		t.Fatal(err)
 	}
 	readingTreeFile(t, r, "Attribution/Another.pdf")
@@ -225,7 +225,7 @@ func TestReadingPrivatePathCandidatesAndCurrentAssociation(t *testing.T) {
 		t.Fatal("path refresh overwrote higher source", v)
 	}
 	var pathValue string
-	if err := r.f.db.QueryRow(`SELECT text_value FROM reading_source_values WHERE item_id=? AND asset_id=? AND field='author' AND source='folder'`, item, asset).Scan(&pathValue); err != nil || pathValue != "Attribution" {
+	if err := r.f.db.QueryRow(`SELECT author FROM reading_path_head WHERE item_id=? AND asset_id=? AND author_source='folder'`, item, asset).Scan(&pathValue); err != nil || pathValue != "Attribution" {
 		t.Fatal("real path refresh did not run", pathValue, err)
 	}
 	if _, err := r.f.db.Exec(`INSERT INTO metadata_owner_fields(kind,entity_id,field,value,automatic_value,locked,actor,observed_at) VALUES('item',?,'author','A & B','Embedded attribution',1,?,datetime('now'))`, item, identity.PersonalKey(r.p.Viewer)); err != nil {
@@ -268,13 +268,13 @@ func TestReadingPrivatePathCandidatesAndCurrentAssociation(t *testing.T) {
 	if v.Author == nil || v.Author.Value != "Attribution" || v.Author.Source != compactcatalog.ReadingFolder {
 		t.Fatal("path fallback lost", v)
 	}
-	if _, err = r.f.db.Exec(`UPDATE reading_source_values SET source_revision='stale-source-revision' WHERE item_id=? AND asset_id=?`, item, asset); err != nil {
+	if _, err = r.f.db.Exec(`UPDATE reading_path_head SET source_revision='stale-source-revision' WHERE item_id=? AND asset_id=?`, item, asset); err != nil {
 		t.Fatal(err)
 	}
 	if v = automatic(); v.Author != nil {
 		t.Fatal("stale revision accepted", v)
 	}
-	if _, err = r.f.db.Exec(`UPDATE reading_source_values SET inventory_object_id=(SELECT o.id FROM inventory_objects o JOIN catalog_assets a ON a.token=o.asset_id WHERE a.path=? LIMIT 1),source_revision=(SELECT o.revision FROM inventory_objects o JOIN catalog_assets a ON a.token=o.asset_id WHERE a.path=? LIMIT 1) WHERE item_id=? AND asset_id=?`, r.path, r.path, item, asset); err != nil {
+	if _, err = r.f.db.Exec(`UPDATE reading_path_head SET object_id=(SELECT o.id FROM inventory_objects o JOIN catalog_assets a ON a.token=o.asset_id WHERE a.path=? LIMIT 1),source_revision=(SELECT o.revision FROM inventory_objects o JOIN catalog_assets a ON a.token=o.asset_id WHERE a.path=? LIMIT 1) WHERE item_id=? AND asset_id=?`, r.path, r.path, item, asset); err != nil {
 		t.Fatal(err)
 	}
 	if v = automatic(); v.Author != nil {

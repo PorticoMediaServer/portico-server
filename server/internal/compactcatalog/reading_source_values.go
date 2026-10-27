@@ -37,6 +37,9 @@ func readingAutomaticValuesTx(ctx context.Context, tx *sql.Tx, items []int64) (m
 		args = append(args, id)
 		marks = append(marks, "?")
 	}
+	if err := readingPathAutomaticTx(ctx, tx, items, out); err != nil {
+		return nil, err
+	}
 	// Attribution belongs to a title, independently of which version a reader
 	// opens. Use the same deterministic primary-version rule as Reading List:
 	// available inventory first, then asset id. Alternate versions are retained;
@@ -47,7 +50,7 @@ func readingAutomaticValuesTx(ctx context.Context, tx *sql.Tx, items []int64) (m
  JOIN reading_publications p ON p.item_id=e.id AND p.asset_id=(SELECT primary_version.asset_id FROM reading_publications primary_version WHERE primary_version.item_id=e.id AND ((e.kind=20 AND primary_version.format IN('epub','pdf','mobi','azw3')) OR (e.kind=21 AND primary_version.format IN('cbz','pdf','cb7','cbr'))) ORDER BY EXISTS(SELECT 1 FROM inventory_item_availability eligible WHERE eligible.item_id=primary_version.item_id AND eligible.asset_id=(SELECT token FROM catalog_assets WHERE id=primary_version.asset_id) AND eligible.available=1) DESC,primary_version.asset_id LIMIT 1)
  JOIN catalog_asset_links link ON link.entity_id=p.item_id AND link.asset_id=p.asset_id
  JOIN catalog_assets a ON a.id=p.asset_id
- JOIN reading_source_values v ON v.item_id=p.item_id AND v.asset_id=p.asset_id
+ JOIN reading_source_values v ON v.item_id=p.item_id AND v.asset_id=p.asset_id AND v.source='file-metadata'
  JOIN inventory_objects o ON o.id=v.inventory_object_id AND o.asset_id=a.token AND o.revision=v.source_revision AND o.retired=0
  JOIN library_sources s ON s.id=o.source_id AND s.library_id=cl.library_id AND s.incarnation=o.root_incarnation
  WHERE e.id IN (` + strings.Join(marks, ",") + `) AND e.retired=0 AND cl.retired=0

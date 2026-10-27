@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"path/filepath"
+	"portico.local/server/internal/compactcatalog"
 	"portico.local/server/internal/storage"
 )
 
@@ -16,6 +17,11 @@ func InventoryIssueTx(ctx context.Context, tx *sql.Tx, job string, issue storage
 	result, err := tx.ExecContext(ctx, `INSERT OR IGNORE INTO inventory_scan_issues(job_id,relative_path,reason,line,protect,warning) VALUES(?,?,?,?,?,?)`, job, issue.Path, issue.Reason, issue.Line, issue.Protect, issue.Warning)
 	if err != nil {
 		return err
+	}
+	if issue.Protect {
+		if err = compactcatalog.ReadingPathBlockTx(ctx, tx, job, issue.Path, issue.Reason); err != nil {
+			return err
+		}
 	}
 	n, _ := result.RowsAffected()
 	if n > 0 && issue.Warning {

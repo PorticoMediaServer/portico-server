@@ -38,11 +38,11 @@ func TestReadingPathPublicationSkipsUnchangedInput(t *testing.T) {
 	if !first || second {
 		t.Fatalf("updated first=%v second=%v want true then false", first, second)
 	}
-	var field, text, origin, object, revision string
-	if err := c.DB.QueryRow(`SELECT field,COALESCE(text_value,''),source,inventory_object_id,source_revision FROM reading_source_values WHERE item_id=? AND asset_id=?`, item.ID, asset).Scan(&field, &text, &origin, &object, &revision); err != nil {
+	var text, origin, object, revision string
+	if err := c.DB.QueryRow(`SELECT author,author_source,object_id,source_revision FROM reading_path_head WHERE item_id=? AND asset_id=?`, item.ID, asset).Scan(&text, &origin, &object, &revision); err != nil {
 		t.Fatal(err)
 	}
-	if field != "author" || text != "Shelf" || origin != "folder" || object != "object" || revision != "rev" {
-		t.Fatalf("stored accepted row = %q/%q/%q/%q/%q", field, text, origin, object, revision)
+	if text != "Shelf" || origin != "folder" || object != "object" || revision != "rev" {
+		t.Fatalf("stored accepted row = %q/%q/%q/%q", text, origin, object, revision)
 	}
 }

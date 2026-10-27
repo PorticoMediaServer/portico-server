@@ -301,7 +301,7 @@ func (w *Worker) Run(ctx context.Context) {
 	}
 	w.mu.Unlock()
 	signal := worker.NewSignal()
-	unregister := dbwork.WakeOnTables(signal, "catalog_*", "compact_*")
+	unregister := dbwork.WakeOnTables(signal, "catalog_*", "compact_*", "reading_path_dirty_work", "reading_path_source_barrier", "reading_path_availability_pending")
 	defer unregister()
 	worker.Run(ctx, "catalogue derived data", signal, func(ctx context.Context) time.Duration {
 		if !dbwork.Yield(ctx) {
@@ -321,6 +321,13 @@ func (w *Worker) Run(ctx context.Context) {
 				return 0
 			}
 			return time.Millisecond
+		}
+		// A protected scope may have no new writes to wake it. Retry bounded
+		// scope selection on the existing worker; clock/served bookkeeping never
+		// wakes the worker itself. Other scopes still get their round-robin turn.
+		var pending bool
+		if err := w.db.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM reading_path_scope WHERE queued=1)`).Scan(&pending); err == nil && pending {
+			return time.Second
 		}
 		return w.retryWait()
 	})
@@ -771,7 +778,7 @@ func acknowledgeDerived(ctx context.Context, tx *sql.Tx, domain int, id, revisio
 // domain has work it can finish.
 const readingAttributionStep = 8
 
-var steps = [...]func(context.Context, *sql.Tx, int) (int, error){StepCollectionVisibleCounts, StepCategoryVisibility, StepVisibilitySortBuckets, StepPersonalSortBuckets, StepBookContextEvidence, StepBookGroupVisibleCounts, StepContentEligible, StepRecProfiles, readingAttributionStep: StepReadingAttribution}
+var steps = [...]func(context.Context, *sql.Tx, int) (int, error){StepCollectionVisibleCounts, StepCategoryVisibility, StepVisibilitySortBuckets, StepPersonalSortBuckets, StepBookContextEvidence, StepBookGroupVisibleCounts, StepContentEligible, StepRecProfiles, readingAttributionStep: StepReadingAttribution, StepReadingPaths}
 
 func (w *Worker) runSteps(ctx context.Context, tx *sql.Tx, limit int) (int, int, error) {
 	w.mu.Lock()
@@ -785,7 +792,7 @@ func (w *Worker) runSteps(ctx context.Context, tx *sql.Tx, limit int) (int, int,
 		}
 		if n > 0 {
 			total += n
-			if kind == readingAttributionStep {
+			if kind == readingAttributionStep || kind == readingAttributionStep+1 {
 				// Its EOF, obsolete cleanup and ready publication must be
 				// separate committed batches, including an empty library. Do
 				// not re-enter this step in the same writer transaction.

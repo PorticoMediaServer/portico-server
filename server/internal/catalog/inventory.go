@@ -17,7 +17,6 @@ import (
 	"portico.local/server/internal/naming"
 	"portico.local/server/internal/storage"
 	"portico.local/server/internal/subtitles"
-	"sort"
 	"strings"
 	"time"
 )
@@ -91,6 +90,9 @@ func (s *Service) CommitInventoryPage(ctx context.Context, job, relative, cursor
 	if err != nil || !keep {
 		return err
 	}
+	if err = compactcatalog.FlushReadingPathSemanticTx(ctx, tx); err != nil {
+		return err
+	}
 	return gated.Commit()
 }
 
@@ -133,6 +135,9 @@ func (s *Service) CommitInventoryPages(ctx context.Context, job string, pages []
 		if _, err = tx.ExecContext(ctx, `RELEASE inventory_page`); err != nil {
 			return err
 		}
+	}
+	if err = compactcatalog.FlushReadingPathSemanticTx(ctx, tx); err != nil {
+		return err
 	}
 	return gated.Commit()
 }
@@ -216,7 +221,8 @@ func (s *Service) commitInventoryPageTx(ctx context.Context, tx *sql.Tx, job str
 		return false, err
 	}
 	discovered := 0
-	movedOut := map[string]bool{}
+	// Both old and new logical scopes are maintained by the normalized feed.
+	var movedOut map[string]bool
 	for _, v := range page.Entries {
 		child := filepath.Join(relative, v.Name)
 		expected := filepath.Join(source.ResolvedPath, child)
@@ -307,21 +313,6 @@ func (s *Service) commitInventoryPageTx(ctx context.Context, tx *sql.Tx, job str
 		}
 		if added {
 			discovered++
-		}
-	}
-	if libraryKind == "book" || libraryKind == "comic" {
-		directories := make([]string, 0, len(movedOut))
-		for directory := range movedOut {
-			directories = append(directories, directory)
-		}
-		sort.Strings(directories)
-		for _, directory := range directories {
-			if err = refreshReadingDirectoryTx(ctx, tx, job, source, directory); err != nil {
-				return false, err
-			}
-		}
-		if err = refreshReadingDirectoryTx(ctx, tx, job, source, relative); err != nil {
-			return false, err
 		}
 	}
 	state = "pending"
@@ -519,13 +510,6 @@ func (s *Service) observeInventoryTx(ctx context.Context, tx *sql.Tx, job string
 	if err != nil {
 		return false, err
 	}
-	if relocated && movedOut != nil && filepath.Dir(relocatedFrom) != filepath.Dir(relative) {
-		// The title moved out of this folder. Its stored location is already the
-		// new one, so republishing the folder it left counts that folder's
-		// remaining titles and withdraws the interpretation it no longer has.
-		// One refresh per page is enough: a folder rename relocates many files.
-		movedOut[filepath.Dir(relocatedFrom)] = true
-	}
 	if renamedByFilesystem && previousRevision != revision {
 		// The analysis already done describes this same content.
 		if _, err = tx.ExecContext(ctx, `UPDATE inventory_objects SET analysis_revision=? WHERE id=? AND analysis_revision=?`, revision, object, previousRevision); err != nil {
@@ -594,6 +578,9 @@ func (s *Service) observeInventoryTx(ctx context.Context, tx *sql.Tx, job string
 	// page resources are validated by the interactive, actor-authorized reader.
 	if policy.Tier != "file_list_only" && reason == "" && ext != "strm" && ext != "epub" && ext != "pdf" && ext != "cbz" && ext != "cb7" && ext != "cbr" {
 		_, err = tx.ExecContext(ctx, `INSERT INTO inventory_analysis_queue(job_id,object_id,revision,policy_revision) SELECT ?,id,revision,? FROM inventory_objects WHERE id=? AND (analysis_revision!=revision OR analysis_policy!=?) ON CONFLICT(job_id,object_id) DO UPDATE SET revision=excluded.revision,policy_revision=excluded.policy_revision,state=CASE WHEN inventory_analysis_queue.revision=excluded.revision AND inventory_analysis_queue.policy_revision=excluded.policy_revision THEN inventory_analysis_queue.state ELSE 'pending' END`, job, policy.Revision, object, policy.Revision)
+	}
+	if err == nil {
+		err = compactcatalog.ReadingNormalizeObjectTx(ctx, tx, object)
 	}
 	return previousSeen != job, err
 }
@@ -1148,6 +1135,13 @@ func (s *Service) AdoptLegacyInventoryTx(ctx context.Context, tx *sql.Tx, source
 	if err != nil {
 		return err
 	}
-	_, err = tx.ExecContext(ctx, `INSERT INTO inventory_objects(id,source_id,asset_id,root_incarnation,relative_path,revision,evidence_json,size,modified_ns,state) VALUES(?,?,?,?,?,?,?,?,?,CASE WHEN (SELECT available FROM catalog_assets WHERE token=?)=1 THEN 'available' ELSE 'unavailable' END)`, identity.Token(), source.ID, asset, source.Incarnation, relative, revision, evidence, v.Size, v.ModifiedNS, asset)
+	object := identity.Token()
+	_, err = tx.ExecContext(ctx, `INSERT INTO inventory_objects(id,source_id,asset_id,root_incarnation,relative_path,revision,evidence_json,size,modified_ns,state) VALUES(?,?,?,?,?,?,?,?,?,CASE WHEN (SELECT available FROM catalog_assets WHERE token=?)=1 THEN 'available' ELSE 'unavailable' END)`, object, source.ID, asset, source.Incarnation, relative, revision, evidence, v.Size, v.ModifiedNS, asset)
+	if err == nil {
+		err = compactcatalog.ReadingNormalizeObjectTx(ctx, tx, object)
+	}
+	if err == nil {
+		err = compactcatalog.FlushReadingPathSemanticTx(ctx, tx)
+	}
 	return err
 }
