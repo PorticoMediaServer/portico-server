@@ -8,11 +8,17 @@ import type {V1Request} from '../../packages/client-core/src/playback-v1/http.ts
 import {ownedWebChannels} from '../src/platform/playback/channel-start-binding.ts';
 import {createWebPreparingStarts} from '../src/platform/playback/start-owner.ts';
 
-// Authored source vectors, UNRUN. Only the original fake API and canonical SDK
-// are used; no network, browser, tuner, actual timer or server preparation job.
+// Authored against the real Web binding and canonical SDK. Only the original
+// fake API and documented decoders are used; no network, browser, tuner,
+// actual timer or server preparation job.
+// The accepted channel 201 shape: an active linear session observed after the
+// producer's buffer exists, with its own canonical linear media URL
+// (`/v1/media/linear/<id>/<generation>/<token>/index.m3u8`).
 const real = (id = 'original_channel') => ({id, revision: '1', kind: 'live', role: 'local', state: 'playing', channelId: 'live:source:station',
   lease: {expiresAt: '2099-01-01T00:00:00Z', reportEveryMs: 10_000},
-  presentation: {generation: 1, mode: 'stream', engine: 'native', url: '', startPositionMs: 0, quality: {mode: 'original'}, subtitles: [], decision: {}}});
+  presentation: {generation: 1, mode: 'stream', engine: 'native', url: `/v1/media/linear/${id}/1/original-grant/index.m3u8`, startPositionMs: 0,
+    quality: {mode: 'original'}, subtitles: [], decision: {},
+    linear: {name: 'Station', originMs: 0, windowStartMs: 0, windowEndMs: 120_000, liveEdgeMs: 60_000, state: 'active'}}});
 const response = (body: unknown, status = 202) => ({body, status, headers: {}});
 function deferred<T>() {let resolve!: (value: T) => void;const promise = new Promise<T>(yes => {resolve = yes;});return {promise, resolve};}
 function fixture() {
@@ -33,11 +39,12 @@ function fixture() {
   return {owner, reg, original, calls, reads, stops, route, retireView: () => {view = false;}, retirePrincipal: () => {principal = false;}, current: () => view};
 }
 
-test('genuine channel 202 owns only the original channel read and once-only bounded stop', async () => {
+test('genuine active channel 201 receipt owns only the original channel read and once-only bounded stop', async () => {
   const f = fixture(), start = f.reg.beginChannel(f.original(), f.current);
   try {
-    const cleanup = start.capturePreparing(parseStartPreparation({...real(), retryAfterMs: 500}).session!)!;
-    f.retireView();assert.equal(start.isCurrent(), false);await cleanup();await cleanup();start.finish();
+    const cleanup = Promise.resolve(start.retireUninstalled(Object.freeze({id: 'original_channel', generation: 1})));
+    f.retireView();assert.equal(start.isCurrent(), false);await cleanup;
+    await start.retireUninstalled(Object.freeze({id: 'original_channel', generation: 1}));start.finish();
     assert.deepEqual(f.calls.map(call => [call.method, call.path]), [['GET', '/v1/playback/sessions/original_channel'], ['DELETE', '/v1/playback/sessions/original_channel']]);
     assert.equal(f.calls[0]!.signal, f.calls[1]!.signal);
   } finally {f.reg.dispose();f.owner.dispose();}
@@ -64,20 +71,21 @@ test('a changed actual generation, channel, kind or ownership refuses cleanup', 
   }
 });
 
-test('a first actual 202 can never be replaced by late success facts for another id or generation', async () => {
+test('a first actual 201 receipt can never be replaced by late facts for another id or generation', async () => {
   const f = fixture(), start = f.reg.beginChannel(f.original(), f.current);
   try {
-    const cleanup = start.capturePreparing(parseStartPreparation({...real(), retryAfterMs: 500}).session!)!;
-    await start.retireUninstalled({id: 'other', generation: 1});await start.retireUninstalled({id: 'original_channel', generation: 2});
-    assert.equal(f.calls.length, 0);await cleanup();start.finish();assert.equal(f.calls.length, 2);
+    const cleanup = Promise.resolve(start.retireUninstalled(Object.freeze({id: 'original_channel', generation: 1})));
+    assert.equal(start.retireUninstalled(Object.freeze({id: 'other', generation: 1})), undefined);
+    assert.equal(start.retireUninstalled(Object.freeze({id: 'original_channel', generation: 2})), undefined);
+    await cleanup;start.finish();assert.deepEqual(f.calls.map(call => call.method), ['GET', 'DELETE']);
   } finally {f.reg.dispose();f.owner.dispose();}
 });
 
 test('an installed then forgotten channel permanently denies its older original receipt', async () => {
   const f = fixture(), next = f.owner.attach(), start = f.reg.beginChannel(f.original(), f.current);
   try {
-    const cleanup = start.capturePreparing(parseStartPreparation({...real(), retryAfterMs: 500}).session!)!;
-    next.remember('original_channel');next.forget('original_channel');await cleanup();start.finish();assert.equal(f.calls.length, 0);
+    next.remember('original_channel');next.forget('original_channel');
+    await start.retireUninstalled(Object.freeze({id: 'original_channel', generation: 1}));start.finish();assert.equal(f.calls.length, 0);
   } finally {next.dispose();f.reg.dispose();f.owner.dispose();}
 });
 
@@ -99,49 +107,67 @@ test('original principal or pin retirement refuses even a real late channel reso
   }
 });
 
-function controlFixture(realPreparation: boolean) {
+function controlFixture() {
   const f = fixture(), caller = new AbortController(), calls: V1Request[] = [], jobs = new Map<unknown, () => void>();
   const timers: Timers = {setTimer(fn) {const id = {};jobs.set(id, fn);return id;}, clearTimer(id) {jobs.delete(id);}};
   const replies: Promise<ReturnType<typeof response>>[] = [];
   const control = new V1ChannelControl({key: () => 'actual-channel-key', timers, http: {send: async request => {
-    calls.push(request);return await (replies.shift() ?? Promise.resolve(response(realPreparation ? {...real(), retryAfterMs: 500} : {retryAfterMs: 500})));
+    calls.push(request);return await (replies.shift() ?? Promise.resolve(response({retryAfterMs: 500})));
   }}});
   const installed: string[] = [];
   const bound = ownedWebChannels(control, f.reg, () => f.current);
-  const start = () => bound.open({kind: 'live-source', sourceId: 'source', channelId: 'station', generation: 'original-guide'},
-    {state: value => {installed.push(value.playbackId);}, error: () => {assert.fail('no successor error');}},
-    {signal: caller.signal, isCurrent: f.current});
+  const start = (onError: (message: string, terminal: boolean) => void = () => {assert.fail('no successor error');}) =>
+    bound.open({kind: 'live-source', sourceId: 'source', channelId: 'station', generation: 'original-guide'},
+      {state: value => {installed.push(value.playbackId);}, error: onError},
+      {signal: caller.signal, isCurrent: f.current});
   return {...f, cleanupCalls: f.calls, control, caller, calls, jobs, replies, installed, bound, start};
 }
 
-test('actual channel SDK current real202 then wait-abort spends only its original host receipt', async () => {
-  const f = controlFixture(true);
+test('actual channel SDK retry-only 202 pending wait then wait-abort spends no resource', async () => {
+  const f = controlFixture();
   try {const pending = f.start();await settle();assert.equal(f.jobs.size, 1);f.caller.abort();await pending;await settle();
     assert.deepEqual(f.calls.map(call => call.method), ['POST']);assert.equal(f.jobs.size, 0);assert.equal(f.installed.length, 0);
-    assert.deepEqual(f.cleanupCalls.map(call => call.method), ['GET', 'DELETE']);
+    assert.equal(f.cleanupCalls.length, 0, 'a retry-only preparation owns no resource to retire');
     assert.deepEqual(f.calls[0]!.body, {channelId: 'live:source:station', channelGeneration: 'original-guide', state: 'playing'});
     assert.deepEqual(f.calls[0]!.headers, {'Idempotency-Key': 'actual-channel-key'});
   } finally {f.control.close();f.reg.dispose();f.owner.dispose();}
 });
 
 test('actual channel SDK retry-only abort has no resource or cleanup', async () => {
-  const f = controlFixture(false);
+  const f = controlFixture();
   try {const pending = f.start();await settle();f.caller.abort();await pending;await settle();assert.equal(f.jobs.size, 0);assert.equal(f.calls.length, 1);assert.equal(f.cleanupCalls.length, 0);}
   finally {f.control.close();f.reg.dispose();f.owner.dispose();}
 });
 
-test('actual channel SDK late201 uses its original host facts path, with no bare DELETE', async () => {
-  const f = controlFixture(false), held = deferred<ReturnType<typeof response>>();f.replies.push(held.promise);
+test('an impossible live 202 is refused by the strict start decoder without install, timer or cleanup', async () => {
+  const f = controlFixture(), refused: {message: string; terminal: boolean}[] = [];
+  f.replies.push(Promise.resolve(response({...real(), retryAfterMs: 500})));
+  try {
+    assert.throws(() => parseStartPreparation({...real(), retryAfterMs: 500}), {name: 'ContractError'});
+    await f.start((message, terminal) => {refused.push({message, terminal});});await settle();
+    assert.deepEqual(f.calls.map(call => call.method), ['POST']);assert.equal(f.installed.length, 0);
+    assert.equal(f.jobs.size, 0);assert.equal(f.cleanupCalls.length, 0);
+    assert.equal(refused.length, 1);assert.equal(refused[0]!.terminal, true);assert.ok(refused[0]!.message.length > 0);
+  } finally {f.control.close();f.reg.dispose();f.owner.dispose();}
+});
+
+test('actual channel SDK late201 after caller abort uses only its original host GET and DELETE', async () => {
+  const f = controlFixture(), held = deferred<ReturnType<typeof response>>();f.replies.push(held.promise);
   try {const pending = f.start();await settle();f.caller.abort();held.resolve(response(real(), 201));await pending;await settle();
     assert.deepEqual(f.calls.map(call => call.method), ['POST']);assert.equal(f.jobs.size, 0);assert.equal(f.installed.length, 0);
-    assert.deepEqual(f.cleanupCalls.map(call => call.method), ['GET', 'DELETE']);
+    assert.deepEqual(f.cleanupCalls.map(call => call.method), ['GET', 'DELETE']);assert.equal(f.cleanupCalls.length, 2, 'one bounded cleanup for the one actual receipt');
+    assert.deepEqual(f.calls[0]!.body, {channelId: 'live:source:station', channelGeneration: 'original-guide', state: 'playing'});
+    assert.deepEqual(f.calls[0]!.headers, {'Idempotency-Key': 'actual-channel-key'});
   } finally {f.control.close();f.reg.dispose();f.owner.dispose();}
 });
 
 
 test('the public pre-install claim registers a genuine accepted channel before service publication', async () => {
-  const f = controlFixture(false);f.replies.push(Promise.resolve(response(real(), 201)));
-  try {await f.start();assert.deepEqual(f.installed, ['original_channel']);
+  const f = controlFixture();
+  // The genuine active 201 carries media, so the canonical go-live join lands
+  // before the projection publishes; the registration precedes both.
+  f.replies.push(Promise.resolve(response(real(), 201)), Promise.resolve(response(real(), 200)));
+  try {await f.start();await settle();assert.deepEqual(f.installed, ['original_channel']);
     // The successful resource is remembered before an older receipt can try
     // to acquire and retire this same id, even without media attachment yet.
     const later = f.reg.beginChannel(f.original('later-key'), f.current);
@@ -150,7 +176,7 @@ test('the public pre-install claim registers a genuine accepted channel before s
 });
 
 test('a cleanup-claimed resource refuses canonical install before any state or go-live PATCH', async () => {
-  const f = controlFixture(false), stopping = deferred<unknown>();f.stops.push(stopping.promise);
+  const f = controlFixture(), stopping = deferred<unknown>();f.stops.push(stopping.promise);
   const original = f.reg.beginChannel(f.original('cleanup-key'), f.current);
   try {
     const cleanup = Promise.resolve(original.retireUninstalled({id: 'original_channel', generation: 1}));await settle();
@@ -164,9 +190,9 @@ test('a cleanup-claimed resource refuses canonical install before any state or g
 test('a real installed channel denies earlier custody before its joined media need publish', async () => {
   const f = fixture(), earlier = f.reg.beginChannel(f.original('earlier-key'), f.current), current = f.reg.beginChannel(f.original('new-key'), f.current);
   try {
-    const cleanup = earlier.capturePreparing(parseStartPreparation({...real(), retryAfterMs: 500}).session!)!;
     assert.equal(current.claimInstall(Object.freeze({id: 'original_channel', generation: 1})), true);
-    current.finish();await cleanup();earlier.finish();assert.equal(f.calls.length, 0);
+    await earlier.retireUninstalled(Object.freeze({id: 'original_channel', generation: 1}));
+    earlier.finish();current.finish();assert.equal(f.calls.length, 0);
   } finally {f.reg.dispose();f.owner.dispose();}
 });
 
