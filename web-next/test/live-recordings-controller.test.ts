@@ -60,7 +60,7 @@ test('construction is inert: no HTTP, no minted receipt and an empty snapshot', 
   assert.equal(calls.length, 0);
   assert.equal(receipts, 0);
   assert.deepEqual(controller.getSnapshot(), {query: {view: 'upcoming'}, phase: 'idle', page: null, detail: null, storage: null,
-    summary: null, groups: null, groupsSort: 'recent', accessDenied: false, error: '', mutating: false, commandError: ''});
+    summary: null, groups: null, groupsSort: 'recent', paging: {busy: false, error: '', previous: false, next: false}, accessDenied: false, error: '', mutating: false, commandError: ''});
   controller.dispose();
   assert.equal(calls.length, 0);
   assert.equal(receipts, 0);
@@ -1415,4 +1415,211 @@ test('a newer destination failure survives a stale command completion', async ()
     assert.equal(after.page, null);
     assert.equal(controller.contains(row), false);
   } finally { controller.dispose(); }
+});
+
+for (const view of ['upcoming', 'history'] as const) {
+  test(`${view} exposes all 101 producer rows, carries only offered cursors and revisits pages`, async () => {
+    const all = Array.from({length: 101}, (_, n) => recording(n.toString(16).padStart(64, '0'), {state: view === 'history' ? 'completed' : 'scheduled'}));
+    const {api, calls} = fixtureServer(call => {
+      if (pathname(call).endsWith('/summary')) return summaryFact;
+      const cursor = params(call).get('cursor') ?? '';
+      const offset = cursor === '' ? 0 : cursor === 'opaque/50' ? 50 : 100;
+      return pageOf(all.slice(offset, offset + 50), offset === 0 ? 'opaque/50' : offset === 50 ? 'opaque/100' : '', offset + 1);
+    });
+    const c = controllerFor(api);
+    try {
+      await c.load({view});await c.readSummary();
+      const seen = [...c.getSnapshot().page!.recordings];
+      await c.more();seen.push(...c.getSnapshot().page!.recordings);
+      await c.more();seen.push(...c.getSnapshot().page!.recordings);
+      assert.deepEqual(seen.map(r => r.id), all.map(r => r.id));
+      assert.equal(c.getSnapshot().paging.next, false);
+      const reads = calls.length;await c.more();assert.equal(calls.length, reads);
+      await c.previous();assert.equal(c.getSnapshot().query.cursor, 'opaque/50');
+      await c.previous();assert.equal(c.getSnapshot().query.cursor ?? '', '');
+      assert.deepEqual(c.getSnapshot().summary, summaryFact);
+      assert.ok(c.getSnapshot().page!.recordings.length <= 50);
+      assert.deepEqual(calls.filter(call => pathname(call).endsWith('/dvr')).slice(0, 3).map(call => params(call).get('cursor')), [null, 'opaque/50', 'opaque/100']);
+    } finally {c.dispose();}
+  });
+}
+
+test('offered page failure preserves exact rows, coalesces clicks and retries that cursor', async () => {
+  const pending = held<unknown>();let tailReads = 0;
+  const {api, calls} = fixtureServer(call => {
+    if (!params(call).has('cursor')) return pageOf([recording(hex())], 'two');
+    tailReads++;if (tailReads === 1) return pending.promise;
+    return pageOf([recording(hex(64, 'b'))], 'two'); // invalid repeated next token stops here
+  });
+  const c = controllerFor(api);
+  try {
+    await c.load();const first = c.getSnapshot().page, old = c.getSnapshot();
+    const more = c.more();await c.more();assert.equal(calls.length, 2);
+    assert.equal(c.getSnapshot().page, first);assert.equal(c.getSnapshot().phase, 'ready');
+    pending.reject({status: 503});await more;
+    assert.equal(c.getSnapshot().page, first);assert.ok(c.getSnapshot().paging.error);
+    await c.retryPage();assert.equal(calls.length, 3);
+    assert.equal(c.getSnapshot().paging.next, false);
+    await c.more(old);assert.equal(calls.length, 3, 'saved original callback cannot advance a successor');
+    await c.previous();assert.equal(c.getSnapshot().query.cursor ?? '', '');
+  } finally {c.dispose();}
+});
+
+for (const change of ['view', 'refresh', 'leave', 'authority'] as const) {
+  test(`pending tail cannot publish after ${change}`, async () => {
+    const pending = held<unknown>();let live = true;
+    const {api} = fixtureServer(call => params(call).has('cursor') ? pending.promise : pageOf([recording(hex())], 'two'));
+    const c = controllerFor(api, {isCurrent: () => live});
+    try {
+      await c.load();const row = c.getSnapshot().page!.recordings[0];
+      const tail = c.more();
+      if (change === 'view') await c.load({view: 'history'});
+      if (change === 'refresh') await c.load({view: 'upcoming'});
+      if (change === 'leave') c.dispose();
+      if (change === 'authority') live = false;
+      pending.resolve(pageOf([recording(hex(64, 'b'))], 'three'));
+      await assert.rejects(tail, {name: 'AbortError'});
+      assert.equal(c.contains(row), false);
+      assert.notEqual(c.getSnapshot().query.cursor, 'two');
+      assert.equal(c.getSnapshot().paging.busy, false);
+    } finally {c.dispose();}
+  });
+}
+
+test('recorded directory traverses 61 genuine groups, retains counts and retries original sort/cursor', async () => {
+  let fail = true;const seen: string[] = [];
+  const {api, calls} = fixtureServer(call => {
+    if (pathname(call).endsWith('/summary')) return summaryFact;
+    if (!pathname(call).endsWith('/groups')) return pageOf([]);
+    const cursor = params(call).get('cursor') ?? '';
+    if (cursor === 'g30' && fail) {fail = false;throw {status: 503};}
+    const offset = cursor === '' ? 0 : cursor === 'g30' ? 30 : 60;
+    return {revision: offset + 1, nextCursor: offset === 0 ? 'g30' : offset === 30 ? 'g60' : '',
+      groups: Array.from({length: Math.min(30, 61 - offset)}, (_, n) => ({...groupsFact('title', '').groups[0], key: `group-${offset + n}`}))};
+  });
+  const c = controllerFor(api);
+  try {
+    await c.load({view: 'recorded'});await c.readSummary();await c.readGroups('title');
+    const original = c.getSnapshot().groups;seen.push(...original!.groups.map(g => g.key));
+    await assert.rejects(c.more());assert.equal(c.getSnapshot().groups, original);
+    await c.retryPage();seen.push(...c.getSnapshot().groups!.groups.map(g => g.key));
+    await c.more();seen.push(...c.getSnapshot().groups!.groups.map(g => g.key));
+    assert.equal(new Set(seen).size, 61);assert.equal(seen.at(-1), 'group-60');
+    assert.equal(c.getSnapshot().paging.next, false);assert.deepEqual(c.getSnapshot().summary, summaryFact);
+    assert.deepEqual(calls.filter(call => pathname(call).endsWith('/groups')).map(call => [params(call).get('sort'), params(call).get('cursor')]), [['title', null], ['title', 'g30'], ['title', 'g30'], ['title', 'g60']]);
+    await c.previous();assert.equal(c.getSnapshot().groups!.groups[0].key, 'group-30');
+  } finally {c.dispose();}
+});
+
+test('changing group sort retires a pending tail and its retry', async () => {
+  const pending = held<unknown>();
+  const {api, calls} = fixtureServer(call => pathname(call).endsWith('/groups')
+    ? params(call).get('cursor') ? pending.promise : groupsFact(params(call).get('sort')!, 'tail') : pageOf([]));
+  const c = controllerFor(api);
+  try {
+    await c.load({view: 'recorded'});await c.readGroups('recent');
+    const old = c.getSnapshot(), tail = c.more();await c.readGroups('title');
+    pending.resolve(groupsFact('recent', 'old-next'));await assert.rejects(tail, {name: 'AbortError'});
+    await c.retryPage(old);assert.equal(calls.length, 4);
+    assert.equal(c.getSnapshot().groupsSort, 'title');assert.equal(c.getSnapshot().groups!.groups[0].key, 'title-one');
+  } finally {c.dispose();}
+});
+
+for (const replacement of ['view', 'refresh', 'dispose'] as const) {
+  test(`busy publication ${replacement} reentry dispatches no old recording cursor`, async () => {
+    const pending = held<unknown>();let initial = true;
+    const {api, calls} = fixtureServer(call => {
+      if (initial) {initial = false;return pageOf([recording(hex())], 'old-tail');}
+      return pending.promise;
+    });
+    const c = controllerFor(api);let replacementRead: Promise<void> | undefined, entered = false;
+    try {
+      await c.load();
+      c.subscribe(() => {
+        if (entered || !c.getSnapshot().paging.busy) return;
+        entered = true;
+        if (replacement === 'dispose') c.dispose();
+        else replacementRead = c.load({view: replacement === 'view' ? 'history' : 'upcoming'});
+      });
+      await assert.rejects(c.more(), {name: 'AbortError'});
+      assert.equal(calls.some(call => params(call).get('cursor') === 'old-tail'), false);
+      if (replacementRead) {
+        assert.equal(c.getSnapshot().phase, 'loading');
+        pending.resolve(pageOf([recording(hex(64, 'b'))], 'new-tail'));await replacementRead;
+        assert.equal(c.getSnapshot().page!.recordings[0].id, hex(64, 'b'));
+        assert.equal(c.getSnapshot().page!.nextCursor, 'new-tail');
+        assert.equal(calls.length, 2, 'new model load was never displaced by the old tail');
+      } else assert.equal(calls.length, 1);
+    } finally {c.dispose();}
+  });
+}
+
+for (const replacement of ['sort', 'view', 'refresh', 'dispose'] as const) {
+  test(`busy publication ${replacement} reentry dispatches no old group cursor`, async () => {
+    const {api, calls} = fixtureServer(call => pathname(call).endsWith('/groups') ? groupsFact(params(call).get('sort')!, 'old-tail') : pageOf([]));
+    const c = controllerFor(api);let replacementRead: Promise<unknown> | undefined, entered = false;
+    try {
+      await c.load({view: 'recorded'});await c.readGroups('recent');
+      c.subscribe(() => {
+        if (entered || !c.getSnapshot().paging.busy) return;
+        entered = true;
+        if (replacement === 'dispose') c.dispose();
+        else replacementRead = replacement === 'sort' ? c.readGroups('title') : c.load({view: replacement === 'view' ? 'history' : 'recorded'});
+      });
+      await assert.rejects(c.more(), {name: 'AbortError'});await replacementRead;
+      assert.equal(calls.some(call => params(call).has('cursor')), false);
+      assert.equal(c.getSnapshot().paging.busy, false);
+      if (replacement === 'sort') assert.equal(c.getSnapshot().groupsSort, 'title');
+    } finally {c.dispose();}
+  });
+}
+
+test('a reentrant isCurrent true result cannot revive a disposed controller', async () => {
+  let retire = false, c: ReturnType<typeof controllerFor>;
+  const {api, calls} = fixtureServer(() => pageOf([recording(hex())], 'old-tail'));
+  c = controllerFor(api, {isCurrent: () => {if (retire) {retire = false;c.dispose();}return true;}});
+  await c.load();retire = true;await assert.rejects(c.more(), {name: 'AbortError'});
+  assert.equal(calls.length, 1);assert.equal(c.getSnapshot().phase, 'retired');
+});
+
+for (const replacement of ['view', 'refresh', 'dispose'] as const) {
+  test(`SECOND busy publication ${replacement} reentry cannot dispatch the original model cursor`, async () => {
+    const pending = held<unknown>();let initial = true, notices = 0;
+    const {api, calls} = fixtureServer(() => {
+      if (initial) {initial = false;return pageOf([recording(hex())], 'old-tail');}
+      return pending.promise;
+    });
+    const c = controllerFor(api);let newer: Promise<void> | undefined;
+    try {
+      await c.load();c.subscribe(() => {
+        if (!c.getSnapshot().paging.busy || ++notices !== 2) return;
+        if (replacement === 'dispose') c.dispose();
+        else newer = c.load({view: replacement === 'view' ? 'history' : 'upcoming'});
+      });
+      await assert.rejects(c.more(), {name: 'AbortError'});
+      assert.equal(calls.some(call => params(call).get('cursor') === 'old-tail'), false);
+      if (newer) {
+        assert.equal(c.getSnapshot().phase, 'loading');pending.resolve(pageOf([recording(hex(64, 'b'))], 'new-tail'));await newer;
+        assert.equal(c.getSnapshot().page!.recordings[0].id, hex(64, 'b'));
+        assert.equal(c.getSnapshot().page!.nextCursor, 'new-tail');assert.equal(calls.length, 2);
+      } else assert.equal(calls.length, 1);
+    } finally {c.dispose();}
+  });
+}
+
+test('API-entry external current predicate cannot lend a nested successor read to an old model cursor', async () => {
+  let armed = false, switchAtAPI = false, newer: Promise<void> | undefined;
+  const {api, calls} = fixtureServer(() => pageOf([recording(hex())], 'tail'));
+  let c: ReturnType<typeof controllerFor>;
+  c = controllerFor(api, {isCurrent: () => {
+    if (switchAtAPI) {switchAtAPI = false;newer = c.load({view: 'history'});}
+    return true;
+  }});
+  try {
+    await c.load();let notices = 0;
+    c.subscribe(() => {if (armed && c.getSnapshot().paging.busy && ++notices === 2) switchAtAPI = true;});
+    armed = true;await assert.rejects(c.more(), {name: 'AbortError'});await newer;
+    assert.equal(calls.some(call => params(call).has('cursor')), false);
+    assert.equal(c.getSnapshot().query.view, 'history');assert.equal(c.getSnapshot().phase, 'ready');
+  } finally {c.dispose();}
 });

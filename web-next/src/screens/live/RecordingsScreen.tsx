@@ -1,4 +1,4 @@
-import {useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore, type CSSProperties, type ReactNode} from 'react';
+import {useCallback, useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore, type CSSProperties, type ReactNode} from 'react';
 import {useLocation} from '@tanstack/react-router';
 import {defaultI18n} from '@i18n';
 import {bytesLabel, dvrMessage, playableRecording, recordingReason, recordingStateLabel,
@@ -129,6 +129,11 @@ function ConflictBox({context, recording, detail: supplied, onResolve, onCancel,
 type ConflictRequest = {lease: string; recording: Recording; detail?: RecordingDetail};
 type ConflictOperation = {id: string; opening: Opening<ConflictRequest>; live: boolean};
 
+export function conflictOperationCurrent(held: ConflictOperation, operationRef: {current: ConflictOperation | undefined}, opening: Opening<ConflictRequest>, current: () => boolean, requireOpening = false): boolean {
+  const exact = () => operationRef.current === held && held.live && held.opening === opening && (!requireOpening || opening.live);
+  return exact() && current() && exact();
+}
+
 function ConflictDialog({context, opening, current, consume, controller, onClose}: {
   context: ScreenContext; opening: Opening<ConflictRequest>; current: () => boolean; consume: (opening: Opening<ConflictRequest>) => boolean;
   controller: RecordingsController; onClose: (opening: Opening<ConflictRequest>) => void;
@@ -148,18 +153,18 @@ function ConflictDialog({context, opening, current, consume, controller, onClose
     return () => {held.live = false;if (operationRef.current === held) operationRef.current = undefined;};
   }, [opening]);
   const operation = publishedOperation?.live && publishedOperation.opening === opening && operationRef.current === publishedOperation ? publishedOperation : undefined;
-  const owns = (held: ConflictOperation) => operationRef.current === held && held.live && held.opening === opening && current();
+  const owns = useCallback((held: ConflictOperation, requireOpening = false) => conflictOperationCurrent(held, operationRef, opening, current, requireOpening), [opening, current]);
   useEffect(() => {
     setError(undefined);
-    if (!operation || opening.target.detail || !current()) return;
+    if (!operation || opening.target.detail || !owns(operation, true)) return;
     const abort = new AbortController();
-    void readRecordingDetail(context, recording.id, abort.signal).then(value => {if (!abort.signal.aborted && opening.live && owns(operation)) setDetail(value);},
-      error => {if (!abort.signal.aborted && opening.live && owns(operation)) setError(dvrMessage(error));});
+    void readRecordingDetail(context, recording.id, abort.signal).then(value => {if (!abort.signal.aborted && opening.live && owns(operation, true)) setDetail(value);},
+      error => {if (!abort.signal.aborted && opening.live && owns(operation, true)) setError(dvrMessage(error));});
     return () => abort.abort();
-  }, [context, opening, current, recording.id, operation]);
+  }, [context, opening, current, recording.id, operation, owns]);
   const run = async (kind: 'raise' | 'skip') => {
     const held = operation;
-    if (busy || !held || !owns(held) || !consume(opening)) return;
+    if (busy || !held || !owns(held, true) || !consume(opening)) return;
     setBusy(kind);setError(undefined);
     try {
       const priority = Math.min(1000, Math.max(recording.options.priority, ...(detail?.overlaps ?? []).map(other => other.priority)) + 1);
@@ -179,6 +184,17 @@ function ConflictDialog({context, opening, current, consume, controller, onClose
   </Dialog>;
 }
 
+export function RecordingsPager({controller, snapshot}: {controller: RecordingsController; snapshot: ReturnType<RecordingsController['getSnapshot']>}) {
+  const paging = snapshot.paging;
+  if (!paging) return null;
+  const move = (direction: 'more' | 'previous' | 'retryPage') => {void controller[direction](snapshot).catch(() => {});};
+  return <div className={styles.groupMore}>
+    {paging.error && <Banner action={{label: t('next.states.tryAgain'), onAction: () => move('retryPage')}}>{paging.error}</Banner>}
+    {paging.previous && <Button variant="glass" disabled={paging.busy || snapshot.mutating} onClick={() => move('previous')}>{t('web.pager.previous')}</Button>}
+    {paging.next && <Button variant="glass" loading={paging.busy} disabled={snapshot.mutating} onClick={() => move('more')}>{t('next.live.more')}</Button>}
+  </div>;
+}
+
 export function UpcomingView({context, controller, snapshot, now, onResolve, conflictDetails}: {context: ScreenContext; controller: RecordingsController; snapshot: ReturnType<RecordingsController['getSnapshot']>; now: number; onResolve: (recording: Recording, detail?: RecordingDetail) => void; conflictDetails?: Readonly<Record<string, RecordingDetail>>}) {
   const recordings = snapshot.page?.recordings ?? [];
   const conflicted = recordings.filter(recording => recording.state === 'conflicted');
@@ -194,6 +210,7 @@ export function UpcomingView({context, controller, snapshot, now, onResolve, con
     {later.length > 0 && <section className={styles.recSection}><h2>{t('next.live.laterToday')}<span>{dateOf(later[0]!.start)}</span></h2>
       {later.map(recording => <RecordingRow key={recording.id} recording={recording} now={now} onCancel={() => {void controller.cancel(recording);}} onDetails={() => setShown(recording)}/>)}</section>}
     {!conflicted.length && !current.length && !later.length && <StateView title={t('recordings.noneScheduled')} body={t('recordings.noneScheduledBody')}/>}
+    <RecordingsPager controller={controller} snapshot={snapshot}/>
     <Dialog open={!!shown} onOpenChange={open => {if (!open) closeShown(shown);}} title={shown?.programme.title} description={shown ? rangeOf(shown) : undefined} width={440}
       footer={<Button variant="glass" onClick={() => closeShown(shown)}>{t('next.overlays.close')}</Button>}>{shown && <p className={styles.dialogText}>{recordingStateLabel(shown.state)}{shown.reason && <> · {recordingReason(shown.reason)}</>}</p>}</Dialog>
   </div>;
@@ -212,6 +229,7 @@ export function RecordedView({context, controller, current, snapshot}: {context:
       <span className={styles.recordedCopy}><b>{group.title}</b><small>{group.recording.channel?.name}</small>
         <small>{group.unwatched ? t('recordings.showCountUnwatched', {count: group.recordings, unwatched: group.unwatched}) : t('recordings.showCount', {count: group.recordings})}</small></span>
     </button>)}</div> : <StateView title={t('recordings.noneRecorded')} body={t('recordings.noneRecordedBody')}/>}
+    <RecordingsPager controller={controller} snapshot={snapshot}/>
     {open && <RecordedGroupPanel key={open.key} context={context} current={current} group={open.key} title={open.title} sort={sort} onClose={() => setOpen(value => value === open ? undefined : value)}/>}
   </div>;
 }
@@ -278,12 +296,13 @@ function CommittedRecordedGroupPanel({lease, title, onClose}: {lease: RecordedGr
   </SidePanel>;
 }
 
-function HistoryView({snapshot, now}: {snapshot: ReturnType<RecordingsController['getSnapshot']>; now: number}) {
+export function HistoryView({snapshot, now, controller}: {controller: RecordingsController; snapshot: ReturnType<RecordingsController['getSnapshot']>; now: number}) {
   const recordings = snapshot.page?.recordings ?? [], [shown, setShown] = useState<Recording>();
   const closeShown = (target: Recording | undefined) => setShown(current => current === target ? undefined : current);
   return <div className={styles.recBody}>{recordings.length
     ? recordings.map(recording => <RecordingRow key={recording.id} recording={recording} now={now} onDetails={() => setShown(recording)}/>)
     : <StateView title={t('recordings.noneRecorded')} body={t('recordings.noneRecordedBody')}/>}
+    <RecordingsPager controller={controller} snapshot={snapshot}/>
     <Dialog open={!!shown} onOpenChange={open => {if (!open) closeShown(shown);}} title={shown?.programme.title} description={shown ? rangeOf(shown) : undefined} width={440}
       footer={<Button variant="glass" onClick={() => closeShown(shown)}>{t('next.overlays.close')}</Button>}>{shown && <p className={styles.dialogText}>{recordingStateLabel(shown.state)}{shown.reason && <> · {recordingReason(shown.reason)}</>}</p>}</Dialog>
   </div>;
@@ -337,7 +356,7 @@ function Boundary({context, view, routeCurrent, onView, onGuide}: {context: Scre
     : snapshot.error && !snapshot.page && !snapshot.storage ? <StateView title={t('next.states.pageFailed')} body={t('next.states.pageFailedBody')} primary={{id: 'retry', label: t('next.states.tryAgain'), onPress: retry}}/>
       : view === 'upcoming' ? <UpcomingView context={context} controller={lease.controller} snapshot={snapshot} now={now} onResolve={openConflict}/>
         : view === 'recorded' ? <RecordedView context={context} controller={lease.controller} current={lease.current} snapshot={snapshot}/>
-          : view === 'history' ? <HistoryView snapshot={snapshot} now={now}/>
+          : view === 'history' ? <HistoryView snapshot={snapshot} now={now} controller={lease.controller}/>
             : <StorageView snapshot={snapshot}/>;
   return <RecordingsLayout key={lease.id} title={t('next.home.shell.live')} sourceLabel={t('channels.source')} allChannels={t('channels.all')}
     sourceName={context.identity?.serverName ?? ''} navigation={undefined}>

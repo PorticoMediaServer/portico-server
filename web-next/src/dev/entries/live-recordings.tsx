@@ -54,7 +54,7 @@ const snapshot: RecordingsSnapshot = {query: {view: 'upcoming'}, phase: 'ready',
   page: {recordings: [conflict, active, later, later2], rules: [], nextCursor: '', revision: 1, captureAvailable: true, captureUnavailableReason: '',
     deletionAvailable: true, usage: {bytes: 0, pendingDeleteBytes: 0, recordings: 4}},
   detail: null, storage, summary: {upcoming: 8, recorded: 20, rules: 4, conflicts: 1, groups: 6, unwatched: 8}, groups, groupsSort: 'recent',
-  accessDenied: false, error: '', mutating: false, commandError: ''};
+  paging: {busy: false, error: '', previous: false, next: false}, accessDenied: false, error: '', mutating: false, commandError: ''};
 const context = {isCurrent: () => false, scope: {serverId: 'synthetic'}, effects: {play: async () => {}, reportError: () => {}},
   api: {request: async () => { throw new Error('No reads in the specimen.'); }}} as unknown as ScreenContext;
 const controller = {cancel: async () => ({committed: false, refreshed: false, busy: true}), raisePriority: async () => ({committed: false, refreshed: false, busy: true}),
