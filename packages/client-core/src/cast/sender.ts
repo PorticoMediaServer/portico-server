@@ -222,6 +222,10 @@ export class CastController {
       return true;
     } catch (e) {
       if (generation !== this.startGeneration) return false;
+      const admitted=this.current();
+      if(generation!==this.startGeneration)return false;
+      // Retired callers settle locally; no Stop/recovery/SDK IO is admitted.
+      if(!admitted){this.release(false,false);return false;}
       if(flight?.id){
         // Delivery/ACK loss is uncertainty, not a refusal. Recover the same
         // committed result without stopping it. Only a real receiver failure
@@ -276,7 +280,7 @@ export class CastController {
     return new Promise<boolean>(resolve=>{
       let settled=false;
       const give=(ok:boolean)=>{if(settled)return;settled=true;if(this.settleAdoption===give){const timer=this.adoptTimer;this.adoptTimer=undefined;this.adopting=false;this.settleAdoption=undefined;this.clearTimer(timer);}resolve(ok);};
-      const refuse=()=>{if(!active())return;give(false);this.release(false,false);};
+      const refuse=()=>{if(!active())return;give(false);if(!this.disposed&&this.transport===transport&&generation===this.startGeneration)this.release(false,false);};
       this.settleAdoption=give;
       this.detach.push(transport.onMessage(raw=>{
         const e=parseCastEvent(raw);if(!e)return;
@@ -306,10 +310,25 @@ export class CastController {
   }
 
   private exchange(body: CastCommand): Promise<void> {
-    return new Promise<void>((resolve, reject) => {
-      const timer = this.setTimer(() => { this.waiting = undefined; reject(new CastFailure('cast.error.noAnswer')); }, CAST_PAIR_TIMEOUT_MS);
-      this.waiting = {resolve: () => { this.clearTimer(timer); resolve(); }, reject: e => { this.clearTimer(timer); reject(e); }};
-      this.transport!.send(body).catch(() => { this.waiting?.reject(new CastFailure('cast.error.noAnswer')); this.waiting = undefined; });
+    const transport=this.transport,generation=this.startGeneration;
+    return new Promise<void>((resolve,reject)=>{
+      let timer:unknown,settled=false;
+      const finish=(error?:Error)=>{
+        if(settled)return;
+        settled=true;
+        if(this.waiting===waiter)this.waiting=undefined;
+        const captured=timer;timer=undefined;this.clearTimer(captured);
+        if(error)reject(error);else resolve();
+      };
+      const waiter={resolve:()=>finish(),reject:(error:Error)=>finish(error)};
+      if(!transport||this.disposed||generation!==this.startGeneration){finish(new CastFailure('cast.error.noAnswer'));return;}
+      this.waiting=waiter;
+      const captured=this.setTimer(()=>finish(new CastFailure('cast.error.noAnswer')),CAST_PAIR_TIMEOUT_MS);
+      if(settled||this.waiting!==waiter||this.transport!==transport||this.startGeneration!==generation){this.clearTimer(captured);finish(new CastFailure('cast.error.noAnswer'));return;}
+      timer=captured;
+      const admitted=this.current();
+      if(!admitted||settled||this.waiting!==waiter||this.transport!==transport||this.startGeneration!==generation){finish(new CastFailure('cast.error.noAnswer'));return;}
+      void transport.send(body).catch(()=>finish(new CastFailure('cast.error.noAnswer')));
     });
   }
 
@@ -351,19 +370,22 @@ export class CastController {
         this.clearTimer(oldTimer);for(const retry of retries)this.clearTimer(retry);
         if(error)reject(error);else resolve(itemId);
       };
+      const refused=()=>{if(pure())finish(new CastFailure('cast.error.noAnswer'));};
       const recover=async(expected:number)=>{
-        if(expected!==deadline||!current())return;
+        if(expected!==deadline)return;
+        if(!current()){refused();return;}
         try{
           const receipt=typeof transferId==='string'?await this.transferStatus(transferId):undefined;
-          if(expected!==deadline||!current())return;
+          if(expected!==deadline)return;
+          if(!current()){refused();return;}
           if(receipt?.state==='committed'&&receipt.itemId===command.itemId){finish(undefined,receipt.itemId);return;}
           finish(new CastFailure('cast.error.noAnswer'));
-        }catch{if(expected===deadline&&current())finish(new CastFailure('cast.error.unreachable'));}
+        }catch{if(expected!==deadline)return;if(current())finish(new CastFailure('cast.error.unreachable'));else refused();}
       };
       const arm=()=>{
-        if(!current())return;
+        if(!current()){refused();return;}
         const expected=++deadline,old=timer;timer=undefined;this.clearTimer(old);
-        if(!current())return;
+        if(!current()){refused();return;}
         const next=this.setTimer(()=>{void recover(expected);},150_000);
         if(!pure()){this.clearTimer(next);return;}
         timer=next;
@@ -428,28 +450,30 @@ export class CastController {
         this.clearTimer(pending.timer);if(!current())return;
         this.renewal=undefined;this.acceptedController=pending.controller;
         const oldRemote=this.state.remoteIdentity;
-        this.publish({controlPending:false,...(oldRemote?{remoteIdentity:Object.freeze({controller:pending.controller,occurrence:oldRemote.occurrence})}:{})});
-        if(this.current()&&this.transport===pending.transport&&this.startGeneration===pending.generation&&sameCastController(this.acceptedController,pending.controller))this.send({type:'status'});
+        const completed=()=>!this.disposed&&this.state.phase==='casting'&&this.transport===pending.transport&&this.startGeneration===pending.generation&&this.acceptedController===pending.controller&&!this.renewal;
+        this.publish({controlPending:false,...(oldRemote?{remoteIdentity:Object.freeze({controller:pending.controller,occurrence:oldRemote.occurrence})}:{})},completed);
+        if(!completed()||!this.current()||!completed())return;
+        void pending.transport.send({type:'status',controller:pending.controller}).catch(()=>{});
         return;
       }
       case 'paired': {
         if(!this.waiting)return;
         const waiting=this.waiting;
         const transport=this.transport,generation=this.startGeneration,context=this.proofContext;
-        if(!context){this.waiting?.resolve();this.waiting=undefined;return;}
-        if(!e.binding||!e.controlToken||!transport?.deviceId||!this.expectedPairId||e.binding.bootstrapId!==this.expectedPairId||!e.controller||e.controller.bindingId!==e.binding.id){this.waiting?.reject(new CastFailure('cast.error.refused'));this.waiting=undefined;return;}
+        if(!context){waiting.resolve();return;}
+        if(!e.binding||!e.controlToken||!transport?.deviceId||!this.expectedPairId||e.binding.bootstrapId!==this.expectedPairId||!e.controller||e.controller.bindingId!==e.binding.id){waiting.reject(new CastFailure('cast.error.refused'));return;}
         const binding=e.binding,controlToken=e.controlToken;
         void this.validate(binding,'pair-'+(++this.requestSequence)+'-'+Date.now().toString(36)).then(()=>{
           if(!this.current()||generation!==this.startGeneration||this.transport!==transport||this.waiting!==waiting)return;
           this.acceptedController=e.controller;
           const proof:CastControllerProof=Object.freeze({version:2,context,binding,controlToken});
           try{this.controllerStorage?.set(castProofKey(context,transport.deviceId!),JSON.stringify(proof));}catch{}
-          this.waiting?.resolve();this.waiting=undefined;
-        },()=>{if(generation===this.startGeneration){this.waiting?.reject(new CastFailure('cast.error.refused'));this.waiting=undefined;}});return;
+          waiting.resolve();
+        },()=>{if(generation===this.startGeneration)waiting.reject(new CastFailure('cast.error.refused'));});return;
       }
       // The TV is asking the person watching; keep waiting (the pairing timeout allows for it).
       case 'pair-pending': if (this.state.phase === 'pairing') this.publish({phase: 'waiting'}); return;
-      case 'pair-failed': this.waiting?.reject(new CastFailure(e.code === 'tv_busy' ? 'cast.error.tvBusy' : 'cast.error.refused')); this.waiting = undefined; return;
+      case 'pair-failed': this.waiting?.reject(new CastFailure(e.code === 'tv_busy' ? 'cast.error.tvBusy' : 'cast.error.refused')); return;
       case 'busy': this.fail('cast.error.busy'); return;
       case 'pair-required': if(this.release(false,false)!==this.startGeneration)return;this.publish({phase:'off',disclosureRefused:true,remoteIdentity:undefined,remoteStopped:undefined,controlPending:false,itemId:undefined,title:undefined,reported:undefined,audioTracks:[],textTracks:[],positionSeconds:0,durationSeconds:0});return;
       case 'load-pending': this.loads.get(e.requestId)?.pending(e);return;

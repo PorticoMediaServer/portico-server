@@ -391,3 +391,72 @@ test('only new original-correlated pending evidence re-arms the finite LOAD dead
  currentTimer[1].fn();assert.equal(await started,false,'absence of further valid progress still has a finite no-answer outcome');
  assert.equal(controller.getSnapshot().remoteIdentity,undefined);controller.dispose();
 });
+
+test('renewal-complete publish and final status predicates cannot borrow a same-device successor',async()=>{
+ for(const seam of ['publish','status'] as const){
+  const old=receiver('Old','tv-a'),nextTV=receiver('Next','tv-a'),saved=new Map<string,string>();
+  const renewed={...binding,targetFamilyId:'target-successor',targetGeneration:'2'},stamp={...controllerStamp,controllerGeneration:controllerStamp.controllerGeneration+1};
+  let controller:CastController,armed=false,next:Promise<boolean>|undefined;
+  controller=new CastController({origin:context.origin,displayName:'Phone',controllerContext:context,describe:async()=> 'Film',
+   isCurrent:()=>{const accepted=(controller as any)?.acceptedController,state=controller?.getSnapshot();if(armed&&accepted?.controllerGeneration===stamp.controllerGeneration&&(seam==='publish'?state.controlPending:!state.controlPending)){armed=false;next=controller.start(nextTV.transport,'next',{title:'Next'},0)}return true;},
+   controllerStorage:{get:k=>saved.get(k),set:(k,v)=>saved.set(k,v)},api:{request:async<T,>(path:string,_method?:string,body?:unknown)=>path==='/v1/cast/bootstrap'?{bootstrap:{id:binding.bootstrapId,code:'ABC123'}} as T:{binding:(body as any).binding,attemptId:(body as any).attemptId,ticket:'b'.repeat(43)} as T}});
+  const first=controller.start(old.transport,'movie',{title:'Film'},0);await settle();old.reply({type:'paired',binding,controlToken:'a'.repeat(48),controller:controllerStamp});assert.equal(await first,true);
+  old.reply({type:'status',controller:controllerStamp,occurrence,itemId:'movie',positionSeconds:2,durationSeconds:60});await settle();
+  old.reply({type:'renewal-offer',attemptId:'renew-tail',binding:renewed,previousController:controllerStamp,controller:stamp});await settle();
+  const before=old.sent.length;armed=true;
+  old.reply({type:'renewal-complete',attemptId:'renew-tail',controller:stamp});await settle();
+  assert.ok(next,seam);assert.equal(old.sent.length,before,'no old final status dispatch');
+  assert.equal(controller.getSnapshot().phase,'pairing');assert.equal(controller.getSnapshot().remoteIdentity,undefined);assert.equal(controller.getSnapshot().controlPending,false);
+  assert.equal(nextTV.sent.some(m=>m.type==='status'),false);
+  nextTV.reply({type:'paired',binding,controlToken:'a'.repeat(48),controller:controllerStamp});assert.equal(await next,true);
+  nextTV.reply({type:'status',controller:controllerStamp,occurrence:{...occurrence,itemId:'next',sessionId:'next'},itemId:'next',positionSeconds:1,durationSeconds:60});await settle();
+  controller.pause(controller.getSnapshot().remoteIdentity);assert.equal(nextTV.sent.at(-1)?.type,'pause','successor controls remain independently usable');controller.dispose();
+ }
+});
+
+test('still-owned LOAD settles locally on false currentness at deadline or reentrant timer clear',async()=>{
+ for(const seam of ['deadline','clear'] as const){
+  const tv=receiver('TV','tv-a');tv.autoAck=false;
+  const timers=new Map<number,{fn:()=>void;ms:number}>(),saved=new Map<string,string>();let counter=0,current=true,flip=false;
+  const requests:string[]=[];
+  const controller=new CastController({origin:context.origin,displayName:'Phone',controllerContext:context,isCurrent:()=>current,
+   controllerStorage:{get:k=>saved.get(k),set:(k,v)=>saved.set(k,v)},setTimer:(fn,ms)=>{timers.set(++counter,{fn,ms});return counter},clearTimer:id=>{const timer=timers.get(id as number);timers.delete(id as number);if(flip&&timer?.ms===150000){flip=false;current=false}},
+   api:{request:async<T,>(path:string,_method?:string,body?:unknown)=>{requests.push(path);return path==='/v1/cast/bootstrap'?{bootstrap:{id:binding.bootstrapId,code:'ABC123'}} as T:{binding,attemptId:(body as any).attemptId,ticket:'b'.repeat(43)} as T}}});
+  const started=controller.start(tv.transport,'movie',{title:'Film'},0);await settle();tv.reply({type:'paired',binding,controlToken:'a'.repeat(48),controller:controllerStamp});await settle();
+  const load=tv.sent.find(m=>m.type==='load');assert.ok(load);
+  const before=tv.sent.length,apiBefore=requests.length;
+  if(seam==='deadline'){current=false;[...timers.values()].find(timer=>timer.ms===150000)!.fn()}
+  else {flip=true;tv.reply({type:'load-pending',requestId:load.requestId,itemId:'movie',startId:'original',sequence:1,controller:controllerStamp})}
+  assert.equal(await started,false);assert.equal((controller as any).loads.size,0);assert.equal(timers.size,0);
+  assert.equal(tv.sent.length,before,'false currentness permits no recovery/status/Stop IO');assert.equal(requests.length,apiBefore);assert.equal(tv.ended,undefined);controller.dispose();
+ }
+});
+
+test('late pair send rejection and timeout cannot clear a waiter installed by release cleanup',async()=>{
+ const old=receiver('Old'),middle=receiver('Middle'),nextTV=receiver('Next');
+ let rejectOld!:(error:Error)=>void,next:Promise<boolean>|undefined,controller:CastController,armed=false,counter=0;
+ const blocked=new Promise<void>((_resolve,reject)=>{rejectOld=reject}),timers=new Map<number,{fn:()=>void;ms:number}>();
+ const oldTransport={...old.transport,send:(message:CastCommand)=>message.type==='pair'?blocked:old.transport.send(message)};
+ controller=new CastController({origin:'https://server.test',displayName:'Phone',
+  setTimer:(fn,ms)=>{timers.set(++counter,{fn,ms});return counter},clearTimer:id=>{const timer=timers.get(id as number);timers.delete(id as number);if(armed&&timer?.ms===35000){armed=false;next=controller.start(nextTV.transport,'next',{title:'Next'},0)}},
+  api:{request:async<T,>()=>({bootstrap:{code:'ABC123'}}) as T}});
+ const first=controller.start(oldTransport,'movie',{title:'Film'},0);await settle();
+ const oldTimeout=[...timers.values()].find(timer=>timer.ms===35000)!;assert.ok(oldTimeout);
+ armed=true;assert.equal(await controller.start(middle.transport,'middle',{title:'Middle'},0),false);await settle();assert.ok(next);
+ rejectOld(new Error('late old pair send'));oldTimeout.fn();await settle();assert.equal(await first,false);
+ assert.equal(controller.getSnapshot().phase,'pairing');assert.equal(nextTV.listeners,1);
+ nextTV.reply({type:'paired'});assert.equal(await next,true);assert.equal(controller.getSnapshot().itemId,'next');controller.dispose();
+});
+
+test('adoption refusal cannot release a successor started by its captured timer cleanup',async()=>{
+ const old=receiver('Old','tv-a'),nextTV=receiver('Next','tv-a');
+ const saved=new Map([[castProofKey(context,'tv-a'),JSON.stringify({version:2,context,binding,controlToken:'a'.repeat(48)})]]),timers=new Map<number,{fn:()=>void;ms:number}>();
+ let controller:CastController,counter=0,armed=false,next:Promise<boolean>|undefined;
+ controller=new CastController({origin:context.origin,displayName:'Phone',controllerContext:context,describe:async()=> 'Film',
+  controllerStorage:{get:k=>saved.get(k),set:(k,v)=>saved.set(k,v)},setTimer:(fn,ms)=>{timers.set(++counter,{fn,ms});return counter},clearTimer:id=>{const timer=timers.get(id as number);timers.delete(id as number);if(armed&&timer?.ms===5000){armed=false;next=controller.start(nextTV.transport,'next',{title:'Next'},0)}},
+  api:{request:async<T,>(path:string,_method?:string,body?:unknown)=>path==='/v1/cast/bootstrap'?{bootstrap:{id:binding.bootstrapId,code:'ABC123'}} as T:{binding,attemptId:(body as any).attemptId,ticket:'b'.repeat(43)} as T}});
+ const adopted=controller.adopt(old.transport);await settle();assert.equal(old.sent[0]?.type,'adopt');
+ armed=true;old.reply({type:'pair-required'});assert.equal(await adopted,false);await settle();assert.ok(next);
+ assert.equal(nextTV.listeners,1);assert.equal(controller.getSnapshot().phase,'pairing');assert.equal(nextTV.ended,undefined);
+ nextTV.reply({type:'paired',binding,controlToken:'a'.repeat(48),controller:controllerStamp});assert.equal(await next,true);assert.equal(controller.getSnapshot().itemId,'next');controller.dispose();
+});

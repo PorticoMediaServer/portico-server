@@ -29,10 +29,11 @@ var ErrFiniteUnsupported = errors.New("This source needs a playback path that is
 // session serializes its bounded FIFO and shares the existing global admission.
 // It never turns a late segment GET into a replacement playback intent.
 type FiniteHLS struct {
-	h       *HLS
-	encoder *vod.Encoder
-	mu      sync.Mutex
-	actors  map[string]*finiteActor
+	h           *HLS
+	encoder     *vod.Encoder
+	mu          sync.Mutex
+	actors      map[string]*finiteActor
+	cleanupWork func(string) error // exact private directory cleanup, always outside the writer
 }
 type finiteActor struct {
 	ctx        context.Context
@@ -41,7 +42,8 @@ type finiteActor struct {
 	wake       chan struct{}
 	err        error // written before ready closes
 	source     *vod.Source
-	waiters    int // under FiniteHLS.mu
+	workDir    string // unique to this installed actor; never selected by session id
+	waiters    int    // under FiniteHLS.mu
 	generation int
 	done       chan struct{}
 	entry      *occurrenceEntry
@@ -199,6 +201,48 @@ func (f *FiniteHLS) publishPreparation(ctx context.Context, id string, a *finite
 		return err
 	}
 	defer release()
+	manifest := finiteManifest(source)
+	hash := fmt.Sprintf("%x", sha256.Sum256(manifest))
+	dir := filepath.Join(f.h.root, id)
+	if err = os.MkdirAll(dir, 0700); err != nil {
+		return err
+	}
+	// All file preparation and recursive cleanup own a newly allocated private
+	// tree, never shared work/<generation> or a successor chosen by id.
+	workDir, err := os.MkdirTemp(dir, ".finite-")
+	if err != nil {
+		return err
+	}
+	installed := false
+	defer func() {
+		if !installed {
+			release()
+			_ = f.cleanupOwnedWork(workDir)
+		}
+	}()
+	staged := filepath.Join(workDir, "master.m3u8")
+	if err = os.WriteFile(staged, manifest, 0600); err != nil {
+		return err
+	}
+	path := filepath.Join(dir, "master.m3u8")
+	var existing os.FileInfo
+	file, openErr := os.Open(path)
+	if openErr == nil {
+		existing, err = file.Stat()
+		var data []byte
+		if err == nil {
+			data, err = io.ReadAll(io.LimitReader(file, int64(len(manifest))+1))
+		}
+		file.Close()
+		if err != nil {
+			return err
+		}
+		if string(data) != string(manifest) {
+			return vod.ErrChanged
+		}
+	} else if !errors.Is(openErr, os.ErrNotExist) {
+		return openErr
+	}
 	gated, err := dbwork.Begin(ctx, f.h.db, dbwork.ClassPlaybackStart)
 	if err != nil {
 		return err
@@ -214,20 +258,6 @@ func (f *FiniteHLS) publishPreparation(ctx context.Context, id string, a *finite
 	}
 	if !live || !owner.registry.ownsRun(id, owner.entry, run) {
 		return errOccurrenceClaimed
-	}
-	manifest := finiteManifest(source)
-	hash := fmt.Sprintf("%x", sha256.Sum256(manifest))
-	dir := filepath.Join(f.h.root, id)
-	if err = os.MkdirAll(dir, 0700); err != nil {
-		return err
-	}
-	// Uncommitted generations cannot be served. A prior process may have left
-	// owned temporary directories; only this session's private work is removed.
-	if err = os.RemoveAll(filepath.Join(dir, "work")); err != nil {
-		return err
-	}
-	if err = os.Mkdir(filepath.Join(dir, "work"), 0700); err != nil {
-		return err
 	}
 	var previous, previousPolicy string
 	var size, modified int64
@@ -255,31 +285,36 @@ func (f *FiniteHLS) publishPreparation(ctx context.Context, id string, a *finite
 	if _, err = tx.Exec(`INSERT INTO playback_artifacts(session_id,directory,status) VALUES(?,?,'building') ON CONFLICT(session_id) DO UPDATE SET status='building',error=''`, id, dir); err != nil {
 		return err
 	}
-	// Atomic publication of an immutable index. A crash before this rename is
-	// repaired from identical plan facts on reconnection, never speculative bytes.
-	path := filepath.Join(dir, "master.m3u8")
-	if b, e := os.ReadFile(path); e == nil {
-		if string(b) != string(manifest) {
-			return vod.ErrChanged
+	// Only bounded metadata/no-clobber publication occurs inside this same
+	// accepting writer. No recursive removal or manifest file IO holds it.
+	if existing != nil {
+		current, e := os.Lstat(path)
+		if e != nil {
+			return e
 		}
-	} else if !errors.Is(e, os.ErrNotExist) {
-		return e
-	} else {
-		if err = os.WriteFile(path+".tmp", manifest, 0600); err != nil {
-			return err
+		if !os.SameFile(existing, current) {
+			return ErrOccurrenceChanged
 		}
-		if err = os.Rename(path+".tmp", path); err != nil {
-			return err
-		}
+	} else if err = os.Link(staged, path); err != nil {
+		return err
 	}
-	// Keep the same accepting writer through rename: Stop/replan cannot win
-	// between its original tuple proof and this filesystem publication.
 	if err = gated.Commit(); err != nil {
 		return err
 	}
-	a.source = source
+	a.source, a.workDir = source, workDir
+	installed = true
 	return nil
 }
+func (f *FiniteHLS) cleanupOwnedWork(path string) error {
+	if path == "" {
+		return nil
+	}
+	if f.cleanupWork != nil {
+		return f.cleanupWork(path)
+	}
+	return os.RemoveAll(path)
+}
+
 func (f *FiniteHLS) run(id string, a *finiteActor) {
 	// Keep authority monitoring independent of a potentially stalled subprocess.
 	// Cancellation does not release the admission until the process actually exits.
@@ -308,6 +343,7 @@ func (f *FiniteHLS) run(id string, a *finiteActor) {
 		}
 		f.h.mu.Unlock()
 		f.mu.Unlock()
+		_ = f.cleanupOwnedWork(a.workDir)
 		close(a.done)
 		f.h.occurrences.finished(id, a.entry, a.run)
 	}()
@@ -377,6 +413,9 @@ func (f *FiniteHLS) run(id string, a *finiteActor) {
 	}
 }
 func (f *FiniteHLS) produce(id string, a *finiteActor, index int) (resultErr error) {
+	if a.workDir == "" {
+		return errOccurrenceClaimed
+	}
 	var workGeneration int64
 	defer func() {
 		if !errors.Is(resultErr, errOccurrenceClaimed) || workGeneration == 0 {
@@ -441,7 +480,7 @@ func (f *FiniteHLS) produce(id string, a *finiteActor, index int) (resultErr err
 		return err
 	}
 	defer input.Close()
-	dir := filepath.Join(f.h.root, id, "work", strconv.FormatInt(generation, 10))
+	dir := filepath.Join(a.workDir, strconv.FormatInt(generation, 10))
 	observe, finish := f.h.observeConversion(a.ctx, id, a.generation)
 	defer finish()
 	window, err := f.encoder.Encode(a.ctx, a.source, input, vod.Request{Index: index, GenerationDir: dir, ObserveConversion: observe})
