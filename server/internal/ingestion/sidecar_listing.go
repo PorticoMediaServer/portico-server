@@ -162,13 +162,32 @@ func (s *Service) forgetListing(job string) {
 	s.listingMu.Unlock()
 }
 
+// directoryRecheck is one analysis's view of the directories this scan listed.
+// The projections below share it, so the directory is read once per analysed
+// file however many of them ask about it, and a directory found changed is
+// forgotten for all of them.
+type directoryRecheck func(string) (listedDirectory, bool)
+
 // scanListed answers, for the analysis of one file, whether this scan saw a
 // sidecar at a path. known is false unless the scan listed the whole directory,
 // the name is of a kind it remembers, and the directory is still exactly as it
-// was listed. That last check reads the directory once per call of scanListed,
-// so each analysed file looks again; a directory found changed is forgotten.
+// was listed. That last check reads the directory once per analysis, however
+// many projections ask about it; a directory found changed is forgotten.
 func (s *Service) scanListed(ctx context.Context, job string, source catalog.LibrarySource) func(path string) (present, known bool) {
+	return scanListedFrom(source, s.scanDirectoryListed(ctx, job, source))
+}
+
+// analysisListings builds one directory recheck for the analysis of one file
+// and every listing projection the analysis uses. Sharing the recheck is what
+// keeps a folder to one observation per analysed file; the projections stay
+// separate because each answers a different question from the same listing.
+func (s *Service) analysisListings(ctx context.Context, job string, source catalog.LibrarySource) (func(string) (bool, bool), func(string) (localmetadata.ArtworkDirectoryListing, bool), localmetadata.MusicTrackListing) {
 	current := s.scanDirectoryListed(ctx, job, source)
+	return scanListedFrom(source, current), scanArtworkListedFrom(source, current), scanMusicTracksListedFrom(source, current)
+}
+
+// scanListedFrom projects sidecar answers from an analysis's shared recheck.
+func scanListedFrom(source catalog.LibrarySource, current directoryRecheck) func(path string) (present, known bool) {
 	return func(path string) (bool, bool) {
 		if !sidecarLike(path) {
 			return false, false
@@ -188,7 +207,7 @@ func (s *Service) scanListed(ctx context.Context, job string, source catalog.Lib
 
 // scanDirectoryListed shares the existing per-analysis directory recheck with
 // image enumeration. A name lookup never manufactures a listing observation.
-func (s *Service) scanDirectoryListed(ctx context.Context, job string, source catalog.LibrarySource) func(string) (listedDirectory, bool) {
+func (s *Service) scanDirectoryListed(ctx context.Context, job string, source catalog.LibrarySource) directoryRecheck {
 	var mu sync.Mutex
 	unchanged := map[string]bool{}
 	return func(relative string) (listedDirectory, bool) {
@@ -244,7 +263,12 @@ func (s *Service) directoryAsListed(ctx context.Context, source catalog.LibraryS
 // complete, still-current directory observation. It is discovery data, never
 // an I/O grant; every image still passes the admitted metadata reader.
 func (s *Service) scanArtworkListed(ctx context.Context, job string, source catalog.LibrarySource) func(string) (localmetadata.ArtworkDirectoryListing, bool) {
-	current := s.scanDirectoryListed(ctx, job, source)
+	return scanArtworkListedFrom(source, s.scanDirectoryListed(ctx, job, source))
+}
+
+// scanArtworkListedFrom projects artwork names from an analysis's shared
+// recheck.
+func scanArtworkListedFrom(source catalog.LibrarySource, current directoryRecheck) func(string) (localmetadata.ArtworkDirectoryListing, bool) {
 	return func(directory string) (localmetadata.ArtworkDirectoryListing, bool) {
 		relative, err := filepath.Rel(source.ResolvedPath, directory)
 		if err != nil || relative != "." && !filepath.IsLocal(relative) {
