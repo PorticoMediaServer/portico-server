@@ -745,6 +745,27 @@
     await api(sessionPath(id), {method: 'DELETE', body: ended ? undefined : {positionMs: at}},lease).catch(function (e) { if (!e.status || e.status >= 500 || lease&&e.status!==404&&e.status!==410) throw e; });
     return stoppedClock;
   }
+  /** Only the declared retry-only or real session-backed start response can
+   * keep a start alive. Do not coerce/clamp malformed timing into progress. */
+  function preparationDelay(value, body) {
+    var object = function (v) { return v !== null && typeof v === 'object' && !Array.isArray(v); };
+    var id = function (v) { return typeof v === 'string' && /^[A-Za-z0-9._:-]{1,128}$/.test(v); };
+    var integer = function (v) { return Number.isSafeInteger(v) && v >= 0; };
+    if (!object(value) || !Number.isSafeInteger(value.retryAfterMs) || value.retryAfterMs < 1 || value.retryAfterMs > 10000) throw new Error('invalid_preparation');
+    if (Object.keys(value).length !== 1) {
+      var p = value.presentation, l = value.lease;
+      // This is a resource identity, never a playable presentation or cleanup
+      // receipt. Required wire fields must exist even while the URL is empty.
+      if (!id(value.id) || typeof value.revision !== 'string' || !value.revision ||
+          typeof value.kind !== 'string' || typeof value.role !== 'string' || typeof value.state !== 'string' ||
+          !object(l) || typeof l.expiresAt !== 'string' || !integer(l.reportEveryMs) ||
+          !object(p) || !Number.isSafeInteger(p.generation) || p.generation < 1 ||
+          typeof p.mode !== 'string' || typeof p.url !== 'string' || typeof p.engine !== 'string' ||
+          !integer(p.startPositionMs) || !Array.isArray(p.subtitles) || !object(p.decision) ||
+          (body.queue ? !queueRef(value.queue) || value.queue.queueId !== body.queue.queueId || value.queue.entryId !== body.queue.entryId : value.itemId !== body.itemId)) throw new Error('invalid_preparation');
+    }
+    return {delay: Math.max(250, value.retryAfterMs), resource: value.id ? {id: value.id, generation: value.presentation.generation} : null};
+  }
   /** Starts a v1 session for the item and answers CAF's load request for it. A session already
    * playing here is replaced in the same request, so this TV holds one playback slot. */
   async function resolvePlayback(itemId, startSeconds, identity, subtitleTrackId, queue,lease) {
@@ -768,7 +789,13 @@
     // delivers a styled or image track burned into the picture.
     if (subtitleTrackId === 'off') body.subtitles = {trackId: null};
     else if (typeof subtitleTrackId === 'string' && /^[A-Za-z0-9._:-]{1,128}$/.test(subtitleTrackId)) body.subtitles = {trackId: subtitleTrackId};
-    var key = token(16), deadline = Date.now() + 110000, answer;
+    var key = token(16), answer, prepared = null;
+    var originalSession = session, originalBearer = session.accessToken, originalScope = scope, originalOrigin = base;
+    function checkStart() {
+      requireLease(lease);
+      if (session !== originalSession || session.accessToken !== originalBearer || scope !== originalScope || base !== originalOrigin) throw new Error('controller_retired');
+      if (playback !== previousOwner) throw new Error('occurrence_replaced');
+    }
     if(queue&&queue.transferId){
       var captured=transferStarts.get(queue.transferId);
       if(!captured)throw new Error('cast_transfer_required');
@@ -777,6 +804,7 @@
     }
     // 202: the server is still preparing; the identical request is repeated until it answers.
     for (;;) {
+      checkStart();
       try{answer = await api('/v1/playback/sessions', {body: body, headers: {'Idempotency-Key': key}},lease);}
       catch(e){
         // A parsed accepting response is not an unknown result. Clean up only
@@ -786,14 +814,21 @@
         throw e;
       }
       if (answer.status !== 202) break;
+      checkStart();
+      var preparation = preparationDelay(answer.body, body);
+      if (preparation.resource) {
+        if (prepared && (prepared.id !== preparation.resource.id || prepared.generation !== preparation.resource.generation)) throw new Error('preparation_changed');
+        prepared = preparation.resource;
+      }
       preparing();
-      var delay = Math.min(10000, Math.max(250, Number(answer.body.retryAfterMs) || 1000));
-      if (Date.now() + delay > deadline) throw new Error('preparation_timeout');
-      await wait(delay);requireLease(lease);
+      // The original server operation owns its finite preparation budget.
+      // A valid wait never creates another key, body, credential or controller.
+      await wait(preparation.delay);checkStart();
     }
     requireLease(lease);stopPreparing();
     var started = answer.body;
     if (!started || !started.presentation) throw new Error('playback_not_ready');
+    if (prepared && (prepared.id !== started.id || prepared.generation !== started.presentation.generation)) throw new Error('preparation_changed');
     if(started.state==='ended')throw new Error('session_ended');
     var artTimer, image;
     try { image = await Promise.race([art, new Promise(function(resolve){artTimer=setTimeout(function(){resolve('');},1500);})]); }

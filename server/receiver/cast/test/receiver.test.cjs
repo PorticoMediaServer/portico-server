@@ -40,6 +40,7 @@ async function harness(fixture={}){
   if(path==='/v1/playback/sessions'&&options.method==='POST'){
    if(fixture.startWait){fixture.startCalled?.();await fixture.startWait;}
    if(fixture.ambiguous&&!failed){failed=true;throw new Error('lost response')}
+   if(fixture.startResponse){const response=fixture.startResponse(body,sessionFor(body,body.startPositionMs));if(response)return reply(response.body,response.status);}
    if(preparing){preparing=false;return reply({retryAfterMs:500},202);}
    return reply(sessionFor(body,body.startPositionMs),201);
   }
