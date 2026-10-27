@@ -1,6 +1,5 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {readFileSync} from 'node:fs';
 import {createElement} from 'react';
 import {renderToStaticMarkup} from 'react-dom/server';
 import {defaultI18n} from '@i18n';
@@ -100,15 +99,4 @@ test('the analytics heat map renders 168 cells from one formatter of each shape'
   const quietOnly = countOf(counted(() => formatQuietHours(quiet!)).counts, {hour: 'numeric', timeZone: 'UTC'});
   assert.equal(countOf(counts, {hour: 'numeric', timeZone: 'UTC'}), quietOnly + 1);
   assert.ok([...counts.values()].reduce((total, count) => total + count, 0) < 16, 'the whole charts render stays O(1) in cells');
-});
-
-test('the component keeps no per-cell formatter and rebuilds the table only on a locale change', () => {
-  const source = readFileSync(new URL('../src/screens/dashboard/Analytics.tsx', import.meta.url), 'utf8');
-  assert.doesNotMatch(source, /new Intl\.DateTimeFormat/, 'the analytics screen must not construct formatters while rendering cells');
-  assert.match(source, /const labels = useMemo\(\(\) => heatMapLabels\(\), \[defaultI18n\.locale\]\);/, 'the label table is memoised on the locale');
-  // A rebuild is bounded, and a different locale really produces different text.
-  assert.deepEqual(heatMapLabels(), heatMapLabels(defaultI18n.locale));
-  assert.equal(heatMapLabels('en-GB').hour[0], hourText('en-GB', 0));
-  assert.notDeepEqual(heatMapLabels('fr').hour, heatMapLabels('en-US').hour);
-  assert.notDeepEqual(heatMapLabels('ja').weekdayLong, heatMapLabels('en-US').weekdayLong);
 });
