@@ -944,6 +944,7 @@ table catalog_shows
 table catalog_similar
 table catalog_song_artists
 table catalog_songs
+table catalog_summary_classification_revision
 table catalog_term_sources
 table catalog_terms
 table catalog_title_grams
@@ -2893,6 +2894,9 @@ trigger subtitle_resources_bound_delete
 trigger subtitle_resources_bound_insert
 trigger subtitle_sidecars_retention_delete
 trigger subtitle_sidecars_retention_insert
+trigger summary_classification_delete
+trigger summary_classification_insert
+trigger summary_classification_update
 trigger tvdb_episode_created
 trigger tvdb_episode_link_insert
 trigger tvdb_episode_link_update

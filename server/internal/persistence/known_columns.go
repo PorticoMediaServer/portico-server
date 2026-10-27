@@ -1449,6 +1449,8 @@ catalog_songs.release_id
 catalog_songs.release_status
 catalog_songs.track_id
 catalog_songs.track_number
+catalog_summary_classification_revision.revision
+catalog_summary_classification_revision.singleton
 catalog_term_sources.entity_id
 catalog_term_sources.label_override
 catalog_term_sources.ordinal
