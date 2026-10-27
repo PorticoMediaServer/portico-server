@@ -23,7 +23,8 @@ export const routes = [
       "not_found",
       "downloads_not_allowed",
       "downloads_unavailable",
-      "internal"
+      "internal",
+      "timeout"
     ],
     "status": 200,
     "admission": "default"
@@ -46,7 +47,8 @@ export const routes = [
       "revision_mismatch",
       "unsupported_selector",
       "queue_too_large",
-      "queue_building"
+      "queue_building",
+      "timeout"
     ],
     "status": 200,
     "admission": "playback"
@@ -74,7 +76,8 @@ export const routes = [
       "stream_limit_reached",
       "conversion_capacity",
       "transcode_not_allowed",
-      "unsupported_media"
+      "unsupported_media",
+      "timeout"
     ],
     "status": 200,
     "admission": "playback"
@@ -97,7 +100,8 @@ export const routes = [
       "revision_mismatch",
       "unsupported_selector",
       "queue_too_large",
-      "queue_building"
+      "queue_building",
+      "timeout"
     ],
     "status": 200,
     "admission": "playback"
@@ -254,7 +258,8 @@ export const routes = [
       "conversion_capacity",
       "transcode_not_allowed",
       "unsupported_media",
-      "connection_too_slow"
+      "connection_too_slow",
+      "timeout"
     ],
     "status": 200,
     "admission": "playback"
@@ -273,7 +278,8 @@ export const routes = [
       "unauthorized",
       "not_permitted",
       "rate_limited",
-      "internal"
+      "internal",
+      "timeout"
     ],
     "status": 200,
     "optionalBody": true,
@@ -293,7 +299,8 @@ export const routes = [
       "unauthorized",
       "not_permitted",
       "invalid_request",
-      "internal"
+      "internal",
+      "timeout"
     ],
     "status": 204,
     "admission": "admin"
@@ -319,7 +326,8 @@ export const routes = [
       "queue_building",
       "prepared_expired",
       "prepared_canceled",
-      "not_implemented"
+      "not_implemented",
+      "timeout"
     ],
     "status": 200,
     "admission": "playback"
@@ -343,7 +351,8 @@ export const routes = [
       "revision_required",
       "revision_mismatch",
       "session_ended",
-      "internal"
+      "internal",
+      "timeout"
     ],
     "status": 200,
     "admission": "media"
@@ -421,7 +430,8 @@ export const routes = [
       "not_found",
       "downloads_not_allowed",
       "downloads_unavailable",
-      "internal"
+      "internal",
+      "timeout"
     ],
     "status": 201,
     "admission": "default"
@@ -449,7 +459,8 @@ export const routes = [
       "not_found",
       "downloads_not_allowed",
       "downloads_unavailable",
-      "internal"
+      "internal",
+      "timeout"
     ],
     "status": 201,
     "admission": "default"
@@ -471,7 +482,8 @@ export const routes = [
       "not_found",
       "idempotency_key_reused",
       "rate_limited",
-      "internal"
+      "internal",
+      "timeout"
     ],
     "status": 202,
     "admission": "default"
@@ -493,7 +505,8 @@ export const routes = [
       "idempotency_key_reused",
       "revision_mismatch",
       "rate_limited",
-      "internal"
+      "internal",
+      "timeout"
     ],
     "status": 202,
     "admission": "default"
@@ -523,7 +536,8 @@ export const routes = [
       "conversion_capacity",
       "transcode_not_allowed",
       "unsupported_media",
-      "source_unavailable"
+      "source_unavailable",
+      "timeout"
     ],
     "status": 201,
     "admission": "playback"
@@ -549,7 +563,8 @@ export const routes = [
       "storage_command_capacity",
       "storage_allocation_recovery_required",
       "request_in_progress",
-      "internal"
+      "internal",
+      "timeout"
     ],
     "status": 200,
     "admission": "admin-long"
@@ -575,7 +590,8 @@ export const routes = [
       "storage_operation_expired",
       "storage_command_capacity",
       "storage_allocation_recovery_required",
-      "internal"
+      "internal",
+      "timeout"
     ],
     "status": 200,
     "admission": "admin-long"
@@ -1170,7 +1186,8 @@ export const routes = [
     "bodyLimit": 0,
     "errors": [
       "unauthorized",
-      "not_found"
+      "not_found",
+      "timeout"
     ],
     "status": 204,
     "admission": "default"
@@ -1377,7 +1394,8 @@ export const routes = [
       "revision_mismatch",
       "confirmation_mismatch",
       "administration_unavailable",
-      "internal"
+      "internal",
+      "timeout"
     ],
     "status": 200,
     "admission": "admin-heavy"
@@ -1476,7 +1494,8 @@ export const routes = [
       "not_permitted",
       "not_found",
       "invalid_request",
-      "internal"
+      "internal",
+      "timeout"
     ],
     "status": 200,
     "optionalBody": true,
@@ -1543,7 +1562,8 @@ export const routes = [
     "errors": [
       "unauthorized",
       "not_permitted",
-      "internal"
+      "internal",
+      "timeout"
     ],
     "status": 200,
     "admission": "admin"
@@ -3105,7 +3125,8 @@ export const routes = [
       "revision_required",
       "revision_mismatch",
       "session_ended",
-      "internal"
+      "internal",
+      "timeout"
     ],
     "status": 200,
     "admission": "media"
@@ -3316,7 +3337,8 @@ export const routes = [
       "unauthorized",
       "not_permitted",
       "revision_mismatch",
-      "internal"
+      "internal",
+      "timeout"
     ],
     "status": 200,
     "admission": "default"
@@ -3336,7 +3358,8 @@ export const routes = [
       "unauthorized",
       "not_permitted",
       "revision_mismatch",
-      "internal"
+      "internal",
+      "timeout"
     ],
     "status": 200,
     "admission": "default"
@@ -3599,7 +3622,8 @@ export const routes = [
     "bodyLimit": 0,
     "errors": [
       "unauthorized",
-      "not_permitted"
+      "not_permitted",
+      "timeout"
     ],
     "status": 200,
     "admission": "admin"
@@ -3827,7 +3851,8 @@ export const routes = [
       "idempotency_key_reused",
       "rate_limited",
       "internal",
-      "downloads_unavailable"
+      "downloads_unavailable",
+      "timeout"
     ],
     "status": 200,
     "admission": "browsing"
@@ -3849,7 +3874,8 @@ export const routes = [
       "idempotency_key_reused",
       "revision_mismatch",
       "rate_limited",
-      "internal"
+      "internal",
+      "timeout"
     ],
     "status": 200,
     "admission": "browsing"
@@ -3868,7 +3894,8 @@ export const routes = [
       "unauthorized",
       "not_permitted",
       "not_found",
-      "internal"
+      "internal",
+      "timeout"
     ],
     "status": 200,
     "admission": "admin"
@@ -3885,7 +3912,8 @@ export const routes = [
     "bodyLimit": 0,
     "errors": [
       "unauthorized",
-      "not_found"
+      "not_found",
+      "timeout"
     ],
     "status": 200,
     "admission": "browsing"
@@ -4124,7 +4152,8 @@ export const routes = [
       "unauthorized",
       "not_permitted",
       "not_found",
-      "invalid_request"
+      "invalid_request",
+      "timeout"
     ],
     "status": 200,
     "admission": "browsing"
@@ -4197,7 +4226,8 @@ export const routes = [
       "not_found",
       "downloads_not_allowed",
       "downloads_unavailable",
-      "internal"
+      "internal",
+      "timeout"
     ],
     "status": 200,
     "admission": "default"
@@ -4248,7 +4278,8 @@ export const routes = [
       "not_found",
       "downloads_not_allowed",
       "downloads_unavailable",
-      "internal"
+      "internal",
+      "timeout"
     ],
     "status": 200,
     "admission": "browsing"
@@ -4271,7 +4302,8 @@ export const routes = [
       "not_found",
       "downloads_not_allowed",
       "downloads_unavailable",
-      "internal"
+      "internal",
+      "timeout"
     ],
     "status": 200,
     "admission": "default"
@@ -4297,7 +4329,8 @@ export const routes = [
       "not_found",
       "idempotency_key_reused",
       "rate_limited",
-      "internal"
+      "internal",
+      "timeout"
     ],
     "status": 200,
     "admission": "browsing"
@@ -4320,7 +4353,8 @@ export const routes = [
       "not_found",
       "downloads_not_allowed",
       "downloads_unavailable",
-      "internal"
+      "internal",
+      "timeout"
     ],
     "status": 200,
     "admission": "default"
@@ -4448,7 +4482,8 @@ export const routes = [
       "not_found",
       "downloads_not_allowed",
       "downloads_unavailable",
-      "internal"
+      "internal",
+      "timeout"
     ],
     "status": 200,
     "admission": "default"
@@ -5021,7 +5056,8 @@ export const routes = [
     "bodyLimit": 0,
     "errors": [
       "unauthorized",
-      "not_permitted"
+      "not_permitted",
+      "timeout"
     ],
     "status": 200,
     "admission": "admin"
@@ -5171,7 +5207,8 @@ export const routes = [
       "invalid_request",
       "revision_mismatch",
       "idempotency_key_reused",
-      "internal"
+      "internal",
+      "timeout"
     ],
     "status": 200,
     "admission": "admin"
@@ -5375,7 +5412,8 @@ export const routes = [
       "not_permitted",
       "not_found",
       "stale_continuation",
-      "internal"
+      "internal",
+      "timeout"
     ],
     "status": 200,
     "admission": "browsing"
@@ -5583,7 +5621,8 @@ export const routes = [
       "not_permitted",
       "not_found",
       "stale_continuation",
-      "internal"
+      "internal",
+      "timeout"
     ],
     "status": 200,
     "admission": "browsing"
@@ -5781,7 +5820,8 @@ export const routes = [
       "unauthorized",
       "not_permitted",
       "not_found",
-      "internal"
+      "internal",
+      "timeout"
     ],
     "status": 200,
     "admission": "browsing"
@@ -5803,7 +5843,8 @@ export const routes = [
       "idempotency_key_reused",
       "revision_mismatch",
       "rate_limited",
-      "internal"
+      "internal",
+      "timeout"
     ],
     "status": 200,
     "admission": "default"
@@ -5829,7 +5870,8 @@ export const routes = [
       "revision_mismatch",
       "rate_limited",
       "internal",
-      "invalid_cursor"
+      "invalid_cursor",
+      "timeout"
     ],
     "status": 200,
     "admission": "default"
@@ -6374,7 +6416,8 @@ export const routes = [
       "invalid_request",
       "not_found",
       "revision_mismatch",
-      "internal"
+      "internal",
+      "timeout"
     ],
     "status": 200,
     "admission": "admin-heavy"
@@ -6418,7 +6461,8 @@ export const routes = [
       "invalid_request",
       "revision_mismatch",
       "idempotency_key_reused",
-      "internal"
+      "internal",
+      "timeout"
     ],
     "status": 200,
     "admission": "admin"
@@ -6766,7 +6810,8 @@ export const routes = [
       "invalid_request",
       "revision_mismatch",
       "rate_limited",
-      "internal"
+      "internal",
+      "timeout"
     ],
     "status": 200,
     "admission": "browsing"
@@ -6789,7 +6834,8 @@ export const routes = [
       "invalid_request",
       "revision_mismatch",
       "rate_limited",
-      "internal"
+      "internal",
+      "timeout"
     ],
     "status": 200,
     "admission": "browsing"
@@ -6886,7 +6932,8 @@ export const routes = [
       "not_permitted",
       "invalid_request",
       "revision_mismatch",
-      "internal"
+      "internal",
+      "timeout"
     ],
     "status": 200,
     "admission": "admin"
@@ -7222,7 +7269,8 @@ export const routes = [
     "errors": [
       "invalid_request",
       "unauthorized",
-      "not_found"
+      "not_found",
+      "timeout"
     ],
     "status": 200,
     "admission": "playback"
@@ -7239,7 +7287,8 @@ export const routes = [
     "bodyLimit": 0,
     "errors": [
       "unauthorized",
-      "not_found"
+      "not_found",
+      "timeout"
     ],
     "status": 200,
     "admission": "security-fence"
@@ -7292,7 +7341,8 @@ export const routes = [
       "revision_mismatch",
       "idempotency_key_reused",
       "rate_limited",
-      "internal"
+      "internal",
+      "timeout"
     ],
     "status": 200,
     "admission": "browsing"
@@ -7435,7 +7485,8 @@ export const routes = [
     "errors": [
       "unauthorized",
       "not_found",
-      "revision_mismatch"
+      "revision_mismatch",
+      "timeout"
     ],
     "status": 200,
     "admission": "browsing"
@@ -7458,7 +7509,8 @@ export const routes = [
       "unauthorized",
       "not_found",
       "queue_building",
-      "revision_mismatch"
+      "revision_mismatch",
+      "timeout"
     ],
     "status": 200,
     "admission": "browsing"
@@ -7482,7 +7534,8 @@ export const routes = [
       "invalid_request",
       "unauthorized",
       "not_found",
-      "revision_mismatch"
+      "revision_mismatch",
+      "timeout"
     ],
     "status": 200,
     "admission": "browsing"
@@ -7981,7 +8034,8 @@ export const routes = [
       "revision_required",
       "revision_mismatch",
       "session_ended",
-      "internal"
+      "internal",
+      "timeout"
     ],
     "status": 200,
     "admission": "media"
@@ -8158,7 +8212,8 @@ export const routes = [
       "invalid_request",
       "revision_mismatch",
       "idempotency_key_reused",
-      "internal"
+      "internal",
+      "timeout"
     ],
     "status": 200,
     "admission": "browsing"
@@ -8275,7 +8330,8 @@ export const routes = [
       "invalid_request",
       "revision_mismatch",
       "rate_limited",
-      "internal"
+      "internal",
+      "timeout"
     ],
     "status": 200,
     "admission": "browsing"
@@ -8427,7 +8483,8 @@ export const routes = [
       "unauthorized",
       "not_permitted",
       "not_found",
-      "internal"
+      "internal",
+      "timeout"
     ],
     "status": 200,
     "admission": "browsing"
@@ -8614,7 +8671,8 @@ export const routes = [
       "revision_mismatch",
       "request_in_progress",
       "administration_unavailable",
-      "internal"
+      "internal",
+      "timeout"
     ],
     "status": 200,
     "admission": "admin"
@@ -8646,7 +8704,8 @@ export const routes = [
       "source_unavailable",
       "source_folders_unsupported",
       "administration_unavailable",
-      "internal"
+      "internal",
+      "timeout"
     ],
     "status": 200,
     "admission": "admin"
@@ -8687,7 +8746,8 @@ export const routes = [
       "not_permitted",
       "invalid_request",
       "administration_unavailable",
-      "internal"
+      "internal",
+      "timeout"
     ],
     "status": 200,
     "admission": "browsing"
@@ -8710,7 +8770,8 @@ export const routes = [
       "administration_unavailable",
       "storage_command_conflict",
       "storage_operation_expired",
-      "internal"
+      "internal",
+      "timeout"
     ],
     "status": 200,
     "admission": "browsing"
@@ -8730,7 +8791,8 @@ export const routes = [
       "not_permitted",
       "invalid_request",
       "administration_unavailable",
-      "internal"
+      "internal",
+      "timeout"
     ],
     "status": 200,
     "admission": "browsing"
@@ -8754,7 +8816,8 @@ export const routes = [
       "idempotency_key_reused",
       "request_in_progress",
       "administration_unavailable",
-      "internal"
+      "internal",
+      "timeout"
     ],
     "status": 200,
     "admission": "admin"
@@ -8776,7 +8839,8 @@ export const routes = [
       "invalid_request",
       "administration_unavailable",
       "source_folders_unsupported",
-      "internal"
+      "internal",
+      "timeout"
     ],
     "status": 200,
     "admission": "admin"
@@ -8817,7 +8881,8 @@ export const routes = [
       "not_permitted",
       "not_found",
       "invalid_request",
-      "internal"
+      "internal",
+      "timeout"
     ],
     "status": 200,
     "admission": "admin"
@@ -9910,7 +9975,8 @@ export const routes = [
       "not_found",
       "downloads_not_allowed",
       "downloads_unavailable",
-      "internal"
+      "internal",
+      "timeout"
     ],
     "status": 201,
     "admission": "default"
@@ -9958,7 +10024,8 @@ export const routes = [
     "errors": [
       "invalid_request",
       "unauthorized",
-      "not_permitted"
+      "not_permitted",
+      "timeout"
     ],
     "status": 200,
     "admission": "admin"
@@ -10013,7 +10080,8 @@ export const routes = [
       "not_found",
       "downloads_not_allowed",
       "downloads_unavailable",
-      "internal"
+      "internal",
+      "timeout"
     ],
     "status": 200,
     "admission": "default"
@@ -10036,7 +10104,8 @@ export const routes = [
       "not_found",
       "downloads_not_allowed",
       "downloads_unavailable",
-      "internal"
+      "internal",
+      "timeout"
     ],
     "status": 200,
     "admission": "default"
@@ -10062,7 +10131,8 @@ export const routes = [
       "not_found",
       "downloads_not_allowed",
       "downloads_unavailable",
-      "internal"
+      "internal",
+      "timeout"
     ],
     "status": 200,
     "admission": "browsing"
@@ -10090,7 +10160,8 @@ export const routes = [
       "not_found",
       "downloads_not_allowed",
       "downloads_unavailable",
-      "internal"
+      "internal",
+      "timeout"
     ],
     "status": 200,
     "admission": "security-fence"
@@ -10118,7 +10189,8 @@ export const routes = [
       "invalid_cursor",
       "revision_mismatch",
       "administration_unavailable",
-      "internal"
+      "internal",
+      "timeout"
     ],
     "status": 200,
     "admission": "admin"
@@ -10146,7 +10218,8 @@ export const routes = [
       "invalid_cursor",
       "revision_mismatch",
       "administration_unavailable",
-      "internal"
+      "internal",
+      "timeout"
     ],
     "status": 200,
     "admission": "admin"
@@ -10200,7 +10273,8 @@ export const routes = [
       "not_permitted",
       "not_found",
       "invalid_request",
-      "internal"
+      "internal",
+      "timeout"
     ],
     "status": 200,
     "admission": "admin"
@@ -10218,7 +10292,8 @@ export const routes = [
     "errors": [
       "unauthorized",
       "not_permitted",
-      "internal"
+      "internal",
+      "timeout"
     ],
     "status": 200,
     "admission": "admin"
@@ -10242,7 +10317,8 @@ export const routes = [
       "invalid_request",
       "unauthorized",
       "not_found",
-      "revision_mismatch"
+      "revision_mismatch",
+      "timeout"
     ],
     "status": 200,
     "admission": "browsing"
@@ -10345,7 +10421,8 @@ export const routes = [
       "not_permitted",
       "not_found",
       "invalid_request",
-      "internal"
+      "internal",
+      "timeout"
     ],
     "status": 200,
     "admission": "admin-heavy"
@@ -10368,7 +10445,8 @@ export const routes = [
       "revision_mismatch",
       "unsupported_selector",
       "queue_too_large",
-      "queue_building"
+      "queue_building",
+      "timeout"
     ],
     "status": 200,
     "admission": "default"
@@ -11906,7 +11984,8 @@ export const routes = [
       "unauthorized",
       "not_permitted",
       "revision_mismatch",
-      "internal"
+      "internal",
+      "timeout"
     ],
     "status": 201,
     "admission": "default"
@@ -12925,7 +13004,8 @@ export const routes = [
       "unauthorized",
       "not_permitted",
       "not_found",
-      "internal"
+      "internal",
+      "timeout"
     ],
     "status": 202,
     "admission": "admin"
@@ -12986,7 +13066,8 @@ export const routes = [
       "unauthorized",
       "not_found",
       "revision_mismatch",
-      "internal"
+      "internal",
+      "timeout"
     ],
     "status": 200,
     "admission": "browsing"
@@ -13007,7 +13088,8 @@ export const routes = [
       "unauthorized",
       "not_found",
       "revision_mismatch",
-      "internal"
+      "internal",
+      "timeout"
     ],
     "status": 200,
     "admission": "browsing"
@@ -13600,7 +13682,8 @@ export const routes = [
       "invalid_request",
       "revision_mismatch",
       "rate_limited",
-      "internal"
+      "internal",
+      "timeout"
     ],
     "status": 202,
     "admission": "browsing"
@@ -13644,7 +13727,8 @@ export const routes = [
       "not_permitted",
       "not_found",
       "revision_mismatch",
-      "internal"
+      "internal",
+      "timeout"
     ],
     "status": 200,
     "admission": "browsing"
@@ -14673,7 +14757,8 @@ export const routes = [
       "not_permitted",
       "invalid_request",
       "administration_unavailable",
-      "internal"
+      "internal",
+      "timeout"
     ],
     "status": 200,
     "admission": "admin-long"
@@ -14694,7 +14779,8 @@ export const routes = [
       "invalid_request",
       "source_credentials_required",
       "administration_unavailable",
-      "internal"
+      "internal",
+      "timeout"
     ],
     "status": 200,
     "admission": "admin-long"
@@ -14714,7 +14800,8 @@ export const routes = [
       "not_permitted",
       "invalid_request",
       "administration_unavailable",
-      "internal"
+      "internal",
+      "timeout"
     ],
     "status": 200,
     "admission": "admin-long"
@@ -14735,7 +14822,8 @@ export const routes = [
       "invalid_request",
       "source_credentials_required",
       "administration_unavailable",
-      "internal"
+      "internal",
+      "timeout"
     ],
     "status": 200,
     "admission": "admin-long"
@@ -15026,7 +15114,8 @@ export const routes = [
       "not_found",
       "invalid_request",
       "revision_mismatch",
-      "source_unavailable"
+      "source_unavailable",
+      "timeout"
     ],
     "status": 202,
     "admission": "browsing"
@@ -15055,7 +15144,8 @@ export const routes = [
       "queue_ended",
       "prepare_not_allowed",
       "conversion_capacity",
-      "not_implemented"
+      "not_implemented",
+      "timeout"
     ],
     "status": 200,
     "admission": "playback"
@@ -15078,7 +15168,8 @@ export const routes = [
       "revision_mismatch",
       "confirmation_mismatch",
       "administration_unavailable",
-      "internal"
+      "internal",
+      "timeout"
     ],
     "status": 200,
     "optionalBody": true,
@@ -15608,7 +15699,8 @@ export const routes = [
     "errors": [
       "invalid_request",
       "unauthorized",
-      "revision_mismatch"
+      "revision_mismatch",
+      "timeout"
     ],
     "status": 204,
     "admission": "default"
@@ -15692,7 +15784,8 @@ export const routes = [
       "not_found",
       "invalid_request",
       "revision_mismatch",
-      "source_unavailable"
+      "source_unavailable",
+      "timeout"
     ],
     "status": 202,
     "admission": "browsing"
@@ -15721,6 +15814,7 @@ export const routes = [
       "downloads_not_allowed",
       "downloads_unavailable",
       "internal",
+      "timeout",
       "revision_required"
     ],
     "status": 200,
@@ -16124,6 +16218,7 @@ export const routes = [
       "revision_mismatch",
       "idempotency_key_reused",
       "internal",
+      "timeout",
       "revision_required"
     ],
     "status": 200,
@@ -16208,6 +16303,7 @@ export const routes = [
       "invalid_request",
       "revision_mismatch",
       "internal",
+      "timeout",
       "revision_required"
     ],
     "status": 200,
@@ -16494,6 +16590,7 @@ export const routes = [
       "internal",
       "storage_executable_invalid",
       "storage_executable_too_old",
+      "timeout",
       "revision_required"
     ],
     "status": 200,
@@ -16521,6 +16618,7 @@ export const routes = [
       "storage_executable_invalid",
       "storage_executable_too_old",
       "internal",
+      "timeout",
       "revision_required"
     ],
     "status": 200,
@@ -16546,6 +16644,7 @@ export const routes = [
       "request_in_progress",
       "administration_unavailable",
       "internal",
+      "timeout",
       "revision_required"
     ],
     "status": 200,
@@ -16661,7 +16760,8 @@ export const routes = [
       "not_permitted",
       "not_found",
       "invalid_request",
-      "internal"
+      "internal",
+      "timeout"
     ],
     "status": 202,
     "optionalBody": true,
@@ -16683,7 +16783,8 @@ export const routes = [
       "not_permitted",
       "not_found",
       "invalid_request",
-      "internal"
+      "internal",
+      "timeout"
     ],
     "status": 202,
     "optionalBody": true,
@@ -16705,7 +16806,8 @@ export const routes = [
       "invalid_request",
       "idempotency_key_reused",
       "downloads_unavailable",
-      "internal"
+      "internal",
+      "timeout"
     ],
     "status": 200,
     "admission": "admin"
@@ -16730,6 +16832,7 @@ export const routes = [
       "not_found",
       "invalid_request",
       "internal",
+      "timeout",
       "revision_required"
     ],
     "status": 202,
@@ -16753,7 +16856,8 @@ export const routes = [
       "revision_mismatch",
       "unsupported_selector",
       "queue_too_large",
-      "queue_building"
+      "queue_building",
+      "timeout"
     ],
     "status": 200,
     "admission": "default"
@@ -16777,7 +16881,8 @@ export const routes = [
       "storage_command_conflict",
       "storage_operation_expired",
       "storage_command_capacity",
-      "internal"
+      "internal",
+      "timeout"
     ],
     "status": 200,
     "admission": "admin"
@@ -16823,6 +16928,7 @@ export const routes = [
       "idempotency_key_reused",
       "rate_limited",
       "internal",
+      "timeout",
       "revision_required"
     ],
     "status": 200,
@@ -16888,7 +16994,8 @@ export const routes = [
       "session_ended",
       "revision_required",
       "revision_mismatch",
-      "rate_limited"
+      "rate_limited",
+      "timeout"
     ],
     "status": 204,
     "admission": "playback"
@@ -16916,7 +17023,8 @@ export const routes = [
       "not_found",
       "downloads_not_allowed",
       "downloads_unavailable",
-      "internal"
+      "internal",
+      "timeout"
     ],
     "status": 200,
     "admission": "default"
@@ -16988,7 +17096,8 @@ export const routes = [
       "not_found",
       "downloads_not_allowed",
       "downloads_unavailable",
-      "internal"
+      "internal",
+      "timeout"
     ],
     "status": 200,
     "admission": "security-fence"
@@ -17009,7 +17118,8 @@ export const routes = [
       "invalid_request",
       "idempotency_key_reused",
       "downloads_unavailable",
-      "internal"
+      "internal",
+      "timeout"
     ],
     "status": 200,
     "admission": "security-fence"
@@ -17062,7 +17172,8 @@ export const routes = [
       "queue_too_large",
       "queue_building",
       "idempotency_key_required",
-      "idempotency_key_reused"
+      "idempotency_key_reused",
+      "timeout"
     ],
     "status": 201,
     "admission": "default"
@@ -17113,7 +17224,8 @@ export const routes = [
       "not_permitted",
       "not_found",
       "invalid_request",
-      "internal"
+      "internal",
+      "timeout"
     ],
     "status": 200,
     "admission": "admin"
@@ -17136,6 +17248,7 @@ export const routes = [
       "revision_mismatch",
       "rate_limited",
       "internal",
+      "timeout",
       "revision_required"
     ],
     "status": 200,
@@ -18311,6 +18424,66 @@ export const routes = [
     "access": "device",
     "requires": "playback",
     "lane": "default",
+    "cost": "page_sized",
+    "bodyLimit": 262144,
+    "errors": [
+      "unauthorized",
+      "not_permitted",
+      "internal",
+      "receiver_required",
+      "capacity_reached",
+      "cast_access_ended",
+      "cast_code_consumed",
+      "cast_code_expired",
+      "cast_code_not_found",
+      "cast_code_revoked",
+      "cast_device_expired",
+      "cast_device_not_found",
+      "cast_device_revoked",
+      "cast_unavailable",
+      "device_required",
+      "entry_not_found",
+      "grant_not_accepted",
+      "grant_not_pending",
+      "group_ended",
+      "group_full",
+      "handoff_expired",
+      "handoff_in_progress",
+      "handoff_not_ready",
+      "handoff_source_conflict",
+      "handoff_source_revision_conflict",
+      "handoff_state_conflict",
+      "host_required",
+      "idempotency_key_reused",
+      "invalid_request",
+      "invite_consumed",
+      "invite_expired",
+      "invite_not_found",
+      "invite_revoked",
+      "invite_wrong_recipient",
+      "media_no_longer_accessible",
+      "member_not_found",
+      "membership_revoked",
+      "not_found",
+      "participant_incompatible",
+      "playback_authority_unavailable",
+      "queue_full",
+      "rate_limited",
+      "receiver_key_mismatch",
+      "revision_conflict",
+      "target_unavailable"
+    ],
+    "status": 200,
+    "admission": "default"
+  },
+  {
+    "id": "social_post_v1_cast_preview",
+    "method": "POST",
+    "path": "/v1/cast/preview",
+    "summary": "Manage shared playback for the signed-in profile",
+    "access": "public",
+    "requires": "session",
+    "lane": "security",
     "cost": "page_sized",
     "bodyLimit": 262144,
     "errors": [
@@ -19747,7 +19920,8 @@ export const routes = [
       "connection_too_slow",
       "feature_restricted",
       "no_tuner_available",
-      "queue_building"
+      "queue_building",
+      "timeout"
     ],
     "status": 201,
     "successStatuses": [
@@ -19773,7 +19947,8 @@ export const routes = [
       "revision_required",
       "revision_mismatch",
       "session_ended",
-      "internal"
+      "internal",
+      "timeout"
     ],
     "status": 204,
     "admission": "security-fence"
@@ -19791,7 +19966,9 @@ export const routes = [
     "errors": [
       "invalid_request",
       "unauthorized",
-      "not_found"
+      "not_found",
+      "revision_mismatch",
+      "timeout"
     ],
     "status": 204,
     "optionalBody": true,
@@ -19820,7 +19997,8 @@ export const routes = [
       "not_found",
       "downloads_not_allowed",
       "downloads_unavailable",
-      "internal"
+      "internal",
+      "timeout"
     ],
     "status": 200,
     "admission": "default"
@@ -19840,7 +20018,8 @@ export const routes = [
       "invalid_request",
       "unauthorized",
       "not_permitted",
-      "not_found"
+      "not_found",
+      "timeout"
     ],
     "status": 204,
     "optionalBody": true,
@@ -19885,7 +20064,8 @@ export const routes = [
       "request_in_progress",
       "source_credentials_required",
       "administration_unavailable",
-      "internal"
+      "internal",
+      "timeout"
     ],
     "status": 200,
     "admission": "admin-long"
@@ -19907,7 +20087,8 @@ export const routes = [
       "source_credentials_required",
       "administration_unavailable",
       "request_in_progress",
-      "internal"
+      "internal",
+      "timeout"
     ],
     "status": 200,
     "admission": "admin-long"
@@ -19928,7 +20109,8 @@ export const routes = [
       "invalid_request",
       "source_credentials_required",
       "administration_unavailable",
-      "internal"
+      "internal",
+      "timeout"
     ],
     "status": 200,
     "admission": "admin-long"
@@ -19974,7 +20156,8 @@ export const routes = [
       "revision_mismatch",
       "rate_limited",
       "internal",
-      "operation_expired"
+      "operation_expired",
+      "timeout"
     ],
     "status": 200,
     "admission": "default"
@@ -19997,7 +20180,8 @@ export const routes = [
       "revision_mismatch",
       "unsupported_selector",
       "queue_too_large",
-      "queue_building"
+      "queue_building",
+      "timeout"
     ],
     "status": 200,
     "admission": "default"
@@ -20022,7 +20206,8 @@ export const routes = [
       "storage_operation_expired",
       "storage_command_capacity",
       "request_in_progress",
-      "internal"
+      "internal",
+      "timeout"
     ],
     "status": 200,
     "admission": "admin-long"
@@ -20802,6 +20987,7 @@ export const routePaths = {
   "social_post_v1_cast_controllers_check": "/v1/cast/controllers/check",
   "social_post_v1_cast_controllers_register": "/v1/cast/controllers/register",
   "social_post_v1_cast_controllers_validate": "/v1/cast/controllers/validate",
+  "social_post_v1_cast_preview": "/v1/cast/preview",
   "social_post_v1_cast_reconnect": "/v1/cast/reconnect",
   "social_post_v1_cast_redeem": "/v1/cast/redeem",
   "social_post_v1_groups": "/v1/groups",

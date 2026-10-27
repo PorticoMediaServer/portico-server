@@ -495,6 +495,7 @@ index personal_jobs_age
 index personal_jobs_state
 index personal_last_played
 index personal_music_radios_recent
+index personal_music_radios_seed
 index personal_play_counts_item
 index personal_play_state
 index personal_playback_runs_item_id_fk

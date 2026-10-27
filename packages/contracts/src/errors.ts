@@ -967,6 +967,12 @@ export const errors = [
     "retry": "never"
   },
   {
+    "code": "timeout",
+    "status": 503,
+    "message": "The operation timed out. Retry shortly.",
+    "retry": "same_request"
+  },
+  {
     "code": "transcode_not_allowed",
     "status": 403,
     "message": "This title needs converting, and converting is turned off for this account.",
