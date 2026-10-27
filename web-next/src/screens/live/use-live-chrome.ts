@@ -97,7 +97,11 @@ export function useLiveChromePort(context: ShellAssemblyContext | undefined, run
   const [facts, setFacts] = useState<GuideFacts>();
   const [publishedRead, publishRead] = useState<ChromeRead>();
   const [refresh, setRefresh] = useState(0);
+  // Publish only at commit, then sample once for this setup's original lifetime.
+  const setupPorts = useRef({fence, channel});
+  useLayoutEffect(() => {setupPorts.current = {fence, channel};});
   useLayoutEffect(() => {
+    const {fence, channel} = setupPorts.current;
     if (!chrome || !fence || !channel || !fenceKey || !runtime) return;
     const options = {kind: channel.kind, sourceId: channel.sourceId, timezone: defaultI18n.region.timeZone ?? Intl.DateTimeFormat().resolvedOptions().timeZone, search: '', sort: 'number' as const};
     let readLive = true;
@@ -153,7 +157,11 @@ export function useLiveChromePort(context: ShellAssemblyContext | undefined, run
   const recordingClaim = useRef<RecordClaim | undefined>(undefined);
   useLayoutEffect(() => {setRecorded(undefined);}, [fenceKey]);
   const [publishedAction, publishAction] = useState<ChromeAction>();
+  // Publish only at commit, then sample once for this setup's original lifetime.
+  const setupPorts1 = useRef({snapshot});
+  useLayoutEffect(() => {setupPorts1.current = {snapshot};});
   useLayoutEffect(() => {
+    const {snapshot} = setupPorts1.current;
     if (!chrome || !read || !expanded || !runtime || !snapshot) return;
     const held: ChromeAction = {id: crypto.randomUUID(), chrome, read, fence: read.fence, channel: read.channel, fenceKey: read.fenceKey,
       mediaAuthority: snapshot.authority, runtime, live: true};
