@@ -72,8 +72,15 @@ func (s *StopRequest) UnmarshalJSON(raw []byte) error {
 }
 
 func (StopRequest) JSONSchema() map[string]any {
-	return map[string]any{"type": "object", "additionalProperties": false, "properties": map[string]any{
-		"positionMs":         map[string]any{"type": "integer", "minimum": -9007199254740991, "maximum": 9007199254740991},
-		"expectedGeneration": map[string]any{"type": "integer", "minimum": 1, "maximum": 9007199254740991},
+	// Presence of a generation selects conditional cleanup, which must never
+	// report progress (even a null position). Keep the alternatives closed so
+	// the generated decoder enforces the same distinction as UnmarshalJSON.
+	return map[string]any{"oneOf": []any{
+		map[string]any{"type": "object", "additionalProperties": false, "properties": map[string]any{
+			"positionMs": map[string]any{"type": "integer", "nullable": true, "minimum": -9007199254740991, "maximum": 9007199254740991},
+		}},
+		map[string]any{"type": "object", "additionalProperties": false, "required": []string{"expectedGeneration"}, "properties": map[string]any{
+			"expectedGeneration": map[string]any{"type": "integer", "minimum": 1, "maximum": 9007199254740991},
+		}},
 	}}
 }
