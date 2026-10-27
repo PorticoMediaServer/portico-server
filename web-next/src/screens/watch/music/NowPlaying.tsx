@@ -12,7 +12,7 @@ import {watchQueueNeighbours} from '../queue-neighbours';
 import {watchMusicSignal} from './signal';
 import {readWatchMusicAudioFacts} from './audio-facts';
 import {fenceKey} from '../../../shell/playback-model';
-import {WatchEqualizerPanel, equalizerAdmit, type WatchEqualizerOpening} from './EqualizerPanel';
+import {WatchEqualizerPanel, hostAdmit, surfaceAdmit, type WatchHostFacts, type WatchReceipt, type WatchSurfaceReceipt} from './EqualizerPanel';
 import type {WatchBindings, WatchScreenProps} from '../types';
 import styles from './now-playing.module.css';
 import type {MusicExpansion} from './expansion-owner';
@@ -38,26 +38,44 @@ export function WatchMusicNowPlaying({binding, snapshot, expanded, onCollapse, p
   const artworkSource = presentation ? binding.artwork.foreground(presentation.posterUrl ?? presentation.backdropUrl, 560, 1, {group: 'playback', priority: 'high'}) : undefined;
   const open = expanded && presentation?.kind === 'music' && !!identity && (!isCurrent || isCurrent()) && (!motion || !!motion.scope);
   useLayoutEffect(() => {if (!open) {setSignalOpen(false); setEqOpen(false); setMoreOpen(false);}}, [open]);
-  // One layout-committed host opening: rendered source facts only, so ordinary position updates
-  // keep it while a source/run/host change retires it before the next action.
-  const [hostOpening, setHostOpening] = useState<WatchEqualizerOpening | null>(null);
-  const publishedOpening = useRef<WatchEqualizerOpening | null>(null);
+  // Immutable rendered facts. A receipt is minted fresh for each layout setup/replay.
+  const [hostReceipt, setHostReceipt] = useState<WatchReceipt | null>(null);
+  const publishedHost = useRef<WatchReceipt | null>(null);
+  const [moreReceipt, setMoreReceipt] = useState<WatchSurfaceReceipt | null>(null), publishedMore = useRef<WatchSurfaceReceipt | null>(null);
+  const [eqReceipt, setEqReceipt] = useState<WatchSurfaceReceipt | null>(null), publishedEq = useRef<WatchSurfaceReceipt | null>(null);
   const fenceAt = snapshot?.fence ? fenceKey(snapshot.fence) : '', presentationAt = snapshot?.presentation?.fence ? fenceKey(snapshot.presentation.fence) : '';
   const presentationKind = snapshot?.presentation?.kind, authority = snapshot?.authority, playbackRun = snapshot?.playback.playbackRun;
   const scope = motion?.scope;
-  const candidate = useMemo<WatchEqualizerOpening | null>(() => !open || !equalizer || presentationKind !== 'music' || !fenceAt || !presentationAt || fenceAt !== presentationAt
-    ? null : {runtime: binding.runtime, port: equalizer, authority, fenceAt, presentationAt, run: playbackRun, ...(isCurrent ? {isCurrent} : {}), ...(scope ? {scope} : {}), live: true},
+  const facts = useMemo<WatchHostFacts | null>(() => !open || !equalizer || presentationKind !== 'music' || !fenceAt || !presentationAt || fenceAt !== presentationAt
+    ? null : {runtime: binding.runtime, port: equalizer, authority, fenceAt, presentationAt, run: playbackRun, ...(isCurrent ? {isCurrent} : {}), ...(scope ? {scope} : {})},
     [open, equalizer, presentationKind, fenceAt, presentationAt, binding.runtime, authority, playbackRun, isCurrent, scope]);
   useLayoutEffect(() => {
-    if (!candidate) {
-      const old = publishedOpening.current; publishedOpening.current = null; if (old) old.live = false;
-      setHostOpening(null); setEqOpen(false); setMoreOpen(false); return;
+    if (!facts) {
+      const old = publishedHost.current; publishedHost.current = null; if (old) old.live = false;
+      setHostReceipt(null); setMoreReceipt(null); setEqReceipt(null); setEqOpen(false); setMoreOpen(false); return;
     }
-    candidate.live = true;
-    publishedOpening.current = candidate;
-    setHostOpening(candidate); setEqOpen(false); setMoreOpen(false);
-    return () => {candidate.live = false; if (publishedOpening.current === candidate) publishedOpening.current = null;};
-  }, [candidate]);
+    const receipt: WatchReceipt = {facts, live: true};
+    publishedHost.current = receipt;
+    setHostReceipt(receipt); setMoreReceipt(null); setEqReceipt(null); setEqOpen(false); setMoreOpen(false);
+    return () => {receipt.live = false; if (publishedHost.current === receipt) publishedHost.current = null;};
+  }, [facts]);
+  useLayoutEffect(() => {
+    if (!moreOpen || !hostReceipt) {const old = publishedMore.current; publishedMore.current = null; if (old) old.live = false; setMoreReceipt(null); return;}
+    const receipt: WatchSurfaceReceipt = {host: hostReceipt.facts, live: true};
+    publishedMore.current = receipt; setMoreReceipt(receipt);
+    return () => {receipt.live = false; if (publishedMore.current === receipt) publishedMore.current = null;};
+  }, [moreOpen, hostReceipt]);
+  useLayoutEffect(() => {
+    if (!eqOpen || !hostReceipt) {const old = publishedEq.current; publishedEq.current = null; if (old) old.live = false; setEqReceipt(null); return;}
+    const receipt: WatchSurfaceReceipt = {host: hostReceipt.facts, live: true};
+    publishedEq.current = receipt; setEqReceipt(receipt);
+    return () => {receipt.live = false; if (publishedEq.current === receipt) publishedEq.current = null;};
+  }, [eqOpen, hostReceipt]);
+  // Back retires this EQ receipt synchronously before the panel closes.
+  const closeEq = (receipt: WatchSurfaceReceipt | null) => {
+    if (!receipt || publishedEq.current !== receipt || !receipt.live) return;
+    receipt.live = false; publishedEq.current = null; setEqReceipt(null); setEqOpen(false);
+  };
   const present = motion ? motion.present : open;
   if (!present || !presentation || !identity || isCurrent && !isCurrent()) return null;
   const send = (intent: WatchIntent) => { if (!open || motion?.scope && !motion.scope.current()) return;void dispatchWatch(binding.runtime, snapshot, intent).catch(binding.reportError); };
@@ -80,10 +98,10 @@ export function WatchMusicNowPlaying({binding, snapshot, expanded, onCollapse, p
         expanded layout={phone ? 'phone' : 'desktop'} translate={t} />
       <span className={styles.spacer} />
       {equalizer ? <button ref={moreAnchor} type="button" className={styles.glass} aria-label={t('player.more')} aria-haspopup="menu" aria-expanded={moreOpen}
-        onClick={() => {if (equalizerAdmit(hostOpening, publishedOpening, candidate)) setMoreOpen(value => !value);}}><Icon name="i-more" size={18} /></button> : null}
-      {equalizer ? <Menu open={moreOpen && open} onOpenChange={value => {if (equalizerAdmit(hostOpening, publishedOpening, candidate)) setMoreOpen(value);}} title={t('player.more')} anchorRef={moreAnchor} returnFocusRef={moreAnchor} presentation="anchored" width={280}
+        onClick={() => {if (hostAdmit(hostReceipt, publishedHost, facts)) setMoreOpen(value => !value);}}><Icon name="i-more" size={18} /></button> : null}
+      {equalizer ? <Menu open={moreOpen && open} onOpenChange={value => {if (surfaceAdmit(moreReceipt, publishedMore, publishedHost, facts)) setMoreOpen(value);}} title={t('player.more')} anchorRef={moreAnchor} returnFocusRef={moreAnchor} presentation="anchored" width={280}
         items={[{id: 'equalizer', label: t('next.media.eq.title'), description: t(settings?.enabled === true ? 'next.settings.on' : 'next.settings.off'),
-          onSelect: () => {if (!equalizerAdmit(hostOpening, publishedOpening, candidate)) return; setMoreOpen(false); setEqOpen(true);}}]} /> : null}
+          onSelect: () => {if (!surfaceAdmit(moreReceipt, publishedMore, publishedHost, facts)) return; setMoreOpen(false); setEqOpen(true);}}]} /> : null}
       {can('pause') || can('play') ? <button type="button" className={styles.glass} onClick={() => send({kind: presentation.playing ? 'pause' : 'play'})}>
         <Icon name={presentation.playing ? 'i-pause' : 'i-play'} size={18} />{presentation.playing ? t('next.dock.pause') : t('next.dock.play')}</button> : null}
     </header>
@@ -114,9 +132,10 @@ export function WatchMusicNowPlaying({binding, snapshot, expanded, onCollapse, p
       </div>
     </div>
     <aside className={styles.side} aria-label={eqOpen ? t('next.media.eq.title') : t('next.music.upNext')}>
-      {eqOpen && equalizer && hostOpening ? <WatchEqualizerPanel opening={hostOpening} rendered={candidate} published={publishedOpening}
+      {eqOpen && equalizer && facts && hostReceipt && eqReceipt ? <WatchEqualizerPanel receipt={eqReceipt} rendered={eqReceipt} published={publishedEq}
+        host={facts} hostReceipt={hostReceipt} publishedHost={publishedHost}
         runtime={binding.runtime} port={equalizer} {...(isCurrent ? {isCurrent} : {})} {...(scope ? {scope} : {})}
-        close={() => setEqOpen(false)}
+        close={() => closeEq(eqReceipt)}
         openSettings={() => {if (!open) return; void router.navigate({to: '/settings', search: () => ({scope: 'account' as const, section: 'music'})});}} />
         : <>
         <h2>{t('next.music.upNext')}</h2>

@@ -2,74 +2,80 @@ import {useMemo, useRef, useState, useSyncExternalStore, type RefObject} from 'r
 import {defaultI18n} from '@i18n';
 import {Button} from '../../../kit/controls';
 import {DeviceEqualizer, type EqualizerPort} from '../../../kit/media';
-import {sameFence} from '../../../../../packages/player-core/src/index.ts';
 import {fenceKey} from '../../../shell/playback-model';
-import type {WebPlaybackRuntimeSnapshot, WebShellPlaybackRuntime} from '../../../platform/playback';
+import type {WebShellPlaybackRuntime} from '../../../platform/playback';
 
 const t = defaultI18n.t;
 
-/** One published host opening, minted in layout from the rendered playback facts. */
-export type WatchEqualizerOpening = {
+/** Immutable facts of one rendered host opening. They never carry a live/authority field. */
+export type WatchHostFacts = {
   runtime: WebShellPlaybackRuntime; port: EqualizerPort; authority: object;
   fenceAt: string; presentationAt: string; run: number;
   isCurrent?: () => boolean; scope?: Readonly<{current(): boolean}>;
-  live: boolean;
 };
+/** One layout receipt for a host or surface opening. A replay allocates a fresh object. */
+export type WatchReceipt<F = WatchHostFacts> = {facts: F; live: boolean};
+export type WatchSurfaceReceipt = {host: WatchHostFacts; live: boolean};
 
-/** The live source still being the admitted one. Position/preference updates never replace it. */
-export const equalizerFactsCurrent = (held: WatchEqualizerOpening): boolean => {
-  if (!held.live) return false;
+export const hostFactsCurrent = (held: WatchHostFacts): boolean => {
   const value = held.runtime.getSnapshot();
   return !value.disposed && value.authority === held.authority && !!value.fence && fenceKey(value.fence) === held.fenceAt
     && value.playback.playbackRun === held.run && value.presentation?.kind === 'music'
     && !!value.presentation.fence && fenceKey(value.presentation.fence) === held.presentationAt
     && held.runtime.equalizerPort === held.port;
 };
-
-/** The original host (isCurrent + scope) and published receipt, checked before and after the
- * facts read so a predicate that reenters or retires cannot slip a write through. */
-export const equalizerAdmit = (held: WatchEqualizerOpening | null, published: RefObject<WatchEqualizerOpening | null>, rendered: WatchEqualizerOpening | null): held is WatchEqualizerOpening => {
-  if (!held || !rendered || held !== rendered || published.current !== held || !held.live) return false;
-  if (held.isCurrent && !held.isCurrent()) return false;
-  if (held.scope && !held.scope.current()) return false;
-  if (!equalizerFactsCurrent(held)) return false;
-  if (published.current !== held) return false;
-  if (held.isCurrent && !held.isCurrent()) return false;
-  if (held.scope && !held.scope.current()) return false;
-  return equalizerFactsCurrent(held);
+const hostPredicates = (held: WatchHostFacts) => (!held.isCurrent || held.isCurrent()) && (!held.scope || held.scope.current());
+/** Host receipt: published identity, predicates and facts, rechecked after each external read. */
+export const hostAdmit = (held: WatchReceipt | null, published: RefObject<WatchReceipt | null>, rendered: WatchHostFacts | null): held is WatchReceipt => {
+  if (!held || !held.live || !rendered || held.facts !== rendered || published.current !== held) return false;
+  if (!hostPredicates(held.facts)) return false;
+  if (!hostFactsCurrent(held.facts)) return false;
+  if (published.current !== held || !hostPredicates(held.facts)) return false;
+  return hostFactsCurrent(held.facts);
+};
+/** A More/EQ surface receipt proves its own opening AND the host receipt it was drawn under. */
+export const surfaceAdmit = (held: WatchSurfaceReceipt | null, published: RefObject<WatchSurfaceReceipt | null>,
+  publishedHost: RefObject<WatchReceipt | null>, host: WatchHostFacts | null): held is WatchSurfaceReceipt => {
+  if (!held || !held.live || !host || held.host !== host || publishedHost.current?.facts !== host || published.current !== held) return false;
+  if (!hostPredicates(host)) return false;
+  if (!hostFactsCurrent(host)) return false;
+  if (publishedHost.current?.facts !== host || published.current !== held || !hostPredicates(host)) return false;
+  return hostFactsCurrent(host);
 };
 
-/** The drawn More › Equalizer panel (music-plus frame 12): the side panel swaps Up next for the
- * same device record Settings edits. The parent owns the published opening; this view only shows
- * it while the render facts are that opening and every action closes over it. */
-export function WatchEqualizerPanel({opening, rendered, published, runtime, port, isCurrent, scope, close, openSettings}: Readonly<{
-  opening: WatchEqualizerOpening | null; rendered: WatchEqualizerOpening | null;
-  published: RefObject<WatchEqualizerOpening | null>;
+/** The drawn More › Equalizer panel (music-plus frame 12). The parent owns the host and EQ
+ * receipts; this view shows them only while they are the published pair and every action closes
+ * over that EQ receipt. */
+export function WatchEqualizerPanel({receipt, rendered, published, host, hostReceipt, publishedHost, runtime, port, isCurrent, scope, close, openSettings}: Readonly<{
+  receipt: WatchSurfaceReceipt | null; rendered: WatchSurfaceReceipt | null;
+  published: RefObject<WatchSurfaceReceipt | null>;
+  host: WatchHostFacts | null; hostReceipt: WatchReceipt | null; publishedHost: RefObject<WatchReceipt | null>;
   runtime: WebShellPlaybackRuntime; port: EqualizerPort;
   isCurrent?: () => boolean; scope?: Readonly<{current(): boolean}>;
   close: () => void; openSettings: () => void;
 }>) {
   const [error, setError] = useState<unknown>();
-  const matches = (held: WatchEqualizerOpening | null) => !!held && held.runtime === runtime && held.port === port
-    && held.isCurrent === isCurrent && held.scope === scope;
-  const shown = matches(opening) && opening === rendered && published.current === opening ? opening : null;
+  const matches = (value: WatchHostFacts | null) => !!value && value.runtime === runtime && value.port === port
+    && value.isCurrent === isCurrent && value.scope === scope;
+  const shown = matches(host) && matches(receipt?.host ?? null) && receipt === rendered && published.current === receipt
+    && publishedHost.current?.facts === host ? receipt : null;
   const guarded = useMemo<EqualizerPort>(() => ({
     getSnapshot: () => port.getSnapshot(), subscribe: listener => port.subscribe(listener), start: () => port.start(),
     change: async value => {
-      if (!equalizerAdmit(opening, published, rendered)) throw new DOMException('Equalizer opening retired', 'AbortError');
+      if (!surfaceAdmit(receipt, published, publishedHost, host)) throw new DOMException('Equalizer opening retired', 'AbortError');
       return port.change(value);
     },
     reset: async () => {
-      if (!equalizerAdmit(opening, published, rendered)) throw new DOMException('Equalizer opening retired', 'AbortError');
+      if (!surfaceAdmit(receipt, published, publishedHost, host)) throw new DOMException('Equalizer opening retired', 'AbortError');
       return port.reset();
     },
-  }), [opening, rendered, published, port]);
+  }), [receipt, published, publishedHost, host, port]);
   const value = useSyncExternalStore(guarded.subscribe, guarded.getSnapshot, () => null);
-  const back = () => {if (equalizerAdmit(opening, published, rendered)) close();};
-  const settings = () => {if (equalizerAdmit(opening, published, rendered)) openSettings();};
-  const report = (failure: unknown) => {if (equalizerAdmit(opening, published, rendered)) setError(failure);};
+  const back = () => {if (surfaceAdmit(receipt, published, publishedHost, host)) close();};
+  const settings = () => {if (surfaceAdmit(receipt, published, publishedHost, host)) openSettings();};
+  const report = (failure: unknown) => {if (surfaceAdmit(receipt, published, publishedHost, host)) setError(failure);};
   return <div data-watch-equalizer data-layout="panel">
-    {shown && value ? <DeviceEqualizer port={guarded} layout="panel" reportError={report} onBack={back} onOpenSettings={settings} />
+    {shown && hostReceipt && value ? <DeviceEqualizer port={guarded} layout="panel" reportError={report} onBack={back} onOpenSettings={settings} />
       : shown ? <div><p role="status">{t('next.states.loading')}</p><Button size="small" onClick={back}>{t('next.media.eq.backQueue')}</Button></div> : null}
     {error !== undefined && shown && <p role="alert">{t('next.states.pageFailedBody')}</p>}
   </div>;

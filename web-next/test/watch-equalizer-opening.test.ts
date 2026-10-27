@@ -1,11 +1,11 @@
 /**
- * FX229 / BLK-PLAY-016: the player's Equalizer opening and the Now playing More menu are each
- * bound to one published host opening.
+ * FX229 / BLK-PLAY-016: the host, More menu and Equalizer openings each have their own published
+ * receipt, minted fresh in layout from immutable rendered facts.
  *
- * Real playback fences and the actual panel/admission helpers are used; DeviceEqualizer and Menu
- * are stub hosts. The harness runs hooks eagerly and has no React StrictMode or unmount replay;
- * host replay is approximated by collapsing and reopening the expanded host, which is the same
- * layout cleanup and mint path. Source only: unrun here.
+ * Real fences and the actual admission helpers are used; DeviceEqualizer/Menu are stub hosts. The
+ * harness runs hooks eagerly and has no React StrictMode or unmount replay; a cleanup/setup replay
+ * is modelled by a fresh layout setup with the same facts, not by relaunching the whole player.
+ * Source only: unrun here.
  */
 import test from 'node:test';
 import assert from 'node:assert/strict';
@@ -21,11 +21,8 @@ async function panelModule() {
   const h = createRenderer();
   const media = {DeviceEqualizer: 'DeviceEqualizer', ListeningNotice: 'ListeningNotice', SignalLine: 'SignalLine', SignalPath: 'SignalPath'};
   const panel = await componentModule(new URL('../src/screens/watch/music/EqualizerPanel.tsx', import.meta.url), {
-    react: h.react,
-    '@i18n': {defaultI18n: {t: (key: string) => key}},
-    '../../../kit/controls': {Button: 'Button'},
-    '../../../kit/media': media,
-    '../../../shell/playback-model': {fenceKey},
+    react: h.react, '@i18n': {defaultI18n: {t: (key: string) => key}}, '../../../kit/controls': {Button: 'Button'},
+    '../../../kit/media': media, '../../../shell/playback-model': {fenceKey},
   });
   return {h, media, panel};
 }
@@ -40,67 +37,77 @@ async function mountPanel() {
   const state: any = {disposed: false, authority, fence: originalFence, playback: {playbackRun: 7}, presentation: {kind: 'music', fence: originalFence}, equalizerPort: port};
   const runtime = {getSnapshot: () => state, equalizerPort: port};
   let host = true, scopeAllowed = true;
-  const isCurrent = () => host;
-  const scope = {current: () => scopeAllowed};
-  const published: {current: any} = {current: null};
+  const isCurrent = () => host, scope = {current: () => scopeAllowed};
   const calls = {close: 0, settings: 0};
-  const show = (value: any = state, reuse?: any) => {
-    const computed = reuse ?? {runtime, port, authority: value.authority, fenceAt: fenceKey(value.fence), presentationAt: fenceKey(value.presentation.fence),
-      run: value.playback.playbackRun, isCurrent, scope, live: true};
-    published.current = computed;
-    const paint = () => tree(h.render(() => panel.WatchEqualizerPanel({opening: computed, rendered: computed, published, runtime: runtime as any,
-      port: port as any, isCurrent, scope, close: () => {calls.close++;}, openSettings: () => {calls.settings++;}})));
+  const facts = (value: any = state) => ({runtime: runtime as any, port: port as any, authority: value.authority,
+    fenceAt: fenceKey(value.fence), presentationAt: fenceKey(value.presentation.fence), run: value.playback.playbackRun, isCurrent, scope});
+  const receipts: {host: any; surface: any; publishedHost: {current: any}; published: {current: any}} = {host: null, surface: null, publishedHost: {current: null}, published: {current: null}};
+  const setup = (value: any = state, reuseFacts?: any) => {
+    const hostFacts = reuseFacts ?? facts(value);
+    const hostReceipt = {facts: hostFacts, live: true};
+    const surface = {host: hostFacts, live: true};
+    receipts.host = hostReceipt; receipts.surface = surface;
+    receipts.publishedHost.current = hostReceipt; receipts.published.current = surface;
+    const paint = () => tree(h.render(() => panel.WatchEqualizerPanel({receipt: surface, rendered: surface, published: receipts.published,
+      host: hostFacts, hostReceipt, publishedHost: receipts.publishedHost, runtime: runtime as any, port: port as any,
+      isCurrent, scope, close: () => {calls.close++;}, openSettings: () => {calls.settings++;}})));
     paint();
-    return {computed, tree: paint()};
+    return {hostFacts, hostReceipt, surface, tree: paint()};
   };
-  return {calls, changes, held, isCurrent, published, scope, setHost: (value: boolean) => {host = value;}, setScope: (value: boolean) => {scopeAllowed = value;}, show, state};
+  return {calls, changes, facts, held, receipts, scope, setHost: (value: boolean) => {host = value;}, setScope: (value: boolean) => {scopeAllowed = value;}, setup, state};
 }
 
-test('a live opening writes the original port; an ordinary rerender keeps the receipt', async () => {
-  const {changes, show} = await mountPanel();
-  const first = show();
+test('a live EQ opening writes the original port; ordinary rerender keeps it', async () => {
+  const {changes, setup} = await mountPanel();
+  const first = setup();
   const eq = one(first.tree, 'DeviceEqualizer').props;
   await eq.port.change(equalizer(false));
   assert.equal(changes.length, 1);
-  const again = show(undefined as any, first.computed);
+  const again = setup(undefined as any, first.hostFacts);
   assert.equal(one(again.tree, 'DeviceEqualizer').props.port, eq.port);
 });
 
-test('a same-key replacement withholds the old panel and its callbacks', async () => {
-  const {calls, changes, published, show, state} = await mountPanel();
-  const first = show();
+test('a fresh setup with the same facts retires the old EQ callbacks', async () => {
+  const {calls, changes, setup} = await mountPanel();
+  const first = setup();
   const oldEq = one(first.tree, 'DeviceEqualizer').props;
-  const replacement = {...first.computed, authority: {}, live: true};
-  const second = show(state, replacement);
-  assert.notEqual(second.computed, first.computed);
-  assert.equal(published.current, replacement);
-  await assert.rejects(oldEq.port.change(equalizer(true)), /retired/i);
+  const second = setup(undefined as any, first.hostFacts);
+  assert.notEqual(second.surface, first.surface);
   oldEq.onBack();
-  oldEq.onOpenSettings();
-  oldEq.reportError(new Error('late'));
-  await tick();
-  assert.equal(changes.length, 0);
+  await assert.rejects(oldEq.port.change(equalizer(false)), /retired/i);
   assert.equal(calls.close, 0);
-  assert.equal(calls.settings, 0);
+  const successor = one(second.tree, 'DeviceEqualizer').props;
+  await successor.port.change(equalizer(false));
+  assert.equal(changes.length, 1, 'the successor receipt works; the old one did not write');
 });
 
-test('the original host predicate is rechecked before a write', async () => {
-  const {changes, scope, show} = await mountPanel();
-  const v = show();
+test('a same-key host replacement withholds the old panel', async () => {
+  const {facts, setup} = await mountPanel();
+  const first = setup();
+  const oldEq = one(first.tree, 'DeviceEqualizer').props;
+  const replaced = setup(undefined as any, facts({...stateLike(first), authority: {}}));
+  assert.notEqual(replaced.hostFacts, first.hostFacts);
+  await assert.rejects(oldEq.port.change(equalizer(true)), /retired/i);
+});
+
+const stateLike = (value: any) => ({authority: value.hostFacts.authority, fence: fence(), playback: {playbackRun: 7}, presentation: {kind: 'music', fence: fence()}});
+
+test('the original predicates are rechecked before a write', async () => {
+  const {changes, scope, setup} = await mountPanel();
+  const v = setup();
   const eq = one(v.tree, 'DeviceEqualizer').props;
   let checks = 0;
   (scope as any).current = () => ++checks === 1;
   await assert.rejects(eq.port.change(equalizer(false)), /retired/i);
-  assert.equal(changes.length, 0, 'a host that flipped during the predicate stops the write');
+  assert.equal(changes.length, 0);
 });
 
 test('an absent device record offers Back while it loads', async () => {
-  const {held, show} = await mountPanel();
+  const {held, setup} = await mountPanel();
   held.value = null;
-  const v = show();
+  const v = setup();
   assert.equal(all(v.tree, 'DeviceEqualizer').length, 0);
-  const back = all(v.tree, 'Button').find(node => (Array.isArray(node.props.children) ? node.props.children.join('') : node.props.children) === 'next.media.eq.backQueue');
-  assert.ok(back);
+  assert.ok(all(v.tree, 'Button').some(node => (Array.isArray(node.props.children) ? node.props.children.join('') : node.props.children) === 'next.media.eq.backQueue'));
 });
 
 async function nowPlaying() {
@@ -113,21 +120,15 @@ async function nowPlaying() {
     dock: {local: {kind: 'music', expanded: true, fence: queueFence}, remote: null}, queue: {}, sequence: 1};
   const runtime = {getSnapshot: () => snapshot, equalizerPort: port};
   const app = await componentModule(new URL('../src/screens/watch/music/NowPlaying.tsx', import.meta.url), {
-    react: h.react,
-    '@i18n': {defaultI18n: {t: (key: string) => key}},
+    react: h.react, '@i18n': {defaultI18n: {t: (key: string) => key}},
     '@core/presentation/kit-model/index.ts': {playbackIdentity: () => ({title: 'Song', subtitle: [{text: 'Artist'}]})},
-    '../../../kit/artwork': {Artwork: 'Artwork'},
-    '../../../kit/Icon': {Icon: 'Icon'},
-    '../../../kit/controls': {Slider: 'Slider'},
-    '../../../kit/overlays': {Menu: 'Menu'},
-    '../../../kit/media': media,
+    '../../../kit/artwork': {Artwork: 'Artwork'}, '../../../kit/Icon': {Icon: 'Icon'}, '../../../kit/controls': {Slider: 'Slider'},
+    '../../../kit/overlays': {Menu: 'Menu'}, '../../../kit/media': media,
     '../model': {dispatchWatch: async () => {}, watchClock: () => '0:00', watchSeek: () => null, watchSeekBounds: () => null},
-    '../queue-neighbours': {watchQueueNeighbours: () => ({})},
-    './signal': {watchMusicSignal: () => undefined},
-    './audio-facts': {readWatchMusicAudioFacts: () => ({})},
-    '../../../shell/playback-model': {fenceKey},
+    '../queue-neighbours': {watchQueueNeighbours: () => ({})}, './signal': {watchMusicSignal: () => undefined},
+    './audio-facts': {readWatchMusicAudioFacts: () => ({})}, '../../../shell/playback-model': {fenceKey},
     '../../../router': {router: {navigate: async () => {}}},
-    './EqualizerPanel': {WatchEqualizerPanel: 'WatchEqualizerPanel', equalizerAdmit: panel.equalizerAdmit},
+    './EqualizerPanel': {WatchEqualizerPanel: 'WatchEqualizerPanel', hostAdmit: panel.hostAdmit, surfaceAdmit: panel.surfaceAdmit},
   });
   const binding = {runtime: runtime as any, artwork: {foreground: () => undefined}, environment: {locale: 'en'}, skips: {back: 10, forward: 30}, reportError: () => {}};
   let expanded = true;
@@ -136,37 +137,70 @@ async function nowPlaying() {
     paint();
     return paint();
   };
-  return {app, show, setExpanded: (value: boolean) => {expanded = value;}, snapshot};
+  return {show, setExpanded: (value: boolean) => {expanded = value;}, snapshot};
 }
 
-const equalizerVisible = (v: any[]) => v.some(node => node.type === 'WatchEqualizerPanel');
+const panelHost = (v: any[]) => all(v, 'WatchEqualizerPanel')[0];
+const moreButton = (v: any[]) => all(v, 'button').find(node => node.props['aria-label'] === 'player.more');
 
-test('the actual saved More menu refuses a close/reopen of the same playback', async () => {
+test('the actual saved More dismissal cannot clear a successor menu', async () => {
   const {setExpanded, show} = await nowPlaying();
   let v = show();
-  const menu = one(v, 'Menu').props;
-  const savedSelect = menu.items[0].onSelect, savedChange = menu.onOpenChange;
-  savedSelect();
+  const firstMenu = one(v, 'Menu').props;
+  firstMenu.onOpenChange(true);
   v = show();
-  assert.ok(equalizerVisible(v), 'the menu opens the side panel');
+  assert.equal(one(v, 'Menu').props.open, true);
   setExpanded(false);
   show();
   setExpanded(true);
   v = show();
-  assert.ok(!equalizerVisible(v), 'the reopened host starts on Up next');
-  savedSelect();
-  savedChange(false);
-  savedChange(true);
+  moreButton(v)!.props.onClick();
   v = show();
-  assert.ok(!equalizerVisible(v), 'the old menu cannot revive the Equalizer');
-  assert.equal(one(v, 'Menu').props.open, false, 'an old dismissal cannot clear the successor menu');
+  assert.equal(one(v, 'Menu').props.open, true, 'the successor More menu is open');
+  firstMenu.onOpenChange(false);
+  v = show();
+  assert.equal(one(v, 'Menu').props.open, true, 'the old dismissal cannot close the successor');
+  firstMenu.items[0].onSelect();
+  v = show();
+  assert.equal(panelHost(v), undefined, 'the old selection cannot open the successor EQ');
 });
 
-test('an ordinary position update keeps the actual menu callback live', async () => {
-  const {show, snapshot} = await nowPlaying();
-  const v = show();
+test('the actual saved EQ Back cannot close a reopened EQ', async () => {
+  const {show} = await nowPlaying();
+  let v = show();
+  moreButton(v)!.props.onClick();
+  v = show();
   one(v, 'Menu').props.items[0].onSelect();
+  v = show();
+  const firstPanel = panelHost(v);
+  assert.ok(firstPanel);
+  firstPanel.props.close();
+  v = show();
+  assert.equal(panelHost(v), undefined);
+
+  moreButton(v)!.props.onClick();
+  v = show();
+  one(v, 'Menu').props.items[0].onSelect();
+  v = show();
+  const successor = panelHost(v);
+  assert.ok(successor);
+  firstPanel.props.close();
+  v = show();
+  assert.ok(panelHost(v), 'the saved Back cannot close the successor EQ');
+  successor.props.close();
+  v = show();
+  assert.equal(panelHost(v), undefined);
+});
+
+test('an ordinary position update keeps the actual EQ opening live', async () => {
+  const {show, snapshot} = await nowPlaying();
+  let v = show();
+  moreButton(v)!.props.onClick();
+  v = show();
+  one(v, 'Menu').props.items[0].onSelect();
+  const opened = show();
   const position = {...snapshot, presentation: {...snapshot.presentation, positionSeconds: 42}};
   const after = show(position);
-  assert.ok(equalizerVisible(after), 'the same opening keeps the panel across an ordinary position render');
+  assert.ok(panelHost(after));
+  assert.equal(panelHost(after), panelHost(opened));
 });
