@@ -269,3 +269,48 @@ test('late scoped transport refusal cannot detach a reported successor occurrenc
  tv.reply({...status,occurrence:{...occurrence,sessionId:'successor',generation:8}});await settle();refuse(new Error('attachment retired'));await settle();
  assert.equal(h.controller.getSnapshot().remoteIdentity?.occurrence.sessionId,'successor');assert.equal(h.controller.getSnapshot().phase,'casting');assert.equal(tv.ended,undefined);h.controller.dispose();
 });
+
+test('renewal requires original sender validation and correlated receiver completion before controls resume',async()=>{
+ const tv=receiver('TV','tv-a'), saved=new Map<string,string>();
+ const next={...binding,targetFamilyId:'target-successor',targetGeneration:'2'};
+ const controller=new CastController({origin:context.origin,displayName:'Phone',controllerContext:context,describe:async()=> 'Film',
+  controllerStorage:{get:k=>saved.get(k),set:(k,v)=>{saved.set(k,v);}},
+  api:{request:async<T,>(path:string,_method?:string,body?:unknown)=>{
+   if(path==='/v1/cast/bootstrap')return {bootstrap:{id:binding.bootstrapId,code:'ABC123'}} as T;
+   const request=body as {binding:typeof binding;attemptId:string};return {binding:request.binding,attemptId:request.attemptId,ticket:'b'.repeat(43)} as T;
+  }}});
+ const started=controller.start(tv.transport,'movie',{title:'Film'},0);await settle();
+ tv.reply({type:'paired',binding,controlToken:'a'.repeat(48),controller:controllerStamp});assert.equal(await started,true);
+ tv.reply({type:'status',controller:controllerStamp,occurrence,itemId:'movie',positionSeconds:2,durationSeconds:20});await settle();
+ const renewedStamp={...controllerStamp,controllerGeneration:controllerStamp.controllerGeneration+1};
+ tv.reply({type:'renewal-offer',attemptId:'renew-1',binding:next,previousController:controllerStamp,controller:renewedStamp});await settle();
+ const ack=tv.sent.find(m=>m.type==='renewal-ack');assert.ok(ack);assert.equal(controller.getSnapshot().controlPending,true);
+ const before=tv.sent.length;controller.seek(3);assert.equal(tv.sent.length,before);
+ tv.reply({type:'renewal-complete',attemptId:'other',controller:controllerStamp});assert.equal(controller.getSnapshot().controlPending,true);
+ tv.reply({type:'renewal-complete',attemptId:'renew-1',controller:renewedStamp});await settle();
+ assert.equal(controller.getSnapshot().controlPending,false);
+ assert.equal(JSON.parse(saved.get(castProofKey(context,'tv-a'))!).binding.targetFamilyId,'target-successor');
+ controller.seek(3);assert.equal(tv.sent.at(-1)?.type,'seek');controller.dispose();
+});
+
+test('renewal reentrancy cannot validate or publish into a successor',async()=>{
+ for(const retirement of ['pending','storage','complete'] as const){
+  const tv=receiver('TV','tv-a'),saved=new Map<string,string>();let validations=0,armed=false,storageWrites=0;
+  const next={...binding,targetFamilyId:'target-successor',targetGeneration:'2'},nextStamp={...controllerStamp,controllerGeneration:controllerStamp.controllerGeneration+1};
+  let controller:CastController;
+  controller=new CastController({origin:context.origin,displayName:'Phone',controllerContext:context,describe:async()=> 'Film',
+   controllerStorage:{get:k=>saved.get(k),set:(k,v)=>{storageWrites++;if(armed&&retirement==='storage')controller.dismiss();saved.set(k,v);}},
+   api:{request:async<T,>(path:string,_method?:string,body?:unknown)=>{
+    if(path==='/v1/cast/bootstrap')return {bootstrap:{id:binding.bootstrapId,code:'ABC123'}} as T;
+    validations++;const request=body as {binding:typeof binding;attemptId:string};return {binding:request.binding,attemptId:request.attemptId,ticket:'b'.repeat(43)} as T;
+   }}});
+  const started=controller.start(tv.transport,'movie',{title:'Film'},0);await settle();tv.reply({type:'paired',binding,controlToken:'a'.repeat(48),controller:controllerStamp});assert.equal(await started,true);
+  tv.reply({type:'status',controller:controllerStamp,occurrence,itemId:'movie',positionSeconds:2,durationSeconds:20});await settle();
+  const before=validations,baseWrites=storageWrites;armed=true;
+  const off=controller.subscribe(()=>{const state=controller.getSnapshot();if(retirement==='pending'&&state.controlPending||retirement==='complete'&&!state.controlPending&&state.remoteIdentity?.controller.controllerGeneration===nextStamp.controllerGeneration)controller.dismiss();});
+  tv.reply({type:'renewal-offer',attemptId:'renew-1',binding:next,previousController:controllerStamp,controller:nextStamp});await settle();
+  if(retirement==='pending'){assert.equal(validations,before);assert.equal(storageWrites,baseWrites);assert(!tv.sent.some(m=>m.type==='renewal-ack'));}
+  else {assert(tv.sent.some(m=>m.type==='renewal-ack'));const beforeComplete=tv.sent.length;tv.reply({type:'renewal-complete',attemptId:'renew-1',controller:nextStamp});await settle();assert.equal(controller.getSnapshot().phase,'off');assert.equal(tv.sent.length,beforeComplete);}
+  off();controller.dispose();
+ }
+});

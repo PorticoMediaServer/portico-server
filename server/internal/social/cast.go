@@ -66,13 +66,34 @@ type CastBootstrapResponse struct {
 }
 
 type CastRedeemRequest struct {
-	ProtocolVersion string `json:"protocolVersion"`
-	Code            string `json:"code"`
-	DeviceID        string `json:"deviceId"`
-	DisplayName     string `json:"displayName,omitempty"`
+	ProtocolVersion     string `json:"protocolVersion"`
+	Code                string `json:"code"`
+	ExpectedBootstrapID string `json:"expectedBootstrapId"`
+	DeviceID            string `json:"deviceId"`
+	DisplayName         string `json:"displayName,omitempty"`
 	// Source is the caller's network, set by the route: failed attempts are
 	// charged to it as well as to the server-wide budget.
 	Source string `json:"-"`
+}
+
+// CastPreviewRequest names an unredeemed offer; it carries no device credential.
+type CastPreviewRequest struct {
+	ProtocolVersion string `json:"protocolVersion"`
+	Code            string `json:"code"`
+	DeviceID        string `json:"deviceId"`
+	Source          string `json:"-"`
+}
+type CastPreviewResponse struct {
+	ProtocolVersion       string           `json:"protocolVersion"`
+	ServerTime            string           `json:"serverTime"`
+	ControllerBootstrapID string           `json:"controllerBootstrapId"`
+	ExpiresAt             string           `json:"expiresAt"`
+	Scope                 CastPreviewScope `json:"scope"`
+}
+type CastPreviewScope struct {
+	Authority string `json:"authority"`
+	AccountID string `json:"accountId"`
+	ProfileID string `json:"profileId"`
 }
 
 type CastReconnectRequest struct {
@@ -257,15 +278,86 @@ func (s *Store) CastBootstrapStatus(ctx context.Context, p identity.Principal, i
 	return CastBootstrapResponse{ProtocolVersion: Protocol, ServerTime: stamp(s.ms()), Bootstrap: bootstrap}, nil
 }
 
-// CastRedeem exchanges a pairing code for a device token and a viewer session.
-// It is the one unauthenticated route in this group — the receiver has no
-// credential yet — so failed attempts are budgeted (see castAttempt) and the
-// code is single use. The code is consumed, the device token stored and the
-// session issued in one transaction: a code is never spent on a session that
-// could not be issued.
+type castOffer struct {
+	id, authority, account, profile, role, name, capabilities, family, senderDevice string
+	epoch                                                                           int
+	expires                                                                         int64
+}
+
+func castSenderSignerCurrent(ctx context.Context, tx *sql.Tx, family string) (bool, error) {
+	var revoked int
+	err := tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM portico_admitted_families a JOIN hosted_signing_revocations r ON r.key_id=a.signer_key_id WHERE a.family_id=? AND a.signer_key_id<>'')`, family).Scan(&revoked)
+	return revoked == 0, err
+}
+
+// castOfferTx is shared by preview and accepted redemption; it checks the
+// original sender, not whichever family currently occupies the receiver row.
+func (s *Store) castOfferTx(ctx context.Context, tx *sql.Tx, code string) (castOffer, error) {
+	var o castOffer
+	var state string
+	e := tx.QueryRowContext(ctx, `SELECT id,authority,account_id,profile_id,role,account_epoch,display_name,capabilities,state,expires_at_ms,pairing_family_id,pairing_device_id FROM social_cast_bootstraps WHERE code_digest=?`, digest(code)).Scan(&o.id, &o.authority, &o.account, &o.profile, &o.role, &o.epoch, &o.name, &o.capabilities, &state, &o.expires, &o.family, &o.senderDevice)
+	if errors.Is(e, sql.ErrNoRows) {
+		return o, credentialFault("cast_code_not_found", 404, "That pairing code is not valid.")
+	}
+	if e != nil {
+		return o, e
+	}
+	switch {
+	case state == "redeemed":
+		return o, credentialFault("cast_code_consumed", 410, "That pairing code has already been used.")
+	case state == "cancelled":
+		return o, credentialFault("cast_code_revoked", 410, "That pairing code was cancelled.")
+	case state != "pending" || s.ms() >= o.expires:
+		return o, credentialFault("cast_code_expired", 410, "That pairing code has expired.")
+	}
+	expected := identity.Principal{Viewer: identity.Viewer{ServerID: s.Identity.ID(), Authority: o.authority, AccountID: o.account, ProfileID: o.profile, Role: o.role}, Epoch: o.epoch}
+	family, e := s.Identity.FamilyAuthorityTx(ctx, tx, o.family, expected)
+	if errors.Is(e, identity.ErrUnauthorized) || errors.Is(e, identity.ErrForbidden) {
+		return o, credentialFault("cast_access_ended", 403, "This pairing authority has ended.")
+	}
+	if e != nil {
+		return o, e
+	}
+	currentSigner, e := castSenderSignerCurrent(ctx, tx, o.family)
+	if e != nil {
+		return o, e
+	}
+	if !currentSigner {
+		return o, credentialFault("cast_access_ended", 403, "This pairing authority has ended.")
+	}
+	if o.senderDevice == "" || family.DeviceID != o.senderDevice {
+		return o, credentialFault("cast_access_ended", 403, "This pairing authority has ended.")
+	}
+	if _, e = s.castHorizonTx(ctx, tx, castIdentity{o.authority, o.account, o.profile, o.role, o.epoch}); e != nil {
+		return o, e
+	}
+	return o, nil
+}
+
+func (s *Store) CastPreview(ctx context.Context, req CastPreviewRequest) (CastPreviewResponse, error) {
+	var preview CastPreviewResponse
+	code, ok := normalizeCode(req.Code)
+	if req.ProtocolVersion != Protocol || !ValidID(req.DeviceID) || !ok {
+		return preview, errInvalid
+	}
+	if s.Identity == nil {
+		return preview, &Fault{Code: "cast_unavailable", Status: 503, Message: "Cast pairing is not available.", Retryable: true}
+	}
+	_, e := s.castAttempt(ctx, req.Source, func(tx *sql.Tx) (CastReceiverSession, error) {
+		o, e := s.castOfferTx(ctx, tx, code)
+		if e != nil {
+			return CastReceiverSession{}, e
+		}
+		preview = CastPreviewResponse{ProtocolVersion: Protocol, ServerTime: stamp(s.ms()), ControllerBootstrapID: o.id, ExpiresAt: stamp(o.expires), Scope: CastPreviewScope{Authority: o.authority, AccountID: o.account, ProfileID: o.profile}}
+		return CastReceiverSession{}, nil
+	})
+	return preview, e
+}
+
+// CastRedeem consumes only the previously previewed bootstrap on acceptance.
 func (s *Store) CastRedeem(ctx context.Context, req CastRedeemRequest) (CastReceiverSession, error) {
 	var out CastReceiverSession
-	if req.ProtocolVersion != Protocol || !ValidID(req.DeviceID) {
+	if req.ProtocolVersion != Protocol || !ValidID(req.DeviceID) || !ValidID(req.ExpectedBootstrapID) {
 		return out, errInvalid
 	}
 	code, ok := normalizeCode(req.Code)
@@ -279,25 +371,15 @@ func (s *Store) CastRedeem(ctx context.Context, req CastRedeemRequest) (CastRece
 		return out, &Fault{Code: "cast_unavailable", Status: 503, Message: "Cast pairing is not available.", Retryable: true}
 	}
 	return s.castAttempt(ctx, req.Source, func(tx *sql.Tx) (CastReceiverSession, error) {
-		var bootstrapID, authority, account, profile, role, name, capabilities, state string
-		var epoch int
-		var expires int64
-		e := tx.QueryRowContext(ctx, `SELECT id,authority,account_id,profile_id,role,account_epoch,display_name,capabilities,state,expires_at_ms FROM social_cast_bootstraps WHERE code_digest=?`, digest(code)).Scan(&bootstrapID, &authority, &account, &profile, &role, &epoch, &name, &capabilities, &state, &expires)
-		if errors.Is(e, sql.ErrNoRows) {
-			return out, credentialFault("cast_code_not_found", 404, "That pairing code is not valid.")
-		}
+		o, e := s.castOfferTx(ctx, tx, code)
 		if e != nil {
 			return out, e
 		}
-		now := s.ms()
-		switch {
-		case state == "redeemed":
-			return out, credentialFault("cast_code_consumed", 410, "That pairing code has already been used.")
-		case state == "cancelled":
-			return out, credentialFault("cast_code_revoked", 410, "That pairing code was cancelled.")
-		case state != "pending" || now >= expires:
-			return out, credentialFault("cast_code_expired", 410, "That pairing code has expired.")
+		if o.id != req.ExpectedBootstrapID {
+			return out, credentialFault("cast_code_not_found", 404, "That pairing code is not valid.")
 		}
+		bootstrapID, authority, account, profile, role, name, capabilities, epoch := o.id, o.authority, o.account, o.profile, o.role, o.name, o.capabilities, o.epoch
+		now := s.ms()
 		if _, e = tx.ExecContext(ctx, `UPDATE social_cast_bootstraps SET state='redeemed',device_id=?,redeemed_at_ms=?,attempts=attempts+1 WHERE id=?`, req.DeviceID, now, bootstrapID); e != nil {
 			return out, e
 		}
@@ -351,6 +433,49 @@ func (s *Store) issueCast(ctx context.Context, tx *sql.Tx, id castIdentity, devi
 	var rowID, priorFamily string
 	var generation int64
 	e := tx.QueryRowContext(ctx, `SELECT id,generation,session_family_id FROM social_cast_devices WHERE authority=? AND account_id=? AND profile_id=? AND device_id=?`, id.authority, id.account, id.profile, deviceID).Scan(&rowID, &generation, &priorFamily)
+	var carried string
+	if semantics == "rotation" {
+		if e != nil || priorFamily == "" {
+			return out, identity.ErrUnauthorized
+		}
+		expected := identity.Principal{Viewer: identity.Viewer{ServerID: s.Identity.ID(), Authority: id.authority, AccountID: id.account, ProfileID: id.profile, Role: identity.TierMember}, Epoch: id.epoch, Grant: identity.GrantCastTarget}
+		parent, err := s.Identity.CastTargetParentTx(ctx, tx, priorFamily, expected)
+		if err != nil {
+			return out, err
+		}
+		var actualDevice string
+		if err = tx.QueryRowContext(ctx, `SELECT id FROM identity_devices WHERE id=? AND installation_id=? AND authority=? AND account_id=?`, parent.DeviceID, "cast-"+strings.TrimPrefix(rowID, "cdv_"), id.authority, id.account).Scan(&actualDevice); err != nil {
+			return out, identity.ErrUnauthorized
+		}
+
+		var controllerID string
+		q := tx.QueryRowContext(ctx, `SELECT id FROM social_cast_controllers WHERE target_id=? AND bootstrap_id=? AND target_family_id=? AND target_generation=? AND authority=? AND account_id=? AND profile_id=?`, rowID, r.bootstrapID, priorFamily, generation, id.authority, id.account, id.profile).Scan(&controllerID)
+		if q != nil && !errors.Is(q, sql.ErrNoRows) {
+			return out, q
+		}
+		if q == nil {
+			controller, err := readCastController(ctx, tx, controllerID)
+			if err != nil {
+				return out, err
+			}
+			v := controller.binding.Scope
+			expected := identity.Principal{Viewer: identity.Viewer{ServerID: v.ServerID, Authority: v.Authority, AccountID: v.AccountID, ProfileID: v.ProfileID, Role: controller.role}, Epoch: controller.epoch}
+			family, err := s.Identity.FamilyAuthorityTx(ctx, tx, v.SenderFamilyID, expected)
+			signerCurrent, signerErr := castSenderSignerCurrent(ctx, tx, v.SenderFamilyID)
+			if signerErr != nil {
+				return out, signerErr
+			}
+			if err == nil && signerCurrent && controller.epoch == id.epoch && family.DeviceID == v.SenderDeviceID {
+				carried = controllerID
+			}
+			if err != nil && !errors.Is(err, identity.ErrUnauthorized) && !errors.Is(err, identity.ErrForbidden) {
+				return out, err
+			}
+		}
+		if _, err := tx.ExecContext(ctx, `UPDATE social_cast_controllers SET ticket_digest='',ticket_attempt='',ticket_expires_ms=0 WHERE target_id=?`, rowID); err != nil {
+			return out, err
+		}
+	}
 	switch {
 	case errors.Is(e, sql.ErrNoRows):
 		rowID, generation = token("cdv_"), 1
@@ -362,8 +487,8 @@ func (s *Store) issueCast(ctx context.Context, tx *sql.Tx, id castIdentity, devi
 		return out, e
 	default:
 		generation++
-		if _, e = tx.ExecContext(ctx, `UPDATE social_cast_devices SET token_digest=?,previous_token_digest=?,previous_valid_until_ms=?,bootstrap_id=?,receiver_id=?,display_name=?,capabilities=?,generation=?,state='active',expires_at_ms=?,last_seen_ms=? WHERE id=?`,
-			digest(value), r.previous, r.previousUntil, r.bootstrapID, r.receiverID, r.name, r.capabilities, generation, expires, now, rowID); e != nil {
+		if _, e = tx.ExecContext(ctx, `UPDATE social_cast_devices SET token_digest=?,previous_token_digest=?,previous_valid_until_ms=?,bootstrap_id=?,receiver_id=?,role=?,account_epoch=?,display_name=?,capabilities=?,generation=?,state='active',expires_at_ms=?,last_seen_ms=? WHERE id=?`,
+			digest(value), r.previous, r.previousUntil, r.bootstrapID, r.receiverID, id.role, id.epoch, r.name, r.capabilities, generation, expires, now, rowID); e != nil {
 			return out, e
 		}
 	}
@@ -371,14 +496,27 @@ func (s *Store) issueCast(ctx context.Context, tx *sql.Tx, id castIdentity, devi
 	// The new session derives from the one this screen held before, or, on a
 	// first pairing, from the session that asked for the code.
 	derivedFrom := priorFamily
-	if derivedFrom == "" {
-		if e = tx.QueryRowContext(ctx, `SELECT pairing_family_id FROM social_cast_bootstraps WHERE id=?`, r.bootstrapID).Scan(&derivedFrom); e != nil && !errors.Is(e, sql.ErrNoRows) {
+	if semantics == "initial" {
+		if e = tx.QueryRowContext(ctx, `SELECT pairing_family_id FROM social_cast_bootstraps WHERE id=?`, r.bootstrapID).Scan(&derivedFrom); e != nil {
 			return out, e
 		}
+	}
+	if derivedFrom == "" {
+		return out, identity.ErrUnauthorized
 	}
 	session, family, e := s.castSessionTx(ctx, tx, id, device, derivedFrom)
 	if e != nil {
 		return out, e
+	}
+	if semantics == "initial" && priorFamily != "" {
+		if _, e = tx.ExecContext(ctx, `UPDATE social_cast_controllers SET ticket_digest='',ticket_attempt='',ticket_expires_ms=0 WHERE target_id=?`, rowID); e != nil {
+			return out, e
+		}
+	}
+	if carried != "" {
+		if _, e = tx.ExecContext(ctx, `UPDATE social_cast_controllers SET target_family_id=?,target_generation=? WHERE id=? AND target_id=? AND bootstrap_id=? AND target_family_id=? AND target_generation=?`, family, generation, carried, rowID, r.bootstrapID, priorFamily, generation-1); e != nil {
+			return out, e
+		}
 	}
 	if priorFamily != "" && priorFamily != family {
 		if e = s.Identity.RetireFamilyTx(ctx, tx, id.authority, id.account, id.profile, priorFamily); e != nil {
@@ -387,6 +525,15 @@ func (s *Store) issueCast(ctx context.Context, tx *sql.Tx, id castIdentity, devi
 	}
 	if _, e = tx.ExecContext(ctx, `UPDATE social_cast_devices SET session_family_id=? WHERE id=?`, family, rowID); e != nil {
 		return out, e
+	}
+	if carried != "" {
+		current, err := readCastController(ctx, tx, carried)
+		if err != nil {
+			return out, err
+		}
+		if err = s.controllerCurrent(ctx, tx, current); err != nil {
+			return out, err
+		}
 	}
 	if semantics == "initial" {
 		if e = s.Identity.BindCastQueueTransferTx(ctx, tx, r.bootstrapID, rowID, family, session.deviceID, generation, now); e != nil {
