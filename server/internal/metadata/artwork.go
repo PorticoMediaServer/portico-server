@@ -54,7 +54,7 @@ func (s *Service) EntityArtworkIdentity(ctx context.Context, t RepairTarget, rol
 	}
 	tx := gated.Tx()
 	defer gated.Rollback()
-	if _, err = readRepairEntity(ctx, tx, t); err != nil {
+	if err = validateArtworkTarget(ctx, tx, t); err != nil {
 		return "", "", err
 	}
 	digest, mime, _, _, err := artworkSelection(ctx, tx, t, role, subject, thumbnail)
@@ -133,7 +133,7 @@ func (s *Service) entityArtworkVariant(ctx context.Context, t RepairTarget, role
 	}
 	tx := gated.Tx()
 	defer gated.Rollback()
-	if _, err = readRepairEntity(ctx, tx, t); err != nil {
+	if err = validateArtworkTarget(ctx, tx, t); err != nil {
 		return nil, "", err
 	}
 	digest, mime, selectedTarget, selectedRole, err := artworkSelection(ctx, tx, t, role, subject, false)
