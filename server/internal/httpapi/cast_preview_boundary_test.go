@@ -117,7 +117,10 @@ func TestCastReconnectExpiredBearerAndRevokedParent(t *testing.T) {
 				t.Fatal(err)
 			}
 			expiry := time.Now().Add(-time.Minute).UTC().Format(time.RFC3339)
-			if _, err := f.db.Exec(`UPDATE authorization_family_tokens SET expires_at=? WHERE family_id=?; UPDATE authorization_access SET expires_at=? WHERE hash=?`, expiry, family, expiry, identity.Digest(target.Session.AccessToken)); err != nil {
+			// Only the target's exact access token expires. authorization_access is
+			// the read projection of that row, so writing the projection itself is
+			// neither possible nor needed.
+			if _, err := f.db.Exec(`UPDATE authorization_family_tokens SET expires_at=? WHERE token_hash=?`, expiry, identity.Digest(target.Session.AccessToken)); err != nil {
 				t.Fatal(err)
 			}
 			if revoke {
@@ -161,7 +164,9 @@ func TestCastReconnectRefusalsPreserveAcceptedGraph(t *testing.T) {
 			var err error
 			switch kind {
 			case "access_revoked":
-				_, err = f.db.Exec(`UPDATE authorization_access SET revoked=1 WHERE hash=?`, identity.Digest(target.Session.AccessToken))
+				// An ended access token is the token row's own retirement; the
+				// projection reports it and is never written directly.
+				_, err = f.db.Exec(`UPDATE authorization_family_tokens SET retired=1 WHERE token_hash=?`, identity.Digest(target.Session.AccessToken))
 			case "horizon":
 				_, err = f.db.Exec(`UPDATE authorization_session_families SET authorization_horizon=? WHERE id=?`, time.Now().Add(-time.Minute).UTC().Format(time.RFC3339), family)
 			case "device_missing":
