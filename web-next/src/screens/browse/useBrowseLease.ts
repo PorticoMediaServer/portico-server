@@ -1,4 +1,4 @@
-import {useLayoutEffect, useState} from 'react';
+import {useRef, useLayoutEffect, useState} from 'react';
 import {LibraryContentService} from '@core/library-content.ts';
 import {screenLifetime, type ScreenContext} from '../detail/context';
 import {BrowseController, type BrowseSource} from './controller';
@@ -13,7 +13,11 @@ export type BrowseLease = Readonly<{
  * Each returned API/action keeps the original route predicate and authority. */
 export function useBrowseLease(context: ScreenContext, sourceKey: string, routeKey: string, routeCurrent: () => boolean, playbackOwner?: unknown): BrowseLease | undefined {
   const [published, publish] = useState<BrowseLease>();
+  // Publish only at commit, then sample once for this setup's original lifetime.
+  const setupPorts = useRef({routeCurrent});
+  useLayoutEffect(() => {setupPorts.current = {routeCurrent};});
   useLayoutEffect(() => {
+    const {routeCurrent} = setupPorts.current;
     const original = screenLifetime(context);
     let live = true;
     const current = () => live && original.current() && routeCurrent();

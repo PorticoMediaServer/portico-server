@@ -1,4 +1,4 @@
-import {useEffect, useState} from 'react';
+import {useRef, useEffect, useState} from 'react';
 import {defaultI18n} from '@i18n';
 import type {LibraryContentApi, ContentScope} from '@core/library-content.ts';
 import {LibraryManagementService} from '@core/library-management.ts';
@@ -9,7 +9,11 @@ export function LibraryEmpty({api, scope, libraryId, libraryName, owner, onActiv
   api: LibraryContentApi; scope: ContentScope; libraryId: string; libraryName: string; owner: boolean; onActivity: () => void;
 }>) {
   const [firstScan, setFirstScan] = useState(false);
+  // Publish only at commit, then sample once for this setup's original lifetime.
+  const setupPorts = useRef({scope});
+  useEffect(() => {setupPorts.current = {scope};});
   useEffect(() => {
+    const {scope} = setupPorts.current;
     setFirstScan(false);
     if (!owner) return;
     let current = true;

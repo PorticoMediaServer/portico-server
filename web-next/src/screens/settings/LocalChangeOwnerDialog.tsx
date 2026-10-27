@@ -35,7 +35,11 @@ export function LocalChangeOwnerDialog({open, port, onClose, onError}: {
   const [selected, setSelected] = useState(''), [mode, setMode] = useState<LocalOwnerChoiceMode>('existing');
   const [username, setUsername] = useState(''), [name, setName] = useState(''), [newPassword, setNewPassword] = useState('');
   const [password, setPassword] = useState(''), [busy, setBusy] = useState(false), [error, setError] = useState<unknown>();
+  // Publish only at commit, then sample once for this setup's original lifetime.
+  const setupPorts = useRef({onError, onClose});
+  useLayoutEffect(() => {setupPorts.current = {onError, onClose};});
   useLayoutEffect(() => {
+    const {onError, onClose} = setupPorts.current;
     if (!open || !port) return;
     // The callbacks and port belong to this opening; a later prop is never adopted.
     const fresh: Witness = {port, onClose, onError, live: true, busy: false, abort: new AbortController()};

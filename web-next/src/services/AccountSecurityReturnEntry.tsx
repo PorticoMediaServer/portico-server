@@ -48,7 +48,11 @@ export function AccountSecurityReturnEntry({arrival}: {arrival: AccountSecurityE
       if (current(original)) setError(value);
     } finally {original.busy = false; if (current(original)) setBusy(false);}
   };
+  // Publish only at commit, then sample once for this setup's original lifetime.
+  const setupPorts = useRef({complete});
+  useLayoutEffect(() => {setupPorts.current = {complete};});
   useLayoutEffect(() => {
+    const {complete} = setupPorts.current;
     const original: Opening = {live: true, mounted: true, busy: true, abort: new AbortController()}; life.current = original;
     void (async () => {
       const signal = original.abort.signal, journal = browserSecurityJournal();

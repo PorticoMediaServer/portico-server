@@ -1,4 +1,4 @@
-import {useLayoutEffect, useState} from 'react';
+import {useRef, useLayoutEffect, useState} from 'react';
 import type {LegacyGuideOptions} from '@core/guide/legacy-source.ts';
 import type {WebShellPlaybackRuntime} from '../../platform/playback';
 import type {ScreenContext} from '../detail/context';
@@ -30,7 +30,11 @@ export type LiveLease = {
 export function useLiveLease(context: ScreenContext, optionsKey: string, routeKey: string, routeCurrent: () => boolean,
   playbackOwner: WebShellPlaybackRuntime | undefined, revision: number): LiveLease | undefined {
   const [published, publish] = useState<LiveLease>();
+  // Publish only at commit, then sample once for this setup's original lifetime.
+  const setupPorts = useRef({routeCurrent});
+  useLayoutEffect(() => {setupPorts.current = {routeCurrent};});
   useLayoutEffect(() => {
+    const {routeCurrent} = setupPorts.current;
     let live = true, authorityFailed = false;
     const current = () => live && !authorityFailed && context.isCurrent() && routeCurrent();
     const screen: ScreenContext = {...context, isCurrent: current};
