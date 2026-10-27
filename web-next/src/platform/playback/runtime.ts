@@ -1398,7 +1398,7 @@ export class WebShellPlaybackRuntime {
   /** Root34's general Up next list uses only this captured server queue. */
   /** One admitted listening record over the existing chapters, lyrics and queue services.
    * It captures the exact original target/source and re-proves it after every external predicate;
-   * no player, session, queue, engine or second source is created. */
+   * any observed retirement disposes the record synchronously. No player/session/queue/engine is created. */
   captureListening(fence: PlaybackFence, lifetime: WebListeningLifetime): WebListeningPort | undefined {
     if (fence.kind !== 'queue' || !this.matches(fence) || this.stack.mode !== 'server' || this.group?.matches(fence)) return undefined;
     const stack = this.stack, view = stack.queue.getSnapshot().view, session = stack.queue.currentSession(), playback = stack.service.getSnapshot();
@@ -1409,8 +1409,9 @@ export class WebShellPlaybackRuntime {
       || session.queue?.queueId !== view.queue.id || session.queue.entryId !== fence.entryId) return undefined;
     const target = Object.freeze({libraryId, itemId: fence.itemId, sessionId: session.id, sessionGeneration: fence.generation,
       sourceId: fence.sourceId, versionId, playbackRun: playback.playbackRun, queueId: view.queue.id, entryId: fence.entryId});
-    const source = this.source;
-    const combined = (caller?: AbortSignal) => AbortSignal.any([stack.life.signal, this.life.signal, lifetime.signal, ...(caller ? [caller] : [])]);
+    // Original transports are captured once; no later source lookup supplies them.
+    const source = this.source, request = source.api.request.bind(source.api), requestLyrics = source.api.requestLyrics.bind(source.api);
+    const combined = (command?: AbortSignal) => AbortSignal.any([stack.life.signal, this.life.signal, lifetime.signal, ...(command ? [command] : [])]);
     /** Exact original record: runtime/stack/source plus the captured target, run and queue occurrence. */
     const reprove = (): boolean => {
       if (!this.current(stack) || !this.matches(fence) || this.group?.matches(fence) || lifetime.signal.aborted || !lifetime.isCurrent()) return false;
@@ -1422,38 +1423,40 @@ export class WebShellPlaybackRuntime {
         && currentView.queue.id === target.queueId && currentView.queue.currentEntryId === target.entryId
         && currentPlayback.playbackRun === target.playbackRun;
     };
-    /** Original bound request closures: admission before and after the awaited IO, combined signals. */
-    const guarded = <T>(work: (signal: AbortSignal) => Promise<T>, caller?: AbortSignal): Promise<T> => {
+    const call = <T>(work: (signal: AbortSignal) => Promise<T>, command?: AbortSignal): Promise<T> => {
       if (!reprove()) return Promise.reject(new Error('stale_listening_port'));
-      return work(combined(caller)).then(value => {
-        if (!reprove()) throw new Error('stale_listening_port');
-        return value;
-      });
+      return work(combined(command)).then(value => {if (!reprove()) throw new Error('stale_listening_port'); return value;});
     };
-    const api = Object.freeze({
-      request: <T>(path: string, method?: string, body?: unknown, signal?: AbortSignal) =>
-        guarded(combinedSignal => source.api.request<T>(path, method, body, combinedSignal), signal),
-      requestLyrics: <T>(path: string, method?: string, body?: unknown, signal?: AbortSignal) =>
-        guarded(combinedSignal => source.api.requestLyrics<T>(path, method, body, combinedSignal), signal),
-    });
-    const chapters = new PlayerChaptersService({api, scope: source.contentScope, pageSize: 100});
-    const lyrics = new LyricsService(api, source.contentScope, {libraryId, itemId: fence.itemId, sessionId: session.id,
-      sessionGeneration: fence.generation, sourceId: fence.sourceId});
+    const bindCommand = (command: WebListeningLifetime) => ({signal: combined(command.signal),
+      isCurrent: () => !command.signal.aborted && command.isCurrent() && reprove()});
+    /** Caller, runtime, stack, source and queue retirement all retire this record. */
+    const observe = (retired: () => void) => {
+      const check = () => {if (!reprove()) retired();};
+      const offs = [this.subscribe(check), stack.queue.subscribe(check)];
+      const lifeOff = () => {stack.life.signal.removeEventListener('abort', check); this.life.signal.removeEventListener('abort', check);};
+      stack.life.signal.addEventListener('abort', check, {once: true});
+      this.life.signal.addEventListener('abort', check, {once: true});
+      return () => {for (const off of offs) off(); lifeOff();};
+    };
     const queue = this.queueList(fence, lifetime);
-    return createWebListeningPort({fence, lifetime, target, current: reprove, chapters,
+    return createWebListeningPort({fence, lifetime, target, current: reprove, request, requestLyrics,
       chaptersTarget: {libraryId, itemId: fence.itemId, sessionId: session.id, sessionGeneration: fence.generation, sourceId: fence.sourceId},
-      lyrics, lyricsEnabled: () => source.settings.lyricsEnabled?.() === true, ...(queue ? {queue} : {}),
-      policy: (expected, revision, intent, caller) => {
+      makeChapters: api => new PlayerChaptersService({api, scope: source.contentScope, pageSize: 100}),
+      makeLyrics: api => new LyricsService(api, source.contentScope, {libraryId, itemId: fence.itemId, sessionId: session.id,
+        sessionGeneration: fence.generation, sourceId: fence.sourceId}),
+      lyricsEnabled: () => source.settings.lyricsEnabled?.() === true, observe, ...(queue ? {queue} : {}),
+      policy: (expected, revision, intent, command) => {
         if (!reprove()) return Promise.reject(new Error('stale_listening_port'));
-        return stack.queue.setQueuePolicy(expected, revision, intent,
-          {signal: combined(caller.signal), isCurrent: () => reprove()});
+        return stack.queue.setQueuePolicy(expected, revision, intent, bindCommand(command));
       },
-      save: (queueId, name, caller, onProgress) => {
+      save: (queueId, name, command, onProgress) => {
         if (!reprove()) return Promise.reject(new Error('stale_listening_port'));
-        return stack.queue.saveAsPlaylist(queueId, name, save => {if (reprove()) onProgress?.(save);}, combined(caller.signal));
+        const bound = bindCommand(command);
+        return stack.queue.saveAsPlaylist(queueId, name, save => {if (bound.isCurrent()) onProgress?.(save);}, bound.signal);
       },
-      seek: (seconds, caller) => {
-        if (!reprove() || caller.signal.aborted || !caller.isCurrent()) return Promise.reject(new Error('stale_listening_port'));
+      seek: (seconds, command) => {
+        const bound = bindCommand(command);
+        if (!bound.isCurrent()) return Promise.reject(new Error('stale_listening_port'));
         return this.seek(fence, seconds);
       },
     });
