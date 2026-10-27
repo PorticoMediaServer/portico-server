@@ -20,10 +20,10 @@ function RouteContent() {
     const entry = state.location.state.__TSR_key;
     return typeof entry === 'string' && entry.length ? JSON.stringify([state.location.href, entry]) : undefined;
   }});
-  const commits = useMemo<RouteFadeCommits>(() => ({subscribe: listener => router.subscribe('onRendered', event => {
+  const commits = useMemo<RouteFadeCommits>(() => { /* Preserve the original ownership/invalidation keys. */ void owner; return ({subscribe: listener => router.subscribe('onRendered', event => {
     const entry = event.toLocation.state.__TSR_key;
     if (typeof entry === 'string' && entry.length) listener(JSON.stringify([event.toLocation.href, entry]));
-  })}), [router, owner]);
+  })}); }, [router, owner]);
   // The recovery witness is selected from the actual location object, independently of the
   // optional motion route key above: a missing history entry must not collapse every href, and a
   // new location object with the same href is still a new recovery lifetime.
@@ -35,10 +35,6 @@ function RouteContent() {
   const target = useMemo(() => ({get current() { return routeMotionOwnedByBrowser() ? null : content.current; }}), []);
   useRouteFade(target, routeKey, commits);
   useLayoutEffect(() => { finishRouteMotion(); }, [routeKey]);
-  // The destination boundary wraps only the outlet: the top bar, rail and phone navigation stay
-  // mounted through a destination failure, while a ShellRoot failure stays a router/app-level failure
-  // rather than becoming a destination recovery.
-  // Its recovery lifetime is the witness above (actual location, href, entry, owner scope).
   return <main id="portico-content" ref={content} data-route-content data-shell-page tabIndex={-1}><BootstrapContent><DestinationErrorBoundary witness={recovery}><Outlet /></DestinationErrorBoundary></BootstrapContent></main>;
 }
 export function ShellRoot() {

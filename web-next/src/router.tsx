@@ -1,10 +1,11 @@
-import {createRootRoute, createRoute, createRouter, lazyRouteComponent, redirect} from '@tanstack/react-router';
+import {createRootRoute, createRoute, createRouter, lazyRouteComponent, redirect, type AnyRoute} from '@tanstack/react-router';
 import {WebScreenOutlet, webScreens} from './route-registry-view';
 import type {WebScreenId, WebScreenSearchValidator} from './route-registry';
 import {browserEntryDestination, profileSettingsAliasPath, profileSettingsDestination} from './route-registry-destination';
 import {gallerySearch} from './platform/gallery-search';
 import {accountReturnPath} from './route-registry-return';
 import {ShellRoot} from './shell/Root';
+import {ChildRouteError, RootErrorRethrow} from './shell/DestinationError';
 import {NotFoundScreen} from './shell/NotFound';
 import {useShellBindings} from './shell/bindings';
 import {HomeScreen} from './screens/home/Home';
@@ -17,7 +18,8 @@ if (typeof location !== 'undefined' && typeof history !== 'undefined') localDevi
 
 function BoundHome() { const binding = useShellBindings(); return binding ? <HomeScreen {...binding.home} /> : null; }
 
-export const rootRoute = createRootRoute({component: ShellRoot, notFoundComponent: NotFoundScreen});
+// A root/shell failure is the app's, not a destination's: rethrow it to the App last resort.
+export const rootRoute = createRootRoute({component: ShellRoot, notFoundComponent: NotFoundScreen, errorComponent: RootErrorRethrow});
 // Each screen owns its component/registration; the shared router owns only stable URLs.
 const screenSearch = (id: WebScreenId, fallback?: WebScreenSearchValidator) => (raw: Record<string, unknown>) => webScreens.validateSearch(id, raw, fallback);
 const screen = (id: WebScreenId) => function RegisteredScreen() {return <WebScreenOutlet id={id} />;};
@@ -62,8 +64,14 @@ const devRoutes = import.meta.env.DEV ? [createRoute({
   getParentRoute: () => rootRoute, path: '/dev/kit', validateSearch: gallerySearch,
   component: lazyRouteComponent(() => import('./dev/KitGallery'), 'KitGallery'),
 })] : [];
+// Each actual child destination owns the approved page failure, installed through its supported
+// options update before the tree is built. There is no global page-failure default.
+const installChildError = (route: AnyRoute) => route.update({errorComponent: ChildRouteError});
+for (const route of [...destinations, ...devRoutes]) installChildError(route);
 export const routeTree = rootRoute.addChildren([...destinations, ...devRoutes]);
 // The initial route must paint before there is a document snapshot to animate.
 // The shell's real-render listener enables native transitions for later routes.
-export const router = createRouter({routeTree, defaultViewTransition: false, scrollRestorationBehavior: 'instant'});
+// The global catch boundary would consume a root rethrow before App's last resort; per-child
+// errorComponents still catch their own destinations.
+export const router = createRouter({routeTree, defaultViewTransition: false, scrollRestorationBehavior: 'instant', disableGlobalCatchBoundary: true});
 declare module '@tanstack/react-router' { interface Register { router: typeof router } }

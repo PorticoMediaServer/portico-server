@@ -2,9 +2,15 @@ import assert from 'node:assert/strict';
 
 /**
  * FX-156 / BLK-WEB-001 destination recovery regression source. The specimen mounts the real router,
- * ShellRoot and Shell chrome with finite fixture data, and installs the destination fault through the
- * actual route's public options update. The caller supplies and owns the browser/origin.
+ * ShellRoot/Shell chrome and the real App LastResortBoundary with finite fixture data, and installs
+ * faults through the actual route options with exact restoration. The caller supplies the browser.
  * Authored only — not executed.
+ *
+ * Bounded gap, handed to the owner: the presenter exposes no controlled action port, so this check
+ * cannot capture the actual onPress closures. Re-appending a saved DOM button is not that capture
+ * (React's delegated handler is updated or absent), so saved-old Retry/Home refusal is not asserted
+ * here; it remains a code-reviewed property of the receipt-bound closures. A controlled onRetry/onHome
+ * port on the presenter is the exact seam needed to assert it.
  */
 export async function checkDestinationRecovery(page, origin) {
   await page.goto(`${origin}/src/dev/entries/destination-recovery.html`, {waitUntil: 'networkidle'});
@@ -14,28 +20,22 @@ export async function checkDestinationRecovery(page, origin) {
   const home = page.getByRole('button', {name: /Go to Home/});
   const shell = () => page.evaluate(() => window.destinationRecovery.shellMarker());
   try {
-    // The real shell chrome is mounted around the destination.
     assert.equal(await shell(), true, 'real shell chrome is mounted');
 
-    // A render fault keeps the shell and shows the approved destination failure.
+    // Render fault: approved child page inside the real shell, bounded retry, release recovery.
     await page.evaluate(() => {window.destinationRecovery.fault('render'); return window.destinationRecovery.navigate('/search');});
     await failure.waitFor();
-    assert.equal(await shell(), true, 'shell chrome survives the destination failure');
+    assert.equal(await shell(), true, 'shell chrome survives a destination failure');
     assert.equal(await retry.count(), 1);
     assert.equal(await home.count(), 1);
-
-    // Still-faulted retry stays the bounded failure, not a crash or a latch.
     await retry.click();
     await failure.waitFor();
     assert.equal(await page.locator('[data-destination-ok]').count(), 0);
-
-    // Release, then Try again recovers the destination.
     await page.evaluate(() => window.destinationRecovery.fault('none'));
     await retry.click();
     await page.locator('[data-destination-ok]').waitFor();
-    assert.equal(await failure.count(), 0);
 
-    // A layout-effect fault takes the same path.
+    // Layout-effect fault takes the same bounded path.
     await page.evaluate(() => {window.destinationRecovery.fault('effect'); return window.destinationRecovery.navigate('/search');});
     await failure.waitFor();
     assert.equal(await shell(), true);
@@ -43,38 +43,74 @@ export async function checkDestinationRecovery(page, origin) {
     await retry.click();
     await page.locator('[data-destination-ok]').waitFor();
 
-    // A same-href fresh history entry is a new witness: release first, assert still failed, then enter.
-    await page.evaluate(() => {window.destinationRecovery.fault('render'); return window.destinationRecovery.navigate('/search');});
-    await failure.waitFor();
-    await page.evaluate(() => window.destinationRecovery.fault('none'));
-    await page.waitForTimeout(150);
-    assert.equal(await failure.count(), 1, 'release alone must not unlatch the failed destination');
-    await page.evaluate(() => window.destinationRecovery.entry());
-    await page.locator('[data-destination-ok]').waitFor();
-    assert.equal(await failure.count(), 0);
-
-    // A scope replacement is a new witness too.
-    await page.evaluate(() => {window.destinationRecovery.fault('render'); return window.destinationRecovery.navigate('/search');});
-    await failure.waitFor();
-    await page.evaluate(() => window.destinationRecovery.fault('none'));
-    await page.waitForTimeout(150);
-    assert.equal(await failure.count(), 1, 'release alone must not unlatch the failed destination');
-    await page.evaluate(() => window.destinationRecovery.scope('fixture-scope-2'));
-    await page.locator('[data-destination-ok]').waitFor();
-    assert.equal(await failure.count(), 0);
-
-    // The real router consumes validateSearch above the outlet: the destination presenter must not
-    // appear, and this exact router construction seam is handed back to Web (router.tsx is reserved).
+    // Stored child validation error: the same bounded child page, and retry after release recovers
+    // through the captured child's invalidate + supplied reset (plain reset would repeat the error).
     await page.evaluate(() => {window.destinationRecovery.validate(true); return window.destinationRecovery.navigate('/search?probe=1');});
-    await page.waitForTimeout(400);
-    assert.equal(await failure.count(), 0, 'validateSearch is consumed above the destination boundary');
+    await failure.waitFor();
+    assert.equal(await shell(), true);
     await page.evaluate(() => window.destinationRecovery.validate(false));
+    await retry.click();
+    await page.locator('[data-destination-ok]').waitFor();
+    assert.equal(await failure.count(), 0);
 
-    // A ShellRoot throw is a router/app-level failure, never a destination recovery.
+    // A stored child validation error recovers only through a real Retry (invalidate + reset),
+    // never by changing the validator alone.
+    await page.evaluate(() => {window.destinationRecovery.validate(true); return window.destinationRecovery.navigate('/search?probe=1');});
+    await failure.waitFor();
+    await page.evaluate(() => window.destinationRecovery.validate(false));
+    await page.waitForTimeout(200);
+    assert.equal(await failure.count(), 1, 'changing the validator alone does not reload the stored error');
+    await retry.click();
+    await page.locator('[data-destination-ok]').waitFor();
+
+    // A deferred invalidation crossing a same-location scope replacement must not reset the
+    // successor: the old completion is refused, and the successor page keeps its own retry.
+    await page.evaluate(() => {window.destinationRecovery.validate(true); return window.destinationRecovery.navigate('/search?probe=2');});
+    await failure.waitFor();
+    await page.evaluate(() => window.destinationRecovery.validate(false));
+    await retry.click();
+    await page.evaluate(() => window.destinationRecovery.scope('fixture-scope-3'));
+    await page.waitForTimeout(300);
+    await page.evaluate(() => window.destinationRecovery.scope('fixture-scope'));
+
+    // A real ShellRoot failure reaches the actual App last resort with the shell withdrawn.
     await page.evaluate(() => {window.destinationRecovery.rootFault(true); return window.destinationRecovery.navigate('/search');});
-    await page.waitForTimeout(400);
-    assert.equal(await failure.count(), 0, 'a ShellRoot throw must not become a destination recovery');
+    await page.getByText('Something went wrong', {exact: true}).waitFor();
+    assert.equal(await shell(), false, 'the shell is withdrawn for an app-level failure');
+    assert.equal(await failure.count(), 0, 'a root failure is never a destination page failure');
   } finally {
     await page.evaluate(() => {window.destinationRecovery.restore(); window.disposeDestinationRecovery?.();});
+  }
+
+  // Component-level witness case: the real outlet boundary with typed witnesses.
+  await page.evaluate(() => {window.destinationRecovery.witness();});
+  const witnessFailure = page.getByText("Something didn't load", {exact: true});
+  try {
+    await witnessFailure.waitFor();
+    await page.evaluate(() => window.destinationRecoveryWitness.same());
+    await page.waitForTimeout(150);
+    assert.equal(await witnessFailure.count(), 1, 'the same witness keeps the failed destination');
+    await page.evaluate(() => window.destinationRecoveryWitness.release());
+    await page.waitForTimeout(150);
+    assert.equal(await witnessFailure.count(), 1, 'releasing the fault alone must not unlatch');
+
+    await page.evaluate(() => window.destinationRecoveryWitness.scope());
+    await page.locator('[data-witness-ok]').waitFor();
+    assert.equal(await witnessFailure.count(), 0, 'a scope replacement recovers on its own');
+
+    await page.evaluate(() => window.destinationRecoveryWitness.rearm());
+    await witnessFailure.waitFor();
+    await page.evaluate(() => {window.destinationRecoveryWitness.release(); window.destinationRecoveryWitness.missingKey();});
+    await page.locator('[data-witness-ok]').waitFor();
+    assert.equal(await witnessFailure.count(), 0, 'a missing entry key with a different href recovers');
+
+    await page.evaluate(() => window.destinationRecoveryWitness.rearm());
+    await witnessFailure.waitFor();
+    await page.evaluate(() => {window.destinationRecoveryWitness.release(); window.destinationRecoveryWitness.sameHrefNewObject();});
+    await page.locator('[data-witness-ok]').waitFor();
+    assert.equal(await witnessFailure.count(), 0, 'a same-href new location object recovers');
+
+  } finally {
+    await page.evaluate(() => {window.destinationRecoveryWitness?.dispose();});
   }
 }
