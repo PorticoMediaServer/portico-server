@@ -19,6 +19,13 @@ const events = new EventTarget();
 if (typeof (events as any).setMaxListeners === 'function') (events as any).setMaxListeners(50);
 (globalThis as any).window = {addEventListener: (...args: any[]) => events.addEventListener(...args as [string, any]), removeEventListener: (...args: any[]) => events.removeEventListener(...args as [string, any])};
 
+/** Every renderer a test mounted, so its effects' cleanups can run before the test ends. */
+const mounted: Array<{dispose(): void}> = [];
+/** Let go of every screen this test mounted, newest first: no listener or deadline outlives it. */
+function disposeScreens() {
+  for (const h of mounted.splice(0).reverse()) h.dispose();
+}
+
 const entry = (id: string, title: string, extra: any = {}) => ({
   id, kind: 'movie', title, subtitle: '2026', year: 2026, libraryId: 'library', posterUrl: `/${id}.jpg`,
   backdropUrl: '', overview: '', duration: 6000, progressSeconds: 600, watched: false,
@@ -28,6 +35,7 @@ const row = (id: string, entries: any[], extra: any = {}) => ({id, kind: 'recent
 
 async function mount(options: {state?: any; libraries?: any; owner?: boolean; hidden?: Set<string>} = {}) {
   const h = createRenderer();
+  mounted.push(h);
   const opened: any[] = [];
   const navigated: any[] = [];
   const calls: string[] = [];
@@ -60,107 +68,139 @@ async function mount(options: {state?: any; libraries?: any; owner?: boolean; hi
 
 test('the hero is drawn with Play and Details that open the title', async () => {
   const screen = await mount();
-  const hero = one(screen.flat(), 'section');
-  assert.equal(hero.props['aria-label'], 'Dune');
-  assert.ok(textOf(hero).includes('Dune'));
-  const buttons = all(tree(hero), 'Button');
-  const play = buttons.find(button => button.props.icon === 'play');
-  assert.ok(play, 'a resume button');
-  const details = buttons.find(button => button.props.label === t('web.home.details'))!;
-  play.props.onClick();
-  details.props.onClick();
-  assert.deepEqual(screen.opened.map(args => [args[0]?.id, args[1]]), [['m1', 'play'], ['m1', undefined]]);
+  try {
+    const hero = one(screen.flat(), 'section');
+    assert.equal(hero.props['aria-label'], 'Dune');
+    assert.ok(textOf(hero).includes('Dune'));
+    const buttons = all(tree(hero), 'Button');
+    const play = buttons.find(button => button.props.icon === 'play');
+    assert.ok(play, 'a resume button');
+    const details = buttons.find(button => button.props.label === t('web.home.details'))!;
+    play.props.onClick();
+    details.props.onClick();
+    assert.deepEqual(screen.opened.map(args => [args[0]?.id, args[1]]), [['m1', 'play'], ['m1', undefined]]);
+  } finally {
+    disposeScreens();
+  }
 });
 
 test('every row is drawn with its heading, and More asks for its next page', async () => {
   const pages = new Set<string>();
   const document = {rows: [row('continue', [entry('m1', 'Dune')], {nextCursor: 'cursor-2'}), row('recent', [entry('m2', 'Arrival')], {libraryId: 'library'})], hero: undefined};
   const screen = await mount({state: {phase: 'ready', document, error: null, paging: pages}});
-  const rows = all(screen.flat(), 'SectionView');
-  assert.deepEqual(rows.map(node => node.props.section.heading.fallback), ['continue', 'recent']);
-  // More is offered only for a row the server can page, and asking for it names that row.
-  assert.equal(typeof rows[0].props.onMore, 'function');
-  assert.equal(rows[1].props.onMore, undefined);
-  rows[0].props.onMore();
-  assert.deepEqual(screen.calls, ['more:continue']);
-  // A row already paging hides More until its page lands.
-  pages.add('continue');
-  assert.equal(all(screen.flat(), 'SectionView')[0].props.onMore, undefined);
+  try {
+    const rows = all(screen.flat(), 'SectionView');
+    assert.deepEqual(rows.map(node => node.props.section.heading.fallback), ['continue', 'recent']);
+    // More is offered only for a row the server can page, and asking for it names that row.
+    assert.equal(typeof rows[0].props.onMore, 'function');
+    assert.equal(rows[1].props.onMore, undefined);
+    rows[0].props.onMore();
+    assert.deepEqual(screen.calls, ['more:continue']);
+    // A row already paging hides More until its page lands.
+    pages.add('continue');
+    assert.equal(all(screen.flat(), 'SectionView')[0].props.onMore, undefined);
+  } finally {
+    disposeScreens();
+  }
 });
 
 test('See all follows the row’s destination, and a saved view opens its own page', async () => {
   const document = {rows: [row('continue', [entry('m1', 'Dune')]), row('custom', [entry('m2', 'Arrival')], {seeAll: {type: 'saved_view', resourceId: 'view-1'}, title: 'My picks'})], hero: undefined};
   const screen = await mount({state: {phase: 'ready', document, error: null, paging: new Set()}});
-  const rows = all(screen.flat(), 'SectionView');
-  rows[0].props.onSeeAll();
-  rows[1].props.onSeeAll();
-  assert.deepEqual(screen.navigated, [
-    {to: '/library/$libraryId', params: {libraryId: 'library'}, search: {view: 'browse'}},
-    {to: '/saved/$kind/$resourceId', params: {kind: 'view', resourceId: 'view-1'}, search: {title: 'My picks'}},
-  ]);
+  try {
+    const rows = all(screen.flat(), 'SectionView');
+    rows[0].props.onSeeAll();
+    rows[1].props.onSeeAll();
+    assert.deepEqual(screen.navigated, [
+      {to: '/library/$libraryId', params: {libraryId: 'library'}, search: {view: 'browse'}},
+      {to: '/saved/$kind/$resourceId', params: {kind: 'view', resourceId: 'view-1'}, search: {title: 'My picks'}},
+    ]);
+  } finally {
+    disposeScreens();
+  }
 });
 
 test('a title removed from Continue Watching leaves at once, and Undo puts it back', async () => {
   const screen = await mount();
-  let undone = 0;
-  events.dispatchEvent(new CustomEvent(REMOVED, {detail: {itemId: 'm1', title: 'Dune', phase: 'done', undo: () => { undone++; return Promise.resolve(); }}}));
-  let rendered = screen.flat();
-  assert.equal(all(rendered, 'SectionView').length, 0, 'the emptied Continue row and its hero are gone');
-  const notice = one(rendered, 'Notice');
-  assert.equal(notice.props.action.label, t('web.continue.undo'));
-  await notice.props.action.onClick();
-  await new Promise(resolve => setTimeout(resolve, 0));
-  rendered = screen.flat();
-  assert.equal(undone, 1);
-  assert.ok(screen.calls.includes('refresh'));
-  assert.equal(all(rendered, 'SectionView').length, 1, 'Undo brings the row back');
+  try {
+    let undone = 0;
+    events.dispatchEvent(new CustomEvent(REMOVED, {detail: {itemId: 'm1', title: 'Dune', phase: 'done', undo: () => { undone++; return Promise.resolve(); }}}));
+    let rendered = screen.flat();
+    assert.equal(all(rendered, 'SectionView').length, 0, 'the emptied Continue row and its hero are gone');
+    const notice = one(rendered, 'Notice');
+    assert.equal(notice.props.action.label, t('web.continue.undo'));
+    await notice.props.action.onClick();
+    await new Promise(resolve => setTimeout(resolve, 0));
+    rendered = screen.flat();
+    assert.equal(undone, 1);
+    assert.ok(screen.calls.includes('refresh'));
+    assert.equal(all(rendered, 'SectionView').length, 1, 'Undo brings the row back');
+  } finally {
+    disposeScreens();
+  }
 });
 
 test('a failed removal says so and keeps the title', async () => {
   const screen = await mount();
-  events.dispatchEvent(new CustomEvent(REMOVED, {detail: {itemId: 'm1', title: 'Dune', phase: 'failed', undo: () => Promise.resolve()}}));
-  const rendered = screen.flat();
-  assert.equal(all(rendered, 'SectionView').length, 1, 'the title stays');
-  assert.equal(one(rendered, 'Notice').props.tone, 'error');
-  assert.equal(one(rendered, 'Notice').props.action, undefined);
+  try {
+    events.dispatchEvent(new CustomEvent(REMOVED, {detail: {itemId: 'm1', title: 'Dune', phase: 'failed', undo: () => Promise.resolve()}}));
+    const rendered = screen.flat();
+    assert.equal(all(rendered, 'SectionView').length, 1, 'the title stays');
+    assert.equal(one(rendered, 'Notice').props.tone, 'error');
+    assert.equal(one(rendered, 'Notice').props.action, undefined);
+  } finally {
+    disposeScreens();
+  }
 });
 
 test('customise opens from above the rows and hands the layout to the screen', async () => {
   const screen = await mount();
-  const customize = all(screen.flat(), 'Button').find(button => button.props.label === t('home.customize.action'))!;
-  customize.props.onClick();
-  const sheet = one(screen.flat(), 'CustomiseHome');
-  assert.equal(sheet.props.open, true);
-  sheet.props.onClose();
-  assert.equal(one(screen.flat(), 'CustomiseHome').props.open, false);
-  sheet.props.onSave([{id: 'continue'}]);
-  sheet.props.onReset();
-  sheet.props.loadLayout();
-  assert.deepEqual(screen.calls, ['save', 'reset', 'load']);
+  try {
+    const customize = all(screen.flat(), 'Button').find(button => button.props.label === t('home.customize.action'))!;
+    customize.props.onClick();
+    const sheet = one(screen.flat(), 'CustomiseHome');
+    assert.equal(sheet.props.open, true);
+    sheet.props.onClose();
+    assert.equal(one(screen.flat(), 'CustomiseHome').props.open, false);
+    sheet.props.onSave([{id: 'continue'}]);
+    sheet.props.onReset();
+    sheet.props.loadLayout();
+    assert.deepEqual(screen.calls, ['save', 'reset', 'load']);
+  } finally {
+    disposeScreens();
+  }
 });
 
 test('the empty states are never a dead end: no libraries, nothing composed, and a failed read', async () => {
-  // Everything composed but empty: the catalogue's own words, for a member and for the owner.
-  let screen = await mount({state: {phase: 'ready', document: {rows: [], hero: undefined}, error: null, paging: new Set()}});
-  assert.equal(one(screen.flat(), 'StateView').props.title, t('web.empty.homeTitle'));
-  assert.equal(one(screen.flat(), 'StateView').props.body, t('web.empty.homeMemberBody'));
-  screen = await mount({owner: true, state: {phase: 'ready', document: {rows: [], hero: undefined}, error: null, paging: new Set()}});
-  assert.equal(one(screen.flat(), 'StateView').props.body, t('web.empty.homeOwnerBody'));
-  // No libraries at all is the sharper message.
-  screen = await mount({libraries: {items: [], loading: false}, state: {phase: 'ready', document: {rows: [], hero: undefined}, error: null, paging: new Set()}});
-  assert.ok(screen.flat().some(node => node.type === 'NoLibraries'));
-  // A failed first read offers retry; a failed refresh beside content keeps the content.
-  screen = await mount({state: {phase: 'error', document: undefined, error: {code: 'request_failed', message: 'Home could not load.', retryable: true}, paging: new Set()}});
-  one(screen.flat(), 'ErrorState').props.retry();
-  assert.deepEqual(screen.calls, ['refresh']);
-  screen = await mount({state: {phase: 'error', document: {rows: [row('continue', [entry('m1', 'Dune')])], hero: undefined}, error: {code: 'request_failed', message: 'Home could not refresh.', retryable: true}, paging: new Set()}});
-  assert.equal(all(screen.flat(), 'SectionView').length, 1);
-  one(screen.flat(), 'ErrorNotice');
+  try {
+    // Everything composed but empty: the catalogue's own words, for a member and for the owner.
+    let screen = await mount({state: {phase: 'ready', document: {rows: [], hero: undefined}, error: null, paging: new Set()}});
+    assert.equal(one(screen.flat(), 'StateView').props.title, t('web.empty.homeTitle'));
+    assert.equal(one(screen.flat(), 'StateView').props.body, t('web.empty.homeMemberBody'));
+    screen = await mount({owner: true, state: {phase: 'ready', document: {rows: [], hero: undefined}, error: null, paging: new Set()}});
+    assert.equal(one(screen.flat(), 'StateView').props.body, t('web.empty.homeOwnerBody'));
+    // No libraries at all is the sharper message.
+    screen = await mount({libraries: {items: [], loading: false}, state: {phase: 'ready', document: {rows: [], hero: undefined}, error: null, paging: new Set()}});
+    assert.ok(screen.flat().some(node => node.type === 'NoLibraries'));
+    // A failed first read offers retry; a failed refresh beside content keeps the content.
+    screen = await mount({state: {phase: 'error', document: undefined, error: {code: 'request_failed', message: 'Home could not load.', retryable: true}, paging: new Set()}});
+    one(screen.flat(), 'ErrorState').props.retry();
+    assert.deepEqual(screen.calls, ['refresh']);
+    screen = await mount({state: {phase: 'error', document: {rows: [row('continue', [entry('m1', 'Dune')])], hero: undefined}, error: {code: 'request_failed', message: 'Home could not refresh.', retryable: true}, paging: new Set()}});
+    assert.equal(all(screen.flat(), 'SectionView').length, 1);
+    one(screen.flat(), 'ErrorNotice');
+  } finally {
+    disposeScreens();
+  }
 });
 
 test('deferred shelves are loading, not empty', async () => {
   const screen = await mount({state: {phase: 'loading', document: {rows: [{...row('recent', [], {deferred: true})}], hero: undefined}, error: null, paging: new Set()}});
-  const rendered = screen.flat();
-  assert.ok(rendered.some(node => node.type === 'LoadingShelves'));
-  assert.equal(all(rendered, 'StateView').length, 0);
+  try {
+    const rendered = screen.flat();
+    assert.ok(rendered.some(node => node.type === 'LoadingShelves'));
+    assert.equal(all(rendered, 'StateView').length, 0);
+  } finally {
+    disposeScreens();
+  }
 });

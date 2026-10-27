@@ -26,7 +26,7 @@ async function fixture(results: unknown[], options: {portico?: boolean; refuse?:
     baseUrl: string; token: string;
     constructor(url: string, token = '') { this.baseUrl = url; this.token = token; }
     setAccessToken(t: string) { this.token = t; }
-    async request(path: string, method = 'GET') { requests.push([path, method, this.token]); if (path === '/v1/me') return {viewer: session(this.token, 'owner').viewer}; return undefined; }
+    async request(path: string, method = 'GET') { requests.push([path, method, this.token]); if (path === '/v1/me') return {viewer: session(this.token, 'owner').viewer}; if (path === '/v1/direct') return {custodyPending: false}; return undefined; }
     async system() { return {setupRequired: false}; }
     async logout() { requests.push(['logout', 'POST', this.token]); }
     subscribeRoute = () => () => {}; getRouteSnapshot = () => null;
@@ -172,6 +172,13 @@ test('INT M6: an owner whose custody is pending is flagged, and accepting asks t
   const f = await fixture([{kind: 'signed-in', snapshot: pending, session: session('viewer', 'owner'), accountScoped: false, passwordChangeRequired: false}], {portico: true});
   await f.render().portico.connect(server); await tick();
   assert.equal(f.render().local?.custodyPending, true);
-  void f.render().portico.acceptCustody(); await tick();
-  assert.ok(f.requests.some(([path, serverId, token]) => path === 'custody' && serverId === 'server' && token === 'viewer'));
+  // The accept re-reads the server until its membership push lands, so the read answers cleared and
+  // the wait is joined here: the poll owns a deadline, and nothing may outlive the test that began it.
+  const accepting = f.render().portico.acceptCustody();
+  try {
+    assert.ok(f.requests.some(([path, serverId, token]) => path === 'custody' && serverId === 'server' && token === 'viewer'));
+  } finally {
+    await accepting;
+  }
+  assert.equal(f.render().local?.custodyPending, false, 'the flag clears once the server reports it');
 });
