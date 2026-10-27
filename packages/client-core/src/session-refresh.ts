@@ -61,6 +61,8 @@ export class LocalSessionRefresher implements AuthRecovery {
   private o: LocalSessionRefresherOptions;
   private session: LocalSession;
   private flight?: Promise<LocalSession>;
+  /** A successful proactive rotation that did not advance this family's horizon. */
+  private noProgress?: Readonly<{serverId: string; familyId: string; expiresAt: string; horizon: string}>;
   private timer?: unknown;
  private permissionTimer?:unknown;
  private permissionRead?:Promise<boolean>;
@@ -97,13 +99,19 @@ export class LocalSessionRefresher implements AuthRecovery {
   private get done() { return this.state.phase === 'ended' || this.state.phase === 'stopped'; }
   private get lead() { return this.o.leadMs ?? 120_000; }
   private expiresIn() { return Date.parse(this.session.expiresAt) - this.now(); }
+  private proactiveSuppressed(): boolean {
+    const marker = this.noProgress, session = this.session;
+    return !!marker && this.expiresIn() > 0 && marker.serverId === session.viewer.serverId
+      && marker.familyId === session.sessionFamilyId && marker.expiresAt === session.expiresAt
+      && marker.horizon === session.authorizationHorizon;
+  }
 
   // ── AuthRecovery (HttpLocalApi calls these) ─────────────────────
   token = async (current: string): Promise<string> => {
     if (this.done) return current;
     if (current !== this.session.accessToken) return this.session.accessToken;
     if (this.expiresIn() > REFRESH_MIN_VALID_MS) return current;
-    if (this.waiting()) return current;
+    if (this.waiting() || this.proactiveSuppressed()) return current;
     try { return (await this.run()).accessToken; } catch { return this.session.accessToken; }
   };
 
@@ -125,7 +133,7 @@ export class LocalSessionRefresher implements AuthRecovery {
     if (this.done) return;
     // Things changed (foreground, network): the app's own backoff may be cut short, the server's wait may not.
     if (this.now() < this.serverWaitUntil) return;
-    if (this.expiresIn() <= this.lead) void this.run().catch(() => {});
+    if (this.expiresIn() <= this.lead && !this.proactiveSuppressed()) void this.run().catch(() => {});
     else this.schedule();
   }
 
@@ -169,6 +177,7 @@ export class LocalSessionRefresher implements AuthRecovery {
     if (this.flight) return this.flight;
     if (this.done) return Promise.reject(this.state.error ?? new SessionRefreshError('stopped', 'Sign-in renewal stopped.', false));
     this.publish({phase: 'refreshing'});
+    const previous = this.session;
     const refresh = this.o.refresh ?? refreshStoredSession;
     const flight = refresh({
       env: this.o.env,
@@ -178,17 +187,26 @@ export class LocalSessionRefresher implements AuthRecovery {
       now: this.now,
       // A proactive run renews inside the lead window; the store answers without a request when another context already did.
       minValidMs: Math.max(REFRESH_MIN_VALID_MS, this.lead),
-    }).then(next => { this.adopt(next); return next; }, (e: unknown) => { this.failed(e); throw e; });
+    }).then(next => { this.adopt(next, previous, rejected === undefined); return next; }, (e: unknown) => { this.failed(e); throw e; });
     this.flight = flight;
     void flight.finally(() => { if (this.flight === flight) this.flight = undefined; }).catch(() => {});
     return flight;
   }
 
-  private adopt(next: LocalSession) {
+  private adopt(next: LocalSession, previous: LocalSession, proactive: boolean) {
     if (this.done) return;
     this.failures = 0;
     this.retryAt = 0;
     this.serverWaitUntil = 0;
+    const sameFamily = next.sessionFamilyId === previous.sessionFamilyId && next.viewer.serverId === previous.viewer.serverId;
+    const later = Date.parse(next.expiresAt) > Date.parse(previous.expiresAt)
+      || Date.parse(next.authorizationHorizon) > Date.parse(previous.authorizationHorizon);
+    if (!sameFamily || later) this.noProgress = undefined;
+    else if (this.noProgress || proactive && Date.parse(next.expiresAt) - this.now() <= this.lead
+      && Date.parse(next.expiresAt) <= Date.parse(previous.expiresAt)) {
+      this.noProgress = Object.freeze({serverId: next.viewer.serverId, familyId: next.sessionFamilyId,
+        expiresAt: next.expiresAt, horizon: next.authorizationHorizon});
+    }
     const {refreshToken: _secret, ...visible} = next;
     const changed = visible.accessToken !== this.session.accessToken;
     this.session = Object.freeze(visible);
@@ -240,7 +258,7 @@ export class LocalSessionRefresher implements AuthRecovery {
         delay += Math.round(delay * 0.25 * Math.min(1, Math.max(0, (this.o.random ?? Math.random)())));
       }
       this.retryAt = this.now() + delay;
-    } else delay = Math.max(0, this.expiresIn() - this.lead);
+    } else delay = Math.max(0, this.expiresIn() - (this.proactiveSuppressed() ? 0 : this.lead));
     this.timer = this.setTimer(() => { this.timer = undefined; void this.run().catch(() => {}); }, Math.min(delay, 2_147_000_000));
   }
 }
