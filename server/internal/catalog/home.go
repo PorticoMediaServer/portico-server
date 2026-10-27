@@ -1,6 +1,7 @@
 package catalog
 
 import (
+	"database/sql"
 	"encoding/json"
 	"sort"
 	"time"
@@ -9,6 +10,7 @@ import (
 )
 
 type HomeRequest struct {
+	ReadingPersonalAuthorize       func(*sql.Tx, string) error
 	Viewer                         Viewer
 	ServerID, Profile, ViewerFence string
 	Libraries                      []string

@@ -202,9 +202,32 @@ func (s *Service) HomeDestinationPickerTx(ctx context.Context, tx *sql.Tx, serve
 		if err != nil {
 			return out, err
 		}
-		row.Artwork, err = s.homeEntries(v.Profile, media)
+		reading, err := s.homeReadingPage(v, media, nil)
 		if err != nil {
 			return out, err
+		}
+		ordinary := make([]string, 0, len(media))
+		for _, id := range media {
+			if _, ok := reading[id]; !ok {
+				ordinary = append(ordinary, id)
+			}
+		}
+		projected, err := s.homeEntries(v.Profile, ordinary)
+		if err != nil {
+			return out, err
+		}
+		ordinaryByID := make(map[string]ContentEntry, len(projected))
+		for _, entry := range projected {
+			ordinaryByID[entry.ID] = entry
+		}
+		for _, id := range media {
+			if entry, ok := reading[id]; ok {
+				row.Artwork = append(row.Artwork, entry)
+			} else if entry, ok := ordinaryByID[id]; ok {
+				row.Artwork = append(row.Artwork, entry)
+			} else {
+				return out, ErrStaleContinuation
+			}
 		}
 		if len(in.ItemIDs) > 0 {
 			count := 0

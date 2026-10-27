@@ -2,6 +2,7 @@ package httpapi
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 	"errors"
 	"net/http"
@@ -52,6 +53,18 @@ func (d Dependencies) homeRequestFor(r *http.Request, p identity.Principal, rest
 	}
 	viewer := catalog.Viewer{Profile: identity.PersonalKey(p.Viewer), Fence: fence, Libraries: libraries, Restrictions: restrictions}
 	request := catalog.HomeRequest{Viewer: viewer, ServerID: d.Identity.ID(), Profile: identity.PersonalKey(p.Viewer), ViewerFence: fence, Libraries: libraries, Restrictions: restrictions}
+	if identity.CanUsePersonalState(p) {
+		request.ReadingPersonalAuthorize = func(tx *sql.Tx, library string) error {
+			live, err := d.Identity.PrincipalByDigestTx(r.Context(), tx, p.Hash)
+			if err != nil {
+				return err
+			}
+			if live.Viewer != p.Viewer || live.Epoch != p.Epoch || live.Grant != p.Grant || !identity.CanUsePersonalState(live) {
+				return identity.ErrForbidden
+			}
+			return d.allowedLibraryTx(r.Context(), live, library, tx)
+		}
+	}
 	if d.LiveChannels != nil {
 		if err := d.featureAllowed(r.Context(), p, "live_tv"); err == nil {
 			request.LiveAvailable = true

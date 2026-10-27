@@ -773,6 +773,27 @@ func (s *Service) homeRowFor(r HomeRequest, spec homeRowSpec, revision ContentRe
 	var entries []ContentEntry
 	if spec.ID == "continue" {
 		entries, e = s.homeContinueEntries(r.Viewer, ids)
+	} else if strings.HasPrefix(spec.ID, homeViewPrefix) {
+		library, err := s.library(spec.LibraryID)
+		if err != nil {
+			return row, err
+		}
+		if isReadingLibrary(library.Kind) {
+			projected, err := s.homeReadingPage(r.Viewer, displayIDs, r.ReadingPersonalAuthorize)
+			if err != nil {
+				return row, err
+			}
+			entries = make([]ContentEntry, 0, len(displayIDs))
+			for _, id := range displayIDs {
+				entry, ok := projected[id]
+				if !ok || entry.LibraryID != spec.LibraryID {
+					return row, ErrReadingProjectionChanged
+				}
+				entries = append(entries, entry)
+			}
+		} else {
+			entries, e = s.homeRowEntries(r.Profile, spec, displayIDs)
+		}
 	} else {
 		entries, e = s.homeRowEntries(r.Profile, spec, displayIDs)
 	}
@@ -1063,6 +1084,9 @@ func (s *Service) HomeRows(r HomeRequest) (HomeDocument, error) {
 	if e = s.homeEnrichRows(r.Profile, out.Rows); e != nil {
 		return out, e
 	}
+	if r.ReadingPersonalAuthorize == nil {
+		clearReadingHomePersonal(out.Rows)
+	}
 	if e = s.homeTitleContextRows(r.Viewer, out.Rows); e != nil {
 		return out, e
 	}
@@ -1166,6 +1190,9 @@ func (s *Service) HomeSingleRow(r HomeRequest, id string, page HomeRowPage) (Hom
 	row, e := s.homeRowFor(r, *found, before, page, true)
 	if e != nil {
 		return row, e
+	}
+	if r.ReadingPersonalAuthorize == nil {
+		clearReadingHomePersonal([]HomeRow{row})
 	}
 	if e = s.homeTitleContextRows(r.Viewer, []HomeRow{row}); e != nil {
 		return row, e
@@ -1406,4 +1433,18 @@ func (s *Service) homeEnrich(profile string, entries []ContentEntry) error {
 		}
 	}
 	return nil
+}
+
+// A catalogue Viewer alone does not authorize Reading personal facts.
+func clearReadingHomePersonal(rows []HomeRow) {
+	for i := range rows {
+		for j := range rows[i].Entries {
+			entry := &rows[i].Entries[j]
+			if entry.Kind == "ebook" || entry.Kind == "comic" {
+				entry.Watchlisted = nil
+				entry.ReadingMark = nil
+			}
+		}
+		clearReadingHomePersonal(rows[i].Children)
+	}
 }
