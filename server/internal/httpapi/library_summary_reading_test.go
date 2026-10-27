@@ -9,9 +9,10 @@ import (
 
 	"portico.local/server/internal/catalog"
 	"portico.local/server/internal/identity"
+	"portico.local/server/internal/telemetry"
 )
 
-func TestReadingLibrarySummaryHTTPUsesLiveAuthorityAndReadyProjection(t *testing.T) {
+func TestLibrarySummaryCoreHTTPUsesLiveAuthorityAndReadyProjection(t *testing.T) {
 	for _, kind := range []string{"book", "comic"} {
 		t.Run(kind, func(t *testing.T) {
 			format, want := "pdf", "ebook"
@@ -55,6 +56,12 @@ func TestReadingLibrarySummaryHTTPUsesLiveAuthorityAndReadyProjection(t *testing
 				}
 			}
 			check(r.f.owner.AccessToken, http.StatusOK, true, 1)
+			before := telemetry.LibrarySummaryCacheCounters()
+			check(r.f.owner.AccessToken, http.StatusOK, true, 1)
+			if telemetry.LibrarySummaryCacheCounters()[telemetry.SummaryHitEntry] < before[telemetry.SummaryHitEntry]+1 {
+				t.Fatalf("HTTP repeated read did not reuse core: before=%v after=%v", before, telemetry.LibrarySummaryCacheCounters())
+			}
+
 			check("", http.StatusUnauthorized, false, 0)
 			readingSeriesOwnerField(t, r, r.item, "author", "Changed attribution")
 			check(r.f.owner.AccessToken, http.StatusPreconditionFailed, false, 0)
@@ -74,7 +81,22 @@ func TestReadingLibrarySummaryHTTPUsesLiveAuthorityAndReadyProjection(t *testing
 			if err != nil {
 				t.Fatal(err)
 			}
+			before = telemetry.LibrarySummaryCacheCounters()
 			check(selected.Session.AccessToken, http.StatusOK, true, 1)
+			if telemetry.LibrarySummaryCacheCounters()[telemetry.SummaryHitEntry] < before[telemetry.SummaryHitEntry]+1 {
+				t.Fatal("same-policy cross-user HTTP did not share")
+			}
+			rotated, err := r.f.id.RefreshSession(context.Background(), selected.Session.RefreshToken, selected.Session.InstallationID, identity.Token())
+			if err != nil {
+				t.Fatal(err)
+			}
+			selected.Session = rotated
+			before = telemetry.LibrarySummaryCacheCounters()
+			check(rotated.AccessToken, http.StatusOK, true, 1)
+			if telemetry.LibrarySummaryCacheCounters()[telemetry.SummaryHitEntry] < before[telemetry.SummaryHitEntry]+1 {
+				t.Fatal("session rotation invalidated core")
+			}
+
 			if _, err = r.f.id.SetProfileRestrictions(context.Background(), owner.AccountToken, child.ID, identity.ProfileRestrictionEdit{ExpectedRevision: 1, AllowUnrated: false}); err != nil {
 				t.Fatal(err)
 			}

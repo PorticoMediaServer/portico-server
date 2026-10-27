@@ -71,15 +71,94 @@ func (s *Service) SummarizeLibraries(ctx context.Context, viewer Viewer, librari
 	})
 	return out, err
 }
+
+// librarySummary retains the original current-snapshot response composition.
 func (s *Service) librarySummary(ctx context.Context, viewer Viewer, library Library) (LibrarySummary, error) {
-	out := LibrarySummary{Counts: []LibraryKindCount{}, CoverURLs: []string{}, Empty: true}
+	core, err := s.reusableLibrarySummaryCore(ctx, viewer, library)
+	if err != nil {
+		return LibrarySummary{}, err
+	}
+	return s.decorateLibrarySummary(ctx, library, core)
+}
+
+func (s *Service) decorateLibrarySummary(ctx context.Context, library Library, core librarySummaryCore) (LibrarySummary, error) {
+	out := LibrarySummary{Counts: append([]LibraryKindCount{}, core.Counts...), PublicationCounts: cloneSummaryCounts(core.PublicationCounts), CoverURLs: []string{}, Empty: core.Empty, EmptyKnown: core.EmptyKnown}
+	seen := map[string]bool{}
+	// Fallback flags are live bounded decoration too: details INSERT/DELETE do
+	// not have a complete synchronous library-revision fence. Never cache raw
+	// provider URLs or assume UPDATE-only invalidation covers those operations.
+	fallback := map[artworkTarget]resolvedArtwork{}
+	if library.Kind == "movie" && len(core.Targets) > 0 {
+		ids := make([]any, len(core.Targets))
+		for i, target := range core.Targets {
+			ids[i] = target.ID
+		}
+		rows, e := s.read().QueryContext(ctx, `SELECT pid(e.public_id),d.poster_url<>'',d.backdrop_url<>'' FROM catalog_entities e JOIN catalog_item_details d ON d.entity_id=e.id WHERE e.public_id IN (`+strings.TrimSuffix(strings.Repeat("pid_blob(?),", len(ids)), ",")+`)`, ids...)
+		if e != nil {
+			return out, e
+		}
+		for rows.Next() {
+			var id string
+			var poster, backdrop bool
+			if e = rows.Scan(&id, &poster, &backdrop); e != nil {
+				rows.Close()
+				return out, e
+			}
+			art := resolvedArtwork{}
+			if poster {
+				art.PosterURL = "/v1/items/" + id + "/art/poster"
+			}
+			if backdrop {
+				art.BackdropURL = "/v1/items/" + id + "/art/backdrop"
+			}
+			fallback[artworkTarget{"item", id}] = art
+		}
+		e = rows.Err()
+		rows.Close()
+		if e != nil {
+			return out, e
+		}
+	}
+	art, err := s.resolveArtworkContext(ctx, core.Targets)
+	if err != nil {
+		return out, err
+	}
+	for _, target := range core.Targets {
+		a := art[target]
+		if a.PosterURL == "" {
+			a.PosterURL = fallback[target].PosterURL
+		}
+		if a.BackdropURL == "" {
+			a.BackdropURL = fallback[target].BackdropURL
+		}
+		if len(out.CoverURLs) < 3 && a.PosterURL != "" && !seen[a.PosterURL] {
+			out.CoverURLs = append(out.CoverURLs, a.PosterURL)
+			seen[a.PosterURL] = true
+		}
+		if out.LatestArtwork == "" {
+			out.LatestArtwork = a.BackdropURL
+		}
+	}
+	err = s.read().QueryRowContext(ctx, `SELECT NOT EXISTS(SELECT 1 FROM inventory_runs r JOIN jobs j ON j.id=r.job_id WHERE j.library_id=? AND j.status IN('complete','complete_with_warnings')) AND EXISTS(SELECT 1 FROM jobs WHERE library_id=? AND status IN('queued','running','paused'))`, library.ID, library.ID).Scan(&out.FirstScan)
+	return out, err
+}
+
+func (s *Service) computeLibrarySummaryCore(ctx context.Context, viewer Viewer, library Library) (librarySummaryCore, error) {
+	return s.computeLibrarySummaryCoreWithReading(ctx, viewer, library, nil)
+}
+
+func (s *Service) computeLibrarySummaryCoreWithReading(ctx context.Context, viewer Viewer, library Library, reading *readingBrowseScope) (librarySummaryCore, error) {
+	out := librarySummaryCore{Counts: []LibraryKindCount{}, Empty: true}
 	kinds := summaryKinds(library.Kind)
 	clause, args := EntityRestrictionSQL("e.id", viewer.Restrictions)
 	publicationTypeSQL := "NULL"
 	if isReadingLibrary(library.Kind) {
-		reading, err := s.readingBrowseScope(library.ID)
-		if err != nil {
-			return out, err
+		if reading == nil {
+			var err error
+			reading, err = s.readingBrowseScope(library.ID)
+			if err != nil {
+				return out, err
+			}
 		}
 		// The bounded candidate window stays unchanged. Its visible counts and
 		// artwork must additionally belong to the same ready Reading membership
@@ -106,7 +185,7 @@ func (s *Service) librarySummary(ctx context.Context, viewer Viewer, library Lib
 	// index. Sorting the union and applying live visibility is bounded even for
 	// a cold restriction class and a catalogue with millions of titles.
 	rows, err := s.read().QueryContext(ctx, `WITH candidates AS (`+strings.Join(selections, " UNION ALL ")+`)
- SELECT pid(e.public_id),k.name,COALESCE(d.poster_url,''),COALESCE(d.backdrop_url,''),(`+clause+`),`+publicationTypeSQL+` FROM candidates e JOIN catalog_kinds k ON k.id=e.kind LEFT JOIN catalog_item_details d ON d.entity_id=e.id ORDER BY e.added_ms DESC,e.id DESC`, values...)
+ SELECT pid(e.public_id),k.name,(`+clause+`),`+publicationTypeSQL+` FROM candidates e JOIN catalog_kinds k ON k.id=e.kind ORDER BY e.added_ms DESC,e.id DESC`, values...)
 	if err != nil {
 		return out, err
 	}
@@ -118,13 +197,11 @@ func (s *Service) librarySummary(ctx context.Context, viewer Viewer, library Lib
 		coverKind = "album"
 	}
 	targets := []artworkTarget{}
-	fallback := map[artworkTarget]resolvedArtwork{}
-	seen := map[string]bool{}
 	for rows.Next() {
-		var id, kind, poster, backdrop string
+		var id, kind string
 		var visible bool
 		var publicationType sql.NullString
-		if err = rows.Scan(&id, &kind, &poster, &backdrop, &visible, &publicationType); err != nil {
+		if err = rows.Scan(&id, &kind, &visible, &publicationType); err != nil {
 			rows.Close()
 			return out, err
 		}
@@ -158,16 +235,6 @@ func (s *Service) librarySummary(ctx context.Context, viewer Viewer, library Lib
 				}
 				target := artworkTarget{targetKind, id}
 				targets = append(targets, target)
-				if kind == "movie" {
-					art := resolvedArtwork{}
-					if poster != "" {
-						art.PosterURL = "/v1/items/" + id + "/art/poster"
-					}
-					if backdrop != "" {
-						art.BackdropURL = "/v1/items/" + id + "/art/backdrop"
-					}
-					fallback[target] = art
-				}
 			}
 		}
 	}
@@ -175,26 +242,6 @@ func (s *Service) librarySummary(ctx context.Context, viewer Viewer, library Lib
 	rows.Close()
 	if err != nil {
 		return out, err
-	}
-	art, err := s.resolveArtworkContext(ctx, targets)
-	if err != nil {
-		return out, err
-	}
-	for _, target := range targets {
-		a := art[target]
-		if a.PosterURL == "" {
-			a.PosterURL = fallback[target].PosterURL
-		}
-		if a.BackdropURL == "" {
-			a.BackdropURL = fallback[target].BackdropURL
-		}
-		if len(out.CoverURLs) < 3 && a.PosterURL != "" && !seen[a.PosterURL] {
-			out.CoverURLs = append(out.CoverURLs, a.PosterURL)
-			seen[a.PosterURL] = true
-		}
-		if out.LatestArtwork == "" {
-			out.LatestArtwork = a.BackdropURL
-		}
 	}
 	out.EmptyKnown = true
 	for _, n := range visited {
@@ -210,9 +257,10 @@ func (s *Service) librarySummary(ctx context.Context, viewer Viewer, library Lib
 			out.PublicationCounts = append(out.PublicationCounts, LibraryKindCount{Kind: kind, Count: publicationCounts[kind], AtLeast: visited["ebook"] > librarySummaryCap})
 		}
 	}
-	err = s.read().QueryRowContext(ctx, `SELECT NOT EXISTS(SELECT 1 FROM inventory_runs r JOIN jobs j ON j.id=r.job_id WHERE j.library_id=? AND j.status IN('complete','complete_with_warnings')) AND EXISTS(SELECT 1 FROM jobs WHERE library_id=? AND status IN('queued','running','paused'))`, library.ID, library.ID).Scan(&out.FirstScan)
-	return out, err
+	out.Targets = targets
+	return out, nil
 }
+
 func libraryAudience(ctx context.Context, tx *sql.Tx, library string) (LibraryAudience, error) {
 	var out LibraryAudience
 	err := tx.QueryRowContext(ctx, `SELECT NOT EXISTS(SELECT 1 FROM direct_memberships m WHERE m.disabled=0 AND m.role<>'owner' AND json_array_length(m.allowed_libraries)>0 AND NOT EXISTS(SELECT 1 FROM json_each(m.allowed_libraries) WHERE value=?)),COUNT(*) FROM direct_memberships m WHERE m.disabled=0 AND (m.role='owner' OR json_array_length(m.allowed_libraries)=0 OR EXISTS(SELECT 1 FROM json_each(m.allowed_libraries) WHERE value=?))`, library, library).Scan(&out.Everyone, &out.Accounts)

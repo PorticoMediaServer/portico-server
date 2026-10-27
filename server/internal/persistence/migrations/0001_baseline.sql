@@ -10036,3 +10036,20 @@ CREATE INDEX social_handoffs_receiver_id_fk ON social_handoffs(receiver_id);
 CREATE INDEX subtitle_selection_operations_session_id_fk ON subtitle_selection_operations(session_id);
 CREATE INDEX tvdb_evidence_page_ownership_show_id_set_incarnation_generation_fk ON tvdb_evidence_page_ownership(show_id,set_incarnation,generation);
 CREATE INDEX viewer_revisions_library_id_fk ON viewer_revisions(library_id);
+
+-- Exact snapshot authority for live library-summary restriction predicates.
+CREATE TABLE catalog_summary_classification_revision(
+ singleton INTEGER PRIMARY KEY CHECK(singleton=1),
+ revision INTEGER NOT NULL CHECK(revision>0)
+) STRICT;
+INSERT INTO catalog_summary_classification_revision(singleton,revision) VALUES(1,1);
+CREATE TRIGGER summary_classification_insert AFTER INSERT ON content_rating_ages BEGIN
+ UPDATE catalog_summary_classification_revision SET revision=revision+1 WHERE singleton=1;
+END;
+CREATE TRIGGER summary_classification_delete AFTER DELETE ON content_rating_ages BEGIN
+ UPDATE catalog_summary_classification_revision SET revision=revision+1 WHERE singleton=1;
+END;
+CREATE TRIGGER summary_classification_update AFTER UPDATE OF value_key,minimum_age ON content_rating_ages
+WHEN OLD.value_key IS NOT NEW.value_key OR OLD.minimum_age IS NOT NEW.minimum_age BEGIN
+ UPDATE catalog_summary_classification_revision SET revision=revision+1 WHERE singleton=1;
+END;
