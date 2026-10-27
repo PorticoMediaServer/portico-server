@@ -70,7 +70,7 @@ export function ReportsPanel(props: ReportsPanelProps) {
  * Fetch through the owner transport, then save that checked record locally. */
 function useReportDownload(source: SettingsReportsSource, report: ClientReport, admit?: () => boolean) {
   const [failed, setFailed] = useState(false);
-  const life = useMemo<{active: boolean; request?: AbortController}>(() => ({active: true}), [source, report]);
+  const life = useMemo<{active: boolean; request?: AbortController}>(() => { /* Preserve the original ownership/invalidation keys. */ void source; void report; return ({active: true}); }, [source, report]);
   useLayoutEffect(() => {life.active = true;return () => {life.active = false;life.request?.abort();};}, [life]);
   const download = async () => {
     if (!life.active || life.request || !source.listed(report) || admit && !admit()) return;
@@ -111,7 +111,7 @@ function ReportRow({report, source, disabled, onRead, onDelete}: Readonly<{repor
 /** One report's own log, retained only by its exact open dialog. */
 function ReadReport({report, source, onClose}: Readonly<{report: ClientReport; source: SettingsReportsSource; onClose: () => void}>) {
   const [body, setBody] = useState<string>(), [failed, setFailed] = useState(false), done = useRef<HTMLButtonElement>(null);
-  const life = useMemo<{request?: AbortController}>(() => ({}), [source, report]);
+  const life = useMemo<{request?: AbortController}>(() => { /* Preserve the original ownership/invalidation keys. */ void source; void report; return ({}); }, [source, report]);
   useLayoutEffect(() => {const request = new AbortController();life.request = request;return () => {request.abort();if (life.request === request) life.request = undefined;};}, [life]);
   const current = () => !!life.request && !life.request.signal.aborted && source.listed(report);
   const {download, failed: downloadFailed} = useReportDownload(source, report, current);

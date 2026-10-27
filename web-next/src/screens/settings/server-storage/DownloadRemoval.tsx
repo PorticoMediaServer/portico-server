@@ -9,7 +9,7 @@ import styles from '../server/server.module.css';
 const t = defaultI18n.t;
 export function DownloadRemoval({source, row, disabled}: Readonly<{source: DownloadRemovalSource; row: DownloadsUsageRow; disabled: boolean}>) {
   const state = useSyncExternalStore(source.subscribe, source.getSnapshot, source.getSnapshot);
-  const view = useMemo<{active: boolean; dialog?: object; flight?: object}>(() => ({active: true}), [source, row]);
+  const view = useMemo<{active: boolean; dialog?: object; flight?: object}>(() => { /* Preserve the original ownership/invalidation keys. */ void source; void row; return ({active: true}); }, [source, row]);
   const [dialog, setDialog] = useState<object>();
   useLayoutEffect(() => {view.active = true;return () => {view.active = false;view.dialog = undefined;};}, [view]);
   const locked = state.pending ?? state.continuation;

@@ -19,10 +19,10 @@ function RouteContent() {
     const entry = state.location.state.__TSR_key;
     return typeof entry === 'string' && entry.length ? JSON.stringify([state.location.href, entry]) : undefined;
   }});
-  const commits = useMemo<RouteFadeCommits>(() => ({subscribe: listener => router.subscribe('onRendered', event => {
+  const commits = useMemo<RouteFadeCommits>(() => { /* Preserve the original ownership/invalidation keys. */ void owner; return ({subscribe: listener => router.subscribe('onRendered', event => {
     const entry = event.toLocation.state.__TSR_key;
     if (typeof entry === 'string' && entry.length) listener(JSON.stringify([event.toLocation.href, entry]));
-  })}), [router, owner]);
+  })}); }, [router, owner]);
   const target = useMemo(() => ({get current() { return routeMotionOwnedByBrowser() ? null : content.current; }}), []);
   useRouteFade(target, routeKey, commits);
   useLayoutEffect(() => { finishRouteMotion(); }, [routeKey]);

@@ -208,7 +208,7 @@ func readingSavedGroupRestrictionCheck(t *testing.T) {
 			}
 			// The target is also unready. Reference-only removal must not ask
 			// its group resolver to turn this into false empty/status data.
-			if _, err = r.f.db.Exec(`UPDATE reading_attribution_state SET input_generation=input_generation+1 WHERE library_id=(SELECT id FROM catalog_libraries WHERE library_id=?)`, r.library); err != nil {
+			if _, err = r.f.db.Exec(`UPDATE reading_attribution_state SET input_generation=input_generation+1,phase='scan' WHERE library_id=(SELECT id FROM catalog_libraries WHERE library_id=?)`, r.library); err != nil {
 				t.Fatal(err)
 			}
 			// Reference-only removal remains possible while the target is hidden.

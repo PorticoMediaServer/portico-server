@@ -8,7 +8,7 @@ import type {WebShellPlaybackRuntime} from '../../platform/playback';
 import type {WebQueueListLifetime} from '../../platform/playback/queue-list';
 import {fenceKey} from '../../shell/playback-model';
 import {sameFence} from '../../../../packages/player-core/src/index.ts';
-import {playbackFailure} from '../../../../web/src/player/failure';
+import {playbackFailure} from '@core/presentation/playback-failure.ts';
 import {WatchStreamLimitSessions} from './StreamLimitSessions';
 import type {WatchBindings,WatchSurfaces,WatchPanel} from './types';
 import {watchPanelModel} from './panel-model';

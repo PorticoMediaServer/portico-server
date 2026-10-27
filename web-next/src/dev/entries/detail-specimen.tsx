@@ -213,7 +213,7 @@ function detailDocument(facts: DetailsFixture, personal: ReturnType<typeof baseP
       studio: facts.studio, ...('country' in facts ? {country: facts.country} : {}), originalLanguage: 'en',
     },
     metadata: {
-      status: 'available', ratings: facts.itemId === 'inside-out' ? [{provider: 'TMDB', value: 8.1, max: 10, votes: 24810, sourceUrl: 'https://www.themoviedb.org/movie/150540', observedAt: '2026-10-17T00:00:00Z'}] : [], attributions: [],
+      status: 'available', ratings: facts.itemId === 'inside-out' ? [{provider: 'TMDB', value: 8.1, max: 10, votes: 24810, sourceUrl: 'https://www.themoviedb.org/movie/150540', observedAt: '2026-10-17T00:00:00Z'}] : [], attributions: [], // lint-strings-allow specimen catalogue data, not interface copy
       genres: facts.genres.map(([id, name]) => ({id, name: fixtureText(name), provider: 'specimen'})),
       credits: [...facts.credits], creditTotals: facts.creditTotals,
     },

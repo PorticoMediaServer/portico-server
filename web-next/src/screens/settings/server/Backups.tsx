@@ -55,7 +55,7 @@ type ProtectedSelection = Readonly<{selection: SettingsRestoreSelection; control
 type RestoreView = {active: boolean; confirmation?: object; picker?: object; choice?: object; request?: AbortController; protected?: ProtectedSelection};
 function useRestoreView(props: BackupSurfaceProps) {
   const source = props.source;
-  const view = useMemo<RestoreView>(() => ({active: true}), [source, props.scopeKey]);
+  const view = useMemo<RestoreView>(() => { /* Preserve the original ownership/invalidation keys. */ void source; void props.scopeKey; return ({active: true}); }, [source, props.scopeKey]);
   useLayoutEffect(() => {
     view.active = true;
     return () => {view.active = false;view.confirmation = undefined;view.picker = undefined;view.choice = undefined;view.request?.abort();view.protected?.controller.abort();if (view.protected) source.cancelRestoreSelection(view.protected.selection);view.protected = undefined;};
