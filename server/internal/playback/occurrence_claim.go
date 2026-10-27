@@ -26,6 +26,7 @@ type occurrenceEntry struct {
 	publications int
 	quiescent    chan struct{}
 	runs         map[*occurrenceRun]struct{}
+	budgets      map[*prefetchRecord]struct{}
 	claim        *occurrenceClaim
 }
 type occurrenceIntent struct {
@@ -50,10 +51,12 @@ type occurrenceClaim struct {
 	entry      *occurrenceEntry
 	epoch      uint64
 	runs       []*occurrenceRun
+	budgets    []*prefetchRecord
 	phase      uint8 // 0 held, 1 committed, 2 aborted
 	waiters    int
 	delivered  bool
 	fencing    bool
+	fenceOwner *StopOccurrenceClaim
 	cancelOnce sync.Once
 }
 
@@ -119,9 +122,21 @@ func (r *occurrenceRegistry) finished(id string, e *occurrenceEntry, run *occurr
 	r.pruneLocked(id, e)
 }
 func (r *occurrenceRegistry) pruneLocked(id string, e *occurrenceEntry) {
-	if r.entries[id] == e && e.intents == 0 && e.publications == 0 && len(e.runs) == 0 && e.claim == nil {
+	if r.entries[id] == e && e.intents == 0 && e.publications == 0 && len(e.runs) == 0 && len(e.budgets) == 0 && e.claim == nil {
 		delete(r.entries, id)
 	}
+}
+
+// ownsRun is liveness of an already installed exact resource, not admission.
+// A held claim bumps start epochs but cannot revoke owned IO before acceptance.
+func (r *occurrenceRegistry) ownsRun(id string, entry *occurrenceEntry, run *occurrenceRun) bool {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if r.entries[id] != entry || entry.committed {
+		return false
+	}
+	_, owned := entry.runs[run]
+	return owned
 }
 
 // publication admits one original run's provider/process publication. The
@@ -170,6 +185,21 @@ func (r *occurrenceRegistry) claim(ctx context.Context, id string, generation in
 		e = &occurrenceEntry{runs: make(map[*occurrenceRun]struct{})}
 		r.entries[id] = e
 	}
+	// A branch still owning another generation (for example an in-flight
+	// fragmented fallback) cannot be captured as this generation. Refuse before
+	// closing admission rather than applying an id-only finalizer to it.
+	for run := range e.runs {
+		if run.generation != generation {
+			r.mu.Unlock()
+			return nil, errOccurrenceClaimed
+		}
+	}
+	for budget := range e.budgets {
+		if budget.generation != generation {
+			r.mu.Unlock()
+			return nil, errOccurrenceClaimed
+		}
+	}
 	c := e.claim
 	if c != nil && c.generation != generation {
 		r.mu.Unlock()
@@ -186,6 +216,11 @@ func (r *occurrenceRegistry) claim(ctx context.Context, id string, generation in
 		for run := range e.runs {
 			if run.generation == generation {
 				c.runs = append(c.runs, run)
+			}
+		}
+		for budget := range e.budgets {
+			if budget.generation == generation {
+				c.budgets = append(c.budgets, budget)
 			}
 		}
 		e.claim = c
@@ -268,6 +303,14 @@ func (c *occurrenceClaim) commit(ctx context.Context) error {
 	runs := append([]*occurrenceRun(nil), c.runs...)
 	r.mu.Unlock()
 	c.cancelOnce.Do(func() {
+		for _, budget := range c.budgets {
+			budget.retire()
+		}
+		r.mu.Lock()
+		for _, budget := range c.budgets {
+			delete(c.entry.budgets, budget)
+		}
+		r.mu.Unlock()
 		for _, run := range runs {
 			if run.cancel != nil {
 				run.cancel()
@@ -292,13 +335,26 @@ func (c *occurrenceClaim) commit(ctx context.Context) error {
 // StopOccurrenceClaim holds process ownership and the frozen durable tuple.
 // It is not a caller permission and cannot authorize or issue a media grant.
 type StopOccurrenceClaim struct {
-	phase                                              *occurrenceClaim
-	original                                           context.Context
-	id, request, asset, account, profile, login, state string
-	item                                               int64
-	generation                                         int
-	source, incarnation                                string
-	sourceGeneration                                   int64
+	phase      *occurrenceClaim
+	original   context.Context
+	id         string
+	generation int
+	tuple      stopOccurrenceTuple
+}
+type stopOccurrenceTuple struct {
+	request, asset, account, profile, login, state, grant, grantToken, mode string
+	item                                                                    int64
+	generation                                                              int
+	source, incarnation, pinnedAsset                                        string
+	sourceGeneration, size, modified                                        int64
+}
+
+const stopOccurrenceSelect = `SELECT p.request_id,p.asset_id,p.item_id,p.account_id,p.profile_id,p.session_hash,p.state,p.generation,p.grant_hash,p.grant_token,p.mode,COALESCE(x.source_id,''),COALESCE(x.incarnation,''),COALESCE(x.configuration_generation,0),COALESCE(f.asset_id,''),COALESCE(f.size,0),COALESCE(f.modified_ns,0) FROM playback_sessions p LEFT JOIN playback_physical_source_pins x ON x.session_id=p.id LEFT JOIN playback_source_pins f ON f.session_id=p.id WHERE p.id=?`
+
+func readStopOccurrence(r interface{ Scan(...any) error }) (stopOccurrenceTuple, error) {
+	var t stopOccurrenceTuple
+	err := r.Scan(&t.request, &t.asset, &t.item, &t.account, &t.profile, &t.login, &t.state, &t.generation, &t.grant, &t.grantToken, &t.mode, &t.source, &t.incarnation, &t.sourceGeneration, &t.pinnedAsset, &t.size, &t.modified)
+	return t, err
 }
 
 var ErrOccurrenceChanged = errors.New("playback occurrence changed")
@@ -306,15 +362,17 @@ var ErrOccurrenceChanged = errors.New("playback occurrence changed")
 // ClaimStopOccurrence closes registration before reading the exact durable
 // tuple. No resource is cancelled until an accepting transaction commits.
 func (s *Service) ClaimStopOccurrence(ctx context.Context, id string, generation int) (*StopOccurrenceClaim, error) {
+	if ctx == nil || dbwork.Snapshot(ctx) != nil {
+		return nil, ErrOccurrenceChanged
+	}
 	phase, err := s.occurrenceRegistry().claim(ctx, id, generation)
 	if err != nil {
 		return nil, err
 	}
 	out := &StopOccurrenceClaim{phase: phase, original: ctx, id: id, generation: generation}
-	var actual int
-	err = s.db.QueryRowContext(ctx, `SELECT p.request_id,p.asset_id,p.item_id,p.account_id,p.profile_id,p.session_hash,p.state,p.generation,COALESCE(x.source_id,''),COALESCE(x.incarnation,''),COALESCE(x.configuration_generation,0) FROM playback_sessions p LEFT JOIN playback_physical_source_pins x ON x.session_id=p.id WHERE p.id=?`, id).Scan(&out.request, &out.asset, &out.item, &out.account, &out.profile, &out.login, &out.state, &actual, &out.source, &out.incarnation, &out.sourceGeneration)
-	if err != nil || actual != generation || out.state == "stopped" || out.state == "ended" || out.state == "failed" {
-		phase.abort()
+	out.tuple, err = readStopOccurrence(s.db.QueryRowContext(ctx, stopOccurrenceSelect, id))
+	if err != nil || out.tuple.generation != generation || out.tuple.state == "stopped" || out.tuple.state == "ended" || out.tuple.state == "failed" {
+		out.Abort()
 		if err != nil {
 			return nil, err
 		}
@@ -326,7 +384,7 @@ func (s *Service) ClaimStopOccurrence(ctx context.Context, id string, generation
 // FenceTx requires the original live writer and an original-caller check. Its
 // after-commit marker cannot be forged by a caller or fired by a rollback.
 func (c *StopOccurrenceClaim) FenceTx(ctx context.Context, tx *sql.Tx, check func(context.Context, *sql.Tx) error) error {
-	if c == nil || ctx == nil || tx == nil || check == nil || dbwork.Snapshot(ctx) != tx || c.original.Err() != nil || ctx.Err() != nil {
+	if c == nil || ctx == nil || tx == nil || check == nil || dbwork.Snapshot(ctx) != tx || !dbwork.InWriteTx(ctx) || c.original.Done() != ctx.Done() || c.original.Err() != nil || ctx.Err() != nil {
 		return ErrOccurrenceChanged
 	}
 	r := c.phase.registry
@@ -336,21 +394,20 @@ func (c *StopOccurrenceClaim) FenceTx(ctx context.Context, tx *sql.Tx, check fun
 		return ErrOccurrenceChanged
 	}
 	c.phase.fencing = true
+	c.phase.fenceOwner = c
 	r.mu.Unlock()
 	if err := check(ctx, tx); err != nil {
 		return err
 	}
-	var state, request, asset, account, profile, login, source, incarnation string
-	var generation int
-	var item, sourceGeneration int64
-	err := tx.QueryRowContext(ctx, `SELECT p.request_id,p.asset_id,p.item_id,p.account_id,p.profile_id,p.session_hash,p.state,p.generation,COALESCE(x.source_id,''),COALESCE(x.incarnation,''),COALESCE(x.configuration_generation,0) FROM playback_sessions p LEFT JOIN playback_physical_source_pins x ON x.session_id=p.id WHERE p.id=?`, c.id).Scan(&request, &asset, &item, &account, &profile, &login, &state, &generation, &source, &incarnation, &sourceGeneration)
+	actual, err := readStopOccurrence(tx.QueryRowContext(ctx, stopOccurrenceSelect, c.id))
 	if err != nil {
 		return err
 	}
-	if request != c.request || asset != c.asset || item != c.item || account != c.account || profile != c.profile || login != c.login || state != c.state || generation != c.generation || source != c.source || incarnation != c.incarnation || sourceGeneration != c.sourceGeneration {
+	if actual != c.tuple {
 		return ErrOccurrenceChanged
 	}
-	result, err := tx.ExecContext(ctx, `UPDATE playback_sessions SET state='stopped' WHERE id=? AND generation=? AND state=? AND request_id=? AND item_id=? AND asset_id=? AND session_hash=?`, c.id, c.generation, c.state, c.request, c.item, c.asset, c.login)
+	t := c.tuple
+	result, err := tx.ExecContext(ctx, `UPDATE playback_sessions SET state='stopped' WHERE id=? AND generation=? AND state=? AND request_id=? AND item_id=? AND asset_id=? AND session_hash=? AND grant_hash=?`, c.id, c.generation, t.state, t.request, t.item, t.asset, t.login, t.grant)
 	if err != nil {
 		return err
 	}
@@ -364,9 +421,20 @@ func (c *StopOccurrenceClaim) FenceTx(ctx context.Context, tx *sql.Tx, check fun
 	return dbwork.AfterCommit(tx, c.phase.markCommitted)
 }
 func (c *StopOccurrenceClaim) Abort() {
-	if c != nil {
-		c.phase.abort()
+	if c == nil {
+		return
 	}
+	r := c.phase.registry
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	phase := c.phase
+	if phase.phase != 0 || r.entries[c.id] != phase.entry || phase.entry.claim != phase || phase.fenceOwner != nil && phase.fenceOwner != c {
+		return
+	}
+	phase.phase = 2
+	phase.entry.claim = nil
+	phase.entry.blocked = false
+	r.pruneLocked(c.id, phase.entry)
 }
 func (c *StopOccurrenceClaim) Commit(ctx context.Context) error {
 	if c == nil || ctx == nil {

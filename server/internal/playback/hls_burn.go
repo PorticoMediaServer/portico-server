@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"portico.local/server/internal/assets"
+	"portico.local/server/internal/childprocess"
 	"portico.local/server/internal/decoder"
 	"portico.local/server/internal/subtitles"
 )
@@ -66,6 +67,29 @@ func (h *HLS) prepareBurnInput(ctx context.Context, id, dir string, position flo
 }
 
 func (h *HLS) openWindowInput(ctx context.Context, id string, plan *DeliveryPlan) (*assets.PlaybackInput, subtitles.WindowInput, error) {
+	release, err := childprocess.AcquirePublication(ctx)
+	if err != nil {
+		return nil, nil, err
+	}
+	defer release()
+	input, remote, err := h.openWindowInputOwned(ctx, id, plan)
+	if err != nil {
+		return input, remote, err
+	}
+	check, err := childprocess.AcquirePublication(ctx)
+	if err != nil {
+		if input != nil {
+			input.Close()
+		}
+		if remote != nil {
+			remote.Close()
+		}
+		return nil, nil, err
+	}
+	check()
+	return input, remote, nil
+}
+func (h *HLS) openWindowInputOwned(ctx context.Context, id string, plan *DeliveryPlan) (*assets.PlaybackInput, subtitles.WindowInput, error) {
 	if plan != nil && plan.SourceContainer == "strm" {
 		if h.WindowInputs == nil {
 			return nil, nil, errors.New("remote window inputs unavailable")

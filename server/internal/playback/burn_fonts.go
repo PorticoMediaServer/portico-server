@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"portico.local/server/internal/assets"
+	"portico.local/server/internal/childprocess"
 	"portico.local/server/internal/mediaexec"
 	"portico.local/server/internal/subtitles"
 	"time"
@@ -47,7 +48,7 @@ func (h *HLS) extractBurnFonts(ctx context.Context, input *assets.PlaybackInput,
 			return "", err
 		}
 		cmd.WaitDelay = time.Second
-		runErr = cmd.Run()
+		runErr = childprocess.Run(bounded, cmd)
 	}
 	if ctx.Err() != nil {
 		return "", ctx.Err()

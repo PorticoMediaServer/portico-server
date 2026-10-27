@@ -5,16 +5,16 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
-	"portico.local/server/internal/dbwork"
+	"portico.local/server/internal/childprocess"
 	"portico.local/server/internal/supervise"
 	"strconv"
 	"strings"
 )
 
-func (h *HLS) publicationFailed(id string, err error) {
+func (h *HLS) publicationFailed(id string, owned *hlsWindow, err error) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
-	if w := h.windows[id]; w != nil {
+	if w := h.windows[id]; w == owned {
 		w.publicationError = err
 	}
 }
@@ -26,6 +26,16 @@ func (h *HLS) fragmentedFailure(ctx context.Context, id string, plan *DeliveryPl
 		h.failedWith(ctx, id, FailureConverter, "fragmented output could not be published")
 		return
 	}
+	owner, _ := ctx.Value(occurrenceOwnerKey{}).(*occurrenceOwner)
+	if owner == nil || owner.id != id {
+		return
+	}
+	release, err := childprocess.AcquirePublication(ctx)
+	if err != nil {
+		return
+	}
+	defer release()
+	expected := owner.run.generation + 1
 	write, done := persist(ctx)
 	defer done()
 	next, e := h.downgradeCopyPlan(write, id, plan, true)
@@ -61,11 +71,7 @@ func (h *HLS) fragmentedFailure(ctx context.Context, id string, plan *DeliveryPl
 		e = publishRenditionManifests(dir, next, hlsTimelineManifest(next.Duration))
 	}
 	if e == nil {
-		var generation int
-		e = dbwork.QueryRow(write, h.db, `SELECT generation FROM playback_sessions WHERE id=?`, id).Scan(&generation)
-		if e == nil {
-			e = writeNamedManifest(dir, "generation", []byte(strconv.Itoa(generation)))
-		}
+		e = writeNamedManifest(dir, "generation", []byte(strconv.Itoa(expected)))
 	}
 	if e != nil {
 		h.failedWith(ctx, id, FailureConverter, "replacement manifest could not be published")
@@ -79,6 +85,6 @@ func (h *HLS) fragmentedFailure(ctx context.Context, id string, plan *DeliveryPl
 				return
 			}
 		}
-		_ = h.start(h.ctx, id, int(position)/HLSSegmentSeconds)
+		_ = h.startGeneration(h.ctx, id, int(position)/HLSSegmentSeconds, expected)
 	})
 }

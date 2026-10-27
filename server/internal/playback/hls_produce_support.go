@@ -6,6 +6,7 @@ import (
 	"errors"
 	"os/exec"
 	"path/filepath"
+	"portico.local/server/internal/childprocess"
 	"portico.local/server/internal/identity"
 	"runtime"
 	"strings"
@@ -152,7 +153,7 @@ func (h *HLS) failedWith(ctx context.Context, id, code, diagnostic string) {
 	h.rememberConversionFailure(ctx, id, code, diagnostic)
 	write, cancel := persist(ctx)
 	defer cancel()
-	_, _ = dbwork.ExecWrite(write, h.db, dbwork.ClassEstablishedPlayback, `UPDATE playback_artifacts SET failure_code=?,diagnostic=? WHERE session_id=?`, code, diagnostic, id)
+	_, _ = h.producerWrite(write, id, dbwork.ClassEstablishedPlayback, `UPDATE playback_artifacts SET failure_code=?,diagnostic=? WHERE session_id=?`, code, diagnostic, id)
 }
 
 // A clean retry or new published output followed by throttling establishes
@@ -167,8 +168,8 @@ func hardwareFailureConfirmed(softwareErr error, cancelled, throttled bool, from
 func (h *HLS) recordSoftwareFallback(ctx context.Context, id, backend, diagnostic string) {
 	write, cancel := persist(ctx)
 	defer cancel()
-	_, _ = dbwork.ExecWrite(write, h.db, dbwork.ClassEstablishedPlayback, `UPDATE playback_delivery_plans SET hardware_backend='software',hardware_native=0,hardware_device='',reason_codes=CASE WHEN instr(reason_codes,?)>0 THEN reason_codes ELSE reason_codes||','||? END WHERE session_id=?`, ReasonHardwareFailedSoftware, ReasonHardwareFailedSoftware, id)
-	_, _ = dbwork.ExecWrite(write, h.db, dbwork.ClassEstablishedPlayback, `UPDATE playback_artifacts SET failure_code=?,diagnostic=? WHERE session_id=?`, "hardware_encoder_failed:"+backend, diagnostic, id)
+	_, _ = h.producerWrite(write, id, dbwork.ClassEstablishedPlayback, `UPDATE playback_delivery_plans SET hardware_backend='software',hardware_native=0,hardware_device='',reason_codes=CASE WHEN instr(reason_codes,?)>0 THEN reason_codes ELSE reason_codes||','||? END WHERE session_id=?`, ReasonHardwareFailedSoftware, ReasonHardwareFailedSoftware, id)
+	_, _ = h.producerWrite(write, id, dbwork.ClassEstablishedPlayback, `UPDATE playback_artifacts SET failure_code=?,diagnostic=? WHERE session_id=?`, "hardware_encoder_failed:"+backend, diagnostic, id)
 	h.rememberConversionFailure(ctx, id, "hardware_encoder_failed:"+backend, diagnostic)
 	h.hardwareFailures.Add(1)
 }
@@ -205,6 +206,12 @@ func (h *HLS) fallbackCeilings(ctx context.Context, tx *sql.Tx, plan *DeliveryPl
 // owner has turned conversion off: a wrong timeline is not something to fall
 // back to.
 func (h *HLS) downgradeCopyPlan(ctx context.Context, id string, plan *DeliveryPlan, replacement ...bool) (*DeliveryPlan, error) {
+	release, err := childprocess.AcquirePublication(ctx)
+	if err != nil {
+		return nil, err
+	}
+	defer release()
+
 	gate, err := dbwork.Begin(ctx, h.db, dbwork.ClassEstablishedPlayback)
 	if err != nil {
 		return nil, err
@@ -212,6 +219,18 @@ func (h *HLS) downgradeCopyPlan(ctx context.Context, id string, plan *DeliveryPl
 	defer gate.Rollback()
 	tx := gate.Tx()
 	ctx = gate.Context()
+	if owner, _ := ctx.Value(occurrenceOwnerKey{}).(*occurrenceOwner); owner != nil {
+		var live bool
+		run := owner.run
+		err = tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM playback_sessions WHERE id=? AND generation=? AND request_id=? AND item_id=? AND asset_id=? AND state NOT IN ('stopped','ended','failed'))`, id, run.generation, run.requestID, run.itemID, run.assetID).Scan(&live)
+		if err != nil {
+			return nil, err
+		}
+		if owner.id != id || !live {
+			return nil, ErrOccurrenceChanged
+		}
+	}
+
 	var enabled bool
 	if err = tx.QueryRowContext(ctx, `SELECT transcoding_enabled FROM playback_owner_policy WHERE singleton=1`).Scan(&enabled); err != nil {
 		return nil, err

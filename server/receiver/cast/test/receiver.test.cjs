@@ -1,6 +1,7 @@
 const test=require('node:test'), assert=require('node:assert/strict'),vm=require('node:vm'),fs=require('node:fs'),crypto=require('node:crypto');
 const source=fs.readFileSync(require('node:path').join(__dirname,'../receiver.js'),'utf8');
 async function harness(fixture={}){
+ const contracts=await import('../../../../packages/contracts/src/decoders.ts');
  const calls=[],loads=[],metadataUpdates=[],interceptors={},events={},timers=new Map(),storage=new Map(),sent=[],ctxEvents={},senders=[],queueItems=[];let timer=0,at=0,state='PAUSED',listener,urlResolver;
  // The real SDK exposes QUEUE_NEXT/PREV enum values but rejects them as interceptors.
  const supportedInterceptors=new Set(['LOAD','PLAY','PAUSE','SEEK','STOP','PRELOAD','QUEUE_INSERT','QUEUE_LOAD','QUEUE_UPDATE','QUEUE_REMOVE','QUEUE_REORDER','GET_STATUS','MEDIA_STATUS','CLOUD_STATUS','QUEUE_GET_ITEMS','QUEUE_GET_ITEM_IDS']);
@@ -11,11 +12,11 @@ async function harness(fixture={}){
  let failed=false,expired=false,preparing=!!fixture.preparing,generation=1,registeredBinding,controllerExpired=false;
  const presentation=(start,mediaUrl)=>{
   const url=mediaUrl===undefined?(fixture.direct?'/v1/media/grant':'/v1/media/grant/master.m3u8'):mediaUrl;
-  return {generation,mode:fixture.direct?'direct':'stream',url,container:fixture.container||(fixture.direct?'mp4':'fmp4_hls'),startPositionMs:start||0,subtitles:[],decision:fixture.audioOnly?{audio:{action:'copy',reasons:[]}}:fixture.transcode?{video:{action:'transcode',reasons:[]}}:{video:{action:'copy',reasons:[]}},...(fixture.audioRender?{audioRender:{version:2,id:'render-1',url,...fixture.audioRender}}:{})};
+  return {generation,engine:'native',mode:fixture.direct?'direct':'stream',url,container:fixture.container||(fixture.direct?'mp4':'fmp4_hls'),startPositionMs:start||0,subtitles:[],decision:fixture.audioOnly?{audio:{action:'copy',reasons:[]}}:fixture.transcode?{video:{action:'transcode',reasons:[]}}:{video:{action:'copy',reasons:[]}},...(fixture.audioRender?{audioRender:{version:2,id:'render-1',url,...fixture.audioRender}}:{})};
  };
- const sessionFor=(body,start)=>({id:fixture.nextSessionId||'ps_1',revision:String(generation),kind:'vod',role:'local',state:'playing',itemId:body?.itemId||'movie',...(body?.queue?{queue:body.queue}:fixture.queue?{queue:{queueId:'q-1',entryId:'entry-1'}}:{}),lease:{reportEveryMs:10000},presentation:presentation(start)});
+ const sessionFor=(body,start)=>({id:fixture.nextSessionId||'ps_1',revision:String(generation),kind:'vod',role:'local',state:'playing',itemId:body?.itemId||'movie',...(body?.queue?{queue:body.queue}:fixture.queue?{queue:{queueId:'q-1',entryId:'entry-1'}}:{}),lease:{expiresAt:'2099-01-01T00:00:00Z',reportEveryMs:10000},presentation:presentation(start)});
  const reply=(payload,status=200)=>new Response(status===204?null:JSON.stringify(payload),{status});
- const context={document,cast,navigator:fixture.mediaCapabilities?{mediaCapabilities:fixture.mediaCapabilities}:{},URL,URLSearchParams,TextDecoder,AbortController,Uint8Array,console,Number,Promise,setTimeout:(fn,ms)=>{timers.set(++timer,{fn,ms});return timer},clearTimeout:id=>timers.delete(id),setInterval:(fn,ms)=>{timers.set(++timer,{fn,ms});return timer},clearInterval:id=>timers.delete(id),fetch:async(url,options)=>{
+ const context={PorticoCastContracts:contracts,document,cast,navigator:fixture.mediaCapabilities?{mediaCapabilities:fixture.mediaCapabilities}:{},URL,URLSearchParams,TextDecoder,AbortController,Uint8Array,console,Number,Promise,setTimeout:(fn,ms)=>{timers.set(++timer,{fn,ms});return timer},clearTimeout:id=>timers.delete(id),setInterval:(fn,ms)=>{timers.set(++timer,{fn,ms});return timer},clearInterval:id=>timers.delete(id),fetch:async(url,options)=>{
   const body=options.body?JSON.parse(options.body):undefined;calls.push({url,body,method:options.method,headers:options.headers});
   const path=url.replace(/^https?:\/\/[^/]+/,'');
   if(path.startsWith('/v2/'))throw new Error('removed v2 route '+path);
@@ -43,7 +44,7 @@ async function harness(fixture={}){
   if(path==='/v1/playback/sessions'&&options.method==='POST'){
    if(fixture.startWait){fixture.startCalled?.();await fixture.startWait;}
    if(fixture.ambiguous&&!failed){failed=true;throw new Error('lost response')}
-   if(fixture.preparingReal){fixture.preparingReal=false;const value=sessionFor(body,body.startPositionMs);return reply({...value,state:'preparing',retryAfterMs:500,lease:{...value.lease,expiresAt:'2099-01-01T00:00:00Z'},presentation:{...value.presentation,engine:'native'}},202);}
+   if(fixture.preparingReal){fixture.preparingReal=false;const value=sessionFor(body,body.startPositionMs);return reply({...value,retryAfterMs:500,lease:{...value.lease,expiresAt:'2099-01-01T00:00:00Z'},presentation:{...value.presentation,engine:'native'}},202);}
    if(fixture.preparingResponses?.length){const next=fixture.preparingResponses.shift();return reply(typeof next==='function'?next(sessionFor(body,body.startPositionMs)):next,202);}
    if(fixture.prepareTerminal)return reply({error:{code:'preparation_failed'}},409);
    if(preparing){preparing=false;return reply({retryAfterMs:500},202);}
@@ -491,7 +492,7 @@ test('only the matching playable audio render plan describes the delivered audio
 });
 
 test('ordinary advance keeps the matching delivered audio render MIME without applying client gain',async()=>{
- const h=await harness({queue:true,direct:true,audioOnly:true,container:'mov',audioRender:{mode:'converted',container:'flac',codec:'flac',loudnessAppliedDb:-12,gain:-12}});
+ const h=await harness({queue:true,direct:true,audioOnly:true,container:'mov',audioRender:{mode:'converted',container:'flac',codec:'flac',loudnessAppliedDb:-12,gain:{source:'tags',trackDb:-12}}});
  await h.receiver.redeem('ABCD');await h.receiver.startPlayback('song-1',0,null,null,{queueId:'q-1',entryId:'entry-1'});
  h.finish();await settle();
  assert.equal(h.receiver.state().playbackId,'ps_2');assert.equal(h.loads[1].media.contentType,'audio/flac');assert.equal(h.resolved(h.loads[1]),'/v1/media/grant');
@@ -850,7 +851,7 @@ test('real preparation accepts only its same final session and generation',async
 });
 
 test('malformed or replaced preparation cleans only the original never-installed resource',async()=>{
- for(const second of [{retryAfterMs:1,garbage:true},session=>({...session,id:'other',state:'preparing',retryAfterMs:500,lease:{...session.lease,expiresAt:'2099-01-01T00:00:00Z'},presentation:{...session.presentation,engine:'native'}})]){
+ for(const second of [{retryAfterMs:1,garbage:true},session=>({...session,id:'other',state:'playing',retryAfterMs:500,lease:{...session.lease,expiresAt:'2099-01-01T00:00:00Z'},presentation:{...session.presentation,engine:'native'}})]){
   const h=await harness({preparingReal:true,preparingResponses:[second]});await h.receiver.redeem('ABCD');
   const start=h.receiver.startPlayback('movie');await settle0();const timer=[...h.timers].find(([,v])=>v.ms===500);assert(timer);h.fire(timer[0]);await assert.rejects(start,/invalid_preparation|preparation_replaced/);
   const cleanup=h.calls.filter(x=>x.method==='DELETE'&&x.url.includes('/v1/playback/sessions/'));assert.equal(cleanup.length,1);assert(cleanup[0].url.endsWith('/ps_1'));assert.equal(h.loads.length,0);
@@ -869,7 +870,7 @@ test('late renewal ticket cannot admit a replacement SDK connection',async()=>{
 });
 
 test('real 202 requires the authoritative preparation session domain',async()=>{
- const valid=session=>({...session,state:'preparing',retryAfterMs:500,lease:{expiresAt:'2099-01-01T00:00:00Z',reportEveryMs:10000},presentation:{...session.presentation,engine:'native'}});
+ const valid=session=>({...session,state:'playing',retryAfterMs:500,lease:{expiresAt:'2099-01-01T00:00:00Z',reportEveryMs:10000},presentation:{...session.presentation,engine:'native'}});
  const bad=[
   session=>{const value=valid(session);value.lease.expiresAt='not-a-time';return value},
   session=>{const value=valid(session);value.lease.reportEveryMs=-1;return value},
@@ -894,4 +895,21 @@ test('accepted start retired after the inner response check cleans only its orig
  await h.message('phone',{type:'pair',code:'ABCD',origin:''});await h.message('phone',{type:'load',itemId:'movie',requestId:'late-accepted'});await settle0();
  const cleanup=h.calls.filter(x=>x.method==='DELETE'&&x.url.endsWith('/v1/playback/sessions/ps_1'));
  assert.equal(cleanup.length,1);assert.equal(cleanup[0].headers.Authorization,'Bearer bearer-ABCD');assert.equal(cleanup[0].body.expectedGeneration,1);assert.equal(h.loads.length,0);
+});
+
+test('canonical decoder admits real playing/paused 202 without granting completion',async()=>{
+ for(const state of ['playing','paused']){
+  const h=await harness({preparingResponses:[session=>({...session,state,retryAfterMs:500})]});await h.receiver.redeem('ABCD');
+  const start=h.receiver.startPlayback('movie');await settle0();
+  assert.equal(h.loads.length,0);const timer=[...h.timers].find(([,v])=>v.ms===500);assert(timer);h.fire(timer[0]);await start;
+  assert.equal(h.loads.length,1);assert(!h.calls.some(x=>x.method==='DELETE'&&x.url.includes('/v1/playback/sessions/')));
+ }
+});
+
+test('canonical nested schema closure rejects extra fields before cleanup authority',async()=>{
+ for(const mutate of [s=>{s.presentation.unexpected=true},s=>{s.presentation.decision.video.unexpected=true},s=>{s.lease.unexpected=true}]){
+  const h=await harness({preparingResponses:[session=>{const s={...session,retryAfterMs:500};mutate(s);return s}]});await h.receiver.redeem('ABCD');
+  await assert.rejects(h.receiver.startPlayback('movie'),/invalid_preparation/);
+  assert.equal(h.loads.length,0);assert(!h.calls.some(x=>x.method==='DELETE'&&x.url.includes('/v1/playback/sessions/')));
+ }
 });

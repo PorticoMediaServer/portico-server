@@ -10,6 +10,7 @@ import (
 	"os"
 	"path/filepath"
 	"portico.local/server/internal/assets"
+	"portico.local/server/internal/childprocess"
 	"portico.local/server/internal/dbwork"
 	"portico.local/server/internal/identity"
 	"portico.local/server/internal/playback/vod"
@@ -58,6 +59,11 @@ func (h *HLS) EnableFinite(ffprobe string) error {
 	return err
 }
 func (f *FiniteHLS) input(ctx context.Context, id string) (vod.Input, error) {
+	release, err := childprocess.AcquirePublication(ctx)
+	if err != nil {
+		return vod.Input{}, err
+	}
+	defer release()
 	pin, err := assets.ResolvePlaybackSource(ctx, f.h.db, id, "")
 	if err != nil {
 		return vod.Input{}, err
@@ -66,10 +72,20 @@ func (f *FiniteHLS) input(ctx context.Context, id string) (vod.Input, error) {
 	if err != nil {
 		return vod.Input{}, err
 	}
-	return vod.Input{File: source.File, Argument: source.Argument, Inherit: source.Inherit,
+	check, err := childprocess.AcquirePublication(ctx)
+	if err != nil {
+		source.Close()
+		return vod.Input{}, err
+	}
+	check()
+	return vod.Input{Release: source.Close, File: source.File, Argument: source.Argument, Inherit: source.Inherit,
 		Identity: vod.Identity{Size: pin.Size, ModifiedNS: pin.ModifiedNS},
 		Validate: func(ctx context.Context, file *os.File, p vod.Identity) error {
-			return f.h.SourceStorage.ValidatePlaybackDescriptor(ctx, file, p.Size, p.ModifiedNS)
+			owned, err := childprocess.OwnedIOContext(ctx)
+			if err != nil {
+				return err
+			}
+			return f.h.SourceStorage.ValidatePlaybackDescriptor(owned, file, p.Size, p.ModifiedNS)
 		}}, nil
 }
 func (f *FiniteHLS) live(id string) bool {
@@ -94,6 +110,9 @@ func finiteManifest(s *vod.Source) []byte {
 	return []byte(b.String())
 }
 func (f *FiniteHLS) ensure(ctx context.Context, id string) (*finiteActor, error) {
+	if dbwork.Snapshot(ctx) != nil {
+		return nil, errOccurrenceClaimed
+	}
 	intent, err := f.h.occurrences.intent(id)
 	if err != nil {
 		return nil, err
@@ -124,7 +143,8 @@ func (f *FiniteHLS) ensure(ctx context.Context, id string) (*finiteActor, error)
 		worker, cancel := context.WithCancel(f.h.ctx)
 		a = &finiteActor{ctx: worker, cancel: cancel, ready: make(chan struct{}), wake: make(chan struct{}, 1), done: make(chan struct{}), generation: generation, entry: intent.entry}
 		a.run = &occurrenceRun{generation: generation, requestID: requestID, itemID: itemID, assetID: assetID, cancel: cancel, done: a.done}
-		err = intent.install(a.run, func() { f.actors[id] = a; f.h.active[id] = cancel })
+		a.ctx = f.h.occurrenceContext(a.ctx, id, a.entry, a.run)
+		err = intent.install(a.run, func() { f.actors[id] = a; f.h.installOccurrenceLocked(id, a.run, cancel) })
 		if err != nil {
 			cancel()
 			f.h.mu.Unlock()
@@ -156,7 +176,7 @@ func (f *FiniteHLS) prepare(id string, a *finiteActor) error {
 	if err != nil {
 		return err
 	}
-	defer input.File.Close()
+	defer input.Close()
 	source, err := f.encoder.Analyze(ctx, input)
 	if err != nil {
 		if errors.Is(err, vod.ErrUnsupported) {
@@ -260,7 +280,7 @@ func (f *FiniteHLS) run(id string, a *finiteActor) {
 		f.h.mu.Lock()
 		if f.actors[id] == a {
 			delete(f.actors, id)
-			delete(f.h.active, id)
+			f.h.removeOccurrenceLocked(id, a.run)
 		}
 		f.h.mu.Unlock()
 		f.mu.Unlock()
@@ -269,7 +289,18 @@ func (f *FiniteHLS) run(id string, a *finiteActor) {
 	}()
 	// The producer's failures are fenced to the generation it started for.
 	fail := withProducerGeneration(a.ctx, a.generation)
-	a.err = f.prepare(id, a)
+	for {
+		a.err = f.prepare(id, a)
+		if !errors.Is(a.err, errOccurrenceClaimed) || a.ctx.Err() != nil {
+			break
+		}
+		// No initial IO was admitted. Hold the installed owner through Abort or
+		// its committed cancellation rather than fabricating a source failure.
+		select {
+		case <-a.ctx.Done():
+		case <-time.After(25 * time.Millisecond):
+		}
+	}
 	close(a.ready)
 	if a.err != nil {
 		f.h.failed(fail, id)
@@ -285,6 +316,13 @@ func (f *FiniteHLS) run(id string, a *finiteActor) {
 		err := f.h.db.QueryRow(`SELECT ordinal FROM playback_vod_intervals WHERE session_id=? AND status='queued' ORDER BY requested_order,ordinal LIMIT 1`, id).Scan(&index)
 		if err == nil {
 			if err = f.produce(id, a, index); err != nil {
+				if errors.Is(err, errOccurrenceClaimed) && a.ctx.Err() == nil {
+					select {
+					case <-a.ctx.Done():
+					case <-tick.C:
+					}
+					continue
+				}
 				if a.ctx.Err() != nil {
 					return
 				}
@@ -314,7 +352,19 @@ func (f *FiniteHLS) run(id string, a *finiteActor) {
 		}
 	}
 }
-func (f *FiniteHLS) produce(id string, a *finiteActor, index int) error {
+func (f *FiniteHLS) produce(id string, a *finiteActor, index int) (resultErr error) {
+	var workGeneration int64
+	defer func() {
+		if !errors.Is(resultErr, errOccurrenceClaimed) || workGeneration == 0 {
+			return
+		}
+		cleanup, cancel := persist(a.ctx)
+		defer cancel()
+		// Only this not-started work token is returned to its original queue. A
+		// committed stop or successor generation cannot be reopened by this defer.
+		_, _ = f.h.producerWrite(cleanup, id, dbwork.ClassEstablishedPlayback, `UPDATE playback_vod_intervals SET status='queued',generation=0,attempts=max(0,attempts-1) WHERE session_id=? AND ordinal=? AND status='working' AND generation=?`, id, index, workGeneration)
+	}()
+
 	// Retain this run's publication ticket across the writer. A stop claim
 	// closes admission and waits outside the registry mutex for this writer.
 	releasePublication, err := f.h.occurrences.publication(id, a.entry, a.run)
@@ -360,12 +410,13 @@ func (f *FiniteHLS) produce(id string, a *finiteActor, index int) error {
 	if err = gated2.Commit(); err != nil {
 		return err
 	}
+	workGeneration = generation
 	releasePublication()
 	input, err := f.input(a.ctx, id)
 	if err != nil {
 		return err
 	}
-	defer input.File.Close()
+	defer input.Close()
 	dir := filepath.Join(f.h.root, id, "work", strconv.FormatInt(generation, 10))
 	observe, finish := f.h.observeConversion(a.ctx, id, a.generation)
 	defer finish()
@@ -376,6 +427,9 @@ func (f *FiniteHLS) produce(id string, a *finiteActor, index int) error {
 	defer os.RemoveAll(dir)
 	if !f.liveGeneration(id, a.generation) {
 		return identity.ErrUnauthorized
+	}
+	if err := childprocess.CheckOwnedIO(a.ctx); err != nil {
+		return err
 	}
 	digest, err := finiteHash(window.Path)
 	if err != nil {

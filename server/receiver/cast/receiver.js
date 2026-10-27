@@ -390,7 +390,6 @@
       if(options.observeAnswer)options.observeAnswer(answer);
       if(lease&&!leaseCurrent(lease)){
         var retired=new Error('controller_retired');retired.retired=true;
-        if(path==='/v1/playback/sessions'&&(options.method===undefined||options.method==='POST')&&answer.status!==202&&answer.body&&typeof answer.body.id==='string'&&/^[A-Za-z0-9._:-]{1,128}$/.test(answer.body.id))retired.acceptedOccurrenceId=answer.body.id;
         throw retired;
       }
       requireLease(lease);requirePairInstallation(installation,true);
@@ -816,18 +815,31 @@
     }
     var cleanupWitness={origin:startOrigin,bearer:startSession&&startSession.accessToken},ownedStart=null;
     function observeStart(result){
-      var value=result.body;
-      if(result.status!==202){
-        if(value&&typeof value.id==='string'&&/^[A-Za-z0-9._:-]{1,128}$/.test(value.id)&&!ownedStart)ownedStart={id:value.id,generation:value.presentation&&value.presentation.generation};
-        return;
+      // Body authority comes only from the complete canonical schema graph.
+      // Status is a separate protocol fence: a valid 202 never completes LOAD.
+      var value;
+      try {
+        if(result.status!==201&&result.status!==202)throw new Error('unexpected_start_status');
+        value=PorticoCastContracts.decodeStartPlaybackSessionResponse(result.body);
+        if(result.status===202&&(!Number.isSafeInteger(value.retryAfterMs)||value.retryAfterMs<1||value.retryAfterMs>10000))throw new Error('invalid_retry');
+        if(result.status===201&&Object.prototype.hasOwnProperty.call(value,'retryAfterMs'))throw new Error('unexpected_retry');
+        if(!Object.prototype.hasOwnProperty.call(value,'id')){
+          if(result.status!==202)throw new Error('missing_session');
+          return; // Only the decoder's closed retry-only branch reaches here.
+        }
+        if(!/^[A-Za-z0-9._:-]{1,128}$/.test(value.id)||!Number.isSafeInteger(value.presentation.generation)||value.presentation.generation<1||
+          (body.queue?(!value.queue||value.queue.queueId!==body.queue.queueId||value.queue.entryId!==body.queue.entryId):value.itemId!==body.itemId))throw new Error('start_binding_changed');
+      } catch (cause) {
+        var malformed=new Error('invalid_preparation');malformed.retired=true;throw malformed;
       }
-      var retry=value&&value.retryAfterMs;
-      if(!value||typeof value!=='object'||Array.isArray(value)||!Number.isSafeInteger(retry)||retry<1||retry>10000){var bad=new Error('invalid_preparation');bad.retired=true;throw bad;}
-      if(Object.keys(value).length===1&&Object.prototype.hasOwnProperty.call(value,'retryAfterMs'))return;
-      var p=value.presentation,l=value.lease,q=value.queue;
-      if(typeof value.id!=='string'||!/^[A-Za-z0-9._:-]{1,128}$/.test(value.id)||typeof value.revision!=='string'||!value.revision||typeof value.kind!=='string'||typeof value.role!=='string'||value.state!=='preparing'||!l||typeof l.expiresAt!=='string'||!Number.isSafeInteger(l.reportEveryMs)||!preparingPresentationValid(p)||(body.queue?(!q||q.queueId!==body.queue.queueId||q.entryId!==body.queue.entryId):value.itemId!==body.itemId)){var malformed=new Error('invalid_preparation');malformed.retired=true;throw malformed;}
-      if(ownedStart&&(ownedStart.id!==value.id||ownedStart.generation!==p.generation)){var replaced=new Error('preparation_replaced');replaced.retired=true;throw replaced;}
-      ownedStart={id:value.id,generation:p.generation};preparingIdentity=ownedStart;
+      if(ownedStart&&(ownedStart.id!==value.id||ownedStart.generation!==value.presentation.generation)){
+        var replaced=new Error('preparation_replaced');replaced.retired=true;throw replaced;
+      }
+      // Capture before any currentness, view or controller callback can retire
+      // this request. The immutable witness always carries its original bearer.
+      ownedStart=Object.freeze({id:value.id,generation:value.presentation.generation});
+      if(result.status===202)preparingIdentity=ownedStart;
+      result.body=value;
     }
     try {
       // A valid 202 keeps the original request and its cleanup witness alive.
@@ -855,13 +867,6 @@
     playback = track(started);
     reportSeq = 0; reportFailures = 0;
     return load;
-  }
-  // Validate the parts of the preparing session used for continuation. A
-  // retry-only response cannot smuggle a partial session as a resource.
-  function preparingPresentationValid(p){
-    if(!p||typeof p!=='object'||Array.isArray(p)||!Number.isSafeInteger(p.generation)||p.generation<1||typeof p.mode!=='string'||typeof p.url!=='string'||typeof p.engine!=='string'||!Number.isSafeInteger(p.startPositionMs)||!Array.isArray(p.subtitles)||!p.decision||typeof p.decision!=='object'||Array.isArray(p.decision))return false;
-    if(!p.subtitles.every(function(t){return t&&typeof t==='object'&&!Array.isArray(t)&&typeof t.timeDomain==='string'&&Number.isSafeInteger(t.offsetMs)&&typeof t.trackId==='string'&&typeof t.format==='string'&&typeof t.url==='string';}))return false;
-    return ['audio','video','subtitles'].every(function(k){var d=p.decision[k];return d===undefined||d&&typeof d==='object'&&!Array.isArray(d)&&typeof d.action==='string'&&Array.isArray(d.reasons)&&d.reasons.every(function(r){return typeof r==='string';})&&(d.to===undefined||typeof d.to==='string')&&(d.channels===undefined||Number.isSafeInteger(d.channels));});
   }
   function startPlayback(itemId,startSeconds,identity,subtitleTrackId,queue,lease) { return commandQueue(lease,async function(){
     requireLease(lease);recoveries=0;

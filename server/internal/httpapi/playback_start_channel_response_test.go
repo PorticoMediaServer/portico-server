@@ -106,6 +106,30 @@ func TestColdChannelStartKeepsRealSessionAndProducerGeneration(t *testing.T) {
 		t.Fatal("cold session lost its stream slot", code)
 	}
 	assertMalformedColdStarts(t, cold)
+	// Replaying the genuinely ended channel follows channelPresentation's
+	// early return: engine/linear remain absent facts, never fabricated native.
+	if stopped := f.raw("DELETE", "/v1/playback/sessions/"+cold.ID, member, nil, nil); stopped.Code != 204 {
+		t.Fatalf("channel stop: %d %s", stopped.Code, stopped.Body.String())
+	}
+	ended := read()
+	if ended.State != "ended" || ended.End == nil || ended.Presentation.Generation != 0 || ended.Presentation.Engine != "" || ended.Presentation.URL != "" {
+		t.Fatal("ended channel replay changed facts", ended)
+	}
+	invalid := ended
+	invalid.Kind = "vod"
+	invalidJSON, _ := json.Marshal(invalid)
+	if issues := (apispec.Document{}).ValidateJSON((playbackStartResponse{}).JSONSchemaForStatus(201), invalidJSON); len(issues) == 0 {
+		t.Fatal("empty channel engine authorized a native resource")
+	}
+	coldJSON, _ := json.Marshal(cold)
+	var value map[string]any
+	json.Unmarshal(coldJSON, &value)
+	value["presentation"].(map[string]any)["linear"].(map[string]any)["unexpected"] = true
+	unknownJSON, _ := json.Marshal(value)
+	if issues := (apispec.Document{}).ValidateJSON((playbackStartResponse{}).JSONSchemaForStatus(201), unknownJSON); len(issues) == 0 {
+		t.Fatal("unknown linear field escaped closure")
+	}
+
 }
 
 func assertMalformedColdStarts(t *testing.T, original playbackv1.SessionView) {
