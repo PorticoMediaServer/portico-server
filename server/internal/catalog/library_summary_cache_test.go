@@ -229,8 +229,6 @@ func TestLibrarySummaryCoreClassificationAndConservativeBypass(t *testing.T) {
 	lib := Library{ID: "a", Kind: "movie"}
 	c.Attributes(names["m5"].ID, "contentRating", "SUMMARY-UNKNOWN")
 	c.Drain()
-	key := summaryKeyRead(t, s, v, lib)
-	got, _ := summaryRead(t, s, v, lib)
 	for _, step := range []struct {
 		query string
 		delta int
@@ -240,17 +238,12 @@ func TestLibrarySummaryCoreClassificationAndConservativeBypass(t *testing.T) {
 		v.Restrictions.MaximumAge = &age
 		prior, _ := summaryRead(t, s, v, lib)
 		priorKey := summaryKeyRead(t, s, v, lib)
-		c.Write(func(ctx context.Context, tx *sql.Tx) error {
-			if _, e := tx.Exec(step.query); e != nil {
-				return e
-			}
-			// Existing rating triggers may also bump library revisions. Hold that fixture
-			// token constant to prove the classification token independently invalidates.
-			_, e := tx.Exec(`UPDATE library_revisions SET revision=? WHERE library_id='a'`, priorKey.Revision)
-			return e
-		})
+		c.Exec(step.query)
 		nextKey := summaryKeyRead(t, s, v, lib)
-		if priorKey.Revision != nextKey.Revision || priorKey.OrderRevision != nextKey.OrderRevision || priorKey.Classification == nextKey.Classification {
+		// Normal insert/delete/minimum_age changes synchronously advance the
+		// affected library's RAW revision (not order_revision), as well as the new
+		// complete classification epoch. Assert the actual producer effects.
+		if nextKey.Revision != priorKey.Revision+1 || priorKey.OrderRevision != nextKey.OrderRevision || nextKey.Classification != priorKey.Classification+1 {
 			t.Fatalf("classification revisions lib %d -> %d order %d -> %d class %d -> %d", priorKey.Revision, nextKey.Revision, priorKey.OrderRevision, nextKey.OrderRevision, priorKey.Classification, nextKey.Classification)
 		}
 		got, scans := summaryRead(t, s, v, lib)
@@ -262,24 +255,38 @@ func TestLibrarySummaryCoreClassificationAndConservativeBypass(t *testing.T) {
 			t.Fatal("classification answer", prior, got, step.delta)
 		}
 	}
-	// A spelling rename is the real classification-only path: existing age
-	// triggers watch minimum_age, so this leaves the library token unchanged.
+
+	// Both old and new spellings occur on existing titles. Renaming one age row
+	// swaps which title is rated, without changing the item/library/profile/order
+	// tokens: existing UPDATE invalidation only watches minimum_age.
 	c.Exec(`INSERT INTO content_rating_ages VALUES('summary-alias',7)`)
+	c.Attributes(names["m3"].ID, "contentRating", "SUMMARY-ALIAS")
+	c.Exec(`UPDATE catalog_item_details SET poster_url='legacy' WHERE entity_id IN(?,?)`, names["m3"].ID, names["m5"].ID)
+	c.Drain()
 	prior, _ := summaryRead(t, s, v, lib)
 	priorKey := summaryKeyRead(t, s, v, lib)
+	profileFence := RestrictionFence(v.Restrictions)
+	var viewerRevision int64
+	if err := db.QueryRow(`SELECT COALESCE((SELECT revision FROM viewer_revisions WHERE profile_id='p' AND library_id='a'),0)`).Scan(&viewerRevision); err != nil {
+		t.Fatal(err)
+	}
 	c.Exec(`UPDATE content_rating_ages SET value_key='summary-unknown' WHERE value_key='summary-alias'`)
 	nextKey := summaryKeyRead(t, s, v, lib)
-	if priorKey.Revision != nextKey.Revision || priorKey.Classification == nextKey.Classification {
+	var afterViewerRevision int64
+	if err := db.QueryRow(`SELECT COALESCE((SELECT revision FROM viewer_revisions WHERE profile_id='p' AND library_id='a'),0)`).Scan(&afterViewerRevision); err != nil {
+		t.Fatal(err)
+	}
+	if priorKey.Revision != nextKey.Revision || priorKey.OrderRevision != nextKey.OrderRevision || nextKey.Classification != priorKey.Classification+1 || viewerRevision != afterViewerRevision || profileFence != RestrictionFence(v.Restrictions) {
 		t.Fatal("rename classification identity")
 	}
 	renamed, scans := summaryRead(t, s, v, lib)
-	if scans != 1 || renamed.Counts[0].Count != prior.Counts[0].Count+1 {
-		t.Fatal("renamed rating cache stale", renamed, prior, scans)
+	oldCover := "/v1/items/" + names["m3"].Public + "/art/poster"
+	newCover := "/v1/items/" + names["m5"].Public + "/art/poster"
+	if scans != 1 || renamed.Counts[0].Count != prior.Counts[0].Count || !strings.Contains(strings.Join(prior.CoverURLs, " "), oldCover) || strings.Contains(strings.Join(prior.CoverURLs, " "), newCover) || !strings.Contains(strings.Join(renamed.CoverURLs, " "), newCover) || strings.Contains(strings.Join(renamed.CoverURLs, " "), oldCover) {
+		t.Fatal("old/new rating visibility stale", prior, renamed, scans)
 	}
 	summaryParity(t, renamed, summaryOracle(t, s, v, lib))
 
-	_ = key
-	_ = got
 	// Every unsafe state bypasses BOTH hits and insertion, preserving original DTO.
 	summaryRead(t, s, v, lib)
 	checks := []struct {
