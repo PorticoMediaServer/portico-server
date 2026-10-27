@@ -195,7 +195,10 @@ type Service struct {
 	// ControlsAuthorityTx revalidates the original live device family inside
 	// the own-account count snapshot. Nil refuses the capacity projection.
 	ControlsAuthorityTx func(context.Context, *sql.Tx, Caller) error
-	durations           queueDurationCache
+	// StopAuthorityTx revalidates the original current playback family and
+	// actual device in the conditional-stop writer. Nil refuses the operation.
+	StopAuthorityTx func(context.Context, *sql.Tx, Caller) error
+	durations       queueDurationCache
 	// LeaseDuration and ReportEvery override the spec defaults (tests).
 	LeaseDuration time.Duration
 	ReportEvery   time.Duration
