@@ -53,6 +53,7 @@ declare global {
   };
   destinationRecoveryWitness?: {
     same: () => void; freshEntry: () => void; scope: () => void; missingKey: () => void; sameHrefNewObject: () => void;
+    keyless: () => void; keylessSameHref: () => void;
     release: () => void; rearm: () => void; homeCalls: () => number;
     actions: () => readonly DestinationErrorActions[]; unmount: () => void; remount: () => void; dispose: () => void;
   };
@@ -132,8 +133,12 @@ function mount(element: HTMLElement) {
         same: () => mount.render(base),
         freshEntry: () => mount.render({location: {}, href: '/witness', entry: 'entry-2', scopeKey: 'scope-1'}),
         scope: () => mount.render({location: {}, href: '/witness', entry: 'entry-2', scopeKey: 'scope-2'}),
-        missingKey: () => mount.render({location: {}, href: '/witness?x=1', scopeKey: 'scope-2'}),
+        missingKey: () => mount.render({location: {}, href: '/witness?x=1', entry: null, scopeKey: 'scope-2'}),
         sameHrefNewObject: () => mount.render({location: {}, href: '/witness', entry: 'entry-1', scopeKey: 'scope-1'}),
+        // Keyless destinations keep a truthful null entry in the identity; a same-href new location
+        // object is still a new recovery lifetime.
+        keyless: () => { witnessFault = true; mount.render({location: {}, href: '/witness-keyless', entry: null, scopeKey: 'scope-1'}); },
+        keylessSameHref: () => { witnessFault = false; mount.render({location: {}, href: '/witness-keyless', entry: null, scopeKey: 'scope-1'}); },
         release: () => { witnessFault = false; },
         rearm: () => { witnessFault = true; mount.render({location: {}, href: '/witness', entry: 'entry-1', scopeKey: 'scope-1'}); },
         homeCalls: () => homeCalls,

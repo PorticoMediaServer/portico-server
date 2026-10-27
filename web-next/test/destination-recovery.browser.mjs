@@ -184,6 +184,15 @@ export async function checkDestinationRecovery(page, origin) {
     await page.locator('[data-witness-ok]').waitFor();
     assert.equal(await witnessFailure.count(), 0, 'a same-href new location object recovers');
 
+    // A keyless destination keeps a truthful null entry in the identity; a same-href new location
+    // object is still a new recovery lifetime.
+    await page.evaluate(() => window.destinationRecoveryWitness.keyless());
+    await witnessFailure.waitFor();
+    assert.equal(await witnessFailure.count(), 1, 'a keyless destination still shows its page failure');
+    await page.evaluate(() => window.destinationRecoveryWitness.keylessSameHref());
+    await page.locator('[data-witness-ok]').waitFor();
+    assert.equal(await witnessFailure.count(), 0, 'a keyless same-href new location object recovers');
+
     // A real unmount retires the mounted opening: a saved closure cannot act after unmount, and a
     // remount is a new instance with its own admission whose page acts.
     await page.evaluate(() => window.destinationRecoveryWitness.rearm());

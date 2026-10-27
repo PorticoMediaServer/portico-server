@@ -8,7 +8,7 @@ import {finishRouteMotion, routeMotionOwnedByBrowser} from './route-motion';
 import {webScreens, WebRetainedScreenHosts, useWebAction} from '../route-registry-view';
 import {webScreenIdForRoute} from '../route-registry';
 import {BootstrapContent} from './BootstrapState';
-import {DestinationErrorBoundary, type DestinationRecoveryWitness} from './DestinationError';
+import {DestinationErrorBoundary, recoveryEntryOf, type DestinationRecoveryWitness} from './DestinationError';
 import {useShellWidth} from './viewport';
 import {useServerAway} from './ConnectionAway';
 
@@ -28,10 +28,9 @@ function RouteContent() {
   // optional motion route key above: a missing history entry must not collapse every href, and a
   // new location object with the same href is still a new recovery lifetime.
   const location = useRouterState({select: state => state.location});
-  const recovery = useMemo<DestinationRecoveryWitness>(() => {
-    const entry = location.state.__TSR_key;
-    return Object.freeze({location, href: location.href, entry: typeof entry === 'string' && entry.length ? entry : undefined, scopeKey: owner?.scopeKey});
-  }, [location, owner?.scopeKey]);
+  const recovery = useMemo<DestinationRecoveryWitness>(() => Object.freeze({
+    location, href: location.href, entry: recoveryEntryOf(location), scopeKey: owner?.scopeKey ?? null,
+  }), [location, owner?.scopeKey]);
   const target = useMemo(() => ({get current() { return routeMotionOwnedByBrowser() ? null : content.current; }}), []);
   useRouteFade(target, routeKey, commits);
   useLayoutEffect(() => { finishRouteMotion(); }, [routeKey]);

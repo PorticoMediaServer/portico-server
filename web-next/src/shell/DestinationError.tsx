@@ -7,28 +7,31 @@ import {router} from '../router';
 
 /**
  * The destination recovery witness: the actual Router location object, its href, the actual history
- * entry key when the router supplies one, and the captured owner scope. Identity is the recovery
- * lifetime — a new location object (including a same-href fresh entry), a real entry change or a
- * scope replacement creates a new witness; a missing entry key never collapses the href.
+ * state entry, and the captured owner scope. The identity ALWAYS carries all four fields: the entry
+ * and scope are truthful `null` when the history supplies no entry key or the shell is signed out,
+ * including keyless destinations. Identity is the recovery lifetime — a new location object
+ * (including a same-href fresh entry or a same-href keyless location), a real entry change or a scope
+ * replacement creates a new witness; a missing entry key never collapses the href.
  */
 export type DestinationRecoveryWitness = Readonly<{
   location: unknown;
   href: string;
-  entry?: string;
-  scopeKey?: string;
+  entry: string | null;
+  scopeKey: string | null;
 }>;
 
-const entryOf = (location: {state: {__TSR_key?: unknown}}): string | undefined => {
+/** The actual history state entry for a location, or truthful null when the history supplies none. */
+export const recoveryEntryOf = (location: {state: {__TSR_key?: unknown}}): string | null => {
   const entry = location.state.__TSR_key;
-  return typeof entry === 'string' && entry.length ? entry : undefined;
+  return typeof entry === 'string' && entry.length ? entry : null;
 };
 
 /** Immutable render facts for one error page; nothing here is authority. */
 type Facts = Readonly<{
   location: {state: {__TSR_key?: unknown}; href: string};
   href: string;
-  entry?: string;
-  scopeKey?: string;
+  entry: string | null;
+  scopeKey: string | null;
   error: unknown;
   matchId?: string;
   routeId?: string;
@@ -110,7 +113,7 @@ export function ChildRouteError({error, reset}: ErrorComponentProps) {
   const resetPort: (() => void) | undefined = typeof reset === 'function' ? reset : undefined;
   const failed = matches.filter(match => match.status === 'error' && match.error === error).at(-1);
   const facts = useMemo<Facts>(() => Object.freeze({
-    location, href: location.href, entry: entryOf(location), scopeKey: owner, error,
+    location, href: location.href, entry: recoveryEntryOf(location), scopeKey: owner ?? null, error,
     matchId: failed?.id, routeId: failed?.routeId, currentness, reset: resetPort,
   }), [location, owner, error, failed?.id, failed?.routeId, currentness, resetPort]);
   const [published, setPublished] = useState<Receipt | undefined>(undefined);
@@ -130,13 +133,13 @@ export function ChildRouteError({error, reset}: ErrorComponentProps) {
   const holds = useCallback((receipt: Receipt, afterInvalidate = false) => {
     if (!receipt.live.current || live.current !== receipt) return false;
     const now = current.state.location;
-    if (now !== receipt.facts.location || now.href !== receipt.facts.href || entryOf(now) !== receipt.facts.entry) return false;
+    if (now !== receipt.facts.location || now.href !== receipt.facts.href || recoveryEntryOf(now) !== receipt.facts.entry) return false;
     if (!childWitnessHolds(receipt.facts, current.state.matches, afterInvalidate)) return false;
     if (receipt.facts.currentness && !receipt.facts.currentness()) return false;
     // Repeat the exact receipt and child checks after the currentness predicate.
     if (!receipt.live.current || live.current !== receipt) return false;
     const again = current.state.location;
-    if (again !== receipt.facts.location || again.href !== receipt.facts.href || entryOf(again) !== receipt.facts.entry) return false;
+    if (again !== receipt.facts.location || again.href !== receipt.facts.href || recoveryEntryOf(again) !== receipt.facts.entry) return false;
     return childWitnessHolds(receipt.facts, current.state.matches, afterInvalidate);
   }, [current]);
   const retry = useCallback(() => {
