@@ -104,7 +104,11 @@ export function SwitchProfileServerHost({opening, close}: {opening: SwitchProfil
     } catch (failure) {if (valid()) setError(failure);}
     finally {if (valid()) setBusy(false);}
   };
+  // Publish only at commit, then sample once for this setup's original lifetime.
+  const setupPorts = useRef({refresh});
+  useEffect(() => {setupPorts.current = {refresh};});
   useEffect(() => {
+    const {refresh} = setupPorts.current;
     alive.current = true; void refresh();
     const off = observeBrowserSessionChanges(() => {if (!claimed.current) void refresh();});
     return () => {retire(); off();};

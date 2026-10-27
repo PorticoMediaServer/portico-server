@@ -18,7 +18,11 @@ export function RemoteNowPlaying({api, isCurrent, onFailure}: {
   const load = () => {
     client.remote().then(result => { if (isCurrent()) setItems(result.items); }).catch(error => { if (isCurrent()) onFailure(error); });
   };
+  // Publish only at commit, then sample once for this setup's original lifetime.
+  const setupPorts = useRef({load});
+  useEffect(() => {setupPorts.current = {load};});
   useEffect(() => {
+    const {load} = setupPorts.current;
     load();
     const timer = setInterval(load, 15000);
     return () => clearInterval(timer);

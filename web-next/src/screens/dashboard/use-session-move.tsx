@@ -19,11 +19,19 @@ export function useSessionMove(binding: DashboardBindings, session: DashboardSes
   const owns = (owner: Owner) => current.current === owner && owner.live && owner.binding === binding && owner.key === key && !retained && binding.isCurrent();
   const reading = (read: Read) => owns(read.owner) && read.owner.read === read && !read.life.signal.aborted;
   const opening = (value: Opening) => owns(value.owner) && value.owner.opening === value && !value.life.signal.aborted;
+  // Publish only at commit, then sample once for this setup's original lifetime.
+  const setupPorts = useRef({session});
+  useLayoutEffect(() => {setupPorts.current = {session};});
   useLayoutEffect(() => {
+    const {session} = setupPorts.current;
     const owner: Owner = {live: true, binding, key, id: session.id}; current.current = owner;
     return () => {retire(owner); if (current.current === owner) current.current = undefined;};
   }, [binding, key, retained]);
+  // Publish only at commit, then sample once for this setup's original lifetime.
+  const setupPorts1 = useRef({reading, owns});
+  useLayoutEffect(() => {setupPorts1.current = {reading, owns};});
   useLayoutEffect(() => {
+    const {reading, owns} = setupPorts1.current;
     const owner = current.current, load = binding.read.controls;
     if (!menu || !owner || !owns(owner) || !load || !binding.effects.seek) return;
     const read: Read = {owner, life: new AbortController()}; owner.read = read;

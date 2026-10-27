@@ -42,7 +42,11 @@ export function AlbumScreen({context, libraryId, albumId, onBack}: AlbumScreenPr
   }, [context, libraryId, albumId, retry]);
   const active = page?.context === context && page.libraryId === libraryId && page.albumId === albumId && page.life.current() ? page : undefined;
   const projection = active?.snapshot.projection;
+  // Publish only at commit, then sample once for this setup's original lifetime.
+  const setupPorts = useRef({active});
+  useEffect(() => {setupPorts.current = {active};});
   useEffect(() => {
+    const {active} = setupPorts.current;
     setSimilar(undefined);
     if (!active || active.snapshot.phase !== 'ready' || !projection) return;
     const viewer = context.identity?.viewer;

@@ -38,7 +38,11 @@ export function ArtistScreen({context, libraryId, artistId, onBack}: ArtistScree
   const entry = useLocation({select: value => value});
   const [retry, setRetry] = useState(0), [lease, setLease] = useState<Lease>();
   const committed = useRef<Lease | undefined>(undefined);
+  // Publish only at commit, then sample once for this setup's original lifetime.
+  const setupPorts = useRef({onBack});
+  useLayoutEffect(() => {setupPorts.current = {onBack};});
   useLayoutEffect(() => {
+    const {onBack} = setupPorts.current;
     const scope = screenLifetime(context), life = new AbortController();
     const service = new LibraryContentService({api: scope.api, scope: {serverId: context.scope.serverId, viewerId: context.scope.viewerId}});
     const next: Lease = {service, api: scope.api, signal: life.signal, context, libraryId, artistId, entry, retry, onBack, live: true, claimed: false,
@@ -88,7 +92,11 @@ function ArtistBody({context, libraryId, artistId, lease, retry, back}: {context
     const token = {};similarRead.current = token;
     return () => {if (similarRead.current === token) similarRead.current = undefined;};
   }, [lease, projection, artistId, libraryId, context]);
+  // Publish only at commit, then sample once for this setup's original lifetime.
+  const setupPorts1 = useRef({admitted, service});
+  useEffect(() => {setupPorts1.current = {admitted, service};});
   useEffect(() => {
+    const {admitted, service} = setupPorts1.current;
     setSimilar(undefined);
     const viewer = context.identity?.viewer;
     const page = projection, token = similarRead.current;

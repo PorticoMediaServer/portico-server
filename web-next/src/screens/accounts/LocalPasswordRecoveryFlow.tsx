@@ -33,7 +33,11 @@ export function LocalPasswordRecoveryFlow({entry, form, onBack}: LocalPasswordRe
   const current=entry.getSnapshot();
   return captured.entry===entry&&captured.origin===current.origin&&captured.serverId===current.server?.id&&Boolean(captured.pin)&&captured.pin===current.pin&&current.server?.signIn==='local'&&!current.invitation;
  },[captured,entry]);
- useLayoutEffect(()=>{
+ // Publish only at commit, then sample once for this setup's original lifetime.
+  const setupPorts = useRef({onBack});
+  useLayoutEffect(() => {setupPorts.current = {onBack};});
+  useLayoutEffect(()=>{
+    const {onBack} = setupPorts.current;
   const held:RecoveryOpening={live:true,pending:false,ownerPending:false,onBack};active.current=held;setOpening(held);setWorking(false);setFile(undefined);offered.current=undefined;setError(undefined);setPurpose(undefined);
   return()=>{
    held.live=false;if(active.current===held)active.current=undefined;

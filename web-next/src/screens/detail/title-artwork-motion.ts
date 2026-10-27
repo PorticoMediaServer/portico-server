@@ -61,7 +61,11 @@ export function applyTitleArtworkClaim(art: HTMLElement | null | undefined, clai
 }
 
 export function useTitleArtworkClaim(node: HTMLElement | null, claim: SourceArtClaim | undefined, titleKey: string, reduced: boolean): void {
+  // Publish only at commit, then sample once for this setup's original lifetime.
+  const setupPorts = useRef({claim});
+  useLayoutEffect(() => {setupPorts.current = {claim};});
   useLayoutEffect(() => {
+    const {claim} = setupPorts.current;
     if (!node) return;
     return applyTitleArtworkClaim(node, claim, titleMotionReduced(reduced));
   }, [node, claim?.name, titleKey, reduced]);
@@ -98,7 +102,11 @@ export function useTitleCopyEntrance(node: HTMLElement | null, titleKey: string,
       }, () => {});
     }
   };
+  // Publish only at commit, then sample once for this setup's original lifetime.
+  const setupPorts1 = useRef({effective});
+  useLayoutEffect(() => {setupPorts1.current = {effective};});
   useLayoutEffect(() => {
+    const {effective} = setupPorts1.current;
     if (!node) return;
     const children = Array.from(node.children) as HTMLElement[];
     for (const [element, animation] of active.current) {
@@ -112,7 +120,11 @@ export function useTitleCopyEntrance(node: HTMLElement | null, titleKey: string,
       titleCopyTiming(effective));
   }, [node, titleKey]);
   const lastEffective = useRef(effective);
+  // Publish only at commit, then sample once for this setup's original lifetime.
+  const setupPorts2 = useRef({node});
+  useLayoutEffect(() => {setupPorts2.current = {node};});
   useLayoutEffect(() => {
+    const {node} = setupPorts2.current;
     if (lastEffective.current === effective) return;
     lastEffective.current = effective;
     if (!node) return;

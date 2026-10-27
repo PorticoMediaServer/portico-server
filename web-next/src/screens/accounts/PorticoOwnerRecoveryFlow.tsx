@@ -21,7 +21,11 @@ export function PorticoOwnerRecoveryFlow({entry, onBack}: {entry: BrowserAccount
     return original.entry === entry && !!original.pin && original.pin === current.pin && original.origin === current.origin && original.serverId === current.server?.id
       && current.server?.signIn === 'portico' && !current.invitation && (current.phase === 'portico' || current.phase === 'ready' && current.ownerResetSessionReady === true);
   };
+  // Publish only at commit, then sample once for this setup's original lifetime.
+  const setupPorts = useRef({sameTarget});
+  useLayoutEffect(() => {setupPorts.current = {sameTarget};});
   useLayoutEffect(() => {
+    const {sameTarget} = setupPorts.current;
     const opening: Lease = {active: true, pending: false}; active.current = opening; setLease(opening);
     return () => {
       opening.active = false;
