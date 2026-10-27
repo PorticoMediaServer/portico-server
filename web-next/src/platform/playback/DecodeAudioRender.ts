@@ -198,7 +198,13 @@ export class DecodeAudioRender {
     queueMicrotask(() => {
       if (!this.disposed && this.service.getSnapshot().intent === 'playing') {
         this.askedForGesture = false;
-        this.resumeContext();
+        // An autoplay-blocked resume may remain pending indefinitely. A fresh explicit gesture
+        // owns a new attempt; the old promise cannot publish refusal into it.
+        this.resumePending = undefined;
+        if (this.hold) {
+          if (this.hold.resuming) this.resumeContext(this.hold);
+          else this.recoverHold(this.hold);
+        } else this.resumeContext();
       }
     });
   };

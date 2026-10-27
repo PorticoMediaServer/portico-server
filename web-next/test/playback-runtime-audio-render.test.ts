@@ -67,7 +67,7 @@ function setup() {
   (globalThis as any).fetch = async (url: string, init: RequestInit) => {
     requests.push(url);
     const asked = new Headers(init.headers).get('Range');
-    if (!asked) return new Response(files[url]!, {status: 200, headers: {'Content-Type': 'audio/flac', 'X-Audio-Trim-Start': '0', 'X-Audio-Trim-End': '0'}});
+    if (!asked) return new Response(new Uint8Array(files[url]!), {status: 200, headers: {'Content-Type': 'audio/flac', 'X-Audio-Trim-Start': '0', 'X-Audio-Trim-End': '0'}});
     const bytes = files[url]!, [a, b] = String((init.headers as Record<string, string>).Range).replace('bytes=', '').split('-').map(Number);
     const last = Math.min(bytes.length - 1, b!);
     return new Response(bytes.slice(a!, last + 1), {status: 206, headers: {'Content-Range': `bytes ${a}-${last}/${bytes.length}`}});
@@ -370,4 +370,18 @@ test('a full twelve-second fade uses one frontier and publishes a crossed bounda
   assert.equal(t.calls.filter(c => c[0] === 'audioBoundary' && c[1] === 'fade').length, 1);
   assert.equal((render as any).primary.plan.id, b.id);
   assert((render as any).retiring, 'outgoing fade suffix is retained, not stopped at the boundary');
+});
+
+test('a fresh gesture retries an autoplay-pending resume without replaying old refusal', bounded, async ctx => {
+  const {DecodeAudioRender} = await import('../src/platform/playback/DecodeAudioRender.ts');
+  const t = setup(), pending: ((error: unknown) => void)[] = [];
+  t.f.ctx.state = 'suspended'; t.f.ctx.resume = () => new Promise<void>((_, reject) => pending.push(reject));
+  const render = new DecodeAudioRender(t.service, p => p, {addEventListener() {}, removeEventListener() {}, volume: 1, muted: false} as any);
+  ctx.after(() => render.dispose()); render.apply(t.get()); await settle();
+  assert.equal(pending.length, 1);
+  (render as any).gesture(); await settle(); assert.equal(pending.length, 2);
+  pending[0]!(new DOMException('old blocked attempt', 'NotAllowedError')); await settle();
+  assert.equal(t.calls.some(c => c[0] === 'pause'), false);
+  pending[1]!(new DOMException('current refusal', 'NotAllowedError')); await settle();
+  assert.equal(t.calls.filter(c => c[0] === 'pause').length, 1);
 });
