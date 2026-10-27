@@ -116,3 +116,21 @@ func readingAttributionChanged(ctx context.Context, tx *sql.Tx, entity int64) er
 	}
 	return err
 }
+
+// Preserve edit accounting even when the effective owner value is unchanged,
+// without attempting an INSERT or naming input columns in the accounting write.
+func storeReadingRepairFieldTx(ctx context.Context, tx *sql.Tx, entity int64, field, value, automatic string, locked bool, actor, now string) error {
+	var exists bool
+	if err := tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM metadata_owner_fields WHERE kind='item' AND entity_id=? AND field=?)`, entity, field).Scan(&exists); err != nil {
+		return err
+	}
+	if !exists {
+		_, err := tx.ExecContext(ctx, `INSERT INTO metadata_owner_fields(kind,entity_id,field,value,automatic_value,locked,actor,observed_at) VALUES('item',?,?,?,?,?,?,?)`, entity, field, value, automatic, locked, actor, now)
+		return err
+	}
+	if _, err := tx.ExecContext(ctx, `UPDATE metadata_owner_fields SET automatic_value=?,actor=?,observed_at=? WHERE kind='item' AND entity_id=? AND field=?`, automatic, actor, now, entity, field); err != nil {
+		return err
+	}
+	_, err := tx.ExecContext(ctx, `UPDATE metadata_owner_fields SET value=?,locked=? WHERE kind='item' AND entity_id=? AND field=? AND (value IS NOT ? OR locked IS NOT ?)`, value, locked, entity, field, value, locked)
+	return err
+}

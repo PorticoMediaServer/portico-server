@@ -371,12 +371,14 @@ func (s *Service) observeInventoryTx(ctx context.Context, tx *sql.Tx, job string
 		return false, err
 	}
 	var object, asset, previousRevision, previousSeen, previousIdentity, incarnation, previousState string
+	knownObject := false
 	var previousSize, previousModified int64
 	relocated, relocatedFrom := false, ""
 	err = tx.QueryRowContext(ctx, `SELECT id,asset_id,revision,seen_job,object_identity,root_incarnation,state,size,modified_ns FROM inventory_objects WHERE source_id=? AND relative_path=? AND retired=0`, source.ID, relative).Scan(&object, &asset, &previousRevision, &previousSeen, &previousIdentity, &incarnation, &previousState, &previousSize, &previousModified)
 	if err != nil && !errors.Is(err, sql.ErrNoRows) {
 		return false, err
 	}
+	knownObject = object != ""
 	// A file at the same place with the same size and modified time is the same
 	// file, whatever its filesystem now calls it: inode and device numbers are
 	// renumbered by remounts, by filesystems that do not keep them, and when a
@@ -393,6 +395,7 @@ func (s *Service) observeInventoryTx(ctx context.Context, tx *sql.Tx, job string
 			return false, err
 		}
 		object, asset, previousRevision, previousSeen, previousState = "", "", "", "", ""
+		knownObject = false
 	}
 	if object == "" {
 		// Exact storage identity plus unchanged size/mtime, never filename similarity.
@@ -437,6 +440,7 @@ func (s *Service) observeInventoryTx(ctx context.Context, tx *sql.Tx, job string
 			if e == nil {
 				object, previousRevision, previousSeen, previousState = oldID, oldRev, oldSeen, oldState
 				relocated = true
+				knownObject = true
 			} else if !errors.Is(e, sql.ErrNoRows) {
 				return false, e
 			}
@@ -497,7 +501,21 @@ func (s *Service) observeInventoryTx(ctx context.Context, tx *sql.Tx, job string
 	if err != nil {
 		return false, err
 	}
-	_, err = tx.ExecContext(ctx, `INSERT INTO inventory_objects(id,source_id,asset_id,root_incarnation,relative_path,object_identity,revision,evidence_json,size,modified_ns,seen_job,unsupported_reason,directory_path) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET root_incarnation=excluded.root_incarnation,directory_path=excluded.directory_path,relative_path=excluded.relative_path,revision=excluded.revision,evidence_json=excluded.evidence_json,size=excluded.size,modified_ns=excluded.modified_ns,object_identity=excluded.object_identity,seen_job=excluded.seen_job,state='available',missing_since='',missing_observations=0,last_missing_job='',unsupported_reason=excluded.unsupported_reason`, object, source.ID, asset, source.Incarnation, relative, v.ObjectIdentity, revision, evidence, v.Size, v.ModifiedNS, job, reason, filepath.Dir(relative))
+	if knownObject {
+		// Do not attempt INSERT for a known observation: SQLite runs BEFORE
+		// INSERT invalidation even when an UPSERT resolves to an unchanged UPDATE.
+		var result sql.Result
+		result, err = tx.ExecContext(ctx, `UPDATE inventory_objects SET root_incarnation=?,directory_path=?,relative_path=?,revision=?,evidence_json=?,size=?,modified_ns=?,object_identity=?,seen_job=?,state='available',missing_since='',missing_observations=0,last_missing_job='',unsupported_reason=? WHERE id=? AND source_id=? AND asset_id=? AND retired=0`, source.Incarnation, filepath.Dir(relative), relative, revision, evidence, v.Size, v.ModifiedNS, v.ObjectIdentity, job, reason, object, source.ID, asset)
+		if err == nil {
+			var count int64
+			count, err = result.RowsAffected()
+			if err == nil && count != 1 {
+				err = ErrStaleContinuation
+			}
+		}
+	} else {
+		_, err = tx.ExecContext(ctx, `INSERT INTO inventory_objects(id,source_id,asset_id,root_incarnation,relative_path,object_identity,revision,evidence_json,size,modified_ns,seen_job,unsupported_reason,directory_path) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)`, object, source.ID, asset, source.Incarnation, relative, v.ObjectIdentity, revision, evidence, v.Size, v.ModifiedNS, job, reason, filepath.Dir(relative))
+	}
 	if err != nil {
 		return false, err
 	}

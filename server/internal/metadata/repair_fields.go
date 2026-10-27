@@ -374,7 +374,11 @@ func applyRepairField(ctx context.Context, tx *sql.Tx, t RepairTarget, field str
 	// The owner row holds exactly the text the catalogue projects, so later
 	// automatic writes record their value as automatic and keep the owner's.
 	automatic := current.Automatic
-	if _, err := tx.ExecContext(ctx, `INSERT INTO metadata_owner_fields VALUES(?,?,?,?,?,?,?,?) ON CONFLICT(kind,entity_id,field) DO UPDATE SET value=excluded.value,automatic_value=excluded.automatic_value,locked=excluded.locked,actor=excluded.actor,observed_at=excluded.observed_at`, t.Kind, entity, field, value, automatic, locked, actor, now); err != nil {
+	if reading {
+		if err := storeReadingRepairFieldTx(ctx, tx, entity, field, value, automatic, locked, actor, now); err != nil {
+			return err
+		}
+	} else if _, err := tx.ExecContext(ctx, `INSERT INTO metadata_owner_fields VALUES(?,?,?,?,?,?,?,?) ON CONFLICT(kind,entity_id,field) DO UPDATE SET value=excluded.value,automatic_value=excluded.automatic_value,locked=excluded.locked,actor=excluded.actor,observed_at=excluded.observed_at`, t.Kind, entity, field, value, automatic, locked, actor, now); err != nil {
 		return err
 	}
 	if reading {
