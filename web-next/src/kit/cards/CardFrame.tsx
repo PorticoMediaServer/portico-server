@@ -4,6 +4,7 @@ import {defaultI18n} from '@i18n';
 import type {FactPart} from '@portico/client-core/kit-model';
 import {Icon} from '../Icon';
 import {SelectionCircle, SelectionHoldFeedback} from '../selection';
+import {withSourceArtActivation} from './source-art-activation';
 import {activateCard, boundedProgress} from './interaction';
 import {useCardHold} from './useCardHold';
 import type {CardFactPresentation, CardProps, CardTextRun} from './types';
@@ -82,10 +83,20 @@ export function CardFrame({children, kind, primaryClassName, playIcon = 'i-play'
   const selectionHintId = useId();
   const selectionHint = selection?.hint ?? (selection && !selection.active ? {text: defaultI18n.t('next.selection.select')} : undefined);
   const holdGesture = useCardHold({selection, disabled, row: model});
+  const physicalArt = useRef<{live: boolean; art: HTMLElement | null; model: typeof model; navigate: typeof onNavigate} | undefined>(undefined);
+  useLayoutEffect(() => {
+    const held = {live: true, art: artworkRef?.current ?? null, model, navigate: onNavigate};
+    physicalArt.current = held;
+    return () => {held.live = false;if (physicalArt.current === held) physicalArt.current = undefined;};
+  });
   const click = (event: MouseEvent<HTMLButtonElement>) => {
-    if (retained) {event.preventDefault();return;}
+    if (disabled || retained) {event.preventDefault();return;}
     if (holdGesture.consumeClick()) { event.preventDefault(); return; }
-    activateCard(onNavigate, selection, {range: event.shiftKey, source: event.detail === 0 ? 'keyboard' : 'pointer'});
+    activateCard(() => {
+      const held = physicalArt.current;
+      if (!held?.live || held.model !== model || held.navigate !== onNavigate || held.art !== (artworkRef?.current ?? null)) return;
+      withSourceArtActivation(held.art, onNavigate, () => held.live && physicalArt.current === held && held.art === artworkRef?.current && held.art?.isConnected === true);
+    }, selection, {range: event.shiftKey, source: event.detail === 0 ? 'keyboard' : 'pointer'});
   };
   return <article ref={interactionRoot} className={cx(styles.card, styles[kind], styles[`context-${props.context ?? 'shelf'}`], props.density === 'grid' && styles['context-grid'], selection?.active && styles.selecting, selection?.checked && styles.selected, selection?.preview && styles.range, !!holdGesture.hold && styles.holding, props.next && styles.next, className)} style={style} data-card-kind={kind} data-disabled={disabled || undefined}
     {...rangeInteraction}>

@@ -9,6 +9,7 @@ import type {SelectionContext, SelectionEnvironment, SelectionIdentity} from '@c
 import {SelectionCircle} from '../kit/selection';
 import type {CardSelection} from '../kit/cards';
 import {router} from '../router';
+import {navigateArtworkEntry} from './artwork-navigation';
 import type {HomeSelection} from '../screens/home/Home';
 import {currentHomeLive} from '../screens/home/model';
 import type {ShellAssemblyContext} from './bootstrap';
@@ -22,7 +23,8 @@ export function createShellSelection(context: ShellAssemblyContext, playback: Ho
   const interactions = createCardInteractionOwner(), interactionRows = new WeakMap<HomeRow, Map<string, object>>();
   const listeners = new Set<() => void>();
   const platform: HomeActionPlatform = {platform: 'web', playbackAvailable: true, queueAvailable: true};
-  const viewer = context.session().viewer;
+  const originalSession = context.session(), viewer = originalSession.viewer;
+  const artworkScope = JSON.stringify([viewer.serverId, viewer.authority, viewer.accountId, viewer.profileId, originalSession.sessionFamilyId, context.epoch]);
   const scope = () => shellSelectionScope(viewer, router.state.location.href);
   const document = (): HomeDocument => { const value = context.home.getSnapshot().document; if (!value) throw new Error('home-document-required'); return value; };
   const currentContext = () => homeSelectionContext(scope(), document());
@@ -35,7 +37,7 @@ export function createShellSelection(context: ShellAssemblyContext, playback: Ho
   };
   const controller = new HomeSelectionController({api: context.api, events: context.events, home: context.home,
     context: currentContext(), environment: environment(), isCurrent, requestId: async () => crypto.randomUUID(), playback,
-    routes: {openEntry: entry => router.navigate(entryDestination(entry)), openCollection: collection => router.navigate(seeAllDestination({type: 'collection', resourceId: collection.collection.id, libraryId: collection.collection.libraryId})),
+    routes: {openEntry: entry => {const destination = entryDestination(entry);return navigateArtworkEntry(entry, destination, artworkScope, () => isCurrent(controller.getSnapshot().context), () => !retired && context.isCurrent(), manual => router.navigate({...destination, ...(manual ? {viewTransition: false} : {})}));}, openCollection: collection => router.navigate(seeAllDestination({type: 'collection', resourceId: collection.collection.id, libraryId: collection.collection.libraryId})),
       openDestination: destination => router.navigate({to: '/saved', search: {resourceId: destination.id}})}, reportError});
   const anchor: {current: HTMLElement | null} = {current: null};
   const source: SelectionRendererSource = {controller,

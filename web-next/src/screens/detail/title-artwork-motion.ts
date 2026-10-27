@@ -1,5 +1,6 @@
-import {useLayoutEffect, useRef} from 'react';
+import {useCallback, useLayoutEffect, useRef} from 'react';
 import {easings, motion, reducedMotion} from '@design';
+import {commitTitleArtwork, isTitleArtworkIntent} from '../../platform/card-title-motion';
 import {SOURCE_ART_PREFIX, type SourceArtClaim} from '../../kit/cards/source-art-transition';
 
 /** The destination half of motion 3.3. The one claim (and its exact minted name)
@@ -36,7 +37,7 @@ export function titleMotionReduced(signal: boolean): boolean {
 /** A wrapper box is not proof of artwork: the destination must carry a current,
  * decoded image, be attached and laid out, and carry no other writer's name. */
 function realArtwork(art: HTMLElement): boolean {
-  const image = art.querySelector('img');
+  const image = art.querySelector<HTMLImageElement>('[data-foreground-art] [data-artwork-status="ready"] > img');
   if (!image) return false;
   const source = image.currentSrc || image.getAttribute('src') || '';
   return source.length > 0 && image.complete && image.naturalWidth > 0;
@@ -60,15 +61,21 @@ export function applyTitleArtworkClaim(art: HTMLElement | null | undefined, clai
   return () => {if (art.style.viewTransitionName === claim.name) art.style.viewTransitionName = '';};
 }
 
-export function useTitleArtworkClaim(node: HTMLElement | null, claim: SourceArtClaim | undefined, titleKey: string, reduced: boolean): void {
-  // Publish only at commit, then sample once for this setup's original lifetime.
-  const setupPorts = useRef({claim});
-  useLayoutEffect(() => {setupPorts.current = {claim};});
+export function useTitleArtworkClaim(node: HTMLElement | null, claim: SourceArtClaim | undefined, titleKey: string, reduced: boolean): (drawnNode: HTMLElement) => void {
+  const committed = useRef<{node: HTMLElement | null; claim: typeof claim; titleKey: string; reduced: boolean} | undefined>(undefined);
   useLayoutEffect(() => {
-    const {claim} = setupPorts.current;
-    if (!node) return;
+    const held = {node, claim, titleKey, reduced};committed.current = held;
+    if (!node || claim && isTitleArtworkIntent(claim)) return;
     return applyTitleArtworkClaim(node, claim, titleMotionReduced(reduced));
-  }, [node, claim?.name, titleKey, reduced]);
+  }, [node, claim, titleKey, reduced]);
+  useLayoutEffect(() => () => {committed.current = undefined;}, []);
+  // Artwork captures this callback with its original resource/decode lease. Only
+  // the committed node for this exact title/claim may accept that delivery.
+  return useCallback((drawnNode: HTMLElement) => {
+    const held = committed.current;
+    if (!claim || !held?.node || held.node !== drawnNode || held.claim !== claim || held.titleKey !== titleKey || titleMotionReduced(held.reduced)) return;
+    commitTitleArtwork(claim, held.node, () => applyTitleArtworkClaim(held.node, claim, false));
+  }, [claim, titleKey]);
 }
 
 function painted(element: HTMLElement): Readonly<{opacity: number; transform: string}> {

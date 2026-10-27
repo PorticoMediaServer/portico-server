@@ -14,7 +14,7 @@ import {serverTextLabel} from '@core/presentation/server-text.ts';
 import {serviceI18n, serviceText} from '@core/presentation/service-text.ts';
 import {fileInfoModel, titleFactParts} from '@core/presentation/kit-model';
 import {preferenceValue} from '@core/preferences.ts';
-import {AmbientArt, Artwork, PersonCircle} from '../../kit/artwork';
+import {AmbientArt, Artwork, PersonCircle, type AmbientArtProps} from '../../kit/artwork';
 import {Button, ResumeButton, Select, Tabs} from '../../kit/controls';
 import {Lockup, Shelf} from '../../kit/layout';
 import {CollectionBanner, PosterCard, SquareCard} from '../../kit/cards';
@@ -88,11 +88,11 @@ export function TitleBody({binding, compact = false, artworkClaim}: {binding: De
 
 function TitleHero({binding, data, artworkClaim, showBackdrops}: {binding: DetailBindings; data: DetailProjection; artworkClaim?: SourceArtClaim; showBackdrops: boolean}) {
   const width = useShellWidth(), phone = width < 1024, {item, facts, metadata} = data, art = binding.context.artwork;
-  const [artworkNode, setArtworkNode] = useState<HTMLDivElement | null>(null);
   const [copyNode, setCopyNode] = useState<HTMLDivElement | null>(null);
   const {reduced} = useLayoutMotion();
   // The route owner supplies the one claim; nothing is taken during render.
-  useTitleArtworkClaim(artworkNode, artworkClaim, item.id, reduced);
+  const foreground = art.foreground(item.backdropUrl ?? item.posterUrl, phone ? 800 : 1920, 16 / 9);
+
   useTitleCopyEntrance(copyNode, item.id, reduced);
   const directed = metadata.credits.filter(credit => credit.role.toLowerCase() === 'director');
   const starring = metadata.credits.filter(credit => credit.department.toLowerCase() === 'acting' || credit.role.toLowerCase() === 'cast').slice(0, 4);
@@ -102,7 +102,7 @@ function TitleHero({binding, data, artworkClaim, showBackdrops}: {binding: Detai
     const phoneParts = [...parts.filter(part => part.id === 'year' || part.id === 'genres'), ...parts.filter(part => part.id !== 'year' && part.id !== 'genres')];
     return <header className={styles.phoneHero}>
       <div className={styles.phonePicture}>
-        {showBackdrops && <div className={motionStyles.art} ref={setArtworkNode}><AmbientArt className={styles.phoneHeroArt} treatment="phone" source={art.ambient(item.backdropUrl ?? item.posterUrl)} foreground={art.foreground(item.backdropUrl ?? item.posterUrl, 800, 16 / 9)} position="22% 30%" /></div>}
+        {showBackdrops && <TitleArtwork key="phone" artworkClaim={artworkClaim} titleKey={item.id} reduced={reduced} className={styles.phoneHeroArt} treatment="phone" source={art.ambient(item.backdropUrl ?? item.posterUrl)} foreground={foreground} position="22% 30%" />}
         <div className={styles.phoneCopy} ref={setCopyNode}><Lockup title={item.title} long platform="phone-web" /><TitleFactsLine parts={phoneParts} genres={genres} /></div>
       </div>
       <TitleActions binding={binding} data={data} />
@@ -111,7 +111,7 @@ function TitleHero({binding, data, artworkClaim, showBackdrops}: {binding: Detai
     </header>;
   }
   return <header className={styles.hero}>
-    {showBackdrops && <div className={motionStyles.art} ref={setArtworkNode}><AmbientArt className={styles.heroArt} treatment={phone ? 'phone' : 'title'} source={art.ambient(item.backdropUrl ?? item.posterUrl)} foreground={art.foreground(item.backdropUrl ?? item.posterUrl, phone ? 800 : 1920, 16 / 9)} /></div>}
+    {showBackdrops && <TitleArtwork key="desktop" artworkClaim={artworkClaim} titleKey={item.id} reduced={reduced} className={styles.heroArt} treatment={phone ? 'phone' : 'title'} source={art.ambient(item.backdropUrl ?? item.posterUrl)} foreground={foreground} />}
     <div className={styles.copy} ref={setCopyNode}>
       {data.collections?.[0] && <CollectionLink collection={data.collections[0]} onOpen={() => runScreenCommand(binding.context, () => { binding.current(data); binding.context.effects.openEntry({id: data.collections![0].id, libraryId: data.scope.libraryId, kind: 'collection', title: data.collections![0].name, navigation: {view: 'collection', entityId: data.collections![0].id}}); })} />}
       <Lockup title={item.title} platform={phone ? 'phone-web' : 'desktop'} />
@@ -122,6 +122,17 @@ function TitleHero({binding, data, artworkClaim, showBackdrops}: {binding: Detai
       <TitleActions binding={binding} data={data} />
     </div>
   </header>;
+}
+
+/** The wrapper commits before the foreground resource starts. The callback
+ * captured by Artwork's original lease therefore owns this exact physical node,
+ * including a phone/desktop replacement while a decode is pending. */
+function TitleArtwork({artworkClaim, titleKey, reduced, ...props}: AmbientArtProps & {artworkClaim?: SourceArtClaim; titleKey: string; reduced: boolean}) {
+  const [node, setNode] = useState<HTMLDivElement | null>(null);
+  const ready = useTitleArtworkClaim(node, artworkClaim, titleKey, reduced), foreground = props.foreground;
+  return <div className={motionStyles.art} ref={setNode}>{node && <AmbientArt {...props} onReady={source => {
+    if (foreground && source.key === foreground.key && source.scheduler === foreground.scheduler) ready(node);
+  }}/>}</div>;
 }
 
 /** The hero's collection link. Its total is every visible member the server counted, not

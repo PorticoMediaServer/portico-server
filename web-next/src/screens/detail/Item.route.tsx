@@ -4,6 +4,7 @@ import {defineWebScreen} from '../../route-registry';
 import {useProtectedWebScreenContext} from '../../route-registry-view';
 import {useCommittedLibraryScreenContext, type ProtectedLibraryScreen} from '../browse/screen-context';
 import {router} from '../../router';
+import {useAdmittedTitleArtwork} from '../../shell/artwork-navigation';
 import type {ScreenContext} from './context';
 import {createDetailBindings} from './bindings';
 import {DetailScreen} from './Detail';
@@ -13,7 +14,7 @@ import {DetailLoading} from './Loading';
 import {ScreenProblem} from './ScreenProblem';
 
 type DetailLease = {id: number; context: ScreenContext; itemId: string; live: boolean; binding: ReturnType<typeof createDetailBindings>};
-function OrdinaryItem({context, itemId}: {context: ScreenContext; itemId: string}) {
+function OrdinaryItem({context, itemId, artworkClaim}: {context: ScreenContext; itemId: string; artworkClaim?: import('../../kit/cards/source-art-transition').SourceArtClaim}) {
   const [lease, publish] = useState<DetailLease>();
   const serial = useRef(0);
   useLayoutEffect(() => {
@@ -22,16 +23,18 @@ function OrdinaryItem({context, itemId}: {context: ScreenContext; itemId: string
     return () => {held.live = false;held.binding.dispose();};
   }, [context, itemId]);
   return lease?.live && lease.context === context && lease.itemId === itemId && context.isCurrent()
-    ? <DetailScreen key={lease.id} binding={lease.binding} itemId={itemId}/> : <DetailLoading/>;
+    ? <DetailScreen key={lease.id} binding={lease.binding} itemId={itemId} artworkClaim={artworkClaim}/> : <DetailLoading/>;
 }
 type ReadResolution = {phase: 'loading'} | {phase: 'ready'; eligibility: ReadItemEligibility | null} | {phase: 'error'; error: unknown};
 type ResolutionLease = {context: ScreenContext; itemId: string; retry: number; live: boolean};
 function BoundItem({captured, itemId}: {captured: ProtectedLibraryScreen; itemId: string}) {
-  const href = useLocation({select: location => location.href});
+  const entry = useLocation({select: location => ({key: location.state.__TSR_key ?? '', href: location.href, pathname: location.pathname})});
+  const href = entry.href;
+  const artworkClaim = useAdmittedTitleArtwork(captured.binding.scopeKey, itemId, entry, () => captured.context.isCurrent() && router.state.location.state.__TSR_key === entry.key);
   const context = useCommittedLibraryScreenContext(captured, href, () => router.state.location.href === href);
-  return context ? <ResolveItem captured={captured} context={context} itemId={itemId}/> : <DetailLoading/>;
+  return context ? <ResolveItem captured={captured} context={context} itemId={itemId} artworkClaim={artworkClaim}/> : <DetailLoading/>;
 }
-function ResolveItem({captured, context, itemId}: {captured: ProtectedLibraryScreen; context: ScreenContext; itemId: string}) {
+function ResolveItem({captured, context, itemId, artworkClaim}: {captured: ProtectedLibraryScreen; context: ScreenContext; itemId: string; artworkClaim?: import('../../kit/cards/source-art-transition').SourceArtClaim}) {
   const [retry, setRetry] = useState(0);
   const active = useRef<ResolutionLease | undefined>(undefined);
   const [published, publish] = useState<Readonly<{lease: ResolutionLease; resolution: ReadResolution}>>();
@@ -62,7 +65,7 @@ function ResolveItem({captured, context, itemId}: {captured: ProtectedLibraryScr
     if (held.live && active.current === held && context.isCurrent()) {held.live = false;setRetry(value => value + 1);}
   }}/>;
   return resolution.eligibility ? <ReadItemEntry itemId={itemId} eligibility={resolution.eligibility}/>
-    : <OrdinaryItem context={context} itemId={itemId}/>;
+    : <OrdinaryItem context={context} itemId={itemId} artworkClaim={artworkClaim}/>;
 }
 function ItemRouteScreen() {
   const captured = useProtectedWebScreenContext();

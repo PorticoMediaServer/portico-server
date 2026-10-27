@@ -6,6 +6,7 @@ import {PersonalSavedService} from '@core/personal-saved.ts';
 import {randomId} from '@core/random-id.ts';
 import {WebShellPlaybackRuntime} from '../platform/playback';
 import {router} from '../router';
+import {navigateArtworkEntry, retireArtworkScope} from './artwork-navigation';
 import type {ShellBindings} from './bindings';
 import type {ShellAssembler} from './bootstrap';
 import {createOwnerActivity} from './Activity';
@@ -28,6 +29,7 @@ export const assembleShellBindings: ShellAssembler = async context => {
   if (authority !== 'local' && authority !== 'hosted') throw new Error('unsupported-shell-authority');
   let active = true;
   const current = () => active && context.isCurrent();
+  const artworkScope = JSON.stringify([viewer.serverId, authority, viewer.accountId, viewer.profileId, captured.sessionFamilyId, context.epoch]);
   const scope = Object.freeze({serverId: viewer.serverId, viewerId: JSON.stringify([authority, viewer.accountId, viewer.profileId])});
   const currentPreferences = () => context.preferences?.getSnapshot('web') ?? context.facts.preferences;
   const language = shellLanguage(currentPreferences());
@@ -36,7 +38,7 @@ export const assembleShellBindings: ShellAssembler = async context => {
   const time = {t: language.t, locale: language.region.formatLocale, timeZone: language.region.timeZone,
     hourCycle: language.region.hour12 === true ? 'h12' as const : language.region.hour12 === false ? 'h23' as const : undefined};
   const feedback = new ShellFeedback(language, current), life = new AbortController();
-  const resources: (() => void)[] = [feedback.dispose, () => life.abort(), openAppLogContext(current)];
+  const resources: (() => void)[] = [() => retireArtworkScope(artworkScope), feedback.dispose, () => life.abort(), openAppLogContext(current)];
   const preparingStarts = createWebPreparingStarts(context.api, captured, context.session, current);
   if (preparingStarts) resources.push(preparingStarts.dispose);
   const dispose = () => { if (!active) return; active = false; for (const cleanup of resources.splice(0).reverse()) { try { cleanup(); } catch { /* Continue fencing every other private owner. */ } } };
@@ -111,7 +113,7 @@ export const assembleShellBindings: ShellAssembler = async context => {
           const item = document && homePlaybackItem(document, entry, target);
           if (!item) throw new Error('stale-home-playback-target');
           await player().playback.play({context: currentHomeContext(), items: [item], signal: life.signal});
-        }, openEntry: entry => { void router.navigate(entryDestination(entry)).catch(feedback.reportError); }, openSeeAll: target => { void router.navigate(seeAllDestination(target)).catch(feedback.reportError); },
+        }, openEntry: entry => {const destination = entryDestination(entry);void navigateArtworkEntry(entry, destination, artworkScope, current, current, manual => router.navigate({...destination, ...(manual ? {viewTransition: false} : {})})).catch(feedback.reportError);}, openSeeAll: target => { void router.navigate(seeAllDestination(target)).catch(feedback.reportError); },
           openMore: (row, entry, element) => player().selection.openMore(row, entry, element), reportError: feedback.reportError,
           openHome: () => {void router.navigate({to: '/'}).catch(feedback.reportError);},
           playChannel: async channel => {

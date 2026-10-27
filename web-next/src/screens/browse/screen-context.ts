@@ -3,6 +3,7 @@ import {createBrowserDownloadPort} from '../../platform/browser-download';
 import {useEffect, useLayoutEffect, useMemo, useRef, useState} from 'react';
 import type {useProtectedWebScreenContext} from '../../route-registry-view';
 import {router} from '../../router';
+import {backArtworkEntry, navigateArtworkEntry} from '../../shell/artwork-navigation';
 import type {ShellBindings} from '../../shell/bindings';
 import type {ScreenContext} from '../detail/context';
 import {screenEntryDestination} from './navigation';
@@ -17,12 +18,13 @@ function libraryScreenOwner(context: ProtectedLibraryScreen['context'], scopeKey
   if (viewer.authority !== 'local' && viewer.authority !== 'hosted') throw new DOMException('Screen authority unavailable', 'AbortError');
   let active = true;
   const downloadLifetime = new AbortController();
-  const current = () => {
-    if (!active || !callerCurrent() || !context.isCurrent() || getBinding().scopeKey !== scopeKey) return false;
+  const principalCurrent = () => {
+    if (!context.isCurrent() || getBinding().scopeKey !== scopeKey) return false;
     const value = context.session();
     return value.sessionFamilyId === session.sessionFamilyId && value.viewer.serverId === viewer.serverId && value.viewer.authority === viewer.authority
       && value.viewer.accountId === viewer.accountId && value.viewer.profileId === viewer.profileId && value.viewer.role === viewer.role;
   };
+  const current = () => active && callerCurrent() && principalCurrent() && active && callerCurrent() && active;
   const assert = () => {if (!current()) throw new DOMException('Screen authority changed', 'AbortError');};
   const reportError = (error: unknown) => {if (current()) getBinding().home.effects.reportError(error);};
   const navigate = (action: Promise<void>) => {void action.catch(reportError);};
@@ -38,12 +40,13 @@ function libraryScreenOwner(context: ProtectedLibraryScreen['context'], scopeKey
       reportError,
       openEntry(entry) {
         assert();
-        navigate(router.navigate(screenEntryDestination(entry)));
+        const destination = screenEntryDestination(entry);
+        navigate(navigateArtworkEntry(entry, destination, scopeKey, current, principalCurrent, manual => router.navigate({...destination, ...(manual ? {viewTransition: false} : {})})));
       },
       openHome() {assert();navigate(router.navigate({to: '/'}));},
       openSettings() {assert();navigate(router.navigate({to: '/settings'}));},
       chooseProfile() {assert();navigate(router.navigate({to: '/profiles'}));},
-      back() {assert();router.history.back();},
+      back() {assert();const history = router.history, back = history.back.bind(history);backArtworkEntry(scopeKey, current, back);},
       openBrowse(selector) {assert();navigate(router.navigate({to: '/library/$libraryId', params: {libraryId: selector.libraryId},
         search: {pivot: selector.pivot, query: selector.query, sort: selector.sort}}));},
       playSeason: createScreenSeasonPlayEffect({isCurrent: current, runtime: () => getBinding().playback?.runtime}),
