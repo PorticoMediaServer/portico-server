@@ -1066,7 +1066,12 @@ test('a terminal queue start failure clears the preparation notice', async () =>
     await drainPreparation(f, [started]);
     assert.equal(f.playback.getSnapshot().preparation, undefined);
     assert.equal(f.player.getSnapshot().preparation, undefined);
-    assert.equal(f.player.getSnapshot().phase, 'error');
+    // A queue start that fails leaves the queue itself usable and names the failure on both
+    // owners; the playback service is the one that moves to error.
+    assert.equal(f.playback.getSnapshot().phase, 'error');
+    assert.equal(f.player.getSnapshot().phase, 'ready');
+    assert.ok(f.player.getSnapshot().error);
+    assert.equal(f.player.getSnapshot().error, f.playback.getSnapshot().error);
   } finally { f.stop(); await drainPreparation(f, [started]); }
 });
 
