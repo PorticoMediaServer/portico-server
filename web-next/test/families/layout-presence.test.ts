@@ -6,7 +6,10 @@ import {easings, reducedMotion} from '@design';
 import type {LayoutRetentionPolicy} from '../../src/kit/layout/retention.ts';
 
 type Ref = {current: unknown};
-type Effect = {deps: readonly unknown[]; cleanup?: () => void};
+// React treats an omitted dependency list as "run after every commit", while an
+// empty or populated list compares by Object.is. The fixture must model both, or
+// a real deps-less layout pass cannot be exercised at all.
+type Effect = {deps: readonly unknown[] | undefined; cleanup?: () => void};
 const bridgeKey = '__porticoLayoutPresenceHooks';
 const bridge = {current: undefined as HookFrame | undefined};
 (globalThis as Record<string, unknown>)[bridgeKey] = bridge;
@@ -43,9 +46,10 @@ class HookFrame {
       if (!Object.is(value, this.slots[i].value)) { this.slots[i].value = value; this.dirty = true; }
     }];
   }
-  useLayoutEffect(run: () => void | (() => void), deps: readonly unknown[]) {
-    const i = this.cursor++, previous: Effect | undefined = this.slots[i];
-    if (!previous || deps.length !== previous.deps.length || deps.some((value, index) => !Object.is(value, previous.deps[index]))) {
+  useLayoutEffect(run: () => void | (() => void), deps?: readonly unknown[]) {
+    const i = this.cursor++, previous: Effect | undefined = this.slots[i], prior = previous?.deps;
+    if (!previous || deps === undefined || prior === undefined
+      || deps.length !== prior.length || deps.some((value, index) => !Object.is(value, prior[index]))) {
       const effect = {deps, cleanup: previous?.cleanup}; this.slots[i] = effect; this.queued.push({effect, run});
     }
   }
@@ -60,7 +64,14 @@ class HookFrame {
     throw new Error('Presence effects did not settle within eight renders');
   }
   get maps(): Map<unknown, unknown>[] { return this.refs.map(ref => ref.current).filter(value => value instanceof Map); }
-  get ownedNodes(): LayoutNode[] { return this.maps.flatMap(map => [...map.keys()].filter(key => key instanceof LayoutNode)); }
+  // Ownership is per element. The hook now keeps two element-keyed refs (the
+  // animation and the last animated target), so count each owned element once
+  // rather than once per map that happens to mention it.
+  get ownedNodes(): LayoutNode[] {
+    const owned = new Set<LayoutNode>();
+    for (const map of this.maps) for (const key of map.keys()) if (key instanceof LayoutNode) owned.add(key);
+    return [...owned];
+  }
   animation(node: LayoutNode): ControlledAnimation | undefined { return this.maps.map(map => map.get(node)).find(value => value instanceof ControlledAnimation); }
   unmount() {
     if (!this.mounted) return;
@@ -87,7 +98,14 @@ class LayoutNode {
   inert = false;
   animations: ControlledAnimation[] = [];
   constructor(key: string) { this.dataset = {layoutItem: key}; }
-  getBoundingClientRect() { return {left: this.left, top: 0} as DOMRect; }
+  // The move pass compares offset geometry between commits; report the same
+  // layout the rect getter exposes so an unchanged row is recognised and a
+  // reordered row always differs.
+  get offsetLeft() { return this.left; }
+  get offsetTop() { return 0; }
+  get offsetWidth() { return 100; }
+  get offsetHeight() { return 100; }
+  getBoundingClientRect() { return {left: this.left, top: 0, right: this.left + 100, bottom: 100, width: 100, height: 100} as DOMRect; }
   animate(frames: Keyframe[], options: KeyframeAnimationOptions) {
     const animation = new ControlledAnimation(frames, options); this.animations.push(animation); return animation;
   }
@@ -124,11 +142,20 @@ test('move then remove releases ownership before exit timeout removes the DOM ch
   assert.equal(animation.cancelCalls, 1);
   assert.equal(f.hooks.animation(node), undefined, 'cancellation releases ownership before promise reactions');
   await Promise.resolve();
-  assert.equal(f.hooks.ownedNodes.length, 0);
+  // The withdrawn row's element/animation pair is released. The current row 'b'
+  // keeps its own in-flight move: retirement must not restart an unchanged move.
+  const current = f.node('b'), move = f.hooks.animation(current);
+  assert.deepEqual(f.hooks.ownedNodes.map(owned => owned.dataset.layoutItem), ['b']);
+  assert.ok(move, 'the current row keeps its in-flight move');
   assert.deepEqual(f.advance(179).present, ['b', 'a']);
   assert.deepEqual(f.advance(1).present, ['b']);
   assert.deepEqual(f.root.children.map(node => node.dataset.layoutItem), ['b']);
-  assert.equal(f.hooks.ownedNodes.length, 0, 'no removed Element/Animation pair remains in hook refs');
+  assert.deepEqual(f.hooks.ownedNodes.map(owned => owned.dataset.layoutItem), ['b'], 'no removed Element/Animation pair remains in hook refs');
+  assert.equal(f.hooks.animation(current), move, 'retirement does not restart the current move');
+  assert.equal(move.cancelCalls, 0);
+  move.finish();
+  await Promise.resolve();
+  assert.equal(f.hooks.ownedNodes.length, 0, 'the current move releases itself when it finishes');
 });
 
 test('repeated unique move/remove cycles keep owned animation references bounded', async t => {
