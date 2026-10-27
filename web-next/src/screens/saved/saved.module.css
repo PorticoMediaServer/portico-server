@@ -265,3 +265,8 @@
     font-size: 14.5px; white-space: nowrap; background: var(--color-raised-high); }
   button.newPlaylist[data-size="small"]:hover:not(:disabled) { background: var(--color-raised-bright); }
 }
+
+/* A secondary reader's failure is scoped above the list; the healthy sibling's
+   rows stay mounted. One compact recovery per failed shape. */
+.readerFailures { display: grid; gap: 12px; margin: 0 0 16px; }
+.readerFailure { text-align: left; }
