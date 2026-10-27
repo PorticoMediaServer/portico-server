@@ -34,9 +34,11 @@ export function BottomSheet({open, onOpenChange, title, headerAction, children, 
   const drag = useRef<Drag | null>(null), height = useRef(0), animations = useRef<Animation[]>([]), closingVelocity = useRef(0), initialized = useRef<HTMLElement | null>(null);
   const triggerElement = useRef<HTMLButtonElement | null>(null);
   const reason = useDismissReason(), reduced = useReducedMotion(), present = usePresence(open, 520), focus = useSurfaceFocus(open, initialFocusRef, returnFocusRef ?? triggerElement);
-  const attachContent = useCallback((element: HTMLDivElement | null) => {setElement(element);focus.contentRef(element);}, [focus.contentRef]);
+  const {contentRef: focusContentRef} = focus;
+  const attachContent = useCallback((element: HTMLDivElement | null) => {setElement(element);focusContentRef(element);}, [focusContentRef]);
   const limits = sheetDetents(fitContent && naturalHeight ? [naturalHeight] : detents ?? [Math.round(viewport / 2), viewport - 100], viewport - 20);
   const maximum = limits.at(-1)?.height ?? Math.max(1, viewport - 100), selected = limits.find(value => value.index === (detent ?? active)) ?? limits[0];
+  const hasFooter = footer !== undefined;
   const callbacks = useRef({onOpenChange, onDetentChange}); callbacks.current = {onOpenChange, onDetentChange};
   useOverlayKeys(open, onOpenChange, false, dismissOnBack);
   useLayoutEffect(() => {
@@ -45,6 +47,7 @@ export function BottomSheet({open, onOpenChange, title, headerAction, children, 
     return () => { window.removeEventListener('resize', update); window.visualViewport?.removeEventListener('resize', update); };
   }, []);
   useLayoutEffect(() => {
+    void hasFooter; // Preserve the authored footer-presence invalidation.
     if (!fitContent || !element) return;
     const measure = () => setNaturalHeight((header.current?.offsetHeight ?? 0) + (body.current?.scrollHeight ?? 0) + (footerRef.current?.offsetHeight ?? 0) + Number.parseFloat(getComputedStyle(element).paddingBottom));
     const observer = new ResizeObserver(measure);
@@ -53,7 +56,7 @@ export function BottomSheet({open, onOpenChange, title, headerAction, children, 
     // last part of the contents' own height.
     if (footerRef.current) observer.observe(footerRef.current);
     measure(); return () => observer.disconnect();
-  }, [element, fitContent, footerHeight, footer !== undefined]);
+  }, [element, fitContent, footerHeight, hasFooter]);
 
   // account28/29: an opted-in sheet stacks its actions, so its body clears the
   // footer by the footer's own measured height rather than a fixed guess.

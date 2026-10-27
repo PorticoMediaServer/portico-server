@@ -13,8 +13,9 @@ const t = defaultI18n.t;
 export type ServerFolderPickerProps = Readonly<{open: boolean; onClose: () => void; api: LibraryContentApi; initialPath?: string; onChoose: (paths: readonly string[]) => void; multiple?: boolean; purpose?: 'folder' | 'backup'; returnFocusRef?: React.RefObject<HTMLElement | null>}>;
 /** The same bounded explorer serves folders and the drawn single backup file/folder picker. */
 export function ServerFolderPicker(props: ServerFolderPickerProps) {
- const single = useCallback((path: string) => props.onChoose([path]), [props.onChoose]);
- const close = useCallback((open: boolean) => {if (!open) props.onClose();}, [props.onClose]);
+ const {onChoose, onClose} = props;
+ const single = useCallback((path: string) => onChoose([path]), [onChoose]);
+ const close = useCallback((open: boolean) => {if (!open) onClose();}, [onClose]);
  if (props.purpose !== 'backup') return <ServerDirectoryExplorer open={props.open} onOpenChange={close} api={props.api} initialPath={props.initialPath} returnFocusRef={props.returnFocusRef} onChoose={single} onChooseMany={props.multiple ? props.onChoose : undefined} checkWritable={!props.multiple}/>;
  return <BackupFolderPicker {...props}/>;
 }

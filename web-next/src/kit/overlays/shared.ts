@@ -64,6 +64,8 @@ export function useOverlayKeys(open: boolean, onOpenChange: OverlayChange, escap
 
 export function useSurfaceFocus(open: boolean, initialFocusRef?: RefObject<HTMLElement | null>, returnFocusRef?: RefObject<HTMLElement | null>) {
   const opener = useRef<HTMLElement | null>(null);
+  const returnTarget = useRef(returnFocusRef);
+  useLayoutEffect(() => {returnTarget.current = returnFocusRef;}, [returnFocusRef]);
   const suppressRestore = useRef(false);
   type Opening = {target: HTMLElement | null; list?: ListFocusReturn; content: HTMLElement | null};
   const [opening, setOpening] = useState<Opening | null>(null);
@@ -81,7 +83,7 @@ export function useSurfaceFocus(open: boolean, initialFocusRef?: RefObject<HTMLE
     if (!open) return;
     current.current?.list?.dispose();
     opener.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
-    const target = returnFocusRef?.current ?? opener.current;
+    const target = returnTarget.current?.current ?? opener.current;
     const record: Opening = {target, list: captureListFocusReturn(target), content: content.current};
     current.current = record;suppressRestore.current = false;setOpening(record);
     if (record.content) record.list?.attach(record.content);
