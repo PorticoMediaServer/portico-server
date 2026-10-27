@@ -1161,46 +1161,7 @@ class ShardedJsChecksTests(unittest.TestCase):
         self.assertEqual([file for _, _, file in runner.entries],
                          ["test/next-thing.test.ts"])
 
-    def test_source_lint_keeps_args_then_cwd_order_and_its_exact_command(self):
-        temp = tempfile.TemporaryDirectory()
-        self.addCleanup(temp.cleanup)
-        root = Path(temp.name)
-        source = root / "apps/native/src-next/port.ts"
-        source.parent.mkdir(parents=True)
-        source.write_text("export const value = 1;\n")
-        with patch.object(ci, "ROOT", root), \
-                patch.object(ci, "changed", return_value={"apps/native/src-next/port.ts"}), \
-                patch.object(ci, "js_plan", return_value=[]), \
-                patch.object(ci, "report_directory", return_value=(root / "report", False)), \
-                patch.object(ci.test_watchdog, "Runner", self.FakeRunner), \
-                patch.object(ci, "run") as run, \
-                patch.dict(ci.os.environ, {"CI_SHARD_INDEX": "0", "CI_SHARD_TOTAL": "1"}), \
-                contextlib.redirect_stdout(io.StringIO()):
-            ci.js_checks(True)
-        self.assertEqual(run.call_count, 1)
-        args, cwd = run.call_args.args
-        self.assertEqual(cwd, root / "apps/native")
-        self.assertEqual(args[:4], ["npx", "--no-install", "eslint", "--no-eslintrc"])
-        self.assertEqual(args[-1], "src-next/port.ts")
 
-    def test_source_lint_is_deferred_to_shard_zero_not_dropped(self):
-        temp = tempfile.TemporaryDirectory()
-        self.addCleanup(temp.cleanup)
-        root = Path(temp.name)
-        source = root / "apps/native/src-next/port.ts"
-        source.parent.mkdir(parents=True)
-        source.write_text("export const value = 1;\n")
-        with patch.object(ci, "ROOT", root), \
-                patch.object(ci, "changed", return_value={"apps/native/src-next/port.ts"}), \
-                patch.object(ci, "js_plan", return_value=[]), \
-                patch.object(ci, "report_directory", return_value=(root / "report", False)), \
-                patch.object(ci.test_watchdog, "Runner", self.FakeRunner), \
-                patch.object(ci, "run") as run, \
-                patch.dict(ci.os.environ, {"CI_SHARD_INDEX": "1", "CI_SHARD_TOTAL": "4"}), \
-                contextlib.redirect_stdout(io.StringIO()) as output:
-            ci.js_checks(True)
-        self.assertEqual(run.call_count, 0)
-        self.assertIn("source lint runs once in shard 0", output.getvalue())
 
     def test_four_shards_are_disjoint_and_cover_the_whole_selection(self):
         temp = tempfile.TemporaryDirectory()
@@ -1240,6 +1201,35 @@ class ShardedJsChecksTests(unittest.TestCase):
         self.assertEqual(len(union), len(set(union)))
         expected = {("apps/native", f"test/{path.name}") for path in selection}
         self.assertEqual(set(union), expected)
+
+
+    def test_the_test_runner_never_runs_source_lint(self):
+        temp = tempfile.TemporaryDirectory()
+        self.addCleanup(temp.cleanup)
+        root = Path(temp.name)
+        source = root / "apps/native/src-next/port.ts"
+        source.parent.mkdir(parents=True)
+        source.write_text("export const value = 1;\n")
+        with patch.object(ci, "ROOT", root), \
+                patch.object(ci, "changed", return_value={"apps/native/src-next/port.ts"}), \
+                patch.object(ci, "js_plan", return_value=[]), \
+                patch.object(ci, "report_directory", return_value=(root / "report", False)), \
+                patch.object(ci.test_watchdog, "Runner", self.FakeRunner), \
+                patch.object(ci, "print_versions"), \
+                patch.object(ci, "run") as run, \
+                patch.dict(ci.os.environ, {"CI_SHARD_INDEX": "0", "CI_SHARD_TOTAL": "1"}), \
+                contextlib.redirect_stdout(io.StringIO()) as output:
+            ci.js_checks(True)
+        # Lint is not a test: the dedicated javascript-checks job owns it.
+        self.assertEqual(run.call_count, 0)
+        self.assertNotIn("eslint", output.getvalue().lower())
+        self.assertNotIn("eslint", Path(ci.__file__).read_text().lower())
+
+
+    def test_a_stuck_version_probe_reports_unavailable_instead_of_hanging(self):
+        with patch.object(ci.subprocess, "check_output",
+                          side_effect=subprocess.TimeoutExpired(["go", "version"], 15)):
+            self.assertEqual(ci._tool_line(["go", "version"]), "unavailable")
 
 
 class WatchdogTests(unittest.TestCase):

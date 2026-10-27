@@ -28,8 +28,13 @@ jobs:
         with: {ref: '${{ inputs.ref || github.sha }}', fetch-depth: 0}
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
         with: {node-version-file: .node-version}
+      - name: Actual job toolchain
+        run: |
+          node --version || true
+          go version || true
       - run: scripts/check-repo-binaries.sh
-      - run: python3 scripts/test-ci-affected.py
+      - if: ${{ !cancelled() }}
+        run: python3 scripts/test-ci-affected.py
       - name: Retain full diagnostics
         if: ${{ always() }}
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
@@ -49,7 +54,6 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - {module: apikit, shard: 0, shards: 1}
           - {module: server, shard: 0, shards: 4}
           - {module: server, shard: 1, shards: 4}
           - {module: server, shard: 2, shards: 4}
@@ -63,8 +67,14 @@ jobs:
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
         with: {ref: '${{ inputs.ref || github.sha }}', fetch-depth: 0}
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with: {node-version-file: .node-version}
       - uses: actions/setup-go@d35c59abb061a4a6fb18e82ac0862c26744d6ab5
         with: {go-version-file: '${{ matrix.module }}/go.mod', cache-dependency-path: '${{ matrix.module }}/go.sum'}
+      - name: Actual job toolchain
+        run: |
+          node --version || true
+          go version || true
       - name: Disposable database
         run: |
           mkdir -p .scratch
@@ -77,7 +87,8 @@ jobs:
           go build ./... > "$RUNNER_TEMP/go-build.log" 2>&1 || status=$?
           tail -n 20 "$RUNNER_TEMP/go-build.log"
           exit "$status"
-      - name: Full Go module tests and vet
+      - if: ${{ !cancelled() }}
+        name: Full Go module tests and vet
         env:
           CI_SHARD_INDEX: ${{ matrix.shard }}
           CI_SHARD_TOTAL: ${{ matrix.shards }}
@@ -92,6 +103,63 @@ jobs:
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: ci-go-${{ matrix.module }}-${{ matrix.shard }}
+          path: |
+            ${{ runner.temp }}/full-ci.log
+            ${{ runner.temp }}/go-build.log
+            ${{ runner.temp }}/go-results-*.jsonl
+            ${{ runner.temp }}/types*.log
+          if-no-files-found: ignore
+          retention-days: 7
+
+  go-apikit:
+    name: go (apikit)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+    services:
+      postgres:
+        image: postgres:17
+        env: {POSTGRES_USER: portico, POSTGRES_PASSWORD: disposable-ci-password, POSTGRES_DB: portico_test}
+        ports: ['5432:5432']
+        options: --health-cmd pg_isready --health-interval 5s --health-timeout 5s --health-retries 10
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with: {ref: '${{ inputs.ref || github.sha }}', fetch-depth: 0}
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with: {node-version-file: .node-version}
+      - uses: actions/setup-go@d35c59abb061a4a6fb18e82ac0862c26744d6ab5
+        with: {go-version-file: 'apikit/go.mod', cache-dependency-path: 'apikit/go.sum'}
+      - name: Actual job toolchain
+        run: |
+          node --version || true
+          go version || true
+      - name: Disposable database
+        run: |
+          mkdir -p .scratch
+          printf '%s' 'postgres://portico:disposable-ci-password@localhost:5432/portico_test?sslmode=disable' > .scratch/postgres.url
+          echo "PORTICO_TEST_DATABASE_URL_FILE=$PWD/.scratch/postgres.url" >> "$GITHUB_ENV"
+      - name: Build every Go package
+        working-directory: apikit
+        run: |
+          status=0
+          go build ./... > "$RUNNER_TEMP/go-build.log" 2>&1 || status=$?
+          tail -n 20 "$RUNNER_TEMP/go-build.log"
+          exit "$status"
+      - if: ${{ !cancelled() }}
+        name: Full Go module tests and vet
+        env:
+          CI_SHARD_INDEX: '0'
+          CI_SHARD_TOTAL: '1'
+          CI_GO_RESULTS: ${{ runner.temp }}/go-results-apikit-0.jsonl
+        run: |
+          status=0
+          python3 scripts/ci-affected.py go --module 'apikit' > "$RUNNER_TEMP/full-ci.log" 2>&1 || status=$?
+          tail -n 20 "$RUNNER_TEMP/full-ci.log"
+          exit "$status"
+      - name: Retain full diagnostics
+        if: ${{ always() }}
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: ci-go-apikit-0
           path: |
             ${{ runner.temp }}/full-ci.log
             ${{ runner.temp }}/go-build.log
@@ -115,8 +183,14 @@ jobs:
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
         with: {ref: '${{ inputs.ref || github.sha }}', fetch-depth: 0}
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with: {node-version-file: .node-version}
       - uses: actions/setup-go@d35c59abb061a4a6fb18e82ac0862c26744d6ab5
         with: {go-version-file: server/go.mod, cache-dependency-path: server/go.sum}
+      - name: Actual job toolchain
+        run: |
+          node --version || true
+          go version || true
       - name: Disposable database and genuine subprocess helper
         run: |
           mkdir -p .scratch
@@ -155,18 +229,22 @@ jobs:
         with: {node-version-file: .node-version, cache: npm}
       - uses: actions/setup-go@d35c59abb061a4a6fb18e82ac0862c26744d6ab5
         with: {go-version-file: server/go.mod, cache-dependency-path: server/go.sum}
+      - name: Actual job toolchain
+        run: |
+          node --version || true
+          go version || true
       - run: npm ci --no-audit --no-fund
       - name: Core and web types
         run: |
           status=0
           for project in packages/client-core packages/player-core packages/reader-core web-next web; do
-            npx --no-install tsc -p "$project/tsconfig.json" --noEmit > "$RUNNER_TEMP/types.log" 2>&1 || status=1
+            npx --no-install tsc -p "$project/tsconfig.json" --noEmit > "$RUNNER_TEMP/types-${project//\//-}.log" 2>&1 || status=1
             echo "Types: $project"
-            tail -n 20 "$RUNNER_TEMP/types.log"
+            tail -n 20 "$RUNNER_TEMP/types-${project//\//-}.log"
           done
           exit "$status"
       - if: ${{ !cancelled() }}
-        name: Web lint (informational)
+        name: Web lint (required)
         run: |
           status=0
           npm run lint:design --workspace portico-web -- --strict || status=1
@@ -204,6 +282,10 @@ jobs:
         with: {node-version-file: .node-version, cache: npm}
       - uses: actions/setup-go@d35c59abb061a4a6fb18e82ac0862c26744d6ab5
         with: {go-version-file: server/go.mod, cache-dependency-path: server/go.sum}
+      - name: Actual job toolchain
+        run: |
+          node --version || true
+          go version || true
       - run: npm ci --no-audit --no-fund
       - name: Install media fixture tools
         run: sudo apt-get update && sudo apt-get install --no-install-recommends -y ffmpeg
@@ -238,13 +320,16 @@ jobs:
 
   # Preserve the branch's required contexts while requiring every complete shard.
   go:
+    name: go (server)
     if: ${{ always() }}
     needs: [go-shards]
     runs-on: ubuntu-24.04
     timeout-minutes: 5
-    strategy:
-      matrix: {module: [apikit, server]}
     steps:
+      - name: Actual job toolchain
+        run: |
+          node --version || true
+          go version || true
       - name: Require all Go shards
         env:
           RESULTS: ${{ toJSON(needs) }}
@@ -262,6 +347,10 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     steps:
+      - name: Actual job toolchain
+        run: |
+          node --version || true
+          go version || true
       - name: Require client checks and every test shard
         env:
           RESULTS: ${{ toJSON(needs) }}

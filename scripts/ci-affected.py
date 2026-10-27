@@ -1555,8 +1555,11 @@ _VERSION_CACHE = None
 
 def _tool_line(command):
     try:
-        text = subprocess.check_output(command, text=True, stderr=subprocess.DEVNULL)
-    except (OSError, subprocess.CalledProcessError):
+        # A version probe must never hold the job: a stuck interpreter answers
+        # "unavailable" after 15 s instead of blocking the whole log header.
+        text = subprocess.check_output(
+            command, text=True, stderr=subprocess.DEVNULL, timeout=15)
+    except (OSError, subprocess.CalledProcessError, subprocess.TimeoutExpired):
         return "unavailable"
     return text.strip().splitlines()[0] if text.strip() else "unavailable"
 
@@ -1567,8 +1570,10 @@ def tool_versions():
     global _VERSION_CACHE
     if _VERSION_CACHE is None:
         node = shutil.which("node") or "node"
+        node_version = _tool_line([node, "--version"])
         go = _tool_line(["go", "version"])
-        _VERSION_CACHE = (f"node {_tool_line([node, '--version'])} ({node})",
+        _VERSION_CACHE = (f"node {node_version} ({node})"
+                          if node_version != "unavailable" else "node unavailable",
                           go if go != "unavailable" else "go unavailable")
     return _VERSION_CACHE
 
@@ -1793,22 +1798,6 @@ def js_checks(native):
         print(f"MANDATORY {name} -> shard {shard_of(name, total)} of {total}", flush=True)
 
     failed = bool(unrouted)
-    commands = []
-    if native:
-        source = [str(Path(p).relative_to("apps/native")) for p in sorted(paths)
-                  if p.startswith("apps/native/") and p.endswith((".ts", ".tsx"))
-                  and (ROOT / p).is_file() and (p.startswith("apps/native/src-next/") or p == "apps/native/App.tsx")]
-        if source:
-            if total == 1 or index == 0:
-                commands.append((["npx", "--no-install", "eslint", "--no-eslintrc", "-c", ".eslintrc.hooks.cjs", *source], ROOT / "apps/native"))
-            else:
-                print("NOTE source lint runs once in shard 0; this shard runs tests only", flush=True)
-    for args, cwd in commands:
-        try:
-            run(args, cwd)
-        except subprocess.CalledProcessError as error:
-            failed = True
-            print(f"FAIL command exited {error.returncode}: {' '.join(args)}", flush=True)
     directory, ephemeral = report_directory(index, total)
     runner = test_watchdog.Runner(
         directory, file_seconds=TEST_FILE_SECONDS, test_timeout_ms=TEST_TIMEOUT_MS,
