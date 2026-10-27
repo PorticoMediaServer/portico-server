@@ -15,9 +15,9 @@ function installHistory(t) {
 }
 async function fixture({strict = false} = {}) {
   const h = createRenderer(), calls = [], errors = [], replayers = [];
-  let item = 'book', source = 'source', match = true, allowed = true, onCurrent, onNavigate;
+  let item = 'book', source = 'source', match = true, allowed = true, onCurrent, onNavigate, onReport;
   let context = {isCurrent: () => {onCurrent?.(); return allowed;}};
-  let binding = {home: {effects: {reportError: error => errors.push(error)}}};
+  let binding = {home: {effects: {reportError: error => {errors.push(error); onReport?.(error);}}}};
   const makeLocation = (path = '/read/book', search = {sourceId: source}) => ({pathname: path, search});
   let location = makeLocation();
   const router = {state: {location}, history: {location: {state: {__TSR_index: 0}}, back: () => calls.push({back: true})}, navigate: target => {calls.push(target); return onNavigate ? onNavigate() : Promise.resolve();}};
@@ -34,8 +34,8 @@ async function fixture({strict = false} = {}) {
     item = nextItem; source = nextSource; match = visible; location = makeLocation(path, {sourceId: source}); router.state.location = location; settle();
   };
   return {calls, errors, close, settle, change, replay: () => {for (const replay of replayers) replay(); settle();}, sameHref: () => change(), settings: () => change(item, source, '/settings', false),
-    replaceContext: () => {context = {isCurrent: () => allowed}; binding = {home: {effects: {reportError: error => errors.push(error)}}}; settle();},
-    setCurrent: fn => {onCurrent = fn;}, setNavigate: fn => {onNavigate = fn;}, setAllowed: value => {allowed = value;}};
+    replaceContext: () => {context = {isCurrent: () => allowed}; binding = {home: {effects: {reportError: error => {errors.push(error); onReport?.(error);}}}}; settle();},
+    setCurrent: fn => {onCurrent = fn;}, setReport: fn => {onReport = fn;}, setNavigate: fn => {onNavigate = fn;}, setAllowed: value => {allowed = value;}};
 }
 
 test('Reader closes to the captured book with replace, including Settings detours', async t => {
@@ -108,4 +108,16 @@ test('actual committed leave retires retained book; old rejection cannot alter a
   assert.equal(one(f.settle(), 'ReadEntry').props.itemId, 'successor');
   f.change('successor', 'source', '/item/successor', false); assert.equal(f.settle().some(node => node.type === 'ReadEntry'), false);
   next.resolve(); await Promise.resolve(); assert.equal(f.settle().some(node => node.type === 'ReadEntry'), false);
+});
+
+
+test('error sink reentry starts a new exact attempt that an older duplicate cannot release', async t => {
+  installHistory(t); const f = await fixture(), retry = deferred(), failure = new Error('first');
+  const hostile = {then(resolve, reject) {reject(failure); reject(new Error('duplicate')); resolve();}};
+  f.setNavigate(() => hostile);
+  f.setReport(() => {f.setReport(undefined); f.setNavigate(() => retry.promise); f.close()();});
+  f.close()(); await Promise.resolve(); await Promise.resolve();
+  assert.deepEqual(f.errors, [failure]); assert.equal(f.calls.length, 2);
+  f.close()(); assert.equal(f.calls.length, 2, 'new retry stays claimed after old duplicate settlement');
+  retry.resolve(); await Promise.resolve(); f.setNavigate(undefined); f.close()(); assert.equal(f.calls.length, 3);
 });

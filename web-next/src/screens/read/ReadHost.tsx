@@ -8,7 +8,7 @@ import styles from './entry.module.css';
 
 type Captured = NonNullable<ReturnType<typeof useProtectedWebScreenContext>>;
 type Location = ReturnType<typeof useLocation>;
-type CloseReceipt = {context: Captured['context']; binding: Captured['binding']; target: ReadTarget; location: Location; itemId: string; sourceId?: string; live: boolean; claimed: boolean};
+type CloseReceipt = {context: Captured['context']; binding: Captured['binding']; target: ReadTarget; location: Location; itemId: string; sourceId?: string; live: boolean; pendingClaim?: object};
 
 /** The registry owns one admitted host. This module owns its one current book;
  * Reading Settings can cover it without closing the engine or its overrides. */
@@ -25,7 +25,7 @@ export function ReadHost() {
   const visible = !!match && !!retained && retained.itemId === itemId && retained.sourceId === sourceId;
   useLayoutEffect(() => {
     if (!context || !binding || !retained || !visible || !itemId || location.pathname !== `/read/${encodeURIComponent(itemId)}` || readSearch(location.search).sourceId !== sourceId) return;
-    const original: CloseReceipt = {context, binding, target: retained, location, itemId, sourceId, live: true, claimed: false};
+    const original: CloseReceipt = {context, binding, target: retained, location, itemId, sourceId, live: true};
     committed.current = original; setPublished(original);
     return () => {original.live = false; if (committed.current === original) committed.current = null;};
   }, [context, binding, retained, visible, itemId, sourceId, location]);
@@ -37,13 +37,13 @@ export function ReadHost() {
     const matchesOriginal = () => original.live && committed.current === original
       && router.state.location === original.location && original.location.pathname === `/read/${encodeURIComponent(original.itemId)}`
       && readSearch(original.location.search).sourceId === original.sourceId;
-    if (original.claimed || !matchesOriginal() || !original.context.isCurrent() || !matchesOriginal() || original.claimed) return;
-    original.claimed = true;
+    if (original.pendingClaim || !matchesOriginal() || !original.context.isCurrent() || !matchesOriginal() || original.pendingClaim) return;
+    const attempt = {}; original.pendingClaim = attempt;
     const settle = (failed: boolean, error?: unknown) => {
       // A navigation result owns only its original still-visible receipt, never
       // a replacement or a later entry with the same URL.
-      if (!original.claimed || !matchesOriginal() || !original.context.isCurrent() || !matchesOriginal() || !original.claimed) return;
-      original.claimed = false;
+      if (original.pendingClaim !== attempt || !matchesOriginal() || !original.context.isCurrent() || !matchesOriginal() || original.pendingClaim !== attempt) return;
+      original.pendingClaim = undefined;
       if (failed) original.binding.home.effects.reportError(error);
     };
     try {
