@@ -150,8 +150,16 @@ export function recordingTime(value:string):string{return value?new Date(value).
 
 /** Optional original caller scope; omitted callers keep the viewer client's existing lifetime. */
 export type DVRCommandLifetime = Readonly<{signal: AbortSignal; isCurrent: () => boolean}>;
-const captureDVRCommand = (value: DVRCommandLifetime | undefined): DVRCommandLifetime | undefined => value
- ? Object.freeze({signal: value.signal, isCurrent: value.isCurrent}) : undefined;
+const captureDVRCommand = (value: DVRCommandLifetime | undefined, owner: () => boolean): DVRCommandLifetime | undefined => {
+ if(!value)return undefined;
+ const signal=value.signal,predicate=value.isCurrent;let retired=false;
+ return Object.freeze({signal,isCurrent:()=>{
+  if(retired||signal.aborted||!owner()){retired=true;return false;}
+  let current=false;try{current=predicate.call(value)===true;}catch{retired=true;return false;}
+  if(!current||signal.aborted||!owner()){retired=true;return false;}
+  return true;
+ }});
+};
 const retiredDVRCommand = () => Object.assign(new Error('Recording operation retired.'), {name: 'AbortError'});
 
 export class DVRClient {
@@ -161,38 +169,53 @@ export class DVRClient {
  // React effect replay may reuse the memoized instance, but not its requests.
  activate(){this.dispose();this.disposed=false;this.accessEpoch++;}
  onAccessChanged(listener:()=>void){this.accessChanged=listener;}
- dispose(){this.accessChanged=undefined;this.disposed=true;for(const request of this.requests)request.abort();this.requests.clear();this.receipts.clear();}
+ dispose(){this.accessChanged=undefined;this.disposed=true;const requests=[...this.requests];this.requests.clear();this.receipts.clear();for(const request of requests)request.abort();}
+ private captureCommand(lifetime?:DVRCommandLifetime,epoch=this.accessEpoch){return captureDVRCommand(lifetime,()=>!this.disposed&&epoch===this.accessEpoch);}
  private requireCommand(lifetime?:DVRCommandLifetime){
-  if(lifetime&&(this.disposed||lifetime.signal.aborted||!lifetime.isCurrent()))throw retiredDVRCommand();
+  if(!lifetime)return;
+  const epoch=this.accessEpoch;
+  if(this.disposed||lifetime.signal.aborted)throw retiredDVRCommand();
+  const current=lifetime.isCurrent();
+  if(current!==true||this.disposed||lifetime.signal.aborted||epoch!==this.accessEpoch)throw retiredDVRCommand();
  }
  private async read<T>(path:string,method='GET',body?:unknown,lifetime?:DVRCommandLifetime):Promise<T>{
   this.requireCommand(lifetime);
   if(this.disposed)throw new Error('Recording scope closed.');const epoch=this.accessEpoch;const abort=new AbortController();this.requests.add(abort);let timer:ReturnType<typeof setTimeout>|undefined;
   const stop=()=>abort.abort();lifetime?.signal.addEventListener('abort',stop,{once:true});if(lifetime?.signal.aborted)stop();
+  const check=()=>{this.requireCommand(lifetime);if(this.disposed||abort.signal.aborted||epoch!==this.accessEpoch||!this.requests.has(abort))throw lifetime?retiredDVRCommand():new Error('Recording scope closed.');};
   try {
-   this.requireCommand(lifetime);
-   const raw=await Promise.race([this.api.request<unknown>(path,method,body,abort.signal),new Promise<never>((_,reject)=>{timer=setTimeout(()=>{abort.abort();reject(new Error('Recording request timed out.'));},this.timeoutMs)})]);
-   this.requireCommand(lifetime);
-   if(this.disposed||abort.signal.aborted||epoch!==this.accessEpoch)throw new Error('Recording scope closed.');
+   check();const request=this.api.request.bind(this.api);check();
+   const response=request<unknown>(path,method,body,abort.signal);void response.catch(()=>{});check();
+   const raw=await Promise.race([response,new Promise<never>((_,reject)=>{timer=setTimeout(()=>{abort.abort();reject(new Error('Recording request timed out.'));},this.timeoutMs)})]);
+   check();
    if(!object(raw)||raw.protocolVersion!=='1.0'||raw.serverId!==this.serverId||!('result' in raw))invalid();
-   return raw.result as T;
+   const result=raw.result;check();return result as T;
   } catch(error){
    // A late refusal from a cancelled caller cannot retire the shared viewer client.
    this.requireCommand(lifetime);
+   if(lifetime&&(this.disposed||epoch!==this.accessEpoch||!this.requests.has(abort)))throw retiredDVRCommand();
    if(!this.disposed&&epoch===this.accessEpoch&&isAccessError(error)){this.accessEpoch++;for(const request of this.requests)request.abort();this.accessChanged?.();}throw error;
   } finally{lifetime?.signal.removeEventListener('abort',stop);clearTimeout(timer);this.requests.delete(abort);}
  }
  private async mutate<T>(path:string,method:string,body:Record<string,unknown>,lifetime?:DVRCommandLifetime):Promise<T>{
   this.requireCommand(lifetime);
   const epoch=this.accessEpoch,key=JSON.stringify([path,method,body]);let request=this.receipts.get(key);
-  if(!request){request=this.newRequestId().then(value=>{if(!id(value,48))invalid();return value});this.receipts.set(key,request);request.catch(()=>{if(this.receipts.get(key)===request)this.receipts.delete(key)});}
+  if(!request){
+   // Reserve the exact receipt before the external ID provider can reenter.
+   // Caller retirement never deletes/rejects an allocation a sibling may share.
+   let resolve!:(value:string)=>void,reject!:(error:unknown)=>void;
+   request=new Promise<string>((yes,no)=>{resolve=yes;reject=no;});this.receipts.set(key,request);
+   const receipt=request;void receipt.catch(()=>{if(this.receipts.get(key)===receipt)this.receipts.delete(key);});
+   try{void this.newRequestId().then(value=>{if(!id(value,48))invalid();return value;}).then(resolve,reject);}catch(error){reject(error);}
+  }
   // Keep unknown-outcome receipts for this viewer lifetime. Never auto-rebase a
   // stale revision or replace a request id after a timeout.
   let requestId:string;
-  try{requestId=await request;}catch(error){this.requireCommand(lifetime);throw error;}
+  try{this.requireCommand(lifetime);requestId=await request;}catch(error){this.requireCommand(lifetime);throw error;}
   this.requireCommand(lifetime);
   if(epoch!==this.accessEpoch)throw new Error('Recording scope closed.');
-  try{const result=await this.read<T>(path,method,{...body,requestId},lifetime);this.requireCommand(lifetime);return result;}
+  const input=lifetime?Object.freeze({...body,requestId}):{...body,requestId};
+  try{const result=await this.read<T>(path,method,input,lifetime);this.requireCommand(lifetime);return result;}
   catch(error){this.requireCommand(lifetime);throw error;}
  }
  async list(view:Exclude<DVRView,'storage'>,cursor='',sort:'recent'|'title'|'oldest'='recent',group=''){return parseDVRPage(await this.read(routePath("get_dvr") + "?" + (new URLSearchParams({state:view,limit:'50',sort,...(group?{group}:{}),...(cursor?{cursor}:{})}))));}
@@ -200,7 +223,7 @@ export class DVRClient {
  async groups(sort:'recent'|'title'|'oldest'='recent',cursor=''):Promise<RecordingGroups>{return parseRecordingGroups(await this.read(routePath("get_dvr_groups")+'?'+new URLSearchParams({sort,limit:'30',...(cursor?{cursor}:{})})));}
  async detail(recordingId:string,after=''):Promise<RecordingDetail>{if(!id(recordingId)||after&&!id(after))invalid();const v=await this.read<RecordingDetail>(encodedRoutePath("get_dvr_recordings_id", {"id": recordingId})+(after?'?after='+after:''));if(!object(v)||!validCapacity(v.capacity)||!Array.isArray(v.overlaps)||v.overlaps.length>20||!text(v.nextOverlap,64)||v.nextOverlap&&!id(v.nextOverlap))invalid();const r=parseRecording(v.recording);if(r.id!==recordingId)invalid();for(const o of v.overlaps)if(!object(o)||!id(o.id)||!text(o.title,512)||!instant(o.start)||!instant(o.end)||Date.parse(o.start)>=Date.parse(o.end)||!number(o.priority,-1000,1000)||!states.includes(o.state))invalid();if(new Set(v.overlaps.map(o=>o.id)).size!==v.overlaps.length)invalid();return {recording:r,capacity:capacity(v.capacity),overlaps:parseOverlaps(v.overlaps),nextOverlap:v.nextOverlap};}
  async schedule(d:RecordingDraft,options:RecordingOptions,lifetime?:DVRCommandLifetime){
-  const original=captureDVRCommand(lifetime);this.requireCommand(original);
+  const original=this.captureCommand(lifetime);this.requireCommand(original);
   if(!validRecordingOptions(options))invalid();
   try{
    const raw=await this.mutate(routePath("post_dvr_recordings"),'POST',{occurrence:occurrence(d),options:durationIntent(options,PADDING)},original);
@@ -208,18 +231,30 @@ export class DVRClient {
    this.requireCommand(original);return result;
   }catch(error){this.requireCommand(original);throw error;}
  }
- async update(r:Recording,options:RecordingOptions){if(!validRecordingOptions(options))invalid();return parseRecording(await this.mutate(encodedRoutePath("patch_dvr_recordings_id", {"id": r.id}),'PATCH',{expectedRevision:r.revision,options:durationIntent(options,PADDING)}));}
+ async update(r:Recording,options:RecordingOptions,lifetime?:DVRCommandLifetime){
+  if(lifetime===undefined){if(!validRecordingOptions(options))invalid();return parseRecording(await this.mutate(encodedRoutePath("patch_dvr_recordings_id", {"id": r.id}),'PATCH',{expectedRevision:r.revision,options:durationIntent(options,PADDING)}));}
+  const epoch=this.accessEpoch,record=Object.freeze({id:r.id,revision:r.revision});
+  const captured=Object.freeze({beforeSeconds:options.beforeSeconds,afterSeconds:options.afterSeconds,priority:options.priority,retentionDays:options.retentionDays,episodeLimit:options.episodeLimit});
+  const original=this.captureCommand(lifetime,epoch);this.requireCommand(original);
+  if(!id(record.id)||!number(record.revision,1)||!validRecordingOptions(captured))invalid();
+  const body=Object.freeze({expectedRevision:record.revision,options:Object.freeze(durationIntent(captured,PADDING))});
+  try{this.requireCommand(original);const raw=await this.mutate(encodedRoutePath("patch_dvr_recordings_id", {"id":record.id}),'PATCH',body,original);
+   this.requireCommand(original);const result=parseRecording(raw);this.requireCommand(original);
+   if(result.id!==record.id||result.revision!==record.revision+1||Object.keys(captured).some(key=>result.options[key as keyof RecordingOptions]!==captured[key as keyof RecordingOptions]))invalid();
+   this.requireCommand(original);return result;
+  }catch(error){this.requireCommand(original);throw error;}
+ }
  async cancel(r:Recording){return parseRecording(await this.mutate(encodedRoutePath("post_dvr_recordings_id_cancel", {"id": r.id}),'POST',{expectedRevision:r.revision}));}
  async keep(r:Recording){return parseRecording(await this.mutate(encodedRoutePath("put_dvr_recordings_id_keep", {"id": r.id}),'PUT',{expectedRevision:r.revision,keep:!r.keep}));}
  async deletePreview(r:Recording):Promise<DeletePreview>{const v=await this.read<DeletePreview>(encodedRoutePath("get_dvr_recordings_id_delete_preview", {"id": r.id}));if(!object(v)||v.recordingId!==r.id||!number(v.revision,1)||!number(v.bytes)||typeof v.keep!=='boolean'||typeof v.activeReaders!=='boolean'||!text(v.result,1024))invalid();return {recordingId:v.recordingId,revision:v.revision,bytes:v.bytes,keep:v.keep,activeReaders:v.activeReaders,result:v.result};}
  async delete(r:Recording,preview:DeletePreview){if(preview.recordingId!==r.id)invalid();return parseRecording(await this.mutate(encodedRoutePath("delete_dvr_recordings_id", {"id": r.id}),'DELETE',{expectedRevision:preview.revision}));}
  async newRuleID(lifetime?:DVRCommandLifetime){
-  const original=captureDVRCommand(lifetime);this.requireCommand(original);
+  const original=this.captureCommand(lifetime);this.requireCommand(original);
   try{const [a,b]=await Promise.all([this.newRequestId(),this.newRequestId()]);this.requireCommand(original);if(!id(a,48)||!id(b,48))invalid();return (a+b).slice(0,64);}
   catch(error){this.requireCommand(original);throw error;}
  }
  async saveRule(ruleId:string,revision:number,c:RuleConfig,anchor?:Occurrence,lifetime?:DVRCommandLifetime){
-  const original=captureDVRCommand(lifetime);this.requireCommand(original);
+  const original=this.captureCommand(lifetime);this.requireCommand(original);
   if(!id(ruleId)||!number(revision))invalid();const validated=config(c),definition=original?validated:c;
   const capturedAnchor=original&&anchor?{sourceId:anchor.sourceId,channelId:anchor.channelId,generation:anchor.generation,programmeId:anchor.programmeId}:anchor;
   try{const raw=await this.mutate(encodedRoutePath("put_dvr_rules_id", {"id": ruleId}),'PUT',{id:ruleId,expectedRevision:revision,config:configToWire(definition),...(capturedAnchor?{anchor:capturedAnchor}:{})},original);this.requireCommand(original);const result=rule(raw);this.requireCommand(original);return result;}
@@ -227,7 +262,7 @@ export class DVRClient {
  }
  async deleteRule(r:RecordingRule,future:'keep'|'cancel'){const v=await this.mutate<{deleted:boolean}>(encodedRoutePath("delete_dvr_rules_id", {"id": r.id}),'DELETE',{expectedRevision:r.revision,future});if(v.deleted!==true)invalid();}
  async preview(c:RuleConfig,lifetime?:DVRCommandLifetime):Promise<RulePreview>{
-  const original=captureDVRCommand(lifetime);this.requireCommand(original);const validated=config(c),definition=original?validated:c;
+  const original=this.captureCommand(lifetime);this.requireCommand(original);const validated=config(c),definition=original?validated:c;
   try{const v=await this.read<RulePreview>(routePath("post_dvr_rules_preview"),'POST',configToWire(definition),original);this.requireCommand(original);
    if(!object(v)||!number(v.matches)||!number(v.unknownNewEvidence)||!id(v.generation,48)||!Array.isArray(v.sample)||v.sample.length>12||!validCapacity(v.capacity))invalid();
    const result={matches:v.matches,unknownNewEvidence:v.unknownNewEvidence,sample:v.sample.map(programme),generation:v.generation,capacity:capacity(v.capacity)};this.requireCommand(original);return result;

@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {DVRClient,DVRModel,parseDVRPage,parseRecording,validRecordingOptions,validStoragePolicy,defaultRecordingOptions,dvrMessage,countUnwatched,seriesRuleConfig} from '../src/dvr.ts';
+import {DVRClient,DVRModel,parseDVRPage,parseRecording,validRecordingOptions,validStoragePolicy,defaultRecordingOptions,dvrMessage,countUnwatched,seriesRuleConfig,type DVRCommandLifetime,type RecordingOptions} from '../src/dvr.ts';
 import type {ChannelApi} from '../src/channel-guide.ts';
 const hex=(n=64,c='a')=>c.repeat(n);
 const time='2026-09-06T12:00:00Z',end='2026-09-06T13:00:00Z';
@@ -41,14 +41,14 @@ test('DVR projections preserve observed incomplete coverage without inventing pl
 });
 test('DVR mutation retries reuse operation id and expected revision, including unknown outcomes',async()=>{
  let calls=0,ids=0;const sent:Array<{path:string;method:string;body:any}>=[];
- const api:ChannelApi={request:async<T>(path,method,body)=>{sent.push({path,method:method??'GET',body});if(++calls===1)throw new Error('unknown outcome');return envelope(recording()) as T;}};
+ const api:ChannelApi={request:async<T>(path:string,method?:string,body?:unknown)=>{sent.push({path,method:method??'GET',body});if(++calls===1)throw new Error('unknown outcome');return envelope(recording()) as T;}};
  const client=new DVRClient(api,'server',async()=>{ids++;return nonce()});const r=parseRecording(recording());
  await assert.rejects(client.update(r,r.options));await client.update(r,r.options);
  assert.equal(ids,1);assert.deepEqual(sent[0],sent[1]);assert.equal(sent[0].body.expectedRevision,1);
  await client.keep(r);assert.equal(ids,2);assert.equal(sent[2].body.keep,true);client.dispose();
 });
 test('DVR stale revision is not automatically rebased or replayed with a fresh receipt',async()=>{
- const sent:any[]=[];const api:ChannelApi={request:async<T>(_p,_m,b)=>{sent.push(b);throw {status:409}}};
+ const sent:any[]=[];const api:ChannelApi={request:async<T>(_p:string,_m?:string,b?:unknown)=>{sent.push(b);throw {status:409}}};
  const client=new DVRClient(api,'server',nonce);const r=parseRecording(recording());await assert.rejects(client.cancel(r));
  assert.equal(sent.length,1);assert.equal(sent[0].expectedRevision,r.revision);assert.match(dvrMessage({status:409}),/Refresh/);client.dispose();
 });
@@ -228,4 +228,116 @@ test('recordings retain programme facts, image, position and duration without co
 test('provider-id-free rule drafts explicitly match exact title on the selected channel',async()=>{
  const {draftRule}=await import('../src/dvr.ts');const {programme:program}=recording();program.seriesId='';const d:any={programme:program,channel:{id:program.channelId,sourceId:hex(48,'b'),generation:hex(48,'d')},series:true};
  const c=draftRule(d);assert.equal(c.matchKind,'title');assert.equal(c.title,program.title);assert.equal(c.channelId,program.channelId);assert.equal(c.seriesId,'');
+});
+
+function deferred<T>(){let resolve!:(value:T)=>void,reject!:(error:unknown)=>void;const promise=new Promise<T>((yes,no)=>{resolve=yes;reject=no;});return {promise,resolve,reject};}
+const dvrTurn=()=>new Promise<void>(resolve=>setImmediate(resolve));
+const updated=(options:RecordingOptions={...defaultRecordingOptions},revision=2)=>({...recording(),revision,options:{beforeMs:options.beforeSeconds*1000,afterMs:options.afterSeconds*1000,priority:options.priority,retentionDays:options.retentionDays,episodeLimit:options.episodeLimit}});
+function updateHarness(timeoutMs=18000){
+ const allocation=deferred<string>();let ids=0,current=true;
+ const calls:{path:string;method?:string;body:unknown;signal:AbortSignal;response:ReturnType<typeof deferred<unknown>>}[]=[];
+ const api:ChannelApi={request:<T>(path:string,method?:string,body?:unknown,signal?:AbortSignal)=>{assert.ok(signal);const response=deferred<unknown>();calls.push({path,method,body,signal,response});return response.promise as Promise<T>;}};
+ const client=new DVRClient(api,'server',()=>{ids++;return allocation.promise;},timeoutMs),controller=new AbortController();
+ const lifetime:DVRCommandLifetime={signal:controller.signal,isCurrent:()=>current};
+ return {client,controller,lifetime,calls,allocation,ids:()=>ids,retire:()=>{current=false;}};
+}
+
+test('scoped update freezes original id, revision, options and receipt before delayed allocation',async t=>{
+ const h=updateHarness();t.after(()=>h.client.dispose());const r=parseRecording(recording()),options={...r.options,beforeSeconds:60,afterSeconds:120,priority:7};
+ const original={...options},work=h.client.update(r,options,h.lifetime);
+ r.id=hex(64,'f');r.revision=90;options.beforeSeconds=300;options.priority=-7;
+ h.allocation.resolve(hex(48,'e'));await dvrTurn();assert.equal(h.calls.length,1);
+ assert.equal(h.calls[0]!.path,`/v1/dvr/recordings/${hex()}`);assert.equal(h.calls[0]!.method,'PATCH');
+ assert.deepEqual(h.calls[0]!.body,{expectedRevision:1,options:{beforeMs:60000,afterMs:120000,priority:7,retentionDays:0,episodeLimit:0},requestId:hex(48,'e')});
+ assert.ok(Object.isFrozen(h.calls[0]!.body));assert.ok(Object.isFrozen((h.calls[0]!.body as {options:unknown}).options));
+ h.calls[0]!.response.resolve(envelope(updated(original)));const result=await work;
+ assert.equal(result.id,hex());assert.equal(result.revision,2);assert.deepEqual(result.options,original);assert.equal(h.ids(),1);
+});
+
+test('scoped update refuses preaborted, false, nontrue and throwing predicates before allocation or PATCH',async t=>{
+ const h=updateHarness();t.after(()=>h.client.dispose());const r=parseRecording(recording()),dead=new AbortController();dead.abort();let checked=0;
+ for(const lifetime of [
+  {signal:dead.signal,isCurrent:()=>{checked++;return true;}},
+  {signal:new AbortController().signal,isCurrent:()=>false},
+  {signal:new AbortController().signal,isCurrent:(()=>1) as unknown as ()=>boolean},
+  {signal:new AbortController().signal,isCurrent:()=>{throw new Error('retired owner');}},
+ ])await assert.rejects(h.client.update(r,r.options,lifetime),{name:'AbortError'});
+ assert.equal(checked,0);assert.equal(h.ids(),0);assert.equal(h.calls.length,0);
+});
+
+for(const retirement of ['abort','currentness','dispose','activate'] as const)test(`delayed request ID after original ${retirement} produces zero PATCH`,async t=>{
+ const h=updateHarness();t.after(()=>h.client.dispose());const r=parseRecording(recording());const work=h.client.update(r,r.options,h.lifetime),refused=assert.rejects(work,{name:'AbortError'});
+ assert.equal(h.ids(),1);assert.equal(h.calls.length,0);
+ if(retirement==='abort')h.controller.abort();else if(retirement==='currentness')h.retire();else if(retirement==='dispose')h.client.dispose();else h.client.activate();
+ h.allocation.resolve(hex(48,'e'));await refused;assert.equal(h.calls.length,0);
+});
+
+test('same-key sibling keeps the original pending receipt when only its predecessor waiter retires',async t=>{
+ const h=updateHarness();t.after(()=>h.client.dispose());const r=parseRecording(recording()),other=new AbortController();
+ const first=h.client.update(r,r.options,h.lifetime),refused=assert.rejects(first,{name:'AbortError'});
+ const second=h.client.update(r,r.options,{signal:other.signal,isCurrent:()=>true});assert.equal(h.ids(),1);
+ h.controller.abort();h.allocation.resolve(hex(48,'e'));await refused;await dvrTurn();
+ assert.equal(h.calls.length,1);assert.equal(h.calls[0]!.signal.aborted,false);assert.equal((h.calls[0]!.body as {requestId:string}).requestId,hex(48,'e'));
+ h.calls[0]!.response.resolve(envelope(updated()));await second;
+ const retry=h.client.update(r,r.options,{signal:other.signal,isCurrent:()=>true});await dvrTurn();assert.equal(h.ids(),1);assert.deepEqual(h.calls[1]!.body,h.calls[0]!.body);
+ h.calls[1]!.response.resolve(envelope(updated()));await retry;
+});
+
+test('ID-provider activation reentry cannot overwrite or clear the successor receipt',async t=>{
+ const oldID=deferred<string>(),newID=deferred<string>(),r=parseRecording(recording());let ids=0,successor:Promise<unknown>|undefined,client!:DVRClient;
+ const sent:unknown[]=[];const api:ChannelApi={request:async<T>(_path:string,_method?:string,body?:unknown)=>{sent.push(body);return envelope(updated()) as T;}};
+ const other={signal:new AbortController().signal,isCurrent:()=>true};
+ client=new DVRClient(api,'server',()=>{if(++ids===1){client.activate();successor=client.update(r,r.options,other);return oldID.promise;}return newID.promise;});t.after(()=>client.dispose());
+ await assert.rejects(client.update(r,r.options,{signal:new AbortController().signal,isCurrent:()=>true}),{name:'AbortError'});
+ assert.ok(successor);assert.equal(ids,2);assert.equal(sent.length,0);
+ newID.resolve(hex(48,'f'));await successor;oldID.reject(new Error('late old ID'));await dvrTurn();
+ await client.update(r,r.options,other);assert.equal(ids,2);assert.equal(sent.length,2);assert.deepEqual(sent[0],sent[1]);assert.equal((sent[0] as {requestId:string}).requestId,hex(48,'f'));
+});
+
+for(const action of ['abort','dispose','activate'] as const)test(`TRUE final pre-PATCH predicate ${action} cannot dispatch or affect a subsequent opening`,async t=>{
+ const controller=new AbortController();let atDispatch=false,acted=false,calls=0,client!:DVRClient;
+ const api:ChannelApi={get request(){atDispatch=true;return async<T>()=>{calls++;return envelope(updated()) as T;};}};
+ client=new DVRClient(api,'server',nonce);t.after(()=>client.dispose());const r=parseRecording(recording());
+ const lifetime={signal:controller.signal,isCurrent:()=>{if(atDispatch&&!acted){acted=true;if(action==='abort')controller.abort();else if(action==='dispose')client.dispose();else client.activate();}return true;}};
+ await assert.rejects(client.update(r,r.options,lifetime),{name:'AbortError'});assert.equal(acted,true);assert.equal(calls,0);
+ if(action==='dispose')client.activate();
+ await client.update(r,r.options,{signal:new AbortController().signal,isCurrent:()=>true});assert.equal(calls,1);
+});
+
+test('TRUE predicate retirement immediately after ID allocation is rechecked before any PATCH',async t=>{
+ const controller=new AbortController();let allocated=false,calls=0;
+ const api:ChannelApi={request:async<T>()=>{calls++;return envelope(updated()) as T;}};
+ const client=new DVRClient(api,'server',()=>{allocated=true;return nonce();});t.after(()=>client.dispose());const r=parseRecording(recording());
+ await assert.rejects(client.update(r,r.options,{signal:controller.signal,isCurrent:()=>{if(allocated)controller.abort();return true;}}),{name:'AbortError'});assert.equal(calls,0);
+});
+
+test('caller retirement before a late 403 cannot notify access change or abort a sibling transport',async t=>{
+ const h=updateHarness();t.after(()=>h.client.dispose());const r=parseRecording(recording());let accessChanges=0;h.client.onAccessChanged(()=>{accessChanges++;});
+ const first=h.client.update(r,r.options,h.lifetime),refused=assert.rejects(first,{name:'AbortError'});h.allocation.resolve(hex(48,'e'));await dvrTurn();
+ const other=new AbortController(),second=h.client.update(r,r.options,{signal:other.signal,isCurrent:()=>true});await dvrTurn();assert.equal(h.calls.length,2);
+ h.controller.abort();h.calls[0]!.response.reject({status:403});await refused;
+ assert.equal(accessChanges,0);assert.equal(h.calls[1]!.signal.aborted,false);h.calls[1]!.response.resolve(envelope(updated()));await second;
+});
+
+for(const stage of ['response','parse','return'] as const)test(`post-${stage} TRUE predicate retirement cannot return an original update as accepted`,async t=>{
+ const h=updateHarness();t.after(()=>h.client.dispose());const r=parseRecording(recording());let armed=false,seen=0;
+ const lifetime={signal:h.controller.signal,isCurrent:()=>{if(armed&&++seen===(stage==='response'?1:stage==='parse'?5:6))h.controller.abort();return true;}};
+ const work=h.client.update(r,r.options,lifetime),refused=assert.rejects(work,{name:'AbortError'});h.allocation.resolve(hex(48,'e'));await dvrTurn();armed=true;
+ h.calls[0]!.response.resolve(envelope(updated()));await refused;assert.equal(h.calls.length,1);assert.equal(h.controller.signal.aborted,true);
+});
+
+test('scoped update retains the canonical finite timeout and exact receipt for an explicit retry',async t=>{
+ t.mock.timers.enable({apis:['setTimeout']});const h=updateHarness(40);t.after(()=>h.client.dispose());const r=parseRecording(recording());
+ const work=h.client.update(r,r.options,h.lifetime),timedOut=assert.rejects(work,/timed out/);h.allocation.resolve(hex(48,'e'));await dvrTurn();
+ t.mock.timers.tick(40);await timedOut;assert.equal(h.calls[0]!.signal.aborted,true);assert.equal(h.calls.length,1);
+ const retry=h.client.update(r,r.options,{signal:new AbortController().signal,isCurrent:()=>true});await dvrTurn();
+ assert.equal(h.ids(),1);assert.deepEqual(h.calls[1]!.body,h.calls[0]!.body);h.calls[1]!.response.resolve(envelope(updated()));await retry;
+});
+
+test('a scoped update rejects a foreign or latest receipt while legacy omitted arguments keep their old return semantics',async t=>{
+ let raw=recording();const api:ChannelApi={request:async<T>()=>envelope(raw) as T},client=new DVRClient(api,'server',nonce);t.after(()=>client.dispose());const r=parseRecording(recording());
+ assert.equal((await client.update(r,r.options)).revision,1,'legacy one-argument lifetime omission retains its original result parsing');
+ for(const value of [{...updated(),id:hex(64,'f')},{...updated(),revision:3},{...updated(),options:{...wireOptions,beforeMs:60000}}]){
+  raw=value;await assert.rejects(client.update(r,r.options,{signal:new AbortController().signal,isCurrent:()=>true}));
+ }
 });
