@@ -243,8 +243,8 @@ test('an MP3 started part-way asks for the server’s seek index once and never 
 });
 
 /** Controlled PCM at the existing reader port; real Deck, graph and renderer remain in use. */
-function stalledPcm(rate = 44100, frames = rate * 8) {
-  let at = 0, available = rate * 2, closed = false, reads = 0;
+function stalledPcm(rate = 44100, frames = rate * 8, initial = rate * 2) {
+  let at = 0, available = initial, closed = false, reads = 0;
   let wake: (() => void) | undefined;
   const source = {sampleRate: rate, channels: 2,
     async read(max: number) {
@@ -343,4 +343,31 @@ test('a recovery resume resolving after pause stays suspended and never publishe
   (render as any).contextChanged(); await settle();
   assert.equal(t.f.ctx.state, 'suspended'); assert((render as any).hold);
   assert.equal(t.calls.some(c => c[0] === 'fact' && c[3] === 'ended'), false);
+});
+
+test('a full twelve-second fade uses one frontier and publishes a crossed boundary once after recovery', bounded, async ctx => {
+  const {DecodeAudioRender} = await import('../src/platform/playback/DecodeAudioRender.ts');
+  const rate = 44100, t = setup(), outgoing = stalledPcm(rate, rate * 40, rate * 30), incoming = stalledPcm(rate, rate * 40, rate * 12);
+  const render = new DecodeAudioRender(t.service, p => p, {addEventListener() {}, removeEventListener() {}, volume: 1, muted: false} as any);
+  ctx.after(() => render.dispose());
+  let opens = 0;
+  (render as any).reader = () => {const pcm = opens++ === 0 ? outgoing : incoming; return {unlock() {}, close: () => pcm.source.close(), prefetchAll: async () => {}, open: async () => pcm.source};};
+  const settings = {...t.get().audioEffects.settings, gapless: false, crossfadeSeconds: 12};
+  const a = {...t.a, durationFrames: rate * 40}, b = {...t.b, durationFrames: rate * 40};
+  render.apply(t.set({session: {id: 'outgoing', generation: 1, audio: a}, audioEffects: {settings}})); await settle();
+  render.apply(t.set({audioEffects: {prepared: {token: 'fade', itemId: 'second', audio: b}}})); await settle();
+  assert.equal((render as any).candidate.deck.decoded, rate * 12, 'readiness includes the full accepted overlap');
+  render.apply(t.set({audioEffects: {committed: {token: 'fade', itemId: 'second', session: {id: 'incoming', generation: 1, audio: b}}}}));
+  assert.equal((render as any).incoming.edge, rate * 28);
+  assert.equal((render as any).incoming.fade, rate * 12);
+  let suspend!: () => void;
+  t.f.ctx.suspend = () => new Promise<void>(resolve => {suspend = () => {t.f.ctx.state = 'suspended'; resolve();};});
+  t.f.advance(31.08); (render as any).tick();
+  assert((render as any).hold);
+  assert.equal(t.calls.filter(c => c[0] === 'audioBoundary').length, 0, 'a late tick holds the crossed boundary until recovery');
+  assert(t.f.scheduled.every(s => s.start + s.frames <= Math.round(30.08 * rate)), 'neither linked voice renders beyond available outgoing PCM');
+  outgoing.release(); incoming.release(); await settle(); suspend(); await settle();
+  assert.equal(t.calls.filter(c => c[0] === 'audioBoundary' && c[1] === 'fade').length, 1);
+  assert.equal((render as any).primary.plan.id, b.id);
+  assert((render as any).retiring, 'outgoing fade suffix is retained, not stopped at the boundary');
 });

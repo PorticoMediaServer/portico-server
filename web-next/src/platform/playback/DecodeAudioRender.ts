@@ -36,7 +36,7 @@ type Feed = {unlock(): void; close(): void; prefetchAll(): Promise<void>; open(f
 type Playing = {deck: Deck; plan: PlayableAudioRender; key: string; fromFrame: number; reader: Feed; token?: string; speed: number};
 type Candidate = {deck: Deck; plan: PlayableAudioRender; token: string; reader: Feed; ready: boolean; speed: number};
 type Linked = Candidate & {edge: number; fade: number};
-type BufferHold = {revision: number; context: AudioContext; graph: MixGraph; primary: Playing; incoming?: Linked; retiring?: Playing; key: string; seek: string; token?: string; suspended: boolean; rebased: boolean; resuming: boolean; suspending: boolean};
+type BufferHold = {revision: number; context: AudioContext; graph: MixGraph; primary: Playing; incoming?: Linked; retiring?: Playing; key: string; intent: number; seek: string; token?: string; suspended: boolean; rebased: boolean; resuming: boolean; suspending: boolean};
 
 const sessionKey = (s: PlaybackSnapshot['session']) => (s ? `${s.id}:${s.generation}` : '');
 
@@ -95,13 +95,13 @@ export class DecodeAudioRender {
     const s = this.service.getSnapshot();
     return !this.disposed && this.hold === h && this.revision === h.revision && this.context === h.context && this.graph === h.graph &&
       this.primary === h.primary && this.incoming === h.incoming && this.retiring === h.retiring && this.seekKey === h.seek &&
-      sessionKey(s.session) === h.key && (!h.token || s.audioEffects.committed?.token === h.token) && !s.pendingSeek && s.phase !== 'error' && s.phase !== 'ended';
+      sessionKey(s.session) === h.key && s.intentId === h.intent && (!h.token || s.audioEffects.committed?.token === h.token) && !s.pendingSeek && s.phase !== 'error' && s.phase !== 'ended';
   }
   private beginHold(): void {
     if (this.hold || !this.graph || !this.primary) return;
     const s = this.service.getSnapshot();
     const h: BufferHold = {revision: this.revision, context: this.context, graph: this.graph, primary: this.primary, incoming: this.incoming, retiring: this.retiring,
-      key: sessionKey(s.session), seek: this.seekKey, token: this.incoming?.token, suspended: false, rebased: false, resuming: false, suspending: false};
+      key: sessionKey(s.session), intent: s.intentId, seek: this.seekKey, token: this.incoming?.token, suspended: false, rebased: false, resuming: false, suspending: false};
     this.hold = h; ++this.resumeAttempt;
     this.carrier.pause();
     this.service.audioRenderStatus?.(0, true);
@@ -439,8 +439,9 @@ export class DecodeAudioRender {
 
   private tick() {
     if (this.disposed) return;
-    const s = this.service.getSnapshot(), p = this.primary, graph = this.graph;
+    const s = this.service.getSnapshot(), p = this.primary, graph = this.graph, revision = this.revision;
     this.reportProcessing();
+    if (p !== this.primary || graph !== this.graph || revision !== this.revision) return;
     if (!p || !graph || s.phase === 'error' || s.phase === 'ended' || this.starting) return;
     this.measureLag();
     const decks = this.decks();
@@ -474,12 +475,14 @@ export class DecodeAudioRender {
     if (this.retiring && this.retiring.deck.sourceComplete && heard >= (this.retiring.deck.endFrame ?? Infinity)) { this.closePlaying(this.retiring); this.retiring = undefined; }
     const playing = s.intent === 'playing' && this.context.state === 'running' && this.contextFrame() >= graph.clock.contextStart && p.deck.startFrame !== undefined && frame >= p.deck.startFrame;
     this.service.audioRenderStatus?.(playing ? s.audioEffects.rate : 0, false);
+    if (p !== this.primary || graph !== this.graph || revision !== this.revision || this.service.getSnapshot().intentId !== s.intentId) return;
     const end = p.deck.endFrame ?? Infinity;
     if (playing && !s.pendingSeek) {
       const position = this.position();
       if (p.deck.sourceComplete && heard >= end && !this.incoming && !this.committing && !s.audioEffects.prepared) this.service.fact(s.intentId, position, 'ended');
       else if (s.intentId !== this.factIntent || Math.abs(position - this.factPosition) >= 0.25) { this.factIntent = s.intentId; this.factPosition = position; this.service.fact(s.intentId, position, 'playing'); }
     }
+    if (p !== this.primary || graph !== this.graph || revision !== this.revision) return;
     graph.discardBefore(heard, this.contextFrame(this.heardTime()));
     // Link a deferred original candidate only after actual overlap PCM becomes ready.
     this.committed(s);
