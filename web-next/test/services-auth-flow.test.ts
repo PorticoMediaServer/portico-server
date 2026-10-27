@@ -218,3 +218,59 @@ test('a failed refresh retains the exact rejected transaction for a later explic
   p.value.client.transaction = async () => ({...p.original, onboardingToken: 'rotated-onboarding'});
   await flow.finishProvider('new_name', 'Actual name'); assert.deepEqual(proofs, ['original-onboarding','rotated-onboarding']); assert.equal(flow.getSnapshot().mode, 'ready'); flow.dispose();
 });
+
+test('registration collision refreshes only the original verified binding and completes it with a replacement name', async () => {
+  const p = port(), calls: Array<{id: string; input: {code: string; username?: string; displayName?: string}}> = [];
+  const original = {kind: 'registration' as const, registrationId: 'original', status: 'contact_pending' as const, revision: '1', maskedAddress: 'a***@example.test', expiresAt: new Date(Date.now() + 60000).toISOString(), contactVerified: false};
+  const verified = {...original, contactVerified: true};
+  p.value.client.registration = async id => id === undefined ? original : (assert.equal(id, 'original'), verified);
+  p.value.client.verifyRegistration = async (id, input) => {calls.push({id, input}); if (calls.length < 3) throw new ApiError(409, 'username_unavailable', 'taken', false); return {} as never;};
+  const flow = new ServicesAuthFlow(p.value, p.done); await flow.initialize();
+  await flow.verify('123456'); assert.equal(flow.getSnapshot().registration?.contactVerified, true);
+  await flow.verify('', 'Second', 'Name'); assert.equal(flow.getSnapshot().registration?.contactVerified, true);
+  await flow.verify('', 'Available', 'Name');
+  assert.deepEqual(calls.map(x => x.id), ['original', 'original', 'original']);
+  assert.deepEqual(calls[2].input, {code: '', username: 'available', displayName: 'Name'});
+  assert.equal(p.completed(), 1); flow.dispose();
+});
+
+test('registration continuation refuses changed binding and restores a verified registration without a code', async () => {
+  const p = port(); const original = {kind: 'registration' as const, registrationId: 'original', status: 'contact_pending' as const, revision: '1', maskedAddress: 'a***@example.test', expiresAt: new Date(Date.now() + 60000).toISOString(), contactVerified: false};
+  p.value.client.registration = async id => id === undefined ? original : {...original, registrationId: 'successor', contactVerified: true};
+  p.value.client.verifyRegistration = async () => {throw new ApiError(409, 'username_unavailable', 'taken', false);};
+  const flow = new ServicesAuthFlow(p.value, p.done); await flow.initialize(); await flow.verify('123456');
+  assert.equal(flow.getSnapshot().registration?.contactVerified, false); assert.equal((flow.getSnapshot().error as {code: string}).code, 'account_changed'); flow.dispose();
+  const q = port(); q.value.client.registration = async () => ({...original, contactVerified: true});
+  let sent: unknown; q.value.client.verifyRegistration = async (_id, input) => {sent = input; return {} as never;};
+  const restored = new ServicesAuthFlow(q.value, q.done); await restored.initialize(); await restored.verify('', 'replacement', '');
+  assert.deepEqual(sent, {code: '', username: 'replacement', displayName: ''}); assert.equal(q.completed(), 1); restored.dispose();
+});
+
+test('registration transport uncertainty retains the same original attempt and generic conflict does not refresh', async () => {
+  const p = port(); const original = {kind: 'registration' as const, registrationId: 'original', status: 'contact_pending' as const, revision: '1', maskedAddress: 'a***@example.test', expiresAt: new Date(Date.now() + 60000).toISOString(), contactVerified: true};
+  let reads = 0; const calls: unknown[] = [];
+  p.value.client.registration = async () => {reads++; return original;};
+  p.value.client.verifyRegistration = async (id, input) => {calls.push({id, input}); if (calls.length === 1) throw new TypeError('response lost'); if (calls.length === 2) throw new ApiError(409, 'conflict', 'conflict', false); return {} as never;};
+  const flow = new ServicesAuthFlow(p.value, p.done); await flow.initialize();
+  await flow.verify('', 'replacement', 'Name'); await flow.verify('', 'replacement', 'Name'); await flow.verify('', 'replacement', 'Name');
+  assert.equal(reads, 1); assert.deepEqual(calls[0], calls[1]); assert.deepEqual(calls[1], calls[2]); assert.equal(p.completed(), 1); flow.dispose();
+});
+
+test('retired registration flow ignores a late original collision lookup', async () => {
+  const p = port(); const original = {kind: 'registration' as const, registrationId: 'original', status: 'contact_pending' as const, revision: '1', maskedAddress: 'a***@example.test', expiresAt: new Date(Date.now() + 60000).toISOString(), contactVerified: false};
+  let release!: (value: typeof original) => void, started!: () => void;
+  const reading = new Promise<void>(resolve => {started = resolve;});
+  p.value.client.registration = async id => id === undefined ? original : new Promise(resolve => {release = resolve; started();});
+  p.value.client.verifyRegistration = async () => {throw new ApiError(409, 'username_unavailable', 'taken', false);};
+  const flow = new ServicesAuthFlow(p.value, p.done); await flow.initialize(); const pending = flow.verify('123456');
+  await reading; const snapshot = flow.getSnapshot(); flow.dispose(); release({...original, contactVerified: true}); await pending;
+  assert.equal(flow.getSnapshot(), snapshot); assert.equal(p.completed(), 0);
+});
+
+test('an expired verified registration cannot submit a replacement name', async () => {
+  const p = port(); let calls = 0;
+  p.value.client.registration = async () => ({kind: 'registration', registrationId: 'original', status: 'contact_pending', revision: '1', maskedAddress: 'a***@example.test', expiresAt: new Date(Date.now() - 1000).toISOString(), contactVerified: true});
+  p.value.client.verifyRegistration = async () => {calls++; return {} as never;};
+  const flow = new ServicesAuthFlow(p.value, p.done); await flow.initialize(); await flow.verify('', 'replacement', 'Name');
+  assert.equal(calls, 0); assert.equal(p.completed(), 0); flow.dispose();
+});
