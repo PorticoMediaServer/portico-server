@@ -24,7 +24,7 @@ test('unavailable, duplicate and unchanged versions cannot dispatch', () => {
   assert.equal(readVersionPick([epub, pdf], epub.sourceId, epub.sourceId), undefined);
   assert.equal(readVersionPick([epub, pdf], epub.sourceId, undefined), undefined);
   assert.equal(readVersionPick([epub, pdf], epub.sourceId, 'absent-source'), undefined);
-  assert.equal(readVersionPick([epub, {...pdf, sourceId: pdf.sourceId}], epub.sourceId, pdf.sourceId), undefined, 'duplicate ids refuse');
+  assert.equal(readVersionPick([epub, pdf, {...pdf, sourceId: pdf.sourceId}], epub.sourceId, pdf.sourceId), undefined, 'duplicate ids refuse');
 });
 
 test('a one-version item shows no chooser', () => {

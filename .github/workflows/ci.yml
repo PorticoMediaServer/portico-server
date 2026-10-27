@@ -291,6 +291,9 @@ jobs:
       - run: npm ci --no-audit --no-fund
       - name: Install media fixture tools
         run: sudo apt-get update && sudo apt-get install --no-install-recommends -y ffmpeg
+      - name: Make the declared Go graph available to offline license generation
+        working-directory: server
+        run: go mod download
       - name: Complete test shard plus mandatory account/session/privacy checks
         env:
           CI_SHARD_INDEX: ${{ matrix.shard }}

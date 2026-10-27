@@ -98,7 +98,7 @@ test('current-song leveling facts follow the actual deck gain rather than the sa
   render.apply(t.set({session: {id: 's3', generation: 3, audio: {...t.a, gain: {trackDb: -6, trackPeak: 0.5}}}})); await settle();
   assert.equal(render.audioFacts()!.levelingApplied, true);
   assert.ok(Math.abs(render.audioFacts()!.levelingGainDb! + 6) < .001);
-  assert.deepEqual(t.calls.filter(call => call[0] === 'audioProcessingApplied').at(-1), ['audioProcessingApplied', {intentId: 1, sessionId: 's3', generation: 3}, {eqApplied: false, levelingApplied: true}]);
+  assert.deepEqual(t.calls.filter(call => call[0] === 'audioProcessingApplied').at(-1), ['audioProcessingApplied', {intentId: 1, sessionId: 's3', generation: 3}, {eqApplied: false, levelingApplied: true, levelingGainDb: render.audioFacts()!.levelingGainDb}]);
   render.apply(t.set({audioEffects: {settings: {...settings, normalization: 'off'}}}));
   assert.equal(render.audioFacts()!.levelingApplied, false);
   render.apply(t.set({phase: 'ended'}));

@@ -200,8 +200,12 @@ test('entry keeps the polyfills first and binds installation before constructing
   assert.match(main, /^import '\.\/platform\/polyfills';/);
   const initialization = main.indexOf("initializeAppInstallation(import.meta.env.VITE_APP_VERSION ?? '', signal)");
   assert.ok(initialization > main.indexOf('function start()'));
-  assert.ok(initialization < main.indexOf('new ShellBootstrap('));
-  assert.ok(main.indexOf('new ShellBootstrap(') < main.indexOf('createRoot('));
+  const applicationImport = main.indexOf("await Promise.all([import('./App')");
+  const bootstrap = main.indexOf('new normal.Bootstrap(');
+  assert.ok(applicationImport > initialization, 'protected application modules load only after installation');
+  assert.ok(bootstrap > applicationImport, 'the loaded Bootstrap is constructed after installation and imports');
+  assert.ok(bootstrap < main.indexOf('createRoot('), 'restoration is bound before mounting the root');
   assert.match(main, /if \(!\(window as Window & \{__porticoUnsupportedBrowser\?: boolean\}\)\.__porticoUnsupportedBrowser\) void start\(\);/);
-  assert.ok(main.indexOf('captureWebAccountReturn(location, history)') < initialization);
+  const arrival = main.indexOf('captureWebAccountArrival(location, history)');
+  assert.ok(arrival >= 0 && arrival < initialization, 'the actual arrival registry captures the original link before installation');
 });
