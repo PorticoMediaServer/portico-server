@@ -11,6 +11,19 @@ import (
 )
 
 func (s *Service) mbReconcileAlbums(ctx context.Context) (bool, error) {
+	// The settled-set walk must not hold the writer gate. Capture only a key;
+	// all facts used by reconciliation are read again after taking the gate.
+	var pickedAlbum int64
+	e := dbwork.WithReadSnapshot(dbwork.WithClass(ctx, dbwork.ClassBackgroundMedia), s.db, func(readCtx context.Context) error {
+		return dbwork.QueryRow(readCtx, s.db, `SELECT c.album_id FROM mb_album_reconciliations c JOIN mb_album_heads h ON h.album_id=c.album_id JOIN mb_album_links l ON l.album_id=c.album_id AND l.release_revision=c.release_revision WHERE (c.status='pending' OR c.membership_revision<>h.membership_revision) ORDER BY c.album_id LIMIT 1`).Scan(&pickedAlbum)
+	})
+	if errors.Is(e, sql.ErrNoRows) {
+		return false, nil
+	}
+	if e != nil {
+		return false, e
+	}
+	// Use the original context, not the now-closed read snapshot.
 	gated, e := dbwork.Begin(ctx, s.db, dbwork.ClassBackgroundMedia)
 	if e != nil {
 		return false, e
@@ -20,8 +33,11 @@ func (s *Service) mbReconcileAlbums(ctx context.Context) (bool, error) {
 	var albumID int64
 	var release, cursor string
 	var membership, currentMembership int64
-	e = tx.QueryRowContext(ctx, `SELECT c.album_id,c.release_revision,c.membership_revision,c.cursor,h.membership_revision FROM mb_album_reconciliations c JOIN mb_album_heads h ON h.album_id=c.album_id JOIN mb_album_links l ON l.album_id=c.album_id AND l.release_revision=c.release_revision WHERE (c.status='pending' OR c.membership_revision<>h.membership_revision) ORDER BY c.album_id LIMIT 1`).Scan(&albumID, &release, &membership, &cursor, &currentMembership)
+	e = tx.QueryRowContext(ctx, `SELECT c.album_id,c.release_revision,c.membership_revision,c.cursor,h.membership_revision FROM mb_album_reconciliations c JOIN mb_album_heads h ON h.album_id=c.album_id JOIN mb_album_links l ON l.album_id=c.album_id AND l.release_revision=c.release_revision WHERE c.album_id=? AND (c.status='pending' OR c.membership_revision<>h.membership_revision)`, pickedAlbum).Scan(&albumID, &release, &membership, &cursor, &currentMembership)
 	if errors.Is(e, sql.ErrNoRows) {
+		// A concurrent commit removed/settled/rematched the candidate. Its
+		// mb_* commit wake (and the worker safety tick) schedules a fresh pick;
+		// do not rescan the remaining catalogue while holding the gate.
 		return false, nil
 	}
 	if e != nil {
