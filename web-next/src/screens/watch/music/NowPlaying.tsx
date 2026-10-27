@@ -61,17 +61,22 @@ export function WatchMusicNowPlaying({binding, snapshot, expanded, onCollapse, p
   }, [facts]);
   useLayoutEffect(() => {
     if (!moreOpen || !hostReceipt) {const old = publishedMore.current; publishedMore.current = null; if (old) old.live = false; setMoreReceipt(null); return;}
-    const receipt: WatchSurfaceReceipt = {host: hostReceipt.facts, live: true};
+    const receipt: WatchSurfaceReceipt = {host: hostReceipt, live: true};
     publishedMore.current = receipt; setMoreReceipt(receipt);
     return () => {receipt.live = false; if (publishedMore.current === receipt) publishedMore.current = null;};
   }, [moreOpen, hostReceipt]);
   useLayoutEffect(() => {
     if (!eqOpen || !hostReceipt) {const old = publishedEq.current; publishedEq.current = null; if (old) old.live = false; setEqReceipt(null); return;}
-    const receipt: WatchSurfaceReceipt = {host: hostReceipt.facts, live: true};
+    const receipt: WatchSurfaceReceipt = {host: hostReceipt, live: true};
     publishedEq.current = receipt; setEqReceipt(receipt);
     return () => {receipt.live = false; if (publishedEq.current === receipt) publishedEq.current = null;};
   }, [eqOpen, hostReceipt]);
-  // Back retires this EQ receipt synchronously before the panel closes.
+  // A surface retires synchronously before its state changes, so a saved callback cannot act in
+  // the same tick as the close/selection that replaced it.
+  const retireMore = (receipt: WatchSurfaceReceipt | null) => {
+    if (!receipt || publishedMore.current !== receipt) return false;
+    receipt.live = false; publishedMore.current = null; setMoreReceipt(null); return true;
+  };
   const closeEq = (receipt: WatchSurfaceReceipt | null) => {
     if (!receipt || publishedEq.current !== receipt || !receipt.live) return;
     receipt.live = false; publishedEq.current = null; setEqReceipt(null); setEqOpen(false);
@@ -98,10 +103,20 @@ export function WatchMusicNowPlaying({binding, snapshot, expanded, onCollapse, p
         expanded layout={phone ? 'phone' : 'desktop'} translate={t} />
       <span className={styles.spacer} />
       {equalizer ? <button ref={moreAnchor} type="button" className={styles.glass} aria-label={t('player.more')} aria-haspopup="menu" aria-expanded={moreOpen}
-        onClick={() => {if (hostAdmit(hostReceipt, publishedHost, facts)) setMoreOpen(value => !value);}}><Icon name="i-more" size={18} /></button> : null}
-      {equalizer ? <Menu open={moreOpen && open} onOpenChange={value => {if (surfaceAdmit(moreReceipt, publishedMore, publishedHost, facts)) setMoreOpen(value);}} title={t('player.more')} anchorRef={moreAnchor} returnFocusRef={moreAnchor} presentation="anchored" width={280}
+        onClick={() => {
+        if (moreOpen) {
+          if (!surfaceAdmit(moreReceipt, publishedMore, publishedHost, hostReceipt) || !retireMore(moreReceipt)) return;
+          setMoreOpen(false); return;
+        }
+        if (hostAdmit(hostReceipt, publishedHost, facts)) setMoreOpen(true);
+      }}><Icon name="i-more" size={18} /></button> : null}
+      {equalizer ? <Menu open={moreOpen && open} onOpenChange={value => {
+        if (!surfaceAdmit(moreReceipt, publishedMore, publishedHost, hostReceipt)) return;
+        if (!value) retireMore(moreReceipt);
+        setMoreOpen(value);
+      }} title={t('player.more')} anchorRef={moreAnchor} returnFocusRef={moreAnchor} presentation="anchored" width={280}
         items={[{id: 'equalizer', label: t('next.media.eq.title'), description: t(settings?.enabled === true ? 'next.settings.on' : 'next.settings.off'),
-          onSelect: () => {if (!surfaceAdmit(moreReceipt, publishedMore, publishedHost, facts)) return; setMoreOpen(false); setEqOpen(true);}}]} /> : null}
+          onSelect: () => {if (!surfaceAdmit(moreReceipt, publishedMore, publishedHost, hostReceipt) || !retireMore(moreReceipt)) return; setMoreOpen(false); setEqOpen(true);}}]} /> : null}
       {can('pause') || can('play') ? <button type="button" className={styles.glass} onClick={() => send({kind: presentation.playing ? 'pause' : 'play'})}>
         <Icon name={presentation.playing ? 'i-pause' : 'i-play'} size={18} />{presentation.playing ? t('next.dock.pause') : t('next.dock.play')}</button> : null}
     </header>
@@ -133,7 +148,7 @@ export function WatchMusicNowPlaying({binding, snapshot, expanded, onCollapse, p
     </div>
     <aside className={styles.side} aria-label={eqOpen ? t('next.media.eq.title') : t('next.music.upNext')}>
       {eqOpen && equalizer && facts && hostReceipt && eqReceipt ? <WatchEqualizerPanel receipt={eqReceipt} rendered={eqReceipt} published={publishedEq}
-        host={facts} hostReceipt={hostReceipt} publishedHost={publishedHost}
+        host={hostReceipt.facts} hostReceipt={hostReceipt} publishedHost={publishedHost}
         runtime={binding.runtime} port={equalizer} {...(isCurrent ? {isCurrent} : {})} {...(scope ? {scope} : {})}
         close={() => closeEq(eqReceipt)}
         openSettings={() => {if (!open) return; void router.navigate({to: '/settings', search: () => ({scope: 'account' as const, section: 'music'})});}} />

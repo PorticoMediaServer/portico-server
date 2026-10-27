@@ -2,10 +2,10 @@
  * FX229 / BLK-PLAY-016: the host, More menu and Equalizer openings each have their own published
  * receipt, minted fresh in layout from immutable rendered facts.
  *
- * Real fences and the actual admission helpers are used; DeviceEqualizer/Menu are stub hosts. The
- * harness runs hooks eagerly and has no React StrictMode or unmount replay; a cleanup/setup replay
- * is modelled by a fresh layout setup with the same facts, not by relaunching the whole player.
- * Source only: unrun here.
+ * Panel cases use a manual receipt factory with the actual panel/admission helpers; the parent
+ * cases mount the actual NowPlaying with a stub More/EQ host. The harness runs hooks eagerly and
+ * has no React StrictMode or unmount replay; cleanup→setup is modelled as a fresh receipt pair
+ * with the same immutable facts, not as relaunching the player. Source only: unrun here.
  */
 import test from 'node:test';
 import assert from 'node:assert/strict';
@@ -35,62 +35,68 @@ async function mountPanel() {
     change: async (value: any) => {changes.push(value); await held.pending;}, reset: async () => {changes.push('reset');}};
   const originalFence = fence();
   const state: any = {disposed: false, authority, fence: originalFence, playback: {playbackRun: 7}, presentation: {kind: 'music', fence: originalFence}, equalizerPort: port};
-  const runtime = {getSnapshot: () => state, equalizerPort: port};
+  let getter: (() => any) | undefined;
+  const runtime = {getSnapshot: () => getter ? getter() : state, equalizerPort: port};
   let host = true, scopeAllowed = true;
   const isCurrent = () => host, scope = {current: () => scopeAllowed};
   const calls = {close: 0, settings: 0};
   const facts = (value: any = state) => ({runtime: runtime as any, port: port as any, authority: value.authority,
     fenceAt: fenceKey(value.fence), presentationAt: fenceKey(value.presentation.fence), run: value.playback.playbackRun, isCurrent, scope});
-  const receipts: {host: any; surface: any; publishedHost: {current: any}; published: {current: any}} = {host: null, surface: null, publishedHost: {current: null}, published: {current: null}};
-  const setup = (value: any = state, reuseFacts?: any) => {
-    const hostFacts = reuseFacts ?? facts(value);
-    const hostReceipt = {facts: hostFacts, live: true};
-    const surface = {host: hostFacts, live: true};
-    receipts.host = hostReceipt; receipts.surface = surface;
-    receipts.publishedHost.current = hostReceipt; receipts.published.current = surface;
-    const paint = () => tree(h.render(() => panel.WatchEqualizerPanel({receipt: surface, rendered: surface, published: receipts.published,
-      host: hostFacts, hostReceipt, publishedHost: receipts.publishedHost, runtime: runtime as any, port: port as any,
-      isCurrent, scope, close: () => {calls.close++;}, openSettings: () => {calls.settings++;}})));
+  const publishedHost: {current: any} = {current: null}, publishedSurface: {current: any} = {current: null};
+  const setup = (value: any = state, reuse?: {host?: any; surface?: any}) => {
+    const hostFacts = reuse?.host?.facts ?? facts(value);
+    const hostReceipt = reuse?.host ?? {facts: hostFacts, live: true};
+    const surface = reuse?.surface ?? {host: hostReceipt, live: true};
+    if (!reuse) {publishedHost.current = hostReceipt; publishedSurface.current = surface;}
+    const paint = () => tree(h.render(() => panel.WatchEqualizerPanel({receipt: surface, rendered: surface, published: publishedSurface,
+      host: hostFacts, hostReceipt, publishedHost, runtime: runtime as any, port: port as any, isCurrent, scope,
+      close: () => {calls.close++;}, openSettings: () => {calls.settings++;}})));
     paint();
     return {hostFacts, hostReceipt, surface, tree: paint()};
   };
-  return {calls, changes, facts, held, receipts, scope, setHost: (value: boolean) => {host = value;}, setScope: (value: boolean) => {scopeAllowed = value;}, setup, state};
+  return {calls, changes, facts, getter: (fn: () => any) => {getter = fn;}, held, publishedHost, publishedSurface, scope, setHost: (value: boolean) => {host = value;}, setScope: (value: boolean) => {scopeAllowed = value;}, setup, state};
 }
 
-test('a live EQ opening writes the original port; ordinary rerender keeps it', async () => {
+test('a live EQ opening writes; an ordinary rerender keeps the same receipts', async () => {
   const {changes, setup} = await mountPanel();
   const first = setup();
   const eq = one(first.tree, 'DeviceEqualizer').props;
   await eq.port.change(equalizer(false));
   assert.equal(changes.length, 1);
-  const again = setup(undefined as any, first.hostFacts);
+  const again = setup(undefined as any, {host: first.hostReceipt, surface: first.surface});
   assert.equal(one(again.tree, 'DeviceEqualizer').props.port, eq.port);
 });
 
-test('a fresh setup with the same facts retires the old EQ callbacks', async () => {
+test('a same-facts cleanup/setup replay makes the old EQ actions dead and the new live', async () => {
   const {calls, changes, setup} = await mountPanel();
   const first = setup();
   const oldEq = one(first.tree, 'DeviceEqualizer').props;
-  const second = setup(undefined as any, first.hostFacts);
+  const second = setup(undefined as any, undefined);
   assert.notEqual(second.surface, first.surface);
   oldEq.onBack();
+  oldEq.onOpenSettings();
+  oldEq.reportError(new Error('late'));
   await assert.rejects(oldEq.port.change(equalizer(false)), /retired/i);
   assert.equal(calls.close, 0);
-  const successor = one(second.tree, 'DeviceEqualizer').props;
-  await successor.port.change(equalizer(false));
-  assert.equal(changes.length, 1, 'the successor receipt works; the old one did not write');
+  assert.equal(calls.settings, 0);
+  await one(second.tree, 'DeviceEqualizer').props.port.change(equalizer(false));
+  assert.equal(changes.length, 1, 'only the successor receipt wrote');
 });
 
-test('a same-key host replacement withholds the old panel', async () => {
-  const {facts, setup} = await mountPanel();
+test('a getSnapshot that swaps the published receipt mid-check cannot slip a write through', async () => {
+  const {changes, publishedHost, setup, state} = await mountPanel();
   const first = setup();
-  const oldEq = one(first.tree, 'DeviceEqualizer').props;
-  const replaced = setup(undefined as any, facts({...stateLike(first), authority: {}}));
-  assert.notEqual(replaced.hostFacts, first.hostFacts);
-  await assert.rejects(oldEq.port.change(equalizer(true)), /retired/i);
+  const eq = one(first.tree, 'DeviceEqualizer').props;
+  const successor = {facts: first.hostFacts, live: true};
+  let calls = 0;
+  // The last external getSnapshot retires A and publishes B while still returning A's facts.
+  const getter = () => {if (++calls === 2) {first.hostReceipt.live = false; publishedHost.current = successor;} return state;};
+  const original = first.hostFacts.runtime.getSnapshot;
+  (first.hostFacts.runtime as any).getSnapshot = getter;
+  await assert.rejects(eq.port.change(equalizer(false)), /retired/i);
+  (first.hostFacts.runtime as any).getSnapshot = original;
+  assert.equal(changes.length, 0);
 });
-
-const stateLike = (value: any) => ({authority: value.hostFacts.authority, fence: fence(), playback: {playbackRun: 7}, presentation: {kind: 'music', fence: fence()}});
 
 test('the original predicates are rechecked before a write', async () => {
   const {changes, scope, setup} = await mountPanel();
@@ -137,70 +143,59 @@ async function nowPlaying() {
     paint();
     return paint();
   };
-  return {show, setExpanded: (value: boolean) => {expanded = value;}, snapshot};
+  return {show, snapshot};
 }
 
 const panelHost = (v: any[]) => all(v, 'WatchEqualizerPanel')[0];
 const moreButton = (v: any[]) => all(v, 'button').find(node => node.props['aria-label'] === 'player.more');
+const menu = (v: any[]) => one(v, 'Menu').props;
+const openMenu = (show: any) => {let v = show(); moreButton(v)!.props.onClick(); return show();};
+const selectEq = (show: any) => {let v = openMenu(show); menu(v).items[0].onSelect(); return show();};
 
-test('the actual saved More dismissal cannot clear a successor menu', async () => {
-  const {setExpanded, show} = await nowPlaying();
-  let v = show();
-  const firstMenu = one(v, 'Menu').props;
-  firstMenu.onOpenChange(true);
-  v = show();
-  assert.equal(one(v, 'Menu').props.open, true);
-  setExpanded(false);
-  show();
-  setExpanded(true);
-  v = show();
-  moreButton(v)!.props.onClick();
-  v = show();
-  assert.equal(one(v, 'Menu').props.open, true, 'the successor More menu is open');
-  firstMenu.onOpenChange(false);
-  v = show();
-  assert.equal(one(v, 'Menu').props.open, true, 'the old dismissal cannot close the successor');
-  firstMenu.items[0].onSelect();
-  v = show();
-  assert.equal(panelHost(v), undefined, 'the old selection cannot open the successor EQ');
-});
-
-test('the actual saved EQ Back cannot close a reopened EQ', async () => {
+test('More A dismissed then B opened on the same host: saved A cannot close B', async () => {
   const {show} = await nowPlaying();
-  let v = show();
-  moreButton(v)!.props.onClick();
-  v = show();
-  one(v, 'Menu').props.items[0].onSelect();
-  v = show();
-  const firstPanel = panelHost(v);
-  assert.ok(firstPanel);
-  firstPanel.props.close();
-  v = show();
-  assert.equal(panelHost(v), undefined);
-
-  moreButton(v)!.props.onClick();
-  v = show();
-  one(v, 'Menu').props.items[0].onSelect();
-  v = show();
-  const successor = panelHost(v);
-  assert.ok(successor);
-  firstPanel.props.close();
-  v = show();
-  assert.ok(panelHost(v), 'the saved Back cannot close the successor EQ');
-  successor.props.close();
-  v = show();
-  assert.equal(panelHost(v), undefined);
+  const a = openMenu(show);
+  const menuA = menu(a);
+  menuA.onOpenChange(false);
+  const b = openMenu(show);
+  assert.equal(menu(b).open, true, 'B is open on the same expanded host');
+  menuA.onOpenChange(false);
+  assert.equal(menu(show()).open, true, 'saved A dismissal cannot close B');
+  menuA.items[0].onSelect();
+  assert.equal(panelHost(show()), undefined, 'saved A selection cannot open EQ');
 });
 
-test('an ordinary position update keeps the actual EQ opening live', async () => {
+test('EQ A Back then EQ B on the same host: saved A cannot close B', async () => {
+  const {show} = await nowPlaying();
+  const a = selectEq(show);
+  const panelA = panelHost(a);
+  assert.ok(panelA);
+  panelA.props.close();
+  const b = selectEq(show);
+  const panelB = panelHost(b);
+  assert.ok(panelB);
+  panelA.props.close();
+  assert.ok(panelHost(show()), 'saved A Back cannot close B');
+  panelB.props.close();
+  assert.equal(panelHost(show()), undefined);
+});
+
+test('same-tick old dismiss after a successor opens is refused', async () => {
+  const {show} = await nowPlaying();
+  const a = openMenu(show);
+  const menuA = menu(a);
+  menuA.onOpenChange(false);
+  const b = openMenu(show);
+  menuA.onOpenChange(false);
+  assert.equal(one(b, 'Menu').props.open, true);
+});
+
+test('an ordinary position update keeps the actual EQ receipt', async () => {
   const {show, snapshot} = await nowPlaying();
-  let v = show();
-  moreButton(v)!.props.onClick();
-  v = show();
-  one(v, 'Menu').props.items[0].onSelect();
-  const opened = show();
+  const opened = selectEq(show);
   const position = {...snapshot, presentation: {...snapshot.presentation, positionSeconds: 42}};
   const after = show(position);
   assert.ok(panelHost(after));
-  assert.equal(panelHost(after), panelHost(opened));
+  assert.equal(panelHost(after).props.receipt, panelHost(opened).props.receipt);
+  assert.equal(panelHost(after).props.hostReceipt, panelHost(opened).props.hostReceipt);
 });
