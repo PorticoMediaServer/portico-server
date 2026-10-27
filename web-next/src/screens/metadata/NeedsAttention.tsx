@@ -1,4 +1,4 @@
-import {useCallback, useEffect, useMemo, useRef, useState, type FormEvent} from 'react';
+import {useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type FormEvent} from 'react';
 import {defaultI18n} from '@i18n';
 import {metadataAttentionService, type AttentionCommand, type AttentionEntry, type AttentionPage} from '@core/metadata-attention.ts';
 import {attentionOffers, attentionReason, attentionInProgress, candidateFacts, candidateLine, providerName, typedProviderId} from '@core/server-admin/attention-words.ts';
@@ -13,6 +13,8 @@ import type {ShellArtwork} from '../../shell/artwork';
 
 const t = defaultI18n.t, has = (id: string) => defaultI18n.has(id);
 type Api = Readonly<{request: <T>(path: string, method?: string, body?: unknown) => Promise<T>}>;
+type Admission = {service: ReturnType<typeof metadataAttentionService>; alive: boolean; generation: number; reading: boolean};
+type ReadView = {admission: Admission; page?: AttentionPage; cursor: string; cursors: readonly string[]; loading: boolean; error?: unknown; failed?: string};
 const PROVIDERS = ['tmdb', 'tvdb', 'anilist'] as const;
 
 /**
@@ -22,53 +24,87 @@ const PROVIDERS = ['tmdb', 'tvdb', 'anilist'] as const;
  */
 export function NeedsAttention({libraryId, libraryName, api, onOpen, onEdit, artwork}: {artwork?: ShellArtwork; libraryId: string; libraryName?: string; api: Api; onOpen?: (entry: AttentionEntry) => void; onEdit?: (entry: AttentionEntry, anchor: HTMLElement, matching?: boolean) => void}) {
   const service = useMemo(() => metadataAttentionService(<T,>(path: string, method?: string, body?: unknown) => api.request<T>(path, method, body), libraryId), [api, libraryId]);
-  const [page, setPage] = useState<AttentionPage>(), [cursors, setCursors] = useState<readonly string[]>([]), [cursor, setCursor] = useState('');
-  const [loading, setLoading] = useState(true), [error, setError] = useState<unknown>(), [readError, setReadError] = useState<unknown>();
-
+  const [admission, setAdmission] = useState<Admission | null>(null);
+  const liveAdmission = useRef<Admission | null>(null);
+  const [readView, setReadView] = useState<ReadView | null>(null);
+  const [error, setError] = useState<unknown>();
   const [busy, setBusy] = useState<string>(), [notice, setNotice] = useState<string>();
   const [searching, setSearching] = useState<AttentionEntry>(), [identifying, setIdentifying] = useState<AttentionEntry>();
   const [query, setQuery] = useState(''), [typed, setTyped] = useState(''), [provider, setProvider] = useState<(typeof PROVIDERS)[number]>('tmdb');
-  const [retryCursor, setRetryCursor] = useState<string>();
-  // Read generations and the one-flight flag are mutable page state, not rendered values.
-  const track = useMemo(() => ({generation: 0, reading: false}), []);
   const searchInput = useRef<HTMLInputElement>(null), idInput = useRef<HTMLInputElement>(null);
-  const load = useCallback(async (next: string) => {
-    if (track.reading) return;
-    const current = ++track.generation;
-    track.reading = true;
-    setLoading(true); setError(undefined); setReadError(undefined); setRetryCursor(undefined);
+  const load = useCallback(async (held: Admission, next: string) => {
+    if (liveAdmission.current !== held || !held.alive || held.reading) return;
+    const current = ++held.generation;
+    held.reading = true;
+    setReadView(value => value?.admission === held ? {...value, loading: true, error: undefined, failed: undefined} : value);
     try {
-      const value = await service.list(next, 25, true);
-      if (current === track.generation) {setPage(value); setCursor(next);}
+      const loaded = await held.service.list(next, 25, true);
+      if (liveAdmission.current !== held || !held.alive || current !== held.generation) return;
+      setReadView(value => value?.admission === held ? {...value, page: loaded, cursor: next, loading: false} : value);
     } catch (value) {
-      // The failed list attempt stays retryable at its own cursor; accepted rows and pager stay.
-      if (current === track.generation) {setReadError(value); setRetryCursor(next);}
+      // The failed attempt stays retryable at its own cursor; accepted rows and pager stay put.
+      if (liveAdmission.current !== held || !held.alive || current !== held.generation) return;
+      setReadView(state => state?.admission === held ? {...state, loading: false, error: value, failed: next} : state);
     }
-    finally {if (current === track.generation) {track.reading = false; setLoading(false);}}
-  }, [service, track]);
-  // A new service/library mount retires the previous read generation, including its late results.
-  useEffect(() => {void load(''); return () => {track.generation++; track.reading = false;};}, [load, track]);
-  const retryRead = () => {if (track.reading || retryCursor === undefined) return; void load(retryCursor);};
-  // A search or a match settles on the server; the list reloads until it does.
+    finally {
+      if (current === held.generation) {
+        held.reading = false;
+        if (liveAdmission.current === held) setReadView(value => value?.admission === held ? {...value, loading: false} : value);
+      }
+    }
+  }, []);
+  // Admission is layout-committed. A replaced service/API/library retires its predecessor before
+  // paint, and retained callbacks capture their own admission and refuse before any request/state.
+  useLayoutEffect(() => {
+    const previous = liveAdmission.current;
+    if (previous?.service === service) return;
+    if (previous) {previous.alive = false; previous.generation++;}
+    const admitted: Admission = {service, alive: true, generation: 0, reading: false};
+    liveAdmission.current = admitted;
+    setAdmission(admitted);
+    setReadView({admission: admitted, cursor: '', cursors: [], loading: true});
+    void load(admitted, '');
+  }, [service, load]);
+  useLayoutEffect(() => () => { const held = liveAdmission.current; liveAdmission.current = null; if (held) {held.alive = false; held.generation++;} }, []);
+  const shown = readView && readView.admission === admission ? readView : undefined;
+  const page = shown?.page, loading = shown?.loading ?? true, cursors = shown?.cursors ?? [], readError = shown?.error;
+  const retryRead = () => {
+    const held = admission;
+    if (!held || liveAdmission.current !== held || !shown || shown.failed === undefined || held.reading) return;
+    void load(held, shown.failed);
+  };
+  // A search or a match settles on the server; a failed read suspends the poll until Retry.
   const settling = !!page?.entries.some(entry => attentionInProgress(entry.reason));
   useEffect(() => {
-    if (!settling) return;
-    const timer = setInterval(() => void load(cursor), 2000);
+    if (!settling || !shown || shown.failed !== undefined || shown.loading) return;
+    const held = shown.admission, next = shown.cursor;
+    const timer = setInterval(() => {if (liveAdmission.current === held && held.alive) void load(held, next);}, 2000);
     return () => clearInterval(timer);
-  }, [settling, load, cursor]);
+  }, [settling, shown, load]);
   const send = async (entry: AttentionEntry, command: Omit<AttentionCommand, 'kind' | 'entityId' | 'expectedRevision'>, done: string) => {
     if (busy) return false;
     setBusy(entry.entityId); setNotice(undefined); setError(undefined);
     try {
       await service.act({kind: entry.kind, entityId: entry.entityId, expectedRevision: entry.revision, ...command});
       setNotice(done); setSearching(undefined); setIdentifying(undefined);
-      await load(cursor);
+      if (admission) await load(admission, shown?.cursor ?? '');
       return true;
     } catch (value) {setError(value); return false;}
     finally {setBusy(undefined);}
   };
-  const older = () => {if (!page?.nextCursor) return; setCursors([...cursors, cursor]); void load(page.nextCursor);};
-  const newer = () => {const next = cursors.at(-1); if (next === undefined) return; setCursors(cursors.slice(0, -1)); void load(next);};
+  const older = () => {
+    const held = admission;
+    if (!held || liveAdmission.current !== held || !shown?.page?.nextCursor) return;
+    setReadView(value => value?.admission === held ? {...value, cursors: [...value.cursors, value.cursor]} : value);
+    void load(held, shown.page.nextCursor);
+  };
+  const newer = () => {
+    const held = admission;
+    if (!held || liveAdmission.current !== held || !shown?.cursors.length) return;
+    const next = shown.cursors.at(-1)!;
+    setReadView(value => value?.admission === held ? {...value, cursors: value.cursors.slice(0, -1)} : value);
+    void load(held, next);
+  };
   const id = typedProviderId(typed), bare = !!id && /^\d+$/.test(id);
   return <section className={styles.attention}>
     {error ? <HostedError error={error} /> : null}

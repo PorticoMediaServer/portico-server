@@ -135,13 +135,85 @@ test('a successful empty list still draws its empty state without Retry', async 
   assert.ok(all(v, 'div').some(node => JSON.stringify(node).includes('metadata.attention.empty')));
 });
 
-test('per-title retry stays a mutation and is untouched by list Retry', async () => {
+test('the title retry stays a mutation; the list Retry sends no mutation', async () => {
   const {acts, reply, show} = await mount();
   reply(async () => page([entry('e1', 'T2')]));
   let v = show();
   await tick();
   v = show();
-  const retry = button(v, 'next.browse.retry');
-  assert.equal(retry, undefined, 'a loaded list has no read Retry');
-  assert.equal(acts.length, 0);
+  assert.equal(button(v, 'next.browse.retry'), undefined, 'a loaded list has no read Retry');
+  const titleRetry = all(v, 'button').find(node => (Array.isArray(node.props.children) ? node.props.children : [node.props.children]).includes('server.attention.lookUpAgain'));
+  assert.ok(titleRetry, 'the row keeps its own retry control');
+  titleRetry.props.onClick();
+  await tick();
+  assert.deepEqual(acts.map(value => value.body.action), ['retry'], 'the title Retry is the existing mutation');
+});
+
+test('a saved old Retry after the successor succeeds never reaches it', async () => {
+  const {lists, reply, show, transport} = await mount();
+  reply(async () => { throw new Error('down'); });
+  let v = show();
+  await tick();
+  v = show();
+  const oldRetry = button(v, 'next.browse.retry');
+  assert.ok(oldRetry);
+  const next = transport(lists, []);
+  reply(async () => page([entry('e2', 'Monsters')]));
+  v = show(next);
+  await tick();
+  v = show(next);
+  assert.equal(articles(v).length, 1);
+  const before = lists.length;
+  oldRetry.props.onClick();
+  await tick();
+  v = show(next);
+  assert.equal(lists.length, before, 'the retired admission cannot start a read');
+  const shown = JSON.stringify(articles(v));
+  assert.ok(shown.includes('Monsters'));
+  assert.ok(!shown.includes('T2'));
+});
+
+test('replacement retires the old admission before its Retry can act', async () => {
+  const {lists, reply, show, transport} = await mount();
+  reply(async () => { throw new Error('down'); });
+  let v = show();
+  await tick();
+  v = show();
+  const oldRetry = button(v, 'next.browse.retry');
+  const next = transport(lists, []);
+  let resolveNew!: (value: unknown) => void;
+  reply(() => new Promise(resolve => { resolveNew = resolve; }));
+  v = show(next);
+  const before = lists.length;
+  oldRetry.props.onClick();
+  await tick();
+  assert.equal(lists.length, before, 'the retired callback is refused while the successor read is still pending');
+  resolveNew(page([entry('e3', 'Up')]));
+  await tick();
+  v = show(next);
+  assert.equal(articles(v).length, 1);
+  assert.ok(JSON.stringify(articles(v)).includes('Up'));
+  const after = lists.length;
+  oldRetry.props.onClick();
+  await tick();
+  assert.equal(lists.length, after, 'replaying the retired callback after settlement is still refused');
+});
+
+test('a failed read suspends the settling poll until Retry', async () => {
+  const {lists, reply, show} = await mount();
+  reply(async path => {
+    const cursor = cursorOf(path);
+    if (cursor === '') return page([{...entry('p1', 'Waiting title'), reason: 'pending'}], 'page-2');
+    throw new Error('later page down');
+  });
+  let v = show();
+  await tick();
+  v = show();
+  button(v, 'web.hostedAccount.older').props.onClick();
+  await tick();
+  v = show();
+  assert.ok(button(v, 'next.browse.retry'), 'the failed later read waits for Retry');
+  const before = lists.length;
+  await new Promise(resolve => setTimeout(resolve, 2200));
+  assert.equal(lists.length, before, 'the settling poll does not reload the accepted page while the failure waits');
 });
