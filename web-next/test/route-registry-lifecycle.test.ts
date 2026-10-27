@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {bindWebAccountEntry, isAccountEntryPath} from '../src/route-registry-lifecycle.ts';
-import {createEntryDestinationStore, profileSettingsDestination} from '../src/route-registry-destination.ts';
+import {createEntryDestinationStore, localDeviceDestination, profileSettingsDestination, type WebEntryDestination} from '../src/route-registry-destination.ts';
 import {ShellBootstrap, type ShellAssembler, type ShellBootstrapSnapshot} from '../src/shell/bootstrap.ts';
 import type {SelectedViewerRecord} from '@core/viewer-selection.ts';
 function deferred<T>() {let resolve!: (value: T) => void;const promise = new Promise<T>(done => {resolve = done;});return {promise, resolve};}
@@ -16,7 +16,7 @@ function navigation(path: string) {
       if (name === 'onBeforeNavigate') {before = listener as (event: Navigation) => void;return () => {before = undefined;};}
       resolved = listener as () => void;return () => {resolved = undefined;};
     },
-    navigate: async (target: typeof profileSettingsDestination & {replace: boolean}) => {calls.push(target);go(target.to, target.search);},
+    navigate: async (target: WebEntryDestination & {replace: boolean}) => {calls.push(target);go(target.to, target.search);},
   };
   return {router, calls, go};
 }
@@ -83,4 +83,28 @@ test('an unrelated startup does not consume a pending destination before an actu
   const close = bindWebAccountEntry(nav.router, bootstrap, destination);
   bootstrap.publish({phase: 'ready', binding: {scopeKey: 'existing'} as never});
   assert.deepEqual(nav.calls, []);assert.deepEqual(destination.take(), profileSettingsDestination);close();
+});
+
+test('the local device URL returns only after normal sign-in creates a ready server binding', async () => {
+  const destination = createEntryDestinationStore(), nav = navigation('/device'), bootstrap = admission();
+  const close = bindWebAccountEntry(nav.router, bootstrap, destination);
+  nav.go('/sign-in');nav.go('/profiles');nav.go('/');
+  bootstrap.publish({phase: 'ready'});assert.equal(nav.calls.length, 0);
+  bootstrap.publish({phase: 'ready', binding: {scopeKey: 'actual-server-family'} as never});
+  await Promise.resolve();assert.deepEqual(nav.calls, [{...localDeviceDestination, replace: true}]);
+  assert.equal(destination.take(), undefined);close();
+});
+test('explicitly leaving local approval cancels its public return destination', () => {
+  const destination = createEntryDestinationStore(), nav = navigation('/device'), bootstrap = admission();
+  const close = bindWebAccountEntry(nav.router, bootstrap, destination);
+  nav.go('/library/ordinary');nav.go('/sign-in');nav.go('/');
+  bootstrap.publish({phase: 'ready', binding: {scopeKey: 'family'} as never});
+  assert.equal(nav.calls.length, 0);assert.equal(destination.take(), undefined);close();
+});
+test('a local device intent stores only a fixed destination, never the fragment or a server/account', () => {
+  const stored = new Map<string, string>();
+  const store = createEntryDestinationStore(() => ({getItem: key => stored.get(key) ?? null, setItem: (key, value) => {stored.set(key, value);}, removeItem: key => {stored.delete(key);}}));
+  store.rememberLocalDevice();assert.deepEqual([...stored.values()], ['local-device']);
+  store.rememberProfileSettings();store.clearLocalDevice();assert.deepEqual(store.take(), profileSettingsDestination);
+  store.rememberLocalDevice();assert.deepEqual(store.take(), localDeviceDestination);assert.equal(stored.size, 0);
 });
