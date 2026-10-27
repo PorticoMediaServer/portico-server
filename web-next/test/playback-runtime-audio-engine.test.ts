@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {Deck, edgeFrames, linkDecks} from '../src/platform/playback/audio/engine.ts';
+import {MixGraph} from '../src/platform/playback/audio/mix-graph.ts';
 /** A fake BaseAudioContext for node: records what the engine schedules and plays it back as
  * `advance()` moves the clock (onended fires for buffers that finished). */
 export function fakeContext(sampleRate = 48000) {
@@ -15,7 +16,7 @@ export function fakeContext(sampleRate = 48000) {
     createGain: () => ({gain: param(), connect() {}, disconnect() {}}),
     createBuffer: (channels: number, length: number, rate: number) => ({numberOfChannels: channels, length, sampleRate: rate, data: Array.from({length: channels}, () => new Float32Array(length)), copyToChannel(src: Float32Array, ch: number) { this.data[ch].set(src); }}),
     createBufferSource: () => {
-      const node: any = {buffer: null, onended: null, started: undefined, connect() {}, disconnect() {}, start(t: number) { node.started = t; scheduled.push({start: Math.round(t * sampleRate), frames: node.buffer.length, node}); }, stop() { node.stopped = true; }};
+      const node: any = {buffer: null, onended: null, started: undefined, connect() {}, disconnect() {}, start(t: number, offset = 0, duration?: number) { node.started = t; node.offset = offset; scheduled.push({start: Math.round(t * sampleRate), frames: duration === undefined ? node.buffer.length : Math.round(duration * sampleRate), node}); }, stop() { node.stopped = true; }};
       return node;
     },
   };
@@ -149,4 +150,101 @@ test('cancelled resampler preparation retains the current track and a finite tai
  a.finishTail();
  assert.equal(f.scheduled.reduce((n,s)=>n+s.frames,0),a.outFrames,'cancelled preparation did not consume the outgoing tail');
  assert.ok(a.complete);
+});
+
+test('stalled pumps share one read and one promise, including a larger target', async () => {
+  const rate = 100, f = fakeContext(rate);
+  let release!: (value: {channels: Float32Array[]; frames: number} | undefined) => void;
+  let reads = 0;
+  const source = {sampleRate: rate, channels: 1, read: () => { reads++; return new Promise<{channels: Float32Array[]; frames: number} | undefined>(resolve => { release = resolve; }); }, close: () => release?.(undefined)};
+  const deck = new Deck(f.ctx, {} as AudioNode, source, {frames: rate * 10, gain: 1});
+  const first = deck.pump(1);
+  for (let i = 0; i < 3000; i++) assert.strictEqual(deck.pump(i === 2999 ? 2 : 1), first);
+  await Promise.resolve();
+  assert.equal(reads, 1);
+  release({channels: [new Float32Array(rate)], frames: rate});
+  await Promise.resolve(); await Promise.resolve();
+  assert.equal(reads, 2, 'larger target continues the same drain');
+  deck.close();
+  await first;
+  assert.equal(reads, 2, 'retirement does not restart decoding');
+});
+
+test('pump reports a decoder failure without starting another read', async () => {
+  const f = fakeContext(100), failure = new Error('decoder failed');
+  let reads = 0;
+  const source = {sampleRate: 100, channels: 1, async read() { reads++; throw failure; }, close() {}};
+  const deck = new Deck(f.ctx, {} as AudioNode, source, {frames: 1000, gain: 1});
+  await deck.pump(1);
+  assert.equal(deck.failure, failure);
+  assert.equal(reads, 1);
+  deck.close();
+});
+
+test('close settles the original stalled pump and never revives it', async () => {
+  const f = fakeContext(100);
+  let reads = 0, closeCount = 0, release!: () => void;
+  const source = {sampleRate: 100, channels: 1,
+    read: () => { reads++; return new Promise<undefined>(resolve => { release = () => resolve(undefined); }); },
+    close: () => { closeCount++; release(); }};
+  const deck = new Deck(f.ctx, {} as AudioNode, source, {frames: 1000, gain: 1});
+  const pump = deck.pump(1);
+  await Promise.resolve();
+  deck.close();
+  assert.strictEqual(deck.pump(30), pump);
+  await pump;
+  deck.close();
+  await deck.pump(30);
+  assert.equal(closeCount, 1);
+  assert.equal(reads, 1);
+});
+
+test('a larger request after a completed empty drain starts a fresh drain', async () => {
+  const rate = 100, f = fakeContext(rate);
+  let reads = 0;
+  const source = {sampleRate: rate, channels: 1, async read() { reads++; return {channels: [new Float32Array(rate)], frames: rate}; }, close() {}};
+  const deck = new Deck(f.ctx, {} as AudioNode, source, {frames: rate * 2, gain: 1});
+  const empty = deck.pump(0);
+  await Promise.resolve(); // the drain has finished, but its returned promise may still settle
+  await deck.pump(1);
+  await empty;
+  assert.equal(reads, 1);
+  assert.equal(deck.decoded, rate);
+  deck.close();
+});
+
+test('shared graph holds an actual Deck frontier and schedules refill only after rebase', async () => {
+  const rate = 100, f = fakeContext(rate), graph = new MixGraph(f.ctx, 8);
+  const deck = new Deck(f.ctx, {} as AudioNode, sineSource(rate * 4, rate), {frames: rate * 4, gain: 1, graph});
+  await deck.pump(1);
+  deck.start(0);
+  assert.equal(graph.admit(100).frontier, 100);
+  f.advance(5);
+  assert.equal(deck.playedFrames(), 100);
+  await deck.pump(2);
+  assert.equal(graph.admit(300).frontier, 100, 'no late buffers are scheduled against the old clock');
+  assert.equal(f.scheduled.length, 1);
+  f.ctx.state = 'suspended';
+  assert.equal(graph.rebase(500, 508), 100);
+  assert.equal(graph.admit(300).frontier, 300);
+  assert.deepEqual(f.scheduled.map(s => [s.start, s.frames]), [[8, 100], [508, 100], [608, 100]]);
+  assert.equal(deck.playedFrames(), 100);
+  deck.close(); graph.close();
+});
+
+test('linked graph decks preserve the original crossfade gain after a partial hold', async () => {
+  const rate = 100, f = fakeContext(rate), graph = new MixGraph(f.ctx, 8);
+  const a = new Deck(f.ctx, {} as AudioNode, sineSource(rate * 20, rate), {frames: rate * 20, gain: 1, graph});
+  const b = new Deck(f.ctx, {} as AudioNode, sineSource(rate * 20, rate), {frames: rate * 20, gain: 1, graph});
+  await a.pump(20); await b.pump(20); a.start(0);
+  assert.equal(graph.admit(1500).frontier, 1500);
+  const edge = linkDecks(f.ctx, a, b, {crossfadeSeconds: 6, sameAlbum: false});
+  assert.equal(edge.start, 1400);
+  f.ctx.currentTime = 14.58; f.ctx.state = 'suspended';
+  const held = graph.rebase(1458, 1466);
+  assert.equal(held, 1450);
+  a.rebuildAutomation(held); b.rebuildAutomation(held);
+  const event = (b.fade.gain as any).events.filter((item: unknown[]) => item[0] === 'set').at(-1);
+  assert.ok(Math.abs(event[1] - Math.sin(Math.PI / 24)) < 0.002, 'the original fade value is evaluated at the held frame');
+  a.close(); b.close(); graph.close();
 });
