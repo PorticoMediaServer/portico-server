@@ -8,6 +8,24 @@ import (
 
 var errBudget = errors.New("private audio byte budget exhausted")
 
+// authorityWriter checks the original grant before each converted output chunk.
+// The shared verdict cache bounds database work and revocation latency.
+type authorityWriter struct {
+	w     io.Writer
+	ctx   context.Context
+	check func() error
+}
+
+func (a *authorityWriter) Write(p []byte) (int, error) {
+	if err := a.ctx.Err(); err != nil {
+		return 0, err
+	}
+	if err := a.check(); err != nil {
+		return 0, err
+	}
+	return a.w.Write(p)
+}
+
 // A private response ends at its aggregate byte ceiling. V1 never waits in a
 // media response for queue commit. After ordinary commit a fresh GET of the
 // same grant is authorized without this private budget. CAF progressive queue
