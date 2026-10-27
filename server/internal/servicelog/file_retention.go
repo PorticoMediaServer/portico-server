@@ -42,6 +42,21 @@ func (r *Recorder) pruneFile(index int, days map[string]int) {
 		input.Close()
 		return
 	}
+	now := r.options.Now()
+	// A file with nothing to drop is the common case: read it once, create no
+	// output and leave the inode, bytes and modification time untouched.
+	removed, err := retentionWouldRemove(input, before.Size(), days, now)
+	if err != nil || !removed {
+		input.Close()
+		return
+	}
+	// Only a file that really loses lines is rewritten, from the same snapshot
+	// size. The publication check below still abandons it if an append or
+	// rotation changed the file while this ran.
+	if _, err = input.Seek(0, io.SeekStart); err != nil {
+		input.Close()
+		return
+	}
 	output, err := os.CreateTemp(r.options.Directory, ".retention-*")
 	if err != nil {
 		input.Close()
@@ -50,23 +65,18 @@ func (r *Recorder) pruneFile(index int, days map[string]int) {
 	defer os.Remove(output.Name())
 	scanner := bufio.NewScanner(io.LimitReader(input, before.Size()+1))
 	scanner.Buffer(make([]byte, 4096), 64<<10)
-	removed := false
-	now := r.options.Now()
+	var writeErr error
 	for scanner.Scan() {
 		line := scanner.Text()
-		fields := strings.SplitN(line, "\t", 4)
-		if len(fields) == 4 {
-			at, parseErr := time.Parse(time.RFC3339Nano, fields[0])
-			if age := days[fields[2]]; age > 0 && parseErr == nil && now.Sub(at) > time.Duration(age)*24*time.Hour {
-				removed = true
-				continue
-			}
+		if retentionDrops(strings.SplitN(line, "\t", 4), days, now) {
+			continue
 		}
-		if _, err = output.WriteString(line + "\n"); err != nil {
+		if _, writeErr = output.WriteString(line + "\n"); writeErr != nil {
 			break
 		}
 	}
 	input.Close()
+	err = writeErr
 	if err == nil {
 		err = scanner.Err()
 	}
@@ -74,7 +84,7 @@ func (r *Recorder) pruneFile(index int, days map[string]int) {
 		err = output.Sync()
 	}
 	closeErr := output.Close()
-	if err != nil || closeErr != nil || !removed {
+	if err != nil || closeErr != nil {
 		return
 	}
 	r.mu.Lock()
@@ -101,4 +111,31 @@ func (r *Recorder) pruneFile(index int, days map[string]int) {
 			r.written = fileSize(r.file)
 		}
 	}
+}
+
+// retentionWouldRemove reports whether any line would be dropped. It only reads;
+// no output file is created when the answer is no.
+func retentionWouldRemove(input io.Reader, size int64, days map[string]int, now time.Time) (bool, error) {
+	scanner := bufio.NewScanner(io.LimitReader(input, size+1))
+	scanner.Buffer(make([]byte, 4096), 64<<10)
+	for scanner.Scan() {
+		if retentionDrops(strings.SplitN(scanner.Text(), "\t", 4), days, now) {
+			return true, nil
+		}
+	}
+	return false, scanner.Err()
+}
+
+// retentionDrops is the one retention predicate shared by the read-only pass and
+// the rewrite, so the two can never disagree about what a line is.
+func retentionDrops(fields []string, days map[string]int, now time.Time) bool {
+	if len(fields) != 4 {
+		return false
+	}
+	age := days[fields[2]]
+	if age <= 0 {
+		return false
+	}
+	at, err := time.Parse(time.RFC3339Nano, fields[0])
+	return err == nil && now.Sub(at) > time.Duration(age)*24*time.Hour
 }

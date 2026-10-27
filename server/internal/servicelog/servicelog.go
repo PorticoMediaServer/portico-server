@@ -83,9 +83,14 @@ type subscriber struct {
 }
 
 type Recorder struct {
-	mu          sync.Mutex
-	pruneMu     sync.Mutex
+	mu      sync.Mutex
+	pruneMu sync.Mutex
+	// ring is a fixed-size circular buffer: records occupy
+	// ((start+i) % len(ring)) for i in [0, count), oldest first. Appending is
+	// O(1); the previous layout copied every retained record header per line.
 	ring        []Record
+	start       int
+	count       int
 	next        int64
 	instance    string
 	options     Options
@@ -123,7 +128,7 @@ func New(o Options) *Recorder {
 		panic(err)
 	}
 	r := &Recorder{instance: hex.EncodeToString(nonce[:]), options: o, subscribers: map[int64]*subscriber{}, level: "info", retention: map[string]int{}}
-	r.ring = make([]Record, 0, o.Capacity)
+	r.ring = make([]Record, o.Capacity)
 	if o.Directory != "" {
 		if err := os.MkdirAll(o.Directory, 0700); err == nil {
 			if f, err := os.OpenFile(r.path(0), os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0600); err == nil {
@@ -313,12 +318,7 @@ func (r *Recorder) Record(level, category, message string) {
 	}
 	r.next++
 	record := Record{Sequence: r.next, At: r.options.Now().UTC().Format(time.RFC3339Nano), Level: level, Category: category, Message: message}
-	if len(r.ring) == r.options.Capacity {
-		copy(r.ring, r.ring[1:])
-		r.ring[len(r.ring)-1] = record
-	} else {
-		r.ring = append(r.ring, record)
-	}
+	r.appendRing(record)
 	r.appendFileLocked(record)
 	// Publish under the same lock that orders sequence IDs and retirement.
 	// A slow subscriber reconnects and replays; silently dropping lines would
@@ -335,6 +335,18 @@ func (r *Recorder) Record(level, category, message string) {
 		}
 	}
 	r.mu.Unlock()
+}
+
+// appendRing adds a record to the circular buffer, dropping the oldest when it
+// is full. The caller holds mu (or is loading history before publication).
+func (r *Recorder) appendRing(record Record) {
+	if r.count < len(r.ring) {
+		r.ring[(r.start+r.count)%len(r.ring)] = record
+		r.count++
+		return
+	}
+	r.ring[r.start] = record
+	r.start = (r.start + 1) % len(r.ring)
 }
 
 func (r *Recorder) appendFileLocked(record Record) {
@@ -400,8 +412,11 @@ func (r *Recorder) Prune() {
 		return
 	}
 	now := r.options.Now()
-	kept := r.ring[:0]
-	for _, record := range r.ring {
+	// Compact in place, oldest first. Prune stays O(retained records) and is
+	// rare, while Record is the hot path. Writes never pass the read offset.
+	kept := 0
+	for i := 0; i < r.count; i++ {
+		record := r.ring[(r.start+i)%len(r.ring)]
 		days, ok := r.retention[record.Category]
 		if ok {
 			at, err := time.Parse(time.RFC3339Nano, record.At)
@@ -409,9 +424,13 @@ func (r *Recorder) Prune() {
 				continue
 			}
 		}
-		kept = append(kept, record)
+		r.ring[(r.start+kept)%len(r.ring)] = record
+		kept++
 	}
-	r.ring = kept
+	r.count = kept
+	if r.count == 0 {
+		r.start = 0
+	}
 }
 
 // Query is a message log read.
@@ -464,8 +483,8 @@ func (r *Recorder) Read(q Query) (Result, error) {
 	out := Result{Level: q.Level, Effective: effective, Limit: q.Limit, Items: []Record{}}
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	for i := len(r.ring) - 1; i >= 0; i-- {
-		record := r.ring[i]
+	for i := r.count - 1; i >= 0; i-- {
+		record := r.ring[(r.start+i)%len(r.ring)]
 		if before > 0 && record.Sequence >= before {
 			continue
 		}
@@ -519,8 +538,9 @@ func (r *Recorder) SubscribeAfter(level string, after *int64) ([]Record, bool, <
 	var replay []Record
 	reset := false
 	if after != nil {
-		reset = *after < 0 || *after > r.next || (len(r.ring) > 0 && *after < r.ring[0].Sequence-1)
-		for _, record := range r.ring {
+		reset = *after < 0 || *after > r.next || (r.count > 0 && *after < r.ring[r.start].Sequence-1)
+		for i := 0; i < r.count; i++ {
+			record := r.ring[(r.start+i)%len(r.ring)]
 			if (reset || record.Sequence > *after) && rank(record.Level) <= rank(level) {
 				replay = append(replay, record)
 			}
@@ -588,8 +608,6 @@ func (r *Recorder) loadHistory() {
 	if r.options.Directory == "" {
 		return
 	}
-	tail := make([]Record, 0, r.options.Capacity)
-	next := 0
 	for index := r.options.FileCount; index >= 0; index-- {
 		file, err := os.Open(r.path(index))
 		if err != nil {
@@ -615,18 +633,10 @@ func (r *Recorder) loadHistory() {
 			}
 			r.next++
 			record := Record{Sequence: r.next, At: fields[0], Level: fields[1], Category: fields[2], Message: redactClientLog(fields[3])}
-			if len(tail) < r.options.Capacity {
-				tail = append(tail, record)
-			} else {
-				tail[next] = record
-				next = (next + 1) % r.options.Capacity
-			}
+			// Insertion preserves file order, so the ring keeps the newest
+			// bounded tail exactly as before: oldest first from start.
+			r.appendRing(record)
 		}
 		file.Close()
-	}
-	if len(tail) == r.options.Capacity {
-		r.ring = append(tail[next:], tail[:next]...)
-	} else {
-		r.ring = tail
 	}
 }
