@@ -15,6 +15,7 @@ export class MixClock {
     const previous = this.epochs[this.epochs.length - 1];
     if (previous && context < previous.contextStart) throw new Error('mix clock moved backwards');
     if (previous && logical !== this.at(context)) throw new Error('mix clock changed logical position');
+    if (previous?.contextStart === context) this.epochs.pop();
     this.epochs.push({contextStart: context, logicalStart: logical, frontier: logical});
   }
 
@@ -33,6 +34,8 @@ export class MixClock {
     if (!epoch || !Number.isFinite(frame) || frame < epoch.logicalStart) throw new Error('invalid logical frame');
     return epoch.contextStart + frame - epoch.logicalStart;
   }
+
+  get contextStart(): number { return this.epochs[this.epochs.length - 1]?.contextStart ?? 0; }
 
   get frontier(): number { return this.epochs[this.epochs.length - 1]?.frontier ?? 0; }
 

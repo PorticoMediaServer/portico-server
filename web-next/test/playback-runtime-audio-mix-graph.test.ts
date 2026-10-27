@@ -53,3 +53,23 @@ test('an overlapping link requires the complete already-admitted incoming overla
   assert.equal(graph.admit(20).frontier, 20);
   graph.close();
 });
+
+test('both fade voices stop at the missing participant frontier, even with delayed suspension', () => {
+  const {ctx, starts} = context(), graph = new MixGraph(ctx, 1), outgoing = {}, incoming = {};
+  graph.addVoice(outgoing, 0, 30, {} as AudioNode);
+  graph.addPacket(outgoing, {start: 0, end: 30, offset: 0, buffer: {length: 30} as AudioBuffer});
+  graph.admit(10);
+  graph.linkVoice(incoming, 5, 40, {} as AudioNode, [{start: 5, end: 15, offset: 0, buffer: {length: 10} as AudioBuffer}]);
+  assert.equal(graph.admit(40).frontier, 15);
+  assert(starts.every(s => s.time + s.duration <= 1.6), 'no audible voice extends past the joint frontier');
+  ctx.currentTime = 5;
+  graph.addPacket(incoming, {start: 15, end: 40, offset: 0, buffer: {length: 25} as AudioBuffer});
+  assert.equal(graph.admit(40).frontier, 15);
+  ctx.state = 'suspended'; assert.equal(graph.rebase(50, 51), 15);
+  const count = starts.length;
+  assert.equal(graph.admit(40).frontier, 40);
+  assert(starts.slice(count).every(s => s.time >= 5.1));
+  const suffixes = starts.slice(count).map(s => [s.offset, s.duration]);
+  assert(suffixes.some(([offset, duration]) => offset === 1.5 && duration === 1.5), 'outgoing retains its own unheard suffix');
+  graph.close();
+});

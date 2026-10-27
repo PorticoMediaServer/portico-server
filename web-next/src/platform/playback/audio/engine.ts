@@ -108,7 +108,7 @@ export class Deck {
 
   /** Decodes until `seconds` of audio lie ahead of the playhead (or are held), then stops. */
   pump(seconds: number): Promise<void> {
-    if (this.closed) return this.pumpRun ?? Promise.resolve();
+    if (this.closed || this.failure) return this.pumpRun ?? Promise.resolve();
     this.requestedAhead = Math.max(this.requestedAhead, Math.min(30, Math.max(0, Number.isNaN(seconds) ? 0 : seconds)));
     if (this.pumpRun) return this.pumpRun;
     const run = Promise.resolve().then(() => this.drain(() => {
@@ -343,8 +343,8 @@ export function linkDecks(context: BaseAudioContext, current: Deck, next: Deck, 
     next.commitContinuation(current);
     current.finishTail();
     if (edge.fade > 0) {
-      const {fadeIn, fadeOut} = equalPower();
-      const knots = (curve: Float32Array) => Array.from(curve, (value, index) => ({frame: edge.start + edge.fade * index / (curve.length - 1), value}));
+      const {fadeIn, fadeOut} = equalPower(Math.min(64, edge.fade + 1));
+      const knots = (curve: Float32Array) => Array.from(curve, (value, index) => ({frame: edge.start + Math.round(edge.fade * index / (curve.length - 1)), value}));
       next.setFadeTimeline(0, knots(fadeIn));
       current.setFadeTimeline(1, knots(fadeOut));
     }
