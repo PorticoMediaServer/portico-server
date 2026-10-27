@@ -883,6 +883,10 @@
       finally{clearTimeout(artTimer);}
       requireStart();if(playback!==previousOwner)throw new Error('occurrence_replaced');
       meta=requestedMeta;var load=loadRequest(started,image,true,lease);
+      // The sender's own display cover belongs to this admitted occurrence. Show
+      // it now so a later catalogue identity read keeps it instead of clearing
+      // the loading view's art; it is never a media or session fact.
+      if(image)showArtwork(image,audioKind(requestedMeta.kind));
     }catch(e){
       if(ownedStart)await cleanupOccurrence(ownedStart,cleanupWitness);
       throw e;
@@ -1377,7 +1381,11 @@
         if(playback!==owner||!finishedOccurrence(owner,occurrence))return;
         try {
           if(await advanceQueue(owner))return;
-          try{await report('ended');}finally{notice('');await stopPlayback(true);}
+          // The title is over whether or not its last report gets through: a lost
+          // report must not leave an error card over the idle screen. The session
+          // is still closed below with the ordinary Stop.
+          try{await report('ended');}catch(_){/* lost last report, not a playback failure */}
+          finally{notice('');await stopPlayback(true);}
         } catch(error) {
           // A terminal queue fetch/admission/load failure is actionable. Do not
           // leave it as a swallowed completion or advance an unrelated occurrence.

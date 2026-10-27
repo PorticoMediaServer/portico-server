@@ -1,4 +1,4 @@
-import React, {createContext, useContext, useEffect, useMemo, useState, useSyncExternalStore} from 'react';
+import React, {createContext, useContext, useEffect, useMemo, useRef, useState, useSyncExternalStore} from 'react';
 import {CastSender, type CastSnapshot} from '../bridge/cast';
 import {Artwork, Button, Dialog, IconButton, Menu, Text, type MenuItem} from '../ui';
 import {castMeta} from '@core/presentation/index.ts';
@@ -17,7 +17,19 @@ export function CastProvider({children}: {children: React.ReactNode}) {
   // D-FEAT-1: Cast is offered whenever the server has a secure HTTPS address, however the viewer
   // signed in; `prepare()` checks the address and the server's Cast configuration.
   const key = session ? `${session.viewer.serverId}/${session.viewer.profileId}` : '';
-  const sender = useMemo(() => (key ? new CastSender(api) : null), [api, key]);
+  // The original session identity is captured when the sender is made; a later
+  // token refresh does not invent a new pairing proof or a different receiver.
+  const currentSession = useRef(session);
+  currentSession.current = session;
+  const sender = useMemo(() => {
+    if (!key) return null;
+    const original = currentSession.current, pin = api.getRouteConnection()?.pin;
+    const controllerContext = original && pin && pin.serverId === original.viewer.serverId && original.deviceId
+      ? {origin: new URL(api.baseUrl).origin, publicKey: pin.publicKey, serverId: original.viewer.serverId, authority: original.viewer.authority,
+        accountId: original.viewer.accountId, profileId: original.viewer.profileId, senderDeviceId: original.deviceId, senderFamilyId: original.sessionFamilyId}
+      : undefined;
+    return new CastSender(api, undefined, controllerContext);
+  }, [api, key]);
   // PERF-25: the server check and Google's sender script wait for an idle
   // moment or the first player open, never the launch path.
   const playerOpen = usePlayer().active;

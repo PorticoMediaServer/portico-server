@@ -4,7 +4,7 @@
  * status for the controller only). This file only loads Google's sender SDK, decides whether
  * Cast can be offered here (an application id and an HTTPS server), and bridges a Cast
  * session to the controller's transport. */
-import {CAST_NAMESPACE, CastController, type CastChoices, type CastMetadata, type CastSnapshot, type CastTransport} from '@core/cast/index.ts';
+import {CAST_NAMESPACE, CastController, type CastChoices, type CastControllerContext, type CastMetadata, type CastSnapshot, type CastTransport} from '@core/cast/index.ts';
 import {noteCastMeta} from '@core/presentation/index.ts';
 
 export type {CastMetadata, CastSnapshot};
@@ -45,13 +45,13 @@ export class CastSender {
   private controller?: CastController;
   private displayName: string;
   private prepared = false;
-  constructor(api: Api, displayName = castDisplayName()) {
+  constructor(api: Api, displayName = castDisplayName(), controllerContext?: CastControllerContext) {
     this.api = api;
     this.displayName = displayName;
     // A Cast device loads nothing but HTTPS, so a server reached over plain HTTP on the home
     // network can't be cast from; that needs remote access (and its certificate) turned on.
     const origin = new URL(api.mediaUrl('/v1/system')).origin;
-    if (origin.startsWith('https://')) this.controller = new CastController({api, origin, displayName: this.displayName});
+    if (origin.startsWith('https://')) this.controller = new CastController({api, origin, displayName: this.displayName, controllerContext});
   }
   getSnapshot = (): CastSnapshot => this.controller?.getSnapshot() ?? idle;
   subscribe = (fn: () => void) => this.controller?.subscribe(fn) ?? (() => {});
