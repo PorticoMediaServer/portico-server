@@ -58,16 +58,17 @@ export function LibraryDiscoveryScreen({service, route, header, empty, artwork, 
   // The menu's admission port is stable for this service and route: it reads the
   // service's own current generation and exact admitted rows, so an opening keeps
   // its identity across renders and never survives a replaced projection.
+  const routeLibraryId = route.libraryId, routeView = route.view ?? '', routeEntityId = route.entityId ?? '';
   const admission = useMemo(() => ({
     getSnapshot: () => ({queryRevision: service.getSnapshot().generation}),
     contains: (entry: ContentEntry) => {
       const current = service.getSnapshot(), projection = current.projection;
       if (!projection || current.phase !== 'ready') return false;
       const scope = projection.scope;
-      if (scope.libraryId !== route.libraryId || (scope.view ?? '') !== (route.view ?? '') || (scope.entityId ?? '') !== (route.entityId ?? '')) return false;
+      if (scope.libraryId !== routeLibraryId || (scope.view ?? '') !== routeView || (scope.entityId ?? '') !== routeEntityId) return false;
       return discoveryEntries(current).some(candidate => candidate === entry);
     },
-  }), [service, route.libraryId, route.view ?? '', route.entityId ?? '']);
+  }), [service, routeLibraryId, routeView, routeEntityId]);
   const {wrap: wrapCard, menu: cardMenu} = useLibraryCardMenu({admission, queryRevision: snapshot.generation});
   // The library frame is already known while its sections fail to load; keep it and put the
   // failure and its retry in place of the sections.

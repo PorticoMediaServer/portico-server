@@ -1,5 +1,5 @@
 import {createSavedCatalogueSelection, savedCatalogueEntry} from './catalogue-selection';
-import {useLayoutEffect, useMemo, useState, useSyncExternalStore} from 'react';
+import {useRef, useLayoutEffect, useMemo, useState, useSyncExternalStore} from 'react';
 import {useSearch} from '@tanstack/react-router';
 import type {ContentEntry} from '@core/library-content.ts';
 import {defineWebScreen} from '../../route-registry';
@@ -44,7 +44,11 @@ function BoundSaved({captured, owner}: {captured: ProtectedLibraryScreen; owner:
   const playback = captured.binding.playback?.runtime;
   const [choice, setChoice] = useState<Readonly<{defaultView: 'grid' | 'list'; view: 'grid' | 'list'}>>();
   const [published, publish] = useState<SavedRouteLease>();
+  // Publish only at commit, then sample once for this setup's original lifetime.
+  const setupPorts = useRef({route});
+  useLayoutEffect(() => {setupPorts.current = {route};});
   useLayoutEffect(() => {
+    const {route} = setupPorts.current;
     if (!context?.isCurrent() || !owner.runtime.operations.current) return;
     const viewer = captured.context.session().viewer;
     if (viewer.authority !== 'local' && viewer.authority !== 'hosted') return;
@@ -93,8 +97,6 @@ function CommittedSaved({captured, lease, appearance, choice, setChoice}: {captu
   appearance: NonNullable<ReturnType<typeof useScreenAppearance>>; choice?: Readonly<{defaultView: 'grid' | 'list'; view: 'grid' | 'list'}>;
   setChoice: (choice: Readonly<{defaultView: 'grid' | 'list'; view: 'grid' | 'list'}>) => void}) {
   const {context, owner, route, selection, playback} = lease, runtime = owner.runtime;
-  // One canonical data route for every witness: `home` is the UI identity only.
-  const dataRoute = savedReaderRoute(route);
   const native = useSyncExternalStore(owner.subscribe, owner.getSnapshot, owner.getSnapshot);
   const saved = useSyncExternalStore(runtime.saved.subscribe, runtime.saved.getSnapshot, runtime.saved.getSnapshot);
   const posters = useSyncExternalStore(runtime.posters.subscribe, runtime.posters.getSnapshot, runtime.posters.getSnapshot);
@@ -103,6 +105,8 @@ function CommittedSaved({captured, lease, appearance, choice, setChoice}: {captu
   const downloads = useSyncExternalStore(runtime.downloads.subscribe, runtime.downloads.getSnapshot, runtime.downloads.getSnapshot);
   const online = useSyncExternalStore(networkSubscribe, networkSnapshot, () => true), width = useShellWidth();
   const effects: SavedEffects = useMemo(() => {
+    // One canonical data route for every witness: `home` is the UI identity only.
+    const dataRoute = savedReaderRoute(route);
     const documents = dataRoute.view === 'playlist' ? [{service: runtime.saved, state: saved, expected: dataRoute}]
       : dataRoute.view === 'watchlist' || dataRoute.view === 'favorites' ? [
         {service: runtime.posters, state: posters, expected: {...dataRoute, shape: 'posters' as const}},
