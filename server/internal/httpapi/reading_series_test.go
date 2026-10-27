@@ -26,6 +26,21 @@ func readingSeriesDrain(t *testing.T, r *readingFixture) {
 	}
 }
 
+// readingPublishFileFacts runs the real reading producer that adopts a
+// publication's own author/series facts. Without it those facts are genuinely
+// absent until someone opens the book; a Saved read opens no source itself.
+func readingPublishFileFacts(t *testing.T, r *readingFixture) {
+	t.Helper()
+	session, _, err := r.s.Prepare(context.Background(), r.p, r.item, r.source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = r.s.CloseSession(r.p, session.ID); err != nil {
+		t.Fatal(err)
+	}
+	readingSeriesDrain(t, r)
+}
+
 func TestReadingSeriesNumberedOrderingSignedPagingAndInputDrift(t *testing.T) {
 	r := newReadingFixture(t, "book", "pdf")
 	ctx := context.Background()

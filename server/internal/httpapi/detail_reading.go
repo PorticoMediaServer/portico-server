@@ -42,7 +42,29 @@ func (d Dependencies) detailContentAccess(r *http.Request) (identity.Principal, 
 		return p, "", "", err
 	}
 	if err = d.restrictedItem(r, p, r.PathValue("id")); err != nil {
-		return p, "", "", err
+		// A Reading leaf is not timed-media playable, so the catalogue's
+		// playable-kind lookup conceals it. The same request's Reading personal
+		// authority decides it instead; its refusal keeps the original
+		// concealed absence.
+		if !errors.Is(err, identity.ErrContentRestricted) {
+			return p, "", "", err
+		}
+		read, readErr := dbwork.BeginSnapshot(r.Context(), d.DB)
+		if readErr != nil {
+			return p, "", "", readErr
+		}
+		var kind int
+		if kindErr := read.Tx().QueryRowContext(r.Context(), `SELECT kind FROM catalog_entities WHERE public_id=pid_blob(?)`, r.PathValue("id")).Scan(&kind); kindErr != nil || kind != 20 && kind != 21 {
+			_ = read.Rollback()
+			return p, "", "", err
+		}
+		readingErr := d.savedReadingItemAuthorityTx(r.Context(), read.Tx(), p, r.PathValue("id"))
+		if rollbackErr := read.Rollback(); rollbackErr != nil {
+			return p, "", "", rollbackErr
+		}
+		if readingErr != nil {
+			return p, "", "", err
+		}
 	}
 	library, fence, err := d.detailContentFenceFor(r, p)
 	return p, library, fence, err
