@@ -104,7 +104,11 @@ function CommittedHomeRow({captured, context, row, owner, continuity, presentati
   // navigation, consumed into the controller; a controller that moved while the address
   // still held the previous one is the toolbar, published on the address. Our own
   // replace echo lands with both equal and does nothing, so it never rebuilds the page.
+  // Publish only at commit, then sample once for this setup's original lifetime.
+  const setupPorts = useRef({lastRoute, written, settled, arrival, setBuild});
+  useLayoutEffect(() => {setupPorts.current = {lastRoute, written, settled, arrival, setBuild};});
   useLayoutEffect(() => {
+    const {lastRoute, written, settled, arrival, setBuild} = setupPorts.current;
     if (!controllerQuery || !controllerKey || !owner.life.current() || !context.isCurrent()) return;
     const moved = routeKey !== lastRoute.current;
     if (moved) lastRoute.current = routeKey;

@@ -74,7 +74,11 @@ function readingTabs(capabilities: BrowseCapabilities | undefined, kind: string)
  *  captured actor, library and search are the witnesses every read is admitted against. */
 function useReadingLifetime(context: ScreenContext, routeKey: string, routeCurrent: () => boolean) {
   const [published, publish] = useState<Readonly<{id: string; context: ScreenContext; routeKey: string; life: ReturnType<typeof screenLifetime>}>>();
+  // Publish only at commit, then sample once for this setup's original lifetime.
+  const setupPorts = useRef({routeCurrent});
+  useLayoutEffect(() => {setupPorts.current = {routeCurrent};});
   useLayoutEffect(() => {
+    const {routeCurrent} = setupPorts.current;
     const original = screenLifetime(context);
     let live = true;
     const current = () => live && original.current() && routeCurrent();
@@ -237,7 +241,11 @@ function ContextLibrary(props: BoundLibraryProps & {context: ScreenContext; pres
   const frame = useBoundLibraryFrame(props, props.context, props.presentation), {context, agentKey, setAgentFact} = frame, {library} = props;
   const href = useLocation({select: location => location.href}), runtime = props.captured.binding.playback?.runtime;
   const resources = useBrowseLease(context, frame.sourceKey, href, () => router.state.location.href === href, runtime);
+  // Publish only at commit, then sample once for this setup's original lifetime.
+  const setupPorts1 = useRef({setAgentFact});
+  useEffect(() => {setupPorts1.current = {setAgentFact};});
   useEffect(() => {
+    const {setAgentFact} = setupPorts1.current;
     if (!resources?.life.current()) return;
     let live = true;
     const withhold = () => {if (live && resources.life.current()) setAgentFact({key: agentKey, context, online: false});};

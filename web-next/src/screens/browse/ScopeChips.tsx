@@ -1,4 +1,4 @@
-import {useLayoutEffect, useState, useSyncExternalStore} from 'react';
+import {useRef, useLayoutEffect, useState, useSyncExternalStore} from 'react';
 import {defaultI18n} from '@i18n';
 import type {Library} from '@core/index.ts';
 import type {BrowseCount, BrowseNode} from '@core/browse.ts';
@@ -14,7 +14,11 @@ export function BrowseScopeChips({controller, libraries, reportError, labelFor}:
   const [scope, setScope] = useState<Readonly<{owner: BrowseController; query: BrowseState; counts: readonly BrowseCount[]; signature: string}> | undefined>(undefined);
   const offered = !!libraries && controller.source.libraryId === '*' && state.capabilities?.fields.some(field => field.id === 'library' && field.operators.includes('in'));
   const signature = JSON.stringify({predicates: state.predicates.filter(node => !('field' in node) || node.field !== 'library'), groups: scopeTypes(libraries ?? [])});
+  // Publish only at commit, then sample once for this setup's original lifetime.
+  const setupPorts = useRef({state});
+  useLayoutEffect(() => {setupPorts.current = {state};});
   useLayoutEffect(() => {
+    const {state} = setupPorts.current;
     if (!offered) return;
     const stop = new AbortController(), original = state;
     const current = () => !stop.signal.aborted && controller.acceptsQuery(original);
