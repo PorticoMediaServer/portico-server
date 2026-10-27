@@ -75,10 +75,11 @@ export function createQueueEditOpening(input: WebQueueEditInput): WebQueueEditOp
    * any observed refusal latches dead so a later true cannot revive it. */
   const live = (): boolean => {
     if (disposed || dead || input.lifetime.signal.aborted) return false;
-    const host = input.lifetime.isCurrent();
-    const owner = host && input.current();
+    if (!input.lifetime.isCurrent()) {retire(); return false;}
+    if (!input.current()) {retire(); return false;}
     if (dead || disposed || input.lifetime.signal.aborted) {retire(); return false;}
-    if (!owner || !input.lifetime.isCurrent()) {retire(); return false;}
+    // The last host predicate may have replaced the runtime/source and still answered true.
+    if (!input.lifetime.isCurrent() || !input.current()) {retire(); return false;}
     return !dead && !disposed && !input.lifetime.signal.aborted;
   };
   const publish = (next: Partial<WebQueueEditSnapshot>) => {
@@ -223,6 +224,16 @@ export type WebQueueEditOutputProof = Readonly<{
 
 const v1TargetOf = (target: WebListeningTarget): V1PlaybackTarget => Object.freeze({sessionId: target.sessionId, generation: target.sessionGeneration,
   playbackRun: target.playbackRun, itemId: target.itemId, versionId: target.versionId, queueId: target.queueId, entryId: target.entryId});
+
+/** Strict admission: the original owner is re-proved after the command predicate (which can
+ * replace or retire the runtime and still answer true), then the signal is checked last. */
+export function admitCommand(owner: () => boolean, command: WebQueueEditLifetime): boolean {
+  if (command.signal.aborted) return false;
+  if (!owner()) return false;
+  if (command.signal.aborted || !command.isCurrent()) return false;
+  if (command.signal.aborted) return false;
+  return owner() && !command.signal.aborted;
+}
 
 /** Local proof for one edit opening: exact server stack, local dock fence, no remote/group,
  * the original accepted session/queue occurrence/run/source/version, re-read after getters. */

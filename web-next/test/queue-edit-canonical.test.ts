@@ -6,7 +6,7 @@ import {V1PlaybackApi} from '@core/playback-v1/legacy-bridge.ts';
 import {V1QueuePlayer} from '@core/playback-v1/v1-queue-player.ts';
 import {queueItemInput} from '@core/queue-controller.ts';
 import type {V1PlaybackTarget} from '@core/playback-v1/v1-queue-player.ts';
-import {createQueueEditOpening, localEditOutput, type WebQueueEditPage, type WebQueueEditOutputRead} from '../src/platform/playback/queue-edit-adapter.ts';
+import {admitCommand, createQueueEditOpening, localEditOutput, type WebQueueEditPage, type WebQueueEditOutputRead} from '../src/platform/playback/queue-edit-adapter.ts';
 import type {PlaybackFence} from '../../packages/player-core/src/index.ts';
 
 /** Composition through the REAL public captureEditWindow reader and parsed wire facts. */
@@ -122,4 +122,29 @@ test('a takeover during the getters refuses the opening with zero canonical queu
     await assert.rejects(() => reader.edit(page, {action: 'remove', entryId: page.items[1]!.entryId}));
     assert.equal(counter.calls, before);    // no canonical queue IO for the refused edit
   } finally {f.stop();}
+});
+
+test('a last-read owner flip is refused, not sampled once (pure tail)', () => {
+  const stack = {}, source = {};
+  const target = {libraryId: 'library', itemId: 'item', sessionId: 'session', sessionGeneration: 2, sourceId: 'source',
+    versionId: 'version', playbackRun: 4, queueId: 'queue', entryId: 'entry'};
+  const fence = {kind: 'queue', sessionId: 'session', generation: 2, itemId: 'item', entryId: 'entry', sourceId: 'source'} as unknown as PlaybackFence;
+  let reads = 0;
+  const local = () => ({stack, source, current: true, fence, presentation: true, dockLocalFence: fence, dockRemote: false, group: false,
+    session: {id: 'session', role: 'local', kind: 'audio', itemId: 'item', versionId: 'version', generation: 2, queueId: 'queue', entryId: 'entry'},
+    viewQueueId: 'queue', viewEntryId: 'entry', playbackRun: 4} as WebQueueEditOutputRead);
+  const tail = localEditOutput({originalStack: stack, originalSource: source, fence, target, same: (a, b) => a === b,
+    read: () => {reads++; return {...local(), ...(reads > 1 ? {group: true} : {})};}});
+  assert.equal(tail.kind, 'unknown');
+});
+
+test('a command predicate that retires the owner after it was proved still refuses', () => {
+  let owner = 0;
+  const command = {signal: new AbortController().signal, isCurrent: () => true};
+  assert.equal(admitCommand(() => {owner++; return true;}, command), true);
+  owner = 0;
+  assert.equal(admitCommand(() => {owner++; return owner < 2;}, command), false); // second proof fails
+  const aborted = new AbortController();
+  aborted.abort();
+  assert.equal(admitCommand(() => true, {signal: aborted.signal, isCurrent: () => true}), false);
 });

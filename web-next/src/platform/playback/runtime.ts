@@ -53,7 +53,7 @@ import {browserClientProfile} from './client-profile.ts';
 import {selectionSegments, selectionStartSeconds} from './selection.ts';
 import {captureQueueSource, type WebPlaybackQueueSource} from './queue-source.ts';
 import {createWebListeningPort, type WebListeningLifetime, type WebListeningPort} from './listening-port.ts';
-import {createQueueEditOpening, localEditOutput} from './queue-edit-adapter.ts';
+import {admitCommand, createQueueEditOpening, localEditOutput} from './queue-edit-adapter.ts';
 import type {WebQueueListSnapshot} from './queue-list.ts';
 import {PlayerChaptersService} from '@core/player-chapters.ts';
 import {LyricsService} from '@core/lyrics.ts';
@@ -1484,7 +1484,7 @@ export class WebShellPlaybackRuntime {
               viewQueueId: view?.queue.id, viewEntryId: view?.queue.currentEntryId ?? undefined, playbackRun: playback.playbackRun};
           }});
         const reader = stack.queue.captureEditWindow(v1Target, shown.revision ?? '', {signal: combined(command.signal),
-          isCurrent: () => reprove() && !command.signal.aborted && command.isCurrent(), readOutput});
+          isCurrent: () => admitCommand(reprove, command), readOutput});
         return createQueueEditOpening({reader, current: reprove, lifetime: command, currentEntryId: target.entryId,
           hidden: entryId => shown.entries.find(entry => entry.entryId === entryId)?.hidden === true});
       },
