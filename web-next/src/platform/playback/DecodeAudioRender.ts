@@ -36,6 +36,7 @@ type Feed = {unlock(): void; close(): void; prefetchAll(): Promise<void>; open(f
 type Playing = {deck: Deck; plan: PlayableAudioRender; key: string; fromFrame: number; reader: Feed; token?: string; speed: number};
 type Candidate = {deck: Deck; plan: PlayableAudioRender; token: string; reader: Feed; ready: boolean; speed: number};
 type Linked = Candidate & {edge: number; fade: number};
+type ReadyStart = {revision: number; primary: Playing; graph: MixGraph; intent: number; seek?: number; seekSettled: boolean; publishing: boolean};
 type BufferHold = {revision: number; context: AudioContext; graph: MixGraph; primary: Playing; incoming?: Linked; retiring?: Playing; key: string; intent: number; seek: string; token?: string; suspended: boolean; rebased: boolean; resuming: boolean; suspending: boolean};
 
 const sessionKey = (s: PlaybackSnapshot['session']) => (s ? `${s.id}:${s.generation}` : '');
@@ -77,6 +78,7 @@ export class DecodeAudioRender {
   private resumeAttempt = 0;
   private readonly listening: ListeningEffectsPort;
   private graph?: MixGraph;
+  private readyStart?: ReadyStart;
   private hold?: BufferHold;
   private suspension?: Promise<void>;
   private resumePending?: object;
@@ -281,7 +283,7 @@ export class DecodeAudioRender {
   private closePlaying(p?: Playing | Candidate) { if (!p) return; (p.deck as Deck | undefined)?.close(); p.reader.close(); }
   private reset() {
     ++this.revision; ++this.resumeAttempt;
-    this.resumePending = undefined; this.hold = undefined;
+    this.resumePending = undefined; this.hold = undefined; this.readyStart = undefined;
     this.graph?.close(); this.graph = undefined;
     this.askedForGesture = false;
     for (const p of [this.primary, this.candidate, this.incoming, this.retiring]) this.closePlaying(p);
@@ -292,7 +294,7 @@ export class DecodeAudioRender {
   }
 
   apply(s: PlaybackSnapshot) {
-    if (this.disposed) return;
+    if (this.disposed || !this.renderWitness(s)()) return;
     this.snapshot = s;
     if (!s.session || !s.audioEffects.rendering || s.phase === 'error' || s.phase === 'ended' || s.failedSeek) { this.reset(); return; }
     const plan = s.session.audio;
@@ -305,17 +307,26 @@ export class DecodeAudioRender {
       const position = seek?.positionSeconds ?? (this.primary?.key === key ? this.position() : s.positionSeconds);
       this.reset();
       this.seekKey = seekKey; this.lastRate = s.audioEffects.rate;
-      void this.start(plan, key, Math.max(0, Math.min(plan.durationFrames - 1, Math.round(position * plan.sampleRate))), s.intentId, seek?.revision);
+      void this.start(plan, key, Math.max(0, Math.min(plan.durationFrames - 1, Math.round(position * plan.sampleRate))), s);
       return;
     }
+    const current = this.renderWitness(s);
     for (const p of [this.primary, this.incoming, this.retiring]) if (p) p.deck.setGain(this.gainFor(p.plan));
     this.reportProcessing();
+    if (!current()) return;
+    // ready/seekApplied notify synchronously. Their nested apply may pause, but cannot resume
+    // or prepare another edge before this original publication sequence finishes its checks.
+    if (this.readyStart?.publishing) { if (s.intent === 'paused' || s.seekError) this.transport(s); return; }
+    if (this.publishStart(s)) return;
     this.transport(s);
+    if (!current()) return;
     this.prepared(s);
+    if (!current()) return;
     this.committed(s);
   }
 
   private transport(s: PlaybackSnapshot) {
+    if (!this.renderWitness(s)()) return;
     if (s.intent === 'paused' || s.seekError) { this.carrier.pause(); if (this.hold && (!this.hold.suspended || this.hold.resuming)) this.suspendHold(this.hold); else void this.suspendContext().catch(() => {}); return; }
     if (this.hold) { this.recoverHold(this.hold); return; }
     if ((this.context.state as string === 'suspended' || this.context.state as string === 'interrupted') && !this.starting && !this.askedForGesture) {
@@ -325,12 +336,12 @@ export class DecodeAudioRender {
     } else this.carrier.play();
   }
 
-  private async start(plan: PlayableAudioRender, key: string, fromFrame: number, intent: number, seekRevision?: number) {
+  private async start(plan: PlayableAudioRender, key: string, fromFrame: number, original: PlaybackSnapshot) {
     const revision = this.revision;
     this.starting = true;
     const reader = this.reader(plan, false);
     try {
-      const speed = this.snapshot.audioEffects.rate;
+      const speed = original.audioEffects.rate;
       const deck = await this.openDeck(plan, reader, fromFrame, 'primary', speed);
       if (revision !== this.revision || this.disposed) { deck?.close(); reader.close(); return; }
       if (!deck) { reader.close(); this.service.audioRenderFailed('audio_render_failed'); return; }
@@ -346,13 +357,46 @@ export class DecodeAudioRender {
       deck.attachGraph(graph); deck.start(0);
       graph.admit(Math.round(AHEAD_SECONDS * this.context.sampleRate));
       this.starting = false;
+      this.readyStart = {revision, primary: this.primary, graph, intent: original.intentId, seek: original.pendingSeek?.revision, seekSettled: false, publishing: false};
+      const current = this.renderWitness(original);
+      if (!current()) return;
       this.reportProcessing();
-      this.service.ready(intent);
-      if (seekRevision !== undefined) this.service.seekApplied(intent, seekRevision, fromFrame / plan.sampleRate, 'paused');
-      this.transport(this.service.getSnapshot());
-      void deck.pump(AHEAD_SECONDS);
+      if (!current()) return;
+      this.publishStart(original);
     } catch {
       if (revision === this.revision && !this.disposed) this.service.audioRenderFailed('audio_render_failed');
+    }
+  }
+
+  /** Publish only an actually installed source, under this call's captured control state.
+   * A later apply/tick may complete paused readiness using its own fresh witness; the old
+   * playing continuation never reads and adopts that newer state after a notification. */
+  private publishStart(s: PlaybackSnapshot): boolean {
+    const start = this.readyStart;
+    if (!start || start.publishing) return false;
+    const current = this.renderWitness(s);
+    if (!current() || this.revision !== start.revision || this.primary !== start.primary || this.graph !== start.graph ||
+        s.intentId !== start.intent || sessionKey(s.session) !== start.primary.key) return true;
+    if (start.seek !== undefined && !start.seekSettled && s.pendingSeek?.revision !== start.seek) return true;
+    start.publishing = true;
+    try {
+      // These are the exact known effects of ready/seekApplied, not a newly borrowed snapshot.
+      let expected: PlaybackSnapshot = s.phase === 'starting' ? {...s, phase: 'ready'} : s;
+      this.service.ready(start.intent);
+      if (!current(expected)) return true;
+      if (start.seek !== undefined && !start.seekSettled) {
+        const applied = this.service.seekApplied(start.intent, start.seek, start.primary.fromFrame / start.primary.plan.sampleRate, 'paused');
+        start.seekSettled = applied;
+        expected = {...expected, pendingSeek: undefined, seekError: undefined, failedSeek: undefined};
+        if (!applied || !current(expected)) return true;
+      }
+      this.readyStart = undefined;
+      this.transport(expected);
+      if (!current(expected)) return true;
+      void start.primary.deck.pump(AHEAD_SECONDS);
+      return true;
+    } finally {
+      start.publishing = false;
     }
   }
 
@@ -451,19 +495,19 @@ export class DecodeAudioRender {
 
   /** Notifications are synchronous and may pause without changing intentId or the deck.
    * Retain this tick's original control state; never continue by adopting a subscriber's state. */
-  private renderWitness(s: PlaybackSnapshot): () => boolean {
+  private renderWitness(s: PlaybackSnapshot): (expected?: PlaybackSnapshot) => boolean {
     const primary = this.primary, incoming = this.incoming, retiring = this.retiring, graph = this.graph;
     const context = this.context, revision = this.revision, seek = this.seekKey;
-    return () => {
+    return (expected = s) => {
       const current = this.service.getSnapshot();
       return !this.disposed && this.primary === primary && this.incoming === incoming && this.retiring === retiring &&
         this.graph === graph && this.context === context && this.revision === revision && this.seekKey === seek &&
-        current.intent === s.intent && current.intentId === s.intentId && current.phase === s.phase &&
-        current.session === s.session && sessionKey(current.session) === sessionKey(s.session) &&
-        current.pendingSeek === s.pendingSeek && current.seekRevision === s.seekRevision &&
-        current.seekError === s.seekError && current.failedSeek === s.failedSeek &&
-        current.audioEffects.rendering === s.audioEffects.rendering && current.audioEffects.rate === s.audioEffects.rate &&
-        current.audioEffects.prepared === s.audioEffects.prepared && current.audioEffects.committed === s.audioEffects.committed;
+        current.intent === expected.intent && current.intentId === expected.intentId && current.phase === expected.phase &&
+        current.session === expected.session && sessionKey(current.session) === sessionKey(expected.session) &&
+        current.pendingSeek === expected.pendingSeek && current.seekRevision === expected.seekRevision &&
+        current.seekError === expected.seekError && current.failedSeek === expected.failedSeek &&
+        current.audioEffects.rendering === expected.audioEffects.rendering && current.audioEffects.rate === expected.audioEffects.rate &&
+        current.audioEffects.prepared === expected.audioEffects.prepared && current.audioEffects.committed === expected.audioEffects.committed;
     };
   }
 
@@ -473,6 +517,7 @@ export class DecodeAudioRender {
     this.reportProcessing();
     if (!current()) return;
     if (!p || !graph || s.phase === 'error' || s.phase === 'ended' || this.starting) return;
+    if (this.readyStart?.publishing || this.publishStart(s)) return;
     this.measureLag();
     if (!current()) return;
     const decks = this.decks();

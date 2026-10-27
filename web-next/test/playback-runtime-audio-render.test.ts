@@ -454,3 +454,69 @@ test('a truncated source fails out of buffering, while a valid short final remai
     render.dispose();
   }
 });
+
+for (const seam of ['apply-processing', 'initial-processing', 'ready', 'seekApplied'] as const) {
+  test(`actual service subscriber retirement during ${seam} cannot resume or publish the old start`, bounded, async ctx => {
+    const {PlaybackService} = await import('../../packages/client-core/src/index.ts');
+    const {DecodeAudioRender} = await import('../src/platform/playback/DecodeAudioRender.ts');
+    const t = setup(), rate = 44100, seeking = seam === 'seekApplied', pause = seam.endsWith('processing');
+    const service = new PlaybackService({progressPlayback: async () => {}, stopPlayback: async () => {}, createPlayback: async () => {throw new Error('no server create');}} as any, () => 'fixture', {deferRecovery: true});
+    const plan = {...t.a, durationFrames: rate * 4};
+    (service as any).snapshot = {...service.getSnapshot(), ...t.get(), phase: 'starting', session: {...t.get().session, id: 'original', audio: plan, resumeSeconds: 0, duration: 4}, duration: 4,
+      ...(seeking ? {pendingSeek: {revision: 2, positionSeconds: 1}} : {})};
+    t.f.ctx.state = 'suspended';
+    const resumes: string[] = [];
+    t.f.ctx.resume = async () => {resumes.push(service.getSnapshot().session!.id); t.f.ctx.state = 'running';};
+    const render = new DecodeAudioRender(service, p => p, {addEventListener() {}, removeEventListener() {}, volume: 1, muted: false} as any);
+    ctx.after(() => render.dispose()); clearInterval((render as any).timer);
+    const initial = stalledPcm(rate, rate * (seeking ? 3 : 4), seam === 'apply-processing' ? rate * 4 : 0);
+    let opens = 0;
+    (render as any).reader = () => {
+      const pcm = opens++ === 0 ? initial : stalledPcm(rate, rate * 4, rate * 4);
+      return {unlock() {}, close: () => pcm.source.close(), prefetchAll: async () => {}, open: async () => pcm.source};
+    };
+    let notifying = '', armed = false, retiredAt = -1, resumesAtRetirement = -1;
+    const calls: {name: string; session: string | undefined}[] = [];
+    for (const name of ['audioProcessingApplied', 'ready', 'seekApplied', 'audioPrepared', 'audioCommit'] as const) {
+      const original = service[name].bind(service) as (...args: any[]) => unknown;
+      (service as any)[name] = (...args: any[]) => {calls.push({name, session: service.getSnapshot().session?.id}); const previous = notifying; notifying = name; try {return original(...args);} finally {notifying = previous;}};
+    }
+    let oldGraph: any;
+    const off = service.subscribe(() => {
+      const target = pause ? 'audioProcessingApplied' : seam;
+      if (!armed || notifying !== target || !(render as any).graph) return;
+      armed = false; oldGraph = (render as any).graph;
+      if (pause) {
+        const intent = service.getSnapshot().intentId;
+        service.pause(); assert.equal(service.getSnapshot().intentId, intent);
+      } else {
+        const before = service.getSnapshot();
+        (service as any).update({intentId: before.intentId + 1, phase: 'starting', intent: 'paused', pendingSeek: undefined,
+          session: {...before.session, id: 'replacement', generation: 2, audio: plan}});
+      }
+      retiredAt = calls.length; resumesAtRetirement = resumes.length;
+    }); ctx.after(off);
+    const detach = service.attachAdapter({apply: (s: any) => render.apply(s)} as any); ctx.after(detach);
+    await settle();
+    if (pause) {
+      const before = service.getSnapshot();
+      (service as any).snapshot = {...before, audioEffects: {...before.audioEffects, eqApplied: true}};
+      (render as any).processingReport = '';
+    }
+    armed = true;
+    if (seam === 'apply-processing') {
+      t.f.ctx.state = 'suspended'; render.apply(service.getSnapshot());
+    } else initial.release();
+    await settle();
+    assert.equal(armed, false, 'the actual producer reached the controlled subscriber');
+    assert.equal(resumes.length, resumesAtRetirement, 'an older apply/start never resumes after control drift');
+    assert.deepEqual(calls.slice(retiredAt).filter(call => call.session === 'original' && ['ready', 'seekApplied', 'audioPrepared', 'audioCommit'].includes(call.name)), []);
+    if (pause) assert.equal(service.getSnapshot().intent, 'paused');
+    else {
+      assert.equal(service.getSnapshot().session!.id, 'replacement');
+      assert.equal(initial.closed, true);
+      assert.throws(() => oldGraph.preview(rate), /retired/);
+      assert.equal(resumes.filter(id => id === 'original').length, 0);
+    }
+  });
+}
