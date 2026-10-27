@@ -39,6 +39,8 @@ export type WebPlaybackSettings = Readonly<{
   defaultQuality?: () => QualityRequest | undefined;
   skipModes: () => Readonly<Record<string, SkipMode>>;
   audioEffects: () => AudioEffectsSettings;
+  /** Canonical playback.showSyncedLyrics; absent/unknown keeps the Lyrics opening withdrawn. */
+  lyricsEnabled?: () => boolean;
   musicDefaults?: () => Readonly<{shuffle: boolean; repeat: 'off' | 'one' | 'all'}> | undefined;
   webVolume: () => boolean;
 }>;

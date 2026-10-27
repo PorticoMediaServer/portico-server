@@ -27,6 +27,7 @@ export function shellPlaybackSettings(source: PreferenceSnapshot | (() => Prefer
     audiobookPreferences: () => audiobookPreferences(preferences()),
     skipModes: () => ({intro: preferenceValue<SkipMode>(preferences(), 'playback.introSkip'), credits: preferenceValue<SkipMode>(preferences(), 'playback.creditsSkip'), recap: preferenceValue<SkipMode>(preferences(), 'playback.recapSkip')}),
     audioEffects: () => musicAudioEffects(preferences()), musicDefaults: () => musicQueueDefaults(preferences()),
+    lyricsEnabled: () => preferenceValue<boolean>(preferences(), 'playback.showSyncedLyrics') === true,
     subtitlePreferences: () => subtitlePreferences(preferences()),
     webVolume: () => !(/iPhone|iPad|iPod/.test(browser.userAgent) || /Macintosh/.test(browser.userAgent) && browser.maxTouchPoints > 1),
   };

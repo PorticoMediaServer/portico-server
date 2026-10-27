@@ -52,6 +52,9 @@ import {playbackEnvironment} from './environment.ts';
 import {browserClientProfile} from './client-profile.ts';
 import {selectionSegments, selectionStartSeconds} from './selection.ts';
 import {captureQueueSource, type WebPlaybackQueueSource} from './queue-source.ts';
+import {createWebListeningPort, type WebListeningLifetime, type WebListeningPort} from './listening-port.ts';
+import {PlayerChaptersService} from '@core/player-chapters.ts';
+import {LyricsService} from '@core/lyrics.ts';
 import {currentPolicyQueue, type WebPlaybackPolicyAction} from './policy.ts';
 import type {WebPlaybackVersionChoices, WebPlaybackVersionChoice} from './versions.ts';
 import type {VideoLike} from './web-media-player.ts';
@@ -1393,6 +1396,32 @@ export class WebShellPlaybackRuntime {
     if (this.current(stack)) this.sync();
   }
   /** Root34's general Up next list uses only this captured server queue. */
+  /** One admitted listening record over the existing chapters, lyrics and queue services.
+   * It is built only from a committed fence and target; no player, session, queue or engine is created. */
+  captureListening(fence: PlaybackFence, lifetime: WebListeningLifetime): WebListeningPort | undefined {
+    if (fence.kind !== 'queue' || !this.matches(fence) || this.stack.mode !== 'server' || this.group?.matches(fence)) return undefined;
+    const stack = this.stack, view = stack.queue.getSnapshot().view, session = stack.queue.currentSession(), playback = stack.service.getSnapshot();
+    const libraryId = stack.libraryId, versionId = session?.versionId;
+    if (!view?.queue.id || view.queue.currentEntryId !== fence.entryId || !session || !libraryId || !versionId) return undefined;
+    if (session.id !== fence.sessionId || session.itemId !== fence.itemId || session.presentation.generation !== fence.generation
+      || session.queue?.queueId !== view.queue.id || session.queue.entryId !== fence.entryId) return undefined;
+    const target = Object.freeze({libraryId, itemId: fence.itemId, sessionId: session.id, sessionGeneration: fence.generation,
+      versionId, playbackRun: playback.playbackRun, queueId: view.queue.id, entryId: fence.entryId});
+    const guard = () => this.current(stack) && this.matches(fence) && !this.group?.matches(fence) && !lifetime.signal.aborted && lifetime.isCurrent();
+    const combined = () => AbortSignal.any([stack.life.signal, this.life.signal, lifetime.signal]);
+    const chapters = new PlayerChaptersService({api: this.source.api, scope: this.source.contentScope, pageSize: 100});
+    const lyrics = new LyricsService(this.source.api, this.source.contentScope, {libraryId, itemId: fence.itemId, sessionId: session.id, sessionGeneration: fence.generation});
+    const queue = this.queueList(fence, lifetime);
+    return createWebListeningPort({fence, lifetime, target, current: guard, chapters,
+      chaptersTarget: {libraryId, itemId: fence.itemId, sessionId: session.id, sessionGeneration: fence.generation},
+      lyrics, lyricsEnabled: () => this.source.settings.lyricsEnabled?.() === true, ...(queue ? {queue} : {}),
+      policy: (expected, revision, intent, current) => stack.queue.setQueuePolicy(expected, revision, intent, {signal: combined(), isCurrent: current}),
+      save: (queueId, name, signal, current, onProgress) => stack.queue.saveAsPlaylist(queueId, name,
+        save => {if (current()) onProgress?.(save);}, signal),
+      seek: (seconds, current) => {if (!current()) return Promise.reject(new Error('stale_playback_command')); return this.seek(fence, seconds);},
+    });
+  }
+
   queueList(fence: PlaybackFence, selectionLife?: WebQueueListLifetime): WebQueueListPort | undefined {
     if (fence.kind !== 'queue' || !this.matches(fence) || this.stack.mode !== 'server' || this.group?.matches(fence)) return;
     const stack = this.stack, view = stack.queue.getSnapshot().view, queueId = view?.queue.id;

@@ -21,6 +21,8 @@ export type {PlaybackWindow, VideoPresentationLayout} from './video-presentation
 export {readPlaybackTrickplay} from './trickplay.ts';
 export type {PlaybackTrickplaySource, PlaybackTrickplaySelection} from './trickplay.ts';
 export {playbackPolicyNext} from './policy.ts';
+export {createWebListeningPort} from './listening-port.ts';
+export type {WebListeningPort, WebListeningLifetime, WebListeningTarget, WebListeningChaptersPort, WebListeningLyricsPort, WebListeningQueuePort} from './listening-port.ts';
 export type {WebPlaybackPolicyAction, WebPlaybackPolicyNext} from './policy.ts';
 export type {WebPlaybackVersionChoices, WebPlaybackVersionChoice} from './versions.ts';
 export {playbackVersionRows} from './version-rows.ts';
