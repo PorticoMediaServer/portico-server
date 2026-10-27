@@ -77,23 +77,33 @@ async function localQueue(f: ReturnType<typeof queueRuntime>) {
   return fence;
 }
 
-/** Wraps ONLY the supplied context.readOutput of the real canonical reader, so the test can
- * arm the real group getter while readOutput itself is executing (no product hook). */
-function instrumentReadOutput(f: ReturnType<typeof queueRuntime>, service: GroupSessionService) {
+/** Wraps ONLY the supplied context.readOutput of the real canonical reader. It stays
+ * pass-through (disarmed) while the opening is constructed — the canonical constructor calls
+ * readOutput synchronously — and is armed explicitly for the operation under test. */
+function instrumentReadOutput(f: ReturnType<typeof queueRuntime>, service: GroupSessionService, mode: 'takeover' | 'control') {
   const queue = (f.runtime as unknown as {stack: {queue: {captureEditWindow: (...args: never[]) => unknown}}}).stack.queue;
   const real = queue.captureEditWindow.bind(queue) as (target: unknown, revision: string, context: {readOutput: () => unknown} & Record<string, unknown>) => unknown;
-  let inRead = false, last: unknown, reads = 0, groupReadsArmed = 0, invalidated = false;
   const original = service.getSnapshot.bind(service);
+  let armed = false, inRead = false, last: unknown, reads = 0, groupReadsArmed = 0, invalidated = false;
   (service as unknown as {getSnapshot: () => ReturnType<typeof original>}).getSnapshot = () => {
     const snapshot = original();
-    if (!inRead) return snapshot;                       // only the group getter inside readOutput is armed
+    if (!armed || !inRead) return snapshot;
     groupReadsArmed++;
-    if (groupReadsArmed === 4) {invalidated = true; f.invalidate();}  // the final group read of the second sample
-    return snapshot;                                    // still answers with the previous innocuous value
+    if (mode === 'takeover' && groupReadsArmed === 4) {invalidated = true; f.invalidate();}
+    return snapshot;
   };
   (queue as unknown as {captureEditWindow: unknown}).captureEditWindow = (target: unknown, revision: string, context: {readOutput: () => unknown}) =>
-    real(target, revision, {...context, readOutput: () => {inRead = true; reads++; try {last = context.readOutput(); return last;} finally {inRead = false;}}});
-  return {get: () => ({last, reads, groupReadsArmed, invalidated}), restore: () => {(queue as unknown as {captureEditWindow: unknown}).captureEditWindow = real;}};
+    real(target, revision, {...context, readOutput: () => {
+      if (!armed) return context.readOutput();           // pass-through before arming
+      reads++; inRead = true;
+      try {last = context.readOutput(); return last;} finally {inRead = false;}
+    }});
+  return {
+    arm: () => {armed = true; reads = 0; groupReadsArmed = 0; invalidated = false; last = undefined;},
+    get: () => ({last, reads, groupReadsArmed, invalidated}),
+    restore: () => {(queue as unknown as {captureEditWindow: unknown}).captureEditWindow = real;
+      (service as unknown as {getSnapshot: () => ReturnType<typeof original>}).getSnapshot = original;},
+  };
 }
 
 test('the actual runtime refuses an edit opening when the final group getter retires the output', async t => {
@@ -102,20 +112,23 @@ test('the actual runtime refuses an edit opening when the final group getter ret
     stream: (_path, _last, signal) => new Promise((_resolve, reject) => {
       signal.addEventListener('abort', () => reject(new DOMException('closed', 'AbortError')), {once: true});
     })});
+  const instrument = instrumentReadOutput(f, service, 'takeover');
   const unbind = f.runtime.bindGroup(service, () => true, error => {throw error;});
+  t.after(() => {instrument.restore(); unbind(); service.dispose();});
   const lifetime = {signal: new AbortController().signal, isCurrent: () => true};
   const port = f.runtime.captureListening(fence, lifetime)!;
   assert.ok(port.queue, 'the local queue facade is admitted');
-  const instrument = instrumentReadOutput(f, service);
-  const opening = port.queue!.edit(port.queue!.list.getSnapshot(), lifetime);
-  t.after(() => {instrument.restore(); opening.dispose(); unbind(); service.dispose();});
+  const opening = port.queue!.edit(port.queue!.list.getSnapshot(), lifetime);   // constructor readOutput is pass-through
+  t.after(() => opening.dispose());
+  instrument.arm();
   const before = f.queueCalls();
   await assert.rejects(() => opening.open());
   const seen = instrument.get();
-  assert.ok(seen.reads >= 2, 'readOutput ran for both samples');
-  assert.ok(seen.groupReadsArmed >= 4, 'the real group getter was read inside readOutput (active then matches, twice)');
+  assert.equal(seen.reads, 1, 'exactly the targeted readOutput call was observed');
+  assert.equal(seen.groupReadsArmed, 4, 'the real group getter was read inside that one call (active then matches, twice)');
   assert.equal(seen.invalidated, true, 'the final group read retired the output');
   assert.equal((seen.last as {kind?: string} | undefined)?.kind, 'unknown', 'readOutput itself returned unknown, not a stale local sample');
+  assert.equal(instrument.get().last, seen.last, 'no later call overwrote the targeted result');
   assert.equal(f.queueCalls(), before, 'zero canonical queue IO for the refused opening');
   assert.notEqual(opening.getSnapshot().phase, 'ready');
   opening.dispose();
@@ -127,15 +140,20 @@ test('the same runtime and group binding admit the opening when the output is un
     stream: (_path, _last, signal) => new Promise((_resolve, reject) => {
       signal.addEventListener('abort', () => reject(new DOMException('closed', 'AbortError')), {once: true});
     })});
+  const instrument = instrumentReadOutput(f, service, 'control');
   const unbind = f.runtime.bindGroup(service, () => true, error => {throw error;});
+  t.after(() => {instrument.restore(); unbind(); service.dispose();});
   const lifetime = {signal: new AbortController().signal, isCurrent: () => true};
   const port = f.runtime.captureListening(fence, lifetime)!;
   assert.ok(port.queue);
-  const instrument = instrumentReadOutput(f, service);
   const opening = port.queue!.edit(port.queue!.list.getSnapshot(), lifetime);
-  t.after(() => {instrument.restore(); opening.dispose(); unbind(); service.dispose();});
+  t.after(() => opening.dispose());
+  instrument.arm();
   await opening.open();
   const seen = instrument.get();
+  assert.equal(seen.reads, 1);
+  assert.equal(seen.groupReadsArmed, 4);
+  assert.equal(seen.invalidated, false, 'the control never retires the output');
   assert.equal((seen.last as {kind?: string} | undefined)?.kind, 'local', 'the control readOutput returns the real local target');
   assert.equal(opening.getSnapshot().phase, 'ready');
   assert.ok(opening.getSnapshot().page, 'the unchanged local control adopts a real canonical page');
