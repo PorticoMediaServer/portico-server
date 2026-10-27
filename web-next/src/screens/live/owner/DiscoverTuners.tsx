@@ -30,7 +30,7 @@ export function DiscoverTuners({api, serverId, isCurrent, reportError, openingId
       // retained close/search/use handler from this opening can act after it.
       live = false;lease.live = false;controller.dispose();
     }, controller};
-    publish({identity, lease});
+    publish({identity: {api, serverId, isCurrent, reportError, openingId, opening}, lease});
     void controller.search();
     return () => lease.retire();
   }, [api, serverId, isCurrent, reportError, openingId, opening]);

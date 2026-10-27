@@ -35,7 +35,7 @@ export function RemoteSourceDialog({api, serverId, isCurrent, reportError, tuner
       // retained close/saved/edit handler from this opening can act after it.
       live = false;lease.live = false;controller.dispose();
     }, controller};
-    publish({identity, lease});
+    publish({identity: {api, serverId, isCurrent, reportError, ...(tuner === undefined ? {} : {tuner}), openingId, opening}, lease});
     return () => lease.retire();
   }, [api, serverId, isCurrent, reportError, tuner, openingId, opening]);
   const admitted = published && sameIdentity(published.identity, identity) && opening.live && published.lease.live && published.lease.current() ? published.lease : undefined;

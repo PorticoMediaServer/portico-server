@@ -31,7 +31,7 @@ export function UploadSourceDialog({api, serverId, isCurrent, reportError, openi
       // retained close/saved/edit/read handler from this opening can act after it.
       live = false;lease.live = false;controller.dispose();
     }, controller};
-    publish({identity, lease});
+    publish({identity: {api, serverId, isCurrent, reportError, openingId, opening}, lease});
     return () => lease.retire();
   }, [api, serverId, isCurrent, reportError, openingId, opening]);
   const admitted = published && sameIdentity(published.identity, identity) && opening.live && published.lease.live && published.lease.current() ? published.lease : undefined;
