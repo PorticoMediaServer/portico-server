@@ -249,3 +249,35 @@ test('linked graph decks preserve the original crossfade gain after a partial ho
   assert.ok(Math.abs(event[1] - Math.sin(Math.PI / 24)) < 0.002, 'the original fade value is evaluated at the held frame');
   a.close(); b.close(); graph.close();
 });
+
+test('a premature finite EOF fails without changing duration or claiming resampler completion', async () => {
+  for (const outputRate of [44100, 48000]) {
+    const f = fakeContext(outputRate), rate = 44100;
+    const deck = new Deck(f.ctx, {} as AudioNode, sineSource(rate, rate), {frames: rate * 2, gain: 1, holdTail: true});
+    const declared = deck.outFrames;
+    await deck.pump(30);
+    assert.match(String(deck.failure), /audio_source_ended_early/);
+    assert.equal(deck.outFrames, declared, 'the measured duration is never shortened to hide truncation');
+    assert.equal(deck.sourceComplete, false);
+    assert.equal(deck.complete, false);
+    deck.finishTail();
+    assert.equal(deck.sourceComplete, false, 'a failed source cannot manufacture a valid filter tail');
+    deck.close();
+  }
+});
+
+test('a genuine short finite remainder validates before releasing its real resampler tail', async () => {
+  for (const outputRate of [44100, 48000]) {
+    const rate = 44100, frames = 11025, f = fakeContext(outputRate);
+    const deck = new Deck(f.ctx, {} as AudioNode, sineSource(frames, rate), {frames, gain: 1, holdTail: true});
+    await deck.pump(30);
+    assert.equal(deck.failure, undefined);
+    if (outputRate !== rate) assert.equal(deck.sourceComplete, false, 'actual filter tail is still pending');
+    deck.finishTail();
+    assert.equal(deck.sourceComplete, true);
+    deck.start(0);
+    assert.equal(f.scheduled.reduce((sum, entry) => sum + entry.frames, 0), deck.outFrames);
+    assert.equal(deck.complete, true);
+    deck.close();
+  }
+});

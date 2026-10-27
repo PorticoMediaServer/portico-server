@@ -266,7 +266,7 @@ function usePcm(render: unknown, source: ReturnType<typeof stalledPcm>['source']
 test('renderer stalls four seconds past its frontier, keeps one pump, and resumes each unheard frame in order', bounded, async ctx => {
   const {DecodeAudioRender} = await import('../src/platform/playback/DecodeAudioRender.ts');
   const t = setup(), pcm = stalledPcm(), render = new DecodeAudioRender(t.service, p => p, {addEventListener() {}, removeEventListener() {}, volume: 1, muted: false} as any);
-  ctx.after(() => render.dispose()); usePcm(render, pcm.source);
+  ctx.after(() => render.dispose()); clearInterval((render as any).timer); usePcm(render, pcm.source);
   render.apply(t.set({session: {id: 'slow', generation: 1, audio: {...t.a, durationFrames: 44100 * 8}}})); await settle();
   const primary = (render as any).primary, graph = (render as any).graph;
   assert.equal(graph.clock.frontier, 44100 * 2);
@@ -294,7 +294,7 @@ test('renderer stalls four seconds past its frontier, keeps one pump, and resume
 test('pause during a pending buffering suspension cannot be undone by refill or transport; explicit play recovers', bounded, async ctx => {
   const {DecodeAudioRender} = await import('../src/platform/playback/DecodeAudioRender.ts');
   const t = setup(), pcm = stalledPcm(), render = new DecodeAudioRender(t.service, p => p, {addEventListener() {}, removeEventListener() {}, volume: 1, muted: false} as any);
-  ctx.after(() => render.dispose()); usePcm(render, pcm.source);
+  ctx.after(() => render.dispose()); clearInterval((render as any).timer); usePcm(render, pcm.source);
   render.apply(t.set({session: {id: 'slow', generation: 1, audio: {...t.a, durationFrames: 44100 * 8}}})); await settle();
   let suspend!: () => void, resumes = 0;
   t.f.ctx.suspend = () => new Promise<void>(resolve => {suspend = () => {t.f.ctx.state = 'suspended'; resolve();};});
@@ -310,7 +310,7 @@ test('seek, source replacement and disposal retire a pending buffering ticket be
   const {DecodeAudioRender} = await import('../src/platform/playback/DecodeAudioRender.ts');
   for (const retire of ['seek', 'replace', 'dispose']) {
     const t = setup(), pcm = stalledPcm(), render = new DecodeAudioRender(t.service, p => p, {addEventListener() {}, removeEventListener() {}, volume: 1, muted: false} as any);
-    ctx.after(() => render.dispose()); usePcm(render, pcm.source);
+    ctx.after(() => render.dispose()); clearInterval((render as any).timer); usePcm(render, pcm.source);
     render.apply(t.set({session: {id: 'slow', generation: 1, audio: {...t.a, durationFrames: 44100 * 8}}})); await settle();
     let suspend!: () => void, resumes = 0;
     t.f.ctx.suspend = () => new Promise<void>(resolve => {suspend = () => {t.f.ctx.state = 'suspended'; resolve();};});
@@ -331,7 +331,7 @@ test('seek, source replacement and disposal retire a pending buffering ticket be
 test('a recovery resume resolving after pause stays suspended and never publishes completion', bounded, async ctx => {
   const {DecodeAudioRender} = await import('../src/platform/playback/DecodeAudioRender.ts');
   const t = setup(), pcm = stalledPcm(), render = new DecodeAudioRender(t.service, p => p, {addEventListener() {}, removeEventListener() {}, volume: 1, muted: false} as any);
-  ctx.after(() => render.dispose()); usePcm(render, pcm.source);
+  ctx.after(() => render.dispose()); clearInterval((render as any).timer); usePcm(render, pcm.source);
   render.apply(t.set({session: {id: 'slow', generation: 1, audio: {...t.a, durationFrames: 44100 * 8}}})); await settle();
   let resumed!: () => void, attempts = 0;
   t.f.ctx.resume = () => {attempts++; return new Promise<void>(resolve => {resumed = () => {t.f.ctx.state = 'running'; resolve();};});};
@@ -349,7 +349,7 @@ test('a full twelve-second fade uses one frontier and publishes a crossed bounda
   const {DecodeAudioRender} = await import('../src/platform/playback/DecodeAudioRender.ts');
   const rate = 44100, t = setup(), outgoing = stalledPcm(rate, rate * 40, rate * 30), incoming = stalledPcm(rate, rate * 40, rate * 12);
   const render = new DecodeAudioRender(t.service, p => p, {addEventListener() {}, removeEventListener() {}, volume: 1, muted: false} as any);
-  ctx.after(() => render.dispose());
+  ctx.after(() => render.dispose()); clearInterval((render as any).timer);
   let opens = 0;
   (render as any).reader = () => {const pcm = opens++ === 0 ? outgoing : incoming; return {unlock() {}, close: () => pcm.source.close(), prefetchAll: async () => {}, open: async () => pcm.source};};
   const settings = {...t.get().audioEffects.settings, gapless: false, crossfadeSeconds: 12};
@@ -377,11 +377,80 @@ test('a fresh gesture retries an autoplay-pending resume without replaying old r
   const t = setup(), pending: ((error: unknown) => void)[] = [];
   t.f.ctx.state = 'suspended'; t.f.ctx.resume = () => new Promise<void>((_, reject) => pending.push(reject));
   const render = new DecodeAudioRender(t.service, p => p, {addEventListener() {}, removeEventListener() {}, volume: 1, muted: false} as any);
-  ctx.after(() => render.dispose()); render.apply(t.get()); await settle();
+  ctx.after(() => render.dispose()); clearInterval((render as any).timer); render.apply(t.get()); await settle();
   assert.equal(pending.length, 1);
   (render as any).gesture(); await settle(); assert.equal(pending.length, 2);
   pending[0]!(new DOMException('old blocked attempt', 'NotAllowedError')); await settle();
   assert.equal(t.calls.some(c => c[0] === 'pause'), false);
   pending[1]!(new DOMException('current refusal', 'NotAllowedError')); await settle();
   assert.equal(t.calls.filter(c => c[0] === 'pause').length, 1);
+});
+
+for (const notification of ['audioProcessingApplied', 'audioRenderStatus', 'fact'] as const) {
+  test(`actual PlaybackService.pause during ${notification} retires the tick without changing intentId`, bounded, async ctx => {
+    const {PlaybackService} = await import('../../packages/client-core/src/index.ts');
+    const {DecodeAudioRender} = await import('../src/platform/playback/DecodeAudioRender.ts');
+    const t = setup(), rate = 44100;
+    const service = new PlaybackService({progressPlayback: async () => {}, stopPlayback: async () => {}, createPlayback: async () => {throw new Error('fixture must not start server playback');}} as any, () => 'fixture', {deferRecovery: true});
+    const a = {...t.a, durationFrames: rate * 4}, b = {...t.b, durationFrames: rate * 4};
+    (service as any).snapshot = {...service.getSnapshot(), ...t.get(), session: {...t.get().session, audio: a, resumeSeconds: 0, duration: 4}, duration: 4,
+      audioEffects: {...t.get().audioEffects, settings: {...t.get().audioEffects.settings, gapless: false, crossfadeSeconds: 12}}};
+    const render = new DecodeAudioRender(service, p => p, {addEventListener() {}, removeEventListener() {}, volume: 1, muted: false} as any);
+    ctx.after(() => render.dispose()); clearInterval((render as any).timer);
+    let opens = 0;
+    (render as any).reader = () => {const pcm = stalledPcm(rate, rate * 4, rate * 4); opens++; return {unlock() {}, close: () => pcm.source.close(), prefetchAll: async () => {}, open: async () => pcm.source};};
+    const detach = service.attachAdapter({apply: (s: any) => render.apply(s)} as any); ctx.after(detach);
+    await settle();
+    service.prepareAudio({token: 'ready', itemId: 'next', audio: b, expiresAtMs: Date.now() + 60000} as any); await settle();
+    assert.equal((render as any).candidate.ready, true);
+    t.f.advance(0.5);
+    const calls: string[] = []; let notifying = '', armed = true, pausedAt = -1, startsAtPause = -1;
+    for (const name of ['audioProcessingApplied', 'audioRenderStatus', 'fact', 'audioBoundary', 'audioCommit'] as const) {
+      const original = service[name].bind(service) as (...args: any[]) => unknown;
+      (service as any)[name] = (...args: any[]) => {calls.push(name); const previous = notifying; notifying = name; try {return original(...args);} finally {notifying = previous;}};
+    }
+    const off = service.subscribe(() => {
+      if (!armed || notifying !== notification) return;
+      armed = false;
+      const intent = service.getSnapshot().intentId;
+      service.pause();
+      assert.equal(service.getSnapshot().intentId, intent);
+      assert.equal(service.getSnapshot().intent, 'paused');
+      pausedAt = calls.length; startsAtPause = t.f.scheduled.length;
+    }); ctx.after(off);
+    // Force each real producer to notify, without substituting its pause or update implementation.
+    const before = service.getSnapshot();
+    (service as any).snapshot = {...before, audioEffects: {...before.audioEffects, eqApplied: notification === 'audioProcessingApplied', effectiveRate: -1}};
+    (render as any).processingReport = ''; (render as any).factPosition = -1;
+    (render as any).tick();
+    assert.equal(armed, false, 'the actual service notification synchronously paused playback');
+    assert.equal(service.getSnapshot().intent, 'paused');
+    assert.deepEqual(calls.slice(pausedAt).filter(name => ['fact', 'audioBoundary', 'audioCommit'].includes(name)), []);
+    assert.equal(t.f.scheduled.length, startsAtPause, 'no more source nodes are admitted by the old tick');
+    assert.equal((render as any).committing, undefined);
+  });
+}
+
+test('a truncated source fails out of buffering, while a valid short final remainder recovers', bounded, async ctx => {
+  const {DecodeAudioRender} = await import('../src/platform/playback/DecodeAudioRender.ts');
+  for (const truncated of [true, false]) {
+    const t = setup(), rate = 44100, frames = rate * 2 + 11025;
+    const pcm = stalledPcm(rate, truncated ? rate * 2 : frames, rate * 2);
+    const render = new DecodeAudioRender(t.service, p => p, {addEventListener() {}, removeEventListener() {}, volume: 1, muted: false} as any);
+    ctx.after(() => render.dispose()); clearInterval((render as any).timer); usePcm(render, pcm.source);
+    render.apply(t.set({session: {id: 'finite', generation: 1, audio: {...t.a, durationFrames: frames}}})); await settle();
+    t.f.advance(2.08); (render as any).tick(); await settle();
+    if (truncated) {
+      (render as any).tick();
+      assert(t.calls.some(c => c[0] === 'audioRenderFailed'));
+      assert.equal((render as any).hold, undefined);
+      assert.equal(t.calls.some(c => c[0] === 'fact' && c[3] === 'ended'), false);
+    } else {
+      assert((render as any).hold);
+      pcm.release(); await settle(); (render as any).tick(); await settle();
+      assert.equal((render as any).hold, undefined, 'the validated finite quarter-second remainder needs no impossible startup-sized buffer');
+      assert.equal(t.calls.some(c => c[0] === 'audioRenderFailed'), false);
+    }
+    render.dispose();
+  }
 });
