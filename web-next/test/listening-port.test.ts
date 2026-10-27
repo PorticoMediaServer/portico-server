@@ -38,13 +38,16 @@ function harness(options: Options = {}) {
   } as WebQueueListPort);
   let observed: (() => void) | undefined;
   const lifetime: WebListeningLifetime = {signal: lifetimeController.signal, isCurrent: () => {
-    if (options.reenterHostRetire) {lifetimeController.abort(); return true;} // host retires itself, still answers true
     if (options.reenterDispose && disposed) return true;
     if (options.reenterDispose) {port?.dispose(); disposed = true; return true;}
     return lifetimeCurrent;
   }};
-  const request = <T,>() => options.request ? options.request<T>() : Promise.resolve(chaptersData() as T);
-  const input: WebListeningInput = {fence, lifetime, target, current: () => current, request, requestLyrics: async <T>() => ({} as T),
+  const transports = {request: 0, requestLyrics: 0};
+  const request = <T,>() => {transports.request++; return options.request ? options.request<T>() : Promise.resolve(chaptersData() as T);};
+  const requestLyrics = async <T,>() => {transports.requestLyrics++; return {} as T;};
+  const input: WebListeningInput = {fence, lifetime, target,
+    current: () => {if (options.reenterHostRetire) {lifetimeController.abort(); return true;} return current;}, // retires the host, still true
+    request, requestLyrics,
     chaptersTarget, makeChapters: api => new PlayerChaptersService({api, scope, pageSize: 100, timeoutMs: 1000}),
     makeLyrics: api => new LyricsService(api, scope, {libraryId: 'library', itemId: 'item', sessionId: 'session', sessionGeneration: 2}),
     lyricsEnabled: () => options.lyricsEnabled ?? true, observe: retired => {observed = retired; return () => {observed = undefined;};},
@@ -56,7 +59,7 @@ function harness(options: Options = {}) {
       options.debugNoDispatch?.(); seeks.push(seconds);},
   };
   port = createWebListeningPort(input);
-  return {port, lifetime, lifetimeController, snapshot, calls, seeks, policies, saves,
+  return {port, lifetime, lifetimeController, snapshot, transports, calls, seeks, policies, saves,
     retire: () => {current = false;}, retireLifetime: () => {lifetimeCurrent = false;}, fireRetirement: () => observed?.()};
 }
 
@@ -143,12 +146,12 @@ test('caller cancellation stops the command and suppresses later progress', asyn
   assert.equal(h.saves.length, 0);
 });
 
-test('a host predicate that reentrantly retires and still answers true cannot dispatch', async () => {
-  let dispatched = 0;
-  const h = harness({reenterHostRetire: true, debugNoDispatch: () => {dispatched++;}});
+test('the runtime predicate that reentrantly retires the host and still answers true cannot dispatch', async () => {
+  const h = harness({reenterHostRetire: true});
   await assert.rejects(() => h.port.chapters.load(), /stale_listening_port/);
-  assert.equal(dispatched, 0);
-  assert.equal(h.port.isCurrent(), false);
+  assert.equal(h.lifetimeController.signal.aborted, true);                       // the original host lifetime really retired
+  assert.equal(h.transports.request + h.transports.requestLyrics, 0);            // no transport was dispatched
+  assert.equal(h.port.isCurrent(), false);                                       // latched stale
 });
 
 test('lyrics choice stays withdrawn while the command-scoped service seam is absent', async () => {
