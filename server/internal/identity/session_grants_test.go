@@ -96,3 +96,72 @@ func TestACastTargetSessionIsAMembersAndOnlyForPlayback(t *testing.T) {
 		t.Fatalf("an ordinary session outside a playback request: %v", err)
 	}
 }
+
+// A device-token-authorized reconnect can validate the exact target family
+// after its access token expires, without authenticating that expired bearer.
+func TestCastTargetParentAllowsOnlyAccessExpiry(t *testing.T) {
+	ctx := context.Background()
+	s, db, owner := directFixture(t)
+	screen := issueCastTarget(t, s, onDevice(t, "cast-parent-test-1", "TV"), owner.Account.ID, owner.Account.PrimaryProfileID, owner.Session.SessionFamilyID)
+	expired := time.Now().Add(-time.Minute).UTC().Format(time.RFC3339)
+	if _, err := db.Exec(`UPDATE authorization_family_tokens SET expires_at=? WHERE family_id=?; UPDATE authorization_access SET expires_at=? WHERE hash=?`, expired, screen.SessionFamilyID, expired, Digest(screen.AccessToken)); err != nil {
+		t.Fatal(err)
+	}
+	expected := Principal{Viewer: screen.Viewer, Epoch: 1, Grant: GrantCastTarget}
+	tx, err := db.BeginTx(ctx, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer tx.Rollback()
+	facts, err := s.CastTargetParentTx(ctx, tx, screen.SessionFamilyID, expected)
+	if err != nil || facts.ID != screen.SessionFamilyID || facts.DeviceID != screen.DeviceID {
+		t.Fatalf("valid parent: %+v %v", facts, err)
+	}
+	if _, err = s.FamilyAuthorityTx(ctx, tx, screen.SessionFamilyID, expected); !errors.Is(err, ErrUnauthorized) {
+		t.Fatalf("ordinary family accepted expired token: %v", err)
+	}
+	if _, err = tx.Exec(`UPDATE authorization_session_families SET revoked=1 WHERE id=?`, screen.SessionFamilyID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = s.CastTargetParentTx(ctx, tx, screen.SessionFamilyID, expected); !errors.Is(err, ErrUnauthorized) {
+		t.Fatalf("revoked parent: %v", err)
+	}
+}
+
+func TestCastTargetParentRefusesChangedFactsAndRetiredToken(t *testing.T) {
+	ctx := context.Background()
+	s, db, owner := directFixture(t)
+	screen := issueCastTarget(t, s, onDevice(t, "cast-parent-fence-1", "TV"), owner.Account.ID, owner.Account.PrimaryProfileID, owner.Session.SessionFamilyID)
+	expected := Principal{Viewer: screen.Viewer, Epoch: 1, Grant: GrantCastTarget}
+	tx, err := db.BeginTx(ctx, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer tx.Rollback()
+	changed := expected
+	changed.ProfileID = "other-profile"
+	if _, err = s.CastTargetParentTx(ctx, tx, screen.SessionFamilyID, changed); !errors.Is(err, ErrUnauthorized) {
+		t.Fatalf("changed profile: %v", err)
+	}
+	changed = expected
+	changed.Role = TierOwner
+	if _, err = s.CastTargetParentTx(ctx, tx, screen.SessionFamilyID, changed); !errors.Is(err, ErrUnauthorized) {
+		t.Fatalf("changed role: %v", err)
+	}
+	changed = expected
+	changed.Epoch++
+	if _, err = s.CastTargetParentTx(ctx, tx, screen.SessionFamilyID, changed); !errors.Is(err, ErrUnauthorized) {
+		t.Fatalf("changed epoch: %v", err)
+	}
+	changed = expected
+	changed.Grant = ""
+	if _, err = s.CastTargetParentTx(ctx, tx, screen.SessionFamilyID, changed); !errors.Is(err, ErrUnauthorized) {
+		t.Fatalf("changed grant: %v", err)
+	}
+	if _, err = tx.Exec(`UPDATE authorization_family_tokens SET retired=1 WHERE family_id=?`, screen.SessionFamilyID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = s.CastTargetParentTx(ctx, tx, screen.SessionFamilyID, expected); !errors.Is(err, ErrUnauthorized) {
+		t.Fatalf("retired token: %v", err)
+	}
+}

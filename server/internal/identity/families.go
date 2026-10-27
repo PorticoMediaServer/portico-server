@@ -281,6 +281,52 @@ func (s *Service) sessionFamilyRecordTx(ctx context.Context, tx *sql.Tx, p Princ
 	return r.FamilyState, nil
 }
 
+// CastTargetParentTx validates a renewal parent after the caller proves its
+// exact Cast device credential in the same transaction. Its result carries
+// facts only; it is never an authenticated principal or playback permission.
+func (s *Service) CastTargetParentTx(ctx context.Context, tx *sql.Tx, family string, expected Principal) (FamilyState, error) {
+	if tx == nil || !validFamilyID(family) || expected.Grant != GrantCastTarget || expected.Role != TierMember {
+		return FamilyState{}, ErrUnauthorized
+	}
+	if err := ctx.Err(); err != nil {
+		return FamilyState{}, err
+	}
+	var hash string
+	if err := tx.QueryRowContext(ctx, `SELECT t.token_hash FROM authorization_session_families f JOIN authorization_family_tokens t ON t.family_id=f.id AND t.generation=f.current_generation WHERE f.id=?`, family).Scan(&hash); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return FamilyState{}, ErrUnauthorized
+		}
+		return FamilyState{}, err
+	}
+	r, err := s.familyTokenTx(ctx, tx, hash)
+	if err != nil {
+		return FamilyState{}, err
+	}
+	if r.ID != family || r.revoked || r.retired || r.TokenGeneration != r.currentGeneration || r.principal.Viewer != expected.Viewer || r.principal.Epoch != expected.Epoch || r.principal.Grant != GrantCastTarget || !r.AuthorizationHorizon.After(time.Now()) {
+		return FamilyState{}, ErrUnauthorized
+	}
+	if _, err = s.reauthorizeTx(ctx, tx, r.principal, true); err != nil {
+		return FamilyState{}, err
+	}
+	if err = refuseResetDescendantTx(ctx, tx, family); err != nil {
+		return FamilyState{}, err
+	}
+	var revokedSigner int
+	if err = tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM portico_admitted_families a JOIN hosted_signing_revocations r ON r.key_id=a.signer_key_id WHERE a.family_id=? AND a.signer_key_id<>'')`, family).Scan(&revokedSigner); err != nil {
+		return FamilyState{}, err
+	}
+	if revokedSigner != 0 {
+		return FamilyState{}, ErrUnauthorized
+	}
+	if err = tx.QueryRowContext(ctx, `SELECT d.id FROM identity_device_families b JOIN identity_devices d ON d.id=b.device_id WHERE b.family_id=?`, family).Scan(&r.DeviceID); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return FamilyState{}, ErrUnauthorized
+		}
+		return FamilyState{}, err
+	}
+	return r.FamilyState, ctx.Err()
+}
+
 // FamilyAuthorityTx checks a durable source-family binding. The caller must
 // independently validate controller proof and cached hosted authority in tx.
 // Rebind requires this for the source AND SessionFamilyTx for the current target.

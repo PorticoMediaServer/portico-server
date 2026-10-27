@@ -307,7 +307,7 @@ func TestQCFamilyCastRedeemRenews(t *testing.T) {
 	}, 201, &bootstrap)
 	var redeemed social.CastReceiverSession
 	f.callAs("", "POST", "/v1/cast/redeem", nil, social.CastRedeemRequest{
-		ProtocolVersion: social.Protocol, Code: bootstrap.Bootstrap.Code, DeviceID: "cast-renewal-1", DisplayName: "Renewal TV",
+		ProtocolVersion: social.Protocol, Code: bootstrap.Bootstrap.Code, ExpectedBootstrapID: bootstrap.Bootstrap.ID, DeviceID: "cast-renewal-1", DisplayName: "Renewal TV",
 	}, 200, &redeemed)
 	if redeemed.Session.AccessToken == "" || redeemed.DeviceToken == "" {
 		t.Fatal("redeem issued no session")

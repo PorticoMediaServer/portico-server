@@ -1433,7 +1433,7 @@ func New(d Dependencies) http.Handler {
 			}
 			r = r.WithContext(ctx)
 		}
-		if r.Method == "POST" && (strings.HasPrefix(r.URL.Path, "/v1/direct/") || strings.HasPrefix(r.URL.Path, "/v1/auth/") || r.URL.Path == "/v1/setup" || r.URL.Path == "/v1/cast/redeem" || r.URL.Path == "/v1/cast/reconnect" ||
+		if r.Method == "POST" && (strings.HasPrefix(r.URL.Path, "/v1/direct/") || strings.HasPrefix(r.URL.Path, "/v1/auth/") || r.URL.Path == "/v1/setup" || r.URL.Path == "/v1/cast/preview" || r.URL.Path == "/v1/cast/redeem" || r.URL.Path == "/v1/cast/reconnect" ||
 			// Starting, looking up and deciding a TV code, and using an invitation:
 			// refused cheaply here before the database-backed limits are asked.
 			// The TV's own poll for its code is not here: a household of TVs

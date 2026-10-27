@@ -8,7 +8,7 @@ async function harness(fixture={}){
  const castContext={getDeviceCapabilities:()=>fixture.caps||{},getDeviceInformation:()=>fixture.info||{},canDisplayType:(mime,codecs,width,height,fps)=>{assert(!mime.includes(';'));return !!fixture.supports?.(mime,codecs,width,height,fps)},getPlayerManager:()=>manager,addCustomMessageListener:(ns,fn)=>listener=fn,sendCustomMessage:(ns,id,body)=>sent.push({id,body}),addEventListener:(k,v)=>ctxEvents[k]=v,getSenders:()=>senders,getSender:id=>({id,userAgent:fixture.senderUA||'Browser'}),start:()=>{}};
  const nodes={};const document={getElementById:id=>nodes[id]??=( {textContent:'',attrs:{},setAttribute(k,v){this.attrs[k]=v},removeAttribute(k){delete this.attrs[k]},addEventListener:()=>{}} )};
  const cast={framework:{CastReceiverContext:{getInstance:()=>castContext},messages:{MessageType:Object.fromEntries(['LOAD','PLAY','PAUSE','SEEK','STOP','PRELOAD','QUEUE_INSERT','QUEUE_LOAD','QUEUE_UPDATE','QUEUE_REMOVE','QUEUE_REORDER','QUEUE_NEXT','QUEUE_PREV','GET_STATUS','MEDIA_STATUS','CLOUD_STATUS','QUEUE_GET_ITEMS','QUEUE_GET_ITEM_IDS'].map(x=>[x,x]))},events:{EndedReason:{END_OF_STREAM:'END_OF_STREAM'},EventType:Object.fromEntries(['ERROR','BUFFERING','MEDIA_FINISHED','PLAYER_LOAD_COMPLETE','PLAYER_LOADING','LOADED_DATA','TIME_UPDATE','DURATION_CHANGE','MEDIA_STATUS','PAUSE','PLAYING','SEEKED'].map(x=>[x,x]))},system:{EventType:{SENDER_CONNECTED:'connect',SENDER_DISCONNECTED:'disconnect',SHUTDOWN:'shutdown'},MessageType:{JSON:'json'}}}};
- let failed=false,expired=false,preparing=!!fixture.preparing,generation=1;
+ let failed=false,expired=false,preparing=!!fixture.preparing,generation=1,registeredBinding,controllerExpired=false;
  const presentation=(start,mediaUrl)=>{
   const url=mediaUrl===undefined?(fixture.direct?'/v1/media/grant':'/v1/media/grant/master.m3u8'):mediaUrl;
   return {generation,mode:fixture.direct?'direct':'stream',url,container:fixture.container||(fixture.direct?'mp4':'fmp4_hls'),startPositionMs:start||0,subtitles:[],decision:fixture.audioOnly?{audio:{action:'copy',reasons:[]}}:fixture.transcode?{video:{action:'transcode',reasons:[]}}:{video:{action:'copy',reasons:[]}},...(fixture.audioRender?{audioRender:{version:2,id:'render-1',url,...fixture.audioRender}}:{})};
@@ -20,12 +20,15 @@ async function harness(fixture={}){
   const path=url.replace(/^https?:\/\/[^/]+/,'');
   if(path.startsWith('/v2/'))throw new Error('removed v2 route '+path);
   if(path.endsWith('/reconnect')&&fixture.revoked)return reply({error:{code:'cast_device_revoked',message:'That receiver pairing was revoked.',retryable:false}},403);
+  if(path.endsWith('/preview'))return reply({controllerBootstrapId:'cbs_'+body.code,expiresAt:'2099-01-01T00:00:00Z',scope:{accountId:String(body.code||'').startsWith('OTHER')?'other':'account',profileId:'profile',authority:'hosted'}});
   if(path.endsWith('/redeem')&&fixture.redeemWait){fixture.redeemCalled?.();await fixture.redeemWait;}
   if(path.endsWith('/redeem')||path.endsWith('/reconnect'))return reply({controllerBootstrapId:'cbs_'+(body?.code||'renewed'),device:{id:'cdv_'+(body?.code||'renewed'),generation:'1'},session:{accessToken:'bearer-'+(body?.code||'renewed')},deviceToken:'device-'+(body?.code||'renewed'),scope:{accountId:String(body?.code||'').startsWith('OTHER')?'other':'account',profileId:'profile',authority:'hosted'}});
-  if(path==='/v1/cast/controllers/register')return reply({binding:{id:'cct_current',bootstrapId:body.bootstrapId,receiverId:'sdk-tv',targetId:'cdv_target',targetFamilyId:'target-family',targetGeneration:'1',scope:{serverId:'server',authority:'local',accountId:'account',profileId:'profile',senderDeviceId:'phone',senderFamilyId:'source-family'}}});
+  if(path==='/v1/cast/controllers/register'){registeredBinding={id:'cct_current',bootstrapId:body.bootstrapId,receiverId:'sdk-tv',targetId:'cdv_target',targetFamilyId:'target-family',targetGeneration:'1',scope:{serverId:'server',authority:'local',accountId:'account',profileId:'profile',senderDeviceId:'phone',senderFamilyId:'source-family'}};return reply({binding:registeredBinding});}
   if(path==='/v1/cast/controllers/check'){
+    if(fixture.firstController401&&!controllerExpired){controllerExpired=true;return reply({error:{code:'unauthorized'}},401);}
     if(fixture.controllerRefuse?.(body))return reply({error:{code:'forbidden'}},403);
     if(fixture.controllerCheck)await fixture.controllerCheck(body);
+    if(fixture.renewal && options.headers.Authorization==='Bearer bearer-renewed')return reply({binding:{...registeredBinding,targetFamilyId:'target-successor',targetGeneration:'2'}});
     return reply({binding:{id:body.bindingId}});
   }
   if(path==='/v1/playback/sessions/ps_1'&&options.method==='GET')return reply(sessionFor({},0));
@@ -40,6 +43,9 @@ async function harness(fixture={}){
   if(path==='/v1/playback/sessions'&&options.method==='POST'){
    if(fixture.startWait){fixture.startCalled?.();await fixture.startWait;}
    if(fixture.ambiguous&&!failed){failed=true;throw new Error('lost response')}
+   if(fixture.preparingReal){fixture.preparingReal=false;const value=sessionFor(body,body.startPositionMs);return reply({...value,state:'preparing',retryAfterMs:500,lease:{...value.lease,expiresAt:'2099-01-01T00:00:00Z'},presentation:{...value.presentation,engine:'native'}},202);}
+   if(fixture.preparingResponses?.length){const next=fixture.preparingResponses.shift();return reply(typeof next==='function'?next(sessionFor(body,body.startPositionMs)):next,202);}
+   if(fixture.prepareTerminal)return reply({error:{code:'preparation_failed'}},409);
    if(preparing){preparing=false;return reply({retryAfterMs:500},202);}
    return reply(sessionFor(body,body.startPositionMs),201);
   }
@@ -253,12 +259,29 @@ test('a returning controller can recover the same playing session and an unpaire
  await h.message('new-phone-id',{type:'seek',positionSeconds:70});assert.equal(h.manager.getCurrentTimeSec(),70);
 });
 
-test('refusing a takeover revokes the unused pairing and keeps the existing film',async()=>{
+test('refusing a takeover leaves the original controller and target untouched',async()=>{
  const h=await harness();h.senders.push('phone','guest');
  await h.message('phone',{type:'pair',code:'ABCD',origin:''});await h.message('phone',{type:'load',itemId:'movie'});
  await h.message('guest',{type:'pair',code:'OTHER1',origin:''});await h.message('phone',{type:'takeover',allow:false});
- assert(h.calls.some(x=>x.url.endsWith('/v1/cast/devices/cdv_OTHER1')&&x.method==='DELETE'&&x.headers.Authorization==='Bearer bearer-OTHER1'&&x.headers['If-Match']==='1'));
+ assert(h.calls.some(x=>x.url.endsWith('/v1/cast/preview')&&x.body.code==='OTHER1'));
+ assert(!h.calls.some(x=>x.url.endsWith('/v1/cast/redeem')&&x.body.code==='OTHER1'));
+ assert(!h.calls.some(x=>x.url.endsWith('/v1/cast/devices/cdv_OTHER1')&&x.method==='DELETE'));
+ await h.message('phone',{type:'status'});assert(h.sent.some(x=>x.id==='phone'&&x.body.type==='status'));
  assert.equal(h.receiver.state().playbackId,'ps_1');assert.equal(h.manager.getPlayerState(),'PLAYING');
+});
+
+test('expired, superseded and disconnected offers never redeem a target',async()=>{
+ for(const action of ['expire','supersede','disconnect']){
+  const h=await harness();h.senders.push('phone','guest','guest2');
+  await h.message('phone',{type:'pair',code:'ABCD',origin:''});await h.message('phone',{type:'load',itemId:'movie'});
+  await h.message('guest',{type:'pair',code:'OTHER1',origin:''});
+  if(action==='expire'){const timer=[...h.timers].find(([,v])=>v.ms===30000);assert(timer);h.fire(timer[0]);await settle0();}
+  if(action==='supersede')await h.message('guest2',{type:'pair',code:'OTHER2',origin:''});
+  if(action==='disconnect')h.ctxEvents.disconnect({senderId:'guest'});
+  assert(!h.calls.some(x=>x.url.endsWith('/v1/cast/redeem')&&x.body.code==='OTHER1'));
+  assert(!h.calls.some(x=>x.url.endsWith('/v1/cast/devices/cdv_OTHER1')&&x.method==='DELETE'));
+  assert.equal(h.receiver.state().playbackId,'ps_1');
+ }
 });
 
 // SDK flags and exact format probes are separate facts; no Atmos from EC-3 alone.
@@ -718,4 +741,127 @@ test('private status reports the actual controller/occurrence and targeted Stop 
  await h.message('phone',{type:'stop',target,requestId:'actual-stop'});await settle0();
  const ack=h.sent.find(x=>x.body.type==='stopped'&&x.body.requestId==='actual-stop').body;
  assert.equal(ack.target.occurrence.sessionId,'ps_1');assert.equal(ack.target.occurrence.generation,1);assert.equal(h.receiver.state().playbackId,null);
+});
+
+test('preparation continues past the old receiver deadline with the same start request',async()=>{
+ const clock={now:0}, h=await harness({clock,preparingResponses:Array.from({length:13},()=>({retryAfterMs:10000}))});
+ await h.receiver.redeem('ABCD');const start=h.receiver.startPlayback('movie');await settle0();
+ for(let i=0;i<13;i++){clock.now+=10000;const timer=[...h.timers].find(([,v])=>v.ms===10000);assert(timer);h.fire(timer[0]);await settle0();}
+ await start;const starts=h.calls.filter(c=>c.url.endsWith('/v1/playback/sessions')&&c.method==='POST');
+ assert.equal(starts.length,14);for(const call of starts){assert.deepEqual(call.body,starts[0].body);assert.equal(call.headers['Idempotency-Key'],starts[0].headers['Idempotency-Key']);}
+ assert.equal(h.loads.length,1);
+});
+
+test('malformed preparation does not retry',async()=>{
+ for(const bad of [{},{retryAfterMs:0},{retryAfterMs:10001},{retryAfterMs:1.5},{retryAfterMs:1,extra:true}]){
+  const h=await harness({preparingResponses:[bad]});await h.receiver.redeem('ABCD');
+  await assert.rejects(h.receiver.startPlayback('movie'),/invalid_preparation/);
+  assert.equal(h.calls.filter(c=>c.url.endsWith('/v1/playback/sessions')&&c.method==='POST').length,1);assert.equal(h.loads.length,0);
+ }
+});
+
+test('connected original controller resumes only after correlated renewal acknowledgement',async()=>{
+ const h=await harness({expired:true,renewal:true});h.senders.push({senderId:'phone'});
+ await h.message('phone',{type:'pair',code:'ABCD',origin:''});
+ const paired=h.sent.find(x=>x.body.type==='paired').body;
+ await h.message('phone',{type:'load',itemId:'movie',startSeconds:0,requestId:'load-1'});assert.equal(h.loads.length,1);
+ await fireAll(h,0);await settle0();
+ const offer=h.sent.find(x=>x.body.type==='renewal-offer')?.body;assert(offer);
+ await h.message('phone',{type:'status'});assert(h.sent.some(x=>x.body.type==='busy'));
+ await h.message('phone',{type:'renewal-ack',attemptId:'wrong',bindingId:offer.binding.id,controlToken:paired.controlToken,ticket:'b'.repeat(43)});
+ assert(!h.sent.some(x=>x.body.type==='renewal-complete'));
+ await h.message('phone',{type:'renewal-ack',attemptId:offer.attemptId,bindingId:offer.binding.id,controlToken:paired.controlToken,ticket:'b'.repeat(43)});
+ assert(h.sent.some(x=>x.body.type==='renewal-complete'));
+ await h.message('phone',{type:'seek',positionSeconds:99,controller:paired.controller});assert.equal(h.manager.getCurrentTimeSec(),0,'old controller stamp cannot dispatch');
+ await h.message('phone',{type:'seek',positionSeconds:5,controller:offer.controller});await h.message('phone',{type:'play',controller:offer.controller});await h.message('phone',{type:'status',controller:offer.controller});
+ assert(h.sent.some(x=>x.body.type==='status'));assert.equal(h.loads.length,1);assert.equal(h.receiver.state().playbackId,'ps_1');
+});
+
+test('first controller-check 401 refuses the old command and permits a fresh command after renewal',async()=>{
+ const h=await harness({firstController401:true,renewal:true});h.senders.push({senderId:'phone'});
+ await h.message('phone',{type:'pair',code:'ABCD',origin:''});const paired=h.sent.find(x=>x.body.type==='paired').body;
+ await h.message('phone',{type:'load',itemId:'movie',startSeconds:0,requestId:'stale'});
+ const offer=h.sent.find(x=>x.body.type==='renewal-offer')?.body;assert(offer);assert.equal(h.loads.length,0);
+ await h.message('phone',{type:'renewal-ack',attemptId:offer.attemptId,bindingId:offer.binding.id,controlToken:paired.controlToken,ticket:'b'.repeat(43)});
+ await h.message('phone',{type:'load',itemId:'movie',startSeconds:0,requestId:'fresh',controller:offer.controller});assert.equal(h.loads.length,1);
+});
+
+test('a disconnected controller cannot retry an old preparing start',async()=>{
+ const h=await harness({preparingResponses:[{retryAfterMs:500},{retryAfterMs:500}]});h.senders.push({senderId:'phone'});
+ await h.message('phone',{type:'pair',code:'ABCD',origin:''});
+ await h.message('phone',{type:'load',itemId:'movie',startSeconds:0,requestId:'pending-load'});
+ const wait=[...h.timers].find(([,timer])=>timer.ms===500);assert(wait);
+ h.ctxEvents.disconnect({senderId:'phone'});h.fire(wait[0]);await settle0();
+ assert.equal(h.calls.filter(c=>c.url.endsWith('/v1/playback/sessions')&&c.method==='POST').length,1);assert.equal(h.loads.length,0);
+});
+
+test('renewal acknowledgement from a disconnected SDK connection cannot enable control',async()=>{
+ const h=await harness({expired:true,renewal:true});h.senders.push({senderId:'phone'});
+ await h.message('phone',{type:'pair',code:'ABCD',origin:''});const paired=h.sent.find(x=>x.body.type==='paired').body;
+ await h.message('phone',{type:'load',itemId:'movie',startSeconds:0,requestId:'load-1'});await fireAll(h,0);await settle0();
+ const offer=h.sent.find(x=>x.body.type==='renewal-offer')?.body;assert(offer);
+ h.ctxEvents.disconnect({senderId:'phone'});
+ await h.message('phone',{type:'renewal-ack',attemptId:offer.attemptId,bindingId:offer.binding.id,controlToken:paired.controlToken,ticket:'b'.repeat(43)});
+ assert(!h.sent.some(x=>x.body.type==='renewal-complete'));assert.equal(h.receiver.state().playbackId,'ps_1');
+});
+
+test('server preparation terminal refusal stops the original retry loop',async()=>{
+ const h=await harness({preparingResponses:[{retryAfterMs:500}],prepareTerminal:true});await h.receiver.redeem('ABCD');
+ const start=h.receiver.startPlayback('movie');await settle0();const wait=[...h.timers].find(([,timer])=>timer.ms===500);assert(wait);h.fire(wait[0]);
+ await assert.rejects(start,/preparation_failed/);assert.equal(h.calls.filter(c=>c.url.endsWith('/v1/playback/sessions')&&c.method==='POST').length,2);assert.equal(h.loads.length,0);
+});
+
+test('browser preparation does not borrow a replacement receiver credential',async()=>{
+ const h=await harness({preparingResponses:[{retryAfterMs:500},{retryAfterMs:500}]});await h.receiver.redeem('ABCD');
+ const start=h.receiver.startPlayback('movie');await settle0();const wait=[...h.timers].find(([,timer])=>timer.ms===500);assert(wait);
+ await h.receiver.reconnect();h.fire(wait[0]);await assert.rejects(start,/receiver_replaced/);
+ assert.equal(h.calls.filter(c=>c.url.endsWith('/v1/playback/sessions')&&c.method==='POST').length,1);assert.equal(h.loads.length,0);
+});
+
+test('real preparing resource is cleaned with its original bearer when its controller disconnects',async()=>{
+ const h=await harness({preparingReal:true});h.senders.push('phone');await h.message('phone',{type:'pair',code:'ABCD',origin:''});
+ await h.message('phone',{type:'load',itemId:'movie',requestId:'preparing'});
+ const timer=[...h.timers].find(([,v])=>v.ms===500);assert(timer);h.ctxEvents.disconnect({senderId:'phone'});h.fire(timer[0]);await settle0();
+ const cleanup=h.calls.filter(x=>x.method==='DELETE'&&x.url.endsWith('/v1/playback/sessions/ps_1'));assert.equal(cleanup.length,1);assert.equal(cleanup[0].headers.Authorization,'Bearer bearer-ABCD');assert.equal(h.loads.length,0);
+});
+
+test('late real 202 after retirement cleans the captured resource; retry-only owns none',async()=>{
+ for(const real of [true,false]){
+  let release,called;const reached=new Promise(r=>{called=r}),wait=new Promise(r=>{release=r});
+  const h=await harness({startWait:wait,startCalled:called,...(real?{preparingReal:true}:{preparingResponses:[{retryAfterMs:500}]})});h.senders.push('phone');
+  await h.message('phone',{type:'pair',code:'ABCD',origin:''});await h.message('phone',{type:'load',itemId:'movie',requestId:'late'});await reached;
+  h.ctxEvents.disconnect({senderId:'phone'});release();await settle0();
+  const cleanup=h.calls.filter(x=>x.method==='DELETE'&&x.url.endsWith('/v1/playback/sessions/ps_1'));assert.equal(cleanup.length,real?1:0);assert.equal(h.loads.length,0);
+ }
+});
+
+test('real preparation terminal refusal cleans its original resource',async()=>{
+ const h=await harness({preparingReal:true,prepareTerminal:true});await h.receiver.redeem('ABCD');
+ const started=h.receiver.startPlayback('movie');await settle0();const timer=[...h.timers].find(([,v])=>v.ms===500);assert(timer);h.fire(timer[0]);
+ await assert.rejects(started,/preparation_failed/);assert.equal(h.calls.filter(x=>x.method==='DELETE'&&x.url.endsWith('/v1/playback/sessions/ps_1')).length,1);
+});
+
+test('real preparation accepts only its same final session and generation',async()=>{
+ const h=await harness({preparingReal:true});await h.receiver.redeem('ABCD');
+ const start=h.receiver.startPlayback('movie');await settle0();const timer=[...h.timers].find(([,v])=>v.ms===500);assert(timer);h.fire(timer[0]);await start;
+ assert.equal(h.loads.length,1);assert(!h.calls.some(x=>x.method==='DELETE'&&x.url.endsWith('/v1/playback/sessions/ps_1')));
+});
+
+test('malformed or replaced preparation cleans only the original never-installed resource',async()=>{
+ for(const second of [{retryAfterMs:1,garbage:true},session=>({...session,id:'other',state:'preparing',retryAfterMs:500,lease:{...session.lease,expiresAt:'2099-01-01T00:00:00Z'},presentation:{...session.presentation,engine:'native'}})]){
+  const h=await harness({preparingReal:true,preparingResponses:[second]});await h.receiver.redeem('ABCD');
+  const start=h.receiver.startPlayback('movie');await settle0();const timer=[...h.timers].find(([,v])=>v.ms===500);assert(timer);h.fire(timer[0]);await assert.rejects(start,/invalid_preparation|preparation_replaced/);
+  const cleanup=h.calls.filter(x=>x.method==='DELETE'&&x.url.includes('/v1/playback/sessions/'));assert.equal(cleanup.length,1);assert(cleanup[0].url.endsWith('/ps_1'));assert.equal(h.loads.length,0);
+ }
+});
+
+test('late renewal ticket cannot admit a replacement SDK connection',async()=>{
+ let release,called;const blocked=new Promise(r=>{release=r}),reached=new Promise(r=>{called=r});
+ const h=await harness({expired:true,renewal:true,controllerCheck:async body=>{if(body.attemptId){called();await blocked;}}});h.senders.push('phone');
+ await h.message('phone',{type:'pair',code:'ABCD',origin:''});const paired=h.sent.find(x=>x.body.type==='paired').body;
+ await h.message('phone',{type:'load',itemId:'movie',requestId:'one'});await fireAll(h,0);await settle0();
+ const offer=h.sent.find(x=>x.body.type==='renewal-offer')?.body;assert(offer);
+ await h.message('phone',{type:'renewal-ack',attemptId:offer.attemptId,bindingId:offer.binding.id,controlToken:paired.controlToken,ticket:'b'.repeat(43)});await reached;
+ h.ctxEvents.disconnect({senderId:'phone'});h.ctxEvents.connect({senderId:'phone'});release();await settle0();
+ assert(!h.sent.some(x=>x.body.type==='renewal-complete'));assert.equal(h.receiver.state().playbackId,'ps_1');
 });

@@ -112,6 +112,7 @@ export class CastController {
   private readonly describe?:(itemId:string)=>Promise<string|undefined>;
   private statusRevision=0;
   private acceptedController?:CastControllerStamp;
+  private renewal?:{attemptId:string;binding:CastControllerBinding;proof:CastControllerProof;transport:CastTransport;generation:number;controller:CastControllerStamp;timer:unknown};
   private expectedPairId?:string;
   private stopping?:{requestId:string;target:CastRemoteIdentity;transport:CastTransport;generation:number;timer:unknown};
   private current(){return !this.disposed&&this.callerCurrent();}
@@ -321,8 +322,8 @@ export class CastController {
   /** Replay the same command; resolve uncertain commits with the original authenticated receipt. */
   private load(command: Extract<CastCommand, {type: 'load'}>): Promise<string> {
     if (this.loads.size >= 8 || !this.transport) return Promise.reject(new CastFailure('cast.error.busy'));
-    const requestId = 'load-' + (++this.requestSequence),transport=this.transport;
-    const queue=command.queue&&typeof command.queue==='object'?command.queue:undefined,transferId=queue?.transferId;
+    const requestId = 'load-' + (++this.requestSequence),transport=this.transport,controller=this.acceptedController;
+    const queue=command.queue&&typeof command.queue==='object'&&'queueId' in command.queue?command.queue:undefined,transferId=queue?.transferId;
     return new Promise<string>((resolve, reject) => {
       const retries:unknown[]=[];
       const finish = (error?: Error, itemId = command.itemId) => { if (!this.loads.delete(requestId)) return; this.clearTimer(timer);for(const retry of retries)this.clearTimer(retry);if (error) reject(error); else resolve(itemId); };
@@ -333,7 +334,7 @@ export class CastController {
       }catch{finish(new CastFailure('cast.error.unreachable'));}};
       const timer = this.setTimer(() => {void recover();}, 150_000);
       this.loads.set(requestId, {resolve: itemId => finish(undefined, itemId), reject: error => finish(error)});
-      const send=()=>{if(this.loads.has(requestId)&&this.transport===transport)void transport.send({...command,requestId}).catch(()=>{if(!transferId)finish(new CastFailure('cast.error.unreachable'));});};
+      const send=()=>{if(this.loads.has(requestId)&&this.transport===transport)void transport.send({...command,requestId,...(controller?{controller}:{})}).catch(()=>{if(!transferId)finish(new CastFailure('cast.error.unreachable'));});};
       if(transferId)for(const delay of [10_000,30_000])retries.push(this.setTimer(send,delay));
       send();
     });
@@ -342,6 +343,42 @@ export class CastController {
   private receive(e: CastEvent) {
     if(!this.current())return;
     switch (e.type) {
+      case 'renewal-offer': {
+        const transport=this.transport, context=this.proofContext, accepted=this.acceptedController;
+        const proof=transport&&this.proof(transport), next=e.binding;
+        if(!transport||!context||!proof||!accepted||!sameCastController(e.previousController,accepted)||e.controller.bindingId!==accepted.bindingId||e.controller.connectionGeneration!==accepted.connectionGeneration||e.controller.controllerGeneration!==accepted.controllerGeneration+1||this.renewal)return;
+        const old=proof.binding;
+        if(next.id!==old.id||next.bootstrapId!==old.bootstrapId||next.receiverId!==old.receiverId||next.targetId!==old.targetId||!castScopeEqual(next.scope,old.scope)||next.targetFamilyId===old.targetFamilyId||BigInt(next.targetGeneration)<=BigInt(old.targetGeneration))return;
+        const generation=this.startGeneration;
+        const pending={attemptId:e.attemptId,binding:next,proof,transport,generation,controller:e.controller,timer:undefined as unknown};
+        const current=()=>this.current()&&this.renewal===pending&&this.transport===transport&&this.startGeneration===generation&&sameCastController(this.acceptedController,accepted);
+        this.renewal=pending;this.statusRevision++;this.publish({controlPending:true});
+        if(!current())return;
+        const timer=this.setTimer(()=>{if(current())this.redacted(transport,generation,++this.statusRevision);},15000);
+        if(!current()){this.clearTimer(timer);return;}
+        pending.timer=timer;
+        if(!current())return;
+        void this.validate(next,e.attemptId).then(ticket=>{
+          if(!current())return;
+          return transport.send({type:'renewal-ack',bindingId:next.id,attemptId:e.attemptId,ticket,controlToken:proof.controlToken});
+        }).catch(()=>{if(current())this.redacted(transport,generation,++this.statusRevision);});
+        return;
+      }
+      case 'renewal-complete': {
+        const pending=this.renewal;
+        if(!pending||pending.attemptId!==e.attemptId||!sameCastController(e.controller,pending.controller))return;
+        const current=()=>this.current()&&this.renewal===pending&&this.transport===pending.transport&&this.startGeneration===pending.generation;
+        if(!current())return;
+        const proof:CastControllerProof=Object.freeze({...pending.proof,binding:pending.binding});
+        try{this.controllerStorage?.set(castProofKey(proof.context,pending.transport.deviceId!),JSON.stringify(proof));}catch{if(current())this.redacted(pending.transport,pending.generation,++this.statusRevision);return;}
+        if(!current())return;
+        this.clearTimer(pending.timer);if(!current())return;
+        this.renewal=undefined;this.acceptedController=pending.controller;
+        const oldRemote=this.state.remoteIdentity;
+        this.publish({controlPending:false,...(oldRemote?{remoteIdentity:Object.freeze({controller:pending.controller,occurrence:oldRemote.occurrence})}:{})});
+        if(this.current()&&this.transport===pending.transport&&this.startGeneration===pending.generation&&sameCastController(this.acceptedController,pending.controller))this.send({type:'status'});
+        return;
+      }
       case 'paired': {
         if(!this.waiting)return;
         const waiting=this.waiting;
@@ -390,6 +427,7 @@ export class CastController {
         return;
       }
       case 'status': {
+        if(this.renewal)return;
         if(this.state.phase!=='casting'&&!this.state.remoteStopped||!this.current())return;
         if(this.acceptedController&&!sameCastController(e.controller,this.acceptedController))return;
         if(this.proofContext&&(!e.controller||e.itemId&&!e.occurrence))return;
@@ -425,6 +463,7 @@ export class CastController {
   /** Detach from the transport; `stopReceiver` closes Portico on the TV. */
   private release(stopReceiver: boolean, end = true) {
     this.startGeneration++;this.statusRevision++;
+    if(this.renewal)this.clearTimer(this.renewal.timer);this.renewal=undefined;
     if(this.stopping)this.clearTimer(this.stopping.timer);this.stopping=undefined;this.acceptedController=undefined;this.expectedPairId=undefined;
     this.clearTimer(this.adoptTimer);this.settleAdoption?.(false);
     const flight=this.transferFlight;this.transferFlight=undefined;const released=this.startGeneration;
@@ -443,7 +482,7 @@ export class CastController {
     if (t && end) t.end(stopReceiver);
   }
 
-  private send(message: CastCommand) { if(this.current())void this.transport?.send(message).catch(() => {}); }
+  private send(message: CastCommand) { if(this.current())void this.transport?.send(message.type==='status'&&this.acceptedController?{...message,controller:this.acceptedController}:message).catch(() => {}); }
 
   /** The controller's answer to `takeover-requested`. */
   answerTakeover(allow:boolean,expected=this.state.takeover) {
@@ -457,7 +496,7 @@ export class CastController {
     // A paired production sender may have loadACK before the first admitted
     // status. Missing occurrence authority is never a legacy/room downgrade.
     if((this.proofContext||this.acceptedController)&&(!target||!sameCastController(target.controller,this.acceptedController)))return false;
-    return this.current()&&this.state.phase==='casting'&&!this.stopping&&(!expected||sameCastRemote(expected,this.state.remoteIdentity));
+    return this.current()&&this.state.phase==='casting'&&!this.stopping&&!this.renewal&&(!expected||sameCastRemote(expected,this.state.remoteIdentity));
   }
   private targetFields(expected?:CastRemoteIdentity){const target=expected??this.state.remoteIdentity;return target?{target}:{};}
   private sendControl(message:CastCommand,expected?:CastRemoteIdentity){

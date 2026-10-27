@@ -1136,12 +1136,12 @@ func TestSocialCastBootstrapRedeemReconnectAndScoping(t *testing.T) {
 		t.Fatalf("bootstrap: %+v", bootstrap.Bootstrap)
 	}
 	// Redemption is unauthenticated, so a wrong code must teach nothing.
-	w := f.as("", "POST", "/v1/cast/redeem", social.CastRedeemRequest{ProtocolVersion: social.Protocol, Code: "ZZZZZZ", DeviceID: "cast-1"})
+	w := f.as("", "POST", "/v1/cast/redeem", social.CastRedeemRequest{ProtocolVersion: social.Protocol, Code: "ZZZZZZ", ExpectedBootstrapID: bootstrap.Bootstrap.ID, DeviceID: "cast-1"})
 	if w.Code != 404 || errorCode(t, w) != "cast_code_not_found" {
 		t.Fatalf("unknown cast code %d %s", w.Code, w.Body.String())
 	}
 	var redeemed social.CastReceiverSession
-	f.decode(f.as("", "POST", "/v1/cast/redeem", social.CastRedeemRequest{ProtocolVersion: social.Protocol, Code: bootstrap.Bootstrap.Code, DeviceID: "cast-1", DisplayName: "Living room TV"}), 200, &redeemed)
+	f.decode(f.as("", "POST", "/v1/cast/redeem", social.CastRedeemRequest{ProtocolVersion: social.Protocol, Code: bootstrap.Bootstrap.Code, ExpectedBootstrapID: bootstrap.Bootstrap.ID, DeviceID: "cast-1", DisplayName: "Living room TV"}), 200, &redeemed)
 	if redeemed.GrantSemantics != "initial" || redeemed.Scope.AccountID != f.owner.Viewer.AccountID || redeemed.Scope.ProfileID != f.profile {
 		t.Fatalf("redeem scope: %+v", redeemed)
 	}
@@ -1160,7 +1160,7 @@ func TestSocialCastBootstrapRedeemReconnectAndScoping(t *testing.T) {
 		t.Fatalf("device token accepted as a bearer %d %s", w.Code, w.Body.String())
 	}
 	// The code is single use.
-	w = f.as("", "POST", "/v1/cast/redeem", social.CastRedeemRequest{ProtocolVersion: social.Protocol, Code: bootstrap.Bootstrap.Code, DeviceID: "cast-1"})
+	w = f.as("", "POST", "/v1/cast/redeem", social.CastRedeemRequest{ProtocolVersion: social.Protocol, Code: bootstrap.Bootstrap.Code, ExpectedBootstrapID: bootstrap.Bootstrap.ID, DeviceID: "cast-1"})
 	if w.Code != 410 || errorCode(t, w) != "cast_code_consumed" {
 		t.Fatalf("cast code reused %d %s", w.Code, w.Body.String())
 	}
@@ -1195,7 +1195,7 @@ func TestSocialCastBootstrapRedeemReconnectAndScoping(t *testing.T) {
 	var theirs social.CastBootstrapResponse
 	f.decode(f.as(f.member, "POST", "/v1/cast/bootstrap", social.CastBootstrapRequest{ProtocolVersion: social.Protocol}), 201, &theirs)
 	var theirSession social.CastReceiverSession
-	f.decode(f.as("", "POST", "/v1/cast/redeem", social.CastRedeemRequest{ProtocolVersion: social.Protocol, Code: theirs.Bootstrap.Code, DeviceID: "cast-2"}), 200, &theirSession)
+	f.decode(f.as("", "POST", "/v1/cast/redeem", social.CastRedeemRequest{ProtocolVersion: social.Protocol, Code: theirs.Bootstrap.Code, ExpectedBootstrapID: theirs.Bootstrap.ID, DeviceID: "cast-2"}), 200, &theirSession)
 	if theirSession.Scope.AccountID != "account2" || theirSession.Scope.ProfileID != "profile2" {
 		t.Fatalf("second pairing was scoped to the wrong viewer: %+v", theirSession.Scope)
 	}

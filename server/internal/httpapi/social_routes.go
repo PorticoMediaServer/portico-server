@@ -940,6 +940,19 @@ func (d Dependencies) castRoutes(handle socialHandle, viewer socialViewer, store
 	// Redeem and reconnect are the receiver's only unauthenticated routes: a
 	// Cast receiver page has no bearer until it has redeemed a code. Both are
 	// rate limited and both fail closed on an unknown or spent credential.
+	handle("POST /v1/cast/preview", func(w http.ResponseWriter, r *http.Request) {
+		var body social.CastPreviewRequest
+		if !socialBody(w, r, &body) {
+			return
+		}
+		body.Source = clientNetwork(clientAddress(r, d.trustedProxyPrefixes(r.Context())))
+		out, e := store.CastPreview(r.Context(), body)
+		if e != nil {
+			socialFailure(w, e)
+			return
+		}
+		write(w, 200, out)
+	})
 	handle("POST /v1/cast/redeem", func(w http.ResponseWriter, r *http.Request) {
 		var body social.CastRedeemRequest
 		if !socialBody(w, r, &body) {
