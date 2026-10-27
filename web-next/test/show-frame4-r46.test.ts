@@ -39,7 +39,7 @@ const data = {
   show: {id: 'the-last-of-us', libraryId: 'tv', title: 'The Last of Us', year: 2023, libraryKind: 'tv', providerMatchStatus: 'matched',
     overview: 'A hardened survivor takes charge of a 14-year-old girl.', network: 'HBO', studio: 'PlayStation Productions',
     country: 'United States', contentRating: 'TV-MA', status: 'Continuing', firstAired: '2023-01-15', originalLanguage: 'en',
-    addedAt: '2026-10-17T00:00:00Z', episodeCount: 4, genres: ['Drama'], credits},
+    addedAt: '2026-10-17T12:00:00Z', episodeCount: 4, genres: ['Drama'], credits},
   seasons: [{id: 'season-1', showId: 'the-last-of-us', number: 1, title: 'Season 1', episodeCount: 4, watchedCount: 0, unwatchedCount: 4}],
   seasonTotalCount: 1, nextSeasonCursor: '', groups: [], selected: {seasonId: 'season-1'},
   episodes: {scope: {serverId: 'specimen-server', libraryId: 'tv', libraryKind: 'tv', view: 'season', entityId: 'season-1', viewerFence: 'specimen-viewer-fence'},
