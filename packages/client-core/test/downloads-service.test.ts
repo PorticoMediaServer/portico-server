@@ -367,3 +367,55 @@ test('quality defaults r25: item omission sends Original and never rewrites an e
   assert.equal(sent.length,n);
  }finally{service.dispose();}
 });
+
+test('a generic empty-list 503 or timeout is a retryable failure, never feature absence',async()=>{
+ for(const error of [Object.assign(new Error('busy'),{status:503,code:'server_busy'}),Object.assign(new Error('timeout'),{status:504,code:'request_timeout'})]){
+  const s=server([]),service=new DownloadsService(s.api,()=>'op',10);
+  try{
+   s.failWith(error);await service.refresh();
+   const state=service.getSnapshot();
+   assert.equal(state.unavailable,false,'a transient failure is not downloads-off');
+   assert.equal(state.phase,'error');
+   assert.ok(state.error);assert.strictEqual(state.failure,error);
+   s.failWith(undefined);await service.refresh();
+   assert.equal(service.getSnapshot().phase,'ready');
+   assert.equal(service.getSnapshot().unavailable,false);
+  }finally{service.dispose();}
+ }
+});
+
+test('a nonempty list survives a generic 503 and keeps its Retry',async()=>{
+ const s=server([preparation()]),service=new DownloadsService(s.api,()=>'op',10);
+ try{
+  await service.refresh();
+  s.failWith(Object.assign(new Error('busy'),{status:503,code:'server_busy'}));await service.refresh();
+  assert.equal(service.getSnapshot().items.length,1);
+  assert.equal(service.getSnapshot().phase,'ready');
+  assert.equal(service.getSnapshot().unavailable,false);
+  assert.ok(service.getSnapshot().error);
+ }finally{service.dispose();}
+});
+
+test('the canonical downloads_unavailable code and unsupported 404 still mark feature absence',async()=>{
+ for(const error of [Object.assign(new Error('off'),{status:503,code:'downloads_unavailable'}),Object.assign(new Error('missing'),{status:404})]){
+  const s=server([]),service=new DownloadsService(s.api,()=>'op',10);
+  try{
+   s.failWith(error);await service.refresh();
+   assert.equal(service.getSnapshot().unavailable,true);
+   assert.equal(service.getSnapshot().error,undefined);
+  }finally{service.dispose();}
+ }
+});
+
+test('a started service retries an empty generic 503 through its bounded schedule',async()=>{
+ const s=server([]),service=new DownloadsService(s.api,()=>'op',10);
+ try{
+  s.failWith(Object.assign(new Error('busy'),{status:503,code:'server_busy'}));
+  service.start();
+  await new Promise(r=>setTimeout(r,80));
+  s.failWith(undefined);s.set([preparation()]);
+  await new Promise(r=>setTimeout(r,120));
+  assert.equal(service.getSnapshot().phase,'ready');
+  assert.equal(service.getSnapshot().items.length,1,'the scheduled retry reached the recovered page');
+ }finally{service.dispose();}
+});
