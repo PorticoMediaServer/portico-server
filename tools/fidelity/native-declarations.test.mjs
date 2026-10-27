@@ -90,7 +90,8 @@ test('coverage does not hide independently known differences; complete PASS stil
 test('a mapped child supplies only explicitly selected paint while host geometry and radius stay scored', () => {
   const reference = screen([node('r', null)]), actual = screen([node('a', null), node('fill', 'a')]);
   reference.elements[0].frame = actual.elements[0].frame = 'action'; actual.elements[1].frame = 'face';
-  for (const value of [reference, actual]) {delete value.measurement; value.unavailable = []; for (const el of value.elements) {
+  reference.viewport.deviceScaleFactor = 1;
+  for (const value of [reference, actual]) {value.unavailable = []; for (const el of value.elements) {
     delete el.diagnostics; el.effectiveOpacity = 1; el.style = {borderTopLeftRadius: '10px'};
     el.effectiveBackgroundColor = 'rgb(255, 255, 255)';
   }}
