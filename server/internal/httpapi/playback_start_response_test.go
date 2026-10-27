@@ -1,9 +1,12 @@
 package httpapi
 
 import (
+	"context"
 	"encoding/json"
+	"portico.local/server/internal/playback"
 	"reflect"
 	"testing"
+	"time"
 
 	"portico.local/apikit"
 	"portico.local/server/internal/apispec"
@@ -118,4 +121,99 @@ func TestPlaybackStartWrapperKeepsActualSessionJSON(t *testing.T) {
 		}
 	}
 	t.Fatal("missing start route")
+}
+
+func TestPlaybackStartCanonicalSchemaValidatesCompleteActualResource(t *testing.T) {
+	f := newV1Fixture(t, 1)
+	var real playbackv1.SessionView
+	f.call("POST", "/v1/playback/sessions", map[string]string{"Idempotency-Key": "start-domain-positive-0001"}, startBody(f.items[0], nil), 201, &real)
+	pendingFixture := newV1Fixture(t, 1)
+	pendingFixture.v1.ReadyCheck = func(context.Context, playback.Session) (bool, error) { return false, nil }
+	pendingFixture.v1.ReadyWait = time.Millisecond
+	var actualPending playbackv1.SessionView
+	pendingFixture.call("POST", "/v1/playback/sessions", map[string]string{"Idempotency-Key": "start-domain-real-202-0001"}, startBody(pendingFixture.items[0], nil), 202, &actualPending)
+	if actualPending.ID == "" || actualPending.RetryAfterMs < 1 || actualPending.State != "playing" {
+		t.Fatal("fixture did not produce a real projected 202", actualPending)
+	}
+	validator := apispec.Document{}
+	check := func(status int, value any, want bool) {
+		t.Helper()
+		raw, err := json.Marshal(value)
+		if err != nil {
+			t.Fatal(err)
+		}
+		issues := validator.ValidateJSON((playbackStartResponse{}).JSONSchemaForStatus(status), raw)
+		if (len(issues) == 0) != want {
+			t.Fatalf("status %d valid=%v: %v\n%s", status, want, issues, raw)
+		}
+	}
+	check(201, real, true)
+	check(202, actualPending, true)
+	for _, state := range []string{"playing", "paused"} {
+		pending := real
+		pending.State = state
+		pending.RetryAfterMs = 500
+		check(202, pending, true)
+		check(201, pending, false)
+	}
+	ended := real
+	ended.State = "ended"
+	ended.End = &playbackv1.SessionEnd{Reason: "stopped"}
+	check(201, ended, true)
+	ended.RetryAfterMs = 500
+	check(202, ended, false)
+
+	pending := real
+	pending.RetryAfterMs = 500
+	raw, _ := json.Marshal(pending)
+	copyValue := func() map[string]any {
+		var value map[string]any
+		if err := json.Unmarshal(raw, &value); err != nil {
+			t.Fatal(err)
+		}
+		return value
+	}
+	nested := func(v map[string]any, key string) map[string]any { return v[key].(map[string]any) }
+	for name, mutate := range map[string]func(map[string]any){
+		"root closure":         func(v map[string]any) { v["unexpected"] = true },
+		"lease closure":        func(v map[string]any) { nested(v, "lease")["unexpected"] = true },
+		"presentation closure": func(v map[string]any) { nested(v, "presentation")["unexpected"] = true },
+		"decision closure":     func(v map[string]any) { nested(nested(v, "presentation"), "decision")["unexpected"] = true },
+		"nested stream closure": func(v map[string]any) {
+			nested(nested(nested(v, "presentation"), "decision"), "video")["unexpected"] = true
+		},
+		"required":            func(v map[string]any) { delete(v, "lease") },
+		"null required":       func(v map[string]any) { v["presentation"] = nil },
+		"wrong type":          func(v map[string]any) { v["id"] = 2 },
+		"kind":                func(v map[string]any) { v["kind"] = "other" },
+		"role":                func(v map[string]any) { v["role"] = "other" },
+		"projected state":     func(v map[string]any) { v["state"] = "preparing" },
+		"engine":              func(v map[string]any) { nested(v, "presentation")["engine"] = "other" },
+		"empty native engine": func(v map[string]any) { nested(v, "presentation")["engine"] = "" },
+		"mode":                func(v map[string]any) { nested(v, "presentation")["mode"] = "other" },
+		"negative position":   func(v map[string]any) { nested(v, "presentation")["startPositionMs"] = -1 },
+		"zero generation":     func(v map[string]any) { nested(v, "presentation")["generation"] = 0 },
+		"lease date":          func(v map[string]any) { nested(v, "lease")["expiresAt"] = "not-a-time" },
+		"lease offset":        func(v map[string]any) { nested(v, "lease")["expiresAt"] = "2026-10-27T01:02:03+00:00" },
+		"lease precision":     func(v map[string]any) { nested(v, "lease")["expiresAt"] = "2026-10-27T01:02:03.1234567890Z" },
+		"negative interval":   func(v map[string]any) { nested(v, "lease")["reportEveryMs"] = -1 },
+		"zero interval":       func(v map[string]any) { nested(v, "lease")["reportEveryMs"] = 0 },
+		"end contamination":   func(v map[string]any) { v["end"] = map[string]any{"reason": "stopped"} },
+		"retry missing":       func(v map[string]any) { delete(v, "retryAfterMs") },
+		"retry null":          func(v map[string]any) { v["retryAfterMs"] = nil },
+		"retry bounds":        func(v map[string]any) { v["retryAfterMs"] = 10001 },
+		"empty decision":      func(v map[string]any) { nested(v, "presentation")["decision"] = map[string]any{} },
+	} {
+		t.Run(name, func(t *testing.T) { value := copyValue(); mutate(value); check(202, value, false) })
+	}
+	for _, date := range []string{"2026-10-27T01:02:03Z", "2026-10-27T01:02:03.1Z", "2026-10-27T01:02:03.123456789Z"} {
+		value := copyValue()
+		nested(value, "lease")["expiresAt"] = date
+		check(202, value, true)
+	}
+	// Optional pointer null keeps its normal absent semantics. Closing structs
+	// must not turn arbitrary/map leaves into invented fixed object shapes.
+	value := copyValue()
+	value["observedPlayback"] = nil
+	check(202, value, true)
 }

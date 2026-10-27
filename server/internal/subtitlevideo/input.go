@@ -15,6 +15,7 @@ import (
 	"strings"
 	"sync"
 
+	"portico.local/server/internal/childprocess"
 	"portico.local/server/internal/identity"
 	"portico.local/server/internal/remotemedia"
 	"portico.local/server/internal/sourceaccess"
@@ -96,12 +97,12 @@ func (p *localInput) validate(ctx context.Context) error {
 	}
 	return nil
 }
-func (p *localInput) Validate(ctx context.Context) error {
+func (p *localInput) validateOwned(ctx context.Context) error {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	return p.validate(ctx)
 }
-func (p *localInput) ReadExtent(ctx context.Context, offset, length int64) ([]byte, error) {
+func (p *localInput) readOwned(ctx context.Context, offset, length int64) ([]byte, error) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	if offset < 0 || length < 1 || length > 1<<20 || offset > p.Size()-length {
@@ -203,12 +204,12 @@ func (p *remoteInput) validate(ctx context.Context) error {
 	}
 	return e
 }
-func (p *remoteInput) Validate(ctx context.Context) error {
+func (p *remoteInput) validateOwned(ctx context.Context) error {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	return p.validate(ctx)
 }
-func (p *remoteInput) ReadExtent(ctx context.Context, offset, length int64) ([]byte, error) {
+func (p *remoteInput) readOwned(ctx context.Context, offset, length int64) ([]byte, error) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	if offset < 0 || length < 1 || length > 1<<20 || offset > p.Size()-length {
@@ -247,7 +248,26 @@ func (p *remoteInput) Close() error {
 	p.client.Close()
 	return p.descriptor.Close()
 }
-func (r *Runtime) OpenSubtitleInput(ctx context.Context, item, source, session string) (subtitles.RenderInput, error) {
+func (r *Runtime) OpenSubtitleInput(ctx context.Context, item, source, session string) (out subtitles.RenderInput, err error) {
+	release, err := childprocess.AcquirePublication(ctx)
+	if err != nil {
+		return nil, err
+	}
+	defer release()
+	defer func() {
+		if err != nil || out == nil {
+			return
+		}
+		check, e := childprocess.AcquirePublication(ctx)
+		if e != nil {
+			out.Close()
+			out = nil
+			err = e
+			return
+		}
+		check()
+	}()
+
 	if invocation, selected := subtitles.PlaybackSourceInvocationFromContext(ctx); selected {
 		facts := invocation.Facts()
 		if item != facts.ItemID || source != facts.AssetID || session != "" && session != facts.SessionID {
@@ -367,13 +387,13 @@ type selectedRemoteInput struct {
 	source  selectedInput
 }
 
-func (p *selectedRemoteInput) Validate(ctx context.Context) error {
+func (p *selectedRemoteInput) validateOwned(ctx context.Context) error {
 	if e := p.runtime.stillSelected(ctx, p.source); e != nil {
 		return e
 	}
 	return p.RenderInput.Validate(ctx)
 }
-func (p *selectedRemoteInput) ReadExtent(ctx context.Context, offset, length int64) ([]byte, error) {
+func (p *selectedRemoteInput) readOwned(ctx context.Context, offset, length int64) ([]byte, error) {
 	if e := p.runtime.stillSelected(ctx, p.source); e != nil {
 		return nil, e
 	}

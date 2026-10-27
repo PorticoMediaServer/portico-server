@@ -9,6 +9,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"portico.local/server/internal/assets"
+	"portico.local/server/internal/childprocess"
 	"portico.local/server/internal/playback/vod"
 	"regexp"
 	"strconv"
@@ -480,6 +481,9 @@ func (h *HLS) startRendition(ctx context.Context, id string, r AudioRenditionPla
 	if r.Failure != "" {
 		return ErrAudioRenditionUnavailable
 	}
+	if dbwork.Snapshot(ctx) != nil {
+		return errOccurrenceClaimed
+	}
 	intent, err := h.occurrences.intent(id)
 	if err != nil {
 		return err
@@ -539,7 +543,7 @@ func (h *HLS) startRendition(ctx context.Context, id string, r AudioRenditionPla
 	run, cancel := context.WithCancel(h.ctx)
 	w := &hlsWindow{generation: generation, audioConversion: r.Action == "convert", start: from, served: -1, produced: from - 1, cancel: cancel, done: make(chan struct{})}
 	owned := &occurrenceRun{generation: generation, requestID: requestID, itemID: itemID, assetID: assetID, cancel: cancel, done: w.done}
-	if err = intent.install(owned, func() { h.active[key] = cancel; h.windows[key] = w }); err != nil {
+	if err = intent.install(owned, func() { h.installOccurrenceLocked(key, owned, cancel); h.windows[key] = w }); err != nil {
 		cancel()
 		return err
 	}
@@ -550,14 +554,14 @@ func (h *HLS) startRendition(ctx context.Context, id string, r AudioRenditionPla
 		defer func() {
 			h.mu.Lock()
 			if h.windows[key] == w {
-				delete(h.active, key)
+				h.removeOccurrenceLocked(key, owned)
 				delete(h.windows, key)
 			}
 			close(w.done)
 			h.mu.Unlock()
 			h.occurrences.finished(id, intent.entry, owned)
 		}()
-		h.produceRendition(run, id, r, from, w, generation)
+		h.produceRendition(h.occurrenceContext(run, id, intent.entry, owned), id, r, from, w, generation)
 	})
 	return nil
 }
@@ -654,50 +658,60 @@ func (h *HLS) produceRendition(ctx context.Context, id string, r AudioRenditionP
 				return
 			case <-tick.C:
 			}
-			if input.Validate != nil {
-				if err := input.Validate(run); err != nil {
-					cancel()
-					failed(FailureConverter)
-					return
+			keep := func() bool {
+				ownedIO, err := childprocess.OwnedIOContext(ctx)
+				if err != nil {
+					return false
 				}
-			}
-			h.mu.Lock()
-			produced := w.produced
-			h.mu.Unlock()
-			for produced+1 < hlsSegmentCount(plan.Duration) && segmentReady(filepath.Join(dir, renditionSegmentFile(r, produced+1))) {
-				produced++
-			}
-			if input.InputAt != nil && !fragmented {
-				for next := produced + 1; next < hlsSegmentCount(plan.Duration) && segmentReady(filepath.Join(outputDir, renditionSegmentFile(r, next))); next++ {
-					if err := os.Rename(filepath.Join(outputDir, renditionSegmentFile(r, next)), filepath.Join(dir, renditionSegmentFile(r, next))); err != nil {
+				if input.Validate != nil {
+					if err := input.Validate(ownedIO); err != nil {
 						cancel()
 						failed(FailureConverter)
-						return
+						return false
 					}
-					produced = next
 				}
-			}
-			if fragmented {
-				var publishErr error
-				produced, publishErr = promoteConvertedFragments(outputDir, dir, initWindow, from, &r, clock)
-				if publishErr != nil {
-					cancel()
-					failed(FailureConverter)
-					return
-				}
-			}
-
-			h.mu.Lock()
-			w.produced = produced
-			served := max(w.served, w.start-1)
-			h.mu.Unlock()
-			limit := max(12, h.configuration().ThrottleBufferSeconds)
-			edge := served + (limit+5)/6
-			if segmentReady(filepath.Join(dir, renditionSegmentFile(r, edge))) {
 				h.mu.Lock()
-				w.throttled = true
+				produced := w.produced
 				h.mu.Unlock()
-				cancel()
+				for produced+1 < hlsSegmentCount(plan.Duration) && segmentReady(filepath.Join(dir, renditionSegmentFile(r, produced+1))) {
+					produced++
+				}
+				if input.InputAt != nil && !fragmented {
+					for next := produced + 1; next < hlsSegmentCount(plan.Duration) && segmentReady(filepath.Join(outputDir, renditionSegmentFile(r, next))); next++ {
+						if err := os.Rename(filepath.Join(outputDir, renditionSegmentFile(r, next)), filepath.Join(dir, renditionSegmentFile(r, next))); err != nil {
+							cancel()
+							failed(FailureConverter)
+							return false
+						}
+						produced = next
+					}
+				}
+				if fragmented {
+					var publishErr error
+					produced, publishErr = promoteConvertedFragments(outputDir, dir, initWindow, from, &r, clock)
+					if publishErr != nil {
+						cancel()
+						failed(FailureConverter)
+						return false
+					}
+				}
+
+				h.mu.Lock()
+				w.produced = produced
+				served := max(w.served, w.start-1)
+				h.mu.Unlock()
+				limit := max(12, h.configuration().ThrottleBufferSeconds)
+				edge := served + (limit+5)/6
+				if segmentReady(filepath.Join(dir, renditionSegmentFile(r, edge))) {
+					h.mu.Lock()
+					w.throttled = true
+					h.mu.Unlock()
+					cancel()
+					return false
+				}
+				return true
+			}()
+			if !keep {
 				return
 			}
 		}
@@ -732,7 +746,7 @@ func (h *HLS) produceRendition(ctx context.Context, id string, r AudioRenditionP
 			progress = vod.NewConversionProgressWriter(observe)
 		}
 		if input.Validate != nil {
-			if err = input.Validate(run); err != nil {
+			if err = validateOwnedInput(run, input.Validate); err != nil {
 				cancel()
 				<-watchDone
 				failed(FailureConverter)
@@ -749,16 +763,19 @@ func (h *HLS) produceRendition(ctx context.Context, id string, r AudioRenditionP
 			if progress != nil {
 				cmd.Stdout = progress
 			}
-			err = cmd.Run()
+			err = childprocess.Run(run, cmd)
 		}
 	}
 	cancel()
 	<-watchDone
 	if input.Validate != nil {
-		if err := input.Validate(ctx); err != nil {
+		if err := validateOwnedInput(ctx, input.Validate); err != nil {
 			failed(FailureConverter)
 			return
 		}
+	}
+	if err := childprocess.CheckOwnedIO(ctx); err != nil {
+		return
 	}
 	if input.InputAt != nil && !fragmented {
 		for next := from; next < hlsSegmentCount(plan.Duration); next++ {
@@ -865,9 +882,12 @@ func hevcSampleEntry(p *DeliveryPlan) string {
 var ErrAudioRenditionUnavailable = errors.New("This audio track is unavailable for this playback. Choose another audio track.")
 
 func (h *HLS) renditionFailed(ctx context.Context, id string, generation int, r AudioRenditionPlan, code string) {
+	if failureDuringClaim(ctx) {
+		return
+	}
 	write, cancel := persist(ctx)
 	defer cancel()
-	_, _ = dbwork.ExecWrite(write, h.db, dbwork.ClassEstablishedPlayback, `UPDATE playback_delivery_plans SET renditions_json=json_set(renditions_json,?,?) WHERE session_id=? AND json_extract(renditions_json,?)=? AND EXISTS(SELECT 1 FROM playback_sessions WHERE id=? AND generation=?)`, fmt.Sprintf("$[%d].failure", r.Ordinal), code, id, fmt.Sprintf("$[%d].streamIndex", r.Ordinal), r.StreamIndex, id, generation)
+	_, _ = h.producerWrite(write, id, dbwork.ClassEstablishedPlayback, `UPDATE playback_delivery_plans SET renditions_json=json_set(renditions_json,?,?) WHERE session_id=? AND json_extract(renditions_json,?)=? AND EXISTS(SELECT 1 FROM playback_sessions WHERE id=? AND generation=?)`, fmt.Sprintf("$[%d].failure", r.Ordinal), code, id, fmt.Sprintf("$[%d].streamIndex", r.Ordinal), r.StreamIndex, id, generation)
 }
 
 func (h *HLS) noteRenditionServed(id, key string, index int) {

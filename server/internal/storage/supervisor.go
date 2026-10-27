@@ -6,6 +6,7 @@ import (
 	"io"
 	"os"
 	"os/exec"
+	"portico.local/server/internal/childprocess"
 	"regexp"
 	"runtime"
 	"strings"
@@ -391,7 +392,7 @@ func (s *Supervisor) runAdmission(ctx context.Context, key string, cmd *exec.Cmd
 	// "exit status 1" is never all a log line or a reason can say.
 	stderr := &tailWriter{max: stderrTailBytes}
 	cmd.Stderr = stderr
-	if e = cmd.Start(); e != nil {
+	if e = childprocess.Start(ctx, cmd); e != nil {
 		stdout.Close()
 		release()
 		return e

@@ -49,6 +49,13 @@ func TestOccurrenceClaimCommitOwnsExactRunsAndDoesNotReopen(t *testing.T) {
 	if err = old.install(other, func() {}); err != nil {
 		t.Fatal(err)
 	}
+	if _, err = r.claim(context.Background(), "media-1", 1); !errors.Is(err, errOccurrenceClaimed) {
+		t.Fatalf("mixed generation must refuse: %v", err)
+	}
+	if oldCancelled.Load() != 0 || successorCancelled.Load() != 0 {
+		t.Fatal("refusal cancelled a run")
+	}
+	r.finished("media-1", old.entry, other)
 	claim, err := r.claim(context.Background(), "media-1", 1)
 	if err != nil {
 		t.Fatal(err)
@@ -141,4 +148,24 @@ func TestOccurrenceClaimWaitsForOwnedPublicationBeforeWriter(t *testing.T) {
 	claim.abort()
 	i.release()
 	r.finished("media-1", i.entry, run)
+}
+
+func TestOccurrenceOtherClaimCopyCannotAbortAcceptingOwner(t *testing.T) {
+	var r occurrenceRegistry
+	phase, err := r.claim(context.Background(), "same", 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	owner := &StopOccurrenceClaim{phase: phase, id: "same"}
+	other := &StopOccurrenceClaim{phase: phase, id: "same"}
+	phase.fenceOwner = owner
+	phase.fencing = true
+	other.Abort()
+	if phase.phase != 0 || !phase.entry.blocked {
+		t.Fatal("other copy reopened accepting owner")
+	}
+	owner.Abort()
+	if phase.phase != 2 || phase.entry.blocked {
+		t.Fatal("rolled back owner did not release its barrier")
+	}
 }

@@ -1,7 +1,7 @@
 // Package receiver embeds the static web bundles the server serves directly.
 //
 // The Cast receiver application lives under cast/. It is plain HTML and
-// JavaScript with no build step, compiled into the binary so every GOOS target
+// JavaScript plus the canonical generated contract bundle, embedded so every GOOS target
 // and the Docker image serve identical bytes and no deployment has to publish
 // the page separately.
 package receiver

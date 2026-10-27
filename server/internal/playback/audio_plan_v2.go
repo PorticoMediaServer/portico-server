@@ -739,6 +739,20 @@ func (s *Service) PrefetchTake(session string, want, limit int64) int64 {
 // ForgetPrefetch follows durable stop or commit, never eviction of live grants.
 func (s *Service) ForgetPrefetch(session string) {
 	s.prefetchMu.Lock()
+	owned := s.prefetchOwned[session]
+	s.prefetchMu.Unlock()
+	if owned != nil {
+		owned.retire()
+		registry := s.occurrenceRegistry()
+		registry.mu.Lock()
+		if entry := registry.entries[session]; entry != nil {
+			delete(entry.budgets, owned)
+			registry.pruneLocked(session, entry)
+		}
+		registry.mu.Unlock()
+	}
+
+	s.prefetchMu.Lock()
 	defer s.prefetchMu.Unlock()
 	if s.prefetchReaders[session] > 0 {
 		if s.prefetchRetired == nil {
