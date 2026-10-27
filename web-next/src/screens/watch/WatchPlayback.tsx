@@ -15,6 +15,9 @@ import {WatchUndoPrompt} from './UndoPrompt';
 import {WatchUpNextPrompt} from './UpNextPrompt';
 import {WatchStillWatchingPrompt} from './StillWatchingPrompt';
 import {watchStillWatching} from './still-watching';
+import {preferenceValue} from '@core/preferences.ts';
+import {useListeningOwner} from './listening/use-listening-owner';
+import {AudiobookHost} from './listening/AudiobookHost';
 import {WatchMusicNowPlaying} from './music/NowPlaying';
 import {MusicExpansionSurface, useMusicExpansion} from './music/expansion-owner';
 import {WatchCapacityWait} from './CapacityWait';
@@ -184,6 +187,13 @@ export function WatchPlayback({binding, context, surfaces, geometry, live}: Watc
   const cache = useMemo(() => new PlaybackPresentations(runtime), [runtime]);
   const dockPanelsCurrent = useCallback(() => context?.isCurrent() === true && cast?.controller.getSnapshot().remote?.phase !== 'playing', [context, cast]);
   const musicCurrent = useCallback(() => dockPanelsCurrent() && !cast?.controller.getSnapshot().remote, [dockPanelsCurrent, cast]);
+  const preferenceSubscribe=useCallback((changed:()=>void)=>context?.preferences?.subscribe(changed)??(()=>{}),[context]);
+  const preferenceRead=useCallback(()=>context?.preferences?.getSnapshot('web')??context?.facts?.preferences,[context]);
+  const listeningPreferences=useSyncExternalStore(preferenceSubscribe,preferenceRead,preferenceRead);
+  const lyricsEnabled=!!listeningPreferences&&preferenceValue<boolean>(listeningPreferences,'playback.showSyncedLyrics')===true;
+  const listening=useListeningOwner(binding,snapshot,musicCurrent,lyricsEnabled);
+  const listeningControls=useMemo(()=>listening?.state.dockOpening?[...(listening.owner.lyricsOffered()?['lyrics' as const]:[]),...(listening.owner.queueOffered()?['queue' as const]:[]),
+    ...(listening.owner.chaptersOffered()?['chapters' as const]:[]),...(listening.owner.speeds().length?['speed' as const]:[]),...(listening.owner.sleepOffered()?['sleep' as const]:[])]:[],[listening]);
   const musicMotion = useMusicExpansion(binding, snapshot, musicCurrent, dockSlot, musicBar, !!remoteState?.remote);
   const subscribeDockPanels = useCallback((changed: () => void) => cast?.controller.subscribe(changed) ?? (() => {}), [cast]);
   const [heldDockPanels, setHeldDockPanels] = useState<Readonly<{offer: WatchDockPanelOffer; context: WatchPlaybackContext | undefined; current: () => boolean}>>();
@@ -197,10 +207,12 @@ export function WatchPlayback({binding, context, surfaces, geometry, live}: Watc
     && heldDockPanels.offer.current() ? heldDockPanels.offer : undefined;
   const presentations = useMemo(() => snapshot && binding ? cache.update(snapshot, playbackPresentation(snapshot, binding.environment, binding.artwork, binding.skips)).map(value =>
     snapshot.fence && fenceKey(value.fence) === fenceKey(snapshot.fence) ? {...value, controls: [...new Set([...value.controls,
-      ...(castAvailable ? ['play-on' as const] : []), ...(dockPanels?.panels ?? [])])]} : value) : noPresentations, [snapshot, binding, cache, castAvailable, dockPanels]);
+      ...(castAvailable ? ['play-on' as const] : []), ...listeningControls,...(dockPanels?.panels ?? [])])]} : value) : noPresentations, [snapshot, binding, cache, castAvailable, dockPanels,listeningControls]);
   const dockBinding: DockBinding | undefined = useMemo(() => runtime && binding ? {
     getSnapshot: () => runtime.dock.getSnapshot(), onAction: action => {
-      if (!action.remote && (action.kind === 'subtitles-audio' || action.kind === 'options')) {
+      if(!action.remote&&['lyrics','queue','chapters','speed','sleep'].includes(action.kind)){
+        if(listening&&snapshot?.fence&&sameFence(snapshot.fence,action.fence)){try{listening.owner.requestDock(listening.state,action.kind as 'lyrics'|'queue'|'chapters'|'speed'|'sleep',document.activeElement instanceof HTMLElement?document.activeElement:undefined);}catch(error){if(listening.owner.current())binding.reportError(error);}}
+      }else if (!action.remote && (action.kind === 'subtitles-audio' || action.kind === 'options')) {
         if (dockPanels && sameFence(dockPanels.fence, action.fence)) dockPanels.request(action.kind);
       } else if (action.kind === 'play-on' && cast && castAvailable) {
         const live = runtime.getSnapshot();
@@ -210,7 +222,7 @@ export function WatchPlayback({binding, context, surfaces, geometry, live}: Watc
         }
       } else void runtime.onAction(action).catch(binding.reportError);
     },
-  } : undefined, [runtime, binding, cast, castAvailable, dockPanels]);
+  } : undefined, [runtime, binding, cast, castAvailable, dockPanels,listening,snapshot]);
   const expanded = !!snapshot?.dock.local?.expanded;
   // A reused sequence from another runtime/session must never inherit an expiry.
   const noticeRuntime = useRef<{runtime?: WebShellPlaybackRuntime; epoch: number}>({epoch: 0});
@@ -361,6 +373,7 @@ export function WatchPlayback({binding, context, surfaces, geometry, live}: Watc
     ...(document.fullscreenEnabled ? {fullscreen: {active: fullscreen, toggle: toggleFullscreen}} : {}),
     ...(pipOperations && (pipReady || pipActive) ? {pictureInPicture: {active: pipActive, toggle: () => pipOperations.toggle()}} : {}),
   } : undefined;
+  const listeningPlayOn=drawnSurfaces.playOn?.open;
   const videoCurrent = useCallback(() => musicCurrent() && (!policy || !watchStillWatching(policy, policy.getSnapshot())), [musicCurrent, policy]);
   const videoGesture = useVideoGesture(binding, snapshot, phone && activeVideo && !snapshot?.nativeVideoSurfaceActive
     && !fullscreen && !pipActive && !drawnSurfaces.modal && !remoteState?.remote, videoCurrent, dockSlot, expandedSlot, musicBar);
@@ -375,7 +388,8 @@ export function WatchPlayback({binding, context, surfaces, geometry, live}: Watc
     {snapshot && <StartPreparationNotice preparation={currentStartPreparation(snapshot, remotePlaying)} />}
     {binding && snapshot?.startFailure && <WatchStartFailure failure={snapshot.startFailure} authority={snapshot.authority} context={context} reportError={binding.reportError}/>}
     <MusicExpansionSurface motion={musicMotion}/>
-    {binding && snapshot && <WatchMusicNowPlaying motion={musicMotion} isCurrent={dockPanelsCurrent} binding={binding} snapshot={snapshot} expanded={expanded && !remotePlaying} onCollapse={collapse} phone={phone} />}
+    {binding && snapshot && <WatchMusicNowPlaying listening={listening} motion={musicMotion} isCurrent={dockPanelsCurrent} binding={binding} snapshot={snapshot} expanded={expanded && !remotePlaying} onCollapse={collapse} phone={phone} />}
+    {binding&&snapshot?.presentation?.kind==='audiobook'&&<AudiobookHost binding={binding} snapshot={snapshot} host={listening} expanded={expanded&&!remotePlaying} phone={phone} playOn={listeningPlayOn?()=>listeningPlayOn():undefined}/>}
     {binding && snapshot && <WatchScreen videoGesture={videoGesture} binding={binding} snapshot={snapshot} expanded={expanded && !remotePlaying} onCollapse={collapse} surfaceSlotRef={expandedSlot} onControlsVisibleChange={setControlsVisible}
       publishDockPanels={publishDockPanels} dockPanelsCurrent={dockPanelsCurrent} subscribeDockPanels={subscribeDockPanels}
       surfaces={drawnSurfaces} geometry={geometry} live={live}

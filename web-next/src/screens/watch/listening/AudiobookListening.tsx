@@ -15,10 +15,10 @@ const t = defaultI18n.t;
 
 /** Authored audiobook view of an existing local host. It mounts no media,
  * service, timer or runtime. Source-bearing callbacks carry the drawn witness. */
-export function AudiobookListening({snapshot, title, subtitle, cover, chapters, speedChoices, sleepChoices, sleepMinutes, skips, phone = false, sourceLabel, onShowPanel,
+export function AudiobookListening({snapshot, title, subtitle, cover, chapters, speedChoices, sleepChoices, sleepMinutes, skips, phone = false, sourceLabel, onShowPanel,canPlayOn,
   onIntent, onSpeed, onSleep, onChapter, onChapterPage, onChapterRetry, onCollapse, aside, notice}: Readonly<{
   snapshot: WebPlaybackRuntimeSnapshot; title: string; subtitle: string; cover?: ArtworkSource;
-  skips: WatchBindings['skips']; phone?: boolean; sourceLabel?: string;
+  skips: WatchBindings['skips']; phone?: boolean; sourceLabel?: string;canPlayOn?:boolean;
   onShowPanel?: (shown: WebPlaybackRuntimeSnapshot, panel: 'speed' | 'sleep' | 'chapters' | 'play-on' | 'options') => void;
   chapters: PlayerChaptersSnapshot | null; speedChoices: readonly number[]; sleepChoices: readonly number[]; sleepMinutes: number;
   onIntent: (shown: WebPlaybackRuntimeSnapshot, intent: WatchIntent) => void;
@@ -73,7 +73,7 @@ export function AudiobookListening({snapshot, title, subtitle, cover, chapters, 
         <button type="button" disabled={!onShowPanel || !speedChoices.length} onClick={() => onShowPanel?.(snapshot, 'speed')}><b>{new Intl.NumberFormat(defaultI18n.region.formatLocale).format(p.rate)}×</b>{t('player.opt.speed')}</button>
         <button type="button" disabled={!onShowPanel || !sleepChoices.length} onClick={() => onShowPanel?.(snapshot, 'sleep')}><b><Icon name="i-moon" size={15}/>{sleepMinutes === 0 ? t('player.opt.off') : t('duration.minutes', {minutes: sleepMinutes})}</b>{t('player.opt.sleepTimer')}</button>
         <button type="button" disabled={!onShowPanel || !chapters} onClick={() => onShowPanel?.(snapshot, 'chapters')}><b><Icon name="i-chapters" size={16}/>{chapters?.data?.status === 'available' ? chapters.data.totalCount : null}</b>{t('player.opt.chapters')}</button>
-        {onShowPanel && <button type="button" onClick={() => onShowPanel(snapshot, 'play-on')}><b><Icon name="i-cast" size={17}/></b>{t('next.dock.playOn')}</button>}
+        {onShowPanel && canPlayOn===true && <button type="button" onClick={() => onShowPanel(snapshot, 'play-on')}><b><Icon name="i-cast" size={17}/></b>{t('next.dock.playOn')}</button>}
       </div>}
     </div>
     {!phone && <aside className={styles.side} aria-label={t('player.opt.chapters')}>

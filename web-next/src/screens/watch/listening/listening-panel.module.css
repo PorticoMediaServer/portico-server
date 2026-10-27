@@ -23,3 +23,7 @@ button.line:focus-visible { outline: 3px solid var(--color-focus); outline-offse
 .resource[aria-pressed="true"] { border-color: var(--color-accent); background: color-mix(in srgb, var(--color-accent) 14%, transparent); }
 .resource small { color: var(--color-text-tertiary); }
 @media (max-width: 720px) { .queueRow { flex-wrap: wrap; height: auto; padding-block: 10px; } .line { font-size: var(--type-fixed-size-20px); } }
+
+.tabs { display: flex; gap: 4px; margin-bottom: 14px; padding: 4px; border-radius: 12px; background: color-mix(in srgb, var(--color-text) 8%, transparent); }
+.tabs > button { flex: 1; }
+.tabs > button[aria-pressed="true"] { background: color-mix(in srgb, var(--color-text) 14%, transparent); }
