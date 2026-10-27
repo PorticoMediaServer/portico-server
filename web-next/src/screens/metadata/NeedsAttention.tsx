@@ -13,8 +13,8 @@ import type {ShellArtwork} from '../../shell/artwork';
 
 const t = defaultI18n.t, has = (id: string) => defaultI18n.has(id);
 type Api = Readonly<{request: <T>(path: string, method?: string, body?: unknown) => Promise<T>}>;
-type Admission = {service: ReturnType<typeof metadataAttentionService>; alive: boolean; generation: number; reading: boolean};
-type ReadView = {admission: Admission; page?: AttentionPage; cursor: string; cursors: readonly string[]; loading: boolean; error?: unknown; failed?: string};
+type Admission = {service: ReturnType<typeof metadataAttentionService>; alive: boolean; generation: number; reading: boolean; failed?: string; failedGeneration?: number};
+type ReadView = {admission: Admission; page?: AttentionPage; cursor: string; cursors: readonly string[]; loading: boolean; error?: unknown; failed?: string; failedGeneration?: number};
 const PROVIDERS = ['tmdb', 'tvdb', 'anilist'] as const;
 
 /**
@@ -36,6 +36,7 @@ export function NeedsAttention({libraryId, libraryName, api, onOpen, onEdit, art
     if (liveAdmission.current !== held || !held.alive || held.reading) return;
     const current = ++held.generation;
     held.reading = true;
+    held.failed = undefined; held.failedGeneration = undefined;
     setReadView(value => value?.admission === held ? {...value, loading: true, error: undefined, failed: undefined} : value);
     try {
       const loaded = await held.service.list(next, 25, true);
@@ -44,7 +45,8 @@ export function NeedsAttention({libraryId, libraryName, api, onOpen, onEdit, art
     } catch (value) {
       // The failed attempt stays retryable at its own cursor; accepted rows and pager stay put.
       if (liveAdmission.current !== held || !held.alive || current !== held.generation) return;
-      setReadView(state => state?.admission === held ? {...state, loading: false, error: value, failed: next} : state);
+      held.failed = next; held.failedGeneration = current;
+      setReadView(state => state?.admission === held ? {...state, loading: false, error: value, failed: next, failedGeneration: current} : state);
     }
     finally {
       if (current === held.generation) {
@@ -66,19 +68,29 @@ export function NeedsAttention({libraryId, libraryName, api, onOpen, onEdit, art
     void load(admitted, '');
   }, [service, load]);
   useLayoutEffect(() => () => { const held = liveAdmission.current; liveAdmission.current = null; if (held) {held.alive = false; held.generation++;} }, []);
-  const shown = readView && readView.admission === admission ? readView : undefined;
+  // Pure render match: the admission must belong to this render's exact service, not just be the
+  // state value, so a replacement render before layout cannot draw the predecessor's rows.
+  const shown = readView && readView.admission === admission && admission?.service === service ? readView : undefined;
   const page = shown?.page, loading = shown?.loading ?? true, cursors = shown?.cursors ?? [], readError = shown?.error;
   const retryRead = () => {
     const held = admission;
     if (!held || liveAdmission.current !== held || !shown || shown.failed === undefined || held.reading) return;
+    // Only the same still-failed attempt is retryable; a recovered or newer failure is not.
+    if (held.failed !== shown.failed || held.failedGeneration !== shown.failedGeneration) return;
     void load(held, shown.failed);
   };
   // A search or a match settles on the server; a failed read suspends the poll until Retry.
   const settling = !!page?.entries.some(entry => attentionInProgress(entry.reason));
   useEffect(() => {
     if (!settling || !shown || shown.failed !== undefined || shown.loading) return;
-    const held = shown.admission, next = shown.cursor;
-    const timer = setInterval(() => {if (liveAdmission.current === held && held.alive) void load(held, next);}, 2000);
+    const held = shown.admission, next = shown.cursor, generation = held.generation;
+    const timer = setInterval(() => {
+      // A queued pre-cleanup tick belongs to its own read generation; a failure or a newer read
+      // invalidates it synchronously instead of reloading the accepted cursor.
+      if (liveAdmission.current !== held || !held.alive || held.reading) return;
+      if (held.generation !== generation || held.failed !== undefined) return;
+      void load(held, next);
+    }, 2000);
     return () => clearInterval(timer);
   }, [settling, shown, load]);
   const send = async (entry: AttentionEntry, command: Omit<AttentionCommand, 'kind' | 'entityId' | 'expectedRevision'>, done: string) => {
@@ -94,13 +106,13 @@ export function NeedsAttention({libraryId, libraryName, api, onOpen, onEdit, art
   };
   const older = () => {
     const held = admission;
-    if (!held || liveAdmission.current !== held || !shown?.page?.nextCursor) return;
+    if (!held || liveAdmission.current !== held || held.reading || !shown?.page?.nextCursor) return;
     setReadView(value => value?.admission === held ? {...value, cursors: [...value.cursors, value.cursor]} : value);
     void load(held, shown.page.nextCursor);
   };
   const newer = () => {
     const held = admission;
-    if (!held || liveAdmission.current !== held || !shown?.cursors.length) return;
+    if (!held || liveAdmission.current !== held || held.reading || !shown?.cursors.length) return;
     const next = shown.cursors.at(-1)!;
     setReadView(value => value?.admission === held ? {...value, cursors: value.cursors.slice(0, -1)} : value);
     void load(held, next);

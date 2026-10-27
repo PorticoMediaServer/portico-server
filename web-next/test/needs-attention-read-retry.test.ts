@@ -42,7 +42,8 @@ async function mount(libraryId = 'lib') {
     paint();
     return paint();
   };
-  return {acts, api, app, lists, h, reply: (fn: (path: string) => Promise<unknown>) => {respond = fn;}, show, transport};
+  const paintOnce = (target = api, id = libraryId) => tree(h.render(() => app.NeedsAttention({libraryId: id, libraryName: 'Movies', api: target})));
+  return {acts, api, app, lists, h, paintOnce, reply: (fn: (path: string) => Promise<unknown>) => {respond = fn;}, show, transport};
 }
 
 const labelOf = (node: any) => Array.isArray(node.props.children) ? node.props.children.join('') : node.props.children;
@@ -216,4 +217,78 @@ test('a failed read suspends the settling poll until Retry', async () => {
   const before = lists.length;
   await new Promise(resolve => setTimeout(resolve, 2200));
   assert.equal(lists.length, before, 'the settling poll does not reload the accepted page while the failure waits');
+});
+
+test('a replacement render withholds the predecessor rows before layout commits', async () => {
+  const {lists, paintOnce, reply, show, transport} = await mount();
+  reply(async () => page([entry('e1', 'T2')]));
+  let v = show();
+  await tick();
+  v = show();
+  assert.equal(articles(v).length, 1);
+  const next = transport(lists, []);
+  reply(async () => page([entry('e2', 'Monsters')]));
+  const first = paintOnce(next);
+  assert.equal(articles(first).length, 0, 'the replacement render may not draw the old rows');
+  assert.equal(button(first, 'next.browse.retry'), undefined, 'nor the old read error');
+});
+
+test('a queued pre-cleanup settling tick cannot erase the failed cursor', async () => {
+  const {lists, reply, show} = await mount();
+  const timers: Array<() => void> = [];
+  const original = globalThis.setInterval;
+  (globalThis as any).setInterval = (fn: () => void) => {timers.push(fn); return 0 as any;};
+  try {
+    reply(async path => cursorOf(path) === '' ? page([{...entry('e1', 'Waiting'), reason: 'pending'}], 'n1') : Promise.reject(new Error('later down')));
+    let v = show();
+    await tick();
+    v = show();
+    button(v, 'web.hostedAccount.older')!.props.onClick();
+    await tick();
+    v = show();
+    assert.ok(button(v, 'next.browse.retry'), 'the later page failure waits');
+    const before = lists.length;
+    timers.at(-1)!();
+    await tick();
+    assert.equal(lists.length, before, 'the queued tick belongs to the retired read generation');
+  } finally {(globalThis as any).setInterval = original;}
+});
+
+test('a saved Retry from a recovered failure cannot start another page-one read', async () => {
+  const {lists, reply, show} = await mount();
+  reply(async () => {throw new Error('down');});
+  let v = show();
+  await tick();
+  v = show();
+  const saved = button(v, 'next.browse.retry')!;
+  reply(async () => page([entry('e1', 'T2')]));
+  saved.props.onClick();
+  await tick();
+  v = show();
+  assert.equal(articles(v).length, 1);
+  const after = lists.length;
+  saved.props.onClick();
+  await tick();
+  assert.equal(lists.length, after, 'the recovered failure no longer retries a page-one read');
+});
+
+test('double paging applies one history change and one request', async () => {
+  const {lists, reply, show} = await mount();
+  let release!: (value: any) => void;
+  reply(async path => cursorOf(path) === '' ? page([entry('e1', 'T2')], 'n1') : new Promise(resolve => {release = resolve;}));
+  let v = show();
+  await tick();
+  v = show();
+  const before = lists.length;
+  button(v, 'web.hostedAccount.older')!.props.onClick();
+  button(v, 'web.hostedAccount.older')!.props.onClick();
+  await tick();
+  assert.equal(lists.length - before, 1, 'the second saved paging callback joins the flight');
+  release(page([entry('e2', 'Monsters')], ''));
+  await tick();
+  v = show();
+  const after = lists.length;
+  button(v, 'web.hostedAccount.newer')!.props.onClick();
+  await tick();
+  assert.equal(lists.length - after, 1, 'history moves back once');
 });
