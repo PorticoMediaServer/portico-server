@@ -108,7 +108,8 @@ func TestCapacityAndAttentionReadTheSettingsRegistry(t *testing.T) {
 }
 
 func TestTelemetryWindowsAndHistoryQueriesAreValidated(t *testing.T) {
-	mux, owner, _ := telemetryFixture(t)
+	mux, owner, member := telemetryFixture(t)
+	assertTelemetryUTCQuarterContext(t, mux, owner, member)
 	var reading telemetry.Reading
 	telemetryData(t, mux, owner, telemetryContext(t, "/v1/admin/telemetry?window=1h"), &reading)
 	if reading.Window != "1h" || len(reading.Series) != len(telemetry.MetricNames) {
@@ -136,6 +137,38 @@ func TestTelemetryWindowsAndHistoryQueriesAreValidated(t *testing.T) {
 	telemetryData(t, mux, owner, "/v1/admin/telemetry/now", &sample)
 	if len(sample.Metrics) != len(telemetry.MetricNames) {
 		t.Fatal("the latest sample must publish every metric", sample)
+	}
+}
+
+// The Roku report-context builder explicitly uses UTC. Its query captures
+// one clock value, floors epoch seconds to 900, and encodes that exact instant;
+// the registered owner handler must preserve this context without inferring a
+// different host/profile zone or moving the requested interval.
+func assertTelemetryUTCQuarterContext(t *testing.T, mux http.Handler, owner, member string) {
+	t.Helper()
+	now := time.Now().UTC()
+	until := time.Unix(now.Unix()/900*900, 0).UTC().Format(time.RFC3339)
+	query := url.Values{"window": {"1h"}, "timeZone": {"UTC"}, "until": {until}}
+	path := "/v1/admin/telemetry?" + query.Encode()
+	var reading telemetry.Reading
+	telemetryData(t, mux, owner, path, &reading)
+	if reading.Window != "1h" || reading.TimeZone != "UTC" || reading.Until != until {
+		t.Fatalf("owner telemetry changed the captured UTC context: %+v", reading.Interval)
+	}
+	for _, token := range []string{"", member} {
+		if w := supportRequest(mux, token, path); w.Code != refusedStatus(token) {
+			t.Fatalf("UTC context bypassed owner admission: %d", w.Code)
+		}
+	}
+	// A valid named zone does not excuse an unaligned or future cutoff.
+	for _, at := range []time.Time{
+		time.Unix(now.Unix()/900*900+1, 0),
+		time.Unix(now.Unix()/900*900+1800, 0),
+	} {
+		query.Set("until", at.UTC().Format(time.RFC3339))
+		if w := supportRequest(mux, owner, "/v1/admin/telemetry?"+query.Encode()); w.Code != http.StatusBadRequest {
+			t.Fatalf("invalid UTC cutoff was accepted: %d", w.Code)
+		}
 	}
 }
 
