@@ -14,7 +14,7 @@ func TestOccurrenceClaimFencesLateIntentAndAbortReopens(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	claim, err := r.claim("media-1", 1)
+	claim, err := r.claim(context.Background(), "media-1", 1)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -49,11 +49,11 @@ func TestOccurrenceClaimCommitOwnsExactRunsAndDoesNotReopen(t *testing.T) {
 	if err = old.install(other, func() {}); err != nil {
 		t.Fatal(err)
 	}
-	claim, err := r.claim("media-1", 1)
+	claim, err := r.claim(context.Background(), "media-1", 1)
 	if err != nil {
 		t.Fatal(err)
 	}
-	duplicate, err := r.claim("media-1", 1)
+	duplicate, err := r.claim(context.Background(), "media-1", 1)
 	if err != nil || claim != duplicate {
 		t.Fatalf("claim copies: %v", err)
 	}
@@ -90,7 +90,7 @@ func TestOccurrenceClaimTimeoutDoesNotAbortCommittedFence(t *testing.T) {
 	if err = i.install(run, func() {}); err != nil {
 		t.Fatal(err)
 	}
-	claim, err := r.claim("media-1", 1)
+	claim, err := r.claim(context.Background(), "media-1", 1)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -103,6 +103,40 @@ func TestOccurrenceClaimTimeoutDoesNotAbortCommittedFence(t *testing.T) {
 	if _, err = r.intent("media-1"); !errors.Is(err, errOccurrenceClaimed) {
 		t.Fatalf("timed-out committed fence reopened: %v", err)
 	}
+	i.release()
+	r.finished("media-1", i.entry, run)
+}
+
+func TestOccurrenceClaimWaitsForOwnedPublicationBeforeWriter(t *testing.T) {
+	var r occurrenceRegistry
+	i, err := r.intent("media-1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	run := &occurrenceRun{generation: 1}
+	if err = i.install(run, func() {}); err != nil {
+		t.Fatal(err)
+	}
+	release, err := r.publication("media-1", i.entry, run)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	if _, err = r.claim(ctx, "media-1", 1); !errors.Is(err, context.Canceled) {
+		t.Fatalf("bounded pending publication: %v", err)
+	}
+	// A timed-out, undelivered claim aborts; the next claim can succeed once the
+	// same publication releases without holding the registry during the wait.
+	release()
+	claim, err := r.claim(context.Background(), "media-1", 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = r.publication("media-1", i.entry, run); !errors.Is(err, errOccurrenceClaimed) {
+		t.Fatalf("publication after claim: %v", err)
+	}
+	claim.abort()
 	i.release()
 	r.finished("media-1", i.entry, run)
 }
