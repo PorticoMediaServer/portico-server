@@ -157,12 +157,13 @@ function historyDayLabel(date: Date): string {
   const days = Math.round((start.getTime() - day.getTime()) / 86_400_000);
   return days <= 0 ? t('saved.today') : days === 1 ? t('relative.yesterday') : weekdayName.format(day);
 }
-type HistoryItem = Readonly<{key: string; dayKey: string; day: Date; entry: PersonalResourceEntry; media: ContentEntry; source?: ArtworkSource; bindings: SavedViewBindings}>;
+type HistoryBindings = Pick<SavedViewBindings, 'runtime' | 'operations' | 'effects'>;
+type HistoryItem = Readonly<{key: string; dayKey: string; day: Date; entry: PersonalResourceEntry; media: ContentEntry; source?: ArtworkSource; bindings: HistoryBindings}>;
 const historyItemKey = (item: HistoryItem) => item.key;
 type HistoryRemoval = Readonly<{scope: object; apply(keys: ReadonlySet<string>): void}>;
 export function SavedHistory({bindings}: {bindings: SavedViewBindings}) {
   const service = bindings.runtime.personal;
-  const scope = useMemo(() => { /* Preserve the original ownership/invalidation keys. */ void bindings.artwork; void bindings.effects; void service; void bindings.operations; void bindings.runtime; return Object.freeze({}); }, [service, bindings.runtime, bindings.operations, bindings.artwork, bindings.effects]);
+  const scope = useMemo(() => { /* Preserve the original ownership/invalidation keys. */ void service; return Object.freeze({runtime: bindings.runtime, operations: bindings.operations, artwork: bindings.artwork, effects: bindings.effects}); }, [service, bindings.runtime, bindings.operations, bindings.artwork, bindings.effects]);
   const clear = useRef<HTMLButtonElement>(null);
   const snapshot = useSyncExternalStore(service.subscribe, service.getSnapshot, service.getSnapshot), [confirm, setConfirm] = useState(false), [busy, setBusy] = useState(false), cancel = useRef<HTMLButtonElement>(null);
   const wash = useMemo(() => {
@@ -175,8 +176,8 @@ export function SavedHistory({bindings}: {bindings: SavedViewBindings}) {
     if (!entry.media || !entry.updatedAt) return [];
     const day = new Date(entry.updatedAt);if (!Number.isFinite(day.getTime())) return [];
     const media = entry.media, square = shapeFor(media.kind) === 'square';
-    return [{key: entry.id, dayKey: day.toDateString(), day, entry, media, bindings,
-      source: bindings.artwork.foreground(square ? media.posterUrl : media.backdropUrl ?? media.posterUrl, 320, square ? 1 : 16 / 9)}];
+    return [{key: entry.id, dayKey: day.toDateString(), day, entry, media, bindings: scope,
+      source: scope.artwork.foreground(square ? media.posterUrl : media.backdropUrl ?? media.posterUrl, 320, square ? 1 : 16 / 9)}];
   }); }, [snapshot.entries, scope]);
   if (!sameSavedRoute(snapshot.route, bindings.route)) return null;
   const period = bindings.route.view === 'history' ? bindings.route.period ?? '30d' : '30d';
@@ -207,13 +208,14 @@ function HistoryTimeline({items, scope, reduced, empty, sectionStart, operations
   const removal = useRef<HistoryRemoval | undefined>(undefined);
   const beforeLeave = useCallback((remaining: ReadonlySet<string>) => {const original = removal.current;if (original?.scope === scope && operations.current) original.apply(remaining);}, [scope, operations]);
   const presence = useLayoutPresence(items, historyItemKey, reduce, 180, 320, {maxRetained: 40, staggerMs: 40, visibleOnly: true, scope, beforeLeave});
+  const {root: presenceRoot} = presence;
   const keyboard = useRef(false), focused = useRef<HTMLElement | null>(null);
   useLayoutEffect(() => {
-    const root = presence.root.current;if (!root) return;
+    const root = presenceRoot.current;if (!root) return;
     const order = Array.from(root.children).filter((node): node is HTMLElement => node instanceof HTMLElement && node.dataset.historyRow !== undefined);
     const starts = sectionStart.current ? [sectionStart.current] : [];
     const captured: HistoryRemoval = {scope, apply(keys) {
-      if (removal.current !== captured || presence.root.current !== root || !root.isConnected || !keyboard.current) return;
+      if (removal.current !== captured || presenceRoot.current !== root || !root.isConnected || !keyboard.current) return;
       const held = focused.current, active = root.ownerDocument.activeElement;
       if (!held || active !== held && !(active instanceof Node && held.contains(active))) return;
       const outgoing = order.find(node => !keys.has(node.dataset.historyRow!) && node.contains(held));
@@ -224,7 +226,7 @@ function HistoryTimeline({items, scope, reduced, empty, sectionStart, operations
     }};
     removal.current = captured;
     return () => {if (removal.current === captured) removal.current = undefined;};
-  }, [presence.present, scope, removal, sectionStart]);
+  }, [presence.present, scope, removal, sectionStart, presenceRoot]);
   const headings = new Set<string>(), liveDays = new Set(items.map(item => item.dayKey));
   return <div ref={presence.root} tabIndex={-1}
     onKeyDownCapture={() => {keyboard.current = true;}} onPointerDownCapture={() => {keyboard.current = false;}}
@@ -256,7 +258,7 @@ function historySubtitle(media: ContentEntry): readonly string[] {
   if (media.kind === 'movie') return [t('next.browse.kind.movie'), ...(media.year === undefined ? [] : [String(media.year)])];
   return media.year === undefined ? [] : [String(media.year)];
 }
-function HistoryRow({bindings, entry, media, source, paintOnly = false}: {bindings: SavedViewBindings; entry: PersonalResourceEntry; media: ContentEntry; source?: ArtworkSource; paintOnly?: boolean}) {
+function HistoryRow({bindings, entry, media, source, paintOnly = false}: {bindings: HistoryBindings; entry: PersonalResourceEntry; media: ContentEntry; source?: ArtworkSource; paintOnly?: boolean}) {
   // The row names the show for an episode, the title itself otherwise.
   const title = media.kind === 'episode' ? media.show?.name ?? media.displayTitle ?? media.title : media.displayTitle ?? media.title;
   const subtitles = historySubtitle(media), position = entry.positionSeconds ?? 0, duration = media.duration;
