@@ -247,22 +247,25 @@ func ReadingNormalizeObjectTx(ctx context.Context, tx *sql.Tx, id string) error 
 	}
 	var oldScope, oldItem, oldAsset int64
 	var oldRevision, oldRelative string
-	var oldContext bool
-	err = tx.QueryRowContext(ctx, `SELECT scope_id,item_id,context_active,asset_id,source_revision,relative_path FROM reading_path_object_keys WHERE object_id=?`, id).Scan(&oldScope, &oldItem, &oldContext, &oldAsset, &oldRevision, &oldRelative)
+	var oldContext, oldEligible bool
+	err = tx.QueryRowContext(ctx, `SELECT scope_id,item_id,context_active,asset_id,source_revision,relative_path,eligible FROM reading_path_object_keys WHERE object_id=?`, id).Scan(&oldScope, &oldItem, &oldContext, &oldAsset, &oldRevision, &oldRelative, &oldEligible)
 	if err != nil && !errors.Is(err, sql.ErrNoRows) {
 		return err
 	}
-	changed := oldScope != scope || oldItem != v.Item || oldContext != v.Context || oldAsset != v.Asset || oldRevision != v.Revision || oldRelative != v.Relative
-	if oldScope != scope || oldItem != v.Item || oldContext != v.Context {
+	membershipChanged := oldScope != scope || oldItem != v.Item || oldContext != v.Context
+	changed := membershipChanged || oldAsset != v.Asset || oldRevision != v.Revision || oldRelative != v.Relative || oldEligible != v.Eligible
+	if membershipChanged {
 		if _, err = tx.ExecContext(ctx, `DELETE FROM reading_path_object_keys WHERE object_id=?`, id); err != nil {
 			return err
 		}
-		if _, err = tx.ExecContext(ctx, `INSERT INTO reading_path_object_keys VALUES(?,?,?,?,?,?,?)`, id, scope, v.Item, v.Context, v.Asset, v.Revision, v.Relative); err != nil {
+		if _, err = tx.ExecContext(ctx, `INSERT INTO reading_path_object_keys VALUES(?,?,?,?,?,?,?,?)`, id, scope, v.Item, v.Context, v.Asset, v.Revision, v.Relative, v.Eligible); err != nil {
 			return err
 		}
-	}
-	if oldScope == scope && (oldAsset != v.Asset || oldRevision != v.Revision || oldRelative != v.Relative) {
-		if _, err = tx.ExecContext(ctx, `UPDATE reading_path_object_keys SET asset_id=?,source_revision=?,relative_path=? WHERE object_id=?`, v.Asset, v.Revision, v.Relative, id); err != nil {
+	} else if changed {
+		if _, err = tx.ExecContext(ctx, `UPDATE reading_path_object_keys SET asset_id=?,source_revision=?,relative_path=?,eligible=? WHERE object_id=?`, v.Asset, v.Revision, v.Relative, v.Eligible, id); err != nil {
+			return err
+		}
+		if _, err = tx.ExecContext(ctx, `UPDATE reading_path_scope SET desired=desired+1,queued=1 WHERE id=? AND directory_key<>''`, scope); err != nil {
 			return err
 		}
 	}
@@ -280,8 +283,9 @@ func ReadingNormalizeObjectTx(ctx context.Context, tx *sql.Tx, id string) error 
 			}
 		}
 	}
-	// Relevant object changes already dirtied the old scope synchronously. A new
-	// scope has desired=1. Fanouts dirty retained keys even when membership agrees.
+	// Membership triggers dirty old/new scopes; other effective input changes
+	// dirty this scope above. Merely visiting an unchanged object in a fanout
+	// must not turn a superseded source into a newer publisher.
 	if key == "" {
 		if _, err = tx.ExecContext(ctx, `UPDATE reading_path_scope SET completed=desired,queued=0 WHERE id=? AND (completed<>desired OR queued<>0)`, scope); err != nil {
 			return err
@@ -393,9 +397,6 @@ func pathWorkStep(ctx context.Context, tx *sql.Tx, limit int, turn int64) (int, 
 	normalize := func(ids []string) error {
 		for _, id := range ids {
 			if e := ReadingNormalizeObjectTx(ctx, tx, id); e != nil {
-				return e
-			}
-			if _, e := tx.ExecContext(ctx, `UPDATE reading_path_scope SET desired=desired+1,queued=1 WHERE id=(SELECT scope_id FROM reading_path_object_keys WHERE object_id=?) AND directory_key<>''`, id); e != nil {
 				return e
 			}
 		}

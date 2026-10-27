@@ -617,11 +617,22 @@ func TestReadingCompleteOverlappingSourceSupersessionBeforeAcceptance(t *testing
 	// A still-valid A head exists, but B wins even AFTER B's witness disappears.
 	f.c.Exec(`DELETE FROM inventory_objects WHERE id=?`, "other-"+p.object)
 	assertCompleteValue(t, f.c, p, compactcatalog.ReadingValues{})
-	// Complete only the already activated build, without starting a new A build.
-	completeUntil(t, f.c, func() bool { return scalar(t, f.c.DB, `SELECT count(*) FROM reading_path_build`) == 0 })
+	// Drain every queued feed and rebuild, not just the already activated B
+	// overlay. Visiting unchanged A through the asset fanout must not give it a
+	// new publisher stamp that resurrects its superseded facts.
+	f.settle()
+	completeDrain(t, f.c)
 	assertCompleteValue(t, f.c, p, compactcatalog.ReadingValues{})
 	if scalar(t, f.c.DB, `SELECT count(*) FROM reading_path_head WHERE item_id=? AND object_id=?`, p.item, "other-"+p.object) != 1 {
 		t.Fatal("invalid newest witness was not retained as watermark")
+	}
+	// A genuinely changed input may subsequently become the newest publisher.
+	f.c.Exec(`UPDATE inventory_objects SET revision='changed-a' WHERE id=?`, p.object)
+	f.settle()
+	completeDrain(t, f.c)
+	assertCompleteValue(t, f.c, p, old)
+	if scalar(t, f.c.DB, `SELECT count(*) FROM reading_path_head WHERE item_id=? AND object_id=? AND source_revision='changed-a'`, p.item, p.object) != 1 {
+		t.Fatal("genuinely changed older source did not publish its new input")
 	}
 }
 
@@ -652,6 +663,40 @@ func TestReadingCompleteSameSnapshotOverlayAndHeadDuringFlatten(t *testing.T) {
 	}
 	if !reflect.DeepEqual(first, second) {
 		t.Fatal("flatten/cleanup changed an existing snapshot")
+	}
+}
+
+func TestReadingCompleteLinkEligibilityAloneChangesTheScopeInput(t *testing.T) {
+	f := newCompleteFixture(t, nil, "link-eligibility")
+	a := f.add("Author/Series/Series 01.epub", "epub", 0)
+	b := f.add("Author/Series/Series 02.epub", "epub", 0)
+	f.settle()
+	f.seal()
+	completeDrain(t, f.c)
+	original := completeValues(t, f.c, a.item)
+	wantSingle, err := compactcatalog.ReadingPathValue(compactcatalog.ReadingRuleInput{Item: a.item, SourceRoot: f.source, RelativePath: a.relative, Kind: a.kind}, 1, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, available := range []int{0, 1} {
+		before := scalar(t, f.c.DB, `SELECT desired FROM reading_path_scope WHERE id=(SELECT scope_id FROM reading_path_object_keys WHERE object_id=?)`, b.object)
+		// Keep object state/revision and asset availability unchanged: only the
+		// current association's eligibility changes. Context membership remains
+		// present so an outstanding availability failure would still fence it.
+		f.c.Exec(`UPDATE catalog_asset_links SET available=? WHERE entity_id=? AND asset_id=?`, available, b.item, b.asset)
+		f.settle()
+		completeDrain(t, f.c)
+		if scalar(t, f.c.DB, `SELECT eligible FROM reading_path_object_keys WHERE object_id=?`, b.object) != int64(available) {
+			t.Fatal("normalized input lost the link-only eligibility change")
+		}
+		if scalar(t, f.c.DB, `SELECT desired FROM reading_path_scope WHERE id=(SELECT scope_id FROM reading_path_object_keys WHERE object_id=?)`, b.object) <= before {
+			t.Fatal("link-only change did not schedule a new completed scope")
+		}
+		if available == 0 {
+			assertCompleteValue(t, f.c, a, wantSingle)
+		} else {
+			assertCompleteValue(t, f.c, a, original)
+		}
 	}
 }
 

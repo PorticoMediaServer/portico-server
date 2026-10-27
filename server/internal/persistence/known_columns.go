@@ -5124,6 +5124,7 @@ reading_path_inputs.library_id
 reading_path_inputs.revision
 reading_path_object_keys.asset_id
 reading_path_object_keys.context_active
+reading_path_object_keys.eligible
 reading_path_object_keys.item_id
 reading_path_object_keys.object_id
 reading_path_object_keys.relative_path

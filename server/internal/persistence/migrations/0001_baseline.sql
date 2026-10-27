@@ -10056,7 +10056,8 @@ CREATE INDEX reading_path_scope_pending ON reading_path_scope(queued,served,id);
 CREATE TABLE reading_path_object_keys(
  object_id TEXT PRIMARY KEY REFERENCES inventory_objects(id) ON DELETE CASCADE,
  scope_id INTEGER NOT NULL REFERENCES reading_path_scope(id),item_id INTEGER NOT NULL DEFAULT 0,
- context_active INTEGER NOT NULL DEFAULT 0 CHECK(context_active IN(0,1)),asset_id INTEGER NOT NULL DEFAULT 0,source_revision TEXT NOT NULL DEFAULT '',relative_path TEXT NOT NULL DEFAULT '') WITHOUT ROWID, STRICT;
+ context_active INTEGER NOT NULL DEFAULT 0 CHECK(context_active IN(0,1)),asset_id INTEGER NOT NULL DEFAULT 0,source_revision TEXT NOT NULL DEFAULT '',relative_path TEXT NOT NULL DEFAULT '',
+ eligible INTEGER NOT NULL DEFAULT 0 CHECK(eligible IN(0,1))) WITHOUT ROWID, STRICT;
 CREATE INDEX reading_path_object_scope ON reading_path_object_keys(scope_id,object_id);
 CREATE INDEX reading_path_object_item ON reading_path_object_keys(item_id,object_id);
 CREATE INDEX inventory_objects_reading_asset_object ON inventory_objects(asset_id,id);
