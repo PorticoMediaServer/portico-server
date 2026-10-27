@@ -48,9 +48,10 @@ async function mountPanel() {
     close: () => {calls.close++;}, openSettings: () => {calls.settings++;}})));
   const setup = (value: any = state, reuse?: {host?: any; surface?: any; facts?: any}) => {
     const hostFacts = reuse?.facts ?? reuse?.host?.facts ?? facts(value);
+    const reusePair = !!(reuse?.host && reuse?.surface);
     const hostReceipt = reuse?.host ?? {facts: hostFacts, live: true};
     const surface = reuse?.surface ?? {host: hostReceipt, live: true};
-    if (!reuse) {publishedHost.current = hostReceipt; publishedSurface.current = surface;}
+    if (!reusePair) {publishedHost.current = hostReceipt; publishedSurface.current = surface;}
     paint(hostFacts, hostReceipt, surface);
     return {hostFacts, hostReceipt, surface, tree: paint(hostFacts, hostReceipt, surface)};
   };
@@ -70,14 +71,28 @@ test('a live EQ opening writes; an ordinary rerender keeps the same receipts', a
   assert.equal(one(again.tree, 'DeviceEqualizer').props.port, eq.port);
 });
 
+test('the first changed-facts render withholds before any receipt replacement', async () => {
+  const {early, facts, setup} = await mountPanel();
+  const first = setup();
+  const changed = {...facts(stateLike(first)), authority: {}};
+  const withheld = early(changed, first.hostReceipt, first.surface);
+  assert.equal(all(withheld, 'DeviceEqualizer').length, 0, 'the old published pair cannot draw actionable rows under new facts');
+  const live = setup(undefined as any, {facts: changed});
+  assert.equal(all(live.tree, 'DeviceEqualizer').length, 1, 'fresh receipts for the current facts draw the panel');
+});
+
 test('an explicit same-facts cleanup/setup replay makes the old EQ actions dead and the new live', async () => {
-  const {calls, changes, publishedHost, setup} = await mountPanel();
+  const {calls, changes, publishedHost, publishedSurface, setup} = await mountPanel();
   const first = setup();
   const oldEq = one(first.tree, 'DeviceEqualizer').props;
   // Clean up A exactly, then allocate fresh receipts from the same immutable facts.
   first.hostReceipt.live = false; first.surface.live = false; publishedHost.current = null;
   const second = setup(undefined as any, {facts: first.hostFacts});
   assert.notEqual(second.surface, first.surface);
+  assert.equal(publishedHost.current, second.hostReceipt, 'the fresh host receipt is published');
+  assert.equal(publishedSurface.current, second.surface, 'the fresh surface receipt is published');
+  assert.equal(second.hostReceipt.live, true);
+  assert.equal(second.surface.live, true);
   oldEq.onBack();
   oldEq.onOpenSettings();
   oldEq.reportError(new Error('late'));
@@ -125,12 +140,14 @@ async function nowPlaying() {
   const h = createRenderer();
   const {media, panel} = await panelModule(h);
   const held: {value: any; pending: Promise<void> | undefined} = {value: equalizer(), pending: undefined};
-  const port = {getSnapshot: () => held.value, subscribe: () => () => {}, start: () => () => {}, change: async () => {}, reset: async () => {}};
+  const changes: any[] = [];
+  const port = {getSnapshot: () => held.value, subscribe: () => () => {}, start: () => () => {}, change: async (value: any) => {changes.push(value);}, reset: async () => {changes.push('reset');}};
   const queueFence = fence();
   const snapshot: any = {disposed: false, authority, fence: queueFence, playback: {playbackRun: 7, intent: 'playing', phase: 'playing'},
     presentation: {kind: 'music', fence: queueFence, positionSeconds: 0, durationSeconds: 180, playing: true, controls: ['play', 'pause', 'seek', 'next', 'previous'], subject: {}, posterUrl: ''},
     dock: {local: {kind: 'music', expanded: true, fence: queueFence}, remote: null}, queue: {}, sequence: 1};
   const runtime = {getSnapshot: () => snapshot, equalizerPort: port};
+  const navigations: any[] = [];
   const app = await componentModule(new URL('../src/screens/watch/music/NowPlaying.tsx', import.meta.url), {
     react: h.react, '@i18n': {defaultI18n: {t: (key: string) => key}},
     '@core/presentation/kit-model/index.ts': {playbackIdentity: () => ({title: 'Song', subtitle: [{text: 'Artist'}]})},
@@ -139,7 +156,7 @@ async function nowPlaying() {
     '../model': {dispatchWatch: async () => {}, watchClock: () => '0:00', watchSeek: () => null, watchSeekBounds: () => null},
     '../queue-neighbours': {watchQueueNeighbours: () => ({})}, './signal': {watchMusicSignal: () => undefined},
     './audio-facts': {readWatchMusicAudioFacts: () => ({})}, '../../../shell/playback-model': {fenceKey},
-    '../../../router': {router: {navigate: async () => {}}},
+    '../../../router': {router: {navigate: async (to: any) => {navigations.push(to);}}},
     './EqualizerPanel': {WatchEqualizerPanel: panel.WatchEqualizerPanel, hostAdmit: panel.hostAdmit, surfaceAdmit: panel.surfaceAdmit},
   });
   const binding = {runtime: runtime as any, artwork: {foreground: () => undefined}, environment: {locale: 'en'}, skips: {back: 10, forward: 30}, reportError: () => {}};
@@ -149,7 +166,7 @@ async function nowPlaying() {
     paint();
     return paint();
   };
-  return {show, snapshot};
+  return {changes, navigations, show, snapshot};
 }
 
 const panelHost = (v: any[]) => all(v, 'DeviceEqualizer')[0];
@@ -187,7 +204,7 @@ test('EQ A Back then EQ B on the same host: saved A cannot close B', async () =>
 });
 
 test('actual panel under NowPlaying: saved A Back/Settings/report/write cannot touch B', async () => {
-  const {show} = await nowPlaying();
+  const {changes, navigations, show} = await nowPlaying();
   const a = selectEq(show);
   const panelA = panelHost(a);
   panelA.props.onBack();
@@ -197,10 +214,16 @@ test('actual panel under NowPlaying: saved A Back/Settings/report/write cannot t
   panelA.props.onBack();
   assert.ok(panelHost(show()), 'saved A Back cannot close B');
   panelA.props.onOpenSettings();
+  assert.equal(navigations.length, 0, 'saved A Settings cannot navigate');
   panelA.props.reportError(new Error('late'));
   await assert.rejects(panelA.props.port.change(equalizer(false)), /retired/i);
-  assert.ok(panelHost(show()), 'B stays');
+  assert.equal(changes.length, 0, 'saved A never writes the device port');
+  const afterAlert = show();
+  assert.equal(all(afterAlert, 'p').filter(node => node.props.role === 'alert').length, 0, 'saved A error publishes no alert');
   await panelB.props.port.change(equalizer(false));
+  assert.equal(changes.length, 1, 'live B writes its own port');
+  panelB.props.onOpenSettings();
+  assert.equal(navigations.length, 1, 'live B Settings navigates once');
   panelB.props.onBack();
   assert.equal(panelHost(show()), undefined);
 });
@@ -210,9 +233,14 @@ test('same-tick old dismiss after a successor opens is refused', async () => {
   const a = openMenu(show);
   const menuA = menu(a);
   menuA.onOpenChange(false);
-  const b = openMenu(show);
+  // Retire A synchronously, then invoke the saved callback before the next render/layout.
+  const b = show();
+  assert.equal(one(b, 'Menu').props.open, false);
   menuA.onOpenChange(false);
-  assert.equal(one(b, 'Menu').props.open, true);
+  const c = openMenu(show);
+  menuA.onOpenChange(false);
+  assert.equal(one(show(), 'Menu').props.open, true, 'a fresh render still shows the successor menu open');
+  void c;
 });
 
 test('an ordinary position update keeps the actual EQ receipt', async () => {
