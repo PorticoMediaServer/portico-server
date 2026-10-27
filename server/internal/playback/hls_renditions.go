@@ -480,17 +480,27 @@ func (h *HLS) startRendition(ctx context.Context, id string, r AudioRenditionPla
 	if r.Failure != "" {
 		return ErrAudioRenditionUnavailable
 	}
-	key := renditionKey(id, r.Ordinal)
-	h.mu.Lock()
-	defer h.mu.Unlock()
-	var valid bool
-	if err := dbwork.QueryRow(ctx, h.db, `SELECT EXISTS(SELECT 1 FROM playback_sessions WHERE id=? AND state NOT IN('stopped','ended','failed') AND expires_at>?)`, id, time.Now().UTC().Format(time.RFC3339)).Scan(&valid); err != nil {
+	intent, err := h.occurrences.intent(id)
+	if err != nil {
 		return err
 	}
-	if !valid {
-		return errors.New("playback stopped")
+	defer intent.release()
+	key := renditionKey(id, r.Ordinal)
+	var generation int
+	var itemID int64
+	var requestID, assetID string
+	if err = dbwork.QueryRow(ctx, h.db, `SELECT generation,request_id,item_id,asset_id FROM playback_sessions WHERE id=? AND state NOT IN('stopped','ended','failed') AND expires_at>?`, id, time.Now().UTC().Format(time.RFC3339)).Scan(&generation, &requestID, &itemID, &assetID); err != nil {
+		return err
 	}
+	if !intent.current() {
+		return errOccurrenceClaimed
+	}
+	h.mu.Lock()
+	defer h.mu.Unlock()
 	if w := h.windows[key]; w != nil {
+		if w.generation != generation {
+			return errOccurrenceClaimed
+		}
 		if w.coversDemand(from) {
 			return nil
 		}
@@ -527,24 +537,32 @@ func (h *HLS) startRendition(ctx context.Context, id string, r AudioRenditionPla
 		return ErrConversionSpace
 	}
 	run, cancel := context.WithCancel(h.ctx)
-	w := &hlsWindow{audioConversion: r.Action == "convert", start: from, served: -1, produced: from - 1, cancel: cancel, done: make(chan struct{})}
-	h.active[key] = cancel
-	h.windows[key] = w
+	w := &hlsWindow{generation: generation, audioConversion: r.Action == "convert", start: from, served: -1, produced: from - 1, cancel: cancel, done: make(chan struct{})}
+	owned := &occurrenceRun{generation: generation, requestID: requestID, itemID: itemID, assetID: assetID, cancel: cancel, done: w.done}
+	if err = intent.install(owned, func() { h.active[key] = cancel; h.windows[key] = w }); err != nil {
+		cancel()
+		return err
+	}
 	h.noteSessionServedLocked(id)
 	h.producers.Add(1)
 	supervise.Go("playback.hls.audio-rendition", func() {
 		defer h.producers.Done()
-		defer func() { h.mu.Lock(); delete(h.active, key); delete(h.windows, key); close(w.done); h.mu.Unlock() }()
-		h.produceRendition(run, id, r, from, w)
+		defer func() {
+			h.mu.Lock()
+			if h.windows[key] == w {
+				delete(h.active, key)
+				delete(h.windows, key)
+			}
+			close(w.done)
+			h.mu.Unlock()
+			h.occurrences.finished(id, intent.entry, owned)
+		}()
+		h.produceRendition(run, id, r, from, w, generation)
 	})
 	return nil
 }
 
-func (h *HLS) produceRendition(ctx context.Context, id string, r AudioRenditionPlan, from int, w *hlsWindow) {
-	var generation int
-	if dbwork.QueryRow(ctx, h.db, `SELECT generation FROM playback_sessions WHERE id=?`, id).Scan(&generation) != nil {
-		return
-	}
+func (h *HLS) produceRendition(ctx context.Context, id string, r AudioRenditionPlan, from int, w *hlsWindow, generation int) {
 	ctx = withProducerGeneration(ctx, generation)
 	failed := func(code string) {
 		if r.Default {
