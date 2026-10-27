@@ -31,6 +31,24 @@ func TestEveryForeignKeyChildColumnSetHasLeadingIndexOrJustification(t *testing.
 	}
 	defer db.Close()
 
+	gaps, usedAllow := fkIndexGaps(t, db, partialFKIndexAllow)
+	for key, reason := range partialFKIndexAllow {
+		if !usedAllow[key] {
+			t.Errorf("stale FK index allow-list entry %s (%s): an index now covers it or it matches no FK", key, reason)
+		}
+	}
+	if len(gaps) != 0 {
+		t.Fatalf("%d foreign-key child column sets have no leading index (add one, or allow-list a reason):\n%s",
+			len(gaps), strings.Join(gaps, "\n"))
+	}
+}
+
+// fkIndexGaps is the guard body, shared with the minimal-schema regressions below.
+// An allow-list entry only counts when the key exists with a non-empty reason, and
+// index key positions are never compressed: an expression key stays in the prefix
+// as a sentinel so `(lower(label), parent_id)` cannot look like `(parent_id)`.
+func fkIndexGaps(t *testing.T, db *sql.DB, allow map[string]string) ([]string, map[string]bool) {
+	t.Helper()
 	var gaps []string
 	usedAllow := map[string]bool{}
 	for _, table := range sqliteTableNames(t, db) {
@@ -39,6 +57,7 @@ func TestEveryForeignKeyChildColumnSetHasLeadingIndexOrJustification(t *testing.
 		for _, fk := range sqliteForeignKeys(t, db, table) {
 			key := table + "(" + strings.Join(fk.columns, ",") + ")"
 			covered := alias != "" && len(fk.columns) == 1 && fk.columns[0] == alias
+			partialOnly := ""
 			if !covered {
 				for _, index := range indexes {
 					if len(index.columns) < len(fk.columns) || !sameStrings(index.columns[:len(fk.columns)], fk.columns) {
@@ -49,6 +68,11 @@ func TestEveryForeignKeyChildColumnSetHasLeadingIndexOrJustification(t *testing.
 						break
 					}
 					if len(fk.columns) == 1 && strings.EqualFold(index.predicate, fk.columns[0]+" IS NOT NULL") {
+						reason, declared := allow[key]
+						if !declared || strings.TrimSpace(reason) == "" {
+							partialOnly = index.name
+							continue
+						}
 						// The predicate is complete for FK semantics, but only an
 						// index the planner actually picks is worth allowing.
 						assertIndexChosen(t, db, table, fk.columns[0], index.name)
@@ -59,19 +83,91 @@ func TestEveryForeignKeyChildColumnSetHasLeadingIndexOrJustification(t *testing.
 				}
 			}
 			if !covered {
-				gaps = append(gaps, fmt.Sprintf("%s -> %s", key, fk.parent))
+				detail := key + " -> " + fk.parent
+				if partialOnly != "" {
+					detail += fmt.Sprintf(" (only partial index %s; not allow-listed with a reason)", partialOnly)
+				}
+				gaps = append(gaps, detail)
 			}
 		}
 	}
-	for key, reason := range partialFKIndexAllow {
-		if !usedAllow[key] {
-			t.Errorf("stale FK index allow-list entry %s (%s): an index now covers it or it matches no FK", key, reason)
-		}
+	return gaps, usedAllow
+}
+
+// A partial index that excludes only NULL children is only acceptable when an
+// explicit allow-list entry says why. A missing or blank reason must fail, so the
+// guard cannot quietly bless the next partial index on its own.
+func TestForeignKeyIndexGuardRejectsUnlistedPartialIndex(t *testing.T) {
+	for name, allow := range map[string]map[string]string{
+		"no entry":     nil,
+		"blank reason": {"child(parent_id)": "   "},
+	} {
+		t.Run(name, func(t *testing.T) {
+			db := minimalForeignKeySchema(t, `
+CREATE TABLE parent(id INTEGER PRIMARY KEY);
+CREATE TABLE child(id INTEGER PRIMARY KEY, parent_id INTEGER REFERENCES parent(id));
+CREATE INDEX child_partial ON child(parent_id) WHERE parent_id IS NOT NULL;`)
+			gaps, used := fkIndexGaps(t, db, allow)
+			if len(gaps) != 1 || !strings.Contains(gaps[0], "child(parent_id)") || !strings.Contains(gaps[0], "not allow-listed with a reason") {
+				t.Fatalf("unlisted partial index was not rejected: gaps=%v", gaps)
+			}
+			if len(used) != 0 {
+				t.Fatalf("unlisted/blank partial index was marked used: %v", used)
+			}
+		})
 	}
+}
+
+// PRAGMA index_info reports an expression key with a NULL name. That position must
+// stay in the index prefix: (lower(label), parent_id) does not lead with parent_id
+// and must not be compressed into a false match.
+func TestForeignKeyIndexGuardRejectsExpressionLeadingIndex(t *testing.T) {
+	db := minimalForeignKeySchema(t, `
+CREATE TABLE parent(id INTEGER PRIMARY KEY);
+CREATE TABLE child(id INTEGER PRIMARY KEY, parent_id INTEGER NOT NULL REFERENCES parent(id), label TEXT);
+CREATE INDEX child_expression ON child(lower(label), parent_id);`)
+	gaps, used := fkIndexGaps(t, db, nil)
+	if len(gaps) != 1 || !strings.Contains(gaps[0], "child(parent_id)") {
+		t.Fatalf("expression-leading index falsely covered the FK: gaps=%v", gaps)
+	}
+	if len(used) != 0 {
+		t.Fatalf("expression-leading index was marked used: %v", used)
+	}
+}
+
+// The valid shapes stay accepted: a real leading index, an INTEGER PRIMARY KEY
+// rowid alias, and one declared partial index with a non-empty reason.
+func TestForeignKeyIndexGuardAcceptsLeadingRowidAndDeclaredPartial(t *testing.T) {
+	db := minimalForeignKeySchema(t, `
+CREATE TABLE parent(id INTEGER PRIMARY KEY);
+CREATE TABLE child_leading(id INTEGER PRIMARY KEY, parent_id INTEGER REFERENCES parent(id));
+CREATE INDEX child_leading_fk ON child_leading(parent_id);
+CREATE TABLE child_rowid(id INTEGER PRIMARY KEY REFERENCES parent(id));
+CREATE TABLE child_partial(id INTEGER PRIMARY KEY, parent_id INTEGER REFERENCES parent(id));
+CREATE INDEX child_partial_fk ON child_partial(parent_id) WHERE parent_id IS NOT NULL;`)
+	allow := map[string]string{
+		"child_partial(parent_id)": "test: nullable child, partial index excludes only NULLs and the planner uses it",
+	}
+	gaps, used := fkIndexGaps(t, db, allow)
 	if len(gaps) != 0 {
-		t.Fatalf("%d foreign-key child column sets have no leading index (add one, or allow-list a reason):\n%s",
-			len(gaps), strings.Join(gaps, "\n"))
+		t.Fatalf("valid index shapes were rejected: %v", gaps)
 	}
+	if !used["child_partial(parent_id)"] {
+		t.Fatalf("declared partial index was not marked used: %v", used)
+	}
+}
+
+func minimalForeignKeySchema(t *testing.T, ddl string) *sql.DB {
+	t.Helper()
+	db, err := sql.Open("sqlite", filepath.Join(t.TempDir(), "minimal-fk.sqlite"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { db.Close() })
+	if _, err = db.Exec(ddl); err != nil {
+		t.Fatal(err)
+	}
+	return db
 }
 
 // The Reading path facts are the confirmed finding: keep an explicit regression
@@ -186,6 +282,10 @@ type sqliteIndex struct {
 	columns   []string
 	predicate string
 }
+
+// expressionIndexColumn holds an index key position that is an expression (or
+// otherwise unnamed). It is deliberately not a valid column name.
+const expressionIndexColumn = "\x00expression"
 
 func sqliteTableNames(t *testing.T, db *sql.DB) []string {
 	t.Helper()
@@ -318,6 +418,11 @@ func sqliteIndexes(t *testing.T, db *sql.DB, table string) []sqliteIndex {
 			}
 			if name.Valid {
 				index.columns = append(index.columns, name.String)
+			} else {
+				// Every key position must survive, even an expression key that
+				// PRAGMA index_info reports with a NULL name; dropping it would
+				// shift (lower(label), parent_id) down to (parent_id).
+				index.columns = append(index.columns, expressionIndexColumn)
 			}
 		}
 		if err = info.Err(); err != nil {
