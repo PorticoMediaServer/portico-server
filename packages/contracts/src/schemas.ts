@@ -26116,6 +26116,16 @@ export const schemas = {
             "additionalProperties": {
               "items": {
                 "properties": {
+                  "detail": {
+                    "type": "string"
+                  },
+                  "status": {
+                    "enum": [
+                      "available",
+                      "limited"
+                    ],
+                    "type": "string"
+                  },
                   "t": {
                     "maximum": 9007199254740991,
                     "minimum": -9007199254740991,
@@ -26127,7 +26137,8 @@ export const schemas = {
                 },
                 "required": [
                   "t",
-                  "v"
+                  "v",
+                  "status"
                 ],
                 "type": "object"
               },
@@ -34801,6 +34812,16 @@ export const schemas = {
             "additionalProperties": {
               "items": {
                 "properties": {
+                  "detail": {
+                    "type": "string"
+                  },
+                  "status": {
+                    "enum": [
+                      "available",
+                      "limited"
+                    ],
+                    "type": "string"
+                  },
                   "t": {
                     "maximum": 9007199254740991,
                     "minimum": -9007199254740991,
@@ -34812,7 +34833,8 @@ export const schemas = {
                 },
                 "required": [
                   "t",
-                  "v"
+                  "v",
+                  "status"
                 ],
                 "type": "object"
               },

@@ -6064,6 +6064,7 @@ telemetry_rollups.bucket_ms
 telemetry_rollups.detail
 telemetry_rollups.first_event_ms
 telemetry_rollups.last_event_ms
+telemetry_rollups.measurement_revision
 telemetry_rollups.metric
 telemetry_rollups.samples
 telemetry_rollups.status
