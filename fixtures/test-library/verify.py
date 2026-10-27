@@ -190,7 +190,7 @@ def select(client, profile_id, pin=None):
             return
         except Refusal as refusal:
             last = refusal
-            if refusal.status not in (401, 403, 409, 429, 503, 504) or attempt == 7:
+            if refusal.status not in (409, 429, 503, 504) or attempt == 7:
                 raise
             time.sleep(min(15, 1.5 * (attempt + 1)))
     raise last
@@ -201,12 +201,13 @@ def open_profile(base, username, password, profile_id, pin=None):
     for attempt in range(4):
         client = Client(base, str(uuid.uuid4()))
         try:
-            sign_in(client, username, password)
+            _, token = sign_in(client, username, password)
+            client.token = token
             select(client, profile_id, pin)
             return client
         except Refusal as refusal:
             last = refusal
-            if refusal.status not in (401, 403, 409, 429, 503, 504) or attempt == 4:
+            if refusal.status not in (409, 429, 503, 504) or attempt == 4:
                 raise
             time.sleep(min(20, 3 * (attempt + 1)))
     raise last
@@ -327,7 +328,16 @@ def canonical_counts(client, library):
                 "albums": len(browse(client, library_id, "albums")),
                 "songs": len(browse(client, library_id, "songs"))}
     if kind == "audiobook":
-        return {"books": len(browse(client, library_id, "books"))}
+        books = browse(client, library_id, "books")
+        parts = 0
+        for book in books:
+            try:
+                files = client.read("/v1/books/" + urllib.parse.quote(book["id"], safe="") +
+                                    "/files?limit=100")
+            except Refusal:
+                continue
+            parts += len(files.get("files") or [])
+        return {"books": len(books), "parts": parts}
     if kind in ("book", "comic"):
         found = reading_items(client, library_id)
         formats = {}
@@ -346,6 +356,8 @@ def main(argv=None):
     parser.add_argument("--report", type=Path, default=None)
     parser.add_argument("--strict-counts", action="store_true", default=True)
     parser.add_argument("--no-strict-counts", dest="strict_counts", action="store_false")
+    parser.add_argument("--recordings-root",
+                        default="/home/runner/work/test-server-v3/state/recordings")
     parser.add_argument("--reading", action="store_true",
                         help="open short reading sessions to read back progress/annotations")
     args = parser.parse_args(argv)
@@ -407,6 +419,24 @@ def main(argv=None):
             scan = entry.get("lastScan") or {}
             check("scan-error:" + name, not scan.get("error") and not scan.get("errorCode"),
                   scan.get("error") or scan.get("errorCode"))
+            try:
+                settings_doc = owner.read("/v1/admin/libraries/" +
+                                          urllib.parse.quote(library["id"], safe="") + "/settings")
+                saved = settings_doc.get("settings") or {}
+                expensive = {"loudness", "checksum", "audio_fingerprint", "trickplay",
+                             "chapter_images", "video_preview", "subtitle_extraction",
+                             "subtitle_download", "deep_stream_analysis", "lyrics", "waveform"}
+                check("library-local-metadata:" + name,
+                      not (set(saved.get("analysis") or []) & expensive) and
+                      all((provider.get("provider") == "local")
+                          for provider in saved.get("providers") or []) and
+                      saved.get("acoustidEnabled") is False and
+                      saved.get("segmentDetection") == "off",
+                      {"analysis": saved.get("analysis"),
+                       "providers": [p.get("provider") for p in saved.get("providers") or []],
+                       "segmentDetection": saved.get("segmentDetection")})
+            except Refusal as refusal:
+                check("library-local-metadata:" + name, False, refusal.code)
             actual = canonical_counts(owner, library)
             expected_counts = declared.get("expected") or {}
             report["libraries"][name] = {"id": library["id"], "kind": library["kind"],
@@ -570,11 +600,10 @@ def main(argv=None):
                   summary.get("playlists"))
             check("state-views:" + label, int(summary.get("savedViews") or 0) >= 3,
                   summary.get("savedViews"))
-            if label != "Kids":
-                check("state-my-list:" + label, my_list > 0, my_list)
-                history = client.read("/v1/personal-history?limit=20")
-                check("state-history:" + label, len(history.get("entries") or []) > 0,
-                      len(history.get("entries") or []))
+            check("state-my-list:" + label, my_list > 0, my_list)
+            history = client.read("/v1/personal-history?limit=20")
+            check("state-history:" + label, len(history.get("entries") or []) > 0,
+                  len(history.get("entries") or []))
             collections = items(client.read("/v1/saved-resources?kind=collection&limit=100"))
             for collection in collections:
                 if collection.get("name", "").endswith("Picks"):
@@ -582,8 +611,7 @@ def main(argv=None):
                                           urllib.parse.quote(collection["id"], safe="") + "/content?limit=50")
                     visible = [entry for entry in content.get("entries") or []
                                if not entry.get("hidden") and entry.get("media")]
-                    minimum = 1 if label == "Kids" else 3
-                    check("collection-members:" + label, len(visible) >= minimum, len(visible))
+                    check("collection-members:" + label, len(visible) >= 3, len(visible))
             playlists = items(client.read("/v1/playlists"))
             for playlist in playlists:
                 if playlist.get("name", "").endswith("Evening Queue"):
@@ -591,8 +619,7 @@ def main(argv=None):
                                           "/content?limit=50")
                     entries = sum(len(section.get("entries") or [])
                                   for section in content.get("sections") or [])
-                    minimum = 1 if label == "Kids" else 3
-                    check("playlist-members:" + label, entries >= minimum, entries)
+                    check("playlist-members:" + label, entries >= 3, entries)
                 if playlist.get("name", "").endswith("Empty Playlist"):
                     content = client.read("/v1/playlists/" + urllib.parse.quote(playlist["id"], safe="") +
                                           "/content?limit=50")
@@ -612,7 +639,7 @@ def main(argv=None):
                                           urllib.parse.quote(view["id"], safe="") + "/content?limit=50")
                     matched = len((content.get("browse") or {}).get("entries") or [])
                     check("view-empty:" + label, matched == 0, matched)
-            if args.reading and label != "Kids":
+            if args.reading:
                 verify_reading(client, label, report, check)
 
         # Server settings -------------------------------------------------
@@ -621,6 +648,16 @@ def main(argv=None):
             check("api-keys", len(keys) >= 3, len(keys))
             webhooks = items(owner.read("/v1/admin/webhooks"))
             check("webhooks", len(webhooks) >= 2, len(webhooks))
+            for webhook in webhooks:
+                if not webhook.get("enabled"):
+                    continue
+                deliveries = items(owner.read("/v1/admin/webhooks/" +
+                                              urllib.parse.quote(webhook["id"], safe="") +
+                                              "/deliveries?limit=20"))
+                check("webhook-delivery:" + str(webhook.get("name")),
+                      any(200 <= int(entry.get("status") or 0) < 300 for entry in deliveries),
+                      [{"state": entry.get("state"), "status": entry.get("status")}
+                       for entry in deliveries[:3]])
             channels = owner.read("/v1/admin/library-channels").get("channels") or []
             check("library-channels", len(channels) >= 3, len(channels))
             check("library-channels-states",
@@ -632,6 +669,19 @@ def main(argv=None):
             check("jobs", len(jobs) > 0, len(jobs))
             inbox = owner.read("/v1/notifications/inbox?audience=profile&limit=50")
             check("notifications", len(items(inbox)) > 0, len(items(inbox)))
+            root = owner.read("/v1/admin/dvr/recording-root")
+            requested = root.get("requested") if isinstance(root.get("requested"), str) else ""
+            report["recordingRoot"] = {"requested": requested,
+                                        "effective": root.get("effective"),
+                                        "pendingRestart": root.get("pendingRestart")}
+            check("recording-root", requested == args.recordings_root,
+                  report["recordingRoot"])
+            dvr = owner.read("/v1/dvr?limit=50")
+            recordings = ((dvr.get("result") or {}).get("recordings") or [])
+            report["recordings"] = [{"id": entry.get("id"), "state": entry.get("state"),
+                                     "durationMs": entry.get("durationMs")}
+                                    for entry in recordings]
+            check("recording-present", bool(recordings), len(recordings), warn=True)
         except Refusal as refusal:
             check("server-settings", False, refusal.code)
 

@@ -233,6 +233,7 @@ def sign_in(client, username, password):
             signed = client.call("POST", "/v1/direct/sign-in",
                                  {"username": username, "password": password}, ok=(200,))
             session = signed.get("session", signed)
+            client.token = session["accessToken"]
             return signed, session["accessToken"]
         except Refusal as refusal:
             last = refusal
@@ -255,7 +256,7 @@ def select_profile(client, profile_id, pin=None):
             return selected["session"]["accessToken"]
         except Refusal as refusal:
             last = refusal
-            if refusal.status not in (401, 403, 409, 429, 503, 504) or attempt == 7:
+            if refusal.status not in (409, 429, 503, 504) or attempt == 7:
                 raise
             time.sleep(min(15, 1.5 * (attempt + 1)))
     raise last
@@ -267,12 +268,13 @@ def open_profile(base, username, password, profile_id, pin=None):
     for attempt in range(5):
         client = Client(base, str(uuid.uuid4()))
         try:
-            sign_in(client, username, password)
+            _, token = sign_in(client, username, password)
+            client.token = token
             client.token = select_profile(client, profile_id, pin)
             return client
         except Refusal as refusal:
             last = refusal
-            if refusal.status not in (401, 403, 409, 429, 503, 504) or attempt == 4:
+            if refusal.status not in (409, 429, 503, 504) or attempt == 4:
                 raise
             time.sleep(min(20, 3 * (attempt + 1)))
     raise last
@@ -425,18 +427,52 @@ def quiet_library(owner, name, library_id, report):
         defaults = dict(document.get("defaults") or {})
         for key, value in defaults.items():
             settings.setdefault(key, value)
-        settings["providers"] = []
+        settings["providers"] = [provider for provider in settings.get("providers") or []
+                                 if provider.get("provider") == "local"]
         settings["acoustidEnabled"] = False
         settings["lyricsSource"] = "files"
         settings["localTags"] = "prefer"
         settings["segmentDetection"] = "off"
         settings["monitorChanges"] = False
         settings["allowMediaDeletion"] = False
-        settings["analysis"] = ["probe", "local_metadata", "checksum"]
+        matrix = document.get("analysisMatrix") or {}
+        operations = matrix.get("operations") if isinstance(matrix, dict) else None
+        kind = document.get("libraryKind") or report.get("libraries", {}).get(name, {}).get("kind")
+        media_kinds = {"tv": {"show", "episode"}, "anime": {"show", "episode"},
+                       "movie": {"movie"}, "music": {"music"}, "book": {"book"},
+                       "comic": {"book"}, "audiobook": {"book"}}.get(kind, {kind})
+        allowed = []
+        if isinstance(operations, list):
+            for operation in operations:
+                if not isinstance(operation, dict):
+                    continue
+                if operation.get("costClass") != "metadata-only" or operation.get("network"):
+                    continue
+                kinds = set(operation.get("mediaKinds") or [])
+                if kinds and not (media_kinds & kinds):
+                    continue
+                identifier = operation.get("id")
+                if identifier:
+                    allowed.append(identifier)
+        settings["analysis"] = list(dict.fromkeys(
+            ["probe", "local_metadata"] + allowed))
         body = {"expectedRevision": document.get("revision", 0), "operationId": op_id("lib-settings"),
                 "settings": settings}
         try:
             owner.call("PUT", path, body, ok=(200,))
+            actual = owner.read(path)
+            saved = actual.get("settings") or {}
+            wanted = set(settings["analysis"])
+            if (set(saved.get("analysis") or []) != wanted or
+                    any(provider.get("provider") != "local" for provider in saved.get("providers") or []) or
+                    saved.get("acoustidEnabled") or saved.get("segmentDetection") != "off"):
+                report.setdefault("failures", []).append(
+                    {"step": "library-settings-readback", "library": name,
+                     "libraryId": library_id,
+                     "actual": {"analysis": saved.get("analysis"),
+                                "providers": saved.get("providers"),
+                                "acoustidEnabled": saved.get("acoustidEnabled"),
+                                "segmentDetection": saved.get("segmentDetection")}})
             return
         except Refusal as refusal:
             if refusal.status in (409, 412) and attempt < 2:
@@ -870,6 +906,19 @@ def ensure_webhooks(owner, saved, report):
     ]
     for name, url, enabled, events in wanted:
         if name in existing:
+            webhook = existing[name]
+            if enabled and webhook.get("id"):
+                try:
+                    deliveries = items(owner.read("/v1/admin/webhooks/" +
+                                                  urllib.parse.quote(webhook["id"], safe="") +
+                                                  "/deliveries?limit=20"))
+                    if not any(200 <= int(entry.get("status") or 0) < 300
+                               for entry in deliveries):
+                        owner.call("POST", "/v1/admin/webhooks/" +
+                                   urllib.parse.quote(webhook["id"], safe="") + "/test",
+                                   ok=(202,))
+                except Refusal:
+                    pass
             continue
         secret = secrets.token_urlsafe(32)
         try:
@@ -1003,6 +1052,75 @@ def ensure_notifications(owner, report):
                                                        "code": refusal.code, "status": refusal.status})
 
 
+def ensure_dvr(owner, path, report):
+    """Request and read back the recording folder through the real API."""
+    try:
+        document = owner.read("/v1/admin/dvr/recording-root")
+        requested = ((document.get("requested") or "") if isinstance(document.get("requested"), str)
+                     else "")
+        effective = ((document.get("effective") or "") if isinstance(document.get("effective"), str)
+                     else "")
+        report["recordingRoot"] = {"requested": requested, "effective": effective,
+                                    "pendingRestart": document.get("pendingRestart")}
+        if requested != path:
+            document = owner.call("PATCH", "/v1/admin/dvr/recording-root", {
+                "expectedRevision": document.get("revision", 0), "operationId": op_id("dvr-root"),
+                "path": path,
+            }, ok=(200,))
+            requested = document.get("requested") or ""
+            effective = document.get("effective") or ""
+            report["recordingRoot"] = {"requested": requested, "effective": effective,
+                                        "pendingRestart": document.get("pendingRestart")}
+        if requested != path:
+            report.setdefault("failures", []).append({"step": "recording-root",
+                                                       "actual": report["recordingRoot"]})
+    except Refusal as refusal:
+        report.setdefault("warnings", []).append({"step": "recording-root", "code": refusal.code,
+                                                   "status": refusal.status})
+
+
+def ensure_recording(owner, report):
+    """Record one currently-airing programme that ends within a few minutes."""
+    try:
+        page = owner.read("/v1/guide/now-next?limit=50")
+    except Refusal as refusal:
+        report.setdefault("warnings", []).append({"step": "recording-guide", "code": refusal.code,
+                                                   "status": refusal.status})
+        return
+    now = time.time()
+    candidates = []
+    for channel in ((page.get("page") or {}).get("channels") or []):
+        if not channel.get("recordAvailable"):
+            continue
+        for programme in channel.get("programmes") or []:
+            try:
+                from datetime import datetime
+                end = datetime.strptime(programme.get("end", ""), "%Y-%m-%dT%H:%M:%S%z").timestamp()
+            except (ValueError, TypeError):
+                continue
+            if 0 < end - now <= 420:
+                candidates.append((end, channel, programme))
+    if not candidates:
+        report["recording"] = {"created": False, "reason": "no programme ending within 7 minutes"}
+        return
+    _, channel, programme = min(candidates, key=lambda item: item[0])
+    try:
+        result = owner.call("POST", "/v1/dvr/recordings", {
+            "occurrence": {"channelId": channel.get("id"), "generation": channel.get("generation"),
+                           "programmeId": programme.get("id"), "sourceId": channel.get("sourceId")},
+            "useDefaults": True, "requestId": opaque("recording"),
+        }, ok=(200, 201, 202))
+        recording = result.get("result", result)
+        report["recording"] = {"created": True, "id": recording.get("id"),
+                               "programme": programme.get("title"),
+                               "start": programme.get("start"), "end": programme.get("end"),
+                               "state": recording.get("state")}
+        report["created"]["recordings"].append(recording.get("id"))
+    except Refusal as refusal:
+        report["recording"] = {"created": False, "code": refusal.code,
+                               "status": refusal.status}
+
+
 def ensure_live(owner, base, report):
     """Register a remote M3U source on a URL the server itself can reach.
 
@@ -1082,8 +1200,7 @@ def readback_profile(client, label, report, expect_history):
         summary = {}
     my_list = int((summary.get("myList") or {}).get("posters") or 0) + \
         int((summary.get("myList") or {}).get("squares") or 0)
-    if label != "Synthetic Kids":
-        check("my-list-count", my_list > 0, my_list)
+    check("my-list-count", my_list > 0, my_list)
     check("collection-count", int(summary.get("collections") or 0) >= 2,
           summary.get("collections"))
     check("playlist-count", int(summary.get("playlists") or 0) >= 2,
@@ -1116,6 +1233,26 @@ def readback_profile(client, label, report, expect_history):
         check("personal-history", len(history.get("entries") or []) > 0,
               len(history.get("entries") or []))
     return checks
+
+
+def profile_catalogue(client, libraries, report):
+    """Only items this selected profile can actually see, by real routes."""
+    items_by_kind = {}
+    for library in libraries:
+        maximum = 50 if library["kind"] in ("book", "comic", "audiobook") else 300
+        try:
+            found = library_items(client, library, maximum)
+        except Refusal as refusal:
+            report.setdefault("warnings", []).append(
+                {"step": "profile-catalogue", "library": library.get("name"),
+                 "code": refusal.code, "status": refusal.status})
+            continue
+        for item in found:
+            kind = item.get("kind") or library["kind"]
+            items_by_kind.setdefault(kind, []).append(item)
+        if library["kind"] in ("book", "comic"):
+            items_by_kind.setdefault("reading", []).extend(found[:12])
+    return items_by_kind
 
 
 def profile_state(client, label, items_by_kind, report, history=2):
@@ -1194,7 +1331,7 @@ def profile_state(client, label, items_by_kind, report, history=2):
             except Refusal:
                 pass
     created["readback"] = readback_profile(client, label, report,
-                                           expect_history=bool(history) and label != "Synthetic Kids")
+                                           expect_history=bool(history))
     report["profiles"].append(created)
 
 
@@ -1204,6 +1341,8 @@ def main(argv=None):
                         help="library root on the server (never probed locally when a manifest is given)")
     parser.add_argument("--manifest", "--manifest-path", type=Path, default=None,
                         help="locally downloaded manifest.json; declares server-side library roots")
+    parser.add_argument("--recordings-root",
+                        default="/home/runner/work/test-server-v3/state/recordings")
     parser.add_argument("--live-base", default="",
                         help="server-reachable base URL serving channels.m3u/guide.xml/HLS (e.g. http://127.0.0.1:32511/)")
     parser.add_argument("--no-live", action="store_true", help="skip live-source registration")
@@ -1226,7 +1365,8 @@ def main(argv=None):
               "startedAt": now(), "libraries": {}, "scans": [], "created":
               {key: [] for key in ("members", "profiles", "avatars", "collections", "playlists",
                                    "views", "history", "reading", "apiKeys", "webhooks",
-                                   "libraryChannels", "backups", "notifications", "liveSources")},
+                                   "libraryChannels", "backups", "notifications", "liveSources",
+                                   "recordings")},
               "profiles": [], "warnings": [], "live": None}
     credentials = private_json(args.credentials)
     saved = credentials.setdefault("fixtureStateV3", {})
@@ -1343,8 +1483,8 @@ def main(argv=None):
                        "/restrictions", {
                            "expectedRevision": restrictions.get("revision", 1),
                            "ratingSystem": "mpaa", "maximumAgeRating": "PG", "allowUnrated": False,
-                           "blockedLabels": [], "allowDownloads": False, "allowLiveTV": False,
-                           "allowDVR": False, "allowWatchTogether": False,
+                           "blockedLabels": [], "allowDownloads": False, "allowLiveTv": False,
+                           "allowDvr": False, "allowWatchTogether": False,
                        }, ok=(200,))
             report["created"]["profiles"].append("Synthetic Kids restrictions")
         except Refusal as refusal:
@@ -1402,8 +1542,12 @@ def main(argv=None):
             if args.light:
                 report["profiles"].append({"label": label, "profileId": profile_id, "light": True})
                 continue
+            library_rows = [{"name": name, "id": library_id,
+                             "kind": report["libraries"][name]["kind"]}
+                            for name, library_id in library_by_name.items()]
+            catalogue = profile_catalogue(client, library_rows, report)
             profile_state(client, label if label.startswith("Synthetic") else "Synthetic " + label,
-                          items_by_kind, report, history=max(0, args.history))
+                          catalogue, report, history=max(0, args.history))
 
         # Server settings ---------------------------------------------------
         ensure_api_keys(owner, saved, report)
@@ -1436,8 +1580,11 @@ def main(argv=None):
                         live_base = "http://127.0.0.1:32511/"
             except (OSError, ValueError):
                 pass
+        ensure_dvr(owner, args.recordings_root, report)
         if not args.no_live and live_base:
             ensure_live(owner, live_base, report)
+            if report.get("live", {}).get("present"):
+                ensure_recording(owner, report)
         elif args.no_live:
             report["live"] = {"present": False, "reason": "disabled by --no-live"}
         report["finishedAt"] = now()

@@ -115,6 +115,8 @@ def main():
             if entry['kind']=='movie':variants.setdefault(entry['title'],[]).append(entry)
         light_titles={title for title,versions in variants.items()
                       if all('transcode_source:light' in version.get('features',[]) for version in versions)}
+        report['inventory']={'films':len(films),'episodes':len(episodes),'songs':len(songs),'audiobookParts':len(books),
+                             'filmTitles': [entry.get('title') for entry in films[:8]]}
         films=[entry for entry in films if entry.get('title') in light_titles]
         if not films:raise RuntimeError('No qualified light film source')
         episode=None;episode_extra={}
@@ -161,7 +163,7 @@ def main():
                     report['checks'].append({'kind':kind,'requested':'conversion' if converted else 'original','mode':mode,'actions':actions,'audioRender':rendered,'subtitleBytes':subtitle_bytes,'chapterStartMs':extra.get('startPositionMs'),'decoded':passed})
                     if not passed:report['errors'].append({'step':kind,'error':'decode_failed','converted':converted})
                 except Exception as e:
-                    report['errors'].append({'step':kind,'converted':converted,'error':getattr(e,'code',type(e).__name__),'status':getattr(e,'status',None)})
+                    report['errors'].append({'step':kind,'converted':converted,'error':str(e) if type(e) is RuntimeError else getattr(e,'code',type(e).__name__),'status':getattr(e,'status',None)})
                 finally:stop(client,s)
         if args.concurrency_seconds and films:
             def worker(index):
@@ -200,7 +202,7 @@ def main():
             report['concurrency']={'clients':args.clients,'targetSeconds':args.concurrency_seconds,'results':results,
                 'passed':all(not r['errors'] and r['durationSeconds']>=args.concurrency_seconds for r in results)}
     except Exception as e:
-        report['errors'].append({'step':'setup','error':getattr(e,'code',type(e).__name__),'status':getattr(e,'status',None)})
+        report['errors'].append({'step':'setup','error':str(e) if type(e) is RuntimeError else getattr(e,'code',type(e).__name__),'status':getattr(e,'status',None)})
     finally:
         if client:
             try:client.call('DELETE','/v1/devices/'+client.device,ok=(204,))
