@@ -24,7 +24,7 @@ function chaptersData(sourceId = 'source') {
 
 function deferred<T>() {let resolve!: (value: T) => void; const promise = new Promise<T>(r => {resolve = r;}); return {promise, resolve};}
 
-type Options = Readonly<{lyricsEnabled?: boolean; queue?: boolean; request?: <T>() => Promise<T>; reenterDispose?: boolean; debugNoDispatch?: () => void}>;
+type Options = Readonly<{lyricsEnabled?: boolean; queue?: boolean; request?: <T>() => Promise<T>; reenterDispose?: boolean; reenterHostRetire?: boolean; debugNoDispatch?: () => void}>;
 
 function harness(options: Options = {}) {
   const seeks: number[] = [], policies: {target: V1PlaybackTarget; revision: string; intent: V1QueuePolicyIntent}[] = [], saves: {queueId: string; name: string}[] = [];
@@ -38,6 +38,7 @@ function harness(options: Options = {}) {
   } as WebQueueListPort);
   let observed: (() => void) | undefined;
   const lifetime: WebListeningLifetime = {signal: lifetimeController.signal, isCurrent: () => {
+    if (options.reenterHostRetire) {lifetimeController.abort(); return true;} // host retires itself, still answers true
     if (options.reenterDispose && disposed) return true;
     if (options.reenterDispose) {port?.dispose(); disposed = true; return true;}
     return lifetimeCurrent;
@@ -140,6 +141,20 @@ test('caller cancellation stops the command and suppresses later progress', asyn
   h.lifetimeController.abort();
   await assert.rejects(() => h.port.queue!.save(shown, 'Night drive', h.lifetime, () => {throw new Error('published after cancel');}), /stale_listening_port/);
   assert.equal(h.saves.length, 0);
+});
+
+test('a host predicate that reentrantly retires and still answers true cannot dispatch', async () => {
+  let dispatched = 0;
+  const h = harness({reenterHostRetire: true, debugNoDispatch: () => {dispatched++;}});
+  await assert.rejects(() => h.port.chapters.load(), /stale_listening_port/);
+  assert.equal(dispatched, 0);
+  assert.equal(h.port.isCurrent(), false);
+});
+
+test('lyrics choice stays withdrawn while the command-scoped service seam is absent', async () => {
+  const h = harness();
+  await assert.rejects(() => h.port.lyrics.choose(h.port.lyrics.getSnapshot(), null, h.lifetime), /listening_command_unavailable/);
+  assert.equal(h.port.isCurrent(), true);
 });
 
 test('one drawer cancelling does not retire the record or another drawer command', async () => {

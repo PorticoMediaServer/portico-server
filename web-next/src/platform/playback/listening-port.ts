@@ -188,21 +188,14 @@ export function createWebListeningPort(input: WebListeningInput): WebListeningPo
       const c = command(input.lifetime);
       try {await settled(lyrics.refresh(), c.isCurrent);} finally {c.done();}
     },
-    choose: async (shown: LyricsSnapshot, resource: LyricRevision | null, lifetime: WebListeningLifetime) => {
+    /** Held: published LyricsService.choose(resource) owns its request controller and has no
+     * command-scoped admission or publication seam, so an aborted caller could still publish
+     * into the shared live service. Until the canonical choose(resource,{signal,isCurrent})
+     * seam is public this path refuses before any service mutation. */
+    choose: async (_shown: LyricsSnapshot, _resource: LyricRevision | null, lifetime: WebListeningLifetime) => {
       require();
-      if (!input.lyricsEnabled() || lifetime.signal.aborted || !lifetime.isCurrent()) unavailable();
-      if (shown !== lyrics.getSnapshot() || !shown.data) unavailable();
-      if (resource !== null && !shown.data.resources.some(candidate => candidate.id === resource.id && candidate.revision === resource.revision)) unavailable();
-      const c = command(lifetime);
-      try {
-        // The published LyricsService.choose(resource) owns its own controller and has no
-        // command-scoped admission or publication seam, so this facade can only re-admit the
-        // result: it does not claim to suppress a publication that the service already started.
-        // Canonical prerequisite (client-core, not written here): choose(resource, {signal,
-        // isCurrent}) — or an equivalent per-command admission/publication seam — so an aborted
-        // command cannot update the shared facade while another drawer's command stays alive.
-        await settled(lyrics.choose(resource), c.isCurrent);
-      } finally {c.done();}
+      if (lifetime.signal.aborted || !lifetime.isCurrent()) stale();
+      unavailable();
     },
     seek: async (shown: LyricsSnapshot, index: number, lifetime: WebListeningLifetime) => {
       require();
