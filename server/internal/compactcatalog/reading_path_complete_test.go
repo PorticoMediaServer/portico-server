@@ -937,3 +937,22 @@ func TestReadingCompleteAcceptedPageUsesBatchedCanonicalAndBundleReads(t *testin
 		}
 	}
 }
+
+func TestReadingCompleteAcceptedFactsKeepOriginalSourcePredicates(t *testing.T) {
+	f := newCompleteFixture(t, nil, "acceptance")
+	p := f.add("Writer/Series/Series 01.epub", "epub", 0)
+	f.add("Writer/Series/Series 02.epub", "epub", 0)
+	f.settle()
+	f.seal()
+	completeDrain(t, f.c)
+	before := completeValues(t, f.c, p.item)
+	f.c.Exec(`UPDATE library_sources SET enabled=0,health='offline',generation=generation+1,name='Renamed source' WHERE id=?`, f.source)
+	f.c.Exec(`UPDATE inventory_objects SET state='missing' WHERE id=?`, p.object)
+	f.c.Exec(`UPDATE catalog_assets SET available=0 WHERE id=?`, p.asset)
+	f.c.Exec(`UPDATE catalog_asset_links SET available=0 WHERE entity_id=?`, p.item)
+	if after := completeValues(t, f.c, p.item); !reflect.DeepEqual(before, after) {
+		t.Fatal("descriptive acceptance gained a health/enabled/generation/availability predicate")
+	}
+	f.c.Exec(`UPDATE library_sources SET incarnation='different-root' WHERE id=?`, f.source)
+	assertCompleteValue(t, f.c, p, compactcatalog.ReadingValues{})
+}

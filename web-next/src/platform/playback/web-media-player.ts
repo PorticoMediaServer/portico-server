@@ -265,7 +265,7 @@ export class WebMediaPlayer implements MediaPlayer {
 
   setRate(rate: number): void {
     this.rate = rate;
-    this.video.playbackRate = rate;
+    if (this.video.playbackRate !== rate) this.video.playbackRate = rate;
   }
 
   /** The port records which sidecar the viewer has on (it is reported in the timeline); drawing it
