@@ -276,6 +276,14 @@ func (s *Service) librarySummaryKey(ctx context.Context, viewer Viewer, library 
 	if dbwork.Snapshot(ctx) == nil {
 		return key, telemetry.SummaryBypassSnapshot
 	}
+	// Author memberships resolve through the creation-root identity ledger and
+	// can consume another library's item attributes after root move/reuse. This
+	// library's revisions do not prove those inputs current, even after dirty
+	// work drains. Keep the original same-snapshot computation for every active
+	// audiobook policy until an exact membership dependency fence is proved.
+	if library.Kind == "audiobook" && viewer.Restrictions.Active() {
+		return key, telemetry.SummaryBypassRestrictedMembership
+	}
 	var retaining bool
 	// All eligibility facts and tokens are read through the same serving reader
 	// and admitted snapshot as candidates. No after-commit process epoch/TTL.

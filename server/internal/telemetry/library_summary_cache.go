@@ -26,9 +26,11 @@ const (
 	SummaryBypassFlightLimit SummaryCacheEvent = "bypass:flight_limit"
 )
 
+const SummaryBypassRestrictedMembership SummaryCacheEvent = "bypass:restricted_membership_unproved"
+
 const SummaryBypassCancelled SummaryCacheEvent = "bypass:cancelled"
 
-var summaryEvents = [...]SummaryCacheEvent{SummaryBypassCancelled, SummaryHitEntry, SummaryHitFlight, SummaryMissCold, SummaryBypassSnapshot, SummaryBypassIdentity, SummaryBypassRetaining, SummaryBypassDirty, SummaryBypassFailure, SummaryBypassRebuild, SummaryBypassCleanup, SummaryBypassFirstBuild, SummaryBypassReading, SummaryBypassKeySize, SummaryBypassValueSize, SummaryBypassFlightLimit}
+var summaryEvents = [...]SummaryCacheEvent{SummaryBypassCancelled, SummaryHitEntry, SummaryHitFlight, SummaryMissCold, SummaryBypassSnapshot, SummaryBypassIdentity, SummaryBypassRetaining, SummaryBypassDirty, SummaryBypassRestrictedMembership, SummaryBypassFailure, SummaryBypassRebuild, SummaryBypassCleanup, SummaryBypassFirstBuild, SummaryBypassReading, SummaryBypassKeySize, SummaryBypassValueSize, SummaryBypassFlightLimit}
 var summaryCounters [len(summaryEvents)]atomic.Uint64
 
 func CountLibrarySummaryCache(event SummaryCacheEvent) {
