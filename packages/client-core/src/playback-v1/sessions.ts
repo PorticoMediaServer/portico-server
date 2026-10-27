@@ -112,7 +112,7 @@ const freezeWire = <T,>(value: T): T => {
 export function parseStartPreparation(value: unknown): Readonly<{retryAfterMs: number; session?: PreparingSessionView}> {
   let decoded: StartPlaybackSessionResponse;
   try {decoded = decodeStartPlaybackSessionResponse(value);} catch {throw new ContractError('preparation response');}
-  const retryAfterMs = decoded.retryAfterMs;
+  const retryAfterMs: unknown = Reflect.get(decoded, 'retryAfterMs');
   if (typeof retryAfterMs !== 'number' || !Number.isSafeInteger(retryAfterMs) || retryAfterMs < 1 || retryAfterMs > 10_000)
     throw new ContractError('preparation retry');
   return Object.freeze({retryAfterMs, ...('id' in decoded ? {session: freezeWire(decoded)} : {})});
