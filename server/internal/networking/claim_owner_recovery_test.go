@@ -4,15 +4,22 @@ import (
 	"bytes"
 	"context"
 	"crypto/ed25519"
+	"crypto/rand"
+	"crypto/sha256"
 	"database/sql"
 	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"io"
 	"net/http"
-	"portico.local/server/internal/dbwork"
+	"path/filepath"
 	"testing"
 	"time"
+
+	"portico.local/server/internal/claimweb"
+	"portico.local/server/internal/dbwork"
+	"portico.local/server/internal/identity"
+	"portico.local/server/internal/persistence"
 )
 
 func TestOwnerRecoveryEmptyLaneSleepsUntilActualWake(t *testing.T) {
@@ -80,19 +87,202 @@ func TestOwnerRecoveryEmptyLaneSleepsUntilActualWake(t *testing.T) {
 	}
 }
 
-func firstSwitchApproved(t *testing.T, f *sqlFixture) Intent {
+// ownerRecoveryFixture keeps real owner/start authority local to these recovery
+// vectors. The unrelated SQL fixtures and their guard tables stay unchanged.
+type ownerRecoveryFixture struct {
+	db               *sql.DB
+	path, dir        string
+	store            *SQLiteStore
+	cipher           *ClaimCipher
+	keys             *ProtectedKeys
+	identity         *identity.Service
+	principal        identity.Principal
+	familyID         string
+	runner           *AuthorityRunner
+	owner            LocalOwner
+	binding          Binding
+	hostedKey        ed25519.PrivateKey
+	now              time.Time
+	ctx              context.Context
+	requestGuard     ClaimRequestGuard
+	installedChanges int
+}
+
+func newOwnerRecoveryFixture(t *testing.T) *ownerRecoveryFixture {
 	t.Helper()
-	if _, err := f.db.Exec(`INSERT INTO identity_state(singleton,sign_in_kind) VALUES(1,'local'); INSERT INTO identity_moves(id,owner_id,owner_revision,from_kind,to_kind,start_over,stage,revision,people,devices,profiles,server_name,created_ms,owner_confirmed) VALUES('move','local_owner',1,'local','portico',0,'preview',1,1,1,1,'Fixture',1,1)`); err != nil {
+	root := t.TempDir()
+	path := filepath.Join(root, "server.sqlite")
+	db, err := persistence.Open(path)
+	if err != nil {
 		t.Fatal(err)
 	}
-	ctx := fixtureClaimContext(t)
+	t.Cleanup(func() { db.Close() })
+	gate, runner := lifecycleRunner(t)
+	lease, err := gate.Acquire(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(lease.Close)
+	ctx := context.WithValue(lease.Context(), claimAuthorityKey{}, LifecycleLease(lease))
+	keys, err := OpenCurrentKeys(ctx, db, root, runner)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { keys.Close() })
+	id, err := identity.New(db, root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	const installation = "f89bfbc4-cd90-4cda-a925-a123bb4a8b8a"
+	setupCtx, err := identity.WithIssuingDevice(ctx, identity.DeviceRegistration{InstallationID: installation, Name: "Owner browser", Platform: "web", App: "portico"}, "127.0.0.1:1234")
+	if err != nil {
+		t.Fatal(err)
+	}
+	secret, err := id.BrowserSetupToken(setupCtx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	setup, err := id.SetupWithOptions(setupCtx, identity.SetupOptions{SetupToken: secret, AuthMode: "local", Username: "owner", Password: "Local-password1!", Name: "Fixture"}, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	principal, err := id.AuthenticateContext(setupCtx, setup.Envelope.AccessToken)
+	if err != nil {
+		t.Fatal(err)
+	}
+	move, err := id.PreviewAccountMove(setupCtx, setup.Envelope.AccessToken, identity.MovePreviewRequest{To: identity.SignInPortico})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = id.ConfirmPorticoMove(setupCtx, setup.Envelope.AccessToken, identity.MoveConfirmRequest{MoveID: move.ID, ExpectedRevision: move.Revision}); err != nil {
+		t.Fatal(err)
+	}
+	_, hosted, err := ed25519.GenerateKey(rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cipher, err := OpenClaimCipher(ctx, db, root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var public []byte
+	if err = db.QueryRowContext(ctx, `SELECT public_key FROM networking_claim_identity WHERE singleton=1`).Scan(&public); err != nil {
+		t.Fatal(err)
+	}
+	f := &ownerRecoveryFixture{db: db, path: path, dir: root, keys: keys, identity: id, principal: principal, familyID: setup.Envelope.SessionFamilyID, runner: runner, cipher: cipher, hostedKey: hosted, now: time.Now().UTC(), owner: LocalOwner{AccountID: principal.AccountID, ProfileID: principal.ProfileID, Epoch: int64(principal.Epoch)}, binding: Binding{OperationID: identity.Token(), ServerID: id.ID(), AccountID: UnboundAccount, PublicKey: public}}
+	f.requestGuard = func(ctx context.Context, tx *sql.Tx) error { return id.CheckClaimRequestOwnerTx(ctx, tx, principal) }
+	f.store = f.storeFor(t, db, cipher)
+	f.ctx, err = guardedClaimRequest(ctx, f.store, f.requestGuard)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return f
+}
+
+func (f *ownerRecoveryFixture) storeFor(t *testing.T, db *sql.DB, cipher *ClaimCipher) *SQLiteStore {
+	t.Helper()
+	verify := func(ctx context.Context, raw []byte) (ApprovalFacts, error) {
+		if err := ctx.Err(); err != nil {
+			return ApprovalFacts{}, err
+		}
+		var envelope struct{ Payload, Signature []byte }
+		if json.Unmarshal(raw, &envelope) != nil || !ed25519.Verify(f.hostedKey.Public().(ed25519.PublicKey), envelope.Payload, envelope.Signature) {
+			return ApprovalFacts{}, ErrInvalid
+		}
+		var facts ApprovalFacts
+		if json.Unmarshal(envelope.Payload, &facts) != nil {
+			return ApprovalFacts{}, ErrInvalid
+		}
+		return facts, nil
+	}
+	store, err := NewSQLiteStore(db, cipher, GuardLocalOwner, GuardInstalledClaim, verify, "https://hosted.example")
+	if err != nil {
+		t.Fatal(err)
+	}
+	store.now = func() time.Time { return f.now }
+	if err = store.SetInstallationHooks(func(ctx context.Context, tx *sql.Tx, v Intent) error {
+		return f.identity.InstallOwnerClaimTx(ctx, tx, v.OperationID)
+	}, func() { f.installedChanges++ }); err != nil {
+		t.Fatal(err)
+	}
+	if err = store.SetTerminalRevoker(func(ctx context.Context, tx *sql.Tx, v Intent, _ string) error {
+		return f.identity.RetireOwnerCompletionForClaimTx(ctx, tx, v.OperationID)
+	}); err != nil {
+		t.Fatal(err)
+	}
+	return store
+}
+
+func firstSwitchApproved(t *testing.T, f *ownerRecoveryFixture) Intent {
+	t.Helper()
+	ctx := f.ctx
 	v, err := f.store.PreparePurpose(ctx, f.binding, f.owner, ClaimPurpose{Purpose: "switch"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	facts := ApprovalFacts{TargetUsername: "approved_owner", ClaimPurpose: v.ClaimPurpose, Binding: v.Binding, Revision: 1, IssuedAt: f.now, ExpiresAt: f.now.Add(5 * time.Minute)}
-	raw, _ := json.Marshal(facts)
-	proof, _ := json.Marshal(struct{ Payload, Signature []byte }{raw, ed25519.Sign(f.hostedKey, raw)})
+	transport, err := NewHTTPTransport("https://hosted.example", f.store)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(transport.CloseIdleConnections)
+	h, err := NewClaimHandler(f.store, f.runner, transport, f.keys, func(*http.Request) (ClaimRequestOwner, error) { return ClaimRequestOwner{}, ErrClaimOwnerRequired }, func() string { return "Fixture" })
+	if err != nil {
+		t.Fatal(err)
+	}
+	authority := &OwnerStartAuthority{ExpiresAt: f.principal.ExpiresAt, CaptureTx: func(ctx context.Context, tx *sql.Tx, audience string, original, start claimweb.Signed) error {
+		return f.identity.CaptureOwnerClaimTx(ctx, tx, f.principal, original, start, audience)
+	}, BindTx: func(ctx context.Context, tx *sql.Tx, op, transaction string) error {
+		return f.identity.BindOwnerClaimTransactionTx(ctx, tx, f.principal, op, transaction)
+	}}
+	stateBytes, pkce := sha256.Sum256([]byte(identity.Token())), sha256.Sum256([]byte(identity.Token()))
+	state, challenge := base64.RawURLEncoding.EncodeToString(stateBytes[:]), base64.RawURLEncoding.EncodeToString(pkce[:])
+	calls := 0
+	var originalStart claimweb.OwnerStart
+	transport.client.Transport = ownerPendingRoundTrip(func(r *http.Request) (*http.Response, error) {
+		calls++
+		if r.Method != "POST" || r.URL.String() != "https://hosted.example/v1/server-claims/pending" || r.Header.Get("Authorization") != "" || len(r.Cookies()) != 0 {
+			t.Fatal("unexpected pending request authority")
+		}
+		var request claimweb.PendingRequest
+		if err := json.NewDecoder(r.Body).Decode(&request); err != nil || request.OwnerStart == nil {
+			t.Fatal("full owner proof absent", err)
+		}
+		claim, start, err := claimweb.VerifyOwnerStart(request.Original(), *request.OwnerStart, "https://hosted.example", time.Now())
+		if err != nil || claim.OperationID != v.OperationID || claim.ServerID != v.ServerID || start.State != state || start.CodeChallenge != challenge || start.InstallationID != "f89bfbc4-cd90-4cda-a925-a123bb4a8b8a" {
+			t.Fatal("actual signed pending binding", err)
+		}
+		originalStart = start
+		var stored []byte
+		if err = f.db.QueryRowContext(ctx, `SELECT start_payload FROM identity_owner_completions WHERE operation_id=? AND phase='prepared'`, v.OperationID).Scan(&stored); err != nil {
+			t.Fatal("pending preceded durable capture", err)
+		}
+		raw, err := base64.RawURLEncoding.DecodeString(request.OwnerStart.Payload)
+		if err != nil || !bytes.Equal(stored, raw) {
+			t.Fatal("stored start differs from original signed start", err)
+		}
+		body, err := json.Marshal(claimweb.Pending{Purpose: "switch", Code: "ACTUAL_PENDING_CODE", OwnerTransactionID: "actual_owner_transaction", ServerID: claim.ServerID, Name: claim.Name, Address: claim.Address, RequestedAt: claim.IssuedAt, ExpiresAt: claim.ExpiresAt, Status: "pending"})
+		if err != nil {
+			return nil, err
+		}
+		return &http.Response{StatusCode: 200, Header: http.Header{"Content-Type": {"application/json"}}, Body: io.NopCloser(bytes.NewReader(body))}, nil
+	})
+	out, err := h.beginOwnerWebClaim(ctx, v, "https://server.example", state, challenge, "f89bfbc4-cd90-4cda-a925-a123bb4a8b8a", authority)
+	if err != nil || out.OwnerStart == nil || out.OwnerTransactionID != "actual_owner_transaction" || calls != 1 {
+		t.Fatal("original owner start was not captured and bound", err, calls)
+	}
+	// The signed approval adopts a distinct Hosted account from this exact
+	// unbound operation and the verified, durably stored original start mode.
+	approvedBinding := v.Binding
+	approvedBinding.AccountID = "account-approved"
+	facts := ApprovalFacts{TargetUsername: "approved_owner", ClaimPurpose: v.ClaimPurpose, Binding: approvedBinding, Revision: 1, IssuedAt: f.now, ExpiresAt: f.now.Add(5 * time.Minute), TransitionMode: originalStart.TransitionMode}
+	raw, err := json.Marshal(facts)
+	if err != nil {
+		t.Fatal(err)
+	}
+	proof, err := json.Marshal(struct{ Payload, Signature []byte }{raw, ed25519.Sign(f.hostedKey, raw)})
+	if err != nil {
+		t.Fatal(err)
+	}
 	v, err = f.store.Approve(ctx, v, proof)
 	if err != nil {
 		t.Fatal(err)
@@ -100,9 +290,22 @@ func firstSwitchApproved(t *testing.T, f *sqlFixture) Intent {
 	return v
 }
 
-func firstSwitchRetrieving(t *testing.T, f *sqlFixture, v Intent) (Intent, Cancellation) {
+func (f *ownerRecoveryFixture) cancel(t *testing.T, v Intent) Cancellation {
 	t.Helper()
-	ctx := fixtureClaimContext(t)
+	coordinator, err := NewCoordinator(v.OperationID, "https://hosted.example", f.store, &modelTransport{}, f.keys)
+	if err != nil {
+		t.Fatal(err)
+	}
+	item, err := coordinator.cancellation(f.ctx, v)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return item
+}
+
+func firstSwitchRetrieving(t *testing.T, f *ownerRecoveryFixture, v Intent) (Intent, Cancellation) {
+	t.Helper()
+	ctx := f.ctx
 	item, err := f.store.ArmPreinstallCancellation(ctx, v, f.cancel(t, v))
 	if err != nil {
 		t.Fatal(err)
@@ -121,8 +324,8 @@ func firstSwitchRetrieving(t *testing.T, f *sqlFixture, v Intent) (Intent, Cance
 func TestOwnerPreinstallCancellationSurvivesExpiredApprovalAndRestart(t *testing.T) {
 	for _, failure := range []string{"expired", "revoked", "lost-finalize"} {
 		t.Run(failure, func(t *testing.T) {
-			f := fixtureCurrentSQL(t)
-			ctx := fixtureClaimContext(t)
+			f := newOwnerRecoveryFixture(t)
+			ctx := f.ctx
 			v := firstSwitchApproved(t, f)
 			v, item := firstSwitchRetrieving(t, f, v)
 			if failure == "lost-finalize" {
@@ -137,12 +340,23 @@ func TestOwnerPreinstallCancellationSurvivesExpiredApprovalAndRestart(t *testing
 					t.Fatal(err)
 				}
 			}
-			f.now = f.now.Add(6 * time.Minute)
 			if failure == "revoked" {
-				if _, err := f.db.Exec(`UPDATE fixture_owners SET allowed=0`); err != nil {
+				if _, err := f.db.Exec(`UPDATE authorization_session_families SET revoked=1 WHERE id=?`, f.familyID); err != nil {
 					t.Fatal(err)
 				}
+				// Establish the actual owner refusal while the approval is still
+				// live; the original expiry advancement remains independent below.
+				snapshot, err := dbwork.BeginSnapshot(ctx, f.db)
+				if err != nil {
+					t.Fatal(err)
+				}
+				revoked := f.requestGuard(ctx, snapshot.Tx())
+				snapshot.Rollback()
+				if revoked == nil {
+					t.Fatal("revoked original owner retained approval authority")
+				}
 			}
+			f.now = f.now.Add(6 * time.Minute)
 			if failure != "lost-finalize" {
 				if _, err := f.store.Install(ctx, v, resultFor(t, v)); err == nil {
 					t.Fatal("late install accepted expired or revoked initiating authority")
@@ -195,7 +409,7 @@ func TestOwnerPreinstallCancellationSurvivesExpiredApprovalAndRestart(t *testing
 				body, _ := json.Marshal(map[string]string{"operationId": v.OperationID, "requestId": item.RequestID})
 				return reply(200, string(body)), nil
 			})
-			coordinator, err := NewCoordinator(v.OperationID, "https://hosted.example", restarted, tr, modelSigner{f.localKey})
+			coordinator, err := NewCoordinator(v.OperationID, "https://hosted.example", restarted, tr, f.keys)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -215,11 +429,11 @@ func TestOwnerPreinstallCancellationSurvivesExpiredApprovalAndRestart(t *testing
 }
 
 func TestOwnerPreinstallInstallWinRetiresCancellationAtomically(t *testing.T) {
-	f := fixtureCurrentSQL(t)
-	ctx := fixtureClaimContext(t)
+	f := newOwnerRecoveryFixture(t)
+	ctx := f.ctx
 	v, item := firstSwitchRetrieving(t, f, firstSwitchApproved(t, f))
 	installed, err := f.store.Install(ctx, v, resultFor(t, v))
-	if err != nil || installed.Stage != Installed {
+	if err != nil || installed.Stage != Installed || f.installedChanges != 1 {
 		t.Fatal(err)
 	}
 	if _, _, err = f.store.QueuePreinstallCancellation(ctx, v.OperationID); err == nil {
@@ -231,15 +445,15 @@ func TestOwnerPreinstallInstallWinRetiresCancellationAtomically(t *testing.T) {
 }
 
 func TestOwnerPreinstallCapturedDeadlineRefusesLateInstall(t *testing.T) {
-	f := fixtureCurrentSQL(t)
-	ctx := fixtureClaimContext(t)
+	f := newOwnerRecoveryFixture(t)
+	ctx := f.ctx
 	v, item := firstSwitchRetrieving(t, f, firstSwitchApproved(t, f))
 	deadline := f.now.Add(time.Minute)
-	guarded, err := guardedClaimRequest(ctx, f.store, func(_ context.Context, _ *sql.Tx) error {
+	guarded, err := guardedClaimRequest(ctx, f.store, func(ctx context.Context, tx *sql.Tx) error {
 		if !f.now.Before(deadline) {
 			return ErrStale
 		}
-		return nil
+		return f.requestGuard(ctx, tx)
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -256,8 +470,8 @@ func TestOwnerPreinstallCapturedDeadlineRefusesLateInstall(t *testing.T) {
 }
 
 func TestOwnerPreinstallCancellationEnvelopeAndSuccessorFence(t *testing.T) {
-	f := fixtureCurrentSQL(t)
-	ctx := fixtureClaimContext(t)
+	f := newOwnerRecoveryFixture(t)
+	ctx := f.ctx
 	v, item := firstSwitchRetrieving(t, f, firstSwitchApproved(t, f))
 	if _, _, err := f.store.QueuePreinstallCancellation(ctx, v.OperationID); err != nil {
 		t.Fatal(err)
@@ -280,8 +494,8 @@ func TestOwnerPreinstallCancellationEnvelopeAndSuccessorFence(t *testing.T) {
 }
 
 func TestOwnerPreinstallCoordinatorArmsBeforeFinalizeAndWorkerReconciles(t *testing.T) {
-	f := fixtureCurrentSQL(t)
-	ctx := fixtureClaimContext(t)
+	f := newOwnerRecoveryFixture(t)
+	ctx := f.ctx
 	v := firstSwitchApproved(t, f)
 	transport := &modelTransport{now: f.now}
 	transport.finalizeHook = func() error {
@@ -294,7 +508,7 @@ func TestOwnerPreinstallCoordinatorArmsBeforeFinalizeAndWorkerReconciles(t *test
 		f.now = f.now.Add(6 * time.Minute)
 		return nil
 	}
-	coordinator, err := NewCoordinator(v.OperationID, "https://hosted.example", f.store, transport, modelSigner{f.localKey})
+	coordinator, err := NewCoordinator(v.OperationID, "https://hosted.example", f.store, transport, f.keys)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -326,7 +540,7 @@ func TestOwnerPreinstallCoordinatorArmsBeforeFinalizeAndWorkerReconciles(t *test
 		body, _ := json.Marshal(map[string]string{"operationId": v.OperationID, "requestId": wire.RequestID})
 		return reply(200, string(body)), nil
 	})
-	h, err := NewClaimHandler(f.store, runner, tr, modelSigner{f.localKey}, func(*http.Request) (ClaimRequestOwner, error) { return ClaimRequestOwner{}, ErrClaimOwnerRequired }, func() string { return "Fixture" })
+	h, err := NewClaimHandler(f.store, runner, tr, f.keys, func(*http.Request) (ClaimRequestOwner, error) { return ClaimRequestOwner{}, ErrClaimOwnerRequired }, func() string { return "Fixture" })
 	if err != nil {
 		t.Fatal(err)
 	}

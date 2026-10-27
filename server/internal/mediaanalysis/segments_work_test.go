@@ -12,6 +12,7 @@ import (
 	"testing"
 	"time"
 
+	"portico.local/server/internal/catalog"
 	"portico.local/server/internal/catalogtest"
 	"portico.local/server/internal/dbwork"
 	"portico.local/server/internal/decoder"
@@ -148,6 +149,7 @@ type segmentFixture struct {
 	c        *catalogtest.Catalog
 	service  *Service
 	show     catalogtest.Item
+	source   catalog.LibrarySource
 	seasons  map[int]catalogtest.Item
 	programs map[string]segmentsynth.Programme // by asset token
 	objects  map[string]string                 // episode name → object id
@@ -158,10 +160,39 @@ type segmentFixture struct {
 func newSegmentFixture(t *testing.T) *segmentFixture {
 	t.Helper()
 	c := catalogtest.Open(t)
-	library := c.Library("tv", "TV", "tv", "/tv")
+	root := t.TempDir()
+	library := c.Library("tv", "TV", "tv", root)
 	f := &segmentFixture{t: t, c: c, seasons: map[int]catalogtest.Item{}, programs: map[string]segmentsynth.Programme{}, objects: map[string]string{}, items: map[string]catalogtest.Item{}}
 	f.show = c.Show(library, "Show", 2020)
-	c.Exec(`UPDATE library_sources SET incarnation='incarnation',generation=1,enabled=1 WHERE library_id='tv'`)
+	// Admit this same original source through the real physical-root API;
+	// raw Catalog.Library intentionally does not confirm source identity.
+	ctx := context.Background()
+	catalogService := catalog.New(c.DB)
+	original, err := catalogService.LibrarySource(ctx, "tv")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var revision int64
+	if err = c.DB.QueryRow(`SELECT revision FROM library_configuration WHERE library_id='tv'`).Scan(&revision); err != nil {
+		t.Fatal(err)
+	}
+	authorize := func(tx *sql.Tx) error {
+		var originalRoot string
+		if err := tx.QueryRowContext(ctx, `SELECT root FROM libraries WHERE id='tv'`).Scan(&originalRoot); err != nil {
+			return err
+		}
+		if originalRoot != root {
+			return errors.New("fixture library root changed before source admission")
+		}
+		return nil
+	}
+	f.source, err = catalogService.SaveSource(ctx, "tv", original.ID, catalog.SourceSettings{Name: original.Name, Path: root, Classification: "local", ExpectedRevision: revision}, authorize)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if f.source.ID != original.ID || !f.source.IdentityConfirmed || f.source.Incarnation == "" || f.source.RootIdentity == "" || f.source.Generation <= original.Generation {
+		t.Fatal("original source was not physically admitted", f.source)
+	}
 	tool := filepath.Join(t.TempDir(), "ffmpeg")
 	if err := os.WriteFile(tool, []byte("decoder"), 0o700); err != nil {
 		t.Fatal(err)
@@ -206,11 +237,11 @@ func (f *segmentFixture) episode(name string, season, number int, coldOpen float
 		{Signal: segmentsynth.Theme(8), Length: 40},
 		{Signal: segmentsynth.Silence(), Length: 2},
 	}
-	item := f.c.Episode(f.show, s, number, fmt.Sprintf("/tv/Show/%s.mkv", name))
+	item := f.c.Episode(f.show, s, number, filepath.Join(f.source.ResolvedPath, "Show", name+".mkv"))
 	f.c.Exec(`UPDATE catalog_assets SET duration=? WHERE token=?`, program.Duration(), item.Token)
 	object := "object-" + name
-	f.c.Exec(`INSERT INTO inventory_objects(id,source_id,asset_id,root_incarnation,relative_path,revision,evidence_json,size,modified_ns,state,analysis_revision) VALUES(?,(SELECT id FROM library_sources WHERE library_id='tv'),?,'incarnation',?,'r1','{}',1000,1,'available','r1')`, object, item.Token, name+".mkv")
-	f.c.Exec(`INSERT INTO inventory_changes(source_id,job_id,object_id,asset_id,revision,kind,created_at) VALUES((SELECT id FROM library_sources WHERE library_id='tv'),'job',?,?,'r1','analysis_complete','2026-10-18T00:00:00Z')`, object, item.Token)
+	f.c.Exec(`INSERT INTO inventory_objects(id,source_id,asset_id,root_incarnation,relative_path,revision,evidence_json,size,modified_ns,state,analysis_revision) VALUES(?,?,?,?,?,'r1','{}',1000,1,'available','r1')`, object, f.source.ID, item.Token, f.source.Incarnation, filepath.Join("Show", name+".mkv"))
+	f.c.Exec(`INSERT INTO inventory_changes(source_id,job_id,object_id,asset_id,revision,kind,created_at) VALUES(?,'job',?,?,'r1','analysis_complete','2026-10-18T00:00:00Z')`, f.source.ID, object, item.Token)
 	f.programs[item.Token] = program
 	f.objects[name] = object
 	f.items[name] = item
@@ -434,7 +465,11 @@ func TestSegmentWorkerReplacesTheRetiredDetectorsGuesses(t *testing.T) {
 	for i, cold := range []float64{0, 30, 60} {
 		f.episode(fmt.Sprintf("s1e%d", i+1), 1, i+1, cold)
 	}
-	binding := token("incarnation", "1", "")
+	original, err := readSegmentCatchupFile(context.Background(), f.c.DB, f.objects["s1e1"], "r1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	binding := original.binding()
 	f.c.Exec(`INSERT INTO analysis_markers(id,object_id,source_revision,source_binding,kind,start_us,end_us,confidence,provenance,result_id,approved) VALUES
 	 ('old-guess',?,'r1',?,'intro',0,30000000,.3,'luminance_opening_boundary:v1','old-result',0),
 	 ('old-approved',?,'r1',?,'credits',380000000,391000000,.35,'sustained_end_title_luminance:v1','old-result',1)`,

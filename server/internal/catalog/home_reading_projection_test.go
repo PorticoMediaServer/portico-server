@@ -135,20 +135,27 @@ func TestHomeReadingSavedViewAndPickerProjection(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			var assetID int64
-			var format string
-			if err = c.DB.QueryRow(`SELECT asset_id,format FROM reading_publications WHERE item_id=?`, items[0].ID).Scan(&assetID, &format); err != nil {
+			// Keep this destructive refusal probe inside one disposable writer. A
+			// rollback restores the original publication and every CASCADE child.
+			missing, err := dbwork.Begin(context.Background(), c.DB, dbwork.ClassInteractive)
+			if err != nil {
 				t.Fatal(err)
 			}
-			c.Exec(`DELETE FROM reading_publications WHERE item_id=?`, items[0].ID)
-			err = dbwork.WithReadSnapshot(context.Background(), c.DB, func(ctx context.Context) error {
-				_, e := s.HomeDestinationPickerTx(ctx, dbwork.Snapshot(ctx), "server", viewer, actor, HomeDestinationPickerRequest{Kind: "collection", Limit: 10})
-				return e
-			})
+			defer missing.Rollback()
+			deleted, err := missing.Tx().ExecContext(missing.Context(), `DELETE FROM reading_publications WHERE item_id=?`, items[0].ID)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if affected, e := deleted.RowsAffected(); e != nil || affected != 1 {
+				t.Fatalf("missing publication probe deleted %d rows: %v", affected, e)
+			}
+			_, err = s.HomeDestinationPickerTx(missing.Context(), missing.Tx(), "server", viewer, actor, HomeDestinationPickerRequest{Kind: "collection", Limit: 10})
 			if !errors.Is(err, ErrReadingProjectionChanged) {
 				t.Fatalf("missing publication %v", err)
 			}
-			c.Exec(`INSERT INTO reading_publications(item_id,asset_id,format) VALUES(?,?,?)`, items[0].ID, assetID, format)
+			if err = missing.Rollback(); err != nil {
+				t.Fatal(err)
+			}
 			err = dbwork.WithReadSnapshot(context.Background(), c.DB, func(ctx context.Context) error {
 				picker, e := s.HomeDestinationPickerTx(ctx, dbwork.Snapshot(ctx), "server", viewer, actor, HomeDestinationPickerRequest{Kind: "collection", Limit: 10})
 				if e != nil {
