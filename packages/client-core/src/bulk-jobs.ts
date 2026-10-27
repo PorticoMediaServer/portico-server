@@ -259,8 +259,10 @@ export async function pollJob(api:BulkJobsApi,jobId:string,options:Readonly<{int
   if(isJobTerminal(job.state))return job;
   if(Date.now()-started>timeoutMs)throw Object.assign(new Error('The bulk action is still running. Reopen it to check the result.'),{code:'job_poll_timeout',job});
   await new Promise<void>((resolve,reject)=>{
-   const timer=setTimeout(resolve,intervalMs);
-   options.signal?.addEventListener('abort',()=>{clearTimeout(timer);reject(Object.assign(new Error('The bulk action was cancelled.'),{code:'cancelled'}));},{once:true});
+   let timer:ReturnType<typeof setTimeout>|undefined;const signal=options.signal;
+   const cancel=()=>{if(timer!==undefined)clearTimeout(timer);signal?.removeEventListener('abort',cancel);reject(Object.assign(new Error('The bulk action was cancelled.'),{code:'cancelled'}));};
+   timer=setTimeout(()=>{signal?.removeEventListener('abort',cancel);resolve();},intervalMs);
+   signal?.addEventListener('abort',cancel,{once:true});
   });
  }
 }
@@ -300,8 +302,10 @@ const BULK_POLL_MS=1500;
 const BULK_TIMEOUT_MS=300000;
 
 const sleep=(ms:number,signal?:AbortSignal)=>new Promise<void>((resolve,reject)=>{
- const timer=setTimeout(resolve,ms);
- signal?.addEventListener('abort',()=>{clearTimeout(timer);reject(Object.assign(new Error('The bulk action was cancelled.'),{code:'cancelled'}));},{once:true});
+ let timer:ReturnType<typeof setTimeout>|undefined;
+ const cancel=()=>{if(timer!==undefined)clearTimeout(timer);signal?.removeEventListener('abort',cancel);reject(Object.assign(new Error('The bulk action was cancelled.'),{code:'cancelled'}));};
+ timer=setTimeout(()=>{signal?.removeEventListener('abort',cancel);resolve();},ms);
+ signal?.addEventListener('abort',cancel,{once:true});
 });
 
 /**
