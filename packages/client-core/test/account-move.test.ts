@@ -56,8 +56,8 @@ test('owner commands send exact revision/once-only code request and final confir
  const f=fixture({move}),client=new AccountMoveClient(f.api,f.options);
  assert.equal((await client.current())?.waiting,120);f.set({...move,stage:'preview'});const preview=await client.preview('local',false);
  f.set({signIn:grant});const result=await client.confirm({moveId:preview.id,expectedRevision:preview.revision,confirmation:'',username:'owner',password:'new password'});assert.equal(result.kind,'local');
- f.set({items:[{accountId:'member',username:'alice',code,expiresAt:until}]});assert.equal((await client.codes([]))[0].code,code);
- assert.deepEqual(f.calls[3].body,{accountIds:[]});f.set(undefined);await client.finish(parseAccountMove(move));assert.deepEqual(f.calls[4].body,{expectedRevision:2});client.dispose();
+ f.set({items:[{accountId:'member',username:'alice',code,expiresAt:until}]});assert.equal((await client.codes(['member']))[0].code,code);
+ assert.deepEqual(f.calls[3].body,{accountIds:['member']});f.set(undefined);await client.finish(parseAccountMove(move));assert.deepEqual(f.calls[4].body,{expectedRevision:2});client.dispose();
 });
 test('cancelled and authority-replaced redemptions retire the exact late grant and never publish or auto replay',async()=>{
  for(const end of ['cancel','authority'] as const){

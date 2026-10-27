@@ -292,7 +292,7 @@ export const remoteSourcesMessages = {
   'next.remoteSources.healthHealthy': 'Healthy',
   'next.remoteSources.healthDegraded': 'Degraded',
   'next.remoteSources.healthInventoryRunning': 'Listing files',
-  'next.remoteSources.healthCancelled': 'The last scan was cancelled',
+  'next.remoteSources.healthCancelled': 'The last scan was canceled',
   'next.remoteSources.healthOffline': 'Its folders can’t be reached',
   'next.remoteSources.healthRootChanged': 'A folder was moved or replaced',
   'next.remoteSources.healthRemoving': 'Being removed',
