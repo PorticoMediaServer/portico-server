@@ -47,8 +47,10 @@ test('a first-page adjacent pair moves through the canonical plan with only that
     assert.equal(port.getSnapshot().phase, 'ready');
     assert.notEqual(after.revision, first.revision);
     assert.equal(after.rows[0].entryId, first.rows[0].entryId);   // the current row is unchanged
-    assert.equal(after.rows[1].entryId, first.rows[2].entryId);   // the offered pair swapped
-    assert.equal(after.rows[2].entryId, first.rows[1].entryId);
+    assert.equal(after.rows[1].entryId, first.rows[2].entryId);   // the unmoved row keeps its id
+    assert.equal(after.rows[2].itemId, first.rows[1].itemId);     // the offered pair swapped
+    assert.equal(after.rows[1].itemId, first.rows[2].itemId);
+    assert.notEqual(after.rows[2].entryId, first.rows[1].entryId); // a move mints the moved entry a new id
   } finally {port.dispose(); f.stop();}
 });
 

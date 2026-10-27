@@ -31,7 +31,9 @@ type Session = {
   lastSeq: number; lastActivity: number; ended: boolean; reports: Record<string, unknown>[];
   queue?: {queueId: string; entryId: string}; transferId?: string; startedAt: number; terminatedMessage?: string; endReason?: string;
 };
-type Segment = {id: string; kind: 'items' | 'selector'; label: string; count: number; keyAt: (i: number) => string; removals: Set<number>};
+/** A range of one snapshot's keys: `snapshot.first + local` is the entry id's ordinal, so a
+ * split (a move inserts beside its target) keeps every surrounding entry's id. */
+type Segment = {id: string; snapshot: string; first: number; kind: 'items' | 'selector'; label: string; count: number; keyAt: (i: number) => string; removals: Set<number>};
 type Queue = {id: string; revision: number; deviceId: string; ownerKind: 'device' | 'group'; authority: string; accountId: string; profileId: string; updatedAt: number; segments: Segment[]; current: number; repeat: 'off' | 'one' | 'all'; shuffle?: {seed: number; lap: number; domain: number; first: number}; sessionId?: string;
   /** §18: the prepared next entry (private until committed), and committed answers by token. */
   prepared?: {token: string; sessionId: string; sessionGeneration: number; nextPosition: number; nextSessionId: string; expiresAt: number; revision: number};
@@ -516,13 +518,13 @@ export class FakePlaybackServer {
     const items = (source.items as {ids?: unknown} | undefined)?.ids;
     if (Array.isArray(items) && items.every(x => typeof x === 'string') && items.length <= 500) {
       const ids = [...items] as string[];
-      return {id, kind: 'items', label: `${ids.length} items`, count: ids.length, keyAt: i => ids[i]!, removals: new Set()};
+      return {id, snapshot: id, first: 0, kind: 'items', label: `${ids.length} items`, count: ids.length, keyAt: i => ids[i]!, removals: new Set()};
     }
     const c = source.container as {kind?: unknown; id?: unknown} | undefined;
     if (c && typeof c.kind === 'string' && typeof c.id === 'string') {
       const n = this.o.containerSize?.(c.kind, c.id) ?? 12;
       const prefix = `${c.id}-`;
-      return {id, kind: 'selector', label: `${c.kind} ${c.id}`, count: n, keyAt: i => prefix + i, removals: new Set()};
+      return {id, snapshot: id, first: 0, kind: 'selector', label: `${c.kind} ${c.id}`, count: n, keyAt: i => prefix + i, removals: new Set()};
     }
     return undefined;
   }
@@ -543,13 +545,54 @@ export class FakePlaybackServer {
     return undefined;
   }
 
-  private sourceIndexOf(q: Queue, segId: string, ordinal: number): number | undefined {
+  private sourceIndexOf(q: Queue, snapshot: string, ordinal: number): number | undefined {
     let base = 0;
     for (const seg of q.segments) {
-      if (seg.id === segId) { if (seg.removals.has(ordinal) || ordinal >= seg.count) return undefined; return base + ordinal - [...seg.removals].filter(r => r < ordinal).length; }
+      if (seg.snapshot === snapshot && ordinal >= seg.first && ordinal < seg.first + seg.count) {
+        const local = ordinal - seg.first;
+        if (seg.removals.has(local)) return undefined;
+        return base + local - [...seg.removals].filter(r => r < local).length;
+      }
       base += seg.count - seg.removals.size;
     }
     return undefined;
+  }
+
+  /** The segment holding a source ordinal of a snapshot, and that ordinal relative to it. */
+  private segmentAt(q: Queue, snapshot: string, ordinal: number): {index: number; seg: Segment; local: number} | undefined {
+    for (let index = 0; index < q.segments.length; index++) {
+      const seg = q.segments[index]!;
+      if (seg.snapshot === snapshot && ordinal >= seg.first && ordinal < seg.first + seg.count) return {index, seg, local: ordinal - seg.first};
+    }
+    return undefined;
+  }
+
+  /** Resolve an entry id (`snapshot.ordinal`) to its live segment, unless it is tombstoned. */
+  private locateEntry(q: Queue, entryId: string): {index: number; seg: Segment; local: number; itemId: string} | undefined {
+    const at = this.splitEntry(entryId);
+    if (!at) return undefined;
+    const found = this.segmentAt(q, at.snapshot, at.ordinal);
+    if (!found || found.seg.removals.has(found.local)) return undefined;
+    return {...found, itemId: found.seg.keyAt(found.local)};
+  }
+
+  private splitEntry(entryId: string): {snapshot: string; ordinal: number} | undefined {
+    const dot = entryId.lastIndexOf('.');
+    const ordinal = Number(entryId.slice(dot + 1));
+    if (dot < 1 || !Number.isSafeInteger(ordinal) || ordinal < 0) return undefined;
+    return {snapshot: entryId.slice(0, dot), ordinal};
+  }
+
+  /** Split a segment after `cut` local keys: the tail keeps the same snapshot and ordinals. */
+  private splitSegment(q: Queue, index: number, cut: number): void {
+    const g = q.segments[index]!, tail: Segment = {
+      id: `g${++this.nextId}`, snapshot: g.snapshot, first: g.first + cut, kind: g.kind, label: g.label,
+      count: g.count - cut, keyAt: i => g.keyAt(cut + i),
+      removals: new Set([...g.removals].filter(r => r >= cut).map(r => r - cut)),
+    };
+    for (const r of [...g.removals]) if (r >= cut) g.removals.delete(r);
+    g.count = cut;
+    q.segments.splice(index + 1, 0, tail);
   }
 
   /** Play-order position → source position (shuffle keeps the current entry first; later additions are an unshuffled tail). */
@@ -579,18 +622,17 @@ export class FakePlaybackServer {
     const src = this.sourceAt(q, this.orderToSource(q, position));
     if (!src) return undefined;
     const itemId = src.seg.keyAt(src.ordinal);
-    return {entryId: `${src.seg.id}.${src.ordinal}`, position, itemId, kind: this.kindOf(itemId), title: `Title ${itemId}`, durationMs: 180_000, available: true};
+    return {entryId: `${src.seg.snapshot}.${src.seg.first + src.ordinal}`, position, itemId, kind: this.kindOf(itemId), title: `Title ${itemId}`, durationMs: 180_000, available: true};
   }
 
   private positionOf(q: Queue, entryId: string): number | undefined {
-    const [segId, ord] = entryId.split('.');
-    const s = this.sourceIndexOf(q, segId!, Number(ord));
+    const at = this.splitEntry(entryId);
+    const s = at ? this.sourceIndexOf(q, at.snapshot, at.ordinal) : undefined;
     return s === undefined ? undefined : this.sourceToOrder(q, s);
   }
 
   private itemOfEntry(q: Queue, entryId: string): string | undefined {
-    const [segId, ord] = entryId.split('.');
-    return q.segments.find(s => s.id === segId)?.keyAt(Number(ord));
+    return this.locateEntry(q, entryId)?.itemId;
   }
 
   private header(q: Queue) {
@@ -713,28 +755,38 @@ export class FakePlaybackServer {
       const currentSrc = this.sourceAt(q, this.orderToSource(q, q.current));
       let at = q.segments.length;
       if (placement === 'next' && currentSrc) at = q.segments.indexOf(currentSrc.seg) + 1;
-      if (typeof placement === 'object' && placement?.after) { const segId = placement.after.split('.')[0]; const i = q.segments.findIndex(s => s.id === segId); if (i >= 0) at = i + 1; }
+      if (typeof placement === 'object' && placement?.after) {
+        const target = this.locateEntry(q, placement.after);
+        if (target) { if (target.local + 1 < target.seg.count) this.splitSegment(q, target.index, target.local + 1); at = target.index + 1; }
+      }
       q.segments.splice(at, 0, seg);
     } else if (m === 'DELETE' && (match = /^\/entries\/(.+)$/.exec(rest))) {
-      const [segId, ord] = decodeURIComponent(match[1]!).split('.');
-      const seg = q.segments.find(s => s.id === segId);
-      if (!seg || seg.removals.has(Number(ord))) return this.error(404, 'entry_not_found');
+      const entryId = decodeURIComponent(match[1]!);
       if (q.shuffle) return this.error(409, 'unsupported_in_fake');
-      const pos = this.positionOf(q, decodeURIComponent(match[1]!))!;
-      seg.removals.add(Number(ord));
+      const located = this.locateEntry(q, entryId);
+      if (!located) return this.error(404, 'entry_not_found');
+      const pos = this.positionOf(q, entryId)!;
+      located.seg.removals.add(located.local);
       if (pos < q.current) q.current--;
     } else if (m === 'POST' && (match = /^\/entries\/(.+):move$/.exec(rest))) {
       if (q.shuffle) return this.error(409, 'unsupported_in_fake');
       const entryId = decodeURIComponent(match[1]!);
-      const itemId = this.itemOfEntry(q, entryId);
-      const [segId, ord] = entryId.split('.');
-      const seg = q.segments.find(s => s.id === segId);
       const to = (body.after ?? body.before) as string | undefined;
-      const toSeg = to ? q.segments.findIndex(s => s.id === to.split('.')[0]) : -1;
-      if (!seg || !itemId || toSeg < 0) return this.error(404, 'entry_not_found');
-      seg.removals.add(Number(ord));
-      const one: Segment = {id: `g${++this.nextId}`, kind: 'items', label: '1 item', count: 1, keyAt: () => itemId, removals: new Set()};
-      q.segments.splice(body.after ? toSeg + 1 : toSeg, 0, one);
+      const entry = this.locateEntry(q, entryId), target = to ? this.locateEntry(q, to) : undefined;
+      if (!entry || !target || entryId === to) return this.error(404, 'entry_not_found');
+      const current = this.entryAt(q, q.current)?.entryId;
+      entry.seg.removals.add(entry.local);
+      const at = this.locateEntry(q, to!);
+      if (!at) return this.error(404, 'entry_not_found');
+      // Place the moved key beside the target inside its snapshot, as the real server's
+      // tombstone-plus-split does; surrounding entries keep their ids.
+      let insert = at.index;
+      if (body.after) { if (at.local + 1 < at.seg.count) this.splitSegment(q, at.index, at.local + 1); insert = at.index + 1; }
+      else if (at.local > 0) { this.splitSegment(q, at.index, at.local); insert = at.index + 1; }
+      const id = `g${++this.nextId}`;
+      const one: Segment = {id, snapshot: id, first: 0, kind: 'items', label: '1 item', count: 1, keyAt: () => entry.itemId, removals: new Set()};
+      q.segments.splice(insert, 0, one);
+      if (current) { const p = this.positionOf(q, current); if (p !== undefined) q.current = p; }
     } else if (m === 'PATCH' && rest === '') {
       if (body.repeat === 'off' || body.repeat === 'one' || body.repeat === 'all') q.repeat = body.repeat;
       const sh = body.shuffle as {on?: boolean; seed?: string} | undefined;
