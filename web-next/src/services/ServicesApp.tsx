@@ -1,4 +1,4 @@
-import {useCallback, useEffect, useLayoutEffect, useState, useSyncExternalStore} from 'react';
+import {useCallback, useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore} from 'react';
 import {createRootRouteWithContext, createRoute, createRouter, Outlet, RouterProvider} from '@tanstack/react-router';
 import type {JoinLink} from '@core/join-link.ts';
 import {IconSprite} from '../kit/Icon';
@@ -138,18 +138,138 @@ function ClaimStart() {
 /** The scrubbed code is an intake locator only. An authenticated server lookup
  * chooses the drawn setup/switch view; its purpose-closed controller then
  * independently rechecks every decision and return against the current family. */
+type ApprovalPurpose='setup'|'switch';
+type ApprovalOpening={scope:string;account:ServicesAccount;bootstrap:ServicesBootstrap;identity:{accountId:string;familyId:string;accessToken:string};controller:AbortController;pending?:AbortController;renewing:boolean;renewed:boolean;alive:boolean;settled?:number};
+type ApprovalShown=
+ | Readonly<{state:'lookup';opening:ApprovalOpening;attempt:number}>
+ | Readonly<{state:'purpose';opening:ApprovalOpening;attempt:number;purpose:ApprovalPurpose}>
+ | Readonly<{state:'invalid';opening:ApprovalOpening;attempt:number}>
+ | Readonly<{state:'error';opening:ApprovalOpening;attempt:number;error:unknown;retryAt:number}>;
+/** Only a capability answer names a terminal link; transport/auth/other replies do not. */
+const approvalTerminal=(error:unknown)=>{const code=(error as {code?:unknown})?.code;
+ return typeof code==='string'&&['invalid_return','invalid','expired','cancelled'].includes(code);};
+/** The exact finite Retry-After deadline, never shortened; an unusable hint fails closed. */
+const approvalDeadline=(error:unknown)=>{
+ const value=(error as {retryAfterSeconds?:unknown})?.retryAfterSeconds;
+ if(value===undefined)return 0;
+ if(typeof value!=='number'||!Number.isFinite(value)||value<=0)return Number.POSITIVE_INFINITY;
+ const deadline=Date.now()+Math.ceil(value*1000);
+ return Number.isSafeInteger(deadline)?deadline:Number.POSITIVE_INFINITY;
+};
+const approvalScope=(value:{account:{id:string};familyId:string})=>JSON.stringify([value.account.id,value.familyId]);
+
 function ClaimApprovalRoute({account,bootstrap}:{account:ServicesAccount;bootstrap:ServicesBootstrap}) {
+ const {t}=servicesI18n();
  const session=useSyncExternalStore(account.service.subscribe,account.service.getSnapshot).session;
  const scope=session?.familyId?JSON.stringify([session.account.id,session.familyId]):'';
- const [resolved,setResolved]=useState<{scope:string;purpose?:'setup'|'switch';error?:unknown}>();
- useEffect(()=>{
-  if(!scope)return;
-  const abort=new AbortController();
-  void bootstrap.approvalPurpose(account,abort.signal).then(purpose=>{if(!abort.signal.aborted)setResolved({scope,purpose});},error=>{if(!abort.signal.aborted)setResolved({scope,error});});
-  return()=>abort.abort();
+ const [shown,setShown]=useState<ApprovalShown>();
+ const [clock,setClock]=useState(Date.now);
+ const opening=useRef<ApprovalOpening|undefined>(undefined);
+ const ticket=useRef(0);
+ // One original opening. A retry claims the ticket synchronously, and every
+ // publication is bound to that exact settled attempt, so a retained click can
+ // neither start another lookup nor bypass a newer deadline.
+ const launch=(target:ApprovalOpening)=>{
+  if(!target.alive||target.pending||target.renewing)return;
+  const own=++ticket.current;
+  const controller=new AbortController();
+  target.controller=controller;
+  target.pending=controller;
+  target.settled=undefined;
+  setShown({state:'lookup',opening:target,attempt:own});
+  const settle=(value:ApprovalShown)=>{
+   if(!target.alive||own!==ticket.current||opening.current!==target||controller.signal.aborted)return;
+   target.settled=own;
+   setShown(value);
+  };
+  const finish=()=>{if(target.pending===controller)target.pending=undefined;};
+  const reconcile=(error:unknown)=>{
+   if(!target.alive||own!==ticket.current||opening.current!==target)return;
+   const live=account.service.getSnapshot().session;
+   // A changed scope retires this error rather than acting under its successor.
+   if(!live||approvalScope(live)!==target.scope||target.renewed){
+    settle({state:'error',opening:target,attempt:own,error,retryAt:0});return;
+   }
+   target.renewed=true;
+   // BLK-HOST-011 through FX200's account boundary: a definitive 401 already forced
+   // the canonical rotation for this exact family and did not replay the lookup.
+   // A newer access token for the same family therefore means one bounded repeat.
+   if(live.accessToken!==target.identity.accessToken){launch(target);return;}
+   // Standalone seam: the rejected call never reached that reconciliation, so make
+   // the same exact-original-family rotation once, then repeat the lookup once.
+   target.renewing=true;
+   const renew=++ticket.current;
+   setShown({state:'lookup',opening:target,attempt:renew});
+   const still=()=>target.alive&&renew===ticket.current&&opening.current===target;
+   void account.service.accessSession(true,target.identity).then(
+    ()=>{target.renewing=false;if(still())launch(target);},
+    ()=>{target.renewing=false;if(!still())return;
+     const current=account.service.getSnapshot().session;
+     if(!current||approvalScope(current)!==target.scope)return;      // ended or replaced: parent takes over
+     if(current.accessToken!==target.identity.accessToken){launch(target);return;}
+     target.settled=renew;
+     setShown({state:'error',opening:target,attempt:renew,error,retryAt:approvalDeadline(error)});});
+  };
+  let result:Promise<ApprovalPurpose>;
+  try{result=target.bootstrap.approvalPurpose(target.account,controller.signal);}
+  catch(error){
+   finish();
+   // The parent no longer owns this claim opening; it is being replaced, not failed.
+   if((error as {code?:unknown})?.code==='claim_stale')return;
+   settle(approvalTerminal(error)?{state:'invalid',opening:target,attempt:own}:{state:'error',opening:target,attempt:own,error,retryAt:0});
+   return;
+  }
+  void result.then(purpose=>{finish();settle({state:'purpose',opening:target,attempt:own,purpose});},error=>{
+   finish();
+   if(controller.signal.aborted)return;
+   if((error as {status?:unknown})?.status===401){reconcile(error);return;}
+   settle(approvalTerminal(error)?{state:'invalid',opening:target,attempt:own}:{state:'error',opening:target,attempt:own,error,retryAt:approvalDeadline(error)});
+  });
+ };
+ useLayoutEffect(()=>{
+  if(!scope||!session)return;
+  const next:ApprovalOpening={scope,account,bootstrap,identity:{accountId:session.account.id,familyId:session.familyId,accessToken:session.accessToken},controller:new AbortController(),renewing:false,renewed:false,alive:true};
+  opening.current=next;
+  // Monotonic original-family liveness: a foreign or absent family retires this
+  // opening at publish time, even if React has not rendered (or the original
+  // family is published back in the same batch).
+  const release=account.service.subscribe(()=>{
+   if(!next.alive)return;
+   const current=account.service.getSnapshot().session;
+   if(current&&approvalScope(current)===next.scope)return;
+   next.alive=false;
+   ++ticket.current;
+   next.controller.abort();
+  });
+  launch(next);
+  return()=>{
+   release();
+   ++ticket.current;
+   next.alive=false;
+   next.controller.abort();
+   if(opening.current===next)opening.current=undefined;
+  };
  },[account,bootstrap,scope]);
- const active=resolved?.scope===scope?resolved:undefined;
- if(active?.error)return <InvalidLink/>;
- if(!active?.purpose)return <ServicesAuthStage><></></ServicesAuthStage>;
- return active.purpose==='setup'?<SetupApprovalPage account={account} bootstrap={bootstrap} Review={HostedSetupApproval}/>:<OwnerApprovalPage account={account} bootstrap={bootstrap}/>;
+ const deadline=shown?.state==='error'?shown.retryAt:0;
+ useEffect(()=>{
+  if(!deadline||!Number.isFinite(deadline))return;
+  setClock(Date.now());
+  const timer=setInterval(()=>setClock(Date.now()),250);
+  return()=>clearInterval(timer);
+ },[deadline]);
+ const live=shown&&shown.opening.alive&&opening.current===shown.opening&&shown.opening.account===account&&shown.opening.bootstrap===bootstrap&&shown.opening.scope===scope?shown:undefined;
+ if(!live||live.state==='lookup')return <ServicesAuthStage><></></ServicesAuthStage>;
+ if(live.state==='invalid')return <InvalidLink/>;
+ if(live.state==='purpose')return live.purpose==='setup'?<SetupApprovalPage account={account} bootstrap={bootstrap} Review={HostedSetupApproval}/>:<OwnerApprovalPage account={account} bootstrap={bootstrap}/>;
+ const seconds=Number.isFinite(live.retryAt)?Math.max(0,Math.ceil((live.retryAt-clock)/1000)):Number.POSITIVE_INFINITY;
+ const blocked=seconds>0;
+ const label=blocked&&Number.isFinite(seconds)?t('services.signin.tryIn',{time:`${Math.floor(seconds/60)}:${String(seconds%60).padStart(2,'0')}`}):t('next.states.tryAgain');
+ return <ServicesAuthStage><ServicesHeading>{t('next.states.pageFailed')}</ServicesHeading><ServicesLead>{t('next.states.pageFailedBody')}</ServicesLead>
+  <ServicesActions><Button disabled={blocked} onClick={()=>{
+   const target=opening.current;
+   // The latest deadline belongs to this exact settled attempt, rechecked against
+   // the real clock and the opening's original-family liveness.
+   if(!target||!target.alive||live.opening!==target||target.settled!==live.attempt||Date.now()<live.retryAt)return;
+   launch(target);
+  }}>{label}</Button></ServicesActions></ServicesAuthStage>;
 }
