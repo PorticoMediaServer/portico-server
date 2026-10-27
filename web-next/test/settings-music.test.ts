@@ -24,7 +24,8 @@ const row = (id: string) => {
 
 test('Account Music exposes only the rows with a real web or server consumer', () => {
   const exposed = ['music.audioNormalization', 'music.crossfadeMs', 'music.smoothTransitions', 'music.gapless',
-    'music.neverBoost', 'music.dsdGainDb', 'music.qualityAway'];
+    'music.neverBoost', 'music.dsdGainDb', 'music.qualityAway',
+    'audiobooks.skipBackMs', 'audiobooks.skipForwardMs', 'audiobooks.resumeRewindMs'];
   for (const id of exposed) {
     const binding = settingsBinding(id);
     assert.equal(binding?.form, 'preferences', id);
@@ -37,8 +38,7 @@ test('Account Music exposes only the rows with a real web or server consumer', (
 });
 
 test('rows without a web consumer stay hidden', () => {
-  for (const id of ['playback.showSyncedLyrics', 'audiobooks.skipBackMs', 'audiobooks.skipForwardMs',
-    'audiobooks.resumeRewindMs', 'music.qualityMobile', 'music.downloadQuality', 'music.sampleRateMatching',
+  for (const id of ['playback.showSyncedLyrics', 'music.qualityMobile', 'music.downloadQuality', 'music.sampleRateMatching',
     'music.idlePause']) {
     assert.equal(hasWebPreferenceEffect(row(id)), false, id);
   }
