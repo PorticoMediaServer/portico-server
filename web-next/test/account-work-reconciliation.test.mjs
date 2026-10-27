@@ -62,8 +62,13 @@ test('a late old 401 cannot renew or retire an adopted successor', async () => {
   const f = await fixture(), entered = held(), result = held();
   const old = currentAccountRead(f, async () => {entered.resolve();return result.promise;});
   await entered.promise;await f.service.adopt(session('successor', 'other-family', 'other-account'));
+  // The deliberate account switch retires the superseded original family. That
+  // is the switch's own lifecycle, not the in-flight read's.
+  assert.deepEqual(f.calls.revoke, [{familyId: 'family'}]);
   result.reject(refused());await assert.rejects(old, {code: 'account_changed'});
-  assert.equal(f.calls.refresh.length, 0);assert.deepEqual(f.calls.revoke, []);
+  assert.equal(f.calls.refresh.length, 0);
+  // The late 401 adds no renewal and no further retirement of the successor.
+  assert.deepEqual(f.calls.revoke, [{familyId: 'family'}]);
   assert.equal(f.service.getSnapshot().session.familyId, 'other-family');
 });
 
