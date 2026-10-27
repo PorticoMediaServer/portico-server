@@ -26,6 +26,7 @@ import {playbackPresentation} from '../src/shell/playback-model.ts';
 import {dockView} from '../src/kit/dock/model.ts';
 import {ControlledLocalMedia, localPreparation, localScope} from './local-media-fixture.ts';
 import type {DockAction} from '../src/kit/dock/types.ts';
+import {createWebPreparingStarts} from '../src/platform/playback/start-owner.ts';
 
 /**
  * A media element and an hls.js that do only what a test tells them to, for the web media
@@ -193,12 +194,17 @@ const homeChannel: HomeChannel = {source: {id: 'source', name: 'source', provena
 class ChannelPort {
   private serial = 0;
   windowStartMs = 0;
-  private sessions = new Map<string, {id: string; revision: string; state: string; presentation: {generation: number; url: string; linear: {name: string; originMs: number; windowStartMs: number; windowEndMs: number; liveEdgeMs: number; state: string; seek?: {id: string; positionMs: number; acknowledged: boolean}; confirmedPositionMs?: number}}}>();
+  private sessions = new Map<string, {id: string; revision: string; state: string; role: string; kind: string; channelId?: string; lease: {expiresAt: string; reportEveryMs: number}; presentation: {generation: number; url: string; mode: string; container?: string; engine: string; startPositionMs: number; subtitles: unknown[]; decision: {video?: {action: string; reasons: string[]}}; linear: {name: string; originMs: number; windowStartMs: number; windowEndMs: number; liveEdgeMs: number; state: string; seek?: {id: string; positionMs: number; acknowledged: boolean}; confirmedPositionMs?: number}}}>();
   send(request: V1Request): V1Response | undefined {
     const body = request.body as {channelId?: string; state?: string; seek?: {id: string; live?: boolean; positionMs?: number}; positionMs?: number} | undefined;
     const response = (value: unknown, status = 200): V1Response => ({status, headers: {}, ...(value === undefined ? {} : {body: value})});
     if (request.method === 'POST' && request.path === '/v1/playback/sessions' && body?.channelId) {
-      const id = `live_session_${++this.serial}`, session = {id, revision: '1', state: body.state ?? 'playing', presentation: {generation: 1, url: `/v2/media/linear/${id}/1/tok/index.m3u8`, linear: {name: 'channel', originMs: 1000, windowStartMs: this.windowStartMs, windowEndMs: 120000, liveEdgeMs: 60000, state: 'active'}}};
+      const id = `live_session_${++this.serial}`, session = {id, revision: '1', role: 'local', kind: 'channel', channelId: body.channelId, state: body.state ?? 'playing',
+        // The canonical session view a channel cleanup read must decode: the
+        // general playable Session omits channelId, so this is the official view.
+        lease: {expiresAt: '2099-01-01T00:00:00Z', reportEveryMs: 10000},
+        presentation: {generation: 1, url: `/v2/media/linear/${id}/1/tok/index.m3u8`, mode: 'stream', container: 'fmp4_hls', engine: 'native', startPositionMs: 0, subtitles: [], decision: {video: {action: 'copy', reasons: []}},
+          linear: {name: 'channel', originMs: 1000, windowStartMs: this.windowStartMs, windowEndMs: 120000, liveEdgeMs: 60000, state: 'active'}}};
       this.sessions.set(id, session); return response(session, 201);
     }
     const match = /^\/v1\/playback\/sessions\/(live_session_\d+)(?:\/timeline)?$/.exec(request.path), session = match ? this.sessions.get(match[1]!) : undefined;
@@ -218,7 +224,7 @@ class ChannelPort {
     return;
   }
 }
-function setup(t: TestContext, preferences: Partial<WebPlaybackSettings> = {}, environment: import('../src/platform/playback/types.ts').WebPlaybackEnvironment = {}, local?: WebPlaybackSource['localScope']) {
+function setup(t: TestContext, preferences: Partial<WebPlaybackSettings> = {}, environment: import('../src/platform/playback/types.ts').WebPlaybackEnvironment = {}, local?: WebPlaybackSource['localScope'], prepareStarts?: (api: HttpLocalApi) => WebPlaybackSource['preparingStarts']) {
   const clock = manualClock(), server = new FakePlaybackServer({now: clock.now, audioItem: id => id.startsWith('song') || id.startsWith('book'), itemKind: id => id.startsWith('book') ? 'audiobook_file' : undefined}), inner = fakeHttp(server);
   const log: V1Request[] = [], callbacks = new Map<string, Set<(event: ServerEvent) => void>>();
   const hls = fakeHls(), video = new FakeVideo();
@@ -251,6 +257,7 @@ function setup(t: TestContext, preferences: Partial<WebPlaybackSettings> = {}, e
   const api = new HttpLocalApi('https://portico.test', '', fetcher as typeof fetch);
   const source: WebPlaybackSource = {
     ...(local ? {localScope: local} : {}),
+    ...(prepareStarts ? {preparingStarts: prepareStarts(api)} : {}),
     api, authority: {...viewer, epoch: 1, viewerFence: homeViewerFence}, contentScope: {serverId: 'server', viewerId: 'local_account_profile'}, isCurrent: () => current,
     events: {on: (type, callback) => { let list = callbacks.get(type); if (!list) callbacks.set(type, list = new Set()); list.add(callback); return () => { list!.delete(callback); }; }},
     settings: {videoSpeed: () => 1, audiobookSpeed: () => 1.25, skipModes: () => ({intro: 'off', recap: 'off', credits: 'off'}), audioEffects: () => ({gapless: false, crossfadeSeconds: 0, normalization: 'off'}), webVolume: () => true, ...preferences},
@@ -548,7 +555,10 @@ test('the MAIN SDK, canonical sender and mounted runtime wait for receiver ACK a
   const f = setup(t); await f.runtime.play('movie', 25); await f.arrive();
   const local = f.hls.instances.at(-1)!, first = f.runtime.getSnapshot(), sessionId = first.session!.id;
   f.intercept(async (request, response) => request.path === '/v1/cast/bootstrap'
-    ? {status: 200, headers: {}, body: {bootstrap: {code: 'ABC123'}}} : response);
+    ? {status: 200, headers: {}, body: {bootstrap: {id: 'cbs_1', code: 'ABC123', state: 'pending', transfer: {id: 'cbs_1', state: 'pending'}}}}
+    : request.method === 'GET' && request.path === '/v1/cast/bootstrap/cbs_1'
+      ? {status: 200, headers: {}, body: {bootstrap: {id: 'cbs_1', transfer: {id: 'cbs_1', state: 'committed', itemId: 'movie', playbackState: 'playing'}}}}
+      : response);
   const messages: Record<string, unknown>[] = [], listeners = new Set<(namespace: string, body: string) => void>();
   const reply = (body: unknown) => { for (const listener of [...listeners]) listener('urn:x-cast:tv.getportico.portico', JSON.stringify(body)); };
   let picks = 0, selected: CastSession | null = null;
@@ -577,7 +587,7 @@ test('the MAIN SDK, canonical sender and mounted runtime wait for receiver ACK a
   assert.equal(f.runtime.getSnapshot().session!.id, sessionId); assert.equal(local.destroyed, false);
   reply({type: 'paired'}); await settle();
   const load = messages.find(message => message.type === 'load')!;
-  assert.ok(load); assert.deepEqual(load.queue, first.session!.queue);
+  assert.ok(load); assert.deepEqual(load.queue, {...first.session!.queue, transferId: 'cbs_1'});
   assert.equal(controller.getSnapshot().remote!.positionKnown, false, 'requested start is not an observed receiver clock');
   reply({type: 'loaded', itemId: 'movie', requestId: 'wrong-request'}); await settle();
   assert.equal(f.runtime.getSnapshot().session!.id, sessionId); assert.equal(local.destroyed, false);
@@ -599,14 +609,17 @@ test('Cast keeps the mounted local engine through pairing and waiting, handing o
   const session = f.runtime.getSnapshot().session!, local = f.hls.instances[0]!;
   const {controller, sender, errors} = castController(t, f), start = controller.startCast();
   assert.equal(sender.starts.length, 1, 'picker call stays synchronous with the row click');
-  assert.deepEqual(sender.starts[0]![3], {queue: session.queue});
+  const queue = f.runtime.getSnapshot().queueView!.queue;
+  assert.deepEqual(sender.starts[0]![3], {queue: session.queue, source: {
+    sessionId: session.id, generation: session.presentation.generation,
+    queueId: queue.id, entryId: session.queue.entryId, queueRevision: queue.revision}});
   assert.deepEqual(Object.keys(sender.starts[0]![1]).sort(), ['artworkPath', 'kind', 'subtitle', 'title']);
   for (const phase of ['connecting', 'pairing', 'waiting'] as const) {
     sender.publish({phase});
     assert.equal(f.runtime.getSnapshot().session!.id, session.id); assert.equal(local.destroyed, false);
     assert.equal(controller.getSnapshot().remote!.positionKnown, false, 'requested start is never a receiver clock');
   }
-  sender.publish({phase: 'casting', device: {name: 'Living Room'}, receiver: {itemId: 'movie', positionSeconds: 27, durationSeconds: 3186, paused: false}});
+  sender.publish({phase: 'casting', device: {name: 'Living Room'}, receiver: {itemId: 'movie', positionSeconds: 27, durationSeconds: 3186, paused: false}, acceptedSource: sender.starts[0]![3]!.source});
   sender.acknowledge(true); assert.equal(await start, true); await settle();
   assert.equal(f.runtime.getSnapshot().session, undefined); assert.equal(local.destroyed, true);
   assert.equal(controller.getSnapshot().remote!.positionSeconds, 27); assert.deepEqual(errors, []);
@@ -2187,7 +2200,19 @@ test('a captured GuideChannel tunes its real source/generation without a Home ac
 
 test('a guide tune cannot adopt a late channel after abort/navigation or stop a newer Play', async t => {
   for (const retirement of ['abort', 'navigation', 'new-play'] as const) {
-    const f = setup(t), life = new AbortController(), gate = deferred();let active = true;
+    // The Shell's original-start custody: a genuine principal/pin-owned API over
+    // this same wire, so a late channel 201 is retired by its real cleanup.
+    const f = setup(t, {}, {}, undefined, api => {
+      const session = {accessToken: 'token', expiresAt: '2099-01-01T00:00:00Z', authorizationHorizon: '2099-01-02T00:00:00Z',
+        tokenGeneration: '1', sessionFamilyId: 'family', deviceId: 'device', installationId: 'installation',
+        viewer: {serverId: 'server', authority: 'local', accountId: 'account', profileId: 'profile', role: 'owner'}};
+      const route = {logicalOrigin: 'https://portico.test', pin: {serverId: 'server', publicKey: 'pin'}, getSnapshot: () => ({phase: 'ready'}),
+        fetch: api.routeFetch, subscribe: () => () => {}, recover: () => Promise.reject(new Error('no recovery'))};
+      const ownerApi = {baseUrl: api.baseUrl, getRouteConnection: () => route,
+        requestRaw: (path: string, method: string, options: {headers?: Readonly<Record<string, string>>; body?: unknown; signal?: AbortSignal}) => api.requestRaw(path, method, options)};
+      return createWebPreparingStarts(ownerApi as unknown as HttpLocalApi, session as never, () => session as never, () => true);
+    });
+    const life = new AbortController(), gate = deferred();let active = true;
     f.intercept(async (request, response) => {
       if (request.method === 'POST' && request.path === '/v1/playback/sessions' && (request.body as {channelId?: string}).channelId) await gate.hold();
       return response;

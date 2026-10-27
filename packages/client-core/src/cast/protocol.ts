@@ -112,6 +112,11 @@ export function parseCastEvent(raw: unknown): CastEvent | undefined {
     case 'status': {
       const controller=castControllerStamp(o.controller),occurrence=castReceiverOccurrence(o.occurrence),itemId=short(o.itemId,128);
       if(o.controller!==undefined&&!controller||o.occurrence!==undefined&&(!occurrence||!controller||occurrence.itemId!==itemId))return;
+      // The receiver's known clock fields are genuine numbers or absent; paused is
+      // a boolean or absent. A malformed field drops the whole message rather than
+      // turning it into a zero/false fact.
+      const clock=(v:unknown)=>v===undefined||typeof v==='number'&&Number.isFinite(v)&&v>=0;
+      if(typeof o.itemId!=='string'||!clock(o.positionSeconds)||!clock(o.durationSeconds)||o.paused!==undefined&&typeof o.paused!=='boolean')return;
       return {type:'status',...(controller?{controller}:{}),...(occurrence?{occurrence}:{}),...(typeof o.positionSeconds==='number'&&Number.isFinite(o.positionSeconds)&&o.positionSeconds>=0&&typeof o.durationSeconds==='number'&&Number.isFinite(o.durationSeconds)&&o.durationSeconds>=0?{clockKnown:true as const}:{}),...(typeof o.attemptId==='string'&&trackIdPattern.test(o.attemptId)?{attemptId:o.attemptId}:{}),itemId,positionSeconds:finite(o.positionSeconds),durationSeconds:finite(o.durationSeconds),paused:o.paused===true,audioTracks:tracks(o.audioTracks),textTracks:tracks(o.textTracks)};
     }
     default: return undefined;

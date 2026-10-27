@@ -75,7 +75,10 @@ export class WebCastSender {
     if(state.disclosureRefused){this.receiver=undefined;this.device=undefined;}
     else if((state.phase==='casting'||state.remoteStopped)&&state.reported)this.receiver=state.reported;
     else if(state.remoteStopped)this.receiver=undefined;
-    else if(state.phase!=='off'&&state.phase!=='replaced')this.receiver=undefined;
+    // Only a complete receiver clock is a continuation fact. An incomplete
+    // status, or an idle status without an item identity, is not a position and
+    // cannot erase the last one; stop/replacement retains it, a new start or an
+    // explicit displacement clears it above.
     const receiver = this.receiver;
     const samePlayback = receiver && (state.phase === 'off' || state.phase === 'replaced' || state.itemId === receiver.itemId);
     this.snapshot = Object.freeze({

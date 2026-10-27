@@ -142,7 +142,7 @@ test('the native picker opens synchronously; casting waits for the correlated re
   assert(load); assert.notEqual(service.getSnapshot().phase, 'casting');
   assert.deepEqual(load.queue, {queueId: 'q-1', entryId: 'entry-1'});
   assert(!JSON.stringify(h.messages).includes('secret.example'));
-  assert.deepEqual(h.requests[0], {path: '/v1/cast/bootstrap', method: 'POST', body: {protocolVersion: '1.0', displayName: 'Living room'}});
+  assert.deepEqual(h.requests[0], {path: '/v1/cast/bootstrap', method: 'POST', body: {protocolVersion: '1.0', receiverId: 'actual-sdk-id', displayName: 'Living room'}});
   h.reply({type: 'loaded', requestId: 'stale-id', itemId: 'item-1'});
   assert.notEqual(service.getSnapshot().phase, 'casting');
   h.reply({type: 'loaded', requestId: load.requestId, itemId: 'item-1'});
@@ -192,12 +192,16 @@ test('continuation retains only complete receiver clock facts, never requested s
   service.seek(130); assert.equal(service.getSnapshot().positionSeconds, 61);
   for (const status of [
     {itemId: 'item', positionSeconds: 0, paused: false},
-    {itemId: '', positionSeconds: 0, durationSeconds: 0, paused: false},
     {itemId: 'item', positionSeconds: -1, durationSeconds: 180, paused: false},
     {itemId: 'item', positionSeconds: 0, durationSeconds: 180, paused: 'false'},
   ]) h.reply({type: 'status', ...status});
-  assert.equal(service.getSnapshot().receiver?.positionSeconds, 61);
+  assert.equal(service.getSnapshot().receiver?.positionSeconds, 61, 'an incomplete or malformed status is not a clock fact');
   h.reply({type: 'status', itemId: 'next-item', positionSeconds: 3, durationSeconds: 200, paused: true});
+  assert.equal(service.getSnapshot().receiver?.itemId, 'next-item');
+  // An idle status has no item identity: it ends the cast but supplies no new
+  // continuation clock, so the last complete facts remain.
+  h.reply({type: 'status', itemId: '', positionSeconds: 0, durationSeconds: 0, paused: false});
+  assert.equal(service.getSnapshot().phase, 'off');
   assert.equal(service.getSnapshot().receiver?.itemId, 'next-item');
   service.stop(); assert.deepEqual(service.getSnapshot().receiver, {itemId: 'next-item', positionSeconds: 3, durationSeconds: 200, paused: true});
   assert.equal(service.getSnapshot().positionSeconds, 3);

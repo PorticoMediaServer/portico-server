@@ -33,7 +33,7 @@ async function harness(fixture={}){
     return reply({binding:{id:body.bindingId}});
   }
   if(path==='/v1/playback/sessions/ps_1'&&options.method==='GET')return reply(sessionFor({},0));
-  if(fixture.queue&&path==='/v1/queues/q-1'&&options.method==='GET')return reply({id:'q-1',revision:'1',next:{available:!fixture.queueEnd,entryId:'entry-2',reason:'ready'}});
+  if(fixture.queue&&path==='/v1/queues/q-1'&&options.method==='GET')return reply({id:'q-1',revision:'1',current:{entryId:'entry-1',itemId:'song-1'},next:{available:!fixture.queueEnd,entryId:'entry-2',reason:'ready'}});
   if(fixture.queue&&path==='/v1/queues/q-1:advance'){
    if(fixture.rejectAdvance)return reply({error:{code:'queue_changed'}},409);
    return reply({queue:{id:'q-1',revision:'2'},session:{...sessionFor({},0),id:'ps_2',itemId:'song-2',queue:{queueId:'q-1',entryId:'entry-2'}}});
@@ -306,7 +306,7 @@ test('music formats and fMP4 transport declarations follow device probes',async(
  const all=await harness({supports:()=>true}),a=all.receiver.buildProfile(all.castContext);
  assert(a.engines.native.transports.find(t=>t.transport==='hls_fmp4').audio.includes('flac'));
  const speaker=await harness({caps:{display_supported:false},supports:()=>true}),s=speaker.receiver.buildProfile(speaker.castContext);
- assert.equal(s.audioOutput.route,undefined);assert.deepEqual(j(s.engines.native.audioPassthrough),[]);
+ assert.equal(s.audioOutput.route,'','an unknown output route stays empty');assert.deepEqual(j(s.engines.native.audioPassthrough),[]);
 });
 
 test('progressive receiver queues only actual current media and never prepares on PRELOAD',async()=>{
@@ -328,7 +328,7 @@ test('real progressive completion adopts only the server ordinary advance result
  h.events.TIME_UPDATE();assert.equal(views.length,before,'clock ticks cannot reuse a previous first-picture state');
  h.events.LOADED_DATA();assert.equal(views.at(-1).meta,null,'new unknown identity is explicit before any clock snapshot');assert.equal(views.at(-1).artworkUrl,undefined);
  assert.equal(h.receiver.state().playbackId,'ps_2');assert.equal(h.loads.length,2);assert.equal(h.loads[1].media.contentType,'audio/flac');assert.equal(h.loads[1].media.metadata,undefined,'the next item never inherits the old identity');
- const advance=h.calls.find(c=>c.url.endsWith(':advance'));assert(advance);assert.equal(advance.headers['If-Match'],'1');assert.deepEqual(advance.body,{reason:'completion'});assert(advance.headers['Idempotency-Key']);
+ const advance=h.calls.find(c=>c.url.endsWith(':advance'));assert(advance);assert.equal(advance.headers['If-Match'],'1');assert.deepEqual(advance.body,{reason:'completion',completionSessionId:'ps_1',completionGeneration:1});assert(advance.headers['Idempotency-Key']);
  assert(!h.calls.some(c=>c.url.endsWith(':prepare-next')||c.url.endsWith(':commit-next')));
  assert(!h.calls.some(c=>c.url.endsWith('/timeline')&&c.body.state==='ended'),'the transition transaction owns the end of the old occurrence');
  await fireAll(h,0);assert(h.calls.some(c=>c.url==='/v1/playback/sessions/ps_2/timeline'&&c.body.seq===1));
@@ -448,9 +448,12 @@ test('decoded multichannel and rate declarations require exact positive output c
 
 test('standard CAF queue reads and mutations cannot bypass controller authority',async()=>{
  const h=await harness();await h.message('phone',{type:'pair',code:'ABCD',origin:''});
- for(const kind of ['GET_STATUS','MEDIA_STATUS','CLOUD_STATUS','QUEUE_GET_ITEMS','QUEUE_GET_ITEM_IDS']){
-  assert.equal(h.interceptors[kind]({senderId:'stranger'}),null);
-  assert.deepEqual(h.interceptors[kind]({senderId:'phone'}),{senderId:'phone'});
+ // The three request-shaped standard reads await the controller check. MEDIA_STATUS
+ // and CLOUD_STATUS are outgoing status envelopes sanitized by their own
+ // interceptor (Root51), not read requests.
+ for(const kind of ['GET_STATUS','QUEUE_GET_ITEMS','QUEUE_GET_ITEM_IDS']){
+  assert.equal(await h.interceptors[kind]({senderId:'stranger'}),null);
+  assert.deepEqual(await h.interceptors[kind]({senderId:'phone'}),{senderId:'phone'});
  }
  assert.equal(h.interceptors.QUEUE_NEXT,undefined);assert.equal(h.interceptors.QUEUE_PREV,undefined);
  for(const jump of [-1,1])assert.equal(h.interceptors.QUEUE_UPDATE({senderId:'phone',jump}),null);
@@ -708,7 +711,11 @@ test('a queued never-installed pair is discarded without stopping the accepted c
  await h.message('successor',{type:'pair',code:'OTHER1',origin:'https://second.test'});await h.message('phone',{type:'takeover',allow:true});
  h.ctxEvents.disconnect({senderId:'successor'});gate.resolve();await load;await h.message('observer',{type:'status'});
  assert.equal(h.receiver.state().controller,'phone');assert.equal(h.storage.get('portico.cast.deviceToken'),'device-ABC123');
- assert(h.calls.some(x=>x.url==='https://second.test/v1/cast/devices/cdv_OTHER1'&&x.method==='DELETE'));
+ // The offer was never admitted: it waited behind the load and its sender left
+ // first, so nothing was redeemed, installed or revoked. The accepted controller
+ // keeps its session and token untouched.
+ assert(!h.calls.some(x=>x.url==='https://second.test/v1/cast/redeem'));
+ assert(!h.calls.some(x=>x.url==='https://second.test/v1/cast/devices/cdv_OTHER1'&&x.method==='DELETE'));
  assert.equal(h.calls.some(x=>x.method==='DELETE'&&x.url.includes('/v1/playback/sessions/')),false);
 });
 test('discarding a refused replay cannot revoke an already installed identical target generation',async()=>{
