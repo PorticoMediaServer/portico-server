@@ -53,8 +53,12 @@ test('a held original result cannot sign out a newly adopted successor', async (
   const entered = held(), answer = held();const f = await fixture(session(), () => {entered.resolve();return answer.promise;});
   const pending = verifyEmail(f.account, token, new AbortController().signal);await entered.promise;
   await f.service.adopt(session('affected', 'successor-family'));
+  // The switch itself retires the superseded original family …
+  assert.deepEqual(f.revoked, ['original']);
   answer.resolve({kind: 'email_change', status: 'email_changed', accountId: 'affected'});
-  assert.equal(await pending, 'changed');assert.equal(f.service.getSnapshot().session.familyId, 'successor-family');assert.deepEqual(f.revoked, []);
+  assert.equal(await pending, 'changed');assert.equal(f.service.getSnapshot().session.familyId, 'successor-family');
+  // … and the held original result adds no retirement, so the successor keeps its place.
+  assert.deepEqual(f.revoked, ['original']);
 });
 
 test('wrong, expired or malformed proof results never retire a local family', async () => {

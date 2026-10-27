@@ -31,13 +31,20 @@ const token = Buffer.from(JSON.stringify(['1', 'registration', 'registration_123
 const unused = async () => assert.fail('unexpected coordinator work');
 const deferred = () => { let resolve; const promise = new Promise(done => { resolve = done; }); return {promise, resolve}; };
 
-async function harness({active = null, registration = {registrationId: 'registration_123'}, confirm, verify, synchronize = true} = {}) {
+async function harness({active = null, registration = {registrationId: 'registration_123'}, confirm, verify, restoring = false} = {}) {
   let record = {version: 1, active: null, revocations: []};
+  let releaseLoad;
+  const heldLoad = restoring ? new Promise(done => { releaseLoad = done; }) : undefined;
   const service = new CredentialSessionService(
     {authorityFromSession: value => ({familyId: value.familyId}), refresh: unused, revoke: async () => {}},
-    {load: async () => structuredClone(record), save: async value => {record = structuredClone(value);}},
+    {
+      // A held load keeps the coordinator in its real "restoring" phase until the
+      // test releases it; it never fabricates a signed-out snapshot.
+      load: async () => { if (heldLoad) await heldLoad; return structuredClone(record); },
+      save: async value => { record = structuredClone(value); },
+    },
   );
-  if (synchronize) await service.synchronize();
+  if (!restoring) await service.synchronize();
   if (active) await service.adopt(active);
   const calls = [];
   const client = {
@@ -48,6 +55,7 @@ async function harness({active = null, registration = {registrationId: 'registra
   return {service, calls, account: {service, client}, token,
     adopted: () => service.getSnapshot().session,
     adopt: next => service.adopt(next),
+    releaseLoad: () => releaseLoad?.(),
     logout: () => service.logout()};
 }
 
@@ -143,11 +151,20 @@ test('a replaced family during the proof keeps the successor', async () => {
 
 test('an unknown or still-restoring opening never completes signup', async () => {
   const {verifyEmail} = await load();
-  const f = await harness({active: null, synchronize: false});   // phase "restoring", no confirmed sign-out
+  const f = await harness({active: null, restoring: true});   // phase "restoring", no confirmed sign-out
   assert.equal(f.service.getSnapshot().phase, 'restoring');
   assert.equal(await verifyEmail(f.account, f.token, new AbortController().signal), 'elsewhere');
   assert.deepEqual(f.calls.map(call => call.name), ['registration', 'public']);
   assert.equal(f.adopted(), undefined);
+  // Control: the same link completes once the same browser has a confirmed
+  // signed-out opening, so the refusal above came from the captured phase.
+  f.releaseLoad();
+  await f.service.synchronize();
+  assert.equal(f.service.getSnapshot().phase, 'signedOut');
+  f.calls.length = 0;
+  assert.equal(await verifyEmail(f.account, f.token, new AbortController().signal), 'confirmed');
+  assert.deepEqual(f.calls.map(call => call.name), ['registration', 'public', 'verifyRegistration']);
+  assert.equal(f.adopted().familyId, 'new_family');
 });
 
 test('an abort during the held proof stops it before any completion', async () => {
