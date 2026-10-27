@@ -6,12 +6,13 @@ import {Icon} from '../../../kit/Icon';
 import {Slider} from '../../../kit/controls';
 import {Menu} from '../../../kit/overlays';
 import {router} from '../../../router';
+import {sameFence} from '../../../../../packages/player-core/src/index.ts';
 import {ListeningNotice, SignalLine, SignalPath} from '../../../kit/media';
 import {dispatchWatch, watchClock, watchSeek, watchSeekBounds, type WatchIntent} from '../model';
 import {watchQueueNeighbours} from '../queue-neighbours';
 import {watchMusicSignal} from './signal';
 import {readWatchMusicAudioFacts} from './audio-facts';
-import {WatchEqualizerPanel} from './EqualizerPanel';
+import {WatchEqualizerPanel, equalizerHostCurrent} from './EqualizerPanel';
 import type {WatchBindings, WatchScreenProps} from '../types';
 import styles from './now-playing.module.css';
 import type {MusicExpansion} from './expansion-owner';
@@ -40,6 +41,9 @@ export function WatchMusicNowPlaying({binding, snapshot, expanded, onCollapse, p
   const present = motion ? motion.present : open;
   if (!present || !presentation || !identity || isCurrent && !isCurrent()) return null;
   const send = (intent: WatchIntent) => { if (!open || motion?.scope && !motion.scope.current()) return;void dispatchWatch(binding.runtime, snapshot, intent).catch(binding.reportError); };
+  // This render's own host opening: a saved menu callback can only act on the playback it was
+  // drawn for, never on a successor that reused the expanded host.
+  const hostOpening = () => !!equalizer && equalizerHostCurrent(binding.runtime, equalizer, snapshot, open, motion?.scope);
   const bounds = watchSeekBounds(snapshot), at = presentation.positionSeconds, duration = presentation.durationSeconds;
   const can = (kind: string) => presentation.controls.includes(kind as never);
   const canSeek = can('seek') && !!bounds;
@@ -59,10 +63,10 @@ export function WatchMusicNowPlaying({binding, snapshot, expanded, onCollapse, p
         expanded layout={phone ? 'phone' : 'desktop'} translate={t} />
       <span className={styles.spacer} />
       {equalizer ? <button ref={moreAnchor} type="button" className={styles.glass} aria-label={t('player.more')} aria-haspopup="menu" aria-expanded={moreOpen}
-        onClick={() => {if (open) setMoreOpen(value => !value);}}><Icon name="i-more" size={18} /></button> : null}
-      {equalizer ? <Menu open={moreOpen && open} onOpenChange={setMoreOpen} title={t('player.more')} anchorRef={moreAnchor} returnFocusRef={moreAnchor} presentation="anchored" width={280}
+        onClick={() => {if (hostOpening()) setMoreOpen(value => !value);}}><Icon name="i-more" size={18} /></button> : null}
+      {equalizer ? <Menu open={moreOpen && open} onOpenChange={value => {if (!value || hostOpening()) setMoreOpen(value);}} title={t('player.more')} anchorRef={moreAnchor} returnFocusRef={moreAnchor} presentation="anchored" width={280}
         items={[{id: 'equalizer', label: t('next.media.eq.title'), description: t(settings?.enabled === true ? 'next.settings.on' : 'next.settings.off'),
-          onSelect: () => {setMoreOpen(false); if (open) setEqOpen(true);}}]} /> : null}
+          onSelect: () => {if (!hostOpening()) return; setMoreOpen(false); setEqOpen(true);}}]} /> : null}
       {can('pause') || can('play') ? <button type="button" className={styles.glass} onClick={() => send({kind: presentation.playing ? 'pause' : 'play'})}>
         <Icon name={presentation.playing ? 'i-pause' : 'i-play'} size={18} />{presentation.playing ? t('next.dock.pause') : t('next.dock.play')}</button> : null}
     </header>
@@ -94,7 +98,7 @@ export function WatchMusicNowPlaying({binding, snapshot, expanded, onCollapse, p
     </div>
     <aside className={styles.side} aria-label={eqOpen ? t('next.media.eq.title') : t('next.music.upNext')}>
       {eqOpen && equalizer ? <WatchEqualizerPanel runtime={binding.runtime} snapshot={snapshot} port={equalizer}
-        hostCurrent={() => open && (!motion?.scope || motion.scope.current())} close={() => setEqOpen(false)}
+        active={open} {...(motion?.scope ? {scope: motion.scope} : {})} close={() => setEqOpen(false)}
         openSettings={() => {if (!open) return; void router.navigate({to: '/settings', search: () => ({scope: 'account' as const, section: 'music'})});}} />
         : <>
         <h2>{t('next.music.upNext')}</h2>
