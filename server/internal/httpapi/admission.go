@@ -81,7 +81,7 @@ var laneSpecs = map[string]laneSpec{
 	laneSecurityFence: {capacity: 16, queueWait: 9 * time.Second, budget: 10 * time.Second, class: dbwork.ClassSecurityFence, pressure: true},
 	laneAuth:          {capacity: 64, queueWait: 1500 * time.Millisecond, budget: 5 * time.Second, class: dbwork.ClassSecurityFence, pressure: true},
 	laneBrowsing:      {capacity: 24, queueWait: 3 * time.Second, budget: 5 * time.Second, class: dbwork.ClassInteractive, pressure: true},
-	laneExpensive:     {capacity: 8, queueWait: 1500 * time.Millisecond, budget: 5 * time.Second, class: dbwork.ClassInteractive, pressure: true},
+	laneExpensive:     {capacity: 8, queueWait: 3 * time.Second, budget: 5 * time.Second, class: dbwork.ClassInteractive, pressure: true},
 	lanePlayback:      {capacity: 32, queueWait: 9 * time.Second, budget: 10 * time.Second, class: dbwork.ClassEstablishedPlayback, pressure: true},
 	laneMedia:         {capacity: 100, queueWait: 1500 * time.Millisecond, budget: 5 * time.Second, class: dbwork.ClassInteractive, pressure: true},
 	laneMediaBody:     {capacity: 256, queueWait: 0, budget: 0, class: dbwork.ClassEstablishedPlayback, pressure: false},
@@ -478,6 +478,16 @@ func (a *admission) wrap(mux *http.ServeMux, next http.Handler) http.Handler {
 			a.refuse(w, r, l)
 			return
 		}
+		ctx := r.Context()
+		// Search shares its fixed total budget between queueing and work. A
+		// legitimate burst may wait as long as browsing, but admission cannot
+		// renew the deadline before the handler installs its narrower budget.
+		budgetIncludesQueue := l.name == laneExpensive && l.spec.budget > 0
+		if budgetIncludesQueue {
+			var cancel context.CancelFunc
+			ctx, cancel = context.WithTimeout(ctx, l.spec.budget)
+			defer cancel()
+		}
 		// The share key is resolved before the lane is entered, because the whole
 		// point is to decide admission without doing any work first.
 		key := a.clientKey(r)
@@ -490,7 +500,7 @@ func (a *admission) wrap(mux *http.ServeMux, next http.Handler) http.Handler {
 		if queued {
 			start := time.Now()
 			l.queued.Add(1)
-			queueCtx, cancel := context.WithTimeout(r.Context(), l.spec.queueWait)
+			queueCtx, cancel := context.WithTimeout(ctx, l.spec.queueWait)
 			admitted := l.acquire(queueCtx, key)
 			// Observe the cause before our cleanup cancel changes queueCtx.Err.
 			queueErr := queueCtx.Err()
@@ -508,8 +518,12 @@ func (a *admission) wrap(mux *http.ServeMux, next http.Handler) http.Handler {
 			}
 		}
 		defer l.release(key)
-		ctx := dbwork.WithClass(r.Context(), l.spec.class)
-		if l.spec.budget > 0 {
+		if budgetIncludesQueue && ctx.Err() != nil {
+			a.refuse(w, r, l)
+			return
+		}
+		ctx = dbwork.WithClass(ctx, l.spec.class)
+		if l.spec.budget > 0 && !budgetIncludesQueue {
 			var cancel context.CancelFunc
 			ctx, cancel = context.WithTimeout(ctx, l.spec.budget)
 			defer cancel()
