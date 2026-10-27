@@ -482,3 +482,66 @@ test('a retired post-mutation deep failure does not trigger recovery; a current 
  await run(true,'stale_continuation',true);
  await run(true,'timeout',true);
 });
+
+for (const retired of [false, true]) test(`actual private quiet deadline ${retired ? 'stays neutral after retirement' : 'recovers while still owned'}`, async t => {
+ t.mock.timers.enable({apis: ['setTimeout']});
+ const flush = async () => {for (let i = 0; i < 100; i++) await Promise.resolve();};
+ const first = Array.from({length: 41}, (_, i) => occurrence(`deadline-${i}`));
+ let mode = 'initial', tailSignal: AbortSignal | undefined, recoveryReads = 0;
+ const service = setup(async (path, method, body, signal) => {
+  if (method === 'PATCH') return receipt(body, 2);
+  if (path.includes('/content')) {
+   const cursor = new URL(path, 'https://x').searchParams.get('cursor');
+   if (mode === 'initial') return cursor ? projection('playlist', 0, [occurrence('last')]) : projection('playlist', 0, first, 'more');
+   if (mode === 'quiet') {
+    if (!cursor) return projection('playlist', 2, first, 'more');
+    tailSignal = signal; return new Promise(() => {});
+   }
+   recoveryReads++; return projection('playlist', 5, [occurrence('newer')]);
+  }
+  return resource(mode === 'initial' ? 0 : mode === 'quiet' ? 2 : 5, 42);
+ }, 50);
+ try {
+  await service.select({view: 'playlist', playlistId: 'playlist'}); await service.next('entries');
+  mode = 'quiet'; const mutation = service.mutate({action: 'rename', name: 'Renamed'});
+  await flush(); assert(tailSignal); assert.equal(tailSignal.aborted, false);
+  if (retired) {mode = 'successor'; await service.refresh(); recoveryReads = 0;}
+  mode = 'recovery'; t.mock.timers.tick(50); await flush(); await mutation;
+  assert.equal(tailSignal.aborted, true, 'the real deadline aborts its own HTTP controller');
+  assert.equal(recoveryReads, retired ? 0 : 1, 'only a still-owned timeout admits a recovery head');
+  assert.equal(service.getSnapshot().projection!.sections[0].entries[0]!.id, 'newer');
+ } finally {service.dispose(); t.mock.timers.reset();}
+});
+
+test('a successor installed after real quietThrough returns but before pump resumes owns the only recovery head', async () => {
+ const first = Array.from({length: 41}, (_, i) => occurrence(`returned-${i}`));
+ let mode = 'initial', recoveryReads = 0, successor: Promise<void> | undefined, crossed = false;
+ const service = setup(async (path, method, body) => {
+  if (method === 'PATCH') return receipt(body, 2);
+  if (path.includes('/content')) {
+   const cursor = new URL(path, 'https://x').searchParams.get('cursor');
+   if (mode === 'initial') return cursor ? projection('playlist', 0, [occurrence('last')]) : projection('playlist', 0, first, 'more');
+   if (mode === 'quiet') {
+    if (!cursor) return projection('playlist', 2, first, 'more');
+    throw Object.assign(new Error('original deep failure'), {code: 'stale_continuation', retryable: true});
+   }
+   recoveryReads++; return projection('playlist', 5, [occurrence('newer')]);
+  }
+  return resource(mode === 'initial' ? 0 : mode === 'quiet' ? 2 : 5, 42);
+ });
+ try {
+  await service.select({view: 'playlist', playlistId: 'playlist'}); await service.next('entries');
+  // Delegate to the real private operation, changing only the controlled
+  // scheduling seam after it returns. No outcome or ownership is fabricated.
+  const quiet = Reflect.get(service, 'quietThrough') as () => Promise<{recovered: boolean; current: () => boolean}>;
+  assert.equal(typeof quiet, 'function');
+  Reflect.set(service, 'quietThrough', async () => {
+   const outcome = await quiet.call(service); assert.equal(outcome.recovered, false); assert.equal(outcome.current(), true);
+   crossed = true; mode = 'successor'; successor = service.refresh(); assert.equal(outcome.current(), false);
+   return outcome;
+  });
+  mode = 'quiet'; await service.mutate({action: 'rename', name: 'Renamed'}); await successor;
+  assert.equal(crossed, true); assert.equal(recoveryReads, 1, 'the resumed pump cannot add a fallback over the accepted successor');
+  assert.equal(service.getSnapshot().projection!.sections[0].entries[0]!.id, 'newer');
+ } finally {service.dispose();}
+});
