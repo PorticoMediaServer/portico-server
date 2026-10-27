@@ -19,6 +19,14 @@ function tracked() {
   return {controller, signal, listeners};
 }
 
+// Also model a runtime that exposes the standard public reason property while
+// this suite runs with the installed reasonless native AbortController.
+function reasoned() {
+  const source = tracked(); let reason: unknown;
+  Object.defineProperty(source.signal, 'reason', {get: () => reason});
+  return {...source, abort(value: unknown) {if (!source.signal.aborted) {reason = value; source.controller.abort();}}};
+}
+
 test('native-compatible composition links each supplied signal once and detaches all on abort', () => {
   const a = tracked(), b = tracked(), lifetime = linkAbortSignals([a.signal, undefined, b.signal, a.signal]);
   assert.equal(a.listeners.size, 1); assert.equal(b.listeners.size, 1);
@@ -83,6 +91,43 @@ test('portable cancellation needs only aborted and throws an Error-shaped AbortE
   throwIfAborted(undefined); throwIfAborted(controller.signal);
   controller.abort();
   assert.throws(() => throwIfAborted(controller.signal), (error: unknown) => error instanceof Error && error.name === 'AbortError');
+});
+
+test('first source reason wins through linked cancellation and cleanup', () => {
+  const a = reasoned(), b = reasoned(), first = new Error('original cancellation'), later = new Error('later cancellation');
+  const lifetime = linkAbortSignals([a.signal, b.signal]);
+  a.abort(first); b.abort(later);
+  assert.throws(() => throwIfAborted(lifetime.signal), error => error === first);
+  if ('reason' in lifetime.signal) assert.equal(lifetime.signal.reason, first);
+  assert.equal(a.listeners.size, 0); assert.equal(b.listeners.size, 0);
+});
+
+test('pre-aborted reason is preserved and primitive reasons still throw Error-shaped cancellation', () => {
+  const source = reasoned(), reason = new Error('already ended'); source.abort(reason);
+  const lifetime = linkAbortSignals([source.signal]);
+  assert.throws(() => throwIfAborted(lifetime.signal), error => error === reason);
+  assert.equal(source.listeners.size, 0);
+  const primitive = reasoned(); primitive.abort(null);
+  const linked = linkAbortSignals([primitive.signal]);
+  if ('reason' in linked.signal) assert.equal(linked.signal.reason, null);
+  assert.throws(() => throwIfAborted(linked.signal), error => error instanceof Error && error.name === 'AbortError');
+});
+
+test('deadline keeps TimeoutError classification while caller cancellation keeps its original reason', () => {
+  const originalSet = globalThis.setTimeout, originalClear = globalThis.clearTimeout;
+  const callbacks: (() => void)[] = []; let cleared = 0;
+  globalThis.setTimeout = ((callback: () => void) => {callbacks.push(callback); return callbacks.length as unknown as ReturnType<typeof setTimeout>;}) as typeof setTimeout;
+  globalThis.clearTimeout = (() => {cleared++;}) as typeof clearTimeout;
+  try {
+    const caller = reasoned(), cancelled = linkAbortSignals([caller.signal], 10000), reason = new Error('caller ended');
+    caller.abort(reason); callbacks[0]!();
+    assert.throws(() => throwIfAborted(cancelled.signal), error => error === reason);
+    assert.equal(cleared, 1); assert.equal(caller.listeners.size, 0);
+    const timeoutCaller = reasoned(), timed = linkAbortSignals([timeoutCaller.signal], 15000);
+    callbacks[1]!(); timeoutCaller.abort(new Error('too late'));
+    assert.throws(() => throwIfAborted(timed.signal), error => error instanceof Error && error.name === 'TimeoutError');
+    assert.equal(cleared, 2); assert.equal(timeoutCaller.listeners.size, 0);
+  } finally {globalThis.setTimeout = originalSet; globalThis.clearTimeout = originalClear;}
 });
 
 test('healthy Support and channel sources work with the native AbortSignal surface', async () => {
