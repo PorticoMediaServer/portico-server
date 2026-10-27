@@ -1,6 +1,7 @@
 package remotesources
 
 import (
+	"bytes"
 	"context"
 	"database/sql"
 	"encoding/json"
@@ -95,6 +96,24 @@ func (f testSourceChoiceFixture) apply(t *testing.T, source, name, operation str
 		t.Fatal(err)
 	}
 	return receipt, input
+}
+
+// A receipt replay promises the exact stored response, not a re-render of
+// current state. SourceAdvanced keeps an unexported wire-presence map that is
+// populated whenever a command document is decoded; a replayed response is
+// decoded the same way, so compare the encoded outcome the API actually
+// returns instead of that input-decode state.
+func sameReadSettings(t *testing.T, got, want *SourceReadSettings) bool {
+	t.Helper()
+	gotJSON, err := json.Marshal(got)
+	if err != nil {
+		t.Fatal(err)
+	}
+	wantJSON, err := json.Marshal(want)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return bytes.Equal(gotJSON, wantJSON)
 }
 
 func testSourceChoiceExpected() map[string]SourceChoiceDefinition {
@@ -261,7 +280,7 @@ func TestSourceChoiceReceiptReplayDoesNotReapply(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !reflect.DeepEqual(replay.ReadSettings, first.ReadSettings) {
+	if !sameReadSettings(t, replay.ReadSettings, first.ReadSettings) {
 		t.Fatal("replay did not return the historical outcome")
 	}
 	var depth string
@@ -411,7 +430,7 @@ func TestSourceChoiceCacheContinuesToExactAcceptedChild(t *testing.T) {
 		t.Fatalf("accepted child baseline: %#v", out)
 	}
 	replay, err := f.f.s.SaveSourceReadSettings(ctx, f.identities, f.owner, source, input)
-	if err != nil || !reflect.DeepEqual(replay.ReadSettings, first.ReadSettings) {
+	if err != nil || !sameReadSettings(t, replay.ReadSettings, first.ReadSettings) {
 		t.Fatalf("cache replay did not return the historical receipt: %v", err)
 	}
 	var backendGeneration int64

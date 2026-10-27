@@ -19,6 +19,25 @@ func episodeReadFixture(t *testing.T) (observationFixture, EpisodeAuthorityResol
 	if _, err := f.s.db.Exec(`UPDATE remote_sources SET range_support='conditional'`); err != nil {
 		t.Fatal(err)
 	}
+	// Ranged thumbnail decode is heavy remote analysis, so the source needs its
+	// own recorded consent even for an explicit one-off action. Save it through
+	// the real owner/CAS writer: an absent profile never supplies consent.
+	identities, owner, _ := observationOwner(t, f)
+	listing, err := SourceReadPreset("list")
+	if err != nil {
+		t.Fatal(err)
+	}
+	consent := true
+	writer, err := dbwork.Begin(context.Background(), f.s.db, dbwork.ClassBackgroundMedia)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = f.s.ApplySourceReadProfileTx(context.Background(), writer.Tx(), identities, owner, SourceReadProfileChange{SourceID: "remote", Generation: "1", ExpectedRevision: 0, Profile: listing, AdvancedMediaAnalysis: &consent}); err != nil {
+		t.Fatal(err)
+	}
+	if err = writer.Commit(); err != nil {
+		t.Fatal(err)
+	}
 	if _, err := f.record(t, scanFacts("episode-source"), 0); err != nil {
 		t.Fatal(err)
 	}
@@ -36,7 +55,6 @@ func episodeReadFixture(t *testing.T) (observationFixture, EpisodeAuthorityResol
 			t.Fatal(err)
 		}
 	}
-	identities, owner, _ := observationOwner(t, f)
 	var episode string
 	if err := f.s.db.QueryRow(`SELECT pid(public_id) FROM catalog_entities WHERE kind=4`).Scan(&episode); err != nil {
 		t.Fatal(err)
@@ -87,7 +105,7 @@ func TestEpisodeReadSourceCaptureRetainsPurposeWithoutOpening(t *testing.T) {
 			source, err := resolver.ResolveEpisodeReadSourceTx(ctx, view.Tx(), request, func() { t.Error("permission failure became changed-file notice") })
 			view.Rollback()
 			if err != nil || source == nil {
-				t.Fatal("explicit known mode with absent source profile", err)
+				t.Fatal("explicit known mode with recorded source consent", err)
 			}
 			defer source.Close()
 			if len(f.s.serveLeases) != 0 || source.remote == nil || source.remote.processGeneration != "" {

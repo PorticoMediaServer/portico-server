@@ -47,7 +47,9 @@ func playbackSelectionFixture(t *testing.T) (observationFixture, ObservationRef,
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err = f.s.db.Exec(`UPDATE remote_sources SET kind='webdav',config=?,range_support='unsupported',removed=0 WHERE id='remote'`, string(sealed)); err != nil {
+	// remote_sources.config is a STRICT BLOB column: the sealed bytes are bound
+	// as-is, never converted to TEXT.
+	if _, err = f.s.db.Exec(`UPDATE remote_sources SET kind='webdav',config=?,range_support='unsupported',removed=0 WHERE id='remote'`, sealed); err != nil {
 		t.Fatal(err)
 	}
 	advanced := defaultAdvanced()
