@@ -675,56 +675,56 @@ def batch_flags(client, pairs, report):
 
 
 def start_history(client, item_id, fraction, report, duration_ms=None):
-    """A real playback session and timeline report, so history is genuine."""
-    key = op_id("play")
-    body = {"itemId": item_id, "startFrom": "beginning"}
-    deadline = time.monotonic() + 30
-    while True:
-        try:
-            session = client.call("POST", "/v1/playback/sessions", body,
-                                  ok=(200, 201, 202), timeout=60)
-        except Refusal as refusal:
-            report.setdefault("warnings", []).append({"step": "history-start", "itemId": item_id,
-                                                       "code": refusal.code, "status": refusal.status})
-            return False
-        presentation = session.get("presentation") or {}
-        if presentation.get("url") or session.get("state") not in (None, "preparing"):
-            break
-        if time.monotonic() >= deadline:
-            report.setdefault("warnings", []).append({"step": "history-start", "itemId": item_id,
-                                                       "code": "preparing_timeout"})
-            return False
-        time.sleep(1.5)
-    session_id = session.get("id")
-    deadline = time.monotonic() + 45
-    while session_id and time.monotonic() < deadline:
-        presentation = session.get("presentation") or {}
-        if presentation.get("url") or session.get("state") not in (None, "preparing"):
-            break
-        time.sleep(1.0)
-        try:
-            session = client.read("/v1/playback/sessions/" + urllib.parse.quote(session_id, safe=""))
-        except Refusal:
-            break
-    generation = ((session.get("presentation") or {}).get("generation")) or 1
-    duration_ms = int(duration_ms or 0)
-    if duration_ms <= 0:
-        duration_ms = 120000
-    position = int(min(max(2000, duration_ms * fraction), max(2000, duration_ms - 1500)))
+    """Create a real, bounded playback history fact for a light source."""
+    from playback_capabilities import capabilities
+    session_id = None
     try:
+        if not getattr(client, "playback_registered", False):
+            client.call("PUT", "/v1/me/devices/current/capabilities", capabilities(), ok=(204,))
+            client.playback_registered = True
+        duration_ms = int(duration_ms or 0)
+        if duration_ms <= 0:
+            raise Refusal("history_duration_missing")
+        key = op_id("play")
+        deadline = time.monotonic() + 45
+        while True:
+            session = client.call("POST", "/v1/playback/sessions",
+                                  {"itemId": item_id, "startFrom": "beginning"},
+                                  extra_headers={"Idempotency-Key": key}, ok=(201, 202))
+            session_id = session.get("id")
+            presentation = session.get("presentation") or {}
+            if presentation.get("url") and not session.get("retryAfterMs"):
+                break
+            if time.monotonic() >= deadline:
+                raise Refusal("history_preparing_timeout")
+            time.sleep(1)
+        position = max(1, min(duration_ms - 1, int(duration_ms * fraction)))
         client.call("POST", f"/v1/playback/sessions/{urllib.parse.quote(session_id, safe='')}/timeline",
-                    {"seq": 1, "generation": generation, "state": "paused",
+                    {"seq": 1, "generation": presentation["generation"], "state": "paused",
                      "positionMs": position, "rate": 1, "seeked": False}, ok=(204,))
+        report["created"]["history"].append(item_id)
+        return True
     except Refusal as refusal:
-        report.setdefault("warnings", []).append({"step": "history-timeline", "itemId": item_id,
-                                                   "code": refusal.code, "status": refusal.status})
-    try:
-        client.call("DELETE", f"/v1/playback/sessions/{urllib.parse.quote(session_id, safe='')}",
-                    {"positionMs": position}, ok=(204,))
-    except Refusal:
-        pass
-    report["created"]["history"].append(item_id)
-    return True
+        report.setdefault("failures", []).append({"step": "history", "itemId": item_id,
+                                                  "code": refusal.code, "status": refusal.status})
+        return False
+    finally:
+        if session_id:
+            try:
+                client.call("DELETE", f"/v1/playback/sessions/{urllib.parse.quote(session_id, safe='')}", ok=(204,))
+            except Refusal as refusal:
+                report.setdefault("failures", []).append({"step": "history-stop", "code": refusal.code})
+
+
+def light_history_movies(movies, manifest_path):
+    document = json.loads(Path(manifest_path or HERE / "manifest.json").read_text())
+    versions = {}
+    for entry in document.get("entries", []):
+        if entry.get("kind") == "movie":
+            versions.setdefault(entry["title"], []).append(entry)
+    titles = {title for title, entries in versions.items()
+              if all("transcode_source:light" in entry.get("features", []) for entry in entries)}
+    return [item for item in movies if item.get("title") in titles]
 
 
 def ensure_collection(client, name, item_ids, report):
@@ -1264,7 +1264,7 @@ def profile_catalogue(client, libraries, report):
     return items_by_kind
 
 
-def profile_state(client, label, items_by_kind, report, history=2):
+def profile_state(client, label, items_by_kind, report, history=2, manifest_path=None):
     """Saved state for one selected profile; every call is an ordinary API call."""
     created = {"label": label}
     movies = items_by_kind.get("movie", [])
@@ -1286,8 +1286,8 @@ def profile_state(client, label, items_by_kind, report, history=2):
             continue
         set_personal(client, item["id"], "progressMs", min(max(1000, duration // 5), duration - 1000),
                      report)
-    # Completed history for a couple of titles in each profile.
-    for item in (movies[:history] + episodes[:history])[:max(1, history * 2)]:
+    # History uses only qualified light sources, avoiding accidental 4K work.
+    for item in light_history_movies(movies, manifest_path)[:history]:
         start_history(client, item["id"], 0.25, report,
                       duration_ms=int(float(item.get("durationMs") or 0)))
     # Listening progress for a book is a partial position, not a fixed 45 s.
@@ -1400,6 +1400,9 @@ def main(argv=None):
         primary = next((p for p in signed.get("profiles") or [] if p.get("primary")), None)
         if primary:
             owner.token = select_profile(owner, primary["id"])
+        saved.setdefault("accounts", {})[owner_credentials["username"]] = {
+            "role": "owner", "primaryProfileId": primary.get("id") if primary else None,
+            "signedInAt": now()}
         system = owner.read("/v1/system")
         report["server"] = {"id": system.get("id"), "version": system.get("version"),
                             "commit": system.get("commit")}
@@ -1529,6 +1532,9 @@ def main(argv=None):
                 member_primary = next((p for p in member_snapshot.get("profiles") or []
                                        if p.get("primary")), None)
                 if member_primary:
+                    saved.setdefault("accounts", {})[member["username"]] = {
+                        "role": "member", "primaryProfileId": member_primary["id"],
+                        "signedInAt": now()}
                     upload_avatar(profile_client, member_primary["id"],
                                   "Profile " + (member.get("name") or member["username"]), report)
                     member_profile_ids.append((member.get("name") or member["username"],
@@ -1548,6 +1554,11 @@ def main(argv=None):
                                                            "code": refusal.code,
                                                            "status": refusal.status})
                 continue
+            saved["profiles"].setdefault(profile_id, {}).update({
+                "name": label, "username": username, "signedInAt": now(),
+                "role": "restricted" if label == "Kids" else
+                        "guest" if label == "Guest" else
+                        "owner" if label == "Owner" else "adult"})
             if args.light:
                 report["profiles"].append({"label": label, "profileId": profile_id, "light": True})
                 continue
@@ -1556,7 +1567,7 @@ def main(argv=None):
                             for name, library_id in library_by_name.items()]
             catalogue = profile_catalogue(client, library_rows, report)
             profile_state(client, label if label.startswith("Synthetic") else "Synthetic " + label,
-                          catalogue, report, history=max(0, args.history))
+                          catalogue, report, history=max(0, args.history), manifest_path=args.manifest)
 
         # Server settings ---------------------------------------------------
         ensure_api_keys(owner, saved, report)

@@ -10,17 +10,7 @@ from pathlib import Path
 from seed_state import Client, private_json, sign_in, select_profile, items, Refusal
 
 
-def capabilities():
-    return {'version':2,'client':{'family':'web','form':'browser'},
-        'display':{'dynamicRanges':['sdr']},'audioOutput':{'maxChannels':8},
-        'engines':{'native':{'name':'ffmpeg','evidence':'declared',
-            'video':[{'codec':'h264','bitDepths':[8],'maxWidth':3840,'maxHeight':2160,'maxFrameRate':60,'dynamicRanges':['sdr']}],
-            'audio':[{'codec':c,'maxChannels':8} for c in ['aac','mp3','flac','alac','opus','ac3','eac3','dts']],
-            'transports':[
-                {'transport':'direct','containers':['mp4','mkv','matroska','mp3','flac','ogg','mpegts','webm','m4a','m4b'], 'video':['h264'],'audio':['aac','mp3','flac','alac','opus','ac3','eac3','dts']},
-                {'transport':'hls_ts','containers':['mpegts'],'video':['h264'],'audio':['aac','mp3']},
-                {'transport':'hls_fmp4','containers':['fmp4'],'video':['h264'],'audio':['aac','mp3']}],
-            'subtitleRendering':['text','ass'],'embeddedAudioSwitching':True}}}
+from playback_capabilities import capabilities
 
 
 def request(client, method, path, body=None, headers=None, ok=(200,201,204), timeout=60):
