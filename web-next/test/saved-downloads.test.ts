@@ -133,3 +133,63 @@ test('parent disposal aborts both real shape-service transports and drops delaye
   assert.ok(signals.every(signal => signal.aborted));
   assert.equal(runtime.posters.getSnapshot().projection, null); assert.equal(runtime.squares.getSnapshot().projection, null);
 });
+
+// FX216: exercise the actual Web consumer against the real service's failure
+// snapshot. Reuse the existing component hook fixture; no browser/runner job.
+import {DownloadsService} from '@core/downloads-service.ts';
+import {defaultI18n} from '@i18n';
+import {componentModule, hooks} from '../../web/test/helpers/component-harness.mjs';
+import {savedText} from '../src/screens/saved/text.ts';
+
+test('actual ServerDownloads keeps Retry for transient failures and shows feature-off/embedded-null only for genuine absence', async () => {
+  const failures = [
+    {error: Object.assign(new Error('busy'), {status: 503, code: 'server_busy'}), absent: false},
+    {error: Object.assign(new Error('timeout'), {status: 503, code: 'timeout'}), absent: false},
+    {error: new TypeError('offline'), absent: false},
+    {error: Object.assign(new Error('unsupported route'), {status: 404}), absent: true},
+    {error: Object.assign(new Error('disabled'), {status: 503, code: 'downloads_unavailable'}), absent: true},
+  ];
+  for (const {error, absent} of failures) {
+    let failure: unknown = error, listReads = 0;
+    const service = new DownloadsService({request: async <T>(path: string): Promise<T> => {
+      if (!path.startsWith('/v1/downloads/preparations?')) throw new Error(`Unexpected fixture request: ${path}`);
+      listReads++; if (failure) throw failure;
+      return {items: [], nextCursor: ''} as T;
+    }});
+    const operations = new SavedOperations(() => true), host = hooks();
+    const screen = await componentModule(new URL('../src/screens/saved/Downloads.tsx', import.meta.url), {
+      react: host.react, '@i18n': {defaultI18n}, './text.ts': {savedText}, './saved.module.css': {default: {}},
+      '../../kit/artwork': {Artwork: 'Artwork'}, '../../kit/controls': {Button: 'Button', Select: 'Select', Switch: 'Switch'},
+      '../../kit/overlays': {Dialog: 'Dialog', Menu: 'Menu'}, '../../kit/Icon': {Icon: 'Icon'},
+      '../../kit/states': {StateView: 'StateView'}, './SavedDialog': {SavedDialog: 'SavedDialog'},
+    });
+    const render = (embedded = false) => host.render(() => screen.ServerDownloads({service, operations, embedded, managed: true, online: true,
+      artwork: () => undefined, effects: {openItem() {}, saveFile: async () => {}, reportError(error: unknown) {throw error;}}}));
+    type Node = {type: unknown; props: Record<string, any>};
+    const nodes = (value: unknown): Node[] => {
+      if (Array.isArray(value)) return value.flatMap(nodes);
+      if (!value || typeof value !== 'object' || !('props' in value)) return [];
+      const node = value as Node; return [node, ...nodes(node.props.children), ...nodes(node.props.footer)];
+    };
+    try {
+      await service.refresh(); assert.equal(service.getSnapshot().unavailable, absent);
+      const visible = render(), entries = nodes(visible), off = entries.filter(node => node.type === 'StateView' && node.props.title === defaultI18n.t('web.downloads.offTitle'));
+      if (absent) {
+        assert.equal(off.length, 1); assert.equal(render(true), null, 'genuine absence hides an embedded server panel');
+        assert.equal(entries.some(node => node.type === 'SavedDialog'), false); assert.equal(listReads, 1);
+      } else {
+        assert.equal(off.length, 0); assert.notEqual(render(true), null, 'transient failure must not hide the embedded panel as unsupported');
+        assert.equal(service.getSnapshot().failure, error); assert.equal(service.getSnapshot().phase, 'error');
+        const dialog = entries.find(node => node.type === 'SavedDialog' && node.props.title === savedText('next.saved.loadFailed'));
+        assert(dialog); assert.equal(dialog.props.open, true);
+        const retry = nodes(dialog.props.footer).find(node => node.type === 'Button' && node.props.children.includes(defaultI18n.t('action.tryAgain')));
+        assert(retry); assert.equal(retry.props.disabled, false);
+        failure = undefined;
+        const ready = new Promise<void>(resolve => {const off = service.subscribe(() => {if (service.getSnapshot().phase === 'ready') {off(); resolve();}});});
+        retry.props.onClick(); await ready;
+        assert.equal(listReads, 2, 'the actual Retry callback invokes the real service once'); assert.equal(service.getSnapshot().unavailable, false);
+        assert.equal(service.getSnapshot().failure, undefined); assert.equal(nodes(render()).find(node => node.type === 'SavedDialog')?.props.open, false);
+      }
+    } finally {operations.dispose(); service.dispose();}
+  }
+});
