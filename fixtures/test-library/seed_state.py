@@ -1107,7 +1107,7 @@ def ensure_recording(owner, report):
                 end = datetime.strptime(programme.get("end", ""), "%Y-%m-%dT%H:%M:%S%z").timestamp()
             except (ValueError, TypeError):
                 continue
-            if 0 < end - now <= 420:
+            if 20 <= end - now <= 420:
                 candidates.append((end, channel, programme))
     if not candidates:
         report["recording"] = {"created": False, "reason": "no programme ending within 7 minutes"}
@@ -1280,7 +1280,7 @@ def profile_state(client, label, items_by_kind, report, history=2):
     created["myList"] = len(picks)
     # Continue-watching is a real progress fact beside an explicit un-watched
     # action, and must stay genuinely partial for tiny fixture files.
-    for item in (movies[:2] + episodes[:2] + books[:2]):
+    for item in (movies[:2] + episodes[:2] + books[:2] + songs[:2]):
         duration = int(float(item.get("durationMs") or 0))
         if duration <= 0:
             continue
@@ -1470,17 +1470,17 @@ def main(argv=None):
         kids = ensure_profile(owner, "Synthetic Kids", "mint", report)
         guest = ensure_profile(owner, "Synthetic Guest", "gold", report)
         kids_pin = saved["profiles"].get(kids["id"], {}).get("pin")
+        reset_pin = not kids_pin or not kids.get("pinRequired")
         if not kids_pin:
             kids_pin = str(1000 + secrets.randbelow(9000))
-            # No stored PIN means this profile may already require an unknown
-            # one; reset it now so the seeded state is usable and recorded.
-            owner.call("PATCH", "/v1/direct/profiles/" + urllib.parse.quote(kids["id"], safe=""),
-                       {"expectedRevision": kids.get("revision", 0),
-                        "pin": kids_pin, "policy": {"allowedLibraries": library_ids}}, ok=(200,))
-        elif not kids.get("pinRequired"):
-            owner.call("PATCH", "/v1/direct/profiles/" + urllib.parse.quote(kids["id"], safe=""),
-                       {"expectedRevision": kids.get("revision", 0),
-                        "pin": kids_pin, "policy": {"allowedLibraries": library_ids}}, ok=(200,))
+        # Refresh the existing profile's library policy too, so newly registered
+        # anime/reading libraries are available on repeat provisioning runs.
+        profile_edit = {"expectedRevision": kids.get("revision", 0),
+                        "policy": {"allowedLibraries": library_ids}}
+        if reset_pin:
+            profile_edit["pin"] = kids_pin
+        owner.call("PATCH", "/v1/direct/profiles/" + urllib.parse.quote(kids["id"], safe=""),
+                   profile_edit, ok=(200,))
         saved["profiles"][kids["id"]] = {"name": "Synthetic Kids", "pin": kids_pin}
         for profile, art in ((owner_primary, "blue"), (kids, "mint"), (guest, "gold")):
             if profile:
@@ -1491,7 +1491,7 @@ def main(argv=None):
             owner.call("PUT", "/v1/direct/profiles/" + urllib.parse.quote(kids["id"], safe="") +
                        "/restrictions", {
                            "expectedRevision": restrictions.get("revision", 1),
-                           "ratingSystem": "mpaa", "maximumAgeRating": "PG", "allowUnrated": False,
+                           "ratingSystem": "mpaa", "maximumAgeRating": "PG", "allowUnrated": True,
                            "blockedLabels": [], "allowDownloads": False, "allowLiveTv": False,
                            "allowDvr": False, "allowWatchTogether": False,
                        }, ok=(200,))

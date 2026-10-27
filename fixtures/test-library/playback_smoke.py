@@ -39,12 +39,20 @@ def request(client, method, path, body=None, headers=None, ok=(200,201,204), tim
         return doc
 
 
-def connect(base,cfg):
+def connect(base,cfg,strict=False):
     client=Client(base)
-    signed,client.token=sign_in(client,cfg['owner']['username'],cfg['owner']['password'])
+    if strict:
+        signed=client.call('POST','/v1/direct/sign-in',{'username':cfg['owner']['username'],'password':cfg['owner']['password']},ok=(200,),timeout=5)
+        client.token=signed.get('session',signed)['accessToken']
+    else:
+        signed,client.token=sign_in(client,cfg['owner']['username'],cfg['owner']['password'])
     client.device=signed.get('session',signed)['deviceId']
     primary=next(p for p in signed['profiles'] if p.get('primary'))
-    client.token=select_profile(client,primary['id'])
+    if strict:
+        selected=client.call('POST','/v1/direct/profiles/'+primary['id']+'/select',{'installationId':client.installation,'trust':False},ok=(200,),timeout=5)
+        client.token=selected['session']['accessToken']
+    else:
+        client.token=select_profile(client,primary['id'])
     client.call('PUT','/v1/me/devices/current/capabilities',capabilities(),ok=(204,))
     return client
 
@@ -170,15 +178,16 @@ def main():
                 c=None;s=None;requests=0;failures=[];decoder=None;log=None
                 begun=time.monotonic()
                 try:
-                    c=connect(args.base,cfg);s=start(c,films[index%len(films)]['id'])
+                    c=connect(args.base,cfg,strict=True);s=start(c,films[index%len(films)]['id'])
                     log=(scratch/f'client-{index}.log').open('wb')
                     decoder=subprocess.Popen([args.ffmpeg,'-hide_banner','-loglevel','error','-nostdin','-threads','1',
                         '-stream_loop','-1','-re','-i',c.base+s['presentation']['url'],'-t',str(args.concurrency_seconds),'-f','null','-'],
                         stdout=subprocess.DEVNULL,stderr=log)
+                    begun=time.monotonic()
                     seq=0
                     while time.monotonic()-begun<args.concurrency_seconds:
-                        c.read('/v1/libraries');requests+=1
-                        c.read('/v1/home');requests+=1
+                        c.call('GET','/v1/libraries',timeout=15);requests+=1
+                        c.call('GET','/v1/home',timeout=15);requests+=1
                         seq+=1
                         request(c,'POST','/v1/playback/sessions/'+s['id']+'/timeline',
                             {'seq':seq,'generation':s['presentation']['generation'],'state':'playing','positionMs':int((time.monotonic()-begun)*1000)%max(1000,int(films[index%len(films)].get('durationMs') or 10000)),'rate':1},ok=(204,))
@@ -207,7 +216,10 @@ def main():
         if client:
             try:client.call('DELETE','/v1/devices/'+client.device,ok=(204,))
             except Exception:report['errors'].append({'step':'cleanup','error':'device_retirement_failed'})
-        shutil.rmtree(scratch)
+        if report['errors'] or report['concurrency'].get('passed') is False:
+            report['diagnosticDirectory']=str(scratch)
+        else:
+            shutil.rmtree(scratch)
         args.report.write_text(json.dumps(report,indent=2)+'\n')
     print(json.dumps({'checks':len(report['checks']),'errors':len(report['errors']),'concurrency':report['concurrency'].get('passed')}))
     return 1 if report['errors'] or report['concurrency'].get('passed') is False else 0

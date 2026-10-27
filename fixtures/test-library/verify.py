@@ -682,12 +682,20 @@ def main(argv=None):
                                         "pendingRestart": root.get("pendingRestart")}
             check("recording-root", requested == args.recordings_root,
                   report["recordingRoot"])
-            dvr = owner.read("/v1/dvr?limit=50")
+            dvr = owner.read("/v1/dvr?state=all&limit=50")
             recordings = (dvr.get("recordings") or [])
             report["recordings"] = [{"id": entry.get("id"), "state": entry.get("state"),
-                                     "durationMs": entry.get("durationMs")}
+                                     "bytes": entry.get("bytes"), "itemId": entry.get("itemId"),
+                                     "coverageStart": entry.get("coverageStart"),
+                                     "coverageEnd": entry.get("coverageEnd")}
                                     for entry in recordings]
-            check("recording-present", bool(recordings), len(recordings), warn=True)
+            live_expected = any(entry.get("kind") == "live-channel" for entry in expected["entries"])
+            check("recording-present", bool(recordings), len(recordings), warn=not live_expected)
+            if live_expected:
+                check("recording-completed", any(entry.get("state") == "completed" and
+                      int(entry.get("bytes") or 0) > 0 and entry.get("itemId") and
+                      entry.get("coverageStart") < entry.get("coverageEnd")
+                      for entry in recordings), report["recordings"])
         except Refusal as refusal:
             check("server-settings", False, refusal.code)
 
