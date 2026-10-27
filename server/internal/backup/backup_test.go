@@ -103,6 +103,12 @@ func TestBackupDuringConcurrentWrites(t *testing.T) {
 	if _, err := dbwork.ExecWrite(ctx, db, dbwork.ClassInteractive, `INSERT INTO configuration(key,value) VALUES('backup_write_probe','0') ON CONFLICT(key) DO UPDATE SET value='0'`); err != nil {
 		t.Fatal(err)
 	}
+	var priorBackstop int
+	if err := dbwork.WithWriteTx(ctx, db, dbwork.ClassMaintenance, func(tx *sql.Tx) error {
+		return tx.QueryRow(`PRAGMA wal_autocheckpoint`).Scan(&priorBackstop)
+	}); err != nil {
+		t.Fatal(err)
+	}
 	done := make(chan struct{})
 	var maxWait atomic.Int64
 	var writes atomic.Int64
@@ -143,16 +149,16 @@ func TestBackupDuringConcurrentWrites(t *testing.T) {
 	if err = openReadOnly(t, storagepaths.Path(state, BackupsDir, id, DatabaseName)).QueryRow(`SELECT value FROM configuration WHERE key='backup_write_probe'`).Scan(&probe); err != nil {
 		t.Fatal(err)
 	}
-	// The copy suspends the writer's checkpoint backstop while its snapshot is
-	// open; it must always be put back.
+	// The copy must restore the writer's configured checkpoint policy, including
+	// zero when maintenance owns checkpoint copying outside writer commits.
 	var backstop int
 	if err = dbwork.WithWriteTx(ctx, db, dbwork.ClassMaintenance, func(tx *sql.Tx) error {
 		return tx.QueryRow(`PRAGMA wal_autocheckpoint`).Scan(&backstop)
 	}); err != nil {
 		t.Fatal(err)
 	}
-	if backstop == 0 {
-		t.Fatal("backup left the writer checkpoint backstop disabled")
+	if backstop != priorBackstop {
+		t.Fatalf("backup changed writer checkpoint policy: got %d, want %d", backstop, priorBackstop)
 	}
 }
 
