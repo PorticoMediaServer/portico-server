@@ -93,8 +93,7 @@ func (h *Hub) Run(ctx context.Context) {
 	var after int64
 	runChanges(ctx, signal, func(ctx context.Context) time.Duration {
 		before := dbwork.ChangingCommits()
-		count := 0
-		err := dbwork.WithWriteTx(ctx, h.DB, dbwork.ClassMaintenance, func(tx *sql.Tx) error { var err error; count, err = apievents.Flush(ctx, tx, 64); return err })
+		count, err := flushPendingHints(ctx, h.DB)
 		if err != nil {
 			return 2 * time.Second
 		}
@@ -129,6 +128,31 @@ func (h *Hub) Run(ctx context.Context) {
 		return 0
 	})
 
+}
+
+// flushPendingHints publishes one bounded batch of coalesced hints. It probes
+// the outbox on a read handle first, so a pass with nothing pending takes no
+// writer gate at all: the gate is the one resource every scan write shares.
+//
+// The probe is a hint, never the authority. Flush re-reads and re-limits the
+// batch inside the transaction, so a hint that lands after an empty probe is
+// published by the pass its own commit wakes, and a second drainer that wins
+// the race leaves an empty transaction rather than a lost or duplicated hint.
+func flushPendingHints(ctx context.Context, db *sql.DB) (int, error) {
+	var pending bool
+	if err := dbwork.QueryRow(ctx, db, `SELECT EXISTS(SELECT 1 FROM api_change_pending)`).Scan(&pending); err != nil {
+		return 0, err
+	}
+	if !pending {
+		return 0, nil
+	}
+	count := 0
+	err := dbwork.WithWriteTx(ctx, db, dbwork.ClassMaintenance, func(tx *sql.Tx) error {
+		var flushErr error
+		count, flushErr = apievents.Flush(ctx, tx, 64)
+		return flushErr
+	})
+	return count, err
 }
 
 // A nonempty flush changes exactly one gated transaction; an empty flush
