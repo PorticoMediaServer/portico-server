@@ -205,6 +205,8 @@ jobs:
       - uses: actions/setup-go@d35c59abb061a4a6fb18e82ac0862c26744d6ab5
         with: {go-version-file: server/go.mod, cache-dependency-path: server/go.sum}
       - run: npm ci --no-audit --no-fund
+      - name: Install media fixture tools
+        run: sudo apt-get update && sudo apt-get install --no-install-recommends -y ffmpeg
       - name: Complete test shard plus mandatory account/session/privacy checks
         env:
           CI_SHARD_INDEX: ${{ matrix.shard }}

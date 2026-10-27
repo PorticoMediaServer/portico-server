@@ -11,6 +11,7 @@ import (
 	"portico.local/server/internal/dbwork"
 	"portico.local/server/internal/identity"
 	"portico.local/server/internal/playback"
+	"portico.local/server/internal/supervise"
 )
 
 // stopBinding deliberately excludes progress, revision and readiness. A delayed
@@ -313,8 +314,10 @@ func (s *Service) StopGeneration(ctx context.Context, c Caller, id string, expec
 	errs := make([]error, len(targets))
 	var joins sync.WaitGroup
 	for i := range targets {
+		// A recovered cleanup panic must still leave the committed stop reporting failure.
+		errs[i] = errors.New("stop occurrence cleanup did not complete")
 		joins.Add(1)
-		go func(i int) { defer joins.Done(); errs[i] = targets[i].claim.Commit(cleanup) }(i)
+		supervise.Go("playbackv1.stop-join", func() { defer joins.Done(); errs[i] = targets[i].claim.Commit(cleanup) })
 	}
 	joins.Wait()
 	return errors.Join(errs...)

@@ -1144,7 +1144,7 @@ def js_command(group, file):
     if group in ("apps/native", "web", "web-next"):
         args = ["node", "--experimental-transform-types", "--import", "./test/register.mjs"]
     else:
-        args = ["node", "--experimental-strip-types"]
+        args = ["node", "--experimental-transform-types"]
     return [*args, f"--test-timeout={TEST_TIMEOUT_MS}",
             f"--test-reporter={ROOT / 'scripts/test-events.mjs'}",
             "--test-concurrency=1", "--test", file]

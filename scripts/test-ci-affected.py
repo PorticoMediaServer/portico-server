@@ -841,7 +841,7 @@ class JsCommandTests(unittest.TestCase):
 
     def test_package_file_keeps_strip_types_without_the_native_register(self):
         argv = ci.js_command("packages/client-core", "test/account-sessions.test.ts")
-        self.assertEqual(argv[:2], ["node", "--experimental-strip-types"])
+        self.assertEqual(argv[:2], ["node", "--experimental-transform-types"])
         self.assertNotIn("./test/register.mjs", argv)
         self.assertIn("--test-concurrency=1", argv)
 

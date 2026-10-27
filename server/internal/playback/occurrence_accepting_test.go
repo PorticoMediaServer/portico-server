@@ -108,7 +108,7 @@ func TestRenditionRelocationAwaitKeepsOriginalGenerationAndPlan(t *testing.T) {
 				t.Fatal(err)
 			}
 			r := AudioRenditionPlan{Ordinal: 0, StreamIndex: 1, Action: "copy", Codec: "aac", Channels: 2, Packaging: "mpegts_hls"}
-			plan := DeliveryPlan{Profile: DeliveryProfileLegacy, SourceID: asset, SourceSize: 1, SourceModifiedNS: 1, Mode: "hls", OutputContainer: "mpegts_hls", VideoAction: "copy", AudioAction: "copy", Duration: 100, Renditions: []AudioRenditionPlan{r}}
+			plan := DeliveryPlan{Profile: DeliveryProfileLegacy, SourceID: asset, SourceSize: 1, SourceModifiedNS: 1, Mode: "hls", Strategy: DeliveryCopyRemux, OutputContainer: "mpegts_hls", VideoAction: "copy", AudioAction: "copy", Duration: 100, Renditions: []AudioRenditionPlan{r}}
 			tx, err := db.Begin()
 			if err != nil {
 				t.Fatal(err)

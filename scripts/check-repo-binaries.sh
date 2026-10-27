@@ -20,7 +20,7 @@ $list | xargs -0 -I{} sh -c '
 	[ "$f" != packages/contracts/src/types.ts ] || limit=2097152
 	[ -f "$f" ] || exit 0
 	case "$f" in
-	fixtures/*|third_party/*|packages/contracts/src/schemas.ts|server/api/portico.openapi.json|server/internal/persistence/migrations/0001_baseline.sql|server/internal/mediaexec/fonts/NotoSansCJKjp-Regular.otf) allowed=1 ;;
+	fixtures/*|third_party/*|packages/contracts/src/schemas.ts|server/receiver/cast/contracts.js|server/api/portico.openapi.json|server/internal/persistence/migrations/0001_baseline.sql|server/internal/mediaexec/fonts/NotoSansCJKjp-Regular.otf) allowed=1 ;;
 	*) allowed=0 ;;
 	esac
 	size=$(wc -c <"$f" | tr -d " ")
