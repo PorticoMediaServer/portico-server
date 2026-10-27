@@ -204,7 +204,7 @@ export function ReaderBook({book, active, reportError, onBack, onOpenSettings, o
     onSelect={selected => {if (selected === 'bookmarks' || selected === 'highlights' || selected === 'pages' || selected === 'contents') setFixedPane(selected);}} onClose={() => setPanel(undefined)} footer={(environment === 'web' || !!saveHighlights) && annotationPane === 'highlights' && notes.service ? <ReaderHighlightsExport key={publication.source.id + publication.source.revision} service={notes.service} signal={listSignal} nativeSave={environment === 'native' ? saveHighlights : undefined} title={publication.metadata.title} author={publication.metadata.author} reportError={reportError}/> : undefined}>
     {annotationPane && notes.service ? <ReaderAnnotationList key={fixedPane} signal={listSignal} kind={annotationPane === 'bookmarks' ? 'bookmark' : 'highlight'} service={notes.service} state={notes.state} controller={controller} reportError={reportError}/>
       : !fixed || snapshot.toc.length > 0 && fixedPane === 'contents' ? <ReaderContents entries={contents(snapshot.toc)}/>
-        : <FixedPagesPanel controller={controller} authority={authority} format={publication.format} reportError={code => reportError({code})} onNavigate={() => {if (presentation === 'phone') setPanel(undefined);}}/>}
+        : <FixedPagesPanel controller={controller} authority={authority} format={publication.format} reportError={engineError} onNavigate={() => {if (presentation === 'phone') setPanel(undefined);}}/>}
   </ReaderPanel>
     : panel === 'search' ? <ReaderPanel label={t('next.reader.search')} tabs={[{id: 'search', label: t('next.reader.search')}]}
       selected="search" onSelect={() => {}} onClose={() => setPanel(undefined)}><ReaderSearch query={query} onQuery={changeQuery} hits={searchHits} current={currentHit} loading={searching}
@@ -237,7 +237,7 @@ export function ReaderBook({book, active, reportError, onBack, onOpenSettings, o
       percent: value.location ? defaultI18n.percent(value.location.progression) : undefined,
       searchNavigation: active && value.status === 'ready' && value.sourceId === publication.source.id && value.sourceRevision === publication.source.revision && presentation === 'phone' && currentHit && visibleHits.some(hit => hit.id === currentHit)
         ? <ReaderMatchNavigation query={query} onStep={stepSearch} onClose={() => changeQuery('')}/> : undefined, panel: panelContent, panelReflows: layout.panelReflows(panel),
-      fixedPageStrip: fixed ? <FixedPageStrip controller={controller} authority={authority} format={publication.format} reportError={code => reportError({code})}/> : undefined,
+      fixedPageStrip: fixed ? <FixedPageStrip controller={controller} authority={authority} format={publication.format} reportError={engineError}/> : undefined,
       onPanelDismiss: () => setPanel(undefined), actions: [
         ...(notes.service ? [{id:'bookmark',label:t('next.reader.addBookmark'),icon:'i-bookmark' as const,
           disabled:notes.state.loading || notes.state.saving || notes.state.revision === undefined || !value.location,
@@ -255,7 +255,7 @@ export function ReaderBook({book, active, reportError, onBack, onOpenSettings, o
       ]})}/>
     {active && <ReaderAnnotationActions service={notes.service} snapshot={snapshot} controller={controller} onSearch={publication.format !== 'cbz' ? text => {changeQuery(text);setPanel('search');} : undefined} reportError={reportError}/>}
     {active && environment === 'web' && snapshot.status === 'ready' && <ReaderBrowserHint visible={presentation === 'phone' && !panel && !fixedMenu && !currentHit && snapshot.selection === null && !hint}/>}
-    {active && fixed && <FixedPageMenus controller={controller} authority={authority} format={publication.format} reportError={code => reportError({code})}
+    {active && fixed && <FixedPageMenus controller={controller} authority={authority} format={publication.format} reportError={engineError}
       open={fixedMenu} onOpenChange={setFixedMenu} anchorRef={zoomAnchor} directionRef={directionAnchor}/>}
   </>;
 }
