@@ -25,9 +25,100 @@ const {defaultI18n} = await import('../../packages/i18n/src/index.ts');
 const {sourceReadPreset, sourceReadPresetName} = await import('../../packages/client-core/src/remote-sources.ts');
 const {RemoteSourcesPage, remoteErrorText} = await import('../src/screens/settings/remote-sources/RemoteSourcesPage.tsx');
 // The page's reader admits the server's original empty list, with its viewer fence.
+const emptySources = async () => ({scope: {serverId: 'server', viewerFence: 'fence'}, sources: [], mountSupported: false});
 const pageProps: Parameters<typeof RemoteSourcesPage>[0] = {
-  api: {request: async () => ({scope: {serverId: 'server', viewerFence: 'fence'}, sources: [], mountSupported: false})} as never,
+  api: {request: emptySources} as never,
   serverId: 'server', viewerId: 'owner', isCurrent: () => true, reportError: () => {},
+};
+
+/** One mounted component: its hook slots, in the order React would keep them. */
+type Instance = {slots: any[]; mounted: boolean};
+/**
+ * The hooks these screens use, driven the way React drives them: a changed
+ * dependency tuple retires its previous effect *before* the next one runs, a
+ * changed subscription unsubscribes before subscribing again, and unmounting
+ * retires every effect, reader and subscription the component owned. Only those
+ * hooks are modelled; the components themselves still do all the work.
+ */
+const hookRuntime = (React: any) => {
+  const internals = React.__CLIENT_INTERNALS_DO_NOT_USE_OR_WARN_USERS_THEY_CANNOT_UPGRADE;
+  const previous = internals.H;
+  const instances = new Map<string, Instance>();
+  const all: Instance[] = [];
+  const changed = (next: readonly any[] | undefined, old: readonly any[] | undefined) =>
+    !next || !old || next.length !== old.length || next.some((value, index) => !Object.is(value, old[index]));
+  const mount = (name: string, component: any, props: any) => {
+    let instance = instances.get(name);
+    if (!instance?.mounted) {
+      instance = {slots: [], mounted: true};
+      instances.set(name, instance);
+      all.push(instance);
+    }
+    const owner = instance;
+    let tree: any, dirty = false;
+    do {
+      dirty = false;
+      let cursor = 0;
+      const retirements: (() => void)[] = [], setups: (() => void)[] = [];
+      const effect = (run: () => any, deps: readonly any[] | undefined) => {
+        const slot = owner.slots[cursor++] ??= {};
+        if (!changed(deps, slot.deps)) return;
+        slot.deps = deps ? [...deps] : undefined;
+        const retire = slot.cleanup;
+        if (typeof retire === 'function') retirements.push(() => {slot.cleanup = undefined;retire();});
+        setups.push(() => {slot.cleanup = run() ?? undefined;});
+      };
+      const dispatcher = {
+        useState(initial: any) {
+          const slot = owner.slots[cursor++] ??= {};
+          if (!('value' in slot)) slot.value = typeof initial === 'function' ? initial() : initial;
+          const set = (next: any) => {if (!owner.mounted) return;slot.value = typeof next === 'function' ? next(slot.value) : next;dirty = true;};
+          return [slot.value, set];
+        },
+        useRef(initial: any) {const slot = owner.slots[cursor++] ??= {};return slot.ref ??= {current: initial};},
+        useEffect(run: () => any, deps?: any[]) {effect(run, deps);},
+        useLayoutEffect(run: () => any, deps?: any[]) {effect(run, deps);},
+        useMemo(factory: () => any, deps: any[]) {const slot = owner.slots[cursor++] ??= {};if (changed(deps, slot.deps)) {slot.deps = [...deps];slot.value = factory();}return slot.value;},
+        useCallback(fn: any, deps: any[]) {const slot = owner.slots[cursor++] ??= {};if (changed(deps, slot.deps)) {slot.deps = [...deps];slot.value = fn;}return slot.value;},
+        useSyncExternalStore(subscribe: (onChange: () => void) => () => void, getSnapshot: () => any) {
+          const slot = owner.slots[cursor++] ??= {};
+          if (slot.subscribe !== subscribe) {
+            const retire = slot.unsubscribe;
+            if (typeof retire === 'function') retirements.push(() => {slot.unsubscribe = undefined;retire();});
+            slot.subscribe = subscribe;
+            setups.push(() => {slot.unsubscribe = subscribe(() => {dirty = true;});});
+          }
+          return getSnapshot();
+        },
+      };
+      internals.H = dispatcher;
+      try {tree = component(props);} finally {internals.H = previous;}
+      for (const retire of retirements) retire();
+      for (const setup of setups) setup();
+    } while (dirty);
+    return tree;
+  };
+  const unmount = (name: string) => {
+    const instance = instances.get(name);
+    if (!instance?.mounted) return;
+    instance.mounted = false;
+    instances.delete(name);
+    for (const slot of instance.slots) {
+      const retire = slot?.cleanup;
+      if (slot) slot.cleanup = undefined;
+      if (typeof retire === 'function') retire();
+      const unsubscribe = slot?.unsubscribe;
+      if (slot) slot.unsubscribe = undefined;
+      if (typeof unsubscribe === 'function') unsubscribe();
+    }
+  };
+  return {
+    mount, unmount,
+    /** Retires every mounted instance, last-created first, as a tree unmounts. */
+    unmountAll: () => {for (const name of [...instances.keys()].reverse()) unmount(name);},
+    /** Every instance's committed state, including retired ones, for a before/after compare. */
+    snapshot: () => JSON.stringify(all.map(instance => instance.slots.map(slot => slot?.value ?? slot?.ref ?? null))),
+  };
 };
 
 test('the four reading choices are the server SourceReadPreset values', () => {
@@ -43,36 +134,23 @@ test('the Remote sources page draws the add action and its empty state', async (
   // The page owns its reader in a layout pass, so a static render of the page only
   // draws its loading status. Drive the page's own pass, then draw the body it commits.
   const React = await import('react');
-  const internals = (React as any).__CLIENT_INTERNALS_DO_NOT_USE_OR_WARN_USERS_THEY_CANNOT_UPGRADE;
-  const previous = internals.H;
-  const slots: any[] = []; let cursor = 0, effects: (() => void)[] = [], dirty = false;
-  const changed = (deps: any[], old: any[]) => !old || deps.some((value, index) => value !== old[index]);
-  const dispatcher = {
-    useState(initial: any) {const i = cursor++;if (!(i in slots)) slots[i] = typeof initial === 'function' ? initial() : initial;
-      return [slots[i], (value: any) => {slots[i] = typeof value === 'function' ? value(slots[i]) : value;dirty = true;}];},
-    useRef(initial: any) {const i = cursor++;return slots[i] ??= {current: initial};},
-    useEffect(effect: () => void, deps: any[]) {const i = cursor++, old = slots[i];if (changed(deps, old)) {slots[i] = deps;effects.push(effect);}},
-    useLayoutEffect(effect: () => void, deps: any[]) {const i = cursor++, old = slots[i];if (changed(deps, old)) {slots[i] = deps;effects.push(effect);}},
-    useMemo(factory: () => any, deps: any[]) {const i = cursor++, old = slots[i];
-      if (changed(deps, old?.deps)) slots[i] = {deps, value: factory()};
-      return slots[i].value;},
-    useCallback(fn: any, deps: any[]) {const i = cursor++, old = slots[i];
-      if (changed(deps, old?.deps)) slots[i] = {deps, value: fn};
-      return slots[i].value;},
-  };
-  let tree: any;
+  const hooks = hookRuntime(React);
+  let requests = 0;
+  const api = {request: async () => {requests++; return emptySources();}} as never;
   try {
-    internals.H = dispatcher;
-    do {dirty = false;cursor = 0;effects = [];tree = RemoteSourcesPage({...pageProps});
-      for (const effect of effects) effect();
-    } while (dirty);
-  } finally {internals.H = previous;}
-  // The reader's own mount read is the server's empty source list.
-  await new Promise(resolve => setImmediate(resolve));
-  const markup = renderToStaticMarkup(tree);
-  assert.match(markup, /Add remote source/);
-  assert.match(markup, /No remote sources yet/);
-  assert.match(markup, /give Portico a folder on another computer/);
+    const tree: any = hooks.mount('page', RemoteSourcesPage, {...pageProps, api});
+    // The reader's own mount read is the server's empty source list.
+    await new Promise(resolve => setImmediate(resolve));
+    const markup = renderToStaticMarkup(tree);
+    assert.match(markup, /Add remote source/);
+    assert.match(markup, /No remote sources yet/);
+    assert.match(markup, /give Portico a folder on another computer/);
+    // The page retires that exact reader when it unmounts: a read afterwards starts nothing.
+    hooks.unmount('page');
+    const before = requests;
+    await tree.props.service.load();
+    assert.equal(requests, before, 'the page’s retired reader starts no read');
+  } finally {hooks.unmountAll();}
 });
 
 test('the source states and the blocked sentence have their drawn words', () => {
@@ -92,78 +170,78 @@ test('a hostile transport message is never shown; only a bounded source error is
   assert.equal(remoteErrorText(Object.assign(new Error('x'), {code: 'refresh_failed'})), defaultI18n.t('next.remoteSources.error.refreshFailed'));
 });
 
-test('saved Add handlers cannot adopt a reopened form lifetime', async t => {
+test('saved Add handlers cannot adopt a reopened or unmounted form lifetime', async () => {
   const React = await import('react');
   const {AddSourceDialog} = await import('../src/screens/settings/remote-sources/RemoteSourcesPage.tsx');
   // The drawn dialog asks the real phone media query; this is its narrowest boundary.
   const previousWindow = (globalThis as any).window;
   (globalThis as any).window = {matchMedia: () => ({matches: false, addEventListener() {}, removeEventListener() {}})};
-  t.after(() => {if (previousWindow === undefined) delete (globalThis as any).window; else (globalThis as any).window = previousWindow;});
-  // Execute the real dialog hooks and effects, retaining callbacks from open A.
-  const internals = (React as any).__CLIENT_INTERNALS_DO_NOT_USE_OR_WARN_USERS_THEY_CANNOT_UPGRADE;
-  const previous = internals.H;
-  // The drawn dialog mounts its loaded body as a second component, so each keeps
-  // its own hook slots across the passes of its own lifetime.
-  const passes = new Map<any, any[]>();
-  const changed = (deps: any[] | undefined, old: any[] | undefined) => !deps || !old || deps.some((value, index) => value !== old[index]);
-  const mount = (component: any, props: any) => {
-    const slots = passes.get(component) ?? passes.set(component, []).get(component)!;
-    let cursor = 0, effects: (() => void)[] = [], dirty = false, tree: any;
-    const dispatcher = {
-      useState(initial: any) {const i = cursor++;if (!(i in slots)) slots[i] = typeof initial === 'function' ? initial() : initial;
-        return [slots[i], (value: any) => {slots[i] = typeof value === 'function' ? value(slots[i]) : value;dirty = true;}];},
-      useRef(initial: any) {const i = cursor++;return slots[i] ??= {current: initial};},
-      useLayoutEffect(effect: () => void, deps: any[]) {const i = cursor++, old = slots[i];
-        if (changed(deps, old)) {slots[i] = deps;effects.push(effect);}},
-      useCallback(fn: any, deps: any[]) {const i = cursor++, old = slots[i];
-        if (changed(deps, old?.deps)) slots[i] = {deps, value: fn};
-        return slots[i].value;},
-      useEffect(effect: () => void, deps: any[]) {const i = cursor++, old = slots[i];
-        if (changed(deps, old)) {slots[i] = deps;effects.push(effect);}},
-      useMemo(factory: () => any, deps: any[]) {const i = cursor++, old = slots[i];
-        if (changed(deps, old?.deps)) slots[i] = {deps, value: factory()};
-        return slots[i].value;},
-      useSyncExternalStore(subscribe: (onChange: () => void) => () => void, getSnapshot: () => any) {
-        const i = cursor++;
-        if (!slots[i]) {slots[i] = {};effects.push(() => {subscribe(() => {dirty = true;});});}
-        return getSnapshot();},
-    };
-    do {dirty = false;cursor = 0;effects = [];internals.H = dispatcher;
-      try {tree = component(props);}
-      finally {internals.H = previous;}
-      for (const effect of effects) effect();
-    } while (dirty);
-    return tree;
-  };
+  // Execute the real dialog hooks and effects, so a lifetime ends only when the
+  // component's own cleanup says it does.
+  const hooks = hookRuntime(React);
   let io = 0, completions = 0, open = true;
   const service = {testConnection: async () => {io++;return {origin: 'https://a.example', rangeSupport: 'unknown'};},
     configure: async () => {io++;}, getSnapshot: () => ({sources: [], busy: false, ambiguous: false})} as any;
   const api = {request: async () => ({})} as never;
   // One identity per callback: the body's owned resources compare dependencies by identity.
   const isCurrent = () => true, reportError = () => completions++, onClose = () => completions++, onCreated = () => completions++;
+  const props = {service, api, serverId: 'server', viewerId: 'owner', isCurrent, reportError, onClose, onCreated};
+  // The drawn dialog mounts its loaded body as a second component, so each keeps
+  // its own hook slots and its own reader across the passes of its lifetime.
+  let reader: any;
   const render = () => {
-    const dialog = mount(AddSourceDialog, {service, api, serverId: 'server', viewerId: 'owner', open, isCurrent, reportError, onClose, onCreated});
-    return mount(dialog.type, {...dialog.props, open});
+    const dialog: any = hooks.mount('dialog', AddSourceDialog, {...props, open});
+    reader = dialog.props.libraries;
+    return hooks.mount('body', dialog.type, {...dialog.props, open});
   };
   const elements = (node: any): any[] => Array.isArray(node) ? node.flatMap(elements) : node && typeof node === 'object' && node.props ? [node, ...elements(node.props.children), ...elements(node.props.footer)] : [];
   const button = (tree: any, label: string) => elements(tree).find(node => node.props.children === defaultI18n.t(label as any));
-  let tree = render();
-  // The drawn wizard opens on what to connect; WebDAV is its default family.
-  button(tree, 'next.remoteSources.continue').props.onClick(); tree = render();
-  for (const [label, value] of [['name', 'A'], ['address', 'https://a.example'], ['password', 'secret-A']]) {
-    elements(tree).find(node => node.props.label === defaultI18n.t(`next.remoteSources.${label}` as any)).props.onChange({target: {value}});tree = render();
+  // The drawn wizard opens on what to connect; WebDAV is its default family, then
+  // the three fields the connection test and the save command both require.
+  const fill = (tree: any) => {
+    button(tree, 'next.remoteSources.continue').props.onClick(); tree = render();
+    for (const [label, value] of [['name', 'A'], ['address', 'https://a.example'], ['password', 'secret-A']] as const) {
+      elements(tree).find((node: any) => node.props.label === defaultI18n.t(`next.remoteSources.${label}` as any)).props.onChange({target: {value}});tree = render();
+    }
+    return tree;
+  };
+  try {
+    let tree = fill(render());
+    const oldTest = button(tree, 'next.remoteSources.test').props.onClick;
+    oldTest();await new Promise(resolve => setImmediate(resolve));tree = render();
+    const oldCreate = button(tree, 'next.remoteSources.saveAndContinue').props.onClick;
+    assert.equal(button(tree, 'next.remoteSources.saveAndContinue').props.disabled, false);
+    button(tree, 'next.remoteSources.back').props.onClick(); tree = render();
+    button(tree, 'next.remoteSources.cancel').props.onClick(); open = false; render(); open = true; tree = render();
+    const reopened = {io, completions, state: hooks.snapshot()};
+    oldTest();await oldCreate();await new Promise(resolve => setImmediate(resolve));
+    assert.equal(io, reopened.io, 'old form sends no provider test or mutation');
+    assert.equal(completions, reopened.completions, 'old form cannot close or complete successor');
+    assert.equal(hooks.snapshot(), reopened.state, 'successor hook state stays unchanged');
+    // A form still drawn, then unmounted rather than closed, retires through its
+    // own unmount cleanup: the live handler first proves the capture does act…
+    tree = fill(tree);
+    const liveTest = button(tree, 'next.remoteSources.test').props.onClick;
+    liveTest();await new Promise(resolve => setImmediate(resolve));tree = render();
+    assert.equal(io, reopened.io + 1, 'the drawn form does send its own provider test');
+    const retainedTest = button(tree, 'next.remoteSources.test').props.onClick;
+    const retainedCreate = button(tree, 'next.remoteSources.saveAndContinue').props.onClick;
+    hooks.unmount('body');
+    const unmounted = {io, completions, state: hooks.snapshot()};
+    retainedTest();await retainedCreate();await new Promise(resolve => setImmediate(resolve));
+    assert.equal(io, unmounted.io, 'an unmounted form sends no provider test or mutation');
+    assert.equal(completions, unmounted.completions, 'an unmounted form cannot close or complete a successor');
+    assert.equal(hooks.snapshot(), unmounted.state, 'an unmounted form changes no hook state');
+    // …and a new api retires the reader of the old one before its successor exists.
+    const retired = reader;
+    const replaced: any = hooks.mount('dialog', AddSourceDialog, {...props, api: {request: async () => ({})} as never, open: false});
+    assert.notEqual(replaced.props.libraries, retired, 'a new api gets its own reader');
+    assert.throws(() => retired.cancel(), /disposed/, 'the previous reader is disposed before its successor exists');
+    assert.doesNotThrow(() => replaced.props.libraries.cancel(), 'the successor reader is live');
+  } finally {
+    hooks.unmountAll();
+    if (previousWindow === undefined) delete (globalThis as any).window; else (globalThis as any).window = previousWindow;
   }
-  const oldTest = button(tree, 'next.remoteSources.test').props.onClick;
-  oldTest();await new Promise(resolve => setImmediate(resolve));tree = render();
-  const oldCreate = button(tree, 'next.remoteSources.saveAndContinue').props.onClick;
-  assert.equal(button(tree, 'next.remoteSources.saveAndContinue').props.disabled, false);
-  button(tree, 'next.remoteSources.back').props.onClick(); tree = render();
-  button(tree, 'next.remoteSources.cancel').props.onClick(); open = false; render(); open = true; tree = render();
-  const before = {io, completions, state: JSON.stringify([...passes.values()])};
-  oldTest();await oldCreate();await new Promise(resolve => setImmediate(resolve));
-  assert.equal(io, before.io, 'old form sends no provider test or mutation');
-  assert.equal(completions, before.completions, 'old form cannot close or complete successor');
-  assert.equal(JSON.stringify([...passes.values()]), before.state, 'successor hook state stays unchanged');
 });
 
 test('the imported rclone kind has its drawn words and its bound program error', () => {
