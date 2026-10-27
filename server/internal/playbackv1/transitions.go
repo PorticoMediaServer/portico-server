@@ -270,6 +270,10 @@ func (s *Service) PrepareNext(ctx context.Context, c Caller, id, ifMatch, key st
 		s.stopMedia(ctx, []string{media.ID})
 		return PreparedNext{}, notAllowed("not_rendered")
 	}
+	// The prepared view records the exact private presentation generation it
+	// was planned for. Commit keeps this captured generation instead of reading
+	// a newer plan, so a replanned row is refused rather than borrowed.
+	view.Generation = media.Generation
 	requestJSON, _ := json.Marshal(stored)
 	presentationJSON, _ := json.Marshal(view)
 	p := preparedRow{token: token, queue: q.id, device: c.DeviceID, key: key, digest: want, session: r.id, sessionState: r.state, entry: entry, item: item, media: media.ID,
@@ -390,6 +394,21 @@ func (s *Service) CommitNext(ctx context.Context, c Caller, id string, req Commi
 		if entry, _, found := l.entryAt(pos); !found || entry != p.entry {
 			return fail("queue_changed")
 		}
+		// The preparation recorded the exact private presentation generation it
+		// was planned for. Commit keeps that exact generation and refuses a row
+		// replanned after the preparation: the stored view no longer describes
+		// the newer plan, and borrowing it would commit bytes never prepared.
+		var view Presentation
+		if err = json.Unmarshal([]byte(p.presentation), &view); err != nil {
+			return err
+		}
+		var mediaGeneration int
+		if err = tx.QueryRowContext(ctx, `SELECT generation FROM playback_sessions WHERE id=? AND account_id=? AND profile_id=? AND state NOT IN('stopped','ended','failed')`, p.media, c.Principal.AccountID, c.Principal.ProfileID).Scan(&mediaGeneration); err != nil {
+			return err
+		}
+		if view.Generation < 1 || mediaGeneration != view.Generation {
+			return fail("source_changed")
+		}
 		// Refill only after validating the exact held next occurrence. The
 		// existing commit transaction transfers its single authority and also
 		// persists the following bounded radio keys under that same revision.
@@ -418,17 +437,6 @@ func (s *Service) CommitNext(ctx context.Context, c Caller, id string, req Commi
 		state := "playing"
 		if old.state == "paused" {
 			state = "paused"
-		}
-		var view Presentation
-		if err = json.Unmarshal([]byte(p.presentation), &view); err != nil {
-			return err
-		}
-		// The prepared presentation is a private playback_sessions row of its
-		// own. Its generation is the durable media generation the successor
-		// records; the presentation view carries the old session's generation.
-		var mediaGeneration int
-		if err = tx.QueryRowContext(ctx, `SELECT generation FROM playback_sessions WHERE id=? AND account_id=? AND profile_id=? AND state NOT IN('stopped','ended','failed')`, p.media, c.Principal.AccountID, c.Principal.ProfileID).Scan(&mediaGeneration); err != nil {
-			return err
 		}
 		requestJSON, _ := json.Marshal(struct {
 			storedRequest

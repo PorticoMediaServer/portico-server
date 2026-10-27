@@ -326,6 +326,41 @@ func TestPlaybackV1QueueTransitionFences(t *testing.T) {
 	}
 }
 
+// Spec §18.3: a replan of the private presentation between prepare and commit
+// changes the bytes the preparation described. Commit keeps the exact prepared
+// generation and refuses the drift instead of borrowing the newer plan.
+func TestPlaybackV1CommitNextRefusesPreparedGenerationDrift(t *testing.T) {
+	f, _ := renderingFixture(t, 3)
+	q := playingQueue(t, f, "drift-queue-0000001")
+	p := prepareNext(t, f, q, "drift-prepare-000001")
+	if p.Presentation.Generation < 1 {
+		t.Fatalf("prepared presentation carries no exact generation: %+v", p.Presentation)
+	}
+	// The replay of the same preparation is the stored view, and it conforms to
+	// the published prepare-next response.
+	w := f.raw("POST", "/v1/queues/"+q.Queue.ID+":prepare-next", f.owner.AccessToken, map[string]string{"If-Match": q.Queue.Revision, "Idempotency-Key": "drift-prepare-000001"}, map[string]any{"sessionId": q.Session.ID, "sessionGeneration": q.Session.Presentation.Generation})
+	if w.Code != 200 {
+		t.Fatalf("preparation replay: %d %s", w.Code, w.Body.String())
+	}
+	assertSpecResponse(t, "POST", "/v1/queues/{id}:prepare-next", w)
+	var media string
+	if err := f.db.QueryRow(`SELECT media_session_id FROM playback_v1_prepared WHERE token=?`, p.Token).Scan(&media); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := f.db.Exec(`UPDATE playback_sessions SET generation=generation+1 WHERE id=?`, media); err != nil {
+		t.Fatal(err)
+	}
+	w = f.raw("POST", "/v1/queues/"+q.Queue.ID+":commit-next", f.owner.AccessToken, nil, map[string]any{"token": p.Token})
+	if w.Code != 409 || !strings.Contains(w.Body.String(), `"code":"prepared_canceled"`) || !strings.Contains(w.Body.String(), `"reason":"source_changed"`) {
+		t.Fatalf("a replanned preparation committed: %d %s", w.Code, w.Body.String())
+	}
+	var now playbackv1.QueueView
+	f.call("GET", "/v1/queues/"+q.Queue.ID, nil, nil, 200, &now)
+	if now.Current == nil || now.Current.Position != 0 {
+		t.Fatalf("the queue moved: %+v", now.Current)
+	}
+}
+
 func updatePlaybackAssetSize(t *testing.T, f *v1Fixture, item catalogtest.Item) {
 	t.Helper()
 	var size int64

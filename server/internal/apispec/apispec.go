@@ -281,15 +281,8 @@ func (d Document) validate(schema map[string]any, v any, at string, out *[]strin
 			}
 		}
 		props, _ := schema["properties"].(map[string]any)
-		required := requiredFields(schema["required"])
 		for k, e := range t {
 			if p, ok := props[k].(map[string]any); ok {
-				if e == nil && !isRequired(required, k) {
-					// An optional member's explicit null is its absent value on
-					// the Go wire type (an omitempty pointer), so it adds no
-					// shape of its own and breaks none.
-					continue
-				}
 				d.validate(p, e, at+"."+k, out)
 			} else if closed, ok := schema["additionalProperties"].(bool); ok && !closed {
 				*out = append(*out, at+": unknown property "+k)
@@ -322,15 +315,6 @@ func compiledPattern(pattern string) (*regexp.Regexp, error) {
 	}
 	actual, _ := patternCache.LoadOrStore(pattern, re)
 	return actual.(*regexp.Regexp), nil
-}
-
-func isRequired(fields []string, name string) bool {
-	for _, field := range fields {
-		if field == name {
-			return true
-		}
-	}
-	return false
 }
 
 func requiredFields(raw any) []string {
