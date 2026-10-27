@@ -570,12 +570,18 @@ func (s *Service) browseSelect(request BrowseRequest) (BrowseResult, []browseRow
 			return out, nil, err
 		}
 	}
+	// A Reading continuation carries the exact total its first page counted for
+	// this revision. Counting here, before the signed cursor has been decoded,
+	// expiry-checked, scope-checked and anchored in the current ready scope,
+	// would charge every scroll of an unchanged Reading library for a whole
+	// eligible-set recount even when the cursor is refused moments later.
+	deferReadingCount := compiler.reading != nil && request.Cursor != ""
 	// A posted query's total is exact: it is counted when the list opens (a pass
 	// over the query's matches, the price of an ad hoc filter) and carried in
 	// the signed cursor, so later pages don't count again.
 	var total int
 	counted := false
-	if request.Query == nil || summary.exact {
+	if !deferReadingCount && (request.Query == nil || summary.exact) {
 		if summary.exact {
 			total = summary.total
 		} else if err = s.read().QueryRow(`SELECT count(*) FROM catalog_browse_rows e WHERE `+where, args...).Scan(&total); err != nil {
@@ -628,9 +634,14 @@ func (s *Service) browseSelect(request BrowseRequest) (BrowseResult, []browseRow
 		}
 	}
 	if !counted {
-		// A posted filter counts at most one match past the threshold; the
-		// count, the cache and the cursor carry that capped number.
-		if cached, hit := s.cachedBrowseTotal(revision); hit {
+		if request.Query == nil {
+			// An unfiltered Reading continuation whose cursor cannot carry the
+			// total (a page from before totals were carried, or a zero/absent
+			// count) still owes the exact total, never the capped filter count.
+			if err = s.read().QueryRow(`SELECT count(*) FROM catalog_browse_rows e WHERE `+where, args...).Scan(&total); err != nil {
+				return out, nil, err
+			}
+		} else if cached, hit := s.cachedBrowseTotal(revision); hit {
 			total = cached
 		} else if err = s.read().QueryRow(`SELECT count(*) FROM (SELECT 1 FROM catalog_browse_rows e WHERE `+where+` LIMIT `+strconv.Itoa(browseTotalThreshold+1)+`)`, args...).Scan(&total); err != nil {
 			return out, nil, err
