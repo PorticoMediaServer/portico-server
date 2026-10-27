@@ -237,3 +237,59 @@ func TestCastAcceptanceAndRenewalNeverCrossBootstrapLineage(t *testing.T) {
 		t.Fatal("stale original token recovered accepted replacement")
 	}
 }
+
+func TestCastRejectedNewSenderCannotReplaceAcceptedTarget(t *testing.T) {
+	for _, kind := range []string{"expired_offer", "cancelled_offer", "revoked_sender"} {
+		t.Run(kind, func(t *testing.T) {
+			f := socialHTTP(t)
+			second := f.deviceFor(f.owner.Viewer.AccountID, f.owner.Viewer.ProfileID, f.owner.Viewer.Role, "replacement-phone")
+			var first social.CastBootstrapResponse
+			f.decode(f.as(f.token, "POST", "/v1/cast/bootstrap", social.CastBootstrapRequest{ProtocolVersion: social.Protocol, ReceiverID: "sdk-tv-1"}), 201, &first)
+			var accepted social.CastReceiverSession
+			f.decode(f.as("", "POST", "/v1/cast/redeem", social.CastRedeemRequest{ProtocolVersion: social.Protocol, Code: first.Bootstrap.Code, ExpectedBootstrapID: first.Bootstrap.ID, DeviceID: "refused-tv"}), 200, &accepted)
+			proof := strings.Repeat("a", 48)
+			var bound social.CastControllerResponse
+			f.decode(f.as(accepted.Session.AccessToken, "POST", "/v1/cast/controllers/register", social.CastControllerRegister{BootstrapID: first.Bootstrap.ID, ControlToken: proof}), 200, &bound)
+			f.decode(f.as(f.token, "POST", "/v1/cast/controllers/validate", social.CastControllerValidation{Binding: bound.Binding, AttemptID: "preserve-ticket"}), 200, &social.CastControllerResponse{})
+			var next social.CastBootstrapResponse
+			f.decode(f.as(second.AccessToken, "POST", "/v1/cast/bootstrap", social.CastBootstrapRequest{ProtocolVersion: social.Protocol, ReceiverID: "sdk-tv-1"}), 201, &next)
+			var err error
+			switch kind {
+			case "expired_offer":
+				_, err = f.db.Exec(`UPDATE social_cast_bootstraps SET expires_at_ms=0 WHERE id=?`, next.Bootstrap.ID)
+			case "cancelled_offer":
+				_, err = f.db.Exec(`UPDATE social_cast_bootstraps SET state='cancelled' WHERE id=?`, next.Bootstrap.ID)
+			case "revoked_sender":
+				_, err = f.db.Exec(`UPDATE authorization_session_families SET revoked=1 WHERE id=?`, second.SessionFamilyID)
+			}
+			if err != nil {
+				t.Fatal(err)
+			}
+			type graph struct {
+				token, bootstrap, family, controller, targetFamily, ticket, attempt, receiverState string
+				generation, ticketExpiry                                                           int64
+			}
+			read := func() graph {
+				var g graph
+				err := f.db.QueryRow(`SELECT d.token_digest,d.bootstrap_id,d.session_family_id,d.generation,c.id,c.target_family_id,c.ticket_digest,c.ticket_attempt,c.ticket_expires_ms,r.state FROM social_cast_devices d JOIN social_cast_controllers c ON c.target_id=d.id JOIN social_receivers r ON r.id=d.receiver_id WHERE d.id=?`, accepted.Device.ID).Scan(&g.token, &g.bootstrap, &g.family, &g.generation, &g.controller, &g.targetFamily, &g.ticket, &g.attempt, &g.ticketExpiry, &g.receiverState)
+				if err != nil {
+					t.Fatal(err)
+				}
+				return g
+			}
+			before := read()
+			for _, request := range []struct {
+				path string
+				body any
+			}{{"/v1/cast/preview", social.CastPreviewRequest{ProtocolVersion: social.Protocol, Code: next.Bootstrap.Code, DeviceID: "refused-tv"}}, {"/v1/cast/redeem", social.CastRedeemRequest{ProtocolVersion: social.Protocol, Code: next.Bootstrap.Code, ExpectedBootstrapID: next.Bootstrap.ID, DeviceID: "refused-tv"}}} {
+				if w := f.as("", "POST", request.path, request.body); w.Code == 200 {
+					t.Fatalf("%s accepted %s", request.path, kind)
+				}
+				if after := read(); after != before {
+					t.Fatalf("%s changed accepted graph: %+v", request.path, after)
+				}
+			}
+			f.decode(f.as(accepted.Session.AccessToken, "POST", "/v1/cast/controllers/check", social.CastControllerCheck{BindingID: bound.Binding.ID, ControlToken: proof}), 200, &social.CastControllerResponse{})
+		})
+	}
+}
