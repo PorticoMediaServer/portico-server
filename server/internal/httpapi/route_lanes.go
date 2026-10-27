@@ -543,6 +543,7 @@ var routeLanes = map[string]string{
 	"POST /v1/cast/controllers/register":                                          "default",
 	"POST /v1/cast/controllers/validate":                                          "default",
 	"POST /v1/cast/reconnect":                                                     "default",
+	"POST /v1/cast/preview":                                                       "default",
 	"POST /v1/cast/redeem":                                                        "default",
 	"POST /v1/channels/preferences":                                               "browsing",
 	"POST /v1/collections/{id}/items:batch":                                       "browsing",

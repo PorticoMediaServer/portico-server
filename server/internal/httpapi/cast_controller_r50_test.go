@@ -1,9 +1,11 @@
 package httpapi
 
 import (
+	"portico.local/server/internal/identity"
 	"portico.local/server/internal/social"
 	"strings"
 	"testing"
+	"time"
 )
 
 // Source regression for Release's normal checkpoint: no execution in the
@@ -13,7 +15,7 @@ func TestReturningCastControllerRequiresOriginalAndCurrentBothFamilies(t *testin
 	var boot social.CastBootstrapResponse
 	f.decode(f.as(f.token, "POST", "/v1/cast/bootstrap", social.CastBootstrapRequest{ProtocolVersion: social.Protocol, ReceiverID: "sdk-tv-1"}), 201, &boot)
 	var target social.CastReceiverSession
-	f.decode(f.as("", "POST", "/v1/cast/redeem", social.CastRedeemRequest{ProtocolVersion: social.Protocol, Code: boot.Bootstrap.Code, DeviceID: "cast-r50"}), 200, &target)
+	f.decode(f.as("", "POST", "/v1/cast/redeem", social.CastRedeemRequest{ProtocolVersion: social.Protocol, Code: boot.Bootstrap.Code, ExpectedBootstrapID: boot.Bootstrap.ID, DeviceID: "cast-r50"}), 200, &target)
 	var registered social.CastControllerResponse
 	proof := strings.Repeat("a", 48)
 	f.decode(f.as(target.Session.AccessToken, "POST", "/v1/cast/controllers/register", social.CastControllerRegister{BootstrapID: boot.Bootstrap.ID, ControlToken: proof}), 200, &registered)
@@ -38,11 +40,30 @@ func TestReturningCastControllerRequiresOriginalAndCurrentBothFamilies(t *testin
 		t.Fatalf("invented ticket: %d", w.Code)
 	}
 	// A replacement receiver family/generation cannot recover the original proof.
+	expired := time.Now().Add(-time.Minute).UTC().Format(time.RFC3339)
+	if _, err := f.db.Exec(`UPDATE authorization_family_tokens SET expires_at=? WHERE token_hash=?; UPDATE authorization_access SET expires_at=? WHERE hash=?`, expired, identity.Digest(target.Session.AccessToken), expired, identity.Digest(target.Session.AccessToken)); err != nil {
+		t.Fatal(err)
+	}
 	var renewed social.CastReceiverSession
 	f.decode(f.as("", "POST", "/v1/cast/reconnect", social.CastReconnectRequest{ProtocolVersion: social.Protocol, DeviceToken: target.DeviceToken, DeviceID: "cast-r50"}), 200, &renewed)
 	if w := f.as(f.token, "POST", "/v1/cast/controllers/validate", validate); w.Code != 403 {
 		t.Fatalf("replaced target validation: %d", w.Code)
 	}
+	// The carried binding is checked under the successor, while old tickets
+	// and the retired target bearer cannot be replayed.
+	var carried social.CastControllerResponse
+	f.decode(f.as(renewed.Session.AccessToken, "POST", "/v1/cast/controllers/check", social.CastControllerCheck{BindingID: registered.Binding.ID, ControlToken: proof}), 200, &carried)
+	if carried.Binding.TargetFamilyID == registered.Binding.TargetFamilyID || carried.Binding.TargetGeneration == registered.Binding.TargetGeneration {
+		t.Fatal("target binding did not rotate")
+	}
+	if w := f.as(target.Session.AccessToken, "POST", "/v1/cast/controllers/check", social.CastControllerCheck{BindingID: registered.Binding.ID, ControlToken: proof}); w.Code == 200 {
+		t.Fatal("old bearer accepted")
+	}
+	oldTicket := social.CastControllerCheck{BindingID: registered.Binding.ID, ControlToken: proof, AttemptID: result.AttemptID, Ticket: result.Ticket}
+	if w := f.as(renewed.Session.AccessToken, "POST", "/v1/cast/controllers/check", oldTicket); w.Code == 200 {
+		t.Fatal("old ticket crossed rotation")
+	}
+	f.decode(f.as(f.token, "POST", "/v1/cast/controllers/validate", social.CastControllerValidation{Binding: carried.Binding, AttemptID: "renew-1"}), 200, &social.CastControllerResponse{})
 	// Refusal leaves actual target state alone; no Stop/queue/media grant exists here.
 	var state string
 	if e := f.db.QueryRow(`SELECT state FROM social_cast_devices WHERE id=?`, target.Device.ID).Scan(&state); e != nil || state != "active" {

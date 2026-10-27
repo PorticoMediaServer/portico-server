@@ -18,7 +18,7 @@ func TestRevokedSignerCannotRedeemOrReconnectACastTarget(t *testing.T) {
 			f.decode(f.as(f.token, "POST", "/v1/cast/bootstrap", social.CastBootstrapRequest{ProtocolVersion: social.Protocol, DisplayName: "Screen"}), 201, &bootstrap)
 			var screen social.CastReceiverSession
 			if stage == "reconnect" {
-				f.decode(f.as("", "POST", "/v1/cast/redeem", social.CastRedeemRequest{ProtocolVersion: social.Protocol, Code: bootstrap.Bootstrap.Code, DeviceID: "cast-revoked"}), 200, &screen)
+				f.decode(f.as("", "POST", "/v1/cast/redeem", social.CastRedeemRequest{ProtocolVersion: social.Protocol, Code: bootstrap.Bootstrap.Code, ExpectedBootstrapID: bootstrap.Bootstrap.ID, DeviceID: "cast-revoked"}), 200, &screen)
 			}
 			tx, err := f.db.Begin()
 			if err != nil {
@@ -36,7 +36,7 @@ func TestRevokedSignerCannotRedeemOrReconnectACastTarget(t *testing.T) {
 			}
 			var status int
 			if stage == "redeem" {
-				status = f.as("", "POST", "/v1/cast/redeem", social.CastRedeemRequest{ProtocolVersion: social.Protocol, Code: bootstrap.Bootstrap.Code, DeviceID: "cast-revoked"}).Code
+				status = f.as("", "POST", "/v1/cast/redeem", social.CastRedeemRequest{ProtocolVersion: social.Protocol, Code: bootstrap.Bootstrap.Code, ExpectedBootstrapID: bootstrap.Bootstrap.ID, DeviceID: "cast-revoked"}).Code
 			} else {
 				status = f.as("", "POST", "/v1/cast/reconnect", social.CastReconnectRequest{ProtocolVersion: social.Protocol, DeviceToken: screen.DeviceToken, DeviceID: "cast-revoked"}).Code
 			}

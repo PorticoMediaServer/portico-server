@@ -343,6 +343,41 @@
    * token; a transport failure or 5xx is retried once with the identical request (the same
    * Idempotency-Key, If-Match or timeline sequence), which the server treats as the same request. */
   var PAIRING_ENDED = ['cast_device_revoked', 'cast_device_not_found', 'cast_device_expired'];
+  var renewalFlight=null,renewalOffer=null,renewedStampRequired=false;
+  function sameRenewalBinding(oldBinding,nextBinding){
+    if(!oldBinding||!nextBinding||!oldBinding.scope||!nextBinding.scope)return false;
+    return ['id','bootstrapId','receiverId','targetId'].every(function(k){return oldBinding[k]===nextBinding[k];})&&
+      ['serverId','authority','accountId','profileId','senderDeviceId','senderFamilyId'].every(function(k){return oldBinding.scope[k]===nextBinding.scope[k];})&&
+      typeof nextBinding.targetFamilyId==='string'&&nextBinding.targetFamilyId!==oldBinding.targetFamilyId&&/^\d+$/.test(nextBinding.targetGeneration)&&Number(nextBinding.targetGeneration)>Number(oldBinding.targetGeneration);
+  }
+  async function renewReceiver(credential,origin,originalScope,originalToken){
+    if(renewalFlight){if(renewalFlight.credential!==credential)throw new Error('receiver_replaced');return renewalFlight.promise;}
+    var sender=controllerSender,connection=sender&&capturePairConnection(sender),binding=controllerBinding,proof=controllerToken,generation=controllerGeneration,wasPresent=controllerPresent;
+    var flight={credential:credential};renewalFlight=flight;
+    flight.promise=(async function(){
+      var renewed;
+      try{renewed=await post('/v1/cast/reconnect',{protocolVersion:PROTOCOL,deviceToken:originalToken,deviceId:deviceId()},undefined,origin);}
+      catch(refused){if(PAIRING_ENDED.indexOf(refused.code)>=0)refused.pairingEnded=true;throw refused;}
+      if(session!==credential||base!==origin||scope!==originalScope)throw new Error('receiver_replaced');
+      if(!renewed.session||!renewed.session.accessToken||!renewed.deviceToken||!renewed.scope||renewed.scope.accountId!==originalScope.accountId||renewed.scope.profileId!==originalScope.profileId||renewed.scope.authority!==originalScope.authority||JSON.stringify(renewed.scope.capabilities)!==JSON.stringify(originalScope.capabilities)){var changed=new Error('pairing_scope_changed');changed.pairingEnded=true;throw changed;}
+      var same=wasPresent&&connection&&pairConnectionCurrent(connection)&&sender===controllerSender&&binding===controllerBinding&&proof===controllerToken&&generation===controllerGeneration;
+      var previousStamp=same?controllerStamp(captureController(sender,false)):null;
+      controllerGeneration++;adoptionGeneration++;controllerPresent=false;renewalOffer=null;renewedStampRequired=true;
+      session=renewed.session;scope=renewed.scope;writeToken(renewed.deviceToken);
+      if(same&&binding&&proof){
+        try{
+          var checked=await post('/v1/cast/controllers/check',{bindingId:binding.id,controlToken:proof},session.accessToken,origin);
+          if(session!==renewed.session||scope!==renewed.scope||base!==origin||controllerSender!==sender||controllerBinding!==binding||controllerToken!==proof||controllerGeneration!==generation+1||!pairConnectionCurrent(connection)||!sameRenewalBinding(binding,checked.binding))throw new Error('controller_retired');
+          var next=checked.binding,offer={id:'renew-'+token(16),sender:sender,connection:connection,binding:next,proof:proof,session:session,scope:scope,origin:base,generation:controllerGeneration};
+          controllerBinding=next;renewalOffer=offer;
+          offer.timer=setTimeout(function(){if(renewalOffer===offer){renewalOffer=null;send(sender,{type:'pair-required'});}},15000);
+          send(sender,{type:'renewal-offer',attemptId:offer.id,binding:next,previousController:previousStamp,controller:controllerStamp(captureController(sender,false))});
+        }catch(_){if(session===renewed.session&&controllerSender===sender)send(sender,{type:'pair-required'});}
+      }
+      return renewed;
+    })();
+    try{return await flight.promise;}finally{if(renewalFlight===flight)renewalFlight=null;}
+  }
   async function api(path, options, lease,installation) {
     options=options||{};requireLease(lease);requirePairInstallation(installation,true);
     var credential=lease?lease.session:session,origin=lease?lease.origin:base,originalScope=lease?lease.scope:scope;
@@ -351,6 +386,8 @@
       requireLease(lease);requirePairInstallation(installation,true);
       if(!credential||(!lease&&(session!==credential||base!==origin||scope!==originalScope)))throw new Error('receiver_replaced');
       var answer=await request(path,Object.assign({},options,{origin:origin,bearer:lease?lease.bearer:credential.accessToken}));
+      // Observe an actual response before a lifetime fence can discard it.
+      if(options.observeAnswer)options.observeAnswer(answer);
       if(lease&&!leaseCurrent(lease)){
         var retired=new Error('controller_retired');retired.retired=true;
         if(path==='/v1/playback/sessions'&&(options.method===undefined||options.method==='POST')&&answer.status!==202&&answer.body&&typeof answer.body.id==='string'&&/^[A-Za-z0-9._:-]{1,128}$/.test(answer.body.id))retired.acceptedOccurrenceId=answer.body.id;
@@ -364,17 +401,11 @@
     catch(e){
       if(e.retired)throw e;
       requireLease(lease);requirePairInstallation(installation,true);
-      // A command belongs to an exact receiver family/generation. Reconnect
-      // rotates that family, so it cannot silently retry with the new one.
-      if(e.status===401&&originalToken&&!lease&&!installation){
-        if(session!==credential||base!==origin||scope!==originalScope)throw new Error('receiver_replaced');
-        var renewed;
-        try{renewed=await post('/v1/cast/reconnect',{protocolVersion:PROTOCOL,deviceToken:originalToken,deviceId:deviceId()},undefined,origin);}
-        catch(refused){if(PAIRING_ENDED.indexOf(refused.code)>=0)refused.pairingEnded=true;throw refused;}
-        if(session!==credential||base!==origin||scope!==originalScope)throw new Error('receiver_replaced');
-        if(!renewed.scope||renewed.scope.accountId!==originalScope.accountId||renewed.scope.profileId!==originalScope.profileId||renewed.scope.authority!==originalScope.authority){var changed=new Error('pairing_scope_changed');changed.pairingEnded=true;throw changed;}
-        controllerGeneration++;adoptionGeneration++;controllerPresent=false;
-        session=renewed.session;scope=renewed.scope;writeToken(renewed.deviceToken);
+      // Never replay a command captured under the retired bearer. A fresh
+      // command can follow the correlated renewal acknowledgment.
+      if(e.status===401&&originalToken&&!installation&&!options.noRenew){
+        await renewReceiver(credential,origin,originalScope,originalToken);
+        if(lease){var retired=new Error('controller_retired');retired.retired=true;throw retired;}
         credential=session;originalScope=scope;return attempt();
       }
       if(e.retired||e.message==='receiver_replaced'||e.status&&e.status<500)throw e;
@@ -507,8 +538,11 @@
   }
 
   /** Redeem a code with a server without touching the current pairing (kept until the new one is adopted). */
-  function redeemAt(origin, code) {
-    return post('/v1/cast/redeem', {protocolVersion:PROTOCOL,code:code,deviceId:deviceId()}, undefined, origin);
+  function previewAt(origin, code) {
+    return post('/v1/cast/preview', {protocolVersion:PROTOCOL,code:code,deviceId:deviceId()}, undefined, origin);
+  }
+  function redeemAt(origin, code, expectedBootstrapId) {
+    return post('/v1/cast/redeem', {protocolVersion:PROTOCOL,code:code,deviceId:deviceId(),expectedBootstrapId:expectedBootstrapId}, undefined, origin);
   }
   /** Make a redeemed pairing current: stop what's playing, forget the old credential, adopt the new one. */
   async function switchTo(result, origin,installation) {
@@ -524,8 +558,12 @@
   }
   /** Pairing by typing a code: only offered when the page is opened in an ordinary browser. */
   async function redeem(code) {
-    var result = await redeemAt(base, code);
-    return switchTo(result, base);
+    var origin=base, beforeSession=session, beforeScope=scope, beforeGeneration=controllerGeneration, beforePlayback=playback;
+    var offer=await previewAt(origin,code);
+    if(base!==origin||session!==beforeSession||scope!==beforeScope||controllerGeneration!==beforeGeneration||playback!==beforePlayback)throw new Error('receiver_replaced');
+    var result=await redeemAt(origin,code,offer.controllerBootstrapId);
+    if(base!==origin||session!==beforeSession||scope!==beforeScope||controllerGeneration!==beforeGeneration||playback!==beforePlayback){discardPair({origin:origin,result:result});throw new Error('receiver_replaced');}
+    return switchTo(result, origin);
   }
 
   // A Cast device (Chromecast, Google TV) has no keyboard: the code box is only for this page opened
@@ -768,42 +806,62 @@
     // delivers a styled or image track burned into the picture.
     if (subtitleTrackId === 'off') body.subtitles = {trackId: null};
     else if (typeof subtitleTrackId === 'string' && /^[A-Za-z0-9._:-]{1,128}$/.test(subtitleTrackId)) body.subtitles = {trackId: subtitleTrackId};
-    var key = token(16), deadline = Date.now() + 110000, answer;
+    var key = token(16), answer, preparingIdentity=null, startSession=session, startScope=scope, startOrigin=base;
+    function requireStart(){requireLease(lease);if(session!==startSession||scope!==startScope||base!==startOrigin)throw new Error('receiver_replaced');}
     if(queue&&queue.transferId){
       var captured=transferStarts.get(queue.transferId);
       if(!captured)throw new Error('cast_transfer_required');
       if(captured.body)body=captured.body;else captured.body=Object.freeze(body);
       key='cast-'+queue.transferId;
     }
-    // 202: the server is still preparing; the identical request is repeated until it answers.
-    for (;;) {
-      try{answer = await api('/v1/playback/sessions', {body: body, headers: {'Idempotency-Key': key}},lease);}
-      catch(e){
-        // A parsed accepting response is not an unknown result. Clean up only
-        // its exact newly created occurrence under the original credential;
-        // the original Root42 transfer/receipt record is never rewritten.
-        if(lease&&e.acceptedOccurrenceId)await cleanupOccurrence(e.acceptedOccurrenceId,lease);
-        throw e;
+    var cleanupWitness={origin:startOrigin,bearer:startSession&&startSession.accessToken},ownedStart=null;
+    function observeStart(result){
+      var value=result.body;
+      if(result.status!==202){
+        if(value&&typeof value.id==='string'&&/^[A-Za-z0-9._:-]{1,128}$/.test(value.id)&&!ownedStart)ownedStart={id:value.id,generation:value.presentation&&value.presentation.generation};
+        return;
       }
-      if (answer.status !== 202) break;
-      preparing();
-      var delay = Math.min(10000, Math.max(250, Number(answer.body.retryAfterMs) || 1000));
-      if (Date.now() + delay > deadline) throw new Error('preparation_timeout');
-      await wait(delay);requireLease(lease);
+      var retry=value&&value.retryAfterMs;
+      if(!value||typeof value!=='object'||Array.isArray(value)||!Number.isSafeInteger(retry)||retry<1||retry>10000){var bad=new Error('invalid_preparation');bad.retired=true;throw bad;}
+      if(Object.keys(value).length===1&&Object.prototype.hasOwnProperty.call(value,'retryAfterMs'))return;
+      var p=value.presentation,l=value.lease,q=value.queue;
+      if(typeof value.id!=='string'||!/^[A-Za-z0-9._:-]{1,128}$/.test(value.id)||typeof value.revision!=='string'||!value.revision||typeof value.kind!=='string'||typeof value.role!=='string'||value.state!=='preparing'||!l||typeof l.expiresAt!=='string'||!Number.isSafeInteger(l.reportEveryMs)||!preparingPresentationValid(p)||(body.queue?(!q||q.queueId!==body.queue.queueId||q.entryId!==body.queue.entryId):value.itemId!==body.itemId)){var malformed=new Error('invalid_preparation');malformed.retired=true;throw malformed;}
+      if(ownedStart&&(ownedStart.id!==value.id||ownedStart.generation!==p.generation)){var replaced=new Error('preparation_replaced');replaced.retired=true;throw replaced;}
+      ownedStart={id:value.id,generation:p.generation};preparingIdentity=ownedStart;
     }
-    requireLease(lease);stopPreparing();
-    var started = answer.body;
-    if (!started || !started.presentation) throw new Error('playback_not_ready');
-    if(started.state==='ended')throw new Error('session_ended');
-    var artTimer, image;
-    try { image = await Promise.race([art, new Promise(function(resolve){artTimer=setTimeout(function(){resolve('');},1500);})]); }
-    finally { clearTimeout(artTimer); }
-    var load;
-    try { requireLease(lease);if(playback!==previousOwner)throw new Error('occurrence_replaced');meta=requestedMeta;load = loadRequest(started, image, true,lease); }
-    catch (e) { if(lease)await cleanupOccurrence(started.id,lease);else await api(sessionPath(started.id),{method:'DELETE'}).catch(function(){});throw e; }
+    try {
+      // A valid 202 keeps the original request and its cleanup witness alive.
+      for (;;) {
+        requireStart();
+        answer=await api('/v1/playback/sessions',{body:body,headers:{'Idempotency-Key':key},noRenew:true,observeAnswer:observeStart},lease);
+        if(answer.status!==202)break;
+        preparing();await wait(Math.max(250,answer.body.retryAfterMs));requireStart();
+      }
+      requireStart();stopPreparing();
+      var started=answer.body;
+      if(!started||!started.presentation)throw new Error('playback_not_ready');
+      if(preparingIdentity&&(preparingIdentity.id!==started.id||preparingIdentity.generation!==started.presentation.generation))throw new Error('preparation_replaced');
+      if(started.state==='ended')throw new Error('session_ended');
+      var artTimer,image;
+      try{image=await Promise.race([art,new Promise(function(resolve){artTimer=setTimeout(function(){resolve('');},1500);})]);}
+      finally{clearTimeout(artTimer);}
+      requireStart();if(playback!==previousOwner)throw new Error('occurrence_replaced');
+      meta=requestedMeta;var load=loadRequest(started,image,true,lease);
+    }catch(e){
+      if(ownedStart)await cleanupOccurrence(ownedStart.id,cleanupWitness);
+      throw e;
+    }
+
     playback = track(started);
     reportSeq = 0; reportFailures = 0;
     return load;
+  }
+  // Validate the parts of the preparing session used for continuation. A
+  // retry-only response cannot smuggle a partial session as a resource.
+  function preparingPresentationValid(p){
+    if(!p||typeof p!=='object'||Array.isArray(p)||!Number.isSafeInteger(p.generation)||p.generation<1||typeof p.mode!=='string'||typeof p.url!=='string'||typeof p.engine!=='string'||!Number.isSafeInteger(p.startPositionMs)||!Array.isArray(p.subtitles)||!p.decision||typeof p.decision!=='object'||Array.isArray(p.decision))return false;
+    if(!p.subtitles.every(function(t){return t&&typeof t==='object'&&!Array.isArray(t)&&typeof t.timeDomain==='string'&&Number.isSafeInteger(t.offsetMs)&&typeof t.trackId==='string'&&typeof t.format==='string'&&typeof t.url==='string';}))return false;
+    return ['audio','video','subtitles'].every(function(k){var d=p.decision[k];return d===undefined||d&&typeof d==='object'&&!Array.isArray(d)&&typeof d.action==='string'&&Array.isArray(d.reasons)&&d.reasons.every(function(r){return typeof r==='string';})&&(d.to===undefined||typeof d.to==='string')&&(d.channels===undefined||Number.isSafeInteger(d.channels));});
   }
   function startPlayback(itemId,startSeconds,identity,subtitleTrackId,queue,lease) { return commandQueue(lease,async function(){
     requireLease(lease);recoveries=0;
@@ -960,13 +1018,13 @@
   }
   function denyPending(code) {
     var p = pendingPair; if (!p) return;
-    pendingPair = null; clearTimeout(p.timer); hideTakeover();discardPair(p);
+    pendingPair = null; clearTimeout(p.timer); hideTakeover();p.code='';
     send(p.senderId, {type: 'pair-failed', code: code || 'tv_busy', message: pairingMessage({code: code || 'tv_busy'})});
   }
   function allowPending() {
     var p = pendingPair; if (!p) return;
     pendingPair = null; clearTimeout(p.timer); hideTakeover();
-    serial(function () { return takeControl(p.senderId, p.origin, p.result,p.connection); }).catch(function (error) {
+    serial(function () { return takeControl(p); }).catch(function (error) {
       send(p.senderId, {type: 'pair-failed', code: error.code || '', message: pairingMessage(error)});
     });
   }
@@ -989,9 +1047,16 @@
     if(owner!==playback||!isController(senderId))return;
     send(senderId,Object.assign(statusBody(lease),attemptId?{attemptId:attemptId}:{}));
   }
-  async function takeControl(senderId, origin, result,connection) {
+  var offerSequence=0;
+  function offerCurrent(offer){return offer.sequence===offerSequence&&pairConnectionCurrent(offer.connection)&&offer.owner===controllerSender&&offer.generation===controllerGeneration&&offer.session===session&&offer.scope===scope&&offer.base===base&&offer.binding===controllerBinding&&offer.proof===controllerToken&&offer.playback===playback&&offer.present===controllerPresent;}
+  async function takeControl(offer) {
+    var result=null,senderId=offer.senderId,origin=offer.origin,connection=offer.connection;
     try{
-      if(!pairConnectionCurrent(connection))throw new Error('controller_retired');
+      if(!offerCurrent(offer)||offer.accepted)throw new Error('controller_retired');
+      offer.accepted=true;
+      result=await redeemAt(origin,offer.code,offer.result.controllerBootstrapId);
+      offer.code='';
+      if(!offerCurrent(offer))throw new Error('controller_retired');
       var previous=controllerSender,generation=++controllerGeneration;adoptionGeneration++;controllerPresent=false;
       var installation=Object.freeze({connection:connection,generation:generation,result:result,origin:origin});
       await switchTo(result,origin,installation);requirePairInstallation(installation,true);
@@ -1002,37 +1067,33 @@
         binding=registered.body.binding;
       }
       requirePairInstallation(installation,true);
-      controllerToken=proof;controllerBinding=binding;controllerSender=senderId;controllerPresent=true;
+      controllerToken=proof;controllerBinding=binding;controllerSender=senderId;controllerPresent=true;renewedStampRequired=false;
       if(previous&&previous!==senderId)send(previous,{type:'replaced'});
       send(senderId,{type:'paired',controlToken:proof,binding:binding,controller:controllerStamp(captureController(senderId,false))});
-    }catch(error){discardPair({origin:origin,result:result});throw error;}
+    }catch(error){offer.code='';if(result)discardPair({origin:origin,result:result});throw error;}
   }
-  /** A pair request: redeem first (keeping the current pairing), then decide whether to switch now or ask. */
   function handlePair(senderId, message,connection) {
     if(!pairConnectionCurrent(connection)){send(senderId,{type:'pair-failed',code:'pair_failed'});return;}
     var named = serverOrigin(message.origin);
     if (named === null) { send(senderId, {type: 'pair-failed', code: 'origin_refused', message: pairingMessage({code:'origin_refused'})}); return; }
-    var requester = requesterName(message, senderId);
-    var code = String(message.code || '').trim().toUpperCase();
-    redeemAt(named, code).then(function (result) {
-      if(!pairConnectionCurrent(connection)){discardPair({origin:named,result:result});return;}
-      var sameViewer = !!(scope && result.scope && result.scope.accountId === scope.accountId && result.scope.profileId===scope.profileId && result.scope.authority===scope.authority && named === base);
-      var busy = !!playback && controllerSender !== senderId && !sameViewer;
-      if (!busy) return serial(function () { return takeControl(senderId, named, result,connection); });
-      if (pendingPair) denyPending('tv_busy');
-      pendingPair = {connection:connection,senderId: senderId, requester: requester, origin: named, result: result, timer: null};
-      send(senderId, {type: 'pair-pending'});
-      var here = !!controllerSender && controllerPresent;
-      askTakeover(requester, here);
-      if (here) {
+    var requester=requesterName(message,senderId), code=String(message.code||'').trim().toUpperCase();
+    if(pendingPair)denyPending('tv_busy');
+    var offer={sequence:++offerSequence,connection:connection,senderId:senderId,requester:requester,origin:named,code:code,owner:controllerSender,generation:controllerGeneration,session:session,scope:scope,base:base,binding:controllerBinding,proof:controllerToken,playback:playback,present:controllerPresent};
+    previewAt(named,code).then(function(result){
+      if(!offerCurrent(offer))throw new Error('controller_retired');
+      offer.result=result;
+      var sameViewer=!!(scope&&result.scope&&result.scope.accountId===scope.accountId&&result.scope.profileId===scope.profileId&&result.scope.authority===scope.authority&&named===base);
+      var busy=!!playback&&controllerSender!==senderId&&!sameViewer;
+      if(!busy)return serial(function(){return takeControl(offer);});
+      pendingPair=offer;
+      send(senderId,{type:'pair-pending'});
+      var here=!!controllerSender&&controllerPresent;
+      askTakeover(requester,here);
+      if(here){
         send(controllerSender,{type:'takeover-requested',requester:requester,controller:controllerStamp(captureController(controllerSender,false)),requestId:result.controllerBootstrapId});
-        pendingPair.timer = setTimeout(function () { denyPending('tv_busy'); }, TAKEOVER_ASK_MS);
-      } else {
-        pendingPair.timer = setTimeout(allowPending, TAKEOVER_ABSENT_MS);
-      }
-    }).catch(function (error) {
-      send(senderId, {type: 'pair-failed', code: error.code || '', message: pairingMessage(error)});
-    });
+        offer.timer=setTimeout(function(){if(pendingPair===offer)denyPending('tv_busy');},TAKEOVER_ASK_MS);
+      }else offer.timer=setTimeout(function(){if(pendingPair===offer)allowPending();},TAKEOVER_ABSENT_MS);
+    }).catch(function(error){offer.code='';send(senderId,{type:'pair-failed',code:error.code||'',message:pairingMessage(error)});});
   }
   // The TV remote (where a Google TV delivers keys to the page): Select allows, Back declines.
   if (window.addEventListener) window.addEventListener('keydown', function (event) {
@@ -1137,7 +1198,12 @@
     if(types.CLOUD_STATUS)manager.setMessageInterceptor(types.CLOUD_STATUS,function(status){return platformStatus(status,'CLOUD_STATUS');});
     // Media-channel commands from a sender that isn't the controller: pause and stop are allowed
     // (anyone in the room can do that with the remote); load, play and seek are not.
-    function fromOther(request) { return !request || !isController(request.senderId); }
+    function fromOther(request) {
+      if(!request||!isController(request.senderId))return true;
+      // A delayed CAF request cannot inherit the renewed controller generation.
+      var custom=request.customData||(request.media&&request.media.customData);
+      return renewedStampRequired&&!sameControllerStamp(custom&&custom.controller,controllerStamp(captureController(request.senderId,false)));
+    }
     // A LOAD carries only a Portico item id in customData. It never carries a
     // media URL, a bearer or a media grant: the receiver resolves everything
     // itself with its own credential.
@@ -1179,6 +1245,17 @@
       if (typeof message === 'string') { try { message = JSON.parse(message); } catch (e) { message = {}; } }
       var senderId = event.senderId;
       var reply = function (body) { send(senderId, body); };
+      if(message.type==='renewal-ack'){
+        var offer=renewalOffer;
+        if(!offer||message.attemptId!==offer.id||senderId!==offer.sender||message.bindingId!==offer.binding.id||message.controlToken!==offer.proof||typeof message.ticket!=='string')return;
+        try{
+          var result=await post('/v1/cast/controllers/check',{bindingId:offer.binding.id,controlToken:offer.proof,attemptId:offer.id,ticket:message.ticket},offer.session.accessToken,offer.origin);
+          if(renewalOffer!==offer||session!==offer.session||scope!==offer.scope||base!==offer.origin||controllerBinding!==offer.binding||controllerToken!==offer.proof||controllerGeneration!==offer.generation||controllerSender!==senderId||!pairConnectionCurrent(offer.connection)||JSON.stringify(result.binding)!==JSON.stringify(offer.binding))throw new Error('controller_retired');
+          clearTimeout(offer.timer);renewalOffer=null;controllerPresent=true;
+          send(senderId,{type:'renewal-complete',attemptId:offer.id,controller:controllerStamp(captureController(senderId,false))});
+        }catch(_){if(renewalOffer===offer){clearTimeout(offer.timer);renewalOffer=null;reply({type:'pair-required'});}}
+        return;
+      }
       if(message.type==='adopt'){
         var originalBinding=controllerBinding;
         if(!originalBinding||message.bindingId!==originalBinding.id||message.controlToken!==controllerToken||typeof message.attemptId!=='string'||typeof message.ticket!=='string'){reply({type:'pair-required'});return;}
@@ -1197,7 +1274,7 @@
       if (message.type === 'pair') { var pairConnection=capturePairConnection(senderId);handlePair(senderId, message,pairConnection); return; }
       if (message.type === 'takeover') {
         var offered=pendingPair,takeoverLease=captureController(senderId,false);try{await controllerAuthority(senderId,undefined,takeoverLease);requireLease(takeoverLease);}catch(e){if(leaseCurrent(takeoverLease))reply({type:'pair-required'});return;}
-        if(message.controller!==undefined&&!sameControllerStamp(message.controller,controllerStamp(takeoverLease)))return;
+        if((renewedStampRequired||message.controller!==undefined)&&!sameControllerStamp(message.controller,controllerStamp(takeoverLease)))return;
         if(!offered||pendingPair!==offered||message.requestId!==undefined&&message.requestId!==offered.result.controllerBootstrapId)return;
         if (isController(senderId) && pendingPair) { if (message.allow === true) allowPending(); else denyPending('tv_busy'); }
         return;
@@ -1213,6 +1290,7 @@
       }
       var commandLease=captureController(senderId,false);try{await controllerAuthority(senderId,undefined,commandLease);requireLease(commandLease);}catch(e){if(leaseCurrent(commandLease))reply({type:'pair-required'});return;}
       var requestedTarget=readRemoteIdentity(message.target);
+      if(renewedStampRequired&&!sameControllerStamp(message.controller||(requestedTarget&&requestedTarget.controller),controllerStamp(commandLease)))return;
       if(message.target!==undefined&&(!requestedTarget||!sameRemoteIdentity(requestedTarget,remoteIdentity(commandLease,playback)))){
         if(requestedTarget&&typeof message.requestId==='string'&&/^[A-Za-z0-9._:-]{1,128}$/.test(message.requestId))reply({type:'control-failed',requestId:message.requestId,target:requestedTarget});
         return;
@@ -1292,9 +1370,9 @@
       if (e && e.senderId && e.senderId === controllerSender) {
         controllerPresent = false;
         // Someone was waiting for the controller's answer: with the controller gone, the TV says who is taking over, then switches.
-        if (pendingPair) { clearTimeout(pendingPair.timer); askTakeover(pendingPair.requester, false); pendingPair.timer = setTimeout(allowPending, TAKEOVER_ABSENT_MS); }
+        if (pendingPair) { pendingPair.present=false;clearTimeout(pendingPair.timer); askTakeover(pendingPair.requester, false); pendingPair.timer = setTimeout(allowPending, TAKEOVER_ABSENT_MS); }
       }
-      if (pendingPair && e && e.senderId === pendingPair.senderId) { clearTimeout(pendingPair.timer); discardPair(pendingPair);pendingPair = null; hideTakeover(); }
+      if (pendingPair && e && e.senderId === pendingPair.senderId) { clearTimeout(pendingPair.timer); pendingPair.code='';pendingPair = null; hideTakeover(); }
       // Nobody is connected: the TV has no controller, but it goes on playing. A phone that sleeps or
       // leaves Wi-Fi drops its connection; only Stop, the end of the title or the server ends playback.
       if(context.getSenders().length===0){controllerPresent=false;}
