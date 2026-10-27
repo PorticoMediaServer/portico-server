@@ -1481,7 +1481,10 @@ def dependencies(file, known, workspaces):
     return result
 
 
-EXCLUDED_TREES = {"apps/vega/": "Vega needs Amazon's SDK; the nightly vega job runs it unchanged"}
+EXCLUDED_TREES = {
+    "apps/vega/": "Vega needs Amazon's SDK; the nightly vega job runs it unchanged",
+    "apps/desktop/": "Desktop is explicitly outside this CI campaign",
+}
 
 def out_of_scope(file):
     """Why this campaign does not run `file`, or None when it does.
@@ -1506,16 +1509,16 @@ def route(relative, native):
     parts = relative.parts
     if native and parts[:3] == ("apps", "native", "test"):
         return "apps/native"
-    if parts[:2] == ("web-next", "test"):
+    if parts[0] == "web-next":
         return "web-next"
-    if parts[:2] == ("web", "test"):
+    if parts[0] == "web":
         return "web"
     if parts[0] == "packages" and len(parts) > 2:
         return "/".join(parts[:2])
     if parts[:4] == ("server", "receiver", "cast", "test"):
         return "."
-    if parts[:2] == ("scripts", "test"):
-        # Repository-level script regressions run from the repository root: the
+    if parts[:2] == ("scripts", "test") or parts[0] in {"smoke", "tools"}:
+        # Portable repository tooling regressions run from the repository root: the
         # fixture they build resolves its own sources, so the root is their group.
         return "."
     raise RuntimeError("selected test file has no route in this campaign: "

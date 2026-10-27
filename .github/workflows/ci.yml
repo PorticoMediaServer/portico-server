@@ -271,6 +271,9 @@ jobs:
 
 
   clients-tests:
+    env:
+      TMPDIR: ${{ runner.temp }}
+      PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH: /usr/bin/google-chrome
     runs-on: ubuntu-24.04
     timeout-minutes: 180
     strategy:
@@ -289,12 +292,25 @@ jobs:
           node --version || true
           go version || true
       - run: npm ci --no-audit --no-fund
-      - name: Install media fixture tools
-        run: sudo apt-get update && sudo apt-get install --no-install-recommends -y ffmpeg
+      - name: Install media fixture tools when not already provisioned
+        run: |
+          if command -v ffmpeg >/dev/null; then
+            ffmpeg -version
+          else
+            timeout 180s sudo apt-get -o Acquire::Retries=1 -o Acquire::http::Timeout=30 update
+            timeout 180s sudo apt-get -o Acquire::Retries=1 -o Acquire::http::Timeout=30 install --no-install-recommends -y ffmpeg
+          fi
+      - name: Check the provisioned browser for synthetic tooling regressions
+        if: ${{ !cancelled() }}
+        run: |
+          test -x "$PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH"
+          "$PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH" --version
       - name: Make the declared Go graph available to offline license generation
+        if: ${{ !cancelled() }}
         working-directory: server
-        run: go mod download
+        run: timeout 180s go mod download
       - name: Complete test shard plus mandatory account/session/privacy checks
+        if: ${{ !cancelled() }}
         env:
           CI_SHARD_INDEX: ${{ matrix.shard }}
           CI_SHARD_TOTAL: '4'

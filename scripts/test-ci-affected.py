@@ -151,6 +151,16 @@ class SelectionTests(unittest.TestCase):
         self.assertEqual(ci.route(Path("web/test/entry.test.ts"), True), "web")
         self.assertEqual(ci.route(Path("server/receiver/cast/test/cast.test.ts"), False), ".")
 
+    def test_portable_tooling_routes_and_explicit_desktop_scope(self):
+        for file in ('smoke/lib/creds.test.mjs', 'smoke/android/secure-field.test.mjs',
+                     'tools/fidelity/measurement.browser.test.mjs',
+                     'tools/web-core-flows/reading-response-path.test.mjs'):
+            self.assertEqual(ci.route(Path(file), False), '.')
+        self.assertEqual(ci.route(Path('web-next/src/screens/detail/audiobooks/bindings.test.ts'), False), 'web-next')
+        self.assertEqual(ci.route(Path('web-next/src/screens/search/ds-web-search-r46-on-now.test.mjs'), False), 'web-next')
+        self.assertIn('Desktop', ci.out_of_scope(ci.ROOT / 'apps/desktop/test/device.test.ts'))
+        self.assertIsNone(ci.out_of_scope(ci.ROOT / 'tools/fidelity/native-window.test.mjs'))
+
     def test_an_unrouted_file_is_refused_by_name(self):
         with self.assertRaisesRegex(RuntimeError, r"apps/other/test/broken\.test\.ts"):
             ci.route(Path("apps/other/test/broken.test.ts"), True)

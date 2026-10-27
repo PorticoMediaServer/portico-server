@@ -16,7 +16,7 @@ import {fontFamilyMetadata} from './font-family-metadata.mjs';
 const singletonSocketLimit = 107;
 const chromeTempSuffix = join('fidelity-chrome-XXXXXX', 'com.google.Chrome.XXXXXX', 'SingletonSocket').length + 1;
 function chromeTempBase(scratch) {
-  const base = [scratch, tmpdir(), '/tmp'].find(value => typeof value === 'string' && value.length + chromeTempSuffix <= singletonSocketLimit);
+  const base = [scratch, tmpdir(), '/tmp'].find(value => typeof value === 'string' && Buffer.byteLength(value) + chromeTempSuffix <= singletonSocketLimit);
   if (!base) throw new Error('A Chromium temp directory within the process-singleton socket limit is required');
   return base;
 }
@@ -149,7 +149,7 @@ export async function withMeasurementBrowser({scratch, executable, viewport, all
       await Promise.race([once(chrome, 'close').catch(() => {}), new Promise(resolve => setTimeout(resolve, 3000))]);
       if (chrome.exitCode === null && chrome.signalCode === null) try {process.kill(-chrome.pid, 'SIGKILL');} catch {}
     }
-    await rm(profile, {recursive: true, force: true});
-    await rm(chromeTemp, {recursive: true, force: true});
+    try {await rm(profile, {recursive: true, force: true});}
+    finally {await rm(chromeTemp, {recursive: true, force: true});}
   }
 }
