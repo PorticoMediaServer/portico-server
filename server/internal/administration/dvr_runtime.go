@@ -184,52 +184,72 @@ func (s *Service) saveRuntimeRecordingGroup(ctx context.Context, auth Authorize,
 			out = saved
 			return nil
 		}
-		opts, err := dvr.DefaultOptionsTx(ctx, tx)
+		defaults, err := dvr.DefaultOptionsTx(ctx, tx)
 		if err != nil {
 			return err
-		}
-		opts.Priority = c.Options.Priority
-		if c.Options.PrePaddingMs != nil {
-			opts.BeforeMs = *c.Options.PrePaddingMs
-		}
-		if c.Options.PostPaddingMs != nil {
-			opts.AfterMs = *c.Options.PostPaddingMs
-		}
-		if c.Options.Keep != nil {
-			opts.RetentionDays, opts.EpisodeLimit = 0, 0
-			if c.Options.Keep.Mode == "keep-days" {
-				opts.RetentionDays = c.Options.Keep.KeepDays
-			}
-			if c.Options.Keep.Mode == "keep-count" {
-				opts.EpisodeLimit = c.Options.Keep.KeepCount
-			}
 		}
 		target := id
 		if target == "" {
 			target = digestOf([]string{"admin-rule", c.OperationID, c.Owner.Key()})
 		}
-		episodes := "all"
-		if c.Options.NewEpisodesOnly {
-			episodes = "new"
+		config := dvr.RuleConfig{AllowedChannels: []string{}, BlockedChannels: []string{}, BlockedKeywords: []string{}, Keywords: []string{}, Options: defaults}
+		var previous *RecordingGroup
+		if c.ExpectedRevision > 0 {
+			var raw string
+			err = tx.QueryRowContext(ctx, `SELECT config_json FROM dvr_rules WHERE owner_key=? AND id=? AND revision=? AND deleted=0`, c.Owner.Key(), target, c.ExpectedRevision).Scan(&raw)
+			if errors.Is(err, sql.ErrNoRows) {
+				return ErrConflict
+			}
+			if err != nil {
+				return err
+			}
+			if json.Unmarshal([]byte(raw), &config) != nil {
+				return ErrUnavailable
+			}
+			projection := groupFromRule(dvr.Rule{Config: config}, c.Owner)
+			previous = &projection
 		}
-		in := dvr.RuleInput{ID: target, Mutation: dvr.Mutation{ExpectedRevision: c.ExpectedRevision, RequestID: digestOf([]string{"admin-rule-request", c.OperationID})[:48]}, Anchor: c.Anchor, Config: dvr.RuleConfig{Name: c.Name, SourceID: c.SourceID, SeriesID: c.Match, Enabled: c.Enabled, Episodes: episodes, AllowedChannels: []string{}, BlockedChannels: []string{}, BlockedKeywords: []string{}, Keywords: []string{}, Options: opts}}
-		if c.Kind == "title" {
-			in.Config.MatchKind = "title"
-			in.Config.Title = c.Match
-			in.Config.SeriesID = ""
-			in.Config.ChannelID = c.Anchor.ChannelID
-			if c.ExpectedRevision > 0 {
-				var prior string
-				if err = tx.QueryRowContext(ctx, `SELECT config_json FROM dvr_rules WHERE owner_key=? AND id=? AND deleted=0`, c.Owner.Key(), target).Scan(&prior); err != nil {
-					return mapDVRError(err)
-				}
-				var config dvr.RuleConfig
-				if json.Unmarshal([]byte(prior), &config) != nil {
-					return ErrUnavailable
-				}
-				in.Config.ChannelID = config.ChannelID
+		changed := func(old, next any) bool { return digestOf(old) != digestOf(next) }
+		if previous == nil || changed(previous.Options.PrePaddingMs, c.Options.PrePaddingMs) {
+			config.Options.BeforeMs = defaults.BeforeMs
+			if c.Options.PrePaddingMs != nil {
+				config.Options.BeforeMs = *c.Options.PrePaddingMs
 			}
 		}
+		if previous == nil || changed(previous.Options.PostPaddingMs, c.Options.PostPaddingMs) {
+			config.Options.AfterMs = defaults.AfterMs
+			if c.Options.PostPaddingMs != nil {
+				config.Options.AfterMs = *c.Options.PostPaddingMs
+			}
+		}
+		if previous == nil || changed(previous.Options.Keep, c.Options.Keep) {
+			config.Options.RetentionDays, config.Options.EpisodeLimit = defaults.RetentionDays, defaults.EpisodeLimit
+			if c.Options.Keep != nil {
+				config.Options.RetentionDays, config.Options.EpisodeLimit = 0, 0
+				if c.Options.Keep.Mode == "keep-days" {
+					config.Options.RetentionDays = c.Options.Keep.KeepDays
+				}
+				if c.Options.Keep.Mode == "keep-count" {
+					config.Options.EpisodeLimit = c.Options.Keep.KeepCount
+				}
+			}
+		}
+		config.Options.Priority = c.Options.Priority
+		if !config.Options.Valid() {
+			return invalid("options")
+		}
+		config.Name, config.SourceID, config.Enabled = c.Name, c.SourceID, c.Enabled
+		config.Episodes = "all"
+		if c.Options.NewEpisodesOnly {
+			config.Episodes = "new"
+		}
+		if previous == nil || previous.Kind != c.Kind || previous.Match != c.Match || previous.SourceID != c.SourceID {
+			config.MatchKind, config.Title, config.ChannelID, config.SeriesID = "", "", "", c.Match
+			if c.Kind == "title" {
+				config.MatchKind, config.Title, config.ChannelID, config.SeriesID = "title", c.Match, c.Anchor.ChannelID, ""
+			}
+		}
+		in := dvr.RuleInput{ID: target, Mutation: dvr.Mutation{ExpectedRevision: c.ExpectedRevision, RequestID: digestOf([]string{"admin-rule-request", c.OperationID})[:48]}, Anchor: c.Anchor, Config: config}
 
 		r, err := s.DVR.SaveRule(dbwork.WithWrite(ctx, tx, dbwork.ClassInteractive), groupAuthority(auth), c.Owner, in)
 		if err != nil {
