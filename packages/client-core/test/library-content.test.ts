@@ -498,3 +498,140 @@ test('author and series heroes are exact entities in their own library',async()=
   }
  }
 });
+
+test('refresh-required policy keeps committed rows for an explicit current retry',async()=>{
+ let calls=0; const ctx={signal:new AbortController().signal,isCurrent:()=>true};
+ const service=new LibraryContentService({scope,continuationRecovery:'refresh-required',api:{request:async (path:string)=>{calls++; if(new URL(path,'https://x').searchParams.get('cursor'))throw Object.assign(new Error('stale'),{code:'stale_continuation'}); return projection(path,{sections:[{...projection(path).sections[0],nextCursor:'next'}]});}}});
+ await service.select(route,{context:ctx});
+ assert.equal(calls,1);
+ await service.next('server-grid',ctx);
+ assert.equal(calls,2,'the refused continuation is not retried as page one');
+ assert.equal(service.getSnapshot().phase,'refresh-required');
+ assert.equal(service.getSnapshot().error?.code,'stale_continuation');
+ assert.equal(service.getSnapshot().sections[0]!.entries[0]!.id,'item','committed rows stay visible');
+ assert.deepEqual(service.getSnapshot().pagination.next,[]);
+ await service.retry(ctx);
+ assert.equal(calls,3,'explicit current retry starts page one');
+ assert.equal(service.getSnapshot().phase,'ready');
+ service.dispose();
+});
+
+test('an original-opening abort retires only its flight and restores the committed baseline',async()=>{
+ const initial=deferred<unknown>(); const late=deferred<unknown>(); let calls=0, signal:AbortSignal|undefined;
+ const service=new LibraryContentService({scope,api:{request:async (path:string,_m?:string,_b?:unknown,s?:AbortSignal)=>{calls++;signal=s;return calls===1?initial.promise:late.promise;}}});
+ const first=service.select(route); initial.resolve(projection('/v1/libraries/movies/content?view=browse&limit=40',{sections:[{...projection('/x').sections[0],nextCursor:'next'}]})); await first;
+ const controller=new AbortController(); const ctx={signal:controller.signal,isCurrent:()=>true};
+ const pending=service.next('server-grid',ctx); await new Promise(r=>setImmediate(r));
+ controller.abort();
+ await pending;
+ assert.equal(signal?.aborted,true,'the HTTP controller is aborted');
+ assert.equal(service.getSnapshot().phase,'ready');
+ assert.equal(service.getSnapshot().sections[0]!.entries[0]!.id,'item');
+ assert.equal(service.getSnapshot().error,null);
+ late.resolve(projection('/v1/libraries/movies/content?view=browse&limit=40&cursor=next'));
+ await new Promise(r=>setImmediate(r));
+ assert.equal(service.getSnapshot().sections[0]!.entries[0]!.id,'item','a late success cannot publish');
+ service.dispose();
+});
+
+test('same key with a new opening context is isolated; duplicate same opening coalesces',async()=>{
+ const reads:ReturnType<typeof deferred<unknown>>[]=[]; let calls=0;
+ const service=new LibraryContentService({scope,api:{request:async ()=>{calls++;const d=deferred<unknown>();reads.push(d);return d.promise;}}});
+ const c1={signal:new AbortController().signal,isCurrent:()=>true},c2={signal:new AbortController().signal,isCurrent:()=>true};
+ const a=service.select(route,{context:c1}), b=service.select(route,{context:c1});
+ assert.strictEqual(a,b,'the same opening and key coalesce');
+ assert.equal(calls,1);
+ const c=service.select(route,{context:c2});
+ assert.notStrictEqual(c,a,'a new opening does not inherit the old promise');
+ assert.equal(calls,2);
+ reads[0]!.resolve(projection('/v1/libraries/movies/content?view=browse&limit=40',{sections:[{...projection('/x').sections[0],entries:[entry('old')]}]}));
+ reads[1]!.resolve(projection('/v1/libraries/movies/content?view=browse&limit=40',{sections:[{...projection('/x').sections[0],entries:[entry('new')]}]}));
+ await Promise.allSettled([a,c]);
+ assert.equal(service.getSnapshot().sections[0]!.entries[0]!.id,'new');
+ service.dispose();
+});
+
+test('a synchronous loading subscriber can coalesce the same opening without recursion',async()=>{
+ let calls=0, nested:Promise<void>|undefined;
+ const ctx={signal:new AbortController().signal,isCurrent:()=>true};
+ const nav=new LibraryContentService({scope,api:{request:async(path:string)=>{calls++;return projection(path,{sections:[{...projection(path).sections[0],nextCursor:'next'}]});}}});
+ nav.subscribe(()=>{if(nav.getSnapshot().phase==='loading'&&!nested)nested=nav.select(route,{context:ctx});});
+ await nav.select(route,{context:ctx});
+ if(nested)await nested;
+ assert.equal(calls,1,'the nested same-opening call joins the established flight');
+ assert.equal(nav.getSnapshot().phase,'ready');
+ nav.dispose();
+});
+
+test('isCurrent-only retirement after a successful response restores the committed baseline',async()=>{
+ const response=deferred<unknown>(); let current=true,calls=0;
+ const nav=new LibraryContentService({scope,api:{request:async(path:string)=>{calls++;return calls===1?projection(path,{sections:[{...projection(path).sections[0],nextCursor:'next'}]}):response.promise;}}});
+ const ctx={signal:new AbortController().signal,isCurrent:()=>current};
+ await nav.select(route,{context:ctx});
+ const pending=nav.next('server-grid',ctx);
+ current=false;
+ response.resolve(projection('/v1/libraries/movies/content?view=browse&limit=40&cursor=next',{sections:[{...projection('/x').sections[0],entries:[entry('late')],nextCursor:''}]}));
+ await pending;
+ assert.equal(nav.getSnapshot().phase,'ready','the retired flight restores rather than stranding loading');
+ assert.equal(nav.getSnapshot().sections[0]!.entries[0]!.id,'item');
+ nav.dispose();
+});
+
+test('aborting the predecessor after a successor opening installs cannot erase it',async()=>{
+ const reads:ReturnType<typeof deferred<unknown>>[]=[]; let calls=0;
+ const nav=new LibraryContentService({scope,api:{request:async()=>{calls++;const d=deferred<unknown>();reads.push(d);return d.promise;}}});
+ const first=nav.select(route,{context:{signal:new AbortController().signal,isCurrent:()=>true}});
+ reads[0]!.resolve(projection('/v1/libraries/movies/content?view=browse&limit=40'));
+ await first;
+ const c1=new AbortController(), c2=new AbortController();
+ const older=nav.select(route,{context:{signal:c1.signal,isCurrent:()=>true}});
+ const newer=nav.select(route,{context:{signal:c2.signal,isCurrent:()=>true}});
+ assert.equal(calls,3);
+ c1.abort();
+ reads[2]!.resolve(projection('/v1/libraries/movies/content?view=browse&limit=40',{sections:[{...projection('/x').sections[0],entries:[entry('successor')]}]}));
+ await Promise.allSettled([older,newer]);
+ assert.equal(nav.getSnapshot().phase,'ready');
+ assert.equal(nav.getSnapshot().sections[0]!.entries[0]!.id,'successor');
+ nav.dispose();
+});
+
+test('a reentrant currentness predicate cannot overwrite the successor it installs',async()=>{
+ const reads:ReturnType<typeof deferred<unknown>>[]=[]; let reenter=false,successor:Promise<void>|undefined;
+ const nav=new LibraryContentService({scope,api:{request:async()=>{const d=deferred<unknown>();reads.push(d);return d.promise;}}});
+ const ctx={signal:new AbortController().signal,isCurrent:()=>{if(reenter){reenter=false;successor=nav.select({libraryId:'other',view:'browse'});return false;}return true;}};
+ const first=nav.select({libraryId:'movies',view:'browse'},{context:ctx});
+ reads[0]!.resolve(projection('/v1/libraries/movies/content?view=browse&limit=40',{sections:[{...projection('/x').sections[0],nextCursor:'next'}]}));
+ await first;
+ const pending=nav.next('server-grid',ctx);
+ reenter=true;
+ reads[1]!.resolve(projection('/v1/libraries/movies/content?view=browse&limit=40&cursor=next'));
+ await pending;
+ assert.ok(successor,'the predicate installed a successor');
+ reads[2]!.resolve(projection('/v1/libraries/other/content?view=browse&limit=40'));
+ await successor;
+ assert.equal(nav.getSnapshot().route?.libraryId,'other','the successor remains current');
+ assert.equal(nav.getSnapshot().phase,'ready');
+ nav.dispose();
+});
+
+test('an abort listener installing a successor during cleanup is not rolled back',async()=>{
+ const reads:ReturnType<typeof deferred<unknown>>[]=[];let successor:Promise<void>|undefined;
+ const nav=new LibraryContentService({scope,api:{request:async()=>{const d=deferred<unknown>();reads.push(d);return d.promise;}}});
+ const first=nav.select(route,{context:{signal:new AbortController().signal,isCurrent:()=>true}});
+ reads[0]!.resolve(projection('/v1/libraries/movies/content?view=browse&limit=40',{sections:[{...projection('/x').sections[0],nextCursor:'next'}]}));
+ await first;
+ const controller=new AbortController();
+ const ctx={signal:controller.signal,isCurrent:()=>true};
+ // Registered before the flight's own listener, so it runs first during abort.
+ controller.signal.addEventListener('abort',()=>{successor=nav.select({libraryId:'other',view:'browse'});},{once:true});
+ const pending=nav.next('server-grid',ctx);
+ await new Promise(r=>setImmediate(r));
+ controller.abort();
+ assert.ok(successor,'the abort listener installed a successor');
+ reads[2]!.resolve(projection('/v1/libraries/other/content?view=browse&limit=40'));
+ await successor;
+ await pending;
+ assert.equal(nav.getSnapshot().route?.libraryId,'other');
+ assert.equal(nav.getSnapshot().phase,'ready');
+ nav.dispose();
+});
