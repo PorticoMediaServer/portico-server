@@ -155,7 +155,8 @@ func TestArtworkTargetReadAdmissionErrors(t *testing.T) {
 	}{
 		{"wrong-kind", RepairTarget{"album", movie.ID}, sql.ErrNoRows},
 		{"container-as-item", editorTarget(names, "item", "album"), sql.ErrNoRows},
-		{"unknown-id", RepairTarget{"item", "unknown"}, sql.ErrNoRows},
+		{"malformed-id", RepairTarget{"item", "unknown"}, sql.ErrNoRows},
+		{"unknown-id", RepairTarget{"item", strings.Repeat("A", 22)}, sql.ErrNoRows},
 		{"invalid-namespace", RepairTarget{"invalid", movie.ID}, ErrRepairInput},
 		{"unknown-before-namespace", RepairTarget{"invalid", "unknown"}, sql.ErrNoRows},
 	}
