@@ -302,8 +302,27 @@ jobs:
           if command -v ffmpeg >/dev/null; then
             ffmpeg -version
           else
-            timeout 180s sudo apt-get -o Acquire::Retries=1 -o Acquire::http::Timeout=30 update
-            timeout 180s sudo apt-get -o Acquire::Retries=1 -o Acquire::http::Timeout=30 install --no-install-recommends -y ffmpeg
+            # The image's Azure HTTP mirror can stall on small downloads. Use
+            # Ubuntu's signed HTTPS archives for this dependency transaction.
+            media_sources="$RUNNER_TEMP/media-tools.sources"
+            cat > "$media_sources" <<'SOURCES'
+          Types: deb
+          URIs: https://archive.ubuntu.com/ubuntu
+          Suites: noble noble-updates
+          Components: main universe
+          Signed-By: /usr/share/keyrings/ubuntu-archive-keyring.gpg
+
+          Types: deb
+          URIs: https://security.ubuntu.com/ubuntu
+          Suites: noble-security
+          Components: main universe
+          Signed-By: /usr/share/keyrings/ubuntu-archive-keyring.gpg
+          SOURCES
+            apt_options=(-o "Dir::Etc::sourcelist=$media_sources" -o 'Dir::Etc::sourceparts=-'
+              -o Acquire::Retries=1 -o Acquire::http::Timeout=30 -o Acquire::https::Timeout=30)
+            timeout 180s sudo apt-get "${apt_options[@]}" update
+            timeout 300s sudo apt-get "${apt_options[@]}" install --no-install-recommends -y ffmpeg
+            ffmpeg -version
           fi
       - name: Check the provisioned browser for synthetic tooling regressions
         if: ${{ !cancelled() }}
