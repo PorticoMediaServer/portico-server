@@ -237,7 +237,7 @@ func ReadingNormalizeObjectTx(ctx context.Context, tx *sql.Tx, id string) error 
 	var scope int64
 	err = tx.QueryRowContext(ctx, `SELECT id FROM reading_path_scope WHERE source_id=? AND incarnation=? AND root_prefix=? AND directory_key=? AND rule_version=?`, v.Source, v.Incarnation, rootPrefix(v.Root), key, readingPathRule).Scan(&scope)
 	if errors.Is(err, sql.ErrNoRows) {
-		err = tx.QueryRowContext(ctx, `INSERT INTO reading_path_scope(library_id,source_id,incarnation,root_prefix,directory_key,rule_version) VALUES(?,?,?,?,?,?) RETURNING id`, v.Library, v.Source, v.Incarnation, rootPrefix(v.Root), key, readingPathRule).Scan(&scope)
+		err = tx.QueryRowContext(ctx, `INSERT INTO reading_path_scope(library_id,source_id,incarnation,root_prefix,directory_key,rule_version,desired,queued) VALUES(?,?,?,?,?,?,?,?) RETURNING id`, v.Library, v.Source, v.Incarnation, rootPrefix(v.Root), key, readingPathRule, v.Context, v.Context).Scan(&scope)
 	}
 	if err != nil {
 		return err
@@ -265,7 +265,7 @@ func ReadingNormalizeObjectTx(ctx context.Context, tx *sql.Tx, id string) error 
 		if _, err = tx.ExecContext(ctx, `UPDATE reading_path_object_keys SET asset_id=?,source_revision=?,relative_path=?,eligible=? WHERE object_id=?`, v.Asset, v.Revision, v.Relative, v.Eligible, id); err != nil {
 			return err
 		}
-		if _, err = tx.ExecContext(ctx, `UPDATE reading_path_scope SET desired=desired+1,queued=1 WHERE id=? AND directory_key<>''`, scope); err != nil {
+		if _, err = tx.ExecContext(ctx, `UPDATE reading_path_scope SET desired=desired+1,queued=1 WHERE id=? AND directory_key<>'' AND ?`, scope, v.Context); err != nil {
 			return err
 		}
 	}
@@ -327,7 +327,7 @@ func ReadingNormalizeObjectTx(ctx context.Context, tx *sql.Tx, id string) error 
 // descendants map to their parent logical scope; non-generic subtrees do not
 // hold back the parent's independent direct/generic publications.
 func ReadingQueuePathCoverageTx(ctx context.Context, tx *sql.Tx, job string) error {
-	_, err := tx.ExecContext(ctx, `INSERT INTO reading_path_dirty_work(library_id,kind,work_key) SELECT cl.id,'blocks',r.job_id FROM inventory_runs r JOIN library_sources s ON s.id=r.source_id JOIN catalog_libraries cl ON cl.library_id=s.library_id JOIN libraries l ON l.id=s.library_id WHERE r.job_id=? AND l.kind IN('book','comic') ON CONFLICT(kind,work_key) DO UPDATE SET requested=requested+1`, job)
+	_, err := tx.ExecContext(ctx, `INSERT INTO reading_path_dirty_work(library_id,kind,work_key) SELECT cl.id,'blocks',r.job_id FROM inventory_runs r JOIN library_sources s ON s.id=r.source_id JOIN catalog_libraries cl ON cl.library_id=s.library_id JOIN libraries l ON l.id=s.library_id WHERE r.job_id=? AND l.kind IN('book','comic') ON CONFLICT(library_id,kind,work_key) DO UPDATE SET requested=requested+1`, job)
 	return err
 }
 func ReadingPathBlockTx(ctx context.Context, tx *sql.Tx, job, relative, reason string) error {
@@ -439,7 +439,7 @@ func pathWorkStep(ctx context.Context, tx *sql.Tx, limit int, turn int64) (int, 
 			}
 			done = n == 0
 			if done {
-				_, err = tx.ExecContext(ctx, `INSERT INTO reading_path_dirty_work(library_id,kind,work_key) VALUES(?,'coverage',?) ON CONFLICT(kind,work_key) DO UPDATE SET requested=requested+1`, w.Library, w.Key)
+				_, err = tx.ExecContext(ctx, `INSERT INTO reading_path_dirty_work(library_id,kind,work_key) VALUES(?,'coverage',?) ON CONFLICT(library_id,kind,work_key) DO UPDATE SET requested=requested+1`, w.Library, w.Key)
 			}
 		}
 	case "item":
@@ -622,7 +622,7 @@ func pathWorkStep(ctx context.Context, tx *sql.Tx, limit int, turn int64) (int, 
 				if err != nil {
 					break
 				}
-				_, err = tx.ExecContext(ctx, `INSERT INTO reading_path_dirty_work(library_id,kind,work_key) VALUES(?,'source',?) ON CONFLICT(kind,work_key) DO UPDATE SET requested=requested+1`, w.Library, id)
+				_, err = tx.ExecContext(ctx, `INSERT INTO reading_path_dirty_work(library_id,kind,work_key) VALUES(?,'source',?) ON CONFLICT(library_id,kind,work_key) DO UPDATE SET requested=requested+1`, w.Library, id)
 				w.Object = id
 			}
 			if n == 0 {
@@ -651,9 +651,9 @@ func pathWorkStep(ctx context.Context, tx *sql.Tx, limit int, turn int64) (int, 
 		done = false
 	}
 	if done {
-		_, err = tx.ExecContext(ctx, `DELETE FROM reading_path_dirty_work WHERE kind=? AND work_key=? AND requested=?`, w.Kind, w.Key, w.Captured)
+		_, err = tx.ExecContext(ctx, `DELETE FROM reading_path_dirty_work WHERE library_id=? AND kind=? AND work_key=? AND requested=?`, w.Library, w.Kind, w.Key, w.Captured)
 	} else {
-		_, err = tx.ExecContext(ctx, `UPDATE reading_path_dirty_work SET captured=?,after_object=?,after_asset=?,after_scope=?,phase=?,served=?,fence_object=?,fence_asset=?,fence_scope=? WHERE kind=? AND work_key=?`, w.Captured, w.Object, w.Asset, w.Scope, w.Phase, turn, w.FenceObject, w.FenceAsset, w.FenceScope, w.Kind, w.Key)
+		_, err = tx.ExecContext(ctx, `UPDATE reading_path_dirty_work SET captured=?,after_object=?,after_asset=?,after_scope=?,phase=?,served=?,fence_object=?,fence_asset=?,fence_scope=? WHERE library_id=? AND kind=? AND work_key=?`, w.Captured, w.Object, w.Asset, w.Scope, w.Phase, turn, w.FenceObject, w.FenceAsset, w.FenceScope, w.Library, w.Kind, w.Key)
 	}
 	if err == nil && done {
 		err = pathRetireInput(ctx, tx, w.Library)
@@ -790,13 +790,20 @@ func pathReport(ctx context.Context, tx *sql.Tx, s pathScope, reason string) err
 	if folder == "" {
 		folder = "."
 	}
-	result, err := tx.ExecContext(ctx, `INSERT OR IGNORE INTO inventory_scan_issues(job_id,relative_path,reason,warning) VALUES(?,?,?,1)`, s.Job, filepath.FromSlash(folder), "reading_path_"+reason)
+	// A healthy scope waiting for its builder turn is ordinary progress, not a
+	// warning. Still retain its history/log entry as required for unpublished
+	// scopes; actual trust/coverage/availability failures keep warning semantics.
+	warning := reason != "publication_queued"
+	result, err := tx.ExecContext(ctx, `INSERT OR IGNORE INTO inventory_scan_issues(job_id,relative_path,reason,warning) VALUES(?,?,?,?)`, s.Job, filepath.FromSlash(folder), "reading_path_"+reason, warning)
 	if err != nil {
 		return err
 	}
 	n, _ := result.RowsAffected()
 	if n > 0 {
 		log.Printf("Reading COMPLETE unpublished: source=%s folder=%q reason=%s job=%s", s.Source, folder, reason, s.Job)
+		if !warning {
+			return nil
+		}
 		for _, q := range []string{`UPDATE inventory_runs SET warnings=warnings+1 WHERE job_id=?`, `UPDATE jobs SET status='complete_with_warnings' WHERE id=? AND status='complete'`} {
 			if _, err = tx.ExecContext(ctx, q, s.Job); err != nil {
 				return err
@@ -941,7 +948,7 @@ func pathRetireScope(ctx context.Context, tx *sql.Tx, s pathScope, limit int) (i
 	if n > 0 {
 		return int(n), nil
 	}
-	if _, err = tx.ExecContext(ctx, `INSERT INTO reading_path_dirty_work(library_id,kind,work_key) VALUES(?,'coverage',?) ON CONFLICT(kind,work_key) DO UPDATE SET requested=requested+1`, s.Library, s.Source); err != nil {
+	if _, err = tx.ExecContext(ctx, `INSERT INTO reading_path_dirty_work(library_id,kind,work_key) VALUES(?,'coverage',?) ON CONFLICT(library_id,kind,work_key) DO UPDATE SET requested=requested+1`, s.Library, s.Source); err != nil {
 		return 0, err
 	}
 	_, err = tx.ExecContext(ctx, `DELETE FROM reading_path_scope WHERE id=?`, s.ID)

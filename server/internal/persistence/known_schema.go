@@ -643,7 +643,7 @@ index reading_path_scope_source
 index reading_path_slot_build
 index reading_path_slot_overlay
 index reading_path_stage_publication
-index reading_path_work_library
+index reading_path_work_key
 index reading_path_work_turn
 index reading_progress_publication
 index reading_progress_recent

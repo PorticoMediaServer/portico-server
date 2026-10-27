@@ -107,6 +107,61 @@ func completeDrain(t *testing.T, c *catalogtest.Catalog) {
 		return scalar(t, c.DB, `SELECT count(*) FROM reading_path_dirty_work`) == 0 && scalar(t, c.DB, `SELECT count(*) FROM reading_path_build`) == 0 && scalar(t, c.DB, `SELECT count(*) FROM reading_path_scope WHERE queued=1`) == 0
 	})
 }
+
+func TestReadingCompleteMovedEntityKeepsBothLibraryWorkFences(t *testing.T) {
+	a := newCompleteFixture(t, nil, "move-from")
+	b := newCompleteFixture(t, a.c, "move-to")
+	p := a.add("Author/Series/01 - Title.epub", "epub", 0)
+	a.settle()
+	a.seal()
+	b.seal()
+	completeDrain(t, a.c)
+	a.c.Exec(`UPDATE catalog_entities SET library_id=? WHERE id=?`, b.handle, p.item)
+	for _, library := range []int64{a.handle, b.handle} {
+		if got := scalar(t, a.c.DB, `SELECT count(*) FROM reading_path_dirty_work WHERE library_id=? AND kind='item' AND work_key=?`, library, fmt.Sprint(p.item)); got != 1 {
+			t.Fatalf("library %d has %d moved-item fences, want one", library, got)
+		}
+	}
+	// An additional notification coalesces only within its own library. Retiring
+	// one library's pass must not consume the other pass with the same work key.
+	a.c.Exec(`INSERT INTO reading_path_dirty_work(library_id,kind,work_key) VALUES(?,'item',?) ON CONFLICT(library_id,kind,work_key) DO UPDATE SET requested=requested+1`, b.handle, fmt.Sprint(p.item))
+	want := scalar(t, a.c.DB, `SELECT requested FROM reading_path_dirty_work WHERE library_id=? AND kind='item' AND work_key=?`, b.handle, fmt.Sprint(p.item))
+	a.c.Exec(`UPDATE reading_path_dirty_work SET served=1000000 WHERE library_id=? AND kind='item' AND work_key=?`, b.handle, fmt.Sprint(p.item))
+	for i := 0; i < 5000 && scalar(t, a.c.DB, `SELECT count(*) FROM reading_path_dirty_work WHERE library_id=? AND kind='item' AND work_key=?`, a.handle, fmt.Sprint(p.item)) != 0; i++ {
+		completeStep(t, a.c, 1)
+	}
+	if scalar(t, a.c.DB, `SELECT count(*) FROM reading_path_dirty_work WHERE library_id=? AND kind='item' AND work_key=?`, a.handle, fmt.Sprint(p.item)) != 0 {
+		t.Fatal("old-library pass did not retire")
+	}
+	if want != 2 {
+		t.Fatalf("new-library notifications did not coalesce independently: %d", want)
+	}
+	if got := scalar(t, a.c.DB, `SELECT count(*) FROM reading_path_dirty_work WHERE library_id=? AND kind='item' AND work_key=? AND requested=2 AND captured=0`, b.handle, fmt.Sprint(p.item)); got != 1 {
+		var requested, captured, served int64
+		err := a.c.DB.QueryRow(`SELECT requested,captured,served FROM reading_path_dirty_work WHERE library_id=? AND kind='item' AND work_key=?`, b.handle, fmt.Sprint(p.item)).Scan(&requested, &captured, &served)
+		t.Fatalf("retiring old pass altered new pass: requested=%d captured=%d served=%d error=%v", requested, captured, served, err)
+	}
+	a.settle()
+	completeDrain(t, a.c)
+}
+func TestReadingCompleteQueuedPublicationIsReportedWithoutWarning(t *testing.T) {
+	f := newCompleteFixture(t, nil, "queued-report")
+	f.add("Author/Series/01 - Title.epub", "epub", 0)
+	f.settle()
+	f.seal()
+	completeUntil(t, f.c, func() bool {
+		return scalar(t, f.c.DB, `SELECT count(*) FROM reading_path_dirty_work`) == 0 && scalar(t, f.c.DB, `SELECT count(*) FROM reading_path_scope WHERE directory_key='Author/Series' AND sealed=1 AND queued=1`) == 1 && scalar(t, f.c.DB, `SELECT count(*) FROM reading_path_build`) == 0
+	})
+	f.c.Exec(`UPDATE jobs SET status='complete' WHERE id=?`, f.job)
+	completeDrain(t, f.c)
+	if scalar(t, f.c.DB, `SELECT count(*) FROM inventory_scan_issues WHERE job_id=? AND reason='reading_path_publication_queued' AND warning=0`, f.job) == 0 {
+		t.Fatal("queued publication was not recorded as ordinary job history")
+	}
+	if scalar(t, f.c.DB, `SELECT count(*) FROM jobs WHERE id=? AND status='complete'`, f.job) != 1 || scalar(t, f.c.DB, `SELECT warnings FROM inventory_runs WHERE job_id=?`, f.job) != 0 {
+		t.Fatal("ordinary queued publication changed successful scan to warnings")
+	}
+}
+
 func completeValues(t *testing.T, c *catalogtest.Catalog, item int64) compactcatalog.ReadingValues {
 	t.Helper()
 	var v compactcatalog.ReadingValues
@@ -625,6 +680,22 @@ func TestReadingCompleteOverlappingSourceSupersessionBeforeAcceptance(t *testing
 	assertCompleteValue(t, f.c, p, compactcatalog.ReadingValues{})
 	if scalar(t, f.c.DB, `SELECT count(*) FROM reading_path_head WHERE item_id=? AND object_id=?`, p.item, "other-"+p.object) != 1 {
 		t.Fatal("invalid newest witness was not retained as watermark")
+	}
+	// A non-matching path alias is never a folder input. Its insert,
+	// revision change and delete must not give the older source a fresh stamp.
+	before := scalar(t, f.c.DB, `SELECT sequence FROM reading_path_clock`)
+	for _, mutation := range []string{
+		`INSERT INTO inventory_objects(id,source_id,asset_id,root_incarnation,relative_path,directory_path,revision,evidence_json,size,modified_ns) SELECT 'zz-alias-'||id,source_id,asset_id,root_incarnation,relative_path||'.alias',directory_path,revision,evidence_json,size,modified_ns FROM inventory_objects WHERE id=?`,
+		`UPDATE inventory_objects SET revision='alias-changed' WHERE id='zz-alias-'||?`,
+		`DELETE FROM inventory_objects WHERE id='zz-alias-'||?`,
+	} {
+		f.c.Exec(mutation, p.object)
+		f.settle()
+		completeDrain(t, f.c)
+		assertCompleteValue(t, f.c, p, compactcatalog.ReadingValues{})
+		if scalar(t, f.c.DB, `SELECT sequence FROM reading_path_clock`) != before {
+			t.Fatalf("non-candidate alias restamped a completed scope: %s", mutation)
+		}
 	}
 	// A genuinely changed input may subsequently become the newest publisher.
 	f.c.Exec(`UPDATE inventory_objects SET revision='changed-a' WHERE id=?`, p.object)
