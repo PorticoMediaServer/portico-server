@@ -48,6 +48,21 @@ export function formatHistoryStarted(startedAt: string, timeZone: string, captur
 export function formatHourOrdinal(hour: number): string {
   return new Intl.DateTimeFormat(defaultI18n.locale, {hour: 'numeric', timeZone: 'UTC'}).format(Date.UTC(2026, 0, 1, hour));
 }
+/** The heat map's static labels for one locale: 7 short weekdays, 7 long weekdays and
+ * the 24 column ordinals. Same constructors, same timestamps and same text as the
+ * per-cell calls they replace (2026-01-05 + day, 2026-01-01 + hour), built once so a
+ * pointer move over the grid cannot rebuild 175 formatters. */
+export type HeatMapLabels = Readonly<{weekdayShort: readonly string[]; weekdayLong: readonly string[]; hour: readonly string[]}>;
+export function heatMapLabels(locale: string = defaultI18n.locale): HeatMapLabels {
+  const short = new Intl.DateTimeFormat(locale, {weekday: 'short', timeZone: 'UTC'});
+  const long = new Intl.DateTimeFormat(locale, {weekday: 'long', timeZone: 'UTC'});
+  const ordinal = new Intl.DateTimeFormat(locale, {hour: 'numeric', timeZone: 'UTC'});
+  return {
+    weekdayShort: Array.from({length: 7}, (_, day) => short.format(Date.UTC(2026, 0, 5 + day))),
+    weekdayLong: Array.from({length: 7}, (_, day) => long.format(Date.UTC(2026, 0, 5 + day))),
+    hour: Array.from({length: 24}, (_, hour) => ordinal.format(Date.UTC(2026, 0, 1, hour))),
+  };
+}
 export function formatQuietHours(start: number): string {
   const format = new Intl.DateTimeFormat(defaultI18n.locale, {hour: 'numeric', timeZone: 'UTC'});
   const from = format.formatToParts(Date.UTC(2026, 0, 1, start)), until = format.formatToParts(Date.UTC(2026, 0, 1, start + 3));
