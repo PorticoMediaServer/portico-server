@@ -1,5 +1,6 @@
 import {DVRClient, DVRModel, activeRecording, dvrMessage, isAccessError, mutableRecording,
   type DeletePreview, type DVRPage, type DVRSummary, type Recording, type RecordingDetail, type RecordingGroups, type RecordingStorage} from '@core/dvr.ts';
+import {recordingsWindow} from './recordings-window';
 import type {ChannelApi} from '@core/channel-guide.ts';
 
 /** The four Recording destinations this door reads. Series rules are a different
@@ -23,6 +24,7 @@ export type RecordingsSnapshot = Readonly<{
   groups: RecordingGroups | null;
   /** The order the resident groups were read with; `groups.nextCursor` is the server's. */
   groupsSort: RecordingsSort;
+  paging: Readonly<{busy: boolean; error: string; previous: boolean; next: boolean}>;
   accessDenied: boolean;
   /** The last destination/refresh failure. A failed command is never folded into it. */
   error: string;
@@ -99,8 +101,13 @@ export function createRecordingsController(input: RecordingsControllerOptions) {
   let query: RecordingsQuery = Object.freeze({view: 'upcoming'});
   let page: DVRPage | null = null, detail: RecordingDetail | null = null, storage: RecordingStorage | null = null;
   let summary: DVRSummary | null = null, groups: RecordingGroups | null = null, groupsSort: RecordingsSort = 'recent';
+  const pages = recordingsWindow<DVRPage>(), groupPages = recordingsWindow<RecordingGroups>();
+  let tailBusy = false, tailError = '', tailDirection: 'next' | 'previous' = 'next';
+  const paging = () => {const window = query.view === 'recorded' ? groupPages : pages;return Object.freeze({busy: tailBusy, error: tailError,
+    previous: window.offer('previous') !== undefined, next: window.offer('next') !== undefined});};
+  function resetPaging() {pages.reset();groupPages.reset();tailBusy = false;tailError = '';}
   let state: RecordingsSnapshot = Object.freeze({query, phase: 'idle', page: null, detail: null, storage: null, summary: null, groups: null,
-    groupsSort: 'recent', accessDenied: false, error: '', mutating: false, commandError: ''});
+    groupsSort: 'recent', paging: paging(), accessDenied: false, error: '', mutating: false, commandError: ''});
 
   function notify() { for (const listener of [...listeners]) listener(); }
   function current() {
@@ -113,7 +120,7 @@ export function createRecordingsController(input: RecordingsControllerOptions) {
     const error = closed ? '' : errorText;
     const phase: RecordingsPhase = closed ? 'retired' : loading ? 'loading' : error ? 'error'
       : page || detail || storage || summary || groups ? 'ready' : 'idle';
-    return Object.freeze({query, phase, page, detail, storage, summary, groups, groupsSort,
+    return Object.freeze({query, phase, page, detail, storage, summary, groups, groupsSort, paging: paging(),
       accessDenied: closed ? false : accessDenied || snapshot.accessDenied, error,
       mutating: closed ? false : snapshot.mutating, commandError: closed ? '' : commandError});
   }
@@ -135,7 +142,7 @@ export function createRecordingsController(input: RecordingsControllerOptions) {
   function offersDelete(recording: Recording): boolean {
     return page?.deletionAvailable === true && !activeRecording(recording);
   }
-  const sameDestination = (left: RecordingsQuery, right: RecordingsQuery) => left.view === right.view
+  const sameDestination = (left: Readonly<{view: string; cursor?: string; recordingId?: string}>, right: RecordingsQuery) => left.view === right.view
     && (left.cursor ?? '') === (right.cursor ?? '') && (left.recordingId ?? '') === (right.recordingId ?? '');
   /** A destination load or a lease change disarms the armed command: its receipt
    * may still be pending, but no mutation HTTP may leave for the old generation. */
@@ -149,7 +156,7 @@ export function createRecordingsController(input: RecordingsControllerOptions) {
   function clearFacts(denied: boolean) {
     if (closed) return;
     disarmCommand();
-    epoch++;summarySerial++;groupsSerial++;
+    epoch++;summarySerial++;groupsSerial++;resetPaging();
     dropResident();summary = groups = null;groupsSort = 'recent';
     deletion = undefined;accessDenied = denied;errorText = '';commandError = '';
     publish();
@@ -165,12 +172,13 @@ export function createRecordingsController(input: RecordingsControllerOptions) {
   function adoptFacts() {
     const snapshot = model.getSnapshot();
     page = snapshot.page;detail = snapshot.detail;storage = snapshot.storage;
+    pages.reset(query.cursor, page ?? undefined);tailBusy = false;tailError = '';
     accessDenied = snapshot.accessDenied;loading = false;
   }
   /** Every command targets one exact resident object of a settled destination. */
   function commandTarget(recording: Recording): Recording {
     if (!current()) throw cancelled();
-    if (derive().phase !== 'ready' || !resident(recording)) throw staleRow();
+    if (tailBusy || derive().phase !== 'ready' || !resident(recording)) throw staleRow();
     return recording;
   }
   /** One command through the same private model. The mutation may only leave while
@@ -185,6 +193,14 @@ export function createRecordingsController(input: RecordingsControllerOptions) {
     let ack = false, failure: unknown;
     let ran = false;
     try {
+      // A refused continuation kept the original resident page. Restore that
+      // exact model query before a command's genuine post-ACK refresh.
+      if (!sameDestination(model.getSnapshot().query, query)) {
+        await model.load(query);
+        if (!current() || armed.serial !== loadSerial || armed.lease !== epoch) throw cancelled();
+        const restored = model.getSnapshot();
+        if (restored.accessDenied || restored.error) throw staleRow();
+      }
       ran = await model.act(async () => {
         try { await work(); ack = true; }
         catch (error) { failure = error; throw error; }
@@ -234,12 +250,12 @@ export function createRecordingsController(input: RecordingsControllerOptions) {
     closed = true;life.abort();
     disarmCommand();
     signal.removeEventListener('abort', onAbort);stopModel?.();stopModel = undefined;
-    loadSerial++;epoch++;summarySerial++;groupsSerial++;
+    loadSerial++;epoch++;summarySerial++;groupsSerial++;resetPaging();
     model.dispose();
     page = detail = storage = null;summary = groups = null;groupsSort = 'recent';deletion = undefined;
     loading = false;accessDenied = false;errorText = '';commandError = '';
     state = Object.freeze({query, phase: 'retired', page: null, detail: null, storage: null, summary: null, groups: null,
-      groupsSort: 'recent', accessDenied: false, error: '', mutating: false, commandError: ''});
+      groupsSort: 'recent', paging: paging(), accessDenied: false, error: '', mutating: false, commandError: ''});
     try { if (!silent) notify(); } finally { listeners.clear(); }
   }
   function onAbort() { retire(); }
@@ -270,6 +286,78 @@ export function createRecordingsController(input: RecordingsControllerOptions) {
   function checkedGroups(sort: RecordingsSort, cursor: string) {
     if (!sorts.includes(sort) || typeof cursor !== 'string' || cursor.length > 4096) throw invalid();
   }
+  async function load(next: RecordingsQuery = query, continuation = false): Promise<void> {
+      if (!current()) throw cancelled();
+      const captured = checked(next);
+      start();
+      disarmCommand();
+      const serial = ++loadSerial, at = epoch;
+      if (!continuation) {resetPaging();}
+      else {tailBusy = true;tailError = '';}
+      const previousQuery = query;
+      if (!continuation && !sameDestination(captured, query)) {
+        // A replacement is a new destination generation: the previous page,
+        // detail and storage objects stop being resident before the new query is
+        // published, and a retained error page can never revive them. Profile-wide
+        // summary/group facts and the receipt lease are deliberately untouched.
+        dropResident();
+      }
+      deletion = undefined;if (!continuation) query = captured;loading = !continuation;errorText = '';commandError = '';
+      publish();
+      try {
+        await model.load(captured);
+        if (!current()) throw cancelled();
+        if (serial !== loadSerial || continuation && at !== epoch) throw cancelled();
+        const snapshot = model.getSnapshot();
+        if (continuation && snapshot.error && !snapshot.accessDenied) {
+          tailBusy = false;tailError = snapshot.error;publish();return;
+        }
+        query = captured;
+        page = snapshot.page;detail = snapshot.detail;storage = snapshot.storage;
+        if (page) {if (continuation) pages.accept(captured.cursor ?? '', page);else pages.reset(captured.cursor, page);}
+        tailBusy = false;tailError = '';
+        accessDenied = snapshot.accessDenied;errorText = snapshot.error ?? '';
+        if (accessDenied) {
+          summary = null;groups = null;groupsSort = 'recent';resetPaging();
+          epoch++;summarySerial++;groupsSerial++;
+        }
+        loading = false;
+        publish();
+      } catch (failure) {
+        if (!current()) throw cancelled();
+        if (serial === loadSerial && at === epoch) {
+          loading = false;tailBusy = false;
+          if (continuation) query = previousQuery;
+          if (isAccessError(failure)) clearFacts(true);
+          else if (!isCancelled(failure)) { if (continuation) tailError = dvrMessage(failure);else errorText = dvrMessage(failure);publish(); }
+        }
+        throw failure;
+      }
+    }
+  async function navigatePage(direction: 'next' | 'previous', expected: RecordingsSnapshot): Promise<void> {
+    if (!current()) throw cancelled();
+    if (expected !== state || tailBusy || loading || model.getSnapshot().mutating || detail || query.view === 'storage') return;
+    const window = query.view === 'recorded' ? groupPages : pages;
+    const cursor = window.offer(direction);
+    if (cursor === undefined) return;
+    tailDirection = direction;
+    if (query.view !== 'recorded') {await load({...query, cursor}, true);return;}
+    const at = epoch, serial = ++groupsSerial, destination = loadSerial, sort = groupsSort;
+    tailBusy = true;tailError = '';publish();
+    try {
+      const value = groupPages.cached(cursor) ?? await model.client.groups(sort, cursor);
+      if (!current() || at !== epoch || serial !== groupsSerial || destination !== loadSerial || sort !== groupsSort) throw cancelled();
+      groupPages.accept(cursor, value);groups = value;tailBusy = false;tailError = '';publish();
+    } catch (failure) {
+      if (!current()) throw cancelled();
+      if (at === epoch && serial === groupsSerial && destination === loadSerial) {
+        tailBusy = false;
+        if (isAccessError(failure)) clearFacts(true);
+        else if (!isCancelled(failure)) {tailError = dvrMessage(failure);publish();}
+      }
+      throw failure;
+    }
+  }
   return {
     /** Only the exact resident objects of a settled destination generation pass.
      * A replacement, a refresh in flight or a failed destination refuses them. */
@@ -289,44 +377,10 @@ export function createRecordingsController(input: RecordingsControllerOptions) {
     },
     /** Reads one exact destination. A cursor is passed through untouched, and its
      * reply's own `nextCursor` is the only next token. */
-    async load(next: RecordingsQuery = query): Promise<void> {
-      if (!current()) throw cancelled();
-      const captured = checked(next);
-      start();
-      disarmCommand();
-      const serial = ++loadSerial;
-      if (!sameDestination(captured, query)) {
-        // A replacement is a new destination generation: the previous page,
-        // detail and storage objects stop being resident before the new query is
-        // published, and a retained error page can never revive them. Profile-wide
-        // summary/group facts and the receipt lease are deliberately untouched.
-        dropResident();
-      }
-      deletion = undefined;query = captured;loading = true;errorText = '';commandError = '';
-      publish();
-      try {
-        await model.load(captured);
-        if (!current()) throw cancelled();
-        if (serial !== loadSerial) throw cancelled();
-        const snapshot = model.getSnapshot();
-        page = snapshot.page;detail = snapshot.detail;storage = snapshot.storage;
-        accessDenied = snapshot.accessDenied;errorText = snapshot.error ?? '';
-        if (accessDenied) {
-          summary = null;groups = null;groupsSort = 'recent';
-          epoch++;summarySerial++;groupsSerial++;
-        }
-        loading = false;
-        publish();
-      } catch (failure) {
-        if (!current()) throw cancelled();
-        if (serial === loadSerial) {
-          loading = false;
-          if (isAccessError(failure)) clearFacts(true);
-          else if (!isCancelled(failure)) { errorText = dvrMessage(failure);publish(); }
-        }
-        throw failure;
-      }
-    },
+    load: (next: RecordingsQuery = query) => load(next),
+    more: (expected: RecordingsSnapshot = state) => navigatePage('next', expected),
+    previous: (expected: RecordingsSnapshot = state) => navigatePage('previous', expected),
+    retryPage: (expected: RecordingsSnapshot = state) => navigatePage(tailDirection, expected),
     /** The server's own totals. A loaded page is never counted instead. */
     async readSummary(): Promise<DVRSummary> {
       if (!current()) throw cancelled();
@@ -351,14 +405,14 @@ export function createRecordingsController(input: RecordingsControllerOptions) {
       checkedGroups(sort, cursor);
       start();
       const at = epoch, serial = ++groupsSerial, restated = sort !== groupsSort;
-      groupsSort = sort;
+      groupsSort = sort;groupPages.reset();tailBusy = false;tailError = '';
       if (restated) groups = null;
       publish();
       try {
         const value = await model.client.groups(sort, cursor);
         if (!current()) throw cancelled();
         if (at !== epoch || serial !== groupsSerial || groupsSort !== sort) throw cancelled();
-        groups = value;accessDenied = false;errorText = '';
+        groups = value;groupPages.reset(cursor, value);accessDenied = false;errorText = '';
         publish();
         return value;
       } catch (failure) {

@@ -60,7 +60,7 @@ test('construction is inert: no HTTP, no minted receipt and an empty snapshot', 
   assert.equal(calls.length, 0);
   assert.equal(receipts, 0);
   assert.deepEqual(controller.getSnapshot(), {query: {view: 'upcoming'}, phase: 'idle', page: null, detail: null, storage: null,
-    summary: null, groups: null, groupsSort: 'recent', accessDenied: false, error: '', mutating: false, commandError: ''});
+    summary: null, groups: null, groupsSort: 'recent', paging: {busy: false, error: '', previous: false, next: false}, accessDenied: false, error: '', mutating: false, commandError: ''});
   controller.dispose();
   assert.equal(calls.length, 0);
   assert.equal(receipts, 0);
@@ -1415,4 +1415,112 @@ test('a newer destination failure survives a stale command completion', async ()
     assert.equal(after.page, null);
     assert.equal(controller.contains(row), false);
   } finally { controller.dispose(); }
+});
+
+for (const view of ['upcoming', 'history'] as const) {
+  test(`${view} exposes all 101 producer rows, carries only offered cursors and revisits pages`, async () => {
+    const all = Array.from({length: 101}, (_, n) => recording(n.toString(16).padStart(64, '0'), {state: view === 'history' ? 'completed' : 'scheduled'}));
+    const {api, calls} = fixtureServer(call => {
+      if (pathname(call).endsWith('/summary')) return summaryFact;
+      const cursor = params(call).get('cursor') ?? '';
+      const offset = cursor === '' ? 0 : cursor === 'opaque/50' ? 50 : 100;
+      return pageOf(all.slice(offset, offset + 50), offset === 0 ? 'opaque/50' : offset === 50 ? 'opaque/100' : '', offset + 1);
+    });
+    const c = controllerFor(api);
+    try {
+      await c.load({view});await c.readSummary();
+      const seen = [...c.getSnapshot().page!.recordings];
+      await c.more();seen.push(...c.getSnapshot().page!.recordings);
+      await c.more();seen.push(...c.getSnapshot().page!.recordings);
+      assert.deepEqual(seen.map(r => r.id), all.map(r => r.id));
+      assert.equal(c.getSnapshot().paging.next, false);
+      const reads = calls.length;await c.more();assert.equal(calls.length, reads);
+      await c.previous();assert.equal(c.getSnapshot().query.cursor, 'opaque/50');
+      await c.previous();assert.equal(c.getSnapshot().query.cursor ?? '', '');
+      assert.deepEqual(c.getSnapshot().summary, summaryFact);
+      assert.ok(c.getSnapshot().page!.recordings.length <= 50);
+      assert.deepEqual(calls.filter(call => pathname(call).endsWith('/dvr')).slice(0, 3).map(call => params(call).get('cursor')), [null, 'opaque/50', 'opaque/100']);
+    } finally {c.dispose();}
+  });
+}
+
+test('offered page failure preserves exact rows, coalesces clicks and retries that cursor', async () => {
+  const pending = held<unknown>();let tailReads = 0;
+  const {api, calls} = fixtureServer(call => {
+    if (!params(call).has('cursor')) return pageOf([recording(hex())], 'two');
+    tailReads++;if (tailReads === 1) return pending.promise;
+    return pageOf([recording(hex(64, 'b'))], 'two'); // invalid repeated next token stops here
+  });
+  const c = controllerFor(api);
+  try {
+    await c.load();const first = c.getSnapshot().page, old = c.getSnapshot();
+    const more = c.more();await c.more();assert.equal(calls.length, 2);
+    assert.equal(c.getSnapshot().page, first);assert.equal(c.getSnapshot().phase, 'ready');
+    pending.reject({status: 503});await more;
+    assert.equal(c.getSnapshot().page, first);assert.ok(c.getSnapshot().paging.error);
+    await c.retryPage();assert.equal(calls.length, 3);
+    assert.equal(c.getSnapshot().paging.next, false);
+    await c.more(old);assert.equal(calls.length, 3, 'saved original callback cannot advance a successor');
+    await c.previous();assert.equal(c.getSnapshot().query.cursor ?? '', '');
+  } finally {c.dispose();}
+});
+
+for (const change of ['view', 'refresh', 'leave', 'authority'] as const) {
+  test(`pending tail cannot publish after ${change}`, async () => {
+    const pending = held<unknown>();let live = true;
+    const {api} = fixtureServer(call => params(call).has('cursor') ? pending.promise : pageOf([recording(hex())], 'two'));
+    const c = controllerFor(api, {isCurrent: () => live});
+    try {
+      await c.load();const row = c.getSnapshot().page!.recordings[0];
+      const tail = c.more();
+      if (change === 'view') await c.load({view: 'history'});
+      if (change === 'refresh') await c.load({view: 'upcoming'});
+      if (change === 'leave') c.dispose();
+      if (change === 'authority') live = false;
+      pending.resolve(pageOf([recording(hex(64, 'b'))], 'three'));
+      await assert.rejects(tail, {name: 'AbortError'});
+      assert.equal(c.contains(row), false);
+      assert.notEqual(c.getSnapshot().query.cursor, 'two');
+      assert.equal(c.getSnapshot().paging.busy, false);
+    } finally {c.dispose();}
+  });
+}
+
+test('recorded directory traverses 61 genuine groups, retains counts and retries original sort/cursor', async () => {
+  let fail = true;const seen: string[] = [];
+  const {api, calls} = fixtureServer(call => {
+    if (pathname(call).endsWith('/summary')) return summaryFact;
+    if (!pathname(call).endsWith('/groups')) return pageOf([]);
+    const cursor = params(call).get('cursor') ?? '';
+    if (cursor === 'g30' && fail) {fail = false;throw {status: 503};}
+    const offset = cursor === '' ? 0 : cursor === 'g30' ? 30 : 60;
+    return {revision: offset + 1, nextCursor: offset === 0 ? 'g30' : offset === 30 ? 'g60' : '',
+      groups: Array.from({length: Math.min(30, 61 - offset)}, (_, n) => ({...groupsFact('title', '').groups[0], key: `group-${offset + n}`}))};
+  });
+  const c = controllerFor(api);
+  try {
+    await c.load({view: 'recorded'});await c.readSummary();await c.readGroups('title');
+    const original = c.getSnapshot().groups;seen.push(...original!.groups.map(g => g.key));
+    await assert.rejects(c.more());assert.equal(c.getSnapshot().groups, original);
+    await c.retryPage();seen.push(...c.getSnapshot().groups!.groups.map(g => g.key));
+    await c.more();seen.push(...c.getSnapshot().groups!.groups.map(g => g.key));
+    assert.equal(new Set(seen).size, 61);assert.equal(seen.at(-1), 'group-60');
+    assert.equal(c.getSnapshot().paging.next, false);assert.deepEqual(c.getSnapshot().summary, summaryFact);
+    assert.deepEqual(calls.filter(call => pathname(call).endsWith('/groups')).map(call => [params(call).get('sort'), params(call).get('cursor')]), [['title', null], ['title', 'g30'], ['title', 'g30'], ['title', 'g60']]);
+    await c.previous();assert.equal(c.getSnapshot().groups!.groups[0].key, 'group-30');
+  } finally {c.dispose();}
+});
+
+test('changing group sort retires a pending tail and its retry', async () => {
+  const pending = held<unknown>();
+  const {api, calls} = fixtureServer(call => pathname(call).endsWith('/groups')
+    ? params(call).get('cursor') ? pending.promise : groupsFact(params(call).get('sort')!, 'tail') : pageOf([]));
+  const c = controllerFor(api);
+  try {
+    await c.load({view: 'recorded'});await c.readGroups('recent');
+    const old = c.getSnapshot(), tail = c.more();await c.readGroups('title');
+    pending.resolve(groupsFact('recent', 'old-next'));await assert.rejects(tail, {name: 'AbortError'});
+    await c.retryPage(old);assert.equal(calls.length, 4);
+    assert.equal(c.getSnapshot().groupsSort, 'title');assert.equal(c.getSnapshot().groups!.groups[0].key, 'title-one');
+  } finally {c.dispose();}
 });
