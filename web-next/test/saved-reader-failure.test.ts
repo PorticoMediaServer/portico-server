@@ -4,7 +4,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {componentModule} from '../../web/test/helpers/component-harness.mjs';
-import {all, createRenderer, one, tree, textOf} from '../../web/test/helpers/interaction-harness.mjs';
+import {all, createRenderer, one, textOf, tick, tree} from '../../web/test/helpers/interaction-harness.mjs';
 import * as retryAdmission from '../src/screens/saved/retry-admission.ts';
 
 const route = {view: 'watchlist', sort: 'added', direction: 'desc'} as const;
@@ -250,7 +250,7 @@ test('both independent reader retries start before the first settles', async t =
   assert.deepEqual(f.calls, {posters: 1, squares: 1});
 });
 
-test('unlock does not clear a fresh retry admitted by its own currentness predicate', async t => {
+test('the original pending token blocks a retry reentered by the unlock predicate', async t => {
   stubGlobals(t);
   const f = await mount({posters: snapshot('posters', 'error'), squares: snapshot('squares', 'error')});
   const retry = retryOf(compact(f)[0]!);
@@ -262,9 +262,14 @@ test('unlock does not clear a fresh retry admitted by its own currentness predic
   };
   f.posters.behavior(async () => {await Promise.resolve(); reenter = true;});
   retry.onPress();
-  await Promise.resolve(); await Promise.resolve(); await Promise.resolve(); await Promise.resolve(); f.flat();
-  assert.deepEqual(f.calls, {posters: 1, squares: 1}, 'the reentrant retry did not own a fresh token');
+  // Drain the original async work without rendering; the first getSnapshot after
+  // this point must be the unlock predicate, not a render.
+  await tick();
+  assert.equal(fired, true, 'the unlock currentness predicate actually reentered a retry');
+  assert.deepEqual(f.calls, {posters: 1, squares: 1}, 'the original pending token prevented duplicate starts');
   assert.deepEqual(f.errors, []);
+  f.flat();
+  assert.equal(retryOf(compact(f)[0]!).loading, false, 'the original unlock settled its own loading state');
 });
 
 test('savedRetryCurrent rechecks liveness after a replacing getter (helper vector)', () => {
