@@ -1471,6 +1471,76 @@ class WatchdogTests(unittest.TestCase):
         live = [json.loads(line) for line in (self.report / "live.jsonl").read_text().splitlines()]
         self.assertTrue(any(event["data"].get("name") == "fails clearly" for event in live))
 
+    def test_a_failure_keeps_its_cause_chain_declaration_and_source_frame(self):
+        # Node's event error is the ERR_TEST_FAILURE wrapper. The real class,
+        # code and frames are in its cause chain; the test's own declaration is
+        # on the event. Both must survive the reporter and the watchdog.
+        self.fixture("cause.test.mjs",
+                     "import {test} from 'node:test';\n"
+                     "import assert from 'node:assert';\n"
+                     "\n"
+                     "test('fails with cause', () => {\n"
+                     "  const root = new Error('root refused');\n"
+                     "  root.code = 'ECONNREFUSED';\n"
+                     "  const top = new TypeError('open failed', {cause: root});\n"
+                     "  throw top;\n"
+                     "});\n")
+        runner, output = self.run_files(["cause.test.mjs"])
+        result = runner.results[0]
+        self.assertEqual(result.status, ci.test_watchdog.FAIL)
+        detail = result.failure_details[0]
+        self.assertEqual(detail["test"], "fails with cause")
+        self.assertEqual(detail["name"], "TypeError")
+        self.assertEqual(detail["message"], "open failed")
+        self.assertEqual(detail["normalized"], "open failed")
+        self.assertEqual(detail["location"],
+                         {"file": "cause.test.mjs", "line": 4, "column": 1})
+        # The full chain, including the root cause's own code, stays in JSON.
+        self.assertEqual([item.get("code") for item in detail["errors"]],
+                         ["ERR_TEST_FAILURE", None, "ECONNREFUSED"])
+        self.assertTrue(detail["frames"])
+        self.assertIn("cause.test.mjs:7:", detail["frames"][0])
+        self.assertFalse(any("node:" in frame or "internal/" in frame
+                             for frame in detail["frames"]))
+        # The console names the declaration and the first source frame.
+        self.assertIn("fails with cause: TypeError at cause.test.mjs:4:1: open failed", output)
+        self.assertIn("cause.test.mjs:7:", output)
+        # The event stream carries the same cause chain and location.
+        failures = [event for event in self.events(result) if event["type"] == "test:fail"]
+        data = failures[0]["data"]
+        self.assertEqual((data["line"], data["column"]), (4, 1))
+        self.assertEqual(data["error"]["cause"]["name"], "TypeError")
+        self.assertEqual(data["error"]["cause"]["cause"]["code"], "ECONNREFUSED")
+        self.assertIn("cause.test.mjs:7:", data["error"]["cause"]["stack"])
+
+    def test_every_failure_is_kept_in_json_and_the_console_preview_is_bounded(self):
+        text = "import {test} from 'node:test';\n"
+        text += "".join(f"test('failure {index}', () => {{ throw new Error('failure number {index}'); }});\n"
+                        for index in range(14))
+        self.fixture("manyfailures.test.mjs", text)
+        runner, output = self.run_files(["manyfailures.test.mjs"])
+        result = runner.results[0]
+        self.assertEqual(result.status, ci.test_watchdog.FAIL)
+        self.assertEqual(result.failed, 14)
+        self.assertEqual(len(result.failures), 14)
+        self.assertEqual(len(result.failure_details), 14)
+        # The console shows the first and last five, names the gap, and points
+        # at the retained event stream instead of losing ten failures silently.
+        self.assertEqual(output.count("  x "), 10)
+        self.assertIn("failure 0", output)
+        self.assertIn("failure 4", output)
+        self.assertIn("failure 9", output)
+        self.assertIn("failure 13", output)
+        self.assertNotIn("failure 5", output)
+        self.assertIn("... 4 more failure(s); full list in " + str(result.events), output)
+        # The machine report and summary.json keep every failure.
+        record = result.as_dict()
+        self.assertEqual(len(record["failures"]), 14)
+        self.assertEqual(len(record["failure_details"]), 14)
+        summary = json.loads((self.report / "summary.json").read_text())
+        self.assertEqual(len(summary["results"][0]["failure_details"]), 14)
+        self.assertEqual(len(summary["results"][0]["failures"]), 14)
+
     def test_per_test_timeout_is_a_named_failure_for_its_file_only(self):
         self.fixture("hangs.test.mjs",
                      "import {test} from 'node:test';\n"
@@ -1539,6 +1609,33 @@ class WatchdogTests(unittest.TestCase):
         leaks = self.events(runner.results[0])
         self.assertTrue(leaks)
         self.assert_gone(leaks[0]["pid"])
+
+    def test_a_nested_relative_file_that_finished_but_stays_alive_keeps_all_40_results(self):
+        # The Live TV file's own node is named "test/<file>" relative to the
+        # group, and a file that leaks a handle emits no terminal summary. All
+        # its finished results must be kept and the file classified as a leak,
+        # not as a hang that waits for the per-file 120-second bound.
+        nested = self.files / "test"
+        nested.mkdir()
+        lines = ["import {test} from 'node:test';"]
+        lines += [f"test('case {index}', () => {{}});" for index in range(39)]
+        lines.append("test('leaks a timer', () => { setInterval(() => {}, 1000); });")
+        (nested / "live.test.mjs").write_text("\n".join(lines) + "\n")
+        started = time.monotonic()
+        runner, output = self.run_files(["test/live.test.mjs"],
+                                        file_seconds=8, exit_grace=0.4)
+        elapsed = time.monotonic() - started
+        result = runner.results[0]
+        self.assertEqual(result.status, ci.test_watchdog.FAIL)
+        self.assertEqual((result.tests, result.passed, result.failed), (40, 40, 0))
+        self.assertEqual(result.counts_source, "events")
+        self.assertIsNone(result.summary_counts)
+        self.assertIn("leaked handle", " ".join(result.notes))
+        self.assertNotIn("HANG", output)
+        self.assertIn("FAIL test/live.test.mjs (40 tests, 0 failed", output)
+        # The leak is detected from the finished tests, not by waiting for the
+        # per-file bound; the 40 results are already retained.
+        self.assertLess(elapsed, 6)
 
     def kill(self, pid):
         try:
@@ -1703,6 +1800,19 @@ sys.exit(runner.exit_code)
                             for event in stderr))
         self.assertTrue(any(event["type"] == "test:diagnostic" for event in events))
 
+    def test_a_file_that_never_loads_prints_its_first_stderr_lines(self):
+        self.fixture("importfail.test.mjs", "import './definitely-missing-module.mjs';\n")
+        runner, output = self.run_files(["importfail.test.mjs"])
+        result = runner.results[0]
+        self.assertEqual(result.status, ci.test_watchdog.FAIL)
+        # The file's own node only says "test failed"; the cause is stderr.
+        self.assertTrue(result.stderr)
+        self.assertIn("file stderr (first", output)
+        self.assertIn("ERR_MODULE_NOT_FOUND", output)
+        self.assertEqual(result.file_error["code"], "ERR_MODULE_NOT_FOUND")
+        self.assertIn("ERR_MODULE_NOT_FOUND", result.file_error["message"])
+        self.assertIn("ERR_MODULE_NOT_FOUND", result.wrapper_failures[0])
+
     def test_a_file_with_a_syntax_error_keeps_the_offending_line_and_its_counts(self):
         self.fixture("syntaxfail.test.mjs",
                      "import {test} from 'node:test';\n"
@@ -1767,6 +1877,102 @@ sys.exit(runner.exit_code)
         self.assertEqual(lines[1]["data"]["duration_ms"], 12.5)
         self.assertEqual(len(live_path.read_text().splitlines()), 3)
 
+
+
+
+class JsDiagnosticsReportTests(unittest.TestCase):
+    """The job page gets failures, groups, annotations and a complete JSON report."""
+
+    def setUp(self):
+        self.temp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.temp.cleanup)
+        self.root = Path(self.temp.name)
+
+    @staticmethod
+    def detail(file, test, message, line, column):
+        return {
+            "test": test, "name": "Error", "code": "ERR_TEST_FAILURE",
+            "message": message, "normalized": ci._normalized_message(message),
+            "location": {"file": file, "line": line, "column": column},
+            "frames": [], "errors": [],
+        }
+
+    @staticmethod
+    def result(file, details):
+        return ci.test_watchdog.FileResult(
+            "apps/native", file, ci.test_watchdog.FAIL, tests=len(details),
+            failed=len(details), failures=[item["text"] for item in details],
+            failure_details=details)
+
+    def test_summary_annotations_and_json_keep_every_member(self):
+        special = self.detail("test/special.test.ts", "needs: comma, here",
+                              "boom 50%: a,b\nsecond line", 7, 2)
+        special["text"] = "needs: comma, here: Error: boom 50%: a,b"
+        message = "Cannot destructure property 'SidePanel' of modules as it is undefined"
+        repeated = []
+        for index in range(12):
+            item = self.detail(f"test/repeated-{index}.test.ts", f"repeated {index}",
+                               message, 20 + index, 3)
+            item["text"] = f"repeated {index}: Error: {message}"
+            repeated.append(item)
+        runner = type("Runner", (), {})()
+        runner.context = {"shard": "1/4"}
+        runner.results = [self.result("test/special.test.ts", [special])]
+        runner.results += [self.result(f"test/repeated-{index}.test.ts", [item])
+                           for index, item in enumerate(repeated)]
+        summary = self.root / "summary.md"
+        report_dir = self.root / "report"
+        with patch.dict(os.environ, {"GITHUB_STEP_SUMMARY": str(summary)}), \
+                contextlib.redirect_stdout(io.StringIO()) as output:
+            report = ci.publish_js_report(runner, report_dir)
+        text = output.getvalue()
+        # The workspace prefix is repo-relative: no invented "scripts/" segment.
+        self.assertIn("file=apps/native/test/special.test.ts,line=7,col=2,"
+                      "title=needs%3A comma%2C here::boom 50%25: a,b%0Asecond line", text)
+        self.assertEqual(text.count("::error "), ci.ANNOTATION_LIMIT)
+        self.assertIn("DIAGNOSTICS 13 failure(s) in 13 file(s), 2 group(s)", text)
+        self.assertIn("full report " + str(report_dir / ci.DIAGNOSTICS_FILE), text)
+        body = summary.read_text()
+        self.assertIn("`apps/native/test/repeated-0.test.ts`", body)
+        self.assertIn("apps/native/test/repeated-0.test.ts:20:3", body)
+        self.assertIn("x12 " + message, body)
+        self.assertIn("## JS test failures", body)
+        # The JSON report retains every member of every group, in full.
+        written = json.loads((report_dir / ci.DIAGNOSTICS_FILE).read_text())
+        self.assertEqual(written["totals"]["failures"], 13)
+        self.assertEqual(written["totals"]["groups"], 2)
+        self.assertEqual(len(written["files"]), 13)
+        grouped = {item["message"]: item for item in written["groups"]}
+        self.assertEqual(grouped[message]["count"], 12)
+        self.assertEqual(len(grouped[message]["members"]), 12)
+        self.assertEqual(grouped["boom 50%: a,b"]["members"][0]["line"], 7)
+        self.assertEqual(report["totals"]["failures"], 13)
+
+    def test_js_entry_prints_versions_first(self):
+        temp = tempfile.TemporaryDirectory()
+        self.addCleanup(temp.cleanup)
+        root = Path(temp.name)
+        with patch.object(ci, "ROOT", root), \
+                patch.object(ci, "changed", return_value=set()), \
+                patch.object(ci, "js_plan", return_value=[]), \
+                patch.object(ci, "report_directory", return_value=(root / "report", False)), \
+                patch.object(ci.test_watchdog, "Runner", ShardedJsChecksTests.FakeRunner), \
+                patch.object(ci, "print_versions") as versions, \
+                patch.dict(ci.os.environ, {"CI_SHARD_INDEX": "0", "CI_SHARD_TOTAL": "1"}), \
+                contextlib.redirect_stdout(io.StringIO()):
+            ci.js_checks(True)
+        versions.assert_called_once()
+
+    def test_version_line_names_the_actual_node_and_go(self):
+        with patch.object(ci, "tool_versions",
+                          return_value=("node v24.21.0 (/opt/node)",
+                                        "go go1.26.10 linux/amd64")), \
+                contextlib.redirect_stdout(io.StringIO()) as output:
+            ci.print_versions()
+        self.assertEqual(output.getvalue(),
+                         "VERSIONS node v24.21.0 (/opt/node) | go go1.26.10 linux/amd64\n")
+        real = ci._tool_line([shutil.which("node"), "--version"])
+        self.assertRegex(real, r"^v\d+\.\d+\.\d+$")
 
 
 

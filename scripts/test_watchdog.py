@@ -38,6 +38,7 @@ events are enough to report, and the caller supplies the exact argv for a file.
 import json
 import hashlib
 import os
+import re
 import signal
 import subprocess
 import sys
@@ -65,6 +66,79 @@ POLL_SECONDS = 0.05
 _TERMINAL_EVENTS = {"test:pass", "test:fail", "test:cancel"}
 _FAILURE_LIMIT = 10
 _MESSAGE_LIMIT = 500
+# A console preview never hides a result silently: the first and last few
+# failures are printed, the count in between is named, and every failure stays
+# in the JSON report and the per-file event stream.
+_FAILURE_PREVIEW_HEAD = 5
+_FAILURE_PREVIEW_TAIL = 5
+_STDERR_PREVIEW_LINES = 15
+_CAUSE_DEPTH = 6
+_STACK_FRAME_LIMIT = 2
+
+_AT_FRAME = re.compile(r"^\s*at\s+(.+?)\s*$")
+# V8 frames that only lead through Node or this runner; the first frame outside
+# them is the test source line a reader can act on.
+_NODE_FRAME = re.compile(r"(?:^|\()(?:node:|internal/|node:internal)")
+
+
+def _lines(text):
+    return [line.rstrip() for line in str(text or "").splitlines() if line.strip()]
+
+
+def _first_line(text):
+    lines = _lines(text)
+    return lines[0].strip() if lines else ""
+
+
+def _normalized(message):
+    """The first message line, whitespace-collapsed, for grouping identical causes."""
+    return re.sub(r"\s+", " ", _first_line(message)).strip()
+
+
+def _first_error_line(lines):
+    """The first stderr line that names an error, for a file that never loaded."""
+    for line in lines:
+        text = line.strip()
+        if re.search(r"(?:^|\b)(?:[A-Za-z]*Error|SyntaxError|TypeError|ReferenceError|"
+                     r"RangeError|AssertionError)\b", text):
+            return text
+    return _first_line(lines[0]) if lines else ""
+
+
+def _cause_chain(error):
+    """The wrapper error and its causes, bounded against a malformed or cyclic chain."""
+    chain = []
+    seen = set()
+    while isinstance(error, dict) and len(chain) < _CAUSE_DEPTH:
+        marker = id(error)
+        if marker in seen:
+            break
+        seen.add(marker)
+        chain.append(error)
+        error = error.get("cause")
+    return chain
+
+
+def _source_frames(error):
+    """First non-Node frames from the cause chain, nearest cause first."""
+    chain = _cause_chain(error)
+    frames = []
+    # The wrapper's own stack is normally frameless, but it is still a last
+    # resort when an event carried no cause at all.
+    for item in [*chain[1:], *chain[:1]]:
+        stack = item.get("stack")
+        if not isinstance(stack, str):
+            continue
+        for line in stack.splitlines():
+            match = _AT_FRAME.match(line)
+            if not match or _NODE_FRAME.search(match.group(1)):
+                continue
+            frame = match.group(1).replace("file://", "").strip()
+            if frame not in frames:
+                frames.append(frame)
+            if len(frames) >= _STACK_FRAME_LIMIT:
+                return frames
+    return frames[:_STACK_FRAME_LIMIT]
 
 
 class FileResult:
@@ -74,7 +148,8 @@ class FileResult:
                  cancelled=0, skipped=0, todo=0, duration=0.0, active_test=None,
                  counts_source=None, enqueued=0, started=0, unfinished=None,
                  notes=None, failures=None, wrapper_failures=None,
-                 summary_counts=None, log=None, events=None, survivors=None):
+                 summary_counts=None, log=None, events=None, survivors=None,
+                 failure_details=None, stderr=None, file_error=None):
         self.group = group
         self.file = file
         self.status = status
@@ -98,10 +173,22 @@ class FileResult:
         self.unfinished = list(unfinished or [])
         self.notes = list(notes or [])
         self.failures = list(failures or [])
+        # Every failure's structured record: test name, message, declaration
+        # location, cause chain and first source frames. `failures` keeps the
+        # flattened display text for every one of them; the console prints only
+        # a bounded preview of that list.
+        self.failure_details = list(failure_details or [])
         # Aggregate nodes (a failing describe() suite, or a parent test whose only
         # error is "subtestsFailed") are reported once, by the tests they wrap.
         # They are kept here so nothing the stream contained is lost.
         self.wrapper_failures = list(wrapper_failures or [])
+        # The first lines of the file's own stderr. A file that crashes before a
+        # test runs has no other cause than this text; the full output stays in
+        # the per-file log.
+        self.stderr = list(stderr or [])
+        # The file's own node failure, structured like a test failure, when Node
+        # reports one (a module-load or syntax error, for example).
+        self.file_error = file_error
         # The Node summary's own numbers, unchanged, whatever the counts above use.
         self.summary_counts = summary_counts
         self.log = log
@@ -132,6 +219,9 @@ class FileResult:
             "duration_seconds": round(self.duration, 3),
             "active_test": self.active_test,
             "failures": self.failures,
+            "failure_details": self.failure_details,
+            "stderr": self.stderr,
+            "file_error": self.file_error,
             "wrapper_failures": self.wrapper_failures,
             "summary_counts": self.summary_counts,
             "notes": self.notes,
@@ -563,7 +653,10 @@ class Runner:
         counts = {"tests": 0, "passed": 0, "failed": 0, "cancelled": 0,
                   "skipped": 0, "todo": 0}
         failures = []
+        failure_details = []
         wrapper_failures = []
+        stderr_lines = []
+        file_error = None
         event_failed = 0       # test:fail nodes, whatever Node's own categories say
         enqueued = {}          # (nesting, name) -> name, the file's own node excluded
         started_tests = {}
@@ -578,10 +671,17 @@ class Runner:
 
         def consume():
             nonlocal summary, summary_global, summary_at, last_event, terminal_tests
-            nonlocal event_failed
+            nonlocal event_failed, file_error
             for event in reader.pump():
                 data = event.get("data") or {}
                 kind = event.get("type")
+                if kind == "test:stderr":
+                    # The file's own output. A load failure never reaches a test
+                    # event, so these first lines are its only cause.
+                    for line in _lines(data.get("message")):
+                        if len(stderr_lines) < _STDERR_PREVIEW_LINES:
+                            stderr_lines.append(line)
+                    continue
                 if kind == "test:summary":
                     # A file that fails to load emits one process-wide summary and
                     # no per-file summary, so keep the fileless one and use it when
@@ -607,7 +707,9 @@ class Runner:
                     # reported through the summary and named here, never added to
                     # the counts.
                     if kind == "test:fail":
-                        wrapper_failures.append("file: " + self._text(self._error_of(data)))
+                        file_error = self._failure_detail(
+                            data, file, fallback=_first_error_line(stderr_lines))
+                        wrapper_failures.append("file: " + file_error["text"])
                     continue
                 if kind == "test:enqueue":
                     enqueued.setdefault(key, name)
@@ -627,7 +729,7 @@ class Runner:
                         enqueued.pop(key, None)
                         started_tests.pop(key, None)
                         if kind == "test:fail":
-                            wrapper_failures.append(self._failure_text(data))
+                            wrapper_failures.append(self._failure_text(data, file))
                         continue
                     terminal_tests += 1
                     if kind == "test:pass":
@@ -642,7 +744,9 @@ class Runner:
                     elif kind == "test:fail":
                         counts["failed"] += 1
                         event_failed += 1
-                        failures.append(self._failure_text(data))
+                        detail = self._failure_detail(data, file)
+                        failures.append(detail["text"])
+                        failure_details.append(detail)
                     else:
                         counts["cancelled"] += 1
 
@@ -710,8 +814,13 @@ class Runner:
             "counts": counts,
             "counts_source": "events" if summary is None else "summary:" + str(role),
             "event_failed": event_failed,
-            "failures": failures[:_FAILURE_LIMIT],
-            "wrapper_failures": wrapper_failures[:_FAILURE_LIMIT],
+            # Every failure is kept here. The console prints a bounded preview;
+            # nothing is dropped from the JSON report or the event stream.
+            "failures": failures,
+            "failure_details": failure_details,
+            "stderr": stderr_lines,
+            "file_error": file_error,
+            "wrapper_failures": wrapper_failures,
             "summary": summary,
             "enqueued": len(enqueued),
             "started": len(started_tests),
@@ -753,16 +862,70 @@ class Runner:
         error = (data.get("details") or {}).get("error")
         return error if isinstance(error, dict) else (data.get("error") if isinstance(data.get("error"), dict) else {})
 
-    @staticmethod
-    def _text(error):
-        if not isinstance(error, dict):
-            return ""
-        message = error.get("message") or ""
-        return str(message)[:_MESSAGE_LIMIT]
+    def _failure_text(self, data, file=None, fallback=None):
+        return self._failure_detail(data, file, fallback)["text"]
 
-    def _failure_text(self, data):
-        message = self._text(self._error_of(data))
-        return f"{data.get('name')}: {message}" if message else str(data.get("name"))
+    def _failure_detail(self, data, file=None, fallback=None):
+        """One failure's test, real cause, declaration location and source frame.
+
+        The event's error is Node's `ERR_TEST_FAILURE` wrapper; its `cause` chain
+        holds the class, code and stack of what actually failed. The location is
+        the test's own declaration on the event (not the wrapper's frameless
+        stack), and `frames` is the first source frame outside Node.
+        """
+        error = self._error_of(data)
+        chain = _cause_chain(error)
+        # Prefer the nearest cause that names a real failure: the wrapper's
+        # message is often only the same text with an ERR_TEST_FAILURE code.
+        primary = chain[1] if len(chain) > 1 else (chain[0] if chain else {})
+        message = (primary.get("message") or (chain[0].get("message") if chain else "")
+                   or data.get("message") or "")
+        name = primary.get("name") or (chain[0].get("name") if chain else "") or "Error"
+        code = primary.get("code") or (chain[0].get("code") if len(chain) == 1 else "")
+        if fallback and _normalized(message).lower() in ("", "test failed", "failed"):
+            # Node's file node only says "test failed"; the real class and code
+            # are in the file's stderr, which the report prints in full below.
+            message = fallback
+            match = re.match(r"([A-Za-z]*Error)\b", fallback)
+            if match:
+                name = match.group(1)
+            match = re.search(r"\[(ERR_[A-Z_]+)\]|code: ['\"](ERR_[A-Z_]+)['\"]", fallback)
+            if match:
+                code = match.group(1) or match.group(2)
+        event_file = data.get("file")
+        if file and event_file and Path(event_file).name == Path(file).name:
+            # The event names the file absolutely; report it as the caller named
+            # it, so a workspace-relative path stays short and portable.
+            event_file = file
+        line = data.get("line")
+        column = data.get("column")
+        location = {
+            "file": event_file,
+            "line": line if isinstance(line, int) else None,
+            "column": column if isinstance(column, int) else None,
+        }
+        frames = _source_frames(error)
+        place = ""
+        if location["line"] is not None:
+            place = f" at {location['file']}:{location['line']}"
+            if location["column"] is not None:
+                place += f":{location['column']}"
+        frame = f" [at {frames[0]}]" if frames else ""
+        test = data.get("name")
+        label = f"{test}: " if test else ""
+        text = f"{label}{name}{place}: {_first_line(message)[:_MESSAGE_LIMIT]}{frame}"
+        return {
+            "test": test,
+            "name": name,
+            "code": code or None,
+            "message": str(message)[:4000],
+            "normalized": _normalized(message),
+            "location": location,
+            "frames": frames,
+            # The full chain (name/code/message/stack per level) stays in JSON.
+            "errors": chain,
+            "text": text,
+        }
 
     @staticmethod
     def _names(pids):
@@ -862,6 +1025,8 @@ class Runner:
             enqueued=outcome["enqueued"], started=outcome["started"],
             unfinished=outcome["unfinished"], notes=notes, failures=failures,
             wrapper_failures=outcome["wrapper_failures"],
+            failure_details=outcome["failure_details"],
+            stderr=outcome["stderr"], file_error=outcome["file_error"],
             summary_counts=outcome["summary"]["counts"] if outcome["summary"] else None,
             log=log, events=events, survivors=survivors)
 
@@ -941,8 +1106,30 @@ class Runner:
         print(f"{label} {result.file} ({detail})", flush=True)
         for note in result.notes:
             print(f"  {note}", flush=True)
-        for failure in result.failures:
+        # A bounded preview, never a silent cap: the head and tail are printed,
+        # the hidden count is named, and the full list is in the JSON report and
+        # this file's event stream.
+        if len(result.failures) <= _FAILURE_PREVIEW_HEAD + _FAILURE_PREVIEW_TAIL:
+            head, tail, hidden = list(result.failures), [], 0
+        else:
+            head = result.failures[:_FAILURE_PREVIEW_HEAD]
+            tail = result.failures[-_FAILURE_PREVIEW_TAIL:]
+            hidden = len(result.failures) - len(head) - len(tail)
+        for failure in head:
             print(f"  x {failure}", flush=True)
+        if hidden:
+            target = result.events or result.log
+            print(f"  ... {hidden} more failure(s); full list in {target}", flush=True)
+        for failure in tail:
+            print(f"  x {failure}", flush=True)
+        # A file-level crash (module load, syntax error) has no failing test to
+        # name; its own first stderr lines are the actual cause.
+        file_failed = bool(result.file_error) or any(
+            item.startswith("file: ") for item in result.wrapper_failures)
+        if result.stderr and (file_failed or result.counts_source == "summary:global"):
+            print(f"  file stderr (first {len(result.stderr)} line(s)):", flush=True)
+            for line in result.stderr:
+                print(f"    {line}", flush=True)
         if result.log:
             print(f"  log: {result.log}", flush=True)
 

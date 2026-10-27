@@ -13,6 +13,13 @@
 // per-file log. The actual Error, ERR_MODULE_NOT_FOUND and SyntaxError frames
 // therefore survive instead of being replaced by "test failed".
 //
+// A failing test's error is Node's ERR_TEST_FAILURE wrapper; the real class,
+// code, message and stack are in its (possibly nested) cause chain. Those are
+// copied explicitly, because Error properties are non-enumerable and
+// JSON.stringify would keep only `{}`. Each event also keeps the test's own
+// declaration line and column, so a report can say file:line without guessing
+// from a stack.
+//
 // This replaces the human-readable spec reporter for supervised runs: the caller
 // prints the per-file result and failure messages from these events, and the
 // watchdog keeps the per-file stdout/stderr log next to them.
@@ -38,6 +45,34 @@ const RECORDED = new Set([
 // The text events whose message is also written to the run's output.
 const TEXT = new Set(['test:stdout', 'test:stderr', 'test:diagnostic']);
 const MESSAGE_LIMIT = 4000;
+const STACK_LIMIT = 4000;
+const CAUSE_DEPTH = 6;
+
+// Node's test event carries a shallow wrapper error (`ERR_TEST_FAILURE`) whose
+// real reason is `error.cause`. Both are Error objects, whose message and stack
+// are non-enumerable: JSON.stringify would keep `{}` and the run would only say
+// "test failed". Copy name/code/message/stack down the cause chain explicitly,
+// so a module-load, assertion or nested product error keeps its own class, code
+// and frames in the event stream and the per-file report.
+const errorDetail = (error, depth = 0) => {
+  if (error === undefined || error === null) return undefined;
+  if (typeof error !== 'object') {
+    return typeof error === 'string' ? {message: error.slice(0, MESSAGE_LIMIT)} : undefined;
+  }
+  const text = value => (typeof value === 'string' ? value.slice(0, MESSAGE_LIMIT) : undefined);
+  const detail = {
+    name: text(error.name),
+    code: text(error.code),
+    message: text(error.message),
+    failureType: text(error.failureType),
+    stack: typeof error.stack === 'string' ? error.stack.slice(0, STACK_LIMIT) : undefined,
+  };
+  if (depth < CAUSE_DEPTH) {
+    const cause = errorDetail(error.cause, depth + 1);
+    if (cause) detail.cause = cause;
+  }
+  return detail;
+};
 
 const detail = data => {
   const error = data.details && data.details.error;
@@ -45,6 +80,10 @@ const detail = data => {
     name: data.name,
     nesting: data.nesting,
     file: data.file,
+    // The test's own declaration: Node reports it on every enqueue/start/fail
+    // event, independently of where the thrown error's stack points.
+    line: data.line,
+    column: data.column,
     testNumber: data.testNumber,
     // 'suite' for a describe() block, 'test' for a test and for the file's own
     // node. The watchdog reports an aggregate node once, by the tests it wraps.
@@ -58,11 +97,9 @@ const detail = data => {
     success: data.success,
     // Captured file/test output arrives as text, never as an error object.
     message: typeof data.message === 'string' ? data.message.slice(0, MESSAGE_LIMIT) : undefined,
-    error: error && {
-      message: error.message,
-      failureType: error.failureType,
-      stack: typeof error.stack === 'string' ? error.stack.slice(0, 4000) : undefined,
-    },
+    // `message`/`failureType`/`stack` stay on the wrapper for every existing
+    // reader; `cause` is the new recursive chain that names the real failure.
+    error: errorDetail(error),
   };
 };
 

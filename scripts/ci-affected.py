@@ -1549,7 +1549,211 @@ def js_command(group, file):
             "--test-concurrency=1", "--test", file]
 
 
+DIAGNOSTICS_FILE = "js-failures.json"
+_VERSION_CACHE = None
+
+
+def _tool_line(command):
+    try:
+        text = subprocess.check_output(command, text=True, stderr=subprocess.DEVNULL)
+    except (OSError, subprocess.CalledProcessError):
+        return "unavailable"
+    return text.strip().splitlines()[0] if text.strip() else "unavailable"
+
+
+
+def tool_versions():
+    """The actual interpreters this job ran, not a promised version or a secret."""
+    global _VERSION_CACHE
+    if _VERSION_CACHE is None:
+        node = shutil.which("node") or "node"
+        go = _tool_line(["go", "version"])
+        _VERSION_CACHE = (f"node {_tool_line([node, '--version'])} ({node})",
+                          go if go != "unavailable" else "go unavailable")
+    return _VERSION_CACHE
+
+
+
+def print_versions():
+    node, go = tool_versions()
+    print(f"VERSIONS {node} | {go}", flush=True)
+
+
+
+def _normalized_message(message):
+    for line in str(message or "").splitlines():
+        text = re.sub(r"\s+", " ", line).strip()
+        if text:
+            return text
+    return ""
+
+
+
+def _repo_relative(result, detail):
+    """The workspace-qualified path used by summaries, annotations and JSON."""
+    location = (detail or {}).get("location") or {}
+    raw = str(location.get("file") or result.file)
+    # A caller-relative path stays relative: resolving it against this script's
+    # cwd would invent a "scripts/" prefix. Only an absolute path is rebased.
+    if Path(raw).is_absolute():
+        try:
+            raw = str(Path(raw).resolve().relative_to(ROOT.resolve()))
+        except (OSError, ValueError):
+            raw = Path(raw).name
+    group = result.group
+    if group and group not in ("", ".") and raw != group and not raw.startswith(group + "/"):
+        raw = f"{group}/{raw}"
+    return raw
+
+
+
+def _failure_member(result, detail):
+    location = detail.get("location") or {}
+    message = str(detail.get("message") or "")
+    return {
+        "file": _repo_relative(result, detail),
+        "test": detail.get("test") or "(file)",
+        "name": detail.get("name"),
+        "code": detail.get("code"),
+        "message": message,
+        "normalized": detail.get("normalized") or _normalized_message(message),
+        "line": location.get("line"),
+        "column": location.get("column"),
+        "frames": detail.get("frames") or [],
+        "errors": detail.get("errors") or [],
+    }
+
+
+
+def _fallback_detail(result):
+    """A failing file with no test failure still names its cause."""
+    if getattr(result, "file_error", None):
+        return result.file_error
+    message = (result.stderr[0] if getattr(result, "stderr", None) else
+               (result.notes[0] if result.notes else f"{result.status}: no message"))
+    return {"test": "(file)", "name": result.status, "message": message,
+            "normalized": _normalized_message(message), "frames": [],
+            "errors": [], "location": {"file": result.file, "line": 1, "column": None}}
+
+
+
+def _annotation_escape(text):
+    return str(text).replace("%", "%25").replace("\r", "%0D").replace("\n", "%0A")
+
+
+
+def _property_escape(text):
+    return (_annotation_escape(text).replace(":", "%3A").replace(",", "%2C"))
+
+
+
+def publish_js_report(runner, directory):
+    """Publish every failure to the job summary, annotations and a JSON report.
+
+    The console keeps its bounded per-file preview; this function is the complete
+    record. Identical normalized messages are grouped and shown once as
+    `x34 <message>`, while `js-failures.json` retains every member and its full
+    cause chain, location and frames.
+    """
+    results = list(runner.results)
+    files = []
+    members = []
+    for result in results:
+        if result.ok:
+            continue
+        details = list(getattr(result, "failure_details", None) or [])
+        if not details:
+            details = [_fallback_detail(result)]
+        entries = [_failure_member(result, detail) for detail in details]
+        members.extend(entries)
+        files.append({
+            "group": result.group,
+            "file": _repo_relative(result, {"location": {"file": result.file}}),
+            "status": result.status,
+            "tests": result.tests,
+            "passed": result.passed,
+            "failed": result.failed,
+            "cancelled": result.cancelled,
+            "counts_source": result.counts_source,
+            "notes": result.notes,
+            "stderr": list(getattr(result, "stderr", None) or []),
+            "failures": entries,
+        })
+    groups = {}
+    for member in members:
+        groups.setdefault(member["normalized"], []).append(member)
+    grouped = [{"message": message, "count": len(items), "members": items}
+               for message, items in groups.items()]
+    grouped.sort(key=lambda item: (-item["count"], item["message"]))
+    totals = {
+        "files": len(results),
+        "passed": sum(1 for result in results if result.ok),
+        "failed": sum(1 for result in results if not result.ok),
+        "failures": len(members),
+        "groups": len(grouped),
+    }
+    directory = Path(directory)
+    directory.mkdir(parents=True, exist_ok=True)
+    report = {"shard": dict(runner.context), "totals": totals,
+              "files": files, "groups": grouped}
+    report_path = directory / DIAGNOSTICS_FILE
+    report_path.write_text(json.dumps(report, indent=2) + "\n")
+
+    lines = ["## JS test failures", "",
+             f"{totals['files']} file(s): {totals['passed']} passed, "
+             f"{totals['failed']} failed; {totals['failures']} failure(s) in "
+             f"{totals['groups']} group(s); shard {runner.context.get('shard', '1/1')}",
+             "", f"Full report: `{report_path}`"]
+    if files:
+        lines += ["", "### Failing files"]
+        for entry in files:
+            first = entry["failures"][0]
+            location = str(first["file"])
+            if first["line"]:
+                location += f":{first['line']}"
+                if first["column"]:
+                    location += f":{first['column']}"
+            lines.append(
+                f"- **{entry['status'].upper()}** `{entry['file']}` "
+                f"({entry['tests']} tests, {entry['failed']} failed): "
+                f"{first['normalized']}")
+            for member in entry["failures"][:5]:
+                where = str(member["file"])
+                if member["line"]:
+                    where += f":{member['line']}"
+                    if member["column"]:
+                        where += f":{member['column']}"
+                lines.append(f"  - `{member['test']}` at `{where}`: {member['normalized']}")
+            if len(entry["failures"]) > 5:
+                lines.append(f"  - ... {len(entry['failures']) - 5} more in `{report_path.name}`")
+    repeated = [item for item in grouped if item["count"] > 1]
+    if repeated:
+        lines += ["", "### Same error across tests"]
+        for item in repeated:
+            lines.append(f"- x{item['count']} {item['message']}")
+    summary_path = os.environ.get("GITHUB_STEP_SUMMARY")
+    if summary_path:
+        with open(summary_path, "a", encoding="utf-8") as summary:
+            summary.write("\n".join(lines) + "\n")
+
+    for member in members[:ANNOTATION_LIMIT]:
+        properties = [f"file={_property_escape(member['file'])}"]
+        if member["line"]:
+            properties.append(f"line={member['line']}")
+            if member["column"]:
+                properties.append(f"col={member['column']}")
+        if member["test"] and member["test"] != "(file)":
+            properties.append(f"title={_property_escape(member['test'])}")
+        print(f"::error {','.join(properties)}::{_annotation_escape(member['message'])}",
+              flush=True)
+    print(f"DIAGNOSTICS {totals['failures']} failure(s) in {totals['failed']} file(s), "
+          f"{totals['groups']} group(s); full report {report_path}", flush=True)
+    return report
+
+
+
 def js_checks(native):
+    print_versions()
     paths = changed()
     index, total = js_shard_settings()
     excluded = []
@@ -1614,6 +1818,7 @@ def js_checks(native):
                  "excluded": len(excluded)})
     entries = [(group, ROOT / group, file) for group, files in sorted(groups.items()) for file in files]
     runner.run(entries, lambda group, cwd, file: js_command(group, file))
+    publish_js_report(runner, directory)
     if not runner.exit_code:
         print(f"TEST FILES PASS: {len(entries)} files, shard {index} of {total}, {runner.elapsed:.1f}s", flush=True)
     else:
