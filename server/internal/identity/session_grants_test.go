@@ -165,3 +165,20 @@ func TestCastTargetParentRefusesChangedFactsAndRetiredToken(t *testing.T) {
 		t.Fatalf("retired token: %v", err)
 	}
 }
+
+func TestCastTargetLocalParentHorizonDoesNotExtend(t *testing.T) {
+	ctx := context.Background()
+	s, db, owner := directFixture(t)
+	horizon := time.Now().Add(6 * time.Hour).UTC().Truncate(time.Second).Format(time.RFC3339)
+	if _, err := db.Exec(`UPDATE authorization_session_families SET authorization_horizon=? WHERE id=?`, horizon, owner.Session.SessionFamilyID); err != nil {
+		t.Fatal(err)
+	}
+	child := issueCastTarget(t, s, onDevice(t, "cast-local-horizon-1", "TV"), owner.Account.ID, owner.Account.PrimaryProfileID, owner.Session.SessionFamilyID)
+	var childHorizon string
+	if err := db.QueryRow(`SELECT authorization_horizon FROM authorization_session_families WHERE id=?`, child.SessionFamilyID).Scan(&childHorizon); err != nil {
+		t.Fatal(err)
+	}
+	if childHorizon > horizon {
+		t.Fatalf("child horizon %q exceeds original %q", childHorizon, horizon)
+	}
+}
