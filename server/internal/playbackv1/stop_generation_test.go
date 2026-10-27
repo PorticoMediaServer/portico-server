@@ -148,7 +148,7 @@ func TestStopGenerationRefusalsHaveNoOccurrenceEffects(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			owned, err := f.service.Playback.RetainPreparation(ctx, r.media, r.mediaGen)
+			owned, err := f.service.Playback.RetainPreparation(ctx, r.media, r.mediaGeneration)
 			if err != nil {
 				t.Fatal(err)
 			}

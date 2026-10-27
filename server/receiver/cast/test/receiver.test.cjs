@@ -930,7 +930,7 @@ test('cleanup 412 is terminal and never fetches/latest-retries or downgrades DEL
 // No hand-authored pending event substitutes for the receiver's real decoder path.
 test('composed sender/receiver retains genuine original 202 preparation beyond 150s only',async()=>{
  const {CastController}=await import('../../../../packages/client-core/src/cast/sender.ts');
- for(const outcome of ['201','terminal','retirement']){
+ for(const resource of ['real','retry-only'])for(const outcome of ['201','terminal','retirement']){
   const clock={now:0},scheduled=new Map();let sequence=0;
   const schedule=(fn,ms)=>{const id=++sequence;scheduled.set(id,{fn,at:clock.now+ms});return id};
   const cancel=id=>scheduled.delete(id);
@@ -940,11 +940,11 @@ test('composed sender/receiver retains genuine original 202 preparation beyond 1
    clock.now=end;await settle0();
   };
   let onMessage,onEnd;
-  const fixture={clock,schedule,cancel,senderEvent:(_id,body)=>onMessage?.(body),preparingResponses:Array.from({length:18},()=>session=>({...session,retryAfterMs:10000})),prepareTerminal:outcome==='terminal'};
+  const fixture={clock,schedule,cancel,senderEvent:(_id,body)=>onMessage?.(body),preparingResponses:Array.from({length:18},()=>session=>resource==='real'?({...session,retryAfterMs:10000}):({retryAfterMs:10000})),prepareTerminal:outcome==='terminal'};
   const h=await harness(fixture);h.senders.push('phone');
   const commands=[],saved=new Map();
   const transport={deviceName:'TV',deviceId:'sdk-tv',send:async command=>{commands.push(command);await h.message('phone',command)},onMessage:fn=>{onMessage=fn;return()=>{if(onMessage===fn)onMessage=undefined}},onSessionEnd:fn=>{onEnd=fn;return()=>{if(onEnd===fn)onEnd=undefined}},end:()=>{}};
-  const controller=new CastController({origin:'https://cast.getportico.tv',displayName:'Phone',controllerContext:{origin:'https://cast.getportico.tv',serverId:'server',authority:'local',accountId:'account',profileId:'profile',senderDeviceId:'phone',senderFamilyId:'source-family'},
+  const controller=new CastController({origin:'https://cast.getportico.tv',displayName:'Phone',controllerContext:{origin:'https://cast.getportico.tv',publicKey:'a'.repeat(43),serverId:'server',authority:'local',accountId:'account',profileId:'profile',senderDeviceId:'phone',senderFamilyId:'source-family'},
    controllerStorage:{get:k=>saved.get(k),set:(k,v)=>saved.set(k,v)},setTimer:schedule,clearTimer:cancel,
    api:{request:async(path,_method,body)=>path==='/v1/cast/bootstrap'?{bootstrap:{id:'cbs_ABCD',code:'ABCD'}}:{binding:body.binding,attemptId:body.attemptId,ticket:'b'.repeat(43)}}});
   let settled=false;const started=controller.start(transport,'movie',{title:'Film'},0).then(result=>{settled=true;return result});
@@ -962,7 +962,7 @@ test('composed sender/receiver retains genuine original 202 preparation beyond 1
   assert.equal(h.loads.length,outcome==='201'?1:0);
   assert.equal(h.calls.filter(c=>c.url.endsWith('/v1/cast/reconnect')).length,0,'pending progress never renews credential/server authority');
   const cleanup=h.calls.filter(c=>c.method==='DELETE'&&c.url.endsWith('/v1/playback/sessions/ps_1'));
-  assert.equal(cleanup.length,outcome==='201'?0:1);
+  assert.equal(cleanup.length,outcome==='201'||resource==='retry-only'?0:1);
   if(cleanup.length){assert.equal(cleanup[0].body.expectedGeneration,1);assert.equal(cleanup[0].headers.Authorization,'Bearer bearer-ABCD');}
   controller.dispose();
  }

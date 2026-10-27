@@ -847,9 +847,9 @@
         requireStart();
         answer=await api('/v1/playback/sessions',{body:body,headers:{'Idempotency-Key':key},noRenew:true,observeAnswer:observeStart},lease);
         if(answer.status!==202)break;
-        // Only an actually decoded real resource supplies progress evidence.
-        // Retry-only bodies own no resource and cannot prolong sender LOAD.
-        if(ownedStart&&Object.prototype.hasOwnProperty.call(answer.body,'id')&&pending){requireStart();pending({startId:key,sequence:++pendingSequence});requireStart();}
+        // Any canonical, original-current 202 is non-authoritative progress.
+        // Retry-only evidence never creates a resource or cleanup witness.
+        if(pending){requireStart();pending({startId:key,sequence:++pendingSequence});requireStart();}
         preparing();await wait(Math.max(250,answer.body.retryAfterMs));requireStart();
       }
       requireStart();stopPreparing();

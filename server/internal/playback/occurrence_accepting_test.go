@@ -2,13 +2,17 @@ package playback
 
 import (
 	"context"
+	"database/sql"
+	"errors"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
 
 	"portico.local/server/internal/dbwork"
+	"portico.local/server/internal/identity"
 	"portico.local/server/internal/playback/vod"
 )
 
@@ -234,5 +238,140 @@ func TestActualOldWindowThrottleCannotCancelSuccessorChild(t *testing.T) {
 	}
 	if childStopped.Load() != 0 || h.activeRuns[renditionKey(id, 0)] != next {
 		t.Fatal("old throttle cancelled successor child")
+	}
+}
+
+func TestFinitePrivateCleanupDoesNotHoldUnrelatedWriter(t *testing.T) {
+	db, h, id := conversionOutputFixture(t)
+	insertFixtureAccount(t, db, "owner", "profile")
+	insertFixtureSession(t, db, "session", "owner", "profile", "owner", "2999-01-01T00:00:00Z")
+	service := New(db)
+	service.ConfigureHLS(h)
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+	owner, err := service.RetainPreparation(ctx, id, 3)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer owner.Close()
+	blocked, release := make(chan string, 1), make(chan struct{})
+	f := &FiniteHLS{h: h, cleanupWork: func(path string) error { blocked <- path; <-release; return os.RemoveAll(path) }}
+	actor := &finiteActor{generation: 3, entry: owner.entry, run: owner.run}
+	result := make(chan error, 1)
+	// Different size rejects at the actual same-writer source fence, after its
+	// private staging has been allocated but before any public artifact changes.
+	go func() {
+		result <- f.publishPreparation(owner.Context(), id, actor, &vod.Source{Size: 2, ModifiedNS: 1, Duration: 6, FPS: 24})
+	}()
+	var path string
+	select {
+	case path = <-blocked:
+	case <-ctx.Done():
+		close(release)
+		t.Fatal(ctx.Err())
+	}
+	if filepath.Dir(path) != filepath.Join(h.root, id) || !strings.HasPrefix(filepath.Base(path), ".finite-") {
+		close(release)
+		t.Fatal("cleanup selected shared/foreign work", path)
+	}
+	writer := make(chan error, 1)
+	go func() {
+		_, err := dbwork.ExecWrite(ctx, db, dbwork.ClassSecurityFence, `UPDATE accounts SET username=username WHERE id='owner'`)
+		writer <- err
+	}()
+	select {
+	case err = <-writer:
+		if err != nil {
+			close(release)
+			t.Fatal(err)
+		}
+	case <-ctx.Done():
+		close(release)
+		t.Fatal("blocked private cleanup retained global writer")
+	}
+	close(release)
+	if err = <-result; err == nil {
+		t.Fatal("changed source accepted")
+	}
+	if _, err = os.Stat(path); !os.IsNotExist(err) {
+		t.Fatal("owned rejected staging not removed", err)
+	}
+}
+
+func TestHeldAcceptingDriftPreservesActualOwnedAudioBudgetAndReaders(t *testing.T) {
+	for _, mutation := range []string{"generation=generation+1", "grant_hash='successor-grant'"} {
+		t.Run(mutation, func(t *testing.T) {
+			db, h, id := conversionOutputFixture(t)
+			insertFixtureAccount(t, db, "owner", "profile")
+			insertFixtureSession(t, db, "session", "owner", "profile", "owner", "2999-01-01T00:00:00Z")
+			if _, err := db.Exec(`UPDATE playback_sessions SET grant_hash=? WHERE id=?`, identity.Digest("token"), id); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := db.Exec(`INSERT INTO playback_private_presentations(session_id,owner_session_id,expires_ms) VALUES(?,'original-parent',?)`, id, time.Now().Add(time.Minute).UnixMilli()); err != nil {
+				t.Fatal(err)
+			}
+			service := New(db)
+			service.ConfigureHLS(h)
+			ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+			defer cancel()
+			first, err := service.RetainAudioOccurrence(ctx, "token", id, 3)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer first.Close()
+			second, err := service.RetainAudioOccurrence(ctx, "token", id, 3)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer second.Close()
+			if !first.Charge(37, 100) {
+				t.Fatal("actual owned charge refused")
+			}
+			record := first.record
+			if record != second.record || service.prefetchOwned[id] != record || record.used != 37 || record.readers != 2 {
+				t.Fatal("fixture does not share original owned token")
+			}
+			claim, err := service.ClaimStopOccurrence(ctx, id, 3)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer claim.Abort()
+			writer, err := dbwork.Begin(ctx, db, dbwork.ClassSecurityFence)
+			if err != nil {
+				t.Fatal(err)
+			}
+			err = claim.FenceTx(writer.Context(), writer.Tx(), func(ctx context.Context, tx *sql.Tx) error {
+				_, err := tx.ExecContext(ctx, `UPDATE playback_sessions SET `+mutation+` WHERE id=?`, id)
+				return err
+			})
+			if !errors.Is(err, ErrOccurrenceChanged) {
+				writer.Rollback()
+				t.Fatalf("accepting drift: %v", err)
+			}
+			writer.Rollback()
+			claim.Abort()
+			var generation int
+			var grant string
+			if err = db.QueryRow(`SELECT generation,grant_hash FROM playback_sessions WHERE id=?`, id).Scan(&generation, &grant); err != nil {
+				t.Fatal(err)
+			}
+			if generation != 3 || grant != identity.Digest("token") {
+				t.Fatal("refusal changed durable successor graph")
+			}
+			if service.prefetchOwned[id] != record || record.used != 37 || record.readers != 2 || record.retired || first.Context().Err() != nil || second.Context().Err() != nil {
+				t.Fatal("refusal changed captured owned budget/readers")
+			}
+			h.occurrences.mu.Lock()
+			_, budget := first.entry.budgets[record]
+			_, one := first.entry.runs[first.run]
+			_, two := first.entry.runs[second.run]
+			h.occurrences.mu.Unlock()
+			if !budget || !one || !two {
+				t.Fatal("refusal replaced original registry tokens")
+			}
+			if first.Take(1, 100) != 1 || record.used != 38 {
+				t.Fatal("Abort did not preserve exact original owned admission")
+			}
+		})
 	}
 }

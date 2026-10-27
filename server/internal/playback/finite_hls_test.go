@@ -318,7 +318,13 @@ func TestFiniteAdmissionBoundsWithoutWorker(t *testing.T) {
 	// deterministic. The real-encoder tests above cover production behavior.
 	ready := make(chan struct{})
 	close(ready)
-	paused := &finiteActor{ctx: ctx, cancel: func() {}, ready: ready, wake: make(chan struct{}, 1), source: prior.source, waiters: 32}
+	owner, err := s.RetainPreparation(ctx, session.ID, prior.generation)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer owner.Close()
+	paused := &finiteActor{ctx: owner.Context(), cancel: owner.Close, ready: ready, wake: make(chan struct{}, 1), source: prior.source,
+		generation: owner.run.generation, entry: owner.entry, run: owner.run, waiters: 32}
 	h.finite.mu.Lock()
 	h.finite.actors[session.ID] = paused
 	h.finite.mu.Unlock()
