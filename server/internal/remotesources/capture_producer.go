@@ -407,7 +407,7 @@ func sameTarget(a, b captureTarget) bool {
 		a.inventoryObjectID == b.inventoryObjectID && a.inventoryRevision == b.inventoryRevision &&
 		a.inventoryRelativePath == b.inventoryRelativePath && a.assetID == b.assetID && a.itemID == b.itemID &&
 		a.observation == b.observation && a.scanRevision == b.scanRevision && a.size == b.size && a.sequential == b.sequential && a.sourceSequential == b.sourceSequential && a.captureMode == b.captureMode &&
-		a.path == b.path && a.remoteRoot == b.remoteRoot && a.profile == b.profile &&
+		a.path == b.path && a.profile == b.profile &&
 		a.settings.revision == b.settings.revision && a.settings.saved == b.settings.saved &&
 		a.settings.values.CacheBytes == b.settings.values.CacheBytes && a.settings.values.CacheFloorBytes == b.settings.values.CacheFloorBytes &&
 		a.settings.appliedBytes == b.settings.appliedBytes && a.settings.appliedFloor == b.settings.appliedFloor &&
