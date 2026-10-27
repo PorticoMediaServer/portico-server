@@ -1,3 +1,4 @@
+import ctypes
 import signal
 import contextlib
 import shutil
@@ -967,9 +968,11 @@ class WatchdogTests(unittest.TestCase):
         path.write_text(text)
         return path
 
-    def run_files(self, names, *, extra=(), file_seconds=15.0, exit_grace=1.0, stop=None):
+    def run_files(self, names, *, extra=(), file_seconds=15.0, exit_grace=1.0,
+                  terminate_grace=5.0, stop=None):
         runner = ci.test_watchdog.Runner(self.report, file_seconds=file_seconds,
-                                         exit_grace=exit_grace)
+                                         exit_grace=exit_grace,
+                                         terminate_grace=terminate_grace)
         def argv(group, cwd, file):
             return [self.node, f"--test-reporter={REPORTER}", *extra, "--test", file]
         entries = [("fixture", self.files, name) for name in names]
@@ -1078,6 +1081,74 @@ class WatchdogTests(unittest.TestCase):
         self.assertTrue(leaks)
         self.assert_gone(leaks[0]["pid"])
 
+    def kill(self, pid):
+        try:
+            os.kill(pid, signal.SIGKILL)
+        except ProcessLookupError:
+            pass
+
+    def detached_fixture(self, name, marker):
+        """A file whose test passes and leaves a detached helper running."""
+        self.fixture(name,
+                     "import {test} from 'node:test';\n"
+                     "import {writeFileSync} from 'node:fs';\n"
+                     "import {spawn} from 'node:child_process';\n"
+                     "test('passes but detaches a helper', () => {\n"
+                     "  const child = spawn(process.execPath, ['-e', 'setInterval(() => {}, 1000)'],\n"
+                     "    {detached: true, stdio: 'ignore'});\n"
+                     "  child.unref();\n"
+                     "  writeFileSync(process.env.DETACHED_PID, String(child.pid));\n"
+                     "});\n")
+        return marker
+
+    def test_detached_child_that_outlives_its_file_is_a_named_failure_and_is_stopped(self):
+        marker = self.root / "detached-pid"
+        self.detached_fixture("detached.test.mjs", marker)
+        self.fixture("later.test.mjs", "import {test} from 'node:test';\ntest('later', () => {});\n")
+        with patch.dict(os.environ, {"DETACHED_PID": str(marker)}):
+            runner, output = self.run_files(["detached.test.mjs", "later.test.mjs"],
+                                            exit_grace=0.5)
+        detached = int(marker.read_text())
+        self.addCleanup(self.kill, detached)
+        # The leader exits 0 with every test passing; the descendant it left is
+        # what makes this file fail, and the failure is named for the file.
+        self.assertEqual([result.status for result in runner.results],
+                         [ci.test_watchdog.FAIL, ci.test_watchdog.PASS])
+        self.assertEqual(runner.results[0].passed, 1)
+        self.assertTrue(any("detached child" in note for note in runner.results[0].notes))
+        self.assertEqual(runner.results[0].survivors, [])
+        self.assertIn("FAIL detached.test.mjs", output)
+        self.assertNotEqual(runner.exit_code, 0)
+        # Cleanup reached the process the leader orphaned, and the next file ran.
+        self.assert_gone(detached)
+        self.assertNotIn("NOT RUN later.test.mjs", output)
+
+    def test_a_child_that_survives_cleanup_fails_the_file_and_starts_no_later_file(self):
+        marker = self.root / "survivor-pid"
+        self.detached_fixture("survivor.test.mjs", marker)
+        self.fixture("later.test.mjs", "import {test} from 'node:test';\ntest('later', () => {});\n")
+        # Signals that never arrive stand in for a child cleanup cannot remove.
+        with patch.dict(os.environ, {"DETACHED_PID": str(marker)}), \
+                patch.object(ci.test_watchdog._Owned, "signal", lambda self, number: None):
+            runner, output = self.run_files(["survivor.test.mjs", "later.test.mjs"],
+                                            exit_grace=0.3, terminate_grace=0.2)
+        survivor = int(marker.read_text())
+        self.addCleanup(self.kill, survivor)
+        self.assertEqual([result.status for result in runner.results], [ci.test_watchdog.FAIL])
+        self.assertEqual([file for _, _, file in runner.not_run], ["later.test.mjs"])
+        self.assertIn(survivor, runner.results[0].survivors)
+        self.assertTrue(any("survived cleanup" in note for note in runner.results[0].notes))
+        self.assertIn("HALT survivor.test.mjs", output)
+        self.assertIn("NOT RUN later.test.mjs", output)
+        self.assertNotEqual(runner.exit_code, 0)
+        summary = json.loads((self.report / "summary.json").read_text())
+        self.assertEqual(summary["halted"],
+                         {"file": "survivor.test.mjs",
+                          "processes": runner.results[0].survivors})
+        # The probe's own survivor is removed here, so the test leaves none behind.
+        self.kill(survivor)
+        self.assert_gone(survivor)
+
     def test_runner_fault_is_named_and_the_remaining_files_still_run(self):
         self.fixture("passes.test.mjs", "import {test} from 'node:test';\ntest('passes', () => {});\n")
         self.fixture("later.test.mjs", "import {test} from 'node:test';\ntest('later', () => {});\n")
@@ -1175,6 +1246,124 @@ sys.exit(runner.exit_code)
         self.assertEqual([line["type"] for line in lines], ["test:start", "test:pass", "test:cancel"])
         self.assertEqual(lines[1]["data"]["duration_ms"], 12.5)
         self.assertEqual(len(live_path.read_text().splitlines()), 3)
+
+
+
+
+class OwnershipTests(unittest.TestCase):
+    """Ownership is by identity: a reused PID or group is never signalled."""
+
+    def owned(self):
+        owned = object.__new__(ci.test_watchdog._Owned)
+        owned.leader = 4242
+        owned.pids = {4242: 111}    # pid -> start time as first seen
+        owned.groups = {4242: 111}  # pgid -> start time of its owner
+        owned.available = True
+        owned.subreaper = False
+        return owned
+
+    def test_a_reused_pid_or_group_is_not_treated_as_ours(self):
+        owned = self.owned()
+        self.assertTrue(owned._own_identity(4242, {4242: (1, 4242, 111, "S")}))
+        self.assertFalse(owned._own_identity(4242, {4242: (1, 4242, 999, "S")}))
+        self.assertFalse(owned._own_identity(4242, {4242: (1, 4242, 111, "Z")}))
+        with patch.object(ci.test_watchdog, "_process_table",
+                          return_value={4242: (1, 4242, 999, "S")}):
+            self.assertEqual(owned.groups_alive(), set())
+            self.assertEqual(owned.survivors(), [])
+
+    def test_a_live_member_of_our_group_is_still_ours_even_if_unsampled(self):
+        owned = self.owned()
+        rows = {4242: (1, 4242, 111, "S"), 5000: (4242, 4242, 55, "S")}
+        with patch.object(ci.test_watchdog, "_process_table", return_value=rows):
+            self.assertEqual(owned.groups_alive(), {4242})
+            self.assertEqual(owned.survivors(), [4242, 5000])
+
+    def test_signal_skips_a_process_that_no_longer_matches_its_identity(self):
+        owned = self.owned()
+        with patch.object(ci.test_watchdog, "_process_table",
+                          return_value={4242: (1, 4242, 999, "S")}), \
+                patch.object(ci.test_watchdog.os, "kill") as kill, \
+                patch.object(ci.test_watchdog.os, "killpg") as killpg:
+            owned.signal(signal.SIGKILL)
+        kill.assert_not_called()
+        killpg.assert_not_called()
+
+
+class CliTests(unittest.TestCase):
+    """The generic CLI is the seam another repository can run unchanged."""
+
+    def setUp(self):
+        node = shutil.which("node")
+        if not node:
+            self.fail("node is required for the per-file runner regressions")
+        self.node = node
+        temp = tempfile.TemporaryDirectory()
+        self.addCleanup(temp.cleanup)
+        self.root = Path(temp.name)
+        self.files = self.root / "files"
+        self.files.mkdir()
+        self.report = self.root / "report"
+        self.script = Path(__file__).with_name("test_watchdog.py")
+
+    def fixture(self, name, text):
+        (self.files / name).write_text(text)
+
+    def run_cli(self, *arguments, stdin=None):
+        return subprocess.run([sys.executable, str(self.script), *arguments],
+                              input=stdin, text=True,
+                              stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+
+    def test_cli_runs_exactly_the_named_files_in_the_given_directory(self):
+        self.fixture("first.test.mjs", "import {test} from 'node:test';\ntest('first', () => {});\n")
+        self.fixture("second.test.mjs", "import {test} from 'node:test';\ntest('second', () => {});\n")
+        self.fixture("not-selected.test.mjs",
+                     "import {test} from 'node:test';\n"
+                     "test('must not run', () => { throw new Error('outside the selection'); });\n")
+        result = self.run_cli(
+            "--cwd", str(self.files), "--report-dir", str(self.report), "--group", "mounted",
+            "--file", "first.test.mjs", "--files-from", "-",
+            "--", self.node, f"--test-reporter={REPORTER}", "--test",
+            stdin="second.test.mjs\n")
+        self.assertEqual(result.returncode, 0, result.stdout)
+        summary = json.loads((self.report / "summary.json").read_text())
+        self.assertEqual([entry["file"] for entry in summary["results"]],
+                         ["first.test.mjs", "second.test.mjs"])
+        self.assertEqual(summary["context"],
+                         {"suite": "mounted", "files": 2, "cwd": str(self.files.resolve())})
+        self.assertEqual(summary["outcome"], "pass")
+        self.assertIn("SELECTED 2 file(s)", result.stdout)
+        self.assertNotIn("not-selected.test.mjs", result.stdout)
+
+    def test_cli_fails_closed_before_running_anything_without_an_exact_selection(self):
+        self.fixture("present.test.mjs", "import {test} from 'node:test';\ntest('present', () => {});\n")
+        no_files = self.run_cli("--cwd", str(self.files), "--", self.node, "--test")
+        self.assertEqual(no_files.returncode, 2)
+        self.assertIn("no files selected", no_files.stdout)
+        absent = self.run_cli("--cwd", str(self.files), "--file", "absent.test.mjs",
+                              "--", self.node, "--test")
+        self.assertEqual(absent.returncode, 2)
+        self.assertIn("missing selected file", absent.stdout)
+        repeated = self.run_cli("--cwd", str(self.files), "--file", "present.test.mjs",
+                                "--file", "present.test.mjs", "--", self.node, "--test")
+        self.assertEqual(repeated.returncode, 2)
+        self.assertIn("repeats a file", repeated.stdout)
+        no_command = self.run_cli("--cwd", str(self.files), "--file", "present.test.mjs")
+        self.assertEqual(no_command.returncode, 2)
+        self.assertFalse(self.report.exists())
+
+    def test_cli_reports_a_failing_file_and_still_runs_the_rest(self):
+        self.fixture("fails.test.mjs",
+                     "import {test} from 'node:test';\nimport assert from 'node:assert';\n"
+                     "test('fails', () => { assert.equal(1, 2); });\n")
+        self.fixture("passes.test.mjs", "import {test} from 'node:test';\ntest('passes', () => {});\n")
+        result = self.run_cli("--cwd", str(self.files), "--report-dir", str(self.report),
+                              "--file", "fails.test.mjs", "--file", "passes.test.mjs",
+                              "--", self.node, f"--test-reporter={REPORTER}", "--test")
+        self.assertEqual(result.returncode, 1, result.stdout)
+        summary = json.loads((self.report / "summary.json").read_text())
+        self.assertEqual([entry["status"] for entry in summary["results"]], ["fail", "pass"])
+        self.assertIn("FAIL fails.test.mjs", result.stdout)
 
 
 if __name__ == "__main__":

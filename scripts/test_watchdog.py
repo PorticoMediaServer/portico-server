@@ -16,6 +16,14 @@ process group instead, with:
   named failure instead of a stall;
 * an explicit never-ran inventory when the run is interrupted.
 
+Every exit is also an exit of the file's whole process tree. While the leader is
+alive its groups and descendants are retained with their identities (PID plus
+start time), and every exit path — normal, hung, leaked, interrupted or failed —
+stops what the file owned before the file is classified. A child that outlives
+its leader, or that cannot be stopped, is a named failure for that file, never a
+pass; when one is still running after cleanup the runner starts no further file,
+so a known survivor can never be mistaken for a clean result.
+
 It is deliberately independent of the platform: a per-file log plus the structured
 events are enough to report, and the caller supplies the exact argv for a file.
 """
@@ -24,6 +32,8 @@ import hashlib
 import os
 import signal
 import subprocess
+import sys
+import tempfile
 import threading
 import time
 from pathlib import Path
@@ -32,6 +42,11 @@ PASS = "pass"
 FAIL = "fail"
 HANG = "hang"
 INTERRUPTED = "interrupted"
+
+# Internal supervision verdicts: the leader exited but left something running, or
+# the file's own tests finished while its process kept running.
+ORPHAN = "orphan"
+LEAK = "leak"
 
 DEFAULT_TEST_TIMEOUT_MS = 60_000
 DEFAULT_FILE_SECONDS = 120.0
@@ -49,7 +64,7 @@ class FileResult:
 
     def __init__(self, group, file, status, *, tests=0, passed=0, failed=0,
                  cancelled=0, skipped=0, duration=0.0, active_test=None,
-                 notes=None, failures=None, log=None, events=None):
+                 notes=None, failures=None, log=None, events=None, survivors=None):
         self.group = group
         self.file = file
         self.status = status
@@ -64,6 +79,9 @@ class FileResult:
         self.failures = list(failures or [])
         self.log = log
         self.events = events
+        # Identities this file owned that were still running after cleanup. A
+        # non-empty list always means FAIL, and it stops the run.
+        self.survivors = list(survivors or [])
 
     @property
     def ok(self):
@@ -83,6 +101,7 @@ class FileResult:
             "active_test": self.active_test,
             "failures": self.failures,
             "notes": self.notes,
+            "survivors": self.survivors,
             "log": str(self.log) if self.log else None,
             "events": str(self.events) if self.events else None,
         }
@@ -119,33 +138,238 @@ class _EventReader:
         return events
 
 
-def _owned_groups(process):
-    """Snapshot the command's process groups before signalling it.
+_SUBREAPER = None
 
-    Node's runner and any helper a test starts normally share this command's new
-    session, but a nested helper may call setsid(). Descendants are therefore
-    reached through PID ancestry from this snapshot, never with a global kill.
+
+def _become_subreaper():
+    """Orphaned descendants are reparented here instead of init (Linux, best effort).
+
+    Sampling /proc catches a child only while its parent is still in the tree, so a
+    helper that detaches and whose parent exits in the same few milliseconds can
+    escape a pure snapshot. As a child subreaper this runner is the ancestor those
+    orphans are given to, which makes every one of them discoverable by parentage
+    after the leader is gone. PR_SET_CHILD_SUBREAPER is Linux-only; elsewhere the
+    snapshot remains the bound, and the same cleanup rules still apply.
+    """
+    try:
+        import ctypes
+        libc = ctypes.CDLL(None, use_errno=True)
+        return libc.prctl(36, 1, 0, 0, 0) == 0  # PR_SET_CHILD_SUBREAPER
+    except (OSError, AttributeError):
+        return False
+
+
+def _subreaper():
+    global _SUBREAPER
+    if _SUBREAPER is None:
+        _SUBREAPER = _become_subreaper()
+    return _SUBREAPER
+
+
+def _process_table():
+    """pid -> (ppid, pgrp, start time, state) read from /proc.
+
+    The start time is what makes an identity reusable safely: a PID or group that
+    now belongs to a different start time is not the process we observed, so it is
+    never signalled. An empty table means /proc is not available here.
     """
     rows = {}
     proc = Path("/proc")
-    if proc.is_dir():
-        for entry in proc.iterdir():
-            if not entry.name.isdigit():
+    if not proc.is_dir():
+        return rows
+    for entry in proc.iterdir():
+        if not entry.name.isdigit():
+            continue
+        try:
+            fields = (entry / "stat").read_text().rsplit(")", 1)[1].split()
+            rows[int(entry.name)] = (int(fields[1]), int(fields[2]),
+                                     int(fields[19]), fields[0])
+        except (OSError, ValueError, IndexError):
+            continue
+    return rows
+
+
+class _Owned:
+    """The command's process tree, retained while its leader is alive.
+
+    Node's runner and the helpers a test starts normally share the leader's new
+    session, but a helper may call setsid() and leave that session. Descendants are
+    therefore remembered as identities (PID plus start time) seen while the leader
+    was alive, together with the process groups they belonged to, so a later exit
+    can stop exactly those processes: never a global kill, and never a process that
+    merely inherited a reused PID.
+    """
+
+    def __init__(self, process):
+        self.leader = process.pid
+        self.pids = {}    # pid -> start time at first sighting
+        self.groups = {}  # pgid -> start time of the process that owns the group
+        self.available = Path("/proc").is_dir()
+        self.subreaper = _subreaper()
+        self.capture()
+        # A leader always has a /proc entry, but retain its identity explicitly so
+        # a later PID reuse can never be mistaken for this file's process.
+        deadline = time.monotonic() + 0.2
+        while self.available and self.leader not in self.pids and time.monotonic() < deadline:
+            time.sleep(POLL_SECONDS)
+            self.capture()
+
+    def capture(self):
+        """Retain the leader's current descendants; call repeatedly while it lives."""
+        if not self.available:
+            self.pids.setdefault(self.leader, None)
+            self.groups.setdefault(self.leader, None)
+            self.groups.pop(os.getpgrp(), None)
+            return self
+        rows = _process_table()
+        owned = {self.leader}
+        while True:
+            found = {pid for pid, row in rows.items() if row[0] in owned} - owned
+            if not found:
+                break
+            owned.update(found)
+        for pid in owned:
+            row = rows.get(pid)
+            if row is None:
+                continue
+            self.pids.setdefault(pid, row[2])
+            owner = rows.get(row[1])
+            self.groups.setdefault(row[1], owner[2] if owner is not None else None)
+        # Our own group is never part of the tree, whatever the ancestry says.
+        self.groups.pop(os.getpgrp(), None)
+        return self
+
+    def _rows(self):
+        if not self.available:
+            return None
+        return _process_table()
+
+    def adopt(self):
+        """Take in descendants the kernel handed to this runner as their reaper.
+
+        Only direct children of this runner that are not the file's leader can be
+        here, so this never claims an unrelated process; the identity (PID plus
+        start time) still has to match before anything is signalled.
+        """
+        if not self.available or not self.subreaper:
+            return self
+        rows = _process_table()
+        me = os.getpid()
+        for pid, row in rows.items():
+            if pid == self.leader or pid in self.pids or row[0] != me:
+                continue
+            self.pids[pid] = row[2]
+            owner = rows.get(row[1])
+            self.groups.setdefault(row[1], owner[2] if owner is not None else None)
+        self.groups.pop(os.getpgrp(), None)
+        return self
+
+    def reap(self):
+        """Reap this runner's own finished children, never the file's leader.
+
+        A descendant orphaned onto this process can exit before it is ever adopted
+        by name, so the rule is by parentage and state: a zombie whose parent is
+        this runner is ours to reap, and subprocess still owns the leader's status.
+        """
+        if not self.available:
+            return
+        rows = _process_table()
+        me = os.getpid()
+        for pid, row in rows.items():
+            if pid == self.leader or row[0] != me or row[3] != "Z":
                 continue
             try:
-                fields = (entry / "stat").read_text().rsplit(")", 1)[1].split()
-                rows[int(entry.name)] = (int(fields[1]), int(fields[2]))
-            except (OSError, ValueError, IndexError):
+                os.waitpid(pid, os.WNOHANG)
+            except ChildProcessError:
+                pass
+
+    def _own_identity(self, pid, rows):
+        """True when `pid` is still the process this tree observed."""
+        row = rows.get(pid)
+        if row is None or row[3] == "Z":
+            return False
+        started = self.pids.get(pid)
+        return started is None or row[2] == started
+
+    def groups_alive(self):
+        rows = self._rows()
+        if rows is None:
+            alive = set()
+            for group in self.groups:
+                try:
+                    os.killpg(group, 0)
+                except (ProcessLookupError, PermissionError):
+                    continue
+                alive.add(group)
+            return alive
+        alive = set()
+        for group, started in self.groups.items():
+            owner = rows.get(group)
+            if owner is not None and started is not None and owner[2] != started:
+                continue  # the group id now names an unrelated process
+            if any(row[1] == group and row[3] != "Z" for row in rows.values()):
+                alive.add(group)
+        return alive
+
+    def pids_alive(self):
+        rows = self._rows()
+        if rows is None:
+            alive = {}
+            for pid in self.pids:
+                try:
+                    os.kill(pid, 0)
+                except (ProcessLookupError, PermissionError):
+                    continue
+                alive[pid] = None
+            return alive
+        return {pid: rows[pid] for pid in self.pids if self._own_identity(pid, rows)}
+
+    def survivors(self):
+        """Identities of this file's tree that are still running."""
+        rows = self._rows()
+        if rows is None:
+            return sorted(set(self.pids_alive()) | self.groups_alive())
+        found = set(self.pids_alive())
+        for group in self.groups_alive():
+            # A member that was never sampled is still this file's descendant: no
+            # other process can join a group the leader created.
+            found.update(pid for pid, row in rows.items()
+                         if row[1] == group and row[3] != "Z")
+        return sorted(found)
+
+    def busy(self):
+        return bool(self.survivors())
+
+    def signal(self, number):
+        """Send `number` to the tree only, in its groups and by verified identity."""
+        rows = self._rows()
+        if rows is None:
+            for group in self.groups:
+                try:
+                    os.killpg(group, number)
+                except (ProcessLookupError, PermissionError):
+                    pass
+            return
+        groups = self.groups_alive()
+        for group in groups:
+            try:
+                os.killpg(group, number)
+            except (ProcessLookupError, PermissionError):
+                pass
+        for pid, row in self.pids_alive().items():
+            if row[1] in groups:
+                continue  # already reached through its group
+            # Re-read immediately before signalling: only the exact identity is hit.
+            row = _process_table().get(pid)
+            if row is None or row[3] == "Z":
                 continue
-    owned = {process.pid}
-    while True:
-        found = {pid for pid, (parent, _) in rows.items() if parent in owned}
-        if found <= owned:
-            break
-        owned.update(found)
-    groups = {process.pid} | {group for pid, (_, group) in rows.items() if pid in owned}
-    groups.discard(os.getpgrp())  # never signal the runner's own group
-    return groups
+            started = self.pids.get(pid)
+            if started is not None and row[2] != started:
+                continue
+            try:
+                os.kill(pid, number)
+            except (ProcessLookupError, PermissionError):
+                pass
 
 
 class Runner:
@@ -165,6 +389,7 @@ class Runner:
         self.not_run = []
         self.interrupted = None
         self.requested_stop = False
+        self.halted = None
         self.elapsed = 0.0
         self.summary_path = None
         self.selection_path = None
@@ -196,6 +421,12 @@ class Runner:
                 self.results.append(result)
                 self._print_result(result)
                 if result.status == INTERRUPTED:
+                    self.not_run = list(entries[index + 1:])
+                    break
+                if result.survivors:
+                    # A known owned process outlived its file's cleanup. Starting
+                    # another file here would hide it behind a later result.
+                    self.halted = {"file": result.file, "processes": result.survivors}
                     self.not_run = list(entries[index + 1:])
                     break
         finally:
@@ -258,18 +489,39 @@ class Runner:
                 return FileResult(group, file, FAIL, duration=time.monotonic() - started,
                                   notes=[f"could not start: {error}"],
                                   log=log_path, events=events_path)
-            outcome = self._supervise(process, reader, started, stop)
-            if process.poll() is None:
-                self._stop(process)
+            owned = _Owned(process)
+            fault = None
             try:
-                code = process.wait(timeout=self.terminate_grace)
-            except subprocess.TimeoutExpired:
-                self._stop(process)
-                code = None
+                outcome = self._supervise(process, reader, started, stop, owned)
+            except Exception as error:  # a supervision fault must not leak the tree
+                fault = error
+                outcome = None
+            finally:
+                # Cleanup happens on every exit, not only while the leader is alive.
+                survivors = self._stop(process, owned)
+            code = process.poll()
         duration = time.monotonic() - started
-        return self._classify(group, file, outcome, code, duration, log_path, events_path)
+        if outcome is None:
+            notes = [f"runner error: {type(fault).__name__}: {fault}"]
+            if survivors:
+                notes.append(
+                    f"owned child process(es) survived cleanup ({self._names(survivors)})")
+            return FileResult(group, file, FAIL, duration=duration, notes=notes,
+                              log=log_path, events=events_path, survivors=survivors)
+        return self._classify(group, file, outcome, code, duration, log_path, events_path,
+                              survivors)
 
-    def _supervise(self, process, reader, started, stop):
+    def _settle(self, owned):
+        """Allow anything the leader left behind its exit grace, then name it."""
+        deadline = time.monotonic() + self.exit_grace
+        while True:
+            owned.adopt()
+            if not owned.busy() or time.monotonic() >= deadline:
+                break
+            time.sleep(min(POLL_SECONDS, max(0.0, deadline - time.monotonic())))
+        return owned.survivors()
+
+    def _supervise(self, process, reader, started, stop, owned):
         running = {}
         counts = {"tests": 0, "passed": 0, "failed": 0, "cancelled": 0, "skipped": 0}
         failures = []
@@ -278,6 +530,7 @@ class Runner:
         last_event = started
         terminal_tests = 0
         verdict = "exit"
+        stray = []
 
         def consume():
             nonlocal summary, summary_at, last_event, terminal_tests
@@ -314,23 +567,28 @@ class Runner:
             consume()
             code = process.poll()
             now = time.monotonic()
+            if code is None:
+                # Retain this tree's identities only while its leader can still
+                # create descendants; a later exit is then cleanable to the end.
+                owned.capture()
             if self._stop_requested(stop):
-                self._stop(process)
                 verdict = INTERRUPTED
                 break
             if code is not None:
+                # The leader exited. Anything it owned that is still running was
+                # left behind by this file, whether or not its tests passed.
+                stray = self._settle(owned)
+                if stray:
+                    verdict = ORPHAN
                 break
             if summary_at is not None and now - summary_at >= self.exit_grace:
-                self._stop(process)
-                verdict = "leak"
+                verdict = LEAK
                 break
             if now - started >= self.file_seconds:
-                self._stop(process)
                 verdict = HANG
                 break
             if summary is None and terminal_tests and not running and now - last_event >= self.exit_grace:
-                self._stop(process)
-                verdict = "leak"
+                verdict = LEAK
                 break
             time.sleep(min(POLL_SECONDS, max(0.0, self.file_seconds - (now - started))))
         consume()  # keep the last events written just before the group was stopped
@@ -356,7 +614,8 @@ class Runner:
             "active_test": active,
             "active_seconds": active_age,
             "summary": summary,
-    }
+            "stray": stray,
+        }
 
     @staticmethod
     def _is_file_event(data, name, nesting):
@@ -381,20 +640,37 @@ class Runner:
         message = self._text(self._error_of(data))
         return f"{data.get('name')}: {message}" if message else str(data.get("name"))
 
-    def _classify(self, group, file, outcome, code, duration, log, events):
+    @staticmethod
+    def _names(pids):
+        return ", ".join(f"pid {pid}" for pid in pids) or "unknown process"
+
+    def _classify(self, group, file, outcome, code, duration, log, events, survivors):
         counts = outcome["counts"]
         verdict = outcome["verdict"]
         failures = list(outcome["failures"])
         notes = []
+        if survivors:
+            # Fail closed: a surviving owned process is never a pass, and the
+            # runner starts no further file while it is running.
+            notes.append(
+                f"owned child process(es) survived cleanup ({self._names(survivors)})")
         if verdict == INTERRUPTED:
             status = INTERRUPTED
             notes.append("interrupted while this file was running")
+        elif survivors:
+            status = FAIL
+            notes.append("no later file was started")
+        elif verdict == ORPHAN:
+            status = FAIL
+            notes.append(
+                f"the test file exited but left a detached child running "
+                f"({self._names(outcome['stray'])}); a leaked descendant is never a pass")
         elif verdict == HANG:
             status = HANG
             notes.append(f"file did not finish within {self.file_seconds:g}s")
         elif counts["failed"] or (outcome["summary"] or {}).get("success") is False:
             status = FAIL
-        elif verdict == "leak":
+        elif verdict == LEAK:
             # Tests may all have passed, but the file never exited: that is a real
             # test bug and must never be reported as a passing file.
             status = FAIL
@@ -406,7 +682,7 @@ class Runner:
             notes.append(f"exited with status {code}")
         else:
             status = PASS
-        if verdict == "leak" and status == FAIL and not any("leaked handle" in note for note in notes):
+        if verdict == LEAK and status == FAIL and not any("leaked handle" in note for note in notes):
             notes.append("the process did not exit after its tests finished")
         if status == HANG:
             active = outcome["active_test"]
@@ -422,7 +698,7 @@ class Runner:
             failed=counts["failed"], cancelled=counts["cancelled"],
             skipped=counts["skipped"], duration=duration,
             active_test=outcome["active_test"], notes=notes, failures=failures,
-            log=log, events=events)
+            log=log, events=events, survivors=survivors)
 
     # -- stop --------------------------------------------------------------
 
@@ -434,24 +710,12 @@ class Runner:
             return True
         return False
 
-    def _alive(self, process, groups):
-        process.poll()
-        remaining = set()
-        for group in groups:
-            try:
-                os.killpg(group, 0)
-            except ProcessLookupError:
-                continue
-            except PermissionError:
-                pass
-            remaining.add(group)
-        return remaining
-
-    def _wait(self, process, groups, seconds):
+    def _wait(self, process, owned, seconds):
         deadline = time.monotonic() + seconds
         while True:
-            remaining = self._alive(process, groups)
-            if not remaining:
+            process.poll()  # reap the leader as soon as it exits
+            owned.adopt()
+            if not owned.busy():
                 try:
                     process.wait(timeout=max(0.1, seconds))
                 except subprocess.TimeoutExpired:
@@ -461,17 +725,21 @@ class Runner:
                 return False
             time.sleep(min(POLL_SECONDS, max(0.0, deadline - time.monotonic())))
 
-    def _stop(self, process):
-        groups = _owned_groups(process)
-        for sig in (signal.SIGTERM, signal.SIGKILL):
-            for group in self._alive(process, groups):
-                try:
-                    os.killpg(group, sig)
-                except ProcessLookupError:
-                    pass
-            if self._wait(process, groups, self.terminate_grace):
-                return True
-        return False
+    def _stop(self, process, owned):
+        """Stop everything this file owned on this exit; return what outlived it."""
+        owned.adopt()
+        if owned.busy():
+            for number in (signal.SIGTERM, signal.SIGKILL):
+                owned.signal(number)
+                if self._wait(process, owned, self.terminate_grace):
+                    break
+        try:
+            process.wait(timeout=max(0.1, self.terminate_grace))
+        except subprocess.TimeoutExpired:
+            # A leader that cannot be reaped is itself a survivor, and it stays named.
+            pass
+        owned.reap()
+        return owned.survivors()
 
     def _install_handlers(self):
         if threading.current_thread() is not threading.main_thread():
@@ -538,6 +806,7 @@ class Runner:
             },
             "context": self.context,
             "totals": totals,
+            "halted": self.halted,
             "live_events": str(self.live_path) if self.live_path else None,
             "selection": str(self.selection_path) if self.selection_path else None,
             "results": [result.as_dict() for result in self.results],
@@ -553,6 +822,78 @@ class Runner:
             if result.status == PASS:
                 continue
             print(f"NOT PASSED {result.status.upper()} {result.file}", flush=True)
+        if self.halted:
+            print(f"HALT {self.halted['file']}: owned process(es) survived cleanup "
+                  f"({self._names(self.halted['processes'])}); {len(self.not_run)} file(s) not run",
+                  flush=True)
         for group, _, file in self.not_run:
             print(f"NOT RUN {file}", flush=True)
         print(f"EVENTS {self.events_dir}", flush=True)
+
+
+def main(argv=None):
+    """Run an explicit file selection through this supervisor, unchanged.
+
+    The selection is never derived here: every file comes from `--file` or from a
+    `--files-from` list (one path per line, `-` for stdin), so a caller keeps its
+    exact existing selection and only replaces the whole-glob process with one
+    supervised process per file. Each file is run as:
+
+        <command...> <file>
+
+    in `--cwd`, so the command carries the original loader, reporter and test
+    flags. Anything missing or duplicated fails before a single test runs.
+    """
+    import argparse
+    parser = argparse.ArgumentParser(
+        description="Supervise an explicit list of test files, one process per file.")
+    parser.add_argument("--cwd", required=True, help="directory the files and command run in")
+    parser.add_argument("--report-dir", help="persistent report directory (default: a temp dir)")
+    parser.add_argument("--group", default="checkpoint", help="label for these files in the report")
+    parser.add_argument("--file", action="append", default=[], help="one selected file (repeatable)")
+    parser.add_argument("--files-from", action="append", default=[], metavar="PATH",
+                        help="read selected files from PATH, one per line (- for stdin)")
+    parser.add_argument("--file-seconds", type=float, default=DEFAULT_FILE_SECONDS)
+    parser.add_argument("--test-timeout-ms", type=int, default=DEFAULT_TEST_TIMEOUT_MS)
+    parser.add_argument("--exit-grace", type=float, default=DEFAULT_EXIT_GRACE)
+    parser.add_argument("--terminate-grace", type=float, default=DEFAULT_TERMINATE_GRACE)
+    arguments = list(sys.argv[1:] if argv is None else argv)
+    if "--" not in arguments:
+        parser.error("-- must separate the per-file command, e.g. -- node --test")
+    split = arguments.index("--")
+    options = parser.parse_args(arguments[:split])
+    command = arguments[split + 1:]
+    if not command:
+        parser.error("the per-file command after -- is empty")
+
+    files = list(options.file)
+    for source in options.files_from:
+        text = sys.stdin.read() if source == "-" else Path(source).read_text()
+        files.extend(line.strip() for line in text.splitlines() if line.strip())
+    if not files:
+        parser.error("no files selected: pass --file or --files-from")
+    if len(set(files)) != len(files):
+        parser.error("the selection repeats a file")
+    cwd = Path(options.cwd).resolve()
+    missing = [name for name in files if not (cwd / name).is_file()]
+    if missing:
+        parser.error("missing selected file(s) in %s: %s" % (cwd, ", ".join(missing)))
+
+    directory = (Path(options.report_dir) if options.report_dir
+                 else Path(tempfile.mkdtemp(prefix="portico-test-events-")))
+    directory.mkdir(parents=True, exist_ok=True)
+    runner = Runner(directory, file_seconds=options.file_seconds,
+                    test_timeout_ms=options.test_timeout_ms,
+                    exit_grace=options.exit_grace,
+                    terminate_grace=options.terminate_grace,
+                    context={"suite": options.group, "files": len(files), "cwd": str(cwd)})
+    print(f"SELECTED {len(files)} file(s) in {cwd}", flush=True)
+    for name in files:
+        print(f"  {options.group}/{name}", flush=True)
+    runner.run([(options.group, cwd, name) for name in files],
+               lambda group, entry_cwd, file: [*command, file])
+    return runner.exit_code
+
+
+if __name__ == "__main__":
+    sys.exit(main())

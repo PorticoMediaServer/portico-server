@@ -14,7 +14,7 @@ permissions:
   contents: read
 concurrency:
   group: ci-${{ github.repository }}
-  cancel-in-progress: true
+  cancel-in-progress: false
 env:
   CI_FULL_TREE: '1'
   GOTOOLCHAIN: go1.26.10
@@ -40,7 +40,7 @@ jobs:
           if-no-files-found: ignore
           retention-days: 7
 
-  go:
+  go-shards:
     runs-on: ubuntu-24.04
     timeout-minutes: 180
     strategy:
@@ -101,8 +101,6 @@ jobs:
   security:
     runs-on: ubuntu-24.04
     timeout-minutes: 60
-    env:
-      CI_TEST_REPORT_DIR: ${{ runner.temp }}/ci-security-report
     strategy:
       fail-fast: false
       matrix: {area: [auth, media]}
@@ -125,6 +123,8 @@ jobs:
           (cd server && go build -o ../.scratch/portico-server ./cmd/server)
           echo "PORTICO_PLAYBACK_TEST_HELPER=$PWD/.scratch/portico-server" >> "$GITHUB_ENV"
       - name: Sign-in, sessions, account/profile privacy, restrictions, egress, sandbox and spawn allowlist
+        env:
+          CI_TEST_REPORT_DIR: ${{ runner.temp }}/ci-security-report
         run: |
           status=0
           python3 scripts/ci-affected.py go --group '${{ matrix.area }}' > "$RUNNER_TEMP/full-ci.log" 2>&1 || status=$?
@@ -143,7 +143,7 @@ jobs:
           if-no-files-found: ignore
           retention-days: 7
 
-  clients:
+  clients-checks:
     runs-on: ubuntu-24.04
     timeout-minutes: 40
     steps:
@@ -223,3 +223,40 @@ jobs:
             ${{ runner.temp }}/ci-report/**
           if-no-files-found: error
           retention-days: 7
+
+  # Preserve the branch's required contexts while requiring every complete shard.
+  go:
+    if: ${{ always() }}
+    needs: [go-shards]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    strategy:
+      matrix: {module: [apikit, server]}
+    steps:
+      - name: Require all Go shards
+        env:
+          RESULTS: ${{ toJSON(needs) }}
+        run: |
+          python3 - <<'PYCODE'
+          import json, os
+          results = {name: row['result'] for name, row in json.loads(os.environ['RESULTS']).items()}
+          print(results)
+          raise SystemExit(any(result != 'success' for result in results.values()))
+          PYCODE
+
+  clients:
+    if: ${{ always() }}
+    needs: [clients-checks, clients-tests]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Require client checks and every test shard
+        env:
+          RESULTS: ${{ toJSON(needs) }}
+        run: |
+          python3 - <<'PYCODE'
+          import json, os
+          results = {name: row['result'] for name, row in json.loads(os.environ['RESULTS']).items()}
+          print(results)
+          raise SystemExit(any(result != 'success' for result in results.values()))
+          PYCODE

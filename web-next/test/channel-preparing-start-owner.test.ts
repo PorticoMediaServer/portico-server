@@ -42,8 +42,9 @@ function fixture() {
 test('genuine active channel 201 receipt owns only the original channel read and once-only bounded stop', async () => {
   const f = fixture(), start = f.reg.beginChannel(f.original(), f.current);
   try {
+    f.retireView();assert.equal(start.isCurrent(), false);
     const cleanup = Promise.resolve(start.retireUninstalled(Object.freeze({id: 'original_channel', generation: 1})));
-    f.retireView();assert.equal(start.isCurrent(), false);await cleanup;
+    await cleanup;
     await start.retireUninstalled(Object.freeze({id: 'original_channel', generation: 1}));start.finish();
     assert.deepEqual(f.calls.map(call => [call.method, call.path]), [['GET', '/v1/playback/sessions/original_channel'], ['DELETE', '/v1/playback/sessions/original_channel']]);
     assert.equal(f.calls[0]!.signal, f.calls[1]!.signal);
