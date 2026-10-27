@@ -18,6 +18,7 @@ import {routeOrigin} from './route-identity.ts';
 import {parseMoveCollisionDetails,type MoveCollisionDetails} from './account-move.ts';
 import {sessionRoute,bindSessionRoute,type RouteConnection} from './route-connection.ts';
 export * from './route-identity.ts';
+export * from './clone-portable-dto.ts';
 export * from './owner-recovery-contact.ts';
 export * from './identity-restrictions.ts';
 export * from './identity-devices.ts';

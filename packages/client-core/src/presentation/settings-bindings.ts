@@ -1,3 +1,4 @@
+import {clonePortableDto} from '../clone-portable-dto.ts';
 import type {LibraryAdminDocument,LibrarySettings} from '../administration.ts';
 import type {LibrarySonicDocument} from '../server-admin/library-sonic.ts';
 import type {PutAdminLibrariesIdSonicAnalysisRequest} from '../../../contracts/src/types.ts';
@@ -399,10 +400,10 @@ export function settingsBindingPatch(binding:SettingsBinding,value:unknown,sourc
 }
 /** Apply dotted domain fields as well as literal dotted registry keys. */
 export function applySettingsBindingPatch<T extends Readonly<Record<string,unknown>>>(draft:T,patch:SettingsBindingPatch):T{
- const next=structuredClone(draft) as Record<string,unknown>;
+ const next=clonePortableDto(draft) as Record<string,unknown>;
  for(const [key,value] of Object.entries(patch.values)){
-  if(Object.hasOwn(next,key)||!key.includes('.')){next[key]=structuredClone(value);continue;}
-  const parts=key.split('.');let at=next;for(const part of parts.slice(0,-1)){const child=at[part];at[part]=child&&typeof child==='object'&&!Array.isArray(child)?{...child}:{};at=at[part] as Record<string,unknown>;}at[parts.at(-1)!]=structuredClone(value);
+  if(Object.hasOwn(next,key)||!key.includes('.')){next[key]=clonePortableDto(value);continue;}
+  const parts=key.split('.');let at=next;for(const part of parts.slice(0,-1)){const child=at[part];at[part]=child&&typeof child==='object'&&!Array.isArray(child)?{...child}:{};at=at[part] as Record<string,unknown>;}at[parts.at(-1)!]=clonePortableDto(value);
  }
  return next as T;
 }
@@ -417,7 +418,7 @@ function equal(a:unknown,b:unknown):boolean{
 /** Only full exact sets match; no nearest-choice policy loses Advanced values. */
 function matches(actual:unknown,expected:unknown):boolean{if(expected&&typeof expected==='object'&&!Array.isArray(expected)){if(!actual||typeof actual!=='object'||Array.isArray(actual))return false;return Object.entries(expected).every(([key,value])=>matches((actual as Record<string,unknown>)[key],value));}return equal(actual,expected);}
 export function exactPresetValue(options:readonly SettingsPresetOption[],read:(rowId:string)=>unknown):unknown{return options.find(option=>option.sets&&Object.entries(option.sets).every(([key,value])=>matches(read(key),value)))?.value??'custom';}
-export function presetPatch(options:readonly SettingsPresetOption[],choice:unknown,read?:(rowId:string)=>unknown):Readonly<Record<string,unknown>>{const option=options.find(option=>Object.is(option.value,choice));if(!option?.sets)throw new Error('A stored preset is required.');return Object.fromEntries(Object.entries(option.sets).map(([key,value])=>[key,value&&typeof value==='object'&&!Array.isArray(value)?{...(read?.(key) as Record<string,unknown>??{}),...structuredClone(value)}:structuredClone(value)]));}
+export function presetPatch(options:readonly SettingsPresetOption[],choice:unknown,read?:(rowId:string)=>unknown):Readonly<Record<string,unknown>>{const option=options.find(option=>Object.is(option.value,choice));if(!option?.sets)throw new Error('A stored preset is required.');return Object.fromEntries(Object.entries(option.sets).map(([key,value])=>[key,value&&typeof value==='object'&&!Array.isArray(value)?{...(read?.(key) as Record<string,unknown>??{}),...clonePortableDto(value)}:clonePortableDto(value)]));}
 export const resetPreset=presetPatch;
 export function changedFromDefault(current:unknown,defaultValue:unknown):boolean{return !equal(current,defaultValue);}
 
