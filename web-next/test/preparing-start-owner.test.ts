@@ -13,7 +13,7 @@ import {WebPlayback} from '../src/platform/playback/web-playback.ts';
 // network, session storage, browser, device, engine or actual timer is used.
 const real = () => ({id: 'original_session', revision: '1', kind: 'vod', role: 'local', state: 'paused', itemId: 'movie',
   lease: {expiresAt: '2099-01-01T00:00:00Z', reportEveryMs: 10_000},
-  presentation: {generation: 1, mode: 'stream', engine: 'native', url: '/media/original.m3u8', startPositionMs: 0,
+  presentation: {generation: 1, mode: 'stream', engine: 'native', url: '/v1/media/original.m3u8', startPositionMs: 0,
     quality: {mode: 'original'}, subtitles: [], decision: {video: {action: 'copy', reasons: []}, audio: {action: 'copy', reasons: []}}}});
 const preparing = () => parseStartPreparation({...real(), retryAfterMs: 500}).session!;
 const response = (body: unknown, status = 202) => ({status, headers: {}, body});
