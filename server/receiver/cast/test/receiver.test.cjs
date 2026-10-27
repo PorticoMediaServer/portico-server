@@ -6,7 +6,7 @@ async function harness(fixture={}){
  // The real SDK exposes QUEUE_NEXT/PREV enum values but rejects them as interceptors.
  const supportedInterceptors=new Set(['LOAD','PLAY','PAUSE','SEEK','STOP','PRELOAD','QUEUE_INSERT','QUEUE_LOAD','QUEUE_UPDATE','QUEUE_REMOVE','QUEUE_REORDER','GET_STATUS','MEDIA_STATUS','CLOUD_STATUS','QUEUE_GET_ITEMS','QUEUE_GET_ITEM_IDS']);
  const manager={setMediaUrlResolver:fn=>urlResolver=fn,getMediaInformation:()=>loads.at(-1)?.media,setMediaInformation:(media,broadcast)=>metadataUpdates.push({media,broadcast}),getQueueManager:()=>({insertItems:items=>{for(const item of items)queueItems.push({...item,itemId:queueItems.length+1});},getItems:()=>queueItems,getCurrentItem:()=>queueItems[0],removeItems:ids=>{for(let i=queueItems.length-1;i>=0;i--)if(ids.includes(queueItems[i].itemId))queueItems.splice(i,1);}}),getCurrentTimeSec:()=>at,getPlayerState:()=>state,load:async x=>{if(fixture.loadFails||(fixture.nextLoadFails&&loads.length))throw new Error('decode_error');if(fixture.localInterceptors&&interceptors.LOAD){x=await interceptors.LOAD(x);if(!x)return;}loads.push(x);document.getElementById('player').ended=false;if(x.queueData){queueItems.length=0;for(const item of x.queueData.items)queueItems.push({...item,itemId:queueItems.length+1});}state=x.autoplay?'PLAYING':'PAUSED'},sendLocalMediaRequest:x=>{assert(Number.isSafeInteger(x.requestId)&&x.requestId>0);const handle=()=>{if(x.type==='PLAY')state='PLAYING';if(x.type==='PAUSE')state='PAUSED';if(x.type==='STOP')state='IDLE';if(x.type==='SEEK')at=x.currentTime;};if(fixture.localInterceptors&&interceptors[x.type])Promise.resolve(interceptors[x.type](x)).then(y=>{if(y)handle();});else handle();},pause:()=>state='PAUSED',play:()=>state='PLAYING',seek:x=>at=x,stop:()=>state='IDLE',setMessageInterceptor:(k,v)=>{assert(supportedInterceptors.has(k),'unsupported CAF interceptor '+k);interceptors[k]=v;},addEventListener:(k,v)=>events[k]=v,getAudioTracksManager:()=>({getTracks:()=>[],setActiveById:()=>{}}),getTextTracksManager:()=>({getTracks:()=>[],setActiveByIds:()=>{}})};
- const castContext={getDeviceCapabilities:()=>fixture.caps||{},getDeviceInformation:()=>fixture.info||{},canDisplayType:(mime,codecs,width,height,fps)=>{assert(!mime.includes(';'));return !!fixture.supports?.(mime,codecs,width,height,fps)},getPlayerManager:()=>manager,addCustomMessageListener:(ns,fn)=>listener=fn,sendCustomMessage:(ns,id,body)=>sent.push({id,body}),addEventListener:(k,v)=>ctxEvents[k]=v,getSenders:()=>senders,getSender:id=>({id,userAgent:fixture.senderUA||'Browser'}),start:()=>{}};
+ const castContext={getDeviceCapabilities:()=>fixture.caps||{},getDeviceInformation:()=>fixture.info||{},canDisplayType:(mime,codecs,width,height,fps)=>{assert(!mime.includes(';'));return !!fixture.supports?.(mime,codecs,width,height,fps)},getPlayerManager:()=>manager,addCustomMessageListener:(ns,fn)=>listener=fn,sendCustomMessage:(ns,id,body)=>{sent.push({id,body});fixture.senderEvent?.(id,body)},addEventListener:(k,v)=>ctxEvents[k]=v,getSenders:()=>senders,getSender:id=>({id,userAgent:fixture.senderUA||'Browser'}),start:()=>{}};
  const nodes={};const document={getElementById:id=>nodes[id]??=( {textContent:'',attrs:{},setAttribute(k,v){this.attrs[k]=v},removeAttribute(k){delete this.attrs[k]},addEventListener:()=>{}} )};
  const cast={framework:{CastReceiverContext:{getInstance:()=>castContext},messages:{MessageType:Object.fromEntries(['LOAD','PLAY','PAUSE','SEEK','STOP','PRELOAD','QUEUE_INSERT','QUEUE_LOAD','QUEUE_UPDATE','QUEUE_REMOVE','QUEUE_REORDER','QUEUE_NEXT','QUEUE_PREV','GET_STATUS','MEDIA_STATUS','CLOUD_STATUS','QUEUE_GET_ITEMS','QUEUE_GET_ITEM_IDS'].map(x=>[x,x]))},events:{EndedReason:{END_OF_STREAM:'END_OF_STREAM'},EventType:Object.fromEntries(['ERROR','BUFFERING','MEDIA_FINISHED','PLAYER_LOAD_COMPLETE','PLAYER_LOADING','LOADED_DATA','TIME_UPDATE','DURATION_CHANGE','MEDIA_STATUS','PAUSE','PLAYING','SEEKED'].map(x=>[x,x]))},system:{EventType:{SENDER_CONNECTED:'connect',SENDER_DISCONNECTED:'disconnect',SHUTDOWN:'shutdown'},MessageType:{JSON:'json'}}}};
  let failed=false,expired=false,preparing=!!fixture.preparing,generation=1,registeredBinding,controllerExpired=false;
@@ -16,7 +16,7 @@ async function harness(fixture={}){
  };
  const sessionFor=(body,start)=>({id:fixture.nextSessionId||'ps_1',revision:String(generation),kind:'vod',role:'local',state:'playing',itemId:body?.itemId||'movie',...(body?.queue?{queue:body.queue}:fixture.queue?{queue:{queueId:'q-1',entryId:'entry-1'}}:{}),lease:{expiresAt:'2099-01-01T00:00:00Z',reportEveryMs:10000},presentation:presentation(start)});
  const reply=(payload,status=200)=>new Response(status===204?null:JSON.stringify(payload),{status});
- const context={PorticoCastContracts:contracts,document,cast,navigator:fixture.mediaCapabilities?{mediaCapabilities:fixture.mediaCapabilities}:{},URL,URLSearchParams,TextDecoder,AbortController,Uint8Array,console,Number,Promise,setTimeout:(fn,ms)=>{timers.set(++timer,{fn,ms});return timer},clearTimeout:id=>timers.delete(id),setInterval:(fn,ms)=>{timers.set(++timer,{fn,ms});return timer},clearInterval:id=>timers.delete(id),fetch:async(url,options)=>{
+ const context={PorticoCastContracts:contracts,document,cast,navigator:fixture.mediaCapabilities?{mediaCapabilities:fixture.mediaCapabilities}:{},URL,URLSearchParams,TextDecoder,AbortController,Uint8Array,console,Number,Promise,setTimeout:(fn,ms)=>{const id=++timer,invoke=()=>{timers.delete(id);fn()};const handle=fixture.schedule?.(invoke,ms);timers.set(id,{fn:invoke,ms,handle});return id},clearTimeout:id=>{const value=timers.get(id);if(value)fixture.cancel?.(value.handle);timers.delete(id)},setInterval:(fn,ms)=>{timers.set(++timer,{fn,ms});return timer},clearInterval:id=>timers.delete(id),fetch:async(url,options)=>{
   const body=options.body?JSON.parse(options.body):undefined;calls.push({url,body,method:options.method,headers:options.headers});
   const path=url.replace(/^https?:\/\/[^/]+/,'');
   if(path.startsWith('/v2/'))throw new Error('removed v2 route '+path);
@@ -57,7 +57,7 @@ async function harness(fixture={}){
    if(options.headers['If-Match']!==String(generation))return reply({error:{code:'precondition_failed',current:sessionFor({},0)}},412);
    generation++;return reply(sessionFor({},body.seek?body.seek.positionMs:0));
   }
-  if((path==='/v1/playback/sessions/ps_1'||path==='/v1/playback/sessions/ps_known')&&options.method==='DELETE'){if(fixture.stopWait){fixture.stopCalled?.();await fixture.stopWait;}return reply({},204);}
+  if((path==='/v1/playback/sessions/ps_1'||path==='/v1/playback/sessions/ps_known')&&options.method==='DELETE'){if(fixture.stopWait){fixture.stopCalled?.();await fixture.stopWait;}return fixture.cleanupStatus?reply({error:{code:'precondition_failed'}},fixture.cleanupStatus):reply({},204);}
   if(path.startsWith('/v1/cast/devices/')&&options.method==='DELETE')return reply({},204);
   throw new Error('unexpected path '+path);
  }};
@@ -911,5 +911,59 @@ test('canonical nested schema closure rejects extra fields before cleanup author
   const h=await harness({preparingResponses:[session=>{const s={...session,retryAfterMs:500};mutate(s);return s}]});await h.receiver.redeem('ABCD');
   await assert.rejects(h.receiver.startPlayback('movie'),/invalid_preparation/);
   assert.equal(h.loads.length,0);assert(!h.calls.some(x=>x.method==='DELETE'&&x.url.includes('/v1/playback/sessions/')));
+ }
+});
+
+test('cleanup 412 is terminal and never fetches/latest-retries or downgrades DELETE',async()=>{
+ const h=await harness({preparingReal:true,cleanupStatus:412});h.senders.push('phone');
+ await h.message('phone',{type:'pair',code:'ABCD',origin:''});
+ await h.message('phone',{type:'load',itemId:'movie',requestId:'cleanup-original'});
+ const wait=[...h.timers].find(([,v])=>v.ms===500);assert(wait);
+ h.ctxEvents.disconnect({senderId:'phone'});h.fire(wait[0]);await settle0();
+ const resource=h.calls.filter(c=>c.url.includes('/v1/playback/sessions/ps_1'));
+ assert.equal(resource.length,1);assert.equal(resource[0].method,'DELETE');
+ assert.equal(resource[0].body.expectedGeneration,1);
+ assert.equal(resource[0].headers.Authorization,'Bearer bearer-ABCD');assert.equal(h.loads.length,0);
+});
+
+// The actual sender and classic receiver share one deterministic clock/channel.
+// No hand-authored pending event substitutes for the receiver's real decoder path.
+test('composed sender/receiver retains genuine original 202 preparation beyond 150s only',async()=>{
+ const {CastController}=await import('../../../../packages/client-core/src/cast/sender.ts');
+ for(const outcome of ['201','terminal','retirement']){
+  const clock={now:0},scheduled=new Map();let sequence=0;
+  const schedule=(fn,ms)=>{const id=++sequence;scheduled.set(id,{fn,at:clock.now+ms});return id};
+  const cancel=id=>scheduled.delete(id);
+  const advance=async ms=>{
+   const end=clock.now+ms;
+   for(;;){const first=[...scheduled].filter(([,t])=>t.at<=end).sort((a,b)=>a[1].at-b[1].at)[0];if(!first)break;scheduled.delete(first[0]);clock.now=first[1].at;first[1].fn();await settle0();}
+   clock.now=end;await settle0();
+  };
+  let onMessage,onEnd;
+  const fixture={clock,schedule,cancel,senderEvent:(_id,body)=>onMessage?.(body),preparingResponses:Array.from({length:18},()=>session=>({...session,retryAfterMs:10000})),prepareTerminal:outcome==='terminal'};
+  const h=await harness(fixture);h.senders.push('phone');
+  const commands=[],saved=new Map();
+  const transport={deviceName:'TV',deviceId:'sdk-tv',send:async command=>{commands.push(command);await h.message('phone',command)},onMessage:fn=>{onMessage=fn;return()=>{if(onMessage===fn)onMessage=undefined}},onSessionEnd:fn=>{onEnd=fn;return()=>{if(onEnd===fn)onEnd=undefined}},end:()=>{}};
+  const controller=new CastController({origin:'https://cast.getportico.tv',displayName:'Phone',controllerContext:{origin:'https://cast.getportico.tv',serverId:'server',authority:'local',accountId:'account',profileId:'profile',senderDeviceId:'phone',senderFamilyId:'source-family'},
+   controllerStorage:{get:k=>saved.get(k),set:(k,v)=>saved.set(k,v)},setTimer:schedule,clearTimer:cancel,
+   api:{request:async(path,_method,body)=>path==='/v1/cast/bootstrap'?{bootstrap:{id:'cbs_ABCD',code:'ABCD'}}:{binding:body.binding,attemptId:body.attemptId,ticket:'b'.repeat(43)}}});
+  let settled=false;const started=controller.start(transport,'movie',{title:'Film'},0).then(result=>{settled=true;return result});
+  await settle0();await advance(160000);
+  assert.equal(settled,false,outcome);assert.equal(h.loads.length,0);
+  assert.equal(commands.some(c=>c.type==='stop'),false,'no sender timeout terminates ongoing valid preparation');
+  const pending=h.sent.filter(x=>x.body.type==='load-pending').map(x=>x.body);
+  assert(pending.length>=16);assert.equal(new Set(pending.map(e=>e.startId)).size,1);
+  assert(pending.every((e,i)=>e.requestId===pending[0].requestId&&e.sequence===i+1&&e.controller.bindingId===pending[0].controller.bindingId));
+  assert(pending.every(e=>!('sessionId' in e)&&!('accessToken' in e)&&!('url' in e)));
+  if(outcome==='retirement'){h.ctxEvents.disconnect({senderId:'phone'});onEnd?.();await advance(10000);assert.equal(await started,false);}
+  else {await advance(20000);assert.equal(await started,outcome==='201');}
+  const starts=h.calls.filter(c=>c.method==='POST'&&c.url.endsWith('/v1/playback/sessions'));
+  assert.equal(new Set(starts.map(c=>c.headers['Idempotency-Key'])).size,1);
+  assert.equal(h.loads.length,outcome==='201'?1:0);
+  assert.equal(h.calls.filter(c=>c.url.endsWith('/v1/cast/reconnect')).length,0,'pending progress never renews credential/server authority');
+  const cleanup=h.calls.filter(c=>c.method==='DELETE'&&c.url.endsWith('/v1/playback/sessions/ps_1'));
+  assert.equal(cleanup.length,outcome==='201'?0:1);
+  if(cleanup.length){assert.equal(cleanup[0].body.expectedGeneration,1);assert.equal(cleanup[0].headers.Authorization,'Bearer bearer-ABCD');}
+  controller.dispose();
  }
 });

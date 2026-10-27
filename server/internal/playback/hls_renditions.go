@@ -2,6 +2,7 @@ package playback
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -478,6 +479,42 @@ var renditionSegmentName = regexp.MustCompile(`^audio-([0-9]{1,2})-([0-9]{6})\.(
 // startRendition uses the same process and restart budgets as video. Only an
 // explicitly requested track is admitted; all windows stop with their session.
 func (h *HLS) startRendition(ctx context.Context, id string, r AudioRenditionPlan, from int) error {
+	return h.startRenditionOwned(ctx, id, r, from, nil)
+}
+
+type renditionOwner struct {
+	generation           int
+	request, asset, plan string
+	item                 int64
+}
+
+// Freeze both occurrence and containing plan before any relocation await.
+// Re-entry compares that original snapshot; it cannot borrow a newer generation.
+func (h *HLS) renditionOwner(ctx context.Context, id string, r AudioRenditionPlan) (renditionOwner, error) {
+	var out renditionOwner
+	err := dbwork.WithReadSnapshot(ctx, h.db, func(ctx context.Context) error {
+		tx := dbwork.Snapshot(ctx)
+		if err := tx.QueryRowContext(ctx, `SELECT generation,request_id,item_id,asset_id FROM playback_sessions WHERE id=? AND state NOT IN('stopped','ended','failed') AND expires_at>?`, id, time.Now().UTC().Format(time.RFC3339)).Scan(&out.generation, &out.request, &out.item, &out.asset); err != nil {
+			return err
+		}
+		plan, err := loadDeliveryPlan(ctx, tx, id)
+		if err != nil {
+			return err
+		}
+		if plan == nil || r.Ordinal < 0 || r.Ordinal >= len(plan.Renditions) || plan.Renditions[r.Ordinal] != r {
+			return ErrOccurrenceChanged
+		}
+		raw, err := json.Marshal(plan)
+		if err != nil {
+			return err
+		}
+		out.plan = string(raw)
+		return nil
+	})
+	return out, err
+}
+
+func (h *HLS) startRenditionOwned(ctx context.Context, id string, r AudioRenditionPlan, from int, expected *renditionOwner) error {
 	if r.Failure != "" {
 		return ErrAudioRenditionUnavailable
 	}
@@ -490,12 +527,14 @@ func (h *HLS) startRendition(ctx context.Context, id string, r AudioRenditionPla
 	}
 	defer intent.release()
 	key := renditionKey(id, r.Ordinal)
-	var generation int
-	var itemID int64
-	var requestID, assetID string
-	if err = dbwork.QueryRow(ctx, h.db, `SELECT generation,request_id,item_id,asset_id FROM playback_sessions WHERE id=? AND state NOT IN('stopped','ended','failed') AND expires_at>?`, id, time.Now().UTC().Format(time.RFC3339)).Scan(&generation, &requestID, &itemID, &assetID); err != nil {
+	owner, err := h.renditionOwner(ctx, id, r)
+	if err != nil {
 		return err
 	}
+	if expected != nil && owner != *expected {
+		return ErrOccurrenceChanged
+	}
+	generation, requestID, itemID, assetID := owner.generation, owner.request, owner.item, owner.asset
 	if !intent.current() {
 		return errOccurrenceClaimed
 	}
@@ -516,7 +555,7 @@ func (h *HLS) startRendition(ctx context.Context, id string, r AudioRenditionPla
 				h.mu.Lock()
 				return ctx.Err()
 			}
-			err := h.startRendition(ctx, id, r, from)
+			err := h.startRenditionOwned(ctx, id, r, from, &owner)
 			h.mu.Lock()
 			return err
 		}
@@ -532,7 +571,9 @@ func (h *HLS) startRendition(ctx context.Context, id string, r AudioRenditionPla
 			h.mu.Lock()
 			return ctx.Err()
 		}
+		err := h.startRenditionOwned(ctx, id, r, from, &owner)
 		h.mu.Lock()
+		return err
 	}
 	if h.windows[key] != nil {
 		return nil
@@ -543,6 +584,7 @@ func (h *HLS) startRendition(ctx context.Context, id string, r AudioRenditionPla
 	run, cancel := context.WithCancel(h.ctx)
 	w := &hlsWindow{generation: generation, audioConversion: r.Action == "convert", start: from, served: -1, produced: from - 1, cancel: cancel, done: make(chan struct{})}
 	owned := &occurrenceRun{generation: generation, requestID: requestID, itemID: itemID, assetID: assetID, cancel: cancel, done: w.done}
+	w.run = owned
 	if err = intent.install(owned, func() { h.installOccurrenceLocked(key, owned, cancel); h.windows[key] = w }); err != nil {
 		cancel()
 		return err
