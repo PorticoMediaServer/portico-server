@@ -402,6 +402,7 @@ elif mode == "leak":
     raise SystemExit(0)
 elif mode == "hang-child":
     emit(Action="run", Test="TestHangs")
+    time.sleep(float(os.environ.get("FAKE_CHILD_START_DELAY", "0")))
     leak_child()
     time.sleep(120)
 elif mode == "hang":
@@ -1072,22 +1073,41 @@ class GoSignalTests(ProcessChecks, unittest.TestCase):
                        "PATH": str(self.bin) + os.pathsep + os.environ.get("PATH", ""),
                        "PID_DIR": str(self.pids),
                        "FAKE_ARGV": str(self.argv),
-                       "CI_GO_RESULTS": str(self.results)}
+                       "CI_GO_RESULTS": str(self.results),
+                       "FAKE_CHILD_START_DELAY": "0.2"}
         runner = subprocess.Popen(
             [sys.executable, str(Path(ci.__file__)), "go-module", "--module", "apikit"],
             cwd=self.root, env=environment, stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT, text=True)
-        self.addCleanup(lambda: runner.poll() is None and runner.kill())
+        def stop_runner():
+            if runner.poll() is None:
+                runner.terminate()
+                try:
+                    runner.communicate(timeout=60)
+                except subprocess.TimeoutExpired:
+                    runner.kill()
+                    runner.communicate(timeout=10)
+        self.addCleanup(stop_runner)
 
         def recorded():
             if not self.results.is_file():
                 return False
             text = self.results.read_text()
+            # A RUN event precedes the test body's child spawn. Wait for each
+            # complete PID witness too, rather than racing that real ordering.
+            try:
+                children = [(self.pids / package).read_text().split()
+                            for package in ("a", "b", "c")]
+            except FileNotFoundError:
+                return False
             return (text.count('"record": "package-start"') >= 3
-                    and text.count('"record": "test"') >= 3)
+                    and text.count('"record": "test"') >= 3
+                    and all(len(pids) == 2 and all(pid.isdecimal() for pid in pids)
+                            for pids in children))
 
-        # Three lanes are running their packages and the fourth is still queued.
-        self.wait_for(recorded, message="three started packages")
+        # Three lanes own live descendants and the fourth is still queued. The
+        # deliberate post-RUN delay proves events alone are not a ready signal.
+        self.wait_for(recorded, message="three packages and their child PID witnesses")
         started = {package: (self.pids / package).read_text().split()
                    for package in ("a", "b", "c")}
         runner.terminate()

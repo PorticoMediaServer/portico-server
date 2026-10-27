@@ -36,7 +36,11 @@ jobs:
           go version || true
       - run: scripts/check-repo-binaries.sh
       - if: ${{ !cancelled() }}
-        run: python3 scripts/test-ci-affected.py
+        run: |
+          status=0
+          python3 scripts/test-ci-affected.py > "$RUNNER_TEMP/full-ci.log" 2>&1 || status=$?
+          tail -n 80 "$RUNNER_TEMP/full-ci.log"
+          exit "$status"
       - name: Retain full diagnostics
         if: ${{ always() }}
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
