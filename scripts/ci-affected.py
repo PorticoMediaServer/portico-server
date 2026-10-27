@@ -4,6 +4,7 @@ import argparse
 import json
 import os
 from pathlib import Path
+import queue
 import re
 import signal
 import subprocess
@@ -33,6 +34,17 @@ GO_PACKAGE_JOBS = 3
 GO_RUN_CORES = 10
 # Bound for the declared-test inventory (`go test -list`) collected after a hang.
 GO_LIST_TIMEOUT = 5 * 60
+# How long the output pipe may stay open after the go test leader has exited.
+# `go test` closes its stdout when it exits, so a pipe that is still held belongs
+# to a descendant that inherited it: that package is named and stopped instead of
+# blocking its lane (and the whole run) forever.
+PIPE_HOLD_GRACE = 30
+# Idle heartbeat of one package's pipe loop; also the resolution of the pipe-hold
+# check.
+PIPE_POLL = 0.2
+# How often a package's descendant groups are re-sampled. A sample walks /proc, so
+# it is deliberately coarse: ancestry only has to be known before the leader exits.
+DESCENDANT_SAMPLE = 2
 
 # Per-command bound for everything else. This is a hang guard for one suite
 # invocation, not a scope filter: the mandatory security commands stay exactly
@@ -64,46 +76,170 @@ def changed():
     return set(git("diff", "--name-only", "--diff-filter=ACMRTD", base, "HEAD", "--"))
 
 
-def _signal_group(process, sig):
-    try:
-        os.killpg(process.pid, sig)
-    except ProcessLookupError:
-        pass
+def _process_rows():
+    """pid -> (ppid, pgid) from /proc, or nothing when /proc is unavailable."""
+    rows = {}
+    proc = Path("/proc")
+    if not proc.is_dir():
+        return rows
+    for entry in proc.iterdir():
+        if not entry.name.isdigit():
+            continue
+        try:
+            # The command name is parenthesised and may contain spaces, so the
+            # interesting fields start after the last ')'.
+            fields = (entry / "stat").read_text().rsplit(")", 1)[1].split()
+            rows[int(entry.name)] = (int(fields[1]), int(fields[2]))
+        except (OSError, ValueError, IndexError):
+            continue
+    return rows
 
 
-def _group_alive(process):
-    try:
-        os.killpg(process.pid, 0)
-    except ProcessLookupError:
-        return False
-    except PermissionError:
+def _descendants(roots, rows):
+    """Every process that descends from `roots`, according to one /proc snapshot."""
+    owned = set(roots)
+    while True:
+        found = {pid for pid, (parent, _) in rows.items()
+                 if parent in owned and pid not in owned}
+        if not found:
+            return owned
+        owned |= found
+
+
+class ProcessTree:
+    """Every process group owned by one child command.
+
+    A command runs in its own session, so its tree normally shares one group. A
+    helper may call setsid(), and ancestry cannot be recovered once the leader
+    exits (its children are reparented), so the tree is sampled while the leader
+    is alive and those groups are signalled afterwards. The runner never
+    signals its own group.
+    """
+
+    def __init__(self, process):
+        self.process = process
+        self.pids = {process.pid}
+        self.groups = {process.pid}
+        self.lock = threading.Lock()
+
+    def sample(self):
+        rows = _process_rows()
+        with self.lock:
+            if rows:
+                owned = _descendants(self.pids, rows)
+                self.pids |= owned
+                self.groups |= {rows[pid][1] for pid in owned if pid in rows}
+            self.groups.discard(os.getpgrp())
+            return set(self.groups)
+
+
+def _signal_groups(groups, sig):
+    for group in sorted(groups):
+        try:
+            os.killpg(group, sig)
+        except (ProcessLookupError, PermissionError):
+            pass
+
+
+def _groups_alive(groups):
+    for group in tuple(groups):
+        try:
+            os.killpg(group, 0)
+        except ProcessLookupError:
+            continue
+        except PermissionError:
+            return True
         return True
-    return True
+    return False
 
 
-def _await_group(process, seconds):
-    """Wait up to `seconds` for the whole command group to empty, reaping its leader."""
+def _await_groups(process, tree, seconds):
+    """Wait up to `seconds` for every owned group to empty, reaping the leader."""
     deadline = time.monotonic() + seconds
-    while _group_alive(process):
+    while _groups_alive(tree.groups):
         remaining = deadline - time.monotonic()
         if remaining <= 0:
             return False
         process.poll()  # reap the leader as soon as it exits
         time.sleep(min(0.05, remaining))
-    process.wait()
+    process.poll()
     return True
 
 
-def _stop_group(process):
-    """TERM the command's own group, give it a bounded grace, then KILL what remains."""
-    _signal_group(process, signal.SIGTERM)
-    _await_group(process, TERMINATE_GRACE)
+def _stop_group(process, tree=None):
+    """TERM the command's owned groups, give a bounded grace, then KILL what remains."""
+    tree = tree if tree is not None else ProcessTree(process)
+    tree.sample()
+    _signal_groups(tree.groups, signal.SIGTERM)
+    _await_groups(process, tree, TERMINATE_GRACE)
     # The grace is for the group, not only its leader: a leader that exits on TERM
     # must not hide a descendant that ignores it, so the group is always confirmed
     # with KILL. Both waits stay bounded, and a command that cannot be killed is
     # reported by the failing timeout rather than hanging this runner again.
-    _signal_group(process, signal.SIGKILL)
-    _await_group(process, TERMINATE_GRACE)
+    _signal_groups(tree.groups, signal.SIGKILL)
+    _await_groups(process, tree, TERMINATE_GRACE)
+
+
+def _stop_all(commands):
+    """Stop several owned commands together: signal everything first, then reap.
+
+    Stopping them one at a time would multiply the shutdown grace by the number
+    of packages a shard has in flight; this keeps the same two bounded waits.
+    """
+    commands = list(commands)
+    for command in commands:
+        command.tree.sample()
+    for command in commands:
+        _signal_groups(command.tree.groups, signal.SIGTERM)
+    for command in commands:
+        _await_groups(command.process, command.tree, TERMINATE_GRACE)
+    for command in commands:
+        _signal_groups(command.tree.groups, signal.SIGKILL)
+    for command in commands:
+        _await_groups(command.process, command.tree, TERMINATE_GRACE)
+
+
+class OwnedCommand:
+    """One live child command that a signal must stop before this runner exits.
+
+    go test packages each run in their own session, so the runner's own process
+    group cannot reach them: the owned tree is what makes shutdown complete.
+    """
+
+    def __init__(self, process):
+        self.process = process
+        self.tree = ProcessTree(process)
+        self.result = None
+        self.stopped = False
+        self.stop_lock = threading.Lock()
+
+    def stop(self):
+        with self.stop_lock:
+            if self.stopped:
+                return False
+            self.stopped = True
+        _stop_group(self.process, self.tree)
+        return True
+
+
+_ACTIVE = set()
+_ACTIVE_LOCK = threading.Lock()
+
+
+def _register_command(command):
+    with _ACTIVE_LOCK:
+        _ACTIVE.add(command)
+    return command
+
+
+def _unregister_command(command):
+    with _ACTIVE_LOCK:
+        _ACTIVE.discard(command)
+
+
+def _active_commands():
+    with _ACTIVE_LOCK:
+        return list(_ACTIVE)
 
 
 def run(args, cwd=ROOT, timeout=None, stdout=None):
@@ -114,13 +250,16 @@ def run(args, cwd=ROOT, timeout=None, stdout=None):
     # matters, so a failing `go list` is never silently swallowed.
     process = subprocess.Popen(argv, cwd=cwd, start_new_session=True, stdout=stdout,
                                stderr=subprocess.STDOUT if stdout is not None else None)
+    command = _register_command(OwnedCommand(process))
     try:
         code = process.wait(timeout=limit)
     except subprocess.TimeoutExpired:
-        _stop_group(process)
+        command.stop()
         print(f"timed out after {limit:g}s, command terminated: {' '.join(argv)}",
               file=sys.stderr, flush=True)
         raise CommandTimeout(argv, limit) from None
+    finally:
+        _unregister_command(command)
     if code:
         raise subprocess.CalledProcessError(code, argv)
     return code
@@ -299,6 +438,8 @@ class PackageResult:
         self.tests = {}          # test name -> last action (run/pass/fail/skip)
         self.timed_out = False   # go test's own -timeout fired inside the package
         self.watchdog = False    # the outer watchdog terminated this package
+        self.pipe_hold = False   # the leader exited but a descendant kept its stdout
+        self.interrupted = False  # a signal stopped this package before it finished
         self.exit = None
         self.finished = False
         self.tail = []
@@ -307,8 +448,13 @@ class PackageResult:
         self.expected = 0        # declared or selected tests the run owed a result
         self.selected = None     # names from the -run pattern, None for the whole package
         self.never_ran = []      # expected tests with no pass/fail/skip result
+        self.lock = threading.Lock()  # an interrupt reads while the lane still writes
 
     def status(self):
+        if self.interrupted:
+            return "interrupted"
+        if self.pipe_hold:
+            return "pipe-hold"
         if self.watchdog:
             return "watchdog"
         if self.timed_out:
@@ -329,10 +475,14 @@ class PackageResult:
         return {"record": "package", "package": self.package, "status": self.status(),
                 "exit": self.exit, "elapsed": round(self.elapsed, 3), "pattern": self.pattern,
                 "timeout": self.timed_out, "watchdog": self.watchdog,
+                "pipe_hold": self.pipe_hold, "interrupted": self.interrupted,
                 "tests": self.tests, "failed": self.failed(), "unfinished": self.unfinished(),
                 "inventory": self.inventory, "declared": self.declared,
                 "selected": sorted(self.selected) if self.selected is not None else None,
                 "expected": self.expected, "never_ran": self.never_ran}
+
+
+HALTED = {"timeout", "watchdog", "pipe-hold", "incomplete", "interrupted"}
 
 
 def describe(result):
@@ -340,16 +490,29 @@ def describe(result):
     parts = [status.upper(), result.package, f"tests={len(result.tests)}", f"{result.elapsed:.1f}s"]
     if result.failed():
         parts.append("failed " + ", ".join(result.failed()))
-    if status in {"timeout", "watchdog", "incomplete"}:
-        hung = result.unfinished()
-        parts.append("hung " + (", ".join(hung) if hung else "no running test reported"))
+    if status in HALTED:
+        running = result.unfinished()
+        if status == "interrupted":
+            parts.append("unfinished " + (", ".join(running) or "no running test reported"))
+        else:
+            parts.append("hung " + (", ".join(running) or "no running test reported"))
         if result.inventory == "reported":
             label = "declared" if result.selected is None else "selected"
             parts.append("no result for " + (", ".join(result.never_ran) or "no declared test")
                          + f" ({len(result.never_ran)} of {result.expected} {label})")
         elif result.inventory == "unavailable":
             parts.append("test inventory unavailable")
+        else:
+            # Interrupted before the inventory could be collected: name what was
+            # still running, never claim a declared result the run did not gather.
+            parts.append("declared inventory not collected")
     return "  ".join(parts)
+
+
+def snapshot(result):
+    """Describe and record one package consistently, even while a lane still runs."""
+    with result.lock:
+        return describe(result), result.record()
 
 
 def feed(result, line, report):
@@ -362,33 +525,38 @@ def feed(result, line, report):
         except json.JSONDecodeError:
             event = None
     if not isinstance(event, dict):
-        if text:
-            result.tail = (result.tail + [text])[-TAIL:]
-        if "panic: test timed out" in text:
-            result.timed_out = True
+        with result.lock:
+            if text:
+                result.tail = (result.tail + [text])[-TAIL:]
+            if "panic: test timed out" in text:
+                result.timed_out = True
         return
     action = event.get("Action", "")
     if action == "output":
         output = event.get("Output", "")
-        if "panic: test timed out" in output:
-            result.timed_out = True
-        result.tail = (result.tail + [part for part in output.splitlines() if part])[-TAIL:]
+        with result.lock:
+            if "panic: test timed out" in output:
+                result.timed_out = True
+            result.tail = (result.tail + [part for part in output.splitlines() if part])[-TAIL:]
         return
     if action == "build-fail":
-        result.action = "fail"
+        with result.lock:
+            result.action = "fail"
         return
     name = event.get("Test")
     if name:
-        if action in {"run", "pause", "cont"}:
-            result.tests[name] = "run"
-        elif action in {"pass", "fail", "skip"}:
-            result.tests[name] = action
+        with result.lock:
+            if action in {"run", "pause", "cont"}:
+                result.tests[name] = "run"
+            elif action in {"pass", "fail", "skip"}:
+                result.tests[name] = action
         if action in {"run", "pass", "fail", "skip"}:
             report.test_event(result, action, name, event.get("Elapsed"))
         return
     if action in {"pass", "fail", "skip"}:
-        result.action = action
-        result.elapsed = float(event.get("Elapsed") or 0.0)
+        with result.lock:
+            result.action = action
+            result.elapsed = float(event.get("Elapsed") or 0.0)
 
 
 class GoReport:
@@ -398,7 +566,7 @@ class GoReport:
         self.module = module
         self.planned = list(planned)
         self.shard = (shard_index, shard_total)
-        self.lock = threading.Lock()
+        self.lock = threading.RLock()  # a signal may re-enter while a summary prints
         self.results = {}
         self.stream = None
         path = None
@@ -445,11 +613,14 @@ class GoReport:
             self._append(entry)
 
     def add(self, result):
+        line, record = snapshot(result)
         with self.lock:
+            if result.package in self.results:
+                return  # an interrupt already recorded this package
             self.results[result.package] = result
-            sys.stdout.write(describe(result) + "\n")
+            sys.stdout.write(line + "\n")
             sys.stdout.flush()
-            self._append(result.record())
+            self._append(record)
 
     def summary(self, interrupted=False):
         with self.lock:
@@ -468,14 +639,14 @@ class GoReport:
             for result in results:
                 if result.status() in {"pass", "skip"}:
                     continue
-                lines.append(describe(result))
-                if result.status() in {"timeout", "watchdog", "incomplete"}:
-                    lines.extend("    " + line for line in result.tail[-TAIL:])
+                line, _ = snapshot(result)
+                lines.append(line)
+                if result.status() in HALTED:
+                    lines.extend("    " + tail for tail in result.tail[-TAIL:])
             # A package with no record after the plan record was never started.
             for package in never:
                 lines.append(f"NEVER RAN  {package}  no result  never started")
-            halted = interrupted or any(result.timed_out or result.watchdog
-                                        or result.status() == "incomplete" for result in results)
+            halted = interrupted or any(result.status() in HALTED for result in results)
             failed = bool(never) or any(result.status() == "fail" for result in results)
             code = 124 if halted else 1 if failed else 0
             lines.append(f"exit: {code}")
@@ -489,8 +660,9 @@ class GoReport:
                      "packages": len(self.planned), "started": len(results),
                      "completed": sum(1 for result in results if result.finished),
                      "never_started": never, "results": counts, "exit": code,
+                     "interrupted": interrupted,
                      "hangs": [result.record() for result in results
-                               if result.status() in {"timeout", "watchdog", "incomplete"}]},
+                               if result.status() in HALTED]},
                     sort_keys=True, default=str) + "\n")
                 self.stream.flush()
                 self.stream.close()
@@ -498,13 +670,112 @@ class GoReport:
             return code
 
 
-def _watchdog(process, result, report):
-    if process.poll() is not None:
+class PackageRun(OwnedCommand):
+    """One live package invocation: its process tree, its pipe and its records."""
+
+    def __init__(self, process, result, report):
+        super().__init__(process)
+        self.result = result
+        self.report = report
+        self.done = threading.Event()
+        self.eof_seen = False
+        self.exited_at = None
+        self.abandon_at = None
+        self.sampled_at = 0.0
+
+    def sample_descendants(self):
+        now = time.monotonic()
+        if now - self.sampled_at < DESCENDANT_SAMPLE:
+            return
+        self.sampled_at = now
+        self.tree.sample()
+
+    def leader_exited_for(self):
+        """Seconds since the leader was first seen gone, or None while it runs."""
+        if self.process.poll() is None:
+            self.exited_at = None
+            return None
+        now = time.monotonic()
+        if self.exited_at is None:
+            self.exited_at = now
+        return now - self.exited_at
+
+
+def _watchdog(run):
+    """Name and stop one package whose go test cannot finish."""
+    if run.done.is_set() or run.stopped:
         return
-    result.watchdog = True
-    report.note(f"{result.package}: still running after {GO_PACKAGE_BACKSTOP}s; "
-                f"terminating that package only")
-    _stop_group(process)
+    result = run.result
+    if run.process.poll() is None:
+        result.watchdog = True
+        run.report.note(f"{result.package}: still running after {GO_PACKAGE_BACKSTOP}s; "
+                        f"terminating that package only")
+    elif not run.eof_seen:
+        # The leader exited but its stdout never reached EOF: a descendant it
+        # started still owns the pipe, so this package cannot be called finished.
+        result.pipe_hold = True
+        run.report.note(f"{result.package}: go test exited but a descendant still holds "
+                        f"its output pipe after {GO_PACKAGE_BACKSTOP}s; terminating that "
+                        f"package only")
+    else:
+        result.watchdog = True
+        run.report.note(f"{result.package}: still finishing after {GO_PACKAGE_BACKSTOP}s; "
+                        f"terminating that package only")
+    run.stop()
+
+
+_EOF = object()
+
+
+def _drain(stream, sink):
+    """Read one package's output into the queue, and always publish EOF."""
+    try:
+        for line in stream:
+            sink.put(line)
+    except (OSError, ValueError):
+        pass
+    finally:
+        sink.put(_EOF)
+
+
+def _lines(sink, run, report):
+    """Yield one package's output lines until its pipe closes.
+
+    A leader that exits while a descendant keeps the inherited stdout open would
+    otherwise block this loop forever. An idle pipe is therefore checked: once
+    the leader is gone and no output arrives for PIPE_HOLD_GRACE, the remaining
+    processes are stopped and the package is named. If the pipe survives even
+    the KILL (a process outside the owned tree), it is abandoned after a bounded
+    wait so the lane, and the run, still continues.
+    """
+    while True:
+        try:
+            line = sink.get(timeout=PIPE_POLL)
+        except queue.Empty:
+            # Keep the descendant snapshot current while the leader can be traced.
+            run.sample_descendants()
+            if run.stopped:
+                if run.abandon_at is None:
+                    run.abandon_at = time.monotonic() + 2 * TERMINATE_GRACE
+                elif time.monotonic() >= run.abandon_at:
+                    report.note(f"{run.result.package}: output pipe still open after the "
+                                f"package's processes were stopped; abandoning it so the "
+                                f"run can continue")
+                    return
+                continue
+            gone_for = run.leader_exited_for()
+            if gone_for is not None and gone_for >= PIPE_HOLD_GRACE:
+                run.result.pipe_hold = True
+                report.note(f"{run.result.package}: go test exited but a process it started "
+                            f"still holds its output pipe after {PIPE_HOLD_GRACE}s; "
+                            f"terminating that package only")
+                run.stop()
+                run.abandon_at = time.monotonic() + 2 * TERMINATE_GRACE
+            continue
+        if line is _EOF:
+            run.eof_seen = True
+            return
+        yield line
 
 
 def execute_package(module, result, report):
@@ -517,22 +788,39 @@ def execute_package(module, result, report):
     process = subprocess.Popen(argv, cwd=ROOT / module, start_new_session=True,
                                stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
                                text=True, errors="replace", bufsize=1)
-    watchdog = threading.Timer(GO_PACKAGE_BACKSTOP, _watchdog, (process, result, report))
+    run = _register_command(PackageRun(process, result, report))
+    watchdog = threading.Timer(GO_PACKAGE_BACKSTOP, _watchdog, (run,))
     watchdog.daemon = True
     watchdog.start()
+    sink = queue.Queue()
+    reader = threading.Thread(target=_drain, args=(process.stdout, sink),
+                              name=f"go-pipe-{result.package}", daemon=True)
+    reader.start()
     try:
-        for line in process.stdout:
+        for line in _lines(sink, run, report):
             report.write(line)
             feed(result, line, report)
         result.exit = process.wait()
     finally:
         watchdog.cancel()
+        run.done.set()
+        _unregister_command(run)
         if process.poll() is None:
-            _stop_group(process)
-        process.stdout.close()
-    if result.watchdog:
-        _stop_group(process)  # never leave a witness process behind
-    if result.timed_out or result.watchdog:
+            _stop_group(process, run.tree)
+        # Only a reader that reached EOF may have its pipe closed; closing a pipe
+        # another thread is blocked in could wait forever. An abandoned reader is
+        # a daemon left with one descriptor until this process exits.
+        reader.join(TERMINATE_GRACE)
+        if not reader.is_alive():
+            process.stdout.close()
+        # The leader is gone; anything still in an owned group is a process the
+        # package leaked. It cannot hold this lane any more, but it must not
+        # outlive the package either.
+        if _groups_alive(run.tree.groups):
+            report.note(f"{result.package}: terminating processes left behind after "
+                        f"go test exited")
+            _stop_group(process, run.tree)
+    if result.timed_out or result.watchdog or result.pipe_hold:
         # Name the tests that never got a result instead of calling the hang
         # "the package" and leaving its inventory unknown.
         result.declared = declared_tests(module, result.package, report)
@@ -547,37 +835,65 @@ def execute_package(module, result, report):
 
 
 _ACTIVE_REPORT = None
+_SHUTTING_DOWN = False
 
 
 def _interrupt(signum, frame):
+    """Stop every owned command before exiting, keeping every record gathered."""
+    global _SHUTTING_DOWN
+    if _SHUTTING_DOWN:
+        # A repeated signal must not wait for the first shutdown's bounded grace.
+        os._exit(128 + signum)
+    _SHUTTING_DOWN = True
     report = _ACTIVE_REPORT
-    if report is not None:
-        report.write(f"\n!! {signal.Signals(signum).name}: interrupted; "
-                     f"every result gathered so far follows\n")
-        report.summary(interrupted=True)
-    os._exit(128 + signum)
+    commands = _active_commands()
+    try:
+        if report is not None:
+            report.write(f"\n!! {signal.Signals(signum).name}: interrupted; stopping "
+                         f"{len(commands)} active command(s)\n")
+        # Name the lanes before stopping them: a lane that finishes while the
+        # groups are being torn down must not be published as a real result.
+        for command in commands:
+            result = command.result
+            if result is None or result.finished:
+                continue
+            with result.lock:
+                result.interrupted = True
+        _stop_all(commands)
+        if report is not None:
+            for command in commands:
+                if command.result is not None:
+                    report.add(command.result)
+            report.summary(interrupted=True)
+    finally:
+        os._exit(128 + signum)
 
 
 def go_test(module, selection, shard_index=0, shard_total=1):
     """Run every selected package alone, bounded, and keep the others going."""
-    global _ACTIVE_REPORT
+    global _ACTIVE_REPORT, _SHUTTING_DOWN
     report = GoReport(module, [package for package, _ in selection], shard_index, shard_total)
     previous = {number: signal.signal(number, _interrupt)
                 for number in (signal.SIGTERM, signal.SIGINT)}
     _ACTIVE_REPORT = report
+    _SHUTTING_DOWN = False
     try:
         limit_cores(report)
         report.note(f"{len(selection)} package(s) in this shard; {GO_PACKAGE_JOBS} lane(s); "
                     f"package deadline {GO_TEST_TIMEOUT}s; watchdog {GO_PACKAGE_BACKSTOP}s")
-        queue = list(selection)
+        queue_ = list(selection)
         lock = threading.Lock()
 
         def worker():
             while True:
+                # A signal stops the run from starting anything new; the handler
+                # owns the shutdown from here.
+                if _SHUTTING_DOWN:
+                    return
                 with lock:
-                    if not queue:
+                    if _SHUTTING_DOWN or not queue_:
                         return
-                    package, pattern = queue.pop(0)
+                    package, pattern = queue_.pop(0)
                 result = PackageResult(package, pattern)
                 try:
                     execute_package(module, result, report)
@@ -674,6 +990,20 @@ def go_checks(module, group):
         pattern = "^(" + "|".join(sorted(names)) + ")$" if names else "^$"
         selection.append((package, pattern))
     finish(go_test(module, selection), run_all_status(vet_commands))
+
+
+def module_tests(module):
+    """The complete module inventory, one bounded package per invocation.
+
+    This is the nightly counterpart of a full `go test ./...`: every package and
+    every test still runs, exactly once, but a hung or broken package is named
+    with the tests it never reported instead of cancelling the rest. Vet stays
+    the nightly workflow's separate step, so this runs tests only.
+    """
+    selection = [(package, None) for package in module_packages(module)]
+    status = go_test(module, selection)
+    if status:
+        raise SystemExit(status)
 
 
 def dependencies(file, known, workspaces):
@@ -781,11 +1111,13 @@ def js_checks(native):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("kind", choices=["go", "js", "native-js"])
+    parser.add_argument("kind", choices=["go", "go-module", "js", "native-js"])
     parser.add_argument("--module", default="server")
     parser.add_argument("--group", choices=["affected", "auth", "media", "hosted"], default="affected")
     options = parser.parse_args()
     if options.kind == "go":
         go_checks(options.module, options.group)
+    elif options.kind == "go-module":
+        module_tests(options.module)
     else:
         js_checks(options.kind == "native-js")

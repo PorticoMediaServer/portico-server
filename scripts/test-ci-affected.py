@@ -4,9 +4,11 @@ import io
 import json
 import os
 from pathlib import Path
+import signal
 import subprocess
 import sys
 import tempfile
+import threading
 import time
 import unittest
 from unittest.mock import patch
@@ -14,6 +16,21 @@ from unittest.mock import patch
 spec = importlib.util.spec_from_file_location("affected", Path(__file__).with_name("ci-affected.py"))
 ci = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(ci)
+
+
+@contextlib.contextmanager
+def time_limit(seconds=30):
+    """Fail a test instead of hanging it when a runner bound regresses."""
+    def expired(signum, frame):
+        raise AssertionError(f"the runner did not finish within {seconds}s")
+
+    previous = signal.signal(signal.SIGALRM, expired)
+    signal.setitimer(signal.ITIMER_REAL, seconds)
+    try:
+        yield
+    finally:
+        signal.setitimer(signal.ITIMER_REAL, 0)
+        signal.signal(signal.SIGALRM, previous)
 
 
 class SelectionTests(unittest.TestCase):
@@ -119,13 +136,8 @@ class SelectionTests(unittest.TestCase):
             self.assertEqual(git.call_args.args[:4], ("diff", "--name-only", "--diff-filter=ACMRTD", "HEAD^"))
 
 
-class BoundedCommandTests(unittest.TestCase):
-    """A hung suite fails with a named command instead of holding the whole job."""
-
-    def setUp(self):
-        self.temp = tempfile.TemporaryDirectory()
-        self.addCleanup(self.temp.cleanup)
-        self.root = Path(self.temp.name)
+class ProcessChecks:
+    """Assertions about processes left behind by a stopped command."""
 
     def assert_gone(self, pid):
         # A killed grandchild can stay a zombie until init reaps it; either state is gone.
@@ -153,6 +165,15 @@ class BoundedCommandTests(unittest.TestCase):
                 return
             time.sleep(0.05)
         self.fail(f"process group {pid} outlived the command timeout")
+
+
+class BoundedCommandTests(ProcessChecks, unittest.TestCase):
+    """A hung suite fails with a named command instead of holding the whole job."""
+
+    def setUp(self):
+        self.temp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.temp.cleanup)
+        self.root = Path(self.temp.name)
 
     def test_timeout_terminates_the_whole_command_group(self):
         marker = self.root / "pids"
@@ -228,7 +249,7 @@ class BoundedCommandTests(unittest.TestCase):
 
 
 FAKE_GO = '''#!/usr/bin/env python3
-import json, os, sys, time
+import json, os, subprocess, sys, time
 
 PACKAGES = {packages!r}
 MODES = {modes!r}
@@ -238,6 +259,8 @@ DECLARED = dict([
     ("deadline", ["TestStuck", "TestAfter"]),
     ("deadline-nolist", ["TestStuck", "TestAfter"]),
     ("hang", ["TestHangs", "TestNotRun"]),
+    ("hang-child", ["TestHangs", "TestAfter"]),
+    ("leak", ["TestLeak", "TestAfter"]),
 ])
 args = sys.argv[1:]
 with open(os.environ["FAKE_ARGV"], "a", encoding="utf-8") as log:
@@ -262,6 +285,14 @@ def emit(**event):
     print(json.dumps(dict(Package="example.com/m/" + package, **event)), flush=True)
 
 
+def leak_child():
+    # Inherits this process's stdout, exactly like a helper a test forgot to reap.
+    child = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(120)"])
+    with open(os.path.join(os.environ["PID_DIR"], package), "w") as pids:
+        pids.write(str(os.getpid()) + " " + str(child.pid))
+    return child
+
+
 emit(Action="start")
 if mode == "pass":
     emit(Action="run", Test="TestGood")
@@ -277,6 +308,15 @@ elif mode in ("deadline", "deadline-nolist"):
     emit(Action="output", Test="TestStuck", Output="panic: test timed out after 13m0s\\n")
     emit(Action="fail", Elapsed=780.0)
     raise SystemExit(1)
+elif mode == "leak":
+    emit(Action="run", Test="TestLeak")
+    leak_child()
+    # The leader is gone while its child still owns the inherited stdout.
+    raise SystemExit(0)
+elif mode == "hang-child":
+    emit(Action="run", Test="TestHangs")
+    leak_child()
+    time.sleep(120)
 elif mode == "hang":
     emit(Action="run", Test="TestHangs")
     time.sleep(120)
@@ -286,7 +326,7 @@ else:
 '''
 
 
-class GoPackageRunnerTests(unittest.TestCase):
+class GoPackageRunnerTests(ProcessChecks, unittest.TestCase):
     """One bounded `go test -json` per package, so a hang names its package only."""
 
     def setUp(self):
@@ -294,12 +334,13 @@ class GoPackageRunnerTests(unittest.TestCase):
         self.addCleanup(self.temp.cleanup)
         self.root = Path(self.temp.name) / "repo"
         (self.root / "server").mkdir(parents=True)
+        (self.root / "pids").mkdir()
         self.bin = self.root / "bin"
         self.bin.mkdir()
         self.argv = self.root / "argv.log"
         self.argv.write_text("")
         environment = {"PATH": str(self.bin) + os.pathsep + os.environ.get("PATH", ""),
-                       "FAKE_ARGV": str(self.argv)}
+                       "FAKE_ARGV": str(self.argv), "PID_DIR": str(self.root / "pids")}
         environ = patch.dict(ci.os.environ, environment, clear=True)
         environ.start()
         self.addCleanup(environ.stop)
@@ -473,6 +514,74 @@ class GoPackageRunnerTests(unittest.TestCase):
         self.assertEqual(records[0]["packages"], ["./a", "./b"])
         self.assertEqual(records[-1]["never_started"], ["./b"])
 
+    def test_an_interrupted_package_names_its_unfinished_tests_without_a_no_result_claim(self):
+        results = self.root / "results.jsonl"
+        running = ci.PackageResult("./a", None)
+        running.tests["TestDone"] = "pass"
+        running.tests["TestSlow"] = "run"
+        running.interrupted = True
+        running.exit = -signal.SIGTERM
+        with contextlib.redirect_stdout(io.StringIO()) as shown, \
+                patch.dict(ci.os.environ, {"CI_GO_RESULTS": str(results)}):
+            report = ci.GoReport("server", ["./a", "./b"], 0, 1)
+            report.add(running)
+            code = report.summary(interrupted=True)
+        text = shown.getvalue()
+        self.assertEqual(code, 124)
+        self.assertIn("INTERRUPTED  ./a", text)
+        self.assertIn("unfinished TestSlow", text)
+        self.assertIn("declared inventory not collected", text)
+        # No inventory was collected, so no declared result may be claimed.
+        self.assertNotIn("no result for", text)
+        self.assertNotIn("declared)", text)
+        self.assertIn("NEVER RAN  ./b", text)
+        records = [json.loads(line) for line in results.read_text().splitlines()]
+        package = next(record for record in records if record["record"] == "package")
+        self.assertTrue(package["interrupted"])
+        self.assertEqual(package["status"], "interrupted")
+        self.assertEqual(package["unfinished"], ["TestSlow"])
+        self.assertEqual(records[-1]["exit"], 124)
+        self.assertTrue(records[-1]["interrupted"])
+
+    def test_a_leader_that_exits_while_its_child_holds_stdout_is_named_and_stopped(self):
+        self.install_go(["a", "b"], {"a": "leak", "b": "pass"})
+        started = time.monotonic()
+        with contextlib.redirect_stdout(io.StringIO()) as shown, \
+                patch.object(ci, "PIPE_HOLD_GRACE", 1.0), \
+                patch.object(ci, "GO_PACKAGE_BACKSTOP", 300), time_limit(30):
+            status = ci.go_test("server", [("./a", None), ("./b", None)])
+        elapsed = time.monotonic() - started
+        text = shown.getvalue()
+        self.assertEqual(status, 124)
+        self.assertLess(elapsed, 30)
+        self.assertIn("PIPE-HOLD  ./a", text)
+        self.assertIn("still holds its output pipe", text)
+        self.assertIn("hung TestLeak", text)
+        self.assertIn("no result for TestLeak, TestAfter (2 of 2 declared)", text)
+        # The lane was released, so the rest of the shard still ran.
+        self.assertIn("PASS  ./b", text)
+        self.assertIn("exit: 124", text)
+        leader, child = (int(pid) for pid in (self.root / "pids" / "a").read_text().split())
+        for pid in (leader, child):
+            self.assert_gone(pid)
+        self.assert_group_gone(leader)
+
+    def test_the_watchdog_names_a_leader_that_exited_leaving_its_pipe_held(self):
+        # The idle-pipe check is disabled here so the backstop itself is under test.
+        self.install_go(["a"], {"a": "leak"})
+        with contextlib.redirect_stdout(io.StringIO()) as shown, \
+                patch.object(ci, "PIPE_HOLD_GRACE", 10_000), \
+                patch.object(ci, "GO_PACKAGE_BACKSTOP", 1.0), time_limit(30):
+            status = ci.go_test("server", [("./a", None)])
+        text = shown.getvalue()
+        self.assertEqual(status, 124)
+        self.assertIn("descendant still holds", text)
+        self.assertIn("PIPE-HOLD  ./a", text)
+        self.assertIn("no result for TestLeak, TestAfter (2 of 2 declared)", text)
+        leader, child = (int(pid) for pid in (self.root / "pids" / "a").read_text().split())
+        for pid in (leader, child):
+            self.assert_gone(pid)
+
     def test_inventory_lists_one_package_per_line(self):
         self.install_go(["a", "nested/b"], {})
         self.assertEqual(ci.module_packages("server"), ["./a", "./nested/b"])
@@ -547,7 +656,101 @@ class GoPackageRunnerTests(unittest.TestCase):
                 ci.go_checks("server", "auth")
 
 
+class GoSignalTests(ProcessChecks, unittest.TestCase):
+    """SIGTERM stops every package the runner owns and keeps a usable record."""
+
+    def setUp(self):
+        self.temp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.temp.cleanup)
+        self.root = Path(self.temp.name)
+        self.bin = self.root / "bin"
+        self.bin.mkdir()
+        self.pids = self.root / "pids"
+        self.pids.mkdir()
+        self.results = self.root / "results.jsonl"
+        self.argv = self.root / "argv.log"
+        self.argv.write_text("")
+
+    def install_go(self, packages, modes):
+        script = self.bin / "go"
+        script.write_text(FAKE_GO.format(packages=packages, modes=modes), encoding="utf-8")
+        script.chmod(0o755)
+
+    def wait_for(self, predicate, seconds=30, message="condition"):
+        deadline = time.monotonic() + seconds
+        while time.monotonic() < deadline:
+            if predicate():
+                return
+            time.sleep(0.05)
+        self.fail(f"timed out waiting for {message}")
+
+    def test_sigterm_stops_every_owned_package_child_and_keeps_the_records(self):
+        self.install_go(["a", "b", "c", "d"],
+                        {"a": "hang-child", "b": "hang-child",
+                         "c": "hang-child", "d": "pass"})
+        environment = {**os.environ,
+                       "PATH": str(self.bin) + os.pathsep + os.environ.get("PATH", ""),
+                       "PID_DIR": str(self.pids),
+                       "FAKE_ARGV": str(self.argv),
+                       "CI_GO_RESULTS": str(self.results)}
+        runner = subprocess.Popen(
+            [sys.executable, str(Path(ci.__file__)), "go-module", "--module", "apikit"],
+            cwd=self.root, env=environment, stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT, text=True)
+        self.addCleanup(lambda: runner.poll() is None and runner.kill())
+
+        def recorded():
+            if not self.results.is_file():
+                return False
+            text = self.results.read_text()
+            return (text.count('"record": "package-start"') >= 3
+                    and text.count('"record": "test"') >= 3)
+
+        # Three lanes are running their packages and the fourth is still queued.
+        self.wait_for(recorded, message="three started packages")
+        started = {package: (self.pids / package).read_text().split()
+                   for package in ("a", "b", "c")}
+        runner.terminate()
+        output, _ = runner.communicate(timeout=60)
+
+        self.assertEqual(runner.returncode, 128 + signal.SIGTERM, output)
+        self.assertIn("SIGTERM: interrupted", output)
+        self.assertIn("INTERRUPTED  ./", output)
+        self.assertIn("unfinished TestHangs", output)
+        self.assertIn("declared inventory not collected", output)
+        self.assertNotIn("no result for", output)
+        self.assertIn("NEVER RAN  ./d", output)
+        self.assertNotIn("PASS  ./a", output)
+
+        for pids in started.values():
+            for pid in (int(value) for value in pids):
+                self.assert_gone(pid)
+            self.assert_group_gone(int(pids[0]))
+
+        records = [json.loads(line) for line in self.results.read_text().splitlines()]
+        self.assertEqual(records[0]["record"], "plan")
+        self.assertEqual(records[0]["packages"], ["./a", "./b", "./c", "./d"])
+        packages = [record for record in records if record["record"] == "package"]
+        self.assertEqual(sorted(record["package"] for record in packages), ["./a", "./b", "./c"])
+        for record in packages:
+            self.assertTrue(record["interrupted"], record)
+            self.assertEqual(record["status"], "interrupted")
+            self.assertEqual(record["never_ran"], [])
+            self.assertIsNone(record["inventory"])
+        events = [(record["package"], record["test"], record["action"])
+                  for record in records if record["record"] == "test"]
+        self.assertEqual(sorted(events), [("./a", "TestHangs", "run"),
+                                          ("./b", "TestHangs", "run"),
+                                          ("./c", "TestHangs", "run")])
+        summary = records[-1]
+        self.assertEqual(summary["record"], "summary")
+        self.assertTrue(summary["interrupted"])
+        self.assertEqual(summary["never_started"], ["./d"])
+        self.assertEqual(summary["exit"], 124)
+
+
 class ShardTests(unittest.TestCase):
+
     def test_shards_cover_every_package_exactly_once(self):
         packages = ["./e", "./c", "./a", "./d", "./b"]
         shards = [ci.shard(packages, index, 4) for index in range(4)]

@@ -7,55 +7,82 @@ import unittest
 
 
 SCRIPT = Path(__file__).with_name("test-go-module.sh")
-CATALOG = "portico.local/server/internal/catalog"
-PACKAGES = [CATALOG, CATALOG + "/scalebench", "portico.local/server/internal/httpapi"]
+PACKAGES = ["internal/catalog", "internal/catalog/scalebench", "internal/httpapi"]
+
+FAKE_GO = '''#!/usr/bin/env python3
+import json, os, sys
+
+args = sys.argv[1:]
+with open(os.environ["CALLS"], "a", encoding="utf-8") as log:
+    log.write(json.dumps(args) + "\\n")
+if args[0] == "list":
+    for name in filter(None, os.environ["PACKAGES"].split(",")):
+        print("example.com/m/" + name + "\\t" + os.path.join(os.getcwd(), name))
+    raise SystemExit(0)
+if args[0] == "vet":
+    raise SystemExit(0)
+assert args[0] == "test", args
+package = args[-1].removeprefix("./")
+if package in filter(None, os.environ.get("FAILING", "").split(",")):
+    raise SystemExit(int(os.environ["FAILING_EXIT"]))
+print(json.dumps({"Action": "pass", "Elapsed": 0.01}), flush=True)
+raise SystemExit(0)
+'''
 
 
-class ModuleTestPhases(unittest.TestCase):
-    def run_phases(self, module, catalog_exit=0, remainder_exit=0, packages=PACKAGES):
+class ModuleTestInventory(unittest.TestCase):
+    """The nightly phase runs every package alone instead of one monolithic call."""
+
+    def run_script(self, module, packages=PACKAGES, failing=(), failing_exit=3):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             fake = root / "go"
-            fake.write_text("""#!/usr/bin/env python3
-import json, os, sys
-with open(os.environ['CALLS'], 'a') as output:
-    output.write(json.dumps(sys.argv[1:]) + '\\n')
-if sys.argv[1] == 'list':
-    print(os.environ['PACKAGES'])
-    sys.exit(0)
-is_catalog = sys.argv[2:] == ['portico.local/server/internal/catalog']
-sys.exit(int(os.environ['CATALOG_EXIT' if is_catalog else 'REMAINDER_EXIT']))
-""")
+            fake.write_text(FAKE_GO, encoding="utf-8")
             fake.chmod(0o755)
             calls = root / "calls"
-            env = {**os.environ, "PATH": str(root) + os.pathsep + os.environ["PATH"],
-                   "CALLS": str(calls), "PACKAGES": "\n".join(packages),
-                   "CATALOG_EXIT": str(catalog_exit), "REMAINDER_EXIT": str(remainder_exit)}
-            result = subprocess.run(["sh", str(SCRIPT), module], env=env, capture_output=True, text=True)
-            return result.returncode, [json.loads(line) for line in calls.read_text().splitlines()]
+            environment = {**os.environ,
+                           "PATH": str(root) + os.pathsep + os.environ["PATH"],
+                           "CALLS": str(calls), "PACKAGES": ",".join(packages),
+                           "FAILING": ",".join(failing), "FAILING_EXIT": str(failing_exit)}
+            result = subprocess.run(["sh", str(SCRIPT), module], env=environment,
+                                    capture_output=True, text=True, timeout=120)
+            logged = ([json.loads(line) for line in calls.read_text().splitlines()]
+                      if calls.exists() else [])
+            return result, logged
 
-    def test_every_package_once_and_catalogue_alone_first(self):
-        status, calls = self.run_phases("server")
-        self.assertEqual(status, 0)
-        self.assertEqual(calls, [["list", "./..."], ["test", CATALOG], ["test", *PACKAGES[1:]]])
-        self.assertEqual([package for call in calls[1:] for package in call[1:]], PACKAGES)
+    def test_every_package_runs_alone_with_json_and_its_own_timeout(self):
+        result, calls = self.run_script("server")
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertEqual(calls[0][0], "list")
+        tests = calls[1:]
+        # Lanes start concurrently, so only the covered set is deterministic.
+        self.assertEqual(sorted(call[-1] for call in tests),
+                         ["./internal/catalog", "./internal/catalog/scalebench", "./internal/httpapi"])
+        for call in tests:
+            self.assertEqual(call[:4], ["test", "-json", "-count=1", "-timeout=780s"])
+            # Never a monolithic phase, and never a second mechanism for vet.
+            self.assertNotIn("./...", call)
+        self.assertNotIn("vet", [call[0] for call in calls])
 
-    def test_catalogue_failure_still_runs_remainder_and_fails(self):
-        status, calls = self.run_phases("server", catalog_exit=3)
-        self.assertEqual(status, 3)
-        self.assertEqual(calls[-1], ["test", *PACKAGES[1:]])
+    def test_a_failing_package_fails_the_gate_and_the_rest_still_runs(self):
+        result, calls = self.run_script("server", failing=["internal/httpapi"], failing_exit=7)
+        # The phase is a gate: any package failure stops it, named, with the rest run.
+        self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
+        self.assertEqual(sorted(call[-1] for call in calls[1:]),
+                         ["./internal/catalog", "./internal/catalog/scalebench", "./internal/httpapi"])
+        self.assertIn("FAIL  ./internal/httpapi", result.stdout)
 
-    def test_remainder_failure_fails_whole_gate(self):
-        status, _ = self.run_phases("server", remainder_exit=4)
-        self.assertEqual(status, 4)
+    def test_apikit_uses_the_same_complete_inventory(self):
+        result, calls = self.run_script("apikit")
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertEqual(sorted(call[-1] for call in calls[1:]),
+                         sorted("./" + name for name in PACKAGES))
 
-    def test_apikit_keeps_existing_command(self):
-        self.assertEqual(self.run_phases("apikit"), (0, [["test", "./..."]]))
-
-    def test_missing_catalogue_is_a_gate_failure(self):
-        status, calls = self.run_phases("server", packages=PACKAGES[1:])
-        self.assertEqual(status, 2)
-        self.assertEqual(calls, [["list", "./..."]])
+    def test_an_unknown_module_is_rejected_without_running_go(self):
+        result, calls = self.run_script("web", packages=[])
+        self.assertEqual(result.returncode, 2)
+        self.assertIn("expected module: apikit or server", result.stderr)
+        self.assertEqual(calls, [])
 
 
 if __name__ == "__main__":
