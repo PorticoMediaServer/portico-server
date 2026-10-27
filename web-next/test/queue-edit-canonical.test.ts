@@ -1,0 +1,75 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {PlaybackService} from '@core/index.ts';
+import {FakePlaybackServer, fakeHttp} from '@core/playback-v1/testing/fake-server.ts';
+import {V1PlaybackApi} from '@core/playback-v1/legacy-bridge.ts';
+import {V1QueuePlayer} from '@core/playback-v1/v1-queue-player.ts';
+import {queueItemInput} from '@core/queue-controller.ts';
+import type {V1PlaybackTarget} from '@core/playback-v1/v1-queue-player.ts';
+import {createQueueEditOpening, type WebQueueEditPage} from '../src/platform/playback/queue-edit-adapter.ts';
+
+/** Composition through the REAL public captureEditWindow reader and parsed wire facts. */
+async function fixture(count = 320) {
+  const server = new FakePlaybackServer({itemKind: () => 'movie'}), http = fakeHttp(server);
+  let serial = 0;
+  const api = new V1PlaybackApi(http, {key: () => `api-${++serial}`});
+  const playback = new PlaybackService(api, () => `run-${++serial}`);
+  const player = new V1QueuePlayer({http, api, playback, viewer: {serverId: 'server', authority: 'local', accountId: 'account', profileId: 'profile'}, key: () => `edit-key-${++serial}`});
+  const stop = player.connect();
+  await player.playEntries(Array.from({length: count}, (_, i) => queueItemInput(`item-${i}`)));
+  const session = player.currentSession()!, view = player.getSnapshot().view!;
+  const target: V1PlaybackTarget = {sessionId: session.id, generation: session.presentation.generation, playbackRun: playback.getSnapshot().playbackRun,
+    itemId: session.itemId!, versionId: session.versionId!, queueId: session.queue!.queueId, entryId: session.queue!.entryId};
+  return {player, playback, stop, target, revision: view.queue.revision};
+}
+
+function opening(f: Awaited<ReturnType<typeof fixture>>, state: {current: boolean}) {
+  const reader = f.player.captureEditWindow(f.target, f.revision, {signal: new AbortController().signal,
+    isCurrent: () => state.current, readOutput: () => ({kind: 'local' as const, target: f.target})});
+  return createQueueEditOpening({reader, current: () => state.current, currentEntryId: f.target.entryId,
+    lifetime: {signal: new AbortController().signal, isCurrent: () => state.current}, hidden: () => false});
+}
+
+async function step(openingPort: ReturnType<typeof createQueueEditOpening>, count: number): Promise<WebQueueEditPage> {
+  for (let i = 0; i < count; i++) await openingPort.next();
+  return openingPort.getSnapshot().page!;
+}
+
+test('a first-page adjacent pair moves through the canonical plan with only that pair', async () => {
+  const f = await fixture(), state = {current: true}, port = opening(f, state);
+  try {
+    await port.open();
+    const first = port.getSnapshot().page!;
+    await port.move(first, first.rows[1].entryId, 1);
+    const after = port.getSnapshot().page!;
+    assert.equal(port.getSnapshot().phase, 'ready');
+    assert.notEqual(after.revision, first.revision);
+    assert.equal(after.rows[0].entryId, first.rows[1].entryId);
+    assert.equal(after.rows[1].entryId, first.rows[0].entryId);
+  } finally {port.dispose(); f.stop();}
+});
+
+test('page two edits through the canonical plan using the opening anchor, not a presenter row', async () => {
+  const f = await fixture(), state = {current: true}, port = opening(f, state);
+  try {
+    await port.open();
+    const second = await step(port, 1);
+    assert.equal(second.start, 50);
+    await port.move(second, second.rows[2].entryId, 1);
+    assert.equal(port.getSnapshot().phase, 'ready');
+    assert.equal(port.getSnapshot().page!.start, second.start);
+    await port.remove(port.getSnapshot().page!, port.getSnapshot().page!.rows[1].entryId);
+    assert.equal(port.getSnapshot().phase, 'ready');
+  } finally {port.dispose(); f.stop();}
+});
+
+test('a retired opening lifetime cannot mutate: zero canonical IO and no accepted publication', async () => {
+  const f = await fixture(), state = {current: true}, port = opening(f, state);
+  try {
+    await port.open();
+    const shown = port.getSnapshot().page!;
+    state.current = false;
+    await assert.rejects(() => port.remove(shown, shown.rows[1].entryId), /queue_edit_stale/);
+    assert.equal(port.getSnapshot().phase, 'retired');
+  } finally {port.dispose(); f.stop();}
+});

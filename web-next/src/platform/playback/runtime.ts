@@ -1471,10 +1471,11 @@ export class WebShellPlaybackRuntime {
         if (!reprove()) throw new Error('stale_listening_port');
         const v1Target = {sessionId: target.sessionId, generation: target.sessionGeneration, playbackRun: target.playbackRun,
           itemId: target.itemId, versionId: target.versionId, queueId: target.queueId, entryId: target.entryId};
-        /** Local is derived from this exact server stack and dock; never a constant witness. */
+        /** Local is derived from this exact server stack and dock after every getter; never a constant witness. */
         const readOutput = () => {
-          const stackNow = this.stack, dock = this.dock.getSnapshot(), snap = this.snapshot;
+          const stackNow = this.stack;
           const sessionNow = stackNow.queue.currentSession(), viewNow = stackNow.queue.getSnapshot().view, playbackNow = stackNow.service.getSnapshot();
+          const dock = this.dock.getSnapshot(), snap = this.snapshot;
           const local = this.current(stackNow) && stackNow === stack && this.source === source && stackNow.mode === 'server'
             && !this.group?.active() && !this.group?.matches(fence)
             && !!snap.fence && sameFence(snap.fence, fence) && !!snap.presentation
@@ -1486,12 +1487,21 @@ export class WebShellPlaybackRuntime {
             && sessionNow.queue?.queueId === target.queueId && sessionNow.queue.entryId === target.entryId
             && viewNow?.queue.id === target.queueId && viewNow.queue.currentEntryId === target.entryId
             && playbackNow.playbackRun === target.playbackRun;
-          // Re-read the exact mutable owner after every potentially reentrant getter above.
-          const again = this.current(this.stack) && this.source === source && stackNow === stack
-            && sameFence(this.snapshot?.fence, fence) && !this.group?.active() && !this.group?.matches(fence);
-          return local && again ? Object.freeze({kind: 'local' as const, target: Object.freeze({...v1Target})}) : Object.freeze({kind: 'unknown' as const});
+          if (!local) return Object.freeze({kind: 'unknown' as const});
+          // Re-read the original stack/output/fence/run after the getters above; a successor
+          // output or remote/group takeover must not be accepted from the earlier snapshot.
+          const dockAgain = this.dock.getSnapshot(), snapAgain = this.snapshot;
+          const sessionAgain = this.stack.queue.currentSession(), playbackAgain = this.stack.service.getSnapshot();
+          const again = this.stack === stack && this.current(stack) && this.source === source
+            && !!snapAgain.fence && sameFence(snapAgain.fence, fence) && !!snapAgain.presentation
+            && !!dockAgain.local && !!dockAgain.local.fence && sameFence(dockAgain.local.fence, fence) && dockAgain.remote === null
+            && !this.group?.active() && !this.group?.matches(fence)
+            && !!sessionAgain && sessionAgain.id === target.sessionId && sessionAgain.queue?.queueId === target.queueId
+            && sessionAgain.queue.entryId === target.entryId && playbackAgain.playbackRun === target.playbackRun;
+          return again ? Object.freeze({kind: 'local' as const, target: Object.freeze({...v1Target})}) : Object.freeze({kind: 'unknown' as const});
         };
-        const reader = stack.queue.captureEditWindow(v1Target, shown.revision ?? '', {signal: combined(command.signal), isCurrent: reprove, readOutput});
+        const reader = stack.queue.captureEditWindow(v1Target, shown.revision ?? '', {signal: combined(command.signal),
+          isCurrent: () => reprove() && !command.signal.aborted && command.isCurrent(), readOutput});
         return createQueueEditOpening({reader, current: reprove, lifetime: command, currentEntryId: target.entryId,
           hidden: entryId => shown.entries.find(entry => entry.entryId === entryId)?.hidden === true});
       },

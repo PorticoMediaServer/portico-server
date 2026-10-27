@@ -30,9 +30,10 @@ export type WebQueueEditOpening = Readonly<{
   open(): Promise<void>;
   next(): Promise<void>;
   previous(): Promise<void>;
-  /** Only an offered adjacent available upcoming pair in the drawn page. */
-  move(shown: WebQueueEditPage, entryId: string, direction: -1 | 1, lifetime: WebQueueEditLifetime): Promise<void>;
-  remove(shown: WebQueueEditPage, entryId: string, lifetime: WebQueueEditLifetime): Promise<void>;
+  /** Only an offered adjacent available upcoming pair in the drawn page. Every command uses
+   * the one lifetime this opening was captured with; another caller refuses honestly. */
+  move(shown: WebQueueEditPage, entryId: string, direction: -1 | 1): Promise<void>;
+  remove(shown: WebQueueEditPage, entryId: string): Promise<void>;
   dispose(): void;
 }>;
 
@@ -64,9 +65,20 @@ export function createQueueEditOpening(input: WebQueueEditInput): WebQueueEditOp
   const listeners = new Set<() => void>();
   let state: WebQueueEditSnapshot = empty();
   let disposed = false;
+  let dead = false;
   let flight: object | null = null;
+  let anchorPosition: number | undefined;
 
-  const live = () => !disposed && !input.lifetime.signal.aborted && input.lifetime.isCurrent() && input.current();
+  /** Mutable record first, external predicates next, then the exact internal record again;
+   * any observed refusal latches dead so a later true cannot revive it. */
+  const live = (): boolean => {
+    if (disposed || dead || input.lifetime.signal.aborted) return false;
+    const host = input.lifetime.isCurrent();
+    const owner = host && input.current();
+    if (dead || disposed || input.lifetime.signal.aborted) {retire(); return false;}
+    if (!owner || !input.lifetime.isCurrent()) {retire(); return false;}
+    return !dead && !disposed && !input.lifetime.signal.aborted;
+  };
   const publish = (next: Partial<WebQueueEditSnapshot>) => {
     if (disposed) return;
     state = Object.freeze({...state, ...next});
@@ -89,6 +101,7 @@ export function createQueueEditOpening(input: WebQueueEditInput): WebQueueEditOp
   const retire = () => {
     if (disposed) return;
     disposed = true;
+    dead = true;
     flight = null;
     listeners.clear();
     try {input.reader.dispose();} catch {}
@@ -100,8 +113,17 @@ export function createQueueEditOpening(input: WebQueueEditInput): WebQueueEditOp
     ...(entry.posterUrl ?? entry.stillUrl ? {artworkUrl: entry.posterUrl ?? entry.stillUrl} : {}),
   });
   const adopt = (canonical: V1QueueEditPage): WebQueueEditPage => {
+    const rows = canonical.items.map(row);
+    if (anchorPosition === undefined) {
+      const anchor = rows.find(candidate => candidate.entryId === input.currentEntryId && !candidate.hidden);
+      if (!anchor) {retire(); stale();}
+      anchorPosition = anchor.position;
+    }
+    if (!live()) {retire(); stale();}
+    for (const candidate of rows) {if (candidate.hidden !== input.hidden(candidate.entryId)) {retire(); stale();}}
+    if (!live()) {retire(); stale();}
     const page: WebQueueEditPage = Object.freeze({start: canonical.start, total: canonical.total, revision: canonical.revision,
-      rows: Object.freeze(canonical.items.map(row)), canNext: canonical.nextCursor !== undefined, canPrevious: canonical.canPrevious});
+      rows: Object.freeze(rows), canNext: canonical.nextCursor !== undefined, canPrevious: canonical.canPrevious});
     issued.set(page, {opening, canonical});
     resident.push(page);
     while (resident.length > 2) {const dropped = resident.shift()!; issued.delete(dropped);}
@@ -119,9 +141,11 @@ export function createQueueEditOpening(input: WebQueueEditInput): WebQueueEditOp
   };
   const run = async (token: object, work: () => Promise<V1QueueEditPage>) => {
     try {
+      recheck(token);            // after the busy publication and any synchronous subscriber
       const next = await work();
       recheck(token);
       adopt(next);
+      recheck(token);
     } catch (error) {
       if (!disposed) {retire();}
       throw error;
@@ -148,31 +172,29 @@ export function createQueueEditOpening(input: WebQueueEditInput): WebQueueEditOp
       const token = begin();
       await run(token, () => input.reader.previous(canonical));
     },
-    move: async (shown: WebQueueEditPage, entryId: string, direction: -1 | 1, lifetime: WebQueueEditLifetime) => {
+    move: async (shown: WebQueueEditPage, entryId: string, direction: -1 | 1) => {
       requireLive();
-      if (lifetime.signal.aborted || !lifetime.isCurrent()) stale();
       const canonical = own(shown);
-      const anchor = shown.rows.find(candidate => candidate.entryId === input.currentEntryId);
+      const anchor = anchorPosition;
       const index = shown.rows.findIndex(candidate => candidate.entryId === entryId);
       const rowAt = index < 0 ? undefined : shown.rows[index];
       const target = index < 0 ? undefined : shown.rows[index + direction];
-      if (!anchor || !rowAt || !target || !rowAt.available || rowAt.hidden || rowAt.current
+      if (anchor === undefined || !rowAt || !target || !rowAt.available || rowAt.hidden || rowAt.current
         || !target.available || target.hidden || target.current || target.position !== rowAt.position + direction
-        || rowAt.position <= anchor.position || target.position <= anchor.position) stale();
-      const ids = shown.rows.map(candidate => candidate.entryId);
-      [ids[index], ids[index + direction]] = [ids[index + direction], ids[index]];
-      const intent: V1QueueEditIntent = {action: 'reorder', entryIds: Object.freeze(ids)};
+        || rowAt.position <= anchor || target.position <= anchor) stale();
+      // The canonical plan accepts only the offered contiguous upcoming block, in its new order.
+      const entryIds = direction === 1 ? [target.entryId, rowAt.entryId] : [rowAt.entryId, target.entryId];
+      const intent: V1QueueEditIntent = {action: 'reorder', entryIds: Object.freeze(entryIds)};
       const token = begin();
       issued.delete(shown); // the drawn mutation is consumed immediately
       await run(token, () => input.reader.edit(canonical, intent));
     },
-    remove: async (shown: WebQueueEditPage, entryId: string, lifetime: WebQueueEditLifetime) => {
+    remove: async (shown: WebQueueEditPage, entryId: string) => {
       requireLive();
-      if (lifetime.signal.aborted || !lifetime.isCurrent()) stale();
       const canonical = own(shown);
-      const anchor = shown.rows.find(candidate => candidate.entryId === input.currentEntryId);
+      const anchor = anchorPosition;
       const rowAt = shown.rows.find(candidate => candidate.entryId === entryId);
-      if (!anchor || !rowAt || !rowAt.available || rowAt.hidden || rowAt.current || rowAt.position <= anchor.position) stale();
+      if (anchor === undefined || !rowAt || !rowAt.available || rowAt.hidden || rowAt.current || rowAt.position <= anchor) stale();
       const token = begin();
       issued.delete(shown);
       await run(token, () => input.reader.edit(canonical, {action: 'remove', entryId}));

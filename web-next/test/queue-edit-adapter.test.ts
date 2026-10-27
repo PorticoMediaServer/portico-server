@@ -61,7 +61,7 @@ test('an old page cannot be used after a newer page is adopted', async () => {
   const first = h.opening.getSnapshot().page!;
   await h.opening.next();
   const second = h.opening.getSnapshot().page!;
-  await assert.rejects(() => h.opening.move(first, first.rows[1].entryId, 1, {signal: new AbortController().signal, isCurrent: () => true}), /queue_edit_stale/);
+  await assert.rejects(() => h.opening.move(first, first.rows[1].entryId, 1), /queue_edit_stale/);
   assert.equal(second.start, 50);
 });
 
@@ -80,12 +80,11 @@ test('hidden, current and non-adjacent rows are never editable, and a mutation c
   const h = harness();
   await h.opening.open();
   const shown = h.opening.getSnapshot().page!;
-  const life = {signal: new AbortController().signal, isCurrent: () => true};
-  await assert.rejects(() => h.opening.move(shown, shown.rows[3].entryId, 1, life), /queue_edit_stale/); // hidden
-  await assert.rejects(() => h.opening.remove(shown, shown.rows[0].entryId, life), /queue_edit_stale/);  // current
-  await h.opening.move(shown, shown.rows[1].entryId, 1, life);
+    await assert.rejects(() => h.opening.move(shown, shown.rows[3].entryId, 1), /queue_edit_stale/); // hidden
+  await assert.rejects(() => h.opening.remove(shown, shown.rows[0].entryId), /queue_edit_stale/);  // current
+  await h.opening.move(shown, shown.rows[1].entryId, 1);
   assert.deepEqual(h.reads.filter(r => r === 'reorder').length, 1);
-  await assert.rejects(() => h.opening.remove(shown, shown.rows[2].entryId, life), /queue_edit_stale/);  // drawn page consumed
+  await assert.rejects(() => h.opening.remove(shown, shown.rows[2].entryId), /queue_edit_stale/);  // drawn page consumed
   assert.equal(h.opening.getSnapshot().phase, 'ready');
 });
 
