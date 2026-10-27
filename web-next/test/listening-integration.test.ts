@@ -333,14 +333,14 @@ async function mountedPlayback(kind:'music'|'audiobook'='audiobook',settings?:{r
   const viewer={serverId:'server',authority:'local',accountId:'account',profileId:'profile',role:settings?.role??'owner'};
   let session:any={viewer,sessionFamilyId:'family',deviceId:'device'};
   const identity:any={viewer,primaryProfile:settings?.primary??true,capabilities:{manageServer:settings?.manage??true},libraries:settings?.library===false?[]:[{id:'library',kind:'music',name:'Music'}]};
-  let predicate:(()=>void)|undefined,sessionRead:(()=>void)|undefined;
-  const makeContext=():any=>({isCurrent:()=>{predicate?.();return true;},session:()=>{sessionRead?.();return session;},api:{},epoch:1,preferences:{subscribe:()=>()=>{},getSnapshot:()=>preferences},
+  let predicate:(()=>void)|undefined,sessionRead:(()=>void)|undefined,contextCurrent=true;
+  const makeContext=():any=>({isCurrent:()=>{predicate?.();return contextCurrent;},session:()=>{sessionRead?.();return session;},api:{},epoch:1,preferences:{subscribe:()=>()=>{},getSnapshot:()=>preferences},
     ...(settings&&settings.facts!==false?{facts:{identity,preferences,serverName:'Server'}}:{})});
   let context=makeContext();
   const errors:unknown[]=[];
   const binding:any={runtime:f.runtime,artwork:{foreground:()=>undefined,ambient:()=>undefined},environment:defaultI18n,skips:{back:15,forward:30},reportError:(e:unknown)=>errors.push(e)};
   const show=()=>{let result:any;for(let i=0;i<5;i++)result=tree(h.render(()=>playback.WatchPlayback({binding,context})));return result;};
-  return{f,show,errors,navigations,holdNavigation(){return navigationWait=deferred<void>();},get context(){return context;},set onCurrent(value:(()=>void)|undefined){predicate=value;},set onSessionRead(value:(()=>void)|undefined){sessionRead=value;},setSession(value:any){session=value;},replaceContext(){context=makeContext();},close(){f.retire();globalThis.document=oldDocument;globalThis.HTMLElement=oldHTMLElement;}};
+  return{f,show,errors,navigations,retireContext(){contextCurrent=false;},holdNavigation(){return navigationWait=deferred<void>();},get context(){return context;},set onCurrent(value:(()=>void)|undefined){predicate=value;},set onSessionRead(value:(()=>void)|undefined){sessionRead=value;},setSession(value:any){session=value;},replaceContext(){context=makeContext();},close(){f.retire();globalThis.document=oldDocument;globalThis.HTMLElement=oldHTMLElement;}};
 }
 
 test('actual persistent host mounts an audiobook and collapses to its retained dock with one media attachment and no extra capture',async()=>{
@@ -453,4 +453,19 @@ test('actual empty scoped Lyrics preserves its original facade library; a mismat
   const mismatch=await mountedPlayback('music',{lyrics:'empty'});mismatch.f.badLyricsScope();try{
     const ui=await openEmptyHost(mismatch);assert.equal(librarySettingsButton(ui),undefined);assert.deepEqual(mismatch.navigations,[]);
   }finally{mismatch.close();}
+});
+
+// Arm the last read in helper.current (2), and the final read immediately
+// preceding open's navigation (5). The getter returns the ORIGINAL session;
+// only original context currentness changes, with no identity/runtime event.
+for(const finalRead of [2,5])test(`actual host final session read ${finalRead} retires currentness without an event; A refuses and separately admitted B works`,async()=>{
+  const a=await mountedPlayback('music',{lyrics:'404'});try{
+    const ui=await openEmptyHost(a),saved=librarySettingsButton(ui)!.props.onClick;let reads=0;
+    a.onSessionRead=()=>{if(++reads===finalRead)a.retireContext();};
+    saved();await tick();assert.equal(reads,finalRead);assert.deepEqual(a.navigations,[]);assert.equal(a.errors.length,0);
+  }finally{a.onSessionRead=undefined;a.close();}
+  const b=await mountedPlayback('music',{lyrics:'404'});try{
+    const ui=await openEmptyHost(b);librarySettingsButton(ui)!.props.onClick();await tick();
+    assert.deepEqual(b.navigations,[{to:'/settings',search:{scope:'server',section:'libraries',row:'libraries.list'}}]);assert.equal(b.errors.length,0);
+  }finally{b.close();}
 });

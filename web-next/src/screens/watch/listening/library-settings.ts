@@ -47,7 +47,7 @@ export function captureLibrarySettings(input: ListeningSettingsInput | undefined
     const current = () => {
       if (retired || hostSignal.aborted) return false;
       let accepted = false;
-      try {accepted = hostCurrent() && !hostSignal.aborted && factsMatch() && matches(session()) && isCurrent() && !hostSignal.aborted && hostCurrent() && !hostSignal.aborted && matches(session()) && factsMatch();} catch {/* Refused original shell. */}
+      try {accepted = hostCurrent() && !hostSignal.aborted && factsMatch() && matches(session()) && isCurrent() && !hostSignal.aborted && hostCurrent() && !hostSignal.aborted && matches(session()) && isCurrent() && !hostSignal.aborted && hostCurrent() && !hostSignal.aborted && factsMatch();} catch {/* Refused original shell. */}
       if (!accepted) retired = true;
       return accepted && !retired && !hostSignal.aborted;
     };
@@ -55,7 +55,7 @@ export function captureLibrarySettings(input: ListeningSettingsInput | undefined
     return Object.freeze({libraryId, isCurrent:current, open: async (command: ListeningSettingsCommand) => {
       const signal = command.signal, active = command.active.bind(command), admitted = command.isCurrent.bind(command);
       const local = () => !signal.aborted && !hostSignal.aborted && !retired && active();
-      if (!local() || !current() || !local() || !admitted() || !local() || !current() || !local() || !admitted() || !local() || !matches(session()) || !local() || !factsMatch() || !local())
+      if (!local() || !current() || !local() || !admitted() || !local() || !current() || !local() || !admitted() || !local() || !matches(session()) || !local() || !isCurrent() || !local() || !hostCurrent() || !local() || !factsMatch() || !local())
         throw new DOMException('Library settings opening retired', 'AbortError');
       await navigate(lyricsSettingsDestination);
     }});
