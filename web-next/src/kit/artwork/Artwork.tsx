@@ -16,21 +16,25 @@ type OriginalArtwork = {id: number; live: boolean; scope: object; source: Artwor
 type MountedArtwork = ArtworkRead & {lease?: OriginalArtwork};
 let originalArtworkSequence = 0;
 function useArtwork(source: ArtworkSource | null | undefined, visible: boolean, callbacks: ArtworkCallbacks): MountedArtwork {
-  const scheduler = source?.scheduler, key = source?.key, retain = source?.retain;
+  const scheduler = source?.scheduler, key = source?.key;
+  // Runtime factories mint source wrappers during render. Their exact key and
+  // retention owner, rather than a fresh equivalent closure, own this lease.
+  // Custom sources still retire when their retain callback changes.
+  const retention = source?.retainScope ?? source?.retain;
   const order = source?.request?.order, priority = source?.request?.priority, group = source?.request?.group, large = source?.request?.large;
-  const scope = useMemo(() => ({scheduler, key, retain, visible, order, priority, group, large}), [scheduler, key, retain, visible, order, priority, group, large]);
+  const scope = useMemo(() => ({scheduler, key, retention, visible, order, priority, group, large}), [scheduler, key, retention, visible, order, priority, group, large]);
   const original = useRef<{scope: typeof scope; source: typeof source; callbacks: ArtworkCallbacks} | undefined>(undefined);
   if (original.current?.scope !== scope) original.current = {scope, source, callbacks};
   const owner = useRef<OriginalArtwork | undefined>(undefined);
   const [read, setRead] = useState<MountedArtwork>({status: 'empty'});
   useLayoutEffect(() => {
     const captured = original.current;
-    const {scheduler, key, retain, visible, order, priority, group, large} = scope;
+    const {scheduler, key, visible, order, priority, group, large} = scope;
     if (captured?.scope !== scope || !scheduler || !key || !visible || !captured.source) return;
     // Capture callbacks with this original request. Later props cannot lend a
     // replacement callback or cache fact to its pending delivery/decode work.
     const lease: OriginalArtwork = {id: ++originalArtworkSequence, live: true, scope, source: captured.source, callbacks: captured.callbacks}; owner.current = lease;
-    const stop = observeArtwork({scheduler, key, retain, request: {order, priority, group, large}}, value => {
+    const stop = observeArtwork({scheduler, key, retain: captured.source.retain, request: {order, priority, group, large}}, value => {
       if (lease.live && owner.current === lease) setRead({...value, lease});
     });
     return () => {lease.live = false; if (owner.current === lease) owner.current = undefined; stop();};

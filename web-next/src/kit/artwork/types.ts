@@ -3,7 +3,10 @@ import type {ArtworkScheduler, ArtworkRequestOptions} from '@core/artwork/index.
 import type {AmbientArtworkSource} from '@core/artwork/ambient.ts';
 
 export type ArtworkImage = Readonly<{src: string; width?: number; height?: number; bytes?: number; retain?: () => () => void}>;
-export type ArtworkSource = Readonly<{scheduler: ArtworkScheduler<ArtworkImage>; key: string; request?: Omit<ArtworkRequestOptions, 'signal'>; retain?: () => () => void}>;
+export type ArtworkSource = Readonly<{scheduler: ArtworkScheduler<ArtworkImage>; key: string; request?: Omit<ArtworkRequestOptions, 'signal'>; retain?: () => () => void;
+  /** Factory-owned lifetime: equal keys in this scope have the same retention semantics. */
+  retainScope?: object;
+}>;
 export type AmbientArtSource = ArtworkSource & Pick<AmbientArtworkSource, 'variant' | 'maxEdge' | 'version'>;
 export type ArtworkStatus = 'empty' | 'loading' | 'ready' | 'error';
 export type ArtworkPalette = Readonly<{first: string; second: string}>;

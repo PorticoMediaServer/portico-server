@@ -40,7 +40,8 @@ export function Shelf<T>({items, getKey, renderItem, onItemFocus, onVisibleRange
   useLayoutEffect(() => {setFocusedKey(null);}, [focus.lifetime]);
   const measure = useCallback(() => {
     const element = track.current; if (!element) return;
-    setEdges({left: element.scrollLeft > 1, right: element.scrollLeft + element.clientWidth < element.scrollWidth - 1});
+    const left = element.scrollLeft > 1, right = element.scrollLeft + element.clientWidth < element.scrollWidth - 1;
+    setEdges(current => current.left === left && current.right === right ? current : {left, right});
     let first = -1, last = -1;
     const bounds = element.getBoundingClientRect();
     [...element.children].forEach(child => { const index = Number((child as HTMLElement).dataset.shelfIndex), rect = child.getBoundingClientRect(); if (index >= 0 && rect.right > bounds.left && rect.left < bounds.right) { if (first < 0) first = index; last = index; } });

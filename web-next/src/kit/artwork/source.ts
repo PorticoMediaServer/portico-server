@@ -37,6 +37,7 @@ export type ArtworkRuntimeOptions = Readonly<{
 export function createArtworkRuntime(options: ArtworkRuntimeOptions) {
   if (!options.scopeKey) throw new Error('Artwork scope is required.');
   let disposed = false;
+  const retainScope = Object.freeze({});
   const pins = new WeakMap<ArtworkImage, number>();
   const identities = new WeakMap<ArtworkImage, string>();
   const interests = new Map<string, number>();
@@ -62,7 +63,7 @@ export function createArtworkRuntime(options: ArtworkRuntimeOptions) {
   const source = (input: ArtworkLoadRequest, request?: Omit<ArtworkRequestOptions, 'signal'>): ArtworkSource => {
     if (disposed || !input.url || !input.cacheKey) throw new Error('Artwork source is unavailable.');
     const key = JSON.stringify([options.scopeKey, input.cacheKey, input.url, input.kind]);
-    return Object.freeze({scheduler, key, ...(request ? {request} : {}), retain: () => {
+    return Object.freeze({scheduler, key, retainScope, ...(request ? {request} : {}), retain: () => {
       if (disposed) return () => {};
       interests.set(key, (interests.get(key) ?? 0) + 1); let released = false;
       return () => { if (released) return; released = true; const count = (interests.get(key) ?? 1) - 1; if (count > 0) interests.set(key, count); else interests.delete(key); };
