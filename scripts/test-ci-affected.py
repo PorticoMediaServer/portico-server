@@ -256,6 +256,10 @@ MODES = {modes!r}
 DECLARED = dict([
     ("pass", ["TestGood"]),
     ("fail", ["TestBad"]),
+    ("fail-detail", ["TestBad"]),
+    ("fail-group", ["TestOne", "TestTwo"]),
+    ("fail-many", ["TestCase%02d" % index for index in range(12)]),
+    ("build-fail", []),
     ("deadline", ["TestStuck", "TestAfter"]),
     ("deadline-nolist", ["TestStuck", "TestAfter"]),
     ("hang", ["TestHangs", "TestNotRun"]),
@@ -265,6 +269,9 @@ DECLARED = dict([
 args = sys.argv[1:]
 with open(os.environ["FAKE_ARGV"], "a", encoding="utf-8") as log:
     log.write(" ".join(args) + "\\n")
+if args[0] == "version":
+    print("go version go1.99.0 linux/amd64")
+    raise SystemExit(0)
 if args[0] == "list":
     for name in PACKAGES:
         print("example.com/m/" + name + "\\t" + os.path.join(os.getcwd(), name))
@@ -302,6 +309,40 @@ elif mode == "fail":
     emit(Action="run", Test="TestBad")
     emit(Action="fail", Test="TestBad", Elapsed=0.01)
     emit(Action="fail", Elapsed=0.02)
+    raise SystemExit(1)
+elif mode == "fail-detail":
+    emit(Action="run", Test="TestBad")
+    for line in ("=== RUN   TestBad\\n",
+                 "    foo_test.go:63: invalid device record\\n",
+                 "--- FAIL: TestBad (0.00s)\\n"):
+        emit(Action="output", Test="TestBad", Output=line)
+    emit(Action="fail", Test="TestBad", Elapsed=0.01)
+    emit(Action="output", Output="FAIL\\n")
+    emit(Action="fail", Elapsed=0.02)
+    raise SystemExit(1)
+elif mode == "fail-group":
+    for index, name in enumerate(DECLARED[mode]):
+        emit(Action="run", Test=name)
+        emit(Action="output", Test=name,
+             Output="    same_test.go:%d: seed fixture: UNIQUE constraint failed: "
+                    "library_sources\\n" % (63 + index))
+        emit(Action="fail", Test=name, Elapsed=0.01)
+    emit(Action="fail", Elapsed=0.02)
+    raise SystemExit(1)
+elif mode == "fail-many":
+    for index, name in enumerate(DECLARED[mode]):
+        emit(Action="run", Test=name)
+        emit(Action="output", Test=name,
+             Output="    case_test.go:%d: failure %d: got 100%% bad, value: nope -> stop\\n"
+                    % (10 + index, index))
+        emit(Action="fail", Test=name, Elapsed=0.01)
+    emit(Action="fail", Elapsed=0.02)
+    raise SystemExit(1)
+elif mode == "build-fail":
+    emit(Action="output", Output="# example.com/m/" + package + "\\n")
+    emit(Action="output", Output="./broken.go:9:2: undefined: missingThing\\n")
+    emit(Action="output", Output="FAIL\\texample.com/m/" + package + " [build failed]\\n")
+    emit(Action="build-fail")
     raise SystemExit(1)
 elif mode in ("deadline", "deadline-nolist"):
     emit(Action="run", Test="TestStuck")
@@ -361,7 +402,8 @@ class GoPackageRunnerTests(ProcessChecks, unittest.TestCase):
         with contextlib.redirect_stdout(io.StringIO()) as shown:
             status = ci.go_test("server", [("./a", None), ("./b", None)])
         self.assertEqual(status, 1)
-        calls = self.argv.read_text().splitlines()
+        calls = [line for line in self.argv.read_text().splitlines()
+                 if line.startswith("test ")]
         self.assertEqual(len(calls), 2)
         for call in calls:
             self.assertIn("test -json -count=1 -timeout=780s", call)
@@ -372,6 +414,130 @@ class GoPackageRunnerTests(ProcessChecks, unittest.TestCase):
         self.assertIn("failed TestBad", text)
         self.assertIn("PASS  ./b  tests=1", text)
         self.assertIn("exit: 1", text)
+
+    def test_a_normal_failure_prints_its_decoded_block_and_file_line(self):
+        results = self.root / "results.jsonl"
+        self.install_go(["a"], {"a": "fail-detail"})
+        with contextlib.redirect_stdout(io.StringIO()) as shown, \
+                patch.dict(ci.os.environ, {"CI_GO_RESULTS": str(results)}):
+            status = ci.go_test("server", [("./a", None)])
+        self.assertEqual(status, 1)
+        text = shown.getvalue()
+        # The console is go test's own text, not the raw JSON event stream.
+        self.assertIn("FAIL  ./a", text)
+        self.assertIn("FAIL  TestBad  server/a/foo_test.go:63", text)
+        self.assertIn("invalid device record", text)
+        self.assertIn("=== RUN   TestBad", text)
+        self.assertNotIn('"Action"', text)
+        records = [json.loads(line) for line in results.read_text().splitlines()]
+        package = next(record for record in records if record["record"] == "package")
+        failure = package["failures"][0]
+        self.assertEqual(failure["test"], "TestBad")
+        self.assertEqual(failure["message"], "invalid device record")
+        self.assertEqual(failure["file"], "server/a/foo_test.go")
+        self.assertEqual(failure["line"], 63)
+        self.assertTrue(any("foo_test.go:63" in line for line in failure["output"]))
+
+    def test_raw_go_events_are_kept_complete_in_their_own_file(self):
+        results = self.root / "results.jsonl"
+        self.install_go(["a"], {"a": "fail-detail"})
+        with contextlib.redirect_stdout(io.StringIO()) as shown, \
+                patch.dict(ci.os.environ, {"CI_GO_RESULTS": str(results)}):
+            self.assertEqual(ci.go_test("server", [("./a", None)]), 1)
+        events = results.with_name(results.stem + "-events" + results.suffix)
+        self.assertTrue(events.is_file(), events)
+        raw = [json.loads(line) for line in events.read_text().splitlines()]
+        self.assertEqual(len(raw), 8)
+        self.assertTrue(all(record["record"] == "go-event" for record in raw))
+        outputs = [record["event"].get("Output") for record in raw
+                   if record["event"].get("Action") == "output"]
+        self.assertIn("    foo_test.go:63: invalid device record\n", outputs)
+        self.assertIn("=== RUN   TestBad\n", outputs)
+        # The compact record keeps no raw event stream, and its console held none.
+        self.assertNotIn("go-event", results.read_text())
+        self.assertNotIn('"Action"', shown.getvalue())
+
+    def test_identical_failure_messages_are_grouped_with_a_count(self):
+        self.install_go(["a"], {"a": "fail-group"})
+        with contextlib.redirect_stdout(io.StringIO()) as shown:
+            self.assertEqual(ci.go_test("server", [("./a", None)]), 1)
+        text = shown.getvalue()
+        self.assertIn("identical failure messages:", text)
+        self.assertIn("x2  seed fixture: UNIQUE constraint failed: library_sources", text)
+        self.assertIn("FAIL  TestOne  server/a/same_test.go:63", text)
+        self.assertIn("FAIL  TestTwo  server/a/same_test.go:64", text)
+
+    def test_a_build_failure_prints_its_real_reason(self):
+        self.install_go(["a"], {"a": "build-fail"})
+        with contextlib.redirect_stdout(io.StringIO()) as shown:
+            self.assertEqual(ci.go_test("server", [("./a", None)]), 1)
+        text = shown.getvalue()
+        self.assertIn("FAIL  ./a", text)
+        self.assertIn("FAIL  (package)  ./a: undefined: missingThing", text)
+        self.assertIn("broken.go:9", text)
+        self.assertIn("::error file=server/a::./a: undefined: missingThing", text)
+
+    def test_step_summary_gets_package_test_message_and_location(self):
+        summary = self.root / "step-summary.md"
+        results = self.root / "results.jsonl"
+        self.install_go(["a"], {"a": "fail-detail"})
+        with contextlib.redirect_stdout(io.StringIO()), \
+                patch.dict(ci.os.environ, {"CI_GO_RESULTS": str(results),
+                                           "GITHUB_STEP_SUMMARY": str(summary)}):
+            self.assertEqual(ci.go_test("server", [("./a", None)]), 1)
+        text = summary.read_text()
+        self.assertIn("### Go tests: `server` shard 1/1", text)
+        self.assertIn("| Package | Test | First message | Location |", text)
+        self.assertIn("| ./a | TestBad | invalid device record | server/a/foo_test.go:63 |", text)
+
+    def test_step_summary_reports_a_passing_run(self):
+        summary = self.root / "step-summary.md"
+        self.install_go(["a"], {"a": "pass"})
+        with contextlib.redirect_stdout(io.StringIO()), \
+                patch.dict(ci.os.environ, {"GITHUB_STEP_SUMMARY": str(summary)}):
+            self.assertEqual(ci.go_test("server", [("./a", None)]), 0)
+        self.assertIn("No failing tests.", summary.read_text())
+
+    def test_annotations_are_bounded_and_escape_workflow_command_values(self):
+        self.install_go(["a"], {"a": "fail-many"})
+        with contextlib.redirect_stdout(io.StringIO()) as shown:
+            self.assertEqual(ci.go_test("server", [("./a", None)]), 1)
+        annotations = [line for line in shown.getvalue().splitlines()
+                       if line.startswith("::error")]
+        self.assertEqual(len(annotations), ci.ANNOTATION_LIMIT)
+        self.assertEqual(annotations[0][:len("::error file=server/a/case_test.go,line=10")],
+                         "::error file=server/a/case_test.go,line=10")
+        self.assertIn("TestCase00: failure 0: got 100%25 bad, value: nope -> stop",
+                      annotations[0])
+        self.assertNotIn("100% bad", annotations[0])
+
+    def test_annotation_escaping_covers_newlines_carriage_returns_and_commas(self):
+        command = ci.annotation("a,b.go", 7, "first\nsecond, 50%\rthird")
+        self.assertIn("file=a%2Cb.go,line=7", command)
+        self.assertIn("%0A", command)
+        self.assertIn("%0D", command)
+        self.assertIn("50%25", command)
+
+    def test_a_broken_step_summary_path_keeps_the_result(self):
+        blocked = self.root / "not-a-directory"
+        blocked.write_text("")
+        self.install_go(["a"], {"a": "pass"})
+        with contextlib.redirect_stdout(io.StringIO()) as shown, \
+                patch.dict(ci.os.environ, {"GITHUB_STEP_SUMMARY": str(blocked / "summary.md")}):
+            self.assertEqual(ci.go_test("server", [("./a", None)]), 0)
+        text = shown.getvalue()
+        self.assertIn("GitHub step summary unavailable", text)
+        self.assertIn("PASS  ./a", text)
+
+    def test_entry_log_records_the_actual_node_and_go_versions(self):
+        self.install_go(["a"], {"a": "pass"})
+        expected_node = subprocess.check_output(["node", "--version"], text=True).strip()
+        with contextlib.redirect_stdout(io.StringIO()) as shown:
+            self.assertEqual(ci.go_test("server", [("./a", None)]), 0)
+        text = shown.getvalue()
+        self.assertIn(f"node version: {expected_node}", text)
+        self.assertIn("go version: go version go1.99.0 linux/amd64", text)
+        self.assertLess(text.index("node version:"), text.index("+ go test"))
 
     def test_a_package_deadline_is_named_with_its_never_ran_tests(self):
         self.install_go(["a"], {"a": "deadline"})
