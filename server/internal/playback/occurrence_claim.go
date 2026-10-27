@@ -2,7 +2,9 @@ package playback
 
 import (
 	"context"
+	"database/sql"
 	"errors"
+	"portico.local/server/internal/dbwork"
 	"sync"
 )
 
@@ -51,6 +53,7 @@ type occurrenceClaim struct {
 	phase      uint8 // 0 held, 1 committed, 2 aborted
 	waiters    int
 	delivered  bool
+	fencing    bool
 	cancelOnce sync.Once
 }
 
@@ -240,24 +243,27 @@ func (c *occurrenceClaim) abort() {
 	r.pruneLocked(c.id, c.entry)
 }
 
-// commit irreversibly closes the entry and cancels only the captured runs.
-// A caller must invoke it only after the durable fence commits. Join is bounded
-// by ctx; a timeout does not undo the committed fence.
+// markCommitted is called only by the exact gated writer's after-commit hook.
+// It performs no I/O and does not cancel while the writer is held.
+func (c *occurrenceClaim) markCommitted() {
+	r := c.registry
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if c.phase != 0 || r.entries[c.id] != c.entry || c.entry.claim != c {
+		return
+	}
+	c.phase = 1
+	c.entry.committed = true
+	c.entry.claim = nil
+}
+
+// commit joins only the captured run handles after the exact writer committed.
 func (c *occurrenceClaim) commit(ctx context.Context) error {
 	r := c.registry
 	r.mu.Lock()
-	if c.phase == 2 {
+	if c.phase != 1 {
 		r.mu.Unlock()
 		return errOccurrenceClaimed
-	}
-	if c.phase == 0 {
-		if r.entries[c.id] != c.entry || c.entry.claim != c {
-			r.mu.Unlock()
-			return errOccurrenceClaimed
-		}
-		c.phase = 1
-		c.entry.committed = true
-		c.entry.claim = nil
 	}
 	runs := append([]*occurrenceRun(nil), c.runs...)
 	r.mu.Unlock()
@@ -281,4 +287,99 @@ func (c *occurrenceClaim) commit(ctx context.Context) error {
 	r.pruneLocked(c.id, c.entry)
 	r.mu.Unlock()
 	return nil
+}
+
+// StopOccurrenceClaim holds process ownership and the frozen durable tuple.
+// It is not a caller permission and cannot authorize or issue a media grant.
+type StopOccurrenceClaim struct {
+	phase                                              *occurrenceClaim
+	original                                           context.Context
+	id, request, asset, account, profile, login, state string
+	item                                               int64
+	generation                                         int
+	source, incarnation                                string
+	sourceGeneration                                   int64
+}
+
+var ErrOccurrenceChanged = errors.New("playback occurrence changed")
+
+// ClaimStopOccurrence closes registration before reading the exact durable
+// tuple. No resource is cancelled until an accepting transaction commits.
+func (s *Service) ClaimStopOccurrence(ctx context.Context, id string, generation int) (*StopOccurrenceClaim, error) {
+	phase, err := s.occurrenceRegistry().claim(ctx, id, generation)
+	if err != nil {
+		return nil, err
+	}
+	out := &StopOccurrenceClaim{phase: phase, original: ctx, id: id, generation: generation}
+	var actual int
+	err = s.db.QueryRowContext(ctx, `SELECT p.request_id,p.asset_id,p.item_id,p.account_id,p.profile_id,p.session_hash,p.state,p.generation,COALESCE(x.source_id,''),COALESCE(x.incarnation,''),COALESCE(x.configuration_generation,0) FROM playback_sessions p LEFT JOIN playback_physical_source_pins x ON x.session_id=p.id WHERE p.id=?`, id).Scan(&out.request, &out.asset, &out.item, &out.account, &out.profile, &out.login, &out.state, &actual, &out.source, &out.incarnation, &out.sourceGeneration)
+	if err != nil || actual != generation || out.state == "stopped" || out.state == "ended" || out.state == "failed" {
+		phase.abort()
+		if err != nil {
+			return nil, err
+		}
+		return nil, ErrOccurrenceChanged
+	}
+	return out, nil
+}
+
+// FenceTx requires the original live writer and an original-caller check. Its
+// after-commit marker cannot be forged by a caller or fired by a rollback.
+func (c *StopOccurrenceClaim) FenceTx(ctx context.Context, tx *sql.Tx, check func(context.Context, *sql.Tx) error) error {
+	if c == nil || ctx == nil || tx == nil || check == nil || dbwork.Snapshot(ctx) != tx || c.original.Err() != nil || ctx.Err() != nil {
+		return ErrOccurrenceChanged
+	}
+	r := c.phase.registry
+	r.mu.Lock()
+	if c.phase.phase != 0 || c.phase.fencing || r.entries[c.id] != c.phase.entry || c.phase.entry.claim != c.phase {
+		r.mu.Unlock()
+		return ErrOccurrenceChanged
+	}
+	c.phase.fencing = true
+	r.mu.Unlock()
+	if err := check(ctx, tx); err != nil {
+		return err
+	}
+	var state, request, asset, account, profile, login, source, incarnation string
+	var generation int
+	var item, sourceGeneration int64
+	err := tx.QueryRowContext(ctx, `SELECT p.request_id,p.asset_id,p.item_id,p.account_id,p.profile_id,p.session_hash,p.state,p.generation,COALESCE(x.source_id,''),COALESCE(x.incarnation,''),COALESCE(x.configuration_generation,0) FROM playback_sessions p LEFT JOIN playback_physical_source_pins x ON x.session_id=p.id WHERE p.id=?`, c.id).Scan(&request, &asset, &item, &account, &profile, &login, &state, &generation, &source, &incarnation, &sourceGeneration)
+	if err != nil {
+		return err
+	}
+	if request != c.request || asset != c.asset || item != c.item || account != c.account || profile != c.profile || login != c.login || state != c.state || generation != c.generation || source != c.source || incarnation != c.incarnation || sourceGeneration != c.sourceGeneration {
+		return ErrOccurrenceChanged
+	}
+	result, err := tx.ExecContext(ctx, `UPDATE playback_sessions SET state='stopped' WHERE id=? AND generation=? AND state=? AND request_id=? AND item_id=? AND asset_id=? AND session_hash=?`, c.id, c.generation, c.state, c.request, c.item, c.asset, c.login)
+	if err != nil {
+		return err
+	}
+	n, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if n != 1 {
+		return ErrOccurrenceChanged
+	}
+	return dbwork.AfterCommit(tx, c.phase.markCommitted)
+}
+func (c *StopOccurrenceClaim) Abort() {
+	if c != nil {
+		c.phase.abort()
+	}
+}
+func (c *StopOccurrenceClaim) Commit(ctx context.Context) error {
+	if c == nil || ctx == nil {
+		return ErrOccurrenceChanged
+	}
+	return c.phase.commit(ctx)
+}
+
+// occurrenceRegistry returns the registration fence shared with the HLS
+// engine, or the service-owned fence on servers without an HLS engine.
+func (s *Service) occurrenceRegistry() *occurrenceRegistry {
+	if s.hls != nil {
+		return &s.hls.occurrences
+	}
+	return &s.occurrences
 }

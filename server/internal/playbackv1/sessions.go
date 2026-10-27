@@ -133,7 +133,8 @@ type SeekRequest struct {
 
 // StopRequest is the optional DELETE body (spec §5.8).
 type StopRequest struct {
-	PositionMs *int64 `json:"positionMs,omitempty"`
+	PositionMs         *int64 `json:"positionMs,omitempty"`
+	ExpectedGeneration *int   `json:"expectedGeneration,omitempty"`
 }
 
 // SessionView is the session resource (spec §5.1).
