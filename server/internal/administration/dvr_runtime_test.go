@@ -11,8 +11,24 @@ import (
 
 	"portico.local/server/internal/livechannels"
 	"portico.local/server/internal/livechannels/dvr"
+	"portico.local/server/internal/mediaartifact"
 	"portico.local/server/internal/recordingaccess"
 )
+
+// The toggle path checks capture availability but does not start a capture.
+type ruleToggleDriver struct{}
+
+func (ruleToggleDriver) Available() bool           { return true }
+func (ruleToggleDriver) RetirementAvailable() bool { return false }
+func (ruleToggleDriver) Capture(context.Context, dvr.CaptureRequest, func(dvr.CaptureCheckpoint) error) (dvr.CaptureResult, error) {
+	panic("unexpected capture")
+}
+func (ruleToggleDriver) Recover(context.Context, dvr.CaptureRequest, dvr.CaptureCheckpoint) (dvr.CaptureResult, error) {
+	panic("unexpected recovery")
+}
+func (ruleToggleDriver) Remove(context.Context, livechannels.Owner, string, mediaartifact.Object) error {
+	panic("unexpected remove")
+}
 
 func TestAdministrativeGroupOwnsRealRuleAndLegacyRemainsDisabled(t *testing.T) {
 	s, db, _ := newService(t)
@@ -133,6 +149,30 @@ func TestAdministrativeGroupOwnsRealRuleAndLegacyRemainsDisabled(t *testing.T) {
 	if !reflect.DeepEqual(retained, original) {
 		t.Fatalf("policy edit changed other config: got %+v want %+v", retained, original)
 	}
+	wrongOwner := c
+	wrongOwner.Owner.ProfileID = "other"
+	wrongOwner.ExpectedRevision, wrongOwner.OperationID = updated.Revision, "wrong-owner"
+	if _, err = s.SaveRecordingGroup(ctx, allow, rule.ID, wrongOwner); err == nil {
+		t.Fatal("wrong owner accepted")
+	}
+	changedSource := c
+	changedSource.SourceID = strings.Repeat("9", 48)
+	changedSource.ExpectedRevision, changedSource.OperationID = updated.Revision, "changed-source"
+	if _, err = s.SaveRecordingGroup(ctx, allow, rule.ID, changedSource); err == nil {
+		t.Fatal("changed source accepted")
+	}
+	// A fresh operation cannot use an owner whose recording grant was revoked.
+	if _, err = db.Exec(`UPDATE dvr_recording_grants SET enabled=0 WHERE authority='local' AND account_id='account' AND profile_id='profile'`); err != nil {
+		t.Fatal(err)
+	}
+	denied := c
+	denied.ExpectedRevision, denied.OperationID = updated.Revision, "revoked-rule"
+	if _, err = s.SaveRecordingGroup(ctx, allow, rule.ID, denied); err != ErrDenied {
+		t.Fatalf("revoked grant: %v", err)
+	}
+	if _, err = db.Exec(`UPDATE dvr_recording_grants SET enabled=1 WHERE authority='local' AND account_id='account' AND profile_id='profile'`); err != nil {
+		t.Fatal(err)
+	}
 	rule = updated
 	c.ExpectedRevision = rule.Revision
 	c.OperationID = "enable-rule"
@@ -140,10 +180,114 @@ func TestAdministrativeGroupOwnsRealRuleAndLegacyRemainsDisabled(t *testing.T) {
 	if _, err = s.SaveRecordingGroup(ctx, allow, rule.ID, c); err != ErrUnavailable {
 		t.Fatal("promised capture with no driver", err)
 	}
+	locks, err := livechannels.NewPhysicalLocks(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = s.DVR.ConfigureCapture(ruleToggleDriver{}, locks); err != nil {
+		t.Fatal(err)
+	}
+	c.OperationID = "resume-with-driver"
+	resumed, err := s.SaveRecordingGroup(ctx, allow, rule.ID, c)
+	if err != nil {
+		t.Fatal(err)
+	}
+	original.Enabled = true
+	if err = db.QueryRow(`SELECT config_json FROM dvr_rules WHERE id=?`, rule.ID).Scan(&raw); err != nil {
+		t.Fatal(err)
+	}
+	if err = json.Unmarshal([]byte(raw), &retained); err != nil || !reflect.DeepEqual(retained, original) {
+		t.Fatalf("resume changed config: %+v %v", retained, err)
+	}
+	c.ExpectedRevision, c.OperationID, c.Enabled = resumed.Revision, "pause-with-driver", false
+	paused, err := s.SaveRecordingGroup(ctx, allow, rule.ID, c)
+	if err != nil {
+		t.Fatal(err)
+	}
+	original.Enabled = false
+	if err = db.QueryRow(`SELECT config_json FROM dvr_rules WHERE id=?`, rule.ID).Scan(&raw); err != nil {
+		t.Fatal(err)
+	}
+	if err = json.Unmarshal([]byte(raw), &retained); err != nil || !reflect.DeepEqual(retained, original) {
+		t.Fatalf("pause changed config: %+v %v", retained, err)
+	}
+	rule = paused
+	// Title identity can use the entire DVR domain and stays attached to the
+	// original channel when the limited administrative projection is saved.
+	longTitle := strings.Repeat("T", 512)
+	if _, err = db.Exec(`UPDATE live_programmes SET title=? WHERE generation_id=? AND id=?`, longTitle, gen, prog); err != nil {
+		t.Fatal(err)
+	}
+	title := RecordingGroupChange{Owner: c.Owner, Kind: "title", Name: "Long title", Match: longTitle, SourceID: src, OperationID: "long-title", Anchor: c.Anchor}
+	titleRule, err := s.SaveRecordingGroup(ctx, allow, "", title)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if titleRule.Kind != "title" || titleRule.Match != longTitle {
+		t.Fatal(titleRule)
+	}
+	if err = db.QueryRow(`SELECT config_json FROM dvr_rules WHERE id=?`, titleRule.ID).Scan(&raw); err != nil {
+		t.Fatal(err)
+	}
+	var titleOriginal dvr.RuleConfig
+	if err = json.Unmarshal([]byte(raw), &titleOriginal); err != nil {
+		t.Fatal(err)
+	}
+	titleOriginal.AllowedChannels, titleOriginal.BlockedChannels = []string{ch}, []string{strings.Repeat("f", 64)}
+	titleOriginal.Keywords, titleOriginal.BlockedKeywords = []string{"title"}, []string{"rerun"}
+	titleOriginal.Options.RetentionDays, titleOriginal.Options.EpisodeLimit = 7, 10
+	directTitle, err := s.DVR.SaveRule(ctx, groupAuthority(allow), c.Owner, dvr.RuleInput{ID: titleRule.ID, Mutation: dvr.Mutation{ExpectedRevision: titleRule.Revision, RequestID: strings.Repeat("f", 48)}, Config: titleOriginal})
+	if err != nil {
+		t.Fatal(err)
+	}
+	titleProjection := groupFromRule(directTitle, c.Owner)
+	title.ExpectedRevision, title.OperationID, title.Options, title.Name = directTitle.Revision, "long-title-rename", titleProjection.Options, "Renamed title"
+	titleRule, err = s.SaveRecordingGroup(ctx, allow, titleRule.ID, title)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = db.QueryRow(`SELECT config_json FROM dvr_rules WHERE id=?`, titleRule.ID).Scan(&raw); err != nil {
+		t.Fatal(err)
+	}
+	var titleConfig dvr.RuleConfig
+	if err = json.Unmarshal([]byte(raw), &titleConfig); err != nil {
+		t.Fatal(err)
+	}
+	titleOriginal.Name = "Renamed title"
+	if !reflect.DeepEqual(titleConfig, titleOriginal) {
+		t.Fatalf("title projection changed durable config: %+v", titleConfig)
+	}
+	longSeries := strings.Repeat("S", 512)
+	if _, err = db.Exec(`UPDATE live_programme_metadata SET series_id=? WHERE generation_id=? AND id=?`, longSeries, gen, prog); err != nil {
+		t.Fatal(err)
+	}
+	series := RecordingGroupChange{Owner: c.Owner, Kind: "series", Name: "Long series", Match: longSeries, SourceID: src, OperationID: "long-series", Anchor: c.Anchor}
+	seriesRule, err := s.SaveRecordingGroup(ctx, allow, "", series)
+	if err != nil {
+		t.Fatal(err)
+	}
+	series.ExpectedRevision, series.OperationID, series.Options, series.Name = seriesRule.Revision, "long-series-rename", seriesRule.Options, "Renamed series"
+	seriesRule, err = s.SaveRecordingGroup(ctx, allow, seriesRule.ID, series)
+	if err != nil || seriesRule.Match != longSeries {
+		t.Fatal(seriesRule, err)
+	}
 	if err = s.DeleteRecordingGroup(ctx, allow, rule.ID, rule.Revision, "remove-rule"); err != nil {
 		t.Fatal(err)
 	}
 	if err = db.QueryRow(`SELECT count(*) FROM dvr_rules WHERE id=? AND deleted=1`, rule.ID).Scan(&count); err != nil || count != 1 {
 		t.Fatal(count, err)
+	}
+}
+
+func TestAdministrativeGroupAcceptsDVRMatchDomain(t *testing.T) {
+	for _, kind := range []string{"series", "title"} {
+		c := RecordingGroupChange{Kind: kind, Name: "Name", Match: strings.Repeat("a", 512)}
+		if err := validateGroup(&c); err != nil {
+			t.Fatalf("%s legal match rejected: %v", kind, err)
+		}
+		c.Match += "a"
+		if err := validateGroup(&c); err == nil {
+			t.Fatalf("%s overlong match accepted", kind)
+		}
 	}
 }

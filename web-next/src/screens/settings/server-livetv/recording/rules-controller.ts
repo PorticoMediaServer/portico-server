@@ -19,7 +19,7 @@ function parseRule(raw: unknown): OwnerRule {
   if (keep && !['keep-all', 'keep-count', 'keep-days'].includes(String(keep.mode))) throw {code: 'invalid_response'};
   const id = text(v.id, 128);if (!id) throw {code: 'invalid_response'};
   return Object.freeze({id, revision: num(v.revision, 1, Number.MAX_SAFE_INTEGER), status: text(v.status ?? '', 128), kind,
-    owner: Object.freeze({authority: authority as RecordingOwner['authority'], accountId: text(owner.accountId, 256), profileId: text(owner.profileId, 256)}), name: text(v.name, 160), match: text(v.match, 200), sourceId: text(v.sourceId, 128), enabled: flag(v.enabled),
+    owner: Object.freeze({authority: authority as RecordingOwner['authority'], accountId: text(owner.accountId, 256), profileId: text(owner.profileId, 256)}), name: text(v.name, 160), match: text(v.match, 512), sourceId: text(v.sourceId, 128), enabled: flag(v.enabled),
     options: Object.freeze({prePaddingMs: o.prePaddingMs === null ? null : num(o.prePaddingMs, 0, 21600000), postPaddingMs: o.postPaddingMs === null ? null : num(o.postPaddingMs, 0, 21600000),
       keepPolicy: keep ? Object.freeze({mode: keep.mode as Keep['mode'], keepCount: num(keep.keepCount, 0, 100000), keepDays: num(keep.keepDays, 0, 3650), keepUntilWatched: flag(keep.keepUntilWatched)}) : null,
       newEpisodesOnly: flag(o.newEpisodesOnly), priority: num(o.priority, -1000, 1000), folderTemplate: text(o.folderTemplate, 400)})});

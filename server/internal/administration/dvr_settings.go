@@ -448,7 +448,7 @@ func validateGroup(c *RecordingGroupChange) error {
 	if c.Name == "" || !safeText(c.Name, 160) {
 		fields = append(fields, "name")
 	}
-	if c.Match == "" || !safeText(c.Match, 200) {
+	if c.Match == "" || !safeText(c.Match, 512) {
 		fields = append(fields, "match")
 	}
 	if !safeText(c.SourceID, 128) {
