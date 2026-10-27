@@ -115,6 +115,7 @@ func linearEnginePlan(raw []byte, w playback.LinearWork, packaging playback.Line
 		return plan, engine, channelFault("engine_codec_unavailable", 422)
 	}
 	plan.Fragmented = selected.OutputContainer == "fmp4_hls"
+	plan.CopyAAC = plan.Fragmented && audio != nil && audio.Codec == "aac" && selected.AudioAction == "copy"
 	plan.CopyHEVC = sourceVideo != nil && sourceVideo.Codec == "hevc" && selected.VideoAction == "copy"
 	q := w.Selection.Quality
 	plan.Video, plan.Audio = video != nil, audio != nil

@@ -1,6 +1,7 @@
 package playbackruntime
 
 import (
+	"encoding/json"
 	"portico.local/server/internal/playback"
 	"testing"
 )
@@ -176,5 +177,55 @@ func TestLinearEngineChoiceFollowsThePlayerSetting(t *testing.T) {
 	w.EngineSetting, w.MPVProfile = playback.EngineSettingAutomatic, nil
 	if _, engine, err = linearEnginePlan(raw, w, playback.LinearEither, ""); err != nil || engine != playback.EngineNative {
 		t.Fatalf("no mpv: %s %v", engine, err)
+	}
+}
+
+// The packaging fact comes from the same original probe and selected action as
+// the audio map, never from a possible conversion target or later probe.
+func TestLinearPlanQualifiesCopiedAACForFragmentedMP4(t *testing.T) {
+	for _, tc := range []struct {
+		name, codec                       string
+		channels                          int
+		packaging                         playback.LinearPackaging
+		fragmented, copyAAC, convertAudio bool
+	}{
+		{"AAC copied to fragmented", "aac", 2, playback.LinearFragmentedOnly, true, true, false},
+		{"AAC copied to TS", "aac", 2, playback.LinearTSOnly, false, false, false},
+		{"AAC ordinary transport choice", "aac", 2, playback.LinearEither, false, false, false},
+		{"FLAC copied to fragmented", "flac", 2, playback.LinearFragmentedOnly, true, false, false},
+		{"AAC converted to fragmented", "aac", 6, playback.LinearFragmentedOnly, true, false, true},
+		{"non-AAC converted to AAC", "ac3", 6, playback.LinearFragmentedOnly, true, false, true},
+		{"no audio", "", 0, playback.LinearFragmentedOnly, true, false, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			profile := playback.BaselineClientProfile()
+			profile.AudioOutput.MaxChannels = 2
+			profile.Audio = []playback.ClientAudioCodec{
+				{Codec: "aac", MaxChannels: 2, Evidence: playback.EvidenceBuiltin},
+				{Codec: "flac", MaxChannels: 2, Evidence: playback.EvidenceBuiltin},
+			}
+			profile.Transports = append(profile.Transports, playback.ClientTransport{Transport: playback.TransportHLSFMP4, Containers: []string{"fmp4"}, Video: []string{"h264"}, Audio: []string{"aac", "flac"}})
+			work := playback.LinearWork{ClientProfile: profile, TranscodingEnabled: true}
+			work.Selection.Quality.AllowLossy = true
+			streams := []map[string]any{{"codec_type": "video", "codec_name": "h264", "profile": "High", "pix_fmt": "yuv420p", "width": 1920, "height": 1080, "avg_frame_rate": "25/1", "field_order": "progressive"}}
+			if tc.codec != "" {
+				audio := map[string]any{"codec_type": "audio", "codec_name": tc.codec, "channels": tc.channels, "sample_rate": "48000"}
+				if tc.codec == "aac" {
+					audio["profile"] = "LC"
+				}
+				streams = append(streams, audio)
+			}
+			raw, err := json.Marshal(map[string]any{"streams": streams})
+			if err != nil {
+				t.Fatal(err)
+			}
+			plan, engine, err := linearEnginePlan(raw, work, tc.packaging, playback.EngineNative)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if engine != playback.EngineNative || plan.Fragmented != tc.fragmented || plan.CopyAAC != tc.copyAAC || plan.ConvertAudio != tc.convertAudio || plan.Audio != (tc.codec != "") || plan.ConvertVideo {
+				t.Fatalf("engine=%s plan=%+v", engine, plan)
+			}
+		})
 	}
 }

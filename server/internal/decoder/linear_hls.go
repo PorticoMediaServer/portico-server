@@ -27,6 +27,9 @@ type LinearEncoding struct {
 	// fragments) instead of MPEG-TS. CopyHEVC marks a copied HEVC picture,
 	// which MP4 must label hvc1 for Apple's players.
 	Fragmented, CopyHEVC bool
+	// CopyAAC records the selected original AAC-copy/fMP4 packaging case.
+	// The muxer needs ADTS normalization without converting the audio.
+	CopyAAC bool
 }
 
 var outputPath = regexp.MustCompile(`^/output/[a-f0-9]{64}/$`)
@@ -128,6 +131,9 @@ func linearHLSArgs(input, output string, p LinearEncoding) ([]string, error) {
 		args = append(args, graph.Audio...)
 	}
 	if p.Fragmented {
+		if p.Audio && p.CopyAAC && !p.ConvertAudio {
+			args = append(args, "-bsf:a", "aac_adtstoasc")
+		}
 		if p.CopyHEVC && !p.ConvertVideo {
 			args = append(args, "-tag:v", "hvc1")
 		}

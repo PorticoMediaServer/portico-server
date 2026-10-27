@@ -142,7 +142,7 @@ func rollingLiveCapture(t *testing.T, fragmented bool, sourceClockSeconds int, p
 	work, stop := context.WithCancel(ctx)
 	done := make(chan error, 1)
 	go func() {
-		done <- decoder.RunLinearHLS(work, supervisor, "rolling-live-capture", ffmpeg, gateway.URL(), output, decoder.LinearEncoding{HLSInput: true, Video: true, Audio: true, Fragmented: fragmented}, reservation, nil, libraries...)
+		done <- decoder.RunLinearHLS(work, supervisor, "rolling-live-capture", ffmpeg, gateway.URL(), output, decoder.LinearEncoding{HLSInput: true, Video: true, Audio: true, Fragmented: fragmented, CopyAAC: fragmented}, reservation, nil, libraries...)
 	}()
 	defer func() { stop(); <-done }()
 	for {
