@@ -236,7 +236,7 @@ test('authority retirement aborts a pending open and disposes late documents wit
 test('retiring an old authority cannot close its replacement; current retirement clears cached view and local overrides',async()=>{
   const f=fixture(),old=new AbortController(),current=new AbortController();let added=0,removed=0;
   const add=old.signal.addEventListener.bind(old.signal),remove=old.signal.removeEventListener.bind(old.signal);
-  old.signal.addEventListener=(...args)=>{added++;return add(...args);};old.signal.removeEventListener=(...args)=>{removed++;return remove(...args);};
+  old.signal.addEventListener=(...args:Parameters<AbortSignal['addEventListener']>)=>{added++;return add(...args);};old.signal.removeEventListener=(...args:Parameters<AbortSignal['removeEventListener']>)=>{removed++;return remove(...args);};
   await f.controller.open({source,format:'epub',container,signal:old.signal});
   await f.controller.open({source,format:'epub',container,signal:current.signal});const ready=f.controller.getSnapshot();
   assert.equal(added,1);assert.equal(removed,1);old.abort();assert.equal(f.controller.getSnapshot(),ready);
