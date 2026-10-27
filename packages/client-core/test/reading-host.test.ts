@@ -137,15 +137,16 @@ test('search-all refuses rejected navigation and cannot acknowledge cancellation
   t.after(() => {refusedGuest.dispose(); refused.host.dispose();});
   await assert.rejects(refusedGuest.searchAll!('words'), /cancelled/);
   assert.equal(refused.sent.some(message => JSON.parse(message).value === true), false);
-  for (const retirement of ['caller', 'inactive', 'host'] as const) {
+  for (const retirement of ['caller', 'inactive', 'host', 'session'] as const) {
     let complete!: (accepted: boolean) => void, observed!: AbortSignal, isCurrent!: () => boolean;
     const f = pair('epub', undefined, (_query, signal, current) => {
       observed = signal; isCurrent = current; return new Promise(resolve => {complete = resolve;});
     }), guest = await f.connection.ready, caller = new AbortController();
     const pending = guest.searchAll!('held words', caller.signal);
-    const rejected = assert.rejects(pending, /cancelled/);
+    const rejected = assert.rejects(pending, error=>error instanceof ReadingError&&error.code==='cancelled');
     if (retirement === 'caller') caller.abort();
     else if (retirement === 'inactive') f.host.setActive(false);
+    else if (retirement === 'session') f.life.abort();
     else f.retire();
     assert.equal(observed.aborted, true); assert.equal(isCurrent(), false);
     complete(true); await rejected; await nextTurn();
@@ -167,4 +168,20 @@ test('search-all uses the existing bounded request deadline and refuses late acc
     complete(true); await nextTurn();
     assert.equal(f.sent.some(message => JSON.parse(message).value === true), false);
   } finally {guest.dispose(); f.host.dispose(); t.mock.timers.reset();}
+});
+
+
+test('original host retirement distinguishes deliberate cancellation from a typed Reading failure',async()=>{
+ for(const reason of [undefined,new DOMException('aborted','AbortError'),new ReadingError('source_changed'),new ReadingError('not_permitted',403)]){
+  let complete!:(accepted:boolean)=>void,signal!:AbortSignal;
+  const f=pair('epub',undefined,(_query,original)=>{signal=original;return new Promise(resolve=>{complete=resolve;});});
+  const guest=await f.connection.ready;const pending=guest.searchAll!('original words');
+  const expected=reason instanceof ReadingError?reason.code:'cancelled';
+  const rejected=assert.rejects(pending,error=>error instanceof ReadingError&&error.code===expected);
+  if(reason===undefined)f.host.dispose();else f.life.abort(reason);
+  assert.equal(signal.aborted,true);complete(true);await rejected;await nextTurn();
+  assert.equal(f.sent.some(message=>JSON.parse(message).value===true),false);
+  const retired=f.sent.map(message=>JSON.parse(message)).find(message=>message.kind==='retired');assert.equal(retired.error.code,expected);
+  guest.dispose();f.host.dispose();
+ }
 });

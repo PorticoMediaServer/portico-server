@@ -54,6 +54,14 @@ function errorInfo(error: unknown) {
   return error instanceof ReadingError ? {code: error.code, status: error.status} : {code: 'reading_unavailable'};
 }
 
+/** Intentional original-host retirement is cancellation, while a typed
+ * Reading failure keeps the source/permission reason the session supplied. */
+function retirementErrorInfo(reason: unknown) {
+  if(reason instanceof ReadingError)return errorInfo(reason);
+  if(reason==null||record(reason)&&reason.name==='AbortError')return {code:'cancelled'};
+  return errorInfo(reason);
+}
+
 /** Optional layout fact; a missing value is the ordinary no-hinge window. */
 function creaseOf(value: unknown): ReadingHostCrease | undefined {
   if (value === undefined) return;
@@ -108,7 +116,7 @@ export function createReadingHost({session, channel, preferences, initialProgres
   const dispose = () => {
     if (life.signal.aborted) return;
     // Retirement is local; it must not issue a cleanup request as another viewer.
-    try {send(JSON.stringify({v: 1, channel, kind: 'retired', error: errorInfo(session.signal.reason)}));} catch { /* native surface already gone */ }
+    try {send(JSON.stringify({v: 1, channel, kind: 'retired', error: retirementErrorInfo(session.signal.reason)}));} catch { /* native surface already gone */ }
     life.abort(); release(); if (sequential) stopSequential(sequential); for (const request of requests.values()) request.abort(); requests.clear();
     session.signal.removeEventListener('abort', dispose);
   };
