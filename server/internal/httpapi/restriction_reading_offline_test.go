@@ -4,6 +4,8 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
+	"fmt"
 	"io"
 	"net/http/httptest"
 	"strings"
@@ -13,6 +15,26 @@ import (
 	"portico.local/server/internal/downloads"
 	"portico.local/server/internal/identity"
 )
+
+// The Reading adapter receives typed public errors from the services it calls.
+// A forged receipt is a definite client refusal, not an internal fault, while
+// an unknown internal error stays sanitized.
+func TestReadingFailureWritesTypedAPIErrorsAndConcealsUnknown(t *testing.T) {
+	w := httptest.NewRecorder()
+	readingFailure(w, downloadError(downloads.ErrReceipt))
+	if w.Code != 400 || bodyErrorCode(w.Body.String()) != "invalid_request" {
+		t.Fatalf("typed receipt refusal: %d %s", w.Code, w.Body.String())
+	}
+
+	w = httptest.NewRecorder()
+	readingFailure(w, fmt.Errorf("private-database-path-and-token: %w", errors.New("boom")))
+	if w.Code != 500 || bodyErrorCode(w.Body.String()) != "internal" {
+		t.Fatalf("unknown internal failure: %d %s", w.Code, w.Body.String())
+	}
+	if strings.Contains(w.Body.String(), "private-database-path-and-token") {
+		t.Fatalf("internal failure leaked its cause: %s", w.Body.String())
+	}
+}
 
 // Offline progress carries a real signed publication receipt, not a caller's
 // item id or an exemption from current content policy. Exercise its actual

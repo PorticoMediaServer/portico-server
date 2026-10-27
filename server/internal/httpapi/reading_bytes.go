@@ -11,6 +11,7 @@ import (
 	"strconv"
 	"strings"
 
+	"portico.local/apikit/apierror"
 	"portico.local/server/internal/contentaccess"
 	"portico.local/server/internal/identity"
 	"portico.local/server/internal/reading"
@@ -72,6 +73,15 @@ func (d Dependencies) readingService() *reading.Service {
 }
 
 func readingFailure(w http.ResponseWriter, err error) {
+	// Services below Reading return already-registered public errors too, such
+	// as an invalid offline receipt. Answer those with their definite status
+	// and code; anything unregistered still falls through to the sanitized
+	// internal failure below.
+	var public *apierror.Error
+	if errors.As(err, &public) {
+		policyErrors.Write(w, w.Header().Get("X-Request-Id"), public)
+		return
+	}
 	switch {
 	case errors.Is(err, reading.ErrChanged), errors.Is(err, reading.ErrConflict), errors.Is(err, storage.ErrObservedSourceLost), errors.Is(err, storage.ErrRemoteChanged):
 		policyError(w, "revision_mismatch")
