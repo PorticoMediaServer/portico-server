@@ -119,6 +119,36 @@ func TestVerifySeededRowsNamesEachMissingRow(t *testing.T) {
 	}
 }
 
+// FX-193: the restored-state check compares installed columns too, so a
+// database that lost only the telemetry rollup's measurement revision must be
+// reported while an untouched fresh baseline still passes.
+func TestVerifySchemaObjectsFindsRestoredMeasurementRevisionLoss(t *testing.T) {
+	ctx := context.Background()
+	db, err := OpenFresh(filepath.Join(t.TempDir(), "restored.sqlite"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	if _, err = db.Exec(`ALTER TABLE telemetry_rollups RENAME COLUMN measurement_revision TO measurement_version`); err != nil {
+		t.Fatal(err)
+	}
+	if err = VerifySchemaObjects(ctx, db); !errors.Is(err, ErrSchemaIncomplete) || !strings.Contains(err.Error(), "telemetry_rollups.measurement_revision") {
+		t.Fatalf("a restored database missing only the measurement revision was not reported: %v", err)
+	}
+
+	fresh, err := OpenFresh(filepath.Join(t.TempDir(), "intact.sqlite"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer fresh.Close()
+	if err = VerifySchemaObjects(ctx, fresh); err != nil {
+		t.Fatalf("the untouched fresh baseline does not pass: %v", err)
+	}
+	if err = VerifySeededRows(ctx, fresh); err != nil {
+		t.Fatalf("the untouched fresh baseline loses its seeded rows: %v", err)
+	}
+}
+
 // Start-up runs statements against the whole schema, so a database that has
 // lost any one object, of any kind, is not one the server can run on.
 func TestVerifySchemaObjectsNamesAMissingObjectOfEachKind(t *testing.T) {

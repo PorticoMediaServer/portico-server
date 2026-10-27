@@ -9238,6 +9238,7 @@ CREATE TABLE personal_music_radios(
  last_session_id TEXT NOT NULL,
  PRIMARY KEY(profile_id,seed_id)) STRICT;
 CREATE INDEX personal_music_radios_recent ON personal_music_radios(profile_id,last_started_ms DESC,seed_id DESC);
+CREATE INDEX personal_music_radios_seed ON personal_music_radios(seed_id);
 CREATE TRIGGER personal_music_radios_revision_INSERT AFTER INSERT ON personal_music_radios BEGIN
  INSERT INTO personal_activity_revisions VALUES(NEW.profile_id,1) ON CONFLICT(profile_id) DO UPDATE SET revision=revision+1;
  INSERT INTO viewer_revisions(profile_id,library_id,revision) SELECT NEW.profile_id,library.library_id,1 FROM catalog_entities seed JOIN catalog_libraries library ON library.id=seed.library_id WHERE seed.id=NEW.seed_id ON CONFLICT(profile_id,library_id) DO UPDATE SET revision=revision+1;

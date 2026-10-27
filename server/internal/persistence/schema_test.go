@@ -14,7 +14,7 @@ import (
 
 // Updating the pre-release schema means directly editing the baseline and this
 // expected digest. Existing state must then be reset, never upgraded.
-const schemaSourceDigest = "28847dd0f50505c2d7faeabeaf8da93359f870f85f1f88d76ec0a0e16c77bb95"
+const schemaSourceDigest = "9e6ff6b2fa4524f6da91cb6156c372733ee8b7d9038d361a6ae930c0179af9d1"
 
 func TestSchemaBaselineDigest(t *testing.T) {
 	if BaselineDigest() != schemaSourceDigest {
@@ -58,6 +58,9 @@ func TestASecondOpenRunsNoSchemaWork(t *testing.T) {
 func TestSchemaMismatchRefusesWithoutChangingState(t *testing.T) {
 	for _, change := range []string{
 		`UPDATE configuration SET value='another-baseline' WHERE key='schema_baseline_digest'`,
+		// The previous pre-release baseline digest. A state still carrying it is
+		// not upgraded in place; it must take the ordinary reset path.
+		`UPDATE configuration SET value='28847dd0f50505c2d7faeabeaf8da93359f870f85f1f88d76ec0a0e16c77bb95' WHERE key='schema_baseline_digest'`,
 		`DELETE FROM configuration WHERE key='schema_baseline_digest'`,
 		`UPDATE configuration SET value='99999' WHERE key='schema_version'`,
 		`UPDATE configuration SET value='invalid' WHERE key='schema_version'`,
