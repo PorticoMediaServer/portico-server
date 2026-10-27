@@ -11,6 +11,7 @@ import (
 	"math"
 	"os"
 	"path/filepath"
+	"portico.local/server/internal/childprocess"
 	"sort"
 	"strconv"
 	"strings"
@@ -221,7 +222,7 @@ func runProbe(ctx context.Context, ffprobe string, input *assets.PlaybackInput, 
 		_, _ = input.File.Seek(0, io.SeekStart)
 	}
 	if input.Validate != nil {
-		if err := input.Validate(ctx); err != nil {
+		if err := validateOwnedInput(ctx, input.Validate); err != nil {
 			return nil, err
 		}
 	}
@@ -232,11 +233,11 @@ func runProbe(ctx context.Context, ffprobe string, input *assets.PlaybackInput, 
 	cmd.WaitDelay = time.Second
 	var out bytes.Buffer
 	cmd.Stdout = &limitedWriter{buffer: &out, limit: 1 << 20}
-	if err := cmd.Run(); err != nil {
+	if err := childprocess.Run(ctx, cmd); err != nil {
 		return nil, errCopyTimeline
 	}
 	if input.Validate != nil {
-		if err := input.Validate(ctx); err != nil {
+		if err := validateOwnedInput(ctx, input.Validate); err != nil {
 			return nil, err
 		}
 	}

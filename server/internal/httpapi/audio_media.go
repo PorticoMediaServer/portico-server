@@ -106,17 +106,24 @@ func (d Dependencies) audioDecodeRoutes(mux *http.ServeMux) {
 		if !ok {
 			return
 		}
+		reader, err := d.Playback.RetainAudioOccurrence(r.Context(), grant, session, plan.Generation)
+		if err != nil {
+			failure(w, err)
+			return
+		}
+		defer reader.Close()
+		r = r.WithContext(reader.Context())
 		// A prepared track's budget is reserved for the range asked, then settled
 		// to the body bytes actually sent: a failed or short response gives the
 		// rest back (NEW-33).
 		if private && r.Method != http.MethodHead {
 			reserved := rangeLength(r.Header.Get("Range"), plan.Bytes)
-			if !d.Playback.PrefetchCharge(session, reserved, plan.PrefetchBytes) {
+			if !reader.Charge(reserved, plan.PrefetchBytes) {
 				writePreparedLimit(w)
 				return
 			}
 			counted := &servedBytes{ResponseWriter: w}
-			defer func() { d.Playback.PrefetchRefund(session, reserved-counted.served()) }()
+			defer func() { reader.Refund(reserved - counted.served()) }()
 			w = counted
 		}
 		d.serveOriginal(w, r, grant, aid, true, func() error {
@@ -165,6 +172,13 @@ func (d Dependencies) audioDecodeRoutes(mux *http.ServeMux) {
 		if !ok {
 			return
 		}
+		reader, err := d.Playback.RetainAudioOccurrence(r.Context(), grant, session, plan.Generation)
+		if err != nil {
+			failure(w, err)
+			return
+		}
+		defer reader.Close()
+		r = r.WithContext(reader.Context())
 		c := plan.Convert
 		if d.AudioMedia == nil || c == nil {
 			write(w, http.StatusServiceUnavailable, map[string]any{"error": map[string]any{"code": "conversion_unavailable", "message": "Audio conversion isn't available on this server.", "retry": "never"}})
@@ -216,9 +230,7 @@ func (d Dependencies) audioDecodeRoutes(mux *http.ServeMux) {
 		})
 		var sink io.Writer = &authorityWriter{w: body, ctx: r.Context(), check: authority.check}
 		if private {
-			retire := d.Playback.RetainPrefetch(session)
-			defer retire()
-			sink = &budgetWriter{w: body, ctx: r.Context(), check: authority.check, take: func(n int64) int64 { return d.Playback.PrefetchTake(session, n, plan.PrefetchBytes) }, refund: func(n int64) { d.Playback.PrefetchRefund(session, n) }}
+			sink = &budgetWriter{w: body, ctx: r.Context(), check: authority.check, take: func(n int64) int64 { return reader.Take(n, plan.PrefetchBytes) }, refund: func(n int64) { reader.Refund(n) }}
 		}
 		if err := d.AudioMedia.ConvertAudio(r.Context(), item, aid, spec, sink); err != nil && r.Context().Err() == nil {
 			// Headers are gone; the stream just ends early and the client falls back (§18.3).

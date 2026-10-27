@@ -14,6 +14,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"portico.local/server/internal/childprocess"
 	"portico.local/server/internal/mediaexec"
 	"portico.local/server/internal/progressio"
 	"portico.local/server/internal/supervise"
@@ -85,6 +86,7 @@ func (a Work) plus(b Work) Work {
 // Validate must inspect this same descriptor in a bounded isolated child.
 type Identity struct{ Size, ModifiedNS int64 }
 type Input struct {
+	Release  func() error
 	File     *os.File
 	Identity Identity
 	Validate func(context.Context, *os.File, Identity) error
@@ -95,6 +97,17 @@ type Input struct {
 	// has neither /dev/fd nor ExtraFiles. See assets.PlaybackInput.
 	Argument string
 	Inherit  bool
+}
+
+// Close releases the retained source and reader pins as well as the file.
+func (i Input) Close() error {
+	if i.Release != nil {
+		return i.Release()
+	}
+	if i.File != nil {
+		return i.File.Close()
+	}
+	return nil
 }
 
 // source is what to hand ffmpeg, defaulting to the descriptor convention so a
@@ -339,7 +352,7 @@ func (e *Encoder) probe(ctx context.Context, input Input, interval string) (prob
 	cmd.Stdout = progress.Writer(b)
 	cmd.Stderr = io.Discard
 	cmd.WaitDelay = time.Second
-	if err := cmd.Run(); err != nil {
+	if err := childprocess.Run(ctx, cmd); err != nil {
 		if b.overflow {
 			return p, ErrBudget
 		}
@@ -686,7 +699,7 @@ func (e *Encoder) runWindow(ctx context.Context, args []string, inherited []*os.
 	}
 	cmd.WaitDelay = time.Second
 	started := time.Now()
-	if err := cmd.Start(); err != nil {
+	if err := childprocess.Start(ctx, cmd); err != nil {
 		if ctx.Err() != nil {
 			return Work{}, context.Cause(ctx)
 		}

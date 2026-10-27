@@ -11,6 +11,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"portico.local/server/internal/apievents"
+	"portico.local/server/internal/childprocess"
 	"portico.local/server/internal/dbwork"
 	"portico.local/server/internal/decoder"
 	"portico.local/server/internal/identity"
@@ -58,6 +59,7 @@ type HLS struct {
 	cleanupMu     sync.Mutex
 	cleaning      map[string]bool
 	active        map[string]context.CancelFunc
+	activeRuns    map[string]*occurrenceRun
 	windows       map[string]*hlsWindow
 	// restarts bounds how often one session may restart its producer, and
 	// segmentWaits shares one wait between every request for the same segment.
@@ -175,6 +177,12 @@ func NewHLS(ctx context.Context, db *sql.DB, root, binary string) (*HLS, error) 
 // who has jumped forward is not served by a converter still grinding through the
 // part they skipped.
 func (h *HLS) start(ctx context.Context, id string, from int) error {
+	return h.startGeneration(ctx, id, from, 0)
+}
+func (h *HLS) startGeneration(ctx context.Context, id string, from, expected int) error {
+	if dbwork.Snapshot(ctx) != nil {
+		return errOccurrenceClaimed
+	}
 	intent, err := h.occurrences.intent(id)
 	if err != nil {
 		return err
@@ -189,6 +197,9 @@ func (h *HLS) start(ctx context.Context, id string, from int) error {
 	var requestID, assetID string
 	if e := dbwork.QueryRow(ctx, h.db, `SELECT ps.state,ps.expires_at,COALESCE(a.status,''),COALESCE(d.video_action,'convert')='convert',ps.generation,ps.request_id,ps.item_id,ps.asset_id FROM playback_sessions ps LEFT JOIN playback_artifacts a ON a.session_id=ps.id LEFT JOIN playback_delivery_plans d ON d.session_id=ps.id WHERE ps.id=?`, id).Scan(&sessionState, &expires, &artifactStatus, &videoConversion, &generation, &requestID, &itemID, &assetID); e != nil {
 		return e
+	}
+	if expected > 0 && generation != expected {
+		return ErrOccurrenceChanged
 	}
 	if sessionState == "stopped" || sessionState == "ended" || sessionState == "failed" || expires <= time.Now().UTC().Format(time.RFC3339) {
 		return errors.New("playback stopped")
@@ -227,7 +238,7 @@ func (h *HLS) start(ctx context.Context, id string, from int) error {
 				h.mu.Lock()
 				return ctx.Err()
 			}
-			err := h.start(ctx, id, from)
+			err := h.startGeneration(ctx, id, from, generation)
 			h.mu.Lock()
 			return err
 		}
@@ -260,7 +271,7 @@ func (h *HLS) start(ctx context.Context, id string, from int) error {
 	ctx, cancel := context.WithCancel(h.ctx)
 	window := &hlsWindow{generation: generation, videoConversion: videoConversion, start: from, served: -1, produced: from - 1, cancel: cancel, done: make(chan struct{})}
 	run := &occurrenceRun{generation: generation, requestID: requestID, itemID: itemID, assetID: assetID, cancel: cancel, done: window.done}
-	if err := intent.install(run, func() { h.active[id] = cancel; h.windows[id] = window }); err != nil {
+	if err := intent.install(run, func() { h.installOccurrenceLocked(id, run, cancel); h.windows[id] = window }); err != nil {
 		cancel()
 		return err
 	}
@@ -323,31 +334,31 @@ func (h *HLS) Shutdown(ctx context.Context) error {
 	}
 }
 
-func (h *HLS) produce(ctx context.Context, id string, from, generation int, owned *hlsWindow, entry *occurrenceEntry, run *occurrenceRun) {
+func (h *HLS) produce(ctx context.Context, id string, from, generation int, owned *hlsWindow, entry *occurrenceEntry, ownedRun *occurrenceRun) {
 	defer func() {
 		h.mu.Lock()
 		if h.windows[id] == owned {
-			delete(h.active, id)
+			h.removeOccurrenceLocked(id, ownedRun)
 			delete(h.windows, id)
 		}
 		close(owned.done)
 		h.mu.Unlock()
-		h.occurrences.finished(id, entry, run)
+		h.occurrences.finished(id, entry, ownedRun)
 	}()
 	supervise.Chaos("playback.hls.produce")
 	var aid, state, video string
 	var duration float64
 	var actualGeneration int
-	e := dbwork.QueryRow(ctx, h.db, `SELECT ps.asset_id,ps.state,a.video_codec,ps.duration,ps.generation FROM playback_sessions ps JOIN catalog_assets a ON a.token=ps.asset_id WHERE ps.id=? AND ps.mode='hls' AND ps.generation=? AND ps.request_id=? AND ps.item_id=? AND ps.asset_id=?`, id, generation, run.requestID, run.itemID, run.assetID).Scan(&aid, &state, &video, &duration, &actualGeneration)
+	e := dbwork.QueryRow(ctx, h.db, `SELECT ps.asset_id,ps.state,a.video_codec,ps.duration,ps.generation FROM playback_sessions ps JOIN catalog_assets a ON a.token=ps.asset_id WHERE ps.id=? AND ps.mode='hls' AND ps.generation=? AND ps.request_id=? AND ps.item_id=? AND ps.asset_id=?`, id, generation, ownedRun.requestID, ownedRun.itemID, ownedRun.assetID).Scan(&aid, &state, &video, &duration, &actualGeneration)
 	if e != nil || actualGeneration != generation || state == "stopped" || state == "ended" || state == "failed" {
 		return
 	}
-	ctx = withProducerGeneration(ctx, generation)
+	ctx = h.occurrenceContext(withProducerGeneration(ctx, generation), id, entry, ownedRun)
 	dir := filepath.Join(h.root, id)
 	if e = os.MkdirAll(dir, 0700); e != nil {
 		return
 	}
-	if _, e = dbwork.ExecWrite(ctx, h.db, dbwork.ClassEstablishedPlayback, `INSERT INTO playback_artifacts(session_id,directory,status) VALUES(?,?,'building') ON CONFLICT(session_id) DO UPDATE SET status='building',error=''`, id, dir); e != nil {
+	if _, e = h.producerWrite(ctx, id, dbwork.ClassEstablishedPlayback, `INSERT INTO playback_artifacts(session_id,directory,status) VALUES(?,?,'building') ON CONFLICT(session_id) DO UPDATE SET status='building',error=''`, id, dir); e != nil {
 		return
 	}
 	delivery, e := loadDeliveryPlan(ctx, h.db, id)
@@ -356,7 +367,7 @@ func (h *HLS) produce(ctx context.Context, id string, from, generation int, owne
 		return
 	}
 	h.mu.Lock()
-	if w := h.windows[id]; w != nil && delivery != nil {
+	if w := h.windows[id]; w == owned && delivery != nil {
 		w.audioConversion = delivery.AudioAction == "convert"
 	}
 	h.mu.Unlock()
@@ -586,7 +597,7 @@ func (h *HLS) produce(ctx context.Context, id string, from, generation int, owne
 		}
 		return args, stages, nil
 	}
-	_, _ = dbwork.ExecWrite(ctx, h.db, dbwork.ClassEstablishedPlayback, `INSERT INTO playback_hls_windows(session_id,start_index,status,started_at_ms) VALUES(?,?,'running',?) ON CONFLICT(session_id,start_index) DO UPDATE SET status='running',started_at_ms=excluded.started_at_ms`, id, from, time.Now().UnixMilli())
+	_, _ = h.producerWrite(ctx, id, dbwork.ClassEstablishedPlayback, `INSERT INTO playback_hls_windows(session_id,start_index,status,started_at_ms) VALUES(?,?,'running',?) ON CONFLICT(session_id,start_index) DO UPDATE SET status='running',started_at_ms=excluded.started_at_ms`, id, from, time.Now().UnixMilli())
 	processCtx, cancel := context.WithTimeout(ctx, 6*time.Hour)
 	defer cancel()
 	watchCtx, stopWatch := context.WithCancel(processCtx)
@@ -598,7 +609,7 @@ func (h *HLS) produce(ctx context.Context, id string, from, generation int, owne
 		}
 		supervise.Go("playback.hls.watch-window", func() {
 			defer close(watchDone)
-			h.watchWindow(watchCtx, id, dir, staging, from, limit, cancel, delivery, timeline, fragmentClock, input.Validate)
+			h.watchWindow(watchCtx, id, dir, staging, from, limit, cancel, delivery, timeline, fragmentClock, owned, input.Validate)
 		})
 	} else {
 		close(watchDone)
@@ -673,7 +684,7 @@ func (h *HLS) produce(ctx context.Context, id string, from, generation int, owne
 		}
 		defer releasePermit()
 		if input.Validate != nil {
-			if err := input.Validate(processCtx); err != nil {
+			if err := validateOwnedInput(processCtx, input.Validate); err != nil {
 				return err, ""
 			}
 		}
@@ -687,9 +698,9 @@ func (h *HLS) produce(ctx context.Context, id string, from, generation int, owne
 		}
 		tail := &tailWriter{limit: 4096}
 		cmd.Stderr = tail
-		err = cmd.Run()
+		err = childprocess.Run(processCtx, cmd)
 		if err == nil && input.Validate != nil {
-			err = input.Validate(processCtx)
+			err = validateOwnedInput(processCtx, input.Validate)
 		}
 		return err, sanitizeConverterOutput(tail.String(), input.Argument, h.root)
 	}
@@ -698,7 +709,7 @@ func (h *HLS) produce(ctx context.Context, id string, from, generation int, owne
 	<-watchDone
 	h.mu.Lock()
 	var publicationError error
-	if w := h.windows[id]; w != nil {
+	if w := h.windows[id]; w == owned {
 		publicationError = w.publicationError
 	}
 	h.mu.Unlock()
@@ -710,7 +721,7 @@ func (h *HLS) produce(ctx context.Context, id string, from, generation int, owne
 		h.mu.Lock()
 		defer h.mu.Unlock()
 		window := h.windows[id]
-		return window != nil && window.start == from && window.throttled
+		return window == owned && window.throttled
 	}
 	// A hardware encoder that probed clean at startup can still refuse a real
 	// source: a resolution the block does not take, a driver that has since
@@ -731,7 +742,7 @@ func (h *HLS) produce(ctx context.Context, id string, from, generation int, owne
 		if grid {
 			supervise.Go("playback.hls.watch-quota-window", func() {
 				defer close(watchDone)
-				h.watchWindow(watchCtx, id, dir, staging, from, -1, cancel, delivery, timeline, fragmentClock, input.Validate)
+				h.watchWindow(watchCtx, id, dir, staging, from, -1, cancel, delivery, timeline, fragmentClock, owned, input.Validate)
 			})
 		} else {
 			close(watchDone)
@@ -755,7 +766,7 @@ func (h *HLS) produce(ctx context.Context, id string, from, generation int, owne
 		fragmentClock = &convertedFragmentClock{}
 		beforeRetry := highestProducedSegment(dir, from)
 		h.mu.Lock()
-		if w := h.windows[id]; w != nil && w.start == from {
+		if w := h.windows[id]; w == owned {
 			beforeRetry = max(beforeRetry, w.produced)
 		}
 		h.mu.Unlock()
@@ -764,7 +775,7 @@ func (h *HLS) produce(ctx context.Context, id string, from, generation int, owne
 		if grid {
 			supervise.Go("playback.hls.watch-software-window", func() {
 				defer close(watchDone)
-				h.watchWindow(watchCtx, id, dir, staging, from, -1, cancel, delivery, timeline, fragmentClock, input.Validate)
+				h.watchWindow(watchCtx, id, dir, staging, from, -1, cancel, delivery, timeline, fragmentClock, owned, input.Validate)
 			})
 		} else {
 			close(watchDone)
@@ -774,7 +785,7 @@ func (h *HLS) produce(ctx context.Context, id string, from, generation int, owne
 		<-watchDone
 		h.mu.Lock()
 		softwareProduced, softwareThrottled, currentWindow := from-1, false, false
-		if w := h.windows[id]; w != nil && w.start == from {
+		if w := h.windows[id]; w == owned {
 			publicationError = w.publicationError
 			softwareProduced, softwareThrottled, currentWindow = w.produced, w.throttled, true
 		}
@@ -799,10 +810,13 @@ func (h *HLS) produce(ctx context.Context, id string, from, generation int, owne
 		status = "failed"
 	}
 	if input.Validate != nil {
-		if err := input.Validate(ctx); err != nil {
+		if err := validateOwnedInput(ctx, input.Validate); err != nil {
 			h.failedWith(ctx, id, FailureConverter, "")
 			return
 		}
+	}
+	if err := childprocess.CheckOwnedIO(ctx); err != nil {
+		return
 	}
 	// Record the final edge here as well as on the watcher's tick: a window that
 	// finishes inside one tick would otherwise publish no progress at all.
@@ -835,9 +849,9 @@ func (h *HLS) produce(ctx context.Context, id string, from, generation int, owne
 		}
 	}
 
-	_, _ = dbwork.ExecWrite(ctx, h.db, dbwork.ClassEstablishedPlayback, `UPDATE playback_hls_windows SET status=?,highest_produced=max(highest_produced,?) WHERE session_id=? AND start_index=?`, status, produced, id, from)
+	_, _ = h.producerWrite(ctx, id, dbwork.ClassEstablishedPlayback, `UPDATE playback_hls_windows SET status=?,highest_produced=max(highest_produced,?) WHERE session_id=? AND start_index=?`, status, produced, id, from)
 	if e == nil && (timeline == nil || produced >= timeline.count()-1) {
-		_, _ = dbwork.ExecWrite(ctx, h.db, dbwork.ClassEstablishedPlayback, `UPDATE playback_artifacts SET status='complete' WHERE session_id=?`, id)
+		_, _ = h.producerWrite(ctx, id, dbwork.ClassEstablishedPlayback, `UPDATE playback_artifacts SET status='complete' WHERE session_id=?`, id)
 	}
 }
 
@@ -845,7 +859,7 @@ func (h *HLS) produce(ctx context.Context, id string, from, generation int, owne
 // run far enough ahead of the viewer is stopped rather than paused: a stopped
 // converter costs nothing, and the fixed grid means the next demand restarts it
 // exactly where the viewer is instead of where it left off.
-func (h *HLS) watchWindow(ctx context.Context, id, dir, staging string, from, limit int, cancel context.CancelFunc, plan *DeliveryPlan, timeline *copyTimeline, fragmentClock *convertedFragmentClock, guards ...func(context.Context) error) {
+func (h *HLS) watchWindow(ctx context.Context, id, dir, staging string, from, limit int, cancel context.CancelFunc, plan *DeliveryPlan, timeline *copyTimeline, fragmentClock *convertedFragmentClock, owned *hlsWindow, guards ...func(context.Context) error) {
 	cfg := h.configuration()
 	interval := 500 * time.Millisecond
 	if staging != "" {
@@ -861,62 +875,81 @@ func (h *HLS) watchWindow(ctx context.Context, id, dir, staging string, from, li
 			return
 		case <-tick.C:
 		}
-		for _, guard := range guards {
-			if guard != nil {
-				if err := guard(ctx); err != nil {
-					h.publicationFailed(id, err)
-					cancel()
-					return
+		keep := func() bool {
+			ownedIO, err := childprocess.OwnedIOContext(ctx)
+			if err != nil {
+				return false
+			}
+			for _, guard := range guards {
+				if guard != nil {
+					if err := guard(ownedIO); err != nil {
+						h.publicationFailed(id, owned, err)
+						cancel()
+						return false
+					}
 				}
 			}
-		}
-		produced := from - 1
-		if staging != "" {
-			if plan != nil && plan.OutputContainer == "fmp4_hls" {
-				var err error
-				if timeline != nil {
-					produced, err = promoteFMP4Segments(staging, dir, timeline, from, false)
+			produced := from - 1
+			if staging != "" {
+				if plan != nil && plan.OutputContainer == "fmp4_hls" {
+					var err error
+					if timeline != nil {
+						produced, err = promoteFMP4Segments(staging, dir, timeline, from, false)
+					} else {
+						produced, err = promoteConvertedFragments(staging, dir, "init-"+strconv.Itoa(from)+".mp4", from, nil, fragmentClock)
+					}
+					if err != nil {
+						h.publicationFailed(id, owned, err)
+						cancel()
+						return false
+					}
 				} else {
-					produced, err = promoteConvertedFragments(staging, dir, "init-"+strconv.Itoa(from)+".mp4", from, nil, fragmentClock)
-				}
-				if err != nil {
-					h.publicationFailed(id, err)
-					cancel()
-					return
+					produced = promoteCopySegments(staging, dir, from, false)
 				}
 			} else {
-				produced = promoteCopySegments(staging, dir, from, false)
+				produced = highestProducedSegment(dir, from)
 			}
-		} else {
-			produced = highestProducedSegment(dir, from)
-		}
-		h.mu.Lock()
-		window := h.windows[id]
-		if window == nil || window.start != from {
+			h.mu.Lock()
+			window := h.windows[id]
+			if window != owned {
+				h.mu.Unlock()
+				return false
+			}
+			changed := produced > window.produced
+			if changed {
+				window.produced = produced
+			}
 			h.mu.Unlock()
-			return
-		}
-		if produced > window.produced {
-			window.produced = produced
-			_, _ = dbwork.ExecWrite(ctx, h.db, dbwork.ClassEstablishedPlayback, `UPDATE playback_hls_windows SET highest_produced=? WHERE session_id=? AND start_index=?`, produced, id, from)
-		}
-		ahead := (window.produced - max(window.served, window.start-1)) * HLSSegmentSeconds
-		// A copy window that has used up its cut list stops the same way a
-		// throttled one does: the next request continues from there.
-		exhausted := limit >= 0 && window.produced >= limit-1 && limit < h.timelines[id].count()-1
-		if (cfg.ThrottleBufferSeconds > 0 && window.produced >= from && ahead >= cfg.ThrottleBufferSeconds) || exhausted {
-			window.throttled = true
-			for key, stop := range h.active {
-				if key != id && producerSession(key) == id {
-					stop()
+			if changed {
+				_, _ = h.producerWrite(ctx, id, dbwork.ClassEstablishedPlayback, `UPDATE playback_hls_windows SET highest_produced=? WHERE session_id=? AND start_index=?`, produced, id, from)
+			}
+			h.mu.Lock()
+			if h.windows[id] != owned {
+				h.mu.Unlock()
+				return false
+			}
+			ahead := (window.produced - max(window.served, window.start-1)) * HLSSegmentSeconds
+			// A copy window that has used up its cut list stops the same way a
+			// throttled one does: the next request continues from there.
+			exhausted := limit >= 0 && window.produced >= limit-1 && limit < h.timelines[id].count()-1
+			if (cfg.ThrottleBufferSeconds > 0 && window.produced >= from && ahead >= cfg.ThrottleBufferSeconds) || exhausted {
+				window.throttled = true
+				for key, stop := range h.active {
+					if key != id && producerSession(key) == id {
+						stop()
+					}
 				}
+				h.mu.Unlock()
+				_, _ = h.producerWrite(ctx, id, dbwork.ClassEstablishedPlayback, `INSERT INTO playback_hls_demand(session_id,highest_served,throttled) VALUES(?,?,1) ON CONFLICT(session_id) DO UPDATE SET throttled=1`, id, produced)
+				cancel()
+				return false
 			}
 			h.mu.Unlock()
-			_, _ = dbwork.ExecWrite(ctx, h.db, dbwork.ClassEstablishedPlayback, `INSERT INTO playback_hls_demand(session_id,highest_served,throttled) VALUES(?,?,1) ON CONFLICT(session_id) DO UPDATE SET throttled=1`, id, produced)
-			cancel()
+			return true
+		}()
+		if !keep {
 			return
 		}
-		h.mu.Unlock()
 	}
 }
 
@@ -946,7 +979,7 @@ func (h *HLS) recordStages(ctx context.Context, id string, plan *DeliveryPlan, s
 	}
 	write, cancel := persist(ctx)
 	defer cancel()
-	_, _ = dbwork.ExecWrite(write, h.db, dbwork.ClassEstablishedPlayback, `INSERT INTO playback_hls_stages(session_id,backend,stages_json) VALUES(?,?,?) ON CONFLICT(session_id) DO UPDATE SET backend=excluded.backend,stages_json=excluded.stages_json`, id, backend, string(raw))
+	_, _ = h.producerWrite(write, id, dbwork.ClassEstablishedPlayback, `INSERT INTO playback_hls_stages(session_id,backend,stages_json) VALUES(?,?,?) ON CONFLICT(session_id) DO UPDATE SET backend=excluded.backend,stages_json=excluded.stages_json`, id, backend, string(raw))
 }
 
 // producerGenerationKey carries the session generation a producer started
@@ -962,13 +995,19 @@ func withProducerGeneration(ctx context.Context, generation int) context.Context
 // failed fails the session's conversion, and reports whether it did: a
 // producer whose generation has been replaced fails nothing.
 func (h *HLS) failed(ctx context.Context, id string) bool {
+	if failureDuringClaim(ctx) {
+		return false
+	}
 	write, cancel := persist(ctx)
 	defer cancel()
 	query, args := `UPDATE playback_sessions SET state='failed' WHERE id=? AND state NOT IN ('stopped','ended')`, []any{id}
 	if generation, ok := ctx.Value(producerGenerationKey{}).(int); ok {
 		query, args = query+` AND generation=?`, append(args, generation)
 	}
-	result, err := dbwork.ExecWrite(write, h.db, dbwork.ClassEstablishedPlayback, query, args...)
+	result, err := h.producerWrite(write, id, dbwork.ClassEstablishedPlayback, query, args...)
+	if err != nil {
+		return false
+	}
 	if err == nil {
 		if n, e := result.RowsAffected(); e == nil && n == 0 {
 			if _, fenced := ctx.Value(producerGenerationKey{}).(int); fenced {
@@ -976,7 +1015,7 @@ func (h *HLS) failed(ctx context.Context, id string) bool {
 			}
 		}
 	}
-	_, _ = dbwork.ExecWrite(write, h.db, dbwork.ClassEstablishedPlayback, `UPDATE playback_artifacts SET status='failed',error='Media conversion failed; source may use unsupported streams.' WHERE session_id=?`, id)
+	_, _ = h.producerWrite(write, id, dbwork.ClassEstablishedPlayback, `UPDATE playback_artifacts SET status='failed',error='Media conversion failed; source may use unsupported streams.' WHERE session_id=?`, id)
 	return true
 }
 func (h *HLS) Ready(ctx context.Context, id string) error {
@@ -1163,7 +1202,7 @@ func (h *HLS) noteServed(ctx context.Context, id string, index int, cfg Delivery
 	h.mu.Unlock()
 	write, cancel := persist(ctx)
 	defer cancel()
-	_, _ = dbwork.ExecWrite(write, h.db, dbwork.ClassEstablishedPlayback, `INSERT INTO playback_hls_demand(session_id,highest_served,throttled) VALUES(?,?,0) ON CONFLICT(session_id) DO UPDATE SET highest_served=max(playback_hls_demand.highest_served,excluded.highest_served),throttled=0`, id, index)
+	_, _ = h.producerWrite(write, id, dbwork.ClassEstablishedPlayback, `INSERT INTO playback_hls_demand(session_id,highest_served,throttled) VALUES(?,?,0) ON CONFLICT(session_id) DO UPDATE SET highest_served=max(playback_hls_demand.highest_served,excluded.highest_served),throttled=0`, id, index)
 	if _, reclaimed := prunePlayedSegments(filepath.Join(h.root, id), from, index, cfg.PlayedRetentionSeconds); reclaimed > from {
 		h.mu.Lock()
 		if h.reclaimed[id] < reclaimed {

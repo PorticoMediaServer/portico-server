@@ -167,7 +167,6 @@ func TestCastTargetParentRefusesChangedFactsAndRetiredToken(t *testing.T) {
 }
 
 func TestCastTargetLocalParentHorizonDoesNotExtend(t *testing.T) {
-	ctx := context.Background()
 	s, db, owner := directFixture(t)
 	horizon := time.Now().Add(6 * time.Hour).UTC().Truncate(time.Second).Format(time.RFC3339)
 	if _, err := db.Exec(`UPDATE authorization_session_families SET authorization_horizon=? WHERE id=?`, horizon, owner.Session.SessionFamilyID); err != nil {

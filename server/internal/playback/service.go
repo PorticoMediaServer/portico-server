@@ -57,6 +57,7 @@ type Service struct {
 
 	// prefetched counts bytes served to private presentations (audio_plan_v2.go).
 	prefetchMu      sync.Mutex
+	prefetchOwned   map[string]*prefetchRecord
 	prefetched      map[string]int64
 	prefetchReaders map[string]int
 	prefetchRetired map[string]bool

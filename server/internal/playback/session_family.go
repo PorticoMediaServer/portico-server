@@ -1,6 +1,12 @@
 package playback
 
-import "portico.local/server/internal/identity"
+import (
+	"context"
+	"database/sql"
+	"errors"
+	"portico.local/server/internal/dbwork"
+	"portico.local/server/internal/identity"
+)
 
 // Used only after authentication/transactional authority. A token generation
 // change within one durable family preserves an occurrence; a different family
@@ -18,4 +24,19 @@ const sessionFamilyMatch = `(session_hash=? OR EXISTS(
 // request ID or exposing the viewer tuple in a delivery URL.
 func sessionRequestKey(p identity.Principal, request string) string {
 	return "scoped:" + identity.Digest(identity.PersonalKey(p.Viewer)+"\x00"+request)
+}
+
+// CheckStopOccurrenceTx attenuates an already strict-authenticated caller to its
+// original legacy occurrence. It grants no access and never adopts another
+// device family or generation. The accepting writer repeats this check.
+func (s *Service) CheckStopOccurrenceTx(ctx context.Context, tx *sql.Tx, p identity.Principal, id string, generation int, item string) error {
+	if tx == nil || dbwork.Snapshot(ctx) != tx || generation < 1 {
+		return ErrOccurrenceChanged
+	}
+	var found int
+	err := tx.QueryRowContext(ctx, `SELECT 1 FROM playback_sessions WHERE id=? AND generation=? AND account_id=? AND profile_id=? AND item_id=(SELECT id FROM catalog_entities WHERE public_id=pid_blob(?)) AND `+sessionFamilyMatch, id, generation, p.AccountID, p.ProfileID, item, p.Hash, p.Hash).Scan(&found)
+	if errors.Is(err, sql.ErrNoRows) {
+		return ErrOccurrenceChanged
+	}
+	return err
 }

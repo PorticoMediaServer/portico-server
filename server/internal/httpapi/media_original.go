@@ -2,6 +2,7 @@ package httpapi
 
 import (
 	"net/http"
+	"portico.local/server/internal/childprocess"
 
 	"portico.local/server/internal/assets"
 	"portico.local/server/internal/dbwork"
@@ -15,7 +16,13 @@ import (
 // re-authorizes the grant while bytes flow. decode is true only for the version 2
 // audio route, whose grant may be a prepared (private) presentation's.
 func (d Dependencies) serveOriginal(w http.ResponseWriter, r *http.Request, grant, aid string, decode bool, check func() error) {
+	release, admissionErr := childprocess.AcquirePublication(r.Context())
+	if admissionErr != nil {
+		failure(w, admissionErr)
+		return
+	}
 	response, close, remote, remoteErr := d.Playback.OpenRemote(r.Context(), grant, r.Method, r.Header.Get("Range"), decode)
+	release()
 	if remoteErr != nil {
 		failure(w, remoteErr)
 		return
@@ -35,7 +42,13 @@ func (d Dependencies) serveOriginal(w http.ResponseWriter, r *http.Request, gran
 		failure(w, storage.ErrPlaybackSource)
 		return
 	}
+	release, admissionErr = childprocess.AcquirePublication(r.Context())
+	if admissionErr != nil {
+		failure(w, admissionErr)
+		return
+	}
 	f, e := assets.OpenIsolatedPlayback(r.Context(), d.DB, d.Storage, "", identity.Digest(grant))
+	release()
 	if e != nil {
 		failure(w, e)
 		return

@@ -212,6 +212,15 @@ func (s *Service) PrepareNext(ctx context.Context, c Caller, id, ifMatch, key st
 	if r.generation != req.SessionGeneration || r.state != "playing" && r.state != "paused" && r.state != "preparing" {
 		return PreparedNext{}, notAllowed("session_changed")
 	}
+	if err = c.authorizeSession(ctx, r); err != nil {
+		return PreparedNext{}, err
+	}
+	preparing, err := s.Playback.RetainPreparation(ctx, r.media, r.mediaGeneration)
+	if err != nil {
+		return PreparedNext{}, err
+	}
+	defer preparing.Close()
+	ctx = preparing.Context()
 	var current Presentation
 	if json.Unmarshal([]byte(r.presentation), &current) != nil || !current.AudioRender.playable() {
 		return PreparedNext{}, notAllowed("not_rendered")
@@ -267,8 +276,23 @@ func (s *Service) PrepareNext(ctx context.Context, c Caller, id, ifMatch, key st
 		request: string(requestJSON), presentation: string(presentationJSON), state: "prepared", sessionGeneration: r.generation, queueRevision: q.revision, nextPosition: pos, expires: expires.UnixMilli(), created: now.UnixMilli()}
 	var replaced []string
 	err = dbwork.WithWriteTxContext(ctx, s.DB, dbwork.ClassInteractive, func(ctx context.Context, tx *sql.Tx) error {
+		// Presentation creation ran outside the writer. An end/replan must not
+		// leave a newly inserted child behind an accepted generation stop.
+		parent, err := loadRow(ctx, tx, r.id)
+		if err != nil {
+			return err
+		}
+		if !sameStopBinding(r, parent) || parent.ended != 0 || parent.state != r.state {
+			return ErrRevision
+		}
+		queue, err := loadQueue(ctx, tx, q.id)
+		if err != nil {
+			return err
+		}
+		if queue.revision != q.revision || queue.session != r.id {
+			return ErrRevision
+		}
 		// A new preparation replaces the queue's earlier one (spec §18.2).
-		var err error
 		if replaced, err = cancelPreparedTx(ctx, tx, "queue_id", q.id, "replaced"); err != nil {
 			return err
 		}
