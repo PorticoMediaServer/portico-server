@@ -356,9 +356,11 @@ func (s *Service) analyzeOne(parent context.Context, job string, source catalog.
 	probe.ReadGuard = func(check context.Context, _ string) error {
 		return s.analysisAllowed(check, job, source.LibraryID, policy.Revision, "probe")
 	}
-	listed := s.scanListed(ctx, job, source)
-	artworkListed := s.scanArtworkListed(ctx, job, source)
-	musicListed := s.scanMusicTracksListed(ctx, job, source)
+	// One directory recheck is shared by every projection for this file, so a
+	// folder is observed once per analysis instead of once per consumer. The
+	// projections stay separate: each still answers only its own question, and
+	// none of them is an I/O grant.
+	listed, artworkListed, musicListed := s.analysisListings(ctx, job, source)
 	artworkObserved := true
 	readContext := func(operation string) context.Context {
 		// The original media target is the invocation, not the observation of a

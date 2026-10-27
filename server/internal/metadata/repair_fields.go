@@ -18,6 +18,18 @@ import (
 // field added to the registry is published, edited and locked without another
 // bespoke query.
 func readRepairEntity(ctx context.Context, tx *sql.Tx, t RepairTarget) (repairEntity, error) {
+	return readRepairTarget(ctx, tx, t, true)
+}
+
+// validateArtworkTarget shares the editor's admission checks without projecting
+// unused editable fields. Reading still needs the full read: its owner/automatic
+// facts and source proofs can reject a target, independently of its identity.
+func validateArtworkTarget(ctx context.Context, tx *sql.Tx, t RepairTarget) error {
+	_, err := readRepairTarget(ctx, tx, t, false)
+	return err
+}
+
+func readRepairTarget(ctx context.Context, tx *sql.Tx, t RepairTarget, editable bool) (repairEntity, error) {
 	e := repairEntity{fields: map[string]string{}}
 	entity, err := resolveEntity(ctx, tx, t.ID)
 	if err != nil {
@@ -27,7 +39,6 @@ func readRepairEntity(ctx context.Context, tx *sql.Tx, t RepairTarget) (repairEn
 	var kind, year int
 	var title, sortTitle, language string
 	err = tx.QueryRowContext(ctx, `SELECT e.kind,cl.library_id,k.name,e.title,e.sort_title,e.metadata_language,e.year FROM catalog_entities e JOIN catalog_kinds k ON k.id=e.kind JOIN catalog_libraries cl ON cl.id=e.library_id WHERE e.id=?`, entity).Scan(&kind, &e.library, &kindName, &title, &sortTitle, &language, &year)
-	backbone := map[string]string{"title": title, "sort_title": sortTitle, "metadata_language": language}
 	if err != nil {
 		return e, err
 	}
@@ -50,11 +61,15 @@ func readRepairEntity(ctx context.Context, tx *sql.Tx, t RepairTarget) (repairEn
 		}
 		e.stamp = stamp
 	}
-	backbone["year"] = strconv.Itoa(year)
 	e.schema = repairSchema(t.Kind, e.itemKind)
 	if len(e.schema) == 0 {
 		return e, ErrRepairInput
 	}
+	if !editable && !readingRepairKind(kindName) {
+		err = readRepairTargetStamp(ctx, tx, t, entity, &e)
+		return e, err
+	}
+	backbone := map[string]string{"title": title, "sort_title": sortTitle, "metadata_language": language, "year": strconv.Itoa(year)}
 	var dOverview, dOriginal, dEdition, dTagline, dRelease, dRating, dStudio, dNetwork, dCountry, dTags, dLabels string
 	err = tx.QueryRowContext(ctx, `SELECT overview,original_title,edition,tagline,release_date,content_rating,studio,network,country,tags,labels FROM catalog_item_details WHERE entity_id=?`, entity).Scan(&dOverview, &dOriginal, &dEdition, &dTagline, &dRelease, &dRating, &dStudio, &dNetwork, &dCountry, &dTags, &dLabels)
 	details := map[string]string{"overview": dOverview, "original_title": dOriginal, "edition": dEdition, "tagline": dTagline, "release_date": dRelease, "content_rating": dRating, "studio": dStudio, "network": dNetwork, "country": dCountry, "tags": dTags, "labels": dLabels}
@@ -172,19 +187,26 @@ func readRepairEntity(ctx context.Context, tx *sql.Tx, t RepairTarget) (repairEn
 			}
 		}
 	}
-	if t.Kind != "item" || readingRepairKind(kindName) {
+	err = readRepairTargetStamp(ctx, tx, t, entity, &e)
+	return e, err
+}
+
+// Keep the existing container/Reading source and publication-head read even
+// when editable fields are omitted. Non-Reading item heads are required above.
+func readRepairTargetStamp(ctx context.Context, tx *sql.Tx, t RepairTarget, entity int64, e *repairEntity) error {
+	if t.Kind != "item" || readingRepairKind(e.itemKind) {
 		// A bulk job captures independent target fences before it applies any
 		// edits. A library-wide revision would stale every remaining sibling
 		// after the first edit. Fence the target's source files and publication
 		// heads instead; repairRevision also includes its full snapshot/history.
-		err = tx.QueryRowContext(ctx, `SELECT json_array(e.parent_id,e.retired,`+attentionFileFingerprint("e.id")+`,
+		err := tx.QueryRowContext(ctx, `SELECT json_array(e.parent_id,e.retired,`+attentionFileFingerprint("e.id")+`,
  (SELECT h.incarnation||':'||h.source_revision||':'||h.hierarchy_revision||':'||h.selection_revision||':'||h.descriptive_revision FROM tvdb_publication_heads h WHERE h.show_id=e.id),
  (SELECT h.incarnation||':'||h.revision||':'||h.membership_revision FROM mb_album_heads h WHERE h.album_id=e.id)) FROM catalog_entities e WHERE e.id=?`, entity).Scan(&e.stamp)
 		if err != nil {
-			return e, err
+			return err
 		}
 	}
-	return e, nil
+	return nil
 }
 
 // repairFieldValue reads one registry field from the layered catalogue facts,

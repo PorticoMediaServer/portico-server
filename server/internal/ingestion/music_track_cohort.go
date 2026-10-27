@@ -14,7 +14,12 @@ import (
 // Naming evidence only, never an I/O grant. An incomplete, changed, remote or
 // oversized directory cannot establish an album-wide packed-number pattern.
 func (s *Service) scanMusicTracksListed(ctx context.Context, job string, source catalog.LibrarySource) localmetadata.MusicTrackListing {
-	current := s.scanDirectoryListed(ctx, job, source)
+	return scanMusicTracksListedFrom(source, s.scanDirectoryListed(ctx, job, source))
+}
+
+// scanMusicTracksListedFrom projects album-cohort naming evidence from an
+// analysis's shared recheck.
+func scanMusicTracksListedFrom(source catalog.LibrarySource, current directoryRecheck) localmetadata.MusicTrackListing {
 	return func(directory string) ([]string, bool) {
 		relative, err := filepath.Rel(source.ResolvedPath, directory)
 		if err != nil || relative != "." && !filepath.IsLocal(relative) {

@@ -10301,3 +10301,19 @@ END;
 CREATE TRIGGER reading_path_overlay_insert BEFORE INSERT ON reading_path_slot WHEN NEW.overlay_id IS NOT NULL AND NOT EXISTS(SELECT 1 FROM reading_path_build WHERE id=NEW.overlay_id AND phase='flatten' AND publish_sequence>0) BEGIN
  SELECT RAISE(ABORT,'Reading overlay requires a published build');
 END;
+-- Exact snapshot authority for live library-summary restriction predicates.
+CREATE TABLE catalog_summary_classification_revision(
+ singleton INTEGER PRIMARY KEY CHECK(singleton=1),
+ revision INTEGER NOT NULL CHECK(revision>0)
+) STRICT;
+INSERT INTO catalog_summary_classification_revision(singleton,revision) VALUES(1,1);
+CREATE TRIGGER summary_classification_insert AFTER INSERT ON content_rating_ages BEGIN
+ UPDATE catalog_summary_classification_revision SET revision=revision+1 WHERE singleton=1;
+END;
+CREATE TRIGGER summary_classification_delete AFTER DELETE ON content_rating_ages BEGIN
+ UPDATE catalog_summary_classification_revision SET revision=revision+1 WHERE singleton=1;
+END;
+CREATE TRIGGER summary_classification_update AFTER UPDATE OF value_key,minimum_age ON content_rating_ages
+WHEN OLD.value_key IS NOT NEW.value_key OR OLD.minimum_age IS NOT NEW.minimum_age BEGIN
+ UPDATE catalog_summary_classification_revision SET revision=revision+1 WHERE singleton=1;
+END;

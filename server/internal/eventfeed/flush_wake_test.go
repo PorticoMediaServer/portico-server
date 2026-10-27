@@ -43,7 +43,7 @@ func TestHubDoesNotWakeItselfAfterDrainingItsOwnFlush(t *testing.T) {
 	time.Sleep(2300 * time.Millisecond)
 	var reads int64
 	for _, p := range dbwork.StatementProfile() {
-		if strings.HasPrefix(p.Shape, "SELECT audience,type,resource_kind") {
+		if strings.HasPrefix(p.Shape, outboxReadShape) {
 			reads += p.Count
 		}
 	}
@@ -94,9 +94,10 @@ func TestRetiringOwnFlushWakePreservesPeerPublications(t *testing.T) {
 }
 
 // TestEmptyFlushPublishesOneCommit ties the retirement rule to the actual write
-// gate. An outbox pass with nothing to send still commits one gated
-// transaction, and that commit is a publication even though it cannot wake
-// subscribers. Wake retirement must distinguish that from a changing commit.
+// gate. An empty flush given an already-open transaction still publishes that
+// transaction even though it cannot wake subscribers; the feed no longer opens
+// one for an empty outbox (see flushPendingHints), so retirement only has to
+// distinguish a nonempty flush from a changing peer commit.
 func TestEmptyFlushPublishesOneCommit(t *testing.T) {
 	db, err := persistence.Open(filepath.Join(t.TempDir(), "emptyflush.sqlite"))
 	if err != nil {
@@ -161,25 +162,29 @@ func TestRetiringOwnFlushWakeRetainsAnUnknownPeerPublication(t *testing.T) {
 	}
 }
 
-// outboxReadShape identifies the feed's own pending-outbox read in the profile.
+// outboxReadShape identifies the feed's bounded outbox read in the profile.
 const outboxReadShape = "SELECT audience,type,resource_kind"
 
-func outboxPasses() int64 {
-	var passes int64
+// outboxProbeShape identifies the feed's read-only pending preflight. It is the
+// shape every pass runs, whether or not the outbox holds anything.
+const outboxProbeShape = "SELECT EXISTS(SELECT 1 FROM api_change_pending)"
+
+func outboxProbes() int64 {
+	var probes int64
 	for _, p := range dbwork.StatementProfile() {
-		if strings.HasPrefix(p.Shape, outboxReadShape) {
-			passes += p.Count
+		if strings.HasPrefix(p.Shape, outboxProbeShape) {
+			probes += p.Count
 		}
 	}
-	return passes
+	return probes
 }
 
 func waitForOutboxPasses(t *testing.T, want int64) {
 	t.Helper()
 	deadline := time.Now().Add(5 * time.Second)
-	for outboxPasses() < want {
+	for outboxProbes() < want {
 		if time.Now().After(deadline) {
-			t.Fatalf("outbox saw %d passes, want at least %d", outboxPasses(), want)
+			t.Fatalf("outbox saw %d passes, want at least %d", outboxProbes(), want)
 		}
 		time.Sleep(10 * time.Millisecond)
 	}
@@ -203,10 +208,8 @@ func startFeed(t *testing.T, db *sql.DB) (stop func()) {
 }
 
 // An idle server's feed must settle. Its startup pass reads an empty outbox and
-// publishes nothing that wakes it, so it must not schedule itself again. The
-// pass still commits one gated transaction, and that is the only publication:
-// this is the real empty-startup reproduction of the contract the retirement
-// rule depends on (see TestEmptyFlushPublishesOneCommit).
+// publishes nothing that wakes it, so it must not schedule itself again, and it
+// must not take the writer gate to discover there is nothing to publish.
 func TestHubStaysQuietWhenTheOutboxStartsEmpty(t *testing.T) {
 	db, err := persistence.Open(filepath.Join(t.TempDir(), "empty.sqlite"))
 	if err != nil {
@@ -214,22 +217,26 @@ func TestHubStaysQuietWhenTheOutboxStartsEmpty(t *testing.T) {
 	}
 	defer db.Close()
 	before := dbwork.Publications()
+	gateBefore := dbwork.WriteGate().Stats().Acquired
 	stop := startFeed(t, db)
 	defer stop()
 	waitForOutboxPasses(t, 1)
 	// A wrongly re-armed wake runs again at the feed's two-second floor.
 	time.Sleep(2300 * time.Millisecond)
-	if passes := outboxPasses(); passes != 1 {
+	if passes := outboxProbes(); passes != 1 {
 		t.Fatalf("an empty pass scheduled %d outbox passes", passes)
 	}
-	if got := dbwork.Publications(); got != before+1 {
-		t.Fatalf("empty startup pass published %d transactions, want exactly its own 1", got-before)
+	if got := dbwork.Publications(); got != before {
+		t.Fatalf("empty startup pass published %d transactions, want none", got-before)
+	}
+	if got := dbwork.WriteGate().Stats().Acquired; got != gateBefore {
+		t.Fatalf("empty startup pass acquired the writer gate %d times, want none", got-gateBefore)
 	}
 }
 
 // A wake that queues no outbox hint is read through by the one pass it causes.
-// That pass publishes its own empty commit, and retiring the wake must not leave
-// the wake that triggered the pass armed behind it.
+// That pass publishes no transaction, and retiring the wake must not leave the
+// wake that triggered the pass armed behind it.
 func TestHubDoesNotRearmAWakeThatQueuedNoHints(t *testing.T) {
 	db, err := persistence.Open(filepath.Join(t.TempDir(), "peerwake.sqlite"))
 	if err != nil {
@@ -251,7 +258,7 @@ func TestHubDoesNotRearmAWakeThatQueuedNoHints(t *testing.T) {
 	}
 	waitForOutboxPasses(t, 2)
 	time.Sleep(2300 * time.Millisecond)
-	if passes := outboxPasses(); passes != 2 {
+	if passes := outboxProbes(); passes != 2 {
 		t.Fatalf("one peer wake scheduled %d outbox passes", passes)
 	}
 }

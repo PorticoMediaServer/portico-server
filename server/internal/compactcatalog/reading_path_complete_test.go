@@ -4,9 +4,12 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"os"
+	"os/exec"
 	"path/filepath"
 	"reflect"
 	"testing"
+	"time"
 
 	"portico.local/server/internal/catalog"
 	"portico.local/server/internal/catalogtest"
@@ -272,80 +275,118 @@ func TestReadingCompleteChurningLibraryCannotStarveOtherLibrary(t *testing.T) {
 	}
 }
 
+func completeCrashCheckpoint(t *testing.T, f *completeFixture, target string) {
+	var pubs []completePublication
+	for i := 0; i < 10; i++ {
+		pubs = append(pubs, f.add(fmt.Sprintf("Author/Series/Series %02d.epub", i), "epub", 0))
+	}
+	f.settle()
+	f.seal()
+	reached := false
+	for i := 0; i < 2000; i++ {
+		var phase string
+		var capture, stage, flat int64
+		err := f.c.DB.QueryRow(`SELECT phase,(SELECT count(*) FROM reading_path_capture WHERE build_id=b.id),(SELECT count(*) FROM reading_path_stage WHERE build_id=b.id),after_flatten_item FROM reading_path_build b LIMIT 1`).Scan(&phase, &capture, &stage, &flat)
+		if err != nil && err != sql.ErrNoRows {
+			t.Fatal(err)
+		}
+		switch target {
+		case "pending":
+			reached = i == 0
+		case "seal":
+			reached = scalar(t, f.c.DB, `SELECT count(*) FROM reading_path_scope WHERE sealed=1`) > 0 && phase == ""
+		case "capture", "stage", "ready", "flatten", "cleanup":
+			reached = phase == target
+		case "capture-partial":
+			reached = phase == "capture" && capture > 0 && capture < 10
+		case "stage-partial":
+			reached = phase == "stage" && stage > 0 && stage < 10
+		case "flatten-partial":
+			reached = phase == "flatten" && flat > 0 && scalar(t, f.c.DB, `SELECT count(*) FROM reading_path_head WHERE author_source='folder'`) < 10
+		case "cleanup-partial":
+			reached = phase == "cleanup" && capture > 0 && capture < 10
+		case "abort", "abort-partial":
+			if phase == "stage" && stage > 0 {
+				f.c.Exec(`UPDATE inventory_objects SET revision='new' WHERE id=?`, pubs[0].object)
+				f.settle()
+			}
+			reached = phase == "abort" && (target == "abort" || capture > 0 && capture < 10)
+		}
+		if reached {
+			break
+		}
+		completeStep(t, f.c, 3)
+	}
+	if !reached {
+		t.Fatal("never reached durable checkpoint")
+	}
+}
+
+// Subprocess entry point: exit without closing SQLite, running defers, or test
+// cleanup. The parent recovers the real committed WAL after an abrupt process
+// death, rather than treating a graceful Close as a crash.
+func TestReadingCompleteCrashWriterProcess(t *testing.T) {
+	target := os.Getenv("PORTICO_READING_CRASH_PHASE")
+	if target == "" {
+		t.Skip("subprocess entry point")
+	}
+	root := os.Getenv("PORTICO_READING_CRASH_ROOT")
+	db, err := persistence.Open(filepath.Join(root, "crash.sqlite"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	f := newCompleteFixture(t, catalogtest.New(t, db), "restart")
+	completeCrashCheckpoint(t, f, target)
+	os.Exit(91)
+}
 func TestReadingCompleteRestartEveryDurablePhase(t *testing.T) {
 	for _, target := range []string{"pending", "seal", "capture", "capture-partial", "stage", "stage-partial", "ready", "flatten", "flatten-partial", "cleanup", "cleanup-partial", "abort", "abort-partial"} {
 		t.Run(target, func(t *testing.T) {
-			f := newCompleteFixture(t, nil, "restart")
-			var pubs []completePublication
-			for i := 0; i < 10; i++ {
-				pubs = append(pubs, f.add(fmt.Sprintf("Author/Series/Series %02d.epub", i), "epub", 0))
+			root := t.TempDir()
+			ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+			defer cancel()
+			cmd := exec.CommandContext(ctx, os.Args[0], "-test.run=^TestReadingCompleteCrashWriterProcess$", "-test.count=1")
+			cmd.Env = append(os.Environ(), "PORTICO_READING_CRASH_PHASE="+target, "PORTICO_READING_CRASH_ROOT="+root, "TMPDIR="+root)
+			output, err := cmd.CombinedOutput()
+			exit, ok := err.(*exec.ExitError)
+			if !ok || exit.ExitCode() != 91 {
+				t.Fatalf("writer did not crash at %s: %v\n%s", target, err, output)
 			}
-			f.settle()
-			f.seal()
-			reached := false
-			for i := 0; i < 2000; i++ {
-				var phase string
-				var capture, stage, flat int64
-				err := f.c.DB.QueryRow(`SELECT phase,(SELECT count(*) FROM reading_path_capture WHERE build_id=b.id),(SELECT count(*) FROM reading_path_stage WHERE build_id=b.id),after_flatten_item FROM reading_path_build b LIMIT 1`).Scan(&phase, &capture, &stage, &flat)
-				if err != nil && err != sql.ErrNoRows {
-					t.Fatal(err)
-				}
-				switch target {
-				case "pending":
-					reached = i == 0
-				case "seal":
-					reached = scalar(t, f.c.DB, `SELECT count(*) FROM reading_path_scope WHERE sealed=1`) > 0 && phase == ""
-				case "capture", "stage", "ready", "flatten", "cleanup":
-					reached = phase == target
-				case "capture-partial":
-					reached = phase == "capture" && capture > 0 && capture < 10
-				case "stage-partial":
-					reached = phase == "stage" && stage > 0 && stage < 10
-				case "flatten-partial":
-					reached = phase == "flatten" && flat > 0 && scalar(t, f.c.DB, `SELECT count(*) FROM reading_path_head WHERE author_source='folder'`) < 10
-				case "cleanup-partial":
-					reached = phase == "cleanup" && capture > 0 && capture < 10
-				case "abort", "abort-partial":
-					if phase == "stage" && stage > 0 {
-						f.c.Exec(`UPDATE inventory_objects SET revision='new' WHERE id=?`, pubs[0].object)
-						f.settle()
-					}
-					reached = phase == "abort" && (target == "abort" || capture > 0 && capture < 10)
-				}
-				if reached {
-					break
-				}
-				completeStep(t, f.c, 3)
+			path := filepath.Join(root, "crash.sqlite")
+			if info, err := os.Stat(path + "-wal"); err != nil || info.Size() == 0 {
+				t.Fatalf("checkpoint did not leave a real WAL: %v", err)
 			}
-			if !reached {
-				t.Fatal("never reached durable checkpoint")
-			}
-			// Close all handles; reopen the actual disk file with zero in-memory worker
-			// progress. This also checks baseline compatibility after interrupted work.
-			var dbfile string
-			var seq int
-			var dbname string
-			if err := f.c.DB.QueryRow(`PRAGMA database_list`).Scan(&seq, &dbname, &dbfile); err != nil {
-				t.Fatal(err)
-			}
-			if err := f.c.DB.Close(); err != nil {
-				t.Fatal(err)
-			}
-			db, err := persistence.Open(dbfile)
+			db, err := persistence.Open(path)
 			if err != nil {
 				t.Fatal(err)
 			}
 			defer db.Close()
-			f.c.DB = db
-			completeDrain(t, f.c)
-			for _, p := range pubs {
-				v := completeValues(t, f.c, p.item)
+			c := catalogtest.New(t, db)
+			completeDrain(t, c)
+			var ids []int64
+			rows, err := db.Query(`SELECT id FROM catalog_entities WHERE kind=20 ORDER BY id`)
+			if err != nil {
+				t.Fatal(err)
+			}
+			for rows.Next() {
+				var id int64
+				if err = rows.Scan(&id); err != nil {
+					t.Fatal(err)
+				}
+				ids = append(ids, id)
+			}
+			rows.Close()
+			if len(ids) != 10 {
+				t.Fatalf("restart lost publications: %d", len(ids))
+			}
+			for _, id := range ids {
+				v := completeValues(t, c, id)
 				if v.Author == nil || v.Author.Value != "Author" || v.Series == nil || v.Series.Value != "Series" {
 					t.Fatalf("restart %s lost COMPLETE: %+v", target, v)
 				}
 			}
 			if scalar(t, db, `SELECT count(*) FROM reading_path_capture`)+scalar(t, db, `SELECT count(*) FROM reading_path_stage`)+scalar(t, db, `SELECT count(*) FROM reading_path_representative`) != 0 {
-				t.Fatal("scratch leaked after restart")
+				t.Fatal("scratch leaked after crash recovery")
 			}
 		})
 	}
