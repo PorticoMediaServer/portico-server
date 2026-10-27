@@ -170,7 +170,7 @@ test('viewer cannot fetch order windows and unknown occurrence IDs cannot be mov
  const editable=setup(async p=>isContent(p)?projection():resource());await editable.select({view:'playlist',playlistId:'playlist'});assert.throws(()=>editable.mutate({action:'reorder',entryIds:['unseen']}),/current playlist order/);
 });
 test('reorder retains selected revision across delayed operation-ID generation',async()=>{
- const requestId=deferred();let revision=0,body:any;const s=new SavedService({scope,requestId:()=>requestId.promise,api:{request:async<T>(p,m,b)=>{if(m==='PUT'){body=b;return receipt(b,2) as T;}return wireFixture(isContent(p)?projection('playlist',revision):resource(revision),{startSeconds:'startMs'}) as T;}}});await s.select({view:'playlist',playlistId:'playlist'});const mutation=s.mutate({action:'reorder',entryIds:['entry']});revision=1;await s.refresh();requestId.resolve('00000000-0000-4000-8000-000000000099');await mutation;assert.equal(body.expectedRevision,0);
+ const requestId=deferred();let revision=0,body:any;const s=new SavedService({scope,requestId:()=>requestId.promise,api:{request:async<T>(p:string,m?:string,b?:unknown)=>{if(m==='PUT'){body=b;return receipt(b,2) as T;}return wireFixture(isContent(p)?projection('playlist',revision):resource(revision),{startSeconds:'startMs'}) as T;}}});await s.select({view:'playlist',playlistId:'playlist'});const mutation=s.mutate({action:'reorder',entryIds:['entry']});revision=1;await s.refresh();requestId.resolve('00000000-0000-4000-8000-000000000099');await mutation;assert.equal(body.expectedRevision,0);
 });
 test('uncapped playlists read past 1,000 entries through order windows',async()=>{
  const ids=Array.from({length:1050},(_,i)=>'entry-'+i);
@@ -299,7 +299,7 @@ test('CD-17 response preservation: server filter echo and counts survive decodin
 });
 
 test('CD-23: watchlist/history entries accept extra, author, book_series and disc',async()=>{
- const kinds: Record<string,{navigation:string}> = {
+ const kinds: Record<string,string> = {
   extra:'item', author:'author', book_series:'book_series', disc:'disc',
  };
  for(const [kind,view] of Object.entries(kinds)){
@@ -544,4 +544,39 @@ test('a successor installed after real quietThrough returns but before pump resu
   assert.equal(crossed, true); assert.equal(recoveryReads, 1, 'the resumed pump cannot add a fallback over the accepted successor');
   assert.equal(service.getSnapshot().projection!.sections[0].entries[0]!.id, 'newer');
  } finally {service.dispose();}
+});
+
+for (const deep of [false, true]) for (const successorKind of ['select', 'refresh', 'quiet'] as const)
+test(`receipt subscriber ${successorKind} owns its ${deep ? 'deep' : 'first-page'} successor without old mutation recovery`, async () => {
+ const flush = async () => {for (let i = 0; i < 100; i++) await Promise.resolve();};
+ const first = Array.from({length: deep ? 41 : 1}, (_, i) => occurrence(`receipt-${i}`)), pending = deferred();
+ let mode = 'initial', installed = false, settled = false, successor: Promise<void> | undefined;
+ const successorReads: Array<{path: string; signal?: AbortSignal}> = [];
+ const service = setup(async (path, method, body, signal) => {
+  if (method === 'PATCH') return receipt(body, 2);
+  if (path.includes('/content')) {
+   if (mode === 'successor') {successorReads.push({path, signal}); return pending.promise;}
+   const cursor = new URL(path, 'https://x').searchParams.get('cursor');
+   return cursor ? projection('playlist', 0, [occurrence('last')]) : projection('playlist', 0, first, deep ? 'more' : '');
+  }
+  return resource(mode === 'initial' ? 0 : 2, deep ? 42 : 1);
+ });
+ let off = () => {};
+ try {
+  await service.select({view: 'playlist', playlistId: 'playlist'}); if (deep) await service.next('entries');
+  off = service.subscribe(() => {
+   if (installed || !service.getSnapshot().lastReceipt) return;
+   installed = true; mode = 'successor';
+   successor = successorKind === 'select' ? service.select({view: 'favorites'}) : successorKind === 'refresh' ? service.refresh() : service.revalidate();
+  });
+  const mutation = service.mutate({action: 'rename', name: 'Committed'}).then(() => {settled = true;});
+  await flush(); assert.equal(installed, true); assert.equal(settled, true, 'the committed original settles while its successor HTTP request is still pending');
+  assert.equal(successorReads.length, 1, 'only the subscriber-owned head dispatches'); assert(successorReads[0].signal); assert.equal(successorReads[0].signal.aborted, false);
+  const entries = successorKind === 'select' ? [media('newer')] : Array.from({length: deep && successorKind === 'quiet' ? 42 : 1}, (_, i) => occurrence(i ? `newer-${i}` : 'newer'));
+  pending.resolve(projection(successorKind === 'select' ? 'favorites' : 'playlist', 2, entries));
+  await Promise.all([mutation, successor]); await flush();
+  assert.equal(successorReads.length, 1); assert.equal(successorReads[0].signal.aborted, false);
+  assert.equal(service.getSnapshot().phase, 'ready'); assert.equal(service.getSnapshot().route?.view, successorKind === 'select' ? 'favorites' : 'playlist');
+  assert.equal(service.getSnapshot().projection!.sections[0].entries[0]!.id, 'newer');
+ } finally {off(); service.dispose();}
 });

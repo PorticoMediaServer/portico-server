@@ -524,12 +524,23 @@ export class SavedService {
    if (this.disposed || generation !== this.generation) return;
    if (!record(raw) || raw.serverId !== this.bound.serverId || raw.viewerFence !== fence || raw.operationId !== c.operationId || !id(raw.playlistId) || selected.view === 'playlist' && raw.playlistId !== selected.playlistId || !int(raw.revision) || typeof raw.deleted !== 'boolean' || raw.entryId !== undefined && !id(raw.entryId) || raw.undoToken !== undefined && (!id(raw.undoToken) || !text(raw.undoUntil, 64))) invalid();
    const receipt: SavedReceipt = freeze({ serverId: this.bound.serverId, viewerFence: fence, operationId: c.operationId, playlistId: raw.playlistId, revision: raw.revision, deleted: raw.deleted, ...(raw.entryId === undefined ? {} : { entryId: raw.entryId as string }), ...(raw.undoToken === undefined ? {} : { undoToken: raw.undoToken as string, undoUntil: raw.undoUntil as string }) });
-   this.candidateController?.abort(); this.candidateGeneration++; this.orderController?.abort(); this.orderGeneration++;
+   const recoveryRead = this.readGeneration, recoveryTicket = this.quiet;
+   const recoveryCurrent = () => !this.disposed && generation === this.generation && recoveryRead === this.readGeneration
+     && recoveryTicket === this.quiet && this.state.route === selected;
+   const deepRecovery = this.history.length > 0 || this.seen > SAVED_PAGE;
+   this.candidateController?.abort();
+   if (!recoveryCurrent()) {c.resolve(); return;}
+   this.candidateGeneration++; this.orderController?.abort();
+   if (!recoveryCurrent()) {c.resolve(); return;}
+   this.orderGeneration++;
    this.commands.shift(); this.publish({ lastReceipt: receipt, mutationError: null, candidates: null, candidatesLoading: false, order: null, orderLoading: false, orderError: null });
+   // Receipt subscribers may replace this read/route or begin a newer quiet
+   // read. A committed command settles, but cannot borrow that successor.
+   if (!recoveryCurrent()) {c.resolve(); return;}
    if (receipt.deleted && selected.view === 'playlist') { for (const pending of this.commands) pending.resolve(); this.commands = []; this.lastFailure = undefined; this.readController?.abort(); this.readGeneration++; this.publish({ phase: 'ready', projection: null, playlist: null, pagination: { cursor: null, history: [], canPrevious: false, next: [] } }); c.resolve(); }
    // A list paged further than its first page stays where the viewer is (a removal deep in a playlist).
    else {
-    if (this.history.length || this.seen > SAVED_PAGE) {
+    if (deepRecovery) {
      const outcome = await this.quietThrough();
      // A newer quiet read may have begun/committed while this await resolved;
      // only the exact failed ticket may ask for recovery.
