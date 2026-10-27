@@ -152,7 +152,7 @@ class Client:
         self.opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
 
     def call(self, method, path, body=None, raw=None, content_type="application/json",
-             ok=(200, 201, 202, 204), timeout=60):
+             ok=(200, 201, 202, 204), timeout=60, extra_headers=None):
         headers = {"Accept": "application/json", "Origin": self.base,
                    "X-Portico-Installation-Id": self.installation}
         data = None
@@ -164,6 +164,7 @@ class Client:
             headers["Content-Type"] = "application/json"
         if self.token:
             headers["Authorization"] = "Bearer " + self.token
+        headers.update(extra_headers or {})
         request = urllib.request.Request(self.base + path, data=data, headers=headers, method=method)
         try:
             response = self.opener.open(request, timeout=timeout)
@@ -191,16 +192,19 @@ class Client:
                     "image/png", "image/jpeg", "application/octet-stream"):
                 return payload
             try:
-                return json.loads(payload)
+                document = json.loads(payload)
+                if isinstance(document, dict) and {"protocolVersion", "serverId", "result"} <= document.keys():
+                    return document["result"]
+                return document
             except ValueError:
                 return payload
 
-    def read(self, path, attempts=12, timeout=60):
+    def read(self, path, attempts=12, timeout=60, extra_headers=None):
         """A read that tolerates a catalogue fence while a scan publishes."""
         last = None
         for attempt in range(attempts):
             try:
-                return self.call("GET", path, timeout=timeout)
+                return self.call("GET", path, timeout=timeout, extra_headers=extra_headers)
             except Refusal as refusal:
                 last = refusal
                 if refusal.status not in (409, 412, 423, 503, 504) or attempt == attempts - 1:
@@ -810,29 +814,29 @@ def annotate_reading(client, entry, report, index):
     fmt = (opened.get("format") or entry.get("format") or "epub").lower()
     if not session_id:
         return
+    headers = {"If-Match": '"' + opened["revision"] + '"'}
     try:
         if fmt in ("pdf", "cbz", "cb7", "cbr"):
             location = {"format": fmt, "pageIndex": 1 + index, "progression": 0.15 + index * 0.05}
             annotation_location = {"format": fmt, "pageIndex": 1 + index, "progression": 0.15 + index * 0.05}
             page = 1 + index
         else:
-            location = {"format": "epub", "cfi": "epubcfi(/6/4!/4/2/2[c01]/1:0)",
-                        "progression": 0.2, "section": "chapter-1"}
-            annotation_location = {"format": "epub", "cfi": "epubcfi(/6/4!/4/2/2[c01]/1:0)",
-                                   "progression": 0.2, "section": "chapter-1"}
+            location = {"format": "epub", "cfi": "epubcfi(/6/2!/4/2:0)",
+                        "progression": 0.2, "section": opened["spine"][0]}
+            annotation_location = dict(location)
             page = None
         try:
-            current = client.read(f"/v1/reading/sessions/{urllib.parse.quote(session_id, safe='')}/progress")
+            current = client.read(f"/v1/reading/sessions/{urllib.parse.quote(session_id, safe='')}/progress", extra_headers=headers)
             revision = int(((current.get("progress") or {}).get("revision")) or 0)
         except Refusal:
             revision = 0
         client.call("PUT", f"/v1/reading/sessions/{urllib.parse.quote(session_id, safe='')}/progress",
-                    {"expectedRevision": revision, "location": location}, ok=(200,))
-        if page is not None:
+                    {"expectedRevision": revision, "location": location}, ok=(200,), extra_headers=headers)
+        if page is not None and fmt != "pdf":
             client.call("GET", f"/v1/reading/sessions/{urllib.parse.quote(session_id, safe='')}/pages/{page}",
-                        ok=(200,), timeout=60)
+                        ok=(200,), timeout=60, extra_headers=headers)
         try:
-            existing = client.read(f"/v1/reading/sessions/{urllib.parse.quote(session_id, safe='')}/annotations?limit=50")
+            existing = client.read(f"/v1/reading/sessions/{urllib.parse.quote(session_id, safe='')}/annotations", extra_headers=headers)
             revision = int(existing.get("revision") or 0)
         except Refusal:
             revision = 0
@@ -842,18 +846,23 @@ def annotate_reading(client, entry, report, index):
                        "expectedRevision": revision, "kind": kind, "colour": "green",
                        "location": annotation_location, "note": "Synthetic annotation",
                        "text": "Synthetic passage", "rects": []}
+            if kind == "highlight" and fmt == "pdf":
+                payload["rects"] = [{"x": 0.1, "y": 0.1, "width": 0.5, "height": 0.08}]
             try:
                 result = client.call(
                     "PUT", f"/v1/reading/sessions/{urllib.parse.quote(session_id, safe='')}/annotations",
-                    payload, ok=(200,))
+                    payload, ok=(200,), extra_headers=headers)
                 revision = int(result.get("revision") or revision)
             except Refusal as refusal:
-                report.setdefault("warnings", []).append(
+                report.setdefault("failures", []).append(
                     {"step": "reading-annotation", "itemId": entry["id"], "code": refusal.code,
                      "status": refusal.status})
                 break
         report["created"]["reading"].append({"itemId": entry["id"], "format": fmt,
                                              "annotations": revision})
+    except Refusal as refusal:
+        report.setdefault("failures", []).append({"step": "reading-progress", "itemId": entry["id"],
+                                                  "code": refusal.code, "status": refusal.status})
     finally:
         try:
             client.call("DELETE", f"/v1/reading/sessions/{urllib.parse.quote(session_id, safe='')}",
@@ -902,7 +911,7 @@ def ensure_webhooks(owner, saved, report):
         ("Synthetic Local Sink", "http://127.0.0.1:32512/portico-webhook", True,
          ["playback.started", "playback.stopped", "scan.finished", "backup.succeeded"]),
         ("Synthetic Archive Sink", "http://127.0.0.1:32512/archive", False,
-         ["title.added", "title.updated", "member.signed-in"]),
+         ["title.added", "title.updated", "member.signed_in"]),
     ]
     for name, url, enabled, events in wanted:
         if name in existing:
@@ -1591,7 +1600,7 @@ def main(argv=None):
         report["ok"] = not report.get("failures")
     except Refusal as refusal:
         report["ok"] = False
-        report["error"] = {"code": refusal.code, "status": refusal.status, "detail": refusal.detail}
+        report["error"] = {"code": refusal.code, "status": refusal.status, "detail": redact(refusal.detail)}
     except Exception as error:
         report["ok"] = False
         report["error"] = {"code": "seed_shape", "type": type(error).__name__}

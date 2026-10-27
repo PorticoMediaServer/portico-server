@@ -111,7 +111,7 @@ class Client:
         self.token = token
         self.opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
 
-    def call(self, method, path, body=None, ok=(200, 201, 202, 204), timeout=60):
+    def call(self, method, path, body=None, ok=(200, 201, 202, 204), timeout=60, extra_headers=None):
         headers = {"Accept": "application/json", "Origin": self.base,
                    "X-Portico-Installation-Id": self.installation}
         data = None
@@ -120,6 +120,7 @@ class Client:
             headers["Content-Type"] = "application/json"
         if self.token:
             headers["Authorization"] = "Bearer " + self.token
+        headers.update(extra_headers or {})
         request = urllib.request.Request(self.base + path, data=data, headers=headers, method=method)
         try:
             response = self.opener.open(request, timeout=timeout)
@@ -142,16 +143,21 @@ class Client:
                 detail = redact(payload.decode("utf-8", "replace")[:2000]) if payload else ""
                 raise Refusal(code or "http_" + str(response.status), response.status, detail)
             content_type = response.headers.get("Content-Type", "").split(";")[0]
-            if content_type in ("image/png", "image/jpeg", "application/octet-stream") or \
-                    not payload.startswith(b"{"):
+            if content_type in ("image/png", "image/jpeg", "application/octet-stream"):
                 return payload
-            return json.loads(payload) if payload else None
+            try:
+                document = json.loads(payload) if payload else None
+            except ValueError:
+                return payload
+            if isinstance(document, dict) and {"protocolVersion", "serverId", "result"} <= document.keys():
+                return document["result"]
+            return document
 
-    def read(self, path, attempts=12):
+    def read(self, path, attempts=12, extra_headers=None):
         last = None
         for attempt in range(attempts):
             try:
-                return self.call("GET", path)
+                return self.call("GET", path, extra_headers=extra_headers)
             except Refusal as refusal:
                 last = refusal
                 if refusal.status not in (409, 412, 423, 503, 504) or attempt == attempts - 1:
@@ -422,19 +428,19 @@ def main(argv=None):
             try:
                 settings_doc = owner.read("/v1/admin/libraries/" +
                                           urllib.parse.quote(library["id"], safe="") + "/settings")
-                saved = settings_doc.get("settings") or {}
+                library_settings = settings_doc.get("settings") or {}
                 expensive = {"loudness", "checksum", "audio_fingerprint", "trickplay",
                              "chapter_images", "video_preview", "subtitle_extraction",
                              "subtitle_download", "deep_stream_analysis", "lyrics", "waveform"}
                 check("library-local-metadata:" + name,
-                      not (set(saved.get("analysis") or []) & expensive) and
+                      not (set(library_settings.get("analysis") or []) & expensive) and
                       all((provider.get("provider") == "local")
-                          for provider in saved.get("providers") or []) and
-                      saved.get("acoustidEnabled") is False and
-                      saved.get("segmentDetection") == "off",
-                      {"analysis": saved.get("analysis"),
-                       "providers": [p.get("provider") for p in saved.get("providers") or []],
-                       "segmentDetection": saved.get("segmentDetection")})
+                          for provider in library_settings.get("providers") or []) and
+                      library_settings.get("acoustidEnabled") is False and
+                      library_settings.get("segmentDetection") == "off",
+                      {"analysis": library_settings.get("analysis"),
+                       "providers": [p.get("provider") for p in library_settings.get("providers") or []],
+                       "segmentDetection": library_settings.get("segmentDetection")})
             except Refusal as refusal:
                 check("library-local-metadata:" + name, False, refusal.code)
             actual = canonical_counts(owner, library)
@@ -677,7 +683,7 @@ def main(argv=None):
             check("recording-root", requested == args.recordings_root,
                   report["recordingRoot"])
             dvr = owner.read("/v1/dvr?limit=50")
-            recordings = ((dvr.get("result") or {}).get("recordings") or [])
+            recordings = (dvr.get("recordings") or [])
             report["recordings"] = [{"id": entry.get("id"), "state": entry.get("state"),
                                      "durationMs": entry.get("durationMs")}
                                     for entry in recordings]
@@ -750,11 +756,12 @@ def verify_reading(client, label, report, check):
             if not session_id:
                 continue
             quote = urllib.parse.quote(session_id, safe="")
+            headers = {"If-Match": '"' + opened["revision"] + '"'}
             try:
-                progress = client.read(f"/v1/reading/sessions/{quote}/progress")
+                progress = client.read(f"/v1/reading/sessions/{quote}/progress", extra_headers=headers)
                 if progress.get("progress") is not None:
                     progress_seen += 1
-                annotations = client.read(f"/v1/reading/sessions/{quote}/annotations?limit=50")
+                annotations = client.read(f"/v1/reading/sessions/{quote}/annotations", extra_headers=headers)
                 annotation_total += len(annotations.get("entries") or [])
             except Refusal as refusal:
                 report["warnings"].append({"check": "reading-read", "itemId": entry["id"],

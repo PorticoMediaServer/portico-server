@@ -25,11 +25,18 @@ def generate(root: Path, ffmpeg: str, full: bool = True) -> list[dict]:
         art(live / f'channel-{i}.png', name, (400,225), seed=i)
         playlist += [f'#EXTINF:-1 tvg-id="{cid}" tvg-name="{name}" tvg-logo="http://127.0.0.1:32511/channel-{i}.png" group-title="Original Synthetic",{name}',
                      'http://127.0.0.1:32511/live.m3u8']
-        for hour in range(24*14):
-            start = anchor + timedelta(hours=hour)
+        slots = []
+        for day in range(14):
+            # One channel has short fixed guide slots for the campaign's
+            # first two days, allowing a real completed recording in seconds.
+            step = 1 if i == 1 and day < 2 else 60
+            for minute in range(0, 24 * 60, step):
+                start = anchor + timedelta(days=day, minutes=minute)
+                slots.append((start, start + timedelta(minutes=step)))
+        for number, (start, end) in enumerate(slots, 1):
             programme = ET.SubElement(xml,'programme',{'channel':cid,'start':start.strftime('%Y%m%d%H%M%S +0000'),
-                'stop':(start+timedelta(hours=1)).strftime('%Y%m%d%H%M%S +0000')})
-            ET.SubElement(programme,'title',{'lang':'en'}).text = f'{name}: Session {hour+1}'
+                'stop':end.strftime('%Y%m%d%H%M%S +0000')})
+            ET.SubElement(programme,'title',{'lang':'en'}).text = f'{name}: Session {number}'
             ET.SubElement(programme,'desc').text = 'Original generated picture and synthesized tone. No external content.'
             ET.SubElement(programme,'category').text = ['Education','Science','Music'][i-1]
         manifest.append({'kind':'live-channel','title':name,'path':f'Live/channel-{i}.png',
