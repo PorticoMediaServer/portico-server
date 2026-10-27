@@ -1,4 +1,4 @@
-import {useLayoutEffect, useState} from 'react';
+import {useLayoutEffect, useRef, useState} from 'react';
 import {screenLifetime, type ScreenContext} from '../detail/context';
 import {createRecordingsController, type RecordingsController, type RecordingsView} from './recordings-controller';
 
@@ -22,9 +22,14 @@ export type RecordingsLease = {
  * so an effect replay cannot revive a disposed controller or its private facts. */
 export function useRecordingsLease(context: ScreenContext | undefined, view: RecordingsView, attempt: number, routeCurrent: () => boolean): RecordingsLease | undefined {
   const [published, publish] = useState<RecordingsLease>();
+  // The route witness belongs to this exact opening: keep the one this effect ran
+  // with instead of recreating the controller whenever the route hands a new closure.
+  const route = useRef(routeCurrent);
+  useLayoutEffect(() => {route.current = routeCurrent;});
   useLayoutEffect(() => {
     if (!context || !context.isCurrent()) return;
     let held: RecordingsLease | undefined;
+    const routeCurrent = route.current;
     const current = () => !!held && held.live && context.isCurrent() && routeCurrent();
     const screen: ScreenContext = {...context, isCurrent: current};
     const life = screenLifetime(screen);

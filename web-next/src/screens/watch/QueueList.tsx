@@ -1,4 +1,4 @@
-import {useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore} from 'react';
+import {useCallback, useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore} from 'react';
 import {defaultI18n} from '@i18n';
 import type {WebQueueListEntry, WebQueueListPort} from '../../platform/playback';
 import {Icon} from '../../kit/Icon';
@@ -22,11 +22,15 @@ export function WatchQueueList({port, context}: {port: WebQueueListPort; context
     return () => {if (active.current === held) active.current = undefined;held.life.abort();};
   }, [port]);
   const held = opening?.port === port && active.current === opening && !opening.life.signal.aborted ? opening : undefined;
-  const close = () => {
+  const closePort = context.close;
+  const close = useCallback(() => {
     if (!held || active.current !== held || held.life.signal.aborted) return;
-    active.current = undefined;held.life.abort();context.close();
-  };
-  useEffect(() => { if (!snapshot.current) close(); }, [snapshot.current, close]);
+    active.current = undefined;held.life.abort();closePort();
+  }, [held, closePort]);
+  // The drawn snapshot's own current flag is the admission; the row data around it
+  // changes constantly and must not re-run this close.
+  const queueCurrent = snapshot.current;
+  useEffect(() => { if (!queueCurrent) close(); }, [queueCurrent, close]);
   const name = (row: WebQueueListEntry) => row.title ?? (row.pending ? t('next.states.stillLoading') : t('player.queueUnavailable'));
   // A refusal is already drawn from the port's own snapshot; the command is never repeated here.
   const act = (run: () => Promise<void>) => {

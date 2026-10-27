@@ -93,12 +93,13 @@ export function SavedScreen(bindings: SavedBindings) {
   // phase the borrowed summary was left in — an abandoned, aborted load included —
   // carries its own abort, and a stable dependency set keeps it from looping. It
   // never adopts an older request and never disposes the shared summary.
+  const reportSummaryError = effects.reportError;
   useEffect(() => {
     if (route.view !== 'home' || !runtime.operations.current) return;
     const controller = new AbortController();
-    void runtime.summary.refresh(controller.signal).catch(error => {if (!controller.signal.aborted) effects.reportError(error);});
+    void runtime.summary.refresh(controller.signal).catch(error => {if (!controller.signal.aborted) reportSummaryError(error);});
     return () => controller.abort();
-  }, [runtime, route.view, effects.reportError]);
+  }, [runtime, route.view, reportSummaryError]);
   const refresh = useCallback(async (context?: {signal?: AbortSignal; settle?: () => Promise<void>}) => {
     if (!runtime.operations.current || readerRoute.view === 'downloads') return;
     if (['collections', 'views', 'history', 'resource'].includes(readerRoute.view)) await Promise.all([runtime.personal.revalidate(context), readerRoute.view === 'collections' || readerRoute.view === 'views' ? runtime.summary.refresh(context?.signal) : Promise.resolve()]);
@@ -156,7 +157,7 @@ function SavedLists(bindings: SavedViewBindings & {onCreate: () => void}) {
   const routeKey = retryRoute ? JSON.stringify(retryRoute) : '';
   const ticket = useMemo<SavedRetryTicket | undefined>(() => retryRoute ? {
     runtime, route: retryRoute, routeKey, posters: runtime.posters, squares: runtime.squares, saved: runtime.saved, reportError: effects.reportError,
-  } : undefined, [runtime, routeKey, runtime.posters, runtime.squares, runtime.saved, effects.reportError]);
+  } : undefined, [runtime, retryRoute, routeKey, effects.reportError]);
   const [published, setPublished] = useState<SavedRetryAdmission | undefined>(undefined), [retryBusy, setRetryBusy] = useState(false);
   // A fresh layout-owned admission per exact ticket. Strict setup→cleanup→setup
   // publishes a live admission for this render; an old callback captured the old

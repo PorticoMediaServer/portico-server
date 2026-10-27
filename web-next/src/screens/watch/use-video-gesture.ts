@@ -16,7 +16,12 @@ export function useVideoGesture(binding: WatchBindings | undefined, snapshot: We
   const fence = snapshot?.fence, authority = snapshot?.authority;
   const key = fence && snapshot ? JSON.stringify([fenceKey(fence), snapshot.playback.intentId, snapshot.playback.playbackRun]) : '';
   const ready = allowed && !!binding && !!fence && !!snapshot && localVideoSurfaceActive(snapshot) && !snapshot.dock.remote;
+  // The gesture owner keeps the snapshot and fence of the commit that admitted it;
+  // re-creating it on every render's fresh snapshot would drop live gestures.
+  const admitted = useRef({snapshot, fence});
+  useLayoutEffect(() => {admitted.current = {snapshot, fence};});
   useLayoutEffect(() => {
+    const {snapshot, fence} = admitted.current;
     if (!ready || !binding || !fence || !snapshot || !localCurrent()) return;
     const runtime = binding.runtime, original = snapshot;
     let owner: VideoGestureOwner;

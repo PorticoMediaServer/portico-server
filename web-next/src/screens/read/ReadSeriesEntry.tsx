@@ -35,14 +35,19 @@ export function ReadSeriesEntry({libraryId, seriesId}: {libraryId: string; serie
 }
 function BoundSeries({captured, libraryId, seriesId}: {captured: Captured; libraryId: string; seriesId: string}) {
   const [resources, setResources] = useState<Resources>(), [retry, setRetry] = useState(0), [retired, setRetired] = useState(false);
+  // The opening reports through this commit's shell binding; a later binding identity
+  // must not replay the committed cursor.
+  const shellEffects = useRef(captured.binding.home.effects);
+  useLayoutEffect(() => {shellEffects.current = captured.binding.home.effects;});
   // A committed opening owns the bindings and the cursor: a strict replay publishes the new pair
   // in the same commit that retires the old one, so a disposed owner is never left on screen.
   useLayoutEffect(() => {
+    const effects = shellEffects.current;
     const bindings = createReadBindings(captured.context), rows = createReadingSeriesCollection(bindings.client, libraryId, seriesId);
     setRetired(false);
     const off = bindings.authority.subscribe(() => {setRetired(true); setResources(undefined);});
     setResources({id: crypto.randomUUID(), context: captured.context, artwork: captured.context.artwork, bindings, comic: captured.context.facts.identity.libraries.find(library => library.id === libraryId)?.kind === 'comic', libraryId, seriesId, rows,
-      reportError: error => {if (bindings.authority.isCurrent()) captured.binding.home.effects.reportError(error);}});
+      reportError: error => {if (bindings.authority.isCurrent()) effects.reportError(error);}});
     return () => {off(); rows.dispose(); void bindings.dispose().catch(() => {});};
   }, [captured.context, libraryId, seriesId, retry]);
   if (retired) return <StateView title={t('next.states.pageFailed')} body={t('next.states.pageFailedBody')} primary={{id: 'retry', label: t('next.states.tryAgain'), onPress: () => setRetry(value => value + 1)}}/>;

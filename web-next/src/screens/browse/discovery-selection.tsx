@@ -1,4 +1,4 @@
-import {useLayoutEffect, useState} from 'react';
+import {useLayoutEffect, useRef, useState} from 'react';
 import type {ContentEntry, ContentProjection, LibraryContentService, LibraryContentSnapshot} from '@core/library-content.ts';
 import type {BrowseSelectionScope} from '@core/selection-model/index.ts';
 import type {WebShellPlaybackRuntime} from '../../platform/playback/runtime';
@@ -79,18 +79,21 @@ export function useDiscoverySelection(input: DiscoverySelectionInput | undefined
   const serverId = input?.principal.serverId, authority = input?.principal.authority, accountId = input?.principal.accountId, profileId = input?.principal.profileId;
   const owners = [context, service, libraryId, view, entityId, serverId, authority, accountId, profileId, metadataFence, playback] as const;
   const current = built && owners.every((owner, index) => owner === built.owners[index]) && owners.length === built.owners.length ? built.selection : undefined;
+  // The effect keeps the input it was admitted with; the explicit owner list below
+  // is its exact dependency set, so a changed screen, viewer or playback owner
+  // rebuilds and the old one is retired.
+  const admittedInput = useRef(input);
+  useLayoutEffect(() => {admittedInput.current = input;});
   useLayoutEffect(() => {
-    if (!input) {setBuilt(undefined); return;}
-    const captured = input, capturedOwners = [...owners];
+    const captured = admittedInput.current;
+    if (!captured) {setBuilt(undefined); return;}
+    const capturedOwners = [context, service, libraryId, view, entityId, serverId, authority, accountId, profileId, metadataFence, playback];
     const selection = createCatalogueDocumentSelection(captured.context,
       discoveryDocumentSource({service: captured.service, route: captured.route, isCurrent: () => captured.context.isCurrent()}),
       captured.principal, captured.metadataFence, captured.playback);
     selection.start();
     setBuilt({owners: capturedOwners, selection});
     return () => {selection.dispose(); setBuilt(held => held?.selection === selection ? undefined : held);};
-    // The owner list is the effect's exact input set; it is spread so a changed
-    // screen, viewer or playback owner rebuilds and the old one is retired.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, owners);
+  }, [context, service, libraryId, view, entityId, serverId, authority, accountId, profileId, metadataFence, playback]);
   return current;
 }

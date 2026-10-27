@@ -387,7 +387,7 @@ function AddSourceLoaded({service, api, serverId, viewerId, open, isCurrent, rep
     nextSourceId.current = sourceId;setCreated(row);setStep('reading');setProfile(undefined);
   };
   /** A refused owner retires this form before Settings hears about it. */
-  const refuse = (error: unknown) => {active.current=false;pending.current=false;lifetime.current++;reportError(error);};
+  const refuse = useCallback((error: unknown) => {active.current=false;pending.current=false;lifetime.current++;reportError(error);}, [reportError]);
   const initializeWizard = () => {
     wizardReader?.retire();
     setStep('what'); setFamily('webdav'); setSourceKind('webdav'); setDraft(emptyDraft); setRclone(emptyRclone); setProgram(undefined); setProviders([]); setConfigView(undefined); setConfigRemote(''); setConfigName(''); setS3(emptyS3); setDrive(emptyDrive); setS3Name(''); setDriveName(''); setS3Tested(undefined); setDriveTested(undefined); setCloud(emptyCloud); setCloudName(''); setCloudTested(undefined); setDriveMode('service'); setOauthClientId(''); setOauthClientSecret(''); setOauthToken(''); setOauthState(''); setOauthPhase('idle'); setOauthAddress(''); setOauthError(''); oauthLease.current = null; oauthGeneration.current++; invalidateS3(); invalidateDrive(); invalidateCloud();
@@ -400,7 +400,11 @@ function AddSourceLoaded({service, api, serverId, viewerId, open, isCurrent, rep
   };
   const updateDraft = (patch: Partial<WebDavDraft>) => {testAttempt.current++;setResult(undefined);setError('');setDraft(current => ({...current, ...patch}));};
   const updateRclone = (patch: Partial<RcloneDraft>) => {testAttempt.current++;setRcloneResult(undefined);setError('');setRclone(current => ({...current, ...patch}));};
-  useLayoutEffect(() => {active.current=open;if(open)initializeWizard();else{retireOAuthCurrentRef.current();lifetime.current++;pending.current=false;setDraft(emptyDraft);setRclone(emptyRclone);setResult(undefined);setRcloneResult(undefined);setError('');}}, [open]);
+  // The opening pass resets with this render's own wizard reader; a later reader
+  // identity must not replay the reset.
+  const initializeWizardNow = useRef(initializeWizard);
+  useLayoutEffect(() => {initializeWizardNow.current = initializeWizard;});
+  useLayoutEffect(() => {active.current=open;if(open)initializeWizardNow.current();else{retireOAuthCurrentRef.current();lifetime.current++;pending.current=false;setDraft(emptyDraft);setRclone(emptyRclone);setResult(undefined);setRcloneResult(undefined);setError('');}}, [open]);
   useEffect(() => () => {active.current=false;lifetime.current++;retireOAuthCurrentRef.current();}, []);
   const test = async () => {
     const guard = attemptGuard();
@@ -894,8 +898,13 @@ function AddSourceLoaded({service, api, serverId, viewerId, open, isCurrent, rep
   useLayoutEffect(() => {
     if (!wizardReader?.current() || !wizardReadState || wizardReadState.kind !== 'failed' || !authFailure(wizardReadState.error)) return;
     wizardReader.retire();refuse(wizardReadState.error);
-  }, [wizardReader, wizardReadState]);
+  }, [wizardReader, wizardReadState, refuse]);
+  // The accepted-read completion keeps the form token, guard and services of the
+  // commit that admitted it; a later render's closures must not move this step.
+  const readingPass = useRef({renderGuard, formToken, libraries, service});
+  useLayoutEffect(() => {readingPass.current = {renderGuard, formToken, libraries, service};});
   useEffect(() => {
+    const {renderGuard, formToken, libraries, service} = readingPass.current;
     if (!wizardReader?.current() || wizardReadState?.kind !== 'saved' || readingHandled.current === wizardReadState) return;
     readingHandled.current = wizardReadState;
     if (!wizardReadState.profile) {setReadingEpoch(value => value + 1);return;}
@@ -1220,8 +1229,9 @@ function ManageSourceLoaded({service, source, api, serverId, viewerId, openSecti
   // The dialog's admission is layout-owned: a replayed mount admits again, and
   // the cleanup retires this exact render synchronously.
   useLayoutEffect(() => {
-    active.current = true;
-    return () => {active.current=false;lifetime.current++;};
+    const activeRef = active, lifetimeRef = lifetime;
+    activeRef.current = true;
+    return () => {activeRef.current=false;lifetimeRef.current++;};
   }, [openingId]);
   const updateDraft = (patch: Partial<WebDavDraft>) => {testAttempt.current++;setResult(undefined);setError('');setDraft(current => ({...current, ...patch}));};
   useEffect(() => {
@@ -1455,8 +1465,8 @@ function ManageRcloneDialog({service, source, isCurrent, reportError, onClose, o
   useLayoutEffect(() => {setBusy(false);}, [lease]);
   const profileCurrent = useCallback(() => !!lease && lease.live && lease.isCurrent(), [lease]);
   const held = (captured: typeof lease) => () => {try {return !!captured && captured.live && captured.isCurrent();} catch {return false;}};
-  const retire = () => {if (lease) lease.live = false;pending.current = false;};
-  const refuse = (error: unknown) => {if (!held(lease)()) return;retire();lease?.reportError(error);};
+  const retire = useCallback(() => {if (lease) lease.live = false;pending.current = false;}, [lease]);
+  const refuse = useCallback((error: unknown) => {if (!held(lease)()) return;retire();lease?.reportError(error);}, [lease, retire]);
   const stillListed = (captured: typeof lease) => !!captured && held(captured)() && service.getSnapshot().sources.some(row => row.id === captured.sourceId && row.generation === captured.generation);
   const updateDraft = (patch: Partial<RcloneDraft>) => {testAttempt.current++;setResult(undefined);setError('');setDraft(current => ({...current, ...patch}));};
   useEffect(() => {
@@ -1467,7 +1477,7 @@ function ManageRcloneDialog({service, source, isCurrent, reportError, onClose, o
     service.rcloneProgram().then(next => {if (guard()) setProgram(next);}).catch(value => {
       if (guard() && authFailure(value)) {refuse(value);}
     });
-  }, [service, source.id, source.generation, isCurrent, lease]);
+  }, [service, source.id, source.generation, isCurrent, lease, refuse]);
   const test = async () => {
     const guard = held(lease);
     if (pending.current || !guard()) return;

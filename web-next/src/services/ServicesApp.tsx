@@ -226,7 +226,12 @@ function ClaimApprovalRoute({account,bootstrap}:{account:ServicesAccount;bootstr
    settle(approvalTerminal(error)?{state:'invalid',opening:target,attempt:own}:{state:'error',opening:target,attempt:own,error,retryAt:approvalDeadline(error)});
   });
  };
+  // The opening keeps this commit's session identity and launcher; a later re-render's
+  // new closures must not replace the approval it already started.
+  const capture=useRef({session,launch});
+  useLayoutEffect(()=>{capture.current={session,launch};});
  useLayoutEffect(()=>{
+  const {session,launch}=capture.current, ticketRef=ticket;
   if(!scope||!session)return;
   const next:ApprovalOpening={scope,account,bootstrap,identity:{accountId:session.account.id,familyId:session.familyId,accessToken:session.accessToken},controller:new AbortController(),renewing:false,renewed:false,alive:true};
   opening.current=next;
@@ -244,7 +249,7 @@ function ClaimApprovalRoute({account,bootstrap}:{account:ServicesAccount;bootstr
   launch(next);
   return()=>{
    release();
-   ++ticket.current;
+   ++ticketRef.current;
    next.alive=false;
    next.controller.abort();
    if(opening.current===next)opening.current=undefined;

@@ -120,13 +120,14 @@ export function ChildRouteError({error, reset}: ErrorComponentProps) {
   const live = useRef<Receipt | undefined>(undefined);
   useLayoutEffect(() => {
     const receipt: Receipt = {facts, live: {current: true}, pending: {current: false}};
+    const receiptLive = receipt.live, receiptPending = receipt.pending;
     live.current = receipt;
     setPublished(receipt);
     return () => {
       // Dead and detached before its pending token is cleared: an old completion cannot publish.
-      receipt.live.current = false;
+      receiptLive.current = false;
       if (live.current === receipt) live.current = undefined;
-      receipt.pending.current = false;
+      receiptPending.current = false;
     };
   }, [facts]);
   const held = published?.facts === facts ? published : undefined;

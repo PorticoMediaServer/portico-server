@@ -1,5 +1,5 @@
 import {ReadGroupSavedAction} from './ReadGroupSavedAction';
-import {useEffect, useRef, useState, useSyncExternalStore, type ReactNode} from 'react';
+import {useEffect, useRef, useState, useSyncExternalStore, type ReactNode, useLayoutEffect} from 'react';
 import {calendarDate, defaultI18n} from '@i18n';
 import type {ReadingPeriodicalType, ReadingPeriodicalIssue, ReadingYearChoice, ReadingDayChoice} from '@portico/client-core';
 import {useProtectedWebScreenContext} from '../../route-registry-view';
@@ -34,10 +34,15 @@ function BoundPeriodicals({captured, libraryId, kind, seriesId}: {captured: Capt
   const [dayFact, setDayFact] = useState<Readonly<{context: Captured['context']; month: string; choices: readonly ReadingDayChoice[]}>>();
   const [yearFact, setYearFact] = useState<Readonly<{context: Captured['context']; choices: readonly ReadingYearChoice[]}>>();
   const [resources, setResources] = useState<Resources>(), [retry, setRetry] = useState(0), [retired, setRetired] = useState(false);
+  // The opening reports through this commit's shell binding; a later binding identity
+  // must not replay the committed periodical cursor.
+  const shellEffects = useRef(captured.binding.home.effects);
+  useLayoutEffect(() => {shellEffects.current = captured.binding.home.effects;});
   useEffect(() => {
     let active = true;
+    const effects = shellEffects.current;
     const bindings = createReadBindings(captured.context);
-    const common: Common = {context: captured.context, bindings, libraryId, kind, issueDate: issueDate || undefined, year: year || undefined, month: month || undefined, reportError: error => {if (bindings.authority.isCurrent()) captured.binding.home.effects.reportError(error);}};
+    const common: Common = {context: captured.context, bindings, libraryId, kind, issueDate: issueDate || undefined, year: year || undefined, month: month || undefined, reportError: error => {if (bindings.authority.isCurrent()) effects.reportError(error);}};
     const next: Resources = seriesId ? {...common, mode: 'issues', seriesId, pages: createReadingPeriodicalIssuesCollection(bindings.client, libraryId, seriesId, kind, issueDate || undefined, year || undefined, choices => {if (active && bindings.authority.isCurrent()) setYearFact({context: captured.context, choices});}, month || undefined, (actualMonth, choices, latestDate) => {
         if (!active || !bindings.authority.isCurrent()) return;
         if (actualMonth) setDayFact({context: captured.context, month: actualMonth, choices});

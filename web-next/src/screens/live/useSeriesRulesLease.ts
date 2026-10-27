@@ -1,4 +1,4 @@
-import {useLayoutEffect, useState} from 'react';
+import {useLayoutEffect, useRef, useState} from 'react';
 import {defaultI18n} from '@i18n';
 import type {ScreenContext} from '../detail/context';
 import {createSeriesRulesBindings, type SeriesRulesBindings} from './series-rules-bindings';
@@ -18,7 +18,12 @@ export type SeriesRulesLease = {
  * binding before its cleanup. */
 export function useSeriesRulesLease(context: ScreenContext | undefined, routeCurrent: () => boolean): SeriesRulesLease | undefined {
   const [published, publish] = useState<SeriesRulesLease>();
+  // The route witness belongs to this exact opening: keep the one this effect ran
+  // with instead of recreating the binding whenever the route hands a new closure.
+  const route = useRef(routeCurrent);
+  useLayoutEffect(() => {route.current = routeCurrent;});
   useLayoutEffect(() => {
+    const routeCurrent = route.current;
     if (!context || !context.isCurrent() || !routeCurrent()) return;
     let held: SeriesRulesLease | undefined;
     const current = () => !!held && held.live && context.isCurrent() && routeCurrent();

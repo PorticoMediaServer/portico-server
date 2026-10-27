@@ -7,8 +7,12 @@ export function HistoryPaint({exit, reduced, scope, children, stagger = true}: {
   const node = useRef<HTMLDivElement>(null);
   const painted = useRef<{node: HTMLDivElement; scope: object} | undefined>(undefined);
   const owned = useRef<{node: HTMLDivElement; animation: Animation; scope: object} | undefined>(undefined);
+  // One admitted exit paints with the cohort fields it was given; only its token
+  // decides whether this pass re-runs.
+  const admitted = useRef(exit);
+  useLayoutEffect(() => {admitted.current = exit;});
   useLayoutEffect(() => {
-    const element = node.current, old = owned.current;
+    const exit = admitted.current, element = node.current, old = owned.current;
     if (!element) return;
     // Read partial paint before cancelling. A new original scope never inherits
     // the old scope's pose or lets its settled completion touch this node.

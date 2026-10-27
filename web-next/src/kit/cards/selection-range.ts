@@ -15,10 +15,14 @@ export function useSelectionRangePreview(selection?: CardSelection, disabled = f
   const [hover, setHover] = useState(false), [entry, setEntry] = useState<Entry | null>(null);
   const committed = useRef<Entry | null>(null);
   const legacyPreview = useRef<{paint: (enabled: boolean) => void; shown: boolean} | null>(null);
+  // A legacy descriptor may publish a new callback every render; the committed
+  // entry keeps the port it was admitted with and the update pass below refreshes it.
+  const admittedPreview = useRef(selection?.onPreview);
+  useLayoutEffect(() => {admittedPreview.current = selection?.onPreview;});
   useLayoutEffect(() => {
     if (!eligible) {const previous = legacyPreview.current; legacyPreview.current = null; if (previous?.shown) previous.paint(false); setHover(false); setEntry(null); return;}
     if (!source && !selection?.active) {const previous = legacyPreview.current; legacyPreview.current = null; if (previous?.shown) previous.paint(false); setHover(false);}
-    const original: Entry = {receipt, legacyPaint: source ? undefined : selection?.onPreview, active: !!selection?.active, live: true, preview: false};
+    const original: Entry = {receipt, legacyPaint: source ? undefined : admittedPreview.current, active: !!selection?.active, live: true, preview: false};
     committed.current = original; setEntry(original);
     const retire = (resetHover: boolean) => {if (!original.live) return; original.live = false; if (committed.current === original) {committed.current = null; if (resetHover) setHover(false);}};
     const off = receipt?.onRetire(() => retire(true));

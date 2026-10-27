@@ -1,4 +1,4 @@
-import {useLayoutEffect, useState} from 'react';
+import {useLayoutEffect, useRef, useState} from 'react';
 import {screenLifetime, type ScreenContext} from '../detail/context';
 import {createRecordedGroupReader, type RecordedGroupReader} from './recorded-group';
 import type {RecordingsSort} from './recordings-controller';
@@ -21,9 +21,14 @@ export type RecordedGroupLease = {
  * abort, so replay cannot reuse a disposed reader or borrow a later context. */
 export function useRecordedGroupLease(context: ScreenContext | undefined, group: string, sort: RecordingsSort, doorCurrent: () => boolean): RecordedGroupLease | undefined {
   const [published, publish] = useState<RecordedGroupLease>();
+  // The door witness belongs to this exact opening: keep the one this effect ran
+  // with instead of recreating the reader whenever the route hands a new closure.
+  const door = useRef(doorCurrent);
+  useLayoutEffect(() => {door.current = doorCurrent;});
   useLayoutEffect(() => {
     if (!context || !context.isCurrent()) return;
     let held: RecordedGroupLease | undefined;
+    const doorCurrent = door.current;
     const current = () => !!held && held.live && context.isCurrent() && doorCurrent();
     const screen: ScreenContext = {...context, isCurrent: current};
     const reader = createRecordedGroupReader(screen, group, sort), playLife = screenLifetime(screen);
