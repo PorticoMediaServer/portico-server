@@ -31,6 +31,14 @@ func TestPressureReopensReadersBeforeCopyAndRetainsItsOwner(t *testing.T) {
 		another(false)
 		t.Fatal("reopening readers lost ownership of the in-flight checkpoint")
 	}
+	if drained := scope.pausePressureReaders(); drained == nil {
+		t.Fatal("copy owner could not reserve the short reset drain")
+	} else if err := waitReaderDrain(ctx, drained); err != nil {
+		t.Fatal(err)
+	}
+	if !scope.stats().AdmissionPaused {
+		t.Fatal("reset did not stop new snapshots from pinning copied WAL")
+	}
 	finish(false)
 	if scope.pressureBackoff() <= 0 {
 		t.Fatal("a failed reset after copying lost its retry backoff")

@@ -149,11 +149,9 @@ const (
 	// clearly not keeping up and a TRUNCATE is worth its cost. Roughly 64 MiB at
 	// the 4 KiB page size this policy uses.
 	CheckpointTruncateFrames = 16000
-	// CheckpointHardFrames is the length past which the quiet period stops being
-	// a reason to wait. Roughly 192 MiB. TRUNCATE stalls writers until readers
-	// drain, which is why it is normally gated on the server being quiet — but a
-	// server that is never quiet is exactly the one whose log grows until the
-	// volume fills, and a stall is recoverable where a full disk is not.
+	// CheckpointHardFrames triggers a bounded drain of overlapping readers even
+	// while foreground browsing continues. Roughly 192 MiB. Copying stays outside
+	// the writer gate, and a reset still requires an unchanged copied log.
 	CheckpointHardFrames = 48000
 	// CheckpointHardFileBytes covers a large retained allocation even after a
 	// writer resets and reuses it with only a handful of current logical frames.
@@ -333,6 +331,13 @@ func checkpoint(ctx context.Context, db *sql.DB, knownWALPath string) (out Check
 	if !hardPressure && (WriteGate().ActiveOrWaiting() || ForegroundWorkActive()) {
 		return out
 	}
+	// A writer in flight already makes a safe reset impossible this pass.
+	// Do not pause readers or charge a failure/backoff for ordinary writer
+	// contention. PASSIVE copying still progresses while that writer runs.
+	if hardPressure && WriteGate().ActiveOrWaiting() {
+		return out
+	}
+	resetDeferred := false
 	if hardPressure && scope != nil {
 		reopen, drained, backoff := scope.pause()
 		if reopen == nil {
@@ -342,7 +347,7 @@ func checkpoint(ctx context.Context, db *sql.DB, knownWALPath string) (out Check
 		// Register immediately: cancellation, error and panic must all resume
 		// normal readers. Failed drains never acquire the writer gate.
 		defer func() {
-			reopen(out.Err == nil && out.Mode == "truncate" && out.Busy == 0)
+			reopen(out.Err == nil && (resetDeferred || out.Mode == "truncate" && out.Busy == 0))
 			out.BackoffMs = scope.pressureBackoff().Milliseconds()
 		}()
 		var drainCancel context.CancelFunc
@@ -372,8 +377,35 @@ func checkpoint(ctx context.Context, db *sql.DB, knownWALPath string) (out Check
 	// TRUNCATE must only reset an already copied log. Its busy timeout bounds
 	// lock waiting, not page copying. A partial pass, or a writer in flight at
 	// the start of that pass, cannot establish a safe reset point.
-	if !copyIdle || out.Busy != 0 || out.Checkpoint != out.LogFrames {
+	generation, idle := WriteGate().checkpointCopyFence()
+	if !copyIdle || !idle || generation != copyFence {
+		resetDeferred = true
 		return out
+	}
+	if out.Busy != 0 || out.Checkpoint != out.LogFrames {
+		return out
+	}
+	if hardPressure && scope != nil {
+		// Readers admitted during copying may still own WAL read marks.
+		// Drain those briefly only after proving there is no new tail to
+		// copy. Never put another copy pass inside this reset window.
+		drained := scope.pausePressureReaders()
+		if drained == nil {
+			out.Err = errors.New("dbwork: checkpoint pressure owner lost")
+			return out
+		}
+		drainCtx, drainCancel := context.WithTimeout(ctx, CheckpointReaderDrainDeadline)
+		drainStart := time.Now()
+		err = waitReaderDrain(drainCtx, drained)
+		out.DrainMs += time.Since(drainStart).Milliseconds()
+		drainCancel()
+		if err != nil {
+			out.Outcome = "reader-timeout"
+			if ctx.Err() != nil {
+				out.Err = ctx.Err()
+			}
+			return out
+		}
 	}
 	gateCtx := ctx
 	if hardPressure {
@@ -383,15 +415,24 @@ func checkpoint(ctx context.Context, db *sql.DB, knownWALPath string) (out Check
 	}
 	release, err := WriteGate().Acquire(gateCtx, ClassMaintenance)
 	if err != nil {
+		if hardPressure && errors.Is(err, context.DeadlineExceeded) && ctx.Err() == nil {
+			// A writer won the gate after our copy/drain checks. That is a
+			// normal deferral, not a failed checkpoint or reader drain.
+			resetDeferred, out.Outcome = true, "writer-busy"
+			return out
+		}
 		out.Err = err
 		return out
 	}
 	defer release()
 	// A writer may have committed between PASSIVE and this acquisition. Even
 	// one new batch means TRUNCATE could copy a new tail under the gate. Let
-	// the next PASSIVE pass copy it instead. Count acquisitions, not delayed
-	// commit notifications: this covers autocommit, rollback and in-flight work.
-	if WriteGate().acquired.Load() != copyFence+1 {
+	// the next PASSIVE pass copy it instead. Count potential writers, not
+	// delayed commit notifications; closed read-only readiness probes do not
+	// change this generation. Autocommit, rollback and in-flight writes do.
+	generation, _ = WriteGate().checkpointCopyFence()
+	if generation != copyFence+1 {
+		resetDeferred = true
 		return out
 	}
 	out.Mode = "truncate"

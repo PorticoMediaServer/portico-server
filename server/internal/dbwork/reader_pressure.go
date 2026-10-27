@@ -79,6 +79,25 @@ func (s *readerScope) resumePressureReaders() {
 	}
 }
 
+// After out-of-gate copying, a short second reader gap lets TRUNCATE reset
+// already copied frames. Reuse the pressure owner, not its old drain deadline;
+// new requests were allowed to proceed for the whole copy pass.
+func (s *readerScope) pausePressureReaders() <-chan struct{} {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.pressure == nil {
+		return nil
+	}
+	s.resume = make(chan struct{})
+	s.drained = make(chan struct{})
+	drained := s.drained
+	if len(s.active) == 0 {
+		close(s.drained)
+		s.drained = nil
+	}
+	return drained
+}
+
 func (s *readerScope) pressureBackoff() time.Duration {
 	s.mu.Lock()
 	defer s.mu.Unlock()

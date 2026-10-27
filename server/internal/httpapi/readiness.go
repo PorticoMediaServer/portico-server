@@ -49,6 +49,11 @@ func (d Dependencies) readiness(ctx context.Context) readinessResult {
 		health = d.Watchdog.Report().State
 	}
 	return readinessState(ctx, d.DB, health, func(probeCtx context.Context) error {
+		// Keep the read-pool availability check as well: a free writer does
+		// not make the API usable when every foreground read slot is pinned.
+		if err := d.DB.PingContext(probeCtx); err != nil {
+			return err
+		}
 		return dbwork.CheckWriteReady(probeCtx, d.DB)
 	})
 }

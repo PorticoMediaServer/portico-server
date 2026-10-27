@@ -155,6 +155,41 @@ func TestReadinessRoutesWithoutDatabase(t *testing.T) {
 	}
 }
 
+func TestReadinessRoutesRefuseExhaustedReadPoolWithFreeWriter(t *testing.T) {
+	db := readinessTestDB(t)
+	mux := readinessTestMux(t, Dependencies{DB: db})
+	var loans []*sql.Conn
+	defer func() {
+		for _, conn := range loans {
+			conn.Close()
+		}
+	}()
+	for range db.Stats().MaxOpenConnections {
+		conn, err := db.Conn(context.Background())
+		if err != nil {
+			t.Fatal(err)
+		}
+		loans = append(loans, conn)
+	}
+	// The writer pool is separate and available, so testing only that path
+	// would incorrectly advertise healthy API reads.
+	if err := dbwork.CheckWriteReady(context.Background(), db); err != nil {
+		t.Fatal(err)
+	}
+	for _, path := range []string{"/health/ready", "/v1/readiness"} {
+		response, _ := readinessRequest(t, mux, path)
+		requireReadinessRefusal(t, response, path)
+	}
+	for _, conn := range loans {
+		conn.Close()
+	}
+	loans = nil
+	for _, path := range []string{"/health/ready", "/v1/readiness"} {
+		response, _ := readinessRequest(t, mux, path)
+		requireReadinessSuccess(t, response, path)
+	}
+}
+
 func TestReadinessRoutesRefuseUnavailableWriter(t *testing.T) {
 	db := readinessTestDB(t)
 	if err := db.Close(); err != nil {

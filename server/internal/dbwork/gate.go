@@ -42,6 +42,10 @@ type Gate struct {
 	byClass     [len(classNames)]gateClassCounters
 	holderClass Class
 	heldSince   time.Time
+	holderProbe bool
+	// Protected by mu. Readiness acquires the real writer but cannot append
+	// frames, so its acquisitions must not invalidate a checkpoint copy fence.
+	writeGeneration uint64
 
 	stuckLogged bool
 	holder      string
@@ -119,6 +123,10 @@ func (g *Gate) Acquire(ctx context.Context, class Class) (func(), error) {
 			g.removeWaiterLocked(class, id)
 			g.grantID = 0
 			g.active = true
+			g.holderProbe, _ = ctx.Value(writerProbeKey{}).(bool)
+			if !g.holderProbe {
+				g.writeGeneration++
+			}
 			if traceHolders() {
 				g.holder = callerStack()
 			} else {
@@ -161,6 +169,7 @@ func (g *Gate) Acquire(ctx context.Context, class Class) (func(), error) {
 						metrics.maxHeld = elapsed
 					}
 					g.active = false
+					g.holderProbe = false
 					g.holderClass, g.heldSince = 0, time.Time{}
 					g.grantID = g.pickWinnerLocked()
 					g.holder = ""
@@ -403,7 +412,7 @@ func (g *Gate) ResetPeak() {
 func (g *Gate) checkpointCopyFence() (uint64, bool) {
 	g.mu.Lock()
 	defer g.mu.Unlock()
-	return g.acquired.Load(), !g.active
+	return g.writeGeneration, !g.active || g.holderProbe
 }
 
 // traceHolders reports whether the gate records who holds it. Capturing a stack
