@@ -26,6 +26,6 @@ Changes from upstream:
   Publication styles and their sanitization/CSP are unchanged; publication
   markup is never consulted for a nonce.
 
-- Opt the Portico adapter into canonical320ms page transforms, physical settle-spring touch release and system/app160ms reduced fading; cancel original motion on view/layout/session retirement. Legacy non-opted-in paginator input remains unchanged.
+- Opt the Portico adapter into canonical320ms page transforms, physical settle-spring touch release and system/app160ms reduced fading; cancel original motion on view/layout/session retirement. Suppress spatial dragging under reduced policy, fade out an already held drag before withdrawing it, and bind each commanded turn to its original caller signal. Original canceled frame/load callbacks cannot adopt a later turn. Legacy non-opted-in paginator input remains unchanged.
 
 The shared installed dependency and immutable dependency seed are unchanged.

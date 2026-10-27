@@ -27,7 +27,7 @@ type Book = {
 };
 type Relocate = {index: number; range: Range; fraction: number; size?: number};
 interface Paginator extends HTMLElement {
-  open(book: Book): void; goTo(target: Navigation): Promise<void>; next(): Promise<void>; prev(): Promise<void>;
+  open(book: Book): void; goTo(target: Navigation): Promise<void>; next(distance?:number,signal?:AbortSignal): Promise<void>; prev(distance?:number,signal?:AbortSignal): Promise<void>; setReducedMotion(reduced:boolean):void;
   setStyles(styles: string): void; render(): void; destroy(): void;
   getContents(): {doc: Document; index: number}[];
 }
@@ -438,16 +438,16 @@ async function mountEpub<P extends EpubDisplayPreferences>(book:Book,mount:Reade
     try{renderer.destroy();}finally{surface.remove();URL.revokeObjectURL(urls.literata);URL.revokeObjectURL(urls.manrope);}};
   signal.addEventListener('abort',dispose,{once:true});
   let system: MediaQueryList | undefined;try{system=renderer.ownerDocument.defaultView?.matchMedia('(prefers-reduced-motion: reduce)');}catch{/* Unknown system policy reduces. */}
-  motionWatch=watchReaderMotion(mount.motion,system,value=>{if(!dead&&!signal.aborted)renderer.toggleAttribute('reduced-motion',value);});
+  motionWatch=watchReaderMotion(mount.motion,system,value=>{if(!dead&&!signal.aborted)renderer.setReducedMotion(value);});
   if(dead||signal.aborted){motionWatch.dispose();throw new ReaderError('closed');}
-  renderer.toggleAttribute('reduced-motion',motionWatch.reduced());
+  renderer.setReducedMotion(motionWatch.reduced());
   const view:ReaderView<P>={
     async navigate(target:ReaderNavigation,callerSignal) {
       current();const task=abortScope([signal,callerSignal]),active=task.signal;
       try {
-      clearSearchMark();
-      if(target.kind==='next')await cancellable(renderer.next(),active);
-      else if(target.kind==='previous')await cancellable(renderer.prev(),active);
+      throwIfAborted(active);clearSearchMark();throwIfAborted(active);
+      if(target.kind==='next')await cancellable(renderer.next(undefined,active),active);
+      else if(target.kind==='previous')await cancellable(renderer.prev(undefined,active),active);
       else if(target.kind==='location') {
         if(target.location.format!=='epub')throw new ReaderError('invalid_location');
         const resolved=book.resolveCFI(target.location.cfi);if(!resolved||!book.sections[resolved.index])throw new ReaderError('invalid_location');
@@ -457,7 +457,7 @@ async function mountEpub<P extends EpubDisplayPreferences>(book:Book,mount:Reade
         const sizes=book.sections.map(s=>s.linear==='no'?0:s.size),total=sizes.reduce((a,b)=>a+b,0);let remaining=total*target.value,index=0;
         while(index<sizes.length-1&&remaining>=sizes[index])remaining-=sizes[index++];
         await cancellable(renderer.goTo({index,anchor:sizes[index]?remaining/sizes[index]:0}),active);
-      }current();
+      }throwIfAborted(active);current();
       }finally{task.dispose();}
     },
     async applyPreferences(next,callerSignal){current();throwIfAborted(callerSignal);preferences=next;apply();await new Promise<void>(r=>requestAnimationFrame(()=>r()));current();},

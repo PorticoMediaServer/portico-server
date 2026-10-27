@@ -486,6 +486,9 @@ export class Paginator extends HTMLElement {
     #touchScrolled
     #lastVisibleRange
     #pageMotion
+    #commandTurn
+    #reductionHandoff
+    #gestureDisplacement = 0
     #pageMotionSerial = 0
     #navigationSerial = 0
     #gestureTranslation = 0
@@ -711,18 +714,22 @@ export class Paginator extends HTMLElement {
         }
         this.#transformTarget?.addEventListener('data', this.#transformDataListener)
     }
-    #createView() {
+    #createView(command) {
         this.#cancelPageMotion()
         if (this.#view) {
             this.#view.destroy()
             this.#view.element.remove()
         }
-        this.#view = new View({
+        const view = new View({
             container: this,
-            onExpand: () => this.#scrollToAnchor(this.#anchor),
+            onExpand: () => {
+                if (this.#destroyed || this.#view !== view || command && !command.completed && !this.#commandCurrent(command)) return
+                return this.#scrollToAnchor(this.#anchor)
+            },
         })
-        this.#container.append(this.#view.element)
-        return this.#view
+        this.#view = view
+        this.#container.append(view.element)
+        return view
     }
     #beforeRender({ vertical, rtl, background }) {
         this.#cancelPageMotion()
@@ -872,18 +879,50 @@ export class Paginator extends HTMLElement {
         })
     }
     #cancelPageMotion() {
-        const original = this.#pageMotion
-        this.#pageMotion = undefined
+        const original = this.#pageMotion, handoff = this.#reductionHandoff
+        this.#pageMotion = undefined;this.#reductionHandoff = undefined
         this.#pageMotionSerial++
         this.#touchState = undefined
         if (original) this.#locked = false
-        original?.cancel()
+        original?.cancel();handoff?.motion.cancel()
+        this.#gestureDisplacement = 0
         this.#gestureTranslation = 0
         this.#gestureVelocity = 0
         if (this.#view?.element) {
             this.#view.element.style.transform = ''
             this.#view.element.style.opacity = ''
         }
+    }
+    #commandCurrent(held) {
+        return !this.#destroyed && held?.live && !held.signal?.aborted
+            && this.#commandTurn === held && this.#navigationSerial === held.navigation
+    }
+    setReducedMotion(reduced) {
+        this.toggleAttribute('reduced-motion', reduced)
+        const state = this.#touchState, view = this.#view?.element
+        if (!reduced || !this.#gestureCurrent(state) || !state.dragging || !this.#gestureTranslation || this.#reductionHandoff) return
+        const held = {state, view, motion: undefined}
+        const current = () => !this.#destroyed && this.#reductionHandoff === held
+            && this.#gestureCurrent(state) && this.#view?.element === view
+        const motion = createPageTurnAnimation({from: this.#gestureTranslation, to: 0,
+            offset: this.#container[this.scrollProp], ports: {
+                frame: callback => requestAnimationFrame(callback), cancelFrame: id => cancelAnimationFrame(id), current,
+                reduced: () => true,
+                paint: ({translation, opacity}) => {
+                    if (!current()) return
+                    this.#gestureTranslation = translation
+                    view.style.transform = this.#vertical ? `translate3d(0, ${translation}px, 0)` : `translate3d(${translation}px, 0, 0)`
+                    view.style.opacity = String(opacity)
+                },
+                commit: () => {},
+            }})
+        held.motion = motion;this.#reductionHandoff = held;motion.start()
+        void motion.finished.then(accepted => {
+            if (!accepted || !current()) return
+            this.#reductionHandoff = undefined;this.#gestureTranslation = 0
+            view.style.transform = '';view.style.opacity = ''
+            if (state.release) this.#finishPorticoGesture(state.release)
+        })
     }
     #gestureCurrent(state) {
         return !this.#destroyed && state && this.#touchState === state
@@ -893,11 +932,12 @@ export class Paginator extends HTMLElement {
         const state = this.#touchState
         this.#touchScrolled = false
         if (!this.#gestureCurrent(state) || !state.dragging) return
+        if (this.#reductionHandoff) {state.release = event;return}
         this.#touchState = undefined
         const serial = ++this.#pageMotionSerial, navigation = ++this.#navigationSerial, view = state.view
         if (event.timeStamp - state.t > 80) this.#gestureVelocity = 0
         const originalIndex = this.#index, originalPage = state.page
-        const dir = pageGesture(this.size, this.#gestureTranslation, this.#gestureVelocity, this.#rtl)
+        const dir = pageGesture(this.size, this.#gestureDisplacement, this.#gestureVelocity, this.#rtl)
         const target = Math.max(0, Math.min(this.pages - 1, originalPage + dir))
         this.#locked = true
         void this.#scrollToPage(target, 'snap', true).then(async accepted => {
@@ -920,7 +960,7 @@ export class Paginator extends HTMLElement {
             this.#touchState = {identifier: touch.identifier, x: touch.screenX, y: touch.screenY,
                 startX: touch.screenX, startY: touch.screenY, t: e.timeStamp, vx: 0, vy: 0,
                 view: this.#view?.element, page: this.page, dragging: false}
-            this.#gestureTranslation = 0;this.#gestureVelocity = 0
+            this.#gestureTranslation = 0;this.#gestureDisplacement = 0;this.#gestureVelocity = 0
             return
         }
         const touch = e.changedTouches[0]
@@ -950,7 +990,9 @@ export class Paginator extends HTMLElement {
             const logical = primary * (this.#rtl ? -1 : 1)
             const permitted = logical > 0 ? !this.atStart : !this.atEnd
             if (!permitted) this.#gestureVelocity = 0
-            this.#gestureTranslation = permitted ? Math.max(-this.size, Math.min(this.size, primary)) : 0
+            this.#gestureDisplacement = permitted ? Math.max(-this.size, Math.min(this.size, primary)) : 0
+            if (this.hasAttribute('reduced-motion') || this.#reductionHandoff) return
+            this.#gestureTranslation = this.#gestureDisplacement
             state.view.style.transform = this.#vertical ? `translate3d(0, ${this.#gestureTranslation}px, 0)` : `translate3d(${this.#gestureTranslation}px, 0, 0)`
             return
         }
@@ -1015,7 +1057,8 @@ export class Paginator extends HTMLElement {
         return this.#scrollToPage(Math.floor(offset / this.size) + (this.#rtl ? -1 : 1), reason)
     }
     async #scrollTo(offset, reason, smooth) {
-        const element = this.#container
+        const element = this.#container, command = this.#commandTurn
+        if (command && !this.#commandCurrent(command)) return false
         const { scrollProp, size } = this
         if (element[scrollProp] === offset && !this.#gestureTranslation) {
             this.#scrollBounds = [offset, this.atStart ? 0 : size, this.atEnd ? 0 : size]
@@ -1033,6 +1076,7 @@ export class Paginator extends HTMLElement {
             previous?.cancel()
             const current = () => !this.#destroyed && this.#view?.element === view
                 && serial === this.#pageMotionSerial && this.#pageMotion === turn
+                && (!command || this.#commandCurrent(command))
             const turn = createPageTurnAnimation({from: this.#gestureTranslation, to: -(offset - origin), offset,
                 velocity: this.#gestureVelocity, spring: reason === 'snap', ports: {
                     frame: callback => requestAnimationFrame(callback), cancelFrame: id => cancelAnimationFrame(id), current,
@@ -1044,7 +1088,7 @@ export class Paginator extends HTMLElement {
                     },
                     commit: value => {if (current()) element[scrollProp] = value},
                 }})
-            this.#pageMotion = turn;turn.start()
+            this.#pageMotion = turn;if (command) command.motion = turn;turn.start()
             const accepted = await turn.finished
             if (!accepted || !current()) return false
             this.#pageMotion = undefined;this.#gestureTranslation = 0;this.#gestureVelocity = 0
@@ -1124,14 +1168,16 @@ export class Paginator extends HTMLElement {
         }
         this.dispatchEvent(new CustomEvent('relocate', { detail }))
     }
-    async #display(promise) {
+    async #display(promise, command) {
+        const current = () => !this.#destroyed && (!command || this.#commandCurrent(command))
         const { index, src, anchor, onLoad, select } = await promise
-        if (this.#destroyed) return
+        if (!current()) return
         this.#index = index
         const hasFocus = this.#view?.document?.hasFocus()
         if (src) {
-            const view = this.#createView()
+            const view = this.#createView(command)
             const afterLoad = doc => {
+                if (!current()) throw new DOMException('Aborted', 'AbortError')
                 if (doc.head) {
                     const $styleBefore = rendererStyle(doc, this.ownerDocument)
                     doc.head.prepend($styleBefore)
@@ -1141,9 +1187,12 @@ export class Paginator extends HTMLElement {
                 }
                 onLoad?.({ doc, index })
             }
-            const beforeRender = this.#beforeRender.bind(this)
+            const beforeRender = detail => {
+                if (!current()) throw new DOMException('Aborted', 'AbortError')
+                return this.#beforeRender(detail)
+            }
             await view.load(src, afterLoad, beforeRender)
-            if (this.#destroyed) return
+            if (!current()) return
             this.dispatchEvent(new CustomEvent('create-overlayer', {
                 detail: {
                     doc: view.document, index,
@@ -1152,19 +1201,23 @@ export class Paginator extends HTMLElement {
             }))
             this.#view = view
         }
+        if (!current()) return
         await this.scrollToAnchor((typeof anchor === 'function'
             ? anchor(this.#view.document) : anchor) ?? 0, select)
-        if (hasFocus) this.focusView()
+        if (current() && hasFocus) this.focusView()
     }
     #canGoToIndex(index) {
         return index >= 0 && index <= this.sections.length - 1
     }
-    async #goTo({ index, anchor, select}) {
-        if (index === this.#index) await this.#display({ index, anchor, select })
+    async #goTo({ index, anchor, select}, command) {
+        if (this.#destroyed || command && !this.#commandCurrent(command)) return
+        if (index === this.#index) await this.#display({ index, anchor, select }, command)
         else {
             const oldIndex = this.#index
             const onLoad = detail => {
+                if (this.#destroyed || command && !this.#commandCurrent(command)) return
                 this.sections[oldIndex]?.unload?.()
+                if (this.#destroyed || command && !this.#commandCurrent(command)) return
                 this.setStyles(this.#styles)
                 this.dispatchEvent(new CustomEvent('load', { detail }))
             }
@@ -1175,7 +1228,7 @@ export class Paginator extends HTMLElement {
                     console.warn(e)
                     console.warn(new Error(`Failed to load section ${index}`))
                     return {}
-                }))
+                }), command)
         }
     }
     async goTo(target) {
@@ -1219,23 +1272,47 @@ export class Paginator extends HTMLElement {
         for (let index = this.#index + dir; this.#canGoToIndex(index); index += dir)
             if (this.sections[index]?.linear !== 'no') return index
     }
-    async #turnPage(dir, distance) {
+    async #turnPage(dir, distance, signal) {
+        if (signal?.aborted) throw new DOMException('Aborted', 'AbortError')
         if (this.#locked || this.#destroyed) return
         this.#locked = true
         const serial = ++this.#pageMotionSerial, prev = dir === -1
-        const navigation = ++this.#navigationSerial
+        const held = {live: true, signal, navigation: ++this.#navigationSerial, view: this.#view?.element, motion: undefined}
+        this.#commandTurn = held
+        const abort = () => {
+            if (this.#commandTurn !== held || !held.live) return
+            held.live = false;this.#commandTurn = undefined
+            if (this.#pageMotion === held.motion && held.motion) {
+                this.#pageMotion = undefined;this.#pageMotionSerial++
+                held.motion.cancel()
+                if (this.#view?.element === held.view) {
+                    held.view.style.transform = '';held.view.style.opacity = ''
+                    this.#gestureTranslation = 0;this.#gestureDisplacement = 0;this.#gestureVelocity = 0
+                }
+            }
+            if (this.#navigationSerial === held.navigation) this.#locked = false
+        }
+        const add = signal?.addEventListener.bind(signal), remove = signal?.removeEventListener.bind(signal)
+        add?.('abort', abort, {once: true})
+        if (signal?.aborted) abort()
         try {
+            if (!this.#commandCurrent(held)) return
             const shouldGo = await (prev ? this.#scrollPrev(distance) : this.#scrollNext(distance))
-            if (this.#destroyed || serial !== this.#pageMotionSerial) return
-            if (shouldGo) await this.#goTo({index: this.#adjacentIndex(dir), anchor: prev ? () => 1 : () => 0})
+            if (!this.#commandCurrent(held) || serial !== this.#pageMotionSerial) return
+            if (shouldGo) await this.#goTo({index: this.#adjacentIndex(dir), anchor: prev ? () => 1 : () => 0}, held)
+            if (!this.#commandCurrent(held)) return
             if (!this.hasAttribute('portico-motion') && (shouldGo || !this.hasAttribute('animated'))) await wait(100)
-        } finally {if (navigation === this.#navigationSerial) this.#locked = false}
+            if (this.#commandCurrent(held)) held.completed = true
+        } finally {
+            remove?.('abort', abort)
+            if (this.#commandTurn === held) {held.live = false;this.#commandTurn = undefined;this.#locked = false}
+        }
     }
-    prev(distance) {
-        return this.#turnPage(-1, distance)
+    prev(distance, signal) {
+        return this.#turnPage(-1, distance, signal)
     }
-    next(distance) {
-        return this.#turnPage(1, distance)
+    next(distance, signal) {
+        return this.#turnPage(1, distance, signal)
     }
     prevSection() {
         return this.goTo({ index: this.#adjacentIndex(-1) })
