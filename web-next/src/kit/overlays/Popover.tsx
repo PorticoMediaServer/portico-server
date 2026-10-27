@@ -20,7 +20,8 @@ export function Popover({open, onOpenChange, title, children, description, trigg
   const id = useId(), reason = useDismissReason(), focus = useSurfaceFocus(open, initialFocusRef, returnFocusRef ?? anchorRef ?? triggerElement);
   const withinDialog = useInDialog(open, anchorRef ?? triggerElement);
   const present = usePresence(open, 160), motionRef = useSurfaceMotion(open, 'menu');
-  const attachContent = useCallback((element: HTMLDivElement | null) => {motionRef(element);focus.contentRef(element);}, [motionRef, focus.contentRef]);
+  const {contentRef: focusContentRef} = focus;
+  const attachContent = useCallback((element: HTMLDivElement | null) => {motionRef(element);focusContentRef(element);}, [motionRef, focusContentRef]);
   const anchor = useMemo(() => ({current: {
     getBoundingClientRect: () => geometry?.getBoundingClientRect() ?? anchorRef?.current?.getBoundingClientRect() ?? new DOMRect(),
   }}), [anchorRef, geometry]);
