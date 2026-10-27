@@ -1,3 +1,5 @@
+import {watchReaderMotion} from '../motion-policy.ts';
+import {createFixedPageTurn, type FixedGesture} from './fixed-motion.ts';
 import {throwSignalAborted as throwIfAborted} from '../abort.ts';
 import {abortScope,abortReason} from '../abort.ts';
 import type {ReaderDocument,ReaderLocation,ReaderView} from '../ports.ts';
@@ -22,6 +24,10 @@ export async function mountFixed<P extends FixedPreferences>(format:'pdf'|'cbz'|
   const scrollTo=(left:number,top:number,at=gesturePage??page)=>{const pane=foldPanes?.get(at);if(pane){pane.clip.scrollLeft=Math.max(0,left);pane.clip.scrollTop=Math.max(0,top);}else{host.scrollLeft=Math.max(0,left);host.scrollTop=Math.max(0,top);}};
   const surfacesByPage=new Map<number,PageSurface>();
   const lifetime=new AbortController(),scope=abortScope([lifetime.signal,options.signal]),signal=scope.signal;
+  let activePaint: ReturnType<typeof createFixedPageTurn> | undefined;
+  let system: MediaQueryList | undefined;try {system=document.defaultView?.matchMedia('(prefers-reduced-motion: reduce)');} catch { /* Unknown system reduces. */ }
+  // Capture original app/system methods before the first loader or renderer IO.
+  const motionWatch=watchReaderMotion(options.motion,system,()=>activePaint?.changed());
   const direction=():'ltr'|'rtl'|'vertical'=>{const value:FixedPreferences['comicDirection']=preferences.comicDirection;return format!=='pdf'&&value!=='file'?value:fileDirection;};
   const fit=():'auto'|'page'|'width'|'height'|'spread'=>{
     if(zoom?.kind==='fit')return zoom.value;
@@ -34,14 +40,15 @@ export async function mountFixed<P extends FixedPreferences>(format:'pdf'|'cbz'|
     return format==='pdf'&&preferences.pdfView==='automatic'&&zoom?.kind!=='fit'?{...layout,fit:layout.spread?'spread' as const:'page' as const}:layout;
   };
   const clean=()=>{for(const fn of cleanup.splice(0))fn();};
-  async function render(at:number,taskSignal:AbortSignal,anchorOffset?:number):Promise<void>{
+  async function render(at:number,taskSignal:AbortSignal,anchorOffset?:number,movement?:{direction:-1|1;gesture?:FixedGesture}):Promise<void>{
     if(closed)throw new Error('reader_closed');throwIfAborted(taskSignal);
     if(!Number.isInteger(at)||at<0||at>=pageCount)throw new Error('page_invalid');
-    pending?.abort();const controller=new AbortController();pending=controller;const current=++version;
+    pending?.abort();const outgoing=host.firstElementChild as HTMLElement|null,originalPage=page;const controller=new AbortController();pending=controller;const current=++version;
     const task=abortScope([signal,controller.signal,taskSignal]),operation=task.signal,layout=plan(at),next=document.createElement('div'),releases:(()=>void)[]=[],created=new Map<number,PageSurface>();
     // Continuous comics retain only actual adjacent pages. There are no blank
     // estimated-height pages, fabricated content, or whole-archive downloads.
     const vertical=layout.direction==='vertical',visualPages=vertical?Array.from({length:Math.min(pageCount-1,at+2)-Math.max(0,at-1)+1},(_,i)=>Math.max(0,at-1)+i):layout.visualPages;
+    let adoptLayout: (()=>void)|undefined,turn:ReturnType<typeof createFixedPageTurn>|undefined;
     rendering++;
     try{
       const surfaces:PageSurface[]=[];
@@ -82,7 +89,7 @@ export async function mountFixed<P extends FixedPreferences>(format:'pdf'|'cbz'|
         }
         if(!(applied>0))throw new Error('page_invalid');
         if(closed||current!==version)throw new DOMException('','AbortError');
-        clean();cleanup=releases;host.replaceChildren(next);foldPanes=panesById;page=at;scale=applied;fittedScale=fittedCurrent;verticalWidth=undefined;
+        adoptLayout=()=>{clean();throwIfAborted(operation);if(closed||current!==version)throw new DOMException('','AbortError');cleanup=releases;host.replaceChildren(next);foldPanes=panesById;page=at;scale=applied;fittedScale=fittedCurrent;verticalWidth=undefined;};
       }else{
       const width=vertical?(verticalWidth??surfaces[visualPages.indexOf(at)].width):surfaces.reduce((sum,s)=>sum+s.width,0),height=vertical?surfaces.reduce((sum,s)=>sum+s.height*width/s.width,0):Math.max(...surfaces.map(s=>s.height));
       const currentSurface=surfaces[visualPages.indexOf(at)],fitHeight=vertical?currentSurface.height*width/currentSurface.width:height;
@@ -96,31 +103,67 @@ export async function mountFixed<P extends FixedPreferences>(format:'pdf'|'cbz'|
         releases.push(await surface.mount(target,renderScale,operation));throwIfAborted(operation);
       }
       if(closed||current!==version)throw new DOMException('','AbortError');
-      clean();cleanup=releases;host.replaceChildren(next);foldPanes=undefined;page=at;scale=requested;fittedScale=fitted;if(vertical)verticalWidth=width;
+      adoptLayout=()=>{clean();throwIfAborted(operation);if(closed||current!==version)throw new DOMException('','AbortError');cleanup=releases;host.replaceChildren(next);foldPanes=undefined;page=at;scale=requested;fittedScale=fitted;if(vertical)verticalWidth=width;};
       }
+      if(movement&&outgoing&&!vertical&&at!==originalPage){
+        turn=createFixedPageTurn({host,outgoing,incoming:next,width:viewport.width,height:viewport.height,direction:movement.direction,rtl:layout.direction==='rtl',signal:operation,gesture:movement.gesture,
+          current:()=>!closed&&current===version&&pending===controller&&activePaint===turn&&host.parentElement===options.container&&host.firstElementChild===outgoing&&outgoing.parentElement===host,reduced:motionWatch.reduced});
+        activePaint=turn;turn.start();const accepted=await turn.finished;
+        if(activePaint===turn)activePaint=undefined;
+        throwIfAborted(operation);
+        if(!accepted){for(const release of releases.splice(0).reverse())release();for(const surface of created.values())surface.dispose();created.clear();return;}
+      }
+      throwIfAborted(operation);if(closed||current!==version)throw new DOMException('','AbortError');
+      adoptLayout!();
       for(const [index,surface]of created)surfacesByPage.set(index,surface);
       for(const [index,surface]of surfacesByPage)if(!visualPages.includes(index)){surface.dispose();surfacesByPage.delete(index);}
       if(foldPanes){for(const {clip} of foldPanes.values()){clip.scrollLeft=0;clip.scrollTop=0;}}
       else{host.scrollLeft=direction()==='rtl'?host.scrollWidth-host.clientWidth:0;host.scrollTop=vertical?(next.querySelector<HTMLElement>(`[data-reader-page="${at}"]`)!.offsetTop+(anchorOffset??0)):0;}
       location={format,page,progression:pageCount===1?0:page/(pageCount-1)};options.onLocation(location);
-    }catch(error){for(const release of releases.reverse())release();for(const surface of created.values())surface.dispose();throw error;}finally{rendering--;task.dispose();}
+    }catch(error){for(const release of releases.reverse())release();for(const surface of created.values())surface.dispose();throw error;}finally{if(activePaint===turn)activePaint=undefined;if(pending===controller)pending=undefined;rendering--;task.dispose();}
   }
+  type TurnGesture={id:number;page:number;version:number;startX:number;startY:number;x:number;t:number;displacement:number;velocity:number;released:boolean;canceled:boolean;started:boolean;controller:AbortController;listeners:Set<()=>void>};
+  let turnGesture:TurnGesture|undefined;
+  const cancelGesture=()=>{const held=turnGesture;if(!held)return;turnGesture=undefined;held.canceled=true;held.controller.abort();for(const listener of [...held.listeners])listener();};
+  const fitted=()=>zoom?.kind!=='scale'||Math.abs(scale-fittedScale)<=1e-6;
   const pointers=new Map<number,{x:number;y:number}>();let pinch:number|undefined,drag:{x:number;y:number;left:number;top:number}|undefined,tap:{id:number;x:number;y:number;multiple:boolean;moved:boolean}|undefined;
   let pendingTap:{timer:ReturnType<typeof setTimeout>;x:number;y:number;time:number}|undefined;
   const clearTap=()=>{if(pendingTap){clearTimeout(pendingTap.timer);pendingTap=undefined;}};
   const gestureZoom=(next:Zoom)=>{void view.setZoom!(next,signal).then(()=>{if(!closed)options.onSurfaceInput?.({kind:'activity'});}).catch(()=>{});};
   const distance=()=>{const a=[...pointers.values()];return a.length===2?Math.hypot(a[1].x-a[0].x,a[1].y-a[0].y):undefined;};
   const onDown=(event:PointerEvent)=>{
+    if(turnGesture?.released||!turnGesture&&(rendering>0||activePaint))return;
+    if(turnGesture&&pointers.size)cancelGesture();
     // A completed centre tap owns the chrome toggle. Do not wake it on
     // contact first, which would invert the user's hidden/shown intention.
     if(!tap)tap={id:event.pointerId,x:event.clientX,y:event.clientY,multiple:false,moved:false};else{tap.multiple=true;clearTap();options.onSurfaceInput?.({kind:'activity'});}
     // PDF text selection must retain browser handles and native selection semantics.
     if(event.pointerType!=='touch'&&(event.target as Element)?.closest?.('[data-reader-text] span'))return;
+    if(!pointers.size&&event.pointerType==='touch'&&direction()!=='vertical'&&fitted()&&document.getSelection()?.isCollapsed!==false)turnGesture={id:event.pointerId,page,version,startX:event.clientX,startY:event.clientY,x:event.clientX,t:event.timeStamp,displacement:0,velocity:0,released:false,canceled:false,started:false,controller:new AbortController(),listeners:new Set()};
     pointers.set(event.pointerId,{x:event.clientX,y:event.clientY});try{host.setPointerCapture?.(event.pointerId);}catch{/* synthetic pointers */}
     if(pointers.size===1){const hit=(event.target as Element|null)?.closest?.('[data-reader-page]');const clip=hit instanceof HTMLElement?foldPanes?.get(Number(hit.dataset.readerPage))?.clip:undefined;const pane=clip&&clip===hit?clip:undefined;dragPane=pane;gesturePage=pane?Number(pane.dataset.readerPage):undefined;const at=pane?{left:pane.scrollLeft,top:pane.scrollTop}:scrollState();drag={x:event.clientX,y:event.clientY,left:at.left,top:at.top};}else{pinch=distance();drag=undefined;dragPane=undefined;}
   };
   const onMove=(event:PointerEvent)=>{
     if(!pointers.has(event.pointerId))return;
+    const held=turnGesture;
+    if(held?.id===event.pointerId&&(held.version!==version||closed)){cancelGesture();pointers.delete(event.pointerId);drag=undefined;dragPane=undefined;tap=undefined;return;}
+    if(held?.id===event.pointerId&&pointers.size===1){
+      const dx=event.clientX-held.startX,dy=event.clientY-held.startY;
+      if(!held.started&&Math.abs(dy)>Math.abs(dx)&&Math.abs(dy)>=8){cancelGesture();}
+      else if(held.started||Math.abs(dx)>=8){
+        const dt=event.timeStamp-held.t;held.velocity=dt>0?(event.clientX-held.x)/dt*1000:0;held.x=event.clientX;held.t=event.timeStamp;held.displacement=dx;
+        if(tap)tap.moved=true;clearTap();drag=undefined;dragPane=undefined;
+        if(!held.started){
+          const dir:-1|1=dx*(direction()==='rtl'?-1:1)<0?1:-1,target=dir===1?plan().nextPage:plan().previousPage;
+          if(target===undefined||target===null)return;
+          held.started=true;mutation++;
+          const gesture:FixedGesture={read:()=>held,subscribe(listener){held.listeners.add(listener);return()=>held.listeners.delete(listener);}};
+          const task=render(target,held.controller.signal,undefined,{direction:dir,gesture});held.version=version;
+          void task.then(()=>{if(!closed&&turnGesture===held&&held.version===version&&!held.controller.signal.aborted&&page!==held.page)options.onSurfaceInput?.({kind:'turned'});}).catch(()=>{}).finally(()=>{if(turnGesture===held)turnGesture=undefined;});
+        }else for(const listener of [...held.listeners])listener();
+        return;
+      }
+    }
     if(tap?.id===event.pointerId&&Math.hypot(event.clientX-tap.x,event.clientY-tap.y)>=8)tap.moved=true;
     if(pointers.size>1||tap?.moved)options.onSurfaceInput?.({kind:'activity'});
     pointers.set(event.pointerId,{x:event.clientX,y:event.clientY});const nextDistance=distance();
@@ -128,6 +171,11 @@ export async function mountFixed<P extends FixedPreferences>(format:'pdf'|'cbz'|
     else if(drag&&tap?.moved){if(dragPane){dragPane.scrollLeft=Math.max(0,drag.left+drag.x-event.clientX);dragPane.scrollTop=Math.max(0,drag.top+drag.y-event.clientY);}else scrollTo(drag.left+drag.x-event.clientX,drag.top+drag.y-event.clientY);}
   };
   const onUp=(event:PointerEvent)=>{dragPane=undefined;
+    const held=turnGesture;
+    if(held?.id===event.pointerId){
+      if(held.started){held.released=true;held.canceled=event.type!=='pointerup';if(event.timeStamp-held.t>80)held.velocity=0;for(const listener of [...held.listeners])listener();}
+      else turnGesture=undefined;
+    }
     pointers.delete(event.pointerId);pinch=undefined;drag=undefined;if(!pointers.size)gesturePage=undefined;
     if(tap?.id===event.pointerId){
       const candidate=tap;tap=undefined;
@@ -150,14 +198,14 @@ export async function mountFixed<P extends FixedPreferences>(format:'pdf'|'cbz'|
   const onDouble=()=>{gestureZoom(zoom?.kind==='scale'?{kind:'fit',value:'page'}:{kind:'scale',value:Math.min(8,scale*2)});};
   const view:ReaderView<P>={
     async navigate(target,taskSignal){
-      mutation++;clearTap();
+      cancelGesture();mutation++;clearTap();
       let at=page;
       if(target.kind==='next')at=plan().nextPage??page;
       else if(target.kind==='previous')at=plan().previousPage??page;
       else if(target.kind==='progression'){if(!Number.isFinite(target.value)||target.value<0||target.value>1)throw new Error('page_invalid');at=Math.round(target.value*(pageCount-1));}
       else if(target.kind==='location'){if(target.location.format==='epub'||target.location.format!==format)throw new Error('page_invalid');at=target.location.page;}
       else throw new Error('page_invalid');
-      await render(at,taskSignal);
+      await render(at,taskSignal,undefined,at!==page&&direction()!=='vertical'?{direction:at>page?1:-1}:undefined);
     },
     async applyPreferences(next,taskSignal){
       throwIfAborted(taskSignal);const own=++mutation,previous=preferences,before=plan(),held=scrollState();preferences=next;
@@ -176,7 +224,7 @@ export async function mountFixed<P extends FixedPreferences>(format:'pdf'|'cbz'|
     getZoom(){return {scale,...zoom?.kind==='scale'?{}:{fit:plan().fit}};},
     canTurnAtFit(){return zoom?.kind!=='scale'||Math.abs(scale-fittedScale)<=1e-6;},
     async pan(position,taskSignal){throwIfAborted(taskSignal);if(closed||!Number.isFinite(position.x)||!Number.isFinite(position.y))throw new Error('pan_invalid');scrollTo(position.x,position.y,page);},
-    dispose(){if(closed)return;closed=true;version++;clearTap();pending?.abort();lifetime.abort();scope.dispose();clean();for(const surface of surfacesByPage.values())surface.dispose();surfacesByPage.clear();paneStyle.remove();host.remove();}
+    dispose(){if(closed)return;closed=true;version++;cancelGesture();clearTap();pending?.abort();motionWatch.dispose();activePaint?.cancel();activePaint=undefined;lifetime.abort();scope.dispose();clean();for(const surface of surfacesByPage.values())surface.dispose();surfacesByPage.clear();paneStyle.remove();host.remove();}
   };
   const onScroll=()=>{
     clearTap();if(closed||rendering||scrolling)return;options.onSurfaceInput?.({kind:'activity'});
