@@ -538,7 +538,14 @@ export class SavedService {
    // Receipt subscribers may replace this read/route or begin a newer quiet
    // read. A committed command settles, but cannot borrow that successor.
    if (!recoveryCurrent()) {settleCommitted(); return;}
-   if (receipt.deleted && selected.view === 'playlist') { for (const pending of this.commands) pending.resolve(); this.commands = []; this.lastFailure = undefined; this.readController?.abort(); this.readGeneration++; this.publish({ phase: 'ready', projection: null, playlist: null, pagination: { cursor: null, history: [], canPrevious: false, next: [] } }); c.resolve(); }
+   if (receipt.deleted && selected.view === 'playlist') {
+    const predecessor = this.readController;
+    if (this.readController === predecessor) this.readController = undefined;
+    predecessor?.abort();
+    if (!recoveryCurrent()) {settleCommitted(); return;}
+    for (const pending of this.commands) pending.resolve(); this.commands = []; this.lastFailure = undefined;
+    this.readGeneration++; this.publish({ phase: 'ready', projection: null, playlist: null, pagination: { cursor: null, history: [], canPrevious: false, next: [] } }); c.resolve();
+   }
    // A list paged further than its first page stays where the viewer is (a removal deep in a playlist).
    else {
     if (deepRecovery) {

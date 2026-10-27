@@ -580,3 +580,43 @@ test(`receipt subscriber ${successorKind} owns its ${deep ? 'deep' : 'first-page
   assert.equal(service.getSnapshot().projection!.sections[0].entries[0]!.id, 'newer');
  } finally {off(); service.dispose();}
 });
+
+for (const successorKind of ['select', 'refresh', 'none'] as const)
+test(`committed DELETE read-abort cleanup preserves ${successorKind === 'none' ? 'ordinary deletion' : `its ${successorKind} successor`}`, async () => {
+ const flush = async () => {for (let i = 0; i < 100; i++) await Promise.resolve();};
+ const pending = deferred(); let initialSignal: AbortSignal | undefined, successor: Promise<void> | undefined;
+ let mode = 'initial', settled = false, aborts = 0, deletes = 0;
+ const heads: Array<{path: string; signal?: AbortSignal}> = [];
+ const service = setup(async (path, method, body, signal) => {
+  if (method === 'DELETE') {
+   deletes++; assert.equal(body.expectedRevision, 0);
+   return {serverId: 'server', viewerFence: 'fence', operationId: body.operationId, playlistId: 'playlist', revision: 1, deleted: true};
+  }
+  if (path.includes('/content')) {
+   if (mode === 'initial') {initialSignal = signal; return projection();}
+   heads.push({path, signal}); return pending.promise;
+  }
+  return resource(mode === 'initial' ? 0 : 1);
+ });
+ try {
+  await service.select({view: 'playlist', playlistId: 'playlist'}); assert(initialSignal); assert.equal(initialSignal.aborted, false);
+  initialSignal.addEventListener('abort', () => {
+   aborts++; if (successorKind === 'none') return;
+   mode = 'successor'; successor = successorKind === 'select' ? service.select({view: 'favorites'}) : service.refresh();
+  }, {once: true});
+  const mutation = service.mutate({action: 'delete'}).then(() => {settled = true;});
+  await flush(); assert.equal(deletes, 1); assert.equal(aborts, 1); assert.equal(settled, true, 'the committed command settles without waiting for a replacement read');
+  if (successorKind === 'none') {
+   await mutation; assert.equal(heads.length, 0); assert.equal(service.getSnapshot().phase, 'ready');
+   assert.equal(service.getSnapshot().projection, null); assert.equal(service.getSnapshot().playlist, null);
+  } else {
+   assert.equal(heads.length, 1); assert(heads[0].signal); assert.equal(heads[0].signal.aborted, false);
+   assert.equal(service.getSnapshot().phase, 'loading', 'old deletion cannot publish ready/null over a held successor');
+   pending.resolve(projection(successorKind === 'select' ? 'favorites' : 'playlist', 1, successorKind === 'select' ? [media('newer')] : [occurrence('newer')]));
+   await Promise.all([mutation, successor]); await flush();
+   assert.equal(heads.length, 1); assert.equal(heads[0].signal.aborted, false); assert.equal(service.getSnapshot().phase, 'ready');
+   assert.equal(service.getSnapshot().route?.view, successorKind === 'select' ? 'favorites' : 'playlist');
+   assert.equal(service.getSnapshot().projection!.sections[0].entries[0]!.id, 'newer');
+  }
+ } finally {service.dispose();}
+});
