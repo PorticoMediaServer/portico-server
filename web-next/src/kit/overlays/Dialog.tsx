@@ -33,7 +33,8 @@ function DesktopDialog({open, onOpenChange, title, headerAction, children, descr
   const portalTarget = useOverlayPortalTarget();
   const id = useId(), reason = useDismissReason(), focus = useSurfaceFocus(open, initialFocusRef, returnFocusRef);
   const present = usePresence(open, 160), contentRef = useSurfaceMotion(open, placement === 'right' ? 'panel' : 'dialog'), scrimRef = useSurfaceMotion(open, 'fade');
-  const attachContent = useCallback((element: HTMLDivElement | null) => {contentRef(element);focus.contentRef(element);}, [contentRef, focus.contentRef]);
+  const {contentRef: focusContentRef} = focus;
+  const attachContent = useCallback((element: HTMLDivElement | null) => {contentRef(element);focusContentRef(element);}, [contentRef, focusContentRef]);
   useOverlayKeys(open, onOpenChange, false, dismissOnBack);
   const change = (value: boolean) => { if (value === open) return; onOpenChange(value, reason.current); reason.current = 'action'; };
   return <RadixDialog.Root open={open} onOpenChange={change} modal>
