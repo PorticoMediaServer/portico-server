@@ -21,15 +21,15 @@ const scope=queueScope({serverId:'server',authority:'local',accountId:'account',
 function makeFence(itemId='item',sourceId='source'):QueuePlaybackFence{return playbackFence({kind:'queue',playback:{scope,run:7},sessionId:'session',generation:2,itemId,entryId:'entry',sourceId});}
 function chaptersWire(later=false){const indexes=later?[101]:[1,2];return{scope:{serverId:'server',libraryId:'library',itemId:'item',sessionId:'session',generation:2,sourceId:'source',viewerFence:'viewer'},revision:'revision',status:'available',reason:null,durationMs:3030000,
   totalCount:101,nextCursor:later?'':'offered-chapters',chapters:indexes.map(index=>({id:`source:${index}`,index,title:`Chapter ${index}`,startMs:(index-1)*30000,endMs:index*30000,action:{id:'seek',positionMs:(index-1)*30000}}))};}
-function lyricsWire(plain=false){
+function lyricsWire(plain=false,empty=false){
   const document={format:plain?'text':'lrc',text:'First\nSecond',lines:[{atMs:plain?null:12000,text:'First'},{atMs:plain?null:15000,text:'Second'}],embeddedOffsetMs:0};
   const resource={id:'lyric',revision:1,scope:'private',canManage:false,deleted:false,language:'en',offsetMs:plain?0:500,format:document.format,digest:'c'.repeat(64),provenance:{origin:'sidecar',providerId:'',label:'Supplied text',rights:''},createdAt:'2026-10-27T00:00:00Z',document};
   const source={id:'source',version:'b'.repeat(64),startMs:10000,durationMs:90000,sourceDurationMs:100000,local:true};
-  return{scope:{serverId:'server',libraryId:'library',itemId:'item',sessionId:'session',sessionGeneration:2,viewerFence:'a'.repeat(64)},sources:[source],source,resources:[resource],selection:{revision:1,resource},canShare:false,providers:{lrclib:false,configured:true,revision:1}};
+  return{scope:{serverId:'server',libraryId:'library',itemId:'item',sessionId:'session',sessionGeneration:2,viewerFence:'a'.repeat(64)},sources:[source],source,resources:[resource],selection:{revision:1,resource:empty?null:resource},canShare:false,providers:{lrclib:false,configured:true,revision:1}};
 }
 function harness({kind='audiobook' as 'music'|'audiobook',lyricsEnabled=true,expanded=true}={}){
   const authority={serverId:'server',authority:'local' as const,accountId:'account',profileId:'profile',epoch:1,viewerFence:'viewer'};
-  const original=makeFence();let current=true,version='1',counter=0,returning=false,failChapters=false,failEdit=false,lyricMode:'lrc'|'text'|'404'|'error'='lrc';
+  const original=makeFence();let current=true,version='1',counter=0,returning=false,failChapters=false,failEdit=false,lyricMode:'lrc'|'text'|'404'|'error'|'empty'='lrc';let badLyricScope=false;
   let editWait:ReturnType<typeof deferred<void>>|undefined;
   let chapterWait:ReturnType<typeof deferred<unknown>>|undefined,lyricWait:ReturnType<typeof deferred<unknown>>|undefined,saveWait:ReturnType<typeof deferred<QueuePlaylistSave>>|undefined;
   let editDispose:(()=>void)|undefined,saveAbort:(()=>void)|undefined,policyWait:ReturnType<typeof deferred<void>>|undefined;
@@ -61,7 +61,7 @@ function harness({kind='audiobook' as 'music'|'audiobook',lyricsEnabled=true,exp
       calls.captures++;const captured=live,capturedSource=source;
       const owns=()=>current&&source===capturedSource&&live.authority===captured.authority&&sameFence(live.fence,fence)&&live.playback.playbackRun===captured.playback.playbackRun&&!live.dock.remote;
       const api={request:async<T,>(path:string,_method?:string,_body?:unknown,signal?:AbortSignal)=>{signal?.throwIfAborted();calls.chapters.push(path);if(failChapters)throw new Error('read_failed');return(chapterWait?await chapterWait.promise:chaptersWire(path.includes('cursor=')))as T;},
-        requestLyrics:async<T,>(_path:string,method?:string,body?:unknown,signal?:AbortSignal)=>{signal?.throwIfAborted();if(method==='PUT'){calls.choices.push(body);selectionRevision++;return (choiceWait?await choiceWait.promise:{revision:selectionRevision,resource:lyricsWire().resources[0]}) as T;}calls.lyrics++;if(lyricMode==='404')throw Object.assign(new Error('empty'),{status:404});if(lyricMode==='error')throw new Error('failed');const wire=lyricsWire(lyricMode==='text');wire.selection.revision=selectionRevision;return(lyricWait?await lyricWait.promise:wire)as T;}};
+        requestLyrics:async<T,>(_path:string,method?:string,body?:unknown,signal?:AbortSignal)=>{signal?.throwIfAborted();if(method==='PUT'){calls.choices.push(body);selectionRevision++;return (choiceWait?await choiceWait.promise:{revision:selectionRevision,resource:lyricsWire().resources[0]}) as T;}calls.lyrics++;if(lyricMode==='404')throw Object.assign(new Error('empty'),{status:404});if(lyricMode==='error')throw new Error('failed');const wire=lyricsWire(lyricMode==='text',lyricMode==='empty');if(badLyricScope)wire.scope.libraryId='wrong-library';wire.selection.revision=selectionRevision;return(lyricWait?await lyricWait.promise:wire)as T;}};
       return createWebListeningPort({fence,lifetime,target:{libraryId:'library',itemId:'item',sessionId:'session',sessionGeneration:2,sourceId:'source',versionId:'version',playbackRun:4,queueId:'queue',entryId:'entry'},current:owns,
         request:api.request,requestLyrics:api.requestLyrics,chaptersTarget:{libraryId:'library',itemId:'item',sessionId:'session',sessionGeneration:2,sourceId:'source'},
         makeChapters:api=>new PlayerChaptersService({api,scope:{serverId:'server',viewerId:'viewer'},timeoutMs:1000}),
@@ -85,9 +85,9 @@ function harness({kind='audiobook' as 'music'|'audiobook',lyricsEnabled=true,exp
   };
   const owner=()=>new ListeningOwner({runtime,snapshot:live,isCurrent:()=>{onCurrent?.();return current;},lyricsEnabled});
   return{runtime:runtime as WebShellPlaybackRuntime,owner,calls,get snapshot(){return live as WebPlaybackRuntimeSnapshot;},get list(){return list;},
-    failChapters(value:boolean){failChapters=value;},failEdit(value:boolean){failEdit=value;},lyricsMode(value:typeof lyricMode){lyricMode=value;},holdChapters(){return chapterWait=deferred<unknown>();},holdLyrics(){return lyricWait=deferred<unknown>();},releaseEdit(){editWait=undefined;},holdEdit(){return editWait=deferred<void>();},holdChoice(){return choiceWait=deferred<unknown>();},holdSave(){return saveWait=deferred<QueuePlaylistSave>();},
+    badLyricsScope(){badLyricScope=true;},failChapters(value:boolean){failChapters=value;},failEdit(value:boolean){failEdit=value;},lyricsMode(value:typeof lyricMode){lyricMode=value;},holdChapters(){return chapterWait=deferred<unknown>();},holdLyrics(){return lyricWait=deferred<unknown>();},releaseEdit(){editWait=undefined;},holdEdit(){return editWait=deferred<void>();},holdChoice(){return choiceWait=deferred<unknown>();},holdSave(){return saveWait=deferred<QueuePlaylistSave>();},
     retire(){current=false;emit();},remote(){live={...live,dock:{...live.dock,remote:{phase:'playing'}}};emit();},
-    replace(){source={};const fence=makeFence('successor','new-source');live={...live,fence,presentation:{...live.presentation,fence}};emit();},
+    changeRun(){live={...live,playback:{...live.playback,playbackRun:live.playback.playbackRun+1}};emit();},changeAuthority(){live={...live,authority:{...live.authority}};emit();},replace(){source={};const fence=makeFence('successor','new-source');live={...live,fence,presentation:{...live.presentation,fence}};emit();},
     set onEditDispose(fn:(()=>void)|undefined){editDispose=fn;},set onSaveAbort(fn:(()=>void)|undefined){saveAbort=fn;},holdPolicy(){return policyWait=deferred<void>();},set onCurrent(fn:(()=>void)|undefined){onCurrent=fn;},get expanded(){return live.dock.local.expanded;},set onRead(fn:(()=>void)|undefined){runtime.getSnapshot=()=>{if(!returning){returning=true;try{fn?.();}finally{returning=false;}}return live;};},
   };
 }
@@ -295,8 +295,9 @@ test('actual ListeningPanels callbacks consume retired save/editor failures whil
 /** Actual persistent WatchPlayback + actual committed host hook + audiobook
  * composition, using supplied runtime/core transports and inert DOM/media ports.
  * This establishes wiring and original lifetimes, never browser rendering. */
-async function mountedPlayback(kind:'music'|'audiobook'='audiobook'){
-  const f=harness({kind,expanded:false}),events=new EventTarget();
+async function mountedPlayback(kind:'music'|'audiobook'='audiobook',settings?:{role?:'owner'|'admin'|'member';primary?:boolean;manage?:boolean;library?:boolean;facts?:boolean;enabled?:boolean;lyrics?:'lrc'|'text'|'404'|'error'|'empty'}){
+  const f=harness({kind,expanded:false}),events=new EventTarget(),navigations:unknown[]=[];
+  if(settings?.lyrics)f.lyricsMode(settings.lyrics);
   const oldDocument=globalThis.document,oldHTMLElement=globalThis.HTMLElement;globalThis.HTMLElement=class {} as typeof HTMLElement;
   const document:any=Object.assign(events,{fullscreenElement:null,fullscreenEnabled:false,pictureInPictureEnabled:false,activeElement:null});globalThis.document=document;
   const h=createRenderer({element:{isConnected:true,addEventListener(){},removeEventListener(){}}});
@@ -315,7 +316,8 @@ async function mountedPlayback(kind:'music'|'audiobook'='audiobook'){
   const equalizer=await componentModule(new URL('../src/screens/watch/music/EqualizerPanel.tsx',import.meta.url),{...deps,'../../../../../packages/player-core/src/index.ts':{sameFence}});
   const music=await componentModule(new URL('../src/screens/watch/music/NowPlaying.tsx',import.meta.url),{...deps,'./EqualizerPanel':equalizer,'../listening/ListeningPanels':panels,'../../../shell/playback-model':{fenceKey},'./signal':{watchMusicSignal:()=>undefined},'./audio-facts':{readWatchMusicAudioFacts:()=>({})},'../../../kit/media':{ListeningNotice:'ListeningNotice'},'../../../router':{router:{navigate:async()=>{}}},'./now-playing.module.css':css});
   const remote={remote:undefined,airPlayAvailable:false,cast:{available:false}},cast={controller:{getSnapshot:()=>remote,subscribe:()=>()=>{}},dispose(){}};
-  const route={state:{location:{href:'/',pathname:'/'}},subscribe:()=>()=>{}};
+  let navigationWait:ReturnType<typeof deferred<void>>|undefined;
+  const route={state:{location:{href:'/',pathname:'/'}},subscribe:()=>()=>{},navigate:async(destination:unknown)=>{navigations.push(destination);if(navigationWait)await navigationWait.promise;}};
   const playback=await componentModule(new URL('../src/screens/watch/WatchPlayback.tsx',import.meta.url),{
     react:h.react,'@i18n':{defaultI18n},'../../../../packages/player-core/src/index.ts':{sameFence},'./listening/use-listening-owner':hook,'./listening/AudiobookHost':bookHost,'./music/NowPlaying':music,
     './music/expansion-owner':{useMusicExpansion:expansion.useMusicExpansion,MusicExpansionSurface:'MusicExpansionSurface'},
@@ -327,12 +329,18 @@ async function mountedPlayback(kind:'music'|'audiobook'='audiobook'){
     '../../kit/dock':{DockHost:'DockHost',DockNotice:'DockNotice',MediaSurface:'MediaSurface'},'./WatchScreen':{WatchScreen:'WatchScreen'},
     './use-video-gesture':{useVideoGesture:()=>({retain:false,active:false})},'./playback-host.module.css':css,
   });
-  const preferences:any={effective:{'playback.showSyncedLyrics':true},registry:{fields:[]}};
-  const context:any={isCurrent:()=>true,session:()=>({}),api:{},epoch:1,preferences:{subscribe:()=>()=>{},getSnapshot:()=>preferences}};
+  const preferences:any={effective:{'playback.showSyncedLyrics':settings?.enabled??true},registry:{fields:[]}};
+  const viewer={serverId:'server',authority:'local',accountId:'account',profileId:'profile',role:settings?.role??'owner'};
+  let session:any={viewer,sessionFamilyId:'family',deviceId:'device'};
+  const identity:any={viewer,primaryProfile:settings?.primary??true,capabilities:{manageServer:settings?.manage??true},libraries:settings?.library===false?[]:[{id:'library',kind:'music',name:'Music'}]};
+  let predicate:(()=>void)|undefined,sessionRead:(()=>void)|undefined;
+  const makeContext=():any=>({isCurrent:()=>{predicate?.();return true;},session:()=>{sessionRead?.();return session;},api:{},epoch:1,preferences:{subscribe:()=>()=>{},getSnapshot:()=>preferences},
+    ...(settings&&settings.facts!==false?{facts:{identity,preferences,serverName:'Server'}}:{})});
+  let context=makeContext();
   const errors:unknown[]=[];
   const binding:any={runtime:f.runtime,artwork:{foreground:()=>undefined,ambient:()=>undefined},environment:defaultI18n,skips:{back:15,forward:30},reportError:(e:unknown)=>errors.push(e)};
   const show=()=>{let result:any;for(let i=0;i<5;i++)result=tree(h.render(()=>playback.WatchPlayback({binding,context})));return result;};
-  return{f,show,errors,close(){f.retire();globalThis.document=oldDocument;globalThis.HTMLElement=oldHTMLElement;}};
+  return{f,show,errors,navigations,holdNavigation(){return navigationWait=deferred<void>();},get context(){return context;},set onCurrent(value:(()=>void)|undefined){predicate=value;},set onSessionRead(value:(()=>void)|undefined){sessionRead=value;},setSession(value:any){session=value;},replaceContext(){context=makeContext();},close(){f.retire();globalThis.document=oldDocument;globalThis.HTMLElement=oldHTMLElement;}};
 }
 
 test('actual persistent host mounts an audiobook and collapses to its retained dock with one media attachment and no extra capture',async()=>{
@@ -355,4 +363,94 @@ test('actual music dock Lyrics opens the same owned panel, seeks once, and close
     const close=all(ui,'Button').find((node:any)=>node.props.children?.includes?.(defaultI18n.t('action.close')));assert.ok(close);close.props.onClick();h.show();
     assert.equal(h.f.expanded,false);assert.equal(h.f.calls.mounts,1);assert.equal(h.f.calls.captures,initialCaptures);assert.equal(h.f.calls.unmounts,0);
   }finally{h.close();}
+});
+
+
+// FX228 original empty-state Settings leaf. SOURCE controls only, no execution.
+const librarySettingsButton=(ui:any[])=>all(ui,'Button').find((node:any)=>node.props.children?.includes?.(defaultI18n.t('next.browse.librarySettings')));
+async function openEmptyHost(h:Awaited<ReturnType<typeof mountedPlayback>>){
+  h.show();await tick();let ui=h.show();const dock=one(ui,'DockHost').props;
+  dock.binding.onAction({kind:'lyrics',fence:h.f.snapshot.fence});await tick();ui=h.show();await tick();return h.show();
+}
+test('actual persistent empty Lyrics host offers the original owner a Libraries management LIST action',async()=>{
+  const h=await mountedPlayback('music',{lyrics:'404'});try{
+    let ui=await openEmptyHost(h);const action=librarySettingsButton(ui);assert.ok(action);action.props.onClick();await tick();
+    assert.deepEqual(h.navigations,[{to:'/settings',search:{scope:'server',section:'libraries',row:'libraries.list'}}]);
+    assert.equal(h.f.calls.mounts,1);assert.equal(h.f.calls.opens,1);assert.equal(h.errors.length,0);
+    // Ordinary accepted clock/render ticks retain the original owner and offer.
+    const captures=h.f.calls.captures;ui=h.show();assert.ok(librarySettingsButton(ui));assert.equal(h.f.calls.captures,captures);
+  }finally{h.close();}
+});
+for(const denied of [{role:'member'},{role:'admin'},{primary:false},{manage:false},{library:false},{facts:false}] as const)
+  test(`actual empty Lyrics host withholds Settings for ${JSON.stringify(denied)}`,async()=>{
+    const h=await mountedPlayback('music',{lyrics:'404',...denied});try{const ui=await openEmptyHost(h);assert.equal(librarySettingsButton(ui),undefined);assert.deepEqual(h.navigations,[]);}finally{h.close();}
+  });
+for(const lyrics of ['lrc','text','error'] as const)test(`actual ${lyrics} Lyrics host does not offer the empty-state Settings action`,async()=>{
+  const h=await mountedPlayback('music',{lyrics});try{const ui=await openEmptyHost(h);assert.equal(librarySettingsButton(ui),undefined);assert.deepEqual(h.navigations,[]);}finally{h.close();}
+});
+test('actual host saved empty Settings A refuses after panel/context/source retirement while current B works',async()=>{
+  const h=await mountedPlayback('music',{lyrics:'404'});try{
+    let ui=await openEmptyHost(h);const a=librarySettingsButton(ui)!.props.onClick;
+    const upNext=all(ui,'Button').find((node:any)=>node.props.children?.includes?.(defaultI18n.t('next.music.upNext')));assert.ok(upNext);upNext.props.onClick({currentTarget:undefined});h.show();a();await tick();assert.deepEqual(h.navigations,[]);
+    // A fresh original context/layout capture is B; old callback A never adopts it.
+    h.replaceContext();h.show();await tick();ui=h.show();const lyrics=all(ui,'Button').find((node:any)=>node.props.children?.includes?.(defaultI18n.t('player.lyrics')));assert.ok(lyrics);lyrics.props.onClick({currentTarget:undefined});await tick();ui=h.show();
+    const b=librarySettingsButton(ui)!.props.onClick;a();await tick();assert.deepEqual(h.navigations,[]);b();await tick();assert.equal(h.navigations.length,1);
+    h.f.replace();a();b();await tick();assert.equal(h.navigations.length,1);assert.equal(h.errors.length,0);
+  }finally{h.close();}
+});
+test('actual original currentness predicate may replace identity while true; saved empty Settings never adopts it',async()=>{
+  const h=await mountedPlayback('music',{lyrics:'404'});try{
+    const ui=await openEmptyHost(h),a=librarySettingsButton(ui)!.props.onClick;let once=true;
+    h.onCurrent=()=>{if(once){once=false;h.context.facts={...h.context.facts,identity:{...h.context.facts.identity}};}};
+    a();await tick();assert.deepEqual(h.navigations,[]);assert.equal(h.errors.length,0);
+  }finally{h.onCurrent=undefined;h.close();}
+});
+
+test('pending, preference-off and original principal/run/authority replacements never authorize empty Settings A',async()=>{
+  const pending=await mountedPlayback('music',{});const response=pending.f.holdLyrics();try{
+    const ui=await openEmptyHost(pending);assert.equal(librarySettingsButton(ui),undefined);response.resolve(lyricsWire());await tick();
+  }finally{response.resolve(lyricsWire());pending.close();}
+  const off=await mountedPlayback('music',{lyrics:'404',enabled:false});try{off.show();await tick();assert.equal(librarySettingsButton(off.show()),undefined);assert.equal(off.f.calls.lyrics,0);}finally{off.close();}
+  for(const replacement of ['principal','run','authority'] as const){
+    const h=await mountedPlayback('music',{lyrics:'404'});try{
+      const ui=await openEmptyHost(h),a=librarySettingsButton(ui)!.props.onClick;
+      if(replacement==='principal')h.setSession({...h.context.session(),viewer:{...h.context.session().viewer,profileId:'successor'}});
+      else if(replacement==='run')h.f.changeRun();else h.f.changeAuthority();
+      a();await tick();assert.deepEqual(h.navigations,[]);assert.equal(h.errors.length,0);
+    }finally{h.close();}
+  }
+});
+test('original currentness reentry returning true cannot dispatch after authority replacement',async()=>{
+  const h=await mountedPlayback('music',{lyrics:'404'});try{
+    const ui=await openEmptyHost(h),a=librarySettingsButton(ui)!.props.onClick;
+    let once=true;h.onCurrent=()=>{if(once){once=false;h.f.changeAuthority();}};
+    a();await tick();assert.deepEqual(h.navigations,[]);assert.equal(h.errors.length,0);
+  }finally{h.onCurrent=undefined;h.close();}
+});
+test('pending navigation A never reports into replacement panel B; a current navigation failure remains visible',async()=>{
+  const h=await mountedPlayback('music',{lyrics:'404'});try{
+    let ui=await openEmptyHost(h);const pending=h.holdNavigation();librarySettingsButton(ui)!.props.onClick();await tick();
+    const upNext=all(ui,'Button').find((node:any)=>node.props.children?.includes?.(defaultI18n.t('next.music.upNext')))!;upNext.props.onClick({currentTarget:undefined});h.show();
+    pending.reject(new Error('retired_navigation'));await tick();assert.equal(h.errors.length,0);
+  }finally{h.close();}
+  const live=await mountedPlayback('music',{lyrics:'404'});try{
+    const ui=await openEmptyHost(live),pending=live.holdNavigation();librarySettingsButton(ui)!.props.onClick();await tick();pending.reject(new Error('live_navigation'));await tick();assert.equal(live.errors.length,1);
+  }finally{live.close();}
+});
+
+test('the original session read cannot return a stale value and authorize navigation after identity replacement',async()=>{
+  const h=await mountedPlayback('music',{lyrics:'404'});try{
+    const ui=await openEmptyHost(h),a=librarySettingsButton(ui)!.props.onClick;let once=true;
+    h.onSessionRead=()=>{if(once){once=false;h.context.facts={...h.context.facts,identity:{...h.context.facts.identity}};}};
+    a();await tick();assert.deepEqual(h.navigations,[]);assert.equal(h.errors.length,0);
+  }finally{h.onSessionRead=undefined;h.close();}
+});
+
+test('actual empty scoped Lyrics preserves its original facade library; a mismatched supplied scope cannot offer Settings',async()=>{
+  const valid=await mountedPlayback('music',{lyrics:'empty'});try{
+    const ui=await openEmptyHost(valid),action=librarySettingsButton(ui);assert.ok(action);action.props.onClick();await tick();assert.equal(valid.navigations.length,1);
+  }finally{valid.close();}
+  const mismatch=await mountedPlayback('music',{lyrics:'empty'});mismatch.f.badLyricsScope();try{
+    const ui=await openEmptyHost(mismatch);assert.equal(librarySettingsButton(ui),undefined);assert.deepEqual(mismatch.navigations,[]);
+  }finally{mismatch.close();}
 });

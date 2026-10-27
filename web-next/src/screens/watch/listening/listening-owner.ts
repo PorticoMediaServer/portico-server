@@ -3,9 +3,10 @@ import type {PlayerChapter, PlayerChaptersSnapshot} from '@core/player-chapters.
 import type {LyricRevision, LyricsSnapshot} from '@core/lyrics.ts';
 import type {QueuePlaylistSave} from '@core/playback-v1/queue.ts';
 import type {V1QueuePolicyIntent} from '@core/playback-v1/v1-queue-player.ts';
-import type {WebPlaybackRuntimeSnapshot, WebShellPlaybackRuntime, WebListeningPort, WebListeningLifetime, WebQueueListSnapshot,
+import type {WebPlaybackRuntimeSnapshot, WebShellPlaybackRuntime, WebListeningPort, WebListeningLifetime, WebListeningTarget, WebQueueListSnapshot,
   WebQueueEditOpening, WebQueueEditSnapshot, WebQueueEditPage} from '../../../platform/playback';
 import {dispatchWatch, type WatchIntent} from '../model';
+import {captureLibrarySettings, type ListeningSettingsInput, type ListeningLibrarySettings} from './library-settings';
 
 export type ListeningPanel = 'queue' | 'lyrics' | 'chapters' | 'speed' | 'sleep' | 'options';
 type Opening = {token: object; controller: AbortController};
@@ -13,11 +14,11 @@ export type ListeningState = Readonly<{
   current: boolean; dockOpening: object | null; opening: object | null; panelOpening: object | null; panel: ListeningPanel; panelVisible:boolean; focus:Readonly<{current:HTMLElement|null}>|null;
   chapters: PlayerChaptersSnapshot | null; lyrics: LyricsSnapshot | null; queue: WebQueueListSnapshot | null;
   window: WebQueueEditSnapshot | null; anchor?: number; retainedWindow: WebQueueEditPage | null; queueError: boolean;
-  policyBusy: boolean; save: Readonly<{token: object; list: WebQueueListSnapshot; name: string; busy: boolean; error: boolean; progress: QueuePlaylistSave | null}> | null;
+  settingsAvailable: boolean; policyBusy: boolean; save: Readonly<{token: object; list: WebQueueListSnapshot; name: string; busy: boolean; error: boolean; progress: QueuePlaylistSave | null}> | null;
 }>;
 export type ListeningOwnerInput = Readonly<{
   runtime: WebShellPlaybackRuntime; snapshot: WebPlaybackRuntimeSnapshot;
-  isCurrent(): boolean; lyricsEnabled: boolean;
+  isCurrent(): boolean; lyricsEnabled: boolean; settings?: ListeningSettingsInput;
 }>;
 function stale(): never {throw new DOMException('Listening opening retired', 'AbortError');}
 export const listeningSleepChoices = Object.freeze([0, 15, 30, 45, 60, 90]);
@@ -37,6 +38,9 @@ export class ListeningOwner {
   private readonly offs: (() => void)[] = [];
   private dead = false;
   private port?: WebListeningPort;
+  private settings?: ListeningLibrarySettings;
+  private settingsTarget?: WebListeningTarget;
+  private settingsFlight?:object;
   private dockToken?: object;
   private saveOpening?: Opening & {list: WebQueueListSnapshot};
   private saveFlight?: object;
@@ -72,10 +76,12 @@ export class ListeningOwner {
     this.readSleep = runtime.sleepTimer.bind(runtime);this.writeSleep = runtime.setSleepTimer.bind(runtime);
     this.commands = Object.freeze({getSnapshot: this.read, onAction: runtime.onAction.bind(runtime)});
     this.state = Object.freeze({current: true, dockOpening: null, opening: null, panelOpening: null, panel: kind === 'music' ? 'queue' : 'chapters',panelVisible:false,focus:null,
-      chapters: null, lyrics: null, queue: null, window: null, retainedWindow: null, queueError: false, policyBusy: false, save: null});
+      chapters: null, lyrics: null, queue: null, window: null, retainedWindow: null, queueError: false, settingsAvailable:false, policyBusy: false, save: null});
     const capture = runtime.captureListening.bind(runtime);
     const port = capture(this.fence, {signal: this.life.signal, isCurrent: this.current});
     if (this.dead) {port?.dispose();return;}this.port = port;
+    this.settingsTarget=port?Object.freeze({...port.target}):undefined;
+    this.settings=this.kind==='music'&&this.settingsTarget?captureLibrarySettings(input.settings,this.authority,this.settingsTarget.libraryId,{signal:this.life.signal,isCurrent:this.current}):undefined;
     this.keep(runtime.subscribe(this.observe));
     if (port) {
       this.keep(port.chapters.subscribe(this.observe));this.keep(port.lyrics.subscribe(this.observe));
@@ -112,11 +118,13 @@ export class ListeningOwner {
     let rates:readonly number[]=Object.freeze([]),minutes=0;
     try{rates=this.offeredSpeeds(this.fence);minutes=this.readSleep(this.fence)?.minutes??0;}catch{/* An unavailable source offers no options. */}
     if(!this.current())return;
+    const settingsAvailable=this.settings?.isCurrent()===true;
+    if(!this.current())return;
     const optionsChanged=rates.join(',')!==this.rates.join(',')||minutes!==this.minutes;this.rates=rates;this.minutes=minutes;
     const chapters = this.port?.chapters.getSnapshot() ?? null, lyrics = this.port?.lyrics.getSnapshot() ?? null;
     const queue = this.port?.queue?.list.getSnapshot() ?? null;
     if (!this.current()) return;
-    if (optionsChanged || chapters !== this.state.chapters || lyrics !== this.state.lyrics || queue !== this.state.queue) this.publish({chapters, lyrics, queue});
+    if (settingsAvailable!==this.state.settingsAvailable || optionsChanged || chapters !== this.state.chapters || lyrics !== this.state.lyrics || queue !== this.state.queue) this.publish({chapters, lyrics, queue,settingsAvailable});
   };
   /** Detach every mutable slot before invoking an original external cleanup. */
   private detachEditor() {
@@ -129,7 +137,7 @@ export class ListeningOwner {
     return ()=>opening?.controller.abort();
   }
   private detachPanel() {
-    const panel=this.panel;this.panel=undefined;this.operation=undefined;this.editRequest=undefined;
+    const panel=this.panel;this.panel=undefined;this.operation=undefined;this.editRequest=undefined;this.settingsFlight=undefined;
     const save=this.detachSave(),editor=this.detachEditor();
     return ()=>{try{save();}finally{try{panel?.controller.abort();}finally{editor();}}};
   }
@@ -251,6 +259,29 @@ export class ListeningOwner {
     if (direction === 'retry') {if(snapshot.phase==='refresh-required')await this.port.chapters.refresh();else await this.port.chapters.retry();}else if (direction === 'next') await this.port.chapters.next();else await this.port.chapters.previous();
   }
   async lyricsRetry(shown: ListeningState) {if (!this.admit(shown, true) || !this.lyricsOffered() || !this.admit(shown, true)) stale();await this.port!.lyrics.refresh();}
+  private emptyLyrics(lyrics:LyricsSnapshot):boolean {
+    const target=this.settingsTarget,data=lyrics.data;
+    return this.lyricsOffered()&&!!target&&lyrics.generation>0&&!lyrics.busy&&!lyrics.error&&!data?.selection.resource?.document
+      && (!data || data.scope.serverId===this.authority.serverId&&data.scope.libraryId===target.libraryId&&data.scope.itemId===target.itemId
+        &&data.scope.sessionId===target.sessionId&&data.scope.sessionGeneration===target.sessionGeneration&&(!data.source||data.source.id===target.sourceId));
+  }
+  librarySettingsOffered(shown:ListeningState,lyrics:LyricsSnapshot|null){
+    return this.state.current&&this.state.settingsAvailable&&shown===this.state&&shown.panel==='lyrics'&&!!this.view&&shown.opening===this.view.token
+      &&!!this.panel&&shown.panelOpening===this.panel.token&&!!lyrics&&this.emptyLyrics(lyrics);
+  }
+  async openLibrarySettings(shown:ListeningState, lyrics:LyricsSnapshot, reportError:(error:unknown)=>void){
+    const lifetime=this.lifetime(shown,true),view=this.view,panel=this.panel,settings=this.settings,port=this.port,target=this.settingsTarget;
+    const active=()=>!this.dead&&this.state.lyrics===lyrics&&this.emptyLyrics(lyrics)&&this.port===port&&this.settings===settings&&this.settingsTarget===target&&this.view===view&&this.panel===panel&&!!view&&!!panel&&!view.controller.signal.aborted&&!panel.controller.signal.aborted;
+    const empty=()=>shown.panel==='lyrics'&&this.port===port&&!!port&&this.settings===settings&&!!settings&&settings.libraryId===this.settingsTarget?.libraryId
+      && lyrics===this.state.lyrics&&lyrics===port.lyrics.getSnapshot()&&this.emptyLyrics(lyrics);
+    const current=()=>active()&&this.admit(shown,true)&&active()&&empty()&&active()&&this.admit(shown,true)&&active()&&empty()&&active();
+    if(!settings||!current()||this.settingsFlight)return;
+    const token={};this.settingsFlight=token;
+    try{await settings.open({signal:lifetime.signal,isCurrent:current,active});}
+    catch(error){
+      if(this.settingsFlight===token&&current()&&settings.isCurrent()&&active()&&current()&&this.settingsFlight===token)reportError(error);
+    }finally{if(this.settingsFlight===token)this.settingsFlight=undefined;}
+  }
   async chooseLyric(shown: ListeningState, snapshot: LyricsSnapshot, resource: LyricRevision | null) {const lifetime=this.lifetime(shown,true);if(!this.lyricsOffered())stale();await this.port!.lyrics.choose(snapshot,resource,lifetime);}
   async lyric(shown: ListeningState, snapshot: LyricsSnapshot, index: number) {const lifetime = this.lifetime(shown, true);if (!this.lyricsOffered()) stale();await this.port!.lyrics.seek(snapshot, index, lifetime);}
   private editorChanged = (editor: WebQueueEditOpening) => {

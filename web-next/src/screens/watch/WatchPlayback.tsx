@@ -17,6 +17,7 @@ import {WatchStillWatchingPrompt} from './StillWatchingPrompt';
 import {watchStillWatching} from './still-watching';
 import {preferenceValue} from '@core/preferences.ts';
 import {useListeningOwner} from './listening/use-listening-owner';
+import type {ListeningSettingsInput} from './listening/library-settings';
 import {AudiobookHost} from './listening/AudiobookHost';
 import {WatchMusicNowPlaying} from './music/NowPlaying';
 import {MusicExpansionSurface, useMusicExpansion} from './music/expansion-owner';
@@ -191,7 +192,8 @@ export function WatchPlayback({binding, context, surfaces, geometry, live}: Watc
   const preferenceRead=useCallback(()=>context?.preferences?.getSnapshot('web')??context?.facts?.preferences,[context]);
   const listeningPreferences=useSyncExternalStore(preferenceSubscribe,preferenceRead,preferenceRead);
   const lyricsEnabled=!!listeningPreferences&&preferenceValue<boolean>(listeningPreferences,'playback.showSyncedLyrics')===true;
-  const listening=useListeningOwner(binding,snapshot,musicCurrent,lyricsEnabled);
+  const listeningSettings=useMemo<ListeningSettingsInput|undefined>(()=>context?{context,navigate:router.navigate.bind(router)}:undefined,[context]);
+  const listening=useListeningOwner(binding,snapshot,musicCurrent,lyricsEnabled,listeningSettings);
   const listeningControls=useMemo(()=>listening?.state.dockOpening?[...(listening.owner.lyricsOffered()?['lyrics' as const]:[]),...(listening.owner.queueOffered()?['queue' as const]:[]),
     ...(listening.owner.chaptersOffered()?['chapters' as const]:[]),...(listening.owner.speeds().length?['speed' as const]:[]),...(listening.owner.sleepOffered()?['sleep' as const]:[])]:[],[listening]);
   const musicMotion = useMusicExpansion(binding, snapshot, musicCurrent, dockSlot, musicBar, !!remoteState?.remote);
