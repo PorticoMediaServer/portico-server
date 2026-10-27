@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 	"runtime"
 	"strings"
 	"sync"
@@ -182,7 +183,7 @@ func (d Document) resolve(v map[string]any) map[string]any {
 // Validate checks a decoded JSON value against a schema and lists every
 // mismatch (empty when it conforms). Supported: $ref, allOf, oneOf/anyOf,
 // type (single or list), required, properties, closed objects, items, maxItems,
-// minLength/maxLength, numeric bounds, enum, const.
+// minLength/maxLength, pattern, numeric bounds, enum, const.
 func (d Document) Validate(schema map[string]any, value any) []string {
 	var out []string
 	d.validate(schema, value, "$", &out)
@@ -266,6 +267,13 @@ func (d Document) validate(schema map[string]any, v any, at string, out *[]strin
 		if max, ok := schema["maxLength"].(int); ok && n > max {
 			*out = append(*out, fmt.Sprintf("%s: %d code points exceeds %d", at, n, max))
 		}
+		if pattern, ok := schema["pattern"].(string); ok {
+			if re, err := compiledPattern(pattern); err != nil {
+				*out = append(*out, fmt.Sprintf("%s: invalid pattern %q", at, pattern))
+			} else if !re.MatchString(t) {
+				*out = append(*out, fmt.Sprintf("%s: %q does not match %s", at, t, pattern))
+			}
+		}
 	case map[string]any:
 		for _, r := range requiredFields(schema["required"]) {
 			if _, present := t[r]; !present {
@@ -273,8 +281,15 @@ func (d Document) validate(schema map[string]any, v any, at string, out *[]strin
 			}
 		}
 		props, _ := schema["properties"].(map[string]any)
+		required := requiredFields(schema["required"])
 		for k, e := range t {
 			if p, ok := props[k].(map[string]any); ok {
+				if e == nil && !isRequired(required, k) {
+					// An optional member's explicit null is its absent value on
+					// the Go wire type (an omitempty pointer), so it adds no
+					// shape of its own and breaks none.
+					continue
+				}
 				d.validate(p, e, at+"."+k, out)
 			} else if closed, ok := schema["additionalProperties"].(bool); ok && !closed {
 				*out = append(*out, at+": unknown property "+k)
@@ -290,6 +305,32 @@ func (d Document) validate(schema map[string]any, v any, at string, out *[]strin
 			}
 		}
 	}
+}
+
+// patternCache holds every schema pattern the document validator has compiled.
+// Schemas are immutable after load, so one compile per distinct pattern serves
+// every response check.
+var patternCache sync.Map // map[string]*regexp.Regexp
+
+func compiledPattern(pattern string) (*regexp.Regexp, error) {
+	if cached, ok := patternCache.Load(pattern); ok {
+		return cached.(*regexp.Regexp), nil
+	}
+	re, err := regexp.Compile(pattern)
+	if err != nil {
+		return nil, err
+	}
+	actual, _ := patternCache.LoadOrStore(pattern, re)
+	return actual.(*regexp.Regexp), nil
+}
+
+func isRequired(fields []string, name string) bool {
+	for _, field := range fields {
+		if field == name {
+			return true
+		}
+	}
+	return false
 }
 
 func requiredFields(raw any) []string {

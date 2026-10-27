@@ -423,6 +423,13 @@ func (s *Service) CommitNext(ctx context.Context, c Caller, id string, req Commi
 		if err = json.Unmarshal([]byte(p.presentation), &view); err != nil {
 			return err
 		}
+		// The prepared presentation is a private playback_sessions row of its
+		// own. Its generation is the durable media generation the successor
+		// records; the presentation view carries the old session's generation.
+		var mediaGeneration int
+		if err = tx.QueryRowContext(ctx, `SELECT generation FROM playback_sessions WHERE id=? AND account_id=? AND profile_id=? AND state NOT IN('stopped','ended','failed')`, p.media, c.Principal.AccountID, c.Principal.ProfileID).Scan(&mediaGeneration); err != nil {
+			return err
+		}
 		requestJSON, _ := json.Marshal(struct {
 			storedRequest
 			State string `json:"state,omitempty"`
@@ -430,7 +437,7 @@ func (s *Service) CommitNext(ctx context.Context, c Caller, id string, req Commi
 		next := row{id: newID("ps_"), device: c.DeviceID, account: c.Principal.AccountID, profile: c.Principal.ProfileID, authority: c.Principal.Authority,
 			startKey: "commit." + p.token, startDigest: p.digest, kind: "audio", role: "local", state: state, item: p.item, queueID: q.id, entryID: p.entry,
 			request: string(requestJSON), media: p.media, presentation: p.presentation, location: old.location,
-			revision: 1, generation: 1, mediaGeneration: view.Generation, lease: now.Add(s.lease()).UnixMilli(), created: now.UnixMilli(), updated: now.UnixMilli()}
+			revision: 1, generation: 1, mediaGeneration: mediaGeneration, lease: now.Add(s.lease()).UnixMilli(), created: now.UnixMilli(), updated: now.UnixMilli()}
 		if state == "paused" {
 			// The successor inherits the pause: staying paused keeps the old
 			// stamp (or stamps now for a pause that predates the column).
