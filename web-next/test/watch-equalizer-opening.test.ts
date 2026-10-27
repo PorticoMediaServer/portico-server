@@ -17,8 +17,8 @@ const scopeToken = {}, authority = {};
 const fence = (itemId = 'song-1') => ({kind: 'queue' as const, playback: {scope: scopeToken, run: 7}, sessionId: 'session', itemId, sourceId: 'source', entryId: 'entry', generation: 1});
 const equalizer = (enabled = true) => ({enabled, preampDb: 0, bandsDb: Array.from({length: 10}, () => 0)});
 
-async function panelModule() {
-  const h = createRenderer();
+async function panelModule(renderer?: any) {
+  const h = renderer ?? createRenderer();
   const media = {DeviceEqualizer: 'DeviceEqualizer', ListeningNotice: 'ListeningNotice', SignalLine: 'SignalLine', SignalPath: 'SignalPath'};
   const panel = await componentModule(new URL('../src/screens/watch/music/EqualizerPanel.tsx', import.meta.url), {
     react: h.react, '@i18n': {defaultI18n: {t: (key: string) => key}}, '../../../kit/controls': {Button: 'Button'},
@@ -43,18 +43,21 @@ async function mountPanel() {
   const facts = (value: any = state) => ({runtime: runtime as any, port: port as any, authority: value.authority,
     fenceAt: fenceKey(value.fence), presentationAt: fenceKey(value.presentation.fence), run: value.playback.playbackRun, isCurrent, scope});
   const publishedHost: {current: any} = {current: null}, publishedSurface: {current: any} = {current: null};
-  const setup = (value: any = state, reuse?: {host?: any; surface?: any}) => {
-    const hostFacts = reuse?.host?.facts ?? facts(value);
+  const paint = (hostFacts: any, hostReceipt: any, surface: any) => tree(h.render(() => panel.WatchEqualizerPanel({receipt: surface, rendered: surface, published: publishedSurface,
+    host: hostFacts, hostReceipt, publishedHost, runtime: runtime as any, port: port as any, isCurrent, scope,
+    close: () => {calls.close++;}, openSettings: () => {calls.settings++;}})));
+  const setup = (value: any = state, reuse?: {host?: any; surface?: any; facts?: any}) => {
+    const hostFacts = reuse?.facts ?? reuse?.host?.facts ?? facts(value);
     const hostReceipt = reuse?.host ?? {facts: hostFacts, live: true};
     const surface = reuse?.surface ?? {host: hostReceipt, live: true};
     if (!reuse) {publishedHost.current = hostReceipt; publishedSurface.current = surface;}
-    const paint = () => tree(h.render(() => panel.WatchEqualizerPanel({receipt: surface, rendered: surface, published: publishedSurface,
-      host: hostFacts, hostReceipt, publishedHost, runtime: runtime as any, port: port as any, isCurrent, scope,
-      close: () => {calls.close++;}, openSettings: () => {calls.settings++;}})));
-    paint();
-    return {hostFacts, hostReceipt, surface, tree: paint()};
+    paint(hostFacts, hostReceipt, surface);
+    return {hostFacts, hostReceipt, surface, tree: paint(hostFacts, hostReceipt, surface)};
   };
-  return {calls, changes, facts, getter: (fn: () => any) => {getter = fn;}, held, publishedHost, publishedSurface, scope, setHost: (value: boolean) => {host = value;}, setScope: (value: boolean) => {scopeAllowed = value;}, setup, state};
+  const early = (hostFacts: any, hostReceipt: any, surface: any) => tree(h.render(() => panel.WatchEqualizerPanel({receipt: surface, rendered: surface, published: publishedSurface,
+    host: hostFacts, hostReceipt, publishedHost, runtime: runtime as any, port: port as any, isCurrent, scope,
+    close: () => {}, openSettings: () => {}})));
+  return {calls, changes, early, facts, getter: (fn: () => any) => {getter = fn;}, held, publishedHost, publishedSurface, scope, setHost: (value: boolean) => {host = value;}, setScope: (value: boolean) => {scopeAllowed = value;}, setup, state};
 }
 
 test('a live EQ opening writes; an ordinary rerender keeps the same receipts', async () => {
@@ -67,11 +70,13 @@ test('a live EQ opening writes; an ordinary rerender keeps the same receipts', a
   assert.equal(one(again.tree, 'DeviceEqualizer').props.port, eq.port);
 });
 
-test('a same-facts cleanup/setup replay makes the old EQ actions dead and the new live', async () => {
-  const {calls, changes, setup} = await mountPanel();
+test('an explicit same-facts cleanup/setup replay makes the old EQ actions dead and the new live', async () => {
+  const {calls, changes, publishedHost, setup} = await mountPanel();
   const first = setup();
   const oldEq = one(first.tree, 'DeviceEqualizer').props;
-  const second = setup(undefined as any, undefined);
+  // Clean up A exactly, then allocate fresh receipts from the same immutable facts.
+  first.hostReceipt.live = false; first.surface.live = false; publishedHost.current = null;
+  const second = setup(undefined as any, {facts: first.hostFacts});
   assert.notEqual(second.surface, first.surface);
   oldEq.onBack();
   oldEq.onOpenSettings();
@@ -117,7 +122,8 @@ test('an absent device record offers Back while it loads', async () => {
 });
 
 async function nowPlaying() {
-  const {h, media, panel} = await panelModule();
+  const h = createRenderer();
+  const {media, panel} = await panelModule(h);
   const held: {value: any; pending: Promise<void> | undefined} = {value: equalizer(), pending: undefined};
   const port = {getSnapshot: () => held.value, subscribe: () => () => {}, start: () => () => {}, change: async () => {}, reset: async () => {}};
   const queueFence = fence();
@@ -134,7 +140,7 @@ async function nowPlaying() {
     '../queue-neighbours': {watchQueueNeighbours: () => ({})}, './signal': {watchMusicSignal: () => undefined},
     './audio-facts': {readWatchMusicAudioFacts: () => ({})}, '../../../shell/playback-model': {fenceKey},
     '../../../router': {router: {navigate: async () => {}}},
-    './EqualizerPanel': {WatchEqualizerPanel: 'WatchEqualizerPanel', hostAdmit: panel.hostAdmit, surfaceAdmit: panel.surfaceAdmit},
+    './EqualizerPanel': {WatchEqualizerPanel: panel.WatchEqualizerPanel, hostAdmit: panel.hostAdmit, surfaceAdmit: panel.surfaceAdmit},
   });
   const binding = {runtime: runtime as any, artwork: {foreground: () => undefined}, environment: {locale: 'en'}, skips: {back: 10, forward: 30}, reportError: () => {}};
   let expanded = true;
@@ -146,7 +152,7 @@ async function nowPlaying() {
   return {show, snapshot};
 }
 
-const panelHost = (v: any[]) => all(v, 'WatchEqualizerPanel')[0];
+const panelHost = (v: any[]) => all(v, 'DeviceEqualizer')[0];
 const moreButton = (v: any[]) => all(v, 'button').find(node => node.props['aria-label'] === 'player.more');
 const menu = (v: any[]) => one(v, 'Menu').props;
 const openMenu = (show: any) => {let v = show(); moreButton(v)!.props.onClick(); return show();};
@@ -170,13 +176,32 @@ test('EQ A Back then EQ B on the same host: saved A cannot close B', async () =>
   const a = selectEq(show);
   const panelA = panelHost(a);
   assert.ok(panelA);
-  panelA.props.close();
+  panelA.props.onBack();
   const b = selectEq(show);
   const panelB = panelHost(b);
   assert.ok(panelB);
-  panelA.props.close();
+  panelA.props.onBack();
   assert.ok(panelHost(show()), 'saved A Back cannot close B');
-  panelB.props.close();
+  panelB.props.onBack();
+  assert.equal(panelHost(show()), undefined);
+});
+
+test('actual panel under NowPlaying: saved A Back/Settings/report/write cannot touch B', async () => {
+  const {show} = await nowPlaying();
+  const a = selectEq(show);
+  const panelA = panelHost(a);
+  panelA.props.onBack();
+  const b = selectEq(show);
+  const panelB = panelHost(b);
+  assert.ok(panelB);
+  panelA.props.onBack();
+  assert.ok(panelHost(show()), 'saved A Back cannot close B');
+  panelA.props.onOpenSettings();
+  panelA.props.reportError(new Error('late'));
+  await assert.rejects(panelA.props.port.change(equalizer(false)), /retired/i);
+  assert.ok(panelHost(show()), 'B stays');
+  await panelB.props.port.change(equalizer(false));
+  panelB.props.onBack();
   assert.equal(panelHost(show()), undefined);
 });
 
@@ -196,6 +221,5 @@ test('an ordinary position update keeps the actual EQ receipt', async () => {
   const position = {...snapshot, presentation: {...snapshot.presentation, positionSeconds: 42}};
   const after = show(position);
   assert.ok(panelHost(after));
-  assert.equal(panelHost(after).props.receipt, panelHost(opened).props.receipt);
-  assert.equal(panelHost(after).props.hostReceipt, panelHost(opened).props.hostReceipt);
+  assert.equal(panelHost(after).props.port, panelHost(opened).props.port, 'the same receipts keep one guarded port');
 });

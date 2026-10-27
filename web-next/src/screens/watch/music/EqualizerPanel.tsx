@@ -38,10 +38,11 @@ export const hostAdmit = (held: WatchReceipt | null, published: RefObject<WatchR
 };
 /** A More/EQ surface receipt proves its own opening AND the host receipt it was drawn under. */
 export const surfaceAdmit = (held: WatchSurfaceReceipt | null, published: RefObject<WatchSurfaceReceipt | null>,
-  publishedHost: RefObject<WatchReceipt | null>, host: WatchReceipt | null): held is WatchSurfaceReceipt => {
-  // The surface captures the exact host receipt object, not merely the facts it read.
+  publishedHost: RefObject<WatchReceipt | null>, host: WatchReceipt | null, renderFacts: WatchHostFacts | null): held is WatchSurfaceReceipt => {
+  // The surface captures the exact host receipt object, and that receipt must still be THIS
+  // render's facts — a published pair matching itself is not enough after a facts change.
   const local = () => !!held && held.live && published.current === held && !!host && held.host === host
-    && publishedHost.current === host && host.live;
+    && !!renderFacts && host.facts === renderFacts && publishedHost.current === host && host.live;
   if (!held || !local()) return false;
   if (!hostPredicates(host!.facts)) return false;
   if (!local()) return false;
@@ -66,22 +67,22 @@ export function WatchEqualizerPanel({receipt, rendered, published, host, hostRec
   const matches = (value: WatchHostFacts | null) => !!value && value.runtime === runtime && value.port === port
     && value.isCurrent === isCurrent && value.scope === scope;
   const shown = matches(host) && matches(receipt?.host?.facts ?? null) && receipt === rendered && published.current === receipt
-    && hostReceipt === receipt?.host && publishedHost.current === hostReceipt ? receipt : null;
+    && hostReceipt === receipt?.host && publishedHost.current === hostReceipt && hostReceipt.facts === host ? receipt : null;
   const guarded = useMemo<EqualizerPort>(() => ({
     getSnapshot: () => port.getSnapshot(), subscribe: listener => port.subscribe(listener), start: () => port.start(),
     change: async value => {
-      if (!surfaceAdmit(receipt, published, publishedHost, hostReceipt)) throw new DOMException('Equalizer opening retired', 'AbortError');
+      if (!surfaceAdmit(receipt, published, publishedHost, hostReceipt, host)) throw new DOMException('Equalizer opening retired', 'AbortError');
       return port.change(value);
     },
     reset: async () => {
-      if (!surfaceAdmit(receipt, published, publishedHost, hostReceipt)) throw new DOMException('Equalizer opening retired', 'AbortError');
+      if (!surfaceAdmit(receipt, published, publishedHost, hostReceipt, host)) throw new DOMException('Equalizer opening retired', 'AbortError');
       return port.reset();
     },
-  }), [receipt, published, publishedHost, hostReceipt, port]);
+  }), [receipt, published, publishedHost, hostReceipt, host, port]);
   const value = useSyncExternalStore(guarded.subscribe, guarded.getSnapshot, () => null);
-  const back = () => {if (surfaceAdmit(receipt, published, publishedHost, hostReceipt)) close();};
-  const settings = () => {if (surfaceAdmit(receipt, published, publishedHost, hostReceipt)) openSettings();};
-  const report = (failure: unknown) => {if (surfaceAdmit(receipt, published, publishedHost, hostReceipt)) setError(failure);};
+  const back = () => {if (surfaceAdmit(receipt, published, publishedHost, hostReceipt, host)) close();};
+  const settings = () => {if (surfaceAdmit(receipt, published, publishedHost, hostReceipt, host)) openSettings();};
+  const report = (failure: unknown) => {if (surfaceAdmit(receipt, published, publishedHost, hostReceipt, host)) setError(failure);};
   return <div data-watch-equalizer data-layout="panel">
     {shown && hostReceipt && value ? <DeviceEqualizer port={guarded} layout="panel" reportError={report} onBack={back} onOpenSettings={settings} />
       : shown ? <div><p role="status">{t('next.states.loading')}</p><Button size="small" onClick={back}>{t('next.media.eq.backQueue')}</Button></div> : null}

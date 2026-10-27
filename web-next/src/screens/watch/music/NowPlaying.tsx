@@ -105,18 +105,18 @@ export function WatchMusicNowPlaying({binding, snapshot, expanded, onCollapse, p
       {equalizer ? <button ref={moreAnchor} type="button" className={styles.glass} aria-label={t('player.more')} aria-haspopup="menu" aria-expanded={moreOpen}
         onClick={() => {
         if (moreOpen) {
-          if (!surfaceAdmit(moreReceipt, publishedMore, publishedHost, hostReceipt) || !retireMore(moreReceipt)) return;
+          if (!surfaceAdmit(moreReceipt, publishedMore, publishedHost, hostReceipt, facts) || !retireMore(moreReceipt)) return;
           setMoreOpen(false); return;
         }
         if (hostAdmit(hostReceipt, publishedHost, facts)) setMoreOpen(true);
       }}><Icon name="i-more" size={18} /></button> : null}
       {equalizer ? <Menu open={moreOpen && open} onOpenChange={value => {
-        if (!surfaceAdmit(moreReceipt, publishedMore, publishedHost, hostReceipt)) return;
+        if (!surfaceAdmit(moreReceipt, publishedMore, publishedHost, hostReceipt, facts)) return;
         if (!value) retireMore(moreReceipt);
         setMoreOpen(value);
       }} title={t('player.more')} anchorRef={moreAnchor} returnFocusRef={moreAnchor} presentation="anchored" width={280}
         items={[{id: 'equalizer', label: t('next.media.eq.title'), description: t(settings?.enabled === true ? 'next.settings.on' : 'next.settings.off'),
-          onSelect: () => {if (!surfaceAdmit(moreReceipt, publishedMore, publishedHost, hostReceipt) || !retireMore(moreReceipt)) return; setMoreOpen(false); setEqOpen(true);}}]} /> : null}
+          onSelect: () => {if (!surfaceAdmit(moreReceipt, publishedMore, publishedHost, hostReceipt, facts) || !retireMore(moreReceipt)) return; setMoreOpen(false); setEqOpen(true);}}]} /> : null}
       {can('pause') || can('play') ? <button type="button" className={styles.glass} onClick={() => send({kind: presentation.playing ? 'pause' : 'play'})}>
         <Icon name={presentation.playing ? 'i-pause' : 'i-play'} size={18} />{presentation.playing ? t('next.dock.pause') : t('next.dock.play')}</button> : null}
     </header>
@@ -148,7 +148,7 @@ export function WatchMusicNowPlaying({binding, snapshot, expanded, onCollapse, p
     </div>
     <aside className={styles.side} aria-label={eqOpen ? t('next.media.eq.title') : t('next.music.upNext')}>
       {eqOpen && equalizer && facts && hostReceipt && eqReceipt ? <WatchEqualizerPanel receipt={eqReceipt} rendered={eqReceipt} published={publishedEq}
-        host={hostReceipt.facts} hostReceipt={hostReceipt} publishedHost={publishedHost}
+        host={facts} hostReceipt={hostReceipt} publishedHost={publishedHost}
         runtime={binding.runtime} port={equalizer} {...(isCurrent ? {isCurrent} : {})} {...(scope ? {scope} : {})}
         close={() => closeEq(eqReceipt)}
         openSettings={() => {if (!open) return; void router.navigate({to: '/settings', search: () => ({scope: 'account' as const, section: 'music'})});}} />
