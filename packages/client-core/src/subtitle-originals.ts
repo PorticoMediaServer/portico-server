@@ -1,3 +1,4 @@
+import {throwIfAborted} from './abort-lifetime.ts';
 import {routePath, routePattern} from "../../contracts/src/routes.ts";
 
 /** The server's Chinese, Japanese and Korean font for a subtitle drawn on the device (the one burned-in subtitles use). Public; cached by its ETag. */
@@ -106,10 +107,10 @@ const unreadable = () => Object.assign(new Error('The subtitle could not be read
  * every read. A refusal rejects with the HTTP `status`.
  */
 export async function readSubtitleFile(fetcher: typeof fetch, url: string, maxBytes: number, signal: AbortSignal): Promise<SubtitleFile> {
-  signal.throwIfAborted();
+  throwIfAborted(signal);
   if (!Number.isSafeInteger(maxBytes) || maxBytes < 1) throw unreadable();
   const response = await fetcher(url, {signal, credentials: 'omit', cache: 'no-store', redirect: 'error'});
-  if (signal.aborted) { void response.body?.cancel().catch(() => {}); signal.throwIfAborted(); }
+  if (signal.aborted) { void response.body?.cancel().catch(() => {}); throwIfAborted(signal); }
   if (!response.ok) { void response.body?.cancel().catch(() => {}); throw refused(response.status); }
   const declared = response.headers.get('Content-Length');
   if (declared !== null && (!/^\d+$/.test(declared) || Number(declared) > maxBytes)) { void response.body?.cancel().catch(() => {}); throw unreadable(); }
@@ -120,10 +121,10 @@ export async function readSubtitleFile(fetcher: typeof fetch, url: string, maxBy
   const abort = () => { void reader.cancel().catch(() => {}); };
   signal.addEventListener('abort', abort, {once: true});
   try {
-    signal.throwIfAborted();
+    throwIfAborted(signal);
     for (;;) {
       const {done, value} = await reader.read();
-      signal.throwIfAborted();
+      throwIfAborted(signal);
       if (done) break;
       total += value.length;
       if (total > maxBytes) throw unreadable();

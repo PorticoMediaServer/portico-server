@@ -1,3 +1,4 @@
+import {throwIfAborted} from './abort-lifetime.ts';
 import {routeBody} from "../../contracts/src/routes.ts";
 import type {RouteResponse} from "../../contracts/src/routes.ts";
 import {routePath} from "../../contracts/src/routes.ts";
@@ -37,7 +38,7 @@ export async function deleteBackup(transport:BackupTransport,serverId:string,bac
  * (`isRestoreRefusalCode`), which the console maps to catalogue copy. */
 export type RestoreObserver = Readonly<{isCurrent?: () => boolean; onAccepted?: (jobId: string) => void; onProgress?: (document: BackupsDocument) => void}>;
 export async function restoreBackup(transport:BackupTransport,serverId:string,operationId:string,source:RestoreSource,signal?:AbortSignal,passphrase?:string,observer:RestoreObserver={}):Promise<RestoreStaged>{
- const requireCurrent=()=>{signal?.throwIfAborted();if(observer.isCurrent&&!observer.isCurrent())throw new DOMException('The restore scope ended.','AbortError');};
+ const requireCurrent=()=>{throwIfAborted(signal);if(observer.isCurrent&&!observer.isCurrent())throw new DOMException('The restore scope ended.','AbortError');};
  requireCurrent();
  const receipt=parseEnvelope(await transport.request<unknown>(RESTORE_PATH,'POST',{operationId,source,...(passphrase!==undefined?{passphrase}:{})},signal),serverId,v=>{
   if(typeof v!=='object'||v===null||typeof (v as {jobId?:unknown}).jobId!=='string'||!(v as {jobId:string}).jobId||(v as {jobId:string}).jobId.length>128)throw new Error('Invalid restore receipt.');
@@ -109,7 +110,7 @@ export async function waitForBackupCompletion(get:()=>Promise<BackupsDocument>,o
  let expected=options.expectedJobId;
  const started=Date.now();
  for(;;){
-  options.signal?.throwIfAborted();
+  throwIfAborted(options.signal);
   const doc=await get();
   options.onProgress?.(doc);
   expected??=doc.running?.jobId;
@@ -130,7 +131,7 @@ export async function waitForServerAnswer(get:()=>Promise<BackupsDocument>,optio
  const intervalMs=options.intervalMs??2000,timeoutMs=options.timeoutMs??180_000;
  const started=Date.now();
  for(;;){
-  options.signal?.throwIfAborted();
+  throwIfAborted(options.signal);
   try{
    return await get();
   }catch(e){

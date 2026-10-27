@@ -1,3 +1,4 @@
+import {throwIfAborted} from '../abort-lifetime.ts';
 import {decodeGetAdminLibrariesIdSonicAnalysisResponse} from '../../../contracts/src/decoders.ts';
 import {encodedRoutePath} from '../../../contracts/src/routes.ts';
 import type {GetAdminLibrariesIdSonicAnalysisResponse} from '../../../contracts/src/types.ts';
@@ -11,7 +12,7 @@ function libraryID(id:string):string{
  return encodeURIComponent(id);
 }
 function parse(raw:unknown,id:string,signal?:AbortSignal):LibrarySonicDocument{
- signal?.throwIfAborted();
+ throwIfAborted(signal);
  const doc=decodeGetAdminLibrariesIdSonicAnalysisResponse(raw);
  if(doc.libraryId!==id||!Number.isSafeInteger(doc.revision)||doc.revision<1||
   !['disabled','unavailable','complete','paused','analyzing'].includes(doc.state)||
@@ -25,7 +26,7 @@ export function librarySonicAvailable(doc:LibrarySonicDocument):boolean{return d
 
 export async function readLibrarySonic(api:LibraryContentApi,libraryId:string,signal?:AbortSignal):Promise<LibrarySonicDocument>{
  const path=encodedRoutePath('get_admin_libraries_id_sonic_analysis',{id:libraryID(libraryId)});
- signal?.throwIfAborted();
+ throwIfAborted(signal);
  return parse(await api.request<unknown>(path,'GET',undefined,signal),libraryId,signal);
 }
 
@@ -33,7 +34,7 @@ export async function readLibrarySonic(api:LibraryContentApi,libraryId:string,si
 export async function saveLibrarySonic(api:LibraryContentApi,current:LibrarySonicDocument,enabled:boolean,signal?:AbortSignal):Promise<LibrarySonicDocument>{
  if(typeof enabled!=='boolean'||!Number.isSafeInteger(current.revision)||current.revision<1)throw new Error('Invalid library Sonic change.');
  const path=encodedRoutePath('put_admin_libraries_id_sonic_analysis',{id:libraryID(current.libraryId)});
- signal?.throwIfAborted();
+ throwIfAborted(signal);
  const doc=parse(await api.request<unknown>(path,'PUT',{enabled,expectedRevision:current.revision},signal),current.libraryId,signal);
  if(doc.revision<=current.revision||doc.enabled!==enabled)throw new Error('Library Sonic change could not be reconciled.');
  return doc;
@@ -42,6 +43,6 @@ export async function saveLibrarySonic(api:LibraryContentApi,current:LibrarySoni
 /** Retry only the server's current runtime/model probe, with no client model or work input. */
 export async function retryLibrarySonic(api:LibraryContentApi,libraryId:string,signal?:AbortSignal):Promise<LibrarySonicDocument>{
  const path=encodedRoutePath('post_admin_libraries_id_sonic_analysis_retry',{id:libraryID(libraryId)});
- signal?.throwIfAborted();
+ throwIfAborted(signal);
  return parse(await api.request<unknown>(path,'POST',{},signal),libraryId,signal);
 }
