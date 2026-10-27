@@ -55,6 +55,17 @@ DESCENDANT_SAMPLE = 2
 COMMAND_TIMEOUT = 15 * 60
 TERMINATE_GRACE = 5
 TAIL = 6
+# Bounded on-screen annotations: the first failures only. The complete list
+# stays in the package records, the step summary and the raw event stream.
+ANNOTATION_LIMIT = 10
+# Bounds for the decoded failure detail kept in the package record and printed
+# under the summary. The raw go test event file keeps every event unchanged.
+OUTPUT_LIMIT = 400
+MAX_OUTPUT_LINES = 8_000
+PACKAGE_OUTPUT_LIMIT = 40
+BLOCK_LINES = 20
+STEP_SUMMARY_ROWS = 200
+VERSION_TIMEOUT = 60
 
 
 # JavaScript files are supervised one process at a time (test_watchdog.Runner).
@@ -423,6 +434,30 @@ def report_path(module, shard_index, shard_total):
     return str(Path(directory) / name)
 
 
+def events_path(module, shard_index, shard_total):
+    """Where the unchanged go test -json event stream is retained, if anywhere.
+
+    It stays separate from the compact package/test record so the record is
+    readable and the raw stream is still complete. CI_GO_EVENTS names the file;
+    otherwise it sits beside CI_GO_RESULTS (or in the runner's report directory)
+    and still matches the artifact's `go-results-*.jsonl` upload pattern.
+    """
+    explicit = os.environ.get("CI_GO_EVENTS")
+    if explicit:
+        return explicit
+    results = os.environ.get("CI_GO_RESULTS")
+    if results:
+        path = Path(results)
+        return str(path.with_name(path.stem + "-events" + path.suffix))
+    directory = os.environ.get("CI_TEST_REPORT_DIR")
+    if not directory:
+        return None
+    Path(directory).mkdir(parents=True, exist_ok=True)
+    name = (f"go-results-{module.replace('/', '-')}-shard{shard_index + 1}-of-"
+            f"{shard_total}-events.jsonl")
+    return str(Path(directory) / name)
+
+
 def limit_cores(report):
     """Keep this run within GO_RUN_CORES and give every child an explicit GOMAXPROCS."""
     if not hasattr(os, "sched_setaffinity"):
@@ -458,15 +493,107 @@ def declared_tests(module, package, report):
     return [line.strip() for line in text.splitlines() if re.fullmatch(r"Test[A-Z]\w*", line.strip())]
 
 
+_FAILURE_LINE = re.compile(
+    r"^\s*(?P<file>[^\s:()]+\.go):(?P<line>\d+)(?::(?P<column>\d+))?:\s*(?P<text>.*)$")
+_LOCATION = re.compile(r"(?P<file>[^\s:()]+\.go):(?P<line>\d+)(?::\d+)?(?::|\s|$)")
+_QUIET_PREFIXES = ("=== RUN", "=== PAUSE", "=== CONT", "=== NAME",
+                   "--- FAIL", "--- PASS", "--- SKIP")
+
+
+def _quiet(line):
+    """A go test framing line that carries no failure reason."""
+    text = line.strip()
+    return (not text or text in {"FAIL", "PASS"} or text.startswith("# ")
+            or text.startswith(_QUIET_PREFIXES)
+            or text.startswith(("ok  ", "ok\t", "FAIL\t", "FAIL ", "exit status ")))
+
+
+def explain(lines):
+    """The first real reason in one decoded test block, with its source line.
+
+    go test writes `file_test.go:63: message` for a failed assertion and a stack
+    frame as `\t/path/file_test.go:63 +0x…` for a panic. The assertion form wins
+    as the message; the first frame of either form supplies the location.
+    """
+    message = ""
+    file = ""
+    line = 0
+    for raw in lines:
+        text = raw.strip()
+        if not text:
+            continue
+        match = _FAILURE_LINE.match(text)
+        if match:
+            if not file:
+                file, line = match.group("file"), int(match.group("line"))
+            candidate = match.group("text").strip()
+        else:
+            located = _LOCATION.search(text)
+            if located and not file:
+                file, line = located.group("file"), int(located.group("line"))
+            candidate = text
+        if not message and candidate and not _quiet(candidate):
+            message = candidate
+    return message or "test failed", file, line
+
+
+def bound_output(lines, limit=OUTPUT_LIMIT):
+    """Keep a readable head and tail of one block; the raw stream keeps all."""
+    if len(lines) <= limit:
+        return list(lines)
+    head = limit // 2
+    tail = limit - head
+    omitted = len(lines) - limit
+    return [*lines[:head], f"... {omitted} output line(s) omitted; see raw go events ...",
+            *lines[-tail:]]
+
+
+def normal_message(message):
+    """Collapse whitespace so identical failures group under one reason."""
+    return " ".join((message or "test failed").split())
+
+
+def escape_data(value):
+    """Escape one GitHub workflow-command data value."""
+    return str(value).replace("%", "%25").replace("\r", "%0D").replace("\n", "%0A")
+
+
+def escape_property(value):
+    """Escape one GitHub workflow-command property value."""
+    return (escape_data(value).replace(":", "%3A").replace(",", "%2C"))
+
+
+def markdown_cell(value):
+    """One bounded, single-line Markdown table cell."""
+    text = " ".join(str(value).split())
+    if len(text) > 300:
+        text = text[:297] + "..."
+    return text.replace("\\", "\\\\").replace("|", "\\|")
+
+
+def annotation(file, line, message):
+    """One escaped ::error workflow command, with a location when it is known."""
+    data = escape_data(message)
+    if not file:
+        return f"::error::{data}"
+    properties = f"file={escape_property(file)}"
+    if line:
+        properties += f",line={int(line)}"
+    return f"::error {properties}::{data}"
+
+
 class PackageResult:
     """One package's own go test invocation, including what it never reported."""
 
-    def __init__(self, package, pattern):
+    def __init__(self, package, pattern, module=None):
         self.package = package
         self.pattern = pattern
+        self.module = module
         self.action = None       # go test's terminal action for the package
         self.elapsed = 0.0
         self.tests = {}          # test name -> last action (run/pass/fail/skip)
+        self.outputs = {}        # test name -> decoded output lines (bounded)
+        self.package_output = [] # decoded package-level output (last lines)
         self.timed_out = False   # go test's own -timeout fired inside the package
         self.watchdog = False    # the outer watchdog terminated this package
         self.pipe_hold = False   # the leader exited but a descendant kept its stdout
@@ -502,12 +629,67 @@ class PackageResult:
     def unfinished(self):
         return [name for name, action in self.tests.items() if action == "run"]
 
+    def location(self, path):
+        """A repository-relative path for an annotation or a step summary.
+
+        go test may print a bare test filename or an absolute path into this
+        worktree. Both are normalised to `<module>/<package>/<file>` (relative to
+        the repository) so an annotation opens the right source file.
+        """
+        if not path:
+            return ""
+        relative = Path(path)
+        if relative.is_absolute():
+            try:
+                return relative.resolve().relative_to(ROOT.resolve()).as_posix()
+            except (OSError, RuntimeError, ValueError):
+                return relative.as_posix()
+        text = str(path).replace("\\", "/")
+        package = self.package.removeprefix("./")
+        module = self.module or ""
+        if not module:
+            return f"{package}/{text}" if package not in {"", "."} and "/" not in text else text
+        if text.startswith(module + "/"):
+            return text
+        if package and text.startswith(package + "/"):
+            return f"{module}/{text}"
+        if "/" not in text or text.startswith("../"):
+            return f"{module}/{package}/{text}" if package not in {"", "."} else f"{module}/{text}"
+        return f"{module}/{text}"
+
+    def package_path(self):
+        """The repository-relative directory of this package."""
+        package = self.package.removeprefix("./")
+        if self.module and package not in {"", "."}:
+            return f"{self.module}/{package}"
+        return self.module or package or self.package
+
+    def failures(self):
+        """Decoded failure blocks for every test this package reported as failed."""
+        rows = []
+        for name in sorted(self.tests):
+            if self.tests[name] != "fail":
+                continue
+            lines = self.outputs.get(name, [])
+            message, file, line = explain(lines)
+            rows.append({"test": name, "message": message,
+                         "file": self.location(file), "line": line,
+                         "output": bound_output(lines)})
+        return rows
+
+    def package_reason(self):
+        """The first real reason in the package's own, non-test output."""
+        return explain(self.package_output)[0] if self.package_output else "test failed"
+
     def record(self):
-        return {"record": "package", "package": self.package, "status": self.status(),
+        return {"record": "package", "module": self.module,
+                "package": self.package, "status": self.status(),
                 "exit": self.exit, "elapsed": round(self.elapsed, 3), "pattern": self.pattern,
                 "timeout": self.timed_out, "watchdog": self.watchdog,
                 "pipe_hold": self.pipe_hold, "interrupted": self.interrupted,
                 "tests": self.tests, "failed": self.failed(), "unfinished": self.unfinished(),
+                "failures": self.failures(),
+                "package_output": self.package_output[-PACKAGE_OUTPUT_LIMIT:],
                 "inventory": self.inventory, "declared": self.declared,
                 "selected": sorted(self.selected) if self.selected is not None else None,
                 "expected": self.expected, "never_ran": self.never_ran}
@@ -546,15 +728,27 @@ def snapshot(result):
         return describe(result), result.record()
 
 
-def feed(result, line, report):
-    """Merge one go test -json event into the package result and the record."""
+def decode(line):
+    """One go test output line as (human text, parsed JSON event or None)."""
     text = line.rstrip("\n")
-    event = None
     if text.startswith("{"):
         try:
-            event = json.loads(text)
+            return text, json.loads(text)
         except json.JSONDecodeError:
-            event = None
+            return text, None
+    return text, None
+
+
+def feed(result, line, report, event=None):
+    """Merge one go test -json event into the package result and the record."""
+    text = line.rstrip("\n")
+    if event is None:
+        event = None
+        if text.startswith("{"):
+            try:
+                event = json.loads(text)
+            except json.JSONDecodeError:
+                event = None
     if not isinstance(event, dict):
         with result.lock:
             if text:
@@ -564,11 +758,24 @@ def feed(result, line, report):
         return
     action = event.get("Action", "")
     if action == "output":
-        output = event.get("Output", "")
+        output = event.get("Output") or ""
+        if not isinstance(output, str):
+            output = str(output)
+        parts = [part for part in output.splitlines() if part]
         with result.lock:
             if "panic: test timed out" in output:
                 result.timed_out = True
-            result.tail = (result.tail + [part for part in output.splitlines() if part])[-TAIL:]
+            result.tail = (result.tail + parts)[-TAIL:]
+            name = event.get("Test")
+            if name:
+                buffer = result.outputs.setdefault(name, [])
+                buffer.extend(parts)
+                if len(buffer) > MAX_OUTPUT_LINES:
+                    del buffer[:len(buffer) - MAX_OUTPUT_LINES]
+            else:
+                result.package_output.extend(parts)
+                if len(result.package_output) > 2 * PACKAGE_OUTPUT_LIMIT:
+                    del result.package_output[:-PACKAGE_OUTPUT_LIMIT]
         return
     if action == "build-fail":
         with result.lock:
@@ -600,6 +807,7 @@ class GoReport:
         self.lock = threading.RLock()  # a signal may re-enter while a summary prints
         self.results = {}
         self.stream = None
+        self.events = None
         path = None
         try:
             path = report_path(module, shard_index, shard_total)
@@ -608,6 +816,14 @@ class GoReport:
         except OSError as error:
             # A broken report location must not cost the run its console record.
             self.write(f"!! {module}: structured record unavailable ({path}): {error}\n")
+        events = None
+        try:
+            events = events_path(module, shard_index, shard_total)
+            if events:
+                self.events = open(events, "w", encoding="utf-8")
+        except OSError as error:
+            # The decoded failure record and console still stand on their own.
+            self.write(f"!! {module}: raw go events unavailable ({events}): {error}\n")
         if self.stream:
             self.record({"record": "plan", "module": module,
                          "shard": {"index": shard_index, "total": shard_total},
@@ -629,6 +845,20 @@ class GoReport:
     def record(self, entry):
         with self.lock:
             self._append(entry)
+
+    def raw_event(self, result, event=None, line=None):
+        """Retain one complete go test event, flushed as the run goes."""
+        with self.lock:
+            if not self.events:
+                return
+            entry = {"record": "go-event", "module": self.module,
+                     "package": result.package}
+            if event is not None:
+                entry["event"] = event
+            else:
+                entry["line"] = line
+            self.events.write(json.dumps(entry, sort_keys=True, default=str) + "\n")
+            self.events.flush()
 
     def package_start(self, result):
         with self.lock:
@@ -653,6 +883,59 @@ class GoReport:
             sys.stdout.flush()
             self._append(record)
 
+    def failure_rows(self, results):
+        """Every failing test (or a failing package with no test) in a stable order."""
+        rows = []
+        for result in sorted(results, key=lambda item: item.package):
+            for failure in result.failures():
+                rows.append({"package": result.package, "test": failure["test"],
+                             "message": failure["message"], "file": failure["file"],
+                             "line": failure["line"], "output": failure["output"],
+                             "status": result.status()})
+            if result.status() == "fail" and not result.failed():
+                rows.append({"package": result.package, "test": "",
+                             "message": result.package_reason(),
+                             "file": result.package_path(), "line": 0,
+                             "output": result.package_output[-BLOCK_LINES:],
+                             "status": "fail"})
+        return rows
+
+    def write_step_summary(self, results, never, interrupted):
+        """Append the package/test/message/location table to the GitHub job page."""
+        path = os.environ.get("GITHUB_STEP_SUMMARY")
+        if not path:
+            return
+        rows = self.failure_rows(results)
+        halted = [result for result in results if result.status() in HALTED]
+        lines = [f"### Go tests: `{self.module}` shard "
+                 f"{self.shard[0] + 1}/{self.shard[1]}", ""]
+        if rows:
+            lines += ["| Package | Test | First message | Location |",
+                      "| --- | --- | --- | --- |"]
+            for row in rows[:STEP_SUMMARY_ROWS]:
+                location = (f"{row['file']}:{row['line']}"
+                            if row["file"] and row["line"] else row["file"])
+                cells = (row["package"], row["test"] or "(package)",
+                         row["message"], location or "\u2014")
+                lines.append("| " + " | ".join(markdown_cell(cell) for cell in cells) + " |")
+            if len(rows) > STEP_SUMMARY_ROWS:
+                remaining = len(rows) - STEP_SUMMARY_ROWS
+                lines.append(f"| \u2026 | {remaining} more failures | see go-results JSONL | \u2014 |")
+        else:
+            lines.append("No failing tests.")
+        if halted:
+            lines += ["", "Halted packages: " + ", ".join(
+                f"{result.status().upper()} `{result.package}`" for result in halted)]
+        if never:
+            lines += ["", "Never started: " + ", ".join(f"`{package}`" for package in never)]
+        if interrupted:
+            lines += ["", "The run was interrupted; results gathered before it are above."]
+        try:
+            with open(path, "a", encoding="utf-8") as out:
+                out.write("\n".join(lines) + "\n")
+        except OSError as error:
+            self.write(f"!! {self.module}: GitHub step summary unavailable ({path}): {error}\n")
+
     def summary(self, interrupted=False):
         with self.lock:
             results = list(self.results.values())
@@ -660,6 +943,7 @@ class GoReport:
             for result in results:
                 counts[result.status()] = counts.get(result.status(), 0) + 1
             never = [package for package in self.planned if package not in self.results]
+            rows = self.failure_rows(results)
             lines = [f"==== go test summary: {self.module} shard "
                      f"{self.shard[0] + 1}/{self.shard[1]} ====",
                      f"packages: {len(self.planned)} planned, {len(results)} started, "
@@ -667,6 +951,20 @@ class GoReport:
                      f"{len(never)} never started",
                      "results: " + (", ".join(f"{name} {counts[name]}"
                                               for name in sorted(counts)) or "none")]
+            groups = {}
+            for row in rows:
+                groups.setdefault(normal_message(row["message"]), []).append(row)
+            repeated = [(message, members) for message, members in groups.items()
+                        if len(members) > 1]
+            if repeated:
+                lines.append("identical failure messages:")
+                for message, members in sorted(repeated,
+                                               key=lambda pair: (-len(pair[1]), pair[0])):
+                    first = members[0]
+                    location = (f"{first['file']}:{first['line']}"
+                                if first["file"] and first["line"] else first["file"])
+                    suffix = f"  (first: {first['package']} {location})" if location else ""
+                    lines.append(f"  x{len(members)}  {message}{suffix}")
             for result in results:
                 if result.status() in {"pass", "skip"}:
                     continue
@@ -674,9 +972,34 @@ class GoReport:
                 lines.append(line)
                 if result.status() in HALTED:
                     lines.extend("    " + tail for tail in result.tail[-TAIL:])
+                failures = result.failures()
+                for failure in failures:
+                    location = (f"{failure['file']}:{failure['line']}"
+                                if failure["file"] and failure["line"] else failure["file"])
+                    heading = failure["test"] + (f"  {location}" if location else "")
+                    lines.append(f"    FAIL  {heading}")
+                    lines.append(f"      {failure['message']}")
+                    block = failure["output"]
+                    if block:
+                        lines.append("      --- decoded output ---")
+                        lines.extend("      " + item for item in block[:BLOCK_LINES])
+                        if len(block) > BLOCK_LINES:
+                            lines.append(f"      ... {len(block) - BLOCK_LINES} more "
+                                         f"line(s); see raw go events ...")
+                if result.status() == "fail" and not failures:
+                    lines.append(f"    FAIL  (package)  {result.package}: "
+                                 f"{result.package_reason()}")
+                    lines.extend("      " + item
+                                 for item in result.package_output[-BLOCK_LINES:])
             # A package with no record after the plan record was never started.
             for package in never:
                 lines.append(f"NEVER RAN  {package}  no result  never started")
+            # Test failures become annotations first; a package failure without a
+            # test still gets one, all within the bounded count.
+            for row in rows[:ANNOTATION_LIMIT]:
+                what = (f"{row['test']}: {row['message']}" if row["test"]
+                        else f"{row['package']}: {row['message']}")
+                lines.append(annotation(row["file"], row["line"], what))
             halted = interrupted or any(result.status() in HALTED for result in results)
             failed = bool(never) or any(result.status() == "fail" for result in results)
             code = 124 if halted else 1 if failed else 0
@@ -684,6 +1007,7 @@ class GoReport:
             text = "\n".join(lines) + "\n"
             sys.stdout.write(text)
             sys.stdout.flush()
+            self.write_step_summary(results, never, interrupted)
             if self.stream:
                 self.stream.write(json.dumps(
                     {"record": "summary", "module": self.module,
@@ -691,13 +1015,17 @@ class GoReport:
                      "packages": len(self.planned), "started": len(results),
                      "completed": sum(1 for result in results if result.finished),
                      "never_started": never, "results": counts, "exit": code,
-                     "interrupted": interrupted,
+                     "interrupted": interrupted, "failure_count": len(rows),
                      "hangs": [result.record() for result in results
                                if result.status() in HALTED]},
                     sort_keys=True, default=str) + "\n")
                 self.stream.flush()
                 self.stream.close()
                 self.stream = None
+            if self.events:
+                self.events.flush()
+                self.events.close()
+                self.events = None
             return code
 
 
@@ -829,8 +1157,18 @@ def execute_package(module, result, report):
     reader.start()
     try:
         for line in _lines(sink, run, report):
-            report.write(line)
-            feed(result, line, report)
+            text, event = decode(line)
+            if isinstance(event, dict):
+                # The compact record and console get decoded text; the complete
+                # event goes to its own JSONL so the console is plain go output.
+                report.raw_event(result, event)
+                if event.get("Action") == "output" and isinstance(event.get("Output"), str):
+                    report.write(event["Output"])
+            else:
+                report.raw_event(result, line=text)
+                if text:
+                    report.write(text + "\n")
+            feed(result, line, report, event)
         result.exit = process.wait()
     finally:
         watchdog.cancel()
@@ -900,6 +1238,17 @@ def _interrupt(signum, frame):
         os._exit(128 + signum)
 
 
+def print_tool_versions(report):
+    """Record the actual go and node builds running this entry log."""
+    for name, argv in (("node", ["node", "--version"]), ("go", ["go", "version"])):
+        try:
+            text = run_capture(argv, ROOT, VERSION_TIMEOUT).strip()
+        except (OSError, subprocess.CalledProcessError, CommandTimeout) as error:
+            report.note(f"{name} version unavailable: {error}")
+            continue
+        report.write(f"{name} version: {text.splitlines()[0] if text else '(no output)'}\n")
+
+
 def go_test(module, selection, shard_index=0, shard_total=1):
     """Run every selected package alone, bounded, and keep the others going."""
     global _ACTIVE_REPORT, _SHUTTING_DOWN
@@ -909,6 +1258,7 @@ def go_test(module, selection, shard_index=0, shard_total=1):
     _ACTIVE_REPORT = report
     _SHUTTING_DOWN = False
     try:
+        print_tool_versions(report)
         limit_cores(report)
         report.note(f"{len(selection)} package(s) in this shard; {GO_PACKAGE_JOBS} lane(s); "
                     f"package deadline {GO_TEST_TIMEOUT}s; watchdog {GO_PACKAGE_BACKSTOP}s")
@@ -925,7 +1275,7 @@ def go_test(module, selection, shard_index=0, shard_total=1):
                     if _SHUTTING_DOWN or not queue_:
                         return
                     package, pattern = queue_.pop(0)
-                result = PackageResult(package, pattern)
+                result = PackageResult(package, pattern, module)
                 try:
                     execute_package(module, result, report)
                 except Exception as error:  # one broken lane must not drop the others
