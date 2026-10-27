@@ -12,6 +12,11 @@ import (
 // Hosted callers must additionally check cached membership/library policy in tx.
 // Token-family renewal and rotation are separate, not implied by this check.
 func (s *Service) ReauthorizeTx(ctx context.Context, tx *sql.Tx, expected Principal) (Principal, error) {
+	return s.reauthorizeTx(ctx, tx, expected, false)
+}
+
+// Only the credential-proven Cast renewal parent path may omit token expiry.
+func (s *Service) reauthorizeTx(ctx context.Context, tx *sql.Tx, expected Principal, expiredCastParent bool) (Principal, error) {
 	if tx == nil || expected.Hash == "" {
 		return Principal{}, ErrUnauthorized
 	}
@@ -43,7 +48,7 @@ func (s *Service) ReauthorizeTx(ctx context.Context, tx *sql.Tx, expected Princi
 	if authorizedUntil.Before(current.ExpiresAt) {
 		current.ExpiresAt = authorizedUntil
 	}
-	if revoked != 0 || !current.ExpiresAt.After(time.Now()) || current.ServerID != s.serverID || current.Viewer != expected.Viewer || current.Epoch != expected.Epoch || current.Grant != expected.Grant {
+	if revoked != 0 || !authorizedUntil.After(time.Now()) || (!expiredCastParent && !expires.After(time.Now())) || current.ServerID != s.serverID || current.Viewer != expected.Viewer || current.Epoch != expected.Epoch || current.Grant != expected.Grant {
 		return Principal{}, ErrUnauthorized
 	}
 	switch current.Authority {

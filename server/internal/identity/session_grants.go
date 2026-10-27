@@ -56,6 +56,17 @@ func (p Principal) PermitsRequest(ctx context.Context) error {
 // reconnect): the new session inherits its Portico admission, and so ends
 // with it if the signing key behind it is revoked.
 func (s *Service) IssueCastTargetTx(ctx context.Context, tx *sql.Tx, authority, account, profile string, epoch int, horizon time.Time, pairingFamily string) (Envelope, error) {
+	if pairingFamily != "" {
+		var rawHorizon string
+		if err := tx.QueryRowContext(ctx, `SELECT authorization_horizon FROM authorization_session_families WHERE id=? AND revoked=0`, pairingFamily).Scan(&rawHorizon); err != nil {
+			return Envelope{}, ErrUnauthorized
+		}
+		parentHorizon, err := familyTime(rawHorizon)
+		if err != nil || !parentHorizon.After(time.Now()) {
+			return Envelope{}, ErrUnauthorized
+		}
+		ctx = context.WithValue(ctx, inheritedHorizonKey{}, parentHorizon)
+	}
 	ctx, err := withParentPorticoHorizonTx(ctx, tx, pairingFamily)
 	if err != nil {
 		return Envelope{}, err

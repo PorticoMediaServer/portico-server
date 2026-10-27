@@ -16,7 +16,7 @@ func castPair(t *testing.T, f *socialFixture, device string) social.CastReceiver
 	var bootstrap social.CastBootstrapResponse
 	f.decode(f.as(f.token, "POST", "/v1/cast/bootstrap", social.CastBootstrapRequest{ProtocolVersion: social.Protocol}), 201, &bootstrap)
 	var redeemed social.CastReceiverSession
-	f.decode(f.as("", "POST", "/v1/cast/redeem", social.CastRedeemRequest{ProtocolVersion: social.Protocol, Code: bootstrap.Bootstrap.Code, DeviceID: device}), 200, &redeemed)
+	f.decode(f.as("", "POST", "/v1/cast/redeem", social.CastRedeemRequest{ProtocolVersion: social.Protocol, Code: bootstrap.Bootstrap.Code, ExpectedBootstrapID: bootstrap.Bootstrap.ID, DeviceID: device}), 200, &redeemed)
 	return redeemed
 }
 
@@ -26,7 +26,7 @@ func TestCastFailedAttemptsAreChargedDurably(t *testing.T) {
 	f := socialHTTP(t)
 	ctx := context.Background()
 	store := f.d.Social()
-	wrong := social.CastRedeemRequest{ProtocolVersion: social.Protocol, Code: "ZZZZZZ", DeviceID: "cast-guess", Source: "198.51.100.0/24"}
+	wrong := social.CastRedeemRequest{ProtocolVersion: social.Protocol, Code: "ZZZZZZ", ExpectedBootstrapID: "cbs_missing", DeviceID: "cast-guess", Source: "198.51.100.0/24"}
 	for i := 0; i < social.CastFailuresPerSource; i++ {
 		var fault *social.Fault
 		if _, e := store.CastRedeem(ctx, wrong); !asFault(e, &fault) || fault.Code != "cast_code_not_found" {
@@ -124,7 +124,7 @@ func TestCastIssuanceFailureKeepsTheCode(t *testing.T) {
 	if _, e := f.d.DB.Exec(`UPDATE accounts SET epoch=epoch+1 WHERE id=?`, f.owner.Viewer.AccountID); e != nil {
 		t.Fatal(e)
 	}
-	w := f.as("", "POST", "/v1/cast/redeem", social.CastRedeemRequest{ProtocolVersion: social.Protocol, Code: bootstrap.Bootstrap.Code, DeviceID: "cast-1"})
+	w := f.as("", "POST", "/v1/cast/redeem", social.CastRedeemRequest{ProtocolVersion: social.Protocol, Code: bootstrap.Bootstrap.Code, ExpectedBootstrapID: bootstrap.Bootstrap.ID, DeviceID: "cast-1"})
 	if w.Code != 403 || errorCode(t, w) != "cast_access_ended" {
 		t.Fatalf("stale viewer redeemed %d %s", w.Code, w.Body.String())
 	}
@@ -159,6 +159,9 @@ func TestCastReceiverCallsRegisteredRoutes(t *testing.T) {
 	}
 	source := w.Body.String()
 	calls := map[string][]string{
+		"/v1/cast/preview":                    {"POST"},
+		"/v1/cast/controllers/check":          {"POST"},
+		"/v1/cast/controllers/register":       {"POST"},
 		"/v1/cast/redeem":                     {"POST"},
 		"/v1/cast/reconnect":                  {"POST"},
 		"/v1/me/devices/current/capabilities": {"PUT"},
@@ -193,7 +196,7 @@ func TestCastReceiverCallsRegisteredRoutes(t *testing.T) {
 			// Item identity and queue completion need the actual current
 			// occurrence, not a blanket path grant. Their credential-bound
 			// checks live in TestCastReceiverCurrentOccurrenceRoutes.
-			if path != "/v1/cast/redeem" && path != "/v1/cast/reconnect" && path != "/v1/items/" && path != "/v1/queues/" {
+			if path != "/v1/cast/preview" && path != "/v1/cast/redeem" && path != "/v1/cast/reconnect" && path != "/v1/items/" && path != "/v1/queues/" {
 				target := path
 				if strings.HasSuffix(path, "/") {
 					target += "ps_probe"

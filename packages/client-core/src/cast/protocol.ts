@@ -44,15 +44,17 @@ export function castChoiceFields(choices: CastChoices | undefined): Record<strin
 /** Sender → receiver. */
 export type CastCommand =
   | {type: 'pair'; code: string; origin: string; displayName: string}
-  | ({type: 'load'; itemId: string; startSeconds: number} & Record<string, string | number | CastQueueRef>)
-  | {type:'adopt';bindingId:string;attemptId:string;ticket:string;controlToken:string}
-  | {type:'status'}
+  | ({type: 'load'; itemId: string; startSeconds: number;controller?:CastControllerStamp} & Record<string, string | number | CastQueueRef | CastControllerStamp | undefined>)
+  | {type:'adopt'|'renewal-ack';bindingId:string;attemptId:string;ticket:string;controlToken:string}
+  | {type:'status';controller?:CastControllerStamp}
   | (({type:'play'}|{type:'pause'}|{type:'stop'}|{type:'seek';positionSeconds:number}|{type:'audio';trackId:number}|{type:'subtitles';trackIds:number[]}) & {target?:CastRemoteIdentity;requestId?:string})
   | {type:'takeover';allow:boolean;controller?:CastControllerStamp;requestId?:string};
 
 /** Receiver → sender, validated. Unknown or malformed messages are dropped. */
 export type CastEvent =
   | {type: 'paired';controlToken?:string;binding?:CastControllerBinding;controller?:CastControllerStamp}
+  | {type:'renewal-offer';attemptId:string;binding:CastControllerBinding;previousController:CastControllerStamp;controller:CastControllerStamp}
+  | {type:'renewal-complete';attemptId:string;controller:CastControllerStamp}
   | {type: 'pair-pending'}
   | {type: 'pair-failed'; code: string}
   | {type: 'busy'}
@@ -79,6 +81,16 @@ export function parseCastEvent(raw: unknown): CastEvent | undefined {
   if (!m || typeof m !== 'object') return undefined;
   const o = m as Record<string, unknown>;
   switch (o.type) {
+    case 'renewal-offer': {
+      const binding=castBinding(o.binding),controller=castControllerStamp(o.controller),previousController=castControllerStamp(o.previousController);
+      if(!binding||!controller||!previousController||typeof o.attemptId!=='string'||!trackIdPattern.test(o.attemptId))return;
+      return {type:'renewal-offer',attemptId:o.attemptId,binding,previousController,controller};
+    }
+    case 'renewal-complete': {
+      const controller=castControllerStamp(o.controller);
+      if(!controller||typeof o.attemptId!=='string'||!trackIdPattern.test(o.attemptId))return;
+      return {type:'renewal-complete',attemptId:o.attemptId,controller};
+    }
     case 'paired': return {type:'paired',...(castControllerStamp(o.controller)?{controller:castControllerStamp(o.controller)}:{}),...(castBinding(o.binding)?{binding:castBinding(o.binding)}:{}),...(typeof o.controlToken==='string'&&/^[a-f0-9]{48}$/.test(o.controlToken)?{controlToken:o.controlToken}:{})};
     case 'load-failed': return {type: 'load-failed', ...(typeof o.requestId === 'string' && trackIdPattern.test(o.requestId) ? {requestId: o.requestId} : {})};
     case 'loaded': return typeof o.requestId === 'string' && trackIdPattern.test(o.requestId) && typeof o.itemId === 'string' && trackIdPattern.test(o.itemId) ? {type: 'loaded', requestId: o.requestId, itemId: o.itemId} : undefined;

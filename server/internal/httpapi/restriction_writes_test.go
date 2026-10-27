@@ -732,6 +732,7 @@ func restrictionWriteRoutes() map[string]writeRoute {
 		"POST /v1/app-reports":                              writeExempt("current original session and verified device submit only the explicitly consented closed coded journal and receive its receipt; no catalogue identifiers or content"),
 		"POST /v1/cast/bootstrap":                           writeExempt(reasonOwnSession + " (a pairing code)"),
 		"POST /v1/cast/reconnect":                           writeExempt(reasonOwnSession),
+		"POST /v1/cast/preview":                             writeExempt("credential-free bounded pairing offer; no catalogue ids"),
 		"POST /v1/cast/redeem":                              writeExempt(reasonOwnSession),
 		"DELETE /v1/cast/devices/{id}":                      writeExempt(reasonOwnObject),
 		"PUT /v1/cast/configuration":                        writeExempt("owner Cast configuration; no catalogue ids"),

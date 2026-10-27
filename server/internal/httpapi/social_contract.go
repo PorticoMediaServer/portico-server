@@ -23,7 +23,7 @@ func socialContract[Req, Resp any](r *apikit.Registry, pattern string, h http.Ha
 	if reflect.TypeFor[Req]() == reflect.TypeFor[noBody]() {
 		m.BodyLimit = 0
 	}
-	if parts[1] == "/v1/cast/redeem" || parts[1] == "/v1/cast/reconnect" {
+	if parts[1] == "/v1/cast/preview" || parts[1] == "/v1/cast/redeem" || parts[1] == "/v1/cast/reconnect" {
 		m.Access = apikit.Public
 		m.Lane = apikit.Security
 	}
@@ -43,7 +43,7 @@ func socialContract[Req, Resp any](r *apikit.Registry, pattern string, h http.Ha
 		m.Requires = apikit.ScopeRead
 	}
 	switch parts[1] {
-	case "/v1/cast/bootstrap", "/v1/cast/bootstrap/{id}", "/v1/cast/reconnect", "/v1/cast/redeem":
+	case "/v1/cast/bootstrap", "/v1/cast/bootstrap/{id}", "/v1/cast/reconnect", "/v1/cast/redeem", "/v1/cast/preview":
 		// Pairing a screen issues it a session: a credential never mints another.
 		m.Requires = apikit.ScopeSession
 	case "/v1/cast/devices/{id}":
@@ -169,6 +169,8 @@ func registerSocial(r *apikit.Registry, d Dependencies) {
 			socialContract[social.CastBootstrapRequest, social.CastBootstrapResponse](r, pattern, h, 201)
 		case "GET /v1/cast/bootstrap/{id}", "DELETE /v1/cast/bootstrap/{id}":
 			socialContract[noBody, social.CastBootstrapResponse](r, pattern, h, 200)
+		case "POST /v1/cast/preview":
+			socialContract[social.CastPreviewRequest, social.CastPreviewResponse](r, pattern, h, 200)
 		case "POST /v1/cast/redeem":
 			socialContract[social.CastRedeemRequest, social.CastReceiverSession](r, pattern, h, 200)
 		case "POST /v1/cast/reconnect":

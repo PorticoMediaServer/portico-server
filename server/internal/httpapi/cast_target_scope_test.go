@@ -14,7 +14,7 @@ func pairCastTarget(t *testing.T, f *socialFixture, bearer, device string) socia
 	var bootstrap social.CastBootstrapResponse
 	f.decode(f.as(bearer, "POST", "/v1/cast/bootstrap", social.CastBootstrapRequest{ProtocolVersion: social.Protocol, DisplayName: "Living room TV"}), 201, &bootstrap)
 	var redeemed social.CastReceiverSession
-	f.decode(f.as("", "POST", "/v1/cast/redeem", social.CastRedeemRequest{ProtocolVersion: social.Protocol, Code: bootstrap.Bootstrap.Code, DeviceID: device, DisplayName: "Living room TV"}), 200, &redeemed)
+	f.decode(f.as("", "POST", "/v1/cast/redeem", social.CastRedeemRequest{ProtocolVersion: social.Protocol, Code: bootstrap.Bootstrap.Code, ExpectedBootstrapID: bootstrap.Bootstrap.ID, DeviceID: device, DisplayName: "Living room TV"}), 200, &redeemed)
 	if redeemed.Session.AccessToken == "" {
 		t.Fatal("pairing issued no session")
 	}
