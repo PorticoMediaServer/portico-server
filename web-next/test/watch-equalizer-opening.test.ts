@@ -74,7 +74,7 @@ test('a live EQ opening writes; an ordinary rerender keeps the same receipts', a
 test('the first changed-facts render withholds before any receipt replacement', async () => {
   const {early, facts, setup} = await mountPanel();
   const first = setup();
-  const changed = {...facts(stateLike(first)), authority: {}};
+  const changed = {...first.hostFacts, authority: {}};
   const withheld = early(changed, first.hostReceipt, first.surface);
   assert.equal(all(withheld, 'DeviceEqualizer').length, 0, 'the old published pair cannot draw actionable rows under new facts');
   const live = setup(undefined as any, {facts: changed});
@@ -228,19 +228,23 @@ test('actual panel under NowPlaying: saved A Back/Settings/report/write cannot t
   assert.equal(panelHost(show()), undefined);
 });
 
-test('same-tick old dismiss after a successor opens is refused', async () => {
+test('same-tick old dismiss and selection are refused on the next repaint', async () => {
   const {show} = await nowPlaying();
   const a = openMenu(show);
   const menuA = menu(a);
+  // Retire A synchronously, then its saved selection runs before any new render/layout.
   menuA.onOpenChange(false);
-  // Retire A synchronously, then invoke the saved callback before the next render/layout.
-  const b = show();
-  assert.equal(one(b, 'Menu').props.open, false);
+  menuA.items[0].onSelect();
+  let v = show();
+  assert.equal(one(v, 'Menu').props.open, false);
+  assert.equal(panelHost(v), undefined, 'the retired selection cannot open the Equalizer');
+  const b = openMenu(show);
+  assert.equal(one(b, 'Menu').props.open, true);
   menuA.onOpenChange(false);
-  const c = openMenu(show);
-  menuA.onOpenChange(false);
-  assert.equal(one(show(), 'Menu').props.open, true, 'a fresh render still shows the successor menu open');
-  void c;
+  menuA.items[0].onSelect();
+  v = show();
+  assert.equal(one(v, 'Menu').props.open, true, 'the successor menu stays open');
+  assert.equal(panelHost(v), undefined, 'the successor EQ was never opened by the old surface');
 });
 
 test('an ordinary position update keeps the actual EQ receipt', async () => {
