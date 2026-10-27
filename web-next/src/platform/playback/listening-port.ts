@@ -5,6 +5,7 @@ import type {QueuePlaylistSave} from '@core/playback-v1/queue.ts';
 import type {V1PlaybackTarget, V1QueuePolicyIntent} from '@core/playback-v1/v1-queue-player.ts';
 import type {PlaybackFence} from '../../../../packages/player-core/src/index.ts';
 import type {WebQueueListPort, WebQueueListSnapshot} from './queue-list.ts';
+import {createQueueEditOpening, type WebQueueEditOpening} from './queue-edit-adapter.ts';
 
 /** The caller's own view lifetime. It stays part of every command's currentness and
  * signal from admission through the awaited IO, progress and final return. */
@@ -45,6 +46,8 @@ export type WebListeningQueuePort = Readonly<{
   policy(shown: WebQueueListSnapshot, intent: V1QueuePolicyIntent, lifetime: WebListeningLifetime): Promise<void>;
   /** One same-key save of the original queue; progress is only this save's own receipt. */
   save(shown: WebQueueListSnapshot, name: string, lifetime: WebListeningLifetime, onProgress?: (save: QueuePlaylistSave) => void): Promise<QueuePlaylistSave>;
+  /** The one captured edit opening over the public canonical reader, from this drawn list. */
+  edit(shown: WebQueueListSnapshot, lifetime: WebListeningLifetime): WebQueueEditOpening;
 }>;
 
 export type WebListeningPort = Readonly<{
@@ -78,6 +81,7 @@ export type WebListeningInput = Readonly<{
   policy(target: V1PlaybackTarget, revision: string, intent: V1QueuePolicyIntent, command: WebListeningLifetime): Promise<void>;
   save(queueId: string, name: string, command: WebListeningLifetime, onProgress?: (save: QueuePlaylistSave) => void): Promise<QueuePlaylistSave>;
   seek(seconds: number, command: WebListeningLifetime): Promise<void>;
+  openEdit(shown: WebQueueListSnapshot, lifetime: WebListeningLifetime): WebQueueEditOpening;
 }>;
 
 const stale: () => never = () => {throw new Error('stale_listening_port');};
@@ -95,11 +99,13 @@ export function createWebListeningPort(input: WebListeningInput): WebListeningPo
   const record = new AbortController();
   let dead = false;
   const attached = new Set<() => void>();
+  const edits = new Set<WebQueueEditOpening>();
   /** Any observed retirement latches dead synchronously; a later true cannot revive it. */
   const retire = () => {
     if (dead) return;
     dead = true;
     for (const off of [...attached]) {attached.delete(off); try {off();} catch {}}
+    for (const opening of [...edits]) {edits.delete(opening); try {opening.dispose();} catch {}}
     try {chapters.dispose();} catch {} finally {try {lyrics.dispose();} catch {} finally {record.abort();}}
   };
   /** Mutable record state first, external predicates next, exact internal state after them. */
@@ -242,6 +248,14 @@ export function createWebListeningPort(input: WebListeningInput): WebListeningPo
   })();
   const queue = list ? Object.freeze({
     list,
+    edit: (shown: WebQueueListSnapshot, lifetime: WebListeningLifetime) => {
+      require();
+      if (lifetime.signal.aborted || !lifetime.isCurrent() || shown !== list.getSnapshot()) stale();
+      if (!shown.queueId || !shown.revision || shown.queueId !== input.target.queueId) unavailable();
+      const opening = input.openEdit(shown, lifetime);
+      edits.add(opening);
+      return opening;
+    },
     policy: async (shown: WebQueueListSnapshot, intent: V1QueuePolicyIntent, lifetime: WebListeningLifetime) => {
       require();
       if (lifetime.signal.aborted || !lifetime.isCurrent() || shown !== list.getSnapshot()) stale();

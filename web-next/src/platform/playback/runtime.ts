@@ -53,6 +53,8 @@ import {browserClientProfile} from './client-profile.ts';
 import {selectionSegments, selectionStartSeconds} from './selection.ts';
 import {captureQueueSource, type WebPlaybackQueueSource} from './queue-source.ts';
 import {createWebListeningPort, type WebListeningLifetime, type WebListeningPort} from './listening-port.ts';
+import {createQueueEditOpening} from './queue-edit-adapter.ts';
+import type {WebQueueListSnapshot} from './queue-list.ts';
 import {PlayerChaptersService} from '@core/player-chapters.ts';
 import {LyricsService} from '@core/lyrics.ts';
 import {currentPolicyQueue, type WebPlaybackPolicyAction} from './policy.ts';
@@ -1464,6 +1466,34 @@ export class WebShellPlaybackRuntime {
         const bound = bindCommand(command);
         if (!bound.isCurrent()) return Promise.reject(new Error('stale_listening_port'));
         return this.seek(fence, seconds);
+      },
+      openEdit: (shown: WebQueueListSnapshot, command: WebListeningLifetime) => {
+        if (!reprove()) throw new Error('stale_listening_port');
+        const v1Target = {sessionId: target.sessionId, generation: target.sessionGeneration, playbackRun: target.playbackRun,
+          itemId: target.itemId, versionId: target.versionId, queueId: target.queueId, entryId: target.entryId};
+        /** Local is derived from this exact server stack and dock; never a constant witness. */
+        const readOutput = () => {
+          const stackNow = this.stack, dock = this.dock.getSnapshot(), snap = this.snapshot;
+          const sessionNow = stackNow.queue.currentSession(), viewNow = stackNow.queue.getSnapshot().view, playbackNow = stackNow.service.getSnapshot();
+          const local = this.current(stackNow) && stackNow === stack && this.source === source && stackNow.mode === 'server'
+            && !this.group?.active() && !this.group?.matches(fence)
+            && !!snap.fence && sameFence(snap.fence, fence) && !!snap.presentation
+            && !!dock.local && !!dock.local.fence && sameFence(dock.local.fence, fence) && dock.remote === null
+            && !!sessionNow && sessionNow.id === target.sessionId && sessionNow.role === 'local'
+            && (sessionNow.kind === 'vod' || sessionNow.kind === 'audio')
+            && sessionNow.itemId === target.itemId && sessionNow.versionId === target.versionId
+            && sessionNow.presentation.generation === target.sessionGeneration
+            && sessionNow.queue?.queueId === target.queueId && sessionNow.queue.entryId === target.entryId
+            && viewNow?.queue.id === target.queueId && viewNow.queue.currentEntryId === target.entryId
+            && playbackNow.playbackRun === target.playbackRun;
+          // Re-read the exact mutable owner after every potentially reentrant getter above.
+          const again = this.current(this.stack) && this.source === source && stackNow === stack
+            && sameFence(this.snapshot?.fence, fence) && !this.group?.active() && !this.group?.matches(fence);
+          return local && again ? Object.freeze({kind: 'local' as const, target: Object.freeze({...v1Target})}) : Object.freeze({kind: 'unknown' as const});
+        };
+        const reader = stack.queue.captureEditWindow(v1Target, shown.revision ?? '', {signal: combined(command.signal), isCurrent: reprove, readOutput});
+        return createQueueEditOpening({reader, current: reprove, lifetime: command, currentEntryId: target.entryId,
+          hidden: entryId => shown.entries.find(entry => entry.entryId === entryId)?.hidden === true});
       },
     });
   }

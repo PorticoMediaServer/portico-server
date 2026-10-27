@@ -22,6 +22,8 @@ export {readPlaybackTrickplay} from './trickplay.ts';
 export type {PlaybackTrickplaySource, PlaybackTrickplaySelection} from './trickplay.ts';
 export {playbackPolicyNext} from './policy.ts';
 export {createWebListeningPort} from './listening-port.ts';
+export {createQueueEditOpening} from './queue-edit-adapter.ts';
+export type {WebQueueEditOpening, WebQueueEditPage, WebQueueEditSnapshot, WebQueueEditRow, WebQueueEditLifetime, WebQueueEditInput} from './queue-edit-adapter.ts';
 export type {WebListeningPort, WebListeningLifetime, WebListeningTarget, WebListeningChaptersPort, WebListeningLyricsPort, WebListeningQueuePort} from './listening-port.ts';
 export type {WebPlaybackPolicyAction, WebPlaybackPolicyNext} from './policy.ts';
 export type {WebPlaybackVersionChoices, WebPlaybackVersionChoice} from './versions.ts';

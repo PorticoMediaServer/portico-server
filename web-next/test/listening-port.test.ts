@@ -6,6 +6,7 @@ import type {QueuePlaylistSave} from '@core/playback-v1/queue.ts';
 import type {V1PlaybackTarget, V1QueuePolicyIntent} from '@core/playback-v1/v1-queue-player.ts';
 import type {PlaybackFence} from '../../packages/player-core/src/index.ts';
 import {createWebListeningPort, type WebListeningInput, type WebListeningLifetime} from '../src/platform/playback/listening-port.ts';
+import {createQueueEditOpening} from '../src/platform/playback/queue-edit-adapter.ts';
 import type {WebQueueListPort, WebQueueListSnapshot} from '../src/platform/playback/queue-list.ts';
 
 const fence = {kind: 'queue', sessionId: 'session', generation: 2, itemId: 'item', entryId: 'entry', sourceId: 'source'} as unknown as PlaybackFence;
@@ -57,6 +58,10 @@ function harness(options: Options = {}) {
       return {playlistId: 'playlist', revision: '1', entries: 3, state: 'saved'} as QueuePlaylistSave;},
     seek: async (seconds, command) => {if (!command.isCurrent() || command.signal.aborted) throw new Error('stale_listening_port');
       options.debugNoDispatch?.(); seeks.push(seconds);},
+    openEdit: () => createQueueEditOpening({current: () => current, lifetime,
+      currentEntryId: 'entry', hidden: () => false,
+      reader: {read: async () => ({start: 0, total: 1, revision: 'queue-revision', items: [], canPrevious: false}),
+        next: async shown => shown, previous: async shown => shown, edit: async shown => shown, dispose: () => {}}}),
   };
   port = createWebListeningPort(input);
   return {port, lifetime, lifetimeController, snapshot, transports, calls, seeks, policies, saves,
