@@ -13,6 +13,9 @@ function projection(path: string, changes: Record<string, unknown> = {}): any {
 function service(request: (path: string, signal?: AbortSignal) => Promise<unknown>, timeoutMs = 1000) {
   return new LibraryContentService({ api: { request: <T>(path: string, _method?: string, _body?: unknown, signal?: AbortSignal) => request(path, signal).then(v=>wireFixture(v,{'duration': 'durationMs', 'progressSeconds': 'progressMs', 'startSeconds': 'startMs', 'positionSeconds': 'positionMs'})) as Promise<T> }, scope, timeoutMs });
 }
+function fixtureApi(read: (path: string, method?: string, body?: unknown, signal?: AbortSignal) => Promise<unknown>): LibraryContentApi {
+  return { request: <T>(path: string, method?: string, body?: unknown, signal?: AbortSignal) => read(path, method, body, signal) as Promise<T> };
+}
 function deferred<T>() { let resolve!: (value: T) => void; const promise = new Promise<T>(r => { resolve = r; }); return { resolve, promise }; }
 
 test('an unknown card kind drops only that Discover entry and retains the section total', async () => {
@@ -300,7 +303,7 @@ test('temporary refresh failure retains content but invalid and denied responses
     await nav.select(route); fail = true;
     await nav.refresh();
     assert.equal(nav.getSnapshot().phase,'error');
-    assert.equal(nav.getSnapshot().sections.length, failure instanceof TypeError || 'status' in failure && failure.status===503 ? 1 : 0);
+    assert.equal(nav.getSnapshot().sections.length, failure instanceof TypeError || 'status' in failure && (failure as { status: unknown }).status===503 ? 1 : 0);
     nav.dispose();
   }
 });
@@ -497,4 +500,341 @@ test('author and series heroes are exact entities in their own library',async()=
    nav.dispose();
   }
  }
+});
+
+test('refresh-required policy keeps committed rows for an explicit current retry',async()=>{
+ let calls=0; const ctx={signal:new AbortController().signal,isCurrent:()=>true};
+ const service=new LibraryContentService({scope,continuationRecovery:'refresh-required',api:fixtureApi(async (path:string)=>{calls++; if(new URL(path,'https://x').searchParams.get('cursor'))throw Object.assign(new Error('stale'),{code:'stale_continuation'}); return projection(path,{sections:[{...projection(path).sections[0],nextCursor:'next'}]});})});
+ await service.select(route,{context:ctx});
+ assert.equal(calls,1);
+ await service.next('server-grid',ctx);
+ assert.equal(calls,2,'the refused continuation is not retried as page one');
+ assert.equal(service.getSnapshot().phase,'refresh-required');
+ assert.equal(service.getSnapshot().error?.code,'stale_continuation');
+ assert.equal(service.getSnapshot().sections[0]!.entries[0]!.id,'item','committed rows stay visible');
+ assert.deepEqual(service.getSnapshot().pagination.next,[]);
+ await service.retry(ctx);
+ assert.equal(calls,3,'explicit current retry starts page one');
+ assert.equal(service.getSnapshot().phase,'ready');
+ service.dispose();
+});
+
+test('an original-opening abort retires only its flight and restores the committed baseline',async()=>{
+ const initial=deferred<unknown>(); const late=deferred<unknown>(); let calls=0, signal:AbortSignal|undefined;
+ const service=new LibraryContentService({scope,api:fixtureApi(async (path:string,_m?:string,_b?:unknown,s?:AbortSignal)=>{calls++;signal=s;return calls===1?initial.promise:late.promise;})});
+ const first=service.select(route); initial.resolve(projection('/v1/libraries/movies/content?view=browse&limit=40',{sections:[{...projection('/x').sections[0],nextCursor:'next'}]})); await first;
+ const controller=new AbortController(); const ctx={signal:controller.signal,isCurrent:()=>true};
+ const pending=service.next('server-grid',ctx); await new Promise(r=>setImmediate(r));
+ controller.abort();
+ await pending;
+ assert.equal(signal?.aborted,true,'the HTTP controller is aborted');
+ assert.equal(service.getSnapshot().phase,'ready');
+ assert.equal(service.getSnapshot().sections[0]!.entries[0]!.id,'item');
+ assert.equal(service.getSnapshot().error,null);
+ late.resolve(projection('/v1/libraries/movies/content?view=browse&limit=40&cursor=next'));
+ await new Promise(r=>setImmediate(r));
+ assert.equal(service.getSnapshot().sections[0]!.entries[0]!.id,'item','a late success cannot publish');
+ service.dispose();
+});
+
+test('same key with a new opening context is isolated; duplicate same opening coalesces',async()=>{
+ const reads:ReturnType<typeof deferred<unknown>>[]=[]; let calls=0;
+ const service=new LibraryContentService({scope,api:fixtureApi(async ()=>{calls++;const d=deferred<unknown>();reads.push(d);return d.promise;})});
+ const c1={signal:new AbortController().signal,isCurrent:()=>true},c2={signal:new AbortController().signal,isCurrent:()=>true};
+ const a=service.select(route,{context:c1}), b=service.select(route,{context:c1});
+ assert.strictEqual(a,b,'the same opening and key coalesce');
+ assert.equal(calls,1);
+ const c=service.select(route,{context:c2});
+ assert.notStrictEqual(c,a,'a new opening does not inherit the old promise');
+ assert.equal(calls,2);
+ reads[0]!.resolve(projection('/v1/libraries/movies/content?view=browse&limit=40',{sections:[{...projection('/x').sections[0],entries:[entry('old')]}]}));
+ reads[1]!.resolve(projection('/v1/libraries/movies/content?view=browse&limit=40',{sections:[{...projection('/x').sections[0],entries:[entry('new')]}]}));
+ await Promise.allSettled([a,c]);
+ assert.equal(service.getSnapshot().sections[0]!.entries[0]!.id,'new');
+ service.dispose();
+});
+
+test('a synchronous loading subscriber can coalesce the same opening without recursion',async()=>{
+ let calls=0, nested:Promise<void>|undefined;
+ const ctx={signal:new AbortController().signal,isCurrent:()=>true};
+ const nav=new LibraryContentService({scope,api:fixtureApi(async(path:string)=>{calls++;return projection(path,{sections:[{...projection(path).sections[0],nextCursor:'next'}]});})});
+ nav.subscribe(()=>{if(nav.getSnapshot().phase==='loading'&&!nested)nested=nav.select(route,{context:ctx});});
+ await nav.select(route,{context:ctx});
+ if(nested)await nested;
+ assert.equal(calls,1,'the nested same-opening call joins the established flight');
+ assert.equal(nav.getSnapshot().phase,'ready');
+ nav.dispose();
+});
+
+test('isCurrent-only retirement after a successful response restores the committed baseline',async()=>{
+ const response=deferred<unknown>(); let current=true,calls=0;
+ const nav=new LibraryContentService({scope,api:fixtureApi(async(path:string)=>{calls++;return calls===1?projection(path,{sections:[{...projection(path).sections[0],nextCursor:'next'}]}):response.promise;})});
+ const ctx={signal:new AbortController().signal,isCurrent:()=>current};
+ await nav.select(route,{context:ctx});
+ const pending=nav.next('server-grid',ctx);
+ current=false;
+ response.resolve(projection('/v1/libraries/movies/content?view=browse&limit=40&cursor=next',{sections:[{...projection('/x').sections[0],entries:[entry('late')],nextCursor:''}]}));
+ await pending;
+ assert.equal(nav.getSnapshot().phase,'ready','the retired flight restores rather than stranding loading');
+ assert.equal(nav.getSnapshot().sections[0]!.entries[0]!.id,'item');
+ nav.dispose();
+});
+
+test('aborting the predecessor after a successor opening installs cannot erase it',async()=>{
+ const reads:ReturnType<typeof deferred<unknown>>[]=[]; let calls=0;
+ const nav=new LibraryContentService({scope,api:fixtureApi(async()=>{calls++;const d=deferred<unknown>();reads.push(d);return d.promise;})});
+ const first=nav.select(route,{context:{signal:new AbortController().signal,isCurrent:()=>true}});
+ reads[0]!.resolve(projection('/v1/libraries/movies/content?view=browse&limit=40'));
+ await first;
+ const c1=new AbortController(), c2=new AbortController();
+ const older=nav.select(route,{context:{signal:c1.signal,isCurrent:()=>true}});
+ const newer=nav.select(route,{context:{signal:c2.signal,isCurrent:()=>true}});
+ assert.equal(calls,3);
+ c1.abort();
+ reads[2]!.resolve(projection('/v1/libraries/movies/content?view=browse&limit=40',{sections:[{...projection('/x').sections[0],entries:[entry('successor')]}]}));
+ await Promise.allSettled([older,newer]);
+ assert.equal(nav.getSnapshot().phase,'ready');
+ assert.equal(nav.getSnapshot().sections[0]!.entries[0]!.id,'successor');
+ nav.dispose();
+});
+
+test('a reentrant currentness predicate cannot overwrite the successor it installs',async()=>{
+ const reads:ReturnType<typeof deferred<unknown>>[]=[]; let reenter=false,successor:Promise<void>|undefined;
+ const nav=new LibraryContentService({scope,api:fixtureApi(async()=>{const d=deferred<unknown>();reads.push(d);return d.promise;})});
+ const ctx={signal:new AbortController().signal,isCurrent:()=>{if(reenter){reenter=false;successor=nav.select({libraryId:'other',view:'browse'});return false;}return true;}};
+ const first=nav.select({libraryId:'movies',view:'browse'},{context:ctx});
+ reads[0]!.resolve(projection('/v1/libraries/movies/content?view=browse&limit=40',{sections:[{...projection('/x').sections[0],nextCursor:'next'}]}));
+ await first;
+ const pending=nav.next('server-grid',ctx);
+ reenter=true;
+ reads[1]!.resolve(projection('/v1/libraries/movies/content?view=browse&limit=40&cursor=next'));
+ await pending;
+ assert.ok(successor,'the predicate installed a successor');
+ reads[2]!.resolve(projection('/v1/libraries/other/content?view=browse&limit=40'));
+ await successor;
+ assert.equal(nav.getSnapshot().route?.libraryId,'other','the successor remains current');
+ assert.equal(nav.getSnapshot().phase,'ready');
+ nav.dispose();
+});
+
+test('an abort listener installing a successor during cleanup is not rolled back',async()=>{
+ const reads:ReturnType<typeof deferred<unknown>>[]=[];let successor:Promise<void>|undefined;
+ const nav=new LibraryContentService({scope,api:fixtureApi(async()=>{const d=deferred<unknown>();reads.push(d);return d.promise;})});
+ const first=nav.select(route,{context:{signal:new AbortController().signal,isCurrent:()=>true}});
+ reads[0]!.resolve(projection('/v1/libraries/movies/content?view=browse&limit=40',{sections:[{...projection('/x').sections[0],nextCursor:'next'}]}));
+ await first;
+ const controller=new AbortController();
+ const ctx={signal:controller.signal,isCurrent:()=>true};
+ // Registered before the flight's own listener, so it runs first during abort.
+ controller.signal.addEventListener('abort',()=>{successor=nav.select({libraryId:'other',view:'browse'});},{once:true});
+ const pending=nav.next('server-grid',ctx);
+ await new Promise(r=>setImmediate(r));
+ controller.abort();
+ assert.ok(successor,'the abort listener installed a successor');
+ reads[2]!.resolve(projection('/v1/libraries/other/content?view=browse&limit=40'));
+ await successor;
+ await pending;
+ assert.equal(nav.getSnapshot().route?.libraryId,'other');
+ assert.equal(nav.getSnapshot().phase,'ready');
+ nav.dispose();
+});
+
+function openingHarness(options: { continuationRecovery?: 'restart' | 'refresh-required'; timeoutMs?: number } = {}) {
+ const reads: { path: string; signal: AbortSignal; resolve: (value: unknown) => void; reject: (reason: unknown) => void }[] = [];
+ const api: LibraryContentApi = { request: <T>(path: string, _method?: string, _body?: unknown, signal?: AbortSignal): Promise<T> => {
+  assert.ok(signal);
+  return new Promise<T>((resolve, reject) => { reads.push({ path, signal, resolve: value => resolve(value as T), reject }); });
+ } };
+ const nav = new LibraryContentService({ scope, api, ...options });
+ const context = () => ({ signal: new AbortController().signal, isCurrent: () => true });
+ const complete = (index: number, id = 'item', cursor = 'next') => {
+  const read = reads[index]!;
+  read.resolve(projection(read.path, { sections: [{ ...projection(read.path).sections[0], entries: [entry(id)], nextCursor: cursor }] }));
+ };
+ const seed = async () => { const pending = nav.select(route); complete(0); await pending; };
+ return { nav, reads, context, complete, seed };
+}
+
+for (const trigger of ['replacement', 'retirement'] as const) {
+ test(`actual HTTP abort during ${trigger} preserves the synchronously installed successor`, async () => {
+  const h = openingHarness(); await h.seed();
+  const opening = new AbortController();
+  const old = h.nav.next('server-grid', { signal: opening.signal, isCurrent: () => true });
+  let successor: Promise<void> | undefined;
+  // This is the HTTP controller supplied to the transport, NOT the caller signal.
+  h.reads[1]!.signal.addEventListener('abort', () => {
+   successor = h.nav.select({ libraryId: 'other', view: 'browse' }, { context: h.context() });
+  }, { once: true });
+  const outer = trigger === 'replacement' ? h.nav.select(route, { context: h.context() }) : (opening.abort(), Promise.resolve());
+  assert.ok(successor);
+  assert.notStrictEqual(old, successor);
+  assert.notStrictEqual(outer, successor, 'the retired operation does not adopt a successor completion');
+  await Promise.all([old, outer]);
+  assert.equal(h.reads.length, 3, 'the superseded outer request is never dispatched');
+  assert.equal(h.reads[2]!.signal.aborted, false);
+  assert.equal(h.nav.getSnapshot().phase, 'loading');
+  h.reads[1]!.reject(new Error('ignored-abort old failure'));
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(h.reads[2]!.signal.aborted, false, 'old finally cannot abort the successor');
+  h.complete(2, 'successor', ''); await successor;
+  assert.equal(h.nav.getSnapshot().route?.libraryId, 'other');
+  assert.equal(h.nav.getSnapshot().sections[0]!.entries[0]!.id, 'successor');
+  assert.equal(h.nav.getSnapshot().phase, 'ready'); h.nav.dispose();
+ });
+
+ for (const action of ['scope', 'cancel', 'dispose'] as const) {
+  test(`actual HTTP abort during ${trigger}: no-flight ${action} wins over the outer read`, async () => {
+   const h = openingHarness(); await h.seed();
+   const opening = new AbortController();
+   const old = h.nav.next('server-grid', { signal: opening.signal, isCurrent: () => true });
+   let replacementApiCalls = 0;
+   h.reads[1]!.signal.addEventListener('abort', () => {
+    if (action === 'scope') h.nav.setScope({ viewerId: 'new-viewer', serverId: 'new-server' }, { request: async <T>() => { replacementApiCalls++; throw new Error('old operation crossed scope'); } });
+    else if (action === 'cancel') h.nav.cancel();
+    else h.nav.dispose();
+   }, { once: true });
+   const outer = trigger === 'replacement' ? h.nav.select(route, { context: h.context() }) : (opening.abort(), Promise.resolve());
+   await Promise.all([old, outer]);
+   const stopped = h.nav.getSnapshot();
+   assert.equal(h.reads.length, 2); assert.equal(replacementApiCalls, 0);
+   if (action !== 'dispose') { assert.equal(stopped.phase, 'idle'); assert.equal(stopped.projection, null); }
+   if (action === 'scope') assert.equal(stopped.scope.serverId, 'new-server');
+   h.complete(1, 'late'); await new Promise(resolve => setImmediate(resolve));
+   assert.strictEqual(h.nav.getSnapshot(), stopped, 'late completion cannot restore the predecessor');
+   if (action === 'dispose') assert.throws(() => h.nav.refresh(), /disposed/);
+   h.nav.dispose();
+  });
+ }
+}
+
+for (const predicateCall of [1, 2, 3]) {
+ test(`TRUE admission predicate ${predicateCall} cannot overwrite a successor`, async () => {
+  const h = openingHarness(); await h.seed();
+  const old = h.nav.next('server-grid', h.context());
+  let calls = 0, successor: Promise<void> | undefined;
+  const incoming = { signal: new AbortController().signal, isCurrent: () => {
+   if (++calls === predicateCall) successor = h.nav.select({ libraryId: 'other', view: 'browse' }, { context: h.context() });
+   return true;
+  } };
+  const outer = h.nav.select(route, { context: incoming });
+  assert.ok(successor); await Promise.all([old, outer]);
+  assert.equal(h.reads.length, 3); assert.equal(h.reads[2]!.signal.aborted, false);
+  assert.equal(h.nav.getSnapshot().route?.libraryId, 'other');
+  h.complete(2, 'successor', ''); await successor;
+  assert.equal(h.nav.getSnapshot().sections[0]!.entries[0]!.id, 'successor'); h.nav.dispose();
+ });
+}
+
+test('incoming opening retired by HTTP cleanup restores its exact committed checkpoint', async () => {
+ const h = openingHarness(); await h.seed();
+ const baseline = h.nav.getSnapshot();
+ const old = h.nav.next('server-grid', h.context());
+ let current = true;
+ const incoming = { signal: new AbortController().signal, isCurrent: () => current };
+ h.reads[1]!.signal.addEventListener('abort', () => { current = false; }, { once: true });
+ await assert.rejects(h.nav.select(route, { context: incoming }), /retired/); await old;
+ assert.equal(h.reads.length, 2); assert.equal(h.nav.getSnapshot().phase, 'ready');
+ assert.strictEqual(h.nav.getSnapshot().projection, baseline.projection);
+ assert.strictEqual(h.nav.getSnapshot().appended, baseline.appended);
+ assert.deepEqual(h.nav.getSnapshot().pagination, baseline.pagination);
+ assert.ok(h.nav.getSnapshot().generation > baseline.generation);
+ const next = h.nav.next('server-grid', h.context()); assert.equal(h.reads.length, 3);
+ assert.equal(new URL(h.reads[2]!.path, 'https://x').searchParams.get('cursor'), 'next');
+ h.complete(2, 'next-page', ''); await next; h.nav.dispose();
+});
+
+for (const refusal of ['stale_continuation', 'invalid_cursor', 'foreign-fence'] as const) {
+ test(`explicit continuation policy retains metadata and cursor for ${refusal} until current Refresh`, async () => {
+  const h = openingHarness({ continuationRecovery: 'refresh-required' }); await h.seed();
+  const baseline = h.nav.getSnapshot(); const context = h.context();
+  const next = h.nav.next('server-grid', context);
+  if (refusal === 'foreign-fence') {
+   const raw = projection(h.reads[1]!.path); raw.scope.viewerFence = 'other'; h.reads[1]!.resolve(raw);
+  } else h.reads[1]!.reject(Object.assign(new Error('refused'), { code: refusal }));
+  await next;
+  assert.equal(h.reads.length, 2); assert.equal(h.nav.getSnapshot().phase, 'refresh-required');
+  assert.equal(h.nav.getSnapshot().error?.code, refusal === 'foreign-fence' ? 'stale_continuation' : refusal);
+  for (const key of ['projection', 'sections', 'appended', 'head'] as const) assert.strictEqual(h.nav.getSnapshot()[key], baseline[key]);
+  assert.equal(h.nav.getSnapshot().sections[0]!.nextCursor, 'next');
+  assert.deepEqual(h.nav.getSnapshot().pagination.next, []); assert.equal(h.nav.getSnapshot().pagination.canPrevious, false);
+  await h.nav.next('server-grid', context); assert.equal(h.reads.length, 2);
+  const refreshed = h.nav.retry(context); assert.equal(h.reads.length, 3);
+  assert.equal(new URL(h.reads[2]!.path, 'https://x').searchParams.has('cursor'), false);
+  h.complete(2, 'refreshed', ''); await refreshed;
+  assert.equal(h.nav.getSnapshot().appended[0]!.entries.length, 1);
+  assert.equal(h.nav.getSnapshot().appended[0]!.entries[0]!.id, 'refreshed'); h.nav.dispose();
+ });
+}
+
+test('already-retired openings do not touch an existing flight and disposed guards remain enforced', async () => {
+ const h = openingHarness(); const pending = h.nav.select(route); const loading = h.nav.getSnapshot();
+ const controller = new AbortController(); controller.abort(); let predicates = 0;
+ const dead = { signal: controller.signal, isCurrent: () => { predicates++; return true; } };
+ for (const context of [dead, { signal: new AbortController().signal, isCurrent: () => false }]) {
+  for (const read of [() => h.nav.select(route, { context }), () => h.nav.refresh(context), () => h.nav.retry(context), () => h.nav.next('server-grid', context), () => h.nav.previous(context)]) {
+   await assert.rejects(read(), /retired/); assert.strictEqual(h.nav.getSnapshot(), loading); assert.equal(h.reads[0]!.signal.aborted, false);
+  }
+ }
+ assert.equal(predicates, 0); assert.equal(h.reads.length, 1); h.complete(0); await pending;
+ h.nav.dispose(); assert.throws(() => h.nav.select(route, { context: dead }), /disposed/);
+});
+
+for (const stage of ['registration', 'loading'] as const) {
+ test(`original abort during ${stage} settles without dispatch or stranded loading`, async () => {
+  const h = openingHarness(); await h.seed(); const baseline = h.nav.getSnapshot();
+  const controller = new AbortController();
+  if (stage === 'registration') {
+   const original = controller.signal.addEventListener.bind(controller.signal);
+   controller.signal.addEventListener = ((...args: Parameters<AbortSignal['addEventListener']>) => { original(...args); controller.abort(); }) as AbortSignal['addEventListener'];
+  } else h.nav.subscribe(() => { if (h.nav.getSnapshot().phase === 'loading') controller.abort(); });
+  await h.nav.next('server-grid', { signal: controller.signal, isCurrent: () => true });
+  assert.equal(h.reads.length, 1); assert.equal(h.nav.getSnapshot().phase, 'ready');
+  assert.strictEqual(h.nav.getSnapshot().projection, baseline.projection); h.nav.dispose();
+ });
+}
+
+test('a committed ready publication cannot be rolled back by its opening abort', async () => {
+ const h = openingHarness(); const controller = new AbortController();
+ h.nav.subscribe(() => { if (h.nav.getSnapshot().phase === 'ready') controller.abort(); });
+ const pending = h.nav.select(route, { context: { signal: controller.signal, isCurrent: () => true } });
+ h.complete(0, 'committed', ''); await pending;
+ assert.equal(h.nav.getSnapshot().phase, 'ready'); assert.equal(h.nav.getSnapshot().sections[0]!.entries[0]!.id, 'committed'); h.nav.dispose();
+});
+
+test('retired Refresh and late error preserve refresh-required cache without a hidden read', async () => {
+ const h = openingHarness({ continuationRecovery: 'refresh-required' }); await h.seed();
+ const next = h.nav.next('server-grid', h.context()); h.reads[1]!.reject(Object.assign(new Error('stale'), { code: 'stale_continuation' })); await next;
+ const baseline = h.nav.getSnapshot(); const controller = new AbortController();
+ const refreshed = h.nav.refresh({ signal: controller.signal, isCurrent: () => true }); controller.abort(); await refreshed;
+ assert.equal(h.nav.getSnapshot().phase, 'refresh-required'); assert.strictEqual(h.nav.getSnapshot().appended, baseline.appended);
+ h.reads[2]!.reject(new Error('late refresh error')); await new Promise(resolve => setImmediate(resolve));
+ assert.equal(h.reads.length, 3); assert.equal(h.nav.getSnapshot().phase, 'refresh-required');
+ assert.strictEqual(h.nav.getSnapshot().error, baseline.error); h.nav.dispose();
+});
+
+test('successful explicit Refresh replaces a prior quiet head with its new first-page metadata', async () => {
+ const h = openingHarness({ continuationRecovery: 'refresh-required' }); await h.seed();
+ const more = h.nav.next('server-grid', h.context()); h.complete(1, 'second-page', 'tail'); await more;
+ const quiet = h.nav.revalidate(); h.complete(2, 'quiet-head', 'next'); await quiet;
+ const head = h.nav.getSnapshot().head; assert.ok(head);
+ const stale = h.nav.next('server-grid', h.context());
+ h.reads[3]!.reject(Object.assign(new Error('stale'), { code: 'stale_continuation' })); await stale;
+ assert.strictEqual(h.nav.getSnapshot().head, head, 'refusal retains the committed quiet metadata');
+ const refreshed = h.nav.refresh(h.context()); h.complete(4, 'fresh-first-page', ''); await refreshed;
+ assert.equal(h.nav.getSnapshot().head, undefined, 'accepted page one retires prior quiet head metadata');
+ assert.equal(h.nav.getSnapshot().projection?.sections[0]!.entries[0]!.id, 'fresh-first-page');
+ assert.equal(h.nav.getSnapshot().appended[0]!.entries.length, 1);
+ assert.equal(h.nav.getSnapshot().pagination.cursor, null); assert.equal(h.nav.getSnapshot().pagination.canPrevious, false);
+ h.nav.dispose();
+});
+
+test('opening timeout remains retryable, while legacy restart carries its original opening', async () => {
+ const h = openingHarness({ timeoutMs: 5 }); const pending = h.nav.select(route, { context: h.context() }); await pending;
+ assert.equal(h.nav.getSnapshot().error?.code, 'timeout'); assert.equal(h.nav.getSnapshot().error?.retryable, true); h.nav.dispose();
+ const restart = openingHarness(); await restart.seed(); const controller = new AbortController();
+ const next = restart.nav.next('server-grid', { signal: controller.signal, isCurrent: () => true });
+ restart.reads[1]!.reject(Object.assign(new Error('stale'), { code: 'stale_continuation' })); await new Promise(resolve => setImmediate(resolve));
+ assert.equal(restart.reads.length, 3); assert.equal(new URL(restart.reads[2]!.path, 'https://x').searchParams.has('cursor'), false);
+ controller.abort(); await next;
+ assert.equal(restart.reads[2]!.signal.aborted, true); assert.equal(restart.nav.getSnapshot().phase, 'ready'); restart.nav.dispose();
 });
