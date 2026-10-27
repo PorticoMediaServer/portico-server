@@ -225,7 +225,7 @@ export class CastController {
       const admitted=this.current();
       if(generation!==this.startGeneration)return false;
       // Retired callers settle locally; no Stop/recovery/SDK IO is admitted.
-      if(!admitted){this.release(false,false);return false;}
+      if(!admitted){this.detachOriginal(false,false);return false;}
       if(flight?.id){
         // Delivery/ACK loss is uncertainty, not a refusal. Recover the same
         // committed result without stopping it. Only a real receiver failure
@@ -539,7 +539,7 @@ export class CastController {
   }
 
   /** Detach from the transport; `stopReceiver` closes Portico on the TV. */
-  private release(stopReceiver: boolean, end = true):number {
+  private detachOriginal(stopReceiver: boolean, end: boolean):{released:number;flight?:CastTransferFlight} {
     const released=++this.startGeneration;this.statusRevision++;
     // Detach every old handle before the first injected cleanup port. Cleanup
     // may synchronously start a successor; nothing below selects latest state.
@@ -552,6 +552,16 @@ export class CastController {
     if(renewal)this.clearTimer(renewal.timer);
     if(stopping)this.clearTimer(stopping.timer);
     this.clearTimer(adoptTimer);settle?.(false);
+    for(const off of detach)off();
+    waiting?.reject(new CastFailure('cast.error.noAnswer'));
+    for(const pending of loads)pending.reject(new CastFailure('cast.error.noAnswer'));
+    if(this.startGeneration===released&&transport&&end)transport.end(stopReceiver);
+    return {released,flight};
+  }
+
+  /** Explicitly admitted release may cancel only its captured transfer. */
+  private release(stopReceiver:boolean,end=true):number {
+    const {released,flight}=this.detachOriginal(stopReceiver,end);
     const original=()=>!this.disposed&&!this.transport&&this.startGeneration===released;
     if(flight)void this.cancelTransfer(flight).then(receipt=>{
       if(!original())return;
@@ -559,10 +569,6 @@ export class CastController {
       if(!original())return;
       this.recoveryTransfer=undefined;this.publish({phase:'off',acceptedSource:undefined,transferPending:false},original);
     },()=>{if(original()){this.recoveryTransfer=flight;this.fail('cast.error.unreachable',original);}});
-    for(const off of detach)off();
-    waiting?.reject(new CastFailure('cast.error.noAnswer'));
-    for(const pending of loads)pending.reject(new CastFailure('cast.error.noAnswer'));
-    if(this.startGeneration===released&&transport&&end)transport.end(stopReceiver);
     return released;
   }
 
