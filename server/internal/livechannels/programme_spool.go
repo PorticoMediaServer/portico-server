@@ -12,15 +12,36 @@ import (
 // Large guides use a private, disposable SQLite spool. It is separate from the
 // catalogue writer and uses a small page cache; publication still checkpoints
 // through the ordinary 128-row transactions and exposes only a complete guide.
+//
+// Everything below runs on the spool's own handle. The catalogue's write gate
+// arbitrates writers to the one persistent database file, so a spool write must
+// not take it: a guide refresh would otherwise queue the whole import behind
+// sign-ins and progress writes, and hold that gate for whole-spool statements,
+// for a file no reader of the catalogue can ever see. The spool commits also
+// stay out of `dbwork`'s publication counter for the same reason: nothing the
+// spool does is a catalogue change.
 const programmeMemoryRows = 10000
 const spoolColumns = `key,channel,title,lineage,series,episode,new_evidence,description,icon,facts,start_ms,end_ms`
 
 type programmeSpool struct {
 	db      *sql.DB
 	path    string
-	tx      *dbwork.Write
+	tx      *sql.Tx
 	pending int
 	count   int
+}
+
+// exec runs one autocommit statement on the private spool file. It keeps the
+// retry budget a background catalogue write uses for a transient lock error,
+// and nothing else from it: no gate, no commit notification, no publication.
+func (s *programmeSpool) exec(query string, args ...any) (sql.Result, error) {
+	var result sql.Result
+	_, err := dbwork.BackgroundRetry.Do(context.Background(), func() error {
+		var err error
+		result, err = s.db.ExecContext(context.Background(), query, args...)
+		return err
+	})
+	return result, err
 }
 
 func newProgrammeSpool() (*programmeSpool, error) {
@@ -38,7 +59,7 @@ func newProgrammeSpool() (*programmeSpool, error) {
 	db.SetMaxOpenConns(1)
 	spool := &programmeSpool{db: db, path: path}
 	for _, query := range []string{`PRAGMA cache_size=-4096`, `PRAGMA journal_mode=DELETE`, `CREATE TABLE programmes(key TEXT PRIMARY KEY,channel TEXT NOT NULL,title TEXT NOT NULL,lineage TEXT NOT NULL,series TEXT NOT NULL,episode TEXT NOT NULL,new_evidence TEXT NOT NULL,description TEXT NOT NULL,icon TEXT NOT NULL,facts TEXT NOT NULL,start_ms INTEGER NOT NULL,end_ms INTEGER,UNIQUE(channel,start_ms)) STRICT`, `CREATE INDEX programmes_time ON programmes(channel,start_ms)`} {
-		if _, e = dbwork.ExecWrite(context.Background(), db, dbwork.ClassBackgroundMedia, query); e != nil {
+		if _, e = spool.exec(query); e != nil {
 			spool.close()
 			return nil, e
 		}
@@ -65,7 +86,7 @@ func (s *programmeSpool) flush() error {
 func (s *programmeSpool) add(p parsedProgramme) (bool, error) {
 	var e error
 	if s.tx == nil {
-		s.tx, e = dbwork.Begin(context.Background(), s.db, dbwork.ClassBackgroundMedia)
+		s.tx, e = s.db.BeginTx(context.Background(), nil)
 		if e != nil {
 			return false, e
 		}
@@ -74,7 +95,7 @@ func (s *programmeSpool) add(p parsedProgramme) (bool, error) {
 	if !p.end.IsZero() {
 		end = p.end.UnixMilli()
 	}
-	result, e := s.tx.Tx().Exec(`INSERT INTO programmes VALUES(?,?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT DO NOTHING`, p.key, p.channel, p.title, p.lineage, p.series, p.episode, p.newEvidence, p.description, p.icon, p.facts, p.start.UnixMilli(), end)
+	result, e := s.tx.Exec(`INSERT INTO programmes VALUES(?,?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT DO NOTHING`, p.key, p.channel, p.title, p.lineage, p.series, p.episode, p.newEvidence, p.description, p.icon, p.facts, p.start.UnixMilli(), end)
 	if e != nil {
 		return false, e
 	}
@@ -123,13 +144,13 @@ func (d *parsedSource) normaliseSpool(days int) error {
 		return e
 	}
 	next := `(SELECT min(b.start_ms) FROM programmes b WHERE b.channel=programmes.channel AND b.start_ms>programmes.start_ms)`
-	result, e := dbwork.ExecWrite(context.Background(), s.db, dbwork.ClassBackgroundMedia, `UPDATE programmes SET end_ms=`+next+` WHERE end_ms IS NULL AND `+next+` IS NOT NULL AND `+next+`-start_ms<=604800000`)
+	result, e := s.exec(`UPDATE programmes SET end_ms=` + next + ` WHERE end_ms IS NULL AND ` + next + ` IS NOT NULL AND ` + next + `-start_ms<=604800000`)
 	if e != nil {
 		return e
 	}
 	n, _ := result.RowsAffected()
 	d.diagnostics.AdjustedProgrammes += int(n)
-	result, e = dbwork.ExecWrite(context.Background(), s.db, dbwork.ClassBackgroundMedia, `DELETE FROM programmes WHERE end_ms IS NULL`)
+	result, e = s.exec(`DELETE FROM programmes WHERE end_ms IS NULL`)
 	if e != nil {
 		return e
 	}
@@ -138,7 +159,7 @@ func (d *parsedSource) normaliseSpool(days int) error {
 		d.diagnostics.SkippedProgrammes += int(n)
 		d.diagnostics.note("live.import.programmeEndMissing")
 	}
-	result, e = dbwork.ExecWrite(context.Background(), s.db, dbwork.ClassBackgroundMedia, `UPDATE programmes SET end_ms=`+next+` WHERE end_ms>`+next)
+	result, e = s.exec(`UPDATE programmes SET end_ms=` + next + ` WHERE end_ms>` + next)
 	if e != nil {
 		return e
 	}
@@ -146,7 +167,7 @@ func (d *parsedSource) normaliseSpool(days int) error {
 	d.diagnostics.AdjustedProgrammes += int(n)
 	if days > 0 {
 		now := time.Now()
-		if _, e = dbwork.ExecWrite(context.Background(), s.db, dbwork.ClassBackgroundMedia, `DELETE FROM programmes WHERE end_ms<=? OR start_ms>=?`, now.Add(-24*time.Hour).UnixMilli(), now.Add(time.Duration(days)*24*time.Hour).UnixMilli()); e != nil {
+		if _, e = s.exec(`DELETE FROM programmes WHERE end_ms<=? OR start_ms>=?`, now.Add(-24*time.Hour).UnixMilli(), now.Add(time.Duration(days)*24*time.Hour).UnixMilli()); e != nil {
 			return e
 		}
 	}
