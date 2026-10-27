@@ -54,6 +54,7 @@ type HLS struct {
 	db            *sql.DB
 	root, binary  string
 	mu            sync.Mutex
+	occurrences   occurrenceRegistry
 	cleanupMu     sync.Mutex
 	cleaning      map[string]bool
 	active        map[string]context.CancelFunc
@@ -99,6 +100,7 @@ type HLS struct {
 // past its converted edge replaces it with a window that starts where the
 // viewer actually is, which is the whole point of the fixed segment grid.
 type hlsWindow struct {
+	generation       int
 	publicationError error
 	videoConversion  bool
 	audioConversion  bool
@@ -173,11 +175,19 @@ func NewHLS(ctx context.Context, db *sql.DB, root, binary string) (*HLS, error) 
 // who has jumped forward is not served by a converter still grinding through the
 // part they skipped.
 func (h *HLS) start(ctx context.Context, id string, from int) error {
+	intent, err := h.occurrences.intent(id)
+	if err != nil {
+		return err
+	}
+	defer intent.release()
 	// Resolve durable state before taking the producer mutex. A starved read
 	// pool must not hold up already-running segment producers.
 	var sessionState, expires, artifactStatus string
 	var videoConversion bool
-	if e := dbwork.QueryRow(ctx, h.db, `SELECT ps.state,ps.expires_at,COALESCE(a.status,''),COALESCE(d.video_action,'convert')='convert' FROM playback_sessions ps LEFT JOIN playback_artifacts a ON a.session_id=ps.id LEFT JOIN playback_delivery_plans d ON d.session_id=ps.id WHERE ps.id=?`, id).Scan(&sessionState, &expires, &artifactStatus, &videoConversion); e != nil {
+	var generation int
+	var itemID int64
+	var requestID, assetID string
+	if e := dbwork.QueryRow(ctx, h.db, `SELECT ps.state,ps.expires_at,COALESCE(a.status,''),COALESCE(d.video_action,'convert')='convert',ps.generation,ps.request_id,ps.item_id,ps.asset_id FROM playback_sessions ps LEFT JOIN playback_artifacts a ON a.session_id=ps.id LEFT JOIN playback_delivery_plans d ON d.session_id=ps.id WHERE ps.id=?`, id).Scan(&sessionState, &expires, &artifactStatus, &videoConversion, &generation, &requestID, &itemID, &assetID); e != nil {
 		return e
 	}
 	if sessionState == "stopped" || sessionState == "ended" || sessionState == "failed" || expires <= time.Now().UTC().Format(time.RFC3339) {
@@ -185,6 +195,9 @@ func (h *HLS) start(ctx context.Context, id string, from int) error {
 	}
 	if artifactStatus == "failed" {
 		return nil
+	}
+	if !intent.current() {
+		return errOccurrenceClaimed
 	}
 	h.mu.Lock()
 	defer h.mu.Unlock()
@@ -196,6 +209,9 @@ func (h *HLS) start(ctx context.Context, id string, from int) error {
 	}
 	if _, ok := h.active[id]; ok {
 		window := h.windows[id]
+		if window != nil && window.generation != generation {
+			return errOccurrenceClaimed
+		}
 		// A two-rendition audio session has no grid; one run produces everything.
 		if window == nil {
 			return nil
@@ -242,12 +258,16 @@ func (h *HLS) start(ctx context.Context, id string, from int) error {
 		return ErrConversionSpace
 	}
 	ctx, cancel := context.WithCancel(h.ctx)
-	h.active[id] = cancel
-	h.windows[id] = &hlsWindow{videoConversion: videoConversion, start: from, served: -1, produced: from - 1, cancel: cancel, done: make(chan struct{})}
+	window := &hlsWindow{generation: generation, videoConversion: videoConversion, start: from, served: -1, produced: from - 1, cancel: cancel, done: make(chan struct{})}
+	run := &occurrenceRun{generation: generation, requestID: requestID, itemID: itemID, assetID: assetID, cancel: cancel, done: window.done}
+	if err := intent.install(run, func() { h.active[id] = cancel; h.windows[id] = window }); err != nil {
+		cancel()
+		return err
+	}
 	h.producers.Add(1)
 	supervise.Go("playback.hls.produce", func() {
 		defer h.producers.Done()
-		h.produce(ctx, id, from)
+		h.produce(ctx, id, from, generation, window, intent.entry, run)
 	})
 	// A producer starts because somebody asked for it, so this is the moment the
 	// viewer was last known to be there. Without it a conversion that is never
@@ -303,26 +323,23 @@ func (h *HLS) Shutdown(ctx context.Context) error {
 	}
 }
 
-func (h *HLS) produce(ctx context.Context, id string, from int) {
+func (h *HLS) produce(ctx context.Context, id string, from, generation int, owned *hlsWindow, entry *occurrenceEntry, run *occurrenceRun) {
 	defer func() {
 		h.mu.Lock()
-		delete(h.active, id)
-		if window := h.windows[id]; window != nil && window.start == from {
-			close(window.done)
+		if h.windows[id] == owned {
+			delete(h.active, id)
 			delete(h.windows, id)
 		}
+		close(owned.done)
 		h.mu.Unlock()
+		h.occurrences.finished(id, entry, run)
 	}()
-	// A panic-injection point, after this producer's own cleanup is registered:
-	// PORTICO_CHAOS_PANIC=playback.hls.produce:0.01 fails one conversion in a
-	// hundred the way a bad source would, and the session must fail cleanly with
-	// no orphan and no other session affected.
 	supervise.Chaos("playback.hls.produce")
 	var aid, state, video string
-	var generation int
 	var duration float64
-	e := dbwork.QueryRow(ctx, h.db, `SELECT ps.asset_id,ps.state,a.video_codec,ps.duration,ps.generation FROM playback_sessions ps JOIN catalog_assets a ON a.token=ps.asset_id WHERE ps.id=? AND ps.mode='hls'`, id).Scan(&aid, &state, &video, &duration, &generation)
-	if e != nil || state == "stopped" || state == "ended" || state == "failed" {
+	var actualGeneration int
+	e := dbwork.QueryRow(ctx, h.db, `SELECT ps.asset_id,ps.state,a.video_codec,ps.duration,ps.generation FROM playback_sessions ps JOIN catalog_assets a ON a.token=ps.asset_id WHERE ps.id=? AND ps.mode='hls' AND ps.generation=? AND ps.request_id=? AND ps.item_id=? AND ps.asset_id=?`, id, generation, run.requestID, run.itemID, run.assetID).Scan(&aid, &state, &video, &duration, &actualGeneration)
+	if e != nil || actualGeneration != generation || state == "stopped" || state == "ended" || state == "failed" {
 		return
 	}
 	ctx = withProducerGeneration(ctx, generation)
