@@ -155,15 +155,20 @@ function SavedLists(bindings: SavedViewBindings & {onCreate: () => void}) {
   const split = route.view === 'watchlist' || route.view === 'favorites', projection = primary.projection ?? (split ? squares.projection : null);
   const retryRoute = route.view === 'home' || route.view === 'downloads' ? undefined : route;
   const routeKey = retryRoute ? JSON.stringify(retryRoute) : '';
-  const ticket = useMemo<SavedRetryTicket | undefined>(() => retryRoute ? {
-    runtime, route: retryRoute, routeKey, posters: runtime.posters, squares: runtime.squares, saved: runtime.saved, reportError: effects.reportError,
-  } : undefined, [runtime, retryRoute, routeKey, effects.reportError]);
+  // The admitted route is the committed route witness for this exact routeKey: the
+  // capture pass runs first in this commit, so a later equal-content object cannot
+  // replace the route this retry lifetime was built from.
+  const routeWitness = useRef(retryRoute);
+  useLayoutEffect(() => {routeWitness.current = retryRoute;});
+  const postersService = runtime.posters, squaresService = runtime.squares, savedService = runtime.saved;
   const [published, setPublished] = useState<SavedRetryAdmission | undefined>(undefined), [retryBusy, setRetryBusy] = useState(false);
   // A fresh layout-owned admission per exact ticket. Strict setup→cleanup→setup
   // publishes a live admission for this render; an old callback captured the old
   // admission object and never adopts the fresh one.
   useLayoutEffect(() => {
-    if (!ticket) {setPublished(undefined); return;}
+    const route = routeWitness.current;
+    if (!route) {setPublished(undefined); return;}
+    const ticket: SavedRetryTicket = {runtime, route, routeKey, posters: postersService, squares: squaresService, saved: savedService, reportError: effects.reportError};
     const created = createSavedRetryAdmission(ticket);
     setPublished(created);
     setRetryBusy(false);
@@ -171,8 +176,10 @@ function SavedLists(bindings: SavedViewBindings & {onCreate: () => void}) {
       retireSavedRetryAdmission(created);
       setPublished(previous => previous === created ? undefined : previous);
     };
-  }, [ticket]);
-  const active = published && published.ticket === ticket ? published : undefined;
+  }, [runtime, routeKey, postersService, squaresService, savedService, effects.reportError]);
+  const active = published && published.live && published.ticket.routeKey === routeKey && published.ticket.runtime === runtime
+    && published.ticket.posters === postersService && published.ticket.squares === squaresService && published.ticket.saved === savedService
+    && published.ticket.reportError === effects.reportError ? published : undefined;
   const retry = useCallback(() => {
     const value = active;
     if (!value || !value.live || value.pending) return;

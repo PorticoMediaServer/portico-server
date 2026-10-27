@@ -3,6 +3,9 @@ import assert from 'node:assert/strict';
 import {springTiming, springs} from '@design';
 import {MusicExpansionPaint, type MusicPaintNodes} from '../src/screens/watch/music/expansion-paint.ts';
 import {claimDockWords, dockWordsOwner, releaseDockWords} from '../src/kit/dock/dock-words.ts';
+import {componentModule} from '../../web/test/helpers/component-harness.mjs';
+import {createRenderer} from '../../web/test/helpers/interaction-harness.mjs';
+import {fenceKey} from '../src/shell/playback-model.ts';
 
 // UNRUN production visual-owner vectors. DOM/WAAPI/style observations below are controlled;
 // they are not actual browser geometry, a fake playable Session, or music runtime acceptance.
@@ -121,4 +124,37 @@ test('actual replaced frame nodes release old group jobs without replaying a new
   const frame = new Node({...f.frame.box}), cover = new Node({...f.cover.box}), group = new Node({...f.cover.box});group.dataset.musicContentGroup = '0';frame.children = [cover];
   f.owner.update({...f.nodes, frame: dom(frame), cover: dom(cover), groups: [dom(group)]}, true, false);
   assert.ok(oldGroupJob.canceled > 0);assert.equal(group.jobs.at(-1)!.options.delay, 0);
+});
+
+// Actual useMusicExpansion lifetime wiring through the published component
+// renderer: no browser, media, clock or scheduler is started.
+test('equal progress snapshots keep the original admitted music scope', async () => {
+  const h = createRenderer();
+  const app = await componentModule(new URL('../src/screens/watch/music/expansion-owner.tsx', import.meta.url), {
+    react: h.react, '../../../shell/playback-model': {fenceKey}, './music-expansion-owner.module.css': {default: {}},
+  });
+  const fence = Object.freeze({kind: 'queue', playback: {run: 1, scope: {serverId: 'server', authority: 'local', accountId: 'account', profileId: 'profile',
+    controllerId: 'controller', controllerEpoch: 'epoch', commandLaneId: 'lane'}}, sessionId: 'session', itemId: 'item', sourceId: 'source', entryId: 'entry', generation: 1});
+  const authority = Object.freeze({});
+  let live: any;
+  const binding = {runtime: {getSnapshot: () => live, subscribe: () => () => {}}, artwork: {foreground: () => undefined}};
+  const ref = () => ({current: null}), localCurrent = () => true;
+  const snapshot = (playbackRun = 2) => ({authority, disposed: false, fence, playback: {intentId: 4, playbackRun},
+    presentation: {kind: 'music', subject: {kind: 'music', item: {id: 'song'}}, fence, posterUrl: 'poster', backdropUrl: 'backdrop'},
+    dock: {remote: null, local: {expanded: false}}});
+  const draw = () => h.render(() => app.useMusicExpansion(binding, live, localCurrent, ref(), ref(), false));
+  const original = snapshot();
+  live = original;
+  const first = draw();
+  assert.ok(first.scope, 'the first exact content admits a scope');
+  // A progress tick republishes equal content through fresh fence and presentation
+  // objects. The content key is the scope's lifetime, so the admission survives.
+  live = {...original, fence: {...fence}, presentation: {...original.presentation, fence: {...fence}}};
+  const second = draw();
+  assert.equal(second.scope, first.scope, 'equal progress content keeps the original scope object');
+  // Only a real playback change (a new run) admits a new lifetime.
+  live = snapshot(3);
+  const successor = draw();
+  assert.notEqual(successor.scope, first.scope);
+  assert.notEqual(successor.scope?.id, first.scope?.id);
 });

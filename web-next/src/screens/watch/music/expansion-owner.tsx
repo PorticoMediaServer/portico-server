@@ -20,10 +20,14 @@ export function useMusicExpansion(binding: WatchBindings | undefined, snapshot: 
   const key = music ? JSON.stringify([fenceKey(fence!), presentation!.subject.kind === 'music' ? presentation!.subject.item.id : null,
     snapshot!.playback.intentId, snapshot!.playback.playbackRun, presentation!.posterUrl, presentation!.backdropUrl]) : undefined;
   const authority = snapshot?.authority;
+  // The scope's lifetime is the exact content key above, never a per-tick fence or
+  // presentation object identity: progress republishes equal objects.
+  const fenceValue = fence ? fenceKey(fence) : undefined;
+  const posterUrl = presentation?.posterUrl, backdropUrl = presentation?.backdropUrl;
   const scope = useMemo<Scope | undefined>(() => {
-    if (!music || !binding || !key || !fence || !localCurrent()) return;
+    if (!music || !binding || !key || fenceValue === undefined || !localCurrent()) return;
     const original = key, runtime = binding.runtime;
-    return {id: ++lifetime, binding, artwork: binding.artwork.foreground(presentation!.posterUrl ?? presentation!.backdropUrl, 560, 1, {group: 'playback', priority: 'high'}) ?? undefined, current: () => {
+    return {id: ++lifetime, binding, artwork: binding.artwork.foreground(posterUrl ?? backdropUrl, 560, 1, {group: 'playback', priority: 'high'}) ?? undefined, current: () => {
       try {
         if (!localCurrent()) return false;
         const live = runtime.getSnapshot(), value = live.presentation;
@@ -31,7 +35,7 @@ export function useMusicExpansion(binding: WatchBindings | undefined, snapshot: 
           && !live.dock.remote && JSON.stringify([fenceKey(live.fence), value.subject.item.id, live.playback.intentId, live.playback.playbackRun, value.posterUrl, value.backdropUrl]) === original;
       } catch {return false;}
     }};
-  }, [binding, key, fence, authority, localCurrent, music, presentation?.posterUrl, presentation?.backdropUrl]);
+  }, [binding, key, fenceValue, authority, localCurrent, music, posterUrl, backdropUrl]);
   const [held, setHeld] = useState<Scope>();
   const admitted = scope?.current() ? scope : undefined;
   const open = !!admitted && !!snapshot?.dock.local?.expanded;

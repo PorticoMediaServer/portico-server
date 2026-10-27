@@ -192,6 +192,34 @@ test('an old retry after an equal-route ticket replacement is inert and the curr
   assert.deepEqual(f.calls, {posters: 1, squares: 1});
 });
 
+test('an equal-content route object never replaces the admitted retry lifetime', async t => {
+  stubGlobals(t);
+  const f = await mount({posters: snapshot('posters', 'error'), squares: snapshot('squares', 'error')});
+  const retry = retryOf(compact(f)[0]!);
+  // A re-render hands a new route object with identical content. The routeKey is
+  // the ticket's content witness; object identity must not retire the admission.
+  f.setRoute({...route}); f.flat();
+  retry.onPress();
+  assert.deepEqual(f.calls, {posters: 1, squares: 1}, 'the original route witness still authorizes the retry');
+  assert.deepEqual(f.errors, []);
+});
+
+test('changed route content retires the original retry lifetime and admits its successor', async t => {
+  stubGlobals(t);
+  const f = await mount({posters: snapshot('posters', 'error'), squares: snapshot('squares', 'error')});
+  const oldRetry = retryOf(compact(f)[0]!);
+  const next = {view: 'favorites', sort: 'added', direction: 'desc'} as const;
+  const nextPosters = {...snapshot('posters', 'error'), route: {...next, shape: 'posters'}}, nextSquares = {...snapshot('squares', 'error'), route: {...next, shape: 'squares'}};
+  f.setRoute(next);
+  f.posters.set(nextPosters); f.posters.plan(nextPosters);
+  f.squares.set(nextSquares); f.squares.plan(nextSquares);
+  f.flat();
+  oldRetry.onPress();
+  assert.deepEqual(f.calls, {}, 'the superseded route witness is dead');
+  retryOf(compact(f)[0]!).onPress();
+  assert.deepEqual(f.calls, {posters: 1, squares: 1}, 'the successor content admission works');
+});
+
 test('a late rejection after route retirement neither reports nor starts the sibling', async t => {
   stubGlobals(t);
   const f = await mount({posters: snapshot('posters', 'error'), squares: snapshot('squares', 'error')});
