@@ -89,12 +89,14 @@ test('a chapter response from another source is never adopted as a new source', 
 test('a late response after retirement is neither published nor returned', async () => {
   const io = deferred<unknown>();
   const h = harness({request: async <T>() => io.promise as T});
+  const loading = h.port.chapters.load();
+  // The admitted 'loading' state is published synchronously by the real service
+  // before this subscription exists; from here only the retired record could notify.
   let published = 0;
   h.port.chapters.subscribe(() => {published++;});
-  const loading = h.port.chapters.load();
   h.port.dispose();
   io.resolve(chaptersData());
-  await loading.catch(() => {});
+  await assert.rejects(loading, /stale_listening_port/);
   assert.equal(published, 0);
   assert.equal(h.port.isCurrent(), false);
 });

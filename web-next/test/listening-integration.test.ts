@@ -281,7 +281,12 @@ test('actual ListeningPanels callbacks consume retired save/editor failures whil
   const draw=()=>one(tree(h.render(()=>panels.ListeningPanels({host:{owner,state:owner.getSnapshot()},snapshot:f.snapshot,reportError:(e:unknown)=>reports.push(e)}))),'ListeningQueue').props;
   try{
     owner.commitExpanded(true);await tick();let props=draw();props.save.openDialog(props.snapshot);draw().save.changeName('Old');props=draw();
-    const save=f.holdSave();props.save.confirm(props.save.original,props.save.name);await tick();draw().save.close();props=draw();props.save.openDialog(props.snapshot);draw().save.changeName('Successor');
+    const save=f.holdSave();props.save.confirm(props.save.original,props.save.name);await tick();
+    // Cross the save's own retry turn so the held transport is genuinely awaited when it
+    // rejects; the retired opening must still consume that failure without reporting.
+    await new Promise<void>(resolve=>setTimeout(resolve,0));await tick();
+    assert.equal(f.calls.saveKeys.length,2);// the retried save now awaits the held transport
+    draw().save.close();props=draw();props.save.openDialog(props.snapshot);draw().save.changeName('Successor');
     const successor=owner.getSnapshot().save!;save.reject(new Error('old_save_rejected'));await tick();assert.equal(owner.getSnapshot().save,successor);assert.deepEqual(reports,[]);
     draw().save.close();props=draw();const edit=f.holdEdit();props.window.onEdit(props.window.snapshot.page,'entry-2','remove');await tick();draw().window.onRetry();await tick();
     const fresh=owner.getSnapshot().window;edit.reject(new Error('old_edit_rejected'));await tick();assert.equal(owner.getSnapshot().window,fresh);assert.equal(owner.getSnapshot().queueError,false);assert.deepEqual(reports,[]);
