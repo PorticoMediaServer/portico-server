@@ -15,7 +15,12 @@ const changed = (a: readonly unknown[] | undefined, b: readonly unknown[] | unde
 const bridge = {current: undefined as HookFrame | undefined, router: {state: {location: {pathname: '/', href: '/'}}, navigate: async () => {}, subscribe: () => () => {}}};
 const bridgeKey = '__porticoDockPlaybackHooks';
 (globalThis as Record<string, unknown>)[bridgeKey] = bridge;
-const hookModule = 'data:text/javascript,' + encodeURIComponent(`const bridge = globalThis.${bridgeKey}; ${['useRef', 'useMemo', 'useState', 'useEffect', 'useLayoutEffect', 'useSyncExternalStore', 'useId'].map(name => `export const ${name} = (...args) => bridge.current.${name}(...args);`).join('\n')}`);
+const reactModule = import.meta.resolve('react');
+// Bind the real React namespace. A hook called while this frame is rendering uses the frame's
+// lifecycle; the same module under the real renderer (the MediaSurface check below) uses React's.
+const hookModule = 'data:text/javascript,' + encodeURIComponent(`import * as real from ${JSON.stringify(reactModule)};export * from ${JSON.stringify(reactModule)};
+const bridge = globalThis.${bridgeKey};
+${['useRef', 'useMemo', 'useCallback', 'useState', 'useEffect', 'useLayoutEffect', 'useSyncExternalStore', 'useId', 'useContext'].map(name => `export const ${name} = (...args) => bridge.current ? bridge.current.${name}(...args) : real.${name}(...args);`).join('\n')}`);
 
 // A deterministic hook-lifecycle harness for the real component functions:
 // dependency equality, commit refs, cleanup-before-setup and bounded rerenders.
@@ -34,6 +39,7 @@ class HookFrame {
     if (!held || changed(held.deps, deps)) this.slots[i] = {value: make(), deps};
     return this.slots[i].value;
   }
+  useCallback(callback: unknown, deps?: readonly unknown[]) { return this.useMemo(() => callback, deps); }
   useState(initial: unknown) {
     const i = this.cursor++;
     this.slots[i] ??= {value: typeof initial === 'function' ? initial() : initial};
@@ -43,6 +49,7 @@ class HookFrame {
     }];
   }
   useSyncExternalStore(_subscribe: unknown, getSnapshot: () => unknown) { this.cursor++; return getSnapshot(); }
+  useContext(context: {value: unknown}) { this.cursor++; return context.value; }
   useLayoutEffect(run: () => void | (() => void), deps?: readonly unknown[]) { this.effect('layout', run, deps); }
   useEffect(run: () => void | (() => void), deps?: readonly unknown[]) { this.effect('passive', run, deps); }
   private effect(phase: Effect['phase'], run: () => void | (() => void), deps?: readonly unknown[]) {
@@ -73,8 +80,9 @@ class HookFrame {
         pending.forEach(job => job.effect.cleanup?.());
         pending.forEach(job => { job.effect.cleanup = job.run() ?? undefined; });
       }
-      if (!this.dirty) return result;
+      if (!this.dirty) { bridge.current = undefined; return result; }
     }
+    bridge.current = undefined;
     throw new Error('Hook effects did not settle within eight renders');
   }
   unmount() { for (const slot of this.slots) if (slot?.cleanup) { slot.cleanup(); slot.cleanup = undefined; } }
@@ -96,12 +104,14 @@ const loader = registerHooks({load(url, context, next) {
   if (url.endsWith('/src/router.tsx')) return module(`export const router = globalThis.${bridgeKey}.router;`);
   if (url.endsWith('/src/shell/viewport.ts')) return module('export const useShellWidth = () => 1440;');
   if (url.endsWith('/kit/dock/index.ts')) return module("export const DockHost = 'dock-host', DockNotice = 'dock-notice', MediaSurface = 'media-surface';");
-  if (url.endsWith('/kit/controls/index.ts')) return module("export const Button = 'button', Slider = 'slider';");
-  if (url.endsWith('/kit/artwork/index.ts')) return module("export const Artwork = 'artwork', AmbientArt = 'ambient-art', ColourBackdrop = 'colour-backdrop', GeneratedArt = 'generated-art';");
+  if (url.endsWith('/kit/controls/index.ts')) return module("export const Button = 'button', ResumeButton = 'resume-button', Chip = 'chip', Tabs = 'tabs', Segmented = 'segmented', Switch = 'switch', TextField = 'text-field', Select = 'select', RichSelect = 'rich-select', Slider = 'slider';");
+  if (url.endsWith('/kit/artwork/index.ts')) return module("export const Artwork = 'artwork', AmbientArt = 'ambient-art', ColourBackdrop = 'colour-backdrop', GeneratedArt = 'generated-art', GeneratedCover = 'generated-cover', CircleArt = 'circle-art', ArtistCircle = 'artist-circle', PersonCircle = 'person-circle', CoverMosaic = 'cover-mosaic', ChannelMark = 'channel-mark', ProfileFace = 'profile-face', ProfilePicker = 'profile-picker', createArtworkRuntime = () => ({}), scheduledAmbientSource = () => null;");
   if (url.endsWith('/kit/dock/parts.tsx')) return module("export const Facts = 'facts', Control = 'dock-control', useDockActions = () => () => {}, playbackAction = () => 'pause', playbackIcon = () => 'i-pause', playbackLabel = () => 'Pause';");
-  if (url.endsWith('.tsx')) {
+  // The watch screen graph runs on the lifecycle frame; the kit renderers it names stay inert
+  // and the real MediaSurface is loaded separately below by renderToStaticMarkup.
+  if (url.endsWith('.tsx') || url.includes('/src/screens/watch/') || url.endsWith('/kit/dock/use-motion.ts')) {
     let source = transformTsx(url);
-    if (/\/(?:shell\/Playback|kit\/dock\/NowPlayingCard|screens\/watch\/WatchPlayback)\.tsx$/.test(url)) source = source.replace(/from (['"])react\1/g, `from ${JSON.stringify(hookModule)}`);
+    source = source.replace(/from (['"])react\1/g, `from ${JSON.stringify(hookModule)}`);
     return module(source);
   }
   return next(url, context);
@@ -155,15 +165,25 @@ test('host rerenders retain one media ref and presentations while actual authori
   const hooks = new HookFrame(), events: unknown[] = [], dock = new PlaybackDock(scope);
   const timers = new Map<number, () => void>(); let serial = 0;
   const originalTimers = {setTimeout: globalThis.setTimeout, clearTimeout: globalThis.clearTimeout};
-  const originalDocument = globalThis.document;
+  const originalDocument = globalThis.document, originalWindow = globalThis.window, originalObserver = globalThis.MutationObserver;
+  const motionPreference = {matches: false, addEventListener() {}, removeEventListener() {}};
   Object.assign(globalThis, {setTimeout: (fn: () => void) => { timers.set(++serial, fn); return serial; }, clearTimeout: (id: number) => timers.delete(id)});
-  Object.assign(globalThis, {document: {fullscreenElement: null, fullscreenEnabled: false, activeElement: null, pictureInPictureEnabled: false, pictureInPictureElement: null, addEventListener() {}, removeEventListener() {}}});
-  t.after(() => { hooks.unmount(); Object.assign(globalThis, originalTimers); Object.assign(globalThis, {document: originalDocument}); });
+  // The watch screen's motion preference reads a real browser window; the surface under test is
+  // still the inert tree, so the document and observer are the smallest honest browser facts.
+  Object.assign(globalThis, {
+    document: {documentElement: {dataset: {}}, body: {dataset: {}}, fullscreenElement: null, fullscreenEnabled: false, activeElement: null, pictureInPictureEnabled: false, pictureInPictureElement: null, addEventListener() {}, removeEventListener() {}},
+    window: {matchMedia: () => motionPreference, addEventListener() {}, removeEventListener() {}},
+    MutationObserver: class {observe() {} disconnect() {}},
+  });
+  t.after(() => { hooks.unmount(); Object.assign(globalThis, originalTimers); Object.assign(globalThis, {document: originalDocument, window: originalWindow, MutationObserver: originalObserver}); });
   let state: WebPlaybackRuntimeSnapshot;
   const snapshot = (playback: DockPlayback, title: string): WebPlaybackRuntimeSnapshot => ({dock: dock.getSnapshot(), fence: playback.fence,
+    playback: {playbackRun: 1, intentId: 1, revision: 1, phase: 'ready', intent: 'playing', positionSeconds: 12, duration: 100, cleanupPending: 0},
     presentation: {fence: playback.fence, subject: playback.kind === 'music' ? {kind: 'music', item: {kind: 'song', id: 'song', title}} : {kind: 'video', item: {kind: 'movie', id: 'movie', title}}, kind: playback.kind === 'music' ? 'music' : 'video', durationSeconds: 100, positionSeconds: 12, controls: ['play', 'pause'], playing: true, expanded: false, finished: false, rate: 1.25, volume: .4, muted: true, policy: null},
   } as WebPlaybackRuntimeSnapshot);
-  const runtime = (id: string) => ({getSnapshot: () => state, subscribe: () => () => {}, dock, onAction: async () => {}, policyAction: async () => {}, collapse() {}, mount(node: unknown) { events.push(['mount', id, node]); return () => events.push(['dispose', id]); }});
+  // The screen's own listening port is not this test's subject: it stays unavailable, exactly as it is
+  // when the runtime offers no queue/lyrics for the current song.
+  const runtime = (id: string) => ({getSnapshot: () => state, subscribe: () => () => {}, dock, onAction: async () => {}, policyAction: async () => {}, replay: async () => {}, stop: async () => {}, browserMediaReady: true, collapse() {}, open() {}, speedChoices: () => [], setSpeed() {}, sleepTimer: () => null, setSleepTimer() {}, captureListening: () => null, mount(node: unknown) { events.push(['mount', id, node]); return () => events.push(['dispose', id]); }});
   const first = runtime('first'), second = runtime('second');
   const makeBinding = (runtime: unknown) => ({runtime, environment: {t: (key: string) => key}, artwork: {foreground: () => null, ambient: () => null}, skips: {back: 10, forward: 30}, reportError: (error: unknown) => { throw error; }} as unknown as ShellPlaybackBinding);
   let binding: ShellPlaybackBinding | undefined = makeBinding(first);
