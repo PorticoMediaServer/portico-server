@@ -34,13 +34,17 @@ type FiniteHLS struct {
 	actors  map[string]*finiteActor
 }
 type finiteActor struct {
-	ctx     context.Context
-	cancel  context.CancelFunc
-	ready   chan struct{}
-	wake    chan struct{}
-	err     error // written before ready closes
-	source  *vod.Source
-	waiters int // under FiniteHLS.mu
+	ctx        context.Context
+	cancel     context.CancelFunc
+	ready      chan struct{}
+	wake       chan struct{}
+	err        error // written before ready closes
+	source     *vod.Source
+	waiters    int // under FiniteHLS.mu
+	generation int
+	done       chan struct{}
+	entry      *occurrenceEntry
+	run        *occurrenceRun
 }
 
 func (h *HLS) EnableFinite(ffprobe string) error {
@@ -73,6 +77,11 @@ func (f *FiniteHLS) live(id string) bool {
 	err := f.h.db.QueryRow(`SELECT EXISTS(SELECT 1 FROM playback_sessions p JOIN authorization_access s ON s.hash=p.session_hash LEFT JOIN accounts a ON a.id=s.account_id WHERE p.id=? AND p.state NOT IN ('stopped','ended','failed') AND p.expires_at>? AND s.expires_at>? AND s.revoked=0 AND (s.authority!='local' OR s.epoch=a.epoch))`, id, time.Now().UTC().Format(time.RFC3339), time.Now().UTC().Format(time.RFC3339)).Scan(&live)
 	return err == nil && live
 }
+func (f *FiniteHLS) liveGeneration(id string, generation int) bool {
+	var live bool
+	err := f.h.db.QueryRow(`SELECT EXISTS(SELECT 1 FROM playback_sessions p JOIN authorization_access s ON s.hash=p.session_hash LEFT JOIN accounts a ON a.id=s.account_id WHERE p.id=? AND p.generation=? AND p.state NOT IN ('stopped','ended','failed') AND p.expires_at>? AND s.expires_at>? AND s.revoked=0 AND (s.authority!='local' OR s.epoch=a.epoch))`, id, generation, time.Now().UTC().Format(time.RFC3339), time.Now().UTC().Format(time.RFC3339)).Scan(&live)
+	return err == nil && live
+}
 func finiteManifest(s *vod.Source) []byte {
 	var b strings.Builder
 	b.WriteString("#EXTM3U\n#EXT-X-VERSION:6\n#EXT-X-PLAYLIST-TYPE:VOD\n#EXT-X-TARGETDURATION:7\n#EXT-X-MEDIA-SEQUENCE:0\n#EXT-X-INDEPENDENT-SEGMENTS\n#EXT-X-START:TIME-OFFSET=0,PRECISE=YES\n")
@@ -85,11 +94,26 @@ func finiteManifest(s *vod.Source) []byte {
 	return []byte(b.String())
 }
 func (f *FiniteHLS) ensure(ctx context.Context, id string) (*finiteActor, error) {
-	if !f.live(id) {
+	intent, err := f.h.occurrences.intent(id)
+	if err != nil {
+		return nil, err
+	}
+	defer intent.release()
+	var generation int
+	var requestID, assetID string
+	var itemID int64
+	if err = dbwork.QueryRow(ctx, f.h.db, `SELECT generation,request_id,item_id,asset_id FROM playback_sessions WHERE id=? AND state NOT IN ('stopped','ended','failed') AND expires_at>?`, id, time.Now().UTC().Format(time.RFC3339)).Scan(&generation, &requestID, &itemID, &assetID); err != nil {
+		return nil, err
+	}
+	if !f.liveGeneration(id, generation) || !intent.current() {
 		return nil, identity.ErrUnauthorized
 	}
 	f.mu.Lock()
 	a := f.actors[id]
+	if a != nil && (a.generation != generation || a.run == nil || a.run.requestID != requestID || a.run.itemID != itemID || a.run.assetID != assetID) {
+		f.mu.Unlock()
+		return nil, identity.ErrUnauthorized
+	}
 	if a == nil {
 		f.h.mu.Lock()
 		if f.h.cleaning[id] {
@@ -98,9 +122,15 @@ func (f *FiniteHLS) ensure(ctx context.Context, id string) (*finiteActor, error)
 			return nil, identity.ErrUnauthorized
 		}
 		worker, cancel := context.WithCancel(f.h.ctx)
-		a = &finiteActor{ctx: worker, cancel: cancel, ready: make(chan struct{}), wake: make(chan struct{}, 1)}
-		f.actors[id] = a
-		f.h.active[id] = cancel
+		a = &finiteActor{ctx: worker, cancel: cancel, ready: make(chan struct{}), wake: make(chan struct{}, 1), done: make(chan struct{}), generation: generation, entry: intent.entry}
+		a.run = &occurrenceRun{generation: generation, requestID: requestID, itemID: itemID, assetID: assetID, cancel: cancel, done: a.done}
+		err = intent.install(a.run, func() { f.actors[id] = a; f.h.active[id] = cancel })
+		if err != nil {
+			cancel()
+			f.h.mu.Unlock()
+			f.mu.Unlock()
+			return nil, err
+		}
 		f.h.mu.Unlock()
 		supervise.Go("playback.finite-hls.run", func() { f.run(id, a) })
 	}
@@ -118,6 +148,7 @@ func (f *FiniteHLS) ensure(ctx context.Context, id string) (*finiteActor, error)
 		return a, nil
 	}
 }
+
 func (f *FiniteHLS) prepare(id string, a *finiteActor) error {
 	ctx, cancel := context.WithTimeout(a.ctx, 30*time.Second)
 	defer cancel()
@@ -133,7 +164,7 @@ func (f *FiniteHLS) prepare(id string, a *finiteActor) error {
 		}
 		return err
 	}
-	if !f.live(id) {
+	if !f.liveGeneration(id, a.generation) {
 		return identity.ErrUnauthorized
 	}
 	manifest := finiteManifest(source)
@@ -216,7 +247,7 @@ func (f *FiniteHLS) run(id string, a *finiteActor) {
 			case <-a.ctx.Done():
 				return
 			case <-tick.C:
-				if !f.live(id) {
+				if !f.liveGeneration(id, a.generation) {
 					a.cancel()
 					return
 				}
@@ -227,17 +258,17 @@ func (f *FiniteHLS) run(id string, a *finiteActor) {
 		a.cancel()
 		f.mu.Lock()
 		f.h.mu.Lock()
-		delete(f.actors, id)
-		delete(f.h.active, id)
+		if f.actors[id] == a {
+			delete(f.actors, id)
+			delete(f.h.active, id)
+		}
 		f.h.mu.Unlock()
 		f.mu.Unlock()
+		close(a.done)
+		f.h.occurrences.finished(id, a.entry, a.run)
 	}()
 	// The producer's failures are fenced to the generation it started for.
-	fail := a.ctx
-	var generation int
-	if f.h.db.QueryRowContext(a.ctx, `SELECT generation FROM playback_sessions WHERE id=?`, id).Scan(&generation) == nil {
-		fail = withProducerGeneration(a.ctx, generation)
-	}
+	fail := withProducerGeneration(a.ctx, a.generation)
 	a.err = f.prepare(id, a)
 	close(a.ready)
 	if a.err != nil {
@@ -247,7 +278,7 @@ func (f *FiniteHLS) run(id string, a *finiteActor) {
 	tick := time.NewTicker(time.Second)
 	defer tick.Stop()
 	for {
-		if !f.live(id) {
+		if !f.liveGeneration(id, a.generation) {
 			return
 		}
 		var index int
@@ -321,18 +352,14 @@ func (f *FiniteHLS) produce(id string, a *finiteActor, index int) error {
 	}
 	defer input.File.Close()
 	dir := filepath.Join(f.h.root, id, "work", strconv.FormatInt(generation, 10))
-	var mediaGeneration int
-	if err = f.h.db.QueryRowContext(a.ctx, `SELECT generation FROM playback_sessions WHERE id=?`, id).Scan(&mediaGeneration); err != nil {
-		return err
-	}
-	observe, finish := f.h.observeConversion(a.ctx, id, mediaGeneration)
+	observe, finish := f.h.observeConversion(a.ctx, id, a.generation)
 	defer finish()
 	window, err := f.encoder.Encode(a.ctx, a.source, input, vod.Request{Index: index, GenerationDir: dir, ObserveConversion: observe})
 	if err != nil {
 		return err
 	}
 	defer os.RemoveAll(dir)
-	if !f.live(id) {
+	if !f.liveGeneration(id, a.generation) {
 		return identity.ErrUnauthorized
 	}
 	digest, err := finiteHash(window.Path)
