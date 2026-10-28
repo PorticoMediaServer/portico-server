@@ -19,15 +19,14 @@ import "portico.local/server/internal/phasedpurge"
 // still waiting.
 //
 // Destructive units seek the lowest remaining indexed head and pass no cursor:
-// removing or scrubbing the row removes it from the pending predicate. Two
-// scope-derived units (console session scopes, playback route failures) own a
-// typed keyset instead, because their pending predicate is not the table key and
-// a head seek could not advance past a row that belongs to another profile.
+// removing or scrubbing the row removes it from the pending predicate.
+// Session-token children retain their token mapper until all children drain;
+// no private child loses the ownership path required to resume cleanup.
 //
 // readBound is the compiled per-turn read proof: the candidate and its key seek,
 // 32 per parent hop (returned rows plus empty index probes), one per owned-child guard, and the declared worst case of
 // every AFTER DELETE/UPDATE trigger body (one read per DML statement and per
-// subquery SELECT). The engine refuses a plan that cannot fit owner 6 + unit 122.
+// subquery SELECT). The engine refuses a plan that cannot fit owner 12 + unit 116.
 var profilePurgeRegistry = []purgeStep{
 	{phase: 1, name: "personal-job-details", table: "personal_job_details", action: purgeDelete, of: []purgeHop{hop("personal_jobs", "id", "job_id")}, hopScope: scopePersonal, keys: "job_id,item_id", keyKinds: []phasedpurge.Kind{phasedpurge.Text, phasedpurge.Integer}, readBound: 34},
 	{phase: 1, name: "personal-job-failures", table: "personal_job_failures", action: purgeDelete, of: []purgeHop{hop("personal_jobs", "id", "job_id")}, hopScope: scopePersonal, keys: "job_id,ordinal", keyKinds: []phasedpurge.Kind{phasedpurge.Text, phasedpurge.Integer}, readBound: 34},

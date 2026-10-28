@@ -53,7 +53,7 @@ export function ProfileDelete({source, isCurrent, onFailure}: {
         ? <Button size="small" onClick={close}>{t('action.done')}</Button>
         : <><Button size="small" disabled={state.busy} onClick={close}>{t('action.cancel')}</Button>
           <Button className={styles.danger} size="small" variant="glass" loading={state.busy} disabled={!canRetry} onClick={() => {void remove();}}>{t('profile.deleteConfirm.action')}</Button></>}>
-      {!removed && retirement === 'removing' && <p className={styles.limit} aria-live="polite">{t('profile.deleteConfirm.removing')}</p>}
+      {!removed && retirement !== undefined && <p className={styles.limit} aria-live="polite">{t('profile.deleteConfirm.removing')}</p>}
       {!removed && typeof preview.playlists === 'number' && <p className={styles.limit}>{t('profile.deleteConfirm.playlists', {count: preview.playlists})}</p>}
     </Dialog>}
   </>;
