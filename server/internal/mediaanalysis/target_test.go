@@ -47,6 +47,20 @@ func TestAnalysisSessionFamilyAndPreparedClockBoundary(t *testing.T) {
 	if source, err := resolve(access, target); err != nil || source.DurationUS != "60000000" || source.ID != item.Token {
 		t.Fatal("current successor lost its original session", source, err)
 	}
+
+	// An active session's artifact target must not follow a new inventory
+	// object with unchanged catalogue size and timestamp.
+	update(`UPDATE library_sources SET root_identity='root-evidence',identity_confirmed=1 WHERE id='library'`)
+	update(`UPDATE inventory_objects SET object_identity='ino:accepted' WHERE id='object'`)
+	update(`UPDATE playback_source_pins SET binding='inventory',source_id='library',inventory_object_id='object',root='/fixture',root_identity='root-evidence',relative_path='movie.mp4',object_identity='ino:accepted' WHERE session_id='session'`)
+	if _, err := resolve(access, target); err != nil {
+		t.Fatal("accepted artifact target rejected", err)
+	}
+	update(`UPDATE inventory_objects SET object_identity='ino:replacement' WHERE id='object'`)
+	if _, err := resolve(access, target); !errors.Is(err, sql.ErrNoRows) {
+		t.Fatal("session artifact target followed replacement", err)
+	}
+	update(`UPDATE inventory_objects SET object_identity='ino:accepted' WHERE id='object'`)
 	// The former catalog_source_dirty miniature-schema probe was not consumed by
 	// resolveSource and does not exist in the canonical schema; test its actual
 	// source and authority fences below instead.

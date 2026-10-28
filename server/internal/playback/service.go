@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"path/filepath"
 	"portico.local/server/internal/assets"
 	"portico.local/server/internal/catalog"
 	"portico.local/server/internal/compactcatalog"
@@ -607,7 +608,7 @@ func (s *Service) create(ctx context.Context, p identity.Principal, item, reques
 	if e != nil {
 		return Session{}, e
 	}
-	pinResult, e := tx.Exec(`INSERT INTO playback_source_pins SELECT ?,token,size,modified_ns FROM catalog_assets WHERE token=?`, id, aid)
+	pinResult, e := tx.Exec(`INSERT INTO playback_source_pins(session_id,asset_id,size,modified_ns) SELECT ?,token,size,modified_ns FROM catalog_assets WHERE token=?`, id, aid)
 	if e != nil {
 		return Session{}, e
 	}
@@ -737,6 +738,12 @@ func (s *Service) create(ctx context.Context, p identity.Principal, item, reques
 			return Session{}, e
 		}
 	}
+	discSession := v1.discBorrow != nil
+	if !discSession {
+		if discSession, e = hasDiscSessionTx(ctx, tx, id); e != nil {
+			return Session{}, e
+		}
+	}
 	if v1.discBorrow != nil {
 		if _, e = tx.ExecContext(ctx, `INSERT INTO playback_physical_source_pins(session_id,source_id,incarnation,configuration_generation) VALUES(?,?,?,?)`, id, measuredDisc.Source.LibrarySourceID, measuredDisc.Source.Incarnation, measuredDisc.Source.LibraryGeneration); e != nil {
 			return Session{}, e
@@ -751,8 +758,17 @@ func (s *Service) create(ctx context.Context, p identity.Principal, item, reques
 		if e = v1.discBorrow.bindSubtitleResourcesTx(ctx, tx, s, p, item, automatic); e != nil {
 			return Session{}, e
 		}
-	} else if _, e = tx.ExecContext(ctx, `INSERT INTO playback_physical_source_pins SELECT ?,source.id,source.incarnation,source.generation FROM inventory_objects object JOIN library_sources source ON source.id=object.source_id JOIN catalog_entities item ON item.id=? JOIN catalog_libraries cl ON cl.id=item.library_id AND cl.library_id=source.library_id WHERE object.asset_id=? AND object.retired=0 AND object.state='available' AND object.root_incarnation=source.incarnation AND source.enabled=1 ORDER BY source.id LIMIT 1`, id, entityID, aid); e != nil {
+	} else if _, e = tx.ExecContext(ctx, `INSERT INTO playback_physical_source_pins SELECT ?,source.id,source.incarnation,source.generation FROM inventory_objects object JOIN library_sources source ON source.id=object.source_id JOIN catalog_entities item ON item.id=? JOIN catalog_libraries cl ON cl.id=item.library_id AND cl.library_id=source.library_id WHERE object.asset_id=? AND object.retired=0 AND object.state='available' AND object.root_incarnation=source.incarnation AND source.enabled=1
+ AND (? OR (object.size=(SELECT size FROM catalog_assets WHERE token=object.asset_id) AND object.modified_ns=(SELECT modified_ns FROM catalog_assets WHERE token=object.asset_id)
+ AND source.kind IN('local','remote') AND source.identity_confirmed=1 AND source.health NOT IN('offline','root_changed','removing') AND source.root_identity!='' AND object.object_identity!=''
+ AND rtrim(source.root,?)||?||object.relative_path=(SELECT path FROM catalog_assets WHERE token=object.asset_id)))
+ ORDER BY source.id,object.id LIMIT 1`, id, entityID, aid, discSession, string(filepath.Separator), string(filepath.Separator)); e != nil {
 		return Session{}, e
+	}
+	if !discSession {
+		if e = assets.PinPlaybackBindingTx(ctx, tx, id); e != nil {
+			return Session{}, e
+		}
 	}
 	if e = gated.Commit(); e != nil {
 		return Session{}, e

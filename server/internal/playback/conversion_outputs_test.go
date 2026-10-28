@@ -36,7 +36,7 @@ func conversionOutputFixture(t *testing.T) (*sql.DB, *HLS, string) {
 	if _, err := db.Exec(`UPDATE playback_sessions SET mode='hls' WHERE id='output-test'`); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := db.Exec(`INSERT INTO playback_source_pins VALUES('output-test',?,1,1)`, token); err != nil {
+	if _, err := db.Exec(`INSERT INTO playback_source_pins(session_id,asset_id,size,modified_ns) VALUES('output-test',?,1,1)`, token); err != nil {
 		t.Fatal(err)
 	}
 	if err := os.MkdirAll(filepath.Join(h.root, "output-test"), 0700); err != nil {

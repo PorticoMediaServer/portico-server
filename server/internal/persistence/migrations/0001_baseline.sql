@@ -2148,7 +2148,15 @@ CREATE TABLE playback_vod_intervals(
  PRIMARY KEY(session_id,ordinal)) STRICT;
 CREATE TABLE asset_chapter_facts(asset_id TEXT PRIMARY KEY REFERENCES catalog_assets(token) ON DELETE CASCADE,revision INTEGER NOT NULL,size INTEGER NOT NULL,modified_ns INTEGER NOT NULL,status TEXT NOT NULL,fingerprint TEXT NOT NULL) STRICT;
 CREATE TABLE asset_chapters(asset_id TEXT NOT NULL REFERENCES asset_chapter_facts(asset_id) ON DELETE CASCADE,chapter_index INTEGER NOT NULL,title TEXT NOT NULL,start_seconds REAL NOT NULL,end_seconds REAL NOT NULL,PRIMARY KEY(asset_id,chapter_index)) STRICT;
-CREATE TABLE playback_source_pins(session_id TEXT PRIMARY KEY REFERENCES playback_sessions(id) ON DELETE CASCADE,asset_id TEXT NOT NULL,size INTEGER NOT NULL,modified_ns INTEGER NOT NULL) STRICT;
+CREATE TABLE playback_source_pins(
+ session_id TEXT PRIMARY KEY REFERENCES playback_sessions(id) ON DELETE CASCADE,
+ asset_id TEXT NOT NULL,size INTEGER NOT NULL,modified_ns INTEGER NOT NULL,
+ binding TEXT NOT NULL DEFAULT 'none' CHECK(binding IN('inventory','mounted','none')),
+ source_id TEXT NOT NULL DEFAULT '',inventory_object_id TEXT NOT NULL DEFAULT '',
+ root TEXT NOT NULL DEFAULT '',root_identity TEXT NOT NULL DEFAULT '',
+ relative_path TEXT NOT NULL DEFAULT '',object_identity TEXT NOT NULL DEFAULT '',
+ follow_symlinks INTEGER NOT NULL DEFAULT 0 CHECK(follow_symlinks IN(0,1))
+) STRICT;
 CREATE TABLE authorization_session_families(
  id TEXT PRIMARY KEY,
  server_id TEXT NOT NULL CHECK(length(server_id)>0),

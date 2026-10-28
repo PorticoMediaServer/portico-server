@@ -62,7 +62,7 @@ type ObservedPlaybackReader struct {
 
 // OpenObservedPlayback takes ownership of lease even on error. Root registration
 // is mandatory; source observations are never converted to a strong Version.
-func (c *Client) OpenObservedPlayback(setup context.Context, lease *RootLease) (reader *ObservedPlaybackReader, err error) {
+func (c *Client) OpenObservedPlayback(setup context.Context, lease *RootLease, bindings ...*PlaybackBinding) (reader *ObservedPlaybackReader, err error) {
 	transferred := false
 	defer func() {
 		if !transferred {
@@ -95,6 +95,11 @@ func (c *Client) OpenObservedPlayback(setup context.Context, lease *RootLease) (
 	if err != nil {
 		return nil, err
 	}
+	if len(bindings) > 0 {
+		if _, err := c.bindPlaybackRequest(request{Path: path}, bindings); err != nil {
+			return nil, err
+		}
+	}
 	timeout := c.Timeout
 	if timeout <= 0 {
 		timeout = 30 * time.Second
@@ -104,6 +109,9 @@ func (c *Client) OpenObservedPlayback(setup context.Context, lease *RootLease) (
 	input, writer := io.Pipe()
 	f := &ObservedPlaybackReader{owner: lease.Lifetime, life: life, cancel: cancel, input: writer, calls: make(chan observedCall), timeout: timeout}
 	req := request{Operation: "playback-observed", Path: lease.RootPath, ManagedArtifact: managed, ObservedRegistrationID: lease.RegistrationID, ObservedRelativePath: lease.RelativePath}
+	if len(bindings) == 1 {
+		req.PinnedPlayback, req.PlaybackBinding = true, bindings[0]
+	}
 	if lease.MountPath != "" {
 		req.MountedRoot, req.ExpectedMountIdentity = lease.MountPath, lease.MountIdentity
 	} else if c.MountedRoot != nil {
@@ -414,7 +422,37 @@ func observedPlaybackHelper(req request, in io.Reader, out io.Writer) (result er
 	if err != nil {
 		return err
 	}
-	file, err := root.Open(req.ObservedRelativePath)
+	var file *os.File
+	if req.PinnedPlayback {
+		acquisition, e := bindPlaybackRequest(request{Path: filepath.Join(req.Path, req.ObservedRelativePath), MountedRoot: req.MountedRoot}, []*PlaybackBinding{req.PlaybackBinding})
+		if e != nil {
+			return e
+		}
+		if acquisition.Inventory != nil {
+			file, err = openPlaybackRequestFile(acquisition)
+		} else {
+			// Keep the registered-root confinement for source-less and mounted
+			// observations as well as the playback path's native no-follow check.
+			// Both acquisitions must name the same actual object.
+			file, err = root.Open(req.ObservedRelativePath)
+			if err == nil {
+				checked, checkErr := openPlaybackRequestFile(acquisition)
+				if checkErr != nil {
+					file.Close()
+					return checkErr
+				}
+				actual, actualErr := file.Stat()
+				checkedInfo, checkedErr := checked.Stat()
+				checked.Close()
+				if actualErr != nil || checkedErr != nil || !os.SameFile(actual, checkedInfo) {
+					file.Close()
+					return ErrPlaybackSource
+				}
+			}
+		}
+	} else {
+		file, err = root.Open(req.ObservedRelativePath)
+	}
 	if err != nil {
 		return err
 	}
