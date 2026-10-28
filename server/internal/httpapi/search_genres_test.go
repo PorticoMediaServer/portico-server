@@ -1,6 +1,7 @@
 package httpapi
 
 import (
+	"context"
 	"encoding/json"
 	"net/http/httptest"
 	"path/filepath"
@@ -13,6 +14,8 @@ import (
 	"portico.local/server/internal/hosted"
 	"portico.local/server/internal/identity"
 	"portico.local/server/internal/persistence"
+	"portico.local/server/internal/readprep"
+	"portico.local/server/internal/supervise"
 )
 
 func TestSearchGenresHandlerUsesCurrentLibraryAuthority(t *testing.T) {
@@ -50,6 +53,29 @@ func TestSearchGenresHandlerUsesCurrentLibraryAuthority(t *testing.T) {
 		t.Fatal(err)
 	}
 	d := Dependencies{DB: db, Identity: ident, Catalog: catalog.New(db), Hosted: control}
+	preparations, err := readprep.New(readprep.DefaultConfig())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer preparations.Close()
+	bases, err := catalog.NewFacetRuntime(db, preparations, catalog.CheckFacetWindowAuthority, 128<<20)
+	if err != nil {
+		t.Fatal(err)
+	}
+	genres, err := catalog.NewGenreRuntime(db, preparations, catalog.CheckFacetWindowAuthority, bases)
+	if err != nil {
+		t.Fatal(err)
+	}
+	d.GenreReads = genres
+	life, stop := context.WithCancel(context.Background())
+	done := make(chan error, 1)
+	supervise.Go("test.genre-http-bases", func() { done <- bases.Run(life) })
+	defer func() {
+		stop()
+		if err := <-done; err != nil && err != context.Canceled {
+			t.Error(err)
+		}
+	}()
 	request := func(path, token string) *httptest.ResponseRecorder {
 		r := httptest.NewRequest("GET", path, nil)
 		if token != "" {
@@ -65,6 +91,19 @@ func TestSearchGenresHandlerUsesCurrentLibraryAuthority(t *testing.T) {
 	}
 	read := func() catalog.SearchGenrePage {
 		w := request(path, session.AccessToken)
+		deadline := time.Now().Add(10 * time.Second)
+		for w.Code == 202 && time.Now().Before(deadline) {
+			var pending catalog.SearchGenrePreparing
+			if err := json.Unmarshal(w.Body.Bytes(), &pending); err != nil {
+				t.Fatal(err)
+			}
+			r := httptest.NewRequest("GET", "/v1/genre-queries/"+pending.QueryID, nil)
+			r.Header.Set("Authorization", "Bearer "+session.AccessToken)
+			r.SetPathValue("id", pending.QueryID)
+			time.Sleep(time.Millisecond)
+			w = httptest.NewRecorder()
+			d.genreQueryHandler(w, r)
+		}
 		var page catalog.SearchGenrePage
 		if w.Code != 200 || json.Unmarshal(w.Body.Bytes(), &page) != nil {
 			t.Fatal(w.Code, w.Body.String())
@@ -102,10 +141,13 @@ func TestSearchGenresHandlerUsesCurrentLibraryAuthority(t *testing.T) {
 	if opened := openGenre("Secret genre"); len(opened.Entries) != 1 || opened.Entries[0].ID != secret.Public {
 		t.Fatal("tile destination missed current library", opened)
 	}
-	for _, query := range []string{"?limit=0", "?limit=51", "?limit=8&limit=4", "?source=/private", "?cursor=forged"} {
+	for _, query := range []string{"?limit=0", "?limit=51", "?limit=8&limit=4", "?source=/private"} {
 		if w := request("/v1/search/genres"+query, session.AccessToken); w.Code != 400 {
 			t.Fatal("unbounded or invalid request accepted", query, w.Code, w.Body.String())
 		}
+	}
+	if w := request("/v1/search/genres?cursor=forged", session.AccessToken); w.Code != 409 {
+		t.Fatal("forged continuation did not request re-anchor", w.Code, w.Body.String())
 	}
 	if _, err = db.Exec(`UPDATE direct_memberships SET disabled=1 WHERE account_id='member'`); err != nil {
 		t.Fatal(err)

@@ -64,6 +64,9 @@ func (s *Service) claimScreen(ctx context.Context) (*screenClaim, error) {
 	}
 	tx := gated.Tx()
 	defer gated.Rollback()
+	if ready, e := publicationSourcesReady(ctx, tx); e != nil || !ready {
+		return nil, e
+	}
 	var kind string
 	var target int64
 	stamp := tvdbStamp(s.publicationTime())
@@ -182,6 +185,9 @@ func (s *Service) claimScreen(ctx context.Context) (*screenClaim, error) {
 	return p, gated.Commit()
 }
 func (s *Service) screenCurrent(ctx context.Context, tx *sql.Tx, p *screenClaim) (bool, error) {
+	if ready, e := publicationSourcesReady(ctx, tx); e != nil || !ready {
+		return false, e
+	}
 	var token, until string
 	var generation int64
 	err := tx.QueryRowContext(ctx, `SELECT lease,lease_until,generation FROM screen_metadata_work WHERE target_kind=? AND target_id=?`, p.Base.TargetKind, p.Base.Entity).Scan(&token, &until, &generation)

@@ -76,6 +76,8 @@ var nextDomainSQL = func() string {
 	}
 	list := strings.Join(deferred, ",")
 	return `SELECT domain,rebuilding FROM catalog_derivations st WHERE (rebuilding=1 OR EXISTS(SELECT 1 FROM catalog_dirty d WHERE d.domain=st.domain))
+ AND (st.domain<>33 OR (NOT EXISTS(SELECT 1 FROM catalog_dirty WHERE domain IN(36,37,38,39,40,41,42,43)) AND NOT EXISTS(SELECT 1 FROM catalog_derivations WHERE domain IN(36,37,38,39,40,41,42,43) AND rebuilding=1) AND NOT EXISTS(SELECT 1 FROM catalog_derivation_failures WHERE domain IN(36,37,38,39,40,41,42,43))))
+ AND (st.domain<>44 OR (NOT EXISTS(SELECT 1 FROM catalog_dirty WHERE domain=41) AND NOT EXISTS(SELECT 1 FROM catalog_derivation_failures WHERE domain=41)))
  AND (domain NOT IN(` + list + `) OR served_ms<=?1 OR NOT EXISTS(SELECT 1 FROM catalog_derivations o WHERE o.domain NOT IN(` + list + `) AND (o.rebuilding=1 OR EXISTS(SELECT 1 FROM catalog_dirty d WHERE d.domain=o.domain))))
  ORDER BY served_ms-CASE domain` + priority + ` ELSE 0 END,domain`
 }()
@@ -382,6 +384,13 @@ func (w *Worker) prepare(ctx context.Context) error {
 				return err
 			}
 			if old > 0 && d.Version > old {
+				if domain == DomainFacetCounts {
+					// A phase-layout change must reject interrupted raw stages as well
+					// as rebuilding accepted rows. Reset lazily under the raw8 budget.
+					if _, err := tx.ExecContext(ctx, `UPDATE catalog_facet_source_state SET source_epoch=source_epoch+1 WHERE singleton=1`); err != nil {
+						return err
+					}
+				}
 				if err := beginGeneration(ctx, tx); err != nil {
 					return err
 				}

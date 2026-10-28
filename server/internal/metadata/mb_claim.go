@@ -307,6 +307,9 @@ func (s *Service) claimMB(ctx context.Context) (*mbJob, error) {
 	}
 	tx := gated.Tx()
 	defer gated.Rollback()
+	if ready, problem := publicationSourcesReady(ctx, tx); problem != nil || !ready {
+		return nil, problem
+	}
 	j := &mbJob{}
 	e = tx.QueryRowContext(ctx, `SELECT mb_jobs.kind,(SELECT pid(public_id) FROM catalog_entities WHERE id=mb_jobs.entity_id),mb_jobs.selected_id,mb_jobs.manual,mb_jobs.review_search,mb_jobs.generation,mb_jobs.attempts FROM mb_jobs WHERE mb_jobs.kind=? AND mb_jobs.entity_id=(SELECT id FROM catalog_entities WHERE public_id=pid_blob(?)) AND `+mbClaimable, kind, entity, stamp, stamp, stamp).Scan(&j.kind, &j.id, &j.selected, &j.manual, &j.review, &j.generation, &j.attempts)
 	if errors.Is(e, sql.ErrNoRows) {
@@ -388,6 +391,11 @@ func (s *Service) claimMB(ctx context.Context) (*mbJob, error) {
 	return j, gated.Commit()
 }
 func (s *Service) activeMB(ctx context.Context, tx *sql.Tx, j mbJob) error {
+	if ready, e := publicationSourcesReady(ctx, tx); e != nil {
+		return e
+	} else if !ready {
+		return errTVDBStale
+	}
 	if e := ctx.Err(); e != nil {
 		return e
 	}

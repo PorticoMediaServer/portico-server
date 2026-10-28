@@ -79,7 +79,12 @@ func beginGeneration(ctx context.Context, tx *sql.Tx) error {
 	return err
 }
 
+// Wait for every source/facet quantum before exposing its retained rows. An
+// interrupted facet merge can have partial new output, so source/facet poison
+// keeps the previous serving image. CaptureFacetProducerFence reports a durable
+// ErrFacetProducerFailed (not endless building); normal worker retries recover.
+// Other legacy domains keep their existing poisoned-unit publication policy.
 func finishGeneration(ctx context.Context, tx *sql.Tx) error {
-	_, err := tx.ExecContext(ctx, `UPDATE catalog_generations SET retaining=0 WHERE singleton=1 AND retaining=1 AND NOT EXISTS(SELECT 1 FROM catalog_derivations WHERE rebuilding=1) AND NOT EXISTS(SELECT 1 FROM catalog_dirty d WHERE domain IN(18,19,20,25,26,28,35) AND NOT EXISTS(SELECT 1 FROM catalog_derivation_failures f WHERE f.domain=d.domain AND f.entity_id=d.entity_id))`)
+	_, err := tx.ExecContext(ctx, `UPDATE catalog_generations SET retaining=0 WHERE singleton=1 AND retaining=1 AND NOT EXISTS(SELECT 1 FROM catalog_derivations WHERE rebuilding=1) AND NOT EXISTS(SELECT 1 FROM catalog_derivation_failures WHERE domain IN(33,36,37,38,39,40,41,42,43,44)) AND NOT EXISTS(SELECT 1 FROM catalog_dirty d WHERE domain IN(18,19,20,25,26,28,31,33,35,36,37,38,39,40,41,42,43,44) AND NOT EXISTS(SELECT 1 FROM catalog_derivation_failures f WHERE f.domain=d.domain AND f.entity_id=d.entity_id))`)
 	return err
 }

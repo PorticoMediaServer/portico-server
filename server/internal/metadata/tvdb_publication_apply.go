@@ -178,6 +178,9 @@ func (s *Service) claimTVDBProjection(ctx context.Context) (*tvdbPublication, er
 	}
 	tx := gated.Tx()
 	defer gated.Rollback()
+	if ready, e := publicationSourcesReady(ctx, tx); e != nil || !ready {
+		return nil, e
+	}
 	if err = s.cleanupTVDBPublications(ctx, tx); err != nil {
 		return nil, err
 	}
