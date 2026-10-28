@@ -89,6 +89,10 @@ func (s *Service) selectionBatchSearchMatches(p *selectionBatchSearch, entity in
 		return false, nil
 	}
 	if err != nil {
+		var native *sqlite.Error
+		if errors.As(err, &native) && native.Code()&255 == 18 {
+			return false, ErrSelectionBatchCapacity
+		}
 		return false, err
 	}
 	var result struct {

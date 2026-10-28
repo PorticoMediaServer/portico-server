@@ -10,9 +10,10 @@ import (
 	"portico.local/server/internal/dbwork"
 	"portico.local/server/internal/identity"
 	"portico.local/server/internal/readprep"
+	"portico.local/server/internal/thirdparty/sqlite"
 )
 
-const browseSelectionPreparationDomain = "browse-selection-local-v2"
+const browseSelectionPreparationDomain = "browse-selection-local-v2-" + sqlite.SearchMatchVersion
 const BrowseSelectionRetryAfterMs = 1000
 
 // BrowseSelectionPreparing is the strict pending branch beside an immediate

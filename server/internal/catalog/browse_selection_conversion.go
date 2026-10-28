@@ -173,7 +173,7 @@ func (s *Service) browsePreparedSelection(viewer Viewer, request BrowseRequest) 
 	// allocating any Go row, entry or encoding buffer. One SQLite cell remains
 	// the documented indivisible O(B) input probe; no native text is retained.
 	var sourceBytes int64
-	sizeSQL := `SELECT COALESCE(sum(length(CAST(e.title AS BLOB))+length(CAST(e.sort_key AS BLOB))+length(CAST(COALESCE(e.added_text,'') AS BLOB))+length(CAST((` + sizeExpr + `) AS BLOB))),0) FROM json_each(?) picked CROSS JOIN catalog_browse_rows e ON e.entity_id=picked.value`
+	sizeSQL := `SELECT COALESCE(sum(length(CAST(e.title AS BLOB))+length(CAST(e.sort_key AS BLOB))+length(CAST(COALESCE(e.added_text,'') AS BLOB))+COALESCE(length(CAST((` + sizeExpr + `) AS BLOB)),0)),0) FROM json_each(?) picked CROSS JOIN catalog_browse_rows e ON e.entity_id=picked.value`
 	// SELECT-expression parameters precede the bounded JSON driver parameter.
 	sizeArgs = append(sizeArgs, string(ids))
 	if err = s.read().QueryRow(sizeSQL, sizeArgs...).Scan(&sourceBytes); err != nil {

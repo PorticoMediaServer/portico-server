@@ -10,9 +10,10 @@ import (
 	"portico.local/server/internal/dbwork"
 	"portico.local/server/internal/identity"
 	"portico.local/server/internal/readprep"
+	"portico.local/server/internal/thirdparty/sqlite"
 )
 
-const browseSelectionReplayDomain = "browse-selection-replay-local-v1"
+const browseSelectionReplayDomain = "browse-selection-replay-local-v1-" + sqlite.SearchMatchVersion
 const browseSelectionReplaySize = 128
 
 type selectionReplaySpec struct {
