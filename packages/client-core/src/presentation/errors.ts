@@ -123,6 +123,7 @@ const exact: Record<string, ErrorCategory> = {
   invalid_request: 'invalid-input', validation_failed: 'invalid-input', method_not_allowed: 'invalid-input',
   response_too_large: 'invalid-response', invalid_response: 'invalid-response', unreadable_response: 'invalid-response',
   artwork_pending: 'unavailable', artwork_gone: 'changed',
+  reading_progress_pending: 'unavailable',
   // o3/api-hygiene: a write without the revision it read answers 428 revision_required.
   revision_required: 'changed',
   route_stale: 'changed', refresh_required: 'changed', 'refresh-required': 'changed', stale: 'changed', identity_mismatch: 'changed', session_identity_mismatch: 'changed', stale_continuation: 'changed', wrong_server: 'changed',
@@ -162,6 +163,7 @@ function categorize(f: Facts, deviceOnline: boolean | undefined): ErrorCategory 
 /** Present any thrown value for a person. Never returns raw error text. */
 /** Codes with their own sentence, whatever their category. */
 const codeBodies: Record<string, MessageId> = {
+  reading_progress_pending: 'error.readingProgressPending',
   queue_too_large: 'error.queueTooLarge',
   // An online-only action (match search, artwork, lyrics or subtitle search) on a library whose
   // metadata source is local only: the server's reason, and nothing to retry.
@@ -195,7 +197,7 @@ const codeBodies: Record<string, MessageId> = {
   session_ended: 'error.sessionEnded',
 };
 /** Codes whose sentence says what to do instead, so the notice offers no Try again. */
-const noActionCodes = new Set(['local_metadata_only', 'credential_limit', 'access_tokens_off', 'webhook_limit', 'session_ended', 'image_too_large']);
+const noActionCodes = new Set(['local_metadata_only', 'credential_limit', 'access_tokens_off', 'webhook_limit', 'session_ended', 'image_too_large', 'reading_progress_pending']);
 
 export function presentError(error: unknown, context: ErrorContext = 'generic', options: PresentOptions = {}): PresentedError {
   const i18n = options.i18n ?? defaultI18n;

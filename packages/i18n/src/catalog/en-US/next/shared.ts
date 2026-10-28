@@ -193,6 +193,7 @@ export const shared = {
   // Shipped by portico-react-native; carried into the canonical catalogue (REL-SHARED-CATALOGUE).
   'next.collection.filmsOnServer': '{count, plural, one {# film on your server} other {# films on your server}}',
   'next.collection.empty': 'Nothing in this collection yet',
+  'next.collection.automaticDescription': 'Portico put this together from the films’ details, and adds new ones as they arrive.',
   'next.watch.episodesWillRead': 'Episodes will read',
   'next.watch.wasSeason': 'was S{season} E{episode}',
   'next.watch.guestStars': 'Guest stars',

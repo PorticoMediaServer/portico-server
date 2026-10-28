@@ -32,6 +32,11 @@ export const secureConnectionMessages = {
   'settings.server.secure.connectInBrowser': 'Turn on in a browser',
   'settings.server.secure.connectInBrowserHelp': 'Opens this server’s settings in your browser, where you approve it in your Portico Account. Or sign in to your Portico Account in this app to do it here.',
   'settings.server.secure.connected': 'Connected. Portico is getting the certificate now.',
+  'settings.server.secure.invalid': 'The certificate is invalid.',
+  'settings.server.secure.renewalFailed': 'The certificate is still working, but its renewal failed.',
+  'settings.server.secure.obtainFailed': 'The server could not obtain a certificate.',
+  'settings.server.secure.publishFailed': 'The secure address could not be published.',
+  'settings.server.secure.problemUnknown': 'The secure connection needs attention. Check the server logs for details.',
 
   // ── First-run setup with a Portico Account ──
   'web.setup.hostedBodySecure': 'One sign-in for all your apps, easy invitations, access away from home and a secure connection, set up for you.',

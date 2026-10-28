@@ -124,6 +124,7 @@ export const readerMessages = {
   'next.reader.matchesShown': '{count, plural, one {# match shown} other {# matches shown}}',
   'next.reader.matches': '{count, plural, one {# match} other {# matches}}',
   'next.reader.version': 'Version',
+  'next.reader.readDifferentVersion': 'Read a different version…',
   'next.reader.read': 'Read',
   'next.reader.details': 'Details',
   'next.reader.format': 'Format',
