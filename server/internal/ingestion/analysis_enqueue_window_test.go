@@ -534,8 +534,9 @@ func TestAnalysisEnqueueSonicWindowSelection(t *testing.T) {
 		if f.s.DeepAnalysis.SonicCanAttempt() {
 			t.Fatal("fixture unexpectedly has an attemptable sonic runtime")
 		}
-		if _, _ = f.runEnqueue(t, job, 2); len(f.queued(job.ID)) != 0 {
-			t.Fatalf("settled rows queued without a sonic runtime: %v", f.queued(job.ID))
+		f.runEnqueue(t, job, 2)
+		if got := f.queued(job.ID); len(got) != 0 {
+			t.Fatalf("settled rows queued without a sonic runtime: %v", got)
 		}
 
 		// Same source, same settled rows, same policy; only the installed runtime
