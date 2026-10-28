@@ -213,6 +213,10 @@ type Plan struct {
 	// Only a successful Poll renews its 30s demand deadline; attaching handles
 	// does not. Ordinary plans retain the existing independent worker admission.
 	ColdSearch bool
+	// ReuseHandle coalesces retries by the same exact private caller and key.
+	// It never renews a lease or cold poll deadline; only successful Poll does.
+	// Use for resumable command reads, not independent UI interests.
+	ReuseHandle bool
 	// ShouldYield is an optional cheap, nonblocking priority probe for ColdSearch
 	// (e.g. dbwork.ColdReadShouldYield). Called before New/Step, outside the store
 	// lock and before acquiring a snapshot. True retries after a short pause,
@@ -421,6 +425,13 @@ func (s *Store) open(ctx context.Context, caller Caller, key Key, plan *Plan, un
 	}
 	if !now.Before(expires) {
 		return "", ErrStale
+	}
+	if plan != nil && plan.ReuseHandle {
+		for h, l := range s.handles {
+			if l.caller == caller && l.e.key == key {
+				return h, nil
+			}
+		}
 	}
 	if len(s.handles) >= s.cfg.MaxHandles {
 		return "", ErrCapacity
