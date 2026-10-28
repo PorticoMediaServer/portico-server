@@ -84840,6 +84840,9 @@ export const schemas = {
                   "minimum": -9007199254740991,
                   "type": "integer"
                 },
+                "profile": {
+                  "type": "string"
+                },
                 "sampleRate": {
                   "maximum": 9007199254740991,
                   "minimum": -9007199254740991,
