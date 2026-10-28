@@ -43,7 +43,7 @@ export function createWatchBodyBindings(context: ScreenContext, input: WatchBody
           ...(target.kind === 'show' ? {showId: target.showId ?? target.itemId} : target.showId ? {showId: target.showId} : {}),
           ...(target.kind === 'season' ? {seasonId: target.seasonId ?? target.itemId} : target.seasonId ? {seasonId: target.seasonId} : {}),
           ...(target.kind === 'episode' ? {episodeId: target.itemId} : {})};
-        request = (body.kind === 'show' ? body.binding.select(route, signal) : body.binding.select({libraryId: target.libraryId, itemId: target.itemId}, signal))
+        request = (body.kind === 'show' ? body.binding.select(route, signal) : body.binding.select({libraryId: target.libraryId, itemId: target.itemId, kind: target.kind}, signal))
           .catch(error => {request = undefined;throw error;});
       }
       return request;

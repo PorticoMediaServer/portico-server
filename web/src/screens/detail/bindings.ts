@@ -15,6 +15,9 @@ import {openGenre} from './genre-binding';
 import type {PlaybackOptions} from '@core/playback-v1/types.ts';
 import type {RefObject} from 'react';
 
+/** A caller that already knows the real item can suppress movie-only embedded rows. */
+export type WebDetailTarget = Readonly<{itemId: string; libraryId?: string; kind?: string}>;
+
 /** Constructor is inert. Only select/readFileInfo/readVersions perform reads. */
 export function createDetailBindings(context: ScreenContext) {
   const life = screenLifetime(context);
@@ -25,10 +28,11 @@ export function createDetailBindings(context: ScreenContext) {
   const view = titleView('related', ['related', 'details', 'extras'], life.assert);
   let viewIdentity = '';
   let selected: DetailTarget | undefined, intent = 0, disposed = false;
+  let related: 'all' | 'none' = 'all', embeddedFallback: DetailProjection | undefined;
   let subject: Readonly<{itemId: string; libraryId: string; title: string}> | undefined;
   const offSubject = service.subscribe(() => { const data = service.getSnapshot().data; if (data && service.getSnapshot().phase === 'ready') subject = {itemId: data.item.id, libraryId: data.scope.libraryId, title: data.item.title}; });
   /** Unmount cleanup may follow the route's dispose; it must never revive a retired read. */
-  const cancel = () => { if (!disposed) service.cancel(); };
+  const cancel = () => { if (!disposed) {intent++; selected = undefined; recommendations.clear(); service.cancel();} };
   const fileReads = new WeakSet<FileInfoProjection>();
   const fileContexts = new WeakMap<DetailProjection, FileInfoProjection>();
   const previews = new WeakMap<VersionDeletePreview, Readonly<{data: DetailProjection; fileId: string}>>();
@@ -36,19 +40,53 @@ export function createDetailBindings(context: ScreenContext) {
     life.assert();
     if (service.getSnapshot().phase !== 'ready' || service.getSnapshot().data !== data) throw new DOMException('Title revision changed', 'AbortError');
   };
-  const select = async (target: DetailTarget | Readonly<{itemId: string}>, signal?: AbortSignal) => {
+  const select = async (target: WebDetailTarget, signal?: AbortSignal) => {
     life.assert(); const generation = ++intent;
     signal?.throwIfAborted();
-    service.cancel(); recommendations.clear(); selected = undefined;
+    service.cancel(); recommendations.clear(); selected = undefined; embeddedFallback = undefined;
     // The real item reader supplies library identity for a bare /item/$itemId route.
-    const libraryId = 'libraryId' in target ? target.libraryId : parseMediaItem(await life.api.request(encodedRoutePath('get_items_id', {id: encodeURIComponent(target.itemId)}), 'GET', undefined, signal)).libraryId;
+    const item = target.libraryId !== undefined ? undefined : parseMediaItem(await life.api.request(encodedRoutePath('get_items_id', {id: encodeURIComponent(target.itemId)}), 'GET', undefined, signal));
+    if (item && item.id !== target.itemId) throw new Error('Title target changed');
+    const libraryId = target.libraryId ?? item!.libraryId, kind = item?.kind ?? target.kind;
     life.assert(); if (generation !== intent) return;
     signal?.throwIfAborted();
     const identity = JSON.stringify([libraryId, target.itemId]);
     if (identity !== viewIdentity) { viewIdentity = identity; view.reset(); }
     selected = {libraryId, itemId: target.itemId};
+    related = kind === 'movie' ? 'none' : 'all';
     const cancel = () => { if (generation === intent) service.cancel(); }; signal?.addEventListener('abort', cancel, {once: true});
-    try { await service.select(selected); signal?.throwIfAborted(); } finally { signal?.removeEventListener('abort', cancel); }
+    try {
+      await service.select(selected, {related}); signal?.throwIfAborted();
+      const data = service.getSnapshot().data;
+      // A hint is an optimization, never permission to drop a nonmovie's rows
+      // when the actual detail disagrees with the caller's captured kind.
+      if (generation === intent && data && related === 'none' && data.item.kind !== 'movie') {
+        related = 'all';await service.select(selected, {related});signal?.throwIfAborted();
+      }
+    } finally { signal?.removeEventListener('abort', cancel); }
+  };
+  const readRecommendations = async (data: DetailProjection) => {
+    const generation = intent;
+    const isCurrent = () => !disposed && generation === intent && life.current() && service.getSnapshot().phase === 'ready' && service.getSnapshot().data === data;
+    if (!isCurrent() || data.item.kind !== 'movie' || data === embeddedFallback) return;
+    await recommendations.select(data, isCurrent);
+    const needsFallback = () => isCurrent() && recommendations.getSnapshot().phase === 'error' && related === 'none';
+    if (!needsFallback() || !selected) return;
+    // Reselecting retires the service's command queue. Wait for explicit command
+    // settlement instead; a replacement projection gets its own recommendation read.
+    if (service.getSnapshot().pending.length) await new Promise<void>(resolve => {
+      const signal = life.signal();
+      let off = () => {};
+      const done = () => {off();signal.removeEventListener('abort', done);resolve();};
+      const changed = () => {if (!isCurrent() || !service.getSnapshot().pending.length) done();};
+      off = service.subscribe(changed);signal.addEventListener('abort', done, {once: true});changed();
+    });
+    if (!needsFallback() || !selected) return;
+    // Only the failed full read pays for the embedded computation. Retain its
+    // original target and authority; the fallback projection must not start a loop.
+    related = 'all';
+    await service.select(selected, {related});
+    if (!disposed && generation === intent && life.current()) embeddedFallback = service.getSnapshot().data ?? undefined;
   };
   const files = async (data: DetailProjection, cursor?: string, signal?: AbortSignal): Promise<FileInfoProjection> => {
     current(data);
@@ -98,7 +136,7 @@ export function createDetailBindings(context: ScreenContext) {
     return value;
   };
   const binding = {
-    context, service, select, current, recommendations, view,
+    context, service, select, current, recommendations, readRecommendations, view,
     subject() { const target = service.getSnapshot().target; return life.current() && target?.itemId === subject?.itemId && target?.libraryId === subject?.libraryId ? subject?.title : undefined; },
     readFileInfo: files, readVersions: versions, readSimilar: similar,
     async chooseVersion(data: DetailProjection, captured: PlaybackOptions, signal: AbortSignal, returnFocusRef?: RefObject<HTMLElement | null>): Promise<void> {
