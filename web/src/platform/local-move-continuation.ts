@@ -7,7 +7,8 @@ import type {LocalMoveCustody} from './local-move';
  * attempt can only ever close its own pair and never a successor's. */
 export class LocalMoveHandoff {
   private closed = false;
-  constructor(readonly entry: BrowserAccountEntry, readonly form: AccountSignInForm, readonly custody: LocalMoveCustody) {}
+  /** The owner asked to set up two-step verification once signed in. */
+  constructor(readonly entry: BrowserAccountEntry, readonly form: AccountSignInForm, readonly custody: LocalMoveCustody, readonly twoStep = false) {}
   /** Dispose this pair and retire its custody unless admission already transferred
    * it. Idempotent, so the sign-in screen and a failed navigation may both close. */
   close(): void {
@@ -24,7 +25,7 @@ let pending: LocalMoveHandoff | undefined;
 /** Build the private entry/form and publish the pair together. A construction
  * failure retires the fresh custody before rethrowing; a replaced pending pair is
  * closed as itself, never whichever pair happens to be pending later. */
-export function offerLocalMove(custody: LocalMoveCustody): LocalMoveHandoff {
+export function offerLocalMove(custody: LocalMoveCustody, choices: Readonly<{twoStep?: boolean}> = {}): LocalMoveHandoff {
   const entry = (() => {
     try {return createBrowserAccountEntry();}
     catch (error) {void custody.retire();throw error;}
@@ -33,7 +34,7 @@ export function offerLocalMove(custody: LocalMoveCustody): LocalMoveHandoff {
     try {return new AccountSignInForm(entry);}
     catch (error) {entry.dispose();void custody.retire();throw error;}
   })();
-  const handoff = new LocalMoveHandoff(entry, form, custody);
+  const handoff = new LocalMoveHandoff(entry, form, custody, choices.twoStep === true);
   const previous = pending;pending = handoff;
   previous?.close();
   return handoff;

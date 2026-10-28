@@ -2,6 +2,8 @@ import {useLayoutEffect, useEffect, useMemo, useRef, useState, useSyncExternalSt
 import {defaultI18n} from '@i18n';
 import {defineWebScreen} from '../../route-registry';
 import {router} from '../../router';
+import {profileSettingsDestination} from '../../route-registry-destination';
+import {hasTwoStepSetup} from '../../platform/two-step-continuation';
 import {createBrowserAccountEntry, type BrowserAccountEntry} from '../../platform/account-entry';
 import {browserAccount} from '../../platform/account';
 import {AuthError, AuthStage} from '../../kit/accounts';
@@ -23,7 +25,7 @@ function BoundProfiles({entry}: {entry: BrowserAccountEntry}) {
   useEffect(() => entry.subscribeAuthorityRetired(() => {setEpoch(value => value + 1);}), [entry]);
   useEffect(() => {
     if (entry.getSnapshot() !== state) return;
-    if (state.phase === 'ready' && !delivered.current) {delivered.current = true;void router.navigate({to: '/'});}
+    if (state.phase === 'ready' && !delivered.current) {delivered.current = true;void router.navigate(state.server && state.snapshot && hasTwoStepSetup(state.server.id, state.snapshot.account.id) ? profileSettingsDestination : {to: '/'});}
     // A restored restricted account has no submitted password in this page.
     // Re-enter the existing sign-in, never invent an enrollment proof field.
     if (state.phase === 'two-step-setup' || state.phase === 'password-change') void router.navigate({to: '/sign-in', replace: true});

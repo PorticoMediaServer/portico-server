@@ -20,6 +20,8 @@ export class LocalMoveCustody {
   private readonly facts: LocalMove;
   private readonly revoke: () => Promise<void>;
   constructor(facts: LocalMove, revoke: () => Promise<void>) {this.facts = Object.freeze(facts);this.revoke = revoke;}
+  /** Which server and new local account this move signs in to. Not a credential. */
+  get target(): Readonly<{serverId: string; accountId: string}> {return Object.freeze({serverId: this.facts.serverId, accountId: this.facts.grant.snapshot.account.id});}
   /** The facts, exactly once, while this custody is still owned. */
   claim = (): LocalMove | undefined => {
     if (this.state !== 'owned') return undefined;

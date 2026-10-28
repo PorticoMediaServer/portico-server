@@ -4,6 +4,8 @@ import {ApiError} from '@core/index.ts';
 import type {TakeAccountMove} from '../../route-registry-arrival';
 import type {TakeAccountReturn} from '../../route-registry-return';
 import {router} from '../../router';
+import {profileSettingsDestination} from '../../route-registry-destination';
+import {hasTwoStepSetup} from '../../platform/two-step-continuation';
 import type {BrowserAccountEntry} from '../../platform/account-entry';
 import {browserAppSessions} from '../../platform/server-connections';
 import {browserAccountOrigin} from '../../platform/account-origin';
@@ -61,7 +63,8 @@ export function AccountSignInView({entry, form, takeReturn, takeMove, initialize
   }, [entry, form, takeReturn, takeMove, pageOrigin, initialize]);
   useEffect(() => {
     if (joining || initializing || entry.getSnapshot() !== state || input.factor || input.busy || state.memberMoveCompleted && !state.snapshot?.twoStepSetupRequired && (state.phase === 'profiles' || state.phase === 'ready') && acknowledgedMove !== state) return;
-    if (state.phase === 'ready' && !state.ownerResetSessionReady) void router.navigate({to: state.setupCompleted ? '/setup' : '/', replace: true});
+    if (state.phase === 'ready' && !state.ownerResetSessionReady) void router.navigate(state.setupCompleted ? {to: '/setup', replace: true}
+      : state.server && state.snapshot && hasTwoStepSetup(state.server.id, state.snapshot.account.id) ? {...profileSettingsDestination, replace: true} : {to: '/', replace: true});
     else if (state.phase === 'profiles' && state.snapshot && !state.snapshot.twoStepSetupRequired) void router.navigate({to: '/profiles', replace: true});
     else if (state.phase === 'two-step-setup' && state.origin) {
       form.setUsername(state.snapshot?.account.username ?? input.username);

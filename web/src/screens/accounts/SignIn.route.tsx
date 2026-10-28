@@ -3,6 +3,7 @@ import {defineWebScreen} from '../../route-registry';
 import {useWebScreenContext} from '../../route-registry-view';
 import {createBrowserAccountEntry, type BrowserAccountEntry} from '../../platform/account-entry';
 import {takeLocalMoveHandoff} from '../../platform/local-move-continuation';
+import {discardTwoStepSetup, requestTwoStepSetup} from '../../platform/two-step-continuation';
 import {router} from '../../router';
 import {AccountSignInForm} from './sign-in-form';
 import {AccountSignInView} from './AccountSignInView';
@@ -20,10 +21,13 @@ function SignInScreen() {
     if (handoff) {
       const owned: Instance = {entry: handoff.entry, form: handoff.form, continuation: true};
       setInstance(owned);
+      // Recorded before admission, so whichever screen the sign-in lands on sees it.
+      if (handoff.twoStep) requestTwoStepSetup(handoff.custody.target); else discardTwoStepSetup();
       void handoff.entry.completeLocalOwnerMove(handoff.custody).then(admitted => {
         // A stale grant was refused and retired; show the server the app really has.
+        if (!admitted) discardTwoStepSetup();
         if (!ticket.retired && !admitted) void router.navigate({to: '/servers', replace: true});
-      }).catch(() => {if (!ticket.retired) void router.navigate({to: '/servers', replace: true});});
+      }).catch(() => {discardTwoStepSetup(); if (!ticket.retired) void router.navigate({to: '/servers', replace: true});});
       return () => {ticket.retired = true;handoff.close();};
     }
     const entry = createBrowserAccountEntry(), form = new AccountSignInForm(entry);

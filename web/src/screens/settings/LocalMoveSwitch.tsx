@@ -3,7 +3,7 @@ import type {AccountMove} from '@core/account-move.ts';
 import {passwordStrength} from '@core/password-strength.ts';
 import {defaultI18n} from '@i18n';
 import {Button} from '../../kit/controls/Button';
-import {TextField} from '../../kit/controls/Fields';
+import {Switch, TextField} from '../../kit/controls/Fields';
 import {SettingsPanel} from '../../kit/settings';
 import {SecureRefusalDialog} from './SecureRefusalDialog';
 import {router} from '../../router';
@@ -30,10 +30,10 @@ type Attempt = {
   phase: 'open' | 'confirming' | 'handed' | 'closed';
 };
 
-type Draft = Readonly<{username: string; password: string; match: string; confirmation: string}>;
+type Draft = Readonly<{username: string; password: string; match: string; confirmation: string; twoStep: boolean}>;
 type DraftState = Readonly<{revision: number; value: Draft}>;
-const emptyDraft: Draft = Object.freeze({username: '', password: '', match: '', confirmation: ''});
-const withField = (draft: Draft, field: keyof Draft, value: string): Draft => Object.freeze({...draft, [field]: value});
+const emptyDraft: Draft = Object.freeze({username: '', password: '', match: '', confirmation: '', twoStep: false});
+const withField = <K extends keyof Draft>(draft: Draft, field: K, value: Draft[K]): Draft => Object.freeze({...draft, [field]: value});
 const cancelPreview = (attempt: Attempt) => {
   try {if (attempt.source.getSnapshot().preview === attempt.preview) void attempt.source.cancelPreview().catch(() => {});} catch { /* the controller already ended */ }
 };
@@ -73,7 +73,7 @@ export function LocalMoveSwitch({source, isCurrent, onError, startOver = false}:
     const next: DraftState = {revision: draftRef.current.revision + 1, value: emptyDraft};
     draftRef.current = next;setDraft(next);
   };
-  const editDraft = (attempt: Attempt, field: keyof Draft, value: string) => {
+  const editDraft = <K extends keyof Draft>(attempt: Attempt, field: K, value: Draft[K]) => {
     if (active.current !== attempt || attempt.phase !== 'open') return;
     const next: DraftState = {revision: draftRef.current.revision + 1, value: withField(draftRef.current.value, field, value)};
     draftRef.current = next;setDraft(next);
@@ -116,7 +116,7 @@ export function LocalMoveSwitch({source, isCurrent, onError, startOver = false}:
     const owned = ticket.current;
     if (!owned || owned.retired || ticket.current !== owned || attempt.source !== sourceRef.current) return;
     // Claim this exact opening and freeze only its admitted tuple before any await.
-    const submission = Object.freeze({username: values.username.trim(), password: values.password, confirmation: attempt.startOver ? values.confirmation : ''});
+    const submission = Object.freeze({username: values.username.trim(), password: values.password, confirmation: attempt.startOver ? values.confirmation : '', twoStep: values.twoStep});
     attempt.phase = 'confirming';resetDraft();
     void (async () => {
       try {
@@ -131,7 +131,8 @@ export function LocalMoveSwitch({source, isCurrent, onError, startOver = false}:
           attempt.phase = 'closed';attempt.abort.abort();await custody.retire();return;
         }
         let handoff: LocalMoveHandoff;
-        try {handoff = offerLocalMove(custody);}
+        // Only the two-step choice goes on; the password stays with this form.
+        try {handoff = offerLocalMove(custody, {twoStep: submission.twoStep});}
         catch (error) {attempt.phase = 'closed';throw error;}
         attempt.phase = 'handed';
         try {await router.navigate({to: '/sign-in'});}
@@ -201,7 +202,8 @@ export function LocalMoveSwitch({source, isCurrent, onError, startOver = false}:
         <TextField type="password" label={t(`${keys}.groups.2.rows.2.label`)} error={mismatch ? t('web.reset.mismatch') : undefined}
           placeholder={t(`${keys}.groups.2.rows.2.control.placeholder`)} autoComplete="new-password" value={draft.value.match} disabled={busy}
           onChange={event => {if (current) editDraft(current, 'match', event.currentTarget.value);}}/>
-        <dl><dt>{t(`${keys}.groups.2.rows.3.label`)}</dt><dd>{t(`${keys}.groups.2.rows.3.help`)}</dd></dl>
+        <label className={styles.toggle}><span>{t(`${keys}.groups.2.rows.3.label`)}<small>{t(`${keys}.groups.2.rows.3.help`)}</small></span>
+          <Switch checked={draft.value.twoStep} disabled={busy} onCheckedChange={value => {if (current) editDraft(current, 'twoStep', value);}}/></label>
         {startOver && <>
           <h3>{t('next.settingsSpec.server.signin.panels.startOverLocal.groups.3.title')}</h3>
           <TextField label={t('next.settingsSpec.server.signin.panels.startOverLocal.groups.3.rows.0.label')} placeholder={t('next.settingsSpec.server.signin.panels.startOverLocal.groups.3.rows.0.control.placeholder')}

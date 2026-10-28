@@ -1,4 +1,5 @@
 import {useLayoutEffect, useRef, useState, useSyncExternalStore} from 'react';
+import {takeTwoStepSetup} from '../../../platform/two-step-continuation';
 import {defaultI18n} from '@i18n';
 import {IdentityClient, type TwoFactorEnrolment} from '@core/identity-client.ts';
 import type {TwoFactorState} from '@core/identity-restrictions.ts';
@@ -157,6 +158,9 @@ export function ProfileSignIn({profiles,api,commandApi,signIn,isCurrent,onEnded,
  const mfa=signIn==='local'?factor?.enabled:hostedState?.mfaEnabled;
  const remaining=signIn==='local'?factor?.recoveryCodesRemaining:hostedState?.recoveryCodesRemaining;
  useLayoutEffect(()=>{if(held?.current())onFacts?.({mfa,remaining,email:hostedState?.contactAddress});},[held,mfa,remaining,hostedState?.contactAddress,onFacts]);
+ // The owner chose two-step while switching this server to local sign-in: open
+ // its setup once, here, for that same server and account, only while it is off.
+ useLayoutEffect(()=>{if(signIn==='local'&&held?.current()&&factor&&!task&&document&&account&&takeTwoStepSetup(document.serverId,account.id)&&!factor.enabled)open('enrol');});
  const available=!!held&&(signIn==='local'?!!factor:!!hostedState&&hostedCurrent()&&(hostedState.hasPassword||held.providerReady&&hostedState.providers.some(v=>v.revision&&held.enabledProviders?.includes(v.provider))));
  const guardField=(change:(value:string)=>void)=>(value:string)=>{if(intentCurrent(intent)&&!held!.busy)change(value);};
  const ready=!!held&&!busy&&(task==='password'?!!password&&passwordStrength(next).acceptable&&(!factor?.enabled||!!code.trim()):task==='enrol'?enrolment?!!intent?.enrolPassword&&code.length===6:!!password:!!password&&!!code.trim());
