@@ -63,7 +63,7 @@ func browseSelectionReadySchema() map[string]any {
 func registerBrowseSelectionQueryRoutes(registry *apikit.Registry, d Dependencies) error {
 	path := "/v1/libraries/{id}/browse-selection-queries/{queryId}"
 	failures := []string{"invalid_request", "unauthorized", "not_permitted", "not_found", "stale_continuation", "rate_limited", "internal"}
-	if err := apikit.RegisterRaw(registry, apikit.RawRoute[noBody, browseSelectionQueryResponse]{Metadata: apikit.Metadata{
+	if err := apikit.RegisterRaw(registry, apikit.RawRoute[noBody, browseSelectionQueryResponse]{Metadata: apikit.Metadata{Audience: apikit.Clients,
 		ID: "get_library_browse_selection_query", Method: "GET", Path: path, Summary: "Read an exact whole-view selection preparation", Access: apikit.Device, Requires: apikit.ScopeRead, Lane: apikit.Browsing, Admission: laneBrowsing, Cost: apikit.Constant, Status: 200, SuccessStatuses: []int{202}, Errors: failures,
 		ResponseHeaders: []apikit.ResponseHeader{
 			{Status: 200, Name: "Cache-Control", Description: "Selection command capabilities are recomputed for this response.", Required: true},
@@ -74,7 +74,7 @@ func registerBrowseSelectionQueryRoutes(registry *apikit.Registry, d Dependencie
 	}, Serve: d.browseSelectionQueryHandler}); err != nil {
 		return err
 	}
-	return apikit.RegisterRaw(registry, apikit.RawRoute[noBody, noBody]{Metadata: apikit.Metadata{
+	return apikit.RegisterRaw(registry, apikit.RawRoute[noBody, noBody]{Metadata: apikit.Metadata{Audience: apikit.Clients,
 		ID: "delete_library_browse_selection_query", Method: "DELETE", Path: path, Summary: "Release this caller's whole-view selection demand", Access: apikit.Device, Requires: apikit.ScopeRead, Lane: apikit.Browsing, Admission: laneBrowsing, Cost: apikit.Constant, Status: 204, NoResponseBody: true, Errors: failures,
 	}, Serve: d.deleteBrowseSelectionQueryHandler})
 }

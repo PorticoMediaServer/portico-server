@@ -61,7 +61,7 @@ func (v ReadingFacetQueryResponse) JSONSchema() map[string]any {
 // Parent adds this registration to FoundationRegistry with its cohort. Keeping
 // this separate avoids competing edits to the SIMPLE facet route writer.
 func registerReadingFacetQueryRoutes(registry *apikit.Registry, d Dependencies) error {
-	m := apikit.Metadata{ID: "get_library_reading_facet_query", Method: "GET", Path: readingFacetQueryPath, Summary: "Read a prepared Reading facet page", Access: apikit.Device, Requires: apikit.ScopeRead, Lane: apikit.Browsing, Admission: laneBrowsing, Cost: apikit.PageSized, Status: 200, SuccessStatuses: []int{202}, Errors: []string{"invalid_request", "invalid_cursor", "unauthorized", "not_permitted", "not_found", "stale_continuation", "search_busy", "internal"}, ResponseHeaders: []apikit.ResponseHeader{
+	m := apikit.Metadata{Audience: apikit.Clients, ID: "get_library_reading_facet_query", Method: "GET", Path: readingFacetQueryPath, Summary: "Read a prepared Reading facet page", Access: apikit.Device, Requires: apikit.ScopeRead, Lane: apikit.Browsing, Admission: laneBrowsing, Cost: apikit.PageSized, Status: 200, SuccessStatuses: []int{202}, Errors: []string{"invalid_request", "invalid_cursor", "unauthorized", "not_permitted", "not_found", "stale_continuation", "search_busy", "internal"}, ResponseHeaders: []apikit.ResponseHeader{
 		{Status: 202, Name: "Location", Description: "Same-library poll path", Required: true},
 		{Status: 202, Name: "Retry-After", Description: "Minimum delay before polling, in seconds", Required: true},
 	}}
