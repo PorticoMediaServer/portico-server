@@ -50,7 +50,7 @@ export function FacetPage({libraryId, field, pivot, request, onSelect}: {
       .finally(() => {if (!operation.signal.aborted && (request.isCurrent?.() ?? true)) {pending.current = false; setMore(false);}});
   };
   if (basis.current?.scope !== scope || basis.current.request !== request) return <Skeleton height={320}/>;
-  if (failed || page && values.length === 0) return <StateView title={t('next.states.pageFailed')} body={t('next.states.pageFailedBody')}
+  if (values.length === 0 && (failed || page !== undefined)) return <StateView title={t('next.states.pageFailed')} body={t('next.states.pageFailedBody')}
     primary={{id: 'retry', label: t('next.states.tryAgain'), onPress: () => setRetry(value => value + 1)}}/>;
   if (!page) return <Skeleton height={320}/>;
   return <div className={styles.facet}>
@@ -61,6 +61,6 @@ export function FacetPage({libraryId, field, pivot, request, onSelect}: {
       <span className={styles.label}>{entry.label}</span>
       <span className={styles.count}>{defaultI18n.number(entry.count)}{entry.countIsLowerBound ? '+' : ''}</span>
     </div>)}
-    {offset.current < page.total && <div className={styles.more}><Button variant="glass" onClick={loadMore} disabled={more}>{t('action.showMore')}</Button></div>}
+    {(failed || offset.current < page.total) && <div className={styles.more}><Button variant="glass" onClick={failed ? () => setRetry(value => value + 1) : loadMore} disabled={more}>{t(failed ? 'next.states.tryAgain' : 'action.showMore')}</Button></div>}
   </div>;
 }
