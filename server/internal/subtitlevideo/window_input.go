@@ -2,6 +2,7 @@ package subtitlevideo
 
 import (
 	"context"
+	"portico.local/server/internal/childprocess"
 	"portico.local/server/internal/decoder"
 	"portico.local/server/internal/identity"
 	"portico.local/server/internal/subtitles"
@@ -40,7 +41,7 @@ func (w *playbackWindow) Run(ctx context.Context, dir string, build func(string)
 		if e != nil {
 			return e
 		}
-		e = decoder.RunHLSWindow(ctx, w.runtime.storage.Supervisor, identity.Token(), w.runtime.ffmpeg, url, dir, res, command.Args, command.Hardware, w.runtime.libraries...)
+		e = decoder.RunHLSWindow(childprocess.WithStarted(ctx, command.Started), w.runtime.storage.Supervisor, identity.Token(), w.runtime.ffmpeg, url, dir, res, command.Args, command.Hardware, w.runtime.libraries...)
 		if e == nil {
 			e = w.input.Validate(ctx)
 		}

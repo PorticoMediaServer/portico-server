@@ -92,6 +92,15 @@ func run() (runErr error) {
 	bump := flag.Bool("bump", false, "after a derive-only drain, rebuild browse rows and search as a derivation version bump does, and drain again")
 	trickle := flag.Int("trickle", 0, "after a derive-only drain, apply this many single-title metadata updates per kind, draining after each")
 	writerCache := flag.Int("writer-cache-mib", 0, "experiment: give the writer connection this page cache (0: the production policy)")
+	playlist := flag.Bool("playlist", false, "with -reuse: seed/reuse the large-playlist fixture and measure its display-order pages (G03)")
+	playlistEntries := flag.Int("playlist-entries", 100000, "playlist members; >=100000 is the G03 acceptance fixture")
+	playlistLimit := flag.Int("playlist-limit", 100, "playlist page size (1..100)")
+	playlistBudget := flag.Int("playlist-page-budget", 0, "stop a page walk after this many pages (0 walks to the last page)")
+	playlistReorders := flag.Int("playlist-reorders", 20, "concurrent-reorder writes to apply while readers page")
+	playlistReaders := flag.Int("playlist-readers", 2, "concurrent readers during reorder")
+	queryMemory := flag.Bool("query-memory", false, "with -reuse: run the query-memory/byte-accounting churn (G04)")
+	queryPrepared := flag.Int("query-prepared", 5, "distinct prepared selection queries to churn")
+	queryExpiry := flag.Duration("query-expiry-wait", 0, "wait this long to observe the facet TTL (>=1m); 0 records that it was not waited")
 	flag.Parse()
 	if *cpuProfile != "" {
 		f, err := os.Create(*cpuProfile)
@@ -112,6 +121,8 @@ func run() (runErr error) {
 	}
 	profileRoutes = *profile
 	focusedSamples = *focus
+	playlistExercise = playlistOptions{entries: *playlistEntries, limit: *playlistLimit, pageBudget: *playlistBudget, reorders: *playlistReorders, readers: *playlistReaders}
+	queryMemoryExercise = queryMemoryOptions{preparedQueries: *queryPrepared, expiryWait: *queryExpiry}
 	if focusedSamples < 0 || focusedSamples > 20 {
 		return errors.New("focus-samples must be 0..20")
 	}
@@ -256,7 +267,7 @@ func run() (runErr error) {
 		}
 		return os.WriteFile(filepath.Join(abs, "removal-report.json"), append(raw, '\n'), 0600)
 	}
-	if *exercise || *matrixOnly || *scenariosOnly {
+	if *exercise || *matrixOnly || *scenariosOnly || *playlist || *queryMemory {
 		var rows, dirty int
 		if err = db.QueryRow(`SELECT count(*) FROM catalog_browse_rows`).Scan(&rows); err != nil {
 			return err
@@ -271,6 +282,30 @@ func run() (runErr error) {
 				return err
 			}
 		}
+	}
+	if *playlist || *queryMemory {
+		// G03/G04 runs are measured on their own so a small rehearsal does not
+		// also pay for the whole browse matrix. Require a reused fixture.
+		if !*reuse {
+			return errors.New("playlist and query-memory exercises require -reuse")
+		}
+		if *playlist {
+			report, err := exercisePlaylist(context.Background(), db, s, abs)
+			if err != nil {
+				return err
+			}
+			summary, _ := json.Marshal(report)
+			fmt.Fprintln(os.Stderr, "PLAYLIST "+string(summary))
+		}
+		if *queryMemory {
+			report, err := exerciseQueryMemory(context.Background(), db, s, abs)
+			fmt.Fprintln(os.Stderr, "QUERY_MEMORY "+queryMemorySummary(report))
+			if err != nil {
+				return err
+			}
+		}
+		raw, _ := json.MarshalIndent(r, "", "  ")
+		return os.WriteFile(filepath.Join(abs, "report.json"), append(raw, '\n'), 0600)
 	}
 	if _, err = s.ClassifyPendingRatings(context.Background()); err != nil {
 		return err

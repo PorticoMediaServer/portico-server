@@ -11,6 +11,7 @@ import (
 )
 
 type AdminDelivery struct {
+	Hardware        *playback.SessionHardware        `json:"hardware,omitempty"`
 	Streams         []playback.SessionStreamDecision `json:"streams"`
 	VideoHeight     int                              `json:"videoHeight,omitempty"`
 	VideoBitrateBps int                              `json:"videoBitrateBps,omitempty"`
@@ -119,12 +120,15 @@ func enrichAdminFacts(ctx context.Context, tx *sql.Tx, s *Service, items []Admin
 				a.Media = m
 			}
 			if f.media != "" {
-				delivery, e := playback.SessionDeliveryTx(ctx, tx, playback.DefaultDeliverySettings(), f.media)
+				delivery, e := playback.AdminSessionDeliveryTx(ctx, tx, playback.DefaultDeliverySettings(), f.media)
 				if e != nil {
 					return e
 				}
 				if delivery != nil {
 					a.Delivery = &AdminDelivery{Streams: delivery.Streams, VideoHeight: delivery.TargetDisplayHeight, VideoBitrateBps: delivery.TargetVideoBitrateBPS, AudioBitrateBps: delivery.TargetAudioBitrateBPS, AudioChannels: delivery.AudioChannels}
+					if len(delivery.Hardware.Stages) > 0 || delivery.Hardware.Execution != nil {
+						a.Delivery.Hardware = &delivery.Hardware
+					}
 					if a.Media != nil {
 						for _, stage := range delivery.Hardware.Stages {
 							if stage.Operation == "encode" && (stage.Execution == "hardware" || stage.Execution == "software") {

@@ -41,6 +41,18 @@ export type StreamAction='copy'|'convert'|'original'|'drop'|'burn_in'|'unknown';
 /** Backends a running session can report; 'auto' is a configuration value, never an outcome. */
 export type DeliveryBackend='software'|'videotoolbox'|'vaapi'|'qsv'|'nvenc'|'amf';
 export type HardwareStage=Readonly<{operation:'decode'|'deinterlace'|'tone_map'|'subtitle_burn_in'|'scale'|'encode';execution:'hardware'|'software'}>;
+/** What one conversion launch actually did. `unknown` is the server saying it
+ * could not tell; it is never read as hardware, and this parser never turns a
+ * value outside the published set into one either. */
+export type HardwareExecutionClass='hardware'|'software'|'unknown';
+export type HardwareLaunchTarget=Readonly<{name:string;execution:HardwareExecutionClass}>;
+/** One successful conversion start. `startedAt` is RFC 3339. */
+export type HardwareLaunch=Readonly<{sequence:number;generation:number;startedAt:string;encoder:HardwareLaunchTarget;decoder:HardwareLaunchTarget;renderNode?:string}>;
+/** Execution evidence for a session's conversion starts, published to the
+ * owner and admins only; an ordinary viewer's diagnostic omits it. Counts are
+ * bounded by `launchCount`, and `fallbackCount` counts hardware launches the
+ * server ran again in software. */
+export type HardwareExecution=Readonly<{launchCount:number;softwareLaunchCount:number;unknownLaunchCount:number;fallbackCount:number;lastLaunch:HardwareLaunch}>;
 export type SessionStreamDecision=Readonly<{kind:'video'|'audio'|'subtitle';inputCodec:string;outputCodec:string;action:StreamAction}>;
 
 /** The per-session decision detail published on the occurrence read. */
@@ -48,7 +60,7 @@ export type DeliveryAudioRendition=Readonly<{failure?:string;ordinal:number;stre
 export type SessionDelivery=Readonly<{
  audioRenditions?:readonly DeliveryAudioRendition[];
  mode:'direct'|'hls'|'remote';strategy:DeliveryStrategy;reasonCodes:readonly string[];policy:ResolvedDeliveryPolicy|null;
- qualityId:string;hardware:Readonly<{backend:DeliveryBackend;stages:readonly HardwareStage[]}>;
+ qualityId:string;hardware:Readonly<{backend:DeliveryBackend;stages:readonly HardwareStage[];execution?:HardwareExecution}>;
  streams:readonly SessionStreamDecision[];throttled:boolean;convertedThroughMs:number;
  toneMap:boolean;toneMapAlgorithm?:string;targetDisplayHeight?:number;targetVideoBitrateBps?:number;targetAudioBitrateBps?:number;
  playedRetentionMs:number;throttleBufferMs:number;
@@ -184,6 +196,39 @@ export function parseDeliveryAudioRenditions(raw:unknown):readonly DeliveryAudio
  if(raw.filter(r=>r.default).length!==1)return undefined;
  return Object.freeze(raw.map(r=>Object.freeze({...r}))) as readonly DeliveryAudioRendition[];
 }
+const hardwareExecutions:readonly HardwareExecutionClass[]=Object.freeze(['hardware','software','unknown'] as const);
+/** RFC 3339 with an explicit offset; the server's launch time, not free text. */
+const rfc3339=/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,9})?(?:Z|[+-]\d{2}:\d{2})$/;
+const executionName=(v:unknown):v is string=>text(v,64)&&v.length>0&&v.trim()===v;
+const launchTarget=(v:unknown):HardwareLaunchTarget|undefined=>{
+ if(!obj(v)||!executionName(v.name))return undefined;
+ const execution=hardwareExecutions.find(e=>e===v.execution);
+ return execution?Object.freeze({name:v.name,execution}):undefined;
+};
+/** Execution evidence is an addition to the diagnostic and is read leniently:
+ * a block that does not fit is left out on its own, never a reason to lose the
+ * rest. It is never repaired, and an execution outside the published set is not
+ * evidence of hardware. */
+export function parseHardwareExecution(raw:unknown):HardwareExecution|undefined{
+ try{
+  if(!obj(raw))return undefined;
+  const {launchCount,softwareLaunchCount,unknownLaunchCount,fallbackCount}=raw;
+  if(!count(launchCount,1_000_000)||!count(softwareLaunchCount,1_000_000)||!count(unknownLaunchCount,1_000_000)||!count(fallbackCount,1_000_000))return undefined;
+  // Successful Starts only: a block with no launch explains nothing, and no
+  // subset count may exceed the launches it is drawn from.
+  if(launchCount<1||softwareLaunchCount>launchCount||unknownLaunchCount>launchCount||softwareLaunchCount+unknownLaunchCount>launchCount||fallbackCount>launchCount)return undefined;
+  const last=raw.lastLaunch;
+  if(!obj(last)||!count(last.sequence,1_000_000)||!count(last.generation,1_000_000))return undefined;
+  // Sequence numbering is the server's; either base fits a bounded launch set.
+  if(last.sequence>launchCount)return undefined;
+  if(typeof last.startedAt!=='string'||last.startedAt.length>40||!rfc3339.test(last.startedAt)||Number.isNaN(Date.parse(last.startedAt)))return undefined;
+  const encoder=launchTarget(last.encoder),decoder=launchTarget(last.decoder);
+  if(!encoder||!decoder)return undefined;
+  if(last.renderNode!==undefined&&!executionName(last.renderNode))return undefined;
+  return Object.freeze({launchCount,softwareLaunchCount,unknownLaunchCount,fallbackCount,lastLaunch:Object.freeze({sequence:last.sequence,generation:last.generation,startedAt:last.startedAt,encoder,decoder,...(last.renderNode===undefined?{}:{renderNode:last.renderNode})})});
+ }catch{return undefined;}
+}
+
 export function parseSessionDelivery(raw:unknown):SessionDelivery{
  if(!obj(raw))invalid();
  if(!text(raw.qualityId,64)||typeof raw.throttled!=='boolean'||typeof raw.toneMap!=='boolean')invalid();
@@ -202,6 +247,7 @@ export function parseSessionDelivery(raw:unknown):SessionDelivery{
   return Object.freeze({kind:oneOf(v.kind,['video','audio','subtitle'] as const),inputCodec:v.inputCodec,outputCodec:v.outputCodec,action:oneOf(v.action,['copy','convert','original','drop','burn_in','unknown'] as const)});
  });
  const reasonCodes=list(raw.reasonCodes??[],16).map(v=>{if(!text(v,64)||!/^[a-z0-9_]+$/.test(v))invalid();return v as string;});
+ const execution=parseHardwareExecution(hardware.execution);
  return Object.freeze({
   audioRenditions:parseDeliveryAudioRenditions(raw.audioRenditions),
   mode:oneOf(raw.mode,['direct','hls','remote'] as const),
@@ -209,7 +255,7 @@ export function parseSessionDelivery(raw:unknown):SessionDelivery{
   reasonCodes:Object.freeze(reasonCodes),
   policy:raw.policy==null?null:parseResolvedDeliveryPolicy(raw.policy),
   qualityId:raw.qualityId,
-  hardware:Object.freeze({backend:oneOf(hardware.backend,['software','videotoolbox','vaapi','qsv','nvenc','amf'] as const),stages:Object.freeze(stages)}),
+  hardware:Object.freeze({backend:oneOf(hardware.backend,['software','videotoolbox','vaapi','qsv','nvenc','amf'] as const),stages:Object.freeze(stages),...(execution?{execution}:{})}),
   streams:Object.freeze(streams),
   throttled:raw.throttled,
   convertedThroughMs:raw.convertedThroughMs,
