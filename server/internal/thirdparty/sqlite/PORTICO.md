@@ -12,6 +12,7 @@ Portico additions:
 - `rows.go`: restore that context during each `Next` call; report a statement's VM steps through SQLite's public `SQLITE_STMTSTATUS_VM_STEP` diagnostic, so tests can assert how much work a read does; harvest every statement's steps into a per-connection total when it is reset or finalized (`VMOperations`), which the write gate's per-transaction work budget reads.
 - `conn.go`: own and release progress callback state; hold the VM step total and harvest it on finalize.
 - `tx.go`: scope transaction execution cancellation.
+- `backup.go`, `conn.go`: a connection tracks the online backups running on it, and `Close` finishes them before `sqlite3_close_v2`. Upstream leaves a zombie handle whose next `Step` would run on freed per-connection state; here a `Step` or `Finish` after the source closed returns `ErrBackupClosed`. Portico's backup steps on the pooled writer connection across gate tickets, so the pool may close it between steps.
 
 A canceled `sqlite3_interrupt` before VM activation can be cleared at activation. The additional progress callback checks the request's closed cancellation channel inside the VM every 1,000 instructions. It is removed/restored before another call uses the connection. Nothing caches results or authorizations.
 

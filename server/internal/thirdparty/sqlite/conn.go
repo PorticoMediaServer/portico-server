@@ -46,6 +46,9 @@ type conn struct {
 	progressToken uintptr
 	// vmSteps is the VM steps of every finished statement (VMOperations).
 	vmSteps atomic.Int64
+	// backups are the online backups reading from this connection; Close
+	// finishes them first (backup.go).
+	backups map[*Backup]struct{}
 
 	// errorRcMode is the opt-in error-string reporting mode toggled by
 	// the _error_rc DSN parameter. When true, error strings synthesised
@@ -932,6 +935,7 @@ func (c *conn) Close() (err error) {
 	defer c.Unlock()
 
 	if c.db != 0 {
+		c.finishAttached()
 		if err := c.closeV2(c.db); err != nil {
 			return err
 		}
@@ -1265,7 +1269,15 @@ func (c *conn) backup(remoteConn *conn, restore bool) (_ *Backup, finalErr error
 		return nil, errstrForDB(c.tls, rc, destDb, destMode)
 	}
 
-	return &Backup{srcConn: c, dstConn: remoteConn, pBackup: pBackup}, nil
+	out := &Backup{srcConn: c, dstConn: remoteConn, pBackup: pBackup}
+	// Every Backup runs on c's per-connection state, in either direction.
+	c.Lock()
+	if c.backups == nil {
+		c.backups = map[*Backup]struct{}{}
+	}
+	c.backups[out] = struct{}{}
+	c.Unlock()
+	return out, nil
 }
 
 // C documentation

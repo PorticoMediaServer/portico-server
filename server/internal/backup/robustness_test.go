@@ -332,7 +332,7 @@ func waitBackupJob(t *testing.T, job *Job) {
 
 func TestBackupPanicFinalizesJobAndReleasesAdmission(t *testing.T) {
 	s, _, _ := testService(t)
-	s.SetCopyScrubber(func(context.Context, string) error { panic("injected backup worker panic") })
+	s.SetCopyScrubber(func(context.Context, *dbwork.Candidate) error { panic("injected backup worker panic") })
 	id, err := s.Start(context.Background(), KindManual, "panic-operation")
 	if err != nil {
 		t.Fatal(err)

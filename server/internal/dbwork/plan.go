@@ -61,12 +61,15 @@ type WritePlan struct {
 
 // Default budgets, from the writer-discipline design (F §4): at most 32
 // accepted units and 128 child effects, so 160 changed rows; a WAL reservation
-// of 128 KiB for a security fence, 512 KiB for user work and 1 MiB for
-// background work; and 250,000 VM operations.
+// of 256 KiB for a security fence, 512 KiB for user work and 1 MiB for
+// background work; and 250,000 VM operations. The design's 128 KiB fence was
+// too small for this schema: identity fences touch many indexed tables and
+// measure 34–66 pages (136–264 KiB), so the fence budget is 256 KiB. Budgets
+// are telemetry, never a refusal.
 const (
 	planRows          = 160
 	planVMOps         = 250_000
-	planPagesSecurity = 128 * 1024 / 4096
+	planPagesSecurity = 256 * 1024 / 4096
 	planPagesUser     = 512 * 1024 / 4096
 	planPagesBulk     = 1024 * 1024 / 4096
 )

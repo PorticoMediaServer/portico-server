@@ -18128,6 +18128,23 @@ var PorticoCastContracts = (function(exports) {
 						"operationId": { "type": "string" },
 						"outcome": { "type": "string" },
 						"reason": { "type": "string" },
+						"recovery": {
+							"properties": {
+								"damagedTables": {
+									"items": { "type": "string" },
+									"type": "array"
+								},
+								"indexesRebuilt": { "type": "boolean" },
+								"removedRows": {
+									"maximum": 9007199254740991,
+									"minimum": -9007199254740991,
+									"type": "integer"
+								},
+								"salvaged": { "type": "boolean" }
+							},
+							"required": [],
+							"type": "object"
+						},
 						"schemaVersion": {
 							"maximum": 9007199254740991,
 							"minimum": -9007199254740991,
@@ -18160,6 +18177,23 @@ var PorticoCastContracts = (function(exports) {
 								"validation": {
 									"properties": {
 										"integrity": { "type": "string" },
+										"recovery": {
+											"properties": {
+												"damagedTables": {
+													"items": { "type": "string" },
+													"type": "array"
+												},
+												"indexesRebuilt": { "type": "boolean" },
+												"removedRows": {
+													"maximum": 9007199254740991,
+													"minimum": -9007199254740991,
+													"type": "integer"
+												},
+												"salvaged": { "type": "boolean" }
+											},
+											"required": [],
+											"type": "object"
+										},
 										"schemaVersion": {
 											"maximum": 9007199254740991,
 											"minimum": -9007199254740991,
@@ -18199,10 +18233,12 @@ var PorticoCastContracts = (function(exports) {
 							"type": "integer"
 						},
 						"jobId": { "type": "string" },
+						"kind": { "type": "string" },
 						"phase": { "type": "string" }
 					},
 					"required": [
 						"jobId",
+						"kind",
 						"phase",
 						"bytesDone",
 						"bytesTotal"

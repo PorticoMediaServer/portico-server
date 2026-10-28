@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"portico.local/server/internal/backup"
+	"portico.local/server/internal/dbwork"
 	"portico.local/server/internal/persistence"
 )
 
@@ -17,7 +18,7 @@ func TestManualBackupDuringScheduledCopyReturnsRetryableBusy(t *testing.T) {
 	f.handler = New(f.deps)
 	entered := make(chan struct{})
 	release := make(chan struct{})
-	svc.SetCopyScrubber(func(context.Context, string) error { close(entered); <-release; return nil })
+	svc.SetCopyScrubber(func(context.Context, *dbwork.Candidate) error { close(entered); <-release; return nil })
 	id, err := svc.Start(context.Background(), backup.KindScheduled, "scheduled-http-probe")
 	if err != nil {
 		t.Fatal(err)
