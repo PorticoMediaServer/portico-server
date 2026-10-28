@@ -111,8 +111,7 @@ export async function currentShellProfile(api: HttpLocalApi, session: LocalSessi
   }
 
 }
-/** The shell's own facts: what the restart-driving hints (`libraries.changed`, server settings,
- * members, live sources, library channels) stand for. */
+/** Initial admitted observations and their complete private proof witnesses. */
 async function readShellIdentity(api: HttpLocalApi, session: LocalSession, signal: AbortSignal) {
   const [libraries, profile, system, guide] = await Promise.all([
     api.request(routePath('get_libraries'), 'GET', undefined, signal).then(parseLibraryList),
@@ -125,40 +124,13 @@ async function readShellIdentity(api: HttpLocalApi, session: LocalSession, signa
   if (system.id !== session.viewer.serverId) throw new Error('The server identity changed.');
   return {libraries: libraries.items, direct: profile, profile: shellAccount(profile, session.viewer.profileId), system, liveAvailable: !!guide?.sources.length};
 }
-type ShellIdentityRead = Awaited<ReturnType<typeof readShellIdentity>>;
-const shellIdentityKey = (read: ShellIdentityRead) => JSON.stringify({libraries: read.libraries, profile: read.profile, name: read.system.name, version: read.system.version, signIn: read.system.signIn, live: read.liveAvailable});
-
-/**
- * What a shell does on `stream.resync`: refresh its in-place facts (unread count, preferences),
- * reread the facts behind its restart-driving hints, and call `moved` (a restart) only when those
- * differ from `key`, as the missed hint would have. Resyncs while a read is running share it and
- * one follow-up read. A failed read keeps the shell as it is; the next resync, wake or hint reads
- * again.
- */
-export function shellResyncRecheck(o: Readonly<{key: string; read(): Promise<string>; refresh(): void; moved(): void; isCurrent(): boolean}>): () => Promise<void> {
-  let running = false, again = false;
-  return async () => {
-    if (running) { again = true; return; }
-    running = true;
-    try {
-      do {
-        again = false;
-        o.refresh();
-        const key = await o.read();
-        if (!o.isCurrent()) return;
-        if (key !== o.key) { o.moved(); return; }
-      } while (again && o.isCurrent());
-    } catch { /* Keep the shell as it is; a later resync, wake or hint reads again. */ } finally { running = false; }
-  };
-}
-
-async function readFacts(api: HttpLocalApi, session: LocalSession, preferences: PreferencesReader, inbox: InboxService, signal: AbortSignal): Promise<{facts: ShellFacts; key: string; witnesses: ShellFactWitnesses}> {
+async function readFacts(api: HttpLocalApi, session: LocalSession, preferences: PreferencesReader, inbox: InboxService, signal: AbortSignal): Promise<{facts: ShellFacts; witnesses: ShellFactWitnesses}> {
   const [read, settings] = await Promise.all([readShellIdentity(api, session, signal), preferences.preferences('web')]);
   const {libraries, profile, system, liveAvailable} = read;
   rememberShell(session.sessionFamilyId, system.name);
   await inbox.load();
   signal.throwIfAborted();
-  return {key: shellIdentityKey(read), witnesses: {system: read.system, direct: read.direct}, facts: {identity: {viewer: session.viewer, libraries, serverName: system.name, serverVersion: system.version, signIn:system.signIn, ...profile,
+  return {witnesses: {system: read.system, direct: read.direct}, facts: {identity: {viewer: session.viewer, libraries, serverName: system.name, serverVersion: system.version, signIn:system.signIn, ...profile,
     accountFacts:[{id:'sign-in',role:'status',text:defaultI18n.t(signInLabelKey(system.signIn))}],
     liveAvailable, unread: inbox.getSnapshot().unread, showNotificationDot: settings.effective['notifications.badges'] === true}, preferences: settings, serverName: system.name}};
 }

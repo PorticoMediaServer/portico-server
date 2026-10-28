@@ -1,0 +1,31 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {HomeService} from '@core/home-service.ts';
+import {FreshnessHub, dependsOn} from '@core/freshness-hub.ts';
+import {createShellHomeDocument, HomeReadNotAnswered} from '../src/shell/home-freshness.ts';
+
+const manifest = () => ({serverId:'server',viewerFence:'home-viewer',generatedAt:'2026-10-28T12:00:00.000Z',rows:[],spotlight:[],
+  revision:{catalog:1,viewer:1},layout:{revision:1,rowOrder:[],hiddenRowIds:[]}});
+async function drained() {for(let i=0;i<8;i++)await new Promise<void>(resolve=>setImmediate(resolve));}
+test('Home borrows one shell registration: clean reopen reads nothing, dirty reopen catches up without disposing service', async () => {
+  let reads=0, observations=0;
+  const service=new HomeService({request:async<T>()=>{reads++;return manifest() as T;}},{observation:{serverId:'server',isCurrent:()=>true,
+    observe:()=>{observations++;return 'accept';},retire:assert.fail,mismatch:assert.fail}});
+  const hub=new FreshnessHub({gatherMs:0,settleMs:0,random:()=>0}),owner=createShellHomeDocument(hub,service);
+  await service.load();const document=service.getSnapshot().document;assert.ok(document);
+  owner.document.setOpen(true);owner.document.setOpen(false);owner.document.setOpen(true);await drained();assert.equal(reads,1);
+  owner.document.setOpen(false);hub.note(dependsOn.libraries);await drained();assert.equal(reads,1);
+  await service.authority({isCurrent:()=>true});assert.equal(reads,2);assert.equal(observations,2);
+  assert.equal(service.getSnapshot().document,document,'authority-only read never replaces the display');assert.equal(owner.document.getState().stale,true);
+  owner.document.setOpen(true);await drained();assert.equal(reads,3);assert.equal(owner.document.getState().stale,false);
+  owner.document.setOpen(false);owner.dispose();await service.load();assert.equal(reads,4,'retiring display registration does not dispose shell service');
+  service.dispose();hub.dispose();
+});
+test('a display refresh that adopted nothing retains debt instead of resolving void as freshness', async () => {
+  let reads=0;
+  const service={getSnapshot:()=>({phase:'ready',document:manifest()}),subscribe:()=>()=>{},refresh:async()=>{reads++;return 'not-answered';}};
+  const hub=new FreshnessHub({gatherMs:0,settleMs:0,backoffMs:[60000],random:()=>0}),owner=createShellHomeDocument(hub,service as never);
+  owner.document.setOpen(true);owner.document.invalidate();await drained();
+  assert.equal(reads,1);assert.equal(owner.document.getState().stale,true);assert.equal(owner.document.getState().failures,1);
+  assert.equal(new HomeReadNotAnswered().retryable,true);owner.dispose();hub.dispose();
+});

@@ -42,6 +42,10 @@ function failed(error: unknown): InterestOutcome {
   const code = (error as {code?: unknown} | null)?.code;
   return {kind: 'failed', error, retryable: code === 'invalid_guide_directory' || code === 'invalid_response' || code === 'invalid_system' || !finalAnswer(error)};
 }
+function guideFailure(error: unknown): InterestOutcome {
+  const result = failed(error);
+  return (error as {status?: unknown} | null)?.status === 404 ? {kind:'failed', error, retryable:true} : result;
+}
 const answered: InterestOutcome = {kind: 'answered'};
 
 /** Fixed read/classification/projection adapters. The hub owns every ticket, timer and shared flight. */
@@ -100,7 +104,7 @@ export function createShellFactOwner(o: Readonly<{
         if (shellProofChanged(initial, {system}, admitted.viewer.profileId)) {o.retire(); return {kind: 'superseded'};}
         return publish(context, captured, () => {source.update({serverName: system.name, identity: {...source.getSnapshot().identity, serverName: system.name, serverVersion: system.version}});});
       })(),
-      (async (): Promise<InterestOutcome> => {const value = await guide(context); return publish(context, captured, () => updateIdentity({liveAvailable: !!value?.sources.length}));})(),
+      (async (): Promise<InterestOutcome> => {try {const value = await guide(context); return await publish(context, captured, () => updateIdentity({liveAvailable: !!value?.sources.length}));} catch (error) {return guideFailure(error);}})(),
       adoptPreference(context, captured),
     ]);
     const outcomes = results.map(result => result.status === 'fulfilled' ? result.value : failed(result.reason));
@@ -109,7 +113,7 @@ export function createShellFactOwner(o: Readonly<{
   const guideGroup = (name: 'liveSources' | 'libraryChannels') => add(name, [dependsOn.list(name)], async context => {
     const captured = o.session();
     try {const value = await guide(context); return await publish(context, captured, () => updateIdentity({liveAvailable: !!value?.sources.length}));}
-    catch (error) {return failed(error);}
+    catch (error) {return guideFailure(error);}
   });
   const liveSources = guideGroup('liveSources'), libraryChannels = guideGroup('libraryChannels');
   // One pending accepted projection; the authority read is released before input settles.
