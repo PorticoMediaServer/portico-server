@@ -29011,6 +29011,9 @@ export const schemas = {
                 "accountName": {
                   "type": "string"
                 },
+                "canRecord": {
+                  "type": "boolean"
+                },
                 "owner": {
                   "properties": {
                     "accountId": {
@@ -29032,12 +29035,19 @@ export const schemas = {
                 },
                 "profileName": {
                   "type": "string"
+                },
+                "revision": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
                 }
               },
               "required": [
                 "owner",
                 "accountName",
-                "profileName"
+                "profileName",
+                "canRecord",
+                "revision"
               ],
               "type": "object"
             },
@@ -29080,9 +29090,6 @@ export const schemas = {
             "enabled": {
               "type": "boolean"
             },
-            "inheritProfiles": {
-              "type": "boolean"
-            },
             "owner": {
               "properties": {
                 "accountId": {
@@ -29111,7 +29118,6 @@ export const schemas = {
           "required": [
             "owner",
             "enabled",
-            "inheritProfiles",
             "revision"
           ],
           "type": "object"
@@ -233660,9 +233666,6 @@ export const schemas = {
       "enabled": {
         "type": "boolean"
       },
-      "inheritProfiles": {
-        "type": "boolean"
-      },
       "owner": {
         "properties": {
           "accountId": {
@@ -233691,7 +233694,6 @@ export const schemas = {
     "required": [
       "owner",
       "enabled",
-      "inheritProfiles",
       "revision"
     ],
     "type": "object"
@@ -233704,9 +233706,6 @@ export const schemas = {
       "result": {
         "properties": {
           "enabled": {
-            "type": "boolean"
-          },
-          "inheritProfiles": {
             "type": "boolean"
           },
           "owner": {
@@ -233737,7 +233736,6 @@ export const schemas = {
         "required": [
           "owner",
           "enabled",
-          "inheritProfiles",
           "revision"
         ],
         "type": "object"

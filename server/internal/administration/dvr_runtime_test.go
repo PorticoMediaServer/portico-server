@@ -62,9 +62,9 @@ func TestAdministrativeGroupOwnsRealRuleAndLegacyRemainsDisabled(t *testing.T) {
 	}
 	c.Owner = livechannels.Owner{Authority: "local", AccountID: "account", ProfileID: "profile"}
 	if _, err = s.SaveRecordingGroup(ctx, allow, "", c); err == nil {
-		t.Fatal("administration bypassed explicit grant")
+		t.Fatal("administration bypassed the profile's Recordings switch")
 	}
-	if _, err = db.Exec(`INSERT INTO dvr_recording_grants VALUES('local','account','profile',1,0,1)`); err != nil {
+	if _, err = db.Exec(`INSERT INTO accounts(id,username,password_hash,profile_id,epoch) VALUES('server-owner','owner',x'00','owner-profile',1); INSERT INTO accounts(id,username,password_hash,profile_id,epoch) VALUES('account','member',x'00','profile',1); INSERT INTO profile_restrictions(profile_id,allow_dvr) VALUES('profile',1)`); err != nil {
 		t.Fatal(err)
 	}
 	rule, err := s.SaveRecordingGroup(ctx, allow, "", c)
@@ -202,7 +202,7 @@ func TestAdministrativeGroupOwnsRealRuleAndLegacyRemainsDisabled(t *testing.T) {
 		t.Fatal("changed source accepted")
 	}
 	// A fresh operation cannot use an owner whose recording grant was revoked.
-	if _, err = db.Exec(`UPDATE dvr_recording_grants SET enabled=0 WHERE authority='local' AND account_id='account' AND profile_id='profile'`); err != nil {
+	if _, err = db.Exec(`UPDATE profile_restrictions SET allow_dvr=0 WHERE profile_id='profile'`); err != nil {
 		t.Fatal(err)
 	}
 	denied := c
@@ -210,7 +210,7 @@ func TestAdministrativeGroupOwnsRealRuleAndLegacyRemainsDisabled(t *testing.T) {
 	if _, err = s.SaveRecordingGroup(ctx, allow, rule.ID, denied); err != ErrDenied {
 		t.Fatalf("revoked grant: %v", err)
 	}
-	if _, err = db.Exec(`UPDATE dvr_recording_grants SET enabled=1 WHERE authority='local' AND account_id='account' AND profile_id='profile'`); err != nil {
+	if _, err = db.Exec(`UPDATE profile_restrictions SET allow_dvr=1 WHERE profile_id='profile'`); err != nil {
 		t.Fatal(err)
 	}
 	// Changing current defaults cannot reinterpret an unchanged administrative

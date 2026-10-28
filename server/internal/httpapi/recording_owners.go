@@ -21,6 +21,10 @@ type recordingOwnerChoice struct {
 	Owner       livechannels.Owner `json:"owner"`
 	AccountName string             `json:"accountName"`
 	ProfileName string             `json:"profileName"`
+	// CanRecord is the profile's Recordings switch (Who can record) and Revision
+	// its restriction document's, which a change to it is fenced by.
+	CanRecord bool  `json:"canRecord"`
+	Revision  int64 `json:"revision"`
 }
 
 // Candidates are this server's local profiles, including Portico Account
@@ -73,9 +77,9 @@ func (d Dependencies) recordingOwnersRoute(mux *http.ServeMux) {
 		if err = d.administrationAuthority(p)(ctx, g.Tx()); err != nil {
 			return nil, err
 		}
-		rows, err := g.Tx().QueryContext(ctx, `SELECT authority,account_id,profile_id,account_name,profile_name FROM (
- SELECT 'local' authority,a.id account_id,p.id profile_id,a.username account_name,p.name profile_name
- FROM accounts a JOIN direct_profiles p ON p.account_id=a.id JOIN direct_memberships m ON m.account_id=a.id
+		rows, err := g.Tx().QueryContext(ctx, `SELECT authority,account_id,profile_id,account_name,profile_name,can_record,revision FROM (
+ SELECT 'local' authority,a.id account_id,p.id profile_id,a.username account_name,p.name profile_name,`+identity.RecordingDefaultSQL+` can_record,COALESCE(r.revision,1) revision
+ FROM accounts a JOIN direct_profiles p ON p.account_id=a.id JOIN direct_memberships m ON m.account_id=a.id LEFT JOIN profile_restrictions r ON r.profile_id=p.id
  WHERE p.deleted=0 AND m.disabled=0
  ) WHERE (authority,account_id,profile_id)>(?,?,?) ORDER BY authority,account_id,profile_id LIMIT ?`, after[0], after[1], after[2], limit+1)
 		if err != nil {
@@ -84,7 +88,7 @@ func (d Dependencies) recordingOwnersRoute(mux *http.ServeMux) {
 		candidates := []recordingOwnerChoice{}
 		for rows.Next() {
 			var c recordingOwnerChoice
-			if err = rows.Scan(&c.Owner.Authority, &c.Owner.AccountID, &c.Owner.ProfileID, &c.AccountName, &c.ProfileName); err != nil {
+			if err = rows.Scan(&c.Owner.Authority, &c.Owner.AccountID, &c.Owner.ProfileID, &c.AccountName, &c.ProfileName, &c.CanRecord, &c.Revision); err != nil {
 				rows.Close()
 				return nil, err
 			}

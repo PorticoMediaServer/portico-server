@@ -440,13 +440,13 @@ func (s *Store) EditMemberProfile(ctx context.Context, auth Authorize, account, 
 }
 
 // SetMemberProfileRestrictions replaces one of another person's profile restrictions.
-func (s *Store) SetMemberProfileRestrictions(ctx context.Context, auth Authorize, account, profile string, q identity.ProfileRestrictionEdit) (out identity.MemberProfile, err error) {
+func (s *Store) SetMemberProfileRestrictions(ctx context.Context, auth Authorize, account, profile string, q identity.ProfileRestrictionEdit, ownerGrant bool) (out identity.MemberProfile, err error) {
 	if !validID(account) {
 		return out, invalid("accountId")
 	}
 	err = s.transaction(ctx, auth, func(tx *sql.Tx) error {
 		var e error
-		out, e = identity.SetMemberProfileRestrictionsTx(ctx, tx, account, profile, q)
+		out, e = identity.SetMemberProfileRestrictionsTx(ctx, tx, account, profile, q, ownerGrant)
 		return e
 	})
 	return

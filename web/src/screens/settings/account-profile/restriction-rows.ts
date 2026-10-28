@@ -5,7 +5,9 @@ import type {ProfileSettingsSource} from './source';
 import type {ProfileRestrictionsSource} from './restrictions';
 const flags = { 'profile.allowUnrated': 'allowUnrated', 'profile.allowDownloads': 'allowDownloads', 'profile.allowLiveTv': 'allowLiveTv', 'profile.allowRecordings': 'allowDvr', 'profile.allowWatchTogether': 'allowWatchTogether'} as const;
 export const isProfileRestriction = (id: string) => Object.hasOwn(flags, id) || ['profile.maxRating', 'profile.hiddenLabels'].includes(id);
-export function restrictionRow(source: ProfileRestrictionsSource, profiles: ProfileSettingsSource, id: string): SettingPresentation | undefined {
+/** `serverOwner`: only the server owner may switch Recordings on (Who can record); anyone who
+ * manages the profile may switch it off. */
+export function restrictionRow(source: ProfileRestrictionsSource, profiles: ProfileSettingsSource, id: string, serverOwner = false): SettingPresentation | undefined {
   if (!isProfileRestriction(id)) return undefined;
   const state = source.getSnapshot(), document = state.document;
   if (!document) return {present: false};
@@ -19,7 +21,9 @@ export function restrictionRow(source: ProfileRestrictionsSource, profiles: Prof
       ...(system?.values.map(value => ({value: value.code, label: value.label})) ?? []),
     ], disabled: common.disabled || !system};
   }
-  return {...common, value: document[flags[id as keyof typeof flags]]};
+  const value = document[flags[id as keyof typeof flags]];
+  if (id === 'profile.allowRecordings' && !value && !serverOwner) return {...common, value, disabled: true};
+  return {...common, value};
 }
 export function changeRestriction(source: ProfileRestrictionsSource, id: string, value: SettingsValue): Promise<void> | undefined {
   const document = source.getSnapshot().document;

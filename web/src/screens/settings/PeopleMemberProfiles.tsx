@@ -32,7 +32,9 @@ const flags = [['allowDownloads', 'next.settingsSpec.account.profile.groups.3.ro
 /** The Profiles tab of a person's panel (server-people spec): each real profile
  * with what sets it apart, and Manage opening the editor Profile & account
  * uses for one's own, scoped to this person by the server's own authority. */
-export function PeopleMemberProfiles({api, accountId, canEdit}: {api: PeopleMemberProfilesApi; accountId: string; canEdit: boolean}) {
+/** `serverOwner`: only the server owner may switch a profile's Recordings on (Who can record);
+ * an administrator may switch it off. */
+export function PeopleMemberProfiles({api, accountId, canEdit, serverOwner = false}: {api: PeopleMemberProfilesApi; accountId: string; canEdit: boolean; serverOwner?: boolean}) {
   const [items, setItems] = useState<readonly MemberProfile[]>(), [systems, setSystems] = useState<readonly RatingSystem[]>([]), [error, setError] = useState<unknown>();
   const [managing, setManaging] = useState<string>(), [reload, setReload] = useState(0);
   const client = useRef<MemberProfilesClient | undefined>(undefined);
@@ -61,7 +63,7 @@ export function PeopleMemberProfiles({api, accountId, canEdit}: {api: PeopleMemb
         </li>;
       })}
     </ul>
-    {editing && client.current && <MemberProfileDialog key={editing.id} profile={editing} client={client.current} systems={systems}
+    {editing && client.current && <MemberProfileDialog key={editing.id} profile={editing} client={client.current} systems={systems} serverOwner={serverOwner}
       onSaved={replace} onClose={() => setManaging(undefined)} />}
   </>;
 }
@@ -70,7 +72,7 @@ type Draft = Readonly<{name: string; art: ProfileArt; rating: string; allowUnrat
 const draftOf = (p: MemberProfile): Draft => ({name: p.name, art: p.art, rating: p.restrictions.maximumAgeRating, allowUnrated: p.restrictions.allowUnrated, labels: p.restrictions.blockedLabels,
   allowDownloads: p.restrictions.allowDownloads, allowLiveTv: p.restrictions.allowLiveTv, allowDvr: p.restrictions.allowDvr, allowWatchTogether: p.restrictions.allowWatchTogether});
 
-function MemberProfileDialog({profile, client, systems, onSaved, onClose}: {profile: MemberProfile; client: MemberProfilesClient; systems: readonly RatingSystem[];
+function MemberProfileDialog({profile, client, systems, serverOwner, onSaved, onClose}: {profile: MemberProfile; client: MemberProfilesClient; systems: readonly RatingSystem[]; serverOwner: boolean;
   onSaved: (profile: MemberProfile) => void; onClose: () => void}) {
   const [draft, setDraft] = useState<Draft>(() => draftOf(profile)), [busy, setBusy] = useState(false), [error, setError] = useState<unknown>(), [removing, setRemoving] = useState(false);
   const closed = useRef(false);
@@ -113,7 +115,7 @@ function MemberProfileDialog({profile, client, systems, onSaved, onClose}: {prof
         <label className={local.toggle}><span>{t(K.unrated)}</span><Switch checked={draft.allowUnrated} disabled={busy} onCheckedChange={allowUnrated => set({allowUnrated})} /></label>
         <SettingsStringList label={t(K.labels)} values={draft.labels} addLabel={t(K.addLabel)} disabled={busy} onChange={labels => set({labels})} />
         {flags.map(([key, label]) => <label key={key} className={local.toggle}><span>{t(label)}</span>
-          <Switch checked={draft[key]} disabled={busy} onCheckedChange={value => set({[key]: value} as Partial<Draft>)} /></label>)}
+          <Switch checked={draft[key]} disabled={busy || key === 'allowDvr' && !serverOwner && !profile.restrictions.allowDvr} onCheckedChange={value => set({[key]: value} as Partial<Draft>)} /></label>)}
         {profile.pinRequired && <div className={local.pin}><b>{t(K.pin)}</b><small>{t('profile.protected')}</small><Button size="xs" variant="glass" disabled={busy} onClick={() => setRemoving(true)}>{t('profile.removePin')}</Button></div>}
       </div>
     </Dialog>

@@ -145,15 +145,16 @@ func EditMemberProfileTx(ctx context.Context, tx *sql.Tx, account, id string, q 
 }
 
 // SetMemberProfileRestrictionsTx replaces one of an account's profile
-// restrictions, exactly as the person's own main profile would.
-func SetMemberProfileRestrictionsTx(ctx context.Context, tx *sql.Tx, account, id string, edit ProfileRestrictionEdit) (MemberProfile, error) {
+// restrictions, exactly as the person's own main profile would. ownerGrant is
+// whether the caller is the server owner, who alone may switch Recordings on.
+func SetMemberProfileRestrictionsTx(ctx context.Context, tx *sql.Tx, account, id string, edit ProfileRestrictionEdit, ownerGrant bool) (MemberProfile, error) {
 	if !validFamilyID(id) {
 		return MemberProfile{}, ErrRestrictionInput
 	}
 	if e := edit.normalize(); e != nil {
 		return MemberProfile{}, e
 	}
-	if _, e := writeRestrictionsTx(ctx, tx, account, id, edit); e != nil {
+	if _, e := writeRestrictionsTx(ctx, tx, account, id, edit, ownerGrant); e != nil {
 		return MemberProfile{}, e
 	}
 	return memberProfileTx(ctx, tx, account, id)

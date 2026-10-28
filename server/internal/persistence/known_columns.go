@@ -2019,12 +2019,6 @@ dvr_receipts.digest
 dvr_receipts.owner_key
 dvr_receipts.request_id
 dvr_receipts.result_json
-dvr_recording_grants.account_id
-dvr_recording_grants.authority
-dvr_recording_grants.enabled
-dvr_recording_grants.inherit_profiles
-dvr_recording_grants.profile_id
-dvr_recording_grants.revision
 dvr_recording_layouts.artifact_id
 dvr_recording_layouts.byte_size
 dvr_recording_layouts.collision_ordinal
