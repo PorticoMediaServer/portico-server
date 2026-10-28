@@ -107,3 +107,71 @@ test('device-class caches remain separate inside one fenced viewer',async()=>{
  await r.preferences('web');await r.preferences('tablet');
  assert.equal(r.getSnapshot('web')?.deviceClass,'web');assert.equal(r.getSnapshot('tablet')?.deviceClass,'tablet');r.dispose();
 });
+
+test('typed observation distinguishes validated scope changes from malformed foreign proof', async () => {
+  let body: unknown = envelope(snapshot());
+  const r = reader(async () => body);
+  assert.equal((await r.observePreferences('web')).kind, 'ok');
+  body = envelope({bad: 'data'}, 'server-two');
+  const malformed = await r.observePreferences('web');
+  assert.equal(malformed.kind, 'unreadable');
+  body = envelope(snapshot(), 'server-two');
+  assert.deepEqual(await r.observePreferences('web'), {kind: 'scope-changed'});
+  body = envelope(snapshot(), 'server-one', 'b'.repeat(64));
+  assert.deepEqual(await r.observePreferences('web'), {kind: 'scope-changed'});
+  assert.equal(r.getSnapshot()?.documents[0]?.revision, 1); r.dispose();
+});
+
+test('typed observations forward cancellation, refuse pre-abort and preserve original transport errors', async () => {
+  let calls = 0, signal!: AbortSignal;
+  const failure = Object.assign(new Error('busy'), {retryAfterSeconds: Infinity});
+  const r = reader(async (_p, _m, _b, owned) => { calls++; signal = owned; throw failure; });
+  const pre = new AbortController(); pre.abort();
+  assert.equal((await r.observePreferences('web', pre.signal)).kind, 'unreadable'); assert.equal(calls, 0);
+  const failed = await r.observePreferences('web'); assert.equal(failed.kind, 'unreadable');
+  if (failed.kind === 'unreadable') assert.equal(failed.error, failure);
+  assert.equal(calls, 1); assert.equal(signal.aborted, false); r.dispose();
+
+  let finish!: (raw: unknown) => void, owned!: AbortSignal;
+  const late = reader(async (_p, _m, _b, requestSignal) => { owned = requestSignal; return new Promise(resolve => { finish = resolve; }); });
+  const controller = new AbortController(), result = late.observePreferences('web', controller.signal);
+  controller.abort(); assert.equal(owned.aborted, true);
+  finish(envelope(snapshot())); assert.equal((await result).kind, 'unreadable'); assert.equal(late.getSnapshot(), undefined); late.dispose();
+});
+
+test('observation removes caller abort listeners after both success and failure', async () => {
+  const controller = new AbortController(); let added = 0, removed = 0, fail = false;
+  const signal = controller.signal;
+  const add = signal.addEventListener.bind(signal), remove = signal.removeEventListener.bind(signal);
+  signal.addEventListener = (...args: Parameters<typeof signal.addEventListener>) => { added++; return add(...args); };
+  signal.removeEventListener = (...args: Parameters<typeof signal.removeEventListener>) => { removed++; return remove(...args); };
+  const r = reader(async () => { if (fail) throw new Error('offline'); return envelope(snapshot()); });
+  await r.observePreferences('web', signal); fail = true; await r.observePreferences('web', signal);
+  assert.equal(added, 2); assert.equal(removed, 2); r.dispose();
+});
+
+test('observations retain revision-ordered adoption without retrofitting default single-flight', async () => {
+  const pending: ((raw: unknown) => void)[] = [];
+  const r = reader(async (_p, method) => method === 'PATCH' ? envelope(snapshot(5)) : new Promise(resolve => pending.push(resolve)));
+  const observed = r.observePreferences('web'), ordinary = r.preferences('web');
+  assert.equal(pending.length, 2, 'opt-in and default reads keep independent transport ownership');
+  await r.applyPreferences('profile-server', 'web', 1, {'search.rememberHistory': true});
+  pending[0]!(envelope(snapshot(2))); pending[1]!(envelope(snapshot(3)));
+  const result = await observed; await ordinary;
+  assert.equal(result.kind, 'ok'); if (result.kind === 'ok') assert.equal(result.value.documents[0]?.revision, 5);
+  assert.equal(r.getSnapshot()?.documents[0]?.revision, 5); r.dispose();
+});
+
+test('disposal prevents further observation adoption', async () => {
+  let finish!: (raw: unknown) => void;
+  const r = reader(async () => new Promise(resolve => { finish = resolve; }));
+  const pending = r.observePreferences('web'); r.dispose(); finish(envelope(snapshot()));
+  assert.equal((await pending).kind, 'unreadable'); assert.equal(r.getSnapshot(), undefined);
+  assert.equal((await r.observePreferences('web')).kind, 'unreadable');
+});
+
+test('a successful envelope for a different device class is unreadable to the observing owner', async () => {
+  const r = reader(async () => envelope({...snapshot(), deviceClass: 'tablet'}));
+  assert.equal((await r.observePreferences('web')).kind, 'unreadable');
+  assert.equal(r.getSnapshot('tablet'), undefined); r.dispose();
+});

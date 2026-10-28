@@ -51,6 +51,9 @@ export type EventsClientOptions = Readonly<{
 const UNPARKED_MS = 30_000;
 /** The least time between reads that do not park, and between a page and its continuation. */
 const UNPARKED_READ_FLOOR_MS = 2000, CONTINUATION_MS = 1000;
+/** 512 validated 128-character IDs fit, including conservative indexing overhead. */
+const RECENT_BYTES = 192 * 1024;
+const recentBytes = (id: string): number => 96 + id.length * 2;
 
 export type EventsStatus = Readonly<{mode: 'stream' | 'poll' | 'stopped'; connected: boolean; cursor?: string; failures: number}>;
 
@@ -64,6 +67,7 @@ export class EventsClient {
   private statusListeners = new Set<() => void>();
   private recent: string[] = [];
   private recentSet = new Set<string>();
+  private recentSize = 0;
   private controller?: AbortController;
   private running = false;
   private status: EventsStatus;
@@ -116,17 +120,27 @@ export class EventsClient {
 
   /** Deliver one envelope (also used by tests and by platforms that receive events elsewhere). */
   deliver(event: ServerEvent): void {
+    if (!event.id || event.id.length > 128) {
+      // Alternate platform delivery has the same ID bound as the wire parser.
+      return;
+    }
     if (event.type === 'stream.resync') {
       // Every subscriber marks what it shows as stale before the cursor moves past the gap; a
       // throwing one must not keep the others from hearing it.
-      this.recent = []; this.recentSet.clear();
+      this.recent = []; this.recentSet.clear(); this.recentSize = 0;
       for (const listener of [...this.resyncListeners]) { try { listener(); } catch { /* the others still refetch */ } }
       this.setStatus({cursor: event.id});
       return;
     }
     if (this.recentSet.has(event.id)) return;
-    this.recent.push(event.id); this.recentSet.add(event.id);
-    if (this.recent.length > 512) this.recentSet.delete(this.recent.shift()!);
+    const bytes = recentBytes(event.id);
+    if (bytes <= RECENT_BYTES) { this.recent.push(event.id); this.recentSet.add(event.id); this.recentSize += bytes; }
+    while (this.recent.length > 512 || this.recentSize > RECENT_BYTES) {
+      const oldest = this.recent.shift()!;
+      this.recentSet.delete(oldest); this.recentSize -= recentBytes(oldest);
+    }
+    // Dropping a remembered ID is ordinary bounded deduplication: if it is ever
+    // replayed, normal event delivery invalidates its dependants. No global resync.
     this.setStatus({cursor: event.id});
     if (event.type.startsWith('stream.')) return;
     for (const l of [...this.anyListeners]) l(event);

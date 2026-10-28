@@ -1,3 +1,4 @@
+import type {QuietRefreshOutcome} from './freshness-actions.ts';
 import {expectedRemoteSource,type ExpectedRemoteSource} from './remote-source-selection.ts';
 import {parseLibrarySummary} from './library-summary.ts';
 import type {LibrarySummary} from './library-summary.ts';
@@ -54,7 +55,7 @@ function errorInfo(e:unknown):LibraryManagementError{const v=e as {code?:unknown
 function sameRequest(e:unknown):boolean{const v=e as {status?:unknown;retry?:unknown;retryable?:unknown;code?:unknown}|null;if(!v||v.code==='timeout'||v.code==='cancelled')return false;if(typeof v.retry==='string')return v.retry==='same_request';const status=typeof v.status==='number'?v.status:0;return status===429||status>=500&&v.retryable!==false;}
 function blank<T=never>():AdminRead<T>{return Object.freeze({phase:'idle',data:null,error:null,cursor:null,canPrevious:false});}
 function checkScope(s:ContentScope):ContentScope{if(!object(s)||!id(s.serverId)||!text(s.viewerId,1024)||!s.viewerId)throw new Error('Library management requires a bound owner API and viewer.');return Object.freeze({...s});}
-type Lane='directory'|'selected'|'jobs';type PageOperation={cursor:string|null;history:readonly (string|null)[];filter?:LibraryJobFilter;fence?:{revision:number;viewerFence:string}};
+type Lane='directory'|'selected'|'jobs';type PageOperation={cursor:string|null;history:readonly (string|null)[];/** Zero-based logical page, independent of the bounded Back history. */pageIndex?:number;filter?:LibraryJobFilter;fence?:{revision:number;viewerFence:string}};
 export class LibraryManagementService{
  private readRetries:number;private retryBaseMs:number;private api:LibraryContentApi;private scope:ContentScope;private pageSize:number;private timeoutMs:number;private epoch=0;private generation=0;private disposed=false;private listeners=new Set<()=>void>();private controls:Partial<Record<Lane,AbortController>>={};private sequences:Record<Lane,number>={directory:0,selected:0,jobs:0};private operations:Partial<Record<'directory'|'jobs',PageOperation>>={};private mutationController?:AbortController;private mutationPromise?:Promise<void>;private mutationKey='';private viewerFence?:string;private state:LibraryManagementSnapshot;
  constructor(o:{api:LibraryContentApi;scope:ContentScope;pageSize?:number;timeoutMs?:number;readRetries?:number;retryBaseMs?:number}){this.readRetries=o.readRetries??3;this.retryBaseMs=o.retryBaseMs??1000;this.api=o.api;this.scope=checkScope(o.scope);this.pageSize=o.pageSize??40;this.timeoutMs=o.timeoutMs??15000;if(!Number.isInteger(this.pageSize)||this.pageSize<1||this.pageSize>40||!Number.isFinite(this.timeoutMs)||this.timeoutMs<1||this.timeoutMs>60000)throw new Error('Invalid management request bounds.');this.state=this.empty();}
@@ -68,14 +69,62 @@ export class LibraryManagementService{
  cancel(){this.active();this.stop();this.publish(this.empty());}
  setScope(scope:ContentScope,api:LibraryContentApi){this.active();const next=checkScope(scope);this.stop();this.scope=next;this.api=api;this.publish(this.empty());}
  dispose(){this.stop();this.disposed=true;this.listeners.clear();}
- loadLibraries():Promise<void>{this.active();return this.page('directory',{cursor:null,history:[]});}
+ loadLibraries():Promise<void>{this.active();return this.page('directory',{cursor:null,history:[],pageIndex:0});}
  nextLibraries(){return this.turn('directory',true);}previousLibraries(){return this.turn('directory',false);}
  loadJobs(filter:LibraryJobFilter={}):Promise<void>{this.active();if(!object(filter)||filter.libraryId!==undefined&&!id(filter.libraryId)||filter.status!==undefined&&!statuses.includes(filter.status))throw new Error('Invalid job filter.');const checked=Object.freeze({...filter});this.publish({jobFilter:checked});return this.page('jobs',{cursor:null,history:[],filter:checked});}
  nextJobs(){return this.turn('jobs',true);}previousJobs(){return this.turn('jobs',false);}
  async selectLibrary(libraryId:string){this.active();if(!id(libraryId))throw new Error('Invalid library ID.');this.controls.selected?.abort();this.controls.jobs?.abort();this.mutationController?.abort();this.mutationController=undefined;this.mutationPromise=undefined;this.mutationKey='';this.publish({selectedLibraryId:libraryId,selected:blank(),jobs:blank(),mutation:Object.freeze({phase:'idle',kind:null,error:null})});await Promise.all([this.resource(libraryId),this.loadJobs({libraryId})]);}
- private turn(lane:'directory'|'jobs',next:boolean):Promise<void>{this.active();const read=this.state[lane],op=this.operations[lane];if(read.phase!=='ready'||!read.data||!op)return Promise.resolve();const history=[...op.history];let cursor:string|null;if(next){if(!read.data.nextCursor)return Promise.resolve();cursor=read.data.nextCursor;history.push(op.cursor);if(history.length>64)history.shift();}else{if(!history.length)return Promise.resolve();cursor=history.pop()!;}return this.page(lane,{...op,cursor,history,fence:{revision:read.data.revision,viewerFence:read.data.scope.viewerFence}});}
+ private turn(lane:'directory'|'jobs',next:boolean):Promise<void>{this.active();const read=this.state[lane],op=this.operations[lane];if(read.phase!=='ready'||!read.data||!op)return Promise.resolve();const history=[...op.history];let cursor:string|null;if(next){if(!read.data.nextCursor)return Promise.resolve();cursor=read.data.nextCursor;history.push(op.cursor);if(history.length>64)history.shift();}else{if(!history.length)return Promise.resolve();cursor=history.pop()!;}return this.page(lane,{...op,cursor,history,pageIndex:(op.pageIndex??0)+(next?1:-1),fence:{revision:read.data.revision,viewerFence:read.data.scope.viewerFence}});}
  private async read<T>(lane:Lane,path:string,parse:(raw:unknown)=>T,position:{cursor:string|null;canPrevious:boolean}={cursor:null,canPrevious:false}){this.controls[lane]?.abort();const c=new AbortController();this.controls[lane]=c;const seq=++this.sequences[lane],epoch=this.epoch,api=this.api;this.publish({[lane]:Object.freeze({...blank(),...position,phase:'loading'})});try{const raw=await this.readRetrying(api,path,c);if(this.disposed||epoch!==this.epoch||seq!==this.sequences[lane])return;const data=parse(raw);this.publish({[lane]:Object.freeze({...position,phase:'ready',data,error:null})});}catch(e){if(this.disposed||epoch!==this.epoch||seq!==this.sequences[lane])return;const error=errorInfo(e);if(this.denied(e)){this.stop();this.publish({...this.empty(),[lane]:Object.freeze({...blank(),phase:'error',error})});return;}this.publish({[lane]:Object.freeze({...position,data:null,phase:['stale_continuation','invalid_cursor'].includes(error.code)?'refresh-required':'error',error})});}}
- private page(lane:'directory'|'jobs',op:PageOperation):Promise<void>{this.operations[lane]=op;const params=new URLSearchParams({limit:String(this.pageSize)});if(op.cursor)params.set('cursor',op.cursor);if(op.filter?.libraryId)params.set('libraryId',op.filter.libraryId);if(op.filter?.status)params.set('status',op.filter.status);return this.read(lane,routePath(lane==='directory'?'get_admin_libraries':'get_admin_jobs')+'?'+params,raw=>{if(!object(raw)||!integer(raw.revision)||!text(raw.nextCursor))invalid();const scope=parseScope(raw.scope,this.scope);this.fence(scope.viewerFence);if(op.fence&&(scope.viewerFence!==op.fence.viewerFence||raw.revision!==op.fence.revision))throw new Failure('stale_continuation','Library management changed. Refresh this list.',true);if(raw.nextCursor&&(raw.nextCursor===op.cursor||op.history.includes(raw.nextCursor)))invalid();/* A library or a scan this app cannot read, or a scan outside the filter that was asked for, is left out alone; a repeated id keeps its first row. */const items=firstOfEach('library-management',lane,keepReadable('library-management',lane,rows(raw.items,this.pageSize),v=>{if(lane==='directory')return parseLibrary(v);const job=parseJob(v,op.filter?.libraryId);if(op.filter?.status&&job.status!==op.filter.status)invalid();return job;}),i=>i.id);return Object.freeze({scope,revision:raw.revision,items:Object.freeze(items),nextCursor:raw.nextCursor});},{cursor:op.cursor,canPrevious:op.history.length>0});}
+ private pagePath(lane:'directory'|'jobs',op:PageOperation):string{const params=new URLSearchParams({limit:String(this.pageSize)});if(op.cursor)params.set('cursor',op.cursor);if(op.filter?.libraryId)params.set('libraryId',op.filter.libraryId);if(op.filter?.status)params.set('status',op.filter.status);return routePath(lane==='directory'?'get_admin_libraries':'get_admin_jobs')+'?'+params;}
+ private parsePage(lane:'directory'|'jobs',op:PageOperation,raw:unknown){if(!object(raw)||!integer(raw.revision)||!text(raw.nextCursor))invalid();const scope=parseScope(raw.scope,this.scope);this.fence(scope.viewerFence);if(op.fence&&(scope.viewerFence!==op.fence.viewerFence||raw.revision!==op.fence.revision))throw new Failure('stale_continuation','Library management changed. Refresh this list.',true);if(raw.nextCursor&&(raw.nextCursor===op.cursor||op.history.includes(raw.nextCursor)))invalid();/* A library or a scan this app cannot read, or a scan outside the filter that was asked for, is left out alone; a repeated id keeps its first row. */const items=firstOfEach('library-management',lane,keepReadable('library-management',lane,rows(raw.items,this.pageSize),v=>{if(lane==='directory')return parseLibrary(v);const job=parseJob(v,op.filter?.libraryId);if(op.filter?.status&&job.status!==op.filter.status)invalid();return job;}),i=>i.id);return Object.freeze({scope,revision:raw.revision,items:Object.freeze(items),nextCursor:raw.nextCursor});}
+ private page(lane:'directory'|'jobs',op:PageOperation):Promise<void>{this.operations[lane]=op;return this.read(lane,this.pagePath(lane,op),raw=>this.parsePage(lane,op,raw),{cursor:op.cursor,canPrevious:op.history.length>0});}
+ /** Rebuilds expired revision-bound cursors to the same logical page, privately and at most 64 pages. */
+ private async reanchorDirectory(target:PageOperation,originalError:unknown,api:LibraryContentApi,c:AbortController,owns:()=>boolean):Promise<{op:PageOperation;data:AdminPage<ManagedLibrary>}|undefined>{
+  let op:PageOperation={cursor:null,history:[],pageIndex:0};
+  for(let index=0;index<64;index++){
+   if(!owns())return;
+   const raw=await this.readRetrying(api,this.pagePath('directory',op),c);
+   if(!owns())return;
+   const data=this.parsePage('directory',op,raw) as AdminPage<ManagedLibrary>;
+   if(index===(target.pageIndex??target.history.length))return {op,data};
+   // A shorter directory cannot prove a replacement for the old page. Keep it owed.
+   if(!data.nextCursor)throw originalError;
+   op={cursor:data.nextCursor,history:[...op.history,op.cursor],pageIndex:index+1,fence:{revision:data.revision,viewerFence:data.scope.viewerFence}};
+  }
+  throw originalError;
+ }
+ /** Revalidates only the visible directory window, without replacing other lanes or receipts. */
+ async refreshDirectory():Promise<QuietRefreshOutcome>{
+  if(this.disposed||this.state.directory.phase==='loading')return {kind:'deferred'};
+  const original=this.operations.directory??{cursor:null,history:[],pageIndex:0},before=this.state.directory;
+  const epoch=this.epoch,c=new AbortController(),seq=++this.sequences.directory,api=this.api;
+  this.controls.directory?.abort();this.controls.directory=c;
+  const owns=()=>!this.disposed&&epoch===this.epoch&&seq===this.sequences.directory&&!c.signal.aborted&&this.state.directory===before;
+  try{
+   let result:{op:PageOperation;data:AdminPage<ManagedLibrary>}|undefined;
+   try{
+    const raw=await this.readRetrying(api,this.pagePath('directory',original),c);
+    if(!owns())return {kind:'deferred'};
+    result={op:original,data:this.parsePage('directory',original,raw) as AdminPage<ManagedLibrary>};
+   }catch(error){
+    if(!owns())return {kind:'deferred'};
+    const code=(error as {code?:unknown}|null)?.code;
+    if(!original.cursor||code!=='stale_continuation'&&code!=='invalid_cursor')throw error;
+    result=await this.reanchorDirectory(original,error,api,c,owns);
+   }
+   if(!owns()||!result)return {kind:'deferred'};
+   const {op,data}=result;
+   this.operations.directory=op;
+   this.publish({directory:Object.freeze({phase:'ready',data,error:null,cursor:op.cursor,canPrevious:op.history.length>0})});
+   return {kind:'adopted'};
+  }catch(error){
+   if(!owns())return {kind:'deferred'};
+   if(this.denied(error)){this.stop();this.publish({...this.empty(),directory:Object.freeze({...blank(),phase:'error',error:errorInfo(error)})});}
+   return {kind:'unreadable',error};
+  }finally{if(this.controls.directory===c)delete this.controls.directory;}
+ }
+
  private resource(libraryId:string):Promise<void>{return this.read('selected',encodedRoutePath("get_admin_libraries_id", {"id": encodeURIComponent(libraryId)}),raw=>{if(!object(raw))invalid();const scope=parseScope(raw.scope,this.scope);this.fence(scope.viewerFence);const library=parseLibrary(raw.library);if(library.id!==libraryId)invalid();return Object.freeze({scope,library});});}
  /** Read reconciliation only. Never retries a scan, cancellation or CAS command. */
  async reconcile(){this.active();const id=this.state.selectedLibraryId,filter=this.state.jobFilter;await Promise.all([this.loadLibraries(),this.loadJobs(filter),...(id?[this.resource(id)]:[])]);}

@@ -45,3 +45,13 @@ test('the account permission boundary preserves false token and away permissions
   assert.equal(parseMemberLimits(limits).accessTokens, false); assert.equal(parseMemberLimits(limits).allowRemote, false);
   for (const key of ['accessTokens', 'maxProfiles', 'allowRemote', 'conversion','maxStreams','maxStreamsMode']) {const raw = {...limits} as Record<string, unknown>; delete raw[key]; assert.throws(() => parseMemberLimits(raw));}
 });
+
+test('quiet refresh is a strict parsed first page of the current query and keeps original failures',async()=>{
+  const paths:string[]=[],error=new Error('original read failure');let mode='good',signal:AbortSignal|undefined;
+  const client=new SettingsPeopleClient({request:async(path,_method,_body,s)=>{paths.push(path);signal=s;if(mode==='fail')throw error;return (mode==='bad'?{...page(),limit:0}:page()) as any;}},()=>true);
+  const abort=new AbortController();const fresh=await client.refresh(query,abort.signal);
+  assert.equal(fresh.nextCursor,'opaque-cursor');assert.equal(Object.isFrozen(fresh),true);
+  const url=new URL(paths[0],'https://server.test');assert.equal(url.searchParams.has('cursor'),false);
+  for(const [key,value] of Object.entries({q:'person 2',role:'member',status:'month',sort:'active',direction:'desc',limit:'40'}))assert.equal(url.searchParams.get(key),value);
+  assert(signal);mode='bad';await assert.rejects(client.refresh(query));mode='fail';await assert.rejects(client.refresh(query),e=>e===error);client.dispose();
+});

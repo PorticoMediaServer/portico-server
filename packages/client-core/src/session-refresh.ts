@@ -24,7 +24,7 @@ import {routePath} from "../../contracts/src/route-paths.ts";
  */
 import {parseLocalSession} from "./local-session.ts";
 import type {AuthRecovery, HttpLocalApi, LocalSession} from './index.ts';
-import {REFRESH_MIN_VALID_MS, SessionRefreshError, refreshStoredSession, type ConnectionEnvironment, type RefreshStoredOptions} from './server-connections.ts';
+import {REFRESH_MIN_VALID_MS, SessionRefreshError, refreshStoredSession, type ConnectionEnvironment, type RefreshStoredOptions, type RememberedServer} from './server-connections.ts';
 
 export type RefresherSnapshot = Readonly<{
   phase: 'active' | 'refreshing' | 'retrying' | 'ended' | 'stopped';
@@ -57,6 +57,41 @@ export type LocalSessionRefresherOptions = Readonly<{
   refresh?: (options: RefreshStoredOptions) => Promise<LocalSession>;
 }>;
 
+export type PermissionReconciliation =
+  | Readonly<{kind:'confirmed-unchanged'}>
+  | Readonly<{kind:'adopted';role:string}>
+  | Readonly<{kind:'deferred';nextAllowedAt:number;reason:'credential-wait'|'server-floor'}>
+  | Readonly<{kind:'superseded';reason:'owner-stopped'|'session-moved'|'selection-moved'|'interest-cancelled'}>
+  | Readonly<{kind:'failed';error:unknown;retryable:boolean}>
+  | Readonly<{kind:'ended'}>;
+type PermissionReason = Extract<PermissionReconciliation,{kind:'superseded'}>['reason'];
+type PermissionBorrower = {finish(result:PermissionReconciliation):void};
+type PermissionPrincipal = Pick<LocalSession,'viewer'|'sessionFamilyId'|'accessToken'|'deviceId'|'installationId'>;
+type PermissionFlight = {session:LocalSession;proof:PermissionPrincipal;controller:AbortController;borrowers:Set<PermissionBorrower>;handover:boolean};
+type PermissionWitness = Readonly<{selectionId:string|undefined;pinServer:string;session:PermissionPrincipal}>;
+class PermissionRetired extends Error {}
+const permissionFailure=(error:unknown,retryable=true):PermissionReconciliation=>({kind:'failed',error,retryable});
+const permissionPositive=(value:unknown)=>typeof value==='number'&&value>0?Math.min(value,Number.MAX_VALUE):0;
+function permissionDeadline(error:unknown,now:number):number {
+  const e=error as {retryAfterMs?:unknown;retryAfterSeconds?:unknown}|null;
+  const wait=Math.max(permissionPositive(e?.retryAfterMs),permissionPositive(typeof e?.retryAfterSeconds==='number'?e.retryAfterSeconds*1000:0));
+  return wait?Math.min(Number.MAX_VALUE,now+wait):0;
+}
+function permissionSessionEqual(a:PermissionPrincipal,b:PermissionPrincipal):boolean {
+  return a.sessionFamilyId===b.sessionFamilyId&&a.accessToken===b.accessToken&&a.deviceId===b.deviceId&&a.installationId===b.installationId&&
+    (['serverId','authority','accountId','profileId','role'] as const).every(key=>a.viewer[key]===b.viewer[key]);
+}
+function permissionRecord(saved:RememberedServer|undefined):LocalSession|undefined {
+  if(!saved)return;
+  if(saved.version!=='1'||!saved.pin||typeof saved.pin.serverId!=='string'||!saved.pin.serverId||
+    saved.selectionId!==undefined&&(typeof saved.selectionId!=='string'||!saved.selectionId||saved.selectionId.length>256))throw new Error('Unreadable protected permission selection.');
+  return parseLocalSession(saved.session,{}, {stored:true});
+}
+function permissionMatches(saved:RememberedServer|undefined,witness:PermissionWitness):boolean {
+  const session=permissionRecord(saved);
+  return !!saved&&!!session&&saved.selectionId===witness.selectionId&&saved.pin.serverId===witness.pinServer&&permissionSessionEqual(session,witness.session);
+}
+
 export class LocalSessionRefresher implements AuthRecovery {
   private o: LocalSessionRefresherOptions;
   private session: LocalSession;
@@ -65,7 +100,9 @@ export class LocalSessionRefresher implements AuthRecovery {
   private noProgress?: Readonly<{serverId: string; familyId: string; expiresAt: string; horizon: string}>;
   private timer?: unknown;
  private permissionTimer?:unknown;
- private permissionRead?:Promise<boolean>;
+ private permissionRead?:PermissionFlight;
+ private permissionFullWaitUntil=0;
+ private permissionCredentialWaitUntil=0;
  private permissionWaitUntil=0;
   private failures = 0;
   /** No renewal before this, from the app's own backoff (a return to the foreground may go sooner). */
@@ -138,24 +175,117 @@ export class LocalSessionRefresher implements AuthRecovery {
   }
 
 
-  /** Refresh live permissions without rotating the device’s credential. */
-  permissionDenied=():Promise<boolean>=>{
-    if(this.permissionRead)return this.permissionRead;
-    if(this.done||this.waiting()||this.now()<this.permissionWaitUntil)return Promise.resolve(false);
-    const current=this.session;
-    const task=(async()=>{
-      const raw=await this.o.api.request<RouteResponse<"get_me">>(routePath("get_me"));
-      if(this.done||this.session!==current||typeof raw!=='object'||raw===null||!('viewer' in raw))return false;
-      const next=parseLocalSession({...current,viewer:(raw as {viewer:unknown}).viewer},{accountId:current.viewer.accountId,profileId:current.viewer.profileId,serverId:current.viewer.serverId,authority:current.viewer.authority},{stored:true});
-      if(!['owner','admin','member'].includes(next.viewer.role)||next.viewer.role===current.viewer.role)return false;
-      await this.o.env.storage.change(saved=>saved?.session.sessionFamilyId===current.sessionFamilyId&&saved.session.accessToken===current.accessToken?{...saved,session:{...saved.session,viewer:next.viewer}}:saved);
-      if(this.done||this.session!==current)return false;
-      this.session=next;this.o.onRotated?.(next);return true;
-    })().catch((e:unknown)=>{const wait=(e as {retryAfterSeconds?:unknown}|null)?.retryAfterSeconds;if(typeof wait==='number'&&Number.isFinite(wait)&&wait>0)this.permissionWaitUntil=this.now()+Math.min(wait,3600)*1000;return false;});
-    this.permissionRead=task;
-    void task.finally(()=>{if(this.permissionRead===task)this.permissionRead=undefined;});
-    return task;
-  };
+  /** Compatibility: only a committed changed-role handover permits the original 403 retry. */
+  permissionDenied=():Promise<boolean>=>this.permissionRequest(undefined,false).then(result=>result.kind==='adopted');
+
+  reconcilePermissions=(interest?:{signal?:AbortSignal}):Promise<PermissionReconciliation>=>this.permissionRequest(interest?.signal,true);
+
+  private permissionRequest(signal:AbortSignal|undefined,detailed:boolean):Promise<PermissionReconciliation> {
+    if(signal?.aborted)return Promise.resolve({kind:'superseded',reason:'interest-cancelled'});
+    if(this.done)return Promise.resolve(this.state.phase==='ended'?{kind:'ended'}:{kind:'superseded',reason:'owner-stopped'});
+    const now=this.now(),credentialWait=this.waiting()?Math.max(this.retryAt,this.serverWaitUntil):0;
+    const fullFloor=detailed?Math.max(this.permissionFullWaitUntil,this.permissionCredentialWaitUntil):0;
+    // The new admission preserves a full floor even when an old poll observed it
+    // first. Existing wrapper/poll admission deliberately keeps its legacy cap.
+    if(detailed&&now<Math.max(fullFloor,credentialWait,this.permissionWaitUntil))return Promise.resolve({kind:'deferred',
+      nextAllowedAt:Math.max(fullFloor,credentialWait,this.permissionWaitUntil),reason:credentialWait>now?'credential-wait':'server-floor'});
+    const previous=this.permissionRead;
+    if(previous){
+      if(previous.session!==this.session)return Promise.resolve({kind:'superseded',reason:'session-moved'});
+      if(previous.controller.signal.aborted)return Promise.resolve({kind:'superseded',reason:'interest-cancelled'});
+      return this.permissionBorrow(previous,signal);
+    }
+    const floor=Math.max(credentialWait,this.permissionWaitUntil);
+    if(now<floor)return Promise.resolve({kind:'deferred',nextAllowedAt:floor,reason:credentialWait>now?'credential-wait':'server-floor'});
+    const original=this.session;
+    const proof:PermissionPrincipal=Object.freeze({viewer:Object.freeze({...original.viewer}),sessionFamilyId:original.sessionFamilyId,
+      accessToken:original.accessToken,deviceId:original.deviceId,installationId:original.installationId});
+    const flight:PermissionFlight={session:original,proof,controller:new AbortController(),borrowers:new Set(),handover:false};
+    this.permissionRead=flight;
+    const answer=this.permissionBorrow(flight,signal);
+    const deliver=(result:PermissionReconciliation)=>{
+      if(this.permissionRead===flight)this.permissionRead=undefined;
+      for(const borrower of flight.borrowers)borrower.finish(result);
+    };
+    void this.performPermission(flight).then(deliver,error=>deliver(permissionFailure(error)));
+    return answer;
+  }
+  private permissionBorrow(flight:PermissionFlight,signal?:AbortSignal):Promise<PermissionReconciliation> {
+    return new Promise(resolve=>{
+      const stop=()=>borrower.finish({kind:'superseded',reason:'interest-cancelled'});
+      const borrower:PermissionBorrower={finish:result=>{
+        if(!flight.borrowers.delete(borrower))return;
+        signal?.removeEventListener('abort',stop);
+        if(!flight.borrowers.size)flight.controller.abort();
+        resolve(result);
+      }};
+      flight.borrowers.add(borrower);signal?.addEventListener('abort',stop,{once:true});
+      if(signal?.aborted)stop();
+    });
+  }
+  private permissionReason(flight:PermissionFlight):PermissionReason|undefined {
+    if(this.done)return 'owner-stopped';
+    if(this.session!==flight.session||!permissionSessionEqual(this.session,flight.proof))return 'session-moved';
+    if(flight.controller.signal.aborted||!flight.borrowers.size)return 'interest-cancelled';
+    return;
+  }
+  private permissionSuperseded(reason:PermissionReason):PermissionReconciliation {
+    return this.state.phase==='ended'?{kind:'ended'}:{kind:'superseded',reason};
+  }
+  private async performPermission(flight:PermissionFlight):Promise<PermissionReconciliation> {
+    const current=flight.session;
+    let retired:PermissionReason|undefined;
+    try{
+      let reason=this.permissionReason(flight);if(reason)return this.permissionSuperseded(reason);
+      const saved=await this.o.env.storage.read();
+      reason=this.permissionReason(flight);if(reason)return this.permissionSuperseded(reason);
+      const stored=permissionRecord(saved);
+      if(!saved||!stored||saved.pin.serverId!==current.viewer.serverId||!permissionSessionEqual(stored,flight.proof))return {kind:'superseded',reason:'selection-moved'};
+      const witness:PermissionWitness={selectionId:saved.selectionId,pinServer:saved.pin.serverId,session:flight.proof};
+      let raw:RouteResponse<'get_me'>;
+      try{raw=await this.o.api.request<RouteResponse<'get_me'>>(routePath('get_me'),'GET',undefined,flight.controller.signal);}
+      catch(error){
+        this.permissionFullWaitUntil=Math.max(this.permissionFullWaitUntil,permissionDeadline(error,this.now()));
+        const wait=(error as {retryAfterSeconds?:unknown}|null)?.retryAfterSeconds;
+        if(typeof wait==='number'&&Number.isFinite(wait)&&wait>0)this.permissionWaitUntil=this.now()+Math.min(wait,3600)*1000;
+        reason=this.permissionReason(flight);if(reason)return this.permissionSuperseded(reason);
+        const e=error as {status?:number;retryable?:boolean}|null;
+        return permissionFailure(error,e?.retryable??!(typeof e?.status==='number'&&e.status>=400&&e.status<500&&![408,425,429].includes(e.status)));
+      }
+      reason=this.permissionReason(flight);if(reason)return this.permissionSuperseded(reason);
+      if(!raw||typeof raw!=='object'||!('viewer' in raw))throw new Error('Unreadable permission response.');
+      const next=parseLocalSession({...current,viewer:raw.viewer},{accountId:current.viewer.accountId,profileId:current.viewer.profileId,
+        serverId:current.viewer.serverId,authority:current.viewer.authority},{stored:true});
+      if(!['owner','admin','member'].includes(next.viewer.role))return permissionFailure(Object.assign(new Error('Unsupported viewer role.'),{code:'unsupported_role'}),false);
+      if(next.viewer.role===current.viewer.role){
+        const final=await this.o.env.storage.read();
+        reason=this.permissionReason(flight);if(reason)return this.permissionSuperseded(reason);
+        return permissionMatches(final,witness)?{kind:'confirmed-unchanged'}:{kind:'superseded',reason:'selection-moved'};
+      }
+      let matched=false;
+      await this.o.env.storage.change(record=>{
+        if(!permissionMatches(record,witness))return record;
+        matched=true;return {...record!,session:{...record!.session,viewer:next.viewer}};
+      },()=>{
+        const reason=this.permissionReason(flight);
+        if(reason){retired=reason;throw new PermissionRetired();}
+      });
+      if(!matched)return {kind:'superseded',reason:'selection-moved'};
+      reason=this.permissionReason(flight);if(reason)return this.permissionSuperseded(reason);
+      flight.handover=true;this.session=next;this.o.onRotated?.(next);
+      // Handover may synchronously stop this owner. No subsequent publication/timer.
+      return {kind:'adopted',role:next.viewer.role};
+    }catch(error){
+      // Browser storage may wrap a guard exception. Only this attempt's private
+      // guard marker proves owned retirement; arbitrary storage faults stay failed.
+      return retired?this.permissionSuperseded(retired):permissionFailure(error);
+    }
+  }
+  private stopPermission():void {
+    const flight=this.permissionRead;if(!flight)return;
+    flight.controller.abort();
+    if(!flight.handover)for(const borrower of flight.borrowers)borrower.finish(this.permissionSuperseded('owner-stopped'));
+  }
   private schedulePermissions(){
     if(this.permissionTimer!==undefined)this.clearTimer(this.permissionTimer);
     this.permissionTimer=undefined;
@@ -169,6 +299,7 @@ export class LocalSessionRefresher implements AuthRecovery {
     if(this.permissionTimer!==undefined)this.clearTimer(this.permissionTimer);this.permissionTimer=undefined;
     this.timer = undefined;
     if (!this.done) this.publish({phase: 'stopped'});
+    this.stopPermission();
     this.o.api.setAuthRecovery(undefined);
   }
 
@@ -228,11 +359,13 @@ export class LocalSessionRefresher implements AuthRecovery {
       this.timer = undefined;
       if(this.permissionTimer!==undefined)this.clearTimer(this.permissionTimer);this.permissionTimer=undefined;
       this.publish({phase: 'ended', error});
+      this.stopPermission();
       this.o.api.setAuthRecovery(undefined);
       this.o.onSignedOut?.(error);
       return;
     }
     this.failures++;
+    this.permissionCredentialWaitUntil=Math.max(this.permissionCredentialWaitUntil,permissionDeadline(e,this.now()));
     this.schedulePermissions();
     const asked = (e as {retryAfterSeconds?: unknown} | null)?.retryAfterSeconds;
     // Bounded: a server cannot park renewal for longer than an hour with one header.
