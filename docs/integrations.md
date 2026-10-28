@@ -51,7 +51,7 @@ Portico's accounts or API model.
 Select the tool's **Emby / Jellyfin** connection, use Portico's URL and a dedicated
 API key with `read` and `library` scopes. Paths must match the paths visible to
 Portico, including container mounts; configure path mappings in the tool when
-necessary. Optional administrator notifications also require native administrator
+necessary. Optional administrator notifications also require native owner
 authority and `admin` scope. Disable that option when the key lacks it.
 
 Library updates report the specific changed paths. Portico accepts work only

@@ -6837,7 +6837,7 @@ CREATE TABLE api_credentials(
  created_ms INTEGER NOT NULL, expires_ms INTEGER NOT NULL DEFAULT 0, revoked_ms INTEGER NOT NULL DEFAULT 0,
  ended_reason TEXT NOT NULL DEFAULT '',
  parent_id TEXT REFERENCES api_credentials(id) ON DELETE CASCADE) STRICT;
-CREATE INDEX api_credentials_parent ON api_credentials(parent_id) WHERE parent_id IS NOT NULL;
+CREATE INDEX api_credentials_parent ON api_credentials(parent_id);
 CREATE INDEX api_credentials_page ON api_credentials(kind,created_ms DESC,id DESC);
 CREATE INDEX api_credentials_account ON api_credentials(account_id,kind,created_ms DESC,id DESC);
 CREATE TRIGGER api_credential_family_guard AFTER UPDATE OF revoked ON authorization_session_families

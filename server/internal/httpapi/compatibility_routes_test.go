@@ -8,6 +8,7 @@ import (
 	"net/http/httptest"
 	"portico.local/server/internal/catalogtest"
 	"portico.local/server/internal/integrationids"
+	"portico.local/server/internal/operations"
 	"portico.local/server/internal/playbackv1"
 	"strings"
 	"testing"
@@ -212,5 +213,27 @@ func TestCompatibilityNativeTransportUsesResourceRevisionAndRejectsLargerControl
 	w = f.raw("POST", "/Sessions/"+guid+"/Playing/Stop", f.owner.AccessToken, nil, nil)
 	if w.Code != 200 {
 		t.Fatalf("stop: %d %s", w.Code, w.Body)
+	}
+}
+
+func TestCompatibilityNotificationUsesNativeOwnerRefusal(t *testing.T) {
+	f := integrationFixture(t)
+	f.deps.Console = operations.New(f.deps.DB)
+	f.handler = New(f.deps)
+	for _, path := range integrationMatrixAliases("/Notifications/Admin") {
+		w := compatibilityCall(f, "POST", path, f.member, `{"Name":"Library update","Description":"New files are ready","ImageUrl":"https://unused.invalid/image"}`)
+		if w.Code != 403 || registryErrorCode(t, w) != "not_permitted" {
+			t.Fatalf("native permission refusal: %d %s", w.Code, w.Body)
+		}
+	}
+	w := compatibilityCall(f, "POST", "/Notifications/Admin", f.owner, `{"Name":"Library update","Description":"New files are ready"}`)
+	if w.Code != 200 {
+		t.Fatalf("native owner notification: %d %s", w.Code, w.Body)
+	}
+	for _, path := range []string{"/Items/not-a-guid/PlaybackInfo", "/Shows/not-a-guid/Episodes"} {
+		w = compatibilityCall(f, "GET", path, f.member, "")
+		if w.Code != 404 {
+			t.Fatalf("unknown GUID: %d %s", w.Code, w.Body)
+		}
 	}
 }

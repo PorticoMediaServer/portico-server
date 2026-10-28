@@ -12,6 +12,7 @@ import (
 
 	"portico.local/apikit"
 	"portico.local/apikit/apierror"
+	"portico.local/server/internal/entityid"
 	"portico.local/server/internal/identity"
 	"portico.local/server/internal/integrationids"
 )
@@ -113,8 +114,21 @@ func (d Dependencies) integrationCall(r *http.Request, method, path string, quer
 			Error apierror.Error `json:"error"`
 		}
 		_ = json.Unmarshal(raw, &doc)
-		if doc.Error.Code == "" {
+		switch doc.Error.Code {
+		case "":
 			doc.Error.Code = "internal"
+		// The existing console envelope predates the canonical error catalogue.
+		// Translate its permission/validation refusals without changing authority.
+		case "forbidden":
+			doc.Error.Code = "not_permitted"
+		case "invalid_console_request":
+			doc.Error.Code = "invalid_request"
+		case "console_unavailable":
+			doc.Error.Code = "administration_unavailable"
+		case "console_conflict":
+			doc.Error.Code = "revision_mismatch"
+		case "console_capacity":
+			doc.Error.Code = "rate_limited"
 		}
 		seconds, _ := strconv.Atoi(header.Get("Retry-After"))
 		if seconds < 0 || seconds > 3600 {
@@ -133,7 +147,14 @@ func (d Dependencies) integrationCall(r *http.Request, method, path string, quer
 	}
 	return out, nil
 }
-func compatibilityFailure(w http.ResponseWriter, err error) { policyErrors.Write(w, "", err) }
+func compatibilityFailure(w http.ResponseWriter, err error) {
+	if errors.Is(err, entityid.ErrNotFound) {
+		err = &apierror.Error{Code: "not_found"}
+	} else {
+		err = foundationAuthError(err)
+	}
+	policyErrors.Write(w, "", err)
+}
 func compatibilityDecode(w http.ResponseWriter, r *http.Request, out any) error {
 	reader := http.MaxBytesReader(w, r.Body, 1<<20)
 	decoder := json.NewDecoder(reader)
@@ -413,7 +434,8 @@ func (d Dependencies) serveCompatibility(w http.ResponseWriter, r *http.Request,
 			ImageUrl    string
 		}
 		if err = compatibilityDecode(w, r, &in); err == nil {
-			result, err = d.integrationCall(r, "POST", "/v1/admin/notifications/broadcast", nil, map[string]any{"operationId": "integration-" + identity.Token(), "audience": "account-admin", "severity": "info", "dedupeKey": "", "title": in.Name, "body": in.Description, "actions": []any{}, "expiresInDays": 1})
+			operation := "integration-" + identity.Token()
+			result, err = d.integrationCall(r, "POST", "/v1/admin/notifications/broadcast", nil, map[string]any{"operationId": operation, "audience": "account-admin", "severity": "info", "dedupeKey": operation, "title": in.Name, "body": in.Description, "actions": []any{}, "expiresInDays": 1})
 		}
 	case "image", "indexed_image", "user_image":
 		d.compatibilityImage(w, r, q, spec.id)
