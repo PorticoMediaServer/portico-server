@@ -13,7 +13,7 @@ import (
 
 // Enable only after every proof-bearing consumer is qualified. The ordinary
 // page keeps its original compiler and never starts a document census here.
-const selectionBatchLocalSearchEnabled = false
+const selectionBatchLocalSearchEnabled = true
 
 type selectionBatchSearch struct {
 	phrases     string

@@ -68,11 +68,12 @@ func selectionPreparationViewer(v Viewer, library string) Viewer {
 }
 
 type selectionPreparationSpec struct {
-	Library string
-	Pivot   string
-	Query   json.RawMessage
-	Sorts   []BrowseSortSelection
-	Viewer  Viewer
+	Revision string `json:",omitempty"`
+	Library  string
+	Pivot    string
+	Query    json.RawMessage
+	Sorts    []BrowseSortSelection
+	Viewer   Viewer
 }
 
 // Only content counters and bounded query intent are shared. Full reducer work,
@@ -360,7 +361,7 @@ func (s *Service) PollBrowseSelectionPreparation(library string, viewer Viewer, 
 		if err != nil {
 			return BrowseSelectionPreparationResult{}, err
 		}
-		state := &BrowseSelectionBatchState{done: true, counts: content.Counts, plan: &selectionBatchPlan{library: content.Library, pivot: content.Pivot, revision: revision, query: content.Query, sorts: sorts, witness: result.Basis}}
+		state := &BrowseSelectionBatchState{done: true, counts: content.Counts, plan: &selectionBatchPlan{library: content.Library, pivot: content.Pivot, revision: revision, query: content.Query, sorts: sorts, witness: result.Basis, localSearch: selectionBatchHasLocalSearch(node)}}
 		descriptor, err := s.FinishBrowseSelectionBatch(state, func(read *Service) (string, error) {
 			return read.browseSelectionWitness(library, viewer.Profile, viewer.EffectiveRestrictions())
 		}, authority)

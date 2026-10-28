@@ -39,7 +39,7 @@ func prepareLocalConversion(t *testing.T, s *Service, v Viewer, q *BrowseNode, s
 		if err != nil {
 			return err
 		}
-		spec, err := json.Marshal(selectionPreparationSpec{Library: "a", Pivot: "movies", Revision: revision, Query: raw, Sorts: page.Applied.Sort, Viewer: selectionPreparationViewer(v, "a")})
+		spec, err := json.Marshal(selectionPreparationSpec{Library: "a", Pivot: "movies", Query: raw, Sorts: page.Applied.Sort, Viewer: selectionPreparationViewer(v, "a")})
 		if err != nil {
 			return err
 		}

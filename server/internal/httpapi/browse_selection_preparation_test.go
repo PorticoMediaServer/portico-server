@@ -455,16 +455,31 @@ func TestBrowseSelectionHeldProofBindsPublicRangeZeroConversion(t *testing.T) {
 	}
 }
 
-func TestBrowseSelectionUnprovedSearchKeepsImmediatePageUnprepared(t *testing.T) {
+func TestBrowseSelectionLocalSearchPreparesExactSelection(t *testing.T) {
 	f := newSelectionHTTPFixture(t)
 	f.d.PrepareBrowseSelections = true
 	f.h = New(f.d)
-	w := f.request("POST", "/v1/libraries/movies/browse", nil, map[string]any{"pivot": "movies", "limit": 1, "range": map[string]any{"start": 0}, "query": map[string]any{"field": "search", "operator": "contains", "value": "f"}})
-	var page catalog.BrowseResult
-	if w.Code != 200 || json.Unmarshal(w.Body.Bytes(), &page) != nil || len(page.Entries) != 1 || page.WholeSelectionPreparing != nil || page.WholeSelection != nil || page.WholeSelectionUnavailable == nil || page.WholeSelectionUnavailable.Reason != "search_not_bounded" {
-		t.Fatalf("unproved search was hidden or enabled: %d %s", w.Code, w.Body.String())
+	for _, sort := range []string{"title", "forYou"} {
+		body := map[string]any{"pivot": "movies", "limit": 1, "range": map[string]any{"start": 0}, "query": map[string]any{"field": "search", "operator": "contains", "value": "f"}, "sort": []map[string]string{{"field": sort, "direction": "desc"}}}
+		w := f.request("POST", "/v1/libraries/movies/browse", nil, body)
+		var page catalog.BrowseResult
+		if w.Code != 200 || json.Unmarshal(w.Body.Bytes(), &page) != nil || len(page.Entries) != 1 || page.WholeSelectionPreparing == nil || page.WholeSelection != nil || page.WholeSelectionUnavailable != nil {
+			t.Fatalf("local search page %d %s", w.Code, w.Body.String())
+		}
+		ready, _ := selectionHTTPReady(t, f, browseSelectionQueryPath("movies", page.WholeSelectionPreparing.QueryID))
+		if ready.Total != 1 || ready.CatalogRevision != page.PageInfo.Revision || len(ready.Selector.Query.SelectionBasis) != 64 {
+			t.Fatalf("exact proof %+v", ready)
+		}
+		if sort == "forYou" {
+			excluded := ready.UnavailableActions
+			if excluded == nil || excluded.Play != "unsupported-sort" || excluded.Queue != "unsupported-sort" || excluded.Delete != "unsupported-sort" || excluded.Playlist != "" || excluded.MetadataPreview != "" {
+				t.Fatalf("consumer exclusions %+v", excluded)
+			}
+		} else if ready.UnavailableActions != nil {
+			t.Fatalf("ordinary sort excluded %+v", ready.UnavailableActions)
+		}
 	}
-	if f.store.Stats().Entries != 0 {
-		t.Fatal("unproved search submitted work")
+	if f.store.Stats().Deliveries != 0 {
+		t.Fatal("delivery leak", f.store.Stats())
 	}
 }

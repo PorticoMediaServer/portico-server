@@ -2,8 +2,10 @@ package catalog
 
 import (
 	"context"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"strings"
 	"unsafe"
 
 	"portico.local/server/internal/dbwork"
@@ -55,15 +57,24 @@ func (s *Service) resolvePreparedBrowseSelection(viewer Viewer, query JobQuery, 
 	if err != nil {
 		return out, err
 	}
-	// The original page revision is bound by the cached full specification.
-	// Recomputing it with another route's viewer fence would reject a legitimate
-	// same-policy metadata conversion. The complete live basis above is stronger
-	// content provenance; a different query/revision cannot open this exact key.
+	// Page revisions include route-private authority; the shared content key
+	// deliberately omits them. The full live basis proves current membership,
+	// and exact canonical query/policy equality below proves this count belongs
+	// to the supplied query. Revision is an opaque transport echo for metadata
+	// and jobs, never an authority or cardinality proof. Browse conversion also
+	// validates its own route revision before returning the explicit page.
+	if len(revision) != 71 || !strings.HasPrefix(revision, "browse_") {
+		return out, ErrStaleContinuation
+	}
+	if _, err = hex.DecodeString(revision[7:]); err != nil {
+		return out, ErrStaleContinuation
+	}
+
 	raw, err := json.Marshal(node)
 	if err != nil {
 		return out, err
 	}
-	spec, err := json.Marshal(selectionPreparationSpec{Library: query.LibraryID, Pivot: query.Pivot, Revision: revision, Query: raw, Sorts: sorts, Viewer: selectionPreparationViewer(viewer, query.LibraryID)})
+	spec, err := json.Marshal(selectionPreparationSpec{Library: query.LibraryID, Pivot: query.Pivot, Query: raw, Sorts: sorts, Viewer: selectionPreparationViewer(viewer, query.LibraryID)})
 	if err != nil {
 		return out, err
 	}
@@ -111,7 +122,7 @@ func (s *Service) resolvePreparedBrowseSelection(viewer Viewer, query JobQuery, 
 	if small && total > BrowseSelectionConversionLimit {
 		return out, fmt.Errorf("%w: explicit conversion exceeds %d", ErrSelectionBatchUnsupported, BrowseSelectionConversionLimit)
 	}
-	if content.Library != query.LibraryID || content.Pivot != query.Pivot || content.Revision != revision || min(total, 201) != len(content.IDs) {
+	if content.Library != query.LibraryID || content.Pivot != query.Pivot || min(total, 201) != len(content.IDs) {
 		return out, ErrStaleContinuation
 	}
 	seen := map[int64]bool{}
@@ -159,6 +170,13 @@ func (s *Service) browsePreparedSelection(viewer Viewer, request BrowseRequest) 
 	sorts, err := resolveBrowseSorts(pivot, request.Sort)
 	if err != nil {
 		return out, err
+	}
+	liveRevision, err := s.browseRevision(BrowseRequest{Library: request.Library, Profile: viewer.Profile, ViewerFence: viewer.Fence, Restrictions: viewer.EffectiveRestrictions(), Query: request.Query}, pivot, sorts)
+	if err != nil {
+		return out, err
+	}
+	if liveRevision != request.Range.Revision {
+		return out, ErrStaleContinuation
 	}
 	if !LocalSearchQueueSupported(request.Query, sorts) {
 		return out, ErrSelectionBatchUnsupported

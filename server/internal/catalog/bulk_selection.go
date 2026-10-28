@@ -149,8 +149,8 @@ func (s *Service) bulkSelection(p identity.Principal, v Viewer, in JobRequest) (
 			}
 			if in.Expected != nil && in.Expected.CatalogRevision != "" {
 				// Home/jobs and Browse have different private viewer fences. Bind the
-				// original page revision to the COMPLETE cached full query and live
-				// held basis instead of recomputing that page with this route's fence.
+				// COMPLETE cached full query to the live held basis. This proof
+				// replaces a private page revision comparison across route fences.
 				proof, e := s.resolvePreparedBrowseSelection(v, *q, in.Expected.CatalogRevision, false)
 				if e != nil {
 					return "", nil, e
