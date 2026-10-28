@@ -125,3 +125,29 @@ func TestLiveSourceSelectionPreservesSQLiteLocks(t *testing.T) {
 		}
 	}
 }
+
+func TestClosingLiveSourceKeepsLocksUntilConnectionsDrain(t *testing.T) {
+	if runtime.GOOS != "linux" {
+		t.Skip("checks Linux SQLite POSIX lock ranges with an independent process")
+	}
+	s, state, db := testService(t)
+	ctx := context.Background()
+	if _, err := dbwork.ExecWrite(ctx, db, dbwork.ClassInteractive, `INSERT INTO libraries(id,name,kind,root) VALUES('in-wal','In WAL','movie','/media/in-wal')`); err != nil {
+		t.Fatal(err)
+	}
+	_, _, release, err := dbwork.ReserveWriterConn(ctx, db, dbwork.ClassInteractive)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer release()
+	if err := db.Close(); err != nil {
+		t.Fatal(err)
+	}
+	live := filepath.Join(state, DatabaseName)
+	assertSQLiteSourceLocks(t, live)
+	out, err := s.InspectSource(ctx, Source{Path: live})
+	if err != nil || out.Encrypted {
+		t.Fatalf("inspection: %+v %v", out, err)
+	}
+	assertSQLiteSourceLocks(t, live)
+}

@@ -74,6 +74,38 @@ func TestClosingPublicHandleClosesWriterPool(t *testing.T) {
 	}
 }
 
+func TestClosedPoolsDrainBorrowedConnections(t *testing.T) {
+	for _, pool := range []string{"foreground", "background", "writer"} {
+		t.Run(pool, func(t *testing.T) {
+			db := testDB(t)
+			ctx := context.Background()
+			handle := db
+			if pool == "background" {
+				handle = ReadHandle(WithClass(ctx, ClassBackgroundMedia), db)
+			} else if pool == "writer" {
+				handle = writerHandle(db)
+			}
+			conn, err := handle.Conn(ctx)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer conn.Close()
+			if err := db.Close(); err != nil {
+				t.Fatal(err)
+			}
+			if ConnectionsDrained(db) {
+				t.Fatal("borrowed connection was reported drained")
+			}
+			if err := conn.Close(); err != nil {
+				t.Fatal(err)
+			}
+			if !ConnectionsDrained(db) {
+				t.Fatal("closed pools remained undrained after the last connection returned")
+			}
+		})
+	}
+}
+
 func TestBackgroundAndForegroundReadPoolsCannotStarveEachOther(t *testing.T) {
 	db := testDB(t)
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
