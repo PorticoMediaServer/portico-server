@@ -62,7 +62,7 @@ export class SourceSettingsController extends OwnerStore<SourceSettingsSnapshot>
   }
   async importLogos() {
     const doc = this.snapshot.document;
-    if (!this.isActive() || !doc || this.snapshot.loading || this.snapshot.saving || this.snapshot.logoBusy || !doc.settings.logoImport.enabled || JSON.stringify(doc.settings) !== JSON.stringify(this.snapshot.draft)) return;
+    if (!this.isActive() || !doc || this.snapshot.loading || this.snapshot.saving || this.snapshot.logoBusy || !doc.effectiveLogoImport.enabled || JSON.stringify(doc.settings) !== JSON.stringify(this.snapshot.draft)) return;
     const attempt = this.begin(), key = `logos:${this.sourceId}:${doc.revision}`;
     let operationId = this.operations.get(key);if (!operationId) {operationId = this.makeId();this.operations.set(key, operationId);}
     this.publish({...this.snapshot, logoBusy: true, logoResult: undefined, error: undefined});if (!this.valid(attempt)) return;

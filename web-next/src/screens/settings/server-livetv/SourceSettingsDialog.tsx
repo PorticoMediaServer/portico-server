@@ -66,10 +66,10 @@ export function SourceSettingsDialog({controller, choices, name, guides, acquisi
               {number('web.liveSource.startAt', draft.channelNumbering.startAt, value => {if (value && value >= 1) controller.edit({channelNumbering: {...draft.channelNumbering, startAt: value}});})}
               {number('web.liveSource.countBy', draft.channelNumbering.step, value => {if (value && value >= 1) controller.edit({channelNumbering: {...draft.channelNumbering, step: value}});})}
             </div>}</section>
-          <section><Select label={t('next.settingsSpec.server.live.groups.2.rows.4.label')} value={!draft.logoImport.enabled ? 'none' : draft.logoImport.overwriteExisting ? 'replace' : 'import'} disabled={busy}
-            options={['import', 'replace', 'none'].map((value, index) => ({value, label: t(`next.settingsSpec.server.live.groups.2.rows.4.control.options.${index + 1}.label` as MessageId)}))}
-            onValueChange={value => {if (value === 'import' || value === 'replace' || value === 'none') controller.edit({logoImport: {enabled: value !== 'none', overwriteExisting: value === 'replace'}});}}/>
-            <Button size="small" disabled={busy || dirty || !doc.settings.logoImport.enabled} loading={state.logoBusy} onClick={act(() => void controller.importLogos())}>{t('web.liveSource.importLogos')}</Button>
+          <section><Select label={t('next.settingsSpec.server.live.groups.2.rows.4.label')} value={draft.logoImport.followServer ? 'server' : !draft.logoImport.enabled ? 'none' : draft.logoImport.overwriteExisting ? 'replace' : 'import'} disabled={busy}
+            options={['server', 'import', 'replace', 'none'].map((value, index) => ({value, label: t(`next.settingsSpec.server.live.groups.2.rows.4.control.options.${index}.label` as MessageId)}))}
+            onValueChange={value => {if (value === 'server') controller.edit({logoImport: {...draft.logoImport, followServer: true}}); else if (value === 'import' || value === 'replace' || value === 'none') controller.edit({logoImport: {enabled: value !== 'none', overwriteExisting: value === 'replace', followServer: false}});}}/>
+            <Button size="small" disabled={busy || dirty || !doc.effectiveLogoImport.enabled} loading={state.logoBusy} onClick={act(() => void controller.importLogos())}>{t('web.liveSource.importLogos')}</Button>
             {state.logoResult && <p role="status">{t('web.liveSource.logoResult', state.logoResult)}</p>}
           </section>
         </>}

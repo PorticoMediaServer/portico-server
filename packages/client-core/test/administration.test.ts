@@ -110,14 +110,25 @@ test('CD-43: a capped 64-root page parses as truncated; a 65th root still refuse
   assert.throws(()=>parseFilesystemPage({...base,truncated:true,roots:Array.from({length:65},(_,n)=>root(n))}));
 });
 
+const liveSourceFixture={sourceId:'src',sourceName:'Rooftop aerial',revision:3,digest:'d',tunerCount:2,effectiveLogoImport:{enabled:true,overwriteExisting:false},availableKinds:['playlist','xmltv-guide','hdhomerun'],settings:{enabledGroups:[],enabledChannels:[],kind:'playlist',streamBufferMs:12000,retryWindowMs:null,userAgent:'',guideSourceId:'src-guide',filters:{categories:{mode:'include',values:['News']},countries:{mode:'include',values:[]},keywords:{mode:'exclude',values:['shopping']}},logoImport:{enabled:true,overwriteExisting:false},channelNumbering:{mode:'sequential',startAt:100,step:1}},effective:{importLimits:{bytes:536870912,channels:50000,programmes:5000000},streamBufferMs:12000,retryWindowMs:60000,userAgent:'Portico/1.0',guideDays:7,logoImport:true,discoveryEnabled:true}};
 test('a guide-only live source may not carry stream tuning or a guide attachment',()=>{
- const base={sourceId:'src',sourceName:'Rooftop aerial',revision:3,digest:'d',tunerCount:2,availableKinds:['playlist','xmltv-guide','hdhomerun'],settings:{enabledGroups:[],enabledChannels:[],kind:'playlist',streamBufferMs:12000,retryWindowMs:null,userAgent:'',guideSourceId:'src-guide',filters:{categories:{mode:'include',values:['News']},countries:{mode:'include',values:[]},keywords:{mode:'exclude',values:['shopping']}},logoImport:{enabled:true,overwriteExisting:false},channelNumbering:{mode:'sequential',startAt:100,step:1}},effective:{importLimits:{bytes:536870912,channels:50000,programmes:5000000},streamBufferMs:12000,retryWindowMs:60000,userAgent:'Portico/1.0',guideDays:7,logoImport:true,discoveryEnabled:true}};
+ const base=liveSourceFixture;
  const parsed=parseLiveSourceDocument(base);
  assert.equal(parsed.settings.streamBufferMs,12000);
  assert.equal(parsed.settings.retryWindowMs,null);
  assert.throws(()=>parseLiveSourceDocument({...base,settings:{...base.settings,kind:'xmltv-guide'}}));
  const guide=parseLiveSourceDocument({...base,settings:{...base.settings,kind:'xmltv-guide',streamBufferMs:null,guideSourceId:''}});
  assert.equal(guide.settings.kind,'xmltv-guide');
+});
+
+test('OWN-018: a source may follow the server logo switch; the effective logo import is the server\'s answer',()=>{
+ const base=JSON.parse(JSON.stringify(liveSourceFixture));
+ const follow=parseLiveSourceDocument({...base,settings:{...base.settings,logoImport:{enabled:false,overwriteExisting:false,followServer:true}},effectiveLogoImport:{enabled:true,overwriteExisting:false}});
+ assert.equal(follow.settings.logoImport.followServer,true);
+ assert.deepEqual(follow.effectiveLogoImport,{enabled:true,overwriteExisting:false});
+ assert.equal('followServer' in parseLiveSourceDocument(base).settings.logoImport,false,'absent stays absent');
+ assert.throws(()=>parseLiveSourceDocument({...base,settings:{...base.settings,logoImport:{enabled:true,overwriteExisting:false,followServer:'yes'}}}));
+ assert.throws(()=>parseLiveSourceDocument({...base,effectiveLogoImport:undefined}));
 });
 
 test('a channel map lists two channels served on one number so the clash can be fixed, and leaves out a channel it cannot read',()=>{

@@ -5,7 +5,7 @@ const id = 'a'.repeat(48);
 const filter = {mode: 'include', values: []};
 const settings = {enabledGroups: [], enabledChannels: [], kind: 'playlist', streamBufferMs: null, retryWindowMs: null, userAgent: '', guideSourceId: '', importLimits: null,
   filters: {categories: filter, countries: filter, keywords: filter}, logoImport: {enabled: true, overwriteExisting: false}, channelNumbering: {mode: 'source', startAt: 1, step: 1}};
-const doc = {sourceId: id, sourceName: 'Stored source', revision: 7, digest: 'digest', tunerCount: 2, availableKinds: ['playlist', 'xmltv-guide'], settings,
+const doc = {sourceId: id, sourceName: 'Stored source', revision: 7, digest: 'digest', tunerCount: 2, effectiveLogoImport: {enabled: true, overwriteExisting: false}, availableKinds: ['playlist', 'xmltv-guide'], settings,
   effective: {importLimits: {bytes: 268435456, channels: 10000, programmes: 1000000}, streamBufferMs: 8000, retryWindowMs: 60000, userAgent: '', guideDays: 7, logoImport: true, discoveryEnabled: false}};
 const response = (result = doc) => ({protocolVersion: '1.0', serverId: 'server', result});
 test('source configuration uses checked revision, stable retry id and receipt readback', async () => {
