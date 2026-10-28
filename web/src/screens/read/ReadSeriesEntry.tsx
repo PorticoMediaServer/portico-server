@@ -130,7 +130,7 @@ function LiveSeriesRows({resources, context, retry}: {resources: Resources; cont
       <div className={styles.seriesHeading}><h2>{t(resources.comic ? 'next.reader.volumes' : 'next.kit.booksInSeries')}</h2>
         {total === undefined ? null : <span>{t(resources.comic ? 'next.reader.volumeCount' : 'next.kit.books', {count: total})}</span>}
         {canSelect && <button type="button" className={styles.seriesSelect} aria-pressed={selection !== undefined}
-          onClick={() => setSelection(selection === undefined ? new Map() : undefined)}>{t('next.selection.select')}<ServerMark size={22}/></button>}</div></> : <h2>{t('library.tab.series')}</h2>}
+          onClick={() => setSelection(selection === undefined ? new Map() : undefined)}>{t('next.selection.select')}{canEdit && <ServerMark size={22}/>}</button>}</div></> : <h2>{t('library.tab.series')}</h2>}
     {selection && canSelect && <ReadSelectionBar context={context} selection={selection} kind={resources.comic ? 'comic' : 'ebook'}
       current={item => resources.bindings.authority.isCurrent() && resources.rows.collection.residentItems().includes(item)}
       onExit={() => setSelection(undefined)} onEdit={anchor => {bulkAnchor.current = anchor; setBulk(Object.freeze([...selection.values()]));}}/>}
