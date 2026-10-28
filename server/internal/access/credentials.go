@@ -381,6 +381,7 @@ func (s *Store) RevokeCredential(ctx context.Context, auth Authorize, issuer *id
 // credential's scopes and limits. Whether the member behind it is still
 // entitled to anything is decided, as for every session, by authentication.
 type ResolvedCredential struct {
+	ParentID  string
 	ExpiresAt time.Time
 	ID        string
 	Kind      string
@@ -397,7 +398,7 @@ func (s *Store) ResolveCredential(ctx context.Context, secretDigest string) (Res
 	}
 	var scopes string
 	var expires, revoked int64
-	err := dbwork.QueryRow(ctx, s.DB, `SELECT id,kind,account_id,scopes,expires_ms,revoked_ms FROM api_credentials c WHERE secret_hash=? AND (c.parent_id IS NULL OR EXISTS(SELECT 1 FROM api_credentials p WHERE p.id=c.parent_id AND p.kind='app_password' AND p.revoked_ms=0 AND (p.expires_ms=0 OR p.expires_ms>?)))`, secretDigest, s.now()).Scan(&out.ID, &out.Kind, &out.AccountID, &scopes, &expires, &revoked)
+	err := dbwork.QueryRow(ctx, s.DB, `SELECT id,kind,account_id,scopes,expires_ms,revoked_ms,COALESCE(parent_id,'') FROM api_credentials c WHERE secret_hash=? AND (c.parent_id IS NULL OR EXISTS(SELECT 1 FROM api_credentials p WHERE p.id=c.parent_id AND p.kind='app_password' AND p.revoked_ms=0 AND (p.expires_ms=0 OR p.expires_ms>?)))`, secretDigest, s.now()).Scan(&out.ID, &out.Kind, &out.AccountID, &scopes, &expires, &revoked, &out.ParentID)
 	if errors.Is(err, sql.ErrNoRows) {
 		return ResolvedCredential{}, identity.ErrUnauthorized
 	}

@@ -1,3 +1,5 @@
+import {AppPasswordsPanel} from './AppPasswords';
+import type {ApiAccessTransport} from '@core/api-access.ts';
 import {useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore, type ReactNode} from 'react';
 import {defaultI18n, type MessageId} from '@i18n';
 import type {ApiCredential, ApiScope, IssuedApiCredential} from '@core/api-access.ts';
@@ -16,14 +18,14 @@ import styles from './integrations.module.css';
 const t = defaultI18n.t;
 type IssuedCard = Readonly<{source: SettingsApiKeysSource; value: IssuedApiCredential; token: object}>;
 type FormAttempt = Readonly<{source: SettingsApiKeysSource}>;
-type Props = Readonly<{source: SettingsApiKeysSource; webhooks: SettingsWebhooksSource; baseUrl: string; isCurrent: () => boolean; reportError: (error: unknown) => void; otherRows: ReactNode; advancedRows: ReactNode}>;
+type Props = Readonly<{api:ApiAccessTransport; source: SettingsApiKeysSource; webhooks: SettingsWebhooksSource; baseUrl: string; isCurrent: () => boolean; reportError: (error: unknown) => void; otherRows: ReactNode; advancedRows: ReactNode}>;
 
 /** The owner's real integration sources; advanced settings retain their
  * existing controller, while Assistants invokes this same key creator. */
-type IntegrationsTab = 'keys' | 'webhooks' | 'assistants';
+type IntegrationsTab = 'keys' | 'webhooks' | 'assistants' | 'compatibility';
 const tabForRow = (row: string | null): IntegrationsTab => row === 'integrations.webhooks' ? 'webhooks' : row?.startsWith('integrations.assistant') ? 'assistants' : 'keys';
 
-export function IntegrationsPage({source, webhooks, baseUrl, isCurrent, reportError, otherRows, advancedRows}: Props) {
+export function IntegrationsPage({api, source, webhooks, baseUrl, isCurrent, reportError, otherRows, advancedRows}: Props) {
   const requestedRow = useRouterState({select: state => new URLSearchParams(state.location.searchStr).get('row')});
   const [tab, setTab] = useState<IntegrationsTab>(() => tabForRow(requestedRow));
   useEffect(() => {setTab(tabForRow(requestedRow));}, [requestedRow]);
@@ -31,6 +33,7 @@ export function IntegrationsPage({source, webhooks, baseUrl, isCurrent, reportEr
   const [creating, setCreating] = useState(false), [name, setName] = useState(''), [ticked, setTicked] = useState<ReadonlySet<ApiScope>>(new Set()), [days, setDays] = useState<ExpiryDays>(0);
   const [issued, setIssued] = useState<IssuedCard>(), [copied, setCopied] = useState(false), [ended, setEnded] = useState(false), [revoking, setRevoking] = useState<ApiCredential>();
   const [cursors, setCursors] = useState<readonly string[]>(['']);
+  const revealAttempt = useRef<object | undefined>(undefined);
   const card = useRef<IssuedCard | undefined>(undefined), formAttempt = useRef<FormAttempt | undefined>(undefined);
   const generation = useRef<object>({}), paging = useRef(false), secret = useRef<HTMLTextAreaElement>(null);
   const scope = useRef(source);
@@ -40,9 +43,9 @@ export function IntegrationsPage({source, webhooks, baseUrl, isCurrent, reportEr
     generation.current = {};card.current = undefined;formAttempt.current = undefined;setIssued(undefined);setCreating(false);setRevoking(undefined);setCursors(['']);void source.load();
     return () => {generation.current = {};card.current = undefined;formAttempt.current = undefined;};
   }, [source]);
-  const live = isCurrent(), heldCard = live && issued?.source === source && card.current === issued ? issued : undefined, heldIssue = heldCard?.value;
+  const live = isCurrent() && state.phase !== 'idle', heldCard = live && issued?.source === source && card.current === issued ? issued : undefined, heldIssue = heldCard?.value;
   const closeForm = () => {formAttempt.current = undefined;setCreating(false);};
-  const closeCard = () => {card.current = undefined;setIssued(undefined);setCopied(false);};
+  const closeCard = () => {revealAttempt.current=undefined;card.current = undefined;setIssued(undefined);setCopied(false);};
   const offered = state.options?.scopes ?? [], chosen = chosenScopes(ticked).filter(scope => offered.includes(scope));
   const busy = state.busy || state.phase === 'loading', frozen = state.busy || state.pendingCreate;
   const working = state.page?.items.filter(credentialWorks) ?? [], stopped = state.page?.items.filter(key => !credentialWorks(key)) ?? [];
@@ -65,6 +68,11 @@ export function IntegrationsPage({source, webhooks, baseUrl, isCurrent, reportEr
     try {await navigator.clipboard.writeText(captured.value.secret);if (ownsCard()) setCopied(true);}
     catch {if (ownsCard()) {setCopied(false);secret.current?.focus();secret.current?.select();}}
   };
+  const reveal = async (key:ApiCredential) => {
+    closeCard();const attempt={};revealAttempt.current=attempt;const held=generation.current;
+    const value=await source.reveal(key);
+    if(value&&isCurrent()&&source.getSnapshot().phase!=='idle'&&held===generation.current&&revealAttempt.current===attempt){const next={source,value:{credential:key,secret:value},token:{}};card.current=next;setIssued(next);}
+  };
   const page = async (cursor: string, next: readonly string[]) => {
     if (!isCurrent() || paging.current || state.busy) return;
     paging.current = true;const held = generation.current;
@@ -81,11 +89,12 @@ export function IntegrationsPage({source, webhooks, baseUrl, isCurrent, reportEr
         <span>{key.expiresAt ? t('api.credential.expires', {when: defaultI18n.date(key.expiresAt)}) : t('api.credential.noExpiry')}</span>
       </div></div>
       <div className={styles.actions}><span className={styles.badge} data-tone={badge?.tone ?? 'healthy'}>{badge?.text ?? t('api.credential.state.active')}</span>
+        {key.state==='active'&&<Button size="xs" variant="text" disabled={busy} onClick={()=>{void reveal(key);}}>{t('integrations.credential.reveal')}</Button>}
         {credentialWorks(key) && <Button size="xs" variant="text" disabled={busy} onClick={() => {if (isCurrent()) setRevoking(key);}}>{t('web.access.revoke')}</Button>}</div>
     </li>;
   };
   return <div className={styles.page}>
-    <Tabs aria-label={t('next.settingsSpec.server.integrations.title')} value={tab} onValueChange={value => {if (value === 'keys' || value === 'webhooks' || value === 'assistants') setTab(value);}} items={[
+    <Tabs aria-label={t('next.settingsSpec.server.integrations.title')} value={tab} onValueChange={value => {if (value === 'keys' || value === 'webhooks' || value === 'assistants' || value === 'compatibility') setTab(value);}} items={[
       {value: 'keys', label: t('web.access.apiKeys'), panel: <section id="integrations.apiKeys" aria-labelledby="api-keys-title">
       <div className={styles.heading}><h3 id="api-keys-title">{t('web.access.apiKeys')}</h3><Button size="xs" variant="glass" disabled={busy || !state.options} onClick={start}>{t('web.access.createKey')}</Button></div>
       <p className={styles.lede}>{t('server.access.keyLede')}</p>
@@ -98,6 +107,7 @@ export function IntegrationsPage({source, webhooks, baseUrl, isCurrent, reportEr
       </>}
       <p className={styles.footnote}>{t('api.tokens.lifetime')}</p>
     </section>},
+      {value: 'compatibility', label:t('integrations.appPasswords.title'),panel:<AppPasswordsPanel api={api} owner={source} isCurrent={isCurrent} reportError={reportError}/>},
       {value: 'webhooks', label: t('api.webhooks.title'), panel: <WebhooksPanel source={webhooks} isCurrent={isCurrent} />},
       {value: 'assistants', label: t('api.mcp.tab'), panel: <div id="integrations.assistantAddress"><div id="integrations.assistantKey"><AssistantsPanel baseUrl={baseUrl} isCurrent={isCurrent} openKeys={() => {if (isCurrent()) setTab('keys');}} reportError={reportError} /></div></div>},
     ]} />
@@ -120,9 +130,9 @@ export function IntegrationsPage({source, webhooks, baseUrl, isCurrent, reportEr
     <Dialog open={!!heldIssue} onOpenChange={open => {if (!open && !heldIssue?.secret) closeCard();}} title={t('web.access.copyKeyTitle')} width={500} initialFocusRef={secret}
       dismissOnOutsidePress={!heldIssue?.secret} dismissOnBack={!heldIssue?.secret} showCloseButton={false}
       footer={<Button variant="primary" size="compact" onClick={closeCard}>{t(heldIssue?.secret ? 'web.access.copiedIt' : 'action.done')}</Button>}>
-      {heldIssue?.secret ? <div className={styles.form}><p className={styles.warning}>{t('web.access.keyShownOnce')}</p><label className={styles.secretLabel}>{t('web.access.apiKey')}<textarea ref={secret} className={styles.secret} readOnly rows={3} value={heldIssue.secret} onFocus={event => event.currentTarget.select()} /></label>
+      {heldIssue?.secret ? <div className={styles.form}><p className={styles.warning}>{t('integrations.credential.recoverable')}</p><label className={styles.secretLabel}>{t('web.access.apiKey')}<textarea ref={secret} className={styles.secret} readOnly rows={3} value={heldIssue.secret} onFocus={event => event.currentTarget.select()} /></label>
         <div className={styles.actions}><Button size="xs" variant="glass" icon="i-copy" onClick={() => {void copy();}}>{t('web.twoStep.copy')}</Button><span className={styles.copied} role="status">{copied && t('api.credential.copied')}</span></div></div>
-        : <p className={styles.warning}>{t('api.credential.secretNotShown')}</p>}
+        : <p className={styles.warning}>{t('integrations.credential.retryReveal')}</p>}
     </Dialog>
     <Dialog open={live && !!revoking} onOpenChange={open => {if (!open && !state.busy) setRevoking(undefined);}} title={t('web.access.revokeTitle', {name: revoking?.name ?? ''})} description={t('web.access.revokeBody')} width={460}
       dismissOnOutsidePress={!state.busy} dismissOnBack={!state.busy} showCloseButton={!state.busy}

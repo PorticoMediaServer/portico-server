@@ -43,6 +43,7 @@ const bindings:Readonly<Record<string,SettingsBinding>>={
  'people.inviteRole':{form:'runtime',key:'people.invitation_role'},
  'people.maxStreamsEach':{form:'runtime',key:'perAccountCap',codec:'unlimited'},
  'people.communityActivity':{form:'runtime',key:'home.communityActivityEnabled'},
+ 'integrations.compatibility':{form:'runtime',key:'integrations.compatibilityEnabled',codec:'boolean'},
  'integrations.requestsPerMinute':{form:'runtime',key:'apiRequestsPerMinute'},
  'streaming.whenCantPlay':{form:'runtime',key:'planningPolicy'},
  'general.name':{form:'runtime',key:'name'},

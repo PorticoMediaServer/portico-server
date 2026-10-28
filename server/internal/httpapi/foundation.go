@@ -731,6 +731,12 @@ func FoundationRegistry(d Dependencies) (*apikit.Registry, error) {
 	if err := registerIntegrationCredentials(registry, d); err != nil {
 		return nil, err
 	}
+	if err := registerIntegrationReads(registry, d); err != nil {
+		return nil, err
+	}
+	if err := registerIntegrationSubtitleValidation(registry, d); err != nil {
+		return nil, err
+	}
 	if err := registerCompatibilityRoutes(registry, d); err != nil {
 		return nil, err
 	}

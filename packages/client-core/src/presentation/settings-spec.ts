@@ -13308,6 +13308,10 @@ export const settingsSpec: readonly SettingsSection[] = [
     "title": "next.settingsSpec.server.integrations.title",
     "groups": [
       {
+        "title": "integrations.compatibility.title",
+        "rows": [{"id":"integrations.compatibility","scope":"server","key":"integrations.compatibilityEnabled","label":"integrations.compatibility.title","help":"integrations.compatibility.help","control":{"type":"toggle"}}]
+      },
+      {
         "title": "next.settingsSpec.server.integrations.groups.0.title",
         "rows": [
           {

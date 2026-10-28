@@ -6730,7 +6730,7 @@ CREATE TABLE integration_ids(
  PRIMARY KEY(kind,native_id),UNIQUE(kind,guid)) STRICT;
 CREATE INDEX integration_ids_expiry ON integration_ids(expires_ms) WHERE expires_ms>0;
 CREATE TABLE api_credentials(
- id TEXT PRIMARY KEY, kind TEXT NOT NULL CHECK(kind IN('key','token','app_password','integration')),
+ id TEXT PRIMARY KEY, kind TEXT NOT NULL CHECK(kind IN('key','token','app_password','integration_session')),
  account_id TEXT NOT NULL REFERENCES accounts(id) ON DELETE CASCADE, profile_id TEXT NOT NULL,
  name TEXT NOT NULL, scopes TEXT NOT NULL, secret_hash TEXT NOT NULL UNIQUE, secret TEXT NOT NULL DEFAULT '', hint TEXT NOT NULL,
  family_id TEXT NOT NULL UNIQUE, device_id TEXT NOT NULL,

@@ -538,6 +538,13 @@ export const routePaths = {
   "head_v1_media_subtitles_grant_resource_revision_original_ssa": "/v1/media/subtitles/{grant}/{resource}/{revision}/original.ssa",
   "head_v1_media_subtitles_grant_resource_revision_original_sub": "/v1/media/subtitles/{grant}/{resource}/{revision}/original.sub",
   "head_v1_media_subtitles_grant_resource_revision_original_sup": "/v1/media/subtitles/{grant}/{resource}/{revision}/original.sup",
+  "integration_items": "/v1/integrations/items",
+  "integration_libraries": "/v1/integrations/libraries",
+  "integration_media_info": "/v1/integrations/items/{id}/media-info",
+  "integration_sessions": "/v1/integrations/sessions",
+  "integration_show_episodes": "/v1/integrations/shows/{id}/episodes",
+  "integration_show_seasons": "/v1/integrations/shows/{id}/seasons",
+  "integration_users": "/v1/integrations/users",
   "issue_download_receipts": "/v1/downloads/receipts",
   "list_access_tokens": "/v1/me/access-tokens",
   "list_admin_sessions": "/v1/admin/sessions",
@@ -925,7 +932,8 @@ export const routePaths = {
   "undo_container_personal_state": "/v1/containers/{kind}/{id}/personal-state/undo",
   "update_queue": "/v1/queues/{id}",
   "update_storage_source_rclone": "/v1/storage/sources/rclone/{id}",
-  "update_webhook": "/v1/admin/webhooks/{id}"
+  "update_webhook": "/v1/admin/webhooks/{id}",
+  "validate_integration_subtitles": "/v1/integrations/items/{id}/subtitles/refresh"
 } as const;
 
 import type { RouteContracts } from './types.ts';

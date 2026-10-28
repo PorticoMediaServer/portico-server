@@ -66,12 +66,14 @@ func registerIntegrationCredentials(registry *apikit.Registry, d Dependencies) e
 	}}); err != nil {
 		return err
 	}
-	if err := apikit.Register(registry, apikit.Route[struct{}, access.AppPasswordPage]{Metadata: meta("list_integration_app_passwords", "GET", "/v1/integrations/app-passwords", "List named integration app passwords", apikit.Owner, apikit.ScopeSession, 200, 0), Handler: func(ctx context.Context, r *http.Request, _ struct{}) (access.AppPasswordPage, error) {
+	list := meta("list_integration_app_passwords", "GET", "/v1/integrations/app-passwords", "List named integration app passwords", apikit.Owner, apikit.ScopeSession, 200, 0)
+	list.Query = []string{"cursor"}
+	if err := apikit.Register(registry, apikit.Route[struct{}, access.AppPasswordPage]{Metadata: list, Handler: func(ctx context.Context, r *http.Request, _ struct{}) (access.AppPasswordPage, error) {
 		p, err := d.foundationCaller(r)
 		if err != nil {
 			return access.AppPasswordPage{}, foundationAuthError(err)
 		}
-		out, err := d.Access.Access.AppPasswords(ctx, d.accessAuthority(p, identity.TierOwner))
+		out, err := d.Access.Access.AppPasswords(ctx, d.accessAuthority(p, identity.TierOwner), r.URL.Query().Get("cursor"))
 		return out, credentialRouteError(err)
 	}}); err != nil {
 		return err
@@ -136,7 +138,7 @@ func registerIntegrationCredentials(registry *apikit.Registry, d Dependencies) e
 			return access.IssuedCredential{}, err
 		}
 		c, ok := identity.APICredentialFrom(ctx)
-		if !ok || c.Kind != identity.CredentialKindIntegration {
+		if !ok || (c.Kind != identity.CredentialKindKey && c.Kind != identity.CredentialKindIntegrationSession) {
 			return access.IssuedCredential{}, &apierror.Error{Code: "not_permitted"}
 		}
 		p, err := d.foundationCaller(r)

@@ -528,7 +528,7 @@ func (d Dependencies) admitCredential(w http.ResponseWriter, r *http.Request, mu
 	if credential.Kind == identity.CredentialKindAppPassword {
 		return refuse(&apierror.Error{Code: "unauthorized"})
 	}
-	if credential.Kind == identity.CredentialKindIntegration {
+	if credential.ParentID != "" {
 		if err := d.requireIntegrations(r.Context()); err != nil {
 			return refuse(&apierror.Error{Code: "unauthorized"})
 		}

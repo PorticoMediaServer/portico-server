@@ -41,10 +41,10 @@ const (
 
 	// CredentialKindKey is an owner API key; CredentialKindToken is a personal
 	// access token any member may make for themselves.
-	CredentialKindKey         = "key"
-	CredentialKindToken       = "token"
-	CredentialKindAppPassword = "app_password"
-	CredentialKindIntegration = "integration"
+	CredentialKindKey                = "key"
+	CredentialKindToken              = "token"
+	CredentialKindAppPassword        = "app_password"
+	CredentialKindIntegrationSession = "integration_session"
 
 	// credentialDevicePlatform marks the device row a credential is bound to,
 	// so device lists can tell it from a phone or a television.
@@ -136,7 +136,7 @@ func (s *Service) IssueAPICredentialTx(ctx context.Context, tx *sql.Tx, maker Pr
 		prefix = AccessTokenPrefix
 	case CredentialKindAppPassword:
 		prefix = "papp."
-	case CredentialKindIntegration:
+	case CredentialKindIntegrationSession:
 		prefix = "pit."
 	default:
 		return out, ErrCredentialInput

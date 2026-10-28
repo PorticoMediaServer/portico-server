@@ -30,7 +30,8 @@ type AppPassword struct {
 	State     string   `json:"state"`
 }
 type AppPasswordPage struct {
-	Items []AppPassword `json:"items"`
+	Items      []AppPassword `json:"items"`
+	NextCursor string        `json:"nextCursor,omitempty"`
 }
 type IssuedAppPassword struct {
 	AppPassword AppPassword `json:"appPassword"`
@@ -41,12 +42,12 @@ func appPassword(c Credential) AppPassword {
 	return AppPassword{ID: c.ID, Name: c.Name, Username: c.Member.Username, AccountID: c.Member.AccountID, ProfileID: c.Member.ProfileID, Scopes: c.Scopes, State: c.State}
 }
 
-func (s *Store) AppPasswords(ctx context.Context, auth Authorize) (AppPasswordPage, error) {
-	page, err := s.Credentials(ctx, auth, CredentialQuery{Kind: identity.CredentialKindAppPassword, Limit: "100"})
+func (s *Store) AppPasswords(ctx context.Context, auth Authorize, cursor string) (AppPasswordPage, error) {
+	page, err := s.Credentials(ctx, auth, CredentialQuery{Kind: identity.CredentialKindAppPassword, Limit: "100", Cursor: cursor})
 	if err != nil {
 		return AppPasswordPage{}, err
 	}
-	out := AppPasswordPage{Items: []AppPassword{}}
+	out := AppPasswordPage{Items: []AppPassword{}, NextCursor: page.NextCursor}
 	for _, c := range page.Items {
 		out.Items = append(out.Items, appPassword(c))
 	}
@@ -142,12 +143,15 @@ func (s *Store) ExchangeAppPassword(ctx context.Context, issuer *identity.Servic
 	if err != nil {
 		return out, err
 	}
-	return s.MintIntegrationToken(ctx, issuer, p, resolved.ID, username, name)
+	return s.mintIntegrationToken(ctx, issuer, p, resolved.ID, username, name, identity.CredentialKindIntegrationSession)
 }
 
 // MintIntegrationToken can only continue an app-password grant, and binds every
 // child directly to that grant. There is no general credential minting authority.
-func (s *Store) MintIntegrationToken(ctx context.Context, issuer *identity.Service, p identity.Principal, parentID, username, name string) (out IssuedCredential, err error) {
+func (s *Store) MintIntegrationToken(ctx context.Context, issuer *identity.Service, p identity.Principal, parentID, username, name string) (IssuedCredential, error) {
+	return s.mintIntegrationToken(ctx, issuer, p, parentID, username, name, identity.CredentialKindKey)
+}
+func (s *Store) mintIntegrationToken(ctx context.Context, issuer *identity.Service, p identity.Principal, parentID, username, name, kind string) (out IssuedCredential, err error) {
 	if name == "" {
 		name = "Integration"
 	}
@@ -162,8 +166,11 @@ func (s *Store) MintIntegrationToken(ctx context.Context, issuer *identity.Servi
 		if e != nil {
 			return e
 		}
-		if parent.Kind == identity.CredentialKindIntegration {
-			if e = tx.QueryRowContext(ctx, `SELECT parent_id FROM api_credentials WHERE id=?`, parentID).Scan(&parentID); e != nil {
+		if parent.Kind == identity.CredentialKindKey || parent.Kind == identity.CredentialKindIntegrationSession {
+			if e = tx.QueryRowContext(ctx, `SELECT parent_id FROM api_credentials WHERE id=? AND parent_id IS NOT NULL`, parentID).Scan(&parentID); e != nil {
+				if errors.Is(e, sql.ErrNoRows) {
+					return identity.ErrForbidden
+				}
 				return e
 			}
 			parent, e = s.credentialTx(ctx, tx, parentID)
@@ -175,27 +182,54 @@ func (s *Store) MintIntegrationToken(ctx context.Context, issuer *identity.Servi
 			return identity.ErrUnauthorized
 		}
 		var count int
-		if e = tx.QueryRowContext(ctx, `SELECT count(*) FROM api_credentials WHERE parent_id=? AND revoked_ms=0 AND (expires_ms=0 OR expires_ms>?)`, parentID, s.now()).Scan(&count); e != nil {
+		if e = tx.QueryRowContext(ctx, `SELECT count(*) FROM api_credentials WHERE parent_id=? AND kind=? AND revoked_ms=0 AND (expires_ms=0 OR expires_ms>?)`, parentID, kind, s.now()).Scan(&count); e != nil {
 			return e
 		}
 		if count >= MaxAccessTokens {
-			return ErrCapacity
+			if kind != identity.CredentialKindIntegrationSession {
+				return ErrCapacity
+			}
+			// App logins are bounded sessions, not persistent named keys. Retire only
+			// the oldest login at the session limit, keeping every issued key intact.
+			var id, family, device string
+			if e = tx.QueryRowContext(ctx, `SELECT id,family_id,device_id FROM api_credentials WHERE parent_id=? AND kind='integration_session' AND revoked_ms=0 AND (expires_ms=0 OR expires_ms>?) ORDER BY created_ms,id LIMIT 1`, parentID, s.now()).Scan(&id, &family, &device); e != nil {
+				return e
+			}
+			if _, e = tx.ExecContext(ctx, `UPDATE api_credentials SET revoked_ms=? WHERE id=?`, s.now(), id); e != nil {
+				return e
+			}
+			if e = issuer.RevokeAPICredentialTx(ctx, tx, family, device); e != nil {
+				return e
+			}
 		}
-		expires := s.Now().Add(90 * 24 * time.Hour)
+		if kind == identity.CredentialKindKey {
+			var all int
+			if e = tx.QueryRowContext(ctx, `SELECT count(*) FROM api_credentials WHERE kind='key' AND revoked_ms=0 AND (expires_ms=0 OR expires_ms>?)`, s.now()).Scan(&all); e != nil {
+				return e
+			}
+			if all >= MaxAPIKeys {
+				return ErrCapacity
+			}
+		}
+		var expires time.Time
+		if kind == identity.CredentialKindIntegrationSession {
+			expires = s.Now().Add(90 * 24 * time.Hour)
+		}
 		if parent.ExpiresAt != "" {
 			bound, e := time.Parse(time.RFC3339, parent.ExpiresAt)
 			if e != nil {
 				return e
 			}
-			if bound.Before(expires) {
+			if expires.IsZero() || bound.Before(expires) {
 				expires = bound
 			}
 		}
-		// A token cannot extend its caller's lifetime, even if the app grant lasts longer.
-		if !p.ExpiresAt.IsZero() && p.ExpiresAt.Before(expires) {
+		// Login sessions cannot extend their caller. Named API keys follow the
+		// app grant, as native owner-issued keys can outlive the issuing session.
+		if kind == identity.CredentialKindIntegrationSession && !p.ExpiresAt.IsZero() && p.ExpiresAt.Before(expires) {
 			expires = p.ExpiresAt
 		}
-		c, secret, e := s.issueIntegrationTx(ctx, tx, issuer, p, identity.CredentialKindIntegration, name, parent.Scopes, expires, parentID)
+		c, secret, e := s.issueIntegrationTx(ctx, tx, issuer, p, kind, name, parent.Scopes, expires, parentID)
 		out = IssuedCredential{Credential: c, Secret: secret}
 		return e
 	})
@@ -251,7 +285,7 @@ func (s *Store) RevokeAppPassword(ctx context.Context, auth Authorize, issuer *i
 // than using the retired file-key scheme (identity/migrate_sealed.go). API keys
 // and app passwords use the same recoverable storage; account passwords do not.
 func recoverableCredentialSecret(kind, secret string) string {
-	if kind == identity.CredentialKindKey || kind == identity.CredentialKindAppPassword || kind == identity.CredentialKindIntegration {
+	if kind == identity.CredentialKindKey || kind == identity.CredentialKindAppPassword || kind == identity.CredentialKindIntegrationSession {
 		return secret
 	}
 	return ""
@@ -286,18 +320,17 @@ func (s *Store) IntegrationKeys(ctx context.Context, auth Authorize, p identity.
 	err = s.snapshot(ctx, auth, func(tx *sql.Tx) error {
 		root := ""
 		switch credential.Kind {
-		case identity.CredentialKindIntegration:
-			if e := tx.QueryRowContext(ctx, `SELECT parent_id FROM api_credentials WHERE id=? AND kind='integration' AND account_id=? AND profile_id=? AND revoked_ms=0`, credential.ID, p.AccountID, p.ProfileID).Scan(&root); e != nil {
+		case identity.CredentialKindIntegrationSession, identity.CredentialKindKey:
+			if e := tx.QueryRowContext(ctx, `SELECT COALESCE(parent_id,'') FROM api_credentials WHERE id=? AND account_id=? AND profile_id=? AND revoked_ms=0`, credential.ID, p.AccountID, p.ProfileID).Scan(&root); e != nil {
 				return e
 			}
-		case identity.CredentialKindKey:
-			if p.Role != identity.TierOwner {
+			if root == "" && (credential.Kind != identity.CredentialKindKey || p.Role != identity.TierOwner) {
 				return identity.ErrForbidden
 			}
 		default:
 			return identity.ErrForbidden
 		}
-		rows, e := tx.QueryContext(ctx, `SELECT id,name,scopes,secret FROM api_credentials WHERE revoked_ms=0 AND (expires_ms=0 OR expires_ms>?) AND ((?<>'' AND parent_id=?) OR (?='' AND kind IN('key','integration'))) ORDER BY created_ms DESC,id DESC LIMIT 100`, s.now(), root, root, root)
+		rows, e := tx.QueryContext(ctx, `SELECT id,name,scopes,secret FROM api_credentials WHERE revoked_ms=0 AND (expires_ms=0 OR expires_ms>?) AND ((?<>'' AND parent_id=? AND kind='key') OR (?='' AND kind='key')) ORDER BY created_ms DESC,id DESC LIMIT 100`, s.now(), root, root, root)
 		if e != nil {
 			return e
 		}

@@ -1,3 +1,4 @@
+import {integrationMessages} from './en-US/integrations.ts';
 /**
  * Portico Product Language catalogue — en-US, the source locale (decision
  * D-I18N: US English is the source; English (Canada) is the trial locale).
@@ -2299,6 +2300,7 @@ export const enUS = {
   ...servicesMessages,
   ...savedViewSummaryMessages,
   ...liveOwnerMessages,
+  ...integrationMessages,
   ...nextMessages,
   ...musicMixMessages,
 } as const satisfies Record<string, string>;

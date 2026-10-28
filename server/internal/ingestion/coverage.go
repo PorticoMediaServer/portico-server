@@ -35,7 +35,7 @@ func (s *Service) excludeDirectory(ctx context.Context, job, relative, reason st
 		return err
 	}
 	if reason == "directory_changed" {
-		if err = recordNoticeTx(ctx, tx, source.ID, relative, time.Now().UnixMilli()); err != nil {
+		if err = recordRunNoticeTx(ctx, tx, job, source.ID, relative, time.Now().UnixMilli()); err != nil {
 			return err
 		}
 	}

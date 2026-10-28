@@ -214971,6 +214971,1150 @@
         ],
         "type": "object"
       },
+      "IntegrationItemsRequest": {
+        "properties": {},
+        "type": "object"
+      },
+      "IntegrationItemsResponse": {
+        "properties": {
+          "items": {
+            "items": {
+              "properties": {
+                "addedAt": {
+                  "type": "string"
+                },
+                "available": {
+                  "type": "boolean"
+                },
+                "episode": {
+                  "properties": {
+                    "airDate": {
+                      "type": "string"
+                    },
+                    "localIdentityStatus": {
+                      "type": "string"
+                    },
+                    "number": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "numbering": {
+                      "type": "string"
+                    },
+                    "orderingBasis": {
+                      "type": "string"
+                    },
+                    "providerMatchStatus": {
+                      "type": "string"
+                    },
+                    "seasonId": {
+                      "type": "string"
+                    },
+                    "seasonNumber": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "showId": {
+                      "type": "string"
+                    },
+                    "showTitle": {
+                      "type": "string"
+                    },
+                    "sourceBoundary": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "showId",
+                    "showTitle",
+                    "numbering",
+                    "number",
+                    "localIdentityStatus",
+                    "providerMatchStatus",
+                    "orderingBasis",
+                    "sourceBoundary"
+                  ],
+                  "type": "object"
+                },
+                "height": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                },
+                "id": {
+                  "type": "string"
+                },
+                "kind": {
+                  "type": "string"
+                },
+                "libraryId": {
+                  "type": "string"
+                },
+                "mediaSources": {
+                  "items": {
+                    "properties": {
+                      "audioCodec": {
+                        "type": "string"
+                      },
+                      "available": {
+                        "type": "boolean"
+                      },
+                      "bitRate": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "container": {
+                        "type": "string"
+                      },
+                      "durationSeconds": {
+                        "type": "number"
+                      },
+                      "edition": {
+                        "type": "string"
+                      },
+                      "id": {
+                        "type": "string"
+                      },
+                      "partIndex": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "path": {
+                        "type": "string"
+                      },
+                      "size": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "video": {
+                        "properties": {
+                          "bitDepth": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "bitRate": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "codec": {
+                            "type": "string"
+                          },
+                          "dynamicRange": {
+                            "type": "string"
+                          },
+                          "frameRate": {
+                            "type": "number"
+                          },
+                          "hdr10Plus": {
+                            "type": "boolean"
+                          },
+                          "height": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "width": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          }
+                        },
+                        "required": [
+                          "codec",
+                          "width",
+                          "height"
+                        ],
+                        "type": "object"
+                      }
+                    },
+                    "required": [
+                      "id",
+                      "size",
+                      "container",
+                      "durationSeconds",
+                      "available",
+                      "partIndex"
+                    ],
+                    "type": "object"
+                  },
+                  "type": "array"
+                },
+                "mediaSourcesNextCursor": {
+                  "type": "string"
+                },
+                "paths": {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                },
+                "providerIds": {
+                  "additionalProperties": {
+                    "type": "string"
+                  },
+                  "type": "object"
+                },
+                "season": {
+                  "properties": {
+                    "number": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "showId": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "showId",
+                    "number"
+                  ],
+                  "type": "object"
+                },
+                "title": {
+                  "type": "string"
+                },
+                "width": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                },
+                "year": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "id",
+                "libraryId",
+                "kind",
+                "title",
+                "available",
+                "providerIds",
+                "paths",
+                "mediaSources"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "nextCursor": {
+            "type": "string"
+          },
+          "total": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "items",
+          "total"
+        ],
+        "type": "object"
+      },
+      "IntegrationLibrariesRequest": {
+        "properties": {},
+        "type": "object"
+      },
+      "IntegrationLibrariesResponse": {
+        "properties": {
+          "items": {
+            "items": {
+              "properties": {
+                "id": {
+                  "type": "string"
+                },
+                "kind": {
+                  "type": "string"
+                },
+                "name": {
+                  "type": "string"
+                },
+                "paths": {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                }
+              },
+              "required": [
+                "id",
+                "name",
+                "kind",
+                "paths"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "nextCursor": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "type": "object"
+      },
+      "IntegrationMediaInfoRequest": {
+        "properties": {},
+        "type": "object"
+      },
+      "IntegrationMediaInfoResponse": {
+        "properties": {
+          "mediaSources": {
+            "items": {
+              "properties": {
+                "audioCodec": {
+                  "type": "string"
+                },
+                "available": {
+                  "type": "boolean"
+                },
+                "bitRate": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                },
+                "container": {
+                  "type": "string"
+                },
+                "durationSeconds": {
+                  "type": "number"
+                },
+                "edition": {
+                  "type": "string"
+                },
+                "id": {
+                  "type": "string"
+                },
+                "partIndex": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                },
+                "path": {
+                  "type": "string"
+                },
+                "size": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                },
+                "video": {
+                  "properties": {
+                    "bitDepth": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "bitRate": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "codec": {
+                      "type": "string"
+                    },
+                    "dynamicRange": {
+                      "type": "string"
+                    },
+                    "frameRate": {
+                      "type": "number"
+                    },
+                    "hdr10Plus": {
+                      "type": "boolean"
+                    },
+                    "height": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "width": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    }
+                  },
+                  "required": [
+                    "codec",
+                    "width",
+                    "height"
+                  ],
+                  "type": "object"
+                }
+              },
+              "required": [
+                "id",
+                "size",
+                "container",
+                "durationSeconds",
+                "available",
+                "partIndex"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "nextCursor": {
+            "type": "string"
+          },
+          "total": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "mediaSources",
+          "total"
+        ],
+        "type": "object"
+      },
+      "IntegrationSessionsRequest": {
+        "properties": {},
+        "type": "object"
+      },
+      "IntegrationSessionsResponse": {
+        "properties": {
+          "items": {
+            "items": {
+              "properties": {
+                "actions": {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                },
+                "app": {
+                  "type": "string"
+                },
+                "device": {
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "name": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "name"
+                  ],
+                  "type": "object"
+                },
+                "durationMs": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                },
+                "id": {
+                  "type": "string"
+                },
+                "item": {
+                  "properties": {
+                    "episode": {
+                      "properties": {
+                        "airDate": {
+                          "type": "string"
+                        },
+                        "localIdentityStatus": {
+                          "type": "string"
+                        },
+                        "number": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
+                        "numbering": {
+                          "type": "string"
+                        },
+                        "orderingBasis": {
+                          "type": "string"
+                        },
+                        "providerMatchStatus": {
+                          "type": "string"
+                        },
+                        "seasonId": {
+                          "type": "string"
+                        },
+                        "seasonNumber": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
+                        "showId": {
+                          "type": "string"
+                        },
+                        "showTitle": {
+                          "type": "string"
+                        },
+                        "sourceBoundary": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "showId",
+                        "showTitle",
+                        "numbering",
+                        "number",
+                        "localIdentityStatus",
+                        "providerMatchStatus",
+                        "orderingBasis",
+                        "sourceBoundary"
+                      ],
+                      "type": "object"
+                    },
+                    "id": {
+                      "type": "string"
+                    },
+                    "kind": {
+                      "type": "string"
+                    },
+                    "title": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "title"
+                  ],
+                  "type": "object"
+                },
+                "kind": {
+                  "type": "string"
+                },
+                "location": {
+                  "type": "string"
+                },
+                "platform": {
+                  "type": "string"
+                },
+                "positionMs": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                },
+                "profile": {
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "name": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "name"
+                  ],
+                  "type": "object"
+                },
+                "revision": {
+                  "type": "string"
+                },
+                "startedAt": {
+                  "type": "string"
+                },
+                "state": {
+                  "type": "string"
+                },
+                "user": {
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "name": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "name"
+                  ],
+                  "type": "object"
+                }
+              },
+              "required": [
+                "actions",
+                "id",
+                "state",
+                "kind",
+                "device",
+                "positionMs"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "nextCursor": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "type": "object"
+      },
+      "IntegrationShowEpisodesRequest": {
+        "properties": {},
+        "type": "object"
+      },
+      "IntegrationShowEpisodesResponse": {
+        "properties": {
+          "items": {
+            "items": {
+              "properties": {
+                "addedAt": {
+                  "type": "string"
+                },
+                "available": {
+                  "type": "boolean"
+                },
+                "episode": {
+                  "properties": {
+                    "airDate": {
+                      "type": "string"
+                    },
+                    "localIdentityStatus": {
+                      "type": "string"
+                    },
+                    "number": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "numbering": {
+                      "type": "string"
+                    },
+                    "orderingBasis": {
+                      "type": "string"
+                    },
+                    "providerMatchStatus": {
+                      "type": "string"
+                    },
+                    "seasonId": {
+                      "type": "string"
+                    },
+                    "seasonNumber": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "showId": {
+                      "type": "string"
+                    },
+                    "showTitle": {
+                      "type": "string"
+                    },
+                    "sourceBoundary": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "showId",
+                    "showTitle",
+                    "numbering",
+                    "number",
+                    "localIdentityStatus",
+                    "providerMatchStatus",
+                    "orderingBasis",
+                    "sourceBoundary"
+                  ],
+                  "type": "object"
+                },
+                "height": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                },
+                "id": {
+                  "type": "string"
+                },
+                "kind": {
+                  "type": "string"
+                },
+                "libraryId": {
+                  "type": "string"
+                },
+                "mediaSources": {
+                  "items": {
+                    "properties": {
+                      "audioCodec": {
+                        "type": "string"
+                      },
+                      "available": {
+                        "type": "boolean"
+                      },
+                      "bitRate": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "container": {
+                        "type": "string"
+                      },
+                      "durationSeconds": {
+                        "type": "number"
+                      },
+                      "edition": {
+                        "type": "string"
+                      },
+                      "id": {
+                        "type": "string"
+                      },
+                      "partIndex": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "path": {
+                        "type": "string"
+                      },
+                      "size": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "video": {
+                        "properties": {
+                          "bitDepth": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "bitRate": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "codec": {
+                            "type": "string"
+                          },
+                          "dynamicRange": {
+                            "type": "string"
+                          },
+                          "frameRate": {
+                            "type": "number"
+                          },
+                          "hdr10Plus": {
+                            "type": "boolean"
+                          },
+                          "height": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "width": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          }
+                        },
+                        "required": [
+                          "codec",
+                          "width",
+                          "height"
+                        ],
+                        "type": "object"
+                      }
+                    },
+                    "required": [
+                      "id",
+                      "size",
+                      "container",
+                      "durationSeconds",
+                      "available",
+                      "partIndex"
+                    ],
+                    "type": "object"
+                  },
+                  "type": "array"
+                },
+                "mediaSourcesNextCursor": {
+                  "type": "string"
+                },
+                "paths": {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                },
+                "providerIds": {
+                  "additionalProperties": {
+                    "type": "string"
+                  },
+                  "type": "object"
+                },
+                "season": {
+                  "properties": {
+                    "number": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "showId": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "showId",
+                    "number"
+                  ],
+                  "type": "object"
+                },
+                "title": {
+                  "type": "string"
+                },
+                "width": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                },
+                "year": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "id",
+                "libraryId",
+                "kind",
+                "title",
+                "available",
+                "providerIds",
+                "paths",
+                "mediaSources"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "nextCursor": {
+            "type": "string"
+          },
+          "total": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "items",
+          "total"
+        ],
+        "type": "object"
+      },
+      "IntegrationShowSeasonsRequest": {
+        "properties": {},
+        "type": "object"
+      },
+      "IntegrationShowSeasonsResponse": {
+        "properties": {
+          "items": {
+            "items": {
+              "properties": {
+                "addedAt": {
+                  "type": "string"
+                },
+                "available": {
+                  "type": "boolean"
+                },
+                "episode": {
+                  "properties": {
+                    "airDate": {
+                      "type": "string"
+                    },
+                    "localIdentityStatus": {
+                      "type": "string"
+                    },
+                    "number": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "numbering": {
+                      "type": "string"
+                    },
+                    "orderingBasis": {
+                      "type": "string"
+                    },
+                    "providerMatchStatus": {
+                      "type": "string"
+                    },
+                    "seasonId": {
+                      "type": "string"
+                    },
+                    "seasonNumber": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "showId": {
+                      "type": "string"
+                    },
+                    "showTitle": {
+                      "type": "string"
+                    },
+                    "sourceBoundary": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "showId",
+                    "showTitle",
+                    "numbering",
+                    "number",
+                    "localIdentityStatus",
+                    "providerMatchStatus",
+                    "orderingBasis",
+                    "sourceBoundary"
+                  ],
+                  "type": "object"
+                },
+                "height": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                },
+                "id": {
+                  "type": "string"
+                },
+                "kind": {
+                  "type": "string"
+                },
+                "libraryId": {
+                  "type": "string"
+                },
+                "mediaSources": {
+                  "items": {
+                    "properties": {
+                      "audioCodec": {
+                        "type": "string"
+                      },
+                      "available": {
+                        "type": "boolean"
+                      },
+                      "bitRate": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "container": {
+                        "type": "string"
+                      },
+                      "durationSeconds": {
+                        "type": "number"
+                      },
+                      "edition": {
+                        "type": "string"
+                      },
+                      "id": {
+                        "type": "string"
+                      },
+                      "partIndex": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "path": {
+                        "type": "string"
+                      },
+                      "size": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "video": {
+                        "properties": {
+                          "bitDepth": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "bitRate": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "codec": {
+                            "type": "string"
+                          },
+                          "dynamicRange": {
+                            "type": "string"
+                          },
+                          "frameRate": {
+                            "type": "number"
+                          },
+                          "hdr10Plus": {
+                            "type": "boolean"
+                          },
+                          "height": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "width": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          }
+                        },
+                        "required": [
+                          "codec",
+                          "width",
+                          "height"
+                        ],
+                        "type": "object"
+                      }
+                    },
+                    "required": [
+                      "id",
+                      "size",
+                      "container",
+                      "durationSeconds",
+                      "available",
+                      "partIndex"
+                    ],
+                    "type": "object"
+                  },
+                  "type": "array"
+                },
+                "mediaSourcesNextCursor": {
+                  "type": "string"
+                },
+                "paths": {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                },
+                "providerIds": {
+                  "additionalProperties": {
+                    "type": "string"
+                  },
+                  "type": "object"
+                },
+                "season": {
+                  "properties": {
+                    "number": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "showId": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "showId",
+                    "number"
+                  ],
+                  "type": "object"
+                },
+                "title": {
+                  "type": "string"
+                },
+                "width": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                },
+                "year": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "id",
+                "libraryId",
+                "kind",
+                "title",
+                "available",
+                "providerIds",
+                "paths",
+                "mediaSources"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "nextCursor": {
+            "type": "string"
+          },
+          "total": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "items",
+          "total"
+        ],
+        "type": "object"
+      },
+      "IntegrationUsersRequest": {
+        "properties": {},
+        "type": "object"
+      },
+      "IntegrationUsersResponse": {
+        "properties": {
+          "items": {
+            "items": {
+              "properties": {
+                "accountId": {
+                  "type": "string"
+                },
+                "disabled": {
+                  "type": "boolean"
+                },
+                "profileId": {
+                  "type": "string"
+                },
+                "profileName": {
+                  "type": "string"
+                },
+                "role": {
+                  "type": "string"
+                },
+                "username": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "profileName",
+                "profileId",
+                "accountId",
+                "username",
+                "role",
+                "disabled"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "nextCursor": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "type": "object"
+      },
       "IssueDownloadReceiptsRequest": {
         "properties": {
           "operationId": {
@@ -216910,6 +218054,9 @@
               "type": "object"
             },
             "type": "array"
+          },
+          "nextCursor": {
+            "type": "string"
           }
         },
         "required": [
@@ -271496,6 +272643,9 @@
       },
       "ReportChangedPathsRequest": {
         "properties": {
+          "mode": {
+            "type": "string"
+          },
           "paths": {
             "items": {
               "properties": {
@@ -294954,6 +296104,23 @@
         },
         "required": [
           "webhook"
+        ],
+        "type": "object"
+      },
+      "ValidateIntegrationSubtitlesRequest": {
+        "properties": {},
+        "type": "object"
+      },
+      "ValidateIntegrationSubtitlesResponse": {
+        "properties": {
+          "sources": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "sources"
         ],
         "type": "object"
       }
@@ -388499,7 +389666,7 @@
             "description": "Request refused or unavailable"
           }
         },
-        "summary": "Create an API key; its secret is shown once",
+        "summary": "Create an API key; the owner may reveal it later",
         "tags": [
           "Integrations"
         ],
@@ -524216,6 +525383,16 @@
     "/v1/integrations/app-passwords": {
       "get": {
         "operationId": "list_integration_app_passwords",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "content": {
@@ -524262,6 +525439,9 @@
                         "type": "object"
                       },
                       "type": "array"
+                    },
+                    "nextCursor": {
+                      "type": "string"
                     }
                   },
                   "required": [
@@ -524888,6 +526068,766 @@
         "x-scope": "admin"
       }
     },
+    "/v1/integrations/items": {
+      "get": {
+        "operationId": "integration_items",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "ids",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "libraryId",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "libraryKind",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "kind",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "parentId",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "provider",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "providerId",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "year",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "search",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "sort",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "order",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "addedAfter",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "addedBefore",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "includeFiles",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "items": {
+                      "items": {
+                        "properties": {
+                          "addedAt": {
+                            "type": "string"
+                          },
+                          "available": {
+                            "type": "boolean"
+                          },
+                          "episode": {
+                            "properties": {
+                              "airDate": {
+                                "type": "string"
+                              },
+                              "localIdentityStatus": {
+                                "type": "string"
+                              },
+                              "number": {
+                                "maximum": 9007199254740991,
+                                "minimum": -9007199254740991,
+                                "type": "integer"
+                              },
+                              "numbering": {
+                                "type": "string"
+                              },
+                              "orderingBasis": {
+                                "type": "string"
+                              },
+                              "providerMatchStatus": {
+                                "type": "string"
+                              },
+                              "seasonId": {
+                                "type": "string"
+                              },
+                              "seasonNumber": {
+                                "maximum": 9007199254740991,
+                                "minimum": -9007199254740991,
+                                "type": "integer"
+                              },
+                              "showId": {
+                                "type": "string"
+                              },
+                              "showTitle": {
+                                "type": "string"
+                              },
+                              "sourceBoundary": {
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "showId",
+                              "showTitle",
+                              "numbering",
+                              "number",
+                              "localIdentityStatus",
+                              "providerMatchStatus",
+                              "orderingBasis",
+                              "sourceBoundary"
+                            ],
+                            "type": "object"
+                          },
+                          "height": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "id": {
+                            "type": "string"
+                          },
+                          "kind": {
+                            "type": "string"
+                          },
+                          "libraryId": {
+                            "type": "string"
+                          },
+                          "mediaSources": {
+                            "items": {
+                              "properties": {
+                                "audioCodec": {
+                                  "type": "string"
+                                },
+                                "available": {
+                                  "type": "boolean"
+                                },
+                                "bitRate": {
+                                  "maximum": 9007199254740991,
+                                  "minimum": -9007199254740991,
+                                  "type": "integer"
+                                },
+                                "container": {
+                                  "type": "string"
+                                },
+                                "durationSeconds": {
+                                  "type": "number"
+                                },
+                                "edition": {
+                                  "type": "string"
+                                },
+                                "id": {
+                                  "type": "string"
+                                },
+                                "partIndex": {
+                                  "maximum": 9007199254740991,
+                                  "minimum": -9007199254740991,
+                                  "type": "integer"
+                                },
+                                "path": {
+                                  "type": "string"
+                                },
+                                "size": {
+                                  "maximum": 9007199254740991,
+                                  "minimum": -9007199254740991,
+                                  "type": "integer"
+                                },
+                                "video": {
+                                  "properties": {
+                                    "bitDepth": {
+                                      "maximum": 9007199254740991,
+                                      "minimum": -9007199254740991,
+                                      "type": "integer"
+                                    },
+                                    "bitRate": {
+                                      "maximum": 9007199254740991,
+                                      "minimum": -9007199254740991,
+                                      "type": "integer"
+                                    },
+                                    "codec": {
+                                      "type": "string"
+                                    },
+                                    "dynamicRange": {
+                                      "type": "string"
+                                    },
+                                    "frameRate": {
+                                      "type": "number"
+                                    },
+                                    "hdr10Plus": {
+                                      "type": "boolean"
+                                    },
+                                    "height": {
+                                      "maximum": 9007199254740991,
+                                      "minimum": -9007199254740991,
+                                      "type": "integer"
+                                    },
+                                    "width": {
+                                      "maximum": 9007199254740991,
+                                      "minimum": -9007199254740991,
+                                      "type": "integer"
+                                    }
+                                  },
+                                  "required": [
+                                    "codec",
+                                    "width",
+                                    "height"
+                                  ],
+                                  "type": "object"
+                                }
+                              },
+                              "required": [
+                                "id",
+                                "size",
+                                "container",
+                                "durationSeconds",
+                                "available",
+                                "partIndex"
+                              ],
+                              "type": "object"
+                            },
+                            "type": "array"
+                          },
+                          "mediaSourcesNextCursor": {
+                            "type": "string"
+                          },
+                          "paths": {
+                            "items": {
+                              "type": "string"
+                            },
+                            "type": "array"
+                          },
+                          "providerIds": {
+                            "additionalProperties": {
+                              "type": "string"
+                            },
+                            "type": "object"
+                          },
+                          "season": {
+                            "properties": {
+                              "number": {
+                                "maximum": 9007199254740991,
+                                "minimum": -9007199254740991,
+                                "type": "integer"
+                              },
+                              "showId": {
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "showId",
+                              "number"
+                            ],
+                            "type": "object"
+                          },
+                          "title": {
+                            "type": "string"
+                          },
+                          "width": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "year": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "libraryId",
+                          "kind",
+                          "title",
+                          "available",
+                          "providerIds",
+                          "paths",
+                          "mediaSources"
+                        ],
+                        "type": "object"
+                      },
+                      "type": "array"
+                    },
+                    "nextCursor": {
+                      "type": "string"
+                    },
+                    "total": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    }
+                  },
+                  "required": [
+                    "items",
+                    "total"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "error": {
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message"
+                      ],
+                      "type": "object"
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Request refused or unavailable"
+          }
+        },
+        "summary": "Read bounded native catalog facts with exact visible totals",
+        "tags": [
+          "Integrations"
+        ],
+        "x-access": "device",
+        "x-admission": "browsing",
+        "x-audience": "Integrations",
+        "x-cost": "page_sized",
+        "x-error-codes": [
+          "unauthorized",
+          "not_permitted",
+          "insufficient_scope",
+          "session_required",
+          "invalid_request",
+          "invalid_cursor",
+          "cursor_expired",
+          "stale_continuation",
+          "not_found",
+          "internal",
+          "database_busy"
+        ],
+        "x-lane": "browsing",
+        "x-scope": "read"
+      }
+    },
+    "/v1/integrations/items/{id}/media-info": {
+      "get": {
+        "operationId": "integration_media_info",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "mediaSources": {
+                      "items": {
+                        "properties": {
+                          "audioCodec": {
+                            "type": "string"
+                          },
+                          "available": {
+                            "type": "boolean"
+                          },
+                          "bitRate": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "container": {
+                            "type": "string"
+                          },
+                          "durationSeconds": {
+                            "type": "number"
+                          },
+                          "edition": {
+                            "type": "string"
+                          },
+                          "id": {
+                            "type": "string"
+                          },
+                          "partIndex": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "path": {
+                            "type": "string"
+                          },
+                          "size": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "video": {
+                            "properties": {
+                              "bitDepth": {
+                                "maximum": 9007199254740991,
+                                "minimum": -9007199254740991,
+                                "type": "integer"
+                              },
+                              "bitRate": {
+                                "maximum": 9007199254740991,
+                                "minimum": -9007199254740991,
+                                "type": "integer"
+                              },
+                              "codec": {
+                                "type": "string"
+                              },
+                              "dynamicRange": {
+                                "type": "string"
+                              },
+                              "frameRate": {
+                                "type": "number"
+                              },
+                              "hdr10Plus": {
+                                "type": "boolean"
+                              },
+                              "height": {
+                                "maximum": 9007199254740991,
+                                "minimum": -9007199254740991,
+                                "type": "integer"
+                              },
+                              "width": {
+                                "maximum": 9007199254740991,
+                                "minimum": -9007199254740991,
+                                "type": "integer"
+                              }
+                            },
+                            "required": [
+                              "codec",
+                              "width",
+                              "height"
+                            ],
+                            "type": "object"
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "size",
+                          "container",
+                          "durationSeconds",
+                          "available",
+                          "partIndex"
+                        ],
+                        "type": "object"
+                      },
+                      "type": "array"
+                    },
+                    "nextCursor": {
+                      "type": "string"
+                    },
+                    "total": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    }
+                  },
+                  "required": [
+                    "mediaSources",
+                    "total"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "error": {
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message"
+                      ],
+                      "type": "object"
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Request refused or unavailable"
+          }
+        },
+        "summary": "Read paged stored media facts without delivery negotiation",
+        "tags": [
+          "Integrations"
+        ],
+        "x-access": "device",
+        "x-admission": "browsing",
+        "x-audience": "Integrations",
+        "x-cost": "page_sized",
+        "x-error-codes": [
+          "unauthorized",
+          "not_permitted",
+          "insufficient_scope",
+          "session_required",
+          "invalid_request",
+          "invalid_cursor",
+          "cursor_expired",
+          "stale_continuation",
+          "not_found",
+          "internal",
+          "database_busy"
+        ],
+        "x-lane": "browsing",
+        "x-scope": "read"
+      }
+    },
+    "/v1/integrations/items/{id}/subtitles/refresh": {
+      "post": {
+        "operationId": "validate_integration_subtitles",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {},
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "sources": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    }
+                  },
+                  "required": [
+                    "sources"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "error": {
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message"
+                      ],
+                      "type": "object"
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Request refused or unavailable"
+          }
+        },
+        "summary": "Reread exact subtitle sidecars using stored media evidence",
+        "tags": [
+          "Integrations"
+        ],
+        "x-access": "owner",
+        "x-admission": "default",
+        "x-audience": "Integrations",
+        "x-cost": "page_sized",
+        "x-error-codes": [
+          "unauthorized",
+          "not_permitted",
+          "not_found",
+          "invalid_request",
+          "internal",
+          "subtitle_unavailable",
+          "subtitle_not_found",
+          "subtitle_renderer_platform_unsupported",
+          "subtitle_renderer_configuration",
+          "subtitle_conflict",
+          "subtitle_operation_conflict",
+          "subtitle_capacity",
+          "subtitle_unsupported",
+          "subtitle_invalid_input",
+          "subtitle_provider_not_configured",
+          "subtitle_provider_key_rejected",
+          "subtitle_provider_sign_in_failed",
+          "subtitle_provider_sign_in_required",
+          "subtitle_provider_quota",
+          "subtitle_provider_busy",
+          "database_busy",
+          "writer_capacity"
+        ],
+        "x-lane": "default",
+        "x-max-body-bytes": 4096,
+        "x-scope": "library"
+      }
+    },
     "/v1/integrations/keys": {
       "get": {
         "operationId": "list_integration_keys",
@@ -525145,6 +527085,1302 @@
         ],
         "x-lane": "security",
         "x-max-body-bytes": 4096,
+        "x-scope": "read"
+      }
+    },
+    "/v1/integrations/libraries": {
+      "get": {
+        "operationId": "integration_libraries",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "items": {
+                      "items": {
+                        "properties": {
+                          "id": {
+                            "type": "string"
+                          },
+                          "kind": {
+                            "type": "string"
+                          },
+                          "name": {
+                            "type": "string"
+                          },
+                          "paths": {
+                            "items": {
+                              "type": "string"
+                            },
+                            "type": "array"
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "name",
+                          "kind",
+                          "paths"
+                        ],
+                        "type": "object"
+                      },
+                      "type": "array"
+                    },
+                    "nextCursor": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "items"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "error": {
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message"
+                      ],
+                      "type": "object"
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Request refused or unavailable"
+          }
+        },
+        "summary": "Read authorized native libraries and owner-authorized source paths",
+        "tags": [
+          "Integrations"
+        ],
+        "x-access": "device",
+        "x-admission": "browsing",
+        "x-audience": "Integrations",
+        "x-cost": "page_sized",
+        "x-error-codes": [
+          "unauthorized",
+          "not_permitted",
+          "insufficient_scope",
+          "session_required",
+          "invalid_request",
+          "invalid_cursor",
+          "cursor_expired",
+          "stale_continuation",
+          "not_found",
+          "internal",
+          "database_busy"
+        ],
+        "x-lane": "browsing",
+        "x-scope": "read"
+      }
+    },
+    "/v1/integrations/sessions": {
+      "get": {
+        "operationId": "integration_sessions",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "items": {
+                      "items": {
+                        "properties": {
+                          "actions": {
+                            "items": {
+                              "type": "string"
+                            },
+                            "type": "array"
+                          },
+                          "app": {
+                            "type": "string"
+                          },
+                          "device": {
+                            "properties": {
+                              "id": {
+                                "type": "string"
+                              },
+                              "name": {
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "id",
+                              "name"
+                            ],
+                            "type": "object"
+                          },
+                          "durationMs": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "id": {
+                            "type": "string"
+                          },
+                          "item": {
+                            "properties": {
+                              "episode": {
+                                "properties": {
+                                  "airDate": {
+                                    "type": "string"
+                                  },
+                                  "localIdentityStatus": {
+                                    "type": "string"
+                                  },
+                                  "number": {
+                                    "maximum": 9007199254740991,
+                                    "minimum": -9007199254740991,
+                                    "type": "integer"
+                                  },
+                                  "numbering": {
+                                    "type": "string"
+                                  },
+                                  "orderingBasis": {
+                                    "type": "string"
+                                  },
+                                  "providerMatchStatus": {
+                                    "type": "string"
+                                  },
+                                  "seasonId": {
+                                    "type": "string"
+                                  },
+                                  "seasonNumber": {
+                                    "maximum": 9007199254740991,
+                                    "minimum": -9007199254740991,
+                                    "type": "integer"
+                                  },
+                                  "showId": {
+                                    "type": "string"
+                                  },
+                                  "showTitle": {
+                                    "type": "string"
+                                  },
+                                  "sourceBoundary": {
+                                    "type": "string"
+                                  }
+                                },
+                                "required": [
+                                  "showId",
+                                  "showTitle",
+                                  "numbering",
+                                  "number",
+                                  "localIdentityStatus",
+                                  "providerMatchStatus",
+                                  "orderingBasis",
+                                  "sourceBoundary"
+                                ],
+                                "type": "object"
+                              },
+                              "id": {
+                                "type": "string"
+                              },
+                              "kind": {
+                                "type": "string"
+                              },
+                              "title": {
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "id",
+                              "title"
+                            ],
+                            "type": "object"
+                          },
+                          "kind": {
+                            "type": "string"
+                          },
+                          "location": {
+                            "type": "string"
+                          },
+                          "platform": {
+                            "type": "string"
+                          },
+                          "positionMs": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "profile": {
+                            "properties": {
+                              "id": {
+                                "type": "string"
+                              },
+                              "name": {
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "id",
+                              "name"
+                            ],
+                            "type": "object"
+                          },
+                          "revision": {
+                            "type": "string"
+                          },
+                          "startedAt": {
+                            "type": "string"
+                          },
+                          "state": {
+                            "type": "string"
+                          },
+                          "user": {
+                            "properties": {
+                              "id": {
+                                "type": "string"
+                              },
+                              "name": {
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "id",
+                              "name"
+                            ],
+                            "type": "object"
+                          }
+                        },
+                        "required": [
+                          "actions",
+                          "id",
+                          "state",
+                          "kind",
+                          "device",
+                          "positionMs"
+                        ],
+                        "type": "object"
+                      },
+                      "type": "array"
+                    },
+                    "nextCursor": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "items"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "error": {
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message"
+                      ],
+                      "type": "object"
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Request refused or unavailable"
+          }
+        },
+        "summary": "Read native dashboard sessions or own-account controls",
+        "tags": [
+          "Integrations"
+        ],
+        "x-access": "device",
+        "x-admission": "browsing",
+        "x-audience": "Integrations",
+        "x-cost": "page_sized",
+        "x-error-codes": [
+          "unauthorized",
+          "not_permitted",
+          "insufficient_scope",
+          "session_required",
+          "invalid_request",
+          "invalid_cursor",
+          "cursor_expired",
+          "stale_continuation",
+          "not_found",
+          "internal",
+          "database_busy"
+        ],
+        "x-lane": "browsing",
+        "x-scope": "read"
+      }
+    },
+    "/v1/integrations/shows/{id}/episodes": {
+      "get": {
+        "operationId": "integration_show_episodes",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "season",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "seasonId",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "year",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "search",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "provider",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "providerId",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "includeFiles",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "sort",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "order",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "addedAfter",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "addedBefore",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "items": {
+                      "items": {
+                        "properties": {
+                          "addedAt": {
+                            "type": "string"
+                          },
+                          "available": {
+                            "type": "boolean"
+                          },
+                          "episode": {
+                            "properties": {
+                              "airDate": {
+                                "type": "string"
+                              },
+                              "localIdentityStatus": {
+                                "type": "string"
+                              },
+                              "number": {
+                                "maximum": 9007199254740991,
+                                "minimum": -9007199254740991,
+                                "type": "integer"
+                              },
+                              "numbering": {
+                                "type": "string"
+                              },
+                              "orderingBasis": {
+                                "type": "string"
+                              },
+                              "providerMatchStatus": {
+                                "type": "string"
+                              },
+                              "seasonId": {
+                                "type": "string"
+                              },
+                              "seasonNumber": {
+                                "maximum": 9007199254740991,
+                                "minimum": -9007199254740991,
+                                "type": "integer"
+                              },
+                              "showId": {
+                                "type": "string"
+                              },
+                              "showTitle": {
+                                "type": "string"
+                              },
+                              "sourceBoundary": {
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "showId",
+                              "showTitle",
+                              "numbering",
+                              "number",
+                              "localIdentityStatus",
+                              "providerMatchStatus",
+                              "orderingBasis",
+                              "sourceBoundary"
+                            ],
+                            "type": "object"
+                          },
+                          "height": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "id": {
+                            "type": "string"
+                          },
+                          "kind": {
+                            "type": "string"
+                          },
+                          "libraryId": {
+                            "type": "string"
+                          },
+                          "mediaSources": {
+                            "items": {
+                              "properties": {
+                                "audioCodec": {
+                                  "type": "string"
+                                },
+                                "available": {
+                                  "type": "boolean"
+                                },
+                                "bitRate": {
+                                  "maximum": 9007199254740991,
+                                  "minimum": -9007199254740991,
+                                  "type": "integer"
+                                },
+                                "container": {
+                                  "type": "string"
+                                },
+                                "durationSeconds": {
+                                  "type": "number"
+                                },
+                                "edition": {
+                                  "type": "string"
+                                },
+                                "id": {
+                                  "type": "string"
+                                },
+                                "partIndex": {
+                                  "maximum": 9007199254740991,
+                                  "minimum": -9007199254740991,
+                                  "type": "integer"
+                                },
+                                "path": {
+                                  "type": "string"
+                                },
+                                "size": {
+                                  "maximum": 9007199254740991,
+                                  "minimum": -9007199254740991,
+                                  "type": "integer"
+                                },
+                                "video": {
+                                  "properties": {
+                                    "bitDepth": {
+                                      "maximum": 9007199254740991,
+                                      "minimum": -9007199254740991,
+                                      "type": "integer"
+                                    },
+                                    "bitRate": {
+                                      "maximum": 9007199254740991,
+                                      "minimum": -9007199254740991,
+                                      "type": "integer"
+                                    },
+                                    "codec": {
+                                      "type": "string"
+                                    },
+                                    "dynamicRange": {
+                                      "type": "string"
+                                    },
+                                    "frameRate": {
+                                      "type": "number"
+                                    },
+                                    "hdr10Plus": {
+                                      "type": "boolean"
+                                    },
+                                    "height": {
+                                      "maximum": 9007199254740991,
+                                      "minimum": -9007199254740991,
+                                      "type": "integer"
+                                    },
+                                    "width": {
+                                      "maximum": 9007199254740991,
+                                      "minimum": -9007199254740991,
+                                      "type": "integer"
+                                    }
+                                  },
+                                  "required": [
+                                    "codec",
+                                    "width",
+                                    "height"
+                                  ],
+                                  "type": "object"
+                                }
+                              },
+                              "required": [
+                                "id",
+                                "size",
+                                "container",
+                                "durationSeconds",
+                                "available",
+                                "partIndex"
+                              ],
+                              "type": "object"
+                            },
+                            "type": "array"
+                          },
+                          "mediaSourcesNextCursor": {
+                            "type": "string"
+                          },
+                          "paths": {
+                            "items": {
+                              "type": "string"
+                            },
+                            "type": "array"
+                          },
+                          "providerIds": {
+                            "additionalProperties": {
+                              "type": "string"
+                            },
+                            "type": "object"
+                          },
+                          "season": {
+                            "properties": {
+                              "number": {
+                                "maximum": 9007199254740991,
+                                "minimum": -9007199254740991,
+                                "type": "integer"
+                              },
+                              "showId": {
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "showId",
+                              "number"
+                            ],
+                            "type": "object"
+                          },
+                          "title": {
+                            "type": "string"
+                          },
+                          "width": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "year": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "libraryId",
+                          "kind",
+                          "title",
+                          "available",
+                          "providerIds",
+                          "paths",
+                          "mediaSources"
+                        ],
+                        "type": "object"
+                      },
+                      "type": "array"
+                    },
+                    "nextCursor": {
+                      "type": "string"
+                    },
+                    "total": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    }
+                  },
+                  "required": [
+                    "items",
+                    "total"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "error": {
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message"
+                      ],
+                      "type": "object"
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Request refused or unavailable"
+          }
+        },
+        "summary": "Read bounded native episodes across all seasons, or resolve one real season",
+        "tags": [
+          "Integrations"
+        ],
+        "x-access": "device",
+        "x-admission": "browsing",
+        "x-audience": "Integrations",
+        "x-cost": "page_sized",
+        "x-error-codes": [
+          "unauthorized",
+          "not_permitted",
+          "insufficient_scope",
+          "session_required",
+          "invalid_request",
+          "invalid_cursor",
+          "cursor_expired",
+          "stale_continuation",
+          "not_found",
+          "internal",
+          "database_busy"
+        ],
+        "x-lane": "browsing",
+        "x-scope": "read"
+      }
+    },
+    "/v1/integrations/shows/{id}/seasons": {
+      "get": {
+        "operationId": "integration_show_seasons",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "includeFiles",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "items": {
+                      "items": {
+                        "properties": {
+                          "addedAt": {
+                            "type": "string"
+                          },
+                          "available": {
+                            "type": "boolean"
+                          },
+                          "episode": {
+                            "properties": {
+                              "airDate": {
+                                "type": "string"
+                              },
+                              "localIdentityStatus": {
+                                "type": "string"
+                              },
+                              "number": {
+                                "maximum": 9007199254740991,
+                                "minimum": -9007199254740991,
+                                "type": "integer"
+                              },
+                              "numbering": {
+                                "type": "string"
+                              },
+                              "orderingBasis": {
+                                "type": "string"
+                              },
+                              "providerMatchStatus": {
+                                "type": "string"
+                              },
+                              "seasonId": {
+                                "type": "string"
+                              },
+                              "seasonNumber": {
+                                "maximum": 9007199254740991,
+                                "minimum": -9007199254740991,
+                                "type": "integer"
+                              },
+                              "showId": {
+                                "type": "string"
+                              },
+                              "showTitle": {
+                                "type": "string"
+                              },
+                              "sourceBoundary": {
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "showId",
+                              "showTitle",
+                              "numbering",
+                              "number",
+                              "localIdentityStatus",
+                              "providerMatchStatus",
+                              "orderingBasis",
+                              "sourceBoundary"
+                            ],
+                            "type": "object"
+                          },
+                          "height": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "id": {
+                            "type": "string"
+                          },
+                          "kind": {
+                            "type": "string"
+                          },
+                          "libraryId": {
+                            "type": "string"
+                          },
+                          "mediaSources": {
+                            "items": {
+                              "properties": {
+                                "audioCodec": {
+                                  "type": "string"
+                                },
+                                "available": {
+                                  "type": "boolean"
+                                },
+                                "bitRate": {
+                                  "maximum": 9007199254740991,
+                                  "minimum": -9007199254740991,
+                                  "type": "integer"
+                                },
+                                "container": {
+                                  "type": "string"
+                                },
+                                "durationSeconds": {
+                                  "type": "number"
+                                },
+                                "edition": {
+                                  "type": "string"
+                                },
+                                "id": {
+                                  "type": "string"
+                                },
+                                "partIndex": {
+                                  "maximum": 9007199254740991,
+                                  "minimum": -9007199254740991,
+                                  "type": "integer"
+                                },
+                                "path": {
+                                  "type": "string"
+                                },
+                                "size": {
+                                  "maximum": 9007199254740991,
+                                  "minimum": -9007199254740991,
+                                  "type": "integer"
+                                },
+                                "video": {
+                                  "properties": {
+                                    "bitDepth": {
+                                      "maximum": 9007199254740991,
+                                      "minimum": -9007199254740991,
+                                      "type": "integer"
+                                    },
+                                    "bitRate": {
+                                      "maximum": 9007199254740991,
+                                      "minimum": -9007199254740991,
+                                      "type": "integer"
+                                    },
+                                    "codec": {
+                                      "type": "string"
+                                    },
+                                    "dynamicRange": {
+                                      "type": "string"
+                                    },
+                                    "frameRate": {
+                                      "type": "number"
+                                    },
+                                    "hdr10Plus": {
+                                      "type": "boolean"
+                                    },
+                                    "height": {
+                                      "maximum": 9007199254740991,
+                                      "minimum": -9007199254740991,
+                                      "type": "integer"
+                                    },
+                                    "width": {
+                                      "maximum": 9007199254740991,
+                                      "minimum": -9007199254740991,
+                                      "type": "integer"
+                                    }
+                                  },
+                                  "required": [
+                                    "codec",
+                                    "width",
+                                    "height"
+                                  ],
+                                  "type": "object"
+                                }
+                              },
+                              "required": [
+                                "id",
+                                "size",
+                                "container",
+                                "durationSeconds",
+                                "available",
+                                "partIndex"
+                              ],
+                              "type": "object"
+                            },
+                            "type": "array"
+                          },
+                          "mediaSourcesNextCursor": {
+                            "type": "string"
+                          },
+                          "paths": {
+                            "items": {
+                              "type": "string"
+                            },
+                            "type": "array"
+                          },
+                          "providerIds": {
+                            "additionalProperties": {
+                              "type": "string"
+                            },
+                            "type": "object"
+                          },
+                          "season": {
+                            "properties": {
+                              "number": {
+                                "maximum": 9007199254740991,
+                                "minimum": -9007199254740991,
+                                "type": "integer"
+                              },
+                              "showId": {
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "showId",
+                              "number"
+                            ],
+                            "type": "object"
+                          },
+                          "title": {
+                            "type": "string"
+                          },
+                          "width": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "year": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "libraryId",
+                          "kind",
+                          "title",
+                          "available",
+                          "providerIds",
+                          "paths",
+                          "mediaSources"
+                        ],
+                        "type": "object"
+                      },
+                      "type": "array"
+                    },
+                    "nextCursor": {
+                      "type": "string"
+                    },
+                    "total": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    }
+                  },
+                  "required": [
+                    "items",
+                    "total"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "error": {
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message"
+                      ],
+                      "type": "object"
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Request refused or unavailable"
+          }
+        },
+        "summary": "Read a bounded native season hierarchy",
+        "tags": [
+          "Integrations"
+        ],
+        "x-access": "device",
+        "x-admission": "browsing",
+        "x-audience": "Integrations",
+        "x-cost": "page_sized",
+        "x-error-codes": [
+          "unauthorized",
+          "not_permitted",
+          "insufficient_scope",
+          "session_required",
+          "invalid_request",
+          "invalid_cursor",
+          "cursor_expired",
+          "stale_continuation",
+          "not_found",
+          "internal",
+          "database_busy"
+        ],
+        "x-lane": "browsing",
+        "x-scope": "read"
+      }
+    },
+    "/v1/integrations/users": {
+      "get": {
+        "operationId": "integration_users",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "items": {
+                      "items": {
+                        "properties": {
+                          "accountId": {
+                            "type": "string"
+                          },
+                          "disabled": {
+                            "type": "boolean"
+                          },
+                          "profileId": {
+                            "type": "string"
+                          },
+                          "profileName": {
+                            "type": "string"
+                          },
+                          "role": {
+                            "type": "string"
+                          },
+                          "username": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "profileName",
+                          "profileId",
+                          "accountId",
+                          "username",
+                          "role",
+                          "disabled"
+                        ],
+                        "type": "object"
+                      },
+                      "type": "array"
+                    },
+                    "nextCursor": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "items"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "error": {
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message"
+                      ],
+                      "type": "object"
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Request refused or unavailable"
+          }
+        },
+        "summary": "Read permitted native user and profile identities",
+        "tags": [
+          "Integrations"
+        ],
+        "x-access": "device",
+        "x-admission": "browsing",
+        "x-audience": "Integrations",
+        "x-cost": "page_sized",
+        "x-error-codes": [
+          "unauthorized",
+          "not_permitted",
+          "insufficient_scope",
+          "session_required",
+          "invalid_request",
+          "invalid_cursor",
+          "cursor_expired",
+          "stale_continuation",
+          "not_found",
+          "internal",
+          "database_busy"
+        ],
+        "x-lane": "browsing",
         "x-scope": "read"
       }
     },
@@ -576400,6 +579636,9 @@
             "application/json": {
               "schema": {
                 "properties": {
+                  "mode": {
+                    "type": "string"
+                  },
                   "paths": {
                     "items": {
                       "properties": {
