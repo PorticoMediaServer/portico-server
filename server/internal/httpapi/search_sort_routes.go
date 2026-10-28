@@ -29,7 +29,11 @@ func registerSearchSortRoutes(registry *apikit.Registry, d Dependencies) error {
 	}, Serve: d.browseAcrossFacetsHandler}); err != nil {
 		return err
 	}
-	return apikit.RegisterRaw(registry, apikit.RawRoute[noBody, catalog.FacetPage]{Metadata: apikit.Metadata{Audience: apikit.Clients, Admission: laneBrowsing, ID: "get_library_facets", Method: "GET", Path: "/v1/libraries/{id}/facets", Summary: "Read counted facet choices", Access: apikit.Device, Requires: apikit.ScopeRead, Lane: apikit.Browsing, Cost: apikit.PageSized, Status: 200,
-		Query: []string{"field", "q", "limit", "offset", "query", "pivot"}, Errors: libraryFailures,
+	return apikit.RegisterRaw(registry, apikit.RawRoute[noBody, ReadingFacetQueryResponse]{Metadata: apikit.Metadata{Audience: apikit.Clients, Admission: laneBrowsing, ID: "get_library_facets", Method: "GET", Path: "/v1/libraries/{id}/facets", Summary: "Read counted facet choices", Access: apikit.Device, Requires: apikit.ScopeRead, Lane: apikit.Browsing, Cost: apikit.PageSized, Status: 200,
+		Query: []string{"field", "q", "limit", "offset", "query", "pivot"}, SuccessStatuses: []int{202}, Errors: append(append([]string{}, libraryFailures...), "stale_continuation", "search_busy"),
+		ResponseHeaders: []apikit.ResponseHeader{
+			{Status: 202, Name: "Location", Description: "Same-library Reading facet preparation", Required: true},
+			{Status: 202, Name: "Retry-After", Description: "Minimum delay before polling, in seconds", Required: true},
+		},
 	}, Serve: d.facetsHandler})
 }

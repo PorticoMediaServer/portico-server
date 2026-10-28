@@ -68,8 +68,9 @@ type BrowseResult struct {
 	DisplayTargets []HomeDisplayTarget    `json:"displayTargets,omitempty"`
 	// WholeSelection is the exact whole-view aggregate for "Select all N".
 	// Absent whenever the view cannot be replayed exactly; never inferred.
-	WholeSelection          *BrowseSelectionDescriptor `json:"wholeSelection,omitempty"`
-	WholeSelectionPreparing *BrowseSelectionPreparing  `json:"wholeSelectionPreparing,omitempty"`
+	WholeSelection            *BrowseSelectionDescriptor  `json:"wholeSelection,omitempty"`
+	WholeSelectionPreparing   *BrowseSelectionPreparing   `json:"wholeSelectionPreparing,omitempty"`
+	WholeSelectionUnavailable *BrowseSelectionUnavailable `json:"wholeSelectionUnavailable,omitempty"`
 	// Bound is the exact authorized WHERE this page was read with, for the
 	// same-snapshot whole-selection aggregate. Never serialized.
 	Bound *BoundBrowseQuery `json:"-"`

@@ -17,10 +17,11 @@ import (
 )
 
 var (
-	ErrSelectionBatchUnsupported = errors.New("selection query needs a bounded domain evaluator")
-	ErrSelectionBatchStale       = errors.New("selection preparation witness changed")
-	ErrSelectionBatchIncomplete  = errors.New("selection preparation is incomplete")
-	ErrSelectionBatchCapacity    = errors.New("selection preparation exceeds memory capacity")
+	ErrSelectionBatchUnsupported       = errors.New("selection query needs a bounded domain evaluator")
+	ErrSelectionBatchSearchUnsupported = fmt.Errorf("%w: search needs a bounded exact evaluator", ErrSelectionBatchUnsupported)
+	ErrSelectionBatchStale             = errors.New("selection preparation witness changed")
+	ErrSelectionBatchIncomplete        = errors.New("selection preparation is incomplete")
+	ErrSelectionBatchCapacity          = errors.New("selection preparation exceeds memory capacity")
 )
 
 const (

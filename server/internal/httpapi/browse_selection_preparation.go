@@ -270,6 +270,12 @@ func (d Dependencies) attachWholeSelectionPreparation(r *http.Request, p identit
 		return err
 	}
 	pending, err := cat.SubmitBrowseSelectionPreparation(request, viewer, *out.Bound, access)
+	if errors.Is(err, catalog.ErrSelectionBatchSearchUnsupported) {
+		out.WholeSelection = nil
+		out.WholeSelectionPreparing = nil
+		out.WholeSelectionUnavailable = &catalog.BrowseSelectionUnavailable{Reason: "search_not_bounded"}
+		return nil
+	}
 	if errors.Is(err, catalog.ErrSelectionBatchUnsupported) {
 		return nil
 	}

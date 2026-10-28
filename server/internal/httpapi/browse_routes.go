@@ -388,6 +388,19 @@ func (d Dependencies) facetsHandler(w http.ResponseWriter, r *http.Request) {
 		browseFailure(w, e)
 		return
 	}
+	// Reading preparation owns its own short snapshots and must never inherit
+	// the foreground composition transaction across worker/poll turns.
+	if d.PrepareReadingFacets {
+		var kind string
+		if err := d.DB.QueryRowContext(r.Context(), `SELECT kind FROM libraries WHERE id=?`, r.PathValue("id")).Scan(&kind); err != nil {
+			browseFailure(w, err)
+			return
+		}
+		if kind == "book" || kind == "comic" {
+			d.prepareReadingFacets(w, r, catalog.FacetRequest{Pivot: q.Get("pivot"), Query: query, Field: q.Get("field"), Q: q.Get("q"), Limit: limit, Offset: offset})
+			return
+		}
+	}
 	var out catalog.FacetPage
 	e = d.compose(r, restrictions, func(cat *catalog.Service) error {
 		var composeErr error

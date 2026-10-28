@@ -461,8 +461,8 @@ func TestBrowseSelectionUnprovedSearchKeepsImmediatePageUnprepared(t *testing.T)
 	f.h = New(f.d)
 	w := f.request("POST", "/v1/libraries/movies/browse", nil, map[string]any{"pivot": "movies", "limit": 1, "range": map[string]any{"start": 0}, "query": map[string]any{"field": "search", "operator": "contains", "value": "f"}})
 	var page catalog.BrowseResult
-	if w.Code != 200 || json.Unmarshal(w.Body.Bytes(), &page) != nil || len(page.Entries) != 1 || page.WholeSelectionPreparing != nil || page.WholeSelection != nil {
-		t.Fatalf("unproved search adapter enabled: %d %s", w.Code, w.Body.String())
+	if w.Code != 200 || json.Unmarshal(w.Body.Bytes(), &page) != nil || len(page.Entries) != 1 || page.WholeSelectionPreparing != nil || page.WholeSelection != nil || page.WholeSelectionUnavailable == nil || page.WholeSelectionUnavailable.Reason != "search_not_bounded" {
+		t.Fatalf("unproved search was hidden or enabled: %d %s", w.Code, w.Body.String())
 	}
 	if f.store.Stats().Entries != 0 {
 		t.Fatal("unproved search submitted work")

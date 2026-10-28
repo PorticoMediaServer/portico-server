@@ -141,7 +141,7 @@ func selectionBatchCompileTest(node BrowseNode, profile string, groupSearch bool
 		// Only the existing exact per-entity prefix projection is qualified. FTS5
 		// may expand an unbounded global prefix vocabulary even with rowid equality.
 		if _, indexed := facettext.IndexedSearchTerms(normalized); !groupSearch || !indexed {
-			return test, fmt.Errorf("%w: search requires an exact bounded local evaluator", ErrSelectionBatchUnsupported)
+			return test, ErrSelectionBatchSearchUnsupported
 		}
 		c.groupSearch = true
 		test.scalar, err = c.entityPredicate(field, node)
