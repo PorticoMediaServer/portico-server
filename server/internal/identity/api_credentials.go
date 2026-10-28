@@ -166,13 +166,10 @@ func (s *Service) IssueAPICredentialTx(ctx context.Context, tx *sql.Tx, maker Pr
 		return out, err
 	}
 	// The credential continues its maker's PIN-attempt lineage; it is not a new
-	// device chain with a budget of its own.
-	lineageCtx := ctx
-	if maker.Hash != "" {
-		var err error
-		if lineageCtx, err = withPINLineageOf(ctx, tx, familyForTokenTx(ctx, tx, maker.Hash)); err != nil {
-			return out, err
-		}
+	// device chain with a budget of its own, so a maker with no session has none.
+	lineageCtx, err := withPINLineageOf(ctx, tx, familyForTokenTx(ctx, tx, maker.Hash))
+	if err != nil {
+		return out, err
 	}
 	if err := bindPINLineageTx(lineageCtx, tx, p.AccountID, out.DeviceID, out.FamilyID); err != nil {
 		return out, err

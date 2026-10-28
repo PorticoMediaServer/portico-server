@@ -4999,6 +4999,8 @@ CREATE INDEX authorization_families_owner_history ON authorization_session_famil
 CREATE INDEX playback_sessions_session_hash ON playback_sessions(session_hash);
 CREATE INDEX topshelf_tokens_account ON topshelf_tokens(authority,account_id);
 CREATE INDEX direct_profile_pin_attempts_lineage ON direct_profile_pin_attempts(lineage_id);
+CREATE INDEX direct_profile_pin_attempts_last_failed ON direct_profile_pin_attempts(last_failed_ms);
+CREATE INDEX identity_pin_lineages_created ON identity_pin_lineages(created_at);
 CREATE INDEX identity_family_pin_lineages_lineage ON identity_family_pin_lineages(lineage_id);
 CREATE INDEX metadata_repair_cascades_entity ON metadata_repair_cascades(kind,entity_id);
 CREATE INDEX artwork_selections_candidate ON artwork_selections(candidate_id);

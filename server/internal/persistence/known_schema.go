@@ -302,6 +302,7 @@ index detail_jobs_due
 index direct_memberships_people_role
 index direct_one_owner
 index direct_primary_profile
+index direct_profile_pin_attempts_last_failed
 index direct_profile_pin_attempts_lineage
 index direct_profile_trust_account
 index direct_profiles_account
@@ -359,6 +360,7 @@ index identity_one_move
 index identity_owner_completions_move_id_fk
 index identity_owner_completions_owner_id_fk
 index identity_owner_completions_owner_profile_id_fk
+index identity_pin_lineages_created
 index identity_refresh_device
 index identity_refresh_predecessors_family
 index identity_refresh_receipts_expiry

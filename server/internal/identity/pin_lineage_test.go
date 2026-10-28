@@ -2,10 +2,13 @@ package identity
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"sync"
 	"testing"
 	"time"
+
+	"portico.local/server/internal/dbwork"
 )
 
 func familyLineageForTest(t *testing.T, s *Service, family string) string {
@@ -29,6 +32,14 @@ func pinDebtForTest(t *testing.T, s *Service, profile, lineage string) int {
 func clearPINDelayForTest(t *testing.T, s *Service, profile string) {
 	t.Helper()
 	if _, err := s.db.Exec(`UPDATE direct_profile_pin_attempts SET locked_until_ms=0 WHERE profile_id=?`, profile); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// holdPINDelayForTest keeps a recorded delay running however slow the host is.
+func holdPINDelayForTest(t *testing.T, s *Service, profile string) {
+	t.Helper()
+	if _, err := s.db.Exec(`UPDATE direct_profile_pin_attempts SET locked_until_ms=4102444800000 WHERE profile_id=?`, profile); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -62,6 +73,7 @@ func TestQuickPairingContinuesTheApproversPINLineage(t *testing.T) {
 		t.Fatalf("paired device started lineage %s, not the approver's %s", got, origin)
 	}
 	// The approver's delay is still running: the paired device is refused too.
+	holdPINDelayForTest(t, s, child.ID)
 	if _, err := s.SelectDirectProfile(t.Context(), paired.AccessToken, child.ID, DirectSelection{PIN: "4821"}); !errors.Is(err, ErrProfileLocked) {
 		t.Fatalf("paired device escaped the approver's delay: %v", err)
 	}
@@ -86,6 +98,63 @@ func TestQuickPairingContinuesTheApproversPINLineage(t *testing.T) {
 	var rows int
 	if err := s.db.QueryRow(`SELECT count(*) FROM direct_profile_pin_attempts WHERE profile_id=?`, child.ID).Scan(&rows); err != nil || rows != 1 {
 		t.Fatalf("PIN debt split across %d rows: %v", rows, err)
+	}
+	// The profile chosen on the paired device continues the same chain.
+	clearPINDelayForTest(t, s, child.ID)
+	selected, err := s.SelectDirectProfile(t.Context(), paired.AccessToken, child.ID, DirectSelection{PIN: "4821"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := familyLineageForTest(t, s, selected.Session.SessionFamilyID); got != origin {
+		t.Fatalf("a profile chosen on a paired device started lineage %s", got)
+	}
+}
+
+// A paired Cast screen and an access token continue their maker's lineage; one
+// with no live parent session gets none.
+func TestCastScreensAndAccessTokensContinueTheLineage(t *testing.T) {
+	ctx := context.Background()
+	s, login, _ := profileWithPIN(t)
+	origin := familyLineageForTest(t, s, login.Session.SessionFamilyID)
+	paired := collectQuickForTest(t, s, login.Session.AccessToken, "abababab-abab-4bab-8bab-abababababab")
+	maker, err := s.Authenticate(paired.AccessToken)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var token IssuedCredential
+	var screen Envelope
+	err = dbwork.WithWriteTx(ctx, s.db, dbwork.ClassSecurityFence, func(tx *sql.Tx) error {
+		var e error
+		if token, e = s.IssueAPICredentialTx(ctx, tx, maker, CredentialKindToken, Token(), "script", time.Time{}); e != nil {
+			return e
+		}
+		screen, e = s.IssueCastTargetTx(ctx, tx, "local", maker.AccountID, maker.ProfileID, maker.Epoch, time.Time{}, paired.SessionFamilyID)
+		return e
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := familyLineageForTest(t, s, token.FamilyID); got != origin {
+		t.Fatalf("access token started lineage %s", got)
+	}
+	if got := familyLineageForTest(t, s, screen.SessionFamilyID); got != origin {
+		t.Fatalf("Cast screen started lineage %s", got)
+	}
+	sessionless := maker
+	sessionless.Hash = ""
+	err = dbwork.WithWriteTx(ctx, s.db, dbwork.ClassSecurityFence, func(tx *sql.Tx) error {
+		_, e := s.IssueAPICredentialTx(ctx, tx, sessionless, CredentialKindToken, Token(), "script", time.Time{})
+		return e
+	})
+	if !errors.Is(err, ErrUnauthorized) {
+		t.Fatalf("a credential with no maker session got a lineage of its own: %v", err)
+	}
+	err = dbwork.WithWriteTx(ctx, s.db, dbwork.ClassSecurityFence, func(tx *sql.Tx) error {
+		_, e := s.IssueCastTargetTx(ctx, tx, "local", maker.AccountID, maker.ProfileID, maker.Epoch, time.Time{}, "missing-family")
+		return e
+	})
+	if !errors.Is(err, ErrUnauthorized) {
+		t.Fatalf("a Cast screen with no pairing session was issued: %v", err)
 	}
 }
 
@@ -148,6 +217,7 @@ func TestPINDebtOutlivesTheOriginDevice(t *testing.T) {
 	if debt := pinDebtForTest(t, s, child.ID, origin); debt != 1 {
 		t.Fatalf("forgetting the origin device cleared its chain's debt: %d", debt)
 	}
+	holdPINDelayForTest(t, s, child.ID)
 	if _, err := s.SelectDirectProfile(t.Context(), paired.AccessToken, child.ID, DirectSelection{PIN: "4821"}); !errors.Is(err, ErrProfileLocked) {
 		t.Fatalf("debt stopped applying after the origin device went: %v", err)
 	}
@@ -298,6 +368,13 @@ func TestPruningKeepsLiveLineagesAndDebt(t *testing.T) {
 	if _, err := s.db.Exec(`INSERT INTO identity_pin_lineages(id,account_id,origin_device_id,created_at) SELECT 'pln_unused',account_id,'gone-device',? FROM identity_pin_lineages WHERE id=?`, old, origin); err != nil {
 		t.Fatal(err)
 	}
+	// No session continues this one any more, but it still owes.
+	if _, err := s.db.Exec(`INSERT INTO identity_pin_lineages(id,account_id,origin_device_id,created_at) SELECT 'pln_owing',account_id,'other-gone-device',? FROM identity_pin_lineages WHERE id=?`, old, origin); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.db.Exec(`INSERT INTO direct_profile_pin_attempts(profile_id,lineage_id,failed_attempts,last_failed_ms,locked_until_ms) VALUES(?,'pln_owing',3,?,0)`, child.ID, time.Now().UnixMilli()); err != nil {
+		t.Fatal(err)
+	}
 	if _, err := s.PruneSessionHistory(t.Context()); err != nil {
 		t.Fatal(err)
 	}
@@ -310,6 +387,9 @@ func TestPruningKeepsLiveLineagesAndDebt(t *testing.T) {
 	}
 	if debt := pinDebtForTest(t, s, child.ID, origin); debt != 1 {
 		t.Fatalf("current debt pruned: %d", debt)
+	}
+	if debt := pinDebtForTest(t, s, child.ID, "pln_owing"); debt != 3 {
+		t.Fatalf("a lineage that still owes was pruned with its debt: %d", debt)
 	}
 	if _, err := s.db.Exec(`UPDATE direct_profile_pin_attempts SET last_failed_ms=?`, time.Now().Add(-25*time.Hour).UnixMilli()); err != nil {
 		t.Fatal(err)
