@@ -12,7 +12,7 @@ import (
 	"portico.local/server/internal/readprep"
 )
 
-const browseSelectionPreparationDomain = "browse-selection-v1"
+const browseSelectionPreparationDomain = "browse-selection-local-v2"
 const BrowseSelectionRetryAfterMs = 1000
 
 // BrowseSelectionPreparing is the strict pending branch beside an immediate
@@ -46,6 +46,15 @@ type SelectionPreparationAccess struct {
 	Caller        readprep.Caller
 	Check         func(*Service) error
 	CapturedBytes int64
+}
+
+// A single-library content key binds effective content policy/profile, while
+// session/family authority remains in private handles. Other authorized libraries
+// and a route-specific fence must not prevent the same held view's conversion.
+func selectionPreparationViewer(v Viewer, library string) Viewer {
+	v.Fence = ""
+	v.Libraries = []string{library}
+	return v
 }
 
 type selectionPreparationSpec struct {
@@ -188,7 +197,7 @@ func (s *Service) SubmitBrowseSelectionPreparation(request BrowseRequest, viewer
 	if err != nil {
 		return BrowseSelectionPreparing{}, err
 	}
-	spec, err := json.Marshal(selectionPreparationSpec{Library: bound.Library, Pivot: bound.Pivot, Revision: bound.Revision, Query: query, Sorts: bound.Sorts, Viewer: viewer})
+	spec, err := json.Marshal(selectionPreparationSpec{Library: bound.Library, Pivot: bound.Pivot, Revision: bound.Revision, Query: query, Sorts: bound.Sorts, Viewer: selectionPreparationViewer(viewer, bound.Library)})
 	if err != nil {
 		return BrowseSelectionPreparing{}, err
 	}

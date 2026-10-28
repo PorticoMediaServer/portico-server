@@ -81,6 +81,8 @@ type BrowseSelectionDescriptor struct {
 type BrowseSelectionUnavailableActions struct {
 	Play            string `json:"play,omitempty"`
 	Queue           string `json:"queue,omitempty"`
+	Playlist        string `json:"playlist,omitempty"`
+	Delete          string `json:"delete,omitempty"`
 	MetadataPreview string `json:"metadataPreview,omitempty"`
 }
 
@@ -88,6 +90,8 @@ func (BrowseSelectionUnavailableActions) JSONSchema() map[string]any {
 	return map[string]any{"type": "object", "additionalProperties": false, "properties": map[string]any{
 		"play":            map[string]any{"type": "string", "enum": []string{"unsupported-sort"}},
 		"queue":           map[string]any{"type": "string", "enum": []string{"unsupported-sort"}},
+		"playlist":        map[string]any{"type": "string", "enum": []string{"unsupported-sort"}},
+		"delete":          map[string]any{"type": "string", "enum": []string{"unsupported-sort"}},
 		"metadataPreview": map[string]any{"type": "string", "enum": []string{"preview-limit"}},
 	}}
 }
