@@ -6,9 +6,16 @@ package sqlite
 
 import (
 	"database/sql/driver"
+	"errors"
 
 	sqlite3 "modernc.org/sqlite/lib"
 )
+
+// ErrBackupClosed is a Step or Finish on a backup whose source connection has
+// closed. Closing the source finishes every backup still attached to it
+// (Portico addition): sqlite3_close_v2 would otherwise leave a zombie handle
+// whose next step runs on freed per-connection state.
+var ErrBackupClosed = errors.New("sqlite: backup source connection closed")
 
 // Backup object is used to manage progress and cleanup an online backup. It
 // is returned by NewBackup or NewRestore.
@@ -16,6 +23,7 @@ type Backup struct {
 	srcConn *conn   // source database connection
 	dstConn *conn   // destination database connection
 	pBackup uintptr // sqlite3_backup object pointer
+	done    bool    // finished, by Finish/Commit or by the source closing
 }
 
 // Step will copy up to n pages between the source and destination databases
@@ -27,6 +35,9 @@ type Backup struct {
 // false with no error. If an error occurs while running, then an error is
 // returned.
 func (b *Backup) Step(n int32) (bool, error) {
+	if b.done {
+		return false, ErrBackupClosed
+	}
 	rc := sqlite3.Xsqlite3_backup_step(b.srcConn.tls, b.pBackup, n)
 	if rc == sqlite3.SQLITE_OK {
 		return true, nil
@@ -40,6 +51,12 @@ func (b *Backup) Step(n int32) (bool, error) {
 // Finish releases all resources associated with the Backup object. The Backup
 // object is invalid and may not be used following a call to Finish.
 func (b *Backup) Finish() error {
+	if b.done {
+		b.dstConn.Close()
+		return ErrBackupClosed
+	}
+	b.done = true
+	b.srcConn.forgetBackup(b)
 	rc := sqlite3.Xsqlite3_backup_finish(b.srcConn.tls, b.pBackup)
 	b.dstConn.Close()
 	if rc == sqlite3.SQLITE_OK {
@@ -59,6 +76,9 @@ func (b *Backup) Finish() error {
 //
 // See https://www.sqlite.org/c3ref/backup_finish.html.
 func (b *Backup) Remaining() int {
+	if b.done {
+		return 0
+	}
 	return int(sqlite3.Xsqlite3_backup_remaining(b.srcConn.tls, b.pBackup))
 }
 
@@ -68,6 +88,9 @@ func (b *Backup) Remaining() int {
 //
 // See https://www.sqlite.org/c3ref/backup_finish.html.
 func (b *Backup) PageCount() int {
+	if b.done {
+		return 0
+	}
 	return int(sqlite3.Xsqlite3_backup_pagecount(b.srcConn.tls, b.pBackup))
 }
 
@@ -77,6 +100,12 @@ func (b *Backup) PageCount() int {
 // The destination database connection is returned to the caller or an error if raised.
 // It is the responsibility of the caller to handle the connection closure.
 func (b *Backup) Commit() (driver.Conn, error) {
+	if b.done {
+		b.dstConn.Close()
+		return nil, ErrBackupClosed
+	}
+	b.done = true
+	b.srcConn.forgetBackup(b)
 	rc := sqlite3.Xsqlite3_backup_finish(b.srcConn.tls, b.pBackup)
 
 	if rc == sqlite3.SQLITE_OK {
@@ -85,4 +114,21 @@ func (b *Backup) Commit() (driver.Conn, error) {
 		b.dstConn.Close()
 		return nil, b.srcConn.errstr(rc)
 	}
+}
+
+// finishAttached ends every backup still reading from c, before c closes. It
+// runs under c's lock, from Close; database/sql never closes a connection a
+// caller is using, so no Step runs concurrently.
+func (c *conn) finishAttached() {
+	for b := range c.backups {
+		b.done = true
+		sqlite3.Xsqlite3_backup_finish(c.tls, b.pBackup)
+	}
+	c.backups = nil
+}
+
+func (c *conn) forgetBackup(b *Backup) {
+	c.Lock()
+	delete(c.backups, b)
+	c.Unlock()
 }

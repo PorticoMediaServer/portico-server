@@ -493,6 +493,12 @@ authorization_session_families.revoked_at
 authorization_session_families.revoked_reason
 authorization_session_families.role
 authorization_session_families.server_id
+backup_blob_holds.backup_id
+backup_blob_holds.created_ms
+backup_blob_holds.process_epoch
+backup_blob_holds.scratch_token
+backup_blob_holds.singleton
+backup_blob_holds.state
 backup_destinations.path
 backup_settings.backup_folder
 backup_settings.include_artwork
@@ -6131,6 +6137,13 @@ social_receivers.supported_commands
 source_strm_analysis.enabled
 source_strm_analysis.library_id
 source_strm_analysis.revision
+state_rebase_jobs.after_rowid
+state_rebase_jobs.new_prefix
+state_rebase_jobs.old_prefix
+state_rebase_jobs.phase
+state_rebase_jobs.registry_version
+state_rebase_jobs.singleton
+state_rebase_jobs.started_ms
 subtitle_collections.item_id
 subtitle_collections.revision
 subtitle_disc_resources.fingerprint

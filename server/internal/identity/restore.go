@@ -116,24 +116,16 @@ func endEverySessionTx(ctx context.Context, tx *sql.Tx, now time.Time) (ended, c
 
 // ScrubBackupCopy ends every session in a finished backup copy of the database
 // and removes the live secrets from it, before the copy becomes a backup. It
-// touches only the file at path, never the running server's database. The
-// backup service calls it on each copy it writes; it is safe to run again on
-// a copy that was already scrubbed.
-func ScrubBackupCopy(ctx context.Context, path string) error {
-	if path == "" {
+// works on the copy's private candidate handle, never the running server's
+// database: it takes no write-gate ticket and has no live effect. The backup
+// service calls it on each copy it writes; it is safe to run again on a copy
+// that was already scrubbed. The caller closes the candidate, which folds the
+// copy's write-ahead log back into the file.
+func ScrubBackupCopy(ctx context.Context, copy *dbwork.Candidate) error {
+	if copy == nil {
 		return errors.New("no backup copy to scrub")
 	}
-	db, err := dbwork.OpenHandle(path, dbwork.DefaultPolicy())
-	if err != nil {
-		return err
-	}
-	closed := false
-	defer func() {
-		if !closed {
-			db.Close()
-		}
-	}()
-	if err = dbwork.WithWriteTx(ctx, db, dbwork.ClassMaintenance, func(tx *sql.Tx) error {
+	return copy.WithTx(ctx, func(tx *sql.Tx) error {
 		// Deleted rows are overwritten, not just unlinked, so the secrets do
 		// not linger in the copy's free pages for a reader of the file to
 		// find. This costs a write per freed page, not a rewrite of the
@@ -148,13 +140,7 @@ func ScrubBackupCopy(ctx context.Context, path string) error {
 		}
 		_, _, err := endEverySessionTx(ctx, tx, time.Now())
 		return err
-	}); err != nil {
-		return err
-	}
-	// Closing the copy's last connection folds its write-ahead log back into
-	// the file and removes the log, so nothing waits there either.
-	closed = true
-	return db.Close()
+	})
 }
 
 const restoreHandledKey = "identity.restoreHandled"

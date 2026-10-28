@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"os"
+	"path/filepath"
+	"strings"
 
 	"portico.local/server/internal/dbwork"
 )
@@ -21,54 +23,118 @@ var (
 // not a database at all, let alone a Portico one.
 const sqliteHeader = "SQLite format 3\x00"
 
-// InspectCandidate validates a restore candidate at path without changing the
-// live database or converting the candidate. It returns
-// the matching baseline's diagnostic format marker. A different baseline
-// is refused; restore never converts it.
-func InspectCandidate(ctx context.Context, path string) (int, error) {
-	head, err := os.Open(path)
+// CandidateReport is what inspecting a restore candidate found, and what was
+// done to make it usable. Integrity is "ok" for a healthy file, or
+// "recovered" when Recovery says what was repaired or lost.
+type CandidateReport struct {
+	SchemaVersion int
+	Integrity     string
+	Recovery      *Recovery
+}
+
+// Recovery tells the owner what restore did to a damaged database. A copy of
+// a running server's folder is the usual case: its log was mid-write, or the
+// database file and its log were copied at different moments.
+type Recovery struct {
+	// IndexesRebuilt: only indexes were damaged, and were rebuilt from the
+	// table rows. Nothing was lost.
+	IndexesRebuilt bool `json:"indexesRebuilt,omitempty"`
+	// Salvaged: the database was rebuilt into a fresh file from every row
+	// that could still be read.
+	Salvaged bool `json:"salvaged,omitempty"`
+	// DamagedTables are tables where some rows could not be read and are
+	// missing from the restored database.
+	DamagedTables []string `json:"damagedTables,omitempty"`
+	// RemovedRows were readable but named something that was lost, and were
+	// removed so the restored database is consistent.
+	RemovedRows int64 `json:"removedRows,omitempty"`
+}
+
+// InspectCandidate checks a restore candidate, dir/name, and makes it usable
+// if it can (JUSTIN-ANSWERS #21): a readable file is tried whatever its
+// source, including a copy taken while a server was running. It opens the
+// file privately (dbwork.Candidate), so SQLite replays every complete
+// transaction in a -wal beside it and ignores a torn tail, folds the log into
+// the file and checks the result. Damaged indexes are rebuilt; anything worse
+// is salvaged row by row into a fresh copy of this baseline. Only a file that
+// is not a SQLite database, is not Portico's, belongs to a different baseline,
+// or cannot have its schema read at all is refused. The candidate must be a
+// private copy: recovery rewrites it in place.
+func InspectCandidate(ctx context.Context, dir, name string) (CandidateReport, error) {
+	report := CandidateReport{SchemaVersion: SchemaVersion(), Integrity: "ok"}
+	head, err := os.Open(filepath.Join(dir, filepath.FromSlash(name)))
 	if err != nil {
-		return 0, ErrCandidateNotPortico
+		return report, ErrCandidateNotPortico
 	}
 	prefix := make([]byte, len(sqliteHeader))
 	_, err = readFull(head, prefix)
 	closeErr := head.Close()
 	if err != nil || closeErr != nil || string(prefix) != sqliteHeader {
-		return 0, ErrCandidateNotPortico
+		return report, ErrCandidateNotPortico
 	}
-	db, err := dbwork.OpenHandle(path, dbwork.DefaultPolicy())
+	candidate, err := dbwork.OpenCandidate(dir, name)
 	if err != nil {
-		return 0, ErrCandidateIntegrity
+		return report, ErrCandidateIntegrity
 	}
-	defer db.Close()
-	// Merge any WAL frames first so the check sees the whole database.
-	_, _ = db.ExecContext(ctx, `PRAGMA wal_checkpoint(TRUNCATE)`)
-	rows, err := db.QueryContext(ctx, `PRAGMA integrity_check`)
-	if err != nil {
-		return 0, ErrCandidateIntegrity
+	// Merge the log first so the check sees the whole database. A fold that
+	// fails is not the end: salvage reads what it can.
+	folded := candidate.Fold(ctx) == nil
+	if err = checkPortico(ctx, candidate); err != nil {
+		candidate.Close()
+		return report, err
 	}
-	lines := []string{}
-	for rows.Next() {
-		var line string
-		if err = rows.Scan(&line); err != nil {
-			rows.Close()
-			return 0, ErrCandidateIntegrity
+	lines, err := candidate.Check(ctx, false, 100)
+	if err == nil && folded && dbwork.Healthy(lines) {
+		return report, candidate.Close()
+	}
+	if err == nil && folded && indexDamageOnly(lines) {
+		if _, err = candidate.ExecContext(ctx, `REINDEX`); err == nil {
+			if lines, err = candidate.Check(ctx, false, 1); err == nil && dbwork.Healthy(lines) {
+				if err = candidate.Fold(ctx); err == nil {
+					report.Integrity, report.Recovery = "recovered", &Recovery{IndexesRebuilt: true}
+					return report, candidate.Close()
+				}
+			}
 		}
-		lines = append(lines, line)
 	}
-	scanErr := rows.Err()
-	rows.Close()
-	if scanErr != nil || len(lines) != 1 || lines[0] != "ok" {
-		return 0, ErrCandidateIntegrity
+	if err = candidate.Close(); err != nil {
+		return report, ErrCandidateIntegrity
 	}
+	recovery, err := salvage(ctx, dir, name)
+	if err != nil {
+		return report, err
+	}
+	report.Integrity, report.Recovery = "recovered", recovery
+	return report, nil
+}
+
+// checkPortico refuses what restore cannot use at all: a schema SQLite cannot
+// read, a database without Portico's configuration table, or another baseline.
+func checkPortico(ctx context.Context, candidate *dbwork.Candidate) error {
 	var configuration int
-	if err = db.QueryRowContext(ctx, `SELECT count(*) FROM sqlite_schema WHERE type='table' AND name='configuration'`).Scan(&configuration); err != nil || configuration != 1 {
-		return 0, ErrCandidateNotPortico
+	if err := candidate.QueryRowContext(ctx, `SELECT count(*) FROM sqlite_schema WHERE type='table' AND name='configuration'`).Scan(&configuration); err != nil {
+		return ErrCandidateIntegrity
 	}
-	if err = verifyBaseline(ctx, db); err != nil {
-		return 0, err
+	if configuration != 1 {
+		return ErrCandidateNotPortico
 	}
-	return SchemaVersion(), nil
+	return verifyBaseline(ctx, candidate)
+}
+
+// indexDamageOnly reports whether every problem integrity_check found is in an
+// index, which REINDEX rebuilds from the table rows without losing anything.
+func indexDamageOnly(lines []string) bool {
+	if len(lines) == 0 || dbwork.Healthy(lines) {
+		return false
+	}
+	for _, line := range lines {
+		if !(strings.HasPrefix(line, "row ") && strings.Contains(line, " missing from index ")) &&
+			!strings.HasPrefix(line, "wrong # of entries in index ") &&
+			!strings.HasPrefix(line, "non-unique entry in index ") {
+			return false
+		}
+	}
+	return true
 }
 
 func readFull(file *os.File, buf []byte) (int, error) {
