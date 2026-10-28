@@ -10640,6 +10640,9 @@
                 "minimum": -9007199254740991,
                 "type": "integer"
               },
+              "memoryCap": {
+                "type": "string"
+              },
               "musicAwayQuality": {
                 "type": "string"
               },
@@ -10922,6 +10925,7 @@
               "temporaryDirectory",
               "ffmpegPath",
               "sessionStorageMiB",
+              "memoryCap",
               "maxConcurrentSessions",
               "maxHardwareSessions",
               "maxSoftwareSessions",
@@ -11139,6 +11143,9 @@
                     "maximum": 9007199254740991,
                     "minimum": -9007199254740991,
                     "type": "integer"
+                  },
+                  "memoryCap": {
+                    "type": "string"
                   },
                   "musicAwayQuality": {
                     "type": "string"
@@ -11422,6 +11429,7 @@
                   "temporaryDirectory",
                   "ffmpegPath",
                   "sessionStorageMiB",
+                  "memoryCap",
                   "maxConcurrentSessions",
                   "maxHardwareSessions",
                   "maxSoftwareSessions",
@@ -11656,6 +11664,9 @@
                     "minimum": -9007199254740991,
                     "type": "integer"
                   },
+                  "memoryCap": {
+                    "type": "string"
+                  },
                   "musicAwayQuality": {
                     "type": "string"
                   },
@@ -11938,6 +11949,7 @@
                   "temporaryDirectory",
                   "ffmpegPath",
                   "sessionStorageMiB",
+                  "memoryCap",
                   "maxConcurrentSessions",
                   "maxHardwareSessions",
                   "maxSoftwareSessions",
@@ -43375,6 +43387,9 @@
                     "minimum": -9007199254740991,
                     "type": "integer"
                   },
+                  "memoryCap": {
+                    "type": "string"
+                  },
                   "musicAwayQuality": {
                     "type": "string"
                   },
@@ -43657,6 +43672,7 @@
                   "temporaryDirectory",
                   "ffmpegPath",
                   "sessionStorageMiB",
+                  "memoryCap",
                   "maxConcurrentSessions",
                   "maxHardwareSessions",
                   "maxSoftwareSessions",
@@ -43891,6 +43907,9 @@
                     "minimum": -9007199254740991,
                     "type": "integer"
                   },
+                  "memoryCap": {
+                    "type": "string"
+                  },
                   "musicAwayQuality": {
                     "type": "string"
                   },
@@ -44173,6 +44192,7 @@
                   "temporaryDirectory",
                   "ffmpegPath",
                   "sessionStorageMiB",
+                  "memoryCap",
                   "maxConcurrentSessions",
                   "maxHardwareSessions",
                   "maxSoftwareSessions",
@@ -307867,6 +307887,9 @@
                               "minimum": -9007199254740991,
                               "type": "integer"
                             },
+                            "memoryCap": {
+                              "type": "string"
+                            },
                             "musicAwayQuality": {
                               "type": "string"
                             },
@@ -308149,6 +308172,7 @@
                             "temporaryDirectory",
                             "ffmpegPath",
                             "sessionStorageMiB",
+                            "memoryCap",
                             "maxConcurrentSessions",
                             "maxHardwareSessions",
                             "maxSoftwareSessions",
@@ -308383,6 +308407,9 @@
                               "minimum": -9007199254740991,
                               "type": "integer"
                             },
+                            "memoryCap": {
+                              "type": "string"
+                            },
                             "musicAwayQuality": {
                               "type": "string"
                             },
@@ -308665,6 +308692,7 @@
                             "temporaryDirectory",
                             "ffmpegPath",
                             "sessionStorageMiB",
+                            "memoryCap",
                             "maxConcurrentSessions",
                             "maxHardwareSessions",
                             "maxSoftwareSessions",
@@ -308975,6 +309003,9 @@
                         "minimum": -9007199254740991,
                         "type": "integer"
                       },
+                      "memoryCap": {
+                        "type": "string"
+                      },
                       "musicAwayQuality": {
                         "type": "string"
                       },
@@ -309257,6 +309288,7 @@
                       "temporaryDirectory",
                       "ffmpegPath",
                       "sessionStorageMiB",
+                      "memoryCap",
                       "maxConcurrentSessions",
                       "maxHardwareSessions",
                       "maxSoftwareSessions",
@@ -309482,6 +309514,9 @@
                               "maximum": 9007199254740991,
                               "minimum": -9007199254740991,
                               "type": "integer"
+                            },
+                            "memoryCap": {
+                              "type": "string"
                             },
                             "musicAwayQuality": {
                               "type": "string"
@@ -309765,6 +309800,7 @@
                             "temporaryDirectory",
                             "ffmpegPath",
                             "sessionStorageMiB",
+                            "memoryCap",
                             "maxConcurrentSessions",
                             "maxHardwareSessions",
                             "maxSoftwareSessions",
@@ -309999,6 +310035,9 @@
                               "minimum": -9007199254740991,
                               "type": "integer"
                             },
+                            "memoryCap": {
+                              "type": "string"
+                            },
                             "musicAwayQuality": {
                               "type": "string"
                             },
@@ -310281,6 +310320,7 @@
                             "temporaryDirectory",
                             "ffmpegPath",
                             "sessionStorageMiB",
+                            "memoryCap",
                             "maxConcurrentSessions",
                             "maxHardwareSessions",
                             "maxSoftwareSessions",
