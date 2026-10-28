@@ -387,13 +387,14 @@ type ChannelMapEntry struct {
 	// SourceNumber is the provider's number captured before configuration, empty
 	// when the source did not publish one. Number is what the server serves: the
 	// accepted generation's number unless an owner override exists.
-	SourceNumber   string `json:"sourceNumber"`
-	Number         string `json:"number"`
-	Group          string `json:"group"`
-	GuideChannelID string `json:"guideChannelId"`
-	Hidden         bool   `json:"hidden"`
-	Position       int    `json:"position"`
-	Overridden     bool   `json:"overridden"`
+	SourceNumber   string                   `json:"sourceNumber"`
+	Number         string                   `json:"number"`
+	Group          string                   `json:"group"`
+	GuideChannelID string                   `json:"guideChannelId"`
+	Hidden         bool                     `json:"hidden"`
+	Position       int                      `json:"position"`
+	Overridden     bool                     `json:"overridden"`
+	Mark           livechannels.ChannelMark `json:"mark"`
 }
 
 // ChannelMapPage is one page of a source's channel map.
@@ -406,7 +407,7 @@ type ChannelMapPage struct {
 
 // channelMapPage reads one page inside a caller's transaction, so a write can
 // return the page it just produced rather than reading it again afterwards.
-func channelMapPage(ctx context.Context, tx *sql.Tx, id string, after int64, size int) (ChannelMapPage, error) {
+func channelMapPage(ctx context.Context, tx *sql.Tx, db *sql.DB, id string, after int64, size int) (ChannelMapPage, error) {
 	out := ChannelMapPage{SourceID: id, Items: []ChannelMapEntry{}}
 	if _, _, err := liveSourceExists(ctx, tx, id); err != nil {
 		return out, err
@@ -442,14 +443,15 @@ func channelMapPage(ctx context.Context, tx *sql.Tx, id string, after int64, siz
 		out.Items = out.Items[:size]
 		out.NextCursor = encodeCursor("channel-map", int64(out.Items[size-1].Position), out.Items[size-1].ChannelID)
 	}
-	return out, nil
+	rows.Close()
+	return out, channelMapMarks(ctx, tx, db, &out)
 }
 
 // channelMapEntry reads one channel of the active generation inside a caller's
 // transaction. A channel the source does not currently carry is reported as a
 // missing resource rather than an empty page, so a lookup that found nothing is
 // distinguishable from a source whose map is empty.
-func channelMapEntry(ctx context.Context, tx *sql.Tx, id, channelID string) (ChannelMapPage, error) {
+func channelMapEntry(ctx context.Context, tx *sql.Tx, db *sql.DB, id, channelID string) (ChannelMapPage, error) {
 	out := ChannelMapPage{SourceID: id, Items: []ChannelMapEntry{}}
 	if _, _, err := liveSourceExists(ctx, tx, id); err != nil {
 		return out, err
@@ -475,7 +477,21 @@ func channelMapEntry(ctx context.Context, tx *sql.Tx, id, channelID string) (Cha
 		e.Number, e.Overridden = override, true
 	}
 	out.Items = append(out.Items, e)
-	return out, nil
+	return out, channelMapMarks(ctx, tx, db, &out)
+}
+
+func channelMapMarks(ctx context.Context, tx *sql.Tx, db *sql.DB, page *ChannelMapPage) error {
+	if len(page.Items) == 0 {
+		return nil
+	}
+	marks, err := livechannels.SourceChannelMarksTx(ctx, tx, db, page.SourceID)
+	if err != nil {
+		return err
+	}
+	for i := range page.Items {
+		page.Items[i].Mark = marks[page.SourceID+"\x00"+page.Items[i].ChannelID]
+	}
+	return nil
 }
 
 // ChannelMap pages the active generation's channels with their overrides. A
@@ -499,7 +515,7 @@ func (s *Service) ChannelMap(ctx context.Context, auth Authorize, id, token, cha
 	}
 	err = s.snapshot(ctx, auth, func(tx *sql.Tx) error {
 		if channelID != "" {
-			page, readErr := channelMapEntry(ctx, tx, id, channelID)
+			page, readErr := channelMapEntry(ctx, tx, s.db, id, channelID)
 			out = page
 			return readErr
 		}
@@ -508,7 +524,7 @@ func (s *Service) ChannelMap(ctx context.Context, auth Authorize, id, token, cha
 			// Positions start at 0; the first page starts before the first one.
 			after = -1
 		}
-		page, readErr := channelMapPage(ctx, tx, id, after, size)
+		page, readErr := channelMapPage(ctx, tx, s.db, id, after, size)
 		out = page
 		return readErr
 	})
@@ -670,7 +686,7 @@ func (s *Service) SaveChannelMap(ctx context.Context, auth Authorize, id string,
 		if err = writeDocument(ctx, tx, scope, revision+1, settings, at); err != nil {
 			return err
 		}
-		if out, err = channelMapPage(ctx, tx, id, -1, DefaultPageSize); err != nil {
+		if out, err = channelMapPage(ctx, tx, nil, id, -1, DefaultPageSize); err != nil {
 			return err
 		}
 		return saveReceipt(ctx, tx, "channel-map:"+id, change.OperationID, digest, out, at)

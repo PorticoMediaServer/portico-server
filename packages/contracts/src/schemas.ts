@@ -32231,6 +32231,21 @@ export const schemas = {
                 "hidden": {
                   "type": "boolean"
                 },
+                "mark": {
+                  "properties": {
+                    "seed": {
+                      "type": "string"
+                    },
+                    "text": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "text",
+                    "seed"
+                  ],
+                  "type": "object"
+                },
                 "name": {
                   "type": "string"
                 },
@@ -32258,7 +32273,8 @@ export const schemas = {
                 "guideChannelId",
                 "hidden",
                 "position",
-                "overridden"
+                "overridden",
+                "mark"
               ],
               "type": "object"
             },
@@ -234610,6 +234626,21 @@ export const schemas = {
                 "hidden": {
                   "type": "boolean"
                 },
+                "mark": {
+                  "properties": {
+                    "seed": {
+                      "type": "string"
+                    },
+                    "text": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "text",
+                    "seed"
+                  ],
+                  "type": "object"
+                },
                 "name": {
                   "type": "string"
                 },
@@ -234637,7 +234668,8 @@ export const schemas = {
                 "guideChannelId",
                 "hidden",
                 "position",
-                "overridden"
+                "overridden",
+                "mark"
               ],
               "type": "object"
             },

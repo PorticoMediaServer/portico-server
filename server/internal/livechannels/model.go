@@ -174,7 +174,7 @@ type GuideQuery struct {
 	// NoProgrammes answers the channel rows only (the channel list is the same
 	// for every time window).
 	NoProgrammes bool
-	// MarkChannels joins this guide's read snapshot to the complete authorized
+	// MarkChannels joins this guide's read snapshot to the complete current
 	// source domain. It is supplied by the viewer facade, never by a request.
 	MarkChannels func(context.Context, *sql.Tx, []Channel) error `json:"-"`
 	// ProgrammeAllowed, when set, is the viewer's content-restriction predicate
