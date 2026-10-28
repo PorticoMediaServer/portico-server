@@ -317,3 +317,19 @@ test('after exact read, the original stop claim refuses a successor installation
     assert.equal(successor.remember('different_session'), true);
   } finally {web.dispose();successor.dispose();reg.dispose();owner.dispose();}
 });
+
+test('WEB002 web preparing observation forwards canonical flights, installed IDs and late cleanup', async () => {
+  const held = deferred<void>();let stopping = false;
+  const owner = new WebPreparingStarts({isCurrent: () => true, stop: async () => {stopping = true;await held.promise;}});
+  const changes: boolean[] = [], off = owner.subscribePending(() => changes.push(owner.pending())), reg = owner.attach();
+  assert.equal(owner.pending(), false);
+  const start = reg.begin({itemId: 'movie'}, {}, 'web002', undefined, () => true);
+  assert.equal(owner.pending(), true);
+  const cleanup = start.context.capturePreparing!(preparing())!;
+  const pending = cleanup();assert.equal(stopping, true);start.finish();reg.dispose();
+  assert.equal(owner.pending(), true);assert.deepEqual(changes, [true]);
+  held.resolve();await pending;assert.equal(owner.pending(), false);assert.deepEqual(changes, [true, false]);
+  const next = owner.attach();next.remember('installed');assert.equal(owner.pending(), true);
+  next.forget('installed');assert.equal(owner.pending(), false);next.dispose();off();owner.dispose();
+  assert.deepEqual(changes, [true, false, true, false]);
+});
