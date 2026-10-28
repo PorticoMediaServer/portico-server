@@ -18,7 +18,7 @@ export const settingsSpecMessages = {
   "next.settingsSpec.account.profile.groups.1.rows.1.control.options.6.label": "Rose",
   "next.settingsSpec.account.profile.groups.1.rows.1.control.options.7.label": "Sky",
   "next.settingsSpec.account.profile.groups.1.rows.2.label": "Picture",
-  "next.settingsSpec.account.profile.groups.1.rows.2.help": "JPEG, PNG or WebP, up to 4 MB.",
+  "next.settingsSpec.account.profile.groups.1.rows.2.help": "JPEG or PNG, up to 4 MB.",
   "next.settingsSpec.account.profile.groups.1.rows.2.control.label": "Choose a photo…",
   "next.settingsSpec.account.profile.groups.1.rows.2.control.second.label": "Remove",
   "next.settingsSpec.account.profile.groups.1.rows.3.label": "Delete profile",

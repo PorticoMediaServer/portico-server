@@ -16,13 +16,13 @@ export function ProfilePicture({source, isCurrent, onFailure}: {source: ProfileS
   const run = async (profile: ManagedProfile, file?: File) => {
     if (pending.current || state.busy || !isCurrent()) return;
     if (file && (!file.size || file.size > AVATAR_MAX_BYTES)) {setError('size');return;}
-    if (file && !['image/jpeg', 'image/png', 'image/webp'].includes(file.type)) {setError('type');return;}
+    if (file && !['image/jpeg', 'image/png'].includes(file.type)) {setError('type');return;}
     pending.current = true;setError(undefined);
     try {await source.picture(profile, file);} catch {if (isCurrent() && !source.getSnapshot().error) onFailure();}
     finally {pending.current = false;}
   };
   return <div className={styles.pictureActions}>
-    <input ref={picker} type="file" hidden accept="image/jpeg,image/png,image/webp" onChange={event => {
+    <input ref={picker} type="file" hidden accept="image/jpeg,image/png" onChange={event => {
       const file = event.currentTarget.files?.[0], captured = target.current;event.currentTarget.value = '';target.current = undefined;
       if (file && captured) void run(captured, file);
     }} />
