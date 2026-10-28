@@ -312,7 +312,7 @@ func adjustFacetCount(ctx context.Context, tx *sql.Tx, at facetPlace, k facetKey
 
 func init() {
 	Register(DomainFacetCounts, Derivation{
-		Version: 5,
+		Version: 6,
 		Drain: func(ctx context.Context, tx *sql.Tx, keys []Key, limit int) ([]int64, error) {
 			done := make([]int64, 0, len(keys))
 			derived := make(map[int64]bool, len(keys))
@@ -347,8 +347,26 @@ func init() {
 			return done, nil
 		},
 		Backfill: func(ctx context.Context, tx *sql.Tx, after int64, limit int) ([]int64, error) {
-			// Episodes are visited too: version 2 counted them, and their rows are cleared here.
-			return scanIDs(ctx, tx, `SELECT entity_id FROM catalog_browse_rows WHERE entity_id>? AND (item_id IS NOT NULL OR kind=`+strconv.Itoa(int(Show))+`) ORDER BY entity_id LIMIT ?`, after, limit)
+			// Visit current AND previously accepted owners. Missing browse rows
+			// must still withdraw their old counts/episode contributions. Seek
+			// each prefix separately instead of DISTINCT/UNION over every value
+			// of a holder with arbitrarily many accepted values.
+			ids := make([]int64, 0, limit)
+			for len(ids) < limit {
+				var next sql.NullInt64
+				if err := tx.QueryRowContext(ctx, `SELECT min(id) FROM (
+ SELECT (SELECT entity_id FROM catalog_browse_rows WHERE entity_id>?1 ORDER BY entity_id LIMIT 1) id
+ UNION ALL SELECT (SELECT entity_id FROM catalog_facet_members WHERE entity_id>?1 ORDER BY entity_id LIMIT 1)
+ UNION ALL SELECT (SELECT episode_id FROM catalog_show_facet_episodes WHERE episode_id>?1 ORDER BY episode_id LIMIT 1))`, after).Scan(&next); err != nil {
+					return nil, err
+				}
+				if !next.Valid {
+					break
+				}
+				after = next.Int64
+				ids = append(ids, after)
+			}
+			return ids, nil
 		},
 	})
 }

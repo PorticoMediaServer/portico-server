@@ -6074,12 +6074,14 @@ CREATE TRIGGER catalog_rec_facets_audio_policy_insert AFTER INSERT ON audio_meta
   WHERE e.library_id=(SELECT id FROM catalog_libraries WHERE library_id=NEW.library_id) AND e.kind IN(7,8,9) AND 1
   ON CONFLICT(domain,entity_id) DO UPDATE SET revision=revision+1;
 END;
-CREATE TRIGGER catalog_facet_browse_insert AFTER INSERT ON catalog_browse_rows WHEN NEW.item_id IS NOT NULL BEGIN
+CREATE TRIGGER catalog_facet_browse_insert AFTER INSERT ON catalog_browse_rows WHEN NEW.item_id IS NOT NULL OR NEW.kind=2 BEGIN
  INSERT INTO catalog_dirty(domain,entity_id,revision) VALUES(33,NEW.entity_id,1) ON CONFLICT(domain,entity_id) DO UPDATE SET revision=revision+1;
 END;
-CREATE TRIGGER catalog_facet_browse_update AFTER UPDATE OF year,rating_key,label_key,library_id,item_id,added_text,recent_text ON catalog_browse_rows
- WHEN OLD.added_text IS NOT NEW.added_text OR OLD.recent_text IS NOT NEW.recent_text OR OLD.year IS NOT NEW.year OR OLD.rating_key IS NOT NEW.rating_key OR OLD.label_key IS NOT NEW.label_key OR OLD.library_id IS NOT NEW.library_id OR OLD.item_id IS NOT NEW.item_id BEGIN
+CREATE TRIGGER catalog_facet_browse_update AFTER UPDATE OF entity_id,kind,year,rating_key,label_key,library_id,item_id,added_text,recent_text ON catalog_browse_rows
+ WHEN OLD.entity_id IS NOT NEW.entity_id OR OLD.kind IS NOT NEW.kind OR OLD.added_text IS NOT NEW.added_text OR OLD.recent_text IS NOT NEW.recent_text OR OLD.year IS NOT NEW.year OR OLD.rating_key IS NOT NEW.rating_key OR OLD.label_key IS NOT NEW.label_key OR OLD.library_id IS NOT NEW.library_id OR OLD.item_id IS NOT NEW.item_id BEGIN
  INSERT INTO catalog_dirty(domain,entity_id,revision) VALUES(33,NEW.entity_id,1) ON CONFLICT(domain,entity_id) DO UPDATE SET revision=revision+1;
+ INSERT INTO catalog_dirty(domain,entity_id,revision) SELECT 33,OLD.entity_id,1 WHERE OLD.entity_id IS NOT NEW.entity_id
+  ON CONFLICT(domain,entity_id) DO UPDATE SET revision=revision+1;
 END;
 CREATE TRIGGER catalog_facet_browse_delete AFTER DELETE ON catalog_browse_rows BEGIN
  INSERT INTO catalog_dirty(domain,entity_id,revision) VALUES(33,OLD.entity_id,1) ON CONFLICT(domain,entity_id) DO UPDATE SET revision=revision+1;
@@ -6087,8 +6089,11 @@ END;
 CREATE TRIGGER catalog_facet_terms_insert AFTER INSERT ON catalog_term_sources BEGIN
  INSERT INTO catalog_dirty(domain,entity_id,revision) VALUES(33,NEW.entity_id,1) ON CONFLICT(domain,entity_id) DO UPDATE SET revision=revision+1;
 END;
-CREATE TRIGGER catalog_facet_terms_update AFTER UPDATE ON catalog_term_sources BEGIN
+CREATE TRIGGER catalog_facet_terms_update AFTER UPDATE OF entity_id,term_id,label_override ON catalog_term_sources
+ WHEN OLD.entity_id IS NOT NEW.entity_id OR OLD.term_id IS NOT NEW.term_id OR OLD.label_override IS NOT NEW.label_override BEGIN
  INSERT INTO catalog_dirty(domain,entity_id,revision) VALUES(33,NEW.entity_id,1) ON CONFLICT(domain,entity_id) DO UPDATE SET revision=revision+1;
+ INSERT INTO catalog_dirty(domain,entity_id,revision) SELECT 33,OLD.entity_id,1 WHERE OLD.entity_id IS NOT NEW.entity_id
+  ON CONFLICT(domain,entity_id) DO UPDATE SET revision=revision+1;
 END;
 CREATE TRIGGER catalog_facet_terms_delete AFTER DELETE ON catalog_term_sources BEGIN
  INSERT INTO catalog_dirty(domain,entity_id,revision) VALUES(33,OLD.entity_id,1) ON CONFLICT(domain,entity_id) DO UPDATE SET revision=revision+1;
@@ -6099,11 +6104,23 @@ END;
 CREATE TRIGGER catalog_facet_attributes_delete AFTER DELETE ON catalog_item_attribute_edges BEGIN
  INSERT INTO catalog_dirty(domain,entity_id,revision) VALUES(33,OLD.item_id,1) ON CONFLICT(domain,entity_id) DO UPDATE SET revision=revision+1;
 END;
+CREATE TRIGGER catalog_facet_attributes_update AFTER UPDATE OF item_id,term_id,source_value ON catalog_item_attribute_edges
+ WHEN OLD.item_id IS NOT NEW.item_id OR OLD.term_id IS NOT NEW.term_id OR OLD.source_value IS NOT NEW.source_value BEGIN
+ INSERT INTO catalog_dirty(domain,entity_id,revision) VALUES(33,NEW.item_id,1) ON CONFLICT(domain,entity_id) DO UPDATE SET revision=revision+1;
+ INSERT INTO catalog_dirty(domain,entity_id,revision) SELECT 33,OLD.item_id,1 WHERE OLD.item_id IS NOT NEW.item_id
+  ON CONFLICT(domain,entity_id) DO UPDATE SET revision=revision+1;
+END;
 CREATE TRIGGER catalog_facet_links_insert AFTER INSERT ON catalog_asset_links BEGIN
  INSERT INTO catalog_dirty(domain,entity_id,revision) VALUES(33,NEW.entity_id,1) ON CONFLICT(domain,entity_id) DO UPDATE SET revision=revision+1;
 END;
 CREATE TRIGGER catalog_facet_links_delete AFTER DELETE ON catalog_asset_links BEGIN
  INSERT INTO catalog_dirty(domain,entity_id,revision) VALUES(33,OLD.entity_id,1) ON CONFLICT(domain,entity_id) DO UPDATE SET revision=revision+1;
+END;
+CREATE TRIGGER catalog_facet_links_update AFTER UPDATE OF entity_id,asset_id ON catalog_asset_links
+ WHEN OLD.entity_id IS NOT NEW.entity_id OR OLD.asset_id IS NOT NEW.asset_id BEGIN
+ INSERT INTO catalog_dirty(domain,entity_id,revision) VALUES(33,NEW.entity_id,1) ON CONFLICT(domain,entity_id) DO UPDATE SET revision=revision+1;
+ INSERT INTO catalog_dirty(domain,entity_id,revision) SELECT 33,OLD.entity_id,1 WHERE OLD.entity_id IS NOT NEW.entity_id
+  ON CONFLICT(domain,entity_id) DO UPDATE SET revision=revision+1;
 END;
 CREATE TRIGGER catalog_facet_collections_insert AFTER INSERT ON catalog_collection_members BEGIN
  INSERT INTO catalog_dirty(domain,entity_id,revision) VALUES(33,NEW.item_id,1) ON CONFLICT(domain,entity_id) DO UPDATE SET revision=revision+1;
@@ -6111,13 +6128,31 @@ END;
 CREATE TRIGGER catalog_facet_collections_delete AFTER DELETE ON catalog_collection_members BEGIN
  INSERT INTO catalog_dirty(domain,entity_id,revision) VALUES(33,OLD.item_id,1) ON CONFLICT(domain,entity_id) DO UPDATE SET revision=revision+1;
 END;
+CREATE TRIGGER catalog_facet_collections_update AFTER UPDATE OF item_id,collection_id ON catalog_collection_members
+ WHEN OLD.item_id IS NOT NEW.item_id OR OLD.collection_id IS NOT NEW.collection_id BEGIN
+ INSERT INTO catalog_dirty(domain,entity_id,revision) VALUES(33,NEW.item_id,1) ON CONFLICT(domain,entity_id) DO UPDATE SET revision=revision+1;
+ INSERT INTO catalog_dirty(domain,entity_id,revision) SELECT 33,OLD.item_id,1 WHERE OLD.item_id IS NOT NEW.item_id
+  ON CONFLICT(domain,entity_id) DO UPDATE SET revision=revision+1;
+END;
 CREATE INDEX catalog_term_sources_term ON catalog_term_sources(term_id,entity_id);
-CREATE TRIGGER catalog_facet_term_label AFTER UPDATE OF label ON catalog_terms WHEN OLD.label IS NOT NEW.label BEGIN
- INSERT INTO catalog_dirty(domain,entity_id,revision) SELECT 33,entity_id,1 FROM catalog_term_sources INDEXED BY catalog_term_sources_term WHERE term_id=NEW.id AND 1
+-- Source maintenance only: one accepting marker, independent of target count.
+-- No FKs: source deletion cannot cascade-delete a large maintenance graph.
+CREATE TABLE catalog_facet_source_fanouts(
+ domain INTEGER NOT NULL CHECK(domain IN(36,37)),
+ source_id INTEGER NOT NULL,
+ revision INTEGER NOT NULL,
+ has_after INTEGER NOT NULL DEFAULT 0 CHECK(has_after IN(0,1)),
+ after_entity INTEGER NOT NULL DEFAULT 0,
+ after_provider TEXT NOT NULL DEFAULT '',
+ after_source TEXT NOT NULL DEFAULT '',
+ PRIMARY KEY(domain,source_id)) WITHOUT ROWID, STRICT;
+CREATE TRIGGER catalog_facet_term_label AFTER UPDATE OF label,vocab ON catalog_terms
+ WHEN OLD.label IS NOT NEW.label OR OLD.vocab IS NOT NEW.vocab BEGIN
+ INSERT INTO catalog_dirty(domain,entity_id,revision) VALUES(36,NEW.id,1)
   ON CONFLICT(domain,entity_id) DO UPDATE SET revision=revision+1;
 END;
 CREATE TRIGGER catalog_facet_asset_height AFTER UPDATE OF height ON catalog_assets WHEN OLD.height IS NOT NEW.height BEGIN
- INSERT INTO catalog_dirty(domain,entity_id,revision) SELECT 33,entity_id,1 FROM catalog_asset_links INDEXED BY catalog_asset_links_asset WHERE asset_id=NEW.id AND 1
+ INSERT INTO catalog_dirty(domain,entity_id,revision) VALUES(37,NEW.id,1)
   ON CONFLICT(domain,entity_id) DO UPDATE SET revision=revision+1;
 END;
 CREATE TRIGGER catalog_container_added_episode_insert AFTER INSERT ON catalog_episodes BEGIN
@@ -7401,13 +7436,16 @@ CREATE TRIGGER browse_personal_order_update AFTER UPDATE OF library_id,kind,rati
  INSERT INTO viewer_revisions(profile_id,library_id,revision,title_path) SELECT NEW.profile_id,library_id,1,COALESCE((SELECT lower(hex(te.public_id))||COALESCE('/'||lower(hex(tp.public_id)),'')||COALESCE('/'||lower(hex(tg.public_id)),'') FROM catalog_entities te LEFT JOIN catalog_entities tp ON tp.id=te.parent_id LEFT JOIN catalog_entities tg ON tg.id=tp.parent_id WHERE te.id=NEW.entity_id),'') FROM catalog_libraries WHERE id IN(OLD.library_id,NEW.library_id) ON CONFLICT(profile_id,library_id) DO UPDATE SET revision=revision+1,title_path=excluded.title_path;
 END;
 CREATE TRIGGER catalog_facet_episode_insert AFTER INSERT ON catalog_episodes BEGIN
+ INSERT INTO catalog_dirty(domain,entity_id,revision) VALUES(33,NEW.entity_id,1) ON CONFLICT(domain,entity_id) DO UPDATE SET revision=revision+1;
  INSERT INTO catalog_dirty(domain,entity_id,revision) VALUES(33,NEW.show_id,1) ON CONFLICT(domain,entity_id) DO UPDATE SET revision=revision+1;
 END;
 CREATE TRIGGER catalog_facet_episode_delete AFTER DELETE ON catalog_episodes BEGIN
  INSERT INTO catalog_dirty(domain,entity_id,revision) VALUES(33,OLD.show_id,1) ON CONFLICT(domain,entity_id) DO UPDATE SET revision=revision+1;
  INSERT INTO catalog_dirty(domain,entity_id,revision) VALUES(33,OLD.entity_id,1) ON CONFLICT(domain,entity_id) DO UPDATE SET revision=revision+1;
 END;
-CREATE TRIGGER catalog_facet_episode_move AFTER UPDATE OF show_id ON catalog_episodes WHEN OLD.show_id IS NOT NEW.show_id BEGIN
+CREATE TRIGGER catalog_facet_episode_move AFTER UPDATE OF entity_id,show_id ON catalog_episodes WHEN OLD.entity_id IS NOT NEW.entity_id OR OLD.show_id IS NOT NEW.show_id BEGIN
+ INSERT INTO catalog_dirty(domain,entity_id,revision) SELECT 33,OLD.entity_id,1 WHERE OLD.entity_id IS NOT NEW.entity_id
+  ON CONFLICT(domain,entity_id) DO UPDATE SET revision=revision+1;
  INSERT INTO catalog_dirty(domain,entity_id,revision) VALUES(33,OLD.show_id,1) ON CONFLICT(domain,entity_id) DO UPDATE SET revision=revision+1;
  INSERT INTO catalog_dirty(domain,entity_id,revision) VALUES(33,NEW.show_id,1) ON CONFLICT(domain,entity_id) DO UPDATE SET revision=revision+1;
  INSERT INTO catalog_dirty(domain,entity_id,revision) VALUES(33,NEW.entity_id,1) ON CONFLICT(domain,entity_id) DO UPDATE SET revision=revision+1;

@@ -1,0 +1,201 @@
+package catalog
+
+import (
+	"context"
+	"database/sql"
+	"encoding/json"
+	"time"
+
+	"portico.local/server/internal/dbwork"
+	"portico.local/server/internal/readprep"
+)
+
+// The reducer visits the maintained count-order index, not holders. It keeps
+// only <=201 integer identities and an exact total. Cold filtered windows are
+// O(V+label bytes), including deep pages; they are not advertised as O(page).
+// Matching precomputed sorttext.Fold bytes via BLOB instr is exactly Go's
+// strings.Contains, including a one-byte needle and embedded NUL bytes.
+// No query writes, maps of all values, GROUP BY, FTS or foreground sorts.
+type facetWindowScan struct {
+	db             *sql.DB
+	base           int64
+	spec           facetWindowSpec
+	bytes          int64
+	ids            []int64
+	cursor         int64
+	total          int64
+	earlier, later bool
+}
+
+func (s *facetWindowScan) AccountedBytes() int64 { return s.bytes }
+
+const facetWindowOrder = `b.negative_count,b.label_order,b.value_order,b.value_id`
+const facetWindowTuple = `(` + facetWindowOrder + `)`
+const facetWindowAnchor = `(SELECT negative_count,label_order,value_order,value_id FROM catalog_facet_base_rows WHERE base_id=? AND value_id=?)`
+
+func (s *facetWindowScan) Step(ctx context.Context, budget *readprep.Budget) (readprep.StepResult, error) {
+	if err := budget.Resize(s.bytes); err != nil {
+		return readprep.StepResult{}, err
+	}
+	done := false
+	err := dbwork.WithReadSnapshot(ctx, s.db, func(ctx context.Context) error {
+		tx := dbwork.Snapshot(ctx)
+		if _, err := facetBaseSnapshot(ctx, tx, s.base, true); err != nil {
+			return readprep.ErrStale
+		}
+		if s.spec.Needle == "" {
+			var err error
+			done, err = s.empty(ctx, tx)
+			return err
+		}
+		eligible := "1"
+		args := []any{s.spec.Needle}
+		if s.spec.Anchor > 0 {
+			op := ">"
+			if s.spec.Direction == 2 {
+				op = "<"
+			}
+			if s.spec.Direction == 3 {
+				op = ">="
+			}
+			eligible = facetWindowTuple + op + facetWindowAnchor
+			args = append(args, s.base, s.spec.Anchor)
+		}
+		query := `SELECT b.value_id,length(CAST(x.folded AS BLOB))+length(CAST(b.label_order AS BLOB))+length(CAST(b.value_order AS BLOB)),instr(CAST(x.folded AS BLOB),CAST(? AS BLOB))>0,` + eligible + `
+ FROM catalog_facet_base_rows b INDEXED BY catalog_facet_base_order JOIN catalog_facet_base_texts x ON x.id=b.text_id WHERE b.base_id=?`
+		args = append(args, s.base)
+		if s.cursor > 0 {
+			query += ` AND ` + facetWindowTuple + `>` + facetWindowAnchor
+			args = append(args, s.base, s.cursor)
+		}
+		query += ` ORDER BY ` + facetWindowOrder + ` LIMIT 4096`
+		rows, err := tx.QueryContext(ctx, query, args...)
+		if err != nil {
+			return err
+		}
+		defer rows.Close()
+		started := time.Now()
+		n := 0
+		bytes := int64(0)
+		for rows.Next() {
+			var id, width int64
+			var match, accept bool
+			if err = rows.Scan(&id, &width, &match, &accept); err != nil {
+				return err
+			}
+			n++
+			bytes += width
+			s.cursor = id
+			if match {
+				s.total++
+				if accept {
+					if s.spec.Direction == 2 {
+						if len(s.ids) == s.spec.Limit+1 {
+							s.ids = append(s.ids[:0], s.ids[1:]...)
+						}
+						s.ids = append(s.ids, id)
+					} else if len(s.ids) < s.spec.Limit+1 {
+						s.ids = append(s.ids, id)
+					}
+				} else if s.spec.Direction == 2 {
+					s.later = true
+				} else {
+					s.earlier = true
+				}
+			}
+			// Soft yield: do not cancel a successfully processed row or silently lose
+			// its cursor. A single legal scalar is the explicit O(B) exception.
+			if bytes >= 4<<20 || time.Since(started) >= 8*time.Millisecond {
+				return nil
+			}
+		}
+		if err = rows.Err(); err != nil {
+			return err
+		}
+		done = n < 4096
+		return nil
+	})
+	if err != nil {
+		return readprep.StepResult{}, err
+	}
+	if !done {
+		return readprep.StepResult{}, nil
+	}
+	earlier, later := s.earlier, s.later
+	if len(s.ids) > s.spec.Limit {
+		if s.spec.Direction == 2 {
+			s.ids = s.ids[1:]
+			earlier = true
+		} else {
+			s.ids = s.ids[:s.spec.Limit]
+			later = true
+		}
+	}
+	sum := facetWindowSummary{Spec: s.spec, IDs: s.ids, Total: s.total, Earlier: earlier, Later: later}
+	// Fixed bounded payload: <=201 integer IDs + <=300 folded query bytes. Charge
+	// a conservative peak for encoder backing memory and payload before allocation.
+	if err = budget.Resize(s.bytes + 32768); err != nil {
+		return readprep.StepResult{}, err
+	}
+	payload, err := json.Marshal(sum)
+	if err != nil {
+		return readprep.StepResult{}, err
+	}
+	s.bytes += 32768
+	return readprep.StepResult{Done: true, Payload: payload}, nil
+}
+
+// empty uses the ready index and maintained exact distinct-value header. There
+// is no all-value scan even at a cold initial, before, after or inclusive reload.
+func (s *facetWindowScan) empty(ctx context.Context, tx *sql.Tx) (bool, error) {
+	where := "b.base_id=?"
+	args := []any{s.base}
+	order := facetWindowOrder
+	if s.spec.Anchor > 0 {
+		op := ">"
+		if s.spec.Direction == 2 {
+			op = "<"
+			order = `b.negative_count DESC,b.label_order DESC,b.value_order DESC,b.value_id DESC`
+		}
+		if s.spec.Direction == 3 {
+			op = ">="
+		}
+		where += ` AND ` + facetWindowTuple + op + facetWindowAnchor
+		args = append(args, s.base, s.spec.Anchor)
+	}
+	args = append(args, s.spec.Limit+1)
+	rows, err := tx.QueryContext(ctx, `SELECT b.value_id FROM catalog_facet_base_rows b INDEXED BY catalog_facet_base_order WHERE `+where+` ORDER BY `+order+` LIMIT ?`, args...)
+	if err != nil {
+		return false, err
+	}
+	for rows.Next() {
+		var id int64
+		if err = rows.Scan(&id); err != nil {
+			rows.Close()
+			return false, err
+		}
+		s.ids = append(s.ids, id)
+	}
+	err = rows.Err()
+	rows.Close()
+	if err != nil {
+		return false, err
+	}
+	if s.spec.Direction == 2 {
+		s.later = true
+		if len(s.ids) > s.spec.Limit {
+			s.earlier = true
+			s.ids = s.ids[:s.spec.Limit]
+		}
+		for i, j := 0, len(s.ids)-1; i < j; i, j = i+1, j-1 {
+			s.ids[i], s.ids[j] = s.ids[j], s.ids[i]
+		}
+	}
+	if s.spec.Direction == 1 {
+		s.earlier = true
+	}
+	if s.spec.Direction == 3 {
+		err = tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM catalog_facet_base_rows b INDEXED BY catalog_facet_base_order WHERE b.base_id=? AND `+facetWindowTuple+`<`+facetWindowAnchor+`)`, s.base, s.base, s.spec.Anchor).Scan(&s.earlier)
+	}
+	return true, err
+}

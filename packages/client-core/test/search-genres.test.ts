@@ -87,3 +87,24 @@ test('a genre opens the canonical video-only across browse with its exact value'
   assert.ok(Object.isFrozen(request) && Object.isFrozen(request.query) && Object.isFrozen(request.sort));
   for (const value of ['', 'x'.repeat(1025), 'Crime\u0000private']) assert.throws(() => searchGenreBrowseRequest(value));
 });
+
+test('slot previews are independent bounded reads and retain artless-directory presence', async () => {
+  assert.equal(searchGenresPath({limit: 6, preview: 'covers'}), '/v1/search/genres?limit=6&preview=covers');
+  assert.throws(() => searchGenresPath({preview: 'covers', cursor: 'list-only'}));
+  for (const raw of [
+    {revision: 'basis', genres: [], hasGenres: true},
+    {revision: 'basis', genres: [], hasGenres: false},
+  ]) {
+    const page = await readSearchGenres({request: async <T>() => raw as T}, {limit: 4, preview: 'backdrop'});
+    assert.equal(page.hasGenres, raw.hasGenres);
+    assert.deepEqual(page.genres, []);
+  }
+  for (const raw of [
+    {revision: 'basis', genres: []},
+    {revision: 'basis', genres: [], hasGenres: true, nextCursor: 'do-not-drain'},
+    {revision: 'basis', genres: [answer().genres[1]], hasGenres: true},
+    {revision: 'basis', genres: answer().genres, hasGenres: true},
+  ]) {
+    await assert.rejects(readSearchGenres({request: async <T>() => raw as T}, {limit: 1, preview: 'backdrop'}));
+  }
+});

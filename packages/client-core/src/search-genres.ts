@@ -10,9 +10,9 @@ export type SearchGenre = Readonly<{
   backdrop?: SearchGenreArt; covers: readonly SearchGenreArt[];
 }>;
 export type SearchGenrePage = Readonly<{
-  revision: string; genres: readonly SearchGenre[]; nextCursor?: string;
+  revision: string; genres: readonly SearchGenre[]; nextCursor?: string; hasGenres?: boolean;
 }>;
-export type SearchGenreRequest = Readonly<{limit?: number; cursor?: string}>;
+export type SearchGenreRequest = Readonly<{limit?: number; cursor?: string; preview?: 'backdrop' | 'covers'}>;
 
 const object = (value: unknown): value is Record<string, unknown> => typeof value === 'object' && value !== null && !Array.isArray(value);
 const text = (value: unknown, max: number): value is string => typeof value === 'string' && value.length > 0 && value.length <= max && !/[\x00-\x1f\x7f]/.test(value);
@@ -36,7 +36,8 @@ function art(value: {kind: string; id: string; path: string}, role: 'backdrop' |
 export function parseSearchGenres(input: unknown): SearchGenrePage {
   // Optional nonnull slots are absence or a real value, never null. Retain
   // this distinction before a forward-compatible generated decoder copies it.
-  if (!object(input) || input.nextCursor === null || !Array.isArray(input.genres) || input.genres.length > 50 || input.genres.some(genre => !object(genre) || genre.backdrop === null)) invalid();
+  if (!object(input) || input.nextCursor === null || input.hasGenres !== undefined && typeof input.hasGenres !== 'boolean' || !Array.isArray(input.genres) || input.genres.length > 50 || input.genres.some(genre => !object(genre) || genre.backdrop === null)) invalid();
+  const hasGenres = input.hasGenres as boolean | undefined;
   let raw: RouteResponse<'get_search_genres'>;
   try { raw = decodeGetSearchGenresResponse(input); } catch { invalid(); }
   if (!text(raw.revision, 1024) || raw.nextCursor !== undefined && !text(raw.nextCursor, 4096)) invalid();
@@ -50,13 +51,15 @@ export function parseSearchGenres(input: unknown): SearchGenrePage {
       ...(genre.backdrop !== undefined ? {backdrop: art(genre.backdrop, 'backdrop')} : {}),
       covers: Object.freeze(covers)});
   });
-  return Object.freeze({revision: raw.revision, genres: Object.freeze(genres), ...(raw.nextCursor !== undefined ? {nextCursor: raw.nextCursor} : {})});
+  return Object.freeze({revision: raw.revision, genres: Object.freeze(genres), ...(hasGenres !== undefined ? {hasGenres} : {}), ...(raw.nextCursor !== undefined ? {nextCursor: raw.nextCursor} : {})});
 }
 
 export function searchGenresPath(request: SearchGenreRequest = {}): string {
   const limit = request.limit ?? 50;
   if (!Number.isSafeInteger(limit) || limit < 1 || limit > 50 || request.cursor !== undefined && request.cursor !== '' && !text(request.cursor, 4096)) throw new Error('Invalid genre read window.');
+  if (request.preview !== undefined && (request.preview !== 'backdrop' && request.preview !== 'covers' || !!request.cursor)) throw new Error('Invalid genre preview.');
   const query = new URLSearchParams({limit: String(limit)});
+  if (request.preview) query.set('preview', request.preview);
   if (request.cursor) query.set('cursor', request.cursor);
   return `${routePath('get_search_genres')}?${query}`;
 }
@@ -71,7 +74,10 @@ export async function readSearchGenres(api: LibraryContentApi, request: SearchGe
   current(signal);
   const raw = await api.request<RouteResponse<'get_search_genres'>>(searchGenresPath(request), 'GET', undefined, signal);
   current(signal);
-  return parseSearchGenres(raw);
+  const page = parseSearchGenres(raw);
+  if (page.genres.length > (request.limit ?? 50)) invalid();
+  if (request.preview && (page.hasGenres === undefined || page.nextCursor !== undefined || page.genres.some(genre => request.preview === 'backdrop' ? !genre.backdrop : genre.covers.length !== 2))) invalid();
+  return page;
 }
 
 /** A tile opens the exact movie/show domain its count describes through the
