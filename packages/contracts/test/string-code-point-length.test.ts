@@ -48,6 +48,7 @@ const savedGroupReference = (serverId: string) => ({serverId, referenceId: 'ref_
 const invitation = (notes?: string | null) => ({
   id: 'inv_1', role: 'member', allowedLibraries: ['lib_1'], state: 'pending',
   createdAt: '2026-01-01T00:00:00Z', expiresAt: '2026-01-02T00:00:00Z', revision: 1,
+  access: {accessTokens: false, allowRemote: true, maxContentRating: '', maxStreams: 0, maxStreamsMode: 'inherit'},
   ...(notes === undefined ? {} : {notes}),
 });
 
