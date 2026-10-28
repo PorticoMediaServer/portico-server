@@ -27,6 +27,12 @@ func PurgeItemTx(ctx context.Context, tx *sql.Tx, item string) error {
 // disk, and it does not keep anyone's state: callers that remove a title for
 // good go through RemoveTitleTx, which keeps the state first.
 func purgeEntityTx(ctx context.Context, tx *sql.Tx, item int64) error {
+	if err := compactcatalog.RequireNoEntityMBPinsTx(ctx, tx, item); err != nil {
+		return err
+	}
+	if err := compactcatalog.RequireEntityAcquirableTx(ctx, tx, item); err != nil {
+		return err
+	}
 	type file struct {
 		id    int64
 		token string

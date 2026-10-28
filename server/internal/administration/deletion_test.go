@@ -4,11 +4,14 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"testing"
 
+	"portico.local/server/internal/catalog"
 	"portico.local/server/internal/catalogtest"
+	"portico.local/server/internal/dbwork"
 )
 
 // deletionFixture is a film with two files in a library that allows deleting.
@@ -172,4 +175,85 @@ func TestDeleteWithoutFilesLeavesThemAndKeepsEachProfilesState(t *testing.T) {
 	if err = db.QueryRow(`SELECT favorite,watched,rating FROM retained_title_state WHERE profile_id='p1'`).Scan(&favorite, &watched, &rating); err != nil || !favorite || !watched || rating != 9 {
 		t.Fatalf("kept state: favorite=%v watched=%v rating=%v err=%v", favorite, watched, rating, err)
 	}
+}
+
+func TestP252bDeleteAllFortyThreePinnedMembers(t *testing.T) {
+	s, db, root := newService(t)
+	c := catalogtest.New(t, db)
+	library := c.Library("music", "Music", "music", root)
+	artist := c.Artist(library, "Artist")
+	album := c.Album(artist, "Album", 2000)
+	for i := 0; i < 43; i++ {
+		c.Song(album, i+1, filepath.Join(root, fmt.Sprintf("song-%d.flac", i)), fmt.Sprintf("Song %d", i))
+	}
+	c.Exec(`INSERT INTO mb_release_evidence(revision_id,provider_id,digest,title,artist,release_group_id,group_title,primary_type,date,country,barcode,disambiguation,observed_at,payload) VALUES('r','r',printf('%064d',0),'','','','','','','','','','now','{}')`)
+	c.Exec(`UPDATE mb_release_evidence SET sealed=1 WHERE revision_id='r'`)
+	c.Exec(`INSERT INTO mb_song_links(item_id,release_revision,release_id,observed_at) SELECT entity_id,'r','r','now' FROM catalog_songs WHERE album_id=?`, album.ID)
+	c.Drain()
+	doc, e := s.LibrarySettingsFor(context.Background(), allow, "music")
+	if e != nil {
+		t.Fatal(e)
+	}
+	doc.Settings.AllowMediaDeletion = true
+	if _, e = s.SaveLibrarySettings(context.Background(), allow, "music", Change[LibrarySettings]{ExpectedRevision: doc.Revision, Settings: doc.Settings, OperationID: "music-delete-policy"}); e != nil {
+		t.Fatal(e)
+	}
+	preview, e := s.PreviewDelete(context.Background(), allow, []string{album.Public})
+	if e != nil {
+		t.Fatal(e)
+	}
+	request := DeleteRequest{ItemIDs: []string{album.Public}, ExpectedRevision: preview.Revision, OperationID: "delete-forty-three", Confirmation: preview.Confirmation, DeleteFiles: false}
+	out, e := s.Delete(context.Background(), allow, "test-owner", request)
+	if e != nil || out.Removed != 1 || out.Failed != 0 {
+		t.Fatal(out, e)
+	}
+	var remaining int
+	if e = db.QueryRow(`SELECT count(*) FROM catalog_songs`).Scan(&remaining); e != nil || remaining != 0 {
+		t.Fatal("skipped remaining member", remaining, e)
+	}
+	var anchor string
+	if e = db.QueryRow(`SELECT mutation_id FROM catalog_entity_mutations WHERE owner_kind='administration' AND parent_mutation_id IS NULL AND acknowledged=1 AND child_count=42`).Scan(&anchor); e != nil {
+		t.Fatal("final receipt did not acknowledge actual command anchor", e)
+	}
+	for i := 0; i < 180; i++ {
+		dbwork.ResetPlans()
+		job, e := catalog.New(db).MutationAdapter().Step(context.Background(), "cleanup")
+		if e != nil {
+			t.Fatal(e)
+		}
+		if changed := dbwork.Plans().Largest.Rows; changed > 24 {
+			t.Fatal("cleanup exceeded24 changed rows", changed)
+		}
+		var debt int
+		err := db.QueryRow(`SELECT child_count FROM catalog_entity_mutations WHERE mutation_id=?`, anchor).Scan(&debt)
+		if err == sql.ErrNoRows {
+			var children int
+			db.QueryRow(`SELECT count(*) FROM catalog_entity_mutations WHERE parent_mutation_id=?`, anchor).Scan(&children)
+			if children != 0 {
+				t.Fatal("anchor reaped before children")
+			}
+		}
+		if job.State == "succeeded" {
+			break
+		}
+		if i == 179 {
+			t.Fatal("administration cleanup did not finish")
+		}
+	}
+	if n := rowsAdminMutationCount(t, db); n != 0 {
+		t.Fatal("administration terminal history leaked", n)
+	}
+	replay, e := s.Delete(context.Background(), allow, "test-owner", request)
+	if e != nil || replay.Removed != 1 {
+		t.Fatal("receipt after all terminal outcomes", replay, e)
+	}
+}
+
+func rowsAdminMutationCount(t *testing.T, db *sql.DB) int {
+	t.Helper()
+	var n int
+	if e := db.QueryRow(`SELECT count(*) FROM catalog_entity_mutations WHERE owner_kind='administration'`).Scan(&n); e != nil {
+		t.Fatal(e)
+	}
+	return n
 }

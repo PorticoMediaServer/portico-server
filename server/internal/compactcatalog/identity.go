@@ -95,6 +95,9 @@ func IsLocatorKey(key string) bool {
 // the entity is left alone; one held by another live entity is reported as
 // taken (the caller decides whether that means the two are one title).
 func AddIdentityTx(ctx context.Context, tx *sql.Tx, entity int64, key string) (taken int64, err error) {
+	if err = RequireEntityAcquirableTx(ctx, tx, entity); err != nil {
+		return 0, err
+	}
 	if key == "" {
 		return 0, nil
 	}
@@ -129,6 +132,9 @@ func AddIdentityTx(ctx context.Context, tx *sql.Tx, entity int64, key string) (t
 
 // MoveIdentityTx gives a name to an entity whoever held it.
 func MoveIdentityTx(ctx context.Context, tx *sql.Tx, entity int64, key string) error {
+	if err := RequireEntityAcquirableTx(ctx, tx, entity); err != nil {
+		return err
+	}
 	var public []byte
 	var library int64
 	var kind Kind
@@ -146,6 +152,9 @@ func MoveIdentityTx(ctx context.Context, tx *sql.Tx, entity int64, key string) e
 
 // DropIdentityTx removes one name of an entity (a place it no longer occupies).
 func DropIdentityTx(ctx context.Context, tx *sql.Tx, entity int64, key string) error {
+	if err := RequireEntityAcquirableTx(ctx, tx, entity); err != nil {
+		return err
+	}
 	_, err := tx.ExecContext(ctx, `DELETE FROM catalog_identities WHERE source_key=?2 AND public_id=(SELECT public_id FROM catalog_entities WHERE id=?1)
  AND root=(SELECT l.root FROM catalog_entities e JOIN catalog_libraries l ON l.id=e.library_id WHERE e.id=?1)`, entity, key)
 	return err
@@ -207,9 +216,22 @@ func providerCompatibleTx(ctx context.Context, tx *sql.Tx, entity int64, p Provi
 // RecordProviderIdentityTx records proven identity without silently replacing
 // a different identity already accepted for this provider and kind.
 func RecordProviderIdentityTx(ctx context.Context, tx *sql.Tx, entity int64, p ProviderIdentity) error {
+	if err := RequireEntityAcquirableTx(ctx, tx, entity); err != nil {
+		return err
+	}
 	p, err := normalizedProvider(p)
 	if err != nil {
 		return err
+	}
+	// An admitted adoption walks the live identity index under frozen
+	// acquisition authority. A competing family cannot add a new candidate
+	// behind its completed key (including an integer ID reused below it).
+	var adopting bool
+	if err = tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM catalog_entity_mutations m JOIN catalog_entities e ON e.id=? WHERE m.status<>'terminal' AND m.mode='adopt' AND m.family_id<>? AND m.library_id=e.library_id AND m.entity_kind=e.kind AND m.provider=? AND m.provider_kind=? AND m.provider_id=?)`, entity, mutationFamily(ctx), p.Provider, p.Kind, p.ID).Scan(&adopting); err != nil {
+		return err
+	}
+	if adopting {
+		return ErrEntityMutating
 	}
 	ok, err := providerCompatibleTx(ctx, tx, entity, p)
 	if err != nil {
@@ -233,6 +255,9 @@ func FindByProviderTx(ctx context.Context, tx *sql.Tx, library int64, kind Kind,
  WHERE x.provider=? AND x.provider_kind=? AND x.provider_id=? AND e.library_id=? AND e.kind=? ORDER BY e.id LIMIT 1`, p.Provider, p.Kind, p.ID, library, int(kind)).Scan(&id)
 	if errors.Is(err, sql.ErrNoRows) {
 		return 0, nil
+	}
+	if err == nil {
+		err = RequireEntityAcquirableTx(ctx, tx, id)
 	}
 	return id, err
 }
@@ -307,6 +332,9 @@ func ResolveTitleTx(ctx context.Context, tx *sql.Tx, c TitleClaim) (id int64, cr
 		}
 	}
 	compatible := func(candidate int64) (bool, error) {
+		if err := RequireEntityAcquirableTx(ctx, tx, candidate); err != nil {
+			return false, err
+		}
 		if candidate == 0 {
 			return true, nil
 		}

@@ -240,13 +240,23 @@ func (s *Service) mbResult(ctx context.Context, j mbJob, problem error) error {
 			}
 			entity = -1
 		}
-		if _, e = tx.ExecContext(ctx, `UPDATE mb_jobs SET status='pending',generation=generation+1,revision=revision+1,lease='',lease_until='' WHERE kind=? AND entity_id=? AND generation=? AND lease=?`, j.kind, entity, j.generation, j.lease); e != nil {
+		retryAt, reason := "", "base_changed"
+		var retryDue time.Time
+		if errors.Is(problem, errMBAdoptionPending) {
+			retryDue = s.publicationTime().Add(30 * time.Second)
+			retryAt = retryDue.Format(time.RFC3339)
+			reason = "adoption_in_progress"
+		}
+		if _, e = tx.ExecContext(ctx, `UPDATE mb_jobs SET status='pending',generation=generation+1,revision=revision+1,lease='',lease_until='',next_attempt=CASE WHEN ?<>'' THEN ? ELSE next_attempt END WHERE kind=? AND entity_id=? AND generation=? AND lease=?`, retryAt, retryAt, j.kind, entity, j.generation, j.lease); e != nil {
 			return e
 		}
-		if e = finishMBOperation(ctx, tx, j, "stale", "base_changed", s.publicationTime()); e != nil {
+		if e = finishMBOperation(ctx, tx, j, "stale", reason, s.publicationTime()); e != nil {
 			return e
 		}
-		return gated3.Commit()
+		if e = gated3.Commit(); e == nil && !retryDue.IsZero() {
+			s.noteMBAdoptionRetry(retryDue)
+		}
+		return e
 	}
 	return s.mbFailure(ctx, j, problem)
 }

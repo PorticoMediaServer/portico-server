@@ -873,6 +873,9 @@ func New(d Dependencies) http.Handler {
 			if err := d.Scheduler.Register(d.Catalog.LibraryRemovalAdapter()); err != nil {
 				panic(err)
 			}
+			if err := d.Scheduler.Register(d.Catalog.MutationAdapter()); err != nil {
+				panic(err)
+			}
 			if err := d.Scheduler.Register(d.Catalog.FolderRemovalAdapter()); err != nil {
 				panic(err)
 			}

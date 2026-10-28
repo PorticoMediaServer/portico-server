@@ -151,6 +151,9 @@ func UpsertEntityTx(ctx context.Context, tx *sql.Tx, e Entity) (id int64, create
 }
 
 func upsertEntity(ctx context.Context, tx *sql.Tx, e Entity, update bool) (id int64, created bool, err error) {
+	if err = RequireEntityAcquirableTx(ctx, tx, e.Parent); err != nil {
+		return 0, false, err
+	}
 	if e.Library == 0 || e.Kind < 1 || e.Key == "" {
 		return 0, false, fmt.Errorf("catalogue entity needs a library, a kind and an identity key")
 	}
@@ -180,6 +183,9 @@ func upsertEntity(ctx context.Context, tx *sql.Tx, e Entity, update bool) (id in
 			return 0, false, fmt.Errorf("%w: %s", ErrIdentityConflict, e.Key)
 		}
 		id = existing.Int64
+		if err = RequireEntityAcquirableTx(ctx, tx, id); err != nil {
+			return 0, false, err
+		}
 		res, err := tx.ExecContext(ctx, `UPDATE catalog_entities SET parent_id=?,retired=0 WHERE id=? AND (parent_id IS NOT ? OR retired<>0)`, parent, id, parent)
 		if err != nil {
 			return 0, false, err
@@ -361,6 +367,9 @@ func OwnerNamespace(k Kind) string {
 // an unlocked field) is written. Queues the entity's derived data when
 // anything changed.
 func SetFieldsTx(ctx context.Context, tx *sql.Tx, id int64, source Source, fields map[string]any) error {
+	if err := RequireEntityAcquirableTx(ctx, tx, id); err != nil {
+		return err
+	}
 	return setFields(ctx, tx, id, source, fields, false)
 }
 
@@ -605,6 +614,16 @@ func valuesInOrder(values map[string]any, names []string) []any {
 // writer: locked fields are skipped as in SetFieldsTx. Use it right after
 // UpsertEntityTx for the kind's own facts.
 func SetFactsTx(ctx context.Context, tx *sql.Tx, id int64, fields map[string]any) error {
+	if err := RequireEntityAcquirableTx(ctx, tx, id); err != nil {
+		return err
+	}
+	for _, key := range []string{"album_id", "artist_id", "book_id", "show_id", "season_id"} {
+		if parent, ok := fields[key].(int64); ok && parent != 0 {
+			if err := RequireEntityAcquirableTx(ctx, tx, parent); err != nil {
+				return err
+			}
+		}
+	}
 	return SetFieldsTx(ctx, tx, id, Automatic, fields)
 }
 
@@ -628,6 +647,12 @@ func RetireEntityTx(ctx context.Context, tx *sql.Tx, id int64) error {
 // contributions, the title index) are dropped by the derivations, which see
 // the entity gone.
 func DeleteEntityTx(ctx context.Context, tx *sql.Tx, id int64) error {
+	if err := RequireNoEntityMBPinsTx(ctx, tx, id); err != nil {
+		return err
+	}
+	if err := RequireEntityAcquirableTx(ctx, tx, id); err != nil {
+		return err
+	}
 	// The containers it belonged to re-derive their rows.
 	if _, err := tx.ExecContext(ctx, `INSERT INTO catalog_dirty(domain,entity_id,revision)
  SELECT ?,entity_id,1 FROM catalog_browse_memberships INDEXED BY catalog_browse_membership_item WHERE item_id=? AND entity_id<>item_id
@@ -903,6 +928,9 @@ type Link struct {
 // LinkAssetTx attaches a file to an item (idempotent). An empty edition never
 // erases a label an earlier reading gave the version.
 func LinkAssetTx(ctx context.Context, tx *sql.Tx, item, asset int64, l Link) error {
+	if err := RequireEntityAcquirableTx(ctx, tx, item); err != nil {
+		return err
+	}
 	var end any
 	if l.End != nil {
 		end = *l.End
@@ -1207,6 +1235,14 @@ func SetCollectionMemberTx(ctx context.Context, tx *sql.Tx, collection, item int
 
 // SetSongArtistsTx replaces a song's credited artists.
 func SetSongArtistsTx(ctx context.Context, tx *sql.Tx, song int64, artists []int64) error {
+	if err := RequireEntityAcquirableTx(ctx, tx, song); err != nil {
+		return err
+	}
+	for _, a := range artists {
+		if err := RequireEntityAcquirableTx(ctx, tx, a); err != nil {
+			return err
+		}
+	}
 	// NOT EXISTS, not NOT IN: a nil list encodes as JSON null, whose one NULL
 	// row made NOT IN false for every artist, so clearing kept them all.
 	if _, err := tx.ExecContext(ctx, `DELETE FROM catalog_song_artists WHERE song_id=? AND NOT EXISTS(SELECT 1 FROM json_each(?) j WHERE j.value=artist_id)`, song, mustJSON(artists)); err != nil {
