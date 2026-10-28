@@ -20,6 +20,7 @@ var queueSelectionRevisionPattern = regexp.MustCompile(queueSelectionRevisionExp
 // QueueQuery uses the browse expression and ordering vocabulary. Paging belongs
 // to durable queue capture, so cursors, ranges and page sizes are absent.
 type QueueQuery struct {
+	SelectionBasis    string                `json:"selectionBasis,omitempty"`
 	SelectionRevision string                `json:"selectionRevision,omitempty"`
 	LibraryID         string                `json:"libraryId"`
 	Pivot             string                `json:"pivot,omitempty"`
@@ -33,14 +34,17 @@ func (QueueQuery) JSONSchema() map[string]any {
 	shape, _ := apikit.Schema(reflect.TypeFor[wire]())
 	proof := shape["properties"].(map[string]any)["selectionRevision"].(map[string]any)
 	proof["pattern"] = queueSelectionRevisionExpression
+	shape["properties"].(map[string]any)["selectionBasis"].(map[string]any)["pattern"] = SelectionBasisExpression
 	return shape
 }
 
 type QueueSelection struct {
-	SQL      string
-	Args     []any
-	Revision string
-	Label    string
+	// CheckBasis is ephemeral content proof, checked in each fresh capture/commit snapshot.
+	CheckBasis func(context.Context, *sql.Tx) error
+	SQL        string
+	Args       []any
+	Revision   string
+	Label      string
 }
 
 // QueueKeysTx compiles a saved resource or browse query on the capture's own
@@ -52,6 +56,14 @@ func (s *Service) QueueKeysTx(ctx context.Context, tx *sql.Tx, viewer Viewer, ac
 	clone := *s.WithContext(ctx)
 	clone.readTx = tx
 	s = &clone
+	if query != nil {
+		if saved != "" && query.SelectionBasis != "" {
+			return QueueSelection{}, ErrStaleContinuation
+		}
+		if err := s.checkBrowseSelectionBasis(viewer, query.LibraryID, query.SelectionBasis); err != nil {
+			return QueueSelection{}, err
+		}
+	}
 	prefix, label := "", ""
 	if saved != "" {
 		role, kind, revision, deleted, err := savedResourceRole(s.read(), saved, actor)
@@ -64,7 +76,7 @@ func (s *Service) QueueKeysTx(ctx context.Context, tx *sql.Tx, viewer Viewer, ac
 			return QueueSelection{}, err
 		}
 		if kind == "collection" {
-			fence, err := bulkSelectionFence(s.read(), viewer, JobSelector{})
+			fence, err := s.bulkSelectionFence(tx, viewer, JobSelector{})
 			if err != nil {
 				return QueueSelection{}, err
 			}
@@ -156,11 +168,12 @@ func (s *Service) QueueKeysTx(ctx context.Context, tx *sql.Tx, viewer Viewer, ac
 	if label == "" {
 		label = lib.Name
 	}
-	return QueueSelection{SQL: sql, Args: args, Revision: prefix + revision, Label: label}, err
+	return QueueSelection{SQL: sql, Args: args, Revision: prefix + revision, Label: label, CheckBasis: s.selectionBasisCheck(viewer, query.LibraryID, query.SelectionBasis)}, err
 }
 
 func (q *QueueQuery) UnmarshalJSON(raw []byte) error {
 	var body struct {
+		SelectionBasis    string                `json:"selectionBasis"`
 		SelectionRevision json.RawMessage       `json:"selectionRevision"`
 		LibraryID         string                `json:"libraryId"`
 		Pivot             string                `json:"pivot"`
@@ -175,6 +188,9 @@ func (q *QueueQuery) UnmarshalJSON(raw []byte) error {
 	if err := decoder.Decode(&body); err != nil {
 		return err
 	}
+	if err := ValidateSelectionBasisJSON(raw); err != nil {
+		return err
+	}
 	node, err := ParseBrowseQuery(body.Query, "query")
 	if err != nil {
 		return err
@@ -186,7 +202,7 @@ func (q *QueueQuery) UnmarshalJSON(raw []byte) error {
 	if body.LibraryID == "" || len(body.LibraryID) > 256 || len(body.Pivot) > 64 {
 		return browseIssue("libraryId", "choose a library")
 	}
-	*q = QueueQuery{SelectionRevision: selectionRevision, LibraryID: body.LibraryID, Pivot: body.Pivot, Query: node, Sort: body.Sort}
+	*q = QueueQuery{SelectionBasis: body.SelectionBasis, SelectionRevision: selectionRevision, LibraryID: body.LibraryID, Pivot: body.Pivot, Query: node, Sort: body.Sort}
 	return nil
 }
 

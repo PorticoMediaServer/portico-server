@@ -51,6 +51,9 @@ func TestBulkBuildDerivesWhatIncrementalBuildDoes(t *testing.T) {
 		if err := db.QueryRow(`SELECT revision FROM catalog_browse_predicate_epoch WHERE singleton=1`).Scan(&revision); err != nil || revision <= 1 {
 			t.Fatalf("browse predicate fence did not advance: %d %v", revision, err)
 		}
+		if err := db.QueryRow(`SELECT revision FROM catalog_selection_predicate_epoch WHERE singleton=1`).Scan(&revision); err != nil || revision <= 1 {
+			t.Fatalf("selection predicate fence did not advance: %d %v", revision, err)
+		}
 	}
 	tables := derivedTables(t, incremental)
 	t.Logf("comparing %d derived tables", len(tables))
@@ -107,7 +110,7 @@ func derivedTables(t *testing.T, db *sql.DB) []string {
   OR name LIKE 'catalog\_container\_%' ESCAPE '\' OR name IN('catalog_entities','catalog_asset_links'))
  AND name NOT LIKE '%\_previous' ESCAPE '\' AND name NOT LIKE '%\_jobs' ESCAPE '\' AND name NOT LIKE '%\_next' ESCAPE '\' AND name NOT LIKE '%\_state' ESCAPE '\'
  AND name NOT LIKE 'catalog\_search\_titles%' ESCAPE '\'
- AND name NOT IN('catalog_browse_blocks','catalog_browse_metric_cursors','catalog_browse_predicate_epoch','catalog_item_attribute_edges','catalog_item_details')
+ AND name NOT IN('catalog_browse_blocks','catalog_browse_metric_cursors','catalog_browse_predicate_epoch','catalog_selection_predicate_epoch','catalog_item_attribute_edges','catalog_item_details')
  ORDER BY name`)
 	if err != nil {
 		t.Fatal(err)

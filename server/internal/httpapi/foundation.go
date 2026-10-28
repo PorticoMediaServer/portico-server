@@ -762,6 +762,15 @@ func FoundationRegistry(d Dependencies) (*apikit.Registry, error) {
 	if err := registerMCP(registry, d); err != nil {
 		return nil, err
 	}
+	if err := registerReadingBrowseQueryRoutes(registry, d); err != nil {
+		return nil, err
+	}
+	if err := registerReadingFacetQueryRoutes(registry, d); err != nil {
+		return nil, err
+	}
+	if err := registerBrowseSelectionQueryRoutes(registry, d); err != nil {
+		return nil, err
+	}
 	if err := registerBrowseCountRoutes(registry, d); err != nil {
 		return nil, err
 	}

@@ -11,7 +11,7 @@ import type {SelectionEditorOptions} from './selection-editor';
 import {defaultI18n} from '@i18n';
 import type {HomeSelectionProgress} from '@core/home-selection/types.ts';
 import {useEffect, useSyncExternalStore, type ReactNode} from 'react';
-import type {BrowseWholeSelection} from '@core/browse.ts';
+import type {BrowseWholeSelection, BrowseWholeSelectionUnavailable} from '@core/browse.ts';
 import type {BrowseSelectionContext, SelectionOperation, SelectionQuery, SelectionSnapshot} from '@core/selection-model/index.ts';
 import {selectionQuerySelector} from '@core/selection-model/index.ts';
 import {SelectionBars} from '../../kit/selection';
@@ -58,6 +58,7 @@ export type LibrarySelectionOptions = Readonly<{
   owner?: boolean;
   /** The server's optional descriptor for this exact page, when the controller holds one. */
   descriptor?: () => BrowseWholeSelection | undefined;
+  wholeSelectionUnavailable?: Readonly<{getSnapshot: () => BrowseWholeSelectionUnavailable | undefined; subscribe: (listener: () => void) => () => void}>;
   /** The real job ports. Absent means the bar offers no personal action at all. */
   actions?: SelectionActionsOptions;
   editor?: SelectionEditorOptions;
@@ -144,6 +145,9 @@ type VisibleRange = Readonly<{first: number; last: number}>;
 type VisibleStore = Readonly<{subscribe: (listener: () => void) => () => void; getSnapshot: () => VisibleRange | undefined}>;
 type ProgressStore = Readonly<{subscribe: (listener: () => void) => () => void; getSnapshot: () => PersonalProgress | undefined}>;
 
+const noUnavailable = () => undefined;
+const noUnavailableSubscription = (_listener: () => void) => () => {};
+
 function LibrarySelectionToolbar(props: LibrarySelectionOptions & {visible: VisibleStore; openDelete: () => void; openEditor: (anchor: HTMLElement) => void; progress: ProgressStore; personal: (action: PersonalSelectionAction) => Promise<void>; queue: (placement: 'next' | 'end') => Promise<void>; addToPlaylist: (anchor: HTMLElement) => Promise<void>; addToCollection: (anchor: HTMLElement) => Promise<void>}) {
   const {playSelection, descriptor, actions, enqueue, destinations, personal, queue, addToPlaylist, addToCollection, reportError} = props;
   const visible = useSyncExternalStore(props.visible.subscribe, props.visible.getSnapshot, props.visible.getSnapshot);
@@ -169,6 +173,8 @@ function LibrarySelectionToolbar(props: LibrarySelectionOptions & {visible: Visi
     document.addEventListener('keydown', key);document.addEventListener('keyup', release);window.addEventListener('blur', blur);
     return () => {document.removeEventListener('keydown', key);document.removeEventListener('keyup', release);window.removeEventListener('blur', blur);};
   }, [playSelection, reportError]);
+  const unavailable = useSyncExternalStore(props.wholeSelectionUnavailable?.subscribe ?? noUnavailableSubscription,
+    props.wholeSelectionUnavailable?.getSnapshot ?? noUnavailable, props.wholeSelectionUnavailable?.getSnapshot ?? noUnavailable);
   if (current.phase !== 'ready' || !current.selection?.active) return null;
   const summary = current.selection.summary, whole = descriptor?.(), selectWhole = playSelection.selectWhole;
   const target = current.selection.target;
@@ -182,7 +188,7 @@ function LibrarySelectionToolbar(props: LibrarySelectionOptions & {visible: Visi
   const queryHeld = current.selection.target?.mode === 'query';
   const visibleCount = visible && current.rows.length === visible.last - visible.first + 1
     && current.rows.every((row, index) => row.position === visible.first + index) ? current.rows.length : undefined;
-  const selectAll = queryHeld ? {kind: 'clear' as const} : whole && selectWhole ? {kind: 'view' as const, total: whole.total} : undefined;
+  const selectAll = queryHeld ? {kind: 'clear' as const} : unavailable ? {kind: 'unavailable' as const, reason: defaultI18n.t('next.selection.selectAllSearchNotBounded')} : whole && selectWhole ? {kind: 'view' as const, total: whole.total} : undefined;
   const offers = personalOffers(current.selection, actions, playSelection), leafItems = explicitLeafItems(current.selection);
   const pickerItems = props.pickers ? explicitDestinationItems(current.selection) : leafItems;
   const queueLease = !!playSelection.captureOperation && !!playSelection.isOperationCurrent && !!actions?.signal
@@ -193,9 +199,10 @@ function LibrarySelectionToolbar(props: LibrarySelectionOptions & {visible: Visi
   return <SelectionBars
     selection={{count: summary.count, kind: summary.types.length === 1 ? summary.types[0].kind : undefined}}
     actions={{
+      ...(queryHeld && summary.count > 200 && summary.every.download ? {downloadDisabledReason: defaultI18n.t('error.unavailable')} : {}),
       ...(props.deletion && summary.library.kind === 'single' && summary.count <= 200 && summary.every.delete && (current.selection.target?.mode === 'explicit' || current.selection.target?.mode === 'query' && queryDeleteTarget(current.selection.target)) && queueLease ? {onDelete: () => {try {props.openDelete();} catch (error) {reportError(error);}}} : {}),
 ...(props.owner && props.deletion && summary.library.kind !== 'single' ? {deleteDisabledReason: defaultI18n.t('next.selection.oneLibrary')} : {}),
-      ...(props.owner && props.deletion && summary.library.kind === 'single' && summary.count > 200 && queueLease ? {onDelete: () => {try {props.openDelete();} catch (error) {reportError(error);}}, deleteExplanation: defaultI18n.t('next.selection.tooMany')} : {}),
+      ...(props.owner && props.deletion && summary.library.kind === 'single' && summary.count > 200 && queueLease ? queryHeld ? {deleteDisabledReason: defaultI18n.t('next.selection.tooMany')} : {onDelete: () => {try {props.openDelete();} catch (error) {reportError(error);}}, deleteExplanation: defaultI18n.t('next.selection.tooMany')} : {}),
       ...(props.editor && summary.every.edit && (summary.types.length === 1 || !!playSelection.keepOnly) && (current.selection.target?.mode === 'explicit' || summary.types.length > 1 && !!playSelection.keepOnly || current.selection.target?.mode === 'query' && selectionQuerySelector(current.selection.target).ok) && queueLease ? {onEdit: (anchor: HTMLElement) => {try {props.openEditor(anchor);} catch (error) {reportError(error);}}, editMode: summary.types.length > 1 ? 'mixed' as const : 'editable' as const} : {}),
       ...(canPlay ? {onPlay: () => { void playSelection.play().catch(reportError); }} : {}),
       ...(offers.watched ? {onWatchedChange: (watched: boolean) => { void personal({watched}).catch(reportError); }} : {}),
@@ -209,7 +216,7 @@ function LibrarySelectionToolbar(props: LibrarySelectionOptions & {visible: Visi
       ? defaultI18n.t(progress.value.totalKnown ? 'next.selection.jobProgress' : 'next.selection.jobPreparing', {done: progress.value.done, total: progress.value.total}) : undefined}
     allInView={visibleCount !== undefined && current.selection.target?.mode === 'query' && selectionQuerySelector(current.selection.target).ok ? {visible: visibleCount, scope: 'view'} : undefined}
     selectAll={selectAll}
-    onSelectAll={selectAll ? () => { try {
+    onSelectAll={selectAll && selectAll.kind !== 'unavailable' ? () => { try {
       if (queryHeld) playSelection.clear();
       else void Promise.resolve(selectWhole!(wholeViewQuery(whole!))).catch(reportError);
     } catch (error) { reportError(error); } } : undefined}
@@ -217,7 +224,7 @@ function LibrarySelectionToolbar(props: LibrarySelectionOptions & {visible: Visi
     sticky />;
 }
 
-export function createLibrarySelection({playSelection, owner, descriptor, actions, editor, deletion, pickers, enqueue, enqueueQuery, destinations, reportError}: LibrarySelectionOptions): LibrarySelection {
+export function createLibrarySelection({playSelection, owner, descriptor, wholeSelectionUnavailable, actions, editor, deletion, pickers, enqueue, enqueueQuery, destinations, reportError}: LibrarySelectionOptions): LibrarySelection {
   const visibleListeners = new Set<() => void>();
   let visibleValue: VisibleRange | undefined;
   const visible: VisibleStore = {subscribe: listener => {visibleListeners.add(listener); return () => {visibleListeners.delete(listener);};}, getSnapshot: () => visibleValue};
@@ -339,7 +346,7 @@ export function createLibrarySelection({playSelection, owner, descriptor, action
     }
   };
   return {
-    toolbar: <><LibrarySelectionToolbar visible={visible} pickers={pickers} deletion={deletion} openDelete={openDelete} editor={editor} openEditor={openEditor} progress={progress} owner={owner} playSelection={playSelection} descriptor={descriptor} actions={actions} enqueue={enqueue} enqueueQuery={enqueueQuery} destinations={destinations} reportError={reportError} personal={personal} queue={queue} addToPlaylist={addToPlaylist} addToCollection={addToCollection} />{editor && <LibraryEditorHost playSelection={playSelection} store={editorStore} options={editor} close={closeEditor}/>}{deletion && <LibraryDeleteHost playSelection={playSelection} store={deleteStore} options={deletion} close={closeDelete}/>}{pickers && <LibraryPickerHost playSelection={playSelection} store={pickerStore} options={pickers} close={closePicker}/>}</>,
+    toolbar: <><LibrarySelectionToolbar visible={visible} pickers={pickers} deletion={deletion} openDelete={openDelete} editor={editor} openEditor={openEditor} progress={progress} owner={owner} playSelection={playSelection} descriptor={descriptor} wholeSelectionUnavailable={wholeSelectionUnavailable} actions={actions} enqueue={enqueue} enqueueQuery={enqueueQuery} destinations={destinations} reportError={reportError} personal={personal} queue={queue} addToPlaylist={addToPlaylist} addToCollection={addToCollection} />{editor && <LibraryEditorHost playSelection={playSelection} store={editorStore} options={editor} close={closeEditor}/>}{deletion && <LibraryDeleteHost playSelection={playSelection} store={deleteStore} options={deletion} close={closeDelete}/>}{pickers && <LibraryPickerHost playSelection={playSelection} store={pickerStore} options={pickers} close={closePicker}/>}</>,
     entry: (member, index) => {
       // A radio station has no item to select: its own screen plays its seed.
       if (member.entry.kind === 'radio') return undefined;

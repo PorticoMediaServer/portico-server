@@ -18,6 +18,9 @@ import (
 // values are library facets, never audiobook Author entities. Its integer
 // identifiers come only from the database, not from query operands.
 type readingBrowseScope struct {
+	// point is used only by the bounded count reducer, whose raw driver has
+	// already selected one entity. Never materialize a whole attribution set.
+	point      bool
 	mobi       bool
 	library    int64
 	kind       string
@@ -124,8 +127,18 @@ func (r *readingBrowseScope) predicate(node BrowseNode, entity string) (string, 
 	}
 	column := "m." + node.Field + "_key"
 	base := `SELECT m.item_id FROM reading_attribution_members m WHERE ` + r.memberScope() + ` AND `
-	positive := func(condition string) string { return entity + ` IN(` + base + condition + `)` }
-	negative := func(condition string) string { return entity + ` NOT IN(` + base + condition + `)` }
+	positive := func(condition string) string {
+		if r.point {
+			return `EXISTS(` + base + `m.item_id=` + entity + ` AND ` + condition + `)`
+		}
+		return entity + ` IN(` + base + condition + `)`
+	}
+	negative := func(condition string) string {
+		if r.point {
+			return `NOT EXISTS(` + base + `m.item_id=` + entity + ` AND ` + condition + `)`
+		}
+		return entity + ` NOT IN(` + base + condition + `)`
+	}
 	normalize := func(v any) (string, error) {
 		text, ok := v.(string)
 		if !ok {

@@ -15,6 +15,9 @@ func (s *Service) CheckQueueBrowseRevisionTx(ctx context.Context, tx *sql.Tx, vi
 	clone := *s.WithContext(ctx)
 	clone.readTx = tx
 	s = &clone
+	if err := s.checkBrowseSelectionBasis(viewer, query.LibraryID, query.SelectionBasis); err != nil {
+		return err
+	}
 	if err := s.prepareViewer(viewer); err != nil {
 		return err
 	}

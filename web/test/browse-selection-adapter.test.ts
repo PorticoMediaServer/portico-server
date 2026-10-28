@@ -396,3 +396,21 @@ test('a retired route reports cancellation before any personal request', async (
   await assert.rejects(adapter.personal({watched: true}), /cancelled/);
   assert.equal(requests, 0);
 });
+
+
+test('actual web toolbar renders count-free disabled Select all with a visible accessible search reason and retains page selection', () => {
+  const {selection, calls} = fake({}, {selectWhole: () => {throw new Error('unavailable has no executor');}});
+  let refusal: {reason: 'search_not_bounded'} | undefined = {reason: 'search_not_bounded'};
+  const adapter = createLibrarySelection({playSelection: selection, reportError() {},
+    wholeSelectionUnavailable: {subscribe: () => () => {}, getSnapshot: () => refusal}});
+  const html = rendered(adapter);
+  assert.match(html, />Select all</); assert.doesNotMatch(html, /Select all [0-9]/);
+  assert.match(html, /aria-describedby="([^"]+)"[^>]*disabled=""/);
+  const id = html.match(/aria-describedby="([^"]+)"/)![1]!;
+  assert.ok(html.includes(`id="${id}">Unavailable for this search.</small>`));
+  assert.match(html, /1 selected/); assert.match(html, />Play</);
+  adapter.entry({membershipId: 'm1', entry} as never, 0)?.onToggle({range: true, source: 'pointer'});
+  assert.deepEqual(calls, ['toggle:key-0:true']);
+  refusal = undefined;
+  assert.doesNotMatch(rendered(adapter), /Unavailable for this search|Select all/);
+});

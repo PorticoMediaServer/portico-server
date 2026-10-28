@@ -11,6 +11,9 @@ import (
 // Exact keys travel with the selected rows so a changed or removed anchor does
 // not change the meaning of a continuation. SQL selects only a bounded page.
 func (s *Service) queryBrowseKeyRows(query, field string, args ...any) ([]browseRow, error) {
+	if err := s.reserveReadingCountRows(query, args, 1); err != nil {
+		return nil, err
+	}
 	rows, err := s.read().Query(query, args...)
 	if err != nil {
 		return nil, err

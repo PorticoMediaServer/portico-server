@@ -156,6 +156,9 @@ func (s *Service) browsePage(p pageShape) ([]browseRow, error) {
 }
 
 func (s *Service) queryBrowseRows(query string, args ...any) ([]browseRow, error) {
+	if err := s.reserveReadingCountRows(query, args); err != nil {
+		return nil, err
+	}
 	rows, err := s.read().Query(query, args...)
 	if err != nil {
 		return nil, err

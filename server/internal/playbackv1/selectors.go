@@ -220,6 +220,7 @@ var containers = map[string]containerQuery{
 // written while it is scanned, a batch per short write at background
 // priority, and never held in memory whole.
 type snapshot struct {
+	checkBasis                func(context.Context, *sql.Tx) error
 	id, kind, label, selector string
 	sourceRevision            string
 	count                     int64
@@ -276,6 +277,11 @@ func (s *Service) queueKeyLimit() int64 {
 // storeSnapshot writes what the scan kept in memory (the snapshot row for a
 // small one, the last chunks, the count and label) inside the queue command.
 func storeSnapshot(ctx context.Context, tx *sql.Tx, queue string, snap *snapshot) error {
+	if snap.checkBasis != nil {
+		if err := snap.checkBasis(ctx, tx); err != nil {
+			return err
+		}
+	}
 	if !snap.stored {
 		if _, err := tx.ExecContext(ctx, `INSERT INTO queue_v1_snapshots(id,queue_id,kind,selector,label,count,width,music_only) VALUES(?,?,?,?,?,0,0,1)`, snap.id, queue, snap.kind, snap.selector, ""); err != nil {
 			return err

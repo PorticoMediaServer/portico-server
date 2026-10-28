@@ -94,9 +94,7 @@ function useReadingLifetime(context: ScreenContext, routeKey: string, routeCurre
         async request<T>(path: string, method?: string, body?: unknown, signal?: AbortSignal): Promise<T> {
           if (!current()) throw retired(); const value = await original.api.request<T>(path, method, body, signal); if (!current()) throw retired(); return value;
         },
-        async requestRaw(...args: Parameters<typeof original.api.requestRaw>) {
-          if (!current()) throw retired(); const value = await original.api.requestRaw(...args); if (!current()) throw retired(); return value;
-        },
+        requestRaw: context.api.requestRaw.bind(context.api),
       },
       dispose: () => {live = false; original.dispose();}};
     publish({id: crypto.randomUUID(), context, routeKey, life});
@@ -176,7 +174,8 @@ function LiveReadingLibrary({captured, library, search, onMarked, context, life}
       navigate({view: tab.id === 'discover' ? 'discover' : 'browse', ...(tab.pivot ? {pivot: tab.pivot} : {})});}}
     onLibrary={libraryId => {if (context.isCurrent()) void router.navigate({to: '/library/$libraryId', params: {libraryId}, search: {}}).catch(context.effects.reportError);}}
     onLibraries={() => {if (context.isCurrent()) void router.navigate({to: '/libraries'}).catch(context.effects.reportError);}}/>;
-  const request = useMemo<FacetRequest>(() => (path, method, body, signal) => life.api.request(path, method, body, signal), [life]);
+  const request = useMemo<FacetRequest>(() => Object.assign<FacetRequest, Pick<typeof context.api, 'requestRaw'> & {isCurrent: () => boolean}>(
+    (path, method, body, signal) => life.api.request(path, method, body, signal), {requestRaw: context.api.requestRaw.bind(context.api), isCurrent: life.current}), [life, context]);
   if (periodicalPivot) {
     if (!capabilities) return <>{header}{snapshot?.phase === 'error' ? <StateView title={t('next.states.pageFailed')} body={t('next.states.pageFailedBody')} primary={{id: 'retry', label: t('next.states.tryAgain'), onPress: retryCapabilities}}/> : <Skeleton height={320}/>}</>;
     if (selected.shows !== 'periodicals' || selected.id !== periodicalPivot || search.query || search.sort?.length || search.q) return <>{header}<StateView title={t('title.nothingHere')}/></>;
@@ -325,6 +324,7 @@ function CommittedLibrary({captured, library, search, readingMarkAll, frame, res
       ...(runtime ? {enqueue: playSelection.enqueue, enqueueQuery: playSelection.enqueueQuery} : {}),
       owner: context.identity?.viewer.role === 'owner' && context.identity.viewer.authority === 'local',
       descriptor: () => resources.controller.wholeSelection(),
+      wholeSelectionUnavailable: {subscribe: resources.controller.subscribe, getSnapshot: () => resources.controller.wholeSelectionUnavailable()},
       ...(context.identity?.viewer.role === 'owner' && context.identity.viewer.authority === 'local' ? {deletion: {api, serverId: context.scope.serverId, viewerId: context.scope.viewerId,
         requestId: async () => randomId(), signal, isCurrent: current}, editor: {
         api, events: context.events, requestId: async () => randomId(), serverId: context.scope.serverId, viewerId: context.scope.viewerId,

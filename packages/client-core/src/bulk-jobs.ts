@@ -1,3 +1,4 @@
+import {validSelectionBasis} from './selection-basis.ts';
 import {routePath} from "../../contracts/src/route-paths.ts";
 import {randomId} from './random-id.ts';
 import {unreadableServerResponse} from './server-messages.ts';
@@ -19,7 +20,7 @@ export type JobContainerKind='show'|'season'|'album'|'artist'|'book'|'collection
 export type JobSelector=
  | Readonly<{container:Readonly<{kind:JobContainerKind;id:string}>}>
  | Readonly<{items:Readonly<{ids:readonly string[]}>}>
- | Readonly<{query:Readonly<{libraryId:string;pivot:string;filter?:unknown;sort?:readonly {field:string;direction:'asc'|'desc'}[]}>}>;
+ | Readonly<{query:Readonly<{libraryId:string;pivot:string;selectionBasis?:string;filter?:unknown;sort?:readonly {field:string;direction:'asc'|'desc'}[]}>}>;
 export type JobCommand='personal-state'|'playlist-add'|'collection-add'|'metadata-edit'|'refresh';
 export type JobPlacement='end'|'next'|Readonly<{after:string}>;
 export type JobArgs=Readonly<{
@@ -88,7 +89,8 @@ function selector(v:unknown):JobSelector{
  }
  if(v.query!==undefined){
   const q=v.query;
-  if(!object(q)||!id(q.libraryId)||!id(q.pivot)||Object.keys(q).some(k=>k!=='libraryId'&&k!=='pivot'&&k!=='filter'&&k!=='sort'))invalid();
+  if(!object(q)||!id(q.libraryId)||!id(q.pivot)||Object.keys(q).some(k=>k!=='libraryId'&&k!=='pivot'&&k!=='filter'&&k!=='sort'&&k!=='selectionBasis'))invalid();
+  if(q.selectionBasis!==undefined&&!validSelectionBasis(q.selectionBasis))invalid();
   let sort:readonly {field:string;direction:'asc'|'desc'}[]|undefined;
   if(q.sort!==undefined){
    if(!Array.isArray(q.sort))invalid();
@@ -97,7 +99,7 @@ function selector(v:unknown):JobSelector{
     return Object.freeze({field:entry.field as string,direction:entry.direction as 'asc'|'desc'});
    }));
   }
-  return Object.freeze({query:Object.freeze({libraryId:q.libraryId as string,pivot:q.pivot as string,...(q.filter===undefined?{}:{filter:q.filter}),...(sort===undefined?{}:{sort})})});
+  return Object.freeze({query:Object.freeze({libraryId:q.libraryId as string,pivot:q.pivot as string,...(q.selectionBasis===undefined?{}:{selectionBasis:q.selectionBasis as string}),...(q.filter===undefined?{}:{filter:q.filter}),...(sort===undefined?{}:{sort})})});
  }
  invalid();
 }
