@@ -342,7 +342,10 @@ func (s *Service) directCallerTx(ctx context.Context, tx *sql.Tx, bearer string,
 		return c, ErrUnauthorized
 	}
 	record, err := s.familyTokenTx(ctx, tx, Digest(bearer))
-	if err != nil || record.principal.Authority != "local" {
+	if err != nil {
+		return c, err
+	}
+	if record.principal.Authority != "local" {
 		return c, ErrUnauthorized
 	}
 	if _, err = s.SessionFamilyTx(ctx, tx, record.principal); err != nil {
@@ -356,23 +359,35 @@ func (s *Service) directCallerTx(ctx context.Context, tx *sql.Tx, bearer string,
 	c.familyID = record.ID
 	c.profileID = record.principal.ProfileID
 	if err = tx.QueryRowContext(ctx, `SELECT device_id FROM identity_device_families WHERE family_id=?`, record.ID).Scan(&c.deviceID); err != nil {
-		return c, ErrUnauthorized
+		if errors.Is(err, sql.ErrNoRows) {
+			return c, ErrUnauthorized
+		}
+		return c, err
 	}
 	grantEpoch = record.principal.Epoch
 	var primary int
 	if err = tx.QueryRowContext(ctx, `SELECT is_primary FROM direct_profiles WHERE account_id=? AND id=? AND deleted=0`, c.account.ID, record.principal.ProfileID).Scan(&primary); err != nil {
-		return c, ErrUnauthorized
+		if errors.Is(err, sql.ErrNoRows) {
+			return c, ErrUnauthorized
+		}
+		return c, err
 	}
 	c.manage = primary == 1
 	sessionRole = record.principal.Role
 
 	var libs string
 	e := tx.QueryRowContext(ctx, `SELECT a.username,a.profile_id,a.epoch,m.role,m.revision,m.disabled,m.allowed_libraries FROM accounts a JOIN direct_memberships m ON m.account_id=a.id WHERE a.id=?`, c.account.ID).Scan(&c.account.Username, &c.account.PrimaryProfileID, &c.epoch, &c.account.Role, &c.account.Revision, &c.account.Disabled, &libs)
+	if e != nil {
+		if errors.Is(e, sql.ErrNoRows) {
+			return c, ErrUnauthorized
+		}
+		return c, e
+	}
 	if sessionRole != "account" && sessionRole != c.account.Role {
 		c.manage = false
 		c.account.Role = sessionRole
 	}
-	if e != nil || c.epoch != grantEpoch || c.account.Disabled {
+	if c.epoch != grantEpoch || c.account.Disabled {
 		return c, ErrUnauthorized
 	}
 	if manage && !c.manage {
@@ -399,18 +414,20 @@ func (s *Service) directCallerTx(ctx context.Context, tx *sql.Tx, bearer string,
 	return c, nil
 }
 func (s *Service) DirectMe(ctx context.Context, bearer string) (DirectSnapshot, error) {
-	ctx = factorSetupContext(ctx)
-	gated2, e := dbwork.BeginSnapshot(ctx, s.db)
-	if e != nil {
-		return DirectSnapshot{}, e
+	var out DirectSnapshot
+	err := dbwork.WithReadSnapshot(factorSetupContext(ctx), s.db, func(snapshot context.Context) error {
+		tx := dbwork.Snapshot(snapshot)
+		c, err := s.directCallerTx(snapshot, tx, bearer, false)
+		if err != nil {
+			return err
+		}
+		out, err = s.directSnapshotTx(snapshot, tx, c)
+		return err
+	})
+	if err != nil {
+		return DirectSnapshot{}, err
 	}
-	tx := gated2.Tx()
-	defer gated2.Rollback()
-	c, e := s.directCallerTx(ctx, tx, bearer, false)
-	if e != nil {
-		return DirectSnapshot{}, e
-	}
-	return s.directSnapshotTx(ctx, tx, c)
+	return out, nil
 }
 func (s *Service) EndDirectAccountSession(ctx context.Context, bearer string) error {
 	return s.LogoutToken(ctx, bearer)

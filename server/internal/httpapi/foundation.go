@@ -79,36 +79,38 @@ func (d Dependencies) foundationCaller(r *http.Request) (identity.Principal, err
 
 func foundationAuthError(err error) error {
 	if errors.Is(err, identity.ErrNotVisible) {
-		return &apierror.Error{Code: "not_found"}
+		return &apierror.Error{Code: "not_found", Cause: err}
 	}
 	if errors.Is(err, identity.ErrForbidden) {
-		return &apierror.Error{Code: "not_permitted"}
+		return &apierror.Error{Code: "not_permitted", Cause: err}
 	}
 	if errors.Is(err, identity.ErrUnauthorized) {
-		return &apierror.Error{Code: "unauthorized"}
+		return &apierror.Error{Code: "unauthorized", Cause: err}
 	}
 	if errors.Is(err, identity.ErrPasswordChangeRequired) {
-		return &apierror.Error{Code: "password_change_required"}
+		return &apierror.Error{Code: "password_change_required", Cause: err}
 	}
 	if errors.Is(err, identity.ErrDirectInput) {
-		return &apierror.Error{Code: "invalid_request"}
+		return &apierror.Error{Code: "invalid_request", Cause: err}
 	}
 	if errors.Is(err, identity.ErrDeviceInput) {
-		return &apierror.Error{Code: "invalid_request"}
+		return &apierror.Error{Code: "invalid_request", Cause: err}
 	}
 	if errors.Is(err, identity.ErrDeviceUnknown) {
-		return &apierror.Error{Code: "not_found"}
+		return &apierror.Error{Code: "not_found", Cause: err}
 	}
 	if errors.Is(err, identity.ErrRestrictionInput) {
-		return &apierror.Error{Code: "invalid_request"}
+		return &apierror.Error{Code: "invalid_request", Cause: err}
 	}
 	if errors.Is(err, identity.ErrRestrictionChanged) || errors.Is(err, identity.ErrProfileChanged) {
-		return &apierror.Error{Code: "revision_mismatch"}
+		return &apierror.Error{Code: "revision_mismatch", Cause: err}
 	}
 	if errors.Is(err, identity.ErrBusy) {
-		return &apierror.Error{Code: "request_in_progress", RetryAfterSeconds: 2}
+		return &apierror.Error{Code: "request_in_progress", RetryAfterSeconds: 2, Cause: err}
 	}
-	return &apierror.Error{Code: "internal", Cause: err}
+	// Keep transient database errors available to the v1 timeout mapping and
+	// catalogue's database-refusal translator instead of sealing them as internal.
+	return v1Error(err)
 }
 
 func foundationAdministrationError(err error) error {

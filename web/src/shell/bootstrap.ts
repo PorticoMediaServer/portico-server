@@ -110,7 +110,7 @@ export async function currentShellProfile(api: HttpLocalApi, session: LocalSessi
 }
 /** The shell's own facts: what the restart-driving hints (`libraries.changed`, server settings,
  * members, live sources, library channels) stand for. */
-async function readShellIdentity(api: HttpLocalApi, session: LocalSession, signal: AbortSignal) {
+export async function readShellIdentity(api: HttpLocalApi, session: LocalSession, signal: AbortSignal) {
   const [libraries, profile, system, guide] = await Promise.all([
     api.request(routePath('get_libraries'), 'GET', undefined, signal).then(parseLibraryList), currentShellProfile(api, session, signal), api.request(routePath('get_system'), 'GET', undefined, signal).then(parseServerSignIn),
     fetchGuideSourceSummaries(api, session.viewer.serverId, Intl.DateTimeFormat().resolvedOptions().timeZone, signal).catch(error => {

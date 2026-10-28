@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {currentShellProfile, ShellBootstrap, sameShellAuthority, shellArtworkAuthorityKey, watchHomeViewerFence, type ShellAssembler} from '../src/shell/bootstrap.ts';
+import {currentShellProfile, readShellIdentity, ShellBootstrap, sameShellAuthority, shellArtworkAuthorityKey, watchHomeViewerFence, type ShellAssembler} from '../src/shell/bootstrap.ts';
 import {type HttpLocalApi, type LocalSession} from '@core/index.ts';
 import {HomeService} from '@core/home-service.ts';
 import type {SelectedViewerRecord} from '@core/viewer-selection.ts';
@@ -144,4 +144,25 @@ test('a secondary profile has no management powers, even on an owner account', a
  const facts=await currentShellProfile(api,child,new AbortController().signal);
  assert.equal(facts.canManageProfiles,false);assert.equal(facts.primaryProfile,false);assert.deepEqual(Object.values(facts.capabilities!),[false,false,false,false]);
  await assert.rejects(currentShellProfile(api,{...child,viewer:{...child.viewer,authority:'hosted'}},new AbortController().signal),/this server/);
+});
+
+
+test('shell identity loads during a building Reading generation and retains Settings authority', async () => {
+  const summary = {counts: [{kind: 'ebook', count: 37, atLeast: true}], coverUrls: [], latestArtwork: '', firstScan: true, empty: false, emptyKnown: false};
+  const calls: string[] = [];
+  const api = {request: async (path: string) => {
+    calls.push(path);
+    if (path === '/v1/libraries') return {items: [{id: 'reading-a', name: 'Still importing', kind: 'book', summary}]};
+    if (path === '/v1/direct') return directRecord();
+    if (path === '/v1/system') return {id: 'server-a', name: 'Test server', version: '1', signIn: 'local', move: null, setupRequired: false, hostedConfigured: false, hostedAttached: false};
+    if (path.startsWith('/v1/guide/sources?')) throw Object.assign(new Error('not permitted'), {status: 403});
+    throw new Error(`Unexpected shell read ${path}`);
+  }} as unknown as HttpLocalApi;
+  const read = await readShellIdentity(api, directSession, new AbortController().signal);
+  assert.equal(read.libraries.length, 1);
+  assert.deepEqual(read.libraries[0]?.summary, summary);
+  assert.equal(read.profile.capabilities?.manageServer, true);
+  assert.equal(read.profile.profileName, 'Evening profile');
+  assert.equal(read.system.name, 'Test server');
+  assert.ok(calls.includes('/v1/libraries') && calls.includes('/v1/direct') && calls.includes('/v1/system'));
 });
