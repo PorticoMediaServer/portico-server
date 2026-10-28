@@ -2,36 +2,81 @@ package compactcatalog
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 )
 
-// ErrFacetProducerIncomplete keeps normalized SIMPLE outputs disabled until
-// exact source/policy closure is established. Quiescent legacy facet buckets do
-// not prove the restricted-show/member oracle or coherent retained raw inputs.
-var ErrFacetProducerIncomplete = errors.New("normalized facet producer closure is incomplete")
+var ErrFacetProducerChanged = errors.New("facet producer source image changed")
+var ErrFacetProducerFailed = errors.New("facet source maintenance has failed")
 
-// CheckNormalizedFacetReadiness is the opt-in barrier for the new normalized
-// base reader. Call it in the same read transaction as the base snapshot. It
-// deliberately does not change the legacy CheckReadiness/serving behaviour.
-//
-// The family must have no pending, rebuilding or failed work, including source
-// fanouts and upstream browse/availability/container work. Even then this slice
-// cannot certify the exact policy oracle, unbounded holders or raw-source
-// retention; fail closed rather than blessing idle but incomplete output.
-func CheckNormalizedFacetReadiness(ctx context.Context, q ReadQuery) error {
-	var pending bool
-	err := q.QueryRowContext(ctx, `SELECT
- NOT EXISTS(SELECT 1 FROM catalog_derivations WHERE domain=33 AND version>=6)
- OR EXISTS(SELECT 1 FROM catalog_derivations WHERE domain IN(18,19,20,25,26,28,31,33,35,36,37) AND rebuilding=1)
- OR EXISTS(SELECT 1 FROM catalog_dirty WHERE domain IN(18,19,20,25,26,28,31,33,35,36,37))
- OR EXISTS(SELECT 1 FROM catalog_derivation_failures WHERE domain IN(18,19,20,25,26,28,31,33,35,36,37))
+// FacetProducerFence identifies one quiescent accepted legacy contribution
+// image. SourceEpoch advances at accepting source writes, BEFORE shared fanout;
+// ProjectionEpoch advances with bounded reconciliation. Neither is a hash.
+// A class adapter must additionally bind its exact policy and published-class
+// witness (restricted decade), and recheck live authority independently.
+type FacetProducerFence struct {
+	SourceEpoch       int64 `json:"sourceEpoch"`
+	ProjectionEpoch   int64 `json:"projectionEpoch"`
+	ServingGeneration int64 `json:"servingGeneration"`
+	Version           int   `json:"version"`
+}
+
+// CaptureFacetProducerFence must share the caller's read snapshot. It is a
+// real family barrier, including persisted failures and interrupted stages.
+// This does not bless legacy restriction buckets as an exact policy oracle.
+func CaptureFacetProducerFence(ctx context.Context, q ReadQuery) (FacetProducerFence, error) {
+	var f FacetProducerFence
+	var pending, failed bool
+	err := q.QueryRowContext(ctx, `SELECT s.source_epoch,s.projection_epoch,g.generation,COALESCE((SELECT version FROM catalog_derivations WHERE domain=33),0),
+ g.retaining=1
+ OR NOT EXISTS(SELECT 1 FROM catalog_derivations WHERE domain=33 AND version=6)
+ OR NOT EXISTS(SELECT 1 FROM catalog_derivations WHERE domain=36 AND version=1)
+ OR NOT EXISTS(SELECT 1 FROM catalog_derivations WHERE domain=37 AND version=1)
+ OR NOT EXISTS(SELECT 1 FROM catalog_derivations WHERE domain=38 AND version=1)
+ OR NOT EXISTS(SELECT 1 FROM catalog_derivations WHERE domain=39 AND version=1)
+ OR NOT EXISTS(SELECT 1 FROM catalog_derivations WHERE domain=40 AND version=1)
+ OR EXISTS(SELECT 1 FROM catalog_derivations WHERE domain IN(18,19,20,25,26,28,31,33,35,36,37,38,39,40,41,42,43,44) AND rebuilding=1)
+ OR EXISTS(SELECT 1 FROM catalog_dirty WHERE domain IN(18,19,20,25,26,28,31,33,35,36,37,38,39,40,41,42,43,44))
+ OR EXISTS(SELECT 1 FROM catalog_derivation_failures WHERE domain IN(18,19,20,25,26,28,31,33,35,36,37,38,39,40,41,42,43,44))
+ OR EXISTS(SELECT 1 FROM catalog_upstream_sources)
  OR EXISTS(SELECT 1 FROM catalog_facet_source_fanouts)
- OR EXISTS(SELECT 1 FROM catalog_generations WHERE retaining=1)`).Scan(&pending)
+ OR EXISTS(SELECT 1 FROM catalog_facet_work)
+ OR EXISTS(SELECT 1 FROM catalog_facet_work_places)
+ OR EXISTS(SELECT 1 FROM catalog_facet_stage),
+ EXISTS(SELECT 1 FROM catalog_derivation_failures WHERE domain IN(18,19,20,25,26,28,31,33,35,36,37,38,39,40,41,42,43,44))
+ FROM catalog_facet_source_state s CROSS JOIN catalog_generations g WHERE s.singleton=1 AND g.singleton=1`).
+		Scan(&f.SourceEpoch, &f.ProjectionEpoch, &f.ServingGeneration, &f.Version, &pending, &failed)
+	if err != nil {
+		return f, err
+	}
+	if failed {
+		return f, ErrFacetProducerFailed
+	}
+	if pending {
+		return f, ErrBuilding
+	}
+	return f, nil
+}
+
+// ValidateFacetProducerFence runs in the SAME writer transaction as base
+// activation. An edit/merge between any two class quanta invalidates the
+// candidate; unchanged count totals do not conceal source/classification edits.
+func ValidateFacetProducerFence(ctx context.Context, tx *sql.Tx, expected FacetProducerFence) error {
+	current, err := CaptureFacetProducerFence(ctx, tx)
 	if err != nil {
 		return err
 	}
-	if pending {
-		return ErrBuilding
+	if current != expected {
+		return ErrFacetProducerChanged
 	}
-	return ErrFacetProducerIncomplete
+	return nil
+}
+
+// CheckNormalizedFacetReadiness is only the shared producer-family portion of
+// the base adapter's barrier. The adapter remains disabled until its distinct
+// unrestricted/restricted show/member/decade oracle is supplied by its owner.
+// Legacy CheckReadiness and current public readers are unchanged.
+func CheckNormalizedFacetReadiness(ctx context.Context, q ReadQuery) error {
+	_, err := CaptureFacetProducerFence(ctx, q)
+	return err
 }

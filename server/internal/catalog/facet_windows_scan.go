@@ -29,6 +29,11 @@ type facetWindowScan struct {
 
 func (s *facetWindowScan) AccountedBytes() int64 { return s.bytes }
 
+type facetWindowReader interface {
+	QueryContext(context.Context, string, ...any) (*sql.Rows, error)
+	QueryRowContext(context.Context, string, ...any) *sql.Row
+}
+
 const facetWindowOrder = `b.negative_count,b.label_order,b.value_order,b.value_id`
 const facetWindowTuple = `(` + facetWindowOrder + `)`
 const facetWindowAnchor = `(SELECT negative_count,label_order,value_order,value_id FROM catalog_facet_base_rows WHERE base_id=? AND value_id=?)`
@@ -38,8 +43,12 @@ func (s *facetWindowScan) Step(ctx context.Context, budget *readprep.Budget) (re
 		return readprep.StepResult{}, err
 	}
 	done := false
-	err := dbwork.WithReadSnapshot(ctx, s.db, func(ctx context.Context) error {
-		tx := dbwork.Snapshot(ctx)
+	ctx = dbwork.WithClass(ctx, dbwork.ClassBackgroundMedia)
+	// Each SELECT owns one short implicit read snapshot, released by Rows.Close.
+	// COMPLETE inputs are immutable, so before/after basis checks suffice; an
+	// explicit multi-statement snapshot would impose a hard 500ms scalar cap.
+	err := func() error {
+		tx := dbwork.ReadHandle(ctx, s.db)
 		if _, err := facetBaseSnapshot(ctx, tx, s.base, true); err != nil {
 			return readprep.ErrStale
 		}
@@ -114,7 +123,12 @@ func (s *facetWindowScan) Step(ctx context.Context, budget *readprep.Budget) (re
 		}
 		done = n < 4096
 		return nil
-	})
+	}()
+	if err == nil {
+		if _, checkErr := facetBaseSnapshot(ctx, dbwork.ReadHandle(ctx, s.db), s.base, true); checkErr != nil {
+			err = readprep.ErrStale
+		}
+	}
 	if err != nil {
 		return readprep.StepResult{}, err
 	}
@@ -147,7 +161,7 @@ func (s *facetWindowScan) Step(ctx context.Context, budget *readprep.Budget) (re
 
 // empty uses the ready index and maintained exact distinct-value header. There
 // is no all-value scan even at a cold initial, before, after or inclusive reload.
-func (s *facetWindowScan) empty(ctx context.Context, tx *sql.Tx) (bool, error) {
+func (s *facetWindowScan) empty(ctx context.Context, tx facetWindowReader) (bool, error) {
 	where := "b.base_id=?"
 	args := []any{s.base}
 	order := facetWindowOrder

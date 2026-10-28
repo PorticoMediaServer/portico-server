@@ -59,7 +59,12 @@ type FacetRequest struct {
 	Q       string
 	Limit   int
 	Offset  int
-	Sort    string
+	// Keyset parameters belong only to the SIMPLE branch. Presence is kept
+	// separately so offset=0 is rejected there and omitted limits can inherit
+	// the original continuation window size.
+	After, Before, At           string
+	LimitPresent, OffsetPresent bool
+	Sort                        string
 	// Restrictions must match the browse request whose facets these are, or the
 	// counts would advertise titles the page itself refuses to show.
 	Restrictions identity.ContentRestrictions

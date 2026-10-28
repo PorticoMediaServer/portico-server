@@ -249,36 +249,17 @@ func touchEntityOwn(ctx context.Context, tx *sql.Tx, id int64, kind Kind) error 
 }
 
 func touchEntityDependents(ctx context.Context, tx *sql.Tx, id int64, kind Kind) error {
-	// Rows derived from a parent's facts follow it (each bounded by the
-	// container): a season's row carries its show's title and year, a song's
-	// edges its album's artist, a book file's edges its book's author — and the
-	// author a file belongs to now re-derives, so a retired or re-authored book
-	// releases it.
 	switch kind {
-	case Artist:
-		return touchDependents(ctx, tx, id, map[int]string{DomainSearch: `SELECT ?1,entity_id,1 FROM catalog_albums WHERE artist_id=?2 UNION SELECT ?1,song_id,1 FROM catalog_song_artists WHERE artist_id=?2`})
-	case Collection:
-		return touchDependents(ctx, tx, id, map[int]string{DomainSearch: `SELECT ?1,item_id,1 FROM catalog_collection_members WHERE collection_id=?2`})
-	case Show:
-		return touchDependents(ctx, tx, id, map[int]string{DomainBrowseRows: `SELECT ?1,entity_id,1 FROM catalog_seasons WHERE show_id=?2`, DomainSearch: `SELECT ?1,entity_id,1 FROM catalog_episodes WHERE show_id=?2`})
-	case Album:
-		return touchDependents(ctx, tx, id, map[int]string{DomainBrowseEdges: `SELECT ?1,entity_id,1 FROM catalog_songs INDEXED BY catalog_songs_album_order WHERE album_id=?2`, DomainSearch: `SELECT ?1,entity_id,1 FROM catalog_songs INDEXED BY catalog_songs_album_order WHERE album_id=?2`})
-	case Book:
-		return touchDependents(ctx, tx, id, map[int]string{
-			DomainBrowseEdges: `SELECT ?1,entity_id,1 FROM catalog_book_files INDEXED BY catalog_book_files_order WHERE book_id=?2`,
-			DomainBrowseRows: `SELECT ?1,m.entity_id,1 FROM catalog_book_files f INDEXED BY catalog_book_files_order
-			 CROSS JOIN catalog_browse_memberships m INDEXED BY catalog_browse_membership_item ON m.item_id=f.entity_id WHERE f.book_id=?2 AND m.source=7`,
-		})
-	}
-	return nil
-}
-
-// touchDependents queues, per domain, the ids a query selects as (domain, id, 1).
-func touchDependents(ctx context.Context, tx *sql.Tx, id int64, queries map[int]string) error {
-	for domain, query := range queries {
-		if _, err := tx.ExecContext(ctx, `INSERT INTO catalog_dirty(domain,entity_id,revision) `+query+` ON CONFLICT(domain,entity_id) DO UPDATE SET revision=revision+1`, domain, id); err != nil {
+	case Artist, Collection, Show, Album, Book:
+		var lifetime string
+		err := tx.QueryRowContext(ctx, `SELECT lower(hex(public_id)) FROM catalog_entities WHERE id=?`, id).Scan(&lifetime)
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil
+		}
+		if err != nil {
 			return err
 		}
+		return queueSource(ctx, tx, DomainEntitySources, id, lifetime, 1<<uint(kind))
 	}
 	return nil
 }
@@ -799,9 +780,7 @@ func SetAssetAvailableTx(ctx context.Context, tx *sql.Tx, asset int64, available
 }
 
 func touchAssetItems(ctx context.Context, tx *sql.Tx, asset int64) error {
-	if _, err := tx.ExecContext(ctx, `INSERT INTO catalog_dirty(domain,entity_id,revision)
- SELECT ?,entity_id,1 FROM catalog_asset_links INDEXED BY catalog_asset_links_asset WHERE asset_id=?
- ON CONFLICT(domain,entity_id) DO UPDATE SET revision=revision+1`, DomainAvailability, asset); err != nil {
+	if err := queueAssetSource(ctx, tx, asset, sourceAvailability); err != nil {
 		return err
 	}
 	return TouchTx(ctx, tx, DomainAssetMetrics, asset)
@@ -822,14 +801,7 @@ const presentFileSQL = `(EXISTS(SELECT 1 FROM inventory_objects o WHERE o.asset_
 // calls it for the titles concerned.
 func SettleMissingTx(ctx context.Context, tx *sql.Tx, items ...int64) error {
 	for _, item := range items {
-		if _, err := tx.ExecContext(ctx, `DELETE FROM catalog_missing_titles WHERE entity_id=?1
- AND EXISTS(SELECT 1 FROM catalog_asset_links l JOIN catalog_assets a ON a.id=l.asset_id WHERE l.entity_id=?1 AND `+presentFileSQL+`)`, item); err != nil {
-			return err
-		}
-		if _, err := tx.ExecContext(ctx, `INSERT INTO catalog_missing_titles(entity_id,library_id,missing_since_ms)
- SELECT e.id,e.library_id,?2 FROM catalog_entities e JOIN catalog_kinds k ON k.id=e.kind AND k.playable=1
- WHERE e.id=?1 AND NOT EXISTS(SELECT 1 FROM catalog_asset_links l JOIN catalog_assets a ON a.id=l.asset_id WHERE l.entity_id=?1 AND `+presentFileSQL+`)
- ON CONFLICT(entity_id) DO NOTHING`, item, time.Now().UnixMilli()); err != nil {
+		if err := queueMissingSource(ctx, tx, item); err != nil {
 			return err
 		}
 	}
@@ -839,55 +811,18 @@ func SettleMissingTx(ctx context.Context, tx *sql.Tx, items ...int64) error {
 // SettleAssetMissingTx settles the titles a file backs (after the file's
 // presence changed).
 func SettleAssetMissingTx(ctx context.Context, tx *sql.Tx, asset int64) error {
-	items, err := linkedItems(ctx, tx, asset)
-	if err != nil {
-		return err
-	}
-	return SettleMissingTx(ctx, tx, items...)
+	return queueAssetSource(ctx, tx, asset, sourceMissing)
 }
 
-// DeleteAssetTx forgets a file: its links go with it, and the items it backed
-// re-derive their availability. A title left with no file stays in the
-// catalogue, marked missing.
+// DeleteAssetTx performs the existing physical FK delete. Old link DELETE
+// markers retain each former owner's downstream work; no Go witness slice is
+// materialized. The physical cascade itself still costs its actual old edges.
 func DeleteAssetTx(ctx context.Context, tx *sql.Tx, asset int64) error {
-	items, err := linkedItems(ctx, tx, asset)
-	if err != nil {
+	if _, err := tx.ExecContext(ctx, `DELETE FROM catalog_asset_issues WHERE asset_id=?`, asset); err != nil {
 		return err
 	}
-	if err = touchAssetItems(ctx, tx, asset); err != nil {
-		return err
-	}
-	// Derived issue evidence has a restrictive reference to the file and must
-	// leave with it, rather than prevent an otherwise valid title removal.
-	if _, err = tx.ExecContext(ctx, `DELETE FROM catalog_asset_issues WHERE asset_id=?`, asset); err != nil {
-		return err
-	}
-	if _, err = tx.ExecContext(ctx, `DELETE FROM catalog_assets WHERE id=?`, asset); err != nil {
-		return err
-	}
-	for _, item := range items {
-		if err = touchLinked(ctx, tx, item); err != nil {
-			return err
-		}
-	}
-	return SettleMissingTx(ctx, tx, items...)
-}
-
-func linkedItems(ctx context.Context, tx *sql.Tx, asset int64) ([]int64, error) {
-	rows, err := tx.QueryContext(ctx, `SELECT entity_id FROM catalog_asset_links INDEXED BY catalog_asset_links_asset WHERE asset_id=?`, asset)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	var out []int64
-	for rows.Next() {
-		var id int64
-		if err = rows.Scan(&id); err != nil {
-			return nil, err
-		}
-		out = append(out, id)
-	}
-	return out, rows.Err()
+	_, err := tx.ExecContext(ctx, `DELETE FROM catalog_assets WHERE id=?`, asset)
+	return err
 }
 
 // Link is one of an item's physical parts. Files of the same part are

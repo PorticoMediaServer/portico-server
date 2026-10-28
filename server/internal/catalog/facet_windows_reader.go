@@ -76,6 +76,15 @@ type SimpleFacetPreparing struct {
 type SimpleFacetResult struct {
 	Page      *SimpleFacetPage
 	Preparing *SimpleFacetPreparing
+	release   func()
+}
+
+// Release must be deferred by HTTP through final serialization/transport. It
+// releases the shared store's delivery reservation; copies share one lease.
+func (r SimpleFacetResult) Release() {
+	if r.release != nil {
+		r.release()
+	}
 }
 
 type facetWindowSpec struct {
@@ -99,7 +108,7 @@ func (w *FacetWindows) Initial(ctx context.Context, caller readprep.Caller, scop
 		return SimpleFacetResult{}, ErrFacetBaseInput
 	}
 	var id int64
-	err := dbwork.QueryRow(ctx, w.db, `SELECT active_base FROM catalog_facet_base_classes WHERE library_id=? AND library=? AND field=? AND policy=? AND source=?`, scope.LibraryID, scope.Library, scope.Field, scope.Policy, scope.Source).Scan(&id)
+	err := dbwork.QueryRow(ctx, w.db, `SELECT COALESCE(active_base,0) FROM catalog_facet_base_classes WHERE library_id=? AND library=? AND field=? AND policy=? AND source=?`, scope.LibraryID, scope.Library, scope.Field, scope.Policy, scope.Source).Scan(&id)
 	if errors.Is(err, sql.ErrNoRows) || id == 0 {
 		return SimpleFacetResult{}, ErrFacetBaseUnavailable
 	}
@@ -110,7 +119,7 @@ func (w *FacetWindows) Initial(ctx context.Context, caller readprep.Caller, scop
 	if err != nil {
 		return SimpleFacetResult{}, err
 	}
-	return w.submit(ctx, caller, snap, facetWindowSpec{Needle: sorttext.Fold(q), Limit: limit})
+	return w.submit(ctx, caller, snap, facetWindowSpec{Needle: sorttext.Fold(q), Limit: limit}, 0)
 }
 
 // Continue accepts only opaque authenticated ID anchors. No label, value,
@@ -122,14 +131,19 @@ func (w *FacetWindows) Continue(ctx context.Context, caller readprep.Caller, tok
 	}
 	snap, err := w.authorize(ctx, caller, t.base)
 	if err != nil {
+		_ = w.store.Cancel(ctx, caller, t.handle)
 		return SimpleFacetResult{}, err
 	}
 	r, err := w.store.Poll(ctx, caller, t.handle)
 	if err != nil {
 		return SimpleFacetResult{}, err
 	}
+	defer r.Release()
 	if r.State != readprep.Ready {
 		return SimpleFacetResult{}, readprep.ErrStale
+	}
+	if err = r.ResizeDelivery(32768); err != nil {
+		return SimpleFacetResult{}, err
 	}
 	var summary facetWindowSummary
 	if err = json.Unmarshal(r.Payload, &summary); err != nil {
@@ -144,7 +158,7 @@ func (w *FacetWindows) Continue(ctx context.Context, caller readprep.Caller, tok
 		return SimpleFacetResult{}, readprep.ErrStale
 	}
 	summary.Spec.Anchor, summary.Spec.Direction = t.row, t.direction
-	return w.submit(ctx, caller, snap, summary.Spec)
+	return w.submit(ctx, caller, snap, summary.Spec, t.expires)
 }
 
 func (w *FacetWindows) Poll(ctx context.Context, caller readprep.Caller, queryID string) (SimpleFacetResult, error) {
@@ -154,21 +168,31 @@ func (w *FacetWindows) Poll(ctx context.Context, caller readprep.Caller, queryID
 	}
 	snap, err := w.authorize(ctx, caller, t.base)
 	if err != nil {
+		_ = w.store.Cancel(ctx, caller, t.handle)
 		return SimpleFacetResult{}, err
 	}
 	r, err := w.store.Poll(ctx, caller, t.handle)
 	if err != nil {
 		return SimpleFacetResult{}, err
 	}
+	transferred := false
+	defer func() {
+		if !transferred {
+			r.Release()
+		}
+	}()
 	out := SimpleFacetResult{}
 	if r.State == readprep.Preparing {
 		out.Preparing = &SimpleFacetPreparing{Kind: "facet-preparing", State: "preparing", QueryID: queryID, RetryAfterMs: 1000}
 	} else {
+		if err = r.ResizeDelivery(32768); err != nil {
+			return out, err
+		}
 		var summary facetWindowSummary
 		if r.Basis != strconv.FormatInt(snap.ID, 10) || json.Unmarshal(r.Payload, &summary) != nil {
 			return out, readprep.ErrStale
 		}
-		page, err := w.hydrate(ctx, snap, summary, t)
+		page, err := w.hydrate(ctx, snap, summary, t, r)
 		if err != nil {
 			return out, err
 		}
@@ -178,6 +202,8 @@ func (w *FacetWindows) Poll(ctx context.Context, caller readprep.Caller, queryID
 		_ = w.store.Cancel(ctx, caller, t.handle)
 		return SimpleFacetResult{}, err
 	}
+	out.release = r.Release
+	transferred = true
 	return out, nil
 }
 
@@ -199,7 +225,7 @@ func (w *FacetWindows) authorize(ctx context.Context, caller readprep.Caller, id
 	}
 	return s, nil
 }
-func (w *FacetWindows) submit(ctx context.Context, caller readprep.Caller, s FacetBaseSnapshot, spec facetWindowSpec) (SimpleFacetResult, error) {
+func (w *FacetWindows) submit(ctx context.Context, caller readprep.Caller, s FacetBaseSnapshot, spec facetWindowSpec, originalExpiry int64) (SimpleFacetResult, error) {
 	canonical, _ := json.Marshal(struct {
 		Scope                         FacetBaseScope
 		Witness, Authority, Algorithm string
@@ -208,18 +234,36 @@ func (w *FacetWindows) submit(ctx context.Context, caller readprep.Caller, s Fac
 	key := readprep.Key{Namespace: "simple-facets-v1", Basis: strconv.FormatInt(s.ID, 10), Canonical: string(canonical)}
 	// Full JSON/string equality is the store key; no hash-only equivalence. No
 	// prefix seed is used: a bounded top page is NOT a complete prior match set.
-	initial := int64(4096 + len(canonical) + len(spec.Needle))
-	h, err := w.store.Submit(ctx, caller, key, readprep.Plan{InitialBytes: initial, New: func(ctx context.Context, b *readprep.Budget) (readprep.Computation, error) {
+	initial := int64(8192 + len(canonical) + len(spec.Needle))
+	until := time.Time{}
+	if originalExpiry > 0 {
+		until = time.Unix(originalExpiry, 0)
+	}
+	h, err := w.store.SubmitUntil(ctx, caller, key, readprep.Plan{InitialBytes: initial, New: func(ctx context.Context, b *readprep.Budget) (readprep.Computation, error) {
 		if err := b.Resize(initial); err != nil {
 			return nil, err
 		}
-		return &facetWindowScan{db: w.db, base: s.ID, spec: spec, bytes: initial, ids: make([]int64, 0, spec.Limit+1), total: s.Total}, nil
-	}})
+		return &facetWindowScan{db: w.db, base: s.ID, spec: spec, bytes: initial, ids: make([]int64, 0, spec.Limit+1), total: func() int64 {
+			if spec.Needle == "" {
+				return s.Total
+			}
+			return 0
+		}()}, nil
+	}}, until)
 	if err != nil {
 		return SimpleFacetResult{}, err
 	}
-	t := facetWindowToken{base: s.ID, handle: h, expires: w.now().Add(30 * time.Minute).Unix()}
-	return w.Poll(ctx, caller, w.encode(t))
+	expiry, err := w.store.LeaseExpiry(ctx, caller, h)
+	if err != nil {
+		_ = w.store.Cancel(ctx, caller, h)
+		return SimpleFacetResult{}, err
+	}
+	t := facetWindowToken{base: s.ID, handle: h, expires: expiry.Unix()}
+	out, err := w.Poll(ctx, caller, w.encode(t))
+	if err != nil {
+		_ = w.store.Cancel(ctx, caller, h)
+	}
+	return out, err
 }
 
 type facetWindowToken struct {
@@ -268,30 +312,92 @@ func (w *FacetWindows) decode(token string) (facetWindowToken, error) {
 // returned losslessly, alone, with explicit transient O(B) SQL/transport memory.
 // Ordinary windows stop at 256KiB (estimated JSON escaping included), never
 // silently drop a row: the last returned ID anchors the next window.
-func (w *FacetWindows) hydrate(ctx context.Context, s FacetBaseSnapshot, sum facetWindowSummary, t facetWindowToken) (SimpleFacetPage, error) {
+func (w *FacetWindows) hydrate(ctx context.Context, s FacetBaseSnapshot, sum facetWindowSummary, t facetWindowToken, delivery readprep.Result) (SimpleFacetPage, error) {
 	out := SimpleFacetPage{Kind: "simple-keyset", Field: s.Scope.Field, Revision: strconv.FormatInt(s.ID, 10), Total: sum.Total, Values: []FacetValue{}, Window: SimpleFacetWindow{QueryID: w.encode(t), Basis: strconv.FormatInt(s.ID, 10), Limit: sum.Spec.Limit}}
-	err := dbwork.WithReadSnapshot(ctx, w.db, func(ctx context.Context) error {
-		if _, err := facetBaseSnapshot(ctx, dbwork.Snapshot(ctx), s.ID, true); err != nil {
+	read := dbwork.ReadHandle(ctx, w.db)
+	// Immutable base/text identities allow bounded single-statement snapshots.
+	// Keep no transaction pinned across legal exceptional scalar transport.
+	err := func() error {
+		if _, err := facetBaseSnapshot(ctx, read, s.ID, true); err != nil {
 			return readprep.ErrStale
 		}
+		if sum.Total < 0 || sum.Total > 9007199254740991 {
+			return ErrFacetBaseInput
+		}
+		// Before pages are adjacent to their right edge even when the byte
+		// target fits fewer rows: retain a suffix, not the distant prefix.
+		sizes := make([]int64, len(sum.IDs))
+		for i, id := range sum.IDs {
+			if err := read.QueryRowContext(ctx, `SELECT 6*(length(CAST(v.value AS BLOB))+length(CAST(x.label AS BLOB)))+128 FROM catalog_facet_base_rows b JOIN catalog_facet_base_values v ON v.id=b.value_id JOIN catalog_facet_base_texts x ON x.id=b.text_id WHERE b.base_id=? AND b.value_id=?`, s.ID, id).Scan(&sizes[i]); err != nil {
+				return err
+			}
+		}
+		lo, hi := 0, len(sum.IDs)
 		used := int64(0)
+		if sum.Spec.Direction == 2 {
+			lo = hi
+			for lo > 0 {
+				if lo < hi && used+sizes[lo-1] > 256<<10 {
+					break
+				}
+				lo--
+				used += sizes[lo]
+			}
+			if lo > 0 {
+				sum.Earlier = true
+			}
+		} else {
+			hi = 0
+			for hi < len(sum.IDs) {
+				if hi > 0 && used+sizes[hi] > 256<<10 {
+					break
+				}
+				used += sizes[hi]
+				hi++
+			}
+			if hi < len(sum.IDs) {
+				sum.Later = true
+			}
+		}
+		sum.IDs = sum.IDs[lo:hi]
+		rawBytes := int64(0)
+		for _, size := range sizes[lo:hi] {
+			rawBytes += (size - 128) / 6
+		}
+		// Reserve BEFORE string scans. Cover driver/string overlap, bounded
+		// structs/decoder state, JSON encoder growth and transport buffering.
+		// Only one intrinsically oversized legal scalar may use the explicit
+		// uncached O(B) exception; ordinary contention never bypasses admission.
+		reserve := int64(32768) + 3*used + 2*rawBytes
+		if err := delivery.ResizeDelivery(reserve); err != nil {
+			exceptional := len(sum.IDs) == 1 && rawBytes > 256<<10 && errors.Is(err, readprep.ErrCapacity)
+			if !exceptional {
+				return err
+			}
+		}
+		out.Values = make([]FacetValue, 0, len(sum.IDs))
 		for _, id := range sum.IDs {
-			var size int64
-			if err := dbwork.QueryRow(ctx, w.db, `SELECT 6*(length(CAST(v.value AS BLOB))+length(CAST(x.label AS BLOB)))+128 FROM catalog_facet_base_rows b JOIN catalog_facet_base_values v ON v.id=b.value_id JOIN catalog_facet_base_texts x ON x.id=b.text_id WHERE b.base_id=? AND b.value_id=?`, s.ID, id).Scan(&size); err != nil {
-				return err
-			}
-			if len(out.Values) > 0 && used+size > 256<<10 {
-				break
-			}
 			var f FacetValue
-			if err := dbwork.QueryRow(ctx, w.db, `SELECT v.value,x.label,-b.negative_count FROM catalog_facet_base_rows b JOIN catalog_facet_base_values v ON v.id=b.value_id JOIN catalog_facet_base_texts x ON x.id=b.text_id WHERE b.base_id=? AND b.value_id=?`, s.ID, id).Scan(&f.Value, &f.Label, &f.Count); err != nil {
+			var count int64
+			if err := read.QueryRowContext(ctx, `SELECT v.value,x.label,-b.negative_count FROM catalog_facet_base_rows b JOIN catalog_facet_base_values v ON v.id=b.value_id JOIN catalog_facet_base_texts x ON x.id=b.text_id WHERE b.base_id=? AND b.value_id=?`, s.ID, id).Scan(&f.Value, &f.Label, &count); err != nil {
 				return err
 			}
+			if count < 1 || count > 9007199254740991 || int64(int(count)) != count {
+				return ErrFacetBaseInput
+			}
+			f.Count = int(count)
 			out.Values = append(out.Values, f)
-			used += size
 		}
 		return nil
-	})
+	}()
+	if err == nil {
+		if _, checkErr := facetBaseSnapshot(ctx, read, s.ID, true); checkErr != nil {
+			err = readprep.ErrStale
+		}
+	}
+	if errors.Is(err, sql.ErrNoRows) {
+		err = readprep.ErrStale
+	}
 	if err != nil {
 		return out, err
 	}

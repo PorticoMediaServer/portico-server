@@ -130,7 +130,7 @@ test('202 cannot reach ready parser; one timer and one GET at a time with positi
   assert.equal(f.readyParses(), 1);
   assert.equal(f.clock.peak, 1);
   assert.equal(f.clock.timers.size, 0);
-  assert.equal(f.deletes().length, 0);
+  assert.equal(f.deletes().length, 1, 'ordinary reads release the ready handle by default');
   await flush();
   assert.equal(f.reads().length, 4, 'no timer or extra poll after ready');
 });
@@ -191,6 +191,22 @@ test('early timer wakes re-arm only the remaining floor, with no early GET', asy
   assert.deepEqual(f.clock.delays, [60_001, 59_001]);
   f.clock.fire();
   await done;
+});
+
+test('clock jumps do not consume unwaited long chunks or shorten a server floor', async () => {
+  const f = fixture([pending(MAX_TIMER + 10), response(200, READY)]);
+  const done = readPreparation(f.options);
+  await flush();
+  f.clock.fire(10 * MAX_TIMER); await flush();
+  assert.equal(f.reads().length, 1, 'clock leap cannot skip the second timer chunk');
+  assert.deepEqual(f.clock.delays, [MAX_TIMER, 11]);
+  f.clock.fire(); await done;
+  const g = fixture([pending(60_000), response(200, READY)]);
+  const other = readPreparation(g.options);
+  await flush(); g.clock.fire(-1000); await flush();
+  assert.equal(g.reads().length, 1);
+  assert.deepEqual(g.clock.delays, [60_001, 60_001]);
+  g.clock.fire(); await other;
 });
 
 test('one 409 refreshes original descriptor without row tokens; second 409 is typed terminal', async () => {
@@ -513,4 +529,95 @@ test('abort re-entering a cancel callback cannot duplicate DELETE or start stale
   await flush(); f.clock.fire(); await rejected;
   assert.equal(f.reads().length, 2);
   assert.equal(f.deletes().length, 1);
+});
+
+test('ready default release and explicit release are idempotent; later caller abort does not re-cancel', async () => {
+  const f = fixture([pending(), response(200, READY)]);
+  const done = readPreparation(f.options);
+  await flush(); f.clock.fire();
+  const result = await done;
+  assert.equal(result.value, READY);
+  assert.equal(f.deletes().length, 1);
+  result.release(); result.release(); f.controller.abort();
+  assert.equal(f.deletes().length, 1);
+  assert.equal(getEventListeners(f.controller.signal, 'abort').length, 0);
+});
+
+test('retained ready lease keeps original signal until later abort, then releases exactly once', async () => {
+  const f = fixture([pending(), response(200, READY)]);
+  const done = readPreparation({...f.options, retainOnReady: true});
+  await flush(); f.clock.fire();
+  const result = await done;
+  assert.equal(f.deletes().length, 0, 'continuation handle must survive ready publication');
+  assert.equal(getEventListeners(f.controller.signal, 'abort').length, 1);
+  assert.equal(f.clock.timers.size, 0);
+  f.controller.abort(); result.release(); result.release();
+  assert.equal(f.deletes().length, 1);
+  assert.equal(getEventListeners(f.controller.signal, 'abort').length, 0);
+  assert.equal(f.reads().length, 2);
+});
+
+test('explicit ready lease release detaches signal and never cancels a subsequent operation', async () => {
+  const f = fixture([pending(), response(200, READY), pending(0, {}, 'q-2')]);
+  const first = readPreparation({...f.options, retainOnReady: true});
+  await flush(); f.clock.fire();
+  const result = await first;
+  result.release(); result.release();
+  assert.equal(getEventListeners(f.controller.signal, 'abort').length, 0);
+  const second = readPreparation(f.options), rejected = assert.rejects(second, {name: 'AbortError'});
+  await flush(); result.release();
+  assert.deepEqual(f.deletes().map(c => c.path), ['/v1/facet-queries/q-1']);
+  f.controller.abort(); await rejected;
+  assert.deepEqual(f.deletes().map(c => c.path), ['/v1/facet-queries/q-1', '/v1/facet-queries/q-2']);
+});
+
+function readyQueryId(body: unknown): string | undefined {
+  const b = body as {kind?: unknown; queryId?: unknown} | undefined;
+  if (b?.kind !== 'ready' || typeof b.queryId !== 'string') throw new Error('domain ready handle envelope');
+  return b.queryId;
+}
+
+test('direct 200 handles use domain extractor and obey default/retained lifetime', async t => {
+  for (const retainOnReady of [false, true]) await t.test(String(retainOnReady), async () => {
+    const f = fixture([response(200, {...READY, queryId: 'direct-1'})]);
+    const result = await readPreparation({...f.options, readyQueryId, retainOnReady});
+    assert.equal(f.deletes().length, retainOnReady ? 0 : 1);
+    assert.equal(getEventListeners(f.controller.signal, 'abort').length, retainOnReady ? 1 : 0);
+    result.release(); f.controller.abort(); result.release();
+    assert.equal(f.deletes().length, 1);
+    assert.equal(f.deletes()[0].path, '/v1/facet-queries/direct-1');
+  });
+});
+
+test('late direct 200 after abort releases its handle without ready parsing or publication', async () => {
+  const late = deferred<PreparationResponse>(), f = fixture([late.promise]);
+  const done = readPreparation({...f.options, readyQueryId, retainOnReady: true});
+  const rejected = assert.rejects(done, {name: 'AbortError'});
+  f.controller.abort(); await rejected;
+  late.resolve(response(200, {...READY, queryId: 'direct-1'})); await flush();
+  assert.equal(f.readyParses(), 0);
+  assert.equal(f.deletes().length, 1);
+  assert.equal(f.deletes()[0].path, '/v1/facet-queries/direct-1');
+  assert.equal(getEventListeners(f.controller.signal, 'abort').length, 0);
+});
+
+test('abort during direct-200 extraction/ready parsing and malformed/mismatched ready IDs do not leak interests', async t => {
+  for (const seam of ['extract', 'parse']) await t.test(seam, async () => {
+    const f = fixture([response(200, {...READY, queryId: 'direct-1'})]);
+    const done = readPreparation({...f.options, retainOnReady: true,
+      readyQueryId: body => { const id = readyQueryId(body); if (seam === 'extract') f.controller.abort(); return id; },
+      parseReady: (body, raw) => { f.controller.abort(); return f.options.parseReady(body, raw); },
+    });
+    await assert.rejects(done, {name: 'AbortError'});
+    assert.equal(f.deletes().length, 1);
+    assert.equal(getEventListeners(f.controller.signal, 'abort').length, 0);
+  });
+  const f = fixture([pending(), response(200, {...READY, queryId: 'different'})]);
+  const done = readPreparation({...f.options, readyQueryId}), rejected = assert.rejects(done, error => error instanceof PreparationProtocolError && error.code === 'invalid_ready_handle');
+  await flush(); f.clock.fire(); await rejected;
+  assert.deepEqual(f.deletes().map(c => c.path), ['/v1/facet-queries/q-1']);
+  const g = fixture([response(200, {...READY, queryId: '../foreign'})]);
+  await assert.rejects(readPreparation({...g.options, readyQueryId}), error => error instanceof PreparationProtocolError && error.code === 'invalid_ready_handle');
+  assert.equal(g.deletes().length, 0);
+  assert.equal(g.readyParses(), 0);
 });

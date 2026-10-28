@@ -388,6 +388,11 @@ func (s *Service) claimMB(ctx context.Context) (*mbJob, error) {
 	return j, gated.Commit()
 }
 func (s *Service) activeMB(ctx context.Context, tx *sql.Tx, j mbJob) error {
+	if ready, e := publicationSourcesReady(ctx, tx); e != nil {
+		return e
+	} else if !ready {
+		return errTVDBStale
+	}
 	if e := ctx.Err(); e != nil {
 		return e
 	}

@@ -9,6 +9,8 @@ import (
 	"sync/atomic"
 	"testing"
 	"time"
+
+	"portico.local/server/internal/supervise"
 )
 
 var testKey = Key{Namespace: "facets-v1", Basis: "library-lifetime:42/content:7", Canonical: "exact-policy/query/window"}
@@ -23,10 +25,6 @@ func (w *testWork) Step(ctx context.Context, b *Budget) (StepResult, error) { re
 
 func storeFor(t *testing.T, cfg Config) *Store {
 	t.Helper()
-	// Blocking test steps use explicit channels, not the production deadline.
-	if cfg.StepTimeout == 0 {
-		cfg.StepTimeout = time.Minute
-	}
 	s, err := New(cfg)
 	if err != nil {
 		t.Fatal(err)
@@ -64,8 +62,13 @@ func ready(t *testing.T, s *Store, caller Caller, h Handle) Result {
 		if err != nil {
 			t.Fatal(err)
 		}
-		return r.State == Ready
+		if r.State == Ready {
+			return true
+		}
+		r.Release()
+		return false
 	})
+	t.Cleanup(r.Release)
 	return r
 }
 
@@ -75,6 +78,52 @@ func simplePlan(payload string) Plan {
 			return StepResult{Done: true, Payload: []byte(payload)}, nil
 		}}, nil
 	}}
+}
+
+func TestChangedBaseRemainsTypedStale(t *testing.T) {
+	s := storeFor(t, Config{})
+	p := Plan{InitialBytes: 64, New: func(context.Context, *Budget) (Computation, error) {
+		return &testWork{bytes: 64, step: func(context.Context, *Budget) (StepResult, error) {
+			return StepResult{}, ErrStale
+		}}, nil
+	}}
+	h := submit(t, s, "caller", testKey, p)
+	eventually(t, func() bool {
+		r, err := s.Poll(context.Background(), "caller", h)
+		r.Release()
+		if err == nil {
+			return false
+		}
+		if !errors.Is(err, ErrStale) {
+			t.Fatalf("changed base became %v", err)
+		}
+		return true
+	})
+}
+
+func TestDescriptorIsCallerPrivateAndChargedThroughDelivery(t *testing.T) {
+	s := storeFor(t, Config{})
+	h := submit(t, s, "caller", testKey, simplePlan("ready"))
+	r := ready(t, s, "caller", h)
+	if r.Key != testKey {
+		t.Fatalf("lost exact descriptor: %+v", r.Key)
+	}
+	foreign, err := s.Poll(context.Background(), "other", h)
+	if !errors.Is(err, ErrStale) || foreign.Key != (Key{}) {
+		t.Fatal("descriptor escaped its caller")
+	}
+	minimum := deliveryOverhead + int64(len(testKey.Namespace)+len(testKey.Basis)+len(testKey.Canonical)+len(r.Payload))
+	if s.Stats().DeliveryBytes < minimum {
+		t.Fatal("descriptor delivery is not charged")
+	}
+	s.Invalidate(testKey)
+	if s.Stats().DeliveryBytes < minimum {
+		t.Fatal("eviction released live descriptor delivery")
+	}
+	r.Release()
+	if s.Stats().DeliveryBytes != 0 {
+		t.Fatal("delivery charge leaked")
+	}
 }
 
 func TestSharingPrivateHandlesAndPayloadOwnership(t *testing.T) {
@@ -115,6 +164,8 @@ func TestSharingPrivateHandlesAndPayloadOwnership(t *testing.T) {
 	}
 	if r, err := s.Poll(context.Background(), "session-a/profile-1", h1); err != nil || r.State != Preparing || r.Payload != nil {
 		t.Fatalf("%+v %v", r, err)
+	} else {
+		r.Release()
 	}
 	if err := s.Cancel(context.Background(), "session-a/profile-1", h1); err != nil {
 		t.Fatal(err)
@@ -229,11 +280,13 @@ func TestOriginalIdleAndCompleteExpiry(t *testing.T) {
 	clock := &testClock{at: time.Unix(1234, 0)}
 	s := storeFor(t, Config{Now: clock.now, OriginalTTL: 25 * time.Second, IdleTTL: 10 * time.Second, CompleteTTL: time.Minute})
 	h := submit(t, s, "a", testKey, simplePlan("yes"))
-	ready(t, s, "a", h)
+	ready(t, s, "a", h).Release()
 	for i := 0; i < 2; i++ {
 		clock.add(9 * time.Second)
-		if _, err := s.Poll(context.Background(), "a", h); err != nil {
+		if r, err := s.Poll(context.Background(), "a", h); err != nil {
 			t.Fatal(err)
+		} else {
+			r.Release()
 		}
 	}
 	clock.add(7 * time.Second) // Renewing idle never renews original lifetime.
@@ -286,7 +339,7 @@ func TestExpiryStopsUnfinishedWork(t *testing.T) {
 func TestAdmissionGrowthEvictionAndPayloadAccounting(t *testing.T) {
 	s := storeFor(t, Config{Workers: 1, MaxBytes: 2600})
 	old := submit(t, s, "a", testKey, simplePlan("old"))
-	ready(t, s, "a", old)
+	ready(t, s, "a", old).Release()
 	key2 := testKey
 	key2.Canonical += "2"
 	var denied atomic.Bool
@@ -307,7 +360,11 @@ func TestAdmissionGrowthEvictionAndPayloadAccounting(t *testing.T) {
 		}
 		return w, nil
 	}})
-	eventually(t, func() bool { _, err := s.Poll(context.Background(), "b", h); return errors.Is(err, ErrCapacity) })
+	eventually(t, func() bool {
+		r, err := s.Poll(context.Background(), "b", h)
+		r.Release()
+		return errors.Is(err, ErrCapacity)
+	})
 	if !denied.Load() {
 		t.Fatal("growth was not attempted")
 	}
@@ -354,7 +411,7 @@ func TestPayloadCapacityAndInFlightCopyCharged(t *testing.T) {
 }
 
 func TestTerminalErrorsDoNotEndlesslyPrepare(t *testing.T) {
-	for _, mode := range []string{"factory", "step", "panic", "nil", "underreported", "overreserved", "partial-payload", "deadline", "bad-resize"} {
+	for _, mode := range []string{"factory", "step", "panic", "nil", "underreported", "overreserved", "partial-payload", "deadline", "bad-resize", "uncached"} {
 		t.Run(mode, func(t *testing.T) {
 			cfg := Config{}
 			if mode == "deadline" {
@@ -391,6 +448,8 @@ func TestTerminalErrorsDoNotEndlesslyPrepare(t *testing.T) {
 					case "bad-resize":
 						b.Resize(-1)
 						return StepResult{}, nil
+					case "uncached":
+						return StepResult{}, ErrUncached
 					}
 					return StepResult{}, nil
 				}
@@ -398,10 +457,13 @@ func TestTerminalErrorsDoNotEndlesslyPrepare(t *testing.T) {
 			}}
 			h := submit(t, s, "a", testKey, p)
 			want := ErrFailed
+			if mode == "uncached" {
+				want = ErrUncached
+			}
 			if mode == "underreported" || mode == "overreserved" || mode == "partial-payload" || mode == "bad-resize" || mode == "nil" {
 				want = ErrInvalid
 			}
-			eventually(t, func() bool { _, err := s.Poll(context.Background(), "a", h); return errors.Is(err, want) })
+			eventually(t, func() bool { r, err := s.Poll(context.Background(), "a", h); r.Release(); return errors.Is(err, want) })
 			count := calls.Load()
 			h2 := submit(t, s, "b", testKey, p)
 			if _, err := s.Poll(context.Background(), "b", h2); !errors.Is(err, want) {
@@ -484,7 +546,8 @@ func TestCancelPollInvalidateAndShutdownRaces(t *testing.T) {
 			for j := 0; j < 8; j++ {
 				switch i % 4 {
 				case 0:
-					s.Poll(context.Background(), "a", h)
+					r, _ := s.Poll(context.Background(), "a", h)
+					r.Release()
 				case 1:
 					s.Cancel(context.Background(), "a", h)
 				case 2:
@@ -550,5 +613,409 @@ func TestValidationAndCancelledRequests(t *testing.T) {
 	}
 	if s.Stats().Bytes != 0 {
 		t.Fatal("invalid request allocated store memory")
+	}
+}
+
+func TestDeliveryReservationsOutliveCancelEvictionAndClose(t *testing.T) {
+	s := storeFor(t, Config{MaxBytes: 4096})
+	h := submit(t, s, "a", testKey, Plan{InitialBytes: 256, New: func(context.Context, *Budget) (Computation, error) {
+		return &testWork{bytes: 256, step: func(context.Context, *Budget) (StepResult, error) {
+			return StepResult{Done: true, Payload: make([]byte, 256)}, nil
+		}}, nil
+	}})
+	ready(t, s, "a", h).Release()
+	var wg sync.WaitGroup
+	results := make(chan Result, 100)
+	var rejected atomic.Int32
+	for i := 0; i < 100; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			r, err := s.Poll(context.Background(), "a", h)
+			if errors.Is(err, ErrCapacity) {
+				rejected.Add(1)
+				return
+			}
+			if err != nil {
+				t.Errorf("poll: %v", err)
+				return
+			}
+			results <- r
+		}()
+	}
+	wg.Wait()
+	close(results)
+	before := s.Stats()
+	if before.Bytes > 4096 || before.Deliveries == 0 || before.Deliveries >= 100 || rejected.Load() == 0 {
+		t.Fatalf("delivery cap failed: %+v rejected=%d", before, rejected.Load())
+	}
+	if err := s.Cancel(context.Background(), "a", h); err != nil {
+		t.Fatal(err)
+	}
+	s.Invalidate(testKey)
+	if got := s.Stats(); got.Bytes != before.DeliveryBytes || got.Deliveries != before.Deliveries {
+		t.Fatalf("invalidation freed live deliveries: %+v", got)
+	}
+	if err := s.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if got := s.Stats(); got.Bytes != before.DeliveryBytes || got.Entries != 0 {
+		t.Fatalf("close freed live deliveries: %+v", got)
+	}
+	for r := range results {
+		if len(r.Payload) != 256 {
+			t.Fatal("delivery invalidated by close")
+		}
+		copyOfResult := r
+		for i := 0; i < 3; i++ {
+			wg.Add(1)
+			go func() { defer wg.Done(); copyOfResult.Release() }()
+		}
+		r.Release()
+	}
+	wg.Wait()
+	if got := s.Stats(); got != (Stats{}) {
+		t.Fatalf("release leaked/double-freed: %+v", got)
+	}
+}
+
+func TestReleaseRestoresDeliveryCapacity(t *testing.T) {
+	s := storeFor(t, Config{MaxBytes: 2048})
+	h := submit(t, s, "a", testKey, simplePlan("hello"))
+	ready(t, s, "a", h).Release()
+	var held []Result
+	for {
+		r, err := s.Poll(context.Background(), "a", h)
+		if errors.Is(err, ErrCapacity) {
+			break
+		}
+		if err != nil {
+			t.Fatal(err)
+		}
+		held = append(held, r)
+	}
+	if len(held) == 0 {
+		t.Fatal("no delivery admitted")
+	}
+	first := held[0]
+	first.Release()
+	first.Release()
+	r, err := s.Poll(context.Background(), "a", h)
+	if err != nil {
+		t.Fatal("release did not restore capacity:", err)
+	}
+	r.Release()
+	for _, r := range held {
+		r.Release()
+	}
+	if got := s.Stats(); got.Deliveries != 0 || got.DeliveryBytes != 0 || got.Bytes > 2048 {
+		t.Fatalf("%+v", got)
+	}
+}
+
+func TestContinuationExpiryCeiling(t *testing.T) {
+	clock := &testClock{at: time.Unix(1000, 0)}
+	s := storeFor(t, Config{Now: clock.now, OriginalTTL: time.Minute, IdleTTL: time.Minute, CompleteTTL: 2 * time.Minute})
+	h := submit(t, s, "a", testKey, simplePlan("first"))
+	r := ready(t, s, "a", h)
+	expires, err := s.LeaseExpiry(context.Background(), "a", h)
+	if err != nil || !expires.Equal(clock.now().Add(time.Minute)) || !r.OriginalExpiry.Equal(expires) {
+		t.Fatalf("%v %v %+v", expires, err, r)
+	}
+	r.Release()
+	if _, err := s.LeaseExpiry(context.Background(), "other", h); !errors.Is(err, ErrStale) {
+		t.Fatal(err)
+	}
+	clock.add(40 * time.Second)
+	key2 := testKey
+	key2.Canonical += "next"
+	h2, err := s.SubmitUntil(context.Background(), "a", key2, simplePlan("second"), expires)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ready(t, s, "a", h2).Release()
+	h3, err := s.OpenUntil(context.Background(), "b", testKey, expires)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for caller, handle := range map[Caller]Handle{"a": h2, "b": h3} {
+		got, err := s.LeaseExpiry(context.Background(), caller, handle)
+		if err != nil || !got.Equal(expires) {
+			t.Fatalf("continuation renewed: %v %v", got, err)
+		}
+	}
+	clock.add(20 * time.Second)
+	for caller, handle := range map[Caller]Handle{"a": h2, "b": h3} {
+		if _, err := s.Poll(context.Background(), caller, handle); !errors.Is(err, ErrStale) {
+			t.Fatal(err)
+		}
+	}
+	if _, err := s.SubmitUntil(context.Background(), "a", key2, simplePlan("late"), expires); !errors.Is(err, ErrStale) {
+		t.Fatal(err)
+	}
+}
+
+func TestNoDefaultHardDeadlineAndSupervisedPanic(t *testing.T) {
+	cfg := DefaultConfig()
+	if cfg.OriginalTTL != 30*time.Minute || cfg.IdleTTL != 5*time.Minute || cfg.StepTimeout != 0 {
+		t.Fatalf("defaults: %+v", cfg)
+	}
+	s := storeFor(t, Config{})
+	var sawDeadline atomic.Bool
+	h := submit(t, s, "a", testKey, Plan{New: func(ctx context.Context, _ *Budget) (Computation, error) {
+		_, deadline := ctx.Deadline()
+		sawDeadline.Store(deadline)
+		return &testWork{step: func(ctx context.Context, _ *Budget) (StepResult, error) {
+			_, deadline := ctx.Deadline()
+			sawDeadline.Store(sawDeadline.Load() || deadline)
+			return StepResult{Done: true}, nil
+		}}, nil
+	}})
+	ready(t, s, "a", h).Release()
+	if sawDeadline.Load() {
+		t.Fatal("normal quantum was given a hard deadline")
+	}
+	before := supervise.Panics()
+	key2 := testKey
+	key2.Canonical += "panic"
+	h2 := submit(t, s, "b", key2, Plan{New: func(context.Context, *Budget) (Computation, error) { panic("producer failure") }})
+	eventually(t, func() bool {
+		r, err := s.Poll(context.Background(), "b", h2)
+		r.Release()
+		return errors.Is(err, ErrFailed)
+	})
+	if supervise.Panics() != before+1 {
+		t.Fatal("producer panic bypassed supervision diagnostics")
+	}
+}
+
+func TestConcurrentGrowthCannotBypassCap(t *testing.T) {
+	// Leave enough room for one growth while BOTH initial reservations are
+	// still held. A rejected worker need not finish bookkeeping before its peer
+	// attempts admission; the outcome must not depend on that scheduling race.
+	const budgetBytes = 4200
+	s := storeFor(t, Config{Workers: 2, MaxBytes: budgetBytes})
+	start, proceed, finish := make(chan struct{}, 2), make(chan struct{}), make(chan struct{})
+	defer close(finish)
+	var admitted atomic.Int32
+	var rejected atomic.Int32
+	p := Plan{InitialBytes: 64, New: func(context.Context, *Budget) (Computation, error) {
+		w := &testWork{bytes: 64}
+		w.step = func(ctx context.Context, b *Budget) (StepResult, error) {
+			start <- struct{}{}
+			<-proceed
+			if err := b.Resize(1800); err != nil {
+				rejected.Add(1)
+				return StepResult{}, err
+			}
+			w.bytes = 1800
+			admitted.Add(1)
+			select {
+			case <-finish:
+			case <-ctx.Done():
+			}
+			return StepResult{Done: true}, nil
+		}
+		return w, nil
+	}}
+	submit(t, s, "a", testKey, p)
+	key2 := testKey
+	key2.Canonical += "2"
+	submit(t, s, "b", key2, p)
+	<-start
+	<-start
+	close(proceed)
+	eventually(t, func() bool { return admitted.Load()+rejected.Load() == 2 })
+	if admitted.Load() != 1 || rejected.Load() != 1 || s.Stats().Bytes > budgetBytes {
+		t.Fatalf("admitted=%d rejected=%d stats=%+v", admitted.Load(), rejected.Load(), s.Stats())
+	}
+}
+
+func TestConcurrentDeliveryExtensionsStayWithinAggregateBudget(t *testing.T) {
+	s := storeFor(t, Config{MaxBytes: 32 << 10})
+	h := submit(t, s, "a", testKey, simplePlan("id-only"))
+	ready(t, s, "a", h).Release()
+	results := make([]Result, 100)
+	for i := range results {
+		var err error
+		results[i], err = s.Poll(context.Background(), "a", h)
+		if err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(results[i].Release)
+	}
+	base := s.Stats().DeliveryBytes
+	var admitted, rejected atomic.Int32
+	var wg sync.WaitGroup
+	start := make(chan struct{})
+	buffers := make([][]byte, len(results))
+	const hydrationBytes = 8192
+	for i, r := range results {
+		wg.Add(1)
+		go func(i int, r Result) {
+			defer wg.Done()
+			<-start
+			err := r.Reserve(hydrationBytes)
+			if errors.Is(err, ErrCapacity) {
+				rejected.Add(1)
+				return
+			}
+			if err != nil {
+				t.Errorf("reserve: %v", err)
+				return
+			}
+			// Hydration/serialization only allocates after successful admission.
+			buffers[i] = make([]byte, hydrationBytes)
+			admitted.Add(1)
+		}(i, r)
+	}
+	close(start)
+	wg.Wait()
+	stats := s.Stats()
+	if admitted.Load() == 0 || rejected.Load() == 0 || stats.Bytes > s.MaxBytes() ||
+		stats.DeliveryBytes != base+int64(admitted.Load())*hydrationBytes || stats.Deliveries != 100 {
+		t.Fatalf("aggregate delivery budget: %+v admitted=%d rejected=%d", stats, admitted.Load(), rejected.Load())
+	}
+	s.Close()
+	if got := s.Stats(); got.Bytes != stats.DeliveryBytes || got.DeliveryBytes != stats.DeliveryBytes {
+		t.Fatalf("close released hydration: %+v", got)
+	}
+	for i, r := range results {
+		buffers[i] = nil
+		r.Release()
+		r.Release()
+	}
+	if got := s.Stats(); got != (Stats{}) {
+		t.Fatalf("delivery extension leak: %+v", got)
+	}
+}
+
+func TestResizeDeliveryAccountsOnlyAdditionalAdapterMemory(t *testing.T) {
+	s := storeFor(t, Config{MaxBytes: 4096})
+	if s.MaxBytes() != 4096 {
+		t.Fatal("configured budget not exposed")
+	}
+	h := submit(t, s, "a", testKey, simplePlan("id-only"))
+	r := ready(t, s, "a", h)
+	base := s.Stats().DeliveryBytes
+	if err := r.ResizeDelivery(500); err != nil {
+		t.Fatal(err)
+	}
+	copyOfResult := r
+	if err := copyOfResult.Reserve(200); err != nil {
+		t.Fatal(err)
+	}
+	if got := s.Stats(); got.DeliveryBytes != base+700 || got.Deliveries != 1 {
+		t.Fatalf("%+v", got)
+	}
+	if err := r.ResizeDelivery(300); err != nil {
+		t.Fatal(err)
+	}
+	if got := s.Stats().DeliveryBytes; got != base+300 {
+		t.Fatal(got)
+	}
+	if err := copyOfResult.ResizeDelivery(0); err != nil {
+		t.Fatal(err)
+	}
+	if got := s.Stats().DeliveryBytes; got != base {
+		t.Fatal("resize released original result copy:", got)
+	}
+	for _, resize := range []func(int64) error{r.ResizeDelivery, r.Reserve} {
+		if err := resize(-1); !errors.Is(err, ErrInvalid) {
+			t.Fatal(err)
+		}
+		if err := resize(math.MaxInt64); !errors.Is(err, ErrCapacity) {
+			t.Fatal(err)
+		}
+	}
+	if got := s.Stats().DeliveryBytes; got != base {
+		t.Fatal("failed resize changed charge:", got)
+	}
+	var wg sync.WaitGroup
+	for i := 0; i < 64; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			if err := copyOfResult.Reserve(1); err != nil {
+				t.Errorf("reserve: %v", err)
+			}
+		}()
+	}
+	wg.Wait()
+	if got := s.Stats().DeliveryBytes; got != base+64 {
+		t.Fatal("concurrent increments lost:", got)
+	}
+	s.Cancel(context.Background(), "a", h)
+	s.Invalidate(testKey)
+	if got := s.Stats(); got.Bytes != base+64 || got.Deliveries != 1 {
+		t.Fatalf("cancel freed adapter memory: %+v", got)
+	}
+	s.Close()
+	if err := r.Reserve(1); !errors.Is(err, ErrClosed) {
+		t.Fatal(err)
+	}
+	if err := r.ResizeDelivery(0); !errors.Is(err, ErrClosed) {
+		t.Fatal(err)
+	}
+	if got := s.Stats().DeliveryBytes; got != base+64 {
+		t.Fatal("closed resize changed charge:", got)
+	}
+	r.Release()
+	copyOfResult.Release()
+	if err := r.Reserve(1); !errors.Is(err, ErrStale) {
+		t.Fatal(err)
+	}
+	if err := r.ResizeDelivery(0); !errors.Is(err, ErrStale) {
+		t.Fatal(err)
+	}
+	if err := (Result{}).ResizeDelivery(1); !errors.Is(err, ErrStale) {
+		t.Fatal(err)
+	}
+	if got := s.Stats(); got != (Stats{}) {
+		t.Fatalf("%+v", got)
+	}
+}
+
+func TestConcurrentDeliveryResizeReleaseAndClose(t *testing.T) {
+	s := storeFor(t, Config{MaxBytes: 8192})
+	h := submit(t, s, "a", testKey, simplePlan("id-only"))
+	r := ready(t, s, "a", h)
+	start := make(chan struct{})
+	var wg sync.WaitGroup
+	for i := 0; i < 64; i++ {
+		wg.Add(1)
+		go func(i int) {
+			defer wg.Done()
+			<-start
+			for j := 0; j < 16; j++ {
+				var err error
+				switch i % 5 {
+				case 0:
+					err = r.Reserve(128)
+				case 1:
+					err = r.ResizeDelivery(int64(j) * 64)
+				case 2:
+					r.Release()
+				case 3:
+					s.Close()
+				case 4:
+					s.Cancel(context.Background(), "a", h)
+					s.Invalidate(testKey)
+				}
+				if err != nil && !errors.Is(err, ErrStale) && !errors.Is(err, ErrClosed) && !errors.Is(err, ErrCapacity) {
+					t.Errorf("unexpected resize: %v", err)
+				}
+				if got := s.Stats(); got.Bytes < 0 || got.Bytes > s.MaxBytes() || got.DeliveryBytes < 0 || got.Deliveries < 0 {
+					t.Errorf("racing accounting: %+v", got)
+				}
+			}
+		}(i)
+	}
+	close(start)
+	wg.Wait()
+	s.Close()
+	r.Release()
+	if got := s.Stats(); got != (Stats{}) {
+		t.Fatalf("racing release leaked/double-freed: %+v", got)
 	}
 }

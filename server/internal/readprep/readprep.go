@@ -18,6 +18,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"portico.local/server/internal/supervise"
 )
 
 var (
@@ -26,6 +28,15 @@ var (
 	ErrClosed   = errors.New("readprep: store closed")
 	ErrInvalid  = errors.New("readprep: invalid argument or accounting")
 	ErrFailed   = errors.New("readprep: computation failed")
+	// ErrUncached explicitly hands delivery back to an adapter when an approved
+	// exceptional legal scalar cannot fit the ordinary memory budget. Do not
+	// retry the same preparation indefinitely or truncate/drop that row. Re-read
+	// and deliver the exact single scalar on the adapter's transient uncached
+	// path, checking live authority before/after. Its disclosed O(B) allocation,
+	// normalization and transport are outside this store's ordinary cap; never
+	// put that scalar or its query results in a file/database/side cache. This
+	// signal does not authorize arbitrary scans or other cache-cap bypasses.
+	ErrUncached = errors.New("readprep: exceptional scalar requires uncached delivery")
 )
 
 // Key uses full byte equality, never hash equality alone. Canonical must encode
@@ -51,13 +62,119 @@ const (
 	Ready
 )
 
-// Result.Payload is a caller-owned copy. Modifying it cannot affect another
-// reader. Preparing has no payload; errors are returned separately, never empty
-// success. Basis always names the captured immutable content basis.
+// Result.Payload is a private copy. Modifying it cannot affect another reader.
+// Adapters MUST defer result.Release() through serialization/transport; the copy
+// stays charged until then. Do not use/retain Payload after Release. Copying a
+// Result shares its idempotent release lease. Preparing has no payload; errors
+// are returned separately, never empty success. Basis names immutable content.
 type Result struct {
-	State   State
-	Basis   string
-	Payload []byte
+	State State
+	Basis string
+	// Key is the exact descriptor behind this caller's private handle. Domain
+	// adapters use it to reauthorize cold-scope preparation; it is not a grant.
+	Key            Key
+	Payload        []byte
+	OriginalExpiry time.Time
+	delivery       *delivery
+}
+
+// Release returns the in-flight delivery reservation, including after Close or
+// content/handle invalidation. It is concurrent-safe, idempotent and a no-op for
+// zero results. Close never releases a caller's outstanding delivery.
+func (r Result) Release() {
+	if r.delivery == nil {
+		return
+	}
+	d := r.delivery
+	d.s.mu.Lock()
+	defer d.s.mu.Unlock()
+	if d.released {
+		return
+	}
+	d.released = true
+	d.s.used -= d.bytes
+	d.s.deliveries--
+	d.s.deliveryBytes -= d.bytes
+	d.bytes = 0
+}
+
+// ResizeDelivery reserves the adapter's TOTAL additional live memory, excluding
+// the original Result copy/lease which stays charged automatically. Call BEFORE
+// allocating hydrated rows, labels, serialization buffers or transport copies;
+// include backing capacities and overlapping buffers. Free buffers BEFORE
+// shrinking. Copies of Result share this reservation. Release returns it all.
+//
+// Ordinary growth may evict completed cache entries and returns ErrCapacity if
+// the aggregate cap still cannot fit it; failed growth changes no delivery charge.
+// This never caches hydrated data or grants an allocation exception. If a single
+// legal scalar requires approved exceptional O(B) work, the adapter must explicitly
+// take the separate transient uncached path described by ErrUncached. Ordinary
+// contention is not permission to bypass this cap or retry a giant row forever.
+// Released/zero results return ErrStale; a closed store returns ErrClosed.
+func (r Result) ResizeDelivery(bytes int64) error {
+	if bytes < 0 {
+		return ErrInvalid
+	}
+	if r.delivery == nil {
+		return ErrStale
+	}
+	d := r.delivery
+	d.s.mu.Lock()
+	defer d.s.mu.Unlock()
+	return d.resize(bytes)
+}
+
+// Reserve adds bytes to the shared adapter reservation atomically. Use this for
+// independently allocated buffers; ResizeDelivery instead sets their total. A
+// successful reservation must precede allocation and last through serialization.
+func (r Result) Reserve(bytes int64) error {
+	if bytes < 0 {
+		return ErrInvalid
+	}
+	if r.delivery == nil {
+		return ErrStale
+	}
+	d := r.delivery
+	d.s.mu.Lock()
+	defer d.s.mu.Unlock()
+	if d.released {
+		return ErrStale
+	}
+	if d.s.closed {
+		return ErrClosed
+	}
+	if bytes > d.s.cfg.MaxBytes-d.bytes {
+		return ErrCapacity
+	}
+	return d.resize(d.bytes - d.base + bytes)
+}
+
+type delivery struct {
+	s           *Store
+	bytes, base int64
+	released    bool
+}
+
+// resize holds s.mu, including across the admission check and charge update.
+func (d *delivery) resize(adapterBytes int64) error {
+	if d.released {
+		return ErrStale
+	}
+	if d.s.closed {
+		return ErrClosed
+	}
+	if adapterBytes > d.s.cfg.MaxBytes-d.base {
+		return ErrCapacity
+	}
+	target := d.base + adapterBytes
+	delta := target - d.bytes
+	if delta > 0 && !d.s.room(delta, nil) {
+		return ErrCapacity
+	}
+	d.s.used += delta
+	d.s.deliveryBytes += delta
+	d.bytes = target
+	return nil
 }
 
 // StepResult transfers exclusive ownership of Payload to the store when Done.
@@ -103,6 +220,10 @@ type Config struct {
 	OriginalTTL time.Duration
 	IdleTTL     time.Duration
 	CompleteTTL time.Duration
+	// StepTimeout is disabled at zero. A positive value is an optional operator
+	// watchdog whose expiry is terminal. The normal ~10ms quantum is cooperative:
+	// producers check rows/bytes/time and yield; scheduler delay or an approved
+	// O(B) scalar must not become a false terminal failure by default.
 	StepTimeout time.Duration
 	// Now must be concurrency safe and monotone. Expiry is checked lazily on
 	// operations and between steps, so tests can advance a clock without sleeps.
@@ -112,8 +233,8 @@ type Config struct {
 // DefaultConfig returns starting limits, not a machine-capacity claim.
 func DefaultConfig() Config {
 	return Config{MaxBytes: 32 << 20, Workers: 2, MaxQueued: 16, MaxHandles: 512,
-		OriginalTTL: 5 * time.Minute, IdleTTL: time.Minute, CompleteTTL: time.Minute,
-		StepTimeout: 10 * time.Millisecond, Now: time.Now}
+		OriginalTTL: 30 * time.Minute, IdleTTL: 5 * time.Minute, CompleteTTL: time.Minute,
+		Now: time.Now}
 }
 
 // Limits above the starting worker/queue/handle bounds are rejected. Byte limits
@@ -141,9 +262,6 @@ func New(cfg Config) (*Store, error) {
 	if cfg.CompleteTTL == 0 {
 		cfg.CompleteTTL = d.CompleteTTL
 	}
-	if cfg.StepTimeout == 0 {
-		cfg.StepTimeout = d.StepTimeout
-	}
 	if cfg.Now == nil {
 		cfg.Now = d.Now
 	}
@@ -156,7 +274,7 @@ func New(cfg Config) (*Store, error) {
 	s.cond = sync.NewCond(&s.mu)
 	s.wg.Add(cfg.Workers)
 	for i := 0; i < cfg.Workers; i++ {
-		go s.worker()
+		supervise.Go("readprep.worker", s.worker)
 	}
 	return s, nil
 }
@@ -167,6 +285,7 @@ func New(cfg Config) (*Store, error) {
 // bounded overhead outside this budget; map high-water is bounded by these limits.
 const entryOverhead int64 = 768
 const handleOverhead int64 = 256
+const deliveryOverhead int64 = 128
 
 type entry struct {
 	key                        Key
@@ -190,16 +309,18 @@ type lease struct {
 }
 
 type Store struct {
-	mu      sync.Mutex
-	cond    *sync.Cond
-	wg      sync.WaitGroup
-	cfg     Config
-	entries map[Key]*entry
-	handles map[Handle]*lease
-	queue   []*entry
-	used    int64
-	running int
-	closed  bool
+	mu            sync.Mutex
+	cond          *sync.Cond
+	wg            sync.WaitGroup
+	cfg           Config
+	entries       map[Key]*entry
+	handles       map[Handle]*lease
+	queue         []*entry
+	used          int64
+	deliveries    int
+	deliveryBytes int64
+	running       int
+	closed        bool
 }
 
 // Budget charges all producer-owned live and temporary memory for one content
@@ -241,16 +362,32 @@ func (s *Store) Submit(ctx context.Context, caller Caller, key Key, plan Plan) (
 	if plan.New == nil || plan.InitialBytes < 0 {
 		return "", ErrInvalid
 	}
-	return s.open(ctx, caller, key, &plan)
+	return s.open(ctx, caller, key, &plan, time.Time{})
+}
+
+// SubmitUntil is Submit with an inherited original expiry ceiling. Keyset
+// continuation MUST carry the captured expiry forward, rather than acquire a
+// fresh lifetime on each page. A zero ceiling uses the configured lifetime.
+func (s *Store) SubmitUntil(ctx context.Context, caller Caller, key Key, plan Plan, until time.Time) (Handle, error) {
+	if plan.New == nil || plan.InitialBytes < 0 {
+		return "", ErrInvalid
+	}
+	return s.open(ctx, caller, key, &plan, until)
 }
 
 // Open attaches to existing content without submitting a plan. Missing content
 // returns ErrStale. Every successful Open/Submit creates a distinct random handle.
 func (s *Store) Open(ctx context.Context, caller Caller, key Key) (Handle, error) {
-	return s.open(ctx, caller, key, nil)
+	return s.open(ctx, caller, key, nil, time.Time{})
 }
 
-func (s *Store) open(ctx context.Context, caller Caller, key Key, plan *Plan) (Handle, error) {
+// OpenUntil attaches a private handle with the same original expiry ceiling as
+// SubmitUntil. Neither operation extends an earlier captured continuation lease.
+func (s *Store) OpenUntil(ctx context.Context, caller Caller, key Key, until time.Time) (Handle, error) {
+	return s.open(ctx, caller, key, nil, until)
+}
+
+func (s *Store) open(ctx context.Context, caller Caller, key Key, plan *Plan, until time.Time) (Handle, error) {
 	if caller == "" || key.Namespace == "" || key.Basis == "" || key.Canonical == "" {
 		return "", ErrInvalid
 	}
@@ -264,6 +401,13 @@ func (s *Store) open(ctx context.Context, caller Caller, key Key, plan *Plan) (H
 	}
 	now := s.cfg.Now()
 	s.prune(now)
+	expires := now.Add(s.cfg.OriginalTTL)
+	if !until.IsZero() && until.Before(expires) {
+		expires = until
+	}
+	if !now.Before(expires) {
+		return "", ErrStale
+	}
 	if len(s.handles) >= s.cfg.MaxHandles {
 		return "", ErrCapacity
 	}
@@ -312,11 +456,33 @@ func (s *Store) open(ctx context.Context, caller Caller, key Key, plan *Plan) (H
 		s.cond.Signal()
 	}
 	s.handles[h] = &lease{caller: Caller(strings.Clone(string(caller))), e: e,
-		original: now.Add(s.cfg.OriginalTTL), idle: now.Add(s.cfg.IdleTTL), bytes: hbytes}
+		original: expires, idle: now.Add(s.cfg.IdleTTL), bytes: hbytes}
 	s.used += hbytes
 	e.refs++
 	e.touched = now
 	return h, nil
+}
+
+// LeaseExpiry returns the actual private lease's original expiry for signing
+// anchors. It does not renew idle/original lifetime and is not authorization.
+func (s *Store) LeaseExpiry(ctx context.Context, caller Caller, h Handle) (time.Time, error) {
+	if err := ctx.Err(); err != nil {
+		return time.Time{}, err
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.closed {
+		return time.Time{}, ErrClosed
+	}
+	s.prune(s.cfg.Now())
+	l := s.handles[h]
+	if l == nil || caller == "" || l.caller != caller {
+		return time.Time{}, ErrStale
+	}
+	if err := ctx.Err(); err != nil {
+		return time.Time{}, err
+	}
+	return l.original, nil
 }
 
 func (s *Store) Poll(ctx context.Context, caller Caller, h Handle) (Result, error) {
@@ -338,21 +504,31 @@ func (s *Store) Poll(ctx context.Context, caller Caller, h Handle) (Result, erro
 	if e.err != nil {
 		return Result{}, e.err
 	}
-	result := Result{State: Preparing, Basis: e.key.Basis}
+	result := Result{State: Preparing, Basis: e.key.Basis, Key: e.key, OriginalExpiry: l.original}
+	// These immutable strings can outlive eviction of their original entry.
+	n := deliveryOverhead + int64(len(e.key.Namespace)+len(e.key.Basis)+len(e.key.Canonical))
 	if e.complete {
-		// Reserve the output copy as in-flight memory BEFORE allocating. The
-		// caller owns it on return; transport/consumer retention is its budget.
-		n := int64(len(e.payload))
-		if !s.room(n, e) {
-			return Result{}, ErrCapacity
-		}
-		s.used += n
+		n += int64(len(e.payload))
+	}
+	// Hold the copy, basis and lease through the caller's transport lifetime.
+	if !s.room(n, e) {
+		return Result{}, ErrCapacity
+	}
+	s.used += n
+	s.deliveries++
+	s.deliveryBytes += n
+	result.delivery = &delivery{s: s, bytes: n, base: n}
+	if e.complete {
 		result.Payload = make([]byte, len(e.payload))
 		copy(result.Payload, e.payload)
-		s.used -= n
 		result.State = Ready
 	}
 	if err := ctx.Err(); err != nil {
+		if result.delivery != nil {
+			s.used -= result.delivery.bytes
+			s.deliveries--
+			s.deliveryBytes -= result.delivery.bytes
+		}
 		return Result{}, err
 	}
 	l.idle = now.Add(s.cfg.IdleTTL)
@@ -390,7 +566,9 @@ func (s *Store) Invalidate(key Key) {
 }
 
 // Close is concurrent-safe and idempotent. It cancels and joins the fixed worker
-// pool. Producers must honor their context; Go cannot forcibly stop a callback.
+// pool. Outstanding caller deliveries remain charged until Result.Release;
+// Close does not wait for them. Producers must honor their context; Go cannot
+// forcibly stop a callback.
 func (s *Store) Close() error {
 	s.mu.Lock()
 	if !s.closed {
@@ -408,14 +586,21 @@ func (s *Store) Close() error {
 type Stats struct {
 	Bytes                             int64
 	Entries, Handles, Queued, Running int
+	Deliveries                        int
+	DeliveryBytes                     int64
 }
+
+// MaxBytes is the ordinary aggregate cache/computation/delivery budget. It is
+// not a metadata cap or a promise that every legal scalar fits the cache.
+func (s *Store) MaxBytes() int64 { return s.cfg.MaxBytes }
 
 // Stats returns charged live bytes, including cancelled workers still unwinding.
 func (s *Store) Stats() Stats {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.prune(s.cfg.Now())
-	return Stats{s.used, len(s.entries), len(s.handles), len(s.queue), s.running}
+	return Stats{Bytes: s.used, Entries: len(s.entries), Handles: len(s.handles),
+		Queued: len(s.queue), Running: s.running, Deliveries: s.deliveries, DeliveryBytes: s.deliveryBytes}
 }
 
 // All following bookkeeping runs with mu held.
@@ -547,15 +732,27 @@ func (s *Store) worker() {
 }
 
 func (s *Store) step(e *entry) (out StepResult, bytes int64, err error) {
+	returned := false
 	defer func() {
-		if recover() != nil {
+		if !returned {
 			out = StepResult{}
 			bytes = 0
 			err = ErrFailed
 		}
 	}()
-	ctx, cancel := context.WithTimeout(e.ctx, s.cfg.StepTimeout)
-	defer cancel()
+	defer supervise.Recover("readprep.step")
+	out, bytes, err = s.doStep(e)
+	returned = true
+	return
+}
+
+func (s *Store) doStep(e *entry) (out StepResult, bytes int64, err error) {
+	ctx := e.ctx
+	if s.cfg.StepTimeout > 0 {
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithTimeout(ctx, s.cfg.StepTimeout)
+		defer cancel()
+	}
 	b := &Budget{s: s, e: e}
 	if e.work == nil {
 		e.work, err = e.plan.New(ctx, b)
@@ -585,6 +782,12 @@ func (s *Store) step(e *entry) (out StepResult, bytes int64, err error) {
 }
 
 func terminalError(err error) error {
+	if errors.Is(err, ErrStale) {
+		return ErrStale
+	}
+	if errors.Is(err, ErrUncached) {
+		return ErrUncached
+	}
 	if errors.Is(err, ErrCapacity) {
 		return ErrCapacity
 	}

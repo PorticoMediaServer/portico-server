@@ -32,6 +32,13 @@ export type ReadPreparationOptions<Descriptor, Ready> = Readonly<{
     cancel(queryId: string, descriptor: Descriptor): string;
   }>;
   parseReady(body: unknown, response: PreparationResponse): Ready;
+  /** Validate/extract a handle from the domain's raw 200 envelope, including late replies.
+   * Required when ready owns a handle even without a preceding 202. No ready rows need be
+   * parsed for cleanup. Undefined means no additional handle. */
+  readyQueryId?(body: unknown, response: PreparationResponse): string | undefined;
+  /** Default false releases a known handle on ready. Continuation sessions must opt in
+   * and own the returned release() lease, retaining at most current + neighbor pages. */
+  retainOnReady?: boolean;
   /** Required domain-specific envelope validation, including kind/state where published. */
   parsePreparing(body: unknown, response: PreparationResponse): PreparingRead;
   /** Preserve existing typed errors; all terminal statuses, including 429/503, come here. */
@@ -46,7 +53,7 @@ export type ReadPreparationOptions<Descriptor, Ready> = Readonly<{
 
 export class PreparationProtocolError extends Error {
   constructor(
-    readonly code: 'invalid_path' | 'invalid_preparing' | 'unexpected_location' | 'invalid_retry_after',
+    readonly code: 'invalid_path' | 'invalid_preparing' | 'invalid_ready_handle' | 'unexpected_location' | 'invalid_retry_after',
     readonly response?: PreparationResponse,
   ) {
     super(code);
@@ -81,9 +88,12 @@ function checkedPath(path: string, response?: PreparationResponse): string {
   return path;
 }
 
+function validQueryId(queryId: unknown): queryId is string {
+  return typeof queryId === 'string' && /^[A-Za-z0-9._~-]{1,512}$/.test(queryId) && queryId !== '.' && queryId !== '..';
+}
+
 function checkedPending(pending: PreparingRead, response: PreparationResponse): PreparingRead {
-  if (!pending || typeof pending.queryId !== 'string' || !/^[A-Za-z0-9._~-]{1,512}$/.test(pending.queryId)
-      || pending.queryId === '.' || pending.queryId === '..'
+  if (!pending || !validQueryId(pending.queryId)
       || !Number.isSafeInteger(pending.retryAfterMs) || pending.retryAfterMs < 0) {
     throw new PreparationProtocolError('invalid_preparing', response);
   }
@@ -109,11 +119,12 @@ type Handle = {queryId: string; cancelled: boolean};
 /**
  * Read one page. 200 alone is ready; 202 schedules one poll at a time. One 409 re-anchors
  * the original descriptor, then any further refusal is surfaced through errorFromResponse.
- * Ready values/raw metadata are returned directly, never retained in a session/cache.
+ * Ready values/raw metadata are returned directly, never retained in a session/cache. A
+ * continuation owner opts into retainOnReady and releases its lease on page retirement.
  */
 export async function readPreparation<Descriptor, Ready>(
   options: ReadPreparationOptions<Descriptor, Ready>,
-): Promise<Readonly<{value: Ready; response: PreparationResponse}>> {
+): Promise<Readonly<{value: Ready; response: PreparationResponse; release(): void}>> {
   const {api, descriptor, paths} = options;
   const supplied = options.runtime;
   const runtime: PreparationRuntime = {
@@ -124,6 +135,7 @@ export async function readPreparation<Descriptor, Ready>(
   };
   const controller = new AbortController();
   let handle: Handle | undefined;
+  let keepAbortListener = false;
   const abortError = new Error('Read preparation aborted.');
   abortError.name = 'AbortError';
 
@@ -142,7 +154,16 @@ export async function readPreparation<Descriptor, Ready>(
     if (!controller.signal.aborted) {
       controller.abort();
     }
-    release(handle);
+    if (keepAbortListener) releaseLease();
+    else release(handle);
+  }
+
+  function releaseLease(): void {
+    keepAbortListener = false;
+    options.signal?.removeEventListener('abort', abort);
+    const owned = handle;
+    handle = undefined;
+    release(owned);
   }
 
   function current(): void {
@@ -167,12 +188,14 @@ export async function readPreparation<Descriptor, Ready>(
 
   /** A retired initial request may still reveal a private handle; only validate/release it. */
   function releaseLate(response: PreparationResponse, requestedHandle: Handle | undefined): void {
-    if (response.status !== 202) return;
     try {
-      const pending = checkedPending(options.parsePreparing(response.body, response), response);
+      const queryId = response.status === 202
+        ? checkedPending(options.parsePreparing(response.body, response), response).queryId
+        : response.status === 200 ? options.readyQueryId?.(response.body, response) : undefined;
+      if (!validQueryId(queryId)) return;
       // A poll cannot replace its handle. Never use response Location for cleanup either.
-      if (requestedHandle && requestedHandle.queryId !== pending.queryId) return;
-      const owned = requestedHandle ?? (handle?.queryId === pending.queryId ? handle : {queryId: pending.queryId, cancelled: false});
+      if (requestedHandle && requestedHandle.queryId !== queryId) return;
+      const owned = requestedHandle ?? (handle?.queryId === queryId ? handle : {queryId, cancelled: false});
       release(owned);
     } catch { /* Unvalidated envelopes cannot authorize any cancellation path. */ }
   }
@@ -201,13 +224,15 @@ export async function readPreparation<Descriptor, Ready>(
     while (remaining > 0) {
       current();
       const started = runtime.now();
+      const chunk = Math.min(TIMER_MAX_MS, remaining);
       let timer: unknown;
-      const elapsed = new Promise<void>(resolve => { timer = runtime.setTimeout(resolve, Math.min(TIMER_MAX_MS, remaining)); });
+      const elapsed = new Promise<void>(resolve => { timer = runtime.setTimeout(resolve, chunk); });
       try { await interruptible(elapsed); }
       finally { runtime.clearTimeout(timer); }
       current();
       // Recheck the clock rather than trusting an early timer; never truncate a server floor.
-      remaining -= Math.max(0, runtime.now() - started);
+      // A forward wall-clock jump cannot count as having waited future timer chunks.
+      remaining -= Math.min(chunk, Math.max(0, runtime.now() - started));
     }
   }
 
@@ -221,9 +246,23 @@ export async function readPreparation<Descriptor, Ready>(
       const response = await request(path);
       try { current(); } catch (error) { releaseLate(response, handle); throw error; }
       if (response.status === 200) {
+        const readyId = options.readyQueryId?.(response.body, response);
+        if (readyId !== undefined) {
+          if (!validQueryId(readyId) || (handle && handle.queryId !== readyId)) {
+            throw new PreparationProtocolError('invalid_ready_handle', response);
+          }
+          handle ??= {queryId: readyId, cancelled: false};
+        }
+        current();
         const value = options.parseReady(response.body, response);
         current();
-        return {value, response};
+        if (options.retainOnReady && handle) keepAbortListener = true;
+        else {
+          release(handle);
+          current();
+          handle = undefined;
+        }
+        return {value, response, release: releaseLease};
       }
       if (response.status === 409 && !refreshed) {
         release(handle);
@@ -267,6 +306,6 @@ export async function readPreparation<Descriptor, Ready>(
     }
     throw error;
   } finally {
-    options.signal?.removeEventListener('abort', abort);
+    if (!keepAbortListener) options.signal?.removeEventListener('abort', abort);
   }
 }

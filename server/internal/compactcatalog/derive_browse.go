@@ -698,8 +698,8 @@ func init() {
 		Version: 1,
 		Drain: func(ctx context.Context, tx *sql.Tx, keys []Key, limit int) ([]int64, error) {
 			var done []int64
-			for _, k := range keys {
-				finished, err := deriveAssetFanout(ctx, tx, k, limit)
+			for _, k := range keys[:min(1, len(keys))] {
+				finished, err := deriveAssetFanout(ctx, tx, k, min(limit, upstreamQuantum))
 				if err != nil {
 					return nil, err
 				}

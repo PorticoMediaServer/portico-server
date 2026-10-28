@@ -1,0 +1,497 @@
+package compactcatalog
+
+import (
+	"context"
+	"database/sql"
+	"errors"
+)
+
+const (
+	DomainAssetSources   = 41
+	DomainEntitySources  = 42
+	DomainLibrarySources = 43
+	DomainMissingSources = 44
+	sourceAvailability   = 1
+	sourceMissing        = 2
+	sourceMetadata       = 4
+	sourceRevision       = 8
+	sourceScreen         = 16
+	sourceArtwork        = 32
+	sourceTVDB           = 64
+	upstreamQuantum      = 8
+)
+
+// queueSource is an accepting source marker, never a query job. Re-touch resets
+// the raw cursor immediately and combines required consumer actions. A captured
+// source lifetime prevents a later reused integer ID from continuing old work.
+func queueSource(ctx context.Context, tx *sql.Tx, domain int, id int64, token string, flags int64) error {
+	if _, err := tx.ExecContext(ctx, `INSERT INTO catalog_upstream_sources(domain,source_id,token,flags) VALUES(?,?,?,?)
+ ON CONFLICT(domain,source_id) DO UPDATE SET token=excluded.token,flags=flags|excluded.flags,revision=revision+1,
+ phase=0,has_after=0,after_id=0,after_aux=0,after_key='',active_id=NULL,active_key='',active_available=0,seen_inventory=0,inner_has=0,inner_id=0,inner_aux=0,inner_key=''`, domain, id, token, flags); err != nil {
+		return err
+	}
+	if _, err := tx.ExecContext(ctx, `UPDATE catalog_facet_source_state SET source_epoch=source_epoch+1 WHERE singleton=1`); err != nil {
+		return err
+	}
+	return TouchTx(ctx, tx, domain, id)
+}
+
+func queueAssetSource(ctx context.Context, tx *sql.Tx, asset int64, flags int64) error {
+	var token string
+	err := tx.QueryRowContext(ctx, `SELECT token FROM catalog_assets WHERE id=?`, asset).Scan(&token)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	return queueSource(ctx, tx, DomainAssetSources, asset, token, flags)
+}
+
+type upstreamSource struct {
+	domain                    int
+	id, revision, flags       int64
+	token                     string
+	phase                     int
+	has                       bool
+	after, aux                int64
+	key                       string
+	active                    sql.NullInt64
+	activeKey                 string
+	available, seen, innerHas bool
+	inner, innerAux           int64
+	innerKey                  string
+}
+
+func readUpstreamSource(ctx context.Context, tx *sql.Tx, domain int, id int64) (upstreamSource, error) {
+	w := upstreamSource{domain: domain, id: id}
+	err := tx.QueryRowContext(ctx, `SELECT token,flags,revision,phase,has_after,after_id,after_aux,after_key,active_id,active_key,active_available,seen_inventory,inner_has,inner_id,inner_aux,inner_key
+ FROM catalog_upstream_sources WHERE domain=? AND source_id=?`, domain, id).
+		Scan(&w.token, &w.flags, &w.revision, &w.phase, &w.has, &w.after, &w.aux, &w.key, &w.active, &w.activeKey, &w.available, &w.seen, &w.innerHas, &w.inner, &w.innerAux, &w.innerKey)
+	return w, err
+}
+func (w *upstreamSource) advance() {
+	w.phase++
+	w.has = false
+	w.after = 0
+	w.aux = 0
+	w.key = ""
+	w.clearInner()
+}
+func (w *upstreamSource) clearInner() {
+	w.active = sql.NullInt64{}
+	w.innerHas = false
+	w.inner = 0
+	w.innerAux = 0
+	w.innerKey = ""
+	w.activeKey = ""
+	w.available = false
+	w.seen = false
+}
+func (w *upstreamSource) checkpoint(ctx context.Context, tx *sql.Tx) error {
+	_, err := tx.ExecContext(ctx, `UPDATE catalog_upstream_sources SET phase=?,has_after=?,after_id=?,after_aux=?,after_key=?,active_id=?,active_key=?,active_available=?,seen_inventory=?,inner_has=?,inner_id=?,inner_aux=?,inner_key=?
+ WHERE domain=? AND source_id=? AND revision=?`, w.phase, w.has, w.after, w.aux, w.key, w.active, w.activeKey, w.available, w.seen, w.innerHas, w.inner, w.innerAux, w.innerKey, w.domain, w.id, w.revision)
+	return err
+}
+func (w *upstreamSource) finish(ctx context.Context, tx *sql.Tx) error {
+	_, err := tx.ExecContext(ctx, `DELETE FROM catalog_upstream_sources WHERE domain=? AND source_id=? AND revision=?`, w.domain, w.id, w.revision)
+	return err
+}
+
+type sourceEdge struct {
+	id, aux int64
+	key     string
+	flag    bool
+}
+
+func sourceEdges(rows *sql.Rows, shape int) ([]sourceEdge, error) {
+	defer rows.Close()
+	out := make([]sourceEdge, 0, upstreamQuantum)
+	bytes := 0
+	for rows.Next() {
+		var r sourceEdge
+		var err error
+		switch shape {
+		case 1:
+			err = rows.Scan(&r.id, &r.key)
+		case 2:
+			err = rows.Scan(&r.id, &r.aux)
+		case 3:
+			err = rows.Scan(&r.id, &r.flag)
+		case 4:
+			err = rows.Scan(&r.key, &r.flag)
+		default:
+			err = rows.Scan(&r.id)
+		}
+		if err != nil {
+			return nil, err
+		}
+		if len(out) > 0 && bytes+len(r.key) > facetScalarBudget {
+			break
+		}
+		out = append(out, r)
+		bytes += len(r.key)
+		if bytes >= facetScalarBudget {
+			break
+		}
+	}
+	return out, rows.Err()
+}
+func querySourceEdges(ctx context.Context, tx *sql.Tx, shape int, q string, args ...any) ([]sourceEdge, error) {
+	rows, err := tx.QueryContext(ctx, q, args...)
+	if err != nil {
+		return nil, err
+	}
+	return sourceEdges(rows, shape)
+}
+
+func wakeScreenSource(ctx context.Context, tx *sql.Tx, kind string, id int64) error {
+	_, err := tx.ExecContext(ctx, `UPDATE screen_metadata_work SET status='pending',generation=generation+1,revision=revision+1,lease='',lease_until='',next_attempt='',error='' WHERE target_kind=? AND target_id=?`, kind, id)
+	return err
+}
+
+func (w *upstreamSource) asset(ctx context.Context, tx *sql.Tx, limit int) (int, bool, error) {
+	var token string
+	err := tx.QueryRowContext(ctx, `SELECT token FROM catalog_assets WHERE id=?`, w.id).Scan(&token)
+	if errors.Is(err, sql.ErrNoRows) || err == nil && token != w.token {
+		return 0, true, nil
+	}
+	if err != nil {
+		return 0, false, err
+	}
+	q := `SELECT entity_id FROM catalog_asset_links INDEXED BY catalog_asset_links_asset WHERE asset_id=?`
+	args := []any{w.id}
+	if w.has {
+		q += ` AND entity_id>?`
+		args = append(args, w.after)
+	}
+	q += ` ORDER BY entity_id LIMIT ?`
+	args = append(args, limit)
+	edges, err := querySourceEdges(ctx, tx, 0, q, args...)
+	if err != nil {
+		return 0, false, err
+	}
+	for _, r := range edges {
+		if w.flags&sourceAvailability != 0 {
+			if err = TouchTx(ctx, tx, DomainAvailability, r.id); err != nil {
+				return 0, false, err
+			}
+		}
+		if w.flags&sourceMissing != 0 {
+			if err = queueMissingSource(ctx, tx, r.id); err != nil {
+				return 0, false, err
+			}
+		}
+		if w.flags&sourceMetadata != 0 {
+			if _, err = tx.ExecContext(ctx, `UPDATE metadata_publication_heads SET source_revision=source_revision+1 WHERE item_id=?`, r.id); err != nil {
+				return 0, false, err
+			}
+		}
+		if w.flags&sourceRevision != 0 {
+			if _, err = tx.ExecContext(ctx, `UPDATE library_revisions SET revision=revision+1 WHERE library_id=(SELECT cl.library_id FROM catalog_entities e JOIN catalog_libraries cl ON cl.id=e.library_id WHERE e.id=?)`, r.id); err != nil {
+				return 0, false, err
+			}
+		}
+		if w.flags&sourceScreen != 0 {
+			if err = wakeScreenSource(ctx, tx, "item", r.id); err != nil {
+				return 0, false, err
+			}
+			if _, err = tx.ExecContext(ctx, `UPDATE screen_metadata_work SET status='pending',generation=generation+1,revision=revision+1,lease='',lease_until='',next_attempt='',error='' WHERE target_kind='show' AND target_id=(SELECT show_id FROM catalog_episodes WHERE entity_id=?)`, r.id); err != nil {
+				return 0, false, err
+			}
+		}
+		w.after, w.has = r.id, true
+	}
+	return len(edges), len(edges) == 0, nil
+}
+
+// Every parent stream uses its full raw key. The Book stream walks each file's
+// membership PK before queueing its membership rebuild, retaining old authors.
+func (w *upstreamSource) parent(ctx context.Context, tx *sql.Tx, limit int) (int, bool, error) {
+	var lifetime string
+	err := tx.QueryRowContext(ctx, `SELECT lower(hex(public_id)) FROM catalog_entities WHERE id=?`, w.id).Scan(&lifetime)
+	if errors.Is(err, sql.ErrNoRows) || err == nil && lifetime != w.token {
+		return 0, true, nil
+	}
+	if err != nil {
+		return 0, false, err
+	}
+	for w.phase < 7 {
+		kinds := []Kind{Artist, Artist, Collection, Show, Show, Album, Book}
+		if w.flags&(1<<uint(kinds[w.phase])) == 0 {
+			w.advance()
+			continue
+		}
+		if w.phase == 6 && w.active.Valid {
+			q := `SELECT entity_id,source FROM catalog_browse_memberships INDEXED BY catalog_browse_membership_item WHERE item_id=?`
+			args := []any{w.active.Int64}
+			if w.innerHas {
+				q += ` AND (entity_id,source)>(?,?)`
+				args = append(args, w.inner, w.innerAux)
+			}
+			q += ` ORDER BY entity_id,source LIMIT ?`
+			args = append(args, limit)
+			edges, e := querySourceEdges(ctx, tx, 2, q, args...)
+			if e != nil {
+				return 0, false, e
+			}
+			for _, r := range edges {
+				if r.aux == 7 {
+					if e = TouchTx(ctx, tx, DomainBrowseRows, r.id); e != nil {
+						return 0, false, e
+					}
+				}
+				w.inner, w.innerAux, w.innerHas = r.id, r.aux, true
+			}
+			if len(edges) > 0 {
+				return len(edges), false, nil
+			}
+			if err = TouchTx(ctx, tx, DomainBrowseEdges, w.active.Int64); err != nil {
+				return 0, false, err
+			}
+			w.clearInner()
+			// Completing an empty nested stream is one bounded scheduling unit.
+			return 1, false, nil
+		}
+		sources := []string{
+			`SELECT entity_id FROM catalog_albums WHERE artist_id=?`,
+			`SELECT song_id FROM catalog_song_artists INDEXED BY catalog_song_artists_artist WHERE artist_id=?`,
+			`SELECT item_id FROM catalog_collection_members WHERE collection_id=?`,
+			`SELECT entity_id,number FROM catalog_seasons WHERE show_id=?`,
+			`SELECT entity_id FROM catalog_episodes INDEXED BY catalog_episodes_facet_show WHERE show_id=?`,
+			`SELECT entity_id FROM catalog_songs INDEXED BY catalog_source_songs_parent WHERE album_id=?`,
+			`SELECT entity_id FROM catalog_book_files INDEXED BY catalog_source_book_files_parent WHERE book_id=?`,
+		}
+		columns := []string{"entity_id", "song_id", "item_id", "entity_id", "entity_id", "entity_id", "entity_id"}
+		q := sources[w.phase]
+		args := []any{w.id}
+		shape := 0
+		if w.phase == 3 {
+			shape = 2
+			if w.has {
+				q += ` AND (number,entity_id)>(?,?)`
+				args = append(args, w.aux, w.after)
+			}
+			q += ` ORDER BY number,entity_id LIMIT ?`
+		} else {
+			if w.has {
+				q += ` AND ` + columns[w.phase] + `>?`
+				args = append(args, w.after)
+			}
+			q += ` ORDER BY ` + columns[w.phase] + ` LIMIT ?`
+		}
+		if w.phase == 6 {
+			limit = 1
+		}
+		args = append(args, limit)
+		edges, e := querySourceEdges(ctx, tx, shape, q, args...)
+		if e != nil {
+			return 0, false, e
+		}
+		if len(edges) == 0 {
+			w.advance()
+			continue
+		}
+		for _, r := range edges {
+			switch w.phase {
+			case 3:
+				e = TouchTx(ctx, tx, DomainBrowseRows, r.id)
+			case 5:
+				if e = TouchTx(ctx, tx, DomainBrowseEdges, r.id); e == nil {
+					e = TouchTx(ctx, tx, DomainSearch, r.id)
+				}
+			case 6:
+				w.active = sql.NullInt64{Int64: r.id, Valid: true}
+			default:
+				e = TouchTx(ctx, tx, DomainSearch, r.id)
+			}
+			if e != nil {
+				return 0, false, e
+			}
+			w.after, w.aux, w.has = r.id, r.aux, true
+		}
+		return len(edges), false, nil
+	}
+	return 0, true, nil
+}
+
+func (w *upstreamSource) library(ctx context.Context, tx *sql.Tx, limit int) (int, bool, error) {
+	var library string
+	err := tx.QueryRowContext(ctx, `SELECT library_id FROM catalog_libraries WHERE id=?`, w.id).Scan(&library)
+	if errors.Is(err, sql.ErrNoRows) || err == nil && library != w.token {
+		return 0, true, nil
+	}
+	if err != nil {
+		return 0, false, err
+	}
+	if w.phase == 0 {
+		if w.flags&sourceScreen == 0 {
+			w.advance()
+		} else {
+			q := `SELECT target_id,target_kind FROM screen_metadata_work INDEXED BY catalog_source_screen_library WHERE library_id=?`
+			args := []any{library}
+			if w.has {
+				q += ` AND (target_kind,target_id)>(?,?)`
+				args = append(args, w.key, w.after)
+			}
+			q += ` ORDER BY target_kind,target_id LIMIT ?`
+			args = append(args, limit)
+			edges, e := querySourceEdges(ctx, tx, 1, q, args...)
+			if e != nil {
+				return 0, false, e
+			}
+			for _, r := range edges {
+				if e = wakeScreenSource(ctx, tx, r.key, r.id); e != nil {
+					return 0, false, e
+				}
+				w.after, w.key, w.has = r.id, r.key, true
+			}
+			if len(edges) > 0 {
+				return len(edges), false, nil
+			}
+			w.advance()
+		}
+	}
+	if w.active.Valid {
+		q := `SELECT kind FROM artwork_entity_heads INDEXED BY artwork_entity_heads_entity WHERE entity_id=?`
+		args := []any{w.active.Int64}
+		if w.innerHas {
+			q += ` AND kind>?`
+			args = append(args, w.innerKey)
+		}
+		q += ` ORDER BY kind LIMIT ?`
+		args = append(args, limit)
+		rows, e := tx.QueryContext(ctx, q, args...)
+		if e != nil {
+			return 0, false, e
+		}
+		kinds := []string{}
+		bytes := 0
+		for rows.Next() {
+			var k string
+			if e = rows.Scan(&k); e != nil {
+				rows.Close()
+				return 0, false, e
+			}
+			if len(kinds) > 0 && bytes+len(k) > facetScalarBudget {
+				break
+			}
+			kinds = append(kinds, k)
+			bytes += len(k)
+			if bytes >= facetScalarBudget {
+				break
+			}
+		}
+		e = rows.Err()
+		rows.Close()
+		if e != nil {
+			return 0, false, e
+		}
+		for _, k := range kinds {
+			if _, e = tx.ExecContext(ctx, `INSERT INTO artwork_dirty(kind,entity_id) VALUES(?,?) ON CONFLICT DO NOTHING`, k, w.active.Int64); e != nil {
+				return 0, false, e
+			}
+			w.innerKey, w.innerHas = k, true
+		}
+		if len(kinds) > 0 {
+			return len(kinds), false, nil
+		}
+		w.clearInner()
+		return 1, false, nil
+	}
+	q := `SELECT id,kind FROM catalog_entities INDEXED BY catalog_entities_library_id WHERE library_id=?`
+	args := []any{w.id}
+	if w.has {
+		q += ` AND id>?`
+		args = append(args, w.after)
+	}
+	q += ` ORDER BY id LIMIT ?`
+	if w.flags&sourceArtwork != 0 {
+		limit = 1
+	}
+	args = append(args, limit)
+	edges, err := querySourceEdges(ctx, tx, 2, q, args...)
+	if err != nil {
+		return 0, false, err
+	}
+	for _, r := range edges {
+		if w.flags&sourceMetadata != 0 {
+			if _, err = tx.ExecContext(ctx, `UPDATE metadata_publication_heads SET source_revision=source_revision+1 WHERE item_id=?`, r.id); err != nil {
+				return 0, false, err
+			}
+		}
+		if w.flags&sourceTVDB != 0 && r.aux == int64(Show) {
+			if _, err = tx.ExecContext(ctx, `UPDATE tvdb_publication_heads SET source_revision=source_revision+1 WHERE show_id=?`, r.id); err != nil {
+				return 0, false, err
+			}
+		}
+		w.after, w.has = r.id, true
+		if w.flags&sourceArtwork != 0 {
+			w.active = sql.NullInt64{Int64: r.id, Valid: true}
+		}
+	}
+	return len(edges), len(edges) == 0, nil
+}
+
+func drainUpstreamSources(ctx context.Context, tx *sql.Tx, domain int, keys []Key, limit int) ([]int64, error) {
+	if len(keys) == 0 || limit <= 0 {
+		return nil, nil
+	}
+	// One source per transaction; raw/output/empty-stream budget is shared.
+	key := keys[0]
+	w, err := readUpstreamSource(ctx, tx, domain, key.ID)
+	if errors.Is(err, sql.ErrNoRows) {
+		return []int64{key.ID}, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	budget := min(limit, upstreamQuantum)
+	var done bool
+	switch domain {
+	case DomainAssetSources:
+		_, done, err = w.asset(ctx, tx, budget)
+	case DomainEntitySources:
+		_, done, err = w.parent(ctx, tx, budget)
+	case DomainLibrarySources:
+		_, done, err = w.library(ctx, tx, budget)
+	case DomainMissingSources:
+		_, done, err = w.missing(ctx, tx, budget)
+	}
+	if err != nil {
+		return nil, err
+	}
+	if done {
+		if err = w.finish(ctx, tx); err != nil {
+			return nil, err
+		}
+		return []int64{key.ID}, nil
+	}
+	return nil, w.checkpoint(ctx, tx)
+}
+
+// PublicationSourcesReady guards deferred source-head invalidation. Provider
+// capture AND validation use it; live grants/root authority remain raw checks.
+func PublicationSourcesReady(ctx context.Context, q ReadQuery) (bool, error) {
+	var pending, failed bool
+	err := q.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM catalog_upstream_sources WHERE domain IN(41,43))
+ OR EXISTS(SELECT 1 FROM catalog_dirty WHERE domain IN(41,43)),EXISTS(SELECT 1 FROM catalog_derivation_failures WHERE domain IN(41,43))`).Scan(&pending, &failed)
+	if err != nil {
+		return false, err
+	}
+	if failed {
+		return false, ErrFacetProducerFailed
+	}
+	return !pending, nil
+}
+
+func init() {
+	for _, domain := range []int{DomainAssetSources, DomainEntitySources, DomainLibrarySources, DomainMissingSources} {
+		Register(domain, Derivation{Version: 1,
+			Drain: func(ctx context.Context, tx *sql.Tx, keys []Key, limit int) ([]int64, error) {
+				return drainUpstreamSources(ctx, tx, domain, keys, limit)
+			},
+			Backfill: func(context.Context, *sql.Tx, int64, int) ([]int64, error) { return nil, nil },
+		})
+	}
+}

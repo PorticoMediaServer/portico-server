@@ -1,9 +1,9 @@
 package catalog
 
-// This foundation deliberately has no source adapter. Domain 33 readiness and
-// the existing visibility classes do not prove an exact SIMPLE source image.
-// Installing the DDL alone therefore cannot enable a reader. The composition
-// root must supply a producer with the guarantees on FacetBaseProducer below.
+// This foundation is explicitly composed. Its source adapters capture actual
+// family fences; legacy readiness names and mutable visibility classes alone
+// do not prove an exact SIMPLE image. Installing DDL cannot enable a reader:
+// the composition root must own background production and live authority.
 
 import (
 	"context"
@@ -106,7 +106,7 @@ type FacetBaseBatch struct {
 	Done   bool
 }
 
-// FacetBaseProducer is the REQUIRED missing production seam. Next must consume
+// FacetBaseProducer is the exact source contract. Next must consume
 // an immutable accepted image or a lossless durable BASE delta journal, using
 // existing members/counts/show witnesses. Cursor is durable base work only.
 // It must preserve the census's distinct unrestricted-show, restricted-show,
@@ -148,17 +148,41 @@ func (b *FacetBases) Begin(ctx context.Context, tx *sql.Tx, scope FacetBaseScope
 	}
 	var class int64
 	err := tx.QueryRowContext(ctx, `INSERT INTO catalog_facet_base_classes(library_id,library,field,policy,source) VALUES(?,?,?,?,?)
- ON CONFLICT(library_id,field,policy,source) DO UPDATE SET library=excluded.library RETURNING id`, scope.LibraryID, scope.Library, scope.Field, scope.Policy, scope.Source).Scan(&class)
+	 ON CONFLICT(library_id,field,policy,source) DO UPDATE SET library=library RETURNING id`, scope.LibraryID, scope.Library, scope.Field, scope.Policy, scope.Source).Scan(&class)
 	if err != nil {
 		return 0, err
 	}
+	var storedLibrary string
+	if err = tx.QueryRowContext(ctx, `SELECT library FROM catalog_facet_base_classes WHERE id=?`, class).Scan(&storedLibrary); err != nil {
+		return 0, err
+	}
+	if storedLibrary != scope.Library {
+		return 0, ErrFacetBaseInput
+	}
 	var id int64
+	err = tx.QueryRowContext(ctx, `SELECT b.id FROM catalog_facet_bases b WHERE b.class_id=? AND b.witness=? AND b.authority=? AND (b.complete=1 OR EXISTS(SELECT 1 FROM catalog_facet_base_work w WHERE w.base_id=b.id)) ORDER BY b.id DESC LIMIT 1`, class, witness, authority).Scan(&id)
+	if err == nil {
+		return id, nil
+	}
+	if !errors.Is(err, sql.ErrNoRows) {
+		return 0, err
+	}
 	err = tx.QueryRowContext(ctx, `INSERT INTO catalog_facet_bases(class_id,witness,authority) VALUES(?,?,?) RETURNING id`, class, witness, authority).Scan(&id)
 	if err != nil {
 		return 0, err
 	}
 	_, err = tx.ExecContext(ctx, `INSERT INTO catalog_facet_base_work(base_id,cursor) VALUES(?,'')`, id)
-	return id, err
+	if err != nil {
+		return 0, err
+	}
+	var used int64
+	if err = tx.QueryRowContext(ctx, `SELECT used_bytes FROM catalog_facet_base_usage WHERE id=1`).Scan(&used); err != nil {
+		return 0, err
+	}
+	if used > b.MaxBytes {
+		return 0, ErrFacetBaseCapacity
+	}
+	return id, nil
 }
 
 // Step applies at most one producer quantum and activates in constant work.
@@ -173,6 +197,9 @@ func (b *FacetBases) Step(ctx context.Context, tx *sql.Tx, id int64) (bool, erro
 	}
 	snap, err := facetBaseSnapshot(ctx, tx, id, false)
 	if err != nil {
+		if _, completeErr := facetBaseSnapshot(ctx, tx, id, true); completeErr == nil {
+			return true, nil
+		}
 		return false, err
 	}
 	var cursor string
@@ -183,7 +210,7 @@ func (b *FacetBases) Step(ctx context.Context, tx *sql.Tx, id int64) (bool, erro
 	if err != nil {
 		return false, err
 	}
-	if len(batch.Facts) > 8 || len(batch.Cursor) > 4096 || (!batch.Done && batch.Cursor == cursor) {
+	if len(batch.Facts) > 8 || (!batch.Done && batch.Cursor == cursor) {
 		return false, ErrFacetBaseInput
 	}
 	var bytes int64
@@ -200,6 +227,20 @@ func (b *FacetBases) Step(ctx context.Context, tx *sql.Tx, id int64) (bool, erro
 	}
 	if !batch.Done {
 		_, err = tx.ExecContext(ctx, `UPDATE catalog_facet_base_work SET cursor=? WHERE base_id=?`, batch.Cursor, id)
+		if err != nil {
+			return false, err
+		}
+		var used int64
+		if err = tx.QueryRowContext(ctx, `SELECT used_bytes FROM catalog_facet_base_usage WHERE id=1`).Scan(&used); err != nil {
+			return false, err
+		}
+		if used > b.MaxBytes {
+			return false, ErrFacetBaseCapacity
+		}
+		return false, nil
+	}
+	snap, err = facetBaseSnapshot(ctx, tx, id, false)
+	if err != nil {
 		return false, err
 	}
 	if err = b.Producer.ValidatePublication(ctx, tx, snap); err != nil {
@@ -261,6 +302,11 @@ func (b *FacetBases) RetireStep(ctx context.Context, tx *sql.Tx, id int64) (bool
 	if _, err := tx.ExecContext(ctx, `UPDATE catalog_facet_bases SET complete=0 WHERE id=?`, id); err != nil {
 		return false, err
 	}
+	// Invalidate staged work at retirement's first quantum. A repeated demand
+	// must not resume a partially reclaimed base from its former source cursor.
+	if _, err := tx.ExecContext(ctx, `DELETE FROM catalog_facet_base_work WHERE base_id=?`, id); err != nil {
+		return false, err
+	}
 	r, err := tx.ExecContext(ctx, `DELETE FROM catalog_facet_base_rows WHERE base_id=? AND value_id IN(SELECT value_id FROM catalog_facet_base_rows WHERE base_id=? LIMIT 8)`, id, id)
 	if err != nil {
 		return false, err
@@ -295,4 +341,64 @@ func facetBaseSnapshot(ctx context.Context, q facetBaseQuerier, id int64, comple
 		err = ErrFacetBaseUnavailable
 	}
 	return s, err
+}
+
+// CollectTextStep examines at most eight raw identities. Eligibility follows
+// LIMIT in Go, so referenced texts cannot make the cleanup query scan a whole
+// directory looking for eight orphans. The owner separately walks value IDs.
+func (b *FacetBases) CollectTextStep(ctx context.Context, tx *sql.Tx, after int64) (next int64, done bool, err error) {
+	rows, err := tx.QueryContext(ctx, `SELECT id FROM catalog_facet_base_texts WHERE id>? ORDER BY id LIMIT 8`, after)
+	if err != nil {
+		return after, false, err
+	}
+	ids := make([]int64, 0, 8)
+	for rows.Next() {
+		var id int64
+		if err = rows.Scan(&id); err != nil {
+			rows.Close()
+			return after, false, err
+		}
+		ids = append(ids, id)
+	}
+	err = rows.Err()
+	rows.Close()
+	if err != nil {
+		return after, false, err
+	}
+	next = after
+	for _, id := range ids {
+		if _, err = tx.ExecContext(ctx, `DELETE FROM catalog_facet_base_texts WHERE id=? AND NOT EXISTS(SELECT 1 FROM catalog_facet_base_rows WHERE text_id=?)`, id, id); err != nil {
+			return next, false, err
+		}
+		next = id
+	}
+	return next, len(ids) < 8, nil
+}
+func (b *FacetBases) CollectValueStep(ctx context.Context, tx *sql.Tx, after int64) (next int64, done bool, err error) {
+	rows, err := tx.QueryContext(ctx, `SELECT id FROM catalog_facet_base_values WHERE id>? ORDER BY id LIMIT 8`, after)
+	if err != nil {
+		return after, false, err
+	}
+	ids := make([]int64, 0, 8)
+	for rows.Next() {
+		var id int64
+		if err = rows.Scan(&id); err != nil {
+			rows.Close()
+			return after, false, err
+		}
+		ids = append(ids, id)
+	}
+	err = rows.Err()
+	rows.Close()
+	if err != nil {
+		return after, false, err
+	}
+	next = after
+	for _, id := range ids {
+		if _, err = tx.ExecContext(ctx, `DELETE FROM catalog_facet_base_values WHERE id=? AND NOT EXISTS(SELECT 1 FROM catalog_facet_base_texts WHERE value_id=?) AND NOT EXISTS(SELECT 1 FROM catalog_facet_base_rows WHERE value_id=?)`, id, id, id); err != nil {
+			return next, false, err
+		}
+		next = id
+	}
+	return next, len(ids) < 8, nil
 }
