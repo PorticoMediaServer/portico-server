@@ -66,6 +66,7 @@ type selectionPreparationContent struct {
 	Query    json.RawMessage
 	Sorts    []BrowseSortSelection
 	Counts   [14][2]int
+	IDs      []int64
 }
 
 type selectionPreparationComputation struct {
@@ -74,6 +75,8 @@ type selectionPreparationComputation struct {
 	check        func(*Service) error
 	factoryBytes int64
 	payloadBytes int64
+	smallIDs     [201]int64
+	smallCount   int
 }
 
 func (c *selectionPreparationComputation) AccountedBytes() int64 {
@@ -98,9 +101,14 @@ func (c *selectionPreparationComputation) Step(ctx context.Context, budget *read
 		}
 		return read.browseSelectionWitness(plan.library, viewer.Profile, viewer.EffectiveRestrictions())
 	}
-	next, _, err := c.service.StepBrowseSelectionBatch(ctx, c.state, witness, SelectionBatchLimits{})
+	baseBytes := c.AccountedBytes() + int64(c.state.Bytes()) + int64(4*len(c.state.plan.policy)) + 65536
+	next, work, err := c.service.StepBrowseSelectionBatch(ctx, c.state, witness, SelectionBatchLimits{ReserveTransient: func(peak int64) error { return budget.Resize(baseBytes + max(int64(SelectionBatchMaximumBytes), peak)) }})
 	if err != nil {
 		return readprep.StepResult{}, selectionPreparationError(err)
+	}
+	for i := 0; i < work.MatchCount && c.smallCount < len(c.smallIDs); i++ {
+		c.smallIDs[c.smallCount] = work.Matches[i]
+		c.smallCount++
 	}
 	c.state = next
 	if !next.Complete() {
@@ -117,7 +125,7 @@ func (c *selectionPreparationComputation) Step(ctx context.Context, budget *read
 	if err = json.Unmarshal(p.sorts, &sorts); err != nil {
 		return readprep.StepResult{}, err
 	}
-	content := selectionPreparationContent{Library: p.library, Pivot: p.pivot, Revision: p.revision, Query: p.query, Sorts: sorts, Counts: next.counts}
+	content := selectionPreparationContent{Library: p.library, Pivot: p.pivot, Revision: p.revision, Query: p.query, Sorts: sorts, Counts: next.counts, IDs: c.smallIDs[:c.smallCount]}
 	encoded, err := json.Marshal(content)
 	if err != nil {
 		return readprep.StepResult{}, err
@@ -198,7 +206,12 @@ func (s *Service) SubmitBrowseSelectionPreparation(request BrowseRequest, viewer
 	root.recRestrictions = identity.ContentRestrictions{}
 	factoryBytes := int64(cap(spec)) + access.CapturedBytes + int64(unsafe.Sizeof(root)) + 2048
 	check := access.Check
-	plan := readprep.Plan{InitialBytes: factoryBytes, New: func(ctx context.Context, budget *readprep.Budget) (readprep.Computation, error) {
+	localSearch := selectionBatchHasLocalSearch(bound.Query)
+	class := dbwork.ClassBackgroundMedia
+	if localSearch {
+		class = dbwork.ClassMaintenance
+	}
+	plan := readprep.Plan{InitialBytes: factoryBytes, ColdSearch: localSearch, ShouldYield: func() bool { return localSearch && dbwork.ColdReadShouldYield() }, New: func(ctx context.Context, budget *readprep.Budget) (readprep.Computation, error) {
 		if err := budget.Resize(factoryBytes + int64(4*cap(spec)) + 2*SelectionBatchMaximumBytes); err != nil {
 			return nil, err
 		}
@@ -207,7 +220,7 @@ func (s *Service) SubmitBrowseSelectionPreparation(request BrowseRequest, viewer
 			return nil, err
 		}
 		var state *BrowseSelectionBatchState
-		err := dbwork.WithReadSnapshot(dbwork.WithClass(ctx, dbwork.ClassBackgroundMedia), root.db, func(inner context.Context) error {
+		err := dbwork.WithReadSnapshot(dbwork.WithClass(ctx, class), root.db, func(inner context.Context) error {
 			read := root.WithContext(inner)
 			if err := check(read); err != nil {
 				return readprep.ErrStale

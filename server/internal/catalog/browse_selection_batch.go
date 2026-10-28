@@ -32,7 +32,12 @@ const (
 // SelectionBatchLimits can narrow, but never widen, the shared preparation
 // quantum. Rows counts raw candidates, nested rows, scalar probes and EOF probes.
 // Bytes bounds cumulative source work; RetainedBytes independently bounds state.
-type SelectionBatchLimits struct{ Rows, Bytes, RetainedBytes int }
+type SelectionBatchLimits struct {
+	Rows, Bytes, RetainedBytes int
+	// ReserveTransient reserves the complete scalar/native peak before its SQL
+	// evaluation. Shared-store adapters include their own old+clone/factory state.
+	ReserveTransient func(int64) error
+}
 
 const selectionBatchProbeBytes = 64
 
@@ -57,6 +62,7 @@ type SelectionBatchWitness func(*Service) (string, error)
 
 type selectionBatchPlan struct {
 	restricted, blockUnrated               bool
+	localSearch                            bool
 	key, witness, library, pivot, revision string
 	libraryID                              int64
 	kinds                                  []int
@@ -234,6 +240,9 @@ func (s *Service) NewBrowseSelectionBatch(request BrowseRequest, viewer Viewer, 
 	if err != nil {
 		return nil, err
 	}
+	for _, test := range p.tests {
+		p.localSearch = p.localSearch || test.search != nil
+	}
 	p.restricted = viewer.Restrictions.Active()
 	p.blockUnrated = viewer.Restrictions.BlockUnrated
 	p.visibilitySQL, p.visibilityArgs = selectionBatchRestrictionEdgeSQL(viewer.EffectiveRestrictions())
@@ -279,7 +288,11 @@ func (s *Service) StepBrowseSelectionBatch(ctx context.Context, previous *Browse
 	// Yield between domain units; SQL in each unit is an indexed singleton or
 	// raw LIMIT 1 followed by bounded key joins. One legal scalar can cost O(B).
 	deadline := time.Now().Add(selectionBatchTime)
-	err := dbwork.WithReadSnapshot(dbwork.WithClass(ctx, dbwork.ClassBackgroundMedia), s.db, func(inner context.Context) error {
+	class := dbwork.ClassBackgroundMedia
+	if next.plan.localSearch {
+		class = dbwork.ClassMaintenance
+	}
+	err := dbwork.WithReadSnapshot(dbwork.WithClass(ctx, class), s.db, func(inner context.Context) error {
 		read := s.WithContext(inner)
 		current, err := witness(read)
 		if err != nil {
@@ -296,7 +309,7 @@ func (s *Service) StepBrowseSelectionBatch(ctx context.Context, previous *Browse
 			next.scalarBytes = 0
 			next.searchWork = selectionSearchWork{}
 			next.matchedEntity = 0
-			if err = read.selectionBatchUnit(next); err != nil {
+			if err = read.selectionBatchUnit(next, limits.ReserveTransient); err != nil {
 				return err
 			}
 			if next.matchedEntity != 0 {
@@ -310,7 +323,7 @@ func (s *Service) StepBrowseSelectionBatch(ctx context.Context, previous *Browse
 			work.QueryTokens += next.searchWork.queryTokens
 			work.TokenBytes += next.searchWork.tokenBytes
 			work.DecodedBytes += next.scalarBytes
-			work.ExaminedBytes += selectionBatchProbeBytes + next.scalarBytes
+			work.ExaminedBytes += selectionBatchProbeBytes + next.scalarBytes + next.searchWork.probeBytes
 			work.TransientScalarBytes = max(work.TransientScalarBytes, next.scalarBytes, next.searchWork.transientBytes)
 			work.Bytes = max(work.Bytes, next.Bytes())
 			if work.Bytes > retained {
@@ -373,7 +386,7 @@ func (s *Service) FinishBrowseSelectionBatch(state *BrowseSelectionBatchState, w
 	return selectionAggregateDescriptor(bound, authority, groups)
 }
 
-func (s *Service) selectionBatchUnit(state *BrowseSelectionBatchState) error {
+func (s *Service) selectionBatchUnit(state *BrowseSelectionBatchState, reserve func(int64) error) error {
 	p, c := state.plan, &state.candidate
 	switch c.stage {
 	case 0:
@@ -495,7 +508,7 @@ func (s *Service) selectionBatchUnit(state *BrowseSelectionBatchState) error {
 			return nil
 		}
 		if test.search != nil {
-			yes, err := s.selectionBatchSearchMatches(test.search, c.id, &state.scalarBytes, &state.searchWork)
+			yes, err := s.selectionBatchSearchMatches(test.search, c.id, &state.scalarBytes, &state.searchWork, reserve)
 			if err != nil {
 				return err
 			}
