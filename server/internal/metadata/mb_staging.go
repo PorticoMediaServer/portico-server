@@ -22,9 +22,8 @@ import (
 // Construction is never an accepted pin. Every committed component is charged
 // by the ordinary accounting triggers until bounded abort/retirement removes it.
 // A track costs five changes with retention accounting and ownership release.
-// 24 tracks plus the build cursor cost 121 measured rows. A 31-track quantum
-// fit the row plan but measured 257 pages against the unchanged 256-page plan;
-// 24 leaves headroom for random recording-accounting/index page writes.
+// 24 tracks plus the build cursor cost 121 measured rows, leaving headroom
+// under the unchanged 160-row/256-page plan for recording-accounting indexes.
 // The approved raw-source maximum remains 32.
 // No construction plan exception here; parent payloads use their own row bound.
 const mbBuildQuantum = 24
@@ -355,7 +354,7 @@ func (s *Service) mbConstructEvidence(ctx context.Context, j mbJob, p mbBuildPla
 					// A release track's FK now protects its recording. Release the tiny
 					// ready-build reservation in this same commit, not before the FK exists.
 					if table.name == "mb_release_tracks" {
-						if _, e = tx.ExecContext(ctx, `UPDATE mb_evidence_builds SET owner_operation='' WHERE kind='recording' AND revision_id=? AND state='ready' AND owner_operation=?`, row.values[8], j.operation); e != nil {
+						if _, e = tx.ExecContext(ctx, `UPDATE mb_evidence_builds SET owner_operation='' WHERE kind='recording' AND revision_id=? AND state='ready' AND owner_operation<>''`, row.values[8]); e != nil {
 							return e
 						}
 					}
@@ -713,7 +712,7 @@ func (s *Service) mbAttachStaged(ctx context.Context, j mbJob, proof mbBuildProo
 	if _, e = w.Tx().ExecContext(ctx, `UPDATE mb_publication_operations SET result_`+proof.kind+`_revision=?,result_digest=?,status='staged' WHERE id=?`, proof.revision, proof.digest, j.operation); e != nil {
 		return e
 	}
-	if _, e = w.Tx().ExecContext(ctx, `UPDATE mb_evidence_builds SET owner_operation='' WHERE kind=? AND revision_id=? AND state='ready' AND owner_operation=?`, proof.kind, proof.revision, j.operation); e != nil {
+	if _, e = w.Tx().ExecContext(ctx, `UPDATE mb_evidence_builds SET owner_operation='' WHERE kind=? AND revision_id=? AND state='ready' AND owner_operation<>''`, proof.kind, proof.revision); e != nil {
 		return e
 	}
 	// Reuse has no construction writes. Preserve the original staging admission

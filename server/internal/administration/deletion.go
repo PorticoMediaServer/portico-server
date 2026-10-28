@@ -65,9 +65,10 @@ type DeleteTarget struct {
 	Dependents []Dependent  `json:"dependents"`
 	// entityID is the catalogue integer the SQL statements use. It never
 	// leaves the server: public ids stay the API's only identifier.
-	entityID int64
-	members  []catalog.TitleDeletePlan
-	gone     []DeleteFile
+	entityID  int64
+	members   []catalog.TitleDeletePlan
+	emptyPlan catalog.TitleDeletePlan
+	gone      []DeleteFile
 }
 
 // DeletePreview is what the delete dialog renders before anything is touched.
@@ -203,6 +204,10 @@ func targetFor(ctx context.Context, tx *sql.Tx, item string) (DeleteTarget, erro
 	if errors.Is(err, catalog.ErrTooManyMembers) {
 		return t, ErrInput
 	}
+	if err != nil {
+		return t, err
+	}
+	t.emptyPlan, err = catalog.CaptureTitleDeleteTx(ctx, tx, t.entityID)
 	if err != nil {
 		return t, err
 	}
@@ -521,6 +526,26 @@ func (s *Service) Delete(ctx context.Context, auth Authorize, actor string, requ
 	if err != nil || replayed {
 		return out, err
 	}
+	// Management and this library's deletion policy are current in every
+	// drain/final writer. A captured confirmation is not a continuing grant.
+	liveAuth := func(ctx context.Context, tx *sql.Tx) error {
+		if auth != nil {
+			if e := auth(ctx, tx); e != nil {
+				return e
+			}
+		}
+		for _, library := range libraries {
+			allowed, e := deletionPolicy(ctx, tx, library)
+			if e != nil {
+				return e
+			}
+			if !allowed {
+				return ErrDenied
+			}
+		}
+		return nil
+	}
+
 	receipts := make([]DeleteReceipt, len(targets))
 	for i, target := range targets {
 		r := DeleteReceipt{ItemID: target.ItemID, Title: target.Title, Removed: true}
@@ -553,7 +578,7 @@ func (s *Service) Delete(ctx context.Context, auth Authorize, actor string, requ
 	for i, target := range targets {
 		for start := 0; start < len(target.gone); start += deleteMemberBatch {
 			end := min(start+deleteMemberBatch, len(target.gone))
-			if err = s.transaction(ctx, auth, func(tx *sql.Tx) error {
+			if err = s.transaction(ctx, liveAuth, func(tx *sql.Tx) error {
 				return markDeletedFilesTx(ctx, tx, target.gone[start:end])
 			}); err != nil {
 				return out, err
@@ -565,7 +590,7 @@ func (s *Service) Delete(ctx context.Context, auth Authorize, actor string, requ
 		for _, plan := range target.members {
 			complete := false
 			for !complete {
-				err = s.transaction(ctx, auth, func(tx *sql.Tx) error {
+				err = s.transaction(ctx, liveAuth, func(tx *sql.Tx) error {
 					step, e := catalog.DeleteApprovedTitleStepTx(ctx, tx, plan, request.OperationID+":"+digest)
 					if e != nil {
 						return e
@@ -587,20 +612,30 @@ func (s *Service) Delete(ctx context.Context, auth Authorize, actor string, requ
 				}
 			}
 		}
-		// A zero-member pass only removes an empty container. Any new member
-		// keeps its container and is never pulled into this operation.
-		err = s.transaction(ctx, auth, func(tx *sql.Tx) error {
-			remaining, e := catalog.DeleteTitleMembersTx(ctx, tx, target.ItemID, 0)
-			if e == nil && remaining != 0 {
-				receipts[i].Removed, receipts[i].Code = false, "file_changed"
+		// The zero-member policy never adopts newly attached members. Pending
+		// container/season work commits and resumes before the final receipt.
+		emptyDone := false
+		for !emptyDone {
+			err = s.transaction(ctx, liveAuth, func(tx *sql.Tx) error {
+				step, e := catalog.DeleteEmptyApprovedContainerStepTx(ctx, tx, target.emptyPlan, request.OperationID+":"+digest)
+				if e != nil {
+					return e
+				}
+				emptyDone = step.Complete
+				if step.Complete && step.Outcome == "stale" {
+					receipts[i].Removed, receipts[i].Code = false, "file_changed"
+				}
+				return nil
+			})
+			if err != nil {
+				return out, err
 			}
-			return e
-		})
-		if err != nil {
-			return out, err
+			if !emptyDone {
+				dbwork.Yield(ctx)
+			}
 		}
 	}
-	err = s.transaction(ctx, auth, func(tx *sql.Tx) error {
+	err = s.transaction(ctx, liveAuth, func(tx *sql.Tx) error {
 		out.Receipts, out.Removed, out.Failed, out.BytesDeleted = out.Receipts[:0], 0, 0, 0
 		for _, r := range receipts {
 			out.Receipts = append(out.Receipts, r)
@@ -615,7 +650,10 @@ func (s *Service) Delete(ctx context.Context, auth Authorize, actor string, requ
 		if out.Revision, e = deleteFence(ctx, tx, libraries); e != nil {
 			return e
 		}
-		return saveReceipt(ctx, tx, scope, request.OperationID, digest, out, s.milliseconds())
+		if e = saveReceipt(ctx, tx, scope, request.OperationID, digest, out, s.milliseconds()); e != nil {
+			return e
+		}
+		return catalog.AcknowledgeAdministrationTx(ctx, tx, request.OperationID+":"+digest)
 	})
 	_ = actor
 	return out, err

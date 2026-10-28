@@ -305,7 +305,10 @@ func (s *Service) claimMB(ctx context.Context) (*mbJob, error) {
 	var kind, entity string
 	// j.id stays the public id (it flows into RepairTarget and cross-lane
 	// readers); the integer entity_id never leaves SQL here.
-	e := read.QueryRowContext(ctx, `SELECT mb_jobs.kind,pid(e.public_id) FROM mb_jobs JOIN catalog_entities e ON e.id=mb_jobs.entity_id WHERE `+mbClaimable+` ORDER BY mb_jobs.next_attempt,mb_jobs.lease_until,mb_jobs.kind,mb_jobs.entity_id LIMIT 1`, stamp, stamp, stamp).Scan(&kind, &entity)
+	kind, entity, e := s.pickMBMutationSafe(ctx, stamp)
+	if e == nil && kind == "" {
+		return nil, nil
+	}
 	if errors.Is(e, sql.ErrNoRows) {
 		return nil, nil
 	}

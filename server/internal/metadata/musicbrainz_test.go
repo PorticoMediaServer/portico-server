@@ -97,6 +97,47 @@ func mbRecordingFixture() metadataprovider.Recording {
 func mbReleaseFixture() metadataprovider.Release {
 	return metadataprovider.Release{ID: mbRelease, Title: "Provider Edition", Date: "2020-01-01", Country: "CA", ReleaseGroup: metadataprovider.ReleaseGroup{ID: mbGroup, Title: "Album Group"}, Media: []metadataprovider.Medium{{Position: 2, Format: "CD", Tracks: []metadataprovider.ReleaseTrack{{ID: mbTrack, Position: 3, Number: "3", Title: "Local Song", ArtistCredit: mbRecordingFixture().ArtistCredit, Recording: mbRecordingFixture()}}}}}
 }
+
+// driveMBCatalogAdoptions models the separately scheduled catalog domain worker.
+// Provider steps never execute that worker themselves.
+func driveMBCatalogAdoptions(t *testing.T, db *sql.DB) {
+	t.Helper()
+	rows, err := db.Query(`SELECT mutation_id FROM catalog_entity_mutations WHERE owner_kind='mb-adoption' AND parent_mutation_id IS NULL AND status<>'terminal' ORDER BY mutation_id`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var roots []string
+	for rows.Next() {
+		var root string
+		if err = rows.Scan(&root); err != nil {
+			rows.Close()
+			t.Fatal(err)
+		}
+		roots = append(roots, root)
+	}
+	err = rows.Err()
+	rows.Close()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, root := range roots {
+		finished := false
+		for turn := 0; turn < 64; turn++ {
+			out, err := catalog.New(db).MutationAdapter().Step(context.Background(), root)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if out.State == "succeeded" {
+				finished = true
+				break
+			}
+		}
+		if !finished {
+			t.Fatal("catalog adoption did not finish", root)
+		}
+	}
+}
+
 func TestMusicBrainzTagsReleaseRecordingRemainDistinctAndRestart(t *testing.T) {
 	db, path := mbDB(t)
 	defer func() { db.Close() }()
@@ -129,6 +170,7 @@ func TestMusicBrainzTagsReleaseRecordingRemainDistinctAndRestart(t *testing.T) {
 	}
 	s = New(db, "")
 	s.mb = fixture
+	driveMBCatalogAdoptions(t, db)
 	if e = s.MusicBrainzStep(context.Background()); e != nil {
 		t.Fatal(e)
 	}
@@ -290,6 +332,7 @@ func TestMusicBrainzRecordingConflictDoesNotBecomeReleaseTrackIdentity(t *testin
 		if e = s.MusicBrainzStep(context.Background()); e != nil {
 			t.Fatal(e)
 		}
+		driveMBCatalogAdoptions(t, db)
 	}
 	settleMetadataCatalogue(t, db)
 	item, e := catalog.New(db).Get("p", mbPublicID(t, db, "Local Song"))
@@ -431,6 +474,7 @@ func TestMusicBrainzAlternativeReviewPreservesPublishedManualChoice(t *testing.T
 	if e := s.MusicBrainzStep(context.Background()); e != nil {
 		t.Fatal(e)
 	}
+	driveMBCatalogAdoptions(t, db)
 	// Finish the durable own-album reconciliation and song publication first.
 	for n := 0; n < 2; n++ {
 		if e := s.MusicBrainzStep(context.Background()); e != nil {
@@ -489,6 +533,7 @@ func TestMusicBrainzPublishedEditionReportsTrackOutcomeAndClearsOldBackoff(t *te
 	if e != nil || state.Published == nil || state.Published.Title != "Provider Edition" || state.Published.Artist != "Artist" || state.Published.PendingTracks != 1 || state.Published.TotalTracks != 1 {
 		t.Fatal(state, e)
 	}
+	driveMBCatalogAdoptions(t, db)
 	if e = s.MusicBrainzStep(context.Background()); e != nil {
 		t.Fatal(e)
 	}

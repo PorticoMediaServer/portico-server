@@ -81,6 +81,12 @@ func mbRetirePick(ctx context.Context, tx *sql.Tx, now, cutoff string) (*mbRetir
 			if protected == 0 {
 				return &c.t, nil
 			}
+			if state == "ready" {
+				// A real FK already protects this expired reservation. Clear one
+				// obsolete owner per turn so protected prefixes cannot hide orphans.
+				c.t.state = "unreserve"
+				return &c.t, nil
+			}
 		}
 	}
 	for _, kind := range []string{"release", "recording"} {
@@ -196,6 +202,12 @@ func (s *Service) mbRetireEvidence(ctx context.Context) error {
 	if target == nil {
 		return nil
 	}
+	if target.state == "unreserve" {
+		if _, err = w.Tx().ExecContext(ctx, `UPDATE mb_evidence_builds SET owner_operation='' WHERE kind=? AND revision_id=? AND generation=? AND state='ready'`, target.kind, target.revision, target.generation); err != nil {
+			return err
+		}
+		return w.Commit()
+	}
 	if target.state != "aborting" && target.state != "retiring" {
 		if err = mbRetireClaim(ctx, w.Tx(), target, now); err != nil {
 			return err
@@ -259,18 +271,21 @@ func (s *Service) mbCleanupReceipts(ctx context.Context) error {
 		return err
 	}
 	if operation != "" {
-		result, e := tx.ExecContext(ctx, `DELETE FROM mb_operation_artists WHERE rowid IN(SELECT rowid FROM mb_operation_artists WHERE operation_id=? ORDER BY ordinal LIMIT ?)`, operation, mbRetireRows)
-		if e != nil {
-			return e
-		}
-		n, e := result.RowsAffected()
-		if e != nil {
-			return e
-		}
-		if n == 0 {
-			if _, e = tx.ExecContext(ctx, `DELETE FROM mb_publication_operations WHERE id=?`, operation); e != nil {
+		for _, table := range []string{"mb_operation_artists", "mb_operation_sources"} {
+			result, e := tx.ExecContext(ctx, `DELETE FROM `+table+` WHERE rowid IN(SELECT rowid FROM `+table+` WHERE operation_id=? ORDER BY ordinal LIMIT ?)`, operation, mbRetireRows)
+			if e != nil {
 				return e
 			}
+			n, e := result.RowsAffected()
+			if e != nil {
+				return e
+			}
+			if n > 0 {
+				return w.Commit()
+			}
+		}
+		if _, e := tx.ExecContext(ctx, `DELETE FROM mb_publication_operations WHERE id=?`, operation); e != nil {
+			return e
 		}
 		return w.Commit()
 	}

@@ -149,13 +149,43 @@ func AdoptProviderIdentityStepTx(ctx context.Context, tx *sql.Tx, ref compactcat
 	if m.Phase == "finalize" {
 		return compactcatalog.FinishEntityMutationTx(ctx, tx, ref, "retained")
 	}
-	var other int64
-	err = tx.QueryRowContext(ctx, `SELECT other.id FROM catalog_entities me CROSS JOIN catalog_external_ids x INDEXED BY catalog_external_ids_lookup ON x.provider=?2 AND x.provider_kind=?3 AND x.provider_id=?4 CROSS JOIN catalog_entities other ON other.id=x.entity_id AND other.library_id=me.library_id AND other.kind=me.kind AND other.id<>me.id WHERE me.id=?1 AND other.id>?5 AND NOT EXISTS(SELECT 1 FROM catalog_kept_apart k WHERE k.entity_id IN(me.id,other.id)) AND (me.kind<>?6 OR EXISTS(SELECT 1 FROM catalog_shows mine JOIN catalog_shows theirs ON theirs.source_edition=mine.source_edition WHERE mine.entity_id=me.id AND theirs.entity_id=other.id)) ORDER BY other.id LIMIT 1`, m.Entity, m.Provider, m.ProviderKind, m.ProviderID, m.Cursor, compactcatalog.Show).Scan(&other)
-	if err == nil {
-		return compactcatalog.PendingMutationStep(), mutationChildTx(ctx, tx, m, other, m.Entity, "merge")
+	type candidate struct {
+		id       int64
+		eligible bool
 	}
-	if !errors.Is(err, sql.ErrNoRows) {
-		return compactcatalog.MutationStep{}, err
+	rows, e := tx.QueryContext(ctx, `SELECT x.entity_id,(other.library_id=me.library_id AND other.kind=me.kind AND other.id<>me.id AND NOT EXISTS(SELECT 1 FROM catalog_kept_apart k WHERE k.entity_id IN(me.id,other.id)) AND (me.kind<>?6 OR EXISTS(SELECT 1 FROM catalog_shows mine JOIN catalog_shows theirs ON theirs.source_edition=mine.source_edition WHERE mine.entity_id=me.id AND theirs.entity_id=other.id))) FROM catalog_external_ids x INDEXED BY catalog_external_ids_lookup CROSS JOIN catalog_entities me ON me.id=?1 JOIN catalog_entities other ON other.id=x.entity_id WHERE x.provider=?2 AND x.provider_kind=?3 AND x.provider_id=?4 AND x.entity_id>?5 ORDER BY x.entity_id LIMIT 32`, m.Entity, m.Provider, m.ProviderKind, m.ProviderID, m.Cursor, compactcatalog.Show)
+	if e != nil {
+		return compactcatalog.MutationStep{}, e
+	}
+	var raw []candidate
+	for rows.Next() {
+		var c candidate
+		if e = rows.Scan(&c.id, &c.eligible); e != nil {
+			rows.Close()
+			return compactcatalog.MutationStep{}, e
+		}
+		raw = append(raw, c)
+	}
+	e = rows.Err()
+	rows.Close()
+	if e != nil {
+		return compactcatalog.MutationStep{}, e
+	}
+	cursor := m.Cursor
+	for _, candidate := range raw {
+		if candidate.eligible {
+			if cursor != m.Cursor {
+				if _, e = tx.ExecContext(ctx, `UPDATE catalog_entity_mutations SET cursor=? WHERE mutation_id=? AND generation=?`, cursor, m.Ref.ID, m.Ref.Generation); e != nil {
+					return compactcatalog.MutationStep{}, e
+				}
+			}
+			return compactcatalog.PendingMutationStep(), mutationChildTx(ctx, tx, m, candidate.id, m.Entity, "merge")
+		}
+		cursor = candidate.id
+	}
+	if len(raw) > 0 {
+		_, e = tx.ExecContext(ctx, `UPDATE catalog_entity_mutations SET cursor=? WHERE mutation_id=? AND generation=?`, cursor, m.Ref.ID, m.Ref.Generation)
+		return compactcatalog.PendingMutationStep(), e
 	}
 	if err = restoreRetainedTx(ctx, tx, m.Entity); err != nil {
 		return compactcatalog.MutationStep{}, err
@@ -168,20 +198,66 @@ func AdoptProviderIdentityStepTx(ctx context.Context, tx *sql.Tx, ref compactcat
 func (s *Service) MutationAdapter() operations.Adapter {
 	return operations.Adapter{Kind: catalogMutationKind, Lane: "background-media", Resource: operations.LaneWriteHeavy,
 		ValidateTx: func(ctx context.Context, tx *sql.Tx, id string) error {
+			if id == mutationCleanupResource {
+				return nil
+			}
 			var one int
-			return tx.QueryRowContext(ctx, `SELECT 1 FROM catalog_entity_mutations WHERE mutation_id=?`, id).Scan(&one)
+			return tx.QueryRowContext(ctx, `SELECT 1 FROM catalog_entity_mutations WHERE mutation_id=? AND parent_mutation_id IS NULL`, id).Scan(&one)
 		},
 		Step: func(ctx context.Context, id string) (operations.JobObservation, error) {
 			out := operations.JobObservation{State: "running", Phase: "catalog mutation"}
 			var step compactcatalog.MutationStep
 			err := dbwork.WithWriteTx(MutationWriteContext(ctx), s.db, dbwork.ClassBackgroundMedia, func(tx *sql.Tx) error {
+				if id == mutationCleanupResource {
+					custody, e := readMutationConsoleTx(ctx, tx, id)
+					if e != nil {
+						return e
+					}
+					done, e := cleanupMutationTx(ctx, tx, custody)
+					if done {
+						out.State = "succeeded"
+					}
+					out.Phase = "catalog cleanup"
+					return e
+				}
 				ref, e := compactcatalog.MutationRefTx(ctx, tx, id)
+				if errors.Is(e, sql.ErrNoRows) {
+					var completed bool
+					if e = tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM console_operations WHERE kind=? AND resource=? AND state='succeeded')`, catalogMutationKind, id).Scan(&completed); e != nil {
+						return e
+					}
+					if completed {
+						out.State = "succeeded"
+						return nil
+					}
+					return sql.ErrNoRows
+				}
 				if e != nil {
 					return e
 				}
 				m, e := compactcatalog.ReadEntityMutationTx(ctx, tx, ref)
 				if e != nil {
 					return e
+				}
+				if m.Parent != "" {
+					return ErrAdminQuery
+				}
+				if m.Status == "terminal" {
+					step = mutationTerminal(m)
+					custody, e := readMutationConsoleTx(ctx, tx, id)
+					if errors.Is(e, sql.ErrNoRows) {
+						return nil
+					}
+					if e != nil {
+						return e
+					}
+					if e = completeMutationConsoleTx(ctx, tx, custody, id, step.Outcome); e != nil {
+						return e
+					}
+					if m.OwnerKind == "identity" || m.OwnerKind == "mb-adoption" {
+						return acknowledgeMutationTx(ctx, tx, ref)
+					}
+					return nil
 				}
 				// Automatic identity/MB custody is revalidated by the root on EVERY
 				// turn, including while recursively draining its current child.
@@ -191,20 +267,42 @@ func (s *Service) MutationAdapter() operations.Adapter {
 					out.Phase = "authorized owner resume required"
 					return nil
 				}
+				custody, e := readMutationConsoleTx(ctx, tx, id)
+				if e != nil {
+					return e
+				}
 				if m.OwnerKind == "identity" && m.Mode == "merge" {
 					var current bool
-					e = tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM catalog_identities i JOIN catalog_entities target ON target.public_id=i.public_id WHERE target.id=?1 AND i.source_key=?2 AND i.root=(SELECT cl.root FROM catalog_libraries cl WHERE cl.id=target.library_id)) AND NOT EXISTS(SELECT 1 FROM catalog_kept_apart WHERE entity_id IN(?1,?3)) AND NOT EXISTS(SELECT 1 FROM catalog_asset_links l JOIN catalog_assets a ON a.id=l.asset_id JOIN inventory_objects o ON o.asset_id=a.token JOIN library_sources s ON s.id=o.source_id WHERE l.entity_id=?3 AND (o.state<>'available' OR o.retired<>0 OR s.enabled=0 OR s.health IN('offline','root_changed','removing') OR EXISTS(SELECT 1 FROM inventory_source_active active WHERE active.source_id=s.id)))`, m.Target, m.ProviderID, m.Entity).Scan(&current)
+					e = tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM catalog_identities i JOIN catalog_entities target ON target.public_id=i.public_id WHERE target.id=?1 AND i.source_key=?2 AND i.root=(SELECT cl.root FROM catalog_libraries cl WHERE cl.id=target.library_id)) AND NOT EXISTS(SELECT 1 FROM catalog_kept_apart WHERE entity_id IN(?1,?3)) AND NOT EXISTS(SELECT 1 FROM catalog_asset_links l JOIN catalog_assets a ON a.id=l.asset_id JOIN inventory_objects o ON o.asset_id=a.token JOIN library_sources s ON s.id=o.source_id WHERE l.entity_id=?3 AND (o.state<>'available' OR o.retired<>0 OR s.enabled=0 OR s.health IN('offline','root_changed','removing')))`, m.Target, m.ProviderID, m.Entity).Scan(&current)
 					if e != nil {
 						return e
 					}
 					if !current {
 						step, e = staleMutationStepTx(ctx, tx, m)
-						return e
+						if e != nil {
+							return e
+						}
+						if step.Complete {
+							if e = completeMutationConsoleTx(ctx, tx, custody, id, step.Outcome); e != nil {
+								return e
+							}
+							return acknowledgeMutationTx(ctx, tx, ref)
+						}
+						return nil
 					}
 				}
 
 				step, e = CatalogMutationStepTx(ctx, tx, ref)
-				return e
+				if e != nil {
+					return e
+				}
+				if step.Complete {
+					if e = completeMutationConsoleTx(ctx, tx, custody, id, step.Outcome); e != nil {
+						return e
+					}
+					return acknowledgeMutationTx(ctx, tx, ref)
+				}
+				return nil
 			})
 			if step.Complete {
 				out.State = "succeeded"

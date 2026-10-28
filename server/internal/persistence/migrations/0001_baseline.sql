@@ -11585,9 +11585,17 @@ CREATE TABLE catalog_entity_mutations(
  target_public_id TEXT NOT NULL DEFAULT '',
  target_incarnation TEXT NOT NULL DEFAULT '',
  target_publication_incarnation TEXT NOT NULL DEFAULT '',
+ subject_ancestor_1 INTEGER REFERENCES catalog_entities(id) ON DELETE RESTRICT,
+ subject_ancestor_2 INTEGER REFERENCES catalog_entities(id) ON DELETE RESTRICT,
+ subject_ancestor_3 INTEGER REFERENCES catalog_entities(id) ON DELETE RESTRICT,
+ subject_ancestor_4 INTEGER REFERENCES catalog_entities(id) ON DELETE RESTRICT,
+ target_ancestor_1 INTEGER REFERENCES catalog_entities(id) ON DELETE RESTRICT,
+ target_ancestor_2 INTEGER REFERENCES catalog_entities(id) ON DELETE RESTRICT,
+ target_ancestor_3 INTEGER REFERENCES catalog_entities(id) ON DELETE RESTRICT,
+ target_ancestor_4 INTEGER REFERENCES catalog_entities(id) ON DELETE RESTRICT,
  mode TEXT NOT NULL CHECK(mode IN('remove','members','force','merge','adopt')),
  phase TEXT NOT NULL CHECK(phase IN('admitted','children','drain','finalize','album-identity','artist-identity','terminal')),
- status TEXT NOT NULL DEFAULT 'active' CHECK(status IN('active','blocked','terminal')),
+ status TEXT NOT NULL DEFAULT 'active' CHECK(status IN('active','blocked','waiting','terminal')),
  outcome TEXT NOT NULL DEFAULT 'pending' CHECK(outcome IN('pending','removed','retained','merged','stale','blocked')),
  cursor INTEGER NOT NULL DEFAULT 0,
  current_child TEXT REFERENCES catalog_entity_mutations(mutation_id) ON DELETE RESTRICT,
@@ -11598,6 +11606,8 @@ CREATE TABLE catalog_entity_mutations(
  accepted_revision TEXT NOT NULL DEFAULT '',
  cause_operation TEXT NOT NULL DEFAULT '',
  acknowledged INTEGER NOT NULL DEFAULT 0 CHECK(acknowledged IN(0,1)),
+ child_count INTEGER NOT NULL DEFAULT 0 CHECK(child_count>=0),
+ CHECK(status<>'waiting' OR (owner_kind='mb-adoption' AND mode='adopt' AND phase='artist-identity' AND entity_kind=6 AND parent_mutation_id IS NULL AND target_id IS NULL AND current_child IS NULL AND provider='musicbrainz' AND provider_kind='release' AND accepted_revision<>'' AND cause_operation<>'' AND public_id<>'' AND entity_incarnation<>'' AND subject_ancestor_1 IS NOT NULL)),
  CHECK((status='terminal' AND phase='terminal' AND entity_id IS NULL AND target_id IS NULL AND outcome<>'pending') OR
        (status<>'terminal' AND entity_id IS NOT NULL AND phase<>'terminal'))
 ) STRICT;
@@ -11632,3 +11642,47 @@ CREATE INDEX catalog_entity_mutations_entity_fk ON catalog_entity_mutations(enti
 CREATE INDEX catalog_entity_mutations_target_fk ON catalog_entity_mutations(target_id);
 
 CREATE INDEX catalog_entity_mutations_child_fk ON catalog_entity_mutations(current_child);
+
+CREATE INDEX catalog_entity_mutations_subject_ancestor_1_fk ON catalog_entity_mutations(subject_ancestor_1,status,family_id);
+
+CREATE INDEX catalog_entity_mutations_subject_ancestor_2_fk ON catalog_entity_mutations(subject_ancestor_2,status,family_id);
+
+CREATE INDEX catalog_entity_mutations_subject_ancestor_3_fk ON catalog_entity_mutations(subject_ancestor_3,status,family_id);
+
+CREATE INDEX catalog_entity_mutations_subject_ancestor_4_fk ON catalog_entity_mutations(subject_ancestor_4,status,family_id);
+
+CREATE INDEX catalog_entity_mutations_target_ancestor_1_fk ON catalog_entity_mutations(target_ancestor_1,status,family_id);
+
+CREATE INDEX catalog_entity_mutations_target_ancestor_2_fk ON catalog_entity_mutations(target_ancestor_2,status,family_id);
+
+CREATE INDEX catalog_entity_mutations_target_ancestor_3_fk ON catalog_entity_mutations(target_ancestor_3,status,family_id);
+
+CREATE INDEX catalog_entity_mutations_target_ancestor_4_fk ON catalog_entity_mutations(target_ancestor_4,status,family_id);
+
+CREATE INDEX catalog_entity_mutations_provider ON catalog_entity_mutations(provider,provider_kind,provider_id,library_id,entity_kind,family_id) WHERE status<>'terminal' AND mode='adopt';
+
+-- P2-52b bounded custody acknowledgement and indexed member progress.
+CREATE INDEX catalog_entity_mutations_gc_leaf ON catalog_entity_mutations(status,acknowledged,child_count,mutation_id);
+CREATE INDEX catalog_entity_mutations_ack_roots ON catalog_entity_mutations(status,acknowledged,parent_mutation_id,mutation_id);
+CREATE TRIGGER catalog_entity_mutations_child_join AFTER INSERT ON catalog_entity_mutations WHEN NEW.parent_mutation_id IS NOT NULL BEGIN UPDATE catalog_entity_mutations SET child_count=child_count+1 WHERE mutation_id=NEW.parent_mutation_id; END;
+CREATE TRIGGER catalog_entity_mutations_child_leave AFTER DELETE ON catalog_entity_mutations WHEN OLD.parent_mutation_id IS NOT NULL BEGIN UPDATE catalog_entity_mutations SET child_count=child_count-1 WHERE mutation_id=OLD.parent_mutation_id; END;
+CREATE TRIGGER catalog_entity_mutations_parent_immutable BEFORE UPDATE OF parent_mutation_id ON catalog_entity_mutations WHEN OLD.parent_mutation_id IS NOT NEW.parent_mutation_id BEGIN SELECT RAISE(ABORT,'immutable catalog mutation parent'); END;
+CREATE INDEX catalog_songs_album_entity ON catalog_songs(album_id,entity_id);
+CREATE INDEX catalog_book_files_book_entity ON catalog_book_files(book_id,entity_id);
+CREATE INDEX catalog_episodes_show_entity ON catalog_episodes(show_id,entity_id);
+CREATE INDEX catalog_episodes_season_entity ON catalog_episodes(season_id,entity_id) WHERE season_id IS NOT NULL;
+CREATE INDEX catalog_seasons_show_entity ON catalog_seasons(show_id,entity_id);
+
+CREATE INDEX catalog_entity_mutations_parent_key ON catalog_entity_mutations(parent_mutation_id,mutation_id);
+
+-- Exact command owner/member keys; independent of unrelated custody history.
+CREATE INDEX catalog_entity_mutations_command_root ON catalog_entity_mutations(owner_kind,owner_id,owner_generation,mutation_id) WHERE parent_mutation_id IS NULL;
+CREATE INDEX catalog_entity_mutations_command_public ON catalog_entity_mutations(owner_kind,owner_id,public_id,mode,owner_generation DESC,mutation_id);
+CREATE INDEX catalog_entity_mutations_command_subject ON catalog_entity_mutations(owner_kind,owner_id,subject_id,mode,owner_generation DESC,mutation_id);
+
+-- Narrow album-to-artist identity handoff; no outgoing mutation exemption.
+CREATE UNIQUE INDEX catalog_entity_mutations_artist_identity ON catalog_entity_mutations(library_id,provider,provider_kind,provider_id) WHERE entity_kind=5 AND owner_kind='identity' AND mode='adopt' AND parent_mutation_id IS NULL AND status IN('active','blocked');
+CREATE TRIGGER catalog_entity_mutations_wait_binding BEFORE UPDATE OF status,phase,entity_id,public_id,entity_incarnation,subject_ancestor_1 ON catalog_entity_mutations WHEN NEW.status='waiting' AND NOT EXISTS(SELECT 1 FROM catalog_entities e JOIN catalog_albums a ON a.entity_id=e.id JOIN catalog_entities artist ON artist.id=a.artist_id AND artist.kind=5 AND artist.library_id=e.library_id JOIN mb_album_heads h ON h.album_id=e.id WHERE e.id=NEW.entity_id AND e.kind=6 AND pid(e.public_id)=NEW.public_id AND h.incarnation=NEW.entity_incarnation AND e.parent_id=NEW.subject_ancestor_1 AND a.artist_id=NEW.subject_ancestor_1) BEGIN SELECT RAISE(ABORT,'stale catalog artist handoff binding'); END;
+CREATE TRIGGER catalog_entity_mutations_wait_parent BEFORE UPDATE OF parent_id ON catalog_entities WHEN OLD.parent_id IS NOT NEW.parent_id AND EXISTS(SELECT 1 FROM catalog_entity_mutations WHERE entity_id=OLD.id AND status='waiting') BEGIN SELECT RAISE(ABORT,'catalog artist handoff retains album parent'); END;
+CREATE TRIGGER catalog_entity_mutations_wait_artist BEFORE UPDATE OF artist_id ON catalog_albums WHEN OLD.artist_id IS NOT NEW.artist_id AND EXISTS(SELECT 1 FROM catalog_entity_mutations WHERE entity_id=OLD.entity_id AND status='waiting') BEGIN SELECT RAISE(ABORT,'catalog artist handoff retains album artist'); END;
+CREATE TRIGGER catalog_entity_mutations_wait_binding_insert BEFORE INSERT ON catalog_entity_mutations WHEN NEW.status='waiting' AND NOT EXISTS(SELECT 1 FROM catalog_entities e JOIN catalog_albums a ON a.entity_id=e.id JOIN catalog_entities artist ON artist.id=a.artist_id AND artist.kind=5 AND artist.library_id=e.library_id JOIN mb_album_heads h ON h.album_id=e.id WHERE e.id=NEW.entity_id AND e.kind=6 AND pid(e.public_id)=NEW.public_id AND h.incarnation=NEW.entity_incarnation AND e.parent_id=NEW.subject_ancestor_1 AND a.artist_id=NEW.subject_ancestor_1) BEGIN SELECT RAISE(ABORT,'stale catalog artist handoff binding'); END;

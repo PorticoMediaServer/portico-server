@@ -526,6 +526,17 @@ func (s *Service) MergeTitles(ctx context.Context, from, into string, authorize 
 				var a, b int64
 				// Exact public IDs, never a redirect to a changed source/survivor.
 				if e = tx.QueryRowContext(ctx, `SELECT id FROM catalog_entities WHERE public_id=pid_blob(?)`, from).Scan(&a); e != nil {
+					if errors.Is(e, sql.ErrNoRows) {
+						var merged bool
+						if e = tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM catalog_merged_ids m JOIN catalog_entities e ON e.id=m.entity_id WHERE m.public_id=pid_blob(?) AND e.public_id=pid_blob(?))`, from, into).Scan(&merged); e != nil {
+							return e
+						}
+						if merged {
+							step = compactcatalog.MutationStep{Complete: true, Outcome: "merged"}
+							return nil
+						}
+						return sql.ErrNoRows
+					}
 					return e
 				}
 				if e = tx.QueryRowContext(ctx, `SELECT e.id FROM catalog_entities e JOIN catalog_libraries cl ON cl.id=e.library_id AND cl.retired=0 WHERE e.public_id=pid_blob(?)`, into).Scan(&b); e != nil {
@@ -541,6 +552,9 @@ func (s *Service) MergeTitles(ctx context.Context, from, into string, authorize 
 			}
 			var e error
 			step, e = MergeTitlesStepTx(ctx, tx, ref)
+			if e == nil && step.Complete {
+				e = acknowledgeMutationTx(ctx, tx, ref)
+			}
 			return e
 		})
 		if err != nil {

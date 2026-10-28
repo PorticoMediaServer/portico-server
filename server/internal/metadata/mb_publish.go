@@ -76,13 +76,16 @@ func (s *Service) mbPublishSong(ctx context.Context, j mbJob, result metadatapro
 		return e
 	}
 	revision := proof.revision
+	timing := s.mbFinalTrackCounts(ctx, j, -1)
 	var gated2 *dbwork.Write
 	gated2, e = dbwork.Begin(dbwork.WithPlan(ctx, mbPublicationAccountingPlan), s.db, dbwork.ClassBackgroundMedia)
 	if e != nil {
 		return e
 	}
+	timing.start()
+	defer timing.report()
+	defer func() { gated2.Rollback(); timing.stop() }()
 	tx := gated2.Tx()
-	defer gated2.Rollback()
 	if e = s.activeMB(ctx, tx, j); e != nil {
 		return e
 	}
@@ -101,6 +104,7 @@ func (s *Service) mbPublishSong(ctx context.Context, j mbJob, result metadatapro
 	r := stage.value
 	if e = mbIdentityAllowed(ctx, tx, j, r.ID); e != nil {
 		gated2.Rollback()
+		timing.stop()
 		if errors.Is(e, ErrMBConflict) {
 			return s.mbStatus(ctx, j, "needs_selection", "accepted_identity_conflict")
 		}
@@ -109,6 +113,9 @@ func (s *Service) mbPublishSong(ctx context.Context, j mbJob, result metadatapro
 	track, e := readMBTrack(ctx, tx, j, r.ID)
 	if e != nil {
 		return e
+	}
+	if track.status != "matched" {
+		timing.newTracks = timing.oldTracks
 	}
 	entity, e := resolveMBEntity(ctx, tx, j.id)
 	if e != nil {
@@ -159,7 +166,9 @@ func (s *Service) mbPublishSong(ctx context.Context, j mbJob, result metadatapro
 	if e = checkMBEvidenceBudget(ctx, tx); e != nil {
 		return e
 	}
-	return s.commitMBCurrent(ctx, gated2, j)
+	e = s.commitMBCurrent(ctx, gated2, j)
+	timing.stop()
+	return e
 }
 func (s *Service) mbPublishAlbum(ctx context.Context, j mbJob, result metadataprovider.ReleaseLookup, observed string) error {
 	stage, e := stageMBRelease(result)
@@ -185,13 +194,20 @@ func (s *Service) mbPublishAlbumReady(ctx context.Context, j mbJob, stage mbRele
 	}
 	revision := proof.revision
 	var e error
+	newTracks := 0
+	for _, medium := range stage.value.Media {
+		newTracks += len(medium.Tracks)
+	}
+	timing := s.mbFinalTrackCounts(ctx, j, newTracks)
 	var gated4 *dbwork.Write
 	gated4, e = dbwork.Begin(dbwork.WithPlan(ctx, mbPublicationAccountingPlan), s.db, dbwork.ClassBackgroundMedia)
 	if e != nil {
 		return e
 	}
+	timing.start()
+	defer timing.report()
+	defer func() { gated4.Rollback(); timing.stop() }()
 	tx := gated4.Tx()
-	defer gated4.Rollback()
 	if e = s.activeMB(ctx, tx, j); e != nil {
 		return e
 	}
@@ -207,6 +223,7 @@ func (s *Service) mbPublishAlbumReady(ctx context.Context, j mbJob, stage mbRele
 	r := stage.value
 	if e = mbIdentityAllowed(ctx, tx, j, r.ID); e != nil {
 		gated4.Rollback()
+		timing.stop()
 		if errors.Is(e, ErrMBConflict) {
 			return s.mbStatus(ctx, j, "needs_selection", "accepted_identity_conflict")
 		}
@@ -255,7 +272,9 @@ func (s *Service) mbPublishAlbumReady(ctx context.Context, j mbJob, stage mbRele
 	if e = checkMBEvidenceBudget(ctx, tx); e != nil {
 		return e
 	}
-	return s.commitMBCurrent(ctx, gated4, j)
+	e = s.commitMBCurrent(ctx, gated4, j)
+	timing.stop()
+	return e
 }
 
 func (s *Service) finishMBPublication(ctx context.Context, tx *sql.Tx, j mbJob, requested, revision string) error {

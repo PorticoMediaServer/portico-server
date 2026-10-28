@@ -162,6 +162,7 @@ var albumRetireChecks = []string{
 	`SELECT EXISTS(SELECT 1 FROM catalog_songs WHERE album_id=?)`,
 	`SELECT EXISTS(SELECT 1 FROM mb_jobs WHERE kind='album' AND entity_id=? AND manual=1)`,
 	`SELECT EXISTS(SELECT 1 FROM mb_album_links WHERE album_id=?)`,
+	`SELECT EXISTS(SELECT 1 FROM mb_song_links WHERE item_id=?)`,
 	`SELECT EXISTS(SELECT 1 FROM container_personal_state WHERE container_id=?)`,
 	`SELECT EXISTS(SELECT 1 FROM metadata_owner_fields WHERE kind='album' AND entity_id=?)`,
 	`SELECT EXISTS(SELECT 1 FROM metadata_owner_history WHERE kind='album' AND entity_id=?)`,

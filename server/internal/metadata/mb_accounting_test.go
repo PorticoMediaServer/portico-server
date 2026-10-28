@@ -47,6 +47,14 @@ func assertMBAccounting(t *testing.T, q mbAccountingQuerier) {
  OR charge<>(SELECT length(CAST(payload AS BLOB))*8+512*(1+(SELECT count(*) FROM mb_recording_credits WHERE revision_id=a.revision_id)) FROM mb_recording_evidence WHERE revision_id=a.revision_id)`).Scan(&bad); err != nil || bad != 0 {
 		t.Fatalf("recording accounting drift=%d: %v", bad, err)
 	}
+	for _, query := range []string{
+		`SELECT count(*) FROM mb_release_accounting a JOIN mb_release_evidence e USING(revision_id) WHERE a.observed_at<>e.observed_at OR a.retention_refs<>(SELECT count(*) FROM mb_release_aliases x WHERE x.evidence_revision=a.revision_id)+(SELECT count(*) FROM mb_album_reconciliations x WHERE x.release_revision=a.revision_id)+(SELECT count(*) FROM mb_publication_operations x WHERE x.accepted_release_revision=a.revision_id)+(SELECT count(*) FROM mb_publication_operations x WHERE x.result_release_revision=a.revision_id)`,
+		`SELECT count(*) FROM mb_recording_accounting a JOIN mb_recording_evidence e USING(revision_id) WHERE a.observed_at<>e.observed_at OR a.retention_refs<>(SELECT count(*) FROM mb_recording_aliases x WHERE x.evidence_revision=a.revision_id)+(SELECT count(*) FROM mb_release_tracks x WHERE x.recording_revision=a.revision_id)+(SELECT count(*) FROM mb_publication_operations x WHERE x.accepted_recording_revision=a.revision_id)+(SELECT count(*) FROM mb_publication_operations x WHERE x.result_recording_revision=a.revision_id)`,
+	} {
+		if err := q.QueryRow(query).Scan(&bad); err != nil || bad != 0 {
+			t.Fatalf("retirement base-fact drift=%d: %v", bad, err)
+		}
+	}
 }
 
 func mbAccountingSave(t *testing.T, tx *sql.Tx, value metadataprovider.ReleaseLookup) string {

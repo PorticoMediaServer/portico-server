@@ -167,6 +167,7 @@ func (s *Service) MusicBrainzState(kind, id string) (MBState, error) {
 	return out, gated.Commit()
 }
 func (s *Service) SelectMusicBrainz(kind, id string, m MBSelection, authorize func(*sql.Tx) error) error {
+	s.resetMBMutationPick()
 	if !mbIdentifier.MatchString(m.ProviderID) || m.ExpectedRevision < 1 || m.Actor.Authority == "" || m.Actor.AccountID == "" || m.Actor.ProfileID == "" {
 		return requestinput.New("observed providerId and expectedRevision are required")
 	}
@@ -268,6 +269,7 @@ func (s *Service) selectMusicBrainzTx(tx *sql.Tx, kind, id string, m MBSelection
 }
 
 func (s *Service) RetryMusicBrainz(kind, id string, revision int64, authorize func(*sql.Tx) error) error {
+	s.resetMBMutationPick()
 	gated3, e := dbwork.Begin(context.Background(), s.db, dbwork.ClassBackgroundMedia)
 	if e != nil {
 		return e
@@ -306,6 +308,7 @@ func (s *Service) RetryMusicBrainz(kind, id string, revision int64, authorize fu
 // Search alternatives is a review intent, not permission to replace a manual
 // selection. Existing cached/public metadata remains until another selection.
 func (s *Service) SearchMusicBrainzAlternatives(kind, id string, revision int64, authorize func(*sql.Tx) error) error {
+	s.resetMBMutationPick()
 	gated4, e := dbwork.Begin(context.Background(), s.db, dbwork.ClassBackgroundMedia)
 	if e != nil {
 		return e

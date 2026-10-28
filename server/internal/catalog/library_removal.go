@@ -29,6 +29,7 @@ import (
 
 // ErrLibraryRemoving: the library is already being removed.
 var ErrLibraryRemoving = errors.New("the library is being removed")
+var errLibraryMutationStale = errors.New("library mutation custody changed; authorized resolution required")
 
 const (
 	libraryRemovalKind = "library-removal"
@@ -115,6 +116,9 @@ func (s *Service) removalStep(ctx context.Context, batch func(*sql.Tx) (bool, er
 			return e
 		})
 		if err != nil {
+			if errors.Is(err, errLibraryMutationStale) {
+				return operations.JobObservation{State: "paused", Phase: "catalog custody changed; authorized resolution required"}, nil
+			}
 			if errors.Is(err, sql.ErrNoRows) {
 				return operations.JobObservation{State: "succeeded"}, nil
 			}
@@ -318,7 +322,16 @@ func removeLibraryTitlesTx(ctx context.Context, tx *sql.Tx, handle int64) (bool,
 	if err != nil {
 		return false, err
 	}
-	_, err = removeOwnedStepTx(ctx, tx, title, "library", fmt.Sprint(handle), 1, "remove")
+	step, err := removeOwnedStepTx(ctx, tx, title, "library", fmt.Sprint(handle), 1, "remove")
+	if err != nil {
+		return true, err
+	}
+	if step.Complete && step.Outcome == "stale" && !step.Progressed {
+		return true, errLibraryMutationStale
+	}
+	if step.Complete && step.Outcome != "stale" {
+		err = ackOwnedSubjectTx(ctx, tx, "library", fmt.Sprint(handle), title, "remove")
+	}
 	return true, err
 }
 
@@ -471,6 +484,15 @@ func removeLibraryContainersTx(ctx context.Context, tx *sql.Tx, handle int64, pr
 			}
 			if !step.Complete {
 				return true, nil
+			}
+			if step.Outcome == "stale" {
+				if step.Progressed {
+					return true, nil
+				}
+				return true, errLibraryMutationStale
+			}
+			if e = ackOwnedSubjectTx(ctx, tx, "library", fmt.Sprint(handle), id, "force"); e != nil {
+				return false, e
 			}
 			if step.Outcome == "removed" {
 				progress.walkRemoved = true

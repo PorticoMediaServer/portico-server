@@ -32,27 +32,32 @@ func CaptureTitleDeleteTx(ctx context.Context, tx *sql.Tx, entity int64) (TitleD
 	if err := tx.QueryRowContext(ctx, `SELECT pid(public_id),library_id,kind,parent_id FROM catalog_entities WHERE id=?`, entity).Scan(&plan.ItemID, &library, &kind, &parent); err != nil {
 		return plan, err
 	}
-	rows, err := tx.QueryContext(ctx, `SELECT a.token,a.path,a.size,a.modified_ns,l.part_index,l.start_seconds,l.end_seconds,l.edition
- FROM catalog_asset_links l JOIN catalog_assets a ON a.id=l.asset_id WHERE l.entity_id=? ORDER BY a.token`, entity)
+	rows, err := tx.QueryContext(ctx, `SELECT a.token,a.path,a.size,a.modified_ns,l.part_index,l.start_seconds,l.end_seconds,l.edition,COALESCE(o.id,''),COALESCE(o.revision,''),COALESCE(o.root_incarnation,''),COALESCE(o.object_identity,''),COALESCE(s.id,''),COALESCE(s.generation,0),COALESCE(s.incarnation,''),COALESCE(s.root_identity,''),COALESCE(s.root,'')
+ FROM catalog_asset_links l JOIN catalog_assets a ON a.id=l.asset_id LEFT JOIN inventory_objects o ON o.asset_id=a.token LEFT JOIN library_sources s ON s.id=o.source_id WHERE l.entity_id=? ORDER BY a.token,o.id`, entity)
 	if err != nil {
 		return plan, err
 	}
 	defer rows.Close()
 	h := sha256.New()
 	enc := json.NewEncoder(h)
-	if err := enc.Encode([]any{library, kind, parent}); err != nil {
+	var incarnation, publication string
+	if err := tx.QueryRowContext(ctx, `SELECT COALESCE(ah.incarnation,sh.incarnation,''),COALESCE(ph.incarnation,'') FROM catalog_entities e LEFT JOIN mb_album_heads ah ON ah.album_id=e.id LEFT JOIN mb_song_heads sh ON sh.item_id=e.id LEFT JOIN metadata_publication_heads ph ON ph.item_id=e.id WHERE e.id=?`, entity).Scan(&incarnation, &publication); err != nil {
+		return plan, err
+	}
+	if err := enc.Encode([]any{library, kind, parent, incarnation, publication}); err != nil {
 		return plan, err
 	}
 	for rows.Next() {
-		var token, path, edition string
+		var token, path, edition, object, objectRevision, rootIncarnation, objectIdentity, source, sourceIncarnation, rootIdentity, sourceRoot string
+		var sourceGeneration int64
 		var size, modified int64
 		var part int
 		var start float64
 		var end sql.NullFloat64
-		if err := rows.Scan(&token, &path, &size, &modified, &part, &start, &end, &edition); err != nil {
+		if err := rows.Scan(&token, &path, &size, &modified, &part, &start, &end, &edition, &object, &objectRevision, &rootIncarnation, &objectIdentity, &source, &sourceGeneration, &sourceIncarnation, &rootIdentity, &sourceRoot); err != nil {
 			return plan, err
 		}
-		if err := enc.Encode([]any{token, path, size, modified, part, start, end, edition}); err != nil {
+		if err := enc.Encode([]any{token, path, size, modified, part, start, end, edition, object, objectRevision, rootIncarnation, objectIdentity, source, sourceGeneration, sourceIncarnation, rootIdentity, sourceRoot}); err != nil {
 			return plan, err
 		}
 	}
@@ -118,10 +123,19 @@ func DeleteTitleMembersTx(ctx context.Context, tx *sql.Tx, item string, limit in
 	err := tx.QueryRowContext(ctx, `SELECT mutation_id,generation FROM catalog_entity_mutations WHERE owner_kind='title' AND owner_id=? AND parent_mutation_id IS NULL AND status<>'terminal' ORDER BY mutation_id LIMIT 1`, item).Scan(&ref.ID, &ref.Generation)
 	if err == nil {
 		step, e := RemoveTitleStepTx(ctx, tx, ref)
-		if step.More {
-			return 1, e
+		if e != nil {
+			return 0, e
 		}
-		return 0, e
+		if step.More {
+			return 1, nil
+		}
+		if e = acknowledgeMutationTx(ctx, tx, ref); e != nil {
+			return 0, e
+		}
+		if step.Outcome == "stale" {
+			return -1, nil
+		}
+		return 0, nil
 	}
 	if !errors.Is(err, sql.ErrNoRows) {
 		return 0, err
@@ -149,61 +163,24 @@ func DeleteTitleMembersTx(ctx context.Context, tx *sql.Tx, item string, limit in
 	return 1, err
 }
 
-func deleteEmptyTitleMembersTx(ctx context.Context, tx *sql.Tx, item string, limit int) (remaining int, err error) {
-	entity, err := entityid.Resolve(ctx, tx, item)
-	if errors.Is(err, entityid.ErrNotFound) {
-		return 0, nil
-	}
-	if err != nil {
-		return 0, err
-	}
-	members, err := scanInt64s(tx.QueryContext(ctx, titleMembersSQL+` ORDER BY 1 LIMIT ?2`, entity, limit+1))
-	if err != nil {
-		return 0, err
-	}
-	more := len(members) > limit
-	if more {
-		members = members[:limit]
-	}
-	for _, member := range members {
-		if err = RemoveTitleTx(ctx, tx, member); err != nil {
-			return 0, err
-		}
-	}
-	if more || len(members) > 0 && limit > 0 {
-		// The container goes in a transaction of its own, so the last batch
-		// of members and the container's own cascade are never one write.
-		return 1, nil
-	}
-	// The container itself, when removing its members did not already take it.
+func deleteEmptyTitleMembersTx(ctx context.Context, tx *sql.Tx, item string, limit int) (int, error) {
+	var entity int64
 	var kind compactcatalog.Kind
-	err = tx.QueryRowContext(ctx, `SELECT kind FROM catalog_entities WHERE id=?`, entity).Scan(&kind)
+	err := tx.QueryRowContext(ctx, `SELECT id,kind FROM catalog_entities WHERE public_id=pid_blob(?)`, item).Scan(&entity, &kind)
 	if errors.Is(err, sql.ErrNoRows) {
 		return 0, nil
 	}
 	if err != nil {
 		return 0, err
 	}
-	switch kind {
-	case compactcatalog.Show:
-		seasons, e := scanInt64s(tx.QueryContext(ctx, `SELECT entity_id FROM catalog_seasons WHERE show_id=?`, entity))
-		if e != nil {
-			return 0, e
-		}
-		for _, season := range seasons {
-			if e = removeContainerTx(ctx, tx, season); e != nil {
-				return 0, e
-			}
-		}
-		return 0, removeContainerTx(ctx, tx, entity)
-	case compactcatalog.Season:
-		return 0, removeContainerTx(ctx, tx, entity)
-	case compactcatalog.Collection:
-		return 0, compactcatalog.DeleteEntityTx(ctx, tx, entity)
+	members, err := hasTitleMembersTx(ctx, tx, entity, kind)
+	if err != nil {
+		return 0, err
 	}
-	// An album, artist or book left with state of its own has already been
-	// settled by its last member leaving (kept out of sight, or removed).
-	return 0, nil
+	if members {
+		return 1, nil
+	}
+	return 0, settleRemovedMembersTx(ctx, tx, entity, kind)
 }
 
 // removeTitleBatch is how many members one removal transaction deletes.
@@ -227,6 +204,9 @@ func (s *Service) RemoveTitle(ctx context.Context, item string) error {
 			remaining, e = DeleteTitleMembersTx(ctx, tx, item, removeTitleBatch)
 			return e
 		})
+		if remaining < 0 && err == nil {
+			return compactcatalog.ErrMutationStale
+		}
 		if err != nil || remaining == 0 {
 			return err
 		}

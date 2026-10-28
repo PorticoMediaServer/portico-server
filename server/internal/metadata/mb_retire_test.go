@@ -12,10 +12,14 @@ import (
 	"portico.local/server/internal/metadataprovider"
 )
 
-func mbRetireTestMark(t *testing.T, db *sql.DB, kind, rev, state, owner, parent string) {
+func mbRetireTestMark(t *testing.T, db *sql.DB, kind, rev, state, owner, parent string, expires ...string) {
 	t.Helper()
 	zero := strings.Repeat("0", 64)
-	_, err := db.Exec(`INSERT INTO mb_evidence_builds(build_id,kind,revision_id,provider_id,digest,state,phase,expected_shape_digest,expected_rows,materialized_rows,materialized_digest,parent_build,owner_operation,expires_at) SELECT revision_id,?,revision_id,provider_id,digest,?,'cleanup',?,1,1,?,?,?,'2000-01-01T00:00:00Z' FROM mb_`+kind+`_evidence WHERE revision_id=?`, kind, state, zero, zero, parent, owner, rev)
+	expiry := "2000-01-01T00:00:00Z"
+	if len(expires) > 0 {
+		expiry = expires[0]
+	}
+	_, err := db.Exec(`INSERT INTO mb_evidence_builds(build_id,kind,revision_id,provider_id,digest,state,phase,expected_shape_digest,expected_rows,materialized_rows,materialized_digest,parent_build,owner_operation,expires_at) SELECT revision_id,?,revision_id,provider_id,digest,?,'cleanup',?,1,1,?,?,?,? FROM mb_`+kind+`_evidence WHERE revision_id=?`, kind, state, zero, zero, parent, owner, expiry, rev)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -150,6 +154,95 @@ func TestMBRetireRollbackRetainsRowsAndCharge(t *testing.T) {
 	}
 	if n := readPickCount(t, db, `SELECT count(*) FROM mb_release_tracks WHERE release_revision=?`, rev); n != 1 {
 		t.Fatal("rollback lost track", n)
+	}
+	assertMBAccounting(t, db)
+}
+
+func TestMBRetireProtectedReadyPrefixReleasesReservations(t *testing.T) {
+	db, _ := mbLaneDB(t)
+	defer db.Close()
+	s := New(db, "")
+	var orphan string
+	for i := 0; i < 33; i++ {
+		value := mbLaneRecordingFixture()
+		value.ID = fmt.Sprintf("%08x-0000-0000-0000-000000000000", i+7000)
+		stage, err := stageMBRecording(metadataprovider.RecordingLookup{RequestedID: value.ID, Recording: value})
+		if err != nil {
+			t.Fatal(err)
+		}
+		var revision string
+		if err = dbwork.WithWriteTx(context.Background(), db, dbwork.ClassBackgroundMedia, func(tx *sql.Tx) error {
+			var e error
+			revision, e = saveMBRecordingEvidence(context.Background(), tx, stage, time.Now().UTC().Format(time.RFC3339))
+			return e
+		}); err != nil {
+			t.Fatal(err)
+		}
+		expiry := "2000-01-01T00:00:00Z"
+		if i == 32 {
+			expiry = "2001-01-01T00:00:00Z"
+		}
+		mbRetireTestMark(t, db, "recording", revision, "ready", "expired-foreign-owner", "", expiry)
+		if i < 32 {
+			if _, err = db.Exec(`INSERT INTO mb_recording_aliases VALUES(?,?,?,?)`, value.ID, value.ID, revision, time.Now().UTC().Format(time.RFC3339)); err != nil {
+				t.Fatal(err)
+			}
+		} else {
+			orphan = revision
+		}
+	}
+	for turn := 0; turn < 42; turn++ {
+		if err := s.mbRetireEvidence(context.Background()); err != nil {
+			t.Fatal(turn, err)
+		}
+		assertMBAccounting(t, db)
+	}
+	if n := readPickCount(t, db, `SELECT count(*) FROM mb_recording_evidence WHERE revision_id=?`, orphan); n != 0 {
+		t.Fatal("protected prefix hid ready orphan", n)
+	}
+	if n := readPickCount(t, db, `SELECT count(*) FROM mb_evidence_builds WHERE state='ready' AND owner_operation<>''`); n != 0 {
+		t.Fatal("obsolete protected reservations retained", n)
+	}
+	if n := readPickCount(t, db, `SELECT count(*) FROM mb_recording_aliases`); n != 32 {
+		t.Fatal("protected evidence lost", n)
+	}
+}
+
+func TestMBReceiptCleanupDrainsEveryNormalizedChild(t *testing.T) {
+	db, _ := mbLaneDB(t)
+	defer db.Close()
+	s := New(db, "")
+	j := mbStagingJob(t, s, "album")
+	if _, err := db.Exec(`DELETE FROM mb_operation_artists WHERE operation_id=?`, j.operation); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(`DELETE FROM mb_operation_sources WHERE operation_id=?`, j.operation); err != nil {
+		t.Fatal(err)
+	}
+	for i := 0; i < 128; i++ {
+		if _, err := db.Exec(`INSERT INTO mb_operation_artists VALUES(?,?,?,?)`, j.operation, i, "artist", "Artist"); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := db.Exec(`INSERT INTO mb_operation_sources VALUES(?,?,?,0,0,NULL,'path',1,1,1)`, j.operation, i, fmt.Sprint(i)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, err := db.Exec(`UPDATE mb_publication_operations SET status='failed',finished_at='2000-01-01T00:00:00Z' WHERE id=?`, j.operation); err != nil {
+		t.Fatal(err)
+	}
+	children := int64(256)
+	for turn := 0; turn < 16; turn++ {
+		if err := s.mbCleanupReceipts(context.Background()); err != nil {
+			t.Fatal(turn, err)
+		}
+		after := readPickCount(t, db, `SELECT (SELECT count(*) FROM mb_operation_artists WHERE operation_id=?)+(SELECT count(*) FROM mb_operation_sources WHERE operation_id=?)`, j.operation, j.operation)
+		if children-after > mbRetireRows {
+			t.Fatalf("turn%d cascaded%d children", turn, children-after)
+		}
+		children = after
+	}
+	if n := readPickCount(t, db, `SELECT count(*) FROM mb_publication_operations WHERE id=?`, j.operation); n != 0 {
+		t.Fatal("empty operation not retired", n)
 	}
 	assertMBAccounting(t, db)
 }
