@@ -9,6 +9,7 @@ import {queryDeleteTarget, resolveQueryDelete} from '../src/screens/browse/selec
 import {componentModule, hooks} from './helpers/component-harness.mjs';
 import {createRenderer, tree} from './helpers/interaction-harness.mjs';
 import {defaultI18n} from '@i18n';
+import * as selectionUnavailableActions from '../src/screens/browse/selection-unavailable-actions.ts';
 import {captureQueueSource} from '../src/platform/playback/queue-source.ts';
 
 const proof = '0123456789abcdef'.repeat(4), otherProof = 'f'.repeat(64), revision = 'browse_' + 'c'.repeat(64);
@@ -172,6 +173,7 @@ test('the real web toolbar composes large-query unavailable controls without cha
       react: host.react, '@i18n': {defaultI18n}, '../../kit/selection': {SelectionBars: 'SelectionBars'},
       './selection-actions': {createSelectionActions, personalTargetIsLeaf: () => true, personalTargetSupportsJob: () => true},
       './selection-delete-query': {queryDeleteTarget}, './selection-query': {wholeViewQuery},
+      './selection-unavailable-actions': selectionUnavailableActions,
     });
     const signal = new AbortController().signal, ports = {api: {request: async () => {throw new Error('no I/O expected');}}, events: {on: () => () => {}}, serverId: 'server', viewerId: 'viewer', requestId: async () => 'operation', isCurrent: () => true, signal};
     const playSelection = {getSnapshot: () => ({phase: 'ready', selection: held.model.getSnapshot(), rows: [], canPlay: true, canQueue: true}), subscribe: () => () => {},

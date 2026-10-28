@@ -19,7 +19,11 @@ test('date presets emit relative operators and stay active after time moves', ()
 });
 
 test('relative values are bounded whole day counts on both parsing and query validation', () => {
-  const capabilities = {fields: [dateField('dateAdded')], queryLimits: {maximumDepth: 5}} as BrowseCapabilities;
+  const capabilities: BrowseCapabilities = {
+    library: {id: 'library', name: 'Library', kind: 'movie', defaultView: 'browse', pinned: false},
+    pivots: [], resolvedPivot: null, fields: [dateField('dateAdded')], sorts: [], quickFilters: [],
+    queryLimits: {maximumDepth: 5, maximumClauses: 40, maximumBytes: 8192, maximumSorts: 3, defaultLimit: 50, maximumLimit: 200, cursorTtlMs: 60000},
+  };
   for (const value of [1, 7, 30, 36500]) {
     const node = parseBrowseNode({field: 'dateAdded', operator: 'within-last-days', value});
     assert.deepEqual(node, {field: 'dateAdded', operator: 'within-last-days', value});

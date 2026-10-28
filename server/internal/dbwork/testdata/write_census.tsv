@@ -381,6 +381,8 @@ internal/metadata/freshness.go	(*Service).admitRefresh	Begin	ClassBackgroundMedi
 internal/metadata/freshness.go	(*Service).noteDocumentChecked	ExecWrite	ClassBackgroundMedia	-
 internal/metadata/library_agent.go	(*Service).SetLibraryAgent	Begin	ClassFrom(ctx, dbwork.ClassInteractive)	-
 internal/metadata/local_audio_policy.go	(*Service).UpdateLocalBookPolicy	Begin	ClassBackgroundMedia	-
+internal/metadata/lookup_fanout.go	(*Service).LookupFanoutStep	Begin	ClassBackgroundMedia	lookupFanoutPlan
+internal/metadata/lookup_fanout.go	(*Service).lookupFanoutBackoff	Begin	ClassBackgroundMedia	-
 internal/metadata/mb_candidates.go	(*Service).mbStoreCandidates	Begin	ClassBackgroundMedia	-
 internal/metadata/mb_claim.go	(*Service).claimMB	Begin	ClassBackgroundMedia	-
 internal/metadata/mb_lifecycle.go	(*Service).cleanupMusicBrainz	Begin	ClassBackgroundMedia	-
@@ -546,6 +548,7 @@ internal/playbackv1/queue_commands.go	(*Service).DeleteQueue	WithWriteTxContext	
 internal/playbackv1/queue_commands.go	(*Service).finishCreate	ExecWrite	ClassInteractive	-
 internal/playbackv1/queue_commands.go	(*Service).queueWrite	WithWriteTxContext	ClassInteractive	-
 internal/playbackv1/queue_counts.go	(*Service).storeContainerCount	ExecWrite	ClassBackgroundMedia	-
+internal/playbackv1/queue_local_ordered.go	(*Service).continueLocalOrderedBuild	WithWriteTxContext	ClassBackgroundMedia	-
 internal/playbackv1/queue_save.go	(*Service).continueSave	WithWriteTx	ClassBackgroundMedia	-	×2
 internal/playbackv1/queue_save.go	(*Service).endSave	ExecWrite	ClassBackgroundMedia	-
 internal/playbackv1/queue_save.go	(*Service).linkSave	ExecWrite	ClassInteractive	-
@@ -652,6 +655,7 @@ plan	internal/hosted/membership_push.go	(*Service).pushMembers	memberPushPlan
 plan	internal/identity/account_moves.go	(*Service).ConfirmLocalMove	accountMovePlan
 plan	internal/identity/avatars.go	profilePictureWriteContext	dbwork.WritePlan{Name: "profile-picture", Rows: 64, Pages: 1024, VMOps: 100000, Why: "The fixed renditions, profile revision and removal of superseded personal images publish atomically."}
 plan	internal/identity/self_registration.go	(*Service).Register	selfRegistrationPlan
+plan	internal/metadata/lookup_fanout.go	(*Service).LookupFanoutStep	lookupFanoutPlan
 plan	internal/metadata/screen_fanout.go	(*Service).ScreenFanoutStep	screenFanoutPlan
 plan	internal/metadata/screen_publish.go	(*Service).publishScreen	screenPublishPlan
 plan	internal/metadata/screen_review.go	(*Service).UpdateScreenPolicy	screenPolicyConsentPlan

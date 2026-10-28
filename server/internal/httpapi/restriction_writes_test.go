@@ -429,6 +429,9 @@ const (
 // administration (/v1/admin/…), which is probed by rule.
 func restrictionWriteRoutes() map[string]writeRoute {
 	routes := map[string]writeRoute{
+		"DELETE /v1/libraries/{id}/browse-selection-queries/{queryId}":                {check: browseSelectionQueryRestrictionCheck("DELETE")},
+		"DELETE /v1/libraries/{id}/reading-browse-queries/{queryId}":                  {check: readingBrowseQueryRestrictionCheck("DELETE")},
+		"DELETE /v1/libraries/{id}/reading-facet-queries/{queryId}":                   {check: readingFacetQueryRestrictionCheck("DELETE")},
 		"POST /v1/direct/security-return/prepare":                                     writeExempt("original provider credential-change opening only; no catalogue content or title lookup"),
 		"POST /v1/direct/security-return/confirm":                                     writeExempt("original provider credential-change confirmation only; no catalogue content or title lookup"),
 		"POST /v1/direct/security-return/check":                                       writeExempt("original Account Settings opening scope check only; no catalogue content or title lookup"),

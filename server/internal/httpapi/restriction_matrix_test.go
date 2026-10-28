@@ -296,6 +296,9 @@ const (
 // restrictionRoutes classifies every GET route the router registers.
 func restrictionRoutes() map[string]restrictionRoute {
 	routes := map[string]restrictionRoute{
+		"GET /v1/libraries/{id}/browse-selection-queries/{queryId}":           {check: browseSelectionQueryRestrictionCheck("GET")},
+		"GET /v1/libraries/{id}/reading-browse-queries/{queryId}":             {check: readingBrowseQueryRestrictionCheck("GET")},
+		"GET /v1/libraries/{id}/reading-facet-queries/{queryId}":              {check: readingFacetQueryRestrictionCheck("GET")},
 		"GET /v1/user-mutations/{key}":                                        {check: userMutationReceiptRestrictionCheck},
 		"GET /v1/user-mutations/policy":                                       exempt("server time and numeric replay cutoff only; no catalogue identifiers or content"),
 		"GET /v1/reading/search":                                              {check: readingBodySearchRestrictionCheck},
