@@ -392,6 +392,7 @@ var routeLanes = map[string]string{
 	"GET /v1/shows/{id}/metadata/screen":                                          "browsing",
 	"GET /v1/shows/{id}/metadata/tvdb":                                            "browsing",
 	"GET /v1/shows/{id}/recommendations":                                          "expensive",
+	"GET /v1/shows/{id}/recommendations/rows/{row}":                               "browsing",
 	"GET /v1/shows/{id}/seasons":                                                  "browsing",
 	"GET /v1/storage/mounts":                                                      "default",
 	"GET /v1/storage/operations/{id}":                                             "default",

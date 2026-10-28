@@ -191,11 +191,7 @@ func (s *Service) detailOnce(viewer Viewer, server, item string, owner, includeR
 	// One engine serves detail.related, per-item recommendation rows and
 	// suggestions. detail.related keeps its published shape and budgets.
 	if includeRelated {
-		related, e := s.itemRecommendations(viewer, out.Item, out.Metadata.Genres, relatedEntryLimit, false, false)
-		if e != nil {
-			return out, e
-		}
-		if out.Related, e = s.relatedProjection(out.Item, related); e != nil {
+		if out.Related, e = s.relatedProjection(viewer, out.Item, out.Metadata.Genres); e != nil {
 			return out, e
 		}
 	}

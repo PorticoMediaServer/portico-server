@@ -357,6 +357,7 @@ export function decodeGetSetupStateResponse(input: unknown): types.GetSetupState
 export function decodeGetShowsIdEpisodesResponse(input: unknown): types.GetShowsIdEpisodesResponse { return decode("GetShowsIdEpisodesResponse", input) as types.GetShowsIdEpisodesResponse; }
 export function decodeGetShowsIdMetadataTvdbResponse(input: unknown): types.GetShowsIdMetadataTvdbResponse { return decode("GetShowsIdMetadataTvdbResponse", input) as types.GetShowsIdMetadataTvdbResponse; }
 export function decodeGetShowsIdRecommendationsResponse(input: unknown): types.GetShowsIdRecommendationsResponse { return decode("GetShowsIdRecommendationsResponse", input) as types.GetShowsIdRecommendationsResponse; }
+export function decodeGetShowsIdRecommendationsRowResponse(input: unknown): types.GetShowsIdRecommendationsRowResponse { return decode("GetShowsIdRecommendationsRowResponse", input) as types.GetShowsIdRecommendationsRowResponse; }
 export function decodeGetShowsIdSeasonsResponse(input: unknown): types.GetShowsIdSeasonsResponse { return decode("GetShowsIdSeasonsResponse", input) as types.GetShowsIdSeasonsResponse; }
 export function decodeGetShowsScreenMetadataResponse(input: unknown): types.GetShowsScreenMetadataResponse { return decode("GetShowsScreenMetadataResponse", input) as types.GetShowsScreenMetadataResponse; }
 export function decodeGetSignInMoveResponse(input: unknown): types.GetSignInMoveResponse { return decode("GetSignInMoveResponse", input) as types.GetSignInMoveResponse; }

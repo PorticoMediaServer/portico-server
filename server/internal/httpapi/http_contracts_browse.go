@@ -176,7 +176,7 @@ func registerBrowseHTTPContracts(registry *apikit.Registry) error {
 	}](registry, apikit.Metadata{ID: "get_items_id_recommendations", Method: "GET", Path: "/v1/items/{id}/recommendations", Summary: "Read title recommendations", Access: apikit.Device, Requires: apikit.ScopeRead, Lane: apikit.Default, Admission: laneExpensive, Cost: apikit.PageSized, BodyLimit: 0, Status: 200, Query: []string{"limit"}, QueryIntegers: []apikit.QueryInteger{homeLimitQuery}, Errors: []string{"invalid_request", "unauthorized", "not_permitted", "not_found", "internal"}}); err != nil {
 		return err
 	}
-	if err := apikit.RegisterHTTP[struct{}, projectedViewerEnvelope[SonicSimilarView]](registry, apikit.Metadata{ID: "get_items_id_similar", Method: "GET", Path: "/v1/items/{id}/similar", Summary: "Read locally ranked permitted listening titles", Access: apikit.Device, Requires: apikit.ScopeRead, Lane: apikit.Browsing, Admission: laneBrowsing, Cost: apikit.PageSized, BodyLimit: 0, Status: 200, Query: []string{"limit", "by"}, Errors: []string{"invalid_request", "unauthorized", "not_permitted", "not_found", "stale_continuation", "internal"}}); err != nil {
+	if err := apikit.RegisterHTTP[struct{}, projectedViewerEnvelope[SonicSimilarView]](registry, apikit.Metadata{ID: "get_items_id_similar", Method: "GET", Path: "/v1/items/{id}/similar", Summary: "Read locally ranked permitted listening titles", Access: apikit.Device, Requires: apikit.ScopeRead, Lane: apikit.Browsing, Admission: laneBrowsing, Cost: apikit.PageSized, BodyLimit: 0, Status: 200, Query: []string{"limit", "by", "cursor"}, Errors: []string{"invalid_request", "unauthorized", "not_permitted", "not_found", "stale_continuation", "internal"}}); err != nil {
 		return err
 	}
 

@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"testing"
 	"time"
@@ -201,5 +202,65 @@ func TestListeningSharedBrowsePreservesFavoriteDateAndLocalGenres(t *testing.T) 
 	acrossAlbums, err := s.BrowseAcross(viewer, AcrossRequest{Pivot: "titles", Query: favorites, Limit: 10})
 	if err != nil || len(acrossAlbums.Entries) != 1 || acrossAlbums.Entries[0].ID != n["album"].Public || acrossAlbums.Entries[0].LibraryID != "music" || acrossAlbums.Entries[0].ReleaseDate != "2020-03-20" || len(acrossAlbums.Entries[0].Genres) != 1 || acrossAlbums.Entries[0].Genres[0] != "Local genre" || acrossAlbums.Entries[0].AlbumType != "" {
 		t.Fatalf("album facts or identity lost across libraries: %+v %v", acrossAlbums, err)
+	}
+}
+
+// The similar row pages past its first 24 to the end of the ranking (WEB-050,
+// TV-005): every page is a slice of one ranking, and a publication under a
+// continuation is explicit.
+func TestListeningSimilarPagesToExhaustion(t *testing.T) {
+	s, c, n := phase34ListeningFixture(t)
+	songs := []int64{n["song-001"].ID}
+	expected := map[string]bool{}
+	for i := 0; i < 61; i++ {
+		a := c.Album(n["artist"], fmt.Sprintf("Rock %02d", i), 2021)
+		songs = append(songs, c.Song(a, 1, fmt.Sprintf("/music/rock-%02d.mp3", i), "Rock").ID)
+		expected[a.Public] = true
+	}
+	c.Write(func(ctx context.Context, tx *sql.Tx) error {
+		for _, id := range songs {
+			if err := compactcatalog.SetTermsTx(ctx, tx, id, compactcatalog.VocabGenre, "local", []compactcatalog.Term{{SourceID: "rock", Name: "Rock"}}); err != nil {
+				return err
+			}
+		}
+		return nil
+	})
+	c.Drain()
+	v := listeningRequest("music", "album", n["album"].Public).Viewer
+	seen := map[string]bool{}
+	cursor, first := "", ""
+	for pages := 0; pages < 10; pages++ {
+		page, err := s.ListeningSimilarPage(v, n["album"].Public, false, cursor, 24)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(page.Items.Entries) > 24 || page.Items.HasMore != (page.Items.NextCursor != "") {
+			t.Fatalf("page bound: %d %v", len(page.Items.Entries), page.Items.HasMore)
+		}
+		for _, entry := range page.Items.Entries {
+			if seen[entry.ID] || !expected[entry.ID] {
+				t.Fatal("repeated or foreign similar title", entry.ID)
+			}
+			seen[entry.ID] = true
+		}
+		if cursor == "" {
+			first = page.Items.NextCursor
+		}
+		if cursor = page.Items.NextCursor; cursor == "" {
+			break
+		}
+	}
+	if len(seen) != len(expected) {
+		t.Fatalf("similar exhaustion %d/%d", len(seen), len(expected))
+	}
+	// A cursor names its basis: asked by sound, a seed with no vector falls
+	// back to the same genre ranking, which its cursor continues.
+	if page, err := s.ListeningSimilarPage(v, n["album"].Public, true, first, 24); err != nil || page.BySound || len(page.Items.Entries) != 24 {
+		t.Fatal("genre fallback did not continue its ranking", err)
+	}
+	c.Album(n["artist"], "Late arrival", 2021)
+	c.Drain()
+	if _, err := s.ListeningSimilarPage(v, n["album"].Public, false, first, 24); !errors.Is(err, ErrStaleContinuation) {
+		t.Fatal("a publication continued the old ranking", err)
 	}
 }

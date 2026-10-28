@@ -1,7 +1,6 @@
 package catalog
 
 import (
-	"context"
 	"database/sql"
 	"sort"
 	"strings"
@@ -9,7 +8,6 @@ import (
 
 	"portico.local/server/internal/access"
 	"portico.local/server/internal/dbwork"
-	"portico.local/server/internal/entityid"
 	"portico.local/server/internal/identity"
 )
 
@@ -18,6 +16,9 @@ type ListeningSimilar struct {
 	LibraryID string          `json:"libraryId"`
 	Revision  ContentRevision `json:"revision"`
 	Entries   []ContentEntry  `json:"entries"`
+	// NextCursor continues the ranking from the next page while HasMore.
+	NextCursor string `json:"nextCursor,omitempty"`
+	HasMore    bool   `json:"hasMore"`
 }
 type listeningSimilarity struct {
 	id                  int64
@@ -26,34 +27,29 @@ type listeningSimilarity struct {
 	profiles            map[string]bool
 }
 
-// ListeningSimilar reads only local maintained facet postings and bounded
-// co-play signals. It never invokes a metadata provider or uses audio analysis.
-// Genres lead the order; co-play breaks ties only with three actual currently
-// sharing active profiles per candidate. No contributor identities leave here.
+// ListeningSimilar is the first page of the genre ranking (listeningSimilarRanked).
 func (s *Service) ListeningSimilar(viewer Viewer, id string, limit int) (ListeningSimilar, error) {
-	if _, ok := entityid.Decode(id); !ok {
-		return ListeningSimilar{}, sql.ErrNoRows
-	}
-	if dbwork.Snapshot(s.Context()) == nil && s.readTx == nil {
-		var out ListeningSimilar
-		err := dbwork.WithReadSnapshot(s.Context(), s.db, func(ctx context.Context) error {
-			var e error
-			out, e = s.WithContext(ctx).ListeningSimilar(viewer, id, limit)
-			return e
-		})
-		return out, err
-	}
+	out, err := s.ListeningSimilarPage(viewer, id, false, "", limit)
+	return out.Items, err
+}
+
+// listeningSimilarRanked reads only local maintained facet postings and
+// bounded co-play signals. It never invokes a metadata provider or uses audio
+// analysis. Genres lead the order; co-play breaks ties only with three actual
+// currently sharing active profiles per candidate. No contributor identities
+// leave here. The whole ranking is returned, best first, as public ids.
+func (s *Service) listeningSimilarRanked(viewer Viewer, id string) (string, []string, error) {
 	out := ListeningSimilar{ItemID: id, Entries: []ContentEntry{}}
-	limit = min(pageLimit(limit), 24)
+
 	var seed int64
 	var kind int
 	var libraryID int64
 	err := s.read().QueryRow(`SELECT e.id,e.kind,l.library_id,l.id FROM catalog_entities e JOIN catalog_libraries l ON l.id=e.library_id WHERE e.public_id=pid_blob(?) AND e.retired=0 AND l.retired=0`, id).Scan(&seed, &kind, &out.LibraryID, &libraryID)
 	if err != nil {
-		return out, err
+		return out.LibraryID, nil, err
 	}
 	if !viewer.AllowsLibrary(out.LibraryID) {
-		return out, sql.ErrNoRows
+		return out.LibraryID, nil, sql.ErrNoRows
 	}
 	if kind == 7 || kind == 9 {
 		table, col, next := "catalog_songs", "album_id", 6
@@ -62,21 +58,21 @@ func (s *Service) ListeningSimilar(viewer Viewer, id string, limit int) (Listeni
 		}
 		var parent int64
 		if err = s.read().QueryRow(`SELECT `+col+` FROM `+table+` WHERE entity_id=?`, seed).Scan(&parent); err != nil {
-			return out, err
+			return out.LibraryID, nil, err
 		}
 		visible, args := viewer.itemVisibilitySQL("e.id")
 		var ok bool
 		if err = s.read().QueryRow(`SELECT EXISTS(SELECT 1 FROM catalog_entities e WHERE e.id=? AND `+visible+`)`, append([]any{seed}, args...)...).Scan(&ok); err != nil {
-			return out, err
+			return out.LibraryID, nil, err
 		}
 		if !ok {
-			return out, sql.ErrNoRows
+			return out.LibraryID, nil, sql.ErrNoRows
 		}
 		seed, kind = parent, next
 	}
 	kindName := map[int]string{5: "artist", 6: "album", 8: "book"}[kind]
 	if kindName == "" {
-		return out, sql.ErrNoRows
+		return out.LibraryID, nil, sql.ErrNoRows
 	}
 	visible, args := listeningSectionVisibility(kindName, viewer)
 	visible = strings.ReplaceAll(visible, "projected.entity_id", "e.id")
@@ -84,17 +80,13 @@ func (s *Service) ListeningSimilar(viewer Viewer, id string, limit int) (Listeni
 	visible = strings.ReplaceAll(visible, "WHERE book.id=", `WHERE EXISTS(SELECT 1 FROM catalog_item_availability av WHERE av.entity_id=i.id AND av.available=1 AND av.retired=0) AND book.id=`)
 	var permitted bool
 	if err = s.read().QueryRow(`SELECT EXISTS(SELECT 1 FROM catalog_entities e WHERE e.id=? AND `+visible+`)`, append([]any{seed}, args...)...).Scan(&permitted); err != nil {
-		return out, err
+		return out.LibraryID, nil, err
 	}
 	if !permitted {
-		return out, sql.ErrNoRows
+		return out.LibraryID, nil, sql.ErrNoRows
 	}
 	if err = s.compactProjectionReady(18, 32); err != nil {
-		return out, err
-	}
-	out.Revision, err = s.ContentRevision(out.LibraryID, viewer.Profile)
-	if err != nil {
-		return out, err
+		return out.LibraryID, nil, err
 	}
 	seeds := []int64{seed}
 	if kind == 5 {
@@ -102,14 +94,14 @@ func (s *Service) ListeningSimilar(viewer Viewer, id string, limit int) (Listeni
 		albumVisible = strings.ReplaceAll(albumVisible, "projected.entity_id", "album.id")
 		seeds, err = scanInt64s(s.read().Query(`SELECT album.id FROM catalog_albums a JOIN catalog_entities album ON album.id=a.entity_id WHERE a.artist_id=? AND album.retired=0 AND `+albumVisible+` ORDER BY album.id LIMIT 64`, append([]any{seed}, albumArgs...)...))
 		if err != nil {
-			return out, err
+			return out.LibraryID, nil, err
 		}
 	}
 	genres := []string{}
 	seedVisible, seedArgs := viewer.itemVisibilitySQL("member.item_id")
 	rows, err := s.read().Query(`SELECT f.facet FROM json_each(?) j JOIN catalog_browse_memberships member ON member.entity_id=j.value JOIN catalog_rec_facets f ON f.entity_id=member.item_id WHERE f.facet LIKE 'g:%' AND EXISTS(SELECT 1 FROM catalog_item_availability av WHERE av.entity_id=member.item_id AND av.available=1 AND av.retired=0) AND `+seedVisible+` GROUP BY f.facet ORDER BY count(*) DESC,f.facet LIMIT 8`, append([]any{idsJSON64(seeds)}, seedArgs...)...)
 	if err != nil {
-		return out, err
+		return out.LibraryID, nil, err
 	}
 	for rows.Next() {
 		var g string
@@ -123,7 +115,7 @@ func (s *Service) ListeningSimilar(viewer Viewer, id string, limit int) (Listeni
 	}
 	rows.Close()
 	if err != nil {
-		return out, err
+		return out.LibraryID, nil, err
 	}
 	works := map[int64]map[string]bool{}
 	for _, g := range genres {
@@ -133,7 +125,7 @@ func (s *Service) ListeningSimilar(viewer Viewer, id string, limit int) (Listeni
 			}
 			works[work][g] = true
 		}); err != nil {
-			return out, err
+			return out.LibraryID, nil, err
 		}
 	}
 	co := map[int64]map[string]bool{}
@@ -142,7 +134,7 @@ func (s *Service) ListeningSimilar(viewer Viewer, id string, limit int) (Listeni
 		for _, work := range seeds {
 			ps, e := listeningProfileKeys(s.read().Query(`SELECT c.profile_id FROM catalog_browse_memberships member CROSS JOIN personal_play_counts c INDEXED BY personal_play_counts_item ON c.item_id=member.item_id WHERE member.entity_id=? AND c.plays>0 GROUP BY c.profile_id ORDER BY max(c.plays) DESC,c.profile_id LIMIT 64`, work))
 			if e != nil {
-				return out, e
+				return out.LibraryID, nil, e
 			}
 			for _, p := range ps {
 				if len(profiles) < 64 {
@@ -158,14 +150,14 @@ func (s *Service) ListeningSimilar(viewer Viewer, id string, limit int) (Listeni
 		for _, p := range keys {
 			sharing, e := s.profileSharesActivity(p, s.recommendationNow(time.Time{}))
 			if e != nil {
-				return out, e
+				return out.LibraryID, nil, e
 			}
 			if !sharing {
 				continue
 			}
 			contributor, e := s.listeningContributor(p, out.LibraryID)
 			if e != nil {
-				return out, e
+				return out.LibraryID, nil, e
 			}
 			if contributor == nil {
 				continue
@@ -173,7 +165,7 @@ func (s *Service) ListeningSimilar(viewer Viewer, id string, limit int) (Listeni
 			permitted, permittedArgs := contributor.itemVisibilitySQL("member.item_id")
 			var seedVisible bool
 			if e = s.read().QueryRow(`SELECT EXISTS(SELECT 1 FROM catalog_browse_memberships member JOIN personal_play_counts c ON c.item_id=member.item_id AND c.profile_id=? AND c.plays>0 WHERE member.entity_id IN(SELECT value FROM json_each(?)) AND `+permitted+` AND EXISTS(SELECT 1 FROM catalog_item_availability av WHERE av.entity_id=member.item_id AND av.available=1 AND av.retired=0))`, append([]any{p, idsJSON64(seeds)}, permittedArgs...)...).Scan(&seedVisible); e != nil {
-				return out, e
+				return out.LibraryID, nil, e
 			}
 			if !seedVisible {
 				continue
@@ -182,7 +174,7 @@ func (s *Service) ListeningSimilar(viewer Viewer, id string, limit int) (Listeni
 			itemVisible, itemArgs := contributor.itemVisibilitySQL("item.id")
 			recent, e := scanInt64s(s.read().Query(`SELECT COALESCE(song.album_id,part.book_id) FROM play_history h INDEXED BY play_history_listen_profile JOIN catalog_entities item ON item.id=h.item_id LEFT JOIN catalog_songs song ON song.entity_id=item.id LEFT JOIN catalog_book_files part ON part.entity_id=item.id WHERE h.authority=? AND h.account_id=? AND h.profile_id=? AND h.completed=1 AND h.kind IN(7,9) AND item.kind IN(7,9) AND h.started_ms<=? AND `+itemVisible+` AND EXISTS(SELECT 1 FROM catalog_item_availability av WHERE av.entity_id=item.id AND av.available=1 AND av.retired=0) ORDER BY h.started_ms DESC,h.id DESC LIMIT 100`, append([]any{actor.Authority, actor.AccountID, actor.ProfileID, s.recommendationNow(time.Time{}).UnixMilli()}, itemArgs...)...))
 			if e != nil {
-				return out, e
+				return out.LibraryID, nil, e
 			}
 			for _, work := range recent {
 				if co[work] == nil {
@@ -202,7 +194,7 @@ func (s *Service) ListeningSimilar(viewer Viewer, id string, limit int) (Listeni
 		ids = append(ids, work)
 	}
 	if len(ids) == 0 {
-		return out, nil
+		return out.LibraryID, nil, nil
 	}
 	// Candidate genres are rechecked over this viewer's permitted leaves;
 	// a restricted track's tags cannot influence another visible track's album.
@@ -210,7 +202,7 @@ func (s *Service) ListeningSimilar(viewer Viewer, id string, limit int) (Listeni
 		permitted, bind := viewer.itemVisibilitySQL("member.item_id")
 		found, e := s.read().Query(`SELECT member.entity_id,f.facet FROM json_each(?) j JOIN catalog_browse_memberships member ON member.entity_id=j.value JOIN catalog_rec_facets f ON f.entity_id=member.item_id WHERE f.facet IN(SELECT value FROM json_each(?)) AND EXISTS(SELECT 1 FROM catalog_item_availability av WHERE av.entity_id=member.item_id AND av.available=1 AND av.retired=0) AND `+permitted+` GROUP BY member.entity_id,f.facet`, append([]any{idsJSON64(ids), idsJSON(genres)}, bind...)...)
 		if e != nil {
-			return out, e
+			return out.LibraryID, nil, e
 		}
 		for work := range works {
 			works[work] = map[string]bool{}
@@ -228,7 +220,7 @@ func (s *Service) ListeningSimilar(viewer Viewer, id string, limit int) (Listeni
 		}
 		found.Close()
 		if e != nil {
-			return out, e
+			return out.LibraryID, nil, e
 		}
 	}
 	// Every candidate is authorized before it can affect the ranking. In
@@ -249,7 +241,7 @@ func (s *Service) ListeningSimilar(viewer Viewer, id string, limit int) (Listeni
 	}
 	rows, err = s.read().Query(`SELECT work.id,`+selectID+`,pid(target.public_id),target.title FROM json_each(?) j JOIN catalog_entities work ON work.id=j.value`+join+` JOIN catalog_entities target ON target.id=`+selectID+` WHERE work.kind=? AND work.library_id=? AND work.retired=0 AND `+candidateVisible, append([]any{idsJSON64(ids), candidateKind, libraryID}, candidateArgs...)...)
 	if err != nil {
-		return out, err
+		return out.LibraryID, nil, err
 	}
 	candidates := map[int64]*listeningSimilarity{}
 	for rows.Next() {
@@ -278,7 +270,7 @@ func (s *Service) ListeningSimilar(viewer Viewer, id string, limit int) (Listeni
 	}
 	rows.Close()
 	if err != nil {
-		return out, err
+		return out.LibraryID, nil, err
 	}
 	ranked := []*listeningSimilarity{}
 	for _, c := range candidates {
@@ -302,21 +294,11 @@ func (s *Service) ListeningSimilar(viewer Viewer, id string, limit int) (Listeni
 		}
 		return a.id < b.id
 	})
-	if len(ranked) > limit {
-		ranked = ranked[:limit]
-	}
-	public := []string{}
+	public := make([]string, 0, len(ranked))
 	for _, c := range ranked {
 		public = append(public, c.public)
 	}
-	out.Entries, err = s.homeEngineEntries(viewer.Profile, public)
-	if err != nil {
-		return out, err
-	}
-	for i := range out.Entries {
-		out.Entries[i].Playback = nil
-	}
-	return out, s.EnrichListeningEntries(viewer, out.Entries)
+	return out.LibraryID, public, nil
 }
 
 func listeningProfileKeys(rows *sql.Rows, err error) ([]string, error) {

@@ -356,6 +356,7 @@ export const routePaths = {
   "get_shows_id_episodes": "/v1/shows/{id}/episodes",
   "get_shows_id_metadata_tvdb": "/v1/shows/{id}/metadata/tvdb",
   "get_shows_id_recommendations": "/v1/shows/{id}/recommendations",
+  "get_shows_id_recommendations_row": "/v1/shows/{id}/recommendations/rows/{row}",
   "get_shows_id_seasons": "/v1/shows/{id}/seasons",
   "get_shows_screen_metadata": "/v1/shows/{id}/metadata/screen",
   "get_sign_in_move": "/v1/admin/sign-in/move",

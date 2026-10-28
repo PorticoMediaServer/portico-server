@@ -4,6 +4,8 @@ import (
 	"context"
 	"database/sql"
 	"sort"
+	"strings"
+	"time"
 
 	"portico.local/server/internal/dbwork"
 	"portico.local/server/internal/entityid"
@@ -140,85 +142,84 @@ func (s *Service) sonicGroups(viewer Viewer, kind int, only int64, visit func(so
 	return nil
 }
 
+// ListeningSimilarBySound is the first page of the sound ranking, or of the
+// genre ranking where the seed has no current vector.
 func (s *Service) ListeningSimilarBySound(viewer Viewer, id string, limit int) (SoundSimilar, error) {
-	var out SoundSimilar
+	return s.ListeningSimilarPage(viewer, id, true, "", limit)
+}
+
+// ListeningSimilarPage pages a listening title's similar ranking to its end:
+// by sound when asked and the seed has a current vector, else by genre and
+// co-play (listeningSimilarRanked). Each page is a slice of one ranking; a
+// continuation whose ranking moved under it (a new publication, a basis
+// change, new plays or vectors) is an explicit stale continuation.
+func (s *Service) ListeningSimilarPage(viewer Viewer, id string, bySound bool, cursor string, limit int) (SoundSimilar, error) {
+	out := SoundSimilar{Items: ListeningSimilar{ItemID: id, Entries: []ContentEntry{}}}
 	if _, ok := entityid.Decode(id); !ok {
 		return out, sql.ErrNoRows
 	}
-	if dbwork.Snapshot(s.Context()) == nil {
+	if dbwork.Snapshot(s.Context()) == nil && s.readTx == nil {
 		err := dbwork.WithReadSnapshot(s.Context(), s.db, func(ctx context.Context) error {
 			var err error
-			out, err = s.WithContext(ctx).ListeningSimilarBySound(viewer, id, limit)
+			out, err = s.WithContext(ctx).ListeningSimilarPage(viewer, id, bySound, cursor, limit)
 			return err
 		})
 		return out, err
 	}
-	var seed int64
-	var kind int
-	var library string
-	err := s.read().QueryRow(`SELECT item.id,item.kind,library.library_id FROM catalog_entities item JOIN catalog_libraries library ON library.id=item.library_id WHERE item.public_id=pid_blob(?) AND item.retired=0 AND library.retired=0`, id).Scan(&seed, &kind, &library)
-	if err != nil {
-		return out, err
-	}
-	if !viewer.AllowsLibrary(library) {
-		return out, sql.ErrNoRows
-	}
-	if kind != 5 && kind != 6 && kind != 7 {
-		return out, sql.ErrNoRows
-	}
-	var center sonic.Embedding
-	found := false
-	if err = s.sonicGroups(viewer, kind, seed, func(group sonicGroup) {
-		if group.id == seed {
-			center = group.vector
-			found = true
-		}
-	}); err != nil {
-		return out, err
-	}
-	if !found {
-		out.Items, err = s.ListeningSimilar(viewer, id, limit)
-		return out, err
-	}
-	type candidate struct {
-		sonicGroup
-		score float64
-	}
 	limit = min(pageLimit(limit), 24)
-	ranked := []candidate{}
-	if err = s.sonicGroups(viewer, kind, 0, func(group sonicGroup) {
-		if group.id == seed {
-			return
+	spec := relationSpec{id: "genre", caching: relationFresh}
+	if bySound {
+		library, order, found, err := s.sonicSimilarOrder(viewer, id)
+		if err != nil {
+			return out, err
 		}
-		score, e := sonic.Cosine(center, group.vector)
-		if e != nil {
-			return
+		if found {
+			out.BySound = true
+			out.Items.LibraryID = library
+			spec = relationSpec{id: "sound", caching: relationContinuation, order: order}
 		}
-		ranked = append(ranked, candidate{group, score})
-		sort.Slice(ranked, func(i, j int) bool {
-			if ranked[i].score != ranked[j].score {
-				return ranked[i].score > ranked[j].score
-			}
-			return ranked[i].id < ranked[j].id
-		})
-		if len(ranked) > limit {
-			ranked = ranked[:limit]
-		}
-	}); err != nil {
-		return out, err
 	}
-	public := []string{}
-	for _, item := range ranked {
-		public = append(public, item.public)
+	if !out.BySound {
+		library, ranked, err := s.listeningSimilarRanked(viewer, id)
+		if err != nil {
+			return out, err
+		}
+		out.Items.LibraryID = library
+		spec.order = func(int) (*relationOrdered, error) {
+			return &relationOrdered{public: append([]string{}, ranked...), complete: true}, nil
+		}
 	}
-	out.Items = ListeningSimilar{ItemID: id, LibraryID: library, Entries: []ContentEntry{}}
-	out.Items.Revision, err = s.ContentRevision(library, viewer.Profile)
+	revision, err := s.ContentRevision(out.Items.LibraryID, viewer.Profile)
 	if err != nil {
 		return out, err
 	}
-	if len(public) > 0 {
-		out.Items.Entries, err = s.homeEngineEntries(viewer.Profile, public)
+	out.Items.Revision = revision
+	scope := cursorScope{Library: out.Items.LibraryID, Profile: viewer.Profile, Viewer: viewer.Fence, View: "listening_similar", Entity: id, Section: spec.id}
+	start, shown := 0, ""
+	if cursor != "" {
+		value, err := s.decodeDetailCursor(cursor, scope, revision)
 		if err != nil {
+			return out, err
+		}
+		if value.Start <= 0 || value.Fingerprint == "" {
+			return out, ErrCursor
+		}
+		start, shown = value.Start, value.Fingerprint
+	}
+	key := ""
+	if spec.caching != relationFresh {
+		key = strings.Join([]string{"listening_similar", id, spec.id, viewer.Profile, viewer.Fence, RestrictionFence(viewer.EffectiveRestrictions()), idsJSON(viewer.Libraries), itoa(revision.Catalog), itoa(revision.Viewer)}, "\x00")
+	}
+	order, err := s.relationOrder(key, spec, cursor == "", start+limit+1)
+	if err != nil {
+		return out, err
+	}
+	if cursor != "" && (order.len() < start || order.digest(start) != shown) {
+		return out, ErrStaleContinuation
+	}
+	end := min(order.len(), start+limit)
+	if end > start {
+		if out.Items.Entries, err = s.homeEngineEntries(viewer.Profile, order.public[start:end]); err != nil {
 			return out, err
 		}
 	}
@@ -228,8 +229,82 @@ func (s *Service) ListeningSimilarBySound(viewer Viewer, id string, limit int) (
 	if err = s.EnrichListeningEntries(viewer, out.Items.Entries); err != nil {
 		return out, err
 	}
-	out.BySound = true
+	out.Items.HasMore = end < order.len()
+	if out.Items.HasMore {
+		out.Items.NextCursor, err = s.encodeRevisionCursor(cursorValue{Scope: scope, Start: end, Fingerprint: order.digest(end), Expires: time.Now().Add(BrowseCursorTTLSecond * time.Second).Unix()}, revision)
+		if err != nil {
+			return out, err
+		}
+	}
+	after, err := s.ContentRevision(out.Items.LibraryID, viewer.Profile)
+	if err != nil {
+		return out, err
+	}
+	if after != revision {
+		return out, ErrStaleContinuation
+	}
 	return out, nil
+}
+
+// sonicSimilarOrder authorizes a sound seed and reads its center; found is
+// false where the seed has no current vector. The order scans every permitted
+// group's vector, so its continuations reuse the first page's ranking.
+func (s *Service) sonicSimilarOrder(viewer Viewer, id string) (string, func(int) (*relationOrdered, error), bool, error) {
+	var seed int64
+	var kind int
+	var library string
+	err := s.read().QueryRow(`SELECT item.id,item.kind,library.library_id FROM catalog_entities item JOIN catalog_libraries library ON library.id=item.library_id WHERE item.public_id=pid_blob(?) AND item.retired=0 AND library.retired=0`, id).Scan(&seed, &kind, &library)
+	if err != nil {
+		return "", nil, false, err
+	}
+	if !viewer.AllowsLibrary(library) {
+		return "", nil, false, sql.ErrNoRows
+	}
+	if kind != 5 && kind != 6 && kind != 7 {
+		return "", nil, false, sql.ErrNoRows
+	}
+	var center sonic.Embedding
+	found := false
+	if err = s.sonicGroups(viewer, kind, seed, func(group sonicGroup) {
+		if group.id == seed {
+			center = group.vector
+			found = true
+		}
+	}); err != nil || !found {
+		return library, nil, false, err
+	}
+	type candidate struct {
+		id     int64
+		public string
+		score  float64
+	}
+	order := func(int) (*relationOrdered, error) {
+		ranked := []candidate{}
+		if err := s.sonicGroups(viewer, kind, 0, func(group sonicGroup) {
+			if group.id == seed {
+				return
+			}
+			score, e := sonic.Cosine(center, group.vector)
+			if e != nil {
+				return
+			}
+			ranked = append(ranked, candidate{group.id, group.public, score})
+		}); err != nil {
+			return nil, err
+		}
+		sort.Slice(ranked, func(i, j int) bool {
+			if ranked[i].score != ranked[j].score {
+				return ranked[i].score > ranked[j].score
+			}
+			return ranked[i].id < ranked[j].id
+		})
+		out := &relationOrdered{public: make([]string, 0, len(ranked)), complete: true}
+		for _, item := range ranked {
+			out.public = append(out.public, item.public)
+		}
+		return out, nil
+	}
+	return library, order, true, nil
 }
 
 // QueueSonicRefreshTx marks only the existing inventory policy queue. A single

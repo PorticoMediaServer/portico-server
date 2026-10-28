@@ -4,7 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"path/filepath"
-	"strings"
+	"slices"
 	"testing"
 
 	"portico.local/server/internal/catalogtest"
@@ -43,7 +43,7 @@ func TestItemRecommendationsRecomputeFacetsOnReload(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(first) == 0 || !strings.Contains(first[0].args[0].(string), `"`+m2.Public+`"`) {
+	if len(first) == 0 || !relationOrderHas(t, s, first[0], m2.ID) {
 		t.Fatal("missing initial related item", first)
 	}
 	c.Write(func(ctx context.Context, tx *sql.Tx) error {
@@ -54,7 +54,7 @@ func TestItemRecommendationsRecomputeFacetsOnReload(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(second) > 0 && strings.Contains(second[0].args[0].(string), `"`+m2.Public+`"`) {
+	if len(second) > 0 && relationOrderHas(t, s, second[0], m2.ID) {
 		t.Fatal("reload served old facet scores")
 	}
 }
@@ -80,17 +80,21 @@ func TestListeningRecommendationsRecomputeFacetsOnReload(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	has := func(rows *RelatedMovies) bool {
-		for _, row := range rows.Rows {
-			for _, entry := range row.Entries {
-				if entry.ID == album2.Public {
+	has := func(specs []relationSpec) bool {
+		for _, spec := range specs {
+			order, err := spec.order(1)
+			if err != nil {
+				t.Fatal(err)
+			}
+			for _, id := range order.public {
+				if id == album2.Public {
 					return true
 				}
 			}
 		}
 		return false
 	}
-	first, err := s.listeningRecommendations("p", item)
+	first, err := s.listeningRelations("p", item)
 	if err != nil || !has(first) {
 		t.Fatal("missing initial album", first, err)
 	}
@@ -101,7 +105,7 @@ func TestListeningRecommendationsRecomputeFacetsOnReload(t *testing.T) {
 		return compactcatalog.SetSongArtistsTx(ctx, tx, t3.ID, nil)
 	})
 	c.Drain()
-	second, err := s.listeningRecommendations("p", item)
+	second, err := s.listeningRelations("p", item)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -157,4 +161,21 @@ func TestSharedRecommendationEntryPointIsFresh(t *testing.T) {
 	if recCandidateHasID(next, m2.Public) {
 		t.Fatal("shared entry point returned stale personal state")
 	}
+}
+
+// relationOrderHas reports whether a row's whole order names an entity.
+func relationOrderHas(t *testing.T, s *Service, spec relationSpec, entity int64) bool {
+	t.Helper()
+	order, err := spec.order(1 << 20)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if order.public == nil {
+		return slices.Contains(order.ids, entity)
+	}
+	var public string
+	if err = s.read().QueryRow(`SELECT pid(public_id) FROM catalog_entities WHERE id=?`, entity).Scan(&public); err != nil {
+		t.Fatal(err)
+	}
+	return slices.Contains(order.public, public)
 }

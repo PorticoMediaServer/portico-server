@@ -136,12 +136,17 @@ func TestRelatedRecommendationsAtScale(t *testing.T) {
 				_, _, err := s.relatedPool(HomeRequest{Libraries: []string{"films"}}, target)
 				return err
 			}},
-			{"movieRecommendations", func() error {
+			{"movieRelations", func() error {
 				genres, err := s.itemGenreList(target)
 				if err != nil {
 					return err
 				}
-				_, err = s.movieRecommendations("p", item, genres)
+				specs, err := s.movieRelations(item, genres)
+				for _, spec := range specs {
+					if err == nil {
+						_, err = spec.order(relatedEntryLimit)
+					}
+				}
 				return err
 			}},
 			{"filter", func() error {
@@ -158,17 +163,12 @@ func TestRelatedRecommendationsAtScale(t *testing.T) {
 			t.Logf("%s %s %v", step.name, time.Since(began), err)
 		}
 		began = time.Now()
-		rels, err := s.extendedRelations(item, nil)
-		t.Logf("extendedRelations %s %v", time.Since(began), err)
+		rels, err := s.directorRelation(item)
+		t.Logf("directorRelation %s %v", time.Since(began), err)
 		for _, rel := range rels {
 			began = time.Now()
-			rows, err := s.read().Query(rel.query, rel.args...)
-			if err == nil {
-				for rows.Next() {
-				}
-				rows.Close()
-			}
-			t.Logf("relation %s query %s %v", rel.relation, time.Since(began), err)
+			_, err := rel.order(relatedEntryLimit)
+			t.Logf("relation %s order %s %v", rel.relation, time.Since(began), err)
 		}
 	}
 	measure("item related rows (bounded pool)", func() error {

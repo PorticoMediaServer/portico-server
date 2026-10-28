@@ -46,11 +46,19 @@ func TestShowRecommendationsShareFacetsNotTitles(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(rows) != 1 || rows[0].Relation != "more_like" || rows[0].Title != "More like Alpha" || rows[0].Endpoint != "/v1/shows/"+names["s1"].Public+"/recommendations" {
+	if len(rows) != 1 || rows[0].Relation != "more_like" || rows[0].Title != "More like Alpha" || rows[0].Endpoint != "/v1/shows/"+names["s1"].Public+"/recommendations/rows/"+rows[0].ID {
 		t.Fatalf("show row: %+v", rows)
 	}
 	if len(rows[0].Entries) != 1 || rows[0].Entries[0].ID != names["s2"].Public || rows[0].Entries[0].Kind != "show" || rows[0].Entries[0].Title != "Beta" {
 		t.Fatalf("related shows: %+v", rows[0].Entries)
+	}
+	// The show's row continues through the show's own row route.
+	page, err := New(db).ShowRecommendationRow(viewer, names["s1"].Public, rows[0].ID, "", 1)
+	if err != nil || page.ID != rows[0].ID || page.Title != "More like Alpha" || len(page.Entries) != 1 || page.Entries[0].ID != names["s2"].Public || page.HasMore {
+		t.Fatalf("show row page: %+v %v", page, err)
+	}
+	if _, err = New(db).ShowRecommendationRow(viewer, names["s1"].Public, "genre:tmdb:unknown", "", 1); !errors.Is(err, sql.ErrNoRows) {
+		t.Fatal("undisplayed show row admitted", err)
 	}
 	// Nothing visible, nothing related: no rows fabricated.
 	if _, _, err = New(db).ShowRecommendationRows(viewer, names["s4"].Public, 12); !errors.Is(err, sql.ErrNoRows) {

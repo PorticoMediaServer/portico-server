@@ -1,6 +1,7 @@
 package httpapi
 
 import (
+	"errors"
 	"net/http"
 	"portico.local/server/internal/catalog"
 	"portico.local/server/internal/identity"
@@ -123,17 +124,8 @@ func (d Dependencies) episodeRoutes(mux *http.ServeMux) {
 			homeFailure(w, e)
 			return
 		}
-		lib, err := d.Catalog.WithContext(r.Context()).LibraryForShow(r.PathValue("id"))
-		p, ok := access(w, r, lib, err)
-		if !ok {
-			return
-		}
-		restrictions, _, e := d.viewerRestrictions(r, p)
-		if e != nil {
-			homeFailure(w, e)
-			return
-		}
-		viewer, e := d.catalogViewer(r, p, []string{lib}, "")
+		// The show's rows carry the fence its row route continues under.
+		p, viewer, restrictions, fence, e := d.showRecommendationViewer(r)
 		if e != nil {
 			homeFailure(w, e)
 			return
@@ -147,6 +139,10 @@ func (d Dependencies) episodeRoutes(mux *http.ServeMux) {
 		})
 		if e != nil {
 			homeFailure(w, e)
+			return
+		}
+		if _, after, e := d.detailLibraryFenceFor(r, p, viewer.Libraries[0]); e != nil || after != fence {
+			homeFailure(w, errors.Join(e, catalog.ErrStaleContinuation))
 			return
 		}
 		write(w, 200, map[string]any{"showId": r.PathValue("id"), "rows": rows, "revision": revision})

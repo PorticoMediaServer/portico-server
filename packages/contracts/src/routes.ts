@@ -5698,7 +5698,8 @@ export const routes = [
     "bodyLimit": 0,
     "query": [
       "limit",
-      "by"
+      "by",
+      "cursor"
     ],
     "errors": [
       "invalid_request",
@@ -8517,6 +8518,32 @@ export const routes = [
     "status": 200,
     "http": true,
     "admission": "expensive"
+  },
+  {
+    "id": "get_shows_id_recommendations_row",
+    "method": "GET",
+    "path": "/v1/shows/{id}/recommendations/rows/{row}",
+    "summary": "Page a show recommendation row to exhaustion",
+    "access": "device",
+    "requires": "read",
+    "lane": "browsing",
+    "cost": "page_sized",
+    "bodyLimit": 0,
+    "query": [
+      "cursor",
+      "limit"
+    ],
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "stale_continuation",
+      "internal",
+      "timeout"
+    ],
+    "status": 200,
+    "admission": "browsing"
   },
   {
     "id": "get_shows_id_seasons",

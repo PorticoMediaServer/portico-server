@@ -17,7 +17,9 @@ import {TrackTable, type TrackRowData} from '../../kit/browse';
 import {Menu} from '../../kit/overlays';
 import {useShellWidth} from '../../shell/viewport';
 import {runScreenCommand, screenLifetime, type ScreenContext} from './context';
-import {TitleRow} from './Detail';
+import {SimilarTitleRow, TitleRow} from './Detail';
+import type {ListeningSimilarRead} from '@core/relation-rows.ts';
+import type {ListeningViewerScope} from '@core/listening.ts';
 import {entrySubject} from './model';
 import {cardText} from '@core/presentation/kit-model';
 import {MusicEntryMenu} from './MusicEntryMenu';
@@ -30,7 +32,7 @@ export type ArtistScreenProps = Readonly<{context: ScreenContext; libraryId: str
  * layout effect so a replayed setup never reuses a disposed one. */
 type Lease = {service: LibraryContentService; api: LibraryContentApi; signal: AbortSignal; context: ScreenContext; libraryId: string; artistId: string; entry: typeof router.state.location; retry: number; onBack?: () => void; live: boolean; claimed: boolean; isCurrent: () => boolean; dispose: () => void};
 type Witness = () => boolean;
-type Similar = Readonly<{page: ContentProjection; token: object; bySound: boolean; entries: readonly ContentEntry[]}>;
+type Similar = Readonly<{page: ContentProjection; token: object; value: ListeningSimilarRead; scope: ListeningViewerScope}>;
 
 /** desktop-listen's artist page on its canonical library route (`?view=artist&entityId=`): the
  * artist's circle, the facts the view publishes, Play/Shuffle of the whole server-side artist
@@ -106,12 +108,12 @@ function ArtistBody({context, libraryId, artistId, lease, retry, back}: {context
     const current = () => !request.signal.aborted && lease.isCurrent() && context.isCurrent() && similarRead.current === token &&
       service.getSnapshot().phase === 'ready' && service.getSnapshot().projection === page;
     if (!current()) return;
-    void readListeningSimilar(lease.api, {serverId: context.scope.serverId, authority: viewer.authority, accountId: viewer.accountId, profileId: viewer.profileId,
-    }, artistId, {limit: 12, by: 'sound', signal: AbortSignal.any([lease.signal, request.signal])})
+    const scope: ListeningViewerScope = {serverId: context.scope.serverId, authority: viewer.authority, accountId: viewer.accountId, profileId: viewer.profileId};
+    void readListeningSimilar(lease.api, scope, artistId, {limit: 12, by: 'sound', signal: AbortSignal.any([lease.signal, request.signal])})
       .then(value => {
         if (!current() || value.itemId !== artistId || value.libraryId !== libraryId
           || value.revision.catalog !== admitted.catalog || value.revision.viewer !== admitted.viewer) return;
-        setSimilar({page, token, bySound: value.bySound, entries: value.entries});
+        setSimilar({page, token, value, scope});
       }, error => {if (current()) context.effects.reportError(error);});
     return () => request.abort();
   }, [lease, artistId, libraryId, context, projection, admitted?.catalog, admitted?.viewer]);
@@ -200,8 +202,8 @@ function ArtistBody({context, libraryId, artistId, lease, retry, back}: {context
         {details.length > 0 && <dl className={styles.facts}>{details.map(([label, value]) => <Fragment key={label}><dt>{label}</dt><dd>{value}</dd></Fragment>)}</dl>}
       </aside>}
     </section>
-    {similar?.page === projection && similarRead.current === similar.token && similar.entries.length > 0 && <TitleRow heading={t('music.similarArtists')} subtitle={t(similar.bySound ? 'music.moreLikeThisBySound' : 'music.moreLikeThisHint')}
-      entries={similar.entries} binding={{context}} guard={() => {
+    {similar?.page === projection && similarRead.current === similar.token && similar.value.entries.length > 0 && <SimilarTitleRow heading={t('music.similarArtists')} subtitle={t(similar.value.bySound ? 'music.moreLikeThisBySound' : 'music.moreLikeThisHint')}
+      first={similar.value} scope={similar.scope} binding={{context}} guard={() => {
         if (!witness() || similarRead.current !== similar.token) throw new DOMException('Artist related read changed', 'AbortError');
       }} />}
   </div>;

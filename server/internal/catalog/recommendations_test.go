@@ -162,34 +162,38 @@ func TestRelatedMoviesCandidateIndexAndLargeCatalogBound(t *testing.T) {
 	}
 	relatedBulk(t, f, rowsN)
 	f.c.Drain()
-	plan, err := f.db.Query("EXPLAIN QUERY PLAN "+relatedCandidatesSQL, "a", "genre", "tmdb", "16", "tmdb", source.Public, "a", source.Public, source.Public)
-	if err != nil {
-		t.Fatal(err)
-	}
+	// Each side of the year walks the facet index in its own order: no sort
+	// of the genre's films, and a first page reads only its prefix.
 	planText := ""
-	for plan.Next() {
-		var a, b, c int
-		var detail string
-		if err = plan.Scan(&a, &b, &c, &detail); err != nil {
+	for _, side := range [][2]string{{`f.year>=?`, `f.year ASC,f.entity_id DESC`}, {`f.year<? AND f.year>0`, `f.year DESC,f.entity_id`}} {
+		plan, err := f.db.Query("EXPLAIN QUERY PLAN "+nearestYearSideSQL(side[0], side[1], "1"), "tmdb", "a", 1, "name", "animation", 2020, source.Public, source.Public, 96)
+		if err != nil {
 			t.Fatal(err)
 		}
-		planText += detail + "\n"
+		for plan.Next() {
+			var a, b, c int
+			var detail string
+			if err = plan.Scan(&a, &b, &c, &detail); err != nil {
+				t.Fatal(err)
+			}
+			planText += detail + "\n"
+		}
+		plan.Close()
 	}
-	plan.Close()
-	if !strings.Contains(planText, "catalog_related_lookup") || !strings.Contains(planText, "MATERIALIZE shortlist") {
+	if !strings.Contains(planText, "catalog_related_lookup") || strings.Contains(planText, "TEMP B-TREE FOR ORDER BY") {
 		t.Fatal(planText)
 	}
-	rows, err := f.db.Query(relatedCandidatesSQL, "a", "genre", "tmdb", "16", "tmdb", source.Public, "a", source.Public, source.Public)
+	seed, err := New(f.db).Get("p", source.Public)
 	if err != nil {
 		t.Fatal(err)
 	}
-	n := 0
-	for rows.Next() {
-		n++
+	prefix, err := New(f.db).nearestYearOrder(seed, 1, "name", "animation", "tmdb")(13)
+	if err != nil {
+		t.Fatal(err)
 	}
-	rows.Close()
-	if n > 96 || n == 0 {
-		t.Fatal(n)
+	n := prefix.len()
+	if prefix.complete || n < 13 || n > 3*relationRowPrefix {
+		t.Fatal("first page read", n, prefix.complete)
 	}
 	started := time.Now()
 	s := New(f.db)

@@ -4,18 +4,12 @@ import "strings"
 
 // Listening relations reuse the same permitted work/facet projection as Home.
 // A song or part is evidence for its album/book, never a recommendation card.
-func (s *Service) listeningRecommendations(profile string, item Item) (*RelatedMovies, error) {
-	name, err := s.recommendationLibrary(item.LibraryID)
-	if err != nil {
-		return nil, err
-	}
-	out := &RelatedMovies{Version: 1, LibraryID: item.LibraryID, LibraryName: name, Rows: []RelatedMovieRow{}}
+// Each row is the seed's related ranking narrowed to one of its facets (the
+// artist, author, genre or book series), read once for all of them.
+func (s *Service) listeningRelations(profile string, item Item) ([]relationSpec, error) {
 	r := HomeRequest{Profile: profile, Libraries: []string{item.LibraryID}, Restrictions: s.recRestrictions}
-	candidates, err := s.recommendationCandidates(r, "related", item.ID)
-	if err != nil {
-		return nil, err
-	}
-	// Only the seed supplies the headings; candidate facets were already scored.
+	// Only the seed supplies the headings; candidate facets are scored when
+	// a row is read.
 	base, args := recBase(r, []string{item.ID})
 	args = append(args, item.ID)
 	rows, err := s.read().Query(base+` SELECT f.f FROM facets f JOIN members m ON m.work=f.work WHERE m.public_id=pid_blob(?) ORDER BY f.f`, args...)
@@ -36,6 +30,18 @@ func (s *Service) listeningRecommendations(profile string, item Item) (*RelatedM
 	if err != nil {
 		return nil, err
 	}
+	var candidates []recCandidate
+	read := false
+	ranked := func() ([]recCandidate, error) {
+		if read {
+			return candidates, nil
+		}
+		var err error
+		candidates, err = s.recommendationCandidates(r, "related", item.ID)
+		read = err == nil
+		return candidates, err
+	}
+	out := []relationSpec{}
 	for _, f := range facets {
 		prefix, value, _ := strings.Cut(f, ":")
 		relation, heading := "", ""
@@ -59,29 +65,22 @@ func (s *Service) listeningRecommendations(profile string, item Item) (*RelatedM
 		default:
 			continue
 		}
-		ids := []string{}
-		for _, c := range candidates {
-			if containsString(c.Facets, f) {
-				ids = append(ids, c.ID)
-				if len(ids) == 12 {
-					break
+		facet := f
+		order := func(int) (*relationOrdered, error) {
+			all, err := ranked()
+			if err != nil {
+				return nil, err
+			}
+			out := &relationOrdered{public: []string{}, complete: true}
+			for _, c := range all {
+				if containsString(c.Facets, facet) {
+					out.public = append(out.public, c.ID)
 				}
 			}
+			return out, nil
 		}
-		if len(ids) == 0 {
-			continue
-		}
-		entries, e := s.homeEngineEntries(profile, ids)
-		if e != nil {
-			return nil, e
-		}
-		for i := range entries {
-			entries[i].Playback = nil
-		}
-		out.Rows = append(out.Rows, RelatedMovieRow{ID: relation + ":local:" + value, Relation: relation, Provider: "local", EvidenceID: value, Heading: heading, Entries: entries})
-		if len(out.Rows) == 3 {
-			break
-		}
+		out = append(out, relationSpec{id: relation + ":local:" + value, relation: relation, provider: "local", evidence: value, heading: heading,
+			caching: relationContinuation, boundary: true, order: order})
 	}
 	return out, nil
 }

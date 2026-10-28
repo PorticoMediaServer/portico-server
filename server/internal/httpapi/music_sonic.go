@@ -102,18 +102,11 @@ func (d Dependencies) sonicSimilarRequest(r *http.Request) (projectedViewerEnvel
 	if q.Get("limit") != "" && (err != nil || limit < 1 || limit > 100) {
 		return out, errStrictJSON
 	}
-	if q.Get("by") == "sound" {
-		data, e := d.Catalog.WithContext(r.Context()).ListeningSimilarBySound(viewer, r.PathValue("id"), limit)
-		if e != nil {
-			return out, e
-		}
-		out.Data = SonicSimilarView{ListeningSimilar: data.Items, BySound: data.BySound}
-	} else {
-		out.Data.ListeningSimilar, err = d.Catalog.WithContext(r.Context()).ListeningSimilar(viewer, r.PathValue("id"), limit)
-		if err != nil {
-			return out, err
-		}
+	data, err := d.Catalog.WithContext(r.Context()).ListeningSimilarPage(viewer, r.PathValue("id"), q.Get("by") == "sound", q.Get("cursor"), limit)
+	if err != nil {
+		return out, err
 	}
+	out.Data = SonicSimilarView{ListeningSimilar: data.Items, BySound: data.BySound}
 	after, err := d.homeFenceAfter(r, p)
 	if err != nil {
 		return out, err

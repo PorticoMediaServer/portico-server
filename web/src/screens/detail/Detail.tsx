@@ -10,6 +10,10 @@ import type {PlaybackOptions} from '@core/playback-v1/types.ts';
 import {detailActions} from '@core/presentation/detail-actions.ts';
 import {refreshMetadataPath} from '@core/presentation/entry-actions.ts';
 import {titleRecommendationRows, type ItemRecommendations} from '@core/recommendations.ts';
+import {listeningSimilarPager, recommendationRowPager, type ListeningSimilarRead, type RelationRowOwner} from '@core/relation-rows.ts';
+import {relatedRowPager, type RelatedMovieRow} from '@core/related-movies.ts';
+import type {ListeningViewerScope} from '@core/listening.ts';
+import {useRelationRow} from './relation-row';
 import {serverTextLabel} from '@core/presentation/server-text.ts';
 import {serviceI18n, serviceText} from '@core/presentation/service-text.ts';
 import {fileInfoModel, titleFactParts} from '@core/presentation/kit-model';
@@ -61,12 +65,12 @@ export function TitleBody({binding, compact = false, artworkClaim}: {binding: De
   useEffect(() => { if (data?.item.kind === 'movie') void binding.recommendations.select(data, () => binding.service.getSnapshot().data === data); }, [binding, data]);
   // music-plus f7 (MC-9): an album's More like this is the server's own bounded ranking, read
   // for this captured page and item; it ranks by sound once the album is analyzed.
-  const [similar, setSimilar] = useState<Readonly<{data: DetailProjection; value: Awaited<ReturnType<DetailBindings['readSimilar']>>}>>();
+  const [similar, setSimilar] = useState<Readonly<{data: DetailProjection} & Awaited<ReturnType<DetailBindings['readSimilar']>>>>();
   useEffect(() => {
     if (!data || data.item.kind !== 'album') { setSimilar(undefined); return; }
     const request = new AbortController();
     setSimilar(undefined);
-    void binding.readSimilar(data, request.signal).then(value => { if (!request.signal.aborted) setSimilar({data, value}); }, () => undefined);
+    void binding.readSimilar(data, request.signal).then(read => { if (!request.signal.aborted) setSimilar({data, ...read}); }, () => undefined);
     return () => request.abort();
   }, [binding, data]);
   // Keep the viewport hook unconditional while the detail request is loading.
@@ -81,9 +85,9 @@ export function TitleBody({binding, compact = false, artworkClaim}: {binding: De
     {snapshot.phase === 'error' && <ScreenFailure retry={() => { void binding.service.retry(); }} />}
     {snapshot.mutationError && <ScreenFailure retry={() => { void binding.service.retryMutation(); }} />}
     <div key={tab} id={tabPanelId} role="tabpanel" aria-labelledby={`${tabPanelId}-tab-${tab}`} tabIndex={0} className={tab === 'details' ? styles.tabPanel : `${styles.tabPanel} ${styles.rowsPanel}`}>{tab === 'details' ? <TitleDetails binding={binding} data={data} /> : tab === 'extras' ? data.extras?.map(extra => <TitleRow key={extra.type} heading={extra.label} entries={extra.items} binding={binding} />)
-      : recommendations.data ? titleRecommendationRows(recommendations.data).map(row => <TitleRecommendationRow key={row.id} row={row} binding={binding} subtitleVisible={!compact} guard={() => binding.current(data)} />)
-        : similar?.data === data ? (similar.value.entries.length > 0 && <TitleRow heading={t('music.moreLikeThis')} subtitle={t(similar.value.bySound ? 'music.moreLikeThisBySound' : 'music.moreLikeThisHint')} entries={similar.value.entries} binding={binding} guard={() => binding.current(data)} />)
-        : data.related?.rows.map(row => <TitleRow key={row.id} heading={row.heading} entries={row.entries} binding={binding} guard={() => binding.current(data)} />)}</div>
+      : recommendations.data ? titleRecommendationRows(recommendations.data).map(row => <TitleRecommendationRow key={row.id} row={row} owner={{kind: 'item', id: data.item.id}} binding={binding} subtitleVisible={!compact} guard={() => binding.current(data)} />)
+        : similar?.data === data ? (similar.value.entries.length > 0 && <SimilarTitleRow first={similar.value} scope={similar.scope} heading={t('music.moreLikeThis')} subtitle={t(similar.value.bySound ? 'music.moreLikeThisBySound' : 'music.moreLikeThisHint')} binding={binding} guard={() => binding.current(data)} />)
+        : data.related?.rows.map(row => <RelatedTitleRow key={row.id} row={row} data={data} binding={binding} guard={() => binding.current(data)} />)}</div>
   </article>;
 }
 
@@ -408,9 +412,28 @@ function openCollection(binding: DetailBindings, data: DetailProjection, collect
   });
 }
 
-export function TitleRecommendationRow({row, binding, guard, subtitleVisible = true}: {row: ItemRecommendations['rows'][number]; binding: Pick<DetailBindings, 'context'>; guard?: () => void; subtitleVisible?: boolean}) {
+/** A title's or show's recommendation row, read to its end through the owner's row route. */
+export function TitleRecommendationRow({row, owner, binding, guard, subtitleVisible = true}: {row: ItemRecommendations['rows'][number]; owner: RelationRowOwner; binding: Pick<DetailBindings, 'context'>; guard?: () => void; subtitleVisible?: boolean}) {
   const i18n = serviceI18n();
-  return <TitleRow heading={serverTextLabel(i18n, row.titleText, row.title)} subtitle={subtitleVisible ? serverTextLabel(i18n, row.subtitleText) : undefined} entries={row.entries} binding={binding} guard={guard} />;
+  return <PagedTitleRow heading={serverTextLabel(i18n, row.titleText, row.title)} subtitle={subtitleVisible ? serverTextLabel(i18n, row.subtitleText) : undefined} entries={row.entries} binding={binding} guard={guard}
+    first={row} pager={api => recommendationRowPager(api, owner, row)} />;
+}
+
+/** One of a title's related rows (detail.related), read to its end under the detail's fence. */
+function RelatedTitleRow({row, data, binding, guard}: {row: RelatedMovieRow; data: DetailProjection; binding: Pick<DetailBindings, 'context'>; guard?: () => void}) {
+  return <PagedTitleRow heading={row.heading} entries={row.entries} binding={binding} guard={guard}
+    first={row} pager={api => relatedRowPager(api, {libraryId: data.item.libraryId, itemId: data.item.id, kind: data.item.kind}, row, {viewerFence: data.scope.viewerFence, revision: data.revision})} />;
+}
+
+/** A listening title's More like this, read to its end on its first page's basis. */
+export function SimilarTitleRow({first, scope, heading, subtitle, binding, guard}: {first: ListeningSimilarRead; scope: ListeningViewerScope; heading: ReactNode; subtitle?: ReactNode; binding: Pick<DetailBindings, 'context'>; guard?: () => void}) {
+  return <PagedTitleRow heading={heading} subtitle={subtitle} entries={first.entries} binding={binding} guard={guard} first={first} pager={api => listeningSimilarPager(api, scope, first)} />;
+}
+
+/** A TitleRow whose later pages come from its first page's pager (useRelationRow). */
+function PagedTitleRow({first, pager, entries, ...row}: Omit<Parameters<typeof TitleRow>[0], 'pagination'> & {first: object; pager: Parameters<typeof useRelationRow>[3]}) {
+  const paged = useRelationRow(row.binding.context, first, entries, pager);
+  return <TitleRow {...row} entries={paged.entries} pagination={paged.pagination} />;
 }
 
 export function TitleRow({heading, subtitle, entries, binding, guard, pagination}: {heading: ReactNode; subtitle?: ReactNode; entries: readonly ContentEntry[]; binding: Pick<DetailBindings, 'context'>; guard?: () => void; pagination?: Readonly<{cursor: string; loading: boolean; onMore: () => void}>}) {

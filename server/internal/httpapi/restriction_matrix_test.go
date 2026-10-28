@@ -682,15 +682,16 @@ func restrictionRoutes() map[string]restrictionRoute {
 		}),
 
 		// Catalogue: containers and people.
-		"GET /v1/collections/{id}":           perEntity("/v1/collections/", "collection", ""),
-		"GET /v1/collections/{id}/items":     perEntity("/v1/collections/", "collection", "/items"),
-		"GET /v1/shows/{id}/episodes":        perEntity("/v1/shows/", "show", "/episodes"),
-		"GET /v1/shows/{id}/seasons":         perEntity("/v1/shows/", "show", "/seasons"),
-		"GET /v1/shows/{id}/recommendations": perEntity("/v1/shows/", "show", "/recommendations"),
-		"GET /v1/shows/{id}/metadata/tvdb":   perEntity("/v1/shows/", "show", "/metadata/tvdb"),
-		"GET /v1/seasons/{id}/episodes":      perEntity("/v1/seasons/", "season", "/episodes"),
-		"GET /v1/people/{id}":                probe(func(m *restrictionEnv) []string { return prefixed("/v1/people/", m.people) }),
-		"GET /v1/people/{id}/portrait":       probe(func(m *restrictionEnv) []string { return prefixed("/v1/people/", m.people, "/portrait") }),
+		"GET /v1/collections/{id}":                      perEntity("/v1/collections/", "collection", ""),
+		"GET /v1/collections/{id}/items":                perEntity("/v1/collections/", "collection", "/items"),
+		"GET /v1/shows/{id}/episodes":                   perEntity("/v1/shows/", "show", "/episodes"),
+		"GET /v1/shows/{id}/seasons":                    perEntity("/v1/shows/", "show", "/seasons"),
+		"GET /v1/shows/{id}/recommendations":            perEntity("/v1/shows/", "show", "/recommendations"),
+		"GET /v1/shows/{id}/recommendations/rows/{row}": perEntity("/v1/shows/", "show", "/recommendations/rows/more_like"),
+		"GET /v1/shows/{id}/metadata/tvdb":              perEntity("/v1/shows/", "show", "/metadata/tvdb"),
+		"GET /v1/seasons/{id}/episodes":                 perEntity("/v1/seasons/", "season", "/episodes"),
+		"GET /v1/people/{id}":                           probe(func(m *restrictionEnv) []string { return prefixed("/v1/people/", m.people) }),
+		"GET /v1/people/{id}/portrait":                  probe(func(m *restrictionEnv) []string { return prefixed("/v1/people/", m.people, "/portrait") }),
 
 		// Catalogue: one library.
 		"GET /v1/libraries/{id}/artists":             perLibrary("/artists"),

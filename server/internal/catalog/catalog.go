@@ -127,10 +127,12 @@ type serviceState struct {
 	// acrossOrders holds recent ordered lists across libraries; see
 	// browse_across.go.
 	acrossOrders *acrossOrderCache
+	// relationOrders holds relation row orders; see relation_rows.go.
+	relationOrders *relationOrderCache
 }
 
 func New(db *sql.DB) *Service {
-	return &Service{db: db, state: &serviceState{countCache: map[string]int{}, facetCache: newFacetCache(facetCacheEntries), acrossOrders: newAcrossOrderCache(), visibilityRequests: map[string]visibilityRequest{}, visibilityWake: worker.NewSignal()}}
+	return &Service{db: db, state: &serviceState{countCache: map[string]int{}, facetCache: newFacetCache(facetCacheEntries), acrossOrders: newAcrossOrderCache(), relationOrders: newRelationOrderCache(), visibilityRequests: map[string]visibilityRequest{}, visibilityWake: worker.NewSignal()}}
 }
 func (s *Service) Create(name, kind, path string) (Library, error) {
 	return s.CreateContext(context.Background(), name, kind, path)

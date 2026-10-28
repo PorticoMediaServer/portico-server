@@ -19,7 +19,9 @@ import {runScreenCommand, screenLifetime, type ScreenContext} from './context';
 import {calendarDate, entrySubject, instantDate} from './model';
 import {ScreenProblem} from './ScreenProblem';
 import {MusicEntryMenu} from './MusicEntryMenu';
-import {TitleRow} from './Detail';
+import {SimilarTitleRow, TitleRow} from './Detail';
+import type {ListeningSimilarRead} from '@core/relation-rows.ts';
+import type {ListeningViewerScope} from '@core/listening.ts';
 import {albumSortRoute, albumTrackGroups} from './album-model';
 import {MusicDetailLoading} from './MusicLoading';
 import styles from './album.module.css';
@@ -27,7 +29,7 @@ import styles from './album.module.css';
 export type AlbumActions = (entry: ContentEntry) => Readonly<{onOpen: () => void; onPlay?: () => void}>;
 export type AlbumScreenProps = Readonly<{context: ScreenContext; libraryId: string; albumId: string; actions: AlbumActions; onBack?: () => void}>;
 type Page = Readonly<{context: ScreenContext; libraryId: string; albumId: string; life: ReturnType<typeof screenLifetime>; service: LibraryContentService; snapshot: LibraryContentSnapshot}>;
-type Similar = Readonly<{life: Page['life']; projection: ContentProjection; bySound: boolean; entries: readonly ContentEntry[]}>;
+type Similar = Readonly<{life: Page['life']; projection: ContentProjection; value: ListeningSimilarRead; scope: ListeningViewerScope}>;
 type OpenMenu = Readonly<{page: Page; projection: ContentProjection; seed: ContentEntry; anchor: HTMLButtonElement}>;
 
 /** The canonical album route owns a fresh service/lease on each effect setup,
@@ -57,13 +59,13 @@ export function AlbumScreen({context, libraryId, albumId, onBack}: AlbumScreenPr
     const viewer = context.identity?.viewer;
     if (!viewer || (viewer.authority !== 'local' && viewer.authority !== 'hosted')) return;
     const request = new AbortController(), {life, service} = active;
-    void readListeningSimilar(life.api, {serverId: context.scope.serverId, authority: viewer.authority, accountId: viewer.accountId, profileId: viewer.profileId,
-      controllerId: 'v1', controllerEpoch: 'v1', commandLaneId: 'v1'}, albumId, {limit: 12, by: 'sound', signal: life.signal(request.signal)})
+    const scope: ListeningViewerScope = {serverId: context.scope.serverId, authority: viewer.authority, accountId: viewer.accountId, profileId: viewer.profileId};
+    void readListeningSimilar(life.api, scope, albumId, {limit: 12, by: 'sound', signal: life.signal(request.signal)})
       .then(value => {
         if (!request.signal.aborted && life.current() && service.getSnapshot().projection === projection
           && value.itemId === albumId && value.libraryId === libraryId
           && value.revision.catalog === projection.revision.catalog && value.revision.viewer === projection.revision.viewer)
-          setSimilar({life, projection, bySound: value.bySound, entries: value.entries});
+          setSimilar({life, projection, value, scope});
       }, error => {if (!request.signal.aborted && life.current()) context.effects.reportError(error);});
     return () => request.abort();
   }, [active?.life, active?.snapshot.phase, projection, context, libraryId, albumId]);
@@ -162,8 +164,8 @@ export function AlbumScreen({context, libraryId, albumId, onBack}: AlbumScreenPr
         {details.length > 0 && <dl className={styles.facts}>{details.map(([label, value]) => <Fragment key={label}><dt>{label}</dt><dd>{value}</dd></Fragment>)}</dl>}
       </aside>}
     </section>
-    {recommendations && recommendations.entries.length > 0 && <TitleRow heading={t('music.moreLikeThis')}
-      subtitle={t(recommendations.bySound ? 'music.moreLikeThisBySound' : 'music.moreLikeThisHint')} entries={recommendations.entries} binding={{context}}/>}
+    {recommendations && recommendations.value.entries.length > 0 && <SimilarTitleRow first={recommendations.value} scope={recommendations.scope} heading={t('music.moreLikeThis')}
+      subtitle={t(recommendations.value.bySound ? 'music.moreLikeThisBySound' : 'music.moreLikeThisHint')} binding={{context}}/>}
     {menu && <Menu open={menuCurrent()} onOpenChange={open => {if (!open) setMenu(undefined);}} anchorRef={menuAnchor} returnFocusRef={menuAnchor} title={menu.seed.title} placement="bottom-end">
       <MusicEntryMenu context={context} seed={menu.seed} signal={menu.page.life.signal()} current={menuCurrent}/>
     </Menu>}

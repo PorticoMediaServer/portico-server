@@ -2311,6 +2311,7 @@ export {parseQueuePostPlay,passoutCheckRequired,type QueuePostPlay,type QueueAdv
 export * from './home.ts';
 export * from './play-history.ts';
 export * from './recommendations.ts';
+export * from './relation-rows.ts';
 export * from './notifications.ts';
 export * from './notification-scope.ts';
 export {detailExtraTypes,type DetailExtra,type DetailExtraType,parseCreditPage,type CreditPage,type DetailCredit} from './detail.ts';

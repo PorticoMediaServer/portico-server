@@ -99,6 +99,20 @@ func (d Dependencies) homeRequestFor(r *http.Request, p identity.Principal, rest
 // homeLimitQuery is the published contract homeQueryLimit keeps.
 var homeLimitQuery = apikit.QueryInteger{Name: "limit", Minimum: 1, Default: catalog.HomeRowDefaultLimit, Maximum: catalog.HomeRowMaxLimit, Clamped: true}
 
+// communityActivity is the owner's stored community-activity policy, which
+// Viewers also watched follows as Home's Popular on this server does. Only the
+// stored policy is read: the full Settings projection would run unrelated
+// tool validation.
+func (d Dependencies) communityActivity(r *http.Request, p identity.Principal) (bool, error) {
+	var settings operations.SettingsDocument
+	err := dbwork.WithReadSnapshot(r.Context(), d.Console.DB, func(ctx context.Context) error {
+		var err error
+		settings, err = d.Console.SettingsTx(ctx, dbwork.Snapshot(ctx), d.consoleAuthority(p, false))
+		return err
+	})
+	return settings.Effective.CommunityActivityEnabled, err
+}
+
 func homeQueryLimit(r *http.Request) (int, error) {
 	raw := r.URL.Query().Get("limit")
 	if raw == "" {
@@ -219,22 +233,14 @@ func (d Dependencies) homeRoutes(mux *http.ServeMux) {
 			homeFailure(w, e)
 			return
 		}
-		// Viewers also watched follows the owner's stored community-activity
-		// policy, as Home's Popular on this server does. Read only stored policy
-		// here: the full Settings projection would run unrelated tool validation.
-		var settings operations.SettingsDocument
-		e = dbwork.WithReadSnapshot(r.Context(), d.Console.DB, func(ctx context.Context) error {
-			var err error
-			settings, err = d.Console.SettingsTx(ctx, dbwork.Snapshot(ctx), d.consoleAuthority(p, false))
-			return err
-		})
+		community, e := d.communityActivity(r, p)
 		if e != nil {
 			homeFailure(w, e)
 			return
 		}
 		e = d.compose(r, restrictions, func(cat *catalog.Service) error {
 			var composeErr error
-			rows, revision, composeErr = cat.ItemRecommendationRows(viewer, r.PathValue("id"), limit, settings.Effective.CommunityActivityEnabled)
+			rows, revision, composeErr = cat.ItemRecommendationRows(viewer, r.PathValue("id"), limit, community)
 			return composeErr
 		})
 		if e != nil {

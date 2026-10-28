@@ -209,7 +209,7 @@ export function ShowBody({binding, compact = false, selection}: {binding: ShowBi
       <div className={styles.paging}>{snapshot.pagination.canPrevious && <Button size="compact" onClick={() => runScreenCommand(binding.context, () => { binding.current(data); return binding.service.previousEpisodes(); })}>{t('title.previousPage')}</Button>}{snapshot.pagination.nextCursor && <Button size="compact" onClick={() => runScreenCommand(binding.context, () => { binding.current(data); return binding.service.nextEpisodes(); })}>{t('title.nextPage')}</Button>}</div>
     </section>}
     {tab === 'details' && <ShowDetails binding={binding} data={data} owner={owner} />}
-    {tab === 'related' && (recommendations.phase === 'error' ? <ScreenFailure retry={() => { void binding.recommendations.select(data, () => binding.service.getSnapshot().data === data); }} /> : recommendations.phase === 'loading' ? <DetailLoading /> : <div className={styles.relatedRows}>{titleRecommendationRows(recommendations.data).map(row => <TitleRecommendationRow key={row.id} binding={binding} row={row} guard={() => binding.current(data)} />)}</div>)}
+    {tab === 'related' && (recommendations.phase === 'error' ? <ScreenFailure retry={() => { void binding.recommendations.select(data, () => binding.service.getSnapshot().data === data); }} /> : recommendations.phase === 'loading' ? <DetailLoading /> : <div className={styles.relatedRows}>{titleRecommendationRows(recommendations.data).map(row => <TitleRecommendationRow key={row.id} binding={binding} row={row} owner={{kind: 'show', id: data.show.id}} guard={() => binding.current(data)} />)}</div>)}
     </div>
   </article>;
 }

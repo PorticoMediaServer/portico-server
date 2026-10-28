@@ -1,5 +1,6 @@
 import {DetailService, readFileInfo, parseCreditPage, type DetailProjection, type DetailTarget, type FileInfoProjection, type PersonalIntent} from '@core/detail.ts';
 import {readListeningSimilar} from '@core/library-content.ts';
+import type {ListeningViewerScope} from '@core/listening.ts';
 import {PlaybackOptionsClient} from '@core/playback-v1/options.ts';
 import {localV1Http} from '@core/playback-v1/local-http.ts';
 import {parseMediaItem} from '@core/media-item.ts';
@@ -83,11 +84,12 @@ export function createDetailBindings(context: ScreenContext) {
     current(data);
     const viewer = context.identity?.viewer;
     if (!viewer || (viewer.authority !== 'local' && viewer.authority !== 'hosted')) throw new DOMException('Title authority changed', 'AbortError');
-    const value = await readListeningSimilar(life.api, {serverId: context.scope.serverId, authority: viewer.authority, accountId: viewer.accountId, profileId: viewer.profileId,
-      controllerId: 'v1', controllerEpoch: 'v1', commandLaneId: 'v1'}, data.item.id, {limit: 12, by: 'sound', signal: life.signal(signal)});
+    const scope: ListeningViewerScope = {serverId: context.scope.serverId, authority: viewer.authority, accountId: viewer.accountId, profileId: viewer.profileId};
+    const value = await readListeningSimilar(life.api, scope, data.item.id, {limit: 12, by: 'sound', signal: life.signal(signal)});
     current(data);
     if (value.itemId !== data.item.id || value.libraryId !== data.item.libraryId || value.revision.catalog !== data.revision.catalog || value.revision.viewer !== data.revision.viewer) throw new DOMException('Title recommendations changed', 'AbortError');
-    return value;
+    // The scope continues the row (SimilarTitleRow).
+    return {value, scope};
   };
   const versions = async (data: DetailProjection, signal?: AbortSignal) => {
     current(data); const value = await options.options(data.item.id, {}, life.signal(signal)); current(data);

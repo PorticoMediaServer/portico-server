@@ -3,9 +3,7 @@ package catalog
 import (
 	"database/sql"
 	"errors"
-	"strconv"
 	"strings"
-	"time"
 )
 
 // One recommendation engine serves per-item rows, detail.related and the
@@ -15,12 +13,6 @@ import (
 
 const itemRecommendationRowLimit = 12
 const itemRecommendationRows = 6
-
-type recommendationRelation struct {
-	relation, provider, evidence, heading string
-	query                                 string
-	args                                  []any
-}
 
 func recommendationVisible(entityID string) string {
 	return `EXISTS(SELECT 1 FROM catalog_asset_links link JOIN catalog_assets asset ON asset.id=link.asset_id WHERE link.entity_id=` + entityID + ` AND link.available=1)
@@ -33,55 +25,6 @@ func (s *Service) recommendationLibrary(id string) (string, error) {
 	return name, e
 }
 
-// extendedRelations are the rows the per-item endpoint adds on top of the
-// published detail relations: overall facet overlap, the director, and the
-// owning show. Movie genre and person rows keep their own identity-aware
-// candidate projection and are not rebuilt here.
-// extendedRelations adds the director to the per-item endpoint's rows (the
-// engine's rows come from recTitleRelations).
-func (s *Service) extendedRelations(item Item, genres []Genre) ([]recommendationRelation, error) {
-	visible := recommendationVisible("i.id")
-	out := []recommendationRelation{}
-	var directorProvider, directorID, directorName string
-	e := s.read().QueryRow(`SELECT c.provider,c.provider_person_id,c.credited_name
- FROM catalog_entities i JOIN catalog_credits c ON c.entity_id=i.id
- JOIN catalog_credit_labels department ON department.id=c.department_id
- WHERE i.public_id=pid_blob(?) AND c.provider_person_id<>'' AND department.label='Directing'
- ORDER BY c.source_ordinal,c.provider,c.provider_person_id LIMIT 1`, item.ID).Scan(&directorProvider, &directorID, &directorName)
-	if e != nil && !errors.Is(e, sql.ErrNoRows) {
-		return nil, e
-	}
-	if e == nil {
-		out = append(out, recommendationRelation{"director", directorProvider, directorID, "Directed by " + directorName,
-			s.creditQuery("Directing", visible), []any{directorProvider, directorID, item.LibraryID, item.Kind, item.ID, itemRecommendationRowLimit}})
-	}
-	return out, nil
-}
-
-func (s *Service) creditQuery(department, visible string) string {
-	return `SELECT pid(i.public_id) FROM catalog_credits c JOIN catalog_entities i ON i.id=c.entity_id JOIN catalog_libraries l ON l.id=i.library_id JOIN catalog_credit_labels d ON d.id=c.department_id` +
-		` WHERE c.provider=? AND c.provider_person_id=? AND d.label='` + department + `' AND l.library_id=? AND i.kind=CASE ? WHEN 'movie' THEN 1 ELSE -1 END AND i.public_id<>pid_blob(?) AND ` + visible + ` ORDER BY i.year DESC,i.id LIMIT ?`
-}
-
-func (s *Service) collectionRelations(item Item) ([]recommendationRelation, error) {
-	rows, e := s.read().Query(`SELECT pid(e.public_id),e.title FROM catalog_entities item JOIN catalog_collection_members m ON m.item_id=item.id JOIN catalog_entities e ON e.id=m.collection_id JOIN catalog_collections c ON c.entity_id=e.id WHERE item.public_id=pid_blob(?) AND `+collectionHeadFence+` ORDER BY c.name_key,e.id LIMIT 2`, item.ID)
-	if e != nil {
-		return nil, e
-	}
-	defer rows.Close()
-	out := []recommendationRelation{}
-	for rows.Next() {
-		var id, name string
-		if e = rows.Scan(&id, &name); e != nil {
-			return nil, e
-		}
-		out = append(out, recommendationRelation{"collection", "local", id, "More from " + name,
-			`SELECT pid(i.public_id) FROM catalog_entities co JOIN catalog_collection_members m ON m.collection_id=co.id JOIN catalog_entities i ON i.id=m.item_id WHERE co.public_id=pid_blob(?) AND i.public_id<>pid_blob(?) AND ` + recommendationVisible("i.id") + ` ORDER BY i.year,i.title COLLATE NOCASE,i.id LIMIT ?`,
-			[]any{id, item.ID, itemRecommendationRowLimit}})
-	}
-	return out, rows.Err()
-}
-
 func recommendationRowShape(kind string) string {
 	switch kind {
 	case "song", "album":
@@ -92,181 +35,47 @@ func recommendationRowShape(kind string) string {
 	return "poster"
 }
 
-// ItemRecommendations publishes related rows for any item kind: the extended
-// relations the per-item endpoint adds, then the published relations that also
-// feed detail.related, then collection membership.
+// ItemRecommendations publishes related rows for any item kind: the engine's
+// rows, the director, the listening or movie genre and person rows, then
+// collection membership.
 func (s *Service) ItemRecommendations(viewer Viewer, item Item, genres []Genre, limit int, community bool) ([]HomeRow, error) {
 	return s.itemRecommendations(viewer, item, genres, limit, true, community)
 }
 
-// itemRecommendations: the engine's rows first (More like X, Starring, From
-// its creator, Viewers also watched when community is on), then the director,
-// the published genre and person rows, and collections.
+// itemRecommendations is each row's first page, in display order, up to
+// itemRecommendationRows rows with something to show. Every row is the first
+// page of the order its row route continues (relationPage).
 func (s *Service) itemRecommendations(viewer Viewer, item Item, genres []Genre, limit int, full, community bool) ([]HomeRow, error) {
-	profile := viewer.Profile
 	if limit <= 0 || limit > itemRecommendationRowLimit {
 		limit = itemRecommendationRowLimit
 	}
+	specs, err := s.itemRelationSpecs(viewer, item, genres, full, community)
+	if err != nil {
+		return nil, err
+	}
+	owner := relationOwner{kind: "item", id: item.ID, library: item.LibraryID, itemKind: item.Kind}
 	out := []HomeRow{}
-	var e error
-	listening := item.Kind == "song" || item.Kind == "audiobook_file"
-	if item.Kind == "movie" || item.Kind == "episode" || item.Kind == "show" {
-		relations, e := s.recTitleRelations(viewer, item, full && community)
-		if e != nil {
-			return nil, e
+	for _, spec := range specs {
+		if len(out) == itemRecommendationRows {
+			break
 		}
-		for _, relation := range relations {
-			row, ok, e := s.recommendationRow(profile, item, relation, limit)
-			if e != nil {
-				return nil, e
-			}
-			if ok {
-				out = append(out, row)
-			}
+		row, err := s.relationPage(viewer, owner, spec, "", limit)
+		if err != nil {
+			return nil, err
 		}
-	}
-	if full && item.Kind == "movie" {
-		extended, e := s.extendedRelations(item, genres)
-		if e != nil {
-			return nil, e
+		if len(row.Entries) == 0 {
+			continue
 		}
-		for _, relation := range extended {
-			row, ok, e := s.recommendationRow(profile, item, relation, limit)
-			if e != nil {
-				return nil, e
-			}
-			if ok {
-				out = append(out, row)
-			}
-		}
-	}
-	switch {
-	case listening:
-		projection, e := s.listeningRecommendations(profile, item)
-		if e != nil {
-			return nil, e
-		}
-		if projection != nil {
-			for _, row := range projection.Rows {
-				entries := row.Entries
-				if len(entries) > limit {
-					entries = entries[:limit]
-				}
-				out = append(out, relatedRowAsHome(item, row, entries))
-			}
-		}
-	case item.Kind == "movie":
-		projection, e := s.movieRecommendations(profile, item, genres)
-		if e != nil {
-			return nil, e
-		}
-		if projection != nil {
-			for _, row := range projection.Rows {
-				entries := row.Entries
-				if len(entries) > limit {
-					entries = entries[:limit]
-				}
-				out = append(out, relatedRowAsHome(item, row, entries))
-			}
-		}
-	}
-	if full {
-		collections, e := s.collectionRelations(item)
-		if e != nil {
-			return nil, e
-		}
-		for _, relation := range collections {
-			if len(out) >= itemRecommendationRows {
-				break
-			}
-			row, ok, e := s.recommendationRow(profile, item, relation, limit)
-			if e != nil {
-				return nil, e
-			}
-			if ok {
-				out = append(out, row)
-			}
-		}
-	}
-	if len(out) > itemRecommendationRows {
-		out = out[:itemRecommendationRows]
-	}
-	out, e = s.filterRecommendationRows(viewer, out)
-	if e != nil {
-		return nil, e
-	}
-	for index := range out {
-		if out[index].Relation == "more_like" {
-			page, err := s.DetailMoreLike(viewer, item.ID, "", limit)
-			if err != nil {
-				return nil, err
-			}
-			out[index] = page
-		}
-		out[index].Priority = index * 10
+		row.Priority = len(out) * 10
+		out = append(out, row)
 	}
 	return out, nil
 }
 
-func (s *Service) recommendationRow(profile string, item Item, relation recommendationRelation, limit int) (HomeRow, bool, error) {
-	ids, e := s.recommendationIDs(relation)
-	if e != nil {
-		return HomeRow{}, false, e
-	}
-	if len(ids) > limit {
-		ids = ids[:limit]
-	}
-	entries, e := s.homeEngineEntries(profile, ids)
-	if e != nil {
-		return HomeRow{}, false, e
-	}
-	trimmed := []ContentEntry{}
-	for _, entry := range entries {
-		entry.Overview = ""
-		entry.BackdropURL = ""
-		entry.Playback = nil
-		trimmed = append(trimmed, entry)
-	}
-	if len(trimmed) == 0 {
-		return HomeRow{}, false, nil
-	}
-	row := RelatedMovieRow{ID: relation.relation + ":" + relation.provider + ":" + relation.evidence, Relation: relation.relation,
-		Provider: relation.provider, EvidenceID: relation.evidence, Heading: relation.heading, HeadingText: relatedRowText(relation.relation, relation.heading), Entries: trimmed}
-	return relatedRowAsHome(item, row, trimmed), true, nil
-}
-
-func relatedRowAsHome(item Item, row RelatedMovieRow, entries []ContentEntry) HomeRow {
-	kind := item.Kind
-	if len(entries) > 0 {
-		kind = entries[0].Kind
-	}
-	return HomeRow{ID: row.ID, Title: row.Heading, TitleText: relatedRowText(row.Relation, row.Heading), Kind: "related", ArtworkShape: recommendationRowShape(kind),
-		Endpoint: "/v1/items/" + item.ID + "/recommendations", LibraryID: item.LibraryID, PrivacySensitivity: "catalog",
-		PolicyState: "available", Relation: row.Relation, Provider: row.Provider, EvidenceID: row.EvidenceID,
-		CacheTTLMs: 300000, Hideable: true, Reorderable: false, Entries: entries, Total: len(entries), Limit: len(entries)}
-}
-
-func (s *Service) recommendationIDs(relation recommendationRelation) ([]string, error) {
-	rows, e := s.read().Query(relation.query, relation.args...)
-	if e != nil {
-		return nil, e
-	}
-	defer rows.Close()
-	ids := []string{}
-	for rows.Next() {
-		var id string
-		if e = rows.Scan(&id); e != nil {
-			return nil, e
-		}
-		ids = append(ids, id)
-	}
-	return ids, rows.Err()
-}
-
 // relatedProjection keeps detail.related on its published shape while drawing
-// its rows from the unified engine. Movie detail keeps the two-genre and
-// one-person budget that clients already validate.
-func (s *Service) relatedProjection(item Item, rows []HomeRow) (*RelatedMovies, error) {
+// its rows from the unified engine: at most three rows, two genre rows and
+// one person row, each the first page of the order its row route continues.
+func (s *Service) relatedProjection(viewer Viewer, item Item, genres []Genre) (*RelatedMovies, error) {
 	name, e := s.recommendationLibrary(item.LibraryID)
 	if e != nil {
 		return nil, e
@@ -280,29 +89,32 @@ func (s *Service) relatedProjection(item Item, rows []HomeRow) (*RelatedMovies, 
 	} else if item.Kind != "movie" {
 		allowed = map[string]bool{"genre": true, "person": true, "show": true}
 	}
-	genres, people := 0, 0
-	for _, row := range rows {
-		if !allowed[row.Relation] || len(row.Entries) == 0 || len(out.Rows) == 3 {
+	specs, e := s.itemRelationSpecs(viewer, item, genres, false, false)
+	if e != nil {
+		return nil, e
+	}
+	owner := relationOwner{kind: "item", id: item.ID, library: item.LibraryID, itemKind: item.Kind}
+	genreRows, people := 0, 0
+	for _, spec := range specs {
+		if !allowed[spec.relation] || len(out.Rows) == 3 || spec.relation == "genre" && genreRows == 2 || spec.relation == "person" && people == 1 {
 			continue
 		}
-		if row.Relation == "genre" {
-			if genres == 2 {
-				continue
-			}
-			genres++
+		row, e := s.relationPage(viewer, owner, spec, "", relatedEntryLimit)
+		if e != nil {
+			return nil, e
 		}
-		if row.Relation == "person" {
-			if people == 1 {
-				continue
-			}
+		if len(row.Entries) == 0 {
+			continue
+		}
+		if spec.relation == "genre" {
+			genreRows++
+		}
+		if spec.relation == "person" {
 			people++
 		}
-		entries := row.Entries
-		if len(entries) > relatedEntryLimit {
-			entries = entries[:relatedEntryLimit]
-		}
 		out.Rows = append(out.Rows, RelatedMovieRow{ID: row.ID, Relation: row.Relation, Provider: row.Provider,
-			EvidenceID: row.EvidenceID, Heading: row.Title, HeadingText: relatedRowText(row.Relation, row.Title), Entries: entries})
+			EvidenceID: row.EvidenceID, Heading: row.Title, HeadingText: relatedRowText(row.Relation, row.Title), Entries: row.Entries,
+			NextCursor: row.NextCursor, HasMore: row.HasMore})
 	}
 	return out, nil
 }
@@ -583,103 +395,18 @@ func relatedRowText(relation, heading string) ServerText {
 // The revision pins both the ranking inputs and the viewer's access/preferences;
 // a later publication is an explicit stale continuation, never a reorder.
 func (s *Service) DetailMoreLike(viewer Viewer, item, cursor string, limit int) (HomeRow, error) {
-	out := HomeRow{Entries: []ContentEntry{}}
 	if err := s.VisibleItem(s.Context(), viewer, item); err != nil {
-		return out, err
+		return HomeRow{Entries: []ContentEntry{}}, err
 	}
 	source, err := s.Get(viewer.Profile, item)
 	if err != nil {
-		return out, err
+		return HomeRow{Entries: []ContentEntry{}}, err
 	}
-	if limit == 0 {
-		limit = 37
+	spec, ok, err := s.moreLikeRelation(viewer, source)
+	if err != nil || !ok {
+		return HomeRow{Entries: []ContentEntry{}}, errors.Join(err, sql.ErrNoRows)
 	}
-	if limit < 1 || limit > 200 {
-		return out, ErrCursor
-	}
-	revision, err := s.ContentRevision(source.LibraryID, viewer.Profile)
-	if err != nil {
-		return out, err
-	}
-	scope := cursorScope{Library: source.LibraryID, Profile: viewer.Profile, Viewer: viewer.Fence, View: "detail_more_like", Entity: item, Limit: limit}
-	offset := 0
-	if cursor != "" {
-		c, e := s.decodeDetailCursor(cursor, scope, revision)
-		if e != nil {
-			return out, e
-		}
-		offset, e = strconv.Atoi(c.Value)
-		if e != nil || offset < 0 {
-			return out, ErrCursor
-		}
-	}
-	work, _, err := s.recTitleWork(source)
-	if err != nil {
-		return out, err
-	}
-	visible, args := viewer.entityVisibilitySQL("i.id", "l.library_id")
-	visible += ` AND NOT EXISTS(SELECT 1 FROM personal_items negative WHERE negative.item_id=i.id AND negative.profile_id=? AND (negative.not_interested=1 OR negative.rating<=4))`
-	args = append(args, viewer.Profile)
-	query := `SELECT i.id,pid(i.public_id) public,count(DISTINCT seed.facet) score,max(candidate.quality) quality FROM catalog_rec_facets seed JOIN catalog_rec_postings candidate ON candidate.facet=seed.facet JOIN catalog_entities i ON i.id=candidate.entity_id JOIN catalog_libraries l ON l.id=i.library_id WHERE seed.entity_id=? AND i.library_id=(SELECT library_id FROM catalog_entities WHERE id=?) AND i.id<>? AND ` + visible + ` GROUP BY i.id`
-	values := append([]any{work, work, work}, args...)
-	if err = s.read().QueryRow(`SELECT count(*) FROM (`+query+`)`, values...).Scan(&out.Total); err != nil {
-		return out, err
-	}
-	rows, err := s.read().Query(`SELECT public FROM (`+query+`) ORDER BY score DESC,quality DESC,id LIMIT ? OFFSET ?`, append(values, limit, offset)...)
-	if err != nil {
-		return out, err
-	}
-	ids := []string{}
-	for rows.Next() {
-		var id string
-		if err = rows.Scan(&id); err != nil {
-			rows.Close()
-			return out, err
-		}
-		ids = append(ids, id)
-	}
-	err = rows.Err()
-	rows.Close()
-	if err != nil {
-		return out, err
-	}
-	entries, err := s.homeEngineEntries(viewer.Profile, ids)
-	if err != nil {
-		return out, err
-	}
-	out.ID = "more_like:local:" + item
-	out.Relation = "more_like"
-	out.Provider = "local"
-	out.EvidenceID = item
-	out.Title = "More like " + source.Title
-	out.TitleText = relatedRowText("more_like", out.Title)
-	out.Kind = "related"
-	out.ArtworkShape = recommendationRowShape(source.Kind)
-	out.Endpoint = "/v1/items/" + item + "/recommendations/rows/more_like"
-	out.LibraryID = source.LibraryID
-	out.ViewerFence = viewer.Fence
-	out.PrivacySensitivity = "personal"
-	out.PolicyState = "available"
-	out.Revision = revision
-	out.CursorCapable = true
-	out.Start = offset
-	out.Limit = limit
-	out.Entries = entries
-	out.HasMore = offset+len(ids) < out.Total
-	if out.HasMore {
-		out.NextCursor, err = s.encodeRevisionCursor(cursorValue{Scope: scope, Value: strconv.Itoa(offset + len(ids)), Expires: time.Now().Add(30 * time.Minute).Unix()}, revision)
-		if err != nil {
-			return out, err
-		}
-	}
-	after, err := s.ContentRevision(source.LibraryID, viewer.Profile)
-	if err != nil {
-		return out, err
-	}
-	if after != revision {
-		return out, ErrStaleContinuation
-	}
-	return out, nil
+	return s.relationPage(viewer, relationOwner{kind: "item", id: item, library: source.LibraryID, itemKind: source.Kind}, spec, cursor, limit)
 }
 
 type DetailCollection struct {

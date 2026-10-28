@@ -243,44 +243,66 @@ func (s *Service) recTitleWork(item Item) (work int64, title string, err error) 
 	return work, title, err
 }
 
-// recTitleRelations are the engine's rows for a title page, as relations.
-func (s *Service) recTitleRelations(viewer Viewer, item Item, community bool) ([]recommendationRelation, error) {
+// moreLikeRelation is More like X: the title's work ranked against every
+// eligible title by shared catalogue facets (moreLikeOrder).
+func (s *Service) moreLikeRelation(viewer Viewer, item Item) (relationSpec, bool, error) {
 	work, title, err := s.recTitleWork(item)
 	if err != nil || work == 0 {
+		return relationSpec{}, false, err
+	}
+	return relationSpec{id: "more_like:local:" + item.ID, relation: "more_like", provider: "local", evidence: item.ID, heading: "More like " + title,
+		caching: relationRevision, personal: true, order: s.moreLikeOrder(viewer, work)}, true, nil
+}
+
+// recTitleRelations are the engine's rows for a title page: More like X, From
+// its creator, Starring its top-billed actor and Viewers also watched. The
+// engine session is built only when a ranked row is read.
+func (s *Service) recTitleRelations(viewer Viewer, item Item, community bool) ([]relationSpec, error) {
+	more, ok, err := s.moreLikeRelation(viewer, item)
+	if err != nil || !ok {
 		return nil, err
 	}
-	var out []recommendationRelation
-	add := func(relation, provider, evidence, heading string, ranked []recCandidate) {
-		ids := make([]string, 0, itemRecommendationRowLimit)
-		for i := 0; i < len(ranked) && i < itemRecommendationRowLimit; i++ {
-			ids = append(ids, ranked[i].ID)
-		}
-		if len(ids) > 0 {
-			out = append(out, recommendationRelation{relation, provider, evidence, heading, `SELECT value FROM json_each(?)`, []any{idsJSON(ids)}})
-		}
-	}
-	// One session (the viewer's taste, libraries, rarity) serves every row.
-	base, err := s.recSession(HomeRequest{Viewer: viewer, Profile: viewer.Profile, ViewerFence: viewer.Fence, Libraries: []string{item.LibraryID}, Restrictions: s.recRestrictions})
+	work, _, err := s.recTitleWork(item)
 	if err != nil {
 		return nil, err
 	}
-	more, err := s.recMoreLike(base, work)
-	if err != nil {
-		return nil, err
+	out := []relationSpec{more}
+	var base *recSession
+	session := func() (*recSession, error) {
+		if base != nil {
+			return base, nil
+		}
+		// One session (the viewer's taste, libraries, rarity) serves every row.
+		x, err := s.recSession(HomeRequest{Viewer: viewer, Profile: viewer.Profile, ViewerFence: viewer.Fence, Libraries: []string{item.LibraryID}, Restrictions: s.recRestrictions})
+		base = x
+		return x, err
 	}
-	add("more_like", "local", item.ID, "More like "+title, more)
+	ranked := func(rank func(*recSession) ([]recCandidate, error)) func(int) (*relationOrdered, error) {
+		return func(int) (*relationOrdered, error) {
+			x, err := session()
+			if err != nil {
+				return nil, err
+			}
+			out, err := rank(x)
+			if err != nil {
+				return nil, err
+			}
+			return relationRanked(out), nil
+		}
+	}
+	add := func(relation, provider, evidence, heading string, order func(int) (*relationOrdered, error)) {
+		out = append(out, relationSpec{id: relation + ":" + provider + ":" + evidence, relation: relation, provider: provider, evidence: evidence, heading: heading,
+			caching: relationContinuation, boundary: true, order: order})
+	}
 	facets, err := compactcatalog.RecWorkFacets(s.Context(), s.read(), work)
 	if err != nil {
 		return nil, err
 	}
 	for _, f := range facets {
 		if strings.HasPrefix(f, "cd:creator:") {
-			ranked, err := s.recFacetTitles(base, work, f)
-			if err != nil {
-				return nil, err
-			}
+			facet := f
 			name := recTitleCase(strings.TrimPrefix(f, "cd:creator:"))
-			add("creator", "local", f, "From "+name, ranked)
+			add("creator", "local", f, "From "+name, ranked(func(x *recSession) ([]recCandidate, error) { return s.recFacetTitles(x, work, facet) }))
 			break
 		}
 	}
@@ -292,19 +314,14 @@ func (s *Service) recTitleRelations(viewer Viewer, item Item, community bool) ([
 			return nil, err
 		}
 		if err == nil {
-			ranked, err := s.recFacetTitles(base, work, "p:"+provider+":"+person)
-			if err != nil {
-				return nil, err
-			}
-			add("starring", provider, person, "Starring "+name, ranked)
+			facet := "p:" + provider + ":" + person
+			add("starring", provider, person, "Starring "+name, ranked(func(x *recSession) ([]recCandidate, error) { return s.recFacetTitles(x, work, facet) }))
 		}
 	}
 	if community {
-		ranked, err := s.recViewersAlsoWatched(base, work, s.recommendationNow(time.Time{}))
-		if err != nil {
-			return nil, err
-		}
-		add("viewers_also_watched", "local", item.ID, "Viewers also watched", ranked)
+		add("viewers_also_watched", "local", item.ID, "Viewers also watched", ranked(func(x *recSession) ([]recCandidate, error) {
+			return s.recViewersAlsoWatched(x, work, s.recommendationNow(time.Time{}))
+		}))
 	}
 	return out, nil
 }
