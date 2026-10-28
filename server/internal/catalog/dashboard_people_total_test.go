@@ -40,7 +40,7 @@ func TestDashboardPeopleTotalUsesPanePeriodAndFiltersBeyondPage(t *testing.T) {
 			if err != nil {
 				return err
 			}
-			total, err := readDashboardPeopleTotal(ctx, dbwork.Snapshot(ctx), q, r)
+			total, err := readDashboardPeopleTotal(ctx, dbwork.Snapshot(ctx), q, r, false)
 			if err != nil {
 				return err
 			}
@@ -59,7 +59,7 @@ func TestDashboardPeopleTotalUsesPanePeriodAndFiltersBeyondPage(t *testing.T) {
 			}
 			if page.NextCursor != "" {
 				q.Cursor = page.NextCursor
-				later, err := readDashboardPeopleTotal(ctx, dbwork.Snapshot(ctx), q, r)
+				later, err := readDashboardPeopleTotal(ctx, dbwork.Snapshot(ctx), q, r, false)
 				if err != nil || later != nil {
 					t.Fatal("cursor page invented a total", later, err)
 				}
@@ -112,7 +112,7 @@ func TestDashboardPeopleTotalBorrowsReadAndRefreshIncludesLateAccount(t *testing
 		if err != nil {
 			return err
 		}
-		total, err := readDashboardPeopleTotal(ctx, dbwork.Snapshot(ctx), q, r)
+		total, err := readDashboardPeopleTotal(ctx, dbwork.Snapshot(ctx), q, r, false)
 		if err != nil {
 			return err
 		}

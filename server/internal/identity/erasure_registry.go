@@ -21,7 +21,8 @@ var profileReadingErasure = []string{"reading_annotations", "reading_annotation_
 var profileRuntimeErasure = []string{"personal_jobs", "personal_completed_plays", "container_personal_state", "container_personal_undo", "personal_watched_intents", "queue_v1_saves"}
 var profilePositionErasure = []string{"search_history", "book_resume", "playback_personal_claims", "playback_personal_fences"}
 
-// CurrentErasureRegistry is source-backed by the functions named in Handler.
+// CurrentErasureRegistry covers the compiled local-profile plan and the separate
+// legacy member/Hosted handlers named in Handler.
 // Owner explains the exact key encoding: a personal key is not interchangeable
 // with the JSON viewer tuple used by download/console owners.
 func CurrentErasureRegistry() []ErasureRule {
@@ -56,9 +57,68 @@ func CurrentErasureRegistry() []ErasureRule {
 	add([]string{"quick_connect_v1"}, "member-approval", "approver_id with status=approved", "cancel and clear grant_cipher/user_hash", "Service.EraseMemberTx", "")
 	add([]string{"identity_device_families", "identity_refresh_credentials", "identity_devices"}, "member-device", "device_id in authority=local/account_id devices; devices use tuple", "delete children before devices", "Service.EraseMemberTx", "")
 	add([]string{"accounts"}, "member-root", "id=account, refuse owner", "delete with current FK children", "Service.EraseMemberTx", "no new background authority-retirement/purge job is enabled")
-	add([]string{"direct_profiles"}, "profile-root", "id/account owner and expected revision", "deleted=1; clear name/PIN/art; bump revision/pin_revision", "Service.DeleteDirectProfile", "optional deleteSaved controls saved-state erasure; profile ID has no approved reusable lifetime token")
-	add([]string{"play_history"}, "lawful-play-history", "authority/account_id and optional profile_id", "blank profile name; member erasure also blanks user/device names; retain plays", "ForgetPlayHistoryNamesTx", "existing retained opaque account/profile IDs are not a new indefinitely retained audit exception")
+	add([]string{"direct_profiles"}, "profile-root", "id/account owner and expected revision", "deleted=1; clear PIN/art/policy; retain final history label; bounded purge", "Service.RetireDirectProfile; Service.PurgeProfileStep", "")
+	add([]string{"play_history"}, "lawful-play-history", "authority/account_id and optional profile_id", "retained-by-policy for removed profiles; owner-main history/activity only with final display name", "RetireDirectProfile; owner history projection", "member/hosted erasure remain separate; profile purge never touches play_history")
 	add([]string{"hosted_profile_erasure_receipts", "hosted_claim_cleanup_receipts", "identity_move_waiting"}, "hosted-move", "existing hosted owner/claim/move keys", "owned by hosted erasure/claim/move handlers, never by local purge", "hosted erasure/claim and account-move owners", "local handler must not claim hosted physical erasure")
+
+	// The profile route uses the compiled, bounded registry. Preserve the other
+	// erasure owners' descriptions and blockers: this slice cannot certify a
+	// member/Hosted erase merely because its profile counterpart is complete.
+	byTable := map[string][]string{}
+	actions := map[string]string{}
+	for _, st := range profilePurgeRegistry {
+		byTable[st.table] = append(byTable[st.table], st.name)
+		action := "delete"
+		if st.action == purgeScrub {
+			action = "scrub profile attribution"
+		}
+		if st.action == purgeRevokeFamily {
+			action = "revoke"
+		}
+		if prior := actions[st.table]; prior != "" && prior != action {
+			action = "compiled child-first delete/scrub"
+		}
+		actions[st.table] = action
+	}
+	seen := map[string]bool{}
+	for i := range out {
+		r := &out[i]
+		seen[r.Table] = true
+		if len(byTable[r.Table]) == 0 {
+			continue
+		}
+		r.Handler = "Service.PurgeProfileStep; legacy: " + r.Handler
+		r.Effect = "local profile: " + actions[r.Table] + "; legacy: " + r.Effect
+		if r.Blocker != "" {
+			r.Blocker = "legacy member/Hosted owner only: " + r.Blocker
+		}
+	}
+	for _, st := range profilePurgeRegistry {
+		if seen[st.table] {
+			continue
+		}
+		seen[st.table] = true
+		out = append(out, ErasureRule{Table: st.table, Group: "compiled-profile-purge", Owner: "exact job actor/profile lifetime; compiled indexed scope", Effect: actions[st.table], Handler: "Service.PurgeProfileStep"})
+	}
+	// These tables mix erasable runtime metadata with retained library media.
+	// Describe their actual conditional effect rather than implying a table-wide
+	// DELETE from the presence of one compiled unit.
+	for i := range out {
+		r := &out[i]
+		switch r.Table {
+		case "live_allocations":
+			r.Effect = "delete kind=live viewer allocations only; retain kind=recording rows unchanged"
+		case "dvr_owner_revisions":
+			r.Effect = "local profile: retain media-list counter while any dvr_recordings row has owner_key; delete otherwise; legacy: " + r.Effect
+		case "dvr_recordings", "live_reservations":
+			r.Effect = "local profile: retained-by-policy unchanged, including creator attribution; legacy: " + r.Effect
+			r.Handler = "Service.RetireDirectProfile retained-media policy; legacy: " + r.Handler
+			if r.Blocker != "" {
+				r.Blocker = "legacy member/Hosted owner only: " + r.Blocker
+			}
+		}
+	}
+	out = append(out, ErasureRule{Table: "playback_start_preparations", Group: "compiled-profile-purge", Owner: "actor operation_id mapper and exact retired owner", Effect: "atomic actor/root delete after child drains", Handler: "Service.PurgeProfileStep"})
 	return out
 }
 

@@ -498,6 +498,22 @@ func (s *Store) currentClaimTx(ctx context.Context, tx *sql.Tx, c *claim) error 
 		return s.sharedAuthorityTx(ctx, tx, c.request.Recording.ID)
 	}
 	if e = s.durable(ctx, tx, c.request.Owner, c.request.Recording.Occurrence.SourceID, c.request.Recording.Occurrence.ChannelID); e != nil {
+		if !c.recovery && s.retainedCapture != nil {
+			var started bool
+			err := tx.QueryRowContext(ctx, `SELECT state IN('recording','finalizing') FROM dvr_recordings WHERE id=?`, c.request.Recording.ID).Scan(&started)
+			if err != nil {
+				return err
+			}
+			if started {
+				err = s.retainedCapture(ctx, tx, c.request.Owner, c.request.Recording.Occurrence.SourceID, c.request.Recording.Occurrence.ChannelID)
+				if err == nil {
+					return nil
+				}
+				if !errors.Is(err, livechannels.ErrDenied) && !errors.Is(err, ErrDenied) {
+					return err
+				}
+			}
+		}
 		return e
 	}
 	return programmeVisibleTx(ctx, tx, c.request.Owner, c.request.Recording.Programme)

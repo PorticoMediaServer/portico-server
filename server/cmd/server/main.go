@@ -777,10 +777,15 @@ func run() (runErr error) {
 	operatorRecordingsRoot := os.Getenv("PORTICO_RECORDINGS_DIR")
 	recordingsRoot := ""
 	doneRecording := reporter.step("recording", "Open recording storage")
-	recordingStore, e := dvr.New(db, liveSources, recordingaccess.Policy{Cached: control}.Durable)
+	recordingPolicy := recordingaccess.Policy{Cached: control, Schema: recordingaccess.NewSchema()}
+	recordingStore, e := dvr.New(db, liveSources, recordingPolicy.Durable)
 	if e != nil {
 		return e
 	}
+	if e = recordingStore.ConfigureRetainedCaptures(recordingPolicy.RetainedCapture); e != nil {
+		return e
+	}
+
 	var recorder *recordingmedia.Driver
 	e = recordingroot.Activate(ctx, db, adminOperations, ident, state, operatorRecordingsRoot, func(root string) (recordingroot.StartupBinding, error) {
 		prepared, err := recordingmedia.New(root, ffmpegTool, ffprobeTool, filepath.SplitList(os.Getenv("PORTICO_LINEAR_DECODER_LIBRARIES")))
@@ -1086,6 +1091,7 @@ func run() (runErr error) {
 	})
 	supervise.Supervise(ctx, "cmd.metadata", meta.Run)
 	supervise.Supervise(ctx, "cmd.artwork", meta.RunArtwork)
+	supervise.Supervise(ctx, "cmd.profile-purge", ident.RunProfilePurge)
 	supervise.Supervise(ctx, "cmd.hosted-control", control.Run)
 	setupCtx, stopSetup := context.WithCancel(ctx)
 	setupDone := make(chan struct{})

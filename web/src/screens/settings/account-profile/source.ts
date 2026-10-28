@@ -3,7 +3,7 @@ import {routePath} from '../../../../../packages/contracts/src/routes.ts';
 import {CodedError} from '@core/server-messages.ts';
 import {IdentityClient, type IdentityUpload} from '@core/identity-client.ts';
 import type {ProfileAvatar} from '@core/identity-restrictions.ts';
-import {ManagedProfilesClient, parseDirectSnapshot, type DirectSnapshot, type ManagedProfile, type ProfileAPI, type ProfileArt, type ProfileDeletion} from '@core/profile-management.ts';
+import {ManagedProfilesClient, parseDirectSnapshot, type DirectSnapshot, type ManagedProfile, type ProfileAPI, type ProfileArt, type ProfileDeletion, type ProfileRetirement} from '@core/profile-management.ts';
 
 export type ProfileSettingsScope = Readonly<{serverId: string; accountId: string; profileId: string}>;
 export type ProfileSettingsSnapshot = Readonly<{
@@ -161,11 +161,13 @@ export class ProfileSettingsSource {
     if (!this.current()) throw new CodedError('forbidden', 'The selected profile is no longer available.');
     return Object.freeze({...preview});
   };
-  deleteProfile = (preview: ProfileDeletion): Promise<void> => this.mutate(async document => {
+  deleteProfile = (preview: ProfileDeletion, onStatus?: (retirement: ProfileRetirement) => void): Promise<void> => this.mutate(async document => {
     if (!document.profiles.some(profile => profile.id === preview.profileId && !profile.primary) || preview.primary) {
       throw new CodedError('forbidden', 'The main profile cannot be deleted.');
     }
-    await this.client.delete(preview, this.lifetime.signal);
+    // The accepted retirement is waited out here, so the row never disappears while the screen
+    // still calls it pending; every reported state is handed to the dialog that opened it.
+    await this.client.delete(preview, {signal: this.lifetime.signal, onStatus: retirement => {if (this.current()) onStatus?.(retirement);}});
   });
   private edit(change: {name?: string; art?: ProfileArt}): Promise<void> {
     const selectedId = this.getSnapshot().selectedId;

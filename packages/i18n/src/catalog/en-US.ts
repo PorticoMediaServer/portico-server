@@ -1015,6 +1015,8 @@ export const enUS = {
   'profile.deleteConfirm.playlists': '{count, plural, one {# playlist} other {# playlists}} will also be deleted.',
   'profile.deleteConfirm.savedItems': '{count, plural, one {# saved item} other {# saved items}} will also be deleted.',
   'profile.deleteConfirm.action': 'Delete profile',
+  'profile.deleteConfirm.removing': 'Removing…',
+  'profile.deleteConfirm.removed': 'Removed',
   'profile.deleted': '{name} deleted',
   'profile.pinRecoveryTitle': 'New PIN for {name}',
   'profile.pinRecoveryUnavailable': 'Sign in to your account again to reset this profile’s PIN.',

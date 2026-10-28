@@ -334,3 +334,27 @@ func TestEarlyEndKeepsResumeForKnownDuration(t *testing.T) {
 		t.Fatalf("natural end: %+v %v", p, e)
 	}
 }
+
+func TestSearchHistoryLateCapturedViewerCannotRecreateRetiredProfileState(t *testing.T) {
+	s, db, v := savedFixture(t)
+	if _, err := db.Exec(`INSERT INTO accounts(id,username,password_hash,profile_id) VALUES(?,?,x'00',?)`, v.AccountID, "retirement-search", v.ProfileID); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.RecordSearch(v, "before retirement"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(`UPDATE direct_profiles SET deleted=1 WHERE account_id=? AND id=?`, v.AccountID, v.ProfileID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(`DELETE FROM search_history WHERE profile_key=?`, identity.PersonalKey(v)); err != nil {
+		t.Fatal(err)
+	}
+	// This is the old in-flight viewer, already captured before retirement.
+	if err := s.RecordSearch(v, "late private query"); err != nil {
+		t.Fatal(err)
+	}
+	var n int
+	if err := db.QueryRow(`SELECT count(*) FROM search_history WHERE profile_key=?`, identity.PersonalKey(v)).Scan(&n); err != nil || n != 0 {
+		t.Fatalf("late write recreated search history: %d %v", n, err)
+	}
+}

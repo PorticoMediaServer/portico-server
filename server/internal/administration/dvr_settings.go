@@ -323,7 +323,7 @@ func itoa(v int64) string {
 
 func assignments(ctx context.Context, tx *sql.Tx, source, condition string, bound int64) ([]TunerAssignment, error) {
 	out := []TunerAssignment{}
-	rows, err := tx.QueryContext(ctx, `SELECT r.id,r.channel_id,r.programme_json,r.state,r.start_ms,r.end_ms,r.allocation_id,r.account_id,r.profile_id,COALESCE(u.username,''),COALESCE(p.name,'') FROM dvr_recordings r LEFT JOIN accounts u ON u.id=r.account_id LEFT JOIN direct_profiles p ON p.id=r.profile_id AND p.account_id=r.account_id WHERE r.source_id=? AND `+condition+` ORDER BY r.start_ms,r.id`, source, bound)
+	rows, err := tx.QueryContext(ctx, `SELECT r.id,r.channel_id,r.programme_json,r.state,r.start_ms,r.end_ms,r.allocation_id,r.account_id,r.profile_id,COALESCE(u.username,''),COALESCE(CASE WHEN p.deleted=1 THEN p.name||' (removed)' ELSE p.name END,'') FROM dvr_recordings r LEFT JOIN accounts u ON u.id=r.account_id LEFT JOIN direct_profiles p ON p.id=r.profile_id AND p.account_id=r.account_id WHERE r.source_id=? AND `+condition+` ORDER BY r.start_ms,r.id`, source, bound)
 	if err != nil {
 		return out, err
 	}
@@ -491,7 +491,7 @@ func (s *Service) DeleteRecordingGroup(ctx context.Context, auth Authorize, id s
 
 func activeAssignments(ctx context.Context, tx *sql.Tx, source string, now int64) ([]TunerAssignment, error) {
 	out := []TunerAssignment{}
-	rows, e := tx.QueryContext(ctx, `SELECT a.resource_id,a.channel_id,COALESCE(json_extract(r.programme_json,'$.title'),c.name,''),a.kind,a.account_id,a.profile_id,COALESCE(u.username,''),COALESCE(p.name,''),COALESCE(NULLIF(r.state,''),a.state),a.created_ms,a.lease_until_ms,a.id FROM live_allocations a LEFT JOIN accounts u ON u.id=a.account_id LEFT JOIN direct_profiles p ON p.id=a.profile_id AND p.account_id=a.account_id LEFT JOIN dvr_recordings r ON a.kind='recording' AND r.id=a.resource_id LEFT JOIN live_sources s ON s.id=a.source_id LEFT JOIN live_channel_versions c ON c.generation_id=s.active_generation AND c.channel_id=a.channel_id WHERE a.source_id=? AND a.state!='released' ORDER BY a.channel_id,a.kind,a.id`, source)
+	rows, e := tx.QueryContext(ctx, `SELECT a.resource_id,a.channel_id,COALESCE(json_extract(r.programme_json,'$.title'),c.name,''),a.kind,a.account_id,a.profile_id,COALESCE(u.username,''),COALESCE(CASE WHEN p.deleted=1 THEN p.name||' (removed)' ELSE p.name END,''),COALESCE(NULLIF(r.state,''),a.state),a.created_ms,a.lease_until_ms,a.id FROM live_allocations a LEFT JOIN accounts u ON u.id=a.account_id LEFT JOIN direct_profiles p ON p.id=a.profile_id AND p.account_id=a.account_id LEFT JOIN dvr_recordings r ON a.kind='recording' AND r.id=a.resource_id LEFT JOIN live_sources s ON s.id=a.source_id LEFT JOIN live_channel_versions c ON c.generation_id=s.active_generation AND c.channel_id=a.channel_id WHERE a.source_id=? AND a.state!='released' ORDER BY a.channel_id,a.kind,a.id`, source)
 	if e != nil {
 		return out, e
 	}

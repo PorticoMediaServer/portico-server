@@ -2292,48 +2292,12 @@ CREATE TABLE playback_marker_skips(
   created_ms INTEGER NOT NULL,
   PRIMARY KEY(playback_id,marker_id)
  ) STRICT;
-CREATE TABLE playback_preparation_episode_bindings(
- attempt_id TEXT PRIMARY KEY REFERENCES playback_preparation_attempts(id),
- show_id INTEGER NOT NULL,show_library_id TEXT NOT NULL,show_incarnation TEXT NOT NULL,show_revision INTEGER NOT NULL CHECK(show_revision>0),
- season_id INTEGER,season_show_id TEXT,season_number INTEGER,season_incarnation TEXT,season_revision INTEGER,
- numbering TEXT NOT NULL CHECK(numbering IN ('seasonal','absolute')),number INTEGER NOT NULL CHECK(number>0 AND number<=9999),
- ordering_basis TEXT NOT NULL,local_identity_status TEXT NOT NULL CHECK(local_identity_status IN ('parsed','manual')),
- CHECK((numbering='absolute' AND season_id IS NULL AND season_show_id IS NULL AND season_number IS NULL AND season_incarnation IS NULL AND season_revision IS NULL) OR
-       (numbering='seasonal' AND season_id IS NOT NULL AND season_show_id IS NOT NULL AND season_show_id=show_id AND season_number IS NOT NULL AND season_number>=0 AND season_number<=99 AND season_incarnation IS NOT NULL AND season_revision IS NOT NULL AND season_revision>0))
-) STRICT;
-CREATE TABLE playback_preparation_book_bindings(
- attempt_id TEXT PRIMARY KEY REFERENCES playback_preparation_attempts(id),book_id INTEGER NOT NULL,library_id TEXT NOT NULL,
- incarnation TEXT NOT NULL,revision INTEGER NOT NULL CHECK(revision>0),
- disc_number INTEGER CHECK(disc_number IS NULL OR disc_number>=0),part_number INTEGER CHECK(part_number IS NULL OR part_number>=0)
-) STRICT;
-CREATE TABLE playback_source_versions(
- id TEXT PRIMARY KEY,evidence_kind TEXT NOT NULL CHECK(evidence_kind IN ('local_revision','strong_etag','immutable_provider_version','content_sha256')),
- protected_scope TEXT NOT NULL,protected_object TEXT NOT NULL,protected_revision TEXT NOT NULL,
- size INTEGER NOT NULL CHECK(size>=0),no_in_place_mutation INTEGER NOT NULL CHECK(no_in_place_mutation IN (0,1))
-) STRICT;
-CREATE TABLE playback_observed_acquisitions(
- id TEXT PRIMARY KEY,attempt_id TEXT NOT NULL REFERENCES playback_preparation_attempts(id),
- access TEXT CHECK(access IS NULL OR access IN ('finite_random','finite_sequential','growing')),
- length_bytes INTEGER CHECK(length_bytes IS NULL OR length_bytes>=0),
- continuity TEXT NOT NULL CHECK(continuity IN ('intact','lost')),
- highest_observation INTEGER NOT NULL CHECK(highest_observation>0),UNIQUE(id,attempt_id)
-) STRICT;
-CREATE TABLE playback_source_observations(
- acquisition_id TEXT NOT NULL REFERENCES playback_observed_acquisitions(id),sequence INTEGER NOT NULL CHECK(sequence>0),
- root_binding_id TEXT NOT NULL,object_binding_id TEXT NOT NULL,
- size INTEGER CHECK(size IS NULL OR size>=0),modified_ns INTEGER,change_token TEXT,
- PRIMARY KEY(acquisition_id,sequence)
-) STRICT;
-CREATE TABLE playback_preparation_dependencies(
- attempt_id TEXT NOT NULL REFERENCES playback_preparation_attempts(id),dependency_id TEXT NOT NULL,role TEXT NOT NULL,
- reference_kind TEXT NOT NULL CHECK(reference_kind IN ('strong_version','observed_acquisition')),
- source_version_id TEXT REFERENCES playback_source_versions(id),acquisition_id TEXT REFERENCES playback_observed_acquisitions(id),
- observation_first INTEGER,observation_last INTEGER,protected_digest TEXT,
- PRIMARY KEY(attempt_id,dependency_id),
- FOREIGN KEY(acquisition_id,attempt_id) REFERENCES playback_observed_acquisitions(id,attempt_id),
- CHECK((reference_kind='strong_version' AND source_version_id IS NOT NULL AND acquisition_id IS NULL AND observation_first IS NULL AND observation_last IS NULL) OR
-       (reference_kind='observed_acquisition' AND source_version_id IS NULL AND acquisition_id IS NOT NULL AND observation_first IS NOT NULL AND observation_last IS NOT NULL AND observation_first>0 AND observation_last>=observation_first))
-) STRICT;
+
+
+
+
+
+
 CREATE TABLE media_analyses (
  publication_id TEXT PRIMARY KEY, identity_digest TEXT NOT NULL,
  attempt_id TEXT NOT NULL, process_owner TEXT NOT NULL,
@@ -2647,9 +2611,9 @@ CREATE TABLE playback_physical_source_pins(session_id TEXT PRIMARY KEY REFERENCE
 CREATE TABLE subtitle_inventory_entries(source_id TEXT NOT NULL,incarnation TEXT NOT NULL,job_id TEXT NOT NULL REFERENCES jobs(id) ON DELETE CASCADE,directory TEXT NOT NULL,directory_key TEXT NOT NULL,path TEXT NOT NULL,name TEXT NOT NULL,snapshot TEXT NOT NULL,PRIMARY KEY(source_id,job_id,path)) STRICT;
 CREATE INDEX subtitle_inventory_entries_association ON subtitle_inventory_entries(source_id,incarnation,job_id,directory_key,name COLLATE NOCASE);
 CREATE INDEX subtitle_inventory_entries_job ON subtitle_inventory_entries(job_id);
-CREATE TABLE playback_vod_retries(playback_id TEXT PRIMARY KEY REFERENCES playback_occurrences(id),request_id TEXT NOT NULL,status TEXT NOT NULL DEFAULT 'pending') STRICT;
-CREATE TABLE playback_vod_subtitle_intents(playback_id TEXT PRIMARY KEY REFERENCES playback_occurrences(id),request_id TEXT NOT NULL,ownership_revision INTEGER NOT NULL,command_sequence INTEGER NOT NULL) STRICT;
-CREATE TABLE playback_vod_observations(playback_id TEXT PRIMARY KEY REFERENCES playback_occurrences(id),acknowledged_seek_id TEXT) STRICT;
+
+
+
 CREATE TABLE playback_personal_intents(
   ordinal INTEGER PRIMARY KEY AUTOINCREMENT, request_key TEXT NOT NULL UNIQUE
  ) STRICT;
@@ -2975,6 +2939,7 @@ CREATE TABLE hosted_profile_erasure_receipts(
  job_id TEXT PRIMARY KEY,server_id TEXT NOT NULL,account_id TEXT NOT NULL,profile_id TEXT NOT NULL,
  revision INTEGER NOT NULL,applied_at TEXT NOT NULL) STRICT;
 CREATE TABLE direct_profiles(
+ lifetime TEXT NOT NULL DEFAULT (lower(hex(randomblob(16)))) CHECK(length(lifetime)=32),
  id TEXT PRIMARY KEY, account_id TEXT NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
  name TEXT NOT NULL, is_primary INTEGER NOT NULL DEFAULT 0 CHECK(is_primary IN(0,1)),
  position INTEGER NOT NULL DEFAULT 0, art TEXT NOT NULL DEFAULT 'blue',
@@ -10667,8 +10632,6 @@ CREATE TABLE playback_start_preparation_results(
 ) STRICT;
 CREATE TRIGGER playback_start_preparation_root_immutable BEFORE UPDATE ON playback_start_preparations
 BEGIN SELECT RAISE(ABORT,'original preparation binding is immutable'); END;
-CREATE TRIGGER playback_start_preparation_root_delete BEFORE DELETE ON playback_start_preparations
-BEGIN SELECT RAISE(ABORT,'original preparation key remains an idempotency tombstone'); END;
 CREATE TRIGGER playback_start_preparation_lifecycle_insert BEFORE INSERT ON playback_start_preparation_lifecycle
 WHEN NEW.state<>'pending' OR NEW.revision<>1 OR NEW.execution_id<>'' OR NEW.sealed<>0
 BEGIN SELECT RAISE(ABORT,'preparation must begin without an execution or session'); END;
@@ -10701,6 +10664,12 @@ CREATE TRIGGER playback_start_preparation_accept BEFORE UPDATE OF state ON playb
 WHEN NEW.state='accepted' AND NOT EXISTS(SELECT 1 FROM playback_start_preparation_results WHERE operation_id=NEW.operation_id)
 BEGIN SELECT RAISE(ABORT,'preparation has no exact accepted session result'); END;
 CREATE TRIGGER playback_start_preparation_lifecycle_delete BEFORE DELETE ON playback_start_preparation_lifecycle
+WHEN NOT EXISTS(SELECT 1 FROM playback_start_preparation_actor a
+ JOIN direct_profiles p ON p.id=a.profile_id AND p.account_id=a.account_id
+ JOIN direct_memberships m ON m.account_id=p.account_id
+ JOIN security_purge_jobs j ON j.authority=a.authority AND j.account_id=a.account_id
+  AND j.profile_id=a.profile_id AND j.profile_incarnation=p.lifetime AND j.account_incarnation=m.incarnation
+ WHERE a.operation_id=OLD.operation_id AND a.authority='local' AND p.deleted=1 AND j.state IN('pending','running'))
 BEGIN SELECT RAISE(ABORT,'preparation lifecycle remains an idempotency tombstone'); END;
 CREATE TRIGGER playback_start_preparation_actor_insert BEFORE INSERT ON playback_start_preparation_actor
 WHEN NOT EXISTS(SELECT 1 FROM playback_start_preparation_lifecycle WHERE operation_id=NEW.operation_id AND state='pending' AND sealed=0)
@@ -10708,6 +10677,12 @@ BEGIN SELECT RAISE(ABORT,'preparation actor cannot be attached late'); END;
 CREATE TRIGGER playback_start_preparation_actor_immutable BEFORE UPDATE ON playback_start_preparation_actor
 BEGIN SELECT RAISE(ABORT,'preparation actor is immutable'); END;
 CREATE TRIGGER playback_start_preparation_actor_delete BEFORE DELETE ON playback_start_preparation_actor
+WHEN NOT EXISTS(SELECT 1 FROM playback_start_preparation_actor a
+ JOIN direct_profiles p ON p.id=a.profile_id AND p.account_id=a.account_id
+ JOIN direct_memberships m ON m.account_id=p.account_id
+ JOIN security_purge_jobs j ON j.authority=a.authority AND j.account_id=a.account_id
+  AND j.profile_id=a.profile_id AND j.profile_incarnation=p.lifetime AND j.account_incarnation=m.incarnation
+ WHERE a.operation_id=OLD.operation_id AND a.authority='local' AND p.deleted=1 AND j.state IN('pending','running'))
 BEGIN SELECT RAISE(ABORT,'preparation actor remains an original witness'); END;
 CREATE TRIGGER playback_start_preparation_source_insert BEFORE INSERT ON playback_start_preparation_source
 WHEN NOT EXISTS(SELECT 1 FROM playback_start_preparation_lifecycle WHERE operation_id=NEW.operation_id AND state='pending' AND sealed=0)
@@ -10715,6 +10690,12 @@ BEGIN SELECT RAISE(ABORT,'preparation source cannot be attached late'); END;
 CREATE TRIGGER playback_start_preparation_source_immutable BEFORE UPDATE ON playback_start_preparation_source
 BEGIN SELECT RAISE(ABORT,'preparation source is immutable'); END;
 CREATE TRIGGER playback_start_preparation_source_delete BEFORE DELETE ON playback_start_preparation_source
+WHEN NOT EXISTS(SELECT 1 FROM playback_start_preparation_actor a
+ JOIN direct_profiles p ON p.id=a.profile_id AND p.account_id=a.account_id
+ JOIN direct_memberships m ON m.account_id=p.account_id
+ JOIN security_purge_jobs j ON j.authority=a.authority AND j.account_id=a.account_id
+  AND j.profile_id=a.profile_id AND j.profile_incarnation=p.lifetime AND j.account_incarnation=m.incarnation
+ WHERE a.operation_id=OLD.operation_id AND a.authority='local' AND p.deleted=1 AND j.state IN('pending','running'))
 BEGIN SELECT RAISE(ABORT,'preparation source remains an original witness'); END;
 CREATE TRIGGER playback_start_preparation_queue_insert BEFORE INSERT ON playback_start_preparation_queue
 WHEN NOT EXISTS(SELECT 1 FROM playback_start_preparation_lifecycle WHERE operation_id=NEW.operation_id AND state='pending' AND sealed=0)
@@ -10722,6 +10703,12 @@ BEGIN SELECT RAISE(ABORT,'preparation queue cannot be attached late'); END;
 CREATE TRIGGER playback_start_preparation_queue_immutable BEFORE UPDATE ON playback_start_preparation_queue
 BEGIN SELECT RAISE(ABORT,'preparation queue is immutable'); END;
 CREATE TRIGGER playback_start_preparation_queue_delete BEFORE DELETE ON playback_start_preparation_queue
+WHEN NOT EXISTS(SELECT 1 FROM playback_start_preparation_actor a
+ JOIN direct_profiles p ON p.id=a.profile_id AND p.account_id=a.account_id
+ JOIN direct_memberships m ON m.account_id=p.account_id
+ JOIN security_purge_jobs j ON j.authority=a.authority AND j.account_id=a.account_id
+  AND j.profile_id=a.profile_id AND j.profile_incarnation=p.lifetime AND j.account_incarnation=m.incarnation
+ WHERE a.operation_id=OLD.operation_id AND a.authority='local' AND p.deleted=1 AND j.state IN('pending','running'))
 BEGIN SELECT RAISE(ABORT,'preparation queue remains an original witness'); END;
 CREATE TRIGGER playback_start_preparation_result_insert BEFORE INSERT ON playback_start_preparation_results
 WHEN NOT EXISTS(
@@ -10742,6 +10729,12 @@ BEGIN SELECT RAISE(ABORT,'preparation result is not its exact real accepted pres
 CREATE TRIGGER playback_start_preparation_result_immutable BEFORE UPDATE ON playback_start_preparation_results
 BEGIN SELECT RAISE(ABORT,'preparation accepted result is immutable'); END;
 CREATE TRIGGER playback_start_preparation_result_delete BEFORE DELETE ON playback_start_preparation_results
+WHEN NOT EXISTS(SELECT 1 FROM playback_start_preparation_actor a
+ JOIN direct_profiles p ON p.id=a.profile_id AND p.account_id=a.account_id
+ JOIN direct_memberships m ON m.account_id=p.account_id
+ JOIN security_purge_jobs j ON j.authority=a.authority AND j.account_id=a.account_id
+  AND j.profile_id=a.profile_id AND j.profile_incarnation=p.lifetime AND j.account_incarnation=m.incarnation
+ WHERE a.operation_id=OLD.operation_id AND a.authority='local' AND p.deleted=1 AND j.state IN('pending','running'))
 BEGIN SELECT RAISE(ABORT,'preparation accepted result cannot be replaced'); END;
 
 -- Private measured subtitles attach after PublishPendingTx seals the original
@@ -10867,9 +10860,9 @@ CREATE INDEX networking_claim_intents_server_id_public_key_fk ON networking_clai
 CREATE INDEX owner_reset_file_account_id_fk ON owner_reset_file(account_id);
 CREATE INDEX playback_disc_capture_inputs_capture_id_fk ON playback_disc_capture_inputs(capture_id);
 CREATE INDEX playback_manifest_subtitles_resource_id_resource_revision_fk ON playback_manifest_subtitles(resource_id,resource_revision);
-CREATE INDEX playback_observed_acquisitions_attempt_id_fk ON playback_observed_acquisitions(attempt_id);
-CREATE INDEX playback_preparation_dependencies_acquisition_id_attempt_id_fk ON playback_preparation_dependencies(acquisition_id,attempt_id);
-CREATE INDEX playback_preparation_dependencies_source_version_id_fk ON playback_preparation_dependencies(source_version_id);
+
+
+
 CREATE INDEX playback_v1_prepared_queue_id_fk ON playback_v1_prepared(queue_id);
 CREATE INDEX prepared_media_versions_job_id_fk ON prepared_media_versions(job_id);
 CREATE INDEX progress_activity_library_id_fk ON progress_activity(library_id);
@@ -11760,6 +11753,9 @@ WHEN NEW.owner_account_id IS NULL BEGIN
  UPDATE user_mutation_accounts SET account_id=NULL WHERE id=NEW.id;
 END;
 CREATE TABLE user_mutation_receipts(
+ profile_incarnation TEXT NOT NULL DEFAULT '' CHECK(length(profile_incarnation) IN(0,32)),
+ installation_incarnation TEXT NOT NULL DEFAULT '' CHECK(length(installation_incarnation) IN(0,32)),
+ root_id TEXT NOT NULL DEFAULT '' CHECK(length(root_id) IN(0,22)),
  key TEXT PRIMARY KEY CHECK(length(CAST(key AS BLOB))=51 AND substr(key,1,5)='p251_' AND substr(key,19,1)='_' AND substr(key,6,13) NOT GLOB '*[^0-9]*' AND substr(key,20,32) NOT GLOB '*[^0-9a-f]*'),
  scope_id INTEGER NOT NULL REFERENCES user_mutation_accounts(id),
  profile_id TEXT NOT NULL CHECK(length(CAST(profile_id AS BLOB)) BETWEEN 1 AND 128 AND instr(profile_id,char(0))=0),
@@ -11814,7 +11810,7 @@ CREATE TRIGGER user_mutation_receipt_release AFTER DELETE ON user_mutation_recei
  UPDATE user_mutation_global SET ordinary_count=ordinary_count-1+OLD.is_stop,stop_count=stop_count-OLD.is_stop,
  ordinary_bytes=ordinary_bytes-(1-OLD.is_stop)*4096,stop_bytes=stop_bytes-OLD.is_stop*4096 WHERE singleton=1;
 END;
-CREATE TRIGGER user_mutation_receipt_immutable BEFORE UPDATE OF key,scope_id,profile_id,family_id,operation,digest,is_stop,issued_ms ON user_mutation_receipts BEGIN
+CREATE TRIGGER user_mutation_receipt_immutable BEFORE UPDATE OF key,scope_id,profile_id,family_id,operation,digest,is_stop,issued_ms,profile_incarnation,installation_incarnation,root_id ON user_mutation_receipts BEGIN
  SELECT RAISE(ABORT,'user_mutation_immutable');
 END;
 -- Exact selection reads live input facts beyond Reading's predicate basis.
@@ -13121,3 +13117,92 @@ CREATE TRIGGER catalog_browse_metric_links_update AFTER UPDATE OF entity_id,avai
  INSERT INTO catalog_dirty(domain,entity_id,revision) SELECT 35,id,1 FROM catalog_entities WHERE id=OLD.entity_id ON CONFLICT(domain,entity_id) DO UPDATE SET revision=revision+1;
  INSERT INTO catalog_dirty(domain,entity_id,revision) SELECT 35,id,1 FROM catalog_entities WHERE id=NEW.entity_id ON CONFLICT(domain,entity_id) DO UPDATE SET revision=revision+1;
 END;
+-- P251 lifetime owners and restartable profile retirement. No query results.
+CREATE TABLE identity_installations(
+ installation_hash TEXT PRIMARY KEY CHECK(length(installation_hash)=64),
+ incarnation TEXT NOT NULL UNIQUE CHECK(length(incarnation)=32),
+ registration_revision INTEGER NOT NULL DEFAULT 0
+  CHECK(registration_revision BETWEEN 0 AND 9007199254740991),
+ registration_nonce TEXT NOT NULL DEFAULT '' CHECK(length(registration_nonce) IN(0,22)),
+ registration_root TEXT NOT NULL DEFAULT '' CHECK(length(registration_root) IN(0,22)),
+ retired INTEGER NOT NULL DEFAULT 0 CHECK(retired IN(0,1))
+) STRICT;
+CREATE TABLE user_mutation_roots(
+ id TEXT PRIMARY KEY CHECK(length(id)=22),
+ installation_incarnation TEXT NOT NULL CHECK(length(installation_incarnation)=32),
+ account_id TEXT NOT NULL, profile_id TEXT NOT NULL,
+ account_incarnation TEXT NOT NULL, profile_incarnation TEXT NOT NULL CHECK(length(profile_incarnation)=32),
+ family_id TEXT NOT NULL,
+ registration_revision INTEGER NOT NULL CHECK(registration_revision BETWEEN 1 AND 9007199254740991),
+ state TEXT NOT NULL CHECK(state IN('active','draining')),
+ UNIQUE(installation_incarnation,registration_revision)
+) STRICT;
+CREATE UNIQUE INDEX user_mutation_roots_active ON user_mutation_roots(installation_incarnation) WHERE state='active';
+CREATE UNIQUE INDEX user_mutation_roots_draining ON user_mutation_roots(installation_incarnation) WHERE state='draining';
+CREATE INDEX user_mutation_roots_profile ON user_mutation_roots(account_id,profile_id,profile_incarnation,id);
+CREATE INDEX user_mutation_roots_family ON user_mutation_roots(family_id,id);
+CREATE TRIGGER user_mutation_root_capacity BEFORE INSERT ON user_mutation_roots BEGIN
+ SELECT CASE WHEN NOT EXISTS(SELECT 1 FROM user_mutation_global WHERE singleton=1
+ AND ordinary_bytes+stop_bytes+1024<=33554432 AND ordinary_bytes+1024<=31457280)
+ THEN RAISE(ABORT,'user_mutation_capacity') END;
+END;
+CREATE TRIGGER user_mutation_root_charge AFTER INSERT ON user_mutation_roots BEGIN
+ UPDATE user_mutation_global SET ordinary_bytes=ordinary_bytes+1024 WHERE singleton=1;
+END;
+CREATE TRIGGER user_mutation_root_release AFTER DELETE ON user_mutation_roots BEGIN
+ UPDATE user_mutation_global SET ordinary_bytes=ordinary_bytes-1024 WHERE singleton=1;
+END;
+CREATE TABLE security_purge_jobs(
+ job_id TEXT PRIMARY KEY CHECK(length(job_id)=22),
+ authority TEXT NOT NULL CHECK(authority='local'),
+ account_id TEXT NOT NULL, profile_id TEXT NOT NULL,
+ account_incarnation TEXT NOT NULL, profile_incarnation TEXT NOT NULL,
+ desired_revision INTEGER NOT NULL DEFAULT 1 CHECK(desired_revision>0),
+ phase INTEGER NOT NULL DEFAULT 0 CHECK(phase>=0),
+ cursor_key TEXT NOT NULL DEFAULT '' CHECK(length(cursor_key)<=512),
+ process_epoch TEXT NOT NULL DEFAULT '',
+ attempt INTEGER NOT NULL DEFAULT 0 CHECK(attempt>=0),
+ next_attempt_ms INTEGER NOT NULL DEFAULT 0 CHECK(next_attempt_ms>=0),
+ state TEXT NOT NULL CHECK(state IN('pending','running','blocked')),
+ UNIQUE(authority,account_id,profile_id,profile_incarnation)
+) STRICT;
+CREATE INDEX security_purge_due ON security_purge_jobs(state,next_attempt_ms,job_id);
+CREATE INDEX user_mutation_receipts_profile ON user_mutation_receipts(scope_id,profile_id,profile_incarnation,key);
+CREATE INDEX user_mutation_receipts_root ON user_mutation_receipts(root_id,key);
+CREATE INDEX personal_conflicts_profile ON personal_conflicts(profile_id,id);
+CREATE INDEX console_exports_actor ON console_exports(actor,id);
+
+-- Indexed profile-owned cleanup phases.
+CREATE INDEX p2_62_purge_families ON authorization_session_families(authority,account_id,profile_id,revoked,id);
+CREATE INDEX p2_62_purge_tombstone_viewers ON catalog_title_tombstone_viewers(profile_id,public_id);
+CREATE INDEX p2_62_purge_live_allocations ON live_allocations(authority,account_id,profile_id,kind,id);
+CREATE INDEX p2_62_purge_download_grants ON download_grants(profile_key,hash);
+CREATE INDEX p2_62_purge_api_credentials ON api_credentials(account_id,profile_id,id);
+CREATE INDEX p2_62_purge_topshelf_tokens ON topshelf_tokens(authority,account_id,profile_id,token_hash);
+CREATE INDEX p2_62_purge_devices_last_profile ON identity_devices(account_id,last_profile_id,id);
+CREATE INDEX p2_62_purge_device_capabilities ON playback_device_capabilities(account_id,profile_id,device_id);
+CREATE INDEX p2_62_purge_start_prep_actor ON playback_start_preparation_actor(profile_id,operation_id);
+CREATE INDEX p2_62_purge_remote_capture_actor ON remote_source_capture_actor(profile_id,capture_id);
+CREATE INDEX p2_62_purge_group_invites ON social_group_invites(recipient_profile_id,id);
+CREATE INDEX p2_62_purge_receiver_grants ON social_receiver_grants(authority,account_id,profile_id,id);
+CREATE INDEX p2_62_purge_cast_controllers ON social_cast_controllers(authority,account_id,profile_id,id);
+CREATE INDEX p2_62_purge_cast_transfers ON social_cast_queue_transfers(authority,account_id,profile_id,id);
+CREATE INDEX p2_62_purge_cast_bootstraps ON social_cast_bootstraps(authority,account_id,profile_id,id);
+CREATE INDEX p2_62_purge_playback_v1 ON playback_v1_sessions(account_id,profile_id,id);
+CREATE INDEX p2_62_purge_queues_v1 ON queues_v1(account_id,profile_id,id);
+CREATE INDEX p2_62_purge_mb_receipts ON mb_selection_receipts(actor_authority,actor_account_id,actor_profile_id,id);
+CREATE INDEX p2_62_purge_client_logs ON client_log_uploads(account_id,profile_id,id);
+CREATE INDEX p2_62_purge_lyric_resources ON lyric_resources(authority,account_id,profile_id,id);
+
+CREATE INDEX p2_62_purge_sort_entity_cursor ON catalog_personal_sort_entity_jobs(profile_cursor,entity_id);
+
+CREATE INDEX p2_62_purge_sort_member_cursor ON catalog_personal_sort_member_jobs(profile_cursor,item_id);
+
+CREATE INDEX p2_62_purge_visibility_class_cursor ON catalog_personal_visibility_sort_class_jobs(profile_cursor,class_id,generation,entity_id);
+
+CREATE INDEX profile_avatars_digest ON profile_avatars(digest,profile_id);
+
+CREATE INDEX p2_62_purge_prepared_actor ON prepared_media_jobs(
+ json_extract(principal_json,'$.authority'),
+ json_extract(principal_json,'$.accountId'),
+ json_extract(principal_json,'$.profileId'),id);

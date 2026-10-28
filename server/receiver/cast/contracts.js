@@ -14791,20 +14791,55 @@ var PorticoCastContracts = (function(exports) {
 			"type": "object"
 		},
 		"DeleteDirectProfilesIdRequest": {
+			"additionalProperties": false,
 			"properties": {
-				"deleteSavedResources": { "type": "boolean" },
+				"deleteSavedResources": {
+					"enum": [true],
+					"type": "boolean"
+				},
 				"expectedRevision": {
 					"maximum": 9007199254740991,
-					"minimum": -9007199254740991,
+					"minimum": 1,
 					"type": "integer"
+				},
+				"lifetime": {
+					"pattern": "^[0-9a-f]{32}$",
+					"type": "string"
 				}
 			},
-			"required": ["expectedRevision", "deleteSavedResources"],
+			"required": [
+				"expectedRevision",
+				"lifetime",
+				"deleteSavedResources"
+			],
 			"type": "object"
 		},
 		"DeleteDirectProfilesIdResponse": {
-			"properties": {},
-			"required": [],
+			"additionalProperties": false,
+			"properties": {
+				"lifetime": {
+					"pattern": "^[0-9a-f]{32}$",
+					"type": "string"
+				},
+				"profileId": {
+					"maxLength": 128,
+					"minLength": 1,
+					"type": "string"
+				},
+				"state": {
+					"enum": [
+						"removing",
+						"removed",
+						"blocked"
+					],
+					"type": "string"
+				}
+			},
+			"required": [
+				"profileId",
+				"lifetime",
+				"state"
+			],
 			"type": "object"
 		},
 		"DeleteDirectRememberedAccountRequest": {
@@ -33422,6 +33457,7 @@ var PorticoCastContracts = (function(exports) {
 		},
 		"GetDirectProfilesIdDeletionPreviewResponse": {
 			"properties": {
+				"lifetime": { "type": "string" },
 				"name": { "type": "string" },
 				"playlists": {
 					"maximum": 9007199254740991,
@@ -33442,12 +33478,46 @@ var PorticoCastContracts = (function(exports) {
 				}
 			},
 			"required": [
+				"lifetime",
 				"profileId",
 				"revision",
 				"name",
 				"playlists",
 				"savedResources",
 				"primary"
+			],
+			"type": "object"
+		},
+		"GetDirectProfilesIdRetirementRequest": {
+			"properties": {},
+			"required": [],
+			"type": "object"
+		},
+		"GetDirectProfilesIdRetirementResponse": {
+			"additionalProperties": false,
+			"properties": {
+				"lifetime": {
+					"pattern": "^[0-9a-f]{32}$",
+					"type": "string"
+				},
+				"profileId": {
+					"maxLength": 128,
+					"minLength": 1,
+					"type": "string"
+				},
+				"state": {
+					"enum": [
+						"removing",
+						"removed",
+						"blocked"
+					],
+					"type": "string"
+				}
+			},
+			"required": [
+				"profileId",
+				"lifetime",
+				"state"
 			],
 			"type": "object"
 		},
@@ -201769,6 +201839,7 @@ var PorticoCastContracts = (function(exports) {
 		"get_direct_profile_avatars": "/v1/direct/profiles/avatars",
 		"get_direct_profile_restrictions": "/v1/direct/profiles/{id}/restrictions",
 		"get_direct_profiles_id_deletion_preview": "/v1/direct/profiles/{id}/deletion-preview",
+		"get_direct_profiles_id_retirement": "/v1/direct/profiles/{id}/retirement",
 		"get_direct_registration_policy": "/v1/direct/registration-policy",
 		"get_direct_sessions": "/v1/direct/sessions",
 		"get_direct_two_factor": "/v1/direct/two-factor",
