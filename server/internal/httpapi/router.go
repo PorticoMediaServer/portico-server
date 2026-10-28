@@ -614,6 +614,13 @@ func failure(w http.ResponseWriter, e error) {
 		status, code, message, retryable = 507, "storage_full", "The server has run out of disk space. Free space on the server's volume and retry.", true
 		w.Header().Set("Retry-After", "30")
 	}
+	// The writer turned the write away before it began, or met a lock it
+	// should never meet; either way nothing was saved and a retry is safe.
+	// The typed writer_capacity answer replaces this shared busy code later.
+	if dbwork.Overloaded(e) {
+		status, code, message, retryable = 503, "server_busy", "The server is busy handling other requests. Try again shortly.", true
+		w.Header().Set("Retry-After", "1")
+	}
 	if errors.Is(e, imagework.ErrBusy) {
 		status, code, message, retryable = 503, "server_busy", "Image processing is busy. Retry shortly.", true
 		w.Header().Set("Retry-After", "1")

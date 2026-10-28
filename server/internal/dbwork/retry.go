@@ -31,6 +31,10 @@ const (
 	// who can do anything about it, which is why it needs a code of its own
 	// rather than an anonymous "the request could not be saved".
 	KindFull
+	// KindCapacity is a write the gate refused before it began because its
+	// ticket pool was full of user writes. Nothing was written; the same
+	// request can be retried later.
+	KindCapacity
 )
 
 // Classify unwraps err to the driver error and maps its primary result code.
@@ -39,6 +43,9 @@ const (
 func Classify(err error) Kind {
 	if err == nil {
 		return KindOther
+	}
+	if errors.Is(err, ErrWriterCapacity) {
+		return KindCapacity
 	}
 	var typed *sqlite.Error
 	if errors.As(err, &typed) {
@@ -85,6 +92,14 @@ func Retryable(err error) bool {
 	return kind == KindBusy || kind == KindLocked
 }
 
+// Overloaded reports a write the writer could not take now and that changed
+// nothing: a full ticket pool, or a lock error after admission. A request path
+// answers it as a retryable refusal, never as a failed save.
+func Overloaded(err error) bool {
+	kind := Classify(err)
+	return kind == KindCapacity || kind == KindBusy || kind == KindLocked
+}
+
 // Retry describes an attempt budget. Attempts counts the first try.
 type Retry struct {
 	Attempts int
@@ -92,28 +107,12 @@ type Retry struct {
 	Max      time.Duration
 }
 
-// The four budgets Portico uses. Foreground work retries briefly because a
-// viewer is waiting and the write gate has already removed most contention;
-// enqueue and migration retry far longer because the alternative is losing
-// durable work or failing startup.
-var (
-	// ForegroundRetry covers request-path and playback writes.
-	ForegroundRetry = Retry{Attempts: 3, Base: 20 * time.Millisecond, Max: 150 * time.Millisecond}
-	// BackgroundRetry covers bulk catalogue and maintenance writes.
-	BackgroundRetry = Retry{Attempts: 3, Base: 50 * time.Millisecond, Max: 250 * time.Millisecond}
-	// EnqueueRetry covers durable job admission, which must not be dropped.
-	EnqueueRetry = Retry{Attempts: 8, Base: 50 * time.Millisecond, Max: time.Second}
-	// InstallRetry covers schema installation and startup migration.
-	InstallRetry = Retry{Attempts: 12, Base: 50 * time.Millisecond, Max: time.Second}
-)
-
-// RetryFor returns the budget that matches a work class.
-func RetryFor(class Class) Retry {
-	if class.Background() {
-		return BackgroundRetry
-	}
-	return ForegroundRetry
-}
+// InstallRetry covers schema installation and startup pragmas, which run before
+// normal service opens, so a retry there cannot stack behind the gate. Every
+// gated write makes one attempt per admission: the gate resolves same-process
+// contention before SQLite sees it, and a retry wrapped around an admission
+// would multiply the gate wait and the connection busy timeout.
+var InstallRetry = Retry{Attempts: 12, Base: 50 * time.Millisecond, Max: time.Second}
 
 // Stats reports what a retried operation actually cost, so lock contention is
 // measurable instead of merely survivable.

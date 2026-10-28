@@ -320,23 +320,24 @@ func TestConcurrentReadersAndWritersNeverEscapeAsBusy(t *testing.T) {
 }
 
 func TestRetryClassifiesAndBacksOff(t *testing.T) {
+	budget := Retry{Attempts: 3, Base: time.Millisecond, Max: 2 * time.Millisecond}
 	attempts := 0
-	stats, err := ForegroundRetry.Do(context.Background(), func() error {
+	stats, err := budget.Do(context.Background(), func() error {
 		attempts++
 		return errors.New("database is locked")
 	})
 	if err == nil {
 		t.Fatal("a persistent lock was reported as success")
 	}
-	if attempts != ForegroundRetry.Attempts {
-		t.Fatalf("made %d attempts, budget is %d", attempts, ForegroundRetry.Attempts)
+	if attempts != budget.Attempts {
+		t.Fatalf("made %d attempts, budget is %d", attempts, budget.Attempts)
 	}
-	if stats.Retries != ForegroundRetry.Attempts-1 || stats.Wait <= 0 {
+	if stats.Retries != budget.Attempts-1 || stats.Wait <= 0 {
 		t.Fatalf("retry stats not recorded: %#v", stats)
 	}
 	// A constraint failure is the caller's fault and must not be retried.
 	attempts = 0
-	if _, err = ForegroundRetry.Do(context.Background(), func() error {
+	if _, err = budget.Do(context.Background(), func() error {
 		attempts++
 		return errors.New("UNIQUE constraint failed: rows.id")
 	}); err == nil || attempts != 1 {
@@ -398,5 +399,34 @@ func TestYieldNeverWaitsForForegroundOrHealth(t *testing.T) {
 	cancel()
 	if Yield(ctx) {
 		t.Fatal("a cancelled yield reported progress")
+	}
+}
+
+// One admission is one attempt. A lock error after the gate is held is
+// reported, counted and classified as overload; the work never runs twice.
+func TestWriteMakesOneAttemptAndCountsALockAfterAdmission(t *testing.T) {
+	db := testDB(t)
+	before := WriteGate().Admission()
+	attempts := 0
+	err := WithWriteTx(context.Background(), db, ClassInteractive, func(*sql.Tx) error {
+		attempts++
+		return errors.New("database is locked")
+	})
+	if attempts != 1 {
+		t.Fatalf("a lock error after admission ran the write %d times", attempts)
+	}
+	if !Retryable(err) || !Overloaded(err) {
+		t.Fatalf("lock error lost its classification: %v", err)
+	}
+	after := WriteGate().Admission()
+	if after.BusyAfterAdmission != before.BusyAfterAdmission+1 || after.BusyAfterAdmissionByClass[ClassInteractive.String()] != before.BusyAfterAdmissionByClass[ClassInteractive.String()]+1 {
+		t.Fatalf("lock error after admission not counted: %+v -> %+v", before, after)
+	}
+	// A constraint failure is the caller's answer, not overload.
+	err = WithWriteTx(context.Background(), db, ClassInteractive, func(*sql.Tx) error {
+		return errors.New("UNIQUE constraint failed: rows.id")
+	})
+	if Overloaded(err) || WriteGate().Admission().BusyAfterAdmission != after.BusyAfterAdmission {
+		t.Fatalf("a constraint failure was treated as overload: %v", err)
 	}
 }

@@ -523,6 +523,9 @@ func (a *admission) wrap(mux *http.ServeMux, next http.Handler) http.Handler {
 			return
 		}
 		ctx = dbwork.WithClass(ctx, l.spec.class)
+		// The writer gate rotates between the same owners the lanes share load
+		// by, and a full gate refuses an over-share owner's write first.
+		ctx = dbwork.WithOwner(ctx, key)
 		if l.spec.budget > 0 && !budgetIncludesQueue {
 			var cancel context.CancelFunc
 			ctx, cancel = context.WithTimeout(ctx, l.spec.budget)

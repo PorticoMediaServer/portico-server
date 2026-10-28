@@ -5,8 +5,6 @@ import (
 	"database/sql"
 	"os"
 	"time"
-
-	"portico.local/server/internal/dbwork"
 )
 
 // Large guides use a private, disposable SQLite spool. It is separate from the
@@ -31,17 +29,11 @@ type programmeSpool struct {
 	count   int
 }
 
-// exec runs one autocommit statement on the private spool file. It keeps the
-// retry budget a background catalogue write uses for a transient lock error,
-// and nothing else from it: no gate, no commit notification, no publication.
+// exec runs one autocommit statement on the private spool file: no gate, no
+// commit notification, no publication. The file has one connection and one
+// user, so there is no lock for another attempt to wait out.
 func (s *programmeSpool) exec(query string, args ...any) (sql.Result, error) {
-	var result sql.Result
-	_, err := dbwork.BackgroundRetry.Do(context.Background(), func() error {
-		var err error
-		result, err = s.db.ExecContext(context.Background(), query, args...)
-		return err
-	})
-	return result, err
+	return s.db.ExecContext(context.Background(), query, args...)
 }
 
 func newProgrammeSpool() (*programmeSpool, error) {

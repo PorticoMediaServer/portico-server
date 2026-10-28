@@ -5,8 +5,10 @@ import (
 	"database/sql"
 	"database/sql/driver"
 	"errors"
+	"log"
 	"sync"
 	"sync/atomic"
+	"time"
 )
 
 // gate is the process-wide write gate. One database file means one writer, so
@@ -368,22 +370,41 @@ func WithWriteTxContext(ctx context.Context, db *sql.DB, class Class, fn func(co
 		}
 		return nil
 	}
-	_, err := RetryFor(class).Do(ctx, func() error {
-		w, err := Begin(ctx, db, class)
-		if err != nil {
-			return err
-		}
-		defer w.Rollback()
-		if err = fn(w.Context(), w.Tx()); err != nil {
-			return err
-		}
-		return w.Commit()
-	})
+	// One admission is one attempt. The gate has already resolved same-process
+	// contention, so a lock error here is an outside opener or a defect, and
+	// running fn again would repeat the whole wait instead of reporting it.
+	w, err := Begin(ctx, db, class)
+	if err != nil {
+		return noteAdmittedFailure(class, err)
+	}
+	defer w.Rollback()
+	if err = fn(w.Context(), w.Tx()); err != nil {
+		return noteAdmittedFailure(class, err)
+	}
+	return noteAdmittedFailure(class, w.Commit())
+}
+
+// busyLogged rate-limits the log line for a lock error after admission. The
+// count is exact; the log only has to say that it is happening.
+var busyLogged atomic.Int64
+
+// noteAdmittedFailure counts and reports SQLITE_BUSY or SQLITE_LOCKED met by a
+// write that held the gate, and returns err unchanged for the caller to answer.
+// Callers see it as Overloaded, so a request is refused as retryable.
+func noteAdmittedFailure(class Class, err error) error {
+	if err == nil || !Retryable(err) {
+		return err
+	}
+	gate.noteBusyAfterAdmission(class)
+	now := time.Now().UnixNano()
+	if last := busyLogged.Load(); now-last >= int64(time.Minute) && busyLogged.CompareAndSwap(last, now) {
+		log.Printf("dbwork: a %s write met a database lock after taking the write gate (%d so far): %v", class, gate.busy.Load(), err)
+	}
 	return err
 }
 
-// ExecWrite runs one statement through the gate, retried for lock contention.
-// The gate is released before the caller sees the result, so a caller that
+// ExecWrite runs one statement through the gate, in one attempt. The gate is
+// released before the caller sees the result, so a caller that
 // invalidates a cache or publishes an event afterwards does so with no writer
 // hold outstanding.
 func ExecWrite(ctx context.Context, db *sql.DB, class Class, query string, args ...any) (sql.Result, error) {
@@ -399,53 +420,51 @@ func ExecWrite(ctx context.Context, db *sql.DB, class Class, query string, args 
 		}
 		return parent.tx.ExecContext(ctx, query, args...)
 	}
-	var result sql.Result
-	_, err := RetryFor(class).Do(ctx, func() error {
-		release, err := gate.Acquire(ctx, class)
-		if err != nil {
-			return err
-		}
-		conn, err := writerHandle(db).Conn(ctx)
-		if err != nil {
-			release()
-			return err
-		}
-		changes := &changeSet{}
-		writeCtx := context.WithValue(ctx, changeKey{}, changes)
-		var before, after int64
-		if err = conn.QueryRowContext(writeCtx, `SELECT total_changes()`).Scan(&before); err == nil {
-			// Autocommit has no BeginTx hook to attach this set to the
-			// observed connection. Record this attempt's supplied write root.
-			changes.note(query)
-			result, err = conn.ExecContext(writeCtx, query, args...)
-		}
-		if err == nil {
-			if countErr := conn.QueryRowContext(writeCtx, `SELECT total_changes()`).Scan(&after); countErr != nil {
-				// The statement already committed. Conservatively wake subscribers;
-				// retrying it could execute a non-idempotent write twice.
-				after, changes = before+1, nil
-			}
-		}
-		_ = conn.Close()
+	release, err := gate.Acquire(ctx, class)
+	if err != nil {
+		return nil, err
+	}
+	conn, err := writerHandle(db).Conn(ctx)
+	if err != nil {
 		release()
-		if err == nil {
-			noteCommitted(class)
-			if after != before {
-				// An autocommit statement that changed rows is a committed
-				// gated write like any transaction: caches and response
-				// validators keyed on Publications must see it (PERF-12).
-				publications.Add(1)
-				noteCommitProgress(ctx)
-				noteCommitSite()
-				notifyCommit(changes)
-				// Lane C's direct-write subscribers (event feed) also hear
-				// autocommit ExecWrite statements.
-				notifyDirectWrite(changes)
-			}
+		return nil, err
+	}
+	changes := &changeSet{}
+	writeCtx := context.WithValue(ctx, changeKey{}, changes)
+	var result sql.Result
+	var before, after int64
+	if err = conn.QueryRowContext(writeCtx, `SELECT total_changes()`).Scan(&before); err == nil {
+		// Autocommit has no BeginTx hook to attach this set to the observed
+		// connection. Record this statement's supplied write root.
+		changes.note(query)
+		result, err = conn.ExecContext(writeCtx, query, args...)
+	}
+	if err == nil {
+		if countErr := conn.QueryRowContext(writeCtx, `SELECT total_changes()`).Scan(&after); countErr != nil {
+			// The statement already committed. Conservatively wake subscribers;
+			// running it again could execute a non-idempotent write twice.
+			after, changes = before+1, nil
 		}
-		return err
-	})
-	return result, err
+	}
+	_ = conn.Close()
+	release()
+	if err != nil {
+		return result, noteAdmittedFailure(class, err)
+	}
+	noteCommitted(class)
+	if after != before {
+		// An autocommit statement that changed rows is a committed gated
+		// write like any transaction: caches and response validators keyed on
+		// Publications must see it (PERF-12).
+		publications.Add(1)
+		noteCommitProgress(ctx)
+		noteCommitSite()
+		notifyCommit(changes)
+		// Lane C's direct-write subscribers (event feed) also hear autocommit
+		// ExecWrite statements.
+		notifyDirectWrite(changes)
+	}
+	return result, nil
 }
 
 // ErrSnapshotWrite prevents accidental row mutations from committing through a reader.

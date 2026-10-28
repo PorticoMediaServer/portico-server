@@ -182,3 +182,33 @@ func ClassFrom(ctx context.Context, fallback Class) Class {
 	}
 	return fallback
 }
+
+type ownerKey struct{}
+
+// maxOwnerKey bounds what one owner key may cost the gate. The HTTP keys are a
+// short prefix and a digest or an address, well inside it.
+const maxOwnerKey = 128
+
+// WithOwner records the fairness key of whoever the work is for. HTTP admission
+// sets it from the same bounded identity its lanes already share load by: a
+// checked credential's device, or the peer address before a credential is
+// checked. The gate uses it only to rotate between owners and to decide whose
+// ticket a full pool refuses; it grants nothing. Work with no owner, such as
+// internal supervisors, shares one queue.
+func WithOwner(ctx context.Context, owner string) context.Context {
+	if ctx == nil || owner == "" {
+		return ctx
+	}
+	if len(owner) > maxOwnerKey {
+		owner = owner[:maxOwnerKey]
+	}
+	return context.WithValue(ctx, ownerKey{}, owner)
+}
+
+func ownerFrom(ctx context.Context) string {
+	if ctx == nil {
+		return ""
+	}
+	owner, _ := ctx.Value(ownerKey{}).(string)
+	return owner
+}

@@ -69,7 +69,15 @@ func TestGateStrictPriorityAcrossClasses(t *testing.T) {
 	}
 }
 
-func TestGatePromotesOldMaintenanceBehindPlaybackAndSecurity(t *testing.T) {
+// ageFront backdates the ticket class would serve next, so a test can cross a
+// promotion boundary without sleeping through it.
+func ageFront(g *Gate, class Class, by time.Duration) {
+	g.mu.Lock()
+	g.queues[class].front().since = time.Now().Add(-by)
+	g.mu.Unlock()
+}
+
+func TestAgedBackgroundNeverPassesAWaitingUser(t *testing.T) {
 	g := NewGate()
 	hold, err := g.Acquire(context.Background(), ClassInteractive)
 	if err != nil {
@@ -91,9 +99,7 @@ func TestGatePromotesOldMaintenanceBehindPlaybackAndSecurity(t *testing.T) {
 		}(class)
 		waitForWaiters(t, g, i+1)
 	}
-	g.mu.Lock()
-	g.waitQueue[ClassMaintenance][0].since = time.Now().Add(-10 * GateAgePromotionInterval)
-	g.mu.Unlock()
+	ageFront(g, ClassMaintenance, time.Hour)
 	hold()
 	wg.Wait()
 	close(order)
@@ -101,7 +107,7 @@ func TestGatePromotesOldMaintenanceBehindPlaybackAndSecurity(t *testing.T) {
 	for class := range order {
 		got = append(got, class)
 	}
-	want := []Class{ClassSecurityFence, ClassMaintenance, ClassInteractive}
+	want := []Class{ClassSecurityFence, ClassInteractive, ClassMaintenance}
 	for i := range want {
 		if got[i] != want[i] {
 			t.Fatalf("aged priority %v, want %v", got, want)
@@ -109,49 +115,129 @@ func TestGatePromotesOldMaintenanceBehindPlaybackAndSecurity(t *testing.T) {
 	}
 }
 
-func TestAgedBackgroundWriterCompletesUnderSustainedRequests(t *testing.T) {
+func TestAgedBackgroundWaitsBehindEveryQueuedRequest(t *testing.T) {
 	g := NewGate()
 	hold, err := g.Acquire(context.Background(), ClassInteractive)
 	if err != nil {
 		t.Fatal(err)
 	}
-	done := make(chan struct{})
-	first := make(chan Class, 51)
-	go func() {
-		release, err := g.Acquire(context.Background(), ClassBackgroundMedia)
+	served := make(chan Class, 51)
+	done := make(chan struct{}, 51)
+	acquire := func(class Class) {
+		release, err := g.Acquire(context.Background(), class)
 		if err == nil {
-			first <- ClassBackgroundMedia
+			served <- class
 			release()
 		}
-		close(done)
-	}()
+		done <- struct{}{}
+	}
+	go acquire(ClassBackgroundMedia)
 	waitForWaiters(t, g, 1)
-	g.mu.Lock()
-	g.waitQueue[ClassBackgroundMedia][0].since = time.Now().Add(-3 * GateAgePromotionInterval)
-	g.mu.Unlock()
-	requestDone := make(chan struct{}, 50)
+	ageFront(g, ClassBackgroundMedia, time.Hour)
 	for i := 0; i < 50; i++ {
-		go func() {
-			release, err := g.Acquire(context.Background(), ClassInteractive)
-			if err == nil {
-				first <- ClassInteractive
-				release()
-			}
-			requestDone <- struct{}{}
-		}()
+		go acquire(ClassInteractive)
 	}
 	waitForWaiters(t, g, 51)
 	hold()
-	select {
-	case class := <-first:
-		if class != ClassBackgroundMedia {
-			t.Fatal("a newly arrived request beat the aged background writer")
-		}
-	case <-time.After(2 * time.Second):
-		t.Fatal("aged background writer stalled under queued requests")
+	for i := 0; i < 51; i++ {
+		<-done
 	}
-	for i := 0; i < 50; i++ {
-		<-requestDone
+	close(served)
+	position := 0
+	for class := range served {
+		if class == ClassBackgroundMedia && position != 50 {
+			t.Fatalf("an aged background writer was served at position %d, ahead of queued requests", position)
+		}
+		position++
+	}
+}
+
+// Users always go first, but background work is only deferred: the moment no
+// user write is waiting, the oldest background writer runs. The user load here
+// is a chain in which a new request always queues before the holder leaves, so
+// the background writer must wait through every link and then win at once.
+func TestBackgroundProgressesAfterUserPressureEnds(t *testing.T) {
+	g := NewGate()
+	hold, err := g.Acquire(context.Background(), ClassInteractive)
+	if err != nil {
+		t.Fatal(err)
+	}
+	background := make(chan struct{})
+	go func() {
+		release, err := g.Acquire(context.Background(), ClassBackgroundMedia)
+		if err != nil {
+			t.Error(err)
+			return
+		}
+		release()
+		close(background)
+	}()
+	waitForWaiters(t, g, 1)
+	ageFront(g, ClassBackgroundMedia, time.Hour)
+	for link := 0; link < 20; link++ {
+		next := make(chan func())
+		go func() {
+			release, err := g.Acquire(context.Background(), ClassInteractive)
+			if err != nil {
+				t.Error(err)
+				close(next)
+				return
+			}
+			next <- release
+		}()
+		waitForWaiters(t, g, 2)
+		hold()
+		release, ok := <-next
+		if !ok {
+			t.FailNow()
+		}
+		hold = release
+		select {
+		case <-background:
+			t.Fatalf("background writer ran at link %d while a request was queued", link)
+		default:
+		}
+		if waiting := g.Waiting()[ClassBackgroundMedia.String()]; waiting != 1 {
+			t.Fatalf("background writer left the queue under user pressure: %v", g.Waiting())
+		}
+	}
+	hold()
+	select {
+	case <-background:
+	case <-time.After(5 * time.Second):
+		t.Fatal("background writer did not run once user pressure ended")
+	}
+}
+
+func TestAgedMaintenanceOvertakesNewerBackgroundMedia(t *testing.T) {
+	g := NewGate()
+	hold, err := g.Acquire(context.Background(), ClassInteractive)
+	if err != nil {
+		t.Fatal(err)
+	}
+	order := make(chan Class, 2)
+	var wg sync.WaitGroup
+	for i, class := range []Class{ClassMaintenance, ClassBackgroundMedia} {
+		wg.Add(1)
+		go func(class Class) {
+			defer wg.Done()
+			release, err := g.Acquire(context.Background(), class)
+			if err != nil {
+				t.Error(err)
+				return
+			}
+			order <- class
+			release()
+		}(class)
+		waitForWaiters(t, g, i+1)
+		if class == ClassMaintenance {
+			ageFront(g, ClassMaintenance, 2*GateAgePromotionInterval)
+		}
+	}
+	hold()
+	wg.Wait()
+	if first := <-order; first != ClassMaintenance {
+		t.Fatalf("a scan starved an aged maintenance writer: %s went first", first)
 	}
 }
 
@@ -174,11 +260,9 @@ func TestGateHandoffSurvivesPromotionBoundary(t *testing.T) {
 			}(class)
 		}
 		waitForWaiters(t, g, 2)
-		g.mu.Lock()
 		// An old maintenance waiter is exactly at the promotion edge when
 		// the holder releases. Both waiters must still acquire in turn.
-		g.waitQueue[ClassMaintenance][0].since = time.Now().Add(-GateAgePromotionInterval + time.Millisecond)
-		g.mu.Unlock()
+		ageFront(g, ClassMaintenance, GateAgePromotionInterval-time.Millisecond)
 		hold()
 		for i := 0; i < 2; i++ {
 			if err := <-done; err != nil {
