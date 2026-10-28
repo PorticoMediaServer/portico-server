@@ -3,6 +3,7 @@ import type {FetchPage} from './collections/windowed.ts';
 import type {ContentEntry, LibraryContentApi} from './library-content.ts';
 import {readBrowsePage, readBrowseSelection, releaseBrowseSelection} from './browse-preparation.ts';
 import type {PreparationResponse, PreparationRuntime} from './read-preparation.ts';
+import {linkAbortSignals} from './abort-lifetime.ts';
 import {isStaleAnswer} from './freshness-actions.ts';
 
 /** One applied Browse query: what every page, count, facet read and saved view is built from.
@@ -119,7 +120,7 @@ export class BrowseSession<T> {
     if (this.retired || !this.options.current()) throw browseSessionClosed();
     if (this.ended) throw browseRevisionChanged();
     const body = browseSessionBuilder(this.query).limit(count).range({start, ...(this.pinned ? {revision: this.pinned} : {})}).build();
-    const active = AbortSignal.any([signal, this.life.signal]);
+    const lifetime = linkAbortSignals([signal, this.life.signal]), active = lifetime.signal;
     let result: Awaited<ReturnType<typeof readBrowsePage>>;
     const api: LibraryContentApi = {request: async <R>(path: string, method = 'GET', body?: unknown, input?: AbortSignal) =>
       this.options.request(path, method, body, input ?? active) as Promise<R>, ...(this.options.requestRaw ? {requestRaw: this.options.requestRaw} : {})};
@@ -127,7 +128,7 @@ export class BrowseSession<T> {
     catch (error) {
       if (!this.retired && this.options.current() && !signal.aborted && ended(error)) this.end(error);
       throw error;
-    }
+    } finally {lifetime.dispose();}
     if (this.retired || !this.options.current() || signal.aborted) {releaseBrowseSelection(api, this.query.libraryId, result.response); throw browseSessionClosed();}
     const page = withLibraryScope(result.page, this.query.libraryId);
     if (page.pivot !== this.query.pivot || page.pageInfo.start !== start || page.entries.length > count

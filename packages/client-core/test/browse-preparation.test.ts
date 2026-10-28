@@ -119,3 +119,43 @@ domainTest('late initial Reading 202 after cancellation is released without publ
   const work = readReadingFacet(api, 'lib', path, 'author', {signal: abort.signal, isCurrent: () => true, runtime: time.runtime});
   const rejected = assert.rejects(work, {name: 'AbortError'}); abort.abort(); await rejected; finish(pending('reading-facet')); await tick(); assert.match(calls.at(-1)!, /^DELETE /);
 });
+
+test('409 cursor recovery re-anchors without a stale cursor and preserves query, sort and limit', async () => {
+  const bodies: any[] = [], original = {pivot: 'books', sort: query.sorts, cursor: 'expired', limit: 40};
+  const api: LibraryContentApi = {request: async () => {throw 0;}, requestRaw: async (_path, method, options) => {
+    assert.equal(method, 'POST'); bodies.push(options?.body);
+    return bodies.length === 1 ? {status: 409, headers: {}, body: {error: {code: 'reading_revision_mismatch'}}} : ready(page());
+  }};
+  await readBrowsePage(api, 'lib', original, {isCurrent: () => true});
+  assert.deepEqual(bodies, [original, {pivot: 'books', sort: query.sorts, limit: 40}]);
+  assert.equal(original.cursor, 'expired', 'the caller descriptor stays untouched');
+});
+
+test('BrowseSession works without AbortSignal.any and releases composed listeners on success and error', async () => {
+  const originalAny = Object.getOwnPropertyDescriptor(AbortSignal, 'any')!;
+  const add = AbortSignal.prototype.addEventListener, remove = AbortSignal.prototype.removeEventListener;
+  const listeners = new Map<AbortSignal, Set<unknown>>();
+  Object.defineProperty(AbortSignal, 'any', {...originalAny, value: undefined});
+  AbortSignal.prototype.addEventListener = function(type, listener, options) {
+    if (type === 'abort') {const held = listeners.get(this) ?? new Set(); held.add(listener); listeners.set(this, held);}
+    return add.call(this, type, listener, options);
+  };
+  AbortSignal.prototype.removeEventListener = function(type, listener, options) {
+    if (type === 'abort') listeners.get(this)?.delete(listener);
+    return remove.call(this, type, listener, options);
+  };
+  try {
+    for (const fail of [false, true]) {
+      const input = new AbortController();
+      const s = session(undefined, {request: async () => {if (fail) throw new Error('offline'); return page();}});
+      if (fail) await assert.rejects(s.fetchPage(0, 1, input.signal), /offline/);
+      else assert.equal((await s.fetchPage(0, 1, input.signal)).items.length, 1);
+      assert.equal(listeners.get(input.signal)?.size, 0, 'the completed page detaches its caller listener');
+      assert.ok([...listeners.values()].every(value => value.size === 0), 'session and composed listeners are disposed');
+      s.retire(); input.abort();
+    }
+  } finally {
+    AbortSignal.prototype.addEventListener = add; AbortSignal.prototype.removeEventListener = remove;
+    Object.defineProperty(AbortSignal, 'any', originalAny);
+  }
+});
