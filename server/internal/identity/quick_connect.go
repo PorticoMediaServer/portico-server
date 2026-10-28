@@ -288,6 +288,12 @@ func (s *Service) DecideQuick(ctx context.Context, p Principal, id, code, decisi
 		// Staging merge (lead quick-connect x be/member M9): the TV's family is
 		// issued later, in PollQuick, so the approver's Portico admission travels
 		// in the sealed approval and is inherited there.
+		// The new device continues the approving session's PIN-attempt lineage,
+		// so pairing never starts a fresh PIN budget (IDENT-04).
+		lineage, e := familyPINLineageTx(ctx, tx, approver)
+		if e != nil {
+			return e
+		}
 		admitted, signer := porticoAdmissionTx(ctx, tx, approver)
 		until := ""
 		if admitted {
@@ -295,7 +301,7 @@ func (s *Service) DecideQuick(ctx context.Context, p Principal, id, code, decisi
 				return e
 			}
 		}
-		cipher, e = s.sealSetup(quickApproval{AccountID: p.AccountID, ProfileID: p.ProfileID, Epoch: p.Epoch, PINRevision: pinRevision, PorticoAdmitted: admitted, PorticoSigner: signer, PorticoUntil: until}, "quick-approval:"+id)
+		cipher, e = s.sealSetup(quickApproval{AccountID: p.AccountID, ProfileID: p.ProfileID, Epoch: p.Epoch, PINRevision: pinRevision, PINLineage: lineage, PorticoAdmitted: admitted, PorticoSigner: signer, PorticoUntil: until}, "quick-approval:"+id)
 		if e != nil {
 			return e
 		}
@@ -565,6 +571,9 @@ type quickApproval struct {
 	ProfileID    string `json:"profileId"`
 	Epoch        int    `json:"epoch"`
 	PINRevision  int64  `json:"pinRevision"`
+	// PINLineage is the approving session's PIN-attempt lineage, which the
+	// device's session continues.
+	PINLineage string `json:"pinLineage"`
 	// PorticoAdmitted: the approving session was admitted through Portico
 	// sign-in (be/member M9), so the device's family inherits that admission.
 	PorticoAdmitted bool `json:"porticoAdmitted,omitempty"`
@@ -598,6 +607,10 @@ func (s *Service) issueQuickTx(ctx context.Context, tx *sql.Tx, id string, ciphe
 	if e != nil {
 		return Envelope{}, e
 	}
+	if a.PINLineage == "" {
+		return Envelope{}, &SetupProtocolError{Code: "access_denied"}
+	}
+	ctx = withPINLineage(ctx, a.PINLineage)
 	// The TV's installation was captured at create time. Issuing against it —
 	// rather than whatever the collect request happens to carry — is what
 	// keeps the grant renewable when the collect arrives without headers. An

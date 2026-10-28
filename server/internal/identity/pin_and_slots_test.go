@@ -138,7 +138,7 @@ func TestWrongPINsDoNotLockOtherDevicesOut(t *testing.T) {
 	if err := attempt(25, "4821"); err != nil {
 		t.Fatalf("wrong PINs on other devices blocked the right PIN: %v", err)
 	}
-	if _, err := s.db.Exec(`UPDATE direct_profile_pin_attempts SET locked_until_ms=? WHERE profile_id=? AND device_id=?`, time.Now().Add(time.Minute).UnixMilli(), profile.ID, firstDevice); err != nil {
+	if _, err := s.db.Exec(`UPDATE direct_profile_pin_attempts SET locked_until_ms=? WHERE profile_id=? AND lineage_id=(SELECT id FROM identity_pin_lineages WHERE origin_device_id=?)`, time.Now().Add(time.Minute).UnixMilli(), profile.ID, firstDevice); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := s.SelectDirectProfile(ctx, firstToken, profile.ID, DirectSelection{PIN: "4821"}); !errors.Is(err, ErrProfileLocked) {

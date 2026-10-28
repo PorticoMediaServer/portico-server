@@ -1835,9 +1835,9 @@ direct_memberships.max_profiles
 direct_memberships.notes
 direct_memberships.revision
 direct_memberships.role
-direct_profile_pin_attempts.device_id
 direct_profile_pin_attempts.failed_attempts
 direct_profile_pin_attempts.last_failed_ms
+direct_profile_pin_attempts.lineage_id
 direct_profile_pin_attempts.locked_until_ms
 direct_profile_pin_attempts.profile_id
 direct_profile_trust.account_id
@@ -2236,6 +2236,8 @@ identity_factor_challenges.account_id
 identity_factor_challenges.attempts
 identity_factor_challenges.expires_at
 identity_factor_challenges.token_hash
+identity_family_pin_lineages.family_id
+identity_family_pin_lineages.lineage_id
 identity_managed_route.enabled
 identity_managed_route.problem
 identity_managed_route.revision
@@ -2306,6 +2308,10 @@ identity_owner_completions.switch_count_signature
 identity_owner_completions.token_generation
 identity_owner_completions.token_hash
 identity_owner_completions.transaction_id
+identity_pin_lineages.account_id
+identity_pin_lineages.created_at
+identity_pin_lineages.id
+identity_pin_lineages.origin_device_id
 identity_recovery_codes.account_id
 identity_recovery_codes.code_hash
 identity_recovery_codes.used

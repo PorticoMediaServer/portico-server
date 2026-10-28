@@ -223,10 +223,10 @@ func TestDirectPINRevisionRevokesFamiliesAndInstallationTrust(t *testing.T) {
 		t.Fatal("wrong PIN accepted", e)
 	}
 	var attempts int
-	if e = db.QueryRow(`SELECT failed_attempts FROM direct_profile_pin_attempts WHERE profile_id=? AND device_id=?`, child.ID, login.DeviceID).Scan(&attempts); e != nil || attempts != 1 {
+	if e = db.QueryRow(`SELECT failed_attempts FROM direct_profile_pin_attempts WHERE profile_id=? AND lineage_id=(SELECT id FROM identity_pin_lineages WHERE origin_device_id=?)`, child.ID, login.DeviceID).Scan(&attempts); e != nil || attempts != 1 {
 		t.Fatal("failed PIN attempt was rolled back", e)
 	}
-	if _, e = db.Exec(`UPDATE direct_profile_pin_attempts SET locked_until_ms=0 WHERE profile_id=? AND device_id=?`, child.ID, login.DeviceID); e != nil {
+	if _, e = db.Exec(`UPDATE direct_profile_pin_attempts SET locked_until_ms=0 WHERE profile_id=? AND lineage_id=(SELECT id FROM identity_pin_lineages WHERE origin_device_id=?)`, child.ID, login.DeviceID); e != nil {
 		t.Fatal(e)
 	}
 	selected, e := s.SelectDirectProfile(ctx, login.AccountToken, child.ID, DirectSelection{PIN: pin, Trust: true, InstallationID: "installation"})

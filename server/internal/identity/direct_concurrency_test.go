@@ -91,7 +91,7 @@ func TestDirectPINFailureDebtSurvivesServiceReconstruction(t *testing.T) {
 	}
 	// Keep a deterministic future debt horizon so a slow test host cannot make
 	// the first two-second delay expire while reopening the database.
-	if _, e = db.Exec(`UPDATE direct_profile_pin_attempts SET locked_until_ms=4102444800000 WHERE profile_id=? AND device_id=?`, child.ID, login.DeviceID); e != nil {
+	if _, e = db.Exec(`UPDATE direct_profile_pin_attempts SET locked_until_ms=4102444800000 WHERE profile_id=? AND lineage_id=(SELECT id FROM identity_pin_lineages WHERE origin_device_id=?)`, child.ID, login.DeviceID); e != nil {
 		t.Fatal(e)
 	}
 	if e = db.Close(); e != nil {
@@ -110,7 +110,7 @@ func TestDirectPINFailureDebtSurvivesServiceReconstruction(t *testing.T) {
 		t.Fatal("restart cleared PIN debt", e)
 	}
 	var attempts int
-	if e = reopened.QueryRow(`SELECT failed_attempts FROM direct_profile_pin_attempts WHERE profile_id=? AND device_id=?`, child.ID, login.DeviceID).Scan(&attempts); e != nil || attempts != 1 {
+	if e = reopened.QueryRow(`SELECT failed_attempts FROM direct_profile_pin_attempts WHERE profile_id=? AND lineage_id=(SELECT id FROM identity_pin_lineages WHERE origin_device_id=?)`, child.ID, login.DeviceID).Scan(&attempts); e != nil || attempts != 1 {
 		t.Fatal("durable debt changed", attempts, e)
 	}
 }
@@ -132,7 +132,7 @@ func TestPINLockoutIsScopedToTheDeviceAndEscalates(t *testing.T) {
 		t.Fatal("independent device sign-in", err)
 	}
 	for attempt := 1; attempt <= 15; attempt++ {
-		if _, err = db.Exec(`UPDATE direct_profile_pin_attempts SET locked_until_ms=0 WHERE profile_id=? AND device_id=?`, child.ID, first.DeviceID); err != nil {
+		if _, err = db.Exec(`UPDATE direct_profile_pin_attempts SET locked_until_ms=0 WHERE profile_id=? AND lineage_id=(SELECT id FROM identity_pin_lineages WHERE origin_device_id=?)`, child.ID, first.DeviceID); err != nil {
 			t.Fatal(err)
 		}
 		if _, err = s.SelectDirectProfile(ctx, first.AccountToken, child.ID, DirectSelection{PIN: "9999"}); !errors.Is(err, ErrProfilePIN) {
@@ -140,7 +140,7 @@ func TestPINLockoutIsScopedToTheDeviceAndEscalates(t *testing.T) {
 		}
 	}
 	var firstDebt, firstUntil, lastFailed int64
-	if err = db.QueryRow(`SELECT failed_attempts,locked_until_ms,last_failed_ms FROM direct_profile_pin_attempts WHERE profile_id=? AND device_id=?`, child.ID, first.DeviceID).Scan(&firstDebt, &firstUntil, &lastFailed); err != nil || firstDebt != 15 || firstUntil-lastFailed != 3600000 {
+	if err = db.QueryRow(`SELECT failed_attempts,locked_until_ms,last_failed_ms FROM direct_profile_pin_attempts WHERE profile_id=? AND lineage_id=(SELECT id FROM identity_pin_lineages WHERE origin_device_id=?)`, child.ID, first.DeviceID).Scan(&firstDebt, &firstUntil, &lastFailed); err != nil || firstDebt != 15 || firstUntil-lastFailed != 3600000 {
 		t.Fatalf("first-device escalation: attempts=%d delay=%d err=%v", firstDebt, firstUntil-lastFailed, err)
 	}
 	if _, err = s.SelectDirectProfile(ctx, first.AccountToken, child.ID, DirectSelection{PIN: pin}); !errors.Is(err, ErrProfileLocked) {

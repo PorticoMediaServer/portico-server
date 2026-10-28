@@ -8,11 +8,14 @@ import (
 	"portico.local/server/internal/dbwork"
 )
 
-// PruneSessionHistory removes expired encrypted replay payloads and retired
-// access tokens in bounded, lowest-priority writes. Refresh predecessor hashes
+// PruneSessionHistory removes expired encrypted replay payloads, retired
+// access tokens, lapsed PIN debt and unused PIN lineages in bounded,
+// lowest-priority writes. Refresh predecessor hashes
 // remain while a family is live so reuse still revokes it after receipt expiry.
 func (s *Service) PruneSessionHistory(ctx context.Context) (int64, error) {
 	now := time.Now().UTC().Format(time.RFC3339)
+	staleDebt := time.Now().Add(-24 * time.Hour).UnixMilli()
+	unusedLineage := time.Now().Add(-24 * time.Hour).UTC().Format(time.RFC3339)
 	tasks := []struct {
 		pending string
 		remove  string
@@ -37,6 +40,19 @@ func (s *Service) PruneSessionHistory(ctx context.Context) (int64, error) {
 			 SELECT p.predecessor_hash FROM authorization_session_families f INDEXED BY authorization_families_horizon JOIN identity_refresh_predecessors p ON p.family_id=f.id WHERE f.authorization_horizon<=?
 			 ) LIMIT 128)`,
 			[]any{now},
+		},
+		{
+			// PIN debt older than a day no longer counts (SelectDirectProfile).
+			`SELECT EXISTS(SELECT 1 FROM direct_profile_pin_attempts WHERE last_failed_ms<? LIMIT 1)`,
+			`DELETE FROM direct_profile_pin_attempts WHERE rowid IN (SELECT rowid FROM direct_profile_pin_attempts WHERE last_failed_ms<? LIMIT 128)`,
+			[]any{staleDebt},
+		},
+		{
+			// A lineage no session continues and that owes nothing. A day's
+			// margin outlives any Quick Connect approval that names it.
+			`SELECT EXISTS(SELECT 1 FROM identity_pin_lineages l WHERE l.created_at<=? AND NOT EXISTS(SELECT 1 FROM identity_family_pin_lineages f WHERE f.lineage_id=l.id) AND NOT EXISTS(SELECT 1 FROM direct_profile_pin_attempts a WHERE a.lineage_id=l.id) LIMIT 1)`,
+			`DELETE FROM identity_pin_lineages WHERE id IN (SELECT l.id FROM identity_pin_lineages l WHERE l.created_at<=? AND NOT EXISTS(SELECT 1 FROM identity_family_pin_lineages f WHERE f.lineage_id=l.id) AND NOT EXISTS(SELECT 1 FROM direct_profile_pin_attempts a WHERE a.lineage_id=l.id) LIMIT 128)`,
+			[]any{unusedLineage},
 		},
 	}
 	var total int64

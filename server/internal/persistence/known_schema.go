@@ -302,7 +302,7 @@ index detail_jobs_due
 index direct_memberships_people_role
 index direct_one_owner
 index direct_primary_profile
-index direct_profile_pin_attempts_device
+index direct_profile_pin_attempts_lineage
 index direct_profile_trust_account
 index direct_profiles_account
 index direct_profiles_broadcast
@@ -353,6 +353,7 @@ index identity_devices_people_name
 index identity_devices_recent
 index identity_factor_challenge_expiry
 index identity_factor_challenges_account_id_fk
+index identity_family_pin_lineages_lineage
 index identity_move_codes_move_id_fk
 index identity_one_move
 index identity_owner_completions_move_id_fk
@@ -1089,12 +1090,14 @@ table identity_credential_state
 table identity_device_families
 table identity_devices
 table identity_factor_challenges
+table identity_family_pin_lineages
 table identity_managed_route
 table identity_move_codes
 table identity_move_link_tickets
 table identity_move_waiting
 table identity_moves
 table identity_owner_completions
+table identity_pin_lineages
 table identity_recovery_codes
 table identity_refresh_credentials
 table identity_refresh_predecessors
@@ -2227,6 +2230,8 @@ trigger identity_devices_account_removed
 trigger identity_devices_devices_list_delete
 trigger identity_devices_devices_list_insert
 trigger identity_devices_devices_list_update
+trigger identity_family_pin_lineage_account
+trigger identity_family_pin_lineage_fixed
 trigger identity_kind_insert_local_fence
 trigger identity_kind_insert_portico_fence
 trigger identity_kind_local_fence

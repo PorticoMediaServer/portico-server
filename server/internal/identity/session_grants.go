@@ -70,6 +70,12 @@ func (s *Service) IssueCastTargetTx(ctx context.Context, tx *sql.Tx, authority, 
 	if err != nil {
 		return Envelope{}, err
 	}
+	if pairingFamily != "" {
+		// The screen continues the pairing session's PIN-attempt lineage.
+		if ctx, err = withPINLineageOf(ctx, tx, pairingFamily); err != nil {
+			return Envelope{}, err
+		}
+	}
 	out, err := s.IssueTx(WithVouchedDevice(ctx), tx, account, profile, authority, TierMember, epoch, horizon)
 	if err != nil {
 		return Envelope{}, err
