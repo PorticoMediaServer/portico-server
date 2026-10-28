@@ -25,7 +25,7 @@ import {OwnerApprovalPage} from './OwnerApprovalPage';
 import {SetupApprovalPage} from './SetupApprovalPage';
 import {HostedSetupApproval} from '../screens/setup/HostedSetupApproval';
 
-type Context = {account: ServicesAccount; bootstrap: ServicesBootstrap; invalidContinuation: boolean; providerFailure?: 'google' | 'apple' | 'unknown'; join?: JoinLink; plainShortJoin?: boolean; identityTransaction?: string};
+type Context = {providerReturn?: boolean; account: ServicesAccount; bootstrap: ServicesBootstrap; invalidContinuation: boolean; providerFailure?: 'google' | 'apple' | 'unknown'; join?: JoinLink; plainShortJoin?: boolean; identityTransaction?: string};
 const ProviderFailureContext = createContext<Context['providerFailure']>(undefined);
 const root = createRootRouteWithContext<Context>()({component: ServicesRoot, notFoundComponent: InvalidLink});
 const home = createRoute({getParentRoute: () => root, path: '/', component: HomeRoute});
@@ -46,14 +46,14 @@ function makeRouter(context: Context) {
   return createRouter({routeTree: root.addChildren([home, workspace, device, reset, resetPassword, verify, claim, invitation]), context});
 }
 // This router's types stay local. The server app remains the only global TanStack Register.
-export function ServicesApp({capture, invalidContinuation, join, plainShortJoin, signIn, owner, identityTransaction, providerFailure}: {capture?: LinkCapture; invalidContinuation?: boolean; join?: JoinLink; plainShortJoin?: boolean; signIn?: SignInCapture; owner?: HostedOwnerClaimCapture; identityTransaction?: string; providerFailure?: 'google' | 'apple' | 'unknown'} = {}) {
+export function ServicesApp({capture, invalidContinuation, join, plainShortJoin, signIn, owner, identityTransaction, providerFailure, providerReturn}: {capture?: LinkCapture; invalidContinuation?: boolean; join?: JoinLink; plainShortJoin?: boolean; signIn?: SignInCapture; owner?: HostedOwnerClaimCapture; identityTransaction?: string; providerFailure?: 'google' | 'apple' | 'unknown'; providerReturn?: boolean} = {}) {
   // main.tsx captures and scrubs intake once, before React. A discarded render
   // must not reread a scrubbed URL or allocate a terminal bootstrap controller.
   const create = useCallback(() => {
     const account = servicesAccount(), bootstrap = new ServicesBootstrap(account, servicesLinkStore, capture, {origin: location.origin, capture: signIn},
       location.pathname === '/claim' ? {origin: location.origin, capture: owner} : undefined);
-    return {account, bootstrap, router: makeRouter({account, bootstrap, invalidContinuation: invalidContinuation === true, join, plainShortJoin, identityTransaction, providerFailure}), dispose: () => bootstrap.dispose()};
-  }, [capture, invalidContinuation, join, plainShortJoin, signIn, owner, identityTransaction, providerFailure]);
+    return {account, bootstrap, router: makeRouter({account, bootstrap, invalidContinuation: invalidContinuation === true, join, plainShortJoin, identityTransaction, providerFailure, providerReturn}), dispose: () => bootstrap.dispose()};
+  }, [capture, invalidContinuation, join, plainShortJoin, signIn, owner, identityTransaction, providerFailure, providerReturn]);
   const bound = useAccountResource(create);
   return <><IconSprite />{bound ? <MountedServicesRouter key={bound.id} value={bound.value} /> : <ServicesAuthStage><></></ServicesAuthStage>}</>;
 }
@@ -62,7 +62,7 @@ function MountedServicesRouter({value}: {value: {bootstrap: ServicesBootstrap; r
   return <RouterProvider router={value.router} />;
 }
 function ServicesRoot() {
-  const {account, bootstrap, invalidContinuation, providerFailure: capturedFailure} = root.useRouteContext<ServicesRouter>();
+  const {account, bootstrap, invalidContinuation, providerFailure: capturedFailure, providerReturn} = root.useRouteContext<ServicesRouter>();
   const session = useSyncExternalStore(account.service.subscribe, account.service.getSnapshot).session;
   const state = useSyncExternalStore(bootstrap.subscribe, bootstrap.getSnapshot);
   const failureOpening = useRef<{familyId?: string; retired: boolean} | undefined>(undefined);
@@ -75,7 +75,8 @@ function ServicesRoot() {
   if (state.phase === 'restoring') return <ServicesAuthStage><></></ServicesAuthStage>;
   // A signed-out account is a resolved opening too. Public email links and the
   // sign-in shell must retire the same static first paint as the server app.
-  return <ProviderFailureContext.Provider value={providerFailure}><DocumentBootReady>{state.phase === 'error'
+  const waitingForAuth = providerReturn || !session && (location.pathname === '/' || location.pathname === '/account');
+  return <ProviderFailureContext.Provider value={providerFailure}><DocumentBootReady ready={!waitingForAuth || state.phase === 'error' || Boolean(providerFailure && session) || invalidContinuation || state.invalidSignIn || state.invalidOwner}>{state.phase === 'error'
     ? <StateView title={t('next.states.pageFailed')} body={t('next.states.pageFailedBody')}
       primary={{id: 'retry', label: t('next.states.tryAgain'), onPress: () => { void bootstrap.start(); }}} />
     : providerFailure && session ? <ServicesAuthStage variant="state"><ServicesHeading>{t('auth.welcomeHome')}</ServicesHeading><ServicesNotice tone="error">{providerFailure === 'unknown' ? t('web.link.invalid') : t('services.provider.stopped', {provider: t(providerFailure === 'apple' ? 'accounts.provider.apple' : 'accounts.provider.google')})}</ServicesNotice><ServicesActions><Button variant="primary" onClick={() => location.assign(location.pathname === '/account' ? '/account?tab=security' : '/')}>{t('action.continue')}</Button></ServicesActions></ServicesAuthStage>
@@ -133,8 +134,8 @@ function JoinRoute() {
 }
 function InvalidLink() {
   const {t} = servicesI18n();
-  return <ServicesAuthStage variant="reset"><ServicesHeading>{t('auth.welcomeHome')}</ServicesHeading><ServicesNotice>{t('web.link.invalid')}</ServicesNotice>
-    <ServicesActions><Button onClick={() => location.assign('/')}>{t('web.link.backToPortico')}</Button></ServicesActions></ServicesAuthStage>;
+  return <DocumentBootReady><ServicesAuthStage variant="reset"><ServicesHeading>{t('auth.welcomeHome')}</ServicesHeading><ServicesNotice>{t('web.link.invalid')}</ServicesNotice>
+    <ServicesActions><Button onClick={() => location.assign('/')}>{t('web.link.backToPortico')}</Button></ServicesActions></ServicesAuthStage></DocumentBootReady>;
 }
 export {InvalidLink as ServicesInvalidLink};
 function ClaimStart() {

@@ -1,6 +1,7 @@
 import {useLayoutEffect, useCallback, useMemo, useRef, useState} from 'react';
 import type {HostedSession} from '@core/index.ts';
 import {parseJoinLink, type JoinLink} from '@core/join-link.ts';
+import {DocumentBootReady} from '../shell/DocumentBootReady';
 import {StateView} from '../kit/states';
 import {ServicesAuthStage, HostedError, ServicesNotice} from '../kit/accounts/ServicesAuth';
 import {ServicesHeader, ServicesStart} from '../kit/accounts/ServicesWorkspace';
@@ -78,18 +79,18 @@ function BoundHome({account, session}: {account: ServicesAccount; session: Omit<
   const sourceCurrent = useCallback(() => Boolean(loaded && loaded.api === api && loaded.attempt === attempt && loaded.active && live.current === loaded && !loaded.controller.signal.aborted), [loaded, api, attempt]);
   const servers = sourceCurrent() ? loaded?.value : undefined;
   const localCurrent=useCallback(()=>{const current=account.service.getSnapshot().session;return Boolean(sourceCurrent()&&current?.familyId&&current.account.id===accountId&&current.familyId===familyId);},[account,accountId,familyId,sourceCurrent]);
-  if (error) return <StateView title={t('next.states.pageFailed')} body={t('next.states.pageFailedBody')}
-    primary={{id: 'retry', label: t('next.states.tryAgain'), onPress: () => retry(value => value + 1)}} />;
+  if (error) return <DocumentBootReady><StateView title={t('next.states.pageFailed')} body={t('next.states.pageFailedBody')}
+    primary={{id: 'retry', label: t('next.states.tryAgain'), onPress: () => retry(value => value + 1)}} /></DocumentBootReady>;
   if (!servers) return <ServicesAuthStage><></></ServicesAuthStage>;
   if(intent==='local')return <ServicesLocalServerPage current={localCurrent} onBack={()=>setIntent(undefined)} />;
-  if(!servers.items.length||intent==='join'||intent==='setup')return <Start account={account} session={session} servers={servers} sourceCurrent={sourceCurrent} initialSection={intent} reveal={reveal} />;
+  if(!servers.items.length||intent==='join'||intent==='setup')return <DocumentBootReady><Start account={account} session={session} servers={servers} sourceCurrent={sourceCurrent} initialSection={intent} reveal={reveal} /></DocumentBootReady>;
   const name=session.account.displayName||session.account.username;
   const header=<ServicesHeader notifications={false} avatar={<ServerlessAccountMenu username={session.account.username} name={name} t={t}
     onAccount={()=>location.assign('/account')} onJoin={()=>setIntent('join')} onSetup={()=>setIntent('setup')} onApps={()=>location.assign(distributionPage)}
     onHelp={()=>window.open('https://getportico.tv/docs/','_blank','noopener,noreferrer')}
     onSignOut={()=>{void account.service.logoutIfCurrent(accountIdentity(session)).catch(setError);}} />} />;
-  return <ServicesDirectoryPage account={account} session={session} api={api} initial={servers} sourceCurrent={sourceCurrent} header={header}
-    onEmpty={reload} onJoin={()=>setIntent('join')} onSetup={()=>setIntent('setup')} onLocal={()=>setIntent('local')} />;
+  return <DocumentBootReady><ServicesDirectoryPage account={account} session={session} api={api} initial={servers} sourceCurrent={sourceCurrent} header={header}
+    onEmpty={reload} onJoin={()=>setIntent('join')} onSetup={()=>setIntent('setup')} onLocal={()=>setIntent('local')} /></DocumentBootReady>;
 }
 function Start({account, session, servers, sourceCurrent, initialSection, reveal = 0}: {account: ServicesAccount; session: Omit<HostedSession, 'refreshToken'>; servers: WorkspaceServers; sourceCurrent: () => boolean; initialSection?: 'join'|'setup'; reveal?: number}) {
   const {t} = useMemo(servicesI18n, []);

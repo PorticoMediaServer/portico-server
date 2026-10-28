@@ -9,6 +9,8 @@ import type {ServicesAccount} from './session';
 import {servicesI18n} from './i18n';
 import styles from './services.module.css';
 import signInStyles from './services-signin-r46.module.css';
+import {DocumentBootReady} from '../shell/DocumentBootReady';
+import {ProviderLoading} from './ProviderLoading';
 
 type Props = {providerFailure?: 'google' | 'apple' | 'unknown'; account: ServicesAccount; onSignedIn: (gesture?: boolean) => void; initialMode?: 'signin' | 'create' | 'forgot'; initialUsername?: string; embedded?: boolean; invitation?: boolean; heading?: ReactNode; lead?: ReactNode; before?: ReactNode; after?: ReactNode};
 export function ServicesAuthForm(props: Props) {
@@ -16,7 +18,7 @@ export function ServicesAuthForm(props: Props) {
   const complete = useRef(props.onSignedIn); complete.current = props.onSignedIn;
   const create = useCallback(() => new ServicesAuthFlow(account, gesture => complete.current(gesture), initialMode, undefined, providerFailure), [account, initialMode, providerFailure]);
   const bound = useAccountResource(create);
-  if (!bound) return props.embedded ? null : <ServicesAuthStage><></></ServicesAuthStage>;
+  if (!bound) return props.embedded ? null : <ProviderLoading />;
   return <MountedAuthForm key={bound.id} {...props} flow={bound.value} />;
 }
 
@@ -38,11 +40,17 @@ function MountedAuthForm({account, flow, initialUsername = '', embedded = false,
     return () => clearInterval(timer);
   }, [state.retryAt]);
   useLayoutEffect(() => { void flow.initialize(); }, [flow]);
+  useEffect(() => {
+    const returned = (event: PageTransitionEvent) => {if (event.persisted) flow.resumeProviderNavigation();};
+    globalThis.addEventListener?.('pageshow', returned);
+    return () => globalThis.removeEventListener?.('pageshow', returned);
+  }, [flow]);
   useEffect(() => { setPassword(''); setCode(''); if (state.mode === 'provider') setName(state.suggestedName ?? ''); }, [state.mode, state.suggestedName]);
   const submit = (work: () => Promise<void>) => (event: FormEvent) => { event.preventDefault(); void work(); };
   const retrySeconds = Math.max(0, Math.ceil((state.retryAt - clock) / 1000));
   const retryLabel = t('services.signin.tryIn', {time: `${Math.floor(retrySeconds / 60)}:${String(retrySeconds % 60).padStart(2, '0')}`});
   const busy = state.busy, blocked = busy || retrySeconds > 0, mode = state.mode;
+  if (state.initializing || state.providerNavigating) return embedded ? null : <ProviderLoading />;
   // Closed Hosted codes that name a drawn field or state, so their sentence goes
   // there instead of the generic notice. Anything else keeps the generic notice.
   const errorCode = (state.error as {code?: string} | undefined)?.code;
@@ -132,5 +140,5 @@ function MountedAuthForm({account, flow, initialUsername = '', embedded = false,
       <ServicesActions><Button variant="primary" loading={busy} disabled={!readyAccount} onClick={() => void flow.continue()}>{t('action.continue')}</Button></ServicesActions><ServicesProviderReturnHint /></>}
     {mode === 'signin' && after}
   </>;
-  return invitation && mode === 'signin' ? <ServicesInvitationCredentials>{content}</ServicesInvitationCredentials> : embedded ? content : <ServicesAuthStage legal={mode !== 'create' && mode !== 'provider' && mode !== 'verify'} variant={mode === 'provider' ? 'providerOnboarding' : mode === 'create' ? 'signup' : mode === 'verify' ? 'reset' : mode === 'ready' ? 'state' : 'auth'}>{content}</ServicesAuthStage>;
+  return <DocumentBootReady>{invitation && mode === 'signin' ? <ServicesInvitationCredentials>{content}</ServicesInvitationCredentials> : embedded ? content : <ServicesAuthStage legal={mode !== 'create' && mode !== 'provider' && mode !== 'verify'} variant={mode === 'provider' ? 'providerOnboarding' : mode === 'create' ? 'signup' : mode === 'verify' ? 'reset' : mode === 'ready' ? 'state' : 'auth'}>{content}</ServicesAuthStage>}</DocumentBootReady>;
 }

@@ -13,6 +13,16 @@ export async function checkExistingProviderReturns({browser, webRoot, origin = '
     const session={account:{id:'existing-account',username:'existing_user',displayName:'Existing user'},familyId,accessToken:'synthetic-access-token',expiresAt:new Date(Date.now()+900000).toISOString(),refreshExpiresAt:new Date(Date.now()+90*86400000).toISOString()};
     let completed=0;const errors=[];page.on('pageerror',e=>errors.push(e.message));
     try {
+      await context.addInitScript(() => {
+        const pictures = new Set(), paints = [];
+        window.__providerReturnPaints = paints;
+        const sample = () => {
+          const boot = document.getElementById('boot');if (boot) pictures.add(boot);
+          const paint = {boot: Boolean(boot), bootLeaving: boot?.hasAttribute('data-leaving') ?? false, signIn: Boolean(document.querySelector('input[name=password]')), pictures: pictures.size, loadingPictures: document.querySelectorAll('#boot, [data-provider-loading]').length, home: Boolean(document.querySelector('#join'))};
+          if (JSON.stringify(paints.at(-1)) !== JSON.stringify(paint)) paints.push(paint);
+        };
+        new MutationObserver(sample).observe(document, {subtree:true,childList:true,attributes:true});sample();
+      });
       await context.route(origin+'/**',async route=>{
         const request=route.request(),url=new URL(request.url());
         const json=body=>route.fulfill({contentType:'application/json',body:JSON.stringify(body),headers:{'X-Portico-CSRF-Cookie':'__Host-portico_refresh_csrf'}});
@@ -32,9 +42,13 @@ export async function checkExistingProviderReturns({browser, webRoot, origin = '
         const record=JSON.parse(localStorage.getItem('portico.account.v1:'+origin)||'null');return record?.active?.session?.familyId===familyId;
       },{origin,familyId},{timeout:10000});
       await page.locator('#join').waitFor({state:'visible'});
+      const paints = await page.evaluate(() => window.__providerReturnPaints);
+      assert.equal(paints.some(p => p.signIn), false, 'successful callback must never commit the signed-out form');
+      assert.equal(Math.max(...paints.map(p => p.pictures)),1,'one static boot node for the whole return');
+      assert.equal(paints.some(p => p.loadingPictures > 1),false,'no second loading picture behind the static boot');
       assert.equal(completed,1);assert.equal(new URL(page.url()).pathname,'/');assert.equal(new URL(page.url()).search,'');
       assert.equal(await page.locator('input[name=username]').count(),0);assert.deepEqual(errors,[]);
-      results.push({provider,status,completed,canonicalFamily:true});
+      results.push({provider,status,completed,canonicalFamily:true,paints});
     }finally{await context.close();}
   }
   return results;

@@ -5,7 +5,7 @@ import {routeBody, routePath} from '../../../packages/contracts/src/hosted/route
 import {accountIdentity, currentAccountWork, sameAccount, type AccountIdentity, type ServicesAccount} from './session';
 
 export type AuthMode = 'signin' | 'create' | 'verify' | 'forgot' | 'sent' | 'factor' | 'recovery' | 'provider' | 'provider-stopped' | 'ready';
-export type AuthSnapshot = Readonly<{mode: AuthMode; options?: IdentityOptions; optionsFailed?: boolean; registration?: Registration; provider?: IdentityProvider; suggestedName?: string; verifiedEmail?: string; busy: boolean; retryAt: number; resends: number; error?: unknown}>;
+export type AuthSnapshot = Readonly<{initializing: boolean; providerNavigating?: boolean; mode: AuthMode; options?: IdentityOptions; optionsFailed?: boolean; registration?: Registration; provider?: IdentityProvider; suggestedName?: string; verifiedEmail?: string; busy: boolean; retryAt: number; resends: number; error?: unknown}>;
 type InitialAuthContinuation = Readonly<{mode: AuthMode; registration?: Registration; transaction?: IdentityTransaction}>;
 /** Local form controller. The singleton CredentialSessionService owns every account session. */
 export class ServicesAuthFlow {
@@ -23,7 +23,7 @@ export class ServicesAuthFlow {
   private ids = new AccountAttemptIds(async () => crypto.randomUUID());
   constructor(private readonly account: ServicesAccount, private readonly signedIn: (gesture?: boolean) => void,
     mode: 'signin' | 'create' | 'forgot' = 'signin', private readonly redirect = (url: string) => location.assign(url), private readonly providerFailure?: IdentityProvider | 'unknown') {
-    this.state = {mode, busy: false, retryAt: 0, resends: 0};
+    this.state = {initializing: true, mode, busy: false, retryAt: 0, resends: 0};
   }
   getSnapshot = () => this.state;
   /** Presentation reads the canonical session only while its accepted family is current. */
@@ -66,7 +66,7 @@ export class ServicesAuthFlow {
     return this.initialize();
   }
   private async load() {
-    await this.run(async signal => {
+    try { await this.run(async signal => {
       let options: IdentityOptions;
       try {
         if (!this.providerFailure && !this.initialContinuation && this.state.mode === 'signin') {
@@ -117,7 +117,7 @@ export class ServicesAuthFlow {
       }
       if (original.registration && ['contact_pending', 'verified'].includes(original.registration.status))
         this.publish({mode: 'verify', registration: original.registration});
-    });
+    }); } finally {this.publish({initializing: false});}
   }
   private async run(work: (signal: AbortSignal) => Promise<void>) {
     if (this.disposed || this.operation || this.state.retryAt > Date.now()) return;
@@ -147,9 +147,14 @@ export class ServicesAuthFlow {
     // PKCE and nonce, then redirects; no fetch, CSRF metadata or saved session can
     // prevent this first-party navigation from reaching the provider.
     return this.run(async signal => {
-      if (!signal.aborted) this.redirect(this.account.api.origin + '/auth/sso/' + provider + '/start');
+      if (!signal.aborted) {
+        this.publish({providerNavigating: true});
+        try {this.redirect(this.account.api.origin + '/auth/sso/' + provider + '/start');}
+        catch (error) {this.publish({providerNavigating: false});throw error;}
+      }
     });
   }
+  resumeProviderNavigation() {if (this.state.providerNavigating) this.publish({providerNavigating: false});}
   cancelProvider() {
     return this.run(async signal => {
       await this.account.client.request(routePath('identity_cancel'), 'POST', undefined, signal);

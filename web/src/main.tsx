@@ -60,7 +60,7 @@ async function start() {
     const unmount = () => {try { bootstrap?.dispose(); } finally { root?.unmount(); root = undefined; }};
     try {
       root = createRoot(document.getElementById('root')!);
-      root.render(<DocumentBootReady ready={Boolean(securityEntry || failure || !AppComponent)}>{securityEntry ? <><IconSprite/><LastResortBoundary><AccountSecurityReturnEntry arrival={securityEntry}/></LastResortBoundary></> : failure
+      root.render(<DocumentBootReady ready={!securityEntry && Boolean(failure || !AppComponent)}>{securityEntry ? <><IconSprite/><LastResortBoundary><AccountSecurityReturnEntry arrival={securityEntry}/></LastResortBoundary></> : failure
         ? <><IconSprite /><LastResortBoundary><StartupFailure error={failure.error} /></LastResortBoundary></>
         : AppComponent ? <AppComponent bootstrap={bootstrap} takeAccountReturn={takeOrdinaryReturn} takeAccountMove={accountArrival.takeAccountMove} /> : <><IconSprite/><StartupFailure error={new Error('The app did not initialize.')}/></>}</DocumentBootReady>);
       return unmount;

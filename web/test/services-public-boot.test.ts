@@ -66,7 +66,7 @@ async function opening(path: string, savedSession: boolean) {
   const root = {useRouteContext: () => ({account, bootstrap, invalidContinuation: entry.invalidContinuation}), addChildren() {return root;}};
   await componentModule(new URL('../src/services/ServicesApp.tsx', import.meta.url), {
     react: h.react, '../shell/DocumentBootReady': {DocumentBootReady}, './i18n': {servicesI18n}, './LinkPages': pages,
-    '../kit/accounts/ServicesAuth': stage, './AuthForm': {ServicesAuthForm: 'SignInForm'}, './DevicePage': {DevicePage: 'DevicePage'},
+    '../kit/accounts/ServicesAuth': stage, './AuthForm': {ServicesAuthForm: () => h.react.createElement(DocumentBootReady, {}, h.react.createElement('SignInForm'))}, './DevicePage': {DevicePage: 'DevicePage'},
     '../kit/states': {StateView: 'StartupError'},
     '@tanstack/react-router': {
       createRootRouteWithContext: () => (options: {component: () => unknown}) => {Root = options.component; return root;},

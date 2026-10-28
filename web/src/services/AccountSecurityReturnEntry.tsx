@@ -1,4 +1,5 @@
 import {useLayoutEffect, useRef, useState} from 'react';
+import {DocumentBootReady} from '../shell/DocumentBootReady';
 import {ApiError} from '@core/index.ts';
 import type {CapturedPorticoReturn} from '../platform/portico-return-dispatch';
 import {acceptSecurityReturn, OriginalProviderSecurity, originalSecurityClient, cancelOriginalAccountSecurity} from '../platform/account-security';
@@ -23,7 +24,7 @@ export function AccountSecurityReturnEntry({arrival}: {arrival: AccountSecurityE
   const {t} = servicesI18n();
   const [pending, setPending] = useState<AccountSecurityPending>(), [proof, setProof] = useState<OriginalProviderSecurity>();
   const [factor, setFactor] = useState(''), [busy, setBusy] = useState(true), [error, setError] = useState<unknown>();
-  const [ordinary, setOrdinary] = useState<{identityTransaction?: string}>(), [ended, setEnded] = useState<{codes?: readonly string[]}>();
+  const [ordinary, setOrdinary] = useState<{identityTransaction?: string; providerReturn?: boolean}>(), [ended, setEnded] = useState<{codes?: readonly string[]}>();
   type Opening = {live: boolean; mounted: boolean; busy: boolean; closed?: boolean; retired?: boolean; cancelTicket?: symbol; handedOff?: boolean; abort: AbortController; record?: AccountSecurityPending; bridge?: HostedSecurityBridge; retryFactor?: string};
   const life = useRef<Opening | undefined>(undefined);
   const originalDestination = () => arrival.kind === 'server' ? '/settings?scope=account&section=profile' : '/account?tab=security';
@@ -86,7 +87,7 @@ export function AccountSecurityReturnEntry({arrival}: {arrival: AccountSecurityE
             // Login callbacks share Hosted's /account callback URL with Security,
             // but resume the original sign-in/start root. Only linking stays here.
             if (tx.mode === 'login') history.replaceState(null, '', '/');
-            setOrdinary(tx.mode === 'link' ? {identityTransaction: captured.transactionId} : {});
+            setOrdinary(tx.mode === 'link' ? {identityTransaction: captured.transactionId} : {providerReturn: true});
           }
         }
       }
@@ -110,15 +111,15 @@ export function AccountSecurityReturnEntry({arrival}: {arrival: AccountSecurityE
     } finally {removeEventListener('popstate',moved);removeEventListener('pagehide',moved);if(original.cancelTicket===ticket)original.cancelTicket=undefined;}
   };
   const opening = life.current;
-  if (ordinary) return <ServicesApp identityTransaction={ordinary.identityTransaction}/>;
-  if (ended?.codes?.length) return <SignedOutRecoveryCodes codes={ended.codes} onDone={back}/>;
-  if (ended) return <AccountSecurityReturnFrame title={t('auth.welcomeHome')} busy={false} onCancel={back}><ServicesNotice>{t('services.signin.ended')}</ServicesNotice></AccountSecurityReturnFrame>;
-  if (proof) return <OriginalAccountSecurityWorkspace proof={proof} onRetired={() => {if(!opening||life.current!==opening||!opening.mounted||opening.retired)return;opening.retired=true;opening.cancelTicket=undefined;opening.abort.abort();setProof(undefined);setPending(undefined);setBusy(false);setError(invalid());if(!opening.closed)void proof.close().catch(()=>undefined);}}><HostedSecurityTask provider={proof} identity={{accountId: proof.original.session.account.id, familyId: proof.original.session.familyId!}} state={proof.original.state} task={proof.original.intent.purpose}
-    isCurrent={proof.current} onClose={() => {if(!opening||life.current!==opening||!opening.mounted||!opening.live||opening.retired||!proof.acceptsUIURL(location.href))return;opening.closed=true;back();}} onSecurityEnded={codes => {if(!opening||life.current!==opening||!opening.mounted||opening.retired)return;opening.closed=true;setProof(undefined); setEnded({...(codes ? {codes: Object.freeze([...codes])} : {})});}}/></OriginalAccountSecurityWorkspace>;
+  if (ordinary) return <ServicesApp identityTransaction={ordinary.identityTransaction} providerReturn={ordinary.providerReturn}/>;
+  if (ended?.codes?.length) return <DocumentBootReady><SignedOutRecoveryCodes codes={ended.codes} onDone={back}/></DocumentBootReady>;
+  if (ended) return <DocumentBootReady><AccountSecurityReturnFrame title={t('auth.welcomeHome')} busy={false} onCancel={back}><ServicesNotice>{t('services.signin.ended')}</ServicesNotice></AccountSecurityReturnFrame></DocumentBootReady>;
+  if (proof) return <DocumentBootReady><OriginalAccountSecurityWorkspace proof={proof} onRetired={() => {if(!opening||life.current!==opening||!opening.mounted||opening.retired)return;opening.retired=true;opening.cancelTicket=undefined;opening.abort.abort();setProof(undefined);setPending(undefined);setBusy(false);setError(invalid());if(!opening.closed)void proof.close().catch(()=>undefined);}}><HostedSecurityTask provider={proof} identity={{accountId: proof.original.session.account.id, familyId: proof.original.session.familyId!}} state={proof.original.state} task={proof.original.intent.purpose}
+    isCurrent={proof.current} onClose={() => {if(!opening||life.current!==opening||!opening.mounted||!opening.live||opening.retired||!proof.acceptsUIURL(location.href))return;opening.closed=true;back();}} onSecurityEnded={codes => {if(!opening||life.current!==opening||!opening.mounted||opening.retired)return;opening.closed=true;setProof(undefined); setEnded({...(codes ? {codes: Object.freeze([...codes])} : {})});}}/></OriginalAccountSecurityWorkspace></DocumentBootReady>;
   const needsFactor = pending?.original.state.mfaEnabled === true;
-  return <AccountSecurityReturnFrame title={pending ? credentialTaskTitle(pending.original.intent.purpose) : t('web.claim.loading')} error={error} busy={busy} onCancel={() => void cancel()}
+  return <DocumentBootReady ready={!busy || Boolean(error) || Boolean(pending)}><AccountSecurityReturnFrame title={pending ? credentialTaskTitle(pending.original.intent.purpose) : t('web.claim.loading')} error={error} busy={busy} onCancel={() => void cancel()}
     onContinue={pending ? () => {const original = life.current; if (original && current(original) && !original.busy) void complete(original, pending, factor);} : undefined}
     continueLabel={opening?.retryFactor !== undefined ? t('next.states.tryAgain') : t('action.continue')} continueDisabled={needsFactor && !opening?.retryFactor && !factor.trim()}>
     {needsFactor && <ProviderSecurityFactorFields value={factor} disabled={busy || opening?.retryFactor !== undefined} onChange={value => {const original = life.current; if (original && current(original) && !original.busy && original.retryFactor === undefined) setFactor(value);}}/>}
-  </AccountSecurityReturnFrame>;
+  </AccountSecurityReturnFrame></DocumentBootReady>;
 }

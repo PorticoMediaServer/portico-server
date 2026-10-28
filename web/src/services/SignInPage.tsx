@@ -1,5 +1,6 @@
 import {useEffect, useRef, useState, useSyncExternalStore} from 'react';
 import {ServicesAuthStage, ServicesHeading, ServicesLead, ServicesActions, ServicesSignedInAccount, HostedError} from '../kit/accounts/ServicesAuth';
+import {DocumentBootReady} from '../shell/DocumentBootReady';
 import {Icon} from '../kit/Icon';
 import {Button} from '../kit/controls';
 import {ServicesAuthForm} from './AuthForm';
@@ -37,7 +38,7 @@ export function RegisteredSignInPage({account, pending, providerFailure}: {accou
       if (!controller.signal.aborted) setBusy(false);
     });
   };
-  if (expired || Date.parse(pending.handoff.expiresAt) <= Date.now()) return <ServicesInvalidLink />;
+  if (expired || Date.parse(pending.handoff.expiresAt) <= Date.now()) return <DocumentBootReady><ServicesInvalidLink /></DocumentBootReady>;
   const back = <ReturnLink href={pending.handoff.registration.origin} server={pending.serverName} />;
   const lead = t('services.return.lead', {server: pending.serverName});
   if (!session || authenticating) return <ServicesAuthForm account={account} providerFailure={providerFailure} heading={t('auth.welcomeHome')} lead={lead}
@@ -46,10 +47,10 @@ export function RegisteredSignInPage({account, pending, providerFailure}: {accou
       const current = account.service.getSnapshot().session;
       if (gesture && current) act(signal => continueHostedSignIn(account, pending, accountIdentity(current), hostedSignInStore(), signal, value => location.assign(value)));
     }} />;
-  return <ServicesAuthStage><ServicesHeading singleLine>{t('auth.welcomeHome')}</ServicesHeading><ServicesLead>{lead}</ServicesLead>
+  return <DocumentBootReady><ServicesAuthStage><ServicesHeading singleLine>{t('auth.welcomeHome')}</ServicesHeading><ServicesLead>{lead}</ServicesLead>
     <HostedError error={error} /><ServicesSignedInAccount username={session.account.username} disabled={busy}
       onDifferent={() => act(async () => {await account.service.logoutIfCurrent(accountIdentity(session));})} />
     <ServicesActions><Button variant="primary" loading={busy} disabled={busy} onClick={() => act(signal =>
       continueHostedSignIn(account, pending, accountIdentity(session), hostedSignInStore(), signal, value => location.assign(value)))}>{t('action.continue')}</Button></ServicesActions>{back}
-  </ServicesAuthStage>;
+  </ServicesAuthStage></DocumentBootReady>;
 }
