@@ -92,6 +92,9 @@ func (s *Service) bulkSelection(p identity.Principal, v Viewer, in JobRequest) (
 	if selector.Query != nil {
 		n++
 		q := selector.Query
+		if err := s.checkBrowseSelectionBasis(v, q.LibraryID, q.SelectionBasis); err != nil {
+			return "", nil, err
+		}
 		var node *BrowseNode
 		if len(q.Filter) > 0 {
 			decoder := json.NewDecoder(bytes.NewReader(q.Filter))

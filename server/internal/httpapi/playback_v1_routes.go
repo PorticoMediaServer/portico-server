@@ -120,6 +120,27 @@ func newPlaybackV1(d Dependencies) *playbackv1.Service {
 			homeRows, labels = held.members, held.titles
 		}
 		selection, err := d.Catalog.QueueKeysTx(ctx, tx, viewer, catalog.ResourceActor{Authority: p.Authority, AccountID: p.AccountID, ProfileID: p.ProfileID}, source.Query, saved, homeRows)
+		if errors.Is(err, catalog.ErrStaleContinuation) {
+			return catalog.QueueSelection{}, playbackv1.ErrRevision
+		}
+		if err == nil && selection.CheckBasis != nil {
+			library, basis := source.Query.LibraryID, source.Query.SelectionBasis
+			selection.CheckBasis = func(ctx context.Context, tx *sql.Tx) error {
+				if err := d.allowedLibraryTx(ctx, p, library, tx); err != nil {
+					return err
+				}
+				restrictions, err := contentaccess.RestrictionsTx(ctx, tx, p.Viewer)
+				if err != nil {
+					return err
+				}
+				fresh := catalog.Viewer{Profile: identity.PersonalKey(p.Viewer), Libraries: []string{library}, Restrictions: restrictions}
+				err = d.Catalog.CheckBrowseSelectionBasisTx(ctx, tx, fresh, library, basis)
+				if errors.Is(err, catalog.ErrStaleContinuation) {
+					return playbackv1.ErrRevision
+				}
+				return err
+			}
+		}
 		if err == nil && source.Query != nil {
 			// A Home row's queue is named after the row.
 			if ids := catalog.BrowseHomeRows(source.Query.Query); len(ids) == 1 && labels[ids[0]] != "" {

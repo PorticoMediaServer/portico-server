@@ -189,3 +189,46 @@ func TestQueryCaptureConnectionAdmissionKeepsTheRequestDeadline(t *testing.T) {
 		t.Fatal("failed acquisition leaked a capture permit")
 	}
 }
+
+// A retained source transaction alone cannot prove a held aggregate after
+// predicate-only churn. Fresh capture checks must refuse before extending it.
+func TestQueryCaptureHeldBasisChecksFreshBatchAndFinalCommit(t *testing.T) {
+	s, c, snap := queryBuildFixture(t)
+	s.build.mu.Lock()
+	capture := s.build.captures[snap.id]
+	if capture == nil {
+		s.build.mu.Unlock()
+		t.Fatal("missing retained capture")
+	}
+	capture.keys.checkBasis = func(ctx context.Context, tx *sql.Tx) error {
+		var changed bool
+		if err := tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM content_rating_ages WHERE value_key='queue-held-proof-drift')`).Scan(&changed); err != nil {
+			return err
+		}
+		if changed {
+			return ErrRevision
+		}
+		return nil
+	}
+	s.build.mu.Unlock()
+	c.Exec(`INSERT INTO content_rating_ages(value_key,minimum_age) VALUES('queue-held-proof-drift',18)`)
+	if err := s.continueBuild(context.Background(), snap.id); !errors.Is(err, ErrRevision) {
+		t.Fatalf("pinned capture accepted new basis: %v", err)
+	}
+	var built int
+	if err := c.DB.QueryRow(`SELECT built FROM queue_v1_snapshots WHERE id=?`, snap.id).Scan(&built); err != nil || built != 256 {
+		t.Fatalf("extended stale capture built=%d %v", built, err)
+	}
+	// A completed small scan is checked again in its accepting writer, even
+	// if it stayed entirely in memory and never wrote a capture batch.
+	snap.id = "s_refused_final"
+	snap.stored = false
+	snap.checkBasis = func(context.Context, *sql.Tx) error { return ErrRevision }
+	if err := dbwork.WithWriteTxContext(context.Background(), c.DB, dbwork.ClassBackgroundMedia, func(ctx context.Context, tx *sql.Tx) error { return storeSnapshot(ctx, tx, "q_test", &snap) }); !errors.Is(err, ErrRevision) {
+		t.Fatalf("final queue commit omitted held proof: %v", err)
+	}
+	var count int
+	if err := c.DB.QueryRow(`SELECT count(*) FROM queue_v1_snapshots WHERE id=?`, snap.id).Scan(&count); err != nil || count != 0 {
+		t.Fatal("refused final snapshot persisted", count, err)
+	}
+}

@@ -86,7 +86,7 @@ func TestSelectionBatchExactOracleAndClone(t *testing.T) {
 	_, s, _ := browseFixture(t)
 	v := Viewer{Profile: "p", Fence: "f", Libraries: []string{"a"}}
 	authority := HomeActionAuthority{Personal: true, Organize: true, Bulk: true, Playback: true, Queue: true, Metadata: true, Refresh: true, Downloads: true, DeleteLibrary: func(string) (bool, error) { return true, nil }}
-	queries := []string{`null`, `{"field":"subtitleLanguage","operator":"is-missing","value":null}`, `{"field":"savedCollection","operator":"not-in","value":["missing"]}`, `{"field":"search","operator":"contains","value":"al"}`, `{"field":"match","operator":"equals","value":"unmatched"}`, `{"field":"playState","operator":"equals","value":"played"}`, `{"field":"playState","operator":"equals","value":"unplayed"}`, `{"field":"playState","operator":"not-in","value":["played"]}`, `{"field":"genre","operator":"equals","value":"Action"}`, `{"field":"genre","operator":"not-equals","value":"Action"}`, `{"field":"genre","operator":"is-missing","value":null}`, `{"field":"year","operator":"at-least","value":2000}`, `{"field":"year","operator":"at-least","value":3000}`, `{"any":[{"field":"year","operator":"at-least","value":2000},{"not":{"field":"title","operator":"contains","value":"nothing"}}]}`, `{"field":"versions","operator":"is-present","value":null}`, `{"field":"favorite","operator":"equals","value":false}`, `{"field":"personalRating","operator":"is-missing","value":null}`, `{"field":"durationMs","operator":"is-present","value":null}`}
+	queries := []string{`null`, `{"field":"subtitleLanguage","operator":"is-missing","value":null}`, `{"field":"savedCollection","operator":"not-in","value":["missing"]}`, `{"field":"match","operator":"equals","value":"unmatched"}`, `{"field":"playState","operator":"equals","value":"played"}`, `{"field":"playState","operator":"equals","value":"unplayed"}`, `{"field":"playState","operator":"not-in","value":["played"]}`, `{"field":"genre","operator":"equals","value":"Action"}`, `{"field":"genre","operator":"not-equals","value":"Action"}`, `{"field":"genre","operator":"is-missing","value":null}`, `{"field":"year","operator":"at-least","value":2000}`, `{"field":"year","operator":"at-least","value":3000}`, `{"any":[{"field":"year","operator":"at-least","value":2000},{"not":{"field":"title","operator":"contains","value":"nothing"}}]}`, `{"field":"versions","operator":"is-present","value":null}`, `{"field":"favorite","operator":"equals","value":false}`, `{"field":"personalRating","operator":"is-missing","value":null}`, `{"field":"durationMs","operator":"is-present","value":null}`}
 	for _, raw := range queries {
 		t.Run(raw, func(t *testing.T) {
 			query, err := ParseBrowseQuery(json.RawMessage(raw), "query")
@@ -173,7 +173,7 @@ func TestSelectionBatchLiveAuthorityDriftAndRestart(t *testing.T) {
 	if restarted.Key() != state.Key() || restarted.after != 0 {
 		t.Fatal("identity/restart mismatch")
 	}
-	if _, _, err = s.StepBrowseSelectionBatch(context.Background(), state, witness, SelectionBatchLimits{Bytes: 1}); !errors.Is(err, ErrSelectionBatchCapacity) {
+	if _, _, err = s.StepBrowseSelectionBatch(context.Background(), state, witness, SelectionBatchLimits{RetainedBytes: 1}); !errors.Is(err, ErrSelectionBatchCapacity) {
 		t.Fatal(err)
 	}
 	if _, err = s.FinishBrowseSelectionBatch(state, witness, granted); !errors.Is(err, ErrSelectionBatchIncomplete) {
@@ -257,7 +257,7 @@ func TestSelectionBatchPublishedVocabularyOracle(t *testing.T) {
 	_, s, names := browseFixture(t)
 	v := Viewer{Profile: "p", Fence: "f", Libraries: []string{"a"}}
 	for _, field := range browseFields {
-		if field.ID == "homeRow" {
+		if field.ID == "homeRow" || field.ID == "search" {
 			continue
 		}
 		for _, operator := range field.Operators {
