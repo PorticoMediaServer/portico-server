@@ -902,7 +902,7 @@ test('a refused actual version start stays unaccepted until its original failure
     assert.equal(f.runtime.getSnapshot().fence, undefined, 'a refused version supplies no admitted playback fence');
     assert.equal(f.hls.instances.length, engines, 'no v2 media engine is created or adopted');
     assert.equal(starts().length, 1);
-    await assert.rejects(failure.retry(), error => error instanceof DOMException && error.name === 'AbortError');
+    await assert.rejects(failure.retry(), error => error instanceof Error && error.name === 'AbortError');
     assert.equal(starts().length, 1, 'a permanent refusal has no retry authority');
     failure.cancel();
     await rejected;

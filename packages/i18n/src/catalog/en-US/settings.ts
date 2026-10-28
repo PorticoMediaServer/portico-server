@@ -555,7 +555,7 @@ export const settingsMessages = {
   'server.export.hours': '{count, plural, one {# hour} other {# hours}}',
   'server.export.days': '{count, plural, one {# day} other {# days}}',
   'server.export.share': 'Share the export',
-  'server.feedback.sentFrom': 'Sent from {platform} while {state}, {online, select, yes {online} other {offline}}.',
+  'server.feedback.sentFrom': 'Sent from {platform} {version}{online, select, yes {, online} no {, offline} other {}}.',
   'server.health.loadNotMeasured': 'Processor, memory and network load are not measured on this system.',
   'scan.monitorChanges': 'Watch for library changes',
   'scan.monitorChanges.help': 'Pick up files and local metadata when they change. Periodic scans cover folders that cannot be watched.',

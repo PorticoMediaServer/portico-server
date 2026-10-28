@@ -1,7 +1,8 @@
 import {useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore} from 'react';
 import {defaultI18n, type MessageId} from '@i18n';
 import {RadioGroup} from 'radix-ui';
-import type {FeedbackReport, FeedbackStatus} from '@core/console.ts';
+import type {FeedbackStatus} from '@core/console.ts';
+import {feedbackSentFrom, feedbackTriageCategory, type FeedbackReport} from '@core/server-admin/feedback-source.ts';
 import {Button} from '../../../../kit/controls';
 import {Icon} from '../../../../kit/Icon';
 import {Dialog} from '../../../../kit/overlays/Dialog';
@@ -24,7 +25,7 @@ const CATEGORY: Readonly<Record<string, MessageId>> = Object.freeze({
 const STATUS: Readonly<Record<FeedbackStatus, MessageId>> = Object.freeze({open: 'server.feedback.status.open', 'in-progress': 'server.feedback.status.in-progress',
   resolved: 'server.feedback.status.resolved', closed: 'server.feedback.status.closed'});
 const statusLabel = (status: FeedbackStatus) => t(STATUS[status]);
-const categoryLabel = (category: string) => t(CATEGORY[category] ?? 'server.feedback.category.other');
+const categoryLabel = (report: FeedbackReport) => t(CATEGORY[feedbackTriageCategory(report)] ?? 'server.feedback.category.other');
 const firstLine = (message: string) => message.split('\n').find(line => line.trim().length > 0)?.trim() ?? '';
 
 /** The drawn Feedback tab: the viewer feedback inbox and the report it opens. */
@@ -41,7 +42,7 @@ export function FeedbackPanel(props: FeedbackPanelProps) {
         <button type="button" className={styles.feedbackRow} onClick={() => setOpen({source: props.source, report})}>
           <Icon name="i-bubble" size={20} />
           <span className={styles.reportText}><b>{firstLine(report.message) || t('server.reports.empty')}</b>
-            <small>{t('web.feedback.rowSubtitle', {category: categoryLabel(report.category), when: defaultI18n.dateTime(report.createdAt), about: report.itemId ? 'yes' : 'no'})}</small></span>
+            <small>{t('web.feedback.rowSubtitle', {category: categoryLabel(report), when: defaultI18n.dateTime(report.createdAt), about: report.itemId ? 'yes' : 'no'})}</small></span>
           <span className={styles.status} data-status={report.status}>{statusLabel(report.status)}</span>
           <Icon name="i-right" size={16} />
         </button>
@@ -76,14 +77,15 @@ function TriageDialog({report, source, onClose}: Readonly<{report: FeedbackRepor
     } catch {if (life.controller === controller && !controller.signal.aborted) setError(true);}
     finally {if (life.saving === controller) life.saving = undefined;if (life.controller === controller && !controller.signal.aborted) setBusy(false);}
   };
+  const sentFrom = feedbackSentFrom(loaded);
   const meta = t('web.feedback.reportedMeta', {when: defaultI18n.dateTime(loaded.createdAt), status: statusLabel(loaded.status)});
-  return <Dialog open onOpenChange={value => {if (!value) close();}} size="lg" title={categoryLabel(loaded.category)} initialFocusRef={cancel}
+  return <Dialog open onOpenChange={value => {if (!value) close();}} size="lg" title={categoryLabel(loaded)} initialFocusRef={cancel}
     footer={<><Button ref={cancel} size="small" onClick={close}>{t('next.settings.cancel')}</Button>
       <SettingsAction size="small" appearance="primary" loading={busy} disabled={busy || saved} onClick={() => {void save();}}>{t('web.feedback.updateReport')}</SettingsAction></>}>
     {error && <p className={styles.failure} role="alert">{t('error.unconfirmedChange')}</p>}
     <p className={styles.reportMeta}>{meta}</p>
     <p className={styles.message}>{loaded.message}</p>
-    {loaded.diagnostic && <p className={styles.reportMeta}>{t('server.feedback.sentFrom', {platform: loaded.diagnostic.platform, state: loaded.diagnostic.state, online: loaded.diagnostic.online ? 'yes' : 'no'})}</p>}
+    {sentFrom && <p className={styles.reportMeta}>{t('server.feedback.sentFrom', sentFrom)}</p>}
     <div className={styles.field}>
       <span className={styles.fieldLabel}>{t('web.feedback.status')}</span>
       <RadioGroup.Root className={styles.statusChoice} orientation="horizontal" aria-label={t('web.feedback.status')} value={status} disabled={busy}

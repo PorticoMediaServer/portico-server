@@ -100,8 +100,6 @@ export function decodeGetAdminDvrRecordingOwnersResponse(input: unknown): types.
 export function decodeGetAdminDvrRecordingPermissionsResponse(input: unknown): types.GetAdminDvrRecordingPermissionsResponse { return decode("GetAdminDvrRecordingPermissionsResponse", input) as types.GetAdminDvrRecordingPermissionsResponse; }
 export function decodeGetAdminDvrRecordingRootResponse(input: unknown): types.GetAdminDvrRecordingRootResponse { return decode("GetAdminDvrRecordingRootResponse", input) as types.GetAdminDvrRecordingRootResponse; }
 export function decodeGetAdminDvrSettingsResponse(input: unknown): types.GetAdminDvrSettingsResponse { return decode("GetAdminDvrSettingsResponse", input) as types.GetAdminDvrSettingsResponse; }
-export function decodeGetAdminFeedbackResponse(input: unknown): types.GetAdminFeedbackResponse { return decode("GetAdminFeedbackResponse", input) as types.GetAdminFeedbackResponse; }
-export function decodeGetAdminFeedbackIdResponse(input: unknown): types.GetAdminFeedbackIdResponse { return decode("GetAdminFeedbackIdResponse", input) as types.GetAdminFeedbackIdResponse; }
 export function decodeGetAdminFeedbackReportsResponse(input: unknown): types.GetAdminFeedbackReportsResponse { return decode("GetAdminFeedbackReportsResponse", input) as types.GetAdminFeedbackReportsResponse; }
 export function decodeGetAdminFeedbackReportsIdResponse(input: unknown): types.GetAdminFeedbackReportsIdResponse { return decode("GetAdminFeedbackReportsIdResponse", input) as types.GetAdminFeedbackReportsIdResponse; }
 export function decodeGetAdminFilesystemResponse(input: unknown): types.GetAdminFilesystemResponse { return decode("GetAdminFilesystemResponse", input) as types.GetAdminFilesystemResponse; }
@@ -210,9 +208,7 @@ export function decodeGetDvrRecordingsIdImageResponse(input: unknown): types.Get
 export function decodeGetDvrStorageResponse(input: unknown): types.GetDvrStorageResponse { return decode("GetDvrStorageResponse", input) as types.GetDvrStorageResponse; }
 export function decodeGetDvrSummaryResponse(input: unknown): types.GetDvrSummaryResponse { return decode("GetDvrSummaryResponse", input) as types.GetDvrSummaryResponse; }
 export function decodeGetEventsResponse(input: unknown): types.GetEventsResponse { return decode("GetEventsResponse", input) as types.GetEventsResponse; }
-export function decodeGetFeedbackResponse(input: unknown): types.GetFeedbackResponse { return decode("GetFeedbackResponse", input) as types.GetFeedbackResponse; }
 export function decodeGetFeedbackCapabilitiesResponse(input: unknown): types.GetFeedbackCapabilitiesResponse { return decode("GetFeedbackCapabilitiesResponse", input) as types.GetFeedbackCapabilitiesResponse; }
-export function decodeGetFeedbackIdResponse(input: unknown): types.GetFeedbackIdResponse { return decode("GetFeedbackIdResponse", input) as types.GetFeedbackIdResponse; }
 export function decodeGetFeedbackReportsResponse(input: unknown): types.GetFeedbackReportsResponse { return decode("GetFeedbackReportsResponse", input) as types.GetFeedbackReportsResponse; }
 export function decodeGetFeedbackReportsIdResponse(input: unknown): types.GetFeedbackReportsIdResponse { return decode("GetFeedbackReportsIdResponse", input) as types.GetFeedbackReportsIdResponse; }
 export function decodeGetGuideResponse(input: unknown): types.GetGuideResponse { return decode("GetGuideResponse", input) as types.GetGuideResponse; }
@@ -433,7 +429,6 @@ export function decodeMergeTitlesResponse(input: unknown): types.MergeTitlesResp
 export function decodeMoveQueueEntryResponse(input: unknown): types.MoveQueueEntryResponse { return decode("MoveQueueEntryResponse", input) as types.MoveQueueEntryResponse; }
 export function decodePatchAdminAccessMembersIdProfilesProfileResponse(input: unknown): types.PatchAdminAccessMembersIdProfilesProfileResponse { return decode("PatchAdminAccessMembersIdProfilesProfileResponse", input) as types.PatchAdminAccessMembersIdProfilesProfileResponse; }
 export function decodePatchAdminDvrRecordingRootResponse(input: unknown): types.PatchAdminDvrRecordingRootResponse { return decode("PatchAdminDvrRecordingRootResponse", input) as types.PatchAdminDvrRecordingRootResponse; }
-export function decodePatchAdminFeedbackIdResponse(input: unknown): types.PatchAdminFeedbackIdResponse { return decode("PatchAdminFeedbackIdResponse", input) as types.PatchAdminFeedbackIdResponse; }
 export function decodePatchAdminLibrariesIdResponse(input: unknown): types.PatchAdminLibrariesIdResponse { return decode("PatchAdminLibrariesIdResponse", input) as types.PatchAdminLibrariesIdResponse; }
 export function decodePatchAdminLibrariesIdSourcesSourceResponse(input: unknown): types.PatchAdminLibrariesIdSourcesSourceResponse { return decode("PatchAdminLibrariesIdSourcesSourceResponse", input) as types.PatchAdminLibrariesIdSourcesSourceResponse; }
 export function decodePatchAdminLogsSettingsResponse(input: unknown): types.PatchAdminLogsSettingsResponse { return decode("PatchAdminLogsSettingsResponse", input) as types.PatchAdminLogsSettingsResponse; }
@@ -549,7 +544,6 @@ export function decodePostDvrRecordingsResponse(input: unknown): types.PostDvrRe
 export function decodePostDvrRecordingsIdCancelResponse(input: unknown): types.PostDvrRecordingsIdCancelResponse { return decode("PostDvrRecordingsIdCancelResponse", input) as types.PostDvrRecordingsIdCancelResponse; }
 export function decodePostDvrRulesPreviewResponse(input: unknown): types.PostDvrRulesPreviewResponse { return decode("PostDvrRulesPreviewResponse", input) as types.PostDvrRulesPreviewResponse; }
 export function decodePostEmptyDataCacheResponse(input: unknown): types.PostEmptyDataCacheResponse { return decode("PostEmptyDataCacheResponse", input) as types.PostEmptyDataCacheResponse; }
-export function decodePostFeedbackResponse(input: unknown): types.PostFeedbackResponse { return decode("PostFeedbackResponse", input) as types.PostFeedbackResponse; }
 export function decodePostFeedbackReportsResponse(input: unknown): types.PostFeedbackReportsResponse { return decode("PostFeedbackReportsResponse", input) as types.PostFeedbackReportsResponse; }
 export function decodePostHomeDestinationPickerResponse(input: unknown): types.PostHomeDestinationPickerResponse { return decode("PostHomeDestinationPickerResponse", input) as types.PostHomeDestinationPickerResponse; }
 export function decodePostHomeDestinationReceiptResponse(input: unknown): types.PostHomeDestinationReceiptResponse { return decode("PostHomeDestinationReceiptResponse", input) as types.PostHomeDestinationReceiptResponse; }

@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"strings"
 	"testing"
 
 	"portico.local/server/internal/identity"
@@ -238,5 +239,39 @@ func TestFeedbackTriageListAndTransitions(t *testing.T) {
 	}
 	if _, e = s.FeedbackReportDocument(ctx, member, auth, false, second.Report.ID); e != nil {
 		t.Fatal(e)
+	}
+}
+
+func TestFeedbackKeepsTheSendingAppForTriage(t *testing.T) {
+	s, owner, member, auth := noticeFixture(t)
+	ctx := context.Background()
+	online := true
+	sent := submission("client-one", "Buffering all the time on this one.")
+	sent.Client = &FeedbackClient{Platform: "android", AppVersion: "1.4.2", Online: &online}
+	result, e := s.SubmitFeedback(ctx, member, auth, sent)
+	if e != nil || result.Report.Client == nil || *result.Report.Client.Online != true || result.Report.Client.Platform != "android" || result.Report.Client.AppVersion != "1.4.2" {
+		t.Fatalf("submitted client: %v %+v", e, result.Report.Client)
+	}
+	read, e := s.FeedbackReportDocument(ctx, owner, auth, true, result.Report.ID)
+	if e != nil || read.Client == nil || read.Client.Platform != "android" || read.Client.AppVersion != "1.4.2" || read.Client.Online == nil || !*read.Client.Online {
+		t.Fatalf("triage read: %v %+v", e, read.Client)
+	}
+	unknown := submission("client-two", "The subtitles drift after the first hour.")
+	unknown.Client = &FeedbackClient{Platform: "web", AppVersion: "2026.10"}
+	if r, e := s.SubmitFeedback(ctx, member, auth, unknown); e != nil || r.Report.Client == nil || r.Report.Client.Online != nil {
+		t.Fatalf("an unknown online state stays unknown: %v %+v", e, r.Report.Client)
+	}
+	for _, bad := range []FeedbackClient{{Platform: "", AppVersion: "1"}, {Platform: "web", AppVersion: ""}, {Platform: "https://x", AppVersion: "1"},
+		{Platform: "web", AppVersion: "1\n2"}, {Platform: "web", AppVersion: strings.Repeat("9", 41)}} {
+		bad := bad
+		c := submission("client-bad-"+bad.Platform+bad.AppVersion, "Something about this one is wrong.")
+		c.Client = &bad
+		if _, e := s.SubmitFeedback(ctx, member, auth, c); !errors.Is(e, ErrInvalid) {
+			t.Fatalf("client %+v must be refused: %v", bad, e)
+		}
+	}
+	none, e := s.SubmitFeedback(ctx, member, auth, submission("client-none", "The artwork for this one is wrong."))
+	if e != nil || none.Report.Client != nil {
+		t.Fatalf("no client: %v %+v", e, none.Report.Client)
 	}
 }

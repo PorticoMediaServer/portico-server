@@ -465,7 +465,7 @@ export function SettingsEntry() {
     const source = createSettingsBindings(controller, options, identity, {openHome, signIn,
       special: (row, state, rowContext, openPanel) => {
         if (row.id === 'profile.devices' && profileDevices) return <ProfileDevices source={profileDevices} isCurrent={current} onFailure={reportError} signOut={context.signOut} />;
-        if (row.id === 'profile.pinForgot' && profiles && identity.signIn === 'local') return <ProfileForgotPIN source={profiles} api={api} isCurrent={current} />;
+        if (row.id === 'profile.pinForgot' && profiles && identity.signIn === 'local') return <ProfileForgotPIN source={profiles} api={api} selectedFamilyId={() => context.session().sessionFamilyId} isCurrent={current} />;
         if (row.id === 'profile.signOutElsewhere' && otherDeviceSignOut) return <ProfileOtherSignOut command={otherDeviceSignOut} isCurrent={current} disabled={state.disabled} onFailure={reportError} />;
         if (row.id === 'profile.signOut') return <ProfileSignOut serverName={identity.serverName} isCurrent={current} signOut={context.signOut} />;
         if (row.id === 'profile.hiddenLabels' && restrictions) return <SettingsStringList label={defaultI18n.t(row.label)} values={restrictions.getSnapshot().document?.blockedLabels ?? []} addLabel={defaultI18n.t(row.control.addLabel!)} disabled={state.disabled} onChange={value => {void changeRestriction(restrictions, row.id, value)?.catch(reportError);}} />;

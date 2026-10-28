@@ -143,15 +143,14 @@ const records = [
   {sequence: 1842, at: '2026-10-22T18:58:02Z', lane: 'runtime', severity: 'info', component: 'backups', code: 'backup_finished', fields: {kept: 7}},
   {sequence: 1841, at: '2026-10-22T19:03:00Z', lane: 'runtime', severity: 'warn', component: 'remote_access', code: 'port_mapping_failed'},
 ];
+const feedbackReport = (id: string, createdAt: string, updatedAt: string, revision: number, status: string, kind: string, category: string, message: string, itemId?: string,
+  client?: {platform: string; appVersion: string; online?: boolean}) => ({id, cursor: id, createdAt, updatedAt, expiresAt: '2027-04-20T18:20:00Z', revision, status, kind, category, message,
+  ...(itemId ? {itemId} : {}), reporter: {name: 'Alex', authority: 'local', role: 'member', self: false}, diagnostics: {decision: 'not-requested'}, ...(client ? {client} : {}), duplicates: 0, thread: []});
 const feedback = [
-  {id: 'feedback-1', createdAt: '2026-10-22T18:20:00Z', updatedAt: '2026-10-22T18:20:00Z', revision: 1, status: 'open', category: 'playback',
-   message: fixture('next.troubleshooting.fixture.message15'), itemId: 'item-1', contextAvailable: true, diagnostic: {platform: 'ios', state: 'playing', online: true}},
-  {id: 'feedback-2', createdAt: '2026-10-21T23:05:00Z', updatedAt: '2026-10-22T17:00:00Z', revision: 2, status: 'in-progress', category: 'subtitles',
-   message: fixture('next.troubleshooting.fixture.message16'), contextAvailable: true, diagnostic: {platform: 'tvos', state: 'playing', online: false}},
-  {id: 'feedback-3', createdAt: '2026-10-20T20:15:00Z', updatedAt: '2026-10-21T09:00:00Z', revision: 3, status: 'resolved', category: 'metadata',
-   message: fixture('next.troubleshooting.fixture.message17'), itemId: 'item-2', contextAvailable: false},
-  {id: 'feedback-4', createdAt: '2026-10-19T18:40:00Z', updatedAt: '2026-10-20T10:00:00Z', revision: 2, status: 'closed', category: 'other',
-   message: fixture('next.troubleshooting.fixture.message18'), contextAvailable: false},
+  feedbackReport('feedback-1', '2026-10-22T18:20:00Z', '2026-10-22T18:20:00Z', 1, 'open', 'playback', 'buffering', fixture('next.troubleshooting.fixture.message15'), 'item-1', {platform: 'ios', appVersion: '1.4.2', online: true}),
+  feedbackReport('feedback-2', '2026-10-21T23:05:00Z', '2026-10-22T17:00:00Z', 2, 'in-progress', 'playback', 'subtitles', fixture('next.troubleshooting.fixture.message16'), undefined, {platform: 'tvos', appVersion: '1.4.2', online: false}),
+  feedbackReport('feedback-3', '2026-10-20T20:15:00Z', '2026-10-21T09:00:00Z', 3, 'resolved', 'library', 'wrong-details', fixture('next.troubleshooting.fixture.message17'), 'item-2'),
+  feedbackReport('feedback-4', '2026-10-19T18:40:00Z', '2026-10-20T10:00:00Z', 2, 'closed', 'other', 'other', fixture('next.troubleshooting.fixture.message18')),
 ];
 const setAside = {failures: [
   {domain: 1, title: fixture('next.troubleshooting.fixture.title1'), reason: fixture('next.troubleshooting.fixture.reason1'), attempts: 3, failedAt: '2026-10-22T17:10:00Z'},
@@ -175,11 +174,11 @@ const request = async (path: string, method = 'GET'): Promise<unknown> => {
   if (path.includes('/diagnostics/capabilities')) return capabilities;
   if (path.includes('/console/registry')) return {scope: {serverId, viewerFence: fence}, data: {fields: []}};
   if (path.includes('/console/alerts')) return {scope: {serverId, viewerFence: fence}, data: alerts};
-  if (path.includes('/admin/feedback/')) {
+  if (path.includes('/admin/feedback/reports/')) {
     const id = path.split('/').pop();
     return {scope: {serverId, viewerFence: fence}, data: feedback.find(item => item.id === id) ?? feedback[0]};
   }
-  if (path.includes('/admin/feedback')) return {scope: {serverId, viewerFence: fence}, data: {items: feedback, nextCursor: ''}};
+  if (path.includes('/admin/feedback/reports')) return {scope: {serverId, viewerFence: fence}, data: {items: feedback, nextCursor: '', statusCounts: {}, total: feedback.length, filter: {}, observedAt: '2026-10-22T19:00:00Z'}};
   if (path.includes('client-logs/')) return envelope({...report('one', 'iPhone', 'phone', '1.4.2', '2026-10-21T22:44:00Z', 38912), body: fixture('next.troubleshooting.fixture.body1')});
   return envelope({items: [
     report('one', 'iPhone', 'phone', '1.4.2', '2026-10-21T22:44:00Z', 38912),

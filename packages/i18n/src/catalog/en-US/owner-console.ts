@@ -206,7 +206,7 @@ export const ownerConsoleMessages = {
   'server.scan.started': 'Scan started.',
   'server.broadcast.sent': 'Message sent.',
   'server.feedback.updated': 'Updated.',
-  'server.feedback.sentFrom': 'Sent from {platform} while {state}, {online, select, yes {online} other {offline}}.',
+  'server.feedback.sentFrom': 'Sent from {platform} {version}{online, select, yes {, online} no {, offline} other {}}.',
   'server.feedback.field.report': 'Report',
   'server.feedback.field.revision': 'Revision',
   'server.feedback.field.item': 'Item',

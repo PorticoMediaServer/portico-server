@@ -321,6 +321,8 @@ export type FeedbackCapabilities={
 };
 export type FeedbackReporter={name:string;authority:string;role:string;self:boolean};
 export type FeedbackDiagnostics={decision:FeedbackDecision;reference?:string;detail?:string};
+/** The app a report came from. `online` is absent when that app cannot tell. */
+export type FeedbackClient={platform:string;appVersion:string;online?:boolean};
 export type FeedbackThreadEvent={sequence:number;at:number;revision:number;status:string;reply:string;actorClass:string};
 export type FeedbackItem={
  id:string;
@@ -336,6 +338,7 @@ export type FeedbackItem={
  expiresAt:number;
  reporter:FeedbackReporter;
  diagnostics:FeedbackDiagnostics;
+ client?:FeedbackClient;
  duplicateOf?:string;
  duplicates:number;
  thread:FeedbackThreadEvent[];
@@ -403,6 +406,8 @@ function feedbackReport(value:unknown,statusOtherwise?:FeedbackItemStatus):Feedb
  if(!obj(diagnostics)||!text(diagnostics.decision,40))invalid();
  if(diagnostics.reference!==undefined&&!text(diagnostics.reference,240))invalid();
  if(diagnostics.detail!==undefined&&!text(diagnostics.detail,400))invalid();
+ const client=value.client;
+ if(client!==undefined&&(!obj(client)||!text(client.platform,40)||!client.platform||!text(client.appVersion,40)||!client.appVersion||client.online!==undefined&&typeof client.online!=='boolean'))invalid();
  if(!Array.isArray(value.thread)||value.thread.length>200)invalid();
  const thread=keepReadable('feedback-report','thread',value.thread,event=>{
   event=wireInstants(event,['at']);

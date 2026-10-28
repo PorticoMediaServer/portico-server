@@ -342,16 +342,10 @@ func restrictionRoutes() map[string]restrictionRoute {
 		"GET /v1/notifications/unread-count": static("/v1/notifications/unread-count", "/v1/notifications/unread-count?audience=profile"),
 		"GET /v1/notifications":              static("/v1/notifications?limit=40"),
 		// The profile's own reports, each naming the title it was about.
-		"GET /v1/feedback":         static("/v1/feedback?limit=40"),
 		"GET /v1/feedback/reports": static("/v1/feedback/reports?limit=100"),
-		"GET /v1/feedback/{id}": probe(func(m *restrictionEnv) []string {
-			return prefixed("/v1/feedback/", m.reports)
-		}),
 		"GET /v1/feedback/reports/{id}": probe(func(m *restrictionEnv) []string {
 			return prefixed("/v1/feedback/reports/", m.reports)
 		}),
-		"GET /v1/admin/feedback":                   exempt(reasonAdmin),
-		"GET /v1/admin/feedback/{id}":              exempt(reasonAdmin),
 		"GET /v1/admin/feedback/reports":           exempt(reasonAdmin),
 		"GET /v1/admin/feedback/reports/{id}":      exempt(reasonAdmin),
 		"GET /v1/admin/playback/history":           exempt(reasonAdmin),
@@ -1243,19 +1237,15 @@ func buildRestrictionMatrix(t *testing.T) *restrictionEnv {
 		}
 	}
 
-	// Reports the profile sent while it could still see the title, through
-	// both report routes, and one about a title it can see.
+	// Reports the profile sent while it could still see the title, and one
+	// about a title it can see.
 	before := func(context.Context, *sql.Tx, string) error { return nil }
 	for i, item := range []string{m.hiddenItems["movie"][0], m.visibleMovie} {
 		filed, err := console.SubmitFeedback(ctx, restricted, before, operations.FeedbackSubmission{OperationID: fmt.Sprint("matrix-feedback-", i), Kind: "library", Category: "wrong-details", Message: fmt.Sprint("The year is wrong on this one, report ", i), ItemID: item})
 		if err != nil {
 			t.Fatal(err)
 		}
-		older, err := console.Submit(ctx, restricted, before, operations.SubmitReport{IdempotencyKey: fmt.Sprint("matrix-report-", i), Category: "metadata", Message: fmt.Sprint("The poster is wrong on this one, report ", i), ItemID: item})
-		if err != nil {
-			t.Fatal(err)
-		}
-		m.reports = append(m.reports, filed.Report.ID, older.ID)
+		m.reports = append(m.reports, filed.Report.ID)
 	}
 	// Downloads asked for while the film could still be seen: the claim keeps
 	// the film's name with it, as every download does.
@@ -1398,7 +1388,7 @@ func buildRestrictionMatrix(t *testing.T) *restrictionEnv {
 	if err = db.QueryRow(`SELECT count(*) FROM notification_records WHERE actions LIKE '%'||?||'%'`, m.hiddenItems["movie"][0]).Scan(&stored); err != nil || stored != 1 {
 		t.Fatalf("control: the hidden link is not in the inbox: %d %v", stored, err)
 	}
-	if err = db.QueryRow(`SELECT count(*) FROM console_reports WHERE item_id=?`, m.itemsByID[m.hiddenItems["movie"][0]].ID).Scan(&stored); err != nil || stored != 2 {
+	if err = db.QueryRow(`SELECT count(*) FROM console_reports WHERE item_id=?`, m.itemsByID[m.hiddenItems["movie"][0]].ID).Scan(&stored); err != nil || stored != 1 {
 		t.Fatalf("control: the reports about the hidden film are not stored: %d %v", stored, err)
 	}
 	if status, response := m.call("GET", "/v1/notifications/inbox?limit=100", "", "restricted"); status != 200 || !strings.Contains(response, m.visibleMovie) || !strings.Contains(response, "From the owner") {

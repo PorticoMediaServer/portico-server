@@ -502,7 +502,6 @@ func restrictionWriteRoutes() map[string]writeRoute {
 		// a title, and no hidden identifier in what the listing tools say.
 		"POST /v1/mcp": writeExempt("probed with the restricted profile's personal access token by the tools subtest of this test"),
 		// A report names the title it is about.
-		"POST /v1/feedback":                                perHidden("POST", "/v1/feedback", `{"idempotencyKey":"OP","category":"metadata","message":"The details on this one are wrong.","itemId":"ID"}`, "item"),
 		"POST /v1/feedback/reports":                        perHidden("POST", "/v1/feedback/reports", `{"operationId":"OP","kind":"library","category":"wrong-details","message":"The details on this one are wrong.","itemId":"ID","playbackSessionId":"","attachDiagnostics":false}`, "item"),
 		"DELETE /v1/collections/{id}/items/{itemId}":       perHidden("DELETE", "/v1/collections/unknown/items/ID", `{}`, "item"),
 		"DELETE /v1/items/{id}/lyrics/{resource}":          perHidden("DELETE", "/v1/items/ID/lyrics/unknown", `{}`, "item"),

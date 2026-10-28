@@ -12,7 +12,6 @@ import (
 	"testing"
 	"time"
 
-	"portico.local/server/internal/catalogtest"
 	"portico.local/server/internal/identity"
 	"portico.local/server/internal/persistence"
 )
@@ -133,83 +132,6 @@ func TestConsolePreferenceScopeIsolationAndViewerIsolation(t *testing.T) {
 	result, e = s.ApplyPreferences(ctx, p, a, PreferenceChange{Scope: ScopeProfileServer, DeviceClass: "web", ExpectedRevision: 2, IdempotencyKey: "clear", Values: PreferencePatch{"privacy.pauseWatchHistory": nil}})
 	if e != nil || result.Effective.Bool("privacy.pauseWatchHistory") || result.EffectiveSource["privacy.pauseWatchHistory"] != "default" {
 		t.Fatalf("clear did not restore the default: %v %+v", e, result.EffectiveSource)
-	}
-}
-func TestConsoleFeedbackTriageInboxAndScope(t *testing.T) {
-	s, owner, a := consoleFixture(t)
-	ctx := context.Background()
-	viewer := owner
-	viewer.Authority = "hosted"
-	viewer.Role = "viewer"
-	viewer.AccountID = "viewer"
-	viewer.Hash = "viewer-session"
-	c := SubmitReport{IdempotencyKey: "report-one", Category: "playback", Message: "The stream stopped.", Diagnostic: &ClientDiagnostic{Platform: "tvos", State: "failed", Online: true}}
-	report, e := s.Submit(ctx, viewer, a, c)
-	if e != nil {
-		t.Fatal(e)
-	}
-	replay, e := s.Submit(ctx, viewer, a, c)
-	if e != nil || replay.ID != report.ID {
-		t.Fatal("report replay", e)
-	}
-	other := viewer
-	other.AccountID = "another"
-	page, e := s.Reports(ctx, other, a, false, "", 40)
-	if e != nil || len(page.Items) != 0 {
-		t.Fatal("cross-account reports", e)
-	}
-	if _, e = s.Report(ctx, other, a, false, report.ID); !errors.Is(e, sql.ErrNoRows) {
-		t.Fatal("cross-account report detail", e)
-	}
-	updated, e := s.Triage(ctx, owner, a, report.ID, Triage{ExpectedRevision: 1, IdempotencyKey: "triage", Status: "resolved", Reply: "Please retry now."})
-	if e != nil || updated.Revision != 2 {
-		t.Fatal(e)
-	}
-	inbox, e := s.Inbox(ctx, viewer, a, "", 40)
-	if e != nil || inbox.Unread != 1 || len(inbox.Items) != 1 || inbox.Items[0].Code != "feedback-updated" {
-		t.Fatalf("inbox %+v %v", inbox, e)
-	}
-	if e = s.ReadNotice(ctx, other, a, inbox.Items[0].ID); !errors.Is(e, sql.ErrNoRows) {
-		t.Fatal("cross-scope read", e)
-	}
-	for i := 0; i < 2; i++ {
-		if e = s.ReadNotice(ctx, viewer, a, inbox.Items[0].ID); e != nil {
-			t.Fatal(e)
-		}
-	}
-	inbox, e = s.Inbox(ctx, viewer, a, "", 40)
-	if e != nil || inbox.Unread != 0 {
-		t.Fatal("read not durable", e)
-	}
-	var count int
-	s.DB.QueryRow(`SELECT count(*) FROM console_records WHERE lane='client'`).Scan(&count)
-	if count != 1 {
-		t.Fatal("diagnostic receipt duplicated", count)
-	}
-}
-func TestConsoleFeedbackRechecksMediaContext(t *testing.T) {
-	s, p, a := consoleFixture(t)
-	ctx := context.Background()
-	c := catalogtest.New(t, s.DB)
-	films := c.Library("films", "Films", "movie", "/films")
-	item := c.Movie(films, "/films/context.mkv", "Context", 2020)
-	c.Drain()
-	r, e := s.Submit(ctx, p, a, SubmitReport{IdempotencyKey: "context", Category: "metadata", Message: "Sensitive context", ItemID: item.Public})
-	if e != nil {
-		t.Fatal(e)
-	}
-	restricted := func(_ context.Context, _ *sql.Tx, item string) error {
-		if item != "" {
-			return identity.ErrUnauthorized
-		}
-		return nil
-	}
-	out, e := s.Report(ctx, p, restricted, false, r.ID)
-	if e != nil {
-		t.Fatal(e)
-	}
-	if out.ContextAvailable || out.Message != "Media context is no longer accessible." || out.ItemID != "" || len(out.Events) > 0 {
-		t.Fatalf("revoked context leaked: %+v", out)
 	}
 }
 func TestConsoleOwnerAlertsDeduplicateAndReopen(t *testing.T) {
@@ -395,7 +317,7 @@ func TestConsoleScheduleSlotCalendarWindows(t *testing.T) {
 	}
 }
 func TestConsoleStrictValidationAndAuditPayload(t *testing.T) {
-	if SafeText("token\u202elink", 100) || SafeText("\x00", 100) || validDiagnostic(&ClientDiagnostic{Platform: "url", State: "playing"}) {
+	if SafeText("token\u202elink", 100) || SafeText("\x00", 100) || validFeedbackClient(&FeedbackClient{Platform: "https://url", AppVersion: "1.0"}) {
 		t.Fatal("unsafe typed input")
 	}
 	v := DefaultSettings()

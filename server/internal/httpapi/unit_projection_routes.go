@@ -56,12 +56,6 @@ var projectedPatterns = map[string]bool{
 	"GET /v1/feedback/reports/{id}":               true,
 	"GET /v1/admin/feedback/reports":              true,
 	"GET /v1/admin/feedback/reports/{id}":         true,
-	"GET /v1/feedback":                            true,
-	"GET /v1/feedback/{id}":                       true,
-	"GET /v1/admin/feedback":                      true,
-	"GET /v1/admin/feedback/{id}":                 true,
-	"POST /v1/feedback":                           true,
-	"PATCH /v1/admin/feedback/{id}":               true,
 	"GET /v1/notifications":                       true,
 	"GET /v1/admin/console/jobs":                  true,
 	"POST /v1/admin/console/jobs":                 true,
@@ -189,24 +183,6 @@ func registerUnitProjections(registry *apikit.Registry, d Dependencies) error {
 		return err
 	}
 	if err := addProjection[noBody, projectedConsoleEnvelope[operations.FeedbackReport]](registry, mux, "GET /v1/admin/feedback/reports/{id}", apikit.ScopeAdmin, laneAdmin, nil); err != nil {
-		return err
-	}
-	if err := addProjection[noBody, projectedConsoleEnvelope[operations.Page[operations.Report]]](registry, mux, "GET /v1/feedback", apikit.ScopeRead, laneDefault, []string{"cursor", "limit"}); err != nil {
-		return err
-	}
-	if err := addProjection[noBody, projectedConsoleEnvelope[operations.Report]](registry, mux, "GET /v1/feedback/{id}", apikit.ScopeRead, laneDefault, nil); err != nil {
-		return err
-	}
-	if err := addProjection[noBody, projectedConsoleEnvelope[operations.Page[operations.Report]]](registry, mux, "GET /v1/admin/feedback", apikit.ScopeAdmin, laneAdmin, []string{"cursor", "limit"}); err != nil {
-		return err
-	}
-	if err := addProjection[noBody, projectedConsoleEnvelope[operations.Report]](registry, mux, "GET /v1/admin/feedback/{id}", apikit.ScopeAdmin, laneAdmin, nil); err != nil {
-		return err
-	}
-	if err := addProjection[operations.SubmitReport, projectedConsoleEnvelope[operations.Report]](registry, mux, "POST /v1/feedback", apikit.ScopePlayback, laneDefault, nil); err != nil {
-		return err
-	}
-	if err := addProjection[operations.Triage, projectedConsoleEnvelope[operations.Report]](registry, mux, "PATCH /v1/admin/feedback/{id}", apikit.ScopeAdmin, laneAdminHeavy, nil); err != nil {
 		return err
 	}
 	if err := addProjection[noBody, projectedConsoleEnvelope[operations.Inbox]](registry, mux, "GET /v1/notifications", apikit.ScopeRead, laneDefault, []string{"cursor", "limit"}); err != nil {

@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"portico.local/server/internal/apiwire"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -216,6 +217,23 @@ type FeedbackSubmission struct {
 	// AttachDiagnostics is the reporter's choice. False records a "declined"
 	// decision rather than silently omitting the field.
 	AttachDiagnostics bool `json:"attachDiagnostics"`
+	// Client names the sending app so triage can see where a report came from.
+	Client *FeedbackClient `json:"client,omitempty"`
+}
+
+// FeedbackClient is the app a report was sent from: its platform, its version
+// and whether the device was online. It is an allowlisted snapshot; no device
+// identifiers, names, addresses or titles can enter it.
+type FeedbackClient struct {
+	Platform   string `json:"platform"`
+	AppVersion string `json:"appVersion"`
+	Online     *bool  `json:"online,omitempty"`
+}
+
+var feedbackClientWord = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9 ._+-]{0,39}$`)
+
+func validFeedbackClient(c *FeedbackClient) bool {
+	return c == nil || feedbackClientWord.MatchString(c.Platform) && feedbackClientWord.MatchString(c.AppVersion)
 }
 
 // FeedbackReporter is the identity a reviewer sees.
@@ -259,6 +277,7 @@ type FeedbackReport struct {
 	ExpiresAt   apiwire.Instant       `json:"expiresAt"`
 	Reporter    FeedbackReporter      `json:"reporter"`
 	Diagnostics FeedbackDiagnostics   `json:"diagnostics"`
+	Client      *FeedbackClient       `json:"client,omitempty"`
 	DuplicateOf string                `json:"duplicateOf,omitempty"`
 	Duplicates  int                   `json:"duplicates"`
 	Thread      []FeedbackThreadEvent `json:"thread"`
@@ -367,6 +386,17 @@ func (s *Store) SubmitFeedback(ctx context.Context, p identity.Principal, auth A
 	if c.ItemID != "" && !validID(c.ItemID) {
 		return out, invalidFields("itemId")
 	}
+	if !validFeedbackClient(c.Client) {
+		return out, invalidFields("client")
+	}
+	attachment := ""
+	if c.Client != nil {
+		raw, err := json.Marshal(c.Client)
+		if err != nil {
+			return out, err
+		}
+		attachment = string(raw)
+	}
 	scope := ViewerKey(p)
 	e = s.transaction(ctx, auth, c.ItemID, func(tx *sql.Tx) error {
 		now := s.now()
@@ -426,7 +456,7 @@ func (s *Store) SubmitFeedback(ctx context.Context, p identity.Principal, auth A
 		id := identity.Token()
 		expiry := now + days(180)
 		if _, err = tx.Exec(`INSERT INTO console_reports(id,scope,created_ms,updated_ms,revision,status,category,message,item_id,attachment,expires_ms)
- VALUES(?,?,?,?,1,'open',?,?,?,'',?)`, id, scope, now, now, c.Category, c.Message, entity, expiry); err != nil {
+ VALUES(?,?,?,?,1,'open',?,?,?,?,?)`, id, scope, now, now, c.Category, c.Message, entity, attachment, expiry); err != nil {
 			return err
 		}
 		if _, err = tx.Exec(`INSERT INTO feedback_details(report_id,kind,reporter_name,reporter_authority,reporter_role,fingerprint,session_id,diagnostics_decision,diagnostics_ref,duplicate_of)
@@ -453,15 +483,20 @@ func (s *Store) SubmitFeedback(ctx context.Context, p identity.Principal, auth A
 
 const feedbackColumns = `r.id,r.sequence,r.revision,r.status,r.message,COALESCE((SELECT pid(public_id) FROM catalog_entities WHERE id=r.item_id),''),r.created_ms,r.updated_ms,r.expires_ms,r.category,
  COALESCE(d.kind,'other'),COALESCE(d.reporter_name,'Unknown profile'),COALESCE(d.reporter_authority,'local'),COALESCE(d.reporter_role,'member'),
- COALESCE(d.diagnostics_decision,'not-requested'),COALESCE(d.diagnostics_ref,''),COALESCE(d.duplicate_of,''),COALESCE(d.duplicates,0),r.scope`
+ COALESCE(d.diagnostics_decision,'not-requested'),COALESCE(d.diagnostics_ref,''),COALESCE(d.duplicate_of,''),COALESCE(d.duplicates,0),r.scope,r.attachment`
 
 func scanFeedbackReport(row interface{ Scan(...any) error }, viewer string) (FeedbackReport, error) {
 	var r FeedbackReport
-	var scope string
+	var scope, attachment string
 	e := row.Scan(&r.ID, &r.Sequence, &r.Revision, &r.Status, &r.Message, &r.ItemID, &r.CreatedAt, &r.UpdatedAt, &r.ExpiresAt, &r.Category,
-		&r.Kind, &r.Reporter.Name, &r.Reporter.Authority, &r.Reporter.Role, &r.Diagnostics.Decision, &r.Diagnostics.Reference, &r.DuplicateOf, &r.Duplicates, &scope)
+		&r.Kind, &r.Reporter.Name, &r.Reporter.Authority, &r.Reporter.Role, &r.Diagnostics.Decision, &r.Diagnostics.Reference, &r.DuplicateOf, &r.Duplicates, &scope, &attachment)
 	if e != nil {
 		return r, e
+	}
+	if attachment != "" {
+		if e = decodeDocument(attachment, &r.Client); e != nil {
+			return r, e
+		}
 	}
 	r.Cursor = strconv.FormatInt(r.Sequence, 10)
 	r.Diagnostics.Detail = feedbackDiagnosticsDetail(r.Diagnostics.Decision)

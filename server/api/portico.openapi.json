@@ -24776,6 +24776,24 @@
           "category": {
             "type": "string"
           },
+          "client": {
+            "properties": {
+              "appVersion": {
+                "type": "string"
+              },
+              "online": {
+                "type": "boolean"
+              },
+              "platform": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "platform",
+              "appVersion"
+            ],
+            "type": "object"
+          },
           "itemId": {
             "type": "string"
           },
@@ -31549,138 +31567,6 @@
         ],
         "type": "object"
       },
-      "GetAdminFeedbackIdRequest": {
-        "properties": {},
-        "type": "object"
-      },
-      "GetAdminFeedbackIdResponse": {
-        "properties": {
-          "data": {
-            "properties": {
-              "category": {
-                "type": "string"
-              },
-              "contextAvailable": {
-                "type": "boolean"
-              },
-              "createdAt": {
-                "description": "RFC 3339 UTC instant; empty when absent.",
-                "type": "string"
-              },
-              "diagnostic": {
-                "properties": {
-                  "online": {
-                    "type": "boolean"
-                  },
-                  "platform": {
-                    "type": "string"
-                  },
-                  "state": {
-                    "type": "string"
-                  }
-                },
-                "required": [
-                  "platform",
-                  "state",
-                  "online"
-                ],
-                "type": "object"
-              },
-              "events": {
-                "items": {
-                  "properties": {
-                    "actorClass": {
-                      "type": "string"
-                    },
-                    "at": {
-                      "description": "RFC 3339 UTC instant; empty when absent.",
-                      "type": "string"
-                    },
-                    "reply": {
-                      "type": "string"
-                    },
-                    "revision": {
-                      "maximum": 9007199254740991,
-                      "minimum": -9007199254740991,
-                      "type": "integer"
-                    },
-                    "sequence": {
-                      "maximum": 9007199254740991,
-                      "minimum": -9007199254740991,
-                      "type": "integer"
-                    },
-                    "status": {
-                      "type": "string"
-                    }
-                  },
-                  "required": [
-                    "sequence",
-                    "at",
-                    "revision",
-                    "status",
-                    "reply",
-                    "actorClass"
-                  ],
-                  "type": "object"
-                },
-                "type": "array"
-              },
-              "id": {
-                "type": "string"
-              },
-              "itemId": {
-                "type": "string"
-              },
-              "message": {
-                "type": "string"
-              },
-              "revision": {
-                "maximum": 9007199254740991,
-                "minimum": -9007199254740991,
-                "type": "integer"
-              },
-              "status": {
-                "type": "string"
-              },
-              "updatedAt": {
-                "description": "RFC 3339 UTC instant; empty when absent.",
-                "type": "string"
-              }
-            },
-            "required": [
-              "id",
-              "createdAt",
-              "updatedAt",
-              "revision",
-              "status",
-              "category",
-              "message",
-              "contextAvailable"
-            ],
-            "type": "object"
-          },
-          "scope": {
-            "properties": {
-              "serverId": {
-                "type": "string"
-              },
-              "viewerFence": {
-                "type": "string"
-              }
-            },
-            "required": [
-              "serverId",
-              "viewerFence"
-            ],
-            "type": "object"
-          }
-        },
-        "required": [
-          "scope",
-          "data"
-        ],
-        "type": "object"
-      },
       "GetAdminFeedbackReportsIdRequest": {
         "properties": {},
         "type": "object"
@@ -31691,6 +31577,24 @@
             "properties": {
               "category": {
                 "type": "string"
+              },
+              "client": {
+                "properties": {
+                  "appVersion": {
+                    "type": "string"
+                  },
+                  "online": {
+                    "type": "boolean"
+                  },
+                  "platform": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "platform",
+                  "appVersion"
+                ],
+                "type": "object"
               },
               "createdAt": {
                 "description": "RFC 3339 UTC instant; empty when absent.",
@@ -31875,6 +31779,24 @@
                     "category": {
                       "type": "string"
                     },
+                    "client": {
+                      "properties": {
+                        "appVersion": {
+                          "type": "string"
+                        },
+                        "online": {
+                          "type": "boolean"
+                        },
+                        "platform": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "platform",
+                        "appVersion"
+                      ],
+                      "type": "object"
+                    },
                     "createdAt": {
                       "description": "RFC 3339 UTC instant; empty when absent.",
                       "type": "string"
@@ -32046,153 +31968,6 @@
               "total",
               "filter",
               "observedAt"
-            ],
-            "type": "object"
-          },
-          "scope": {
-            "properties": {
-              "serverId": {
-                "type": "string"
-              },
-              "viewerFence": {
-                "type": "string"
-              }
-            },
-            "required": [
-              "serverId",
-              "viewerFence"
-            ],
-            "type": "object"
-          }
-        },
-        "required": [
-          "scope",
-          "data"
-        ],
-        "type": "object"
-      },
-      "GetAdminFeedbackRequest": {
-        "properties": {},
-        "type": "object"
-      },
-      "GetAdminFeedbackResponse": {
-        "properties": {
-          "data": {
-            "properties": {
-              "items": {
-                "items": {
-                  "properties": {
-                    "category": {
-                      "type": "string"
-                    },
-                    "contextAvailable": {
-                      "type": "boolean"
-                    },
-                    "createdAt": {
-                      "description": "RFC 3339 UTC instant; empty when absent.",
-                      "type": "string"
-                    },
-                    "diagnostic": {
-                      "properties": {
-                        "online": {
-                          "type": "boolean"
-                        },
-                        "platform": {
-                          "type": "string"
-                        },
-                        "state": {
-                          "type": "string"
-                        }
-                      },
-                      "required": [
-                        "platform",
-                        "state",
-                        "online"
-                      ],
-                      "type": "object"
-                    },
-                    "events": {
-                      "items": {
-                        "properties": {
-                          "actorClass": {
-                            "type": "string"
-                          },
-                          "at": {
-                            "description": "RFC 3339 UTC instant; empty when absent.",
-                            "type": "string"
-                          },
-                          "reply": {
-                            "type": "string"
-                          },
-                          "revision": {
-                            "maximum": 9007199254740991,
-                            "minimum": -9007199254740991,
-                            "type": "integer"
-                          },
-                          "sequence": {
-                            "maximum": 9007199254740991,
-                            "minimum": -9007199254740991,
-                            "type": "integer"
-                          },
-                          "status": {
-                            "type": "string"
-                          }
-                        },
-                        "required": [
-                          "sequence",
-                          "at",
-                          "revision",
-                          "status",
-                          "reply",
-                          "actorClass"
-                        ],
-                        "type": "object"
-                      },
-                      "type": "array"
-                    },
-                    "id": {
-                      "type": "string"
-                    },
-                    "itemId": {
-                      "type": "string"
-                    },
-                    "message": {
-                      "type": "string"
-                    },
-                    "revision": {
-                      "maximum": 9007199254740991,
-                      "minimum": -9007199254740991,
-                      "type": "integer"
-                    },
-                    "status": {
-                      "type": "string"
-                    },
-                    "updatedAt": {
-                      "description": "RFC 3339 UTC instant; empty when absent.",
-                      "type": "string"
-                    }
-                  },
-                  "required": [
-                    "id",
-                    "createdAt",
-                    "updatedAt",
-                    "revision",
-                    "status",
-                    "category",
-                    "message",
-                    "contextAvailable"
-                  ],
-                  "type": "object"
-                },
-                "type": "array"
-              },
-              "nextCursor": {
-                "type": "string"
-              }
-            },
-            "required": [
-              "items",
-              "nextCursor"
             ],
             "type": "object"
           },
@@ -49670,138 +49445,6 @@
         ],
         "type": "object"
       },
-      "GetFeedbackIdRequest": {
-        "properties": {},
-        "type": "object"
-      },
-      "GetFeedbackIdResponse": {
-        "properties": {
-          "data": {
-            "properties": {
-              "category": {
-                "type": "string"
-              },
-              "contextAvailable": {
-                "type": "boolean"
-              },
-              "createdAt": {
-                "description": "RFC 3339 UTC instant; empty when absent.",
-                "type": "string"
-              },
-              "diagnostic": {
-                "properties": {
-                  "online": {
-                    "type": "boolean"
-                  },
-                  "platform": {
-                    "type": "string"
-                  },
-                  "state": {
-                    "type": "string"
-                  }
-                },
-                "required": [
-                  "platform",
-                  "state",
-                  "online"
-                ],
-                "type": "object"
-              },
-              "events": {
-                "items": {
-                  "properties": {
-                    "actorClass": {
-                      "type": "string"
-                    },
-                    "at": {
-                      "description": "RFC 3339 UTC instant; empty when absent.",
-                      "type": "string"
-                    },
-                    "reply": {
-                      "type": "string"
-                    },
-                    "revision": {
-                      "maximum": 9007199254740991,
-                      "minimum": -9007199254740991,
-                      "type": "integer"
-                    },
-                    "sequence": {
-                      "maximum": 9007199254740991,
-                      "minimum": -9007199254740991,
-                      "type": "integer"
-                    },
-                    "status": {
-                      "type": "string"
-                    }
-                  },
-                  "required": [
-                    "sequence",
-                    "at",
-                    "revision",
-                    "status",
-                    "reply",
-                    "actorClass"
-                  ],
-                  "type": "object"
-                },
-                "type": "array"
-              },
-              "id": {
-                "type": "string"
-              },
-              "itemId": {
-                "type": "string"
-              },
-              "message": {
-                "type": "string"
-              },
-              "revision": {
-                "maximum": 9007199254740991,
-                "minimum": -9007199254740991,
-                "type": "integer"
-              },
-              "status": {
-                "type": "string"
-              },
-              "updatedAt": {
-                "description": "RFC 3339 UTC instant; empty when absent.",
-                "type": "string"
-              }
-            },
-            "required": [
-              "id",
-              "createdAt",
-              "updatedAt",
-              "revision",
-              "status",
-              "category",
-              "message",
-              "contextAvailable"
-            ],
-            "type": "object"
-          },
-          "scope": {
-            "properties": {
-              "serverId": {
-                "type": "string"
-              },
-              "viewerFence": {
-                "type": "string"
-              }
-            },
-            "required": [
-              "serverId",
-              "viewerFence"
-            ],
-            "type": "object"
-          }
-        },
-        "required": [
-          "scope",
-          "data"
-        ],
-        "type": "object"
-      },
       "GetFeedbackReportsIdRequest": {
         "properties": {},
         "type": "object"
@@ -49812,6 +49455,24 @@
             "properties": {
               "category": {
                 "type": "string"
+              },
+              "client": {
+                "properties": {
+                  "appVersion": {
+                    "type": "string"
+                  },
+                  "online": {
+                    "type": "boolean"
+                  },
+                  "platform": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "platform",
+                  "appVersion"
+                ],
+                "type": "object"
               },
               "createdAt": {
                 "description": "RFC 3339 UTC instant; empty when absent.",
@@ -49996,6 +49657,24 @@
                     "category": {
                       "type": "string"
                     },
+                    "client": {
+                      "properties": {
+                        "appVersion": {
+                          "type": "string"
+                        },
+                        "online": {
+                          "type": "boolean"
+                        },
+                        "platform": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "platform",
+                        "appVersion"
+                      ],
+                      "type": "object"
+                    },
                     "createdAt": {
                       "description": "RFC 3339 UTC instant; empty when absent.",
                       "type": "string"
@@ -50167,153 +49846,6 @@
               "total",
               "filter",
               "observedAt"
-            ],
-            "type": "object"
-          },
-          "scope": {
-            "properties": {
-              "serverId": {
-                "type": "string"
-              },
-              "viewerFence": {
-                "type": "string"
-              }
-            },
-            "required": [
-              "serverId",
-              "viewerFence"
-            ],
-            "type": "object"
-          }
-        },
-        "required": [
-          "scope",
-          "data"
-        ],
-        "type": "object"
-      },
-      "GetFeedbackRequest": {
-        "properties": {},
-        "type": "object"
-      },
-      "GetFeedbackResponse": {
-        "properties": {
-          "data": {
-            "properties": {
-              "items": {
-                "items": {
-                  "properties": {
-                    "category": {
-                      "type": "string"
-                    },
-                    "contextAvailable": {
-                      "type": "boolean"
-                    },
-                    "createdAt": {
-                      "description": "RFC 3339 UTC instant; empty when absent.",
-                      "type": "string"
-                    },
-                    "diagnostic": {
-                      "properties": {
-                        "online": {
-                          "type": "boolean"
-                        },
-                        "platform": {
-                          "type": "string"
-                        },
-                        "state": {
-                          "type": "string"
-                        }
-                      },
-                      "required": [
-                        "platform",
-                        "state",
-                        "online"
-                      ],
-                      "type": "object"
-                    },
-                    "events": {
-                      "items": {
-                        "properties": {
-                          "actorClass": {
-                            "type": "string"
-                          },
-                          "at": {
-                            "description": "RFC 3339 UTC instant; empty when absent.",
-                            "type": "string"
-                          },
-                          "reply": {
-                            "type": "string"
-                          },
-                          "revision": {
-                            "maximum": 9007199254740991,
-                            "minimum": -9007199254740991,
-                            "type": "integer"
-                          },
-                          "sequence": {
-                            "maximum": 9007199254740991,
-                            "minimum": -9007199254740991,
-                            "type": "integer"
-                          },
-                          "status": {
-                            "type": "string"
-                          }
-                        },
-                        "required": [
-                          "sequence",
-                          "at",
-                          "revision",
-                          "status",
-                          "reply",
-                          "actorClass"
-                        ],
-                        "type": "object"
-                      },
-                      "type": "array"
-                    },
-                    "id": {
-                      "type": "string"
-                    },
-                    "itemId": {
-                      "type": "string"
-                    },
-                    "message": {
-                      "type": "string"
-                    },
-                    "revision": {
-                      "maximum": 9007199254740991,
-                      "minimum": -9007199254740991,
-                      "type": "integer"
-                    },
-                    "status": {
-                      "type": "string"
-                    },
-                    "updatedAt": {
-                      "description": "RFC 3339 UTC instant; empty when absent.",
-                      "type": "string"
-                    }
-                  },
-                  "required": [
-                    "id",
-                    "createdAt",
-                    "updatedAt",
-                    "revision",
-                    "status",
-                    "category",
-                    "message",
-                    "contextAvailable"
-                  ],
-                  "type": "object"
-                },
-                "type": "array"
-              },
-              "nextCursor": {
-                "type": "string"
-              }
-            },
-            "required": [
-              "items",
-              "nextCursor"
             ],
             "type": "object"
           },
@@ -206330,159 +205862,6 @@
         ],
         "type": "object"
       },
-      "PatchAdminFeedbackIdRequest": {
-        "properties": {
-          "expectedRevision": {
-            "maximum": 9007199254740991,
-            "minimum": -9007199254740991,
-            "type": "integer"
-          },
-          "idempotencyKey": {
-            "type": "string"
-          },
-          "reply": {
-            "type": "string"
-          },
-          "status": {
-            "type": "string"
-          }
-        },
-        "required": [
-          "expectedRevision",
-          "idempotencyKey",
-          "status",
-          "reply"
-        ],
-        "type": "object"
-      },
-      "PatchAdminFeedbackIdResponse": {
-        "properties": {
-          "data": {
-            "properties": {
-              "category": {
-                "type": "string"
-              },
-              "contextAvailable": {
-                "type": "boolean"
-              },
-              "createdAt": {
-                "description": "RFC 3339 UTC instant; empty when absent.",
-                "type": "string"
-              },
-              "diagnostic": {
-                "properties": {
-                  "online": {
-                    "type": "boolean"
-                  },
-                  "platform": {
-                    "type": "string"
-                  },
-                  "state": {
-                    "type": "string"
-                  }
-                },
-                "required": [
-                  "platform",
-                  "state",
-                  "online"
-                ],
-                "type": "object"
-              },
-              "events": {
-                "items": {
-                  "properties": {
-                    "actorClass": {
-                      "type": "string"
-                    },
-                    "at": {
-                      "description": "RFC 3339 UTC instant; empty when absent.",
-                      "type": "string"
-                    },
-                    "reply": {
-                      "type": "string"
-                    },
-                    "revision": {
-                      "maximum": 9007199254740991,
-                      "minimum": -9007199254740991,
-                      "type": "integer"
-                    },
-                    "sequence": {
-                      "maximum": 9007199254740991,
-                      "minimum": -9007199254740991,
-                      "type": "integer"
-                    },
-                    "status": {
-                      "type": "string"
-                    }
-                  },
-                  "required": [
-                    "sequence",
-                    "at",
-                    "revision",
-                    "status",
-                    "reply",
-                    "actorClass"
-                  ],
-                  "type": "object"
-                },
-                "type": "array"
-              },
-              "id": {
-                "type": "string"
-              },
-              "itemId": {
-                "type": "string"
-              },
-              "message": {
-                "type": "string"
-              },
-              "revision": {
-                "maximum": 9007199254740991,
-                "minimum": -9007199254740991,
-                "type": "integer"
-              },
-              "status": {
-                "type": "string"
-              },
-              "updatedAt": {
-                "description": "RFC 3339 UTC instant; empty when absent.",
-                "type": "string"
-              }
-            },
-            "required": [
-              "id",
-              "createdAt",
-              "updatedAt",
-              "revision",
-              "status",
-              "category",
-              "message",
-              "contextAvailable"
-            ],
-            "type": "object"
-          },
-          "scope": {
-            "properties": {
-              "serverId": {
-                "type": "string"
-              },
-              "viewerFence": {
-                "type": "string"
-              }
-            },
-            "required": [
-              "serverId",
-              "viewerFence"
-            ],
-            "type": "object"
-          }
-        },
-        "required": [
-          "scope",
-          "data"
-        ],
-        "type": "object"
-      },
       "PatchAdminLibrariesIdRequest": {
         "properties": {
           "expectedRevision": {
@@ -212227,6 +211606,24 @@
             "properties": {
               "category": {
                 "type": "string"
+              },
+              "client": {
+                "properties": {
+                  "appVersion": {
+                    "type": "string"
+                  },
+                  "online": {
+                    "type": "boolean"
+                  },
+                  "platform": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "platform",
+                  "appVersion"
+                ],
+                "type": "object"
               },
               "createdAt": {
                 "description": "RFC 3339 UTC instant; empty when absent.",
@@ -223235,6 +222632,24 @@
           "category": {
             "type": "string"
           },
+          "client": {
+            "properties": {
+              "appVersion": {
+                "type": "string"
+              },
+              "online": {
+                "type": "boolean"
+              },
+              "platform": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "platform",
+              "appVersion"
+            ],
+            "type": "object"
+          },
           "itemId": {
             "type": "string"
           },
@@ -223281,6 +222696,24 @@
                 "properties": {
                   "category": {
                     "type": "string"
+                  },
+                  "client": {
+                    "properties": {
+                      "appVersion": {
+                        "type": "string"
+                      },
+                      "online": {
+                        "type": "boolean"
+                      },
+                      "platform": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "platform",
+                      "appVersion"
+                    ],
+                    "type": "object"
                   },
                   "createdAt": {
                     "description": "RFC 3339 UTC instant; empty when absent.",
@@ -223428,176 +222861,6 @@
               "report",
               "duplicate",
               "created"
-            ],
-            "type": "object"
-          },
-          "scope": {
-            "properties": {
-              "serverId": {
-                "type": "string"
-              },
-              "viewerFence": {
-                "type": "string"
-              }
-            },
-            "required": [
-              "serverId",
-              "viewerFence"
-            ],
-            "type": "object"
-          }
-        },
-        "required": [
-          "scope",
-          "data"
-        ],
-        "type": "object"
-      },
-      "PostFeedbackRequest": {
-        "properties": {
-          "category": {
-            "type": "string"
-          },
-          "diagnostic": {
-            "properties": {
-              "online": {
-                "type": "boolean"
-              },
-              "platform": {
-                "type": "string"
-              },
-              "state": {
-                "type": "string"
-              }
-            },
-            "required": [
-              "platform",
-              "state",
-              "online"
-            ],
-            "type": "object"
-          },
-          "idempotencyKey": {
-            "type": "string"
-          },
-          "itemId": {
-            "type": "string"
-          },
-          "message": {
-            "type": "string"
-          }
-        },
-        "required": [
-          "idempotencyKey",
-          "category",
-          "message",
-          "itemId"
-        ],
-        "type": "object"
-      },
-      "PostFeedbackResponse": {
-        "properties": {
-          "data": {
-            "properties": {
-              "category": {
-                "type": "string"
-              },
-              "contextAvailable": {
-                "type": "boolean"
-              },
-              "createdAt": {
-                "description": "RFC 3339 UTC instant; empty when absent.",
-                "type": "string"
-              },
-              "diagnostic": {
-                "properties": {
-                  "online": {
-                    "type": "boolean"
-                  },
-                  "platform": {
-                    "type": "string"
-                  },
-                  "state": {
-                    "type": "string"
-                  }
-                },
-                "required": [
-                  "platform",
-                  "state",
-                  "online"
-                ],
-                "type": "object"
-              },
-              "events": {
-                "items": {
-                  "properties": {
-                    "actorClass": {
-                      "type": "string"
-                    },
-                    "at": {
-                      "description": "RFC 3339 UTC instant; empty when absent.",
-                      "type": "string"
-                    },
-                    "reply": {
-                      "type": "string"
-                    },
-                    "revision": {
-                      "maximum": 9007199254740991,
-                      "minimum": -9007199254740991,
-                      "type": "integer"
-                    },
-                    "sequence": {
-                      "maximum": 9007199254740991,
-                      "minimum": -9007199254740991,
-                      "type": "integer"
-                    },
-                    "status": {
-                      "type": "string"
-                    }
-                  },
-                  "required": [
-                    "sequence",
-                    "at",
-                    "revision",
-                    "status",
-                    "reply",
-                    "actorClass"
-                  ],
-                  "type": "object"
-                },
-                "type": "array"
-              },
-              "id": {
-                "type": "string"
-              },
-              "itemId": {
-                "type": "string"
-              },
-              "message": {
-                "type": "string"
-              },
-              "revision": {
-                "maximum": 9007199254740991,
-                "minimum": -9007199254740991,
-                "type": "integer"
-              },
-              "status": {
-                "type": "string"
-              },
-              "updatedAt": {
-                "description": "RFC 3339 UTC instant; empty when absent.",
-                "type": "string"
-              }
-            },
-            "required": [
-              "id",
-              "createdAt",
-              "updatedAt",
-              "revision",
-              "status",
-              "category",
-              "message",
-              "contextAvailable"
             ],
             "type": "object"
           },
@@ -303168,224 +302431,6 @@
         "x-scope": "admin"
       }
     },
-    "/v1/admin/feedback": {
-      "get": {
-        "operationId": "get_admin_feedback",
-        "parameters": [
-          {
-            "in": "query",
-            "name": "cursor",
-            "required": false,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "in": "query",
-            "name": "limit",
-            "required": false,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "properties": {
-                    "data": {
-                      "properties": {
-                        "items": {
-                          "items": {
-                            "properties": {
-                              "category": {
-                                "type": "string"
-                              },
-                              "contextAvailable": {
-                                "type": "boolean"
-                              },
-                              "createdAt": {
-                                "description": "RFC 3339 UTC instant; empty when absent.",
-                                "type": "string"
-                              },
-                              "diagnostic": {
-                                "properties": {
-                                  "online": {
-                                    "type": "boolean"
-                                  },
-                                  "platform": {
-                                    "type": "string"
-                                  },
-                                  "state": {
-                                    "type": "string"
-                                  }
-                                },
-                                "required": [
-                                  "platform",
-                                  "state",
-                                  "online"
-                                ],
-                                "type": "object"
-                              },
-                              "events": {
-                                "items": {
-                                  "properties": {
-                                    "actorClass": {
-                                      "type": "string"
-                                    },
-                                    "at": {
-                                      "description": "RFC 3339 UTC instant; empty when absent.",
-                                      "type": "string"
-                                    },
-                                    "reply": {
-                                      "type": "string"
-                                    },
-                                    "revision": {
-                                      "maximum": 9007199254740991,
-                                      "minimum": -9007199254740991,
-                                      "type": "integer"
-                                    },
-                                    "sequence": {
-                                      "maximum": 9007199254740991,
-                                      "minimum": -9007199254740991,
-                                      "type": "integer"
-                                    },
-                                    "status": {
-                                      "type": "string"
-                                    }
-                                  },
-                                  "required": [
-                                    "sequence",
-                                    "at",
-                                    "revision",
-                                    "status",
-                                    "reply",
-                                    "actorClass"
-                                  ],
-                                  "type": "object"
-                                },
-                                "type": "array"
-                              },
-                              "id": {
-                                "type": "string"
-                              },
-                              "itemId": {
-                                "type": "string"
-                              },
-                              "message": {
-                                "type": "string"
-                              },
-                              "revision": {
-                                "maximum": 9007199254740991,
-                                "minimum": -9007199254740991,
-                                "type": "integer"
-                              },
-                              "status": {
-                                "type": "string"
-                              },
-                              "updatedAt": {
-                                "description": "RFC 3339 UTC instant; empty when absent.",
-                                "type": "string"
-                              }
-                            },
-                            "required": [
-                              "id",
-                              "createdAt",
-                              "updatedAt",
-                              "revision",
-                              "status",
-                              "category",
-                              "message",
-                              "contextAvailable"
-                            ],
-                            "type": "object"
-                          },
-                          "type": "array"
-                        },
-                        "nextCursor": {
-                          "type": "string"
-                        }
-                      },
-                      "required": [
-                        "items",
-                        "nextCursor"
-                      ],
-                      "type": "object"
-                    },
-                    "scope": {
-                      "properties": {
-                        "serverId": {
-                          "type": "string"
-                        },
-                        "viewerFence": {
-                          "type": "string"
-                        }
-                      },
-                      "required": [
-                        "serverId",
-                        "viewerFence"
-                      ],
-                      "type": "object"
-                    }
-                  },
-                  "required": [
-                    "scope",
-                    "data"
-                  ],
-                  "type": "object"
-                }
-              }
-            },
-            "description": "Success"
-          },
-          "default": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "properties": {
-                    "error": {
-                      "properties": {
-                        "code": {
-                          "type": "string"
-                        },
-                        "message": {
-                          "type": "string"
-                        }
-                      },
-                      "required": [
-                        "code",
-                        "message"
-                      ],
-                      "type": "object"
-                    }
-                  },
-                  "required": [
-                    "error"
-                  ],
-                  "type": "object"
-                }
-              }
-            },
-            "description": "Request refused or unavailable"
-          }
-        },
-        "summary": "Read or update the selected projection",
-        "x-access": "device",
-        "x-admission": "admin",
-        "x-cost": "page_sized",
-        "x-error-codes": [
-          "invalid_request",
-          "unauthorized",
-          "not_permitted",
-          "not_found",
-          "internal"
-        ],
-        "x-lane": "default",
-        "x-scope": "admin"
-      }
-    },
     "/v1/admin/feedback/reports": {
       "get": {
         "operationId": "get_admin_feedback_reports",
@@ -303466,6 +302511,24 @@
                             "properties": {
                               "category": {
                                 "type": "string"
+                              },
+                              "client": {
+                                "properties": {
+                                  "appVersion": {
+                                    "type": "string"
+                                  },
+                                  "online": {
+                                    "type": "boolean"
+                                  },
+                                  "platform": {
+                                    "type": "string"
+                                  }
+                                },
+                                "required": [
+                                  "platform",
+                                  "appVersion"
+                                ],
+                                "type": "object"
                               },
                               "createdAt": {
                                 "description": "RFC 3339 UTC instant; empty when absent.",
@@ -303737,6 +302800,24 @@
                         "category": {
                           "type": "string"
                         },
+                        "client": {
+                          "properties": {
+                            "appVersion": {
+                              "type": "string"
+                            },
+                            "online": {
+                              "type": "boolean"
+                            },
+                            "platform": {
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "platform",
+                            "appVersion"
+                          ],
+                          "type": "object"
+                        },
                         "createdAt": {
                           "description": "RFC 3339 UTC instant; empty when absent.",
                           "type": "string"
@@ -304006,6 +303087,24 @@
                         "category": {
                           "type": "string"
                         },
+                        "client": {
+                          "properties": {
+                            "appVersion": {
+                              "type": "string"
+                            },
+                            "online": {
+                              "type": "boolean"
+                            },
+                            "platform": {
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "platform",
+                            "appVersion"
+                          ],
+                          "type": "object"
+                        },
                         "createdAt": {
                           "description": "RFC 3339 UTC instant; empty when absent.",
                           "type": "string"
@@ -304144,428 +303243,6 @@
                         "diagnostics",
                         "duplicates",
                         "thread"
-                      ],
-                      "type": "object"
-                    },
-                    "scope": {
-                      "properties": {
-                        "serverId": {
-                          "type": "string"
-                        },
-                        "viewerFence": {
-                          "type": "string"
-                        }
-                      },
-                      "required": [
-                        "serverId",
-                        "viewerFence"
-                      ],
-                      "type": "object"
-                    }
-                  },
-                  "required": [
-                    "scope",
-                    "data"
-                  ],
-                  "type": "object"
-                }
-              }
-            },
-            "description": "Success"
-          },
-          "default": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "properties": {
-                    "error": {
-                      "properties": {
-                        "code": {
-                          "type": "string"
-                        },
-                        "message": {
-                          "type": "string"
-                        }
-                      },
-                      "required": [
-                        "code",
-                        "message"
-                      ],
-                      "type": "object"
-                    }
-                  },
-                  "required": [
-                    "error"
-                  ],
-                  "type": "object"
-                }
-              }
-            },
-            "description": "Request refused or unavailable"
-          }
-        },
-        "summary": "Read or update the selected projection",
-        "x-access": "device",
-        "x-admission": "admin-heavy",
-        "x-cost": "page_sized",
-        "x-error-codes": [
-          "invalid_request",
-          "unauthorized",
-          "not_permitted",
-          "not_found",
-          "internal",
-          "writer_capacity"
-        ],
-        "x-lane": "default",
-        "x-max-body-bytes": 1048576,
-        "x-scope": "admin"
-      }
-    },
-    "/v1/admin/feedback/{id}": {
-      "get": {
-        "operationId": "get_admin_feedback_id",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "id",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "properties": {
-                    "data": {
-                      "properties": {
-                        "category": {
-                          "type": "string"
-                        },
-                        "contextAvailable": {
-                          "type": "boolean"
-                        },
-                        "createdAt": {
-                          "description": "RFC 3339 UTC instant; empty when absent.",
-                          "type": "string"
-                        },
-                        "diagnostic": {
-                          "properties": {
-                            "online": {
-                              "type": "boolean"
-                            },
-                            "platform": {
-                              "type": "string"
-                            },
-                            "state": {
-                              "type": "string"
-                            }
-                          },
-                          "required": [
-                            "platform",
-                            "state",
-                            "online"
-                          ],
-                          "type": "object"
-                        },
-                        "events": {
-                          "items": {
-                            "properties": {
-                              "actorClass": {
-                                "type": "string"
-                              },
-                              "at": {
-                                "description": "RFC 3339 UTC instant; empty when absent.",
-                                "type": "string"
-                              },
-                              "reply": {
-                                "type": "string"
-                              },
-                              "revision": {
-                                "maximum": 9007199254740991,
-                                "minimum": -9007199254740991,
-                                "type": "integer"
-                              },
-                              "sequence": {
-                                "maximum": 9007199254740991,
-                                "minimum": -9007199254740991,
-                                "type": "integer"
-                              },
-                              "status": {
-                                "type": "string"
-                              }
-                            },
-                            "required": [
-                              "sequence",
-                              "at",
-                              "revision",
-                              "status",
-                              "reply",
-                              "actorClass"
-                            ],
-                            "type": "object"
-                          },
-                          "type": "array"
-                        },
-                        "id": {
-                          "type": "string"
-                        },
-                        "itemId": {
-                          "type": "string"
-                        },
-                        "message": {
-                          "type": "string"
-                        },
-                        "revision": {
-                          "maximum": 9007199254740991,
-                          "minimum": -9007199254740991,
-                          "type": "integer"
-                        },
-                        "status": {
-                          "type": "string"
-                        },
-                        "updatedAt": {
-                          "description": "RFC 3339 UTC instant; empty when absent.",
-                          "type": "string"
-                        }
-                      },
-                      "required": [
-                        "id",
-                        "createdAt",
-                        "updatedAt",
-                        "revision",
-                        "status",
-                        "category",
-                        "message",
-                        "contextAvailable"
-                      ],
-                      "type": "object"
-                    },
-                    "scope": {
-                      "properties": {
-                        "serverId": {
-                          "type": "string"
-                        },
-                        "viewerFence": {
-                          "type": "string"
-                        }
-                      },
-                      "required": [
-                        "serverId",
-                        "viewerFence"
-                      ],
-                      "type": "object"
-                    }
-                  },
-                  "required": [
-                    "scope",
-                    "data"
-                  ],
-                  "type": "object"
-                }
-              }
-            },
-            "description": "Success"
-          },
-          "default": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "properties": {
-                    "error": {
-                      "properties": {
-                        "code": {
-                          "type": "string"
-                        },
-                        "message": {
-                          "type": "string"
-                        }
-                      },
-                      "required": [
-                        "code",
-                        "message"
-                      ],
-                      "type": "object"
-                    }
-                  },
-                  "required": [
-                    "error"
-                  ],
-                  "type": "object"
-                }
-              }
-            },
-            "description": "Request refused or unavailable"
-          }
-        },
-        "summary": "Read or update the selected projection",
-        "x-access": "device",
-        "x-admission": "admin",
-        "x-cost": "page_sized",
-        "x-error-codes": [
-          "invalid_request",
-          "unauthorized",
-          "not_permitted",
-          "not_found",
-          "internal"
-        ],
-        "x-lane": "default",
-        "x-scope": "admin"
-      },
-      "patch": {
-        "operationId": "patch_admin_feedback_id",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "id",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "properties": {
-                  "expectedRevision": {
-                    "maximum": 9007199254740991,
-                    "minimum": -9007199254740991,
-                    "type": "integer"
-                  },
-                  "idempotencyKey": {
-                    "type": "string"
-                  },
-                  "reply": {
-                    "type": "string"
-                  },
-                  "status": {
-                    "type": "string"
-                  }
-                },
-                "required": [
-                  "expectedRevision",
-                  "idempotencyKey",
-                  "status",
-                  "reply"
-                ],
-                "type": "object"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "properties": {
-                    "data": {
-                      "properties": {
-                        "category": {
-                          "type": "string"
-                        },
-                        "contextAvailable": {
-                          "type": "boolean"
-                        },
-                        "createdAt": {
-                          "description": "RFC 3339 UTC instant; empty when absent.",
-                          "type": "string"
-                        },
-                        "diagnostic": {
-                          "properties": {
-                            "online": {
-                              "type": "boolean"
-                            },
-                            "platform": {
-                              "type": "string"
-                            },
-                            "state": {
-                              "type": "string"
-                            }
-                          },
-                          "required": [
-                            "platform",
-                            "state",
-                            "online"
-                          ],
-                          "type": "object"
-                        },
-                        "events": {
-                          "items": {
-                            "properties": {
-                              "actorClass": {
-                                "type": "string"
-                              },
-                              "at": {
-                                "description": "RFC 3339 UTC instant; empty when absent.",
-                                "type": "string"
-                              },
-                              "reply": {
-                                "type": "string"
-                              },
-                              "revision": {
-                                "maximum": 9007199254740991,
-                                "minimum": -9007199254740991,
-                                "type": "integer"
-                              },
-                              "sequence": {
-                                "maximum": 9007199254740991,
-                                "minimum": -9007199254740991,
-                                "type": "integer"
-                              },
-                              "status": {
-                                "type": "string"
-                              }
-                            },
-                            "required": [
-                              "sequence",
-                              "at",
-                              "revision",
-                              "status",
-                              "reply",
-                              "actorClass"
-                            ],
-                            "type": "object"
-                          },
-                          "type": "array"
-                        },
-                        "id": {
-                          "type": "string"
-                        },
-                        "itemId": {
-                          "type": "string"
-                        },
-                        "message": {
-                          "type": "string"
-                        },
-                        "revision": {
-                          "maximum": 9007199254740991,
-                          "minimum": -9007199254740991,
-                          "type": "integer"
-                        },
-                        "status": {
-                          "type": "string"
-                        },
-                        "updatedAt": {
-                          "description": "RFC 3339 UTC instant; empty when absent.",
-                          "type": "string"
-                        }
-                      },
-                      "required": [
-                        "id",
-                        "createdAt",
-                        "updatedAt",
-                        "revision",
-                        "status",
-                        "category",
-                        "message",
-                        "contextAvailable"
                       ],
                       "type": "object"
                     },
@@ -374955,458 +373632,6 @@
         "x-scope": "read"
       }
     },
-    "/v1/feedback": {
-      "get": {
-        "operationId": "get_feedback",
-        "parameters": [
-          {
-            "in": "query",
-            "name": "cursor",
-            "required": false,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "in": "query",
-            "name": "limit",
-            "required": false,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "properties": {
-                    "data": {
-                      "properties": {
-                        "items": {
-                          "items": {
-                            "properties": {
-                              "category": {
-                                "type": "string"
-                              },
-                              "contextAvailable": {
-                                "type": "boolean"
-                              },
-                              "createdAt": {
-                                "description": "RFC 3339 UTC instant; empty when absent.",
-                                "type": "string"
-                              },
-                              "diagnostic": {
-                                "properties": {
-                                  "online": {
-                                    "type": "boolean"
-                                  },
-                                  "platform": {
-                                    "type": "string"
-                                  },
-                                  "state": {
-                                    "type": "string"
-                                  }
-                                },
-                                "required": [
-                                  "platform",
-                                  "state",
-                                  "online"
-                                ],
-                                "type": "object"
-                              },
-                              "events": {
-                                "items": {
-                                  "properties": {
-                                    "actorClass": {
-                                      "type": "string"
-                                    },
-                                    "at": {
-                                      "description": "RFC 3339 UTC instant; empty when absent.",
-                                      "type": "string"
-                                    },
-                                    "reply": {
-                                      "type": "string"
-                                    },
-                                    "revision": {
-                                      "maximum": 9007199254740991,
-                                      "minimum": -9007199254740991,
-                                      "type": "integer"
-                                    },
-                                    "sequence": {
-                                      "maximum": 9007199254740991,
-                                      "minimum": -9007199254740991,
-                                      "type": "integer"
-                                    },
-                                    "status": {
-                                      "type": "string"
-                                    }
-                                  },
-                                  "required": [
-                                    "sequence",
-                                    "at",
-                                    "revision",
-                                    "status",
-                                    "reply",
-                                    "actorClass"
-                                  ],
-                                  "type": "object"
-                                },
-                                "type": "array"
-                              },
-                              "id": {
-                                "type": "string"
-                              },
-                              "itemId": {
-                                "type": "string"
-                              },
-                              "message": {
-                                "type": "string"
-                              },
-                              "revision": {
-                                "maximum": 9007199254740991,
-                                "minimum": -9007199254740991,
-                                "type": "integer"
-                              },
-                              "status": {
-                                "type": "string"
-                              },
-                              "updatedAt": {
-                                "description": "RFC 3339 UTC instant; empty when absent.",
-                                "type": "string"
-                              }
-                            },
-                            "required": [
-                              "id",
-                              "createdAt",
-                              "updatedAt",
-                              "revision",
-                              "status",
-                              "category",
-                              "message",
-                              "contextAvailable"
-                            ],
-                            "type": "object"
-                          },
-                          "type": "array"
-                        },
-                        "nextCursor": {
-                          "type": "string"
-                        }
-                      },
-                      "required": [
-                        "items",
-                        "nextCursor"
-                      ],
-                      "type": "object"
-                    },
-                    "scope": {
-                      "properties": {
-                        "serverId": {
-                          "type": "string"
-                        },
-                        "viewerFence": {
-                          "type": "string"
-                        }
-                      },
-                      "required": [
-                        "serverId",
-                        "viewerFence"
-                      ],
-                      "type": "object"
-                    }
-                  },
-                  "required": [
-                    "scope",
-                    "data"
-                  ],
-                  "type": "object"
-                }
-              }
-            },
-            "description": "Success"
-          },
-          "default": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "properties": {
-                    "error": {
-                      "properties": {
-                        "code": {
-                          "type": "string"
-                        },
-                        "message": {
-                          "type": "string"
-                        }
-                      },
-                      "required": [
-                        "code",
-                        "message"
-                      ],
-                      "type": "object"
-                    }
-                  },
-                  "required": [
-                    "error"
-                  ],
-                  "type": "object"
-                }
-              }
-            },
-            "description": "Request refused or unavailable"
-          }
-        },
-        "summary": "Read or update the selected projection",
-        "x-access": "device",
-        "x-admission": "default",
-        "x-cost": "page_sized",
-        "x-error-codes": [
-          "invalid_request",
-          "unauthorized",
-          "not_permitted",
-          "not_found",
-          "internal"
-        ],
-        "x-lane": "default",
-        "x-scope": "read"
-      },
-      "post": {
-        "operationId": "post_feedback",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "properties": {
-                  "category": {
-                    "type": "string"
-                  },
-                  "diagnostic": {
-                    "properties": {
-                      "online": {
-                        "type": "boolean"
-                      },
-                      "platform": {
-                        "type": "string"
-                      },
-                      "state": {
-                        "type": "string"
-                      }
-                    },
-                    "required": [
-                      "platform",
-                      "state",
-                      "online"
-                    ],
-                    "type": "object"
-                  },
-                  "idempotencyKey": {
-                    "type": "string"
-                  },
-                  "itemId": {
-                    "type": "string"
-                  },
-                  "message": {
-                    "type": "string"
-                  }
-                },
-                "required": [
-                  "idempotencyKey",
-                  "category",
-                  "message",
-                  "itemId"
-                ],
-                "type": "object"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "properties": {
-                    "data": {
-                      "properties": {
-                        "category": {
-                          "type": "string"
-                        },
-                        "contextAvailable": {
-                          "type": "boolean"
-                        },
-                        "createdAt": {
-                          "description": "RFC 3339 UTC instant; empty when absent.",
-                          "type": "string"
-                        },
-                        "diagnostic": {
-                          "properties": {
-                            "online": {
-                              "type": "boolean"
-                            },
-                            "platform": {
-                              "type": "string"
-                            },
-                            "state": {
-                              "type": "string"
-                            }
-                          },
-                          "required": [
-                            "platform",
-                            "state",
-                            "online"
-                          ],
-                          "type": "object"
-                        },
-                        "events": {
-                          "items": {
-                            "properties": {
-                              "actorClass": {
-                                "type": "string"
-                              },
-                              "at": {
-                                "description": "RFC 3339 UTC instant; empty when absent.",
-                                "type": "string"
-                              },
-                              "reply": {
-                                "type": "string"
-                              },
-                              "revision": {
-                                "maximum": 9007199254740991,
-                                "minimum": -9007199254740991,
-                                "type": "integer"
-                              },
-                              "sequence": {
-                                "maximum": 9007199254740991,
-                                "minimum": -9007199254740991,
-                                "type": "integer"
-                              },
-                              "status": {
-                                "type": "string"
-                              }
-                            },
-                            "required": [
-                              "sequence",
-                              "at",
-                              "revision",
-                              "status",
-                              "reply",
-                              "actorClass"
-                            ],
-                            "type": "object"
-                          },
-                          "type": "array"
-                        },
-                        "id": {
-                          "type": "string"
-                        },
-                        "itemId": {
-                          "type": "string"
-                        },
-                        "message": {
-                          "type": "string"
-                        },
-                        "revision": {
-                          "maximum": 9007199254740991,
-                          "minimum": -9007199254740991,
-                          "type": "integer"
-                        },
-                        "status": {
-                          "type": "string"
-                        },
-                        "updatedAt": {
-                          "description": "RFC 3339 UTC instant; empty when absent.",
-                          "type": "string"
-                        }
-                      },
-                      "required": [
-                        "id",
-                        "createdAt",
-                        "updatedAt",
-                        "revision",
-                        "status",
-                        "category",
-                        "message",
-                        "contextAvailable"
-                      ],
-                      "type": "object"
-                    },
-                    "scope": {
-                      "properties": {
-                        "serverId": {
-                          "type": "string"
-                        },
-                        "viewerFence": {
-                          "type": "string"
-                        }
-                      },
-                      "required": [
-                        "serverId",
-                        "viewerFence"
-                      ],
-                      "type": "object"
-                    }
-                  },
-                  "required": [
-                    "scope",
-                    "data"
-                  ],
-                  "type": "object"
-                }
-              }
-            },
-            "description": "Success"
-          },
-          "default": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "properties": {
-                    "error": {
-                      "properties": {
-                        "code": {
-                          "type": "string"
-                        },
-                        "message": {
-                          "type": "string"
-                        }
-                      },
-                      "required": [
-                        "code",
-                        "message"
-                      ],
-                      "type": "object"
-                    }
-                  },
-                  "required": [
-                    "error"
-                  ],
-                  "type": "object"
-                }
-              }
-            },
-            "description": "Request refused or unavailable"
-          }
-        },
-        "summary": "Read or update the selected projection",
-        "x-access": "device",
-        "x-admission": "default",
-        "x-cost": "page_sized",
-        "x-error-codes": [
-          "invalid_request",
-          "unauthorized",
-          "not_permitted",
-          "not_found",
-          "internal",
-          "writer_capacity"
-        ],
-        "x-lane": "default",
-        "x-max-body-bytes": 1048576,
-        "x-scope": "playback"
-      }
-    },
     "/v1/feedback/capabilities": {
       "get": {
         "operationId": "get_feedback_capabilities",
@@ -375697,6 +373922,24 @@
                               "category": {
                                 "type": "string"
                               },
+                              "client": {
+                                "properties": {
+                                  "appVersion": {
+                                    "type": "string"
+                                  },
+                                  "online": {
+                                    "type": "boolean"
+                                  },
+                                  "platform": {
+                                    "type": "string"
+                                  }
+                                },
+                                "required": [
+                                  "platform",
+                                  "appVersion"
+                                ],
+                                "type": "object"
+                              },
                               "createdAt": {
                                 "description": "RFC 3339 UTC instant; empty when absent.",
                                 "type": "string"
@@ -375955,6 +374198,24 @@
                   "category": {
                     "type": "string"
                   },
+                  "client": {
+                    "properties": {
+                      "appVersion": {
+                        "type": "string"
+                      },
+                      "online": {
+                        "type": "boolean"
+                      },
+                      "platform": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "platform",
+                      "appVersion"
+                    ],
+                    "type": "object"
+                  },
                   "itemId": {
                     "type": "string"
                   },
@@ -376009,6 +374270,24 @@
                           "properties": {
                             "category": {
                               "type": "string"
+                            },
+                            "client": {
+                              "properties": {
+                                "appVersion": {
+                                  "type": "string"
+                                },
+                                "online": {
+                                  "type": "boolean"
+                                },
+                                "platform": {
+                                  "type": "string"
+                                }
+                              },
+                              "required": [
+                                "platform",
+                                "appVersion"
+                              ],
+                              "type": "object"
                             },
                             "createdAt": {
                               "description": "RFC 3339 UTC instant; empty when absent.",
@@ -376257,6 +374536,24 @@
                         "category": {
                           "type": "string"
                         },
+                        "client": {
+                          "properties": {
+                            "appVersion": {
+                              "type": "string"
+                            },
+                            "online": {
+                              "type": "boolean"
+                            },
+                            "platform": {
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "platform",
+                            "appVersion"
+                          ],
+                          "type": "object"
+                        },
                         "createdAt": {
                           "description": "RFC 3339 UTC instant; empty when absent.",
                           "type": "string"
@@ -376395,201 +374692,6 @@
                         "diagnostics",
                         "duplicates",
                         "thread"
-                      ],
-                      "type": "object"
-                    },
-                    "scope": {
-                      "properties": {
-                        "serverId": {
-                          "type": "string"
-                        },
-                        "viewerFence": {
-                          "type": "string"
-                        }
-                      },
-                      "required": [
-                        "serverId",
-                        "viewerFence"
-                      ],
-                      "type": "object"
-                    }
-                  },
-                  "required": [
-                    "scope",
-                    "data"
-                  ],
-                  "type": "object"
-                }
-              }
-            },
-            "description": "Success"
-          },
-          "default": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "properties": {
-                    "error": {
-                      "properties": {
-                        "code": {
-                          "type": "string"
-                        },
-                        "message": {
-                          "type": "string"
-                        }
-                      },
-                      "required": [
-                        "code",
-                        "message"
-                      ],
-                      "type": "object"
-                    }
-                  },
-                  "required": [
-                    "error"
-                  ],
-                  "type": "object"
-                }
-              }
-            },
-            "description": "Request refused or unavailable"
-          }
-        },
-        "summary": "Read or update the selected projection",
-        "x-access": "device",
-        "x-admission": "default",
-        "x-cost": "page_sized",
-        "x-error-codes": [
-          "invalid_request",
-          "unauthorized",
-          "not_permitted",
-          "not_found",
-          "internal"
-        ],
-        "x-lane": "default",
-        "x-scope": "read"
-      }
-    },
-    "/v1/feedback/{id}": {
-      "get": {
-        "operationId": "get_feedback_id",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "id",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "properties": {
-                    "data": {
-                      "properties": {
-                        "category": {
-                          "type": "string"
-                        },
-                        "contextAvailable": {
-                          "type": "boolean"
-                        },
-                        "createdAt": {
-                          "description": "RFC 3339 UTC instant; empty when absent.",
-                          "type": "string"
-                        },
-                        "diagnostic": {
-                          "properties": {
-                            "online": {
-                              "type": "boolean"
-                            },
-                            "platform": {
-                              "type": "string"
-                            },
-                            "state": {
-                              "type": "string"
-                            }
-                          },
-                          "required": [
-                            "platform",
-                            "state",
-                            "online"
-                          ],
-                          "type": "object"
-                        },
-                        "events": {
-                          "items": {
-                            "properties": {
-                              "actorClass": {
-                                "type": "string"
-                              },
-                              "at": {
-                                "description": "RFC 3339 UTC instant; empty when absent.",
-                                "type": "string"
-                              },
-                              "reply": {
-                                "type": "string"
-                              },
-                              "revision": {
-                                "maximum": 9007199254740991,
-                                "minimum": -9007199254740991,
-                                "type": "integer"
-                              },
-                              "sequence": {
-                                "maximum": 9007199254740991,
-                                "minimum": -9007199254740991,
-                                "type": "integer"
-                              },
-                              "status": {
-                                "type": "string"
-                              }
-                            },
-                            "required": [
-                              "sequence",
-                              "at",
-                              "revision",
-                              "status",
-                              "reply",
-                              "actorClass"
-                            ],
-                            "type": "object"
-                          },
-                          "type": "array"
-                        },
-                        "id": {
-                          "type": "string"
-                        },
-                        "itemId": {
-                          "type": "string"
-                        },
-                        "message": {
-                          "type": "string"
-                        },
-                        "revision": {
-                          "maximum": 9007199254740991,
-                          "minimum": -9007199254740991,
-                          "type": "integer"
-                        },
-                        "status": {
-                          "type": "string"
-                        },
-                        "updatedAt": {
-                          "description": "RFC 3339 UTC instant; empty when absent.",
-                          "type": "string"
-                        }
-                      },
-                      "required": [
-                        "id",
-                        "createdAt",
-                        "updatedAt",
-                        "revision",
-                        "status",
-                        "category",
-                        "message",
-                        "contextAvailable"
                       ],
                       "type": "object"
                     },

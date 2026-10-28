@@ -810,7 +810,7 @@ export class BrowserAccountEntry {
  profileRecovery(profileId:string,viewCurrent:()=>boolean=()=>true){
   const api=this.api,state=this.state,snapshot=state.snapshot,session=this.session,epoch=this.epoch;
   if(state.phase!=='profiles'||state.busy||!api||!snapshot||snapshot.twoStepSetupRequired||!state.server||!session)throw new Error('Choose a current server profile first.');
-  return new BrowserProfileRecovery(api,snapshot,profileId,state.server.signIn,
+  return new BrowserProfileRecovery(api,snapshot,profileId,state.server.signIn,session.sessionFamilyId,
    ()=>viewCurrent()&&!this.disposed&&this.epoch===epoch&&this.api===api&&this.state.phase==='profiles'&&this.state.snapshot===snapshot&&sameRecoveryAdmission(session,this.session),
    grant=>this.temporary(api,grant),(pin,current)=>this.openRecoveredProfile(api,session,state,snapshot,profileId,epoch,pin,current));
  }

@@ -11,7 +11,7 @@ const t = defaultI18n.t;
 
 /** Local-account recovery uses the same temporary sign-in controller as the
  * picker. Its grant never becomes the installed viewer or a profile switch. */
-export function ProfileForgotPIN({source, api, isCurrent}: {source: ProfileSettingsSource; api: HttpLocalApi; isCurrent: () => boolean}) {
+export function ProfileForgotPIN({source, api, selectedFamilyId, isCurrent}: {source: ProfileSettingsSource; api: HttpLocalApi; selectedFamilyId: () => string; isCurrent: () => boolean}) {
   const state = useSyncExternalStore(source.subscribe, source.getSnapshot, source.getSnapshot);
   type Opening = {source: ProfileSettingsSource; flow: BrowserProfileRecovery; current: () => boolean; retire: () => void; profileName: string; username: string};
   const [opening, setOpening] = useState<Opening>();
@@ -37,7 +37,7 @@ export function ProfileForgotPIN({source, api, isCurrent}: {source: ProfileSetti
       const current = () => !retired && rendered.current === source && isCurrent() && source.getSnapshot().document === document &&
         document.account.id === accountId && document.account.revision === accountRevision &&
         source.selected() === profile && profile.id === profileId && profile.revision === profileRevision;
-      const flow = new BrowserProfileRecovery(api, document, profileId, 'local', current);
+      const flow = new BrowserProfileRecovery(api, document, profileId, 'local', selectedFamilyId(), current);
       const captured: Opening = {source, flow, current, profileName: profile.name, username: document.account.username,
         retire: () => {if (retired) return;retired = true;off();flow.dispose();}};
       active.current = captured;

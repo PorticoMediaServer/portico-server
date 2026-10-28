@@ -69,11 +69,6 @@ var composedRoutes = []string{
 	"POST /v1/items/{id}/metadata/musicbrainz/retry",
 	"POST /v1/items/{id}/metadata/musicbrainz/search",
 	"POST /v1/items/{id}/metadata/musicbrainz/policy",
-	// console.go: "GET " + prefix [+ "/{id}"] for viewer and owner feedback.
-	"GET /v1/feedback",
-	"GET /v1/feedback/{id}",
-	"GET /v1/admin/feedback",
-	"GET /v1/admin/feedback/{id}",
 	// prepared_media.go: "POST /v1/optimization-jobs/{id}/" + action.
 	"POST /v1/optimization-jobs/{id}/cancel",
 	"POST /v1/optimization-jobs/{id}/retry",

@@ -47,7 +47,7 @@ export function WatchStartFailure({failure, authority, context, reportError}: {f
       }
     }}>
     <PlaybackFailure error={failure.code} heading={limit ? t('next.states.streamLimit', {count: limit.playing}) : undefined} sentence={sentence}
-      onRetry={failure.retryable && failure.scope !== 'account' ? failure.retry : undefined} onClose={configure ?? failure.cancel}
+      onRetry={failure.retryable && (failure.scope !== 'account' || failure.automaticRecoveryExhausted) ? failure.retry : undefined} onClose={configure ?? failure.cancel}
       closeLabel={configure ? t('web.player.error.turnOnConverting') : undefined} onError={reportError}>
       {failure.scope === 'account' && <WatchStreamLimitSessions failure={failure} isCurrent={failure.isCurrent} reportError={reportError}/>}
     </PlaybackFailure>

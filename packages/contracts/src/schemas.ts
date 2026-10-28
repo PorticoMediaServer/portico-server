@@ -29311,139 +29311,6 @@ export const schemas = {
     ],
     "type": "object"
   },
-  "GetAdminFeedbackIdRequest": {
-    "properties": {},
-    "required": [],
-    "type": "object"
-  },
-  "GetAdminFeedbackIdResponse": {
-    "properties": {
-      "data": {
-        "properties": {
-          "category": {
-            "type": "string"
-          },
-          "contextAvailable": {
-            "type": "boolean"
-          },
-          "createdAt": {
-            "description": "RFC 3339 UTC instant; empty when absent.",
-            "type": "string"
-          },
-          "diagnostic": {
-            "properties": {
-              "online": {
-                "type": "boolean"
-              },
-              "platform": {
-                "type": "string"
-              },
-              "state": {
-                "type": "string"
-              }
-            },
-            "required": [
-              "platform",
-              "state",
-              "online"
-            ],
-            "type": "object"
-          },
-          "events": {
-            "items": {
-              "properties": {
-                "actorClass": {
-                  "type": "string"
-                },
-                "at": {
-                  "description": "RFC 3339 UTC instant; empty when absent.",
-                  "type": "string"
-                },
-                "reply": {
-                  "type": "string"
-                },
-                "revision": {
-                  "maximum": 9007199254740991,
-                  "minimum": -9007199254740991,
-                  "type": "integer"
-                },
-                "sequence": {
-                  "maximum": 9007199254740991,
-                  "minimum": -9007199254740991,
-                  "type": "integer"
-                },
-                "status": {
-                  "type": "string"
-                }
-              },
-              "required": [
-                "sequence",
-                "at",
-                "revision",
-                "status",
-                "reply",
-                "actorClass"
-              ],
-              "type": "object"
-            },
-            "type": "array"
-          },
-          "id": {
-            "type": "string"
-          },
-          "itemId": {
-            "type": "string"
-          },
-          "message": {
-            "type": "string"
-          },
-          "revision": {
-            "maximum": 9007199254740991,
-            "minimum": -9007199254740991,
-            "type": "integer"
-          },
-          "status": {
-            "type": "string"
-          },
-          "updatedAt": {
-            "description": "RFC 3339 UTC instant; empty when absent.",
-            "type": "string"
-          }
-        },
-        "required": [
-          "id",
-          "createdAt",
-          "updatedAt",
-          "revision",
-          "status",
-          "category",
-          "message",
-          "contextAvailable"
-        ],
-        "type": "object"
-      },
-      "scope": {
-        "properties": {
-          "serverId": {
-            "type": "string"
-          },
-          "viewerFence": {
-            "type": "string"
-          }
-        },
-        "required": [
-          "serverId",
-          "viewerFence"
-        ],
-        "type": "object"
-      }
-    },
-    "required": [
-      "scope",
-      "data"
-    ],
-    "type": "object"
-  },
   "GetAdminFeedbackReportsIdRequest": {
     "properties": {},
     "required": [],
@@ -29455,6 +29322,24 @@ export const schemas = {
         "properties": {
           "category": {
             "type": "string"
+          },
+          "client": {
+            "properties": {
+              "appVersion": {
+                "type": "string"
+              },
+              "online": {
+                "type": "boolean"
+              },
+              "platform": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "platform",
+              "appVersion"
+            ],
+            "type": "object"
           },
           "createdAt": {
             "description": "RFC 3339 UTC instant; empty when absent.",
@@ -29640,6 +29525,24 @@ export const schemas = {
                 "category": {
                   "type": "string"
                 },
+                "client": {
+                  "properties": {
+                    "appVersion": {
+                      "type": "string"
+                    },
+                    "online": {
+                      "type": "boolean"
+                    },
+                    "platform": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "platform",
+                    "appVersion"
+                  ],
+                  "type": "object"
+                },
                 "createdAt": {
                   "description": "RFC 3339 UTC instant; empty when absent.",
                   "type": "string"
@@ -29811,154 +29714,6 @@ export const schemas = {
           "total",
           "filter",
           "observedAt"
-        ],
-        "type": "object"
-      },
-      "scope": {
-        "properties": {
-          "serverId": {
-            "type": "string"
-          },
-          "viewerFence": {
-            "type": "string"
-          }
-        },
-        "required": [
-          "serverId",
-          "viewerFence"
-        ],
-        "type": "object"
-      }
-    },
-    "required": [
-      "scope",
-      "data"
-    ],
-    "type": "object"
-  },
-  "GetAdminFeedbackRequest": {
-    "properties": {},
-    "required": [],
-    "type": "object"
-  },
-  "GetAdminFeedbackResponse": {
-    "properties": {
-      "data": {
-        "properties": {
-          "items": {
-            "items": {
-              "properties": {
-                "category": {
-                  "type": "string"
-                },
-                "contextAvailable": {
-                  "type": "boolean"
-                },
-                "createdAt": {
-                  "description": "RFC 3339 UTC instant; empty when absent.",
-                  "type": "string"
-                },
-                "diagnostic": {
-                  "properties": {
-                    "online": {
-                      "type": "boolean"
-                    },
-                    "platform": {
-                      "type": "string"
-                    },
-                    "state": {
-                      "type": "string"
-                    }
-                  },
-                  "required": [
-                    "platform",
-                    "state",
-                    "online"
-                  ],
-                  "type": "object"
-                },
-                "events": {
-                  "items": {
-                    "properties": {
-                      "actorClass": {
-                        "type": "string"
-                      },
-                      "at": {
-                        "description": "RFC 3339 UTC instant; empty when absent.",
-                        "type": "string"
-                      },
-                      "reply": {
-                        "type": "string"
-                      },
-                      "revision": {
-                        "maximum": 9007199254740991,
-                        "minimum": -9007199254740991,
-                        "type": "integer"
-                      },
-                      "sequence": {
-                        "maximum": 9007199254740991,
-                        "minimum": -9007199254740991,
-                        "type": "integer"
-                      },
-                      "status": {
-                        "type": "string"
-                      }
-                    },
-                    "required": [
-                      "sequence",
-                      "at",
-                      "revision",
-                      "status",
-                      "reply",
-                      "actorClass"
-                    ],
-                    "type": "object"
-                  },
-                  "type": "array"
-                },
-                "id": {
-                  "type": "string"
-                },
-                "itemId": {
-                  "type": "string"
-                },
-                "message": {
-                  "type": "string"
-                },
-                "revision": {
-                  "maximum": 9007199254740991,
-                  "minimum": -9007199254740991,
-                  "type": "integer"
-                },
-                "status": {
-                  "type": "string"
-                },
-                "updatedAt": {
-                  "description": "RFC 3339 UTC instant; empty when absent.",
-                  "type": "string"
-                }
-              },
-              "required": [
-                "id",
-                "createdAt",
-                "updatedAt",
-                "revision",
-                "status",
-                "category",
-                "message",
-                "contextAvailable"
-              ],
-              "type": "object"
-            },
-            "type": "array"
-          },
-          "nextCursor": {
-            "type": "string"
-          }
-        },
-        "required": [
-          "items",
-          "nextCursor"
         ],
         "type": "object"
       },
@@ -47172,139 +46927,6 @@ export const schemas = {
     ],
     "type": "object"
   },
-  "GetFeedbackIdRequest": {
-    "properties": {},
-    "required": [],
-    "type": "object"
-  },
-  "GetFeedbackIdResponse": {
-    "properties": {
-      "data": {
-        "properties": {
-          "category": {
-            "type": "string"
-          },
-          "contextAvailable": {
-            "type": "boolean"
-          },
-          "createdAt": {
-            "description": "RFC 3339 UTC instant; empty when absent.",
-            "type": "string"
-          },
-          "diagnostic": {
-            "properties": {
-              "online": {
-                "type": "boolean"
-              },
-              "platform": {
-                "type": "string"
-              },
-              "state": {
-                "type": "string"
-              }
-            },
-            "required": [
-              "platform",
-              "state",
-              "online"
-            ],
-            "type": "object"
-          },
-          "events": {
-            "items": {
-              "properties": {
-                "actorClass": {
-                  "type": "string"
-                },
-                "at": {
-                  "description": "RFC 3339 UTC instant; empty when absent.",
-                  "type": "string"
-                },
-                "reply": {
-                  "type": "string"
-                },
-                "revision": {
-                  "maximum": 9007199254740991,
-                  "minimum": -9007199254740991,
-                  "type": "integer"
-                },
-                "sequence": {
-                  "maximum": 9007199254740991,
-                  "minimum": -9007199254740991,
-                  "type": "integer"
-                },
-                "status": {
-                  "type": "string"
-                }
-              },
-              "required": [
-                "sequence",
-                "at",
-                "revision",
-                "status",
-                "reply",
-                "actorClass"
-              ],
-              "type": "object"
-            },
-            "type": "array"
-          },
-          "id": {
-            "type": "string"
-          },
-          "itemId": {
-            "type": "string"
-          },
-          "message": {
-            "type": "string"
-          },
-          "revision": {
-            "maximum": 9007199254740991,
-            "minimum": -9007199254740991,
-            "type": "integer"
-          },
-          "status": {
-            "type": "string"
-          },
-          "updatedAt": {
-            "description": "RFC 3339 UTC instant; empty when absent.",
-            "type": "string"
-          }
-        },
-        "required": [
-          "id",
-          "createdAt",
-          "updatedAt",
-          "revision",
-          "status",
-          "category",
-          "message",
-          "contextAvailable"
-        ],
-        "type": "object"
-      },
-      "scope": {
-        "properties": {
-          "serverId": {
-            "type": "string"
-          },
-          "viewerFence": {
-            "type": "string"
-          }
-        },
-        "required": [
-          "serverId",
-          "viewerFence"
-        ],
-        "type": "object"
-      }
-    },
-    "required": [
-      "scope",
-      "data"
-    ],
-    "type": "object"
-  },
   "GetFeedbackReportsIdRequest": {
     "properties": {},
     "required": [],
@@ -47316,6 +46938,24 @@ export const schemas = {
         "properties": {
           "category": {
             "type": "string"
+          },
+          "client": {
+            "properties": {
+              "appVersion": {
+                "type": "string"
+              },
+              "online": {
+                "type": "boolean"
+              },
+              "platform": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "platform",
+              "appVersion"
+            ],
+            "type": "object"
           },
           "createdAt": {
             "description": "RFC 3339 UTC instant; empty when absent.",
@@ -47501,6 +47141,24 @@ export const schemas = {
                 "category": {
                   "type": "string"
                 },
+                "client": {
+                  "properties": {
+                    "appVersion": {
+                      "type": "string"
+                    },
+                    "online": {
+                      "type": "boolean"
+                    },
+                    "platform": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "platform",
+                    "appVersion"
+                  ],
+                  "type": "object"
+                },
                 "createdAt": {
                   "description": "RFC 3339 UTC instant; empty when absent.",
                   "type": "string"
@@ -47672,154 +47330,6 @@ export const schemas = {
           "total",
           "filter",
           "observedAt"
-        ],
-        "type": "object"
-      },
-      "scope": {
-        "properties": {
-          "serverId": {
-            "type": "string"
-          },
-          "viewerFence": {
-            "type": "string"
-          }
-        },
-        "required": [
-          "serverId",
-          "viewerFence"
-        ],
-        "type": "object"
-      }
-    },
-    "required": [
-      "scope",
-      "data"
-    ],
-    "type": "object"
-  },
-  "GetFeedbackRequest": {
-    "properties": {},
-    "required": [],
-    "type": "object"
-  },
-  "GetFeedbackResponse": {
-    "properties": {
-      "data": {
-        "properties": {
-          "items": {
-            "items": {
-              "properties": {
-                "category": {
-                  "type": "string"
-                },
-                "contextAvailable": {
-                  "type": "boolean"
-                },
-                "createdAt": {
-                  "description": "RFC 3339 UTC instant; empty when absent.",
-                  "type": "string"
-                },
-                "diagnostic": {
-                  "properties": {
-                    "online": {
-                      "type": "boolean"
-                    },
-                    "platform": {
-                      "type": "string"
-                    },
-                    "state": {
-                      "type": "string"
-                    }
-                  },
-                  "required": [
-                    "platform",
-                    "state",
-                    "online"
-                  ],
-                  "type": "object"
-                },
-                "events": {
-                  "items": {
-                    "properties": {
-                      "actorClass": {
-                        "type": "string"
-                      },
-                      "at": {
-                        "description": "RFC 3339 UTC instant; empty when absent.",
-                        "type": "string"
-                      },
-                      "reply": {
-                        "type": "string"
-                      },
-                      "revision": {
-                        "maximum": 9007199254740991,
-                        "minimum": -9007199254740991,
-                        "type": "integer"
-                      },
-                      "sequence": {
-                        "maximum": 9007199254740991,
-                        "minimum": -9007199254740991,
-                        "type": "integer"
-                      },
-                      "status": {
-                        "type": "string"
-                      }
-                    },
-                    "required": [
-                      "sequence",
-                      "at",
-                      "revision",
-                      "status",
-                      "reply",
-                      "actorClass"
-                    ],
-                    "type": "object"
-                  },
-                  "type": "array"
-                },
-                "id": {
-                  "type": "string"
-                },
-                "itemId": {
-                  "type": "string"
-                },
-                "message": {
-                  "type": "string"
-                },
-                "revision": {
-                  "maximum": 9007199254740991,
-                  "minimum": -9007199254740991,
-                  "type": "integer"
-                },
-                "status": {
-                  "type": "string"
-                },
-                "updatedAt": {
-                  "description": "RFC 3339 UTC instant; empty when absent.",
-                  "type": "string"
-                }
-              },
-              "required": [
-                "id",
-                "createdAt",
-                "updatedAt",
-                "revision",
-                "status",
-                "category",
-                "message",
-                "contextAvailable"
-              ],
-              "type": "object"
-            },
-            "type": "array"
-          },
-          "nextCursor": {
-            "type": "string"
-          }
-        },
-        "required": [
-          "items",
-          "nextCursor"
         ],
         "type": "object"
       },
@@ -184956,159 +184466,6 @@ export const schemas = {
     ],
     "type": "object"
   },
-  "PatchAdminFeedbackIdRequest": {
-    "properties": {
-      "expectedRevision": {
-        "maximum": 9007199254740991,
-        "minimum": -9007199254740991,
-        "type": "integer"
-      },
-      "idempotencyKey": {
-        "type": "string"
-      },
-      "reply": {
-        "type": "string"
-      },
-      "status": {
-        "type": "string"
-      }
-    },
-    "required": [
-      "expectedRevision",
-      "idempotencyKey",
-      "status",
-      "reply"
-    ],
-    "type": "object"
-  },
-  "PatchAdminFeedbackIdResponse": {
-    "properties": {
-      "data": {
-        "properties": {
-          "category": {
-            "type": "string"
-          },
-          "contextAvailable": {
-            "type": "boolean"
-          },
-          "createdAt": {
-            "description": "RFC 3339 UTC instant; empty when absent.",
-            "type": "string"
-          },
-          "diagnostic": {
-            "properties": {
-              "online": {
-                "type": "boolean"
-              },
-              "platform": {
-                "type": "string"
-              },
-              "state": {
-                "type": "string"
-              }
-            },
-            "required": [
-              "platform",
-              "state",
-              "online"
-            ],
-            "type": "object"
-          },
-          "events": {
-            "items": {
-              "properties": {
-                "actorClass": {
-                  "type": "string"
-                },
-                "at": {
-                  "description": "RFC 3339 UTC instant; empty when absent.",
-                  "type": "string"
-                },
-                "reply": {
-                  "type": "string"
-                },
-                "revision": {
-                  "maximum": 9007199254740991,
-                  "minimum": -9007199254740991,
-                  "type": "integer"
-                },
-                "sequence": {
-                  "maximum": 9007199254740991,
-                  "minimum": -9007199254740991,
-                  "type": "integer"
-                },
-                "status": {
-                  "type": "string"
-                }
-              },
-              "required": [
-                "sequence",
-                "at",
-                "revision",
-                "status",
-                "reply",
-                "actorClass"
-              ],
-              "type": "object"
-            },
-            "type": "array"
-          },
-          "id": {
-            "type": "string"
-          },
-          "itemId": {
-            "type": "string"
-          },
-          "message": {
-            "type": "string"
-          },
-          "revision": {
-            "maximum": 9007199254740991,
-            "minimum": -9007199254740991,
-            "type": "integer"
-          },
-          "status": {
-            "type": "string"
-          },
-          "updatedAt": {
-            "description": "RFC 3339 UTC instant; empty when absent.",
-            "type": "string"
-          }
-        },
-        "required": [
-          "id",
-          "createdAt",
-          "updatedAt",
-          "revision",
-          "status",
-          "category",
-          "message",
-          "contextAvailable"
-        ],
-        "type": "object"
-      },
-      "scope": {
-        "properties": {
-          "serverId": {
-            "type": "string"
-          },
-          "viewerFence": {
-            "type": "string"
-          }
-        },
-        "required": [
-          "serverId",
-          "viewerFence"
-        ],
-        "type": "object"
-      }
-    },
-    "required": [
-      "scope",
-      "data"
-    ],
-    "type": "object"
-  },
   "PatchAdminLibrariesIdRequest": {
     "properties": {
       "expectedRevision": {
@@ -190706,6 +190063,24 @@ export const schemas = {
         "properties": {
           "category": {
             "type": "string"
+          },
+          "client": {
+            "properties": {
+              "appVersion": {
+                "type": "string"
+              },
+              "online": {
+                "type": "boolean"
+              },
+              "platform": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "platform",
+              "appVersion"
+            ],
+            "type": "object"
           },
           "createdAt": {
             "description": "RFC 3339 UTC instant; empty when absent.",
@@ -201707,6 +201082,24 @@ export const schemas = {
       "category": {
         "type": "string"
       },
+      "client": {
+        "properties": {
+          "appVersion": {
+            "type": "string"
+          },
+          "online": {
+            "type": "boolean"
+          },
+          "platform": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "platform",
+          "appVersion"
+        ],
+        "type": "object"
+      },
       "itemId": {
         "type": "string"
       },
@@ -201753,6 +201146,24 @@ export const schemas = {
             "properties": {
               "category": {
                 "type": "string"
+              },
+              "client": {
+                "properties": {
+                  "appVersion": {
+                    "type": "string"
+                  },
+                  "online": {
+                    "type": "boolean"
+                  },
+                  "platform": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "platform",
+                  "appVersion"
+                ],
+                "type": "object"
               },
               "createdAt": {
                 "description": "RFC 3339 UTC instant; empty when absent.",
@@ -201900,176 +201311,6 @@ export const schemas = {
           "report",
           "duplicate",
           "created"
-        ],
-        "type": "object"
-      },
-      "scope": {
-        "properties": {
-          "serverId": {
-            "type": "string"
-          },
-          "viewerFence": {
-            "type": "string"
-          }
-        },
-        "required": [
-          "serverId",
-          "viewerFence"
-        ],
-        "type": "object"
-      }
-    },
-    "required": [
-      "scope",
-      "data"
-    ],
-    "type": "object"
-  },
-  "PostFeedbackRequest": {
-    "properties": {
-      "category": {
-        "type": "string"
-      },
-      "diagnostic": {
-        "properties": {
-          "online": {
-            "type": "boolean"
-          },
-          "platform": {
-            "type": "string"
-          },
-          "state": {
-            "type": "string"
-          }
-        },
-        "required": [
-          "platform",
-          "state",
-          "online"
-        ],
-        "type": "object"
-      },
-      "idempotencyKey": {
-        "type": "string"
-      },
-      "itemId": {
-        "type": "string"
-      },
-      "message": {
-        "type": "string"
-      }
-    },
-    "required": [
-      "idempotencyKey",
-      "category",
-      "message",
-      "itemId"
-    ],
-    "type": "object"
-  },
-  "PostFeedbackResponse": {
-    "properties": {
-      "data": {
-        "properties": {
-          "category": {
-            "type": "string"
-          },
-          "contextAvailable": {
-            "type": "boolean"
-          },
-          "createdAt": {
-            "description": "RFC 3339 UTC instant; empty when absent.",
-            "type": "string"
-          },
-          "diagnostic": {
-            "properties": {
-              "online": {
-                "type": "boolean"
-              },
-              "platform": {
-                "type": "string"
-              },
-              "state": {
-                "type": "string"
-              }
-            },
-            "required": [
-              "platform",
-              "state",
-              "online"
-            ],
-            "type": "object"
-          },
-          "events": {
-            "items": {
-              "properties": {
-                "actorClass": {
-                  "type": "string"
-                },
-                "at": {
-                  "description": "RFC 3339 UTC instant; empty when absent.",
-                  "type": "string"
-                },
-                "reply": {
-                  "type": "string"
-                },
-                "revision": {
-                  "maximum": 9007199254740991,
-                  "minimum": -9007199254740991,
-                  "type": "integer"
-                },
-                "sequence": {
-                  "maximum": 9007199254740991,
-                  "minimum": -9007199254740991,
-                  "type": "integer"
-                },
-                "status": {
-                  "type": "string"
-                }
-              },
-              "required": [
-                "sequence",
-                "at",
-                "revision",
-                "status",
-                "reply",
-                "actorClass"
-              ],
-              "type": "object"
-            },
-            "type": "array"
-          },
-          "id": {
-            "type": "string"
-          },
-          "itemId": {
-            "type": "string"
-          },
-          "message": {
-            "type": "string"
-          },
-          "revision": {
-            "maximum": 9007199254740991,
-            "minimum": -9007199254740991,
-            "type": "integer"
-          },
-          "status": {
-            "type": "string"
-          },
-          "updatedAt": {
-            "description": "RFC 3339 UTC instant; empty when absent.",
-            "type": "string"
-          }
-        },
-        "required": [
-          "id",
-          "createdAt",
-          "updatedAt",
-          "revision",
-          "status",
-          "category",
-          "message",
-          "contextAvailable"
         ],
         "type": "object"
       },

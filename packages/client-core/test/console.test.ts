@@ -2,9 +2,9 @@ import {decode} from '../../contracts/src/runtime.ts';
 import {wireFixture} from './wire-fixture.ts';
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import {ConsoleClient,parseReport as read_parseReport,parseSettings,parsePage,parseEvidenceRecord as read_parseEvidenceRecord,type ConsoleAPI,type RuntimeSettings,type Schedule} from '../src/console.ts';
+import {parseFeedbackReport} from '../src/notifications.ts';
+import {ConsoleClient,parseSettings,parsePage,parseEvidenceRecord as read_parseEvidenceRecord,type ConsoleAPI,type RuntimeSettings,type Schedule} from '../src/console.ts';
 import {consoleUTF8Size,readConsoleJson,ConsoleTransportError} from '../src/console-transport.ts';
-const parseReport=(value:unknown,...args:any[]) => (read_parseReport as any)(wireFixture(value,{},['createdAt', 'updatedAt', 'expiresAt', 'readAt', 'archivedAt', 'observedAt', 'freshUntil', 'at', 'nextAt', 'from', 'to']),...args);
 const parseEvidenceRecord=(value:unknown,...args:any[]) => (read_parseEvidenceRecord as any)(wireFixture(value,{},['createdAt', 'updatedAt', 'expiresAt', 'readAt', 'archivedAt', 'observedAt', 'freshUntil', 'at', 'nextAt', 'from', 'to']),...args);
 
 const fence='a'.repeat(64);
@@ -17,8 +17,9 @@ const values:RuntimeSettings={name:'My server',conversionMode:'all',outputFormat
  remoteSignInPolicy:'allow',remoteBitrateLimitKbps:0,lanNetworks:[],accessUrls:[],lanDiscoveryEnabled:true,dlnaEnabled:false,
  trustedProxies:[],uploadCapacityKbps:0,pausedSessionTimeoutMinutes:0,advertisedInterface:'',customCertificatePath:'',customCertificateKeyPath:'',customCertificateDomain:'',connectionLimit:0,advertiseUrl:'',apiRequestsPerMinute:0,logLevel:'info',logRetention:[]};
 const settings=(revision=1)=>({revision,digest:'b'.repeat(64),requested:values,effective:values,activeRevision:revision,restartFields:[],registryRevision:'p08.0'});
-const report={id:'report-one',revision:1,createdAt:100,updatedAt:100,status:'open',category:'playback',message:'Playback stopped.',contextAvailable:true};
-const submission={category:'playback' as const,message:report.message,itemId:''};
+// One idempotent console command stands in for every mutation the client replays.
+const queued={id:'job-one',kind:'library-scan',resource:'library',trigger:'owner',state:'queued',phase:'',revision:1,attempt:1,createdAt:1,updatedAt:2,nextAt:3,settingsRevision:1,lane:'background-media',actions:['cancel']};
+const run=(c:ConsoleClient,resource='library')=>c.runJob('library-scan',resource);
 function client(handler:(path:string,method:string,body:any,signal:AbortSignal)=>Promise<unknown>){
  const api:ConsoleAPI={async request<T>(){throw new Error('unbounded fallback must not be used');},async requestConsole<T>(path,method,body,signal){if(path==='/v1/admin/console/settings'&&method==='PATCH')decode('ChangeConsoleSettingsRequest',body);return wireFixture(await handler(path,method,body,signal),{},['createdAt', 'updatedAt', 'expiresAt', 'readAt', 'archivedAt', 'observedAt', 'freshUntil', 'at', 'nextAt', 'from', 'to']) as T;}};
  return new ConsoleClient(api,{serverId:'server-one',viewerId:'local:one:profile'});
@@ -47,15 +48,15 @@ test('transcoding settings are parsed and values this server would refuse are re
  assert.throws(()=>parseSettings({...settings(),effective:incomplete}));
 });
 test('lost responses reuse the identical mutation key and payload',async()=>{
- const calls:any[]=[];const c=client(async(_p,_m,b)=>{calls.push(b);if(calls.length===1)throw new Error('response lost');return envelope(report);});
- await assert.rejects(c.submit(submission));assert.equal(c.hasUnconfirmed(),true);
- await c.submit(submission);assert.deepEqual(calls[0],calls[1]);assert.equal(c.hasUnconfirmed(),false);c.dispose();
+ const calls:any[]=[];const c=client(async(_p,_m,b)=>{calls.push(b);if(calls.length===1)throw new Error('response lost');return envelope(queued);});
+ await assert.rejects(run(c));assert.equal(c.hasUnconfirmed(),true);
+ await run(c);assert.deepEqual(calls[0],calls[1]);assert.equal(c.hasUnconfirmed(),false);c.dispose();
 });
 test('unknown mutations cannot silently become a changed intent; explicit recovery works',async()=>{
- let fail=true;const bodies:any[]=[];const c=client(async(_p,_m,b)=>{bodies.push(b);if(fail)throw new Error('lost');return envelope(report);});
- c.setDraft('feedback',submission);c.setDraft('unrelated',{keep:true});let recovered=0;c.onReconciled(()=>recovered++);
- await assert.rejects(c.submit(submission));await assert.rejects(c.submit({...submission,message:'Different'}),/unconfirmed/);assert.equal(bodies.length,1);
- fail=false;await c.reconcilePending();assert.deepEqual(bodies[0],bodies[1]);assert.equal(recovered,1);assert.equal(c.getDraft('feedback'),undefined);assert.deepEqual(c.getDraft('unrelated'),{keep:true});c.dispose();
+ let fail=true;const bodies:any[]=[];const c=client(async(_p,_m,b)=>{bodies.push(b);if(fail)throw new Error('lost');return envelope(queued);});
+ c.setDraft('unrelated',{keep:true});let recovered=0;c.onReconciled(()=>recovered++);
+ await assert.rejects(run(c));await assert.rejects(run(c,'other'),/unconfirmed/);assert.equal(bodies.length,1);
+ fail=false;await c.reconcilePending();assert.deepEqual(bodies[0],bodies[1]);assert.equal(recovered,1);assert.deepEqual(c.getDraft('unrelated'),{keep:true});c.dispose();
 });
 test('known revision conflicts keep drafts but permit a deliberate revised submission',async()=>{
  let conflict=true,current=1;const c=client(async(_path,method)=>{if(method==='GET')return envelope(settings(current));if(conflict)throw new ConsoleTransportError(409,'console_conflict',4,['values.serverCap']);return envelope(settings(5));});
@@ -144,18 +145,14 @@ test('diagnostic records reject invalid dates and unsafe field values before ren
  for(const change of [{at:8640000000000001},{severity:{}},{fields:{count:null}},{fields:{count:Infinity}},{fields:[]}])assert.throws(()=>parseEvidenceRecord({...value,...change}));
 });
 
-test('CD-38: current-app taxonomy leaves and admin triage events parse; legacy submit stays narrow',()=>{
- const leaf={...report,category:'playback.stall',events:[{sequence:1,at:200,revision:2,status:'in-progress',reply:'Looking into it.',actorClass:'admin'}]};
- const parsed=parseReport(leaf);
- assert.equal(parsed.category,'playback.stall');
- assert.equal(parsed.events?.[0].actorClass,'admin');
- // The legacy four still parse.
- assert.equal(parseReport(report).category,'playback');
- // Malformed identifiers, an unknown status, a bad revision and an over-long thread still fail.
- for(const change of [{category:'playback stall!'},{category:''},{id:'../secret'},{status:'escalated'},{revision:0},{events:new Array(201).fill(leaf.events[0])},{events:{}}])assert.throws(()=>parseReport({...leaf,...change}));
- // A reply from a role this app does not know is left out of the thread; the report and its other replies are kept.
- const thread=parseReport({...leaf,futureField:1,events:[{...leaf.events[0],actorClass:'moderator'},leaf.events[0],{...leaf.events[0],reply:7}]});
- assert.deepEqual(thread.events,leaf.events);assert.equal(thread.message,report.message);
+test('SIM-08: a feedback report names the app it came from, and an unknown online state stays unknown',()=>{
+ const base={id:'report-one',cursor:'1',revision:1,status:'open',kind:'playback',category:'buffering',message:'Playback stopped.',createdAt:'2026-10-22T18:20:00Z',updatedAt:'2026-10-22T18:20:00Z',
+  expiresAt:'2027-04-20T18:20:00Z',reporter:{name:'Alex',authority:'local',role:'member',self:false},diagnostics:{decision:'not-requested'},duplicates:0,thread:[]};
+ assert.deepEqual(parseFeedbackReport({...base,client:{platform:'android',appVersion:'1.4.2',online:false}}).client,{platform:'android',appVersion:'1.4.2',online:false});
+ assert.equal(parseFeedbackReport({...base,client:{platform:'web',appVersion:'2026.10'}}).client?.online,undefined);
+ assert.equal(parseFeedbackReport(base).client,undefined);
+ for(const client of [{platform:'',appVersion:'1'},{platform:'web',appVersion:''},{platform:'web',appVersion:'1',online:'yes'},{platform:'x'.repeat(41),appVersion:'1'},'web'])
+  assert.throws(()=>parseFeedbackReport({...base,client}),JSON.stringify(client));
 });
 test('a console list keeps its other rows when one row cannot be read, and keeps the first of a repeated id',async()=>{
  const job={id:'job-one',kind:'library-scan',resource:'library',trigger:'owner',state:'running',phase:'',revision:2,attempt:1,createdAt:1,updatedAt:2,nextAt:3,settingsRevision:1,lane:'background-media',actions:['pause','cancel']};
@@ -308,14 +305,14 @@ test('a late duplicate receipt cannot clear a newer unconfirmed action on the sa
  const sent:{body:any;resolve:(value:unknown)=>void}[]=[];
  const c=client(async(_path,_method,body)=>new Promise(resolve=>sent.push({body,resolve})));
  try{
-  const first=c.submit(submission),duplicate=c.submit(submission);
+  const first=run(c),duplicate=run(c);
   assert.equal(sent.length,2);assert.equal(sent[0].body.idempotencyKey,sent[1].body.idempotencyKey);
-  sent[0].resolve(envelope(report));await first;
-  const newer=c.submit({...submission,message:'Next message'});
+  sent[0].resolve(envelope(queued));await first;
+  const newer=run(c,'other');
   assert.equal(sent.length,3);assert.notEqual(sent[2].body.idempotencyKey,sent[0].body.idempotencyKey);
-  sent[1].resolve(envelope(report));await duplicate;
+  sent[1].resolve(envelope(queued));await duplicate;
   assert.equal(c.hasUnconfirmed(),true,'the newer action has no receipt yet');
-  sent[2].resolve(envelope({...report,message:'Next message'}));await newer;
+  sent[2].resolve(envelope({...queued,resource:'other'}));await newer;
   assert.equal(c.hasUnconfirmed(),false);
  }finally{c.dispose();}
 });

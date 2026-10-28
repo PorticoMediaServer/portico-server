@@ -1,6 +1,7 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {InboxService,FeedbackService} from '../src/inbox.ts';
+import {setInstallationIdentity} from '../src/installation.ts';
 
 // Instants travel as RFC 3339 text; the parsers hand the app epoch milliseconds.
 const at=(ms:number)=>new Date(ms).toISOString();
@@ -417,6 +418,25 @@ test('feedback is prefilled from the player only where the category wants it, an
  assert.equal(bodies[1].playbackSessionId,'play-1');assert.equal(bodies[1].itemId,'item-1');
  await service.open();await service.submit({...draft,category:'other'});
  assert.equal(bodies[2].playbackSessionId,'','a category that does not want the session does not get it');assert.equal(bodies[2].itemId,'');
+});
+
+test('SIM-08: a report names the sending app, captured once so a retry is the same request',async()=>{
+ const bodies:any[]=[];let fail=true,online=true;
+ const api={request:async<T,>(path:string,_m='GET',body?:unknown):Promise<T>=>{
+  if(path==='/v1/feedback/capabilities')return {data:capabilities} as T;
+  bodies.push(body);if(fail)throw new TypeError('Failed to fetch');return {data:{report,duplicate:false,created:true}} as T;}};
+ setInstallationIdentity({installationId:'i'.repeat(32),name:'Kitchen',platform:'android',app:'Portico',appVersion:'1.4.2'});
+ try{
+  const service=new FeedbackService(api,undefined,()=>online);await service.open();
+  const draft={kind:'playback',category:'other',message:'It keeps pausing every minute.',attachDiagnostics:false};
+  assert.equal(await service.submit(draft),false);
+  online=false;fail=false;assert.equal(await service.submit(draft),true);
+  assert.deepEqual(bodies[0].client,{platform:'android',appVersion:'1.4.2',online:true});
+  assert.deepEqual(bodies[1],bodies[0],'the retry repeats the captured facts');
+  assert.equal(JSON.stringify(bodies[0].client).includes('Kitchen'),false,'no device name leaves');
+  const unknown=new FeedbackService(api);await unknown.open();await unknown.submit(draft);
+  assert.deepEqual(bodies[2].client,{platform:'android',appVersion:'1.4.2'},'an app that cannot tell sends no online state');
+ }finally{setInstallationIdentity(undefined);}
 });
 
 test('a profile that may not send feedback is told why',async()=>{

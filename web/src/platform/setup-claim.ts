@@ -1,12 +1,13 @@
 import {HttpLocalApi, type LocalSession} from '@core/index.ts';
 import {type AppSessionStore, knownServerRoutes} from '@core/app-sessions.ts';
-import {parseClaimStatus, type ClaimExpected, type ClaimStatus} from '@core/claim-onboarding.ts';
+import {parseClaimStatus, type ClaimStatus} from '@core/claim-onboarding.ts';
 import {installationIdentity} from '@core/installation.ts';
-import {prepareSetupClaimHandoff, type SetupClaimHandoff} from '@core/setup-claim-client.ts';
+import {prepareSetupClaimHandoff} from '@core/setup-claim-client.ts';
 import {verifySetupClaimStart} from '@core/setup-claim-start.ts';
+import {createSetupAttempt, preparedSetupOperation, setupAttemptLive, setupContinuation, setupHandoffBound, setupOwnerGrantValid, setupProofMatches, type SetupAttempt} from '@core/setup-claim-attempt.ts';
 import {resumeServerSetup, type PendingAccountSetup, type SetupDraft, type SetupDraftStore} from '@core/setup-onboarding.ts';
 import {parseDirectSignIn, type DirectSignIn} from '@core/profile-management.ts';
-import {assertFirstContactIdentity, routeBase64, routeBytes, routeOrigin, sameServerPin, type ServerPin} from '@core/route-identity.ts';
+import {assertFirstContactIdentity, routeBase64, routeBytes, routeOrigin, sameServerPin, webRouteCrypto, type ServerPin} from '@core/route-identity.ts';
 import {connectPairedServer, connectPairedPorticoServer, rememberNativeSession, type ConnectionEnvironment} from '@core/server-connections.ts';
 import {CodedError} from '@core/server-messages.ts';
 import {routePath} from '../../../packages/contracts/src/routes.ts';
@@ -16,12 +17,7 @@ import {BrowserProtectedStore, browserAppSessions, browserConnectionEnvironment}
 
 /** Reuse the original setup draft namespace. Passwords are never stored here. */
 export const browserSetupDraft = (serverId: string): SetupDraftStore => new BrowserProtectedStore<SetupDraft>('portico.initialize.' + serverId);
-type Pending = Readonly<{
-  version: 1; kind: 'setup'; attemptId: string; origin: string; hostedOrigin: string; pin: ServerPin;
-  expectedRevision: number; setupRequestId: string; setupToken: string; setupRevision: string;
-  installationId: string; state: string; verifier: string; codeChallenge: string; createdAt: number; expiresAt: string;
-  expected?: ClaimExpected; handoff?: SetupClaimHandoff;
-}>;
+type Pending = SetupAttempt;
 type Journal = Readonly<{assertAvailable: () => void; read: () => Promise<Pending | undefined>;
   change: (update: (old: Pending | undefined) => Pending | undefined) => Promise<void>}>;
 type Ports = Readonly<{
@@ -35,7 +31,6 @@ type Completion = Readonly<{api: HttpLocalApi; result: Extract<DirectSignIn, {ki
 const invalid = () => new CodedError('invalid_return', 'This setup continuation is no longer available.');
 const cancelled = () => new CodedError('cancelled', 'The pending setup or server selection changed.');
 const same = (a: Pending | undefined, b: Pending) => !!a && JSON.stringify(a) === JSON.stringify(b);
-const object = (value: unknown): value is Record<string, unknown> => !!value && typeof value === 'object' && !Array.isArray(value);
 export type SetupClaimRecovery = Readonly<{retry: () => Promise<string>; useLocal: () => Promise<void>}>;
 export type PrepareOpening = Readonly<{setup: PendingAccountSetup; signal: AbortSignal; assertOriginal: () => Promise<void>; isCurrent: () => boolean;
   capture: (receipt: SetupClaimRecovery) => void}>;
@@ -74,11 +69,8 @@ export class BrowserSetupClaim {
     const draft = await this.ports.draft(record.pin.serverId).read();
     if (!operation.current()) throw cancelled();
     const selection = await this.ports.sessions.read();
-    if (!operation.current() || record.version !== 1 || record.kind !== 'setup' || record.origin !== this.ports.pageOrigin() ||
-      record.installationId !== this.ports.installationId() || selection.revision !== record.expectedRevision ||
-      !draft || draft.version !== 1 || draft.authMode !== 'hosted' || draft.serverId !== record.pin.serverId || draft.requestId !== record.setupRequestId || draft.setupToken !== record.setupToken ||
-      !Number.isSafeInteger(record.createdAt) || record.createdAt < 0 || record.createdAt > this.now() + 60_000 || !Number.isFinite(Date.parse(record.expiresAt)) ||
-      Date.parse(record.expiresAt) <= this.now() || Date.parse(record.expiresAt) > record.createdAt + 300_000) throw cancelled();
+    if (!operation.current() || !draft || !setupAttemptLive(record, {draft, selectionRevision: selection.revision, origin: this.ports.pageOrigin(),
+      installationId: this.ports.installationId(), now: this.now()})) throw cancelled();
     return draft;
   }
   /** Retire only this browser attempt. It cannot undo an installed claim. */
@@ -130,13 +122,9 @@ export class BrowserSetupClaim {
         pending.setupRequestId !== resumed.requestId || pending.setupRevision !== resumed.revision)) throw invalid();
       captureRecovery();
       if (!pending) {
-        const verifier = routeBase64(crypto.getRandomValues(new Uint8Array(32))), createdAt = this.now();
-        const codeChallenge = routeBase64(new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(verifier))));
+        pending = await createSetupAttempt({origin, hostedOrigin, pin: route.pin, selectionRevision: selection.revision, draft, setupRevision: resumed.revision,
+          installationId: this.ports.installationId(), now: this.now(), crypto: webRouteCrypto});
         await checkOpening();
-        pending = {version: 1, kind: 'setup', attemptId: routeBase64(crypto.getRandomValues(new Uint8Array(32))), origin, hostedOrigin, pin: {...route.pin},
-          expectedRevision: selection.revision, setupRequestId: draft.requestId, setupToken: draft.setupToken, setupRevision: resumed.revision,
-          installationId: this.ports.installationId(), state: routeBase64(crypto.getRandomValues(new Uint8Array(32))), verifier, codeChallenge,
-          createdAt, expiresAt: new Date(createdAt + 300_000).toISOString()};
         const fresh = pending;
         await this.ports.journal.change(old => {if (!operation.current() || old) throw cancelled(); return fresh;});
         await checkOpening(); captureRecovery();
@@ -156,9 +144,9 @@ export class BrowserSetupClaim {
           status = parseClaimStatus(await captured.request(routePath('post_networking_claim_prepare'), 'POST', {purpose: 'setup', expected: status.identity}, operation.signal), pending.pin);
           await this.current(pending, operation); await checkOpening();
         }
-        if (status.state !== 'prepared' || !status.operation || status.approvalRequest?.purpose !== 'setup' || status.approvalRequest.currentOwnerAccountId !== '' ||
-          status.approvalRequest.previousOwnerRole !== '' || status.approvalRequest.returnRegistrationId !== '') throw invalid();
-        const old = pending, updated = {...pending, expected: {...status.operation}};
+        const prepared = preparedSetupOperation(status);
+        if (!prepared) throw invalid();
+        const old = pending, updated = {...pending, expected: {...prepared}};
         await this.ports.journal.change(current => {if (!operation.current() || !same(current, old)) throw cancelled(); return updated;});
         pending = updated;
         captureRecovery();
@@ -278,34 +266,23 @@ export class BrowserSetupClaim {
       this.attemptId = undefined;
       const current = () => this.current(record, operation, false);
       await current();
-      const expected = handoff.binding;
-      if (expected.origin !== record.origin || expected.hostedOrigin !== record.hostedOrigin || !sameServerPin(expected.pin, record.pin) || expected.state !== record.state ||
-        expected.installationId !== record.installationId || expected.codeChallenge !== record.codeChallenge || expected.operationId !== record.expected.operationId ||
-        expected.setupRequestId !== record.setupRequestId || expected.setupRevision !== record.setupRevision || expected.localGeneration !== record.expected.localGeneration ||
-        JSON.stringify(handoff.expected) !== JSON.stringify(record.expected) || Date.parse(record.expiresAt) > Date.parse(handoff.expiresAt)) throw invalid();
-      const proof = await verifySetupClaimStart(handoff.claim, handoff.start, expected, this.now());
-      const digest = routeBase64(new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(record.verifier))));
-      routeBytes(record.verifier, 32);
-      if (digest !== proof.start.codeChallenge || handoff.expiresAt !== proof.start.expiresAt) throw invalid();
+      if (!setupHandoffBound(record)) throw invalid();
+      const proof = await verifySetupClaimStart(handoff.claim, handoff.start, handoff.binding, this.now());
+      if (!await setupProofMatches(record, proof, webRouteCrypto)) throw invalid();
       await current();
       const environment = this.ports.environment(record.pin.serverId);
       connected = await (this.ports.connect ?? connectPairedServer)(record.origin, record.pin, environment, operation.signal);
       await current(); connected.api.setAccessToken(record.setupToken);
       const raw = await connected.api.request<unknown>(routePath('get_networking_claim'), 'GET', undefined, operation.signal);
       await current();
-      const status = parseClaimStatus(raw, record.pin), setup = object(raw) ? raw.setupContinuation : undefined;
-      if (status.state !== 'installed' || status.identity.localGeneration !== record.expected.localGeneration || status.operation?.operationId !== record.expected.operationId ||
-        status.operation.localGeneration !== record.expected.localGeneration || BigInt(status.operation.revision) < BigInt(record.expected.revision) || !object(setup) || setup.phase !== 'installed' || setup.transactionId !== handoff.transactionId ||
-        Object.keys(setup).sort().join(',') !== 'expiresAt,phase,returnRegistration,transactionId' || typeof setup.expiresAt !== 'string' || Date.parse(setup.expiresAt) !== Date.parse(handoff.expiresAt) ||
-        !object(setup.returnRegistration) || Object.keys(setup.returnRegistration).sort().join(',') !== 'id,origin' || typeof setup.returnRegistration.id !== 'string' ||
-        !/^ret_[A-Za-z0-9_-]{43}$/.test(setup.returnRegistration.id) || typeof setup.returnRegistration.origin !== 'string' ||
-        !setup.returnRegistration.origin.startsWith('https://') || routeOrigin(setup.returnRegistration.origin) !== setup.returnRegistration.origin) throw invalid();
+      // Only an exact installed continuation names a return registration here.
+      const continuation = setupContinuation(raw, parseClaimStatus(raw, record.pin), record);
+      if (continuation.phase !== 'installed') throw invalid();
       grant = parseDirectSignIn(await connected.api.request(routePath('post_auth_portico_return_exchange'), 'POST', {transactionId: handoff.transactionId, state: record.state,
-        verifier: record.verifier, registrationId: setup.returnRegistration.id, installationId: record.installationId, serverChallenge: proof.start.serverChallenge, purpose: 'setup'}, operation.signal));
+        verifier: record.verifier, registrationId: continuation.registrationId, installationId: record.installationId, serverChallenge: proof.start.serverChallenge, purpose: 'setup'}, operation.signal));
       await current();
-      if (grant.kind !== 'signed-in' || grant.snapshot.serverId !== record.pin.serverId || grant.snapshot.account.role !== 'owner' || grant.snapshot.account.disabled ||
-        !grant.snapshot.account.hostedAccountId || grant.session.viewer.profileId !== grant.snapshot.account.primaryProfileId || grant.resetFileOwnerSession || grant.passwordChangeRequired || grant.snapshot.twoStepSetupRequired) throw invalid();
-      const accountId = grant.snapshot.account.hostedAccountId;
+      if (!setupOwnerGrantValid(grant, record)) throw invalid();
+      const accountId = grant.snapshot.account.hostedAccountId!;
       bound = await (this.ports.connectPortico ?? connectPairedPorticoServer)(record.origin, record.pin,
         {origin: record.hostedOrigin, accountId, request: async () => {throw invalid();}}, environment, operation.signal);
       await current(); bound.api.setAccessToken(grant.session.accessToken);

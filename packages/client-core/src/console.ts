@@ -1,10 +1,10 @@
 import {parseSettingsConfiguration} from './settings-configuration.ts';
 import {canonicalQualityLadder,canonicalMusicQualityLadder} from '../../contracts/src/types.ts';
 import {reportQuery,verifyReportInterval,type ReportContext} from './report-context.ts';
-import {routePrefix} from "../../contracts/src/routes.ts";
 import {routePath, encodedRoutePath} from "../../contracts/src/route-paths.ts";
 import {parseFFmpegValidation,type FFmpegValidation} from './storage-status.ts';
 import {wireInstants} from './wire-units.ts';
+import {parseFeedbackList,parseFeedbackReport,type FeedbackItemStatus} from './notifications.ts';
 /** Selected-server operations wire contract. No Hosted transport is accepted. */
 import {parsePreferenceSnapshot,type DeviceClass,type PreferencePatch,type PreferenceScope} from './preferences.ts';
 import {parseTelemetryReading,parseTelemetrySample,parseTranscodeCapacity,type TelemetryWindow} from './telemetry.ts';
@@ -45,10 +45,8 @@ export type SegmentDetectionMode='off'|'standard'|'thorough';
 export const SEGMENT_DETECTION_MODES:readonly SegmentDetectionMode[]=Object.freeze(['off','standard','thorough']);
 export const MISSING_TITLES_RULES:readonly MissingTitlesRule[]=Object.freeze(['immediately','after_days','never']);
 export type SettingsDocument={ffmpegValidation?:FFmpegValidation;revision:number;digest:string;requested:RuntimeSettings;effective:RuntimeSettings;activeRevision:number;restartFields:string[];registryRevision:string};
-export type Diagnostic={platform:'web'|'ios'|'tvos';state:'idle'|'starting'|'playing'|'paused'|'buffering'|'failed'|'unknown';online:boolean};
-export type FeedbackStatus='open'|'in-progress'|'resolved'|'closed';
-export type FeedbackReport={id:string;createdAt:number;updatedAt:number;revision:number;status:FeedbackStatus;category:string;message:string;itemId?:string;diagnostic?:Diagnostic;contextAvailable:boolean;events?:{sequence:number;at:number;revision:number;status:FeedbackStatus;reply:string;actorClass:'owner'|'admin'|'viewer'}[]};
-export type SubmitFeedback={category:'playback'|'metadata'|'subtitles'|'other';message:string;itemId:string;diagnostic?:Diagnostic};
+export type FeedbackStatus=FeedbackItemStatus;
+export type FeedbackTransition=Readonly<{operationId:string;expectedRevision:number;status:FeedbackStatus;reply:string}>;
 export type Notice={id:string;createdAt:number;readAt:number|null;code:string;targetId?:string;message:string};
 export type Inbox=Page<Notice>&{unread:number};
 export type Job={id:string;kind:string;resource:string;trigger:string;state:'queued'|'running'|'paused'|'reconciling'|'cancellation-requested'|'cancelled'|'failed'|'succeeded';phase:string;revision:number;attempt:number;createdAt:number;updatedAt:number;nextAt:number;domainId?:string;errorCode?:string;predecessor?:string;settingsRevision:number;lane:string;actions:('cancel'|'retry'|'pause'|'resume')[];processed?:number;total?:number};
@@ -100,9 +98,6 @@ function checkTranscoding(s:Record<string,any>){
  for(const key of ['maxConcurrentSessions','maxHardwareSessions','maxSoftwareSessions','maxBackgroundSessions'])
   if(!integer(s[key])||s[key]>1000)invalid();
 }
-export function parseReport(v:unknown):FeedbackReport{const r=base(wireInstants(v,["createdAt","updatedAt"]));revision(r);if(!id(r.id)||!integer(r.createdAt)||!integer(r.updatedAt)||!['open','in-progress','resolved','closed'].includes(r.status)||!id(r.category)||!text(r.message,4000)||typeof r.contextAvailable!=='boolean'||r.itemId!==undefined&&!id(r.itemId))invalid();if(r.events!==undefined){if(!Array.isArray(r.events)||r.events.length>200)invalid();
- // A reply this app cannot read is left out of the thread; the report and its other replies are kept.
- return {...r,events:keepReadable('console','report.events',r.events,e=>{e=wireInstants(e,['at']);if(!obj(e)||!integer(e.at)||!text(e.reply,4000)||!['owner','admin','viewer'].includes(e.actorClass))invalid();return e;})} as FeedbackReport;}return r as FeedbackReport;}
 export function parseEvidenceRecord(value:unknown):EvidenceRecord {
  const record=base(wireInstants(value,["at"]));
  if(!integer(record.sequence)||!integer(record.at)||record.at>8640000000000000)invalid();
@@ -142,9 +137,7 @@ export class ConsoleClient {
   const [path,intent]=entry;const body=JSON.parse(intent.body) as Record<string,unknown>;
   try{const value=await this.call(path,intent.method,{...body,idempotencyKey:intent.key},intent.parse);if(this.intents.get(path)===intent)this.intents.delete(path);
    if(path===routePath("post_admin_console_exports"))this.recoveredExport=value as SupportExport;
-   if(path===routePath("get_feedback"))this.drafts.delete('feedback');
-   else if(path.startsWith(routePrefix("get_admin_feedback_id", 3)))this.drafts.delete('reply:'+decodeURIComponent(path.split('/').pop()!));
-   else if(path===routePath("get_console_settings")){this.drafts.delete('runtime-settings');this.pendingSettings=undefined;this.rememberSettings(value as SettingsDocument);}
+   if(path===routePath("get_console_settings")){this.drafts.delete('runtime-settings');this.pendingSettings=undefined;this.rememberSettings(value as SettingsDocument);}
    else if(path===routePath("get_preferences"))this.drafts.delete('preferences:'+body.scope);
    else if(path===routePath("get_admin_console_schedules"))this.drafts.delete('schedule');
    for(const fn of this.reconciled)fn();
@@ -225,10 +218,12 @@ export class ConsoleClient {
  preferences(deviceClass:DeviceClass){return this.call(routePath("get_preferences") + "?deviceClass=" + (deviceClass),'GET',undefined,parsePreferenceSnapshot);}
  /** `values` carries only the keys that change; `null` clears that override. */
  applyPreferences(scope:PreferenceScope,deviceClass:DeviceClass,expectedRevision:number,values:PreferencePatch){return this.mutate(routePath("patch_preferences"),'PATCH',{scope,deviceClass,expectedRevision,values},parsePreferenceSnapshot);}
- submit(value:SubmitFeedback){return this.mutate(routePath("post_feedback"),'POST',value,parseReport);}
- reports(owner=false,cursor=''){return this.call((owner?routePath("get_admin_feedback"):routePath("get_feedback"))+'?cursor='+encodeURIComponent(cursor),'GET',undefined,v=>parsePage(v,parseReport));}
- report(id:string,owner=false){return this.call(encodedRoutePath(owner?'get_admin_feedback_id':'get_feedback_id',{id:encodeURIComponent(id)}),'GET',undefined,parseReport);}
- triage(id:string,expectedRevision:number,status:FeedbackStatus,reply:string){return this.mutate(encodedRoutePath("patch_admin_feedback_id", {"id": encodeURIComponent(id)}),'PATCH',{expectedRevision,status,reply},parseReport);}
+ /** Owner triage: every viewer report, newest first, a page the server bounds. */
+ feedbackReports(cursor=''){return this.call(routePath("get_admin_feedback_reports")+(cursor?'?cursor='+encodeURIComponent(cursor):''),'GET',undefined,parseFeedbackList);}
+ feedbackReport(id:string){return this.call(encodedRoutePath('get_admin_feedback_reports_id',{id:encodeURIComponent(id)}),'GET',undefined,parseFeedbackReport);}
+ /** Status and reply behind the read revision. The caller keeps one operationId per
+  * intended change, so a retry after a lost answer is the same transition. */
+ transitionFeedback(id:string,change:FeedbackTransition){return this.call(encodedRoutePath('post_admin_feedback_reports_id_status',{id:encodeURIComponent(id)}),'POST',{...change},parseFeedbackReport);}
  inbox(cursor=''){return this.call(routePath("get_notifications") + "?cursor=" + (encodeURIComponent(cursor)),'GET',undefined,parseInbox);}
  readNotice(id:string){return this.call(encodedRoutePath("post_notifications_id_read", {"id": encodeURIComponent(id)}),'POST',{},v=>{if(!obj(v)||v.read!==true)invalid();});}
  accountOptions(){return this.call(routePath("get_admin_console_accounts"),'GET',undefined,v=>list(v,row=>{if(!obj(row)||!id(row.id)||!text(row.label,128))invalid();return {id:row.id as string,label:row.label as string};},1000));}

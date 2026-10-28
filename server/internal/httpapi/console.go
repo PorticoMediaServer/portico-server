@@ -220,36 +220,6 @@ func (d Dependencies) consoleRoutes(mux *http.ServeMux) {
 		}
 		return d.Console.ApplyPreferences(r.Context(), p, a, c)
 	})
-	register("POST /v1/feedback", false, nil, func(r *http.Request, p identity.Principal, a operations.Authorize) (any, error) {
-		var c operations.SubmitReport
-		if e := decodeBody(r, &c); e != nil {
-			return nil, e
-		}
-		return d.Console.Submit(r.Context(), p, a, c)
-	})
-	for _, owner := range []bool{false, true} {
-		prefix := "/v1/feedback"
-		if owner {
-			prefix = "/v1/admin/feedback"
-		}
-		register("GET "+prefix, owner, []string{"cursor", "limit"}, func(r *http.Request, p identity.Principal, a operations.Authorize) (any, error) {
-			n, e := consoleLimit(r)
-			if e != nil {
-				return nil, e
-			}
-			return d.Console.Reports(r.Context(), p, a, owner, r.URL.Query().Get("cursor"), n)
-		})
-		register("GET "+prefix+"/{id}", owner, nil, func(r *http.Request, p identity.Principal, a operations.Authorize) (any, error) {
-			return d.Console.Report(r.Context(), p, a, owner, r.PathValue("id"))
-		})
-	}
-	register("PATCH /v1/admin/feedback/{id}", true, nil, func(r *http.Request, p identity.Principal, a operations.Authorize) (any, error) {
-		var c operations.Triage
-		if e := decodeBody(r, &c); e != nil {
-			return nil, e
-		}
-		return d.Console.Triage(r.Context(), p, a, r.PathValue("id"), c)
-	})
 	register("GET /v1/notifications", false, []string{"cursor", "limit"}, func(r *http.Request, p identity.Principal, a operations.Authorize) (any, error) {
 		n, e := consoleLimit(r)
 		if e != nil {

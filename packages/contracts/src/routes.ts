@@ -2328,50 +2328,6 @@ export const routes = [
     "admission": "admin"
   },
   {
-    "id": "get_admin_feedback",
-    "method": "GET",
-    "path": "/v1/admin/feedback",
-    "summary": "Read or update the selected projection",
-    "access": "device",
-    "requires": "admin",
-    "lane": "default",
-    "cost": "page_sized",
-    "bodyLimit": 0,
-    "query": [
-      "cursor",
-      "limit"
-    ],
-    "errors": [
-      "invalid_request",
-      "unauthorized",
-      "not_permitted",
-      "not_found",
-      "internal"
-    ],
-    "status": 200,
-    "admission": "admin"
-  },
-  {
-    "id": "get_admin_feedback_id",
-    "method": "GET",
-    "path": "/v1/admin/feedback/{id}",
-    "summary": "Read or update the selected projection",
-    "access": "device",
-    "requires": "admin",
-    "lane": "default",
-    "cost": "page_sized",
-    "bodyLimit": 0,
-    "errors": [
-      "invalid_request",
-      "unauthorized",
-      "not_permitted",
-      "not_found",
-      "internal"
-    ],
-    "status": 200,
-    "admission": "admin"
-  },
-  {
     "id": "get_admin_feedback_reports",
     "method": "GET",
     "path": "/v1/admin/feedback/reports",
@@ -4826,30 +4782,6 @@ export const routes = [
     "admission": "realtime"
   },
   {
-    "id": "get_feedback",
-    "method": "GET",
-    "path": "/v1/feedback",
-    "summary": "Read or update the selected projection",
-    "access": "device",
-    "requires": "read",
-    "lane": "default",
-    "cost": "page_sized",
-    "bodyLimit": 0,
-    "query": [
-      "cursor",
-      "limit"
-    ],
-    "errors": [
-      "invalid_request",
-      "unauthorized",
-      "not_permitted",
-      "not_found",
-      "internal"
-    ],
-    "status": 200,
-    "admission": "default"
-  },
-  {
     "id": "get_feedback_capabilities",
     "method": "GET",
     "path": "/v1/feedback/capabilities",
@@ -4868,26 +4800,6 @@ export const routes = [
     ],
     "status": 200,
     "http": true,
-    "admission": "default"
-  },
-  {
-    "id": "get_feedback_id",
-    "method": "GET",
-    "path": "/v1/feedback/{id}",
-    "summary": "Read or update the selected projection",
-    "access": "device",
-    "requires": "read",
-    "lane": "default",
-    "cost": "page_sized",
-    "bodyLimit": 0,
-    "errors": [
-      "invalid_request",
-      "unauthorized",
-      "not_permitted",
-      "not_found",
-      "internal"
-    ],
-    "status": 200,
     "admission": "default"
   },
   {
@@ -10685,27 +10597,6 @@ export const routes = [
     "admission": "admin"
   },
   {
-    "id": "patch_admin_feedback_id",
-    "method": "PATCH",
-    "path": "/v1/admin/feedback/{id}",
-    "summary": "Read or update the selected projection",
-    "access": "device",
-    "requires": "admin",
-    "lane": "default",
-    "cost": "page_sized",
-    "bodyLimit": 1048576,
-    "errors": [
-      "invalid_request",
-      "unauthorized",
-      "not_permitted",
-      "not_found",
-      "internal",
-      "writer_capacity"
-    ],
-    "status": 200,
-    "admission": "admin-heavy"
-  },
-  {
     "id": "patch_admin_libraries_id",
     "method": "PATCH",
     "path": "/v1/admin/libraries/{id}",
@@ -13351,27 +13242,6 @@ export const routes = [
     ],
     "status": 202,
     "admission": "admin"
-  },
-  {
-    "id": "post_feedback",
-    "method": "POST",
-    "path": "/v1/feedback",
-    "summary": "Read or update the selected projection",
-    "access": "device",
-    "requires": "playback",
-    "lane": "default",
-    "cost": "page_sized",
-    "bodyLimit": 1048576,
-    "errors": [
-      "invalid_request",
-      "unauthorized",
-      "not_permitted",
-      "not_found",
-      "internal",
-      "writer_capacity"
-    ],
-    "status": 200,
-    "admission": "default"
   },
   {
     "id": "post_feedback_reports",

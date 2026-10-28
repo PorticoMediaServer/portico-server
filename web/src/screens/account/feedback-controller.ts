@@ -53,7 +53,7 @@ export class ViewerFeedback {
       if (!current()) throw new DOMException('Feedback authority retired', 'AbortError');
       return answer;
     }};
-    const service = this.service = new FeedbackService(api, this.operationId);
+    const service = this.service = new FeedbackService(api, this.operationId, () => typeof navigator === 'undefined' ? undefined : navigator.onLine);
     this.publish({open, canSubmit: this.state.canSubmit, service: service.getSnapshot(), draft: emptyDraft(), target});
     this.offService = service.subscribe(() => {
       if (!current()) return;
