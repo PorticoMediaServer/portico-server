@@ -218,11 +218,31 @@ func TestProductionStatementsPrepareAgainstTheBaseline(t *testing.T) {
 	if spoolStatements == 0 {
 		t.Fatalf("%s no longer says what its spool holds", spoolFile)
 	}
+	// Restore salvage reads the damaged copy attached beside a fresh baseline
+	// (salvage.go): prepare its statements against exactly that shape.
+	salvageMain, err := Open(filepath.Join(t.TempDir(), "salvage.sqlite"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer salvageMain.Close()
+	damagedPath := filepath.Join(t.TempDir(), "damaged.sqlite")
+	damaged, err := Open(damagedPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	damaged.Close()
+	salvageMain.SetMaxOpenConns(1)
+	if _, err = salvageMain.Exec(`ATTACH DATABASE ? AS damaged`, damagedPath); err != nil {
+		t.Fatal(err)
+	}
 	checked := 0
 	for _, s := range statements {
 		target := db
 		if strings.HasPrefix(filepath.ToSlash(s.where), "internal/livechannels/programme_spool.go:") {
 			target = spool
+		}
+		if strings.HasPrefix(filepath.ToSlash(s.where), "internal/persistence/salvage") {
+			target = salvageMain
 		}
 		prepared, err := prepareProductionStatement(target, dataset, s, transient)
 		if prepared {
