@@ -346,6 +346,7 @@ func TestFacetRuntimeDriftQuietGapDoublesCapsAndResetsAfterAcceptedBase(t *testi
 		t.Fatal("missing staged work")
 	}
 	f.c.Genres(f.item.ID, "fixture", "New A", "New B", "New C")
+	f.c.Drain() // New binding: restart/retirement waits until upstream is quiet.
 	f.r.maintain(context.Background(), d)
 	if d.gap != 2*time.Second || d.retiring != original {
 		t.Fatal(d.gap, d.retiring)
@@ -366,6 +367,7 @@ func TestFacetRuntimeDriftQuietGapDoublesCapsAndResetsAfterAcceptedBase(t *testi
 		t.Fatal("did not restart after quiet gap")
 	}
 	f.c.Genres(f.item.ID, "fixture", "Newer A", "Newer B")
+	f.c.Drain()
 	f.r.maintain(context.Background(), d)
 	if d.gap != 4*time.Second {
 		t.Fatal("second drift did not double", d.gap)
@@ -650,5 +652,318 @@ func TestFacetRuntimeRunServesAllCoalescedDemandsAndStops(t *testing.T) {
 	page := runtimeReady(t, f, out, err)
 	if page.Field != "year" || len(page.Values) != 1 || page.Values[0].Value != "2000" {
 		t.Fatal(page)
+	}
+}
+
+func TestFacetRuntimeCompletedGCSweepSleepsAndFailedReadsDoNotPinRegistry(t *testing.T) {
+	f := runtimeFixture(t, 18, 128<<20)
+	d := runtimeBuild(t, f)
+	for i := 0; i < 100 && f.r.gcPending; i++ {
+		if err := f.r.collect(context.Background()); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if f.r.gcPending || f.r.gcComplete != 15 {
+		t.Fatal("GC never completed a bounded directory sweep", f.r.gcComplete)
+	}
+	before := dbwork.Publications()
+	for i := 0; i < 20; i++ {
+		if err := f.r.collect(context.Background()); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if dbwork.Publications() != before {
+		t.Fatal("completed GC sweep kept acquiring writer")
+	}
+	f.r.mu.Lock()
+	d.err = ErrFacetBaseCapacity
+	original := d.touched
+	f.r.mu.Unlock()
+	f.advance(4 * time.Minute)
+	if _, err := f.r.demand(f.scope); err != nil {
+		t.Fatal(err)
+	}
+	if d.touched != original {
+		t.Fatal("failed request renewed terminal retention")
+	}
+	f.advance(time.Minute)
+	f.r.nextDemand()
+	if len(f.r.demands) != 0 || !f.r.gcPending {
+		t.Fatal("terminal demand did not expire/restart cleanup")
+	}
+}
+
+func TestFacetRuntimeRestrictedAuthorityRejectsOldPolicyFactsWithoutRejectingGenreChurn(t *testing.T) {
+	f := runtimeFixture(t, 3, 128<<20)
+	maximum := 100
+	f.viewer.Restrictions = identity.ContentRestrictions{MaximumAge: &maximum, BlockedLabels: []string{"adult"}}
+	f.scope.Policy = FacetBasePolicy(f.viewer.Restrictions)
+	f.scope.Source = RestrictedMemberFacetBaseSource
+	runtimeBuild(t, f)
+	out, err := f.r.Initial(f.ctx, "caller", f.viewer, f.request)
+	old := runtimeReady(t, f, out, err)
+	if old.Total != 3 {
+		t.Fatal("restricted production reducer did not count visible facts", old)
+	}
+	f.c.Genres(f.item.ID, "fixture", "New content")
+	out, err = f.r.Initial(f.ctx, "caller", f.viewer, f.request)
+	still := runtimeReady(t, f, out, err)
+	if still.Window.Basis != old.Window.Basis {
+		t.Fatal("genre content churn invalidated narrow authority")
+	}
+	f.c.Attributes(f.item.ID, "label", "adult")
+	if _, err = f.r.Poll(f.ctx, "caller", old.Window.QueryID); !errors.Is(err, readprep.ErrStale) {
+		t.Fatal("old policy facts survived eligibility revocation", err)
+	}
+	out, err = f.r.Initial(f.ctx, "caller", f.viewer, f.request)
+	if err != nil || out.Page != nil || out.Preparing == nil {
+		t.Fatal("revoked facts returned instead of cold preparation", out, err)
+	}
+	out.Release()
+}
+
+type runtimeFinalCapacityProducer struct{}
+
+func (runtimeFinalCapacityProducer) Next(ctx context.Context, tx *sql.Tx, s FacetBaseSnapshot, _ string) (FacetBaseBatch, error) {
+	_, err := tx.ExecContext(ctx, `INSERT INTO runtime_candidates(base_id,bytes) VALUES(?,zeroblob(131072))`, s.ID)
+	return FacetBaseBatch{Done: true}, err
+}
+func (runtimeFinalCapacityProducer) ValidatePublication(context.Context, *sql.Tx, FacetBaseSnapshot) error {
+	return nil
+}
+func TestFacetRuntimeFinalSourceOnlyBatchCannotPublishBeyondGlobalLedger(t *testing.T) {
+	f := runtimeFixture(t, 1, 64<<10)
+	f.c.Write(func(ctx context.Context, tx *sql.Tx) error {
+		_, err := tx.ExecContext(ctx, `CREATE TABLE runtime_candidates(base_id INTEGER REFERENCES catalog_facet_bases(id),bytes BLOB); CREATE TRIGGER runtime_candidate_charge AFTER INSERT ON runtime_candidates BEGIN UPDATE catalog_facet_base_usage SET used_bytes=used_bytes+length(NEW.bytes) WHERE id=1; END;`)
+		return err
+	})
+	source := func(_ context.Context, _ compactcatalog.ReadQuery, s FacetBaseScope) (FacetBasePlan, error) {
+		return FacetBasePlan{Scope: s, Witness: "extra-candidate-source", Producer: runtimeFinalCapacityProducer{}}, nil
+	}
+	if err := f.r.RegisterSource("candidate-only", source); err != nil {
+		t.Fatal(err)
+	}
+	scope := f.scope
+	scope.Source = "candidate-only"
+	d, err := f.r.demand(scope)
+	if err != nil {
+		t.Fatal(err)
+	}
+	f.r.maintain(context.Background(), d)
+	f.r.maintain(context.Background(), d)
+	if !errors.Is(d.err, ErrFacetBaseCapacity) || d.ready != 0 {
+		t.Fatal("oversize final candidate phase activated", d.err, d.ready)
+	}
+	var candidates, active int
+	f.c.DB.QueryRow(`SELECT count(*) FROM runtime_candidates`).Scan(&candidates)
+	f.c.DB.QueryRow(`SELECT count(*) FROM catalog_facet_base_classes WHERE active_base IS NOT NULL`).Scan(&active)
+	if candidates != 0 || active != 0 {
+		t.Fatal("failed final phase did not roll back atomically", candidates, active)
+	}
+	if _, err = NewFacetRuntime(f.c.DB, f.store, CheckFacetWindowAuthority, 1); !errors.Is(err, ErrFacetBaseCapacity) {
+		t.Fatal("unaccounted registry constructed below fixed overhead", err)
+	}
+}
+
+func TestFacetRuntimeScanAndUpstreamPendingAdmitNoWritersIncludingRetireGC(t *testing.T) {
+	f := runtimeFixture(t, 18, 128<<20)
+	d := runtimeBuild(t, f)
+	out, err := f.r.Initial(f.ctx, "caller", f.viewer, f.request)
+	old := runtimeReady(t, f, out, err)
+	f.c.Genres(f.item.ID, "fixture", "Changed A", "Changed B")
+	f.c.Drain()
+	f.r.maintain(context.Background(), d)
+	staged := d.build
+	if staged == 0 {
+		t.Fatal("missing staged successor")
+	}
+	f.r.maintenanceFailure(context.Background(), d, staged, compactcatalog.ErrFacetProducerChanged)
+	if d.retiring != staged {
+		t.Fatal("fixture did not request retirement")
+	}
+	checkNoWriters := func() {
+		t.Helper()
+		before := dbwork.WriteGate().Stats()
+		published := dbwork.Publications()
+		var called bool
+		f.r.maintain(context.Background(), d)
+		if err := f.r.collect(context.Background()); err != nil {
+			t.Fatal(err)
+		}
+		err := f.r.writeBase(context.Background(), func(context.Context, *sql.Tx) error { called = true; return nil })
+		after := dbwork.WriteGate().Stats()
+		if !errors.Is(err, errFacetRuntimeDeferred) || called || after.Acquired != before.Acquired || after.HeldMilli != before.HeldMilli || dbwork.Publications() != published {
+			t.Fatal("pending scan/source admitted BASE/GC writer", called, err, before, after)
+		}
+		var exists bool
+		if err = f.c.DB.QueryRow(`SELECT EXISTS(SELECT 1 FROM catalog_facet_bases WHERE id=?)`, staged).Scan(&exists); err != nil || !exists {
+			t.Fatal("retiring base changed while deferred", exists, err)
+		}
+	}
+	for _, state := range []string{"queued", "running"} {
+		f.c.Exec(`INSERT INTO jobs(id,library_id,status,created_at) VALUES('runtime-scan','films',?,'2026-10-28T00:00:00Z') ON CONFLICT(id) DO UPDATE SET status=excluded.status`, state)
+		if _, err := compactcatalog.CaptureFacetProducerFence(context.Background(), f.c.DB); err != nil {
+			t.Fatal("not testing clean batch gap", err)
+		}
+		checkNoWriters()
+		out, err = f.r.Initial(f.ctx, "caller", f.viewer, f.request)
+		served := runtimeReady(t, f, out, err)
+		if served.Window.Basis != old.Window.Basis || served.Total != 18 {
+			t.Fatal("scan blocked COMPLETE reads", served)
+		}
+	}
+	f.c.Exec(`UPDATE jobs SET status='paused' WHERE id='runtime-scan'`)
+	called := false
+	if err := f.r.writeBase(context.Background(), func(context.Context, *sql.Tx) error { called = true; return nil }); err != nil || !called {
+		t.Fatal("paused job counted as active writer", err)
+	}
+	f.c.Exec(`UPDATE jobs SET status='complete' WHERE id='runtime-scan'`)
+	f.c.Genres(f.item.ID, "fixture", "Undrained source")
+	checkNoWriters()
+	f.c.Exec(`INSERT INTO catalog_derivation_failures(domain,entity_id,reason,failed_ms) VALUES(33,?,'failed source',1)`, f.item.ID)
+	checkNoWriters()
+	rows, err := f.c.DB.Query(`EXPLAIN QUERY PLAN SELECT EXISTS(SELECT 1 FROM jobs INDEXED BY catalog_facet_active_scans WHERE status IN('queued','running'))`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	indexed := false
+	for rows.Next() {
+		var a, b, c int
+		var detail string
+		if err = rows.Scan(&a, &b, &c, &detail); err != nil {
+			t.Fatal(err)
+		}
+		indexed = indexed || strings.Contains(detail, "catalog_facet_active_scans")
+	}
+	rows.Close()
+	if !indexed {
+		t.Fatal("active scan predicate did not use partial index")
+	}
+}
+
+func TestFacetRuntimeScanStartingDuringWriterAdmissionCannotMutateBase(t *testing.T) {
+	f := runtimeFixture(t, 1, 128<<20)
+	held, err := dbwork.Begin(context.Background(), f.c.DB, dbwork.ClassInteractive)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer held.Rollback()
+	var called atomic.Bool
+	ended := make(chan error, 1)
+	go func() {
+		ended <- f.r.writeBase(context.Background(), func(context.Context, *sql.Tx) error { called.Store(true); return nil })
+	}()
+	deadline := time.Now().Add(5 * time.Second)
+	for dbwork.WriteGate().Stats().Waiting[dbwork.ClassBackgroundMedia.String()] == 0 {
+		if time.Now().After(deadline) {
+			t.Fatal("runtime did not queue behind writer")
+		}
+		time.Sleep(time.Millisecond)
+	}
+	if _, err = held.Tx().ExecContext(held.Context(), `INSERT INTO jobs(id,library_id,status,created_at) VALUES('admission-race','films','running','2026-10-28T00:00:00Z')`); err != nil {
+		t.Fatal(err)
+	}
+	if err = held.Commit(); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case err = <-ended:
+		if !errors.Is(err, errFacetRuntimeDeferred) || called.Load() {
+			t.Fatal("scan admission race executed BASE writes", err, called.Load())
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("deferred writer did not finish")
+	}
+}
+
+func TestFacetRuntimeFallbackContentionDoesNotBypassBudgetForOrdinaryScalar(t *testing.T) {
+	f := runtimeFixture(t, 1, 128<<20)
+	f.store.Close()
+	store, err := readprep.New(readprep.Config{Workers: 1, MaxBytes: 128 << 10, Now: f.r.now})
+	if err != nil {
+		t.Fatal(err)
+	}
+	f.store = store
+	f.r, err = NewFacetRuntime(f.c.DB, store, CheckFacetWindowAuthority, 128<<20)
+	if err != nil {
+		t.Fatal(err)
+	}
+	f.r.now = func() time.Time { return time.Unix(0, f.clock.Load()) }
+	f.r.windows.now = f.r.now
+	value := strings.Repeat("x", 45<<10)
+	f.c.Genres(f.item.ID, "fixture", value)
+	f.c.Drain()
+	req := f.request
+	req.Q = ""
+	out, err := f.r.Initial(f.ctx, "caller", f.viewer, req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	id := out.Preparing.QueryID
+	out.Release()
+	d, _ := f.r.demand(f.scope)
+	f.r.maintain(context.Background(), d)
+	f.c.Write(func(ctx context.Context, tx *sql.Tx) error {
+		snap, err := facetBaseSnapshot(ctx, tx, d.build, false)
+		if err != nil {
+			return err
+		}
+		b := FacetBases{DB: f.c.DB, MaxBytes: f.r.baseLimit}
+		return b.put(ctx, tx, snap, FacetBaseFact{Value: value, Label: value, Count: 1})
+	})
+	f.advance(10 * time.Second)
+	out, err = f.r.Poll(f.ctx, "caller", id)
+	out.Release()
+	if !errors.Is(err, readprep.ErrCapacity) {
+		t.Fatal("ordinary scalar bypassed admission as oversized exception", err)
+	}
+	if f.store.Stats().Deliveries != 0 || f.store.Stats().Bytes > f.store.MaxBytes() {
+		t.Fatal("fallback leaked or exceeded reservation", f.store.Stats())
+	}
+}
+
+type runtimePanicProducer struct{}
+
+func (runtimePanicProducer) Next(context.Context, *sql.Tx, FacetBaseSnapshot, string) (FacetBaseBatch, error) {
+	panic("runtime producer fixture panic")
+}
+func (runtimePanicProducer) ValidatePublication(context.Context, *sql.Tx, FacetBaseSnapshot) error {
+	return nil
+}
+func TestFacetRuntimePanicStopsAndNotifiesDemandsBeforeSupervisorRecovery(t *testing.T) {
+	f := runtimeFixture(t, 1, 128<<20)
+	capture := func(_ context.Context, _ compactcatalog.ReadQuery, s FacetBaseScope) (FacetBasePlan, error) {
+		return FacetBasePlan{Scope: s, Witness: "panic-source", Producer: runtimePanicProducer{}}, nil
+	}
+	if err := f.r.RegisterSource("panic-source", capture); err != nil {
+		t.Fatal(err)
+	}
+	scope := f.scope
+	scope.Source = "panic-source"
+	d, err := f.r.demand(scope)
+	if err != nil {
+		t.Fatal(err)
+	}
+	recovered := make(chan any, 1)
+	go func() { defer func() { recovered <- recover() }(); _ = f.r.Run(context.Background()) }()
+	select {
+	case value := <-recovered:
+		if value == nil {
+			t.Fatal("fixture panic did not reach supervisor boundary")
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("panic failed to release worker/writer")
+	}
+	f.r.mu.Lock()
+	stopped, terminal := f.r.stopped, d.err
+	f.r.mu.Unlock()
+	if !stopped || !errors.Is(terminal, readprep.ErrClosed) {
+		t.Fatal("panic left runtime/cold demand live", stopped, terminal)
+	}
+	if _, err = f.r.Demand(context.Background(), scope); !errors.Is(err, readprep.ErrClosed) {
+		t.Fatal("stopped worker accepted cold demand", err)
+	}
+	if _, err := dbwork.ExecWrite(context.Background(), f.c.DB, dbwork.ClassInteractive, `UPDATE catalog_facet_base_usage SET used_bytes=used_bytes WHERE id=1`); err != nil {
+		t.Fatal("panic retained writer gate", err)
 	}
 }

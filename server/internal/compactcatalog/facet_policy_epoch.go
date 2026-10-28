@@ -3,9 +3,11 @@ package compactcatalog
 import "context"
 
 // FacetPolicyEpoch is a constant read of restriction/eligibility inputs, distinct
-// from content churn. It includes classification edits. Active-policy COMPLETE
-// bases bind this epoch in live Authority; inactive-policy bases must not bind
-// it (their library lifetime/kind and live caller grants are checked separately).
+// from content churn. It includes classification edits. Active-policy SIMPLE
+// bases bind it in live Authority; inactive SIMPLE bases omit it. Search genres
+// also have retirement/member-library eligibility gates and bind it alongside
+// genre_epoch even with inactive content restrictions. Library lifetime/kind
+// and live caller grants are checked separately.
 // A changed active epoch requires a new exact base; old counts must not leak
 // while that base prepares. No per-class accepting-write fanout is involved.
 func FacetPolicyEpoch(ctx context.Context, q ReadQuery) (int64, error) {

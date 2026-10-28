@@ -56,12 +56,13 @@ func CaptureFacetAuthority(ctx context.Context, q compactcatalog.ReadQuery, scop
 		PolicyEpoch *int64 `json:"policyEpoch,omitempty"`
 		GenreEpoch  *int64 `json:"genreEpoch,omitempty"`
 	}{LibraryID: scope.LibraryID, Library: library, Kind: kind, Algorithm: 1}
+	genre := scope.Source == "search-video-genre-v1" || strings.HasPrefix(scope.Source, "search-video-genre-v1:")
 	if r.Active() {
 		document.PolicyEpoch = &policyEpoch
 		// Only Search genres has the empty-title fallback that a first hidden
 		// member can revoke. SIMPLE has no such witness; new-title materialization
 		// must not revoke its existing COMPLETE content basis during a scan.
-		if scope.Source == "search-video-genre-v1" || strings.HasPrefix(scope.Source, "search-video-genre-v1:") {
+		if genre {
 			document.GenreEpoch = &genreEpoch
 		}
 	}

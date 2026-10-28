@@ -85,8 +85,11 @@ func NewFacetRuntime(db *sql.DB, shared *readprep.Store, check FacetWindowCheck,
 	// provider callbacks and worker descriptors. Persistent current/staging/retired
 	// bytes all share the remaining ledger allowance; no per-class reservation.
 	reserve := min(baseByteLimit/8, int64(1<<20))
+	if reserve < 4096 {
+		return nil, ErrFacetBaseCapacity
+	}
 	return &FacetRuntime{db: db, windows: w, store: shared, check: check,
-		baseLimit: baseByteLimit - reserve, registryLimit: reserve, registryBytes: 1024,
+		baseLimit: baseByteLimit - reserve, registryLimit: reserve, registryBytes: 4096,
 		demands: make(map[FacetBaseScope]*facetRuntimeDemand), sources: make(map[string]FacetBaseCapture),
 		wake: worker.NewSignal(), shared: worker.NewSignal(), dirty: worker.NewSignal(), now: time.Now, gcPending: true}, nil
 }
@@ -583,10 +586,11 @@ func (r *FacetRuntime) Run(ctx context.Context) error {
 	if r == nil || !r.running.CompareAndSwap(false, true) {
 		return ErrFacetBaseInput
 	}
+	defer r.stop()
 	r.mu.Lock()
 	r.started = r.now()
 	r.mu.Unlock()
-	tables := []string{"catalog_dirty", "catalog_facet_counts", "catalog_facet_members", "catalog_show_facet_values", "catalog_facet_source_state", "catalog_generations", "catalog_derivations", "catalog_derivation_failures", "catalog_item_attribute_edges", "catalog_attribute_terms", "content_rating_ages", "catalog_upstream_sources"}
+	tables := []string{"jobs", "catalog_dirty", "catalog_facet_counts", "catalog_facet_members", "catalog_show_facet_values", "catalog_facet_source_state", "catalog_generations", "catalog_derivations", "catalog_derivation_failures", "catalog_item_attribute_edges", "catalog_attribute_terms", "content_rating_ages", "catalog_upstream_sources"}
 	off := dbwork.WakeOnTables(r.shared, tables...)
 	offDirty := dbwork.WakeOnTables(r.dirty, tables...)
 	defer off()
@@ -598,6 +602,20 @@ func (r *FacetRuntime) Run(ctx context.Context) error {
 	remaining := 0
 	worker.RunWith(runctx, "facet-runtime", r.wake, r.shared, func(ctx context.Context) time.Duration {
 		started := time.Now()
+		if err := r.writerReady(ctx); err != nil {
+			if errors.Is(err, compactcatalog.ErrFacetProducerFailed) {
+				r.failUnpreparedScopes()
+			}
+			if errors.Is(err, errFacetRuntimeDeferred) {
+				return 2 * time.Second
+			}
+			if ctx.Err() != nil {
+				return 0
+			}
+			fatal = err
+			cancel()
+			return 0
+		}
 		if r.dirty.Take() {
 			r.mu.Lock()
 			remaining = len(r.demands)
@@ -614,6 +632,9 @@ func (r *FacetRuntime) Run(ctx context.Context) error {
 		if err := r.collect(ctx); err != nil {
 			if ctx.Err() != nil {
 				return 0
+			}
+			if errors.Is(err, errFacetRuntimeDeferred) {
+				return 2 * time.Second
 			}
 			if dbwork.Overloaded(err) {
 				return time.Second
@@ -643,14 +664,6 @@ func (r *FacetRuntime) Run(ctx context.Context) error {
 		r.mu.Unlock()
 		return wait
 	})
-	r.mu.Lock()
-	r.stopped = true
-	for _, d := range r.demands {
-		d.err = readprep.ErrClosed
-		close(d.changed)
-		d.changed = make(chan struct{})
-	}
-	r.mu.Unlock()
 	if fatal != nil {
 		return fatal
 	}
@@ -702,12 +715,18 @@ func (r *FacetRuntime) notify(d *facetRuntimeDemand) {
 }
 
 func (r *FacetRuntime) maintain(ctx context.Context, d *facetRuntimeDemand) time.Duration {
+	if err := r.writerReady(ctx); err != nil {
+		if errors.Is(err, compactcatalog.ErrFacetProducerFailed) {
+			r.failUnpreparedScopes()
+		}
+		return 2 * time.Second
+	}
 	r.mu.Lock()
 	build, retiring, next, terminal := d.build, d.retiring, d.next, d.err
 	r.mu.Unlock()
 	if retiring > 0 {
 		done := false
-		err := dbwork.WithWriteTxContext(ctx, r.db, dbwork.ClassBackgroundMedia, func(ctx context.Context, tx *sql.Tx) error {
+		err := r.writeBase(ctx, func(ctx context.Context, tx *sql.Tx) error {
 			var err error
 			done, err = r.retire(ctx, tx, retiring)
 			return err
@@ -767,7 +786,7 @@ func (r *FacetRuntime) maintain(ctx context.Context, d *facetRuntimeDemand) time
 		// authority inside this same gated transaction before installing BASE work.
 		var id int64
 		var accepted bool
-		err = dbwork.WithWriteTxContext(ctx, r.db, dbwork.ClassBackgroundMedia, func(ctx context.Context, tx *sql.Tx) error {
+		err = r.writeBase(ctx, func(ctx context.Context, tx *sql.Tx) error {
 			current, err := r.capture(ctx, tx, d.scope)
 			if err != nil {
 				return err
@@ -813,7 +832,7 @@ func (r *FacetRuntime) maintain(ctx context.Context, d *facetRuntimeDemand) time
 		return time.Millisecond
 	}
 	done := false
-	err = dbwork.WithWriteTxContext(ctx, r.db, dbwork.ClassBackgroundMedia, func(ctx context.Context, tx *sql.Tx) error {
+	err = r.writeBase(ctx, func(ctx context.Context, tx *sql.Tx) error {
 		snap, err := facetBaseSnapshot(ctx, tx, build, false)
 		if err != nil {
 			return err
@@ -830,7 +849,19 @@ func (r *FacetRuntime) maintain(ctx context.Context, d *facetRuntimeDemand) time
 		}
 		b := FacetBases{DB: r.db, Producer: plan.Producer, MaxBytes: r.baseLimit}
 		done, err = b.Step(ctx, tx, build)
-		return err
+		if err != nil {
+			return err
+		}
+		// Additional source rows (for example genre candidate-only final phases)
+		// also share the ledger, including a Done batch with no counted facts.
+		var used int64
+		if err = tx.QueryRowContext(ctx, `SELECT used_bytes FROM catalog_facet_base_usage WHERE id=1`).Scan(&used); err != nil {
+			return err
+		}
+		if used > r.baseLimit {
+			return ErrFacetBaseCapacity
+		}
+		return nil
 	})
 	if err != nil {
 		return r.maintenanceFailure(ctx, d, build, err)
@@ -849,6 +880,9 @@ func (r *FacetRuntime) maintain(ctx context.Context, d *facetRuntimeDemand) time
 }
 
 func (r *FacetRuntime) maintenanceFailure(ctx context.Context, d *facetRuntimeDemand, build int64, err error) time.Duration {
+	if errors.Is(err, errFacetRuntimeDeferred) {
+		return 2 * time.Second
+	}
 	if ctx.Err() != nil || dbwork.Overloaded(err) {
 		return time.Second
 	}
@@ -889,6 +923,12 @@ func (r *FacetRuntime) maintenanceFailure(ctx context.Context, d *facetRuntimeDe
 // COMPLETE old bases are retained while a class is demanded unless space is
 // under pressure. Capacity eviction is explicit stale, never a mixed basis.
 func (r *FacetRuntime) collect(ctx context.Context) error {
+	if err := r.writerReady(ctx); err != nil {
+		if errors.Is(err, errFacetRuntimeDeferred) {
+			return nil
+		}
+		return err
+	}
 	if !r.gcPending {
 		return nil
 	}
@@ -901,7 +941,7 @@ func (r *FacetRuntime) collect(ctx context.Context) error {
 	if phase == 1 || phase == 2 {
 		var next int64
 		var done bool
-		err := dbwork.WithWriteTxContext(ctx, r.db, dbwork.ClassBackgroundMedia, func(ctx context.Context, tx *sql.Tx) error {
+		err := r.writeBase(ctx, func(ctx context.Context, tx *sql.Tx) error {
 			var err error
 			if phase == 1 {
 				next, done, err = b.CollectTextStep(ctx, tx, r.gcText)
@@ -944,7 +984,7 @@ func (r *FacetRuntime) collect(ctx context.Context) error {
 		if wanted {
 			return nil
 		}
-		return dbwork.WithWriteTxContext(ctx, r.db, dbwork.ClassBackgroundMedia, func(ctx context.Context, tx *sql.Tx) error {
+		return r.writeBase(ctx, func(ctx context.Context, tx *sql.Tx) error {
 			_, err := tx.ExecContext(ctx, `DELETE FROM catalog_facet_base_classes WHERE id=? AND active_base IS NULL AND NOT EXISTS(SELECT 1 FROM catalog_facet_bases WHERE class_id=?)`, id, id)
 			return err
 		})
@@ -972,7 +1012,7 @@ func (r *FacetRuntime) collect(ctx context.Context) error {
 		return nil
 	}
 	done := false
-	err = dbwork.WithWriteTxContext(ctx, r.db, dbwork.ClassBackgroundMedia, func(ctx context.Context, tx *sql.Tx) error {
+	err = r.writeBase(ctx, func(ctx context.Context, tx *sql.Tx) error {
 		if active == id {
 			if _, err := tx.ExecContext(ctx, `UPDATE catalog_facet_base_classes SET active_base=NULL WHERE active_base=?`, id); err != nil {
 				return err
@@ -1051,7 +1091,7 @@ func (r *FacetRuntime) fallback(ctx context.Context, caller readprep.Caller, d f
 			return err
 		}
 		if err = result.Reserve(32768 + 5*used); err != nil {
-			if !(errors.Is(err, readprep.ErrCapacity) && len(ids) == 1 && used > 256<<10) {
+			if !(errors.Is(err, readprep.ErrCapacity) && len(ids) == 1 && (used-128)/6 > 256<<10) {
 				return err
 			}
 		}
@@ -1098,6 +1138,9 @@ type FacetBaseRetirer interface {
 }
 
 func (r *FacetRuntime) retire(ctx context.Context, tx *sql.Tx, id int64) (bool, error) {
+	if err := facetRuntimeWriterReady(ctx, tx); err != nil {
+		return false, err
+	}
 	r.gcPending = true
 	r.gcComplete &^= 14
 	r.gcText, r.gcValue, r.gcClass = 0, 0, 0
@@ -1144,5 +1187,61 @@ func (r *FacetRuntime) finishGC(phase int) {
 	r.gcComplete |= 1 << phase
 	if r.gcComplete == 15 {
 		r.gcPending = false
+	}
+}
+
+// A source-idle predicate on the existing scheduler/gate, not another admission
+// system. Check before admission and again in the acquired transaction. A scan
+// admitted in the interval can therefore cause no derived mutation.
+var errFacetRuntimeDeferred = errors.New("facet BASE writes deferred for scan/source work")
+
+func facetRuntimeWriterReady(ctx context.Context, q compactcatalog.ReadQuery) error {
+	var active bool
+	if err := q.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM jobs INDEXED BY catalog_facet_active_scans WHERE status IN('queued','running'))`).Scan(&active); err != nil {
+		return err
+	}
+	if active {
+		return errFacetRuntimeDeferred
+	}
+	_, err := compactcatalog.CaptureFacetProducerFence(ctx, q)
+	if errors.Is(err, compactcatalog.ErrBuilding) || errors.Is(err, compactcatalog.ErrFacetProducerFailed) {
+		return errors.Join(errFacetRuntimeDeferred, err)
+	}
+	return err
+}
+func (r *FacetRuntime) writerReady(ctx context.Context) error {
+	return dbwork.WithReadSnapshot(dbwork.WithClass(ctx, dbwork.ClassBackgroundMedia), r.db, func(ctx context.Context) error { return facetRuntimeWriterReady(ctx, dbwork.Snapshot(ctx)) })
+}
+func (r *FacetRuntime) writeBase(ctx context.Context, fn func(context.Context, *sql.Tx) error) error {
+	if err := r.writerReady(ctx); err != nil {
+		return err
+	}
+	return dbwork.WithWriteTxContext(ctx, r.db, dbwork.ClassBackgroundMedia, func(ctx context.Context, tx *sql.Tx) error {
+		if err := facetRuntimeWriterReady(ctx, tx); err != nil {
+			return err
+		}
+		return fn(ctx, tx)
+	})
+}
+func (r *FacetRuntime) failUnpreparedScopes() {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	for _, d := range r.demands {
+		if d.ready == 0 && d.err == nil {
+			d.err = ErrFacetBaseUnavailable
+			r.notify(d)
+		}
+	}
+}
+
+// This defer also runs before the composition root's supervisor recovers a
+// producer panic. The runtime cannot be restarted with partial in-memory state.
+func (r *FacetRuntime) stop() {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.stopped = true
+	for _, d := range r.demands {
+		d.err = readprep.ErrClosed
+		r.notify(d)
 	}
 }

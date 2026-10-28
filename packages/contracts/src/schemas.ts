@@ -47868,6 +47868,148 @@ export const schemas = {
       },
       {
         "properties": {
+          "genres": {
+            "items": {
+              "properties": {
+                "backdrop": {
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "kind": {
+                      "enum": [
+                        "item",
+                        "show"
+                      ],
+                      "type": "string"
+                    },
+                    "path": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "kind",
+                    "id",
+                    "path"
+                  ],
+                  "type": "object"
+                },
+                "count": {
+                  "maximum": 9007199254740991,
+                  "minimum": 1,
+                  "type": "integer"
+                },
+                "covers": {
+                  "items": {
+                    "properties": {
+                      "id": {
+                        "type": "string"
+                      },
+                      "kind": {
+                        "enum": [
+                          "item",
+                          "show"
+                        ],
+                        "type": "string"
+                      },
+                      "path": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "kind",
+                      "id",
+                      "path"
+                    ],
+                    "type": "object"
+                  },
+                  "maxItems": 2,
+                  "type": "array"
+                },
+                "label": {
+                  "type": "string"
+                },
+                "value": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "value",
+                "label",
+                "count",
+                "covers"
+              ],
+              "type": "object"
+            },
+            "maxItems": 0,
+            "type": "array"
+          },
+          "hasGenresKnown": {
+            "const": false,
+            "type": "boolean"
+          },
+          "kind": {
+            "const": "genre-fallback",
+            "type": "string"
+          },
+          "preparation": {
+            "properties": {
+              "kind": {
+                "const": "genre-preparing",
+                "type": "string"
+              },
+              "queryId": {
+                "maxLength": 512,
+                "minLength": 1,
+                "pattern": "^[A-Za-z0-9_-]+$",
+                "type": "string"
+              },
+              "retryAfterMs": {
+                "maximum": 9007199254740991,
+                "minimum": 1,
+                "type": "integer"
+              },
+              "state": {
+                "const": "preparing",
+                "type": "string"
+              }
+            },
+            "required": [
+              "kind",
+              "state",
+              "queryId",
+              "retryAfterMs"
+            ],
+            "type": "object"
+          },
+          "queryId": {
+            "maxLength": 512,
+            "minLength": 1,
+            "pattern": "^[A-Za-z0-9_-]+$",
+            "type": "string"
+          },
+          "revision": {
+            "const": "preparing",
+            "type": "string"
+          },
+          "totalIsLowerBound": {
+            "const": true,
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "kind",
+          "totalIsLowerBound",
+          "queryId",
+          "revision",
+          "genres",
+          "hasGenresKnown",
+          "preparation"
+        ],
+        "type": "object"
+      },
+      {
+        "properties": {
           "kind": {
             "const": "genre-preparing",
             "type": "string"
@@ -160530,6 +160672,148 @@ export const schemas = {
           "queryId",
           "revision",
           "genres"
+        ],
+        "type": "object"
+      },
+      {
+        "properties": {
+          "genres": {
+            "items": {
+              "properties": {
+                "backdrop": {
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "kind": {
+                      "enum": [
+                        "item",
+                        "show"
+                      ],
+                      "type": "string"
+                    },
+                    "path": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "kind",
+                    "id",
+                    "path"
+                  ],
+                  "type": "object"
+                },
+                "count": {
+                  "maximum": 9007199254740991,
+                  "minimum": 1,
+                  "type": "integer"
+                },
+                "covers": {
+                  "items": {
+                    "properties": {
+                      "id": {
+                        "type": "string"
+                      },
+                      "kind": {
+                        "enum": [
+                          "item",
+                          "show"
+                        ],
+                        "type": "string"
+                      },
+                      "path": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "kind",
+                      "id",
+                      "path"
+                    ],
+                    "type": "object"
+                  },
+                  "maxItems": 2,
+                  "type": "array"
+                },
+                "label": {
+                  "type": "string"
+                },
+                "value": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "value",
+                "label",
+                "count",
+                "covers"
+              ],
+              "type": "object"
+            },
+            "maxItems": 0,
+            "type": "array"
+          },
+          "hasGenresKnown": {
+            "const": false,
+            "type": "boolean"
+          },
+          "kind": {
+            "const": "genre-fallback",
+            "type": "string"
+          },
+          "preparation": {
+            "properties": {
+              "kind": {
+                "const": "genre-preparing",
+                "type": "string"
+              },
+              "queryId": {
+                "maxLength": 512,
+                "minLength": 1,
+                "pattern": "^[A-Za-z0-9_-]+$",
+                "type": "string"
+              },
+              "retryAfterMs": {
+                "maximum": 9007199254740991,
+                "minimum": 1,
+                "type": "integer"
+              },
+              "state": {
+                "const": "preparing",
+                "type": "string"
+              }
+            },
+            "required": [
+              "kind",
+              "state",
+              "queryId",
+              "retryAfterMs"
+            ],
+            "type": "object"
+          },
+          "queryId": {
+            "maxLength": 512,
+            "minLength": 1,
+            "pattern": "^[A-Za-z0-9_-]+$",
+            "type": "string"
+          },
+          "revision": {
+            "const": "preparing",
+            "type": "string"
+          },
+          "totalIsLowerBound": {
+            "const": true,
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "kind",
+          "totalIsLowerBound",
+          "queryId",
+          "revision",
+          "genres",
+          "hasGenresKnown",
+          "preparation"
         ],
         "type": "object"
       },

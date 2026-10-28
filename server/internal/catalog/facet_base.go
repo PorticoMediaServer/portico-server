@@ -246,6 +246,15 @@ func (b *FacetBases) Step(ctx context.Context, tx *sql.Tx, id int64) (bool, erro
 	if err = b.Producer.ValidatePublication(ctx, tx, snap); err != nil {
 		return false, err
 	}
+	// Additional maintained source facts (for example bounded genre artwork)
+	// share this ledger even when the final producer quantum emits no values.
+	var used int64
+	if err = tx.QueryRowContext(ctx, `SELECT used_bytes FROM catalog_facet_base_usage WHERE id=1`).Scan(&used); err != nil {
+		return false, err
+	}
+	if used > b.MaxBytes {
+		return false, ErrFacetBaseCapacity
+	}
 	if _, err = tx.ExecContext(ctx, `UPDATE catalog_facet_bases SET complete=1 WHERE id=? AND complete=0`, id); err != nil {
 		return false, err
 	}

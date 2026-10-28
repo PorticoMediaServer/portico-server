@@ -18,10 +18,7 @@ func facetInstallDraftOnBaseline(t *testing.T, c *catalogtest.Catalog) {
 		t.Fatal(err)
 	}
 	if !installed {
-		c.Write(func(ctx context.Context, tx *sql.Tx) error {
-			_, err := tx.ExecContext(ctx, facetBaseTestDDL+facetBaseSourceIntegrationDDL)
-			return err
-		})
+		t.Fatal("maintained facet BASE facts are missing from the production baseline")
 	}
 }
 func facetIntegratedPlan(t *testing.T, c *catalogtest.Catalog, libraryID int64, library, field string, r identity.ContentRestrictions) FacetBasePlan {

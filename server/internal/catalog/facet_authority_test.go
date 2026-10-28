@@ -3,6 +3,7 @@ package catalog
 import (
 	"context"
 	"errors"
+	"strconv"
 	"testing"
 
 	"portico.local/server/internal/catalogtest"
@@ -54,12 +55,29 @@ func TestFacetAuthoritySeparatesContentFromRestrictedVisibility(t *testing.T) {
 	restricted := scope
 	restricted.Policy = FacetBasePolicy(identity.ContentRestrictions{MaximumAge: &twelve})
 	before := capture(restricted)
+	genre := scope
+	genre.Source = SearchVideoGenreSource + `:[{"id":` + strconv.FormatInt(lib, 10) + `,"library":"films"}]`
+	unrestrictedGenre := capture(genre)
+	privateGenre := genre
+	privateGenre.Policy = restricted.Policy
+	privateGenreBefore := capture(privateGenre)
+	c.Movie(lib, "/films/new.mkv", "New content", 2001)
+	c.Drain()
+	if capture(restricted) != before || capture(genre) != unrestrictedGenre {
+		t.Fatal("ordinary title materialization revoked a retained content basis")
+	}
+	if capture(privateGenre) == privateGenreBefore {
+		t.Fatal("active genre empty-member authority did not capture first membership")
+	}
 	c.Attributes(item.ID, "label", "Adult")
 	if capture(restricted) == before {
 		t.Fatal("restriction input did not fence old private counts")
 	}
 	if capture(scope) != ordinary {
 		t.Fatal("unrestricted basis acquired a policy-dependent content fence")
+	}
+	if capture(genre) != unrestrictedGenre {
+		t.Fatal("inactive genre snapshot acquired a restriction-content fence")
 	}
 }
 

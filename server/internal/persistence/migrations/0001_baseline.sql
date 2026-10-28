@@ -5891,8 +5891,8 @@ CREATE TRIGGER catalog_availability_object_insert AFTER INSERT ON inventory_obje
  INSERT INTO catalog_dirty(domain,entity_id,revision) SELECT 41,source_id,1 FROM catalog_upstream_sources WHERE domain=41 AND source_id=(SELECT id FROM catalog_assets WHERE token=NEW.asset_id)
  ON CONFLICT(domain,entity_id) DO UPDATE SET revision=revision+1;
 END;
-CREATE TRIGGER catalog_availability_object_update AFTER UPDATE OF state,retired,root_incarnation,unsupported_reason,source_id,asset_id ON inventory_objects
- WHEN OLD.state IS NOT NEW.state OR OLD.retired IS NOT NEW.retired OR OLD.root_incarnation IS NOT NEW.root_incarnation OR OLD.unsupported_reason IS NOT NEW.unsupported_reason OR OLD.source_id IS NOT NEW.source_id OR OLD.asset_id IS NOT NEW.asset_id BEGIN
+CREATE TRIGGER catalog_availability_object_update AFTER UPDATE OF id,state,retired,root_incarnation,unsupported_reason,source_id,asset_id ON inventory_objects
+ WHEN OLD.id IS NOT NEW.id OR OLD.state IS NOT NEW.state OR OLD.retired IS NOT NEW.retired OR OLD.root_incarnation IS NOT NEW.root_incarnation OR OLD.unsupported_reason IS NOT NEW.unsupported_reason OR OLD.source_id IS NOT NEW.source_id OR OLD.asset_id IS NOT NEW.asset_id BEGIN
  UPDATE catalog_facet_source_state SET source_epoch=source_epoch+1 WHERE singleton=1;
  INSERT INTO catalog_upstream_sources(domain,source_id,token,flags) SELECT 41,id,token,3 FROM catalog_assets WHERE token=OLD.asset_id
  ON CONFLICT(domain,source_id) DO UPDATE SET token=excluded.token,flags=flags|excluded.flags,revision=revision+1,source_epoch=0,phase=0,has_after=0,after_id=0,after_aux=0,after_key='',active_id=NULL,active_key='',active_available=0,seen_inventory=0,inner_has=0,inner_id=0,inner_aux=0,inner_key='';
@@ -11058,3 +11058,216 @@ CREATE TRIGGER summary_classification_update AFTER UPDATE OF value_key,minimum_a
 WHEN OLD.value_key IS NOT NEW.value_key OR OLD.minimum_age IS NOT NEW.minimum_age BEGIN
  UPDATE catalog_summary_classification_revision SET revision=revision+1 WHERE singleton=1;
 END;
+
+-- P2-28 normalized maintained facet base facts: begin
+CREATE TABLE catalog_facet_base_usage (
+ id INTEGER PRIMARY KEY CHECK(id=1), used_bytes INTEGER NOT NULL DEFAULT 0 CHECK(used_bytes>=0)
+) STRICT;
+INSERT INTO catalog_facet_base_usage(id) VALUES(1);
+CREATE TABLE catalog_facet_base_classes (
+ id INTEGER PRIMARY KEY AUTOINCREMENT,
+ library_id INTEGER NOT NULL, library TEXT NOT NULL, field TEXT NOT NULL,
+ policy TEXT NOT NULL, source TEXT NOT NULL, active_base INTEGER,
+ FOREIGN KEY(active_base,id) REFERENCES catalog_facet_bases(id,class_id) DEFERRABLE INITIALLY DEFERRED,
+ UNIQUE(library_id,field,policy,source)
+) STRICT;
+CREATE INDEX catalog_facet_base_classes_active ON catalog_facet_base_classes(active_base,id);
+CREATE TABLE catalog_facet_base_values (
+ id INTEGER PRIMARY KEY AUTOINCREMENT, library_id INTEGER NOT NULL, field TEXT NOT NULL,
+ value TEXT NOT NULL CHECK(value<>''), UNIQUE(library_id,field,value)
+) STRICT;
+CREATE TABLE catalog_facet_base_texts (
+ id INTEGER PRIMARY KEY AUTOINCREMENT,
+ value_id INTEGER NOT NULL REFERENCES catalog_facet_base_values(id),
+ label TEXT NOT NULL, folded TEXT NOT NULL, UNIQUE(value_id,label), UNIQUE(id,value_id)
+) STRICT;
+CREATE TABLE catalog_facet_bases (
+ id INTEGER PRIMARY KEY AUTOINCREMENT,
+ class_id INTEGER NOT NULL REFERENCES catalog_facet_base_classes(id),
+ witness TEXT NOT NULL, authority TEXT NOT NULL, complete INTEGER NOT NULL DEFAULT 0 CHECK(complete IN(0,1)),
+ total INTEGER NOT NULL DEFAULT 0 CHECK(total>=0),
+ charged_bytes INTEGER NOT NULL DEFAULT 0 CHECK(charged_bytes>=0), UNIQUE(id,class_id)
+) STRICT;
+CREATE INDEX catalog_facet_bases_class ON catalog_facet_bases(class_id,id);
+CREATE INDEX catalog_facet_bases_demand ON catalog_facet_bases(class_id,witness,authority,id);
+CREATE TABLE catalog_facet_base_rows (
+ base_id INTEGER NOT NULL REFERENCES catalog_facet_bases(id),
+ value_id INTEGER NOT NULL REFERENCES catalog_facet_base_values(id),
+ text_id INTEGER NOT NULL,
+ negative_count INTEGER NOT NULL CHECK(negative_count<0),
+ label_order TEXT NOT NULL COLLATE BINARY, value_order TEXT NOT NULL COLLATE BINARY,
+ charged_bytes INTEGER NOT NULL CHECK(charged_bytes>0),
+ PRIMARY KEY(base_id,value_id),
+ FOREIGN KEY(text_id,value_id) REFERENCES catalog_facet_base_texts(id,value_id)
+) STRICT, WITHOUT ROWID;
+CREATE INDEX catalog_facet_base_order ON catalog_facet_base_rows(base_id,negative_count,label_order,value_order,value_id);
+CREATE INDEX catalog_facet_base_rows_value ON catalog_facet_base_rows(value_id);
+CREATE INDEX catalog_facet_base_rows_text ON catalog_facet_base_rows(text_id,value_id);
+CREATE TABLE catalog_facet_base_work (
+ base_id INTEGER PRIMARY KEY REFERENCES catalog_facet_bases(id), cursor TEXT NOT NULL
+) STRICT;
+CREATE TRIGGER catalog_facet_base_row_insert AFTER INSERT ON catalog_facet_base_rows BEGIN
+ UPDATE catalog_facet_bases SET total=total+1,charged_bytes=charged_bytes+NEW.charged_bytes WHERE id=NEW.base_id;
+ UPDATE catalog_facet_base_usage SET used_bytes=used_bytes+NEW.charged_bytes WHERE id=1;
+END;
+CREATE TRIGGER catalog_facet_base_row_delete AFTER DELETE ON catalog_facet_base_rows BEGIN
+ UPDATE catalog_facet_bases SET total=total-1,charged_bytes=charged_bytes-OLD.charged_bytes WHERE id=OLD.base_id;
+ UPDATE catalog_facet_base_usage SET used_bytes=used_bytes-OLD.charged_bytes WHERE id=1;
+END;
+CREATE TRIGGER catalog_facet_base_value_insert AFTER INSERT ON catalog_facet_base_values BEGIN
+ UPDATE catalog_facet_base_usage SET used_bytes=used_bytes+64+2*length(CAST(NEW.value AS BLOB)) WHERE id=1;
+END;
+CREATE TRIGGER catalog_facet_base_value_delete AFTER DELETE ON catalog_facet_base_values BEGIN
+ UPDATE catalog_facet_base_usage SET used_bytes=used_bytes-64-2*length(CAST(OLD.value AS BLOB)) WHERE id=1;
+END;
+CREATE TRIGGER catalog_facet_base_text_insert AFTER INSERT ON catalog_facet_base_texts BEGIN
+ UPDATE catalog_facet_base_usage SET used_bytes=used_bytes+64+2*length(CAST(NEW.label AS BLOB))+length(CAST(NEW.folded AS BLOB)) WHERE id=1;
+END;
+CREATE TRIGGER catalog_facet_base_text_delete AFTER DELETE ON catalog_facet_base_texts BEGIN
+ UPDATE catalog_facet_base_usage SET used_bytes=used_bytes-64-2*length(CAST(OLD.label AS BLOB))-length(CAST(OLD.folded AS BLOB)) WHERE id=1;
+END;
+-- COMPLETE bases/texts are immutable. Only bounded retirement may remove rows;
+-- readers revalidate basis existence and live authority after composition.
+-- Deliberately no ON DELETE CASCADE through this potentially large projection.
+
+CREATE TRIGGER catalog_facet_base_row_immutable_insert BEFORE INSERT ON catalog_facet_base_rows
+WHEN (SELECT complete FROM catalog_facet_bases WHERE id=NEW.base_id)=1 BEGIN SELECT RAISE(ABORT,'immutable complete facet base'); END;
+CREATE TRIGGER catalog_facet_base_row_immutable_update BEFORE UPDATE ON catalog_facet_base_rows
+BEGIN SELECT RAISE(ABORT,'replace staged facet rows instead of updating'); END;
+CREATE TRIGGER catalog_facet_base_row_immutable_delete BEFORE DELETE ON catalog_facet_base_rows
+WHEN (SELECT complete FROM catalog_facet_bases WHERE id=OLD.base_id)=1 BEGIN SELECT RAISE(ABORT,'retire facet base before removing rows'); END;
+CREATE TRIGGER catalog_facet_base_text_immutable BEFORE UPDATE ON catalog_facet_base_texts
+WHEN NEW.value_id<>OLD.value_id OR NEW.label<>OLD.label OR NEW.folded<>OLD.folded
+BEGIN SELECT RAISE(ABORT,'immutable shared facet text'); END;
+CREATE TRIGGER catalog_facet_base_value_immutable BEFORE UPDATE ON catalog_facet_base_values
+WHEN NEW.library_id<>OLD.library_id OR NEW.field<>OLD.field OR NEW.value<>OLD.value
+BEGIN SELECT RAISE(ABORT,'immutable shared facet identity'); END;
+-- active_base is a deferred composite FK back to this class's own base; NULL
+-- means unavailable. Activation and complete flip are in one transaction.
+-- RetireStep refuses active bases, marks retained input incomplete before bounded
+-- removal, and live/basis readback makes racing or evicted preparations stale.
+CREATE TRIGGER catalog_facet_base_class_identity BEFORE UPDATE OF library_id,library,field,policy,source ON catalog_facet_base_classes
+WHEN NEW.library_id<>OLD.library_id OR NEW.library<>OLD.library OR NEW.field<>OLD.field OR NEW.policy<>OLD.policy OR NEW.source<>OLD.source
+BEGIN SELECT RAISE(ABORT,'immutable facet class identity'); END;
+CREATE TRIGGER catalog_facet_base_active_complete BEFORE UPDATE OF active_base ON catalog_facet_base_classes
+WHEN NEW.active_base IS NOT NULL AND NOT EXISTS(SELECT 1 FROM catalog_facet_bases WHERE id=NEW.active_base AND class_id=NEW.id AND complete=1)
+BEGIN SELECT RAISE(ABORT,'facet activation requires own COMPLETE base'); END;
+CREATE TRIGGER catalog_facet_base_image_identity BEFORE UPDATE OF class_id,witness,authority ON catalog_facet_bases
+WHEN NEW.class_id<>OLD.class_id OR NEW.witness<>OLD.witness OR NEW.authority<>OLD.authority
+BEGIN SELECT RAISE(ABORT,'immutable facet base image'); END;
+CREATE TRIGGER catalog_facet_base_class_charge_insert AFTER INSERT ON catalog_facet_base_classes BEGIN
+ UPDATE catalog_facet_base_usage SET used_bytes=used_bytes+192+length(CAST(NEW.library AS BLOB))+length(CAST(NEW.field AS BLOB))+length(CAST(NEW.policy AS BLOB))+length(CAST(NEW.source AS BLOB)) WHERE id=1;
+END;
+CREATE TRIGGER catalog_facet_base_class_charge_delete AFTER DELETE ON catalog_facet_base_classes BEGIN
+ UPDATE catalog_facet_base_usage SET used_bytes=used_bytes-192-length(CAST(OLD.library AS BLOB))-length(CAST(OLD.field AS BLOB))-length(CAST(OLD.policy AS BLOB))-length(CAST(OLD.source AS BLOB)) WHERE id=1;
+END;
+CREATE TRIGGER catalog_facet_base_image_charge_insert AFTER INSERT ON catalog_facet_bases BEGIN
+ UPDATE catalog_facet_base_usage SET used_bytes=used_bytes+192+length(CAST(NEW.witness AS BLOB))+length(CAST(NEW.authority AS BLOB)) WHERE id=1;
+END;
+CREATE TRIGGER catalog_facet_base_image_charge_delete AFTER DELETE ON catalog_facet_bases BEGIN
+ UPDATE catalog_facet_base_usage SET used_bytes=used_bytes-192-length(CAST(OLD.witness AS BLOB))-length(CAST(OLD.authority AS BLOB)) WHERE id=1;
+END;
+CREATE TRIGGER catalog_facet_base_work_charge_insert AFTER INSERT ON catalog_facet_base_work BEGIN
+ UPDATE catalog_facet_base_usage SET used_bytes=used_bytes+128+length(CAST(NEW.cursor AS BLOB)) WHERE id=1;
+END;
+CREATE TRIGGER catalog_facet_base_work_charge_delete AFTER DELETE ON catalog_facet_base_work BEGIN
+ UPDATE catalog_facet_base_usage SET used_bytes=used_bytes-128-length(CAST(OLD.cursor AS BLOB)) WHERE id=1;
+END;
+
+CREATE TRIGGER catalog_facet_base_work_charge_update AFTER UPDATE OF cursor ON catalog_facet_base_work BEGIN
+ UPDATE catalog_facet_base_usage SET used_bytes=used_bytes+length(CAST(NEW.cursor AS BLOB))-length(CAST(OLD.cursor AS BLOB)) WHERE id=1;
+END;
+-- SOURCE-INTEGRATION EXTENSIONS (existing baseline tables).
+-- P2-28 normalized maintained facet base facts: end
+
+-- P2-28 facet source membership stamps: begin
+-- Linked-decade BASE inputs must have an accepting stamp even if a future
+-- browse producer writes memberships without touching its existing work key.
+CREATE TRIGGER catalog_facet_base_membership_source_insert AFTER INSERT ON catalog_browse_memberships BEGIN
+ UPDATE catalog_facet_source_state SET source_epoch=source_epoch+1 WHERE singleton=1;
+END;
+CREATE TRIGGER catalog_facet_base_membership_source_update AFTER UPDATE ON catalog_browse_memberships BEGIN
+ UPDATE catalog_facet_source_state SET source_epoch=source_epoch+1 WHERE singleton=1;
+END;
+CREATE TRIGGER catalog_facet_base_membership_source_delete AFTER DELETE ON catalog_browse_memberships BEGIN
+ UPDATE catalog_facet_source_state SET source_epoch=source_epoch+1 WHERE singleton=1;
+END;
+
+-- P2-28 facet source membership stamps: end
+
+-- Scan admission is an existing source fact, never a query job.
+CREATE INDEX catalog_facet_active_scans ON jobs(id) WHERE status IN('queued','running');
+
+-- P2-28 maintained genre candidates: begin
+-- Parent integrates into baseline after shared facet base schema. BASE facts only.
+CREATE TABLE catalog_search_genre_state(singleton INTEGER PRIMARY KEY CHECK(singleton=1),art_epoch INTEGER NOT NULL DEFAULT 1) STRICT;
+INSERT INTO catalog_search_genre_state(singleton) VALUES(1);
+CREATE TABLE catalog_search_genre_ready(
+ base_id INTEGER NOT NULL REFERENCES catalog_facet_bases(id),value_id INTEGER NOT NULL REFERENCES catalog_facet_base_values(id),
+ last_target INTEGER NOT NULL DEFAULT 0,backdrops INTEGER NOT NULL DEFAULT 0 CHECK(backdrops BETWEEN 0 AND 100),posters INTEGER NOT NULL DEFAULT 0 CHECK(posters BETWEEN 0 AND 100),
+ PRIMARY KEY(base_id,value_id)) STRICT, WITHOUT ROWID;
+CREATE INDEX catalog_search_genre_ready_value ON catalog_search_genre_ready(value_id,base_id);
+-- Only top100 per value/role. Positions have gaps for bounded insertion. No
+-- full-catalogue candidate/order index, duplicated title or serialized art DTO.
+CREATE TABLE catalog_search_genre_targets(
+ base_id INTEGER NOT NULL REFERENCES catalog_facet_bases(id),entity_id INTEGER NOT NULL,
+ public_id BLOB NOT NULL CHECK(length(public_id)=16),kind INTEGER NOT NULL CHECK(kind IN(1,2)),rating REAL NOT NULL,sort_key TEXT NOT NULL,
+ backdrop BLOB CHECK(backdrop IS NULL OR length(backdrop)=32),poster BLOB CHECK(poster IS NULL OR length(poster)=32),
+ PRIMARY KEY(base_id,entity_id)) STRICT, WITHOUT ROWID;
+CREATE TABLE catalog_search_genre_candidates(
+ base_id INTEGER NOT NULL,value_id INTEGER NOT NULL,role INTEGER NOT NULL CHECK(role IN(1,2)),position INTEGER NOT NULL CHECK(position<>0),entity_id INTEGER NOT NULL,
+ PRIMARY KEY(base_id,value_id,role,position),
+ FOREIGN KEY(base_id,value_id) REFERENCES catalog_search_genre_ready(base_id,value_id),
+ FOREIGN KEY(base_id,entity_id) REFERENCES catalog_search_genre_targets(base_id,entity_id)) STRICT, WITHOUT ROWID;
+CREATE INDEX catalog_search_genre_candidate_target ON catalog_search_genre_candidates(base_id,entity_id,value_id,role,position);
+CREATE TRIGGER catalog_search_genre_target_charge_insert AFTER INSERT ON catalog_search_genre_targets BEGIN
+ UPDATE catalog_facet_base_usage SET used_bytes=used_bytes+256+2*length(CAST(NEW.sort_key AS BLOB)) WHERE id=1;
+END;
+CREATE TRIGGER catalog_search_genre_target_charge_delete AFTER DELETE ON catalog_search_genre_targets BEGIN
+ UPDATE catalog_facet_base_usage SET used_bytes=used_bytes-256-2*length(CAST(OLD.sort_key AS BLOB)) WHERE id=1;
+END;
+CREATE TRIGGER catalog_search_genre_ready_charge_insert AFTER INSERT ON catalog_search_genre_ready BEGIN
+ UPDATE catalog_facet_base_usage SET used_bytes=used_bytes+80 WHERE id=1;
+END;
+CREATE TRIGGER catalog_search_genre_ready_charge_delete AFTER DELETE ON catalog_search_genre_ready BEGIN
+ UPDATE catalog_facet_base_usage SET used_bytes=used_bytes-80 WHERE id=1;
+END;
+CREATE TRIGGER catalog_search_genre_candidate_insert AFTER INSERT ON catalog_search_genre_candidates BEGIN
+ UPDATE catalog_search_genre_ready SET backdrops=backdrops+(NEW.role=1),posters=posters+(NEW.role=2) WHERE base_id=NEW.base_id AND value_id=NEW.value_id;
+ UPDATE catalog_facet_base_usage SET used_bytes=used_bytes+96 WHERE id=1;
+END;
+CREATE TRIGGER catalog_search_genre_candidate_delete AFTER DELETE ON catalog_search_genre_candidates BEGIN
+ UPDATE catalog_search_genre_ready SET backdrops=backdrops-(OLD.role=1),posters=posters-(OLD.role=2) WHERE base_id=OLD.base_id AND value_id=OLD.value_id;
+ UPDATE catalog_facet_base_usage SET used_bytes=used_bytes-96 WHERE id=1;
+END;
+CREATE TRIGGER catalog_search_genre_candidate_limit BEFORE INSERT ON catalog_search_genre_candidates
+WHEN (SELECT count(*) FROM catalog_search_genre_candidates WHERE base_id=NEW.base_id AND value_id=NEW.value_id AND role=NEW.role)>=100
+BEGIN SELECT RAISE(ABORT,'genre top candidate bound'); END;
+CREATE TRIGGER catalog_search_genre_candidate_immutable_insert BEFORE INSERT ON catalog_search_genre_candidates
+WHEN (SELECT complete FROM catalog_facet_bases WHERE id=NEW.base_id)=1 BEGIN SELECT RAISE(ABORT,'immutable genre base'); END;
+CREATE TRIGGER catalog_search_genre_candidate_immutable_update BEFORE UPDATE ON catalog_search_genre_candidates
+WHEN (SELECT complete FROM catalog_facet_bases WHERE id=OLD.base_id)=1 BEGIN SELECT RAISE(ABORT,'immutable genre base'); END;
+CREATE TRIGGER catalog_search_genre_candidate_immutable_delete BEFORE DELETE ON catalog_search_genre_candidates
+WHEN (SELECT complete FROM catalog_facet_bases WHERE id=OLD.base_id)=1 BEGIN SELECT RAISE(ABORT,'retire genre base before removing art'); END;
+CREATE TRIGGER catalog_search_genre_art_selection_insert AFTER INSERT ON artwork_selections BEGIN UPDATE catalog_search_genre_state SET art_epoch=art_epoch+1 WHERE singleton=1; END;
+CREATE TRIGGER catalog_search_genre_art_selection_update AFTER UPDATE ON artwork_selections BEGIN UPDATE catalog_search_genre_state SET art_epoch=art_epoch+1 WHERE singleton=1; END;
+CREATE TRIGGER catalog_search_genre_art_selection_delete AFTER DELETE ON artwork_selections BEGIN UPDATE catalog_search_genre_state SET art_epoch=art_epoch+1 WHERE singleton=1; END;
+CREATE TRIGGER catalog_search_genre_art_source_insert AFTER INSERT ON artwork_sources BEGIN UPDATE catalog_search_genre_state SET art_epoch=art_epoch+1 WHERE singleton=1; END;
+CREATE TRIGGER catalog_search_genre_art_source_update AFTER UPDATE ON artwork_sources BEGIN UPDATE catalog_search_genre_state SET art_epoch=art_epoch+1 WHERE singleton=1; END;
+CREATE TRIGGER catalog_search_genre_art_source_delete AFTER DELETE ON artwork_sources BEGIN UPDATE catalog_search_genre_state SET art_epoch=art_epoch+1 WHERE singleton=1; END;
+CREATE TRIGGER catalog_search_genre_art_blob_insert AFTER INSERT ON artwork_blobs BEGIN UPDATE catalog_search_genre_state SET art_epoch=art_epoch+1 WHERE singleton=1; END;
+CREATE TRIGGER catalog_search_genre_art_blob_update AFTER UPDATE ON artwork_blobs BEGIN UPDATE catalog_search_genre_state SET art_epoch=art_epoch+1 WHERE singleton=1; END;
+CREATE TRIGGER catalog_search_genre_art_blob_delete AFTER DELETE ON artwork_blobs BEGIN UPDATE catalog_search_genre_state SET art_epoch=art_epoch+1 WHERE singleton=1; END;
+-- Rank changes affect representative choice even when genres/visibility do not.
+CREATE TRIGGER catalog_search_genre_rank_update AFTER UPDATE OF rating_max,sort_key ON catalog_browse_rows
+WHEN OLD.rating_max IS NOT NEW.rating_max OR OLD.sort_key IS NOT NEW.sort_key
+BEGIN UPDATE catalog_search_genre_state SET art_epoch=art_epoch+1 WHERE singleton=1; END;
+-- Distinct-value directory walk, not a holder/candidate graph. Integer progress
+-- survives orphan GC; captured ID high water makes content inserts finite.
+CREATE INDEX catalog_search_genre_value_walk ON catalog_facet_base_values(library_id,field,id);
+CREATE TRIGGER catalog_search_genre_target_immutable_update BEFORE UPDATE ON catalog_search_genre_targets
+WHEN (SELECT complete FROM catalog_facet_bases WHERE id=OLD.base_id)=1 BEGIN SELECT RAISE(ABORT,'immutable genre target basis'); END;
+CREATE TRIGGER catalog_search_genre_ready_immutable_update BEFORE UPDATE ON catalog_search_genre_ready
+WHEN (SELECT complete FROM catalog_facet_bases WHERE id=OLD.base_id)=1 BEGIN SELECT RAISE(ABORT,'immutable genre ready basis'); END;
+
+-- P2-28 maintained genre candidates: end

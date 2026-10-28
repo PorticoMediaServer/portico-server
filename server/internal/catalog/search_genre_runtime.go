@@ -48,6 +48,7 @@ type genreSpec struct {
 	Anchor    genreRow `json:"anchor"`
 }
 type genreDescriptor struct {
+	ArtEpoch    int64               `json:"artEpoch"`
 	Scopes      []FacetBaseScope    `json:"scopes"`
 	Authorities []string            `json:"authorities"`
 	Bases       []FacetBaseSnapshot `json:"bases,omitempty"`
@@ -90,6 +91,9 @@ func (r *GenreRuntime) Initial(ctx context.Context, caller readprep.Caller, v Vi
 		q := dbwork.Snapshot(ctx)
 		var err error
 		d.Scopes, err = captureGenreScopes(ctx, q, v)
+		if err == nil {
+			err = q.QueryRowContext(ctx, `SELECT art_epoch FROM catalog_search_genre_state WHERE singleton=1`).Scan(&d.ArtEpoch)
+		}
 		if err != nil {
 			return err
 		}
@@ -120,6 +124,23 @@ func (r *GenreRuntime) Initial(ctx context.Context, caller readprep.Caller, v Vi
 		}
 		d.Bases = append(d.Bases, s)
 	}
+	if all {
+		for _, base := range d.Bases {
+			var w genreWitness
+			if json.Unmarshal([]byte(base.Witness), &w) != nil || w.ArtEpoch != d.ArtEpoch {
+				all = false
+				break
+			}
+		}
+	}
+	if all && len(d.Bases) > 1 {
+		for i := 1; i < len(d.Bases); i++ {
+			if d.Bases[i].Witness != d.Bases[0].Witness {
+				all = false
+				break
+			}
+		}
+	}
 	if !all {
 		d.Bases = nil
 	}
@@ -139,7 +160,7 @@ func (r *GenreRuntime) submit(ctx context.Context, caller readprep.Caller, d gen
 		b, _ := json.Marshal(ids)
 		basis = string(b)
 	}
-	initial := int64(32768 + 8*len(raw))
+	initial := int64(131072 + 8*len(raw))
 	h, err := r.store.SubmitUntil(ctx, caller, readprep.Key{Namespace: "search-genres-v1", Basis: basis, Canonical: string(raw)}, readprep.Plan{InitialBytes: initial, New: func(_ context.Context, b *readprep.Budget) (readprep.Computation, error) {
 		if err := b.Resize(initial); err != nil {
 			return nil, err
@@ -241,6 +262,9 @@ func (r *GenreRuntime) Poll(ctx context.Context, caller readprep.Caller, id stri
 		}
 		page, err := r.hydrate(ctx, id, h, result, d, summary)
 		if err != nil {
+			if errors.Is(err, readprep.ErrStale) {
+				r.store.Invalidate(result.Key)
+			}
 			return out, err
 		}
 		out.Page = &page

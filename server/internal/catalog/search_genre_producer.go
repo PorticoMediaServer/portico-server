@@ -17,6 +17,8 @@ const (
 )
 
 type genreSourceCursor struct {
+	CandidateRole    int
+	CandidateScan    genreCandidateCursor
 	Phase            int
 	Target           int64
 	TargetKind       int
@@ -227,14 +229,25 @@ func (p searchGenreProducer) Next(ctx context.Context, tx *sql.Tx, s FacetBaseSn
 		if err = tx.QueryRowContext(ctx, `SELECT id FROM catalog_facet_base_values WHERE library_id=? AND field='genre' AND value=?`, s.Scope.LibraryID, c.PendingValue).Scan(&id); err != nil {
 			return out, err
 		}
-		if _, err = tx.ExecContext(ctx, `INSERT INTO catalog_search_genre_ready(base_id,value_id,last_target) VALUES(?,?,?) ON CONFLICT(base_id,value_id) DO UPDATE SET last_target=excluded.last_target`, s.ID, id, c.Target); err != nil {
+		if c.CandidateRole == 0 {
+			if _, err = tx.ExecContext(ctx, `INSERT INTO catalog_search_genre_ready(base_id,value_id,last_target) VALUES(?,?,?) ON CONFLICT(base_id,value_id) DO UPDATE SET last_target=excluded.last_target`, s.ID, id, c.Target); err != nil {
+				return out, err
+			}
+			c.CandidateRole = 1
+		}
+		done, err := stepGenreCandidate(ctx, tx, s.ID, id, c.Target, c.TargetKind, c.CandidateRole, &c.CandidateScan)
+		if err != nil {
 			return out, err
 		}
-		if err = addGenreCandidates(ctx, tx, s.ID, id, c.Target, c.TargetKind); err != nil {
-			return out, err
+		if done {
+			c.CandidateRole++
+			c.CandidateScan = genreCandidateCursor{}
+			if c.CandidateRole > 2 {
+				c.CandidateRole = 0
+				c.PendingValue = ""
+				c.Phase = c.Resume
+			}
 		}
-		c.PendingValue = ""
-		c.Phase = c.Resume
 	default:
 		return out, ErrFacetBaseInput
 	}

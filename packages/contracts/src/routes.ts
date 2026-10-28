@@ -5062,6 +5062,16 @@ export const routes = [
         "name": "Retry-After",
         "description": "Minimum delay before polling",
         "required": true
+      },
+      {
+        "status": 200,
+        "name": "Location",
+        "description": "Same-server poll path when a lower-bound fallback is shown"
+      },
+      {
+        "status": 200,
+        "name": "Retry-After",
+        "description": "Minimum delay before polling a lower-bound fallback"
       }
     ],
     "errors": [
@@ -5177,6 +5187,16 @@ export const routes = [
         "name": "Retry-After",
         "description": "Minimum delay before polling",
         "required": true
+      },
+      {
+        "status": 200,
+        "name": "Location",
+        "description": "Same-server poll path when a lower-bound fallback is shown"
+      },
+      {
+        "status": 200,
+        "name": "Retry-After",
+        "description": "Minimum delay before polling a lower-bound fallback"
       }
     ],
     "errors": [
@@ -6868,6 +6888,16 @@ export const routes = [
         "name": "Retry-After",
         "description": "Minimum delay before polling",
         "required": true
+      },
+      {
+        "status": 200,
+        "name": "Location",
+        "description": "Same-server poll path when a lower-bound fallback is shown"
+      },
+      {
+        "status": 200,
+        "name": "Retry-After",
+        "description": "Minimum delay before polling a lower-bound fallback"
       }
     ],
     "errors": [
@@ -8825,6 +8855,16 @@ export const routes = [
         "name": "Retry-After",
         "description": "Minimum delay before polling",
         "required": true
+      },
+      {
+        "status": 200,
+        "name": "Location",
+        "description": "Same-server poll path when a lower-bound fallback is shown"
+      },
+      {
+        "status": 200,
+        "name": "Retry-After",
+        "description": "Minimum delay before polling a lower-bound fallback"
       }
     ],
     "errors": [

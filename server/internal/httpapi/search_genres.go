@@ -45,8 +45,12 @@ func genreFallbackSchema() map[string]any {
 	p["hasGenresKnown"] = map[string]any{"type": "boolean", "const": false}
 	p["totalIsLowerBound"] = map[string]any{"type": "boolean", "const": true}
 	p["preparation"] = genrePreparingSchema()
+	p["queryId"] = map[string]any{"type": "string", "minLength": 1, "maxLength": 512, "pattern": "^[A-Za-z0-9_-]+$"}
+	p["revision"] = map[string]any{"type": "string", "const": "preparing"}
 	p["genres"].(map[string]any)["maxItems"] = 0
-	s["not"] = map[string]any{"anyOf": []any{map[string]any{"required": []string{"hasGenres"}}, map[string]any{"required": []string{"nextCursor"}}, map[string]any{"required": []string{"previousCursor"}}, map[string]any{"required": []string{"reloadCursor"}}}}
+	for _, key := range []string{"hasGenres", "nextCursor", "previousCursor", "reloadCursor"} {
+		delete(p, key)
+	}
 	return s
 }
 func (genreReadResponse) JSONSchema() map[string]any {
