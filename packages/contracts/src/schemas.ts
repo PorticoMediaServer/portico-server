@@ -200963,6 +200963,126 @@ export const schemas = {
                   "minimum": -9007199254740991,
                   "type": "integer"
                 },
+                "hardware": {
+                  "properties": {
+                    "backend": {
+                      "type": "string"
+                    },
+                    "execution": {
+                      "properties": {
+                        "fallbackCount": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
+                        "lastLaunch": {
+                          "properties": {
+                            "decoder": {
+                              "properties": {
+                                "execution": {
+                                  "type": "string"
+                                },
+                                "name": {
+                                  "type": "string"
+                                }
+                              },
+                              "required": [
+                                "name",
+                                "execution"
+                              ],
+                              "type": "object"
+                            },
+                            "encoder": {
+                              "properties": {
+                                "execution": {
+                                  "type": "string"
+                                },
+                                "name": {
+                                  "type": "string"
+                                }
+                              },
+                              "required": [
+                                "name",
+                                "execution"
+                              ],
+                              "type": "object"
+                            },
+                            "generation": {
+                              "maximum": 9007199254740991,
+                              "minimum": -9007199254740991,
+                              "type": "integer"
+                            },
+                            "renderNode": {
+                              "type": "string"
+                            },
+                            "sequence": {
+                              "maximum": 9007199254740991,
+                              "minimum": -9007199254740991,
+                              "type": "integer"
+                            },
+                            "startedAt": {
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "sequence",
+                            "generation",
+                            "startedAt",
+                            "encoder",
+                            "decoder"
+                          ],
+                          "type": "object"
+                        },
+                        "launchCount": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
+                        "softwareLaunchCount": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
+                        "unknownLaunchCount": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        }
+                      },
+                      "required": [
+                        "launchCount",
+                        "softwareLaunchCount",
+                        "unknownLaunchCount",
+                        "fallbackCount",
+                        "lastLaunch"
+                      ],
+                      "type": "object"
+                    },
+                    "stages": {
+                      "items": {
+                        "properties": {
+                          "execution": {
+                            "type": "string"
+                          },
+                          "operation": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "operation",
+                          "execution"
+                        ],
+                        "type": "object"
+                      },
+                      "type": "array"
+                    }
+                  },
+                  "required": [
+                    "backend",
+                    "stages"
+                  ],
+                  "type": "object"
+                },
                 "streams": {
                   "items": {
                     "properties": {

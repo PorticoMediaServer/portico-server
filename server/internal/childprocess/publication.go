@@ -62,15 +62,16 @@ func Start(ctx context.Context, cmd *exec.Cmd) error {
 		if err := proof(); err != nil {
 			return err
 		}
-		return cmd.Start()
+		return observeStarted(ctx, cmd.Start())
 	}
 
 	release, err := AcquirePublication(ctx)
 	if err != nil {
 		return err
 	}
-	defer release()
-	return cmd.Start()
+	err = cmd.Start()
+	release()
+	return observeStarted(ctx, err)
 }
 func Run(ctx context.Context, cmd *exec.Cmd) error {
 	if err := Start(ctx, cmd); err != nil {

@@ -3,7 +3,6 @@ package playback
 import (
 	"context"
 	"database/sql"
-	"encoding/json"
 	"errors"
 	"math"
 
@@ -23,8 +22,9 @@ type SessionStreamDecision struct {
 // SessionHardware names the encoder family in force and where each operation
 // ran. An empty stage list means conversion has not started yet.
 type SessionHardware struct {
-	Backend string                  `json:"backend"`
-	Stages  []decoder.HardwareStage `json:"stages"`
+	Execution *ConversionExecution    `json:"execution,omitempty"`
+	Backend   string                  `json:"backend"`
+	Stages    []decoder.HardwareStage `json:"stages"`
 }
 
 // SessionDelivery is the published per-session decision detail. It carries no
@@ -77,6 +77,15 @@ func streamAction(action string) string {
 // transaction. A session without a stored plan returns nil rather than an
 // invented one; the reader publishes no delivery block at all in that case.
 func SessionDeliveryTx(ctx context.Context, tx *sql.Tx, settings DeliverySettings, session string) (*SessionDelivery, error) {
+	return sessionDeliveryTx(ctx, tx, settings, session, false)
+}
+
+// AdminSessionDeliveryTx is for routes already authorized for owner/admin diagnostics.
+func AdminSessionDeliveryTx(ctx context.Context, tx *sql.Tx, settings DeliverySettings, session string) (*SessionDelivery, error) {
+	return sessionDeliveryTx(ctx, tx, settings, session, true)
+}
+
+func sessionDeliveryTx(ctx context.Context, tx *sql.Tx, settings DeliverySettings, session string, admin bool) (*SessionDelivery, error) {
 	plan, err := loadDeliveryPlan(ctx, tx, session)
 	if err != nil {
 		if errors.Is(err, ErrStaleOffer) {
@@ -121,9 +130,12 @@ func SessionDeliveryTx(ctx context.Context, tx *sql.Tx, settings DeliverySetting
 	var backend, raw string
 	err = tx.QueryRowContext(ctx, `SELECT backend,stages_json FROM playback_hls_stages WHERE session_id=?`, session).Scan(&backend, &raw)
 	if err == nil {
-		var stages []decoder.HardwareStage
-		if json.Unmarshal([]byte(raw), &stages) == nil && stages != nil {
-			out.Hardware = SessionHardware{Backend: backend, Stages: stages}
+		record := readConversionStages(raw)
+		if record.Stages != nil {
+			out.Hardware = SessionHardware{Backend: backend, Stages: record.Stages}
+			if admin {
+				out.Hardware.Execution = record.Execution
+			}
 		}
 	} else if !errors.Is(err, sql.ErrNoRows) {
 		return nil, err
