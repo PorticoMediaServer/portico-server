@@ -1,29 +1,17 @@
-import {BrowseQueryBuilder, browseCapabilitiesPath, browsePath, browseMembershipId, parseBrowseCapabilities, parseBrowseResult, browseContextFacetsPath, parseBrowseFacets, browseCountsPath, browseCountsRequest, parseBrowseCounts, parseBrowseNode, type BrowseResult,
+import {browseCapabilitiesPath, browseMembershipId, parseBrowseCapabilities, browseContextFacetsPath, parseBrowseFacets, browseCountsPath, browseCountsRequest, parseBrowseCounts, parseBrowseNode,
   type BrowseCapabilities, type BrowseNode, type BrowseSortSelection, type BrowseWholeSelection} from '@core/browse.ts';
+import {BrowseSession, browseSessionBuilder, browseSessionClosed, type BrowseSessionQuery} from '@core/browse-session.ts';
 import {createWindowedCollection, type WindowedCollection} from '@core/collections/windowed.ts';
 import type {ContentEntry, LibraryContentApi} from '@core/library-content.ts';
 import {isStaleAnswer} from '@core/freshness-actions.ts';
 
+export {withLibraryScope} from '@core/browse-session.ts';
 export type BrowseMember = Readonly<{membershipId: string; entry: ContentEntry}>;
-/** A browse page is one library's scope; entity entries (show, album, artist) can omit their
- * library even though every destination needs it. Fill only what the server left absent. */
-export function withLibraryScope(page: BrowseResult, libraryId: string): BrowseResult {
-  if (!libraryId) return page;
-  let changed = false;
-  const entries = page.entries.map(entry => {
-    if (entry.libraryId) return entry;
-    changed = true;
-    return Object.freeze({...entry, libraryId});
-  });
-  return changed ? Object.freeze({...page, entries: Object.freeze(entries)}) : page;
-}
 
 export type BrowseSource = Readonly<{libraryId: string; pivot: string; base?: readonly BrowseNode[]; predicates?: readonly BrowseNode[]; homeRowId?: string; sort?: BrowseSortSelection; sorts?: readonly BrowseSortSelection[]}>;
 export type BrowseState = Readonly<{phase: 'loading' | 'ready' | 'error'; capabilities?: BrowseCapabilities; predicates: readonly BrowseNode[]; sort?: BrowseSortSelection; error?: unknown;
   /** Actual opaque page token, absent until this applied query has replied. */
   revision?: string; queryRevision: number}>;
-const closed = () => Object.assign(new Error('browse-scope-closed'), {name: 'AbortError'});
-const changed = () => Object.assign(new Error('browse-page-revision-changed'), {retry: 'after_refresh'});
 function captureNode(input: BrowseNode): BrowseNode {
   const freeze = (node: BrowseNode): BrowseNode => {
     if ('field' in node) return Object.freeze({...node, value: Array.isArray(node.value) ? Object.freeze([...node.value]) : node.value});
@@ -44,8 +32,8 @@ export class BrowseController {
   private life = new AbortController();
   private epoch = 0;
   private sorts: readonly BrowseSortSelection[] = [];
-  private members = new WeakMap<ContentEntry, number>();
-  private whole?: BrowseWholeSelection;
+  /** The applied query's page source; replaced, never reused, when the query changes. */
+  private session?: BrowseSession<BrowseMember>;
   constructor(private api: LibraryContentApi, source: BrowseSource, private isCurrent: () => boolean) {
     this.source = Object.freeze({...source,
       ...(source.base ? {base: Object.freeze(source.base.map(captureNode))} : {}),
@@ -54,7 +42,7 @@ export class BrowseController {
       ...(source.sorts ? {sorts: Object.freeze(source.sorts.map(sort => Object.freeze({...sort})))} : {})});
     this.state = Object.freeze({phase: 'loading', predicates: this.source.predicates ?? Object.freeze([]), queryRevision: 0});
     this.collection = createWindowedCollection({pageSize: 60, maxResidentPages: 6, maxConcurrent: 1, prefetchPages: 1,
-      keyOf: (item: BrowseMember) => item.membershipId, fetchPage: async () => { throw closed(); }});
+      keyOf: (item: BrowseMember) => item.membershipId, fetchPage: async () => { throw browseSessionClosed(); }});
   }
   getSnapshot = () => this.state;
   subscribe = (listener: () => void) => { this.listeners.add(listener); return () => { this.listeners.delete(listener); }; };
@@ -62,14 +50,14 @@ export class BrowseController {
   /** Borrowed row/menu actions require the same current resident object.
    * Explicit selection has its own retained picks and operation lifetime. */
   contains(entry: ContentEntry): boolean {
-    return this.current() && this.state.phase === 'ready' && !!this.state.revision && this.members.get(entry) === this.epoch
+    return this.current() && this.state.phase === 'ready' && !!this.state.revision && !!this.session?.owns(entry)
       && this.collection.residentItems().some(member => member.entry === entry);
   }
   /** The server's exact whole-view descriptor for the page this controller holds.
    * It is present only while that same page revision is the current one; any
    * invalidate, retry or revision change drops it before a new one can arrive. */
   wholeSelection(): BrowseWholeSelection | undefined {
-    return this.current() && this.state.phase === 'ready' && !!this.state.revision ? this.whole : undefined;
+    return this.current() && this.state.phase === 'ready' && !!this.state.revision ? this.session?.wholeSelection() : undefined;
   }
   private publish(patch: Partial<BrowseState>) {
     if (!this.current()) return;
@@ -80,7 +68,8 @@ export class BrowseController {
   async load() {
     if (!this.current()) return;
     const epoch = ++this.epoch;
-    this.whole = undefined;
+    this.session?.retire();
+    this.session = undefined;
     this.publish({phase: 'loading', error: undefined, revision: undefined});
     try {
       const caps = parseBrowseCapabilities(await this.api.request(browseCapabilitiesPath(this.source.libraryId, this.source.pivot), 'GET', undefined, this.life.signal));
@@ -116,57 +105,37 @@ export class BrowseController {
     this.reset({predicates: captured, sort: selected});
     return true;
   }
+  private sessionQuery(caps: BrowseCapabilities, predicates: readonly BrowseNode[], sort: BrowseSortSelection): BrowseSessionQuery {
+    return {libraryId: this.source.libraryId, pivot: this.source.pivot, capabilities: caps, nodes: [...(this.source.base ?? []), ...predicates],
+      sorts: sort === this.state.sort && this.sorts.length ? this.sorts : [sort], ...(this.source.homeRowId ? {homeRowId: this.source.homeRowId} : {})};
+  }
   private builder(caps: BrowseCapabilities, predicates: readonly BrowseNode[], sort: BrowseSortSelection) {
-    const builder = new BrowseQueryBuilder(caps, this.source.pivot);
-    for (const node of [...(this.source.base ?? []), ...predicates]) builder.add(node);
-    for (const selected of sort === this.state.sort && this.sorts.length ? this.sorts : [sort]) builder.sort(selected.field, selected.direction, selected.seed);
-    if (this.source.homeRowId) builder.displayHomeRow(this.source.homeRowId);
-    return builder.limit(60);
+    return browseSessionBuilder(this.sessionQuery(caps, predicates, sort)).limit(60);
   }
   private reset(next: Partial<Pick<BrowseState, 'predicates' | 'sort'>> = {}) {
     const {capabilities: caps, predicates, sort} = {...this.state, ...next};
     if (!caps || !sort) return;
     const epoch = ++this.epoch;
-    this.members = new WeakMap();
-    this.whole = undefined;
+    this.session?.retire();
+    this.session = undefined;
     this.publish({...next, revision: undefined, queryRevision: this.state.queryRevision + 1});
     if (!this.current() || epoch !== this.epoch) return;
-    let revision: string | undefined, stale = false;
-    this.collection.invalidate(async (start, count, signal) => {
-      if (!this.current() || epoch !== this.epoch) throw closed();
-      if (stale) throw changed();
-      const body = this.builder(caps, predicates, sort).limit(count).range({start, ...(revision ? {revision} : {})}).build();
-      const raw = await this.api.request(browsePath(this.source.libraryId), 'POST', body, signal).catch(error => {
-        if (this.current() && epoch === this.epoch && !signal.aborted && (isStaleAnswer(error)
-          || typeof error === 'object' && error !== null && 'status' in error && typeof error.status === 'number' && [401, 403, 404].includes(error.status))) {
-          stale = true;this.members = new WeakMap();this.whole = undefined;this.publish({revision: undefined});
-        }
-        throw error;
-      });
-      const page = withLibraryScope(parseBrowseResult(raw), this.source.libraryId);
-      if (!this.current() || epoch !== this.epoch || signal.aborted) throw closed();
-      if (page.pivot !== this.source.pivot || page.pageInfo.start !== start || revision && revision !== page.pageInfo.revision) {
-        stale = true;this.members = new WeakMap();this.whole = undefined;this.publish({revision: undefined});
-        throw changed();
-      }
-      revision = page.pageInfo.revision;
-      // The approved descriptor is first-page-only and source-bound. Later pages
-      // never install or replace it, and a descriptor for another library is not
-      // this controller's view even when its revision string matches.
-      if (start === 0 && page.wholeSelection !== undefined && page.wholeSelection.libraryId === this.source.libraryId) this.whole = page.wholeSelection;
-      this.publish({revision});
-      return {items: page.entries.map((entry, index) => {this.members.set(entry, epoch);return Object.freeze({membershipId: browseMembershipId(page, index)!, entry});}),
-        total: page.pageInfo.total, totalIsLowerBound: page.pageInfo.totalIsLowerBound,
-        positionIndex: Object.fromEntries(page.positionIndex.map(anchor => [anchor.key, anchor.index]))};
-    });
+    const session = new BrowseSession<BrowseMember>({query: this.sessionQuery(caps, predicates, sort),
+      request: (path, method, body, signal) => this.api.request(path, method, body, signal),
+      current: () => this.current() && epoch === this.epoch,
+      item: (entry, page, index) => Object.freeze({membershipId: browseMembershipId(page, index)!, entry}),
+      onRevision: revision => this.publish({revision}),
+      onStale: () => this.publish({revision: undefined})});
+    this.session = session;
+    this.collection.invalidate(session.fetchPage);
     this.collection.ensureRange(0, 0);
   }
   async facets(field: string, query: string, predicates: readonly BrowseNode[], signal: AbortSignal) {
     const {capabilities: caps, sort} = this.state;
-    if (!caps || !sort || !this.current()) throw closed();
+    if (!caps || !sort || !this.current()) throw browseSessionClosed();
     const epoch = this.epoch, body = this.builder(caps, predicates, sort).build();
     const raw = await this.api.request(browseContextFacetsPath(this.source.libraryId, field, this.source.pivot, body.query, query, 200), 'GET', undefined, signal);
-    if (!this.current() || epoch !== this.epoch || signal.aborted) throw closed();
+    if (!this.current() || epoch !== this.epoch || signal.aborted) throw browseSessionClosed();
     return parseBrowseFacets(raw, field);
   }
   async count(predicates: readonly BrowseNode[], signal: AbortSignal) {
@@ -174,17 +143,17 @@ export class BrowseController {
   }
   async counts(groups: readonly Readonly<{id: string; predicates: readonly BrowseNode[]}>[], signal: AbortSignal) {
     const {capabilities: caps, sort} = this.state;
-    if (!caps || !sort || !this.current()) throw closed();
+    if (!caps || !sort || !this.current()) throw browseSessionClosed();
     const epoch = this.epoch;
     const queries = groups.map(group => ({id: group.id, query: this.builder(caps, group.predicates, sort).build().query ?? null}));
     const raw = await this.api.request(browseCountsPath(this.source.libraryId), 'POST', browseCountsRequest(this.source.pivot, queries), signal);
-    if (!this.current() || epoch !== this.epoch || signal.aborted) throw closed();
+    if (!this.current() || epoch !== this.epoch || signal.aborted) throw browseSessionClosed();
     return parseBrowseCounts(raw, groups.map(group => group.id));
   }
   /** The same server query used by pages, counts, saved views and whole-group Play. */
   query() {
     const {capabilities, predicates, sort} = this.state;
-    if (!this.current() || !capabilities || !sort) throw closed();
+    if (!this.current() || !capabilities || !sort) throw browseSessionClosed();
     return this.builder(capabilities, predicates, sort).build();
   }
   /** Fixed source membership is the default, not a user-applied filter. */
@@ -201,10 +170,10 @@ export class BrowseController {
   /** UI controls preserve compound predicates and validate every generated node. */
   parseNode = (value: unknown) => parseBrowseNode(value);
   retry = () => {
-    this.whole = undefined;
+    this.session?.forgetWholeSelection();
     if (this.state.phase === 'error') void this.load();
     else if (isStaleAnswer(this.collection.getSnapshot().error)) this.reset();
     else this.collection.retry();
   };
-  dispose() { this.life.abort(); this.epoch++; this.whole = undefined; this.collection.dispose(); this.listeners.clear(); }
+  dispose() { this.life.abort(); this.epoch++; this.session?.retire(); this.collection.dispose(); this.listeners.clear(); }
 }

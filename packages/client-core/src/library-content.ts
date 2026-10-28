@@ -8,6 +8,7 @@ import {listeningData,parseBookProgress,type BookProgress,type ListeningViewerSc
 import {parseBrowseNode,type BrowseNode,type BrowseSortSelection} from './browse.ts';
 import {firstOfEach,keepReadable,noteSkipped,oneOfOr} from './tolerant.ts';
 import {mergeRevalidatedList} from './freshness-actions.ts';
+import type {FetchPage} from './collections/windowed.ts';
 /** Transport/state for server-authored semantic projections. No client ranking or grouping. */
 export type ContentView = 'discover' | 'browse' | 'collections' | 'categories' | 'show' | 'season' | 'artist' | 'album' | 'book' | 'collection' | 'releases' | 'songs' | 'authors' | 'series' | 'author' | 'book_series' | 'disc';
 export type ContentSurface = ContentView;
@@ -407,6 +408,38 @@ function mergeHead(previous: readonly ContentSection[], fresh: readonly ContentS
     return Object.freeze({ ...section, entries: entries === old.entries ? entries : Object.freeze([...entries]), nextCursor }) as ContentSection;
   });
   return changed ? Object.freeze(sections) : previous;
+}
+/** Views whose grid section the server opens at any index (`start`), so a page that left memory can be read again. */
+const startViews: ReadonlySet<ContentView> = new Set<ContentView>(['browse', 'collection', 'collections', 'artist']);
+export const contentViewRehydratable = (view: ContentView): boolean => startViews.has(view);
+/**
+ * LR05: the page source for a bounded window (`createWindowedCollection` with `maxResidentPages`)
+ * over the `items` grid of a start-addressable view. Every page is read by its own index, so the
+ * window may evict any page and read it again on back-scroll; nothing is appended without bound.
+ * The first page pins the viewer fence and catalogue revision. A later page from another one is a
+ * changed library (`stale_continuation`), never spliced into the old offsets. Other views keep
+ * `LibraryContentService`'s appended sections: their earlier pages cannot be read again.
+ */
+export function libraryContentPages(options: Readonly<{ api: LibraryContentApi; scope: ContentScope; route: ContentRoute; pageSize?: number }>): FetchPage<ContentEntry> {
+  const bound = scope(options.scope), selected = route(options.route), pageSize = options.pageSize ?? 40;
+  if (!contentViewRehydratable(selected.view) || !Number.isInteger(pageSize) || pageSize < 1 || pageSize > 100) throw new Error('Invalid content window.');
+  const changed = () => new ContentFailure('stale_continuation', 'The library changed. Refresh to continue.', true);
+  let pinned: Readonly<{ viewerFence: string; catalog: number }> | undefined;
+  return async (start, count, signal) => {
+    if (!Number.isSafeInteger(start) || start < 0 || !Number.isInteger(count) || count < 1 || count > pageSize) throw new Error('Invalid content window page.');
+    const query = new URLSearchParams({ view: selected.view, limit: String(count) });
+    for (const field of ['entityId','sort','direction','category','q'] as const) if (selected[field] !== undefined) query.set(field, selected[field]!);
+    if (start > 0) query.set('start', String(start));
+    const raw = await options.api.request<unknown>(encodedRoutePath("get_libraries_id_content", {"id": encodeURIComponent(selected.libraryId)}) + "?" + query, 'GET', undefined, signal);
+    const result = projection(raw, selected, bound, pageSize);
+    if (pinned && (result.scope.viewerFence !== pinned.viewerFence || result.revision.catalog !== pinned.catalog)) throw changed();
+    // The server leaves out an empty section: an empty library at the top, or a list that shrank under a later page.
+    const grid = result.sections.find(section => section.id === 'items' && section.type === 'grid');
+    if (!grid) { if (start > 0) throw changed(); pinned ??= Object.freeze({ viewerFence: result.scope.viewerFence, catalog: result.revision.catalog }); return { items: Object.freeze([]), total: 0 }; }
+    if ((grid.start ?? 0) !== start || grid.entries.length > count) invalid();
+    pinned ??= Object.freeze({ viewerFence: result.scope.viewerFence, catalog: result.revision.catalog });
+    return { items: grid.entries, total: grid.totalCount };
+  };
 }
 type Operation = { route: ContentRoute; page: Page; history: Page[]; fence: ContentProjection | null };
 type ContentFlight = { id: object; generation: number; controller: AbortController; context?: ContentReadContext; committed: boolean; onAbort?: () => void; settle?: () => void };
