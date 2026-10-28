@@ -104,7 +104,7 @@ func mbReleaseFixture() metadataprovider.Release {
 // pump re-reads runnable jobs every turn instead of snapshotting roots once.
 func driveMBCatalogAdoptions(t *testing.T, db *sql.DB) {
 	t.Helper()
-	catalogtest.New(t, db).DrainCatalogMutations(catalog.New(db).MutationAdapter())
+	drainCatalogMutations(t, db, catalog.New(db).MutationAdapter())
 }
 
 func TestMusicBrainzTagsReleaseRecordingRemainDistinctAndRestart(t *testing.T) {

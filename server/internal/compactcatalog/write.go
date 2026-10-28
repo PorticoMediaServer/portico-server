@@ -649,6 +649,11 @@ func DeleteEntityTx(ctx context.Context, tx *sql.Tx, id int64) error {
 			return err
 		}
 	}
+	// The availability holder deliberately has no entity FK: normal completion
+	// retires it, and external entity removal must release the same point row.
+	if _, err := tx.ExecContext(ctx, `DELETE FROM catalog_availability_work WHERE entity_id=?`, id); err != nil {
+		return err
+	}
 	_, err := tx.ExecContext(ctx, `DELETE FROM catalog_entities WHERE id=?`, id)
 	return err
 }
