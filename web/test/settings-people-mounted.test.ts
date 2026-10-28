@@ -75,3 +75,23 @@ test('selection admission fences old ordinary and quiet exact-detail responses b
  ordinary.resolve(person('person-A'));quiet.resolve(person('person-A'));await tick();assert.equal(f.table(),old);assert(f.outcomes.some(value=>value.id==='selected-detail'&&value.kind==='deferred'));
  f.render();await tick();const nodes=f.render();const panel=all(nodes,'SettingsPanel').find((node:any)=>node.props.open);assert.equal(panel?.props.title,'person-B');assert.equal(f.details.at(-1)?.id,'person-B');
 });
+
+test('opening and switching a person preserves an unrelated ordinary page and its next automatic demand',async t=>{
+ const f=await fixture(t);f.scroll();assert.equal(f.calls.at(-1)?.cursor,'old-cursor');
+ f.table().rowAction.onAction({id:'person-A'},null);f.render();await tick();f.table().rowAction.onAction({id:'person-B'},null);f.render();await tick();
+ f.tailRead.resolve(page([row('loaded-tail')],'tail-cursor'));await tick();f.render();
+ assert(f.table().rows.some((value:any)=>value.id==='loaded-tail'),'detail selection cannot consume the table page');
+ f.scroll();await tick();f.render();assert(f.calls.some(value=>value.cursor==='tail-cursor'),'normal scrolling reaches the installed continuation');assert.equal(f.quietCalls(),0);
+});
+
+for(const order of ['ordinary-first','quiet-first'] as const)test(`ordinary and quiet detail keep the newest accepted detail: ${order}`,async t=>{
+ const f=await fixture(t),ordinary=deferred<any>(),quiet=deferred<any>();let reads=0;
+ f.detail(async()=>++reads===1?ordinary.promise:quiet.promise);
+ f.table().rowAction.onAction({id:'person-A'},null);f.render();
+ f.interests.find(value=>value.id==='selected-detail').invalidate();await f.c.advance(400);assert.equal(f.details.length,2);
+ const settleOrdinary=async()=>{ordinary.resolve({...person('person-A'),username:'old-name',revision:1});await tick();f.render();};
+ const settleQuiet=async()=>{quiet.resolve({...person('person-A'),username:'fresh-name',revision:2});await tick();f.render();};
+ if(order==='ordinary-first'){await settleOrdinary();await settleQuiet();}else{await settleQuiet();await settleOrdinary();}
+ const panel=all(f.render(),'SettingsPanel').find((node:any)=>node.props.open);assert.equal(panel?.props.title,'fresh-name');
+ assert(f.outcomes.some(value=>value.id==='selected-detail'&&value.kind==='adopted'));
+});

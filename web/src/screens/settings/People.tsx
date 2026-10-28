@@ -219,7 +219,11 @@ function PeopleWorkspace({bindings, initialStatus, rowActions, advancedRows}: {b
     const inputs=peopleQuietInputs({client,current,blocked,subscribe,serial:()=>quietSerial.current+(bindings.inputActivity?.revision()??0),
       get:()=>({...quiet.current,query:queryOf(quiet.current.query)}),firstPageIds:()=>firstPageIds.current,requests:requests.current,
       installPage:(page,ids)=>{firstPageIds.current=ids;quiet.current={...quiet.current,page};setPage(page);},
-      installPerson:person=>{quiet.current={...quiet.current,person};setPerson(person);},
+      installPerson:person=>{
+        // This accepted installation supersedes the older ordinary selection read.
+        const older=detailRead.current;detailRead.current=undefined;
+        quiet.current={...quiet.current,person};setPerson(person);older?.abort();
+      },
       closePerson:id=>{if(quiet.current.personId===id){admitPerson();setSelected(before=>new Set([...before].filter(value=>value!==id)));}},
       denied:failure,
     }).map(input=>mountQuietInput(hub,'settings/people',[dependsOn.list('members'),dependsOn.settings('server')],input,visibility));
@@ -228,12 +232,13 @@ function PeopleWorkspace({bindings, initialStatus, rowActions, advancedRows}: {b
   const more = () => {
     const installed = quiet.current, before = installed.page;
     if (!mounted.current || !installed.live || installed.denied || !bindings.authority.isCurrent() || installed.loading || !before?.nextCursor) return;
-    const current = generation.current, serial = ++quietSerial.current, request = new AbortController();
+    const current = generation.current, request = new AbortController();++quietSerial.current;
     pagingRead.current = request;requests.current.add(request);
     // SettingsTable can call from a passive effect. Fence before React commits loading.
     quiet.current = {...installed, loading: true};setLoading(true);for (const listener of quietListeners.current) listener();
     void client.read(queryOf(installed.query), before.nextCursor, request.signal).then(next => {
-      if (!request.signal.aborted && mounted.current && current === generation.current && serial === quietSerial.current && bindings.authority.isCurrent() && quiet.current.query === installed.query && quiet.current.page === before) {
+      // Detail selection fences quiet adoption, but does not invalidate this table's page.
+      if (!request.signal.aborted && pagingRead.current === request && mounted.current && current === generation.current && bindings.authority.isCurrent() && quiet.current.query === installed.query && quiet.current.page === before) {
         const ids = new Set(before.items.map(row => row.accountId));
         const page = {...next, items: [...before.items, ...next.items.filter(row => !ids.has(row.accountId))]};
         quiet.current = {...quiet.current, page};setPage(page);
