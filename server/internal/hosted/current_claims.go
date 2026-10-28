@@ -3,7 +3,6 @@ package hosted
 import (
 	"context"
 	"database/sql"
-	"net/http"
 
 	"portico.local/server/internal/identity"
 	"portico.local/server/internal/networking"
@@ -22,30 +21,6 @@ func (s *Service) UseCurrentClaims(store *networking.SQLiteStore, runner *networ
 	}
 	s.current = &currentClaims{store: store, runner: runner, transport: transport}
 	return store.SetInstallationHooks(s.linkClaimOwnerTx, s.NetworkChanged)
-}
-func (s *Service) currentCall(ctx context.Context, method, path string, in, out any) error {
-	if s.current == nil {
-		return networking.ErrUnavailable
-	}
-	return s.current.runner.Do(ctx, func(ctx context.Context) error {
-		v, e := s.current.store.InstalledIntent(ctx)
-		if e != nil {
-			return e
-		}
-		if method != http.MethodPost {
-			return networking.ErrInvalid
-		}
-		var operation networking.ServerOperation
-		switch path {
-		case "/v1/servers/" + v.ServerID + "/heartbeat":
-			operation = networking.SendHeartbeat
-		case "/v1/servers/" + v.ServerID + "/members":
-			operation = networking.PushMembers
-		default:
-			return networking.ErrInvalid
-		}
-		return s.current.transport.CallServer(ctx, v, operation, in, out)
-	})
 }
 
 // RevokeClaimTx is the actual same-transaction terminal/cancel hook. It retains

@@ -130,9 +130,6 @@ func validateOrigin(raw string) error {
 	return errors.New("hosted origin requires HTTPS or explicit loopback HTTP")
 }
 func (s *Service) Configured() bool { return s.origin != "" && len(s.key) == ed25519.PublicKeySize }
-func (s *Service) call(ctx context.Context, method, path, token string, in, out any) error {
-	return s.currentCall(ctx, method, path, in, out)
-}
 
 type policyReader interface{ QueryRow(string, ...any) *sql.Row }
 
