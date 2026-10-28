@@ -160,7 +160,7 @@ test('shell identity loads during a building Reading generation and retains Sett
   }} as unknown as HttpLocalApi;
   const read = await readShellIdentity(api, directSession, new AbortController().signal);
   assert.equal(read.libraries.length, 1);
-  assert.deepEqual(read.libraries[0]?.summary, summary);
+  assert.deepEqual(read.libraries, [{id: 'reading-a', name: 'Still importing', kind: 'book', summary}]);
   assert.equal(read.profile.capabilities?.manageServer, true);
   assert.equal(read.profile.profileName, 'Evening profile');
   assert.equal(read.system.name, 'Test server');
