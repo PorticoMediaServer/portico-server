@@ -82,7 +82,16 @@ func (d Dependencies) inventoryRoutes(mux *http.ServeMux) {
 				failure(w, e)
 				return
 			}
-			out, e := d.Catalog.SaveSource(r.Context(), r.PathValue("id"), r.PathValue("source"), body, func(tx *sql.Tx) error { return d.libraryAdministrationAuthorize(r.Context(), tx, p, r.PathValue("id")) })
+			// Attaching a folder scans it only when the caller asks; editing an
+			// existing folder never scans here.
+			var after func(*sql.Tx, string) error
+			if r.Method == http.MethodPost && d.Ingestion != nil && body.ScanAfter != nil && *body.ScanAfter {
+				after = func(tx *sql.Tx, source string) error {
+					_, err := d.Ingestion.QueueSourceTx(r.Context(), tx, r.PathValue("id"), source)
+					return err
+				}
+			}
+			out, e := d.Catalog.SaveSourceThen(r.Context(), r.PathValue("id"), r.PathValue("source"), body, func(tx *sql.Tx) error { return d.libraryAdministrationAuthorize(r.Context(), tx, p, r.PathValue("id")) }, after)
 			if e != nil {
 				failure(w, e)
 				return

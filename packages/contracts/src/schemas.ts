@@ -184468,6 +184468,9 @@ export const schemas = {
       },
       "path": {
         "type": "string"
+      },
+      "scanAfter": {
+        "type": "boolean"
       }
     },
     "required": [
@@ -189882,6 +189885,9 @@ export const schemas = {
       },
       "path": {
         "type": "string"
+      },
+      "scanAfter": {
+        "type": "boolean"
       }
     },
     "required": [
@@ -206347,6 +206353,9 @@ export const schemas = {
       },
       "path": {
         "type": "string"
+      },
+      "scanAfter": {
+        "type": "boolean"
       }
     },
     "required": [

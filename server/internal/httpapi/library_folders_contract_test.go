@@ -67,3 +67,37 @@ func TestCreateLibraryFoldersAndLocalKinds(t *testing.T) {
 		}
 	}
 }
+
+// MOB-111: scanAfter only controls whether creation queues the first scan.
+// Omitting it and sending true keep the first scan; false creates the same
+// library with nothing queued.
+func TestCreateLibraryScanAfter(t *testing.T) {
+	f := agentTestFixture(t)
+	for _, probe := range []struct {
+		name string
+		body map[string]any
+		want int
+	}{
+		{"omitted", map[string]any{"name": "Omitted", "kind": "movie", "folders": []string{t.TempDir()}, "metadataAgent": "local"}, 1},
+		{"true", map[string]any{"name": "Explicit", "kind": "movie", "folders": []string{t.TempDir()}, "metadataAgent": "local", "scanAfter": true}, 1},
+		{"false", map[string]any{"name": "Deferred", "kind": "movie", "folders": []string{t.TempDir()}, "metadataAgent": "local", "scanAfter": false}, 0},
+	} {
+		t.Run(probe.name, func(t *testing.T) {
+			var created struct {
+				ID string `json:"id"`
+			}
+			response := f.call("POST", "/v1/libraries", nil, probe.body, 201, &created)
+			assertSpecResponse(t, "POST", "/v1/libraries", response)
+			var sources, jobs int
+			if err := f.db.QueryRow(`SELECT COUNT(*) FROM library_sources WHERE library_id=?`, created.ID).Scan(&sources); err != nil {
+				t.Fatal(err)
+			}
+			if err := f.db.QueryRow(`SELECT COUNT(*) FROM jobs WHERE library_id=?`, created.ID).Scan(&jobs); err != nil {
+				t.Fatal(err)
+			}
+			if sources != 1 || jobs != probe.want {
+				t.Fatalf("creation committed %d sources and %d scans, want 1 and %d", sources, jobs, probe.want)
+			}
+		})
+	}
+}

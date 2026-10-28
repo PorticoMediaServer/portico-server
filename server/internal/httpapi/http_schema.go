@@ -63,6 +63,8 @@ func PublishedSchemas() (map[string]reflect.Type, map[reflect.Type]map[string]an
 }
 
 type libraryCreationRequest struct {
+	// ScanAfter defaults to true; false saves the library without its first scan.
+	ScanAfter            *bool                             `json:"scanAfter,omitempty"`
 	ExpectedRemoteSource catalog.ExpectedRemoteSourceInput `json:"expectedRemoteSource,omitempty"`
 	Name                 string                            `json:"name"`
 	Kind                 string                            `json:"kind"`

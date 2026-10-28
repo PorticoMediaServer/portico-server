@@ -206458,6 +206458,9 @@
           },
           "path": {
             "type": "string"
+          },
+          "scanAfter": {
+            "type": "boolean"
           }
         },
         "required": [
@@ -212014,6 +212017,9 @@
           },
           "path": {
             "type": "string"
+          },
+          "scanAfter": {
+            "type": "boolean"
           }
         },
         "required": [
@@ -228617,6 +228623,9 @@
           },
           "path": {
             "type": "string"
+          },
+          "scanAfter": {
+            "type": "boolean"
           }
         },
         "required": [
@@ -306617,6 +306626,9 @@
                   },
                   "path": {
                     "type": "string"
+                  },
+                  "scanAfter": {
+                    "type": "boolean"
                   }
                 },
                 "required": [
@@ -306925,6 +306937,9 @@
                   },
                   "path": {
                     "type": "string"
+                  },
+                  "scanAfter": {
+                    "type": "boolean"
                   }
                 },
                 "required": [
@@ -468293,6 +468308,9 @@
                   },
                   "path": {
                     "type": "string"
+                  },
+                  "scanAfter": {
+                    "type": "boolean"
                   }
                 },
                 "required": [

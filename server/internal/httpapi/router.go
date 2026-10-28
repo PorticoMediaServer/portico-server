@@ -1119,8 +1119,8 @@ func New(d Dependencies) http.Handler {
 				return
 			}
 		}
-		// The first scan is queued in the same transaction (B71): the dialog
-		// promises titles right away, and a library must never sit configured
+		// Unless explicitly deferred, the first scan is queued in the same
+		// transaction as creation (B71): a library must never sit configured
 		// with nothing queued until someone presses Scan now. The scan itself
 		// runs in the background lane; queueing is idempotent per source.
 		queue := func(tx *sql.Tx, l catalog.Library) error {
@@ -1136,7 +1136,7 @@ func New(d Dependencies) http.Handler {
 					return err
 				}
 			}
-			if d.Ingestion == nil {
+			if d.Ingestion == nil || (body.ScanAfter != nil && !*body.ScanAfter) {
 				return nil
 			}
 			_, err := d.Ingestion.QueueTx(r.Context(), tx, l.ID)

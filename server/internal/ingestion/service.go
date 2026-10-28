@@ -89,6 +89,12 @@ func (s *Service) QueueContext(ctx context.Context, library, sourceID string, au
 func (s *Service) QueueTx(ctx context.Context, tx *sql.Tx, library string) (Job, error) {
 	return s.queueTx(ctx, tx, library, "")
 }
+
+// QueueSourceTx commits one attached source's initial scan with its
+// configuration, sharing source-level deduplication with manual scans.
+func (s *Service) QueueSourceTx(ctx context.Context, tx *sql.Tx, library, sourceID string) (Job, error) {
+	return s.queueTx(ctx, tx, library, sourceID)
+}
 func (s *Service) queueTx(ctx context.Context, tx *sql.Tx, library, sourceID string) (Job, error) {
 	rows, err := tx.QueryContext(ctx, `SELECT id FROM library_sources WHERE library_id=? AND enabled=1 AND NOT EXISTS(SELECT 1 FROM dvr_private_libraries d WHERE d.library_id=library_sources.library_id) AND (?='' OR id=?) ORDER BY CASE WHEN id=library_id THEN 0 ELSE 1 END,id`, library, sourceID, sourceID)
 	if err != nil {

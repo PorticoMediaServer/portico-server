@@ -45,6 +45,9 @@ type LibrarySource struct {
 	Incarnation       string `json:"-"`
 }
 type SourceSettings struct {
+	// ScanAfter true queues the attached folder's first scan in the same
+	// transaction; omitted or false attaches it without one (as before).
+	ScanAfter            *bool                     `json:"scanAfter,omitempty"`
 	ExpectedRemoteSource ExpectedRemoteSourceInput `json:"expectedRemoteSource,omitempty"`
 	Name                 string                    `json:"name"`
 	Path                 string                    `json:"path"`
@@ -321,6 +324,12 @@ func configurationFence(ctx context.Context, tx *sql.Tx, library string, expecte
 	return nil
 }
 func (s *Service) SaveSource(ctx context.Context, library, id string, input SourceSettings, authorize func(*sql.Tx) error) (LibrarySource, error) {
+	return s.SaveSourceThen(ctx, library, id, input, authorize, nil)
+}
+
+// SaveSourceThen commits any work that accompanies the source configuration,
+// such as the first scan of a newly attached folder, in the same transaction.
+func (s *Service) SaveSourceThen(ctx context.Context, library, id string, input SourceSettings, authorize func(*sql.Tx) error, after func(*sql.Tx, string) error) (LibrarySource, error) {
 	var result LibrarySource
 	expectedRemoteSource, err := input.ExpectedRemoteSource.Selection()
 	if err != nil {
@@ -466,6 +475,11 @@ func (s *Service) SaveSource(ctx context.Context, library, id string, input Sour
 	}
 	if _, err = tx.ExecContext(ctx, `UPDATE library_sources SET kind=? WHERE id=?`, s.sourceKind(observed.Path), id); err != nil {
 		return result, err
+	}
+	if after != nil {
+		if err = after(tx, id); err != nil {
+			return result, err
+		}
 	}
 	if err = gated.Commit(); err != nil {
 		return result, err

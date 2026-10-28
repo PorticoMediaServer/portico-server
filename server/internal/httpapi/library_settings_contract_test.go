@@ -68,3 +68,53 @@ func TestLibrarySettingsHTTPUsesRealPolicyAndFolderCRUD(t *testing.T) {
 		t.Fatal("folder CRUD touched media", entries, err)
 	}
 }
+
+// MOB-111: attaching a folder keeps today's behaviour (no scan) unless the
+// caller asks for one with scanAfter true.
+// The folder, its inventory revision and the reply are otherwise unchanged.
+func TestAttachLibraryFolderScanAfter(t *testing.T) {
+	f := agentTestFixture(t)
+	var created catalog.Library
+	f.call("POST", "/v1/libraries", nil, map[string]any{"name": "Scan after", "kind": "movie", "folders": []string{t.TempDir()}, "metadataAgent": "local", "scanAfter": false}, 201, &created)
+	path := "/v1/admin/libraries/" + created.ID
+	yes, no := true, false
+	for _, probe := range []struct {
+		name      string
+		scanAfter *bool
+		want      int
+	}{
+		{"omitted", nil, 0},
+		{"true", &yes, 1},
+		{"false", &no, 0},
+	} {
+		t.Run(probe.name, func(t *testing.T) {
+			var cfg struct {
+				Revision int64 `json:"revision"`
+			}
+			f.call("GET", path+"/inventory-config", nil, nil, 200, &cfg)
+			var source catalog.LibrarySource
+			f.call("POST", path+"/sources", nil, catalog.SourceSettings{Path: t.TempDir(), Classification: "local", ExpectedRevision: cfg.Revision, ScanAfter: probe.scanAfter}, 200, &source)
+			var scans int
+			if err := f.db.QueryRow(`SELECT COUNT(*) FROM jobs j JOIN inventory_runs r ON r.job_id=j.id WHERE r.source_id=?`, source.ID).Scan(&scans); err != nil {
+				t.Fatal(err)
+			}
+			if scans != probe.want {
+				t.Fatalf("attachment queued %d scans, want %d", scans, probe.want)
+			}
+			var after struct {
+				Revision int64                   `json:"revision"`
+				Sources  []catalog.LibrarySource `json:"sources"`
+			}
+			f.call("GET", path+"/inventory-config", nil, nil, 200, &after)
+			found := false
+			for _, listed := range after.Sources {
+				if listed.ID == source.ID {
+					found = true
+				}
+			}
+			if !found || after.Revision <= cfg.Revision {
+				t.Fatalf("attachment did not commit its folder and revision: %+v", after)
+			}
+		})
+	}
+}
