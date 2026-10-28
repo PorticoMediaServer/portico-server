@@ -16,7 +16,7 @@ import type {PlayerFailureCode} from './client-profile.ts';
 
 export type PlayerFailureCommandResult<P> = Readonly<{escalates: boolean; session?: P}>;
 
-export type PlayerFailureCommand<S, P> = Readonly<{
+export type PlayerFailureCommand = Readonly<{
   /** The session the caller captured; a different current session is not commanded. */
   sessionId: string;
   code: PlayerFailureCode;
@@ -42,13 +42,13 @@ export function playerFailureDetail(detail: string): string {
   return detail.replace(/[\x00-\x1f\x7f]/g, ' ').slice(0, 500);
 }
 
-/** A finite non-negative millisecond position; a nonsense reading reports the start, never NaN. */
+/** A non-negative millisecond position, rounded as the engines report it. */
 export function playerFailurePositionMs(positionSeconds: number): number {
   return Math.max(0, Math.round(positionSeconds * 1000));
 }
 
 /** The exact adaptation: current session, one re-plan, retain, notify, map; refusals stay refused. */
-export async function playerFailureCommand<S, P>(ports: PlayerFailureCommandPorts<S, P>, command: PlayerFailureCommand<S, P>): Promise<PlayerFailureCommandResult<P> | null> {
+export async function playerFailureCommand<S, P>(ports: PlayerFailureCommandPorts<S, P>, command: PlayerFailureCommand): Promise<PlayerFailureCommandResult<P> | null> {
   if (ports.current() !== command.sessionId) return {escalates: false};
   try {
     const updated = await ports.change({code: command.code, detail: playerFailureDetail(command.detail)}, playerFailurePositionMs(command.positionSeconds));
