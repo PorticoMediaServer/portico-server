@@ -58,6 +58,21 @@ test('native Apple needs no browser and no completion code', async () => {
   assert.deepEqual(calls[1]!.body, {idToken: 'id-token', displayName: ''});
 });
 
+for (const nativeApple of [false, true]) {
+  test(`the selected identity is captured before awaiting a request ID (native Apple ${nativeApple})`, async () => {
+    const {client, calls} = fake();
+    const expectedIdentity = {id: 'selected-link', revision: '9223372036854775807'};
+    const pending = await reconfirmWithProvider(client, {provider: nativeApple ? 'apple' : 'google', intent, nativeApple, accountOrigin: origin, expectedIdentity}, 'token_A', {
+      ...ports(`${origin}/app/account-return#tx=oid_A&code=${code}`),
+      newRequestId: async () => {expectedIdentity.id = 'different-link'; expectedIdentity.revision = '1'; return 'request-0000000000000001';},
+      signInApple: async () => ({idToken: 'fixture-token'}),
+    });
+    assert.equal(pending.intent.operationId, intent.operationId);
+    assert.deepEqual((calls[0]!.body as {expectedIdentity: unknown}).expectedIdentity, {id: 'selected-link', revision: '9223372036854775807'});
+    assert.equal(calls[0]!.token, 'token_A');
+  });
+}
+
 test('a wrong, foreign or unconfirmed return proves nothing', async () => {
   for (const returned of [`${origin}/app/account-return#tx=oid_Z&code=${code}`, `https://evil.example/app/account-return#tx=oid_A&code=${code}`,
     `${origin}/app/account-return#tx=oid_A`, `${origin}/app/account-return#tx=oid_A&code=${code}&proof=x`]) {
