@@ -88,10 +88,14 @@ func TestMBCurrentWorkerTypedPublicationAndCatalogPin(t *testing.T) {
 		return metadataprovider.RecordingLookup{RequestedID: id, Recording: mbLaneRecordingFixture()}, nil
 	}}
 	// Album publication, durable own-album continuation, then song publication.
+	// The album publication hands identity joining to the catalogue-domain
+	// worker, and a song under that still-frozen album cannot be claimed; drive
+	// the real jobs between provider steps instead of accepting a pending track.
 	for n := 0; n < 3; n++ {
 		if e := s.MusicBrainzStep(context.Background()); e != nil {
 			t.Fatal(n, e)
 		}
+		driveMBCatalogAdoptions(t, db)
 	}
 	state, e := s.MusicBrainzState("album", names["album"].Public)
 	if e != nil || state.Status != "matched" || state.Published == nil || state.Published.MatchedTracks != 1 || state.Published.ReconciliationPending {
