@@ -1,9 +1,17 @@
-# Two-session GPU app rehearsal on mini-2 (prepared, NOT run)
+# Two-session GPU app rehearsal on mini-2
 
-**STOP: do not start the server or run any command below until the lead
-coordinates the mini-2 window.** This plan is preparation only. It uses two
-real app conversion sessions; it is not a heavy load and does not run the
-80/100-user or 5M/300k work.
+The coordinated light rehearsal **passed** after fixing private decode-capability
+persistence. Same150s1080p source/accounts, each12,422,288 HLS bytes/five segments,
+hardware h264 decoder and h264_vaapi encoder, zero software/unknown/fallback,
+two concurrent observations3.23s apart and both sessions stopped. The controlled
+runtime used its original matching appdata baseline plus the fix; current-main
+focused tests/build separately passed. No capacity/device claim follows.
+
+All P2-65 mini-2 scratch was removed after collection. Private inputs, original
+appdata and receipts are archived outside Git and documented in the integration
+report. The commands below are the reproducible preparation sequence for a fresh
+isolated fixture; a later run must use a current matching server/appdata and an
+available mini-2 window with uptime load<16. No Docker or system driver install.
 
 Target host: `ehler-homelab-mini-2` (`100.113.197.98`), never Docker. Everything
 lives under `/home/justin/astra-scratch/P2-65`.
@@ -285,7 +293,7 @@ cd "$REPO"
 "$NODE" --experimental-transform-types scripts/batch-round/hardware/hardware-execution.ts \
   --execute --rehearsal --target http://127.0.0.1:32665 \
   --sessions 2 --direct-users 0 --quality 720p-high \
-  --bytes 1048576 --seconds 90 --render-node /dev/dri/renderD128 \
+  --bytes 10000000 --seconds 90 --render-node /dev/dri/renderD128 \
   --manifest "$PRIVATE/hardware-manifest.json" \
   --mutation-store "$PRIVATE/mutation-store" \
   --out "$EVIDENCE/hardware-rehearsal.json"
@@ -344,7 +352,6 @@ services, no Git writes.
 
 This is a two-session execution/overlap rehearsal on one GPU host. It is not a
 capacity, thermal, 80/100-user, 5M/300k, browser-device, decoder-quality or
-campaign-acceptance result. Server start and every live command remain held until
-the lead coordinates the mini-2 window.
+campaign-acceptance result. No later live run is implied by this retained recipe.
 
 Driver correction: use the scratch-extracted full-feature Ubuntu intel-media-va-driver-non-free26.1.2+ds1-1 package (DEB SHA256 caae4c71ff72f17b625319a195857a174e66ec3bcf2d97c2d98a449fbc9e6264). The free variant exposes CQP only and fails the real bitrate-control probe. Patched private ICD RUNPATH=$ORIGIN SHA256 a68377b120b46d9f5a9c1c7cd35b4295848231b5315f871bd8b7d1707be6ace9. No package was installed system-wide. Set the actual ELF FFmpeg path through PATCH /v1/admin/console/settings, not a shell FFmpeg wrapper; shell wrappers cannot establish runtime identity. Server wrapper is fine. Existing optional decoder-library settings grant the private ICD/GMM files without changing confinement.

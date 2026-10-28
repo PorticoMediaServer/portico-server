@@ -91,7 +91,7 @@ lead's explicit go-ahead.
 mixed run. When non-zero, the fixture requires time-separated samples to show
 that many distinct playing direct sessions (direct/copy only, no audio or video transcode
 and no subtitle burn) **together with** the 2-3 hardware sessions. It samples the
-admin page and conversion diagnostics every 1 s while HLS is still draining,
+admin page and conversion diagnostics concurrently with a500ms gap while HLS is still draining,
 and needs at least two overlap samples spanning 500 ms with
 `activeConversionSessions >= hardware sessions`. A final post-drain page is not
 accepted as overlap proof. Every observed hardware execution must stay at zero
@@ -178,14 +178,13 @@ with render nodes, delivered bytes/segments, stopped sessions and unchanged
 fallback/refusal counters. `mixed-load.ts` uses it before correlating the two
 children; it is not a rail for a failed or partial receipt.
 
-## Load opt-in required
+## Paired load opt-in
 
-`load.ts` is owned by the active load helper and is not edited here. The exact
-small change requested from the lead is in
-`.private/P2-65/integration/P2-65-hardware-notes.md`. Until it lands, the mixed
-supervisor's `load.ts` child refuses `--observed-hardware`; no mixed run is
-possible. `conversionMode: "never"` remains the default and every existing
-direct-only/readback gate stays intact outside the paired opt-in.
+`load.ts` implements `--observed-hardware --hardware-receipt` and the explicit
+`conversionMode: "observed-hardware"` manifest union. The mixed supervisor writes
+the private paired-window gate, passes it to the load child and independently
+validates the final hardware receipt. Direct-only defaults remain unchanged.
+No mixed80/100-user run was performed during preparation.
 
 ## Grounded routes in this pin
 
@@ -207,15 +206,14 @@ The runner does not spell session wire calls itself:
   `/v1/media/{grant}/master.m3u8` playlist and the segment/init references it
   lists, fetched with the session bearer and confined to that grant.
 
-## Rehearsal ownership
+## Rehearsal lifecycle
 
-The actual app rehearsal is owned by the load helper and is coordinated for the
-same real two-session GPU window once P2-65 is up. This fixture and
-`mixed-load.ts` are the hardware-execution/overlap companions; do not run a
-separate independent rehearsal or treat loopback mode as a replacement for that
-coordinated app rehearsal.
-`load.ts` is imported only for `targetOrigin`/`requireDriver`; its `main` is
-guarded by `import.meta.url`, so importing it starts nothing.
+The coordinated two-session mini-2 app rehearsal passed; see the result below.
+Its server and all task scratch have been removed after private evidence/input
+collection. Recreate a fresh fixture through the documented ordinary API factory
+for a later run. Never reset or borrow another lead's live fixture.
+`load.ts` is imported only for `targetOrigin`/`requireDriver`; importing it starts
+nothing because its `main` is guarded by `import.meta.url`.
 
 ## Explicit non-claims
 
