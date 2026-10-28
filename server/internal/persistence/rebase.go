@@ -49,9 +49,14 @@ const rebaseRegistryVersion = 1
 
 // Rebase bounds: rows read per window, rows changed per transaction, and how
 // many windows without a match pass before the position is saved anyway.
+//
+// The write plan counts trigger changes too. Library root publication costs
+// 21 rows per rewritten root in the regression fixture, plus the saved cursor.
+// Four roots cost 85 rows; the former 32-root chunk cost 673 against a 160-row
+// maintenance plan. Bound the source quantum instead of increasing the plan.
 const (
 	rebaseWindow       = 128
-	rebaseChanges      = 32
+	rebaseChanges      = 4
 	rebaseQuietWindows = 64
 )
 
@@ -74,11 +79,11 @@ type rebaseJob struct {
 // its folder only records this one.
 //
 // The rewrite is a durable job (state_rebase_jobs): it reads at most 128 rows
-// at a time, changes at most 32 per transaction, and saves its position in the
-// same transaction as the change. A crash resumes the exact same move from
-// that position, so no path is rewritten twice. A job left by an earlier start
-// is finished first, to the folder it was moving to; if the folder has moved
-// again since, a second job then moves it here.
+// at a time, changes at most rebaseChanges per transaction, and saves its
+// position in the same transaction as the change. A crash resumes the exact
+// same move from that position, so no path is rewritten twice. A job left by
+// an earlier start is finished first, to the folder it was moving to; if the
+// folder has moved again since, a second job then moves it here.
 func RebaseStatePaths(ctx context.Context, db *sql.DB, state string) error {
 	ctx = dbwork.WithClass(ctx, dbwork.ClassMaintenance)
 	state = filepath.Clean(state)
