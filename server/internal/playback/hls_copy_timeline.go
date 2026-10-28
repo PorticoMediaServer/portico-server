@@ -136,11 +136,25 @@ func buildCopyTimeline(duration float64, keyframes []float64, ok []bool) (*copyT
 	return &copyTimeline{Boundaries: boundaries}, nil
 }
 
+// timelineProbe reads a bounded index query. Packet scans have a separate
+// streaming runner, which is deliberately absent for retained remote windows.
+type timelineProbe func(context.Context, ...string) ([]byte, error)
+type timelinePacketProbe func(context.Context, io.Writer) error
+
+func localTimelineProbe(ffprobe string, input *assets.PlaybackInput) timelineProbe {
+	if ffprobe == "" || input == nil {
+		return nil
+	}
+	return func(ctx context.Context, args ...string) ([]byte, error) {
+		return runProbe(ctx, ffprobe, input, args...)
+	}
+}
+
 // probeCopyTimeline asks the container index where the keyframes are. Each read
 // interval seeks to one grid line and reads a single video packet, so the cost is
 // one seek per six seconds of title and does not depend on the file's size.
-func probeCopyTimeline(ctx context.Context, ffprobe string, input *assets.PlaybackInput, duration float64) (*copyTimeline, error) {
-	if ffprobe == "" || input == nil || !(duration > 0) {
+func probeCopyTimeline(ctx context.Context, probe timelineProbe, packets timelinePacketProbe, duration float64) (*copyTimeline, error) {
+	if probe == nil || !(duration > 0) {
 		return nil, errCopyTimeline
 	}
 	lines := int(math.Ceil(duration/HLSSegmentSeconds)) - 1
@@ -152,7 +166,7 @@ func probeCopyTimeline(ctx context.Context, ffprobe string, input *assets.Playba
 	}
 	ctx, cancel := context.WithTimeout(ctx, copyTimelineTimeout)
 	defer cancel()
-	start, err := probeFormatStart(ctx, ffprobe, input)
+	start, err := probeFormatStart(ctx, probe)
 	if err != nil {
 		return nil, err
 	}
@@ -167,16 +181,22 @@ func probeCopyTimeline(ctx context.Context, ffprobe string, input *assets.Playba
 		for k := from; k < to; k++ {
 			intervals = append(intervals, strconv.FormatFloat(float64(k+1)*HLSSegmentSeconds+start, 'f', 6, 64)+"%+#1")
 		}
-		out, runErr := runProbe(ctx, ffprobe, input, "-select_streams", "v:0", "-show_entries", "packet=pts_time,flags", "-of", "csv=p=0", "-read_intervals", strings.Join(intervals, ","))
+		out, runErr := probe(ctx, "-select_streams", "v:0", "-show_entries", "packet=pts_time,flags", "-of", "csv=p=0", "-read_intervals", strings.Join(intervals, ","))
 		if runErr != nil {
 			if ctx.Err() == nil {
-				return probePacketTimeline(ctx, ffprobe, input, start, duration)
+				if packets == nil {
+					return nil, errCopyTimeline
+				}
+				return probePacketTimeline(ctx, packets, start, duration)
 			}
 			return nil, runErr
 		}
 		rows := strings.Split(strings.TrimSpace(string(out)), "\n")
 		if len(rows) != to-from {
-			return probePacketTimeline(ctx, ffprobe, input, start, duration)
+			if packets == nil {
+				return nil, errCopyTimeline
+			}
+			return probePacketTimeline(ctx, packets, start, duration)
 		}
 		for i, row := range rows {
 			stamp, flags, _ := strings.Cut(strings.TrimSpace(row), ",")
@@ -189,13 +209,16 @@ func probeCopyTimeline(ctx context.Context, ffprobe string, input *assets.Playba
 	}
 	timeline, err := buildCopyTimeline(duration, keyframes, ok)
 	if err != nil && ctx.Err() == nil {
-		return probePacketTimeline(ctx, ffprobe, input, start, duration)
+		if packets == nil {
+			return nil, errCopyTimeline
+		}
+		return probePacketTimeline(ctx, packets, start, duration)
 	}
 	return timeline, err
 }
 
-func probeFormatStart(ctx context.Context, ffprobe string, input *assets.PlaybackInput) (float64, error) {
-	out, err := runProbe(ctx, ffprobe, input, "-show_entries", "format=start_time", "-of", "csv=p=0")
+func probeFormatStart(ctx context.Context, probe timelineProbe) (float64, error) {
+	out, err := probe(ctx, "-show_entries", "format=start_time", "-of", "csv=p=0")
 	if err != nil {
 		return 0, err
 	}

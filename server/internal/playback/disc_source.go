@@ -445,6 +445,9 @@ func discSourceFacts(asset string, f assets.Facts) DeliverySource {
 	return out
 }
 func loadLocalSessionDeliverySource(ctx context.Context, tx *sql.Tx, session, asset string) (DeliverySource, error) {
+	if source, ok, err := remoteSessionSourceTx(ctx, tx, session, asset); err != nil || ok {
+		return source, err
+	}
 	if _, _, private, err := privateDiscBindingTx(ctx, tx, session); err != nil {
 		return DeliverySource{}, err
 	} else if private {

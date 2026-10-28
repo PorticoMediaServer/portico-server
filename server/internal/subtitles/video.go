@@ -37,6 +37,9 @@ type SourceMediaInfo struct {
 	NetworkPolicyRevision                                         int64
 	DurationUS, OriginUS                                          int64
 	Width, Height                                                 int
+	// Probe is the confined ffprobe JSON (format and streams) of the same
+	// retained version, for planning a remote source like a local one.
+	Probe []byte
 }
 type SourceInspector interface {
 	InspectSubtitleSource(context.Context, string, string) (SourceMediaInfo, error)

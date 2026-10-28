@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"strconv"
+	"strings"
 
 	"portico.local/server/internal/mediaexec"
 )
@@ -29,12 +30,66 @@ const maxLibraryFiles = 512
 // ".m3u8" lets FFmpeg's HLS demuxer (7.1+) accept it by extension.
 var tokenPath = regexp.MustCompile(`^/input/[a-f0-9]{64}(\.m3u8)?$`)
 
+const ordinaryProbeFormats = "mov,matroska,mp3,flac,ogg,wav,aac,mpegts,avi"
+
 // ProbeCommand builds a bridge-fed ffprobe through the one media executor:
 // sandboxed where the platform can, the baseline elsewhere (mediaexec). Input is
 // always a private bridge.
 func ProbeCommand(executable, input string, reservation *EndpointReservation, libraries ...string) (*exec.Cmd, error) {
-	return probeFormatsCommand(executable, input, reservation, "mov,matroska,mp3,flac,ogg,wav,aac,mpegts,avi", libraries...)
+	return probeFormatsCommand(executable, input, reservation, ordinaryProbeFormats, libraries...)
 }
+
+// ProbeQueryCommand builds a confined bridge probe with a closed timeline query.
+// Query values cannot introduce options, another input, or an output file.
+func ProbeQueryCommand(executable, input string, reservation *EndpointReservation, query []string, libraries ...string) (*exec.Cmd, error) {
+	if len(query) == 0 || len(query)%2 != 0 {
+		return nil, ErrInvalidConfiguration
+	}
+	seen := map[string]bool{}
+	entries := ""
+	for i := 0; i < len(query); i += 2 {
+		option, value := query[i], query[i+1]
+		if seen[option] {
+			return nil, ErrInvalidConfiguration
+		}
+		seen[option] = true
+		valid := false
+		switch option {
+		case "-select_streams":
+			valid = value == "v:0"
+		case "-show_entries":
+			entries = value
+			valid = value == "format=start_time" || value == "packet=pts_time,flags"
+		case "-of":
+			valid = value == "csv=p=0"
+		case "-read_intervals":
+			intervals := strings.Split(value, ",")
+			valid = len(intervals) <= 1000
+			for _, interval := range intervals {
+				stamp, suffix, ok := strings.Cut(interval, "%")
+				if !ok || suffix != "+#1" || !probeIntervalStamp.MatchString(stamp) {
+					valid = false
+					break
+				}
+			}
+		}
+		if !valid {
+			return nil, ErrInvalidConfiguration
+		}
+	}
+	if !seen["-show_entries"] || !seen["-of"] {
+		return nil, ErrInvalidConfiguration
+	}
+	if entries == "format=start_time" && len(seen) != 2 || entries == "packet=pts_time,flags" && (len(seen) != 4 || !seen["-read_intervals"] || !seen["-select_streams"]) {
+		return nil, ErrInvalidConfiguration
+	}
+	args := []string{"-v", "error", "-threads", "1", "-protocol_whitelist", "http,tcp", "-format_whitelist", ordinaryProbeFormats, "-probesize", "8388608", "-analyzeduration", "10000000"}
+	args = append(args, query...)
+	args = append(args, input)
+	return confinedProbeCommand(executable, input, reservation, args, libraries...)
+}
+
+var probeIntervalStamp = regexp.MustCompile(`^-?[0-9]{1,12}(\.[0-9]{1,6})?$`)
 
 // probeFormatsCommand accepts only package-owned format lists; public callers retain
 // the ordinary probe list. Prepared music uses its separately closed suite.

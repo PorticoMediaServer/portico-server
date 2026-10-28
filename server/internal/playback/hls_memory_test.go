@@ -402,6 +402,9 @@ func (m *memoryWindowInput) OpenPlaybackWindow(context.Context, string) (subtitl
 	return m, nil
 }
 func (m *memoryWindowInput) Close() error { return nil }
+func (m *memoryWindowInput) Probe(context.Context, []string) ([]byte, error) {
+	return nil, errors.New("unexpected copy probe in a conversion fixture")
+}
 func (m *memoryWindowInput) Run(ctx context.Context, dir string, _ func(string) (subtitles.WindowCommand, error)) error {
 	m.h.mu.Lock()
 	from := m.h.windows[m.id].start

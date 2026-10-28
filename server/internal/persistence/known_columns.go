@@ -5415,6 +5415,7 @@ remote_native_listings.updated_at
 remote_object_refs.path
 remote_object_refs.revision
 remote_playback.descriptor_digest
+remote_playback.facts_json
 remote_playback.network_revision
 remote_playback.session_id
 remote_scan_cursors.cursor

@@ -89,7 +89,8 @@ func TestPlaybackPreparationAuthorityStillRechecksBeforeAccepting(t *testing.T) 
 			t.Fatal("inspection did not follow authorized selection", authorizations, target, source)
 		}
 		inspections++
-		return subtitles.SourceMediaInfo{Container: "mov", VideoCodec: "h264", AudioCodec: "aac", DurationUS: 2_000_000, Evidence: "observed:fixture"}, nil
+		return subtitles.SourceMediaInfo{Container: "mov", VideoCodec: "h264", AudioCodec: "aac", DurationUS: 2_000_000, Evidence: "observed:fixture",
+			Probe: []byte(`{"format":{"format_name":"mov,mp4,m4a,3gp,3g2,mj2","duration":"2.000000","start_time":"0.000000"},"streams":[{"index":0,"codec_type":"video","codec_name":"h264","width":160,"height":90},{"index":1,"codec_type":"audio","codec_name":"aac","channels":2}]}`)}, nil
 	}}})
 	_, err = s.CreateV1(context.Background(), identity.Principal{}, item, "revoked-during-preparation", V1Choice{QualityID: "original"}, nil)
 	if !errors.Is(err, identity.ErrUnauthorized) || authorizations != 2 || inspections != 1 {

@@ -439,7 +439,7 @@ func (h *HLS) produce(ctx context.Context, id string, from, generation int, owne
 	// and the stored plan is changed to say so.
 	var timeline *copyTimeline
 	if grid && delivery != nil && delivery.VideoAction == "copy" {
-		timeline, e = h.copyTimelineFor(ctx, id, aid, input, duration)
+		timeline, e = h.copyTimelineFor(ctx, id, aid, input, remoteInput, duration)
 		if e != nil {
 			if delivery, e = h.downgradeCopyPlan(ctx, id, delivery); e != nil {
 				h.failedWith(ctx, id, FailureCopyTimeline, "")

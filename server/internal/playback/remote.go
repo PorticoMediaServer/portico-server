@@ -13,7 +13,6 @@ import (
 	"portico.local/server/internal/requestinput"
 	"portico.local/server/internal/storage"
 	"portico.local/server/internal/subtitles"
-	"strings"
 	"sync"
 	"time"
 )
@@ -33,7 +32,7 @@ type remotePreparation struct {
 	subtitleEvidence          string
 	assetID, descriptorDigest string
 	networkRevision           int64
-	facts                     assets.Facts
+	facts                     remoteFacts
 }
 
 func NewRemote(db *sql.DB, io *storage.Client, probe assets.Probe) *Remote {
@@ -82,7 +81,7 @@ func (r *Remote) SetRootsAuthorized(ctx context.Context, library string, roots [
 	if _, e = tx.Exec(`INSERT INTO library_network_policy VALUES(?,1,?) ON CONFLICT(library_id) DO UPDATE SET revision=revision+1,approvals_json=excluded.approvals_json`, library, string(raw)); e != nil {
 		return nil, e
 	}
-	if _, e = tx.Exec(`UPDATE playback_sessions SET state='stopped' WHERE mode='remote' AND item_id IN (SELECT e.id FROM catalog_entities e JOIN catalog_libraries cl ON cl.id=e.library_id WHERE cl.library_id=?)`, library); e != nil {
+	if _, e = tx.Exec(`UPDATE playback_sessions SET state='stopped' WHERE (mode='remote' OR id IN(SELECT session_id FROM remote_playback)) AND item_id IN (SELECT e.id FROM catalog_entities e JOIN catalog_libraries cl ON cl.id=e.library_id WHERE cl.library_id=?)`, library); e != nil {
 		return nil, e
 	}
 	return approvals, gated.Commit()
@@ -138,11 +137,17 @@ func (r *Remote) prepare(ctx context.Context, item, selectedAsset string) (*remo
 		if e != nil {
 			return nil, e
 		}
-		if !strings.Contains(info.Container, "mov") || info.VideoCodec != "h264" || (info.AudioCodec != "aac" && info.AudioCodec != "mp3" && info.AudioCodec != "") {
+		// Any media the confined probe reads is planned: the server relays,
+		// remuxes or converts it (JUSTIN #7), so no codec is refused here.
+		measured, e := assets.DecodeProbe(info.Probe)
+		if e != nil {
 			return nil, remotemedia.ErrUnsupported
 		}
-		revision := info.NetworkPolicyRevision
-		return &remotePreparation{assetID: asset, descriptorDigest: info.DescriptorDigest, networkRevision: revision, subtitleEvidence: info.Evidence, facts: assets.Facts{Container: "strm", VideoCodec: info.VideoCodec, AudioCodec: info.AudioCodec, Width: info.Width, Height: info.Height, Duration: float64(info.DurationUS) / 1e6, OriginUS: info.OriginUS, TimingKnown: true}}, nil
+		facts, e := measuredRemoteFacts(measured)
+		if e != nil {
+			return nil, remotemedia.ErrUnsupported
+		}
+		return &remotePreparation{assetID: asset, descriptorDigest: info.DescriptorDigest, networkRevision: info.NetworkPolicyRevision, subtitleEvidence: info.Evidence, facts: facts}, nil
 	}
 	select {
 	case r.probes <- struct{}{}:
@@ -162,23 +167,32 @@ func (r *Remote) prepare(ctx context.Context, item, selectedAsset string) (*remo
 		return nil, e
 	}
 	defer close()
-	facts, e := r.probe.InspectRemoteMP4(ctx, bridge)
+	// Without the subtitle runtime's retained-version reader only an MP4 can
+	// be bridged; its streams are planned like any other source's.
+	measured, e := r.probe.InspectRemoteMP4(ctx, bridge)
 	if e != nil {
 		return nil, remotemedia.ErrUnsupported
 	}
-	if facts.VideoCodec != "h264" || (facts.AudioCodec != "aac" && facts.AudioCodec != "mp3" && facts.AudioCodec != "") {
+	measured.Container = "mov"
+	facts, e := measuredRemoteFacts(measured)
+	if e != nil {
 		return nil, remotemedia.ErrUnsupported
 	}
 	return &remotePreparation{assetID: asset, descriptorDigest: digest, networkRevision: revision, facts: facts}, nil
 }
 func (r *Remote) open(ctx context.Context, grant, method, rangeHeader string) (*http.Response, func(), bool, error) {
-	var session, asset, library, mode, digest string
+	var session, asset, library, mode, container, digest, raw string
 	var revision int64
-	e := r.db.QueryRow(`SELECT ps.id,ps.asset_id,cl.library_id,ps.mode FROM playback_sessions ps JOIN catalog_entities i ON i.id=ps.item_id JOIN catalog_libraries cl ON cl.id=i.library_id WHERE ps.grant_hash=?`, identity.Digest(grant)).Scan(&session, &asset, &library, &mode)
+	e := r.db.QueryRow(`SELECT ps.id,ps.asset_id,cl.library_id,ps.mode,a.container FROM playback_sessions ps JOIN catalog_entities i ON i.id=ps.item_id JOIN catalog_libraries cl ON cl.id=i.library_id JOIN catalog_assets a ON a.token=ps.asset_id WHERE ps.grant_hash=?`, identity.Digest(grant)).Scan(&session, &asset, &library, &mode, &container)
 	if e != nil {
 		return nil, nil, false, e
 	}
 	if mode != "remote" {
+		if container == "strm" {
+			// A remuxed or converted STRM is only ever served as HLS. Its
+			// grant never reaches the descriptor, which holds the URL.
+			return nil, nil, true, ErrIncompatible
+		}
 		return nil, nil, false, nil
 	}
 	select {
@@ -192,9 +206,15 @@ func (r *Remote) open(ctx context.Context, grant, method, rangeHeader string) (*
 			<-r.streams
 		}
 	}()
-	if e = r.db.QueryRow(`SELECT descriptor_digest,network_revision FROM remote_playback WHERE session_id=?`, session).Scan(&digest, &revision); e != nil {
+	if e = r.db.QueryRow(`SELECT descriptor_digest,network_revision,facts_json FROM remote_playback WHERE session_id=?`, session).Scan(&digest, &revision, &raw); e != nil {
 		return nil, nil, true, e
 	}
+	facts, e := decodeRemoteFacts(raw)
+	if e != nil {
+		return nil, nil, true, e
+	}
+	video, _, _, _, _ := facts.summary()
+	contentType := assets.OriginalContentType(facts.Container, video)
 	if r.SubtitleInputs != nil {
 		var item, expected string
 		if e = r.db.QueryRowContext(ctx, `SELECT pid(e.public_id),p.evidence FROM playback_sessions ps JOIN catalog_entities e ON e.id=ps.item_id JOIN subtitle_remote_sessions p ON p.session_id=ps.id WHERE ps.id=?`, session).Scan(&item, &expected); e != nil {
@@ -213,6 +233,7 @@ func (r *Remote) open(ctx context.Context, grant, method, rangeHeader string) (*
 			input.Close()
 			return nil, nil, true, e
 		}
+		response.Header.Set("Content-Type", contentType)
 		retained = true
 		var once sync.Once
 		return response, func() { once.Do(func() { response.Body.Close(); input.Close(); <-r.streams }) }, true, nil
@@ -230,6 +251,8 @@ func (r *Remote) open(ctx context.Context, grant, method, rangeHeader string) (*
 		client.Close()
 		return nil, nil, true, e
 	}
+	// The relay names the measured media itself, never the origin's claim.
+	response.Header.Set("Content-Type", contentType)
 	retained = true
 	var once sync.Once
 	return response, func() { once.Do(func() { response.Body.Close(); client.Close(); <-r.streams }) }, true, nil
@@ -247,6 +270,16 @@ func (s *Service) ApproveNetworkRoots(ctx context.Context, library string, roots
 // grant opens too (NEW-33); every other media route passes false.
 func (s *Service) OpenRemote(ctx context.Context, grant, method, rangeHeader string, decode bool) (*http.Response, func(), bool, error) {
 	if s.remote == nil {
+		var strm bool
+		e := dbwork.QueryRow(ctx, s.db, `SELECT a.container='strm' FROM playback_sessions ps JOIN catalog_assets a ON a.token=ps.asset_id WHERE ps.grant_hash=?`, identity.Digest(grant)).Scan(&strm)
+		if e != nil && !errors.Is(e, sql.ErrNoRows) {
+			return nil, nil, false, e
+		}
+		if strm {
+			// Without the relay a STRM grant is served nowhere: never as the
+			// descriptor file, which holds the URL.
+			return nil, nil, true, ErrIncompatible
+		}
 		return nil, nil, false, nil
 	}
 	if _, _, _, e := s.resolveGrant(ctx, grant, decode); e != nil {

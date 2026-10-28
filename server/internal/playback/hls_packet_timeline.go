@@ -84,25 +84,34 @@ func (w *packetTimelineWriter) timeline() (*copyTimeline, error) {
 	}
 	return buildCopyTimeline(w.duration, w.times, w.valid)
 }
-func probePacketTimeline(ctx context.Context, ffprobe string, input *assets.PlaybackInput, start, duration float64) (*copyTimeline, error) {
-	ctx, releaseInput := input.BorrowContext(ctx)
-	defer releaseInput()
-	if !hlsDurationSupported(duration) {
+func probePacketTimeline(ctx context.Context, probe timelinePacketProbe, start, duration float64) (*copyTimeline, error) {
+	if probe == nil || !hlsDurationSupported(duration) {
 		return nil, errCopyTimeline
-	}
-	if input.File != nil {
-		_, _ = input.File.Seek(0, io.SeekStart)
 	}
 	writer := newPacketTimelineWriter(start, duration)
-	args := []string{"-v", "error", "-protocol_whitelist", "file,pipe", "-fflags", "+genpts", "-select_streams", "v:0", "-show_entries", "packet=pts_time,flags", "-of", "csv=p=0", input.Argument}
-	cmd, err := mediaexec.CommandContext(ctx, mediaexec.Job{Executable: ffprobe, Args: args, Files: input.ExtraFiles(), ReadPaths: input.ReadPaths()})
-	if err != nil {
+	if err := probe(ctx, writer); err != nil {
 		return nil, err
 	}
-	cmd.WaitDelay = time.Second
-	cmd.Stdout = writer
-	if err := cmd.Run(); err != nil {
-		return nil, errCopyTimeline
-	}
 	return writer.timeline()
+}
+
+func localPacketTimelineProbe(ffprobe string, input *assets.PlaybackInput) timelinePacketProbe {
+	return func(ctx context.Context, writer io.Writer) error {
+		ctx, releaseInput := input.BorrowContext(ctx)
+		defer releaseInput()
+		if input.File != nil {
+			_, _ = input.File.Seek(0, io.SeekStart)
+		}
+		args := []string{"-v", "error", "-protocol_whitelist", "file,pipe", "-fflags", "+genpts", "-select_streams", "v:0", "-show_entries", "packet=pts_time,flags", "-of", "csv=p=0", input.Argument}
+		cmd, err := mediaexec.CommandContext(ctx, mediaexec.Job{Executable: ffprobe, Args: args, Files: input.ExtraFiles(), ReadPaths: input.ReadPaths()})
+		if err != nil {
+			return err
+		}
+		cmd.WaitDelay = time.Second
+		cmd.Stdout = writer
+		if err := cmd.Run(); err != nil {
+			return errCopyTimeline
+		}
+		return nil
+	}
 }
