@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http/httptest"
+	"net/url"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -192,7 +193,9 @@ func buildGoldenFixture(t *testing.T) (*goldenFixture, func(method, path, body, 
 	if err != nil {
 		t.Fatal(err)
 	}
-	handler := New(Dependencies{DB: db, Identity: ident, Catalog: cat, Hosted: host, Playback: playback.New(db)})
+	d := Dependencies{DB: db, Identity: ident, Catalog: cat, Hosted: host, Playback: playback.New(db)}
+	startFacets := composeHTTPFacetFixture(t, &d)
+	handler := New(d)
 
 	all := fmt.Sprintf(`["%s","%s","%s","%s"]`, libraries.Movies, libraries.Shows, libraries.Music, libraries.Books)
 	restriction := fixture.Restriction(libraries)
@@ -251,14 +254,24 @@ func buildGoldenFixture(t *testing.T) (*goldenFixture, func(method, path, body, 
 		}
 	}
 	settleCompactCatalogue(t, db)
+	startFacets()
 	call := func(method, path, body, viewer string) (int, string) {
-		r := httptest.NewRequest(method, path, bytes.NewBufferString(body))
-		r.Header.Set("Authorization", "Bearer "+tokens[viewer])
-		if body != "" {
-			r.Header.Set("Content-Type", "application/json")
+		rawRequest := func(ctx context.Context, method, path, body string) *httptest.ResponseRecorder {
+			r := httptest.NewRequest(method, path, bytes.NewBufferString(body)).WithContext(ctx)
+			r.Header.Set("Authorization", "Bearer "+tokens[viewer])
+			if body != "" {
+				r.Header.Set("Content-Type", "application/json")
+			}
+			w := httptest.NewRecorder()
+			handler.ServeHTTP(w, r)
+			return w
 		}
-		w := httptest.NewRecorder()
-		handler.ServeHTTP(w, r)
+		var w *httptest.ResponseRecorder
+		if isHTTPFixtureFacetPath(method, path) {
+			w = readyHTTPFacetFixture(t, path, rawRequest)
+		} else {
+			w = rawRequest(context.Background(), method, path, body)
+		}
 		return w.Code, w.Body.String()
 	}
 	rows, err := db.Query(`SELECT pid(public_id),source_key FROM catalog_identities UNION ALL SELECT token,'asset-'||replace(replace(path,'/fixture/',''),'.mp4','') FROM catalog_assets`)
@@ -422,6 +435,25 @@ func TestReadPathGoldenEquivalence(t *testing.T) {
 			}
 		}
 		cases[index].Status = status
+		if status == 200 && strings.HasPrefix(cases[index].Name, "facets:") {
+			var envelope struct {
+				Kind string `json:"kind"`
+			}
+			if err := json.Unmarshal([]byte(body), &envelope); err != nil {
+				t.Fatal(err)
+			}
+			if envelope.Kind == "simple-keyset" {
+				u, err := url.ParseRequestURI(cases[index].Path)
+				if err != nil {
+					t.Fatal(err)
+				}
+				projected, err := projectGoldenSimpleFacet([]byte(body), u.Query().Get("field"))
+				if err != nil {
+					t.Fatalf("%s: %v", cases[index].Name, err)
+				}
+				body = string(projected)
+			}
+		}
 		cases[index].Response = canonical(body)
 	}
 	sort.SliceStable(cases, func(i, j int) bool { return cases[i].Name < cases[j].Name })

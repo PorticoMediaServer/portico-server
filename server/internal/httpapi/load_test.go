@@ -158,7 +158,9 @@ func newLoadFixture(t *testing.T, tier performanceTier) *loadFixture {
 	player := playback.New(db)
 	scanner := ingestion.New(db, cat, assets.Probe{})
 	watchdog := dbwork.NewWatchdog(db)
-	handler := New(Dependencies{DB: db, Identity: ident, Catalog: cat, Ingestion: scanner, Playback: player, Hosted: host, Watchdog: watchdog})
+	d := Dependencies{DB: db, Identity: ident, Catalog: cat, Ingestion: scanner, Playback: player, Hosted: host, Watchdog: watchdog}
+	startFacets := composeHTTPFacetFixture(t, &d)
+	handler := New(d)
 
 	secret, err := os.ReadFile(storagepaths.Path(root, "setup-token"))
 	if err != nil {
@@ -308,6 +310,30 @@ func newLoadFixture(t *testing.T, tier performanceTier) *loadFixture {
 	}
 	if !starring {
 		t.Fatal("fixture is missing provider-style actor/starring recommendations")
+	}
+	catTest.Drain()
+	startFacets()
+	// Tiny statement probes expect a settled facet answer. Prepare only their
+	// exact requests outside instrumentation; other fixture users (including the
+	// cold-principal-cache test) retain their original first-request behavior.
+	if tier.shape == fixture.Tiny() && (tier.name == "cost" || tier.name == "shape") && len(f.viewers) != 0 {
+		request := func(ctx context.Context, method, path, body string) *httptest.ResponseRecorder {
+			r := httptest.NewRequest(method, path, strings.NewReader(body)).WithContext(ctx)
+			r.Header.Set("Authorization", "Bearer "+f.viewers[0].AccessToken)
+			w := httptest.NewRecorder()
+			handler.ServeHTTP(w, r)
+			return w
+		}
+		for _, field := range []string{"contentRating", "genre"} {
+			// The cold-scope and ready-BASE paths have distinct preparation
+			// keys. Settle both through the same exact HTTP request.
+			for range 2 {
+				w := readyHTTPFacetFixture(t, "/v1/libraries/"+f.library+"/facets?field="+field, request)
+				if w.Code != http.StatusOK {
+					t.Fatalf("warm fixture facet %s: %d %s", field, w.Code, w.Body.String())
+				}
+			}
+		}
 	}
 	return f
 }
