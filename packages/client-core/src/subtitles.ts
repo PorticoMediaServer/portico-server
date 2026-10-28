@@ -163,6 +163,16 @@ export function subtitleReason(reason?:string,translate:(id:MessageId)=>string=i
 export type SubtitleTarget=Readonly<{itemId:string;sessionId:string;generation:number;sourceId?:never}>|Readonly<{itemId:string;sourceId:string;sessionId?:never;generation?:never}>;
 /** Optional caller lifetime for a file upload or replacement, including time in the queue. */
 export type SubtitleSaveContext=Readonly<{signal?:AbortSignal;isCurrent?:()=>boolean}>;
+/** A file for a multipart subtitle upload (IM04): a browser Blob/File, or a React Native file
+ * reference the platform's networking streams from disk, so its bytes never cross the JS bridge. */
+export type SubtitleUploadFile=Blob|Readonly<{uri:string;name:string;type:string}>;
+/** The upload port: one multipart write under the captured session, never replayed. */
+export type SubtitleUploadApi=LibraryContentApi&{requestSubtitleUpload?<T>(path:string,method:'POST'|'PUT',body:FormData,signal?:AbortSignal):Promise<T>};
+function appendUploadFile(body:FormData,name:string,file:SubtitleUploadFile,fileName:string){
+ if(typeof Blob!=='undefined'&&file instanceof Blob)body.append(name,file,fileName);
+ // React Native's FormData sends a {uri,name,type} part as a file read from disk.
+ else body.append(name,file as unknown as Blob);
+}
 function saveCurrent(context?:SubtitleSaveContext):boolean{try{return !context?.signal?.aborted&&context?.isCurrent?.()!==false;}catch{return false;}}
 function saveRetired():DOMException{return new DOMException('Subtitle action retired.','AbortError');}
 function checkSave(context?:SubtitleSaveContext):void{if(!saveCurrent(context))throw saveRetired();}
@@ -182,8 +192,8 @@ export class SubtitleService {
  private listeners=new Set<()=>void>();private active=false;private life=0;private interval?:ReturnType<typeof setInterval>;
  private refreshing?:Promise<void>;private refreshRetry?:ReturnType<typeof setTimeout>;
  private controllers=new Set<AbortController>();private queue:Promise<void>=Promise.resolve();private queued=0;private retryOperation?:Readonly<{task:()=>Promise<void>;context?:SubtitleSaveContext}>;
- private api:LibraryContentApi; target:SubtitleTarget; private operationId:()=>string; private transport?:SubtitleTransport;
- constructor(api:LibraryContentApi,target:SubtitleTarget,operationId:()=>string,transport?:SubtitleTransport){this.api=api;this.target=target;this.operationId=operationId;this.transport=transport;if(!id(target.itemId)||(target.sourceId!==undefined?!id(target.sourceId):!id(target.sessionId)||!integer(target.generation)))throw new Error('Invalid subtitle target.');}
+ private api:SubtitleUploadApi; target:SubtitleTarget; private operationId:()=>string; private transport?:SubtitleTransport;
+ constructor(api:SubtitleUploadApi,target:SubtitleTarget,operationId:()=>string,transport?:SubtitleTransport){this.api=api;this.target=target;this.operationId=operationId;this.transport=transport;if(!id(target.itemId)||(target.sourceId!==undefined?!id(target.sourceId):!id(target.sessionId)||!integer(target.generation)))throw new Error('Invalid subtitle target.');}
  getSnapshot=()=>this.state;subscribe=(fn:()=>void)=>{this.listeners.add(fn);return()=>{this.listeners.delete(fn);};};
  private publish(p:Partial<SubtitleSnapshot>){this.state=Object.freeze({...this.state,...p});this.listeners.forEach(f=>f());}
  private path(suffix=''){return encodedRoutePath("get_v1_items_itemId_subtitles", {"itemId": this.target.itemId}) + (suffix);}
@@ -275,6 +285,29 @@ export class SubtitleService {
  save(input:{content?:string;data?:string;companion?:string;default?:boolean;forced?:boolean;format:SubtitleFormat;language:string;title:string;rights:string;scope:'personal'|'shared';offsetUs:string},resource?:SubtitleResource,context?:SubtitleSaveContext){
   const payload={...input,operationId:this.operationId(),sourceId:resource?.sourceId??this.sourceId,expectedRevision:resource?.revision??0,...(resource?{resourceId:resource.id}: {})};
   return this.enqueue(async()=>{this.receipt(await this.request(this.path(resource?'/'+resource.id:''),resource?'PUT':'POST',payload,context));},context);
+ }
+ /** Whether this service can send a file as multipart (`upload`) rather than inside JSON. */
+ get canUpload():boolean{return typeof this.api.requestSubtitleUpload==='function';}
+ /** Saves a subtitle file as multipart/form-data (IM04): the bounded JSON metadata, then the raw
+  * file and a VobSub pair's companion. Same operation, revision and retry rules as `save`. */
+ upload(input:{file:SubtitleUploadFile;fileName:string;companion?:SubtitleUploadFile;companionName?:string;default?:boolean;forced?:boolean;format:SubtitleFormat;language:string;title:string;rights:string;scope:'personal'|'shared';offsetUs:string},resource?:SubtitleResource,context?:SubtitleSaveContext){
+  const send=this.api.requestSubtitleUpload;
+  if(typeof send!=='function')return Promise.reject(new Error('Subtitle upload is unavailable.'));
+  const {file,fileName,companion,companionName,...fields}=input;
+  if(companion!==undefined&&input.format!=='idx'&&input.format!=='vobsub')return Promise.reject(new Error('Only a VobSub pair has a companion file.'));
+  const metadata={...fields,operationId:this.operationId(),sourceId:resource?.sourceId??this.sourceId,expectedRevision:resource?.revision??0,...(resource?{resourceId:resource.id}:{})};
+  const path=this.path(resource?'/'+resource.id:''),method=resource?'PUT' as const:'POST' as const;
+  return this.enqueue(async()=>{
+   const body=new FormData();body.append('metadata',JSON.stringify(metadata));
+   appendUploadFile(body,'file',file,fileName);if(companion!==undefined)appendUploadFile(body,'companion',companion,companionName??'subtitle.sub');
+   this.receipt(await this.uploadRequest(path,method,body,send,context));
+  },context);
+ }
+ private async uploadRequest(path:string,method:'POST'|'PUT',body:FormData,send:NonNullable<SubtitleUploadApi['requestSubtitleUpload']>,context?:SubtitleSaveContext):Promise<unknown>{
+  checkSave(context);
+  const c=new AbortController(),life=this.life;this.controllers.add(c);const timer=setTimeout(()=>c.abort(),110000);
+  const cancel=()=>c.abort();context?.signal?.addEventListener('abort',cancel,{once:true});
+  try{checkSave(context);const result=await send.call(this.api,path,method,body,c.signal);if(!this.active||life!==this.life)throw new Error('Subtitle scope retired.');checkSave(context);return result;}finally{context?.signal?.removeEventListener('abort',cancel);clearTimeout(timer);this.controllers.delete(c);}
  }
  remove(resource:SubtitleResource){const body={operationId:this.operationId(),expectedRevision:resource.revision};return this.enqueue(async()=>{this.receipt(await this.request(this.path('/'+resource.id),'DELETE',body));});}
  search(language='',query='',page=1){return this.enqueue(async()=>{const raw=await this.request(this.path('/search'),'POST',{sourceId:this.sourceId,language,query,page});if(!record(raw)||raw.version!==1||!integer(raw.page))invalid();const candidates=array(raw.candidates,40).map(c=>{if(!record(c)||!id(c.id)||!text(c.language,64)||!text(c.title,160)||!text(c.attribution,512))invalid();return Object.freeze({...c}) as SubtitleCandidate;});this.publish({candidates:Object.freeze(candidates)});});}

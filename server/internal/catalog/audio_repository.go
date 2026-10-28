@@ -48,6 +48,9 @@ type Album struct {
 	// Role is the artist-relative release role for this artist page. Absent from
 	// older servers.
 	Role AlbumRole `json:"role,omitempty"`
+	// HomeActions are the release's aggregate selection offers on an artist
+	// page (get_artists_id_albums); absent elsewhere.
+	HomeActions *HomeActions `json:"homeActions,omitempty"`
 }
 type Book struct {
 	ID                  string      `json:"id"`

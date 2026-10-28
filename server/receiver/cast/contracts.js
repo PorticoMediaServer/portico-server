@@ -27549,6 +27549,104 @@ var PorticoCastContracts = (function(exports) {
 						"properties": {
 							"albumArtist": { "type": "string" },
 							"albumArtistId": { "type": "string" },
+							"homeActions": {
+								"properties": {
+									"collection": { "type": "boolean" },
+									"delete": { "type": "boolean" },
+									"details": { "type": "boolean" },
+									"download": { "type": "boolean" },
+									"editMetadata": { "type": "boolean" },
+									"favorite": { "type": "boolean" },
+									"myList": { "type": "boolean" },
+									"notInterested": { "type": "boolean" },
+									"play": { "type": "boolean" },
+									"played": { "type": "boolean" },
+									"playlist": { "type": "boolean" },
+									"queue": { "type": "boolean" },
+									"rating": { "type": "boolean" },
+									"refreshMetadata": { "type": "boolean" },
+									"removeFromContinue": { "type": "boolean" },
+									"selection": {
+										"properties": {
+											"collection": { "type": "boolean" },
+											"delete": { "type": "boolean" },
+											"download": { "type": "boolean" },
+											"edit": { "type": "boolean" },
+											"favorite": { "type": "boolean" },
+											"myList": { "type": "boolean" },
+											"play": { "type": "boolean" },
+											"playlist": { "type": "boolean" },
+											"queue": { "type": "boolean" },
+											"refresh": { "type": "boolean" },
+											"watched": { "type": "boolean" }
+										},
+										"required": [
+											"play",
+											"queue",
+											"playlist",
+											"collection",
+											"myList",
+											"favorite",
+											"watched",
+											"download",
+											"edit",
+											"refresh",
+											"delete"
+										],
+										"type": "object"
+									},
+									"state": {
+										"properties": {
+											"containerRevision": {
+												"maximum": 9007199254740991,
+												"minimum": -9007199254740991,
+												"type": "integer"
+											},
+											"favorite": { "type": "boolean" },
+											"personalRevision": {
+												"maximum": 9007199254740991,
+												"minimum": -9007199254740991,
+												"type": "integer"
+											},
+											"rating": {
+												"nullable": true,
+												"type": "number"
+											},
+											"watched": { "type": "boolean" },
+											"watchlisted": { "type": "boolean" }
+										},
+										"required": [
+											"watchlisted",
+											"favorite",
+											"watched",
+											"rating",
+											"personalRevision",
+											"containerRevision"
+										],
+										"type": "object"
+									},
+									"watched": { "type": "boolean" }
+								},
+								"required": [
+									"play",
+									"queue",
+									"playlist",
+									"collection",
+									"myList",
+									"favorite",
+									"watched",
+									"played",
+									"rating",
+									"editMetadata",
+									"refreshMetadata",
+									"delete",
+									"download",
+									"details",
+									"state",
+									"selection"
+								],
+								"type": "object"
+							},
 							"id": { "type": "string" },
 							"libraryId": { "type": "string" },
 							"posterUrl": { "type": "string" },

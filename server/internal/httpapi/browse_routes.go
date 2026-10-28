@@ -397,7 +397,13 @@ func (d Dependencies) attachWholeSelection(r *http.Request, p identity.Principal
 
 func (d Dependencies) projectBrowseDisplay(r *http.Request, p identity.Principal, viewer catalog.Viewer, cat *catalog.Service, rowID string, query *catalog.BrowseNode, out *catalog.BrowseResult) error {
 	if rowID == "" {
-		return nil
+		// A library page's containers carry their aggregate selection offers;
+		// the handler's post-read family fence covers them (MOB-030).
+		entries := make([]*catalog.ContentEntry, len(out.Entries))
+		for i := range out.Entries {
+			entries[i] = &out.Entries[i]
+		}
+		return d.projectContainerActions(cat.Context(), p, viewer, cat, r.PathValue("id"), entries)
 	}
 	if err := catalog.ValidateHomeRowDisplay(query, rowID); err != nil {
 		return err

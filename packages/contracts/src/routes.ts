@@ -15888,6 +15888,10 @@ export const routes = [
       "writer_capacity"
     ],
     "status": 200,
+    "requestContentTypes": [
+      "application/json",
+      "multipart/form-data"
+    ],
     "admission": "default"
   },
   {
@@ -17890,6 +17894,10 @@ export const routes = [
       "writer_capacity"
     ],
     "status": 200,
+    "requestContentTypes": [
+      "application/json",
+      "multipart/form-data"
+    ],
     "admission": "default"
   },
   {
