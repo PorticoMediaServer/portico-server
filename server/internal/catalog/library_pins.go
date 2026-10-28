@@ -9,6 +9,7 @@ import (
 
 	"portico.local/server/internal/dbwork"
 	"portico.local/server/internal/requestinput"
+	"portico.local/server/internal/usermutation"
 )
 
 // Pins carry order. The boolean pin remains the record of intent; this file owns
@@ -102,12 +103,24 @@ func (s *Service) SetPinOrder(a ResourceActor, expected int64, order []PinOrderE
 		return out, requestinput.New("pin order exceeds 200 entries")
 	}
 	owner := actorKey(a)
-	gated, e := dbwork.Begin(context.Background(), s.db, dbwork.ClassFrom(context.Background(), dbwork.ClassInteractive))
+	gated, e := dbwork.Begin(s.Context(), s.db, dbwork.ClassFrom(s.Context(), dbwork.ClassInteractive))
 	if e != nil {
 		return out, e
 	}
 	tx := gated.Tx()
 	defer gated.Rollback()
+	prior, e := usermutation.CheckContext(s.Context(), tx, time.Now().UnixMilli())
+	if e != nil {
+		return out, e
+	}
+	if prior != nil {
+		current, err := s.WithContext(gated.Context()).PinOrder(a)
+		out.Revision = current.Revision
+		for _, entry := range current.Order {
+			out.Order = append(out.Order, PinOrderEntry{Kind: entry.Kind, ID: entry.ID})
+		}
+		return out, err
+	}
 	if e = authorize(tx); e != nil {
 		return out, e
 	}
@@ -148,6 +161,9 @@ func (s *Service) SetPinOrder(a ResourceActor, expected int64, order []PinOrderE
 		return out, e
 	}
 	if e = hintPinsChanged(tx, owner, "pins"); e != nil {
+		return out, e
+	}
+	if e = usermutation.SaveContext(s.Context(), tx, usermutation.Result{Status: "applied", Revision: revision}, time.Now().UnixMilli()); e != nil {
 		return out, e
 	}
 	if e = gated.Commit(); e != nil {

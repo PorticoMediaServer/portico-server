@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"portico.local/server/internal/dbwork"
+	"portico.local/server/internal/usermutation"
 	"portico.local/server/internal/workpolicy"
 	"reflect"
 )
@@ -78,6 +79,21 @@ func (s *Service) saveMaintenanceRuntime(ctx context.Context, auth Authorize, ch
 	}
 	digest := digestOf(change)
 	err := s.transaction(ctx, auth, func(tx *sql.Tx) error {
+		r, err := usermutation.CheckContext(ctx, tx, s.milliseconds())
+		if err != nil {
+			return err
+		}
+		if r != nil {
+			settings, revision, err := ReadMaintenanceConfiguration(ctx, tx)
+			if err != nil {
+				return err
+			}
+			out = maintenanceDocument(Document[MaintenanceSettingsDocument]{Revision: revision, Digest: digestOf(settings), Settings: settings})
+			p, err := workpolicy.ReadTx(ctx, tx)
+			out.PausedUntil = p.PausedUntil
+			return err
+		}
+
 		saved, replayed, err := receipt[MaintenanceDocument](ctx, tx, maintenanceScope, change.OperationID, digest)
 		if err != nil {
 			return err
@@ -162,7 +178,7 @@ func (s *Service) saveMaintenanceRuntime(ctx context.Context, auth Authorize, ch
 			return readErr
 		}
 		out.PausedUntil = policy.PausedUntil
-		return saveReceipt(ctx, tx, maintenanceScope, change.OperationID, digest, out, s.milliseconds())
+		return saveSettingsReceipt(ctx, tx, maintenanceScope, change.OperationID, digest, out, maintenanceScope, out.Revision, s.milliseconds())
 	})
 	if err == nil {
 		s.ApplyBackgroundPolicy(ctx)

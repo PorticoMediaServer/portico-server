@@ -134,6 +134,7 @@ type SeekRequest struct {
 // StopRequest is the optional DELETE body (spec §5.8).
 type StopRequest struct {
 	PositionMs         *int64 `json:"positionMs,omitempty"`
+	Generation         *int   `json:"generation,omitempty"`
 	ExpectedGeneration *int   `json:"expectedGeneration,omitempty"`
 }
 

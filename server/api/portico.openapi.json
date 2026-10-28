@@ -17059,6 +17059,11 @@
             "minimum": -9007199254740991,
             "type": "integer"
           },
+          "generation": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
           "positionMs": {
             "maximum": 9007199254740991,
             "minimum": -9007199254740991,
@@ -17077,6 +17082,7 @@
         "required": [
           "sessionId",
           "revision",
+          "generation",
           "state",
           "positionMs",
           "actions"
@@ -37781,6 +37787,11 @@
             "minimum": -9007199254740991,
             "type": "integer"
           },
+          "generation": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
           "positionMs": {
             "maximum": 9007199254740991,
             "minimum": -9007199254740991,
@@ -37799,6 +37810,7 @@
         "required": [
           "sessionId",
           "revision",
+          "generation",
           "state",
           "positionMs",
           "actions"
@@ -154146,6 +154158,11 @@
                   "minimum": -9007199254740991,
                   "type": "integer"
                 },
+                "generation": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                },
                 "item": {
                   "properties": {
                     "id": {
@@ -154283,6 +154300,7 @@
               "required": [
                 "sessionId",
                 "revision",
+                "generation",
                 "state",
                 "positionMs",
                 "actions",
@@ -197913,6 +197931,115 @@
           "profileId",
           "expiresAt",
           "sections"
+        ],
+        "type": "object"
+      },
+      "GetUserMutationPolicyRequest": {
+        "properties": {},
+        "type": "object"
+      },
+      "GetUserMutationPolicyResponse": {
+        "properties": {
+          "retentionDays": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "retiredBeforeMs": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "serverTimeMs": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "serverTimeMs",
+          "retiredBeforeMs",
+          "retentionDays"
+        ],
+        "type": "object"
+      },
+      "GetUserMutationRequest": {
+        "properties": {},
+        "type": "object"
+      },
+      "GetUserMutationResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "committedMs": {
+            "maximum": 9999999999999,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "expiresMs": {
+            "maximum": 10002591999999,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "generation": {
+            "maximum": 2147483647,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "key": {
+            "maxLength": 51,
+            "minLength": 51,
+            "pattern": "^p251_[0-9]{13}_[0-9a-f]{32}$",
+            "type": "string"
+          },
+          "operation": {
+            "maxLength": 96,
+            "type": "string"
+          },
+          "positionMs": {
+            "maximum": 9007199254740991,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "positionStatus": {
+            "enum": [
+              "",
+              "applied",
+              "already_stopped",
+              "not_renderer",
+              "policy_rejected",
+              "unchanged"
+            ],
+            "type": "string"
+          },
+          "revision": {
+            "maximum": 9007199254740991,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "status": {
+            "enum": [
+              "applied",
+              "already_stopped",
+              "conflict",
+              "invalid",
+              "terminal",
+              "deleted",
+              "removed",
+              "partial"
+            ],
+            "type": "string"
+          },
+          "targetId": {
+            "maxLength": 128,
+            "type": "string"
+          }
+        },
+        "required": [
+          "key",
+          "operation",
+          "status",
+          "committedMs",
+          "expiresMs"
         ],
         "type": "object"
       },
@@ -273237,6 +273364,50 @@
         ],
         "type": "object"
       },
+      "RetireUserMutationsRequest": {
+        "properties": {
+          "accountId": {
+            "type": "string"
+          },
+          "authority": {
+            "type": "string"
+          },
+          "confirmReceiptHistoryLoss": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "authority",
+          "accountId",
+          "confirmReceiptHistoryLoss"
+        ],
+        "type": "object"
+      },
+      "RetireUserMutationsResponse": {
+        "properties": {
+          "retentionDays": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "retiredBeforeMs": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "serverTimeMs": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "serverTimeMs",
+          "retiredBeforeMs",
+          "retentionDays"
+        ],
+        "type": "object"
+      },
       "RevalidateDownloadReceiptsRequest": {
         "properties": {
           "operationId": {
@@ -293916,7 +294087,14 @@
         ]
       },
       "StopAccountPlaybackRequest": {
-        "properties": {},
+        "additionalProperties": false,
+        "properties": {
+          "generation": {
+            "maximum": 2147483647,
+            "minimum": 1,
+            "type": "integer"
+          }
+        },
         "type": "object"
       },
       "StopAccountPlaybackResponse": {
@@ -293928,6 +294106,11 @@
           {
             "additionalProperties": false,
             "properties": {
+              "generation": {
+                "maximum": 2147483647,
+                "minimum": 1,
+                "type": "integer"
+              },
               "positionMs": {
                 "anyOf": [
                   {
@@ -389483,6 +389666,16 @@
       },
       "put": {
         "operationId": "put_admin_backup_settings",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "requestBody": {
           "content": {
             "application/json": {
@@ -389582,6 +389775,9 @@
           "invalid_request",
           "administration_unavailable",
           "internal",
+          "idempotency_conflict",
+          "receipt_expired",
+          "invalid_mutation_key",
           "database_busy",
           "writer_capacity"
         ],
@@ -395068,6 +395264,16 @@
       },
       "patch": {
         "operationId": "change_console_settings",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "requestBody": {
           "content": {
             "application/json": {
@@ -396718,6 +396924,9 @@
           "rate_limited",
           "internal",
           "revision_required",
+          "idempotency_conflict",
+          "receipt_expired",
+          "invalid_mutation_key",
           "database_busy",
           "writer_capacity"
         ],
@@ -402963,6 +403172,16 @@
       },
       "put": {
         "operationId": "put_admin_dvr_settings",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "requestBody": {
           "content": {
             "application/json": {
@@ -403334,6 +403553,9 @@
           "not_permitted",
           "not_found",
           "internal",
+          "idempotency_conflict",
+          "receipt_expired",
+          "invalid_mutation_key",
           "database_busy",
           "writer_capacity"
         ],
@@ -406124,6 +406346,16 @@
     "/v1/admin/libraries/order": {
       "put": {
         "operationId": "put_admin_libraries_order",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "requestBody": {
           "content": {
             "application/json": {
@@ -406212,6 +406444,9 @@
           "not_permitted",
           "not_found",
           "internal",
+          "idempotency_conflict",
+          "receipt_expired",
+          "invalid_mutation_key",
           "database_busy",
           "writer_capacity"
         ],
@@ -406727,6 +406962,14 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "requestBody": {
@@ -407116,6 +407359,9 @@
           "not_permitted",
           "not_found",
           "internal",
+          "idempotency_conflict",
+          "receipt_expired",
+          "invalid_mutation_key",
           "database_busy",
           "writer_capacity"
         ],
@@ -407722,6 +407968,14 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "requestBody": {
@@ -407858,6 +408112,9 @@
           "not_permitted",
           "not_found",
           "internal",
+          "idempotency_conflict",
+          "receipt_expired",
+          "invalid_mutation_key",
           "database_busy",
           "writer_capacity"
         ],
@@ -408852,6 +409109,14 @@
             "in": "path",
             "name": "id",
             "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
             "schema": {
               "type": "string"
             }
@@ -409903,6 +410168,9 @@
           "internal",
           "timeout",
           "revision_required",
+          "idempotency_conflict",
+          "receipt_expired",
+          "invalid_mutation_key",
           "database_busy",
           "writer_capacity"
         ],
@@ -409927,6 +410195,14 @@
             "in": "path",
             "name": "show",
             "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
             "schema": {
               "type": "string"
             }
@@ -410050,6 +410326,9 @@
           "not_permitted",
           "not_found",
           "internal",
+          "idempotency_conflict",
+          "receipt_expired",
+          "invalid_mutation_key",
           "database_busy",
           "writer_capacity"
         ],
@@ -410250,6 +410529,14 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "requestBody": {
@@ -410440,6 +410727,9 @@
           "analysis_conflict",
           "analysis_unavailable",
           "internal",
+          "idempotency_conflict",
+          "receipt_expired",
+          "invalid_mutation_key",
           "database_busy",
           "writer_capacity"
         ],
@@ -419514,6 +419804,14 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "requestBody": {
@@ -420252,6 +420550,9 @@
           "source_unavailable",
           "internal",
           "revision_required",
+          "idempotency_conflict",
+          "receipt_expired",
+          "invalid_mutation_key",
           "database_busy",
           "writer_capacity"
         ],
@@ -420934,6 +421235,16 @@
       },
       "put": {
         "operationId": "set_live_settings",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "requestBody": {
           "content": {
             "application/json": {
@@ -421194,6 +421505,9 @@
           "source_unavailable",
           "internal",
           "revision_required",
+          "idempotency_conflict",
+          "receipt_expired",
+          "invalid_mutation_key",
           "database_busy",
           "writer_capacity"
         ],
@@ -422034,6 +422348,16 @@
       },
       "patch": {
         "operationId": "patch_admin_logs_settings",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "requestBody": {
           "content": {
             "application/json": {
@@ -422215,6 +422539,9 @@
           "not_permitted",
           "not_found",
           "internal",
+          "idempotency_conflict",
+          "receipt_expired",
+          "invalid_mutation_key",
           "database_busy",
           "writer_capacity"
         ],
@@ -422775,6 +423102,16 @@
       },
       "put": {
         "operationId": "put_admin_maintenance_settings",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "requestBody": {
           "content": {
             "application/json": {
@@ -423142,6 +423479,9 @@
           "administration_unavailable",
           "internal",
           "revision_required",
+          "idempotency_conflict",
+          "receipt_expired",
+          "invalid_mutation_key",
           "database_busy",
           "writer_capacity"
         ],
@@ -424357,6 +424697,16 @@
       },
       "put": {
         "operationId": "put_metadata_settings",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "requestBody": {
           "content": {
             "application/json": {
@@ -424745,6 +425095,9 @@
           "internal",
           "timeout",
           "revision_required",
+          "idempotency_conflict",
+          "receipt_expired",
+          "invalid_mutation_key",
           "database_busy",
           "writer_capacity"
         ],
@@ -425798,6 +426151,16 @@
       },
       "patch": {
         "operationId": "patch_admin_notifications_settings",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "requestBody": {
           "content": {
             "application/json": {
@@ -425973,6 +426336,9 @@
           "not_permitted",
           "not_found",
           "internal",
+          "idempotency_conflict",
+          "receipt_expired",
+          "invalid_mutation_key",
           "database_busy",
           "writer_capacity"
         ],
@@ -430940,6 +431306,11 @@
                       "minimum": -9007199254740991,
                       "type": "integer"
                     },
+                    "generation": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
                     "positionMs": {
                       "maximum": 9007199254740991,
                       "minimum": -9007199254740991,
@@ -430958,6 +431329,7 @@
                   "required": [
                     "sessionId",
                     "revision",
+                    "generation",
                     "state",
                     "positionMs",
                     "actions"
@@ -431078,6 +431450,11 @@
                       "minimum": -9007199254740991,
                       "type": "integer"
                     },
+                    "generation": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
                     "positionMs": {
                       "maximum": 9007199254740991,
                       "minimum": -9007199254740991,
@@ -431096,6 +431473,7 @@
                   "required": [
                     "sessionId",
                     "revision",
+                    "generation",
                     "state",
                     "positionMs",
                     "actions"
@@ -436420,6 +436798,120 @@
         ],
         "x-lane": "default",
         "x-max-body-bytes": 4096,
+        "x-scope": "admin"
+      }
+    },
+    "/v1/admin/user-mutations/retire": {
+      "post": {
+        "operationId": "retire_user_mutations",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "accountId": {
+                    "type": "string"
+                  },
+                  "authority": {
+                    "type": "string"
+                  },
+                  "confirmReceiptHistoryLoss": {
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "authority",
+                  "accountId",
+                  "confirmReceiptHistoryLoss"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "retentionDays": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "retiredBeforeMs": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "serverTimeMs": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    }
+                  },
+                  "required": [
+                    "serverTimeMs",
+                    "retiredBeforeMs",
+                    "retentionDays"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "error": {
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message"
+                      ],
+                      "type": "object"
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Request refused or unavailable"
+          }
+        },
+        "summary": "Retire an account's old receipt history without changing user data",
+        "tags": [
+          "Clients"
+        ],
+        "x-access": "owner",
+        "x-admission": "admin",
+        "x-audience": "Clients",
+        "x-cost": "constant",
+        "x-error-codes": [
+          "invalid_request",
+          "unauthorized",
+          "not_permitted",
+          "internal",
+          "database_busy",
+          "writer_capacity"
+        ],
+        "x-lane": "security",
+        "x-max-body-bytes": 1024,
         "x-scope": "admin"
       }
     },
@@ -450686,6 +451178,16 @@
     "/v1/channels/preferences": {
       "post": {
         "operationId": "post_channels_preferences",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "requestBody": {
           "content": {
             "application/json": {
@@ -450800,6 +451302,9 @@
           "not_permitted",
           "not_found",
           "internal",
+          "idempotency_conflict",
+          "receipt_expired",
+          "invalid_mutation_key",
           "database_busy",
           "writer_capacity"
         ],
@@ -452499,6 +453004,14 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "requestBody": {
@@ -452622,6 +453135,9 @@
           "internal",
           "timeout",
           "revision_required",
+          "idempotency_conflict",
+          "receipt_expired",
+          "invalid_mutation_key",
           "database_busy",
           "writer_capacity"
         ],
@@ -452646,6 +453162,14 @@
             "in": "path",
             "name": "id",
             "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
             "schema": {
               "type": "string"
             }
@@ -452767,6 +453291,9 @@
           "internal",
           "operation_expired",
           "timeout",
+          "idempotency_conflict",
+          "receipt_expired",
+          "invalid_mutation_key",
           "database_busy",
           "writer_capacity"
         ],
@@ -469440,6 +469967,16 @@
       },
       "put": {
         "operationId": "put_download_settings",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "requestBody": {
           "content": {
             "application/json": {
@@ -469605,6 +470142,9 @@
           "internal",
           "timeout",
           "revision_required",
+          "idempotency_conflict",
+          "receipt_expired",
+          "invalid_mutation_key",
           "database_busy",
           "writer_capacity"
         ],
@@ -527697,6 +528237,16 @@
     "/v1/items/personal-state:batch": {
       "put": {
         "operationId": "put_items_personal_state_batch",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "requestBody": {
           "content": {
             "application/json": {
@@ -527972,6 +528522,9 @@
           "not_permitted",
           "not_found",
           "internal",
+          "idempotency_conflict",
+          "receipt_expired",
+          "invalid_mutation_key",
           "database_busy",
           "writer_capacity"
         ],
@@ -541488,6 +542041,14 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "requestBody": {
@@ -541899,6 +542460,9 @@
           "not_permitted",
           "not_found",
           "internal",
+          "idempotency_conflict",
+          "receipt_expired",
+          "invalid_mutation_key",
           "database_busy",
           "writer_capacity"
         ],
@@ -573998,6 +574562,14 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "requestBody": {
@@ -574134,6 +574706,9 @@
           "operation_expired",
           "idempotency_key_reused",
           "stale_continuation",
+          "idempotency_conflict",
+          "receipt_expired",
+          "invalid_mutation_key",
           "database_busy",
           "writer_capacity"
         ],
@@ -574262,6 +574837,14 @@
             "in": "path",
             "name": "itemId",
             "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
             "schema": {
               "type": "string"
             }
@@ -574401,6 +574984,9 @@
           "operation_expired",
           "idempotency_key_reused",
           "stale_continuation",
+          "idempotency_conflict",
+          "receipt_expired",
+          "invalid_mutation_key",
           "database_busy",
           "writer_capacity"
         ],
@@ -574529,6 +575115,14 @@
             "in": "path",
             "name": "itemId",
             "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
             "schema": {
               "type": "string"
             }
@@ -574668,6 +575262,9 @@
           "operation_expired",
           "idempotency_key_reused",
           "stale_continuation",
+          "idempotency_conflict",
+          "receipt_expired",
+          "invalid_mutation_key",
           "database_busy",
           "writer_capacity"
         ],
@@ -590347,6 +590944,14 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "requestBody": {
@@ -590494,6 +591099,9 @@
           "not_permitted",
           "not_found",
           "internal",
+          "idempotency_conflict",
+          "receipt_expired",
+          "invalid_mutation_key",
           "database_busy",
           "writer_capacity"
         ],
@@ -591056,6 +591664,14 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "requestBody": {
@@ -591182,6 +591798,9 @@
           "not_permitted",
           "not_found",
           "internal",
+          "idempotency_conflict",
+          "receipt_expired",
+          "invalid_mutation_key",
           "database_busy",
           "writer_capacity"
         ],
@@ -598031,6 +598650,14 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "requestBody": {
@@ -598163,6 +598790,9 @@
           "not_permitted",
           "not_found",
           "internal",
+          "idempotency_conflict",
+          "receipt_expired",
+          "invalid_mutation_key",
           "database_busy",
           "writer_capacity"
         ],
@@ -598350,6 +598980,14 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "requestBody": {
@@ -598507,6 +599145,9 @@
           "personal_state_conflict",
           "idempotency_key_reused",
           "operation_expired",
+          "idempotency_conflict",
+          "receipt_expired",
+          "invalid_mutation_key",
           "database_busy",
           "writer_capacity"
         ],
@@ -598648,6 +599289,14 @@
             "in": "path",
             "name": "libraryId",
             "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
             "schema": {
               "type": "string"
             }
@@ -598849,6 +599498,9 @@
           "personal_needs_resolution",
           "operation_expired",
           "idempotency_key_reused",
+          "idempotency_conflict",
+          "receipt_expired",
+          "invalid_mutation_key",
           "database_busy",
           "writer_capacity"
         ],
@@ -599901,6 +600553,16 @@
     "/v1/library-channels/preferences": {
       "post": {
         "operationId": "post_library_channels_preferences",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "requestBody": {
           "content": {
             "application/json": {
@@ -600015,6 +600677,9 @@
           "not_permitted",
           "not_found",
           "internal",
+          "idempotency_conflict",
+          "receipt_expired",
+          "invalid_mutation_key",
           "database_busy",
           "writer_capacity"
         ],
@@ -600340,6 +601005,16 @@
       },
       "put": {
         "operationId": "put_listening_preferences",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "requestBody": {
           "content": {
             "application/json": {
@@ -600499,6 +601174,9 @@
           "not_permitted",
           "not_found",
           "internal",
+          "idempotency_conflict",
+          "receipt_expired",
+          "invalid_mutation_key",
           "database_busy",
           "writer_capacity"
         ],
@@ -615069,6 +615747,16 @@
     "/v1/networking/remote/config": {
       "post": {
         "operationId": "post_networking_remote_config",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "requestBody": {
           "content": {
             "application/json": {
@@ -615371,6 +616059,9 @@
           "not_permitted",
           "not_found",
           "internal",
+          "idempotency_conflict",
+          "receipt_expired",
+          "invalid_mutation_key",
           "database_busy",
           "writer_capacity"
         ],
@@ -622896,6 +623587,11 @@
                             "minimum": -9007199254740991,
                             "type": "integer"
                           },
+                          "generation": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
                           "item": {
                             "properties": {
                               "id": {
@@ -623033,6 +623729,7 @@
                         "required": [
                           "sessionId",
                           "revision",
+                          "generation",
                           "state",
                           "positionMs",
                           "actions",
@@ -623146,18 +623843,33 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "requestBody": {
           "content": {
             "application/json": {
               "schema": {
-                "properties": {},
+                "additionalProperties": false,
+                "properties": {
+                  "generation": {
+                    "maximum": 2147483647,
+                    "minimum": 1,
+                    "type": "integer"
+                  }
+                },
                 "type": "object"
               }
             }
           },
-          "required": true
+          "required": false
         },
         "responses": {
           "204": {
@@ -623212,6 +623924,9 @@
           "session_ended",
           "internal",
           "timeout",
+          "idempotency_conflict",
+          "receipt_expired",
+          "invalid_mutation_key",
           "database_busy",
           "writer_capacity"
         ],
@@ -632059,6 +632774,14 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "requestBody": {
@@ -632069,6 +632792,11 @@
                   {
                     "additionalProperties": false,
                     "properties": {
+                      "generation": {
+                        "maximum": 2147483647,
+                        "minimum": 1,
+                        "type": "integer"
+                      },
                       "positionMs": {
                         "anyOf": [
                           {
@@ -632153,6 +632881,9 @@
           "not_found",
           "revision_mismatch",
           "timeout",
+          "idempotency_conflict",
+          "receipt_expired",
+          "invalid_mutation_key",
           "database_busy",
           "writer_capacity"
         ],
@@ -636873,6 +637604,16 @@
     "/v1/playlists": {
       "post": {
         "operationId": "post_playlists",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "requestBody": {
           "content": {
             "application/json": {
@@ -637033,6 +637774,9 @@
           "idempotency_key_reused",
           "rate_limited",
           "internal",
+          "idempotency_conflict",
+          "receipt_expired",
+          "invalid_mutation_key",
           "database_busy",
           "writer_capacity"
         ],
@@ -637049,6 +637793,14 @@
             "in": "path",
             "name": "id",
             "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
             "schema": {
               "type": "string"
             }
@@ -637215,6 +637967,9 @@
           "idempotency_key_reused",
           "rate_limited",
           "internal",
+          "idempotency_conflict",
+          "receipt_expired",
+          "invalid_mutation_key",
           "database_busy",
           "writer_capacity"
         ],
@@ -637418,6 +638173,14 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "requestBody": {
@@ -637581,6 +638344,9 @@
           "idempotency_key_reused",
           "rate_limited",
           "internal",
+          "idempotency_conflict",
+          "receipt_expired",
+          "invalid_mutation_key",
           "database_busy",
           "writer_capacity"
         ],
@@ -641580,6 +642346,14 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "requestBody": {
@@ -641744,6 +642518,9 @@
           "rate_limited",
           "operation_expired",
           "internal",
+          "idempotency_conflict",
+          "receipt_expired",
+          "invalid_mutation_key",
           "database_busy",
           "writer_capacity"
         ],
@@ -641768,6 +642545,14 @@
             "in": "path",
             "name": "entryId",
             "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
             "schema": {
               "type": "string"
             }
@@ -641934,6 +642719,9 @@
           "idempotency_key_reused",
           "rate_limited",
           "internal",
+          "idempotency_conflict",
+          "receipt_expired",
+          "invalid_mutation_key",
           "database_busy",
           "writer_capacity"
         ],
@@ -642075,6 +642863,14 @@
             "in": "path",
             "name": "id",
             "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
             "schema": {
               "type": "string"
             }
@@ -642220,6 +643016,9 @@
           "internal",
           "timeout",
           "revision_required",
+          "idempotency_conflict",
+          "receipt_expired",
+          "invalid_mutation_key",
           "database_busy",
           "writer_capacity"
         ],
@@ -642389,6 +643188,14 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "requestBody": {
@@ -642552,6 +643359,9 @@
           "idempotency_key_reused",
           "rate_limited",
           "internal",
+          "idempotency_conflict",
+          "receipt_expired",
+          "invalid_mutation_key",
           "database_busy",
           "writer_capacity"
         ],
@@ -642566,6 +643376,14 @@
             "in": "path",
             "name": "id",
             "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
             "schema": {
               "type": "string"
             }
@@ -642732,6 +643550,9 @@
           "idempotency_key_reused",
           "rate_limited",
           "internal",
+          "idempotency_conflict",
+          "receipt_expired",
+          "invalid_mutation_key",
           "database_busy",
           "writer_capacity"
         ],
@@ -643028,6 +643849,16 @@
       },
       "patch": {
         "operationId": "patch_preferences",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "requestBody": {
           "content": {
             "application/json": {
@@ -643337,6 +644168,9 @@
           "not_permitted",
           "not_found",
           "internal",
+          "idempotency_conflict",
+          "receipt_expired",
+          "invalid_mutation_key",
           "database_busy",
           "writer_capacity"
         ],
@@ -663353,6 +664187,14 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "requestBody": {
@@ -663481,6 +664323,9 @@
           "personal_state_conflict",
           "idempotency_key_reused",
           "operation_expired",
+          "idempotency_conflict",
+          "receipt_expired",
+          "invalid_mutation_key",
           "database_busy",
           "writer_capacity"
         ],
@@ -668004,6 +668849,16 @@
       },
       "put": {
         "operationId": "put_saved_pins_order",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "requestBody": {
           "content": {
             "application/json": {
@@ -668136,6 +668991,9 @@
           "not_permitted",
           "not_found",
           "internal",
+          "idempotency_conflict",
+          "receipt_expired",
+          "invalid_mutation_key",
           "database_busy",
           "writer_capacity"
         ],
@@ -668160,6 +669018,14 @@
             "in": "path",
             "name": "id",
             "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
             "schema": {
               "type": "string"
             }
@@ -668294,6 +669160,9 @@
           "not_found",
           "revision_mismatch",
           "internal",
+          "idempotency_conflict",
+          "receipt_expired",
+          "invalid_mutation_key",
           "database_busy",
           "writer_capacity"
         ],
@@ -670447,6 +671316,16 @@
       },
       "post": {
         "operationId": "post_saved_resources",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "requestBody": {
           "content": {
             "application/json": {
@@ -670835,6 +671714,9 @@
           "not_permitted",
           "not_found",
           "internal",
+          "idempotency_conflict",
+          "receipt_expired",
+          "invalid_mutation_key",
           "database_busy",
           "writer_capacity"
         ],
@@ -670851,6 +671733,14 @@
             "in": "path",
             "name": "id",
             "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
             "schema": {
               "type": "string"
             }
@@ -671245,6 +672135,9 @@
           "not_found",
           "revision_mismatch",
           "internal",
+          "idempotency_conflict",
+          "receipt_expired",
+          "invalid_mutation_key",
           "database_busy",
           "writer_capacity"
         ],
@@ -671580,6 +672473,14 @@
             "in": "path",
             "name": "id",
             "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
             "schema": {
               "type": "string"
             }
@@ -671974,6 +672875,9 @@
           "not_found",
           "revision_mismatch",
           "internal",
+          "idempotency_conflict",
+          "receipt_expired",
+          "invalid_mutation_key",
           "database_busy",
           "writer_capacity"
         ],
@@ -676372,6 +677276,14 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "requestBody": {
@@ -676763,6 +677675,9 @@
           "not_found",
           "revision_mismatch",
           "internal",
+          "idempotency_conflict",
+          "receipt_expired",
+          "invalid_mutation_key",
           "database_busy",
           "writer_capacity"
         ],
@@ -676779,6 +677694,14 @@
             "in": "path",
             "name": "id",
             "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
             "schema": {
               "type": "string"
             }
@@ -677173,6 +678096,9 @@
           "not_found",
           "revision_mismatch",
           "internal",
+          "idempotency_conflict",
+          "receipt_expired",
+          "invalid_mutation_key",
           "database_busy",
           "writer_capacity"
         ],
@@ -677329,6 +678255,14 @@
             "in": "path",
             "name": "id",
             "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
             "schema": {
               "type": "string"
             }
@@ -677723,6 +678657,9 @@
           "not_found",
           "revision_mismatch",
           "internal",
+          "idempotency_conflict",
+          "receipt_expired",
+          "invalid_mutation_key",
           "database_busy",
           "writer_capacity"
         ],
@@ -677737,6 +678674,14 @@
             "in": "path",
             "name": "id",
             "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
             "schema": {
               "type": "string"
             }
@@ -678131,6 +679076,9 @@
           "not_found",
           "revision_mismatch",
           "internal",
+          "idempotency_conflict",
+          "receipt_expired",
+          "invalid_mutation_key",
           "database_busy",
           "writer_capacity"
         ],
@@ -717935,6 +718883,14 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "requestBody": {
@@ -718336,6 +719292,9 @@
           "storage_executable_too_old",
           "timeout",
           "revision_required",
+          "idempotency_conflict",
+          "receipt_expired",
+          "invalid_mutation_key",
           "database_busy",
           "writer_capacity"
         ],
@@ -718352,6 +719311,14 @@
             "in": "path",
             "name": "id",
             "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
             "schema": {
               "type": "string"
             }
@@ -718499,6 +719466,9 @@
           "internal",
           "timeout",
           "revision_required",
+          "idempotency_conflict",
+          "receipt_expired",
+          "invalid_mutation_key",
           "database_busy",
           "writer_capacity"
         ],
@@ -719359,6 +720329,14 @@
             "in": "path",
             "name": "id",
             "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
             "schema": {
               "type": "string"
             }
@@ -720390,6 +721368,9 @@
           "internal",
           "timeout",
           "revision_required",
+          "idempotency_conflict",
+          "receipt_expired",
+          "invalid_mutation_key",
           "database_busy",
           "writer_capacity"
         ],
@@ -723527,6 +724508,241 @@
         "x-lane": "browsing",
         "x-max-body-bytes": 65536,
         "x-scope": "session"
+      }
+    },
+    "/v1/user-mutations/policy": {
+      "get": {
+        "operationId": "get_user_mutation_policy",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "retentionDays": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "retiredBeforeMs": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "serverTimeMs": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    }
+                  },
+                  "required": [
+                    "serverTimeMs",
+                    "retiredBeforeMs",
+                    "retentionDays"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "error": {
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message"
+                      ],
+                      "type": "object"
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Request refused or unavailable"
+          }
+        },
+        "summary": "Read server time and the mutation replay cutoff",
+        "tags": [
+          "Clients"
+        ],
+        "x-access": "device",
+        "x-admission": "default",
+        "x-audience": "Clients",
+        "x-cost": "constant",
+        "x-error-codes": [
+          "unauthorized",
+          "not_permitted",
+          "internal",
+          "database_busy"
+        ],
+        "x-lane": "default",
+        "x-scope": "playback"
+      }
+    },
+    "/v1/user-mutations/{key}": {
+      "get": {
+        "operationId": "get_user_mutation",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "key",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "committedMs": {
+                      "maximum": 9999999999999,
+                      "minimum": 0,
+                      "type": "integer"
+                    },
+                    "expiresMs": {
+                      "maximum": 10002591999999,
+                      "minimum": 0,
+                      "type": "integer"
+                    },
+                    "generation": {
+                      "maximum": 2147483647,
+                      "minimum": 0,
+                      "type": "integer"
+                    },
+                    "key": {
+                      "maxLength": 51,
+                      "minLength": 51,
+                      "pattern": "^p251_[0-9]{13}_[0-9a-f]{32}$",
+                      "type": "string"
+                    },
+                    "operation": {
+                      "maxLength": 96,
+                      "type": "string"
+                    },
+                    "positionMs": {
+                      "maximum": 9007199254740991,
+                      "minimum": 0,
+                      "type": "integer"
+                    },
+                    "positionStatus": {
+                      "enum": [
+                        "",
+                        "applied",
+                        "already_stopped",
+                        "not_renderer",
+                        "policy_rejected",
+                        "unchanged"
+                      ],
+                      "type": "string"
+                    },
+                    "revision": {
+                      "maximum": 9007199254740991,
+                      "minimum": 0,
+                      "type": "integer"
+                    },
+                    "status": {
+                      "enum": [
+                        "applied",
+                        "already_stopped",
+                        "conflict",
+                        "invalid",
+                        "terminal",
+                        "deleted",
+                        "removed",
+                        "partial"
+                      ],
+                      "type": "string"
+                    },
+                    "targetId": {
+                      "maxLength": 128,
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "key",
+                    "operation",
+                    "status",
+                    "committedMs",
+                    "expiresMs"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "error": {
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message"
+                      ],
+                      "type": "object"
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Request refused or unavailable"
+          }
+        },
+        "summary": "Read the original sign-in's compact mutation receipt",
+        "tags": [
+          "Clients"
+        ],
+        "x-access": "device",
+        "x-admission": "default",
+        "x-audience": "Clients",
+        "x-cost": "constant",
+        "x-error-codes": [
+          "unauthorized",
+          "not_permitted",
+          "not_found",
+          "receipt_unknown",
+          "receipt_expired",
+          "invalid_mutation_key",
+          "internal",
+          "database_busy"
+        ],
+        "x-lane": "default",
+        "x-scope": "playback"
       }
     }
   },

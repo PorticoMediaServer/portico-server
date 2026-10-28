@@ -10,6 +10,7 @@ import {firstOfEach,keepReadable,noteSkipped,oneOfOr} from './tolerant.ts';
 import {mergeRevalidatedList} from './freshness-actions.ts';
 import {parseHomeActions, type HomeActions} from './home.ts';
 import type {FetchPage} from './collections/windowed.ts';
+import type {UserMutationCoordinator, UserMutationScope} from './user-mutations.ts';
 /** Transport/state for server-authored semantic projections. No client ranking or grouping. */
 export type ContentView = 'discover' | 'browse' | 'collections' | 'categories' | 'show' | 'season' | 'artist' | 'album' | 'book' | 'collection' | 'releases' | 'songs' | 'authors' | 'series' | 'author' | 'book_series' | 'disc';
 export type ContentSurface = ContentView;
@@ -17,7 +18,13 @@ export type ContentRoute = Readonly<{ sort?: string; direction?: 'asc' | 'desc';
 export type ContentScope = Readonly<{ viewerId: string; serverId: string }>;
 /** One caller opening's signal and its own currentness predicate. */
 export type ContentReadContext = Readonly<{ signal: AbortSignal; isCurrent: () => boolean }>;
-export interface LibraryContentApi { request<T>(path: string, method?: string, body?: unknown, signal?: AbortSignal): Promise<T> }
+export interface LibraryContentApi {
+  request<T>(path: string, method?: string, body?: unknown, signal?: AbortSignal): Promise<T>;
+  acknowledgeUserMutation?(intentId: string): Promise<void>;
+  awaitUserMutationsReady?(): Promise<void>;
+  getUserMutationCoordinator?(): UserMutationCoordinator | undefined;
+  getUserMutationScope?(): UserMutationScope | undefined;
+}
 export type ContentEntryKind = 'ebook' | 'comic' | 'movie' | 'show' | 'season' | 'episode' | 'artist' | 'album' | 'song' | 'book' | 'audiobook_file' | 'chapter' | 'collection' | 'category' | 'author' | 'book_series' | 'disc' | 'extra' | 'playlist' | 'radio';
 /** `params` fill a parameterised heading (a Discover personal row: "{genre} for you"); name it with `serverTextLabel`. */
 export type ContentHeading = Readonly<{ key: string; fallback: string; params?: Readonly<Record<string, string>> }>;

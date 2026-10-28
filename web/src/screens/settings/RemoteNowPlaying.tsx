@@ -30,7 +30,7 @@ export function RemoteNowPlaying({api, isCurrent, onFailure}: {
   }, [client]);
   const pause = (entry: RemotePlaybackControls) => {
     setBusy(entry.sessionId);
-    client.stopAccount(entry.sessionId).then(() => { if (isCurrent()) setItems(current => current.filter(item => item.sessionId !== entry.sessionId)); })
+    client.stopAccount(entry).then(() => { if (isCurrent()) setItems(current => current.filter(item => item.sessionId !== entry.sessionId)); })
       .catch(error => { if (isCurrent()) onFailure(error); }).finally(() => { if (isCurrent()) setBusy(undefined); });
   };
   if (!items.length) return null;

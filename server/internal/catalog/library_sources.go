@@ -9,6 +9,7 @@ import (
 	"portico.local/server/internal/dbwork"
 	"portico.local/server/internal/identity"
 	"portico.local/server/internal/storage"
+	"portico.local/server/internal/usermutation"
 	"strings"
 	"time"
 	"unicode"
@@ -563,6 +564,19 @@ func (s *Service) UpdateScanPolicy(ctx context.Context, library string, p ScanPo
 	}
 	tx := gated4.Tx()
 	defer gated4.Rollback()
+	if authorize == nil {
+		return p, ErrAdminQuery
+	}
+	if err = authorize(tx); err != nil {
+		return p, err
+	}
+	r, err := usermutation.CheckContext(ctx, tx, time.Now().UnixMilli())
+	if err != nil {
+		return p, err
+	}
+	if r != nil {
+		return ScanPolicyTx(ctx, tx, library)
+	}
 	if err = configurationFence(ctx, tx, library, expected, authorize); err != nil {
 		return p, err
 	}
@@ -571,6 +585,13 @@ func (s *Service) UpdateScanPolicy(ctx context.Context, library string, p ScanPo
 	}
 	// Existing inventory remains valid; its pending analysis is read-fenced by
 	// the new policy revision. The scanner schedules missing current stages.
+	current, err := ScanPolicyTx(ctx, tx, library)
+	if err != nil {
+		return p, err
+	}
+	if err = usermutation.SaveContext(ctx, tx, usermutation.Result{Status: "applied", TargetID: library, Revision: current.Revision}, time.Now().UnixMilli()); err != nil {
+		return p, err
+	}
 	if err = gated4.Commit(); err != nil {
 		return p, err
 	}

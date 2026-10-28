@@ -9,6 +9,7 @@ import (
 	"portico.local/server/internal/identity"
 	"portico.local/server/internal/readingcap"
 	"portico.local/server/internal/requestinput"
+	"portico.local/server/internal/usermutation"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -550,7 +551,10 @@ func (s *Service) SavedResourceContent(viewer Viewer, server, fence, id string, 
 	}
 	return out, nil
 }
-func (s *Service) MutateSavedResource(a ResourceActor, id, action string, m SavedResourceMutation, authorize func(*sql.Tx) error) (SavedResourceReceipt, error) {
+func (s *Service) MutateSavedResource(a ResourceActor, id, action string, m SavedResourceMutation, authorize func(*sql.Tx) error, admitItem ...func(*sql.Tx, string) error) (SavedResourceReceipt, error) {
+	if err := requireCatalogMutationContext(s.Context(), m.OperationID); err != nil {
+		return SavedResourceReceipt{}, err
+	}
 	out := SavedResourceReceipt{OperationID: m.OperationID, ResourceID: id}
 	if !personalOperation.MatchString(m.OperationID) || m.ExpectedRevision < 0 || a.Authority == "" || a.AccountID == "" || a.ProfileID == "" {
 		return out, requestinput.New("invalid resource operation")
@@ -580,12 +584,37 @@ func (s *Service) MutateSavedResource(a ResourceActor, id, action string, m Save
 		ID, Action string
 		Mutation   SavedResourceMutation
 	}{id, action, m})
-	gated, e := dbwork.Begin(context.Background(), s.db, dbwork.ClassFrom(context.Background(), dbwork.ClassInteractive))
+	gated, e := dbwork.Begin(s.Context(), s.db, dbwork.ClassFrom(s.Context(), dbwork.ClassInteractive))
 	if e != nil {
 		return out, e
 	}
 	tx := gated.Tx()
 	defer gated.Rollback()
+	_, _, protocol := usermutation.RequestFrom(s.Context())
+	priorReceipt, e := usermutation.CheckContext(s.Context(), tx, time.Now().UnixMilli())
+	if e != nil {
+		return out, e
+	}
+	if priorReceipt != nil {
+		out.ResourceID, out.Revision = priorReceipt.TargetID, priorReceipt.Revision
+		role, _, _, deleted, err := savedResourceRole(tx, out.ResourceID, a)
+		if err != nil {
+			var exists bool
+			if e = tx.QueryRow(`SELECT EXISTS(SELECT 1 FROM saved_resources WHERE id=?)`, out.ResourceID).Scan(&exists); e != nil {
+				return out, e
+			}
+			if exists || !errors.Is(err, sql.ErrNoRows) {
+				return out, err
+			}
+			deleted = true
+		} else if deleted && role != "owner" {
+			return out, sql.ErrNoRows
+		} else if role != "owner" && (role != "editor" || action != "entries" && action != "reorder") {
+			return out, identity.ErrUnauthorized
+		}
+		out.Deleted = deleted || priorReceipt.Status == "deleted"
+		return out, nil
+	}
 	if e = authorize(tx); e != nil {
 		return out, e
 	}
@@ -599,23 +628,25 @@ func (s *Service) MutateSavedResource(a ResourceActor, id, action string, m Save
 			return out, identity.ErrUnauthorized
 		}
 	}
-	var prior, raw string
-	e = tx.QueryRow(`SELECT request_hash,response FROM saved_resource_receipts WHERE owner_key=? AND operation_id=? AND created_at>=?`, actorKey(a), m.OperationID, time.Now().Add(-30*24*time.Hour).UTC().Format(time.RFC3339)).Scan(&prior, &raw)
-	if e == nil {
-		if prior != hash {
-			return out, ErrOperationConflict
-		}
-		if e = json.Unmarshal([]byte(raw), &out); e != nil {
+	if !protocol {
+		var prior, raw string
+		e = tx.QueryRow(`SELECT request_hash,response FROM saved_resource_receipts WHERE owner_key=? AND operation_id=? AND created_at>=?`, actorKey(a), m.OperationID, time.Now().Add(-30*24*time.Hour).UTC().Format(time.RFC3339)).Scan(&prior, &raw)
+		if e == nil {
+			if prior != hash {
+				return out, ErrOperationConflict
+			}
+			if e = json.Unmarshal([]byte(raw), &out); e != nil {
+				return out, e
+			}
+			_, _, _, _, e = savedResourceRole(tx, out.ResourceID, a)
 			return out, e
 		}
-		_, _, _, _, e = savedResourceRole(tx, out.ResourceID, a)
-		return out, e
-	}
-	if !errors.Is(e, sql.ErrNoRows) {
-		return out, e
-	}
-	if e = checkRetired(tx, actorKey(a), "resource", m.OperationID, hash); e != nil {
-		return out, e
+		if !errors.Is(e, sql.ErrNoRows) {
+			return out, e
+		}
+		if e = checkRetired(tx, actorKey(a), "resource", m.OperationID, hash); e != nil {
+			return out, e
+		}
 	}
 	if deleted {
 		return out, sql.ErrNoRows
@@ -711,6 +742,16 @@ func (s *Service) MutateSavedResource(a ResourceActor, id, action string, m Save
 		}
 		var removed []removedEntry
 		for _, item := range m.AddItemIDs {
+			// Filter in the accepting transaction, after receipt reservation. A
+			// replay must never reconsider an earlier rejected addition.
+			if len(admitItem) > 0 && admitItem[0] != nil {
+				if err := admitItem[0](tx, item); errors.Is(err, sql.ErrNoRows) {
+					outcomes.fail(item, "not_found")
+					continue
+				} else if err != nil {
+					return out, err
+				}
+			}
 			var entityID int64
 			if err := tx.QueryRow(`SELECT id FROM catalog_entities WHERE public_id=pid_blob(?) AND retired=0`, item).Scan(&entityID); errors.Is(err, sql.ErrNoRows) {
 				outcomes.fail(item, "not_found")
@@ -787,6 +828,18 @@ func (s *Service) MutateSavedResource(a ResourceActor, id, action string, m Save
 		}
 	}
 	out.Revision = rev
+	if protocol {
+		status := "applied"
+		if out.Deleted {
+			status = "deleted"
+		} else if out.Entries != nil && len(out.Entries.Failed) > 0 {
+			status = "partial"
+		}
+		if e = usermutation.SaveContext(s.Context(), tx, usermutation.Result{Status: status, TargetID: out.ResourceID, Revision: out.Revision}, time.Now().UnixMilli()); e != nil {
+			return out, e
+		}
+		return out, gated.Commit()
+	}
 	if e = fenceOperation(tx, actorKey(a), "resource", m.OperationID, hash); e != nil {
 		return out, e
 	}

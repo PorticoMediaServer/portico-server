@@ -39,6 +39,11 @@ func callerFrom(ctx context.Context) v1Caller {
 // Messages are US English fallbacks; clients localise by code.
 func v1ErrorDefinitions() []apierror.Definition {
 	return []apierror.Definition{
+		{Code: "idempotency_conflict", Status: 409, Message: "This request key belongs to a different change.", Retry: apierror.Never},
+		{Code: "receipt_expired", Status: 410, Message: "This change needs review because its receipt is no longer available.", Retry: apierror.Never},
+		{Code: "receipt_unknown", Status: 404, Message: "No receipt is available for this change yet.", Retry: apierror.SameRequest},
+		{Code: "invalid_mutation_key", Status: 400, Message: "The change could not be identified. Refresh before trying again.", Retry: apierror.Never},
+
 		{Code: "timeout", Status: 503, Message: "The operation timed out. Retry shortly.", Retry: apierror.SameRequest},
 		// The writer refused the change before it began: nothing was saved, and
 		// sending the same request again after Retry-After is safe.
@@ -130,6 +135,9 @@ func v1Catalogue() *apierror.Registry {
 // when its queue drains (1-30 s); or a new read refused while a WAL reset held
 // reader admission, answered database_busy.
 func databaseRefusal(err error) *apierror.Error {
+	if mutation := userMutationError(err); mutation != nil {
+		return mutation
+	}
 	switch {
 	case dbwork.Overloaded(err):
 		return &apierror.Error{Code: "writer_capacity", RetryAfterSeconds: dbwork.WriteGate().RetryAfterSeconds(), Cause: err}
@@ -146,6 +154,10 @@ func databaseRefusal(err error) *apierror.Error {
 // v1Error maps a domain or service error to a registered API error. Restricted
 // content is not_found on every path (SEC-02).
 func v1Error(err error) error {
+	if mutation := userMutationError(err); mutation != nil {
+		return mutation
+	}
+
 	var public *apierror.Error
 	if err == nil || errors.As(err, &public) {
 		return err

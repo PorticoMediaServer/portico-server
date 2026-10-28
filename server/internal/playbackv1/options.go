@@ -188,6 +188,10 @@ type MarkerFunc func(ctx context.Context, tx *sql.Tx, p identity.Principal, item
 // Service is the v1 resource layer over the existing delivery machinery. One
 // per router: it owns the event hub and the lease sweeper.
 type Service struct {
+	stopCompletions     sync.Map // receipt key -> unfinished exact Stop process cleanup
+	stopCompletionMu    sync.Mutex
+	stopCompletionCount int
+
 	Traffic   *telemetry.Traffic
 	DB        *sql.DB
 	Playback  *playback.Service

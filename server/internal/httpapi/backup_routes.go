@@ -2,6 +2,7 @@ package httpapi
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"net/http"
 
@@ -53,6 +54,10 @@ type StatePermissionsDocument struct {
 
 // backupRouteError maps service errors to the published codes.
 func backupRouteError(err error) error {
+	if mutation := userMutationError(err); mutation != nil {
+		return mutation
+	}
+
 	switch {
 	case errors.Is(err, backup.ErrNotFound):
 		return &apierror.Error{Code: "not_found"}
@@ -255,13 +260,14 @@ func registerBackupSettings(registry *apikit.Registry, d Dependencies) error {
 	return apikit.Register(registry, apikit.Route[backup.SettingsPatch, backup.Settings]{Metadata: apikit.Metadata{Audience: apikit.Clients, Admission: laneAdmin,
 		ID: "put_admin_backup_settings", Method: "PUT", Path: "/v1/admin/backups/settings", Summary: "Set backup destination, artwork inclusion and passphrase protection", Access: apikit.Owner, Requires: apikit.ScopeAdmin, Lane: apikit.Default, Cost: apikit.Constant, Status: 200, BodyLimit: 8192, Errors: []string{"unauthorized", "invalid_request", "administration_unavailable", "internal"}},
 		Handler: func(ctx context.Context, r *http.Request, body backup.SettingsPatch) (backup.Settings, error) {
-			if _, e := d.ownerContext(ctx, r); e != nil {
+			p, e := d.ownerContext(ctx, r)
+			if e != nil {
 				return backup.Settings{}, foundationAuthError(e)
 			}
 			if d.Backups == nil {
 				return backup.Settings{}, &apierror.Error{Code: "administration_unavailable"}
 			}
-			out, e := d.Backups.UpdateSettings(ctx, body)
+			out, e := d.Backups.UpdateSettings(ctx, body, func(tx *sql.Tx) error { return d.ownerAuthorityTx(ctx, tx, p) })
 			if e != nil {
 				return backup.Settings{}, backupRouteError(e)
 			}

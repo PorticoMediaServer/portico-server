@@ -124,44 +124,34 @@ func TestStopAdmitsFinalPositionThroughTheWriterGate(t *testing.T) {
 	}
 }
 
-// TestStopIgnoresFinalPositionWriteErrorAndStillEnds holds the ignored-error
-// contract: a refused position write changes no position or sequence, and the
-// same transaction still ends the session and fences the grant. The temporary trigger fails only
-// the position statement.
-func TestStopIgnoresFinalPositionWriteErrorAndStillEnds(t *testing.T) {
+// Storage failures roll back final evidence and the end, so the exact Stop can
+// be retried. A failed final position must never look like a successful Stop.
+func TestStopFinalPositionWriteErrorRollsBack(t *testing.T) {
 	f := newCarryFixture(t, false)
-	q := f.queue()
-	session := *q.Session
+	session := *f.queue().Session
 	before := readStoppedRow(t, f.catalog.DB, session.ID)
-
 	f.catalog.Exec(`CREATE TRIGGER test_stop_position_write_failure BEFORE UPDATE OF position_ms ON playback_v1_sessions BEGIN SELECT RAISE(ABORT,'injected final-position write failure'); END`)
-	t.Cleanup(func() {
-		if _, err := f.catalog.DB.Exec(`DROP TRIGGER IF EXISTS test_stop_position_write_failure`); err != nil {
-			t.Fatal(err)
-		}
-	})
-
-	admissionsBefore := establishedPlaybackAdmissions()
 	stopAt := int64(43_500)
+	if err := f.service.Stop(context.Background(), f.caller, session.ID, &stopAt); err == nil {
+		t.Fatal("storage error reported success")
+	}
+	if after := readStoppedRow(t, f.catalog.DB, session.ID); after != before {
+		t.Fatalf("failed stop changed row: %+v before %+v", after, before)
+	}
+	var state string
+	if err := f.catalog.DB.QueryRow(`SELECT state FROM playback_sessions WHERE id=?`, before.media).Scan(&state); err != nil {
+		t.Fatal(err)
+	}
+	if state == "stopped" {
+		t.Fatal("failed stop fenced grant")
+	}
+	f.catalog.Exec(`DROP TRIGGER test_stop_position_write_failure`)
 	if err := f.service.Stop(context.Background(), f.caller, session.ID, &stopAt); err != nil {
 		t.Fatal(err)
 	}
-	admissions := establishedPlaybackAdmissions() - admissionsBefore
-	after := readStoppedRow(t, f.catalog.DB, session.ID)
-
-	if admissions != stopWriterAdmissions {
-		t.Fatalf("refused position took %d admissions, want %d: it is retried or bypasses the gate", admissions, stopWriterAdmissions)
+	if after := readStoppedRow(t, f.catalog.DB, session.ID); after.position != stopAt || after.ended == 0 {
+		t.Fatalf("retry: %+v", after)
 	}
-	if after.position != before.position || after.lastSeq != before.lastSeq {
-		t.Fatalf("refused position write still moved the row: %+v, before %+v", after, before)
-	}
-	if after.ended == 0 || after.endReason != "stopped" {
-		t.Fatalf("End did not run after a refused position write: %+v", after)
-	}
-	if after.revision != before.revision+1 || after.generation != before.generation {
-		t.Fatalf("End outcome changed: %+v, before %+v", after, before)
-	}
-	assertGrantFenced(t, f.catalog.DB, before.media)
 }
 
 // TestEndedSessionStopLeavesFinalPosition records nothing on a second Stop: the

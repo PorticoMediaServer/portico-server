@@ -12,6 +12,7 @@ import (
 	"portico.local/server/internal/entityid"
 	"portico.local/server/internal/identity"
 	"portico.local/server/internal/personalstate"
+	"portico.local/server/internal/usermutation"
 )
 
 // A container action is atomic and bounded; an oversized selector must be split
@@ -99,14 +100,25 @@ func (s *Service) UndoContainerPersonal(ctx context.Context, p identity.Principa
 	}
 	profile := identity.PersonalKey(p.Viewer)
 	err = dbwork.WithWriteTx(ctx, s.db, dbwork.ClassInteractive, func(tx *sql.Tx) error {
+		visible, bound, e := access(ctx, tx, p, "i.id")
+		if e != nil {
+			return e
+		}
+		prior, e := usermutation.CheckContext(ctx, tx, time.Now().UnixMilli())
+		if e != nil {
+			return e
+		}
+		if prior != nil {
+			if e = checkContainerReplayAccess(ctx, tx, id, members, visible, bound); e != nil {
+				return e
+			}
+			out, e = readContainerMutation(ctx, tx, profile, kind, id, prior.Revision)
+			return e
+		}
 		container, e := entityid.Resolve(ctx, tx, id)
 		if errors.Is(e, entityid.ErrNotFound) {
 			return sql.ErrNoRows
 		}
-		if e != nil {
-			return e
-		}
-		visible, bound, e := access(ctx, tx, p, "i.id")
 		if e != nil {
 			return e
 		}
@@ -204,7 +216,10 @@ func (s *Service) UndoContainerPersonal(ctx context.Context, p identity.Principa
 			return e
 		}
 		out.Watchlisted, out.Favorite, e = readContainerSaved(ctx, tx, profile, container)
-		return e
+		if e != nil {
+			return e
+		}
+		return usermutation.SaveContext(ctx, tx, usermutation.Result{Status: "applied", TargetID: id, Revision: out.Revision}, time.Now().UnixMilli())
 	})
 	return
 }

@@ -11,6 +11,7 @@ import (
 	"portico.local/server/internal/identity"
 	"portico.local/server/internal/personalstate"
 	"portico.local/server/internal/requestinput"
+	"portico.local/server/internal/usermutation"
 )
 
 // The authorizer re-admits the original principal inside this exact snapshot or
@@ -105,6 +106,9 @@ func readingMarkAllStateSQL() string {
 }
 
 func (s *Service) SetReadingMarkAll(server, library string, in ReadingMarkAllCommand, authorize ReadingMarkAllAuthorizer) (ReadingMarkAllReceipt, error) {
+	if err := requireCatalogMutationContext(s.Context(), in.OperationID); err != nil {
+		return ReadingMarkAllReceipt{}, err
+	}
 	var out ReadingMarkAllReceipt
 	if !personalOperation.MatchString(in.OperationID) || !personalOperation.MatchString(library) || len(in.ViewerFence) != 64 || !validReadingMarkAllRevision(in.ExpectedRevision) {
 		return out, requestinput.New("invalid Reading mark-all intent")
@@ -120,6 +124,26 @@ func (s *Service) SetReadingMarkAll(server, library string, in ReadingMarkAllCom
 	defer gated.Rollback()
 	ctx, tx := gated.Context(), gated.Tx()
 	scoped := s.WithContext(ctx)
+	_, _, protocol := usermutation.RequestFrom(ctx)
+	if protocol {
+		if authorize == nil {
+			return out, identity.ErrForbidden
+		}
+		priorReceipt, e := usermutation.CheckContext(ctx, tx, time.Now().UnixMilli())
+		if e != nil {
+			return out, e
+		}
+		if priorReceipt != nil {
+			current, e := scoped.ReadingMarkAllProjection(server, library, authorize)
+			out.ReadingMarkAllScope = current
+			out.OperationID, out.ExpectedRevision = in.OperationID, in.ExpectedRevision
+			if errors.Is(e, sql.ErrNoRows) || errors.Is(e, ErrReadingProjectionChanged) {
+				out.ServerID, out.LibraryID = server, library
+				e = nil
+			}
+			return out, e
+		}
+	}
 	viewer, targets, targetArgs, err := scoped.readingMarkAllTargets(ctx, tx, library, authorize)
 	if err != nil {
 		return out, err
@@ -132,20 +156,22 @@ func (s *Service) SetReadingMarkAll(server, library string, in ReadingMarkAllCom
 	// durable retired domain also prevents a cleaned/expired operation becoming
 	// a fresh action. Fresh actor/visibility admission still precedes replay.
 	key := "reading-mark-all:" + in.OperationID
-	var prior, raw string
-	err = tx.QueryRowContext(ctx, `SELECT request_hash,response FROM personal_batch_receipts WHERE profile_id=? AND operation_id=? AND created_at>=?`, viewer.Profile, key, time.Now().UTC().Add(-30*24*time.Hour).Format(time.RFC3339)).Scan(&prior, &raw)
-	if err == nil {
-		if prior != hash {
-			return out, ErrOperationConflict
+	if !protocol {
+		var prior, raw string
+		err = tx.QueryRowContext(ctx, `SELECT request_hash,response FROM personal_batch_receipts WHERE profile_id=? AND operation_id=? AND created_at>=?`, viewer.Profile, key, time.Now().UTC().Add(-30*24*time.Hour).Format(time.RFC3339)).Scan(&prior, &raw)
+		if err == nil {
+			if prior != hash {
+				return out, ErrOperationConflict
+			}
+			err = json.Unmarshal([]byte(raw), &out)
+			return out, err
 		}
-		err = json.Unmarshal([]byte(raw), &out)
-		return out, err
-	}
-	if !errors.Is(err, sql.ErrNoRows) {
-		return out, err
-	}
-	if err = checkRetired(tx, viewer.Profile, "reading-mark-all", in.OperationID, hash); err != nil {
-		return out, err
+		if !errors.Is(err, sql.ErrNoRows) {
+			return out, err
+		}
+		if err = checkRetired(tx, viewer.Profile, "reading-mark-all", in.OperationID, hash); err != nil {
+			return out, err
+		}
 	}
 	revision, err := scoped.ContentRevision(library, viewer.Profile)
 	if err != nil {
@@ -209,6 +235,12 @@ func (s *Service) SetReadingMarkAll(server, library string, in ReadingMarkAllCom
 	}
 	if !validReadingMarkAllRevision(out.Revision) {
 		return out, ErrPersonalConflict
+	}
+	if protocol {
+		if err = usermutation.SaveContext(ctx, tx, usermutation.Result{Status: "applied", TargetID: library, Revision: out.Revision.Viewer}, time.Now().UnixMilli()); err != nil {
+			return out, err
+		}
+		return out, gated.Commit()
 	}
 	encoded, err := json.Marshal(out)
 	if err != nil {

@@ -8,6 +8,7 @@ import (
 	"portico.local/server/internal/dbwork"
 	"portico.local/server/internal/livechannels"
 	"portico.local/server/internal/livechannels/dvr"
+	"portico.local/server/internal/usermutation"
 )
 
 func runtimeDefaults(ctx context.Context, tx *sql.Tx) (DVRDocument, error) {
@@ -36,6 +37,15 @@ func (s *Service) saveRuntimeDVRSettings(ctx context.Context, auth Authorize, c 
 		return out, err
 	}
 	err := s.transaction(ctx, auth, func(tx *sql.Tx) error {
+		r, err := usermutation.CheckContext(ctx, tx, s.milliseconds())
+		if err != nil {
+			return err
+		}
+		if r != nil {
+			out, err = runtimeDefaults(ctx, tx)
+			return err
+		}
+
 		saved, replay, err := receipt[DVRDocument](ctx, tx, dvrScope, c.OperationID, digestOf(c))
 		if err != nil {
 			return err
@@ -63,7 +73,7 @@ func (s *Service) saveRuntimeDVRSettings(ctx context.Context, auth Authorize, c 
 		if err != nil {
 			return err
 		}
-		return saveReceipt(ctx, tx, dvrScope, c.OperationID, digestOf(c), out, s.milliseconds())
+		return saveSettingsReceipt(ctx, tx, dvrScope, c.OperationID, digestOf(c), out, dvrScope, out.Revision, s.milliseconds())
 	})
 	return out, err
 }

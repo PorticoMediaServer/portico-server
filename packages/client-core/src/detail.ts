@@ -3,6 +3,7 @@ import type {RouteResponse} from "../../contracts/src/route-paths.ts";
 import {encodedRoutePath} from "../../contracts/src/route-paths.ts";
 import {wireDurations,wireDisplayDurations,durationIntent} from './wire-units.ts';
 import {unreadableServerResponse} from './server-messages.ts';
+import {isUserMutationKey, parseUserMutationReceipt} from './user-mutations.ts';
 import {parseLocalBook,parseLocalAudioPolicy,type LocalAudioPolicy,type LocalBookMetadata} from "./music-metadata.ts";
 /** Server-authored detail and explicit personal-state commands; no playback or ranking owner. */
 import type { MediaItem } from './index.ts';
@@ -16,7 +17,7 @@ export type DetailExtra = Readonly<{ type: DetailExtraType; label: string; items
 export const detailExtraTypes: readonly DetailExtraType[] = ['trailer','featurette','deleted_scene','behind_the_scenes','interview','scene','short','other'];
 export type DetailScope = Readonly<{ serverId: string; viewerId: string }>;
 export type DetailTarget = Readonly<{ libraryId: string; itemId: string }>;
-export interface DetailApi { request<T>(path: string, method?: string, body?: unknown, signal?: AbortSignal): Promise<T> }
+export interface DetailApi { acknowledgeUserMutation?(intentId: string): Promise<void>; request<T>(path: string, method?: string, body?: unknown, signal?: AbortSignal): Promise<T> }
 export type PersonalConflict = Readonly<{id:string;field:string;baseRevision:number;baseValue:unknown;choices:readonly Readonly<{operationId:string;deviceId:string;authoredAt:string;value:unknown}>[]}>;
 export type PersonalOfflineMutation = Readonly<{deviceId:string;deviceMutationId:string;sequence:number;baseRevision:number;authoredAt:string}>;
 export type PersonalState = Readonly<{ watchlisted:boolean;favorite:boolean;rating:number|null;revision:number;watched:boolean;progressSeconds:number;lastPlayedAt:string;status:'current'|'needs-resolution';conflicts:readonly PersonalConflict[] }>;
@@ -80,7 +81,7 @@ export type DetailSnapshot = Readonly<{
   mutationError: DetailError | null;
 }>;
 type Receipt = { operationId: string; serverId: string; itemId: string; libraryId: string; viewerFence: string; personal: PersonalState };
-type Command = { silentRetries?: number; offline?:PersonalOfflineMutation; intent: PersonalIntent; operationId?: string; expectedRevision?: number; phase: 'queued' | 'sending' | 'retry-required' | 'conflict'; promise: Promise<void>; resolve: () => void };
+type Command = { offline?:PersonalOfflineMutation; intent: PersonalIntent; operationId?: string; expectedRevision?: number; phase: 'queued' | 'sending' | 'retry-required' | 'conflict'; promise: Promise<void>; resolve: () => void };
 const obj = (v: unknown): v is Record<string, unknown> => typeof v === 'object' && v !== null && !Array.isArray(v);
 const str = (v: unknown, max = 512): v is string => typeof v === 'string' && v.length <= max && !/[\x00-\x1f\x7f]/.test(v);
 const id = (v: unknown): v is string => str(v, 256) && v.length > 0;
@@ -341,8 +342,7 @@ export class DetailService {
   retryMutation(): Promise<void> {
     this.active(); const command = this.commands[0];
     if (!command || this.running || command.phase === 'queued' || command.phase === 'sending') return command?.promise ?? Promise.resolve();
-    if(command.offline && command.phase==='conflict')throw new Error('This offline intent needs review; do not silently rebase it.');
-    if (command.phase === 'conflict') { command.operationId = undefined; command.expectedRevision = undefined; }
+    if (command.phase === 'conflict') throw new Error(command.offline ? 'This offline intent needs review; do not silently rebase it.' : 'This personal intent needs review before a new action.');
     let resolve!: () => void; command.promise = new Promise<void>(r => { resolve = r; }); command.resolve = resolve; command.phase = 'queued';
     this.publish({ mutationError: null }); void this.pump(); return command.promise;
   }
@@ -364,43 +364,45 @@ export class DetailService {
     const command = this.commands[0], data = this.state.data;
     if (!data) { command.phase = 'retry-required'; command.resolve(); this.publish({ mutationError: Object.freeze({ code: 'detail_required', message: 'Reload details before retrying this action.', retryable: true }) }); return; }
     this.running = true; command.phase = 'sending'; this.publish({ mutationError: null });
-    const generation = this.generation, api = this.api, controller = new AbortController(); this.mutationController = controller;
+    const generation = this.generation, api = this.api, bound = this.bound, controller = new AbortController(); this.mutationController = controller;
     try {
       if (!command.operationId) {
         const operationId = await this.deadline(this.requestId(), controller);
-        if (!uuid.test(operationId)) throw new Failure('invalid_request_id', 'A UUIDv4 operation ID is required.');
+        if (!uuid.test(operationId) && !isUserMutationKey(operationId)) throw new Failure('invalid_request_id', 'A UUIDv4 or user-mutation operation ID is required.');
         if (this.disposed || generation !== this.generation) return;
         command.operationId = operationId; command.expectedRevision = data.personal.revision;
       }
       const field = command.intent.action === 'watchlist' ? 'watchlisted' : command.intent.action;
       const body = { operationId: command.operationId, expectedRevision: command.expectedRevision, [field]: command.intent.value, ...(command.offline?{offline:command.offline}:{}) };
-      const raw = await this.deadline(api.request<RouteResponse<"put_items_id_personal_state">>(encodedRoutePath("put_items_id_personal_state", {"id": encodeURIComponent(data.scope.itemId)}), 'PUT', durationIntent(body,{progressSeconds:'progressMs'}), controller.signal), controller);
+      const raw = await this.deadline(api.request<unknown>(encodedRoutePath("put_items_id_personal_state", {"id": encodeURIComponent(data.scope.itemId)}), 'PUT', durationIntent(body,{progressSeconds:'progressMs'}), controller.signal), controller);
       if (this.disposed || generation !== this.generation) return;
-      const applied = receipt(raw, command.operationId, data);
-      if (this.state.data && applied.personal.revision >= this.state.data.personal.revision) this.publish({ data: Object.freeze({ ...this.state.data, item:Object.freeze({...this.state.data.item,progressSeconds:applied.personal.progressSeconds}), personal: applied.personal }) });
+      if (obj(raw) && raw.mutationReceipt !== undefined) {
+        const marker = raw.mutationReceipt;
+        if (!obj(marker) || typeof marker.key !== 'string' || !isUserMutationKey(marker.key)) invalid();
+        const recovered = parseUserMutationReceipt(marker, {key: marker.key, operation: 'put_items_id_personal_state'});
+        if (recovered.status !== 'applied' || recovered.targetId !== data.scope.itemId || !integer(recovered.revision)) invalid();
+        // The tiny receipt proves the historical outcome. A separate, validated current
+        // read supplies display state; its values cannot prove or disprove that outcome.
+        const current = await this.deadline(api.request<RouteResponse<'get_items_id_detail'>>(encodedRoutePath('get_items_id_detail', {id: encodeURIComponent(data.scope.itemId)}) + '?related=' + this.related, 'GET', undefined, controller.signal), controller);
+        if (this.disposed || generation !== this.generation) return;
+        const next = projection(current, bound, {libraryId: data.scope.libraryId, itemId: data.scope.itemId});
+        if (next.scope.viewerFence !== data.scope.viewerFence || next.personal.revision < recovered.revision || next.revision.catalog < data.revision.catalog) invalid();
+        if (this.state.data && next.personal.revision >= this.state.data.personal.revision && next.revision.catalog >= this.state.data.revision.catalog) this.publish({data: next});
+      } else {
+        const applied = receipt(raw, command.operationId, data);
+        if (this.state.data && applied.personal.revision >= this.state.data.personal.revision) this.publish({ data: Object.freeze({ ...this.state.data, item:Object.freeze({...this.state.data.item,progressSeconds:applied.personal.progressSeconds}), personal: applied.personal }) });
+      }
+      await api.acknowledgeUserMutation?.(command.operationId);
+      if (this.disposed || generation !== this.generation) return;
       this.commands.shift(); command.resolve(); this.publish({ mutationError: null });
       // What the change touched elsewhere on the page (Up Next, counts) is read in place, with no loading state.
       if (this.state.phase === 'ready') await this.revalidate().catch(() => {}); else await this.refresh();
     } catch (error) {
       if (this.disposed || generation !== this.generation) return;
       const info = errorInfo(error);
-      // The state moved under this action (another device, or the person's own previous press).
-      // That is not theirs to sort out: read the title again and, when the action still makes
-      // sense, send it with what the server has now. Only a real disagreement is shown.
-      if (info.code === 'personal_state_conflict' && !command.offline && (command.silentRetries ?? 0) < 2) {
-        command.silentRetries = (command.silentRetries ?? 0) + 1;
-        await this.refresh();
-        if (this.disposed || generation !== this.generation) return;
-        const now = this.state.data;
-        if (this.state.phase === 'ready' && now) {
-          const field = command.intent.action === 'watchlist' ? 'watchlisted' : command.intent.action;
-          const settled = command.intent.action !== 'resolution' && (now.personal as unknown as Record<string, unknown>)[field] === (command.intent as { value?: unknown }).value;
-          const offered = command.intent.action === 'resolution' ? now.personal.conflicts.some(c => c.id === (command.intent as { value: { conflictId: string } }).value.conflictId) : now.actions.some(a => a.id === command.intent.action && a.enabled);
-          if (settled) { this.commands.shift(); command.resolve(); this.publish({ mutationError: null }); return; }
-          if (offered) { command.operationId = undefined; command.expectedRevision = undefined; command.phase = 'queued'; this.publish({ mutationError: null }); return; }
-        }
-      }
-      command.phase = ['personal_state_conflict','personal_needs_resolution','personal_needs_review','operation_expired'].includes(info.code) ? 'conflict' : 'retry-required'; command.resolve();
+      // Keep the authored draft, ID and revision separate from refreshed server state.
+      // A conflicting operation is reviewed explicitly; matching current values are not a receipt.
+      command.phase = ['personal_state_conflict','personal_needs_resolution','personal_needs_review','operation_expired','receipt_expired','idempotency_conflict','mutation_needs_review','revision_mismatch'].includes(info.code) ? 'conflict' : 'retry-required'; command.resolve();
       this.publish({ mutationError: info });
       if (command.phase === 'conflict') await this.refresh();
     } finally {

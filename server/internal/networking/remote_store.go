@@ -8,6 +8,7 @@ import (
 	"errors"
 	"net/url"
 	"portico.local/server/internal/dbwork"
+	"portico.local/server/internal/usermutation"
 	"strconv"
 	"strings"
 	"time"
@@ -145,13 +146,17 @@ func (m *RemoteManager) configure(ctx context.Context, authority string, c Remot
 	if c.Revision < 1 || c.PublicPort < 1 || c.PublicPort > 65535 || c.Gateway != "" && !gatewayAddress(c.Gateway) {
 		return ErrInvalid
 	}
-	old, _, id, _, key, e := m.snapshot(ctx)
-	clear(key)
-	if e != nil {
-		return e
-	}
-	if authority != id || old.Revision != c.Revision {
-		return ErrStale
+	var e error
+	if _, _, protocol := usermutation.RequestFrom(ctx); !protocol {
+		old, _, id, _, key, e := m.snapshot(ctx)
+		clear(key)
+		if e != nil {
+			return e
+		}
+		if authority != id || old.Revision != c.Revision {
+			return ErrStale
+		}
+
 	}
 	gated2, e := m.h.store.tx(ctx)
 	if e != nil {
@@ -161,6 +166,13 @@ func (m *RemoteManager) configure(ctx context.Context, authority string, c Remot
 	defer gated2.Rollback()
 	if e = guardClaimRequestTx(ctx, tx); e != nil {
 		return e
+	}
+	r, e := usermutation.CheckContext(ctx, tx, time.Now().UnixMilli())
+	if e != nil {
+		return e
+	}
+	if r != nil {
+		return nil
 	}
 	if e = m.currentConfigTx(ctx, tx, authority, c.Revision); e != nil {
 		return e
@@ -174,6 +186,9 @@ func (m *RemoteManager) configure(ctx context.Context, authority string, c Remot
 		return ErrStale
 	}
 	if _, e = tx.ExecContext(ctx, `UPDATE networking_remote_state SET generation=generation+1,topology_digest='',route_digest='',next_attempt=0,attempts=0 WHERE singleton=1`); e != nil {
+		return e
+	}
+	if e = usermutation.SaveContext(ctx, tx, usermutation.Result{Status: "applied", TargetID: "remote", Revision: c.Revision + 1}, time.Now().UnixMilli()); e != nil {
 		return e
 	}
 	return commitClaimDatabaseTx(ctx, gated2)

@@ -13,7 +13,7 @@ export function createLiveBindings(context: ScreenContext, options: LegacyGuideO
   const stores = new Set<GuideWindowStore>();
   let failure: unknown;
   const listeners = new Set<() => void>();
-  const api = {async request<T>(...args: Parameters<typeof life.api.request>) {
+  const api = {...life.api, async request<T>(...args: Parameters<typeof life.api.request>) {
     try {return await life.api.request<T>(...args);}
     catch (error) {
       const status = (error as {status?: number})?.status;

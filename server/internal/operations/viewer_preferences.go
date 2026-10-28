@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"portico.local/server/internal/apievents"
 	"portico.local/server/internal/identity"
+	"portico.local/server/internal/usermutation"
 	"sort"
 )
 
@@ -146,9 +147,18 @@ func (s *Store) ApplyPreferences(ctx context.Context, p identity.Principal, auth
 		return out, e
 	}
 	e = s.transaction(ctx, auth, "", func(tx *sql.Tx) error {
+		receipt, err := usermutation.CheckContext(ctx, tx, s.now())
+		if err != nil {
+			return err
+		}
+		if receipt != nil {
+			out, err = readPreferences(tx, p, c.DeviceClass, nil)
+			return err
+		}
+
 		identity, _ := json.Marshal([]string{p.Authority, p.AccountID, p.ProfileID, c.Scope, address.device, c.DeviceClass, p.DeviceID})
 		key := "preferences:" + Hash(string(identity))
-		raw, digest, err := Receipt(tx, key, c.IdempotencyKey, c, s.now())
+		raw, digest, err := settingsLegacyReceipt(ctx, tx, key, c.IdempotencyKey, c, s.now())
 		if err != nil {
 			return err
 		}
@@ -178,7 +188,7 @@ func (s *Store) ApplyPreferences(ctx context.Context, p identity.Principal, auth
 		if err != nil {
 			return err
 		}
-		return SaveReceipt(tx, key, c.IdempotencyKey, digest, out, s.now())
+		return saveSettingsReceipt(ctx, tx, key, c.IdempotencyKey, digest, out, "preferences", revision+1, s.now())
 	})
 	return
 }

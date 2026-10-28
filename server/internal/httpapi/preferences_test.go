@@ -1,6 +1,7 @@
 package httpapi
 
 import (
+	"database/sql"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -114,6 +115,8 @@ func TestReadingPreferencesSaveReloadAndClearAllFifteenRows(t *testing.T) {
 }
 
 type preferenceFixture struct {
+	db      *sql.DB
+	ident   *identity.Service
 	handler http.Handler
 	token   string
 	t       *testing.T
@@ -148,7 +151,7 @@ func preferenceHTTP(t *testing.T) preferenceFixture {
 	if e != nil {
 		t.Fatal(e)
 	}
-	return preferenceFixture{New(Dependencies{DB: db, Identity: ident, Catalog: catalog.New(db), Hosted: control, Console: operations.New(db)}), session.AccessToken, t}
+	return preferenceFixture{handler: New(Dependencies{DB: db, Identity: ident, Catalog: catalog.New(db), Hosted: control, Console: operations.New(db)}), token: session.AccessToken, t: t, db: db, ident: ident}
 }
 
 func (f preferenceFixture) call(method, path string, body any) *httptest.ResponseRecorder {

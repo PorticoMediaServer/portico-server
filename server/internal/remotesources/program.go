@@ -10,12 +10,13 @@ import (
 
 	"portico.local/server/internal/dbwork"
 	"portico.local/server/internal/identity"
-	"portico.local/server/internal/mounts"
 	"portico.local/server/internal/rcloneprogram"
 	"portico.local/server/internal/storage"
+	"portico.local/server/internal/usermutation"
 )
 
-// SourceProgram is the rclone program that serves a mounted source right now.
+// SourceProgram is a mounted source's saved rclone program selection. Runtime
+// readiness is separate: acceptance durably requests the existing restart path.
 type SourceProgram struct {
 	Executable string `json:"executable"`
 	Version    string `json:"version"`
@@ -32,22 +33,27 @@ func (s *Service) SetSourceProgram(ctx context.Context, identities *identity.Ser
 	if s == nil || s.db == nil || s.mounts == nil || source == "" || expectedRevision < 1 || len(operationID) > 128 || operationID == "" {
 		return SourceProgram{}, storage.ErrRemoteConfig
 	}
-	includedPath := ""
-	if bundled, e := rcloneprogram.Resolve(); e == nil {
-		includedPath = bundled.Path
+	binding, envelope, cohort := usermutation.RequestFrom(ctx)
+	if cohort {
+		if envelope.Key != operationID || envelope.Operation != "put_storage_source_program" || envelope.Stop || binding.Authority != owner.Authority || binding.AccountID != owner.AccountID || binding.ProfileID != owner.ProfileID {
+			return SourceProgram{}, usermutation.ErrConflict
+		}
 	}
 	if useIncluded && strings.TrimSpace(executable) != "" {
 		// Two answers to one question is ambiguous; refuse instead of picking.
 		return SourceProgram{}, storage.ErrRemoteConfig
 	}
-	if useIncluded {
-		if includedPath == "" {
+	// Legacy receipt fingerprints included the resolved path. Keep those exact
+	// bytes; P2-51 resolves only on fresh approval, after receipt lookup.
+	if useIncluded && !cohort {
+		program, err := rcloneprogram.Resolve()
+		if err != nil {
 			return SourceProgram{}, storage.ErrRemoteConfig
 		}
-		executable = includedPath
+		executable = program.Path
 	}
 	executable = strings.TrimSpace(executable)
-	if !filepath.IsAbs(executable) || len(executable) > 8192 || strings.IndexFunc(executable, unicode.IsControl) >= 0 || strings.Contains(executable, "\x00") {
+	if !useIncluded && !filepath.IsAbs(executable) || len(executable) > 8192 || strings.IndexFunc(executable, unicode.IsControl) >= 0 || strings.Contains(executable, "\x00") {
 		return SourceProgram{}, storage.ErrRemoteConfig
 	}
 	snapshot, err := dbwork.BeginSnapshot(ctx, s.db)
@@ -82,18 +88,24 @@ func (s *Service) SetSourceProgram(ctx context.Context, identities *identity.Ser
 		if err != nil {
 			return storage.ErrRemoteChanged
 		}
+		// Current source/mount authority precedes receipt disclosure. Generation,
+		// root and kind are mutable preconditions of a fresh acceptance only.
+		if current.MountID != admitted.MountID {
+			return storage.ErrRemoteChanged
+		}
+		return nil
+	}
+	checkFresh := func(tx *sql.Tx) error {
+		current, err := sourceRowTx(ctx, tx, admitted.ID)
+		if err != nil {
+			return storage.ErrRemoteChanged
+		}
 		if current.Generation != admitted.Generation || current.RootPath != admitted.RootPath || current.MountID != admitted.MountID || current.Kind != admitted.Kind {
 			return storage.ErrRemoteChanged
 		}
 		return nil
 	}
-	receipt, err := s.mounts.Command(ctx, owner.Hash, admitted.MountID, mounts.Command{
-		OperationID:      operationID,
-		Action:           "configure",
-		ExpectedRevision: expectedRevision,
-		Executable:       executable,
-		UseIncluded:      &useIncluded,
-	}, authorize)
+	receipt, err := s.mounts.ConfigureSourceProgram(ctx, owner.Hash, source, admitted.MountID, operationID, executable, useIncluded, expectedRevision, authorize, checkFresh)
 	if err != nil {
 		return SourceProgram{}, err
 	}

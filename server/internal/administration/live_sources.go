@@ -10,6 +10,7 @@ import (
 	"net/url"
 	"portico.local/server/internal/livechannels"
 	"portico.local/server/internal/remotemedia"
+	"portico.local/server/internal/usermutation"
 	"sort"
 	"strings"
 	"time"
@@ -353,8 +354,20 @@ func (s *Service) SaveLiveSourceConfiguration(ctx context.Context, auth Authoriz
 	}{change.ExpectedRevision, value})
 	var snapshot *livechannels.PersistedConfigurationSnapshot
 	var replayed bool
-	err := s.snapshot(ctx, auth, func(tx *sql.Tx) error {
-		var err error
+	prepare := s.snapshot
+	if _, _, protocol := usermutation.RequestFrom(ctx); protocol {
+		prepare = s.transaction
+	}
+	err := prepare(ctx, auth, func(tx *sql.Tx) error {
+		r, err := usermutation.CheckContext(ctx, tx, s.milliseconds())
+		if err != nil {
+			return err
+		}
+		if r != nil {
+			replayed = true
+			out, err = s.liveSourceDocument(ctx, tx, id)
+			return err
+		}
 		out, replayed, err = receipt[LiveSourceDocument](ctx, tx, scope, change.OperationID, digest)
 		if err != nil || replayed {
 			return err
@@ -376,8 +389,16 @@ func (s *Service) SaveLiveSourceConfiguration(ctx context.Context, auth Authoriz
 		if value.Remote != nil {
 			snapshot, err = livechannels.ReadPersistedConfigurationSnapshotTx(ctx, tx, id)
 		}
+		if err == nil {
+			if _, _, protocol := usermutation.RequestFrom(ctx); protocol {
+				return errSettingsPrepared
+			}
+		}
 		return err
 	})
+	if errors.Is(err, errSettingsPrepared) {
+		err = nil
+	}
 	if err != nil || replayed {
 		return out, err
 	}
@@ -388,6 +409,14 @@ func (s *Service) SaveLiveSourceConfiguration(ctx context.Context, auth Authoriz
 	// Network work is complete. Reauthorize and recheck the revision and exact
 	// sealed policy inputs inside the accepting writer before applying anything.
 	err = s.transaction(ctx, auth, func(tx *sql.Tx) error {
+		r, err := usermutation.CheckContext(ctx, tx, s.milliseconds())
+		if err != nil {
+			return err
+		}
+		if r != nil {
+			out, err = s.liveSourceDocument(ctx, tx, id)
+			return err
+		}
 		stored, replayed, err := receipt[LiveSourceDocument](ctx, tx, scope, change.OperationID, digest)
 		if err != nil {
 			return err
@@ -448,7 +477,7 @@ func (s *Service) SaveLiveSourceConfiguration(ctx context.Context, auth Authoriz
 		if out, err = s.liveSourceDocument(ctx, tx, id); err != nil {
 			return err
 		}
-		return saveReceipt(ctx, tx, scope, change.OperationID, digest, out, at)
+		return saveSettingsReceipt(ctx, tx, scope, change.OperationID, digest, out, id, out.Revision, at)
 	})
 	return out, err
 }

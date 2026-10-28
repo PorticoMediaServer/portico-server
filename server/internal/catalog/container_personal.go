@@ -11,6 +11,7 @@ import (
 	"portico.local/server/internal/identity"
 	"portico.local/server/internal/operations"
 	"portico.local/server/internal/personalstate"
+	"portico.local/server/internal/usermutation"
 )
 
 // ContainerPersonalMutation sets exactly one of watched, watchlisted or favorite.
@@ -94,11 +95,35 @@ func (s *Service) SetContainerSaved(ctx context.Context, p identity.Principal, v
 	if !containerSaves(kind, flag) {
 		return out, jobInvalid("this kind does not carry that flag")
 	}
-	if err = s.WithContext(ctx).VisibleEntity(ctx, v, kind, id); err != nil {
-		return out, err
+	_, _, protocol := usermutation.RequestFrom(ctx)
+	if !protocol {
+		if err = s.WithContext(ctx).VisibleEntity(ctx, v, kind, id); err != nil {
+			return out, err
+		}
 	}
 	profile := identity.PersonalKey(p.Viewer)
-	err = dbwork.WithWriteTx(ctx, s.db, dbwork.ClassInteractive, func(tx *sql.Tx) error {
+	err = dbwork.WithWriteTxContext(ctx, s.db, dbwork.ClassInteractive, func(ctx context.Context, tx *sql.Tx) error {
+		prior, e := usermutation.CheckContext(ctx, tx, time.Now().UnixMilli())
+		if e != nil {
+			return e
+		}
+		if prior != nil {
+			if _, e := personalID(tx, id); errors.Is(e, sql.ErrNoRows) {
+				out = ContainerPersonal{Revision: prior.Revision}
+				return nil
+			} else if e != nil {
+				return e
+			}
+			if e := s.WithContext(ctx).VisibleEntity(ctx, v, kind, id); e != nil {
+				return e
+			}
+			out, e = readContainerMutation(ctx, tx, profile, kind, id, prior.Revision)
+			return e
+		}
+		if e := s.WithContext(ctx).VisibleEntity(ctx, v, kind, id); e != nil {
+			return e
+		}
+
 		containerID, e := entityid.Resolve(ctx, tx, id)
 		if errors.Is(e, entityid.ErrNotFound) {
 			return sql.ErrNoRows
@@ -115,7 +140,10 @@ func (s *Service) SetContainerSaved(ctx context.Context, p identity.Principal, v
 			return e
 		}
 		out.Watchlisted, out.Favorite, e = readContainerSaved(ctx, tx, profile, containerID)
-		return e
+		if e != nil {
+			return e
+		}
+		return usermutation.SaveContext(ctx, tx, usermutation.Result{Status: "applied", TargetID: id, Revision: out.Revision}, time.Now().UnixMilli())
 	})
 	return
 }
@@ -129,15 +157,26 @@ func (s *Service) SetContainerPersonal(ctx context.Context, p identity.Principal
 		return out, e
 	}
 	profile := identity.PersonalKey(p.Viewer)
-	err = dbwork.WithWriteTx(ctx, s.db, dbwork.ClassInteractive, func(tx *sql.Tx) error {
+	err = dbwork.WithWriteTxContext(ctx, s.db, dbwork.ClassInteractive, func(ctx context.Context, tx *sql.Tx) error {
+		visible, bound, e := access(ctx, tx, p, "i.id")
+		if e != nil {
+			return e
+		}
+		prior, e := usermutation.CheckContext(ctx, tx, time.Now().UnixMilli())
+		if e != nil {
+			return e
+		}
+		if prior != nil {
+			if e = checkContainerReplayAccess(ctx, tx, id, members, visible, bound); e != nil {
+				return e
+			}
+			out, e = readContainerMutation(ctx, tx, profile, kind, id, prior.Revision)
+			return e
+		}
 		containerID, e := entityid.Resolve(ctx, tx, id)
 		if errors.Is(e, entityid.ErrNotFound) {
 			return sql.ErrNoRows
 		}
-		if e != nil {
-			return e
-		}
-		visible, bound, e := access(ctx, tx, p, "i.id")
 		if e != nil {
 			return e
 		}
@@ -191,7 +230,10 @@ func (s *Service) SetContainerPersonal(ctx context.Context, p identity.Principal
 		until := time.Now().UTC().Add(containerUndoLifetime)
 		out.UndoUntil = until.Format("2006-01-02T15:04:05.000Z")
 		_, e = tx.ExecContext(ctx, `UPDATE container_personal_undo SET expires_ms=? WHERE token=?`, until.UnixMilli(), out.UndoToken)
-		return e
+		if e != nil {
+			return e
+		}
+		return usermutation.SaveContext(ctx, tx, usermutation.Result{Status: "applied", TargetID: id, Revision: out.Revision}, time.Now().UnixMilli())
 	})
 	return
 }

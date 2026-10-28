@@ -13,6 +13,7 @@ import (
 	"portico.local/server/internal/identity"
 	"portico.local/server/internal/rcloneprogram"
 	"portico.local/server/internal/storage"
+	"portico.local/server/internal/usermutation"
 )
 
 // S3Setup is a bounded managed form, not a generic config/command passthrough.
@@ -184,7 +185,19 @@ func (s *Service) configure(ctx context.Context, actor, id, hash string, c Comma
 	}
 	tx := gated.Tx()
 	defer gated.Rollback()
-	if err = authorize(tx); err != nil {
+	if c.sourceProgram != nil {
+		prior, err := s.checkSourceProgram(ctx, tx, id, c, authorize)
+		if err != nil {
+			return zero, err
+		}
+		if prior != nil {
+			gated.Rollback()
+			return *prior, s.reloadSourceProgramLocked(id)
+		}
+		if err = c.sourceProgram.fresh(tx); err != nil {
+			return zero, err
+		}
+	} else if err = authorize(tx); err != nil {
 		return zero, err
 	}
 	if c.sourceGeneration != 0 {
@@ -232,8 +245,19 @@ func (s *Service) configure(ctx context.Context, actor, id, hash string, c Comma
 		}
 	}
 	receipt := Receipt{c.OperationID, id, m.ControlRevision, true, false, &m}
-	if err = s.record(tx, actor, hash, receipt); err != nil {
+	if c.sourceProgram != nil {
+		err = usermutation.SaveContext(ctx, tx, usermutation.Result{Status: "applied", TargetID: c.sourceProgram.source, Revision: m.ControlRevision}, time.Now().UnixMilli())
+	} else {
+		err = s.record(tx, actor, hash, receipt)
+	}
+	if err != nil {
 		return zero, err
+	}
+	// Once COMMIT is attempted its outcome can be ambiguous. Retain this synced
+	// private generation on error; recovery removes unreferenced files later.
+	// Deleting it here could break an acceptance discovered by same-key replay.
+	if c.sourceProgram != nil {
+		committed = true
 	}
 	if err = gated.Commit(); err != nil {
 		return zero, err
@@ -241,6 +265,9 @@ func (s *Service) configure(ctx context.Context, actor, id, hash string, c Comma
 	committed = true
 	if s.NativeInvalidated != nil {
 		s.NativeInvalidated(id)
+	}
+	if c.sourceProgram != nil {
+		return receipt, s.reloadSourceProgramLocked(id)
 	}
 	s.available[id] = false
 	if child := s.active[id]; child != nil && !child.stopping {

@@ -47,7 +47,7 @@ export function WatchStreamLimitSessions({api, failure, isCurrent, excludeSessio
     const service = api ? playbackControlsService(<T,>(path: string, method?: string, body?: unknown) => api.request<T>(path, method, body, life.signal)) : undefined;
     const lease: Lease = Object.assign({isCurrent, excludeSessionId, life,
       read: () => failure ? failure.remote() : service!.remote(),
-      stop: (row: RemotePlaybackControls) => failure ? failure.stop(row) : service!.stopAccount(row.sessionId)},
+      stop: (row: RemotePlaybackControls) => failure ? failure.stop(row) : service!.stopAccount(row)},
       {items: Object.freeze([]) as readonly RemotePlaybackControls[]});
     active.current?.life.abort();
     active.current = lease;

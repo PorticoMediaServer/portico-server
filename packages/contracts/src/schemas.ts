@@ -15121,6 +15121,11 @@ export const schemas = {
         "minimum": -9007199254740991,
         "type": "integer"
       },
+      "generation": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      },
       "positionMs": {
         "maximum": 9007199254740991,
         "minimum": -9007199254740991,
@@ -15139,6 +15144,7 @@ export const schemas = {
     "required": [
       "sessionId",
       "revision",
+      "generation",
       "state",
       "positionMs",
       "actions"
@@ -35391,6 +35397,11 @@ export const schemas = {
         "minimum": -9007199254740991,
         "type": "integer"
       },
+      "generation": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      },
       "positionMs": {
         "maximum": 9007199254740991,
         "minimum": -9007199254740991,
@@ -35409,6 +35420,7 @@ export const schemas = {
     "required": [
       "sessionId",
       "revision",
+      "generation",
       "state",
       "positionMs",
       "actions"
@@ -149823,6 +149835,11 @@ export const schemas = {
               "minimum": -9007199254740991,
               "type": "integer"
             },
+            "generation": {
+              "maximum": 9007199254740991,
+              "minimum": -9007199254740991,
+              "type": "integer"
+            },
             "item": {
               "properties": {
                 "id": {
@@ -149960,6 +149977,7 @@ export const schemas = {
           "required": [
             "sessionId",
             "revision",
+            "generation",
             "state",
             "positionMs",
             "actions",
@@ -192796,6 +192814,117 @@ export const schemas = {
       "profileId",
       "expiresAt",
       "sections"
+    ],
+    "type": "object"
+  },
+  "GetUserMutationPolicyRequest": {
+    "properties": {},
+    "required": [],
+    "type": "object"
+  },
+  "GetUserMutationPolicyResponse": {
+    "properties": {
+      "retentionDays": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      },
+      "retiredBeforeMs": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      },
+      "serverTimeMs": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      }
+    },
+    "required": [
+      "serverTimeMs",
+      "retiredBeforeMs",
+      "retentionDays"
+    ],
+    "type": "object"
+  },
+  "GetUserMutationRequest": {
+    "properties": {},
+    "required": [],
+    "type": "object"
+  },
+  "GetUserMutationResponse": {
+    "additionalProperties": false,
+    "properties": {
+      "committedMs": {
+        "maximum": 9999999999999,
+        "minimum": 0,
+        "type": "integer"
+      },
+      "expiresMs": {
+        "maximum": 10002591999999,
+        "minimum": 0,
+        "type": "integer"
+      },
+      "generation": {
+        "maximum": 2147483647,
+        "minimum": 0,
+        "type": "integer"
+      },
+      "key": {
+        "maxLength": 51,
+        "minLength": 51,
+        "pattern": "^p251_[0-9]{13}_[0-9a-f]{32}$",
+        "type": "string"
+      },
+      "operation": {
+        "maxLength": 96,
+        "type": "string"
+      },
+      "positionMs": {
+        "maximum": 9007199254740991,
+        "minimum": 0,
+        "type": "integer"
+      },
+      "positionStatus": {
+        "enum": [
+          "",
+          "applied",
+          "already_stopped",
+          "not_renderer",
+          "policy_rejected",
+          "unchanged"
+        ],
+        "type": "string"
+      },
+      "revision": {
+        "maximum": 9007199254740991,
+        "minimum": 0,
+        "type": "integer"
+      },
+      "status": {
+        "enum": [
+          "applied",
+          "already_stopped",
+          "conflict",
+          "invalid",
+          "terminal",
+          "deleted",
+          "removed",
+          "partial"
+        ],
+        "type": "string"
+      },
+      "targetId": {
+        "maxLength": 128,
+        "type": "string"
+      }
+    },
+    "required": [
+      "key",
+      "operation",
+      "status",
+      "committedMs",
+      "expiresMs"
     ],
     "type": "object"
   },
@@ -251189,6 +251318,50 @@ export const schemas = {
     ],
     "type": "object"
   },
+  "RetireUserMutationsRequest": {
+    "properties": {
+      "accountId": {
+        "type": "string"
+      },
+      "authority": {
+        "type": "string"
+      },
+      "confirmReceiptHistoryLoss": {
+        "type": "boolean"
+      }
+    },
+    "required": [
+      "authority",
+      "accountId",
+      "confirmReceiptHistoryLoss"
+    ],
+    "type": "object"
+  },
+  "RetireUserMutationsResponse": {
+    "properties": {
+      "retentionDays": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      },
+      "retiredBeforeMs": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      },
+      "serverTimeMs": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      }
+    },
+    "required": [
+      "serverTimeMs",
+      "retiredBeforeMs",
+      "retentionDays"
+    ],
+    "type": "object"
+  },
   "RevalidateDownloadReceiptsRequest": {
     "properties": {
       "operationId": {
@@ -271342,8 +271515,14 @@ export const schemas = {
     ]
   },
   "StopAccountPlaybackRequest": {
-    "properties": {},
-    "required": [],
+    "additionalProperties": false,
+    "properties": {
+      "generation": {
+        "maximum": 2147483647,
+        "minimum": 1,
+        "type": "integer"
+      }
+    },
     "type": "object"
   },
   "StopAccountPlaybackResponse": {
@@ -271356,6 +271535,11 @@ export const schemas = {
       {
         "additionalProperties": false,
         "properties": {
+          "generation": {
+            "maximum": 2147483647,
+            "minimum": 1,
+            "type": "integer"
+          },
           "positionMs": {
             "maximum": 9007199254740991,
             "minimum": -9007199254740991,

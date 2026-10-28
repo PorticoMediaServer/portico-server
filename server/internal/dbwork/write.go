@@ -20,6 +20,15 @@ var gate = NewGate()
 // accepting callbacks whose caller still passes the original request context.
 var liveWrites sync.Map // *sql.Tx -> *Write
 
+type durableUserKey struct{}
+
+// WithDurableUser keeps the caller's admission class and gives its transaction
+// the same FULL commit durability as an authority fence. It is used for a user
+// change whose receipt must survive together with the change.
+func WithDurableUser(ctx context.Context) context.Context {
+	return context.WithValue(ctx, durableUserKey{}, true)
+}
+
 // WriteGate exposes the gate for diagnostics and for exclusive maintenance that
 // must not start while any writer is active or queued.
 func WriteGate() *Gate { return gate }
@@ -59,17 +68,18 @@ type Write struct {
 	readOnly       bool
 	tx             *sql.Tx
 	ctx            context.Context
-	// conn is set only for a security-fence transaction, which runs on a
+	// conn is set for security fences and durable user writes, which run on a
 	// connection of its own so that synchronous=FULL applies to it and to
 	// nothing else. See beginDurable.
-	conn        *sql.Conn
-	release     func()
-	parent      *carried
-	owned       *carried
-	once        sync.Once
-	done        bool
-	mu          sync.Mutex
-	afterCommit []func()
+	conn         *sql.Conn
+	release      func()
+	parent       *carried
+	owned        *carried
+	once         sync.Once
+	done         bool
+	mu           sync.Mutex
+	afterCommit  []func()
+	beforeCommit []func() error
 	// plan, meter and site measure this transaction against its WritePlan
 	// once it commits; see plan.go.
 	plan  WritePlan
@@ -116,7 +126,7 @@ func Begin(ctx context.Context, db *sql.DB, class Class) (*Write, error) {
 		tx   *sql.Tx
 		conn *sql.Conn
 	)
-	if class == ClassSecurityFence {
+	if durable, _ := ctx.Value(durableUserKey{}).(bool); class == ClassSecurityFence || durable {
 		conn, tx, err = beginDurable(ctx, writerHandle(db))
 	} else {
 		tx, err = writerHandle(db).BeginTx(ctx, nil)
@@ -132,24 +142,24 @@ func Begin(ctx context.Context, db *sql.DB, class Class) (*Write, error) {
 	return w, nil
 }
 
-// A security fence is the one class where losing the last commit is not merely
+// Security fences and receipted user changes must survive together with their
+// acceptance. Losing the last commit is not merely
 // inconvenient. `synchronous=NORMAL` in WAL mode is the right default for
-// everything else — it never corrupts the database, and the worst a power cut
+// other work — it never corrupts the database, and the worst a power cut
 // can do is lose the tail of the log — but "the tail of the log" is exactly
 // where a revocation lives. A sign-in invalidated, a device removed, a
 // restriction published: losing one of those means a principal stays authorised
 // after the server said it had stopped being, which is the one failure this
 // class exists to prevent.
 //
-// So a fence transaction runs on a connection of its own with FULL durability,
+// Such a transaction runs on a connection of its own with FULL durability,
 // and the setting is restored before that connection goes back to the pool. The
 // pragma cannot be set inside a transaction, and setting it through the pool
 // would land it on whichever connection the pool handed over and leave it there
 // for whoever got that connection next — the pooled-pragma mistake this
 // codebase has already paid for once.
 //
-// The cost is one fsync per fence write on a class that runs perhaps a few times
-// a minute, against the gate it already holds anyway.
+// The cost is one fsync per durable write, against the gate it already holds.
 func beginDurable(ctx context.Context, db *sql.DB) (*sql.Conn, *sql.Tx, error) {
 	conn, err := db.Conn(ctx)
 	if err != nil {
@@ -250,6 +260,12 @@ func (w *Write) Commit() error {
 		_ = w.tx.Rollback()
 		w.finish()
 		return ErrAborted
+	}
+	for _, check := range w.beforeCommit {
+		if err := check(); err != nil {
+			_ = w.tx.Rollback()
+			return err
+		}
 	}
 	changesAtEnd := rowChanges(w.ctx, w.tx)
 	changed := changesAtEnd != w.changesAtStart
@@ -359,6 +375,25 @@ func AfterCommit(tx *sql.Tx, callback func()) error {
 		return errors.New("dbwork: callback transaction already finished")
 	}
 	w.afterCommit = append(w.afterCommit, callback)
+	return nil
+}
+
+// BeforeCommit checks an invariant on this transaction immediately before its
+// commit. The callback may read this transaction only; it must not acquire the
+// gate, perform external work, or register more callbacks. A failed check rolls
+// back the complete transaction, including its domain effects.
+func BeforeCommit(tx *sql.Tx, check func() error) error {
+	value, ok := liveWrites.Load(tx)
+	if !ok || check == nil {
+		return errors.New("dbwork: check requires a live gated transaction")
+	}
+	w := value.(*Write)
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	if w.done {
+		return errors.New("dbwork: check transaction already finished")
+	}
+	w.beforeCommit = append(w.beforeCommit, check)
 	return nil
 }
 
