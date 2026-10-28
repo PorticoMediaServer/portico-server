@@ -35,7 +35,7 @@ function HistoryTable({bindings: b}: {bindings: DashboardBindings}) {
   }, [state.value, cursor, b.context, settledQuery]);
   const people = useDashboardAccounts(b);
   const failed = state.failed || people.failed;
-  useEffect(() => {const reset = () => setCursor(''); const offs = ['session.updated', 'playback.history'].map(type => b.events?.on(type, reset)); return () => offs.forEach(off => off?.());}, [b, setCursor]);
+  useEffect(() => {const reset = () => setCursor(''); const offs = ['session.updated', 'playback.history'].map(type => b.events?.on(type, reset)); offs.push(b.events?.onResync?.(reset)); return () => offs.forEach(off => off?.());}, [b, setCursor]);
   const tableRows = useMemo(() => rows.map((entry): SettingsTableRow => {
     const artwork = entry.itemId ? b.artwork(entry.itemId, entry.kind === 'song' || entry.kind === 'audiobook_file' ? 'square' : 'poster') : undefined;
     return {id: entry.id, label: entry.title, cells: {

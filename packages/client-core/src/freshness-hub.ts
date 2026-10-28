@@ -164,6 +164,8 @@ export type Reachability = 'reachable' | 'unreachable';
 /** What a document's quiet read is given. */
 export type RevalidateContext = Readonly<{
   signal: AbortSignal;
+  /** @internal This owner already holds the feed's read admission. */
+  admission?: object;
   /** Resolves when the person's input has paused. Await it between receiving an answer and showing it. */
   settle(): Promise<void>;
   /** Only progress moved: a read may keep to the parts that show a position. */
@@ -341,10 +343,10 @@ class Document implements FreshDocument {
     this.publish();
     let failed: unknown, ok = false;
     try {
-      const context: RevalidateContext = {signal: controller.signal, settle: () => this.hub.settled(controller.signal), progressOnly: answered === 1};
+      const context: RevalidateContext = {signal: controller.signal, admission: this.hub.readAdmission(), settle: () => this.hub.settled(controller.signal), progressOnly: answered === 1};
       if (filled) await context.settle();
       if (!controller.signal.aborted) {
-        await (filled ? this.options.revalidate(context) : this.options.recover!(context));
+        await this.hub.read(controller.signal, () => filled ? this.options.revalidate(context) : this.options.recover!(context));
         ok = true;
       }
     } catch (error) {
@@ -580,6 +582,12 @@ export class FreshnessHub {
   forgetInterest(interest: Interest): void { this.interests.delete(interest); }
 
   // ── Foreground and input ──────────────────────────────────────────
+
+  /** @internal Admission only: existing owners keep debt, waits and read outcomes. */
+  readAdmission(): object | undefined {return this.events?.resyncReads;}
+  read<T>(signal: AbortSignal, read: () => Promise<T>): Promise<T> {
+    return this.events ? this.events.resyncReads.run(signal, read) : read();
+  }
 
   isActive(): boolean { return this.active && !this.disposed; }
 

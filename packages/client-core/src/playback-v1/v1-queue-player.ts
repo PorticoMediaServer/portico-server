@@ -1,3 +1,4 @@
+import type {ResyncReadContext, ResyncRegistration} from '../resync-coordinator.ts';
 /**
  * The device queue on Playback Protocol v1 (Plan — Client Playback Migration, core step): the
  * same `QueueController` surface as the /v2 `QueuePlayer`, over v1 queues (§8) and sessions (§5).
@@ -47,7 +48,7 @@ import {toPlaybackSession} from './session-shape.ts';
 import {retireQueuedSelectionRegistration, type QueuedSelectionRetirer, type QueueSelectionRegistration} from './selection-registration.ts';
 import {audioTrackId, type PlaybackChoices} from './choices.ts';
 import {requestInForce, type QualityRequest} from './quality.ts';
-import type {SessionChange, StartContext, StartOptions, StartPreparation, StartTarget} from './sessions.ts';
+import {SessionsClient, type SessionChange, type StartContext, type StartOptions, type StartPreparation, type StartTarget} from './sessions.ts';
 import {requireSessionChangeCurrent, sessionChangeCurrent, type SessionChangeContext} from './change-context.ts';
 export type {SessionChangeContext} from './change-context.ts';
 import {QUEUE_WINDOW_MAX, QueueClient, saveQueueAsPlaylist, queueWindowScope, queueHasObservedCurrent, type CreateResult, type QueueAnchor, type QueuePlaylistSave, type SegmentInput} from './queue.ts';
@@ -106,6 +107,8 @@ export interface QueueSessionTransport {
   selectionRegistration?(id: string, adopted?: PlaybackSession): QueueSelectionRegistration | undefined;
   /** Stop reporting a session a native owner takes over; the epoch it held, for the owner's claim. */
   handOverObserver(id: string): string | undefined;
+  /** Read current authority/end after missed events, without issuing playback commands. */
+  reconcileSession?(id: string, signal?: AbortSignal): Promise<void>;
   /** Re-plans a live session (quality, version, audio track): same session, next generation. */
   change?(id: string, change: SessionChange, durationSeconds: number, context?: SessionChangeContext): Promise<{session: Session; playback: PlaybackSession}>;
   /** Tells the queue player that a session it holds was re-planned behind it (a recovered player failure). */
@@ -133,7 +136,7 @@ export type V1QueuePlayerOptions = Readonly<{
   /** The device's `/v1/events` subscription: `queue.updated` refreshes the view (another
    * device's edit, a building segment growing) and wakes a start waiting for its snapshot. A
    * resync (updates were missed) does the same, since any of them may have been this queue's. */
-  events?: Readonly<{on(typeOrPrefix: string, listener: (event: ServerEvent) => void): () => void; onResync?(listener: () => void): () => void}>;
+  events?: Readonly<{on(typeOrPrefix: string, listener: (event: ServerEvent) => void): () => void; onResync?(listener: () => void): () => void; onResyncRead?(read: (context: ResyncReadContext) => Promise<void>, options?: {priority?: number}): Pick<ResyncRegistration, 'dispose'>}>;
   /** How long a command retries while its entry is still being snapshotted (queue_building). */
   buildingRetryMs?: number;
   /** The server offers queue transitions for rendered audio (spec §18,
@@ -298,10 +301,12 @@ export class V1QueuePlayer implements QueueController {
     this.unlisten = this.events?.on('queue.updated', event => this.queueEvent(event));
     // Rereads the queue as it is now: the header and the window around its actual current entry.
     // It never advances, commits or starts anything.
-    this.unlistenResync = this.events?.onResync?.(() => {
-      if (this.disposed || !this.header) return;
-      this.wakePending?.();
-      if (!this.refreshTimer) this.refreshTimer = setTimeout(() => { this.refreshTimer = undefined; void this.refresh().catch(() => {}); }, 100);
+    if (this.events?.onResyncRead) {
+      const recovery = this.events.onResyncRead(context => this.resyncCurrent(context), {priority: 0});
+      this.unlistenResync = () => recovery.dispose();
+    } else this.unlistenResync = this.events?.onResync?.(() => {
+      // Compatibility ports still recover state through the same read-only path.
+      void this.resyncCurrent({signal: new AbortController().signal, isCurrent: () => !this.disposed}).catch(() => {});
     });
     // An administrator's terminate reaches a native owner at once, not at its next report.
     this.unlistenSessions = this.events?.on('session.updated', event => {
@@ -313,6 +318,34 @@ export class V1QueuePlayer implements QueueController {
       void this.native!.sessionUpdated?.(this.nativeSession!).catch(() => {});
     });
     return () => this.dispose();
+  }
+
+  private async resyncCurrent(context: ResyncReadContext): Promise<void> {
+    if (this.disposed || context.signal.aborted) return;
+    const epoch = this.nativeEpoch, generation = this.generation;
+    const current = () => !this.disposed && context.isCurrent() && !context.signal.aborted && epoch === this.nativeEpoch && generation === this.generation;
+    this.wakePending?.();
+    // Adopt a committed native successor first. Never ask the owner to reconcile
+    // the predecessor JS last saw, or infer normal EOS from a missed hint.
+    if (this.nativeOwns()) {
+      await this.native!.refresh();
+      if (!current()) return;
+      if (this.nativeOwns()) {
+        const sessionId = this.nativeSession!;
+        // Prove current server state under this read's admission. The existing
+        // native bridge then reconciles its own exact current/audible binding;
+        // JS neither invents a native receipt nor classifies a missing row as EOS.
+        try {await new SessionsClient(this.http).get(sessionId, context.signal);}
+        catch (error) {if (!(error instanceof PlaybackApiError && (error.status === 404 || error.status === 410))) throw error;}
+        if (current() && this.nativeOwns() && this.nativeSession === sessionId) await this.native!.sessionUpdated?.(sessionId);
+      }
+      if (!current()) return;
+    } else if (this.session) {
+      // Includes the existing SessionEnd reason. This is observation only: no
+      // advance, commit, restart or new operation identity is produced.
+      await this.api.reconcileSession?.(this.session.id, context.signal);
+    }
+    if (current()) await this.refresh(context.signal);
   }
 
   /** Another device's edit, a building segment growing, or the server choosing a waiting

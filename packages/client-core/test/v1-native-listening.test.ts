@@ -11,6 +11,7 @@ import {PlaybackService} from '../src/index.ts';
 import {FakePlaybackServer, fakeHttp} from '../src/playback-v1/testing/fake-server.ts';
 import {V1PlaybackApi} from '../src/playback-v1/legacy-bridge.ts';
 import {V1QueuePlayer} from '../src/playback-v1/v1-queue-player.ts';
+import {EventsClient} from '../src/playback-v1/events.ts';
 import {QueueClient} from '../src/playback-v1/queue.ts';
 import {PlaybackApiError} from '../src/playback-v1/http.ts';
 import {queueItemInput} from '../src/queue-controller.ts';
@@ -137,14 +138,14 @@ function setup(options: {nativeFor?: (kind: string) => boolean; refuse?: boolean
   const api = new V1PlaybackApi(http, {timers: {setTimer: () => 0, clearTimer: () => {}}, key: () => `k${++serial}`});
   const playback = new PlaybackService(api, () => `r${++serial}`, {});
   const owner = new ReferenceOwner(ownerHttp, new QueueClient(ownerHttp, () => `n${++serial}-key-000000`));
-  const listeners = new Map<string, ((e: {type: string; resource?: {kind: string; id: string}}) => void)[]>();
-  const events = {on: (type: string, l: (e: never) => void) => { listeners.set(type, [...(listeners.get(type) ?? []), l as never]); return () => {}; }};
-  const emitEvent = (type: string, id: string) => { for (const l of listeners.get(type) ?? []) l({type, resource: {kind: 'session', id}}); };
+  const events = new EventsClient({http});
+  const emitEvent = (type: string, id: string) => events.deliver({id: `event-${++serial}`, type, resource: {kind: 'session', id}});
   if (options.refuse) owner.adopt = async () => { throw new Error('native owner closed'); };
   const player = new V1QueuePlayer({http, api, playback, viewer, key: () => `q${++serial}-key-000000`, pendingPollMs: 10, events: events as never, native: owner, nativeFor: options.nativeFor ?? (kind => kind === 'song')});
-  const stop = player.connect();
+  const disconnect = player.connect();
+  const stop = () => {disconnect(); events.resyncReads.dispose();};
   const jsTimeline = () => log.filter(r => r.path.endsWith('/observation')).length;
-  return {server, api, playback, player, owner, log, stop, jsTimeline, ownerHttp, emitEvent};
+  return {server, api, playback, player, owner, log, stop, jsTimeline, ownerHttp, emitEvent, events};
 }
 
 test('C3: an audio session is handed to the native owner once, with the seq reached and the lease left', async () => {
@@ -410,4 +411,83 @@ test('b4: renderer facts reject stale session/generation/intent and clear on an 
   assert.equal(playback.getSnapshot().listeningNotice,undefined);
   assert.equal(playback.getSnapshot().audioEffects.eqApplied,false);
   stop();
+});
+
+
+const drainResync = async () => {for (let i = 0; i < 80; i++) await Promise.resolve();};
+test('resync recovers a lost native terminal through its exact current owner without replaying a queue command', async () => {
+  const f = setup();
+  try {
+    await f.player.playEntries(['song-1', 'song-2'].map(queueItemInput));
+    const original = f.owner.session!.id;
+    await f.ownerHttp.send({method: 'POST', path: `/v1/admin/sessions/${original}:terminate`, body: {message: 'Maintenance'}});
+    const before = f.log.length;
+    f.owner.sessionUpdated = async id => {
+      f.owner.updates.push(id);
+      const session = await f.api.sessions.get(id);
+      if (session.state === 'ended') f.owner.emit({terminal: true, intent: 'paused', end: session.end, error: 'Stopped by the server owner.'});
+    };
+    f.events.deliver({id: 'missed-terminal', type: 'stream.resync'}); await drainResync();
+    assert.deepEqual(f.owner.updates, [original]);
+    assert.equal(f.playback.getSnapshot().ended?.reason, 'terminated');
+    assert.equal(f.playback.getSnapshot().ended?.message, 'Maintenance');
+    assert.equal(f.owner.advances.length, 0);
+    assert.equal(f.log.slice(before).some(r => r.method !== 'GET'), false);
+  } finally {f.stop();}
+});
+
+test('resync adopts the committed native successor before reconciling authority, never the stale predecessor', async () => {
+  const f = setup();
+  try {
+    await f.player.playEntries(['song-1', 'song-2', 'song-3'].map(queueItemInput));
+    const predecessor = f.owner.session!.id;
+    f.owner.asleep = true; await f.owner.move('completion');
+    const successor = f.owner.session!.id; assert.notEqual(successor, predecessor);
+    assert.equal(f.player.currentSession()!.id, predecessor);
+    f.owner.refresh = async () => {f.owner.wake();};
+    const before = f.log.length;
+    f.events.deliver({id: 'missed-successor', type: 'stream.resync'}); await drainResync();
+    assert.equal(f.player.currentSession()!.id, successor);
+    assert.deepEqual(f.owner.updates, [successor]);
+    assert.equal(f.owner.advances.length, 0);
+    assert.equal(f.log.slice(before).some(r => r.method !== 'GET'), false);
+  } finally {f.stop();}
+});
+
+test('retiring a queue during a held native snapshot cannot reconcile a replacement owner', async () => {
+  const f = setup();
+  let release!: () => void;
+  try {
+    await f.player.playEntries(['song-1', 'song-2'].map(queueItemInput));
+    f.owner.refresh = () => new Promise<void>(resolve => {release = resolve;});
+    f.events.deliver({id: 'held-snapshot', type: 'stream.resync'}); await drainResync();
+    f.stop(); release(); await drainResync(); assert.deepEqual(f.owner.updates, []);
+  } finally {release?.(); f.stop();}
+});
+
+
+test('resync awaits the current nonnative session GET and preserves the actual lost termination reason', async () => {
+  const f = setup({nativeFor: () => false});
+  try {
+    await f.player.playEntries(['movie-1', 'movie-2'].map(queueItemInput));
+    const original = f.player.currentSession()!.id;
+    await f.ownerHttp.send({method: 'POST', path: `/v1/admin/sessions/${original}:terminate`, body: {message: 'Maintenance'}});
+    const before = f.log.length;
+    f.events.deliver({id: 'lost-local-terminal', type: 'stream.resync'}); await drainResync();
+    assert.equal(f.playback.getSnapshot().ended?.reason, 'terminated');
+    assert.equal(f.playback.getSnapshot().ended?.message, 'Maintenance');
+    assert.equal(f.log.slice(before).some(r => r.method !== 'GET'), false);
+  } finally {f.stop();}
+});
+
+
+test('a later resync barrier retires a held native recovery before owner reconciliation', async () => {
+  const f = setup(); let release!: () => void;
+  try {
+    await f.player.playEntries(['song-1', 'song-2'].map(queueItemInput));
+    f.owner.refresh = () => new Promise<void>(resolve => {release = resolve;});
+    f.events.deliver({id: 'held-old-barrier', type: 'stream.resync'}); await drainResync();
+    f.events.deliver({id: 'newer-barrier', type: 'stream.resync'}); release(); await drainResync();
+    assert.deepEqual(f.owner.updates, [], 'stale barrier reconciled its owner');
+  } finally {release?.(); f.stop();}
 });

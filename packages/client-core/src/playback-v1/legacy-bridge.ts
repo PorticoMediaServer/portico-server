@@ -238,6 +238,22 @@ export class V1PlaybackApi implements PlaybackApi {
     else void this.learnEnd(sessionId);
   }
 
+  /** Current-state recovery after missed events; errors retain coordinator debt. */
+  async reconcileSession(id: string, signal?: AbortSignal): Promise<void> {
+    const tracked = this.tracked.get(id);
+    if (!tracked || this.retired.has(id) || signal?.aborted) return;
+    const generation = tracked.generation;
+    const current = () => !signal?.aborted && this.tracked.get(id) === tracked && tracked.generation === generation && !this.retired.has(id);
+    try {
+      const session = await this.sessions.get(id, signal);
+      if (current() && session.state === 'ended') this.serverEnded(id, session.end ?? {reason: 'stopped'});
+    } catch (error) {
+      if (!current()) return;
+      if (error instanceof PlaybackApiError && (error.status === 404 || error.status === 410)) this.serverEnded(id, {reason: 'stopped'});
+      else throw error;
+    }
+  }
+
   private async learnEnd(id: string): Promise<void> {
     try {
       const session = await this.sessions.get(id);

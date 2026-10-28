@@ -1,3 +1,4 @@
+import type {ResyncReadContext} from '../resync-coordinator.ts';
 import {encodedRoutePath} from "../../../contracts/src/route-paths.ts";
 /**
  * Live TV and Library Channels on a Playback v1 session (spec §11, §18.6; Plan — Client Playback
@@ -23,7 +24,8 @@ import {serviceText} from '../presentation/service-text.ts';
 import {SessionsClient, type StartContext, type StartPreparation, type Timers} from './sessions.ts';
 import {ObservationReporter} from './observation.ts';
 
-export type V1ChannelOptions = Readonly<{http: V1Http; key?: () => string; now?: () => number; pollMs?: number; timers?: Timers}>;
+type ChannelEvents = Readonly<{onResync?(listener: () => void): () => void; onResyncRead?(read: (context: ResyncReadContext) => Promise<void>, options?: {priority?: number}): {dispose(): void}}>;
+export type V1ChannelOptions = Readonly<{events?: ChannelEvents; http: V1Http; key?: () => string; now?: () => number; pollMs?: number; timers?: Timers}>;
 
 /** What the service applies: the playback id, whether the start can't proceed, and the projection. */
 export type ChannelView = Readonly<{playbackId: string; status?: string; linear: ChannelProjection}>;
@@ -166,6 +168,8 @@ export class V1ChannelControl implements ChannelPlayback {
   private readonly now: () => number;
   private readonly timers?: Timers;
   private readonly pollMs?: number;
+  private readonly events?: ChannelEvents;
+  private offResync?: () => void;
   private serial = 0;
   private active?: Active;
   private sink?: ChannelViewSink;
@@ -179,6 +183,7 @@ export class V1ChannelControl implements ChannelPlayback {
     this.now = options.now ?? Date.now;
     this.timers = options.timers;
     this.pollMs = options.pollMs;
+    this.events = options.events;
   }
 
   /** Nothing to recover: a v1 session a crash left behind lapses with its lease. */
@@ -244,6 +249,18 @@ export class V1ChannelControl implements ChannelPlayback {
       a.id = s.id;
       a.reporter = this.reporterFor(a, s.id);
       this.accept(a, s);
+      if (this.current(a)) {
+        const recover = async (signal?: AbortSignal) => {
+          try {await this.read(a, signal, true);}
+          catch (error) {
+            if (!this.current(a) || signal?.aborted) return;
+            if (terminal(error)) {a.reporter?.stop(); this.offResync?.(); this.offResync = undefined; this.active = undefined; sink.error(message(error), true);}
+            else throw error;
+          }
+        };
+        const recovery = this.events?.onResyncRead?.(({signal}) => recover(signal), {priority: 0});
+        this.offResync = recovery ? () => recovery.dispose() : this.events?.onResync?.(() => {void recover().catch(error => {if (this.current(a)) sink.error(message(error), false);});});
+      }
     } catch (e) {
       if (!admitted()) {cancel();return;}
       if (this.current(a)) {
@@ -257,14 +274,18 @@ export class V1ChannelControl implements ChannelPlayback {
     }
   }
 
-  private accept(a: Active, s: Session) {
+  private accept(a: Active, s: Session, observational = false) {
     if (!this.current(a)) return;
     if (s.state === 'ended' || s.end) {
+      a.reporter?.stop(); this.offResync?.(); this.offResync = undefined;
       this.active = undefined;
       this.sink?.error(channelEndMessage(s.end), true);
       return;
     }
     a.session = s;
+    // Catch-up cannot create the initial join/seek. The original start and its
+    // own renderer observations retain that admission.
+    if (observational && !a.joined) return;
     // The first join is a go-live seek the server resolves to a position in the window.
     if (!a.joined && s.presentation.url && s.presentation.generation > 0) {
       a.joined = true;
@@ -280,10 +301,10 @@ export class V1ChannelControl implements ChannelPlayback {
     this.sink?.state(channelView(s, a.channel));
   }
 
-  private async read(a: Active) {
-    if (!a.id || !this.current(a)) return;
-    const r = await call(this.http, {method: 'GET', path: encodedRoutePath("get_playback_session", {"id": enc(a.id)})});
-    this.accept(a, parseChannelSession(r.body));
+  private async read(a: Active, signal?: AbortSignal, observational = false) {
+    if (!a.id || !this.current(a) || signal?.aborted) return;
+    const r = await call(this.http, {method: 'GET', path: encodedRoutePath("get_playback_session", {"id": enc(a.id)}), signal});
+    if (!signal?.aborted) this.accept(a, parseChannelSession(r.body), observational);
   }
 
   /** One sample a second carries the lease, and its ack the current channel view when it
@@ -364,6 +385,7 @@ export class V1ChannelControl implements ChannelPlayback {
   }
 
   close() {
+    this.offResync?.(); this.offResync = undefined;
     ++this.serial;
     const a = this.active, sink = this.sink;
     this.active = undefined;

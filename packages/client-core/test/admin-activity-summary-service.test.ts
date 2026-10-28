@@ -218,3 +218,29 @@ test('Dashboard rejects owner-only payload additions, inconsistent totals, wrong
  }
  const h=dashboardHarness((_,n)=>ok(dashboardWire(n?{scope:{serverId:'server',viewerFence:'b'.repeat(64)}}:{})));await h.service.load();await h.service.load();assert.equal(h.service.getSnapshot().error?.code,'permission_changed');assert.equal(h.service.getSnapshot().document,undefined);h.service.dispose();
 });
+
+test('actual Activity resync owner shares feed admission and recover after permits release', async () => {
+  const {EventsClient} = await import('../src/playback-v1/events.ts');
+  const h = harness(), feed = new EventsClient({http: h.http, now: h.clock.now, setTimer: h.clock.setTimer, clearTimer: h.clock.clearTimer, random: () => 0});
+  h.service.setActive(true); h.service.attach(feed);
+  const held = deferred<void>(), controller = new AbortController();
+  const occupied = Array.from({length: 4}, () => feed.resyncReads.run(controller.signal, () => held.promise));
+  await flush();
+  feed.deliver({id: 'activity-gap', type: 'stream.resync'}); await flush(); assert.equal(h.requests.length, 0);
+  held.resolve(); await Promise.all(occupied); await flush(); await flush();
+  assert.equal(h.requests.length, 1); assert.equal(h.service.getSnapshot().phase, 'ready');
+  h.service.dispose(); feed.resyncReads.dispose();
+});
+
+test('actual Dashboard sessions resync waits for shared admission and retains current authority', async () => {
+  const {EventsClient} = await import('../src/playback-v1/events.ts');
+  const h = dashboardHarness(), http = h.source.getSnapshot()!.http;
+  const feed = new EventsClient({http, now: h.clock.now, setTimer: h.clock.setTimer, clearTimer: h.clock.clearTimer, random: () => 0});
+  h.service.attach(feed);
+  const held = deferred<void>(), controller = new AbortController();
+  const occupied = Array.from({length: 4}, () => feed.resyncReads.run(controller.signal, () => held.promise));
+  await flush(); feed.deliver({id: 'dashboard-gap', type: 'stream.resync'}); await flush(); assert.equal(h.requests.length, 0);
+  held.resolve(); await Promise.all(occupied); await flush(); await flush();
+  assert.equal(h.requests.length, 1); assert.equal(h.service.getSnapshot().phase, 'ready');
+  h.service.dispose(); feed.resyncReads.dispose();
+});
