@@ -1,5 +1,5 @@
 import {browseCapabilitiesPath, browseMembershipId, parseBrowseCapabilities, browseContextFacetsPath, parseBrowseFacets, browseCountsPath, browseCountsRequest, parseBrowseCounts, parseBrowseNode,
-  type BrowseCapabilities, type BrowseNode, type BrowseSortSelection, type BrowseWholeSelection} from '@core/browse.ts';
+  type BrowseCapabilities, type BrowseNode, type BrowseSortSelection, type BrowseWholeSelection, type BrowseWholeSelectionUnavailable} from '@core/browse.ts';
 import {BrowseSession, browseSessionBuilder, browseSessionClosed, type BrowseSessionQuery} from '@core/browse-session.ts';
 import {createWindowedCollection, type WindowedCollection} from '@core/collections/windowed.ts';
 import type {ContentEntry, LibraryContentApi} from '@core/library-content.ts';
@@ -59,6 +59,9 @@ export class BrowseController {
    * invalidate, retry or revision change drops it before a new one can arrive. */
   wholeSelection(): BrowseWholeSelection | undefined {
     return this.current() && this.state.phase === 'ready' && !!this.state.revision ? this.session?.wholeSelection() : undefined;
+  }
+  wholeSelectionUnavailable(): BrowseWholeSelectionUnavailable | undefined {
+    return this.current() && this.state.phase === 'ready' && !!this.state.revision ? this.session?.wholeSelectionUnavailable() : undefined;
   }
   private publish(patch: Partial<BrowseState>) {
     if (!this.current()) return;
@@ -128,6 +131,7 @@ export class BrowseController {
       item: (entry, page, index) => Object.freeze({membershipId: browseMembershipId(page, index)!, entry}),
       onRevision: revision => this.publish({revision}),
       onWhole: () => this.publish({}),
+      onWholeUnavailable: () => this.publish({}),
       onPreparationError: error => this.publish({error}),
       onStale: error => this.publish({revision: undefined, error})});
     this.session = session;
