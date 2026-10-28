@@ -740,6 +740,7 @@ func writeResult(state, outcome, reason string, markers ...restoreMarker) error 
 		result.OperationID = markers[0].OperationID
 		result.SourceDigest = restoreSourceDigest(markers[0].Source)
 		result.SchemaVersion = markers[0].SchemaVersion
+		result.Recovery = markers[0].Recovery
 	}
 	raw, err := json.MarshalIndent(result, "", "  ")
 	if err != nil {

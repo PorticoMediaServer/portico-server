@@ -1637,6 +1637,24 @@ CREATE TRIGGER compact_visibility_blocks_rating_move AFTER UPDATE OF class_id,ge
  UPDATE compact_visibility_blocks SET total=1024 WHERE (class_id,generation,library_id,kind,ordering,sort_value,entity_id)=(SELECT class_id,generation,library_id,kind,ordering,sort_value,entity_id FROM compact_visibility_blocks INDEXED BY compact_visibility_blocks_full WHERE class_id=NEW.class_id AND generation=NEW.generation AND library_id=NEW.library_id AND kind=NEW.kind AND ordering=4 AND total>2048 LIMIT 1);
 END;
 CREATE TABLE configuration(key TEXT PRIMARY KEY,value TEXT NOT NULL) STRICT;
+-- The running backup's artwork hold (backup/holds.go). While the one row
+-- exists, no collector deletes an artwork file: the backup's database copy may
+-- name it. A row from a process that is no longer running is that process's
+-- interrupted backup, removed at start-up.
+CREATE TABLE backup_blob_holds(
+ singleton INTEGER PRIMARY KEY CHECK(singleton=1),
+ backup_id TEXT NOT NULL UNIQUE,process_epoch TEXT NOT NULL,
+ scratch_token TEXT NOT NULL UNIQUE,created_ms INTEGER NOT NULL,
+ state TEXT NOT NULL CHECK(state IN('copying','files','publishing'))) STRICT;
+-- A moved state folder's path rebase, while it runs (persistence/rebase.go):
+-- the exact old and new folders, the registry it follows, the registered column
+-- it has reached and the last row finished there. Gone once it completes.
+CREATE TABLE state_rebase_jobs(
+ singleton INTEGER PRIMARY KEY CHECK(singleton=1),
+ old_prefix TEXT NOT NULL,new_prefix TEXT NOT NULL,
+ registry_version INTEGER NOT NULL CHECK(registry_version>0),
+ phase INTEGER NOT NULL CHECK(phase>=0),after_rowid INTEGER NOT NULL DEFAULT 0,
+ started_ms INTEGER NOT NULL) STRICT;
 CREATE TABLE accounts(id TEXT PRIMARY KEY,username TEXT NOT NULL UNIQUE,email TEXT NOT NULL DEFAULT '',display_name TEXT NOT NULL DEFAULT '',password_hash BLOB NOT NULL,profile_id TEXT NOT NULL,epoch INTEGER NOT NULL DEFAULT 1) STRICT;
 CREATE TABLE libraries(id TEXT PRIMARY KEY,name TEXT NOT NULL,kind TEXT NOT NULL,root TEXT NOT NULL UNIQUE, position INTEGER NOT NULL DEFAULT 0) STRICT;
 CREATE TABLE metadata_jobs(item_id INTEGER PRIMARY KEY REFERENCES catalog_entities(id) ON DELETE CASCADE,status TEXT NOT NULL DEFAULT 'pending',attempts INTEGER NOT NULL DEFAULT 0,next_attempt TEXT NOT NULL DEFAULT '',error TEXT NOT NULL DEFAULT '') STRICT;

@@ -803,6 +803,7 @@ table authorization_family_grants
 table authorization_family_renewals
 table authorization_family_tokens
 table authorization_session_families
+table backup_blob_holds
 table backup_destinations
 table backup_settings
 table book_resume
@@ -1574,6 +1575,7 @@ table social_rate
 table social_receiver_grants
 table social_receivers
 table source_strm_analysis
+table state_rebase_jobs
 table subtitle_collections
 table subtitle_disc_resources
 table subtitle_inventory_entries

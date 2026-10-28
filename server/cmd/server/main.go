@@ -1207,6 +1207,11 @@ func run() (runErr error) {
 	if e = backup.CleanupScratch(state); e != nil {
 		return e
 	}
+	// A backup interrupted by the last stop left its artwork hold; its
+	// scratch is gone now, so artwork clean-up may resume.
+	if e = backup.ReleaseInterruptedHold(ctx, db); e != nil {
+		return e
+	}
 	backupPolicy.ConfigurationCommitted = configurationStore.FlushConfiguration
 	backupService.SetPolicyStore(backupPolicy)
 	// A backup holds no sessions: each database copy is scrubbed as it is written.

@@ -69,7 +69,7 @@ func backupRouteError(err error) error {
 
 	case errors.Is(err, persistence.ErrCandidatePreRelease):
 		return &apierror.Error{Code: "restore_pre_release"}
-	case errors.Is(err, backup.ErrInsufficientDisk):
+	case errors.Is(err, backup.ErrInsufficientDisk), errors.Is(err, persistence.ErrRecoveryNoRoom):
 		return &apierror.Error{Code: "insufficient_disk"}
 	case errors.Is(err, backup.ErrRestoreLockUnavailable):
 		return &apierror.Error{Code: "restore_lock_unavailable"}

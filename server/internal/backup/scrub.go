@@ -9,6 +9,8 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+
+	"portico.local/server/internal/dbwork"
 )
 
 const signInScrubMarker = ".sign-in-scrub"
@@ -18,7 +20,7 @@ const signInScrubMarker = ".sign-in-scrub"
 // after a crash the database scrub can resume, while every untouched state file
 // still has to match its original hash. A completed copy is not rewritten on
 // subsequent starts.
-func ScrubPreRestoreCopy(ctx context.Context, folder string, scrub func(context.Context, string) error) error {
+func ScrubPreRestoreCopy(ctx context.Context, folder string, scrub func(context.Context, *dbwork.Candidate) error) error {
 	if scrub == nil {
 		return errors.New("no sign-in scrubber")
 	}
@@ -84,7 +86,17 @@ func ScrubPreRestoreCopy(ctx context.Context, folder string, scrub func(context.
 	if err = checkManifestHashes(folder, untouched); err != nil {
 		return err
 	}
-	if err = scrub(ctx, filepath.Join(folder, DatabaseName)); err != nil {
+	// The copy is opened privately: scrubbing it is not a live write.
+	candidate, err := dbwork.OpenCandidate(folder, DatabaseName)
+	if err != nil {
+		return err
+	}
+	if err = scrub(ctx, candidate); err != nil {
+		candidate.Close()
+		return err
+	}
+	// Closing the copy's only connection folds its log back into the file.
+	if err = candidate.Close(); err != nil {
 		return err
 	}
 	files := append([]FileEntry(nil), untouched...)
