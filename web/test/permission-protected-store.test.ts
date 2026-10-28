@@ -60,3 +60,11 @@ test('real plaintext vault: abort with null transaction error rolls back and rej
  assert.equal(h.db.data.get('selected'),before);assert.equal((await h.store.read())!.session.viewer.role,'owner');assert.equal(h.ref.current().viewer.role,'owner');assert.deepEqual(h.counts(),{rotations:0,signedOut:0});
  assert.deepEqual(await h.ref.reconcilePermissions(),{kind:'adopted',role:'admin'});assert.equal((await h.store.read())!.session.viewer.role,'admin');
 });
+
+for(const plaintext of [true,false])test('real '+(plaintext?'plaintext':'encrypted')+' vault: request error bubbles before transaction.error and must never resolve a role write',async t=>{
+ const h=await setup(t,{plaintext}),before=h.db.data.get('selected');h.db.failWrite();
+ const answer=await h.ref.reconcilePermissions();assert.equal(answer.kind,'failed');if(answer.kind==='failed'){assert.ok(answer.error instanceof Error);assert.equal(answer.retryable,true);}
+ assert.equal(h.db.data.get('selected'),before);assert.equal((await h.store.read())!.session.viewer.role,'owner');assert.equal(h.ref.current().viewer.role,'owner');assert.deepEqual(h.counts(),{rotations:0,signedOut:0});
+ h.db.failWrite();assert.equal(await h.ref.permissionDenied(),false);assert.equal(h.db.data.get('selected'),before);assert.equal(h.ref.current().viewer.role,'owner');assert.deepEqual(h.counts(),{rotations:0,signedOut:0});
+ assert.deepEqual(await h.ref.reconcilePermissions(),{kind:'adopted',role:'admin'});assert.equal((await h.store.read())!.session.viewer.role,'admin');
+});
