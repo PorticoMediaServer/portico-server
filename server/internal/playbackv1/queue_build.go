@@ -65,6 +65,7 @@ type buildCaller struct {
 // caller's container checks: kind is "items" or "selector"; specials says a
 // show's specials are in.
 type selectorKeys struct {
+	iterator   catalog.QueueKeyIterator
 	checkBasis func(context.Context, *sql.Tx) error
 	query      string
 	args       []any
@@ -119,7 +120,18 @@ func (s *Service) keysQuery(ctx context.Context, tx *sql.Tx, p identity.Principa
 		if err != nil {
 			return selectorKeys{}, err
 		}
-		return selectorKeys{query: selection.SQL, args: selection.Args, kind: "selector", revision: selection.Revision, label: selection.Label, checkBasis: selection.CheckBasis}, nil
+		if selection.Iterator != nil {
+			check := selection.CheckBasis
+			selection.CheckBasis = func(ctx context.Context, tx *sql.Tx) error {
+				if check != nil {
+					if err := check(ctx, tx); err != nil {
+						return err
+					}
+				}
+				return selection.Iterator.CheckBasis(ctx, tx)
+			}
+		}
+		return selectorKeys{iterator: selection.Iterator, query: selection.SQL, args: selection.Args, kind: "selector", revision: selection.Revision, label: selection.Label, checkBasis: selection.CheckBasis}, nil
 	case in.Source.Items != nil:
 		// Keep the caller's order; unknown and inaccessible ids are dropped alike.
 		// catalog_entities is facts, so no readiness wait.
@@ -389,6 +401,12 @@ func (s *Service) buildSnapshot(ctx context.Context, p identity.Principal, queue
 	if err != nil {
 		return snap, err
 	}
+	if k.iterator != nil {
+		// The local iterator owns only short worker snapshots. In particular,
+		// never retain the admission capture while waiting on rejected keys.
+		done()
+		return s.buildLocalOrderedSnapshot(ctx, p, queue, in, snap, k, limit, budget)
+	}
 	keys, err := tx.QueryContext(ctx, k.query, k.args...)
 	if err != nil {
 		return snap, err
@@ -515,6 +533,12 @@ func (s *Service) countAndPick(ctx context.Context, p identity.Principal, in Seg
 func (s *Service) countAndPickTx(ctx context.Context, tx *sql.Tx, p identity.Principal, in SegmentInput, seed int64, anchorItem string) (n, ordinal int64, key string, ok bool, store *containerCount) {
 	k, err := s.keysQuery(ctx, tx, p, in)
 	if err != nil {
+		return 0, 0, "", false, nil
+	}
+	if k.iterator != nil {
+		// Cold search never runs a foreground count for shuffle. The existing
+		// growing snapshot installs its shuffle when the bounded replay finishes.
+		k.iterator.Close()
 		return 0, 0, "", false, nil
 	}
 	cached := s.containerCountFor(ctx, tx, p, in, k)
@@ -780,6 +804,10 @@ func (s *Service) continueBuild(parent context.Context, id string) error {
 	}
 	if in.Source.isQuery() && sourceRevision != k.revision {
 		return errSelectionChanged
+	}
+	if k.iterator != nil {
+		done()
+		return s.continueLocalOrderedBuild(ctx, p, id, queue, kind, selector, label, built, count, pendingStart, k)
 	}
 	keys, err := tx.QueryContext(ctx, k.query, k.args...)
 	if err != nil {
