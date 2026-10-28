@@ -29,7 +29,7 @@ export type GroupPermissions=Readonly<{isHost:boolean;canControl:boolean;canMana
  * `retired` once the device is signed out. */
 export type GroupAuthority=Readonly<{deviceId:string;playbackId:string|null;state:'fresh'|'bound'|'retired'}>;
 export type GroupHostPresence=Readonly<{presence:GroupHostPresenceState;lastSeenAt:string;pauseAt:string|null;endAt:string|null}>;
-export type GroupMember=Readonly<{id:string;displayName:string;private:boolean;role:'host'|'member';state:'invited'|'joined'|'left'|'removed';readiness:GroupReadiness;positionUs:SocialCounter;reportedAt:string|null;presence:GroupMemberPresence;joinedAt:string}>;
+export type GroupMember=Readonly<{id:string;displayName:string;/** Public members only; a private member never carries one. */username?:string;private:boolean;role:'host'|'member';state:'invited'|'joined'|'left'|'removed';readiness:GroupReadiness;positionUs:SocialCounter;reportedAt:string|null;presence:GroupMemberPresence;joinedAt:string}>;
 export type GroupReadinessSummary=Readonly<{aggregate:GroupReadiness;ready:number;buffering:number;lagging:number;stale:number;memberCount:number}>;
 export type GroupQueueEntry=Readonly<{entryId:string;position:number;itemId:string|null;unavailable:boolean;addedBy:string}>;
 export type GroupQueueEligibility=Readonly<{blockedEntries:number;currentEntryBlocked:boolean;members:readonly Readonly<{memberId:string;displayName:string;blockedEntryIds:readonly string[]}>[]}>;
@@ -100,8 +100,8 @@ function parseSettings(v:unknown):GroupSettings{
 }
 
 function parseMember(v:unknown):GroupMember{
- if(!obj(v)||!id(v.id)||!text(v.displayName,256)||typeof v.private!=='boolean'||!oneOf(v.role,['host','member'] as const)||!oneOf(v.state,['invited','joined','left','removed'] as const)||!oneOf(v.readiness,['buffering','ready','lagging'] as const)||!counter(v.positionUs)||!stampOrNull(v.reportedAt)||!oneOf(v.presence,['connected','away','disconnected'] as const)||!text(v.joinedAt,64))fail('group member');
- return Object.freeze({id:v.id,displayName:v.displayName,private:v.private,role:v.role,state:v.state,readiness:v.readiness,positionUs:v.positionUs,reportedAt:v.reportedAt,presence:v.presence,joinedAt:v.joinedAt});
+ if(!obj(v)||!id(v.id)||!text(v.displayName,256)||typeof v.private!=='boolean'||!oneOf(v.role,['host','member'] as const)||!oneOf(v.state,['invited','joined','left','removed'] as const)||!oneOf(v.readiness,['buffering','ready','lagging'] as const)||!counter(v.positionUs)||!stampOrNull(v.reportedAt)||!oneOf(v.presence,['connected','away','disconnected'] as const)||!text(v.joinedAt,64)||v.username!==undefined&&!text(v.username,256))fail('group member');
+ return Object.freeze({id:v.id,displayName:v.displayName,...(!v.private&&typeof v.username==='string'?{username:v.username}:{}),private:v.private,role:v.role,state:v.state,readiness:v.readiness,positionUs:v.positionUs,reportedAt:v.reportedAt,presence:v.presence,joinedAt:v.joinedAt});
 }
 
 function parseReadinessSummary(v:unknown,members:readonly GroupMember[]):GroupReadinessSummary{

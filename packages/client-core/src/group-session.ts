@@ -215,8 +215,8 @@ export class GroupSessionService{
    // The clock is applied the moment it arrives; everything else in the room is re-read, because
    // members and the queue are projected per viewer and cannot ride in a shared event.
    if(kind==='group.readiness'&&this.state.group){
- const v=body as {memberId?:string;readiness?:GroupReadiness;positionUs?:string;reportedAt?:string|null;private?:boolean;displayName?:string;aggregate?:Group['readiness']};
- if(v.memberId&&v.readiness&&v.positionUs&&v.aggregate)this.publish({group:Object.freeze({...this.state.group,readiness:v.aggregate,members:this.state.group.members.map(m=>m.id===v.memberId?Object.freeze({...m,readiness:v.readiness!,private:v.private??m.private,displayName:v.displayName??m.displayName,positionUs:(v.private??m.private)?'0':v.positionUs!,reportedAt:(v.private??m.private)?null:v.reportedAt??m.reportedAt,presence:'connected' as const}):m)})});
+ const v=body as {memberId?:string;readiness?:GroupReadiness;positionUs?:string;reportedAt?:string|null;private?:boolean;displayName?:string;username?:string;aggregate?:Group['readiness']};
+ if(v.memberId&&v.readiness&&v.positionUs&&v.aggregate)this.publish({group:Object.freeze({...this.state.group,readiness:v.aggregate,members:this.state.group.members.map(m=>m.id===v.memberId?Object.freeze({...m,readiness:v.readiness!,private:v.private??m.private,displayName:v.displayName??m.displayName,username:(v.private??m.private)?undefined:typeof v.username==='string'?v.username:m.username,positionUs:(v.private??m.private)?'0':v.positionUs!,reportedAt:(v.private??m.private)?null:v.reportedAt??m.reportedAt,presence:'connected' as const}):m)})});
  return;
  }
  if(kind==='group.transport'&&this.state.group){const timeline=timelineOf(body,this.state.group.timeline);if(timeline){const v=body as {groupState?:Group['state'];revision?:string;playbackRevision?:string};

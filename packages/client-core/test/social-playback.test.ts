@@ -221,3 +221,12 @@ test('the event vocabulary is published for stream consumers', () => {
   assert.ok(GROUP_EVENT_KINDS.includes('resume-gap'));
   assert.ok(GROUP_EVENT_KINDS.includes('heartbeat'));
 });
+
+test('a public member carries its username; a private member never does, even if sent one', () => {
+  const parsed = parseGroupSnapshot(snapshot({members: [{...host, username: 'host_user'}, {...guest, private: true, displayName: 'Viewer', username: 'leaked'}]}));
+  assert.equal(parsed.group.members[0].username, 'host_user');
+  assert.equal(parsed.group.members[1].username, undefined);
+  assert.equal('username' in parsed.group.members[1], false);
+  assert.equal(parseGroupSnapshot(snapshot()).group.members[0].username, undefined, 'absent is allowed');
+  assert.throws(() => parseGroupSnapshot(snapshot({members: [{...host, username: 7}, guest]})));
+});
