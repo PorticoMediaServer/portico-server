@@ -122,6 +122,7 @@ type Channel struct {
 	RecordAvailable         bool         `json:"recordAvailable"`
 	Favorite                bool         `json:"favorite"`
 	Hidden                  bool         `json:"hidden"`
+	ServerHidden            bool         `json:"serverHidden"`
 	PreferenceRevision      int64        `json:"preferenceRevision"`
 }
 type Programme struct {
@@ -155,18 +156,19 @@ type GuideQuery struct {
 	// Compact returns only the first three current/future slots per channel.
 	Compact bool
 
-	Viewer        Owner
-	FavoritesOnly bool
-	IncludeHidden bool
-	Group         string
-	Start         time.Time
-	End           time.Time
-	Timezone      string
-	Search        string
-	SourceID      string
-	Kind          Provenance
-	Limit         int
-	Cursor        string
+	Viewer              Owner
+	FavoritesOnly       bool
+	IncludeHidden       bool
+	IncludeServerHidden bool
+	Group               string
+	Start               time.Time
+	End                 time.Time
+	Timezone            string
+	Search              string
+	SourceID            string
+	Kind                Provenance
+	Limit               int
+	Cursor              string
 	// ChannelIDs, when set, limits the page to these channels (at most 50):
 	// the guide asks for the programmes of the channels on screen, not every
 	// channel's for each time window.

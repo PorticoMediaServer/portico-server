@@ -36,8 +36,8 @@ export function parseGuideSourceSummaries(raw:unknown,serverId:string):GuideSour
  });
  return {viewerFence:raw.viewerFence,revision:raw.revision,sources};
 }
-export async function fetchGuideSourceSummaries(api:ChannelApi,serverId:string,timezone:string,signal?:AbortSignal):Promise<GuideSourceSummaries>{
- return parseGuideSourceSummaries(await api.request(routePath("get_guide_sources") + "?" + (new URLSearchParams({timezone})),'GET',undefined,signal),serverId);
+export async function fetchGuideSourceSummaries(api:ChannelApi,serverId:string,timezone:string,signal?:AbortSignal,includeServerHidden=false):Promise<GuideSourceSummaries>{
+ return parseGuideSourceSummaries(await api.request(routePath("get_guide_sources") + "?" + (new URLSearchParams({timezone,...(includeServerHidden?{includeServerHidden:"true"}:{})})),'GET',undefined,signal),serverId);
 }
 
 export type GuideAiring=Readonly<{channel:Pick<GuideChannel,'id'|'sourceId'|'provenance'|'generation'|'name'|'number'|'group'>;programme:GuideProgramme}>;

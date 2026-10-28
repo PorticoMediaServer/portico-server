@@ -147,7 +147,7 @@ function GuideRowFrame({channel, onMenu, className, style, children}: Readonly<{
   channel?: GuideChannelRow; onMenu?: () => void; className: string; style: CSSProperties; children: ReactNode;
 }>) {
   const gestures = useChannelMenuGestures(() => onMenu?.());
-  return <div className={className} style={style} data-guide-row={channel?.id} data-hidden={channel && legacyChannel(channel)?.hidden || undefined}
+  return <div className={className} style={style} data-guide-row={channel?.id} data-hidden={channel && legacyChannel(channel)?.serverHidden || undefined}
     role={channel ? 'group' : undefined} aria-label={channel ? [channel.number, channel.name].filter(Boolean).join(', ') : undefined}
     {...(channel && onMenu ? gestures : {})}>
     {children}
