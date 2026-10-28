@@ -100,6 +100,19 @@ func TestRelatedMoviesDetailPermissionAndRevocation(t *testing.T) {
 	if w.Code != 200 || json.Unmarshal(w.Body.Bytes(), &detail) != nil || detail.Related == nil || len(detail.Related.Rows) != 1 || len(detail.Related.Rows[0].Entries) != 1 || strings.Contains(w.Body.String(), "Secret") {
 		t.Fatal(w.Code, w.Body.String())
 	}
+	for _, value := range []string{"none", "all", "movies", ""} {
+		relatedQuery = "?related=" + value
+		w = request(source.Public)
+		var body map[string]json.RawMessage
+		if w.Code != 200 || json.Unmarshal(w.Body.Bytes(), &body) != nil {
+			t.Fatal(w.Code, w.Body.String())
+		}
+		_, present := body["related"]
+		if present != (value != "none") {
+			t.Fatalf("related=%s: %s", value, w.Body.String())
+		}
+	}
+	relatedQuery = ""
 	if w = request(secret.Public); w.Code != 404 {
 		t.Fatal("denied source leaked", w.Code)
 	}

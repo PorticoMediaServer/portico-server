@@ -9,7 +9,7 @@ import (
 	"portico.local/server/internal/segmentmarkers"
 )
 
-func (s *Service) detailOnce(viewer Viewer, server, item string, owner bool) (Detail, error) {
+func (s *Service) detailOnce(viewer Viewer, server, item string, owner, includeRelated bool) (Detail, error) {
 	out := Detail{Markers: []segmentmarkers.Marker{}, Actions: []DetailAction{}, Metadata: DetailMetadata{Status: "unavailable", Sources: []MetadataSource{}, Ratings: []ProviderRating{}, Genres: []Genre{}, Credits: []Credit{}}}
 	if e := s.VisibleItem(s.Context(), viewer, item); e != nil {
 		return out, e
@@ -190,12 +190,14 @@ func (s *Service) detailOnce(viewer Viewer, server, item string, owner bool) (De
 	}
 	// One engine serves detail.related, per-item recommendation rows and
 	// suggestions. detail.related keeps its published shape and budgets.
-	related, e := s.itemRecommendations(viewer, out.Item, out.Metadata.Genres, relatedEntryLimit, false, false)
-	if e != nil {
-		return out, e
-	}
-	if out.Related, e = s.relatedProjection(out.Item, related); e != nil {
-		return out, e
+	if includeRelated {
+		related, e := s.itemRecommendations(viewer, out.Item, out.Metadata.Genres, relatedEntryLimit, false, false)
+		if e != nil {
+			return out, e
+		}
+		if out.Related, e = s.relatedProjection(out.Item, related); e != nil {
+			return out, e
+		}
 	}
 	if out.Extras, e = s.itemExtras(profile, out.Item); e != nil {
 		return out, e
@@ -212,7 +214,12 @@ func (s *Service) detailOnce(viewer Viewer, server, item string, owner bool) (De
 
 // Detail has no continuation, so a read that raced a publication simply retries.
 func (s *Service) Detail(viewer Viewer, server, item string, owner bool) (Detail, error) {
-	return consistentRead(true, func() (Detail, error) { return s.detailOnce(viewer, server, item, owner) })
+	return s.DetailWithRelated(viewer, server, item, owner, true)
+}
+
+// DetailWithRelated lets callers omit the recommendation composition entirely.
+func (s *Service) DetailWithRelated(viewer Viewer, server, item string, owner, includeRelated bool) (Detail, error) {
+	return consistentRead(true, func() (Detail, error) { return s.detailOnce(viewer, server, item, owner, includeRelated) })
 }
 
 // titleFacts reads the item's own facts (the editor's General fields); nil when the item has

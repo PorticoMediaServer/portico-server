@@ -87,7 +87,7 @@ func (d Dependencies) detailRoutes(mux *http.ServeMux) {
 				failure(w, markerErr)
 				return
 			}
-			if conditional(w, r, responseTag("detail", r.PathValue("id"), fence, number(revision.Catalog), number(revision.Viewer), markerRevision)) {
+			if conditional(w, r, responseTag("detail", r.PathValue("id"), fence, number(revision.Catalog), number(revision.Viewer), markerRevision, r.URL.Query().Get("related"))) {
 				return
 			}
 		}
@@ -122,7 +122,7 @@ func (d Dependencies) detailRoutes(mux *http.ServeMux) {
 				}
 				return nil
 			}
-			out, composeErr = cat.Detail(viewer, d.Identity.ID(), r.PathValue("id"), p.Authority == "local" && p.Role == "owner")
+			out, composeErr = cat.DetailWithRelated(viewer, d.Identity.ID(), r.PathValue("id"), p.Authority == "local" && p.Role == "owner", r.URL.Query().Get("related") != "none")
 			if composeErr != nil {
 				return composeErr
 			}
