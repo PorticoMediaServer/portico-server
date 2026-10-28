@@ -450,8 +450,7 @@ const (
 // snapshot, and the client discards whatever it had. `heartbeat` and `resume-gap`
 // carry no id, so neither moves a client's resume point.
 func (d Dependencies) groupEventStream(w http.ResponseWriter, r *http.Request, store *social.Store, p identity.Principal, id string) {
-	flusher, ok := w.(http.Flusher)
-	if !ok {
+	if _, ok := w.(http.Flusher); !ok {
 		socialFailure(w, &social.Fault{Code: "streaming_unsupported", Status: 500, Message: "This server cannot stream events."})
 		return
 	}
@@ -501,12 +500,13 @@ func (d Dependencies) groupEventStream(w http.ResponseWriter, r *http.Request, s
 		}
 		b.WriteString("event: " + kind + "\ndata: " + string(raw) + "\n\n")
 		// A client that has stopped reading must not hold this goroutine, its lane
-		// slot and its database poller until the OS notices.
-		frameDeadline(w)
-		if _, err = io.WriteString(w, b.String()); err != nil {
+		// slot and its database poller until the OS notices. The budget covers this
+		// frame only; the heartbeat keeps the stream alive in between.
+		if err := frameWrite(w, func(out io.Writer) (int, error) {
+			return io.WriteString(out, b.String())
+		}); err != nil {
 			return false
 		}
-		flusher.Flush()
 		return true
 	}
 	if resumed {

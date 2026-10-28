@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"strconv"
 	"time"
@@ -186,8 +187,7 @@ answer:
 }
 
 func (d Dependencies) eventStream(w http.ResponseWriter, r *http.Request, p identity.Principal, wake <-chan struct{}, page eventfeed.Page) {
-	flusher, ok := w.(http.Flusher)
-	if !ok {
+	if _, ok := w.(http.Flusher); !ok {
 		eventFailure(w, 503, "stream_unavailable", "This connection cannot stream events.")
 		return
 	}
@@ -222,19 +222,19 @@ func (d Dependencies) eventStream(w http.ResponseWriter, r *http.Request, p iden
 		if err != nil {
 			return false
 		}
-		frameDeadline(w)
-		if _, err = fmt.Fprintf(w, "id: %s\nevent: %s\ndata: %s\n\n", e.ID, e.Type, b); err != nil {
+		if err = frameWrite(w, func(out io.Writer) (int, error) {
+			return fmt.Fprintf(out, "id: %s\nevent: %s\ndata: %s\n\n", e.ID, e.Type, b)
+		}); err != nil {
 			return false
 		}
-		flusher.Flush()
 		lastSent = e.ID
 		return true
 	}
-	frameDeadline(w)
-	if _, err = fmt.Fprint(w, "retry: 1000\n\n"); err != nil {
+	if err = frameWrite(w, func(out io.Writer) (int, error) {
+		return fmt.Fprint(out, "retry: 1000\n\n")
+	}); err != nil {
 		return
 	}
-	flusher.Flush()
 	// A stream that opens with nothing waiting says where it stands. Without
 	// this a client learns its position only from the first real event, and a
 	// connection that drops before one arrives would resume from "now" and miss
@@ -293,16 +293,14 @@ func (d Dependencies) eventStream(w http.ResponseWriter, r *http.Request, p iden
 		case <-ctx.Done():
 			return
 		case <-end.C:
-			frameDeadline(w)
 			send(eventfeed.Event{ID: page.NextAfter, Type: "stream.closed", Data: json.RawMessage(`{"reconnectAfterMs":1000}`)})
-			flusher.Flush()
 			return
 		case <-heartbeat.C:
-			frameDeadline(w)
-			if _, err := fmt.Fprint(w, ": heartbeat\n\n"); err != nil {
+			if err := frameWrite(w, func(out io.Writer) (int, error) {
+				return fmt.Fprint(out, ": heartbeat\n\n")
+			}); err != nil {
 				return
 			}
-			flusher.Flush()
 			continue
 		case <-continuation.C:
 			pending = false
