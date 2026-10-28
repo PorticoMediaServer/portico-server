@@ -14,10 +14,12 @@ func (d Dependencies) dashboardHistoryRoutes(mux *http.ServeMux) {
 		}
 		d.httpHandle(mux, path, func(w http.ResponseWriter, r *http.Request) {
 			w.Header().Set("Cache-Control", "no-store")
-			if _, e := d.owner(r); e != nil {
+			p, e := d.owner(r)
+			if e != nil {
 				accessFailure(w, e)
 				return
 			}
+			audience := historyAudience(p)
 			if e := consoleQuery(r, "period", "accountId", "libraryId", "media", "q", "cursor", "limit", "topKind", "timeZone", "until"); e != nil {
 				consoleError(w, e)
 				return
@@ -40,9 +42,8 @@ func (d Dependencies) dashboardHistoryRoutes(mux *http.ServeMux) {
 			if period == "" {
 				period = "30d"
 			}
-			q := catalog.PlayHistoryQuery{TimeZone: query.Get("timeZone"), Until: query.Get("until"), Period: period, AccountID: query.Get("accountId"), LibraryID: query.Get("libraryId"), Media: query.Get("media"), Search: query.Get("q"), Cursor: query.Get("cursor"), Limit: limit}
+			q := catalog.PlayHistoryQuery{Audience: audience, TimeZone: query.Get("timeZone"), Until: query.Get("until"), Period: period, AccountID: query.Get("accountId"), LibraryID: query.Get("libraryId"), Media: query.Get("media"), Search: query.Get("q"), Cursor: query.Get("cursor"), Limit: limit}
 			var out any
-			var e error
 			if people {
 				out, e = d.Catalog.DashboardPeople(r.Context(), q)
 			} else {
