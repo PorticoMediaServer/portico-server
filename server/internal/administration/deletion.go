@@ -16,6 +16,7 @@ import (
 
 	"portico.local/server/internal/catalog"
 	"portico.local/server/internal/compactcatalog"
+	"portico.local/server/internal/dbwork"
 	"portico.local/server/internal/storage"
 )
 
@@ -64,9 +65,10 @@ type DeleteTarget struct {
 	Dependents []Dependent  `json:"dependents"`
 	// entityID is the catalogue integer the SQL statements use. It never
 	// leaves the server: public ids stay the API's only identifier.
-	entityID int64
-	members  []catalog.TitleDeletePlan
-	gone     []DeleteFile
+	entityID  int64
+	members   []catalog.TitleDeletePlan
+	emptyPlan catalog.TitleDeletePlan
+	gone      []DeleteFile
 }
 
 // DeletePreview is what the delete dialog renders before anything is touched.
@@ -202,6 +204,10 @@ func targetFor(ctx context.Context, tx *sql.Tx, item string) (DeleteTarget, erro
 	if errors.Is(err, catalog.ErrTooManyMembers) {
 		return t, ErrInput
 	}
+	if err != nil {
+		return t, err
+	}
+	t.emptyPlan, err = catalog.CaptureTitleDeleteTx(ctx, tx, t.entityID)
 	if err != nil {
 		return t, err
 	}
@@ -465,6 +471,7 @@ const deleteMemberBatch = 40
 // again later gets it back. A file that cannot be removed leaves its title in
 // the library and says so.
 func (s *Service) Delete(ctx context.Context, auth Authorize, actor string, request DeleteRequest) (DeleteResult, error) {
+	ctx = catalog.MutationWriteContext(ctx)
 	out := DeleteResult{Receipts: []DeleteReceipt{}, FilesRetained: !request.DeleteFiles}
 	if err := validTargets(request.ItemIDs); err != nil {
 		return out, err
@@ -519,6 +526,26 @@ func (s *Service) Delete(ctx context.Context, auth Authorize, actor string, requ
 	if err != nil || replayed {
 		return out, err
 	}
+	// Management and this library's deletion policy are current in every
+	// drain/final writer. A captured confirmation is not a continuing grant.
+	liveAuth := func(ctx context.Context, tx *sql.Tx) error {
+		if auth != nil {
+			if e := auth(ctx, tx); e != nil {
+				return e
+			}
+		}
+		for _, library := range libraries {
+			allowed, e := deletionPolicy(ctx, tx, library)
+			if e != nil {
+				return e
+			}
+			if !allowed {
+				return ErrDenied
+			}
+		}
+		return nil
+	}
+
 	receipts := make([]DeleteReceipt, len(targets))
 	for i, target := range targets {
 		r := DeleteReceipt{ItemID: target.ItemID, Title: target.Title, Removed: true}
@@ -549,9 +576,10 @@ func (s *Service) Delete(ctx context.Context, auth Authorize, actor string, requ
 	// The files are gone; the catalogue follows. Each title goes in short
 	// transactions, and a title whose file could not be removed stays.
 	for i, target := range targets {
+		ctx := catalog.WithAdministrationDeleteTarget(ctx, target.emptyPlan, request.OperationID+":"+digest)
 		for start := 0; start < len(target.gone); start += deleteMemberBatch {
 			end := min(start+deleteMemberBatch, len(target.gone))
-			if err = s.transaction(ctx, auth, func(tx *sql.Tx) error {
+			if err = s.transaction(ctx, liveAuth, func(tx *sql.Tx) error {
 				return markDeletedFilesTx(ctx, tx, target.gone[start:end])
 			}); err != nil {
 				return out, err
@@ -560,39 +588,58 @@ func (s *Service) Delete(ctx context.Context, auth Authorize, actor string, requ
 		if !receipts[i].Removed {
 			continue
 		}
-		for start := 0; start < len(target.members); start += deleteMemberBatch {
-			end := min(start+deleteMemberBatch, len(target.members))
-			err = s.transaction(ctx, auth, func(tx *sql.Tx) error {
-				for _, plan := range target.members[start:end] {
-					removed, e := catalog.DeleteApprovedTitleTx(ctx, tx, plan)
+		for _, plan := range target.members {
+			complete := false
+			for !complete {
+				err = s.transaction(ctx, liveAuth, func(tx *sql.Tx) error {
+					step, e := catalog.DeleteApprovedTitleStepTx(ctx, tx, plan, request.OperationID+":"+digest)
 					if e != nil {
 						return e
 					}
-					if !removed {
+					complete = step.Complete
+					if complete && step.Outcome != "removed" {
 						receipts[i].Removed, receipts[i].Code = false, "file_changed"
 					}
+					if complete {
+						_, e = tx.ExecContext(ctx, `UPDATE library_revisions SET revision=revision+1 WHERE library_id=?`, target.LibraryID)
+					}
+					return e
+				})
+				if err != nil {
+					return out, err
 				}
-				_, e := tx.ExecContext(ctx, `UPDATE library_revisions SET revision=revision+1 WHERE library_id=?`, target.LibraryID)
-				return e
+				if !complete {
+					dbwork.Yield(ctx)
+				}
+			}
+		}
+		if !receipts[i].Removed {
+			continue
+		}
+		// The zero-member policy never adopts newly attached members. Pending
+		// container/season work commits and resumes before the final receipt.
+		emptyDone := false
+		for !emptyDone {
+			err = s.transaction(ctx, liveAuth, func(tx *sql.Tx) error {
+				step, e := catalog.DeleteEmptyApprovedContainerStepTx(ctx, tx, target.emptyPlan, request.OperationID+":"+digest)
+				if e != nil {
+					return e
+				}
+				emptyDone = step.Complete
+				if step.Complete && step.Outcome == "stale" {
+					receipts[i].Removed, receipts[i].Code = false, "file_changed"
+				}
+				return nil
 			})
 			if err != nil {
 				return out, err
 			}
-		}
-		// A zero-member pass only removes an empty container. Any new member
-		// keeps its container and is never pulled into this operation.
-		err = s.transaction(ctx, auth, func(tx *sql.Tx) error {
-			remaining, e := catalog.DeleteTitleMembersTx(ctx, tx, target.ItemID, 0)
-			if e == nil && remaining != 0 {
-				receipts[i].Removed, receipts[i].Code = false, "file_changed"
+			if !emptyDone {
+				dbwork.Yield(ctx)
 			}
-			return e
-		})
-		if err != nil {
-			return out, err
 		}
 	}
-	err = s.transaction(ctx, auth, func(tx *sql.Tx) error {
+	err = s.transaction(ctx, liveAuth, func(tx *sql.Tx) error {
 		out.Receipts, out.Removed, out.Failed, out.BytesDeleted = out.Receipts[:0], 0, 0, 0
 		for _, r := range receipts {
 			out.Receipts = append(out.Receipts, r)
@@ -607,7 +654,10 @@ func (s *Service) Delete(ctx context.Context, auth Authorize, actor string, requ
 		if out.Revision, e = deleteFence(ctx, tx, libraries); e != nil {
 			return e
 		}
-		return saveReceipt(ctx, tx, scope, request.OperationID, digest, out, s.milliseconds())
+		if e = saveReceipt(ctx, tx, scope, request.OperationID, digest, out, s.milliseconds()); e != nil {
+			return e
+		}
+		return catalog.AcknowledgeAdministrationTx(ctx, tx, request.OperationID+":"+digest)
 	})
 	_ = actor
 	return out, err

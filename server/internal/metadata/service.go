@@ -40,6 +40,7 @@ type Service struct {
 	musicArtistCursor atomic.Int64
 	// mbReconcileAfter is the album the last reconciliation turn served.
 	mbReconcileAfter atomic.Int64
+	mbRetryDue       atomic.Int64     // one transient scheduling hint, never publication authority
 	now              func() time.Time // private deterministic lease clock; production uses UTC wall time
 
 	screenProviders map[string]ScreenProvider
@@ -150,7 +151,7 @@ func (s *Service) Run(ctx context.Context) {
 	// tick and no more; on a busy one it hears about work as it is enqueued,
 	// which is sooner than the timer it replaces.
 	wake := worker.NewSignal()
-	unregister := dbwork.WakeOnTables(wake, "metadata_*", "screen_metadata_*", "mb_*", "tvdb_*", "audio_metadata_*", "audio_genre_*", "maintenance_*", "server_settings", "console_settings_revision", "admin_documents")
+	unregister := dbwork.WakeOnTables(wake, "metadata_*", "screen_metadata_*", "mb_*", "tvdb_*", "catalog_entity_mutations", "audio_metadata_*", "audio_genre_*", "maintenance_*", "server_settings", "console_settings_revision", "admin_documents")
 	defer unregister()
 	ctx, progress := metadataProgress(ctx)
 	worker.Run(ctx, "metadata.providers", wake, func(ctx context.Context) time.Duration {
@@ -211,11 +212,7 @@ func (s *Service) Run(ctx context.Context) {
 		// reads a few rows and returns without writing when nothing is due, so
 		// an idle server keeps its wake floor and never loops on itself.
 		_ = s.DiscoveryStep(ctx)
-		if progress.Moved() {
-			// Something moved, so there is probably more behind it.
-			return 10 * time.Millisecond
-		}
-		return 0
+		return s.providerPassRetry(progress)
 	})
 }
 
@@ -289,4 +286,15 @@ func (s *Service) tmdbGet(ctx context.Context, route string) ([]byte, error) {
 func metadataProgress(ctx context.Context) (context.Context, *worker.Progress) {
 	ctx, count := dbwork.TrackCommitProgress(ctx)
 	return ctx, worker.NewProgress(count)
+}
+
+// A bounded read-only MB window can have more raw keys even when this pass
+// committed nothing. Consume that continuation once; other lanes and an idle
+// or throttled next pass cannot make this provider loop spin.
+func (s *Service) providerPassRetry(progress *worker.Progress) time.Duration {
+	more := s.takeMBMutationPickContinuation()
+	if progress.Moved() || more {
+		return 10 * time.Millisecond
+	}
+	return s.mbAdoptionRetryDelay()
 }

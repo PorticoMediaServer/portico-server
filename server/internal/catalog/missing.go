@@ -125,6 +125,29 @@ func (s *Service) MissingRule(ctx context.Context) MissingRule {
 	return rule
 }
 
+type automaticMissingKey struct{}
+
+func missingRuleTx(ctx context.Context, tx *sql.Tx) (MissingRule, error) {
+	rule := DefaultMissingRule
+	var mode sql.NullString
+	var days sql.NullInt64
+	err := tx.QueryRowContext(ctx, `SELECT settings."library.missingTitles",settings."library.missingTitlesDays" FROM server_settings settings WHERE singleton=1`).Scan(&mode, &days)
+	if errors.Is(err, sql.ErrNoRows) {
+		return rule, nil
+	}
+	if err != nil {
+		return rule, err
+	}
+	switch mode.String {
+	case "immediately", "after_days", "never":
+		rule.Mode = mode.String
+	}
+	if days.Valid && days.Int64 >= 1 && days.Int64 <= 3650 {
+		rule.Days = int(days.Int64)
+	}
+	return rule, nil
+}
+
 // Cutoff is the time before which a missing title is due for removal under
 // the rule, and whether anything is due at all.
 func (r MissingRule) Cutoff(now time.Time) (time.Time, bool) {
@@ -184,6 +207,12 @@ func forgetAssetTx(ctx context.Context, tx *sql.Tx, id int64, token string) erro
 // without tracks and a book without parts follow. Files on disk are never
 // touched here.
 func RemoveTitleTx(ctx context.Context, tx *sql.Tx, entity int64) error {
+	if err := compactcatalog.RequireNoEntityMBPinsTx(ctx, tx, entity); err != nil {
+		return err
+	}
+	if err := compactcatalog.RequireEntityAcquirableTx(ctx, tx, entity); err != nil {
+		return err
+	}
 	var kind compactcatalog.Kind
 	err := tx.QueryRowContext(ctx, `SELECT kind FROM catalog_entities WHERE id=?`, entity).Scan(&kind)
 	if errors.Is(err, sql.ErrNoRows) {
@@ -236,31 +265,16 @@ func RemoveTitleTx(ctx context.Context, tx *sql.Tx, entity int64) error {
 		}
 	}
 	if show.Valid {
-		var episodes bool
-		if err = tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM catalog_episodes INDEXED BY catalog_episodes_show WHERE show_id=?)`, show.Int64).Scan(&episodes); err != nil {
+		if err = enqueueEmptyShowTx(ctx, tx, show.Int64); err != nil {
 			return err
 		}
-		if !episodes {
-			seasons, e := scanInt64s(tx.QueryContext(ctx, `SELECT entity_id FROM catalog_seasons WHERE show_id=?`, show.Int64))
-			if e != nil {
-				return e
-			}
-			for _, id := range seasons {
-				if e = removeContainerTx(ctx, tx, id); e != nil {
-					return e
-				}
-			}
-			if e = removeContainerTx(ctx, tx, show.Int64); e != nil {
-				return e
-			}
-		}
 	}
-	if album.Valid {
+	if album.Valid && !entityMutationHeld(ctx, tx, album.Int64) {
 		if err = retireEmptiedAlbumTx(ctx, tx, album.Int64, 0); err != nil {
 			return err
 		}
 	}
-	if book.Valid {
+	if book.Valid && !entityMutationHeld(ctx, tx, book.Int64) {
 		if err = settleEmptiedBook(ctx, tx, book.Int64, 0); err != nil {
 			return err
 		}
@@ -269,6 +283,9 @@ func RemoveTitleTx(ctx context.Context, tx *sql.Tx, entity int64) error {
 }
 
 func removeEmptyContainerTx(ctx context.Context, tx *sql.Tx, id int64, hasMembers string) error {
+	if held, err := entityMutationHeldTx(ctx, tx, id); err != nil || held {
+		return err
+	}
 	var members bool
 	if err := tx.QueryRowContext(ctx, hasMembers, id).Scan(&members); err != nil || members {
 		return err
@@ -299,9 +316,10 @@ func removeContainerTx(ctx context.Context, tx *sql.Tx, id int64) error {
 
 // MissingEmptied says what one pass of emptying removed.
 type MissingEmptied struct {
-	Titles int  `json:"titles"`
-	Files  int  `json:"files"`
-	More   bool `json:"more"`
+	Titles   int  `json:"titles"`
+	Files    int  `json:"files"`
+	More     bool `json:"more"`
+	Advanced bool `json:"-"`
 }
 
 const missingBatch = 24
@@ -325,20 +343,185 @@ func (s *Service) EmptyMissing(ctx context.Context, library string, cutoff time.
 // management and content authority resolved in each write transaction.
 func (s *Service) EmptyMissingAuthorized(ctx context.Context, library string, cutoff time.Time, authority MissingAuthority) (MissingEmptied, error) {
 	var out MissingEmptied
-	err := dbwork.WithWriteTx(ctx, s.db, dbwork.ClassFrom(ctx, dbwork.ClassMaintenance), func(tx *sql.Tx) error {
+	err := dbwork.WithWriteTx(MutationWriteContext(ctx), s.db, dbwork.ClassFrom(ctx, dbwork.ClassMaintenance), func(tx *sql.Tx) error {
 		out = MissingEmptied{}
 		scope, err := resolveMissingScope(ctx, tx, authority)
 		if err != nil {
 			return err
 		}
+		if automatic, _ := ctx.Value(automaticMissingKey{}).(bool); automatic {
+			rule, e := missingRuleTx(ctx, tx)
+			if e != nil {
+				return e
+			}
+			current, due := rule.Cutoff(time.Now())
+			if !due {
+				var ref compactcatalog.MutationRef
+				query := `SELECT m.mutation_id,m.generation FROM catalog_entity_mutations m INDEXED BY catalog_entity_mutations_automatic_missing WHERE m.owner_kind='missing' AND m.cause_operation='automatic-missing' AND m.status='active' AND m.parent_mutation_id IS NULL`
+				var args []any
+				if library != "" {
+					query += ` AND m.library_id=(SELECT id FROM catalog_libraries WHERE library_id=?)`
+					args = append(args, library)
+				}
+				e := tx.QueryRowContext(ctx, query+` ORDER BY m.library_id,m.mutation_id LIMIT 1`, args...).Scan(&ref.ID, &ref.Generation)
+				if errors.Is(e, sql.ErrNoRows) {
+					return nil
+				}
+				if e != nil {
+					return e
+				}
+				m, e := compactcatalog.ReadEntityMutationTx(ctx, tx, ref)
+				if e != nil {
+					return e
+				}
+				step, e := staleMutationStepTx(ctx, tx, m)
+				if e != nil {
+					return e
+				}
+				out.More = true
+				out.Advanced = step.Progressed
+				if step.Complete {
+					return acknowledgeMutationTx(ctx, tx, ref)
+				}
+				return nil
+			}
+			if current.Before(cutoff) {
+				cutoff = current
+			}
+		}
+		cause, ownerPrefix := "manual-missing", "manual:"
+		if automatic, _ := ctx.Value(automaticMissingKey{}).(bool); automatic {
+			cause, ownerPrefix = "automatic-missing", "automatic:"
+		}
 		fileLibrary, fileArgs := scope.librarySQL("s.library_id")
 		titleLibrary, titleArgs := scope.librarySQL("cl.library_id")
+		// Resume admitted work before looking at missing marks or deleting
+		// inventory custody. Every turn re-resolves the caller's live scope.
+		var ref compactcatalog.MutationRef
+		var title int64
+		pendingErr := tx.QueryRowContext(ctx, `SELECT m.mutation_id,m.generation,m.entity_id FROM catalog_entity_mutations m JOIN catalog_entities missing_candidate ON missing_candidate.id=m.entity_id JOIN catalog_libraries cl ON cl.id=missing_candidate.library_id WHERE m.owner_kind='missing' AND m.cause_operation=? AND m.parent_mutation_id IS NULL AND m.status='active' AND (?='' OR cl.library_id=?) AND cl.retired=0 AND `+titleLibrary+` AND (`+scope.VisibilitySQL+`) ORDER BY m.mutation_id LIMIT 1`, append(append([]any{cause, library, library}, titleArgs...), scope.VisibilityArgs...)...).Scan(&ref.ID, &ref.Generation, &title)
+		if pendingErr != nil && !errors.Is(pendingErr, sql.ErrNoRows) {
+			return pendingErr
+		}
+		if errors.Is(pendingErr, sql.ErrNoRows) {
+			err = tx.QueryRowContext(ctx, `SELECT m.entity_id FROM catalog_missing_titles m JOIN catalog_libraries cl ON cl.id=m.library_id JOIN catalog_entities missing_candidate ON missing_candidate.id=m.entity_id WHERE (?='' OR cl.library_id=?) AND m.missing_since_ms<=? AND NOT EXISTS(SELECT 1 FROM catalog_entity_mutations refused WHERE refused.owner_kind='missing' AND refused.owner_id=?||pid(missing_candidate.public_id) AND refused.owner_generation=? AND refused.status='terminal' AND refused.outcome='stale') AND cl.retired=0 AND `+titleLibrary+` AND (`+scope.VisibilitySQL+`) AND NOT EXISTS(SELECT 1 FROM inventory_source_active a JOIN library_sources src ON src.id=a.source_id WHERE src.library_id=cl.library_id) AND NOT EXISTS(SELECT 1 FROM library_sources src WHERE src.library_id=cl.library_id AND src.health IN('offline','root_changed','inventory_running')) ORDER BY m.library_id,m.missing_since_ms,m.entity_id LIMIT 1`, append(append([]any{library, library, cutoff.UnixMilli(), ownerPrefix, cutoff.UnixMilli()}, titleArgs...), scope.VisibilityArgs...)...).Scan(&title)
+			if err != nil && !errors.Is(err, sql.ErrNoRows) {
+				return err
+			}
+			if errors.Is(err, sql.ErrNoRows) {
+				title = 0
+			}
+		}
+		if title != 0 {
+			out.More = true
+			var healthy bool
+			if err = tx.QueryRowContext(ctx, `SELECT NOT EXISTS(SELECT 1 FROM catalog_entities e JOIN catalog_libraries cl ON cl.id=e.library_id JOIN library_sources src ON src.library_id=cl.library_id WHERE e.id=? AND (src.health IN('offline','root_changed','inventory_running') OR EXISTS(SELECT 1 FROM inventory_source_active a WHERE a.source_id=src.id)))`, title).Scan(&healthy); err != nil {
+				return err
+			}
+			if !healthy {
+				return nil
+			}
+			if err = compactcatalog.SettleMissingTx(ctx, tx, title); err != nil {
+				return err
+			}
+			var still bool
+			if err = tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM catalog_missing_titles WHERE entity_id=? AND missing_since_ms<=?)`, title, cutoff.UnixMilli()).Scan(&still); err != nil {
+				return err
+			}
+			if !still {
+				if ref.ID != "" {
+					_, err = compactcatalog.FinishEntityMutationTx(ctx, tx, ref, "stale")
+					out.Advanced = err == nil
+				}
+				return err
+			}
+			if ref.ID == "" {
+				var public string
+				if err = tx.QueryRowContext(ctx, `SELECT pid(public_id) FROM catalog_entities WHERE id=?`, title).Scan(&public); err != nil {
+					return err
+				}
+				generation := cutoff.UnixMilli()
+				if generation < 1 {
+					generation = 1
+				}
+				if err = ackSupersededMissingTx(ctx, tx, ownerPrefix+public, generation); err != nil {
+					return err
+				}
+
+				if cause == "manual-missing" {
+					var old compactcatalog.MutationRef
+					e := tx.QueryRowContext(ctx, `SELECT mutation_id,generation FROM catalog_entity_mutations WHERE entity_id=? AND owner_kind='missing' AND cause_operation='automatic-missing' AND status='active'`, title).Scan(&old.ID, &old.Generation)
+					if e == nil {
+						m, e := compactcatalog.ReadEntityMutationTx(ctx, tx, old)
+						if e != nil {
+							return e
+						}
+						step, e := staleMutationStepTx(ctx, tx, m)
+						if e != nil {
+							return e
+						}
+						out.Advanced = step.Progressed
+						if step.Complete {
+							return acknowledgeMutationTx(ctx, tx, old)
+						}
+						return nil
+					}
+					if !errors.Is(e, sql.ErrNoRows) {
+						return e
+					}
+				}
+				// Keep the synchronous pin-free domain path. It cannot drop
+				// a release closure and needs no cross-writer custody.
+				if pinErr := compactcatalog.RequireNoEntityMBPinsTx(ctx, tx, title); pinErr == nil {
+					var files int
+					if err = tx.QueryRowContext(ctx, `SELECT count(*) FROM catalog_asset_links l JOIN catalog_assets a ON a.id=l.asset_id JOIN inventory_objects o ON o.asset_id=a.token WHERE l.entity_id=?`, title).Scan(&files); err != nil {
+						return err
+					}
+					if err = RemoveTitleTx(ctx, tx, title); err != nil {
+						return err
+					}
+					out.Titles = 1
+					out.Files = files
+					out.Advanced = true
+					return PruneRetainedStateTx(ctx, tx)
+				} else if !errors.Is(pinErr, compactcatalog.ErrEntityPinned) {
+					return pinErr
+				}
+				_, err = compactcatalog.BeginEntityMutationTx(ctx, tx, compactcatalog.MutationIntent{Entity: title, OwnerKind: "missing", OwnerID: ownerPrefix + public, OwnerGeneration: generation, Mode: "remove", CauseOperation: cause})
+				out.Advanced = err == nil
+				return err
+			}
+			var files int
+			if err = tx.QueryRowContext(ctx, `SELECT count(*) FROM catalog_asset_links l JOIN catalog_assets a ON a.id=l.asset_id JOIN inventory_objects o ON o.asset_id=a.token WHERE l.entity_id=?`, title).Scan(&files); err != nil {
+				return err
+			}
+			step, e := RemoveTitleStepTx(ctx, tx, ref)
+			if e != nil {
+				return e
+			}
+			out.Advanced = step.Progressed
+			if step.Complete && step.Outcome == "stale" {
+				if e = EnqueueMutationCleanupTx(ctx, tx); e != nil {
+					return e
+				}
+			}
+			if step.Complete && step.Outcome == "removed" {
+				if e = acknowledgeMutationTx(ctx, tx, ref); e != nil {
+					return e
+				}
+				out.Titles = 1
+				out.Files = files
+				return PruneRetainedStateTx(ctx, tx)
+			}
+			return nil
+		}
 		type gone struct{ object, token string }
 		rows, err := tx.QueryContext(ctx, `SELECT o.id,o.asset_id FROM library_sources s CROSS JOIN inventory_objects o INDEXED BY inventory_objects_missing ON o.source_id=s.id
  WHERE (?='' OR s.library_id=?) AND s.health NOT IN('offline','root_changed','inventory_running') AND o.state='missing' AND o.retired=0 AND o.missing_since<>'' AND o.missing_since<=?
  AND `+fileLibrary+`
  AND NOT EXISTS(SELECT 1 FROM catalog_assets asset JOIN catalog_asset_links link ON link.asset_id=asset.id JOIN catalog_entities missing_candidate ON missing_candidate.id=link.entity_id WHERE asset.token=o.asset_id AND NOT (`+scope.VisibilitySQL+`))
- AND NOT EXISTS(SELECT 1 FROM inventory_source_active a WHERE a.source_id=s.id) ORDER BY o.id LIMIT ?`, append(append(append([]any{library, library, cutoff.UTC().Format(time.RFC3339Nano)}, fileArgs...), scope.VisibilityArgs...), missingBatch+1)...)
+ AND NOT EXISTS(SELECT 1 FROM catalog_assets held_asset JOIN catalog_asset_links held_link ON held_link.asset_id=held_asset.id JOIN catalog_entities held_entity ON held_entity.id=held_link.entity_id JOIN catalog_entity_mutations refused ON refused.owner_kind='missing' AND refused.owner_id=?||pid(held_entity.public_id) AND refused.owner_generation=? AND refused.status='terminal' AND refused.outcome='stale' WHERE held_asset.token=o.asset_id)
+ AND NOT EXISTS(SELECT 1 FROM inventory_source_active a WHERE a.source_id=s.id) ORDER BY o.id LIMIT ?`, append(append(append([]any{library, library, cutoff.UTC().Format(time.RFC3339Nano)}, fileArgs...), scope.VisibilityArgs...), ownerPrefix, cutoff.UnixMilli(), missingBatch+1)...)
 		if err != nil {
 			return err
 		}
@@ -383,37 +566,7 @@ func (s *Service) EmptyMissingAuthorized(ctx context.Context, library string, cu
 			}
 			out.Files++
 		}
-		titles, err := scanInt64s(tx.QueryContext(ctx, `SELECT m.entity_id FROM catalog_missing_titles m JOIN catalog_libraries cl ON cl.id=m.library_id JOIN catalog_entities missing_candidate ON missing_candidate.id=m.entity_id
- WHERE (?='' OR cl.library_id=?) AND m.missing_since_ms<=? AND cl.retired=0 AND `+titleLibrary+` AND (`+scope.VisibilitySQL+`)
- AND NOT EXISTS(SELECT 1 FROM inventory_source_active a JOIN library_sources src ON src.id=a.source_id WHERE src.library_id=cl.library_id)
- AND NOT EXISTS(SELECT 1 FROM library_sources src WHERE src.library_id=cl.library_id AND src.health IN('offline','root_changed','inventory_running'))
- ORDER BY m.library_id,m.missing_since_ms,m.entity_id LIMIT ?`, append(append(append([]any{library, library, cutoff.UnixMilli()}, titleArgs...), scope.VisibilityArgs...), missingBatch+1)...))
-		if err != nil {
-			return err
-		}
-		if len(titles) > missingBatch {
-			titles, out.More = titles[:missingBatch], true
-		}
-		for _, title := range titles {
-			// The mark is rechecked against the files as they are now.
-			if err = compactcatalog.SettleMissingTx(ctx, tx, title); err != nil {
-				return err
-			}
-			var still bool
-			if err = tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM catalog_missing_titles WHERE entity_id=?)`, title).Scan(&still); err != nil {
-				return err
-			}
-			if !still {
-				continue
-			}
-			if err = RemoveTitleTx(ctx, tx, title); err != nil {
-				return err
-			}
-			out.Titles++
-		}
-		if out.Titles > 0 {
-			return PruneRetainedStateTx(ctx, tx)
-		}
+
 		return nil
 	})
 	return out, err
@@ -422,10 +575,11 @@ func (s *Service) EmptyMissingAuthorized(ctx context.Context, library string, cu
 // EmptyMissingDue applies the owner's rule once: everything due is removed in
 // bounded passes until nothing is left or the context ends.
 func (s *Service) EmptyMissingDue(ctx context.Context) (MissingEmptied, error) {
+	ctx = context.WithValue(ctx, automaticMissingKey{}, true)
 	var total MissingEmptied
 	cutoff, due := s.MissingRule(ctx).Cutoff(time.Now())
 	if !due {
-		return total, nil
+		cutoff = time.Time{}
 	}
 	for ctx.Err() == nil {
 		step, err := s.EmptyMissing(ctx, "", cutoff, nil)
@@ -434,7 +588,7 @@ func (s *Service) EmptyMissingDue(ctx context.Context) (MissingEmptied, error) {
 		if err != nil || !step.More {
 			return total, err
 		}
-		if step.Titles == 0 && step.Files == 0 {
+		if step.Titles == 0 && step.Files == 0 && !step.Advanced {
 			// Only things waiting on a source remain.
 			return total, nil
 		}

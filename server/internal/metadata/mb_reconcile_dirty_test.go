@@ -77,6 +77,10 @@ func TestMBReconcileDirtyProducerTransitions(t *testing.T) {
 			c := catalogtest.New(t, db)
 			second := c.Album(names["artist"], "Deleted album", 2020)
 			readPickPin(t, db, second.ID, old, "pending")
+			if _, err := db.Exec(`DELETE FROM catalog_entities WHERE id=?`, second.ID); err == nil {
+				t.Fatal("physical delete bypassed pin drain")
+			}
+			mbCurrentExec(t, db, `DELETE FROM mb_album_links WHERE album_id=?`, second.ID)
 			mbCurrentExec(t, db, `DELETE FROM catalog_entities WHERE id=?`, second.ID)
 			assertMBReconcileProjection(t, db)
 			if n := readPickCount(t, db, `SELECT count(*) FROM mb_album_reconciliations WHERE album_id=?`, second.ID); n != 0 {

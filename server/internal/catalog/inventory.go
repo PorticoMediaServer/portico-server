@@ -848,6 +848,7 @@ func DiscStructureWitness(fingerprint string) string {
 // The caller revalidates the observed revision after all bounded reads; this
 // transaction additionally checks job cancellation, source and current policy.
 func (s *Service) CommitInventoryAnalysis(ctx context.Context, job, object, revision string, policyRevision int64, f assets.Facts) error {
+	ctx, audioAdmissions := withAudioMergeAdmissions(ctx)
 	gated2, err := dbwork.Begin(ctx, s.db, dbwork.ClassFrom(ctx, dbwork.ClassInteractive))
 	if err != nil {
 		return err
@@ -982,6 +983,9 @@ func (s *Service) CommitInventoryAnalysis(ctx context.Context, job, object, revi
 		return err
 	}
 	if err = inventoryEvent(ctx, tx, source.ID, job, object, asset, revision, "analysis_completed"); err != nil {
+		return err
+	}
+	if err = finishAudioMergeAdmissionsTx(ctx, tx, audioAdmissions); err != nil {
 		return err
 	}
 	return gated2.Commit()

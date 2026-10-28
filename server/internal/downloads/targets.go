@@ -372,7 +372,9 @@ func nextEpisode(ctx context.Context, tx *sql.Tx, after string) ([]string, error
 	} else {
 		e = tx.QueryRowContext(ctx, `SELECT pid(item.public_id) FROM catalog_entities season CROSS JOIN catalog_episodes e INDEXED BY catalog_episodes_season ON e.season_id=season.id CROSS JOIN catalog_entities item ON item.id=e.entity_id WHERE season.public_id=pid_blob(?) AND e.numbering='seasonal' AND e.number>? ORDER BY e.number LIMIT 1`, season.String, number).Scan(&next)
 		if errors.Is(e, sql.ErrNoRows) {
-			e = tx.QueryRowContext(ctx, `SELECT pid(item.public_id) FROM catalog_entities show JOIN catalog_episodes e ON e.show_id=show.id JOIN catalog_seasons s ON s.entity_id=e.season_id JOIN catalog_entities item ON item.id=e.entity_id
+			// Resolve the unique Show before its indexed children, independent of
+			// which additional episode indexes a fresh catalog installs.
+			e = tx.QueryRowContext(ctx, `SELECT pid(item.public_id) FROM catalog_entities show CROSS JOIN catalog_episodes e INDEXED BY catalog_episodes_show ON e.show_id=show.id CROSS JOIN catalog_seasons s ON s.entity_id=e.season_id CROSS JOIN catalog_entities item ON item.id=e.entity_id
  WHERE show.public_id=pid_blob(?) AND e.numbering='seasonal' AND s.number>(SELECT next.number FROM catalog_seasons next JOIN catalog_entities current ON current.id=next.entity_id WHERE current.public_id=pid_blob(?))
  ORDER BY s.number,e.number LIMIT 1`, show, season.String).Scan(&next)
 		}

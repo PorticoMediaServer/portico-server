@@ -133,6 +133,16 @@ func IdentifyTrackTx(ctx context.Context, tx *sql.Tx, item int64, tagKey string)
 	}
 	// The title that has been here longer keeps its id: it is the one people
 	// have state on and lists pointing at.
+	deferred, e := deferAudioMergeTx(ctx, tx, item, held, tagKey)
+	if e != nil {
+		return 0, e
+	}
+	if deferred {
+		// During file publication the source must finish its own facts first.
+		// The final writer tail admits the captured pair. A direct call has
+		// already durably admitted it; both return the live source until absorb.
+		return item, nil
+	}
 	if err = MergeTitlesTx(ctx, tx, item, held); err != nil {
 		return 0, err
 	}
