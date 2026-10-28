@@ -99,12 +99,12 @@ func preRestoreHolding(t *testing.T, state, hash string) bool {
 
 func TestApplyStagedCrashWhilePreparingKeepsTheLiveDatabase(t *testing.T) {
 	f := stageAfterWrite(t)
-	crashAt(t, "preparing:"+DatabaseName+"-wal") // the database has moved out
+	crashAt(t, "preparing:"+DatabaseName+"-wal") // previous-state copy is not yet complete
 	if err := ApplyStaged(context.Background(), f.state, nil); !errors.Is(err, errCrash) {
 		t.Fatalf("crash: %v", err)
 	}
-	if _, err := os.Stat(storagepaths.Path(f.state, "server.sqlite")); !os.IsNotExist(err) {
-		t.Fatal("the crash point is wrong: the database should be in the pre-restore folder")
+	if got := fileHashOrEmpty(t, storagepaths.Path(f.state, "server.sqlite")); got != f.liveHash {
+		t.Fatal("preparing changed the live database before its recovery copy completed")
 	}
 	if !preRestoreHolding(t, f.state, f.liveHash) {
 		t.Fatal("the live database is not safe in a pre-restore folder after the crash")

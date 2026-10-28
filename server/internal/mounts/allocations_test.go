@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"portico.local/server/internal/authorityfiles"
 	"portico.local/server/internal/storage"
 	"testing"
 )
@@ -199,5 +200,40 @@ func TestCreateCommitAbortRecovery(t *testing.T) {
 	s.db.QueryRow(`SELECT count(*) FROM mount_allocations`).Scan(&allocations)
 	if allocations != 0 {
 		t.Fatal("failed acceptance did not recover")
+	}
+}
+
+func TestAllocationReconcileFencesConfigRemovalAndLeavesIdleGenerationAlone(t *testing.T) {
+	s, _ := fixture(t)
+	idle, ok := authorityfiles.Process.Baseline()
+	if !ok {
+		t.Fatal("unexpected writer")
+	}
+	s.recoverAllocations(t.Context())
+	if !authorityfiles.Process.Unchanged(idle) {
+		t.Fatal("idle reconciliation changed generation")
+	}
+	id := "fenced-allocation"
+	raw := []byte("config bytes")
+	if err := s.reserveAllocation(id, raw); err != nil {
+		t.Fatal(err)
+	}
+	config := filepath.Join(s.private, id+".conf")
+	if err := os.WriteFile(config, raw, 0600); err != nil {
+		t.Fatal(err)
+	}
+	before, ok := authorityfiles.Process.Baseline()
+	if !ok {
+		t.Fatal("unexpected writer")
+	}
+	s.recoverAllocations(t.Context())
+	if authorityfiles.Process.Unchanged(before) {
+		t.Fatal("live config cleanup escaped the mutation fence")
+	}
+	if _, err := os.Stat(config); !os.IsNotExist(err) {
+		t.Fatal("config not removed", err)
+	}
+	if _, ok := authorityfiles.Process.Baseline(); !ok {
+		t.Fatal("cleanup leaked its writer token")
 	}
 }

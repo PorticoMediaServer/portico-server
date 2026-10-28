@@ -18899,6 +18899,64 @@ var PorticoCastContracts = (function(exports) {
 									"type": "array"
 								},
 								"indexesRebuilt": { "type": "boolean" },
+								"manifestDamage": {
+									"properties": {
+										"count": {
+											"maximum": 9007199254740991,
+											"minimum": -9007199254740991,
+											"type": "integer"
+										},
+										"missingFiles": {
+											"maximum": 9007199254740991,
+											"minimum": -9007199254740991,
+											"type": "integer"
+										},
+										"regions": {
+											"items": {
+												"properties": {
+													"endByte": {
+														"maximum": 9007199254740991,
+														"minimum": -9007199254740991,
+														"type": "integer"
+													},
+													"firstLine": {
+														"maximum": 9007199254740991,
+														"minimum": -9007199254740991,
+														"type": "integer"
+													},
+													"lastLine": {
+														"maximum": 9007199254740991,
+														"minimum": -9007199254740991,
+														"type": "integer"
+													},
+													"reason": { "type": "string" },
+													"startByte": {
+														"maximum": 9007199254740991,
+														"minimum": -9007199254740991,
+														"type": "integer"
+													}
+												},
+												"required": [
+													"firstLine",
+													"lastLine",
+													"startByte",
+													"endByte",
+													"reason"
+												],
+												"type": "object"
+											},
+											"type": "array"
+										},
+										"regionsTruncated": { "type": "boolean" },
+										"unverifiedDatabase": { "type": "boolean" }
+									},
+									"required": [
+										"count",
+										"regions",
+										"missingFiles"
+									],
+									"type": "object"
+								},
 								"removedRows": {
 									"maximum": 9007199254740991,
 									"minimum": -9007199254740991,
@@ -18948,6 +19006,64 @@ var PorticoCastContracts = (function(exports) {
 													"type": "array"
 												},
 												"indexesRebuilt": { "type": "boolean" },
+												"manifestDamage": {
+													"properties": {
+														"count": {
+															"maximum": 9007199254740991,
+															"minimum": -9007199254740991,
+															"type": "integer"
+														},
+														"missingFiles": {
+															"maximum": 9007199254740991,
+															"minimum": -9007199254740991,
+															"type": "integer"
+														},
+														"regions": {
+															"items": {
+																"properties": {
+																	"endByte": {
+																		"maximum": 9007199254740991,
+																		"minimum": -9007199254740991,
+																		"type": "integer"
+																	},
+																	"firstLine": {
+																		"maximum": 9007199254740991,
+																		"minimum": -9007199254740991,
+																		"type": "integer"
+																	},
+																	"lastLine": {
+																		"maximum": 9007199254740991,
+																		"minimum": -9007199254740991,
+																		"type": "integer"
+																	},
+																	"reason": { "type": "string" },
+																	"startByte": {
+																		"maximum": 9007199254740991,
+																		"minimum": -9007199254740991,
+																		"type": "integer"
+																	}
+																},
+																"required": [
+																	"firstLine",
+																	"lastLine",
+																	"startByte",
+																	"endByte",
+																	"reason"
+																],
+																"type": "object"
+															},
+															"type": "array"
+														},
+														"regionsTruncated": { "type": "boolean" },
+														"unverifiedDatabase": { "type": "boolean" }
+													},
+													"required": [
+														"count",
+														"regions",
+														"missingFiles"
+													],
+													"type": "object"
+												},
 												"removedRows": {
 													"maximum": 9007199254740991,
 													"minimum": -9007199254740991,

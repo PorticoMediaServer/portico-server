@@ -246,13 +246,18 @@ func minTime(a, b time.Time) time.Time {
 }
 
 type observations struct {
-	mu       sync.Mutex
-	entries  map[string]*observer
-	running  bool
-	kick     chan struct{}
-	counts   observationCounters
-	logged   ObservationStats
-	loggedAt time.Time
+	mu           sync.Mutex
+	entries      map[string]*observer
+	running      bool
+	kick         chan struct{}
+	counts       observationCounters
+	logged       ObservationStats
+	loggedAt     time.Time
+	closed       bool
+	workerCancel context.CancelFunc
+	workerDone   chan struct{}
+	workOnce     sync.Once
+	work         chan struct{}
 }
 
 // observations returns the store, made on first use.
@@ -306,6 +311,10 @@ func (s *Service) ClaimObserver(ctx context.Context, c Caller, id string, claim 
 	}
 	now := s.now()
 	o.mu.Lock()
+	if o.closed {
+		o.mu.Unlock()
+		return ObserverGrant{}, context.Canceled
+	}
 	e := o.entries[id]
 	switch {
 	case e == nil:
@@ -389,6 +398,10 @@ func (s *Service) Observe(ctx context.Context, c Caller, id string, ob Observati
 	o := s.observations()
 	now := s.now()
 	o.mu.Lock()
+	if o.closed {
+		o.mu.Unlock()
+		return ObservationAck{}, context.Canceled
+	}
 	e := o.entries[id]
 	if e == nil {
 		o.mu.Unlock()
@@ -562,11 +575,14 @@ func (o *observations) wakeLocked() {
 
 func (o *observations) startLocked(s *Service) {
 	o.wakeLocked()
-	if o.running {
+	if o.running || o.closed {
 		return
 	}
 	o.running = true
-	supervise.Supervise(context.Background(), "playbackv1.observations", func(context.Context) { o.run(s) })
+	ctx, cancel := context.WithCancel(context.Background())
+	o.workerCancel, o.workerDone = cancel, make(chan struct{})
+	done := o.workerDone
+	supervise.Go("playbackv1.observations", func() { o.run(ctx, s, done) })
 }
 
 // observationCapture is what one apply writes, taken under the store lock
@@ -655,33 +671,49 @@ func (o *observations) mark(c observationCapture, res observationResult, now tim
 
 // run is the single batch worker. It holds at most one writer ticket and
 // exits when no session is observed.
-func (o *observations) run(s *Service) {
-	ctx := context.Background()
+func (o *observations) run(ctx context.Context, s *Service, done chan struct{}) {
+	defer func() {
+		o.mu.Lock()
+		if o.workerDone == done {
+			o.running = false
+		}
+		close(done)
+		o.mu.Unlock()
+	}()
 	for {
+		if err := o.acquireWork(ctx); err != nil {
+			return
+		}
 		now := s.now()
 		o.mu.Lock()
 		if len(o.entries) == 0 {
 			o.running = false
 			o.mu.Unlock()
+			o.releaseWork()
 			return
 		}
 		next, batch := o.takeLocked(now)
 		o.mu.Unlock()
 		o.logIfChanged(now)
 		if len(batch) == 0 {
+			o.releaseWork()
 			wait := time.Minute
 			if !next.IsZero() {
 				wait = max(next.Sub(now), time.Millisecond)
 			}
 			timer := time.NewTimer(min(wait, time.Minute))
 			select {
+			case <-ctx.Done():
+				timer.Stop()
+				return
 			case <-timer.C:
 			case <-o.kick:
 				timer.Stop()
 			}
 			continue
 		}
-		s.applyObservationBatch(ctx, o, batch)
+		_ = s.applyObservationBatch(ctx, o, batch)
+		o.releaseWork()
 	}
 }
 
@@ -738,7 +770,7 @@ func observationBatchPlan(sessions int) dbwork.WritePlan {
 
 // applyObservationBatch writes up to observationBatch owners in one writer
 // transaction, one savepoint each: one session's failure leaves the others.
-func (s *Service) applyObservationBatch(ctx context.Context, o *observations, batch []*observer) {
+func (s *Service) applyObservationBatch(ctx context.Context, o *observations, batch []*observer) error {
 	release := func(failed []*observer) {
 		now := s.now()
 		o.mu.Lock()
@@ -755,12 +787,13 @@ func (s *Service) applyObservationBatch(ctx context.Context, o *observations, ba
 	if err != nil {
 		o.counts.batchesFailed.Add(1)
 		release(batch)
-		return
+		return err
 	}
 	defer w.Rollback()
 	tx, txCtx := w.Tx(), w.Context()
 	var after []func()
 	var failed []*observer
+	var failures error
 	for _, e := range batch {
 		o.mu.Lock()
 		c := o.captureLocked(e)
@@ -770,6 +803,7 @@ func (s *Service) applyObservationBatch(ctx context.Context, o *observations, ba
 		}
 		res, post, applyErr := s.applyObservationTx(txCtx, tx, o, c, false)
 		if applyErr != nil {
+			failures = errors.Join(failures, applyErr)
 			if _, err = tx.ExecContext(txCtx, `ROLLBACK TO observation`); err != nil {
 				break
 			}
@@ -792,13 +826,14 @@ func (s *Service) applyObservationBatch(ctx context.Context, o *observations, ba
 	if err != nil {
 		o.counts.batchesFailed.Add(1)
 		release(batch)
-		return
+		return err
 	}
 	release(failed)
 	s.hub.wake()
 	for _, f := range after {
 		f()
 	}
+	return failures
 }
 
 // drainObservationTx writes a session's unwritten sample and credit inside a

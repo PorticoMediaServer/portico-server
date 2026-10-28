@@ -9,6 +9,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"portico.local/server/internal/authorityfiles"
 	"runtime"
 	"strings"
 	"time"
@@ -137,6 +138,7 @@ func defaultResetFileOperations() resetFileOperations {
 	}
 }
 func (s *Service) publishResetFile(code string, expires time.Time) error {
+	defer authorityfiles.Process.Admit()()
 	ops := defaultResetFileOperations()
 	if s.resetIO != nil {
 		ops = *s.resetIO
@@ -179,6 +181,7 @@ func (s *Service) publishResetFile(code string, expires time.Time) error {
 	return ops.syncDirectory(s.resetDir)
 }
 func (s *Service) removeResetFile() error {
+	defer authorityfiles.Process.Admit()()
 	root, e := s.openResetDirectory()
 	if e != nil {
 		return e

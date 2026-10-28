@@ -22,6 +22,7 @@ const sourceKeyFileName = "live-sources.v1.key"
 // removed. Anything it cannot read is left for the next start; it never
 // blocks startup. A row that fails to open under the old key is left sealed
 // and fails at use, exactly as a wrong key did before.
+// Startup-only: initializeLiveChannels runs before backup service creation.
 func MigrateSealedToPlain(db *sql.DB, state string) {
 	raw, err := os.ReadFile(storagepaths.Path(state, "keys", sourceKeyFileName))
 	if err != nil || len(raw) != 32 {

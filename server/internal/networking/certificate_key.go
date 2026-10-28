@@ -30,6 +30,7 @@ const tlsSealFileName = "networking-tls-seal.key"
 // ensureTLSKey loads the server TLS key, generating and storing it (0600) on
 // first use. When the old seal file is still around, the live sealed key is
 // adopted for continuity and sealed rows move to keyless material.
+// Called only during certificate-manager construction before backup admission.
 func ensureTLSKey(ctx context.Context, db *sql.DB, stateDir string) (*ecdsa.PrivateKey, error) {
 	path := storagepaths.Path(stateDir, TLSKeyFileName)
 	if err := os.MkdirAll(filepath.Dir(path), 0700); err != nil {

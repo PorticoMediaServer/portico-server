@@ -17,7 +17,7 @@ import (
 
 // The launch-audit fixture changed a text payload without violating SQLite's
 // integrity_check. Reproduce that corruption through the production scrubber.
-func TestBackupRejectsStructurallyValidDatabaseCorruption(t *testing.T) {
+func TestBackupReportsStructurallyValidDatabaseCorruption(t *testing.T) {
 	for _, kind := range []Kind{KindManual, KindScheduled} {
 		t.Run(string(kind), func(t *testing.T) {
 			svc, state, db := testService(t)
@@ -65,20 +65,21 @@ func TestBackupRejectsStructurallyValidDatabaseCorruption(t *testing.T) {
 			if _, err = persistence.InspectCandidate(context.Background(), filepath.Dir(candidate), filepath.Base(candidate)); err != nil {
 				t.Fatalf("corruption should be structurally valid: %v", err)
 			}
-			for _, source := range []Source{{BackupID: id}, {Path: folder}} {
-				if _, err = svc.Stage(context.Background(), source); !errors.Is(err, ErrIntegrity) {
-					t.Fatalf("corrupt source accepted: %+v %v", source, err)
-				}
+			if err = checkSourceHashes(folder, manifest); !errors.Is(err, ErrIntegrity) {
+				t.Fatalf("strict validation accepted changed database: %v", err)
 			}
-			if _, err = os.Stat(storagepaths.Path(state, RestoreStagedDir, RestoreMarkerFile)); !os.IsNotExist(err) {
-				t.Fatalf("corruption was staged: %v", err)
+			for _, source := range []Source{{BackupID: id}, {Path: folder}} {
+				out, err := svc.Stage(context.Background(), source)
+				if err != nil || out.Validation.Recovery == nil || out.Validation.Recovery.ManifestDamage == nil || !out.Validation.Recovery.ManifestDamage.UnverifiedDatabase {
+					t.Fatalf("readable database recovery was not explicitly disclosed: %+v %v", out, err)
+				}
 			}
 		})
 	}
 }
 
 func TestBackupDatabaseManifestVersionsAndStructuralChecks(t *testing.T) {
-	for _, version := range []int{LegacyVersion, Version} {
+	for _, version := range []int{LegacyVersion, HashedVersion, Version} {
 		t.Run(itoa(version), func(t *testing.T) {
 			svc, state, _ := testService(t)
 			id, err := svc.Create(context.Background(), KindManual)
@@ -95,17 +96,20 @@ func TestBackupDatabaseManifestVersionsAndStructuralChecks(t *testing.T) {
 			if err = writeManifest(folder, manifest); err != nil {
 				t.Fatal(err)
 			}
-			_, err = svc.Stage(context.Background(), Source{Path: folder})
-			if version == Version {
+			out, err := svc.Stage(context.Background(), Source{Path: folder})
+			if version == HashedVersion {
 				if !errors.Is(err, ErrSourceInvalid) {
-					t.Fatalf("current format missing DB accepted: %v", err)
+					t.Fatalf("hashed v2 missing DB accepted: %v", err)
 				}
 				return
 			}
 			if err != nil {
 				t.Fatalf("legacy backup compatibility: %v", err)
 			}
-			// A legacy backup's missing database hash cannot waive SQLite validation.
+			if version == Version && (out.Validation.Recovery == nil || out.Validation.Recovery.ManifestDamage == nil || !out.Validation.Recovery.ManifestDamage.UnverifiedDatabase) {
+				t.Fatal("v3 missing database expectation was not disclosed")
+			}
+			// Missing database hashes cannot waive SQLite validation.
 			if err = writeTestFile(filepath.Join(folder, DatabaseName), []byte("not a SQLite database"), 0600); err != nil {
 				t.Fatal(err)
 			}
@@ -177,8 +181,8 @@ func TestBackupFinalizesScrubberWALBeforeHashing(t *testing.T) {
 	}
 }
 
-func TestBackupRejectsUnlistedWAL(t *testing.T) {
-	for _, version := range []int{LegacyVersion, Version} {
+func TestBackupUnlistedWALRequiresExplicitRecovery(t *testing.T) {
+	for _, version := range []int{LegacyVersion, HashedVersion, Version} {
 		t.Run(itoa(version), func(t *testing.T) {
 			svc, state, _ := testService(t)
 			id, err := svc.Create(context.Background(), KindManual)
@@ -208,11 +212,38 @@ func TestBackupRejectsUnlistedWAL(t *testing.T) {
 			if size, err := walBytes(filepath.Join(folder, DatabaseName) + "-wal"); err != nil || size == 0 {
 				t.Fatalf("missing WAL fixture: %d %v", size, err)
 			}
+			if err = checkSourceHashes(folder, manifest); !errors.Is(err, ErrIntegrity) {
+				t.Fatalf("strict hash check accepted unlisted WAL: %v", err)
+			}
 			for _, source := range []Source{{BackupID: id}, {Path: folder}} {
-				if _, err = svc.Stage(context.Background(), source); !errors.Is(err, ErrIntegrity) {
-					t.Fatalf("unverified WAL accepted: %v", err)
+				out, err := svc.Stage(context.Background(), source)
+				if version != StreamVersion {
+					if !errors.Is(err, ErrIntegrity) {
+						t.Fatalf("legacy unverified WAL accepted: %v", err)
+					}
+					continue
+				}
+				if err != nil || out.Validation.Recovery == nil || out.Validation.Recovery.ManifestDamage == nil || !out.Validation.Recovery.ManifestDamage.UnverifiedDatabase {
+					t.Fatalf("unlisted WAL recovery was not disclosed: %+v %v", out, err)
+				}
+				if got := configurationValue(t, storagepaths.Path(state, RestoreStagedDir, DatabaseName), "unlisted_wal"); got != "must not replay" {
+					t.Fatalf("readable WAL row lost: %q", got)
 				}
 			}
 		})
 	}
+}
+
+func configurationValue(t *testing.T, path, key string) string {
+	t.Helper()
+	db, err := sql.Open("sqlite", path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	var value string
+	if err := db.QueryRow("SELECT value FROM configuration WHERE key=?", key).Scan(&value); err != nil {
+		t.Fatal(err)
+	}
+	return value
 }

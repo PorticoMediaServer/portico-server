@@ -181,6 +181,7 @@ func (l Layout) Prepare() error {
 			return err
 		}
 	}
+	// Startup-only: layout preparation completes before backup admission.
 	f, err := os.OpenFile(l.Config, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0600)
 	if errors.Is(err, os.ErrExist) {
 		return nil

@@ -11,6 +11,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"portico.local/server/internal/authorityfiles"
 	"portico.local/server/internal/dbwork"
 	"portico.local/server/internal/identity"
 	"portico.local/server/internal/rcloneprogram"
@@ -257,6 +258,7 @@ func (s *Service) Create(ctx context.Context, input CreateInput) (Mount, error) 
 	return s.create(ctx, input, nil, nil)
 }
 func (s *Service) create(ctx context.Context, input CreateInput, record func(*sql.Tx, Mount) error, authorize func(*sql.Tx) error) (Mount, error) {
+	defer authorityfiles.Process.Admit()()
 	select {
 	case s.validation <- struct{}{}:
 		defer func() { <-s.validation }()
@@ -406,6 +408,7 @@ func (s *Service) Action(id, action string) (Mount, error) {
 	return s.get(id)
 }
 func (s *Service) Delete(ctx context.Context, id string) error {
+	defer authorityfiles.Process.Admit()()
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	defer s.publish()

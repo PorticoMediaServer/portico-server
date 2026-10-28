@@ -1534,7 +1534,7 @@ func New(d Dependencies) http.Handler {
 			d.Hosted.MembershipChanged()
 		}
 	})
-	return &credentialUsageHandler{Handler: d.self.h, gate: d.credentials, store: d.Access.Access}
+	return &credentialUsageHandler{Handler: d.self.h, gate: d.credentials, store: d.Access.Access, playback: d.v1}
 }
 
 // unmatchedRoute answers a /v1 request no route serves: 405 with Allow when

@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"golang.org/x/crypto/bcrypt"
 	"os"
+	"portico.local/server/internal/authorityfiles"
 	"portico.local/server/internal/dbwork"
 	"strings"
 	"time"
@@ -46,6 +47,7 @@ func setupOperationID() string {
 // SetupWithOptions creates either a local owner or an account-mode pending
 // initialization. It never substitutes a local credential for a Portico Account.
 func (s *Service) SetupWithOptions(ctx context.Context, q SetupOptions, private bool) (SetupResult, error) {
+	defer authorityfiles.Process.Admit()()
 	if q.AuthMode == "" {
 		q.AuthMode = "hosted"
 	}

@@ -86,6 +86,7 @@ const setupHashKeyName = "setup_hash_key"
 
 // initSetupHashKey loads the setup-hash key, generating and storing it on
 // first use, then migrates any rows the old file key sealed to plaintext.
+// Called only by identity.New before backup service creation.
 func (s *Service) initSetupHashKey(state string) error {
 	if raw := persistence.Get(s.db, setupHashKeyName); raw != "" {
 		if key, err := hex.DecodeString(raw); err == nil && len(key) == 32 {

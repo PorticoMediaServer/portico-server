@@ -103,6 +103,7 @@ const sealedConfigPrefix = "RCLONE_ENCRYPT_V0:\n"
 // old key exists, drops stale write candidates, and removes the key.
 // Anything it cannot read is left; reads fail validation at use, and the
 // server still starts.
+// Called only by mounts.New before backup service creation.
 func migrateSealedConfigs(private string) {
 	keyPath := filepath.Join(private, "key")
 	raw, err := os.ReadFile(keyPath)

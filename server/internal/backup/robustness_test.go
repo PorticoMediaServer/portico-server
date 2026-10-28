@@ -142,9 +142,17 @@ func TestPreRestoreCurrentOnlyCopiesSurvivePreparingCrashAndRollback(t *testing.
 					t.Fatal(err)
 				}
 			}
-			crashAt(t, "preserving:"+files[1])
+			crashAt(t, "preparing:"+files[1])
 			if err := ApplyStaged(context.Background(), fixture.state, nil); !errors.Is(err, errCrash) {
 				t.Fatalf("did not reach partially copied recovery files: %v", err)
+			}
+			if got := fileHashOrEmpty(t, storagepaths.Path(fixture.state, "server.sqlite")); got != fixture.liveHash {
+				t.Fatal("preparing changed live database")
+			}
+			for _, file := range files {
+				if got, err := os.ReadFile(filepath.Join(fixture.state, file)); err != nil || string(got) != file {
+					t.Fatal("preparing changed original key", file, err)
+				}
 			}
 			var verify VerifyFunc
 			refused := errors.New("restored state refused")

@@ -195,6 +195,7 @@ func New(db *sql.DB, state string) (*Service, error) {
 			return nil, e
 		}
 		if os.IsNotExist(e) {
+			// Startup-only: identity.New completes before backup service creation.
 			if e = os.WriteFile(s.setupPath, []byte(Token()), 0600); e != nil {
 				return nil, e
 			}

@@ -6,6 +6,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"portico.local/server/internal/authorityfiles"
 	"portico.local/server/internal/dbwork"
 	"strings"
 	"time"
@@ -51,6 +52,7 @@ func managedS3(v S3Setup) (string, string, error) {
 }
 
 func (s *Service) configure(ctx context.Context, actor, id, hash string, c Command, authorize func(*sql.Tx) error, readCacheAccepted func(context.Context, *sql.Tx, Mount, Mount) error) (Receipt, error) {
+	defer authorityfiles.Process.Admit()()
 	var zero Receipt
 	if id == "" || c.ExpectedRevision < 1 {
 		return zero, ErrInvalid
@@ -282,6 +284,7 @@ func (s *Service) configure(ctx context.Context, actor, id, hash string, c Comma
 
 // Cleanup only private, unreferenced candidate/generation files. No remote data
 // or mount path is traversed. Retain old generations for a day for late helpers.
+// Called only by mounts.New before backup service creation.
 func (s *Service) recoverNativeFiles() {
 	entries, err := os.ReadDir(s.private)
 	if err != nil {

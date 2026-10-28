@@ -12,6 +12,7 @@ import (
 	"os"
 	"path/filepath"
 	"portico.local/server/internal/atomicfile"
+	"portico.local/server/internal/authorityfiles"
 	"portico.local/server/internal/usermutation"
 	"runtime"
 	"strings"
@@ -245,6 +246,9 @@ func sealAEAD(key []byte) (cipher.AEAD, error) {
 	return cipher.NewGCM(b)
 }
 func (p *PolicyStore) secretKey(create bool) ([]byte, error) {
+	if create {
+		defer authorityfiles.Process.Admit()()
+	}
 	root := filepath.Join(p.state, "Keys")
 	if e := canonicalDirectory(root, create); e != nil {
 		return nil, e

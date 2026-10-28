@@ -13,6 +13,7 @@ import (
 	"io"
 	"os"
 	"portico.local/server/internal/atomicfile"
+	"portico.local/server/internal/authorityfiles"
 	"reflect"
 	"strings"
 	"sync"
@@ -163,6 +164,7 @@ func (l *Loader) Decode(target any) error {
 // Write atomically replaces the file and rereads it. Environment bindings remain
 // authoritative. Callers provide the full typed document from the settings spec.
 func (l *Loader) Write(document any) error {
+	defer authorityfiles.Process.Admit()()
 	if document == nil || reflect.ValueOf(document).Kind() == reflect.Pointer && reflect.ValueOf(document).IsNil() {
 		return errors.New("config document is required")
 	}
@@ -214,6 +216,7 @@ func (l *Loader) Watch(ctx context.Context, interval time.Duration, onChange fun
 // Patch keeps other registered domains when one settings authority publishes its
 // values. Dotted keys are written as TOML tables, without parallel literal keys.
 func (l *Loader) Patch(patch map[string]any) error {
+	defer authorityfiles.Process.Admit()()
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	// Read the file again while holding the writer lock: another editor may have

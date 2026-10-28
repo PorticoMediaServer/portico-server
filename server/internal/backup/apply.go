@@ -106,6 +106,9 @@ func ApplyStaged(ctx context.Context, state string, verify VerifyFunc) error {
 	if err = json.Unmarshal(raw, &marker); err != nil {
 		return err
 	}
+	if marker.StreamManifest {
+		return applyStreamStaged(ctx, state, staged, marker, verify)
+	}
 	// A journal can be interrupted or damaged independently of staging. Never
 	// allow it to name live database files, parent paths or recovery directories.
 	entries := make([]FileEntry, len(marker.Files))

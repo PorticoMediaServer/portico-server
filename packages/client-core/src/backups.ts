@@ -3,11 +3,27 @@ import {routeBody} from "../../contracts/src/routes.ts";
 import type {RouteResponse} from "../../contracts/src/route-paths.ts";
 import {routePath} from "../../contracts/src/route-paths.ts";
 import {parseBackupsDocument,parseEnvelope,type BackupsDocument,type RestoreRecovery,type RestoreSource,type RestoreStaged} from './administration.ts';
+import type {I18n} from '../../i18n/src/index.ts';
+import {sentence} from './server-admin/console-words.ts';
 
-/** The owner notice for a damaged database, based only on the server's recovery report. */
+/** The owner notice for a damaged backup or database, based only on the server's recovery report. */
 export function restoreRecoveryNotice(recovery?:RestoreRecovery):'repaired'|'recovered'|'partial'|undefined{
+ if(recovery?.manifestDamage&& (recovery.manifestDamage.count>0||recovery.manifestDamage.missingFiles>0||recovery.manifestDamage.unverifiedDatabase))return 'partial';
  if(recovery?.salvaged)return (recovery.damagedTables?.length??0)>0||(recovery.removedRows??0)>0?'partial':'recovered';
  return recovery?.indexesRebuilt?'repaired':undefined;
+}
+
+/** A bounded owner report. Counts and offsets stay exact, including an empty EOF region. */
+export function restoreRecoveryDetails(recovery:RestoreRecovery|undefined,t:I18n['t']):readonly string[]{
+ const damage=recovery?.manifestDamage;
+ if(!damage)return Object.freeze([]);
+ const details=[t('web.maintenance.restoreManifestDamage',{count:String(damage.count),missingFiles:String(damage.missingFiles)})];
+ for(const region of damage.regions)details.push(t('web.maintenance.restoreManifestRegion',{
+  firstLine:String(region.firstLine),lastLine:String(region.lastLine),startByte:String(region.startByte),endByte:String(region.endByte),reason:sentence(region.reason),
+ }));
+ if(damage.regionsTruncated)details.push(t('web.maintenance.restoreManifestTruncated',{shown:String(damage.regions.length),count:String(damage.count)}));
+ if(damage.unverifiedDatabase)details.push(t('web.maintenance.restoreDatabaseUnverified'));
+ return Object.freeze(details);
 }
 
 /** Typed clients for the spec §4 backup routes (`Spec — Backups (Plex model).md`).

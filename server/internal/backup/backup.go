@@ -13,6 +13,7 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"portico.local/server/internal/authorityfiles"
 	"portico.local/server/internal/storagepaths"
 	"regexp"
 	"sort"
@@ -40,8 +41,9 @@ const (
 	// RestoreResultFile records the last restore's outcome.
 	RestoreResultFile = "Backups/restore-result.json"
 	// Format and Version identify the manifest shape.
-	Format  = "portico-backup"
-	Version = 2
+	Format        = "portico-backup"
+	Version       = 3
+	HashedVersion = 2
 	// LegacyVersion predates mandatory database hashes. It remains readable for recovery.
 	LegacyVersion = 1
 	// DefaultKeepCount is the shipped scheduled-backup retention, matching the
@@ -84,6 +86,10 @@ type Manifest struct {
 	CreatedAt      string      `json:"createdAt"`
 	Kind           Kind        `json:"kind"`
 	Files          []FileEntry `json:"files"`
+	BackupID       string      `json:"backupId,omitempty"`
+	BaselineDigest string      `json:"baselineDigest,omitempty"`
+	streamPath     string
+	streamHash     string
 }
 
 // Info is one listed backup.
@@ -281,7 +287,8 @@ type Service struct {
 	// backup, to end the sessions and remove the live secrets in it. It is
 	// injected by the composition root; nil leaves the copy as it was copied
 	// (tests of the copy itself).
-	scrubCopy func(ctx context.Context, copy *dbwork.Candidate) error
+	scrubCopy      func(ctx context.Context, copy *dbwork.Candidate) error
+	beforeSnapshot func(context.Context) error
 
 	// stageMu makes restore staging one at a time: every stage writes the same
 	// restore-staged folder, so overlapping requests (a retry, a second tab)
@@ -300,12 +307,23 @@ type Service struct {
 	operations map[string]string
 	running    *Job
 	lastBackup *BackupResult
+	// Lifecycle admission and the join channel share mu with Start, so shutdown
+	// cannot miss a queued worker between its admission and goroutine start.
+	lifetime context.Context
+	stop     context.CancelFunc
+	stopping bool
+	active   int
+	idle     chan struct{}
 }
 
 // New opens the service on state. db is the live database handle the online
 // backup copies, in short steps on its writer connection (copy.go).
 func New(state string, db *sql.DB, serverID, serverVersion string, schemaVersion int) *Service {
+	lifetime, stop := context.WithCancel(context.Background())
+	idle := make(chan struct{})
+	close(idle)
 	return &Service{
+		lifetime: lifetime, stop: stop, idle: idle,
 		state:         state,
 		db:            db,
 		sourceGuard:   newSourceFileGuard(db),
@@ -353,6 +371,10 @@ func (s *Service) SetCopyScrubber(fn func(ctx context.Context, copy *dbwork.Cand
 	s.scrubCopy = fn
 }
 
+// SetBeforeSnapshot injects a bounded pending-observation flush at startup.
+// Failure aborts this attempt and preserves the last complete backup.
+func (s *Service) SetBeforeSnapshot(fn func(context.Context) error) { s.beforeSnapshot = fn }
+
 // Start begins an asynchronous backup. It is idempotent per operationID: the
 // same id twice returns the same job. Only one backup runs at a time; a new
 // operation of the same kind while one is in progress joins the running job.
@@ -367,6 +389,10 @@ func (s *Service) Start(ctx context.Context, kind Kind, operationID string) (str
 		return "", ErrInvalid
 	}
 	s.mu.Lock()
+	if s.stopping {
+		s.mu.Unlock()
+		return "", context.Canceled
+	}
 	s.pruneJobsLocked(s.now())
 	if id, ok := s.operations[operationID]; ok {
 		if job, ok := s.jobs[id]; ok {
@@ -402,6 +428,7 @@ func (s *Service) Start(ctx context.Context, kind Kind, operationID string) (str
 	s.jobs[job.id] = job
 	s.operations[operationID] = job.id
 	s.running = job
+	s.admitLocked()
 	s.mu.Unlock()
 	supervise.Go("backup.job", func() {
 		s.runBackup(dbwork.WithClass(context.WithoutCancel(ctx), dbwork.ClassMaintenance), job)
@@ -410,6 +437,7 @@ func (s *Service) Start(ctx context.Context, kind Kind, operationID string) (str
 }
 
 func (s *Service) runBackup(ctx context.Context, job *Job) {
+	defer s.leave()
 	var backupID string
 	var err error
 	returned := false
@@ -498,6 +526,11 @@ func (s *Service) Create(ctx context.Context, kind Kind) (string, error) {
 
 // create makes one backup and tells OnFinished how it went.
 func (s *Service) create(ctx context.Context, job *Job, kind Kind) (string, error) {
+	ctx, done, err := s.enter(ctx)
+	if err != nil {
+		return "", err
+	}
+	defer done()
 	id, err := s.createBackup(ctx, job, kind)
 	if s.OnFinished != nil {
 		s.OnFinished(kind, id, err)
@@ -513,6 +546,11 @@ func (s *Service) createBackup(ctx context.Context, job *Job, kind Kind) (string
 	defer s.copyMu.Unlock()
 	if err := ctx.Err(); err != nil {
 		return "", err
+	}
+	if s.beforeSnapshot != nil {
+		if err := s.beforeSnapshot(ctx); err != nil {
+			return "", err
+		}
 	}
 	policy, err := s.snapshot(ctx)
 	if err != nil {
@@ -540,6 +578,10 @@ func (s *Service) createBackup(ctx context.Context, job *Job, kind Kind) (string
 	}
 	if err = checkFreeSpace(s.state, estimate*2); err != nil {
 		return "", err
+	}
+	authorityGeneration, quiet := authorityfiles.Process.Baseline()
+	if !quiet {
+		return "", ErrIntegrity
 	}
 	authorityBefore, err := authorityFingerprint(ctx, s.state)
 	if err != nil {
@@ -630,32 +672,29 @@ func (s *Service) createBackup(ctx context.Context, job *Job, kind Kind) (string
 	if job != nil {
 		job.report("files", estimate, estimate)
 	}
-	entries, err := copyStateFilesForBackup(ctx, s.state, partial, policy.IncludeArtwork)
+	_, err = copyStateFilesForBackup(ctx, s.state, partial, policy.IncludeArtwork)
 	if err != nil {
 		_ = os.RemoveAll(partial)
 		return "", err
 	}
-	authorityAfter, e := authorityFingerprint(ctx, s.state)
-	if e != nil || authorityBefore != authorityAfter {
+	authorityAfter, fingerprintErr := authorityFingerprint(ctx, s.state)
+	if err = sameCarriedAuthority(ctx, s.state, partial); err != nil || fingerprintErr != nil || authorityBefore != authorityAfter || !authorityfiles.Process.Unchanged(authorityGeneration) {
 		_ = os.RemoveAll(partial)
 		return "", ErrIntegrity
 	}
-	entries = append(entries, database)
+	_ = database // finalized and hashed before state is copied; rehashed in the stream
 	manifest := Manifest{
 		Format: Format, Version: Version,
 		ServerID: s.serverID, ServerVersion: s.serverVersion,
 		SchemaVersion: s.schemaVersion, CreatedAt: created.Format(time.RFC3339),
-		Kind: kind, Files: entries,
+		Kind: kind, BackupID: id, BaselineDigest: persistence.BaselineDigest(),
 	}
-	if err = writeManifest(partial, manifest); err != nil {
+	manifest, err = writeStreamTree(ctx, partial, manifest)
+	if err != nil {
 		_ = os.RemoveAll(partial)
 		return "", err
 	}
-	names := make([]string, len(entries))
-	for i, entry := range entries {
-		names[i] = entry.Name
-	}
-	if err = syncRestoreDirectories(partial, partial, names); err != nil {
+	if err = syncManifestDirectories(ctx, partial, manifest); err != nil {
 		_ = os.RemoveAll(partial)
 		return "", err
 	}
@@ -765,12 +804,16 @@ func (s *Service) List() ([]Info, error) {
 func backupBytes(folder string, manifest Manifest) int64 {
 	var total int64
 	listed := map[string]bool{}
-	for _, entry := range manifest.Files {
+	_ = visitManifest(context.Background(), folder, manifest, func(entry FileEntry) error {
 		if entry.Bytes >= 0 {
 			total += entry.Bytes
 		}
-		listed[entry.Name] = true
-	}
+		// Only the five fixed metadata names matter below, never retain every path.
+		if entry.Name == DatabaseName || entry.Name == DatabaseName+"-wal" {
+			listed[entry.Name] = true
+		}
+		return nil
+	})
 	for _, name := range []string{DatabaseName, DatabaseName + "-wal", ManifestName, encryptedSummary, encryptedPayload} {
 		if listed[name] {
 			continue

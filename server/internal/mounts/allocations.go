@@ -8,6 +8,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"portico.local/server/internal/authorityfiles"
 	"portico.local/server/internal/dbwork"
 	"portico.local/server/internal/dirsync"
 	"time"
@@ -83,6 +84,12 @@ func (s *Service) recoverAllocations(ctx context.Context) {
 		list = append(list, a)
 	}
 	rows.Close()
+	if len(list) == 0 {
+		return
+	}
+	// Reconciliation also runs after startup. Cover removal through the final
+	// allocation-row cleanup, without perturbing idle backup generations.
+	defer authorityfiles.Process.Admit()()
 	for _, a := range list {
 		var references int
 		e = s.db.QueryRow(`SELECT count(*) FROM managed_mounts WHERE id=? OR mount_path=?`, a.id, filepath.Join(s.root, a.id)).Scan(&references)

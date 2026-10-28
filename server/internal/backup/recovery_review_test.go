@@ -31,6 +31,7 @@ func TestRestoreManifestCannotReplaceTheLiveDatabaseAsAStateFile(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	manifest.Version = HashedVersion // build the legacy malformed payload without the v3 writer admission
 	manifest.Files = append(manifest.Files, entry)
 	if err = writeManifest(folder, manifest); err != nil {
 		t.Fatal(err)

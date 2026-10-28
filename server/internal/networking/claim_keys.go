@@ -150,6 +150,7 @@ func VerifyStateKeys(ctx context.Context, db *sql.DB, state string) error {
 
 // OpenCurrentKeys initializes one canonical application/server identity before
 // identity.New or Setup. Existing unmarked state is refused, never adopted.
+// Startup-only: main opens these keys before identity and backup services.
 func OpenCurrentKeys(ctx context.Context, db *sql.DB, state string, runner *AuthorityRunner) (*ProtectedKeys, error) {
 	return openCurrentKeys(ctx, db, state, runner, freshKeySteps{syncDirectory, (*sql.Tx).Commit})
 }

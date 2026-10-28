@@ -1,6 +1,7 @@
 package backup
 
 import (
+	"bufio"
 	"bytes"
 	"context"
 	"encoding/json"
@@ -56,7 +57,7 @@ func (s *Service) InspectSource(ctx context.Context, source Source) (SourceInspe
 				return out, err
 			}
 			var summary Manifest
-			if json.Unmarshal(raw, &summary) != nil || summary.Format != Format || summary.Version != Version || len(summary.Files) != 0 {
+			if json.Unmarshal(raw, &summary) != nil || summary.Format != Format || (summary.Version != Version && summary.Version != HashedVersion) || len(summary.Files) != 0 {
 				return out, ErrSourceInvalid
 			}
 			prefix, err := s.inspectRootFile(ctx, root, encryptedPayload, 100, false)
@@ -67,18 +68,23 @@ func (s *Service) InspectSource(ctx context.Context, source Source) (SourceInspe
 		} else if !errors.Is(err, os.ErrNotExist) {
 			return out, ErrSourceInvalid
 		} else {
-			raw, err := s.inspectRootFile(ctx, root, ManifestName, maxManifestBytes, true)
+			knownStream, err := s.inspectRootStream(ctx, root)
 			if err != nil {
 				return out, err
 			}
-			// Keep the existing manifest size/version contract while avoiding
-			// allocation or traversal of its potentially large Files array.
 			var identity struct {
 				Format  string `json:"format"`
 				Version int    `json:"version"`
 			}
-			if json.Unmarshal(raw, &identity) != nil || identity.Format != Format || identity.Version != Version && identity.Version != LegacyVersion {
-				return out, ErrSourceInvalid
+
+			if !knownStream {
+				raw, err := s.inspectRootFile(ctx, root, ManifestName, maxManifestBytes, true)
+				if err != nil {
+					return out, err
+				}
+				if json.Unmarshal(raw, &identity) != nil || identity.Format != Format || (identity.Version != HashedVersion && identity.Version != LegacyVersion) {
+					return out, ErrSourceInvalid
+				}
 			}
 			prefix, err := s.inspectRootFile(ctx, root, DatabaseName, 100, false)
 			if err != nil || !inspectionSQLiteHeader(prefix) {
@@ -142,34 +148,47 @@ func sameInspectionFile(before, after os.FileInfo) bool {
 	return os.SameFile(before, after) && before.Mode() == after.Mode() && before.Size() == after.Size() && before.ModTime().Equal(after.ModTime())
 }
 
-func (s *Service) inspectRootFile(ctx context.Context, root *os.Root, name string, limit int64, whole bool) ([]byte, error) {
+func (s *Service) openInspectionFile(ctx context.Context, root *os.Root, name string) (*os.File, os.FileInfo, error) {
 	if err := ctx.Err(); err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	parts := strings.Split(name, "/")
 	for i := range parts {
 		info, err := root.Lstat(strings.Join(parts[:i+1], "/"))
 		if err != nil || i != len(parts)-1 && !info.IsDir() || i == len(parts)-1 && !info.Mode().IsRegular() {
-			return nil, ErrSourceInvalid
+			return nil, nil, ErrSourceInvalid
 		}
 	}
 	before, err := root.Lstat(name)
-	if err != nil || !before.Mode().IsRegular() || whole && before.Size() > limit {
-		return nil, ErrSourceInvalid
+	if err != nil || !before.Mode().IsRegular() {
+		return nil, nil, ErrSourceInvalid
 	}
 	files, err := s.sourceGuard.files()
 	if err != nil || liveSourceKind(before, files) != 0 {
-		return nil, ErrSourceInvalid
+		return nil, nil, ErrSourceInvalid
 	}
 	file, err := root.Open(name)
 	if err != nil {
-		return nil, ErrSourceInvalid
+		return nil, nil, ErrSourceInvalid
 	}
-	defer file.Close()
 	opened, err := file.Stat()
 	if err != nil || !sameInspectionFile(before, opened) {
+		file.Close()
+		return nil, nil, ErrSourceInvalid
+	}
+	return file, before, nil
+}
+
+func (s *Service) inspectRootFile(ctx context.Context, root *os.Root, name string, limit int64, whole bool) ([]byte, error) {
+	file, before, err := s.openInspectionFile(ctx, root, name)
+	if err != nil {
+		return nil, err
+	}
+	defer file.Close()
+	if whole && before.Size() > limit {
 		return nil, ErrSourceInvalid
 	}
+
 	bound := limit
 	if whole {
 		bound++
@@ -187,4 +206,45 @@ func (s *Service) inspectRootFile(ctx context.Context, root *os.Root, name strin
 		return nil, err
 	}
 	return raw, nil
+}
+
+// A corrupt/oversized opening region cannot hide later readable stream records.
+func (s *Service) inspectRootStream(ctx context.Context, root *os.Root) (bool, error) {
+	file, before, err := s.openInspectionFile(ctx, root, ManifestName)
+	if err != nil {
+		return false, err
+	}
+	defer file.Close()
+	reader := bufio.NewReaderSize(&scrubReader{ctx: ctx, r: file}, manifestLineBytes)
+	found := false
+	for line := 1; ; line++ {
+		if err := ctx.Err(); err != nil {
+			return false, err
+		}
+		raw, size, oversized, readErr := nextManifestLine(reader)
+		if readErr != nil && !errors.Is(readErr, io.EOF) {
+			return false, readErr
+		}
+		if !oversized {
+			var header Manifest
+			if line == 1 && json.Unmarshal(raw, &header) == nil && header.Format == Format && header.Version == StreamVersion {
+				found = true
+				break
+			}
+			var record streamRecord
+			if json.Unmarshal(raw, &record) == nil && (record.File != nil || record.End != nil) {
+				found = true
+				break
+			}
+		}
+		if size == 0 || errors.Is(readErr, io.EOF) {
+			break
+		}
+	}
+	finished, err := file.Stat()
+	current, pathErr := root.Lstat(ManifestName)
+	if err != nil || pathErr != nil || !sameInspectionFile(before, finished) || !sameInspectionFile(before, current) {
+		return false, ErrSourceInvalid
+	}
+	return found, ctx.Err()
 }

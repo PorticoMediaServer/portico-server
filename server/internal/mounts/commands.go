@@ -10,6 +10,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"portico.local/server/internal/authorityfiles"
 	"portico.local/server/internal/dbwork"
 	"portico.local/server/internal/requestinput"
 	"regexp"
@@ -395,6 +396,7 @@ func projectMountActions(m *Mount) {
 // Called only with ownership lock. Pending removals survive server restart and
 // never recursively delete remote data; unavailable/unreaped roots remain pending.
 func (s *Service) removePending(ctx context.Context, m Mount) {
+	defer authorityfiles.Process.Admit()()
 	if s.active[m.ID] != nil {
 		return
 	}
