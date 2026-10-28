@@ -147,8 +147,15 @@ func (s *Service) bulkSelection(p identity.Principal, v Viewer, in JobRequest) (
 			if s.ReadPreparations() == nil {
 				return "", nil, ErrSelectionBatchCapacity
 			}
-			if in.Expected != nil && in.Expected.CatalogRevision != "" && in.Expected.CatalogRevision != bound.Revision {
-				return "", nil, ErrStaleContinuation
+			if in.Expected != nil && in.Expected.CatalogRevision != "" {
+				// Home/jobs and Browse have different private viewer fences. Bind the
+				// original page revision to the COMPLETE cached full query and live
+				// held basis instead of recomputing that page with this route's fence.
+				proof, e := s.resolvePreparedBrowseSelection(v, *q, in.Expected.CatalogRevision, false)
+				if e != nil {
+					return "", nil, e
+				}
+				proof.Release()
 			}
 			return bulkReplaySelection, nil, nil
 		}

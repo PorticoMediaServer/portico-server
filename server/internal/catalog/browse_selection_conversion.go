@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"unsafe"
 
 	"portico.local/server/internal/dbwork"
 	"portico.local/server/internal/readprep"
@@ -22,7 +23,11 @@ type BrowseSelectionConversion struct {
 func (c BrowseSelectionConversion) Release()                  { c.lease.Release() }
 func (c BrowseSelectionConversion) Reserve(bytes int64) error { return c.lease.ResizeDelivery(bytes) }
 
-func (s *Service) ResolvePreparedBrowseSelection(viewer Viewer, query JobQuery, revision string) (out BrowseSelectionConversion, err error) {
+func (s *Service) ResolvePreparedBrowseSelection(viewer Viewer, query JobQuery, revision string) (BrowseSelectionConversion, error) {
+	return s.resolvePreparedBrowseSelection(viewer, query, revision, true)
+}
+
+func (s *Service) resolvePreparedBrowseSelection(viewer Viewer, query JobQuery, revision string, small bool) (out BrowseSelectionConversion, err error) {
 	if dbwork.Snapshot(s.Context()) == nil || query.SelectionBasis == "" || revision == "" {
 		return out, ErrStaleContinuation
 	}
@@ -50,19 +55,15 @@ func (s *Service) ResolvePreparedBrowseSelection(viewer Viewer, query JobQuery, 
 	if err != nil {
 		return out, err
 	}
-	request := BrowseRequest{Library: query.LibraryID, Pivot: query.Pivot, Profile: viewer.Profile, ViewerFence: viewer.Fence, Restrictions: viewer.EffectiveRestrictions(), Query: node}
-	current, err := s.browseRevision(request, pivot, sorts)
-	if err != nil {
-		return out, err
-	}
-	if current != revision {
-		return out, ErrStaleContinuation
-	}
+	// The original page revision is bound by the cached full specification.
+	// Recomputing it with another route's viewer fence would reject a legitimate
+	// same-policy metadata conversion. The complete live basis above is stronger
+	// content provenance; a different query/revision cannot open this exact key.
 	raw, err := json.Marshal(node)
 	if err != nil {
 		return out, err
 	}
-	spec, err := json.Marshal(selectionPreparationSpec{Library: query.LibraryID, Pivot: query.Pivot, Revision: revision, Query: raw, Sorts: sorts, Viewer: viewer})
+	spec, err := json.Marshal(selectionPreparationSpec{Library: query.LibraryID, Pivot: query.Pivot, Revision: revision, Query: raw, Sorts: sorts, Viewer: selectionPreparationViewer(viewer, query.LibraryID)})
 	if err != nil {
 		return out, err
 	}
@@ -107,10 +108,10 @@ func (s *Service) ResolvePreparedBrowseSelection(viewer Viewer, query JobQuery, 
 		}
 		total += counts[0]
 	}
-	if total > BrowseSelectionConversionLimit {
+	if small && total > BrowseSelectionConversionLimit {
 		return out, fmt.Errorf("%w: explicit conversion exceeds %d", ErrSelectionBatchUnsupported, BrowseSelectionConversionLimit)
 	}
-	if content.Library != query.LibraryID || content.Pivot != query.Pivot || content.Revision != revision || total != len(content.IDs) {
+	if content.Library != query.LibraryID || content.Pivot != query.Pivot || content.Revision != revision || min(total, 201) != len(content.IDs) {
 		return out, ErrStaleContinuation
 	}
 	seen := map[int64]bool{}
@@ -146,11 +147,6 @@ func (s *Service) browsePreparedSelection(viewer Viewer, request BrowseRequest) 
 	if request.Limit < len(converted.IDs) {
 		return out, ErrSelectionBatchUnsupported
 	}
-	// Ordinary hydrators remain <=100. The bounded <=200 source and its final
-	// ordered SQL never recompile the query, recount matches or build anchors.
-	if err = converted.Reserve(8 << 20); err != nil {
-		return out, err
-	}
 	ids, err := json.Marshal(converted.IDs)
 	if err != nil {
 		return out, err
@@ -164,8 +160,33 @@ func (s *Service) browsePreparedSelection(viewer Viewer, request BrowseRequest) 
 	if err != nil {
 		return out, err
 	}
-	order, args := browseOrderSQL(viewer.Profile, sorts)
-	args = append([]any{string(ids)}, args...)
+	if !LocalSearchQueueSupported(request.Query, sorts) {
+		return out, ErrSelectionBatchUnsupported
+	}
+	order, orderArgs, sizeExpr, sizeArgs, err := preparedSelectionOrder(viewer.Profile, sorts[0])
+	if err != nil {
+		return out, err
+	}
+	// This endpoint is a complete bounded action conversion. Its consumer needs
+	// canonical identities/titles, not media details, asset lists or artwork.
+	// Preflight all variable row/order bytes on <=200 singleton identities before
+	// allocating any Go row, entry or encoding buffer. One SQLite cell remains
+	// the documented indivisible O(B) input probe; no native text is retained.
+	var sourceBytes int64
+	sizeSQL := `SELECT COALESCE(sum(length(CAST(e.title AS BLOB))+length(CAST(e.sort_key AS BLOB))+length(CAST(COALESCE(e.added_text,'') AS BLOB))+length(CAST((` + sizeExpr + `) AS BLOB))),0) FROM json_each(?) picked CROSS JOIN catalog_browse_rows e ON e.entity_id=picked.value`
+	// SELECT-expression parameters precede the bounded JSON driver parameter.
+	sizeArgs = append(sizeArgs, string(ids))
+	if err = s.read().QueryRow(sizeSQL, sizeArgs...).Scan(&sourceBytes); err != nil {
+		return out, err
+	}
+	fixed := int64(len(converted.IDs))*(8*int64(unsafe.Sizeof(ContentEntry{}))+4*int64(unsafe.Sizeof(browseRow{}))+2048) + 65536
+	if sourceBytes < 0 || sourceBytes > (32<<20-fixed)/16 {
+		return out, readprep.ErrCapacity
+	}
+	if err = converted.Reserve(fixed + 16*sourceBytes); err != nil {
+		return out, err
+	}
+	args := append([]any{string(ids)}, orderArgs...)
 	rows, err := s.queryBrowseRows(`SELECT `+browseRowColumns+` FROM json_each(?) picked CROSS JOIN catalog_browse_rows e ON e.entity_id=picked.value CROSS JOIN catalog_entities ce ON ce.id=e.entity_id ORDER BY `+order, args...)
 	if err != nil {
 		return out, err
@@ -173,18 +194,13 @@ func (s *Service) browsePreparedSelection(viewer Viewer, request BrowseRequest) 
 	if len(rows) != len(converted.IDs) {
 		return out, ErrStaleContinuation
 	}
-	for start := 0; start < len(rows); start += BrowseMaximumLimit {
-		entries, e := s.browseProjection(viewer.Profile, rows[start:min(start+BrowseMaximumLimit, len(rows))])
-		if e != nil {
-			return out, e
+	out.Entries = make([]ContentEntry, 0, len(rows))
+	for _, row := range rows {
+		var missing bool
+		if err = s.read().QueryRow(`SELECT EXISTS(SELECT 1 FROM catalog_missing_titles m WHERE m.entity_id=? AND m.missing_since_ms IS NOT NULL)`, row.entity).Scan(&missing); err != nil {
+			return out, err
 		}
-		out.Entries = append(out.Entries, entries...)
-	}
-	if err = s.attachViewerRatings(viewer.Profile, out.Entries); err != nil {
-		return out, err
-	}
-	if err = s.EnrichListeningEntries(viewer, out.Entries); err != nil {
-		return out, err
+		out.Entries = append(out.Entries, ContentEntry{ID: row.id, Kind: row.kind, Title: row.title, LibraryID: request.Library, Missing: missing})
 	}
 	out.Pivot = request.Pivot
 	out.Applied = BrowseApplied{Query: request.Query, Sort: sorts}
@@ -194,4 +210,40 @@ func (s *Service) browsePreparedSelection(viewer Viewer, request BrowseRequest) 
 	out.selectionRelease = converted.Release
 	keep = true
 	return out, nil
+}
+
+// The same maintained scalar/value-rest semantics used by ordinary Browse and
+// Queue. Group/ForYou orders are deliberately not routed through this helper.
+func preparedSelectionOrder(profile string, sort BrowseSortSelection) (string, []any, string, []any, error) {
+	d, ok := browseSortByID(sort.Field)
+	if !ok {
+		return "", nil, "", nil, ErrSelectionBatchUnsupported
+	}
+	direction := "ASC"
+	if sort.Direction == "desc" {
+		direction = "DESC"
+	}
+	if !d.Profile {
+		return d.Expression + " " + direction + ",e.entity_id " + direction, nil, d.Expression, nil, nil
+	}
+	column, zero := "", "0"
+	switch sort.Field {
+	case "personalRating":
+		column = "rating"
+	case "lastPlayed":
+		column = "last_played_at"
+		zero = "''"
+	case "playCount":
+		column = "play_count"
+	default:
+		return "", nil, "", nil, ErrSelectionBatchUnsupported
+	}
+	expr := "COALESCE((SELECT p." + column + " FROM catalog_personal_sort_rows p WHERE p.profile_id=? AND p.entity_id=e.entity_id)," + zero + ")"
+	condition := expr + ">" + zero
+	valued, rest := "1", "0"
+	if sort.Direction == "desc" {
+		valued, rest = "0", "1"
+	}
+	order := "CASE WHEN " + condition + " THEN " + valued + " ELSE " + rest + " END ASC,CASE WHEN " + condition + " THEN " + expr + " END " + direction + ",CASE WHEN " + condition + " THEN e.entity_id END " + direction + ",e.sort_key COLLATE NOCASE ASC,e.entity_id ASC"
+	return order, []any{profile, profile, profile, profile}, expr, []any{profile}, nil
 }

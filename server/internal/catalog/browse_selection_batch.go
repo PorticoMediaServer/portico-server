@@ -384,7 +384,30 @@ func (s *Service) FinishBrowseSelectionBatch(state *BrowseSelectionBatchState, w
 		}
 		groups[name] = &selectionAggregateGroup{count: count[0], available: count[1], libraries: map[string]int{p.library: count[0]}}
 	}
-	return selectionAggregateDescriptor(bound, authority, groups)
+	out, err := selectionAggregateDescriptor(bound, authority, groups)
+	if err != nil {
+		return out, err
+	}
+	if selectionBatchHasLocalSearch(bound.Query) {
+		unavailable := &BrowseSelectionUnavailableActions{}
+		if !LocalSearchQueueSupported(bound.Query, bound.Sorts) {
+			unavailable.Play = "unsupported-sort"
+			unavailable.Queue = "unsupported-sort"
+			unavailable.Delete = "unsupported-sort"
+		}
+		for _, sort := range bound.Sorts {
+			if sort.Field == "groupOrder" {
+				unavailable.Playlist = "unsupported-sort"
+			}
+		}
+		if out.Total > BrowseSelectionConversionLimit {
+			unavailable.MetadataPreview = "preview-limit"
+		}
+		if *unavailable != (BrowseSelectionUnavailableActions{}) {
+			out.UnavailableActions = unavailable
+		}
+	}
+	return out, nil
 }
 
 func (s *Service) selectionBatchUnit(state *BrowseSelectionBatchState, reserve func(int64) error) error {

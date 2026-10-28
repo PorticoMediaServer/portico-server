@@ -275,21 +275,20 @@ func (m *bulkPreviewMemory) add(ctx context.Context, out *BulkMetadataPreview, p
 		if err := m.increment(field.values, o.value, o.count); err != nil {
 			return err
 		}
-		// No extra per-vector map: repeated entries count once per target.
-		for i, entry := range o.entries {
-			duplicate := false
-			for _, previous := range o.entries[:i] {
-				if previous == entry {
-					duplicate = true
-					break
-				}
+		// Page preflight already reserves >=256 bytes per input entry, including
+		// this ephemeral map. Avoid quadratic duplicate comparisons for one legal
+		// large list; borrowed keys die before the next observation is read.
+		seen := make(map[string]struct{}, len(o.entries))
+		for _, entry := range o.entries {
+			if _, exists := seen[entry]; exists {
+				continue
 			}
-			if !duplicate {
-				if err := m.increment(field.entries, entry, o.count); err != nil {
-					return err
-				}
+			seen[entry] = struct{}{}
+			if err := m.increment(field.entries, entry, o.count); err != nil {
+				return err
 			}
 		}
+
 		if o.locked {
 			field.locked += o.count
 		}

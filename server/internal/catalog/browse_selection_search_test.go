@@ -91,7 +91,7 @@ func TestSelectionLocalSearchColdMeasurement(t *testing.T) {
 	c := catalogtest.Open(t)
 	library := c.Library("a", "Movies", "movie", "/a")
 	// A bounded light fixture, not the campaign's deferred 1M/5M fixture.
-	const titles = 256
+	const titles = 512
 	var title strings.Builder
 	for i := 0; i < 96; i++ {
 		fmt.Fprintf(&title, "alpha%03d ", i)
