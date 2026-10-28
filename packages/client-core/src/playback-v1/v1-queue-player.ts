@@ -130,8 +130,9 @@ export type V1QueuePlayerOptions = Readonly<{
   /** Poll interval while a start waits for its snapshot (tests shorten it). */
   pendingPollMs?: number;
   /** The device's `/v1/events` subscription: `queue.updated` refreshes the view (another
-   * device's edit, a building segment growing) and wakes a start waiting for its snapshot. */
-  events?: Readonly<{on(typeOrPrefix: string, listener: (event: ServerEvent) => void): () => void}>;
+   * device's edit, a building segment growing) and wakes a start waiting for its snapshot. A
+   * resync (updates were missed) does the same, since any of them may have been this queue's. */
+  events?: Readonly<{on(typeOrPrefix: string, listener: (event: ServerEvent) => void): () => void; onResync?(listener: () => void): () => void}>;
   /** How long a command retries while its entry is still being snapshotted (queue_building). */
   buildingRetryMs?: number;
   /** The server offers queue transitions for rendered audio (spec §18,
@@ -217,6 +218,7 @@ export class V1QueuePlayer implements QueueController {
   private readonly events?: V1QueuePlayerOptions['events'];
   private unlisten?: () => void;
   private unlistenSessions?: () => void;
+  private unlistenResync?: () => void;
   private unlistenChanged?: () => void;
   private wakePending?: () => void;
   private refreshTimer?: ReturnType<typeof setTimeout>;
@@ -293,6 +295,13 @@ export class V1QueuePlayer implements QueueController {
     this.listening.connect();
     this.unsubscribe = this.playback.subscribe(() => this.observed());
     this.unlisten = this.events?.on('queue.updated', event => this.queueEvent(event));
+    // Rereads the queue as it is now: the header and the window around its actual current entry.
+    // It never advances, commits or starts anything.
+    this.unlistenResync = this.events?.onResync?.(() => {
+      if (this.disposed || !this.header) return;
+      this.wakePending?.();
+      if (!this.refreshTimer) this.refreshTimer = setTimeout(() => { this.refreshTimer = undefined; void this.refresh().catch(() => {}); }, 100);
+    });
     // An administrator's terminate reaches a native owner at once, not at its next report.
     this.unlistenSessions = this.events?.on('session.updated', event => {
       if (!this.nativeOwns() || event.resource?.id !== this.nativeSession) return;
@@ -1455,6 +1464,7 @@ export class V1QueuePlayer implements QueueController {
     this.unsubscribe?.();
     this.unlisten?.();
     this.unlistenSessions?.();
+    this.unlistenResync?.();
     if (this.refreshTimer) clearTimeout(this.refreshTimer);
     this.detach?.();
     this.listening.dispose();

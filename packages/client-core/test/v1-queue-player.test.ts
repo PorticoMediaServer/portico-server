@@ -304,14 +304,16 @@ function setupWith(hook: Hook, before?: (r: {method: string; path: string}) => {
   const inner = fakeHttp(server);
   const http: V1Http = {send: async r => (before?.(r as never) ?? hook(r as never, await inner.send(r as never) as never)) as never};
   const listeners: ((e: {id: string; type: string; resource?: {kind: string; id: string}; revision?: string}) => void)[] = [];
-  const events = {on: (_type: string, fn: (e: never) => void) => { listeners.push(fn as never); return () => {}; }};
+  const resyncs: (() => void)[] = [];
+  const events = {on: (_type: string, fn: (e: never) => void) => { listeners.push(fn as never); return () => {}; }, onResync: (fn: () => void) => { resyncs.push(fn); return () => {}; }};
   let serial = 0;
   const api = new V1PlaybackApi(http, {timers: {setTimer: () => 0, clearTimer: () => {}}, key: () => `k${++serial}`});
   const playback = new PlaybackService(api, () => `r${++serial}`, {});
   const player = new V1QueuePlayer({http, api, playback, viewer, key: () => `q${++serial}-key-000000`, pendingPollMs: 60_000, events, buildingRetryMs: 5000});
   const stop = player.connect();
   const emit = (queueId: string, revision?: string) => { for (const fn of listeners) fn({id: String(Date.now()), type: 'queue.updated', resource: {kind: 'queue', id: queueId}, revision}); };
-  return {server, http: inner, player, playback, emit, stop};
+  const resync = () => { for (const fn of resyncs) fn(); };
+  return {server, http: inner, player, playback, emit, resync, stop};
 }
 
 test('queue.updated from another device refreshes Up Next', async () => {
@@ -323,6 +325,22 @@ test('queue.updated from another device refreshes Up Next', async () => {
   emit(q.id, String(Number(q.revision) + 1));
   await new Promise(r => setTimeout(r, 250));
   assert.equal(player.getSnapshot().view!.queue.entries.length, 2);
+  stop();
+});
+
+test('a resync rereads the queue as it is now, without moving playback', async () => {
+  const commands: string[] = [];
+  const {player, playback, http, resync, stop} = setupWith((r, res) => { if (r.method !== 'GET') commands.push(r.method + ' ' + r.path); return res; });
+  await player.playEntries(['a', 'b', 'c'].map(queueItemInput));
+  const q = player.getSnapshot().view!.queue;
+  // Another device's edit whose queue.updated fell in the gap the resync covers.
+  await http.send({method: 'DELETE', path: `/v1/queues/${q.id}/entries/${encodeURIComponent(q.entries[2]!.id)}`, headers: {'If-Match': q.revision}} as never);
+  const sent = commands.length, item = playback.getSnapshot().itemId;
+  resync();
+  await new Promise(r => setTimeout(r, 250));
+  assert.equal(player.getSnapshot().view!.queue.entries.length, 2);
+  assert.equal(commands.length, sent, 'a resync sends no command');
+  assert.equal(playback.getSnapshot().itemId, item);
   stop();
 });
 

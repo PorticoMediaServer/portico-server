@@ -7,7 +7,6 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
-	"portico.local/server/internal/requestinput"
 	"strconv"
 	"time"
 
@@ -22,23 +21,17 @@ import (
 
 var eventHeartbeat = 25 * time.Second
 
+// eventContinuation paces a stream's next page after one that stopped at the
+// byte budget (More): a reader catching up is served page by page, never in a
+// tight loop that holds the connection's writer.
+var eventContinuation = time.Second
+
 const eventStreamLife = 30 * time.Minute
 
 func eventFailure(w http.ResponseWriter, status int, code, message string) {
 	consoleWrite(w, status, map[string]any{"error": map[string]any{
-		"code": code, "message": message, "retryable": status == 409 || status == 503,
+		"code": code, "message": message, "retryable": status == 409 || status == 429 || status == 503,
 	}})
-}
-
-func eventAfter(raw string) (int64, bool, error) {
-	if raw == "" {
-		return 0, false, nil
-	}
-	n, err := strconv.ParseInt(raw, 10, 64)
-	if err != nil || n < 0 {
-		return 0, false, requestinput.New("invalid event cursor")
-	}
-	return n, true, nil
 }
 
 func (d Dependencies) eventAuthority(r *http.Request) (identity.Principal, bool, error) {
@@ -92,13 +85,13 @@ func (d Dependencies) events(w http.ResponseWriter, r *http.Request) {
 	if longPoll {
 		raw = r.URL.Query().Get("after")
 	}
-	after, supplied, err := eventAfter(raw)
-	if err != nil {
-		eventFailure(w, 400, "invalid_cursor", "Use a non-negative numeric event cursor.")
+	if !eventfeed.CursorWellFormed(raw) {
+		eventFailure(w, 400, "invalid_cursor", "This event cursor cannot be used.")
 		return
 	}
 	wait := 25000
 	if longPoll {
+		var err error
 		wait, err = strconv.Atoi(r.URL.Query().Get("waitMs"))
 		if err != nil || wait < 0 || wait > 25000 {
 			eventFailure(w, 400, "invalid_request", "waitMs must be between 0 and 25000.")
@@ -115,12 +108,33 @@ func (d Dependencies) events(w http.ResponseWriter, r *http.Request) {
 		consoleError(w, err)
 		return
 	}
+	// A parked poll holds a realtime slot for up to 25 s. One installation
+	// gets ParkedPolls of them; the next is refused before any work, and the
+	// client reads without parking until it may wait again (SRV017).
+	if longPoll && wait > 0 {
+		key, err := d.Events.InstallationKey(r.Context(), p)
+		if err != nil {
+			if errors.Is(err, sql.ErrNoRows) {
+				eventFailure(w, 401, "unauthorized", "Authentication is required.")
+			} else {
+				consoleError(w, err)
+			}
+			return
+		}
+		release, admitted := d.Events.AdmitPoll(key)
+		if !admitted {
+			w.Header().Set("Retry-After", "2")
+			eventFailure(w, 429, "event_wait_limit", "This device already has its event waits open. Read without waiting, then wait again.")
+			return
+		}
+		defer release()
+	}
 	bridgeCtx, stopBridge := context.WithCancel(r.Context())
 	defer stopBridge()
 	d.bridgeReceiverEvents(bridgeCtx, p)
 	wake, release := d.Events.SubscribeForContext(r.Context(), p, owner)
 	defer release()
-	page, err := d.Events.Read(r.Context(), p, owner, after, supplied)
+	page, err := d.Events.Read(r.Context(), p, owner, raw)
 	if err != nil {
 		consoleError(w, err)
 		return
@@ -132,19 +146,20 @@ func (d Dependencies) events(w http.ResponseWriter, r *http.Request) {
 	d.eventStream(w, r, p, wake, page)
 }
 
+// A long poll answers with the first page that has anything in it, or empty
+// at the deadline. Every page is one bounded read; a page that stopped at the
+// byte budget is answered at once and the client paces its continuation.
 func (d Dependencies) eventLongPoll(w http.ResponseWriter, r *http.Request, p identity.Principal, wake <-chan struct{}, page eventfeed.Page, wait int) {
 	if len(page.Events) == 0 && wait > 0 {
 		timer := time.NewTimer(time.Duration(wait) * time.Millisecond)
 		defer timer.Stop()
 		for len(page.Events) == 0 {
-			if !page.More {
-				select {
-				case <-r.Context().Done():
-					return
-				case <-timer.C:
-					goto answer
-				case <-wake:
-				}
+			select {
+			case <-r.Context().Done():
+				return
+			case <-timer.C:
+				goto answer
+			case <-wake:
 			}
 			fresh, owner, err := d.eventAuthority(r)
 			if err != nil {
@@ -155,7 +170,7 @@ func (d Dependencies) eventLongPoll(w http.ResponseWriter, r *http.Request, p id
 				eventFailure(w, 401, "unauthorized", "Authentication is required.")
 				return
 			}
-			page, err = d.Events.Read(r.Context(), fresh, owner, mustEventID(page.NextAfter), true)
+			page, err = d.Events.Read(r.Context(), fresh, owner, page.NextAfter)
 			if err != nil {
 				consoleError(w, err)
 				return
@@ -168,11 +183,6 @@ answer:
 		return
 	}
 	consoleWrite(w, 200, page)
-}
-
-func mustEventID(raw string) int64 {
-	id, _ := strconv.ParseInt(raw, 10, 64)
-	return id
 }
 
 func (d Dependencies) eventStream(w http.ResponseWriter, r *http.Request, p identity.Principal, wake <-chan struct{}, page eventfeed.Page) {
@@ -234,33 +244,34 @@ func (d Dependencies) eventStream(w http.ResponseWriter, r *http.Request, p iden
 			return
 		}
 	}
-	flushPending := func() bool {
-		for {
-			fresh, owner, err := d.eventAuthority(r.WithContext(ctx))
-			if err != nil || fresh.Hash != p.Hash {
-				return false
-			}
-			for _, e := range page.Events {
-				if !send(e) {
-					return false
-				}
-			}
-			if !page.More {
-				if page.NextAfter != "" && lastSent != page.NextAfter {
-					if !send(eventfeed.Event{ID: page.NextAfter, Type: "stream.position"}) {
-						return false
-					}
-				}
-				return true
-			}
-			page, err = d.Events.Read(ctx, fresh, owner, mustEventID(page.NextAfter), true)
-			if err != nil {
+	// One page per turn. A page that stopped at the byte budget schedules its
+	// continuation eventContinuation later; wakes meanwhile only re-check
+	// authority, because the continuation reads everything they announced.
+	flushPage := func() bool {
+		fresh, _, err := d.eventAuthority(r.WithContext(ctx))
+		if err != nil || fresh.Hash != p.Hash {
+			return false
+		}
+		for _, e := range page.Events {
+			if !send(e) {
 				return false
 			}
 		}
+		if !page.More && page.NextAfter != "" && lastSent != page.NextAfter {
+			if !send(eventfeed.Event{ID: page.NextAfter, Type: "stream.position"}) {
+				return false
+			}
+		}
+		return true
 	}
-	if !flushPending() {
+	if !flushPage() {
 		return
+	}
+	continuation := time.NewTimer(eventContinuation)
+	defer continuation.Stop()
+	pending := page.More
+	if !pending {
+		continuation.Stop()
 	}
 	heartbeat := time.NewTicker(eventHeartbeat)
 	defer heartbeat.Stop()
@@ -293,18 +304,30 @@ func (d Dependencies) eventStream(w http.ResponseWriter, r *http.Request, p iden
 			}
 			flusher.Flush()
 			continue
+		case <-continuation.C:
+			pending = false
 		case <-wake:
+			if pending {
+				if fresh, _, err := d.eventAuthority(r.WithContext(ctx)); err != nil || fresh.Hash != p.Hash {
+					return
+				}
+				continue
+			}
 		}
 		fresh, owner, err := d.eventAuthority(r.WithContext(ctx))
 		if err != nil || fresh.Hash != p.Hash {
 			return
 		}
-		page, err = d.Events.Read(ctx, fresh, owner, mustEventID(page.NextAfter), true)
+		page, err = d.Events.Read(ctx, fresh, owner, page.NextAfter)
 		if err != nil {
 			return
 		}
-		if !flushPending() {
+		if !flushPage() {
 			return
+		}
+		if page.More {
+			pending = true
+			continuation.Reset(eventContinuation)
 		}
 	}
 }

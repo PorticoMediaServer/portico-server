@@ -59,17 +59,17 @@ func TestPersonalEventsFilterContentAndAdvanceCursor(t *testing.T) {
 	if err := tx.Commit(); err != nil {
 		t.Fatal(err)
 	}
-	first, err := h.Read(context.Background(), p, false, 0, true)
-	if err != nil || len(first.Events) != 0 || !first.More || first.NextAfter != strconv.Itoa(PageLimit+1) || checks != 1 {
-		t.Fatalf("hidden-only page failed to advance or cache its verdict: %+v checks=%d %v", first, checks, err)
+	// 106 raw rows: from the start that is more than a page, so one resync
+	// and not a single content check.
+	first, err := h.readAt(context.Background(), p, false, 0, true)
+	if err != nil || len(first.Events) != 1 || first.Events[0].Type != "stream.resync" || first.NextAfter != strconv.Itoa(PageLimit+6) || checks != 0 {
+		t.Fatalf("far-behind read must resync without checks: %+v checks=%d %v", first, checks, err)
 	}
-	after, err := strconv.ParseInt(first.NextAfter, 10, 64)
-	if err != nil {
-		t.Fatal(err)
-	}
-	second, err := h.Read(context.Background(), p, false, after, true)
-	if err != nil || second.More || len(second.Events) != 4 || second.NextAfter != strconv.Itoa(PageLimit+6) {
-		t.Fatalf("visible continuation: %+v %v", second, err)
+	// Exactly a page behind: 95 hidden rows are consumed (one cached verdict)
+	// and the visible ones arrive.
+	second, err := h.readAt(context.Background(), p, false, 6, true)
+	if err != nil || second.More || len(second.Events) != 4 || second.NextAfter != strconv.Itoa(PageLimit+6) || checks != 2 {
+		t.Fatalf("visible continuation: %+v checks=%d %v", second, checks, err)
 	}
 	encoded, err := json.Marshal(second)
 	if err != nil {
@@ -92,7 +92,7 @@ func TestPersonalEventsFilterContentAndAdvanceCursor(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	empty, err := h.Read(context.Background(), p, false, last, true)
+	empty, err := h.readAt(context.Background(), p, false, last, true)
 	if err != nil || len(empty.Events) != 0 || empty.NextAfter != second.NextAfter {
 		t.Fatalf("cursor repeated or moved backwards: %+v %v", empty, err)
 	}
@@ -122,7 +122,7 @@ func TestPersonalEventsWithoutContentFenceRedactTitles(t *testing.T) {
 	if err := tx.Commit(); err != nil {
 		t.Fatal(err)
 	}
-	page, err := h.Read(context.Background(), p, false, 0, true)
+	page, err := h.readAt(context.Background(), p, false, 0, true)
 	if err != nil || len(page.Events) != 1 || page.NextAfter != "2" || strings.Contains(string(page.Events[0].Data), "hidden") || strings.Contains(string(page.Events[0].Data), "titles") {
 		t.Fatalf("missing content authority disclosed identifiers: %+v %v", page, err)
 	}

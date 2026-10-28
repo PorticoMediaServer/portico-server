@@ -12,7 +12,7 @@ streaming query. For example:
 
 ```bash
 curl -N -fsS "$BASE/v1/events" -H "Authorization: Bearer $TOKEN" \
-  -H 'Accept: text/event-stream' -H 'Last-Event-ID: 1042'
+  -H 'Accept: text/event-stream' -H "Last-Event-ID: $LAST_ID"
 ```
 
 The first idle connection emits `stream.opened` with its position. A
@@ -23,14 +23,26 @@ token deadline. Refresh the session and reconnect. One installation shares
 one stream; a newcomer replaces its earlier stream.
 
 A polling client uses
-`GET /v1/events?after=1042&waitMs=25000`. Wait is 0–25000 milliseconds. The JSON answer
+`GET /v1/events?after=$NEXT_AFTER&waitMs=25000`. Wait is 0–25000 milliseconds. The JSON answer
 has `events`, `nextAfter` and `more`. Save `nextAfter` even when no visible event
-was returned. Continue immediately while `more` is true, otherwise park again.
-IDs are non-negative decimal positions, not inbox or resource revisions.
+was returned. While `more` is true, read again after at least a second;
+otherwise park again. One account on one installation may have four parked
+polls (`waitMs` above 0) open at once. A fifth gets `429 event_wait_limit` with
+`Retry-After: 2`: keep the cursor, read with `waitMs=0` no more often than every
+2 seconds, and try parking again after 30 seconds.
 
-A cursor outside retained history produces `stream.resync`: quietly reread
-visible resources and continue from the new feed position. A process restart,
-permission change or lost stream must not make a client blank its cached screen.
+IDs and cursors are opaque tokens of at most 128 URL-safe characters. Never
+build, compare or order them; store the last one and send it back. They belong
+to this viewer on this installation and expire after a day. A malformed cursor
+gets `400 invalid_cursor`.
+
+Every read is one bounded page: at most 100 events and 64 KiB on the wire.
+A client more than 100 feed positions behind, one whose cursor is from another
+profile, installation, role or server run, and one whose cursor fell outside
+retained history all get a single `stream.resync` instead of a replay: quietly
+reread visible resources and continue from its id. A missed change is never
+skipped silently. A resync must not make a client blank its cached screen,
+restart its shell or stop playback.
 Retry transient errors with backoff and the response's `Retry-After`.
 
 ## Resource hints

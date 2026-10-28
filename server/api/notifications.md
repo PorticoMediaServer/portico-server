@@ -173,9 +173,10 @@ Share the device's authenticated `GET /v1/events` server-sent stream. A
 or unread-count document quietly. Event ids belong to the unified feed, and are
 independent of inbox revisions. Resume with `Last-Event-ID`.
 
-A platform without streaming uses `GET /v1/events?after=<event-id>&waitMs=25000`.
-Its response contains `events`, `nextAfter` and `more`. `stream.resync` means
-reread the visible documents. Heartbeats are comments every 25 seconds and do
+A platform without streaming uses `GET /v1/events?after=<nextAfter>&waitMs=25000`.
+Its response contains `events`, `nextAfter` and `more`; ids and cursors are
+opaque. `stream.resync` means reread the visible documents. The
+[events guide](guide/06-events.md) has the paging and parked-poll limits. Heartbeats are comments every 25 seconds and do
 no database work. Streams end at token expiry or after 30 minutes; revocations
 wake them for a live authorization check. One stream per installation replaces
 an older connection on reconnect.

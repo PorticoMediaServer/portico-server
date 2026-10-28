@@ -93,13 +93,22 @@ func TestActivityTaskHintsNeverReachMembers(t *testing.T) {
 		t.Fatal(e)
 	}
 	p := New(db, nil, nil)
+	h := eventfeed.New(db)
+	roles := []string{"member", "admin", "owner"}
+	principals, starts := map[string]identity.Principal{}, map[string]string{}
+	for _, role := range roles {
+		principals[role] = identity.Principal{Viewer: identity.Viewer{Authority: "local", AccountID: role, ProfileID: role, Role: role}}
+		first, e := h.Read(context.Background(), principals[role], role != "member", "")
+		if e != nil {
+			t.Fatal(e)
+		}
+		starts[role] = first.NextAfter
+	}
 	if _, e = p.tickTaskProgress(context.Background(), time.Now()); e != nil {
 		t.Fatal(e)
 	}
-	h := eventfeed.New(db)
-	for _, role := range []string{"member", "admin", "owner"} {
-		principal := identity.Principal{Viewer: identity.Viewer{Authority: "local", AccountID: role, ProfileID: role, Role: role}}
-		out, e := h.Read(context.Background(), principal, role != "member", 0, true)
+	for _, role := range roles {
+		out, e := h.Read(context.Background(), principals[role], role != "member", starts[role])
 		if e != nil {
 			t.Fatal(e)
 		}

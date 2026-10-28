@@ -45,13 +45,13 @@ func TestCommittedNotificationScopeAndRollback(t *testing.T) {
 		}
 	}
 	put(operations.ViewerKey(member), false)
-	page, err := hub.Read(context.Background(), member, false, 0, true)
+	page, err := hub.readAt(context.Background(), member, false, 0, true)
 	if err != nil || len(page.Events) != 0 {
 		t.Fatalf("rolled-back notification was visible: %+v %v", page, err)
 	}
 	put(operations.ViewerKey(other), true)
 	put(operations.ViewerKey(member), true)
-	page, err = hub.Read(context.Background(), member, false, 0, true)
+	page, err = hub.readAt(context.Background(), member, false, 0, true)
 	if err != nil || len(page.Events) != 1 || page.Events[0].Type != "notification.changed" || page.Events[0].Resource.ID != "inbox" {
 		t.Fatalf("member-scope events: %+v %v", page, err)
 	}
@@ -61,7 +61,7 @@ func TestCommittedNotificationScopeAndRollback(t *testing.T) {
 	if _, err = db.Exec(`DELETE FROM api_events WHERE id=1`); err != nil {
 		t.Fatal(err)
 	}
-	page, err = hub.Read(context.Background(), member, false, 0, true)
+	page, err = hub.readAt(context.Background(), member, false, 0, true)
 	if err != nil || len(page.Events) != 1 || page.Events[0].Type != "stream.resync" {
 		t.Fatalf("pruned cursor needs resync: %+v %v", page, err)
 	}
@@ -158,11 +158,11 @@ func TestOperationEventsRequireLiveOwnerAuthority(t *testing.T) {
 	}
 	h := New(db)
 	p := identity.Principal{Viewer: identity.Viewer{Authority: "local", AccountID: "member", ProfileID: "one"}}
-	member, err := h.Read(context.Background(), p, false, 0, true)
+	member, err := h.readAt(context.Background(), p, false, 0, true)
 	if err != nil || len(member.Events) != 0 || member.NextAfter != "1" {
 		t.Fatalf("member operation visibility: %+v %v", member, err)
 	}
-	owner, err := h.Read(context.Background(), p, true, 0, true)
+	owner, err := h.readAt(context.Background(), p, true, 0, true)
 	if err != nil || len(owner.Events) != 1 || owner.Events[0].Type != "operation.updated" || owner.Events[0].Resource.ID != "op1" {
 		t.Fatalf("owner operation visibility: %+v %v", owner, err)
 	}
@@ -198,11 +198,11 @@ func TestFeedDeliversLibraryEventsOnlyToViewersWhoSeeTheLibrary(t *testing.T) {
 	}
 	first := identity.Principal{Viewer: identity.Viewer{Authority: "local", AccountID: "member", ProfileID: "one"}}
 	second := identity.Principal{Viewer: identity.Viewer{Authority: "local", AccountID: "member", ProfileID: "two"}}
-	gotFirst, err := h.Read(context.Background(), first, false, 0, true)
+	gotFirst, err := h.readAt(context.Background(), first, false, 0, true)
 	if err != nil || len(gotFirst.Events) != 2 {
 		t.Fatalf("first viewer library visibility: %+v %v", gotFirst, err)
 	}
-	gotSecond, err := h.Read(context.Background(), second, false, 0, true)
+	gotSecond, err := h.readAt(context.Background(), second, false, 0, true)
 	if err != nil || len(gotSecond.Events) != 1 {
 		t.Fatalf("second viewer library visibility: %+v %v", gotSecond, err)
 	}
@@ -238,12 +238,21 @@ func TestFeedPagingWithHiddenLibraryEvents(t *testing.T) {
 	if err = db.QueryRow(`SELECT max(id) FROM api_events`).Scan(&maximum); err != nil {
 		t.Fatal(err)
 	}
+	// More than a page of raw rows behind: one resync at the newest id, and
+	// nothing of either library.
+	for _, behind := range []int64{0, maximum - PageLimit - 1} {
+		page, err := h.readAt(context.Background(), p, false, behind, true)
+		if err != nil || len(page.Events) != 1 || page.Events[0].Type != "stream.resync" || page.Events[0].Resource.ID != "all" || page.NextAfter != strconv.FormatInt(maximum, 10) || page.More {
+			t.Fatalf("after %d: want one resync at %d, got %+v %v", behind, maximum, page, err)
+		}
+	}
 	seen := map[string]bool{}
 	var collected []string
-	after := int64(0)
+	// Exactly a page of raw rows behind still pages, skipping the hidden half.
+	after := maximum - PageLimit
 	pages := 0
 	for {
-		page, err := h.Read(context.Background(), p, false, after, true)
+		page, err := h.readAt(context.Background(), p, false, after, true)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -279,8 +288,8 @@ func TestFeedPagingWithHiddenLibraryEvents(t *testing.T) {
 			break
 		}
 	}
-	if len(collected) != 75 {
-		t.Fatalf("visible count: got %d want 75", len(collected))
+	if len(collected) != PageLimit/2 || pages != 1 {
+		t.Fatalf("visible count: got %d in %d pages, want %d in one", len(collected), pages, PageLimit/2)
 	}
 	for i := 1; i < len(collected); i++ {
 		prev, _ := strconv.ParseInt(collected[i-1], 10, 64)
@@ -364,16 +373,21 @@ func TestLibraryVisibilityCheckedOncePerSnapshotPage(t *testing.T) {
 		return library == "visible"
 	}
 	p := identity.Principal{Viewer: identity.Viewer{Authority: "local", AccountID: "member", ProfileID: "one"}}
-	first, err := h.Read(context.Background(), p, false, 0, true)
-	if err != nil || len(first.Events) != 51 || first.NextAfter != "101" {
-		t.Fatalf("first mixed page: events=%d cursor=%s err=%v", len(first.Events), first.NextAfter, err)
+	// A resync costs no visibility check at all.
+	behind, err := h.readAt(context.Background(), p, false, 0, true)
+	if err != nil || len(behind.Events) != 1 || behind.Events[0].Type != "stream.resync" || len(calls) != 0 {
+		t.Fatalf("far-behind read: %+v calls=%v err=%v", behind, calls, err)
+	}
+	first, err := h.readAt(context.Background(), p, false, 160-PageLimit, true)
+	if err != nil || len(first.Events) != PageLimit/2 || first.NextAfter != "160" || first.More {
+		t.Fatalf("mixed page: events=%d cursor=%s more=%v err=%v", len(first.Events), first.NextAfter, first.More, err)
 	}
 	if calls["visible"] != 1 || calls["hidden"] != 1 {
 		t.Fatalf("repeated checks within snapshot: %v", calls)
 	}
-	second, err := h.Read(context.Background(), p, false, 101, true)
-	if err != nil || len(second.Events) != 29 || second.NextAfter != "160" {
-		t.Fatalf("next mixed page: events=%d cursor=%s err=%v", len(second.Events), second.NextAfter, err)
+	second, err := h.readAt(context.Background(), p, false, 160-PageLimit, true)
+	if err != nil || len(second.Events) != PageLimit/2 || second.NextAfter != "160" {
+		t.Fatalf("repeated mixed page: events=%d cursor=%s err=%v", len(second.Events), second.NextAfter, err)
 	}
 	if calls["visible"] != 2 || calls["hidden"] != 2 {
 		t.Fatalf("verdict escaped snapshot boundary: %v", calls)

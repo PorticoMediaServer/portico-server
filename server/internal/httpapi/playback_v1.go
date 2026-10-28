@@ -83,6 +83,10 @@ func v1ErrorDefinitions() []apierror.Definition {
 		// stream_exists never retries, this one reconnects with the last ID.
 		{Code: "event_stream_exists", Status: 409, Message: "An existing stream was retired; reconnect using your last event ID.", Retry: apierror.SameRequest},
 		{Code: "stream_unavailable", Status: 503, Message: "This connection cannot stream events.", Retry: apierror.SameRequest},
+		// SRV017: a fifth parked long poll on one account and installation.
+		// The client keeps its cursor and reads without waiting until it may
+		// park again; Retry-After is 2 s.
+		{Code: "event_wait_limit", Status: 429, Message: "This device already has its event waits open. Read without waiting, then wait again.", Retry: apierror.SameRequest},
 		{Code: "administration_unavailable", Status: 503, Message: "Administration is temporarily unavailable.", Retry: apierror.SameRequest},
 		{Code: "confirmation_mismatch", Status: 409, Message: "Type the name exactly as shown to confirm.", Retry: apierror.Never},
 		{Code: "password_change_required", Status: 403, Message: "Change your password before continuing.", Retry: apierror.Never},

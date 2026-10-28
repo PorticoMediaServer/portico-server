@@ -5,7 +5,6 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
-	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -18,7 +17,31 @@ import (
 	"portico.local/server/internal/worker"
 )
 
+// PageLimit bounds the raw rows one read may examine. A reader further
+// behind than this gets one stream.resync instead of a replay.
 const PageLimit = 100
+
+// lagWake is how many rows may pass before every reader is woken to read past
+// them, comfortably under PageLimit so a connected reader never resyncs for
+// lack of a turn.
+const lagWake = PageLimit / 2
+
+// PageBytes bounds one whole page as it goes on the wire, as SSE frames or as
+// the long-poll body (the larger of the two), every opaque id included.
+// pageReserve is held back for the page's own framing and control frames.
+const (
+	PageBytes       = 64 << 10
+	pageReserve     = 1024
+	EventDataBytes  = 4096
+	eventTypeBytes  = 64
+	eventFieldBytes = 128
+)
+
+// FrameBytes is what one event costs on the larger of its two encodings: an
+// SSE frame ("id: …\nevent: …\ndata: …\n\n") carries the id and type twice.
+func FrameBytes(id, kind string, encoded int) int {
+	return len("id: \nevent: \ndata: \n\n") + len(id) + len(kind) + encoded
+}
 
 // The indexed minimum detects retention gaps. The durable sequence keeps the
 // resume position when scheduled pruning empties the ring.
@@ -47,7 +70,9 @@ type Hub struct {
 	mu      sync.Mutex
 	readers map[chan struct{}]map[string]bool
 	streams map[string]stream
+	polls   map[string]int
 	next    uint64
+	keys    cursorKeys
 	// LibraryVisible gates library: audiences. Nil delivers none.
 	LibraryVisible func(tx *sql.Tx, p identity.Principal, library string) bool
 	// ContentVisible gates retained profile hints against current catalogue
@@ -60,7 +85,7 @@ type stream struct {
 }
 
 func New(db *sql.DB) *Hub {
-	return &Hub{DB: db, readers: map[chan struct{}]map[string]bool{}, streams: map[string]stream{}}
+	return &Hub{DB: db, readers: map[chan struct{}]map[string]bool{}, streams: map[string]stream{}, polls: map[string]int{}}
 }
 
 // InstallationKey uses the live token-to-device binding, never a client-sent
@@ -93,7 +118,8 @@ func (h *Hub) Run(ctx context.Context) {
 			h.Wake()
 		}
 	})
-	var after int64
+	var after, everyone int64
+	started := false
 	runChanges(ctx, signal, func(ctx context.Context) time.Duration {
 		before := dbwork.ChangingCommits()
 		count, err := flushPendingHints(ctx, h.DB)
@@ -123,7 +149,16 @@ func (h *Hub) Run(ctx context.Context) {
 		if err != nil {
 			return 2 * time.Second
 		}
-		h.wakeAudiences(audiences)
+		// Readers are woken only for their own audiences, so one that hears
+		// nothing would fall more than a page behind on a busy server and be
+		// told to resync for others' activity. Once enough rows have gone by,
+		// every reader reads one bounded page and moves past what is not its.
+		if !started || after-everyone >= lagWake {
+			started, everyone = true, after
+			h.Wake()
+		} else {
+			h.wakeAudiences(audiences)
+		}
 		if count == 64 || read == 1000 {
 			return 2 * time.Second
 		}
@@ -227,10 +262,49 @@ func (h *Hub) AdmitStream(key string, cancel context.CancelFunc) (func(), bool) 
 	}, true
 }
 
+// ParkedPolls is how many long polls (waitMs>0) one account on one
+// installation may hold open at once (SRV017). A further one is refused at
+// once with a paced retry; the client then reads without parking.
+const ParkedPolls = 4
+
+// AdmitPoll reserves one parked long-poll permit for key. The release is
+// idempotent and frees exactly this reservation. Only keys with a permit held
+// stay in memory.
+func (h *Hub) AdmitPoll(key string) (func(), bool) {
+	if key == "" {
+		return func() {}, false
+	}
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	if h.polls[key] >= ParkedPolls {
+		return func() {}, false
+	}
+	h.polls[key]++
+	var once sync.Once
+	return func() {
+		once.Do(func() {
+			h.mu.Lock()
+			if h.polls[key]--; h.polls[key] <= 0 {
+				delete(h.polls, key)
+			}
+			h.mu.Unlock()
+		})
+	}, true
+}
+
 // administrative is a verified owner or administrator: both hear the admin
 // audience's list hints; only the owner's account inbox is the owner's.
-func (h *Hub) Read(ctx context.Context, p identity.Principal, administrative bool, after int64, supplied bool) (Page, error) {
-	out := Page{Events: []Event{}, NextAfter: "0"}
+//
+// One read is one bounded page (SRV018). In one snapshot it captures the
+// newest position H and probes the raw rows after the cursor. More than
+// PageLimit raw rows, a cursor that does not open for this reader, or a gap
+// in the ring all get the same single stream.resync at H: the reader refetches
+// current state instead of replaying history. Otherwise it applies every
+// audience gate to at most PageLimit rows and keeps whole frames only while
+// the page fits PageBytes. Hidden rows are consumed; a visible frame that does
+// not fit is left for the next read (More). An empty cursor starts at H.
+func (h *Hub) Read(ctx context.Context, p identity.Principal, administrative bool, cursor string) (Page, error) {
+	out := Page{Events: []Event{}}
 	gate, err := dbwork.BeginSnapshot(ctx, h.DB)
 	if err != nil {
 		return out, err
@@ -244,24 +318,37 @@ func (h *Hub) Read(ctx context.Context, p identity.Principal, administrative boo
 		}
 		capacityAudience = apievents.CapacityAudience(p.Authority, p.AccountID)
 	}
+	var deviceID string
+	if err = tx.QueryRowContext(ctx, `SELECT device_id FROM identity_device_families b JOIN authorization_family_tokens t ON t.family_id=b.family_id WHERE t.token_hash=?`, p.Hash).Scan(&deviceID); err != nil && !errors.Is(err, sql.ErrNoRows) {
+		return out, err
+	}
+	bound := cursorBinding(p, deviceID, administrative)
 	var minimum, maximum int64
 	if err = tx.QueryRowContext(ctx, eventBoundsSQL).Scan(&minimum, &maximum); err != nil {
 		return out, err
 	}
-	out.NextAfter = strconv.FormatInt(maximum, 10)
-	if !supplied {
+	out.NextAfter = h.keys.seal(maximum, bound)
+	if cursor == "" {
 		return out, gate.Commit()
 	}
-	if after > maximum || minimum > 0 && after < minimum-1 || minimum == 0 && after < maximum {
-		out.Events = append(out.Events, Event{ID: out.NextAfter, Type: "stream.resync", At: time.Now().UTC().Format("2006-01-02T15:04:05.000Z"), Resource: Resource{Kind: "stream", ID: "all"}, Revision: out.NextAfter})
+	resync := func() (Page, error) {
+		out.Events = []Event{{ID: out.NextAfter, Type: "stream.resync", At: time.Now().UTC().Format("2006-01-02T15:04:05.000Z"), Resource: Resource{Kind: "stream", ID: "all"}}}
+		out.More = false
 		return out, gate.Commit()
+	}
+	after, opened := h.keys.open(cursor, bound)
+	if !opened || after > maximum || minimum > 0 && after < minimum-1 || minimum == 0 && after < maximum {
+		return resync()
+	}
+	var raw int
+	if err = tx.QueryRowContext(ctx, `SELECT count(*) FROM (SELECT 1 FROM api_events WHERE id>? AND id<=? ORDER BY id LIMIT ?)`, after, maximum, PageLimit+1).Scan(&raw); err != nil {
+		return out, err
+	}
+	if raw > PageLimit {
+		return resync()
 	}
 	adminInbox := administrative && p.Role == "owner" && p.Authority == "local"
 	audience := apievents.ProfileAudience(p.Authority, p.AccountID, p.ProfileID)
-	var deviceID string
-	if err = tx.QueryRowContext(ctx, `SELECT device_id FROM identity_device_families b JOIN authorization_family_tokens t ON t.family_id=b.family_id WHERE t.token_hash=?`, p.Hash).Scan(&deviceID); err != nil && !errors.Is(err, sql.ErrNoRows) {
-		return Page{}, err
-	}
 	deviceAudience := ""
 	if deviceID != "" {
 		deviceAudience = apievents.DeviceAudience(deviceID)
@@ -274,12 +361,21 @@ func (h *Hub) Read(ctx context.Context, p identity.Principal, administrative boo
 	if administrative {
 		operationAudience = apievents.AdminAudience
 	}
-	rows, err := tx.QueryContext(ctx, `SELECT id,audience,type,resource_kind,resource_id,revision,data,at_ms FROM api_events WHERE id>? AND (audience IN (?,?,?,?,?,'server') OR audience >= 'library:' AND audience < 'library;') ORDER BY id LIMIT ?`, after, audience, deviceAudience, adminAudience, operationAudience, capacityAudience, PageLimit+1)
+	addressed := func(row string) bool {
+		if row == "server" || strings.HasPrefix(row, "library:") {
+			return true
+		}
+		return row != "" && (row == audience || row == deviceAudience || row == adminAudience || row == operationAudience || row == capacityAudience)
+	}
+	// The envelope bound is checked in SQL so an oversized payload is never
+	// copied out of the database to be measured.
+	rows, err := tx.QueryContext(ctx, `SELECT id,audience,type,resource_kind,resource_id,revision,CASE WHEN length(CAST(data AS BLOB))<=?1 THEN data ELSE '' END,at_ms,
+ length(CAST(type AS BLOB))>?2 OR length(CAST(resource_kind AS BLOB))>?3 OR length(CAST(resource_id AS BLOB))>?3 OR length(CAST(revision AS BLOB))>?3 OR length(CAST(data AS BLOB))>?1
+ FROM api_events WHERE id>?4 AND id<=?5 ORDER BY id`, EventDataBytes, eventTypeBytes, eventFieldBytes, after, maximum)
 	if err != nil {
 		return out, err
 	}
-	examined := 0
-	var lastExamined int64
+	defer rows.Close()
 	// All events and access checks use this one snapshot: each library's
 	// verdict is stable for the page, including denied libraries.
 	visibility := map[string]bool{}
@@ -292,66 +388,86 @@ func (h *Hub) Read(ctx context.Context, p identity.Principal, administrative boo
 		contentVisibility[id] = visible
 		return visible
 	}
+	remaining := PageBytes - pageReserve
+	consumed, lastDelivered := after, int64(-1)
 	for rows.Next() {
 		var id, at int64
+		var oversize bool
 		var rowAudience, kind, resourceKind, resource, revision, data string
-		if err = rows.Scan(&id, &rowAudience, &kind, &resourceKind, &resource, &revision, &data, &at); err != nil {
-			break
+		if err = rows.Scan(&id, &rowAudience, &kind, &resourceKind, &resource, &revision, &data, &at, &oversize); err != nil {
+			return Page{}, err
 		}
-		examined++
-		lastExamined = id
+		if !addressed(rowAudience) {
+			consumed = id
+			continue
+		}
 		// A capacity hint cannot arrive through server/admin/profile audiences,
 		// or carry even a private producer's accidental metadata fields.
 		if kind == "capacity.changed" {
 			if capacityAudience == "" || rowAudience != capacityAudience || resourceKind != "" || resource != "" || revision != "" || data != "" {
+				consumed = id
 				continue
 			}
 		} else if capacityAudience != "" && rowAudience == capacityAudience {
+			consumed = id
 			continue
 		}
 		if strings.HasPrefix(rowAudience, "library:") || rowAudience == audience && resourceKind == "library" {
-			if h.LibraryVisible == nil {
-				continue
-			}
 			library := resource
 			if strings.HasPrefix(rowAudience, "library:") {
 				library = strings.TrimPrefix(rowAudience, "library:")
 			}
 			visible, checked := visibility[library]
 			if !checked {
-				visible = h.LibraryVisible(tx, p, library)
+				visible = h.LibraryVisible != nil && h.LibraryVisible(tx, p, library)
 				visibility[library] = visible
 			}
 			if !visible {
+				consumed = id
 				continue
 			}
 		}
 		if rowAudience == audience {
 			if contentResource(resourceKind) && !visibleContent(resource) {
+				consumed = id
 				continue
 			}
 			data = visiblePersonalTitles(data, visibleContent)
 		}
-		event := Event{ID: strconv.FormatInt(id, 10), Type: kind, At: time.UnixMilli(at).UTC().Format("2006-01-02T15:04:05.000Z"), Resource: Resource{Kind: resourceKind, ID: resource}, Revision: revision}
+		// A deliverable row outside the producer envelope cannot be shortened
+		// into a smaller lie; the reader refetches instead.
+		if oversize {
+			return resync()
+		}
+		event := Event{ID: h.keys.seal(id, bound), Type: kind, At: time.UnixMilli(at).UTC().Format("2006-01-02T15:04:05.000Z"), Resource: Resource{Kind: resourceKind, ID: resource}, Revision: revision}
 		if json.Valid([]byte(data)) {
 			event.Data = json.RawMessage(data)
 		}
+		encoded, err := json.Marshal(event)
+		if err != nil {
+			return Page{}, err
+		}
+		cost := FrameBytes(event.ID, event.Type, len(encoded))
+		if cost > PageBytes-pageReserve {
+			return resync()
+		}
+		if cost > remaining {
+			out.More = true
+			break
+		}
+		remaining -= cost
 		out.Events = append(out.Events, event)
+		consumed, lastDelivered = id, id
 	}
-	if err == nil {
-		err = rows.Err()
-	}
-	rows.Close()
-	if err != nil {
+	if err = rows.Err(); err != nil {
 		return Page{}, err
 	}
-	if len(out.Events) > PageLimit {
-		out.Events = out.Events[:PageLimit]
-		out.NextAfter = out.Events[PageLimit-1].ID
-		out.More = true
-	} else if examined == PageLimit+1 {
-		out.More = true
-		out.NextAfter = strconv.FormatInt(lastExamined, 10)
+	if out.More {
+		out.NextAfter = h.keys.seal(consumed, bound)
+	} else if len(out.Events) > 0 && lastDelivered == maximum {
+		// Same position, same token: a stream need not send a separate
+		// position frame after its last event.
+		out.NextAfter = out.Events[len(out.Events)-1].ID
 	}
 	return out, gate.Commit()
 }

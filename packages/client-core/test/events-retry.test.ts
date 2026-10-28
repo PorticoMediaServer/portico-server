@@ -105,3 +105,54 @@ test('a wait the server asked for is spread between clients and never shortened'
   events.start();await settle();assert.equal([...c.pending.values()][0].ms,delay);events.stop();
  }
 });
+
+const waitLimit=()=>({status:429,headers:{'Retry-After':'2'},body:{error:{code:'event_wait_limit',message:'This device already has its event waits open.',retryable:true}}});
+const page=(more=false)=>({status:200,body:{events:[],nextAfter:'e1.next',more}});
+
+test('a refused parked poll keeps the cursor and reads without waiting, paced, until it may park again',async()=>{
+ const c=timers();let clock=0;const paths:string[]=[];
+ const replies=[waitLimit(),page(),page()];
+ const events=new EventsClient({http:{send:r=>{paths.push(r.path);const next=replies.shift();return next?Promise.resolve(next as V1Response):held();}},cursor:'e1.kept',random:()=>0,now:()=>clock,setTimer:c.setTimer,clearTimer:c.clearTimer});
+ try{
+  events.start();await settle();
+  assert.match(paths[0],/waitMs=25000&after=e1\.kept$/);
+  assert.equal([...c.pending.values()][0].ms,2000);assert.equal(events.getStatus().failures,0);
+  c.fire();await settle();
+  assert.match(paths[1],/waitMs=0&after=e1\.kept$/,'the cursor survives the refusal');
+  assert.equal([...c.pending.values()][0].ms,2000,'reads that do not park are paced');
+  clock=29_999;c.fire();await settle();
+  assert.match(paths[2],/waitMs=0&/);
+  clock=30_000;c.fire();await settle();
+  assert.match(paths[3],/waitMs=25000&after=e1\.next$/,'after 30 seconds it parks again');
+  assert.equal(paths.length,4);assert.equal(events.getStatus().mode,'poll');
+ }finally{events.stop();}
+});
+
+test('a page that stopped at the server budget is continued a second later, not at once',async()=>{
+ const c=timers();let calls=0;
+ const events=new EventsClient({http:{send:async()=>{calls++;return (calls===1?page(true):held()) as V1Response;}},random:()=>0,setTimer:c.setTimer,clearTimer:c.clearTimer});
+ try{
+  events.start();await settle();
+  assert.equal(calls,1);assert.equal([...c.pending.values()][0].ms,1000);
+  c.fire();await settle();assert.equal(calls,2);
+ }finally{events.stop();}
+});
+
+test('a generic 429 is still a failure with its own Retry-After, not the parked-poll fallback',async()=>{
+ const c=timers();const paths:string[]=[];
+ const events=new EventsClient({http:{send:async r=>{paths.push(r.path);return {status:429,headers:{'Retry-After':'60'},body:{error:{code:'rate_limited',message:'',retryable:true}}};}},random:()=>0,setTimer:c.setTimer,clearTimer:c.clearTimer});
+ try{
+  events.start();await settle();assert.equal([...c.pending.values()][0].ms,60_000);assert.equal(events.getStatus().failures,1);
+  c.fire();await settle();assert.match(paths[1],/waitMs=25000/);
+ }finally{events.stop();}
+});
+
+test('every resync subscriber is told before the cursor moves past the gap, even if one throws',async()=>{
+ const events=new EventsClient({http:{send:held},cursor:'e1.before'});
+ const seen:string[]=[];
+ events.onResync(()=>{seen.push(String(events.getStatus().cursor));throw new Error('broken subscriber');});
+ events.onResync(()=>{seen.push(String(events.getStatus().cursor));});
+ events.deliver({id:'e1.after',type:'stream.resync'});
+ assert.deepEqual(seen,['e1.before','e1.before']);
+ assert.equal(events.getStatus().cursor,'e1.after');
+});

@@ -5,14 +5,20 @@ import {routePath} from "../../../contracts/src/route-paths.ts";
  *
  * - One subscription per device; features subscribe by type (`session.updated`) or prefix
  *   (`group.`), never open their own streams or poll.
- * - The cursor is the last event id; a reconnect resumes from it (`Last-Event-ID` or `after`).
- * - `stream.resync` (the cursor fell out of the server's ring, or the client was too slow) tells
- *   every subscriber to refetch what it shows. `stream.closed` reconnects after `reconnectAfterMs`.
+ * - The cursor is the last event id, an opaque token; a reconnect resumes from it
+ *   (`Last-Event-ID` or `after`). Never build or compare one.
+ * - Every read is one bounded page. `stream.resync` (the client fell more than a page behind, its
+ *   cursor is from another profile or server run, or it left the server's ring) tells every
+ *   subscriber to refetch what it shows; they are told before the cursor moves past it.
+ *   `stream.closed` reconnects after `reconnectAfterMs`. A poll page with `more` is continued a
+ *   second later, never at once.
+ * - An installation may park four long polls. Told `event_wait_limit`, the client keeps its cursor
+ *   and reads without parking, every 2 seconds or more, and tries parking again after 30.
  * - Streaming falls back to long-poll when the platform can't stream, the server refuses
  *   (404 or 405), or the stream keeps failing.
  * - Redelivered events (after a reconnect) are dropped by id.
  */
-import {call, type V1Http} from './http.ts';
+import {call, PlaybackApiError, type V1Http} from './http.ts';
 import {parseEvent, type ServerEvent} from './types.ts';
 
 /** A raw SSE message (`readEventStream` in `sse.ts` produces these on web; Apple's XHR adapter too). */
@@ -37,7 +43,14 @@ export type EventsClientOptions = Readonly<{
   clearTimer?: (timer: unknown) => void;
   /** Retry jitter source; injectable for deterministic tests. */
   random?: () => number;
+  /** Clock for the unparked-read period; injectable for deterministic tests. */
+  now?: () => number;
 }>;
+
+/** How long the feed reads without parking after the server refused a further parked poll. */
+const UNPARKED_MS = 30_000;
+/** The least time between reads that do not park, and between a page and its continuation. */
+const UNPARKED_READ_FLOOR_MS = 2000, CONTINUATION_MS = 1000;
 
 export type EventsStatus = Readonly<{mode: 'stream' | 'poll' | 'stopped'; connected: boolean; cursor?: string; failures: number}>;
 
@@ -58,6 +71,8 @@ export class EventsClient {
   private setTimer: (fn: () => void, ms: number) => unknown;
   private clearTimer: (t: unknown) => void;
   private sleeping?: {timer: unknown; resolve: () => void};
+  /** Until then (by `now`), polls read with `waitMs=0`: the installation's parked polls are taken. */
+  private unparkedUntil = 0;
 
   constructor(options: EventsClientOptions) {
     this.o = options;
@@ -101,7 +116,14 @@ export class EventsClient {
 
   /** Deliver one envelope (also used by tests and by platforms that receive events elsewhere). */
   deliver(event: ServerEvent): void {
-    if (event.type === 'stream.resync') { this.recent=[]; this.recentSet.clear(); this.setStatus({cursor:event.id}); for(const listener of [...this.resyncListeners]) listener(); return; }
+    if (event.type === 'stream.resync') {
+      // Every subscriber marks what it shows as stale before the cursor moves past the gap; a
+      // throwing one must not keep the others from hearing it.
+      this.recent = []; this.recentSet.clear();
+      for (const listener of [...this.resyncListeners]) { try { listener(); } catch { /* the others still refetch */ } }
+      this.setStatus({cursor: event.id});
+      return;
+    }
     if (this.recentSet.has(event.id)) return;
     this.recent.push(event.id); this.recentSet.add(event.id);
     if (this.recent.length > 512) this.recentSet.delete(this.recent.shift()!);
@@ -215,17 +237,36 @@ export class EventsClient {
     return reconnectAfter ?? 0;
   }
 
-  /** One long-poll round. */
+  /**
+   * One long-poll round. Resolves with how long to wait before the next: nothing after a parked
+   * poll, a second before continuing a page that stopped at the server's budget (`more`), and
+   * at least 2 seconds between reads that do not park.
+   */
   private async pollOnce(signal: AbortSignal): Promise<number> {
-    const wait = Math.max(1000, Math.min(this.o.waitMs ?? 25000, 25000));
+    const now = this.o.now ?? Date.now;
+    const parked = now() >= this.unparkedUntil;
+    const wait = parked ? Math.max(1000, Math.min(this.o.waitMs ?? 25000, 25000)) : 0;
     const cursor = this.status.cursor;
-    const r = await call(this.o.http, {method: 'GET', path: routePath("get_events") + "?waitMs=" + (wait) + (cursor ? `&after=${encodeURIComponent(cursor)}` : ''), signal});
+    let r: Awaited<ReturnType<typeof call>>;
+    try {
+      r = await call(this.o.http, {method: 'GET', path: routePath("get_events") + "?waitMs=" + (wait) + (cursor ? `&after=${encodeURIComponent(cursor)}` : ''), signal});
+    } catch (e) {
+      // Not a failure: the installation's parked polls are all taken (another tab, a widget). Keep
+      // the cursor and read without parking until the server's wait and 30 seconds have passed.
+      if (!signal.aborted && e instanceof PlaybackApiError && e.status === 429 && e.code === 'event_wait_limit') {
+        const floor = Math.max(UNPARKED_READ_FLOOR_MS, e.retryAfterMs ?? 0);
+        this.unparkedUntil = now() + Math.max(UNPARKED_MS, floor);
+        return floor;
+      }
+      throw e;
+    }
     if (signal.aborted) return 0;
-    const b = r.body as {events?: unknown; nextAfter?: unknown} | undefined;
+    const b = r.body as {events?: unknown; nextAfter?: unknown; more?: unknown} | undefined;
     if (!b || typeof b !== 'object' || Array.isArray(b) || !Array.isArray(b.events) || b.events.length > 100 || typeof b.nextAfter !== 'string' || b.nextAfter.length > 128) throw new Error('invalid_event_page');
     this.setStatus({connected: true});
     for (const raw of b.events) { if (signal.aborted) return 0; const e = parseEvent(raw); if (e) this.deliver(e); }
     if (!signal.aborted && b.nextAfter) this.setStatus({cursor: b.nextAfter});
-    return 0;
+    if (b.more === true) return parked ? CONTINUATION_MS : UNPARKED_READ_FLOOR_MS;
+    return parked ? 0 : UNPARKED_READ_FLOOR_MS;
   }
 }

@@ -28,6 +28,8 @@ func TestEventsRecheckRetainedPersonalTitles(t *testing.T) {
 		t.Fatal(err)
 	}
 	audience := apievents.ProfileAudience(p.Authority, p.AccountID, p.ProfileID)
+	h := New(d)
+	start := eventStart(t, editorRequest(t, h, "GET", "/v1/events?waitMs=0", session.AccessToken, "", nil))
 	if err := dbwork.WithWriteTx(context.Background(), d.DB, dbwork.ClassInteractive, func(tx *sql.Tx) error {
 		for _, event := range []struct {
 			kind, id string
@@ -47,10 +49,9 @@ func TestEventsRecheckRetainedPersonalTitles(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
-	h := New(d)
-	read := func() eventfeed.Page {
+	read := func(cursor string) eventfeed.Page {
 		t.Helper()
-		w := editorRequest(t, h, "GET", "/v1/events?after=0&waitMs=0", session.AccessToken, "", nil)
+		w := editorRequest(t, h, "GET", "/v1/events?after="+cursor+"&waitMs=0", session.AccessToken, "", nil)
 		if w.Code != 200 {
 			t.Fatalf("events: %d %s", w.Code, w.Body.String())
 		}
@@ -60,7 +61,7 @@ func TestEventsRecheckRetainedPersonalTitles(t *testing.T) {
 		}
 		return page
 	}
-	open := read()
+	open := read(start)
 	if len(open.Events) != 5 {
 		t.Fatalf("unrestricted retained events: %+v", open)
 	}
@@ -70,9 +71,15 @@ func TestEventsRecheckRetainedPersonalTitles(t *testing.T) {
 	if _, err := dbwork.ExecWrite(context.Background(), d.DB, dbwork.ClassInteractive, `INSERT INTO profile_restrictions(profile_id,blocked_labels) VALUES('profile','["blocked"]')`); err != nil {
 		t.Fatal(err)
 	}
-	page := read()
-	if len(page.Events) != 3 || page.NextAfter != open.NextAfter {
-		t.Fatalf("current visibility or cursor: %+v", page)
+	page := read(start)
+	if len(page.Events) != 3 {
+		t.Fatalf("current visibility: %+v", page)
+	}
+	// Both cursors stand at the newest event: neither repeats anything.
+	for _, cursor := range []string{open.NextAfter, page.NextAfter} {
+		if again := read(cursor); len(again.Events) != 0 {
+			t.Fatalf("cursor repeated events: %+v", again)
+		}
 	}
 	raw, err := json.Marshal(page)
 	if err != nil {

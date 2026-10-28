@@ -504,14 +504,22 @@ func exerciseInsert(db *sql.DB, s *catalog.Service) (routeResult, error) {
 	return r, nil
 }
 
+// exerciseEvents writes a 10,000-event burst in commits of 32. A reader that
+// keeps up (one read per commit, as the feed's wakes give it) receives every
+// event in bounded pages; one that slept through the whole burst is answered
+// with a single resync, not a 10,000-event replay.
 func exerciseEvents(db *sql.DB) (routeResult, error) {
 	r := routeResult{Route: "events-10000"}
 	ctx := context.Background()
 	start := time.Now()
-	var after int64
-	if err := db.QueryRow(`SELECT COALESCE(max(id),0) FROM api_events`).Scan(&after); err != nil {
+	hub := eventfeed.New(db)
+	reader := identity.Principal{}
+	first, err := hub.Read(ctx, reader, false, "")
+	if err != nil {
 		return r, err
 	}
+	asleep, cursor := first.NextAfter, first.NextAfter
+	received, pages := 0, 0
 	for offset := 0; offset < 10000; offset += 32 {
 		err := dbwork.WithWriteTx(ctx, db, dbwork.ClassInteractive, func(tx *sql.Tx) error {
 			for i := offset; i < min(10000, offset+32); i++ {
@@ -524,31 +532,40 @@ func exerciseEvents(db *sql.DB) (routeResult, error) {
 		if err != nil {
 			return r, err
 		}
-	}
-	hub := eventfeed.New(db)
-	received := 0
-	pages := 0
-	for {
-		page, err := hub.Read(ctx, identity.Principal{}, false, after, true)
-		if err != nil {
-			return r, err
-		}
-		received += len(page.Events)
-		pages++
-		after, _ = strconv.ParseInt(page.NextAfter, 10, 64)
-		if !page.More {
-			break
+		for {
+			page, err := hub.Read(ctx, reader, false, cursor)
+			if err != nil {
+				return r, err
+			}
+			for _, event := range page.Events {
+				if event.Type == "stream.resync" {
+					return r, fmt.Errorf("a reader keeping up was resynced after %d events", received)
+				}
+			}
+			received += len(page.Events)
+			pages++
+			cursor = page.NextAfter
+			if !page.More {
+				break
+			}
 		}
 	}
 	if received != 10000 {
-		return r, fmt.Errorf("event burst replayed %d of 10000", received)
+		return r, fmt.Errorf("event burst delivered %d of 10000", received)
+	}
+	late, err := hub.Read(ctx, reader, false, asleep)
+	if err != nil {
+		return r, err
+	}
+	if len(late.Events) != 1 || late.Events[0].Type != "stream.resync" {
+		return r, fmt.Errorf("a reader 10000 events behind got %d events, want one resync", len(late.Events))
 	}
 	r.Samples = 1
 	r.P50MS = float64(time.Since(start)) / float64(time.Millisecond)
 	r.P95MS = r.P50MS
 	r.RSSKB = processRSSKB()
 	logMeasurement(r)
-	fmt.Fprintf(os.Stderr, "EVENTS received=%d pages=%d\n", received, pages)
+	fmt.Fprintf(os.Stderr, "EVENTS received=%d pages=%d late=resync\n", received, pages)
 	return r, nil
 }
 

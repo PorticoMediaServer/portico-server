@@ -33,7 +33,7 @@ func TestCapacityHintsRequireExactAdmittedAudienceAndEmptyMetadata(t *testing.T)
 	}
 	h := New(db)
 	for _, admin := range []bool{false, true} {
-		page, err := h.Read(context.Background(), p, admin, 0, true)
+		page, err := h.readAt(context.Background(), p, admin, 0, true)
 		if err != nil || len(page.Events) != 0 {
 			t.Fatal("ordinary/admin scope received capacity hint", page, err)
 		}
@@ -44,13 +44,13 @@ func TestCapacityHintsRequireExactAdmittedAudienceAndEmptyMetadata(t *testing.T)
 		}
 		return nil
 	})
-	page, err := h.Read(ctx, p, false, 0, true)
+	page, err := h.readAt(ctx, p, false, 0, true)
 	if err != nil || len(page.Events) != 1 || page.Events[0].Type != "capacity.changed" || page.Events[0].Resource != (Resource{}) || page.Events[0].Revision != "" || len(page.Events[0].Data) != 0 {
 		t.Fatal("capacity projection", page, err)
 	}
 	retired := errors.New("original recipient retired")
 	stale := WithCapacityRecipient(context.Background(), func(context.Context, *sql.Tx, identity.Principal) error { return retired })
-	if _, err = h.Read(stale, p, false, 0, true); !errors.Is(err, retired) {
+	if _, err = h.readAt(stale, p, false, 0, true); !errors.Is(err, retired) {
 		t.Fatal("queued reader adopted successor admission", err)
 	}
 	ordinary, closeOrdinary := h.SubscribeFor(p, false)

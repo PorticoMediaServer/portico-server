@@ -4794,6 +4794,8 @@ export const routes = [
       "unauthorized",
       "invalid_request",
       "invalid_cursor",
+      "event_wait_limit",
+      "event_stream_exists",
       "stream_unavailable",
       "internal"
     ],

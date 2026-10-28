@@ -108,21 +108,55 @@ export async function currentShellProfile(api: HttpLocalApi, session: LocalSessi
   }
 
 }
-async function readFacts(api: HttpLocalApi, session: LocalSession, preferences: PreferencesReader, inbox: InboxService, signal: AbortSignal): Promise<ShellFacts> {
-  const [libraries, profile, settings, system, guide] = await Promise.all([
-    api.request(routePath('get_libraries'), 'GET', undefined, signal).then(parseLibraryList), currentShellProfile(api, session, signal), preferences.preferences('web'), api.request(routePath('get_system'), 'GET', undefined, signal).then(parseServerSignIn),
+/** The shell's own facts: what the restart-driving hints (`libraries.changed`, server settings,
+ * members, live sources, library channels) stand for. */
+async function readShellIdentity(api: HttpLocalApi, session: LocalSession, signal: AbortSignal) {
+  const [libraries, profile, system, guide] = await Promise.all([
+    api.request(routePath('get_libraries'), 'GET', undefined, signal).then(parseLibraryList), currentShellProfile(api, session, signal), api.request(routePath('get_system'), 'GET', undefined, signal).then(parseServerSignIn),
     fetchGuideSourceSummaries(api, session.viewer.serverId, Intl.DateTimeFormat().resolvedOptions().timeZone, signal).catch(error => {
       if ((error as {status?: number}).status === 403) return undefined;
       throw error;
     }),
   ]);
   if (system.id !== session.viewer.serverId) throw new Error('The server identity changed.');
+  return {libraries: libraries.items, profile, system, liveAvailable: !!guide?.sources.length};
+}
+type ShellIdentityRead = Awaited<ReturnType<typeof readShellIdentity>>;
+const shellIdentityKey = (read: ShellIdentityRead) => JSON.stringify({libraries: read.libraries, profile: read.profile, name: read.system.name, version: read.system.version, signIn: read.system.signIn, live: read.liveAvailable});
+
+/**
+ * What a shell does on `stream.resync`: refresh its in-place facts (unread count, preferences),
+ * reread the facts behind its restart-driving hints, and call `moved` (a restart) only when those
+ * differ from `key`, as the missed hint would have. Resyncs while a read is running share it and
+ * one follow-up read. A failed read keeps the shell as it is; the next resync, wake or hint reads
+ * again.
+ */
+export function shellResyncRecheck(o: Readonly<{key: string; read(): Promise<string>; refresh(): void; moved(): void; isCurrent(): boolean}>): () => Promise<void> {
+  let running = false, again = false;
+  return async () => {
+    if (running) { again = true; return; }
+    running = true;
+    try {
+      do {
+        again = false;
+        o.refresh();
+        const key = await o.read();
+        if (!o.isCurrent()) return;
+        if (key !== o.key) { o.moved(); return; }
+      } while (again && o.isCurrent());
+    } catch { /* Keep the shell as it is; a later resync, wake or hint reads again. */ } finally { running = false; }
+  };
+}
+
+async function readFacts(api: HttpLocalApi, session: LocalSession, preferences: PreferencesReader, inbox: InboxService, signal: AbortSignal): Promise<{facts: ShellFacts; key: string}> {
+  const [read, settings] = await Promise.all([readShellIdentity(api, session, signal), preferences.preferences('web')]);
+  const {libraries, profile, system, liveAvailable} = read;
   rememberShell(session.sessionFamilyId, system.name);
   await inbox.load();
   signal.throwIfAborted();
-  return {identity: {viewer: session.viewer, libraries: libraries.items, serverName: system.name, serverVersion: system.version, signIn:system.signIn, ...profile,
+  return {key: shellIdentityKey(read), facts: {identity: {viewer: session.viewer, libraries, serverName: system.name, serverVersion: system.version, signIn:system.signIn, ...profile,
     accountFacts:[{id:'sign-in',role:'status',text:defaultI18n.t(signInLabelKey(system.signIn))}],
-    liveAvailable: !!guide?.sources.length, unread: inbox.getSnapshot().unread, showNotificationDot: settings.effective['notifications.badges'] === true}, preferences: settings, serverName: system.name};
+    liveAvailable, unread: inbox.getSnapshot().unread, showNotificationDot: settings.effective['notifications.badges'] === true}, preferences: settings, serverName: system.name}};
 }
 
 /** Restores only genuine protected state. No credentials or business data appear in source. */
@@ -351,7 +385,7 @@ export class ShellBootstrap {
     cleanups.push(() => notificationScope.dispose());
     const home = new HomeService(api), inbox = new InboxService(notificationScope);
     cleanups.push(() => home.dispose(), () => inbox.dispose());
-    const facts = await readFacts(api, session, preferences, inbox, signal);
+    const {facts, key: factsKey} = await readFacts(api, session, preferences, inbox, signal);
     if (!isCurrent()) return;
     const homeFence = watchHomeViewerFence(home, isCurrent, () => this.restart());
     cleanups.push(homeFence.dispose);
@@ -389,6 +423,13 @@ export class ShellBootstrap {
     const refreshPreferences = () => { void preferences.preferences('web').catch(() => { /* Keep the last confirmed values; a wake or later event retries. */ }); };
     cleanups.push(events.on('settings.changed', event => { if (event.resource?.id === 'preferences') refreshPreferences(); else restart(); }));
     cleanups.push(events.on('list.changed', event => { if (['members', 'liveSources', 'libraryChannels'].includes(event.resource?.id ?? '')) restart(); }));
+    // A resync means any of the hints above may have been missed. Reread what they stand for in
+    // place, and restart only when the shell's own facts really moved, as the missed hint would
+    // have. Nothing is torn down for a resync alone: playback, the dock and the page stay.
+    const recheck = shellResyncRecheck({key: factsKey, isCurrent, moved: restart,
+      refresh: () => { void inbox.refreshUnread(); refreshPreferences(); },
+      read: async () => shellIdentityKey(await readShellIdentity(api, session, signal))});
+    cleanups.push(events.onResync(() => { void recheck(); }));
     const wake = () => {
       if (!globalThis.document.hidden) { auth.wake(); void auth.permissionDenied(); refreshPreferences(); }
     };

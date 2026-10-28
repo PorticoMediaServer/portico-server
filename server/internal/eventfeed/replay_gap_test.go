@@ -26,7 +26,7 @@ func TestPrunedEmptyRingResyncsOnlyBehindReaders(t *testing.T) {
 		after  int64
 		resync bool
 	}{{0, true}, {1, true}, {2, false}, {3, true}} {
-		page, err := h.Read(context.Background(), identity.Principal{}, false, tc.after, true)
+		page, err := h.readAt(context.Background(), identity.Principal{}, false, tc.after, true)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -35,7 +35,7 @@ func TestPrunedEmptyRingResyncsOnlyBehindReaders(t *testing.T) {
 			t.Fatalf("after %d: want resync=%v; got %+v", tc.after, tc.resync, page)
 		}
 	}
-	page, err := h.Read(context.Background(), identity.Principal{}, false, 0, false)
+	page, err := h.readAt(context.Background(), identity.Principal{}, false, 0, false)
 	if err != nil || len(page.Events) != 0 || page.NextAfter != "2" {
 		t.Fatalf("initial stream: %+v %v", page, err)
 	}

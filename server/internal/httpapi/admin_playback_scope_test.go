@@ -52,11 +52,15 @@ func TestReadCredentialDoesNotReceiveOwnerEvents(t *testing.T) {
 	f := administrationFixtureNew(t)
 	read := issueCredential(t, f, "/v1/admin/api-keys", f.owner, `{"operationId":"events-read","name":"Reader","scopes":["read"]}`)
 	admin := issueCredential(t, f, "/v1/admin/api-keys", f.owner, `{"operationId":"events-admin","name":"Administrator","scopes":["admin"]}`)
+	starts := map[string]string{}
+	for _, token := range []string{read.Secret, admin.Secret, f.owner} {
+		starts[token] = eventStart(t, f.call("GET", "/v1/events?waitMs=0", token, ""))
+	}
 	if _, err := f.deps.DB.Exec(`INSERT INTO api_events(audience,type,resource_kind,resource_id,revision,data,at_ms) VALUES('admin','operation.updated','operation','private-owner-operation','1','{"private":true}',1),('server','server.changed','server','public-change','1','{}',1)`); err != nil {
 		t.Fatal(err)
 	}
 	for _, token := range []string{read.Secret, admin.Secret, f.owner} {
-		w := f.call("GET", "/v1/events?after=0&waitMs=0", token, "")
+		w := f.call("GET", "/v1/events?after="+starts[token]+"&waitMs=0", token, "")
 		if w.Code != 200 {
 			t.Fatalf("events: %d %s", w.Code, w.Body)
 		}
@@ -73,6 +77,10 @@ func TestReadCredentialDoesNotReceiveOwnerEvents(t *testing.T) {
 
 func TestListHintsReachOwnerAndAdministratorsOnly(t *testing.T) {
 	f := administrationFixtureNew(t)
+	starts := map[string]string{}
+	for _, token := range []string{f.owner, f.admin, f.member} {
+		starts[token] = eventStart(t, f.call("GET", "/v1/events?waitMs=0", token, ""))
+	}
 	issueCredential(t, f, "/v1/admin/api-keys", f.owner, `{"operationId":"list-hint","name":"Hinted","scopes":["read"]}`)
 	if err := dbwork.WithWriteTx(context.Background(), f.deps.DB, dbwork.ClassInteractive, func(tx *sql.Tx) error {
 		_, err := apievents.Flush(context.Background(), tx, 64)
@@ -84,7 +92,7 @@ func TestListHintsReachOwnerAndAdministratorsOnly(t *testing.T) {
 		name, token string
 		hears       bool
 	}{{"owner", f.owner, true}, {"administrator", f.admin, true}, {"member", f.member, false}} {
-		w := f.call("GET", "/v1/events?after=0&waitMs=0", c.token, "")
+		w := f.call("GET", "/v1/events?after="+starts[c.token]+"&waitMs=0", c.token, "")
 		if w.Code != 200 {
 			t.Fatalf("%s events: %d %s", c.name, w.Code, w.Body)
 		}

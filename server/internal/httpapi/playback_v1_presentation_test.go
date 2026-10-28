@@ -52,7 +52,7 @@ func TestPlaybackV1ClientReadsWithTheV1SessionID(t *testing.T) {
 		var page struct {
 			NextAfter string `json:"nextAfter"`
 		}
-		f.callAs(token, "GET", "/v1/events?waitMs=0&after=0", nil, nil, 200, &page)
+		f.callAs(token, "GET", "/v1/events?waitMs=0", nil, nil, 200, &page)
 	}
 	reads(f.owner.AccessToken)
 

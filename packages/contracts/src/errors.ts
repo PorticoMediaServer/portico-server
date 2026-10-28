@@ -265,6 +265,12 @@ export const errors = [
     "retry": "same_request"
   },
   {
+    "code": "event_wait_limit",
+    "status": 429,
+    "message": "This device already has its event waits open. Read without waiting, then wait again.",
+    "retry": "same_request"
+  },
+  {
     "code": "factor_setup_required",
     "status": 403,
     "message": "Set up two-step verification to finish signing in.",

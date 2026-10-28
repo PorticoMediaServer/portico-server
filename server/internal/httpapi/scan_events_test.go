@@ -65,9 +65,10 @@ func TestEventsLibraryScanRespectsRestrictions(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
+	start := eventStart(t, notificationRequest(mux, "GET", env.AccessToken, "/v1/events?waitMs=0", ""))
 	appendScan("lib-a")
 	appendScan("lib-b")
-	w := notificationRequest(mux, "GET", env.AccessToken, "/v1/events?after=0&waitMs=0", "")
+	w := notificationRequest(mux, "GET", env.AccessToken, "/v1/events?after="+start+"&waitMs=0", "")
 	if w.Code != 200 {
 		t.Fatalf("events: %d %s", w.Code, w.Body.String())
 	}
