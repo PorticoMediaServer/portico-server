@@ -105,6 +105,8 @@ func fieldOperands(field catalog.BrowseFieldCapability) []catalog.BrowseNode {
 	for _, op := range field.Operators {
 		operand := value
 		switch op {
+		case "within-last-days":
+			operand = float64(30)
 		case "is-present", "is-missing":
 			operand = nil
 		case "in", "not-in", "contains-any", "contains-all":
