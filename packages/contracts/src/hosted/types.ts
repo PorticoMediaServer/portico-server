@@ -33,7 +33,7 @@ export type AccountPasswordChangeRequest = { "newPassword"?: string; "operationI
 export type AccountPasswordChangeResponse = { "accountId": string; "challengeId"?: string; "deletionPreview"?: { "affectedServers": Array<{ "id": string; "name": string }>; "canDelete": boolean; "deletionToken": string; "expiresAt": string; "ownedServers": Array<{ "id": string; "name": string }> }; "expiresAt"?: string; "familyId": string; "maskedAddress"?: string; "otpAuthUri"?: string; "recoveryCodes"?: Array<string>; "resendsRemaining"?: number; "secret"?: string; "signOut"?: boolean; "status": string };
 export type AccountRecoveryCompleteRequest = { "factor": string; "newPassword": string; "token": string };
 export type AccountRecoveryCompleteResponse = { "status": string };
-export type AccountRecoveryRequestRequest = { "contactAddress": string; "requestId": string; "username": string };
+export type AccountRecoveryRequestRequest = { "identifier": string; "requestId": string };
 export type AccountRecoveryRequestResponse = { "message": string; "status": string };
 export type AccountSecurityActionRequest = { "newPassword"?: string; "operationId": string; "proof"?: string; "purpose": string; "target": string };
 export type AccountSecurityActionResponse = { "accountId": string; "challengeId"?: string; "deletionPreview"?: { "affectedServers": Array<{ "id": string; "name": string }>; "canDelete": boolean; "deletionToken": string; "expiresAt": string; "ownedServers": Array<{ "id": string; "name": string }> }; "expiresAt"?: string; "familyId": string; "maskedAddress"?: string; "otpAuthUri"?: string; "recoveryCodes"?: Array<string>; "resendsRemaining"?: number; "secret"?: string; "signOut"?: boolean; "status": string };
@@ -58,7 +58,9 @@ export type AccountSecurityReturnStartResponse = { "authorizationUrl": string; "
 export type AccountSessionDeleteRequest = {  };
 export type AccountSessionDeleteResponse = { "current": boolean; "id": string; "revoked": boolean };
 export type AccountSessionsListRequest = {  };
-export type AccountSessionsListResponse = { "accountId": string; "currentFamilyId": string; "items": Array<{ "createdAt": string; "current": boolean; "expiresAt": string; "id": string; "mode": string; "revokedAt"?: string; "status": string }>; "nextCursor": string; "observedAt": string };
+export type AccountSessionsListResponse = { "accountId": string; "currentFamilyId": string; "items": Array<{ "app": string | null; "createdAt": string; "current": boolean; "deviceName": string | null; "expiresAt": string; "id": string; "lastUsedAt": string | null; "mode": string; "platform": string | null; "revokedAt"?: string; "status": string }>; "nextCursor": string; "observedAt": string };
+export type AccountSessionsRevokeOthersRequest = { "operationId": string };
+export type AccountSessionsRevokeOthersResponse = { "accountId": string; "currentFamilyId": string; "operationId": string; "revokedCount": number };
 export type AppAuthorizationDecideRequest = { "accountId": string; "approve": boolean };
 export type AppAuthorizationDecideResponse = { "location": string };
 export type AppAuthorizationExchangeRequest = { "code": string; "redirectUri": string; "verifier": string };
@@ -209,6 +211,7 @@ export type SystemGetRequest = {  };
 export type SystemGetResponse = { "buildId": string; "builtAt": string; "proof": string; "sourceDigest": string; "version": string };
 export type TvAuthorizationTokenRequest = { "deviceCode": string };
 export type TvAuthorizationTokenResponse = { "ciphertext": string; "issuer": string; "kind": string; "nonce": string; "publicKey": string; "recipientKey": string; "requestId": string; "salt": string; "version": number };
+
 export type RouteContracts = {
 "account_create": { request: AccountCreateRequest; response: AccountCreateResponse };
 "account_deletion_accept": { request: AccountDeletionAcceptRequest; response: AccountDeletionAcceptResponse };
@@ -240,6 +243,7 @@ export type RouteContracts = {
 "account_security_return_start": { request: AccountSecurityReturnStartRequest; response: AccountSecurityReturnStartResponse };
 "account_session_delete": { request: AccountSessionDeleteRequest; response: AccountSessionDeleteResponse };
 "account_sessions_list": { request: AccountSessionsListRequest; response: AccountSessionsListResponse };
+"account_sessions_revoke_others": { request: AccountSessionsRevokeOthersRequest; response: AccountSessionsRevokeOthersResponse };
 "app_authorization_decide": { request: AppAuthorizationDecideRequest; response: AppAuthorizationDecideResponse };
 "app_authorization_exchange": { request: AppAuthorizationExchangeRequest; response: AppAuthorizationExchangeResponse };
 "app_authorization_review": { request: AppAuthorizationReviewRequest; response: AppAuthorizationReviewResponse };

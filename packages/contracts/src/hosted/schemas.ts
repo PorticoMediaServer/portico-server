@@ -858,19 +858,15 @@ export const schemas = {
   },
   "AccountRecoveryRequestRequest": {
     "properties": {
-      "contactAddress": {
+      "identifier": {
         "type": "string"
       },
       "requestId": {
         "type": "string"
-      },
-      "username": {
-        "type": "string"
       }
     },
     "required": [
-      "username",
-      "contactAddress",
+      "identifier",
       "requestId"
     ],
     "type": "object"
@@ -1860,12 +1856,20 @@ export const schemas = {
       "items": {
         "items": {
           "properties": {
+            "app": {
+              "nullable": true,
+              "type": "string"
+            },
             "createdAt": {
               "format": "date-time",
               "type": "string"
             },
             "current": {
               "type": "boolean"
+            },
+            "deviceName": {
+              "nullable": true,
+              "type": "string"
             },
             "expiresAt": {
               "format": "date-time",
@@ -1874,7 +1878,16 @@ export const schemas = {
             "id": {
               "type": "string"
             },
+            "lastUsedAt": {
+              "format": "date-time",
+              "nullable": true,
+              "type": "string"
+            },
             "mode": {
+              "type": "string"
+            },
+            "platform": {
+              "nullable": true,
               "type": "string"
             },
             "revokedAt": {
@@ -1891,7 +1904,11 @@ export const schemas = {
             "createdAt",
             "expiresAt",
             "status",
-            "current"
+            "current",
+            "deviceName",
+            "platform",
+            "app",
+            "lastUsedAt"
           ],
           "type": "object"
         },
@@ -1911,6 +1928,42 @@ export const schemas = {
       "observedAt",
       "items",
       "nextCursor"
+    ],
+    "type": "object"
+  },
+  "AccountSessionsRevokeOthersRequest": {
+    "properties": {
+      "operationId": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "operationId"
+    ],
+    "type": "object"
+  },
+  "AccountSessionsRevokeOthersResponse": {
+    "properties": {
+      "accountId": {
+        "type": "string"
+      },
+      "currentFamilyId": {
+        "type": "string"
+      },
+      "operationId": {
+        "type": "string"
+      },
+      "revokedCount": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      }
+    },
+    "required": [
+      "accountId",
+      "currentFamilyId",
+      "operationId",
+      "revokedCount"
     ],
     "type": "object"
   },

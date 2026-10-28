@@ -108,10 +108,9 @@ function MountedAuthForm({account, flow, initialUsername = '', embedded = false,
       <AuthLinks>{!chooseRegistrationName && <button type="button" disabled={busy} onClick={() => flow.startAgain()}>{t('services.signup.startAgain')}</button>}{back}</AuthLinks>{!chooseRegistrationName && <ServicesQuiet>{t('services.signup.codeHelp')}</ServicesQuiet>}
     </>}
     {mode === 'forgot' && state.options?.recovery && <>
-      <form className={styles.form} onSubmit={submit(() => flow.getSnapshot() === state ? flow.recover(username, email) : Promise.resolve())}>
-        <TextField variant="auth" name="username" autoComplete="username" autoCapitalize="off" spellCheck={false} label={t('auth.username')} value={username} onChange={event => setUsername(event.currentTarget.value)} maxLength={64} required disabled={busy} />
-        <TextField variant="auth" type="email" name="email" autoComplete="email" label={t('auth.email')} value={email} onChange={event => setEmail(event.currentTarget.value)} required disabled={busy} />
-        <ServicesActions><Button variant="primary" type="submit" loading={busy} disabled={blocked || !username.trim() || !/^\S+@\S+\.\S+$/.test(email.trim())}>{retrySeconds ? retryLabel : t('auth.resetLinkAction')}</Button></ServicesActions>
+      <form className={styles.form} onSubmit={submit(() => flow.getSnapshot() === state ? flow.recover(username) : Promise.resolve())}>
+        <TextField variant="auth" name="username" autoComplete="username" autoCapitalize="off" spellCheck={false} label={t('auth.usernameOrEmail')} placeholder={t('auth.usernameOrEmail')} value={username} onChange={event => setUsername(event.currentTarget.value)} maxLength={320} required disabled={busy} />
+        <ServicesActions><Button variant="primary" type="submit" loading={busy} disabled={blocked || !username.trim()}>{retrySeconds ? retryLabel : t('auth.resetLinkAction')}</Button></ServicesActions>
       </form><ServicesQuiet>{t('auth.privacySameAnswer')}</ServicesQuiet><ServicesQuiet>{t('services.recovery.provider')}</ServicesQuiet><AuthLinks>{back}</AuthLinks>
     </>}
     {mode === 'sent' && <><ServicesQuiet>{t('services.recovery.expiry')}</ServicesQuiet><AuthLinks>{back}</AuthLinks></>}

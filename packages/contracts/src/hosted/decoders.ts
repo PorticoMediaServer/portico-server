@@ -31,6 +31,7 @@ export function decodeAccountSecurityReturnPrepareResponse(input: unknown): type
 export function decodeAccountSecurityReturnStartResponse(input: unknown): types.AccountSecurityReturnStartResponse { return decode("AccountSecurityReturnStartResponse", input) as types.AccountSecurityReturnStartResponse; }
 export function decodeAccountSessionDeleteResponse(input: unknown): types.AccountSessionDeleteResponse { return decode("AccountSessionDeleteResponse", input) as types.AccountSessionDeleteResponse; }
 export function decodeAccountSessionsListResponse(input: unknown): types.AccountSessionsListResponse { return decode("AccountSessionsListResponse", input) as types.AccountSessionsListResponse; }
+export function decodeAccountSessionsRevokeOthersResponse(input: unknown): types.AccountSessionsRevokeOthersResponse { return decode("AccountSessionsRevokeOthersResponse", input) as types.AccountSessionsRevokeOthersResponse; }
 export function decodeAppAuthorizationDecideResponse(input: unknown): types.AppAuthorizationDecideResponse { return decode("AppAuthorizationDecideResponse", input) as types.AppAuthorizationDecideResponse; }
 export function decodeAppAuthorizationExchangeResponse(input: unknown): types.AppAuthorizationExchangeResponse { return decode("AppAuthorizationExchangeResponse", input) as types.AppAuthorizationExchangeResponse; }
 export function decodeAppAuthorizationReviewResponse(input: unknown): types.AppAuthorizationReviewResponse { return decode("AppAuthorizationReviewResponse", input) as types.AppAuthorizationReviewResponse; }

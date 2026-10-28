@@ -169,6 +169,7 @@ export const servicesMessages = {
   'services.workspace.appAppleTV': 'Portico on Apple TV',
   'services.workspace.appIPhone': 'Portico on iPhone',
   'services.workspace.appAndroidTV': 'Portico on Android TV',
+  'services.workspace.signOutOthersAppBody': 'Every other device is signed out of your Portico Account. This device stays signed in.',
   'services.workspace.emptyNotifications': 'Nothing new',
   'services.workspace.emptyNotificationsBody': 'Security changes, new sign-ins and news about your servers appear here.',
   'services.workspace.emptyServers': 'No servers yet',

@@ -30,42 +30,45 @@ test('an explicit recovery page does not resume an unrelated registration or pro
   const flow = new ServicesAuthFlow(p.value, p.done, 'forgot');
   await flow.initialize();
   assert.equal(privateReads, 0); assert.equal(flow.getSnapshot().mode, 'forgot');
-  await flow.recover(' Person ', ' person@example.test ');
+  await flow.recover(' Person@Example.test ');
   assert.equal(flow.getSnapshot().mode, 'sent'); assert.equal(p.authenticated(), 0);
   assert.deepEqual(p.calls[0].slice(0, 2), ['/v1/account/recovery/request', 'POST']);
-  assert.equal((p.calls[0][2] as {contactAddress: string}).contactAddress, 'person@example.test');
-  assert.equal((p.calls[0][2] as {username: string}).username, 'person');
+  assert.deepEqual(Object.keys(p.calls[0][2] as object).sort(), ['identifier', 'requestId']);
+  assert.equal((p.calls[0][2] as {identifier: string}).identifier, 'person@example.test');
   assert.equal(Object.hasOwn(flow.getSnapshot(), 'message'), false);
   flow.dispose();
 });
 
-test('recovery never substitutes email for a missing username or a retired form', async () => {
+test('recovery takes a username or an email alone, and nothing from a blank field or a retired form', async () => {
   const p = port(), flow = new ServicesAuthFlow(p.value, p.done, 'forgot');
   await flow.initialize();
-  await flow.recover('  ', 'person@example.test');
+  await flow.recover('  ');
   assert.equal(p.calls.length, 0); assert.equal(flow.getSnapshot().mode, 'forgot');
+  await flow.recover(' Person ');
+  assert.equal(p.calls.length, 1); assert.equal(flow.getSnapshot().mode, 'sent');
+  assert.equal((p.calls[0][2] as {identifier: string}).identifier, 'person');
   flow.go('signin');
-  await flow.recover('person', 'person@example.test');
-  assert.equal(p.calls.length, 0); assert.equal(flow.getSnapshot().mode, 'signin');
+  await flow.recover('person');
+  assert.equal(p.calls.length, 1); assert.equal(flow.getSnapshot().mode, 'signin');
   flow.dispose();
 });
 
 test('recovery retries retain the exact account request until its acknowledgement', async () => {
   const p = port(), flow = new ServicesAuthFlow(p.value, p.done, 'forgot');
-  const requests: Array<{username: string; contactAddress: string; requestId: string}> = [];
+  const requests: Array<{identifier: string; requestId: string}> = [];
   p.value.client.request = async (_path, _method, body) => {
     requests.push(body as typeof requests[number]);
     if (requests.length === 1) throw new TypeError('network');
     return {} as never;
   };
   await flow.initialize();
-  await flow.recover(' PERSON ', ' person@example.test ');
-  await flow.recover('person', 'person@example.test');
+  await flow.recover(' PERSON ');
+  await flow.recover('person');
   assert.equal(requests[0].requestId, requests[1].requestId);
-  flow.go('forgot'); await flow.recover('other', 'person@example.test');
+  flow.go('forgot'); await flow.recover('other@example.test');
   assert.notEqual(requests[1].requestId, requests[2].requestId);
-  assert.equal(requests[2].username, 'other');
-  flow.go('forgot'); await flow.recover('other', 'person@example.test');
+  assert.equal(requests[2].identifier, 'other@example.test');
+  flow.go('forgot'); await flow.recover('other@example.test');
   assert.notEqual(requests[2].requestId, requests[3].requestId);
   assert.equal(p.authenticated(), 0); flow.dispose();
 });

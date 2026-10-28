@@ -1,8 +1,5 @@
-import {ApiError} from '@core/index.ts';
 import {AccountNotificationsClient} from '@core/account-notifications.ts';
 import {AccountSessionReviewService} from '@core/account-sessions.ts';
-import {decodeAccountDevicesListResponse} from '../../../packages/contracts/src/hosted/decoders.ts';
-import {routePath} from '../../../packages/contracts/src/hosted/routes.ts';
 import {currentAccountWork, currentAccountRead, type AccountIdentity, type ServicesAccount} from './session';
 import {createAccountServerDirectory} from '../platform/account-server-directory';
 
@@ -21,16 +18,9 @@ export function workspaceApi(account: ServicesAccount, identity: AccountIdentity
     security: (signal?: AbortSignal) => currentAccountRead(account, session => {
       signal?.throwIfAborted();return account.client.state(identity, session.accessToken, signal);
     }, identity, signal),
-    devices: async (signal?: AbortSignal) => {
-      const result = decodeAccountDevicesListResponse(await request(routePath('account_devices_list'), 'GET', undefined, signal));
-      if (result.accountId !== identity.accountId || result.currentFamilyId !== identity.familyId)
-        throw new ApiError(409, 'account_changed', 'account_changed', false);
-      return result;
-    },
     servers: servers.read,
   };
 }
 
 export type WorkspaceApi = ReturnType<typeof workspaceApi>;
-export type WorkspaceDevices = Awaited<ReturnType<WorkspaceApi['devices']>>;
 export type WorkspaceServers = Awaited<ReturnType<WorkspaceApi['servers']>>;

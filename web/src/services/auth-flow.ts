@@ -192,13 +192,14 @@ export class ServicesAuthFlow {
       if (!signal.aborted) this.publish({registration: value, resends: this.state.resends + 1});
     });
   }
-  recover(username: string, email: string) {
-    const account = username.trim().toLowerCase(), address = email.trim();
-    if (this.state.mode !== 'forgot' || !account || !address) return Promise.resolve();
+  /** One field names the account: its username or the email on it, never both. */
+  recover(usernameOrEmail: string) {
+    const identifier = usernameOrEmail.trim().toLowerCase();
+    if (this.state.mode !== 'forgot' || !identifier) return Promise.resolve();
     return this.run(async signal => {
-      const requestId = await this.ids.for('recover', {username: account, contactAddress: address});
+      const requestId = await this.ids.for('recover', {identifier});
       if (signal.aborted) return;
-      await this.account.client.request(routePath('account_recovery_request'), 'POST', routeBody('account_recovery_request', {username: account, contactAddress: address, requestId}), signal);
+      await this.account.client.request(routePath('account_recovery_request'), 'POST', routeBody('account_recovery_request', {identifier, requestId}), signal);
       if (!signal.aborted) { this.ids.clear('recover'); this.publish({mode: 'sent'}); }
     });
   }

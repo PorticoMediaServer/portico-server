@@ -399,6 +399,19 @@ export const routes = [
     "status": 200
   },
   {
+    "id": "account_sessions_revoke_others",
+    "method": "POST",
+    "path": "/v1/account/sessions/revoke-others",
+    "summary": "End every other session of the account.",
+    "access": "account_session",
+    "requires": "session",
+    "lane": "security",
+    "cost": "constant",
+    "bodyLimit": 65536,
+    "errors": [],
+    "status": 200
+  },
+  {
     "id": "app_authorization_decide",
     "method": "POST",
     "path": "/v1/app-authorizations/{id}/decision",
@@ -1418,6 +1431,7 @@ export const routePaths = {
   "account_security_return_start": "/v1/account/security-return-intents/{id}/start",
   "account_session_delete": "/v1/account/sessions/{family}",
   "account_sessions_list": "/v1/account/sessions",
+  "account_sessions_revoke_others": "/v1/account/sessions/revoke-others",
   "app_authorization_decide": "/v1/app-authorizations/{id}/decision",
   "app_authorization_exchange": "/v1/app-authorizations/token",
   "app_authorization_review": "/v1/app-authorizations",
@@ -1497,10 +1511,10 @@ export const routePaths = {
 
 import type { RouteContracts } from './types.ts';
 
-export type RouteId = typeof routes[number]['id'];
-type RouteFor<I extends RouteId> = Extract<typeof routes[number], {readonly id: I}>;
+export type RouteId = keyof typeof routePaths;
+type RoutePattern<I extends RouteId> = typeof routePaths[I];
 type ParameterNames<P extends string> = P extends `${string}{${infer K}}${infer Rest}` ? K | ParameterNames<Rest> : never;
-export type RouteParameters<I extends RouteId> = { readonly [K in ParameterNames<RouteFor<I>['path']>]: string | number };
+export type RouteParameters<I extends RouteId> = { readonly [K in ParameterNames<RoutePattern<I>>]: string | number };
 export type RouteRequest<I extends RouteId> = RouteContracts[I]['request'];
 export type RouteResponse<I extends RouteId> = RouteContracts[I]['response'];
 declare const routeContract: unique symbol;
@@ -1536,5 +1550,5 @@ type WireInput<T> = T extends readonly unknown[] ? readonly WireInput<T[number]>
 export function routeBody<I extends RouteId>(_operation: I, body: Partial<WireInput<RouteRequest<I>>>): Partial<WireInput<RouteRequest<I>>> { return body; }
 
 export const apiRoot = '/v1/';
-export function routePattern<I extends RouteId>(id: I): RouteFor<I>['path'] {const route=byId.get(id);if(!route)throw new Error('Unknown API operation');return route as RouteFor<I>['path'];}
+export function routePattern<I extends RouteId>(id: I): RoutePattern<I> {const route=byId.get(id);if(!route)throw new Error('Unknown API operation');return route as RoutePattern<I>;}
 export function routePrefix<I extends RouteId>(id: I, segments: number): string {return routePattern(id).split('/').slice(0, segments + 1).join('/') + '/';}

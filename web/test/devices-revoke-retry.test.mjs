@@ -13,14 +13,18 @@ const observed = '2026-10-26T10:00:00Z', revokedAt = '2026-10-26T10:00:00Z';
 const row = (id, current = false) => ({id, mode: current ? 'browser' : 'native', createdAt: created, expiresAt: expires, status: 'active', current});
 const REVOKED = {status: 'revoked', revokedAt};
 
-function makeFixture({rows, second, deleteRequest, family = 'current', accountId = 'account'}) {
+function makeFixture({rows, second, deleteRequest, othersRequest, family = 'current', accountId = 'account'}) {
   const items = rows.map(item => ({...item}));
   const more = second ? second.map(item => ({...item})) : undefined;
-  const calls = {deletes: [], reads: []};
+  const calls = {deletes: [], reads: [], others: []};
   const find = id => [...items, ...(more || [])].find(item => item.id === id);
   const revoke = id => Object.assign(find(id), REVOKED);
   const page = (list, nextCursor) => ({accountId, currentFamilyId: family, observedAt: observed, nextCursor, items: list.map(item => ({...item}))});
-  const request = async (path, method) => {
+  const request = async (path, method, body) => {
+    if (method === 'POST' && path === '/v1/account/sessions/revoke-others') {
+      calls.others.push(body.operationId);
+      return othersRequest(body, {revoke, items, more});
+    }
     if (method !== 'DELETE') {
       calls.reads.push(path);
       return path.includes('cursor=') ? page(more || [], '') : page(items, more ? 'next' : '');
@@ -30,7 +34,7 @@ function makeFixture({rows, second, deleteRequest, family = 'current', accountId
     return deleteRequest(id, {revoke, items, more});
   };
   const service = new AccountSessionReviewService({scope: {accountId, familyId: family}, api: {request}});
-  const api = {sessions: () => service, devices: async () => ({items: []})};
+  const api = {sessions: () => service};
   return {service, calls, revoke, api};
 }
 
@@ -154,14 +158,14 @@ test('a committed DELETE whose response was lost retries the same idempotent rec
   assert.equal(fixture.service.getSnapshot().items.find(item => item.id === 'current').status, 'active');
 });
 
-test('bulk sign-out stops on an ambiguous revoke and resumes only after that exact retry recovers', async () => {
+test('sign out all other devices is one atomic request, and an unconfirmed outcome retries that same operation', async () => {
   let failures = 1;
   const fixture = makeFixture({
     rows: [row('current', true), row('a'), row('b')],
-    deleteRequest: (id, {revoke}) => {
+    othersRequest: ({operationId}, {revoke, items}) => {
       if (failures > 0) { failures--; throw {status: 503, code: 'unavailable', retryable: true}; }
-      revoke(id);
-      return {id, revoked: true, current: false};
+      for (const item of items) if (!item.current) revoke(item.id);
+      return {accountId: 'account', currentFamilyId: 'current', operationId, revokedCount: 2};
     },
   });
   const app = await mount(fixture);
@@ -171,25 +175,45 @@ test('bulk sign-out stops on an ambiguous revoke and resumes only after that exa
   confirm(value, 'web.hostedAccount.signOutOthersTitle').props.onClick();
   value = await app.settle();
 
-  assert.deepEqual(fixture.calls.deletes, ['a']);               // stopped; never substituted b
-  assert.equal(fixture.service.getSnapshot().retryId, 'a');
-  assert.equal(fixture.service.getSnapshot().items.find(item => item.id === 'b').status, 'active');
+  assert.deepEqual(fixture.calls.deletes, []);                 // never one device at a time
+  assert.equal(fixture.calls.others.length, 1);
+  assert.equal(fixture.service.getSnapshot().retryOthers, true);
+  assert.deepEqual(buttons(value, 'action.signOut').map(node => node.props.disabled), [true, true]);
+  assert.equal(one(value, 'web.hostedAccount.signOutOthers').props.disabled, true);
 
   one(value, 'next.states.tryAgain').props.onClick();
   value = await app.settle();
-  assert.deepEqual(fixture.calls.deletes, ['a', 'a']);
-  assert.equal(fixture.service.getSnapshot().retryId, null);
+  assert.equal(fixture.calls.others.length, 2);
+  assert.equal(fixture.calls.others[0], fixture.calls.others[1]);   // the same operation, replayed
+  assert.equal(fixture.service.getSnapshot().retryOthers, false);
+  assert.equal(fixture.service.getSnapshot().mutationError, null);
+  assert.deepEqual(fixture.service.getSnapshot().items.filter(item => item.status === 'active').map(item => item.id), ['current']);
+  assert.ok(all(value, 'Notice').length > 0);
+  assert.deepEqual(fixture.calls.deletes, []);
 
-  // Resuming bulk work is a fresh explicit user action; it continues with the
-  // remaining original device, not a newly discovered one.
+  // A new request is a new operation.
+  one(value, 'web.hostedAccount.signOutOthers').props.onClick();
+  value = await app.settle(2);
+  confirm(value, 'web.hostedAccount.signOutOthersTitle').props.onClick();
+  await app.settle();
+  assert.equal(fixture.calls.others.length, 3);
+  assert.notEqual(fixture.calls.others[2], fixture.calls.others[0]);
+});
+
+test('a receipt that keeps another sign-in is not a confirmation', async () => {
+  const fixture = makeFixture({
+    rows: [row('current', true), row('other')],
+    othersRequest: ({operationId}) => ({accountId: 'account', currentFamilyId: 'other', operationId, revokedCount: 1}),
+  });
+  const app = await mount(fixture);
+  let value = await app.settle();
   one(value, 'web.hostedAccount.signOutOthers').props.onClick();
   value = await app.settle(2);
   confirm(value, 'web.hostedAccount.signOutOthersTitle').props.onClick();
   value = await app.settle();
-  assert.deepEqual(fixture.calls.deletes, ['a', 'a', 'b']);
-  assert.equal(fixture.service.getSnapshot().items.find(item => item.id === 'a').status, 'revoked');
-  assert.equal(fixture.service.getSnapshot().items.find(item => item.id === 'b').status, 'revoked');
-  assert.equal(fixture.service.getSnapshot().retryId, null);
+  assert.equal(fixture.service.getSnapshot().mutationError?.code, 'invalid_session_review');
+  assert.equal(fixture.service.getSnapshot().retryOthers, true);
+  assert.equal(all(value, 'Notice').length, 0);
 });
 
 test('a nonretryable refusal offers no Retry and leaves ordinary revokes available', async () => {

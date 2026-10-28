@@ -1,5 +1,5 @@
 import test from 'node:test';import assert from 'node:assert/strict';
-import {AccountSessionReviewService,type AccountSessionReviewApi} from '../src/account-sessions.ts';
+import {AccountSessionReviewService,accountSessionDevice,type AccountSessionReviewApi} from '../src/account-sessions.ts';
 import {resetSkippedParts,skippedParts} from '../src/tolerant.ts';
 const scope={accountId:'account',familyId:'current'};
 const row={id:'other',mode:'native',createdAt:'2026-09-05T10:00:00Z',expiresAt:'2026-09-12T10:00:00Z',status:'active',current:false};
@@ -69,4 +69,57 @@ test('the page size, continuation and observation time are still exact',async()=
  // A full page keeps its continuation even when one of its rows was left out.
  const snapshot=await review(page([...forty.slice(1),{...row,id:'undated',createdAt:'yesterday'}],'next-page'));
  assert.equal(snapshot.phase,'ready');assert.equal(snapshot.items.length,39);assert.equal(snapshot.nextCursor,'next-page');
+});
+
+test('device facts are kept when reported and are explicit nulls when unknown or unreadable, never hiding the sign-in',async()=>{
+ const snapshot=await review(page([{...current,deviceName:'Safari on a Mac',platform:'web',app:'Portico',lastUsedAt:'2026-09-05T11:00:00Z'},{...row,deviceName:null,platform:null,app:null,lastUsedAt:null},{...row,id:'odd',deviceName:'\u0000bad',platform:7,app:'',lastUsedAt:'yesterday'},{...row,id:'old'}]));
+ assert.equal(snapshot.phase,'ready');assert.deepEqual(snapshot.items.map(item=>item.id),['current','other','odd','old']);
+ assert.deepEqual([snapshot.items[0].deviceName,snapshot.items[0].platform,snapshot.items[0].app,snapshot.items[0].lastUsedAt],['Safari on a Mac','web','Portico','2026-09-05T11:00:00Z']);
+ for(const item of snapshot.items.slice(1))assert.deepEqual([item.deviceName,item.platform,item.app,item.lastUsedAt],[null,null,null,null]);
+});
+test('a device is named from its reported facts, and an unknown name says only what the sign-in mode proves',async()=>{
+ const snapshot=await review(page([{...current,deviceName:'Living room TV',platform:'tvos',app:'Portico'},{...row,platform:null,app:null},{...row,id:'phone',platform:'ios'},{...row,id:'custom',platform:'vega',app:'Portico for Fire TV'}]));
+ const [tv,unknown,phone,custom]=snapshot.items.map(accountSessionDevice);
+ assert.deepEqual(tv,{name:'Living room TV',app:'Portico on Apple TV',form:'tv'});
+ assert.deepEqual(unknown,{name:'A Portico app',app:null,form:null});
+ assert.equal(phone.form,'phone');assert.equal(phone.app,'Portico on iPhone');
+ assert.deepEqual(custom,{name:'A Portico app',app:'Portico for Fire TV',form:null});
+ assert.equal(accountSessionDevice(snapshot.items[0]).name,'Living room TV');
+});
+
+const receipt=(body:unknown,patch:Record<string,unknown>={})=>({accountId:'account',currentFamilyId:'current',operationId:(body as {operationId:string}).operationId,revokedCount:2,...patch});
+test('sign out every other device is one request that keeps this sign-in, then rereads the list',async()=>{
+ const calls:{path:string;method?:string;body?:unknown}[]=[];let ended=false;
+ const service=new AccountSessionReviewService({scope,api:{request:(async(path:string,method?:string,body?:unknown)=>{calls.push({path,method,body});if(method==='POST'){ended=true;return receipt(body);}return page(ended?[current,{...row,status:'revoked',revokedAt:'2026-09-05T12:00:00Z'}]:[current,row]);}) as AccountSessionReviewApi['request']}});
+ await service.refresh();await service.revokeOthers();
+ const post=calls.filter(call=>call.method==='POST');assert.equal(post.length,1);assert.equal(post[0].path,'/v1/account/sessions/revoke-others');
+ assert.deepEqual(Object.keys(post[0].body as object),['operationId']);assert.match((post[0].body as {operationId:string}).operationId,/^[0-9a-f-]{36}$/);
+ assert.equal(calls.some(call=>call.method==='DELETE'),false);
+ const after=service.getSnapshot();assert.equal(after.phase,'ready');assert.equal(after.endingOthers,false);assert.equal(after.retryOthers,false);assert.match(after.notice,/2 other devices/);
+ assert.deepEqual(after.items.filter(item=>item.status==='active').map(item=>item.id),['current']);service.dispose();
+});
+test('an unconfirmed sign-out of other devices retries the same operation and blocks every other intent until then',async()=>{
+ const ops:string[]=[];let fail=true;
+ const service=new AccountSessionReviewService({scope,timeoutMs:20,api:{request:(async(path:string,method?:string,body?:unknown)=>{if(method==='POST'){ops.push((body as {operationId:string}).operationId);if(fail){fail=false;throw {status:503,code:'unavailable',retryable:true};}return receipt(body,{revokedCount:1});}return page();}) as AccountSessionReviewApi['request']}});
+ await service.refresh();await service.revokeOthers();
+ assert.equal(service.getSnapshot().retryOthers,true);assert.equal(service.getSnapshot().retryId,null);
+ assert.throws(()=>service.revoke('other'),/Resolve/);assert.throws(()=>service.revokeOthers(),/Resolve/);
+ await service.retryRevoke();
+ assert.equal(ops.length,2);assert.equal(ops[0],ops[1]);assert.equal(service.getSnapshot().retryOthers,false);assert.equal(service.getSnapshot().mutationError,null);
+ await service.revokeOthers();assert.equal(ops.length,3);assert.notEqual(ops[2],ops[0]);service.dispose();
+});
+test('a receipt for another account, another kept sign-in or another operation does not claim success',async()=>{
+ for(const patch of [{accountId:'elsewhere'},{currentFamilyId:'other'},{operationId:'not-this-one'},{revokedCount:-1},{revokedCount:'2'}]){
+  const service=new AccountSessionReviewService({scope,api:{request:(async(_p:string,method?:string,body?:unknown)=>method==='POST'?receipt(body,patch):page()) as AccountSessionReviewApi['request']}});
+  await service.refresh();await service.revokeOthers();
+  assert.equal(service.getSnapshot().mutationError?.code,'invalid_session_review',JSON.stringify(patch));assert.equal(service.getSnapshot().retryOthers,true);assert.equal(service.getSnapshot().notice,'');service.dispose();
+ }
+});
+test('ended authority during sign-out of other devices ends the view without claiming success, and overlapping intents are refused',async()=>{
+ const late=deferred();
+ const service=new AccountSessionReviewService({scope,api:{request:(async(_p:string,method?:string)=>method==='POST'?late.promise:page()) as AccountSessionReviewApi['request']}});
+ await service.refresh();const pending=service.revokeOthers();
+ assert.equal(service.revokeOthers(),pending);assert.throws(()=>service.revoke('other'),/Wait/);assert.equal(service.getSnapshot().endingOthers,true);
+ late.resolve(Promise.reject(Object.assign(new Error('expired'),{status:401})));await pending;
+ assert.equal(service.getSnapshot().phase,'ended');assert.doesNotMatch(service.getSnapshot().notice,/Signed out of/);service.dispose();
 });
