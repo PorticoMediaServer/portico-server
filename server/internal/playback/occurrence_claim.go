@@ -37,12 +37,13 @@ type occurrenceIntent struct {
 	released bool
 }
 type occurrenceRun struct {
-	generation int
-	requestID  string
-	itemID     int64
-	assetID    string
-	cancel     context.CancelFunc
-	done       <-chan struct{}
+	spillCancelled bool // guarded by HLS.mu; only this run was cancelled for spill
+	generation     int
+	requestID      string
+	itemID         int64
+	assetID        string
+	cancel         context.CancelFunc
+	done           <-chan struct{}
 }
 type occurrenceClaim struct {
 	registry   *occurrenceRegistry

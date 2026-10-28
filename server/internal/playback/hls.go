@@ -1035,10 +1035,13 @@ func withProducerGeneration(ctx context.Context, generation int) context.Context
 // failed fails the session's conversion, and reports whether it did: a
 // producer whose generation has been replaced fails nothing.
 func (h *HLS) failed(ctx context.Context, id string) bool {
-	if ctx.Err() != nil {
-		return false
+	h.mu.Lock()
+	moving := h.moving[id] != nil
+	if owner, _ := ctx.Value(occurrenceOwnerKey{}).(*occurrenceOwner); owner != nil && owner.run != nil {
+		moving = moving || owner.run.spillCancelled
 	}
-	if failureDuringClaim(ctx) || h.memoryOutputPressure(id) {
+	h.mu.Unlock()
+	if moving || failureDuringClaim(ctx) || h.memoryOutputPressure(id) {
 		return false
 	}
 	write, cancel := persist(ctx)
