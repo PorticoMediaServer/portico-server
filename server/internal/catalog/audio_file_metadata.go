@@ -10,6 +10,12 @@ import (
 	"portico.local/server/internal/dbwork"
 )
 
+// One file's accepted tags, chapter/cue observations and artwork publish under
+// one inventory revision. Splitting them would expose a mixed file baseline.
+// This is a per-file budget, measured by dbwork; the interactive default stays
+// unchanged. Pathological chapter/cue fan-out remains an overrun to investigate.
+var audioFilePublicationPlan = dbwork.WritePlan{Name: "audio-file-publication", Rows: 1024, Pages: 256, VMOps: 500_000, Why: "one file's bounded tags, chapter/cue facts, artwork and current targets must publish atomically with its inventory revision"}
+
 // persistAudioFileMetadata records only what was observed before sidecars were
 // applied, in the same transaction and revision fence as the full analysis.
 func persistAudioFileMetadata(ctx context.Context, tx *sql.Tx, asset, revision string, size, modified int64, f assets.Facts) error {

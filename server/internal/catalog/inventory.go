@@ -928,6 +928,9 @@ func (s *Service) CommitInventoryAnalysis(ctx context.Context, job, object, revi
 		}
 	}
 	if kind == "music" || kind == "audiobook" {
+		if err = dbwork.UsePlan(tx, audioFilePublicationPlan); err != nil {
+			return err
+		}
 		if err = persistAudioFileMetadata(ctx, tx, asset, revision, size, modified, f); err != nil {
 			return err
 		}

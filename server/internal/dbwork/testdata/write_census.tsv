@@ -54,7 +54,7 @@ internal/catalog/disc_title_media.go	(*Service).CommitDiscAlternate	Begin	ClassB
 internal/catalog/episode_repository.go	(*Service).AssignEpisodes	Begin	ClassFrom(ctx, dbwork.ClassInteractive)	-
 internal/catalog/episodic_reparse.go	(*Service).ReparseEpisodicIssues	ExecWrite	ClassMaintenance	-
 internal/catalog/episodic_reparse.go	(*Service).ReparseEpisodicIssues	WithWriteTx	ClassMaintenance	-
-internal/catalog/inventory.go	(*Service).CommitInventoryAnalysis	Begin	ClassFrom(ctx, dbwork.ClassInteractive)	-
+internal/catalog/inventory.go	(*Service).CommitInventoryAnalysis	Begin	ClassFrom(ctx, dbwork.ClassInteractive)	audioFilePublicationPlan
 internal/catalog/inventory.go	(*Service).CommitInventoryDiscRoot	Begin	ClassBackgroundMedia	-
 internal/catalog/inventory.go	(*Service).CommitInventoryNaming	Begin	ClassFrom(ctx, dbwork.ClassInteractive)	-
 internal/catalog/inventory.go	(*Service).CommitInventoryPage	Begin	ClassFrom(ctx, dbwork.ClassInteractive)	inventoryPagesPlan
@@ -62,7 +62,7 @@ internal/catalog/inventory.go	(*Service).CommitInventoryPages	Begin	ClassFrom(ct
 internal/catalog/inventory_admin.go	(*Service).AssociateInventoryVersion	Begin	ClassFrom(ctx, dbwork.ClassInteractive)	-
 internal/catalog/inventory_admin.go	(*Service).CheckSource	Begin	ClassFrom(ctx, dbwork.ClassInteractive)	-
 internal/catalog/inventory_admin.go	(*Service).SeparateInventoryVersion	Begin	ClassFrom(ctx, dbwork.ClassInteractive)	-
-internal/catalog/inventory_local_refresh.go	(*Service).CommitInventoryLocalRefresh	Begin	ClassFrom(ctx, dbwork.ClassInteractive)	-
+internal/catalog/inventory_local_refresh.go	(*Service).CommitInventoryLocalRefresh	Begin	ClassFrom(ctx, dbwork.ClassInteractive)	audioFilePublicationPlan
 internal/catalog/inventory_text_import.go	(*Service).CompleteInventoryTextImports	Begin	ClassBackgroundMedia	-
 internal/catalog/library_pins.go	(*Service).SetLibraryNavigation	Begin	ClassFrom(context.Background(), dbwork.ClassInteractive)	-
 internal/catalog/library_pins.go	(*Service).SetPinOrder	Begin	ClassFrom(context.Background(), dbwork.ClassInteractive)	-
@@ -631,8 +631,10 @@ plan	internal/administration/library_settings.go	(*Service).SaveLibrarySettings	
 plan	internal/backup/holds.go	(*Service).advanceHold	dbwork.WritePlan{Name: dbwork.BackupHoldPhasePlanName, Rows: 1, Pages: 4, VMOps: 250_000, Why: "one singleton state update; no indexed state column, foreign-key action or trigger"}
 plan	internal/catalog/admin.go	(*Service).OrderLibraries	libraryOrderPlan
 plan	internal/catalog/delete_title.go	(*Service).RemoveTitle	titleRemovalPlan
+plan	internal/catalog/inventory.go	(*Service).CommitInventoryAnalysis	audioFilePublicationPlan
 plan	internal/catalog/inventory.go	(*Service).CommitInventoryPage	inventoryPagesPlan
 plan	internal/catalog/inventory.go	(*Service).CommitInventoryPages	inventoryPagesPlan
+plan	internal/catalog/inventory_local_refresh.go	(*Service).CommitInventoryLocalRefresh	audioFilePublicationPlan
 plan	internal/catalog/title_merge.go	(*Service).MergeTitles	titleMergePlan
 plan	internal/compactcatalog/derive.go	(*Worker).Step	DrainPlan
 plan	internal/compactcatalog/derive.go	(*Worker).Step	derivationUnitPlan

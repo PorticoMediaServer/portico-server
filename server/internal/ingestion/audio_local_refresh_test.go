@@ -13,10 +13,12 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"portico.local/server/internal/artworkref"
 	"portico.local/server/internal/assets"
 	"portico.local/server/internal/audiotags"
+	"portico.local/server/internal/dbwork"
 	"portico.local/server/internal/localmetadata"
 	"portico.local/server/internal/metadata"
 	"portico.local/server/internal/storage"
@@ -81,8 +83,15 @@ func newAudioRefreshFixture(t *testing.T, kind string, embeddedCue bool) *audioR
 	a.embeddedKey = facts.AudioFileMetadata.ArtworkKey
 	facts.ObservedSize, facts.ObservedModifiedNS, facts.ObservedRevision = a.size, a.modified, a.revision
 	facts.AnalysisOperations = []string{"probe", "local_metadata", "subtitles", assets.PlaybackAnalysisRevision}
+	dbwork.ResetPlans()
+	started := time.Now()
 	if err = f.s.catalog.CommitInventoryAnalysis(context.Background(), job.ID, a.object, a.revision, a.policy, facts); err != nil {
 		t.Fatal(err)
+	}
+	stats := dbwork.Plans()
+	t.Logf("per-file audio publication: %+v, elapsed %s", stats.Largest, time.Since(started))
+	if stats.Measured != 1 || stats.Overruns != 0 {
+		t.Fatalf("per-file audio publication exceeded its measured budget: %+v", stats)
 	}
 	f.finish(job)
 	return a

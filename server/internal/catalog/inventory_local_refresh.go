@@ -53,6 +53,9 @@ func (s *Service) CommitInventoryLocalRefresh(ctx context.Context, job, object, 
 		return errors.New("unsupported local refresh library")
 	}
 	if audio {
+		if err = dbwork.UsePlan(tx, audioFilePublicationPlan); err != nil {
+			return err
+		}
 		// Baseline presence, asset stat and analysis revision are checked again in
 		// the writer; an earlier read never authorizes publication on its own.
 		var current bool
