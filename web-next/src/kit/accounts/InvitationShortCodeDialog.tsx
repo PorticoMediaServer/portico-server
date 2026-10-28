@@ -1,4 +1,4 @@
-import {useEffect, useMemo, useRef, useState, useSyncExternalStore, type RefObject} from 'react';
+import {useEffect, useMemo, useRef, useState, useSyncExternalStore, type RefObject, type ReactNode} from 'react';
 import {defaultI18n} from '@i18n';
 import type {ServerShortInvitation} from '@core/direct-account.ts';
 import {Button} from '../controls/Button';
@@ -21,6 +21,7 @@ export type InvitationShortCodeDialogProps = Readonly<{
   /** The captured owner/viewer lifetime used for this issuance. */
   isCurrent?: () => boolean;
   returnFocusRef?: RefObject<HTMLElement | null>;
+  children?: ReactNode;
 }>;
 
 /**
@@ -34,7 +35,7 @@ export function InvitationShortCodeDialog(props: InvitationShortCodeDialogProps)
 }
 
 type IssuerDialogProps = InvitationShortCodeDialogProps & Readonly<{identity: string}>;
-function IssuerDialog({open, onOpenChange, request, issueOnOpen = false, createOperationId, isCurrent, returnFocusRef, identity}: IssuerDialogProps) {
+function IssuerDialog({open, onOpenChange, request, issueOnOpen = false, createOperationId, isCurrent, returnFocusRef, identity, children}: IssuerDialogProps) {
   const createRef = useRef(createOperationId);
   createRef.current = createOperationId;
   const issuer = useMemo(() => new ShortCodeIssuer(createRef.current), []);
@@ -82,9 +83,10 @@ function IssuerDialog({open, onOpenChange, request, issueOnOpen = false, createO
   const expiry = state.phase === 'ready' || state.phase === 'unavailable'
     ? new Intl.DateTimeFormat(undefined, {dateStyle: 'medium'}).format(new Date(state.expiresAt)) : undefined;
   return <Dialog open={open} onOpenChange={value => {if (!busy) onOpenChange(value);}} title={t('invite.readyTitle')}
-    description={t('invite.readyBody')} size="sm" width={540} returnFocusRef={returnFocusRef}
+    description={t('invite.readyBody')} size="sm" width={children ? 560 : 540} returnFocusRef={returnFocusRef}
     footer={<Button variant="primary" onClick={() => onOpenChange(false)}>{t('action.done')}</Button>}>
     <div className={styles.body} data-phase={state.phase}>
+      {children}
       <div className={styles.codeArea} aria-live="polite">
         {state.phase === 'ready' ? <><p className={styles.code}>{state.code}</p>
           <p className={styles.help}>{t('web.access.shortCodeShownOnce')}</p></> :

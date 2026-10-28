@@ -17,6 +17,7 @@ export type LibraryChannelsPageProps=Readonly<{
   timeZone:string;
   /** Existing authenticated artwork scheduler, fixed registered logo route.
    * A supplied revision came from a checked logo receipt, not the config. */
+  sampleArt?:(itemId:string)=>ArtworkSource|undefined;
   logo:(channel:LibraryChannel,revision?:number)=>ArtworkSource|undefined;
   /** Fixed registered POST logo route, authenticated by the captured owner.
    * FormData fields: file and operationId; no config revision is invented. */

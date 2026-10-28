@@ -1,3 +1,4 @@
+import {encodedRoutePath} from '../../../../../packages/contracts/src/routes.ts';
 import type {LibraryChannel} from '@core/library-channels.ts';
 import type {ShellAssemblyContext} from '../../../shell/bootstrap';
 import type {OwnerSources} from './OwnerSourcesPage';
@@ -15,6 +16,7 @@ export function libraryChannelAdmission(context: ShellAssemblyContext, owner: Ow
     libraries: context.facts.identity.libraries,
     timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
     logo: (channel: LibraryChannel, revision?: number) => owner.current() && context.isCurrent() ? context.artwork.channelLogo(channel.config.id, revision) : undefined,
+    sampleArt: (id: string) => owner.current() && context.isCurrent() ? context.artwork.foreground(encodedRoutePath('get_items_id_art_kind', {id: encodeURIComponent(id), kind: 'poster'}), 80, 2 / 3) : undefined,
     uploadLogo: libraryChannelUpload(context, owner.current, owner.reportError),
   };
 }

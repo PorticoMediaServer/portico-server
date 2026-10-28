@@ -1,9 +1,11 @@
-import {useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore} from 'react';
+import {useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore, type ReactNode} from 'react';
 import {defaultI18n, type MessageId} from '@i18n';
 import {CAPABILITY_ROWS, capabilityReasonId, type ServerCapability} from '@core/server-admin/capabilities.ts';
-import {Button} from '../../../../kit/controls';
-import {SettingsAction} from '../../../../kit/settings';
+import {Button, Select, Switch} from '../../../../kit/controls';
+import {SettingsAction, SettingsAdvanced, SettingsGroup} from '../../../../kit/settings';
+import {SettingsRow} from '../../../../kit/shell/SettingsSurfaces';
 import {SettingsSupportSource, SUPPORT_COMPONENTS, type SupportComponent} from './support-source';
+import {DEFAULT_SUPPORT_COMPONENTS, SUPPORT_WINDOWS} from './support-options';
 import styles from './troubleshooting.module.css';
 
 const t = defaultI18n.t;
@@ -12,15 +14,13 @@ export type SupportPanelProps = Readonly<{
   source: SettingsSupportSource;
   subscribe: (listener: () => void) => () => void;
   reportError: (error: unknown) => void;
+  /** The Settings landing owns export controls; Support keeps its existing viewers. */
+  exportOnly?: boolean; hideExport?: boolean; advancedRows?: ReactNode; problems?: ReactNode;
+  advancedSummary?: readonly string[];
 }>;
 
 const KNOWN: ReadonlySet<string> = new Set(CAPABILITY_ROWS);
-const WINDOWS: readonly Readonly<{id: string; ms: number; label: MessageId}>[] = Object.freeze([
-  {id: '1h', ms: 60 * 60 * 1000, label: 'web.logs.window1h'},
-  {id: '6h', ms: 6 * 60 * 60 * 1000, label: 'web.logs.window6h'},
-  {id: '24h', ms: 24 * 60 * 60 * 1000, label: 'web.logs.window24h'},
-  {id: '3d', ms: 3 * 24 * 60 * 60 * 1000, label: 'web.logs.window3d'},
-]);
+const WINDOWS = SUPPORT_WINDOWS.map((entry, index) => ({...entry, label: `next.settingsSpec.server.troubleshooting.advanced.groups.1.rows.0.control.options.${index}.label` as MessageId}));
 const PART_LABEL: Readonly<Record<SupportComponent, MessageId>> = Object.freeze({
   snapshot: 'web.logs.includeSnapshot', runtime: 'web.logs.includeServer', client: 'web.logs.includeClient', audit: 'web.logs.includeAudit',
 });
@@ -35,11 +35,13 @@ export function SupportPanel(props: SupportPanelProps) {
   useLayoutEffect(()=>{scope.current=source;choice.current=undefined;return()=>{scope.current=undefined;choice.current=undefined;};},[source]);
   const state = useSyncExternalStore(props.subscribe, props.source.getSnapshot, props.source.getSnapshot);
   const [busy, setBusy] = useState(false), [fixed, setFixed] = useState(false);
-  const [window, setWindow] = useState('24h'), [parts, setParts] = useState<readonly SupportComponent[]>([...SUPPORT_COMPONENTS]);
+  const [window, setWindow] = useState('24h'), [parts, setParts] = useState<readonly SupportComponent[]>(DEFAULT_SUPPORT_COMPONENTS);
+  const [advanced, setAdvanced] = useState(false);
   useEffect(() => {void source.load();}, [source]);
   useEffect(() => {const error=state.error as {status?:number;code?:string}|undefined;if(state.phase==='error'&&error&&(error.status===401||error.status===403||['unauthorized','forbidden','not_permitted'].includes(error.code??'')))reportError(error);}, [state.phase,state.error,reportError]);
-  if (state.phase === 'error') return <p className={styles.failure} role="alert"><span>{t('next.states.pageFailedBody')}</span><button type="button" onClick={() => {void props.source.retry();}}>{t('next.shell.tryAgain')}</button></p>;
-  if (state.phase === 'idle' || state.phase === 'loading') return <p role="status">{t('next.settings.loading')}</p>;
+  const supportNotice = state.phase === 'error' ? <p className={styles.failure} role="alert"><span>{t('next.states.pageFailedBody')}</span><button type="button" onClick={() => {void props.source.retry();}}>{t('next.shell.tryAgain')}</button></p>
+    : state.phase === 'idle' || state.phase === 'loading' ? <p role="status">{t('next.settings.loading')}</p> : undefined;
+  if (supportNotice && !props.exportOnly) return supportNotice;
   const exportReady = state.export, frozen = state.preparing || !!state.pendingExport;
   const shownParts = state.pendingExport?.components ?? parts;
   const shownWindow = state.pendingExport ? WINDOWS.find(entry=>entry.ms===state.pendingExport!.windowMs)?.id : window;
@@ -54,8 +56,19 @@ export function SupportPanel(props: SupportPanelProps) {
     if(choice.current===captured){choice.current=undefined;setPathChoice(current=>current===captured?undefined:current);}
     void source.prepare(WINDOWS.find(entry=>entry.id===window)!.ms,parts,selected).catch(reportError);
   };
+  const exportOptions = <SettingsGroup title={t('next.settingsSpec.server.troubleshooting.advanced.groups.1.title')} advanced>
+    <SettingsRow label={t('web.logs.timeWindow')}><Select aria-label={t('web.logs.timeWindow')} value={shownWindow ?? window}
+      disabled={frozen} options={WINDOWS.map(entry => ({value: entry.id, label: t(entry.label)}))} onValueChange={setWindow}/></SettingsRow>
+    {SUPPORT_COMPONENTS.map(component => <SettingsRow key={component} label={t(PART_LABEL[component])}>
+      <Switch aria-label={t(PART_LABEL[component])} checked={shownParts.includes(component)} disabled={frozen} onCheckedChange={checked => {
+        setParts(current => checked ? [...new Set([...current, component])] : current.filter(part => part !== component));
+        if (component === 'snapshot' && !checked) choosePaths(false);
+      }}/>
+    </SettingsRow>)}
+  </SettingsGroup>;
   return <div className={`${styles.reports} ${styles.support}`}>
-    {state.permissions && <section className={styles.permissions}>
+    {supportNotice}
+    {!props.exportOnly && state.permissions && <section className={styles.permissions}>
       <div className={styles.panelHead}><h3>{t('web.maintenance.permissionsTitle')}</h3></div>
       <p className={styles.lede}>{t('web.maintenance.permissionsBody')}</p>
       <div><Button variant="glass" size="small" disabled={busy} onClick={() => {
@@ -64,30 +77,21 @@ export function SupportPanel(props: SupportPanelProps) {
       }}>{t('web.maintenance.fixPermissions')}</Button>
         {fixed && <span className={styles.fixed} role="status">{t('web.maintenance.permissionsFixed')}</span>}</div>
     </section>}
-    <section className={styles.panel}>
+    {!props.exportOnly && <section className={styles.panel}>
       <div className={styles.panelHead}><h3>{t('settings.server.capabilities')}</h3></div>
       <p className={styles.lede}>{t('web.capabilities.help')}</p>
       <ul className={styles.rows}>{state.capabilities.map(capability => <CapabilityRow key={capability.capability} capability={capability} />)}</ul>
-    </section>
-    <section className={styles.panel}>
+    </section>}
+    {!props.hideExport && !supportNotice && <section className={styles.panel}>
       <div className={styles.panelHead}><h3>{t('web.logs.exportTitle')}</h3></div>
       <p className={styles.lede}>{t('web.logs.exportLede')}</p>
-      <>
-        <div className={styles.exportRow}><span className={styles.fieldLabel}>{t('web.logs.timeWindow')}</span>
-          <div className={styles.statusChoice} role="radiogroup" aria-label={t('web.logs.timeWindow')}>{WINDOWS.map(entry => <button key={entry.id} type="button" role="radio"
-            aria-checked={entry.id === shownWindow} className={styles.statusOption} disabled={frozen} onClick={() => setWindow(entry.id)}>{t(entry.label)}</button>)}</div></div>
-        <div className={styles.exportRow}><span className={styles.fieldLabel}>{t('web.logs.include')}</span>
-          <div className={styles.checks}>{SUPPORT_COMPONENTS.map(component => <label key={component} className={styles.check}>
-            <input type="checkbox" checked={shownParts.includes(component)} disabled={frozen}
-              onChange={event => {const checked=event.currentTarget.checked;setParts(current=>checked?[...new Set([...current,component])]:current.filter(part=>part!==component));if(component==='snapshot'&&!checked)choosePaths(false);}} />
-            {t(PART_LABEL[component])}</label>)}</div></div>
-      </>
+      {!props.exportOnly && exportOptions}
       {(state.supportsPaths || state.pendingExport?.includePaths) && <div className={styles.exportRow}><label className={styles.check}>
         <input type="checkbox" checked={!!includePaths} disabled={frozen || !parts.includes('snapshot') || !state.supportsPaths} onChange={event=>choosePaths(event.currentTarget.checked)}/>
         {t('next.settingsSpec.server.troubleshooting.groups.1.rows.0.children.0.label')}</label><p className={styles.note}>{t('web.logs.pathsHelp')}</p></div>}
       {state.prepareError && <p role="alert" className={styles.failure}>{t('error.unconfirmedChange')}</p>}
       <div className={styles.exportRow}><span className={styles.fieldLabel}>{t('web.logs.prepareExport')}</span>
-        <SettingsAction size="small" appearance="glass" loading={state.preparing} disabled={state.preparing || !parts.length}
+        <SettingsAction size="small" appearance="primary" loading={state.preparing} disabled={state.preparing || !parts.length}
           onClick={prepare}>{t(state.pendingExport?'action.tryAgain':'web.logs.prepare')}</SettingsAction></div>
       {exportReady && <div className={styles.exportReady}>
         <b>{t('web.logs.readyToDownload')}</b>
@@ -104,15 +108,21 @@ export function SupportPanel(props: SupportPanelProps) {
           }).catch(props.reportError);
         }}>{t('web.logs.downloadJson')}</Button>
       </div>}
-    </section>
-    <section className={styles.panel}>
+    </section>}
+    {props.exportOnly && <>{props.problems}<SettingsAdvanced open={advanced} onOpenChange={setAdvanced} summary={[
+      ...(props.advancedSummary ?? []), ...(!supportNotice && shownWindow && shownWindow !== '24h' ? [t('web.logs.timeWindow') + ': ' + t(WINDOWS.find(entry => entry.id === shownWindow)!.label)] : []),
+      ...(!supportNotice ? SUPPORT_COMPONENTS.filter(part => shownParts.includes(part) !== DEFAULT_SUPPORT_COMPONENTS.includes(part)).map(part => t(PART_LABEL[part])) : []),
+    ]}>
+      {props.advancedRows}{!supportNotice && exportOptions}
+    </SettingsAdvanced></>}
+    {!props.exportOnly && <section className={styles.panel}>
       <div className={styles.panelHead}><h3>{t('settings.server.skippedParts')}</h3></div>
       <p className={styles.lede}>{t('settings.server.skippedPartsLede')}</p>
       {state.skipped.length ? <ul className={styles.rows}>{state.skipped.map(part => <li key={`${part.document}/${part.part}`} className={styles.recordRow}>
         <div className={styles.reportText}><b>{part.part}</b><small>{part.document}</small></div>
         <span className={styles.sequence}>{t('settings.server.skippedPartsCount', {count: part.count})}</span>
       </li>)}</ul> : <p className={styles.none}>{t('settings.server.skippedPartsNone')}</p>}
-    </section>
+    </section>}
   </div>;
 }
 

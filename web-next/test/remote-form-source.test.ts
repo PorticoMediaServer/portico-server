@@ -9,6 +9,7 @@ const status = (stored = config()): RemoteAccess => ({authorityId: 'original-aut
   topology: {lan: [], public: [], bind: '0.0.0.0'}, candidates: [], mappings: []});
 const row = (id: string) => settingsRowIndex.get(id)!.row;
 const held = <T>() => {let resolve!: (value: T) => void;const promise = new Promise<T>(done => {resolve = done;});return {promise, resolve};};
+const turn = () => new Promise<void>(resolve => setImmediate(resolve));
 function fixture(initial = config()) {
   const calls: {path: string; method: string; body: any; signal?: AbortSignal}[] = [];
   let stored = initial, live = true, failRead = false, failSave = false;
@@ -34,7 +35,7 @@ test('all five approved rows use one original form and save real revision and au
     s.change('remote.mappingProtocols', {pcp: 'skip', natpmp: 'try', upnp: 'skip'});
     s.change('remote.gateway', '192.0.2.2');s.change('remote.publicPort', 44444);s.change('remote.ipv6', true);
     s.change('remote.mapping', 'off');
-    const sending = s.getSnapshot();await s.save(sending);
+    await turn();
     assert.equal(f.calls.length, 2);
     assert.deepEqual(f.calls[1].body.config, {...config(), mapping: false, pcp: false, natpmp: true, upnp: false, gateway: '192.0.2.2', publicPort: 44444, ipv6Open: true});
     assert.equal(s.getSnapshot().saved!.revision, '4');assert.equal(s.getSnapshot().dirty, false);
@@ -57,13 +58,14 @@ test('unknown optional IPv6 round-trips absent; mapping off preserves unrelated 
   } finally {s.dispose();}
 });
 
-test('initial read and refused save are retried in the original section, without implicit writes', async () => {
+test('a refused automatic save retains the draft and waits for deliberate Retry', async () => {
   const f = fixture(), s = f.source;
   try {
     f.failRead(true);await s.load();assert.ok(s.getSnapshot().loadError);assert.equal(s.getSnapshot().draft, undefined);
     f.failRead(false);await s.load();assert.equal(s.getSnapshot().loadError, undefined);
-    s.change('remote.publicPort', 40000);f.failSave(true);await assert.rejects(s.save());
+    f.failSave(true);s.change('remote.publicPort', 40000);await turn();
     assert.ok(s.getSnapshot().saveError);assert.equal(s.getSnapshot().dirty, true);assert.equal(s.getSnapshot().draft!.publicPort, 40000);
+    await turn();assert.equal(f.calls.filter(call => call.method === 'POST').length, 1);
     f.failSave(false);await s.save();assert.equal(s.getSnapshot().saveError, undefined);assert.equal(s.getSnapshot().saved!.publicPort, 40000);
     assert.equal(f.calls.filter(call => call.method === 'POST').length, 2);
   } finally {s.dispose();}
@@ -106,9 +108,12 @@ test('invalid values and stale save/discard callbacks cannot write a replacement
     s.change('remote.publicPort', 1023);s.change('remote.publicPort', 2000.5);s.change('remote.gateway', 'x'.repeat(65));
     s.change('remote.mappingProtocols', {pcp: 'try', natpmp: 'skip', upnp: 'malformed'});
     assert.equal(s.getSnapshot(), old);
-    s.change('remote.publicPort', 44000);await s.save(old);s.discard(old);
+    s.change('remote.publicPort', 44000);const ignored = s.save(old);s.discard(old);
     assert.equal(f.calls.length, 1);assert.equal(s.getSnapshot().dirty, true);
-    s.reset('remote.publicPort');assert.equal(s.getSnapshot().dirty, false);
+    await ignored;await turn();assert.equal(f.calls.length, 2);assert.equal(s.getSnapshot().saved!.publicPort, 44000);
+    assert.equal(s.rowState(row('remote.publicPort')).changed, true);
+    s.reset('remote.publicPort');await turn();assert.equal(s.getSnapshot().saved!.publicPort, 32500);
+    assert.equal(s.rowState(row('remote.publicPort')).changed, false);assert.equal(f.calls.length, 3);
   } finally {s.dispose();}
 });
 
@@ -130,4 +135,35 @@ test('a current predicate returning true after retiring its source cannot dispat
 test('retirement before the reserved read starts settles quietly without any HTTP', async () => {
   const f = fixture(), loading = f.source.load();f.source.dispose();await loading;
   assert.equal(f.calls.length, 0);
+});
+
+test('Check now coalesces and locks edits through the delayed status refresh', async () => {
+  const check = held<RemoteAccess>(), refreshed = held<RemoteAccess>();const calls: string[] = [];
+  const s = new RemoteFormSource({async request<T>(path: string, method = 'GET') {
+    calls.push(`${method} ${path}`);
+    return await (path.endsWith('/check') ? check.promise : calls.length === 1 ? status() : refreshed.promise) as T;
+  }}, () => true, true);
+  try {
+    await s.load();let notifications = 0;const stop = s.subscribe(() => notifications++);
+    const pending = s.check();assert.equal(s.check(), pending);assert.equal(s.getSnapshot().checking, true);
+    assert.equal(s.rowState(row('remote.publicPort')).disabled, true);assert.equal(notifications, 1);
+    s.change('remote.publicPort', 40000);await turn();assert.equal(s.getSnapshot().dirty, false);
+    check.resolve(status());await turn();s.change('remote.publicPort', 41000);
+    assert.equal(s.getSnapshot().checking, true);assert.equal(s.getSnapshot().draft!.publicPort, 32500);
+    refreshed.resolve(status());await pending;
+    assert.equal(s.getSnapshot().checking, false);assert.equal(s.rowState(row('remote.publicPort')).disabled, false);
+    assert.deepEqual(calls, ['GET /v1/networking/remote', 'POST /v1/networking/remote/check', 'GET /v1/networking/remote']);stop();
+  } finally {s.dispose();}
+});
+
+test('an edit made by a save-completion subscriber is not lost behind the save reservation', async () => {
+  const f = fixture();let edited = false;
+  try {
+    await f.source.load();const stop = f.source.subscribe(() => {
+      const state = f.source.getSnapshot();
+      if (!edited && !state.saving && state.saved?.publicPort === 40000) {edited = true;f.source.change('remote.publicPort', 41000);}
+    });
+    f.source.change('remote.publicPort', 40000);await turn();
+    assert.equal(f.source.getSnapshot().saved!.publicPort, 41000);assert.equal(f.calls.filter(call => call.method === 'POST').length, 2);stop();
+  } finally {f.source.dispose();}
 });

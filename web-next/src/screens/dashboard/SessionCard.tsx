@@ -1,5 +1,5 @@
 import {useSessionMove} from './use-session-move';
-import {useId, useRef, useState, type CSSProperties} from 'react';
+import {useEffect, useId, useRef, useState, type CSSProperties} from 'react';
 import {defaultI18n} from '@i18n';
 import type {DashboardSession as AdminSession} from './bindings';
 import {Button} from '../../kit/controls';
@@ -31,7 +31,7 @@ function DeviceGlyph({platform, device}: Pick<AdminSession, 'platform' | 'device
 function phoneRoute(tracks: readonly Track[]): Track | undefined {
   return tracks.find(track => track.kind === 'video') ?? tracks[0];
 }
-export function SessionCard({session: s, bindings: b, refresh, layout = 'desktop', retained = false}: {session: AdminSession; bindings: DashboardBindings; refresh: (removedId?: string) => void; layout?: 'desktop' | 'phone'; retained?: boolean}) {
+export function SessionCard({session: s, bindings: b, refresh, layout = 'desktop', retained = false, onOverlayChange}: {session: AdminSession; bindings: DashboardBindings; refresh: (removedId?: string) => void; layout?: 'desktop' | 'phone' | 'compact'; retained?: boolean; onOverlayChange?: (id: string, open: boolean) => void}) {
   const [menu, setMenu] = useState(false), [stop, setStop] = useState(false), [message, setMessage] = useState(''), [busy, setBusy] = useState(false);
   const messageId = useId(), cancel = useRef<HTMLButtonElement>(null), opener = useRef<HTMLButtonElement>(null), item = s.item, square = s.kind === 'audio' || item?.kind === 'audiobook_file';
   const art = s.itemId ? b.artwork(s.itemId, square ? 'square' : 'poster', item?.art.find(a => a.role === (square ? 'square' : 'poster'))?.revision) : undefined;
@@ -41,6 +41,8 @@ export function SessionCard({session: s, bindings: b, refresh, layout = 'desktop
   const title = sessionTitle(s), stopTitle = sessionStopTitle(s);
   const runtime = s.durationMs ? fmtDur(s.durationMs / 3_600_000) : undefined;
   const move = useSessionMove(b, s, title, menu, retained, () => refresh());
+  const overlayOpen = menu || stop || !!move.dialog || busy;
+  useEffect(() => {onOverlayChange?.(s.id, overlayOpen);return () => onOverlayChange?.(s.id, false);}, [s.id, overlayOpen, onOverlayChange]);
   const episode = item?.showTitle && s.title !== item.showTitle;
   const tracks = sessionTracks(s), current = s.currentBitrateKbps;
   const menuItems = [
@@ -53,6 +55,21 @@ export function SessionCard({session: s, bindings: b, refresh, layout = 'desktop
     footer={<><Button ref={cancel} size="small" disabled={busy} onClick={() => setStop(false)}>{t('next.dashboard.cancel')}</Button><Button size="small" className={styles.stopButton} loading={busy} onClick={() => {void act(() => b.effects.stop(s.id, message.trim() || undefined), true);}}>{t('next.dashboard.stopPlayback')}</Button></>}>
     <div className={styles.viewerMessage}><label htmlFor={messageId}>{t('next.dashboard.message')}</label><textarea id={messageId} value={message} maxLength={500} placeholder={t('next.dashboard.messagePlaceholder')} aria-describedby={`${messageId}-help`} disabled={busy} onChange={event => setMessage(event.target.value)} /><small id={`${messageId}-help`}><span>{t('next.dashboard.messageHelp')}</span><span aria-hidden="true">{defaultI18n.number(message.length)}</span></small></div>
   </Dialog>;
+  if (layout === 'compact') {
+    const converted = tracks.some(track => track.route === 'converted');
+    const note = s.state === 'buffering' ? t('next.dashboard.buffering') : s.state === 'paused' ? t('next.dashboard.paused') : converted ? t('next.dashboard.converted') : undefined;
+    return <article className={styles.compactSession} data-state={s.state} aria-label={[title, s.user, s.device].filter(Boolean).join(', ')}>
+      <span className={styles.compactAvatar} style={accountAvatarStyle(s.user)} aria-hidden="true">{s.user.slice(0, 1).toUpperCase()}</span>
+      <button type="button" className={styles.compactOpen} data-session-primary disabled={retained || busy} onClick={() => {if (b.isCurrent()) setMenu(true);}}>
+        <span className={styles.compactWho}><b>{s.user}</b>{s.profile && s.profile !== s.user && <span>{s.profile}</span>}<span>{s.device}</span></span>
+        <span className={styles.compactWhat}><span>{title}{episode && item?.seasonNumber !== undefined && item?.episodeNumber !== undefined ? ` · ${t('title.episodeCode', {season: item.seasonNumber, episode: item.episodeNumber})}` : item?.year ? ` · ${item.year}` : ''}</span>
+          {note && <small data-kind={s.state === 'buffering' ? 'problem' : s.state === 'paused' ? 'paused' : 'converted'}>{note}</small>}</span>
+      </button>
+      {!retained && sessionMenu}
+      {!s.live && !!s.durationMs && <div className={styles.compactProgress} aria-hidden="true"><i style={{width: `${Math.min(100, Math.max(0, s.positionMs / s.durationMs * 100))}%`}}/></div>}
+      {!retained && stopDialog}
+    </article>;
+  }
   if (layout === 'phone') {
     const route = phoneRoute(tracks), routeLabel = route && formatTrackRoute(route), paused = s.state === 'paused';
     const facts = [

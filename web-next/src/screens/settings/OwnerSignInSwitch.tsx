@@ -2,7 +2,7 @@ import {useEffect, useRef, useState, useSyncExternalStore} from 'react';
 import {defaultI18n} from '@i18n';
 import {Button} from '../../kit/controls/Button';
 import {TextField} from '../../kit/controls/Fields';
-import {Dialog} from '../../kit/overlays/Dialog';
+import {SettingsPanel} from '../../kit/settings';
 import {SecureRefusalDialog} from './SecureRefusalDialog';
 import {ownerSwitchContextAllowed} from '../../platform/secure-pending';
 import type {SettingsOwnerSwitch} from './owner-switch';
@@ -46,11 +46,11 @@ export function OwnerSignInSwitch({source, isCurrent, onError, startOver = false
   return <>
     <Button className={startOver ? styles.destructive : undefined} variant="glass" size="small" disabled={state.busy || !!state.preview || state.confirmed} onClick={start}>{t(startOver ? 'next.settingsSpec.server.signin.groups.1.rows.3.control.label' : 'next.settingsSpec.server.signin.groups.1.rows.2.control.label')}</Button>
     <SecureRefusalDialog open={secure} onOpenChange={value => {if (!value) setSecure(false);}} />
-    <Dialog open={open && !!preview} onOpenChange={value => {if (!value) close();}} width={600}
-      title={t(startOver ? 'next.settingsSpec.server.signin.panels.startOverPortico.title' : 'next.settingsSpec.server.signin.panels.switchToPortico.title')} dismissOnBack={!busy && !state.confirmed}
-      dismissOnOutsidePress={!busy && !state.confirmed} showCloseButton={!busy && !state.confirmed}
-      footer={<><Button variant="glass" disabled={busy || state.confirmed} onClick={close}>{t('action.cancel')}</Button>
-        <Button className={startOver ? styles.destructive : undefined} disabled={busy || startOver && confirmation !== preview?.serverName} onClick={proceed}>{t(startOver ? 'next.settingsSpec.server.signin.panels.startOverPortico.footer.primary' : 'next.settingsSpec.server.signin.panels.switchToPortico.footer.primary')}</Button></>}>
+    <SettingsPanel open={open && !!preview} onClose={close} audience={t('next.shell.serverVisibility.ownerShared')}
+      title={t(startOver ? 'next.settingsSpec.server.signin.panels.startOverPortico.title' : 'next.settingsSpec.server.signin.panels.switchToPortico.title')}
+      dismissOnBack={!busy && !state.confirmed} showCloseButton={!busy && !state.confirmed}
+      confirm={{label: t(startOver ? 'next.settingsSpec.server.signin.panels.startOverPortico.footer.primary' : 'next.settingsSpec.server.signin.panels.switchToPortico.footer.primary'),
+        pending: busy, cancelDisabled: state.confirmed, destructive: startOver, disabled: busy || startOver && confirmation !== preview?.serverName, onConfirm: proceed}}>
       {preview && startOver ? <div className={styles.preview}>
         <p>{preview.serverName}</p>
         <h3>{t('next.settingsSpec.server.signin.panels.startOverPortico.groups.0.title')}</h3>
@@ -87,6 +87,6 @@ export function OwnerSignInSwitch({source, isCurrent, onError, startOver = false
         <dl><dt>{t('next.settingsSpec.server.signin.panels.switchToPortico.groups.2.rows.0.label')}</dt><dd/>
           <dt>{t('next.settingsSpec.server.signin.panels.switchToPortico.groups.2.rows.1.label')}</dt><dd>{defaultI18n.number(preview.profiles)}<p>{t('next.settingsSpec.server.signin.panels.switchToPortico.groups.2.rows.1.help')}</p></dd></dl>
       </div>}
-    </Dialog>
+    </SettingsPanel>
   </>;
 }

@@ -1,47 +1,41 @@
 import {useEffect, useSyncExternalStore} from 'react';
 import {defaultI18n, type MessageId} from '@i18n';
 import {errorMessage} from '@core/presentation/errors.ts';
-import {Button, TextField} from '../../../../kit/controls';
-import {SettingsRow} from '../../../../kit/shell/SettingsSurfaces';
-import {RecordingStorage as StorageMeter} from '../../../../kit/dvr/RecordingsLayout';
+import {Button, Select, TextField} from '../../../../kit/controls';
+import {LiveSettingRow} from '../../../live/owner/LiveSettingRow';
+import {matchingPreset, retentionPresets, spacePresets} from '../../../live/owner/settings-presets';
 import type {RecordingStorageController} from './storage-controller';
 import styles from '../../../live/owner/owner.module.css';
 const t = defaultI18n.t;
-export function RecordingStorage({controller, embedded = false}: {embedded?: boolean; controller: RecordingStorageController}) {
+export function RecordingStorage({controller, advanced = false}: {advanced?: boolean; controller: RecordingStorageController}) {
   const state = useSyncExternalStore(controller.subscribe, controller.getSnapshot, controller.getSnapshot), {storage, draft} = state;
-  useEffect(() => {void controller.load();}, [controller]);
+  useEffect(() => {if (!advanced) void controller.load();}, [controller, advanced]);
   if (!controller.isActive()) return null;
+  const number = (id: MessageId, help: MessageId, value: number, baseline: number, max: number, set: (value: number) => void, unit?: MessageId) => <LiveSettingRow label={t(id)} help={t(help)} value={value} defaultValue={baseline} reset={() => set(baseline)}>
+    <TextField type="number" variant="setting" value={value} min={0} max={max} step={1} required disabled={state.loading || state.saving} aria-label={t(id)} onChange={event => {const value = event.currentTarget.valueAsNumber;if (controller.isActive() && Number.isSafeInteger(value) && value >= 0 && value <= max) set(value);}}/>{unit && <span className={styles.unit}>{t(unit)}</span>}</LiveSettingRow>;
+  if (advanced) return draft && <div className={styles.sources}>
+    {number('web.liveTv.keepRecordings', 'web.liveTv.keepRecordingsHelp', draft.retentionDays, 0, 3650, retentionDays => controller.edit({retentionDays}), 'settings.unit.days')}
+    {number('web.liveTv.episodesPerSeries', 'web.liveTv.episodesPerSeriesHelp', draft.episodeLimit, 0, 100000, episodeLimit => controller.edit({episodeLimit}))}
+    {number('web.liveTv.leaveFree', 'web.liveTv.leaveFreeHelp', draft.floorBytes / 1e9, 10, 9007199, value => controller.edit({floorBytes: value * 1e9}), 'web.liveTv.gbUnit')}
+    {number('web.liveTv.capUpTo', 'web.liveTv.capUpToHelp', draft.capBytes / 1e9, 0, 9007199, value => controller.edit({capBytes: value * 1e9}), 'web.liveTv.gbUnit')}
+  </div>;
   const measured = !!storage?.measurement.measuredAt;
-  const measuredBytes = (value: number) => measured ? defaultI18n.bytes(value) : t('server.usage.notMeasuredYet');
-  const dirty = !!storage && !!draft && JSON.stringify(storage.policy) !== JSON.stringify(draft);
-  const number = (id: MessageId, help: MessageId, value: number, max: number, set: (value: number) => void, unit?: MessageId) => <SettingsRow label={t(id)} help={t(help)}>
-    <TextField type="number" variant="setting" value={value} min={0} max={max} step={1} required disabled={state.loading || state.saving} aria-label={t(id)} onChange={event => {const value = event.currentTarget.valueAsNumber;if (controller.isActive() && Number.isSafeInteger(value) && value >= 0 && value <= max) set(value);}}/>{unit && <span className={styles.unit}>{t(unit)}</span>}</SettingsRow>;
-  return <form onSubmit={event => {event.preventDefault();if (!embedded && controller.isActive() && event.currentTarget.reportValidity()) void controller.save();}}>
-    <section className={styles.section}><div className={styles.heading}><h3>{t('channels.recordings')}</h3><div className={styles.actions}>
-      {storage?.measurement.measuredAt && <span className={styles.fresh}>{t('freshness.measured', {when: defaultI18n.relativeTime(Date.parse(storage.measurement.measuredAt))})}</span>}
-      <Button variant="icon" size="small" icon="i-refresh" iconOnly disabled={state.loading || state.saving || dirty} aria-label={t('action.refresh')} onClick={() => void controller.load()}/>
-    </div></div><p className={styles.lede}>{t('web.liveTv.recordingsLede')}</p>
-    {!!state.error && <p role="alert" className={styles.error}>{errorMessage(state.error)}</p>}
+  const retention = draft ? matchingPreset(retentionPresets, draft) : 'custom', space = draft ? matchingPreset(spacePresets, draft) : 'custom';
+  return <section className={styles.section}><div className={styles.heading}><h3>{t('channels.recordings')}</h3></div>
+    {!!state.error && <p role="alert" className={styles.error}>{errorMessage(state.error)}<Button size="small" disabled={state.saving} onClick={() => {if (draft && storage && JSON.stringify(draft) !== JSON.stringify(storage.policy)) void controller.save();else void controller.load();}}>{t('action.tryAgain')}</Button></p>}
     {!storage && state.loading && <p role="status">{t('status.loading')}</p>}
-    {storage && draft && <>
-      <div className={styles.sources}><SettingsRow label={t('web.liveTv.space')}><dl>
-        {([
-          ['server.live.usedByRecordings', measuredBytes(storage.measurement.usedBytes)], ['server.live.freeOnVolume', measuredBytes(storage.measurement.freeBytes)],
-          ['web.liveTv.space.reserved', measuredBytes(storage.measurement.reservedBytes)], ['web.liveTv.space.waitingDelete', defaultI18n.bytes(storage.pendingDeleteBytes)],
-          ['web.liveTv.space.forecast', t('web.liveTv.space.forecastOver', {size: defaultI18n.bytes(storage.forecastBytes), hours: storage.forecastHours})],
-        ] as const).map(([key, value]) => <div key={key}><dt>{t(key)}</dt><dd>{value}</dd></div>)}
-      </dl></SettingsRow>
-      {measured && <StorageMeter used={t('next.live.storageUsed', {amount: Math.round(storage.measurement.usedBytes / 1e9)})} free={t('next.live.storageFree', {amount: Math.round(storage.measurement.freeBytes / 1e9)})}
-        remaining="" label={t('recordings.storage')} fraction={storage.measurement.usedBytes / Math.max(1, storage.policy.capBytes || storage.measurement.usedBytes + storage.measurement.freeBytes)}/>}
-      {!!storage.forecastDescription && <p className={styles.lede}>{storage.forecastDescription}</p>}
-      {number('web.liveTv.keepRecordings', 'web.liveTv.keepRecordingsHelp', draft.retentionDays, 3650, retentionDays => controller.edit({retentionDays}), 'settings.unit.days')}
-      {number('web.liveTv.episodesPerSeries', 'web.liveTv.episodesPerSeriesHelp', draft.episodeLimit, 100000, episodeLimit => controller.edit({episodeLimit}))}
-      {number('web.liveTv.leaveFree', 'web.liveTv.leaveFreeHelp', Math.round(draft.floorBytes / 1e9), 9007199, value => controller.edit({floorBytes: value * 1e9}), 'web.liveTv.gbUnit')}
-      {number('web.liveTv.capUpTo', 'web.liveTv.capUpToHelp', Math.round(draft.capBytes / 1e9), 9007199, value => controller.edit({capBytes: value * 1e9}), 'web.liveTv.gbUnit')}
-      </div>
+    {storage && draft && <div className={styles.sources}>
+      <LiveSettingRow label={t('next.settingsSpec.server.live.groups.6.rows.2.label')} value={retention} defaultValue="all" reset={() => controller.edit(retentionPresets.all)}>
+        <Select value={retention} disabled={state.saving || state.loading} aria-label={t('next.settingsSpec.server.live.groups.6.rows.2.label')}
+          options={['all', 'd30', 'd90', 'n5', 'n10', 'custom'].map((value, index) => ({value, disabled: value === 'custom', label: t(`next.settingsSpec.server.live.groups.6.rows.2.control.options.${index}.label` as MessageId)}))}
+          onValueChange={value => {if (value in retentionPresets) controller.edit(retentionPresets[value as keyof typeof retentionPresets]);}}/>
+      </LiveSettingRow>
+      <LiveSettingRow label={t('next.settingsSpec.server.live.groups.7.rows.1.label')} help={measured ? `${t('server.live.usedByRecordings')}: ${defaultI18n.bytes(storage.measurement.usedBytes)}. ${t('server.live.freeOnVolume')}: ${defaultI18n.bytes(storage.measurement.freeBytes)}.` : t('server.usage.notMeasuredYet')} value={space} defaultValue="free10" reset={() => controller.edit(spacePresets.free10)}>
+        <Select value={space} disabled={state.saving || state.loading} aria-label={t('next.settingsSpec.server.live.groups.7.rows.1.label')}
+          options={['free10', 'up250', 'up500', 'up1000', 'custom'].map((value, index) => ({value, disabled: value === 'custom', label: t(`next.settingsSpec.server.live.groups.7.rows.1.control.options.${index}.label` as MessageId)}))}
+          onValueChange={value => {if (value in spacePresets) controller.edit(spacePresets[value as keyof typeof spacePresets]);}}/>
+      </LiveSettingRow>
       {measured && !storage.measurement.writeHealthy && <p role="alert" className={styles.error}>{t('web.liveTv.notWritable')}</p>}
-    </>}
-    </section>
-    {!embedded && dirty && <div className={styles.save}><Button variant="text" size="small" disabled={state.saving} onClick={() => controller.discard()}>{t('action.discard')}</Button><Button variant="primary" size="small" type="submit" loading={state.saving}>{t('action.save')}</Button></div>}
-  </form>;
+    </div>}
+  </section>;
 }

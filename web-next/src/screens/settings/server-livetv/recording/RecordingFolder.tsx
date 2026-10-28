@@ -12,7 +12,7 @@ export function RecordingFolder({controller, api}: {controller: RecordingRootCon
   const state = useSyncExternalStore(controller.subscribe, controller.getSnapshot, controller.getSnapshot);
   const [open, setOpen] = useState(false), opener = useRef<HTMLButtonElement>(null);
   useEffect(() => {void controller.load();}, [controller]);
-  const choose = useCallback((path: string) => {if (controller.isActive()) {controller.choose(path);setOpen(false);}}, [controller]);
+  const choose = useCallback((path: string) => {if (controller.isActive()) {controller.choose(path);setOpen(false);void controller.save();}}, [controller]);
   if (!controller.isActive() || state.unsupported) return null;
   return <section className={styles.section}>
     <SettingsRow label={t('web.liveTv.recordingFolder')} help={t('web.liveTv.recordingFolderHelp')}>
@@ -22,7 +22,7 @@ export function RecordingFolder({controller, api}: {controller: RecordingRootCon
     {state.terminalRequest && <p role="status">{t('web.liveTv.recordingFolderRequestRetired')}</p>}
     {state.loading && <p role="status">{t('status.loading')}</p>}
     {!!state.error && <p role="alert" className={styles.error}>{errorMessage(state.error)}</p>}
-    {!!state.error && !state.uncertain && <Button size="small" variant="text" onClick={() => void controller.load(true)}>{t('action.tryAgain')}</Button>}
+    {!!state.error && <Button size="small" variant="text" onClick={() => {if (controller.dirty()) void controller.save();else void controller.load(true);}}>{t('action.tryAgain')}</Button>}
     {state.status && <p className={styles.lede} style={{overflowWrap: 'anywhere'}}>{t('web.liveTv.recordingFolderEffective', {path: state.status.effective || t('web.liveTv.recordingFolderUnset')})}</p>}
     {state.status?.pendingRestart && <p role="status">{t('web.liveTv.recordingFolderPending')}</p>}
     {state.status?.operatorControlled && <p className={styles.lede}>{t('web.liveTv.recordingFolderOperator')}</p>}

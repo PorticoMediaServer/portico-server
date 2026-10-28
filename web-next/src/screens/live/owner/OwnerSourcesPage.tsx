@@ -5,7 +5,7 @@ import {ConsoleClient} from '@core/console.ts';
 import {liveDefaultsForm, recordingForm} from '@core/server-admin/server-forms.ts';
 import {channelRequestID} from '@core/live-source-draft.ts';
 import {errorMessage} from '@core/presentation/errors.ts';
-import {Button, Tabs} from '../../../kit/controls';
+import {Button} from '../../../kit/controls';
 import {Dialog} from '../../../kit/overlays';
 import {LiveSourceController, type OwnerLiveSource} from './source-controller';
 import {RemoteSourceDialog} from './RemoteSourceDialog';
@@ -14,6 +14,9 @@ import {DiscoverTuners} from './DiscoverTuners';
 import {openingActionAllowed, sourceAdmissionAllowed} from './dialog-lifetime';
 import {SourceList} from './SourceList';
 import {LiveDefaults} from './LiveDefaults';
+import {AutoSaveForm} from './auto-save-form';
+import {SettingsAdvanced} from '../../../kit/settings/SettingsGroups';
+import {RecordingAdvanced} from '../../settings/server-livetv/recording/RecordingPage';
 import {SourceSettingsController} from '../../settings/server-livetv/source-settings-controller';
 import {SourceChoicesController} from '../../settings/server-livetv/source-choices-controller';
 import {ChannelMapController} from '../../settings/server-livetv/channel-map-controller';
@@ -50,8 +53,8 @@ export function createOwnerSources(options: OwnerSourcesOptions) {
     catch (error) {if (terminal(error)) reportError(error);throw error;}
   }};
   const sources = new LiveSourceController(api, options.serverId, current, reportError);
-  const defaults = liveDefaultsForm({api, serverId: options.serverId, console: new ConsoleClient(api, {serverId: options.serverId, viewerId: options.viewerId}), operationId: channelRequestID});
-  const recording = recordingForm({api, serverId: options.serverId, console: new ConsoleClient(api, {serverId: options.serverId, viewerId: options.viewerId}), operationId: channelRequestID});
+  const defaults = new AutoSaveForm(liveDefaultsForm({api, serverId: options.serverId, console: new ConsoleClient(api, {serverId: options.serverId, viewerId: options.viewerId}), operationId: channelRequestID}), current, reportError);
+  const recording = new AutoSaveForm(recordingForm({api, serverId: options.serverId, console: new ConsoleClient(api, {serverId: options.serverId, viewerId: options.viewerId}), operationId: channelRequestID}), current, reportError);
   const permissions = new RecordingPermissionsController(api, options.serverId, current, reportError);
   const rules = new RecordingRulesController(api, options.serverId, permissions, current, reportError);
   const tuners = new TunerController(api, options.serverId, current, reportError);
@@ -67,8 +70,10 @@ export type OwnerSources = ReturnType<typeof createOwnerSources>;
 export function OwnerSourcesPage({source, libraryChannels}: {source: OwnerSources; libraryChannels?: ReactNode}) {
   const snapshot = useSyncExternalStore(source.sources.subscribe, source.sources.getSnapshot, source.sources.getSnapshot);
   const defaults = useSyncExternalStore(source.defaults.subscribe, source.defaults.getSnapshot, source.defaults.getSnapshot);
+  const recordingDefaults = useSyncExternalStore(source.recording.subscribe, source.recording.getSnapshot, source.recording.getSnapshot);
+  const recordingStorage = useSyncExternalStore(source.storage.subscribe, source.storage.getSnapshot, source.storage.getSnapshot);
   const active = useSyncExternalStore(source.subscribe, source.current, () => false);
-  const [modal, setModal] = useState<Modal>(), [tab, setTab] = useState('sources');
+  const [modal, setModal] = useState<Modal>(), [advanced, setAdvanced] = useState(false);
   // Every actual selection is its own opening: a same-tick cancel/reopen of the same kind must not
   // reuse the spent layout effect, so the id keys each dialog and travels with its lease. The
   // parent mints the live token in the event and retires it synchronously before the child can act.
@@ -156,11 +161,26 @@ export function OwnerSourcesPage({source, libraryChannels}: {source: OwnerSource
     opening = {kind: 'discover', id: nextOpening(), token, close: closeDiscover, useTuner};
     replaceModal(opening);
   };
+  const advancedSummary: string[] = [];
+  const liveDraft = defaults.draft, recordingDraft = recordingDefaults.draft, storageDraft = recordingStorage.draft;
+  if (liveDraft) {
+    if (liveDraft.streamBufferMs !== 8000) advancedSummary.push(t('web.dvrSettings.buffer'));
+    if (liveDraft.retryWindowMs !== 60000) advancedSummary.push(t('web.dvrSettings.retryWindow'));
+    if (liveDraft.guideDays !== 7) advancedSummary.push(t('web.dvrSettings.guideDays'));
+    if (liveDraft.userAgent) advancedSummary.push(t('web.dvrSettings.userAgent'));
+    if (!liveDraft.discoveryEnabled) advancedSummary.push(t('web.dvrSettings.discovery'));
+    if (liveDraft.importLimits.channels !== 50000 || liveDraft.importLimits.programmes !== 5000000 || liveDraft.importLimits.bytes !== 512 * 1048576) advancedSummary.push(t('server.live.limits'));
+  }
+  if (recordingDraft) {
+    if (recordingDraft.prePaddingMs !== 60000 || recordingDraft.postPaddingMs !== 180000) advancedSummary.push(t('next.settingsSpec.server.live.groups.6.rows.0.label'));
+    if (recordingDraft.folderTemplate || recordingDraft.movieFolderTemplate) advancedSummary.push(t('next.settingsSpec.server.live.advanced.groups.4.rows.0.label'));
+    if (recordingDraft.keepPolicy.mode !== 'keep-all') advancedSummary.push(t('next.settingsSpec.server.live.advanced.groups.4.rows.3.label'));
+  }
+  if (storageDraft) {
+    if (storageDraft.retentionDays || storageDraft.episodeLimit) advancedSummary.push(t('next.settingsSpec.server.live.groups.6.rows.2.label'));
+    if (storageDraft.floorBytes !== 10e9 || storageDraft.capBytes) advancedSummary.push(t('next.settingsSpec.server.live.groups.7.rows.1.label'));
+  }
   return <>
-    <Tabs value={tab} onValueChange={value => {if (sourceCurrent()) {replaceModal(undefined);setTab(value);}}} aria-label={t('next.settingsSpec.server.live.title')} items={[
-      {value: 'sources', label: t('web.liveTv.sources')}, {value: 'recording', label: t('settings.server.recording')}, ...(libraryChannels ? [{value: 'library-channels', label: t('channels.custom.name')}] : []),
-    ]}/>
-    {tab === 'library-channels' && libraryChannels ? libraryChannels : tab === 'recording' ? <RecordingPage source={source} sources={snapshot.document?.sources ?? []}/> : <>
     {!!snapshot.error && <p role="alert" className={styles.error}>{errorMessage(snapshot.error)}</p>}
     <SourceList snapshot={snapshot} refresh={() => {if (sourceCurrent()) void source.sources.load();}} add={kind => {
       if (!sourceCurrent()) return;
@@ -174,12 +194,20 @@ export function OwnerSourcesPage({source, libraryChannels}: {source: OwnerSource
       act={(selected, action) => {if (!sourceCurrent()) return;if (action === 'remove') replaceModal({kind: 'remove', source: selected});else void source.sources.act(selected, action);}}/>
     {!!defaults.loadError && <p role="alert" className={styles.error}>{errorMessage(defaults.loadError)}<Button size="small" onClick={() => {if (sourceCurrent()) void source.defaults.load();}}>{t('action.tryAgain')}</Button></p>}
     {!!defaults.saveError && <p role="alert" className={styles.error}>{errorMessage(defaults.saveError)}</p>}
-    <LiveDefaults form={source.defaults} isCurrent={sourceCurrent} failure={source.reportError}/>
-    </>}
+    <LiveDefaults form={source.defaults} isCurrent={sourceCurrent}/>
+    <RecordingPage source={source} sources={snapshot.document?.sources ?? []}/>
+    {libraryChannels}
+    <SettingsAdvanced open={advanced} onOpenChange={setAdvanced} summary={advancedSummary}>
+      <LiveDefaults form={source.defaults} isCurrent={sourceCurrent} advanced/>
+      <RecordingAdvanced source={source}/>
+    </SettingsAdvanced>
     {modal?.kind === 'remote' && <RemoteSourceDialog key={modal.id} openingId={modal.id} opening={modal.token} api={source.api} serverId={source.serverId} isCurrent={source.current} reportError={source.reportError} tuner={modal.tuner} close={modal.close} saved={modal.saved}/>}
     {modal?.kind === 'upload' && <UploadSourceDialog key={modal.id} openingId={modal.id} opening={modal.token} api={source.api} serverId={source.serverId} isCurrent={source.current} reportError={source.reportError} close={modal.close} saved={modal.saved}/>}
     {modal?.kind === 'discover' && <DiscoverTuners key={modal.id} openingId={modal.id} opening={modal.token} api={source.api} serverId={source.serverId} isCurrent={source.current} reportError={source.reportError} close={modal.close} onUseTuner={modal.useTuner}/>}
-    {modal?.kind === 'settings' && <SourceSettingsDialog controller={modal.controller} choices={modal.choices} name={modal.source.name} guides={snapshot.document?.sources ?? []} acquisition={modal.source.acquisition} close={close} changed={() => {if (sourceCurrent() && modalRef.current === modal) void source.sources.load();}}/>}
+    {modal?.kind === 'settings' && <SourceSettingsDialog controller={modal.controller} choices={modal.choices} name={modal.source.name} guides={snapshot.document?.sources ?? []} acquisition={modal.source.acquisition} enabled={snapshot.document?.sources.some(row => row.id === modal.source.id) ? snapshot.document.sources.find(row => row.id === modal.source.id)!.state !== 'disabled' : undefined} sourceBusy={!!snapshot.busy || snapshot.loading} setEnabled={enabled => {
+      const latest = source.sources.getSnapshot(), selected = latest.document?.sources.find(row => row.id === modal.source.id);
+      if (sourceCurrent() && modalRef.current === modal && !latest.busy && !latest.loading && selected && (selected.state !== 'disabled') !== enabled) void source.sources.act(selected, 'toggle');
+    }} close={close} changed={() => {if (sourceCurrent() && modalRef.current === modal) void source.sources.load();}}/>}
     {modal?.kind === 'channels' && <ChannelMapDialog controller={modal.controller} name={modal.source.name} close={close}/>}
     {modal?.kind === 'remove' && <Dialog open title={t('web.liveTv.removeTitle', {name: modal.source.name})} description={t('web.liveTv.removeBody')} onOpenChange={open => {if (!open) close();}}
       footer={<><Button size="small" variant="text" onClick={close}>{t('action.cancel')}</Button><Button size="small" variant="primary" loading={!!snapshot.busy} onClick={() => {if (sourceCurrent()) void source.sources.act(modal.source, 'remove').then(ok => {if (ok && sourceCurrent()) closeExact(modal);});}}>{t('web.liveTv.removeSource')}</Button></>}><></></Dialog>}

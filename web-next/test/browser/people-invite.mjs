@@ -15,10 +15,10 @@ const bindings = {
  authority: {scope: {serverId: 'server', authority: 'local', accountId: 'owner', profileId: 'main', sessionFamilyId: 'session'},
  isCurrent: () => current, subscribe: () => () => {}, onAuthorityChanged: () => {retirements++; current = false;}},
  openHome() {}, reportError() {reports++;},
- invitations: {shortCode: async () => {issues++;throw new Error('test issue refusal');}, create: (body) => {calls.push(body);return new Promise((resolve, reject) => waiting.push({resolve, reject}));}}
+ invitations: {link: async () => 'https://web.getportico.tv/join#code=' + 'a'.repeat(43) + '&server=https%3A%2F%2Fserver.example&id=server', shortCode: async () => {issues++;throw new Error('test issue refusal');}, create: (body) => {calls.push(body);return new Promise((resolve, reject) => waiting.push({resolve, reject}));}}
 };
 window.probe = {calls, get reports() {return reports;}, get retirements() {return retirements;}, get issues() {return issues;},
- reject: (status) => waiting.shift().reject({status}), resolve: (state) => waiting.shift().resolve({id: 'invite', revision: 1, state}),
+ reject: (status) => waiting.shift().reject({status}), resolve: (state) => waiting.shift().resolve({id: 'invite', revision: 1, state, role: 'member', allowedLibraries: [], createdAt: new Date().toISOString(), expiresAt: new Date(Date.now() + 86400000).toISOString(), notes: 'Private invitation note'}),
  mount: () => root.render(<PeopleScreen bindings={bindings}/>), unmount: () => root.render(null)};
 const root = createRoot(document.getElementById('root'));
 window.probe.mount();`;
@@ -51,9 +51,9 @@ try {
  await page.waitForFunction(() => probe.calls.length === 1);
  await page.keyboard.press('Escape');
  await page.mouse.click(1, 1);
- assert.equal(await page.getByRole('dialog', {name: 'Invite someone', exact: true}).count(), 1);
- await page.getByRole('button', {name: 'Close', exact: true}).click();
- assert.equal(await page.getByRole('dialog', {name: 'Invite someone', exact: true}).count(), 1);
+ assert.equal(await page.getByRole('dialog', {name: /Invite someone$/}).count(), 1);
+ assert.equal(await page.getByRole('button', {name: 'Close', exact: true}).count(), 0, 'busy create does not expose a dismiss button');
+ assert.equal(await page.getByRole('dialog', {name: /Invite someone$/}).count(), 1);
  await page.evaluate(() => probe.reject(503));
  await page.getByRole('button', {name: /Retry/}).waitFor();
  assert.equal(await page.evaluate(() => probe.reports), 0);
@@ -70,6 +70,10 @@ try {
  // A valid receipt clears the operation; another explicit invite gets a new id.
  await page.evaluate(() => probe.resolve('pending'));
  await page.waitForFunction(() => probe.issues === 1);
+ const ready = page.getByRole('dialog', {name: 'Invitation ready', exact: true});
+ await ready.getByRole('img', {name: /QR/i}).waitFor();
+ assert.equal(await ready.getByText('Private invitation note').count(), 0, 'share card must not show private notes');
+ assert.equal(await ready.getByRole('button', {name: 'Copy link', exact: true}).count(), 1);
  await page.getByRole('button', {name: 'Close', exact: true}).first().click();
  await invite.click();
  await page.getByRole('button', {name: 'Create invitation', exact: true}).click();

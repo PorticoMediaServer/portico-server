@@ -43,6 +43,7 @@ export class RecordingPermissionsController extends OwnerStore<State> {
     if (!change.enabled) change.inheritProfiles = false;
     const edits = {...this.snapshot.edits};if (JSON.stringify(change) === JSON.stringify(original)) delete edits[key];else edits[key] = Object.freeze(change);
     this.publish({...this.snapshot, edits: Object.freeze(edits), error: undefined});
+    void this.save();
   }
   discard() {if (this.isActive() && !this.snapshot.saving && !this.pending) this.publish({...this.snapshot, edits: Object.freeze({}), error: undefined});}
   async save() {

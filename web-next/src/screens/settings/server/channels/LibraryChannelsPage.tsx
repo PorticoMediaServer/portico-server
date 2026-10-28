@@ -1,4 +1,4 @@
-import {useCallback, useLayoutEffect, useMemo, useState, useSyncExternalStore} from 'react';
+import {useCallback, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore} from 'react';
 import {defaultI18n} from '@i18n';
 import type {LibraryChannel, LibraryChannelTemplate} from '@core/library-channels.ts';
 import {Button} from '../../../../kit/controls';
@@ -13,6 +13,7 @@ import {SettingsChannelActionsSource} from './channel-actions-source';
 import {SettingsChannelLogoSource} from './channel-logo-source';
 import type {LibraryChannelsPageProps} from './types';
 import styles from './channels.module.css';
+import {moveLibraryChannelTo} from './reorder-library-channels';
 
 const t = defaultI18n.t;
 let editorSequence = 0;
@@ -49,27 +50,41 @@ function ChannelPageBody({sources, ports}: Readonly<{sources: Sources; ports: Li
   const logo = useSyncExternalStore(sources.logos.subscribe, sources.logos.getSnapshot, sources.logos.getSnapshot);
   const presets = useSyncExternalStore(sources.presets.subscribe, sources.presets.getSnapshot, sources.presets.getSnapshot);
   const [presetToken, setPresetToken] = useState<{id:number}>();
-  const [modal, setModal] = useState<Modal>(), [editorToken, setEditorToken] = useState<{id: number}>();
+  const [modal, setModal] = useState<Modal>(), [editorToken, setEditorToken] = useState<{id: number; creating: boolean}>();
+  const lastCreating = useRef(false), moving = useRef(false);
+  const [reordering, setReordering] = useState(false), [reorderError, setReorderError] = useState(false), [announcement, setAnnouncement] = useState('');
   const view = useMemo<{active: boolean; source: Sources; modal?: Modal; editor?: object; preset?: object}>(() => ({active: true, source: sources}), [sources]);
   useLayoutEffect(() => {view.active = true;return () => {view.active = false;view.modal = undefined;view.editor = undefined;view.preset = undefined;};}, [view]);
   const current = useCallback(() => view.active && view.source === sources && sources.current(), [view, sources]);
   const editorCurrent = useCallback(() => current() && editorToken !== undefined && view.editor === editorToken, [current, editorToken, view]);
   const presetCurrent = useCallback(() => current() && presetToken !== undefined && view.preset === presetToken, [current, presetToken, view]);
-  const openPresets = () => {if (!current() || sources.presets.getSnapshot().busy) return;const token = {id:++editorSequence};view.preset = token;setPresetToken(token);};
+  const openPresets = () => {if (!current() || moving.current || sources.presets.getSnapshot().busy) return;const token = {id:++editorSequence};view.preset = token;setPresetToken(token);};
   const closePresets = () => {if (!presetCurrent() || sources.presets.getSnapshot().busy) return;view.preset = undefined;setPresetToken(undefined);};
-  const blocked = presets.busy || !!presets.pending || presets.reconcile || editor.busy || action.busy || logo.busy || !!editor.pending || !!action.pending || !!logo.pending || editor.phase !== 'closed';
+  const blocked = reordering || presets.busy || !!presets.pending || presets.reconcile || editor.busy || action.busy || logo.busy || !!editor.pending || !!action.pending || !!logo.pending || editor.phase !== 'closed';
   const create = (template?: LibraryChannelTemplate) => {
-    if (!current() || blocked) return;
-    const token = {id: ++editorSequence};view.editor = token;setEditorToken(token);
+    if (!current() || blocked || moving.current) return;
+    const token = {id: ++editorSequence, creating: true};lastCreating.current = true;view.editor = token;setEditorToken(token);
     if (template) sources.editor.template(template, ports.timeZone);else void sources.editor.blank(ports.timeZone);
   };
   const closeEditor = () => {if (!editorCurrent() || sources.editor.getSnapshot().busy) return;sources.editor.close();view.editor = undefined;setEditorToken(undefined);};
   const close = () => {if (!current() || view.modal !== modal || sources.actions.getSnapshot().busy || sources.logos.getSnapshot().busy) return;view.modal = undefined;setModal(undefined);};
   const actionOn = (channel: LibraryChannel, kind: ChannelAction) => {
-    if (!current() || blocked || !sources.reader.getSnapshot().channels?.includes(channel)) return;
-    if (kind === 'edit') {const token = {id: ++editorSequence};view.editor = token;setEditorToken(token);sources.editor.edit(channel);}
+    if (!current() || blocked || moving.current || !sources.reader.getSnapshot().channels?.includes(channel)) return;
+    if (kind === 'edit') {const token = {id: ++editorSequence, creating: false};lastCreating.current = false;view.editor = token;setEditorToken(token);sources.editor.edit(channel);}
     else if (kind === 'logo' || kind === 'delete') {const next = {kind, channel};view.modal = next;setModal(next);}
     else void sources.actions.perform(channel, kind === 'up' || kind === 'down' ? 'move' : kind, kind === 'up' ? -1 : kind === 'down' ? 1 : undefined);
+  };
+  const reorder = async (channel: LibraryChannel, target: number) => {
+    if (!current() || blocked || moving.current) return;
+    moving.current = true;setReordering(true);setReorderError(false);setAnnouncement('');
+    try {
+      const done = await moveLibraryChannelTo(channel, target, {current, rows: () => sources.reader.getSnapshot().phase === 'ready' ? sources.reader.getSnapshot().channels : undefined, move: (selected, direction) => sources.actions.perform(selected, 'move', direction)});
+      if (current()) {
+        setReorderError(!done);
+        if (done) setAnnouncement(t('next.settings.moved', {name: channel.config.name, position: target + 1, count: sources.reader.getSnapshot().channels?.length ?? 0}));
+      }
+    } catch {if (current()) setReorderError(true);}
+    finally {moving.current = false;if (current()) setReordering(false);}
   };
   const held = modal && current() && view.modal === modal ? modal : undefined;
   const selected = () => !!held && current() && view.modal === held && sources.reader.getSnapshot().channels?.includes(held.channel) === true;
@@ -77,12 +92,14 @@ function ChannelPageBody({sources, ports}: Readonly<{sources: Sources; ports: Li
   const chooseLogo = async (file: File | undefined) => {const captured = held;if (!captured || captured.kind !== 'logo' || !file || !selected()) return;const done = await sources.logos.choose(captured.channel, file);if (done && current() && view.modal === captured) close();};
   if (!current()) return null;
   return <>
-    {editor.pending && editor.phase === 'closed' && <div className={styles.warning} role="alert"><p>{t('error.unconfirmedChange')}</p><Button size="small" onClick={() => {if (!current() || sources.editor.getSnapshot().busy) return;const token = {id: ++editorSequence};view.editor = token;setEditorToken(token);sources.editor.resume();}}>{t('action.tryAgain')}</Button></div>}
+    {editor.pending && editor.phase === 'closed' && <div className={styles.warning} role="alert"><p>{t('error.unconfirmedChange')}</p><Button size="small" onClick={() => {if (!current() || sources.editor.getSnapshot().busy) return;const token = {id: ++editorSequence, creating: lastCreating.current};view.editor = token;setEditorToken(token);sources.editor.resume();}}>{t('action.tryAgain')}</Button></div>}
     {action.error && <div className={styles.warning} role="alert"><p>{t(action.pending ? 'error.unconfirmedChange' : 'error.unavailable')}</p>{action.pending && <Button size="small" disabled={action.busy} onClick={() => {if (current()) void sources.actions.retry();}}>{t('action.tryAgain')}</Button>}</div>}
     {logo.error && <div className={styles.warning} role="alert"><p>{t(logo.pending ? 'error.unconfirmedChange' : 'web.libraryChannels.logoSaveFailed')}</p>{logo.pending && <Button size="small" disabled={logo.busy} onClick={() => {if (current()) void sources.logos.retry();}}>{t('action.tryAgain')}</Button>}</div>}
     {(presets.pending || presets.reconcile) && !presetToken && <div className={styles.warning} role="alert"><p>{t('error.unconfirmedChange')}</p><Button size="small" disabled={presets.busy} onClick={openPresets}>{t('action.tryAgain')}</Button></div>}
-    <LibraryChannels source={sources.reader} isCurrent={current} busy={blocked} logo={channel => ports.logo(channel, sources.logos.revision(channel.config.id))} create={create} action={actionOn}/>
-    {editorToken && <ChannelEditor key={editorToken.id} source={sources.editor} api={ports.api} reportError={sources.report} openPresets={() => {if (editorCurrent()) openPresets();}} presets={sources.presets} libraries={ports.libraries} isCurrent={editorCurrent} close={closeEditor}/>}
+    {reorderError && <p role="alert" className={styles.warning}>{t('error.unavailable')}</p>}
+    <span className={styles.srOnly} role="status">{announcement}</span>
+    <LibraryChannels source={sources.reader} isCurrent={current} busy={blocked} logo={channel => ports.logo(channel, sources.logos.revision(channel.config.id))} create={create} action={actionOn} reorder={(channel, target) => {void reorder(channel, target);}}/>
+    {editorToken && <ChannelEditor key={editorToken.id} creating={editorToken.creating} sampleArt={ports.sampleArt} source={sources.editor} api={ports.api} reportError={sources.report} openPresets={() => {if (editorCurrent()) openPresets();}} presets={sources.presets} libraries={ports.libraries} isCurrent={editorCurrent} close={closeEditor}/>}
     {presetToken && <BlockPresets key={presetToken.id} source={sources.presets} api={ports.api} libraries={ports.libraries} isCurrent={presetCurrent} reportError={sources.report} close={closePresets}/>}
     <Dialog open={held?.kind === 'delete'} title={t('web.libraryChannels.deleteTitle', {name: held?.channel.config.name ?? ''})} description={t('web.libraryChannels.deleteBody')} onOpenChange={value => {if (!value) close();}} dismissOnBack={!action.busy} dismissOnOutsidePress={!action.busy} showCloseButton={!action.busy}
       footer={<><Button size="compact" variant="glass" disabled={action.busy} onClick={close}>{t('action.cancel')}</Button><Button size="compact" variant="glass" className={styles.danger} disabled={action.busy} onClick={() => {void remove();}}>{t('web.libraryChannels.delete')}</Button></>}><></></Dialog>

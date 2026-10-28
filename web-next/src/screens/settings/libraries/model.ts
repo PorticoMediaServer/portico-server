@@ -1,6 +1,8 @@
 import type {ManagedLibrary} from '@core/library-management.ts';
 import type {InventorySource} from '@core/library-inventory.ts';
 import {defaultI18n, type MessageId} from '@i18n';
+import {movedLibraryIds} from './library-order';
+export {movedLibraryIds} from './library-order';
 
 /** The seven drawn kinds, in the order Portico lists them. */
 export const libraryKindIds = Object.freeze(['movie', 'tv', 'anime', 'music', 'audiobook', 'book', 'comic'] as const);
@@ -28,7 +30,7 @@ export const metadataAgentFor = (kind: ManagedLibrary['kind']): 'local' | 'onlin
 
 /** One drawn Libraries row: the library's own name, folder and scan state. */
 export type LibraryRowModel = Readonly<{
-  id: string; name: string; folder: string;
+  id: string; name: string; folder: string; kind: LibraryKind;
   scanning: boolean; canScan: boolean; canMoveUp: boolean; canMoveDown: boolean;
 }>;
 
@@ -41,6 +43,7 @@ export function libraryRows(libraries: readonly ManagedLibrary[]): readonly Libr
   return libraries.map((library, index) => Object.freeze({
     id: library.id,
     name: library.name,
+    kind: library.kind,
     folder: library.source.path,
     scanning: scanning(library),
     canScan: library.actions.includes('scan') && !scanning(library),
@@ -51,11 +54,7 @@ export function libraryRows(libraries: readonly ManagedLibrary[]): readonly Libr
 
 /** Stable complete order, or undefined when the move changes nothing. */
 export function movedIds(libraries: readonly ManagedLibrary[], id: string, offset: -1 | 1): readonly string[] | undefined {
-  const ids = libraries.map(library => library.id), from = ids.indexOf(id), to = from + offset;
-  if (from < 0 || to < 0 || to >= ids.length) return undefined;
-  const next = [...ids];
-  next.splice(to, 0, ...next.splice(from, 1));
-  return next;
+  return movedLibraryIds(libraries, id, libraries.findIndex(library => library.id === id) + offset);
 }
 
 /** The two scan commands the drawn library page carries as action rows. */

@@ -7,7 +7,7 @@ import styles from './settings.module.css';
 
 export function SettingsWorkspace({navigation, children, scope, compactPage = false, onBack}: {navigation: ReactNode; children: ReactNode; scope: 'account' | 'server'; compactPage?: boolean; onBack: () => void}) {
   return <div className={styles.workspace} data-scope={scope} data-compact-page={compactPage || undefined}>
-    {scope === 'server' && <ServerBand />}<div className={styles.master}>{navigation}</div>
+    {scope === 'server' ? <ServerBand /> : <div className={styles.accountGlow} aria-hidden="true" />}<div className={styles.master}>{navigation}</div>
     <div className={styles.detail}><div className={styles.compactBack}><PushedNavBar backLabel={defaultI18n.t('next.shell.settings')} onBack={onBack} safeArea={false} /></div>{children}</div>
   </div>;
 }

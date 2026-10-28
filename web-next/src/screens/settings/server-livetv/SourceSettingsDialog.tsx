@@ -1,4 +1,4 @@
-import {useEffect, useRef, useSyncExternalStore} from 'react';
+import {useEffect, useRef, useState, useSyncExternalStore} from 'react';
 import {defaultI18n, type MessageId} from '@i18n';
 import type {LiveSourceKind} from '@core/administration.ts';
 import {guideOnlyPatch} from '@core/server-admin/panel-logic.ts';
@@ -10,19 +10,30 @@ import {dialogAction} from '../../live/owner/dialog-lifetime';
 import type {SourceSettingsController} from './source-settings-controller';
 import type {SourceChoicesController} from './source-choices-controller';
 import {SourceChoicePicker} from './SourceChoicePicker';
+import {bufferingPresets, matchingPreset} from '../../live/owner/settings-presets';
+import {SettingsAdvanced} from '../../../kit/settings/SettingsGroups';
 import styles from './source-settings.module.css';
 const t = defaultI18n.t;
 const kinds: Record<LiveSourceKind, MessageId> = {playlist: 'server.live.sourceKind.playlist', 'xmltv-guide': 'server.live.sourceKind.guide', hdhomerun: 'server.live.sourceKind.tuner'};
 const filters = {categories: 'server.live.filter.categories', countries: 'server.live.filter.countries', keywords: 'server.live.filter.keywords'} as const;
-export function SourceSettingsDialog({controller, choices, name, guides, acquisition, close, changed}: {controller: SourceSettingsController; choices: {groups: SourceChoicesController; channels: SourceChoicesController}; name: string; guides: readonly {id: string; name: string}[]; acquisition?: 'upload' | 'remote'; close: () => void; changed: () => void}) {
+export function SourceSettingsDialog({controller, choices, name, guides, acquisition, close, changed, enabled, setEnabled, sourceBusy = false}: {controller: SourceSettingsController; choices: {groups: SourceChoicesController; channels: SourceChoicesController}; name: string; guides: readonly {id: string; name: string}[]; acquisition?: 'upload' | 'remote'; enabled?: boolean; setEnabled?: (enabled: boolean) => void; sourceBusy?: boolean; close: () => void; changed: () => void}) {
   const owner = useRef(controller);owner.current = controller;
+  const [advanced, setAdvanced] = useState(false), [channelChoice, setChannelChoice] = useState<string>();
   const state = useSyncExternalStore(controller.subscribe, controller.getSnapshot, controller.getSnapshot), {draft, document: doc} = state;
-  useEffect(() => {void controller.load();return () => {controller.dispose();choices.groups.dispose();choices.channels.dispose();};}, [controller, choices]);
+  useEffect(() => {setChannelChoice(undefined);setAdvanced(false);void controller.load();return () => {controller.dispose();choices.groups.dispose();choices.channels.dispose();};}, [controller, choices]);
   const act = (callback: () => void) => dialogAction(owner, controller, callback);
-  const busy = state.saving || state.loading || !!state.logoBusy, dirty = !!draft && !!doc && JSON.stringify(draft) !== JSON.stringify(doc.settings), guideOnly = draft?.kind === 'xmltv-guide';
+  const busy = state.saving || state.loading || !!state.logoBusy || sourceBusy, dirty = !!draft && !!doc && JSON.stringify(draft) !== JSON.stringify(doc.settings), guideOnly = draft?.kind === 'xmltv-guide';
   const closeCurrent = act(() => {controller.dispose();if (owner.current === controller) close();});
   const number = (label: MessageId, value: number | null, set: (value: number | null) => void, scale = 1, max = 10000000, placeholder?: string) => <TextField label={t(label)} type="number" min={0} max={max} step={1} disabled={busy} value={value === null ? '' : value / scale} placeholder={placeholder}
     onChange={event => {const value = event.currentTarget.value === '' ? null : event.currentTarget.valueAsNumber;if (value === null || Number.isSafeInteger(value) && value >= 0 && value <= max) {if (owner.current === controller && controller.isActive()) set(value === null ? null : value * scale);}}}/>;
+  const filterActive = !!draft && Object.values(draft.filters).some(rule => rule.values.length);
+  const modes = [draft?.enabledGroups.length ? 'groups' : '', draft?.enabledChannels.length ? 'picked' : '', filterActive ? 'filter' : ''].filter(Boolean);
+  const included = channelChoice ?? (modes.length > 1 ? 'custom' : modes[0] || 'all');
+  const chooseChannels = (value: string) => {
+    if (busy || !draft || !['all', 'groups', 'picked', 'filter'].includes(value)) return;
+    setChannelChoice(value);
+    controller.edit({enabledGroups: value === 'groups' ? draft.enabledGroups : [], enabledChannels: value === 'picked' ? draft.enabledChannels : [], filters: value === 'filter' ? draft.filters : {categories: {mode: 'include', values: []}, countries: {mode: 'include', values: []}, keywords: {mode: 'exclude', values: []}}});
+  };
   return <Dialog open title={name} description={t('web.liveSource.settingsLede')} width={620} onOpenChange={open => {if (!open) closeCurrent();}}
     footer={<><Button size="small" variant="text" onClick={closeCurrent}>{t('action.close')}</Button><Button size="small" variant="primary" loading={state.saving} disabled={!dirty || busy}
       onClick={act(() => void controller.save().then(saved => {if (saved && owner.current === controller && controller.isActive()) changed();}))}>{t('action.save')}</Button></>}>
@@ -31,20 +42,23 @@ export function SourceSettingsDialog({controller, choices, name, guides, acquisi
       {!!state.error && <p role="alert" className={styles.error}>{errorMessage(state.error)}</p>}
       {!draft && state.loading && <p role="status">{t('web.librarySettings.loading')}</p>}
       {draft && doc && <>
+        {enabled !== undefined && setEnabled && <SettingsRow label={t('next.settingsSpec.server.live.groups.2.rows.0.label')}><Switch checked={enabled} disabled={busy || dirty} aria-label={t('next.settingsSpec.server.live.groups.2.rows.0.label')} onCheckedChange={value => {if (owner.current === controller && controller.isActive()) setEnabled(value);}}/></SettingsRow>}
         <Select label={t('web.liveSource.provides')} value={draft.kind} disabled={busy} options={doc.availableKinds.map(value => ({value, label: t(kinds[value])}))}
           onValueChange={kind => controller.edit(guideOnlyPatch(kind) as Partial<typeof draft>)}/>
         {guideOnly ? <p>{t('web.liveSource.guideOnlyNote')}</p> : <>
           <Select label={t('web.liveSource.guideFrom')} description={t('web.liveSource.guideFromHelp')} value={draft.guideSourceId || 'own'} disabled={busy}
             options={[{value: 'own', label: t('web.liveSource.ownGuide')}, ...guides.filter(source => source.id !== controller.sourceId).map(source => ({value: source.id, label: source.name}))]}
             onValueChange={id => controller.edit({guideSourceId: id === 'own' ? '' : id})}/>
-          <SourceChoicePicker controller={choices.groups} value={draft.enabledGroups} change={enabledGroups => controller.edit({enabledGroups})} disabled={busy}/>
-          <SourceChoicePicker controller={choices.channels} value={draft.enabledChannels} change={enabledChannels => controller.edit({enabledChannels})} disabled={busy}/>
-          <section><h3>{t('web.liveSource.keepChannels')}</h3>{(Object.keys(filters) as (keyof typeof filters)[]).map(key => <div key={key} className={styles.filter}>
-            <TextField label={t(filters[key])} value={draft.filters[key].values.join(', ')} disabled={busy} onChange={event => controller.edit({filters: {...draft.filters, [key]: {...draft.filters[key], values: event.currentTarget.value.split(',').map(value => value.trim()).filter(Boolean)}}})}/>
-            <Segmented aria-label={t('web.liveSource.filterMode', {filter: t(filters[key])})} value={draft.filters[key].mode} disabled={busy}
+          <Select label={t('next.settingsSpec.server.live.groups.3.rows.0.label')} value={included} disabled={busy}
+            options={['all', 'groups', 'picked', 'filter', 'custom'].map((value, index) => ({value, disabled: value === 'custom', label: t(index === 4 ? 'next.settingsSpec.server.live.groups.1.rows.0.control.options.3.label' : `next.settingsSpec.server.live.groups.3.rows.0.control.options.${index}.label` as MessageId)}))} onValueChange={chooseChannels}/>
+          {(included === 'groups' || included === 'custom') && <SourceChoicePicker controller={choices.groups} value={draft.enabledGroups} change={enabledGroups => controller.edit({enabledGroups})} disabled={busy}/>}
+          {(included === 'picked' || included === 'custom') && <SourceChoicePicker controller={choices.channels} value={draft.enabledChannels} change={enabledChannels => controller.edit({enabledChannels})} disabled={busy}/>}
+          {(included === 'filter' || included === 'custom') && <section>{(Object.keys(filters) as (keyof typeof filters)[]).map((key, index) => <div key={key} className={styles.filter}>
+            <TextField label={t(included === 'custom' || draft.filters[key].values.length > 0 && draft.filters[key].mode !== (key === 'keywords' ? 'exclude' : 'include') ? filters[key] : `next.settingsSpec.server.live.groups.3.rows.0.children.${index + 2}.label` as MessageId)} value={draft.filters[key].values.join(', ')} disabled={busy} onChange={event => controller.edit({filters: {...draft.filters, [key]: {mode: included === 'custom' || draft.filters[key].values.length > 0 ? draft.filters[key].mode : key === 'keywords' ? 'exclude' : 'include', values: event.currentTarget.value.split(',').map(value => value.trim()).filter(Boolean)}}})}/>
+            {(included === 'custom' || draft.filters[key].values.length > 0 && draft.filters[key].mode !== (key === 'keywords' ? 'exclude' : 'include')) && <Segmented aria-label={t('web.liveSource.filterMode', {filter: t(filters[key])})} value={draft.filters[key].mode} disabled={busy}
               items={[{value: 'include', label: t('web.liveSource.onlyThese')}, {value: 'exclude', label: t('web.liveSource.allButThese')}]}
-              onValueChange={mode => controller.edit({filters: {...draft.filters, [key]: {...draft.filters[key], mode: mode as 'include' | 'exclude'}}})}/>
-          </div>)}</section>
+              onValueChange={mode => controller.edit({filters: {...draft.filters, [key]: {...draft.filters[key], mode: mode as 'include' | 'exclude'}}})}/>}
+          </div>)}</section>}
           <section><h3>{t('web.liveSource.channelNumbers')}</h3><Segmented aria-label={t('web.liveSource.numbering')} value={draft.channelNumbering.mode} disabled={busy}
             items={[{value: 'source', label: t('web.liveSource.asSent')}, {value: 'sequential', label: t('web.liveSource.inOrder')}]}
             onValueChange={mode => controller.edit({channelNumbering: {...draft.channelNumbering, mode: mode as 'source' | 'sequential'}})}/>
@@ -52,25 +66,31 @@ export function SourceSettingsDialog({controller, choices, name, guides, acquisi
               {number('web.liveSource.startAt', draft.channelNumbering.startAt, value => {if (value && value >= 1) controller.edit({channelNumbering: {...draft.channelNumbering, startAt: value}});})}
               {number('web.liveSource.countBy', draft.channelNumbering.step, value => {if (value && value >= 1) controller.edit({channelNumbering: {...draft.channelNumbering, step: value}});})}
             </div>}</section>
-          <section><h3>{t('next.liveOwner.sourcePictures')}</h3>
-            <SettingsRow label={t('next.liveOwner.bringPictures')}><Switch checked={draft.logoImport.enabled} disabled={busy} aria-label={t('next.liveOwner.bringPictures')} onCheckedChange={enabled => controller.edit({logoImport: {...draft.logoImport, enabled}})}/></SettingsRow>
-            <SettingsRow label={t('web.liveSource.replaceLogos')}><Switch checked={draft.logoImport.overwriteExisting} disabled={busy || !draft.logoImport.enabled} aria-label={t('web.liveSource.replaceLogos')} onCheckedChange={overwriteExisting => controller.edit({logoImport: {...draft.logoImport, overwriteExisting}})}/></SettingsRow>
+          <section><Select label={t('next.settingsSpec.server.live.groups.2.rows.4.label')} value={!draft.logoImport.enabled ? 'none' : draft.logoImport.overwriteExisting ? 'replace' : 'import'} disabled={busy}
+            options={['import', 'replace', 'none'].map((value, index) => ({value, label: t(`next.settingsSpec.server.live.groups.2.rows.4.control.options.${index + 1}.label` as MessageId)}))}
+            onValueChange={value => {if (value === 'import' || value === 'replace' || value === 'none') controller.edit({logoImport: {enabled: value !== 'none', overwriteExisting: value === 'replace'}});}}/>
             <Button size="small" disabled={busy || dirty || !doc.settings.logoImport.enabled} loading={state.logoBusy} onClick={act(() => void controller.importLogos())}>{t('web.liveSource.importLogos')}</Button>
             {state.logoResult && <p role="status">{t('web.liveSource.logoResult', state.logoResult)}</p>}
           </section>
-          <div className={styles.pair}>
-            {number('web.liveSource.streamBuffer', draft.streamBufferMs, streamBufferMs => controller.edit({streamBufferMs}), 1000, 120, t('web.liveSource.serverDefault', {value: doc.effective.streamBufferMs / 1000}))}
-            {number('web.liveSource.retryFor', draft.retryWindowMs, retryWindowMs => controller.edit({retryWindowMs}), 1000, 600, t('web.liveSource.serverDefault', {value: doc.effective.retryWindowMs / 1000}))}
-          </div>
         </>}
-        <section><h3>{t('server.liveSource.limits')}</h3><p>{t('server.liveSource.limitsHelp')}</p><div className={styles.limits}>
-          {(['channels', 'programmes', 'bytes'] as const).filter(field => !guideOnly || field !== 'channels').map(field => {
-            const scale = field === 'bytes' ? 1048576 : 1, max = doc.effective.importLimits[field] / scale;
-            return <div key={field}>{number(field === 'channels' ? 'server.live.limitChannels' : field === 'programmes' ? 'server.live.limitProgrammes' : 'server.live.limitSize', draft.importLimits?.[field] || null,
-              value => {const limits = {...(draft.importLimits ?? {channels: 0, programmes: 0, bytes: 0}), [field]: value ?? 0};controller.edit({importLimits: Object.values(limits).some(Boolean) ? limits : null});}, scale, max,
-              t('server.liveSource.limitDefault', {value: max}))}</div>;
-          })}
-        </div></section>
+        <SettingsAdvanced open={advanced} onOpenChange={setAdvanced} summary={[
+          ...(draft.streamBufferMs !== null || draft.retryWindowMs !== null ? [t('next.settingsSpec.server.live.advanced.groups.2.rows.1.label')] : []),
+          ...(draft.userAgent ? [t('next.settingsSpec.server.live.advanced.groups.2.rows.2.label')] : []),
+        ]}>
+          {!guideOnly && <>
+            <Select label={t('next.settingsSpec.server.live.advanced.groups.2.rows.1.label')} value={draft.streamBufferMs === null && draft.retryWindowMs === null ? 'follow' : matchingPreset(bufferingPresets, {streamBufferMs: draft.streamBufferMs ?? -1, retryWindowMs: draft.retryWindowMs ?? -1})} disabled={busy}
+              options={[
+                ...['follow', 'smooth', 'balanced', 'live'].map((value, index) => ({value, label: t(`next.settingsSpec.server.live.advanced.groups.2.rows.1.control.options.${index}.label` as MessageId)})),
+                {value: 'custom', label: t('next.settingsSpec.server.live.groups.1.rows.0.control.options.3.label'), disabled: true},
+              ]}
+              onValueChange={value => {if (value === 'follow') controller.edit({streamBufferMs: null, retryWindowMs: null});else if (value in bufferingPresets) controller.edit(bufferingPresets[value as keyof typeof bufferingPresets]);}}/>
+            <div className={styles.pair}>
+              {number('web.liveSource.streamBuffer', draft.streamBufferMs, streamBufferMs => controller.edit({streamBufferMs}), 1000, 120, t('web.liveSource.serverDefault', {value: doc.effective.streamBufferMs / 1000}))}
+              {number('web.liveSource.retryFor', draft.retryWindowMs, retryWindowMs => controller.edit({retryWindowMs}), 1000, 600, t('web.liveSource.serverDefault', {value: doc.effective.retryWindowMs / 1000}))}
+            </div>
+          </>}
+          <TextField label={t('next.settingsSpec.server.live.advanced.groups.2.rows.2.label')} value={draft.userAgent} maxLength={200} disabled={busy} placeholder={t('next.settingsSpec.server.live.advanced.groups.2.rows.2.control.placeholder')} onChange={event => controller.edit({userAgent: event.currentTarget.value})}/>
+        </SettingsAdvanced>
       </>}
     </div>
   </Dialog>;

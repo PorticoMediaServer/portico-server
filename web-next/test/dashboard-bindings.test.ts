@@ -15,6 +15,16 @@ const page = () => ({scope: {serverId: 'server', viewerFence: 'a'.repeat(64)}, o
 function options(overrides: Partial<DashboardBindingOptions> = {}): DashboardBindingOptions {
   return {api: {request: async () => emptyHistory() as never, requestRaw: async () => ({status: 200, headers: {}, body: page()})}, context, scope: {serverId: 'server', viewerId: 'viewer'}, role: 'owner', isCurrent: () => true, isMainProfile: () => true, artwork: () => undefined, effects: {openHome() {}, openHistory() {}, openSettings() {}, reportError() {}}, ...overrides};
 }
+test('Now playing requests 100 rows and retains an opaque continuation cursor', async () => {
+  const paths: string[] = [];
+  const b = createDashboardBindings(options({api: {...options().api, requestRaw: async path => {paths.push(path);return {status: 200, headers: {}, body: page()};}}}));
+  try {
+    await b.read.sessions();await b.read.sessions('next/+?=&');
+    const queries = paths.map(path => new URL(path, 'https://server.invalid').searchParams);
+    assert.equal(queries[0].get('limit'), '100');assert.equal(queries[0].get('cursor'), null);
+    assert.equal(queries[1].get('limit'), '100');assert.equal(queries[1].get('cursor'), 'next/+?=&');
+  } finally {b.dispose();}
+});
 test('administrator reads sessions only; secondary profile and member dispatch nothing', async () => {
   for (const change of [{role: 'member' as const}, {isMainProfile: () => false}]) {let calls = 0; const b = createDashboardBindings(options({...change, api: {request: async () => {calls++; return {} as never;}, requestRaw: async () => {calls++; return {} as never;}}})); await assert.rejects(async () => b.read.sessions()); await assert.rejects(async () => b.read.status()); assert.equal(calls, 0); b.dispose();}
   const b = createDashboardBindings(options({role: 'admin'})); assert.equal((await b.read.sessions()).totals.streams, 0);

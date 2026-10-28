@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {SettingsSupportSource} from '../src/screens/settings/server/troubleshooting/support-source.ts';
+import {DEFAULT_SUPPORT_COMPONENTS} from '../src/screens/settings/server/troubleshooting/support-options.ts';
 
 const serverId = 'captured-server', fence = 'a'.repeat(64);
 const envelope = (data: unknown) => ({scope: {serverId, viewerFence: fence}, data});
@@ -12,7 +13,7 @@ const alert = {id: 'permissions', code: 'state-permissions', status: 'open', sev
 const ready = {id: 'export-1', expiresAt: new Date(Date.now() + 60 * 60 * 1000).toISOString(), manifest: {version: '1', from: '2026-10-21T18:00:00Z', to: '2026-10-22T18:00:00Z',
   included: ['runtime', 'client'], excluded: ['media'], redaction: 'on', maxBytes: 1048576}};
 
-function fixture() {
+function fixture(expectedComponents: readonly string[] = DEFAULT_SUPPORT_COMPONENTS) {
   const calls: {path: string; method: string; body: unknown}[] = [];
   let permissions = true;
   let receipt = ready;
@@ -25,7 +26,7 @@ function fixture() {
     if (path.includes('/console/exports/')) return envelope({...receipt, snapshot: {anything: true}}) as T;
     if (path.includes('/console/exports')) {
       const sent = body as {from: string; to: string; components: string[]};
-      assert.deepEqual(sent.components, ['runtime', 'client', 'audit', 'snapshot']);
+      assert.deepEqual(sent.components, expectedComponents);
       receipt = {...ready, manifest: {...ready.manifest, from: sent.from, to: sent.to, included: [...sent.components]}};
       return envelope(receipt) as T;
     }
@@ -47,17 +48,25 @@ test('Support reads what the server can do and the live permissions warning, in 
   } finally {f.source.dispose();}
 });
 
-test('Prepare export sends the four drawn parts over the last day and keeps the server receipt', async () => {
+test('Prepare export defaults to the last day without app logs and keeps the server receipt', async () => {
   const f = fixture();
   try {
     await f.source.load();
-    await f.source.prepare(24 * 60 * 60 * 1000, ['runtime', 'client', 'audit', 'snapshot']);
+    await f.source.prepare(24 * 60 * 60 * 1000, DEFAULT_SUPPORT_COMPONENTS);
     const created = f.calls.find(call => call.method === 'POST' && call.path.endsWith('/console/exports'));
     const sent = created?.body as {from: string; to: string};
     assert.equal(Date.parse(sent.to) - Date.parse(sent.from), 24 * 60 * 60 * 1000);
     assert.equal(f.source.getSnapshot().export?.id, 'export-1');
     const bundle = await f.source.download();
     assert.deepEqual(bundle.snapshot, {anything: true});
+  } finally {f.source.dispose();}
+});
+
+test('app logs remain available through an explicit component opt-in', async () => {
+  const parts = ['runtime', 'client', 'audit', 'snapshot'] as const, f = fixture(parts);
+  try {
+    await f.source.load();await f.source.prepare(3600000, parts);
+    assert.deepEqual(f.source.getSnapshot().export?.manifest.included, parts);
   } finally {f.source.dispose();}
 });
 

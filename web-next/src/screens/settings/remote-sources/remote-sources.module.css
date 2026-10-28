@@ -1,4 +1,5 @@
 .page { display: grid; gap: 18px; }
+.sourceList:not([hidden]) { display: grid; gap: 18px; }
 .muted { margin: 0; color: var(--color-text-tertiary); font-size: var(--type-row-subtitle-size); }
 .empty { padding: 22px 18px; border-radius: 12px; background: var(--color-raised); }
 .empty b { display: block; font-size: var(--type-body-size); }

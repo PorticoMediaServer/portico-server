@@ -4,7 +4,7 @@ import {SettingsPeopleClient, type SettingsPeoplePage, type SettingsPeopleQuery,
 import {personMemberResetCodeRow, settingsRowIndex, settingsSpec, type SettingsRow, type SettingsValue} from '@core/presentation/settings-spec.ts';
 import {managesTier, type AccessMember, type AccessTier, type MemberLimits} from '@core/server-administration.ts';
 import {MemberResetCodeSheet, SettingsAction, SettingsGroup, SettingsHours, SettingsSelectionList, SettingsStringList, SettingsPanel, SettingsRows, SettingsTable, type SettingPresentation, type SettingsTableHandle, type TableQuery} from '../../kit/settings';
-import {Button} from '../../kit/controls';
+import {Button, RichSelect} from '../../kit/controls';
 import {Dialog} from '../../kit/overlays/Dialog';
 import {SettingsRow as Row} from '../../kit/shell/SettingsSurfaces';
 import {SettingsPageFailure} from '../../kit/settings';
@@ -19,6 +19,10 @@ import {PeopleInvitations} from './PeopleInvitations';
 import type {ServerInvitation} from '@core/direct-account.ts';
 import type {MemberResetCodeSource} from './member-reset-code';
 import {useMemberResetCodeView} from './member-reset-code-view';
+import {bulkAccessWithLibraries, type BulkLibraryChoice} from './people-bulk-access';
+import type {PeopleDevicesApi} from './people-devices-source';
+import {PeopleDevices} from './PeopleDevices';
+import {PeopleInvitationCard} from './PeopleInvitationCard';
 
 const invitationStates = ['pending', 'accepted', 'revoked', 'expired'] as const;
 const invitationState = (value: string) => invitationStates.find(state => state === value);
@@ -50,7 +54,7 @@ export type PeopleStreamLimits = Readonly<{
   patchBulk: (access: SettingsBulkAccess | undefined, choice: SettingsValue) => SettingsBulkAccess;
 }>;
 export type PeopleBindings = Readonly<{
-  memberResetCodes?: MemberResetCodeSource;
+  memberResetCodes?: MemberResetCodeSource; devices?: PeopleDevicesApi;
   client: SettingsPeopleClient; serverName: string; libraries: readonly {id: string; name: string}[]; actor: {accountId: string; role: AccessTier};
   authority: Readonly<{scope: SettingsViewerScope; isCurrent: () => boolean; subscribe: (listener: () => void) => () => void; onAuthorityChanged: () => void}>;
   /** The owner's invitation expiry in hours, read from the loaded runtime
@@ -64,12 +68,12 @@ export type PeopleBindings = Readonly<{
 }>;
 
 /** The table query, detail revision and bulk transaction stay bound to one real session. */
-export function PeopleScreen({bindings, initialStatus, rowActions}: {bindings: PeopleBindings; initialStatus?: SettingsPeopleQuery['status']; rowActions?: (person: SettingsPersonRow) => ReactNode}) {
+export function PeopleScreen({bindings, initialStatus, rowActions, advancedRows}: {bindings: PeopleBindings; initialStatus?: SettingsPeopleQuery['status']; rowActions?: (person: SettingsPersonRow) => ReactNode; advancedRows?: ReactNode}) {
   const scope = bindings.authority.scope;
-  return <PeopleWorkspace key={JSON.stringify([scope.serverId, scope.authority, scope.accountId, scope.profileId, scope.sessionFamilyId, bindings.actor.role])} bindings={bindings} initialStatus={initialStatus} rowActions={rowActions} />;
+  return <PeopleWorkspace key={JSON.stringify([scope.serverId, scope.authority, scope.accountId, scope.profileId, scope.sessionFamilyId, bindings.actor.role])} bindings={bindings} initialStatus={initialStatus} rowActions={rowActions} advancedRows={advancedRows} />;
 }
 
-function PeopleWorkspace({bindings, initialStatus, rowActions}: {bindings: PeopleBindings; initialStatus?: SettingsPeopleQuery['status']; rowActions?: (person: SettingsPersonRow) => ReactNode}) {
+function PeopleWorkspace({bindings, initialStatus, rowActions, advancedRows}: {bindings: PeopleBindings; initialStatus?: SettingsPeopleQuery['status']; rowActions?: (person: SettingsPersonRow) => ReactNode; advancedRows?: ReactNode}) {
   const {client} = bindings;
   const [issued, setIssued] = useState<ServerInvitation>(), [inviteOpen, setInviteOpen] = useState(false);
   const [invitationVersion, setInvitationVersion] = useState(0);
@@ -143,6 +147,7 @@ function PeopleWorkspace({bindings, initialStatus, rowActions}: {bindings: Peopl
   const [chooseLibraries, setChooseLibraries] = useState(false);
   const [chooseHours, setChooseHours] = useState(false);
   const [command, setCommand] = useState<{action: SettingsBulkAction; rows: readonly SettingsPersonRow[]} | undefined>(), [bulk, setBulk] = useState<SettingsBulkAccess>();
+  const [bulkLibraryChoice, setBulkLibraryChoice] = useState<BulkLibraryChoice>('keep'), [bulkLibraryIds, setBulkLibraryIds] = useState<readonly string[]>([]);
   const tableRef = useRef<SettingsTableHandle>(null), opener = useRef<HTMLElement | null>(null), generation = useRef(0), mounted = useRef(true);
   const requests = useRef(new Set<AbortController>()), retired = useRef(false);
   const confirmOpener = useRef<HTMLElement | null>(null);
@@ -189,7 +194,7 @@ function PeopleWorkspace({bindings, initialStatus, rowActions}: {bindings: Peopl
   const canEdit = live && !denied && bindings.authority.isCurrent() && !!person && person.accountId !== bindings.actor.accountId && managesTier(bindings.actor.role, person.role);
   const resetView = useMemberResetCodeView(bindings.memberResetCodes, person, bindings.authority.isCurrent, saving || !canEdit, bindings.reportError, tab);
   const values: Readonly<Record<string, SettingsValue | undefined>> = person ? {
-    'people.username': person.username, 'people.notes': person.notes ?? '', 'people.role': person.role === 'admin' ? 'administrator' : person.role,
+    'people.username': person.username, ...(bindings.signIn === 'portico' && person.email !== undefined ? {'people.email': person.email} : {}), 'people.notes': person.notes ?? '', 'people.role': person.role === 'admin' ? 'administrator' : person.role,
     'people.libraries': person.allowedLibraries.length || chooseLibraries ? 'some' : 'all', ...(bindings.streamLimits ? {'people.maxStreams': bindings.streamLimits.read(person)} : {}),
     'people.awayAccess': person.limits.allowRemote ? 'allowed' : 'home', 'people.conversions': person.limits.conversion === 'audio' ? 'sound' : person.limits.conversion,
     'people.hours': person.limits.schedule.windows.length || chooseHours ? 'set' : 'any', 'people.hoursTimezone': person.limits.schedule.timezone,
@@ -242,7 +247,7 @@ function PeopleWorkspace({bindings, initialStatus, rowActions}: {bindings: Peopl
     if (!live || denied || !bindings.authority.isCurrent()) return;
     const rows = (page?.items ?? []).filter(row => ids.includes(row.accountId)).map(row => person?.accountId === row.accountId ? {...row, revision: person.revision, limitsRevision: person.limitsRevision} : row);
     if (!rows.length || rows.some(row => row.accountId === bindings.actor.accountId || !managesTier(bindings.actor.role, row.role))) return;
-    confirmOpener.current = element ?? (document.activeElement instanceof HTMLElement ? document.activeElement : null); setCommand({action, rows}); if (action === 'access') setBulk({});
+    confirmOpener.current = element ?? (document.activeElement instanceof HTMLElement ? document.activeElement : null); setCommand({action, rows}); if (action === 'access') {setBulk({}); setBulkLibraryChoice('keep'); setBulkLibraryIds([]);}
   };
   const personRow = page?.items.find(row => row.accountId === personId);
   const filtered = !!query.search.trim() || Object.values(query.filters).some(value => value !== 'all');
@@ -263,6 +268,11 @@ function PeopleWorkspace({bindings, initialStatus, rowActions}: {bindings: Peopl
     }
     if (row.control.type === 'action') return <SettingsAction appearance={row.control.style === 'danger' ? 'danger' : 'glass'} disabled={!canEdit || saving || !personRow} onClick={() => {if (personRow) ask(row.id === 'people.delete' ? 'remove' : person.disabled ? 'enable' : 'disable', [personId!]);}}>{row.id === 'people.turnOff' && person.disabled ? t('next.settings.turnOn') : t(row.control.label!)}</SettingsAction>;
     return null;
+  };
+  const applyCommand = () => {
+    if (!command || command.action === 'access' && bulkLibraryChoice === 'some' && !bulkLibraryIds.length) return;
+    const access = command.action === 'access' ? bulkAccessWithLibraries(bulk, bulkLibraryChoice, bulkLibraryIds) : undefined;
+    void run(async () => {await client.bulk(command.rows, command.action, access); setCommand(undefined); setBulk(undefined); setSelected(new Set()); if (command.action === 'remove' && command.rows.some(row => row.accountId === personId)) {setPersonId(undefined); setPerson(undefined);} else if (personId) {const next = await client.person(personId); setPerson(current => current?.accountId === next.accountId ? next : current);}});
   };
   if (!live || denied) return null;
   return <>
@@ -285,25 +295,41 @@ function PeopleWorkspace({bindings, initialStatus, rowActions}: {bindings: Peopl
     </SettingsGroup>
     {bindings.invitations && <PeopleInvitations invitations={bindings.invitations} libraries={bindings.libraries} authority={bindings.authority}
       version={invitationVersion} openInvite={bindings.invite ?? openInvite} openHome={bindings.openHome} reportError={bindings.reportError} />}
+    {advancedRows}
     {personId && <SettingsPanel open onClose={() => {if (resetView && !resetView.leave()) return; setPersonId(undefined); setPerson(undefined);}} title={person?.username ?? personRow?.username ?? t(section.title)} audience={t(bindings.actor.role === 'owner' ? 'next.shell.serverVisibility.ownerShared' : 'next.shell.serverVisibility.administrator')}
       returnFocusRef={opener} selectedTab={tab} onTabChange={next => {if (next === tab) return; if (resetView && !resetView.leave()) return; setTab(next);}} saveState={saving ? 'saving' : saved ? 'saved' : undefined}
-      error={error ? t('next.states.pageFailedBody') : undefined} tabs={personPanel.tabs!.map(tab => ({id: tab.id, title: t(tab.title), content: !person ? <p role="status">{t('next.settings.loading')}</p> : <SettingsRows holder={tab} state={state} change={change} reset={() => {}} advancedOpen={advanced} onAdvancedChange={setAdvanced}
+      error={error ? t('next.states.pageFailedBody') : undefined} tabs={personPanel.tabs!.map(tab => ({id: tab.id, title: t(tab.title), content: !person ? <p role="status">{t('next.settings.loading')}</p> : tab.id === 'devices' && bindings.devices ? <PeopleDevices key={`${person.accountId}/${person.revision}`} accountId={person.accountId} api={bindings.devices} isCurrent={bindings.authority.isCurrent} canSignOut={canEdit} onError={failure} /> : <SettingsRows holder={tab} state={state} change={change} reset={() => {}} advancedOpen={advanced} onAdvancedChange={setAdvanced}
         renderSpecial={special} />
       }))} />}
     {resetView?.sheet && <MemberResetCodeSheet {...resetView.sheet} />}
-    {command && <Dialog open title={command.action === 'access' ? t(table.select!.bulk[0].label) : t('next.settings.confirmPeople', {count: command.rows.length})} onOpenChange={open => {if (!open && !saving) {setCommand(undefined); setBulk(undefined);}}}
-      returnFocusRef={confirmOpener} footer={<><Button disabled={saving} onClick={() => {setCommand(undefined); setBulk(undefined);}}>{t('next.settings.cancel')}</Button><Button variant="primary" loading={saving} disabled={command.action === 'access' && !Object.keys(bulk ?? {}).length} onClick={() => {void run(async () => {await client.bulk(command.rows, command.action, command.action === 'access' ? bulk : undefined); setCommand(undefined); setBulk(undefined); setSelected(new Set()); if (command.action === 'remove' && command.rows.some(row => row.accountId === personId)) {setPersonId(undefined); setPerson(undefined);} else if (personId) {const next = await client.person(personId); setPerson(current => current?.accountId === next.accountId ? next : current);}});}}>{t('next.settings.apply')}</Button></>}>
-      {command.action === 'access' ? <SettingsRows holder={section.panels!.bulkAccess} advancedOpen={false} onAdvancedChange={() => {}} reset={() => {}} state={row => ({present: ['bulk.awayAccess', 'bulk.maxRating'].includes(row.id) || row.id === 'bulk.maxStreams' && !!bindings.streamLimits, value: row.id === 'bulk.maxStreams' ? bindings.streamLimits?.readBulk(bulk) : row.id === 'bulk.awayAccess' ? bulk?.allowRemote === undefined ? 'keep' : bulk.allowRemote ? 'allowed' : 'home' : bulk?.maxContentRating === undefined ? 'keep' : bulk.maxContentRating || 'none'})}
-        change={(row, value) => setBulk(before => {if (row.id === 'bulk.maxStreams') return bindings.streamLimits?.patchBulk(before, value) ?? before; const next = {...before}; if (row.id === 'bulk.awayAccess') {if (value === 'keep') delete next.allowRemote; else next.allowRemote = value === 'allowed';} else {if (value === 'keep') delete next.maxContentRating; else next.maxContentRating = value === 'none' ? '' : String(value);} return next;})} renderSpecial={() => null} /> : <p>{t(command.action === 'remove' ? table.select!.bulk[2].confirm! : table.select!.bulk[1].confirm!)}</p>}
+    {command?.action === 'access' && <SettingsPanel open title={t(table.select!.bulk[0].label)}
+      audience={t(bindings.actor.role === 'owner' ? 'next.shell.serverVisibility.ownerShared' : 'next.shell.serverVisibility.administrator')}
+      onClose={() => {if (!saving) {setCommand(undefined); setBulk(undefined);}}} returnFocusRef={confirmOpener}
+      confirm={{label: t('next.settings.apply'), pending: saving,
+        disabled: bulkLibraryChoice === 'some' && !bulkLibraryIds.length || bulkLibraryChoice === 'keep' && !Object.keys(bulk ?? {}).length, onConfirm: applyCommand}}>
+      <SettingsRows holder={section.panels!.bulkAccess} advancedOpen={false} onAdvancedChange={() => {}} reset={() => {}} state={row => ({present: ['bulk.libraries', 'bulk.awayAccess', 'bulk.maxRating'].includes(row.id) || row.id === 'bulk.maxStreams' && !!bindings.streamLimits, disabled: saving,
+        value: row.id === 'bulk.libraries' ? bulkLibraryChoice : row.id === 'bulk.maxStreams' ? bindings.streamLimits?.readBulk(bulk) : row.id === 'bulk.awayAccess' ? bulk?.allowRemote === undefined ? 'keep' : bulk.allowRemote ? 'allowed' : 'home' : bulk?.maxContentRating === undefined ? 'keep' : bulk.maxContentRating || 'none',
+        ...(row.id === 'bulk.libraries' ? {control: <div>
+          <RichSelect aria-label={t(row.label)} value={bulkLibraryChoice} disabled={saving} options={row.control.options!.map(option => ({value: String(option.value), label: t(option.label), description: option.hint && t(option.hint)}))}
+            onValueChange={value => {if (value === 'keep' || value === 'all' || value === 'some') setBulkLibraryChoice(value);}} />
+          {bulkLibraryChoice === 'some' && <SettingsSelectionList label={t(row.label)} items={bindings.libraries.map(library => ({id: library.id, label: library.name}))} selected={bulkLibraryIds} onChange={setBulkLibraryIds} disabled={saving} minimum={1} />}
+        </div>} : {})})}
+        change={(row, value) => setBulk(before => {if (row.id === 'bulk.maxStreams') return bindings.streamLimits?.patchBulk(before, value) ?? before; const next = {...before}; if (row.id === 'bulk.awayAccess') {if (value === 'keep') delete next.allowRemote; else next.allowRemote = value === 'allowed';} else {if (value === 'keep') delete next.maxContentRating; else next.maxContentRating = value === 'none' ? '' : String(value);} return next;})} renderSpecial={() => null} />
+    </SettingsPanel>}
+    {command && command.action !== 'access' && <Dialog open title={t('next.settings.confirmPeople', {count: command.rows.length})} onOpenChange={open => {if (!open && !saving) {setCommand(undefined); setBulk(undefined);}}}
+      returnFocusRef={confirmOpener} footer={<><Button disabled={saving} onClick={() => {setCommand(undefined); setBulk(undefined);}}>{t('next.settings.cancel')}</Button><Button variant="primary" loading={saving} onClick={applyCommand}>{t('next.settings.apply')}</Button></>}>
+      <p>{t(command.action === 'remove' ? table.select!.bulk[2].confirm! : table.select!.bulk[1].confirm!)}</p>
     </Dialog>}
     <PeopleInviteForm open={formOpen} onOpenChange={open => { if (formSession.current !== formToken || !formActive.current || attempts.current?.busy) return; if (!open) { formActive.current = false; ++formSession.current; setFormError(undefined); } setFormOpen(open); }}
       choices={choices} onChoices={next => { if (formActive.current && formSession.current === formToken && !attempts.current?.busy) setChoices(next); }} libraries={bindings.libraries} signIn={bindings.signIn}
-      busy={formBusy} error={formError} retained={retained}
+      busy={formBusy} error={formError} retained={retained} audience={t(bindings.actor.role === 'owner' ? 'next.shell.serverVisibility.ownerShared' : 'next.shell.serverVisibility.administrator')}
       onCreate={() => { void submitInvite(choices); }}
       onRetry={() => { if (retained && formActive.current && formSession.current === formToken) { void submitInvite(choicesOf(retained)); } }} />
     {issued && <InvitationShortCodeDialog open={inviteOpen} onOpenChange={setInviteOpen}
       invitation={{id: issued.id, revision: issued.revision, state: invitationState(issued.state)!}}
       request={(operationId, signal, isCurrent) => bindings.invitations!.shortCode(issued, operationId, {signal, isCurrent})}
-      isCurrent={bindings.authority.isCurrent} issueOnOpen returnFocusRef={inviteOpener} />}
+      isCurrent={bindings.authority.isCurrent} issueOnOpen returnFocusRef={inviteOpener}>
+      <PeopleInvitationCard signIn={bindings.signIn} open={inviteOpen} invitation={issued} invitations={bindings.invitations!} serverName={bindings.serverName} libraries={bindings.libraries} isCurrent={bindings.authority.isCurrent} />
+    </InvitationShortCodeDialog>}
   </>;
 }

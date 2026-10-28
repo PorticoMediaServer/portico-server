@@ -17,6 +17,8 @@ import {readRecordingDetail} from './recording-detail';
 import {useCommittedLibraryScreenContext, type ProtectedLibraryScreen} from '../browse/screen-context';
 import type {ScreenContext} from '../detail/context';
 import {useRecordingsLease} from './useRecordingsLease';
+import {Tuners} from '../settings/server-livetv/recording/Tuners';
+import type {TunerController} from '../settings/server-livetv/recording/tuner-controller';
 import {useRecordedGroupLease, type RecordedGroupLease} from './useRecordedGroupLease';
 import {useCommittedOpening, type Opening} from './useCommittedOpening';
 import {router} from '../../router';
@@ -308,18 +310,24 @@ export function HistoryView({snapshot, now, controller}: {controller: Recordings
   </div>;
 }
 
-function StorageView({snapshot}: {snapshot: ReturnType<RecordingsController['getSnapshot']>}) {
+function StorageView({snapshot, tuners}: {snapshot: ReturnType<RecordingsController['getSnapshot']>; tuners?: TunerController}) {
   const storage = snapshot.storage;
   if (!storage) return null;
+  const measured = !!storage.measurement.measuredAt;
   return <div className={styles.recBody}><div className={styles.storagePanel}>
-    <RecordingStorage used={t('next.live.storageUsed', {amount: Math.round(storage.measurement.usedBytes / 1e9)})}
+    {measured ? <RecordingStorage used={t('next.live.storageUsed', {amount: Math.round(storage.measurement.usedBytes / 1e9)})}
       free={t('next.live.storageFree', {amount: Math.round(storage.measurement.freeBytes / 1e9)})}
       remaining={t('recordings.hoursLeft', {count: storage.forecastHours})} label={t('recordings.storage')}
-      fraction={storage.measurement.usedBytes / Math.max(1, storage.measurement.usedBytes + storage.measurement.freeBytes)}/>
-    {storage.pendingDeleteBytes > 0 && <p>{t('next.live.pendingDelete', {amount: Math.round(storage.pendingDeleteBytes / 1e9)})}</p>}
+      fraction={storage.measurement.usedBytes / Math.max(1, storage.measurement.usedBytes + storage.measurement.freeBytes)}/> : <p>{t('server.usage.notMeasuredYet')}</p>}
+    <dl className={styles.storageFacts}>
+      <div><dt>{t('web.liveTv.space.reserved')}</dt><dd>{measured ? defaultI18n.bytes(storage.measurement.reservedBytes) : t('server.usage.notMeasuredYet')}</dd></div>
+      <div><dt>{t('web.liveTv.space.waitingDelete')}</dt><dd>{defaultI18n.bytes(storage.pendingDeleteBytes)}</dd></div>
+      <div><dt>{t('web.liveTv.space.forecast')}</dt><dd>{t('web.liveTv.space.forecastOver', {size: defaultI18n.bytes(storage.forecastBytes), hours: storage.forecastHours})}</dd></div>
+    </dl>
+    {storage.forecastDescription && <p>{storage.forecastDescription}</p>}
     {storage.policy.retentionDays > 0 && <p>{t('recordings.retention', {count: storage.policy.retentionDays})}</p>}
-    {!storage.measurement.writeHealthy && <Banner>{t('recordings.unavailableBody')}</Banner>}
-  </div></div>;
+    {measured && !storage.measurement.writeHealthy && <Banner>{t('recordings.unavailableBody')}</Banner>}
+  </div>{tuners && <Tuners controller={tuners} detailed/>}</div>;
 }
 
 function Boundary({context, view, routeCurrent, onView, onGuide}: {context: ScreenContext; view: RecordingsView; routeCurrent: () => boolean;
@@ -357,7 +365,7 @@ function Boundary({context, view, routeCurrent, onView, onGuide}: {context: Scre
       : view === 'upcoming' ? <UpcomingView context={context} controller={lease.controller} snapshot={snapshot} now={now} onResolve={openConflict}/>
         : view === 'recorded' ? <RecordedView context={context} controller={lease.controller} current={lease.current} snapshot={snapshot}/>
           : view === 'history' ? <HistoryView snapshot={snapshot} now={now} controller={lease.controller}/>
-            : <StorageView snapshot={snapshot}/>;
+            : <StorageView snapshot={snapshot} tuners={lease.tuners}/>;
   return <RecordingsLayout key={lease.id} title={t('next.home.shell.live')} sourceLabel={t('channels.source')} allChannels={t('channels.all')}
     sourceName={context.identity?.serverName ?? ''} navigation={undefined}>
     <LiveRecordingTabs view="recordings" conflicts={summary?.conflicts} onChange={value => {if (value === 'guide') goGuide();}}/>

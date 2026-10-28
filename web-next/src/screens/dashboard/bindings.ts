@@ -18,6 +18,7 @@ import {retryCertificate, type CertificateAction, type CertificateApi} from '@co
 import type {FactPart} from '@core/presentation/kit-model/index.ts';
 import {settingsServerHeader} from '../settings/server-header';
 import type {ArtworkSource} from '../../kit/artwork/types';
+import {DASHBOARD_SESSION_PAGE_SIZE} from './session-window';
 
 export type DashboardEvents = Readonly<{on(type: string, listener: () => void): () => void; onResync?(listener: () => void): () => void}>;
 export type DashboardAlert = DashboardStatus['alerts'][number];
@@ -107,7 +108,7 @@ export function createDashboardBindings(options: DashboardBindingOptions): Dashb
     scope: {...options.scope}, role: options.role, context, isCurrent: current, isMainProfile: options.isMainProfile, events: options.events, subscribeAuthority: listener => {listeners.add(listener); return () => {listeners.delete(listener);};}, artwork: options.artwork,
     read: {
       sessions: async (cursor, signal) => {
-        assert(); const query = new URLSearchParams({limit: '10'}); if (cursor) query.set('cursor', cursor);
+        assert(); const query = new URLSearchParams({limit: String(DASHBOARD_SESSION_PAGE_SIZE)}); if (cursor) query.set('cursor', cursor);
         const raw = parseDashboardSessions((await call(http, {method: 'GET', path: routePath('list_admin_sessions') + '?' + query, signal})).body); assert();
         if (raw.scope.serverId !== options.scope.serverId || fence !== undefined && fence !== raw.scope.viewerFence || observed !== undefined && Date.parse(raw.observedAt) < Date.parse(observed)) {close(); throw new DOMException('Dashboard authority changed', 'AbortError');}
         fence = raw.scope.viewerFence; observed = raw.observedAt;

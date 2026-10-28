@@ -6,6 +6,8 @@ import {Dialog} from '../../../kit/overlays/Dialog';
 import {Icon} from '../../../kit/Icon';
 import type {ProfileDevicesSource} from './devices';
 import styles from './profile.module.css';
+import deviceStyles from './profile-devices.module.css';
+import {profileDeviceIcon} from './device-icon';
 const t = defaultI18n.t;
 export function ProfileDevices({source, isCurrent, onFailure, signOut}: {source: ProfileDevicesSource; isCurrent: () => boolean; onFailure: () => void; signOut: () => void}) {
   const state = useSyncExternalStore(source.subscribe, source.getSnapshot, source.getSnapshot);
@@ -28,8 +30,8 @@ export function ProfileDevices({source, isCurrent, onFailure, signOut}: {source:
   return <>
     <ul className={styles.profiles} aria-label={t('next.settingsSpec.account.profile.groups.6.rows.0.label')}>
       {state.devices.filter(device => device.sessions > 0).map(device => <li key={device.id}>
-        <span className={styles.profileIcon}><Icon name="i-user" size={20} /></span>
-        <span className={styles.profileName}><b>{device.name}</b><small>{device.app}{device.current ? ` · ${t('device.thisDevice')}` : ''}</small></span>
+        <span className={styles.profileIcon}><Icon name={profileDeviceIcon(device.platform)} size={20} /></span>
+        <span className={styles.profileName}><span className={deviceStyles.name}><b>{device.name}</b>{device.current && <span className={deviceStyles.current}>{t('device.thisDevice')}</span>}</span><small>{device.app}</small></span>
         <Button size="xs" variant="glass" disabled={state.busy} onClick={event => {if (!live.current || !isCurrent() || pending.current) return;trigger.current = event.currentTarget;active.current = device;setTarget(device);}}>{t('accounts.signOut.server')}</Button>
       </li>)}
     </ul>

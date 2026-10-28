@@ -4,7 +4,7 @@ import {passwordStrength} from '@core/password-strength.ts';
 import {defaultI18n} from '@i18n';
 import {Button} from '../../kit/controls/Button';
 import {TextField} from '../../kit/controls/Fields';
-import {Dialog} from '../../kit/overlays/Dialog';
+import {SettingsPanel} from '../../kit/settings';
 import {SecureRefusalDialog} from './SecureRefusalDialog';
 import {router} from '../../router';
 import {cancelLocalMoveHandoff, offerLocalMove, type LocalMoveHandoff} from '../../platform/local-move-continuation';
@@ -153,25 +153,25 @@ export function LocalMoveSwitch({source, isCurrent, onError, startOver = false}:
     <Button className={startOver ? styles.destructive : undefined} variant="glass" size="small" disabled={state.busy || !!state.preview || state.confirmed || !!active.current}
       onClick={start}>{t(`${startOver ? 'next.settingsSpec.server.signin.groups.1.rows.1' : 'next.settingsSpec.server.signin.groups.1.rows.0'}.control.label`)}</Button>
     <SecureRefusalDialog open={secure} onOpenChange={value => {if (!value) setSecure(false);}} />
-    <Dialog open={!!current && !!preview && state.preview === preview} onOpenChange={value => {if (!value && current) close(current);}} width={600}
-      title={t(`${keys}.title`)} dismissOnBack={!busy} dismissOnOutsidePress={!busy} showCloseButton={!busy}
-      footer={<><Button variant="glass" disabled={busy} onClick={() => {if (current) close(current);}}>{t(`${keys}.footer.secondary`)}</Button>
-        <Button className={startOver ? styles.destructive : undefined} disabled={busy || !ready} onClick={() => {if (current) proceed(current, draft.revision);}}>{t(`${keys}.footer.primary`)}</Button></>}>
+    <SettingsPanel open={!!current && !!preview && state.preview === preview} onClose={() => {if (current) close(current);}}
+      audience={t('next.shell.serverVisibility.ownerShared')} title={t(`${keys}.title`)} dismissOnBack={!busy} showCloseButton={!busy}
+      confirm={{label: t(`${keys}.footer.primary`), pending: busy, disabled: busy || !ready, destructive: startOver,
+        onConfirm: () => {if (current) proceed(current, draft.revision);}}}>
       {preview && <div className={styles.preview}>
         <p>{preview.serverName}</p>
         {startOver ? <>
           <h3>{t(`${keys}.groups.0.title`)}</h3>
           <dl>
-            <dt>{t(`${keys}.groups.0.rows.0.label`)}</dt><dd>{t(`${keys}.groups.0.rows.0.help`)}</dd>
-            <dt>{t(`${keys}.groups.0.rows.1.label`)}</dt><dd>{t('next.settingsSpec.server.signin.panels.startOverLocal.groups.0.rows.1.help')}</dd>
+            <dt>{t(`${keys}.groups.0.rows.0.label`)}</dt><dd>{defaultI18n.number(preview.people)}<p>{t(`${keys}.groups.0.rows.0.help`)}</p></dd>
+            <dt>{t(`${keys}.groups.0.rows.1.label`)}</dt><dd>{preview.removedProfiles !== undefined && defaultI18n.number(preview.removedProfiles)}<p>{t('next.settingsSpec.server.signin.panels.startOverLocal.groups.0.rows.1.help')}</p></dd>
             <dt>{t(`${keys}.groups.0.rows.2.label`)}</dt><dd>{t(`${keys}.groups.0.rows.2.help`)}</dd>
-            <dt>{t(`${keys}.groups.0.rows.3.label`)}</dt><dd/>
+            <dt>{t(`${keys}.groups.0.rows.3.label`)}</dt><dd>{defaultI18n.number(preview.invitations)}</dd>
             <dt>{t(`${keys}.groups.0.rows.4.label`)}</dt><dd>{t(`${keys}.groups.0.rows.4.help`)}</dd>
             <dt>{t(`${keys}.groups.0.rows.5.label`)}</dt><dd>{t(`${keys}.groups.0.rows.5.help`)}</dd>
           </dl>
           <h3>{t(`${keys}.groups.1.title`)}</h3>
           <dl>
-            <dt>{t(`${keys}.groups.1.rows.0.label`)}</dt><dd>{t('next.settingsSpec.server.signin.panels.startOverLocal.groups.1.rows.0.help')}</dd>
+            <dt>{t(`${keys}.groups.1.rows.0.label`)}</dt><dd>{preview.retainedProfiles !== undefined && defaultI18n.number(preview.retainedProfiles)}<p>{t('next.settingsSpec.server.signin.panels.startOverLocal.groups.1.rows.0.help')}</p></dd>
             <dt>{t(`${keys}.groups.1.rows.1.label`)}</dt><dd>{t(`${keys}.groups.1.rows.1.help`)}</dd>
           </dl>
         </> : <>
@@ -208,6 +208,6 @@ export function LocalMoveSwitch({source, isCurrent, onError, startOver = false}:
             value={draft.value.confirmation} disabled={busy} onChange={event => {if (current) editDraft(current, 'confirmation', event.currentTarget.value);}}/>
         </>}
       </div>}
-    </Dialog>
+    </SettingsPanel>
   </>;
 }

@@ -1,6 +1,6 @@
 import {defaultI18n} from '@i18n';
-import {Button, RichSelect, TextField} from '../../kit/controls';
-import {Dialog} from '../../kit/overlays/Dialog';
+import {RichSelect, TextField} from '../../kit/controls';
+import {SettingsPanel} from '../../kit/settings';
 import styles from './people-invite.module.css';
 import type {InviteAttempt, InviteChoices} from './people-invite';
 import {expiryChoices} from './people-invite';
@@ -12,9 +12,9 @@ const t = defaultI18n.t;
  * until Create. While an uncertain create is being reconciled it shows that
  * attempt's original choices with Retry or Dismiss, so an edited form can never
  * submit an old body. */
-export function PeopleInviteForm({open, onOpenChange, choices, onChoices, libraries, signIn, busy, error, retained, onCreate, onRetry}: Readonly<{
+export function PeopleInviteForm({open, onOpenChange, choices, onChoices, libraries, signIn, audience, busy, error, retained, onCreate, onRetry}: Readonly<{
   open: boolean; onOpenChange: (open: boolean) => void; choices: InviteChoices; onChoices: (choices: InviteChoices) => void;
-  libraries: readonly {id: string; name: string}[]; signIn?: 'local' | 'portico';
+  libraries: readonly {id: string; name: string}[]; signIn?: 'local' | 'portico'; audience?: string;
   busy: boolean; error: unknown; retained?: InviteAttempt;
   onCreate: () => void; onRetry: () => void;
 }>) {
@@ -27,11 +27,11 @@ export function PeopleInviteForm({open, onOpenChange, choices, onChoices, librar
     : choices;
   const allChecked = shown.allLibraries;
   const set = (patch: Partial<InviteChoices>) => onChoices({...choices, ...patch});
-  return <Dialog open={open} onOpenChange={onOpenChange} size="md" title={t('next.settings.people.inviteTitle')}
-    footer={<><Button onClick={() => onOpenChange(false)} disabled={busy}>{t(retained ? 'next.settings.people.dismiss' : 'next.settings.cancel')}</Button>
-      {retained
-        ? <Button variant="primary" loading={busy} disabled={busy} onClick={onRetry}>{t('next.settings.people.retryCreate')}</Button>
-        : <Button variant="primary" loading={busy} disabled={busy || (!shown.allLibraries && !shown.libraryIds.length)} onClick={onCreate}>{t('next.settings.people.create')}</Button>}</>}>
+  return <SettingsPanel open={open} onClose={() => {if (!busy) onOpenChange(false);}} title={t('next.settings.people.inviteTitle')}
+    audience={audience ?? t('next.shell.serverVisibility.ownerShared')} dismissOnBack={!busy} showCloseButton={!busy}
+    create={{label: t(retained ? 'next.settings.people.retryCreate' : 'next.settings.people.create'),
+      cancelLabel: t(retained ? 'next.settings.people.dismiss' : 'next.settings.cancel'), pending: busy,
+      disabled: busy || (!retained && !shown.allLibraries && !shown.libraryIds.length), onCreate: retained ? onRetry : onCreate}}>
     <div className={styles.form}>
       {retained && <p role="alert">{t('next.settings.people.unsureCreate')}</p>}
       {!retained && error ? <p role="alert">{t('next.settings.people.createFailed')}</p> : null}
@@ -66,5 +66,5 @@ export function PeopleInviteForm({open, onOpenChange, choices, onChoices, librar
       <TextField label={t('next.settings.people.notes')} description={t('next.settings.people.notesHelp')} disabled={locked || busy}
         value={shown.notes ?? ''} onChange={event => set({notes: event.currentTarget.value})} />
     </div>
-  </Dialog>;
+  </SettingsPanel>;
 }

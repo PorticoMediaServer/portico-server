@@ -5,7 +5,7 @@ import styles from './controls.module.css';
 
 export type ChoiceItem = Readonly<{value: string; label: ReactNode; disabled?: boolean}>;
 export type TabsProps = Omit<ComponentPropsWithoutRef<typeof TabsPrimitive.Root>, 'children' | 'defaultValue' | 'onChange'> & {
-  items: readonly (ChoiceItem & {panel?: ReactNode})[];
+  items: readonly (ChoiceItem & {panel?: ReactNode; /** Preserve a draft in a controlled, inactive tab. */ keepMounted?: boolean})[];
   value?: string;
   defaultValue?: string;
   onValueChange?: (value: string) => void;
@@ -27,7 +27,8 @@ export function Tabs({items, value, defaultValue, onValueChange, phone, classNam
         if (left) list.scrollBy({left, behavior: 'instant'});
       }}>{item.label}</TabsPrimitive.Trigger>)}
     </TabsPrimitive.List></div>
-    {items.map(item => item.panel !== undefined && <TabsPrimitive.Content key={item.value} value={item.value} className={styles.tabPanel}>{item.panel}</TabsPrimitive.Content>)}
+    {items.map(item => item.panel !== undefined && <TabsPrimitive.Content key={item.value} value={item.value} className={styles.tabPanel}
+      {...(item.keepMounted && value !== undefined ? {forceMount: true as const, hidden: item.value !== value} : {})}>{item.panel}</TabsPrimitive.Content>)}
   </TabsPrimitive.Root>;
 }
 

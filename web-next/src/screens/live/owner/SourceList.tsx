@@ -24,8 +24,6 @@ export function SourceList({snapshot, refresh, add, configure, channels, act}: S
   const [addOpen, setAddOpen] = useState(false), [menu, setMenu] = useState<string>();
   return <section className={styles.section} aria-busy={snapshot.loading}>
     <div className={styles.heading}><h3>{t('web.liveTv.sources')}</h3><div className={styles.actions}>
-      <span className={styles.fresh}>{snapshot.checkedAt ? t('freshness.checked', {when: defaultI18n.relativeTime(snapshot.checkedAt)}) : null}</span>
-      <Button variant="icon" size="small" icon="i-refresh" iconOnly aria-label={t('action.refresh')} disabled={snapshot.loading || !!snapshot.busy} onClick={refresh}/>
       <Menu open={addOpen} onOpenChange={setAddOpen} title={t('web.liveTv.addSource')} width={340}
         trigger={<Button size="small" icon="i-plus">{t('web.liveTv.addSource')}<Icon name="i-down" size={16}/></Button>}
         items={[
@@ -34,7 +32,7 @@ export function SourceList({snapshot, refresh, add, configure, channels, act}: S
           {id: 'upload', label: t('web.liveTv.upload'), description: t('web.liveTv.uploadMeta'), onSelect: () => add('upload')},
         ]}/>
     </div></div>
-    <p className={styles.lede}>{t('next.liveOwner.sourcesLede')}</p>
+    {!snapshot.document && !snapshot.loading && <Button size="small" onClick={refresh}>{t('action.tryAgain')}</Button>}
     {!snapshot.document && snapshot.loading && <p role="status">{t('status.loadingThing', {thing: t('server.thing.liveSources')})}</p>}
     {snapshot.document && !snapshot.document.sources.length && <div className={styles.empty}><h4>{t('live.noSources')}</h4><p>{t('web.liveTv.noSourcesHelp')}</p><Button size="small" icon="i-plus" onClick={() => setAddOpen(true)}>{t('web.liveTv.addSource')}</Button></div>}
     {!!snapshot.document?.sources.length && <div className={styles.sources}>{snapshot.document.sources.map(source => {
@@ -54,6 +52,7 @@ export function SourceList({snapshot, refresh, add, configure, channels, act}: S
         <span className={styles.sourceIcon}><Icon name="i-tv" size={22}/></span>
         <div className={styles.facts}><b>{source.name}</b><p>{facts.map((fact, index) => <span key={index}>{fact}</span>)}</p></div>
         <span className={styles.badge} data-tone={state.tone} data-live={state.live || undefined} data-paused={source.state === 'disabled' || undefined} role={state.live ? 'status' : undefined}>{t(state.id)}</span>
+        <Button size="small" disabled={!!snapshot.busy} onClick={() => configure(source)}>{t('web.liveTv.sourceSettings')}</Button>
         <Menu open={menu === source.id} onOpenChange={open => setMenu(open ? source.id : undefined)} title={source.name}
           trigger={<Button variant="icon" size="small" icon="i-more" iconOnly disabled={!!snapshot.busy} aria-label={t('server.row.actions', {name: source.name})}/>}
           items={[

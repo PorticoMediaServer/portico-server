@@ -32,7 +32,8 @@ test('the actual Remote page renders the five approved controls in spec order th
     assert.equal((html.match(/role="switch"/g) ?? []).length, 1, 'only approved IPv6 switch; no retired remote master toggle');
     assert.ok(html.includes('192.0.2.1'));assert.ok(html.includes('32500'));
     source.change('remote.publicPort', 40000);const edited = render();
-    assert.ok(edited.includes('Discard'));assert.ok(edited.includes('Save'));
+    assert.ok(!edited.includes('>Discard<'));assert.ok(!edited.includes('>Save<'));
+    assert.ok(edited.includes('Changed'));assert.ok(edited.includes('Reset'));
   } finally {source.dispose();}
 });
 test.after(() => loader.deregister());

@@ -32,7 +32,7 @@ export function SettingsAdvanced({open, onOpenChange, summary, children}: {open:
     const observer = new ResizeObserver(read); observer.observe(element); read();
     void document.fonts?.ready.then(read);
     return () => observer.disconnect();
-  }, [signature]);
+  }, [signature, open]);
   return <section className={styles.advanced} data-open={open || undefined}>
     <button type="button" className={styles.advancedToggle} aria-expanded={open} aria-controls={id} onClick={() => onOpenChange(!open)}><span>{t('next.settings.advanced')}</span>
       <span ref={available} className={styles.advancedSummary}>{summary.length ? <><span>{summary.slice(0, fit || 1).join(' · ')}</span>{(fit || 1) < summary.length && <small>{t('next.settings.more', {count: summary.length - (fit || 1)})}</small>}</> : t('next.settings.allDefaults')}</span><Icon name="i-down" size={18} />

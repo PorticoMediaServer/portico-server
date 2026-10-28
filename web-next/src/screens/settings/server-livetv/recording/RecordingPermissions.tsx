@@ -23,7 +23,7 @@ export function RecordingPermissions({controller, embedded = false}: {embedded?:
   return <section className={styles.section}><div className={styles.heading}><h3>{t('web.dvrSettings.whoCanRecord')}</h3>
     <Button variant="icon" icon="i-refresh" iconOnly size="small" aria-label={t('action.refresh')} disabled={state.loading || state.saving || dirty || state.uncertain} onClick={() => void controller.load()}/></div>
     <p className={styles.lede}>{t('web.dvrSettings.whoCanRecordLede')}</p>
-    {!!state.error && <p role="alert" className={styles.error}>{errorMessage(state.error)}</p>}
+    {!!state.error && <p role="alert" className={styles.error}>{errorMessage(state.error)}{dirty && <Button size="small" disabled={state.saving} onClick={() => void controller.save()}>{t('action.tryAgain')}</Button>}</p>}
     {state.loading && !rows.length && <p role="status">{t('status.loading')}</p>}
     {[...groups].map(([key, group]) => <section key={key} className={styles.sources}><h4 className={styles.accountHeading}>{group.name}</h4>{group.profiles.map(row => {
       const key = recordingOwnerKey(row.owner), grant = grants.find(grant => recordingOwnerKey(grant.owner) === key);

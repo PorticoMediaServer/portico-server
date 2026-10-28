@@ -8,36 +8,52 @@
 .groupRows[data-plain] { background: none; border-radius: 0; overflow: visible; }
 .group[data-advanced] .groupHeading h3 { font-size: 15px; color: var(--color-text-secondary); }
 .advanced { position: relative; margin-top: 32px; }
-.advancedToggle { width: 100%; height: 58px; padding: 0 22px; display: flex; align-items: center; gap: 16px; color: var(--color-text-secondary); border: 0; background: var(--color-raised); border-radius: 14px; cursor: pointer; font: inherit; font-size: 16px; font-weight: 600; text-align: left; }
+.advancedToggle { width: 100%; min-height: 58px; padding: 18px 22px; display: flex; align-items: center; gap: 16px; color: var(--color-text-secondary); border: 0; background: var(--color-raised); border-radius: 14px; cursor: pointer; font: inherit; font-size: 16px; font-weight: 600; text-align: left; transition: background 160ms var(--ease-out); }
+.advancedToggle:hover { background: var(--color-raised-high); }
+.advancedToggle:focus-visible { outline: 3px solid var(--color-focus); outline-offset: 2px; }
 .advancedToggle > span:first-child { color: var(--color-text); flex: none; }
 .advancedSummary { display: flex; align-items: baseline; min-width: 0; flex: 1; overflow: hidden; white-space: nowrap; color: var(--color-text-tertiary); font-size: 14px; font-weight: 500; }
 .advancedSummary > span { overflow: hidden; text-overflow: ellipsis; }
 .advancedSummary small { flex: none; margin-left: 8px; font: inherit; }
-.advancedToggle > svg { flex: none; transition: transform var(--motion-quick); }
+.advancedToggle > svg { flex: none; margin-left: auto; transition: transform 200ms var(--ease-out); }
 .advanced[data-open] .advancedToggle > svg { transform: rotate(180deg); }
-.advancedBody { padding-top: 24px; }
-.summaryMeasure { position: absolute; pointer-events: none; visibility: hidden; height: 0; overflow: hidden; white-space: nowrap; font-size: 13px; font-weight: 600; }
+.advanced[data-open] .advancedSummary { display: none; }
+.advancedBody { padding-top: 0; }
+.advancedBody .group { margin-top: 30px; }
+.advancedBody .group:first-child { margin-top: 26px; }
+.advancedBody .groupHeading h3 { font-size: 16px; font-weight: 700; letter-spacing: 0; }
+.summaryMeasure { position: absolute; pointer-events: none; visibility: hidden; height: 0; overflow: hidden; white-space: nowrap; font-size: 14px; font-weight: 500; }
 .summaryMeasure small { font: inherit; margin-left: 8px; }
-.panel { padding: 0; background: var(--color-ink); width: min(720px, 100vw); }
-.panelHeader { padding: 26px 32px 18px; background: radial-gradient(ellipse at 100% 0%, color-mix(in srgb, var(--color-accent) 18%, transparent), transparent 80%); }
-.panelIdentity { display: flex; gap: 10px; align-items: center; margin-bottom: 20px; }
+.panel { padding: 0; background: var(--color-raised); width: min(720px, 100vw); }
+.panelHeader { position: relative; isolation: isolate; padding: 26px 32px 20px; }
+.panelHeader::before { content: ''; position: absolute; inset: 0; z-index: -1; pointer-events: none; background: radial-gradient(120% 120% at 100% 0%, rgba(47,134,187,.26), transparent 62%), radial-gradient(100% 100% at 0% 100%, rgba(30,91,82,.2), transparent 66%); }
+.panel:not(.tabbedPanel) .panelHeader::before { -webkit-mask-image: linear-gradient(#000 40%, transparent); mask-image: linear-gradient(#000 40%, transparent); }
+.panelIdentity { display: flex; gap: 12px; align-items: center; margin-bottom: 16px; }
 .panelIdentity > span { display: flex; align-items: center; gap: 8px; height: 30px; padding-inline: 12px; background: color-mix(in srgb, var(--color-ink) 55%, transparent); border-radius: 8px; }
 .panelIdentity b { font-size: 13px; font-weight: 700; }
 .panelIdentity small { font-size: 13px; font-weight: 600; color: var(--color-text-tertiary); }
-.panelTitle { display: flex; align-items: center; gap: 16px; font-size: 32px; font-weight: 800; letter-spacing: -.035em; line-height: 1.2; overflow: hidden; text-overflow: ellipsis; }
+.panelTitle { display: flex; align-items: flex-end; gap: 14px; font-size: 32px; font-weight: 800; letter-spacing: -.035em; line-height: 1.1; overflow: hidden; text-overflow: ellipsis; }
 .saveState { flex: none; display: flex; align-items: center; gap: 5px; font-size: 13px; font-weight: 600; letter-spacing: normal; color: var(--color-text-tertiary); }
 .saveState[data-state='saved'] { color: var(--color-accent-strong); }
 .panelBody { padding: 0; }
-.panelBody > section { margin: 28px 32px; }
+.panelBody > section { margin: 32px 32px; }
+.panelBody > section:first-child { margin-top: 26px; }
+.panelBody > section:last-child { margin-bottom: 36px; }
 .panel > p { margin: 0; padding: 0 32px 18px; font-size: 14px; color: var(--color-text-tertiary); }
 .tabbedPanel .panelBody.panelBody { overflow: hidden; }
 .tabbedPanel .panelBody > div, .tabbedPanel .panelBody > div > div { display: flex; flex-direction: column; height: 100%; min-height: 0; }
 .tabbedPanel :global([role='tabpanel']) { flex: 1; min-height: 0; overflow: auto; overscroll-behavior: contain; }
-.panelTabBody { padding: 24px 34px 36px; }
-.panelTabs { padding: 0 34px; }
+.panelTabBody { padding: 0 32px 36px; }
+.panelTabBody > .group { margin-top: 32px; }
+.panelTabBody > .group:first-child { margin-top: 26px; }
+.panelTabs { padding: 0 32px; }
 .panelTabs button { padding-inline: 9px; margin-inline: -9px; }
-.panel .groupRows { background: color-mix(in srgb, var(--color-raised) 46%, transparent); }
-.panelFooter { display: flex; justify-content: flex-end; gap: 12px; padding: 18px 34px; border-top: 1px solid var(--color-line); background: var(--color-ink); }
+.panel .groupRows, .panel .advancedToggle { background: color-mix(in srgb, var(--color-ink) 46%, transparent); }
+.panel .advancedToggle:hover { background: color-mix(in srgb, var(--color-ink) 62%, transparent); }
+.panelFooter { display: flex; justify-content: flex-end; gap: 12px; padding: 16px 32px 24px; border-top: 1px solid var(--color-line); background: var(--color-raised); }
+.panelFooter button { height: 50px; padding: 0 24px; font-size: 16px; }
+.panelFooter .danger[data-variant='primary'] { background: var(--color-danger); color: var(--color-ink); }
+.panelFooter .danger[data-variant='primary']:hover:not(:disabled) { background: #f6a09d; }
 .error { color: var(--color-record); margin: 16px 22px; font-size: 14px; }
 .tableSection { min-width: 0; }
 .tableToolbar { min-height: 48px; display: flex; align-items: center; flex-wrap: wrap; gap: 10px; margin-bottom: 12px; }
@@ -137,6 +153,7 @@
 .matrixControl { width: 100%; }
 .specialRow[data-found] { outline: 2px solid var(--color-accent); outline-offset: -2px; }
 .workspace { position: relative; isolation: isolate; display: grid; grid-template-columns: 296px minmax(0, 1fr); gap: 64px; padding: 112px var(--shell-gutter, 64px) 88px; min-height: 100dvh; color: var(--color-text); }
+.accountGlow { position: absolute; inset: 0 0 auto; height: 520px; pointer-events: none; background: radial-gradient(48% 90% at 18% 0%, rgba(21,55,73,.95) 0%, transparent 70%), radial-gradient(40% 70% at 70% 0%, rgba(64,159,212,.10) 0%, transparent 70%); }
 .master, .detail { position: relative; min-width: 0; }
 .detail { z-index: 1; }
 .pageHeading { display: flex; align-items: flex-end; gap: 18px; margin: 0; }
@@ -146,9 +163,11 @@
 .pageHeading + .group { margin-top: 30px; }
 .compactBack { display: none; }
 @media (min-width: 600px) and (max-width: 1023px) {
-  .workspace { grid-template-columns: 240px minmax(0, 1fr); gap: 28px; padding-top: 48px; }
+  .workspace { grid-template-columns: 280px minmax(0, 1fr); gap: 0; padding: 0; }
+  .master { padding: 46px 14px 20px; border-right: 1px solid var(--color-line); background: color-mix(in srgb, var(--color-ink) 50%, transparent); }
+  .detail { padding: 46px 24px 40px; }
   .master > aside { width: 100%; }
-  .pageHeading h1 { font-size: 36px; }
+  .pageHeading h1 { font-size: 40px; }
 }
 @media (max-width: 599px) {
   .workspace { display: block; padding: 16px 0 40px; }
@@ -169,7 +188,7 @@
   .panelFooter { padding: 16px; }
   .advancedToggle { gap: 12px; padding-inline: 14px; }
 }
-@media (prefers-reduced-motion: reduce) { .advancedToggle > svg { transition: none; } }
+@media (prefers-reduced-motion: reduce) { .advancedToggle, .advancedToggle > svg { transition: none; } }
 
 .settingsGrid { min-width: 0; overflow-x: auto; background: color-mix(in srgb, var(--color-ink) 40%, transparent); border-radius: 14px; }
 

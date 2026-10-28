@@ -1,4 +1,4 @@
-import {useLayoutEffect, useSyncExternalStore, useCallback} from 'react';
+import {useLayoutEffect, useSyncExternalStore, useCallback, type ReactNode} from 'react';
 import {defaultI18n} from '@i18n';
 import type {RemoteSource, RemoteSourceService} from '@core/remote-sources.ts';
 import {router} from '../../../router';
@@ -20,11 +20,12 @@ import styles from './remote-sources.module.css';
 const t = defaultI18n.t;
 type Props = Readonly<{embedded?: boolean; service: RemoteSourceService; source: RemoteSource; isCurrent: () => boolean;
   reportError: (error: unknown) => void; onClose: () => void;
+  render?: (panels: Readonly<{reading: ReactNode; advanced: ReactNode}>) => ReactNode;
   errorText: (error: unknown) => string; isAuthFailure: (error: unknown) => boolean}>;
 
 /** This is the existing source Reading dialog, not a second source/consent
  * surface. Each committed source/route opening owns its paired reads and draft. */
-export function SourceReadingDialog({embedded = false, service, source, isCurrent, reportError, onClose, errorText, isAuthFailure}: Props) {
+export function SourceReadingDialog({embedded = false, service, source, isCurrent, reportError, onClose, errorText, isAuthFailure, render}: Props) {
   const owned = useOwnedResource(() => {
     const location = router.state.location;
     const reader = new ReadingProfileOpening(service, source, () => isCurrent() && router.state.location === location &&
@@ -33,12 +34,13 @@ export function SourceReadingDialog({embedded = false, service, source, isCurren
     const unsubscribe = router.subscribe('onBeforeNavigate', () => reader.retire());
     return {reader, service, embedded, onClose, reportError, errorText, isAuthFailure, retire: () => {reader.retire();unsubscribe();}};
   }, entry => entry.retire(), [service, source, isCurrent, embedded], entry => {void entry.reader.load();});
-  return owned ? <ReadingBody key={owned.id} {...owned.value}/> : null;
+  return owned ? <ReadingBody key={owned.id} {...owned.value} render={render}/> : null;
 }
 
-function ReadingBody({reader, service, embedded, onClose, reportError, errorText, isAuthFailure}: {
+function ReadingBody({reader, service, embedded, onClose, reportError, errorText, isAuthFailure, render}: {
   reader: ReadingProfileOpening; service: RemoteSourceService; embedded: boolean; onClose: () => void; reportError: Props['reportError'];
   errorText: Props['errorText']; isAuthFailure: Props['isAuthFailure'];
+  render?: Props['render'];
 }) {
   const state = useSyncExternalStore(reader.subscribe, reader.getSnapshot, reader.getSnapshot);
   const sourceState = useSyncExternalStore(service.subscribe, service.getSnapshot, service.getSnapshot);
@@ -51,9 +53,12 @@ function ReadingBody({reader, service, embedded, onClose, reportError, errorText
     }
   }, [state, reader, reportError, isAuthFailure]);
   if (!reader.current() || state.kind === 'retired') return null;
-  if (state.kind === 'saved') return embedded ? <section className={styles.group}>
+  if (state.kind === 'saved') {
+    const saved = <section className={styles.group}>
     <p role="status">{t('next.remoteSources.saved')}</p><Button size="compact" onClick={close}>{t('action.done')}</Button>
-  </section> : null;
+    </section>;
+    return render ? render({reading: saved, advanced: saved}) : embedded ? saved : null;
+  }
   const draft = 'draft' in state ? state.draft : undefined;
   const editable = state.kind === 'ready' || state.kind === 'failed';
   const disabled = !editable || !draft || sourceState.busy || sourceState.ambiguous;
@@ -66,14 +71,17 @@ function ReadingBody({reader, service, embedded, onClose, reportError, errorText
         : state.kind !== 'accepted-unavailable' && state.kind !== 'saved-unavailable' && <Button size="compact" variant="primary" disabled={disabled}
           onClick={() => {if (draft) void (draft.advancedDirty ? reader.saveAdvanced(draft, state) : reader.save(draft, state));}}>{t('next.remoteSources.save')}</Button>}
     </>;
-  const body = <>
+  const notices = <>
     {state.kind === 'loading' && <p className={styles.muted} role="status">{t('next.remoteSources.loading')}</p>}
     {error && <p className={styles.error} role="alert">{error}</p>}
     {state.kind === 'unknown' && <p className={styles.note} role="status">{t('next.remoteSources.unconfirmed')}</p>}
     {(state.kind === 'accepted-unavailable' || state.kind === 'saved-unavailable') && <p className={styles.note} role="status">{t('next.remoteSources.error.refreshFailed')}</p>}
-    <SourceReadingFields reader={reader} state={state} disabled={disabled} phone={phone}/>
-
   </>;
+  const body = <>{notices}<SourceReadingFields reader={reader} state={state} disabled={disabled} phone={phone}/></>;
+  if (render) return render({
+    reading: <section className={styles.group}>{notices}<SourceReadingFields reader={reader} state={state} disabled={disabled} phone={phone} section="reading"/><div className={styles.actions}>{footer}</div></section>,
+    advanced: <section className={styles.group}>{notices}<SourceReadingFields reader={reader} state={state} disabled={disabled} phone={phone} section="advanced"/><div className={styles.actions}>{footer}</div></section>,
+  });
   return embedded ? <section className={styles.group}><h3>{t('next.remoteSources.reading')}</h3>{body}<div className={styles.actions}>{footer}</div></section>
     : <Dialog open title={reader.source.name} description={t('next.remoteSources.reading')}
       onOpenChange={open => {if (!open) close();}} footer={footer}>{body}</Dialog>;
@@ -81,9 +89,10 @@ function ReadingBody({reader, service, embedded, onClose, reportError, errorText
 
 /** The same fields in the source Profile, existing Reading dialog and wizard.
  * Every command callback carries the owner's original draft/render state. */
-export function SourceReadingFields({reader, state, disabled, phone, advancedOpen = true, onAdvancedChange}: {
+export function SourceReadingFields({reader, state, disabled, phone, advancedOpen = true, onAdvancedChange, section = 'all'}: {
   reader: ReadingProfileOpening; state: ReadingOpeningState; disabled: boolean; phone: boolean;
   advancedOpen?: boolean; onAdvancedChange?: () => void;
+  section?: 'all' | 'reading' | 'advanced';
 }) {
   const draft = 'draft' in state ? state.draft : undefined;
   if (!draft) return null;
@@ -101,6 +110,7 @@ export function SourceReadingFields({reader, state, disabled, phone, advancedOpe
   const readingDirty = !!draft && (draft.values.scanDepth !== draft.profile.values.scanDepth || draft.values.connections !== draft.profile.values.connections ||
     draft.values.requestsPerSecond !== draft.profile.values.requestsPerSecond || draft.values.bytesPerSecond !== draft.profile.values.bytesPerSecond);
   return <fieldset disabled={disabled} className={styles.readingFields}>
+      {section !== 'advanced' && <>
       {custom && <div className={styles.recordedChoice}>
         <SourceChoiceSummary comparison={custom.comparison} definition={custom.definition} phone={phone} disabled={disabled || draft.consentDirty}
           onChooseStart={folded ? onAdvancedChange : undefined}
@@ -117,13 +127,14 @@ export function SourceReadingFields({reader, state, disabled, phone, advancedOpe
         <SourceChoiceConnectionRows values={draft.values} disabled={disabled || !!draft.choice || !!draft.advancedDirty} sourceName={reader.source.name} phone={phone}
           markers={markers} onChange={patch => reader.edit(draft, patch)}/>
       </div>
-      {draft.consent !== undefined && <AdvancedAnalysisConsent checked={draft.consent}
+      </>}
+      {section !== 'reading' && draft.consent !== undefined && <AdvancedAnalysisConsent checked={draft.consent}
         disabled={disabled || !!draft.choice || !!draft.advancedDirty} onChange={value => reader.changeConsent(draft, value)}/>}
       {onAdvancedChange && <button type="button" className={styles.advRow} aria-expanded={advancedOpen} disabled={disabled} onClick={onAdvancedChange}>
         <span><b>{t('next.remoteSources.advanced')}</b><small>{advancedChanges !== undefined && advancedChanges > 0
           ? t('next.remoteSources.advancedChangeCount', {count: advancedChanges}) : t('next.remoteSources.advancedHelp')}</small></span><Icon name="i-down" size={18}/>
       </button>}
-      {advancedOpen && draft.advanced && advancedValues && <section>
+      {section !== 'reading' && advancedOpen && draft.advanced && advancedValues && <section>
         <h3>{t('next.remoteSources.advanced')}</h3>
         <SourceAdvancedRows values={advancedValues} cacheSupported={draft.advanced.cacheSupported} transportSupported={!!reader.source.mountId}
           cacheApplied={draft.advanced.cacheApplied} cacheError={draft.advanced.cacheError} cacheUsedBytes={draft.advanced.cacheUsedBytes}

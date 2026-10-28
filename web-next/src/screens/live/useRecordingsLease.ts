@@ -1,6 +1,8 @@
 import {useLayoutEffect, useRef, useState} from 'react';
 import {screenLifetime, type ScreenContext} from '../detail/context';
 import {createRecordingsController, type RecordingsController, type RecordingsView} from './recordings-controller';
+import {TunerController} from '../settings/server-livetv/recording/tuner-controller';
+import {canReadRecordingTuners} from './recording-status-access';
 
 const randomHex = async () => Array.from(crypto.getRandomValues(new Uint8Array(24)), value => value.toString(16).padStart(2, '0')).join('');
 
@@ -15,6 +17,8 @@ export type RecordingsLease = {
   current: () => boolean;
   life: ReturnType<typeof screenLifetime>;
   controller: RecordingsController;
+  /** Admin allocation facts exist only on the owner's Storage destination. */
+  tuners?: TunerController;
 };
 
 /** One committed Recordings door. The exact context, destination and retry own
@@ -35,7 +39,10 @@ export function useRecordingsLease(context: ScreenContext | undefined, view: Rec
     const life = screenLifetime(screen);
     const controller = createRecordingsController({api: life.api, serverId: context.scope.serverId, requestId: randomHex,
       signal: life.signal(), isCurrent: life.current});
-    const lease: RecordingsLease = {id: crypto.randomUUID(), context, view, attempt, live: true, current, life, controller};
+    const tunerCurrent = () => life.current() && canReadRecordingTuners(context.identity, context.scope.serverId);
+    const tuners = view === 'storage' && canReadRecordingTuners(context.identity, context.scope.serverId)
+      ? new TunerController(life.api, context.scope.serverId, tunerCurrent, error => {if (life.current()) context.effects.reportError(error);}) : undefined;
+    const lease: RecordingsLease = {id: crypto.randomUUID(), context, view, attempt, live: true, current, life, controller, tuners};
     held = lease;
     publish(lease);
     const load = async () => {
@@ -44,7 +51,7 @@ export function useRecordingsLease(context: ScreenContext | undefined, view: Rec
       if (view === 'recorded') await controller.readGroups('recent');
     };
     void load().catch(() => {});
-    return () => {lease.live = false;controller.dispose();life.dispose();};
+    return () => {lease.live = false;tuners?.dispose();controller.dispose();life.dispose();};
     // routeCurrent is captured by this exact door opening.
   }, [context, view, attempt]);
   return published?.live && published.context === context && published.view === view && published.attempt === attempt && published.current() ? published : undefined;

@@ -15,6 +15,7 @@ import {Range, ReadFeedback, Section, t} from './shared';
 import type {ChartSeries} from './Chart';
 import {Chart} from './Chart';
 import {SessionCard} from './SessionCard';
+import {BusySessions} from './BusySessions';
 import {PhoneHealth} from './PhoneHealth';
 import {DashboardQuiet} from './DashboardQuiet';
 import {desktopDashboardQuietState} from './dashboard-quiet';
@@ -119,7 +120,9 @@ function NowPlaying({bindings: b, state, phone = false}: {bindings: DashboardBin
     : totals.streams > 0 ? <><span>{t('next.dashboard.streams', {count: totals.streams})}</span><small>{t('next.dashboard.locations', {home: totals.atHome, away: totals.away})}</small></>
       : !state.loading && !state.failed && state.value && totals.streams === 0 && state.value.items.length === 0 ? <span>{t('next.shell.streams', {count: 0})}</span> : null);
   return <Section phone={phone} title={t('next.dashboard.now')} extra={count}>
-    <ReadFeedback openHome={b.effects.openHome} state={state} />{state.value && <SessionList key={bindingLifetime(b)} sessions={sessions} bindings={b} phone={phone} empty={empty} onRefresh={refresh} />}
+    <ReadFeedback openHome={b.effects.openHome} state={state} />{state.value && (phone
+      ? <BusySessions key={bindingLifetime(b)} sessions={sessions} totals={totals} bindings={b} refresh={refresh} empty={empty}/>
+      : <SessionList key={bindingLifetime(b)} sessions={sessions} bindings={b} phone={phone} empty={empty} onRefresh={refresh} />)}
     <ToastHost toast={toast} onDismiss={() => showToast(null)} />
   </Section>;
 }
