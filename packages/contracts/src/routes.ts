@@ -698,6 +698,33 @@ export const routes = [
     "admission": "admin"
   },
   {
+    "id": "delete_admin_access_members_id_profiles_profile_avatar",
+    "method": "DELETE",
+    "path": "/v1/admin/access/members/{id}/profiles/{profileId}/avatar",
+    "summary": "Delete another person's profile picture",
+    "access": "admin_scope",
+    "adminScope": "access",
+    "requires": "admin",
+    "lane": "default",
+    "cost": "constant",
+    "bodyLimit": 4096,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "revision_mismatch",
+      "avatar_unsupported",
+      "avatar_not_found",
+      "internal",
+      "database_busy",
+      "writer_capacity"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "admin"
+  },
+  {
     "id": "delete_admin_backup",
     "method": "DELETE",
     "path": "/v1/admin/backups/{id}",
@@ -1878,6 +1905,37 @@ export const routes = [
       "database_busy"
     ],
     "status": 200,
+    "http": true,
+    "admission": "admin"
+  },
+  {
+    "id": "get_admin_access_members_id_profiles_profile_avatar",
+    "method": "GET",
+    "path": "/v1/admin/access/members/{id}/profiles/{profileId}/avatar",
+    "summary": "Get another person's profile picture",
+    "access": "admin_scope",
+    "adminScope": "access",
+    "requires": "admin",
+    "lane": "default",
+    "cost": "constant",
+    "bodyLimit": 0,
+    "query": [
+      "v",
+      "size"
+    ],
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "revision_mismatch",
+      "avatar_unsupported",
+      "avatar_not_found",
+      "internal",
+      "database_busy"
+    ],
+    "status": 200,
+    "responseContentType": "application/octet-stream",
     "http": true,
     "admission": "admin"
   },
@@ -11559,6 +11617,42 @@ export const routes = [
     "admission": "security-fence"
   },
   {
+    "id": "post_admin_access_members_id_profiles_profile_avatar",
+    "method": "POST",
+    "path": "/v1/admin/access/members/{id}/profiles/{profileId}/avatar",
+    "summary": "Post another person's profile picture",
+    "access": "admin_scope",
+    "adminScope": "access",
+    "requires": "admin",
+    "lane": "default",
+    "cost": "constant",
+    "bodyLimit": 5242880,
+    "query": [
+      "expectedRevision"
+    ],
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "revision_mismatch",
+      "avatar_unsupported",
+      "avatar_not_found",
+      "internal",
+      "database_busy",
+      "writer_capacity"
+    ],
+    "status": 200,
+    "requestContentTypes": [
+      "image/jpeg",
+      "image/png",
+      "application/octet-stream",
+      "multipart/form-data"
+    ],
+    "http": true,
+    "admission": "admin"
+  },
+  {
     "id": "post_admin_access_members_id_profiles_profile_pin_reset",
     "method": "POST",
     "path": "/v1/admin/access/members/{id}/profiles/{profileId}/pin-reset",
@@ -13440,8 +13534,7 @@ export const routes = [
       "multipart/form-data",
       "application/octet-stream",
       "image/png",
-      "image/jpeg",
-      "image/webp"
+      "image/jpeg"
     ],
     "http": true,
     "admission": "auth"
