@@ -162,12 +162,21 @@ func (c *timedConn) Read(p []byte) (int, error) {
 	return c.Conn.Read(p)
 }
 func CopyResponse(w http.ResponseWriter, resp *http.Response, reader io.Reader) error {
+	return CopyResponseAs(w, resp, reader, "video/mp4")
+}
+
+// CopyResponseAs copies a relayed range response under a media type the
+// caller determined; the origin's own Content-Type is never forwarded.
+func CopyResponseAs(w http.ResponseWriter, resp *http.Response, reader io.Reader, contentType string) error {
 	for _, name := range []string{"Content-Length", "Content-Range", "Accept-Ranges"} {
 		if value := resp.Header.Get(name); value != "" {
 			w.Header().Set(name, value)
 		}
 	}
-	w.Header().Set("Content-Type", "video/mp4")
+	if contentType == "" {
+		contentType = "video/mp4"
+	}
+	w.Header().Set("Content-Type", contentType)
 	w.Header().Set("Cache-Control", "private, no-store")
 	w.WriteHeader(resp.StatusCode)
 	_, e := io.Copy(w, reader)

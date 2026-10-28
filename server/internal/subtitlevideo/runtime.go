@@ -58,6 +58,9 @@ type facts struct {
 	origin, duration                  int64
 	video                             int
 	audios                            []audioTrack
+	// probe is the confined ffprobe document these facts were read from, kept
+	// so a remote source's planner can read every stream from the same bytes.
+	probe []byte
 }
 
 func New(o Options) (*Runtime, error) {
@@ -145,6 +148,7 @@ func (r *Runtime) probe(ctx context.Context, input subtitles.RenderInput, ledger
 	}
 	f.duration = int64(math.Round(duration * 1e6))
 	f.container = document.Format.Name
+	f.probe = data
 	origin, e := strconv.ParseFloat(document.Format.Start, 64)
 	if e != nil || math.IsNaN(origin) || math.IsInf(origin, 0) || math.Abs(origin) > 86400 {
 		return f, nil, subtitles.ErrTiming
@@ -293,5 +297,5 @@ func (r *Runtime) InspectSubtitleSource(ctx context.Context, item, source string
 	if !ok {
 		return subtitles.SourceMediaInfo{}, subtitles.ErrUnsupported
 	}
-	return subtitles.SourceMediaInfo{Evidence: input.Evidence(), DescriptorDigest: remote.digest, VideoCodec: f.videoCodec, AudioCodec: f.audioCodec, DurationUS: f.duration, OriginUS: f.origin, Width: f.width, Height: f.height, Container: f.container, NetworkPolicyRevision: remote.source.networkRevision}, nil
+	return subtitles.SourceMediaInfo{Evidence: input.Evidence(), DescriptorDigest: remote.digest, VideoCodec: f.videoCodec, AudioCodec: f.audioCodec, DurationUS: f.duration, OriginUS: f.origin, Width: f.width, Height: f.height, Container: f.container, NetworkPolicyRevision: remote.source.networkRevision, Probe: f.probe}, nil
 }

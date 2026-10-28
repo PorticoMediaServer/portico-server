@@ -46,6 +46,10 @@ type DeliverySource struct {
 	// DetailKnown is false for a file probed before stream detail existed and
 	// not refreshed since. Unobserved facts do not reject a route; they are noted.
 	DetailKnown bool
+	// Remote is a STRM target the server measured and fetches itself. Its
+	// original is relayed by the server; any other route reads it through the
+	// remote window input.
+	Remote bool
 }
 
 // audioFamily folds the PCM and DTS variants ffprobe names individually into the

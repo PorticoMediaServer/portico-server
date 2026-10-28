@@ -181,6 +181,10 @@ func (p Probe) probeOutputMode(ctx context.Context, path, input string, options 
 	return out.data, nil
 }
 
+// DecodeProbe reads an ffprobe JSON document (format and streams) the way a
+// scan does. A remote source's planner reads its measured streams through it.
+func DecodeProbe(data []byte) (Facts, error) { return decodeMediaProbe(data) }
+
 func decodeMediaProbe(data []byte) (Facts, error) {
 	var raw struct {
 		Format struct {

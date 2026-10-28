@@ -178,18 +178,22 @@ func (s *Service) PlanV1(ctx context.Context, p identity.Principal, item string,
 	if e = tx.QueryRow(`SELECT a.container,a.video_codec,a.audio_codec,a.duration FROM catalog_assets a WHERE a.token=?`, aid).Scan(&container, &video, &audio, &duration); e != nil {
 		return DeliveryPlan{}, e
 	}
+	var remote *DeliverySource
 	if container == "strm" {
-		ceiling, err := memberAwayCeilingsTx(ctx, tx, p.AccountID, choice.Remote || DeliveryContextFrom(ctx).NetworkClass == NetworkRemote)
+		// A preview opens nothing: it plans from the media the server last
+		// measured behind this STRM. A start measures it again.
+		measured, ok, err := lastRemoteSourceTx(ctx, tx, aid)
 		if err != nil {
 			return DeliveryPlan{}, err
 		}
-		if ceiling.MaxVideoBitrateBPS > 0 {
-			return DeliveryPlan{}, ErrQualityUnavailable
+		if !ok {
+			// Never measured: the start decides, relayed as it is unless the
+			// measured media needs a remux or a conversion.
+			return DeliveryPlan{SourceID: aid, SourceContainer: "strm", Mode: "remote", Strategy: DeliveryOriginal, VideoAction: "copy", AudioAction: "copy", AudioStream: -1, Duration: duration}, nil
 		}
-		// A remote source is played as-is once it has been prepared at start.
-		return DeliveryPlan{SourceID: aid, Mode: "remote", Strategy: DeliveryOriginal, VideoAction: "copy", AudioAction: "copy", AudioStream: -1, Duration: duration}, nil
+		remote = &measured
 	}
-	inputs, e := s.planInputsTx(ctx, tx, p, item, aid, container, video, audio, duration, false, true, choice.AudioStream, &choice)
+	inputs, e := s.planInputsTx(ctx, tx, p, item, aid, container, video, audio, duration, remote, true, choice.AudioStream, &choice)
 	if e != nil {
 		return DeliveryPlan{}, e
 	}
