@@ -167,6 +167,27 @@ func TestGroupCountersMatchMemberScans(t *testing.T) {
 	}
 }
 
+// cc1DrainTrickleSeed builds only the initial fixture. Current bounded facet
+// publication takes 2,310 worker admissions for 300 episodes (3.59 s with
+// Go 1.26.10); the old 500-step helper stopped before the measured edit began.
+// Use the canonical 10k fixture-drain bound here. The production raw-eight,
+// byte and write budgets, and the post-edit 40-unit/seek assertions below,
+// remain unchanged.
+func cc1DrainTrickleSeed(t *testing.T, db *sql.DB) {
+	t.Helper()
+	worker := NewWorker(db)
+	for step := 0; step < 10000; step++ {
+		n, err := worker.Step(context.Background(), 500)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if n == 0 {
+			return
+		}
+	}
+	t.Fatal("catalogue fixture seed did not drain within 10000 bounded steps")
+}
+
 // One episode's new details (a provider filling them in one title at a time)
 // must cost the same in a show of 30 episodes as in one of thousands: no
 // statement walks the show's episodes or members, and the container's
@@ -203,7 +224,7 @@ func TestEpisodeTrickleCostIndependentOfShowSize(t *testing.T) {
 			}
 			return nil
 		})
-		cc1Drain(t, db)
+		cc1DrainTrickleSeed(t, db)
 		// The show's details arrive, then one episode's.
 		ctx, trace := dbwork.TraceQueryPlans(context.Background())
 		start := time.Now()
