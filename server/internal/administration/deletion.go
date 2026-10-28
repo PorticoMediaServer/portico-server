@@ -612,6 +612,9 @@ func (s *Service) Delete(ctx context.Context, auth Authorize, actor string, requ
 				}
 			}
 		}
+		if !receipts[i].Removed {
+			continue
+		}
 		// The zero-member policy never adopts newly attached members. Pending
 		// container/season work commits and resumes before the final receipt.
 		emptyDone := false

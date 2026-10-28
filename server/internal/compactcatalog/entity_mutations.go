@@ -189,12 +189,20 @@ func BeginEntityMutationTx(ctx context.Context, tx *sql.Tx, in MutationIntent) (
 	if kind == Track && pub == "" {
 		return ref, ErrMutationStale
 	}
-    var artistSurvivor int64
-    if in.Mode=="adopt"&&kind==Artist&&in.OwnerKind=="identity"&&in.Parent==""&&in.Target==0&&in.ProviderKind=="artist" {
-        var identity bool
-        if err=tx.QueryRowContext(ctx,`SELECT EXISTS(SELECT 1 FROM catalog_external_ids WHERE entity_id=? AND provider=? AND provider_kind=? AND provider_id=?)`,in.Entity,in.Provider,in.ProviderKind,in.ProviderID).Scan(&identity);err!=nil{return ref,err};if !identity{return ref,ErrMutationStale};artistSurvivor=in.Entity
-    }
-    if err=requireNoReverseMutationOverlapTx(ctx,tx,family,in.Entity,in.Target,artistSurvivor);err!=nil{return ref,err}
+	var artistSurvivor int64
+	if in.Mode == "adopt" && kind == Artist && in.OwnerKind == "identity" && in.Parent == "" && in.Target == 0 && in.ProviderKind == "artist" {
+		var identity bool
+		if err = tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM catalog_external_ids WHERE entity_id=? AND provider=? AND provider_kind=? AND provider_id=?)`, in.Entity, in.Provider, in.ProviderKind, in.ProviderID).Scan(&identity); err != nil {
+			return ref, err
+		}
+		if !identity {
+			return ref, ErrMutationStale
+		}
+		artistSurvivor = in.Entity
+	}
+	if err = requireNoReverseMutationOverlapTx(ctx, tx, family, in.Entity, in.Target, artistSurvivor); err != nil {
+		return ref, err
+	}
 	digest, err := EntityMutationSourceDigestTx(ctx, tx, in.Entity)
 	if err != nil {
 		return ref, err
@@ -224,7 +232,12 @@ func BeginEntityMutationTx(ctx context.Context, tx *sql.Tx, in MutationIntent) (
 		}
 		digest = mutationPairDigest(digest, targetDigest)
 	}
-    if in.Mode=="adopt"&&kind==Artist&&in.Provider=="musicbrainz"&&in.CauseOperation!=""{digest,err=artistAuthorityDigestTx(ctx,tx,library,digest);if err!=nil{return ref,err}}
+	if in.Mode == "adopt" && kind == Artist && in.Provider == "musicbrainz" && in.CauseOperation != "" {
+		digest, err = artistAuthorityDigestTx(ctx, tx, library, digest)
+		if err != nil {
+			return ref, err
+		}
+	}
 	var parent, target any
 	if in.Parent != "" {
 		parent = in.Parent
@@ -280,8 +293,13 @@ func CheckEntityMutationBindingsTx(ctx context.Context, tx *sql.Tx, ref Mutation
 		}
 		digest = mutationPairDigest(digest, targetDigest)
 	}
-	if m.Mode=="adopt"&&m.Kind==Artist&&m.Provider=="musicbrainz"&&m.CauseOperation!=""{digest,err=artistAuthorityDigestTx(ctx,tx,m.Library,digest);if err!=nil{return m,err}}
- if digest != m.SourceDigest {
+	if m.Mode == "adopt" && m.Kind == Artist && m.Provider == "musicbrainz" && m.CauseOperation != "" {
+		digest, err = artistAuthorityDigestTx(ctx, tx, m.Library, digest)
+		if err != nil {
+			return m, err
+		}
+	}
+	if digest != m.SourceDigest {
 		return m, ErrMutationStale
 	}
 	if m.Target != 0 {
@@ -295,11 +313,22 @@ func CheckEntityMutationBindingsTx(ctx context.Context, tx *sql.Tx, ref Mutation
 	}
 	return m, nil
 }
-func CheckEntityMutationTx(ctx context.Context,tx *sql.Tx,ref MutationRef)(EntityMutation,error){
- m,err:=CheckEntityMutationBindingsTx(ctx,tx,ref);if err!=nil||m.Status=="terminal"{return m,err}
- if m.Status=="waiting"{return m,ErrEntityMutating}
- familyCtx:=WithMutationFamily(ctx,m.Family)
- if err=RequireEntityAcquirableTx(familyCtx,tx,m.Entity);err!=nil{return m,err};if err=RequireEntityAcquirableTx(familyCtx,tx,m.Target);err!=nil{return m,err};return m,nil
+func CheckEntityMutationTx(ctx context.Context, tx *sql.Tx, ref MutationRef) (EntityMutation, error) {
+	m, err := CheckEntityMutationBindingsTx(ctx, tx, ref)
+	if err != nil || m.Status == "terminal" {
+		return m, err
+	}
+	if m.Status == "waiting" {
+		return m, ErrEntityMutating
+	}
+	familyCtx := WithMutationFamily(ctx, m.Family)
+	if err = RequireEntityAcquirableTx(familyCtx, tx, m.Entity); err != nil {
+		return m, err
+	}
+	if err = RequireEntityAcquirableTx(familyCtx, tx, m.Target); err != nil {
+		return m, err
+	}
+	return m, nil
 }
 func SetMutationPhaseTx(ctx context.Context, tx *sql.Tx, ref MutationRef, phase string) error {
 	r, e := tx.ExecContext(ctx, `UPDATE catalog_entity_mutations SET phase=? WHERE mutation_id=? AND generation=? AND status='active'`, phase, ref.ID, ref.Generation)
@@ -416,13 +445,15 @@ func requireNoReverseMutationOverlapTx(ctx context.Context, tx *sql.Tx, family s
 			var overlap bool
 			// Each source-owned column has a full-prefix FK index. A fixed set of
 			// equality probes, independent of unrelated active work or terminal history.
-            status:=`status<>'terminal'`
-            // Only this exact captured Artist edge can be a destination-only
-            // handoff. The waiting CHECK + entry/parent/artist guards prove
-            // current Artist == subject_ancestor_1 for every such cause.
-            // Seek active/blocked separately; never scan compatible waiters.
-            if len(artistDestination)==1&&artistDestination[0]!=0&&endpoint==artistDestination[0]&&column=="subject_ancestor_1"{status=`status IN('active','blocked')`}
-            if err := tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM catalog_entity_mutations WHERE `+column+`=? AND `+status+` AND family_id<>?)`, endpoint, family).Scan(&overlap); err != nil {
+			status := `status<>'terminal'`
+			// Only this exact captured Artist edge can be a destination-only
+			// handoff. The waiting CHECK + entry/parent/artist guards prove
+			// current Artist == subject_ancestor_1 for every such cause.
+			// Seek active/blocked separately; never scan compatible waiters.
+			if len(artistDestination) == 1 && artistDestination[0] != 0 && endpoint == artistDestination[0] && column == "subject_ancestor_1" {
+				status = `status IN('active','blocked')`
+			}
+			if err := tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM catalog_entity_mutations WHERE `+column+`=? AND `+status+` AND family_id<>?)`, endpoint, family).Scan(&overlap); err != nil {
 				return err
 			}
 			if overlap {
@@ -473,8 +504,18 @@ func RestartRetainedMutationTx(ctx context.Context, tx *sql.Tx, ref MutationRef)
 	return ref, nil
 }
 
-func artistAuthorityDigestTx(ctx context.Context,tx *sql.Tx,library int64,digest string)(string,error){
- var incarnation string;var revision int64;var enabled bool
- err:=tx.QueryRowContext(ctx,`SELECT p.incarnation,p.revision,p.enabled FROM mb_provider_policies p JOIN catalog_libraries cl ON cl.library_id=p.library_id WHERE cl.id=? AND cl.retired=0`,library).Scan(&incarnation,&revision,&enabled)
- if err!=nil{return "",err};proof,err:=json.Marshal([]any{digest,incarnation,revision,enabled});if err!=nil{return "",err};sum:=sha256.Sum256(proof);return hex.EncodeToString(sum[:]),nil
+func artistAuthorityDigestTx(ctx context.Context, tx *sql.Tx, library int64, digest string) (string, error) {
+	var incarnation string
+	var revision int64
+	var enabled bool
+	err := tx.QueryRowContext(ctx, `SELECT p.incarnation,p.revision,p.enabled FROM mb_provider_policies p JOIN catalog_libraries cl ON cl.library_id=p.library_id WHERE cl.id=? AND cl.retired=0`, library).Scan(&incarnation, &revision, &enabled)
+	if err != nil {
+		return "", err
+	}
+	proof, err := json.Marshal([]any{digest, incarnation, revision, enabled})
+	if err != nil {
+		return "", err
+	}
+	sum := sha256.Sum256(proof)
+	return hex.EncodeToString(sum[:]), nil
 }

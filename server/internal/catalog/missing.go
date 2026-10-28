@@ -132,6 +132,9 @@ func missingRuleTx(ctx context.Context, tx *sql.Tx) (MissingRule, error) {
 	var mode sql.NullString
 	var days sql.NullInt64
 	err := tx.QueryRowContext(ctx, `SELECT settings."library.missingTitles",settings."library.missingTitlesDays" FROM server_settings settings WHERE singleton=1`).Scan(&mode, &days)
+	if errors.Is(err, sql.ErrNoRows) {
+		return rule, nil
+	}
 	if err != nil {
 		return rule, err
 	}
@@ -368,12 +371,42 @@ func (s *Service) EmptyMissingAuthorized(ctx context.Context, library string, cu
 			}
 			current, due := rule.Cutoff(time.Now())
 			if !due {
+				var ref compactcatalog.MutationRef
+				query := `SELECT m.mutation_id,m.generation FROM catalog_entity_mutations m INDEXED BY catalog_entity_mutations_automatic_missing WHERE m.owner_kind='missing' AND m.cause_operation='automatic-missing' AND m.status='active' AND m.parent_mutation_id IS NULL`
+				var args []any
+				if library != "" {
+					query += ` AND m.library_id=(SELECT id FROM catalog_libraries WHERE library_id=?)`
+					args = append(args, library)
+				}
+				e := tx.QueryRowContext(ctx, query+` ORDER BY m.library_id,m.mutation_id LIMIT 1`, args...).Scan(&ref.ID, &ref.Generation)
+				if errors.Is(e, sql.ErrNoRows) {
+					return nil
+				}
+				if e != nil {
+					return e
+				}
+				m, e := compactcatalog.ReadEntityMutationTx(ctx, tx, ref)
+				if e != nil {
+					return e
+				}
+				step, e := staleMutationStepTx(ctx, tx, m)
+				if e != nil {
+					return e
+				}
 				out.More = true
+				out.Advanced = step.Progressed
+				if step.Complete {
+					return acknowledgeMutationTx(ctx, tx, ref)
+				}
 				return nil
 			}
 			if current.Before(cutoff) {
 				cutoff = current
 			}
+		}
+		cause, ownerPrefix := "manual-missing", "manual:"
+		if automatic, _ := ctx.Value(automaticMissingKey{}).(bool); automatic {
+			cause, ownerPrefix = "automatic-missing", "automatic:"
 		}
 		fileLibrary, fileArgs := scope.librarySQL("s.library_id")
 		titleLibrary, titleArgs := scope.librarySQL("cl.library_id")
@@ -381,12 +414,12 @@ func (s *Service) EmptyMissingAuthorized(ctx context.Context, library string, cu
 		// inventory custody. Every turn re-resolves the caller's live scope.
 		var ref compactcatalog.MutationRef
 		var title int64
-		pendingErr := tx.QueryRowContext(ctx, `SELECT m.mutation_id,m.generation,m.entity_id FROM catalog_entity_mutations m JOIN catalog_entities missing_candidate ON missing_candidate.id=m.entity_id JOIN catalog_libraries cl ON cl.id=missing_candidate.library_id WHERE m.owner_kind='missing' AND m.parent_mutation_id IS NULL AND m.status='active' AND (?='' OR cl.library_id=?) AND cl.retired=0 AND `+titleLibrary+` AND (`+scope.VisibilitySQL+`) ORDER BY m.mutation_id LIMIT 1`, append(append([]any{library, library}, titleArgs...), scope.VisibilityArgs...)...).Scan(&ref.ID, &ref.Generation, &title)
+		pendingErr := tx.QueryRowContext(ctx, `SELECT m.mutation_id,m.generation,m.entity_id FROM catalog_entity_mutations m JOIN catalog_entities missing_candidate ON missing_candidate.id=m.entity_id JOIN catalog_libraries cl ON cl.id=missing_candidate.library_id WHERE m.owner_kind='missing' AND m.cause_operation=? AND m.parent_mutation_id IS NULL AND m.status='active' AND (?='' OR cl.library_id=?) AND cl.retired=0 AND `+titleLibrary+` AND (`+scope.VisibilitySQL+`) ORDER BY m.mutation_id LIMIT 1`, append(append([]any{cause, library, library}, titleArgs...), scope.VisibilityArgs...)...).Scan(&ref.ID, &ref.Generation, &title)
 		if pendingErr != nil && !errors.Is(pendingErr, sql.ErrNoRows) {
 			return pendingErr
 		}
 		if errors.Is(pendingErr, sql.ErrNoRows) {
-			err = tx.QueryRowContext(ctx, `SELECT m.entity_id FROM catalog_missing_titles m JOIN catalog_libraries cl ON cl.id=m.library_id JOIN catalog_entities missing_candidate ON missing_candidate.id=m.entity_id WHERE (?='' OR cl.library_id=?) AND m.missing_since_ms<=? AND NOT EXISTS(SELECT 1 FROM catalog_entity_mutations refused WHERE refused.owner_kind='missing' AND refused.owner_id=pid(missing_candidate.public_id) AND refused.owner_generation=? AND refused.status='terminal' AND refused.outcome='stale') AND cl.retired=0 AND `+titleLibrary+` AND (`+scope.VisibilitySQL+`) AND NOT EXISTS(SELECT 1 FROM inventory_source_active a JOIN library_sources src ON src.id=a.source_id WHERE src.library_id=cl.library_id) AND NOT EXISTS(SELECT 1 FROM library_sources src WHERE src.library_id=cl.library_id AND src.health IN('offline','root_changed','inventory_running')) ORDER BY m.library_id,m.missing_since_ms,m.entity_id LIMIT 1`, append(append([]any{library, library, cutoff.UnixMilli(), cutoff.UnixMilli()}, titleArgs...), scope.VisibilityArgs...)...).Scan(&title)
+			err = tx.QueryRowContext(ctx, `SELECT m.entity_id FROM catalog_missing_titles m JOIN catalog_libraries cl ON cl.id=m.library_id JOIN catalog_entities missing_candidate ON missing_candidate.id=m.entity_id WHERE (?='' OR cl.library_id=?) AND m.missing_since_ms<=? AND NOT EXISTS(SELECT 1 FROM catalog_entity_mutations refused WHERE refused.owner_kind='missing' AND refused.owner_id=?||pid(missing_candidate.public_id) AND refused.owner_generation=? AND refused.status='terminal' AND refused.outcome='stale') AND cl.retired=0 AND `+titleLibrary+` AND (`+scope.VisibilitySQL+`) AND NOT EXISTS(SELECT 1 FROM inventory_source_active a JOIN library_sources src ON src.id=a.source_id WHERE src.library_id=cl.library_id) AND NOT EXISTS(SELECT 1 FROM library_sources src WHERE src.library_id=cl.library_id AND src.health IN('offline','root_changed','inventory_running')) ORDER BY m.library_id,m.missing_since_ms,m.entity_id LIMIT 1`, append(append([]any{library, library, cutoff.UnixMilli(), ownerPrefix, cutoff.UnixMilli()}, titleArgs...), scope.VisibilityArgs...)...).Scan(&title)
 			if err != nil && !errors.Is(err, sql.ErrNoRows) {
 				return err
 			}
@@ -426,10 +459,32 @@ func (s *Service) EmptyMissingAuthorized(ctx context.Context, library string, cu
 				if generation < 1 {
 					generation = 1
 				}
-				if err = ackSupersededMissingTx(ctx, tx, public, generation); err != nil {
+				if err = ackSupersededMissingTx(ctx, tx, ownerPrefix+public, generation); err != nil {
 					return err
 				}
 
+				if cause == "manual-missing" {
+					var old compactcatalog.MutationRef
+					e := tx.QueryRowContext(ctx, `SELECT mutation_id,generation FROM catalog_entity_mutations WHERE entity_id=? AND owner_kind='missing' AND cause_operation='automatic-missing' AND status='active'`, title).Scan(&old.ID, &old.Generation)
+					if e == nil {
+						m, e := compactcatalog.ReadEntityMutationTx(ctx, tx, old)
+						if e != nil {
+							return e
+						}
+						step, e := staleMutationStepTx(ctx, tx, m)
+						if e != nil {
+							return e
+						}
+						out.Advanced = step.Progressed
+						if step.Complete {
+							return acknowledgeMutationTx(ctx, tx, old)
+						}
+						return nil
+					}
+					if !errors.Is(e, sql.ErrNoRows) {
+						return e
+					}
+				}
 				// Keep the synchronous pin-free domain path. It cannot drop
 				// a release closure and needs no cross-writer custody.
 				if pinErr := compactcatalog.RequireNoEntityMBPinsTx(ctx, tx, title); pinErr == nil {
@@ -447,7 +502,7 @@ func (s *Service) EmptyMissingAuthorized(ctx context.Context, library string, cu
 				} else if !errors.Is(pinErr, compactcatalog.ErrEntityPinned) {
 					return pinErr
 				}
-				_, err = compactcatalog.BeginEntityMutationTx(ctx, tx, compactcatalog.MutationIntent{Entity: title, OwnerKind: "missing", OwnerID: public, OwnerGeneration: generation, Mode: "remove"})
+				_, err = compactcatalog.BeginEntityMutationTx(ctx, tx, compactcatalog.MutationIntent{Entity: title, OwnerKind: "missing", OwnerID: ownerPrefix + public, OwnerGeneration: generation, Mode: "remove", CauseOperation: cause})
 				out.Advanced = err == nil
 				return err
 			}
@@ -480,8 +535,8 @@ func (s *Service) EmptyMissingAuthorized(ctx context.Context, library string, cu
  WHERE (?='' OR s.library_id=?) AND s.health NOT IN('offline','root_changed','inventory_running') AND o.state='missing' AND o.retired=0 AND o.missing_since<>'' AND o.missing_since<=?
  AND `+fileLibrary+`
  AND NOT EXISTS(SELECT 1 FROM catalog_assets asset JOIN catalog_asset_links link ON link.asset_id=asset.id JOIN catalog_entities missing_candidate ON missing_candidate.id=link.entity_id WHERE asset.token=o.asset_id AND NOT (`+scope.VisibilitySQL+`))
- AND NOT EXISTS(SELECT 1 FROM catalog_assets held_asset JOIN catalog_asset_links held_link ON held_link.asset_id=held_asset.id JOIN catalog_entities held_entity ON held_entity.id=held_link.entity_id JOIN catalog_entity_mutations refused ON refused.owner_kind='missing' AND refused.owner_id=pid(held_entity.public_id) AND refused.owner_generation=? AND refused.status='terminal' AND refused.outcome='stale' WHERE held_asset.token=o.asset_id)
- AND NOT EXISTS(SELECT 1 FROM inventory_source_active a WHERE a.source_id=s.id) ORDER BY o.id LIMIT ?`, append(append(append([]any{library, library, cutoff.UTC().Format(time.RFC3339Nano)}, fileArgs...), scope.VisibilityArgs...), cutoff.UnixMilli(), missingBatch+1)...)
+ AND NOT EXISTS(SELECT 1 FROM catalog_assets held_asset JOIN catalog_asset_links held_link ON held_link.asset_id=held_asset.id JOIN catalog_entities held_entity ON held_entity.id=held_link.entity_id JOIN catalog_entity_mutations refused ON refused.owner_kind='missing' AND refused.owner_id=?||pid(held_entity.public_id) AND refused.owner_generation=? AND refused.status='terminal' AND refused.outcome='stale' WHERE held_asset.token=o.asset_id)
+ AND NOT EXISTS(SELECT 1 FROM inventory_source_active a WHERE a.source_id=s.id) ORDER BY o.id LIMIT ?`, append(append(append([]any{library, library, cutoff.UTC().Format(time.RFC3339Nano)}, fileArgs...), scope.VisibilityArgs...), ownerPrefix, cutoff.UnixMilli(), missingBatch+1)...)
 		if err != nil {
 			return err
 		}
@@ -539,7 +594,7 @@ func (s *Service) EmptyMissingDue(ctx context.Context) (MissingEmptied, error) {
 	var total MissingEmptied
 	cutoff, due := s.MissingRule(ctx).Cutoff(time.Now())
 	if !due {
-		return total, nil
+		cutoff = time.Time{}
 	}
 	for ctx.Err() == nil {
 		step, err := s.EmptyMissing(ctx, "", cutoff, nil)

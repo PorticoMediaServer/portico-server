@@ -54,10 +54,26 @@ func EnqueueMBAdoptionTx(ctx context.Context, tx *sql.Tx, album int64, albumInca
 	}
 	return enqueueCatalogMutationTx(ctx, tx, ref)
 }
-func enqueueIdentityAdoptionTx(ctx context.Context, tx *sql.Tx, entity int64, p compactcatalog.ProviderIdentity) error {
+func enqueueIdentityAdoptionTx(ctx context.Context, tx *sql.Tx, entity int64, p compactcatalog.ProviderIdentity, causes ...string) error {
 	var public string
 	if err := tx.QueryRowContext(ctx, `SELECT pid(public_id) FROM catalog_entities WHERE id=?`, entity).Scan(&public); err != nil {
 		return err
+	}
+	var kind compactcatalog.Kind
+	var library int64
+	if e := tx.QueryRowContext(ctx, `SELECT kind,library_id FROM catalog_entities WHERE id=?`, entity).Scan(&kind, &library); e != nil {
+		return e
+	}
+	if kind == compactcatalog.Artist {
+		if _, found, e := currentArtistIdentityRootTx(ctx, tx, library, p); e != nil {
+			return e
+		} else if found {
+			return nil
+		}
+	}
+	cause := ""
+	if len(causes) > 0 {
+		cause = causes[0]
 	}
 	// Reuse an active root; a later real identity event gets a new generation.
 	var ref compactcatalog.MutationRef
@@ -72,7 +88,7 @@ func enqueueIdentityAdoptionTx(ctx context.Context, tx *sql.Tx, entity int64, p 
 	if err = tx.QueryRowContext(ctx, `SELECT COALESCE(max(owner_generation),0)+1 FROM catalog_entity_mutations WHERE owner_kind='identity' AND owner_id=?`, public).Scan(&generation); err != nil {
 		return err
 	}
-	ref, err = compactcatalog.BeginEntityMutationTx(ctx, tx, compactcatalog.MutationIntent{Entity: entity, OwnerKind: "identity", OwnerID: public, OwnerGeneration: generation, Mode: "adopt", Provider: p.Provider, ProviderKind: p.Kind, ProviderID: p.ID})
+	ref, err = compactcatalog.BeginEntityMutationTx(ctx, tx, compactcatalog.MutationIntent{Entity: entity, OwnerKind: "identity", OwnerID: public, OwnerGeneration: generation, Mode: "adopt", Provider: p.Provider, ProviderKind: p.Kind, ProviderID: p.ID, CauseOperation: cause})
 	if err != nil {
 		return err
 	}
@@ -87,6 +103,15 @@ func adoptionCurrentTx(ctx context.Context, tx *sql.Tx, m compactcatalog.EntityM
 			return err
 		}
 	} else {
+		if m.Kind == compactcatalog.Artist && m.Provider == "musicbrainz" && m.CauseOperation != "" {
+			var enabled bool
+			if e := tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM mb_provider_policies p JOIN catalog_libraries cl ON cl.library_id=p.library_id WHERE cl.id=? AND cl.retired=0 AND p.enabled=1)`, m.Library).Scan(&enabled); e != nil {
+				return e
+			}
+			if !enabled {
+				return compactcatalog.ErrMutationStale
+			}
+		}
 		err := tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM catalog_external_ids x JOIN catalog_entities e ON e.id=x.entity_id JOIN catalog_libraries cl ON cl.id=e.library_id AND cl.retired=0 WHERE x.entity_id=? AND x.provider=? AND x.provider_kind=? AND x.provider_id=?)`, m.Entity, m.Provider, m.ProviderKind, m.ProviderID).Scan(&current)
 		if err != nil {
 			return err
@@ -98,6 +123,13 @@ func adoptionCurrentTx(ctx context.Context, tx *sql.Tx, m compactcatalog.EntityM
 	return nil
 }
 func AdoptProviderIdentityStepTx(ctx context.Context, tx *sql.Tx, ref compactcatalog.MutationRef) (compactcatalog.MutationStep, error) {
+	pending, e := compactcatalog.ReadEntityMutationTx(ctx, tx, ref)
+	if e != nil {
+		return compactcatalog.MutationStep{}, e
+	}
+	if pending.Status == "waiting" {
+		return artistHandoffStepTx(ctx, tx, ref)
+	}
 	m, step, err := checkedMutationTx(ctx, tx, ref)
 	if err != nil || m.Status != "active" || step.Complete || step.Outcome == "blocked" {
 		return step, err
@@ -124,27 +156,8 @@ func AdoptProviderIdentityStepTx(ctx context.Context, tx *sql.Tx, ref compactcat
 		return compactcatalog.PendingMutationStep(), compactcatalog.SetMutationPhaseTx(ctx, tx, ref, "album-identity")
 	}
 	if m.Phase == "artist-identity" {
-		// Exactly one release credit, matching the current artist's existing
-		// identity policy. The child root captures the artist lifetime too.
-		var artist int64
-		var id string
-		err = tx.QueryRowContext(ctx, `SELECT a.artist_id,c.artist_id FROM catalog_albums a JOIN mb_release_credits c ON c.revision_id=? AND c.ordinal=0 WHERE a.entity_id=? AND (SELECT count(*) FROM mb_release_credits WHERE revision_id=?)=1 AND c.artist_id<>'' AND NOT EXISTS(SELECT 1 FROM catalog_external_ids x WHERE x.entity_id=a.artist_id AND x.provider='musicbrainz' AND x.provider_kind='artist' AND x.provider_id<>c.artist_id)`, m.AcceptedRevision, m.Entity, m.AcceptedRevision).Scan(&artist, &id)
-		if errors.Is(err, sql.ErrNoRows) {
-			return compactcatalog.FinishEntityMutationTx(ctx, tx, ref, "retained")
-		}
-		if err != nil {
-			return compactcatalog.MutationStep{}, err
-		}
-		p := compactcatalog.ProviderIdentity{Provider: "musicbrainz", Kind: "artist", ID: id}
-		if err = compactcatalog.RecordProviderIdentityTx(ctx, tx, artist, p); err != nil {
-			return compactcatalog.MutationStep{}, err
-		}
-		child, err := compactcatalog.BeginEntityMutationTx(ctx, tx, compactcatalog.MutationIntent{Entity: artist, OwnerKind: "identity", OwnerID: m.Ref.ID, OwnerGeneration: m.OwnerGeneration, Mode: "adopt", Provider: p.Provider, ProviderKind: p.Kind, ProviderID: p.ID, Parent: m.Ref.ID, Family: m.Family})
-		if err != nil {
-			return compactcatalog.MutationStep{}, err
-		}
-		_, err = tx.ExecContext(ctx, `UPDATE catalog_entity_mutations SET current_child=?,current_key=?,phase='finalize' WHERE mutation_id=? AND generation=?`, child.ID, artist, m.Ref.ID, m.Ref.Generation)
-		return compactcatalog.PendingMutationStep(), err
+		_, e := tx.ExecContext(ctx, `UPDATE catalog_entity_mutations SET status='waiting' WHERE mutation_id=? AND generation=? AND owner_kind='mb-adoption' AND current_child IS NULL`, ref.ID, ref.Generation)
+		return compactcatalog.PendingMutationStep(), e
 	}
 	if m.Phase == "finalize" {
 		return compactcatalog.FinishEntityMutationTx(ctx, tx, ref, "retained")
@@ -191,7 +204,8 @@ func AdoptProviderIdentityStepTx(ctx context.Context, tx *sql.Tx, ref compactcat
 		return compactcatalog.MutationStep{}, err
 	}
 	if m.OwnerKind == "mb-adoption" {
-		return compactcatalog.PendingMutationStep(), compactcatalog.SetMutationPhaseTx(ctx, tx, ref, "artist-identity")
+		_, e := tx.ExecContext(ctx, `UPDATE catalog_entity_mutations SET phase='artist-identity',status='waiting' WHERE mutation_id=? AND generation=? AND status='active' AND current_child IS NULL`, ref.ID, ref.Generation)
+		return compactcatalog.PendingMutationStep(), e
 	}
 	return compactcatalog.FinishEntityMutationTx(ctx, tx, ref, "retained")
 }

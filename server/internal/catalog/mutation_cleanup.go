@@ -212,3 +212,45 @@ func AcknowledgeAdministrationTx(ctx context.Context, tx *sql.Tx, owner string) 
 	}
 	return acknowledgeMutationTx(ctx, tx, ref)
 }
+
+// supersedeAdministrationTx is called only after the new request's live
+// authorization/policy and exact current approved plan have passed. It can
+// abandon an older administrative intent on this subject/ancestor, never an
+// unrelated merge/library/provider command, and never performs physical work.
+func supersedeAdministrationTx(ctx context.Context, tx *sql.Tx, entity int64, newOwner string) (bool, error) {
+	var ref compactcatalog.MutationRef
+	e := tx.QueryRowContext(ctx, `WITH RECURSIVE ancestors(id,depth) AS (SELECT ?1,0 UNION ALL SELECT e.parent_id,a.depth+1 FROM ancestors a JOIN catalog_entities e ON e.id=a.id WHERE e.parent_id IS NOT NULL AND a.depth<4)
+ SELECT m.mutation_id,m.generation FROM ancestors a JOIN catalog_entity_mutations m ON m.entity_id=a.id WHERE m.owner_kind='administration' AND m.owner_id<>?2 AND m.status IN('active','blocked') ORDER BY a.depth LIMIT 1`, entity, newOwner).Scan(&ref.ID, &ref.Generation)
+	if errors.Is(e, sql.ErrNoRows) {
+		return false, nil
+	}
+	if e != nil {
+		return false, e
+	}
+	m, e := compactcatalog.ReadEntityMutationTx(ctx, tx, ref)
+	if e != nil {
+		return false, e
+	}
+	step, e := staleMutationStepTx(ctx, tx, m)
+	if e != nil {
+		return false, e
+	}
+	if step.Complete {
+		var active bool
+		if e = tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM catalog_entity_mutations WHERE family_id=? AND status IN('active','blocked'))`, m.Family).Scan(&active); e != nil {
+			return false, e
+		}
+		if !active {
+			// The new live management command consumed the old command's abandoned
+			// custody. No original full-request success receipt/count is fabricated.
+			var anchor compactcatalog.MutationRef
+			if e = tx.QueryRowContext(ctx, `SELECT mutation_id,generation FROM catalog_entity_mutations WHERE owner_kind='administration' AND owner_id=? AND owner_generation=? AND parent_mutation_id IS NULL LIMIT 1`, m.OwnerID, m.OwnerGeneration).Scan(&anchor.ID, &anchor.Generation); e != nil {
+				return false, e
+			}
+			if e = acknowledgeMutationTx(ctx, tx, anchor); e != nil {
+				return false, e
+			}
+		}
+	}
+	return true, EnqueueMutationCleanupTx(ctx, tx)
+}

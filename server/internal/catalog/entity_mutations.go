@@ -318,13 +318,20 @@ func DeleteApprovedTitleStepTx(ctx context.Context, tx *sql.Tx, plan TitleDelete
 	if current != plan {
 		return compactcatalog.MutationStep{Complete: true, Outcome: "stale"}, nil
 	}
+	superseded, e := supersedeAdministrationTx(ctx, tx, entity, owner)
+	if e != nil {
+		return compactcatalog.MutationStep{}, e
+	}
+	if superseded {
+		return compactcatalog.PendingMutationStep(), nil
+	}
 	operation, _, ok := strings.Cut(owner, ":")
 	if !ok {
 		operation = owner
 	}
 	intent := compactcatalog.MutationIntent{Entity: entity, OwnerKind: "administration", OwnerID: owner, OwnerGeneration: 1, Mode: "remove", CauseOperation: operation}
 	var anchor, family string
-	e := tx.QueryRowContext(ctx, `SELECT mutation_id,family_id FROM catalog_entity_mutations WHERE owner_kind='administration' AND owner_id=? AND owner_generation=1 AND parent_mutation_id IS NULL LIMIT 1`, owner).Scan(&anchor, &family)
+	e = tx.QueryRowContext(ctx, `SELECT mutation_id,family_id FROM catalog_entity_mutations WHERE owner_kind='administration' AND owner_id=? AND owner_generation=1 AND parent_mutation_id IS NULL LIMIT 1`, owner).Scan(&anchor, &family)
 	if e == nil {
 		intent.Parent = anchor
 		intent.Family = family
@@ -390,6 +397,13 @@ func DeleteEmptyApprovedContainerStepTx(ctx context.Context, tx *sql.Tx, plan Ti
 	}
 	if current != plan {
 		return compactcatalog.MutationStep{Complete: true, Outcome: "stale"}, nil
+	}
+	superseded, e := supersedeAdministrationTx(ctx, tx, entity, owner)
+	if e != nil {
+		return compactcatalog.MutationStep{}, e
+	}
+	if superseded {
+		return compactcatalog.PendingMutationStep(), nil
 	}
 	operation, _, ok := strings.Cut(owner, ":")
 	if !ok {

@@ -15,6 +15,15 @@ func MergeTitlesStepTx(ctx context.Context, tx *sql.Tx, ref compactcatalog.Mutat
 	if err != nil || m.Status != "active" || step.Complete || step.Outcome == "blocked" {
 		return step, err
 	}
+	if m.OwnerKind == "identity" || m.OwnerKind == "mb-adoption" {
+		var apart bool
+		if e := tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM catalog_kept_apart WHERE entity_id IN(?,?))`, m.Entity, m.Target).Scan(&apart); e != nil {
+			return compactcatalog.MutationStep{}, e
+		}
+		if apart {
+			return staleMutationStepTx(ctx, tx, m)
+		}
+	}
 	if !isContainerKind(m.Kind) {
 		conflict, e := mergeIdentityConflictTx(ctx, tx, m.Entity, m.Target)
 		if e != nil {
