@@ -23,6 +23,10 @@ func castTargetRoute(method, path string) bool {
 	} // Always followed by live occurrence authority.
 	read := method == "GET" || method == "HEAD"
 	switch {
+	case strings.HasPrefix(path, "/v1/user-mutations/"):
+		// The receipt handler also requires this exact family and a Stop
+		// operation; this grants no access to Saved or Settings receipts.
+		return read && !strings.Contains(strings.TrimPrefix(path, "/v1/user-mutations/"), "/")
 	case path == "/v1/playback" || strings.HasPrefix(path, "/v1/playback/"):
 		return true
 	case strings.HasPrefix(path, "/v1/media/"):

@@ -112,6 +112,10 @@ func foundationAuthError(err error) error {
 }
 
 func foundationAdministrationError(err error) error {
+	if mutation := userMutationError(err); mutation != nil {
+		return mutation
+	}
+
 	var validation *administration.ValidationError
 	if errors.As(err, &validation) {
 		fields := make([]apierror.Field, 0, len(validation.Fields))
@@ -296,6 +300,7 @@ func FoundationRegistry(d Dependencies) (*apikit.Registry, error) {
 	// Integration merge: BE-playback's contextual v1 authorizer and error
 	// catalogue (bf54a83) plus lane C's /v1/capabilities route (2a92fa3).
 	registry := apikit.NewContextual(d.v1Authorize, policyCatalogue())
+	registry.MetadataPolicy(userMutationMetadata)
 	// Any change can meet a full writer queue; its typed answer is part of
 	// every write route's contract.
 	registry.WriteErrors("writer_capacity")
@@ -759,6 +764,9 @@ func FoundationRegistry(d Dependencies) (*apikit.Registry, error) {
 		return nil, err
 	}
 	if err := registerHTTPContracts(registry); err != nil {
+		return nil, err
+	}
+	if err := registerUserMutationRoutes(registry, d); err != nil {
 		return nil, err
 	}
 	registry.Freeze()

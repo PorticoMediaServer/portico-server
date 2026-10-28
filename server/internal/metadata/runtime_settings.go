@@ -3,6 +3,7 @@ package metadata
 import (
 	"context"
 	"database/sql"
+	"portico.local/server/internal/usermutation"
 	"slices"
 	"strings"
 	"time"
@@ -221,6 +222,9 @@ func (s *Service) UpdateMetadataSettings(ctx context.Context, in MetadataSetting
 	if !validMetadataSettingsUpdate(in) {
 		return MetadataSettings{}, ErrRepairInput
 	}
+	if _, _, protocol := usermutation.RequestFrom(ctx); protocol && authorize == nil {
+		return MetadataSettings{}, ErrRepairInput
+	}
 	write, e := dbwork.Begin(ctx, s.db, dbwork.ClassInteractive)
 	if e != nil {
 		return MetadataSettings{}, e
@@ -232,6 +236,14 @@ func (s *Service) UpdateMetadataSettings(ctx context.Context, in MetadataSetting
 			return MetadataSettings{}, e
 		}
 	}
+	r, e := usermutation.CheckContext(ctx, tx, time.Now().UnixMilli())
+	if e != nil {
+		return MetadataSettings{}, e
+	}
+	if r != nil {
+		write.Rollback()
+		return s.MetadataSettings(ctx)
+	}
 	before, e := ReadMetadataSettingsTx(ctx, tx)
 	if e != nil {
 		return before, e
@@ -242,6 +254,9 @@ func (s *Service) UpdateMetadataSettings(ctx context.Context, in MetadataSetting
 	}
 	if e = (Configuration{}).queueChange(ctx, tx, before, out); e != nil {
 		return out, e
+	}
+	if e = usermutation.SaveContext(ctx, tx, usermutation.Result{Status: "applied", TargetID: "metadata", Revision: out.Revision}, time.Now().UnixMilli()); e != nil {
+		return MetadataSettings{}, e
 	}
 	if e = write.Commit(); e != nil {
 		return out, e

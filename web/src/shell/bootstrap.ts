@@ -20,7 +20,7 @@ import {parseServerSignIn,signInLabelKey} from '@core/sign-in.ts';
 import {defaultI18n} from '@i18n';
 import {lastKnownShell, rememberShell} from './last-known';
 import {browserAppSessionActions,signOutBrowserPorticoAccount,type BrowserAppSessionActions} from '../platform/app-sessions';
-import {browserConnectionEnvironment, restoreBrowserConnection, trackBrowserConnection, forgetBrowserConnection} from '../platform/server-connections';
+import {mountBrowserUserMutations, browserConnectionEnvironment, restoreBrowserConnection, trackBrowserConnection, forgetBrowserConnection} from '../platform/server-connections';
 import {displayableTransportCode, launchFailure, retryDelayMs, serverIsStarting} from './connection-retry';
 import {bootRecoveryDeadline, bootRecoveryDelay, documentStartedAt} from './boot-state';
 import {browserEventStream, browserFeedEnvironment} from '../platform/event-feed';
@@ -345,8 +345,9 @@ export class ShellBootstrap {
     const {api} = restored;
     let session = selectedViewerRecord(api.baseUrl, restored.session).session;
     if (session.viewer.role === 'account') { this.publish({phase: 'signed-out'}); api.getRouteConnection()?.dispose(); return; }
+    const mutations = mountBrowserUserMutations(api, session);
     trackBrowserConnection(api);
-    const cleanups: (() => void)[] = [];
+    const cleanups: (() => void)[] = [() => {api.setUserMutationSession(undefined); mutations.dispose();}];
     const close = () => { for (const cleanup of cleanups.splice(0).reverse()) { try { cleanup(); } catch { /* Retire every other captured owner too. */ } } };
     this.retire = close;
     let signingOut = false;

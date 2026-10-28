@@ -21,6 +21,7 @@ func (s *StopRequest) UnmarshalJSON(raw []byte) error {
 		return errors.New("invalid stop request")
 	}
 	seen := false
+	generationPresent := false
 	positionPresent := false
 	for d.More() {
 		token, err := d.Token()
@@ -44,6 +45,16 @@ func (s *StopRequest) UnmarshalJSON(raw []byte) error {
 			if err = json.Unmarshal(value, &parsed.PositionMs); err != nil {
 				return err
 			}
+		case "generation":
+			if generationPresent || bytes.Equal(bytes.TrimSpace(value), []byte("null")) {
+				return errors.New("invalid generation")
+			}
+			generationPresent = true
+			var generation int
+			if err = json.Unmarshal(value, &generation); err != nil || generation < 1 || int64(generation) > 2147483647 {
+				return errors.New("invalid generation")
+			}
+			parsed.Generation = &generation
 		case "expectedGeneration":
 			if seen || bytes.Equal(bytes.TrimSpace(value), []byte("null")) {
 				return errors.New("invalid expected generation")
@@ -64,7 +75,7 @@ func (s *StopRequest) UnmarshalJSON(raw []byte) error {
 	if _, err = d.Token(); err != io.EOF {
 		return errors.New("invalid stop request")
 	}
-	if parsed.ExpectedGeneration != nil && positionPresent {
+	if parsed.ExpectedGeneration != nil && (positionPresent || generationPresent) {
 		return errors.New("conditional stop cannot report progress")
 	}
 	*s = StopRequest(parsed)
@@ -72,11 +83,12 @@ func (s *StopRequest) UnmarshalJSON(raw []byte) error {
 }
 
 func (StopRequest) JSONSchema() map[string]any {
-	// Presence of a generation selects conditional cleanup, which must never
+	// Presence of expectedGeneration selects conditional cleanup, which must never
 	// report progress (even a null position). Keep the alternatives closed so
 	// the generated decoder enforces the same distinction as UnmarshalJSON.
 	return map[string]any{"oneOf": []any{
 		map[string]any{"type": "object", "additionalProperties": false, "properties": map[string]any{
+			"generation": map[string]any{"type": "integer", "minimum": 1, "maximum": 2147483647},
 			"positionMs": map[string]any{"type": "integer", "nullable": true, "minimum": -9007199254740991, "maximum": 9007199254740991},
 		}},
 		map[string]any{"type": "object", "additionalProperties": false, "required": []string{"expectedGeneration"}, "properties": map[string]any{

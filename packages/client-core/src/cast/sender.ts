@@ -1,3 +1,4 @@
+import {newUserMutationKey, isUserMutationKey} from '../user-mutations.ts';
 import {sameCastController,sameCastRemote,type CastControllerStamp,type CastRemoteIdentity} from './remote-identity.ts';
 import {castBinding,castContext,castScopeEqual,castProofKey,readCastProof,type CastControllerContext,type CastControllerBinding,type CastControllerProof} from './controller-proof.ts';
 import {routeBody} from "../../../contracts/src/routes.ts";
@@ -119,7 +120,7 @@ export class CastController {
   private acceptedController?:CastControllerStamp;
   private renewal?:{attemptId:string;binding:CastControllerBinding;proof:CastControllerProof;transport:CastTransport;generation:number;controller:CastControllerStamp;timer:unknown};
   private expectedPairId?:string;
-  private stopping?:{requestId:string;target:CastRemoteIdentity;transport:CastTransport;generation:number;versionId?:string;timer:unknown};
+  private stopping?:{storageKey:string;requestId:string;target:CastRemoteIdentity;transport:CastTransport;generation:number;versionId?:string;timer:unknown};
   private current(){return !this.disposed&&this.callerCurrent();}
   /** External caller/storage ports never get to change the operation being proved. */
   private original(transport=this.transport,generation=this.startGeneration,controller=this.acceptedController){
@@ -502,6 +503,7 @@ export class CastController {
         if(!pending||e.requestId!==pending.requestId||!sameCastRemote(e.target,pending.target)||this.transport!==pending.transport||this.startGeneration!==pending.generation)return;
         this.clearTimer(pending.timer);this.stopping=undefined;this.statusRevision++;
         if(e.type==='control-failed'){this.redacted(pending.transport,pending.generation,this.statusRevision);return;}
+        try {this.controllerStorage?.set(pending.storageKey,JSON.stringify({key:pending.requestId,target:pending.target,state:'confirmed'}));} catch {this.redacted(pending.transport,pending.generation,this.statusRevision);return;}
         // Only the correlated actual receiver Stop receipt keeps a stopped view.
         // It grants no media, queue, or local engine occurrence.
         this.publish({phase:'off',remoteStopped:true,controlPending:false,paused:true,remoteIdentity:pending.target,versionId:pending.versionId,audioTracks:[],textTracks:[],
@@ -668,10 +670,20 @@ export class CastController {
     }
     const target=expected??this.state.remoteIdentity,transport=this.transport;
     if(target&&transport&&this.controlTarget(target)){
-      const generation=this.startGeneration,requestId='stop-'+(++this.requestSequence);
+      const generation=this.startGeneration;
+      const storageKey='portico.cast.stop:v1:'+JSON.stringify([this.proofContext,transport.deviceId,target.occurrence.sessionId,target.occurrence.generation]);
+      let requestId: string;
+      try {
+        if(!this.controllerStorage)throw new Error('mutation_not_queued');
+        const raw=this.controllerStorage.get(storageKey), prior=raw?JSON.parse(raw):undefined;
+        if(prior && (!isUserMutationKey(prior.key)||!sameCastRemote(prior.target,target)))throw new Error('mutation_store_damaged');
+        requestId=prior?.key??newUserMutationKey();
+        if(!prior){const value=JSON.stringify({key:requestId,target,state:'pending'});this.controllerStorage.set(storageKey,value);if(this.controllerStorage.get(storageKey)!==value)throw new Error('mutation_not_queued');}
+      } catch {this.fail('cast.error.unreachable');return;}
+
       const refuse=()=>{if(this.stopping?.requestId!==requestId)return;this.redacted(transport,generation,this.statusRevision);};
       this.statusRevision++;
-      this.stopping={requestId,target,transport,generation,versionId:this.state.versionId,timer:this.setTimer(refuse,35_000)};
+      this.stopping={storageKey,requestId,target,transport,generation,versionId:this.state.versionId,timer:this.setTimer(refuse,35_000)};
       this.publish({controlPending:true});
       void transport.send({type:'stop',requestId,target}).catch(refuse);return;
     }

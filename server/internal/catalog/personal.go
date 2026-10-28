@@ -14,6 +14,7 @@ import (
 	"portico.local/server/internal/dbwork"
 	"portico.local/server/internal/entityid"
 	"portico.local/server/internal/personalstate"
+	"portico.local/server/internal/usermutation"
 	"regexp"
 	"time"
 )
@@ -332,6 +333,15 @@ func (s *Service) SetPersonal(account, profile, item string, m PersonalMutation,
 }
 
 func (s *Service) setPersonal(account, profile, item string, m PersonalMutation, authorize func(*sql.Tx) error, readingPersonal bool) (PersonalState, error) {
+	return s.applyPersonal(account, profile, item, m, authorize, readingPersonal, nil)
+}
+
+// applyPersonal joins an explicit batch savepoint without opening a nested gated
+// writer. Its outer owner commits the compact receipt with every accepted field.
+func (s *Service) applyPersonal(account, profile, item string, m PersonalMutation, authorize func(*sql.Tx) error, readingPersonal bool, tx *sql.Tx) (PersonalState, error) {
+	if err := requireCatalogMutationContext(s.Context(), m.OperationID); err != nil {
+		return PersonalState{}, err
+	}
 	out := PersonalState{}
 	if !personalOperation.MatchString(m.OperationID) || m.ExpectedRevision < 0 || m.ExpectedRevision > 9007199254740991 {
 		return out, requestinput.New("invalid operationId or expectedRevision")
@@ -341,27 +351,59 @@ func (s *Service) setPersonal(account, profile, item string, m PersonalMutation,
 		return out, e
 	}
 	if o := m.Offline; o != nil {
-		authored, err := time.Parse(time.RFC3339, o.AuthoredAt)
+		_, err := time.Parse(time.RFC3339, o.AuthoredAt)
 		if !personalOperation.MatchString(o.DeviceID) || !personalOperation.MatchString(o.DeviceMutationID) || o.Sequence < 1 || o.Sequence > 9007199254740991 || o.BaseRevision != m.ExpectedRevision || err != nil {
 			return out, requestinput.New("invalid offline mutation evidence")
-		}
-		if authored.After(time.Now().Add(5*time.Minute)) || authored.Before(time.Now().Add(-30*24*time.Hour)) {
-			return out, ErrPersonalReview
 		}
 	}
 	hash := operationHash(struct {
 		Item     string
 		Mutation PersonalMutation
 	}{item, m})
-	gated, e := dbwork.Begin(s.Context(), s.db, dbwork.ClassFrom(s.Context(), dbwork.ClassInteractive))
-	if e != nil {
-		return out, e
+	owned := tx == nil
+	commit := func() error { return nil }
+	if owned {
+		gated, err := dbwork.Begin(s.Context(), s.db, dbwork.ClassFrom(s.Context(), dbwork.ClassInteractive))
+		if err != nil {
+			return out, err
+		}
+		defer gated.Rollback()
+		tx, commit = gated.Tx(), gated.Commit
 	}
-	tx := gated.Tx()
-	defer gated.Rollback()
+	_, _, protocol := usermutation.RequestFrom(s.Context())
+	protocol = protocol && owned
+	if protocol {
+		prior, err := usermutation.CheckContext(s.Context(), tx, time.Now().UnixMilli())
+		if err != nil {
+			return out, err
+		}
+		if prior != nil {
+			if _, err := personalID(tx, item); errors.Is(err, sql.ErrNoRows) {
+				return PersonalState{Revision: prior.Revision, Status: "current", Conflicts: []PersonalConflict{}}, nil
+			} else if err != nil {
+				return out, err
+			}
+			if authorize != nil {
+				if e = authorize(tx); e != nil {
+					return out, e
+				}
+			}
+			current, err := readPersonal(tx, profile, item)
+			if errors.Is(err, sql.ErrNoRows) {
+				return PersonalState{Revision: prior.Revision}, nil
+			}
+			return current, err
+		}
+	}
 	if authorize != nil {
 		if e = authorize(tx); e != nil {
 			return out, e
+		}
+	}
+	if o := m.Offline; o != nil {
+		authored, _ := time.Parse(time.RFC3339, o.AuthoredAt)
+		if authored.After(time.Now().Add(5*time.Minute)) || authored.Before(time.Now().Add(-30*24*time.Hour)) {
+			return out, ErrPersonalReview
 		}
 	}
 	entityID, e := entityid.Resolve(s.Context(), tx, item)
@@ -380,20 +422,22 @@ func (s *Service) setPersonal(account, profile, item string, m PersonalMutation,
 		return out, e
 	}
 	cutoff := time.Now().UTC().Add(-30 * 24 * time.Hour).Format(time.RFC3339)
-	var prior, receipt string
-	e = tx.QueryRow(`SELECT request_hash,response FROM personal_receipts WHERE account_id=? AND profile_id=? AND item_id=? AND operation_id=? AND created_at>=?`, account, profile, entityID, m.OperationID, cutoff).Scan(&prior, &receipt)
-	if e == nil {
-		if prior != hash {
-			return out, ErrOperationConflict
+	if owned && !protocol {
+		var prior, receipt string
+		e = tx.QueryRow(`SELECT request_hash,response FROM personal_receipts WHERE account_id=? AND profile_id=? AND item_id=? AND operation_id=? AND created_at>=?`, account, profile, entityID, m.OperationID, cutoff).Scan(&prior, &receipt)
+		if e == nil {
+			if prior != hash {
+				return out, ErrOperationConflict
+			}
+			e = json.Unmarshal([]byte(receipt), &out)
+			return out, e
 		}
-		e = json.Unmarshal([]byte(receipt), &out)
-		return out, e
-	}
-	if !errors.Is(e, sql.ErrNoRows) {
-		return out, e
-	}
-	if e = checkRetired(tx, profile, "personal", m.OperationID, hash); e != nil {
-		return out, e
+		if !errors.Is(e, sql.ErrNoRows) {
+			return out, e
+		}
+		if e = checkRetired(tx, profile, "personal", m.OperationID, hash); e != nil {
+			return out, e
+		}
 	}
 	// Admission limits apply to logical requests at the API and job boundary;
 	// per-item retry receipts are retention data, not an item-count quota.
@@ -555,6 +599,15 @@ func (s *Service) setPersonal(account, profile, item string, m PersonalMutation,
 	if e = snapshotPersonalByID(tx, profile, entityID, out); e != nil {
 		return out, e
 	}
+	if protocol {
+		if e = usermutation.SaveContext(s.Context(), tx, usermutation.Result{Status: "applied", TargetID: item, Revision: out.Revision}, time.Now().UnixMilli()); e != nil {
+			return out, e
+		}
+		return out, commit()
+	}
+	if !owned {
+		return out, nil
+	}
 	response, _ := json.Marshal(out)
 	if e = fenceOperation(tx, profile, "personal", m.OperationID, hash); e != nil {
 		return out, e
@@ -562,7 +615,7 @@ func (s *Service) setPersonal(account, profile, item string, m PersonalMutation,
 	if _, e = tx.Exec(`INSERT INTO personal_receipts(account_id,profile_id,item_id,operation_id,request_hash,response,created_at) VALUES(?,?,?,?,?,?,?) ON CONFLICT(account_id,profile_id,item_id,operation_id) DO UPDATE SET request_hash=excluded.request_hash,response=excluded.response,created_at=excluded.created_at`, account, profile, entityID, m.OperationID, hash, string(response), time.Now().UTC().Format(time.RFC3339)); e != nil {
 		return out, e
 	}
-	return out, gated.Commit()
+	return out, commit()
 }
 
 // receiptCleanupBatch bounds one receipt-retention transaction to a

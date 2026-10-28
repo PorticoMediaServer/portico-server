@@ -530,7 +530,7 @@ func registerPlaybackV1Sessions(r *apikit.Registry, d Dependencies) {
 			if in.ExpectedGeneration != nil {
 				return noBody{}, d.playbackV1().StopGeneration(ctx, d.v1ServiceCaller(q, callerFrom(ctx)), q.PathValue("id"), *in.ExpectedGeneration)
 			}
-			return noBody{}, d.playbackV1().Stop(ctx, d.v1ServiceCaller(q, callerFrom(ctx)), q.PathValue("id"), in.PositionMs)
+			return noBody{}, d.playbackV1().Stop(ctx, d.v1ServiceCaller(q, callerFrom(ctx)), q.PathValue("id"), in.PositionMs, in.Generation)
 		})
 	v1Route(r, apikit.Metadata{Admission: lanePlayback, ID: "claim_playback_observer", Method: "POST", Path: "/v1/playback/sessions/{id}/observer", Summary: "Become the player that reports this session; returns the epoch its observations carry",
 		Access: apikit.Device, Requires: apikit.ScopePlayback, Lane: apikit.Media, Cost: apikit.Constant, BodyLimit: 1 << 10, Status: 200, Errors: append(sessionErrors, "observation_owned", "observation_capacity")},

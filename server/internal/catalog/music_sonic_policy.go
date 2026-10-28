@@ -4,6 +4,8 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"portico.local/server/internal/usermutation"
+	"time"
 
 	"portico.local/server/internal/dbwork"
 )
@@ -55,6 +57,13 @@ func (s *Service) UpdateSonicSettings(ctx context.Context, library string, enabl
 			return SonicSettings{}, err
 		}
 	}
+	r, err := usermutation.CheckContext(ctx, tx, time.Now().UnixMilli())
+	if err != nil {
+		return SonicSettings{}, err
+	}
+	if r != nil {
+		return SonicSettingsTx(ctx, tx, library)
+	}
 	settings, err := SonicSettingsTx(ctx, tx, library)
 	if err != nil {
 		return settings, err
@@ -63,6 +72,9 @@ func (s *Service) UpdateSonicSettings(ctx context.Context, library string, enabl
 		return settings, ErrLibraryConfigurationConflict
 	}
 	if settings.Enabled == enabled {
+		if err = usermutation.SaveContext(ctx, tx, usermutation.Result{Status: "applied", TargetID: library, Revision: settings.Revision}, time.Now().UnixMilli()); err != nil {
+			return settings, err
+		}
 		return settings, gated.Commit()
 	}
 	if _, err = tx.ExecContext(ctx, `INSERT INTO library_sonic_settings(library_id,enabled,revision) VALUES(?,?,?) ON CONFLICT(library_id) DO UPDATE SET enabled=excluded.enabled,revision=excluded.revision`, library, enabled, expected+1); err != nil {
@@ -73,6 +85,9 @@ func (s *Service) UpdateSonicSettings(ctx context.Context, library string, enabl
 		return settings, err
 	}
 	if _, err = tx.ExecContext(ctx, `INSERT INTO inventory_policy_pending(library_id,revision) VALUES(?,?) ON CONFLICT(library_id) DO UPDATE SET revision=excluded.revision`, library, scanRevision); err != nil {
+		return settings, err
+	}
+	if err = usermutation.SaveContext(ctx, tx, usermutation.Result{Status: "applied", TargetID: library, Revision: expected + 1}, time.Now().UnixMilli()); err != nil {
 		return settings, err
 	}
 	if err = gated.Commit(); err != nil {

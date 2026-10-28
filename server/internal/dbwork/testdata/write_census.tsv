@@ -25,7 +25,7 @@ internal/backup/holds.go	(*Service).ReleaseInterruptedHold	ExecWrite	ClassMainte
 internal/backup/holds.go	(*Service).advanceHold	ExecWrite	limits.class	-
 internal/backup/holds.go	(*Service).holdBlobs	ExecWrite	limits.class	-
 internal/backup/holds.go	(*Service).releaseHold	ExecWrite	ClassInteractive	-
-internal/backup/policy.go	(*PolicyStore).Update	Begin	ClassMaintenance	-
+internal/backup/policy.go	(*PolicyStore).Update	Begin	ClassFrom(ctx, dbwork.ClassInteractive)	-
 internal/catalog/admin.go	(*Service).OrderLibraries	Begin	ClassFrom(ctx, dbwork.ClassInteractive)	libraryOrderPlan
 internal/catalog/admin.go	(*Service).RenameLibrary	Begin	ClassFrom(ctx, dbwork.ClassInteractive)	-
 internal/catalog/artist_separate.go	(*Service).SeparateArtist	WithWriteTx	ClassFrom(ctx, dbwork.ClassInteractive)	-
@@ -44,8 +44,8 @@ internal/catalog/collections.go	(*Service).ReorderCollection	WithWriteTx	ClassFr
 internal/catalog/collections.go	(*Service).SetCollectionItem	Begin	ClassFrom(ctx, dbwork.ClassInteractive)	-
 internal/catalog/collections.go	(*Service).SetCollectionItems	Begin	ClassFrom(ctx, dbwork.ClassInteractive)	-
 internal/catalog/collections.go	(*Service).SyncAutomaticCollections	WithWriteTx	ClassMaintenance	-
-internal/catalog/container_personal.go	(*Service).SetContainerPersonal	WithWriteTx	ClassInteractive	-
-internal/catalog/container_personal.go	(*Service).SetContainerSaved	WithWriteTx	ClassInteractive	-
+internal/catalog/container_personal.go	(*Service).SetContainerPersonal	WithWriteTxContext	ClassInteractive	-
+internal/catalog/container_personal.go	(*Service).SetContainerSaved	WithWriteTxContext	ClassInteractive	-
 internal/catalog/container_undo.go	(*Service).UndoContainerPersonal	WithWriteTx	ClassInteractive	-
 internal/catalog/delete_title.go	(*Service).RemoveTitle	WithWriteTx	ClassFrom(ctx, dbwork.ClassInteractive)	titleRemovalPlan
 internal/catalog/disc_publication.go	(*Service).CommitInventoryDiscProbe	Begin	ClassBackgroundMedia	-
@@ -64,7 +64,7 @@ internal/catalog/inventory_admin.go	(*Service).SeparateInventoryVersion	Begin	Cl
 internal/catalog/inventory_local_refresh.go	(*Service).CommitInventoryLocalRefresh	Begin	ClassFrom(ctx, dbwork.ClassInteractive)	-
 internal/catalog/inventory_text_import.go	(*Service).CompleteInventoryTextImports	Begin	ClassBackgroundMedia	-
 internal/catalog/library_pins.go	(*Service).SetLibraryNavigation	Begin	ClassFrom(context.Background(), dbwork.ClassInteractive)	-
-internal/catalog/library_pins.go	(*Service).SetPinOrder	Begin	ClassFrom(context.Background(), dbwork.ClassInteractive)	-
+internal/catalog/library_pins.go	(*Service).SetPinOrder	Begin	ClassFrom(s.Context(), dbwork.ClassInteractive)	-
 internal/catalog/library_removal.go	(*Service).RemoveLibrary	WithWriteTx	ClassFrom(ctx, dbwork.ClassInteractive)	-
 internal/catalog/library_removal.go	(*Service).removalStep	WithWriteTx	ClassBackgroundMedia	-
 internal/catalog/library_sources.go	(*Service).AdoptRootIdentity	WithWriteTx	ClassFrom(ctx, dbwork.ClassBackgroundMedia)	-
@@ -77,16 +77,17 @@ internal/catalog/manual_metadata.go	(*Service).SaveManualMetadata	Begin	ClassFro
 internal/catalog/missing.go	(*Service).EmptyMissingAuthorized	WithWriteTx	ClassFrom(ctx, dbwork.ClassMaintenance)	-
 internal/catalog/music_sonic_policy.go	(*Service).UpdateSonicSettings	Begin	ClassInteractive	-
 internal/catalog/personal.go	(*Service).CleanupPersonalReceipts	ExecWrite	ClassMaintenance	-
-internal/catalog/personal.go	(*Service).setPersonal	Begin	ClassFrom(s.Context(), dbwork.ClassInteractive)	-
+internal/catalog/personal.go	(*Service).applyPersonal	Begin	ClassFrom(s.Context(), dbwork.ClassInteractive)	-
 internal/catalog/personal_activity.go	(*Service).MutateActivity	Begin	ClassFrom(context.Background(), dbwork.ClassInteractive)	-
-internal/catalog/personal_batch.go	(*Service).SetPersonalBatch	ExecWrite	ClassFrom(context.Background(), dbwork.ClassInteractive)	-
-internal/catalog/playlists.go	(*Service).mutatePlaylistCaptured	Begin	ClassFrom(context.Background(), dbwork.ClassInteractive)	-
+internal/catalog/personal_batch.go	(*Service).SetPersonalBatch	ExecWrite	ClassFrom(s.Context(), dbwork.ClassInteractive)	-
+internal/catalog/personal_mutations.go	(*Service).setPersonalBatchProtocol	Begin	ClassFrom(s.Context(), dbwork.ClassInteractive)	-
+internal/catalog/playlists.go	(*Service).mutatePlaylistCaptured	Begin	ClassFrom(s.Context(), dbwork.ClassInteractive)	-
 internal/catalog/reading_mark_all.go	(*Service).SetReadingMarkAll	Begin	ClassFrom(s.Context(), dbwork.ClassInteractive)	-
 internal/catalog/reading_saved_groups.go	(*Service).RemoveReadingSavedReference	Begin	ClassFrom(s.Context(), dbwork.ClassInteractive)	-
 internal/catalog/reading_saved_groups.go	(*Service).SetReadingSavedGroup	Begin	ClassFrom(s.Context(), dbwork.ClassInteractive)	-
 internal/catalog/rec_feedback.go	(*Service).ResetRecommendations	Begin	ClassFrom(ctx, dbwork.ClassInteractive)	-
-internal/catalog/resource_pins.go	(*Service).MutateSavedPin	Begin	ClassFrom(context.Background(), dbwork.ClassInteractive)	-
-internal/catalog/resources.go	(*Service).MutateSavedResource	Begin	ClassFrom(context.Background(), dbwork.ClassInteractive)	-
+internal/catalog/resource_pins.go	(*Service).MutateSavedPin	Begin	ClassFrom(s.Context(), dbwork.ClassInteractive)	-
+internal/catalog/resources.go	(*Service).MutateSavedResource	Begin	ClassFrom(s.Context(), dbwork.ClassInteractive)	-
 internal/catalog/restrictions.go	(*Service).ClassifyPendingRatings	ExecWrite	ClassBackgroundMedia	-
 internal/catalog/restrictions.go	reclassifyRatings	WithWriteTx	ClassBackgroundMedia	-
 internal/catalog/scalebench/bulk_reference.go	seedBulkFactsDensity	WithWriteTx	ClassBackgroundMedia	-	×2
@@ -165,6 +166,7 @@ internal/httpapi/events_routes.go	(Dependencies).bridgeReceiverEvents	WithWriteT
 internal/httpapi/fixture/fixture.go	GenerateWithConfig	WithWriteTx	ClassMaintenance	-	×2
 internal/httpapi/metadata_attention.go	registerMetadataRefresh	Begin	ClassInteractive	-
 internal/httpapi/recording_permissions.go	(Dependencies).recordingPermissionRoutes	WithWriteTxContext	ClassSecurityFence	-
+internal/httpapi/user_mutations.go	registerUserMutationRoutes	WithWriteTxContext	ClassSecurityFence	-
 internal/identity/account_move_frontdoor.go	(*Service).ProveMovePassword	WithWriteTx	ClassSecurityFence	-
 internal/identity/account_moves.go	(*Service).CancelAccountMove	WithWriteTx	ClassSecurityFence	-
 internal/identity/account_moves.go	(*Service).ConfirmLocalMove	WithWriteTx	ClassSecurityFence	accountMovePlan
@@ -444,7 +446,7 @@ internal/networking/security_return.go	(*RouteIdentityHandler).ConfirmSecurityRe
 internal/networking/security_return.go	(*RouteIdentityHandler).SignSecurityReturn	Begin	ClassSecurityFence	-
 internal/operations/events.go	updateOperation	WithWriteTx	class	-
 internal/operations/evidence.go	(*Store).Alert	Begin	ClassFrom(ctx, dbwork.ClassInteractive)	-
-internal/operations/evidence.go	(*Store).Prune	WithWriteTx	class	-	×2
+internal/operations/evidence.go	(*Store).Prune	WithWriteTx	class	-	×3
 internal/operations/evidence.go	(*Store).Record	Begin	ClassFrom(ctx, dbwork.ClassInteractive)	-
 internal/operations/evidence.go	(*Store).sweepRetention	ExecWrite	class	-
 internal/operations/jobs.go	(*Scheduler).Run	WithWriteTx	ClassFrom(ctx, dbwork.ClassInteractive)	-

@@ -24,6 +24,7 @@ import (
 	"portico.local/server/internal/livechannels/dvr"
 	"portico.local/server/internal/storage"
 	"portico.local/server/internal/storagepaths"
+	"portico.local/server/internal/usermutation"
 	"sort"
 	"strings"
 	"sync"
@@ -342,6 +343,12 @@ func writeDocument[T any](ctx context.Context, tx *sql.Tx, scope string, revisio
 // with the earlier outcome.
 func receipt[T any](ctx context.Context, tx *sql.Tx, scope, operationID, digest string) (T, bool, error) {
 	var out T
+	if strings.HasPrefix(operationID, "p251_") {
+		if _, _, ok := usermutation.RequestFrom(ctx); !ok {
+			return out, false, usermutation.ErrInvalidKey
+		}
+		return out, false, nil
+	}
 	if operationID == "" {
 		return out, false, nil
 	}
@@ -363,6 +370,9 @@ func receipt[T any](ctx context.Context, tx *sql.Tx, scope, operationID, digest 
 }
 
 func saveReceipt(ctx context.Context, tx *sql.Tx, scope, operationID, digest string, result any, at int64) error {
+	if strings.HasPrefix(operationID, "p251_") {
+		return usermutation.ErrInvalidKey
+	}
 	if operationID == "" {
 		return nil
 	}
@@ -422,6 +432,22 @@ func saveDocument[T any](ctx context.Context, s *Service, auth Authorize, scope 
 		Settings T     `json:"settings"`
 	}{change.ExpectedRevision, value})
 	err := s.transaction(ctx, auth, func(tx *sql.Tx) error {
+		r, err := usermutation.CheckContext(ctx, tx, s.milliseconds())
+		if err != nil {
+			return err
+		}
+		if r != nil {
+			value, revision, err := readDocument(ctx, tx, scope, defaults)
+			if err != nil {
+				return err
+			}
+			if normalize != nil {
+				normalize(&value)
+			}
+			out.Revision, out.Settings, out.Digest = revision, value, digestOf(value)
+			return nil
+		}
+
 		stored, replayed, err := receipt[Document[T]](ctx, tx, scope, change.OperationID, digest)
 		if err != nil {
 			return err
@@ -453,7 +479,7 @@ func saveDocument[T any](ctx context.Context, s *Service, auth Authorize, scope 
 			return err
 		}
 		out.Revision, out.Settings, out.Digest = revision+1, value, digestOf(value)
-		return saveReceipt(ctx, tx, scope, change.OperationID, digest, out, at)
+		return saveSettingsReceipt(ctx, tx, scope, change.OperationID, digest, out, scope, out.Revision, at)
 	})
 	return out, err
 }

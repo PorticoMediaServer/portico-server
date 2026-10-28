@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"portico.local/server/internal/catalog"
 	"portico.local/server/internal/identity"
+	"portico.local/server/internal/usermutation"
 	"strconv"
 )
 
@@ -157,7 +158,7 @@ func (d Dependencies) playlistRoutes(mux *http.ServeMux) {
 				failure(w, e)
 				return
 			}
-			out, e := d.Catalog.MutatePlaylist(resourceActor(p), r.PathValue("id"), route.action, r.PathValue("entryId"), m, func(tx *sql.Tx) error {
+			out, e := d.Catalog.WithContext(r.Context()).MutatePlaylist(resourceActor(p), r.PathValue("id"), route.action, r.PathValue("entryId"), m, func(tx *sql.Tx) error {
 				if e := d.resourceAuthorize(tx, p, ""); e != nil {
 					return e
 				}
@@ -196,6 +197,10 @@ func (d Dependencies) playlistRoutes(mux *http.ServeMux) {
 				return
 			}
 			out.Deleted, e = d.Catalog.WithContext(r.Context()).PlaylistReceiptStatus(out.PlaylistID, resourceActor(p))
+			if _, _, protocol := usermutation.RequestFrom(r.Context()); protocol && errors.Is(e, sql.ErrNoRows) {
+				out.Deleted = true
+				e = nil
+			}
 			if e != nil {
 				failure(w, e)
 				return

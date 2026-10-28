@@ -7,7 +7,9 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
+	"portico.local/server/internal/usermutation"
 	"strconv"
+	"strings"
 	"time"
 
 	"portico.local/server/internal/dbwork"
@@ -242,16 +244,24 @@ func (s *Service) SaveSourceReadSettings(ctx context.Context, identities *identi
 	}{"read_settings", actor, source, in})
 	fingerprint := s.mounts.PrivateDigest(facts)
 	clear(facts)
-	if receipt, err := s.receipt(ctx, actor, in.OperationID, fingerprint); err == nil {
-		if receipt.ReadSettings == nil {
-			return Receipt{}, storage.ErrRemoteConfig
-		}
-		return receipt, s.finishReadSettings(ctx, source, receipt.ReadSettings.Revision)
-	} else if !errors.Is(err, sql.ErrNoRows) {
-		return Receipt{}, err
+	_, _, protocol := usermutation.RequestFrom(ctx)
+	if !protocol && strings.HasPrefix(in.OperationID, "p251_") {
+		return Receipt{}, usermutation.ErrInvalidKey
 	}
-	if err := checkOperation(in.OperationID); err != nil {
-		return Receipt{}, err
+	if !protocol {
+		if receipt, err := s.receipt(ctx, actor, in.OperationID, fingerprint); err == nil {
+			if receipt.ReadSettings == nil {
+				return Receipt{}, storage.ErrRemoteConfig
+			}
+			return receipt, s.finishReadSettings(ctx, source, receipt.ReadSettings.Revision)
+		} else if !errors.Is(err, sql.ErrNoRows) {
+			return Receipt{}, err
+		}
+	}
+	if !protocol {
+		if err := checkOperation(in.OperationID); err != nil {
+			return Receipt{}, err
+		}
 	}
 	writer, err := dbwork.Begin(ctx, s.db, dbwork.ClassInteractive)
 	if err != nil {
@@ -261,6 +271,19 @@ func (s *Service) SaveSourceReadSettings(ctx context.Context, identities *identi
 	if err = authorize(writer.Tx()); err != nil {
 		return Receipt{}, err
 	}
+	r, err := usermutation.CheckContext(ctx, writer.Tx(), time.Now().UnixMilli())
+	if err != nil {
+		return Receipt{}, err
+	}
+	if r != nil {
+		row, settings, err := readSettingsTx(ctx, writer.Tx(), source)
+		writer.Rollback()
+		if err != nil {
+			return Receipt{}, err
+		}
+		return Receipt{OperationID: in.OperationID, Accepted: true, Source: row, ReadSettings: &settings}, s.finishReadSettings(ctx, source, settings.Revision)
+	}
+
 	var row Source
 	var settings SourceReadSettings
 	var apply sourceChoiceApply
@@ -287,12 +310,18 @@ func (s *Service) SaveSourceReadSettings(ctx context.Context, identities *identi
 		return Receipt{}, err
 	}
 	receipt := Receipt{OperationID: in.OperationID, Accepted: true, Source: row, ReadSettings: &settings}
-	response, err := json.Marshal(receipt)
-	if err != nil {
-		return Receipt{}, err
-	}
-	if _, err = writer.Tx().ExecContext(ctx, `INSERT INTO remote_source_operations(operation_id,actor,fingerprint,response,created_at) VALUES(?,?,?,?,?)`, in.OperationID, actor, fingerprint, string(response), time.Now().Unix()); err != nil {
-		return Receipt{}, err
+	if protocol {
+		if err = usermutation.SaveContext(ctx, writer.Tx(), usermutation.Result{Status: "applied", TargetID: source, Revision: settings.Revision}, time.Now().UnixMilli()); err != nil {
+			return Receipt{}, err
+		}
+	} else {
+		response, err := json.Marshal(receipt)
+		if err != nil {
+			return Receipt{}, err
+		}
+		if _, err = writer.Tx().ExecContext(ctx, `INSERT INTO remote_source_operations(operation_id,actor,fingerprint,response,created_at) VALUES(?,?,?,?,?)`, in.OperationID, actor, fingerprint, string(response), time.Now().Unix()); err != nil {
+			return Receipt{}, err
+		}
 	}
 	if err = writer.Commit(); err != nil {
 		return Receipt{}, err

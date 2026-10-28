@@ -7,6 +7,7 @@ import (
 	"errors"
 	"io"
 	"portico.local/server/internal/dbwork"
+	"portico.local/server/internal/usermutation"
 	"portico.local/server/internal/worker"
 	"strconv"
 	"sync"
@@ -161,7 +162,7 @@ func (s *Service) Settings(ctx context.Context) (Settings, error) {
 	return out, gated.Commit()
 }
 
-func (s *Service) ApplySettings(ctx context.Context, p identity.Principal, c SettingsChange) (Settings, error) {
+func (s *Service) ApplySettings(ctx context.Context, p identity.Principal, c SettingsChange, authorize ...func(*sql.Tx) error) (Settings, error) {
 	var out Settings
 	if !validID.MatchString(c.OperationID) || c.MaxPreparedBytes < 0 || c.RetentionDays < 1 || c.RetentionDays > 365 {
 		return out, ErrInput
@@ -173,8 +174,35 @@ func (s *Service) ApplySettings(ctx context.Context, p identity.Principal, c Set
 	tx := gated2.Tx()
 	defer gated2.Rollback()
 	now := s.millis()
+	_, _, protocol := usermutation.RequestFrom(ctx)
+	for _, auth := range authorize {
+		if auth == nil {
+			return out, ErrInput
+		}
+		if e = auth(tx); e != nil {
+			return out, e
+		}
+	}
+	if protocol && len(authorize) == 0 {
+		return out, ErrInput
+	}
+	r, e := usermutation.CheckContext(ctx, tx, now)
+	if e != nil {
+		return out, e
+	}
+	if r != nil {
+		out, e = readSettings(tx)
+		if e == nil {
+			out.Qualities, e = producibleQualities(tx)
+		}
+		return out, e
+	}
+
 	scope := "downloads-settings:" + operations.AccountKey(p)
-	raw, digest, e := operations.Receipt(tx, scope, c.OperationID, c, now)
+	var raw, digest string
+	if !protocol {
+		raw, digest, e = operations.Receipt(tx, scope, c.OperationID, c, now)
+	}
 	if e != nil {
 		return out, e
 	}
@@ -200,7 +228,12 @@ func (s *Service) ApplySettings(ctx context.Context, p identity.Principal, c Set
 	if e = operations.Audit(tx, now, operations.AccountKey(p), "downloads.settings", "downloads", out.Revision); e != nil {
 		return out, e
 	}
-	if e = operations.SaveReceipt(tx, scope, c.OperationID, digest, out, now); e != nil {
+	if protocol {
+		e = usermutation.SaveContext(ctx, tx, usermutation.Result{Status: "applied", TargetID: "downloads", Revision: out.Revision}, now)
+	} else {
+		e = operations.SaveReceipt(tx, scope, c.OperationID, digest, out, now)
+	}
+	if e != nil {
 		return out, e
 	}
 	if e = gated2.Commit(); e == nil {

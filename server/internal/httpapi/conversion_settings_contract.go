@@ -138,6 +138,10 @@ func (c *ConsoleSettingsChange) UnmarshalJSON(raw []byte) error {
 	return nil
 }
 func conversionSettingsError(err error) error {
+	if mutation := userMutationError(err); mutation != nil {
+		return mutation
+	}
+
 	if err == nil {
 		return nil
 	}

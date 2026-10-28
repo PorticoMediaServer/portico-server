@@ -7,6 +7,8 @@ import (
 	"errors"
 	"portico.local/server/internal/dbwork"
 	"portico.local/server/internal/mounts"
+	"portico.local/server/internal/usermutation"
+	"time"
 )
 
 type AnalysisPolicy struct {
@@ -49,6 +51,14 @@ func (s *Service) SetAnalysisPolicy(ctx context.Context, library string, enabled
 	if err = authorize(tx); err != nil {
 		return p, err
 	}
+	r, err := usermutation.CheckContext(ctx, tx, time.Now().UnixMilli())
+	if err != nil {
+		return p, err
+	}
+	if r != nil {
+		gated.Rollback()
+		return s.AnalysisPolicy(ctx, library)
+	}
 	var current int64
 	var active bool
 	err = tx.QueryRowContext(ctx, `SELECT enabled,revision FROM source_strm_analysis WHERE library_id=?`, library).Scan(&active, &current)
@@ -57,7 +67,8 @@ func (s *Service) SetAnalysisPolicy(ctx context.Context, library string, enabled
 	}
 	if current != revision {
 		// A lost response may be recovered without repeating an activation.
-		if current == revision+1 && active == enabled {
+		_, _, protocol := usermutation.RequestFrom(ctx)
+		if !protocol && current == revision+1 && active == enabled {
 			gated.Rollback()
 			return s.AnalysisPolicy(ctx, library)
 		}
@@ -70,6 +81,9 @@ func (s *Service) SetAnalysisPolicy(ctx context.Context, library string, enabled
 	// The existing scan-policy handoff cancels/requeues bounded work. Its revision
 	// also fences in-flight descriptor probes when the separate opt-in changes.
 	if _, err = tx.ExecContext(ctx, `UPDATE library_scan_policies SET revision=revision+1 WHERE library_id=?`, library); err != nil {
+		return p, err
+	}
+	if err = usermutation.SaveContext(ctx, tx, usermutation.Result{Status: "applied", TargetID: library, Revision: p.Revision}, time.Now().UnixMilli()); err != nil {
 		return p, err
 	}
 	if err = gated.Commit(); err != nil {

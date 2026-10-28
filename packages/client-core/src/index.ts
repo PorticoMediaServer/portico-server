@@ -8,7 +8,7 @@ export * from './reading-reread.ts';
 export * from './reading-indexed-search.ts';
 export * from './reading-offline-refresh.ts';
 import type {MusicTechnicalFacts} from './music-facts.ts';
-import {routeBody} from "../../contracts/src/routes.ts";
+import {routeBody, routes} from "../../contracts/src/routes.ts";
 import {ReadingClient, type ReadingScope} from './reading.ts';
 export * from './reading.ts';
 import type {RouteResponse} from "../../contracts/src/route-paths.ts";
@@ -68,6 +68,9 @@ import {parseLibraryList} from './library-list.ts';
 import {installationHeaders,issuesCredentials,provesIdentity} from './installation.ts';
 import {AudioSelection,emptyAudio,type AudioPlan,type AudioBinding,type AudioSelectionSnapshot} from './audio-selection.ts';
 export type {AudioPlan,AudioBinding,AudioSelectionSnapshot} from './audio-selection.ts';
+import {UserMutationCoordinator, UserMutationError, newUserMutationKey, isUserMutationKey, sameUserMutationScope, type DurableUserMutationStore, type UserMutationScope, type UserMutationEntry, type UserMutationReceipt, type UserMutationResponse} from './user-mutations.ts';
+import {userMutationRoute} from './user-mutation-routes.ts';
+export * from './user-mutations.ts';
 /** Portable wire types and services. No renderer, native module or process globals. */
 export type Viewer = {
   accountId: string;
@@ -321,6 +324,102 @@ export function transportJSON(value:unknown):string {return JSON.stringify(value
 /** The selected server's HTTP API. Playback sessions are not started here: they are Playback
  * Protocol v1 sessions (`playback-v1/sessions.ts`), spoken through `requestRaw`. */
 export class HttpLocalApi {
+  private mutationSession?: LocalSession;
+  private mutationCoordinator?: UserMutationCoordinator;
+  private mutationReady?: Promise<void>;
+  private mutationClockOffset = 0;
+  private mutationClockRead = false;
+  /** Full selected authority, supplied by the mounted session owner, never inferred from a token. */
+  setUserMutationSession(session: LocalSession | undefined) {
+    this.mutationSession = session ? {...session, viewer: {...session.viewer}} : undefined;
+    this.setAccessToken(session?.accessToken ?? '');
+  }
+  getUserMutationScope = (): UserMutationScope | undefined => {
+    const session = this.mutationSession;
+    if (!session || session.accessToken !== this.token) return undefined;
+    return {serverId: session.viewer.serverId, origin: this.baseUrl, authority: session.viewer.authority,
+      accountId: session.viewer.accountId, profileId: session.viewer.profileId, familyId: session.sessionFamilyId,
+      ...(session.deviceId ? {deviceId: session.deviceId} : {})};
+  };
+  configureUserMutations(store: DurableUserMutationStore): UserMutationCoordinator {
+    this.mutationCoordinator?.dispose();
+    const coordinator = new UserMutationCoordinator({store, scope: this.getUserMutationScope, transport: {
+      send: (entry, signal) => this.mutationExchange(entry, entry.path, entry.method, entry.body, signal, entry.headers),
+      lookup: (entry, signal) => this.mutationExchange(entry, encodedRoutePath('get_user_mutation', {key: entry.key}), 'GET', undefined, signal),
+      recover: (entry, receipt, signal) => this.recoverUserMutation(entry, receipt, signal),
+    }});
+    this.mutationCoordinator = coordinator;
+    this.mutationReady = coordinator.start();
+    // A read error is returned again to the first writer; never send without durable custody.
+    void this.mutationReady.catch(() => {});
+    return coordinator;
+  }
+  async acknowledgeUserMutation(intentId: string): Promise<void> {
+    const scope = this.getUserMutationScope(), coordinator = this.mutationCoordinator;
+    const entry = coordinator?.snapshot().find(entry => scope && sameUserMutationScope(scope, entry.scope) && (entry.intentId === intentId || entry.key === intentId) && entry.state === 'confirmed');
+    if (entry) await coordinator!.acknowledge(entry.key);
+  }
+  private async mutationExchange(entry: Readonly<UserMutationEntry>, path: string, method: string, body: unknown, signal: AbortSignal, headers?: Readonly<Record<string,string>>): Promise<UserMutationResponse> {
+    const check = () => {const current = this.getUserMutationScope(); if (!current || !sameUserMutationScope(current, entry.scope)) throw new UserMutationError('mutation_scope_changed', entry.key);};
+    check();
+    let token = this.token;
+    if (this.auth) {token = await waitForAuth(this.auth.token(token), signal); check(); if (token !== this.token) throw new UserMutationError('mutation_scope_changed', entry.key);}
+    check();
+    let response = await this.send(path, method, body, signal, token, headers);
+    if (response.status === 401 && this.auth) {
+      const next = await waitForAuth(this.auth.recover(token), signal); check();
+      if (next && next !== token && next === this.token) {await response.body?.cancel(); response = await this.send(path, method, body, signal, next, headers);}
+    }
+    check();
+    return this.mutationResponse(response);
+  }
+  private async mutationResponse(response: Response): Promise<UserMutationResponse> {
+    const headers: Record<string,string> = {}; response.headers.forEach((v,k) => {headers[k] = v;});
+    const text = await response.text(); let body: unknown;
+    if (text) {try {body = JSON.parse(text);} catch {throw new UserMutationError('mutation_response_invalid');}}
+    return {status: response.status, headers, ...(body === undefined ? {} : {body})};
+  }
+  private async recoverUserMutation(entry: Readonly<UserMutationEntry>, receipt: UserMutationReceipt, signal: AbortSignal): Promise<UserMutationResponse> {
+    if (entry.operation === 'stop_playback_session') return {status: 204, headers: {}};
+    // Compact receipts prove the historical disposition, never historical membership arrays.
+    // Read current typed state where that route exists; callers retain their draft and refresh.
+    const path = entry.path.split('?')[0];
+    const reader = routes.find(route => route.method === 'GET' && route.path.split('/').length === path.split('/').length && route.path.split('/').every((part,i) => part.startsWith('{') || part === path.split('/')[i]));
+    if (reader) await this.mutationExchange(entry, path, 'GET', undefined, signal);
+    throw new UserMutationError('mutation_needs_review', entry.key, receipt);
+  }
+  private async coordinatedMutation(path: string, method: string, body: unknown, headers?: Readonly<Record<string,string>>, signal?: AbortSignal): Promise<UserMutationResponse> {
+    const route = userMutationRoute(path, method), coordinator = this.mutationCoordinator;
+    if (!route || !coordinator) throw new UserMutationError('mutation_not_queued');
+    await this.mutationReady;
+    const scope = this.getUserMutationScope(); if (!scope) throw new UserMutationError('mutation_scope_changed');
+    const obj = body && typeof body === 'object' && !Array.isArray(body) ? body as Record<string,unknown> : undefined;
+    const headerKey = Object.entries(headers ?? {}).find(([name]) => name.toLowerCase() === 'idempotency-key')?.[1];
+    const originalId = ['operationId','idempotencyKey','requestId'].map(name => obj?.[name]).find(value => typeof value === 'string') as string | undefined;
+    const sessionId = route.id === 'stop_playback_session' ? decodeURIComponent(path.split('?')[0].split('/').pop()!) : undefined;
+    const generation = obj?.generation ?? obj?.expectedGeneration;
+    if (sessionId && (!Number.isSafeInteger(generation) || Number(generation) < 0)) throw new UserMutationError('mutation_not_queued');
+    const target = sessionId ? `stop:${sessionId}:${generation}` : path.split('?')[0];
+    // Calibrate once before minting; a failed policy read keeps custody with the caller.
+    if (!this.mutationClockRead) {
+      const seed = {key:'', scope} as UserMutationEntry;
+      const policy = await this.mutationExchange(seed, routePath('get_user_mutation_policy'), 'GET', undefined, new AbortController().signal);
+      const value = policy.body as {serverTimeMs?: unknown; retiredBeforeMs?: unknown} | undefined;
+      if (policy.status !== 200 || typeof value?.serverTimeMs !== 'number' || !Number.isSafeInteger(value.serverTimeMs)) throw new UserMutationError('mutation_not_queued');
+      this.mutationClockOffset = value.serverTimeMs - Date.now(); this.mutationClockRead = true;
+    }
+    const suppliedKey = originalId && isUserMutationKey(originalId) ? originalId : headerKey && isUserMutationKey(headerKey) ? headerKey : undefined;
+    let response: UserMutationResponse;
+    try {response = await coordinator.run({operation: route.id, method, path, target,
+      intentId: sessionId ? target : originalId ?? headerKey,
+      key: suppliedKey ?? newUserMutationKey(Date.now() + this.mutationClockOffset), body, headers}, signal);}
+    catch (error) {if (error instanceof UserMutationError && error.response) response = error.response; else throw error;}
+    // Existing domain parsers correlate their original caller intent ID. Only the wire and
+    // durable command use the protocol ID; translate the actual acknowledgement at this seam.
+    const key = coordinator.snapshot().find(entry => sameUserMutationScope(entry.scope, scope) && (sessionId ? entry.intentId === target : originalId || headerKey ? entry.intentId === (originalId ?? headerKey) : entry.key === suppliedKey))?.key ?? Object.entries(response.headers).find(([name]) => name.toLowerCase() === 'portico-mutation-key')?.[1];
+    const restore = (value: unknown): unknown => Array.isArray(value) ? value.map(restore) : value && typeof value === 'object' ? Object.fromEntries(Object.entries(value).map(([name,v]) => [name, ['operationId','idempotencyKey','requestId'].includes(name) && v === key && originalId ? originalId : restore(v)])) : value;
+    return {...response, body: restore(response.body)};
+  }
   readonly baseUrl: string;
   private token: string;
   private certificateSessionEpoch = 0;
@@ -417,6 +516,11 @@ export class HttpLocalApi {
       subscribe: retire => this.subscribeCertificateSession(retire),
       send: (path, init) => {
         if (!isCurrent() || !path.startsWith(apiRoot) || path.includes('#') || path.includes('\\')) return Promise.reject(new Error('cancelled'));
+        const method = init.method ?? 'GET';
+        if (this.mutationCoordinator && userMutationRoute(path, method)) {
+          const body = typeof init.body === 'string' ? JSON.parse(init.body) : undefined;
+          return this.coordinatedMutation(path, method, body, (() => {const headers: Record<string,string> = {}; new Headers(init.headers).forEach((v,k) => {headers[k] = v;}); return headers;})(), init.signal ?? undefined).then(response => new Response(response.body === undefined ? null : JSON.stringify(response.body), {status: response.status, headers: {'Content-Type':'application/json', ...response.headers}}));
+        }
         const headers = new Headers(init.headers);
         headers.delete('Authorization'); if (token) headers.set('Authorization', 'Bearer ' + token);
         return fetcher(this.baseUrl + path, {...init, headers, redirect: 'error', credentials: 'omit', referrerPolicy: 'no-referrer', cache: 'no-store'});
@@ -462,6 +566,7 @@ export class HttpLocalApi {
     if(!path.startsWith(apiRoot)||path.includes('#')||path.includes('\\')||!['GET','POST','PATCH','PUT'].includes(method))throw new Error('Invalid console request.');
     const payload=body===undefined?undefined:JSON.stringify(body);
     if(payload!==undefined&&consoleUTF8Size(payload)>65536)throw new Error('Console request is too large.');
+    if (this.mutationCoordinator && userMutationRoute(path, method)) return this.mutationValue<T>(await this.coordinatedMutation(path, method, body, undefined, signal));
     const token=this.token,c=new AbortController();const abort=()=>c.abort();signal.addEventListener('abort',abort,{once:true});
     if(signal.aborted)c.abort();const timer=setTimeout(abort,10000);
     try{
@@ -540,6 +645,7 @@ export class HttpLocalApi {
    */
   farewell(path: string, method: string, body?: unknown): void {
     if (!path.startsWith(apiRoot) || provesIdentity(path, method)) return;
+    if (this.mutationCoordinator && userMutationRoute(path, method)) { void this.coordinatedMutation(path, method, body).catch(() => { /* The coordinator keeps the durable Stop and publishes its state. */ }); return; }
     try { void this.send(path, method, body, undefined, this.token, undefined, true).then(r => { void r.body?.cancel().catch(() => {}); }, () => {}); } catch { /* the page is going away */ }
   }
   /** One artwork upload under the captured selected-server session. Never refresh/replay a lost write. */
@@ -579,6 +685,7 @@ export class HttpLocalApi {
    * `ETag`, `Report-Every-Ms`). Rejects only when there is no response (offline, aborted).
    */
   async requestRaw(path: string, method: string, options: Readonly<{headers?: Readonly<Record<string, string>>; body?: unknown; signal?: AbortSignal; deadlineMs?: number; singleAttempt?: boolean}> = {}): Promise<{status: number; headers: Record<string, string>; body?: unknown}> {
+    if (this.mutationCoordinator && userMutationRoute(path, method)) return this.coordinatedMutation(path, method, options.body, options.headers, options.signal);
     return withinDeadline(options.deadlineMs ?? requestDeadlineMs(path, method), options.signal, async signal => {
       const response = await this.exchange(path, method, options.body, signal, options.headers, options.singleAttempt);
       const headers: Record<string, string> = {};
@@ -597,6 +704,7 @@ export class HttpLocalApi {
     body?: unknown,
     signal?: AbortSignal
   ): Promise<T> {
+    if (this.mutationCoordinator && userMutationRoute(path, method)) return this.mutationValue<T>(await this.coordinatedMutation(path, method, body, undefined, signal));
     // No request waits for ever: one the server never answers fails as timed out (see `requestDeadlineMs`).
     // A change the writer refused before it began is sent again, not dropped (`writer-capacity.ts`).
     return retryWriterCapacity(
@@ -605,9 +713,15 @@ export class HttpLocalApi {
       signal,
     );
   }
+  private mutationValue<T>(response: UserMutationResponse): Promise<T> {
+    return this.readAnswered<T>(new Response(response.body === undefined ? null : JSON.stringify(response.body), {status: response.status, headers: response.headers}));
+  }
   private async answered<T>(path: string, method: string, body: unknown, signal: AbortSignal): Promise<T> {
     // A 401 means the server did not act on the request, so one retry with a renewed token is safe for any method.
     const response = await this.exchange(path, method, body, signal);
+    return this.readAnswered<T>(response, signal);
+  }
+  private async readAnswered<T>(response: Response, signal?: AbortSignal): Promise<T> {
     if (!response.ok) {
       let data: any;
       try {

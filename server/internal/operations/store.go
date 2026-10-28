@@ -11,6 +11,7 @@ import (
 	"portico.local/server/internal/configfile"
 	"portico.local/server/internal/dbwork"
 	"portico.local/server/internal/requestinput"
+	"portico.local/server/internal/usermutation"
 	"strconv"
 	"strings"
 	"sync"
@@ -164,6 +165,9 @@ func (s *Store) snapshot(ctx context.Context, auth Authorize, item string, fn fu
 	return gated.Commit()
 }
 func Receipt(tx *sql.Tx, scope, key string, body any, now int64) (string, string, error) {
+	if strings.HasPrefix(key, "p251_") {
+		return "", "", usermutation.ErrInvalidKey
+	}
 	if !validID(key) {
 		return "", "", ErrInvalid
 	}
@@ -190,6 +194,9 @@ func Receipt(tx *sql.Tx, scope, key string, body any, now int64) (string, string
 	return "", digest, nil
 }
 func SaveReceipt(tx *sql.Tx, scope, key, digest string, out any, now int64) error {
+	if strings.HasPrefix(key, "p251_") {
+		return usermutation.ErrInvalidKey
+	}
 	var n int
 	if e := tx.QueryRow(`SELECT count(*) FROM console_receipts WHERE scope=? AND expires_ms>?`, scope, now).Scan(&n); e != nil {
 		return e

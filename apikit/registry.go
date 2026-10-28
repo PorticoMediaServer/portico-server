@@ -199,19 +199,24 @@ type AuthorizeContext func(context.Context, *http.Request, Metadata) (context.Co
 type ScopeGate func(q *http.Request, need Scope) error
 
 type Registry struct {
-	handlers     []http.HandlerFunc
-	errors       *apierror.Registry
-	authorize    Authorize
-	authorizeCtx AuthorizeContext
-	scopes       ScopeGate
-	rewrite      PathRewrite
-	refs         Refs
-	routes       []Definition
-	bound        map[string]bool
-	frozen       bool
-	writeErrors  []string
-	routeErrors  []string
+	handlers       []http.HandlerFunc
+	errors         *apierror.Registry
+	authorize      Authorize
+	authorizeCtx   AuthorizeContext
+	scopes         ScopeGate
+	rewrite        PathRewrite
+	refs           Refs
+	routes         []Definition
+	bound          map[string]bool
+	frozen         bool
+	writeErrors    []string
+	routeErrors    []string
+	metadataPolicy func(Metadata) Metadata
 }
+
+// MetadataPolicy adds a server-owned contract policy before each route is
+// validated and registered. Install it before registering routes.
+func (r *Registry) MetadataPolicy(policy func(Metadata) Metadata) { r.metadataPolicy = policy }
 
 // GateScopes installs the check every route passes before access, body
 // parsing or the handler. Public routes pass it too, so a route that only a
@@ -391,6 +396,9 @@ func (r *Registry) admit(w http.ResponseWriter, q *http.Request, m Metadata) (*h
 func (r *Registry) define(m Metadata, request, response reflect.Type, access bool) error {
 	if r.frozen {
 		return errors.New("registry frozen")
+	}
+	if r.metadataPolicy != nil {
+		m = r.metadataPolicy(m)
 	}
 	for _, code := range r.routeErrors {
 		if !slices.Contains(m.Errors, code) {

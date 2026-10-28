@@ -260,7 +260,7 @@ function resource(v: unknown, bound: SavedScope, playlistId: string): PlaylistRe
 }
 function errorInfo(error: unknown): SavedError { const e = error as { code?: unknown; retryable?: unknown }; return freeze({ code: id(e?.code) ? e.code : 'request_failed', message: error instanceof Error ? error.message : 'Saved request failed.', retryable: e?.retryable === true || !id(e?.code) }); }
 function failedError(e: SavedError): Error { return Object.assign(new Error(e.message), e); }
-type Command = { silentRetries?: number; intent: SavedIntent; phase: 'queued'|'sending'|'retry-required'|'conflict'; operationId?: string; orderRevision?: number; body?: Record<string, unknown>; promise: Promise<void>; resolve: () => void; reject: (error: unknown) => void };
+type Command = { intent: SavedIntent; phase: 'queued'|'sending'|'retry-required'|'conflict'; operationId?: string; orderRevision?: number; body?: Record<string, unknown>; promise: Promise<void>; resolve: () => void; reject: (error: unknown) => void };
 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 function intent(v: SavedIntent): SavedIntent {
  if (!record(v)) throw new Error('Invalid playlist command.');
@@ -547,7 +547,7 @@ export class SavedService {
   const c = this.commands[0], generation = this.generation, api = this.api, selected = this.state.route, fence = this.state.projection?.scope.viewerFence;
   const controller = new AbortController(); this.running = true; c.phase = 'sending'; this.publish({ mutationError: null });
   try {
-   if (!c.operationId) { this.allowed(c.intent); if (c.intent.action === 'reorder' && c.orderRevision !== this.state.playlist?.revision) throw new Failure('playlist_conflict', 'The playlist changed after this order was chosen. Reload and review before retrying.', true); const value = await this.deadline(this.requestId(), controller); if (!uuid.test(value)) throw new Failure('invalid_request_id', 'A UUIDv4 operation ID is required.'); if (generation !== this.generation || this.disposed) return; c.operationId = value; c.body = { operationId: value, ...(c.intent.action === 'create' ? {} : { expectedRevision: c.intent.action==='pin'?this.state.playlist!.pinRevision:c.orderRevision ?? this.state.playlist!.revision }) }; }
+   if (!c.operationId) { this.allowed(c.intent); if (c.intent.action === 'reorder' && c.orderRevision !== this.state.playlist?.revision) throw new Failure('playlist_conflict', 'The playlist changed after this order was chosen. Reload and review before retrying.', true); const value = await this.deadline(this.requestId(), controller); if (!uuid.test(value) && !/^p251_[0-9]{13}_[a-f0-9]{32}$/.test(value)) throw new Failure('invalid_request_id', 'A UUIDv4 operation ID is required.'); if (generation !== this.generation || this.disposed) return; c.operationId = value; c.body = { operationId: value, ...(c.intent.action === 'create' ? {} : { expectedRevision: c.intent.action==='pin'?this.state.playlist!.pinRevision:c.orderRevision ?? this.state.playlist!.revision }) }; }
    if (!selected || !fence) throw new Failure('saved_required', 'Reload Saved before retrying.', true);
    const value = c.intent; let path: string = routePath("post_playlists"), method = 'POST'; const body = { ...c.body };
    if (value.action !== 'create') { if (selected.view !== 'playlist') throw new Error('Playlist is not selected.'); path=encodedRoutePath(value.action==='rename'?'patch_playlists_id':'get_playlists_id',{id:encodeURIComponent(selected.playlistId)}); }
@@ -601,18 +601,6 @@ export class SavedService {
     if (this.disposed || generation !== this.generation) return;
     const e = errorInfo(error);
     const kind = ['playlist_conflict','revision_mismatch','revision_conflict','resource_conflict'].includes(e.code) ? 'conflict' : 'retry-required';
-    // The playlist moved under this change (another device, or the person's own previous
-    // change). Adding, removing, renaming or sharing still means the same thing against the
-    // playlist as it is now, so it is read again and the change sent once more, quietly. A new
-    // order chosen against the old one does not: that is shown.
-    if (kind === 'conflict' && c.intent.action !== 'reorder' && (c.silentRetries ?? 0) < 2) {
-     c.silentRetries = (c.silentRetries ?? 0) + 1;
-     await this.refresh();
-     if (this.disposed || generation !== this.generation) return;
-     let applies = this.state.phase === 'ready';
-     if (applies) try { this.allowed(c.intent); } catch { applies = false; }
-     if (applies) { c.operationId = undefined; c.body = undefined; c.phase = 'queued'; this.publish({ mutationError: null }); return; }
-    }
     // Q7: report the failure to its caller and remove it from the queue so
     // later commands proceed. Conflict still refreshes to the current revision.
     // The operation is kept for explicit retryMutation (same idempotency key

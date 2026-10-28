@@ -10631,3 +10631,94 @@ CREATE TRIGGER summary_classification_update AFTER UPDATE OF value_key,minimum_a
 WHEN OLD.value_key IS NOT NEW.value_key OR OLD.minimum_age IS NOT NEW.minimum_age BEGIN
  UPDATE catalog_summary_classification_revision SET revision=revision+1 WHERE singleton=1;
 END;
+
+-- P2-51 tiny receipt ledger. Fixed conservative charges include secondary
+-- indexes and account facts, with 64 KiB reserved for roots/schema/rounding.
+-- Ordinary traffic leaves at least 2 MiB for Stop; Stop may borrow unused space.
+CREATE TABLE user_mutation_global(
+ singleton INTEGER PRIMARY KEY CHECK(singleton=1),
+ retired_before_ms INTEGER NOT NULL DEFAULT 0 CHECK(retired_before_ms>=0),
+ ordinary_count INTEGER NOT NULL DEFAULT 0 CHECK(ordinary_count BETWEEN 0 AND 65536),
+ stop_count INTEGER NOT NULL DEFAULT 0 CHECK(stop_count BETWEEN 0 AND 4096),
+ ordinary_bytes INTEGER NOT NULL DEFAULT 65536 CHECK(ordinary_bytes BETWEEN 65536 AND 31457280),
+ stop_bytes INTEGER NOT NULL DEFAULT 0 CHECK(stop_bytes>=0),
+ CHECK(ordinary_bytes+stop_bytes<=33554432)
+) STRICT;
+INSERT INTO user_mutation_global(singleton) VALUES(1);
+CREATE TABLE user_mutation_accounts(
+ id INTEGER PRIMARY KEY AUTOINCREMENT,
+ authority TEXT NOT NULL CHECK(authority IN('local','hosted')),
+ account_id TEXT CHECK(account_id IS NULL OR (length(CAST(account_id AS BLOB)) BETWEEN 1 AND 128 AND instr(account_id,char(0))=0)),
+ owner_account_id TEXT REFERENCES accounts(id) ON DELETE SET NULL,
+ retired_before_ms INTEGER NOT NULL DEFAULT 0 CHECK(retired_before_ms>=0),
+ cleanup_pending INTEGER NOT NULL DEFAULT 0 CHECK(cleanup_pending IN(0,1)),
+ ordinary_count INTEGER NOT NULL DEFAULT 0 CHECK(ordinary_count BETWEEN 0 AND 8192),
+ stop_count INTEGER NOT NULL DEFAULT 0 CHECK(stop_count BETWEEN 0 AND 512),
+ charged_stop INTEGER NOT NULL CHECK(charged_stop IN(0,1)),
+ UNIQUE(authority,account_id), UNIQUE(owner_account_id,authority)
+) STRICT;
+CREATE INDEX user_mutation_accounts_cleanup ON user_mutation_accounts(cleanup_pending,id);
+-- ON DELETE SET NULL changes only the constant-size account facts, never a
+-- cascade of receipts. Scrub private account identity immediately; bounded GC
+-- drains receipts and then removes the orphan fact. IDs are never reused.
+CREATE TRIGGER user_mutation_account_erased AFTER UPDATE OF owner_account_id ON user_mutation_accounts
+WHEN NEW.owner_account_id IS NULL BEGIN
+ UPDATE user_mutation_accounts SET account_id=NULL WHERE id=NEW.id;
+END;
+CREATE TABLE user_mutation_receipts(
+ key TEXT PRIMARY KEY CHECK(length(CAST(key AS BLOB))=51 AND substr(key,1,5)='p251_' AND substr(key,19,1)='_' AND substr(key,6,13) NOT GLOB '*[^0-9]*' AND substr(key,20,32) NOT GLOB '*[^0-9a-f]*'),
+ scope_id INTEGER NOT NULL REFERENCES user_mutation_accounts(id),
+ profile_id TEXT NOT NULL CHECK(length(CAST(profile_id AS BLOB)) BETWEEN 1 AND 128 AND instr(profile_id,char(0))=0),
+ family_id TEXT NOT NULL CHECK(length(CAST(family_id AS BLOB)) BETWEEN 1 AND 128 AND instr(family_id,char(0))=0),
+ operation TEXT NOT NULL CHECK(length(CAST(operation AS BLOB)) BETWEEN 1 AND 96 AND instr(operation,char(0))=0),
+ digest TEXT NOT NULL CHECK(length(CAST(digest AS BLOB))=64 AND digest NOT GLOB '*[^0-9a-f]*'),
+ is_stop INTEGER NOT NULL CHECK(is_stop IN(0,1)),
+ issued_ms INTEGER NOT NULL CHECK(issued_ms>0 AND issued_ms=CAST(substr(key,6,13) AS INTEGER)),
+ status TEXT NOT NULL CHECK(status IN('reserved','applied','already_stopped','conflict','invalid','terminal','deleted','removed','partial')),
+ target_id TEXT NOT NULL DEFAULT '' CHECK(length(CAST(target_id AS BLOB))<=128 AND instr(target_id,char(0))=0),
+ revision INTEGER NOT NULL DEFAULT 0 CHECK(revision BETWEEN 0 AND 9007199254740991),
+ generation INTEGER NOT NULL DEFAULT 0 CHECK(generation BETWEEN 0 AND 2147483647),
+ position_ms INTEGER NOT NULL DEFAULT 0 CHECK(position_ms BETWEEN 0 AND 9007199254740991),
+ position_status TEXT NOT NULL DEFAULT '' CHECK(position_status IN('','applied','already_stopped','not_renderer','policy_rejected','unchanged')),
+ committed_ms INTEGER NOT NULL DEFAULT 0 CHECK(committed_ms BETWEEN 0 AND 9999999999999)
+) WITHOUT ROWID, STRICT;
+CREATE INDEX user_mutation_receipts_expiry ON user_mutation_receipts(issued_ms,key);
+CREATE INDEX user_mutation_receipts_scope_expiry ON user_mutation_receipts(scope_id,issued_ms,key);
+CREATE INDEX user_mutation_receipts_family ON user_mutation_receipts(scope_id,family_id,issued_ms,key);
+CREATE TRIGGER user_mutation_global_monotone BEFORE UPDATE OF retired_before_ms ON user_mutation_global
+WHEN NEW.retired_before_ms<OLD.retired_before_ms BEGIN SELECT RAISE(ABORT,'user_mutation_cutoff_rollback'); END;
+CREATE TRIGGER user_mutation_account_monotone BEFORE UPDATE OF retired_before_ms ON user_mutation_accounts
+WHEN NEW.retired_before_ms<OLD.retired_before_ms BEGIN SELECT RAISE(ABORT,'user_mutation_cutoff_rollback'); END;
+CREATE TRIGGER user_mutation_account_capacity BEFORE INSERT ON user_mutation_accounts BEGIN
+ SELECT CASE WHEN NOT EXISTS(SELECT 1 FROM user_mutation_global WHERE singleton=1
+ AND ordinary_bytes+stop_bytes+1024<=33554432
+ AND (NEW.charged_stop=1 OR ordinary_bytes+1024<=31457280))
+ THEN RAISE(ABORT,'user_mutation_capacity') END;
+END;
+CREATE TRIGGER user_mutation_account_charge AFTER INSERT ON user_mutation_accounts BEGIN
+ UPDATE user_mutation_global SET ordinary_bytes=ordinary_bytes+(1-NEW.charged_stop)*1024,stop_bytes=stop_bytes+NEW.charged_stop*1024 WHERE singleton=1;
+END;
+CREATE TRIGGER user_mutation_account_release AFTER DELETE ON user_mutation_accounts BEGIN
+ UPDATE user_mutation_global SET ordinary_bytes=ordinary_bytes-(1-OLD.charged_stop)*1024,stop_bytes=stop_bytes-OLD.charged_stop*1024 WHERE singleton=1;
+END;
+CREATE TRIGGER user_mutation_receipt_capacity BEFORE INSERT ON user_mutation_receipts BEGIN
+ SELECT CASE WHEN NOT EXISTS(SELECT 1 FROM user_mutation_global g JOIN user_mutation_accounts a ON a.id=NEW.scope_id
+ WHERE g.singleton=1 AND a.owner_account_id IS NOT NULL
+ AND g.ordinary_bytes+g.stop_bytes+4096<=33554432
+ AND ((NEW.is_stop=0 AND g.ordinary_count<65536 AND a.ordinary_count<8192 AND g.ordinary_bytes+4096<=31457280)
+ OR (NEW.is_stop=1 AND g.stop_count<4096 AND a.stop_count<512)))
+ THEN RAISE(ABORT,'user_mutation_capacity') END;
+END;
+CREATE TRIGGER user_mutation_receipt_charge AFTER INSERT ON user_mutation_receipts BEGIN
+ UPDATE user_mutation_accounts SET ordinary_count=ordinary_count+1-NEW.is_stop,stop_count=stop_count+NEW.is_stop WHERE id=NEW.scope_id;
+ UPDATE user_mutation_global SET ordinary_count=ordinary_count+1-NEW.is_stop,stop_count=stop_count+NEW.is_stop,
+ ordinary_bytes=ordinary_bytes+(1-NEW.is_stop)*4096,stop_bytes=stop_bytes+NEW.is_stop*4096 WHERE singleton=1;
+END;
+CREATE TRIGGER user_mutation_receipt_release AFTER DELETE ON user_mutation_receipts BEGIN
+ UPDATE user_mutation_accounts SET ordinary_count=ordinary_count-1+OLD.is_stop,stop_count=stop_count-OLD.is_stop WHERE id=OLD.scope_id;
+ UPDATE user_mutation_global SET ordinary_count=ordinary_count-1+OLD.is_stop,stop_count=stop_count-OLD.is_stop,
+ ordinary_bytes=ordinary_bytes-(1-OLD.is_stop)*4096,stop_bytes=stop_bytes-OLD.is_stop*4096 WHERE singleton=1;
+END;
+CREATE TRIGGER user_mutation_receipt_immutable BEFORE UPDATE OF key,scope_id,profile_id,family_id,operation,digest,is_stop,issued_ms ON user_mutation_receipts BEGIN
+ SELECT RAISE(ABORT,'user_mutation_immutable');
+END;

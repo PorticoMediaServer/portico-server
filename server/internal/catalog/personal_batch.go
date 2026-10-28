@@ -1,7 +1,6 @@
 package catalog
 
 import (
-	"context"
 	"database/sql"
 	"encoding/json"
 	"errors"
@@ -9,6 +8,7 @@ import (
 	"portico.local/server/internal/dbwork"
 	"portico.local/server/internal/operations"
 	"portico.local/server/internal/requestinput"
+	"portico.local/server/internal/usermutation"
 	"time"
 )
 
@@ -108,6 +108,9 @@ func personalBatchFields(item PersonalBatchItem) []struct {
 // whole carries the retry receipt, so a replay returns the first outcome rather
 // than re-evaluating rows against revisions its own first attempt advanced.
 func (s *Service) SetPersonalBatch(account, profile string, m PersonalBatchMutation, authorize func(*sql.Tx, string) error) (PersonalBatchReceipt, error) {
+	if err := requireCatalogMutationContext(s.Context(), m.OperationID); err != nil {
+		return PersonalBatchReceipt{}, err
+	}
 	out := PersonalBatchReceipt{OperationID: m.OperationID, Results: []PersonalBatchResult{}, ReceiptLifetimeMs: 2592000000}
 	if !personalOperation.MatchString(m.OperationID) {
 		return out, requestinput.New("invalid operationId")
@@ -127,6 +130,9 @@ func (s *Service) SetPersonalBatch(account, profile string, m PersonalBatchMutat
 		if item.ExpectedRevision != nil && (*item.ExpectedRevision < 0 || *item.ExpectedRevision > 9007199254740991) {
 			return out, requestinput.New("invalid expectedRevision")
 		}
+	}
+	if _, _, protocol := usermutation.RequestFrom(s.Context()); protocol {
+		return s.setPersonalBatchProtocol(account, profile, m, authorize)
 	}
 	hash := operationHash(m)
 	cutoff := time.Now().UTC().Add(-30 * 24 * time.Hour).Format(time.RFC3339)
@@ -216,6 +222,6 @@ func (s *Service) SetPersonalBatch(account, profile string, m PersonalBatchMutat
 		out.Updated++
 	}
 	response, _ := json.Marshal(out)
-	_, e = dbwork.ExecWrite(context.Background(), s.db, dbwork.ClassFrom(context.Background(), dbwork.ClassInteractive), `INSERT INTO personal_batch_receipts VALUES(?,?,?,?,?) ON CONFLICT(profile_id,operation_id) DO UPDATE SET request_hash=excluded.request_hash,response=excluded.response,created_at=excluded.created_at`, profile, m.OperationID, hash, string(response), time.Now().UTC().Format(time.RFC3339))
+	_, e = dbwork.ExecWrite(s.Context(), s.db, dbwork.ClassFrom(s.Context(), dbwork.ClassInteractive), `INSERT INTO personal_batch_receipts VALUES(?,?,?,?,?) ON CONFLICT(profile_id,operation_id) DO UPDATE SET request_hash=excluded.request_hash,response=excluded.response,created_at=excluded.created_at`, profile, m.OperationID, hash, string(response), time.Now().UTC().Format(time.RFC3339))
 	return out, e
 }

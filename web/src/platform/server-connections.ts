@@ -1,3 +1,4 @@
+import {IndexedDBUserMutationStore} from './user-mutations';
 import {HttpLocalApi, type LocalSession} from '@core/index.ts';
 import {RouteConnection,sessionRoute} from '@core/route-connection';
 import {RouteError} from '@core/route-identity';
@@ -145,3 +146,8 @@ export async function restoreBrowserConnection(expected:LocalSession){
  return restoreNativeSession(env,record=>{if(!record.hosted)return;const central=browserAccount();return record.hosted.origin===central.api.origin?browserHostedSource(record.hosted.accountId):undefined;},expected);
 }
 export async function forgetBrowserConnection(session:LocalSession){const env=browserConnectionEnvironment(session.viewer.serverId);const captured=sessionRoute(session.accessToken);await forgetNativeSession(env,session);const retained=await env.storage.read();if(retained&&sessionRoute(retained.session.accessToken)===captured)return;if(active===captured)active=undefined;setTimeout(()=>{if(active!==captured)captured?.dispose();},16000);}
+
+export function mountBrowserUserMutations(api: HttpLocalApi, session: LocalSession) {
+ api.setUserMutationSession(session);
+ return api.configureUserMutations(new IndexedDBUserMutationStore());
+}

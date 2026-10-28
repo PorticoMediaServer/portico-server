@@ -761,6 +761,10 @@ export type GetTopshelfRequest = {  };
 export type GetTopshelfResponse = { "expiresAt": string; "profileId": string; "sections": Array<{ "entries": Array<{ "absoluteNumber"?: number; "airDate"?: string; "dateBased"?: boolean; "displayUrl": string; "episodeNumber"?: number; "id": string; "imageUrl"?: string; "kind": string; "playUrl"?: string; "progressPercent"?: number; "seasonNumber"?: number; "showTitle"?: string; "special"?: boolean; "subtitle"?: string; "title": string }>; "id": string; "shape": string; "title": string; "titleText": { "code": string; "fallback": string; "params"?: Record<string, string> } }>; "serverId": string; "serverName": string };
 export type GetTopshelfArtIdRequest = {  };
 export type GetTopshelfArtIdResponse = string;
+export type GetUserMutationRequest = {  };
+export type GetUserMutationResponse = { "committedMs": number; "expiresMs": number; "generation"?: number; "key": string; "operation": string; "positionMs"?: number; "positionStatus"?: string; "revision"?: number; "status": string; "targetId"?: string };
+export type GetUserMutationPolicyRequest = {  };
+export type GetUserMutationPolicyResponse = { "retentionDays": number; "retiredBeforeMs": number; "serverTimeMs": number };
 export type GetV1ItemsIdChaptersChapterImageRequest = {  };
 export type GetV1ItemsIdChaptersChapterImageResponse = string;
 export type GetV1ItemsIdTrickplaySetTilesTileJpgRequest = {  };
@@ -1435,6 +1439,8 @@ export type ReorderSavedCollectionRequest = { "accountId"?: string; "addItemIds"
 export type ReorderSavedCollectionResponse = { "current"?: { "deleted": boolean; "resourceId": string; "revision": number }; "receipt": { "deleted": boolean; "entries"?: { "added": Array<string>; "failed": Array<{ "code": string; "itemId": string }>; "removed": Array<string>; "unchanged": Array<string> }; "operationId": string; "resourceId": string; "revision": number; "undoToken"?: string; "undoUntil"?: string }; "receiptLifetimeMs": number; "serverId": string; "viewerFence": string };
 export type ReportChangedPathsRequest = { "paths": Array<{ "change"?: string; "path": string }> };
 export type ReportChangedPathsResponse = { "jobs": Array<{ "analyzed": number; "error"?: string; "id": string; "jobs"?: Array<string>; "phase"?: string; "processed": number; "scanMode"?: string; "sourceId"?: string; "status": string; "warnings": number }>; "paths": Array<{ "folder"?: string; "libraryId"?: string; "path": string; "sourceId"?: string; "status": string }> };
+export type RetireUserMutationsRequest = { "accountId": string; "authority": string; "confirmReceiptHistoryLoss": boolean };
+export type RetireUserMutationsResponse = { "retentionDays": number; "retiredBeforeMs": number; "serverTimeMs": number };
 export type RevalidateDownloadReceiptsRequest = { "operationId": string; "receiptIds": Array<string> };
 export type RevalidateDownloadReceiptsResponse = { "results": Array<{ "code"?: string; "outcome": string; "preparationId"?: string; "receipt"?: { "algorithm": string; "claims": { "artifact": { "bytes": number; "sha256": string }; "expiresAt": string; "issuedAt": string; "itemId": string; "keyId": string; "kind": string; "preparationId": string; "publication"?: { "documentSha256": string; "format": string; "revision": string; "sourceId": string }; "quality": string; "qualityLabel": string; "receiptId": string; "version": string; "viewer": { "accountId": string; "authority": string; "profileId": string; "serverId": string } }; "keyId": string; "payload": string; "receiptId": string; "revision": number; "signature": string }; "receiptId"?: string; "titleOnServer"?: boolean; "viewing"?: { "positionMs": number; "watched": boolean } }> };
 export type RevokeAccessTokenRequest = {  };
@@ -1959,6 +1965,8 @@ export type RouteContracts = {
 "get_system": { request: GetSystemRequest; response: GetSystemResponse };
 "get_topshelf": { request: GetTopshelfRequest; response: GetTopshelfResponse };
 "get_topshelf_art_id": { request: GetTopshelfArtIdRequest; response: GetTopshelfArtIdResponse };
+"get_user_mutation": { request: GetUserMutationRequest; response: GetUserMutationResponse };
+"get_user_mutation_policy": { request: GetUserMutationPolicyRequest; response: GetUserMutationPolicyResponse };
 "get_v1_items_id_chapters_chapter_image": { request: GetV1ItemsIdChaptersChapterImageRequest; response: GetV1ItemsIdChaptersChapterImageResponse };
 "get_v1_items_id_trickplay_set_tiles_tile_jpg": { request: GetV1ItemsIdTrickplaySetTilesTileJpgRequest; response: GetV1ItemsIdTrickplaySetTilesTileJpgResponse };
 "get_v1_items_itemId_playback_session_subtitles": { request: GetV1ItemsItemIdPlaybackSessionSubtitlesRequest; response: GetV1ItemsItemIdPlaybackSessionSubtitlesResponse };
@@ -2296,6 +2304,7 @@ export type RouteContracts = {
 "reorder_playlist_window": { request: ReorderPlaylistWindowRequest; response: ReorderPlaylistWindowResponse };
 "reorder_saved_collection": { request: ReorderSavedCollectionRequest; response: ReorderSavedCollectionResponse };
 "report_changed_paths": { request: ReportChangedPathsRequest; response: ReportChangedPathsResponse };
+"retire_user_mutations": { request: RetireUserMutationsRequest; response: RetireUserMutationsResponse };
 "revalidate_download_receipts": { request: RevalidateDownloadReceiptsRequest; response: RevalidateDownloadReceiptsResponse };
 "revoke_access_token": { request: RevokeAccessTokenRequest; response: RevokeAccessTokenResponse };
 "revoke_api_key": { request: RevokeApiKeyRequest; response: RevokeApiKeyResponse };

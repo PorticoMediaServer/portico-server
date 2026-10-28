@@ -136705,6 +136705,117 @@ var PorticoCastContracts = (function(exports) {
 			],
 			"type": "object"
 		},
+		"GetUserMutationPolicyRequest": {
+			"properties": {},
+			"required": [],
+			"type": "object"
+		},
+		"GetUserMutationPolicyResponse": {
+			"properties": {
+				"retentionDays": {
+					"maximum": 9007199254740991,
+					"minimum": -9007199254740991,
+					"type": "integer"
+				},
+				"retiredBeforeMs": {
+					"maximum": 9007199254740991,
+					"minimum": -9007199254740991,
+					"type": "integer"
+				},
+				"serverTimeMs": {
+					"maximum": 9007199254740991,
+					"minimum": -9007199254740991,
+					"type": "integer"
+				}
+			},
+			"required": [
+				"serverTimeMs",
+				"retiredBeforeMs",
+				"retentionDays"
+			],
+			"type": "object"
+		},
+		"GetUserMutationRequest": {
+			"properties": {},
+			"required": [],
+			"type": "object"
+		},
+		"GetUserMutationResponse": {
+			"additionalProperties": false,
+			"properties": {
+				"committedMs": {
+					"maximum": 9999999999999,
+					"minimum": 0,
+					"type": "integer"
+				},
+				"expiresMs": {
+					"maximum": 0x918e8f167ff,
+					"minimum": 0,
+					"type": "integer"
+				},
+				"generation": {
+					"maximum": 2147483647,
+					"minimum": 0,
+					"type": "integer"
+				},
+				"key": {
+					"maxLength": 51,
+					"minLength": 51,
+					"pattern": "^p251_[0-9]{13}_[0-9a-f]{32}$",
+					"type": "string"
+				},
+				"operation": {
+					"maxLength": 96,
+					"type": "string"
+				},
+				"positionMs": {
+					"maximum": 9007199254740991,
+					"minimum": 0,
+					"type": "integer"
+				},
+				"positionStatus": {
+					"enum": [
+						"",
+						"applied",
+						"already_stopped",
+						"not_renderer",
+						"policy_rejected",
+						"unchanged"
+					],
+					"type": "string"
+				},
+				"revision": {
+					"maximum": 9007199254740991,
+					"minimum": 0,
+					"type": "integer"
+				},
+				"status": {
+					"enum": [
+						"applied",
+						"already_stopped",
+						"conflict",
+						"invalid",
+						"terminal",
+						"deleted",
+						"removed",
+						"partial"
+					],
+					"type": "string"
+				},
+				"targetId": {
+					"maxLength": 128,
+					"type": "string"
+				}
+			},
+			"required": [
+				"key",
+				"operation",
+				"status",
+				"committedMs",
+				"expiresMs"
+			],
+			"type": "object"
+		},
 		"GetV1ItemsIdChaptersChapterImageRequest": {
 			"properties": {},
 			"required": [],
@@ -178061,6 +178172,44 @@ var PorticoCastContracts = (function(exports) {
 			"required": ["paths", "jobs"],
 			"type": "object"
 		},
+		"RetireUserMutationsRequest": {
+			"properties": {
+				"accountId": { "type": "string" },
+				"authority": { "type": "string" },
+				"confirmReceiptHistoryLoss": { "type": "boolean" }
+			},
+			"required": [
+				"authority",
+				"accountId",
+				"confirmReceiptHistoryLoss"
+			],
+			"type": "object"
+		},
+		"RetireUserMutationsResponse": {
+			"properties": {
+				"retentionDays": {
+					"maximum": 9007199254740991,
+					"minimum": -9007199254740991,
+					"type": "integer"
+				},
+				"retiredBeforeMs": {
+					"maximum": 9007199254740991,
+					"minimum": -9007199254740991,
+					"type": "integer"
+				},
+				"serverTimeMs": {
+					"maximum": 9007199254740991,
+					"minimum": -9007199254740991,
+					"type": "integer"
+				}
+			},
+			"required": [
+				"serverTimeMs",
+				"retiredBeforeMs",
+				"retentionDays"
+			],
+			"type": "object"
+		},
 		"RevalidateDownloadReceiptsRequest": {
 			"properties": {
 				"operationId": { "type": "string" },
@@ -194434,7 +194583,754 @@ var PorticoCastContracts = (function(exports) {
 	function decodeStartPlaybackSessionResponse(input) {
 		return decode("StartPlaybackSessionResponse", input);
 	}
+	const leaseMs = 3e4;
+	const leaseRenewMs = 1e4;
+	const pollMs = 1e3;
+	const object = (v) => !!v && typeof v === "object" && !Array.isArray(v);
+	const bytes = (v) => new TextEncoder().encode(JSON.stringify(v)).length;
+	const clone = (v) => JSON.parse(JSON.stringify(v));
+	const integer = (v) => typeof v === "number" && Number.isSafeInteger(v) && v >= 0;
+	const emptyUserMutationState = () => ({
+		version: 1,
+		revision: 0,
+		entries: []
+	});
+	const sameUserMutationScope = (a, b) => a.serverId === b.serverId && a.origin === b.origin && a.authority === b.authority && a.accountId === b.accountId && a.profileId === b.profileId && a.familyId === b.familyId && a.deviceId === b.deviceId;
+	function isUserMutationKey(key) {
+		return /^p251_[0-9]{13}_[a-f0-9]{32}$/.test(key);
+	}
+	function newUserMutationKey(now = Date.now(), random = (out) => globalThis.crypto.getRandomValues(out)) {
+		if (!integer(now) || String(now).length !== 13) throw new UserMutationError("mutation_clock");
+		return "p251_" + now + "_" + Array.from(random(/* @__PURE__ */ new Uint8Array(16)), (v) => v.toString(16).padStart(2, "0")).join("");
+	}
+	var UserMutationError = class extends Error {
+		code;
+		key;
+		receipt;
+		currentState;
+		terminalProof;
+		response;
+		constructor(code, key, receipt, currentState, terminalProof, response) {
+			super(code);
+			this.code = code;
+			this.key = key;
+			this.receipt = receipt;
+			this.currentState = currentState;
+			this.terminalProof = terminalProof;
+			this.response = response;
+			this.name = "UserMutationError";
+		}
+	};
+	function canonical(value) {
+		const normalize = (v) => Array.isArray(v) ? v.map(normalize) : object(v) ? Object.fromEntries(Object.keys(v).sort().filter((k) => v[k] !== void 0).map((k) => [k, normalize(v[k])])) : v;
+		return JSON.stringify(normalize(value));
+	}
+	function userMutationFingerprint(input) {
+		return canonical({
+			operation: input.operation,
+			method: input.method,
+			path: input.path,
+			target: input.target,
+			body: input.body,
+			headers: input.headers ?? {}
+		});
+	}
+	function freeze(value) {
+		if (value && typeof value === "object") {
+			for (const child of Object.values(value)) freeze(child);
+			Object.freeze(value);
+		}
+		return value;
+	}
+	function secretField(key) {
+		const normalized = key.replace(/[^a-z0-9]/gi, "").toLowerCase();
+		return /(?:token|password|passphrase|secret|apikey|privatekey|tvdbprojectkey|acoustidkey)$/.test(normalized) || ["authorization", "cookie"].includes(normalized);
+	}
+	function safeRequest(value) {
+		if (typeof value === "string") return value.split("://").slice(1).every((tail) => !tail.split(/[/?#\s]/, 1)[0].includes("@"));
+		if (Array.isArray(value)) return value.every(safeRequest);
+		if (object(value)) return (Object.getPrototypeOf(value) === Object.prototype || Object.getPrototypeOf(value) === null) && Object.entries(value).every(([key, v]) => !(secretField(key) && v !== void 0 && v !== null && v !== "") && safeRequest(v));
+		return value === void 0 || value === null || typeof value === "boolean" || typeof value === "number" && Number.isFinite(value);
+	}
+	function validateUserMutationState(raw) {
+		if (!object(raw) || raw.version !== 1 || !integer(raw.revision) || !Array.isArray(raw.entries) || raw.entries.length > 256 || bytes(raw) > 8388608) throw new UserMutationError("mutation_store_damaged");
+		const seen = /* @__PURE__ */ new Set();
+		for (const entry of raw.entries) {
+			if (!object(entry) || typeof entry.key !== "string" || !isUserMutationKey(entry.key) || seen.has(entry.key) || !object(entry.scope) || ![
+				"serverId",
+				"origin",
+				"authority",
+				"accountId",
+				"profileId",
+				"familyId"
+			].every((k) => typeof entry.scope[k] === "string" && entry.scope[k].length > 0) || ![
+				"pending",
+				"review",
+				"quarantined",
+				"confirmed"
+			].includes(String(entry.state)) || typeof entry.operation !== "string" || typeof entry.path !== "string" || typeof entry.method !== "string" || typeof entry.target !== "string" || typeof entry.intentId !== "string" || typeof entry.fingerprint !== "string" || !integer(entry.attempts) || !integer(entry.dueMs) || !object(entry.headers) || !safeRequest(entry.body) || !safeRequest(entry.headers) || bytes({
+				body: entry.body,
+				headers: entry.headers
+			}) > 65536) throw new UserMutationError("mutation_store_damaged");
+			if (entry.receipt !== void 0) {
+				if (canonical(parseUserMutationReceipt(entry.receipt, entry)) !== canonical(entry.receipt)) throw new UserMutationError("mutation_store_damaged");
+			}
+			if (entry.terminalProof !== void 0 && (!object(entry.terminalProof) || entry.terminalProof.kind !== "refused" || ![
+				400,
+				409,
+				412,
+				422
+			].includes(Number(entry.terminalProof.httpStatus)) || typeof entry.terminalProof.code !== "string")) throw new UserMutationError("mutation_store_damaged");
+			if (entry.state === "confirmed" && (!entry.receipt || entry.fingerprint !== "" || entry.body !== void 0)) throw new UserMutationError("mutation_store_damaged");
+			if (entry.leaseUntilMs !== void 0 && !integer(entry.leaseUntilMs) || entry.leaseOwner !== void 0 && typeof entry.leaseOwner !== "string") throw new UserMutationError("mutation_store_damaged");
+			seen.add(entry.key);
+		}
+		return raw;
+	}
+	function parseUserMutationReceipt(raw, entry) {
+		if (object(raw) && object(raw.data)) raw = raw.data;
+		if (!object(raw) || raw.key !== entry.key || raw.operation !== entry.operation || ![
+			"applied",
+			"already_stopped",
+			"deleted",
+			"removed",
+			"partial",
+			"conflict",
+			"invalid",
+			"terminal"
+		].includes(String(raw.status)) || !integer(raw.committedMs) || !integer(raw.expiresMs) || raw.expiresMs < raw.committedMs) throw new UserMutationError("mutation_receipt_invalid", entry.key);
+		for (const key of [
+			"revision",
+			"generation",
+			"positionMs"
+		]) if (raw[key] !== void 0 && !integer(raw[key])) throw new UserMutationError("mutation_receipt_invalid", entry.key);
+		if (raw.targetId !== void 0 && (typeof raw.targetId !== "string" || new TextEncoder().encode(raw.targetId).length > 128)) throw new UserMutationError("mutation_receipt_invalid", entry.key);
+		if (raw.generation !== void 0 && raw.generation > 2147483647) throw new UserMutationError("mutation_receipt_invalid", entry.key);
+		if (raw.positionStatus !== void 0 && ![
+			"",
+			"applied",
+			"already_stopped",
+			"not_renderer",
+			"policy_rejected",
+			"unchanged"
+		].includes(String(raw.positionStatus))) throw new UserMutationError("mutation_receipt_invalid", entry.key);
+		return {
+			key: entry.key,
+			operation: entry.operation,
+			status: raw.status,
+			committedMs: raw.committedMs,
+			expiresMs: raw.expiresMs,
+			...raw.targetId !== void 0 ? { targetId: raw.targetId } : {},
+			...raw.revision !== void 0 ? { revision: raw.revision } : {},
+			...raw.generation !== void 0 ? { generation: raw.generation } : {},
+			...raw.positionMs !== void 0 ? { positionMs: raw.positionMs } : {},
+			...raw.positionStatus !== void 0 ? { positionStatus: raw.positionStatus } : {}
+		};
+	}
+	function userMutationRetryAfterMs(value, now = Date.now()) {
+		if (!value) return 0;
+		const trimmed = value.trim();
+		if (/^[0-9]+$/.test(trimmed)) {
+			const n = Number(trimmed);
+			return Number.isFinite(n) ? Math.min(n * 1e3, Number.MAX_SAFE_INTEGER - now) : Number.MAX_SAFE_INTEGER - now;
+		}
+		const date = Date.parse(trimmed);
+		return Number.isFinite(date) ? Math.max(0, date - now) : 0;
+	}
+	function header(response, name) {
+		return Object.entries(response.headers).find(([key]) => key.toLowerCase() === name.toLowerCase())?.[1];
+	}
+	function errorCode(response) {
+		const body = response.body;
+		return object(body) && object(body.error) && typeof body.error.code === "string" ? body.error.code : "request_failed";
+	}
+	function refusal(entry, response) {
+		const code = response.status === 401 || response.status === 403 ? "mutation_authority_changed" : errorCode(response);
+		const proof = [
+			400,
+			409,
+			412,
+			422
+		].includes(response.status) ? {
+			kind: "refused",
+			httpStatus: response.status,
+			code
+		} : void 0;
+		return new UserMutationError(code, entry.key, void 0, void 0, proof, response);
+	}
+	var UserMutationCoordinator = class {
+		options;
+		owner;
+		now;
+		random;
+		timers;
+		timer;
+		stopped = false;
+		pumping = false;
+		entries = [];
+		listeners = /* @__PURE__ */ new Set();
+		waiters = /* @__PURE__ */ new Map();
+		running = /* @__PURE__ */ new Map();
+		recovering = /* @__PURE__ */ new Set();
+		constructor(options) {
+			this.options = options;
+			this.now = options.now ?? Date.now;
+			this.random = options.random ?? Math.random;
+			this.timers = options.timers ?? globalThis;
+			this.owner = options.ownerId ?? newUserMutationKey(this.now());
+		}
+		snapshot() {
+			return clone(this.entries);
+		}
+		subscribe(listener) {
+			this.listeners.add(listener);
+			return () => this.listeners.delete(listener);
+		}
+		publish(state) {
+			this.entries = clone(state.entries);
+			for (const listener of this.listeners) try {
+				listener();
+			} catch {}
+		}
+		async change(work) {
+			for (let attempt = 0; attempt < 32; attempt++) {
+				let before;
+				try {
+					before = validateUserMutationState(await this.options.store.read());
+				} catch (error) {
+					throw error instanceof UserMutationError ? error : new UserMutationError("mutation_store_unavailable");
+				}
+				const next = clone(before), result = work(next);
+				next.revision = before.revision + 1;
+				validateUserMutationState(next);
+				let swapped;
+				try {
+					swapped = await this.options.store.compareAndSwap(before.revision, next);
+				} catch (error) {
+					throw error instanceof UserMutationError ? error : new UserMutationError("mutation_store_unavailable");
+				}
+				if (swapped) {
+					this.publish(next);
+					return result;
+				}
+			}
+			throw new UserMutationError("mutation_store_busy");
+		}
+		async start() {
+			this.stopped = false;
+			await this.reconcile();
+		}
+		/** Resume durable background reconciliation, including after a scope change. */
+		async reconcile() {
+			if (this.stopped) return;
+			await this.pump();
+		}
+		/** Explicit caller acknowledgement; never evict unresolved or quarantined drafts. */
+		async acknowledge(key) {
+			await this.change((state) => {
+				const entry = state.entries.find((e) => e.key === key);
+				if (!entry) return;
+				const scope = this.options.scope();
+				if (entry.state !== "confirmed" || !entry.receipt || !scope || !sameUserMutationScope(entry.scope, scope)) throw new UserMutationError("mutation_needs_review", key);
+				state.entries = state.entries.filter((e) => e.key !== key);
+			});
+		}
+		/** Only an explicit user review may release a terminal draft. Unknown history
+		* (including receipt_expired), pending, and quarantined work is never released. */
+		async dismissReviewed(key) {
+			await this.change((state) => {
+				const entry = state.entries.find((e) => e.key === key), scope = this.options.scope();
+				const proof = entry?.receipt && ([
+					"partial",
+					"conflict",
+					"invalid",
+					"terminal"
+				].includes(entry.receipt.status) || entry.receipt.positionStatus === "policy_rejected") || entry?.terminalProof?.kind === "refused";
+				if (!entry || entry.state !== "review" || !proof || !scope || !sameUserMutationScope(scope, entry.scope)) throw new UserMutationError("mutation_needs_review", key);
+				state.entries = state.entries.filter((e) => e.key !== key);
+			});
+		}
+		dispose() {
+			this.stopped = true;
+			if (this.timer !== void 0) this.timers.clearTimeout(this.timer);
+			this.timer = void 0;
+			for (const { abort } of this.running.values()) abort.abort();
+			for (const [key] of this.waiters) this.reject(key, new UserMutationError("mutation_scope_changed", key));
+		}
+		wake(delay = 0) {
+			if (this.stopped) return;
+			if (this.timer !== void 0) this.timers.clearTimeout(this.timer);
+			this.timer = this.timers.setTimeout(() => {
+				this.timer = void 0;
+				this.pump().catch(() => {
+					this.wake(1e3);
+				});
+			}, Math.min(6e4, Math.max(0, delay)));
+		}
+		async run(input, signal) {
+			if (this.stopped) throw new UserMutationError("mutation_scope_changed");
+			const liveScope = this.options.scope();
+			if (!liveScope) throw new UserMutationError("mutation_scope_changed");
+			const scope = clone(liveScope);
+			if (signal?.aborted) throw new DOMException("The request was cancelled.", "AbortError");
+			try {
+				if (!safeRequest(input.body) || !safeRequest(input.headers ?? {})) throw new Error();
+				input = clone(input);
+				const path = new URL(input.path, "http://mutation.invalid");
+				if (!input.path.startsWith("/v1/") || path.pathname + path.search !== input.path || path.hash || input.path.includes("\\") || ![
+					"POST",
+					"PUT",
+					"PATCH",
+					"DELETE"
+				].includes(input.method) || !input.operation || !input.target) throw new Error();
+				const origin = new URL(scope.origin);
+				if (origin.origin !== scope.origin || origin.username || origin.password) throw new Error();
+				if (Object.keys(input.headers ?? {}).some((k) => ![
+					"content-type",
+					"if-match",
+					"if-unmodified-since"
+				].includes(k.toLowerCase()))) throw new Error();
+				if ([...path.searchParams.keys()].some((k) => /token|password|secret|authorization|key/i.test(k))) throw new Error();
+			} catch {
+				throw new UserMutationError("mutation_not_queued");
+			}
+			const original = userMutationFingerprint(input);
+			if (new TextEncoder().encode(original).length > 65536) throw new UserMutationError("mutation_not_queued");
+			const now = this.now(), key = input.key ?? newUserMutationKey(now), intentId = input.intentId ?? key;
+			if (!isUserMutationKey(key)) throw new UserMutationError("invalid_mutation_key");
+			const entry = await this.change((state) => {
+				if (state.entries.find((e) => e.key === key && !sameUserMutationScope(e.scope, scope))) throw new UserMutationError("idempotency_conflict", key);
+				const prior = state.entries.find((e) => sameUserMutationScope(e.scope, scope) && (e.key === key || e.intentId === intentId));
+				if (prior) {
+					const sameIdentity = prior.operation === input.operation && prior.method === input.method && prior.path === input.path && prior.target === input.target;
+					const generationChanged = object(prior.body) && object(input.body) && prior.body.expectedGeneration !== void 0 && input.body.expectedGeneration !== void 0 && prior.body.expectedGeneration !== input.body.expectedGeneration;
+					const existingStop = sameIdentity && input.operation === "stop_playback_session" && prior.intentId === intentId && !generationChanged;
+					if (!(prior.state === "confirmed" ? sameIdentity : existingStop || prior.fingerprint === original)) throw new UserMutationError("idempotency_conflict", prior.key);
+					return clone(prior);
+				}
+				if (state.entries.length >= 256) throw new UserMutationError("mutation_not_queued");
+				const body = input.body === void 0 ? void 0 : clone(input.body), headers = {
+					...input.headers,
+					"Idempotency-Key": key
+				};
+				if (object(body)) {
+					for (const name of [
+						"operationId",
+						"idempotencyKey",
+						"requestId"
+					]) if (name in body) body[name] = key;
+				}
+				const next = {
+					key,
+					operation: input.operation,
+					method: input.method,
+					path: input.path,
+					target: input.target,
+					intentId,
+					fingerprint: original,
+					scope: clone(scope),
+					...body === void 0 ? {} : { body },
+					headers,
+					state: "pending",
+					attempts: 0,
+					dueMs: now
+				};
+				if (bytes({
+					body,
+					headers
+				}) > 65536) throw new UserMutationError("mutation_not_queued");
+				state.entries.push(next);
+				if (bytes(state) + state.entries.filter((e) => e.state === "pending").length * 2048 > 8388608) throw new UserMutationError("mutation_not_queued");
+				return clone(next);
+			});
+			if (entry.state === "review" || entry.state === "quarantined") throw new UserMutationError(entry.errorCode ?? "mutation_needs_review", entry.key, entry.receipt);
+			if (entry.state === "confirmed" && entry.receipt) {
+				const current = this.options.scope();
+				if (!current || !sameUserMutationScope(current, entry.scope)) throw new UserMutationError("mutation_scope_changed", entry.key);
+				const abort = new AbortController(), cancel = () => abort.abort();
+				signal?.addEventListener("abort", cancel, { once: true });
+				try {
+					if (signal?.aborted) abort.abort();
+					const response = await this.options.transport.recover(freeze(entry), entry.receipt, abort.signal);
+					const live = this.options.scope();
+					if (!live || !sameUserMutationScope(live, entry.scope)) throw new UserMutationError("mutation_scope_changed", entry.key);
+					return response;
+				} finally {
+					signal?.removeEventListener("abort", cancel);
+				}
+			}
+			return new Promise((resolve, reject) => {
+				const waiters = this.waiters.get(entry.key) ?? /* @__PURE__ */ new Set();
+				this.waiters.set(entry.key, waiters);
+				const onAbort = () => {
+					waiters.delete(waiter);
+					if (waiters.size === 0) this.waiters.delete(entry.key);
+					reject(new DOMException("The request was cancelled.", "AbortError"));
+				};
+				const waiter = {
+					resolve: (r) => {
+						signal?.removeEventListener("abort", onAbort);
+						resolve(r);
+					},
+					reject: (e) => {
+						signal?.removeEventListener("abort", onAbort);
+						reject(e);
+					}
+				};
+				waiters.add(waiter);
+				signal?.addEventListener("abort", onAbort, { once: true });
+				if (signal?.aborted) onAbort();
+				this.wake();
+			});
+		}
+		reject(key, error) {
+			const set = this.waiters.get(key);
+			this.waiters.delete(key);
+			for (const waiter of set ?? []) waiter.reject(error);
+		}
+		resolve(key, response) {
+			const set = this.waiters.get(key);
+			this.waiters.delete(key);
+			for (const waiter of set ?? []) waiter.resolve(response);
+		}
+		async pump() {
+			if (this.stopped || this.pumping) return;
+			this.pumping = true;
+			try {
+				const scope = this.options.scope(), now = this.now();
+				let nextDue = now + pollMs;
+				for (const { abort, scope: original } of this.running.values()) if (!scope || !sameUserMutationScope(scope, original)) abort.abort();
+				const picked = await this.change((state) => {
+					const picks = [];
+					for (const entry of state.entries) {
+						if (entry.state !== "pending") continue;
+						if (!scope || !sameUserMutationScope(entry.scope, scope)) {
+							entry.state = "quarantined";
+							entry.errorCode = "mutation_scope_changed";
+							delete entry.leaseOwner;
+							delete entry.leaseUntilMs;
+							continue;
+						}
+						if (this.running.has(entry.key) && entry.leaseOwner === this.owner) entry.leaseUntilMs = now + leaseMs;
+					}
+					let occupied = state.entries.filter((e) => e.state === "pending" && (e.leaseUntilMs ?? 0) > now).length;
+					const leasedTargets = new Set(state.entries.filter((e) => e.state === "pending" && (e.leaseUntilMs ?? 0) > now).map((e) => e.target));
+					const targets = /* @__PURE__ */ new Set();
+					for (const entry of state.entries) {
+						if (entry.state !== "pending") continue;
+						if (targets.has(entry.target)) continue;
+						targets.add(entry.target);
+						if (this.running.has(entry.key)) continue;
+						const ready = Math.max(entry.dueMs, entry.leaseUntilMs ?? 0);
+						if (ready > now) {
+							nextDue = Math.min(nextDue, ready);
+							continue;
+						}
+						if (occupied >= 2 || leasedTargets.has(entry.target)) continue;
+						entry.leaseOwner = this.owner;
+						entry.leaseUntilMs = now + leaseMs;
+						entry.attempts++;
+						picks.push(clone(entry));
+						occupied++;
+					}
+					return picks;
+				});
+				for (const entry of this.entries) {
+					if (entry.state === "quarantined") this.reject(entry.key, new UserMutationError("mutation_scope_changed", entry.key));
+					if (entry.state === "confirmed" && entry.receipt && this.waiters.has(entry.key) && !this.running.has(entry.key) && !this.recovering.has(entry.key)) {
+						const current = this.options.scope();
+						if (!current || !sameUserMutationScope(current, entry.scope)) {
+							this.reject(entry.key, new UserMutationError("mutation_scope_changed", entry.key));
+							continue;
+						}
+						this.recovering.add(entry.key);
+						const receipt = entry.receipt;
+						this.options.transport.recover(freeze(clone(entry)), receipt, new AbortController().signal).then((response) => {
+							const live = this.options.scope();
+							if (!live || !sameUserMutationScope(live, entry.scope)) this.reject(entry.key, new UserMutationError("mutation_scope_changed", entry.key, receipt));
+							else this.resolve(entry.key, response);
+						}, () => this.reject(entry.key, new UserMutationError("mutation_readback_unavailable", entry.key, receipt))).finally(() => this.recovering.delete(entry.key));
+					}
+					if (entry.state === "review" && !this.running.has(entry.key)) this.reject(entry.key, new UserMutationError(entry.errorCode ?? "mutation_needs_review", entry.key, entry.receipt));
+				}
+				for (const entry of picked) {
+					const abort = new AbortController(), promise = Promise.resolve().then(() => this.perform(freeze(entry), abort.signal)).finally(() => {
+						this.running.delete(entry.key);
+						this.wake();
+					});
+					this.running.set(entry.key, {
+						abort,
+						promise,
+						scope: entry.scope
+					});
+					promise.catch(() => {});
+				}
+				this.wake(Math.min(nextDue - this.now(), this.running.size ? leaseRenewMs : pollMs));
+			} finally {
+				this.pumping = false;
+			}
+		}
+		async update(entry, change) {
+			return this.change((state) => {
+				const current = state.entries.find((e) => e.key === entry.key);
+				if (current && current.state === "pending" && current.leaseOwner === this.owner) {
+					change(current);
+					delete current.leaseOwner;
+					delete current.leaseUntilMs;
+					return true;
+				}
+				return false;
+			});
+		}
+		async complete(entry, receipt, response, signal) {
+			const review = [
+				"partial",
+				"conflict",
+				"invalid",
+				"terminal"
+			].includes(receipt.status) || receipt.positionStatus === "policy_rejected";
+			const reviewCode = receipt.positionStatus === "policy_rejected" ? "final_position_rejected" : "mutation_needs_review";
+			if (!await this.update(entry, (current) => {
+				current.receipt = receipt;
+				current.state = review ? "review" : "confirmed";
+				if (!review) {
+					delete current.body;
+					current.fingerprint = "";
+					current.headers = { "Idempotency-Key": current.key };
+				} else current.errorCode = reviewCode;
+			})) throw new Error("mutation_lease_changed");
+			const acceptedScope = this.options.scope();
+			if (!acceptedScope || !sameUserMutationScope(acceptedScope, entry.scope)) {
+				this.reject(entry.key, new UserMutationError("mutation_scope_changed", entry.key, receipt));
+				return;
+			}
+			if (review) {
+				let currentState;
+				try {
+					currentState = await this.options.transport.recover(entry, receipt, signal ?? new AbortController().signal);
+				} catch {}
+				this.reject(entry.key, new UserMutationError(reviewCode, entry.key, receipt, currentState));
+				return;
+			}
+			if (this.waiters.has(entry.key)) {
+				const scope = this.options.scope();
+				if (!scope || !sameUserMutationScope(scope, entry.scope)) {
+					this.reject(entry.key, new UserMutationError("mutation_scope_changed", entry.key, receipt));
+					return;
+				}
+				if (!response) try {
+					response = await this.options.transport.recover(entry, receipt, signal ?? new AbortController().signal);
+				} catch {
+					this.reject(entry.key, new UserMutationError("mutation_readback_unavailable", entry.key, receipt));
+					return;
+				}
+				const currentScope = this.options.scope();
+				if (!currentScope || !sameUserMutationScope(currentScope, entry.scope)) {
+					this.reject(entry.key, new UserMutationError("mutation_scope_changed", entry.key, receipt));
+					return;
+				}
+				this.resolve(entry.key, response);
+			}
+		}
+		async perform(entry, signal) {
+			let retryFloor = 0;
+			try {
+				const current = this.options.scope();
+				if (!current || !sameUserMutationScope(current, entry.scope)) throw new UserMutationError("mutation_scope_changed", entry.key);
+				if (entry.attempts > 1) {
+					const lookup = await this.options.transport.lookup(entry, signal);
+					retryFloor = userMutationRetryAfterMs(header(lookup, "retry-after"), this.now());
+					if (lookup.status >= 200 && lookup.status < 300) {
+						await this.complete(entry, parseUserMutationReceipt(lookup.body, entry), void 0, signal);
+						return;
+					}
+					if (lookup.status === 404 && retryFloor > 0) throw new Error("mutation_lookup_pending");
+					if (lookup.status !== 404 || errorCode(lookup) !== "receipt_unknown") {
+						if (lookup.status >= 400 && lookup.status < 500 && lookup.status !== 429) throw refusal(entry, lookup);
+						throw new Error("mutation_lookup_pending");
+					}
+				}
+				const scope = this.options.scope();
+				if (!scope || !sameUserMutationScope(scope, entry.scope)) throw new UserMutationError("mutation_scope_changed", entry.key);
+				const response = await this.options.transport.send(entry, signal);
+				retryFloor = userMutationRetryAfterMs(header(response, "retry-after"), this.now());
+				if (response.status >= 200 && response.status < 300) {
+					const live = this.options.scope();
+					if (!live || !sameUserMutationScope(live, entry.scope)) throw new UserMutationError("mutation_scope_changed", entry.key);
+					const lookup = await this.options.transport.lookup(entry, signal);
+					retryFloor = Math.max(retryFloor, userMutationRetryAfterMs(header(lookup, "retry-after"), this.now()));
+					if (lookup.status >= 200 && lookup.status < 300) {
+						await this.complete(entry, parseUserMutationReceipt(lookup.body, entry), response, signal);
+						return;
+					}
+					if (lookup.status >= 400 && lookup.status < 500 && lookup.status !== 429 && lookup.status !== 404) throw refusal(entry, lookup);
+					throw new Error("mutation_receipt_pending");
+				}
+				if (response.status >= 400 && response.status < 500 && response.status !== 429) throw refusal(entry, response);
+				throw new Error("mutation_transport_pending");
+			} catch (error) {
+				if (error instanceof UserMutationError && error.code.startsWith("mutation_store_")) {
+					this.reject(entry.key, new UserMutationError(error.code, entry.key));
+					throw error;
+				}
+				if (error instanceof UserMutationError) {
+					if (await this.update(entry, (current) => {
+						current.state = [
+							"mutation_scope_changed",
+							"mutation_authority_changed",
+							"unauthorized"
+						].includes(error.code) ? "quarantined" : "review";
+						current.errorCode = error.code;
+						if (error.terminalProof) current.terminalProof = error.terminalProof;
+					})) {
+						let currentState;
+						const scope = this.options.scope();
+						if (this.options.transport.current && scope && sameUserMutationScope(scope, entry.scope)) try {
+							currentState = await this.options.transport.current(entry, signal);
+						} catch {}
+						this.reject(entry.key, new UserMutationError(error.code, entry.key, error.receipt, currentState, error.terminalProof, error.response));
+					}
+					return;
+				}
+				const base = [
+					1e3,
+					2e3,
+					5e3,
+					1e4,
+					3e4
+				][Math.min(entry.attempts - 1, 4)], floor = Math.max(base, retryFloor), delay = Math.min(Number.MAX_SAFE_INTEGER - this.now(), floor + Math.max(1, Math.ceil(floor * (.01 + .24 * this.random()))));
+				try {
+					if (await this.update(entry, (current) => {
+						current.dueMs = this.now() + delay;
+					}) && entry.attempts >= 5) this.reject(entry.key, new UserMutationError("mutation_pending", entry.key));
+				} catch (storeError) {
+					this.reject(entry.key, new UserMutationError("mutation_store_unavailable", entry.key));
+					throw storeError;
+				}
+			}
+		}
+	};
 	//#endregion
+	//#region web/src/platform/user-mutations.ts
+	/** Nonsecret HTTP-LAN custody. Compare and replacement share ONE IndexedDB
+	* transaction, including across tabs. Neither Web Locks nor subtle is used. */
+	var IndexedDBUserMutationStore = class {
+		factory;
+		name;
+		database;
+		constructor(factory = globalThis.indexedDB, name = "portico.user-mutations.v1") {
+			this.factory = factory;
+			this.name = name;
+		}
+		open() {
+			if (!this.factory) return Promise.reject(new UserMutationError("mutation_store_unavailable"));
+			if (this.database) return this.database;
+			this.database = new Promise((resolve, reject) => {
+				let request;
+				try {
+					request = this.factory.open(this.name, 1);
+				} catch {
+					reject(new UserMutationError("mutation_store_unavailable"));
+					return;
+				}
+				let refused = false;
+				request.onupgradeneeded = () => request.result.createObjectStore("state");
+				request.onerror = () => reject(new UserMutationError("mutation_store_unavailable"));
+				request.onblocked = () => {
+					refused = true;
+					reject(new UserMutationError("mutation_store_unavailable"));
+				};
+				request.onsuccess = () => {
+					const db = request.result;
+					if (refused) {
+						db.close();
+						return;
+					}
+					db.onversionchange = () => {
+						db.close();
+						this.database = void 0;
+					};
+					resolve(db);
+				};
+			});
+			this.database.catch(() => {
+				this.database = void 0;
+			});
+			return this.database;
+		}
+		async read() {
+			const db = await this.open();
+			return new Promise((resolve, reject) => {
+				let result;
+				let failure;
+				let tx;
+				try {
+					tx = db.transaction("state", "readonly");
+				} catch {
+					reject(new UserMutationError("mutation_store_unavailable"));
+					return;
+				}
+				const request = tx.objectStore("state").get("current");
+				request.onsuccess = () => {
+					try {
+						result = request.result === void 0 ? emptyUserMutationState() : validateUserMutationState(request.result);
+					} catch (error) {
+						failure = error;
+						tx.abort();
+					}
+				};
+				tx.oncomplete = () => resolve(result);
+				tx.onabort = () => reject(failure ?? new UserMutationError("mutation_store_unavailable"));
+				tx.onerror = () => {};
+			});
+		}
+		async compareAndSwap(expectedRevision, next) {
+			next = validateUserMutationState(JSON.parse(JSON.stringify(next)));
+			if (next.revision !== expectedRevision + 1) throw new UserMutationError("mutation_store_damaged");
+			const db = await this.open();
+			return new Promise((resolve, reject) => {
+				let changed = false, failure;
+				let tx;
+				try {
+					tx = db.transaction("state", "readwrite", { durability: "strict" });
+					if (tx.durability !== "strict") {
+						tx.abort();
+						reject(new UserMutationError("mutation_store_unavailable"));
+						return;
+					}
+				} catch {
+					reject(new UserMutationError("mutation_store_unavailable"));
+					return;
+				}
+				const store = tx.objectStore("state"), request = store.get("current");
+				request.onsuccess = () => {
+					try {
+						if ((request.result === void 0 ? emptyUserMutationState() : validateUserMutationState(request.result)).revision !== expectedRevision) return;
+						store.put(next, "current");
+						changed = true;
+					} catch (error) {
+						failure = error;
+						tx.abort();
+					}
+				};
+				tx.oncomplete = () => resolve(changed);
+				tx.onabort = () => reject(failure ?? new UserMutationError("mutation_store_unavailable"));
+				tx.onerror = () => {};
+			});
+		}
+		async close() {
+			const database = this.database;
+			this.database = void 0;
+			if (database) (await database).close();
+		}
+	};
+	//#endregion
+	exports.IndexedDBUserMutationStore = IndexedDBUserMutationStore;
+	exports.UserMutationCoordinator = UserMutationCoordinator;
+	exports.UserMutationError = UserMutationError;
 	exports.decodeStartPlaybackSessionResponse = decodeStartPlaybackSessionResponse;
+	exports.isUserMutationKey = isUserMutationKey;
+	exports.newUserMutationKey = newUserMutationKey;
+	exports.sameUserMutationScope = sameUserMutationScope;
 	return exports;
 })({});

@@ -3,6 +3,7 @@ package httpapi
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"net/http"
 
 	"portico.local/apikit"
@@ -11,6 +12,7 @@ import (
 	"portico.local/server/internal/dbwork"
 	"portico.local/server/internal/identity"
 	"portico.local/server/internal/reading"
+	"portico.local/server/internal/usermutation"
 )
 
 type ReadingSavedGroupRequest ReadingSavedRequest
@@ -137,11 +139,25 @@ func (d Dependencies) readingSetSavedGroup(rate *personalLimiter) http.HandlerFu
 			return
 		}
 		_, after, err := d.Catalog.WithContext(r.Context()).ReadingSavedGroup(p, d.Identity.ID(), target, d.readingSavedGroupResolve)
+		_, _, protocol := usermutation.RequestFrom(r.Context())
+		if protocol && (errors.Is(err, sql.ErrNoRows) || errors.Is(err, catalog.ErrReadingProjectionChanged)) {
+			// The private reference was already accepted. A subsequently missing
+			// target is current state, not permission to apply the old edit again.
+			err = dbwork.WithReadSnapshot(r.Context(), d.DB, func(ctx context.Context) error {
+				live, e := d.readingSavedGroupPrincipalTx(ctx, dbwork.Snapshot(ctx), p)
+				if e != nil {
+					return e
+				}
+				scope, e := d.readingSeriesScopeTx(ctx, dbwork.Snapshot(ctx), live, target.LibraryID)
+				after.ViewerFence = scope.Fence
+				return e
+			})
+		}
 		if err != nil {
 			readingFailure(w, err)
 			return
 		}
-		if after.ViewerFence != proof.ViewerFence {
+		if (!protocol || proof.ViewerFence != "") && after.ViewerFence != proof.ViewerFence {
 			failure(w, catalog.ErrStaleContinuation)
 			return
 		}

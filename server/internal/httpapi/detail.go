@@ -208,6 +208,18 @@ func (d Dependencies) detailRoutes(mux *http.ServeMux) {
 		write(w, 200, out)
 	})
 	d.projectedHandle(mux, "PUT /v1/items/{id}/personal-state", func(w http.ResponseWriter, r *http.Request) {
+		p, e := d.principal(r)
+		if e != nil {
+			failure(w, e)
+			return
+		}
+		if receipt, missing, err := d.personalMutationReplay(r.Context(), p); err != nil {
+			failure(w, err)
+			return
+		} else if receipt != nil && missing {
+			write(w, 200, catalog.PersonalReceipt{ServerID: d.Identity.ID(), OperationID: receipt.Key, ItemID: receipt.TargetID, Personal: catalog.PersonalState{Revision: receipt.Revision, Status: "current", Conflicts: []catalog.PersonalConflict{}}, ReceiptLifetimeMs: 2592000000})
+			return
+		}
 		p, library, originalFence, e := d.detailAccess(r)
 		if e != nil {
 			failure(w, e)
@@ -223,7 +235,7 @@ func (d Dependencies) detailRoutes(mux *http.ServeMux) {
 			failure(w, e)
 			return
 		}
-		personal, e := d.Catalog.SetPersonal(p.Authority+":"+p.AccountID, identity.PersonalKey(p.Viewer), r.PathValue("id"), body, func(tx *sql.Tx) error {
+		personal, e := d.Catalog.WithContext(r.Context()).SetPersonal(p.Authority+":"+p.AccountID, identity.PersonalKey(p.Viewer), r.PathValue("id"), body, func(tx *sql.Tx) error {
 			var actualLibrary string
 			if e := tx.QueryRow(`SELECT cl.library_id FROM catalog_entities e JOIN catalog_libraries cl ON cl.id=e.library_id WHERE e.public_id=pid_blob(?)`, r.PathValue("id")).Scan(&actualLibrary); e != nil {
 				return e

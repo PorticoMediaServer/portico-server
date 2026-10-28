@@ -428,38 +428,14 @@ var seekIDPattern = regexp.MustCompile(`^[A-Za-z0-9_-]{1,64}$`)
 // the others. A final position counts only from the playing device itself: a
 // remote controller cannot say where the renderer was, and the renderer's own
 // latest sample stands.
-func (s *Service) Stop(ctx context.Context, c Caller, id string, positionMs *int64) error {
-	r, err := s.session(ctx, c, id)
-	if err != nil {
-		return err
+// Stop accepts an optional captured renderer generation. expectedGeneration's
+// conditional cleanup contract remains a separate StopGeneration operation.
+func (s *Service) Stop(ctx context.Context, c Caller, id string, positionMs *int64, generation ...*int) error {
+	var captured *int
+	if len(generation) > 0 {
+		captured = generation[0]
 	}
-	if r.ended > 0 {
-		return nil
-	}
-	final := positionMs != nil && *positionMs >= 0 && c.DeviceID == r.device
-	return s.endWhen(ctx, id, "stopped", "", func(ctx context.Context, tx *sql.Tx, current row) (bool, error) {
-		if !final || current.media == "" {
-			return true, nil
-		}
-		// The final position and its resume evidence. Their refusal (a stale
-		// media generation, revoked authority, a failed write) rolls back to
-		// here and never blocks the Stop itself.
-		if _, err := tx.ExecContext(ctx, `SAVEPOINT stop_position`); err != nil {
-			return false, err
-		}
-		seq := current.lastSeq + 1
-		err := s.Playback.ObservationEvidenceTx(ctx, tx, c.Principal, current.media, current.mediaGeneration, seq, float64(*positionMs)/1000, "paused", 0, nil, false, s.now(), nil)
-		if err == nil {
-			_, err = tx.ExecContext(ctx, `UPDATE playback_v1_sessions SET position_ms=?,last_seq=? WHERE id=? AND ended_ms=0`, *positionMs, seq, current.id)
-		}
-		if err != nil {
-			if _, err = tx.ExecContext(ctx, `ROLLBACK TO stop_position`); err != nil {
-				return false, err
-			}
-		}
-		_, err = tx.ExecContext(ctx, `RELEASE stop_position`)
-		return err == nil, err
-	})
+	return s.stopWithReceipt(ctx, c, id, positionMs, captured)
 }
 
 // SkipReport is a marker the viewer skipped (spec §4.2): the segment marker's

@@ -735,6 +735,10 @@ index tvdb_jobs_due
 index tvdb_page_owned_rows
 index tvdb_publication_show
 index tvdb_publication_terminal
+index user_mutation_accounts_cleanup
+index user_mutation_receipts_expiry
+index user_mutation_receipts_family
+index user_mutation_receipts_scope_expiry
 index video_nfo_asset
 index video_nfo_status_asset_id_fk
 index viewer_revisions_library_id_fk
@@ -1614,6 +1618,9 @@ table tvdb_publication_operations
 table tvdb_publication_pages
 table tvdb_publication_sets
 table tvdb_series_candidates
+table user_mutation_accounts
+table user_mutation_global
+table user_mutation_receipts
 table video_nfo_evidence
 table video_nfo_status
 table viewer_revisions
@@ -3059,6 +3066,16 @@ trigger tvdb_publication_show_scope
 trigger tvdb_set_identity_immutable
 trigger tvdb_set_revision_monotonic
 trigger tvdb_show_created
+trigger user_mutation_account_capacity
+trigger user_mutation_account_charge
+trigger user_mutation_account_erased
+trigger user_mutation_account_monotone
+trigger user_mutation_account_release
+trigger user_mutation_global_monotone
+trigger user_mutation_receipt_capacity
+trigger user_mutation_receipt_charge
+trigger user_mutation_receipt_immutable
+trigger user_mutation_receipt_release
 trigger viewer_revisions_bound_check
 trigger viewer_revisions_bound_delete
 trigger viewer_revisions_bound_insert

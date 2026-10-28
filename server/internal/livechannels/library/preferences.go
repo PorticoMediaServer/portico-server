@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"portico.local/server/internal/livechannels"
+	"portico.local/server/internal/usermutation"
 )
 
 func (s *Store) SetPreference(ctx context.Context, a Authority, o livechannels.Owner, in livechannels.PreferenceInput) (int64, error) {
@@ -20,6 +21,15 @@ func (s *Store) SetPreference(ctx context.Context, a Authority, o livechannels.O
 			return ErrDenied
 		}
 		in.SourceID = "library:" + in.ChannelID
+		r, e := usermutation.CheckContext(ctx, tx, s.now().UnixMilli())
+		if e != nil {
+			return e
+		}
+		if r != nil {
+			revision, e = livechannels.PreferenceRevisionTx(ctx, tx, o, in)
+			return e
+		}
+
 		revision, e = livechannels.SetPreferenceTx(ctx, tx, o, in)
 		return e
 	})

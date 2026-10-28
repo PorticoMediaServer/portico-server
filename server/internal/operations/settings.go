@@ -11,6 +11,7 @@ import (
 	"portico.local/server/internal/medialimits"
 	"portico.local/server/internal/networkpolicy"
 	"portico.local/server/internal/qualityladder"
+	"portico.local/server/internal/usermutation"
 	"reflect"
 	"strings"
 	"time"
@@ -767,6 +768,15 @@ func (s *Store) applySettings(ctx context.Context, p identity.Principal, auth Au
 		}
 	}
 	e = s.transaction(ctx, auth, "", func(tx *sql.Tx) error {
+		receipt, err := usermutation.CheckContext(ctx, tx, s.now())
+		if err != nil {
+			return err
+		}
+		if receipt != nil {
+			out, err = readSettings(tx)
+			return err
+		}
+
 		scope := "settings:" + AccountKey(p)
 		var receiptInput any = c
 		if len(input) != 0 {
@@ -775,7 +785,7 @@ func (s *Store) applySettings(ctx context.Context, p identity.Principal, auth Au
 				Input  json.RawMessage
 			}{"logs-settings-v1", input}
 		}
-		raw, digest, err := Receipt(tx, scope, c.IdempotencyKey, receiptInput, s.now())
+		raw, digest, err := settingsLegacyReceipt(ctx, tx, scope, c.IdempotencyKey, receiptInput, s.now())
 		if err != nil {
 			return err
 		}
@@ -874,7 +884,7 @@ func (s *Store) applySettings(ctx context.Context, p identity.Principal, auth Au
 		if err != nil {
 			return err
 		}
-		return SaveReceipt(tx, scope, c.IdempotencyKey, digest, out, s.now())
+		return saveSettingsReceipt(ctx, tx, scope, c.IdempotencyKey, digest, out, "server", out.Revision, s.now())
 	})
 	if e == nil {
 		e = s.FlushConfiguration(context.WithoutCancel(ctx))

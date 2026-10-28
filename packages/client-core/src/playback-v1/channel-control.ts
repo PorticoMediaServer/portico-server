@@ -210,7 +210,7 @@ export class V1ChannelControl implements ChannelPlayback {
     let claimInstall: ChannelStartReceipt['claimInstall'] | undefined;
     let retireUninstalled: ChannelStartReceipt['retireUninstalled'] | undefined, retiring: Promise<void> | undefined;
     const retireLate = (session: Readonly<{id: string; generation: number}>) => {
-      if (!captureStart) {void this.stop(session.id); return;}
+      if (!captureStart) {void this.stop(session.id, session.generation).catch(error => this.sink?.error(message(error), true)); return;}
       if (retireUninstalled) {try {retiring = Promise.resolve(retireUninstalled(Object.freeze({id: session.id, generation: session.generation}))).catch(() => {});} catch { /* Original host retains cleanup uncertainty; never downgrade it. */ }}
     };
     const cancel = () => {if (this.current(a)) this.close();};
@@ -351,8 +351,8 @@ export class V1ChannelControl implements ChannelPlayback {
     return this.current(a);
   }
 
-  private stop(id: string): Promise<unknown> {
-    const work = call(this.http, {method: 'DELETE', path: encodedRoutePath("stop_playback_session", {"id": enc(id)})}, [200, 204, 404, 410]).catch(() => {});
+  private stop(id: string, generation?: number): Promise<unknown> {
+    const work = call(this.http, {method: 'DELETE', path: encodedRoutePath("stop_playback_session", {"id": enc(id)}), body: {generation}}, [200, 204]);
     this.stopping = Promise.all([this.stopping.catch(() => {}), work]);
     return work;
   }
@@ -366,6 +366,6 @@ export class V1ChannelControl implements ChannelPlayback {
     a.startAbort.abort();
     sink?.preparation?.(undefined);
     a.reporter?.stop();
-    if (a.id) void this.stop(a.id);
+    if (a.id) void this.stop(a.id, a.session?.presentation.generation).catch(error => sink?.error(message(error), true));
   }
 }
