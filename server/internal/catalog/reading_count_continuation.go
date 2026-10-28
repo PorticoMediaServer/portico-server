@@ -45,19 +45,30 @@ func (s *Service) BrowseReadingCarriedTotal(viewer Viewer, request BrowseRequest
 		return BrowseResult{}, false, err
 	}
 	present := decoded.TotalPresent || decoded.Total > 0
-	count := ReadingCountResult{Library: request.Library, Profile: viewer.Profile, ViewerFence: viewer.Fence, Witness: witness, QueryFingerprint: queryFingerprint(request.Query), RawTotal: decoded.Total, Filtered: request.Query != nil, Threshold: browseTotalThreshold}
+	count := ReadingCountResult{Library: request.Library, Profile: viewer.Profile, Witness: witness, QueryFingerprint: queryFingerprint(request.Query), RawTotal: decoded.Total, Filtered: request.Query != nil, Threshold: browseTotalThreshold}
 	if browseRelative(request.Query) {
 		count.EvaluationAt = signed.EvaluationAt
+		s, err = s.withBrowseInstant(request.Query, request.Cursor)
+		if err != nil {
+			return BrowseResult{}, false, err
+		}
 	}
-	// An absent count gets a private zero only to perform the existing signature,
-	// scope, fingerprint and ready-anchor checks without invoking any count SQL.
-	// Its projected page is discarded below and can never become a response.
+	// An absent count validates the original cursor without hydrating a
+	// speculative adjacent page or any personal state. Only its exact anchor
+	// is read; existing signature/scope/fingerprint/readiness checks still run.
+	if !present {
+		request.Profile = viewer.Profile
+		request.ViewerFence = viewer.Fence
+		request.Restrictions = viewer.EffectiveRestrictions()
+		request.viewer = viewer
+		request.preparedTotal = &count
+		request.readingValidateOnly = true
+		_, _, e := s.browseSelect(request)
+		return BrowseResult{}, false, e
+	}
 	page, err := s.BrowseReadingWithPreparedCount(viewer, request, count)
 	if err != nil {
 		return BrowseResult{}, false, err
-	}
-	if !present {
-		return BrowseResult{}, false, nil
 	}
 	return page, true, nil
 }
