@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import type {HomeLayoutView, HomeLayoutRowView} from '@core/home.ts';
 import type {PersonalResource} from '@core/personal-saved.ts';
-import {addHomeDraftView, homeDraftIntent, homeLayoutDraft, moveHomeDraftRow, removeHomeDraftView, showHomeDraftRow} from '../src/screens/home/layout-draft.ts';
+import {addHomeDraftView, homeDraftIntent, homeLayoutDraft, moveHomeDraftRow, removeHomeDraftView, showHomeDraftRow} from '@core/home-layout-editor.ts';
 const row = (id: string, patch: Partial<HomeLayoutRowView> = {}): HomeLayoutRowView => ({id, title: id, kind: 'titles', artworkShape: 'poster', required: false, hideable: true, reorderable: true, hidden: false, ...patch});
 const view: HomeLayoutView = {revision: 7, rowOrder: ['continue', 'fixed', 'recommended', 'view:existing'], hiddenRowIds: ['recommended', 'unreadable-row'],
   rows: [row('continue', {required: true, hideable: false}), row('fixed', {reorderable: false}), row('recommended', {hidden: true}), row('view:existing')]};

@@ -2320,6 +2320,7 @@ export * from './freshness-pool.ts';
 export * from './freshness-actions.ts';
 export * from './event-feed.ts';
 export * from './home-service.ts';
+export * from './home-layout-editor.ts';
 export * from './scan-issues.ts';
 export * from './playback-controls.ts';
 export {sizeClassForWidth, type SizeClass} from './presentation/size-class.ts';

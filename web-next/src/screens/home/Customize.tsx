@@ -10,7 +10,7 @@ import {Dialog} from '../../kit/overlays';
 import {Icon} from '../../kit/Icon';
 import {Skeleton} from '../../kit/states';
 import {useShellWidth} from '../../shell/viewport';
-import {homeDraftCanHide, homeDraftCanMove, homeDraftRow, type HomeLayoutDraft} from './layout-draft';
+import {homeDraftCanHide, homeDraftCanMove, homeDraftRow, type HomeLayoutDraft} from '@core/home-layout-editor.ts';
 import {HomeCustomization, type HomeCustomizationBindings} from './customization';
 import styles from './customize.module.css';
 
