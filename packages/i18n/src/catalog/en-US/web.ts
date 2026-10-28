@@ -240,6 +240,8 @@ export const webMessages = {
   'web.hostedSecurity.othersSignedOut': 'Other devices signed in to this account are signed out.',
   'web.hostedSecurity.newEmail': 'New email address',
   'web.live.today': 'Today',
+  'web.signIn.managedThere': 'Your password, email and two-step verification are managed in your Portico Account.',
+  'web.signIn.manage': 'Manage Portico Account',
   'web.live.noSourcesOwner': 'Add a TV source or create Library Channels in Settings, and they appear here.',
   'web.live.setUpChannels': 'Set up channels',
   'web.live.previous': 'Previous',
