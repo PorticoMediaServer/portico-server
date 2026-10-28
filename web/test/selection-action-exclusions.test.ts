@@ -38,7 +38,7 @@ test('actual desktop and phone controls show unavailable Play/Playlist/Edit and 
     './copy': {selectionText: (key: string, values: any) => defaultI18n.t(key as never, values)}, './presentation': {selectionCountText: () => '201 movies'}, './selection.module.css': {default: {}},
   });
   let calls = 0;const reason = defaultI18n.t('next.selection.unsupportedSort'), preview = defaultI18n.t('next.selection.previewLimit');
-  const actions = {onPlay() {calls++;}, onQueue() {calls++;}, onPlaylist() {calls++;}, onEdit() {calls++;}, playDisabledReason: reason, queueDisabledReason: reason, playlistDisabledReason: reason, editDisabledReason: preview};
+  const actions = {onPlay() {calls++;}, onQueue() {calls++;}, onPlaylist() {calls++;}, onEdit() {calls++;}, onDelete() {calls++;}, deleteDisabledReason: reason, playDisabledReason: reason, queueDisabledReason: reason, playlistDisabledReason: reason, editDisabledReason: preview};
   try {
     for (const component of [() => SelectionBar({selection: {count}, actions, onExit() {}}), () => PhoneActionBar({selection: {count}, actions})]) {
       const nodes = tree(host.render(component));
@@ -46,6 +46,9 @@ test('actual desktop and phone controls show unavailable Play/Playlist/Edit and 
       assert(play);assert.equal(play.props.disabled, true);assert.equal(play.props.onClick, undefined);
       const sortDisabled = nodes.filter((node: any) => node.type === 'Button' && node.props.title === reason);assert.equal(sortDisabled.length, 2);
       for (const control of sortDisabled) {assert.equal(control.props.disabled, true);assert.equal(control.props.onClick, undefined);}
+      const deletion = nodes.flatMap((node: any) => node.type === 'Menu' ? node.props.items ?? [] : []).find((item: any) => item.id === 'delete')
+        ?? nodes.find((node: any) => node.type === 'MenuItem' && node.props.destructive)?.props;
+      assert(deletion);assert.equal(deletion.disabled, true);assert.equal(deletion.description, reason);deletion.onSelect();
       const queue = nodes.find((node: any) => node.type === 'Menu' && node.props.items?.[0]?.id === 'next');assert(queue);
       for (const item of queue.props.items) {assert.equal(item.disabled, true);assert.equal(item.description, reason);item.onSelect();}
       const edit = nodes.find((node: any) => node.type === 'Button' && node.props.title === preview);
@@ -84,4 +87,24 @@ test('direct and retained Playlist picker callbacks refuse the excluded query be
     await assert.rejects(pendingOpen, /query-destination-unavailable/);
     assert.equal(calls, 0);
   } finally {producer.close();}
+});
+test('Delete exclusion disables only an offered bounded action and refuses retained conversion before Browse', async () => {
+  const {resolveQueryDelete} = await import('../src/screens/browse/selection-delete-query');
+  const {onEdit, onMyList, onCollection} = {onEdit() {}, onMyList() {}, onCollection() {}};
+  const reason = defaultI18n.t('next.selection.unsupportedSort'), limit = defaultI18n.t('next.selection.tooMany');
+  const actions = selectionUnavailableActions({onDelete() {}, onEdit, onMyList, onCollection}, {delete: 'unsupported-sort'});
+  assert.equal(actions.onDelete, undefined);assert.equal(actions.deleteDisabledReason, reason);
+  assert.equal(actions.onEdit, onEdit);assert.equal(actions.onMyList, onMyList);assert.equal(actions.onCollection, onCollection);
+  assert.deepEqual(selectionUnavailableActions({}, {delete: 'unsupported-sort'}), {});
+  assert.equal(selectionUnavailableActions({onDelete() {}, deleteExplanation: limit}, {delete: 'unsupported-sort'}).deleteExplanation, limit);
+  assert.equal(selectionUnavailableActions({deleteDisabledReason: limit}, {delete: 'unsupported-sort'}).deleteDisabledReason, limit);
+  const query = wholeViewQuery({...descriptor, total: 200, unavailableActions: {delete: 'unsupported-sort'}} as never);
+  const target = {mode: 'query', selector: query.selector, total: 200, sourceTotal: 200, summary: {count: 200, types: [{kind: 'movie', count: 200}], every, library: {kind: 'single', libraryId: 'lib'}, unavailableActions: {delete: 'unsupported-sort'}}, refinement: {kind: null, excludedItems: []}, expected: {catalogRevision: revision}};
+  let calls = 0;const captured: any[] = [], stop = new Error('legacy-proof-conversion');
+  const ports = {api: {request: async (...args: any[]) => {calls++;captured.push(args);throw stop;}}, isCurrent: () => true};
+  const retained = () => resolveQueryDelete(target as never, ports as never, new AbortController().signal);
+  await assert.rejects(retained, /query-delete-unavailable/);assert.equal(calls, 0);
+  const legacy = {...target, summary: {...target.summary, unavailableActions: undefined}};
+  await assert.rejects(resolveQueryDelete(legacy as never, ports as never, new AbortController().signal), error => error === stop);
+  assert.equal(calls, 1);assert.equal(captured[0][2].selectionBasis, basis);
 });

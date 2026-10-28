@@ -137,7 +137,7 @@ export function selectionActions(summary: SelectionSummary, environment: Selecti
     edit: restrict(edit, summary.unavailableActions?.metadataPreview),
     download: environment.platform === 'phone-app' ? allowed('download') : hidden,
     refresh: ownerTools && environment.isOwner ? allowed('refresh') : hidden,
-    delete: remove,
+    delete: restrict(remove, summary.unavailableActions?.delete),
   });
 }
 
