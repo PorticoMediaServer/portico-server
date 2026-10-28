@@ -873,7 +873,12 @@ func errorResultFunction(tls *libc.TLS, ctx uintptr) func(error) {
 		}
 		defer libc.Xfree(tls, errmsg)
 		sqlite3.Xsqlite3_result_error(tls, ctx, errmsg, -1)
-		sqlite3.Xsqlite3_result_error_code(tls, ctx, sqlite3.SQLITE_ERROR)
+		code := int32(sqlite3.SQLITE_ERROR)
+		var native *Error
+		if errors.As(res, &native) {
+			code = int32(native.Code())
+		}
+		sqlite3.Xsqlite3_result_error_code(tls, ctx, code)
 	}
 }
 
@@ -938,7 +943,15 @@ func functionArgs(tls *libc.TLS, argc int32, argv uintptr, volatile bool) *[]dri
 					args[i] = unsafe.String((*byte)(unsafe.Pointer(p)), int(n))
 				}
 			} else {
-				args[i] = libc.GoString(sqlite3.Xsqlite3_value_text(tls, valPtr))
+				// TEXT is length-delimited, including embedded NULs. In particular,
+				// the local FTS5 matcher must see the same bytes as MATCH indexing.
+				p := sqlite3.Xsqlite3_value_text(tls, valPtr)
+				n := sqlite3.Xsqlite3_value_bytes(tls, valPtr)
+				if p == 0 || n == 0 {
+					args[i] = ""
+				} else {
+					args[i] = string(unsafe.Slice((*byte)(unsafe.Pointer(p)), int(n)))
+				}
 			}
 		case sqlite3.SQLITE_INTEGER:
 			args[i] = sqlite3.Xsqlite3_value_int64(tls, valPtr)
@@ -1168,7 +1181,12 @@ func funcTrampoline(tls *libc.TLS, ctx uintptr, argc int32, argv uintptr) {
 	setErrorResult := errorResultFunction(tls, ctx)
 	sp := functionArgs(tls, argc, argv, entry.volatile)
 	defer releaseUDFArgs(sp)
-	res, err := entry.fn(&FunctionContext{}, *sp)
+	goCtx := &FunctionContext{tls: tls, ctx: ctx}
+	defer func() {
+		// A retained Go context must not keep native callback pointers alive.
+		goCtx.tls, goCtx.ctx = nil, 0
+	}()
+	res, err := entry.fn(goCtx, *sp)
 
 	if err != nil {
 		setErrorResult(err)

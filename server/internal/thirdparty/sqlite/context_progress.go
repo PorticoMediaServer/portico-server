@@ -18,6 +18,11 @@ const cancellationProgressOps = 1000
 type progressState struct{ done <-chan struct{} }
 
 var progressStates sync.Map
+
+// Lets synchronous native scalar callbacks observe a cancellation that arrived
+// before VM activation (when SQLite may clear an idle interrupt). Entries have
+// exactly the same lifetime as the connection's existing progress state.
+var callbackProgressStates sync.Map // sqlite3* -> *progressState
 var nextProgressToken atomic.Uint64
 
 func cancellationProgress(_ *libc.TLS, token uintptr) int32 {
@@ -57,6 +62,7 @@ func (c *conn) watchProgress(ctx context.Context) progressScope {
 				break
 			}
 		}
+		callbackProgressStates.Store(c.db, c.progress)
 	}
 	previous := c.progress.done
 	c.progress.done = ctx.Done()
@@ -82,6 +88,7 @@ func (c *conn) clearProgress() {
 	}
 	sqlite3.Xsqlite3_progress_handler(c.tls, c.db, 0, 0, 0)
 	progressStates.Delete(c.progressToken)
+	callbackProgressStates.Delete(c.db)
 	c.progress = nil
 	c.progressToken = 0
 }
