@@ -1,3 +1,4 @@
+import type {QuietRefreshOutcome} from '@core/freshness-actions.ts';
 import {routePath} from '../../../../../packages/contracts/src/routes.ts';
 import {CodedError} from '@core/server-messages.ts';
 import {IdentityClient, type IdentityUpload} from '@core/identity-client.ts';
@@ -24,8 +25,18 @@ export class ProfileSettingsSource {
   private snapshot: ProfileSettingsSnapshot = empty;
   private pending?: Promise<void>;
   private closed = false;
+  private refreshSerial = 0;
+  private inputActive = false;
+  private quietRead?: AbortController;
+  invalidateQuiet = () => {++this.refreshSerial;this.quietRead?.abort();this.quietRead=undefined;};
+  setQuietInputActive = (active: boolean) => {
+    if (active === this.inputActive || !this.current()) return;
+    this.inputActive = active;this.invalidateQuiet();
+    for (const listener of this.listeners) listener();
+  };
+  quietBlocked = () => this.inputActive || this.snapshot.busy || !!this.pending;
 
-  constructor(private readonly api: ProfileAPI, scope: ProfileSettingsScope, private readonly isCurrent: () => boolean, upload?: (path: string, body: Parameters<IdentityUpload>[1], contentType: string, signal: AbortSignal) => Promise<unknown>) {
+  constructor(private readonly api: ProfileAPI, scope: ProfileSettingsScope, private readonly isCurrent: () => boolean, upload?: (path: string, body: Parameters<IdentityUpload>[1], contentType: string, signal: AbortSignal) => Promise<unknown>, private readonly observeDirect?: (document: DirectSnapshot) => void) {
     this.scope = Object.freeze({...scope});
     this.snapshot = Object.freeze({...this.snapshot, inUseId: this.scope.profileId});
     this.client = new ManagedProfilesClient(api, {...scope, authority: 'local'});
@@ -39,18 +50,38 @@ export class ProfileSettingsSource {
     this.snapshot = Object.freeze(snapshot);
     for (const listener of this.listeners) listener();
   }
-  private async read(): Promise<DirectSnapshot> {
-    const raw = await this.api.request(routePath('get_direct_account'), 'GET', undefined, this.lifetime.signal);
+  private async read(signal = this.lifetime.signal): Promise<DirectSnapshot> {
+    const raw = await this.api.request(routePath('get_direct_account'), 'GET', undefined, AbortSignal.any([this.lifetime.signal,signal]));
     const document = parseDirectSnapshot(raw, {...this.scope, authority: 'local'});
+    const guard = () => {if(!this.current() || signal.aborted || this.lifetime.signal.aborted)throw new DOMException('Profile read retired','AbortError');};
+    guard();this.observeDirect?.(document);guard();
     const viewer = document.profiles.find(profile => profile.id === this.scope.profileId);
     if (!viewer || document.account.disabled || !viewer.primary && Object.values(document.capabilities).some(Boolean)) {
       throw new CodedError('forbidden', 'The selected profile is no longer available.');
     }
     return document;
   }
+  refresh = async (): Promise<QuietRefreshOutcome> => {
+    if (!this.current() || this.quietBlocked()) return {kind: 'deferred'};
+    this.invalidateQuiet();const serial = this.refreshSerial, before = this.snapshot.document, read = this.quietRead = new AbortController();
+    const owns = () => this.current() && !read.signal.aborted && serial === this.refreshSerial && !this.quietBlocked() && this.snapshot.document === before;
+    try {
+      const document = await this.read(read.signal);
+      if (!owns()) return {kind: 'deferred'};
+      const selectedId = document.profiles.some(profile => profile.id === this.snapshot.selectedId) ? this.snapshot.selectedId : this.scope.profileId;
+      this.publish({...this.snapshot, loading: false, document, selectedId});
+      return {kind: 'adopted'};
+    } catch (error) {
+      if (!owns()) return {kind: 'deferred'};
+      const e=error as {code?: string;status?: number};
+      if (e?.code==='forbidden' || e?.code==='unauthorized' || e?.status===401 || e?.status===403) this.publish({...this.snapshot,error});
+      return {kind: 'unreadable', error};
+    } finally {if(this.quietRead===read)this.quietRead=undefined;}
+  };
   load = (): Promise<void> => {
     if (!this.current() || this.snapshot.document) return Promise.resolve();
     if (this.pending) return this.pending;
+    this.invalidateQuiet();
     this.publish({loading: true, busy: false, inUseId: this.scope.profileId});
     const task = this.read().then(document => {
       this.publish({loading: false, busy: false, inUseId: this.scope.profileId, document, selectedId: this.scope.profileId});
@@ -67,7 +98,7 @@ export class ProfileSettingsSource {
     const state = this.getSnapshot(), document = state.document;
     if (!document || state.busy || !document.profiles.some(profile => profile.id === id) ||
       id !== this.scope.profileId && !document.canManage) return;
-    this.publish({...state, selectedId: id, error: undefined});
+    this.invalidateQuiet();this.publish({...state, selectedId: id, error: undefined});
   };
   private requireManager(): DirectSnapshot {
     const document = this.getSnapshot().document;
@@ -80,7 +111,7 @@ export class ProfileSettingsSource {
   private async mutate(command: (document: DirectSnapshot) => Promise<void>): Promise<void> {
     if (!this.current() || this.snapshot.busy || this.pending) throw new CodedError('conflict', 'Refresh the profiles before trying again.');
     const document = this.requireManager();
-    this.publish({...this.snapshot, busy: true, error: undefined});
+    this.invalidateQuiet();this.publish({...this.snapshot, busy: true, error: undefined});
     try {
       // Publication calls listeners synchronously. A listener may retire this viewer.
       if (!this.current()) return;
@@ -156,7 +187,7 @@ export class ProfileSettingsSource {
   });
   dispose = () => {
     if (this.closed) return;
-    this.closed = true;this.lifetime.abort();this.snapshot = empty;
+    this.invalidateQuiet();this.closed = true;this.lifetime.abort();this.snapshot = empty;
     for (const listener of this.listeners) listener();
     this.listeners.clear();
   };

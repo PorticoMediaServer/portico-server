@@ -1,3 +1,5 @@
+import type {QuietRefreshOutcome} from '@core/freshness-actions.ts';
+import type {QuietInput} from './quiet-refresh';
 import type {SettingsPageSnapshot} from './Settings';
 
 type Read = Readonly<{id: string; load: () => Promise<void>}>;
@@ -8,6 +10,7 @@ export class SettingsSectionReads {
   private readonly states = new Map<string, SettingsPageSnapshot>();
   private readonly sections = new Map<string, Promise<void>>();
   private readonly reads = new Map<string, Promise<void>>();
+  private readonly attempted = new Set<string>();
   private readonly loaded = new Set<string>();
   private saveState?: SettingsPageSnapshot['saveState'];
   private closed = false;
@@ -24,6 +27,7 @@ export class SettingsSectionReads {
     if (this.loaded.has(input.id)) return Promise.resolve();
     const running = this.reads.get(input.id);
     if (running) return running;
+    this.attempted.add(input.id);
     const task = Promise.resolve().then(() => {if (this.current()) return input.load();}).then(() => {
       if (this.current()) this.loaded.add(input.id);
     }).finally(() => {if (this.reads.get(input.id) === task) this.reads.delete(input.id);});
@@ -48,5 +52,14 @@ export class SettingsSectionReads {
     this.sections.set(section, task);
     return task;
   }
-  dispose() {this.closed = true; this.states.clear(); this.loaded.clear(); this.reads.clear(); this.sections.clear();}
+  hasRead = (id: string) => this.attempted.has(id);
+  async refresh(_section: string, inputs: readonly Pick<QuietInput, 'id' | 'refresh'>[]): Promise<QuietRefreshOutcome> {
+    if (!this.current()) return {kind: 'deferred'};
+    const outcomes = await Promise.all(inputs.map(async input => {
+      try {return await input.refresh();} catch (error) {return {kind: 'unreadable', error} as const;}
+    }));
+    if (!this.current()) return {kind: 'deferred'};
+    return outcomes.find(result => result.kind === 'unreadable') ?? outcomes.find(result => result.kind === 'deferred') ?? outcomes.find(result => result.kind === 'conflict') ?? {kind: 'adopted'};
+  }
+  dispose() {this.closed = true; this.states.clear(); this.attempted.clear(); this.loaded.clear(); this.reads.clear(); this.sections.clear();}
 }

@@ -40,6 +40,9 @@ export class WebCastSender {
   private readonly applicationId: string;
   private readonly controller?: CastController;
   private readonly listeners = new Set<() => void>();
+  private readonly retentionListeners = new Set<() => void>();
+  private readonly pendingAdoptions = new Set<Readonly<{operation: number}>>();
+  private publishedRetention = false;
   private snapshot: WebCastSnapshot = unavailable;
   private device?: ConfirmedCastDevice;
   /** The last complete receiver clock with the exact remote occurrence that reported it; a
@@ -54,6 +57,7 @@ export class WebCastSender {
   private cancelStart?: () => void;
   private operation = 0;
   private pickerBusy = false;
+  private pickerOperation?: number;
   private disposed = false;
 
   constructor(private readonly options: WebCastSenderOptions) {
@@ -71,6 +75,25 @@ export class WebCastSender {
     this.listeners.add(listener);
     return () => this.listeners.delete(listener);
   };
+  /** Actual SDK selection/adoption can precede a published remote presentation. */
+  retainsMedia = (): boolean => {
+    if (this.disposed || this.options.isCurrent?.() === false) return false;
+    return this.pickerBusy && this.pickerOperation === this.operation || [...this.pendingAdoptions].some(pending => pending.operation === this.operation) || this.snapshot.transferPending === true
+      || ['connecting', 'pairing', 'waiting', 'casting'].includes(this.snapshot.phase)
+      || !!this.receiver && this.snapshot.remoteStopped === true;
+  };
+  onRetention = (listener: () => void): (() => void) => {
+    if (this.disposed) return () => {};
+    this.retentionListeners.add(listener);return () => {this.retentionListeners.delete(listener);};
+  };
+  private publishRetention(): void {
+    const retained = this.retainsMedia();
+    if (retained === this.publishedRetention) return;
+    this.publishedRetention = retained;
+    for (const listener of [...this.retentionListeners]) {
+      try {listener();} catch { /* Observation cannot interrupt the original Cast flight. */ }
+    }
+  }
   private changed(): void {
     if (this.disposed) return;
     const state = this.controller?.getSnapshot() ?? unavailable;
@@ -93,6 +116,7 @@ export class WebCastSender {
       ...(receiver ? {receiver} : {}),
       ...(this.device && state.phase !== 'off' && state.phase !== 'replaced' ? {device: this.device} : {}),
     });
+    this.publishRetention();
     for (const listener of [...this.listeners]) listener();
   }
 
@@ -158,11 +182,15 @@ export class WebCastSender {
       if (!session) return;
       const operation=++this.operation,device=confirmedCastDevice(session);
       this.device=undefined;this.receiver=undefined;
-      void controller.adopt(this.transport(session,context,framework),this.options.describe).then(ok=>{
+      const transport = this.transport(session,context,framework), pending = {operation};
+      this.pendingAdoptions.add(pending);this.publishRetention();
+      void controller.adopt(transport,this.options.describe).then(ok=>{
         if(this.disposed||operation!==this.operation)return;
         if(ok)this.device=device;
         this.changed();
-      },()=>{/* Failed automatic adoption leaves the receiver alone. */});
+      },()=>{/* Failed automatic adoption leaves the receiver alone. */}).finally(()=>{
+        this.pendingAdoptions.delete(pending);this.publishRetention();
+      });
     } catch { /* A session no longer present cannot be adopted. */ }
   }
 
@@ -174,7 +202,7 @@ export class WebCastSender {
     const operation = ++this.operation;
     this.device = undefined;
     this.receiver = undefined;
-    this.pickerBusy = true;
+    this.pickerBusy = true;this.pickerOperation = operation;
     controller.connecting(meta.title);
     let cancel!: () => void;
     const canceled = new Promise<boolean>(resolve => { cancel = () => resolve(false); });
@@ -199,7 +227,7 @@ export class WebCastSender {
     } catch {
       if (!this.disposed && operation === this.operation) controller.cancelConnecting();
       return false;
-    } finally { this.pickerBusy = false; }
+    } finally { this.pickerBusy = false; this.pickerOperation = undefined; this.publishRetention(); }
   }
 
   private transport(session: CastSession, context: CastContext, framework: CastFramework) {
@@ -224,8 +252,9 @@ export class WebCastSender {
     this.cancelStart?.();
     this.cancelStart = undefined;
     this.controller?.stop();
+    this.publishRetention();
   }
-  dismiss(): void { this.operation++;this.controller?.dismiss(); }
+  dismiss(): void { this.operation++;this.controller?.dismiss();this.publishRetention(); }
   dispose(): void {
     if (this.disposed) return;
     this.disposed = true;
@@ -236,6 +265,7 @@ export class WebCastSender {
     this.offResume?.();
     this.offController?.();
     this.controller?.dispose();
+    this.pendingAdoptions.clear();this.publishRetention();this.retentionListeners.clear();
     this.listeners.clear();
   }
 }

@@ -1,3 +1,5 @@
+import {subscribeFacts} from './fact-source';
+import {createShellHomeDocument, watchShellHomePreferences} from './home-freshness';
 import {appearancePreferences} from '@core/preference-effects.ts';
 import {homeSelectionContext} from '@core/home-selection/index.ts';
 import type {SelectionContext} from '@core/selection-model/index.ts';
@@ -43,8 +45,19 @@ export const assembleShellBindings: ShellAssembler = async context => {
   if (preparingStarts) resources.push(preparingStarts.dispose);
   const dispose = () => { if (!active) return; active = false; for (const cleanup of resources.splice(0).reverse()) { try { cleanup(); } catch { /* Continue fencing every other private owner. */ } } };
   try {
-  const listeners = new Set<() => void>();
-  const changed = () => { if (current()) for (const listener of listeners) listener(); };
+  const listeners = new Set<() => void>(), retentionListeners = new Set<() => void>();
+  let playerResources: HomeDocumentResources<Player> | undefined;
+  const retainsMedia = () => current() && (!!preparingStarts?.pending() || !!playerResources?.get()?.runtime.retainsMedia());
+  let lastRetained = retainsMedia();
+  const retentionChanged = () => {
+    const next = retainsMedia(); if (next === lastRetained) return; lastRetained = next;
+    for (const listener of [...retentionListeners]) listener();
+  };
+  const changed = () => {if (!current()) return; retentionChanged(); for (const listener of [...listeners]) listener();};
+  resources.push(subscribeFacts(context, changed), () => retentionListeners.clear());
+  if (preparingStarts) resources.push(preparingStarts.subscribePending(retentionChanged));
+  const homeDisplay = createShellHomeDocument(context.freshness.hub, context.home);
+  resources.push(homeDisplay.dispose);
   resources.push(() => listeners.clear());
   const currentHomeContext = () => {
     const document = context.home.getSnapshot().document; if (!document) throw new Error('home-document-required');
@@ -52,7 +65,6 @@ export const assembleShellBindings: ShellAssembler = async context => {
   };
   const homeCurrent = (value: SelectionContext) => current() && !!context.home.getSnapshot().document && router.state.location.pathname === '/' && JSON.stringify(value) === JSON.stringify(currentHomeContext());
   type Player = {runtime: WebShellPlaybackRuntime; playback: ReturnType<WebShellPlaybackRuntime['selectionPlayback']>; selection: ReturnType<typeof createShellSelection>; binding: ShellPlaybackBinding};
-  let playerResources: HomeDocumentResources<Player> | undefined;
   const dockVisible = () => {const player = playerResources?.get();return !!player && hasDock(player.runtime.getSnapshot());};
   playerResources = new HomeDocumentResources(context.home, {isCurrent: current, changed, failed: feedback.reportError, create: document => {
     const owned: (() => void)[] = [], close = () => {for (const cleanup of owned.splice(0).reverse()) {try {cleanup();} catch { /* Retire every owned resource. */ }}};
@@ -63,7 +75,7 @@ export const assembleShellBindings: ShellAssembler = async context => {
         isCurrent: () => current() && context.home.getSnapshot().document?.viewerFence === document.viewerFence, settings: shellPlaybackSettings(currentPreferences)});
       owned.push(() => runtime.dispose());
       const playback = runtime.selectionPlayback(homeCurrent), selection = createShellSelection(context, playback, feedback.reportError, dockVisible);
-      owned.push(selection.dispose, runtime.subscribe(changed), selection.subscribe(changed));
+      owned.push(selection.dispose, runtime.subscribe(changed), runtime.onRetention(retentionChanged), selection.subscribe(changed));
       const binding: ShellPlaybackBinding = {runtime, artwork: context.artwork, environment: time, reportError: feedback.reportError,
         get skips() {return shellPlaybackSkips(currentPreferences(), runtime.getSnapshot().dock.local?.kind === 'audiobook');}};
       return {value: {runtime, playback, selection, binding}, dispose: close};
@@ -89,21 +101,16 @@ export const assembleShellBindings: ShellAssembler = async context => {
       if (section) void router.navigate({to: '/settings', search: {scope: 'server', section}}).catch(feedback.reportError);
     });
   resources.push(activity.dispose);
-  let homeLayout = JSON.stringify([currentPreferences().effective['home.rowOrder'], currentPreferences().effective['home.hiddenRowIds']]);
-  if (context.preferences) resources.push(context.preferences.subscribe(() => {
-    if (!current()) return;
-    playerResources?.get()?.runtime.refreshSettings();
-    const nextLayout = JSON.stringify([currentPreferences().effective['home.rowOrder'], currentPreferences().effective['home.hiddenRowIds']]);
-    if (nextLayout !== homeLayout) {homeLayout = nextLayout;void context.home.revalidate().catch(feedback.reportError);}
-    changed();
-  }));
+  if (context.preferences) resources.push(watchShellHomePreferences({read:currentPreferences, subscribe:context.preferences.subscribe,
+    document:homeDisplay.document, isCurrent:current, refreshSettings:() => playerResources?.get()?.runtime.refreshSettings(),
+    authority:() => context.homeAuthority?.(), changed}));
   const getBinding = (): ShellBindings => {
     const visibleDock = dockVisible();
     return {api: context.api, events: context.events, scopeKey: JSON.stringify([viewer.serverId, authority, viewer.accountId, viewer.profileId, captured.sessionFamilyId, context.epoch]),
       playback: playerResources?.get()?.binding,
       shell: {identity: context.facts.identity, OwnerActivity: activity.OwnerActivity, dockVisible: visibleDock, onSignOut: context.signOut,onSignOutPorticoAccount:context.signOutPorticoAccount,onSwitchProfile:context.switchProfile,onSwitchServer:context.switchServer,savedServers:context.savedServers,
         phoneSelection: playerResources?.get()?.selection.phoneSelection(), overlays: <ShellFeedbackHost source={feedback} dockVisible={visibleDock} />},
-      home: {service: context.home, artwork: context.artwork, time, serverName: context.facts.identity.serverName, reducedMotion: appearancePreferences(currentPreferences(), globalThis.matchMedia('(prefers-reduced-motion: reduce)').matches).reducedMotion, selection: homeSelection,
+      home: {service: context.home, displayDocument: homeDisplay.document, artwork: context.artwork, time, serverName: context.facts.identity.serverName, reducedMotion: appearancePreferences(currentPreferences(), globalThis.matchMedia('(prefers-reduced-motion: reduce)').matches).reducedMotion, selection: homeSelection,
         customization: {isCurrent: current, requestId: randomId, createSavedViews: () => {
           if (!current()) throw new Error('shell_authority_retired');
           return new PersonalSavedService(context.api, scope, async () => randomId());
@@ -128,6 +135,7 @@ export const assembleShellBindings: ShellAssembler = async context => {
   };
   return {getBinding, subscribe: listener => { listeners.add(listener); return () => { listeners.delete(listener); }; },
     busy: () => current() && playerResources?.get()?.runtime.getSnapshot().playback.intent === 'playing', onBusy: listener => {listeners.add(listener);return () => {listeners.delete(listener);};},
+    retainsMedia, onRetention: listener => {retentionListeners.add(listener); return () => {retentionListeners.delete(listener);};},
     dispose,
   };
   } catch (error) { dispose(); throw error; }

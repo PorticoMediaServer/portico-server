@@ -1,3 +1,5 @@
+import {subscribePresentation} from '../../shell/fact-hooks';
+import type {ShellFactsSource} from '../../shell/fact-source';
 import {defaultI18n} from '@i18n';
 import {shellLanguage} from '../../shell/settings';
 import type {GetItemsIdResponse} from '../../../../packages/contracts/src/types.ts';
@@ -29,7 +31,7 @@ export function remotePictureKeepsCaptions(snapshot: WebPlaybackRuntimeSnapshot)
     &&(current.subtitleSelection==='off'||current.subtitleSelection==='disabled');
 }
 
-export type WatchPlaybackContext = Pick<ShellAssemblyContext, 'api' | 'session' | 'isCurrent' | 'epoch'> & Partial<Pick<ShellAssemblyContext, 'preferences' | 'facts'>>;
+export type WatchPlaybackContext = Pick<ShellAssemblyContext, 'api' | 'session' | 'isCurrent' | 'epoch'> & Partial<Pick<ShellAssemblyContext, 'preferences' | 'facts'>> & Readonly<{factsSource?: ShellFactsSource}>;
 /** Created only by the mounted persistent host. The same real video owns AirPlay. */
 export function createWatchPlayOn(context: WatchPlaybackContext, binding: WatchBindings, video: HTMLVideoElement, applicationId?: string) {
   const life = new AbortController(), authority = binding.runtime.getSnapshot().authority;
@@ -38,7 +40,7 @@ export function createWatchPlayOn(context: WatchPlaybackContext, binding: WatchB
   const isCurrent = () => {
     const viewer = context.session().viewer;
     return !life.signal.aborted && new URL(context.api.baseUrl).origin===originalOrigin && context.session().sessionFamilyId===originalSession.sessionFamilyId && context.session().deviceId===originalSession.deviceId && context.api.getRouteConnection()?.pin.publicKey===pin?.publicKey && context.isCurrent() && !binding.runtime.getSnapshot().disposed && context.epoch === authority.epoch
-      && viewer.serverId === authority.serverId && viewer.authority === authority.authority && viewer.accountId === authority.accountId && viewer.profileId === authority.profileId;
+      && viewer.role === originalSession.viewer.role && viewer.serverId === authority.serverId && viewer.authority === authority.authority && viewer.accountId === authority.accountId && viewer.profileId === authority.profileId;
   };
   const assertCurrent = () => {if (!isCurrent()) throw new DOMException('Playback authority retired', 'AbortError');};
   const api = {async request<T>(path: string, method?: string, body?: unknown, signal?: AbortSignal): Promise<T> {
@@ -53,9 +55,8 @@ export function createWatchPlayOn(context: WatchPlaybackContext, binding: WatchB
     return described.metadata;
   };
   const describeItem = (itemId: string) => describe(itemId, 'cover');
-  const preferences = context.preferences?.getSnapshot('web') ?? context.facts?.preferences;
-  const language = preferences ? shellLanguage(preferences) : defaultI18n;
-  const receivers = new WatchReceivers({api: {request: (path, method, body, signal) => api.request(path, method, body, signal)}, runtime: binding.runtime, t: language.t, isCurrent, reportError: binding.reportError});
+  const language = () => {const preferences = context.preferences?.getSnapshot('web') ?? context.facts?.preferences;return preferences ? shellLanguage(preferences) : defaultI18n;};
+  const receivers = new WatchReceivers({api: {request: (path, method, body, signal) => api.request(path, method, body, signal)}, runtime: binding.runtime, t: (id, values) => language().t(id, values), isCurrent, reportError: binding.reportError});
   const linkTv = watchLinkTv(api);
   const sender = new WebCastSender({api,isCurrent,
     ...(pin&&pin.serverId===originalSession.viewer.serverId&&originalSession.deviceId?{controllerContext:{origin:new URL(context.api.baseUrl).origin,publicKey:pin.publicKey,
@@ -66,7 +67,8 @@ export function createWatchPlayOn(context: WatchPlaybackContext, binding: WatchB
     isCurrent: () => {const shown = binding.runtime.getSnapshot();return isCurrent() && !!shown.fence && remotePictureKeepsCaptions(shown) && binding.runtime.browserMediaReady(shown.fence);},
     subscribe: binding.runtime.subscribe,
   }), isCurrent, describeItem, reportError: binding.reportError});
+  const offPresentation = subscribePresentation(context, () => {if (isCurrent()) receivers.refreshPresentation();});
   return {controller, receivers, linkTv, item: (id: string) => isCurrent() ? items.get(id) : undefined,
-    dispose: () => {life.abort();controller.dispose();receivers.dispose();items.clear();}};
+    dispose: () => {life.abort();offPresentation();controller.dispose();receivers.dispose();items.clear();}};
 }
 export type WatchPlayOnBinding = ReturnType<typeof createWatchPlayOn>;

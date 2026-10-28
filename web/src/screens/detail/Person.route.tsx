@@ -1,3 +1,4 @@
+import {forwardIdentity} from '../detail/context';
 import {useLayoutEffect, useState} from 'react';
 import {useLocation, useParams} from '@tanstack/react-router';
 import {defineWebScreen} from '../../route-registry';
@@ -18,7 +19,7 @@ function BoundPerson({captured}: {captured: ProtectedLibraryScreen}) {
     if (!context) return;
     let live = true;
     const current = () => live && context.isCurrent();
-    const binding = createPersonBindings({...context, isCurrent: current});
+    const binding = createPersonBindings(forwardIdentity(context, {isCurrent: current}));
     publish({context, personId, runtime, binding, current});
     void binding.select(personId).catch(error => {if (current()) context.effects.reportError(error);});
     return () => {live = false;binding.dispose();};

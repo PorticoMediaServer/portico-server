@@ -1,3 +1,4 @@
+import {forwardIdentity} from '../detail/context';
 import {useRef, useLayoutEffect, useState} from 'react';
 import type {LegacyGuideOptions} from '@core/guide/legacy-source.ts';
 import type {WebShellPlaybackRuntime} from '../../platform/playback';
@@ -37,7 +38,7 @@ export function useLiveLease(context: ScreenContext, optionsKey: string, routeKe
     const {routeCurrent} = setupPorts.current;
     let live = true, authorityFailed = false;
     const current = () => live && !authorityFailed && context.isCurrent() && routeCurrent();
-    const screen: ScreenContext = {...context, isCurrent: current};
+    const screen: ScreenContext = forwardIdentity(context, {isCurrent: current});
     const options = JSON.parse(optionsKey) as LegacyGuideOptions;
     const bindings = createLiveBindings(screen, options);
     // A 401/403 aborts the API life. It is still this opening's authority
