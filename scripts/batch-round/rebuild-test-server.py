@@ -114,6 +114,12 @@ def main():
     old_build = deployment['build']
     if old_build not in old_unit or '--ro-bind /home/runner/work/fixtures/portico-v3/runtime/bundle /opt/portico-ffmpeg' not in old_unit:
         parser.error('Existing qualified unit changed; inspect before resetting')
+    bindings = [line for line in old_unit.splitlines() if line.startswith('Environment=PORTICO_BIND=')]
+    allowed_bindings = {'Environment=PORTICO_BIND=66.94.102.39:32500',
+                        'Environment=PORTICO_BIND=127.0.0.1:32510',
+                        'Environment=PORTICO_BIND=0.0.0.0:32500'}
+    if len(bindings) != 1 or bindings[0] not in allowed_bindings:
+        parser.error('Unknown managed listener; inspect before resetting')
     units = ['portico-test-health.timer', 'portico-test-server.service', 'portico-test-live.service']
     run(['systemctl', '--user', 'stop', *units])
     # Preserve one private rollback while making the active paths genuinely fresh.
@@ -127,14 +133,20 @@ def main():
     state.mkdir(mode=0o700)
     for name in ['data', 'cache', 'transcode', 'tmp', 'recordings']:
         (state / name).mkdir(mode=0o700)
-    atomic(unit, old_unit.replace(old_build, str(build)))
+    atomic(unit, old_unit.replace(old_build, str(build)).replace(bindings[0], 'Environment=PORTICO_BIND=0.0.0.0:32500'))
     atomic(WORK / 'health.py', health_source)
+    # The real listener serves public and loopback clients on the same port.
+    # Retain the old proxy's files for rollback, but do not run or depend on it.
+    if (unit.parent / 'portico-test-local.socket').is_file():
+        run(['systemctl', '--user', 'disable', '--now', 'portico-test-local.socket'])
+    if (unit.parent / 'portico-test-local.service').is_file():
+        run(['systemctl', '--user', 'stop', 'portico-test-local.service'])
     run(['systemctl', '--user', 'daemon-reload'])
     run(['systemctl', '--user', 'start', 'portico-test-live.service', 'portico-test-server.service'])
     ready = False
     for _ in range(120):
         try:
-            with urllib.request.urlopen('http://127.0.0.1:32510/health/ready', timeout=2) as response:
+            with urllib.request.urlopen('http://127.0.0.1:32500/health/ready', timeout=2) as response:
                 ready = response.status == 200
             if ready:
                 break
@@ -143,7 +155,8 @@ def main():
         time.sleep(1)
     receipt = {'commit': args.commit, 'build': str(build), 'state': str(state), 'media': str(media),
                'ready': ready, 'provisioned': False, 'hostedClaimed': False,
-               'retiredState': str(retired_state), 'retiredMedia': str(retired_media), 'resetAt': stamp}
+               'retiredState': str(retired_state), 'retiredMedia': str(retired_media), 'resetAt': stamp,
+               'listener': '0.0.0.0:32500', 'localProxyRequired': False}
     atomic(WORK / 'deployment.json', json.dumps(receipt, indent=2) + '\n')
     if not ready:
         raise SystemExit('Fresh startup failed; rollback paths retained, no readiness claim')

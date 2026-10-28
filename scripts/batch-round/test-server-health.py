@@ -11,7 +11,7 @@ ROOT = Path('/home/runner/work/test-server-v3')
 
 def probe(path, key):
     try:
-        with urllib.request.urlopen('http://127.0.0.1:32510' + path, timeout=8) as response:
+        with urllib.request.urlopen('http://127.0.0.1:32500' + path, timeout=8) as response:
             return response.status == 200 and json.load(response).get(key) is True
     except (OSError, ValueError, TimeoutError):
         return False
