@@ -19,9 +19,9 @@ export function AuthStage({children, shape = 'side', phoneShape, layout = 'colum
     <div className={[styles.content, contentClassName].filter(Boolean).join(' ')} data-auth-content>{children}</div>
   </section>;
   return <section className={[styles.stage, phoneShape && styles.hasPhoneBackdrop, className].filter(Boolean).join(' ')} data-layout={layout}>
-    <ColourBackdrop shape={shape} className={styles.standardBackdrop} />
-    {phoneShape && <ColourBackdrop shape={phoneShape} className={styles.phoneBackdrop} />}
-    <header className={styles.brand}><img src={wordmark} alt={t('accounts.brand')} />{service && <span>{t('next.shell.account')}</span>}</header>
+    <ColourBackdrop shape={shape} viewport className={styles.standardBackdrop} />
+    {phoneShape && <ColourBackdrop shape={phoneShape} viewport className={styles.phoneBackdrop} />}
+    <header className={styles.brand}><img src={wordmark} alt={t('accounts.brand')} />{service && <span>{t('web.brand.player')}</span>}</header>
     {topRight && <div className={styles.topRight}>{topRight}</div>}
     <div className={[styles.content, contentClassName].filter(Boolean).join(' ')} data-auth-content>{children}</div>
     {legal && <footer className={styles.legal}><a href="https://getportico.tv/terms">{t('auth.terms')}</a><a href="https://getportico.tv/privacy">{t('accounts.legal.privacy')}</a></footer>}

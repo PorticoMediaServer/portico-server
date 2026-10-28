@@ -17,7 +17,7 @@
 .rail a:focus-visible, .rail button:focus-visible { outline: 3px solid var(--color-focus); outline-offset: -3px; }
 .railBrand { min-height: 48px; flex-direction: row; justify-content: center; }
 .railBrand .brand { min-height: 44px; display: flex; align-items: center; }
-.railBrand .brand img { height: 17px; }
+.railBrand .brand img { height: calc(17px * var(--spec-navigation-web-wordmark-scale)); }
 .railDivider { flex: none; height: 1px; width: 36px; margin: 5px auto; background: color-mix(in srgb, var(--color-text) 8%, transparent); }
 .libraryGroup { flex: 0 1 auto; min-height: 0; width: 100%; display: flex; flex-direction: column; }
 .railLibraries { min-height: 0; width: 100%; overflow-y: auto; overflow-x: hidden; overscroll-behavior: contain; display: flex; flex-direction: column; align-items: center; gap: 2px; scrollbar-width: none; --nav-fade-start: 0px; --nav-fade-end: 0px; mask-image: linear-gradient(to bottom, transparent, black var(--nav-fade-start), black calc(100% - var(--nav-fade-end)), transparent); }
@@ -70,9 +70,9 @@
 .nativeRailMark > span { display: block; width: 19px; height: 28px; overflow: hidden; }
 .nativeRailMark img { height: 28px; width: auto; max-width: none; }
 .brand { color: var(--color-text); font-size: var(--type-nav-size); font-weight: var(--type-lockup-weight); line-height: var(--type-nav-line); letter-spacing: var(--type-nav-tracking); text-decoration: none; flex: none; }
-.brand img { display: block; height: 20px; width: auto; }
+.brand img { display: block; height: calc(20px * var(--spec-navigation-web-wordmark-scale)); width: auto; }
 .phoneHeader .brand { display: flex; align-items: center; }
-.phoneHeader .brand img { height: 16px; }
+.phoneHeader .brand img { height: calc(16px * var(--spec-navigation-web-wordmark-scale)); }
 .destinations { position: relative; display: flex; flex: 1; gap: 26px; list-style: none; margin: 0; padding: 0; min-width: 0; align-items: center; }
 .destinations > li { flex: none; }
 .destinations a, .more, .destinationMeasure { position: relative; color: var(--color-text-secondary); font-size: var(--type-nav-size); font-weight: var(--type-nav-weight); line-height: var(--type-nav-line); text-decoration: none; padding: 6px 0; white-space: nowrap; display: flex; align-items: center; gap: 4px; }

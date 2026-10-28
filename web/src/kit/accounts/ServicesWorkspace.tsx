@@ -4,6 +4,7 @@ import {Icon, type IconName} from '../Icon';
 import {ProfileAvatarFace} from '../shell/AccountSurfaces';
 import {SettingsRow} from '../shell/SettingsSurfaces';
 import {Button, TextField} from '../controls';
+import {ColourBackdrop} from '../artwork';
 import wordmark from '../../shell/wordmark.svg';
 import styles from './services-workspace.module.css';
 
@@ -75,7 +76,7 @@ export function ServicesWorkspace({header, account, section, onSection, onSignOu
   onSection: (section: ServicesSection) => void; onSignOut: () => void; description?: ReactNode; actions?: ReactNode; phoneActions?: ReactNode; unread?: number; children: ReactNode;
 }) {
   const selected = sections.find(item => item.id === section)!;
-  return <div className={styles.workspace}>{header}<div className={styles.glow} aria-hidden="true" />
+  return <div className={styles.workspace}>{header}<ColourBackdrop shape="workspace" viewport />
     <div className={styles.workspaceGrid}><aside className={styles.aside}>
       <h1>{t('services.workspace.title')}</h1><div className={styles.who}><ProfileAvatarFace initial={account.initial} size={48} /><span><b>{account.name}</b>{account.email && <small>{account.email}</small>}</span></div>
       <nav aria-label={t('services.workspace.sections')}>{sections.map(item => <button type="button" key={item.id} aria-current={item.id === section ? 'page' : undefined} onClick={() => onSection(item.id)}><Icon name={item.icon} size={19} />{item.label}</button>)}<div className={styles.navSpacer} /><button type="button" onClick={onSignOut}><Icon name="i-signout" size={19} />{t('action.signOut')}</button></nav>
@@ -137,7 +138,7 @@ export function ServicesStart({header, invitation, onInvitationChange, onInvitat
   onInvitationPaste?: (value: string) => void;
   onDownload: () => void; onApps: () => void; onCopyDownload: () => void; onShareDownload: () => void; error?: ReactNode; children?: ReactNode; returning?: boolean; notice?: ReactNode;
 }) {
-  return <div className={styles.start}>{header}<div className={styles.startGlow} aria-hidden="true" />
+  return <div className={styles.start}>{header}<ColourBackdrop viewport className={styles.startGlow} />
     <main className={styles.startMain}><div className={styles.startIntro}><div className={styles.startHeading}><p>{t('services.start.ready')}</p><h1>{t(returning ? 'services.start.returning' : 'services.start.welcome')}</h1><p className={styles.startLead}>{t('services.start.body')}{!returning && <span className={styles.startDesktop}> {t('services.start.free')}</span>}</p></div>
       {notice && <div className={styles.startNotice}>{notice}</div>}
       <div className={styles.startCards}><section className={styles.startJoin} id="join">

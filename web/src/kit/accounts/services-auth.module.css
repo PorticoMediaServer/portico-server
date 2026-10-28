@@ -7,6 +7,7 @@
 .returnAccount button { margin-left: auto; padding: 0; border: 0; background: none; color: var(--color-accent-strong); font-size: 13.5px; font-weight: 700; cursor: pointer; }
 .stage > header { top: 28px; }
 .content { width: 440px; max-width: calc(100vw - 128px); }
+.stage[data-layout="center"] .content.state { width: 480px; max-width: calc(100vw - 128px); margin-inline: auto; }
 .ownerReview { width: 600px; }
 .ownerReview .heading { font-size: 52px; }
 .ownerReview .facts > div { grid-template-columns: 136px 1fr; }
@@ -15,7 +16,7 @@
 .ownerReview .actions > button { width: auto; }
 .ownerReview .notice { margin-bottom: 16px; }
 .stage .content [data-variant="auth"] input[type="password"] { font-size: 20px; letter-spacing: .14em; }
-.content input { caret-color: var(--color-accent-strong); }
+.content input { --field-caret-color: var(--color-accent-strong); caret-color: var(--field-caret-color); }
 .content [data-variant="auth"] button > span { display: none; }
 .verifiedAddress { color: var(--color-text); font-weight: 700; }
 .verificationCode > span { display: block; margin-bottom: 8px; font-size: 14px; line-height: normal; font-weight: 600; }
@@ -61,6 +62,8 @@
 .providerAccount small > i { display: inline-block; width: 12px; }
 .providerReturnHint { font-size: 13px; line-height: 1.5; color: var(--color-text-tertiary); margin: 14px 0 0; }
 .state:has(.providerAccount) .lead { margin-bottom: 16px; }
+.state:has(.providerAccount) .heading { font-size: 52px; }
+.state:has(.providerAccount) .actions { width: 100%; }
 .heading { font-size: 64px; line-height: .98; font-weight: 800; letter-spacing: -.045em; margin: 0 0 14px; text-wrap: balance; overflow-wrap: anywhere; }
 .reset .heading, .signup .heading, .providerOnboarding .heading { font-size: 52px; }
 .heading[data-single-line] { white-space: nowrap; }
@@ -122,14 +125,15 @@
 @media (max-width: 640px) {
   .stage > [aria-hidden="true"] { inset: 0 0 auto; height: 560px; background-image: radial-gradient(90% 54% at 96% -6%, rgba(47,134,187,.5) 0%, rgba(47,134,187,.15) 48%, transparent 76%), radial-gradient(84% 44% at -8% 30%, rgba(30,91,82,.5) 0%, rgba(30,91,82,.13) 52%, transparent 78%), radial-gradient(70% 40% at 30% 0%, rgba(21,55,73,.8) 0%, transparent 72%); }
   .stage > header { top: 20px; left: 20px; }
-  .stage > header img { height: 15px; }
+  .stage > header img { height: calc(15px * var(--spec-navigation-web-wordmark-scale)); }
   .stage > header > span, .stage > footer { display: none; }
   .stage [data-auth-content] { width: 100%; max-width: none; margin-left: 0; padding: 57px 20px 40px; }
   .stage[data-layout="center"] > header { display: none; }
   .stage[data-layout="center"] [data-auth-content] { padding: 0 28px; justify-content: center; }
+  .stage[data-layout="center"] .content.state { width: 100%; max-width: none; }
   .content { max-width: none; width: 100%; }
   .reset, .signup, .providerOnboarding { padding: 0; align-self: stretch; }
-  .heading, .reset .heading, .signup .heading, .providerOnboarding .heading, .ownerReview .heading { font-size: 30px; line-height: 1.06; letter-spacing: -.04em; margin-bottom: 8px; white-space: normal; }
+  .heading, .reset .heading, .signup .heading, .providerOnboarding .heading, .ownerReview .heading, .state:has(.providerAccount) .heading { font-size: 30px; line-height: 1.06; letter-spacing: -.04em; margin-bottom: 8px; white-space: normal; }
   /* account.html 30/31 .pa h1; the frame30 taken-name panel keeps 30px. */
   .heading[data-phone-account-form] { font-size: 34px; line-height: 1.04; }
   .ownerReview .facts > div { grid-template-columns: 110px 1fr; }
