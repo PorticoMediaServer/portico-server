@@ -361,7 +361,7 @@ function PeopleWorkspace({bindings, initialStatus, rowActions, advancedRows}: {b
         {id: 'remove', label: t(table.select!.bulk[2].label), destructive: true, onAction: (ids, element) => ask('remove', ids, element)},
       ]} />}
     </SettingsGroup>
-    {bindings.invitations && <PeopleInvitations invitations={bindings.invitations} libraries={bindings.libraries} authority={bindings.authority}
+    {bindings.invitations && <PeopleInvitations invitations={bindings.invitations} serverName={bindings.serverName} signIn={bindings.signIn} libraries={bindings.libraries} authority={bindings.authority}
       version={invitationVersion} openInvite={bindings.invite ?? openInvite} openHome={bindings.openHome} reportError={bindings.reportError} />}
     {advancedRows}
     {personId && <SettingsPanel open onClose={() => {if (resetView && !resetView.leave()) return; admitPerson();}} title={person?.username ?? personRow?.username ?? t(section.title)} audience={t(bindings.actor.role === 'owner' ? 'next.shell.serverVisibility.ownerShared' : 'next.shell.serverVisibility.administrator')}

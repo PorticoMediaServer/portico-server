@@ -5,6 +5,7 @@ import {Button} from '../controls/Button';
 import {Dialog} from '../overlays/Dialog';
 import {AuthError} from './AuthStage';
 import {sameShortCode, ShortCodeIssuer, type ShortCodeRun} from '@core/invitation-short-code-issuer.ts';
+import {copyText} from '../../platform/copy-text';
 import styles from './invitation-short-code.module.css';
 
 const t = defaultI18n.t;
@@ -64,7 +65,7 @@ function IssuerDialog({open, onOpenChange, request, issueOnOpen = false, createO
   useEffect(() => {if (state.phase !== 'ready') {setCopied(false);setCopyError(undefined);}}, [state.phase]);
 
   const busy = state.phase === 'issuing';
-  const copy = async () => {
+  const copy = async (source: HTMLElement) => {
     const current = issuedCurrent.current;
     if (!current || !current()) return;
     const snapshot = issuer.getSnapshot();
@@ -72,9 +73,8 @@ function IssuerDialog({open, onOpenChange, request, issueOnOpen = false, createO
     const code = snapshot.code, operationId = snapshot.operationId;
     const same = () => sameShortCode(current, issuer.getSnapshot(), operationId, code);
     if (!same()) return;
-    if (!navigator.clipboard) {if (same()) setCopyError(new Error('clipboard_unavailable'));return;}
     try {
-      await navigator.clipboard.writeText(code);
+      await copyText(code, source);
       if (same()) setCopied(true);
     } catch (error) {
       if (same()) setCopyError(error);
@@ -98,7 +98,7 @@ function IssuerDialog({open, onOpenChange, request, issueOnOpen = false, createO
       {expiry && <p className={styles.expiry}>{t('api.credential.expires', {when: expiry})}</p>}
       {copyError !== undefined && <AuthError error={copyError} />}
       <div className={styles.actions}>
-        {state.phase === 'ready' && <Button variant="glass" icon={copied ? 'i-check' : 'i-copy'} onClick={() => void copy()} disabled={busy}>{t(copied ? 'web.together.copied' : 'web.access.copyShortCode')}</Button>}
+        {state.phase === 'ready' && <Button variant="glass" icon={copied ? 'i-check' : 'i-copy'} onClick={event => void copy(event.currentTarget)} disabled={busy}>{t(copied ? 'web.together.copied' : 'web.access.copyShortCode')}</Button>}
         {state.phase === 'failed' && <Button variant="glass" onClick={() => void issuer.retry(runRef.current)} disabled={busy}>{t('action.tryAgain')}</Button>}
         {!busy && <Button variant="glass" icon="i-plus" onClick={() => void issuer.issue(true, runRef.current)}>{t('web.access.newShortCode')}</Button>}
       </div>

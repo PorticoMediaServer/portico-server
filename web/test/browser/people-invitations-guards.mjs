@@ -11,16 +11,16 @@ import {PeopleInvitations} from '/src/screens/settings/PeopleInvitations';
 const root = createRoot(document.getElementById('root'));
 const revokes = [], links = [], reads = [], clipboard = [];
 let reports = 0, version = 0;
-const row = {id:'invitation', revision:7, state:'pending', role:'member', notes:'Resident invitation', allowedLibraries:[], createdAt:'2026-10-23T12:00:00Z', expiresAt:'2000-01-01T00:00:00Z', access:{maxStreamsMode:'inherit', maxStreams:0, allowRemote:true, accessTokens:true, maxContentRating:''}};
+const row = {id:'invitation', revision:7, state:'pending', role:'member', notes:'Resident invitation', allowedLibraries:[], createdAt:'2026-10-23T12:00:00Z', expiresAt:new Date(Date.now()+3600000).toISOString(), access:{maxStreamsMode:'inherit', maxStreams:0, allowRemote:true, accessTokens:true, maxContentRating:''}};
 const authority = {isCurrent:()=>true,onAuthorityChanged:()=>{}};
 const invitations = {
- read:async(query,cursor,life)=>{reads.push({query,cursor,life});return {items:[row],nextCursor:'',matchedCount:73,totalCount:101};},
+ read:async(query,cursor,life)=>{reads.push({query,cursor,life});return {items:[row,{...row,id:'producer-pending',expiresAt:'2000-01-01T00:00:00Z'}],nextCursor:'',matchedCount:73,totalCount:101};},
  link:(row,life)=>new Promise((resolve,reject)=>links.push({row,life,resolve,reject})),
  revoke:(row,operationId,life)=>new Promise((resolve,reject)=>revokes.push({row,operationId,life,resolve,reject}))
 };
 Object.defineProperty(navigator,'clipboard',{configurable:true,value:{writeText:async text=>{clipboard.push(text);}}});
 let originalService = invitations, originalAuthority = authority;
-const render=()=>root.render(<React.StrictMode><PeopleInvitations invitations={originalService} libraries={[]} authority={originalAuthority} version={version} openHome={()=>{}} reportError={()=>{reports++;}}/></React.StrictMode>);
+const render=()=>root.render(<React.StrictMode><PeopleInvitations invitations={originalService} serverName="Demo" signIn="local" libraries={[]} authority={originalAuthority} version={version} openHome={()=>{}} reportError={()=>{reports++;}}/></React.StrictMode>);
 window.probe={revokes,links,reads,clipboard,get reports(){return reports;},replace:()=>{originalService={...invitations};originalAuthority={...authority};render();},refresh:()=>{version++;render();},unmount:()=>root.render(null)};
 render();`;
 let server, browser;
@@ -35,8 +35,8 @@ try {
  browser = await chromium.launch({headless: true, executablePath: process.env.CHROMIUM_PATH || '/snap/bin/chromium', args: ['--no-sandbox'], chromiumSandbox: false});
  const page = await browser.newPage({viewport: {width: 1440, height: 900}});
  await page.goto('http://127.0.0.1:' + server.httpServer.address().port + '/__invitations_guards');
- const copy = page.getByRole('button', {name: 'Copy link', exact: true});
- const rowRevoke = page.getByRole('button', {name: 'Revoke', exact: true});
+ const copy = page.getByRole('button', {name: 'Copy link', exact: true}).first();
+ const rowRevoke = page.getByRole('button', {name: 'Revoke', exact: true}).first();
  const dialog = page.getByRole('dialog');
  const retain = async (locator, key) => locator.evaluate((node, key) => {
   const props = Object.keys(node).find(value => value.startsWith('__reactProps$'));
