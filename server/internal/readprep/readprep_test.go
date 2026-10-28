@@ -101,6 +101,31 @@ func TestChangedBaseRemainsTypedStale(t *testing.T) {
 	})
 }
 
+func TestDescriptorIsCallerPrivateAndChargedThroughDelivery(t *testing.T) {
+	s := storeFor(t, Config{})
+	h := submit(t, s, "caller", testKey, simplePlan("ready"))
+	r := ready(t, s, "caller", h)
+	if r.Key != testKey {
+		t.Fatalf("lost exact descriptor: %+v", r.Key)
+	}
+	foreign, err := s.Poll(context.Background(), "other", h)
+	if !errors.Is(err, ErrStale) || foreign.Key != (Key{}) {
+		t.Fatal("descriptor escaped its caller")
+	}
+	minimum := deliveryOverhead + int64(len(testKey.Namespace)+len(testKey.Basis)+len(testKey.Canonical)+len(r.Payload))
+	if s.Stats().DeliveryBytes < minimum {
+		t.Fatal("descriptor delivery is not charged")
+	}
+	s.Invalidate(testKey)
+	if s.Stats().DeliveryBytes < minimum {
+		t.Fatal("eviction released live descriptor delivery")
+	}
+	r.Release()
+	if s.Stats().DeliveryBytes != 0 {
+		t.Fatal("delivery charge leaked")
+	}
+}
+
 func TestSharingPrivateHandlesAndPayloadOwnership(t *testing.T) {
 	s := storeFor(t, Config{})
 	started, release := make(chan struct{}), make(chan struct{})
@@ -765,7 +790,11 @@ func TestNoDefaultHardDeadlineAndSupervisedPanic(t *testing.T) {
 }
 
 func TestConcurrentGrowthCannotBypassCap(t *testing.T) {
-	s := storeFor(t, Config{Workers: 2, MaxBytes: 4000})
+	// Leave enough room for one growth while BOTH initial reservations are
+	// still held. A rejected worker need not finish bookkeeping before its peer
+	// attempts admission; the outcome must not depend on that scheduling race.
+	const budgetBytes = 4200
+	s := storeFor(t, Config{Workers: 2, MaxBytes: budgetBytes})
 	start, proceed, finish := make(chan struct{}, 2), make(chan struct{}), make(chan struct{})
 	defer close(finish)
 	var admitted atomic.Int32
@@ -797,7 +826,7 @@ func TestConcurrentGrowthCannotBypassCap(t *testing.T) {
 	<-start
 	close(proceed)
 	eventually(t, func() bool { return admitted.Load()+rejected.Load() == 2 })
-	if admitted.Load() != 1 || rejected.Load() != 1 || s.Stats().Bytes > 4000 {
+	if admitted.Load() != 1 || rejected.Load() != 1 || s.Stats().Bytes > budgetBytes {
 		t.Fatalf("admitted=%d rejected=%d stats=%+v", admitted.Load(), rejected.Load(), s.Stats())
 	}
 }

@@ -68,8 +68,11 @@ const (
 // Result shares its idempotent release lease. Preparing has no payload; errors
 // are returned separately, never empty success. Basis names immutable content.
 type Result struct {
-	State          State
-	Basis          string
+	State State
+	Basis string
+	// Key is the exact descriptor behind this caller's private handle. Domain
+	// adapters use it to reauthorize cold-scope preparation; it is not a grant.
+	Key            Key
 	Payload        []byte
 	OriginalExpiry time.Time
 	delivery       *delivery
@@ -501,8 +504,9 @@ func (s *Store) Poll(ctx context.Context, caller Caller, h Handle) (Result, erro
 	if e.err != nil {
 		return Result{}, e.err
 	}
-	result := Result{State: Preparing, Basis: e.key.Basis, OriginalExpiry: l.original}
-	n := deliveryOverhead + int64(len(result.Basis))
+	result := Result{State: Preparing, Basis: e.key.Basis, Key: e.key, OriginalExpiry: l.original}
+	// These immutable strings can outlive eviction of their original entry.
+	n := deliveryOverhead + int64(len(e.key.Namespace)+len(e.key.Basis)+len(e.key.Canonical))
 	if e.complete {
 		n += int64(len(e.payload))
 	}
