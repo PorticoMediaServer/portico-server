@@ -5,7 +5,7 @@ import {orderTakesOffset, readTmdbOrder, tmdbAbsoluteOrder} from '@core/screen-m
 import {attentionInProgress} from '@core/server-admin/attention-words.ts';
 import {MetadataRepairService, type RepairCaller, type RepairCommand, type RepairData, type RepairFieldSpec, type RepairTarget} from '@core/metadata-repair.ts';
 import {EditorHeader} from '../../kit/shell';
-import {Button, TextField} from '../../kit/controls';
+import {Button, TextField, TabsParts} from '../../kit/controls';
 import {Dialog} from '../../kit/overlays/Dialog';
 import {providerName} from '@core/server-admin/attention-words.ts';
 import {HostedError} from '../../kit/accounts/ServicesAuth';
@@ -111,12 +111,13 @@ export function MetadataEditor({api, scope, target, onClose, initialTab = 'gener
   };
   const heading = data ? (data.snapshot.fields.title?.value || target.id) : '';
   const kind = !data ? 'item' : localArtworkOnly ? 'reading' : target.kind === 'item' ? data.schema.some(field => field.field === 'episodeNumber') ? 'episode' : data.schema.some(field => field.field === 'trackNumber') ? 'song' : data.schema.some(field => field.field === 'partNumber') ? 'audiobook_file' : 'film' : target.kind;
-  return <aside className={styles.editor} aria-label={t('web.metadata.sections')}>
+  return <TabsParts.Root asChild value={shown} onValueChange={value => {if (!openingCurrent() || !offered.includes(value as Tab)) return; if (value !== shown) retireOpening(); setTab(value as Tab);}}><aside className={styles.editor} aria-label={t('web.metadata.sections')}>
     <EditorHeader audience={{authority: 'owner'}} title={heading ? t('web.metadata.editTitle', {title: heading}) : t('web.metadata.editFallbackTitle')} description={t('web.metadata.editorLede', {kind})} onClose={close} className={styles.editorHead}/>
-    <nav ref={tabStrip} className={styles.editorTabs} aria-label={t('web.metadata.sections')}>
-      {tabsFor(data).map(id => <button key={id} type="button" aria-current={shown === id ? 'page' : undefined} onClick={() => {if (!openingCurrent()) return; if (id !== shown) retireOpening(); setTab(id);}}>
-        {t(id === 'general' ? 'web.metadata.tabGeneral' : id === 'artwork' ? 'web.metadata.tabArtwork' : id === 'tags' ? data && !data.schema.some(field => field.field === 'genres' || field.field === 'genre') ? 'web.metadata.field.tags' : 'web.metadata.tabTags' : id === 'people' ? 'web.metadata.tabPeople' : id === 'matching' ? 'web.metadata.tabMatching' : id === 'lyrics' ? 'web.metadata.tabLyrics' : 'web.metadata.tabHistory')}</button>)}
-    </nav>
+    <TabsParts.List asChild><nav ref={tabStrip} className={styles.editorTabs} aria-label={t('web.metadata.sections')}>
+      {tabsFor(data).map(id => <TabsParts.Trigger key={id} value={id} asChild><button type="button" aria-current={shown === id ? 'page' : undefined}>
+        {t(id === 'general' ? 'web.metadata.tabGeneral' : id === 'artwork' ? 'web.metadata.tabArtwork' : id === 'tags' ? data && !data.schema.some(field => field.field === 'genres' || field.field === 'genre') ? 'web.metadata.field.tags' : 'web.metadata.tabTags' : id === 'people' ? 'web.metadata.tabPeople' : id === 'matching' ? 'web.metadata.tabMatching' : id === 'lyrics' ? 'web.metadata.tabLyrics' : 'web.metadata.tabHistory')}</button></TabsParts.Trigger>)}
+    </nav></TabsParts.List>
+    <TabsParts.Content value={shown} className={styles.editorBody}>
     {state.phase === 'loading' ? <p className={styles.working}>{t('web.metadata.loading')}</p> : null}
     {state.error ? <HostedError error={state.error} /> : null}
     {state.phase === 'uncertain' || state.phase === 'conflict' || state.phase === 'error' ? <Button size="small" onClick={() => {setError(undefined); void service.load(target);}}>{t('next.states.tryAgain')}</Button> : null}
@@ -146,7 +147,8 @@ export function MetadataEditor({api, scope, target, onClose, initialTab = 'gener
           {t('web.metadata.saveChanges')}{changed.length ? ` (${changed.length})` : ''}</Button>
       </footer> : null}
     </> : null}
-  </aside>;
+    </TabsParts.Content>
+  </aside></TabsParts.Root>;
 }
 
 
