@@ -1,7 +1,7 @@
 /** tv-more: the TV Saved landing, album page and artist page. */
 export const tvMoreMessages = {
   'tv.server.handoffTitle': 'Change settings on your phone or computer',
-  'tv.server.handoffBody': 'TV shows the server’s settings and never changes them. Scan the code, or go to {url} on a computer.',
+  'tv.server.handoffBody': 'Scan the code, or go to {url} on a computer.',
   'saved.browseHome': 'Browse Home',
   'saved.postersHeading': 'Movies and shows',
   'saved.squaresHeading': 'Music and audiobooks',
