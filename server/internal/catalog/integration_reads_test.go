@@ -8,6 +8,7 @@ import (
 	"portico.local/server/internal/compactcatalog"
 	"strings"
 	"testing"
+	"time"
 
 	"portico.local/server/internal/catalogtest"
 	"portico.local/server/internal/dbwork"
@@ -209,5 +210,152 @@ func TestIntegrationReadLatestUsesBoundedIndexedRuns(t *testing.T) {
 	})
 	if err != nil || len(slim.Items) != 1 || len(slim.Items[0].MediaSources) != 0 || len(slim.Items[0].Paths) != 0 {
 		t.Fatalf("file facts were not opt-in: %+v %v", slim, err)
+	}
+}
+
+// Rows retain the native cursor recovery behavior, but totals belong to the
+// current visibility snapshot, never an earlier page's count.
+func TestIntegrationReadContinuationRecountsAfterVisibilityChange(t *testing.T) {
+	c := catalogtest.Open(t)
+	lib := c.Library("m", "Movies", "movie", "/m")
+	items := []catalogtest.Item{}
+	for i := 0; i < 4; i++ {
+		item := c.Movie(lib, fmt.Sprintf("/m/%d.mkv", i), fmt.Sprintf("Film %d", i), 2000)
+		c.Attributes(item.ID, "contentRating", "G")
+		items = append(items, item)
+	}
+	c.Drain()
+	if _, err := New(c.DB).ClassifyPendingRatings(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	age := 12
+	v := Viewer{Profile: "child", Fence: "restriction", Libraries: []string{"m"}, Restrictions: identity.ContentRestrictions{MaximumAge: &age, BlockUnrated: true}}
+	q := IntegrationItemQuery{LibraryID: "m", Kind: "movie", Limit: 1}
+	first := integrationReadPage(t, c, v, q, false)
+	if first.Total != 4 || len(first.Items) != 1 || first.Items[0].ID != items[0].Public || first.NextCursor == "" {
+		t.Fatalf("first: %+v", first)
+	}
+	c.Attributes(items[2].ID, "contentRating", "R")
+	// Restriction facts take effect before background serving publication.
+	q.Cursor = first.NextCursor
+	pending := integrationReadPage(t, c, v, q, false)
+	if pending.Total != 3 || len(pending.Items) != 1 || pending.Items[0].ID != items[1].Public {
+		t.Fatalf("unpublished visibility change reused stale count: %+v", pending)
+	}
+	c.Drain()
+	if _, err := New(c.DB).ClassifyPendingRatings(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	q.Cursor = first.NextCursor
+	for _, want := range []string{items[1].Public, items[3].Public} {
+		page := integrationReadPage(t, c, v, q, false)
+		if page.Total != 3 || len(page.Items) != 1 || page.Items[0].ID != want {
+			t.Fatalf("stale total or hidden row: %+v", page)
+		}
+		q.Cursor = page.NextCursor
+	}
+	if q.Cursor != "" {
+		t.Fatal("unexpected continuation")
+	}
+}
+
+func TestIntegrationReadContinuationRecountsExpiredAndLegacyTotals(t *testing.T) {
+	c := catalogtest.Open(t)
+	lib := c.Library("m", "Movies", "movie", "/m")
+	for i := 0; i < 3; i++ {
+		c.Movie(lib, fmt.Sprintf("/m/%d.mkv", i), fmt.Sprintf("Film %d", i), 2000)
+	}
+	c.Drain()
+	v := Viewer{Profile: "p", Fence: "f", Libraries: []string{"m"}}
+	q := IntegrationItemQuery{LibraryID: "m", Kind: "movie", Limit: 1}
+	first := integrationReadPage(t, c, v, q, false)
+	for _, mode := range []string{"expired", "legacy"} {
+		t.Run(mode, func(t *testing.T) {
+			s := New(c.DB)
+			signed, err := s.readSignedBrowseCursor(first.NextCursor)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if mode == "expired" {
+				signed.Expires = time.Now().Add(-time.Minute).Unix()
+			} else {
+				signed.TotalPresent = false
+			}
+			// A legitimate old signed count must not be reused without its proof.
+			signed.Value = "99"
+			revision, err := s.homeRevision(v.Libraries, v.Profile)
+			if err != nil {
+				t.Fatal(err)
+			}
+			q.Cursor, err = s.encodeRevisionCursor(signed, revision)
+			if err != nil {
+				t.Fatal(err)
+			}
+			page := integrationReadPage(t, c, v, q, false)
+			if page.Total != 3 || len(page.Items) != 1 || page.Items[0].ID == first.Items[0].ID {
+				t.Fatalf("old total reused or rows did not continue: %+v", page)
+			}
+		})
+	}
+}
+
+// A raw write may precede page one while its serving row appears only later.
+// homeRevision stays unchanged across that publication, so raw/viewer revisions
+// and a total-presence bit alone cannot authorize count reuse.
+func TestIntegrationReadContinuationRecountsAfterServingPublication(t *testing.T) {
+	c := catalogtest.Open(t)
+	lib := c.Library("m", "Movies", "movie", "/m")
+	for i := 0; i < 3; i++ {
+		c.Movie(lib, fmt.Sprintf("/m/%d.mkv", i), fmt.Sprintf("Film %d", i), 2000)
+	}
+	c.Drain()
+	added := c.Entity(compactcatalog.Entity{Library: lib, Kind: compactcatalog.Movie, Key: "later-serving-entity", Title: "Published later", Year: 2001}, nil)
+	// Search publication also advances the raw revision. Give it a real worker
+	// turn before page one, leaving browse publication queued for the next turn.
+	w := compactcatalog.NewWorker(c.DB)
+	c.Exec(`UPDATE catalog_derivations SET served_ms=0 WHERE domain=?`, compactcatalog.DomainSearch)
+	if _, err := w.Step(context.Background(), 1); err != nil {
+		t.Fatal(err)
+	}
+	var serving, pendingSearch int
+	if err := c.DB.QueryRow(`SELECT (SELECT count(*) FROM catalog_browse_rows WHERE entity_id=?),(SELECT count(*) FROM catalog_dirty WHERE domain=? AND entity_id=?)`, added.ID, compactcatalog.DomainSearch, added.ID).Scan(&serving, &pendingSearch); err != nil || serving != 0 || pendingSearch != 0 {
+		t.Fatalf("fixture must have search published and browse queued: serving=%d search=%d err=%v", serving, pendingSearch, err)
+	}
+
+	v := Viewer{Profile: "p", Fence: "f", Libraries: []string{"m"}}
+	q := IntegrationItemQuery{LibraryID: "m", Kind: "movie", Limit: 1}
+	before, err := New(c.DB).homeRevision(v.Libraries, v.Profile)
+	if err != nil {
+		t.Fatal(err)
+	}
+	first := integrationReadPage(t, c, v, q, false)
+	if first.Total != 3 || first.NextCursor == "" {
+		t.Fatalf("raw-only row was already serving: %+v", first)
+	}
+	c.Exec(`UPDATE catalog_derivations SET served_ms=0 WHERE domain=?`, compactcatalog.DomainBrowseRows)
+	if _, err := w.Step(context.Background(), 1); err != nil {
+		t.Fatal(err)
+	}
+	if err := c.DB.QueryRow(`SELECT count(*) FROM catalog_browse_rows WHERE entity_id=?`, added.ID).Scan(&serving); err != nil || serving != 1 {
+		t.Fatalf("browse worker did not publish the queued row: %d %v", serving, err)
+	}
+	after, err := New(c.DB).homeRevision(v.Libraries, v.Profile)
+	if err != nil || before != after {
+		t.Fatalf("fixture must publish without raw/viewer revision drift: before=%+v after=%+v err=%v", before, after, err)
+	}
+	q.Cursor = first.NextCursor
+	seenAdded := false
+	for pages := 0; pages < 3; pages++ {
+		page := integrationReadPage(t, c, v, q, false)
+		if page.Total != 4 || len(page.Items) != 1 {
+			t.Fatalf("serving publication reused stale total: %+v", page)
+		}
+		if page.Items[0].ID == added.Public {
+			seenAdded = true
+		}
+		q.Cursor = page.NextCursor
+	}
+	if q.Cursor != "" || !seenAdded {
+		t.Fatal("row continuation did not reach the new serving identity")
 	}
 }

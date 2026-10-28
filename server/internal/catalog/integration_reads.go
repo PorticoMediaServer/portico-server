@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -78,7 +79,7 @@ type IntegrationMediaSource struct {
 type IntegrationItemPage struct {
 	Items      []IntegrationItem `json:"items"`
 	NextCursor string            `json:"nextCursor,omitempty"`
-	// Exact visible matches before the cursor, in this page's read snapshot.
+	// Exact visible matches in the full query, in this page's read snapshot.
 	Total int64 `json:"total"`
 }
 
@@ -247,8 +248,15 @@ func (s *Service) QueryIntegrationItems(v Viewer, q IntegrationItemQuery, paths 
 	if err != nil {
 		return out, err
 	}
+	// Capture the same complete visibility basis as exact browse totals.
+	// Raw revisions alone miss background serving publication and classification.
+	countWitness, err := s.integrationCountWitness(v)
+	if err != nil {
+		return out, err
+	}
 	// Cursor is signed and bound to every filter, viewer fence, path authority,
-	// limit and catalogue revision. Changing a total mid-walk expires it.
+	// limit and catalogue revision. Rows may continue after a revision changes,
+	// but the previous snapshot's count must be recomputed.
 	fingerprint := q
 	fingerprint.Cursor = ""
 	raw, _ := json.Marshal(struct {
@@ -259,6 +267,7 @@ func (s *Service) QueryIntegrationItems(v Viewer, q IntegrationItemQuery, paths 
 	scope := cursorScope{Profile: v.Profile, Viewer: v.Fence, View: "integration_items", Category: hex.EncodeToString(sum[:]), Limit: q.Limit}
 	var after int64
 	var afterKey string
+	countReusable := false
 	if q.Cursor != "" {
 		c, e := s.decodeRevisionCursor(q.Cursor, scope, revision)
 		if e != nil {
@@ -268,6 +277,9 @@ func (s *Service) QueryIntegrationItems(v Viewer, q IntegrationItemQuery, paths 
 			return out, ErrCursor
 		}
 		afterKey = c.Keys[0]
+		// The shared decoder clears TotalPresent on revision drift or expiry.
+		// Value is a legacy scalar and is deliberately not an invalidation flag.
+		countReusable = c.TotalPresent && countWitness != "" && c.Fingerprint == countWitness
 		out.Total, e = strconv.ParseInt(c.Value, 10, 64)
 		if e != nil || out.Total < 0 {
 			return out, ErrCursor
@@ -277,7 +289,7 @@ func (s *Service) QueryIntegrationItems(v Viewer, q IntegrationItemQuery, paths 
 			return out, ErrCursor
 		}
 	}
-	if q.Cursor == "" {
+	if !countReusable {
 		if err = s.read().QueryRowContext(s.Context(), `SELECT count(*) FROM `+from+` WHERE `+where, args...).Scan(&out.Total); err != nil {
 			return out, err
 		}
@@ -319,7 +331,7 @@ func (s *Service) QueryIntegrationItems(v Viewer, q IntegrationItemQuery, paths 
 	}
 	if len(out.Items) > q.Limit {
 		out.Items = out.Items[:q.Limit]
-		out.NextCursor, err = s.encodeRevisionCursor(cursorValue{Scope: scope, ID: strconv.FormatInt(out.Items[len(out.Items)-1].entity, 10), Keys: []string{out.Items[len(out.Items)-1].sortValue}, Value: strconv.FormatInt(out.Total, 10), Expires: time.Now().Add(titleCursorTTL).Unix()}, revision)
+		out.NextCursor, err = s.encodeRevisionCursor(cursorValue{Scope: scope, ID: strconv.FormatInt(out.Items[len(out.Items)-1].entity, 10), Keys: []string{out.Items[len(out.Items)-1].sortValue}, Value: strconv.FormatInt(out.Total, 10), TotalPresent: countWitness != "", Fingerprint: countWitness, Expires: time.Now().Add(titleCursorTTL).Unix()}, revision)
 		if err != nil {
 			return out, err
 		}
@@ -328,6 +340,29 @@ func (s *Service) QueryIntegrationItems(v Viewer, q IntegrationItemQuery, paths 
 		return IntegrationItemPage{}, err
 	}
 	return out, nil
+}
+
+// One fixed-size witness per authorized library, never retained query results.
+// A serving first-build may not yet have a reusable proof: keep row recovery
+// available and count the current snapshot, but do not carry a reusable total.
+func (s *Service) integrationCountWitness(v Viewer) (string, error) {
+	witnesses := make([]string, 0, len(v.Libraries))
+	for _, library := range v.Libraries {
+		witness, err := s.browseExactWitness(library, v.Profile, v.Restrictions)
+		if errors.Is(err, ErrVisibilityBuilding) {
+			return "", nil
+		}
+		if err != nil {
+			return "", err
+		}
+		witnesses = append(witnesses, witness)
+	}
+	raw, err := json.Marshal(witnesses)
+	if err != nil {
+		return "", err
+	}
+	sum := sha256.Sum256(raw)
+	return hex.EncodeToString(sum[:]), nil
 }
 
 // Batch provider facts preserve the native map convention used by TitleRow.

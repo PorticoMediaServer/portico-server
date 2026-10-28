@@ -33,6 +33,12 @@ func TestRestrictedProfileCountsMatchWhatIsShown(t *testing.T) {
 			t.Errorf("%s: %s %s: %s", pattern, method, path, finding)
 		}
 		bound := visible
+		// Compatibility item aliases share the mixed entity domain. The exact
+		// ID/count/offset oracle covers every alias separately.
+		route := strings.TrimPrefix(strings.ToLower(strings.TrimPrefix(pattern, "GET ")), "/mediabrowser")
+		if route == "/items" || route == "/users/{id}/items" {
+			bound = len(visibleEntities)
+		}
 		for library, n := range perLibrary {
 			if strings.Contains(path, "/libraries/"+library+"/") {
 				bound = n
@@ -83,7 +89,7 @@ func TestRestrictedProfileCountsMatchWhatIsShown(t *testing.T) {
 const rowLimit = 12
 
 // totalKeys are the fields that count a list; pageKeys say there is more.
-var totalKeys = []string{"totalCount", "total"}
+var totalKeys = []string{"totalCount", "total", "TotalRecordCount"}
 var pageKeys = []string{"nextCursor", "next", "cursor", "nextSeasonCursor", "nextAfter", "continuation"}
 
 // totalsBeyondShown walks a JSON answer. At every object with exactly one list
@@ -226,7 +232,7 @@ func totalsAbove(v any, at string, bound, people int) []string {
 			if facetPage && key == "total" {
 				continue
 			}
-			if n, ok := x[key].(float64); ok && (key == "total" || key == "totalCount" || key == "itemCount") && int(n) > bound {
+			if n, ok := x[key].(float64); ok && (key == "total" || key == "totalCount" || key == "itemCount" || key == "TotalRecordCount") && int(n) > bound {
 				out = append(out, strings.TrimPrefix(at+"."+key, ".")+" is "+itoaTest(int(n)))
 				continue
 			}
