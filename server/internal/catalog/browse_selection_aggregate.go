@@ -70,10 +70,26 @@ type BrowseSelectionSelector struct {
 // Selector reuses the existing job query wrapper exactly, so a client can hand
 // it to the job API unchanged.
 type BrowseSelectionDescriptor struct {
-	Selector        BrowseSelectionSelector `json:"selector"`
-	CatalogRevision string                  `json:"catalogRevision"`
-	Total           int                     `json:"total"`
-	Types           []BrowseSelectionType   `json:"types"`
+	Selector           BrowseSelectionSelector            `json:"selector"`
+	CatalogRevision    string                             `json:"catalogRevision"`
+	Total              int                                `json:"total"`
+	Types              []BrowseSelectionType              `json:"types"`
+	UnavailableActions *BrowseSelectionUnavailableActions `json:"unavailableActions,omitempty"`
+}
+
+// Consumer support is separate from truthful per-title capabilities.
+type BrowseSelectionUnavailableActions struct {
+	Play            string `json:"play,omitempty"`
+	Queue           string `json:"queue,omitempty"`
+	MetadataPreview string `json:"metadataPreview,omitempty"`
+}
+
+func (BrowseSelectionUnavailableActions) JSONSchema() map[string]any {
+	return map[string]any{"type": "object", "additionalProperties": false, "properties": map[string]any{
+		"play":            map[string]any{"type": "string", "enum": []string{"unsupported-sort"}},
+		"queue":           map[string]any{"type": "string", "enum": []string{"unsupported-sort"}},
+		"metadataPreview": map[string]any{"type": "string", "enum": []string{"preview-limit"}},
+	}}
 }
 
 // selectionAggregateKindOrder is the wire order: the persisted compact-kind

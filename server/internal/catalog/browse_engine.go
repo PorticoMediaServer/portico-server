@@ -60,12 +60,13 @@ type BrowseApplied struct {
 	Seek  *BrowseSeek           `json:"seek,omitempty"`
 }
 type BrowseResult struct {
-	Pivot          string                 `json:"pivot"`
-	Applied        BrowseApplied          `json:"applied"`
-	Entries        []ContentEntry         `json:"entries"`
-	PageInfo       BrowsePageInfo         `json:"pageInfo"`
-	PositionIndex  []BrowsePositionAnchor `json:"positionIndex"`
-	DisplayTargets []HomeDisplayTarget    `json:"displayTargets,omitempty"`
+	selectionRelease func()
+	Pivot            string                 `json:"pivot"`
+	Applied          BrowseApplied          `json:"applied"`
+	Entries          []ContentEntry         `json:"entries"`
+	PageInfo         BrowsePageInfo         `json:"pageInfo"`
+	PositionIndex    []BrowsePositionAnchor `json:"positionIndex"`
+	DisplayTargets   []HomeDisplayTarget    `json:"displayTargets,omitempty"`
 	// WholeSelection is the exact whole-view aggregate for "Select all N".
 	// Absent whenever the view cannot be replayed exactly; never inferred.
 	WholeSelection          *BrowseSelectionDescriptor `json:"wholeSelection,omitempty"`
@@ -464,6 +465,9 @@ func (s *Service) BrowseEntities(viewer Viewer, request BrowseRequest) (BrowseRe
 	}
 	if err := s.checkBrowseSelectionBasis(viewer, request.Library, request.SelectionBasis); err != nil {
 		return BrowseResult{}, err
+	}
+	if request.SelectionBasis != "" && selectionBatchHasLocalSearch(request.Query) {
+		return s.browsePreparedSelection(viewer, request)
 	}
 	if request.Pivot == "playlists" {
 		return s.browseMusicPlaylists(request)
@@ -1334,4 +1338,12 @@ func playablePivot(pivot browsePivot) bool {
 		}
 	}
 	return true
+}
+
+// Release keeps prepared conversion delivery charged through its HTTP write.
+// It is an idempotent no-op for ordinary Browse results.
+func (r BrowseResult) Release() {
+	if r.selectionRelease != nil {
+		r.selectionRelease()
+	}
 }
