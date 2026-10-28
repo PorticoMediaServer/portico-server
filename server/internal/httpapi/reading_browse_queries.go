@@ -8,7 +8,6 @@ import (
 	"net/http"
 	"net/url"
 	"portico.local/apikit"
-	"portico.local/apikit/apierror"
 	"portico.local/server/internal/catalog"
 	"portico.local/server/internal/dbwork"
 	"portico.local/server/internal/identity"
@@ -17,26 +16,13 @@ import (
 )
 
 type ReadingBrowsePreparing struct {
+	State        string `json:"state"`
 	Kind         string `json:"kind"`
 	QueryID      string `json:"queryId"`
 	RetryAfterMs int    `json:"retryAfterMs"`
 }
 
 const readingBrowseRetryMs = 1000
-
-// The cohort appends this definition to the common error catalogue when it
-// registers the routes. The private hook uses the identical typed definition.
-func readingBrowsePreparationErrorDefinitions() []apierror.Definition {
-	return []apierror.Definition{{Code: "read_capacity", Status: 503, Message: "The server is busy preparing other reads. Try again shortly.", Retry: apierror.SameRequest}}
-}
-
-var readingBrowseCapacityErrors = func() *apierror.Registry {
-	r, e := apierror.New(readingBrowsePreparationErrorDefinitions()...)
-	if e != nil {
-		panic(e)
-	}
-	return r
-}()
 
 type readingBrowseQueryResponse struct{}
 
@@ -50,6 +36,7 @@ func (readingBrowseQueryResponse) JSONSchemaForStatus(status int) map[string]any
 		shape["additionalProperties"] = false
 		props := shape["properties"].(map[string]any)
 		props["kind"].(map[string]any)["const"] = "reading-browse-preparing"
+		props["state"].(map[string]any)["const"] = "preparing"
 		props["queryId"].(map[string]any)["minLength"] = 1
 		props["queryId"].(map[string]any)["maxLength"] = 256
 		props["queryId"].(map[string]any)["pattern"] = "^[A-Za-z0-9_-]+$"
@@ -65,7 +52,7 @@ func (r readingBrowseQueryResponse) JSONSchema() map[string]any {
 // Parent cohort registers these typed routes and the 202 contract together.
 // The existing foreground POST browse handler is deliberately unchanged.
 func registerReadingBrowseQueryRoutes(registry *apikit.Registry, d Dependencies) error {
-	failures := []string{"invalid_request", "unauthorized", "not_permitted", "not_found", "revision_mismatch", "stale_continuation", "read_capacity", "internal"}
+	failures := []string{"invalid_request", "unauthorized", "not_permitted", "not_found", "revision_mismatch", "stale_continuation", "search_busy", "internal"}
 	if err := apikit.RegisterRaw(registry, apikit.RawRoute[noBody, readingBrowseQueryResponse]{Metadata: apikit.Metadata{Admission: laneBrowsing, ID: "get_library_reading_browse_query", Method: "GET", Path: "/v1/libraries/{id}/reading-browse-queries/{queryId}", Summary: "Read an exact prepared Reading browse page", Access: apikit.Device, Requires: apikit.ScopeRead, Lane: apikit.Browsing, Cost: apikit.PageSized, Status: 200, SuccessStatuses: []int{202}, ResponseHeaders: []apikit.ResponseHeader{{Status: 202, Name: "Retry-After", Description: "Minimum polling delay", Required: true}, {Status: 202, Name: "Location", Description: "Library-scoped poll path", Required: true}}, Errors: failures}, Serve: d.readingBrowseQueryHandler}); err != nil {
 		return err
 	}
@@ -99,7 +86,8 @@ func readingBrowsePreparationFailure(w http.ResponseWriter, err error) {
 		return
 	}
 	if errors.Is(err, readprep.ErrCapacity) || errors.Is(err, readprep.ErrClosed) {
-		readingBrowseCapacityErrors.Write(w, w.Header().Get("X-Request-Id"), &apierror.Error{Code: "read_capacity", RetryAfterSeconds: 1})
+		w.Header().Set("Retry-After", "1")
+		policyError(w, "search_busy")
 		return
 	}
 	browseFailure(w, err)
@@ -252,13 +240,20 @@ func (d Dependencies) readingBrowseQueryHandler(w http.ResponseWriter, r *http.R
 		return
 	}
 	if result.State == readprep.Preparing {
+		// Path escaping expands each source byte at most threefold. Reserve
+		// envelope/header construction and serialization before allocating them.
+		locationBytes := int64(len("/v1/libraries/") + 3*len(library) + len("/reading-browse-queries/") + 3*len(id))
+		if err = result.ResizeDelivery(4096 + 4*locationBytes); err != nil {
+			readingBrowsePreparationFailure(w, err)
+			return
+		}
 		if _, err = check(); err != nil {
 			readingBrowsePreparationFailure(w, err)
 			return
 		}
 		w.Header().Set("Retry-After", "1")
 		w.Header().Set("Location", "/v1/libraries/"+url.PathEscape(library)+"/reading-browse-queries/"+url.PathEscape(id))
-		write(w, 202, ReadingBrowsePreparing{"reading-browse-preparing", id, readingBrowseRetryMs})
+		write(w, 202, ReadingBrowsePreparing{Kind: "reading-browse-preparing", State: "preparing", QueryID: id, RetryAfterMs: readingBrowseRetryMs})
 		return
 	}
 	// Charge typed seed decoding and its backing strings before hydration.

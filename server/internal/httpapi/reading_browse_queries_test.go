@@ -78,7 +78,9 @@ func TestReadingBrowsePreparationHTTPLeaseReadyCancelAndDrift(t *testing.T) {
 	entered := make(chan struct{})
 	var release sync.Once
 	t.Cleanup(func() { release.Do(func() { close(gate) }) })
-	_, err = store.Submit(context.Background(), "other-domain", readprep.Key{Namespace: "facet", Basis: "basis", Canonical: "query"}, readprep.Plan{InitialBytes: 64, New: func(context.Context, *readprep.Budget) (readprep.Computation, error) {
+	var heldBudget *readprep.Budget
+	_, err = store.Submit(context.Background(), "other-domain", readprep.Key{Namespace: "facet", Basis: "basis", Canonical: "query"}, readprep.Plan{InitialBytes: 64, New: func(_ context.Context, b *readprep.Budget) (readprep.Computation, error) {
+		heldBudget = b
 		return &heldReadingPreparation{gate, entered}, nil
 	}})
 	if err != nil {
@@ -91,7 +93,7 @@ func TestReadingBrowsePreparationHTTPLeaseReadyCancelAndDrift(t *testing.T) {
 	mux.HandleFunc("GET /v1/libraries/{id}/reading-browse-queries/{queryId}", f.d.readingBrowseQueryHandler)
 	mux.HandleFunc("DELETE /v1/libraries/{id}/reading-browse-queries/{queryId}", f.d.readingBrowseQueryHandler)
 	checkLease := func() {
-		if stats := store.Stats(); stats.Deliveries != 1 || stats.DeliveryBytes == 0 {
+		if stats := store.Stats(); stats.Deliveries != 1 || stats.DeliveryBytes < int64(4096+4*len(base+"/reading-browse-queries/")) {
 			t.Fatal("transport had no lease", stats)
 		}
 	}
@@ -100,7 +102,7 @@ func TestReadingBrowsePreparationHTTPLeaseReadyCancelAndDrift(t *testing.T) {
 		t.Fatal(w.Code, w.Body.String())
 	}
 	var pending ReadingBrowsePreparing
-	if err = json.Unmarshal(w.Body.Bytes(), &pending); err != nil || pending.Kind != "reading-browse-preparing" || pending.QueryID == "" {
+	if err = json.Unmarshal(w.Body.Bytes(), &pending); err != nil || pending.Kind != "reading-browse-preparing" || pending.State != "preparing" || pending.QueryID == "" {
 		t.Fatal(pending, err)
 	}
 	if store.Stats().Deliveries != 0 {
@@ -110,6 +112,25 @@ func TestReadingBrowsePreparationHTTPLeaseReadyCancelAndDrift(t *testing.T) {
 	w = preparedReadingHTTP(t, mux, "GET", path, f.f.owner.AccessToken, nil, checkLease)
 	if w.Code != 202 || store.Stats().Deliveries != 0 {
 		t.Fatal(w.Code, w.Body.String(), store.Stats())
+	}
+	// A Poll lease alone is insufficient for the pending envelope. Ordinary
+	// contention must refuse before constructing Location, then release its lease.
+	if err = heldBudget.Resize(64 + store.MaxBytes() - store.Stats().Bytes - 2048); err != nil {
+		t.Fatal(err)
+	}
+	w = preparedReadingHTTP(t, mux, "GET", path, f.f.owner.AccessToken, nil, func() {
+		if store.Stats().Deliveries != 1 {
+			t.Fatal("pending capacity response lost its lease")
+		}
+	})
+	if w.Code != 429 || !strings.Contains(w.Body.String(), `"code":"search_busy"`) || w.Header().Get("Retry-After") != "1" || w.Header().Get("Location") != "" {
+		t.Fatal(w.Code, w.Body.String(), w.Header())
+	}
+	if store.Stats().Deliveries != 0 || store.Stats().DeliveryBytes != 0 {
+		t.Fatal("pending capacity refusal leaked delivery reservation", store.Stats())
+	}
+	if err = heldBudget.Resize(64); err != nil {
+		t.Fatal(err)
 	}
 	// A second interest has its own handle. Cancelling one must not kill another.
 	second := preparedReadingHTTP(t, mux, "POST", base+"/browse", f.f.owner.AccessToken, map[string]any{"limit": 1}, checkLease)
@@ -152,7 +173,7 @@ func TestReadingBrowsePreparationHTTPLeaseReadyCancelAndDrift(t *testing.T) {
 }
 
 func TestReadingBrowsePreparationRouteContracts(t *testing.T) {
-	definitions := append(policyErrorDefinitions(), readingBrowsePreparationErrorDefinitions()...)
+	definitions := policyErrorDefinitions()
 	errors, e := apierror.New(definitions...)
 	if e != nil {
 		t.Fatal(e)
@@ -167,6 +188,11 @@ func TestReadingBrowsePreparationRouteContracts(t *testing.T) {
 	}
 	if _, e = apikit.Generate(defs); e != nil {
 		t.Fatal(e)
+	}
+	pendingShape := readingBrowseQueryResponse{}.JSONSchemaForStatus(202)
+	state := pendingShape["properties"].(map[string]any)["state"].(map[string]any)
+	if state["const"] != "preparing" || !strings.Contains(fmt.Sprint(pendingShape["required"]), "state") {
+		t.Fatal("preparing state contract missing", pendingShape)
 	}
 	shape := readingBrowseQueryResponse{}.JSONSchemaForStatus(200)
 	want, _ := apikit.Schema(reflect.TypeFor[catalog.BrowseResult]())
@@ -440,7 +466,7 @@ func TestReadingBrowseReadyDeliveryRefusesAggregateAndGiantWithoutLeaseLeak(t *t
 			}
 			time.Sleep(time.Millisecond)
 		}
-		if w.Code != 503 || !strings.Contains(w.Body.String(), `"code":"read_capacity"`) || w.Header().Get("Retry-After") != "1" {
+		if w.Code != 429 || !strings.Contains(w.Body.String(), `"code":"search_busy"`) || w.Header().Get("Retry-After") != "1" {
 			t.Fatal("unreserved page hydration bypassed the cap", giant, w.Code, w.Body.String())
 		}
 		if store.Stats().Deliveries != 0 || store.Stats().DeliveryBytes != 0 {
