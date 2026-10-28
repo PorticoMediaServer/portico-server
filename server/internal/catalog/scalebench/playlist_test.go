@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"portico.local/server/internal/catalog"
 	"portico.local/server/internal/compactcatalog"
@@ -135,5 +136,62 @@ func TestPlaylistReuseIsIdempotent(t *testing.T) {
 	}
 	if count != 100 {
 		t.Fatalf("reuse duplicated entries: %d", count)
+	}
+}
+
+func TestPlaylistReorderReadersCancelAndJoinBlockedPages(t *testing.T) {
+	entered, finished := make(chan struct{}, 2), make(chan struct{}, 2)
+	stop := startPlaylistReorderReaders(context.Background(), 2, func(ctx context.Context) error {
+		entered <- struct{}{}
+		<-ctx.Done()
+		finished <- struct{}{}
+		return ctx.Err()
+	})
+	t.Cleanup(func() { _, _ = stop() })
+	for range 2 {
+		select {
+		case <-entered:
+		case <-time.After(time.Second):
+			t.Fatal("reader never started")
+		}
+	}
+	counts, err := stop()
+	if err != nil || counts != (playlistReadCount{n: 2}) {
+		t.Fatal(counts, err)
+	}
+	if len(finished) != 2 {
+		t.Fatal("stop returned before all reads retired")
+	}
+	again, err := stop()
+	if err != nil || again != counts {
+		t.Fatal("join is not idempotent", again, err)
+	}
+}
+
+func TestPlaylistReorderReaderPanicFailsWithoutHangingJoin(t *testing.T) {
+	started := make(chan struct{})
+	stop := startPlaylistReorderReaders(context.Background(), 1, func(context.Context) error {
+		close(started)
+		panic("controlled playlist reader failure")
+	})
+	t.Cleanup(func() { _, _ = stop() })
+	select {
+	case <-started:
+	case <-time.After(time.Second):
+		t.Fatal("reader never started")
+	}
+	if _, err := stop(); err == nil {
+		t.Fatal("contained reader panic qualified the exercise")
+	}
+}
+
+func TestPlaylistReorderReadersHonorParentCancellation(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	stop := startPlaylistReorderReaders(ctx, 2, func(context.Context) error {
+		panic("cancelled reader started another page")
+	})
+	if counts, err := stop(); err != nil || counts != (playlistReadCount{}) {
+		t.Fatal(counts, err)
 	}
 }
