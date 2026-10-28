@@ -33,6 +33,7 @@ import type {MediaPlayer, PlayerEvent, PlayerObservation, PlayerSource} from '@c
 import {localPlayerSource, localPlayerLoadReceipt, type LocalPlayerSource, type LocalPlayerLoadContext, type LocalPlayerLoadReceipt} from '@core/playback-v1/local-port.ts';
 import {PlaybackSessionController, SessionsClient, type SessionChange, type StartContext, type StartOptions, type StartTarget, type Timers} from '@core/playback-v1/sessions.ts';
 import {requireSessionChangeCurrent, type SessionChangeContext} from '@core/playback-v1/change-context.ts';
+import {playerFailureCommand} from '@core/player-failure-command.ts';
 import {toPlaybackSession} from '@core/playback-v1/session-shape.ts';
 import {parseEqualizer, type EqualizerSettings} from './audio/equalizer';
 import {saveDeviceEqualizer} from './audio/equalizer-store';
@@ -915,20 +916,14 @@ export class WebPlayback implements PlaybackAdapter {
       },
       // The engine could not play the presentation: the server is told, and re-plans the same
       // session another way where the picture was. The queue and its place are untouched.
-      async reportPlayerFailure(sessionId: string, code: PlayerFailureCode, detail: string, positionSeconds: number) {
-        if (self.controller.getSnapshot().session?.id !== sessionId) return {escalates: false};
-        try {
-          const updated = await self.controller.change({failure: {code, detail: detail.replace(/[\x00-\x1f\x7f]/g, ' ').slice(0, 500)}, positionMs: Math.max(0, Math.round(positionSeconds * 1000))});
-          if (!updated) return {escalates: false};
-          const session = self.remember(updated);
-          for (const listener of self.changedListeners) listener(session);
-          return {escalates: true, session: toPlaybackSession(session, 0)};
-        } catch (e) {
-          // unsupported_media: that was the last way to deliver the file.
-          if (e instanceof PlaybackApiError && (e.code === 'unsupported_media' || e.status === 404 || e.status === 410)) return {escalates: false};
-          return null;
-        }
-      },
+      reportPlayerFailure: (sessionId: string, code: PlayerFailureCode, detail: string, positionSeconds: number) =>
+        playerFailureCommand({
+          current: () => self.controller.getSnapshot().session?.id,
+          change: (failure, positionMs) => self.controller.change({failure, positionMs}),
+          retain: session => self.remember(session),
+          changed: session => { for (const listener of self.changedListeners) listener(session); },
+          playback: session => toPlaybackSession(session, 0),
+        }, {sessionId, code, detail, positionSeconds}),
       onSessionChanged(listener: (session: Session) => void) {
         self.changedListeners.add(listener);
         return () => { self.changedListeners.delete(listener); };
