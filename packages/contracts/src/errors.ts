@@ -151,6 +151,12 @@ export const errors = [
     "retry": "same_request"
   },
   {
+    "code": "claim_move_required",
+    "status": 409,
+    "message": "In Settings, change sign-in from Local to Portico Account and confirm the move before connecting this server.",
+    "retry": "never"
+  },
+  {
     "code": "client_log_budget",
     "status": 429,
     "message": "The daily client log limit has been reached.",

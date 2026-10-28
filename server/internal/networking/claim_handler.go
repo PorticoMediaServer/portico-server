@@ -578,6 +578,8 @@ func (h *ClaimHandler) failure(w http.ResponseWriter, r *http.Request, e error) 
 		writeClaimFailure(w, 400, "invalid_claim_request", "Check the claim request and try again.", false)
 	case errors.Is(e, ErrOwnerCollision):
 		writeClaimFailure(w, 409, "owner_target_exists", "This account is already represented on this server.", false)
+	case errors.Is(e, ErrClaimMoveRequired):
+		writeClaimFailure(w, 409, "claim_move_required", "In Settings, change sign-in from Local to Portico Account and confirm the move before connecting this server.", false)
 	case errors.Is(e, ErrStale):
 		writeClaimFailure(w, 409, "claim_stale", "Server setup changed. Refresh its status before continuing.", false)
 	case errors.Is(e, ErrApprovalRequired):

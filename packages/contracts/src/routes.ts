@@ -14929,6 +14929,7 @@ export const routes = [
       "unauthorized",
       "not_permitted",
       "not_found",
+      "claim_move_required",
       "internal",
       "database_busy",
       "writer_capacity"
