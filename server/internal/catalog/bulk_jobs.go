@@ -416,7 +416,11 @@ func (s *Service) BulkAdapter(access BulkAccess) operations.Adapter {
 						return operations.JobObservation{}, err
 					}
 				}
+				preparing := next.State == "building" && next.Total == j.Total
 				j = next
+				if preparing {
+					break
+				}
 				if j.State != "running" && j.State != "queued" && j.State != "building" {
 					break
 				}
@@ -461,7 +465,7 @@ func (s *Service) AdvanceBulkJob(ctx context.Context, id string, access BulkAcce
 		return out, err
 	}
 	if state == "building" {
-		return s.bulkCaptureStep(ctx, id)
+		return s.bulkCaptureStep(ctx, id, access)
 	}
 
 	err = dbwork.WithWriteTx(ctx, s.db, dbwork.ClassBackgroundMedia, func(tx *sql.Tx) error {

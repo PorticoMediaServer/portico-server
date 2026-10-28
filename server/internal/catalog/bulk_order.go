@@ -74,6 +74,10 @@ func scalarKeys(ctx context.Context, tx *sql.Tx, query string, args []any, desc,
 	return key, nil
 }
 func (s *Service) bulkSortKey(ctx context.Context, tx *sql.Tx, v Viewer, selector JobSelector, item int64) (string, error) {
+	return s.bulkSortKeyReserved(ctx, tx, v, selector, item, nil)
+}
+
+func (s *Service) bulkSortKeyReserved(ctx context.Context, tx *sql.Tx, v Viewer, selector JobSelector, item int64, reserve func(int64) error) (string, error) {
 	tie := bulkOrderValue(item, false) + "V"
 	if selector.Items != nil {
 		var public string
@@ -88,6 +92,13 @@ func (s *Service) bulkSortKey(ctx context.Context, tx *sql.Tx, v Viewer, selecto
 	}
 	prefix := ""
 	if q := selector.Query; q != nil {
+		var node *BrowseNode
+		if len(q.Filter) > 0 {
+			if err := json.Unmarshal(q.Filter, &node); err != nil {
+				return "", err
+			}
+		}
+		localReplay := selectionBatchHasLocalSearch(node)
 		var libraryKind string
 		if e := tx.QueryRowContext(ctx, `SELECT CASE kind WHEN 1 THEN 'movie' WHEN 2 THEN 'tv' WHEN 3 THEN 'anime' WHEN 4 THEN 'music' WHEN 5 THEN 'audiobook' END FROM catalog_libraries WHERE library_id=? AND retired=0`, q.LibraryID).Scan(&libraryKind); e != nil {
 			return "", e
@@ -106,7 +117,18 @@ func (s *Service) bulkSortKey(ctx context.Context, tx *sql.Tx, v Viewer, selecto
 		fold := []bool{}
 		for _, entry := range sorts {
 			definition, _ := browseSortByID(entry.Field)
-			expressions = append(expressions, definition.Expression)
+			expression := definition.Expression
+			if localReplay {
+				switch entry.Field {
+				case "personalRating":
+					expression = "COALESCE((SELECT p.rating FROM catalog_personal_sort_rows p WHERE p.profile_id=? AND p.entity_id=e.entity_id),0)"
+				case "lastPlayed":
+					expression = "COALESCE((SELECT p.last_played_at FROM catalog_personal_sort_rows p WHERE p.profile_id=? AND p.entity_id=e.entity_id),'')"
+				case "groupOrder":
+					return "", ErrSelectionBatchUnsupported
+				}
+			}
+			expressions = append(expressions, expression)
 			if definition.Profile {
 				args = append(args, v.Profile)
 			}
@@ -119,28 +141,45 @@ func (s *Service) bulkSortKey(ctx context.Context, tx *sql.Tx, v Viewer, selecto
 		scope, scoped := browseScopeSQL(q.LibraryID, pivot)
 		args = append(args, item)
 		args = append(args, scoped...)
-		var node *BrowseNode
-		if len(q.Filter) > 0 {
-			if e = json.Unmarshal(q.Filter, &node); e != nil {
-				return "", e
-			}
-		}
 		compiler := &browseCompiler{now: s.recommendationNow(s.browseInstant), profile: v.Profile, restrictions: v.EffectiveRestrictions()}
 		readingEligible, e := s.bindReadingBrowse(q.LibraryID, compiler)
 		if e != nil {
 			return "", e
 		}
 		scope += " AND " + readingEligible
-		filter, e := compiler.compile(node)
-		if e != nil {
-			return "", e
-		}
-		args = append(args, compiler.args...)
-		order, ordered := browseOrderSQL(v.Profile, sorts)
-		args = append(args, ordered...)
-		prefix, e = scalarKeys(ctx, tx, `SELECT `+strings.Join(expressions, ",")+` FROM catalog_entities item JOIN catalog_browse_memberships bm ON bm.item_id=item.id JOIN catalog_browse_rows e ON e.entity_id=bm.entity_id WHERE item.id=? AND `+scope+` AND `+filter+` ORDER BY `+order+` LIMIT 1`, args, desc, fold)
-		if e != nil {
-			return "", e
+		if localReplay {
+			// Capture already proved this leaf against the original query and
+			// complete witness. Read its exact command-order scalar by identity;
+			// do not send that search back through FTS or a member postfilter.
+			if !selectionLeafPivot(pivot) {
+				return "", ErrSelectionBatchUnsupported
+			}
+			source := ` FROM catalog_entities item JOIN catalog_browse_rows e ON e.entity_id=item.id WHERE item.id=? AND ` + scope
+			if reserve != nil {
+				sizes := make([]string, len(expressions))
+				for i, expression := range expressions {
+					sizes[i] = `COALESCE(length(CAST((` + expression + `) AS BLOB)),0)`
+				}
+				if e = reserveBulkSortScalars(ctx, tx, `SELECT `+strings.Join(sizes, "+")+source, args, reserve); e != nil {
+					return "", e
+				}
+			}
+			prefix, e = scalarKeys(ctx, tx, `SELECT `+strings.Join(expressions, ",")+source, args, desc, fold)
+			if e != nil {
+				return "", e
+			}
+		} else {
+			filter, e := compiler.compile(node)
+			if e != nil {
+				return "", e
+			}
+			args = append(args, compiler.args...)
+			order, ordered := browseOrderSQL(v.Profile, sorts)
+			args = append(args, ordered...)
+			prefix, e = scalarKeys(ctx, tx, `SELECT `+strings.Join(expressions, ",")+` FROM catalog_entities item JOIN catalog_browse_memberships bm ON bm.item_id=item.id JOIN catalog_browse_rows e ON e.entity_id=bm.entity_id WHERE item.id=? AND `+scope+` AND `+filter+` ORDER BY `+order+` LIMIT 1`, args, desc, fold)
+			if e != nil {
+				return "", e
+			}
 		}
 	}
 	if c := selector.Container; c != nil && (c.Kind == "playlist" || c.Kind == "collection") {
@@ -177,6 +216,34 @@ func (s *Service) bulkSortKey(ctx context.Context, tx *sql.Tx, v Viewer, selecto
 		desc = []bool{false}
 		fold = []bool{true}
 	}
+	if reserve != nil {
+		// The child-order arm reads numeric scalars plus at most an album/movie
+		// title. Probe its maintained source before Go loads or encodes text.
+		sizeQuery := `SELECT 512 FROM catalog_entities WHERE id=?`
+		if kind == "song" {
+			sizeQuery = `SELECT COALESCE(length(CAST(album.title AS BLOB)),0)+512 FROM catalog_songs song JOIN catalog_entities album ON album.id=song.album_id WHERE song.entity_id=?`
+		}
+		if kind != "song" && kind != "episode" && kind != "audiobook_file" {
+			sizeQuery = `SELECT COALESCE(length(CAST(title AS BLOB)),0)+512 FROM catalog_entities WHERE id=?`
+		}
+		if e := reserveBulkSortScalars(ctx, tx, sizeQuery, []any{item}, reserve); e != nil {
+			return "", e
+		}
+	}
 	key, e := scalarKeys(ctx, tx, query, []any{item}, desc, fold)
 	return prefix + key + tie, e
+}
+
+// Covers SQL/Go copies, NOCASE folding, builder growth, encoded retained keys
+// and their concatenations. A legal oversized title yields typed capacity,
+// never truncation or an unreserved command buffer.
+func reserveBulkSortScalars(ctx context.Context, tx *sql.Tx, query string, args []any, reserve func(int64) error) error {
+	var bytes int64
+	if err := tx.QueryRowContext(ctx, query, args...).Scan(&bytes); err != nil {
+		return err
+	}
+	if bytes < 0 || bytes > (math.MaxInt64-8192)/32 {
+		return ErrSelectionBatchCapacity
+	}
+	return reserve(32*bytes + 8192)
 }

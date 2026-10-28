@@ -50,7 +50,7 @@ func bulkSelectionRevisionFence(q interface {
 // revision fence must remain the accepted one until the last key is copied.
 // A changed source fails without applying anything, rather than silently growing
 // the confirmed set. No HTTP request enumerates a library or holds this snapshot.
-func (s *Service) bulkCaptureStep(ctx context.Context, id string) (out BulkJob, err error) {
+func (s *Service) bulkCaptureStep(ctx context.Context, id string, access BulkAccess) (out BulkJob, err error) {
 	snap, e := dbwork.BeginSnapshot(ctx, s.db)
 	if e != nil {
 		return out, e
@@ -84,6 +84,10 @@ func (s *Service) bulkCaptureStep(ctx context.Context, id string) (out BulkJob, 
 		return out, e
 	}
 	keys := []int64{}
+	replay := query == bulkReplaySelection
+	eof := false
+	var page BrowseSelectionReplayPage
+	defer func() { page.Release() }()
 	if current == fence {
 		// Captured keys are integer entity ids; the stored cursor is their
 		// decimal form ("" before the first batch).
@@ -93,26 +97,49 @@ func (s *Service) bulkCaptureStep(ctx context.Context, id string) (out BulkJob, 
 				cursorID = n
 			}
 		}
-		rows, e := snap.Tx().QueryContext(ctx, `SELECT id FROM (`+query+`) selected WHERE id>? ORDER BY id LIMIT ?`, append(args, cursorID, bulkBatchSize)...)
-		if e != nil {
-			return out, e
-		}
-		for rows.Next() {
-			var key int64
-			if e = rows.Scan(&key); e != nil {
-				rows.Close()
+		if replay {
+			page, e = s.WithContext(snap.Context()).bulkReplayPage(id, cursor, v, selector, p, command, arguments, access)
+			if e != nil {
 				return out, e
 			}
-			keys = append(keys, key)
-		}
-		e = rows.Err()
-		rows.Close()
-		if e != nil {
-			return out, e
+			if page.Preparing {
+				return scanBulk(snap.Tx().QueryRowContext(ctx, `SELECT `+bulkColumns+` FROM personal_jobs WHERE id=?`, id))
+			}
+			keys, eof = page.IDs, page.EOF
+			// Retain the existing 20-target accepting writer bound. A prepared
+			// page can be larger; its suffix is replayed from the last accepted
+			// ID, never persisted as query progress or mistaken for EOF.
+			if len(keys) > bulkBatchSize {
+				keys, eof = keys[:bulkBatchSize], false
+			}
+		} else {
+			rows, e := snap.Tx().QueryContext(ctx, `SELECT id FROM (`+query+`) selected WHERE id>? ORDER BY id LIMIT ?`, append(args, cursorID, bulkBatchSize)...)
+			if e != nil {
+				return out, e
+			}
+			for rows.Next() {
+				var key int64
+				if e = rows.Scan(&key); e != nil {
+					rows.Close()
+					return out, e
+				}
+				keys = append(keys, key)
+			}
+			e = rows.Err()
+			rows.Close()
+			if e != nil {
+				return out, e
+			}
+			eof = len(keys) < bulkBatchSize
 		}
 	}
 	expected, sortKeys := map[int64]string{}, map[int64]string{}
 	for _, key := range keys {
+		if replay {
+			if e = s.WithContext(snap.Context()).bulkReplayTarget(snap.Tx(), v, selector, command, key); e != nil {
+				return out, e
+			}
+		}
 		if command == "playlist-add" || command == "collection-add" {
 			// This stable identity also fences apply against integer row-id reuse.
 			var publicID string
@@ -122,7 +149,11 @@ func (s *Service) bulkCaptureStep(ctx context.Context, id string) (out BulkJob, 
 			expected[key] = publicID
 		}
 		if command == "playlist-add" {
-			sortKeys[key], e = s.bulkSortKey(ctx, snap.Tx(), v, selector, key)
+			if replay {
+				sortKeys[key], e = s.bulkSortKeyReserved(ctx, snap.Tx(), v, selector, key, page.lease.Reserve)
+			} else {
+				sortKeys[key], e = s.bulkSortKey(ctx, snap.Tx(), v, selector, key)
+			}
 			if e != nil {
 				return out, e
 			}
@@ -149,6 +180,17 @@ func (s *Service) bulkCaptureStep(ctx context.Context, id string) (out BulkJob, 
 			var e error
 			out, e = scanBulk(tx.QueryRow(`SELECT `+bulkColumns+` FROM personal_jobs WHERE id=?`, id))
 			return e
+		}
+		if replay {
+			if access == nil {
+				return identity.ErrUnauthorized
+			}
+			if _, _, e := access(ctx, tx, p, "i.id"); e != nil {
+				return e
+			}
+			if e := s.authorizeBulkCommand(ctx, tx, p, command, arguments, false); e != nil {
+				return e
+			}
 		}
 		now, e := s.WithContext(ctx).bulkSelectionFence(tx, v, selector)
 		if errors.Is(e, ErrSelectionBatchStale) {
@@ -187,7 +229,7 @@ func (s *Service) bulkCaptureStep(ctx context.Context, id string) (out BulkJob, 
 				}
 				liveCursor = strconv.FormatInt(key, 10)
 			}
-			if len(keys) < bulkBatchSize {
+			if eof {
 				state = "queued"
 			}
 			if _, e = tx.ExecContext(ctx, `UPDATE personal_jobs SET revision=revision+1,total=?,selection_cursor=?,state=?,selection_complete=?,updated_ms=? WHERE id=?`, total+int64(len(keys)), liveCursor, state, state == "queued", time.Now().UnixMilli(), id); e != nil {
@@ -200,5 +242,8 @@ func (s *Service) bulkCaptureStep(ctx context.Context, id string) (out BulkJob, 
 		}
 		return bulkEvent(tx, p, id)
 	})
+	if err == nil && replay && s.ReadPreparations() != nil {
+		_ = s.ReadPreparations().Cancel(context.WithoutCancel(ctx), bulkReplayCaller(id), page.handle)
+	}
 	return
 }
