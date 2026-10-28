@@ -164,7 +164,7 @@ func registerLiveContracts(r *apikit.Registry, d Dependencies) {
 		if d.Administration == nil {
 			return LiveOwnerResult[administration.LiveSourceDocument]{}, administration.ErrUnavailable
 		}
-		value, e := d.Administration.SaveLiveSourceConfiguration(ctx, d.administrationAuthority(p), q.PathValue("id"), in)
+		value, e := d.Administration.SaveLiveSourceConfiguration(ctx, d.administrationAuthority(p), q.PathValue("id"), in, d.LiveChannels.ConfigurationChangedTx)
 		return LiveOwnerResult[administration.LiveSourceDocument]{"1.0", d.Identity.ID(), value}, e
 	})
 	liveContract(r, d, "GET", "/v1/admin/dvr/tuners", "get_live_tuners", 0, func(ctx context.Context, q *http.Request, p identity.Principal, _ struct{}) (LiveOwnerResult[administration.TunerView], error) {

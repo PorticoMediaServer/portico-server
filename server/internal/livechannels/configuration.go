@@ -126,6 +126,9 @@ type ChannelNumbering struct {
 	Step    int    `json:"step"`
 }
 type LiveSourceSettings struct {
+	Enabled         *bool                `json:"enabled,omitempty"`
+	ViewerAccess    *string              `json:"viewerAccess,omitempty"`
+	Remote          *RemoteConfiguration `json:"remote,omitempty"`
 	configured      bool
 	EnabledGroups   []string `json:"enabledGroups"`
 	EnabledChannels []string `json:"enabledChannels"`

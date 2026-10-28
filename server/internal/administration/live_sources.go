@@ -256,7 +256,7 @@ func liveSourceExists(ctx context.Context, tx *sql.Tx, id string) (string, int, 
 	if !tableExists(ctx, tx, "live_sources") {
 		return "", 0, ErrNotFound
 	}
-	err := tx.QueryRowContext(ctx, `SELECT name,tuner_count FROM live_sources WHERE id=?`, id).Scan(&name, &tuners)
+	err := tx.QueryRowContext(ctx, `SELECT name,tuner_count FROM live_sources WHERE id=? AND NOT EXISTS(SELECT 1 FROM live_source_removals WHERE source_id=live_sources.id)`, id).Scan(&name, &tuners)
 	if errors.Is(err, sql.ErrNoRows) {
 		return "", 0, ErrNotFound
 	}
@@ -288,6 +288,14 @@ func (s *Service) liveSourceDocument(ctx context.Context, tx *sql.Tx, id string)
 		return out, err
 	}
 	normalizeLiveSourceSettings(&settings)
+	if err = livechannels.ReadPersistedConfigurationTx(ctx, tx, id, &settings); err != nil {
+		return out, err
+	}
+	var sourceRevision int64
+	if err = tx.QueryRowContext(ctx, `SELECT revision FROM live_sources WHERE id=?`, id).Scan(&sourceRevision); err != nil {
+		return out, err
+	}
+	revision += sourceRevision - 1
 	effective := defaults
 	if settings.StreamBufferMs != nil {
 		effective.StreamBufferMs = *settings.StreamBufferMs
@@ -318,7 +326,7 @@ func (s *Service) LiveSourceConfiguration(ctx context.Context, auth Authorize, i
 }
 
 // SaveLiveSourceConfiguration writes one source's configuration.
-func (s *Service) SaveLiveSourceConfiguration(ctx context.Context, auth Authorize, id string, change Change[LiveSourceSettings]) (LiveSourceDocument, error) {
+func (s *Service) SaveLiveSourceConfiguration(ctx context.Context, auth Authorize, id string, change Change[LiveSourceSettings], accepted ...func(context.Context, *sql.Tx, string, LiveSourceSettings) error) (LiveSourceDocument, error) {
 	var out LiveSourceDocument
 	if !validOperationID(change.OperationID) {
 		return out, ErrInput
@@ -357,10 +365,26 @@ func (s *Service) SaveLiveSourceConfiguration(ctx context.Context, auth Authoriz
 		if err != nil {
 			return err
 		}
-		if revision != change.ExpectedRevision {
+		var sourceRevision int64
+		if err = tx.QueryRowContext(ctx, `SELECT revision FROM live_sources WHERE id=?`, id).Scan(&sourceRevision); err != nil {
+			return err
+		}
+		if revision+sourceRevision-1 != change.ExpectedRevision {
 			return ErrConflict
 		}
 		at := s.milliseconds()
+		if err = livechannels.SavePersistedConfigurationTx(ctx, tx, id, &value); err != nil {
+			return err
+		}
+		for _, accept := range accepted {
+			if err = accept(ctx, tx, id, value); err != nil {
+				return err
+			}
+		}
+		// Runtime acquisition state has one authority; never copy it or credentials into admin_documents.
+		value.Enabled = nil
+		value.ViewerAccess = nil
+		value.Remote = nil
 		if err = writeDocument(ctx, tx, scope, revision+1, value, at); err != nil {
 			return err
 		}
@@ -582,7 +606,11 @@ func (s *Service) SaveChannelMap(ctx context.Context, auth Authorize, id string,
 		if err != nil {
 			return err
 		}
-		if revision != change.ExpectedRevision {
+		var sourceRevision int64
+		if err = tx.QueryRowContext(ctx, `SELECT revision FROM live_sources WHERE id=?`, id).Scan(&sourceRevision); err != nil {
+			return err
+		}
+		if revision+sourceRevision-1 != change.ExpectedRevision {
 			return ErrConflict
 		}
 		if len(change.Overrides) > 0 {

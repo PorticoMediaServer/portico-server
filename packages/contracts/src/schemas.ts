@@ -130519,6 +130519,9 @@ export const schemas = {
                 ],
                 "type": "object"
               },
+              "enabled": {
+                "type": "boolean"
+              },
               "enabledChannels": {
                 "items": {
                   "type": "string"
@@ -130645,6 +130648,53 @@ export const schemas = {
                 ],
                 "type": "object"
               },
+              "remote": {
+                "properties": {
+                  "confirmedLanRoots": {
+                    "items": {
+                      "type": "string"
+                    },
+                    "type": "array"
+                  },
+                  "guideUrl": {
+                    "type": "string"
+                  },
+                  "guideUrlRedacted": {
+                    "type": "boolean"
+                  },
+                  "kind": {
+                    "type": "string"
+                  },
+                  "ownerLimit": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "password": {
+                    "type": "string"
+                  },
+                  "refreshMs": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "useDiscoveredCapacity": {
+                    "type": "boolean"
+                  },
+                  "username": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "kind",
+                  "guideUrl",
+                  "guideUrlRedacted",
+                  "refreshMs",
+                  "ownerLimit",
+                  "useDiscoveredCapacity"
+                ],
+                "type": "object"
+              },
               "retryWindowMs": {
                 "maximum": 9007199254740991,
                 "minimum": -9007199254740991,
@@ -130658,6 +130708,9 @@ export const schemas = {
                 "type": "integer"
               },
               "userAgent": {
+                "type": "string"
+              },
+              "viewerAccess": {
                 "type": "string"
               }
             },
@@ -251947,6 +252000,9 @@ export const schemas = {
             ],
             "type": "object"
           },
+          "enabled": {
+            "type": "boolean"
+          },
           "enabledChannels": {
             "items": {
               "type": "string"
@@ -252073,6 +252129,53 @@ export const schemas = {
             ],
             "type": "object"
           },
+          "remote": {
+            "properties": {
+              "confirmedLanRoots": {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              "guideUrl": {
+                "type": "string"
+              },
+              "guideUrlRedacted": {
+                "type": "boolean"
+              },
+              "kind": {
+                "type": "string"
+              },
+              "ownerLimit": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "password": {
+                "type": "string"
+              },
+              "refreshMs": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "useDiscoveredCapacity": {
+                "type": "boolean"
+              },
+              "username": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "kind",
+              "guideUrl",
+              "guideUrlRedacted",
+              "refreshMs",
+              "ownerLimit",
+              "useDiscoveredCapacity"
+            ],
+            "type": "object"
+          },
           "retryWindowMs": {
             "maximum": 9007199254740991,
             "minimum": -9007199254740991,
@@ -252086,6 +252189,9 @@ export const schemas = {
             "type": "integer"
           },
           "userAgent": {
+            "type": "string"
+          },
+          "viewerAccess": {
             "type": "string"
           }
         },
@@ -252244,6 +252350,9 @@ export const schemas = {
                 ],
                 "type": "object"
               },
+              "enabled": {
+                "type": "boolean"
+              },
               "enabledChannels": {
                 "items": {
                   "type": "string"
@@ -252370,6 +252479,53 @@ export const schemas = {
                 ],
                 "type": "object"
               },
+              "remote": {
+                "properties": {
+                  "confirmedLanRoots": {
+                    "items": {
+                      "type": "string"
+                    },
+                    "type": "array"
+                  },
+                  "guideUrl": {
+                    "type": "string"
+                  },
+                  "guideUrlRedacted": {
+                    "type": "boolean"
+                  },
+                  "kind": {
+                    "type": "string"
+                  },
+                  "ownerLimit": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "password": {
+                    "type": "string"
+                  },
+                  "refreshMs": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "useDiscoveredCapacity": {
+                    "type": "boolean"
+                  },
+                  "username": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "kind",
+                  "guideUrl",
+                  "guideUrlRedacted",
+                  "refreshMs",
+                  "ownerLimit",
+                  "useDiscoveredCapacity"
+                ],
+                "type": "object"
+              },
               "retryWindowMs": {
                 "maximum": 9007199254740991,
                 "minimum": -9007199254740991,
@@ -252383,6 +252539,9 @@ export const schemas = {
                 "type": "integer"
               },
               "userAgent": {
+                "type": "string"
+              },
+              "viewerAccess": {
                 "type": "string"
               }
             },
