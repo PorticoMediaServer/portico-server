@@ -61,7 +61,7 @@ func TestSavedCollectionVisibilityAndEntryOutcomes(t *testing.T) {
 	if len(repeat.Entries.Unchanged) != 1 || repeat.Entries.Unchanged[0] != pub("a") || len(repeat.Entries.Failed) != 1 {
 		t.Fatal("repeat outcomes", repeat.Entries)
 	}
-	content, e := s.SavedResourceContent(Viewer{Libraries: []string{"m"}}, "s", "f", id, owner, "", 40)
+	content, e := s.SavedResourceContent(Viewer{Libraries: []string{"m"}}, "s", "f", id, owner, ResourceContentQuery{}, "", 40)
 	if e != nil || len(content.Entries) != 2 {
 		t.Fatal("membership", content, e)
 	}

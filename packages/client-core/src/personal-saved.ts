@@ -9,7 +9,7 @@ import {firstOfEach,keepReadable,noteSkipped,oneOfOr} from './tolerant.ts';
 import {validateContentEntry,type ContentEntry} from './library-content.ts';
 import {parseBrowseNode,parseBrowseResult,type BrowseNode,type BrowseResult,type BrowseSortSelection} from './browse.ts';
 import type {SavedApi,SavedScope,SavedRoute,SavedActor,SavedShapeCounts} from './saved.ts';
-import {parseSavedShapeCounts} from './saved.ts';
+import {parseSavedShapeCounts,parseResourceOrderWitness,resourceContentManual,resourceContentParams,resourceContentQuery,type ResourceContentQuery,type ResourceOrderWitness} from './saved.ts';
 export type PersonalResourceKind='collection'|'view';
 /** A saved view stores the whole browse request: the pivot, the expression tree
  * and the sort. The server validates it against the published capabilities; this
@@ -30,7 +30,10 @@ export type PersonalSavedIntent=Readonly<
  {action:'share';actor:SavedActor;role:'viewer'|'editor'}|{action:'unshare';actor:SavedActor}|
  {action:'clear-history'|'reset-viewing-activity'}>;
 export type PersonalSavedError=Readonly<{code:string;message:string;conflict:boolean}>;
-export type PersonalSavedSnapshot=Readonly<{shapeCounts?:SavedShapeCounts;route:SavedRoute|null;loading:boolean;error:PersonalSavedError|null;mutationError:PersonalSavedError|null;pending:boolean;retryPending:boolean;resources:readonly PersonalResource[];resource:PersonalResource|null;entries:readonly PersonalResourceEntry[];browse:BrowseResult|null;revision:number;viewerFence:string;cursor:string|null;history:readonly (string|null)[];nextCursor:string;result:Readonly<{resourceId?:string;deleted:boolean;entries?:EntryOutcomes;/** A removal can be undone until `until` with this token. */undo?:Readonly<{token:string;until:string}>}>|null;candidates:readonly Readonly<SavedActor&{id:string;displayName:string}>[];candidateCursor:string;libraries:readonly Readonly<{id:string;name:string;kind:string}>[]}>;
+/** A collection page's own query echo, offered orders and filters, matching count, the index
+ * of its first entry in the whole query and, in the collection's own order, its witnesses. */
+export type PersonalResourcePage=Readonly<{sort:string;direction:'asc'|'desc';filter:string;sorts:readonly Readonly<{id:string;labelKey:string;directions:readonly ('asc'|'desc')[]}>[];filters:readonly Readonly<{id:string;labelKey:string;options:readonly Readonly<{id:string;label:string;count:number}>[]}>[];totalCount:number;start:number;order?:ResourceOrderWitness}>;
+export type PersonalSavedSnapshot=Readonly<{page:PersonalResourcePage|null;shapeCounts?:SavedShapeCounts;route:SavedRoute|null;loading:boolean;error:PersonalSavedError|null;mutationError:PersonalSavedError|null;pending:boolean;retryPending:boolean;resources:readonly PersonalResource[];resource:PersonalResource|null;entries:readonly PersonalResourceEntry[];browse:BrowseResult|null;revision:number;viewerFence:string;cursor:string|null;history:readonly (string|null)[];nextCursor:string;result:Readonly<{resourceId?:string;deleted:boolean;entries?:EntryOutcomes;/** A removal can be undone until `until` with this token. */undo?:Readonly<{token:string;until:string}>}>|null;candidates:readonly Readonly<SavedActor&{id:string;displayName:string}>[];candidateCursor:string;libraries:readonly Readonly<{id:string;name:string;kind:string}>[]}>;
 const obj=(v:unknown):v is Record<string,unknown>=>v!==null&&typeof v==='object'&&!Array.isArray(v);
 const str=(v:unknown,max=4096):v is string=>typeof v==='string'&&v.length<=max&&!/[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]/.test(v);
 const id=(v:unknown):v is string=>str(v,256)&&v.length>0&&!/[\r\n]/.test(v);
@@ -130,6 +133,14 @@ function freeze<T>(v:T):T{if(v&&typeof v==='object'){for(const c of Object.value
 /** Entries a page holds, and how far a quiet re-read reaches: DEEP_PAGES pages of PAGE. */
 const PAGE=40,DEEP_PAGES=25;
 function shownOf(route:SavedRoute,p:{resources?:readonly PersonalResource[];entries?:readonly PersonalResourceEntry[]}):readonly {id:string}[]{return (route.view==='collections'||route.view==='views'?p.resources:p.entries)??[];}
+/** A collection page's query echo must be the query asked for (defaults filled in). */
+function resourcePage(raw:Record<string,unknown>,asked:ResourceContentQuery):PersonalResourcePage{
+ const q=raw.query;if(!obj(q)||q.sort!==(asked.sort??'position')||q.category!==(asked.filter??'all')||q.direction!=='asc'&&q.direction!=='desc'||asked.direction!==undefined&&q.direction!==asked.direction||!num(raw.totalCount)||raw.start!==undefined&&!num(raw.start))bad();
+ const sorts=distinct(keepReadable('personal-saved','sorts',rows(raw.sorts,16),v=>{if(!obj(v)||!id(v.id)||!id(v.labelKey))bad();return {id:v.id,labelKey:v.labelKey,directions:[...new Set(rows(v.directions,2).filter((d):d is 'asc'|'desc'=>d==='asc'||d==='desc'))]};}),'sorts');
+ const filters=distinct(keepReadable('personal-saved','filters',rows(raw.filters,4),v=>{if(!obj(v)||!id(v.id)||!id(v.labelKey))bad();return {id:v.id,labelKey:v.labelKey,options:distinct(keepReadable('personal-saved','filter.options',rows(v.options,8),o=>{if(!obj(o)||!id(o.id)||!str(o.label,120)||!num(o.count))bad();return {id:o.id,label:o.label,count:o.count};}),'filter.options')};}),'filters');
+ const order=resourceContentManual(asked)?parseResourceOrderWitness(raw.order):undefined;
+ return freeze({sort:q.sort as string,direction:q.direction as 'asc'|'desc',filter:q.category as string,sorts,filters,totalCount:raw.totalCount as number,start:(raw.start as number|undefined)??0,...(order?{order}:{})});
+}
 export function isPersonalSavedRoute(route:SavedRoute|null):boolean{return !!route&&['collections','views','history','resource'].includes(route.view);}
 /** The definition names an existing authorized library and canonical browse semantics. */
 export function makeSavedDefinition(libraryId:string,titlePrefix='',presentation:'grid'|'list'='grid',sort:string='title',direction:'asc'|'desc'='asc',categoryId='',pivot='movies'):SavedDefinition{
@@ -166,7 +177,7 @@ export class PersonalSavedService{
  private command?:{intent:PersonalSavedIntent;path:string;method:string;body:Record<string,unknown>;fence:string;rebased?:boolean};
  private api:SavedApi;readonly scope:SavedScope;private requestId:()=>Promise<string>;
  constructor(api:SavedApi,scope:SavedScope,requestId:()=>Promise<string>){this.api=api;this.scope=Object.freeze({...scope});this.requestId=requestId;if(!id(scope.serverId)||!str(scope.viewerId,1024)||!scope.viewerId)throw new Error('A complete viewer scope is required.');this.state=this.empty();}
- private empty():PersonalSavedSnapshot{return freeze({route:null,loading:false,error:null,mutationError:null,pending:false,retryPending:false,resources:[],resource:null,entries:[],browse:null,revision:0,viewerFence:'',cursor:null,history:[],nextCursor:'',result:null,candidates:[],candidateCursor:'',libraries:[]});}
+ private empty():PersonalSavedSnapshot{return freeze({page:null,route:null,loading:false,error:null,mutationError:null,pending:false,retryPending:false,resources:[],resource:null,entries:[],browse:null,revision:0,viewerFence:'',cursor:null,history:[],nextCursor:'',result:null,candidates:[],candidateCursor:'',libraries:[]});}
  getSnapshot=()=>this.state;
  subscribe=(fn:()=>void)=>{this.listeners.add(fn);return()=>{this.listeners.delete(fn);};};
  private publish(patch:Partial<PersonalSavedSnapshot>){if(this.disposed)return;this.state=freeze({...this.state,...patch});for(const fn of this.listeners)fn();}
@@ -241,17 +252,20 @@ export class PersonalSavedService{
   if(this.state.viewerFence&&this.state.viewerFence!==first.viewerFence)throw Object.assign(new Error('Your access changed. Reopen Saved to continue.'),{code:'scope_changed'});
   await quiet.settle?.();if(!this.alive(g)||ticket!==this.readTicket||quiet.signal?.aborted||this.state.pending||this.command)return true;
   const combined=route.view==='collections'||route.view==='views'?{resources:all as unknown as PersonalResource[]}:{entries:all as unknown as PersonalResourceEntry[],...(first.browse&&last.browse?{browse:freeze({...first.browse,entries:(all as unknown as PersonalResourceEntry[]).flatMap(e=>e.media?[e.media]:[]),pageInfo:last.browse.pageInfo})}:{})};
-  this.seen=all.length;this.publish({...first,...combined,nextCursor:next,cursor:null,history:[],loading:false});
+  // Read from the first page, so nothing precedes it: the last page read names what follows.
+  let page=first.page;if(page&&last.page){const {order:_,...rest}=page;page=freeze({...rest,...(last.page.order?{order:last.page.order}:{})});}
+  this.seen=all.length;this.publish({...first,...combined,page,nextCursor:next,cursor:null,history:[],loading:false});
   return true;
  }
  /** One page of the route, read and checked. */
  private async page(route:SavedRoute,cursor:string|null,history:readonly (string|null)[],signal?:AbortSignal){
    const query=new URLSearchParams({limit:String(PAGE),...(cursor?{cursor}:{})});
+   if(route.view==='resource')resourceContentParams(query,resourceContentQuery(route));
    const path=route.view==='resource'?encodedRoutePath("get_saved_resources_id_content", {"id": encodeURIComponent(route.resourceId!)}):route.view==='history'?routePath("get_personal_history"):routePath("get_saved_resources");
    if(route.view==='collections'||route.view==='views'){query.set('kind',route.view==='collections'?'collection':'view');if('shape'in route&&route.shape)query.set('shape',route.shape);}
    if(route.view==='history'&&'period'in route&&route.period)query.set('period',route.period);
    const raw=await this.request<unknown>(path+'?'+query,'GET',undefined,signal);
-   if(!obj(raw)||!str(raw.nextCursor,4096))bad();let patch:{-readonly [K in keyof PersonalSavedSnapshot]?:PersonalSavedSnapshot[K]}&{viewerFence:string;revision:number;nextCursor:string}={resource:null,resources:[],entries:[],browse:null,nextCursor:raw.nextCursor,cursor,history:[...history],viewerFence:'',revision:0};
+   if(!obj(raw)||!str(raw.nextCursor,4096))bad();let patch:{-readonly [K in keyof PersonalSavedSnapshot]?:PersonalSavedSnapshot[K]}&{viewerFence:string;revision:number;nextCursor:string}={page:null,resource:null,resources:[],entries:[],browse:null,nextCursor:raw.nextCursor,cursor,history:[...history],viewerFence:'',revision:0};
    if(route.view==='resource'){
     const r=resource(raw.resource,this.scope);if(r.id!==route.resourceId)bad();patch.resource=r;patch.viewerFence=r.viewerFence;patch.revision=r.revision;
     if(r.kind==='view'&&r.status==='ready'){
@@ -266,7 +280,8 @@ export class PersonalSavedService{
       if(!obj(original))bad();
       return {id:media.id,hidden:false,media:validateHomeEntry({...media,homeActions:original.homeActions})};
      });patch.nextCursor=page.pageInfo.nextCursor;
-    }else{patch.entries=distinct(keepReadable('personal-saved','entries',rows(raw.entries),e=>{if(!obj(e)||!id(e.id)||typeof e.hidden!=='boolean')bad();return {id:e.id,hidden:e.hidden,...(!e.hidden?{media:validateHomeEntry(e.media)}:{})};}),'entries');}
+    }else{patch.entries=distinct(keepReadable('personal-saved','entries',rows(raw.entries),e=>{if(!obj(e)||!id(e.id)||typeof e.hidden!=='boolean')bad();return {id:e.id,hidden:e.hidden,...(!e.hidden?{media:validateHomeEntry(e.media)}:{})};}),'entries');
+     if(r.kind==='collection')patch.page=resourcePage(raw,resourceContentQuery(route));}
    }else{
     if(raw.serverId!==this.scope.serverId||!id(raw.viewerFence)||!num(raw.revision))bad();patch.viewerFence=raw.viewerFence;patch.revision=raw.revision;
     if(route.view==='history')patch.entries=distinct(keepReadable('personal-saved','history',rows(raw.entries),e=>{e=wireDurations(e,{positionSeconds:'positionMs'});if(!obj(e)||!id(e.id)||!str(e.updatedAt,128)||typeof e.positionSeconds!=='number'||!Number.isFinite(e.positionSeconds)||e.positionSeconds<0||typeof e.completed!=='boolean')bad();return {id:e.id,hidden:false,media:validateContentEntry(e.media),updatedAt:e.updatedAt,positionSeconds:e.positionSeconds,completed:e.completed};}),'history');
@@ -292,7 +307,7 @@ export class PersonalSavedService{
     case 'update':path=encodedRoutePath('patch_saved_resources_id',{id:resourceId});method='PATCH';Object.assign(body,{...(intent.name!==undefined?{name:intent.name}:{}),...(intent.summary!==undefined?{summary:intent.summary}:{}),...(intent.visibility!==undefined?{visibility:visibility(intent.visibility)}:{}),...(intent.definition?{definition:definition(intent.definition)}:{})});break;
     case 'delete':path=encodedRoutePath('delete_saved_resources_id',{id:resourceId});method='DELETE';break;
     case 'entries':method='PUT';path=encodedRoutePath('put_saved_resources_id_entries',{id:resourceId});if(intent.undoToken!==undefined){if(!id(intent.undoToken)||intent.addItemIds?.length||intent.removeEntryIds?.length)throw new Error('Invalid collection entries.');body.undoToken=intent.undoToken;break;}if((intent.addItemIds?.length??0)>100||(intent.removeEntryIds?.length??0)>100||intent.addItemIds?.some(x=>!id(x))||intent.removeEntryIds?.some(x=>!id(x)))throw new Error('Invalid collection entries.');Object.assign(body,{addItemIds:intent.addItemIds??[],removeEntryIds:intent.removeEntryIds??[]});break;
-    case 'reorder':method='PUT';path=encodedRoutePath('reorder_saved_collection',{id:resourceId});if(!intent.entryIds.length||intent.entryIds.length>200||intent.entryIds.some(x=>!id(x))||new Set(intent.entryIds).size!==intent.entryIds.length||intent.afterEntryId!==undefined&&intent.afterEntryId!==''&&(!id(intent.afterEntryId)||intent.entryIds.includes(intent.afterEntryId)))throw new Error('Invalid collection order.');Object.assign(body,{entryIds:[...intent.entryIds],...(intent.afterEntryId!==undefined?{afterEntryId:intent.afterEntryId}:{})});break;
+    case 'reorder':if(route.view!=='resource'||!resourceContentManual(resourceContentQuery(route)))throw new Error('Moves are made in the collection’s own order.');method='PUT';path=encodedRoutePath('reorder_saved_collection',{id:resourceId});if(!intent.entryIds.length||intent.entryIds.length>200||intent.entryIds.some(x=>!id(x))||new Set(intent.entryIds).size!==intent.entryIds.length||intent.afterEntryId!==undefined&&intent.afterEntryId!==''&&(!id(intent.afterEntryId)||intent.entryIds.includes(intent.afterEntryId)))throw new Error('Invalid collection order.');Object.assign(body,{entryIds:[...intent.entryIds],...(intent.afterEntryId!==undefined?{afterEntryId:intent.afterEntryId}:{})});break;
     case 'share':case 'unshare':path=encodedRoutePath(intent.action==='share'?'put_saved_resources_id_shares':'delete_saved_resources_id_shares',{id:resourceId});method=intent.action==='share'?'PUT':'DELETE';Object.assign(body,actor(intent.actor));if(intent.action==='share')body.role=intent.role;break;
     case 'pin':path=encodedRoutePath("put_saved_pins_kind_id", {"kind": r.kind, "id": encodeURIComponent(r.id)});method='PUT';body={expectedRevision:r.pinRevision,pinned:intent.pinned};break;
    }

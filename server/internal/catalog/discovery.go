@@ -59,7 +59,9 @@ type cursorValue struct {
 	// continuation doesn't count again. It is carried only when the compiled
 	// restriction clause is revision-invariant (no live restriction); a
 	// restriction-bound page recounts after its cursor checks.
-	Total           int         `json:"total,omitempty"`
+	Total int `json:"total,omitempty"`
+	// Start is the index, in the whole query, of the next page's first row.
+	Start           int         `json:"start,omitempty"`
 	Fingerprint     string      `json:"fingerprint,omitempty"`
 	CatalogRevision int64       `json:"catalogRevision"`
 	ViewerRevision  int64       `json:"viewerRevision"`

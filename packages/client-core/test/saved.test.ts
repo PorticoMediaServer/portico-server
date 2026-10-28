@@ -10,8 +10,8 @@ const occurrence=(id='entry')=>({id,kind:'playlist_entry',hidden:false,media:med
 function savedFilters(count=3){return [{id:'filter',labelKey:'saved.filter',options:[{id:'all',label:'All',count},{id:'unwatched',label:'Unwatched',count},{id:'inProgress',label:'In progress',count}]}];}
 function projection(view='playlist',revision=0,entries:any[]=[occurrence()],cursor='',category?:string){
  const listView=view==='watchlist'||view==='favorites';
- const resolved=category??(listView?'all':'');
- return {scope:{serverId:'server',libraryId:'',libraryKind:'mixed',view,entityId:view==='playlist'?'playlist':'',viewerFence:'fence'},revision:{catalog:revision,viewer:0},...(view==='playlist'?{playlistRevision:revision}:{}),...(view==='playlists'?{actions:['create_playlist']}:{}),heading:{key:'saved.title',fallback:'Saved'},navigation:[{id:'watchlist',labelKey:'saved.watchlist',view:'watchlist'},{id:'favorites',labelKey:'saved.favorites',view:'favorites'},{id:'playlists',labelKey:'saved.playlists',view:'playlists'}],query:{sort:view==='playlist'?'position':'title',direction:'asc',category:resolved,q:'',limit:40,searchMode:'none'},sorts:[],filters:listView?savedFilters(Math.max(3,entries.length)):[],sections:[{id:'entries',type:'list',heading:{key:'saved.entries',fallback:'Entries'},entries,totalCount:Math.max(3,entries.length),nextCursor:cursor}]};
+ const resolved=category??(listView||view==='playlist'?'all':'');
+ return {scope:{serverId:'server',libraryId:'',libraryKind:'mixed',view,entityId:view==='playlist'?'playlist':'',viewerFence:'fence'},revision:{catalog:revision,viewer:0},...(view==='playlist'?{playlistRevision:revision}:{}),...(view==='playlists'?{actions:['create_playlist']}:{}),heading:{key:'saved.title',fallback:'Saved'},navigation:[{id:'watchlist',labelKey:'saved.watchlist',view:'watchlist'},{id:'favorites',labelKey:'saved.favorites',view:'favorites'},{id:'playlists',labelKey:'saved.playlists',view:'playlists'}],query:{sort:view==='playlist'?'position':'title',direction:'asc',category:resolved,q:'',limit:40,searchMode:'none'},sorts:[],filters:listView?savedFilters(Math.max(3,entries.length)):[],sections:[{id:'entries',type:'list',heading:{key:'saved.entries',fallback:'Entries'},entries,totalCount:Math.max(3,entries.length),nextCursor:cursor,start:0,...(view==='playlist'&&entries.length?{order:{...(cursor?{next:'after-page',last:'playlist-tail'}:{last:entries.at(-1).id})}}:{})}]};
 }
 const resource=(revision=0,entryCount=1)=>({serverId:'server',viewerFence:'fence',id:'playlist',name:'Playlist',summary:'Summary',revision,role:'owner',entryCount,actions:['rename','summary','delete','share','add','remove','reorder'],limits:{maxEntries:1000,maxShares:100,maxReorderEntries:1000},shares:[]});
 const receipt=(body:any,revision=1)=>({serverId:'server',viewerFence:'fence',operationId:body.operationId,playlistId:'playlist',revision,deleted:false,entryId:'new-entry'});
@@ -58,9 +58,9 @@ test('an unknown layout reads as a grid, an unreadable destination or play actio
  const {playback:_,...plain}=media('two');assert.deepEqual(read.sections[0].entries,[media('one'),plain,media('three'),media('four')]);
  assert.deepEqual(read.navigation.map(n=>n.id),['watchlist','playlists']);assert.deepEqual(read.sorts,[{id:'title',labelKey:'sort.title',directions:['asc']}]);
 });
-test('filters published for a view that has none here are not read, and the page is kept',async()=>{
+test('a playlist page reads its published filters, and too many still refuse it',async()=>{
  const s=setup(async p=>isContent(p)?{...projection(),filters:savedFilters()}:resource());await s.select({view:'playlist',playlistId:'playlist'});
- assert.equal(s.getSnapshot().phase,'ready');assert.deepEqual(s.getSnapshot().projection!.filters,[]);
+ assert.equal(s.getSnapshot().phase,'ready');assert.deepEqual(s.getSnapshot().projection!.filters.map(f=>f.id),['filter']);
  const tooMany=setup(async p=>isContent(p)?{...projection(),filters:new Array(5).fill(savedFilters()[0])}:resource());await tooMany.select({view:'playlist',playlistId:'playlist'});assert.equal(tooMany.getSnapshot().error?.code,'invalid_saved');
 });
 test('sizes, cursors, scope and revisions still refuse the whole page',async()=>{
@@ -107,8 +107,8 @@ test('a playlist change that lost a race is read again and sent with the current
 test('a playlist change that keeps losing is shown, and an explicit retry uses a new operation and revision',async()=>{
  let revision=0;const writes:any[]=[];let losing=true;const s=setup(async(p,m,b)=>{if(m==='GET')return isContent(p)?projection('playlist',revision):resource(revision);writes.push(b);if(losing){revision++;throw Object.assign(new Error('Changed'),{code:'revision_mismatch',status:412});}return receipt(b,++revision);});await s.select({view:'playlist',playlistId:'playlist'});await assert.rejects(s.mutate({action:'rename',name:'New'}),/Changed/);await tick();assert.equal(writes.length,3);assert.equal(s.getSnapshot().playlist!.revision,3);assert.deepEqual(s.getSnapshot().pending,[]);losing=false;await s.retryMutation();await tick();assert.notEqual(writes[2].operationId,writes[3].operationId);assert.equal(writes[3].expectedRevision,3);
 });
-test('editor cannot rename/share/delete and partial-page reorder is rejected before transport',async()=>{
- let writes=0;const s=setup(async(p,m)=>{if(m!=='GET')writes++;const r=resource(0,3);r.role='editor';r.actions=['add','remove','reorder'];delete (r as any).shares;return isContent(p)?projection():r;});await s.select({view:'playlist',playlistId:'playlist'});assert.throws(()=>s.mutate({action:'rename',name:'X'}));assert.throws(()=>s.mutate({action:'delete'}));assert.throws(()=>s.mutate({action:'reorder',entryIds:['entry']}));assert.equal(writes,0);
+test('editor cannot rename/share/delete and an unwitnessed partial-page reorder is rejected before transport',async()=>{
+ let writes=0;const s=setup(async(p,m)=>{if(m!=='GET')writes++;const r=resource(0,3);r.role='editor';r.actions=['add','remove','reorder'];delete (r as any).shares;const page=projection();delete (page.sections[0] as any).order;return isContent(p)?page:r;});await s.select({view:'playlist',playlistId:'playlist'});assert.throws(()=>s.mutate({action:'rename',name:'X'}));assert.throws(()=>s.mutate({action:'delete'}));assert.throws(()=>s.mutate({action:'reorder',entryIds:['entry']}));assert.equal(writes,0);
 });
 test('deletion clears pending actions and cannot resurrect detail on late read',async()=>{
  let deleted=false;const s=setup(async(p,m,b)=>{if(m==='GET')return isContent(p)?projection():resource();deleted=true;return {...receipt(b),deleted:true};});await s.select({view:'playlist',playlistId:'playlist'});await s.mutate({action:'delete'});await tick();assert(deleted);assert.equal(s.getSnapshot().playlist,null);assert.equal(s.getSnapshot().projection,null);assert(s.getSnapshot().lastReceipt!.deleted);
@@ -619,4 +619,20 @@ test(`committed DELETE read-abort cleanup preserves ${successorKind === 'none' ?
    assert.equal(service.getSnapshot().projection!.sections[0].entries[0]!.id, 'newer');
   }
  } finally {service.dispose();}
+});
+
+test('a page of the playlist’s own order witnesses moves across its edges; another order moves nothing',async()=>{
+ const bodies:any[]=[];
+ const witnessed=async()=>{const s=setup(async(p,m,b)=>{if(m!=='GET'){bodies.push(b);return receipt(b);}if(!isContent(p))return resource(0,90);const page=projection('playlist',0,[occurrence('a'),occurrence('b')],'more');(page.sections[0] as any).start=40;(page.sections[0] as any).order={previous:'before-page',next:'after-page',last:'playlist-tail'};return page;});await s.select({view:'playlist',playlistId:'playlist'});return s;};
+ const s=await witnessed();
+ assert.equal(s.getSnapshot().projection!.sections[0].start,40);
+ assert.throws(()=>s.mutate({action:'reorder',entryIds:['a'],afterEntryId:'unseen'}));
+ await s.mutate({action:'reorder',entryIds:['a'],afterEntryId:'playlist-tail'});
+ await (await witnessed()).mutate({action:'reorder',entryIds:['a','before-page']});
+ assert.deepEqual(bodies.map(b=>[b.entryIds,b.afterEntryId,b.expectedRevision]),[[['a'],'playlist-tail',0],[['a','before-page'],undefined,0]]);
+ const sorted=setup(async p=>{if(!isContent(p))return resource(0,90);const page=projection('playlist',0,[occurrence('a')]);page.query.sort='title';page.query.direction='desc';delete (page.sections[0] as any).order;return page;});
+ await sorted.select({view:'playlist',playlistId:'playlist',sort:'title',direction:'desc'});
+ assert.equal(sorted.getSnapshot().phase,'ready');
+ assert.throws(()=>sorted.mutate({action:'reorder',entryIds:['a'],afterEntryId:''}),/own order/);
+ assert.throws(()=>s.select({view:'playlist',playlistId:'playlist',sort:'position',direction:'desc'}));
 });

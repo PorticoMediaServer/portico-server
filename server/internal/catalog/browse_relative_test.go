@@ -200,7 +200,7 @@ func TestBrowseRelativeSavedViewAndHomeStayCurrent(t *testing.T) {
 	}
 	viewer := Viewer{Profile: actorKey(actor), Fence: "owner", Libraries: []string{"a"}}
 	read := func() SavedResourceContent {
-		out, e := s.SavedResourceContent(viewer, "server", "owner", made.ResourceID, actor, "", 50)
+		out, e := s.SavedResourceContent(viewer, "server", "owner", made.ResourceID, actor, ResourceContentQuery{}, "", 50)
 		if e != nil {
 			t.Fatal(e)
 		}

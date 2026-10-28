@@ -4,7 +4,7 @@ import "portico.local/server/internal/readingcap"
 
 // The latest saved version must still be the exact admitted physical source.
 // This is an indexed per-item existence check, not an AV resume conversion.
-func savedReadingInProgressSQL() string {
+func savedReadingInProgressSQL(profile string) string {
 	eligible := func(object, source string) string {
 		return object + `.retired=0 AND ` + object + `.state='available' AND ` + object + `.unsupported_reason='' AND ` + object + `.root_incarnation=` + source + `.incarnation
  AND ` + object + `.size=asset.size AND ` + object + `.modified_ns=asset.modified_ns AND ` + source + `.enabled=1 AND ` + source + `.health NOT IN('offline','root_changed','removing')`
@@ -17,7 +17,7 @@ func savedReadingInProgressSQL() string {
  JOIN catalog_libraries cl ON cl.id=i.library_id JOIN libraries lib ON lib.id=cl.library_id
  JOIN inventory_objects observed INDEXED BY inventory_objects_asset ON observed.asset_id=asset.token
  JOIN library_sources source ON source.id=observed.source_id AND source.library_id=cl.library_id
- WHERE rp.owner_key=p.profile_id AND rp.item_id=i.id AND rp.progression>0 AND rp.progression<1
+ WHERE rp.owner_key=` + profile + ` AND rp.item_id=i.id AND rp.progression>0 AND rp.progression<1
  AND rp.format=publication.format
  AND ((i.kind=20 AND lib.kind='book' AND publication.format IN('epub','pdf')) OR (i.kind=21 AND lib.kind='comic' AND publication.format IN(` + readingcap.ComicFormatsSQL() + `))) AND ` + readingcap.LocalComicArchiveSQL("publication") + `
  AND ` + eligible("observed", "source") + `

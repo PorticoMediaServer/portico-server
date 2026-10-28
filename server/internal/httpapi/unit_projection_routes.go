@@ -155,7 +155,7 @@ func registerUnitProjections(registry *apikit.Registry, d Dependencies) error {
 	if err := addProjection[catalog.PersonalBatchMutation, catalog.PersonalBatchReceipt](registry, mux, "PUT /v1/items/personal-state:batch", apikit.ScopePlayback, laneBrowsing, nil); err != nil {
 		return err
 	}
-	if err := addProjection[noBody, catalog.SavedResourceContent](registry, mux, "GET /v1/saved-resources/{id}/content", apikit.ScopeRead, laneBrowsing, []string{"cursor", "limit"}); err != nil {
+	if err := addProjection[noBody, catalog.SavedResourceContent](registry, mux, "GET /v1/saved-resources/{id}/content", apikit.ScopeRead, laneBrowsing, []string{"cursor", "limit", "sort", "direction", "filter"}); err != nil {
 		return err
 	}
 	if err := addProjection[noBody, DashboardReport](registry, mux, "GET /v1/admin/dashboard/report", apikit.ScopeAdmin, laneAdmin, dashboardReportQuery); err != nil {

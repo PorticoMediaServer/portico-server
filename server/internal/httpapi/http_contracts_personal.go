@@ -64,7 +64,7 @@ func registerPersonalHTTPContracts(registry *apikit.Registry) error {
 		return err
 	}
 	// internal/httpapi/playlists.go:50
-	if err := apikit.RegisterHTTP[struct{}, catalog.ContentEnvelope](registry, apikit.Metadata{ID: "get_playlists_id_content", Method: "GET", Path: "/v1/playlists/{id}/content", Summary: "Read playlists content", Access: apikit.Device, Requires: apikit.ScopeRead, Lane: apikit.Browsing, Admission: laneBrowsing, Cost: apikit.PageSized, BodyLimit: 0, Status: 200, Query: []string{"cursor", "limit"}, Errors: []string{"invalid_request", "unauthorized", "not_permitted", "not_found", "stale_continuation", "invalid_cursor", "internal"}}); err != nil {
+	if err := apikit.RegisterHTTP[struct{}, catalog.ContentEnvelope](registry, apikit.Metadata{ID: "get_playlists_id_content", Method: "GET", Path: "/v1/playlists/{id}/content", Summary: "Read playlists content", Access: apikit.Device, Requires: apikit.ScopeRead, Lane: apikit.Browsing, Admission: laneBrowsing, Cost: apikit.PageSized, BodyLimit: 0, Status: 200, Query: []string{"cursor", "limit", "sort", "direction", "filter"}, Errors: []string{"invalid_request", "unauthorized", "not_permitted", "not_found", "stale_continuation", "invalid_cursor", "internal"}}); err != nil {
 		return err
 	}
 	// internal/httpapi/playlists.go:93

@@ -7399,7 +7399,10 @@ export const routes = [
     "bodyLimit": 0,
     "query": [
       "cursor",
-      "limit"
+      "limit",
+      "sort",
+      "direction",
+      "filter"
     ],
     "errors": [
       "invalid_request",
@@ -8173,7 +8176,10 @@ export const routes = [
     "bodyLimit": 0,
     "query": [
       "cursor",
-      "limit"
+      "limit",
+      "sort",
+      "direction",
+      "filter"
     ],
     "errors": [
       "invalid_request",

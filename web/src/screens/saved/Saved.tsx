@@ -396,7 +396,7 @@ export function SavedSection(bindings: SavedViewBindings & {service: SavedServic
           onMore: bindings.onMore ? (anchor: HTMLButtonElement) => bindings.onMore!(entry, anchor)
             : effects.openMore ? (anchor: HTMLButtonElement) => effects.openMore!(service, section.id, entry, anchor) : undefined};
         if (resourceRows) return <ResourceRow {...common} entryId={entry.id} media={media} artwork={artwork} handle={bindings.orderHandle?.(entry.id, common.model.title)}
-          ordinal={service.getSnapshot().pagination.cursor === null ? context.index + 1 : undefined} library={bindings.libraries?.find(library => library.id === media.libraryId)?.name}/>;
+          ordinal={section.start + context.index + 1} library={bindings.libraries?.find(library => library.id === media.libraryId)?.name}/>;
         if (presentation.view === 'list') return <div className={styles.mediaListRow}><PosterCard {...common} /></div>;
         return <BrowseEntryCard entry={media} artwork={artwork} env={{t, locale: defaultI18n.region.formatLocale}} width={presentation.cardWidth} mixed visible order={context.index} group={`saved:${section.id}`} backdrops={presentation.backdrops}
           actions={{onOpen: common.onNavigate, onPlay: common.onPlay, onMore: common.onMore, selection: documentSelection ?? cardSelection}} />;

@@ -2,9 +2,8 @@ package catalog
 
 import (
 	"database/sql"
-	"encoding/json"
+	"errors"
 	"portico.local/server/internal/requestinput"
-	"strconv"
 	"time"
 
 	"portico.local/server/internal/dbwork"
@@ -190,9 +189,14 @@ func (s *Service) PlaylistContent(r ContentRequest, a ResourceActor, libraries [
 		r.Limit = 40
 	}
 	r.View = "playlist"
-	r.Sort = "position"
-	r.Direction = "asc"
+	query, sort, invalid := ResourceContentQuery{Sort: r.Sort, Direction: r.Direction, Filter: r.Filter}.normalize()
+	r.Sort, r.Direction, r.Filter = query.Sort, query.Direction, query.Filter
 	out := resourceEnvelope(r, "Playlist")
+	out.Query.Category = r.Filter
+	out.Sorts = resourceContentSortOptions()
+	if invalid != nil {
+		return out, invalid
+	}
 	if r.Limit < 1 || r.Limit > 100 {
 		return out, requestinput.New("invalid playlist page limit")
 	}
@@ -204,7 +208,8 @@ func (s *Service) PlaylistContent(r ContentRequest, a ResourceActor, libraries [
 		return out, sql.ErrNoRows
 	}
 	resource := Playlist{ServerID: r.ServerID, ViewerFence: r.ViewerFence, ID: r.EntityID, Role: role, Revision: resourceRevision}
-	if e = s.read().QueryRow(`SELECT name,summary,entry_count FROM catalog_playlists WHERE token=? AND deleted=0`, r.EntityID).Scan(&resource.Name, &resource.Summary, &resource.EntryCount); e != nil {
+	var playlistRow int64
+	if e = s.read().QueryRow(`SELECT id,name,summary,entry_count FROM catalog_playlists WHERE token=? AND deleted=0`, r.EntityID).Scan(&playlistRow, &resource.Name, &resource.Summary, &resource.EntryCount); e != nil {
 		return out, e
 	}
 	out.Heading = ContentHeading{Key: "playlist.title", Fallback: resource.Name}
@@ -215,45 +220,61 @@ func (s *Service) PlaylistContent(r ContentRequest, a ResourceActor, libraries [
 	}
 	rev.Catalog += resource.Revision
 	out.Revision = rev
-	scope := cursorScope{Profile: a.ProfileID, View: "playlist", Entity: r.EntityID, Viewer: r.ViewerFence, Sort: "position", Direction: "asc", Limit: r.Limit}
-	position := ""
+	scope := cursorScope{Profile: a.ProfileID, View: "playlist", Entity: r.EntityID, Viewer: r.ViewerFence, Sort: r.Sort, Direction: r.Direction, Category: r.Filter, Limit: r.Limit}
+	// The occurrences, each with its item only when this viewer may see it.
+	visibility, visibleArgs := r.Viewer.itemVisibilitySQL("e.item_id")
+	from := ` FROM (SELECT ? AS profile_id) viewer JOIN catalog_playlist_entries e LEFT JOIN catalog_entities i ON i.id=e.item_id AND ` + visibility + ` WHERE e.playlist_id=?`
+	fromArgs := append(append([]any{r.Profile}, visibleArgs...), playlistRow)
+	counts := make([]any, len(resourceContentFilterIDs))
+	counted := make([]int, len(counts))
+	for n := range counts {
+		counts[n] = &counted[n]
+	}
+	if e = s.read().QueryRow(resourceContentCountsSQL()+from, fromArgs...).Scan(counts...); e != nil {
+		return out, e
+	}
+	out.Filters = resourceContentFilterOptions(counted)
+	total := counted[0]
+	for n, f := range resourceContentFilterIDs {
+		if f == r.Filter {
+			total = counted[n]
+		}
+	}
+	order := newResourceContentOrder(query, sort, "e.id", true)
+	where := ` AND ` + resourceContentFilterSQL(r.Filter)
+	args := append([]any{}, fromArgs...)
+	start := 0
 	if r.Cursor != "" {
 		c, err := s.decodeRevisionCursor(r.Cursor, scope, rev)
 		if err != nil {
 			return out, err
 		}
-		position = c.Value
-	}
-	raw, _ := json.Marshal(libraries)
-	visibility, visibleArgs := r.Viewer.itemVisibilitySQL("item.id")
-	args := append([]any{string(raw)}, visibleArgs...)
-	args = append(args, r.EntityID, position, position, int64(0), r.Limit+1)
-	var afterEntry int64
-	if r.Cursor != "" {
-		c, err := s.decodeRevisionCursor(r.Cursor, scope, rev)
+		seek, seekArgs, err := order.after(c.Keys)
 		if err != nil {
 			return out, err
 		}
-		afterEntry, err = strconv.ParseInt(c.ID, 10, 64)
-		if err != nil || afterEntry < 1 {
-			return out, ErrCursor
-		}
-		args[len(args)-2] = afterEntry
+		where += ` AND ` + seek
+		args = append(args, seekArgs...)
+		start = c.Start
 	}
-	rows, e := s.read().Query(`SELECT e.token,e.id,e.order_key,CASE WHEN l.library_id IN(SELECT value FROM json_each(?)) AND `+visibility+` THEN pid(item.public_id) ELSE NULL END FROM catalog_playlist_entries e JOIN catalog_playlists p ON p.id=e.playlist_id LEFT JOIN catalog_entities item ON item.id=e.item_id LEFT JOIN catalog_libraries l ON l.id=item.library_id WHERE p.token=? AND p.deleted=0 AND (e.order_key>? OR (e.order_key=? AND e.id>?)) ORDER BY e.order_key,e.id LIMIT ?`, args...)
+	args = append(args, r.Limit+1)
+	rows, e := s.read().Query(`SELECT e.token,CASE WHEN i.id IS NULL THEN NULL ELSE pid(i.public_id) END,`+order.selectSQL()+from+where+` ORDER BY `+order.orderBy+` LIMIT ?`, args...)
 	if e != nil {
 		return out, e
 	}
 	type occurrence struct {
-		token    string
-		id       int64
-		position string
-		item     sql.NullString
+		token string
+		item  sql.NullString
+		keys  []any
 	}
 	selected := []occurrence{}
 	for rows.Next() {
-		var v occurrence
-		if e = rows.Scan(&v.token, &v.id, &v.position, &v.item); e != nil {
+		v := occurrence{keys: make([]any, len(order.columns))}
+		dest := []any{&v.token, &v.item}
+		for n := range v.keys {
+			dest = append(dest, &v.keys[n])
+		}
+		if e = rows.Scan(dest...); e != nil {
 			rows.Close()
 			return out, e
 		}
@@ -264,12 +285,28 @@ func (s *Service) PlaylistContent(r ContentRequest, a ResourceActor, libraries [
 	if e != nil {
 		return out, e
 	}
-	next := ""
+	next, following := "", ""
 	if len(selected) > r.Limit {
+		following = selected[r.Limit].token
 		selected = selected[:r.Limit]
 		last := selected[len(selected)-1]
-		next, e = s.encodeRevisionCursor(cursorValue{Scope: scope, Value: last.position, ID: strconv.FormatInt(last.id, 10), Expires: time.Now().Add(30 * time.Minute).Unix()}, rev)
+		next, e = s.encodeRevisionCursor(cursorValue{Scope: scope, Keys: resourceOrderKeys(last.keys), Start: start + r.Limit, Expires: time.Now().Add(30 * time.Minute).Unix()}, rev)
 		if e != nil {
+			return out, e
+		}
+	}
+	var witness *ContentOrderWitness
+	if query.manual() && len(selected) > 0 {
+		witness = &ContentOrderWitness{Next: following}
+		if r.Cursor != "" {
+			first := selected[0].keys
+			if e = s.read().QueryRow(`SELECT token FROM catalog_playlist_entries WHERE playlist_id=? AND (order_key,id)<(?,?) ORDER BY order_key DESC,id DESC LIMIT 1`, playlistRow, first[0], first[1]).Scan(&witness.Previous); e != nil && !errors.Is(e, sql.ErrNoRows) {
+				return out, e
+			}
+		}
+		if following == "" {
+			witness.Last = selected[len(selected)-1].token
+		} else if e = s.read().QueryRow(`SELECT token FROM catalog_playlist_entries WHERE playlist_id=? ORDER BY order_key DESC,id DESC LIMIT 1`, playlistRow).Scan(&witness.Last); e != nil {
 			return out, e
 		}
 	}
@@ -304,7 +341,9 @@ func (s *Service) PlaylistContent(r ContentRequest, a ResourceActor, libraries [
 		entries = append(entries, entry)
 	}
 	if len(entries) > 0 {
-		out.Sections = append(out.Sections, contentSection("entries", "list", resource.Name, entries, resource.EntryCount, next))
+		section := contentSection("entries", "list", resource.Name, entries, total, next)
+		section.Start, section.Order = start, witness
+		out.Sections = append(out.Sections, section)
 	} else {
 		out.Empty = &ContentHeading{Key: "playlist.empty", Fallback: "This playlist has no entries yet."}
 	}

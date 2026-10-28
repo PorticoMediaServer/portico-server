@@ -23,11 +23,12 @@ test('Undo accepts only the committed current-viewer removal receipt for this ex
 test('personal resource grid follows the real opaque cursor without turning a library count into resident entities', async () => {
   const resource = {serverId: 'server', viewerFence: 'fence', id: 'collection', kind: 'collection', name: 'Collection', summary: '', visibility: 'private', revision: 1, role: 'owner', entryCount: 2000, actions: ['pin', 'update', 'delete', 'entries'], status: 'ready', invalidComponents: [], pinned: false, pinRevision: 0, shares: []};
   const entry = (id: string) => ({id, hidden: false, media: {id, libraryId: 'library', kind: 'movie', title: id}});
+  const fields = {query: {sort: 'position', direction: 'asc', category: 'all', q: '', limit: 40, searchMode: 'none'}, sorts: [], filters: [], totalCount: 2000, start: 0};
   let next!: (value: unknown) => void, calls = 0;
   const service = new PersonalSavedService({async request<T>(path: string): Promise<T> {
     calls++;
     if (path.includes('cursor=opaque-next')) return await new Promise<unknown>(resolve => { next = resolve; }) as T;
-    return {resource, entries: [entry('one'), entry('two'), entry('three')], nextCursor: 'opaque-next'} as T;
+    return {resource, entries: [entry('one'), entry('two'), entry('three')], nextCursor: 'opaque-next', ...fields} as T;
   }}, {serverId: 'server', viewerId: 'viewer'}, async () => '00000000-0000-4000-8000-000000000001');
   const window = personalEntriesWindow(service);
   try {
@@ -39,7 +40,7 @@ test('personal resource grid follows the real opaque cursor without turning a li
     assert.equal(calls, 1, 'scrolling the current page cannot silently replace it');
     const advancing = service.next();
     const published = new Promise<void>(resolve => { const off = service.subscribe(() => { if (!service.getSnapshot().loading) { off(); resolve(); } }); });
-    next({resource, entries: [entry('four')], nextCursor: 'opaque-later'}); await published; await advancing;
+    next({resource, entries: [entry('four')], nextCursor: 'opaque-later', ...fields, start: 3}); await published; await advancing;
     assert.deepEqual(window.residentItems().map(value => value.id), ['four']);
     assert.equal(window.getSnapshot().total, 1); assert.equal(window.getSnapshot().totalIsLowerBound, true);
     assert.equal(window.keyAt(0), 'four'); window.dispose(); window.ensureRange(0, 4); assert.equal(calls, 2);

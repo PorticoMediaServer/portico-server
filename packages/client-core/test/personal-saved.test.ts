@@ -6,7 +6,9 @@ const scope={serverId:'server',viewerId:'["local","account","profile"]'};
 const media=(id='item')=>({id,libraryId:'library',kind:'movie',title:'Movie',available:true,playback:{itemId:id,startSeconds:0}});
 const resource=(patch:any={})=>({serverId:'server',viewerFence:'fence',id:'collection',kind:'collection',name:'Collection',summary:'',visibility:'private',revision:1,role:'owner',entryCount:0,actions:['pin','update','delete','entries','share'],status:'ready',invalidComponents:[],pinned:false,pinRevision:0,shares:[],...patch});
 const directory=(resources:any[]=[])=>({serverId:'server',viewerFence:'fence',revision:1,resources,nextCursor:''});
-const content=(r=resource(),entries:any[]=[])=>({resource:r,entries,nextCursor:''});
+// A collection page echoes its query, offers its orders and filters, and counts what matches.
+const pageFields=(total:number)=>({query:{sort:'position',direction:'asc',category:'all',q:'',limit:40,searchMode:'none'},sorts:[{id:'position',labelKey:'sort.position',directions:['asc']}],filters:[{id:'filter',labelKey:'saved.filter',options:[{id:'all',label:'All',count:total}]}],totalCount:total,start:0});
+const content=(r=resource(),entries:any[]=[])=>({resource:r,entries,nextCursor:'',...pageFields(entries.length)});
 const deferred=()=>{let resolve!:(v:any)=>void;const promise=new Promise<any>(r=>resolve=r);return{promise,resolve};};
 const tick=()=>new Promise(r=>setTimeout(r,0));
 function setup(request:(path:string,method?:string,body?:any,signal?:AbortSignal)=>Promise<any>){let n=0;return new PersonalSavedService({request:async (...args:any[])=>wireFixture(await (request as any)(...args),{'duration': 'durationMs', 'progressSeconds': 'progressMs', 'startSeconds': 'startMs', 'positionSeconds': 'positionMs'})},scope,async()=>`00000000-0000-4000-8000-${String(++n).padStart(12,'0')}`);}
@@ -122,7 +124,7 @@ test('a collection paged past its first page is read again through every page on
  // 100 members, 40 a page: the cursor names where the page starts.
  let order=Array.from({length:100},(_,i)=>'m'+i);let revision=1;const reads:string[]=[];
  const s=setup(async(p,m,b)=>{
-  if(m==='GET'){const at=Number(new URL('http://x'+p).searchParams.get('cursor')??0);reads.push(String(at));const ids=order.slice(at,at+40);return {resource:resource({revision,actions:['pin','update','delete','entries','reorder','share']}),entries:ids.map(id=>({id,hidden:false,media:media(id)})),nextCursor:at+40<order.length?String(at+40):''};}
+  if(m==='GET'){const at=Number(new URL('http://x'+p).searchParams.get('cursor')??0);reads.push(String(at));const ids=order.slice(at,at+40);return {resource:resource({revision,actions:['pin','update','delete','entries','reorder','share']}),entries:ids.map(id=>({id,hidden:false,media:media(id)})),nextCursor:at+40<order.length?String(at+40):'',...pageFields(order.length),start:at};}
   const from=order.indexOf(b.entryIds[0]);order.splice(from,1);order.splice(b.afterEntryId?order.indexOf(b.afterEntryId)+1:0,0,b.entryIds[0]);revision++;
   return {serverId:'server',viewerFence:'fence',receipt:{operationId:b.operationId,resourceId:'collection',revision,deleted:false}};
  });

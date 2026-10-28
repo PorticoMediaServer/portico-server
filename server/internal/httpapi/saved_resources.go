@@ -173,7 +173,7 @@ func (d Dependencies) savedResourceRoutes(mux *http.ServeMux) {
 		d.savedResponse(w, r, fence, out)
 	})
 	d.projectedHandle(mux, "GET /v1/saved-resources/{id}/content", func(w http.ResponseWriter, r *http.Request) {
-		limit, e := savedPageQuery(r)
+		limit, e := savedPageQuery(r, "sort", "direction", "filter")
 		if e != nil {
 			failure(w, e)
 			return
@@ -195,7 +195,7 @@ func (d Dependencies) savedResourceRoutes(mux *http.ServeMux) {
 		}
 		e = d.compose(r, viewer.Restrictions, func(cat *catalog.Service) error {
 			var readErr error
-			out, readErr = cat.SavedResourceContent(viewer, d.Identity.ID(), fence, r.PathValue("id"), resourceActor(p), r.URL.Query().Get("cursor"), limit, admit)
+			out, readErr = cat.SavedResourceContent(viewer, d.Identity.ID(), fence, r.PathValue("id"), resourceActor(p), catalog.ResourceContentQuery{Sort: r.URL.Query().Get("sort"), Direction: r.URL.Query().Get("direction"), Filter: r.URL.Query().Get("filter")}, r.URL.Query().Get("cursor"), limit, admit)
 			if readErr != nil {
 				return readErr
 			}

@@ -120274,6 +120274,21 @@ export const schemas = {
             "nextCursor": {
               "type": "string"
             },
+            "order": {
+              "properties": {
+                "last": {
+                  "type": "string"
+                },
+                "next": {
+                  "type": "string"
+                },
+                "previous": {
+                  "type": "string"
+                }
+              },
+              "required": [],
+              "type": "object"
+            },
             "seeAll": {
               "properties": {
                 "pivot": {
@@ -126439,6 +126454,21 @@ export const schemas = {
                 },
                 "nextCursor": {
                   "type": "string"
+                },
+                "order": {
+                  "properties": {
+                    "last": {
+                      "type": "string"
+                    },
+                    "next": {
+                      "type": "string"
+                    },
+                    "previous": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [],
+                  "type": "object"
                 },
                 "seeAll": {
                   "properties": {
@@ -144650,6 +144680,21 @@ export const schemas = {
             "nextCursor": {
               "type": "string"
             },
+            "order": {
+              "properties": {
+                "last": {
+                  "type": "string"
+                },
+                "next": {
+                  "type": "string"
+                },
+                "previous": {
+                  "type": "string"
+                }
+              },
+              "required": [],
+              "type": "object"
+            },
             "seeAll": {
               "properties": {
                 "pivot": {
@@ -152503,6 +152548,21 @@ export const schemas = {
             "nextCursor": {
               "type": "string"
             },
+            "order": {
+              "properties": {
+                "last": {
+                  "type": "string"
+                },
+                "next": {
+                  "type": "string"
+                },
+                "previous": {
+                  "type": "string"
+                }
+              },
+              "required": [],
+              "type": "object"
+            },
             "seeAll": {
               "properties": {
                 "pivot": {
@@ -156482,8 +156542,99 @@ export const schemas = {
         },
         "type": "array"
       },
+      "filters": {
+        "items": {
+          "properties": {
+            "id": {
+              "type": "string"
+            },
+            "labelKey": {
+              "type": "string"
+            },
+            "options": {
+              "items": {
+                "properties": {
+                  "count": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "id": {
+                    "type": "string"
+                  },
+                  "label": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "id",
+                  "label",
+                  "count"
+                ],
+                "type": "object"
+              },
+              "type": "array"
+            }
+          },
+          "required": [
+            "id",
+            "labelKey",
+            "options"
+          ],
+          "type": "object"
+        },
+        "type": "array"
+      },
       "nextCursor": {
         "type": "string"
+      },
+      "order": {
+        "properties": {
+          "last": {
+            "type": "string"
+          },
+          "next": {
+            "type": "string"
+          },
+          "previous": {
+            "type": "string"
+          }
+        },
+        "required": [],
+        "type": "object"
+      },
+      "query": {
+        "properties": {
+          "category": {
+            "type": "string"
+          },
+          "direction": {
+            "type": "string"
+          },
+          "limit": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "q": {
+            "type": "string"
+          },
+          "searchMode": {
+            "type": "string"
+          },
+          "sort": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "sort",
+          "direction",
+          "category",
+          "q",
+          "limit",
+          "searchMode"
+        ],
+        "type": "object"
       },
       "resource": {
         "properties": {
@@ -156733,12 +156884,48 @@ export const schemas = {
           "pinRevision"
         ],
         "type": "object"
+      },
+      "sorts": {
+        "items": {
+          "properties": {
+            "directions": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "id": {
+              "type": "string"
+            },
+            "labelKey": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "id",
+            "labelKey",
+            "directions"
+          ],
+          "type": "object"
+        },
+        "type": "array"
+      },
+      "start": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      },
+      "totalCount": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
       }
     },
     "required": [
       "resource",
       "entries",
-      "nextCursor"
+      "nextCursor",
+      "start"
     ],
     "type": "object"
   },

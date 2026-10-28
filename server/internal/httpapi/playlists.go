@@ -51,7 +51,7 @@ func (d Dependencies) playlistRoutes(mux *http.ServeMux) {
 	d.httpHandle(mux, "GET /v1/playlists/{id}/content", func(w http.ResponseWriter, r *http.Request) {
 		q := r.URL.Query()
 		for k, v := range q {
-			if len(v) != 1 || (k != "cursor" && k != "limit") {
+			if len(v) != 1 || (k != "cursor" && k != "limit" && k != "sort" && k != "direction" && k != "filter") {
 				failure(w, catalog.ErrCursor)
 				return
 			}
@@ -78,7 +78,7 @@ func (d Dependencies) playlistRoutes(mux *http.ServeMux) {
 		var out catalog.ContentEnvelope
 		e = d.compose(r, viewer.Restrictions, func(cat *catalog.Service) error {
 			var readErr error
-			out, readErr = cat.PlaylistContent(catalog.ContentRequest{Viewer: viewer, ServerID: d.Identity.ID(), Profile: identity.PersonalKey(p.Viewer), ViewerFence: fence, View: "playlist", EntityID: r.PathValue("id"), Limit: limit, Cursor: q.Get("cursor")}, resourceActor(p), libraries)
+			out, readErr = cat.PlaylistContent(catalog.ContentRequest{Viewer: viewer, ServerID: d.Identity.ID(), Profile: identity.PersonalKey(p.Viewer), ViewerFence: fence, View: "playlist", EntityID: r.PathValue("id"), Limit: limit, Cursor: q.Get("cursor"), Sort: q.Get("sort"), Direction: q.Get("direction"), Filter: q.Get("filter")}, resourceActor(p), libraries)
 			if readErr != nil {
 				return readErr
 			}

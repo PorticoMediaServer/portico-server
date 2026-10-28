@@ -216,6 +216,7 @@ export const enUS = {
   'order.moveBottom': 'Move to bottom',
   'order.handle': 'Drag {title} to move it, or use its menu',
   'order.failed': 'Couldn’t move “{title}”. Try again.',
+  'order.ownOrderOnly': '{group, select, playlist {Reorder in Playlist order} other {Reorder in Collection order}}',
   'saved.removal.fromPlaylist': 'Removed “{title}” from the playlist.',
   'saved.removal.fromCollection': 'Removed “{title}” from the collection.',
   'saved.removal.undoFailed': 'That couldn’t be undone. “{title}” stays removed.',

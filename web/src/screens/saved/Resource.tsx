@@ -4,13 +4,13 @@ import {defaultI18n} from '@i18n';
 import type {ContentEntry} from '@core/library-content.ts';
 import type {PersonalSavedIntent, PersonalResourceEntry} from '@core/personal-saved.ts';
 import type {HistoryPeriod, SavedIntent} from '@core/saved.ts';
-import {historyPeriods} from '@core/saved.ts';
+import {historyPeriods, resourceContentManual, type ResourceContentQuery} from '@core/saved.ts';
 import {episodeLabel} from '@portico/client-core/kit-model';
 import {shapeFor} from '@core/presentation/card-shape.ts';
 import {AmbientArt, Artwork, CoverMosaic, type ArtworkSource} from '../../kit/artwork';
 import {Button, Chip, Select, Switch} from '../../kit/controls';
-import {ViewToggle} from '../../kit/browse';
-import {Dialog, Menu} from '../../kit/overlays';
+import {FiltersButton, SortMenu, ViewToggle} from '../../kit/browse';
+import {Dialog, Menu, MenuRow, Popover} from '../../kit/overlays';
 import {Skeleton, StateView} from '../../kit/states';
 import {WindowedGrid} from '../../kit/layout';
 import {useLayoutPresence} from '../../kit/layout/presence';
@@ -27,7 +27,7 @@ import {RemovalUndo} from './RemovalUndo';
 import {ResourceFields} from './ResourceFields';
 import {ResourceRow} from './ResourceRow';
 import {ResourceOrderHandle} from './ResourceOrderHandle';
-import {commitPreparedResourceOrder, preparePlaylistReorder, resourceOrderMove, resourceOrderComplete, resourceOrderEdge, resourceOrderPosition, type ResourceOrderPreparation, type ResourceReorder} from './resource-order';
+import {commitPreparedResourceOrder, resourceOrderIds, resourceOrderMove, resourceOrderEdge, resourceOrderPosition, type ResourceOrderPage, type ResourceOrderPreparation, type ResourceReorder} from './resource-order';
 import {SavedDialog} from './SavedDialog';
 import {personalEntriesWindow} from './window.ts';
 import {useShellWidth} from '../../shell/viewport';
@@ -53,10 +53,16 @@ export function SavedResourceScreen({bindings}: {bindings: SavedViewBindings}) {
   const kind = isPlaylist ? 'playlist' : personal.resource?.kind === 'view' ? 'view' : 'collection';
   const actions = resource?.actions ?? [], pinned = resource?.pinned ?? false;
   const entries = isPlaylist ? playlist.projection?.sections.flatMap(section => section.entries).filter(entry => entry.kind === 'playlist_entry') ?? [] : personal.entries;
-  const entryIds = entries.map(entry => entry.id), menuIndex = rowMenu ? entryIds.indexOf(rowMenu.entryId) : -1;
-  const completeOrder = resourceOrderComplete(entryIds, resource?.entryCount ?? -1,
-    isPlaylist ? playlist.pagination.cursor === null : personal.cursor === null,
-    isPlaylist ? [...(playlist.projection?.sections.map(section => section.nextCursor) ?? []), playlist.order?.nextCursor, ...playlist.pagination.next.map(page => page.cursor)] : [personal.nextCursor]);
+  const entryIds = entries.map(entry => entry.id);
+  // The page's temporary order and filter; only the resource's own order over every entry
+  // can move one, and only from a page the server witnessed at the resource's revision.
+  const query: ResourceContentQuery = route.view === 'playlist' || route.view === 'resource' ? {sort: route.sort as ResourceContentQuery['sort'], direction: route.direction, filter: route.filter as ResourceContentQuery['filter']} : {};
+  const manual = resourceContentManual(query);
+  const section = isPlaylist ? playlist.projection?.sections[0] : undefined;
+  const witness = isPlaylist ? playlist.projection?.playlistRevision === resource?.revision ? section?.order : undefined : personal.page?.order;
+  const orderPage: ResourceOrderPage = {ids: entryIds, start: (isPlaylist ? section?.start : personal.page?.start) ?? 0, count: resource?.entryCount ?? 0, witness: manual ? witness : undefined};
+  const orderIds = resourceOrderIds(orderPage), orderIndex = rowMenu ? orderIds.indexOf(rowMenu.entryId) : -1;
+  const canReorder = actions.includes('reorder') && manual && !!orderPage.witness, reordering = reorder && canReorder;
   const selectedPlaylistEntry = rowMenu && playlist.projection?.sections.flatMap(section => section.entries).find(entry => entry.id === rowMenu.entryId);
   const selectedPersonalEntry = rowMenu && personal.entries.find(entry => entry.id === rowMenu.entryId);
   const menuMedia = isPlaylist ? selectedPlaylistEntry?.kind === 'playlist_entry' && !selectedPlaylistEntry.hidden ? selectedPlaylistEntry.media : undefined
@@ -85,17 +91,15 @@ export function SavedResourceScreen({bindings}: {bindings: SavedViewBindings}) {
     };
     const entry = entries.find(entry => entry.id === entryId);
     const title = entry && !entry.hidden && entry.media ? entry.media.displayTitle ?? entry.media.title : '';
-    const position = resourceOrderPosition(intent, entryIds, entryId, completeOrder);
+    const position = resourceOrderPosition(intent, orderPage, entryId);
     perform(intent, intent, () => {
       if (position !== undefined && title) setAnnouncement(value => ({sequence: value.sequence + 1, text: t('next.settings.moved', {name: title, position, count: resource.entryCount})}));
     }, {current, prepare: async () => {
       if (!current()) throw Object.assign(new Error(t('error.changed')), {code: 'revision_mismatch'});
-      if (isPlaylist) await preparePlaylistReorder(runtime.saved, intent, current);
-      if (!current()) throw Object.assign(new Error(t('error.changed')), {code: 'revision_mismatch'});
     }});
   };
-  const moveTo = (entryId: string, targetId: string) => {const intent = resourceOrderMove(entryIds, entryId, targetId); if (intent) move(intent, entryId);};
-  const orderHandle = reorder && actions.includes('reorder') ? (entryId: string, title: string) => <ResourceOrderHandle
+  const moveTo = (entryId: string, targetId: string) => {const intent = resourceOrderMove(orderIds, entryId, targetId); if (intent) move(intent, entryId);};
+  const orderHandle = reordering ? (entryId: string, title: string) => <ResourceOrderHandle
     entryId={entryId} entryIds={entryIds} title={title} disabled={busy} onMove={moveTo} onLiftChange={setHeldEntryId}/> : undefined;
   const failure = isPlaylist ? playlist.error : personal.error;
   if (!routeMatches) return null;
@@ -103,7 +107,7 @@ export function SavedResourceScreen({bindings}: {bindings: SavedViewBindings}) {
   const paths = isPlaylist ? playlist.projection?.sections.flatMap(section => section.entries).flatMap(entry => entry.kind === 'playlist_entry' && !entry.hidden ? entry.media.posterUrl ? [entry.media.posterUrl] : [] : []).slice(0, 4) ?? [] : personal.resource?.artworkPaths ?? [];
   const covers = paths.map(path => bindings.artwork.foreground(path, 120, 1)).filter((source): source is ArtworkSource => !!source);
   const ambient = bindings.presentation.backdrops ? paths.flatMap(path => {const source = bindings.artwork.ambient(path); return source ? [source] : [];}) : [];
-  const shownBindings = reorder && actions.includes('reorder') ? {...bindings, presentation: {...bindings.presentation, view: 'list' as const}} : bindings;
+  const shownBindings = reordering ? {...bindings, presentation: {...bindings.presentation, view: 'list' as const}} : bindings;
   const renameTitle = t(kind === 'playlist' ? 'web.saved.renamePlaylist' : kind === 'view' ? 'web.saved.renameView' : 'web.saved.renameCollection');
   const resourceMenu = <Menu open={menu} onOpenChange={setMenu} title={t('player.more')} width={260} trigger={<Button variant="icon" icon="i-more" iconOnly aria-label={t('player.more')} />}
           items={[
@@ -127,7 +131,9 @@ export function SavedResourceScreen({bindings}: {bindings: SavedViewBindings}) {
       </div>
     </div></header>
     <div className={styles.toolbar}>{bindings.catalogueSelection?.toolbar ?? bindings.selection?.toolbar}
-      {resource.role === 'owner' && actions.includes('reorder') && <Button size="small" icon={reorder ? 'i-check' : 'i-grip'} aria-pressed={reorder} disabled={busy || selecting} onClick={() => setReorder(value => !value)}>{reorder ? t('action.done') : t('order.reorder')}</Button>}
+      {kind !== 'view' && <ResourceQueryToolbar bindings={bindings} kind={kind} page={isPlaylist ? playlist.projection : personal.page} query={query} />}
+      {resource.role === 'owner' && actions.includes('reorder') && <Button size="small" icon={reordering ? 'i-check' : 'i-grip'} aria-pressed={reordering} disabled={busy || selecting || !canReorder}
+        title={manual ? undefined : t('order.ownOrderOnly', {group: kind})} onClick={() => setReorder(value => !value)}>{reordering ? t('action.done') : t('order.reorder')}</Button>}
       <div className={styles.toolbarEnd}><span>{kind === 'playlist' ? t('web.saved.items', {count: resource.entryCount}) : t('lib.count', {count: resource.entryCount, pivot: 'other'})}</span><ViewToggle value={shownBindings.presentation.view} onValueChange={value => {setReorder(false);bindings.presentation.setView(value);}} /></div></div>
     {isPlaylist ? playlist.projection?.sections.map(section => <SavedSection key={section.id} {...shownBindings} orderHandle={orderHandle} heldEntryId={heldEntryId} service={runtime.saved} section={section} onMore={(entry, anchor) => {
       if (entry.kind !== 'playlist_entry' || entry.hidden || !bindings.operations.current) return;
@@ -139,11 +145,11 @@ export function SavedResourceScreen({bindings}: {bindings: SavedViewBindings}) {
       }} />}
     <Menu open={!!rowMenu && !!menuMedia} onOpenChange={open => { if (!open) setRowMenu(undefined); }} title={menuMedia?.displayTitle ?? menuMedia?.title ?? t('player.more')} anchorRef={rowAnchor} width={290}
       items={rowMenu && menuMedia ? [{id: 'go', label: t('web.saved.goToItem'), icon: 'i-info', onSelect: () => { if (bindings.operations.current) effects.openEntry(menuMedia); }},
-        ...(actions.includes('reorder') ? [
-          {id: 'move-up', label: t('web.profile.moveUp'), icon: 'i-up' as const, disabled: busy || menuIndex <= 0, onSelect: () => {if (menuIndex > 0) moveTo(rowMenu.entryId, entryIds[menuIndex - 1]);}},
-          {id: 'move-top', label: t('order.moveTop'), disabled: busy || !resourceOrderEdge(entryIds, rowMenu.entryId, 'top', completeOrder), onSelect: () => {const intent = resourceOrderEdge(entryIds, rowMenu.entryId, 'top', completeOrder);if (intent) move(intent, rowMenu.entryId);}},
-          ...(completeOrder ? [{id: 'move-bottom', label: t('order.moveBottom'), disabled: busy || !resourceOrderEdge(entryIds, rowMenu.entryId, 'bottom', completeOrder), onSelect: () => {const intent = resourceOrderEdge(entryIds, rowMenu.entryId, 'bottom', completeOrder);if (intent) move(intent, rowMenu.entryId);}}] : []),
-          {id: 'move-down', label: t('web.profile.moveDown'), icon: 'i-down' as const, disabled: busy || menuIndex < 0 || menuIndex >= entryIds.length - 1, onSelect: () => {if (menuIndex >= 0 && menuIndex < entryIds.length - 1) moveTo(rowMenu.entryId, entryIds[menuIndex + 1]);}},
+        ...(canReorder ? [
+          {id: 'move-up', label: t('web.profile.moveUp'), icon: 'i-up' as const, disabled: busy || orderIndex <= 0, onSelect: () => {if (orderIndex > 0) moveTo(rowMenu.entryId, orderIds[orderIndex - 1]);}},
+          {id: 'move-top', label: t('order.moveTop'), disabled: busy || !resourceOrderEdge(orderPage, rowMenu.entryId, 'top'), onSelect: () => {const intent = resourceOrderEdge(orderPage, rowMenu.entryId, 'top');if (intent) move(intent, rowMenu.entryId);}},
+          {id: 'move-bottom', label: t('order.moveBottom'), disabled: busy || !resourceOrderEdge(orderPage, rowMenu.entryId, 'bottom'), onSelect: () => {const intent = resourceOrderEdge(orderPage, rowMenu.entryId, 'bottom');if (intent) move(intent, rowMenu.entryId);}},
+          {id: 'move-down', label: t('web.profile.moveDown'), icon: 'i-down' as const, disabled: busy || orderIndex < 0 || orderIndex >= orderIds.length - 1, onSelect: () => {if (orderIndex >= 0 && orderIndex < orderIds.length - 1) moveTo(rowMenu.entryId, orderIds[orderIndex + 1]);}},
         ] : []),
         ...((isPlaylist ? actions.includes('remove') : kind === 'collection' && actions.includes('entries')) ? [
           {id: 'remove-separator', separator: true} as const,
@@ -167,6 +173,34 @@ export function SavedResourceScreen({bindings}: {bindings: SavedViewBindings}) {
       {dialog === 'rename' && <ResourceFields nameRef={nameInput} name={name} summary={summary} onNameChange={setName} onSummaryChange={setSummary} nameMaxLength={isPlaylist ? 200 : 400} summaryMaxLength={isPlaylist ? 4000 : 8000} disabled={busy} summaryDisabled={isPlaylist && !actions.includes('summary')} />}
     </SavedDialog>
   </main>;
+}
+
+/** collections.html: the page's sort chip (its own order first) and Filters. A temporary
+ * order or filter is the route's, read by the server; the resource's own order is untouched. */
+const resourceSortKeys = {title: 'web.saved.sort.title', year: 'web.saved.sort.year', duration: 'web.saved.sort.duration'} as const;
+function ResourceQueryToolbar({bindings, kind, page, query}: {bindings: SavedViewBindings; kind: 'playlist' | 'collection'; query: ResourceContentQuery;
+  page: Readonly<{sorts: readonly Readonly<{id: string; labelKey: string; directions: readonly ('asc' | 'desc')[]}>[]; filters: readonly Readonly<{id: string; options: readonly Readonly<{id: string; label: string}>[]}>[]}> | null | undefined}) {
+  const {route, effects} = bindings, [open, setOpen] = useState(false);
+  if (!page) return null;
+  const select = (next: ResourceContentQuery) => {
+    const own = !next.sort || next.sort === 'position', narrowed = next.filter && next.filter !== 'all' ? {filter: next.filter} : {};
+    const order = own ? {} : {sort: next.sort, ...(next.direction ? {direction: next.direction} : {})};
+    if (route.view === 'playlist') effects.selectRoute({view: 'playlist', playlistId: route.playlistId, ...order, ...narrowed});
+    else if (route.view === 'resource' && route.resourceId) effects.selectRoute({view: 'resource', resourceId: route.resourceId, ...order, ...narrowed});
+  };
+  const sort = query.sort ?? 'position', filter = query.filter ?? 'all', selected = page.sorts.find(value => value.id === sort);
+  const quick = page.filters.flatMap(entry => entry.options.filter(option => option.id !== 'all'));
+  const label = (value: Readonly<{id: string; labelKey: string}>) => value.id === 'position' ? t('web.group.ownOrder', {group: kind})
+    : t(resourceSortKeys[value.id as keyof typeof resourceSortKeys] ?? 'web.saved.sort.other');
+  return <>
+    {page.sorts.length ? <SortMenu variant="saved" sorts={page.sorts.map(value => ({...value, defaultDirection: value.directions[0] ?? 'asc', expensive: false, applicableKinds: []}))}
+      value={{field: sort, direction: query.direction ?? selected?.directions[0] ?? 'asc', flippable: (selected?.directions.length ?? 0) > 1, reshufflable: false}} label={label}
+      onValueChange={value => select({sort: value.field as ResourceContentQuery['sort'], direction: value.direction, filter: query.filter})} /> : null}
+    {quick.length ? <Popover open={open} onOpenChange={setOpen} title={t('next.browse.filters')} accessibilityLabel={t('next.browse.filters')} placement="bottom-start" width={260}
+      trigger={<FiltersButton count={filter === 'all' ? 0 : 1} />}>
+      {quick.map(option => <MenuRow key={option.id} selected={filter === option.id} onClick={() => { setOpen(false); select({...query, filter: filter === option.id ? undefined : option.id as ResourceContentQuery['filter']}); }}>{option.label}</MenuRow>)}
+    </Popover> : null}
+  </>;
 }
 
 function PersonalRows({bindings, entries, onMore, orderHandle, heldEntryId}: {bindings: SavedViewBindings; entries: readonly PersonalResourceEntry[]; onMore: (entry: PersonalResourceEntry, anchor: HTMLButtonElement) => void; orderHandle?: (entryId: string, title: string) => ReactNode; heldEntryId?: string}) {
@@ -196,7 +230,7 @@ function PersonalRows({bindings, entries, onMore, orderHandle, heldEntryId}: {bi
       group={`saved:${bindings.runtime.personal.getSnapshot().resource?.id ?? ''}`} backdrops={bindings.presentation.backdrops}
       actions={{onOpen: common.onNavigate, onPlay: common.onPlay, onMore: common.onMore, selection: common.selection}} />;
     return <ResourceRow {...common} entryId={entry.id} media={media} artwork={bindings.artwork} handle={orderHandle?.(entry.id, model.title)}
-      ordinal={bindings.runtime.personal.getSnapshot().cursor === null ? context.index + 1 : undefined} library={bindings.libraries?.find(library => library.id === media.libraryId)?.name}/>;
+      ordinal={bindings.runtime.personal.getSnapshot().page ? bindings.runtime.personal.getSnapshot().page!.start + context.index + 1 : bindings.runtime.personal.getSnapshot().cursor === null ? context.index + 1 : undefined} library={bindings.libraries?.find(library => library.id === media.libraryId)?.name}/>;
     }}</CatalogueSelectionEntry>;
   }} /></div>{bindings.runtime.personal.getSnapshot().nextCursor && <Button size="small" className={styles.showMore} loading={bindings.runtime.personal.getSnapshot().loading} onClick={() => { void bindings.runtime.personal.next(); }}>{t('action.showMore')}</Button>}</div>;
 }

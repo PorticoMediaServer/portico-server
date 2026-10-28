@@ -129,7 +129,7 @@ func TestSavedCollectionStableSetMembershipAndCurrentRoles(t *testing.T) {
 	if e != nil {
 		t.Fatal(e)
 	}
-	first, e := s.SavedResourceContent(Viewer{Libraries: []string{"library"}}, "server", "fence", receipt.ResourceID, a, "", 40)
+	first, e := s.SavedResourceContent(Viewer{Libraries: []string{"library"}}, "server", "fence", receipt.ResourceID, a, ResourceContentQuery{}, "", 40)
 	if e != nil || len(first.Entries) != 1 {
 		t.Fatal(first, e)
 	}
@@ -137,7 +137,7 @@ func TestSavedCollectionStableSetMembershipAndCurrentRoles(t *testing.T) {
 	if e != nil {
 		t.Fatal(e)
 	}
-	second, e := s.SavedResourceContent(Viewer{Libraries: []string{"library"}}, "server", "fence", receipt.ResourceID, a, "", 40)
+	second, e := s.SavedResourceContent(Viewer{Libraries: []string{"library"}}, "server", "fence", receipt.ResourceID, a, ResourceContentQuery{}, "", 40)
 	if e != nil || len(second.Entries) != 1 || second.Entries[0].ID != first.Entries[0].ID {
 		t.Fatal(second, e)
 	}

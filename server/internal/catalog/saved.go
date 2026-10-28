@@ -29,7 +29,7 @@ var savedNumericSorts = map[string]bool{"year": true, "duration": true, "progres
 var savedFilters = map[string]string{
 	"all":        ``,
 	"unwatched":  ` AND ` + personalstate.CompactSQL("p.profile_id", "i.id") + `=0`,
-	"inProgress": ` AND ` + personalstate.CompactSQL("p.profile_id", "i.id") + `=0 AND ((i.kind NOT IN(20,21) AND COALESCE((SELECT g.position FROM progress g WHERE g.profile_id=p.profile_id AND g.item_id=i.id),0)>0) OR (i.kind IN(20,21) AND ` + savedReadingInProgressSQL() + `))`,
+	"inProgress": ` AND ` + personalstate.CompactSQL("p.profile_id", "i.id") + `=0 AND ((i.kind NOT IN(20,21) AND COALESCE((SELECT g.position FROM progress g WHERE g.profile_id=p.profile_id AND g.item_id=i.id),0)>0) OR (i.kind IN(20,21) AND ` + savedReadingInProgressSQL("p.profile_id") + `))`,
 	"watched":    ` AND ` + personalstate.CompactSQL("p.profile_id", "i.id") + `=1`,
 	"favorites":  ` AND p.favorite=1`,
 }

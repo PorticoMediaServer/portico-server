@@ -21,7 +21,36 @@ export const playlistListFilters: readonly PlaylistListFilter[] = ['all', 'mine'
 const filterAllowed = (view: string, filter: string) => (view === 'playlists' ? (playlistListFilters as readonly string[]).includes(filter) : (view === 'watchlist' || view === 'favorites') && (savedListFilters as readonly string[]).includes(filter));
 export const savedListSorts: readonly SavedListSort[] = ['title', 'added', 'updated', 'year', 'duration', 'progress'];
 export const historyPeriods: readonly HistoryPeriod[] = ['24h', '7d', '30d', '90d', 'all'];
-export type SavedRoute = Readonly<{ view: 'watchlist' | 'favorites' | 'playlists' | 'collections' | 'views' | 'history' | 'resource'; resourceId?:string; sort?: string; direction?: 'asc' | 'desc'; filter?: SavedListFilter | PlaylistListFilter; shape?:SavedShape; period?: HistoryPeriod } | { view: 'playlist'; playlistId: string }>;
+/** The temporary orders and filters a playlist or collection page offers. `position` is the
+ * resource's own order: the only order a move means, and the only page that carries order
+ * witnesses. The others are display orders the server computes; nothing about them is stored. */
+export type ResourceContentSort = 'position' | 'title' | 'year' | 'duration';
+export type ResourceContentFilter = 'all' | 'unwatched' | 'inProgress' | 'watched';
+export const resourceContentSorts: readonly ResourceContentSort[] = ['position', 'title', 'year', 'duration'];
+export const resourceContentFilters: readonly ResourceContentFilter[] = ['all', 'unwatched', 'inProgress', 'watched'];
+export type ResourceContentQuery = Readonly<{ sort?: ResourceContentSort; direction?: 'asc' | 'desc'; filter?: ResourceContentFilter }>;
+/** True when a page query is the resource's own order over every entry (moves are allowed). */
+export const resourceContentManual = (q: ResourceContentQuery): boolean => (q.sort ?? 'position') === 'position' && (q.filter ?? 'all') === 'all';
+/** Under the page's revision: the entries just before and after a page of the resource's own
+ * order, and its final entry. A move built from them is sent with that same revision. */
+export type ResourceOrderWitness = Readonly<{ previous?: string; next?: string; last?: string }>;
+/** Adds a resource content query to page parameters (defaults are omitted). */
+export function resourceContentParams(params: URLSearchParams, q: ResourceContentQuery): URLSearchParams {
+ if (q.sort !== undefined && q.sort !== 'position') params.set('sort', q.sort);
+ if (q.direction !== undefined && (q.sort ?? 'position') !== 'position') params.set('direction', q.direction);
+ if (q.filter !== undefined && q.filter !== 'all') params.set('filter', q.filter);
+ return params;
+}
+export function resourceContentQuery(v: Readonly<{ sort?: unknown; direction?: unknown; filter?: unknown }>): ResourceContentQuery {
+ if (v.sort !== undefined && !resourceContentSorts.includes(v.sort as ResourceContentSort) || v.direction !== undefined && v.direction !== 'asc' && v.direction !== 'desc' || v.filter !== undefined && !resourceContentFilters.includes(v.filter as ResourceContentFilter) || v.sort === undefined && v.direction !== undefined || v.sort === 'position' && v.direction === 'desc') throw new Error('Invalid resource content query.');
+ return { ...(v.sort === undefined ? {} : { sort: v.sort as ResourceContentSort }), ...(v.direction === undefined ? {} : { direction: v.direction as 'asc' | 'desc' }), ...(v.filter === undefined ? {} : { filter: v.filter as ResourceContentFilter }) };
+}
+export function parseResourceOrderWitness(v: unknown): ResourceOrderWitness | undefined {
+ if (v === undefined) return undefined;
+ if (!record(v) || [v.previous, v.next, v.last].some(x => x !== undefined && !id(x)) || v.last === undefined) invalid();
+ return freeze({ ...(v.previous === undefined ? {} : { previous: v.previous as string }), ...(v.next === undefined ? {} : { next: v.next as string }), last: v.last as string });
+}
+export type SavedRoute = Readonly<{ view: 'watchlist' | 'favorites' | 'playlists' | 'collections' | 'views' | 'history' | 'resource'; resourceId?:string; sort?: string; direction?: 'asc' | 'desc'; filter?: SavedListFilter | PlaylistListFilter | ResourceContentFilter; shape?:SavedShape; period?: HistoryPeriod } | ({ view: 'playlist'; playlistId: string } & ResourceContentQuery)>;
 /** Filters and sorts are named server policies. The client picks a published name; it never
  * evaluates the predicate or re-sorts the page it was given. */
 export function savedListPath(view: 'watchlist' | 'favorites', options: Readonly<{ filter?: SavedListFilter; shape?:SavedShape; sort?: SavedListSort; direction?: 'asc' | 'desc'; limit?: number; cursor?: string | null }> = {}): string {
@@ -60,7 +89,9 @@ export type SavedProjection = Readonly<Omit<ContentProjection, 'scope' | 'sectio
  playlistRevision?: number;
  actions?: readonly string[];
  navigation: readonly Readonly<{ id: string; labelKey: string; view: 'watchlist' | 'favorites' | 'playlists' }>[];
- sections: readonly Readonly<{ id: string; type: 'rail' | 'grid' | 'list'; heading: ContentHeading; entries: readonly SavedEntry[]; totalCount: number; nextCursor: string }>[];
+ /** `start` is the index of the section's first entry in the whole query; `order` (a playlist
+  * in its own order only) its order witnesses. */
+ sections: readonly Readonly<{ id: string; type: 'rail' | 'grid' | 'list'; heading: ContentHeading; entries: readonly SavedEntry[]; totalCount: number; nextCursor: string; start: number; order?: ResourceOrderWitness }>[];
 }>;
 export type SavedRestore = Readonly<{ cursor?: string | null; history?: readonly (string | null)[]; scope?: SavedScope }>;
 export type SavedActor = Readonly<{ authority: 'local' | 'hosted'; accountId: string; profileId: string }>;
@@ -117,12 +148,14 @@ function actor(v: unknown): SavedActor { if (!record(v) || !['local','hosted'].i
 function scope(v: SavedScope): SavedScope { if (!id(v.serverId) || !text(v.viewerId, 1024) || !v.viewerId) throw new Error('A complete Saved viewer/server scope is required.'); return freeze({ serverId: v.serverId, viewerId: v.viewerId }); }
 function route(v: SavedRoute): SavedRoute {
  if (!record(v) || !['watchlist','favorites','playlists','playlist','collections','views','history','resource'].includes(v.view)) throw new Error('Invalid Saved route.');
- if (v.view === 'playlist') { if (!id(v.playlistId)) throw new Error('Playlist ID required.'); return freeze({ view: v.view, playlistId: v.playlistId }); }
+ if (v.view === 'playlist') { if (!id(v.playlistId)) throw new Error('Playlist ID required.'); return freeze({ view: v.view, playlistId: v.playlistId, ...resourceContentQuery(v) }); }
  if(v.view==='resource'&&!id(v.resourceId))throw new Error('Saved resource ID required.');
  if (v.sort !== undefined && !id(v.sort) || v.direction !== undefined && !['asc','desc'].includes(v.direction)) throw new Error('Invalid Saved query.');
  // CD-17: retain and validate filter when normalizing watchlist/favorites routes.
  // Only accept all/unwatched/inProgress for that view; reject filter for other views.
- if (v.filter !== undefined) {
+ // A saved resource takes the resource content query (a saved view rejects one on the server).
+ if (v.view === 'resource') resourceContentQuery(v);
+ else if (v.filter !== undefined) {
   if (v.view !== 'watchlist' && v.view !== 'favorites' && v.view !== 'playlists') throw new Error('Invalid Saved query.');
   if (!filterAllowed(v.view, v.filter)) throw new Error('Unknown saved list filter.');
  }
@@ -183,20 +216,22 @@ function projection(v: unknown, bound: SavedScope, selected: SavedRoute): SavedP
   if (!savedListFilters.includes(q.category as SavedListFilter)) invalid();
   const expected = (selected as { filter?: string }).filter ?? 'all';
   if (q.category !== expected) invalid();
+ } else if (selected.view === 'playlist') {
+  if (q.category !== (selected.filter ?? 'all') || q.sort !== (selected.sort ?? 'position') || selected.direction !== undefined && q.direction !== selected.direction || !int(v.playlistRevision)) invalid();
  } else if (q.category !== '') invalid();
- if (selected.view === 'playlist' ? q.sort !== 'position' || q.direction !== 'asc' || !int(v.playlistRevision) : selected.sort !== undefined && q.sort !== selected.sort || selected.direction !== undefined && q.direction !== selected.direction) invalid();
+ if (selected.view !== 'playlist' && (selected.sort !== undefined && q.sort !== selected.sort || selected.direction !== undefined && q.direction !== selected.direction)) invalid();
  // Sizes and cursors refuse the whole page. Past that, an entry, section, tab, sort or filter this app
  // cannot read is left out alone, a repeated id keeps its first row, and a section of an unknown
  // layout is shown as a grid.
  const rawSections = list(v.sections, 4);
  for (const row of rawSections) if (record(row)) { within(row.entries, row.type === 'rail' ? 12 : 100); if (!text(row.nextCursor, 4096)) invalid(); }
- const sections = firstOfEach('saved', 'sections', keepReadable('saved', 'sections', rawSections, row => { if (!record(row) || !id(row.id)) invalid(); const type = oneOfOr('saved', 'section.type', row.type, ['rail','grid','list'] as const, 'grid'); const entries = firstOfEach('saved', 'section.entries', keepReadable('saved', 'section.entries', list(row.entries, 100), value => entry(value, selected.view)), savedEntryKey); return { id: row.id, type, heading: heading(row.heading), entries, totalCount: int(row.totalCount) ? Math.max(row.totalCount, entries.length) : entries.length, nextCursor: row.nextCursor as string }; }), row => row.id);
+ const sections = firstOfEach('saved', 'sections', keepReadable('saved', 'sections', rawSections, row => { if (!record(row) || !id(row.id)) invalid(); const type = oneOfOr('saved', 'section.type', row.type, ['rail','grid','list'] as const, 'grid'); const entries = firstOfEach('saved', 'section.entries', keepReadable('saved', 'section.entries', list(row.entries, 100), value => entry(value, selected.view)), savedEntryKey); const order = selected.view === 'playlist' && resourceContentManual(selected) ? parseResourceOrderWitness(row.order) : undefined; return { id: row.id, type, heading: heading(row.heading), entries, totalCount: int(row.totalCount) ? Math.max(row.totalCount, entries.length) : entries.length, nextCursor: row.nextCursor as string, start: int(row.start) ? row.start : 0, ...(order ? { order } : {}) }; }), row => row.id);
  const navigation = firstOfEach('saved', 'navigation', keepReadable('saved', 'navigation', list(v.navigation, 3), n => { if (!record(n) || !id(n.id) || !id(n.labelKey) || !['watchlist','favorites','playlists'].includes(n.view as string)) invalid(); return { id: n.id, labelKey: n.labelKey, view: n.view as 'watchlist'|'favorites'|'playlists' }; }), n => n.id);
  const rawSorts = list(v.sorts, 16); for (const row of rawSorts) if (record(row)) within(row.directions, 2);
  const sorts = firstOfEach('saved', 'sorts', keepReadable('saved', 'sorts', rawSorts, row => { if (!record(row) || !id(row.id) || !id(row.labelKey)) invalid(); const directions = [...new Set(list(row.directions, 2).filter((d): d is 'asc'|'desc' => d === 'asc' || d === 'desc'))]; return { id: row.id, labelKey: row.labelKey, directions }; }), row => row.id);
  // CD-17: preserve validated filter definitions/counts; do not erase server-authored filter state.
  // Watchlist, Favourites and the list of playlists have filters here; ones published for another view are not read.
- const sentFilters = list(v.filters, 4), rawFilters = listView || selected.view === 'playlists' ? sentFilters : []; for (const f of rawFilters) if (record(f)) within(f.options, 8);
+ const sentFilters = list(v.filters, 4), rawFilters = listView || selected.view === 'playlists' || selected.view === 'playlist' ? sentFilters : []; for (const f of rawFilters) if (record(f)) within(f.options, 8);
  if (rawFilters.length !== sentFilters.length) noteSkipped('saved', 'filters', sentFilters.length);
  const filters = firstOfEach('saved', 'filters', keepReadable('saved', 'filters', rawFilters, f => { if (!record(f) || !id(f.id) || !id(f.labelKey)) invalid(); const options = firstOfEach('saved', 'filter.options', keepReadable('saved', 'filter.options', list(f.options, 8), o => { if (!record(o) || !id(o.id) || !prose(o.label, 120) || !int(o.count)) invalid(); return Object.freeze({ id: o.id as string, label: o.label as string, count: o.count as number }); }), k => k.id); return Object.freeze({ id: f.id as string, labelKey: f.labelKey as string, options: Object.freeze(options) }); }), k => k.id);
  // An action this app does not know is not offered; nothing is ever offered that the server did not list.
@@ -297,7 +332,7 @@ export class SavedService {
    if (!live()) return;
    const params = new URLSearchParams({ limit: '40' }); if (cursor) params.set('cursor', cursor);
    let path: string;
-   if (selected.view === 'playlist') path = encodedRoutePath("get_playlists_id_content", {"id": encodeURIComponent(selected.playlistId)});
+   if (selected.view === 'playlist') { path = encodedRoutePath("get_playlists_id_content", {"id": encodeURIComponent(selected.playlistId)}); resourceContentParams(params, selected); }
    else { path = routePath("get_saved_content"); params.set('view', selected.view); if (selected.sort) params.set('sort', selected.sort); if (selected.direction) params.set('direction', selected.direction); if('shape'in selected&&selected.shape)params.set('shape',selected.shape); if ('filter' in selected && selected.filter) params.set('filter', selected.filter); }
    const [raw, rawResource] = await this.deadline(Promise.all([api.request<unknown>(path + '?' + params, 'GET', undefined, controller.signal), selected.view === 'playlist' ? api.request<RouteResponse<"get_playlists_id">>(encodedRoutePath("get_playlists_id", {"id": encodeURIComponent(selected.playlistId)}), 'GET', undefined, controller.signal) : Promise.resolve(null)]), controller);
    if (!live()) return;
@@ -332,7 +367,7 @@ export class SavedService {
   const live = () => !this.disposed && generation === this.generation && read === this.readGeneration && (ticket === undefined || ticket === this.quiet) && !controller.signal.aborted;
   const pathOf = (cursor: string | null) => {
    const params = new URLSearchParams({ limit: String(SAVED_PAGE) }); if (cursor) params.set('cursor', cursor);
-   if (selected.view === 'playlist') return encodedRoutePath("get_playlists_id_content", {"id": encodeURIComponent(selected.playlistId)}) + '?' + params;
+   if (selected.view === 'playlist') return encodedRoutePath("get_playlists_id_content", {"id": encodeURIComponent(selected.playlistId)}) + '?' + resourceContentParams(params, selected);
    params.set('view', selected.view); if (selected.sort) params.set('sort', selected.sort); if (selected.direction) params.set('direction', selected.direction); if('shape'in selected&&selected.shape)params.set('shape',selected.shape); if ('filter' in selected && selected.filter) params.set('filter', selected.filter);
    return routePath("get_saved_content") + '?' + params;
   };
@@ -370,6 +405,8 @@ export class SavedService {
     into.entries.push(...added);
     into.totalCount = part.totalCount;
     into.nextCursor = part.nextCursor === followed ? '' : part.nextCursor;
+    // Read from the first page, so nothing precedes it: the last page read names what follows.
+    into.order = part.order;
    }
    // A page that answered for none of the sections ends the list where it is.
    if (paged.nextCursor === followed) paged.nextCursor = '';
@@ -421,7 +458,7 @@ export class SavedService {
    try {
     const params = new URLSearchParams({ limit: '40' }); if (cursor) params.set('cursor', cursor);
     let path: string;
-    if (selected.view === 'playlist') path = encodedRoutePath("get_playlists_id_content", {"id": encodeURIComponent(selected.playlistId)});
+    if (selected.view === 'playlist') { path = encodedRoutePath("get_playlists_id_content", {"id": encodeURIComponent(selected.playlistId)}); resourceContentParams(params, selected); }
     else { path = routePath("get_saved_content"); params.set('view', selected.view); if (selected.sort) params.set('sort', selected.sort); if (selected.direction) params.set('direction', selected.direction); if('shape'in selected&&selected.shape)params.set('shape',selected.shape); if ('filter' in selected && selected.filter) { if (!filterAllowed(selected.view, selected.filter)) throw new Error('Unknown saved list filter.'); params.set('filter', selected.filter); } }
     const [raw, rawResource] = await this.deadline(Promise.all([api.request<unknown>(path + '?' + params, 'GET', undefined, controller.signal), selected.view === 'playlist' ? api.request<RouteResponse<"get_playlists_id">>(encodedRoutePath("get_playlists_id", {"id": encodeURIComponent(selected.playlistId)}), 'GET', undefined, controller.signal) : Promise.resolve(null)]), controller);
     if (this.disposed || generation !== this.generation || read !== this.readGeneration) return;
@@ -454,8 +491,12 @@ export class SavedService {
   if (command.action === 'reorder') {
    const order = this.state.order;
    const sections = this.state.projection?.sections ?? [];
-   const fullPage = sections.length === 1 && !sections[0].nextCursor && sections[0].entries.length === p.entryCount && this.state.projection?.playlistRevision === p.revision;
-   const verified = order && order.revision === p.revision && order.viewerFence === p.viewerFence && order.playlistId === p.id ? order.entryIds : fullPage ? sections[0].entries.map(e => e.id) : null;
+   const route = this.state.route, current = this.state.projection?.playlistRevision === p.revision && this.state.projection.scope.viewerFence === p.viewerFence;
+   // A page of the playlist's own order is its own witness at its revision: its entries plus the
+   // entries just outside it and the playlist's last entry. Another order or a filter moves nothing.
+   if (route?.view !== 'playlist' || !resourceContentManual(route)) throw new Error('Moves are made in the playlist’s own order.');
+   const witnessed = current ? sections.flatMap(section => section.order ? [...section.entries.map(e => e.id), ...[section.order.previous, section.order.next, section.order.last].filter((x): x is string => !!x)] : []) : [];
+   const verified = order && order.revision === p.revision && order.viewerFence === p.viewerFence && order.playlistId === p.id ? [...order.entryIds, ...witnessed] : witnessed.length ? witnessed : null;
    // Windowed reorder needs only the moved occurrences plus the anchor to be
    // known at the current revision — never the whole multi-thousand list.
    if (!verified || !command.entryIds.length || command.entryIds.length > Math.min(200, p.limits.maxReorderEntries) || command.entryIds.some(entryId => !verified.includes(entryId))) throw new Error('Load the current playlist order before moving these entries.');

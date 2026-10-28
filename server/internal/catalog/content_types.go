@@ -239,6 +239,24 @@ type ContentSection struct {
 	// SeeAll is the complete list behind a personal row: a browse of the
 	// library's pivot with the row's filter, sorted For you.
 	SeeAll *ContentSeeAll `json:"seeAll,omitempty"`
+	// Order, on a page of a playlist in its own order, names the occurrences
+	// around the page under the same revision; see ContentOrderWitness.
+	Order *ContentOrderWitness `json:"order,omitempty"`
+}
+
+// ContentOrderWitness names, under the revision of the page that carries it,
+// the occurrences just outside a page of a resource's own order, so a move can
+// reach across a page boundary or to either end of the whole resource without
+// reading the rest of it. A move sends the same revision as its expected
+// revision, so a witness from an older order can never place an entry.
+type ContentOrderWitness struct {
+	// Previous is the occurrence just before the page; absent on the first page.
+	Previous string `json:"previous,omitempty"`
+	// Next is the occurrence just after the page; absent on the last page.
+	Next string `json:"next,omitempty"`
+	// Last is the resource's final occurrence (Move to bottom goes after it);
+	// absent when the resource is empty.
+	Last string `json:"last,omitempty"`
 }
 
 // ContentSeeAll is a browse request a client can open as it is.

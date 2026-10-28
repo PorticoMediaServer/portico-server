@@ -63,6 +63,16 @@ type SavedResourceContent struct {
 	Entries    []SavedResourceEntry `json:"entries"`
 	NextCursor string               `json:"nextCursor"`
 	Browse     *BrowseResult        `json:"browse,omitempty"`
+	// A collection's page: the query it was read with, the orders and filters
+	// it offers (see ResourceContentQuery), how many entries match, the index of
+	// its first entry in the whole query and, in the collection's own order,
+	// the entries around it. A saved view's page carries its browse instead.
+	Query      *ContentQuery        `json:"query,omitempty"`
+	Sorts      []ContentSort        `json:"sorts,omitempty"`
+	Filters    []ContentFilter      `json:"filters,omitempty"`
+	TotalCount *int                 `json:"totalCount,omitempty"`
+	Start      int                  `json:"start"`
+	Order      *ContentOrderWitness `json:"order,omitempty"`
 }
 type SavedResourceMutation struct {
 	OperationID      string               `json:"operationId"`
@@ -313,12 +323,12 @@ func (s *Service) SavedResources(server, fence string, a ResourceActor, kind, cu
 	}
 	return out, nil
 }
-func (s *Service) SavedResourceContent(viewer Viewer, server, fence, id string, a ResourceActor, cursor string, limit int, readingAdmission ...SavedGroupAdmission) (SavedResourceContent, error) {
+func (s *Service) SavedResourceContent(viewer Viewer, server, fence, id string, a ResourceActor, query ResourceContentQuery, cursor string, limit int, readingAdmission ...SavedGroupAdmission) (SavedResourceContent, error) {
 	if dbwork.Snapshot(s.Context()) == nil {
 		var out SavedResourceContent
 		err := dbwork.WithReadSnapshot(s.Context(), s.db, func(ctx context.Context) error {
 			var readErr error
-			out, readErr = s.WithContext(ctx).SavedResourceContent(viewer, server, fence, id, a, cursor, limit, readingAdmission...)
+			out, readErr = s.WithContext(ctx).SavedResourceContent(viewer, server, fence, id, a, query, cursor, limit, readingAdmission...)
 			return readErr
 		})
 		return out, err
@@ -337,6 +347,11 @@ func (s *Service) SavedResourceContent(viewer Viewer, server, fence, id string, 
 	}
 	out.Resource = r
 	if r.Kind == "view" {
+		// A saved view's order and filters are its definition; it has no
+		// temporary page query.
+		if query != (ResourceContentQuery{}) {
+			return out, requestinput.New("a saved view has no page query")
+		}
 		if r.Status == "needs-review" {
 			return out, nil
 		}
@@ -373,31 +388,64 @@ func (s *Service) SavedResourceContent(viewer Viewer, server, fence, id string, 
 			Mobi   bool
 			Comics string
 		}{s.readingMobiConfigured(), readingcap.ComicFormatsSQL()})
-		scope := cursorScope{Profile: actorKey(a), View: "saved_collection", Entity: id, Viewer: fence + ":" + domain, Limit: limit}
+		query, sort, err := query.normalize()
+		if err != nil {
+			return out, err
+		}
+		out.Query = &ContentQuery{Sort: query.Sort, Direction: query.Direction, Category: query.Filter, Limit: limit, SearchMode: "none"}
+		out.Sorts = resourceContentSortOptions()
+		scope := cursorScope{Profile: actorKey(a), View: "saved_collection", Entity: id, Viewer: fence + ":" + domain, Sort: query.Sort, Direction: query.Direction, Category: query.Filter, Limit: limit}
 		// Inaccessible membership has an opaque stable entry ID and no media facts.
 		// A collection lists in its own order: new entries at the end, wherever its
 		// owner (or an editor) has moved them since.
 		restriction, bound := ItemRestrictionSQL("i.id", viewer.EffectiveRestrictions())
-		from := ` FROM saved_resource_entries e LEFT JOIN catalog_entities i ON i.id=e.item_id AND i.retired=0 AND EXISTS(SELECT 1 FROM catalog_item_details detail WHERE detail.entity_id=i.id) AND i.library_id IN(SELECT id FROM catalog_libraries WHERE library_id IN(SELECT value FROM json_each(?)) AND retired=0) WHERE e.resource_id=? AND (i.id IS NULL OR ` + restriction + `)`
-		args := append([]any{string(raw), id}, bound...)
+		from := ` FROM (SELECT ? AS profile_id) viewer JOIN saved_resource_entries e LEFT JOIN catalog_entities i ON i.id=e.item_id AND i.retired=0 AND EXISTS(SELECT 1 FROM catalog_item_details detail WHERE detail.entity_id=i.id) AND i.library_id IN(SELECT id FROM catalog_libraries WHERE library_id IN(SELECT value FROM json_each(?)) AND retired=0) WHERE e.resource_id=? AND (i.id IS NULL OR ` + restriction + `)`
+		fromArgs := append([]any{actorKey(a), string(raw), id}, bound...)
+		counted := make([]int, len(resourceContentFilterIDs))
+		counts := make([]any, len(counted))
+		for n := range counted {
+			counts[n] = &counted[n]
+		}
+		if e = s.read().QueryRow(resourceContentCountsSQL()+from, fromArgs...).Scan(counts...); e != nil {
+			return out, e
+		}
+		out.Filters = resourceContentFilterOptions(counted)
+		for n, f := range resourceContentFilterIDs {
+			if f == query.Filter {
+				out.TotalCount = &counted[n]
+			}
+		}
+		order := newResourceContentOrder(query, sort, "e.id", false)
+		where := ` AND ` + resourceContentFilterSQL(query.Filter)
+		args := append([]any{}, fromArgs...)
 		if cursor != "" {
 			c, e := s.decodeRevisionCursor(cursor, scope, rev)
 			if e != nil {
 				return out, e
 			}
-			from += ` AND (e.order_key>? OR (e.order_key=? AND e.id>?))`
-			args = append(args, c.Value, c.Value, c.ID)
+			seek, seekArgs, e := order.after(c.Keys)
+			if e != nil {
+				return out, e
+			}
+			where += ` AND ` + seek
+			args = append(args, seekArgs...)
+			out.Start = c.Start
 		}
 		args = append(args, limit+1)
-		rows, e := s.read().Query(`SELECT e.id,COALESCE(pid(i.public_id),''),e.order_key`+from+` ORDER BY e.order_key,e.id LIMIT ?`, args...)
+		rows, e := s.read().Query(`SELECT e.id,COALESCE(pid(i.public_id),''),`+order.selectSQL()+from+where+` ORDER BY `+order.orderBy+` LIMIT ?`, args...)
 		if e != nil {
 			return out, e
 		}
-		ids, keys := []string{}, []string{}
+		ids, keys := []string{}, [][]any{}
 		for rows.Next() {
 			var entry SavedResourceEntry
-			var item, key string
-			if e = rows.Scan(&entry.ID, &item, &key); e != nil {
+			var item string
+			key := make([]any, len(order.columns))
+			dest := []any{&entry.ID, &item}
+			for n := range key {
+				dest = append(dest, &key[n])
+			}
+			if e = rows.Scan(dest...); e != nil {
 				rows.Close()
 				return out, e
 			}
@@ -411,13 +459,43 @@ func (s *Service) SavedResourceContent(viewer Viewer, server, fence, id string, 
 		if e != nil {
 			return out, e
 		}
+		following := ""
 		if len(out.Entries) > limit {
+			following = out.Entries[limit].ID
 			out.Entries = out.Entries[:limit]
 			ids = ids[:limit]
-			out.NextCursor, e = s.encodeRevisionCursor(cursorValue{Scope: scope, Value: keys[limit-1], ID: out.Entries[limit-1].ID, Expires: time.Now().Add(30 * time.Minute).Unix()}, rev)
+			out.NextCursor, e = s.encodeRevisionCursor(cursorValue{Scope: scope, Keys: resourceOrderKeys(keys[limit-1]), Start: out.Start + limit, Expires: time.Now().Add(30 * time.Minute).Unix()}, rev)
 			if e != nil {
 				return out, e
 			}
+		}
+		// The witnesses read the same membership the page does: a restricted
+		// entry is not in this viewer's order, so it is never a neighbour.
+		if query.manual() && len(out.Entries) > 0 {
+			witness := &ContentOrderWitness{Next: following}
+			edge := func(extra string, extraArgs []any, desc bool) (string, error) {
+				dir := " ASC"
+				if desc {
+					dir = " DESC"
+				}
+				var token string
+				e := s.read().QueryRow(`SELECT e.id`+from+extra+` ORDER BY e.order_key`+dir+`,e.id`+dir+` LIMIT 1`, append(append([]any{}, fromArgs...), extraArgs...)...).Scan(&token)
+				if errors.Is(e, sql.ErrNoRows) {
+					return "", nil
+				}
+				return token, e
+			}
+			if cursor != "" {
+				if witness.Previous, e = edge(` AND (e.order_key,e.id)<(?,?)`, keys[0], true); e != nil {
+					return out, e
+				}
+			}
+			if following == "" {
+				witness.Last = out.Entries[len(out.Entries)-1].ID
+			} else if witness.Last, e = edge("", nil, true); e != nil {
+				return out, e
+			}
+			out.Order = witness
 		}
 		visibleIDs := make([]string, 0, len(ids))
 		for _, id := range ids {
