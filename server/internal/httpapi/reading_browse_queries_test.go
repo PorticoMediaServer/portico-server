@@ -98,11 +98,11 @@ func TestReadingBrowsePreparationHTTPLeaseReadyCancelAndDrift(t *testing.T) {
 		}
 	}
 	w := preparedReadingHTTP(t, mux, "POST", base+"/browse", f.f.owner.AccessToken, map[string]any{"limit": 1}, checkLease)
-	if w.Code != 202 || w.Header().Get("Retry-After") != "1" || w.Header().Get("Location") == "" {
+	if w.Code != 202 || w.Header().Get("Retry-After") != "0" || w.Header().Get("Location") == "" {
 		t.Fatal(w.Code, w.Body.String())
 	}
 	var pending ReadingBrowsePreparing
-	if err = json.Unmarshal(w.Body.Bytes(), &pending); err != nil || pending.Kind != "reading-browse-preparing" || pending.State != "preparing" || pending.QueryID == "" {
+	if err = json.Unmarshal(w.Body.Bytes(), &pending); err != nil || pending.Kind != "reading-browse-preparing" || pending.State != "preparing" || pending.QueryID == "" || pending.RetryAfterMs != readingInitialRetryMs {
 		t.Fatal(pending, err)
 	}
 	if store.Stats().Deliveries != 0 {
@@ -110,7 +110,7 @@ func TestReadingBrowsePreparationHTTPLeaseReadyCancelAndDrift(t *testing.T) {
 	}
 	path := base + "/reading-browse-queries/" + pending.QueryID
 	w = preparedReadingHTTP(t, mux, "GET", path, f.f.owner.AccessToken, nil, checkLease)
-	if w.Code != 202 || store.Stats().Deliveries != 0 {
+	if w.Code != 202 || w.Header().Get("Retry-After") != "1" || !strings.Contains(w.Body.String(), `"retryAfterMs":1000`) || store.Stats().Deliveries != 0 {
 		t.Fatal(w.Code, w.Body.String(), store.Stats())
 	}
 	// A Poll lease alone is insufficient for the pending envelope. Ordinary
@@ -489,7 +489,7 @@ func TestReadingBrowsePublicCohortDispatchAndProofRefusal(t *testing.T) {
 	h := New(f.d)
 	pending := preparedReadingHTTP(t, h, "POST", path, f.f.owner.AccessToken, body, nil)
 	var envelope ReadingBrowsePreparing
-	if pending.Code != 202 || json.Unmarshal(pending.Body.Bytes(), &envelope) != nil || envelope.State != "preparing" || envelope.Kind != "reading-browse-preparing" || pending.Header().Get("Retry-After") != "1" || pending.Header().Get("Location") == "" {
+	if pending.Code != 202 || json.Unmarshal(pending.Body.Bytes(), &envelope) != nil || envelope.State != "preparing" || envelope.Kind != "reading-browse-preparing" || pending.Header().Get("Retry-After") != "0" || pending.Header().Get("Location") == "" {
 		t.Fatal(pending.Code, pending.Header(), pending.Body.String())
 	}
 	body["selectionBasis"] = strings.Repeat("a", 64)

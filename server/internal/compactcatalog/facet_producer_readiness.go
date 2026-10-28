@@ -15,10 +15,11 @@ var ErrFacetProducerFailed = errors.New("facet source maintenance has failed")
 // A class adapter must additionally bind its exact policy and published-class
 // witness (restricted decade), and recheck live authority independently.
 type FacetProducerFence struct {
-	SourceEpoch       int64 `json:"sourceEpoch"`
-	ProjectionEpoch   int64 `json:"projectionEpoch"`
-	ServingGeneration int64 `json:"servingGeneration"`
-	Version           int   `json:"version"`
+	SourceEpoch        int64 `json:"sourceEpoch"`
+	ProjectionEpoch    int64 `json:"projectionEpoch"`
+	ServingGeneration  int64 `json:"servingGeneration"`
+	Version            int   `json:"version"`
+	VisibilitySequence int64 `json:"visibilitySequence"`
 }
 
 // CaptureFacetProducerFence must share the caller's read snapshot. It is a
@@ -31,7 +32,7 @@ type FacetProducerFence struct {
 func CaptureFacetProducerFence(ctx context.Context, q ReadQuery) (FacetProducerFence, error) {
 	var f FacetProducerFence
 	var pending, failed bool
-	err := q.QueryRowContext(ctx, `SELECT s.source_epoch,s.projection_epoch,g.generation,COALESCE((SELECT version FROM catalog_derivations WHERE domain=33),0),
+	err := q.QueryRowContext(ctx, `SELECT s.source_epoch,s.projection_epoch,g.generation,CASE WHEN g.retaining=1 THEN g.visibility_sequence ELSE COALESCE((SELECT first_pending-1 FROM compact_visibility_source_jobs WHERE first_pending>=0 ORDER BY first_pending LIMIT 1),(SELECT sequence FROM compact_visibility_source_state WHERE id=1)) END,COALESCE((SELECT version FROM catalog_derivations WHERE domain=33),0),
  g.retaining=1
  OR NOT EXISTS(SELECT 1 FROM catalog_derivations WHERE domain=33 AND version=7)
  OR NOT EXISTS(SELECT 1 FROM catalog_derivations WHERE domain=36 AND version=1)
@@ -42,14 +43,19 @@ func CaptureFacetProducerFence(ctx context.Context, q ReadQuery) (FacetProducerF
  OR EXISTS(SELECT 1 FROM catalog_derivations WHERE domain IN(18,19,20,25,26,28,31,33,35,36,37,38,39,40,41,42,43,44) AND rebuilding=1)
  OR EXISTS(SELECT 1 FROM catalog_dirty WHERE domain IN(18,19,20,25,26,28,31,33,35,36,37,38,39,40,41,42,43,44))
  OR EXISTS(SELECT 1 FROM catalog_derivation_failures WHERE domain IN(18,19,20,25,26,28,31,33,35,36,37,38,39,40,41,42,43,44))
- OR EXISTS(SELECT 1 FROM catalog_upstream_sources)
- OR EXISTS(SELECT 1 FROM catalog_facet_source_fanouts)
- OR EXISTS(SELECT 1 FROM catalog_facet_work)
- OR EXISTS(SELECT 1 FROM catalog_facet_work_places)
- OR EXISTS(SELECT 1 FROM catalog_facet_stage),
+ OR EXISTS(SELECT 1 FROM catalog_upstream_sources WHERE domain>=-9223372036854775808)
+ OR EXISTS(SELECT 1 FROM catalog_facet_source_fanouts WHERE domain>=-9223372036854775808)
+ OR EXISTS(SELECT 1 FROM catalog_facet_work WHERE entity_id>=-9223372036854775808)
+ OR EXISTS(SELECT 1 FROM catalog_facet_work_places WHERE entity_id>=-9223372036854775808)
+ OR EXISTS(SELECT 1 FROM catalog_facet_stage WHERE entity_id>=-9223372036854775808)
+ OR EXISTS(SELECT 1 FROM compact_visibility_source_jobs WHERE first_pending<=(CASE WHEN g.retaining=1 THEN g.visibility_sequence ELSE COALESCE((SELECT first_pending-1 FROM compact_visibility_source_jobs WHERE first_pending>=0 ORDER BY first_pending LIMIT 1),(SELECT sequence FROM compact_visibility_source_state WHERE id=1)) END))
+ OR EXISTS(SELECT 1 FROM catalog_browse_row_work WHERE domain IN(18,35))
+ OR EXISTS(SELECT 1 FROM catalog_browse_row_keys WHERE domain IN(18,35))
+ OR EXISTS(SELECT 1 FROM catalog_item_metric_jobs WHERE item_id>=-9223372036854775808)
+ OR EXISTS(SELECT 1 FROM catalog_browse_counter_repairs WHERE entity_id>=-9223372036854775808),
  EXISTS(SELECT 1 FROM catalog_derivation_failures WHERE domain IN(18,19,20,25,26,28,31,33,35,36,37,38,39,40,41,42,43,44))
  FROM catalog_facet_source_state s CROSS JOIN catalog_generations g WHERE s.singleton=1 AND g.singleton=1`).
-		Scan(&f.SourceEpoch, &f.ProjectionEpoch, &f.ServingGeneration, &f.Version, &pending, &failed)
+		Scan(&f.SourceEpoch, &f.ProjectionEpoch, &f.ServingGeneration, &f.VisibilitySequence, &f.Version, &pending, &failed)
 	if err != nil {
 		return f, err
 	}

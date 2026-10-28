@@ -14,12 +14,14 @@ import (
 	"portico.local/server/internal/persistence"
 )
 
-// CaptureFacetProducerFence includes five whole-table EXISTS probes. Each
-// stops at its first row even though SQLite describes it as a SCAN. Against
-// the baseline schema this statement takes 780 VM operations with either one
-// or 200,000 rows in each probed table, and 778 with none. Pin the entire SQL:
-// any text change requires reviewing these bounds again.
-const facetProducerFenceStatement = `SELECT s.source_epoch,s.projection_epoch,g.generation,COALESCE((SELECT version FROM catalog_derivations WHERE domain=33),0),
+// CaptureFacetProducerFence probes readiness through indexed primary-key
+// ranges, and reads the accepted visibility frontier through first_pending's
+// index with LIMIT 1. The >= min-int ranges cover every legal integer key and
+// stop at the first match; the source target is a captured scalar. None sorts
+// or enumerates source, repair or facet work. Pin the complete statement so
+// changing any barrier requires reviewing its bounds again. Every base-table
+// access remains subject to the ordinary no-SCAN check below.
+const facetProducerFenceStatement = `SELECT s.source_epoch,s.projection_epoch,g.generation,CASE WHEN g.retaining=1 THEN g.visibility_sequence ELSE COALESCE((SELECT first_pending-1 FROM compact_visibility_source_jobs WHERE first_pending>=0 ORDER BY first_pending LIMIT 1),(SELECT sequence FROM compact_visibility_source_state WHERE id=1)) END,COALESCE((SELECT version FROM catalog_derivations WHERE domain=33),0),
  g.retaining=1
  OR NOT EXISTS(SELECT 1 FROM catalog_derivations WHERE domain=33 AND version=7)
  OR NOT EXISTS(SELECT 1 FROM catalog_derivations WHERE domain=36 AND version=1)
@@ -30,39 +32,22 @@ const facetProducerFenceStatement = `SELECT s.source_epoch,s.projection_epoch,g.
  OR EXISTS(SELECT 1 FROM catalog_derivations WHERE domain IN(18,19,20,25,26,28,31,33,35,36,37,38,39,40,41,42,43,44) AND rebuilding=1)
  OR EXISTS(SELECT 1 FROM catalog_dirty WHERE domain IN(18,19,20,25,26,28,31,33,35,36,37,38,39,40,41,42,43,44))
  OR EXISTS(SELECT 1 FROM catalog_derivation_failures WHERE domain IN(18,19,20,25,26,28,31,33,35,36,37,38,39,40,41,42,43,44))
- OR EXISTS(SELECT 1 FROM catalog_upstream_sources)
- OR EXISTS(SELECT 1 FROM catalog_facet_source_fanouts)
- OR EXISTS(SELECT 1 FROM catalog_facet_work)
- OR EXISTS(SELECT 1 FROM catalog_facet_work_places)
- OR EXISTS(SELECT 1 FROM catalog_facet_stage),
+ OR EXISTS(SELECT 1 FROM catalog_upstream_sources WHERE domain>=-9223372036854775808)
+ OR EXISTS(SELECT 1 FROM catalog_facet_source_fanouts WHERE domain>=-9223372036854775808)
+ OR EXISTS(SELECT 1 FROM catalog_facet_work WHERE entity_id>=-9223372036854775808)
+ OR EXISTS(SELECT 1 FROM catalog_facet_work_places WHERE entity_id>=-9223372036854775808)
+ OR EXISTS(SELECT 1 FROM catalog_facet_stage WHERE entity_id>=-9223372036854775808)
+ OR EXISTS(SELECT 1 FROM compact_visibility_source_jobs WHERE first_pending<=(CASE WHEN g.retaining=1 THEN g.visibility_sequence ELSE COALESCE((SELECT first_pending-1 FROM compact_visibility_source_jobs WHERE first_pending>=0 ORDER BY first_pending LIMIT 1),(SELECT sequence FROM compact_visibility_source_state WHERE id=1)) END))
+ OR EXISTS(SELECT 1 FROM catalog_browse_row_work WHERE domain IN(18,35))
+ OR EXISTS(SELECT 1 FROM catalog_browse_row_keys WHERE domain IN(18,35))
+ OR EXISTS(SELECT 1 FROM catalog_item_metric_jobs WHERE item_id>=-9223372036854775808)
+ OR EXISTS(SELECT 1 FROM catalog_browse_counter_repairs WHERE entity_id>=-9223372036854775808),
  EXISTS(SELECT 1 FROM catalog_derivation_failures WHERE domain IN(18,19,20,25,26,28,31,33,35,36,37,38,39,40,41,42,43,44))
  FROM catalog_facet_source_state s CROSS JOIN catalog_generations g WHERE s.singleton=1 AND g.singleton=1`
-
-// boundedProbes are the tables facetProducerFenceStatement may report a SCAN
-// for, and only where its own text probes them with a first-row EXISTS.
-var boundedProbes = []string{
-	"catalog_upstream_sources",
-	"catalog_facet_source_fanouts",
-	"catalog_facet_work",
-	"catalog_facet_work_places",
-	"catalog_facet_stage",
-}
 
 // collapse folds a statement's whitespace, so a re-indented or re-wrapped
 // literal still matches while any change of text does not.
 func collapse(query string) string { return strings.Join(strings.Fields(query), " ") }
-
-// boundsAtFirstRow reports whether this plan's scan of table is one of the
-// pinned statement's first-row EXISTS probes.
-func boundsAtFirstRow(query, table string) bool {
-	for _, probe := range boundedProbes {
-		if table != probe {
-			continue
-		}
-		return strings.Contains(collapse(query), "OR EXISTS(SELECT 1 FROM "+table+")")
-	}
-	return false
-}
 
 // Writing and deriving must cost the same per entity in a library of any size.
 // Every SQL statement in this package's production code runs per entity, per
@@ -205,9 +190,6 @@ func TestPerItemDerivationStatementsSeek(t *testing.T) {
 				cte := regexp.MustCompile(`(?i)(WITH|,)\s*` + regexp.QuoteMeta(scanned) + `\s+AS\s*(?:MATERIALIZED\s+)?\(`).MatchString(query)
 				switch {
 				case cte:
-				// The pinned producer fence: a SCAN is bounded only where that
-				// exact statement probes the table with a first-row EXISTS.
-				case pinned && boundsAtFirstRow(query, scanned):
 				case strings.HasPrefix(scanned, "(subquery-") && drivesFromBatch.MatchString(query):
 					// A bounded batch-derived UNION or DISTINCT result; every base-table
 					// access is still independently checked below.

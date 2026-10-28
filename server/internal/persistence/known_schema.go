@@ -308,6 +308,7 @@ index client_log_uploads_page
 index compact_visibility_added
 index compact_visibility_blocks_full
 index compact_visibility_classes_library
+index compact_visibility_dirty_frontier
 index compact_visibility_duration
 index compact_visibility_head
 index compact_visibility_page
@@ -317,6 +318,8 @@ index compact_visibility_recent
 index compact_visibility_rows_movie_backfill
 index compact_visibility_rows_movie_item
 index compact_visibility_sort_entity
+index compact_visibility_source_jobs_frontier
+index compact_visibility_source_jobs_turn
 index compact_visibility_year
 index console_active_work
 index console_audit_action_page
@@ -934,6 +937,7 @@ table catalog_browse_buckets
 table catalog_browse_buckets_previous
 table catalog_browse_counted_rows
 table catalog_browse_counted_rows_previous
+table catalog_browse_counter_repairs
 table catalog_browse_episode_counts
 table catalog_browse_groups
 table catalog_browse_groups_previous
@@ -945,6 +949,8 @@ table catalog_browse_memberships
 table catalog_browse_memberships_previous
 table catalog_browse_metric_cursors
 table catalog_browse_predicate_epoch
+table catalog_browse_row_keys
+table catalog_browse_row_work
 table catalog_browse_rows
 table catalog_browse_rows_previous
 table catalog_collection_members
@@ -1002,6 +1008,7 @@ table catalog_item_attribute_edges
 table catalog_item_availability
 table catalog_item_availability_previous
 table catalog_item_details
+table catalog_item_metric_jobs
 table catalog_item_version_counts
 table catalog_kept_apart
 table catalog_kinds
@@ -1108,6 +1115,8 @@ table compact_visibility_classes
 table compact_visibility_counts
 table compact_visibility_dirty
 table compact_visibility_rows
+table compact_visibility_source_jobs
+table compact_visibility_source_state
 table compact_visibility_unavailable
 table compact_visibility_unavailable_counts
 table configuration
@@ -2085,6 +2094,9 @@ trigger catalog_browse_member_metrics_retain_update
 trigger catalog_browse_memberships_retain_delete
 trigger catalog_browse_memberships_retain_insert
 trigger catalog_browse_memberships_retain_update
+trigger catalog_browse_metric_links_delete
+trigger catalog_browse_metric_links_insert
+trigger catalog_browse_metric_links_update
 trigger catalog_browse_rows_retain_delete
 trigger catalog_browse_rows_retain_insert
 trigger catalog_browse_rows_retain_update
@@ -2454,6 +2466,7 @@ trigger compact_visibility_blocks_year_leave
 trigger compact_visibility_blocks_year_move
 trigger compact_visibility_dirty_attribute_delete
 trigger compact_visibility_dirty_attribute_insert
+trigger compact_visibility_dirty_attribute_update
 trigger compact_visibility_dirty_availability_delete
 trigger compact_visibility_dirty_availability_insert
 trigger compact_visibility_dirty_availability_update
@@ -2461,6 +2474,7 @@ trigger compact_visibility_dirty_link_delete
 trigger compact_visibility_dirty_link_insert
 trigger compact_visibility_dirty_member_delete
 trigger compact_visibility_dirty_member_insert
+trigger compact_visibility_dirty_member_update
 trigger compact_visibility_dirty_rating_age_delete
 trigger compact_visibility_dirty_rating_age_insert
 trigger compact_visibility_dirty_rating_age_update

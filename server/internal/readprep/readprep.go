@@ -305,6 +305,7 @@ const handleOverhead int64 = 256
 const deliveryOverhead int64 = 128
 
 type entry struct {
+	ready                      chan struct{}
 	key                        Key
 	meta, reserved             int64
 	plan                       Plan
@@ -321,6 +322,7 @@ type entry struct {
 }
 
 type lease struct {
+	waiting                 bool
 	caller                  Caller
 	e                       *entry
 	original, idle, created time.Time
@@ -328,20 +330,22 @@ type lease struct {
 }
 
 type Store struct {
-	mu            sync.Mutex
-	cond          *sync.Cond
-	wg            sync.WaitGroup
-	cfg           Config
-	entries       map[Key]*entry
-	handles       map[Handle]*lease
-	queue         []*entry
-	used          int64
-	deliveries    int
-	deliveryBytes int64
-	running       int
-	closed        bool
-	coldOwner     *entry // off queue between quanta; retained until worker exits
-	wakeTimer     *time.Timer
+	retireChanged  chan struct{}
+	initialWaiters int
+	mu             sync.Mutex
+	cond           *sync.Cond
+	wg             sync.WaitGroup
+	cfg            Config
+	entries        map[Key]*entry
+	handles        map[Handle]*lease
+	queue          []*entry
+	used           int64
+	deliveries     int
+	deliveryBytes  int64
+	running        int
+	closed         bool
+	coldOwner      *entry // off queue between quanta; retained until worker exits
+	wakeTimer      *time.Timer
 }
 
 // Budget charges all producer-owned live and temporary memory for one content
@@ -640,6 +644,7 @@ func (s *Store) Close() error {
 	s.mu.Lock()
 	if !s.closed {
 		s.closed = true
+		s.notifyRetirementLocked()
 		if s.wakeTimer != nil {
 			s.wakeTimer.Stop()
 		}
@@ -675,6 +680,7 @@ func (s *Store) Stats() Stats {
 
 // All following bookkeeping runs with mu held.
 func (s *Store) release(h Handle, l *lease) {
+	s.notifyRetirementLocked()
 	delete(s.handles, h)
 	s.used -= l.bytes
 	l.e.refs--
@@ -701,6 +707,8 @@ func (s *Store) retire(e *entry) {
 		return
 	}
 	e.retired = true
+	signalEntryReadyLocked(e)
+	s.notifyRetirementLocked()
 	e.cancel()
 	delete(s.entries, e.key)
 	for h, l := range s.handles {
@@ -879,6 +887,7 @@ func (s *Store) worker() {
 		}
 		if out.Done {
 			e.complete = true
+			signalEntryReadyLocked(e)
 			e.until = s.cfg.Now().Add(s.cfg.CompleteTTL)
 			e.payload = out.Payload
 			e.work, e.plan = nil, Plan{}

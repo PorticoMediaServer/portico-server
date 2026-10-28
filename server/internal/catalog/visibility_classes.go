@@ -346,7 +346,7 @@ func (s *Service) RebuildVisibilityClass(ctx context.Context, library string, r 
 		`SELECT id FROM catalog_libraries WHERE library_id=? AND retired=0`, library).Scan(&libraryID); err != nil {
 		return err
 	}
-	var classID, active int64
+	var classID, active, target int64
 	err = dbwork.WithWriteTx(ctx, s.db, dbwork.ClassBackgroundMedia, func(tx *sql.Tx) error {
 		if err := tx.QueryRowContext(ctx,
 			`INSERT INTO compact_visibility_classes(class_key,library_id,policy_json,active_generation,catalog_revision,requested_ms,built_ms,retired)
@@ -355,16 +355,24 @@ func (s *Service) RebuildVisibilityClass(ctx context.Context, library string, r 
 			 RETURNING id,active_generation`, key, libraryID, policy, revision, time.Now().UnixMilli()).Scan(&classID, &active); err != nil {
 			return err
 		}
-		// The scan below reads every entity's current facts, so what the journal
-		// holds now is covered by it; a change from here on is journaled and
-		// applied once this generation is published.
-		_, err := tx.ExecContext(ctx, `DELETE FROM compact_visibility_dirty WHERE class_id=?`, classID)
+		var err error
+		target, revision, err = captureVisibilityTargetTx(ctx, tx, classID, library)
 		return err
 	})
 	if err != nil {
 		return err
 	}
 	generation := active + 1
+	if err = s.settleVisibilitySourceTarget(ctx, target); err != nil {
+		return err
+	}
+	if err = s.clearVisibilityDirtyThrough(ctx, classID, target); err != nil {
+		return err
+	}
+	var endEntity int64
+	if err = dbwork.ReadHandle(ctx, s.db).QueryRowContext(ctx, `SELECT COALESCE(max(entity_id),0) FROM catalog_browse_rows`).Scan(&endEntity); err != nil {
+		return err
+	}
 	if err = s.clearVisibilityGeneration(ctx, classID, generation); err != nil {
 		return err
 	}
@@ -378,7 +386,7 @@ func (s *Service) RebuildVisibilityClass(ctx context.Context, library string, r 
 		started = time.Now()
 		var upper sql.NullInt64
 		err = dbwork.ReadHandle(ctx, s.db).QueryRowContext(ctx,
-			visibilityChunkSQL, libraryID, cursor).Scan(&upper)
+			`SELECT max(entity_id) FROM (SELECT entity_id FROM catalog_browse_rows WHERE entity_id>? AND entity_id<=? ORDER BY entity_id LIMIT 100)`, cursor, endEntity).Scan(&upper)
 		if err != nil {
 			return err
 		}
@@ -457,17 +465,63 @@ func (s *Service) RebuildVisibilityClass(ctx context.Context, library string, r 
 		}
 		cursor = upper.Int64
 	}
-	// Publish. Entities that changed after the scan passed them are in the
-	// journal, so the rebuilder's next pass applies them to this generation; a
-	// library that never stops changing still gets a published class.
+	// Apply all captured-target journal rows to this candidate. Later events
+	// retain their own markers and do not extend this finite publication pass.
+	for {
+		n := 0
+		err = dbwork.WithWriteTx(ctx, s.db, dbwork.ClassBackgroundMedia, func(tx *sql.Tx) error {
+			rows, e := tx.QueryContext(ctx, `SELECT entity_id FROM compact_visibility_dirty INDEXED BY compact_visibility_dirty_frontier WHERE class_id=? AND first_sequence<=? ORDER BY first_sequence,entity_id LIMIT ?`, classID, target, compactcatalog.BatchLimit)
+			if e != nil {
+				return e
+			}
+			var ids []int64
+			for rows.Next() {
+				var id int64
+				if e = rows.Scan(&id); e != nil {
+					rows.Close()
+					return e
+				}
+				ids = append(ids, id)
+			}
+			e = rows.Err()
+			rows.Close()
+			if e != nil {
+				return e
+			}
+			for _, id := range ids {
+				if e = updateVisibleEntity(ctx, tx, classID, generation, libraryID, id, clause, clauseArgs); e != nil {
+					return e
+				}
+				if _, e = tx.ExecContext(ctx, `DELETE FROM compact_visibility_dirty WHERE class_id=? AND entity_id=?`, classID, id); e != nil {
+					return e
+				}
+			}
+			n = len(ids)
+			return nil
+		})
+		if err != nil {
+			return err
+		}
+		if n == 0 {
+			break
+		}
+	}
+	published := false
 	if err = dbwork.WithWriteTx(ctx, s.db, dbwork.ClassBackgroundMedia, func(tx *sql.Tx) error {
-		_, err := tx.ExecContext(ctx,
-			`UPDATE compact_visibility_classes SET active_generation=?,catalog_revision=?,built_ms=? WHERE id=?`,
-			generation, revision, time.Now().UnixMilli(), classID)
+		ready, err := visibilityTargetReadyTx(ctx, tx, classID, target)
+		if err != nil || !ready {
+			return err
+		}
+		_, err = tx.ExecContext(ctx, `UPDATE compact_visibility_classes SET active_generation=?,catalog_revision=?,captured_sequence=?,built_ms=? WHERE id=?`, generation, revision, target, time.Now().UnixMilli(), classID)
+		published = err == nil
 		return err
 	}); err != nil {
 		return err
 	}
+	if !published {
+		return ErrVisibilityBuilding
+	}
+
 	if active > 0 {
 		if err = s.clearVisibilityGeneration(ctx, classID, active); err != nil {
 			return err

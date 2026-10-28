@@ -206,6 +206,7 @@ type Worker struct {
 	// aren't queued behind a rebuild.
 	backfillTurn map[int]bool
 	stepTurn     int
+	sourceTurn   bool
 	domainTurns  int
 	ready        bool
 	now          func() time.Time
@@ -426,6 +427,9 @@ func (w *Worker) prepare(ctx context.Context) error {
 		return rows.Err()
 	})
 	if err == nil {
+		err = dbwork.WithWriteTx(ctx, w.db, dbwork.ClassMaintenance, func(tx *sql.Tx) error { return SampleBrowseCounterIntegrityTx(ctx, tx) })
+	}
+	if err == nil {
 		w.mu.Lock()
 		w.ready = true
 		w.mu.Unlock()
@@ -494,6 +498,17 @@ func (w *Worker) Step(ctx context.Context, limit int) (int, error) {
 		paced = -2
 		var rebuilding int
 		var err error
+		w.sourceTurn = !w.sourceTurn
+		if w.sourceTurn {
+			paced = -1
+			n, err = StepVisibilitySourceFanout(ctx, tx, min(limit, upstreamQuantum))
+			if err != nil {
+				return err
+			}
+			if n > 0 {
+				return finishGeneration(ctx, tx)
+			}
+		}
 		w.domainTurns++
 		if w.domainTurns%4 == 0 {
 			paced = -1
@@ -850,7 +865,7 @@ func acknowledgeDerived(ctx context.Context, tx *sql.Tx, domain int, id, revisio
 // domain has work it can finish.
 const readingAttributionStep = 8
 
-var steps = [...]func(context.Context, *sql.Tx, int) (int, error){StepCollectionVisibleCounts, StepCategoryVisibility, StepVisibilitySortBuckets, StepPersonalSortBuckets, StepBookContextEvidence, StepBookGroupVisibleCounts, StepContentEligible, StepRecProfiles, readingAttributionStep: StepReadingAttribution, StepReadingPaths}
+var steps = [...]func(context.Context, *sql.Tx, int) (int, error){StepCollectionVisibleCounts, StepCategoryVisibility, StepVisibilitySortBuckets, StepPersonalSortBuckets, StepBookContextEvidence, StepBookGroupVisibleCounts, StepContentEligible, StepRecProfiles, readingAttributionStep: StepReadingAttribution, StepReadingPaths, StepVisibilitySourceFanout}
 
 func (w *Worker) runSteps(ctx context.Context, tx *sql.Tx, limit int) (int, int, error) {
 	w.mu.Lock()

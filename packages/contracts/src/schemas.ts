@@ -132260,7 +132260,7 @@ export const schemas = {
           },
           "retryAfterMs": {
             "maximum": 9007199254740991,
-            "minimum": 1000,
+            "minimum": 250,
             "type": "integer"
           },
           "state": {
@@ -134757,7 +134757,7 @@ export const schemas = {
           },
           "retryAfterMs": {
             "maximum": 9007199254740991,
-            "minimum": 1000,
+            "minimum": 250,
             "type": "integer"
           },
           "state": {

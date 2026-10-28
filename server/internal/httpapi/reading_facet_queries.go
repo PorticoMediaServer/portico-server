@@ -37,7 +37,7 @@ func (ReadingFacetPreparing) JSONSchema() map[string]any {
 	p["kind"].(map[string]any)["enum"] = []string{"reading-facet-preparing"}
 	p["state"].(map[string]any)["enum"] = []string{"preparing"}
 	p["queryId"].(map[string]any)["minLength"] = 1
-	p["retryAfterMs"].(map[string]any)["minimum"] = 1000
+	p["retryAfterMs"].(map[string]any)["minimum"] = readingInitialRetryMs
 	return s
 }
 
@@ -202,7 +202,7 @@ func readingFacetPollLocation(library string, handle readprep.Handle) string {
 	return "/v1/libraries/" + url.PathEscape(library) + "/reading-facet-queries/" + url.PathEscape(string(handle))
 }
 
-func writeReadingFacetQuery(w http.ResponseWriter, library string, handle readprep.Handle, result readprep.Result) error {
+func writeReadingFacetQuery(w http.ResponseWriter, library string, handle readprep.Handle, result readprep.Result, retryMs int) error {
 	if result.State == readprep.Ready {
 		// Payload is already exact encoded JSON; no DTO is hydrated here. Hold
 		// additional bounded transport/header/copy space until Release too.
@@ -219,8 +219,12 @@ func writeReadingFacetQuery(w http.ResponseWriter, library string, handle readpr
 		return err
 	}
 	w.Header().Set("Location", location)
-	w.Header().Set("Retry-After", "1")
-	write(w, 202, ReadingFacetPreparing{"reading-facet-preparing", "preparing", string(handle), 1000})
+	retrySeconds := "1"
+	if retryMs == readingInitialRetryMs {
+		retrySeconds = "0" // HTTP delta-seconds; the body carries the 250ms floor.
+	}
+	w.Header().Set("Retry-After", retrySeconds)
+	write(w, 202, ReadingFacetPreparing{"reading-facet-preparing", "preparing", string(handle), retryMs})
 	return nil
 }
 
@@ -252,7 +256,7 @@ func (d Dependencies) readingFacetQuery(w http.ResponseWriter, r *http.Request) 
 		readingFacetQueryFailure(w, pollErr)
 		return
 	}
-	if err := writeReadingFacetQuery(w, a.library, handle, result); err != nil {
+	if err := writeReadingFacetQuery(w, a.library, handle, result, readingBrowseRetryMs); err != nil {
 		readingFacetQueryFailure(w, err)
 	}
 }
@@ -323,6 +327,11 @@ func (d Dependencies) prepareReadingFacets(w http.ResponseWriter, r *http.Reques
 		return
 	}
 	handle, submitErr := store.Submit(r.Context(), a.expected, key, plan)
+	defer func() {
+		if r.Context().Err() != nil {
+			_ = store.Cancel(context.WithoutCancel(r.Context()), a.expected, handle)
+		}
+	}()
 	// Live authority/witness are checked even if admission fails.
 	if err = d.checkReadingFacetResult(r, a, readprep.Result{Basis: key.Basis}); err != nil {
 		if handle != "" {
@@ -335,7 +344,7 @@ func (d Dependencies) prepareReadingFacets(w http.ResponseWriter, r *http.Reques
 		readingFacetQueryFailure(w, submitErr)
 		return
 	}
-	result, pollErr := store.Poll(r.Context(), a.expected, handle)
+	result, pollErr := store.PollWhenReady(r.Context(), a.expected, handle, readprep.InitialReadyGrace)
 	defer result.Release()
 	if err = d.checkReadingFacetResult(r, a, result); err != nil {
 		_ = store.Cancel(r.Context(), a.expected, handle)
@@ -352,7 +361,7 @@ func (d Dependencies) prepareReadingFacets(w http.ResponseWriter, r *http.Reques
 		// can release that private lease. Completed content remains deduplicable.
 		defer store.Cancel(r.Context(), a.expected, handle)
 	}
-	if err := writeReadingFacetQuery(w, a.library, handle, result); err != nil {
+	if err := writeReadingFacetQuery(w, a.library, handle, result, readingInitialRetryMs); err != nil {
 		_ = store.Cancel(r.Context(), a.expected, handle)
 		readingFacetQueryFailure(w, err)
 	}

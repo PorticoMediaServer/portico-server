@@ -23,8 +23,8 @@ func facetAcceptedFixture(t *testing.T) (*sql.DB, FacetBaseScope) {
  INSERT INTO catalog_libraries VALUES(1,'films',1,0);
  CREATE TABLE catalog_facet_source_state(singleton INTEGER PRIMARY KEY,source_epoch INTEGER,projection_epoch INTEGER);
  INSERT INTO catalog_facet_source_state VALUES(1,1,1);
- CREATE TABLE catalog_generations(singleton INTEGER PRIMARY KEY,generation INTEGER,retaining INTEGER);
- INSERT INTO catalog_generations VALUES(1,1,0);
+ CREATE TABLE catalog_generations(singleton INTEGER PRIMARY KEY,generation INTEGER,retaining INTEGER,visibility_sequence INTEGER NOT NULL DEFAULT 0);
+ INSERT INTO catalog_generations VALUES(1,1,0,0);
  CREATE TABLE catalog_derivations(domain INTEGER PRIMARY KEY,version INTEGER,rebuilding INTEGER);
  INSERT INTO catalog_derivations VALUES(33,7,0),(36,1,0),(37,1,0),(38,1,0),(39,1,0),(40,1,0);
  CREATE TABLE catalog_dirty(domain INTEGER,entity_id INTEGER);
@@ -34,6 +34,14 @@ func facetAcceptedFixture(t *testing.T) (*sql.DB, FacetBaseScope) {
  CREATE TABLE catalog_facet_work(entity_id INTEGER PRIMARY KEY);
  CREATE TABLE catalog_facet_stage(entity_id INTEGER);
  CREATE TABLE catalog_facet_work_places(entity_id INTEGER);
+ CREATE TABLE compact_visibility_source_state(id INTEGER PRIMARY KEY,sequence INTEGER NOT NULL);
+ INSERT INTO compact_visibility_source_state VALUES(1,0);
+ CREATE TABLE compact_visibility_source_jobs(first_pending INTEGER NOT NULL);
+ CREATE INDEX compact_visibility_source_jobs_frontier ON compact_visibility_source_jobs(first_pending);
+ CREATE TABLE catalog_browse_row_work(domain INTEGER PRIMARY KEY);
+ CREATE TABLE catalog_browse_row_keys(domain INTEGER,field INTEGER,value_key TEXT,PRIMARY KEY(domain,field,value_key)) WITHOUT ROWID;
+ CREATE TABLE catalog_item_metric_jobs(item_id INTEGER PRIMARY KEY);
+ CREATE TABLE catalog_browse_counter_repairs(entity_id INTEGER PRIMARY KEY);
  CREATE VIEW catalog_facet_counts_serving AS SELECT * FROM catalog_facet_counts;
  CREATE TABLE catalog_facet_counts(library_id INTEGER,field TEXT,value TEXT,rating_key TEXT,label_key TEXT,total INTEGER,PRIMARY KEY(library_id,field,value,rating_key,label_key)) WITHOUT ROWID;`)
 	if err != nil {
