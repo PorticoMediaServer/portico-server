@@ -23027,6 +23027,40 @@ export const schemas = {
       "acceptedAt": {
         "type": "string"
       },
+      "access": {
+        "properties": {
+          "accessTokens": {
+            "type": "boolean"
+          },
+          "allowRemote": {
+            "type": "boolean"
+          },
+          "maxContentRating": {
+            "type": "string"
+          },
+          "maxStreams": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "maxStreamsMode": {
+            "enum": [
+              "inherit",
+              "unlimited",
+              "limit"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "maxStreamsMode",
+          "maxStreams",
+          "allowRemote",
+          "accessTokens",
+          "maxContentRating"
+        ],
+        "type": "object"
+      },
       "accountId": {
         "type": "string"
       },
@@ -23077,7 +23111,8 @@ export const schemas = {
       "state",
       "createdAt",
       "expiresAt",
-      "revision"
+      "revision",
+      "access"
     ],
     "type": "object"
   },
@@ -23093,6 +23128,40 @@ export const schemas = {
           "properties": {
             "acceptedAt": {
               "type": "string"
+            },
+            "access": {
+              "properties": {
+                "accessTokens": {
+                  "type": "boolean"
+                },
+                "allowRemote": {
+                  "type": "boolean"
+                },
+                "maxContentRating": {
+                  "type": "string"
+                },
+                "maxStreams": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                },
+                "maxStreamsMode": {
+                  "enum": [
+                    "inherit",
+                    "unlimited",
+                    "limit"
+                  ],
+                  "type": "string"
+                }
+              },
+              "required": [
+                "maxStreamsMode",
+                "maxStreams",
+                "allowRemote",
+                "accessTokens",
+                "maxContentRating"
+              ],
+              "type": "object"
             },
             "accountId": {
               "type": "string"
@@ -23144,7 +23213,8 @@ export const schemas = {
             "state",
             "createdAt",
             "expiresAt",
-            "revision"
+            "revision",
+            "access"
           ],
           "type": "object"
         },
@@ -188172,6 +188242,40 @@ export const schemas = {
       "acceptedAt": {
         "type": "string"
       },
+      "access": {
+        "properties": {
+          "accessTokens": {
+            "type": "boolean"
+          },
+          "allowRemote": {
+            "type": "boolean"
+          },
+          "maxContentRating": {
+            "type": "string"
+          },
+          "maxStreams": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "maxStreamsMode": {
+            "enum": [
+              "inherit",
+              "unlimited",
+              "limit"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "maxStreamsMode",
+          "maxStreams",
+          "allowRemote",
+          "accessTokens",
+          "maxContentRating"
+        ],
+        "type": "object"
+      },
       "accountId": {
         "type": "string"
       },
@@ -188222,12 +188326,47 @@ export const schemas = {
       "state",
       "createdAt",
       "expiresAt",
-      "revision"
+      "revision",
+      "access"
     ],
     "type": "object"
   },
   "PostAdminAccessInvitationsRequest": {
     "properties": {
+      "access": {
+        "properties": {
+          "accessTokens": {
+            "type": "boolean"
+          },
+          "allowRemote": {
+            "type": "boolean"
+          },
+          "maxContentRating": {
+            "type": "string"
+          },
+          "maxStreams": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "maxStreamsMode": {
+            "enum": [
+              "inherit",
+              "unlimited",
+              "limit"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "maxStreamsMode",
+          "maxStreams",
+          "allowRemote",
+          "accessTokens",
+          "maxContentRating"
+        ],
+        "type": "object"
+      },
       "allowedLibraries": {
         "items": {
           "type": "string"
@@ -188266,6 +188405,40 @@ export const schemas = {
       "acceptedAt": {
         "type": "string"
       },
+      "access": {
+        "properties": {
+          "accessTokens": {
+            "type": "boolean"
+          },
+          "allowRemote": {
+            "type": "boolean"
+          },
+          "maxContentRating": {
+            "type": "string"
+          },
+          "maxStreams": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "maxStreamsMode": {
+            "enum": [
+              "inherit",
+              "unlimited",
+              "limit"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "maxStreamsMode",
+          "maxStreams",
+          "allowRemote",
+          "accessTokens",
+          "maxContentRating"
+        ],
+        "type": "object"
+      },
       "accountId": {
         "type": "string"
       },
@@ -188316,7 +188489,8 @@ export const schemas = {
       "state",
       "createdAt",
       "expiresAt",
-      "revision"
+      "revision",
+      "access"
     ],
     "type": "object"
   },
@@ -219583,6 +219757,40 @@ export const schemas = {
   },
   "PutAdminAccessInvitationRequest": {
     "properties": {
+      "access": {
+        "properties": {
+          "accessTokens": {
+            "type": "boolean"
+          },
+          "allowRemote": {
+            "type": "boolean"
+          },
+          "maxContentRating": {
+            "type": "string"
+          },
+          "maxStreams": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "maxStreamsMode": {
+            "enum": [
+              "inherit",
+              "unlimited",
+              "limit"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "maxStreamsMode",
+          "maxStreams",
+          "allowRemote",
+          "accessTokens",
+          "maxContentRating"
+        ],
+        "type": "object"
+      },
       "allowedLibraries": {
         "items": {
           "type": "string"
@@ -219621,6 +219829,40 @@ export const schemas = {
     "properties": {
       "acceptedAt": {
         "type": "string"
+      },
+      "access": {
+        "properties": {
+          "accessTokens": {
+            "type": "boolean"
+          },
+          "allowRemote": {
+            "type": "boolean"
+          },
+          "maxContentRating": {
+            "type": "string"
+          },
+          "maxStreams": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "maxStreamsMode": {
+            "enum": [
+              "inherit",
+              "unlimited",
+              "limit"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "maxStreamsMode",
+          "maxStreams",
+          "allowRemote",
+          "accessTokens",
+          "maxContentRating"
+        ],
+        "type": "object"
       },
       "accountId": {
         "type": "string"
@@ -219672,7 +219914,8 @@ export const schemas = {
       "state",
       "createdAt",
       "expiresAt",
-      "revision"
+      "revision",
+      "access"
     ],
     "type": "object"
   },

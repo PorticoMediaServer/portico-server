@@ -18,7 +18,9 @@ access_invitation_short_codes.purpose
 access_invitation_short_codes.server_id
 access_invitation_short_codes.sign_in_kind
 access_invitations.accepted_ms
+access_invitations.access_tokens
 access_invitations.account_id
+access_invitations.allow_remote
 access_invitations.allowed_libraries
 access_invitations.bound_username
 access_invitations.code_hash
@@ -26,6 +28,9 @@ access_invitations.created_by
 access_invitations.created_ms
 access_invitations.expires_ms
 access_invitations.id
+access_invitations.max_content_rating
+access_invitations.max_streams
+access_invitations.max_streams_mode
 access_invitations.notes
 access_invitations.revision
 access_invitations.role

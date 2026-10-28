@@ -18,7 +18,7 @@ const bindings = {
  invitations: {link: async () => 'https://web.getportico.tv/join#code=' + 'a'.repeat(43) + '&server=https%3A%2F%2Fserver.example&id=server', shortCode: async () => {issues++;throw new Error('test issue refusal');}, create: (body) => {calls.push(body);return new Promise((resolve, reject) => waiting.push({resolve, reject}));}}
 };
 window.probe = {calls, get reports() {return reports;}, get retirements() {return retirements;}, get issues() {return issues;},
- reject: (status) => waiting.shift().reject({status}), resolve: (state) => waiting.shift().resolve({id: 'invite', revision: 1, state, role: 'member', allowedLibraries: [], createdAt: new Date().toISOString(), expiresAt: new Date(Date.now() + 86400000).toISOString(), notes: 'Private invitation note'}),
+ reject: (status) => waiting.shift().reject({status}), resolve: (state) => waiting.shift().resolve({id: 'invite', revision: 1, state, role: 'member', allowedLibraries: [], access:{maxStreamsMode:'inherit', maxStreams:0, allowRemote:true, accessTokens:true, maxContentRating:''}, createdAt: new Date().toISOString(), expiresAt: new Date(Date.now() + 86400000).toISOString(), notes: 'Private invitation note'}),
  mount: () => root.render(<PeopleScreen bindings={bindings}/>), unmount: () => root.render(null)};
 const root = createRoot(document.getElementById('root'));
 window.probe.mount();`;

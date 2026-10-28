@@ -1,14 +1,18 @@
 import {defaultI18n} from '@i18n';
-import {RichSelect, TextField} from '../../kit/controls';
-import {SettingsPanel} from '../../kit/settings';
+import {RichSelect, Segmented, Switch, TextField} from '../../kit/controls';
+import {useState} from 'react';
+import {SettingsAdvanced, SettingsPanel} from '../../kit/settings';
 import styles from './people-invite.module.css';
 import type {InviteAttempt, InviteChoices} from './people-invite';
-import {expiryChoices} from './people-invite';
+import {expiryChoices, inviteChoicesOf, ratingChoices, streamChoices} from './people-invite';
 
 const t = defaultI18n.t;
+const spec = 'next.settingsSpec.server.people.panels.invite.';
 
-/** The drawn Invite someone form (owner-people frames 2/23b/11): role, libraries,
- * expiry, optional Portico Account username and private notes. It writes nothing
+/** The drawn Invite someone form (owner-people frames 2/23b/11, server-people
+ * invite panel): role, libraries, streams at once, away from home, expiry,
+ * optional Portico Account username, private notes, and in Advanced access
+ * tokens and highest rating. It writes nothing
  * until Create. While an uncertain create is being reconciled it shows that
  * attempt's original choices with Retry or Dismiss, so an edited form can never
  * submit an old body. */
@@ -19,12 +23,14 @@ export function PeopleInviteForm({open, onOpenChange, choices, onChoices, librar
   onCreate: () => void; onRetry: () => void;
 }>) {
   const locked = !!retained && !busy;
-  const shown: InviteChoices = retained
-    ? {role: retained.body.role === 'admin' ? 'admin' : 'member', allLibraries: retained.body.allowedLibraries.length === 0,
-       libraryIds: retained.body.allowedLibraries, expiresInHours: retained.body.expiresInHours,
-       ...(retained.body.notes === undefined ? {} : {notes: retained.body.notes}),
-       ...(retained.body.porticoUsername === undefined ? {} : {porticoUsername: retained.body.porticoUsername})}
-    : choices;
+  const shown: InviteChoices = retained ? inviteChoicesOf(retained.body) : choices;
+  const [advancedOpen, setAdvancedOpen] = useState(false);
+  const ratingIndex = Math.max(0, ratingChoices.indexOf(shown.maxRating as typeof ratingChoices[number]));
+  // The collapsed Advanced section names what it holds that differs from a new member's defaults.
+  const advancedSummary = [
+    ...(!shown.accessTokens ? [`${t(`${spec}advanced.groups.0.rows.0.label`)}: ${t('next.settings.off')}`] : []),
+    ...(shown.maxRating ? [`${t(`${spec}advanced.groups.0.rows.1.label`)}: ${t(`${spec}advanced.groups.0.rows.1.control.options.${ratingIndex}.label` as never)}`] : []),
+  ];
   const allChecked = shown.allLibraries;
   const set = (patch: Partial<InviteChoices>) => onChoices({...choices, ...patch});
   return <SettingsPanel open={open} onClose={() => {if (!busy) onOpenChange(false);}} title={t('next.settings.people.inviteTitle')}
@@ -58,6 +64,16 @@ export function PeopleInviteForm({open, onOpenChange, choices, onChoices, librar
           <span>{library.name}</span>
         </label>)}
       </fieldset>
+      <RichSelect label={t(`${spec}groups.0.rows.4.label`)} description={t(`${spec}groups.0.rows.4.help`)} value={shown.streams} disabled={locked || busy}
+        options={streamChoices.map((value, index) => ({value, label: t(`${spec}groups.0.rows.4.control.options.${index}.label` as never),
+          ...(index === 0 ? {description: t(`${spec}groups.0.rows.4.control.options.0.hint`)} : {})}))}
+        onValueChange={value => set({streams: value as InviteChoices['streams']})} />
+      <fieldset disabled={locked || busy} className={styles.fieldset}>
+        <legend>{t(`${spec}groups.0.rows.5.label`)}</legend>
+        <Segmented aria-label={t(`${spec}groups.0.rows.5.label`)} value={shown.awayAllowed ? 'allowed' : 'home'} disabled={locked || busy}
+          items={[{value: 'allowed', label: t(`${spec}groups.0.rows.5.control.options.0.label`)}, {value: 'home', label: t(`${spec}groups.0.rows.5.control.options.1.label`)}]}
+          onValueChange={value => set({awayAllowed: value === 'allowed'})} />
+      </fieldset>
       <RichSelect label={t('next.settings.people.expiry')} value={String(shown.expiresInHours)} disabled={locked || busy}
         options={expiryChoices.map(hours => ({value: String(hours), label: t('next.settings.people.expiryDays', {count: hours / 24})}))}
         onValueChange={value => set({expiresInHours: Number(value)})} />
@@ -65,6 +81,16 @@ export function PeopleInviteForm({open, onOpenChange, choices, onChoices, librar
         disabled={locked || busy} value={shown.porticoUsername ?? ''} onChange={event => set({porticoUsername: event.currentTarget.value})} />}
       <TextField label={t('next.settings.people.notes')} description={t('next.settings.people.notesHelp')} disabled={locked || busy}
         value={shown.notes ?? ''} onChange={event => set({notes: event.currentTarget.value})} />
+      <SettingsAdvanced open={advancedOpen} onOpenChange={setAdvancedOpen} summary={advancedSummary}>
+        <label className={styles.choice}>
+          <Switch checked={shown.accessTokens} disabled={locked || busy} onCheckedChange={accessTokens => set({accessTokens})} />
+          <span>{t(`${spec}advanced.groups.0.rows.0.label`)}<small>{t(`${spec}advanced.groups.0.rows.0.help`)}</small></span>
+        </label>
+        <RichSelect label={t(`${spec}advanced.groups.0.rows.1.label`)} description={t(`${spec}advanced.groups.0.rows.1.help`)} value={shown.maxRating || 'none'} disabled={locked || busy}
+          options={ratingChoices.map((value, index) => ({value: value || 'none', label: t(`${spec}advanced.groups.0.rows.1.control.options.${index}.label` as never),
+            ...(index > 0 ? {description: t(`${spec}advanced.groups.0.rows.1.control.options.${index}.hint` as never)} : {})}))}
+          onValueChange={value => set({maxRating: value === 'none' ? '' : value})} />
+      </SettingsAdvanced>
     </div>
   </SettingsPanel>;
 }

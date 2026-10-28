@@ -13,7 +13,7 @@ import type {SettingsViewerScope} from '../../platform/settings-platform';
 import type {SettingsInvitations} from './invitations';
 import {InvitationShortCodeDialog} from '../../kit/accounts';
 import {randomId} from '@core/random-id.ts';
-import {InviteAttempts, defaultInviteChoices, inviteBody, type InviteAttempt, type InviteChoices} from './people-invite';
+import {InviteAttempts, defaultInviteChoices, inviteBody, inviteChoicesOf, type InviteAttempt, type InviteChoices} from './people-invite';
 import {PeopleInviteForm} from './people-invite-form';
 import {PeopleInvitations} from './PeopleInvitations';
 import type {ServerInvitation} from '@core/direct-account.ts';
@@ -101,10 +101,7 @@ function PeopleWorkspace({bindings, initialStatus, rowActions, advancedRows}: {b
     setChoices(openedChoices());
     setFormOpen(true);
   };
-  const choicesOf = (attempt: InviteAttempt): InviteChoices => ({role: attempt.body.role === 'admin' ? 'admin' : 'member',
-    allLibraries: attempt.body.allowedLibraries.length === 0, libraryIds: attempt.body.allowedLibraries,
-    expiresInHours: attempt.body.expiresInHours, ...(attempt.body.notes === undefined ? {} : {notes: attempt.body.notes}),
-    ...(attempt.body.porticoUsername === undefined ? {} : {porticoUsername: attempt.body.porticoUsername})});
+  const choicesOf = (attempt: InviteAttempt): InviteChoices => inviteChoicesOf(attempt.body);
   const submitInvite = async (nextChoices: InviteChoices) => {
     const invitations = bindings.invitations, owner = attempts.current!;
     const currentForm = () => alive.current && bindings.authority.isCurrent() && formActive.current && formSession.current === formToken;

@@ -11,7 +11,7 @@ import {PeopleInvitations} from '/src/screens/settings/PeopleInvitations';
 const root = createRoot(document.getElementById('root'));
 const revokes = [], links = [], reads = [], clipboard = [];
 let reports = 0, version = 0;
-const row = {id:'invitation', revision:7, state:'pending', role:'member', notes:'Resident invitation', allowedLibraries:[], createdAt:'2026-10-23T12:00:00Z', expiresAt:'2000-01-01T00:00:00Z'};
+const row = {id:'invitation', revision:7, state:'pending', role:'member', notes:'Resident invitation', allowedLibraries:[], createdAt:'2026-10-23T12:00:00Z', expiresAt:'2000-01-01T00:00:00Z', access:{maxStreamsMode:'inherit', maxStreams:0, allowRemote:true, accessTokens:true, maxContentRating:''}};
 const authority = {isCurrent:()=>true,onAuthorityChanged:()=>{}};
 const invitations = {
  read:async(query,cursor,life)=>{reads.push({query,cursor,life});return {items:[row],nextCursor:'',matchedCount:73,totalCount:101};},

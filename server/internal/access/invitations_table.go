@@ -93,7 +93,7 @@ func (s *Store) InvitationTable(ctx context.Context, auth Authorize, actor ident
 		}
 		// Redact before search and LIMIT. A peer invitation's private note must
 		// affect neither the visible rows nor their count for an administrator.
-		cte := `WITH visible AS (SELECT id,CASE WHEN ?='owner' OR (?='admin' AND role='member') THEN notes ELSE NULL END AS notes,role,allowed_libraries,CASE WHEN state='pending' AND expires_ms<=? THEN 'expired' ELSE state END AS state,created_ms,expires_ms,accepted_ms,account_id,revision,bound_username FROM access_invitations) `
+		cte := `WITH visible AS (SELECT id,CASE WHEN ?='owner' OR (?='admin' AND role='member') THEN notes ELSE NULL END AS notes,role,allowed_libraries,CASE WHEN state='pending' AND expires_ms<=? THEN 'expired' ELSE state END AS state,created_ms,expires_ms,accepted_ms,account_id,revision,bound_username,max_streams_mode,max_streams,allow_remote,access_tokens,max_content_rating FROM access_invitations) `
 		baseArgs := []any{live, live, s.now()}
 		if e = tx.QueryRowContext(ctx, cte+`SELECT count(*) FROM visible`, baseArgs...).Scan(&total); e != nil {
 			return e

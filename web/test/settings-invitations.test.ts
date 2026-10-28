@@ -6,7 +6,7 @@ import {SettingsInvitations, invitationQuery} from '../src/screens/settings/invi
 import type {TableQuery} from '../src/kit/settings/table-model.ts';
 
 const serverId = 'srv_' + 's'.repeat(43), origin = 'https://server.example';
-const row: ServerInvitation = {id: 'invitation', revision: 7, role: 'member', state: 'pending', createdAt: '2026-10-23T12:00:00Z', expiresAt: '2099-01-01T00:00:00Z', allowedLibraries: ['library'], notes: 'Private management note'};
+const row: ServerInvitation = {id: 'invitation', revision: 7, role: 'member', state: 'pending', createdAt: '2026-10-23T12:00:00Z', expiresAt: '2099-01-01T00:00:00Z', allowedLibraries: ['library'], notes: 'Private management note', access: {maxStreamsMode: 'inherit', maxStreams: 0, allowRemote: true, accessTokens: true, maxContentRating: ''}};
 const query: TableQuery = {search: 'real query', filters: {status: 'waiting'}, sort: {by: 'sent', direction: 'desc'}};
 const live = () => ({signal: new AbortController().signal, isCurrent: () => true});
 function fixture(reply: (path: string, method: string, body: unknown) => unknown | Promise<unknown>) {

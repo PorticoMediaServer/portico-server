@@ -41,8 +41,10 @@ export function parseServerInvitation(raw:unknown):ServerInvitation{
  if(raw.email!==undefined)invalidPeople();if(raw.notes!==undefined&&raw.notes!==null&&(typeof raw.notes!=='string'||privatePersonNotes(raw.notes)!==raw.notes))invalidPeople();
  if(raw.acceptedAt!==undefined&&!timestamp(raw.acceptedAt)||raw.accountId!==undefined&&!bounded(raw.accountId,128)||raw.porticoUsername!==undefined&&!bounded(raw.porticoUsername,64)||raw.code!==undefined&&(typeof raw.code!=='string'||!/^[-_A-Za-z0-9]{43}$/.test(raw.code)))invalidPeople();
  if(raw.serverId!==undefined){if(typeof raw.serverId!=='string')invalidPeople();try{identityCode(raw.serverId);}catch{invalidPeople();}}
+ // What the person gets on joining. The stream count is exact: zero never stands for "no limit".
+ const access=raw.access;if(!object(access)||!['inherit','unlimited','limit'].includes(String(access.maxStreamsMode))||!Number.isSafeInteger(access.maxStreams)||(access.maxStreamsMode==='limit'?(access.maxStreams as number)<1||(access.maxStreams as number)>1000:access.maxStreams!==0)||typeof access.allowRemote!=='boolean'||typeof access.accessTokens!=='boolean'||!(access.maxContentRating===''||bounded(access.maxContentRating,32)))invalidPeople();
  const {notes,...rest}=raw;
- return Object.freeze({...rest,...(typeof notes==='string'?{notes}:{}),allowedLibraries:Object.freeze([...raw.allowedLibraries])}) as ServerInvitation;
+ return Object.freeze({...rest,...(typeof notes==='string'?{notes}:{}),allowedLibraries:Object.freeze([...raw.allowedLibraries]),access:Object.freeze({maxStreamsMode:access.maxStreamsMode,maxStreams:access.maxStreams,allowRemote:access.allowRemote,accessTokens:access.accessTokens,maxContentRating:access.maxContentRating})}) as ServerInvitation;
 }
 export function parsePeopleInvitationPage(raw:unknown):PeopleInvitationPage{
  if(!object(raw)||!Array.isArray(raw.items)||!Number.isSafeInteger(raw.limit)||Number(raw.limit)<1||Number(raw.limit)>100||raw.items.length>Number(raw.limit)||!Number.isSafeInteger(raw.totalCount)||Number(raw.totalCount)<0||!Number.isSafeInteger(raw.matchedCount)||Number(raw.matchedCount)<raw.items.length||Number(raw.matchedCount)>Number(raw.totalCount)||raw.nextCursor!==undefined&&(typeof raw.nextCursor!=='string'||raw.nextCursor.length>2048||/[\p{Cc}\p{Cf}]/u.test(raw.nextCursor)))invalidPeople();

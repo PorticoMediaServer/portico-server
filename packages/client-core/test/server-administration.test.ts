@@ -87,13 +87,13 @@ test('a member page is refused whole when one member cannot be read, so nobody w
 
 test('an invitation code is accepted only where the server issues one', () => {
   const created = parseInvitation({id: 'i1', notes: 'Link for Sam', role: 'member', allowedLibraries: [],
-    state: 'pending', createdAt: '2026-09-16T12:00:00Z', expiresAt: '2026-09-23T12:00:00Z', revision: 1, code: 'c'.repeat(43)});
+    state: 'pending', createdAt: '2026-09-16T12:00:00Z', expiresAt: '2026-09-23T12:00:00Z', revision: 1, code: 'c'.repeat(43), access: {maxStreamsMode: 'inherit', maxStreams: 0, allowRemote: true, accessTokens: true, maxContentRating: ''}});
   assert.equal(created.code, 'c'.repeat(43));
   const listed = parseInvitation({id: 'i1', role: 'member', allowedLibraries: [],
-    state: 'accepted', createdAt: '2026-09-16T12:00:00Z', expiresAt: '2026-09-23T12:00:00Z', acceptedAt: '2026-09-17T12:00:00Z', accountId: 'acc', revision: 2});
+    state: 'accepted', createdAt: '2026-09-16T12:00:00Z', expiresAt: '2026-09-23T12:00:00Z', acceptedAt: '2026-09-17T12:00:00Z', accountId: 'acc', revision: 2, access: {maxStreamsMode: 'inherit', maxStreams: 0, allowRemote: true, accessTokens: true, maxContentRating: ''}});
   assert.equal(listed.code, undefined);
   assert.equal(listed.accountId, 'acc');
-  const linkOnly={id:'i2',role:'member',allowedLibraries:[],state:'pending',createdAt:'2026-09-16T12:00:00Z',expiresAt:'2026-09-23T12:00:00Z',revision:1};
+  const linkOnly={id:'i2',role:'member',allowedLibraries:[],state:'pending',createdAt:'2026-09-16T12:00:00Z',expiresAt:'2026-09-23T12:00:00Z',revision:1,access:{maxStreamsMode:'inherit',maxStreams:0,allowRemote:true,accessTokens:true,maxContentRating:''}};
   assert.equal(Object.hasOwn(parseInvitation(linkOnly),'email'),false);
   assert.throws(()=>parseInvitation({...linkOnly,email:'guest@example.com'}));
   assert.throws(() => parseInvitation({...linkOnly,state:'unknown'}));

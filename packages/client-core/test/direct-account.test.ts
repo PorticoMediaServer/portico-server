@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {validDirectPassword} from '../src/direct-account.ts';
+import {parseServerInvitation, validDirectPassword} from '../src/direct-account.ts';
 
 test('accepts a policy password: 8+ chars, upper, lower and a non-letter', () => {
   assert.equal(validDirectPassword('Abcdef1!'), true);
@@ -41,7 +41,7 @@ test('invitation preview has explicit public fields and rejects private recipien
 });
 test('People invitation list requests whole-set search/sort and preserves authoritative counts',async()=>{
  const {PeopleInvitationsClient,parsePeopleInvitationPage}=await import('../src/direct-account.ts');
- const row={id:'invitation-one',revision:1,role:'member',state:'expired',createdAt:'2026-10-01T00:00:00Z',expiresAt:'2026-10-02T00:00:00Z',allowedLibraries:[],notes:'A genuine link-only note'};
+ const row={id:'invitation-one',revision:1,role:'member',state:'expired',createdAt:'2026-10-01T00:00:00Z',expiresAt:'2026-10-02T00:00:00Z',allowedLibraries:[],notes:'A genuine link-only note',access:{maxStreamsMode:'inherit',maxStreams:0,allowRemote:true,accessTokens:true,maxContentRating:''}};
  const page={items:[row],limit:2,totalCount:27,matchedCount:13,nextCursor:'actual-next-cursor'};
  const calls:{path:string;method?:string;body?:unknown}[]=[];
  const client=new PeopleInvitationsClient({request:async<T>(path:string,method?:string,body?:unknown)=>{calls.push({path,method,body});return page as T;}});
@@ -109,4 +109,12 @@ test('short invitation preview posts only the normalized short capability and re
  assert.deepEqual(calls,[{path:'/v1/access/invitations/preview',method:'POST',body:{shortCode:'0123456789ABCDEF'}}]);
  for(const raw of ['x'.repeat(43),'https://server.example/?shortCode=0123456789ABCDEF','0123-4567-89AB-CDEI'])await assert.rejects(client.previewShort(raw));
  assert.equal(calls.length,1);
+});
+
+test('an invitation\'s access grant is read exactly, and an inexact one refuses the document',()=>{
+ const base={id:'grant',revision:1,role:'member',state:'pending',createdAt:'2026-10-01T00:00:00Z',expiresAt:'2026-10-02T00:00:00Z',allowedLibraries:[]};
+ const access={maxStreamsMode:'limit',maxStreams:2,allowRemote:false,accessTokens:false,maxContentRating:'PG-13'};
+ assert.deepEqual(parseServerInvitation({...base,access}).access,access);
+ for(const bad of [undefined,{...access,maxStreams:0},{...access,maxStreamsMode:'inherit'},{...access,maxStreamsMode:'some'},{...access,allowRemote:'no'},{...access,maxContentRating:7}])
+  assert.throws(()=>parseServerInvitation({...base,access:bad}),JSON.stringify(bad));
 });

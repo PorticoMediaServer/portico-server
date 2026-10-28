@@ -10,7 +10,9 @@ import (
 	"errors"
 	"fmt"
 	"portico.local/apikit"
+	"portico.local/server/internal/dbwork"
 	"portico.local/server/internal/notify"
+	"portico.local/server/internal/streamlimits"
 	"reflect"
 	"strings"
 	"time"
@@ -38,8 +40,70 @@ type Invitation struct {
 	// for: only that account can accept it, and it cannot be used to create a
 	// password account. Empty means whoever holds the code.
 	PorticoUsername string `json:"porticoUsername,omitempty"`
+	// Access is what the person gets beyond role and libraries once they join.
+	Access InvitationAccess `json:"access"`
 	// Code is present on creation; an authorized pending-link read can recover it.
 	Code string `json:"code,omitempty"`
+}
+
+// InvitationAccess is the part of a member's limits an invitation sets: streams
+// at once, watching away from home, access tokens and the highest rating. It
+// is validated with the member-limit rules when the invitation is made and
+// written with the membership, in the accepting transaction, so the person
+// never exists for a moment without it. Everything else starts at the default.
+type InvitationAccess struct {
+	MaxStreamsMode   streamlimits.Mode `json:"maxStreamsMode"`
+	MaxStreams       int               `json:"maxStreams"`
+	AllowRemote      bool              `json:"allowRemote"`
+	AccessTokens     bool              `json:"accessTokens"`
+	MaxContentRating string            `json:"maxContentRating"`
+}
+
+// DefaultInvitationAccess is what every new member gets when an invitation
+// does not say otherwise.
+func DefaultInvitationAccess() InvitationAccess {
+	d := DefaultLimits()
+	return InvitationAccess{MaxStreamsMode: d.MaxStreamsMode, MaxStreams: d.MaxStreams, AllowRemote: d.AllowRemote, AccessTokens: d.AccessTokens}
+}
+
+// normalize applies the member-limit rules. A rating is one value the rating
+// table knows in any system, stored in one spelling, as a member's own is.
+func (v *InvitationAccess) normalize() error {
+	if !streamlimits.Valid(v.MaxStreamsMode, v.MaxStreams) {
+		return invalid("access.maxStreams")
+	}
+	v.MaxContentRating = strings.ToUpper(strings.TrimSpace(v.MaxContentRating))
+	if _, ok := ratingCeiling("", v.MaxContentRating); !ok || len(v.MaxContentRating) > 32 {
+		return invalid("access.maxContentRating")
+	}
+	return nil
+}
+
+// limits is the member's whole limits document this grant produces.
+func (v InvitationAccess) limits() Limits {
+	out := DefaultLimits()
+	out.MaxStreamsMode, out.MaxStreams, out.AllowRemote, out.AccessTokens, out.MaxContentRating = v.MaxStreamsMode, v.MaxStreams, v.AllowRemote, v.AccessTokens, v.MaxContentRating
+	out.MaximumAge, _ = ratingCeiling("", v.MaxContentRating)
+	return out
+}
+
+// applyInvitationAccessTx writes an accepted invitation's grant as the member's
+// limits, in the transaction that creates or restores the membership. A
+// restored member starts from this grant, not from what they had before.
+func applyInvitationAccessTx(ctx context.Context, tx *sql.Tx, account string, v InvitationAccess, now int64) error {
+	limits := v.limits()
+	raw, e := limitsBody(limits)
+	if e != nil {
+		return e
+	}
+	if e = streamlimits.WriteTx(ctx, tx, account, limits.MaxStreamsMode, limits.MaxStreams); e != nil {
+		return e
+	}
+	if _, e = tx.ExecContext(ctx, `INSERT INTO access_limits(account_id,revision,updated_ms,body) VALUES(?,1,?,?) ON CONFLICT(account_id) DO UPDATE SET revision=access_limits.revision+1,updated_ms=excluded.updated_ms,body=excluded.body`, account, now, string(raw)); e != nil {
+		return e
+	}
+	_, e = tx.ExecContext(ctx, `UPDATE direct_memberships SET access_tokens=? WHERE account_id=?`, limits.AccessTokens, account)
+	return e
 }
 
 type InvitationPage struct {
@@ -55,6 +119,8 @@ type InvitationRequest struct {
 	ExpiresInHours   int      `json:"expiresInHours"`
 	// PorticoUsername binds the invitation to one Portico Account (optional).
 	PorticoUsername string `json:"porticoUsername,omitempty"`
+	// Access is optional; omitted means DefaultInvitationAccess.
+	Access *InvitationAccess `json:"access,omitempty"`
 }
 
 // InvitationPreview is the explicit public join-page projection. It has no target identity or notes.
@@ -190,7 +256,8 @@ func invitationRowCreated(row interface{ Scan(...any) error }) (Invitation, int6
 	var created, expires int64
 	var accepted sql.NullInt64
 	var account sql.NullString
-	if e := row.Scan(&v.ID, &v.Notes, &v.Role, &libraries, &v.State, &created, &expires, &accepted, &account, &v.Revision, &v.PorticoUsername); e != nil {
+	if e := row.Scan(&v.ID, &v.Notes, &v.Role, &libraries, &v.State, &created, &expires, &accepted, &account, &v.Revision, &v.PorticoUsername,
+		&v.Access.MaxStreamsMode, &v.Access.MaxStreams, &v.Access.AllowRemote, &v.Access.AccessTokens, &v.Access.MaxContentRating); e != nil {
 		return v, 0, e
 	}
 	if e := json.Unmarshal([]byte(libraries), &v.AllowedLibraries); e != nil {
@@ -210,7 +277,13 @@ func invitationRowCreated(row interface{ Scan(...any) error }) (Invitation, int6
 	return v, created, nil
 }
 
-const invitationColumns = `id,notes,role,allowed_libraries,state,created_ms,expires_ms,accepted_ms,account_id,revision,bound_username`
+const invitationColumns = `id,notes,role,allowed_libraries,state,created_ms,expires_ms,accepted_ms,account_id,revision,bound_username,max_streams_mode,max_streams,allow_remote,access_tokens,max_content_rating`
+
+// invitationAccessTx reads the grant an invitation carries.
+func invitationAccessTx(ctx context.Context, tx *sql.Tx, id string) (v InvitationAccess, e error) {
+	e = tx.QueryRowContext(ctx, `SELECT max_streams_mode,max_streams,allow_remote,access_tokens,max_content_rating FROM access_invitations WHERE id=?`, id).Scan(&v.MaxStreamsMode, &v.MaxStreams, &v.AllowRemote, &v.AccessTokens, &v.MaxContentRating)
+	return
+}
 
 // Invite creates a pending invitation. actor is the caller's tier: an admin may
 // invite members only, because identity.ManagesTier forbids creating a peer.
@@ -253,6 +326,14 @@ func (s *Store) Invite(ctx context.Context, auth Authorize, actor identity.Princ
 	if q.ExpiresInHours < 1 || q.ExpiresInHours > 720 {
 		return out, invalid("expiresInHours")
 	}
+	grant := DefaultInvitationAccess()
+	if q.Access != nil {
+		grant = *q.Access
+	}
+	if e = grant.normalize(); e != nil {
+		return out, e
+	}
+	q.Access = &grant
 	var code string
 	err = s.transaction(ctx, auth, func(tx *sql.Tx) error {
 		if e := invitationManageTx(ctx, tx, actor, q.Role); e != nil {
@@ -300,8 +381,8 @@ func (s *Store) Invite(ctx context.Context, auth Authorize, actor identity.Princ
 		id := token()[:22]
 		code = s.invitationCode(id)
 		expires := now + int64(q.ExpiresInHours)*int64(time.Hour/time.Millisecond)
-		if _, e = tx.ExecContext(ctx, `INSERT INTO access_invitations(id,notes,code_hash,role,allowed_libraries,state,created_ms,expires_ms,created_by,revision,bound_username) VALUES(?,?,?,?,?,'pending',?,?,?,1,?)`,
-			id, notes, digest(code), q.Role, string(libraries), now, expires, actor.AccountID, bound); e != nil {
+		if _, e = tx.ExecContext(ctx, `INSERT INTO access_invitations(id,notes,code_hash,role,allowed_libraries,state,created_ms,expires_ms,created_by,revision,bound_username,max_streams_mode,max_streams,allow_remote,access_tokens,max_content_rating) VALUES(?,?,?,?,?,'pending',?,?,?,1,?,?,?,?,?,?)`,
+			id, notes, digest(code), q.Role, string(libraries), now, expires, actor.AccountID, bound, grant.MaxStreamsMode, grant.MaxStreams, grant.AllowRemote, grant.AccessTokens, grant.MaxContentRating); e != nil {
 			return e
 		}
 		if out, e = invitationRow(tx.QueryRowContext(ctx, `SELECT `+invitationColumns+` FROM access_invitations WHERE id=?`, id)); e != nil {
@@ -438,6 +519,11 @@ type Acceptance struct {
 	Name      string `json:"name,omitempty"`
 }
 
+// invitationAcceptPlan bounds accepting an invitation: it creates the account
+// with its membership, primary profile and limits, and spends the invitation.
+var invitationAcceptPlan = dbwork.WritePlan{Name: "invitation-accept", Rows: 160, Pages: 128, VMOps: 250_000,
+	Why: "joining creates the account, its membership, primary profile and limits and spends the invitation together, so nobody is ever half-joined"}
+
 // Accept redeems an invitation code and creates the account it describes. It is
 // unauthenticated by design — the invitee has no account yet — so the code is
 // the whole authority and the caller rate-limits the route.
@@ -463,7 +549,7 @@ func (s *Store) Accept(ctx context.Context, q Acceptance, hash []byte) (out Acce
 	if !safeText(name, 120) {
 		return out, invalid("name")
 	}
-	err = s.transaction(ctx, nil, func(tx *sql.Tx) error {
+	err = s.transaction(dbwork.WithPlan(ctx, invitationAcceptPlan), nil, func(tx *sql.Tx) error {
 		if err := identity.RequireSignInKindTx(ctx, tx, identity.SignInLocal); err != nil {
 			return err
 		}
@@ -511,6 +597,13 @@ func (s *Store) Accept(ctx context.Context, q Acceptance, hash []byte) (out Acce
 			return e
 		}
 		if _, e = tx.ExecContext(ctx, `UPDATE direct_memberships SET role=?,allowed_libraries=?,notes=?,joined_via=?,joined_ms=?,revision=revision+1 WHERE account_id=? AND role<>'owner'`, role, libraries, notes, id, now, account); e != nil {
+			return e
+		}
+		grant, e := invitationAccessTx(ctx, tx, id)
+		if e != nil {
+			return e
+		}
+		if e = applyInvitationAccessTx(ctx, tx, account, grant, now); e != nil {
 			return e
 		}
 		if _, e = tx.ExecContext(ctx, `UPDATE direct_profiles SET name=? WHERE id=?`, name, profile); e != nil {
@@ -573,7 +666,7 @@ func (s *Store) AcceptPortico(ctx context.Context, q PorticoAcceptance, signIn f
 	if name == "" || !safeText(name, 120) {
 		name = username
 	}
-	err = s.transaction(ctx, nil, func(tx *sql.Tx) error {
+	err = s.transaction(dbwork.WithPlan(ctx, invitationAcceptPlan), nil, func(tx *sql.Tx) error {
 		if err := identity.RequireSignInKindTx(ctx, tx, identity.SignInPortico); err != nil {
 			return err
 		}
@@ -649,8 +742,22 @@ func (s *Store) AcceptPortico(ctx context.Context, q PorticoAcceptance, signIn f
 				return ErrExpired
 			}
 		}
-		if _, e = tx.ExecContext(ctx, `UPDATE direct_memberships SET role=?,allowed_libraries=?,notes=?,joined_via=?,joined_ms=?,disabled=0,revision=revision+1 WHERE account_id=? AND role<>'owner' AND (?<>0 OR disabled<>0)`, role, libraries, notes, id, now, account, created); e != nil {
+		granted, e := tx.ExecContext(ctx, `UPDATE direct_memberships SET role=?,allowed_libraries=?,notes=?,joined_via=?,joined_ms=?,disabled=0,revision=revision+1 WHERE account_id=? AND role<>'owner' AND (?<>0 OR disabled<>0)`, role, libraries, notes, id, now, account, created)
+		if e != nil {
 			return e
+		}
+		// The grant goes exactly where the tier and libraries did: a new or
+		// restored membership. An active member's limits are left alone.
+		if n, e := granted.RowsAffected(); e != nil {
+			return e
+		} else if n == 1 {
+			grant, e := invitationAccessTx(ctx, tx, id)
+			if e != nil {
+				return e
+			}
+			if e = applyInvitationAccessTx(ctx, tx, account, grant, now); e != nil {
+				return e
+			}
 		}
 		if _, e = tx.ExecContext(ctx, `UPDATE access_invitations SET state='accepted',accepted_ms=?,account_id=?,revision=revision+1 WHERE id=?`, now, account, id); e != nil {
 			return e
@@ -710,6 +817,13 @@ func RedeemForRegistrationTx(ctx context.Context, tx *sql.Tx, code, account stri
 		return nil, e
 	}
 	if _, e = tx.ExecContext(ctx, `UPDATE direct_memberships SET notes=?,joined_via=?,joined_ms=? WHERE account_id=?`, notes, id, now, account); e != nil {
+		return nil, e
+	}
+	grant, e := invitationAccessTx(ctx, tx, id)
+	if e != nil {
+		return nil, e
+	}
+	if e = applyInvitationAccessTx(ctx, tx, account, grant, now); e != nil {
 		return nil, e
 	}
 	var username string
@@ -781,6 +895,8 @@ type InvitationChange struct {
 	Role             string   `json:"role"`
 	AllowedLibraries []string `json:"allowedLibraries"`
 	ExpiresAt        string   `json:"expiresAt"`
+	// Access replaces the grant; omitted keeps the current one.
+	Access *InvitationAccess `json:"access,omitempty"`
 }
 type InvitationLinkRequest struct {
 	ExpectedRevision int64 `json:"expectedRevision"`
@@ -830,6 +946,11 @@ func (s *Store) EditInvitation(ctx context.Context, auth Authorize, actor identi
 		}
 		seen[v] = true
 	}
+	if q.Access != nil {
+		if e = q.Access.normalize(); e != nil {
+			return out, e
+		}
+	}
 	err = s.transaction(ctx, auth, func(tx *sql.Tx) error {
 		current, e := invitationRow(tx.QueryRowContext(ctx, `SELECT `+invitationColumns+` FROM access_invitations WHERE id=?`, id))
 		if e != nil {
@@ -865,7 +986,11 @@ func (s *Store) EditInvitation(ctx context.Context, auth Authorize, actor identi
 			}
 		}
 		libraries, _ := json.Marshal(q.AllowedLibraries)
-		if _, e = tx.ExecContext(ctx, `UPDATE access_invitations SET notes=?,role=?,allowed_libraries=?,expires_ms=?,revision=revision+1 WHERE id=?`, notes, q.Role, string(libraries), expiry.UnixMilli(), id); e != nil {
+		grant := current.Access
+		if q.Access != nil {
+			grant = *q.Access
+		}
+		if _, e = tx.ExecContext(ctx, `UPDATE access_invitations SET notes=?,role=?,allowed_libraries=?,expires_ms=?,max_streams_mode=?,max_streams=?,allow_remote=?,access_tokens=?,max_content_rating=?,revision=revision+1 WHERE id=?`, notes, q.Role, string(libraries), expiry.UnixMilli(), grant.MaxStreamsMode, grant.MaxStreams, grant.AllowRemote, grant.AccessTokens, grant.MaxContentRating, id); e != nil {
 			return e
 		}
 		out, e = invitationRow(tx.QueryRowContext(ctx, `SELECT `+invitationColumns+` FROM access_invitations WHERE id=?`, id))

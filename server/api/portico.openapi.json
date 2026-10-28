@@ -25165,6 +25165,40 @@
           "acceptedAt": {
             "type": "string"
           },
+          "access": {
+            "properties": {
+              "accessTokens": {
+                "type": "boolean"
+              },
+              "allowRemote": {
+                "type": "boolean"
+              },
+              "maxContentRating": {
+                "type": "string"
+              },
+              "maxStreams": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "maxStreamsMode": {
+                "enum": [
+                  "inherit",
+                  "unlimited",
+                  "limit"
+                ],
+                "type": "string"
+              }
+            },
+            "required": [
+              "maxStreamsMode",
+              "maxStreams",
+              "allowRemote",
+              "accessTokens",
+              "maxContentRating"
+            ],
+            "type": "object"
+          },
           "accountId": {
             "type": "string"
           },
@@ -25215,7 +25249,8 @@
           "state",
           "createdAt",
           "expiresAt",
-          "revision"
+          "revision",
+          "access"
         ],
         "type": "object"
       },
@@ -25230,6 +25265,40 @@
               "properties": {
                 "acceptedAt": {
                   "type": "string"
+                },
+                "access": {
+                  "properties": {
+                    "accessTokens": {
+                      "type": "boolean"
+                    },
+                    "allowRemote": {
+                      "type": "boolean"
+                    },
+                    "maxContentRating": {
+                      "type": "string"
+                    },
+                    "maxStreams": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "maxStreamsMode": {
+                      "enum": [
+                        "inherit",
+                        "unlimited",
+                        "limit"
+                      ],
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "maxStreamsMode",
+                    "maxStreams",
+                    "allowRemote",
+                    "accessTokens",
+                    "maxContentRating"
+                  ],
+                  "type": "object"
                 },
                 "accountId": {
                   "type": "string"
@@ -25281,7 +25350,8 @@
                 "state",
                 "createdAt",
                 "expiresAt",
-                "revision"
+                "revision",
+                "access"
               ],
               "type": "object"
             },
@@ -209603,6 +209673,40 @@
           "acceptedAt": {
             "type": "string"
           },
+          "access": {
+            "properties": {
+              "accessTokens": {
+                "type": "boolean"
+              },
+              "allowRemote": {
+                "type": "boolean"
+              },
+              "maxContentRating": {
+                "type": "string"
+              },
+              "maxStreams": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "maxStreamsMode": {
+                "enum": [
+                  "inherit",
+                  "unlimited",
+                  "limit"
+                ],
+                "type": "string"
+              }
+            },
+            "required": [
+              "maxStreamsMode",
+              "maxStreams",
+              "allowRemote",
+              "accessTokens",
+              "maxContentRating"
+            ],
+            "type": "object"
+          },
           "accountId": {
             "type": "string"
           },
@@ -209653,12 +209757,47 @@
           "state",
           "createdAt",
           "expiresAt",
-          "revision"
+          "revision",
+          "access"
         ],
         "type": "object"
       },
       "PostAdminAccessInvitationsRequest": {
         "properties": {
+          "access": {
+            "properties": {
+              "accessTokens": {
+                "type": "boolean"
+              },
+              "allowRemote": {
+                "type": "boolean"
+              },
+              "maxContentRating": {
+                "type": "string"
+              },
+              "maxStreams": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "maxStreamsMode": {
+                "enum": [
+                  "inherit",
+                  "unlimited",
+                  "limit"
+                ],
+                "type": "string"
+              }
+            },
+            "required": [
+              "maxStreamsMode",
+              "maxStreams",
+              "allowRemote",
+              "accessTokens",
+              "maxContentRating"
+            ],
+            "type": "object"
+          },
           "allowedLibraries": {
             "items": {
               "type": "string"
@@ -209697,6 +209836,40 @@
           "acceptedAt": {
             "type": "string"
           },
+          "access": {
+            "properties": {
+              "accessTokens": {
+                "type": "boolean"
+              },
+              "allowRemote": {
+                "type": "boolean"
+              },
+              "maxContentRating": {
+                "type": "string"
+              },
+              "maxStreams": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "maxStreamsMode": {
+                "enum": [
+                  "inherit",
+                  "unlimited",
+                  "limit"
+                ],
+                "type": "string"
+              }
+            },
+            "required": [
+              "maxStreamsMode",
+              "maxStreams",
+              "allowRemote",
+              "accessTokens",
+              "maxContentRating"
+            ],
+            "type": "object"
+          },
           "accountId": {
             "type": "string"
           },
@@ -209747,7 +209920,8 @@
           "state",
           "createdAt",
           "expiresAt",
-          "revision"
+          "revision",
+          "access"
         ],
         "type": "object"
       },
@@ -241220,6 +241394,40 @@
       },
       "PutAdminAccessInvitationRequest": {
         "properties": {
+          "access": {
+            "properties": {
+              "accessTokens": {
+                "type": "boolean"
+              },
+              "allowRemote": {
+                "type": "boolean"
+              },
+              "maxContentRating": {
+                "type": "string"
+              },
+              "maxStreams": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "maxStreamsMode": {
+                "enum": [
+                  "inherit",
+                  "unlimited",
+                  "limit"
+                ],
+                "type": "string"
+              }
+            },
+            "required": [
+              "maxStreamsMode",
+              "maxStreams",
+              "allowRemote",
+              "accessTokens",
+              "maxContentRating"
+            ],
+            "type": "object"
+          },
           "allowedLibraries": {
             "items": {
               "type": "string"
@@ -241258,6 +241466,40 @@
         "properties": {
           "acceptedAt": {
             "type": "string"
+          },
+          "access": {
+            "properties": {
+              "accessTokens": {
+                "type": "boolean"
+              },
+              "allowRemote": {
+                "type": "boolean"
+              },
+              "maxContentRating": {
+                "type": "string"
+              },
+              "maxStreams": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "maxStreamsMode": {
+                "enum": [
+                  "inherit",
+                  "unlimited",
+                  "limit"
+                ],
+                "type": "string"
+              }
+            },
+            "required": [
+              "maxStreamsMode",
+              "maxStreams",
+              "allowRemote",
+              "accessTokens",
+              "maxContentRating"
+            ],
+            "type": "object"
           },
           "accountId": {
             "type": "string"
@@ -241309,7 +241551,8 @@
           "state",
           "createdAt",
           "expiresAt",
-          "revision"
+          "revision",
+          "access"
         ],
         "type": "object"
       },
@@ -282309,6 +282552,40 @@
                           "acceptedAt": {
                             "type": "string"
                           },
+                          "access": {
+                            "properties": {
+                              "accessTokens": {
+                                "type": "boolean"
+                              },
+                              "allowRemote": {
+                                "type": "boolean"
+                              },
+                              "maxContentRating": {
+                                "type": "string"
+                              },
+                              "maxStreams": {
+                                "maximum": 9007199254740991,
+                                "minimum": -9007199254740991,
+                                "type": "integer"
+                              },
+                              "maxStreamsMode": {
+                                "enum": [
+                                  "inherit",
+                                  "unlimited",
+                                  "limit"
+                                ],
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "maxStreamsMode",
+                              "maxStreams",
+                              "allowRemote",
+                              "accessTokens",
+                              "maxContentRating"
+                            ],
+                            "type": "object"
+                          },
                           "accountId": {
                             "type": "string"
                           },
@@ -282359,7 +282636,8 @@
                           "state",
                           "createdAt",
                           "expiresAt",
-                          "revision"
+                          "revision",
+                          "access"
                         ],
                         "type": "object"
                       },
@@ -282448,6 +282726,40 @@
             "application/json": {
               "schema": {
                 "properties": {
+                  "access": {
+                    "properties": {
+                      "accessTokens": {
+                        "type": "boolean"
+                      },
+                      "allowRemote": {
+                        "type": "boolean"
+                      },
+                      "maxContentRating": {
+                        "type": "string"
+                      },
+                      "maxStreams": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "maxStreamsMode": {
+                        "enum": [
+                          "inherit",
+                          "unlimited",
+                          "limit"
+                        ],
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "maxStreamsMode",
+                      "maxStreams",
+                      "allowRemote",
+                      "accessTokens",
+                      "maxContentRating"
+                    ],
+                    "type": "object"
+                  },
                   "allowedLibraries": {
                     "items": {
                       "type": "string"
@@ -282493,6 +282805,40 @@
                   "properties": {
                     "acceptedAt": {
                       "type": "string"
+                    },
+                    "access": {
+                      "properties": {
+                        "accessTokens": {
+                          "type": "boolean"
+                        },
+                        "allowRemote": {
+                          "type": "boolean"
+                        },
+                        "maxContentRating": {
+                          "type": "string"
+                        },
+                        "maxStreams": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
+                        "maxStreamsMode": {
+                          "enum": [
+                            "inherit",
+                            "unlimited",
+                            "limit"
+                          ],
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "maxStreamsMode",
+                        "maxStreams",
+                        "allowRemote",
+                        "accessTokens",
+                        "maxContentRating"
+                      ],
+                      "type": "object"
                     },
                     "accountId": {
                       "type": "string"
@@ -282544,7 +282890,8 @@
                     "state",
                     "createdAt",
                     "expiresAt",
-                    "revision"
+                    "revision",
+                    "access"
                   ],
                   "type": "object"
                 }
@@ -282622,6 +282969,40 @@
                     "acceptedAt": {
                       "type": "string"
                     },
+                    "access": {
+                      "properties": {
+                        "accessTokens": {
+                          "type": "boolean"
+                        },
+                        "allowRemote": {
+                          "type": "boolean"
+                        },
+                        "maxContentRating": {
+                          "type": "string"
+                        },
+                        "maxStreams": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
+                        "maxStreamsMode": {
+                          "enum": [
+                            "inherit",
+                            "unlimited",
+                            "limit"
+                          ],
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "maxStreamsMode",
+                        "maxStreams",
+                        "allowRemote",
+                        "accessTokens",
+                        "maxContentRating"
+                      ],
+                      "type": "object"
+                    },
                     "accountId": {
                       "type": "string"
                     },
@@ -282672,7 +283053,8 @@
                     "state",
                     "createdAt",
                     "expiresAt",
-                    "revision"
+                    "revision",
+                    "access"
                   ],
                   "type": "object"
                 }
@@ -282742,6 +283124,40 @@
             "application/json": {
               "schema": {
                 "properties": {
+                  "access": {
+                    "properties": {
+                      "accessTokens": {
+                        "type": "boolean"
+                      },
+                      "allowRemote": {
+                        "type": "boolean"
+                      },
+                      "maxContentRating": {
+                        "type": "string"
+                      },
+                      "maxStreams": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "maxStreamsMode": {
+                        "enum": [
+                          "inherit",
+                          "unlimited",
+                          "limit"
+                        ],
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "maxStreamsMode",
+                      "maxStreams",
+                      "allowRemote",
+                      "accessTokens",
+                      "maxContentRating"
+                    ],
+                    "type": "object"
+                  },
                   "allowedLibraries": {
                     "items": {
                       "type": "string"
@@ -282788,6 +283204,40 @@
                   "properties": {
                     "acceptedAt": {
                       "type": "string"
+                    },
+                    "access": {
+                      "properties": {
+                        "accessTokens": {
+                          "type": "boolean"
+                        },
+                        "allowRemote": {
+                          "type": "boolean"
+                        },
+                        "maxContentRating": {
+                          "type": "string"
+                        },
+                        "maxStreams": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
+                        "maxStreamsMode": {
+                          "enum": [
+                            "inherit",
+                            "unlimited",
+                            "limit"
+                          ],
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "maxStreamsMode",
+                        "maxStreams",
+                        "allowRemote",
+                        "accessTokens",
+                        "maxContentRating"
+                      ],
+                      "type": "object"
                     },
                     "accountId": {
                       "type": "string"
@@ -282839,7 +283289,8 @@
                     "state",
                     "createdAt",
                     "expiresAt",
-                    "revision"
+                    "revision",
+                    "access"
                   ],
                   "type": "object"
                 }
@@ -283048,6 +283499,40 @@
                     "acceptedAt": {
                       "type": "string"
                     },
+                    "access": {
+                      "properties": {
+                        "accessTokens": {
+                          "type": "boolean"
+                        },
+                        "allowRemote": {
+                          "type": "boolean"
+                        },
+                        "maxContentRating": {
+                          "type": "string"
+                        },
+                        "maxStreams": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
+                        "maxStreamsMode": {
+                          "enum": [
+                            "inherit",
+                            "unlimited",
+                            "limit"
+                          ],
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "maxStreamsMode",
+                        "maxStreams",
+                        "allowRemote",
+                        "accessTokens",
+                        "maxContentRating"
+                      ],
+                      "type": "object"
+                    },
                     "accountId": {
                       "type": "string"
                     },
@@ -283098,7 +283583,8 @@
                     "state",
                     "createdAt",
                     "expiresAt",
-                    "revision"
+                    "revision",
+                    "access"
                   ],
                   "type": "object"
                 }

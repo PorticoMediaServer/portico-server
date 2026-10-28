@@ -3311,7 +3311,13 @@ CREATE TABLE access_invitations(
  state TEXT NOT NULL DEFAULT 'pending' CHECK(state IN('pending','accepted','revoked')),
  created_ms INTEGER NOT NULL, expires_ms INTEGER NOT NULL, accepted_ms INTEGER,
  created_by TEXT NOT NULL, account_id TEXT, revision INTEGER NOT NULL DEFAULT 1 CHECK(revision>0),
- bound_username TEXT NOT NULL DEFAULT '') STRICT;
+ bound_username TEXT NOT NULL DEFAULT '',
+ -- What the person gets once they join, written with the membership on accept.
+ max_streams_mode TEXT NOT NULL DEFAULT 'inherit' CHECK(max_streams_mode IN('inherit','unlimited','limit')),
+ max_streams INTEGER NOT NULL DEFAULT 0 CHECK(max_streams_mode='limit' AND max_streams BETWEEN 1 AND 1000 OR max_streams_mode<>'limit' AND max_streams=0),
+ allow_remote INTEGER NOT NULL DEFAULT 1 CHECK(allow_remote IN(0,1)),
+ access_tokens INTEGER NOT NULL DEFAULT 1 CHECK(access_tokens IN(0,1)),
+ max_content_rating TEXT NOT NULL DEFAULT '' CHECK(length(max_content_rating)<=32)) STRICT;
 -- A separately issued human-entry capability; never a recoverable long-link secret.
 CREATE TABLE access_invitation_short_codes(
  invitation_id TEXT PRIMARY KEY REFERENCES access_invitations(id) ON DELETE CASCADE,
