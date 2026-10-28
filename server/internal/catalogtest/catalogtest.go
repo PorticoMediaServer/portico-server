@@ -20,7 +20,6 @@ import (
 	"portico.local/server/internal/compactcatalog"
 	"portico.local/server/internal/dbwork"
 	"portico.local/server/internal/entityid"
-	"portico.local/server/internal/operations"
 	"portico.local/server/internal/persistence"
 )
 
@@ -98,57 +97,6 @@ func (c *Catalog) Drain() {
 		}
 	}
 	c.T.Fatal("catalogue worker did not drain")
-}
-
-// DrainCatalogMutations drives the actual catalogue-domain jobs to terminal:
-// the same per-job Step the operations scheduler calls, over the real
-// console_operations rows. It re-reads the runnable jobs every turn, so a root
-// that enqueues another root while it runs (an MB album adoption handing a
-// frozen artist to its own adoption) is picked up instead of being left
-// non-terminal. The bound is a fixture guard, not a production cap; it fails
-// loudly with the remaining custody rather than weakening an assertion.
-func (c *Catalog) DrainCatalogMutations(adapter operations.Adapter) {
-	c.T.Helper()
-	for turn := 0; turn < 10000; turn++ {
-		var roots int
-		if err := c.DB.QueryRow(`SELECT count(*) FROM catalog_entity_mutations WHERE status<>'terminal'`).Scan(&roots); err != nil {
-			c.T.Fatal(err)
-		}
-		rows, err := c.DB.Query(`SELECT resource FROM console_operations WHERE kind='catalog-mutation' AND state IN('queued','running','reconciling') ORDER BY sequence LIMIT 64`)
-		if err != nil {
-			c.T.Fatal(err)
-		}
-		var resources []string
-		for rows.Next() {
-			var id string
-			if err = rows.Scan(&id); err != nil {
-				rows.Close()
-				c.T.Fatal(err)
-			}
-			resources = append(resources, id)
-		}
-		err = rows.Err()
-		rows.Close()
-		if err != nil {
-			c.T.Fatal(err)
-		}
-		if roots == 0 && len(resources) == 0 {
-			return
-		}
-		if len(resources) == 0 {
-			c.T.Fatalf("%d catalogue mutation root(s) have no runnable operation", roots)
-		}
-		for _, id := range resources {
-			out, err := adapter.Step(context.Background(), id)
-			if err != nil {
-				c.T.Fatal(id, err)
-			}
-			if out.State == "failed" || out.State == "cancelled" {
-				c.T.Fatalf("catalogue mutation %s ended %s: %s", id, out.State, out.Phase)
-			}
-		}
-	}
-	c.T.Fatal("catalogue mutations did not drain within the bounded fixture turns")
 }
 
 // Library creates a library (kind: movie, tv, anime, music, audiobook) and
