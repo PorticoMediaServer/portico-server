@@ -277,7 +277,7 @@ test('a channel retry-only 202 prepares the original start before any channel st
     assert.equal(states[0].playbackId, 'ps_1');
     assert.equal(states[0].linear.name, 'News');
     // The first samples' acks carry the view that turns ready; the join follows it.
-    for (let i = 0; i < 4 && clock.pending(); i++) { clock.fire(); await settle(); }
+    await new Promise(resolve => setTimeout(resolve, 40)); await settle();
     assert.ok(server.log.some(request => request.method === 'PATCH' && (request.body as any).seek?.live === true), 'the honest generation-0/empty-URL 201 still joins');
   } finally { control.close(); await opening?.catch(() => {}); }
 });

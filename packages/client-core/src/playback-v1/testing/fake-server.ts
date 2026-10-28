@@ -473,7 +473,9 @@ export class FakePlaybackServer {
         if (t && !t.committed) { t.committed = true; const src = this.sessions.get(t.sourceId); if (src) this.end(src, 'transferred'); }
       }
     }
-    return {status: 200, headers: {}, body: {acceptedSeq: s.observedSeq ?? 0, leaseUntil: new Date(this.now() + 120_000).toISOString()}};
+    // As the real server does, a channel's ack carries its current view.
+    const view = s.kind === 'channel' ? this.view(s) : undefined;
+    return {status: 200, headers: {}, body: {acceptedSeq: s.observedSeq ?? 0, leaseUntil: new Date(this.now() + 120_000).toISOString(), ...(view ? {viewTag: JSON.stringify(view).length.toString(36) + ':' + s.revision, session: view} : {})}};
   }
 
   private stop(s: Session | undefined, body: Record<string, unknown>): FakeResponse {

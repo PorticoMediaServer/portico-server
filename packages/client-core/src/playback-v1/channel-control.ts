@@ -295,7 +295,8 @@ export class V1ChannelControl implements ChannelPlayback {
       onView: session => { if (this.current(a)) this.accept(a, session); },
       onEnded: () => { if (this.current(a)) void this.read(a).catch(e => { if (this.current(a)) { this.sink?.error(message(e), true); this.active = undefined; } }); },
       onConnection: healthy => { if (!healthy && this.current(a)) this.sink?.error(message(undefined), false); },
-      ...(this.timers?.setTimer ? {setTimer: this.timers.setTimer} : {}), ...(this.timers?.clearTimer ? {clearTimer: this.timers.clearTimer} : {}),
+      // Samples run on real time, like the channel's own clock (the injected timers pace start
+      // preparation only); pollMs fixes their cadence for hosts and tests that need it.
       ...(this.pollMs !== undefined ? {everyMs: this.pollMs} : {}),
     });
   }
