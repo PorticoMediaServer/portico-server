@@ -264,15 +264,18 @@ export class DetailService {
     this.state = this.empty();
   }
   private empty(): DetailSnapshot { return Object.freeze({ generation: this.generation, scope: this.bound, target: null, phase: 'idle', data: null, error: null, pending: Object.freeze([]), mutationError: null }); }
+  private related: 'all' | 'none' = 'all';
   getSnapshot = (): DetailSnapshot => this.state;
   subscribe = (listener: () => void): (() => void) => { if (this.disposed) return () => {}; this.listeners.add(listener); return () => { this.listeners.delete(listener); }; };
   private publish(patch: Partial<DetailSnapshot> = {}): void { if (this.disposed) return; this.state = Object.freeze({ ...this.state, ...patch, pending: Object.freeze(this.commands.map(c => Object.freeze({ intent: c.intent, phase: c.phase }))) }); for (const listener of this.listeners) listener(); }
   private active(): void { if (this.disposed) throw new Error('Detail service is disposed.'); }
   private fence(): void { this.generation++; this.readGeneration++; this.readController?.abort(); this.mutationController?.abort(); for (const c of this.commands) c.resolve(); this.commands = []; this.running = false; this.readPromise = undefined; }
-  select(input: DetailTarget): Promise<void> {
-    this.active(); const target = checkTarget(input);
-    if (this.state.phase === 'loading' && this.state.target?.itemId === target.itemId && this.state.target.libraryId === target.libraryId && this.readPromise) return this.readPromise;
-    this.fence(); this.publish({ ...this.empty(), target }); return this.refresh();
+  /** `related: 'none'` skips the embedded recommendation rows, for a page that reads them itself. */
+  select(input: DetailTarget, options: Readonly<{related?: 'all' | 'none'}> = {}): Promise<void> {
+    this.active(); const target = checkTarget(input), related = options.related ?? 'all';
+    if (related !== 'all' && related !== 'none') throw new Error('Invalid detail related option.');
+    if (this.state.phase === 'loading' && this.state.target?.itemId === target.itemId && this.state.target.libraryId === target.libraryId && this.related === related && this.readPromise) return this.readPromise;
+    this.fence(); this.related = related; this.publish({ ...this.empty(), target }); return this.refresh();
   }
   refresh(): Promise<void> {
     this.active(); if (!this.state.target) return Promise.resolve();
@@ -281,7 +284,7 @@ export class DetailService {
     this.publish({ phase: 'loading', error: null });
     const task = (async () => {
       try {
-        const raw = await this.deadline(api.request<RouteResponse<"get_items_id_detail">>(encodedRoutePath("get_items_id_detail", {"id": encodeURIComponent(target.itemId)}) + "?related=all", 'GET', undefined, controller.signal), controller);
+        const raw = await this.deadline(api.request<RouteResponse<"get_items_id_detail">>(encodedRoutePath("get_items_id_detail", {"id": encodeURIComponent(target.itemId)}) + "?related=" + this.related, 'GET', undefined, controller.signal), controller);
         if (this.disposed || generation !== this.generation || read !== this.readGeneration) return;
         const data = projection(raw, bound, target);
         if (this.state.data && (data.scope.viewerFence!==this.state.data.scope.viewerFence || data.revision.catalog<this.state.data.revision.catalog)) throw new Failure('detail_scope_changed','The catalog or your access changed. Reload these details before continuing.',true);
@@ -308,7 +311,7 @@ export class DetailService {
     context?.signal?.addEventListener('abort', stop, { once: true });
     const generation = this.generation, read = this.readGeneration, bound = this.bound, api = this.api;
     try {
-      const raw = await this.deadline(api.request<RouteResponse<"get_items_id_detail">>(encodedRoutePath("get_items_id_detail", {"id": encodeURIComponent(target.itemId)}) + "?related=all", 'GET', undefined, controller.signal), controller);
+      const raw = await this.deadline(api.request<RouteResponse<"get_items_id_detail">>(encodedRoutePath("get_items_id_detail", {"id": encodeURIComponent(target.itemId)}) + "?related=" + this.related, 'GET', undefined, controller.signal), controller);
       if (this.disposed || generation !== this.generation || read !== this.readGeneration) return;
       const data = projection(raw, bound, target);
       await context?.settle?.();

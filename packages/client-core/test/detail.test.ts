@@ -241,3 +241,15 @@ test('detail recommendation and credit pages preserve all 537 loaded entries and
  assert.ok(paths.includes('/v1/items/item/credits?group=cast&limit=37&cursor=37'));
  assert.ok(paths.includes('/v1/items/item/recommendations/rows/more_like?limit=37&cursor=37'));
 });
+
+test('a page that reads recommendations itself asks detail for none, on every read of that selection', async () => {
+  const paths: string[] = [];
+  const service = setup(async path => { paths.push(path); return data(); });
+  await service.select(target, {related: 'none'});
+  assert.equal(service.getSnapshot().phase, 'ready');
+  await service.refresh(); await service.revalidate();
+  await service.select({...target, itemId: 'item'});
+  assert.deepEqual(paths.map(path => path.split('?')[1]), ['related=none', 'related=none', 'related=none', 'related=all']);
+  assert.throws(() => service.select(target, {related: 'some' as never}));
+  service.dispose();
+});
