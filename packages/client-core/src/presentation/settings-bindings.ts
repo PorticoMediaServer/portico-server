@@ -12,7 +12,7 @@ import {validatePreferencePatch,type PreferenceSnapshot,type PreferenceScope,typ
 import type {ReadingPreferences} from '../preference-effects.ts';
 
 export type SettingsBindingForm='runtime'|'connectivity'|'connectivityStatus'|'maintenance'|'alerts'|'preferences'|'device'|'remote'|'managedRoute'|'logs'|'library'|'metadata';
-export type SettingsBinding=Readonly<{form:SettingsBindingForm;key:string;scope?:PreferenceScope;readOnly?:boolean;scale?:number;codec?:'number-choice'|'unlimited'|'domain'|'interface'|'remote-policy'|'away-quality'|'update-checks'|'window-mode'|'days'|'log-retention'|'still-watching'|'missing-rule'|'music-quality-choice'|'video-quality-choice'|'inherited-watched-threshold'|'surround'|'player-engine'|'tv-support'|'boolean'|'artwork-size';fields?:Readonly<Record<string,string>>;window?:'heavy'|'backup'}>;
+export type SettingsBinding=Readonly<{form:SettingsBindingForm;key:string;scope?:PreferenceScope;readOnly?:boolean;scale?:number;codec?:'history-retention'|'number-choice'|'unlimited'|'domain'|'interface'|'remote-policy'|'away-quality'|'update-checks'|'window-mode'|'days'|'log-retention'|'still-watching'|'missing-rule'|'music-quality-choice'|'video-quality-choice'|'inherited-watched-threshold'|'surround'|'player-engine'|'tv-support'|'boolean'|'artwork-size';fields?:Readonly<Record<string,string>>;window?:'heavy'|'backup'}>;
 export type SettingsBindingSources=Readonly<{configuration?:SettingsConfiguration;preferences?:PreferenceSnapshot;forms?:Readonly<Partial<Record<SettingsBindingForm,Readonly<Record<string,unknown>>>>>;device?:Readonly<Record<string,unknown>>;deviceDefaults?:Readonly<Record<string,unknown>>}>;
 export type SettingsBindingValue=Readonly<{current:unknown;effective:unknown;default:unknown;source:string;configOnly:boolean;applicationMode?:string}>;
 export type SettingsBindingPatch=Readonly<{form:SettingsBindingForm;values:Readonly<Record<string,unknown>>}>;
@@ -98,7 +98,7 @@ const bindings:Readonly<Record<string,SettingsBinding>>={
  'storage.backupTime':{form:'maintenance',key:'startMinute',window:'backup',codec:'number-choice'},
  'storage.backupWindowLength':{form:'maintenance',key:'durationMinutes',window:'backup',scale:60,codec:'number-choice'},
  'storage.backupDays':{form:'maintenance',key:'days',window:'backup',codec:'days'},
- 'history.keepHistory':{form:'runtime',key:'playHistoryDays',codec:'number-choice'},
+ 'history.keepHistory':{form:'runtime',key:'playHistoryDays',codec:'history-retention'},
  'general.backgroundSpeed':{form:'maintenance',key:'backgroundSpeed'},
  'general.alertStorageWarn':{form:'alerts',key:'storageWarningPercent',codec:'number-choice'},
  'general.alertStorageCritical':{form:'alerts',key:'storageCriticalPercent',codec:'number-choice'},
@@ -247,8 +247,10 @@ function windowMode(binding:SettingsBinding,w:Readonly<Record<string,unknown>>):
  if(binding.window==='heavy')return w.startMinute===60&&w.durationMinutes===300&&Array.isArray(w.days)&&w.days.length===7&&days.every(d=>(w.days as unknown[]).includes(d))&&!w.timezone?'overnight':'custom';
  return Object.entries(cadences).find(([,wanted])=>Array.isArray(w.days)&&w.days.length===wanted.length&&wanted.every(d=>(w.days as unknown[]).includes(d)))?.[0]??'custom';
 }
+const historyRetentionDays:Readonly<Record<string,number>>={forever:0,'3y':1095,'1y':365,'180d':180,'90d':90,'30d':30};
 function presented(binding:SettingsBinding,v:unknown,sources:SettingsBindingSources):unknown{
  if(v===undefined)return undefined;
+ if(binding.codec==='history-retention')return typeof v==='number'&&Number.isSafeInteger(v)&&v>=0&&v<=36500?Object.entries(historyRetentionDays).find(([,days])=>days===v)?.[0]??String(v):undefined;
  if(binding.codec==='music-quality-choice')return typeof v==='string'&&canonicalMusicQualityLadder.some(q=>q.id===v)?(v==='cd-quality'?'cd':v):undefined;
  if(binding.codec==='video-quality-choice')return typeof v==='string'&&canonicalQualityLadder.some(q=>q.id===v)&&(binding.key!=='downloadMaxQuality'||v!=='automatic')?(v==='2160p'?'4k':v):undefined;
  if(binding.codec==='artwork-size')return v===1280?'small':v===1920?'standard':v===2560?'large':undefined;
@@ -377,6 +379,10 @@ export function settingsBindingPatch(binding:SettingsBinding,value:unknown,sourc
  else if(binding.codec==='interface')raw=value==='all'?'':value;
  else if(binding.codec==='remote-policy')raw=value==='anyone'?'allow':value==='owner'?'owner-only':value==='none'?'off':undefined;
  else if(binding.codec==='unlimited')raw=value==='unlimited'||value==='auto'?(binding.key==='serverCap'?null:0):Number(value);
+ else if(binding.codec==='history-retention'){
+  raw=typeof value==='string'&&Object.hasOwn(historyRetentionDays,value)?historyRetentionDays[value]:typeof value==='number'||typeof value==='string'&&/^\d+$/.test(value)?Number(value):undefined;
+  if(typeof raw!=='number'||!Number.isSafeInteger(raw)||raw<0||raw>36500)throw new Error('Invalid history retention days.');
+ }
  else if(binding.codec==='number-choice')raw=Number(value);
  else if(binding.codec==='days'){
   if(!value||typeof value!=='object'||Object.keys(value).length!==7)throw new Error('Seven days are required.');

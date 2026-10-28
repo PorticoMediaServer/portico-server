@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {createI18n} from '../../packages/i18n/src/index.ts';
 import type {ContentEntry} from '../../packages/client-core/src/library-content.ts';
+import {contentEntrySubjectVectors} from '../../packages/client-core/test/fixtures/content-entry-subject.ts';
 import {homeCardModel, homeCardSubject} from '../src/screens/home/model.ts';
 
 const episode: ContentEntry = {id: 'episode', kind: 'episode', title: 'Actual title', show: {id: 'show', name: 'Actual show'}, seasonNumber: 2, episodeNumber: 3};
@@ -23,4 +24,8 @@ test('absolute, date fallback, explicit special and seasonal modes retain the ac
   assert.equal(homeCardSubject({...episode, seasonNumber: undefined}).seasonNumber, undefined);
   assert.deepEqual(homeCardSubject({...episode, kind: 'season', seasonNumber: 0}).episode, undefined);
   assert.equal(homeCardSubject({...episode, kind: 'season', seasonNumber: 0}).seasonNumber, 0);
+});
+
+for (const vector of contentEntrySubjectVectors) test(`shared Home subject: ${vector.name}`, () => {
+  assert.deepEqual(homeCardSubject(vector.entry), vector.subject);
 });
