@@ -85,6 +85,11 @@ func (a *privateSubtitleAcceptance) BeforeGenerationTx(ctx context.Context, tx *
 	}
 	a.tx = tx
 	a.mu.Unlock()
+	// The renderer's unwritten evidence lands under the generation it was
+	// observed in, before that generation is replaced.
+	if err := a.service.drainObservationTx(ctx, tx, a.original.id); err != nil {
+		return err
+	}
 	return a.transition.BeforeGenerationTx(ctx, tx, session, generation)
 }
 
@@ -97,9 +102,6 @@ func (a *privateSubtitleAcceptance) AfterGenerationTx(ctx context.Context, tx *s
 	}
 	if session != a.original.media || generation != a.original.mediaGeneration+1 {
 		return "", ErrRevision
-	}
-	if err := a.service.drainObservationTx(ctx, tx, a.original.id); err != nil {
-		return "", err
 	}
 	result, err := tx.ExecContext(ctx, `UPDATE playback_v1_sessions SET media_generation=?,generation=generation+1 WHERE id=? AND revision=? AND media_session_id=? AND media_generation=? AND ended_ms=0`, generation, a.original.id, a.original.revision, session, a.original.mediaGeneration)
 	if err != nil {

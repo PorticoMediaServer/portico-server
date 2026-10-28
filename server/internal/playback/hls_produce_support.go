@@ -336,6 +336,11 @@ func (h *HLS) downgradeCopyPlan(ctx context.Context, id string, plan *DeliveryPl
 		return nil, err
 	}
 	if len(replacement) > 0 && replacement[0] {
+		if s := h.discPlayback; s != nil && s.GrantReplacingTx != nil {
+			if err = s.GrantReplacingTx(ctx, tx, id); err != nil {
+				return nil, err
+			}
+		}
 		grant := identity.Token()
 		if _, err = tx.ExecContext(ctx, `UPDATE playback_sessions SET generation=generation+1,grant_token=?,grant_hash=? WHERE id=?`, grant, identity.Digest(grant), id); err != nil {
 			return nil, err

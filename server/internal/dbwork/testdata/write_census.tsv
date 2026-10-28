@@ -544,6 +544,7 @@ internal/playbackv1/sessions_change.go	(*Service).Timeline	ExecWrite	ClassEstabl
 internal/playbackv1/sessions_change.go	(*Service).Timeline	WithWriteTxContext	ClassEstablishedPlayback	-
 internal/playbackv1/skips.go	(*Service).recordSkip	WithWriteTxContext	ClassBackgroundMedia	-
 internal/playbackv1/stop_generation.go	(*Service).StopGeneration	Begin	ClassSecurityFence	-
+internal/playbackv1/stop_generation.go	(*Service).StopGeneration	WithWriteTxContext	ClassEstablishedPlayback	-
 internal/playbackv1/transitions.go	(*Service).CommitNext	WithWriteTxContext	ClassPlaybackStart	-
 internal/playbackv1/transitions.go	(*Service).PrepareNext	WithWriteTxContext	ClassInteractive	-
 internal/playbackv1/transitions.go	(*Service).cancelPrepared	WithWriteTxContext	ClassInteractive	-

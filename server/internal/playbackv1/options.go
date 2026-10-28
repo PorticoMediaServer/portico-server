@@ -296,6 +296,7 @@ type Service struct {
 func New(db *sql.DB, player *playback.Service, subs *subtitles.Service) *Service {
 	s := &Service{DB: db, Playback: player, Subtitles: subs}
 	if player != nil {
+		player.GrantReplacingTx = s.grantReplacingTx
 		player.GrantReplacedTx = s.grantReplacedTx
 	}
 	return s

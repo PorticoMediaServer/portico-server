@@ -1484,34 +1484,51 @@ func (s *Service) sessionEventsTx(ctx context.Context, tx *sql.Tx, r row, now ti
 	return nil
 }
 
-// grantReplacedTx publishes a media session the server replaced on its own
-// (the HLS init-change fallback rotates its grant) to the v1 session playing
-// it, in the replacing transaction (V10): the new media generation, a new
-// session generation and the new URL, with the event that tells the device.
-// The renderer's unwritten evidence for the old generation lands first.
-func (s *Service) grantReplacedTx(ctx context.Context, tx *sql.Tx, media string, generation int, url string) error {
-	rows, err := tx.QueryContext(ctx, `SELECT id FROM playback_v1_sessions WHERE media_session_id=? AND ended_ms=0`, media)
+// grantReplacingTx writes the unwritten evidence of the sessions playing a
+// media session the server is about to replace, while it still accepts it.
+func (s *Service) grantReplacingTx(ctx context.Context, tx *sql.Tx, media string) error {
+	ids, err := liveSessionsOn(ctx, tx, media)
 	if err != nil {
 		return err
 	}
-	var ids []string
-	for rows.Next() {
-		var id string
-		if err = rows.Scan(&id); err != nil {
-			rows.Close()
-			return err
-		}
-		ids = append(ids, id)
-	}
-	rows.Close()
-	if err = rows.Err(); err != nil {
-		return err
-	}
-	now := s.now()
 	for _, id := range ids {
 		if err = s.drainObservationTx(ctx, tx, id); err != nil {
 			return err
 		}
+	}
+	return nil
+}
+
+func liveSessionsOn(ctx context.Context, tx *sql.Tx, media string) ([]string, error) {
+	rows, err := tx.QueryContext(ctx, `SELECT id FROM playback_v1_sessions WHERE media_session_id=? AND ended_ms=0`, media)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var ids []string
+	for rows.Next() {
+		var id string
+		if err = rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		ids = append(ids, id)
+	}
+	return ids, rows.Err()
+}
+
+// grantReplacedTx publishes a media session the server replaced on its own
+// (the HLS init-change fallback rotates its grant) to the v1 session playing
+// it, in the replacing transaction (V10): the new media generation, a new
+// session generation and the new URL, with the event that tells the device.
+// The renderer's unwritten evidence for the old generation landed first
+// (grantReplacingTx).
+func (s *Service) grantReplacedTx(ctx context.Context, tx *sql.Tx, media string, generation int, url string) error {
+	ids, err := liveSessionsOn(ctx, tx, media)
+	if err != nil {
+		return err
+	}
+	now := s.now()
+	for _, id := range ids {
 		r, err := loadRow(ctx, tx, id)
 		if err != nil {
 			return err
@@ -1643,7 +1660,11 @@ func (s *Service) endWhen(ctx context.Context, id, reason, message string, still
 // before the sweeper gets to it.
 func (s *Service) expireIfLapsed(ctx context.Context, r row) row {
 	if r.ended == 0 && r.lease <= s.now().UnixMilli() {
-		if err := s.End(ctx, r.id, "lease_expired", ""); err == nil {
+		// As in the sweep (CS-06): the renderer's latest sample is written
+		// first, and a session heard from since keeps playing.
+		if err := s.endWhen(ctx, r.id, "lease_expired", "", func(_ context.Context, _ *sql.Tx, current row) (bool, error) {
+			return current.lease <= s.now().UnixMilli(), nil
+		}); err == nil {
 			if fresh, err := loadRow(ctx, s.DB, r.id); err == nil {
 				return fresh
 			}

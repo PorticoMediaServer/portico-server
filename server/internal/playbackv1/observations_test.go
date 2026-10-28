@@ -538,3 +538,145 @@ func TestStartRefusesAClientWithoutTheObservationProtocol(t *testing.T) {
 		t.Fatal("a current client could not start")
 	}
 }
+
+// Review fixes (Sol, 28 Oct).
+
+// A title the profile may no longer play refuses its pending evidence, but
+// never blocks the end it was drained into.
+func TestRefusedEvidenceNeverBlocksAnEnd(t *testing.T) {
+	f := newObservationFixture(t)
+	id := f.session.ID
+	epoch := f.claim(id, "")
+	f.clock.add(time.Second)
+	if _, err := f.tick(id, epoch, 1, "playing"); err != nil {
+		t.Fatal(err)
+	}
+	f.service.Playback.PersonalProgress = func(*sql.Tx, identity.Viewer, string, string, int64, float64, float64, string, bool, float64, *bool, int, bool, time.Time, *catalog.PlayedTime) error {
+		return identity.ErrContentRestricted
+	}
+	if err := f.service.End(context.Background(), id, "terminated", ""); err != nil {
+		t.Fatalf("end with refused evidence: %v", err)
+	}
+	var ended int64
+	if err := f.catalog.DB.QueryRow(`SELECT ended_ms FROM playback_v1_sessions WHERE id=?`, id).Scan(&ended); err != nil || ended == 0 {
+		t.Fatalf("not ended (%v)", err)
+	}
+	o := f.service.observations()
+	o.mu.Lock()
+	_, still := o.entries[id]
+	o.mu.Unlock()
+	if still {
+		t.Fatal("the ended session's owner is still in memory")
+	}
+}
+
+// Reading a session whose durable lease lapsed, while its device is still
+// heard, writes the sample and keeps it playing (as the sweep does).
+func TestReadingALapsedLeaseSparesALiveSession(t *testing.T) {
+	f := newObservationFixture(t)
+	id := f.session.ID
+	epoch := f.claim(id, "")
+	f.clock.add(time.Second)
+	if _, err := f.tick(id, epoch, 1, "playing"); err != nil {
+		t.Fatal(err)
+	}
+	f.catalog.Exec(`UPDATE playback_v1_sessions SET lease_expires_ms=? WHERE id=?`, f.clock.now().UnixMilli()-1, id)
+	view, err := f.service.Get(context.Background(), f.caller, id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if view.State == "ended" {
+		t.Fatalf("a live session was ended by a read: %+v", view.End)
+	}
+}
+
+// A repeated sample is liveness: an expiry drained before the batch renewal
+// still sees it.
+func TestLivenessAloneSparesASessionFromExpiry(t *testing.T) {
+	f := newObservationFixture(t)
+	id := f.session.ID
+	epoch := f.claim(id, "")
+	f.clock.add(time.Second)
+	if _, err := f.tick(id, epoch, 1, "playing"); err != nil {
+		t.Fatal(err)
+	}
+	f.clock.add(observationFlush)
+	f.waitApplied(id)
+	f.clock.add(time.Second)
+	if _, err := f.tick(id, epoch, 1, "playing"); err != nil { // a repeat: no new state
+		t.Fatal(err)
+	}
+	f.catalog.Exec(`UPDATE playback_v1_sessions SET lease_expires_ms=? WHERE id=?`, f.clock.now().UnixMilli()-1, id)
+	f.service.ExpireLapsed(context.Background())
+	var ended int64
+	if err := f.catalog.DB.QueryRow(`SELECT ended_ms FROM playback_v1_sessions WHERE id=?`, id).Scan(&ended); err != nil || ended != 0 {
+		t.Fatalf("a heard session expired: ended %d (%v)", ended, err)
+	}
+}
+
+// The server replacing a media grant writes the old generation's evidence
+// before the generation moves, so no credit is consumed unwritten.
+func TestGrantReplacementWritesEvidenceUnderTheOldGeneration(t *testing.T) {
+	f := newObservationFixture(t)
+	id := f.session.ID
+	epoch := f.claim(id, "")
+	f.clock.add(time.Second)
+	if _, err := f.tick(id, epoch, 1, "playing"); err != nil {
+		t.Fatal(err)
+	}
+	r, err := loadRow(context.Background(), f.catalog.DB, id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = dbwork.WithWriteTxContext(context.Background(), f.catalog.DB, dbwork.ClassEstablishedPlayback, func(ctx context.Context, tx *sql.Tx) error {
+		if err := f.service.Playback.GrantReplacingTx(ctx, tx, r.media); err != nil {
+			return err
+		}
+		if _, err := tx.ExecContext(ctx, `UPDATE playback_sessions SET generation=generation+1 WHERE id=?`, r.media); err != nil {
+			return err
+		}
+		return f.service.Playback.GrantReplacedTx(ctx, tx, r.media, r.mediaGeneration+1, "/v1/media/replaced/master.m3u8")
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if got := f.proved.total(); got != 1000 {
+		t.Fatalf("written watched time %d ms, want 1000", got)
+	}
+}
+
+// StopGeneration writes the pending sample while the media still accepts it.
+func TestStopGenerationWritesThePendingCredit(t *testing.T) {
+	f := newObservationFixture(t)
+	f.service.StopAuthorityTx = func(context.Context, *sql.Tx, Caller) error { return nil }
+	f.caller.AuthorizeItem = func(context.Context, string) error { return nil }
+	id := f.session.ID
+	epoch := f.claim(id, "")
+	f.clock.add(time.Second)
+	if _, err := f.tick(id, epoch, 1, "playing"); err != nil {
+		t.Fatal(err)
+	}
+	if err := f.service.StopGeneration(context.Background(), f.caller, id, f.generation); err != nil {
+		t.Fatal(err)
+	}
+	if got := f.proved.total(); got != 1000 {
+		t.Fatalf("written watched time %d ms, want 1000", got)
+	}
+}
+
+// Clock restarts cannot earn the claim reply's carry again: all credit stays
+// within the server's time since the record was claimed, plus one carry.
+func TestRepeatedClockRestartsNeverOutrunTheServer(t *testing.T) {
+	o := &observations{entries: map[string]*observer{}, kick: make(chan struct{}, 1)}
+	start := time.Unix(1_000_000, 0)
+	e := &observer{baseAt: start, chainAt: start}
+	at := start
+	for i := int64(1); i <= 10; i++ {
+		at = at.Add(time.Second)
+		// The device claims a big jump, then restarts its clocks, over and over.
+		o.acceptLocked(e, Observation{Seq: 2*i - 1, State: "playing", MonotonicMs: 60_000, PlayClockMs: 60_000}, at)
+		o.acceptLocked(e, Observation{Seq: 2 * i, State: "playing", MonotonicMs: 0, PlayClockMs: 0}, at)
+	}
+	if limit := at.Sub(start).Milliseconds() + observationCarry.Milliseconds(); e.credited() > limit {
+		t.Fatalf("credited %d ms after %d ms of server time", e.credited(), at.Sub(start).Milliseconds())
+	}
+}

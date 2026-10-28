@@ -72,7 +72,10 @@ type Service struct {
 	// GrantReplacedTx publishes a presentation whose grant the server rotated
 	// on its own (the HLS init-change fallback) to the session that plays it,
 	// in the same transaction: the new media generation and its stream URL.
-	GrantReplacedTx  func(ctx context.Context, tx *sql.Tx, media string, generation int, streamURL string) error
+	GrantReplacedTx func(ctx context.Context, tx *sql.Tx, media string, generation int, streamURL string) error
+	// GrantReplacingTx runs in the same transaction before the generation
+	// moves, so evidence observed under the old one is written under it.
+	GrantReplacingTx func(ctx context.Context, tx *sql.Tx, media string) error
 	PersonalProgress func(*sql.Tx, identity.Viewer, string, string, int64, float64, float64, string, bool, float64, *bool, int, bool, time.Time, *catalog.PlayedTime) error
 	Subtitles        *subtitles.Service
 	Prepared         *preparedmedia.Service

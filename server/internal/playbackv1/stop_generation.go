@@ -49,6 +49,16 @@ func (s *Service) StopGeneration(ctx context.Context, c Caller, id string, expec
 	if s.StopAuthorityTx == nil || s.Playback == nil || c.DeviceID == "" || dbwork.Snapshot(ctx) != nil {
 		return identity.ErrForbidden
 	}
+	// The renderer's unwritten sample is written first, in its own short write,
+	// while its media session still accepts evidence: the stop's fences below
+	// then hold exactly that state. Only this device's own observer drains.
+	if s.observedBy(id, c) {
+		if err := dbwork.WithWriteTxContext(ctx, s.DB, dbwork.ClassEstablishedPlayback, func(ctx context.Context, tx *sql.Tx) error {
+			return s.drainObservationTx(ctx, tx, id)
+		}); err != nil {
+			return err
+		}
+	}
 	var original row
 	var children []preparedRow
 	check := func(ctx context.Context, tx *sql.Tx) (row, error) {
@@ -286,9 +296,6 @@ func (s *Service) StopGeneration(ctx context.Context, c Caller, id string, expec
 		if n != 1 {
 			return ErrRevision
 		}
-	}
-	if err := s.drainObservationTx(writer, tx, current.id); err != nil {
-		return err
 	}
 	result, err := tx.ExecContext(writer, `UPDATE playback_v1_sessions SET ended_ms=?,end_reason='stopped',message='',revision=revision+1,updated_ms=? WHERE id=? AND generation=? AND media_session_id=? AND media_generation=? AND revision=? AND ended_ms=0`, now.UnixMilli(), now.UnixMilli(), current.id, current.generation, current.media, current.mediaGeneration, current.revision)
 	if err != nil {

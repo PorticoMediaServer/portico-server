@@ -173,6 +173,9 @@ type observer struct {
 	// offset from earlier ones; applied is how much of it is written.
 	baseAt             time.Time
 	basePlay, baseMono int64
+	// chainAt is when this owner record was first claimed. All credit, across
+	// clock restarts and handovers, stays within the server's time since.
+	chainAt            time.Time
 	earned, offset     int64
 	applied            int64
 	lastPlay, lastMono int64
@@ -321,7 +324,7 @@ func (s *Service) ClaimObserver(ctx context.Context, c Caller, id string, claim 
 			return ObserverGrant{}, ErrObservationsFull
 		}
 		e = &observer{session: id, device: r.device, account: r.account, profile: r.profile, author: r.authority, channel: isChannel(r),
-			generation: int64(claim.Generation), leaseUntil: time.UnixMilli(r.lease)}
+			generation: int64(claim.Generation), leaseUntil: time.UnixMilli(r.lease), chainAt: now}
 		o.entries[id] = e
 	case claim.Replaces != "" && claim.Replaces == e.epoch, !e.sampled, now.Sub(e.lastSeen) > observationSilent:
 		// Handover keeps the same owner record, so unwritten credit and the
@@ -446,6 +449,13 @@ func (o *observations) acceptLocked(e *observer, ob Observation, now time.Time) 
 		ceiling := min(ob.PlayClockMs-e.basePlay, ob.MonotonicMs-e.baseMono, now.Sub(e.baseAt).Milliseconds()+observationCarry.Milliseconds())
 		e.earned = max(e.earned, ceiling)
 	}
+	// One carry for the whole record: a basis restarted by a clock rollback or
+	// a handover cannot earn its allowance again.
+	if !e.chainAt.IsZero() {
+		if limit := now.Sub(e.chainAt).Milliseconds() + observationCarry.Milliseconds() - e.offset; e.earned > limit {
+			e.earned = max(limit, 0)
+		}
+	}
 	e.lastPlay, e.lastMono = ob.PlayClockMs, ob.MonotonicMs
 	// An edge is what the written session would show differently: a pause or
 	// resume, a seek, an end or an error. Buffering is not one (it changes no
@@ -525,6 +535,18 @@ func (s *Service) latestObservedPosition(id string, generation int) (int64, bool
 	return e.latest.PositionMs, true
 }
 
+// observedBy reports whether the caller's device owns the session's observer.
+func (s *Service) observedBy(id string, c Caller) bool {
+	o := s.observations()
+	if o == nil {
+		return false
+	}
+	o.mu.Lock()
+	defer o.mu.Unlock()
+	e := o.entries[id]
+	return e != nil && e.device == c.DeviceID && e.account == c.Principal.AccountID && e.profile == c.Principal.ProfileID && e.author == c.Principal.Authority
+}
+
 // latestObservedState is the state the playing device last reported, if any.
 func (s *Service) latestObservedState(id string) (string, time.Time, bool) {
 	o := s.observations()
@@ -577,6 +599,7 @@ type observationCapture struct {
 	touch     uint64
 	lastSeen  time.Time
 	have      bool
+	alive     bool
 	seeked    bool
 	errorEdge bool
 	skips     []SkipReport
@@ -584,7 +607,7 @@ type observationCapture struct {
 
 func (o *observations) captureLocked(e *observer) observationCapture {
 	c := observationCapture{e: e, principal: e.principal, received: e.latestAt, from: e.appliedAt, credited: e.credited(), applied: e.applied,
-		version: e.version, touch: e.touch, lastSeen: e.lastSeen, have: e.dirty}
+		version: e.version, touch: e.touch, lastSeen: e.lastSeen, have: e.dirty, alive: e.alive}
 	if c.have {
 		c.sample = e.latest
 		c.seeked = e.appliedKnown && e.latest.SeekSerial != e.appliedSeek
@@ -805,7 +828,7 @@ func (s *Service) drainObservationTx(ctx context.Context, tx *sql.Tx, id string)
 	}
 	o.mu.Lock()
 	e := o.entries[id]
-	if e == nil || (!e.dirty && e.credited() == e.applied) {
+	if e == nil || (!e.dirty && !e.alive && e.credited() == e.applied) {
 		o.mu.Unlock()
 		return nil
 	}
@@ -839,7 +862,9 @@ func (s *Service) applyObservationTx(ctx context.Context, tx *sql.Tx, o *observa
 	// batch happened to run: a stalled writer never lends a lost device time.
 	lease := c.lastSeen.Add(s.lease()).UnixMilli()
 	if !c.have {
-		if drain {
+		// Only liveness to write (a repeated or older-generation sample): the
+		// lease, which an expiry check drained into must see.
+		if !c.alive {
 			return observationResult{}, nil, nil
 		}
 		if _, err = tx.ExecContext(ctx, `UPDATE playback_v1_sessions SET lease_expires_ms=? WHERE id=? AND ended_ms=0 AND lease_expires_ms<?`, lease, r.id, lease); err != nil {
@@ -887,9 +912,11 @@ func (s *Service) applyObservationTx(ctx context.Context, tx *sql.Tx, o *observa
 		switch {
 		case err == nil:
 			consumed = true
-		case errors.Is(err, identity.ErrUnauthorized):
-			// The device's authority changed since the claim: its evidence is
-			// dropped, never written, and the media routes fence the bytes.
+		case refusedEvidence(err):
+			// The device's authority or the title's policy changed since the
+			// claim: its evidence is dropped, never written (and never blocks
+			// the end or command it was drained into), and the media routes
+			// fence the bytes.
 			o.counts.evidenceRefused.Add(1)
 			consumed = true
 		default:
@@ -1037,6 +1064,12 @@ func (s *Service) applyChannelObservationTx(ctx context.Context, tx *sql.Tx, o *
 	}
 	o.counts.applied.Add(1)
 	return res, nil, nil
+}
+
+// refusedEvidence is an authority or policy answer, not a failure: retrying
+// the same evidence would be refused again.
+func refusedEvidence(err error) bool {
+	return errors.Is(err, identity.ErrUnauthorized) || errors.Is(err, identity.ErrContentRestricted) || errors.Is(err, identity.ErrForbidden) || errors.Is(err, identity.ErrNotVisible)
 }
 
 // logIfChanged writes one summary line a minute while anything changed. The
