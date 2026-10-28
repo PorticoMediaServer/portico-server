@@ -263,22 +263,14 @@ func copyTable(ctx context.Context, db *dbwork.Candidate, table salvageTable) (b
 	if err != nil || !faulted {
 		return !c.rejected, err
 	}
-	ranges, err := leafRanges(ctx, db, table.name, c.keys, !c.keyed)
-	if err != nil {
-		return false, err
-	}
-	for _, r := range ranges {
+	err = leafRanges(ctx, db, table.name, c.keys, !c.keyed, func(r keyRange) error {
 		if row, ok := c.fromRecord(r.row); ok {
-			if err = c.write(ctx, [][]any{row}); err != nil {
-				return false, err
-			}
-			continue
+			return c.write(ctx, [][]any{row})
 		}
-		if _, _, _, err = c.run(ctx, r.hi, r.lo); err != nil {
-			return false, err
-		}
-	}
-	return false, nil
+		_, _, _, err := c.run(ctx, r.hi, r.lo)
+		return err
+	})
+	return false, err
 }
 
 // infinity ends a key bound: below (negInf) or above (posInf) every key that

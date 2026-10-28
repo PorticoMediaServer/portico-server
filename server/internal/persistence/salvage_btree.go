@@ -42,30 +42,29 @@ type btreeReader struct {
 	keys     int
 	rowid    bool
 	visited  map[int64]bool
-	ranges   []keyRange
+	emit     func(keyRange) error
 	maxPages int64
 }
 
-func leafRanges(ctx context.Context, db *dbwork.Candidate, table string, keys int, rowid bool) ([]keyRange, error) {
+// leafRanges hands each leaf range and separator row to emit as the walk finds
+// them, in key order, so nothing larger than one page's separators is held.
+func leafRanges(ctx context.Context, db *dbwork.Candidate, table string, keys int, rowid bool, emit func(keyRange) error) error {
 	var root, pageSize, pages int64
 	if err := db.QueryRowContext(ctx, `SELECT rootpage FROM damaged.sqlite_schema WHERE type='table' AND name=?`, table).Scan(&root); err != nil {
-		return nil, nil // nothing more can be found without the schema entry
+		return nil // nothing more can be found without the schema entry
 	}
 	if err := db.QueryRowContext(ctx, `PRAGMA damaged.page_size`).Scan(&pageSize); err != nil {
-		return nil, err
+		return err
 	}
 	if err := db.QueryRowContext(ctx, `PRAGMA damaged.page_count`).Scan(&pages); err != nil {
-		return nil, err
+		return err
 	}
 	first, err := dbPage(ctx, db, 1)
-	if err != nil || len(first) < 100 {
-		return nil, nil
+	if err != nil || len(first) < 100 || int(first[20]) >= int(pageSize)-480 {
+		return nil
 	}
-	r := &btreeReader{ctx: ctx, db: db, usable: int(pageSize) - int(first[20]), keys: keys, rowid: rowid, visited: map[int64]bool{}, maxPages: pages}
-	if err = r.walk(root, nil, nil, 0); err != nil {
-		return nil, err
-	}
-	return r.ranges, nil
+	r := &btreeReader{ctx: ctx, db: db, usable: int(pageSize) - int(first[20]), keys: keys, rowid: rowid, visited: map[int64]bool{}, emit: emit, maxPages: pages}
+	return r.walk(root, nil, nil, 0)
 }
 
 func dbPage(ctx context.Context, db *dbwork.Candidate, page int64) ([]byte, error) {
@@ -79,7 +78,7 @@ func (r *btreeReader) walk(page int64, lo, hi []any, depth int) error {
 	if err := r.ctx.Err(); err != nil {
 		return err
 	}
-	whole := func() error { r.ranges = append(r.ranges, keyRange{lo: lo, hi: hi}); return nil }
+	whole := func() error { return r.emit(keyRange{lo: lo, hi: hi}) }
 	if page < 1 || page > r.maxPages || r.visited[page] || depth > btreeMaxDepth {
 		return whole()
 	}
@@ -91,6 +90,12 @@ func (r *btreeReader) walk(page int64, lo, hi []any, depth int) error {
 		}
 		return whole()
 	}
+	// Parse only the usable part of the page: reserved bytes at its end are
+	// never cell content.
+	if len(data) < r.usable {
+		return whole()
+	}
+	data = data[:r.usable]
 	head := 0
 	if page == 1 {
 		head = 100
@@ -108,7 +113,8 @@ func (r *btreeReader) walk(page int64, lo, hi []any, depth int) error {
 	}
 	cells := int(binary.BigEndian.Uint16(data[head+3:]))
 	right := int64(binary.BigEndian.Uint32(data[head+8:]))
-	if head+12+2*cells > len(data) {
+	content := head + 12 + 2*cells // cells start after the pointer array
+	if content > len(data) {
 		return whole()
 	}
 	children := make([]int64, 0, cells+1)
@@ -116,7 +122,7 @@ func (r *btreeReader) walk(page int64, lo, hi []any, depth int) error {
 	var rows [][]any
 	for i := 0; i < cells; i++ {
 		at := int(binary.BigEndian.Uint16(data[head+12+2*i:]))
-		if at+4 > len(data) {
+		if at < content || at+4 > len(data) {
 			return whole()
 		}
 		child := int64(binary.BigEndian.Uint32(data[at:]))
@@ -155,7 +161,9 @@ func (r *btreeReader) walk(page int64, lo, hi []any, depth int) error {
 			if err = r.walk(child, low, key, depth+1); err != nil {
 				return err
 			}
-			r.ranges = append(r.ranges, keyRange{lo: append(append([]any{}, key...), negInf), hi: append(append([]any{}, key...), posInf), row: rows[i]})
+			if err = r.emit(keyRange{lo: append(append([]any{}, key...), negInf), hi: append(append([]any{}, key...), posInf), row: rows[i]}); err != nil {
+				return err
+			}
 		}
 		low = key
 	}
@@ -192,6 +200,9 @@ func (r *btreeReader) payload(data []byte, at int) ([]byte, bool) {
 	}
 	next := int64(binary.BigEndian.Uint32(data[at+local:]))
 	for hops := 0; len(out) < total && next != 0 && hops < 1<<16; hops++ {
+		if next < 1 || next > r.maxPages {
+			return nil, false
+		}
 		page, err := dbPage(r.ctx, r.db, next)
 		if err != nil || len(page) < r.usable {
 			return nil, false
@@ -225,12 +236,13 @@ func varint(b []byte) (uint64, int) {
 // decodeRecord decodes a record in SQLite's record format.
 func decodeRecord(record []byte) ([]any, bool) {
 	size, n := varint(record)
-	if n == 0 || size > uint64(len(record)) {
+	if n == 0 || size < uint64(n) || size > uint64(len(record)) {
 		return nil, false
 	}
+	header := record[:size]
 	var types []uint64
-	for at := n; at < int(size); {
-		t, m := varint(record[at:])
+	for at := n; at < len(header); {
+		t, m := varint(header[at:]) // a serial type never runs past the header
 		if m == 0 {
 			return nil, false
 		}
@@ -240,21 +252,21 @@ func decodeRecord(record []byte) ([]any, bool) {
 	values := make([]any, 0, len(types))
 	body := record[size:]
 	for _, t := range types {
-		width := 0
+		var width uint64
 		switch {
 		case t == 0, t == 8, t == 9:
 		case t >= 1 && t <= 4:
-			width = int(t)
+			width = t
 		case t == 5:
 			width = 6
 		case t == 6, t == 7:
 			width = 8
 		case t >= 12:
-			width = int(t-12) / 2
+			width = (t - 12) / 2
 		default:
 			return nil, false
 		}
-		if width > len(body) {
+		if width > uint64(len(body)) {
 			return nil, false
 		}
 		field := body[:width]
