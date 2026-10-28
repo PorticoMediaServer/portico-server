@@ -225,7 +225,7 @@ func artworkAttribution(provider string) string {
 	return provider
 }
 func (s *Service) artworkProviderEnabled(ctx context.Context, tx *sql.Tx, t RepairTarget, provider string) (bool, error) {
-	ent, err := readRepairEntity(ctx, tx, t)
+	ent, err := readArtworkTarget(ctx, tx, t)
 	if err != nil {
 		return false, err
 	}
@@ -299,6 +299,18 @@ func (s *Service) ArtworkDiscoveryStep(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
+	// A running discovery is claimed again only when its lease expired without
+	// a publication; those turns count against the same attempt cap.
+	var claimed string
+	if err = tx.QueryRowContext(ctx, `SELECT status FROM artwork_discovery WHERE kind=? AND entity_id=? AND provider=?`, t.Kind, entity, provider).Scan(&claimed); err != nil {
+		return err
+	}
+	if claimed == "running" && attempts >= artworkAttemptLimit {
+		if _, err = tx.ExecContext(ctx, `UPDATE artwork_discovery SET status='failed',error='provider_unavailable',lease='',lease_until='' WHERE kind=? AND entity_id=? AND provider=?`, t.Kind, entity, provider); err != nil {
+			return err
+		}
+		return gated2.Commit()
+	}
 	if t.ID, err = entityid.Public(ctx, tx, entity); errors.Is(err, entityid.ErrNotFound) {
 		// The entity is gone; drop its discovery row instead of wedging the step.
 		if _, err = tx.ExecContext(ctx, `DELETE FROM artwork_discovery WHERE kind=? AND entity_id=? AND provider=?`, t.Kind, entity, provider); err != nil {
@@ -334,14 +346,15 @@ func (s *Service) ArtworkDiscoveryStep(ctx context.Context) error {
 	}
 
 	lease := identity.Token()
-	_, err = tx.ExecContext(ctx, `UPDATE artwork_discovery SET status='running',attempts=attempts+1,lease=?,lease_until=? WHERE kind=? AND entity_id=? AND provider=?`, lease, s.publicationTime().Add(2*time.Minute).Format(time.RFC3339Nano), t.Kind, entity, provider)
+	_, err = tx.ExecContext(ctx, `UPDATE artwork_discovery SET status='running',attempts=attempts+1,lease=?,lease_until=? WHERE kind=? AND entity_id=? AND provider=?`, lease, s.publicationTime().Add(artworkLease).Format(time.RFC3339Nano), t.Kind, entity, provider)
 	if err != nil {
 		return err
 	}
 	if err = gated2.Commit(); err != nil {
 		return err
 	}
-	work, cancel := s.artworkRequestContext(ctx, t, provider, fence)
+	work, cancel := s.artworkRequestContext(ctx, t, provider, fence,
+		s.renewArtworkLease(`UPDATE artwork_discovery SET lease_until=? WHERE lease_until>? AND kind=? AND entity_id=? AND provider=? AND lease=? AND status='running'`, t.Kind, entity, provider, lease))
 	defer cancel()
 	locale := "en"
 	_ = dbwork.QueryRow(ctx, s.db, `SELECT p.language FROM screen_metadata_policies p JOIN catalog_entities e ON e.library_id=(SELECT id FROM catalog_libraries WHERE library_id=p.library_id) WHERE e.id=?`, entity).Scan(&locale)
@@ -389,7 +402,7 @@ func (s *Service) ArtworkDiscoveryStep(ctx context.Context) error {
 	} else if problem != nil {
 		status = "retry"
 		code = "provider_unavailable"
-		if attempts >= 5 {
+		if attempts >= artworkAttemptLimit {
 			status = "failed"
 		}
 		if problem.Error() == "not_found" {
@@ -400,7 +413,10 @@ func (s *Service) ArtworkDiscoveryStep(ctx context.Context) error {
 	if status == "complete" {
 		// Retain current and owner-history candidates. Retire stale optional choices
 		// before adding a bounded provider response; no unbounded search accumulation.
-		_, err = tx.ExecContext(ctx, `DELETE FROM artwork_candidates WHERE kind=? AND entity_id=? AND provider=? AND NOT EXISTS(SELECT 1 FROM artwork_selections a WHERE a.candidate_id=artwork_candidates.id) AND NOT EXISTS(SELECT 1 FROM metadata_owner_history h WHERE instr(h.before_json,artwork_candidates.id)>0 OR instr(h.after_json,artwork_candidates.id)>0) AND NOT EXISTS(SELECT 1 FROM artwork_jobs j WHERE j.candidate_id=artwork_candidates.id AND j.status IN('pending','running','retry'))`, t.Kind, entity, provider)
+		// History is recorded only under the edited target, and neither merges nor
+		// rematches move candidates or history between targets, so only this
+		// target's own journal can name these candidates.
+		_, err = tx.ExecContext(ctx, `DELETE FROM artwork_candidates WHERE kind=? AND entity_id=? AND provider=? AND NOT EXISTS(SELECT 1 FROM artwork_selections a WHERE a.candidate_id=artwork_candidates.id) AND NOT EXISTS(SELECT 1 FROM metadata_owner_history h WHERE h.kind=artwork_candidates.kind AND h.entity_id=artwork_candidates.entity_id AND (instr(h.before_json,artwork_candidates.id)>0 OR instr(h.after_json,artwork_candidates.id)>0)) AND NOT EXISTS(SELECT 1 FROM artwork_jobs j WHERE j.candidate_id=artwork_candidates.id AND j.status IN('pending','running','retry'))`, t.Kind, entity, provider)
 		if err != nil {
 			return err
 		}

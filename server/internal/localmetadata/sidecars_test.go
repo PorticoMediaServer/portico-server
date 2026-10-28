@@ -144,7 +144,7 @@ func TestSeasonFolderImagesAreNotTheShows(t *testing.T) {
 
 func storedKey(t *testing.T, service *Service, raw []byte) string {
 	t.Helper()
-	key, e := service.store(raw)
+	key, e := service.store(context.Background(), raw)
 	if e != nil {
 		t.Fatal(e)
 	}

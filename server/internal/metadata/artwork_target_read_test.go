@@ -96,7 +96,7 @@ func TestArtworkTargetReadNonReadingParity(t *testing.T) {
 		saved           int
 	}{
 		{"item", "movie", 1}, {"item", "episode", 3}, {"item", "song", 2}, {"item", "part", 2},
-		{"show", "show", 2}, {"season", "season", 2}, {"album", "album", 2}, {"artist", "artist", 2}, {"book", "book", 2},
+		{"show", "show", 3}, {"season", "season", 3}, {"album", "album", 3}, {"artist", "artist", 3}, {"book", "book", 3},
 	}
 	raw := p08cPNG(t, 20, 20)
 	targets := map[string]RepairTarget{}
@@ -117,8 +117,13 @@ func TestArtworkTargetReadNonReadingParity(t *testing.T) {
 			if tc.namespace == "item" && !artworkTargetTraceContains(lean, "metadata_publication_heads") {
 				t.Fatal("required item head omitted")
 			}
-			if tc.namespace != "item" && !artworkTargetTraceContains(lean, "WITH RECURSIVE members") {
-				t.Fatal("existing source fingerprint omitted")
+			// A container's descendant-file stamp fences editor revisions only;
+			// artwork admission must not walk every descendant to discard it.
+			if tc.namespace != "item" && !artworkTargetTraceContains(full, "WITH RECURSIVE members") {
+				t.Fatal("editor lost its source fingerprint")
+			}
+			if artworkTargetTraceContains(lean, "WITH RECURSIVE members") {
+				t.Fatal("artwork admission walked the descendant files")
 			}
 			digest = artworkTargetInstall(t, s, target, raw)
 			artworkTargetAssertBytes(t, s, target, digest, raw)

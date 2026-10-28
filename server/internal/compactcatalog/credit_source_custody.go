@@ -183,6 +183,20 @@ func PublishCreditSourceTx(ctx context.Context, tx *sql.Tx, entity int64, provid
 	if revision != expectedRevision {
 		return out, ErrCreditSourceStale
 	}
+	if revision > 0 {
+		// Sealed members are immutable, so a refresh that accepted exactly the
+		// head's record and ordered tuples would only duplicate them. Keep the
+		// head: its rows stay the ones owner overrides already reference.
+		var head CreditSourcePublication
+		head, err = ReadCreditSourceHead(ctx, tx, entity, provider)
+		if err != nil {
+			return out, err
+		}
+		if sameCreditSourcePublication(head, recordReference, tuples) {
+			_, err = tx.ExecContext(ctx, `RELEASE credit_source_publish`)
+			return head, err
+		}
+	}
 	out = CreditSourcePublication{EntityID: entity, Provider: provider, RecordReference: recordReference, ObservedAt: observedAt, Revision: revision + 1, Members: []CreditSourceMember{}}
 	out.ID, err = newCreditCustodyID()
 	if err != nil {
@@ -256,6 +270,20 @@ func PublishCreditSourceTx(ctx context.Context, tx *sql.Tx, entity int64, provid
 	}
 	_, err = tx.ExecContext(ctx, `RELEASE credit_source_publish`)
 	return out, err
+}
+
+// sameCreditSourcePublication reports whether head already holds exactly this
+// accepted record with these tuples in this order.
+func sameCreditSourcePublication(head CreditSourcePublication, recordReference string, tuples []AcceptedCreditTuple) bool {
+	if head.RecordReference != recordReference || len(head.Members) != len(tuples) {
+		return false
+	}
+	for i, member := range head.Members {
+		if member.Position != i || member.Original != tuples[i] {
+			return false
+		}
+	}
+	return true
 }
 
 func exactCreditSourceCandidates(ctx context.Context, tx *sql.Tx, entity int64, provider, digest string, tuple AcceptedCreditTuple) ([]string, error) {

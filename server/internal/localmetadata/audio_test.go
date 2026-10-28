@@ -14,14 +14,14 @@ func TestLocalArtworkRejectsUnboundedOrNonImageContent(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err = service.store([]byte("<html>not artwork</html>")); err == nil {
+	if _, err = service.store(context.Background(), []byte("<html>not artwork</html>")); err == nil {
 		t.Fatal("HTML accepted as cover")
 	}
 	var wide bytes.Buffer
 	if err = png.Encode(&wide, image.NewRGBA(image.Rect(0, 0, 10000, 1))); err != nil {
 		t.Fatal(err)
 	}
-	if _, err = service.store(wide.Bytes()); err == nil {
+	if _, err = service.store(context.Background(), wide.Bytes()); err == nil {
 		t.Fatal("unbounded dimensions accepted")
 	}
 	if _, _, err = service.Open("../../secret"); err == nil {
@@ -31,7 +31,7 @@ func TestLocalArtworkRejectsUnboundedOrNonImageContent(t *testing.T) {
 	if err = png.Encode(&valid, image.NewRGBA(image.Rect(0, 0, 8, 8))); err != nil {
 		t.Fatal(err)
 	}
-	key, err := service.store(valid.Bytes())
+	key, err := service.store(context.Background(), valid.Bytes())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -58,16 +58,16 @@ func TestArtworkCapacityCanBeRaisedWithoutDroppingExistingCovers(t *testing.T) {
 	if e = png.Encode(&raw, image.NewRGBA(image.Rect(0, 0, 8, 8))); e != nil {
 		t.Fatal(e)
 	}
-	if _, e = service.store(raw.Bytes()); e == nil {
+	if _, e = service.store(context.Background(), raw.Bytes()); e == nil {
 		t.Fatal("capacity was ignored")
 	}
 	limit = 1024
-	key, e := service.store(raw.Bytes())
+	key, e := service.store(context.Background(), raw.Bytes())
 	if e != nil || key == "" {
 		t.Fatal(key, e)
 	}
 	limit = 1
-	if repeated, e := service.store(raw.Bytes()); e != nil || repeated != key {
+	if repeated, e := service.store(context.Background(), raw.Bytes()); e != nil || repeated != key {
 		t.Fatal("retained cover rejected", e)
 	}
 }
@@ -81,7 +81,7 @@ func TestWebPCoverRetainsOriginalAndMime(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	key, err := s.store(raw)
+	key, err := s.store(context.Background(), raw)
 	if err != nil {
 		t.Fatal(err)
 	}

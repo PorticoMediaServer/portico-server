@@ -186,7 +186,7 @@ func (s *Service) sidecarKey(ctx context.Context, library, full string) (string,
 		}
 		return "", false
 	}
-	key, err := s.store(raw)
+	key, err := s.store(ctx, raw)
 	if err != nil {
 		artworkReadFailed(ctx)
 		return "", false

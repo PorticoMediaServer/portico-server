@@ -37,7 +37,9 @@ type Service struct {
 	Admission func(context.Context, *sql.Tx, string) (bool, error)
 	// musicArtistCursor is where the artist enrichment walk resumes.
 	musicArtistCursor atomic.Int64
-	now               func() time.Time // private deterministic lease clock; production uses UTC wall time
+	// mbReconcileAfter is the album the last reconciliation turn served.
+	mbReconcileAfter atomic.Int64
+	now              func() time.Time // private deterministic lease clock; production uses UTC wall time
 
 	screenProviders map[string]ScreenProvider
 	// tmdbPaced is the one door to TMDB: every request, from any worker, shares

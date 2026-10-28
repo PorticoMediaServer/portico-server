@@ -25,8 +25,15 @@ func readRepairEntity(ctx context.Context, tx *sql.Tx, t RepairTarget) (repairEn
 // unused editable fields. Reading still needs the full read: its owner/automatic
 // facts and source proofs can reject a target, independently of its identity.
 func validateArtworkTarget(ctx context.Context, tx *sql.Tx, t RepairTarget) error {
-	_, err := readRepairTarget(ctx, tx, t, false)
+	_, err := readArtworkTarget(ctx, tx, t)
 	return err
+}
+
+// readArtworkTarget is the same admission for artwork's own callers, which need
+// only the target's library and kind. A container's revision stamp walks every
+// descendant file, so it is left to the editor paths that compare it.
+func readArtworkTarget(ctx context.Context, tx *sql.Tx, t RepairTarget) (repairEntity, error) {
+	return readRepairTarget(ctx, tx, t, false)
 }
 
 func readRepairTarget(ctx context.Context, tx *sql.Tx, t RepairTarget, editable bool) (repairEntity, error) {
@@ -66,8 +73,9 @@ func readRepairTarget(ctx context.Context, tx *sql.Tx, t RepairTarget, editable 
 		return e, ErrRepairInput
 	}
 	if !editable && !readingRepairKind(kindName) {
-		err = readRepairTargetStamp(ctx, tx, t, entity, &e)
-		return e, err
+		// The container stamp only fences editor revisions; it never rejects a
+		// target that resolved above.
+		return e, nil
 	}
 	backbone := map[string]string{"title": title, "sort_title": sortTitle, "metadata_language": language, "year": strconv.Itoa(year)}
 	var dOverview, dOriginal, dEdition, dTagline, dRelease, dRating, dStudio, dNetwork, dCountry, dTags, dLabels string

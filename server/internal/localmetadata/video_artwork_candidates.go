@@ -101,7 +101,7 @@ func (s *Service) ReadArtworkCandidates(ctx context.Context, library, kind, root
 					artworkReadFailed(ctx)
 					return nil, false
 				}
-				key, err = s.store(raw)
+				key, err = s.store(ctx, raw)
 				if err != nil {
 					artworkReadFailed(ctx)
 					return nil, false

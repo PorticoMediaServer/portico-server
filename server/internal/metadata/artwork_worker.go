@@ -389,7 +389,7 @@ func (s *Service) artworkJobEnabled(ctx context.Context, tx *sql.Tx, j artworkWo
 	if j.provider == "generated" {
 		return false, nil
 	}
-	ent, err := readRepairEntity(ctx, tx, j.target)
+	ent, err := readArtworkTarget(ctx, tx, j.target)
 	if err != nil {
 		return false, err
 	}
@@ -433,6 +433,19 @@ func (s *Service) ArtworkStep(ctx context.Context) error {
 	}
 	if err != nil {
 		return err
+	}
+	// A running job is claimed again only when its lease expired without a
+	// publication or a recorded failure. Those turns count against the same
+	// attempt cap as a failed fetch, so one job can't hold the lane forever.
+	var claimed string
+	if err = tx.QueryRowContext(ctx, `SELECT status FROM artwork_jobs WHERE id=?`, j.id).Scan(&claimed); err != nil {
+		return err
+	}
+	if claimed == "running" && j.attempts >= artworkAttemptLimit {
+		if _, err = tx.ExecContext(ctx, `UPDATE artwork_jobs SET status='failed',error='acquisition_failed',lease='',lease_until='' WHERE id=?`, j.id); err != nil {
+			return err
+		}
+		return gated.Commit()
 	}
 	if j.target.ID, err = entityid.Public(ctx, tx, entity); errors.Is(err, entityid.ErrNotFound) {
 		// The entity is gone; retire its job instead of wedging the step.
@@ -480,14 +493,15 @@ func (s *Service) ArtworkStep(ctx context.Context) error {
 		return gated.Commit()
 	}
 	j.lease = identity.Token()
-	_, err = tx.ExecContext(ctx, `UPDATE artwork_jobs SET status='running',lease=?,lease_until=?,attempts=attempts+1 WHERE id=?`, j.lease, now.Add(2*time.Minute).Format(time.RFC3339Nano), j.id)
+	_, err = tx.ExecContext(ctx, `UPDATE artwork_jobs SET status='running',lease=?,lease_until=?,attempts=attempts+1 WHERE id=?`, j.lease, now.Add(artworkLease).Format(time.RFC3339Nano), j.id)
 	if err != nil {
 		return err
 	}
 	if err = gated.Commit(); err != nil {
 		return err
 	}
-	workCtx, cancel := s.artworkRequestContext(ctx, j.target, j.provider, j.fence)
+	workCtx, cancel := s.artworkRequestContext(ctx, j.target, j.provider, j.fence,
+		s.renewArtworkLease(`UPDATE artwork_jobs SET lease_until=? WHERE lease_until>? AND id=? AND lease=? AND status='running'`, j.id, j.lease))
 	defer cancel()
 	a, b, err := s.acquireArtworkObjects(workCtx, j)
 	if err != nil {
@@ -618,6 +632,10 @@ func artworkSlotHeld(ctx context.Context, tx *sql.Tx, j artworkWork, entity int6
 	return automaticArtworkOccupied(ctx, tx, j.target, entity, j.role, j.subject, j.provider, j.candidate, j.fence, false)
 }
 
+// artworkAttemptLimit is how many turns an artwork job or discovery gets
+// before it fails for good.
+const artworkAttemptLimit = 5
+
 func (s *Service) failArtwork(ctx context.Context, j artworkWork, problem error) error {
 	code := problem.Error()
 	allowed := map[string]bool{"offline": true, "rate_limited": true, "not_found": true, "origin_rejected": true, "redirect_rejected": true, "size_limit": true, "unsupported_image": true, "dimension_limit": true, "malformed_image": true, "normalized_size_limit": true, "storage_unavailable": true, "provider_unavailable": true}
@@ -625,7 +643,7 @@ func (s *Service) failArtwork(ctx context.Context, j artworkWork, problem error)
 		code = "acquisition_failed"
 	}
 	status := "retry"
-	if (j.attempts >= 5 && code != "storage_unavailable") || code == "origin_rejected" || code == "unsupported_image" || code == "dimension_limit" {
+	if (j.attempts >= artworkAttemptLimit && code != "storage_unavailable") || code == "origin_rejected" || code == "unsupported_image" || code == "dimension_limit" {
 		status = "failed"
 	}
 	delay := time.Duration(30*(1<<min(j.attempts, 8))) * time.Second

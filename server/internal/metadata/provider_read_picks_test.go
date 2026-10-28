@@ -274,7 +274,9 @@ func TestProviderReadPicksMBBatchAndCursorRemainIdentical(t *testing.T) {
 	readPickPin(t, db, names["album"].ID, release, "pending")
 	mbCurrentExec(t, db, `UPDATE mb_jobs SET status='matched',generation=7,revision=9,attempts=3,error='old',next_attempt='later',lease='old',lease_until='later' WHERE kind='song'`)
 	s := New(db, "")
-	for pass, want := range []int64{100, 101} {
+	// 101 songs with jobs: each turn requeues one writer-sized quantum of 32.
+	passes := []int64{32, 64, 96, 101}
+	for pass, want := range passes {
 		done, err := s.mbReconcileAlbums(readPickContext(t))
 		if err != nil || !done {
 			t.Fatal(pass, done, err)
@@ -283,7 +285,7 @@ func TestProviderReadPicksMBBatchAndCursorRemainIdentical(t *testing.T) {
 			t.Fatalf("pass %d requeued %d songs, want %d", pass, n, want)
 		}
 		status := "pending"
-		if pass == 1 {
+		if pass == len(passes)-1 {
 			status = "complete"
 		}
 		if n := readPickCount(t, db, `SELECT count(*) FROM mb_album_reconciliations WHERE album_id=? AND status=? AND revision=? AND CAST(cursor AS INTEGER)=(SELECT entity_id FROM catalog_songs WHERE album_id=? ORDER BY entity_id LIMIT 1 OFFSET ?)`, names["album"].ID, status, pass+2, names["album"].ID, want-1); n != 1 {

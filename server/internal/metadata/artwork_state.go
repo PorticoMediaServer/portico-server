@@ -159,7 +159,7 @@ func readArtworkState(ctx context.Context, tx *sql.Tx, t RepairTarget) (ArtworkS
 // publication of artwork or an unrelated title edit does not invalidate itself.
 // Role-specific selection revisions independently fence concurrent owner choices.
 func artworkFence(ctx context.Context, tx *sql.Tx, t RepairTarget) (string, error) {
-	ent, err := readRepairEntity(ctx, tx, t)
+	ent, err := readArtworkTarget(ctx, tx, t)
 	if err != nil {
 		return "", err
 	}

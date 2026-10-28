@@ -132,13 +132,22 @@ func integratedArtworkAuthority(ctx context.Context, tx *sql.Tx, t RepairTarget,
 	return hex.EncodeToString(h.Sum(nil)), nil
 }
 
-// Long-running downloads are cancelled when source/selection/consent changes;
-// the publication transaction still independently rechecks the full fence.
-func (s *Service) artworkRequestContext(parent context.Context, t RepairTarget, provider, fence string) (context.Context, context.CancelFunc) {
+// artworkLease is how long a claimed artwork job or discovery holds its lease.
+// A fetch still running renews it every artworkLeaseRenewal, so a slow but
+// progressing download keeps its claim instead of being claimed again.
+const artworkLease = 2 * time.Minute
+
+var artworkLeaseRenewal = 40 * time.Second
+
+// Long-running downloads are cancelled when source/selection/consent changes,
+// or when renew reports the lease was lost; the publication transaction still
+// independently rechecks the full fence and the lease.
+func (s *Service) artworkRequestContext(parent context.Context, t RepairTarget, provider, fence string, renew func(context.Context, string) (bool, error)) (context.Context, context.CancelFunc) {
 	ctx, cancel := context.WithCancel(parent)
 	supervise.Go("metadata.artwork-integration.watch", func() {
 		ticker := time.NewTicker(2 * time.Second)
 		defer ticker.Stop()
+		renewed := time.Now()
 		for {
 			select {
 			case <-ctx.Done():
@@ -157,8 +166,31 @@ func (s *Service) artworkRequestContext(parent context.Context, t RepairTarget, 
 					cancel()
 					return
 				}
+				if time.Since(renewed) < artworkLeaseRenewal {
+					continue
+				}
+				held, err := renew(ctx, s.publicationTime().Add(artworkLease).Format(time.RFC3339Nano))
+				if err != nil || !held {
+					cancel()
+					return
+				}
+				renewed = time.Now()
 			}
 		}
 	})
 	return ctx, cancel
+}
+
+// renewArtworkLease extends one still-held lease row. It reports false when the
+// lease expired or another claim replaced it; the caller then stops its work.
+func (s *Service) renewArtworkLease(query string, args ...any) func(context.Context, string) (bool, error) {
+	return func(ctx context.Context, until string) (bool, error) {
+		now := s.publicationTime().Format(time.RFC3339Nano)
+		result, err := dbwork.ExecWrite(ctx, s.db, dbwork.ClassBackgroundMedia, query, append([]any{until, now}, args...)...)
+		if err != nil {
+			return false, err
+		}
+		changed, err := result.RowsAffected()
+		return changed == 1, err
+	}
 }

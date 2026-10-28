@@ -66,7 +66,7 @@ func (s *Service) PrepareKind(ctx context.Context, library, kind, root, path str
 	f = s.prepareAudioEvidence(ctx, library, kind, root, path, f)
 	if s.storage != nil {
 		if raw, e := s.storage.ReadAudioCover(ctx, library, path); e == nil {
-			if key, e := s.store(raw); e == nil {
+			if key, e := s.store(ctx, raw); e == nil {
 				f.ArtworkKey = key
 				return f
 			} else {
@@ -86,7 +86,7 @@ func (s *Service) PrepareKind(ctx context.Context, library, kind, root, path str
 		if err != nil {
 			continue
 		}
-		if key, err := s.store(raw); err == nil {
+		if key, err := s.store(ctx, raw); err == nil {
 			f.ArtworkKey = key
 			return f
 		}
@@ -99,7 +99,7 @@ func (s *Service) PrepareKind(ctx context.Context, library, kind, root, path str
 				if kind != -1 && pic.Type != kind {
 					continue
 				}
-				if key, e := s.store(pic.Data); e == nil {
+				if key, e := s.store(ctx, pic.Data); e == nil {
 					f.ArtworkKey = key
 					return f
 				}
@@ -141,7 +141,7 @@ func (s *Service) PrepareKind(ctx context.Context, library, kind, root, path str
 			}
 		}
 		if err == nil {
-			if key, err := s.store(raw); err == nil {
+			if key, err := s.store(ctx, raw); err == nil {
 				f.ArtworkKey = key
 			} else {
 				f.LocalMetadataIssue = "invalid_embedded_cover"
@@ -150,7 +150,7 @@ func (s *Service) PrepareKind(ctx context.Context, library, kind, root, path str
 	}
 	return f
 }
-func (s *Service) store(raw []byte) (string, error) {
+func (s *Service) store(ctx context.Context, raw []byte) (string, error) {
 	if len(raw) == 0 || len(raw) > 4<<20 {
 		return "", errors.New("artwork exceeds limit")
 	}
@@ -166,19 +166,8 @@ func (s *Service) store(raw []byte) (string, error) {
 	if _, err = os.Stat(target); err == nil {
 		return key, nil
 	}
-	if !s.artworkAccounted {
-		entries, err := os.ReadDir(s.root)
-		if err != nil {
-			return "", err
-		}
-		var total int64
-		for _, entry := range entries {
-			if info, e := entry.Info(); e == nil {
-				total += info.Size()
-			}
-		}
-		s.artworkBytes = total
-		s.artworkAccounted = true
+	if err = s.accountArtworkLocked(ctx); err != nil {
+		return "", err
 	}
 	limit := int64(2 << 30)
 	if s.ArtworkLimit != nil {
