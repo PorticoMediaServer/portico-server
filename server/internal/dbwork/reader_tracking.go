@@ -69,6 +69,7 @@ type readerLease struct {
 	start    time.Time
 	class    Class
 	snapshot bool
+	priority bool // contributes active/queued demand to the cold-read probe
 	// long marks an owner-long read; site is who opened the lease, captured
 	// only in test binaries for the lifetime census.
 	long bool
@@ -139,6 +140,16 @@ func (s *readerScope) admit(ctx context.Context, snapshot bool) (*readerLease, e
 	s.mu.Lock()
 	var waited time.Time
 	class := ClassFrom(ctx, ClassInteractive)
+	priority := class.Priority() < ClassMaintenance.Priority()
+	if priority {
+		coldReadDemand.Add(1)
+	}
+	admitted := false
+	defer func() {
+		if priority && !admitted {
+			coldReadDemand.Add(-1)
+		}
+	}()
 	// Fresh authority reads share the security class's priority. Keep tracking
 	// their lifetime, but let them pass: a security flood may defer the reset;
 	// it must not wait behind maintenance. Other foreground classes still wait.
@@ -182,11 +193,12 @@ func (s *readerScope) admit(ctx context.Context, snapshot bool) (*readerLease, e
 		s.mu.Unlock()
 		return nil, err
 	}
-	lease := &readerLease{scope: s, start: time.Now(), class: class, snapshot: snapshot, long: longRead(ctx)}
+	lease := &readerLease{scope: s, start: time.Now(), class: class, snapshot: snapshot, priority: priority, long: longRead(ctx)}
 	if testing.Testing() {
 		lease.site = captureSite(2)
 	}
 	s.active[lease] = struct{}{}
+	admitted = true
 	s.mu.Unlock()
 	return lease, nil
 }
@@ -210,6 +222,9 @@ func (r *readerLease) close() {
 		s := r.scope
 		s.mu.Lock()
 		delete(s.active, r)
+		if r.priority {
+			coldReadDemand.Add(-1)
+		}
 		elapsed := int64(time.Since(r.start))
 		noteReaderLifetime(r, time.Duration(elapsed))
 		if r.snapshot {
