@@ -343,6 +343,8 @@ func TestTVDBAcquisitionAnimeAbsoluteOrder(t *testing.T) {
 	s, db := tvdbPublicationDB(t)
 	names := tvdbPublicationNames(t, db)
 	tvdbPublicationExec(t, db, `UPDATE libraries SET kind='anime' WHERE id='lib'`)
+	// The source-policy change must publish before provider acquisition.
+	settleMetadataCatalogue(t, db)
 	tvdbPublicationSelected(t, s)
 	p := tvdbPublicationClaim(t, s)
 	s.tvdb = tvdbFixture{pages: func(_ context.Context, id int64, order metadataprovider.EpisodeOrder, page int) (metadataprovider.EpisodePage, error) {
