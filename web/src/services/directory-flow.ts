@@ -18,7 +18,9 @@ export class ServicesDirectoryFlow {
   private next = 0;
   private delay = 20;
   private initialAttempted = false;
+  private readonly startedAt: number;
   constructor(initial: WorkspaceServers, private readonly ports: Ports) {
+    this.startedAt = this.now();
     this.state = Object.freeze({items: initial.items, phase: 'idle', checkedAt: this.now(), seconds: 20});
   }
   private now() {return this.ports.now?.() ?? Date.now();}
@@ -32,6 +34,7 @@ export class ServicesDirectoryFlow {
     if (this.state.items.length === 1 && this.state.items[0].status === 'active') {this.delay = 10; void this.open(this.state.items[0], this.state, true);}
   }
   retryDelay() {return this.delay;}
+  inConnectingGrace(now = this.now()) {return now - this.startedAt < 40_000;}
   reportError(error: unknown, expected: DirectorySnapshot) {if(this.current()&&this.state===expected)this.publish({...this.state,error});}
   countdown(seconds: number) {if (this.current() && !this.active && this.state.seconds !== seconds) this.publish({...this.state, seconds});}
   automatic() {

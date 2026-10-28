@@ -2,6 +2,8 @@ import type {ReactNode} from 'react';
 import {createI18n, deviceRegion, resolveRegion} from '@i18n';
 import {Icon, type IconName} from '../Icon';
 import {Button} from '../controls';
+import {ColourBackdrop} from '../artwork';
+import {useSizeClass} from '../theme';
 import styles from './directory-status.module.css';
 
 const t = createI18n(resolveRegion(undefined, deviceRegion())).t;
@@ -45,8 +47,10 @@ export function ServicesDirectoryStatus({header, phase, server, lastSeen, second
           : phase === 'identity' ? t('web.chooser.unconfirmedBody')
             : t('web.chooser.clockBody');
   const counting = phase === 'waiting' || phase === 'account-waiting';
+  // H11 / connect 2: the connection states sit on the round colour backdrop (top on phones), never a flat page.
+  const compact = useSizeClass() === 'compact';
   return <div className={styles.page}>
-    {header}
+    {header}<ColourBackdrop viewport shape={compact ? 'top' : 'round'} />
     <main className={styles.main}>
       <section className={styles.state}>
         <span className={styles.icon} data-tone={opening ? 'accent' : 'warning'} aria-hidden="true">

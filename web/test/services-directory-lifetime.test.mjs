@@ -7,6 +7,7 @@ import {createRenderer, tree} from './helpers/interaction-harness.mjs';
 // must not dispose the pending directory read before it can reach the server.
 async function fixture() {
   const saved = Object.fromEntries(['location', 'document', 'addEventListener', 'removeEventListener', 'setTimeout', 'clearTimeout', 'setInterval', 'clearInterval'].map(key => [key, globalThis[key]]));
+  const realNow = Date.now; let now = 1_000_000; Date.now = () => now;
   const destinations = [], timers = new Set();
   globalThis.location = {pathname: '/', search: '', hash: '', assign: origin => destinations.push(origin)};
   globalThis.document = {visibilityState: 'visible', addEventListener() {}, removeEventListener() {}};
@@ -49,7 +50,9 @@ async function fixture() {
   return {render, settle, destinations, open: () => render().find(node => node.type === 'Directory').props.onOpen(server.id),
     finishRead: () => resolveRead(value), signal: () => readSignal, connections: () => connections,
     rotate: () => {session.accessToken = 'renewed-same-family';},
-    close: () => {h.dispose(); Object.assign(globalThis, saved);}};
+    directory: () => render().find(node => node.type === 'Directory'),
+    advance: ms => {now += ms;}, fireTimers: () => {for (const timer of [...timers]) timer.run();},
+    close: () => {h.dispose(); Object.assign(globalThis, saved); Date.now = realNow;}};
 }
 
 test('account synchronization rerenders preserve the pending real Home directory connection', async () => {
@@ -73,5 +76,18 @@ test('unmount still cancels the pending directory read and cannot navigate late'
     f.close(); assert.equal(signal.aborted, true);
     f.finishRead(); await Promise.resolve(); await Promise.resolve();
     assert.equal(f.connections(), 0); assert.deepEqual(f.destinations, []);
+  } finally {f.close();}
+});
+
+test('every server quiet: Connecting for the first 40 seconds of this opening, then the no-answer title', async () => {
+  const f = await fixture();
+  try {
+    assert.equal(f.directory().props.offline, true);
+    assert.equal(f.directory().props.connecting, true, 'a just-opened page never says the servers are not answering');
+    f.advance(39_000); f.fireTimers(); await f.settle();
+    assert.equal(f.directory().props.connecting, true);
+    f.advance(1_000); f.fireTimers(); await f.settle();
+    assert.equal(f.directory().props.connecting, false, 'after the grace the page says what is true');
+    assert.equal(f.directory().props.offline, true);
   } finally {f.close();}
 });

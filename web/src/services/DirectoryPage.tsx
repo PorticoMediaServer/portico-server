@@ -35,8 +35,15 @@ export function ServicesDirectoryPage(props: Props) {
 function ReadyDirectory({flow, ...props}: Props & {flow: ServicesDirectoryFlow}) {
   const state = useSyncExternalStore(flow.subscribe, flow.getSnapshot), i18n = useMemo(servicesI18n, []), {t} = i18n;
   const [clock, setClock] = useState(Date.now);
-  useLayoutEffect(() => {const timer = setInterval(() => {if (document.visibilityState === 'visible') setClock(Date.now());},15000); return () => clearInterval(timer);}, []);
+  useLayoutEffect(() => {
+    const update = () => {if (document.visibilityState === 'visible') setClock(Date.now());};
+    const timer = setInterval(update,15000), grace = setTimeout(update,40000);
+    document.addEventListener('visibilitychange',update);
+    return () => {clearInterval(timer); clearTimeout(grace); document.removeEventListener('visibilitychange',update);};
+  }, [flow]);
   const allOffline = state.items.length > 0 && state.items.every(item => item.status !== 'active');
+  const connecting = flow.inConnectingGrace(clock);
+  const transientFailure = state.status === 'waiting' || state.status === 'unreachable';
   const blockedIdentity = state.status === 'identity' || state.status === 'clock';
   useLayoutEffect(() => {
     let live = true, timer: ReturnType<typeof setTimeout> | undefined;
@@ -61,7 +68,7 @@ function ReadyDirectory({flow, ...props}: Props & {flow: ServicesDirectoryFlow})
   const target = state.target;
   if (target && state.showTarget && (state.phase === 'opening' || state.phase === 'leaving' || state.phase === 'recovering' || state.status)) {
     const lastSeen = target.presence.lastSeenAt ? i18n.date(target.presence.lastSeenAt) : undefined;
-    return <ServicesDirectoryStatus header={props.header} phase={state.phase === 'opening' || state.phase === 'leaving' && state.status !== 'account-waiting' ? 'opening' : state.status!}
+    return <ServicesDirectoryStatus header={props.header} phase={connecting && transientFailure || state.phase === 'opening' || state.phase === 'leaving' && state.status !== 'account-waiting' ? 'opening' : state.status!}
       server={target.name} lastSeen={lastSeen} owner={target.ownedByMe} seconds={state.seconds} busy={state.phase === 'recovering'}
       error={state.phase === 'recovering' || state.error instanceof DirectoryAccountUnavailable || state.status !== 'account-waiting' ? undefined : <HostedError error={state.error}/>}
       onCheck={() => {void flow.open(target, state);}} onChoose={() => flow.cancelOpening(state)} onAccountHelp={() => {void flow.recoverOwner(state);}}/>;
@@ -69,7 +76,7 @@ function ReadyDirectory({flow, ...props}: Props & {flow: ServicesDirectoryFlow})
   const checked = clock-state.checkedAt < 45000 ? t('services.directory.justNow') : servicesRelativeTime(i18n,new Date(state.checkedAt).toISOString(),clock);
   return <ServicesServerDirectory header={props.header} signedInAs={props.session.account.displayName || props.session.account.username} checked={checked}
     servers={state.items.map(item => ({id:item.id,name:item.name,online:item.status==='active',presence:servicesServerDirectoryCopy(item,i18n).presence,ownedByMe:item.ownedByMe}))}
-    offline={allOffline} seconds={state.seconds} pendingId={state.pendingId} busy={state.phase==='reading'} error={<HostedError error={state.error} />}
+    offline={allOffline} connecting={allOffline && connecting} seconds={state.seconds} pendingId={state.pendingId} busy={state.phase==='reading'} error={<HostedError error={connecting && transientFailure ? undefined : state.error} />}
     onOpen={id=>{const item=state.items.find(item=>item.id===id);if(item)void flow.open(item,state);}} onRefresh={()=>void flow.refresh(state)}
     onAccount={()=>location.assign('/account')} onJoin={props.onJoin} onSetup={props.onSetup} onLocal={props.onLocal}
     onDifferentAccount={()=>{void props.account.service.logoutIfCurrent(accountIdentity(props.session)).catch(error=>flow.reportError(error,state));}} />;
