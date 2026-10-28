@@ -137,3 +137,153 @@ test('MOB-111: a library can be created without its first scan; omission keeps t
  await s.createLibrary({name:'Quiet',kind:'movie',path:'/server/quiet',scanAfter:false});await s.createLibrary({name:'Normal',kind:'movie',path:'/server/normal'});
  assert.equal(bodies[0].scanAfter,false);assert.equal('scanAfter' in bodies[1],false);
  assert.throws(()=>s.createLibrary({name:'Bad',kind:'movie',path:'/server/bad',scanAfter:1 as never}));s.dispose?.();});
+
+test('quiet directory refresh retains the exact current page continuation, selected/jobs and mutation receipts',async()=>{
+ const paths:string[]=[];let fresh=false;
+ const s=service(async p=>{paths.push(p);const raw=data(p);if(p.startsWith('/v1/admin/libraries?'))return {...raw,items:[library(p.includes('cursor=')?'two':'one',fresh?'Fresh':'Before')],nextCursor:p.includes('cursor=')?'next-three':'next-two'};return raw;});
+ await s.loadLibraries();await s.nextLibraries();await s.selectLibrary('one');const before=s.getSnapshot(),op=before.directory;paths.length=0;fresh=true;
+ assert.deepEqual(await s.refreshDirectory(),{kind:'adopted'});const after=s.getSnapshot();
+ assert.deepEqual(paths,['/v1/admin/libraries?limit=40&cursor=next-two']);assert.equal(after.directory.cursor,op.cursor);assert.equal(after.directory.canPrevious,true);
+ assert.equal(after.directory.data!.items[0].name,'Fresh');assert.equal(after.directory.data!.nextCursor,'next-three');
+ assert.equal(after.selected,before.selected);assert.equal(after.jobs,before.jobs);assert.equal(after.mutation,before.mutation);assert.equal(after.selectedLibraryId,before.selectedLibraryId);
+ await s.previousLibraries();assert.equal(s.getSnapshot().directory.cursor,null);s.dispose();
+});
+
+test('quiet directory is independent of an active command and never cancels it',async()=>{
+ const write=deferred();let writeSignal:AbortSignal|undefined;
+ const s=service(async(p,m,_b,signal)=>{if(m==='POST'){writeSignal=signal;return write.promise;}return data(p);});
+ await s.loadLibraries();await s.selectLibrary('one');const pending=s.scan(),before=s.getSnapshot();
+ assert.deepEqual(await s.refreshDirectory(),{kind:'adopted'});assert.equal(s.getSnapshot().mutation,before.mutation);assert.equal(s.getSnapshot().selected,before.selected);assert.equal(writeSignal!.aborted,false);
+ write.resolve({id:'job-new',processed:0});await pending;s.dispose();
+});
+
+test('quiet directory failure retains original error and last window; newer paging and scope fence late reads',async()=>{
+ const error=Object.assign(new Error('cursor expired'),{code:'stale_continuation'});let mode='good',pending=deferred();
+ const s=service(async p=>{if(mode==='fail')throw error;if(mode==='wait')return pending.promise;return {...data(p),nextCursor:p.includes('cursor=')?'':'next'};});
+ await s.loadLibraries();mode='fail';const before=s.getSnapshot(),answer=await s.refreshDirectory();assert.equal(answer.kind,'unreadable');if(answer.kind==='unreadable')assert.equal(answer.error,error);assert.equal(s.getSnapshot(),before);
+ mode='wait';const old=s.refreshDirectory();mode='good';await s.nextLibraries();const page=s.getSnapshot();assert.deepEqual(await old,{kind:'deferred'});pending.resolve(data('/v1/admin/libraries'));assert.equal(s.getSnapshot(),page);
+ pending=deferred();mode='wait';const stale=s.refreshDirectory();s.setScope({...scope,viewerId:'new'},{request:async<T>()=>data('/v1/admin/libraries') as T});assert.deepEqual(await stale,{kind:'deferred'});assert.equal(s.getSnapshot().directory.data,null);pending.resolve(data('/v1/admin/libraries'));s.dispose();
+});
+
+test('quiet unloaded directory parses the first page and malformed replies never claim adoption',async()=>{
+ let malformed=true;const s=service(async p=>malformed?{revision:'wrong'}:data(p));const before=s.getSnapshot();assert.equal((await s.refreshDirectory()).kind,'unreadable');assert.equal(s.getSnapshot(),before);
+ malformed=false;assert.deepEqual(await s.refreshDirectory(),{kind:'adopted'});assert.equal(s.getSnapshot().directory.data!.items[0].id,'one');s.dispose();
+});
+
+/** A revision-bound keyset endpoint: every cursor carries the admin revision and last row id. */
+function revisionDirectory(count=8,pageSize=2){
+ let revision=1;
+ const items=Array.from({length:count},(_,index)=>({...library('lib-'+index,'Library '+index),position:index}));
+ const paths:string[]=[],stale=Object.assign(new Error('original stale revision'),{code:'stale_continuation',status:409,retry:'after_refresh'});
+ let onPage:((path:string,raw:unknown,signal?:AbortSignal)=>Promise<unknown>)|undefined;
+ const api={request:async<T>(path:string,method='GET',body?:unknown,signal?:AbortSignal):Promise<T>=>{
+  const u=new URL(path,'https://server.test');
+  if(method==='PATCH'){
+   const row=items.find(item=>item.id===u.pathname.split('/').at(-1))!;
+   row.name=(body as {name:string}).name;row.revision++;revision++;return {scope:wireScope,library:row} as T;
+  }
+  if(u.pathname!=='/v1/admin/libraries')return data(path) as T;
+  paths.push(path);const cursor=u.searchParams.get('cursor');let start=0;
+  if(cursor){const [rev,after]=cursor.split(':');if(Number(rev)!==revision)throw stale;start=items.findIndex(row=>row.id===after)+1;if(!start)throw new Error('invalid fake keyset');}
+  const limit=Number(u.searchParams.get('limit')),page=items.slice(start,start+limit);
+  const raw={scope:wireScope,revision,items:page.map(row=>({...row})),nextCursor:start+limit<items.length?revision+':'+page.at(-1)!.id:''};
+  return (onPage?await onPage(path,raw,signal):raw) as T;
+ }};
+ return {s:new LibraryManagementService({scope,pageSize,readRetries:0,api}),api,paths,stale,items,bump:()=>{revision++;},gate:(fn?:typeof onPage)=>{onPage=fn;}};
+}
+
+test('revision-bound page2 rename quietly reanchors the current window with fresh next and Back cursors, publishing once',async()=>{
+ const {s,api,paths}=revisionDirectory();await s.loadLibraries();await s.nextLibraries();await s.selectLibrary('lib-2');
+ const before=s.getSnapshot(),seen:unknown[]=[];s.subscribe(()=>seen.push(s.getSnapshot()));
+ await api.request('/v1/admin/libraries/lib-2','PATCH',{name:'Renamed'});paths.length=0;
+ assert.deepEqual(await s.refreshDirectory(),{kind:'adopted'});const after=s.getSnapshot();
+ assert.deepEqual(paths,['/v1/admin/libraries?limit=2&cursor=1%3Alib-1','/v1/admin/libraries?limit=2','/v1/admin/libraries?limit=2&cursor=2%3Alib-1']);
+ assert.equal(seen.length,1);assert.deepEqual(after.directory.data!.items.map(row=>row.id),['lib-2','lib-3']);assert.equal(after.directory.data!.items[0].name,'Renamed');
+ assert.equal(after.directory.cursor,'2:lib-1');assert.equal(after.directory.data!.nextCursor,'2:lib-3');assert.equal(after.directory.canPrevious,true);
+ assert.equal(after.selected,before.selected);assert.equal(after.jobs,before.jobs);assert.equal(after.mutation,before.mutation);assert.equal(after.selectedLibraryId,before.selectedLibraryId);
+ await s.nextLibraries();assert.deepEqual(s.getSnapshot().directory.data!.items.map(row=>row.id),['lib-4','lib-5']);
+ await s.previousLibraries();assert.equal(s.getSnapshot().directory.cursor,'2:lib-1');await s.previousLibraries();assert.equal(s.getSnapshot().directory.cursor,null);s.dispose();
+});
+
+test('scope replacement during revision reanchor aborts the walk and cannot call the new API or publish an old page',async()=>{
+ const server=revisionDirectory(),{s,paths}=server;await s.loadLibraries();await s.nextLibraries();server.bump();
+ const waiting=deferred(),entered=deferred();let signal:AbortSignal|undefined;
+ server.gate(async(path,raw,readSignal)=>{if(!path.includes('cursor=')){signal=readSignal;entered.resolve(undefined);await waiting.promise;}return raw;});
+ paths.length=0;const refresh=s.refreshDirectory();await entered.promise;
+ let replacementCalls=0;s.setScope({...scope,viewerId:'replacement'},{request:async<T>()=>{replacementCalls++;return data('/v1/admin/libraries') as T;}});
+ const before=s.getSnapshot();assert.deepEqual(await refresh,{kind:'deferred'});assert.equal(signal!.aborted,true);waiting.resolve(undefined);await settleRetries();
+ assert.equal(s.getSnapshot(),before);assert.equal(replacementCalls,0);assert.equal(paths.length,2);s.dispose();
+});
+
+test('new ordinary paging wins during the private reanchor walk with no intermediate quiet publication',async()=>{
+ const server=revisionDirectory(),{s,paths}=server;await s.loadLibraries();await s.nextLibraries();server.bump();
+ const waiting=deferred(),entered=deferred();let gated=false;
+ server.gate(async(path,raw)=>{if(!gated&&!path.includes('cursor=')){gated=true;entered.resolve(undefined);await waiting.promise;}return raw;});
+ const refresh=s.refreshDirectory();await entered.promise;const before=s.getSnapshot();
+ // A newer explicit reload and navigation owns the directory before the private walk can finish.
+ await s.loadLibraries();await s.nextLibraries();await s.nextLibraries();const newer=s.getSnapshot();assert.equal(newer.directory.phase,'ready');assert.equal(newer.directory.cursor,'2:lib-3');assert.notEqual(newer,before);
+ assert.deepEqual(await refresh,{kind:'deferred'});const count=paths.length;waiting.resolve(undefined);await settleRetries();assert.equal(s.getSnapshot(),newer);assert.equal(paths.length,count);s.dispose();
+});
+
+test('private reanchor permits an independent pending command without replacing its receipt or cancelling the write',async()=>{
+ const server=revisionDirectory(),{s}=server;await s.loadLibraries();await s.nextLibraries();await s.selectLibrary('one');
+ const write=deferred();let writeSignal:AbortSignal|undefined;
+ // Scope-preserving transport wrapper holds a scan, while the directory retains the same viewer fence.
+ const original=server.api.request;server.api.request=async<T>(path,method='GET',body,signal)=>{if(method==='POST'){writeSignal=signal;return write.promise as Promise<T>;}return original<T>(path,method,body,signal);};
+ const pending=s.scan(),receipt=s.getSnapshot().mutation;server.bump();assert.deepEqual(await s.refreshDirectory(),{kind:'adopted'});
+ assert.equal(s.getSnapshot().mutation,receipt);assert.equal(writeSignal!.aborted,false);write.resolve({id:'scan-new',processed:0});await pending;s.dispose();
+});
+
+test('reanchor is capped at64 fresh pages; truncated Back history cannot masquerade as a reachable logical window',async()=>{
+ const server=revisionDirectory(140,1),{s,paths,stale}=server;await s.loadLibraries();for(let page=1;page<=65;page++)await s.nextLibraries();
+ const before=s.getSnapshot();assert.equal(before.directory.cursor,'1:lib-64');server.bump();paths.length=0;let publications=0;s.subscribe(()=>{publications++;});
+ const answer=await s.refreshDirectory();assert.equal(answer.kind,'unreadable');if(answer.kind==='unreadable')assert.equal(answer.error,stale);
+ assert.equal(paths.length,65); // One rejected old cursor plus at most64 newly read pages.
+ assert.equal(paths.at(-1),'/v1/admin/libraries?limit=1&cursor=2%3Alib-62');assert.equal(publications,0);assert.equal(s.getSnapshot(),before);s.dispose();
+});
+
+test('a removed logical page keeps the original window and stale error instead of resetting to the first or last page',async()=>{
+ const server=revisionDirectory(6),{s,items,stale}=server;await s.loadLibraries();await s.nextLibraries();await s.nextLibraries();const before=s.getSnapshot();
+ items.splice(2);server.bump();const answer=await s.refreshDirectory();assert.equal(answer.kind,'unreadable');if(answer.kind==='unreadable')assert.equal(answer.error,stale);assert.equal(s.getSnapshot(),before);s.dispose();
+});
+
+test('revision movement during reanchor is not silently mixed or restarted and changed viewer proof still retires',async()=>{
+ for(const changed of ['revision','viewer'] as const){
+  const server=revisionDirectory(),{s}=server;await s.loadLibraries();await s.nextLibraries();const before=s.getSnapshot();server.bump();
+  server.gate(async(path,raw)=>{if(!path.includes('cursor=')){if(changed==='revision')server.bump();else (raw as any).scope={...wireScope,viewerFence:'another-owner'};}return raw;});
+  const answer=await s.refreshDirectory();assert.equal(answer.kind,'unreadable');if(changed==='revision')assert.equal(s.getSnapshot(),before);else assert.equal(s.getSnapshot().directory.data,null);s.dispose();
+ }
+});
+
+test('the64th fresh page is reachable and its entire Back chain uses the new revision',async()=>{
+ const server=revisionDirectory(70,1),{s,paths}=server;await s.loadLibraries();for(let page=1;page<64;page++)await s.nextLibraries();server.bump();paths.length=0;
+ assert.deepEqual(await s.refreshDirectory(),{kind:'adopted'});assert.equal(paths.length,65);assert.equal(s.getSnapshot().directory.cursor,'2:lib-62');
+ for(let page=1;page<64;page++)await s.previousLibraries();assert.equal(s.getSnapshot().directory.cursor,null);assert.equal(s.getSnapshot().directory.canPrevious,false);s.dispose();
+});
+
+
+test('quiet directory cancellation is bound and preserves visible page, selected, jobs and mutation receipts',async()=>{
+ let hold=false,signal:AbortSignal|undefined;const pending=deferred();
+ const s=service(async(p,_m,_b,a)=>{if(hold&&p.startsWith('/v1/admin/libraries?')){signal=a;return pending.promise;}return data(p);});
+ await s.loadLibraries();await s.selectLibrary('one');const before=s.getSnapshot();hold=true;
+ const read=s.refreshDirectory();const cancel=s.invalidateQuietDirectory;cancel();
+ assert.equal(signal?.aborted,true);assert.equal(s.getSnapshot(),before);
+ assert.deepEqual(await read,{kind:'deferred'});pending.resolve({...data('/v1/admin/libraries'),items:[library('one','Late')]});await settleRetries();assert.equal(s.getSnapshot(),before);s.dispose();
+});
+
+test('quiet directory cancellation cannot abort newer ordinary paging or its selected/jobs/write owners',async()=>{
+ let hold=false;const held:ReturnType<typeof deferred>[]=[],signals:AbortSignal[]=[];
+ const s=service(async(p,m,_b,a)=>{if(hold&&(p.startsWith('/v1/admin/libraries?')||m==='PATCH')){const read=deferred();held.push(read);signals.push(a!);return read.promise;}return data(p);});
+ await s.loadLibraries();await s.selectLibrary('one');hold=true;const quiet=s.refreshDirectory();const ordinary=s.loadLibraries();
+ const selected=s.getSnapshot().selected,jobs=s.getSnapshot().jobs;
+ s.invalidateQuietDirectory();assert.equal(signals[0].aborted,true);assert.equal(signals[1].aborted,false);
+ held[1].resolve(data('/v1/admin/libraries'));await ordinary;assert.deepEqual(await quiet,{kind:'deferred'});assert.equal(s.getSnapshot().selected,selected);assert.equal(s.getSnapshot().jobs,jobs);
+ const write=s.rename('Updated',1);assert.equal(signals[2].aborted,false);s.invalidateQuietDirectory();assert.equal(signals[2].aborted,false);
+ hold=false;held[2].resolve({scope:wireScope,library:library('one','Updated',2)});await write;assert.equal(s.getSnapshot().mutation.phase,'complete');s.dispose();
+});
+
+test('an older quiet completion cannot detach the newer quiet read cancellation owner',async()=>{
+ let hold=false;const held:ReturnType<typeof deferred>[]=[],signals:AbortSignal[]=[];
+ const s=service(async(p,_m,_b,a)=>{if(hold&&p.startsWith('/v1/admin/libraries?')){const read=deferred();held.push(read);signals.push(a!);return read.promise;}return data(p);});
+ await s.loadLibraries();const before=s.getSnapshot();hold=true;const first=s.refreshDirectory(),second=s.refreshDirectory();assert.equal(signals[0].aborted,true);assert.deepEqual(await first,{kind:'deferred'});s.invalidateQuietDirectory();assert.equal(signals[1].aborted,true);assert.deepEqual(await second,{kind:'deferred'});assert.equal(s.getSnapshot(),before);s.dispose();
+});

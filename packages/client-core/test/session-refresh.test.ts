@@ -647,3 +647,16 @@ test('an unhelpful server cannot create an unbounded chain of expired successors
   await assert.rejects(refreshDirectly(env,server),{code:'refresh_unavailable_now',signOut:false});
   assert.equal(server.refreshCalls,2);assert.equal(store.peek()?.session.tokenGeneration,'3');assert.equal(store.peek()?.pendingRefresh,undefined);
 });
+
+test('overflowing transport Retry-After survives the real credential error adapter for detailed permission admission',async t=>{
+  const {server,timers,events,tab}=setup(t),{refresher}=tab();t.after(()=>refresher.stop());
+  server.refreshAnswers.push(()=>new Response(JSON.stringify({error:{code:'unavailable'}}),{status:429,headers:{'Content-Type':'application/json','Retry-After':'9'.repeat(400)}}));
+  await refresher.recover('access_1');assert.equal(server.refreshCalls,1);assert.equal(refresher.getSnapshot().phase,'retrying');
+  assert.equal(refresher.getSnapshot().error?.retryAfterSeconds,Infinity);
+  // The existing credential retry delay is still local/capped; the new permission
+  // obligation remembers the original full floor independently.
+  clock+=60_001;
+  assert.deepEqual(await refresher.reconcilePermissions(),{kind:'deferred',nextAllowedAt:Number.MAX_VALUE,reason:'server-floor'});
+  assert.equal(server.meCalls,0);assert.equal(server.refreshCalls,1);assert.deepEqual(events.signedOut,[]);
+  assert.ok(timers.pending()>0);
+});
