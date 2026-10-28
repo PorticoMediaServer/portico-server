@@ -73,6 +73,7 @@ type HostPresence struct {
 type Member struct {
 	ID          string  `json:"id"`
 	DisplayName string  `json:"displayName"`
+	Username    string  `json:"username,omitempty"`
 	Private     bool    `json:"private"`
 	Role        string  `json:"role"`
 	State       string  `json:"state"`
@@ -1101,7 +1102,7 @@ func (s *Store) readinessSummary(ctx context.Context, tx *sql.Tx, g record) (Rea
 
 func (s *Store) members(ctx context.Context, tx *sql.Tx, g record) ([]Member, ReadinessSummary, error) {
 	summary := ReadinessSummary{Aggregate: "ready"}
-	rows, e := tx.QueryContext(ctx, `SELECT id,display_name,role,state,readiness,readiness_position_us,readiness_at_ms,joined_at_ms,max(seen_at_ms,joined_at_ms),`+watchTogetherVisible("m")+` FROM social_group_members m WHERE group_id=? AND state IN ('invited','joined') ORDER BY joined_at_ms,id`, g.id)
+	rows, e := tx.QueryContext(ctx, `SELECT id,display_name,COALESCE((SELECT username FROM accounts WHERE id=m.account_id),''),role,state,readiness,readiness_position_us,readiness_at_ms,joined_at_ms,max(seen_at_ms,joined_at_ms),`+watchTogetherVisible("m")+` FROM social_group_members m WHERE group_id=? AND state IN ('invited','joined') ORDER BY joined_at_ms,id`, g.id)
 	if e != nil {
 		return nil, summary, e
 	}
@@ -1112,7 +1113,7 @@ func (s *Store) members(ctx context.Context, tx *sql.Tx, g record) ([]Member, Re
 		var m Member
 		var positionUS, reportedMS, joinedMS, seenMS int64
 		var public bool
-		if e = rows.Scan(&m.ID, &m.DisplayName, &m.Role, &m.State, &m.Readiness, &positionUS, &reportedMS, &joinedMS, &seenMS, &public); e != nil {
+		if e = rows.Scan(&m.ID, &m.DisplayName, &m.Username, &m.Role, &m.State, &m.Readiness, &positionUS, &reportedMS, &joinedMS, &seenMS, &public); e != nil {
 			return nil, summary, e
 		}
 		m.PositionUS, m.ReportedAt, m.JoinedAt = counter(positionUS), optionalStamp(reportedMS), stamp(joinedMS)
@@ -1141,6 +1142,7 @@ func (s *Store) members(ctx context.Context, tx *sql.Tx, g record) ([]Member, Re
 		if !public {
 			m.Private = true
 			m.DisplayName = "Viewer"
+			m.Username = ""
 			m.PositionUS = "0"
 			m.ReportedAt = nil
 		}

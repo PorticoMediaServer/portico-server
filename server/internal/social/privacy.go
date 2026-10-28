@@ -15,14 +15,15 @@ func watchTogetherVisible(alias string) string {
 // activityPrivacy is one member's name as the room sees it and whether they
 // share their activity.
 type activityPrivacy struct {
-	public bool
-	name   string
+	public   bool
+	name     string
+	username string
 }
 
 // roomPrivacy reads, in one statement, how every member of a room appears, so
 // a catch-up over many readiness events costs one read rather than one per event.
 func roomPrivacy(ctx context.Context, tx *sql.Tx, group string) (map[string]activityPrivacy, error) {
-	rows, e := tx.QueryContext(ctx, `SELECT id,`+watchTogetherVisible("m")+`,display_name FROM social_group_members m WHERE group_id=?`, group)
+	rows, e := tx.QueryContext(ctx, `SELECT id,`+watchTogetherVisible("m")+`,display_name,COALESCE((SELECT username FROM accounts WHERE id=m.account_id),'') FROM social_group_members m WHERE group_id=?`, group)
 	if e != nil {
 		return nil, e
 	}
@@ -31,7 +32,7 @@ func roomPrivacy(ctx context.Context, tx *sql.Tx, group string) (map[string]acti
 	for rows.Next() {
 		var id string
 		var p activityPrivacy
-		if e = rows.Scan(&id, &p.public, &p.name); e != nil {
+		if e = rows.Scan(&id, &p.public, &p.name, &p.username); e != nil {
 			return nil, e
 		}
 		out[id] = p
@@ -55,6 +56,10 @@ func projectActivityWith(room map[string]activityPrivacy, payload json.RawMessag
 	}
 	body["private"] = !p.public
 	body["displayName"] = p.name
+	delete(body, "username")
+	if p.public && p.username != "" {
+		body["username"] = p.username
+	}
 	if !p.public {
 		body["displayName"] = "Viewer"
 		body["positionUs"] = "0"

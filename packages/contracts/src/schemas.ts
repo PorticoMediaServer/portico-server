@@ -237591,6 +237591,9 @@ export const schemas = {
                 },
                 "state": {
                   "type": "string"
+                },
+                "username": {
+                  "type": "string"
                 }
               },
               "required": [
@@ -238058,6 +238061,9 @@ export const schemas = {
                     "type": "string"
                   },
                   "state": {
+                    "type": "string"
+                  },
+                  "username": {
                     "type": "string"
                   }
                 },
@@ -239957,6 +239963,9 @@ export const schemas = {
                 },
                 "state": {
                   "type": "string"
+                },
+                "username": {
+                  "type": "string"
                 }
               },
               "required": [
@@ -240423,6 +240432,9 @@ export const schemas = {
                   "type": "string"
                 },
                 "state": {
+                  "type": "string"
+                },
+                "username": {
                   "type": "string"
                 }
               },
@@ -240904,6 +240916,9 @@ export const schemas = {
                   "type": "string"
                 },
                 "state": {
+                  "type": "string"
+                },
+                "username": {
                   "type": "string"
                 }
               },
@@ -241453,6 +241468,9 @@ export const schemas = {
                   "type": "string"
                 },
                 "state": {
+                  "type": "string"
+                },
+                "username": {
                   "type": "string"
                 }
               },
@@ -242197,6 +242215,9 @@ export const schemas = {
                 },
                 "state": {
                   "type": "string"
+                },
+                "username": {
+                  "type": "string"
                 }
               },
               "required": [
@@ -242871,6 +242892,9 @@ export const schemas = {
                 },
                 "state": {
                   "type": "string"
+                },
+                "username": {
+                  "type": "string"
                 }
               },
               "required": [
@@ -243353,6 +243377,9 @@ export const schemas = {
                   "type": "string"
                 },
                 "state": {
+                  "type": "string"
+                },
+                "username": {
                   "type": "string"
                 }
               },

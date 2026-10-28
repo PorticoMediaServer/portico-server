@@ -260185,6 +260185,9 @@
                     },
                     "state": {
                       "type": "string"
+                    },
+                    "username": {
+                      "type": "string"
                     }
                   },
                   "required": [
@@ -260700,6 +260703,9 @@
                         "type": "string"
                       },
                       "state": {
+                        "type": "string"
+                      },
+                      "username": {
                         "type": "string"
                       }
                     },
@@ -262683,6 +262689,9 @@
                     },
                     "state": {
                       "type": "string"
+                    },
+                    "username": {
+                      "type": "string"
                     }
                   },
                   "required": [
@@ -263197,6 +263206,9 @@
                       "type": "string"
                     },
                     "state": {
+                      "type": "string"
+                    },
+                    "username": {
                       "type": "string"
                     }
                   },
@@ -263726,6 +263738,9 @@
                       "type": "string"
                     },
                     "state": {
+                      "type": "string"
+                    },
+                    "username": {
                       "type": "string"
                     }
                   },
@@ -264323,6 +264338,9 @@
                       "type": "string"
                     },
                     "state": {
+                      "type": "string"
+                    },
+                    "username": {
                       "type": "string"
                     }
                   },
@@ -265127,6 +265145,9 @@
                     },
                     "state": {
                       "type": "string"
+                    },
+                    "username": {
+                      "type": "string"
                     }
                   },
                   "required": [
@@ -265861,6 +265882,9 @@
                     },
                     "state": {
                       "type": "string"
+                    },
+                    "username": {
+                      "type": "string"
                     }
                   },
                   "required": [
@@ -266391,6 +266415,9 @@
                       "type": "string"
                     },
                     "state": {
+                      "type": "string"
+                    },
+                    "username": {
                       "type": "string"
                     }
                   },
@@ -372379,6 +372406,9 @@
                                 },
                                 "state": {
                                   "type": "string"
+                                },
+                                "username": {
+                                  "type": "string"
                                 }
                               },
                               "required": [
@@ -373014,6 +373044,9 @@
                               },
                               "state": {
                                 "type": "string"
+                              },
+                              "username": {
+                                "type": "string"
                               }
                             },
                             "required": [
@@ -373647,6 +373680,9 @@
                               },
                               "state": {
                                 "type": "string"
+                              },
+                              "username": {
+                                "type": "string"
                               }
                             },
                             "required": [
@@ -374264,6 +374300,9 @@
                                 "type": "string"
                               },
                               "state": {
+                                "type": "string"
+                              },
+                              "username": {
                                 "type": "string"
                               }
                             },
@@ -374903,6 +374942,9 @@
                                 "type": "string"
                               },
                               "state": {
+                                "type": "string"
+                              },
+                              "username": {
                                 "type": "string"
                               }
                             },
@@ -375679,6 +375721,9 @@
                               },
                               "state": {
                                 "type": "string"
+                              },
+                              "username": {
+                                "type": "string"
                               }
                             },
                             "required": [
@@ -376321,6 +376366,9 @@
                                 "type": "string"
                               },
                               "state": {
+                                "type": "string"
+                              },
+                              "username": {
                                 "type": "string"
                               }
                             },
@@ -377247,6 +377295,9 @@
                                 "type": "string"
                               },
                               "state": {
+                                "type": "string"
+                              },
+                              "username": {
                                 "type": "string"
                               }
                             },
@@ -378627,6 +378678,9 @@
                                 "type": "string"
                               },
                               "state": {
+                                "type": "string"
+                              },
+                              "username": {
                                 "type": "string"
                               }
                             },
