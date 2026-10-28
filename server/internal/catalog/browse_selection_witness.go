@@ -1,6 +1,9 @@
 package catalog
 
-import "portico.local/server/internal/identity"
+import (
+	"portico.local/server/internal/identity"
+	"time"
+)
 
 // Selection reads saved/playlist membership in addition to the common exact
 // browse predicate. These maintained metadata generations are synchronous;
@@ -12,7 +15,13 @@ func (s *Service) browseSelectionWitness(library, profile string, restrictions i
 	if err != nil {
 		return "", err
 	}
-	var saved, playlists int64
+	var saved, playlists, predicates int64
+	if err = s.read().QueryRow(`SELECT revision FROM catalog_selection_predicate_epoch WHERE singleton=1`).Scan(&predicates); err != nil {
+		return "", err
+	}
+	if predicates <= 0 {
+		return "", ErrSelectionBatchStale
+	}
 	if err = s.read().QueryRow(`SELECT revision FROM saved_resource_generation WHERE id=1`).Scan(&saved); err != nil {
 		return "", err
 	}
@@ -21,5 +30,5 @@ func (s *Service) browseSelectionWitness(library, profile string, restrictions i
 			return "", err
 		}
 	}
-	return operationHash([]any{"exact-selection-v1", base, saved, playlists}), nil
+	return operationHash([]any{"exact-selection-v1", base, predicates, saved, playlists, s.recommendationNow(time.Time{}).UTC().Format("2006-01-02")}), nil
 }

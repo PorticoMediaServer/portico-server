@@ -8,7 +8,6 @@ import (
 	"unsafe"
 
 	"portico.local/server/internal/dbwork"
-	"portico.local/server/internal/identity"
 	"portico.local/server/internal/readprep"
 )
 
@@ -201,12 +200,7 @@ func (s *Service) SubmitBrowseSelectionPreparation(request BrowseRequest, viewer
 	// Equality is the full canonical specification plus witness, not the
 	// reducer's diagnostic hash. Separate private handles bind each caller.
 	key := readprep.Key{Namespace: browseSelectionPreparationDomain, Basis: basis, Canonical: string(spec)}
-	root := *s
-	root.rctx = nil
-	root.readTx = nil
-	root.recSources = nil
-	root.recComposition = nil
-	root.recRestrictions = identity.ContentRestrictions{}
+	root := Service{db: s.db, storage: s.storage, state: s.state, Clock: s.Clock}
 	factoryBytes := int64(cap(spec)) + access.CapturedBytes + int64(unsafe.Sizeof(root)) + 2048
 	check := access.Check
 	plan := readprep.Plan{InitialBytes: factoryBytes, New: func(ctx context.Context, budget *readprep.Budget) (readprep.Computation, error) {

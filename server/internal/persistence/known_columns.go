@@ -1453,6 +1453,8 @@ catalog_seasons.number
 catalog_seasons.overview
 catalog_seasons.show_id
 catalog_seasons.title
+catalog_selection_predicate_epoch.revision
+catalog_selection_predicate_epoch.singleton
 catalog_show_facet_episodes.episode_id
 catalog_show_facet_episodes.field
 catalog_show_facet_episodes.show_id

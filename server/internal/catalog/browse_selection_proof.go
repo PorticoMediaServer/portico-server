@@ -102,9 +102,7 @@ func (s *Service) selectionBasisCheck(v Viewer, library, basis string) func(cont
 	if basis == "" {
 		return nil
 	}
-	root := *s
-	root.rctx = nil
-	root.readTx = nil
+	root := Service{db: s.db, state: s.state, Clock: s.Clock}
 	return func(ctx context.Context, tx *sql.Tx) error {
 		bound, err := dbwork.BindSnapshot(ctx, tx)
 		if err != nil {
