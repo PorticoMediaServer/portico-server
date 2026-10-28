@@ -312,18 +312,18 @@ func TestDirectCapacityDeletionAndStaleProfileRevision(t *testing.T) {
 	if _, e := s.CreateDirectProfile(ctx, login.AccountToken, "Ninth", "blue"); !errors.Is(e, ErrProfileCapacity) {
 		t.Fatal("ninth active profile admitted", e)
 	}
-	if e := s.DeleteDirectProfile(ctx, login.AccountToken, login.Account.PrimaryProfileID, 1, true); !errors.Is(e, ErrPrimaryProfile) {
+	if e := retireProfileAndDrainForTest(t, s, ctx, login.AccountToken, login.Account.PrimaryProfileID, 1, true); !errors.Is(e, ErrPrimaryProfile) {
 		t.Fatal("primary deleted", e)
 	}
 	child := childProfile(t, snapshot)
-	if e := s.DeleteDirectProfile(ctx, login.AccountToken, child.ID, child.Revision+1, true); !errors.Is(e, ErrProfileChanged) {
+	if e := retireProfileAndDrainForTest(t, s, ctx, login.AccountToken, child.ID, child.Revision+1, true); !errors.Is(e, ErrProfileChanged) {
 		t.Fatal("stale deletion accepted", e)
 	}
 	session, e := s.SelectDirectProfile(ctx, login.AccountToken, child.ID, DirectSelection{})
 	if e != nil {
 		t.Fatal(e)
 	}
-	if e = s.DeleteDirectProfile(ctx, login.AccountToken, child.ID, child.Revision, true); e != nil {
+	if e = retireProfileAndDrainForTest(t, s, ctx, login.AccountToken, child.ID, child.Revision, true); e != nil {
 		t.Fatal(e)
 	}
 	if _, e = s.Authenticate(session.Session.AccessToken); !errors.Is(e, ErrUnauthorized) {
@@ -367,7 +367,7 @@ func TestDirectErasureDeletesOwnedAndReceivedSavedDataOnlyInExactAuthority(t *te
 	if _, e = db.Exec(`INSERT INTO playlist_shares(playlist_id,authority,account_id,profile_id,role) VALUES('hosted','local','account',?,'editor')`, child.ID); e != nil {
 		t.Fatal(e)
 	}
-	if e = s.DeleteDirectProfile(ctx, login.AccountToken, child.ID, child.Revision, true); e != nil {
+	if e = retireProfileAndDrainForTest(t, s, ctx, login.AccountToken, child.ID, child.Revision, true); e != nil {
 		t.Fatal(e)
 	}
 	var count int

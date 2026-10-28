@@ -233,7 +233,7 @@ func readingSavedGroupRestrictionCheck(t *testing.T) {
 					t.Fatal("private removal changed a leaf save", err, state)
 				}
 			}
-			if err = r.f.id.DeleteDirectProfile(ctx, owner.AccountToken, child.ID, child.Revision, true); err != nil {
+			if err = retireProfileInHTTPTest(t, r.f.id, ctx, owner.AccountToken, child.ID, child.Revision, true); err != nil {
 				t.Fatal(err)
 			}
 			for _, table := range []string{"reading_saved_groups", "reading_saved_group_receipts", "reading_saved_group_owners"} {

@@ -172,9 +172,8 @@ func TestWhoMayDeleteWhom(t *testing.T) {
 	}
 }
 
-// Deleting one profile blanks that profile's name in the owner's history and
-// leaves the account's name, which still belongs to someone.
-func TestDeletingAProfileBlanksOnlyItsOwnNameInThePlayHistory(t *testing.T) {
+// A removed profile keeps its final history attribution for the owner only.
+func TestDeletingAProfilePreservesItsHistoryAttribution(t *testing.T) {
 	ctx := context.Background()
 	s, _, member, login := memberWithSession(t)
 	profiles, err := s.CreateDirectProfile(ctx, login.AccountToken, "Kid", "coral")
@@ -184,11 +183,11 @@ func TestDeletingAProfileBlanksOnlyItsOwnNameInThePlayHistory(t *testing.T) {
 	child := childProfile(t, profiles)
 	insertPlay(t, s, "play-kid", member.ID, child.ID, "member", "Kid", "Tablet")
 	insertPlay(t, s, "play-main", member.ID, member.PrimaryProfileID, "member", "Member", "Phone")
-	if err = s.DeleteDirectProfile(ctx, login.AccountToken, child.ID, child.Revision, true); err != nil {
+	if err = retireProfileAndDrainForTest(t, s, ctx, login.AccountToken, child.ID, child.Revision, true); err != nil {
 		t.Fatal(err)
 	}
 	var user, profile string
-	if err = s.db.QueryRow(`SELECT user_name,profile_name FROM play_history WHERE playback_id='play-kid'`).Scan(&user, &profile); err != nil || user != "member" || profile != "" {
+	if err = s.db.QueryRow(`SELECT user_name,profile_name FROM play_history WHERE playback_id='play-kid'`).Scan(&user, &profile); err != nil || user != "member" || profile != "Kid" {
 		t.Fatalf("the deleted profile's play: user=%q profile=%q %v", user, profile, err)
 	}
 	if err = s.db.QueryRow(`SELECT user_name,profile_name FROM play_history WHERE playback_id='play-main'`).Scan(&user, &profile); err != nil || user != "member" || profile != "Member" {
