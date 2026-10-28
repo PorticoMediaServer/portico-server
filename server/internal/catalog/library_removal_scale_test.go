@@ -141,8 +141,18 @@ func TestReadingLibraryRemovalCostIsLinear(t *testing.T) {
 	cost := func(n int) (int64, int64) {
 		c := catalogtest.Open(t)
 		handle := c.Library("r", "Reading", "book", "/r")
-		for i := 0; i < n; i++ {
-			c.Entity(compactcatalog.Entity{Library: handle, Kind: 20, Key: fmt.Sprintf("ebook:%d", i), Title: fmt.Sprintf("Book %d", i)}, nil)
+		// Only removal is measured below. Build the same canonical entities in
+		// bounded fixture batches instead of committing and looking up an unused
+		// public ID once per book. Keep both scale points and every removal check.
+		for start := 0; start < n; start += 128 {
+			c.Write(func(ctx context.Context, tx *sql.Tx) error {
+				for i := start; i < min(start+128, n); i++ {
+					if _, _, err := compactcatalog.UpsertEntityTx(ctx, tx, compactcatalog.Entity{Library: handle, Kind: 20, Key: fmt.Sprintf("ebook:%d", i), Title: fmt.Sprintf("Book %d", i)}); err != nil {
+						return err
+					}
+				}
+				return nil
+			})
 		}
 		c.Drain()
 		c.Exec(`UPDATE catalog_libraries SET retired=1 WHERE library_id='r'`)

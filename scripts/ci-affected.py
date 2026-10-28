@@ -420,6 +420,34 @@ def shard(packages, index=0, total=1):
     return [package for position, package in enumerate(sorted(packages)) if position % total == index]
 
 
+def catalog_run_names(module):
+    """Use Go's built inventory, including examples and fuzz seeds, not source guesses."""
+    text = run_capture(["go", "test", "-list", "^(Test|Example|Fuzz)",
+                        "./internal/catalog"], ROOT / module, timeout=GO_LIST_TIMEOUT)
+    names = {line.strip() for line in text.splitlines()
+             if re.fullmatch(r"(?:Test[A-Z]\w*|Fuzz[A-Z]\w*|Example(?:_[A-Za-z0-9_]+|[A-Z]\w*)?)", line.strip())
+             and line.strip() != "TestMain"}
+    if not names:
+        raise RuntimeError("catalog test inventory is empty; refusing an incomplete CI split")
+    return sorted(names)
+
+
+def full_go_selection(module, packages, index, total):
+    """Keep package ownership stable; share catalog's complete run inventory across CI."""
+    selection = [(package, None) for package in shard(packages, index, total)]
+    if module != "server" or total == 1 or "./internal/catalog" not in packages:
+        return selection
+    selection = [(package, pattern) for package, pattern in selection
+                 if package != "./internal/catalog"]
+    # One anchored parent name selects all its subtests. Stable hashing also
+    # assigns every newly added test automatically, with no hand-maintained gaps.
+    names = [name for name in catalog_run_names(module)
+             if shard_of(name, total) == index]
+    if names:
+        selection.append(("./internal/catalog", "^(" + "|".join(names) + ")$"))
+    return selection
+
+
 def report_path(module, shard_index, shard_total):
     """Where the structured per-run record goes, if anywhere.
 
@@ -1369,7 +1397,7 @@ def go_checks(module, group):
     if os.environ.get("CI_FULL_TREE") == "1" and group == "affected":
         shard_index, shard_total = shard_settings()
         planned = module_packages(module)
-        selection = [(package, None) for package in shard(planned, shard_index, shard_total)]
+        selection = full_go_selection(module, planned, shard_index, shard_total)
         print(f"+ go test inventory: {len(planned)} packages, shard "
               f"{shard_index + 1}/{shard_total} runs {len(selection)}", flush=True)
         vet = (["bash", str(ROOT / "scripts/vet-go.sh")] if module == "server"
