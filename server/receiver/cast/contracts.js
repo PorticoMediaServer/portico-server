@@ -7388,6 +7388,26 @@ var PorticoCastContracts = (function(exports) {
 			],
 			"type": "object"
 		}] },
+		"CancelFacetQueryRequest": {
+			"properties": {},
+			"required": [],
+			"type": "object"
+		},
+		"CancelFacetQueryResponse": {
+			"properties": {},
+			"required": [],
+			"type": "object"
+		},
+		"CancelGenreQueryRequest": {
+			"properties": {},
+			"required": [],
+			"type": "object"
+		},
+		"CancelGenreQueryResponse": {
+			"properties": {},
+			"required": [],
+			"type": "object"
+		},
 		"ChangeConnectivityPolicyRequest": {
 			"properties": {
 				"accessUrls": {
@@ -35852,6 +35872,233 @@ var PorticoCastContracts = (function(exports) {
 			],
 			"type": "object"
 		},
+		"GetFacetQueryRequest": {
+			"properties": {},
+			"required": [],
+			"type": "object"
+		},
+		"GetFacetQueryResponse": { "anyOf": [
+			{
+				"properties": {
+					"field": { "type": "string" },
+					"kind": {
+						"const": "simple-keyset",
+						"type": "string"
+					},
+					"revision": { "type": "string" },
+					"total": {
+						"maximum": 9007199254740991,
+						"minimum": 0,
+						"type": "integer"
+					},
+					"totalIsLowerBound": {
+						"const": false,
+						"type": "boolean"
+					},
+					"values": {
+						"items": {
+							"properties": {
+								"count": {
+									"maximum": 9007199254740991,
+									"minimum": -9007199254740991,
+									"type": "integer"
+								},
+								"countIsLowerBound": { "type": "boolean" },
+								"label": { "type": "string" },
+								"seriesId": {
+									"pattern": "^[A-Za-z0-9_-]{43}$",
+									"type": "string"
+								},
+								"value": { "type": "string" }
+							},
+							"required": [
+								"value",
+								"label",
+								"count",
+								"countIsLowerBound"
+							],
+							"type": "object"
+						},
+						"maxItems": 200,
+						"type": "array"
+					},
+					"window": {
+						"properties": {
+							"basis": { "type": "string" },
+							"limit": {
+								"maximum": 200,
+								"minimum": 1,
+								"type": "integer"
+							},
+							"next": {
+								"maxLength": 512,
+								"minLength": 1,
+								"pattern": "^[A-Za-z0-9_-]+$",
+								"type": "string"
+							},
+							"previous": {
+								"maxLength": 512,
+								"minLength": 1,
+								"pattern": "^[A-Za-z0-9_-]+$",
+								"type": "string"
+							},
+							"queryId": {
+								"maxLength": 512,
+								"minLength": 1,
+								"pattern": "^[A-Za-z0-9_-]+$",
+								"type": "string"
+							},
+							"reload": {
+								"maxLength": 512,
+								"minLength": 1,
+								"pattern": "^[A-Za-z0-9_-]+$",
+								"type": "string"
+							},
+							"returned": {
+								"maximum": 200,
+								"minimum": 0,
+								"type": "integer"
+							}
+						},
+						"required": [
+							"queryId",
+							"basis",
+							"limit",
+							"returned"
+						],
+						"type": "object"
+					}
+				},
+				"required": [
+					"kind",
+					"field",
+					"revision",
+					"total",
+					"totalIsLowerBound",
+					"values",
+					"window"
+				],
+				"type": "object"
+			},
+			{
+				"properties": {
+					"field": { "type": "string" },
+					"kind": {
+						"const": "facet-fallback",
+						"type": "string"
+					},
+					"preparation": {
+						"properties": {
+							"kind": {
+								"const": "facet-preparing",
+								"type": "string"
+							},
+							"queryId": {
+								"maxLength": 512,
+								"minLength": 1,
+								"pattern": "^[A-Za-z0-9_-]+$",
+								"type": "string"
+							},
+							"retryAfterMs": {
+								"maximum": 9007199254740991,
+								"minimum": 1,
+								"type": "integer"
+							},
+							"state": {
+								"const": "preparing",
+								"type": "string"
+							}
+						},
+						"required": [
+							"kind",
+							"state",
+							"queryId",
+							"retryAfterMs"
+						],
+						"type": "object"
+					},
+					"revision": { "type": "string" },
+					"total": {
+						"maximum": 9007199254740991,
+						"minimum": 0,
+						"type": "integer"
+					},
+					"totalIsLowerBound": {
+						"const": true,
+						"type": "boolean"
+					},
+					"values": {
+						"items": {
+							"properties": {
+								"count": {
+									"maximum": 9007199254740991,
+									"minimum": 0,
+									"type": "integer"
+								},
+								"countIsLowerBound": {
+									"const": true,
+									"type": "boolean"
+								},
+								"label": { "type": "string" },
+								"seriesId": {
+									"pattern": "^[A-Za-z0-9_-]{43}$",
+									"type": "string"
+								},
+								"value": { "type": "string" }
+							},
+							"required": [
+								"value",
+								"label",
+								"count",
+								"countIsLowerBound"
+							],
+							"type": "object"
+						},
+						"maxItems": 200,
+						"type": "array"
+					}
+				},
+				"required": [
+					"kind",
+					"field",
+					"totalIsLowerBound",
+					"total",
+					"values",
+					"preparation"
+				],
+				"type": "object"
+			},
+			{
+				"properties": {
+					"kind": {
+						"const": "facet-preparing",
+						"type": "string"
+					},
+					"queryId": {
+						"maxLength": 512,
+						"minLength": 1,
+						"pattern": "^[A-Za-z0-9_-]+$",
+						"type": "string"
+					},
+					"retryAfterMs": {
+						"maximum": 9007199254740991,
+						"minimum": 1,
+						"type": "integer"
+					},
+					"state": {
+						"const": "preparing",
+						"type": "string"
+					}
+				},
+				"required": [
+					"kind",
+					"state",
+					"queryId",
+					"retryAfterMs"
+				],
+				"type": "object"
+			}
+		] },
 		"GetFeedbackCapabilitiesRequest": {
 			"properties": {},
 			"required": [],
@@ -36277,6 +36524,261 @@ var PorticoCastContracts = (function(exports) {
 			"required": ["scope", "data"],
 			"type": "object"
 		},
+		"GetGenreQueryRequest": {
+			"properties": {},
+			"required": [],
+			"type": "object"
+		},
+		"GetGenreQueryResponse": { "anyOf": [
+			{
+				"properties": {
+					"genres": {
+						"items": {
+							"properties": {
+								"backdrop": {
+									"properties": {
+										"id": { "type": "string" },
+										"kind": {
+											"enum": ["item", "show"],
+											"type": "string"
+										},
+										"path": { "type": "string" }
+									},
+									"required": [
+										"kind",
+										"id",
+										"path"
+									],
+									"type": "object"
+								},
+								"count": {
+									"maximum": 9007199254740991,
+									"minimum": 1,
+									"type": "integer"
+								},
+								"covers": {
+									"items": {
+										"properties": {
+											"id": { "type": "string" },
+											"kind": {
+												"enum": ["item", "show"],
+												"type": "string"
+											},
+											"path": { "type": "string" }
+										},
+										"required": [
+											"kind",
+											"id",
+											"path"
+										],
+										"type": "object"
+									},
+									"maxItems": 2,
+									"type": "array"
+								},
+								"label": { "type": "string" },
+								"value": { "type": "string" }
+							},
+							"required": [
+								"value",
+								"label",
+								"count",
+								"covers"
+							],
+							"type": "object"
+						},
+						"maxItems": 50,
+						"type": "array"
+					},
+					"hasGenres": { "type": "boolean" },
+					"nextCursor": {
+						"maxLength": 512,
+						"minLength": 1,
+						"pattern": "^[A-Za-z0-9_-]+$",
+						"type": "string"
+					},
+					"previousCursor": {
+						"maxLength": 512,
+						"minLength": 1,
+						"pattern": "^[A-Za-z0-9_-]+$",
+						"type": "string"
+					},
+					"queryId": {
+						"maxLength": 512,
+						"minLength": 1,
+						"pattern": "^[A-Za-z0-9_-]+$",
+						"type": "string"
+					},
+					"reloadCursor": {
+						"maxLength": 512,
+						"minLength": 1,
+						"pattern": "^[A-Za-z0-9_-]+$",
+						"type": "string"
+					},
+					"revision": { "type": "string" }
+				},
+				"required": [
+					"queryId",
+					"revision",
+					"genres"
+				],
+				"type": "object"
+			},
+			{
+				"properties": {
+					"genres": {
+						"items": {
+							"properties": {
+								"backdrop": {
+									"properties": {
+										"id": { "type": "string" },
+										"kind": {
+											"enum": ["item", "show"],
+											"type": "string"
+										},
+										"path": { "type": "string" }
+									},
+									"required": [
+										"kind",
+										"id",
+										"path"
+									],
+									"type": "object"
+								},
+								"count": {
+									"maximum": 9007199254740991,
+									"minimum": 1,
+									"type": "integer"
+								},
+								"covers": {
+									"items": {
+										"properties": {
+											"id": { "type": "string" },
+											"kind": {
+												"enum": ["item", "show"],
+												"type": "string"
+											},
+											"path": { "type": "string" }
+										},
+										"required": [
+											"kind",
+											"id",
+											"path"
+										],
+										"type": "object"
+									},
+									"maxItems": 2,
+									"type": "array"
+								},
+								"label": { "type": "string" },
+								"value": { "type": "string" }
+							},
+							"required": [
+								"value",
+								"label",
+								"count",
+								"covers"
+							],
+							"type": "object"
+						},
+						"maxItems": 0,
+						"type": "array"
+					},
+					"hasGenresKnown": {
+						"const": false,
+						"type": "boolean"
+					},
+					"kind": {
+						"const": "genre-fallback",
+						"type": "string"
+					},
+					"preparation": {
+						"properties": {
+							"kind": {
+								"const": "genre-preparing",
+								"type": "string"
+							},
+							"queryId": {
+								"maxLength": 512,
+								"minLength": 1,
+								"pattern": "^[A-Za-z0-9_-]+$",
+								"type": "string"
+							},
+							"retryAfterMs": {
+								"maximum": 9007199254740991,
+								"minimum": 1,
+								"type": "integer"
+							},
+							"state": {
+								"const": "preparing",
+								"type": "string"
+							}
+						},
+						"required": [
+							"kind",
+							"state",
+							"queryId",
+							"retryAfterMs"
+						],
+						"type": "object"
+					},
+					"queryId": {
+						"maxLength": 512,
+						"minLength": 1,
+						"pattern": "^[A-Za-z0-9_-]+$",
+						"type": "string"
+					},
+					"revision": {
+						"const": "preparing",
+						"type": "string"
+					},
+					"totalIsLowerBound": {
+						"const": true,
+						"type": "boolean"
+					}
+				},
+				"required": [
+					"kind",
+					"totalIsLowerBound",
+					"queryId",
+					"revision",
+					"genres",
+					"hasGenresKnown",
+					"preparation"
+				],
+				"type": "object"
+			},
+			{
+				"properties": {
+					"kind": {
+						"const": "genre-preparing",
+						"type": "string"
+					},
+					"queryId": {
+						"maxLength": 512,
+						"minLength": 1,
+						"pattern": "^[A-Za-z0-9_-]+$",
+						"type": "string"
+					},
+					"retryAfterMs": {
+						"maximum": 9007199254740991,
+						"minimum": 1,
+						"type": "integer"
+					},
+					"state": {
+						"const": "preparing",
+						"type": "string"
+					}
+				},
+				"required": [
+					"kind",
+					"state",
+					"queryId",
+					"retryAfterMs"
+				],
+				"type": "object"
+			}
+		] },
 		"GetGuideAiringsRequest": {
 			"properties": {},
 			"required": [],
@@ -93074,79 +93576,302 @@ var PorticoCastContracts = (function(exports) {
 			"required": [],
 			"type": "object"
 		},
-		"GetLibraryFacetsResponse": { "anyOf": [{
-			"properties": {
-				"field": { "type": "string" },
-				"revision": { "type": "string" },
-				"total": {
-					"maximum": 9007199254740991,
-					"minimum": -9007199254740991,
-					"type": "integer"
+		"GetLibraryFacetsResponse": { "anyOf": [
+			{
+				"properties": {
+					"field": { "type": "string" },
+					"revision": { "type": "string" },
+					"total": {
+						"maximum": 9007199254740991,
+						"minimum": -9007199254740991,
+						"type": "integer"
+					},
+					"totalIsLowerBound": { "type": "boolean" },
+					"values": {
+						"items": {
+							"properties": {
+								"count": {
+									"maximum": 9007199254740991,
+									"minimum": -9007199254740991,
+									"type": "integer"
+								},
+								"countIsLowerBound": { "type": "boolean" },
+								"label": { "type": "string" },
+								"seriesId": {
+									"pattern": "^[A-Za-z0-9_-]{43}$",
+									"type": "string"
+								},
+								"value": { "type": "string" }
+							},
+							"required": [
+								"value",
+								"label",
+								"count",
+								"countIsLowerBound"
+							],
+							"type": "object"
+						},
+						"type": "array"
+					}
 				},
-				"totalIsLowerBound": { "type": "boolean" },
-				"values": {
-					"items": {
+				"required": [
+					"field",
+					"totalIsLowerBound",
+					"total",
+					"values"
+				],
+				"type": "object"
+			},
+			{
+				"properties": {
+					"field": { "type": "string" },
+					"kind": {
+						"const": "simple-keyset",
+						"type": "string"
+					},
+					"revision": { "type": "string" },
+					"total": {
+						"maximum": 9007199254740991,
+						"minimum": 0,
+						"type": "integer"
+					},
+					"totalIsLowerBound": {
+						"const": false,
+						"type": "boolean"
+					},
+					"values": {
+						"items": {
+							"properties": {
+								"count": {
+									"maximum": 9007199254740991,
+									"minimum": -9007199254740991,
+									"type": "integer"
+								},
+								"countIsLowerBound": { "type": "boolean" },
+								"label": { "type": "string" },
+								"seriesId": {
+									"pattern": "^[A-Za-z0-9_-]{43}$",
+									"type": "string"
+								},
+								"value": { "type": "string" }
+							},
+							"required": [
+								"value",
+								"label",
+								"count",
+								"countIsLowerBound"
+							],
+							"type": "object"
+						},
+						"maxItems": 200,
+						"type": "array"
+					},
+					"window": {
 						"properties": {
-							"count": {
-								"maximum": 9007199254740991,
-								"minimum": -9007199254740991,
+							"basis": { "type": "string" },
+							"limit": {
+								"maximum": 200,
+								"minimum": 1,
 								"type": "integer"
 							},
-							"countIsLowerBound": { "type": "boolean" },
-							"label": { "type": "string" },
-							"seriesId": {
-								"pattern": "^[A-Za-z0-9_-]{43}$",
+							"next": {
+								"maxLength": 512,
+								"minLength": 1,
+								"pattern": "^[A-Za-z0-9_-]+$",
 								"type": "string"
 							},
-							"value": { "type": "string" }
+							"previous": {
+								"maxLength": 512,
+								"minLength": 1,
+								"pattern": "^[A-Za-z0-9_-]+$",
+								"type": "string"
+							},
+							"queryId": {
+								"maxLength": 512,
+								"minLength": 1,
+								"pattern": "^[A-Za-z0-9_-]+$",
+								"type": "string"
+							},
+							"reload": {
+								"maxLength": 512,
+								"minLength": 1,
+								"pattern": "^[A-Za-z0-9_-]+$",
+								"type": "string"
+							},
+							"returned": {
+								"maximum": 200,
+								"minimum": 0,
+								"type": "integer"
+							}
 						},
 						"required": [
-							"value",
-							"label",
-							"count",
-							"countIsLowerBound"
+							"queryId",
+							"basis",
+							"limit",
+							"returned"
+						],
+						"type": "object"
+					}
+				},
+				"required": [
+					"kind",
+					"field",
+					"revision",
+					"total",
+					"totalIsLowerBound",
+					"values",
+					"window"
+				],
+				"type": "object"
+			},
+			{
+				"properties": {
+					"field": { "type": "string" },
+					"kind": {
+						"const": "facet-fallback",
+						"type": "string"
+					},
+					"preparation": {
+						"properties": {
+							"kind": {
+								"const": "facet-preparing",
+								"type": "string"
+							},
+							"queryId": {
+								"maxLength": 512,
+								"minLength": 1,
+								"pattern": "^[A-Za-z0-9_-]+$",
+								"type": "string"
+							},
+							"retryAfterMs": {
+								"maximum": 9007199254740991,
+								"minimum": 1,
+								"type": "integer"
+							},
+							"state": {
+								"const": "preparing",
+								"type": "string"
+							}
+						},
+						"required": [
+							"kind",
+							"state",
+							"queryId",
+							"retryAfterMs"
 						],
 						"type": "object"
 					},
-					"type": "array"
-				}
+					"revision": { "type": "string" },
+					"total": {
+						"maximum": 9007199254740991,
+						"minimum": 0,
+						"type": "integer"
+					},
+					"totalIsLowerBound": {
+						"const": true,
+						"type": "boolean"
+					},
+					"values": {
+						"items": {
+							"properties": {
+								"count": {
+									"maximum": 9007199254740991,
+									"minimum": 0,
+									"type": "integer"
+								},
+								"countIsLowerBound": {
+									"const": true,
+									"type": "boolean"
+								},
+								"label": { "type": "string" },
+								"seriesId": {
+									"pattern": "^[A-Za-z0-9_-]{43}$",
+									"type": "string"
+								},
+								"value": { "type": "string" }
+							},
+							"required": [
+								"value",
+								"label",
+								"count",
+								"countIsLowerBound"
+							],
+							"type": "object"
+						},
+						"maxItems": 200,
+						"type": "array"
+					}
+				},
+				"required": [
+					"kind",
+					"field",
+					"totalIsLowerBound",
+					"total",
+					"values",
+					"preparation"
+				],
+				"type": "object"
 			},
-			"required": [
-				"field",
-				"totalIsLowerBound",
-				"total",
-				"values"
-			],
-			"type": "object"
-		}, {
-			"additionalProperties": false,
-			"properties": {
-				"kind": {
-					"enum": ["reading-facet-preparing"],
-					"type": "string"
+			{
+				"properties": {
+					"kind": {
+						"const": "facet-preparing",
+						"type": "string"
+					},
+					"queryId": {
+						"maxLength": 512,
+						"minLength": 1,
+						"pattern": "^[A-Za-z0-9_-]+$",
+						"type": "string"
+					},
+					"retryAfterMs": {
+						"maximum": 9007199254740991,
+						"minimum": 1,
+						"type": "integer"
+					},
+					"state": {
+						"const": "preparing",
+						"type": "string"
+					}
 				},
-				"queryId": {
-					"minLength": 1,
-					"type": "string"
-				},
-				"retryAfterMs": {
-					"maximum": 9007199254740991,
-					"minimum": 1e3,
-					"type": "integer"
-				},
-				"state": {
-					"enum": ["preparing"],
-					"type": "string"
-				}
+				"required": [
+					"kind",
+					"state",
+					"queryId",
+					"retryAfterMs"
+				],
+				"type": "object"
 			},
-			"required": [
-				"kind",
-				"state",
-				"queryId",
-				"retryAfterMs"
-			],
-			"type": "object"
-		}] },
+			{
+				"additionalProperties": false,
+				"properties": {
+					"kind": {
+						"enum": ["reading-facet-preparing"],
+						"type": "string"
+					},
+					"queryId": {
+						"minLength": 1,
+						"type": "string"
+					},
+					"retryAfterMs": {
+						"maximum": 9007199254740991,
+						"minimum": 1e3,
+						"type": "integer"
+					},
+					"state": {
+						"enum": ["preparing"],
+						"type": "string"
+					}
+				},
+				"required": [
+					"kind",
+					"state",
+					"queryId",
+					"retryAfterMs"
+				],
+				"type": "object"
+			}
+		] },
 		"GetLibraryInventoryRequest": {
 			"properties": {},
 			"required": [],
@@ -116854,34 +117579,13 @@ var PorticoCastContracts = (function(exports) {
 			"required": [],
 			"type": "object"
 		},
-		"GetSearchGenresResponse": {
-			"properties": {
-				"genres": {
-					"items": {
-						"properties": {
-							"backdrop": {
-								"properties": {
-									"id": { "type": "string" },
-									"kind": {
-										"enum": ["item", "show"],
-										"type": "string"
-									},
-									"path": { "type": "string" }
-								},
-								"required": [
-									"kind",
-									"id",
-									"path"
-								],
-								"type": "object"
-							},
-							"count": {
-								"maximum": 9007199254740991,
-								"minimum": 1,
-								"type": "integer"
-							},
-							"covers": {
-								"items": {
+		"GetSearchGenresResponse": { "anyOf": [
+			{
+				"properties": {
+					"genres": {
+						"items": {
+							"properties": {
+								"backdrop": {
 									"properties": {
 										"id": { "type": "string" },
 										"kind": {
@@ -116897,28 +117601,234 @@ var PorticoCastContracts = (function(exports) {
 									],
 									"type": "object"
 								},
-								"maxItems": 2,
-								"type": "array"
+								"count": {
+									"maximum": 9007199254740991,
+									"minimum": 1,
+									"type": "integer"
+								},
+								"covers": {
+									"items": {
+										"properties": {
+											"id": { "type": "string" },
+											"kind": {
+												"enum": ["item", "show"],
+												"type": "string"
+											},
+											"path": { "type": "string" }
+										},
+										"required": [
+											"kind",
+											"id",
+											"path"
+										],
+										"type": "object"
+									},
+									"maxItems": 2,
+									"type": "array"
+								},
+								"label": { "type": "string" },
+								"value": { "type": "string" }
 							},
-							"label": { "type": "string" },
-							"value": { "type": "string" }
+							"required": [
+								"value",
+								"label",
+								"count",
+								"covers"
+							],
+							"type": "object"
+						},
+						"maxItems": 50,
+						"type": "array"
+					},
+					"hasGenres": { "type": "boolean" },
+					"nextCursor": {
+						"maxLength": 512,
+						"minLength": 1,
+						"pattern": "^[A-Za-z0-9_-]+$",
+						"type": "string"
+					},
+					"previousCursor": {
+						"maxLength": 512,
+						"minLength": 1,
+						"pattern": "^[A-Za-z0-9_-]+$",
+						"type": "string"
+					},
+					"queryId": {
+						"maxLength": 512,
+						"minLength": 1,
+						"pattern": "^[A-Za-z0-9_-]+$",
+						"type": "string"
+					},
+					"reloadCursor": {
+						"maxLength": 512,
+						"minLength": 1,
+						"pattern": "^[A-Za-z0-9_-]+$",
+						"type": "string"
+					},
+					"revision": { "type": "string" }
+				},
+				"required": [
+					"queryId",
+					"revision",
+					"genres"
+				],
+				"type": "object"
+			},
+			{
+				"properties": {
+					"genres": {
+						"items": {
+							"properties": {
+								"backdrop": {
+									"properties": {
+										"id": { "type": "string" },
+										"kind": {
+											"enum": ["item", "show"],
+											"type": "string"
+										},
+										"path": { "type": "string" }
+									},
+									"required": [
+										"kind",
+										"id",
+										"path"
+									],
+									"type": "object"
+								},
+								"count": {
+									"maximum": 9007199254740991,
+									"minimum": 1,
+									"type": "integer"
+								},
+								"covers": {
+									"items": {
+										"properties": {
+											"id": { "type": "string" },
+											"kind": {
+												"enum": ["item", "show"],
+												"type": "string"
+											},
+											"path": { "type": "string" }
+										},
+										"required": [
+											"kind",
+											"id",
+											"path"
+										],
+										"type": "object"
+									},
+									"maxItems": 2,
+									"type": "array"
+								},
+								"label": { "type": "string" },
+								"value": { "type": "string" }
+							},
+							"required": [
+								"value",
+								"label",
+								"count",
+								"covers"
+							],
+							"type": "object"
+						},
+						"maxItems": 0,
+						"type": "array"
+					},
+					"hasGenresKnown": {
+						"const": false,
+						"type": "boolean"
+					},
+					"kind": {
+						"const": "genre-fallback",
+						"type": "string"
+					},
+					"preparation": {
+						"properties": {
+							"kind": {
+								"const": "genre-preparing",
+								"type": "string"
+							},
+							"queryId": {
+								"maxLength": 512,
+								"minLength": 1,
+								"pattern": "^[A-Za-z0-9_-]+$",
+								"type": "string"
+							},
+							"retryAfterMs": {
+								"maximum": 9007199254740991,
+								"minimum": 1,
+								"type": "integer"
+							},
+							"state": {
+								"const": "preparing",
+								"type": "string"
+							}
 						},
 						"required": [
-							"value",
-							"label",
-							"count",
-							"covers"
+							"kind",
+							"state",
+							"queryId",
+							"retryAfterMs"
 						],
 						"type": "object"
 					},
-					"type": "array"
+					"queryId": {
+						"maxLength": 512,
+						"minLength": 1,
+						"pattern": "^[A-Za-z0-9_-]+$",
+						"type": "string"
+					},
+					"revision": {
+						"const": "preparing",
+						"type": "string"
+					},
+					"totalIsLowerBound": {
+						"const": true,
+						"type": "boolean"
+					}
 				},
-				"nextCursor": { "type": "string" },
-				"revision": { "type": "string" }
+				"required": [
+					"kind",
+					"totalIsLowerBound",
+					"queryId",
+					"revision",
+					"genres",
+					"hasGenresKnown",
+					"preparation"
+				],
+				"type": "object"
 			},
-			"required": ["revision", "genres"],
-			"type": "object"
-		},
+			{
+				"properties": {
+					"kind": {
+						"const": "genre-preparing",
+						"type": "string"
+					},
+					"queryId": {
+						"maxLength": 512,
+						"minLength": 1,
+						"pattern": "^[A-Za-z0-9_-]+$",
+						"type": "string"
+					},
+					"retryAfterMs": {
+						"maximum": 9007199254740991,
+						"minimum": 1,
+						"type": "integer"
+					},
+					"state": {
+						"const": "preparing",
+						"type": "string"
+					}
+				},
+				"required": [
+					"kind",
+					"state",
+					"queryId",
+					"retryAfterMs"
+				],
+				"type": "object"
+			}
+		] },
 		"GetSearchHistoryRequest": {
 			"properties": {},
 			"required": [],
@@ -198574,6 +199484,8 @@ var PorticoCastContracts = (function(exports) {
 		"browse_across_counts": "/v1/browse/counts",
 		"browse_library": "/v1/libraries/{id}/browse",
 		"browse_library_counts": "/v1/libraries/{id}/browse/counts",
+		"cancel_facet_query": "/v1/facet-queries/{id}",
+		"cancel_genre_query": "/v1/genre-queries/{id}",
 		"change_connectivity_policy": "/v1/admin/connectivity/policy",
 		"change_console_settings": "/v1/admin/console/settings",
 		"change_playback_session": "/v1/playback/sessions/{id}",
@@ -198900,9 +199812,11 @@ var PorticoCastContracts = (function(exports) {
 		"get_dvr_storage": "/v1/dvr/storage",
 		"get_dvr_summary": "/v1/dvr/summary",
 		"get_events": "/v1/events",
+		"get_facet_query": "/v1/facet-queries/{id}",
 		"get_feedback_capabilities": "/v1/feedback/capabilities",
 		"get_feedback_reports": "/v1/feedback/reports",
 		"get_feedback_reports_id": "/v1/feedback/reports/{id}",
+		"get_genre_query": "/v1/genre-queries/{id}",
 		"get_guide": "/v1/guide",
 		"get_guide_airings": "/v1/guide/airings",
 		"get_guide_channels": "/v1/guide/channels",

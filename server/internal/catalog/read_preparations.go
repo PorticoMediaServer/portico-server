@@ -17,3 +17,14 @@ func (s *Service) ReadPreparations() *readprep.Store {
 	}
 	return s.state.readPreparations
 }
+
+// UseGenreRuntime installs the process-owned maintained genre reader before
+// serving. Context clones share it; it never starts workers or a new cache.
+func (s *Service) UseGenreRuntime(runtime *GenreRuntime) { s.state.genreRuntime = runtime }
+
+func (s *Service) GenreRuntime() *GenreRuntime {
+	if s == nil || s.state == nil {
+		return nil
+	}
+	return s.state.genreRuntime
+}

@@ -14,6 +14,7 @@ export interface PreparationRequestPort {
 }
 
 export type PreparingRead = Readonly<{queryId: string; retryAfterMs: number}>;
+export type PreparationIntermediateReady<Value> = Readonly<{pending: PreparingRead; value: Value}>;
 export type PreparationRuntime = Readonly<{
   now(): number;
   random(): number;
@@ -21,7 +22,7 @@ export type PreparationRuntime = Readonly<{
   clearTimeout(timer: unknown): void;
 }>;
 
-export type ReadPreparationOptions<Descriptor, Ready> = Readonly<{
+export type ReadPreparationOptions<Descriptor, Ready, Intermediate = never> = Readonly<{
   api: PreparationRequestPort;
   /** Capture an immutable descriptor; refresh must re-anchor without stale row tokens. */
   descriptor: Descriptor;
@@ -32,7 +33,14 @@ export type ReadPreparationOptions<Descriptor, Ready> = Readonly<{
     cancel(queryId: string, descriptor: Descriptor): string;
   }>;
   parseReady(body: unknown, response: PreparationResponse): Ready;
-  /** Validate/extract a handle from the domain's raw 200 envelope, including late replies.
+  /** Optional domain-specific 200 intermediate union member. Undefined leaves the ordinary
+   * ready path unchanged. Validate its complete envelope and bounded rows before returning.
+   * The pending handle remains stable through 202/intermediate/final-ready responses. */
+  parseIntermediateReady?(body: unknown, response: PreparationResponse): PreparationIntermediateReady<Intermediate> | undefined;
+  /** Transient synchronous publication after scope/handle/path/retry validation. The helper
+   * drops intermediate value/raw references before waiting and continues to final ready. */
+  onIntermediateReady?(value: Intermediate, response: PreparationResponse): void;
+  /** Validate/extract a handle from the domain's raw 200 union, including intermediate/late replies.
    * Required when ready owns a handle even without a preceding 202. No ready rows need be
    * parsed for cleanup. Undefined means no additional handle. */
   readyQueryId?(body: unknown, response: PreparationResponse): string | undefined;
@@ -92,7 +100,7 @@ function validQueryId(queryId: unknown): queryId is string {
   return typeof queryId === 'string' && /^[A-Za-z0-9._~-]{1,512}$/.test(queryId) && queryId !== '.' && queryId !== '..';
 }
 
-function checkedPending(pending: PreparingRead, response: PreparationResponse): PreparingRead {
+function checkedPending(pending: PreparingRead | undefined, response: PreparationResponse): PreparingRead {
   if (!pending || !validQueryId(pending.queryId)
       || !Number.isSafeInteger(pending.retryAfterMs) || pending.retryAfterMs < 0) {
     throw new PreparationProtocolError('invalid_preparing', response);
@@ -117,13 +125,14 @@ function retryFloor(response: PreparationResponse, now: number): number {
 type Handle = {queryId: string; cancelled: boolean};
 
 /**
- * Read one page. 200 alone is ready; 202 schedules one poll at a time. One 409 re-anchors
+ * Read one page. 200 is ready unless the optional intermediate adapter recognizes it;
+ * intermediates and 202 schedule one poll at a time. One 409 re-anchors
  * the original descriptor, then any further refusal is surfaced through errorFromResponse.
  * Ready values/raw metadata are returned directly, never retained in a session/cache. A
  * continuation owner opts into retainOnReady and releases its lease on page retirement.
  */
-export async function readPreparation<Descriptor, Ready>(
-  options: ReadPreparationOptions<Descriptor, Ready>,
+export async function readPreparation<Descriptor, Ready, Intermediate = never>(
+  options: ReadPreparationOptions<Descriptor, Ready, Intermediate>,
 ): Promise<Readonly<{value: Ready; response: PreparationResponse; release(): void}>> {
   const {api, descriptor, paths} = options;
   const supplied = options.runtime;
@@ -191,13 +200,21 @@ export async function readPreparation<Descriptor, Ready>(
     try {
       const queryId = response.status === 202
         ? checkedPending(options.parsePreparing(response.body, response), response).queryId
-        : response.status === 200 ? options.readyQueryId?.(response.body, response) : undefined;
+        : response.status === 200 ? lateReadyId(response) : undefined;
       if (!validQueryId(queryId)) return;
       // A poll cannot replace its handle. Never use response Location for cleanup either.
       if (requestedHandle && requestedHandle.queryId !== queryId) return;
       const owned = requestedHandle ?? (handle?.queryId === queryId ? handle : {queryId, cancelled: false});
       release(owned);
     } catch { /* Unvalidated envelopes cannot authorize any cancellation path. */ }
+  }
+
+  function lateReadyId(response: PreparationResponse): string | undefined {
+    // A minimal domain extractor avoids parsing/copying intermediate rows during cleanup.
+    const explicit = options.readyQueryId?.(response.body, response);
+    if (explicit !== undefined) return explicit;
+    const intermediate = options.parseIntermediateReady?.(response.body, response);
+    return intermediate === undefined ? undefined : checkedPending(intermediate?.pending, response).queryId;
   }
 
   async function request(path: string): Promise<PreparationResponse> {
@@ -243,9 +260,11 @@ export async function readPreparation<Descriptor, Ready>(
     current();
     let refreshed = false, attempt = 0;
     while (true) {
-      const response = await request(path);
+      let response: PreparationResponse | undefined = await request(path);
       try { current(); } catch (error) { releaseLate(response, handle); throw error; }
       if (response.status === 200) {
+        // Capture a validated minimal handle before full row parsing can fail. The extractor
+        // covers the domain's whole 200 union, so malformed rows cannot strand its interest.
         const readyId = options.readyQueryId?.(response.body, response);
         if (readyId !== undefined) {
           if (!validQueryId(readyId) || (handle && handle.queryId !== readyId)) {
@@ -254,6 +273,9 @@ export async function readPreparation<Descriptor, Ready>(
           handle ??= {queryId: readyId, cancelled: false};
         }
         current();
+      }
+      let intermediate = response.status === 200 ? options.parseIntermediateReady?.(response.body, response) : undefined;
+      if (response.status === 200 && intermediate === undefined) {
         const value = options.parseReady(response.body, response);
         current();
         if (options.retainOnReady && handle) keepAbortListener = true;
@@ -274,12 +296,12 @@ export async function readPreparation<Descriptor, Ready>(
         current();
         continue;
       }
-      if (response.status !== 202) {
+      if (response.status !== 202 && intermediate === undefined) {
         const error = options.errorFromResponse(response);
         current();
         throw error;
       }
-      const pending = checkedPending(options.parsePreparing(response.body, response), response);
+      const pending = checkedPending(intermediate !== undefined ? intermediate?.pending : options.parsePreparing(response.body, response), response);
       if (handle && handle.queryId !== pending.queryId) throw new PreparationProtocolError('invalid_preparing', response);
       handle ??= {queryId: pending.queryId, cancelled: false};
       current();
@@ -294,8 +316,12 @@ export async function readPreparation<Descriptor, Ready>(
       const delayMs = floor + 1 + Math.floor(random * Math.max(1, local / 4));
       if (!Number.isSafeInteger(delayMs)) throw new PreparationProtocolError('invalid_retry_after', response);
       current();
-      options.onPreparing?.(pending, response);
+      if (intermediate !== undefined) options.onIntermediateReady?.(intermediate.value, response);
+      else options.onPreparing?.(pending, response);
       current();
+      // In particular, a legal oversized fallback row must not live across this wait.
+      intermediate = undefined;
+      response = undefined;
       await wait(delayMs);
     }
   } catch (error) {

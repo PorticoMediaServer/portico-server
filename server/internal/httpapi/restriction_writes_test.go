@@ -429,6 +429,8 @@ const (
 // administration (/v1/admin/…), which is probed by rule.
 func restrictionWriteRoutes() map[string]writeRoute {
 	routes := map[string]writeRoute{
+		"DELETE /v1/facet-queries/{id}":                                               {check: facetQueryRestrictionCheck},
+		"DELETE /v1/genre-queries/{id}":                                               {check: genreQueryRestrictionCheck},
 		"DELETE /v1/libraries/{id}/browse-selection-queries/{queryId}":                {check: browseSelectionQueryRestrictionCheck("DELETE")},
 		"DELETE /v1/libraries/{id}/reading-browse-queries/{queryId}":                  {check: readingBrowseQueryRestrictionCheck("DELETE")},
 		"DELETE /v1/libraries/{id}/reading-facet-queries/{queryId}":                   {check: readingFacetQueryRestrictionCheck("DELETE")},

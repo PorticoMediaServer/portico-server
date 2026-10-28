@@ -170,6 +170,11 @@ func (s *Service) DeleteVersion(ctx context.Context, auth Authorize, item, asset
 			if e = compactcatalog.UnlinkAssetTx(ctx, tx, current.entityID, id); e != nil {
 				return e
 			}
+			// This destructive point operation returns the selected title's current
+			// missing state; bulk source fanout stays asynchronous and bounded.
+			if e = compactcatalog.SettleMissingTx(ctx, tx, current.entityID); e != nil {
+				return e
+			}
 			// Do not let an explicit inventory link put this version back next scan.
 			if _, e = tx.ExecContext(ctx, `DELETE FROM inventory_version_links WHERE item_id=? AND asset_id=?`, current.entityID, asset); e != nil {
 				return e

@@ -71,9 +71,14 @@ func TestSearchGenresRuling36CountsOrderAndRepresentativeArt(t *testing.T) {
 	}
 	s := New(c.DB)
 	viewer := Viewer{Profile: "viewer", Fence: "authority", Libraries: []string{"movies", "tv", "music"}, Restrictions: identity.ContentRestrictions{BlockedLabels: []string{"Adult"}}}
-	page, err := s.SearchGenres(viewer, SearchGenreRequest{})
+	page, err := s.searchGenresReference(viewer, SearchGenreRequest{})
 	if err != nil {
 		t.Fatal(err)
+	}
+	runtime, _, _ := genreTestRuntime(t, c)
+	maintained := genreReady(t, runtime, viewer, SearchGenreRequest{})
+	if !reflect.DeepEqual(maintained.Genres, page.Genres) {
+		t.Fatalf("maintained count/art differs from SQL oracle: got %+v want %+v", maintained.Genres, page.Genres)
 	}
 	values := []string{}
 	byValue := map[string]SearchGenre{}
@@ -179,30 +184,30 @@ func TestSearchGenresRuling36CountsOrderAndRepresentativeArt(t *testing.T) {
 	if got := byValue["Drama"].Covers; len(got) != 2 || got[0].ID != items["d"].Public || got[1].ID != items["a"].Public {
 		t.Fatal("unused poster then ranked fallback", got)
 	}
-	short, err := s.SearchGenres(viewer, SearchGenreRequest{Limit: 2})
+	short, err := s.searchGenresReference(viewer, SearchGenreRequest{Limit: 2})
 	if err != nil || !reflect.DeepEqual(short.Genres, page.Genres[:2]) || short.NextCursor == "" {
 		t.Fatal("the initial prefix changed with surface limit", short, err)
 	}
-	continued, err := s.SearchGenres(viewer, SearchGenreRequest{Limit: 2, Cursor: short.NextCursor})
+	continued, err := s.searchGenresReference(viewer, SearchGenreRequest{Limit: 2, Cursor: short.NextCursor})
 	if err != nil || len(continued.Genres) != 2 || continued.Genres[0].Value != "Sci-Fi & Fantasy" || continued.Genres[1].Value != "No art" {
 		t.Fatal("All genres cannot continue through missing art", continued, err)
 	}
 	otherViewer := viewer
 	otherViewer.Fence = "revoked-and-regranted"
-	if _, err = s.SearchGenres(otherViewer, SearchGenreRequest{Limit: 2, Cursor: short.NextCursor}); !errors.Is(err, ErrCursor) {
+	if _, err = s.searchGenresReference(otherViewer, SearchGenreRequest{Limit: 2, Cursor: short.NextCursor}); !errors.Is(err, ErrCursor) {
 		t.Fatal("cursor crossed an authority fence", err)
 	}
 	// A cached counted list must still follow the current selections.
 	c.Exec(`DELETE FROM artwork_selections WHERE entity_id=? AND role='backdrop'`, items["a"].ID)
-	withoutReady, err := s.SearchGenres(viewer, SearchGenreRequest{})
+	withoutReady, err := s.searchGenresReference(viewer, SearchGenreRequest{})
 	if err != nil || withoutReady.Genres[0].Backdrop == nil || withoutReady.Genres[0].Backdrop.ID != items["b"].Public {
 		t.Fatal("cached art outlived readiness", withoutReady, err)
 	}
 	c.Exec(`DELETE FROM artwork_selections WHERE entity_id=? AND role='poster'`, items["a"].ID)
-	if _, err = s.SearchGenres(viewer, SearchGenreRequest{Limit: 2, Cursor: short.NextCursor}); !errors.Is(err, ErrStaleContinuation) {
+	if _, err = s.searchGenresReference(viewer, SearchGenreRequest{Limit: 2, Cursor: short.NextCursor}); !errors.Is(err, ErrStaleContinuation) {
 		t.Fatal("selected-art revision did not invalidate the old cursor", err)
 	}
-	if empty, err := s.SearchGenres(Viewer{Profile: "none"}, SearchGenreRequest{}); err != nil || len(empty.Genres) != 0 {
+	if empty, err := s.searchGenresReference(Viewer{Profile: "none"}, SearchGenreRequest{}); err != nil || len(empty.Genres) != 0 {
 		t.Fatal("empty library authority disclosed genres", empty, err)
 	}
 }
@@ -210,7 +215,7 @@ func TestSearchGenresRuling36CountsOrderAndRepresentativeArt(t *testing.T) {
 func TestSearchGenresRejectInvalidWindows(t *testing.T) {
 	s := New(nil)
 	for _, limit := range []int{-1, 51} {
-		if _, err := s.SearchGenres(Viewer{}, SearchGenreRequest{Limit: limit}); err == nil {
+		if _, err := s.searchGenresReference(Viewer{}, SearchGenreRequest{Limit: limit}); err == nil {
 			t.Fatal("invalid window accepted", limit)
 		}
 	}

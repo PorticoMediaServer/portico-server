@@ -576,6 +576,15 @@ func run() (runErr error) {
 	defer readPreparations.Close()
 	cat := catalog.New(db)
 	cat.UseReadPreparations(readPreparations)
+	facetReads, e := catalog.NewFacetRuntime(db, readPreparations, catalog.CheckFacetWindowAuthority, 128<<20)
+	if e != nil {
+		return e
+	}
+	genreReads, e := catalog.NewGenreRuntime(db, readPreparations, catalog.CheckFacetWindowAuthority, facetReads)
+	if e != nil {
+		return e
+	}
+	cat.UseGenreRuntime(genreReads)
 	cat.SetStorage(storeIO)
 	// This is a barrier, not a background best-effort capability update. No
 	// playback service is constructed until qualification completes or times out.
@@ -957,6 +966,15 @@ func run() (runErr error) {
 	// Bind the same configured metadata service before the scanner can call it.
 	// Generation remains closed until its retained source runtime is composed.
 	scanner.EpisodeThumbnails = meta.ScanEpisodeThumbnails
+	facetLife, stopFacets := context.WithCancel(ctx)
+	facetsDone := make(chan struct{})
+	supervise.Go("cmd.facet-bases", func() {
+		defer close(facetsDone)
+		if err := facetReads.Run(facetLife); err != nil && !errors.Is(err, context.Canceled) {
+			log.Printf("facet base maintenance stopped: %v", err)
+		}
+	})
+	defer func() { stopFacets(); <-facetsDone }()
 	supervise.Supervise(ctx, "cmd.remote-sources", sources.Run)
 	supervise.Supervise(ctx, "cmd.source-scans", func(life context.Context) { runSourceAdvancedScans(life, scanner, sources) })
 	supervise.Supervise(ctx, "cmd.library-channels", generatedChannels.Run)
@@ -1315,7 +1333,7 @@ func run() (runErr error) {
 		deliverySettings.Refresh(ctx)
 		claimHandler.Remote().Wake()
 		invalidateCustomSource()
-	}, WebDirectory: os.Getenv("PORTICO_WEB_DIR"), Analysis: analysisService, Prepared: preparedVersions, Downloads: offlineDownloads, DVR: recordingStore, Subtitles: subtitleService, Lyrics: lyricService, LyricsBulk: lyricFetch, LyricsProbe: ffprobeTool, LibraryChannels: generatedChannels, Console: console, Scheduler: scheduler, Measurements: measurements, Networking: claimHandler, CustomCertificate: customCertificate, RouteIdentity: networking.NewRouteIdentityHandler(claimKeys, claimRunner, claimHandler.Certificates(), customCertificate), LiveChannels: liveSources, PlaybackRuntime: currentPlayback, AudioMedia: subtitleRenderer, Storage: storeIO, Mounts: managed, RemoteSources: sources, DB: db, Watchdog: watchdog, Identity: ident, Catalog: cat, Ingestion: scanner, Playback: player, Hosted: control, Metadata: meta, Origins: origins, SetupHosts: setupHosts}
+	}, WebDirectory: os.Getenv("PORTICO_WEB_DIR"), Analysis: analysisService, Prepared: preparedVersions, Downloads: offlineDownloads, DVR: recordingStore, Subtitles: subtitleService, Lyrics: lyricService, LyricsBulk: lyricFetch, LyricsProbe: ffprobeTool, LibraryChannels: generatedChannels, Console: console, Scheduler: scheduler, Measurements: measurements, Networking: claimHandler, CustomCertificate: customCertificate, RouteIdentity: networking.NewRouteIdentityHandler(claimKeys, claimRunner, claimHandler.Certificates(), customCertificate), LiveChannels: liveSources, PlaybackRuntime: currentPlayback, AudioMedia: subtitleRenderer, Storage: storeIO, Mounts: managed, RemoteSources: sources, DB: db, Watchdog: watchdog, Identity: ident, Catalog: cat, FacetReads: facetReads, GenreReads: genreReads, Ingestion: scanner, Playback: player, Hosted: control, Metadata: meta, Origins: origins, SetupHosts: setupHosts}
 	apiDependencies.PrepareBrowseSelections = true
 	apiDependencies.PrepareReadingFacets = true
 	apiDependencies.PrepareReadingBrowse = true

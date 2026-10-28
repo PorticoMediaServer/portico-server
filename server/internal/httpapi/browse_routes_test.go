@@ -2,6 +2,7 @@ package httpapi
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"net/http/httptest"
 	"path/filepath"
@@ -22,7 +23,7 @@ func TestBrowseRoutesPublishAndExecuteTheVocabulary(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer db.Close()
+	t.Cleanup(func() { db.Close() })
 	ident, err := identity.New(db, root)
 	if err != nil {
 		t.Fatal(err)
@@ -45,13 +46,22 @@ func TestBrowseRoutesPublishAndExecuteTheVocabulary(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	handler := New(Dependencies{DB: db, Identity: ident, Catalog: catalog.New(db)})
-	request := func(method, path, body string) *httptest.ResponseRecorder {
-		r := httptest.NewRequest(method, path, bytes.NewBufferString(body))
+	d := Dependencies{DB: db, Identity: ident, Catalog: catalog.New(db)}
+	startFacets := composeHTTPFacetFixture(t, &d)
+	startFacets()
+	handler := New(d)
+	rawRequest := func(ctx context.Context, method, path, body string) *httptest.ResponseRecorder {
+		r := httptest.NewRequest(method, path, bytes.NewBufferString(body)).WithContext(ctx)
 		r.Header.Set("Authorization", "Bearer "+owner.AccessToken)
 		w := httptest.NewRecorder()
 		handler.ServeHTTP(w, r)
 		return w
+	}
+	request := func(method, path, body string) *httptest.ResponseRecorder {
+		if isHTTPFixtureFacetPath(method, path) {
+			return readyHTTPFacetFixture(t, path, rawRequest)
+		}
+		return rawRequest(context.Background(), method, path, body)
 	}
 	decodeBody := func(w *httptest.ResponseRecorder) map[string]any {
 		t.Helper()

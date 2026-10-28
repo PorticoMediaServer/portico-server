@@ -15,17 +15,24 @@ import (
 // routes. Bounds here describe limits already enforced by their owning services.
 func PublishedSchemas() (map[string]reflect.Type, map[reflect.Type]map[string]any, error) {
 	named := map[string]reflect.Type{
-		"LibraryChannelConfig": reflect.TypeFor[librarychannels.Config](),
-		"HomeLayout":           reflect.TypeFor[operations.HomeLayoutDocument](),
-		"HomeDocument":         reflect.TypeFor[catalog.HomeDocument](),
-		"DetailAction":         reflect.TypeFor[catalog.DetailAction](),
-		"AudioRenditionPlan":   reflect.TypeFor[playback.AudioRenditionPlan](),
-		"Capture":              reflect.TypeFor[operations.Capture](),
-		"FeedbackSubmission":   reflect.TypeFor[operations.FeedbackSubmission](),
-		"ContentEntry":         reflect.TypeFor[catalog.ContentEntry](),
-		"Category":             reflect.TypeFor[catalog.Category](),
-		"FilesystemPage":       reflect.TypeFor[administration.FilesystemPage](),
-		"MoveCollisionDetails": reflect.TypeFor[MoveCollisionDetails](),
+		"LibraryChannelConfig":    reflect.TypeFor[librarychannels.Config](),
+		"HomeLayout":              reflect.TypeFor[operations.HomeLayoutDocument](),
+		"HomeDocument":            reflect.TypeFor[catalog.HomeDocument](),
+		"DetailAction":            reflect.TypeFor[catalog.DetailAction](),
+		"AudioRenditionPlan":      reflect.TypeFor[playback.AudioRenditionPlan](),
+		"Capture":                 reflect.TypeFor[operations.Capture](),
+		"FeedbackSubmission":      reflect.TypeFor[operations.FeedbackSubmission](),
+		"ContentEntry":            reflect.TypeFor[catalog.ContentEntry](),
+		"Category":                reflect.TypeFor[catalog.Category](),
+		"FilesystemPage":          reflect.TypeFor[administration.FilesystemPage](),
+		"MoveCollisionDetails":    reflect.TypeFor[MoveCollisionDetails](),
+		"SimpleFacetPage":         reflect.TypeFor[catalog.SimpleFacetPage](),
+		"SimpleFacetWindow":       reflect.TypeFor[catalog.SimpleFacetWindow](),
+		"SimpleFacetPreparing":    reflect.TypeFor[catalog.SimpleFacetPreparing](),
+		"SimpleFacetFallbackPage": reflect.TypeFor[catalog.SimpleFacetFallbackPage](),
+		"SearchGenrePage":         reflect.TypeFor[catalog.SearchGenrePage](),
+		"SearchGenrePreparing":    reflect.TypeFor[catalog.SearchGenrePreparing](),
+		"SearchGenreFallbackPage": reflect.TypeFor[catalog.SearchGenreFallbackPage](),
 	}
 	wire := map[reflect.Type]map[string]any{}
 	for name, typ := range named {
@@ -36,6 +43,12 @@ func PublishedSchemas() (map[string]reflect.Type, map[reflect.Type]map[string]an
 		props, _ := shape["properties"].(map[string]any)
 		field := func(key string) map[string]any { v, _ := props[key].(map[string]any); return v }
 		switch name {
+		case "SearchGenrePage":
+			shape = genreReadySchema()
+		case "SearchGenrePreparing":
+			shape = genrePreparingSchema()
+		case "SearchGenreFallbackPage":
+			shape = genreFallbackSchema()
 		case "HomeDocument":
 			field("rows")["maxItems"] = 64
 			field("spotlight")["maxItems"] = 5
