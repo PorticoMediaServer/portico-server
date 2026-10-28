@@ -515,6 +515,11 @@ func validate(m Metadata) error {
 	if m.ID == "" || m.Summary == "" || !(strings.HasPrefix(m.Path, "/v1/") || strings.HasPrefix(m.Path, "/health/")) || m.Status < 200 || m.Status >= 300 || m.BodyLimit < 0 || m.BodyLimit > 1<<30 {
 		return errors.New("route metadata incomplete")
 	}
+	// Reads take no body; a body limit on one would publish a request body
+	// in the generated contracts.
+	if (m.Method == "GET" || m.Method == "HEAD") && m.BodyLimit != 0 {
+		return errors.New("read route declares a request body")
+	}
 	for _, status := range m.SuccessStatuses {
 		if status < 200 || status >= 300 {
 			return errors.New("invalid success status")

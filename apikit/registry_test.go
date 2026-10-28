@@ -363,3 +363,15 @@ func TestUnregisteredErrorNamesItsRouteAndCode(t *testing.T) {
 		t.Fatal("invalid route was registered")
 	}
 }
+
+func TestReadRoutesCannotDeclareARequestBody(t *testing.T) {
+	r := New(func(context.Context, *http.Request, Metadata) error { return nil }, nil)
+	for _, method := range []string{"GET", "HEAD"} {
+		m := testMetadata()
+		m.ID, m.Method, m.BodyLimit = "read_with_body_"+method, method, 1024
+		route := Route[testRequest, testResponse]{Metadata: m, Handler: func(context.Context, *http.Request, testRequest) (testResponse, error) { return testResponse{}, nil }}
+		if err := Register(r, route); err == nil || !strings.Contains(err.Error(), "read route declares a request body") {
+			t.Fatalf("%s route with a body limit was accepted: %v", method, err)
+		}
+	}
+}
