@@ -12,7 +12,7 @@ function fixture(total = 480, wrongLibrary = false) {
   const api = new HttpLocalApi('http://127.0.0.1:39117', 'unit-token', async input => {
     const url = new URL(String(input)); calls.push(url);
     if (url.pathname.endsWith('/reading/versions')) return url.pathname.includes('/unit-reading/')
-      ? new Response(JSON.stringify({versions: [{sourceId: 'unit-source', format: 'epub', size: 500, inventoryAvailable: false}]}), {headers: {'Content-Type': 'application/json'}})
+      ? new Response(JSON.stringify({chosenSourceId: 'unit-source', versions: [{sourceId: 'unit-source', format: 'epub', size: 500, inventoryAvailable: false}]}), {headers: {'Content-Type': 'application/json'}})
       : new Response('{}', {status: 404, headers: {'Content-Type': 'application/json'}});
     const start = Number(url.searchParams.get('cursor') ?? 0), limit = Number(url.searchParams.get('limit'));
     const items = Array.from({length: Math.max(0, Math.min(limit, total - start))}, (_, offset) => ({id: `unit-${start + offset}`, sourceId: `source-${start + offset}`,

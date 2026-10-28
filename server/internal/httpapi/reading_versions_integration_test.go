@@ -97,13 +97,28 @@ func TestReadingPrivateActualVersionSelectionAndCASAreIndependent(t *testing.T) 
 	if err != nil || epub.Selection.Format != "epub" || pdf.Selection.Format != "pdf" || epub.Selection.Revision == pdf.Selection.Revision {
 		t.Fatal(epub, pdf, err)
 	}
+	// The server's choice follows the reader's latest saved version, else the
+	// first available version in asset order.
+	chosen := func(want string) {
+		t.Helper()
+		choice, err := r.s.VersionChoice(ctx, r.p, item)
+		if err != nil || choice.Chosen != want {
+			t.Fatalf("chosen %q want %q (%v)", choice.Chosen, want, err)
+		}
+	}
+	chosen(versions[0].SourceID)
 	page := int64(0)
 	if _, _, err = r.s.SaveSessionProgress(ctx, r.p, pdfSession.ID, 0, reading.Location{Format: "pdf", PageIndex: &page, Progression: .2}); err != nil {
 		t.Fatal(err)
 	}
+	chosen(r.source)
 	if _, _, err = r.s.SaveSessionProgress(ctx, r.p, epubSession.ID, 0, reading.Location{Format: "epub", CFI: "epubcfi(/6/4!/4/2:0)", Section: "EPUB/chapter.xhtml", Progression: .6}); err != nil {
 		t.Fatal(err)
 	}
+	if _, err = r.f.db.Exec(`UPDATE reading_progress SET observed_at=observed_at+1000 WHERE asset_id=?`, asset); err != nil {
+		t.Fatal(err)
+	}
+	chosen(alternateToken)
 	for _, tc := range []struct {
 		id       string
 		format   string

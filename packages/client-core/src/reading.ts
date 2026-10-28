@@ -135,6 +135,7 @@ export type ReadingSeriesOverview = Readonly<{id: string; title: string; total: 
 export type ReadingPeriodicalGroupsPage = GetReadingPeriodicalGroupsResponse;
 export type ReadingPeriodicalIssuesPage = GetReadingPeriodicalIssuesResponse;
 export type ReadingPeriodicalType = (typeof schemas)['GetReadingPeriodicalGroupsResponse']['properties']['publicationType']['enum'][number];
+export type ReadingPeriodicalOrder = 'newest' | 'oldest';
 export type ReadingPeriodicalGroup = ReadingPeriodicalGroupsPage['groups'][number];
 /** Checked presenter choices projected from server year buckets, not a wire mirror. */
 export type ReadingDayChoice = Readonly<{value: string; count: ReadingPeriodicalGroup['issueCount']}>;
@@ -177,6 +178,73 @@ function issueDate(value: string, kind: ReadingPeriodicalType): boolean {
 function validateIssue(value: ReadingPeriodicalIssue, library: string, kind: ReadingPeriodicalType, group: string) {
   const item = value.item;
   if (!validReadingCover(item.id, item.coverUrl) || !id(item.id) || item.libraryId !== library || !id(item.sourceId) || item.format !== 'epub' && item.format !== 'pdf' || item.publicationType?.value !== kind || item.series?.id !== group || !issueDate(value.issueDate, kind)) fail('invalid_document');
+}
+
+/** The Discover rows that continue on their own. */
+export type ReadingDiscoverRowKey = 'recent' | 'series' | 'short-reads' | 'new-issues';
+const discoverRows: readonly string[] = ['recent', 'series', 'short-reads', 'new-issues'];
+const discoverCursor = (s: string) => typeof s === 'string' && (/^-?[0-9]{1,19}\.[0-9]{1,19}$/.test(s) || seriesCursor(s));
+/** Checks one paged Discover row and returns its issue cards. A row asked for
+ * alone is always answered, so it may be empty; in a whole Discover answer only
+ * Recent may be. A row with a continuation is never empty. */
+function validateDiscoverRow(row: ReadingDiscover['rows'][number], libraryId: string | undefined, limit: number, alone = false): ReadingPeriodicalIssue[] {
+  const checkItem = (item: ReadingItem, library?: string) => {
+    if (!validReadingCover(item.id, item.coverUrl) || !id(item.id) || !id(item.libraryId) || !id(item.sourceId) || !sourceFormat(item.format) || (library !== undefined && item.libraryId !== library)) fail('invalid_document');
+  };
+  if ('newspaper' in row || row.nextCursor !== undefined && !discoverCursor(row.nextCursor)) fail('invalid_document');
+  const ids = new Set<string>();
+  const once = (value: string) => {if (ids.has(value)) fail('invalid_document'); ids.add(value);};
+  const cards: ReadingPeriodicalIssue[] = [];
+  let size: number;
+  if (row.key === 'recent') {
+    if (row.series !== undefined || row.shortReads !== undefined || 'newIssues' in row) fail('invalid_document');
+    for (const item of row.items) {checkItem(item, libraryId); once(item.id);}
+    size = row.items.length;
+    if (row.nextCursor !== undefined && !size) fail('invalid_document');
+  } else {
+    if (libraryId === undefined || row.items.length !== 0) fail('invalid_document');
+    if (row.key === 'new-issues') {
+      const issues = 'newIssues' in row ? row.newIssues : alone ? [] : undefined;
+      if (row.series !== undefined || row.shortReads !== undefined || !Array.isArray(issues)) fail('invalid_document');
+      for (const raw of issues) {
+        if (typeof raw !== 'object' || raw === null || typeof raw.issueDate !== 'string' || !issueDate(raw.issueDate, 'magazine')) fail('invalid_document');
+        let item: ReadingItem;
+        try { item = decodeGetReadingItemsResponse({items: [raw.item]}).items[0]; } catch { fail('invalid_document'); }
+        checkItem(item, libraryId);
+        if (!item.series || !seriesID(item.series.id) || !item.series.name.trim()) fail('invalid_document');
+        const issue = {item, issueDate: raw.issueDate};
+        validateIssue(issue, libraryId, 'magazine', item.series.id);
+        once(item.id); cards.push(issue);
+      }
+      size = issues.length;
+    } else if (row.key === 'short-reads') {
+      const short = row.shortReads ?? (alone ? [] : fail('invalid_document'));
+      if (row.series !== undefined || 'newIssues' in row) fail('invalid_document');
+      for (const entry of short) {
+        checkItem(entry.item, libraryId);
+        if (entry.item.format !== 'epub' || !integer(entry.wordCount, 1, 44999) || !integer(entry.estimatedSeconds, 1, 10800) || entry.estimatedSeconds !== Math.ceil(entry.wordCount * 60 / 250)) fail('invalid_document');
+        once(entry.item.id);
+      }
+      size = short.length;
+    } else if (row.key === 'series') {
+      const series = row.series ?? (alone ? [] : fail('invalid_document'));
+      if (row.shortReads !== undefined || 'newIssues' in row) fail('invalid_document');
+      const previews = new Set<string>();
+      for (const summary of series) {
+        if (!/^[A-Za-z0-9_-]{43}$/.test(summary.id) || summary.libraryId !== libraryId || typeof summary.name !== 'string' || summary.name.length < 1 || !integer(summary.count, 1, Number.MAX_SAFE_INTEGER) || !integer(summary.readCount, 0, summary.count) || summary.preview.length < 1 || summary.preview.length > Math.min(3, summary.count)) fail('invalid_document');
+        once(summary.id);
+        for (const item of summary.preview) {
+          checkItem(item, summary.libraryId);
+          if (item.series?.id !== summary.id || previews.has(item.id)) fail('invalid_document');
+          previews.add(item.id);
+        }
+      }
+      size = series.length;
+    } else fail('invalid_document');
+    if (!alone && size < 1 || row.nextCursor !== undefined && size < 1) fail('invalid_document');
+  }
+  if (size > limit) fail('invalid_document');
+  return cards;
 }
 
 function isReadingObject(value: unknown): value is Record<string, unknown> {
@@ -517,82 +585,51 @@ export class ReadingClient {
     if (options.newspaperLimit !== undefined && (options.libraryId === undefined || !id(options.libraryId) || options.newspaperLimit !== 1)) fail('invalid_request');
     const decoded = await this.json(query(routePath('get_reading_discover'), options), 'GET', undefined, signal,
       raw => withReadingDiscoverMarks(raw, decodeGetReadingDiscoverResponse), 2 << 20), out = decoded.value;
-    if (out.rows.length < 1 || out.rows.length > 5 || out.rows[0].key !== 'recent' || out.rows[0].series !== undefined || out.rows[0].shortReads !== undefined || 'newIssues' in out.rows[0] || 'newspaper' in out.rows[0] || out.rows[0].items.length > (options.limit ?? 20)) fail('invalid_document');
-    const seen = new Set<string>();
-    const checkItem = (item: ReadingItem, libraryId?: string) => {
-      if (!validReadingCover(item.id, item.coverUrl) || !id(item.id) || !id(item.libraryId) || !id(item.sourceId) || !sourceFormat(item.format) || (libraryId !== undefined && item.libraryId !== libraryId)) fail('invalid_document');
-    };
-    for (const item of out.rows[0].items) {
-      checkItem(item,options.libraryId);
-      if(seen.has(item.id)) fail('invalid_document');
-      seen.add(item.id);
-    }
+    if (out.rows.length < 1 || out.rows.length > 5 || out.rows[0].key !== 'recent') fail('invalid_document');
+    validateDiscoverRow(out.rows[0], options.libraryId, options.limit ?? 20);
     let newspaperCard: ReadingPeriodicalGroup | undefined;
-    const newIssueCards: ReadingPeriodicalIssue[] = [];
-    let seriesSeen = false, shortSeen = false, issuesSeen = false, newspaperSeen = false;
+    let newIssueCards: ReadingPeriodicalIssue[] = [];
+    // Rows keep the server's fixed order; each appears once and only when asked for.
+    const order = ['series', 'short-reads', 'new-issues', 'newspaper'] as const;
+    const limits = {'series': options.seriesLimit, 'short-reads': options.shortReadsLimit, 'new-issues': options.newIssuesLimit, 'newspaper': options.newspaperLimit};
+    let at = 0;
     for (const row of out.rows.slice(1)) {
+      const index = order.indexOf(row.key as typeof order[number]);
+      const limit = index < 0 ? undefined : limits[order[index]];
+      if (index < at || limit === undefined) fail('invalid_document');
+      at = index + 1;
       if (row.key === 'newspaper') {
-        if (newspaperSeen || options.newspaperLimit !== 1 || row.series !== undefined || row.shortReads !== undefined || 'newIssues' in row || row.items.length !== 0 || !('newspaper' in row)) fail('invalid_document');
+        if (row.series !== undefined || row.shortReads !== undefined || 'newIssues' in row || row.items.length !== 0 || !('newspaper' in row) || row.nextCursor !== undefined) fail('invalid_document');
         let group: ReadingPeriodicalGroup;
         try { group = decodeGetReadingPeriodicalGroupsResponse({libraryId: options.libraryId, publicationType: 'newspaper', groups: [row.newspaper]}).groups[0]; } catch { fail('invalid_document'); }
         if (!seriesID(group.id) || !group.name.trim() || !integer(group.issueCount, 1, Number.MAX_SAFE_INTEGER)) fail('invalid_document');
         validateIssue(group.latest, options.libraryId ?? fail('invalid_request'), 'newspaper', group.id);
-        newspaperSeen = true; newspaperCard = group;
+        newspaperCard = group;
         continue;
       }
-      if ('newspaper' in row) fail('invalid_document');
-      if (row.key === 'new-issues') {
-        const issues = 'newIssues' in row ? row.newIssues : undefined;
-        if (issuesSeen || newspaperSeen || options.newIssuesLimit === undefined || row.series !== undefined || row.shortReads !== undefined || row.items.length !== 0 || !Array.isArray(issues) || issues.length < 1 || issues.length > options.newIssuesLimit) fail('invalid_document');
-        issuesSeen = true;
-        const ids = new Set<string>();
-        for (const raw of issues) {
-          if (typeof raw !== 'object' || raw === null || typeof raw.issueDate !== 'string' || !issueDate(raw.issueDate, 'magazine')) fail('invalid_document');
-          let item: ReadingItem;
-          try { item = decodeGetReadingItemsResponse({items: [raw.item]}).items[0]; } catch { fail('invalid_document'); }
-          checkItem(item, options.libraryId);
-          if (!item.series || !seriesID(item.series.id) || !item.series.name.trim() || ids.has(item.id)) fail('invalid_document');
-          const issue = {item, issueDate: raw.issueDate};
-          validateIssue(issue, options.libraryId ?? fail('invalid_request'), 'magazine', item.series.id);
-          ids.add(item.id); newIssueCards.push(issue);
-        }
-        continue;
-      }
-      if ('newIssues' in row) fail('invalid_document');
-      if (row.key === 'short-reads') {
-        const short = row.shortReads ?? fail('invalid_document');
-        if (shortSeen || issuesSeen || newspaperSeen || options.shortReadsLimit === undefined || row.series !== undefined || row.items.length !== 0 || short.length < 1 || short.length > options.shortReadsLimit) fail('invalid_document');
-        shortSeen = true;
-        const ids = new Set<string>();
-        for (const entry of short) {
-          checkItem(entry.item, options.libraryId);
-          if (entry.item.format !== 'epub' || !integer(entry.wordCount, 1, 44999) || !integer(entry.estimatedSeconds, 1, 10800) || entry.estimatedSeconds !== Math.ceil(entry.wordCount * 60 / 250) || ids.has(entry.item.id)) fail('invalid_document');
-          ids.add(entry.item.id);
-        }
-        continue;
-      }
-      if (seriesSeen || shortSeen || issuesSeen || newspaperSeen || row.shortReads !== undefined) fail('invalid_document');
-      seriesSeen = true;
-      const series=row.series??fail('invalid_document');
-      if(options.seriesLimit===undefined || row.key!=='series' || row.items.length!==0 || series.length<1 || series.length>options.seriesLimit)fail('invalid_document');
-      const seriesIds=new Set<string>(), previews=new Set<string>();
-      for(const summary of series){
-        if(!/^[A-Za-z0-9_-]{43}$/.test(summary.id) || summary.libraryId!==options.libraryId || typeof summary.name!=='string' || summary.name.length<1 || !integer(summary.count,1,Number.MAX_SAFE_INTEGER) || !integer(summary.readCount,0,summary.count) || summary.preview.length<1 || summary.preview.length>Math.min(3,summary.count) || seriesIds.has(summary.id))fail('invalid_document');
-        seriesIds.add(summary.id);
-        for(const item of summary.preview){
-          checkItem(item,summary.libraryId);
-          if(item.series?.id!==summary.id || previews.has(item.id))fail('invalid_document');
-          previews.add(item.id);
-        }
-      }
+      const cards = validateDiscoverRow(row, options.libraryId, limit);
+      if (row.key === 'new-issues') newIssueCards = cards;
     }
     return {...out, newIssueCards, newspaperCard, previewMarks: decoded.marks};
+  }
+  /** One Discover row alone: its first page, or its next page from that row's
+   * own `nextCursor`. A page may be shorter than its limit when its entries are
+   * large; a `nextCursor` still means there is more. */
+  async discoverRow(row: ReadingDiscoverRowKey, options: Readonly<{libraryId?: string; cursor?: string; limit?: number}> = {}, signal?: AbortSignal): Promise<Readonly<{row: ReadingDiscover['rows'][number]; newIssueCards: readonly ReadingPeriodicalIssue[]; previewMarks: ReadingPreviewMarks}>> {
+    const limit = options.limit ?? 20;
+    if (!discoverRows.includes(row) || options.libraryId !== undefined && !id(options.libraryId) || row !== 'recent' && options.libraryId === undefined
+      || !integer(limit, 1, row === 'recent' ? 100 : 20) || options.cursor !== undefined && !discoverCursor(options.cursor)) fail('invalid_request');
+    const decoded = await this.json(query(routePath('get_reading_discover'), {...options, row}), 'GET', undefined, signal,
+      raw => withReadingDiscoverMarks(raw, decodeGetReadingDiscoverResponse), 2 << 20), out = decoded.value;
+    if (out.rows.length !== 1 || out.rows[0].key !== row) fail('invalid_document');
+    const newIssueCards = validateDiscoverRow(out.rows[0], options.libraryId, limit, true);
+    return Object.freeze({row: out.rows[0], newIssueCards, previewMarks: decoded.marks});
   }
   async periodicalGroups(libraryId: string, publicationType: ReadingPeriodicalType, options: Readonly<{cursor?: string; limit?: number}> = {}, signal?: AbortSignal): Promise<ReadingPeriodicalGroupsPage> {
     const limit = options.limit ?? 24;
     if (!id(libraryId) || !periodicalType(publicationType) || !integer(limit, 1, 100) || options.cursor !== undefined && !seriesCursor(options.cursor)) fail('invalid_request');
     const out = await this.json(query(routePath('get_reading_periodical_groups', {libraryId}), {...options, publicationType}), 'GET', undefined, signal, decodeGetReadingPeriodicalGroupsResponse, 2 << 20);
-    if (out.libraryId !== libraryId || out.publicationType !== publicationType || out.groups.length > limit || out.nextCursor !== undefined && (!seriesCursor(out.nextCursor) || out.groups.length !== limit)) fail('invalid_document');
+    if (out.libraryId !== libraryId || out.publicationType !== publicationType || out.groups.length > limit || out.nextCursor !== undefined && (!seriesCursor(out.nextCursor) || out.groups.length < 1)) fail('invalid_document');
     const groups = new Set<string>(), latest = new Set<string>();
     for (const group of out.groups) {
       if (!seriesID(group.id) || groups.has(group.id) || typeof group.name !== 'string' || !group.name.trim() || group.name.length > 4096 || !integer(group.issueCount, 1, Number.MAX_SAFE_INTEGER) || latest.has(group.latest.item.id)) fail('invalid_document');
@@ -601,12 +638,17 @@ export class ReadingClient {
     }
     return out;
   }
-  async periodicalIssues(libraryId: string, seriesId: string, publicationType: ReadingPeriodicalType, options: Readonly<{cursor?: string; limit?: number; issueDate?: string; year?: string; month?: string}> = {}, signal?: AbortSignal): Promise<ReadingPeriodicalIssuesPage & {yearChoices: readonly ReadingYearChoice[]; dayChoices: readonly ReadingDayChoice[]; calendarMonth?: string}> {
+  /** Issues in the archive's actual date order: `newest` first (the default) or
+   * `oldest` first. The order is bound into the cursor, so a cursor continues
+   * only the order it came from. */
+  async periodicalIssues(libraryId: string, seriesId: string, publicationType: ReadingPeriodicalType, options: Readonly<{cursor?: string; limit?: number; issueDate?: string; year?: string; month?: string; order?: ReadingPeriodicalOrder}> = {}, signal?: AbortSignal): Promise<ReadingPeriodicalIssuesPage & {yearChoices: readonly ReadingYearChoice[]; dayChoices: readonly ReadingDayChoice[]; calendarMonth?: string}> {
     const limit = options.limit ?? 50;
+    if (options.order !== undefined && options.order !== 'newest' && options.order !== 'oldest') fail('invalid_request');
+    const oldest = options.order === 'oldest';
     if (options.month !== undefined && (publicationType !== 'newspaper' || options.month.length !== 7 || !issueDate(options.month, 'magazine') || options.year !== undefined && !options.month.startsWith(options.year + '-') || options.issueDate !== undefined && !options.issueDate.startsWith(options.month + '-'))) fail('invalid_request');
     if (options.year !== undefined && (!/^[0-9]{4}$/.test(options.year) || !issueDate(options.year + '-01', 'magazine') || options.issueDate !== undefined && !options.issueDate.startsWith(options.year + '-')) || options.issueDate !== undefined && !issueDate(options.issueDate, publicationType) || !id(libraryId) || !seriesID(seriesId) || !periodicalType(publicationType) || !integer(limit, 1, 100) || options.cursor !== undefined && !seriesCursor(options.cursor)) fail('invalid_request');
     const out = await this.json(query(routePath('get_reading_periodical_issues', {libraryId, seriesId}), {...options, publicationType}), 'GET', undefined, signal, decodeGetReadingPeriodicalIssuesResponse, 2 << 20);
-    if ((options.issueDate === undefined ? 'issueDate' in out : !('issueDate' in out) || out.issueDate !== options.issueDate) || out.libraryId !== libraryId || out.seriesId !== seriesId || out.publicationType !== publicationType || out.items.length > limit || out.nextCursor !== undefined && (!seriesCursor(out.nextCursor) || out.items.length !== limit)) fail('invalid_document');
+    if ((options.issueDate === undefined ? 'issueDate' in out : !('issueDate' in out) || out.issueDate !== options.issueDate) || out.libraryId !== libraryId || out.seriesId !== seriesId || out.publicationType !== publicationType || out.items.length > limit || out.nextCursor !== undefined && (!seriesCursor(out.nextCursor) || out.items.length < 1)) fail('invalid_document');
     if (options.year === undefined ? 'year' in out : !('year' in out) || out.year !== options.year) fail('invalid_document');
     if (options.month === undefined ? 'month' in out : !('month' in out) || out.month !== options.month) fail('invalid_document');
     const dayChoices: ReadingDayChoice[] = [];
@@ -629,7 +671,7 @@ export class ReadingClient {
       if (options.month !== undefined && !entry.issueDate.startsWith(options.month + '-')) fail('invalid_document');
       if (options.year !== undefined && !entry.issueDate.startsWith(options.year + '-')) fail('invalid_document');
       if (options.issueDate !== undefined && entry.issueDate !== options.issueDate) fail('invalid_document');
-      if (seen.has(entry.item.id) || previous !== undefined && previous < entry.issueDate) fail('invalid_document');
+      if (seen.has(entry.item.id) || previous !== undefined && (oldest ? previous > entry.issueDate : previous < entry.issueDate)) fail('invalid_document');
       seen.add(entry.item.id); previous = entry.issueDate;
     }
     return {...out, yearChoices, dayChoices, calendarMonth: options.month};
@@ -673,6 +715,8 @@ export class ReadingClient {
     if (!id(itemId)) fail('invalid_request');
     const out = await this.json(routePath('get_items_itemId_reading_versions', {itemId}), 'GET', undefined, signal, decodeGetItemsItemIdReadingVersionsResponse, 64 << 10);
     if (out.versions.length > 128 || out.versions.some(v => !id(v.sourceId) || !sourceFormat(v.format) || !integer(v.size, 0, 2 ** 31))) fail('invalid_document');
+    // The server's chosen version must be one of the versions it listed.
+    if (out.chosenSourceId !== undefined && !out.versions.some(v => v.sourceId === out.chosenSourceId) || out.chosenSourceId === undefined && out.versions.length) fail('invalid_document');
     return out;
   }
   async open(request: PostReadingSessionsRequest, signal?: AbortSignal): Promise<ReadingSession> {

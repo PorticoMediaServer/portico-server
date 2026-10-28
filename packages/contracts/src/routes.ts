@@ -7713,7 +7713,9 @@ export const routes = [
       "seriesLimit",
       "shortReadsLimit",
       "newIssuesLimit",
-      "newspaperLimit"
+      "newspaperLimit",
+      "row",
+      "cursor"
     ],
     "errors": [
       "invalid_request",
@@ -14650,6 +14652,32 @@ export const routes = [
     "status": 200,
     "http": true,
     "admission": "media-body"
+  },
+  {
+    "id": "post_reading_offline_progress_read",
+    "method": "POST",
+    "path": "/v1/reading/offline/progress/read",
+    "summary": "Read this viewer's saved positions for signed offline publications",
+    "access": "device",
+    "requires": "playback",
+    "lane": "browsing",
+    "cost": "page_sized",
+    "bodyLimit": 524288,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "revision_required",
+      "revision_mismatch",
+      "request_in_progress",
+      "body_too_large",
+      "internal",
+      "writer_capacity"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "browsing"
   },
   {
     "id": "post_reading_sessions",

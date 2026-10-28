@@ -138,6 +138,11 @@ func (d Dependencies) readingPeriodicalIssues(w http.ResponseWriter, r *http.Req
 	for _, item := range page.Items {
 		out.Items = append(out.Items, ReadingPeriodicalIssue{Item: readingItemProjection(item), IssueDate: ReadingIssueDate(item.IssueDate)})
 	}
+	if out.Items, err = readingBudget(out.Items, readingPageBytes, page.Truncate); err != nil {
+		readingFailure(w, err)
+		return
+	}
+	out.NextCursor = page.NextCursor
 	write(w, 200, out)
 }
 func registerReadingPeriodicalIssuesHTTPContract(registry *apikit.Registry) error {

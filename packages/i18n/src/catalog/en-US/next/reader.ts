@@ -58,6 +58,7 @@ export const readerMessages = {
   'next.reader.datesFromFileNames': 'Dates from the file names',
   'next.reader.goToDate': 'Go to a date',
   'next.reader.issueCount': '{count, plural, one {# issue} other {# issues}}',
+  'next.reader.issueOrder': '{order, select, oldest {Oldest first} other {Latest first}}',
   'next.reader.shortReads': 'Short reads',
   'next.reader.underThreeHours': 'Under three hours',
   'next.reader.shortReadsFromWordCount': 'Under three hours, from the word count',

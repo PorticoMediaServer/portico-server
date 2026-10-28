@@ -121,3 +121,35 @@ func TestReadingOwnerMetadataUsesExistingRouteAndCurrentLibraryAuthority(t *test
 		t.Fatal("revoked successful target replayed", w.Code)
 	}
 }
+
+// MOB-055: a Reading selection's owner edit starts from the shared bulk preview,
+// which admits ebook and comic targets with their own Reading schema.
+func TestReadingBulkMetadataPreviewAdmitsReadingTargets(t *testing.T) {
+	f := administrationFixtureNew(t)
+	c := catalogtest.New(t, f.deps.DB)
+	read := c.Library("read", "Read", "book", "/read")
+	a := c.Entity(compactcatalog.Entity{Library: read, Kind: compactcatalog.Ebook, Key: "ebook:one", Title: "One"}, nil)
+	b := c.Entity(compactcatalog.Entity{Library: read, Kind: compactcatalog.Ebook, Key: "ebook:two", Title: "Two"}, nil)
+	c.Drain()
+	f.deps.Metadata = metadata.New(f.deps.DB, "test-token")
+	f.handler = New(f.deps)
+	body, _ := json.Marshal(map[string]any{"targets": []map[string]string{
+		{"kind": "item", "contentKind": "ebook", "id": a.Public, "libraryId": "read"},
+		{"kind": "item", "contentKind": "ebook", "id": b.Public, "libraryId": "read"},
+	}})
+	w := f.call("POST", "/v1/metadata/bulk/preview", f.owner, string(body))
+	var preview metadata.BulkMetadataPreview
+	if w.Code != 200 || json.Unmarshal(w.Body.Bytes(), &preview) != nil || preview.ContentKind != "ebook" || preview.Total != 2 {
+		t.Fatalf("Reading bulk preview %d %s", w.Code, w.Body.String())
+	}
+	fields := map[string]bool{}
+	for _, spec := range preview.Schema {
+		fields[spec.Field] = true
+	}
+	if !fields["author"] || !fields["series"] || !fields["publicationType"] {
+		t.Fatalf("Reading bulk schema %+v", preview.Schema)
+	}
+	if w = f.call("POST", "/v1/metadata/bulk/preview", f.member, string(body)); w.Code != 401 && w.Code != 403 {
+		t.Fatal("member previewed owner metadata", w.Code)
+	}
+}

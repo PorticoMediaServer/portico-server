@@ -52,7 +52,7 @@ async function mountRead(options: {canGoBack?: boolean; phone?: boolean; open?: 
   };
   const captured: any = {context, binding: {home: {effects: {reportError: context.effects.reportError}}, scopeKey: 'scope'}};
   let screenContext = context;
-  let eligibility = {itemId: 'book', versions: [epub, pdf]};
+  let eligibility = {itemId: 'book', versions: [epub, pdf], chosenSourceId: 'epub-source'};
   const bindingsFactory = () => ({
     client: {},
     authority: {isCurrent: () => true, subscribe: () => () => {}},
@@ -178,7 +178,7 @@ test('actual ReadItemEntry refuses an old menu after entry, list and context rep
   oldEntryPdf.props.onSelect(); f.flat();
   assert.equal(f.openCalls.includes(pdf.sourceId), false, 'old entry menu cannot open B');
   const oldListPdf = versionItem(f, 'PDF');
-  f.setEligibility({itemId: 'book', versions: [epub, pdf]}); f.flat();
+  f.setEligibility({itemId: 'book', versions: [epub, pdf], chosenSourceId: 'epub-source'}); f.flat();
   oldListPdf.props.onSelect(); f.flat();
   assert.equal(f.openCalls.includes(pdf.sourceId), false, 'old list menu cannot open B');
   const oldContextPdf = versionItem(f, 'PDF');

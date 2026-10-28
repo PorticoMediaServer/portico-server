@@ -106,8 +106,12 @@ type ReadingVersion struct {
 	Size               int64               `json:"size"`
 	InventoryAvailable bool                `json:"inventoryAvailable"`
 }
+
+// ChosenSourceID names the version the server opens for this reader (one of
+// Versions); clients use it rather than picking a version themselves.
 type ReadingVersionsResponse struct {
-	Versions []ReadingVersion `json:"versions"`
+	ChosenSourceID string           `json:"chosenSourceId,omitempty"`
+	Versions       []ReadingVersion `json:"versions"`
 }
 type ReadingSessionRequest struct {
 	ItemID   string `json:"itemId"`

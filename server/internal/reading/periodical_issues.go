@@ -266,17 +266,10 @@ func (s *Service) PeriodicalIssuesInMonth(ctx context.Context, p identity.Princi
 	if len(out.Items) == 0 && cursor == "" && issueDate == "" && year == "" && month == "" {
 		return out, ErrUnavailable
 	}
+	out.cursorAt = seriesCursorAt(current, key, tuples)
 	if len(out.Items) > limit {
 		out.Items = out.Items[:limit]
-		tuples = tuples[:limit]
-		last := tuples[len(tuples)-1]
-		current.Anchor = last.Item
-		current.Tuple, err = last.digest()
-		if err != nil {
-			return out, err
-		}
-		out.NextCursor, err = current.encode(key)
-		if err != nil {
+		if out.NextCursor, err = out.cursorAt(limit - 1); err != nil {
 			return out, err
 		}
 	}

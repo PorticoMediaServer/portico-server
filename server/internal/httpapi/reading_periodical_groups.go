@@ -70,6 +70,11 @@ func (d Dependencies) readingPeriodicalGroups(w http.ResponseWriter, r *http.Req
 	for _, group := range page.Groups {
 		out.Groups = append(out.Groups, ReadingPeriodicalGroup{ID: group.ID, Name: group.Name, IssueCount: group.IssueCount, Latest: ReadingPeriodicalIssue{Item: readingItemProjection(group.Latest), IssueDate: ReadingIssueDate(group.Latest.IssueDate)}})
 	}
+	if out.Groups, err = readingBudget(out.Groups, readingPageBytes, page.Truncate); err != nil {
+		readingFailure(w, err)
+		return
+	}
+	out.NextCursor = page.NextCursor
 	write(w, 200, out)
 }
 func registerReadingPeriodicalGroupsHTTPContract(registry *apikit.Registry) error {

@@ -103,6 +103,11 @@ func registerReadingHTTPContracts(registry *apikit.Registry) error {
 	if err := apikit.RegisterHTTP[ReadingOfflineProgressRequest, ReadingOfflineProgressResponse](registry, m); err != nil {
 		return err
 	}
+	m = metadata("post_reading_offline_progress_read", "POST", "/v1/reading/offline/progress/read", "Read this viewer's saved positions for signed offline publications", apikit.ScopePlayback)
+	m.BodyLimit = 512 << 10
+	if err := apikit.RegisterHTTP[ReadingOfflineProgressReadRequest, ReadingOfflineProgressReadResponse](registry, m); err != nil {
+		return err
+	}
 	m = metadata("delete_reading_sessions_sessionId", "DELETE", "/v1/reading/sessions/{sessionId}", "Close this caller's reading session", apikit.ScopePlayback)
 	m.Status, m.NoResponseBody = 204, true
 	if err := apikit.RegisterHTTP[struct{}, struct{}](registry, m); err != nil {

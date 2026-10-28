@@ -606,6 +606,7 @@ export const routePaths = {
   "post_quick_connect_review": "/v1/quick-connect/review",
   "post_quick_connect_token": "/v1/quick-connect/token",
   "post_reading_offline_progress": "/v1/reading/offline/progress",
+  "post_reading_offline_progress_read": "/v1/reading/offline/progress/read",
   "post_reading_sessions": "/v1/reading/sessions",
   "post_reading_sessions_sessionId_file_save": "/v1/reading/sessions/{sessionId}/file-save",
   "post_saved_resources": "/v1/saved-resources",

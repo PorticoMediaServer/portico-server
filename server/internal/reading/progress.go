@@ -290,3 +290,28 @@ func (f *Source) saveProgress(expected int64, location Location, offline *Offlin
 	}
 	return &Progress{SourceID: v.SourceID, SourceRevision: v.Revision, Location: location, Revision: revision, ObservedAt: observed}, true, nil
 }
+
+// OfflineProgress reads this viewer's saved position for one downloaded copy's
+// publication, for an inbound refresh. It opens no session and writes nothing:
+// no history, observation or intent time changes, and a changed server source
+// never revokes the copy. A nil result is confirmed absence for that exact
+// publication. Stale compares the saved position with the copy's own revision.
+func (s *Service) OfflineProgress(ctx context.Context, p identity.Principal, item, source, revision string) (*Progress, error) {
+	if s == nil || s.DB == nil {
+		return nil, identity.ErrForbidden
+	}
+	g, err := dbwork.BeginSnapshot(ctx, s.DB)
+	if err != nil {
+		return nil, err
+	}
+	defer g.Rollback()
+	v, err := s.selectTx(ctx, g.Tx(), p, item, source)
+	if err != nil {
+		return nil, err
+	}
+	progress, err := progressTx(ctx, g.Tx(), identity.PersonalKey(p.Viewer), v)
+	if progress != nil {
+		progress.Stale = progress.SourceRevision != revision
+	}
+	return progress, err
+}

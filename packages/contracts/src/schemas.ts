@@ -114314,6 +114314,9 @@ export const schemas = {
   },
   "GetItemsItemIdReadingVersionsResponse": {
     "properties": {
+      "chosenSourceId": {
+        "type": "string"
+      },
       "versions": {
         "items": {
           "properties": {
@@ -146839,6 +146842,9 @@ export const schemas = {
                 "latest"
               ],
               "type": "object"
+            },
+            "nextCursor": {
+              "type": "string"
             },
             "series": {
               "items": {
@@ -212729,6 +212735,439 @@ export const schemas = {
       "sessionFamilyId",
       "tokenGeneration",
       "authorizationHorizon"
+    ],
+    "type": "object"
+  },
+  "PostReadingOfflineProgressReadRequest": {
+    "additionalProperties": false,
+    "properties": {
+      "receipts": {
+        "items": {
+          "properties": {
+            "algorithm": {
+              "type": "string"
+            },
+            "claims": {
+              "properties": {
+                "artifact": {
+                  "properties": {
+                    "bytes": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "sha256": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "sha256",
+                    "bytes"
+                  ],
+                  "type": "object"
+                },
+                "expiresAt": {
+                  "type": "string"
+                },
+                "issuedAt": {
+                  "type": "string"
+                },
+                "itemId": {
+                  "type": "string"
+                },
+                "keyId": {
+                  "type": "string"
+                },
+                "kind": {
+                  "type": "string"
+                },
+                "preparationId": {
+                  "type": "string"
+                },
+                "publication": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "documentSha256": {
+                      "pattern": "^[0-9a-f]{64}$",
+                      "type": "string"
+                    },
+                    "format": {
+                      "enum": [
+                        "epub",
+                        "pdf",
+                        "cbz",
+                        "cb7",
+                        "cbr"
+                      ],
+                      "type": "string"
+                    },
+                    "revision": {
+                      "pattern": "^[0-9a-f]{64}$",
+                      "type": "string"
+                    },
+                    "sourceId": {
+                      "maxLength": 128,
+                      "minLength": 1,
+                      "pattern": "^[A-Za-z0-9_-]+$",
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "sourceId",
+                    "revision",
+                    "format",
+                    "documentSha256"
+                  ],
+                  "type": "object"
+                },
+                "quality": {
+                  "type": "string"
+                },
+                "qualityLabel": {
+                  "type": "string"
+                },
+                "receiptId": {
+                  "type": "string"
+                },
+                "version": {
+                  "type": "string"
+                },
+                "viewer": {
+                  "properties": {
+                    "accountId": {
+                      "type": "string"
+                    },
+                    "authority": {
+                      "type": "string"
+                    },
+                    "profileId": {
+                      "type": "string"
+                    },
+                    "serverId": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "authority",
+                    "accountId",
+                    "profileId",
+                    "serverId"
+                  ],
+                  "type": "object"
+                }
+              },
+              "required": [
+                "kind",
+                "version",
+                "receiptId",
+                "keyId",
+                "viewer",
+                "itemId",
+                "preparationId",
+                "quality",
+                "qualityLabel",
+                "artifact",
+                "issuedAt",
+                "expiresAt"
+              ],
+              "type": "object"
+            },
+            "keyId": {
+              "type": "string"
+            },
+            "payload": {
+              "type": "string"
+            },
+            "receiptId": {
+              "type": "string"
+            },
+            "revision": {
+              "maximum": 9007199254740991,
+              "minimum": -9007199254740991,
+              "type": "integer"
+            },
+            "signature": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "receiptId",
+            "algorithm",
+            "keyId",
+            "payload",
+            "signature",
+            "claims",
+            "revision"
+          ],
+          "type": "object"
+        },
+        "maxItems": 50,
+        "minItems": 1,
+        "type": "array"
+      }
+    },
+    "required": [
+      "receipts"
+    ],
+    "type": "object"
+  },
+  "PostReadingOfflineProgressReadResponse": {
+    "additionalProperties": false,
+    "properties": {
+      "results": {
+        "items": {
+          "oneOf": [
+            {
+              "additionalProperties": false,
+              "properties": {
+                "itemId": {
+                  "maxLength": 128,
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "outcome": {
+                  "const": "current",
+                  "type": "string"
+                },
+                "progress": {
+                  "anyOf": [
+                    {
+                      "additionalProperties": false,
+                      "properties": {
+                        "location": {
+                          "oneOf": [
+                            {
+                              "additionalProperties": false,
+                              "properties": {
+                                "cfi": {
+                                  "maxLength": 4096,
+                                  "minLength": 10,
+                                  "pattern": "^epubcfi\\(/.*\\)$",
+                                  "type": "string"
+                                },
+                                "format": {
+                                  "const": "epub",
+                                  "type": "string"
+                                },
+                                "progression": {
+                                  "maximum": 1,
+                                  "minimum": 0,
+                                  "type": "number"
+                                },
+                                "section": {
+                                  "maxLength": 1024,
+                                  "type": "string"
+                                }
+                              },
+                              "required": [
+                                "format",
+                                "progression",
+                                "cfi"
+                              ],
+                              "type": "object"
+                            },
+                            {
+                              "additionalProperties": false,
+                              "properties": {
+                                "format": {
+                                  "const": "pdf",
+                                  "type": "string"
+                                },
+                                "pageIndex": {
+                                  "maximum": 1000000,
+                                  "minimum": 0,
+                                  "type": "integer"
+                                },
+                                "progression": {
+                                  "maximum": 1,
+                                  "minimum": 0,
+                                  "type": "number"
+                                }
+                              },
+                              "required": [
+                                "format",
+                                "progression",
+                                "pageIndex"
+                              ],
+                              "type": "object"
+                            },
+                            {
+                              "additionalProperties": false,
+                              "properties": {
+                                "format": {
+                                  "const": "cbz",
+                                  "type": "string"
+                                },
+                                "pageIndex": {
+                                  "maximum": 1000000,
+                                  "minimum": 0,
+                                  "type": "integer"
+                                },
+                                "progression": {
+                                  "maximum": 1,
+                                  "minimum": 0,
+                                  "type": "number"
+                                }
+                              },
+                              "required": [
+                                "format",
+                                "progression",
+                                "pageIndex"
+                              ],
+                              "type": "object"
+                            },
+                            {
+                              "additionalProperties": false,
+                              "properties": {
+                                "format": {
+                                  "const": "cb7",
+                                  "type": "string"
+                                },
+                                "pageIndex": {
+                                  "maximum": 1000000,
+                                  "minimum": 0,
+                                  "type": "integer"
+                                },
+                                "progression": {
+                                  "maximum": 1,
+                                  "minimum": 0,
+                                  "type": "number"
+                                }
+                              },
+                              "required": [
+                                "format",
+                                "progression",
+                                "pageIndex"
+                              ],
+                              "type": "object"
+                            },
+                            {
+                              "additionalProperties": false,
+                              "properties": {
+                                "format": {
+                                  "const": "cbr",
+                                  "type": "string"
+                                },
+                                "pageIndex": {
+                                  "maximum": 1000000,
+                                  "minimum": 0,
+                                  "type": "integer"
+                                },
+                                "progression": {
+                                  "maximum": 1,
+                                  "minimum": 0,
+                                  "type": "number"
+                                }
+                              },
+                              "required": [
+                                "format",
+                                "progression",
+                                "pageIndex"
+                              ],
+                              "type": "object"
+                            }
+                          ]
+                        },
+                        "observedAt": {
+                          "maximum": 9007199254740991,
+                          "minimum": 1,
+                          "type": "integer"
+                        },
+                        "revision": {
+                          "maximum": 9007199254740991,
+                          "minimum": 0,
+                          "type": "integer"
+                        },
+                        "sourceId": {
+                          "maxLength": 128,
+                          "minLength": 1,
+                          "pattern": "^[A-Za-z0-9_-]+$",
+                          "type": "string"
+                        },
+                        "sourceRevision": {
+                          "pattern": "^[0-9a-f]{64}$",
+                          "type": "string"
+                        },
+                        "stale": {
+                          "type": "boolean"
+                        }
+                      },
+                      "required": [
+                        "sourceId",
+                        "sourceRevision",
+                        "location",
+                        "revision",
+                        "observedAt",
+                        "stale"
+                      ],
+                      "type": "object"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "receiptId": {
+                  "maxLength": 128,
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "sourceId": {
+                  "maxLength": 128,
+                  "minLength": 1,
+                  "pattern": "^[A-Za-z0-9_-]+$",
+                  "type": "string"
+                },
+                "sourceRevision": {
+                  "pattern": "^[0-9a-f]{64}$",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "receiptId",
+                "outcome",
+                "itemId",
+                "sourceId",
+                "sourceRevision",
+                "progress"
+              ],
+              "type": "object"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "code": {
+                  "enum": [
+                    "receipt_rejected",
+                    "source_unavailable"
+                  ],
+                  "type": "string"
+                },
+                "outcome": {
+                  "const": "refused",
+                  "type": "string"
+                },
+                "receiptId": {
+                  "maxLength": 128,
+                  "minLength": 1,
+                  "type": "string"
+                }
+              },
+              "required": [
+                "receiptId",
+                "outcome",
+                "code"
+              ],
+              "type": "object"
+            }
+          ]
+        },
+        "maxItems": 50,
+        "type": "array"
+      }
+    },
+    "required": [
+      "results"
     ],
     "type": "object"
   },

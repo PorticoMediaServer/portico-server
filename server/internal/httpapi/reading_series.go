@@ -115,6 +115,11 @@ func (d Dependencies) readingSeries(w http.ResponseWriter, r *http.Request) {
 	for _, item := range page.Items {
 		out.Items = append(out.Items, readingItemProjection(item))
 	}
+	if out.Items, err = readingBudget(out.Items, readingPageBytes, page.Truncate); err != nil {
+		readingFailure(w, err)
+		return
+	}
+	out.NextCursor = page.NextCursor
 	write(w, 200, out)
 }
 

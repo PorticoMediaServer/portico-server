@@ -5,7 +5,6 @@ import (
 	"database/sql"
 	"encoding/hex"
 	"errors"
-	"strings"
 	"time"
 
 	"portico.local/server/internal/compactcatalog"
@@ -21,6 +20,12 @@ type PeriodicalGroup struct {
 type PeriodicalGroupsPage struct {
 	Groups     []PeriodicalGroup
 	NextCursor string
+	cursorAt   func(int) (string, error)
+}
+
+// Truncate keeps the first n groups and continues after the last one kept.
+func (p *PeriodicalGroupsPage) Truncate(n int) error {
+	return truncatePage(&p.Groups, &p.NextCursor, p.cursorAt, n)
 }
 
 // PeriodicalGroups counts the entire current visible typed+dated membership
@@ -74,9 +79,7 @@ func (s *Service) PeriodicalGroups(ctx context.Context, p identity.Principal, li
 		return out, ErrChanged
 	}
 	current := seriesCursor{Namespace: generation.Namespace, Input: generation.Input, Ready: generation.Ready, Catalog: scope.Catalog, Viewer: scope.Viewer, Expiry: time.Now().Add(30 * time.Minute).Unix(), Scope: digest}
-	cte := s.periodicalGroupsCTE(visible)
-	args := append([]any{handle, generation.Ready, publicationType, publicationType}, visibleArgs...)
-	afterKey, afterID := "", ""
+	var after *string
 	if cursor != "" {
 		captured, e := decodeSeriesCursor(cursor, key, time.Now())
 		if e != nil {
@@ -85,67 +88,37 @@ func (s *Service) PeriodicalGroups(ctx context.Context, p identity.Principal, li
 		if captured.Namespace != current.Namespace || captured.Input != current.Input || captured.Ready != current.Ready || captured.Catalog != current.Catalog || captured.Viewer != current.Viewer || captured.Scope != current.Scope {
 			return out, ErrChanged
 		}
-		anchorArgs := append(append([]any{}, args...), captured.Anchor)
-		if err = tx.QueryRowContext(ctx, cte+`SELECT series_key,series_id FROM groups_page WHERE entity=?`, anchorArgs...).Scan(&afterKey, &afterID); err != nil {
-			if errors.Is(err, sql.ErrNoRows) {
-				return out, ErrChanged
-			}
-			return out, err
+		anchor, e := seriesAnchorTx(ctx, tx, handle, generation.Ready, captured.Anchor)
+		if e != nil {
+			return out, e
 		}
-		tuple, e := (seriesTuple{Sort: afterKey + "\x00" + afterID, Item: captured.Anchor}).digest()
+		tuple, e := (seriesTuple{Sort: anchor.Key + "\x00" + anchor.ID, Item: captured.Anchor}).digest()
 		if e != nil || tuple != captured.Tuple {
 			return out, ErrChanged
 		}
+		after = &anchor.Key
 		current.Expiry = captured.Expiry
 	}
-	query := cte + `SELECT series_id,series_key,series_value,issue_count,entity,public_id,library_id,title,format,token,available,issue_date FROM groups_page`
-	if cursor != "" {
-		query += ` WHERE (series_key COLLATE BINARY,series_id)>(?,?)`
-		args = append(args, afterKey, afterID)
-	}
-	query += ` ORDER BY series_key COLLATE BINARY,series_id LIMIT ?`
-	args = append(args, limit+1)
-	rows, err := tx.QueryContext(ctx, query, args...)
+	groups, selected, err := s.periodicalGroupsTx(ctx, tx, handle, generation.Ready, publicationType, visible, visibleArgs, after, limit+1)
 	if err != nil {
 		return out, err
 	}
-	var tuples []seriesTuple
-	for rows.Next() {
-		var group PeriodicalGroup
-		var sort string
-		item := &group.Latest
-		if err = rows.Scan(&group.ID, &sort, &group.Name, &group.IssueCount, &item.entity, &item.ID, &item.LibraryID, &item.Title, &item.Format, &item.SourceID, &item.InventoryAvailable, &item.IssueDate); err != nil {
-			break
-		}
-		if group.IssueCount < 1 || !compactcatalog.ValidReadingIssueDate(item.IssueDate) || publicationType == "newspaper" && len(item.IssueDate) != 10 || strings.ContainsRune(sort, 0) {
-			err = ErrChanged
-			break
-		}
-		tuple := seriesTuple{Sort: sort + "\x00" + group.ID, Item: item.entity}
-		if _, err = tuple.digest(); err != nil {
-			break
-		}
-		out.Groups = append(out.Groups, group)
-		tuples = append(tuples, tuple)
-	}
-	if err == nil {
-		err = rows.Err()
-	}
-	rows.Close()
-	if err != nil {
-		return out, err
-	}
+	out.Groups = groups
 	if len(out.Groups) > limit {
 		out.Groups = out.Groups[:limit]
-		tuples = tuples[:limit]
-		last := tuples[len(tuples)-1]
-		current.Anchor = last.Item
-		current.Tuple, err = last.digest()
+	}
+	out.cursorAt = func(i int) (string, error) {
+		next := current
+		next.Anchor = groups[i].Latest.entity
+		tuple, err := (seriesTuple{Sort: selected[i].Key + "\x00" + selected[i].ID, Item: next.Anchor}).digest()
 		if err != nil {
-			return out, err
+			return "", err
 		}
-		out.NextCursor, err = current.encode(key)
-		if err != nil {
+		next.Tuple = tuple
+		return next.encode(key)
+	}
+	if len(groups) > limit {
+		if out.NextCursor, err = out.cursorAt(limit - 1); err != nil {
 			return out, err
 		}
 	}
@@ -165,19 +138,75 @@ func (s *Service) PeriodicalGroups(ctx context.Context, p identity.Principal, li
 	return out, nil
 }
 
-// Shared complete eligible membership; callers keep their original authorized snapshot.
-func (s *Service) periodicalGroupsCTE(visible string) string {
-	return `WITH eligible AS MATERIALIZED(
- SELECT m.series_id,m.series_key,m.series_value,m.series_source,m.issue_date,e.id AS entity,pid(e.public_id) AS public_id,cl.library_id,e.title,p.format,a.token,
- EXISTS(SELECT 1 FROM inventory_item_availability available WHERE available.item_id=e.id AND available.asset_id=a.token AND available.available=1) AS available
- FROM reading_attribution_members m JOIN catalog_entities e ON e.id=m.item_id AND e.library_id=m.library_id
+// periodicalFrom is the eligible, visible membership of one publication type.
+// series is the series condition and takes the third parameter.
+func (s *Service) periodicalFrom(visible, series string) string {
+	return ` FROM reading_attribution_members m JOIN catalog_entities e ON e.id=m.item_id AND e.library_id=m.library_id
  JOIN catalog_libraries cl ON cl.id=e.library_id JOIN libraries lib ON lib.id=cl.library_id
  JOIN reading_publications p ON p.item_id=e.id AND p.asset_id=` + s.primaryPublicationSQL() + `
  JOIN catalog_asset_links link ON link.entity_id=e.id AND link.asset_id=p.asset_id JOIN catalog_assets a ON a.id=p.asset_id
- WHERE m.library_id=? AND m.generation=? AND m.publication_type=? AND m.series_id IS NOT NULL AND m.issue_date IS NOT NULL
- AND (?='magazine' OR length(m.issue_date)=10) AND e.retired=0 AND cl.retired=0 AND lib.kind='book' AND e.kind=20 AND p.format IN(` + s.bookFormatsSQL() + `) AND (` + visible + `)),
+ WHERE m.library_id=? AND m.generation=? AND ` + series + ` AND m.publication_type=? AND m.issue_date IS NOT NULL
+ AND (?='magazine' OR length(m.issue_date)=10) AND e.retired=0 AND cl.retired=0 AND lib.kind='book' AND e.kind=20 AND p.format IN(` + s.bookFormatsSQL() + `) AND (` + visible + `)`
+}
+
+// periodicalGroupsTx selects at most want groups after the given key, then
+// counts, labels and finds the latest issue of the selected groups only, over
+// their entire current visible typed and dated membership.
+func (s *Service) periodicalGroupsTx(ctx context.Context, tx *sql.Tx, handle, generation int64, publicationType, visible string, visibleArgs []any, after *string, want int) ([]PeriodicalGroup, []seriesCandidate, error) {
+	next, err := periodicalSeriesWalk(ctx, tx, handle, generation, publicationType, after)
+	if err != nil {
+		return nil, nil, err
+	}
+	present, done, err := presentSeries(ctx, tx, s.periodicalFrom(visible, "m.series_id=?"), handle, generation, append([]any{publicationType, publicationType}, visibleArgs...))
+	if err != nil {
+		return nil, nil, err
+	}
+	selected, err := selectSeries(next, present, want)
+	done()
+	if err != nil || len(selected) == 0 {
+		return []PeriodicalGroup{}, selected, err
+	}
+	ids, err := seriesIDsJSON(selected)
+	if err != nil {
+		return nil, nil, err
+	}
+	query := `WITH eligible AS MATERIALIZED(
+ SELECT m.series_id,m.series_key,m.series_value,m.series_source,m.issue_date,e.id AS entity,pid(e.public_id) AS public_id,cl.library_id,e.title,p.format,a.token,
+ EXISTS(SELECT 1 FROM inventory_item_availability available WHERE available.item_id=e.id AND available.asset_id=a.token AND available.available=1) AS available` + s.periodicalFrom(visible, "m.series_id IN(SELECT value FROM json_each(?))") + `),
  spellings AS(SELECT series_id,series_key,series_value,count(*) AS frequency,sum(series_source='owner') AS owners FROM eligible GROUP BY series_id,series_key,series_value),
  labels AS(SELECT series_id,series_key,series_value,row_number() OVER(PARTITION BY series_id ORDER BY owners>0 DESC,CASE WHEN owners>0 THEN owners ELSE frequency END DESC,series_value COLLATE BINARY) AS label_rank FROM spellings),
- members AS(SELECT e.*,count(*) OVER(PARTITION BY series_id) AS issue_count,row_number() OVER(PARTITION BY series_id ORDER BY issue_date DESC,entity DESC) AS latest_rank FROM eligible e),
- groups_page AS(SELECT l.series_id,l.series_key,l.series_value,m.issue_count,m.entity,m.public_id,m.library_id,m.title,m.format,m.token,m.available,m.issue_date FROM labels l JOIN members m ON m.series_id=l.series_id WHERE l.label_rank=1 AND m.latest_rank=1) `
+ members AS(SELECT e.*,count(*) OVER(PARTITION BY series_id) AS issue_count,row_number() OVER(PARTITION BY series_id ORDER BY issue_date DESC,entity DESC) AS latest_rank FROM eligible e)
+ SELECT l.series_id,l.series_key,l.series_value,m.issue_count,m.entity,m.public_id,m.library_id,m.title,m.format,m.token,m.available,m.issue_date
+ FROM labels l JOIN members m ON m.series_id=l.series_id WHERE l.label_rank=1 AND m.latest_rank=1 ORDER BY l.series_key COLLATE BINARY,l.series_id`
+	args := append([]any{handle, generation, ids, publicationType, publicationType}, visibleArgs...)
+	rows, err := tx.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, nil, err
+	}
+	groups := []PeriodicalGroup{}
+	for rows.Next() {
+		var group PeriodicalGroup
+		var sort string
+		item := &group.Latest
+		if err = rows.Scan(&group.ID, &sort, &group.Name, &group.IssueCount, &item.entity, &item.ID, &item.LibraryID, &item.Title, &item.Format, &item.SourceID, &item.InventoryAvailable, &item.IssueDate); err != nil {
+			break
+		}
+		at := len(groups)
+		if at >= len(selected) || selected[at].ID != group.ID || selected[at].Key != sort || group.IssueCount < 1 || !compactcatalog.ValidReadingIssueDate(item.IssueDate) || publicationType == "newspaper" && len(item.IssueDate) != 10 {
+			err = ErrChanged
+			break
+		}
+		groups = append(groups, group)
+	}
+	if err == nil {
+		err = rows.Err()
+	}
+	rows.Close()
+	if err == nil && len(groups) != len(selected) {
+		err = ErrChanged
+	}
+	if err != nil {
+		return nil, nil, err
+	}
+	return groups, selected, nil
 }

@@ -52,7 +52,7 @@ function BoundReadItem({captured, eligibility}: {captured: Captured; eligibility
   const [editing, setEditing] = useState(false), [more, setMore] = useState(false);
   const editorAnchor = useRef<HTMLButtonElement>(null);
   const errorSink = useRef(captured.binding.home.effects.reportError); errorSink.current = captured.binding.home.effects.reportError;
-  const [sourceId, setSourceId] = useState(() => eligibility.versions.find(version => version.inventoryAvailable)?.sourceId);
+  const [sourceId, setSourceId] = useState(() => eligibility.versions.find(version => version.inventoryAvailable && version.sourceId === eligibility.chosenSourceId)?.sourceId);
   const [menu, setMenu] = useState(false), [fileInfo, setFileInfo] = useState(false), [retry, setRetry] = useState(0);
   const [saving, setSaving] = useState(false), [rereading, setRereading] = useState(false);
   const [attempt, setAttempt] = useState<ReadAttempt>();

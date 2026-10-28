@@ -690,6 +690,7 @@ var routeLanes = map[string]string{
 	"POST /v1/quick-connect/review":                                               "default",
 	"POST /v1/quick-connect/token":                                                "default",
 	"POST /v1/reading/offline/progress":                                           "media-body",
+	"POST /v1/reading/offline/progress/read":                                      "browsing",
 	"POST /v1/reading/sessions":                                                   "media-body",
 	"POST /v1/reading/sessions/{sessionId}/file-save":                             "media-body",
 	"POST /v1/receivers":                                                          "default",

@@ -1,7 +1,7 @@
 import {useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactNode} from 'react';
 import {calendarDate, defaultI18n} from '@i18n';
 import {generatedCoverTint} from '@design';
-import type {ReadingDiscover, ReadingShortRead, ReadingPeriodicalIssue, ReadingPeriodicalGroup} from '@portico/client-core';
+import type {ReadingDiscover, ReadingDiscoverRowKey, ReadingShortRead, ReadingPeriodicalIssue, ReadingPeriodicalGroup} from '@portico/client-core';
 import type {FactPart} from '@portico/client-core/kit-model';
 import {useProtectedWebScreenContext} from '../../route-registry-view';
 import {router} from '../../router';
@@ -34,6 +34,8 @@ type Resources = Readonly<{
   artwork: Captured['context']['artwork'];
 }>;
 const {t} = defaultI18n;
+/** The Discover rows that continue (the newspaper slot is one card). */
+const pagedRows: readonly string[] = ['recent', 'short-reads', 'series', 'new-issues'];
 
 /** Real facts only: the accepted author, never a length or a guess the DTO doesn't carry. */
 const authorFacts = (author: Readonly<{value: string; source: string}> | undefined): readonly FactPart[] =>
@@ -70,6 +72,9 @@ function LibraryRows({resources, libraryId, name, comic, view, onMore, onRetry, 
   const [shortReads, setShortReads] = useState<readonly ReadingShortRead[]>([]);
   const [series, setSeries] = useState<NonNullable<ReadingDiscover['rows'][number]['series']>>([]);
   const [previewMarks, setPreviewMarks] = useState<ReadonlyMap<string, Readonly<{itemId: string; read: boolean; revision: number}>>>(new Map());
+  /** Each Discover row's own continuation (WEB-053): the open request's life, the
+   *  server's next cursor per row and the rows already asking for their next page. */
+  const discovery = useRef<{life: AbortController; cursors: Map<ReadingDiscoverRowKey, string>; loading: Set<ReadingDiscoverRowKey>}>(undefined);
   useLayoutEffect(() => {
     const element = grid.current; if (!element) return;
     const read = () => setHeight(Math.max(280, window.innerHeight - element.getBoundingClientRect().top));
@@ -83,9 +88,13 @@ function LibraryRows({resources, libraryId, name, comic, view, onMore, onRetry, 
    *  has no recently-added values (Root §3), and the Reading list stays reachable. */
   useEffect(() => {
     const operation = new AbortController();
+    const cursors = new Map<ReadingDiscoverRowKey, string>();
+    discovery.current = {life: operation, cursors, loading: new Set()};
     setSeries([]); setPreviewMarks(new Map()); setShortReads([]); setNewIssues([]); setNewspaper(undefined);
     resources.bindings.client.discover({libraryId, limit: 20, seriesLimit: 12, ...(!comic ? {shortReadsLimit: 12, newIssuesLimit: 12, newspaperLimit: 1} : {})}, operation.signal)
-      .then(response => {if (!operation.signal.aborted && resources.bindings.authority.isCurrent()) {setRecent(response.rows[0]?.items ?? []); setSeries(response.rows.find(row => row.key === 'series')?.series ?? []); setPreviewMarks(response.previewMarks); setShortReads(response.rows.find(row => row.key === 'short-reads')?.shortReads ?? []); setNewIssues(response.newIssueCards); setNewspaper(response.newspaperCard);}})
+      .then(response => {if (!operation.signal.aborted && resources.bindings.authority.isCurrent()) {
+        for (const row of response.rows) if (row.nextCursor && row.key !== 'newspaper') cursors.set(row.key as ReadingDiscoverRowKey, row.nextCursor);
+        setRecent(response.rows[0]?.items ?? []); setSeries(response.rows.find(row => row.key === 'series')?.series ?? []); setPreviewMarks(response.previewMarks); setShortReads(response.rows.find(row => row.key === 'short-reads')?.shortReads ?? []); setNewIssues(response.newIssueCards); setNewspaper(response.newspaperCard);}})
       .catch(error => {
         if (operation.signal.aborted) return;
         setRecent([]); setSeries([]); setPreviewMarks(new Map()); setShortReads([]); setNewIssues([]); setNewspaper(undefined);
@@ -93,6 +102,35 @@ function LibraryRows({resources, libraryId, name, comic, view, onMore, onRetry, 
       });
     return () => operation.abort();
   }, [resources, libraryId, comic]);
+  /** Near a row's end, ask for that row's next page alone and append it, skipping
+   *  any entry already drawn. A failed page ends the row and is reported. */
+  const continueRow = (key: ReadingDiscoverRowKey) => {
+    const current = discovery.current, cursor = current?.cursors.get(key);
+    if (!current || !cursor || current.loading.has(key) || current.life.signal.aborted) return;
+    current.loading.add(key);
+    const appended = <T,>(id: (entry: T) => string, next: readonly T[]) => (prior: readonly T[] | undefined) => {
+      const seen = new Set((prior ?? []).map(id));
+      return [...(prior ?? []), ...next.filter(entry => !seen.has(id(entry)))];
+    };
+    resources.bindings.client.discoverRow(key, {libraryId, cursor, limit: key === 'recent' ? 20 : 12}, current.life.signal)
+      .then(page => {
+        if (current.life.signal.aborted || !resources.bindings.authority.isCurrent()) return;
+        if (page.row.nextCursor) current.cursors.set(key, page.row.nextCursor); else current.cursors.delete(key);
+        if (key === 'recent') setRecent(appended<RecentReadingItem>(entry => entry.id, page.row.items));
+        else if (key === 'short-reads') setShortReads(appended(entry => entry.item.id, page.row.shortReads ?? []));
+        else if (key === 'new-issues') setNewIssues(appended(entry => entry.item.id, page.newIssueCards));
+        else {
+          setSeries(appended(entry => entry.id, page.row.series ?? []));
+          setPreviewMarks(prior => new Map([...prior, ...page.previewMarks]));
+        }
+      })
+      .catch(error => {
+        if (current.life.signal.aborted) return;
+        current.cursors.delete(key);
+        if (resources.bindings.authority.isCurrent()) resources.reportError(error);
+      })
+      .finally(() => current.loading.delete(key));
+  };
   const cardWidth = width < 600 ? 108 : 190;
   /** The viewer's own calendar day, so an archive edition dated today reads as today's paper. */
   const now = new Date(), today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
@@ -168,7 +206,10 @@ function LibraryRows({resources, libraryId, name, comic, view, onMore, onRetry, 
           visible disabled={!newspaper.latest.item.inventoryAvailable}
           onNavigate={() => {if (resources.bindings.authority.isCurrent()) void router.navigate({to: '/library/$libraryId', params: {libraryId}, search: {view: 'series', pivot: 'newspapers', entityId: newspaper.id}}).catch(resources.reportError);}}/>
       </Row> : undefined}
-      onVisibleRange={(row, range) => {if (row.kind === 'resume') resources.resume.collection.ensureRange(Math.max(0, range.first), Math.max(0, range.last));}}>
+      onVisibleRange={(row, range) => {
+        if (row.kind === 'resume') resources.resume.collection.ensureRange(Math.max(0, range.first), Math.max(0, range.last));
+        else if (pagedRows.includes(row.id) && range.last >= row.items.length - 4) continueRow(row.id as ReadingDiscoverRowKey);
+      }}>
       {state.total === 0 || !showGrid ? null : <div ref={grid} className={styles.books} data-view="grid">
         <WindowedGrid collection={resources.books.collection} label={name}
           height={height} cardWidth={cardWidth} rowHeight={cardWidth * 1.5 + 58} gap={20} rowGap={30} renderPlaceholder={() => <Skeleton width={cardWidth} height={cardWidth * 1.5}/>}

@@ -3,6 +3,7 @@ package reading
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 	"math"
 	"strconv"
@@ -306,6 +307,7 @@ type LibraryRow struct {
 	MarkRevision int64
 	MarkKnown    bool
 	entity       int64
+	added        int64 // catalogue addition time, set only by recently-added rows
 }
 
 type SeriesValue struct {
@@ -316,6 +318,11 @@ type SeriesValue struct {
 type LibraryPage struct {
 	Items      []LibraryRow
 	NextCursor string
+}
+
+// Truncate keeps the first n items and continues after the last one kept.
+func (p *LibraryPage) Truncate(n int) error {
+	return truncatePage(&p.Items, &p.NextCursor, func(i int) (string, error) { return fmt.Sprint(p.Items[i].entity), nil }, n)
 }
 
 // List applies the same profile/member/library/title predicate as an item
@@ -398,21 +405,59 @@ type Version struct {
 }
 
 func (s *Service) Versions(ctx context.Context, p identity.Principal, item string) ([]Version, error) {
+	out, err := s.VersionChoice(ctx, p, item)
+	return out.Versions, err
+}
+
+// VersionChoice is a publication's actual versions with the one the server
+// chooses to open, read in one authorized snapshot.
+type VersionChoice struct {
+	Versions []Version
+	Chosen   string
+}
+
+// chooseReadingVersion is the server's reading version choice: the version
+// holding the reader's latest progress while it can be opened, else the primary
+// choice (the first available version in asset order, else the first version).
+// Keep the whole policy here; it is one product rule (D5).
+func chooseReadingVersion(versions []Version, progressed string) string {
+	primary := ""
+	for _, v := range versions {
+		if v.InventoryAvailable && v.SourceID == progressed && progressed != "" {
+			return v.SourceID
+		}
+		if primary == "" && v.InventoryAvailable {
+			primary = v.SourceID
+		}
+	}
+	if primary == "" && len(versions) > 0 {
+		primary = versions[0].SourceID
+	}
+	return primary
+}
+
+func (s *Service) VersionChoice(ctx context.Context, p identity.Principal, item string) (VersionChoice, error) {
+	versions, progressed, err := s.versions(ctx, p, item)
+	return VersionChoice{Versions: versions, Chosen: chooseReadingVersion(versions, progressed)}, err
+}
+
+// versions also returns the source of this viewer's latest saved progress on the item.
+func (s *Service) versions(ctx context.Context, p identity.Principal, item string) ([]Version, string, error) {
 	g, err := dbwork.BeginSnapshot(ctx, s.DB)
 	if err != nil {
-		return nil, err
+		return nil, "", err
 	}
 	defer g.Rollback()
 	tx := g.Tx()
 	var library string
 	if err = tx.QueryRowContext(ctx, `SELECT cl.library_id FROM catalog_entities e JOIN catalog_libraries cl ON cl.id=e.library_id JOIN libraries lib ON lib.id=cl.library_id WHERE e.public_id=pid_blob(?) AND e.retired=0 AND cl.retired=0 AND ((lib.kind='book' AND e.kind=20) OR (lib.kind='comic' AND e.kind=21)) AND EXISTS(SELECT 1 FROM reading_publications format_check WHERE format_check.item_id=e.id AND format_check.format IN(`+s.sourceFormatsSQL()+`) AND `+readingcap.LocalComicArchiveSQL("format_check")+`)`, item).Scan(&library); err != nil {
-		return nil, ErrUnavailable
+		return nil, "", ErrUnavailable
 	}
 	if s.Authorize == nil {
-		return nil, identity.ErrForbidden
+		return nil, "", identity.ErrForbidden
 	}
 	if err = s.Authorize(ctx, tx, p, library, item); err != nil {
-		return nil, err
+		return nil, "", err
 	}
 	// Generic availability is exact for every other format, but a local-only comic copy can
 	// share its asset token through another library source. Its advertised
@@ -431,19 +476,33 @@ func (s *Service) Versions(ctx context.Context, p identity.Principal, item strin
  ELSE EXISTS(SELECT 1 FROM inventory_item_availability available WHERE available.item_id=p.item_id AND available.asset_id=a.token AND available.available=1) END)`
 	rows, err := tx.QueryContext(ctx, `SELECT a.token,p.format,a.size,`+availability+` FROM reading_publications p JOIN catalog_entities e ON e.id=p.item_id JOIN catalog_libraries cl ON cl.id=e.library_id JOIN catalog_asset_links link ON link.entity_id=e.id AND link.asset_id=p.asset_id JOIN catalog_assets a ON a.id=link.asset_id WHERE e.public_id=pid_blob(?) AND p.format IN(`+s.sourceFormatsSQL()+`) AND `+readingcap.LocalComicArchiveSQL("p")+` ORDER BY a.id LIMIT 129`, item)
 	if err != nil {
-		return nil, err
+		return nil, "", err
 	}
 	defer rows.Close()
 	out := []Version{}
+	progressed := ""
 	for rows.Next() {
 		var v Version
 		if err = rows.Scan(&v.SourceID, &v.Format, &v.Size, &v.InventoryAvailable); err != nil {
-			return nil, err
+			return nil, "", err
 		}
 		if len(out) == 128 {
-			return nil, ErrLimit
+			return nil, "", ErrLimit
 		}
 		out = append(out, v)
 	}
-	return out, rows.Err()
+	if err = rows.Err(); err != nil {
+		return nil, "", err
+	}
+	if err = rows.Close(); err != nil {
+		return nil, "", err
+	}
+	if identity.CanUsePersonalState(p) {
+		err = tx.QueryRowContext(ctx, `SELECT a.token FROM reading_progress rp JOIN catalog_entities e ON e.id=rp.item_id JOIN catalog_assets a ON a.id=rp.asset_id
+ WHERE rp.owner_key=? AND e.public_id=pid_blob(?) ORDER BY rp.observed_at DESC,rp.asset_id DESC LIMIT 1`, identity.PersonalKey(p.Viewer), item).Scan(&progressed)
+		if err != nil && !errors.Is(err, sql.ErrNoRows) {
+			return nil, "", err
+		}
+	}
+	return out, progressed, nil
 }

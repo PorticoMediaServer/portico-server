@@ -26,6 +26,26 @@ type SeriesPage struct {
 	Summary    *SeriesSummary
 	Items      []LibraryRow
 	NextCursor string
+	cursorAt   func(int) (string, error)
+}
+
+// Truncate keeps the first n items and continues after the last one kept.
+func (p *SeriesPage) Truncate(n int) error {
+	return truncatePage(&p.Items, &p.NextCursor, p.cursorAt, n)
+}
+
+// seriesCursorAt continues after one page member, in the page's own scope.
+func seriesCursorAt(current seriesCursor, key []byte, tuples []seriesTuple) func(int) (string, error) {
+	return func(i int) (string, error) {
+		next := current
+		next.Anchor = tuples[i].Item
+		tuple, err := tuples[i].digest()
+		if err != nil {
+			return "", err
+		}
+		next.Tuple = tuple
+		return next.encode(key)
+	}
 }
 
 // Series reads only a complete immutable attribution generation. Its anchor
@@ -154,17 +174,10 @@ func (s *Service) Series(ctx context.Context, p identity.Principal, library, ser
 	if len(out.Items) == 0 && cursor == "" {
 		return out, ErrUnavailable
 	}
+	out.cursorAt = seriesCursorAt(current, key, tuples)
 	if len(out.Items) > limit {
 		out.Items = out.Items[:limit]
-		tuples = tuples[:limit]
-		last := tuples[len(tuples)-1]
-		current.Anchor = last.Item
-		current.Tuple, err = last.digest()
-		if err != nil {
-			return out, err
-		}
-		out.NextCursor, err = current.encode(key)
-		if err != nil {
+		if out.NextCursor, err = out.cursorAt(limit - 1); err != nil {
 			return out, err
 		}
 	}

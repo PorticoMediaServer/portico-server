@@ -20,6 +20,12 @@ type ContinueRow struct {
 type ContinuePage struct {
 	Items      []ContinueRow
 	NextCursor string
+	positions  []continueCursor
+}
+
+// Truncate keeps the first n items and continues after the last one kept.
+func (p *ContinuePage) Truncate(n int) error {
+	return truncatePage(&p.Items, &p.NextCursor, func(i int) (string, error) { return p.positions[i].encode(), nil }, n)
 }
 
 type continueCursor struct{ observed, item, asset int64 }
@@ -144,6 +150,7 @@ func (s *Service) Continue(ctx context.Context, p identity.Principal, library, c
 		progress.Stale = progress.SourceRevision != presentation.Revision || progress.Location.Format != presentation.Format
 		out.Items = append(out.Items, ContinueRow{Conversion: conversion, Item: LibraryRow{ID: selected.ItemID, LibraryID: selected.library, Title: selected.Title, Format: selected.Format, SourceID: selected.token, InventoryAvailable: true, entity: selected.Entity}, Progress: progress})
 		last = continueCursor{progress.ObservedAt, selected.Entity, selected.Asset}
+		out.positions = append(out.positions, last)
 	}
 	if err = rows.Err(); err != nil {
 		return out, err

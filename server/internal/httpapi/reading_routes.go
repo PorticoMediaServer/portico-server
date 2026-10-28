@@ -51,7 +51,7 @@ func (d Dependencies) readingRoutes(mux *http.ServeMux) {
 	register("POST /v1/libraries/{libraryId}/reading/mark-all", nil, d.readingSetMarkAll(&personalLimiter{}))
 	register("GET /v1/reading/items", []string{"libraryId", "cursor", "limit"}, d.listReadingItems)
 	register("GET /v1/reading/search", []string{"q", "cursor", "limit", "libraryId"}, d.searchReadingIndex)
-	register("GET /v1/reading/discover", []string{"libraryId", "limit", "seriesLimit", "shortReadsLimit", "newIssuesLimit", "newspaperLimit"}, d.readingDiscover)
+	register("GET /v1/reading/discover", []string{"libraryId", "limit", "seriesLimit", "shortReadsLimit", "newIssuesLimit", "newspaperLimit", "row", "cursor"}, d.readingDiscover)
 	register("GET /v1/libraries/{libraryId}/reading/series/{seriesId}", []string{"cursor", "limit"}, d.readingSeries)
 	register("GET /v1/libraries/{libraryId}/reading/periodicals", []string{"publicationType", "cursor", "limit"}, d.readingPeriodicalGroups)
 	register("GET /v1/libraries/{libraryId}/reading/periodicals/{seriesId}/issues", []string{"publicationType", "issueDate", "year", "month", "order", "cursor", "limit"}, d.readingPeriodicalIssues)
@@ -59,6 +59,7 @@ func (d Dependencies) readingRoutes(mux *http.ServeMux) {
 	register("GET /v1/items/{itemId}/reading/versions", nil, d.readingVersions)
 	register("POST /v1/items/{itemId}/reading/reread", nil, d.readingReread)
 	register("POST /v1/reading/offline/progress", nil, d.readingOfflineProgress)
+	register("POST /v1/reading/offline/progress/read", nil, d.readingOfflineProgressRead)
 	register("POST /v1/reading/sessions", nil, d.prepareReadingSession)
 	register("POST /v1/reading/sessions/{sessionId}/file-save", nil, d.readingFileSave)
 	register("GET /v1/reading/sessions/{sessionId}/annotations", []string{"cursor", "revision"}, d.readingAnnotations)
@@ -125,11 +126,15 @@ func (d Dependencies) listReadingItems(w http.ResponseWriter, r *http.Request) {
 		readingFailure(w, err)
 		return
 	}
-	out := ReadingItemsResponse{Items: []ReadingItem{}, NextCursor: page.NextCursor}
+	items := []ReadingItem{}
 	for _, item := range page.Items {
-		out.Items = append(out.Items, readingItemProjection(item))
+		items = append(items, readingItemProjection(item))
 	}
-	write(w, 200, out)
+	if items, err = readingBudget(items, readingItemsPageBytes, page.Truncate); err != nil {
+		readingFailure(w, err)
+		return
+	}
+	write(w, 200, ReadingItemsResponse{Items: items, NextCursor: page.NextCursor})
 }
 
 func (d Dependencies) readingContinue(w http.ResponseWriter, r *http.Request) {
@@ -150,12 +155,16 @@ func (d Dependencies) readingContinue(w http.ResponseWriter, r *http.Request) {
 		readingFailure(w, err)
 		return
 	}
-	out := ReadingContinueResponse{Items: []ReadingContinueItem{}, NextCursor: page.NextCursor}
+	items := []ReadingContinueItem{}
 	for _, row := range page.Items {
 		v := row.Item
-		out.Items = append(out.Items, ReadingContinueItem{Conversion: readingConversionProjection(row.Conversion), Item: readingItemProjection(v), Progress: *readingProgressProjection(&row.Progress)})
+		items = append(items, ReadingContinueItem{Conversion: readingConversionProjection(row.Conversion), Item: readingItemProjection(v), Progress: *readingProgressProjection(&row.Progress)})
 	}
-	write(w, 200, out)
+	if items, err = readingBudget(items, readingPageBytes, page.Truncate); err != nil {
+		readingFailure(w, err)
+		return
+	}
+	write(w, 200, ReadingContinueResponse{Items: items, NextCursor: page.NextCursor})
 }
 
 func (d Dependencies) readingVersions(w http.ResponseWriter, r *http.Request) {
@@ -163,13 +172,13 @@ func (d Dependencies) readingVersions(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	versions, err := d.readingService().Versions(r.Context(), p, r.PathValue("itemId"))
+	choice, err := d.readingService().VersionChoice(r.Context(), p, r.PathValue("itemId"))
 	if err != nil {
 		readingFailure(w, err)
 		return
 	}
-	out := ReadingVersionsResponse{Versions: []ReadingVersion{}}
-	for _, version := range versions {
+	out := ReadingVersionsResponse{ChosenSourceID: choice.Chosen, Versions: []ReadingVersion{}}
+	for _, version := range choice.Versions {
 		out.Versions = append(out.Versions, ReadingVersion{version.SourceID, ReadingSourceFormat(version.Format), version.Size, version.InventoryAvailable})
 	}
 	write(w, 200, out)

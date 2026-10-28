@@ -28,17 +28,12 @@ func (s *Service) discoverNewspaperTx(ctx context.Context, tx *sql.Tx, p identit
 	if err != nil {
 		return nil, err
 	}
-	query := s.periodicalGroupsCTE(visible) + `SELECT series_id,series_value,issue_count,entity,public_id,library_id,title,format,token,available,issue_date FROM groups_page ORDER BY series_key COLLATE BINARY,series_id LIMIT 1`
-	args := append([]any{handle, generation.Ready, "newspaper", "newspaper"}, visibleArgs...)
-	var group PeriodicalGroup
-	item := &group.Latest
-	err = tx.QueryRowContext(ctx, query, args...).Scan(&group.ID, &group.Name, &group.IssueCount, &item.entity, &item.ID, &item.LibraryID, &item.Title, &item.Format, &item.SourceID, &item.InventoryAvailable, &item.IssueDate)
-	if errors.Is(err, sql.ErrNoRows) {
-		return nil, nil
-	}
-	if err != nil {
+	groups, _, err := s.periodicalGroupsTx(ctx, tx, handle, generation.Ready, "newspaper", visible, visibleArgs, nil, 1)
+	if err != nil || len(groups) == 0 {
 		return nil, err
 	}
+	group := groups[0]
+	item := &group.Latest
 	if len(group.ID) != 43 || group.Name == "" || group.IssueCount < 1 || group.IssueCount > 9007199254740991 || len(item.IssueDate) != 10 || !compactcatalog.ValidReadingIssueDate(item.IssueDate) {
 		return nil, ErrChanged
 	}

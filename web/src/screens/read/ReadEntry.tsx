@@ -128,9 +128,10 @@ function ReadEntryBody({captured, itemId, sourceId, active = true, onClose, rece
     void (async () => {
       if (!receiver.current()) throw new ReadingError('cancelled');
       if (receiver.received.kind === 'refused' || receiver.received.kind === 'pending') throw new ReadingError('source_changed');
-      const versions = (await bindings.client.versions(itemId, life.signal)).versions.filter(version => version.inventoryAvailable);
+      const listed = await bindings.client.versions(itemId, life.signal), versions = listed.versions.filter(version => version.inventoryAvailable);
       if (!alive || !receiver.current()) return;
-      const selected = sourceId ? versions.find(version => version.sourceId === sourceId) : versions.length === 1 ? versions[0] : undefined;
+      // Without an explicit version, open the one the server chose for this reader.
+      const selected = versions.find(version => version.sourceId === (sourceId ?? listed.chosenSourceId));
       if (!selected) {
         if (versions.length > 1 && !sourceId) await router.navigate({to: '/item/$itemId', params: {itemId}, replace: true});
         else setState({failed: true});

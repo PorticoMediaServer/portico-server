@@ -4,7 +4,7 @@ import {HttpLocalApi, ReadingError} from '@portico/client-core';
 import {resolveItemRead} from '../src/screens/detail/read-resolution.ts';
 import {isReadingLibrary} from '../src/screens/browse/reading-library.ts';
 
-const versions = {versions: [{sourceId: 'actual-source', format: 'epub', size: 500, inventoryAvailable: false}]};
+const versions = {chosenSourceId: 'actual-source', versions: [{sourceId: 'actual-source', format: 'epub', size: 500, inventoryAvailable: false}]};
 function setup(answer: () => Promise<Response> | Response) {
   const paths: string[] = [];
   const api = new HttpLocalApi('http://127.0.0.1:39117', 'unit-token', async input => {

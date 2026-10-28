@@ -5,7 +5,8 @@ import {ReadingError, type ReadingClient} from '@portico/client-core';
 export async function readItemEligibility(client: ReadingClient, itemId: string, signal?: AbortSignal) {
   try {
     const result = await client.versions(itemId, signal);
-    return result.versions.length ? Object.freeze({itemId, versions: result.versions}) : null;
+    // The server chooses which version to open; the client never picks the first.
+    return result.versions.length ? Object.freeze({itemId, versions: result.versions, chosenSourceId: result.chosenSourceId}) : null;
   } catch (error) {if (error instanceof ReadingError && error.status === 404) return null; throw error;}
 }
 export function readDestination(itemId: string, sourceId: string) {

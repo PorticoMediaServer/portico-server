@@ -6,6 +6,7 @@ export * from './reading-mark-all.ts';
 export {contentEntrySubject} from './presentation/content-entry-subject.ts';
 export * from './reading-reread.ts';
 export * from './reading-indexed-search.ts';
+export * from './reading-offline-refresh.ts';
 import type {MusicTechnicalFacts} from './music-facts.ts';
 import {routeBody} from "../../contracts/src/routes.ts";
 import {ReadingClient, type ReadingScope} from './reading.ts';

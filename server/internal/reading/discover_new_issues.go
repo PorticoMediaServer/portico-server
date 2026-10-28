@@ -11,8 +11,12 @@ import (
 
 // New issues means the newest actual catalogue additions among eligible
 // magazines. Publication date never stands in for the time it was added.
-func (s *Service) discoverNewIssuesTx(ctx context.Context, tx *sql.Tx, p identity.Principal, library string, limit int, visible string, visibleArgs []any) ([]LibraryRow, error) {
+func (s *Service) discoverNewIssuesTx(ctx context.Context, tx *sql.Tx, p identity.Principal, library, cursor string, limit int, visible string, visibleArgs []any) ([]LibraryRow, error) {
 	out := []LibraryRow{}
+	seek, after, err := addedSeek("e.added_ms", cursor)
+	if err != nil {
+		return out, err
+	}
 	if s.SeriesScope == nil {
 		return out, identity.ErrForbidden
 	}
@@ -30,7 +34,7 @@ func (s *Service) discoverNewIssuesTx(ctx context.Context, tx *sql.Tx, p identit
 	if err != nil {
 		return out, err
 	}
-	query := `SELECT e.id,pid(e.public_id),cl.library_id,e.title,p.format,a.token,
+	query := `SELECT e.id,e.added_ms,pid(e.public_id),cl.library_id,e.title,p.format,a.token,
  EXISTS(SELECT 1 FROM inventory_item_availability available WHERE available.item_id=e.id AND available.asset_id=a.token AND available.available=1),m.issue_date
  FROM reading_attribution_members m JOIN catalog_entities e ON e.id=m.item_id AND e.library_id=m.library_id
  JOIN catalog_libraries cl ON cl.id=e.library_id JOIN libraries lib ON lib.id=cl.library_id
@@ -39,17 +43,17 @@ func (s *Service) discoverNewIssuesTx(ctx context.Context, tx *sql.Tx, p identit
  WHERE m.library_id=? AND m.generation=? AND e.retired=0 AND cl.retired=0
  AND lib.kind='book' AND e.kind=20 AND p.format IN(` + s.bookFormatsSQL() + `)
  AND m.publication_type='magazine' AND m.series_id IS NOT NULL AND m.issue_date IS NOT NULL
- AND e.added_ms IS NOT NULL AND (` + visible + `)
+ AND e.added_ms IS NOT NULL AND (` + visible + `)` + seek + `
  ORDER BY e.added_ms DESC,e.id DESC LIMIT ?`
-	args := append([]any{handle, generation.Ready}, visibleArgs...)
-	args = append(args, limit)
+	args := append(append([]any{handle, generation.Ready}, visibleArgs...), after...)
+	args = append(args, limit+1)
 	rows, err := tx.QueryContext(ctx, query, args...)
 	if err != nil {
 		return out, err
 	}
 	for rows.Next() {
 		var row LibraryRow
-		if err = rows.Scan(&row.entity, &row.ID, &row.LibraryID, &row.Title, &row.Format, &row.SourceID, &row.InventoryAvailable, &row.IssueDate); err != nil {
+		if err = rows.Scan(&row.entity, &row.added, &row.ID, &row.LibraryID, &row.Title, &row.Format, &row.SourceID, &row.InventoryAvailable, &row.IssueDate); err != nil {
 			break
 		}
 		if !compactcatalog.ValidReadingIssueDate(row.IssueDate) {
