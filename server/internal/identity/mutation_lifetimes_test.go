@@ -82,7 +82,7 @@ func lifetimeRoots(t *testing.T, db *sql.DB, state string) int64 {
 func TestRegistrationCommitsOneRootAndReplaysWithoutAdvancing(t *testing.T) {
 	s, db, login, installation := registrationFixture(t)
 	scope := mutationScopeFor(t, db, login, installation)
-	incarnation, nonce := newMutationIncarnation(), newMutationID()
+	incarnation, nonce := installationRowFor(t, db, installation).incarnation, newMutationID()
 	first, replayed, err := registerMutationRoot(t, s, db, scope, MutationRegistration{Incarnation: incarnation, ExpectedRevision: 0, Nonce: nonce})
 	if err != nil {
 		t.Fatal(err)
@@ -143,7 +143,7 @@ func TestRegistrationCommitsOneRootAndReplaysWithoutAdvancing(t *testing.T) {
 func TestRegistrationSwitchDrainsOneRootAndKeepsOneSlot(t *testing.T) {
 	s, db, login, installation := registrationFixture(t)
 	scope := mutationScopeFor(t, db, login, installation)
-	incarnation := newMutationIncarnation()
+	incarnation := installationRowFor(t, db, installation).incarnation
 	first, _, err := registerMutationRoot(t, s, db, scope, MutationRegistration{Incarnation: incarnation, ExpectedRevision: 0, Nonce: newMutationID()})
 	if err != nil {
 		t.Fatal(err)
@@ -152,7 +152,7 @@ func TestRegistrationSwitchDrainsOneRootAndKeepsOneSlot(t *testing.T) {
 	if _, err := db.Exec(`INSERT INTO direct_profiles(id,account_id,name) VALUES(?,?,'Second')`, secondProfile, scope.AccountID); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := db.Exec(`UPDATE authorization_session_families SET profile_id=? WHERE id=?`, secondProfile, scope.FamilyID); err != nil {
+	if _, err := db.Exec(`UPDATE authorization_session_families SET profile_id=?,role='member' WHERE id=?`, secondProfile, scope.FamilyID); err != nil {
 		t.Fatal(err)
 	}
 	moved := scope
@@ -172,7 +172,7 @@ func TestRegistrationSwitchDrainsOneRootAndKeepsOneSlot(t *testing.T) {
 	}
 	// A drained root that retains no receipt is removed by the next switch, which
 	// still holds exactly one active and one draining root.
-	if _, err := db.Exec(`UPDATE authorization_session_families SET profile_id=? WHERE id=?`, scope.ProfileID, scope.FamilyID); err != nil {
+	if _, err := db.Exec(`UPDATE authorization_session_families SET profile_id=?,role='member' WHERE id=?`, scope.ProfileID, scope.FamilyID); err != nil {
 		t.Fatal(err)
 	}
 	third, _, err := registerMutationRoot(t, s, db, scope, MutationRegistration{Incarnation: incarnation, ExpectedRevision: 2, Nonce: newMutationID()})
@@ -193,7 +193,7 @@ func TestRegistrationSwitchDrainsOneRootAndKeepsOneSlot(t *testing.T) {
 func TestRegistrationRefusesAThirdSlotWhileTheDrainedRootRetainsReceipts(t *testing.T) {
 	s, db, login, installation := registrationFixture(t)
 	scope := mutationScopeFor(t, db, login, installation)
-	incarnation := newMutationIncarnation()
+	incarnation := installationRowFor(t, db, installation).incarnation
 	first, _, err := registerMutationRoot(t, s, db, scope, MutationRegistration{Incarnation: incarnation, ExpectedRevision: 0, Nonce: newMutationID()})
 	if err != nil {
 		t.Fatal(err)
@@ -202,7 +202,7 @@ func TestRegistrationRefusesAThirdSlotWhileTheDrainedRootRetainsReceipts(t *test
 	if _, err := db.Exec(`INSERT INTO direct_profiles(id,account_id,name) VALUES(?,?,'Second')`, secondProfile, scope.AccountID); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := db.Exec(`UPDATE authorization_session_families SET profile_id=? WHERE id=?`, secondProfile, scope.FamilyID); err != nil {
+	if _, err := db.Exec(`UPDATE authorization_session_families SET profile_id=?,role='member' WHERE id=?`, secondProfile, scope.FamilyID); err != nil {
 		t.Fatal(err)
 	}
 	moved := scope
@@ -222,7 +222,7 @@ func TestRegistrationRefusesAThirdSlotWhileTheDrainedRootRetainsReceipts(t *test
 	if _, err = db.Exec(`INSERT INTO user_mutation_receipts(key,scope_id,profile_id,family_id,profile_incarnation,installation_incarnation,root_id,operation,digest,is_stop,issued_ms,status) VALUES(?,?,?,?,?,?,?,?,?,0,?,'applied')`, receipt, scopeID, scope.ProfileID, scope.FamilyID, profileLifetimeValue(t, db, scope.AccountID, scope.ProfileID), incarnation, first.ID, "delete_personal_item", strings.Repeat("a", 64), 1793196000000); err != nil {
 		t.Fatal(err)
 	}
-	if _, err = db.Exec(`UPDATE authorization_session_families SET profile_id=? WHERE id=?`, scope.ProfileID, scope.FamilyID); err != nil {
+	if _, err = db.Exec(`UPDATE authorization_session_families SET profile_id=?,role='member' WHERE id=?`, scope.ProfileID, scope.FamilyID); err != nil {
 		t.Fatal(err)
 	}
 	if _, _, err = registerMutationRoot(t, s, db, scope, MutationRegistration{Incarnation: incarnation, ExpectedRevision: 2, Nonce: newMutationID()}); !errors.Is(err, ErrMutationRootSlot) {
@@ -248,7 +248,7 @@ func profileLifetimeValue(t *testing.T, db *sql.DB, account, profile string) str
 func TestRegistrationReplayAfterRootDeletionIsGoneAndNeverReallocates(t *testing.T) {
 	s, db, login, installation := registrationFixture(t)
 	scope := mutationScopeFor(t, db, login, installation)
-	incarnation, nonce := newMutationIncarnation(), newMutationID()
+	incarnation, nonce := installationRowFor(t, db, installation).incarnation, newMutationID()
 	first, _, err := registerMutationRoot(t, s, db, scope, MutationRegistration{Incarnation: incarnation, ExpectedRevision: 0, Nonce: nonce})
 	if err != nil {
 		t.Fatal(err)
@@ -310,7 +310,7 @@ func TestRegistrationRequiresTheExactLiveScope(t *testing.T) {
 			t.Fatal(err)
 		}
 		scope.InstallationID = otherInstallation
-		if _, _, err = registerMutationRoot(t, s, db, scope, MutationRegistration{Incarnation: newMutationIncarnation(), ExpectedRevision: 0, Nonce: newMutationID()}); !errors.Is(err, ErrMutationRootScope) {
+		if _, _, err = registerMutationRoot(t, s, db, scope, MutationRegistration{Incarnation: installationRowFor(t, db, scope.InstallationID).incarnation, ExpectedRevision: 0, Nonce: newMutationID()}); !errors.Is(err, ErrMutationRootScope) {
 			t.Fatalf("another device's installation registered this family: %v", err)
 		}
 	})
@@ -320,7 +320,7 @@ func TestRegistrationRequiresTheExactLiveScope(t *testing.T) {
 		if _, err := db.Exec(`UPDATE authorization_session_families SET revoked=1 WHERE id=?`, scope.FamilyID); err != nil {
 			t.Fatal(err)
 		}
-		if _, _, err := registerMutationRoot(t, s, db, scope, MutationRegistration{Incarnation: newMutationIncarnation(), ExpectedRevision: 0, Nonce: newMutationID()}); !errors.Is(err, ErrMutationRootScope) {
+		if _, _, err := registerMutationRoot(t, s, db, scope, MutationRegistration{Incarnation: installationRowFor(t, db, scope.InstallationID).incarnation, ExpectedRevision: 0, Nonce: newMutationID()}); !errors.Is(err, ErrMutationRootScope) {
 			t.Fatalf("a revoked family registered a root: %v", err)
 		}
 	})
@@ -330,7 +330,7 @@ func TestRegistrationRequiresTheExactLiveScope(t *testing.T) {
 		if _, err := db.Exec(`UPDATE direct_profiles SET deleted=1 WHERE account_id=? AND id=?`, scope.AccountID, scope.ProfileID); err != nil {
 			t.Fatal(err)
 		}
-		if _, _, err := registerMutationRoot(t, s, db, scope, MutationRegistration{Incarnation: newMutationIncarnation(), ExpectedRevision: 0, Nonce: newMutationID()}); !errors.Is(err, ErrMutationRootScope) {
+		if _, _, err := registerMutationRoot(t, s, db, scope, MutationRegistration{Incarnation: installationRowFor(t, db, scope.InstallationID).incarnation, ExpectedRevision: 0, Nonce: newMutationID()}); !errors.Is(err, ErrMutationRootScope) {
 			t.Fatalf("an erased profile registered a root: %v", err)
 		}
 	})
@@ -340,7 +340,7 @@ func TestRegistrationRequiresTheExactLiveScope(t *testing.T) {
 		if _, err := db.Exec(`UPDATE direct_memberships SET disabled=1 WHERE account_id=?`, scope.AccountID); err != nil {
 			t.Fatal(err)
 		}
-		if _, _, err := registerMutationRoot(t, s, db, scope, MutationRegistration{Incarnation: newMutationIncarnation(), ExpectedRevision: 0, Nonce: newMutationID()}); !errors.Is(err, ErrMutationRootScope) {
+		if _, _, err := registerMutationRoot(t, s, db, scope, MutationRegistration{Incarnation: installationRowFor(t, db, scope.InstallationID).incarnation, ExpectedRevision: 0, Nonce: newMutationID()}); !errors.Is(err, ErrMutationRootScope) {
 			t.Fatalf("a disabled membership registered a root: %v", err)
 		}
 	})
@@ -350,13 +350,13 @@ func TestRegistrationRequiresTheExactLiveScope(t *testing.T) {
 		if _, err := db.Exec(`UPDATE identity_installations SET retired=1 WHERE installation_hash=?`, mutationInstallationHash(installation)); err != nil {
 			t.Fatal(err)
 		}
-		if _, _, err := registerMutationRoot(t, s, db, scope, MutationRegistration{Incarnation: newMutationIncarnation(), ExpectedRevision: 0, Nonce: newMutationID()}); !errors.Is(err, ErrInstallationRetired) {
+		if _, _, err := registerMutationRoot(t, s, db, scope, MutationRegistration{Incarnation: installationRowFor(t, db, scope.InstallationID).incarnation, ExpectedRevision: 0, Nonce: newMutationID()}); !errors.Is(err, ErrInstallationRetired) {
 			t.Fatalf("a retired lifetime registered a root: %v", err)
 		}
 	})
 }
 
-func purgeJob(t *testing.T, db *sql.DB, id, account, profile, accountIncarnation, profileIncarnation, state string, phase int) {
+func insertRestorePurgeJob(t *testing.T, db *sql.DB, id, account, profile, accountIncarnation, profileIncarnation, state string, phase int) {
 	t.Helper()
 	if _, err := db.Exec(`INSERT INTO security_purge_jobs(job_id,authority,account_id,profile_id,account_incarnation,profile_incarnation,desired_revision,phase,cursor_key,process_epoch,attempt,next_attempt_ms,state) VALUES(?,'local',?,?,?,?,1,?,'cursor','epoch',2,0,?)`, id, account, profile, accountIncarnation, profileIncarnation, phase, state); err != nil {
 		t.Fatal(err)
@@ -379,7 +379,7 @@ func purgeJobState(t *testing.T, db *sql.DB, id string) (incarnation string, pha
 func TestRestoreKeepsOnlyTheExactPurgePromise(t *testing.T) {
 	s, db, login, installation := registrationFixture(t)
 	scope := mutationScopeFor(t, db, login, installation)
-	incarnation := newMutationIncarnation()
+	incarnation := installationRowFor(t, db, installation).incarnation
 	root, _, err := registerMutationRoot(t, s, db, scope, MutationRegistration{Incarnation: incarnation, ExpectedRevision: 0, Nonce: newMutationID()})
 	if err != nil {
 		t.Fatal(err)
@@ -410,9 +410,9 @@ func TestRestoreKeepsOnlyTheExactPurgePromise(t *testing.T) {
 	erasedOld := profileLifetimeValue(t, db, scope.AccountID, erased)
 	liveOld := profileLifetimeValue(t, db, scope.AccountID, live)
 	installationOld := installationRowFor(t, db, installation)
-	purgeJob(t, db, fmt.Sprintf("J%021d", 1), scope.AccountID, erased, membership, erasedOld, "pending", 3)
-	purgeJob(t, db, fmt.Sprintf("J%021d", 2), scope.AccountID, live, membership, liveOld, "blocked", 2)
-	purgeJob(t, db, fmt.Sprintf("J%021d", 3), scope.AccountID, erased, membership, newMutationIncarnation(), "pending", 1)
+	insertRestorePurgeJob(t, db, fmt.Sprintf("J%021d", 1), scope.AccountID, erased, membership, erasedOld, "pending", 3)
+	insertRestorePurgeJob(t, db, fmt.Sprintf("J%021d", 2), scope.AccountID, live, membership, liveOld, "blocked", 2)
+	insertRestorePurgeJob(t, db, fmt.Sprintf("J%021d", 3), scope.AccountID, erased, membership, newMutationIncarnation(), "pending", 1)
 	if _, err = s.SignEveryoneOutAfterRestore(context.Background(), "restore-lifetime-test"); err != nil {
 		t.Fatal(err)
 	}
@@ -442,5 +442,51 @@ func TestRestoreKeepsOnlyTheExactPurgePromise(t *testing.T) {
 	}
 	if got, phase, state := purgeJobState(t, db, fmt.Sprintf("J%021d", 3)); phase != 1 || state != "pending" || got == erasedNew {
 		t.Fatalf("a stale lifetime's job was rebound: %q %d %q", got, phase, state)
+	}
+}
+
+func TestRegistrationNeverAdoptsAClientChosenOrRestoredIncarnation(t *testing.T) {
+	s, db, login, installation := registrationFixture(t)
+	scope := mutationScopeFor(t, db, login, installation)
+	original := installationRowFor(t, db, installation)
+	q := MutationRegistration{Incarnation: newMutationIncarnation(), Nonce: newMutationID()}
+	if _, _, err := registerMutationRoot(t, s, db, scope, q); !errors.Is(err, ErrInstallationIncarnation) {
+		t.Fatalf("client replaced server lifetime: %v", err)
+	}
+	if actual := installationRowFor(t, db, installation); actual != original {
+		t.Fatalf("registration changed enrollment: %+v -> %+v", original, actual)
+	}
+	q.Incarnation = original.incarnation
+	if _, _, err := registerMutationRoot(t, s, db, scope, q); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(`UPDATE identity_installations SET incarnation=lower(hex(randomblob(16))),registration_revision=0,registration_nonce='',registration_root='' WHERE installation_hash=?`, mutationInstallationHash(installation)); err != nil {
+		t.Fatal(err)
+	}
+	q.ExpectedRevision = 0
+	if _, _, err := registerMutationRoot(t, s, db, scope, q); !errors.Is(err, ErrInstallationIncarnation) {
+		t.Fatalf("old registration restored an old lifetime: %v", err)
+	}
+}
+
+func TestRegistrationRechecksFamilyEpochAndHorizon(t *testing.T) {
+	for _, changed := range []string{"epoch", "horizon"} {
+		t.Run(changed, func(t *testing.T) {
+			s, db, login, installation := registrationFixture(t)
+			scope := mutationScopeFor(t, db, login, installation)
+			q := MutationRegistration{Incarnation: installationRowFor(t, db, installation).incarnation, Nonce: newMutationID()}
+			var err error
+			if changed == "epoch" {
+				_, err = db.Exec(`UPDATE accounts SET epoch=epoch+1 WHERE id=?`, scope.AccountID)
+			} else {
+				_, err = db.Exec(`UPDATE authorization_session_families SET authorization_horizon='2000-01-01T00:00:00Z' WHERE id=?`, scope.FamilyID)
+			}
+			if err != nil {
+				t.Fatal(err)
+			}
+			if _, _, err = registerMutationRoot(t, s, db, scope, q); !errors.Is(err, ErrMutationRootScope) {
+				t.Fatalf("retired family registered: %v", err)
+			}
+		})
 	}
 }

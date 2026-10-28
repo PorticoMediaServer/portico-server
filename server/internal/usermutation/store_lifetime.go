@@ -63,9 +63,9 @@ func resolveLifetime(ctx context.Context, q reader, b Binding) (lifetime, error)
 		err := q.QueryRowContext(ctx, `SELECT lifetime,deleted FROM direct_profiles WHERE account_id=? AND id=?`, b.AccountID, b.ProfileID).Scan(&profile, &deleted)
 		switch {
 		case errors.Is(err, sql.ErrNoRows):
-			// No local profile row: a hosted or non-local principal, which the
-			// local server keeps no lifetime for, or a test fixture that has
-			// none. The empty lifetime is recorded as such.
+			// A local effect cannot acquire an empty synthetic lifetime.
+			l.profileLive = false
+
 		case err != nil:
 			return l, err
 		case deleted != 0:
@@ -78,7 +78,9 @@ func resolveLifetime(ctx context.Context, q reader, b Binding) (lifetime, error)
 		var incarnation string
 		var disabled int
 		err = q.QueryRowContext(ctx, `SELECT incarnation,disabled FROM direct_memberships WHERE account_id=?`, b.AccountID).Scan(&incarnation, &disabled)
-		if err != nil && !errors.Is(err, sql.ErrNoRows) {
+		if errors.Is(err, sql.ErrNoRows) {
+			l.profileLive = false
+		} else if err != nil {
 			return l, err
 		}
 		l.account = incarnation
@@ -113,6 +115,16 @@ func bindRoot(ctx context.Context, q reader, b Binding, l *lifetime) error {
 		return ErrRootGone
 	}
 	if account != b.AccountID || profile != b.ProfileID || family != b.FamilyID || profileIncarnation != l.profile || accountIncarnation != l.account {
+		return ErrRootGone
+	}
+	var retired int
+	if err := q.QueryRowContext(ctx, `SELECT retired FROM identity_installations WHERE incarnation=?`, installation).Scan(&retired); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return ErrRootGone
+		}
+		return err
+	}
+	if retired != 0 {
 		return ErrRootGone
 	}
 	l.installation = installation

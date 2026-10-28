@@ -13050,3 +13050,38 @@ CREATE INDEX user_mutation_receipts_profile ON user_mutation_receipts(scope_id,p
 CREATE INDEX user_mutation_receipts_root ON user_mutation_receipts(root_id,key);
 CREATE INDEX personal_conflicts_profile ON personal_conflicts(profile_id,id);
 CREATE INDEX console_exports_actor ON console_exports(actor,id);
+
+-- Indexed profile-owned cleanup phases.
+CREATE INDEX p2_62_purge_families ON authorization_session_families(authority,account_id,profile_id,revoked,id);
+CREATE INDEX p2_62_purge_tombstone_viewers ON catalog_title_tombstone_viewers(profile_id,public_id);
+CREATE INDEX p2_62_purge_live_allocations ON live_allocations(authority,account_id,profile_id,id);
+CREATE INDEX p2_62_purge_download_grants ON download_grants(profile_key,hash);
+CREATE INDEX p2_62_purge_api_credentials ON api_credentials(account_id,profile_id,id);
+CREATE INDEX p2_62_purge_topshelf_tokens ON topshelf_tokens(authority,account_id,profile_id,token_hash);
+CREATE INDEX p2_62_purge_devices_last_profile ON identity_devices(account_id,last_profile_id,id);
+CREATE INDEX p2_62_purge_device_capabilities ON playback_device_capabilities(account_id,profile_id,device_id);
+CREATE INDEX p2_62_purge_start_prep_actor ON playback_start_preparation_actor(profile_id,operation_id);
+CREATE INDEX p2_62_purge_remote_capture_actor ON remote_source_capture_actor(profile_id,capture_id);
+CREATE INDEX p2_62_purge_group_invites ON social_group_invites(recipient_profile_id,id);
+CREATE INDEX p2_62_purge_receiver_grants ON social_receiver_grants(authority,account_id,profile_id,id);
+CREATE INDEX p2_62_purge_cast_controllers ON social_cast_controllers(authority,account_id,profile_id,id);
+CREATE INDEX p2_62_purge_cast_transfers ON social_cast_queue_transfers(authority,account_id,profile_id,id);
+CREATE INDEX p2_62_purge_cast_bootstraps ON social_cast_bootstraps(authority,account_id,profile_id,id);
+CREATE INDEX p2_62_purge_playback_v1 ON playback_v1_sessions(account_id,profile_id,id);
+CREATE INDEX p2_62_purge_queues_v1 ON queues_v1(account_id,profile_id,id);
+CREATE INDEX p2_62_purge_mb_receipts ON mb_selection_receipts(actor_authority,actor_account_id,actor_profile_id,id);
+CREATE INDEX p2_62_purge_client_logs ON client_log_uploads(account_id,profile_id,id);
+CREATE INDEX p2_62_purge_lyric_resources ON lyric_resources(authority,account_id,profile_id,id);
+
+CREATE INDEX p2_62_purge_sort_entity_cursor ON catalog_personal_sort_entity_jobs(profile_cursor,entity_id);
+
+CREATE INDEX p2_62_purge_sort_member_cursor ON catalog_personal_sort_member_jobs(profile_cursor,item_id);
+
+CREATE INDEX p2_62_purge_visibility_class_cursor ON catalog_personal_visibility_sort_class_jobs(profile_cursor,class_id,generation,entity_id);
+
+CREATE INDEX profile_avatars_digest ON profile_avatars(digest,profile_id);
+
+CREATE INDEX p2_62_purge_prepared_actor ON prepared_media_jobs(
+ json_extract(principal_json,'$.authority'),
+ json_extract(principal_json,'$.accountId'),
+ json_extract(principal_json,'$.profileId'),id);

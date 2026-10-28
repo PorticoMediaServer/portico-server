@@ -315,6 +315,7 @@ export const routePaths = {
   "get_direct_profile_avatars": "/v1/direct/profiles/avatars",
   "get_direct_profile_restrictions": "/v1/direct/profiles/{id}/restrictions",
   "get_direct_profiles_id_deletion_preview": "/v1/direct/profiles/{id}/deletion-preview",
+  "get_direct_profiles_id_retirement": "/v1/direct/profiles/{id}/retirement",
   "get_direct_registration_policy": "/v1/direct/registration-policy",
   "get_direct_sessions": "/v1/direct/sessions",
   "get_direct_two_factor": "/v1/direct/two-factor",
