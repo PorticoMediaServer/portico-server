@@ -47,7 +47,10 @@ var purgeRetainedTables = []purgeCoverageEntry{
 	{"hosted_profile_revisions", "Hosted owner's profile revisions; local purge never certifies Hosted deletion", purgeRetainedPolicy},
 
 	// Library media and recording bookkeeping (not private; never deleted).
-	{"dvr_recordings", "media retained; only profile_id is scrubbed, owner_key and file paths stay", purgeRetainedMedia},
+
+	{"live_allocations", "kind=recording media leases are retained unchanged; only kind=live viewer allocations are erased", purgeRetainedMedia},
+	{"dvr_recordings", "retained by policy unchanged, including creator/profile_id, owner_key, paths, content and state", purgeRetainedMedia},
+	{"dvr_owner_revisions", "retained-media list revision while any recording references owner_key; erased otherwise", purgeRetainedMedia},
 	{"dvr_recording_layouts", "recorded-file layout receipts; owner_key is part of the real media path, so it is media bookkeeping, not private purge state", purgeRetainedMedia},
 	{"live_reservations", "tuner reservations of retained recordings; disabled, never deleted", purgeRetainedMedia},
 
@@ -79,17 +82,16 @@ var purgeRetainedTables = []purgeCoverageEntry{
 	{"selection_action_history", "A1 completed command history; owner-only, not deletable by profile erase", purgeRetainedOwnerCommand},
 
 	// Runtime rows with no identifying payload left.
-	{"playback_start_preparations", "short-lived start preparation (deadline <= 120s); carries no profile id", purgeRetainedRuntime},
-	{"playback_start_preparation_results", "result of a start preparation; no profile id", purgeRetainedRuntime},
-	{"playback_start_preparation_queue", "queue binding of a start preparation; no profile id", purgeRetainedRuntime},
-	{"playback_start_preparation_source", "source snapshot of a start preparation; profile_revision only", purgeRetainedRuntime},
-	{"playback_start_preparation_lifecycle", "lifecycle row of a start preparation; no profile id", purgeRetainedRuntime},
 	{"remote_source_captures", "capture byte accounting; no profile id", purgeRetainedRuntime},
 	{"remote_source_capture_policy", "capture policy snapshot; profile_* columns are policy values, not identifiers", purgeRetainedRuntime},
 }
 
 // purgeCovered reports whether the compiled registry names the table.
 func purgeCovered(table string) bool {
+	if table == "playback_start_preparations" || table == "playback_disc_lifecycle" {
+		return true
+	} // atomically removed with its actor mapper
+
 	for i := range profilePurgeRegistry {
 		if profilePurgeRegistry[i].table == table {
 			return true

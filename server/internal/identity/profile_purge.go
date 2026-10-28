@@ -30,8 +30,8 @@ import (
 // loop, the read/effect meters and verification live in phasedpurge.Turn.
 //
 // Library media, completed recordings and the owner's play history are not
-// profile-private purge resources. No unit names them; the recording row loses its
-// profile attribution and keeps its media and file paths.
+// profile-private purge resources. No unit changes recordings or retained plays;
+// creator attribution continues to point at the sanitized removed-profile row.
 const (
 	// purgeOwnerReadBound reserves the reads the owner spends outside any unit:
 	// three indexed job-selection probes, the target/custody proof, and the two
@@ -47,7 +47,7 @@ const (
 	// purgePlanVersion changes whenever a builder or predicate semantic changes.
 	// It is mixed into the cursor digest together with the literal SQL of every
 	// unit, so a builder edit cannot silently reinterpret an old cursor.
-	purgePlanVersion = "p2-62-profile-purge-v4"
+	purgePlanVersion = "p2-62-profile-purge-v5"
 )
 
 // purgeRevokeFamilySQL is the one compiled statement of the revocation unit.
@@ -80,7 +80,7 @@ var purgePlanDigest = func() string {
 		st := &profilePurgeRegistry[i]
 		write("unit", st.name, st.table, strconv.Itoa(st.phase), strconv.Itoa(int(st.action)),
 			strconv.Itoa(int(st.scope)), st.extra, st.hopExtra, st.set, st.keys, st.hopScopeName(), strconv.Itoa(st.readBound),
-			strconv.FormatBool(st.scan), strconv.FormatBool(st.rewind))
+			strconv.FormatBool(st.scan), strconv.FormatBool(st.rewind), strconv.FormatBool(st.tokenDrain), strconv.FormatBool(st.avatarObject), strconv.FormatBool(st.preparationRoot))
 		for _, h := range st.of {
 			write("hop", h.table, h.keys, h.fk)
 		}
@@ -98,6 +98,7 @@ var purgePlanDigest = func() string {
 	write("version", purgePlanVersion)
 	write("token-probe", purgeTokenProbeSQL)
 	write("token-delete", purgeTokenDrainSQL)
+	write("preparation", purgePreparationActorSQL)
 	for _, q := range purgeTokenChildSQL() {
 		write("token-child", q)
 	}
@@ -155,23 +156,24 @@ func guard(table, fk, keys string) purgeGuard { return purgeGuard{table: table, 
 // purgeStep is one compiled physical unit. All identifiers are constants in this
 // package; the job supplies values only.
 type purgeStep struct {
-	phase        int
-	name         string
-	table        string
-	action       purgeAction
-	scope        purgeScope // predicate on the step's own table, if any
-	hopScope     purgeScope // predicate at the root of the parent chain
-	of           []purgeHop
-	guards       []purgeGuard
-	extra        string
-	hopExtra     string
-	set          string
-	keys         string // keyset columns, table primary-key order
-	keyKinds     []phasedpurge.Kind
-	readBound    int  // compiled per-turn read proof for this unit
-	scan         bool // scope-derived unit: own the typed cursor, return Next
-	tokenDrain   bool // one token: drain its scope rows, then the token
-	avatarObject bool // unshared avatar rendition object of the retiring link
+	phase           int
+	name            string
+	table           string
+	action          purgeAction
+	scope           purgeScope // predicate on the step's own table, if any
+	hopScope        purgeScope // predicate at the root of the parent chain
+	of              []purgeHop
+	guards          []purgeGuard
+	extra           string
+	hopExtra        string
+	set             string
+	keys            string // keyset columns, table primary-key order
+	keyKinds        []phasedpurge.Kind
+	readBound       int  // compiled per-turn read proof for this unit
+	scan            bool // scope-derived unit: own the typed cursor, return Next
+	tokenDrain      bool // one token: drain its scope rows, then the token
+	avatarObject    bool // unshared avatar rendition object of the retiring link
+	preparationRoot bool // atomic final actor+root after private children
 	// rewind marks a parent unit that cannot delete while an owned child row is
 	// still present: the shared engine restarts the phase instead of advancing.
 	rewind bool
@@ -226,7 +228,14 @@ func (s *Service) PurgeProfileStep(ctx context.Context) (bool, error) {
 	owner := phasedpurge.Owner{
 		ReadBound: purgeOwnerReadBound,
 		Before: func(bctx context.Context, btx *sql.Tx) error {
-			return purgeTargetTx(bctx, btx, job)
+			if err := purgeTargetTx(bctx, btx, job); err != nil {
+				return err
+			}
+			if job.state == "blocked" {
+				_, err := btx.ExecContext(bctx, `UPDATE security_purge_jobs SET state='running' WHERE job_id=? AND profile_incarnation=?`, job.id, job.profileLifetime)
+				return err
+			}
+			return nil
 		},
 		Save: func(sctx context.Context, stx *sql.Tx, c phasedpurge.Cursor) error {
 			return purgeSaveCursorTx(sctx, stx, job, c)
@@ -268,6 +277,13 @@ func profilePurgeUnits(s *Service, job *purgeJob) []phasedpurge.Unit {
 					found, err = purgeTokenDrainExistsTx(ctx, tx, job)
 				case st.avatarObject:
 					found, err = purgeAvatarObjectExistsTx(ctx, tx, job)
+				case st.preparationRoot:
+					var id string
+					err = tx.QueryRowContext(ctx, purgePreparationActorSQL, job.account, job.profile).Scan(&id)
+					found = err == nil
+					if errors.Is(err, sql.ErrNoRows) {
+						err = nil
+					}
 				default:
 					found, err = purgeCandidateExistsTx(ctx, tx, job, st)
 				}
@@ -364,6 +380,9 @@ func (s *Service) purgeStepTx(ctx context.Context, tx *sql.Tx, j *purgeJob, st *
 	}
 	if st.avatarObject {
 		return purgeAvatarObjectTx(ctx, tx, j)
+	}
+	if st.preparationRoot {
+		return purgePreparationRootTx(ctx, tx, j)
 	}
 	if st.table == "profile_avatars" && st.action == purgeDelete {
 		// The avatar link is the mapper to the rendition bytes. Refuse (rewind)
@@ -918,4 +937,36 @@ func purgeTupleBare(keys string) string {
 		return cols[0]
 	}
 	return "(" + strings.Join(cols, ",") + ")"
+}
+
+const purgePreparationActorSQL = `SELECT a.operation_id FROM playback_start_preparation_actor a WHERE a.authority='local' AND a.account_id=? AND a.profile_id=? LIMIT 1`
+
+var purgePreparationChildren = []string{"playback_start_preparation_results", "playback_start_preparation_source", "playback_start_preparation_queue", "playback_start_preparation_lifecycle"}
+
+func purgePreparationRootTx(ctx context.Context, tx *sql.Tx, j *purgeJob) (phasedpurge.Outcome, error) {
+	var id string
+	if err := tx.QueryRowContext(ctx, purgePreparationActorSQL, j.account, j.profile).Scan(&id); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return phasedpurge.Outcome{Drained: true}, nil
+		}
+		return phasedpurge.Outcome{}, err
+	}
+	for _, table := range purgePreparationChildren {
+		var exists bool
+		if err := tx.QueryRowContext(ctx, "SELECT EXISTS(SELECT 1 FROM "+table+" WHERE operation_id=?)", id).Scan(&exists); err != nil {
+			return phasedpurge.Outcome{}, err
+		}
+		if exists {
+			return phasedpurge.Outcome{Rewind: true}, nil
+		}
+	}
+	// The actor remains the exact owner mapper until both deletes can commit.
+	// NO ACTION foreign keys refuse a root with any private child still attached.
+	if _, err := tx.ExecContext(ctx, `DELETE FROM playback_start_preparation_actor WHERE operation_id=?`, id); err != nil {
+		return phasedpurge.Outcome{}, err
+	}
+	if _, err := tx.ExecContext(ctx, `DELETE FROM playback_start_preparations WHERE id=?`, id); err != nil {
+		return phasedpurge.Outcome{}, err
+	}
+	return phasedpurge.Outcome{Changed: true}, nil
 }

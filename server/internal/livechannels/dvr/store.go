@@ -17,6 +17,7 @@ type Store struct {
 	db               *sql.DB
 	live             *livechannels.Store
 	durable          DurableAuthority
+	retainedCapture  DurableAuthority
 	now              func() time.Time
 	captureAvailable bool
 	driver           CaptureDriver
@@ -350,4 +351,15 @@ func (s *Store) mutate(ctx context.Context, a livechannels.Authority, o livechan
 		return restrictRecordingTx(ctx, tx, o, &out)
 	})
 	return out, e
+}
+
+// ConfigureRetainedCaptures is startup-only. The callback is never used for
+// schedules, first/recovery claims or user grants; it follows exact active-claim
+// proof in currentClaimTx for a recording that already accepted a checkpoint.
+func (s *Store) ConfigureRetainedCaptures(authorize DurableAuthority) error {
+	if s == nil || authorize == nil {
+		return ErrInvalid
+	}
+	s.retainedCapture = authorize
+	return nil
 }
