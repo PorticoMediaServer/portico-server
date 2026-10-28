@@ -249,3 +249,48 @@ func wakeWALWaiters() {
 	gate.signalLocked()
 	gate.mu.Unlock()
 }
+
+// DSN aliases of the same native filename must share reservations. One reference
+// belongs to each live reader scope, which survives borrowed native connections.
+var liveWALLedgers = struct {
+	sync.Mutex
+	byPath map[string]*walLedger
+	refs   map[*walLedger]int
+}{byPath: make(map[string]*walLedger), refs: make(map[*walLedger]int)}
+
+func shareWALLedger(scope *readerScope, candidate *walLedger) *walLedger {
+	if scope == nil {
+		return candidate
+	}
+	scope.mu.Lock()
+	defer scope.mu.Unlock()
+	if scope.wal != nil {
+		return scope.wal
+	}
+	liveWALLedgers.Lock()
+	defer liveWALLedgers.Unlock()
+	l := liveWALLedgers.byPath[candidate.path]
+	if l == nil {
+		l = candidate
+		liveWALLedgers.byPath[l.path] = l
+	}
+	liveWALLedgers.refs[l]++
+	scope.wal = l
+	return l
+}
+
+func releaseWALLedger(scope *readerScope) {
+	scope.mu.Lock()
+	l := scope.wal
+	scope.mu.Unlock()
+	if l == nil {
+		return
+	}
+	liveWALLedgers.Lock()
+	defer liveWALLedgers.Unlock()
+	liveWALLedgers.refs[l]--
+	if liveWALLedgers.refs[l] == 0 {
+		delete(liveWALLedgers.refs, l)
+		delete(liveWALLedgers.byPath, l.path)
+	}
+}

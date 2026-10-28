@@ -163,3 +163,33 @@ func TestWALReservationSurvivesOverlappingHandleReplacement(t *testing.T) {
 		t.Fatal("handle replacement lost the live ledger")
 	}
 }
+
+func TestWALReservationUsesNativeFilenameAcrossAliases(t *testing.T) {
+	db := testDB(t)
+	l := ledgerFor(db)
+	alias := filepath.Join(t.TempDir(), "alias.sqlite")
+	if err := os.Symlink(l.path, alias); err != nil {
+		t.Skipf("symlink unavailable: %v", err)
+	}
+	other, err := OpenHandle(alias, DefaultPolicy())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer other.Close()
+	if ledgerFor(other) != l {
+		t.Fatal("native filename alias created a second reservation ledger")
+	}
+}
+
+func TestWALReservationLedgerRetiresWithLastNativeScope(t *testing.T) {
+	db := testDB(t)
+	l := ledgerFor(db)
+	if err := db.Close(); err != nil {
+		t.Fatal(err)
+	}
+	liveWALLedgers.Lock()
+	defer liveWALLedgers.Unlock()
+	if _, ok := liveWALLedgers.byPath[l.path]; ok {
+		t.Fatal("closed handle retained reservation ledger")
+	}
+}

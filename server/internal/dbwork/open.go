@@ -135,17 +135,14 @@ func OpenHandle(path string, policy Policy) (*sql.DB, error) {
 		db.Close()
 		return nil, err
 	}
-	l := newWALLedger(path, pageSize)
-	l.native = native
-	if scope != nil {
-		scope.mu.Lock()
-		if scope.wal == nil {
-			scope.wal = l
-		} else {
-			l = scope.wal
-		}
-		scope.mu.Unlock()
+	nativePath := DatabaseFile(context.Background(), db)
+	if nativePath == "" {
+		db.Close()
+		return nil, errors.New("dbwork: live database filename unavailable")
 	}
+	l := newWALLedger(nativePath, pageSize)
+	l.native = native
+	l = shareWALLedger(scope, l)
 	db.Driver().(*splitDriver).wal = l
 	return db, nil
 }

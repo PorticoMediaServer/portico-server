@@ -109,6 +109,7 @@ func releaseReaderScope(s *readerScope) {
 	s.connections--
 	if s.connections == 0 {
 		delete(readerScopes.byName, s.key)
+		releaseWALLedger(s)
 	}
 }
 

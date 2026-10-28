@@ -22,7 +22,7 @@ internal/backup/apply.go	VerifyRestored	Begin	ClassMaintenance	-
 internal/backup/copy.go	(*copyRun).finish	ReserveWriterConn	ClassInteractive	-
 internal/backup/copy.go	(*copyRun).step	ReserveWriterConn	r.limits.class	-
 internal/backup/holds.go	(*Service).ReleaseInterruptedHold	ExecWrite	ClassMaintenance	-
-internal/backup/holds.go	(*Service).advanceHold	ExecWrite	limits.class	-
+internal/backup/holds.go	(*Service).advanceHold	ExecWrite	limits.class	dbwork.WritePlan{Name: dbwork.BackupHoldPhasePlanName, Rows: 1, Pages: 4, VMOps: 250_000, Why: "one singleton state update; no indexed state column, foreign-key action or trigger"}
 internal/backup/holds.go	(*Service).holdBlobs	ExecWrite	limits.class	-
 internal/backup/holds.go	(*Service).releaseHold	ExecWrite	ClassInteractive	-
 internal/backup/policy.go	(*PolicyStore).Update	Begin	ClassMaintenance	-
@@ -622,6 +622,7 @@ internal/webhooks/webhooks.go	(*Store).write	WithWriteTx	ClassFrom(ctx, dbwork.C
 plan	internal/access/invitations.go	(*Store).Accept	invitationAcceptPlan
 plan	internal/access/invitations.go	(*Store).AcceptPortico	invitationAcceptPlan
 plan	internal/administration/library_settings.go	(*Service).SaveLibrarySettings	librarySettingsPlan
+plan	internal/backup/holds.go	(*Service).advanceHold	dbwork.WritePlan{Name: dbwork.BackupHoldPhasePlanName, Rows: 1, Pages: 4, VMOps: 250_000, Why: "one singleton state update; no indexed state column, foreign-key action or trigger"}
 plan	internal/catalog/admin.go	(*Service).OrderLibraries	libraryOrderPlan
 plan	internal/catalog/delete_title.go	(*Service).RemoveTitle	titleRemovalPlan
 plan	internal/catalog/inventory.go	(*Service).CommitInventoryPages	inventoryPagesPlan
