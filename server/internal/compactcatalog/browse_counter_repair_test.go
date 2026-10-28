@@ -267,8 +267,15 @@ func TestBrowseCounterTriggersMatchRecounts(t *testing.T) {
 		op := browseCounterRandomOp(t, db, rng, items, shows, assets)
 		browseCounterCheckExact(t, db, fmt.Sprintf("step %d (%s)", i, op))
 	}
+	// Random metric mutations exercise the delta arithmetic independently.
+	// Re-run the real producer from raw links for every holder afterwards and
+	// require the final container totals to match the raw graph as well.
+	cc1Write(t, db, func(ctx context.Context, tx *sql.Tx) error { return TouchTx(ctx, tx, DomainItemMetrics, items...) })
 	browseCounterDrain(t, db)
 	browseCounterCheckExact(t, db, "drained")
+	if n := cc1Scalar(t, db, `SELECT count(*) FROM catalog_browse_member_links c WHERE c.available<>COALESCE((SELECT sum(l.available=1) FROM catalog_browse_memberships m JOIN catalog_asset_links l ON l.entity_id=m.item_id WHERE m.entity_id=c.entity_id),0) OR c.unavailable<>COALESCE((SELECT sum(l.available=0) FROM catalog_browse_memberships m JOIN catalog_asset_links l ON l.entity_id=m.item_id WHERE m.entity_id=c.entity_id),0)`); n != 0 {
+		t.Fatalf("%d converged container counters disagree with the raw member/link graph", n)
+	}
 }
 
 // TestBrowseCounterSampleRepairsInjectedDrift samples a healthy catalogue

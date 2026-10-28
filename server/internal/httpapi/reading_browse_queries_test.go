@@ -98,11 +98,11 @@ func TestReadingBrowsePreparationHTTPLeaseReadyCancelAndDrift(t *testing.T) {
 		}
 	}
 	w := preparedReadingHTTP(t, mux, "POST", base+"/browse", f.f.owner.AccessToken, map[string]any{"limit": 1}, checkLease)
-	if w.Code != 202 || w.Header().Get("Retry-After") != "1" || w.Header().Get("Location") == "" {
+	if w.Code != 202 || w.Header().Get("Retry-After") != "0" || w.Header().Get("Location") == "" {
 		t.Fatal(w.Code, w.Body.String())
 	}
 	var pending ReadingBrowsePreparing
-	if err = json.Unmarshal(w.Body.Bytes(), &pending); err != nil || pending.Kind != "reading-browse-preparing" || pending.State != "preparing" || pending.QueryID == "" {
+	if err = json.Unmarshal(w.Body.Bytes(), &pending); err != nil || pending.Kind != "reading-browse-preparing" || pending.State != "preparing" || pending.QueryID == "" || pending.RetryAfterMs != readingInitialRetryMs {
 		t.Fatal(pending, err)
 	}
 	if store.Stats().Deliveries != 0 {

@@ -207,11 +207,12 @@ func TestReadPathObjectsCappedHydratesOversizedObjectAlone(t *testing.T) {
 	_, tx := beginPathBytesTx(t)
 	ctx := context.Background()
 	small := seedPathBytesLibrary(t, tx, "small", "/small")
-	// A schema-legal root longer than the whole budget makes one pathObject's
-	// ordinary scalars exceed the window budget on its own.
-	wide := seedPathBytesLibrary(t, tx, "wide", "/"+strings.Repeat("w", pathObjectByteBudget+1))
+	wide := seedPathBytesLibrary(t, tx, "wide", "/wide")
 	smallID, _, _ := seedPathBytesObject(t, tx, small, 0, "Author/Series/01.epub")
-	wideID, _, _ := seedPathBytesObject(t, tx, wide, 1, "Author/Series/01.epub")
+	// inventory_objects.relative_path has no schema length cap, so one legal
+	// hydrated path scalar can exceed the whole window budget on its own.
+	oversized := "Author/Series/" + strings.Repeat("z", pathObjectByteBudget+1) + ".epub"
+	wideID, _, _ := seedPathBytesObject(t, tx, wide, 1, oversized)
 
 	objects, n, err := readPathObjectsCapped(ctx, tx, []string{smallID, wideID})
 	if err != nil {

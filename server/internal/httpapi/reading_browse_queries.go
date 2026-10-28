@@ -13,6 +13,7 @@ import (
 	"portico.local/server/internal/identity"
 	"portico.local/server/internal/readprep"
 	"reflect"
+	"time"
 )
 
 type ReadingBrowsePreparing struct {
@@ -23,6 +24,7 @@ type ReadingBrowsePreparing struct {
 }
 
 const readingBrowseRetryMs = 1000
+const readingInitialRetryMs = 250
 
 type readingBrowseQueryResponse struct{}
 
@@ -171,6 +173,12 @@ func (d Dependencies) readingBrowsePreparedHandler(w http.ResponseWriter, r *htt
 		readingBrowsePreparationFailure(w, err)
 		return
 	}
+	// This initial private handle is not yet known to the client.
+	defer func() {
+		if r.Context().Err() != nil {
+			_ = d.Catalog.ReadPreparations().Cancel(context.WithoutCancel(r.Context()), caller, handle)
+		}
+	}()
 	after, err := authorize(r.Context())
 	if err != nil || d.readingCountCaller(p, after, library) != caller {
 		d.Catalog.ReadPreparations().Cancel(r.Context(), caller, handle)
@@ -181,10 +189,14 @@ func (d Dependencies) readingBrowsePreparedHandler(w http.ResponseWriter, r *htt
 		return
 	}
 	r.SetPathValue("queryId", string(handle))
-	d.readingBrowseQueryHandler(w, r)
+	d.readingBrowseQueryWithGrace(w, r, readprep.InitialReadyGrace)
 }
 
 func (d Dependencies) readingBrowseQueryHandler(w http.ResponseWriter, r *http.Request) {
+	d.readingBrowseQueryWithGrace(w, r, 0)
+}
+
+func (d Dependencies) readingBrowseQueryWithGrace(w http.ResponseWriter, r *http.Request, grace time.Duration) {
 	w.Header().Set("Cache-Control", "private, no-store")
 	p, ok := d.browseLibrary(w, r)
 	if !ok {
@@ -222,8 +234,12 @@ func (d Dependencies) readingBrowseQueryHandler(w http.ResponseWriter, r *http.R
 		write(w, 204, nil)
 		return
 	}
-	result, err := store.Poll(r.Context(), caller, readprep.Handle(id))
+	result, err := store.PollWhenReady(r.Context(), caller, readprep.Handle(id), grace)
 	defer result.Release()
+	if grace > 0 && result.State == readprep.Ready {
+		// Direct 200 exposes no preparation handle for client cleanup.
+		defer store.Cancel(context.WithoutCancel(r.Context()), caller, readprep.Handle(id))
+	}
 	if err != nil {
 		readingBrowsePreparationFailure(w, err)
 		return
@@ -257,9 +273,13 @@ func (d Dependencies) readingBrowseQueryHandler(w http.ResponseWriter, r *http.R
 			readingBrowsePreparationFailure(w, err)
 			return
 		}
-		w.Header().Set("Retry-After", "1")
+		retryMs, retrySeconds := readingBrowseRetryMs, "1"
+		if grace > 0 {
+			retryMs, retrySeconds = readingInitialRetryMs, "0"
+		}
+		w.Header().Set("Retry-After", retrySeconds)
 		w.Header().Set("Location", "/v1/libraries/"+url.PathEscape(library)+"/reading-browse-queries/"+url.PathEscape(id))
-		write(w, 202, ReadingBrowsePreparing{Kind: "reading-browse-preparing", State: "preparing", QueryID: id, RetryAfterMs: readingBrowseRetryMs})
+		write(w, 202, ReadingBrowsePreparing{Kind: "reading-browse-preparing", State: "preparing", QueryID: id, RetryAfterMs: retryMs})
 		return
 	}
 	// Charge typed seed decoding and its backing strings before hydration.

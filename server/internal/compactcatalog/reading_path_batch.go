@@ -64,56 +64,6 @@ func scanPathObjectRow(rows *sql.Rows) (int, pathObject, error) {
 	return ordinal, v, nil
 }
 
-// readPathObjects hydrates an unbounded batch with one statement per window. No
-// production caller uses it: every batched path uses readPathObjectsCapped so a
-// window stays inside the ordinary byte budget, and the one-object seam uses
-// the capped read too. It stays as the parity oracle for tests. An absent id
-// means the same thing the point read's sql.ErrNoRows meant to its callers; the
-// one-id window keeps using the point read unchanged.
-func readPathObjects(ctx context.Context, tx *sql.Tx, ids []string) (map[string]pathObject, error) {
-	out := make(map[string]pathObject, min(len(ids), pathObjectBatchMax))
-	for start := 0; start < len(ids); start += pathObjectBatchMax {
-		chunk := ids[start:min(start+pathObjectBatchMax, len(ids))]
-		if len(chunk) == 1 {
-			v, err := readPathObject(ctx, tx, chunk[0])
-			if errors.Is(err, sql.ErrNoRows) {
-				continue
-			}
-			if err != nil {
-				return nil, err
-			}
-			out[v.ID] = v
-			continue
-		}
-		listed, err := json.Marshal(chunk)
-		if err != nil {
-			return nil, err
-		}
-		rows, err := tx.QueryContext(ctx, pathObjectBatch, string(listed))
-		if err != nil {
-			return nil, err
-		}
-		for rows.Next() {
-			_, v, err := scanPathObjectRow(rows)
-			if err != nil {
-				rows.Close()
-				return nil, err
-			}
-			// QueryRow keeps a point read's first row; keep the batch's first
-			// row per id so a duplicate can never change a decision.
-			if _, seen := out[v.ID]; !seen {
-				out[v.ID] = v
-			}
-		}
-		err = rows.Err()
-		rows.Close()
-		if err != nil {
-			return nil, err
-		}
-	}
-	return out, nil
-}
-
 // readPathObjectsCapped hydrates ids in caller order and returns the RAW PREFIX
 // length it consumed. The map holds every object hydrated from ids[:n] and
 // nothing from ids[n:].
