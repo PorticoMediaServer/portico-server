@@ -188,13 +188,17 @@ func TestBulkLocalSearchReplayRollbackAndEOFDrift(t *testing.T) {
 	}
 	s, scheduler, p, v, access, c, _ := bulkFixture(t, 25)
 	store := replayTestStore(t, s)
+	// Install the fault before capturing the complete witness: schema_version
+	// itself is fenced. Toggle fixture-only admission data, not DDL, afterward.
+	c.Exec(`CREATE TABLE replay_capture_gate(enabled INTEGER NOT NULL)`)
+	c.Exec(`INSERT INTO replay_capture_gate VALUES(1)`)
+	c.Exec(`CREATE TRIGGER refuse_replay_capture BEFORE INSERT ON personal_job_items WHEN (SELECT enabled FROM replay_capture_gate)=1 BEGIN SELECT RAISE(ABORT,'replay commit refused'); END`)
 	yes := true
 	q := replayTestQuery(t, s, v, `{"field":"search","operator":"contains","value":"ep"}`)
 	job, err := s.CreateBulkJob(context.Background(), p, v, JobRequest{OperationID: "capture-rollback", Command: "personal-state", Selector: JobSelector{Query: &q}, Args: JobPersonalArgs{Favorite: &yes}}, scheduler, access)
 	if err != nil {
 		t.Fatal(err)
 	}
-	c.Exec(`CREATE TRIGGER refuse_replay_capture BEFORE INSERT ON personal_job_items BEGIN SELECT RAISE(ABORT,'replay commit refused'); END`)
 	deadline := time.Now().Add(5 * time.Second)
 	for time.Now().Before(deadline) {
 		_, err = s.AdvanceBulkJob(context.Background(), job.JobID, access)
@@ -204,14 +208,16 @@ func TestBulkLocalSearchReplayRollbackAndEOFDrift(t *testing.T) {
 		time.Sleep(10 * time.Millisecond)
 	}
 	if err == nil || !strings.Contains(err.Error(), "replay commit refused") {
-		t.Fatal("capture write not exercised", err)
+		var state, errorCode string
+		_ = s.db.QueryRow(`SELECT state,error_code FROM personal_jobs WHERE id=?`, job.JobID).Scan(&state, &errorCode)
+		t.Fatal("capture write not exercised", err, state, errorCode, store.Stats())
 	}
 	var count int
 	var cursor string
 	if err = s.db.QueryRow(`SELECT total,selection_cursor FROM personal_jobs WHERE id=?`, job.JobID).Scan(&count, &cursor); err != nil || count != 0 || cursor != "" {
 		t.Fatal("failed write advanced cursor", count, cursor, err)
 	}
-	c.Exec(`DROP TRIGGER refuse_replay_capture`)
+	c.Exec(`UPDATE replay_capture_gate SET enabled=0`)
 	job = advanceReplayJob(t, s, job, access, func(j BulkJob) bool { return j.Total > 0 })
 	if job.Total > 20 {
 		t.Fatal("writer widened", job)
