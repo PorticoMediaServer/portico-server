@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"testing"
 
+	"portico.local/server/internal/catalogtest"
 	"portico.local/server/internal/compactcatalog"
 )
 
@@ -24,9 +25,7 @@ func linkAlbumEvidence(t *testing.T, db *sql.DB, album int64, revision, primary 
 	if _, e := db.Exec(`UPDATE mb_release_evidence SET sealed=1 WHERE revision_id=?`, revision); e != nil {
 		t.Fatal(e)
 	}
-	if _, e := db.Exec(`INSERT INTO mb_album_links(album_id,release_revision,release_id,requested_id,observed_at) VALUES(?,?,?,?,'now')`, album, revision, revision, revision); e != nil {
-		t.Fatal(e)
-	}
+	catalogtest.New(t, db).PinMBRelease(album, true, revision)
 }
 
 // Spec — Page Content §2 item 5: an artist's releases carry their

@@ -188,7 +188,27 @@ func TestP252bDeleteAllFortyThreePinnedMembers(t *testing.T) {
 	}
 	c.Exec(`INSERT INTO mb_release_evidence(revision_id,provider_id,digest,title,artist,release_group_id,group_title,primary_type,date,country,barcode,disambiguation,observed_at,payload) VALUES('r','r',printf('%064d',0),'','','','','','','','','','now','{}')`)
 	c.Exec(`UPDATE mb_release_evidence SET sealed=1 WHERE revision_id='r'`)
-	c.Exec(`INSERT INTO mb_song_links(item_id,release_revision,release_id,observed_at) SELECT entity_id,'r','r','now' FROM catalog_songs WHERE album_id=?`, album.ID)
+	rows, e := db.Query(`SELECT entity_id FROM catalog_songs WHERE album_id=? ORDER BY entity_id`, album.ID)
+	if e != nil {
+		t.Fatal(e)
+	}
+	var pinSongs []int64
+	for rows.Next() {
+		var id int64
+		if e = rows.Scan(&id); e != nil {
+			rows.Close()
+			t.Fatal(e)
+		}
+		pinSongs = append(pinSongs, id)
+	}
+	e = rows.Err()
+	rows.Close()
+	if e != nil {
+		t.Fatal(e)
+	}
+	for _, id := range pinSongs {
+		c.PinMBRelease(id, false, "r")
+	}
 	c.Drain()
 	doc, e := s.LibrarySettingsFor(context.Background(), allow, "music")
 	if e != nil {

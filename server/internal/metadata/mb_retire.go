@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"portico.local/server/internal/dbwork"
+	"portico.local/server/internal/mbaccounting"
 )
 
 const mbRetireRows = 24
@@ -74,7 +75,12 @@ func mbRetirePick(ctx context.Context, tx *sql.Tx, now, cutoff string) (*mbRetir
 				}
 			}
 			var protected int64
-			err = tx.QueryRowContext(ctx, `SELECT direct_refs+retention_refs FROM mb_`+c.t.kind+`_accounting WHERE revision_id=?`, c.t.revision).Scan(&protected)
+			err = tx.QueryRowContext(ctx, `SELECT direct_refs+retention_refs`+func() string {
+				if c.t.kind == "recording" {
+					return "+release_refs"
+				}
+				return ""
+			}()+` FROM mb_`+c.t.kind+`_accounting WHERE revision_id=?`, c.t.revision).Scan(&protected)
 			if err != nil && !errors.Is(err, sql.ErrNoRows) {
 				return nil, err
 			}
@@ -94,7 +100,12 @@ func mbRetirePick(ctx context.Context, tx *sql.Tx, now, cutoff string) (*mbRetir
 		if kind == "recording" {
 			pred += ` AND a.release_refs=0`
 		}
-		rows, err := tx.QueryContext(ctx, `SELECT e.revision_id,e.provider_id,e.digest,COALESCE(b.owner_operation,'') FROM mb_`+kind+`_accounting a INDEXED BY mb_`+kind+`_accounting_retire JOIN mb_`+kind+`_evidence e ON e.revision_id=a.revision_id LEFT JOIN mb_evidence_builds b ON b.kind=? AND b.revision_id=e.revision_id WHERE `+pred+` AND a.observed_at<? ORDER BY a.observed_at,a.revision_id LIMIT 32`, kind, cutoff)
+		table, index := "mb_"+kind+"_accounting", "mb_"+kind+"_accounting_retire"
+		if kind == "recording" {
+			table = "mb_recording_accounting_base"
+			index = "mb_recording_accounting_base_retire"
+		}
+		rows, err := tx.QueryContext(ctx, `SELECT e.revision_id,e.provider_id,e.digest,COALESCE(b.owner_operation,'') FROM `+table+` a INDEXED BY `+index+` JOIN mb_`+kind+`_evidence e ON e.revision_id=a.revision_id LEFT JOIN mb_evidence_builds b ON b.kind=? AND b.revision_id=e.revision_id WHERE `+pred+` AND a.observed_at<? ORDER BY a.observed_at,a.revision_id LIMIT 32`, kind, cutoff)
 		if err != nil {
 			return nil, err
 		}
@@ -164,7 +175,7 @@ func mbRetireRowsTx(ctx context.Context, tx *sql.Tx, t *mbRetireTarget) (bool, e
 		}
 		if err == nil {
 			var refs int64
-			e := tx.QueryRowContext(ctx, `SELECT direct_refs+retention_refs FROM mb_recording_accounting WHERE revision_id=?`, child).Scan(&refs)
+			e := tx.QueryRowContext(ctx, `SELECT direct_refs+retention_refs+release_refs FROM mb_recording_accounting WHERE revision_id=?`, child).Scan(&refs)
 			if e != nil && !errors.Is(e, sql.ErrNoRows) {
 				return false, e
 			}
@@ -193,6 +204,9 @@ func (s *Service) mbRetireEvidence(ctx context.Context) error {
 		return err
 	}
 	defer w.Rollback()
+	if err := mbaccounting.IdleTx(ctx, w.Tx()); err != nil {
+		return err
+	}
 	now := s.publicationTime().Format(time.RFC3339)
 	cutoff := s.publicationTime().Add(-30 * 24 * time.Hour).Format(time.RFC3339)
 	target, err := mbRetirePick(ctx, w.Tx(), now, cutoff)
@@ -227,6 +241,9 @@ func (s *Service) mbCleanupReceipts(ctx context.Context) error {
 		return err
 	}
 	defer w.Rollback()
+	if err := mbaccounting.IdleTx(ctx, w.Tx()); err != nil {
+		return err
+	}
 	tx := w.Tx()
 	now := s.publicationTime().Format(time.RFC3339)
 	cutoff := s.publicationTime().Add(-30 * 24 * time.Hour).Format(time.RFC3339)

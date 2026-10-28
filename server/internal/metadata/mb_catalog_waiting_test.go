@@ -227,9 +227,10 @@ func TestP252bWaitingArtistBindingGuardsAndFreshness(t *testing.T) {
 					t.Fatal(e)
 				}
 			} else {
-				if _, e := db.Exec(`DELETE FROM mb_album_links WHERE album_id=?`, names["album"].ID); e != nil {
-					t.Fatal(e)
-				}
+				mbFixturePin(t, db, mbFixturePinIntent{Link: "album", Entity: names["album"].ID}, func(tx *sql.Tx) error {
+					_, err := tx.Exec(`DELETE FROM mb_album_links WHERE album_id=?`, names["album"].ID)
+					return err
+				})
 			}
 			out, e := catalog.New(db).MutationAdapter().Step(context.Background(), root)
 			if e != nil || out.State != "succeeded" || out.Phase != "stale" {

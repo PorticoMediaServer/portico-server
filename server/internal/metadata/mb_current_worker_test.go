@@ -133,7 +133,10 @@ func TestMBCurrentWorkerTypedPublicationAndCatalogPin(t *testing.T) {
 	if e = checkMBEvidenceBudget(context.Background(), tx); e != nil {
 		t.Fatal(e)
 	}
-	if _, e = tx.Exec(`INSERT INTO mb_album_links(album_id,release_revision,release_id,requested_id,observed_at) VALUES(?,?,?,?,'2099-01-01T00:00:00Z')`, other.ID, revision, mbLaneRelease, mbLaneRelease); e != nil {
+	if e = mbFixturePinTx(tx, mbFixturePinIntent{Link: "album", Entity: other.ID, NewRelease: revision}, func(tx *sql.Tx) error {
+		_, err := tx.Exec(`INSERT INTO mb_album_links(album_id,release_revision,release_id,requested_id,observed_at) VALUES(?,?,?,?,'2099-01-01T00:00:00Z')`, other.ID, revision, mbLaneRelease, mbLaneRelease)
+		return err
+	}); e != nil {
 		t.Fatal(e)
 	}
 	if e = tx.Commit(); e != nil {
@@ -281,8 +284,17 @@ func TestMBCurrentWorkerDisplacedEvidenceBudgetRollsBackPin(t *testing.T) {
 	}
 	old := save("Accepted old")
 	next := save("Already accepted elsewhere")
-	if _, e = tx.Exec(`INSERT INTO mb_album_links VALUES(?,?,?,?,'2099-01-01T00:00:00Z'),(?,?,?,?,'2099-01-01T00:00:00Z')`, names["album"].ID, old, mbLaneRelease, mbLaneRelease, other.ID, next, mbLaneRelease, mbLaneRelease); e != nil {
-		t.Fatal(e)
+	for _, pin := range []struct {
+		album   int64
+		release string
+	}{{names["album"].ID, old}, {other.ID, next}} {
+		pin := pin
+		if e = mbFixturePinTx(tx, mbFixturePinIntent{Link: "album", Entity: pin.album, NewRelease: pin.release}, func(tx *sql.Tx) error {
+			_, err := tx.Exec(`INSERT INTO mb_album_links VALUES(?,?,?,?,'2099-01-01T00:00:00Z')`, pin.album, pin.release, mbLaneRelease, mbLaneRelease)
+			return err
+		}); e != nil {
+			t.Fatal(e)
+		}
 	}
 	// Every orphan is real validated, normalized and sealed evidence. The new
 	// target already belongs to another album, so accepting it does not release

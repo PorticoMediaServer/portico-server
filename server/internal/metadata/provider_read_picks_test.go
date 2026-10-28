@@ -54,8 +54,23 @@ func readPickRelease(t *testing.T, db *sql.DB, title string) string {
 
 func readPickPin(t *testing.T, db *sql.DB, album int64, release, status string) {
 	t.Helper()
-	mbCurrentExec(t, db, `INSERT INTO mb_album_links VALUES(?,?,?,?,'now')`, album, release, mbLaneRelease, mbLaneRelease)
-	mbCurrentExec(t, db, `INSERT INTO mb_album_reconciliations(album_id,release_revision,membership_revision,status) SELECT album_id,?,membership_revision,? FROM mb_album_heads WHERE album_id=?`, release, status, album)
+	tx, err := db.Begin()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer tx.Rollback()
+	if err = mbFixturePinTx(tx, mbFixturePinIntent{Link: "album", Entity: album, NewRelease: release}, func(tx *sql.Tx) error {
+		_, err := tx.Exec(`INSERT INTO mb_album_links VALUES(?,?,?,?,'now')`, album, release, mbLaneRelease, mbLaneRelease)
+		return err
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = tx.Exec(`INSERT INTO mb_album_reconciliations(album_id,release_revision,membership_revision,status) SELECT album_id,?,membership_revision,? FROM mb_album_heads WHERE album_id=?`, release, status, album); err != nil {
+		t.Fatal(err)
+	}
+	if err = tx.Commit(); err != nil {
+		t.Fatal(err)
+	}
 }
 
 // Even a settled catalogue must finish its read while another writer owns the
@@ -168,6 +183,15 @@ func TestProviderReadPicksMBRechecksOnlyChosenAlbum(t *testing.T) {
 					t.Fatal(err)
 				}
 			}
+			pin := func(intent mbFixturePinIntent, q string, args ...any) {
+				t.Helper()
+				if err := mbFixturePinTx(hold.Tx(), intent, func(tx *sql.Tx) error {
+					_, err := tx.ExecContext(ctx, q, args...)
+					return err
+				}); err != nil {
+					t.Fatal(err)
+				}
+			}
 			wantDone, wantQueued := true, true
 			switch change {
 			case "settled":
@@ -177,10 +201,10 @@ func TestProviderReadPicksMBRechecksOnlyChosenAlbum(t *testing.T) {
 				exec(`DELETE FROM mb_album_reconciliations WHERE album_id=?`, first)
 				wantDone, wantQueued = false, false
 			case "pin_mismatch":
-				exec(`UPDATE mb_album_links SET release_revision=? WHERE album_id=?`, next, first)
+				pin(mbFixturePinIntent{Link: "album", Entity: first, NewRelease: next}, `UPDATE mb_album_links SET release_revision=? WHERE album_id=?`, next, first)
 				wantDone, wantQueued = false, false
 			case "new_pin":
-				exec(`UPDATE mb_album_links SET release_revision=? WHERE album_id=?`, next, first)
+				pin(mbFixturePinIntent{Link: "album", Entity: first, NewRelease: next}, `UPDATE mb_album_links SET release_revision=? WHERE album_id=?`, next, first)
 				exec(`UPDATE mb_album_reconciliations SET release_revision=?,cursor='' WHERE album_id=?`, next, first)
 			case "membership":
 				exec(`UPDATE mb_album_reconciliations SET cursor=? WHERE album_id=?`, strconv.FormatInt(song, 10), first)

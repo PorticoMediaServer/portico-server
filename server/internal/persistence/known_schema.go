@@ -544,7 +544,8 @@ index mb_publication_operations_accepted_recording_revision_fk
 index mb_publication_operations_accepted_release_revision_fk
 index mb_publication_operations_result_recording_revision_fk
 index mb_publication_operations_result_release_revision_fk
-index mb_recording_accounting_retire
+index mb_recording_accounting_base_retire
+index mb_recording_accounting_next_revision
 index mb_recording_aliases_age
 index mb_recording_aliases_evidence_revision_canonical_id_fk
 index mb_recording_aliases_retire
@@ -1373,6 +1374,7 @@ table maintenance_window_days
 table maintenance_window_tasks
 table maintenance_windows
 table managed_mounts
+table mb_accounting_state
 table mb_album_heads
 table mb_album_hint_scans
 table mb_album_links
@@ -1386,7 +1388,8 @@ table mb_operation_artists
 table mb_operation_sources
 table mb_provider_policies
 table mb_publication_operations
-table mb_recording_accounting
+table mb_recording_accounting_base
+table mb_recording_accounting_next
 table mb_recording_aliases
 table mb_recording_credits
 table mb_recording_evidence
@@ -2809,12 +2812,20 @@ trigger mb_account_release_delete
 trigger mb_account_release_evidence_insert
 trigger mb_account_release_insert
 trigger mb_account_release_update
+trigger mb_accounting_state_idle
+trigger mb_accounting_state_phase
+trigger mb_accounting_state_pointer
+trigger mb_accounting_state_singleton
+trigger mb_accounting_state_start
 trigger mb_album_changed_albums
 trigger mb_album_changed_entities
 trigger mb_album_created
 trigger mb_album_link_delete
 trigger mb_album_link_insert
 trigger mb_album_link_update
+trigger mb_album_links_accounting_fence_delete
+trigger mb_album_links_accounting_fence_insert
+trigger mb_album_links_accounting_fence_update
 trigger mb_album_links_build_ready_insert
 trigger mb_album_links_build_ready_update
 trigger mb_album_links_catalog_mutation_insert
@@ -2935,6 +2946,9 @@ trigger mb_song_fallback_title_changed
 trigger mb_song_link_delete
 trigger mb_song_link_insert
 trigger mb_song_link_update
+trigger mb_song_links_accounting_fence_delete
+trigger mb_song_links_accounting_fence_insert
+trigger mb_song_links_accounting_fence_update
 trigger mb_song_links_build_ready_insert
 trigger mb_song_links_build_ready_update
 trigger mb_song_links_catalog_mutation_insert
@@ -3774,7 +3788,8 @@ view catalog_related_facets_serving
 view inventory_asset_availability
 view inventory_item_availability
 view inventory_library_availability
-view listening_book_context`
+view listening_book_context
+view mb_recording_accounting`
 
 // subsystemSchemaObjects is empty: the guardrail finds no runtime schema
 // declarations outside persistence. Persistence's own legacy installers need

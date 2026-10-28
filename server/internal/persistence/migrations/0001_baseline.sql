@@ -12271,7 +12271,30 @@ CREATE TABLE mb_release_accounting(
  retention_refs INTEGER NOT NULL DEFAULT 0 CHECK(retention_refs>=0),
  direct_refs INTEGER NOT NULL DEFAULT 0 CHECK(direct_refs>=0)
 ) STRICT;
-CREATE TABLE mb_recording_accounting(
+-- P2-59 O100: one actual accounting mutation, no persisted query results.
+CREATE TABLE mb_accounting_state(
+ singleton INTEGER PRIMARY KEY CHECK(singleton=1),
+ phase TEXT NOT NULL DEFAULT 'idle' CHECK(phase IN('idle','prepare','ready','flip','fold')),
+ transition_id TEXT NOT NULL DEFAULT '',
+ published_next INTEGER NOT NULL DEFAULT 0 CHECK(published_next IN(0,1)),
+ expires_ms INTEGER NOT NULL DEFAULT 0 CHECK(expires_ms>=0),
+ owner_kind TEXT NOT NULL DEFAULT '' CHECK(owner_kind IN('','publication','entity-mutation','recovery')),
+ owner_operation TEXT NOT NULL DEFAULT '', owner_generation INTEGER NOT NULL DEFAULT 0 CHECK(owner_generation>=0),
+ stage_kind TEXT NOT NULL DEFAULT '' CHECK(stage_kind IN('','unpin','pin','move')),
+ stage_link TEXT NOT NULL DEFAULT '' CHECK(stage_link IN('','album','song')), stage_entity INTEGER,
+ stage_old_release TEXT NOT NULL DEFAULT '', stage_new_release TEXT NOT NULL DEFAULT '',
+ stage_old_direct INTEGER NOT NULL DEFAULT 0 CHECK(stage_old_direct>=0),
+ stage_new_direct INTEGER NOT NULL DEFAULT 0 CHECK(stage_new_direct>=0),
+ stage_pin_digest TEXT NOT NULL DEFAULT '', stage_cursor TEXT NOT NULL DEFAULT '',
+ stage_source TEXT NOT NULL DEFAULT '' CHECK(stage_source IN('','old-tracks','new-tracks','old-direct','new-direct','done')),
+ stage_rows INTEGER NOT NULL DEFAULT 0 CHECK(stage_rows>=0 AND stage_rows<=20002),
+ stage_delta_recordings INTEGER NOT NULL DEFAULT 0, stage_delta_charge INTEGER NOT NULL DEFAULT 0,
+ last_transition TEXT NOT NULL DEFAULT '',
+ last_outcome TEXT NOT NULL DEFAULT '' CHECK(last_outcome IN('','applied','refused','aborted'))
+) STRICT;
+INSERT INTO mb_accounting_state(singleton) VALUES(1);
+
+CREATE TABLE mb_recording_accounting_base(
  revision_id TEXT PRIMARY KEY REFERENCES mb_recording_evidence(revision_id) ON DELETE CASCADE,
  charge INTEGER NOT NULL CHECK(charge>=512),
  observed_at TEXT NOT NULL,
@@ -12279,6 +12302,99 @@ CREATE TABLE mb_recording_accounting(
  direct_refs INTEGER NOT NULL DEFAULT 0 CHECK(direct_refs>=0),
  release_refs INTEGER NOT NULL DEFAULT 0 CHECK(release_refs>=0)
 ) STRICT;
+
+CREATE TABLE mb_recording_accounting_next(         -- private facts, never authority
+ transition_id TEXT NOT NULL,
+ revision_id TEXT NOT NULL REFERENCES mb_recording_evidence(revision_id) ON DELETE CASCADE,
+ direct_refs INTEGER NOT NULL CHECK(direct_refs>=0),
+ release_refs INTEGER NOT NULL CHECK(release_refs>=0),
+ PRIMARY KEY(transition_id,revision_id)
+) STRICT;
+
+CREATE INDEX mb_recording_accounting_next_revision ON mb_recording_accounting_next(revision_id);
+
+CREATE VIEW mb_recording_accounting AS
+SELECT b.revision_id,b.charge,b.observed_at,b.retention_refs,b.direct_refs,b.release_refs
+FROM mb_recording_accounting_base AS b
+WHERE NOT EXISTS(SELECT 1 FROM mb_accounting_state AS s
+ JOIN mb_recording_accounting_next AS n
+   ON n.transition_id=s.transition_id AND n.revision_id=b.revision_id
+ WHERE s.singleton=1 AND s.published_next=1)
+UNION ALL
+SELECT b.revision_id,b.charge,b.observed_at,b.retention_refs,n.direct_refs,n.release_refs
+FROM mb_recording_accounting_next AS n
+JOIN mb_accounting_state AS s ON s.singleton=1 AND s.published_next=1 AND s.transition_id=n.transition_id
+JOIN mb_recording_accounting_base AS b ON b.revision_id=n.revision_id;
+
+CREATE TRIGGER mb_accounting_state_singleton BEFORE DELETE ON mb_accounting_state
+BEGIN SELECT RAISE(ABORT,'MusicBrainz accounting state is a singleton'); END;
+
+CREATE TRIGGER mb_accounting_state_start BEFORE UPDATE OF transition_id ON mb_accounting_state
+WHEN NEW.transition_id<>OLD.transition_id
+ AND NOT (OLD.phase='idle' AND NEW.phase='prepare'
+          AND NOT EXISTS(SELECT 1 FROM mb_recording_accounting_next))
+ AND NOT (OLD.phase='fold' AND NEW.phase='idle' AND NEW.transition_id=''
+          AND NOT EXISTS(SELECT 1 FROM mb_recording_accounting_next WHERE transition_id=OLD.transition_id))
+BEGIN SELECT RAISE(ABORT,'invalid MusicBrainz accounting transition'); END;
+
+CREATE TRIGGER mb_accounting_state_idle BEFORE UPDATE OF phase ON mb_accounting_state
+WHEN NEW.phase='idle' AND (NEW.published_next<>0 OR NEW.transition_id<>''
+ OR EXISTS(SELECT 1 FROM mb_recording_accounting_next WHERE transition_id=OLD.transition_id))
+BEGIN SELECT RAISE(ABORT,'MusicBrainz accounting is not folded'); END;
+
+CREATE TRIGGER mb_accounting_state_pointer BEFORE UPDATE OF published_next ON mb_accounting_state
+WHEN NEW.published_next<>OLD.published_next
+ AND NOT (OLD.published_next=0 AND NEW.published_next=1 AND OLD.phase='flip' AND NEW.phase='flip')
+ AND NOT (OLD.published_next=1 AND NEW.published_next=0 AND NEW.phase='idle')
+BEGIN SELECT RAISE(ABORT,'MusicBrainz accounting pointer moved outside its phase'); END;
+
+CREATE TRIGGER mb_accounting_state_phase BEFORE UPDATE OF phase ON mb_accounting_state
+WHEN NEW.phase<>OLD.phase AND NOT (
+ (OLD.phase='idle' AND NEW.phase='prepare') OR
+ (OLD.phase='prepare' AND NEW.phase IN('ready','fold')) OR
+ (OLD.phase='ready' AND NEW.phase IN('flip','fold')) OR
+ (OLD.phase='flip' AND NEW.phase='fold') OR
+ (OLD.phase='fold' AND NEW.phase='idle'))
+BEGIN SELECT RAISE(ABORT,'invalid MusicBrainz accounting phase'); END;
+
+CREATE TRIGGER mb_account_recording_update
+AFTER UPDATE OF charge,direct_refs,release_refs ON mb_recording_accounting_base
+WHEN NOT EXISTS(SELECT 1 FROM mb_accounting_state WHERE singleton=1 AND published_next=1)
+ AND (OLD.charge<>NEW.charge OR OLD.direct_refs<>NEW.direct_refs OR OLD.release_refs<>NEW.release_refs)
+ AND ((OLD.direct_refs=0 AND OLD.release_refs=0) OR (NEW.direct_refs=0 AND NEW.release_refs=0))
+BEGIN
+ UPDATE mb_evidence_totals SET
+  recordings=recordings+(NEW.direct_refs=0 AND NEW.release_refs=0)-(OLD.direct_refs=0 AND OLD.release_refs=0),
+  charge=charge+(NEW.direct_refs=0 AND NEW.release_refs=0)*NEW.charge
+               -(OLD.direct_refs=0 AND OLD.release_refs=0)*OLD.charge
+ WHERE singleton=1;
+END;
+
+CREATE TRIGGER mb_account_release_acceptance AFTER UPDATE OF direct_refs ON mb_release_accounting
+WHEN (OLD.direct_refs=0)<>(NEW.direct_refs=0)
+BEGIN SELECT RAISE(ABORT,'MusicBrainz acceptance requires the accounting transition flip')
+ WHERE NOT EXISTS(SELECT 1 FROM mb_accounting_state WHERE singleton=1 AND phase='flip'); END;
+
+-- one per link table per verb; the qualified pin statement is the only legal flip writer
+CREATE TRIGGER mb_album_links_accounting_fence_insert BEFORE INSERT ON mb_album_links
+WHEN EXISTS(SELECT 1 FROM mb_accounting_state WHERE singleton=1 AND phase<>'idle' AND phase<>'flip')
+BEGIN SELECT RAISE(ABORT,'MusicBrainz accounting transition in progress'); END;
+CREATE TRIGGER mb_album_links_accounting_fence_update BEFORE UPDATE ON mb_album_links
+WHEN EXISTS(SELECT 1 FROM mb_accounting_state WHERE singleton=1 AND phase NOT IN('idle','flip'))
+BEGIN SELECT RAISE(ABORT,'MusicBrainz accounting transition in progress'); END;
+CREATE TRIGGER mb_album_links_accounting_fence_delete BEFORE DELETE ON mb_album_links
+WHEN EXISTS(SELECT 1 FROM mb_accounting_state WHERE singleton=1 AND phase NOT IN('idle','flip'))
+BEGIN SELECT RAISE(ABORT,'MusicBrainz accounting transition in progress'); END;
+CREATE TRIGGER mb_song_links_accounting_fence_insert BEFORE INSERT ON mb_song_links
+WHEN EXISTS(SELECT 1 FROM mb_accounting_state WHERE singleton=1 AND phase NOT IN('idle','flip'))
+BEGIN SELECT RAISE(ABORT,'MusicBrainz accounting transition in progress'); END;
+CREATE TRIGGER mb_song_links_accounting_fence_update BEFORE UPDATE ON mb_song_links
+WHEN EXISTS(SELECT 1 FROM mb_accounting_state WHERE singleton=1 AND phase NOT IN('idle','flip'))
+BEGIN SELECT RAISE(ABORT,'MusicBrainz accounting transition in progress'); END;
+CREATE TRIGGER mb_song_links_accounting_fence_delete BEFORE DELETE ON mb_song_links
+WHEN EXISTS(SELECT 1 FROM mb_accounting_state WHERE singleton=1 AND phase NOT IN('idle','flip'))
+BEGIN SELECT RAISE(ABORT,'MusicBrainz accounting transition in progress'); END;
+
 -- Both the grouped window and any exact pair probe start with the release.
 -- A recording-only index would examine unrelated shared-release tracks.
 CREATE INDEX mb_release_track_release_recording ON mb_release_tracks(release_revision,recording_revision);
@@ -12300,33 +12416,17 @@ BEGIN
 END;
 -- Named indivisible exception: one old and one new release, each <=10k tracks.
 -- No accepted-link scan. Repeated recordings are grouped inside this release.
-CREATE TRIGGER mb_account_release_acceptance AFTER UPDATE OF direct_refs ON mb_release_accounting
-WHEN (OLD.direct_refs=0)<>(NEW.direct_refs=0)
-BEGIN
- UPDATE mb_recording_accounting
- SET release_refs=release_refs+refs.n*CASE WHEN NEW.direct_refs>0 THEN 1 ELSE -1 END
- FROM (SELECT recording_revision,count(*) AS n FROM mb_release_tracks INDEXED BY mb_release_track_release_recording
-       WHERE release_revision=NEW.revision_id GROUP BY recording_revision) AS refs
- WHERE revision_id=refs.recording_revision;
-END;
-CREATE TRIGGER mb_account_recording_insert AFTER INSERT ON mb_recording_accounting
+
+CREATE TRIGGER mb_account_recording_insert AFTER INSERT ON mb_recording_accounting_base
 BEGIN
  UPDATE mb_evidence_totals SET recordings=recordings+1,charge=charge+NEW.charge WHERE singleton=1;
 END;
-CREATE TRIGGER mb_account_recording_delete AFTER DELETE ON mb_recording_accounting
+CREATE TRIGGER mb_account_recording_delete AFTER DELETE ON mb_recording_accounting_base
 WHEN OLD.direct_refs=0 AND OLD.release_refs=0
 BEGIN
  UPDATE mb_evidence_totals SET recordings=recordings-1,charge=charge-OLD.charge WHERE singleton=1;
 END;
-CREATE TRIGGER mb_account_recording_update AFTER UPDATE OF charge,direct_refs,release_refs ON mb_recording_accounting
-WHEN (OLD.charge<>NEW.charge OR OLD.direct_refs<>NEW.direct_refs OR OLD.release_refs<>NEW.release_refs)
- AND ((OLD.direct_refs=0 AND OLD.release_refs=0) OR (NEW.direct_refs=0 AND NEW.release_refs=0))
-BEGIN
- UPDATE mb_evidence_totals SET
- recordings=recordings+(NEW.direct_refs=0 AND NEW.release_refs=0)-(OLD.direct_refs=0 AND OLD.release_refs=0),
- charge=charge+(NEW.direct_refs=0 AND NEW.release_refs=0)*NEW.charge-(OLD.direct_refs=0 AND OLD.release_refs=0)*OLD.charge
- WHERE singleton=1;
-END;
+
 
 CREATE TRIGGER mb_account_release_evidence_insert AFTER INSERT ON mb_release_evidence
 BEGIN
@@ -12335,17 +12435,17 @@ END;
 
 CREATE TRIGGER mb_account_recording_evidence_insert AFTER INSERT ON mb_recording_evidence
 BEGIN
- INSERT INTO mb_recording_accounting(revision_id,charge,observed_at) VALUES(NEW.revision_id,length(CAST(NEW.payload AS BLOB))*8+512,NEW.observed_at);
+ INSERT INTO mb_recording_accounting_base(revision_id,charge,observed_at) VALUES(NEW.revision_id,length(CAST(NEW.payload AS BLOB))*8+512,NEW.observed_at);
 END;
 
 CREATE TRIGGER mb_account_mb_recording_credits_insert AFTER INSERT ON mb_recording_credits
 BEGIN
- UPDATE mb_recording_accounting SET charge=charge+512 WHERE revision_id=NEW.revision_id;
+ UPDATE mb_recording_accounting_base SET charge=charge+512 WHERE revision_id=NEW.revision_id;
 END;
 
 CREATE TRIGGER mb_account_mb_recording_credits_delete AFTER DELETE ON mb_recording_credits
 BEGIN
- UPDATE mb_recording_accounting SET charge=charge-512 WHERE revision_id=OLD.revision_id;
+ UPDATE mb_recording_accounting_base SET charge=charge-512 WHERE revision_id=OLD.revision_id;
 END;
 
 CREATE TRIGGER mb_account_mb_release_credits_insert AFTER INSERT ON mb_release_credits
@@ -12381,7 +12481,7 @@ END;
 CREATE TRIGGER mb_account_mb_release_tracks_insert AFTER INSERT ON mb_release_tracks
 BEGIN
  UPDATE mb_release_accounting SET charge=charge+512 WHERE revision_id=NEW.release_revision;
- UPDATE mb_recording_accounting SET release_refs=release_refs+1
+ UPDATE mb_recording_accounting_base SET release_refs=release_refs+1
  WHERE revision_id=NEW.recording_revision
  AND EXISTS(SELECT 1 FROM mb_release_accounting WHERE revision_id=NEW.release_revision AND direct_refs>0);
 END;
@@ -12389,7 +12489,7 @@ END;
 CREATE TRIGGER mb_account_mb_release_tracks_delete AFTER DELETE ON mb_release_tracks
 BEGIN
  UPDATE mb_release_accounting SET charge=charge-512 WHERE revision_id=OLD.release_revision;
- UPDATE mb_recording_accounting SET release_refs=release_refs-1
+ UPDATE mb_recording_accounting_base SET release_refs=release_refs-1
  WHERE revision_id=OLD.recording_revision
  AND EXISTS(SELECT 1 FROM mb_release_accounting WHERE revision_id=OLD.release_revision AND direct_refs>0);
 END;
@@ -12443,22 +12543,22 @@ BEGIN
 END;
 
 CREATE TRIGGER mb_account_mb_song_links_recording_revision_insert AFTER INSERT ON mb_song_links
-WHEN NEW.recording_revision IS NOT NULL
+WHEN NEW.recording_revision IS NOT NULL AND NOT EXISTS(SELECT 1 FROM mb_accounting_state WHERE singleton=1 AND published_next=1)
 BEGIN
- UPDATE mb_recording_accounting SET direct_refs=direct_refs+1 WHERE revision_id=NEW.recording_revision;
+ UPDATE mb_recording_accounting_base SET direct_refs=direct_refs+1 WHERE revision_id=NEW.recording_revision;
 END;
 
 CREATE TRIGGER mb_account_mb_song_links_recording_revision_delete AFTER DELETE ON mb_song_links
-WHEN OLD.recording_revision IS NOT NULL
+WHEN OLD.recording_revision IS NOT NULL AND NOT EXISTS(SELECT 1 FROM mb_accounting_state WHERE singleton=1 AND published_next=1)
 BEGIN
- UPDATE mb_recording_accounting SET direct_refs=direct_refs-1 WHERE revision_id=OLD.recording_revision;
+ UPDATE mb_recording_accounting_base SET direct_refs=direct_refs-1 WHERE revision_id=OLD.recording_revision;
 END;
 
 CREATE TRIGGER mb_account_mb_song_links_recording_revision_update AFTER UPDATE OF recording_revision ON mb_song_links
-WHEN OLD.recording_revision IS NOT NEW.recording_revision
+WHEN OLD.recording_revision IS NOT NEW.recording_revision AND NOT EXISTS(SELECT 1 FROM mb_accounting_state WHERE singleton=1 AND published_next=1)
 BEGIN
- UPDATE mb_recording_accounting SET direct_refs=direct_refs-1 WHERE revision_id=OLD.recording_revision;
- UPDATE mb_recording_accounting SET direct_refs=direct_refs+1 WHERE revision_id=NEW.recording_revision;
+ UPDATE mb_recording_accounting_base SET direct_refs=direct_refs-1 WHERE revision_id=OLD.recording_revision;
+ UPDATE mb_recording_accounting_base SET direct_refs=direct_refs+1 WHERE revision_id=NEW.recording_revision;
 END;
 
 
@@ -12529,24 +12629,24 @@ CREATE INDEX mb_evidence_builds_parent ON mb_evidence_builds(parent_build,state,
 
 -- P2-52b bounded retirement facts: exact reference counts, never query results.
 CREATE INDEX mb_release_accounting_retire ON mb_release_accounting(observed_at,revision_id) WHERE direct_refs=0 AND retention_refs=0;
-CREATE INDEX mb_recording_accounting_retire ON mb_recording_accounting(observed_at,revision_id) WHERE direct_refs=0 AND retention_refs=0 AND release_refs=0;
+CREATE INDEX mb_recording_accounting_base_retire ON mb_recording_accounting_base(observed_at,revision_id) WHERE direct_refs=0 AND retention_refs=0 AND release_refs=0;
 CREATE TRIGGER mb_retention_mb_release_aliases_insert AFTER INSERT ON mb_release_aliases BEGIN UPDATE mb_release_accounting SET retention_refs=retention_refs+1 WHERE revision_id=NEW.evidence_revision; END;
 CREATE TRIGGER mb_retention_mb_release_aliases_delete AFTER DELETE ON mb_release_aliases BEGIN UPDATE mb_release_accounting SET retention_refs=retention_refs-1 WHERE revision_id=OLD.evidence_revision; END;
 CREATE TRIGGER mb_retention_mb_release_aliases_evidence_revision_update AFTER UPDATE OF evidence_revision ON mb_release_aliases WHEN OLD.evidence_revision IS NOT NEW.evidence_revision BEGIN UPDATE mb_release_accounting SET retention_refs=retention_refs-1 WHERE revision_id=OLD.evidence_revision; UPDATE mb_release_accounting SET retention_refs=retention_refs+1 WHERE revision_id=NEW.evidence_revision; END;
-CREATE TRIGGER mb_retention_mb_recording_aliases_insert AFTER INSERT ON mb_recording_aliases BEGIN UPDATE mb_recording_accounting SET retention_refs=retention_refs+1 WHERE revision_id=NEW.evidence_revision; END;
-CREATE TRIGGER mb_retention_mb_recording_aliases_delete AFTER DELETE ON mb_recording_aliases BEGIN UPDATE mb_recording_accounting SET retention_refs=retention_refs-1 WHERE revision_id=OLD.evidence_revision; END;
-CREATE TRIGGER mb_retention_mb_recording_aliases_evidence_revision_update AFTER UPDATE OF evidence_revision ON mb_recording_aliases WHEN OLD.evidence_revision IS NOT NEW.evidence_revision BEGIN UPDATE mb_recording_accounting SET retention_refs=retention_refs-1 WHERE revision_id=OLD.evidence_revision; UPDATE mb_recording_accounting SET retention_refs=retention_refs+1 WHERE revision_id=NEW.evidence_revision; END;
-CREATE TRIGGER mb_retention_mb_release_tracks_insert AFTER INSERT ON mb_release_tracks BEGIN UPDATE mb_recording_accounting SET retention_refs=retention_refs+1 WHERE revision_id=NEW.recording_revision; END;
-CREATE TRIGGER mb_retention_mb_release_tracks_delete AFTER DELETE ON mb_release_tracks BEGIN UPDATE mb_recording_accounting SET retention_refs=retention_refs-1 WHERE revision_id=OLD.recording_revision; END;
-CREATE TRIGGER mb_retention_mb_release_tracks_recording_revision_update AFTER UPDATE OF recording_revision ON mb_release_tracks WHEN OLD.recording_revision IS NOT NEW.recording_revision BEGIN UPDATE mb_recording_accounting SET retention_refs=retention_refs-1 WHERE revision_id=OLD.recording_revision; UPDATE mb_recording_accounting SET retention_refs=retention_refs+1 WHERE revision_id=NEW.recording_revision; END;
+CREATE TRIGGER mb_retention_mb_recording_aliases_insert AFTER INSERT ON mb_recording_aliases BEGIN UPDATE mb_recording_accounting_base SET retention_refs=retention_refs+1 WHERE revision_id=NEW.evidence_revision; END;
+CREATE TRIGGER mb_retention_mb_recording_aliases_delete AFTER DELETE ON mb_recording_aliases BEGIN UPDATE mb_recording_accounting_base SET retention_refs=retention_refs-1 WHERE revision_id=OLD.evidence_revision; END;
+CREATE TRIGGER mb_retention_mb_recording_aliases_evidence_revision_update AFTER UPDATE OF evidence_revision ON mb_recording_aliases WHEN OLD.evidence_revision IS NOT NEW.evidence_revision BEGIN UPDATE mb_recording_accounting_base SET retention_refs=retention_refs-1 WHERE revision_id=OLD.evidence_revision; UPDATE mb_recording_accounting_base SET retention_refs=retention_refs+1 WHERE revision_id=NEW.evidence_revision; END;
+CREATE TRIGGER mb_retention_mb_release_tracks_insert AFTER INSERT ON mb_release_tracks BEGIN UPDATE mb_recording_accounting_base SET retention_refs=retention_refs+1 WHERE revision_id=NEW.recording_revision; END;
+CREATE TRIGGER mb_retention_mb_release_tracks_delete AFTER DELETE ON mb_release_tracks BEGIN UPDATE mb_recording_accounting_base SET retention_refs=retention_refs-1 WHERE revision_id=OLD.recording_revision; END;
+CREATE TRIGGER mb_retention_mb_release_tracks_recording_revision_update AFTER UPDATE OF recording_revision ON mb_release_tracks WHEN OLD.recording_revision IS NOT NEW.recording_revision BEGIN UPDATE mb_recording_accounting_base SET retention_refs=retention_refs-1 WHERE revision_id=OLD.recording_revision; UPDATE mb_recording_accounting_base SET retention_refs=retention_refs+1 WHERE revision_id=NEW.recording_revision; END;
 CREATE TRIGGER mb_retention_mb_album_reconciliations_insert AFTER INSERT ON mb_album_reconciliations BEGIN UPDATE mb_release_accounting SET retention_refs=retention_refs+1 WHERE revision_id=NEW.release_revision; END;
 CREATE TRIGGER mb_retention_mb_album_reconciliations_delete AFTER DELETE ON mb_album_reconciliations BEGIN UPDATE mb_release_accounting SET retention_refs=retention_refs-1 WHERE revision_id=OLD.release_revision; END;
 CREATE TRIGGER mb_retention_mb_album_reconciliations_release_revision_update AFTER UPDATE OF release_revision ON mb_album_reconciliations WHEN OLD.release_revision IS NOT NEW.release_revision BEGIN UPDATE mb_release_accounting SET retention_refs=retention_refs-1 WHERE revision_id=OLD.release_revision; UPDATE mb_release_accounting SET retention_refs=retention_refs+1 WHERE revision_id=NEW.release_revision; END;
-CREATE TRIGGER mb_retention_mb_publication_operations_insert AFTER INSERT ON mb_publication_operations BEGIN UPDATE mb_recording_accounting SET retention_refs=retention_refs+1 WHERE revision_id=NEW.accepted_recording_revision; UPDATE mb_release_accounting SET retention_refs=retention_refs+1 WHERE revision_id=NEW.accepted_release_revision; UPDATE mb_recording_accounting SET retention_refs=retention_refs+1 WHERE revision_id=NEW.result_recording_revision; UPDATE mb_release_accounting SET retention_refs=retention_refs+1 WHERE revision_id=NEW.result_release_revision; END;
-CREATE TRIGGER mb_retention_mb_publication_operations_delete AFTER DELETE ON mb_publication_operations BEGIN UPDATE mb_recording_accounting SET retention_refs=retention_refs-1 WHERE revision_id=OLD.accepted_recording_revision; UPDATE mb_release_accounting SET retention_refs=retention_refs-1 WHERE revision_id=OLD.accepted_release_revision; UPDATE mb_recording_accounting SET retention_refs=retention_refs-1 WHERE revision_id=OLD.result_recording_revision; UPDATE mb_release_accounting SET retention_refs=retention_refs-1 WHERE revision_id=OLD.result_release_revision; END;
-CREATE TRIGGER mb_retention_mb_publication_operations_accepted_recording_revision_update AFTER UPDATE OF accepted_recording_revision ON mb_publication_operations WHEN OLD.accepted_recording_revision IS NOT NEW.accepted_recording_revision BEGIN UPDATE mb_recording_accounting SET retention_refs=retention_refs-1 WHERE revision_id=OLD.accepted_recording_revision; UPDATE mb_recording_accounting SET retention_refs=retention_refs+1 WHERE revision_id=NEW.accepted_recording_revision; END;
+CREATE TRIGGER mb_retention_mb_publication_operations_insert AFTER INSERT ON mb_publication_operations BEGIN UPDATE mb_recording_accounting_base SET retention_refs=retention_refs+1 WHERE revision_id=NEW.accepted_recording_revision; UPDATE mb_release_accounting SET retention_refs=retention_refs+1 WHERE revision_id=NEW.accepted_release_revision; UPDATE mb_recording_accounting_base SET retention_refs=retention_refs+1 WHERE revision_id=NEW.result_recording_revision; UPDATE mb_release_accounting SET retention_refs=retention_refs+1 WHERE revision_id=NEW.result_release_revision; END;
+CREATE TRIGGER mb_retention_mb_publication_operations_delete AFTER DELETE ON mb_publication_operations BEGIN UPDATE mb_recording_accounting_base SET retention_refs=retention_refs-1 WHERE revision_id=OLD.accepted_recording_revision; UPDATE mb_release_accounting SET retention_refs=retention_refs-1 WHERE revision_id=OLD.accepted_release_revision; UPDATE mb_recording_accounting_base SET retention_refs=retention_refs-1 WHERE revision_id=OLD.result_recording_revision; UPDATE mb_release_accounting SET retention_refs=retention_refs-1 WHERE revision_id=OLD.result_release_revision; END;
+CREATE TRIGGER mb_retention_mb_publication_operations_accepted_recording_revision_update AFTER UPDATE OF accepted_recording_revision ON mb_publication_operations WHEN OLD.accepted_recording_revision IS NOT NEW.accepted_recording_revision BEGIN UPDATE mb_recording_accounting_base SET retention_refs=retention_refs-1 WHERE revision_id=OLD.accepted_recording_revision; UPDATE mb_recording_accounting_base SET retention_refs=retention_refs+1 WHERE revision_id=NEW.accepted_recording_revision; END;
 CREATE TRIGGER mb_retention_mb_publication_operations_accepted_release_revision_update AFTER UPDATE OF accepted_release_revision ON mb_publication_operations WHEN OLD.accepted_release_revision IS NOT NEW.accepted_release_revision BEGIN UPDATE mb_release_accounting SET retention_refs=retention_refs-1 WHERE revision_id=OLD.accepted_release_revision; UPDATE mb_release_accounting SET retention_refs=retention_refs+1 WHERE revision_id=NEW.accepted_release_revision; END;
-CREATE TRIGGER mb_retention_mb_publication_operations_result_recording_revision_update AFTER UPDATE OF result_recording_revision ON mb_publication_operations WHEN OLD.result_recording_revision IS NOT NEW.result_recording_revision BEGIN UPDATE mb_recording_accounting SET retention_refs=retention_refs-1 WHERE revision_id=OLD.result_recording_revision; UPDATE mb_recording_accounting SET retention_refs=retention_refs+1 WHERE revision_id=NEW.result_recording_revision; END;
+CREATE TRIGGER mb_retention_mb_publication_operations_result_recording_revision_update AFTER UPDATE OF result_recording_revision ON mb_publication_operations WHEN OLD.result_recording_revision IS NOT NEW.result_recording_revision BEGIN UPDATE mb_recording_accounting_base SET retention_refs=retention_refs-1 WHERE revision_id=OLD.result_recording_revision; UPDATE mb_recording_accounting_base SET retention_refs=retention_refs+1 WHERE revision_id=NEW.result_recording_revision; END;
 CREATE TRIGGER mb_retention_mb_publication_operations_result_release_revision_update AFTER UPDATE OF result_release_revision ON mb_publication_operations WHEN OLD.result_release_revision IS NOT NEW.result_release_revision BEGIN UPDATE mb_release_accounting SET retention_refs=retention_refs-1 WHERE revision_id=OLD.result_release_revision; UPDATE mb_release_accounting SET retention_refs=retention_refs+1 WHERE revision_id=NEW.result_release_revision; END;
 CREATE TRIGGER mb_retire_recording_parent_empty BEFORE DELETE ON mb_recording_evidence WHEN EXISTS(SELECT 1 FROM mb_recording_credits WHERE revision_id=OLD.revision_id) BEGIN SELECT RAISE(ABORT,'MusicBrainz parent requires bounded child retirement');END;
 CREATE TRIGGER mb_retire_release_parent_empty BEFORE DELETE ON mb_release_evidence WHEN EXISTS(SELECT 1 FROM mb_release_credits WHERE revision_id=OLD.revision_id) OR EXISTS(SELECT 1 FROM mb_release_group_types WHERE release_revision=OLD.revision_id) OR EXISTS(SELECT 1 FROM mb_release_media WHERE release_revision=OLD.revision_id) OR EXISTS(SELECT 1 FROM mb_release_tracks WHERE release_revision=OLD.revision_id) OR EXISTS(SELECT 1 FROM mb_track_credits WHERE release_revision=OLD.revision_id) BEGIN SELECT RAISE(ABORT,'MusicBrainz parent requires bounded child retirement');END;

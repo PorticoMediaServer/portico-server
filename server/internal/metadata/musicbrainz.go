@@ -60,6 +60,9 @@ func (s *Service) MusicBrainzStep(ctx context.Context) (result error) {
 	if e := ctx.Err(); e != nil {
 		return e
 	}
+	if held, _, e := s.mbAccountingMaintenance(ctx); e != nil || held {
+		return e
+	}
 	if e := s.cleanupMusicBrainz(ctx); e != nil {
 		return e
 	}
@@ -246,6 +249,11 @@ func (s *Service) mbResult(ctx context.Context, j mbJob, problem error) error {
 			retryDue = s.publicationTime().Add(30 * time.Second)
 			retryAt = retryDue.Format(time.RFC3339)
 			reason = "adoption_in_progress"
+		}
+		if errors.Is(problem, errMBAccountingPending) {
+			retryDue = s.publicationTime().Add(time.Second)
+			retryAt = retryDue.Format(time.RFC3339)
+			reason = "accounting_in_progress"
 		}
 		if _, e = tx.ExecContext(ctx, `UPDATE mb_jobs SET status='pending',generation=generation+1,revision=revision+1,lease='',lease_until='',next_attempt=CASE WHEN ?<>'' THEN ? ELSE next_attempt END WHERE kind=? AND entity_id=? AND generation=? AND lease=?`, retryAt, retryAt, j.kind, entity, j.generation, j.lease); e != nil {
 			return e
