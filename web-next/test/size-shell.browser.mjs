@@ -70,7 +70,7 @@ export async function checkSizeShell(page, origin, onCase = async () => {}) {
   for (const width of [599,600,1024]) {
     await page.setViewportSize({width,height:900});
     await page.waitForFunction(w=>innerWidth===w,width);
-    const card=page.locator('article[data-card-kind]').first(), play=card.getByRole('button',{name:'Play',exact:true}), more=card.getByRole('button',{name:/More/});
+    const card=page.locator('article[data-card-kind]').first(), play=card.getByRole('button',{name:/^Play: .+/}), more=card.getByRole('button',{name:/More/});
     for (const button of [play,more]) {
       const box=await button.boundingBox();assert.ok(box&&box.width>=44&&box.height>=44);
       assert.equal(await button.evaluate(e=>getComputedStyle(e).opacity),'1');

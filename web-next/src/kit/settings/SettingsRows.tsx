@@ -1,4 +1,4 @@
-import {Fragment, type ReactNode} from 'react';
+import {Fragment, type HTMLAttributes, type ReactNode, type SyntheticEvent} from 'react';
 import {defaultI18n, type MessageId} from '@i18n';
 import type {SettingsGroup as GroupSpec, SettingsHolder, SettingsOption, SettingsRow as RowSpec, SettingsValue} from '@core/presentation/settings-spec.ts';
 import {settingsRowIndex} from '@core/presentation/settings-spec.ts';
@@ -54,11 +54,16 @@ function Row({row, flat, dependent = false, inheritedDisabled = false, ...props}
   const parent = row.enableWhen && settingsRowIndex.get(row.enableWhen.id)?.row;
   const condition = parent && props.state(parent).value;
   const conditionMet = settingsConditionMet(row.enableWhen, condition);
-  const disabled = inheritedDisabled || state.disabled || state.saving || !conditionMet;
+  const disabled = inheritedDisabled || state.disabled || state.readOnly || state.saving || !conditionMet;
+  // Keep the values in the accessibility tree. Custom controls still inherit
+  // the row's interaction guard, including a disabled parent or an active save.
+  const guard = (event: SyntheticEvent) => {if (disabled) {event.preventDefault(); event.stopPropagation();}};
+  const controlState: HTMLAttributes<HTMLDivElement> = {'aria-disabled': disabled || undefined, 'aria-busy': state.saving || undefined,
+    onClickCapture: guard, onChangeCapture: guard, onKeyDownCapture: event => {if (event.key !== 'Tab' && event.key !== 'Escape') guard(event);}};
   const c = row.control, label = state.label ?? t(row.label), options = state.choices ?? c.options?.map(option => ({...option, label: t(option.label), hint: option.hint && t(option.hint)})) ?? [];
   const changed = state.changed && !row.noChanged;
   const defaultLabel = state.defaultLabel ?? (options.find(option => option.value === state.defaultValue)?.label ?? (typeof state.defaultValue === 'boolean' ? t(state.defaultValue ? 'next.settings.on' : 'next.settings.off') : state.defaultValue === null ? t('next.settings.notSet') : state.defaultValue === undefined ? undefined : String(state.defaultValue)));
-  const reset = changed && <span className={styles.changed}>{t('next.shell.changed')}<button type="button" disabled={disabled} onClick={() => props.reset(row)}>{t('next.shell.reset')}</button></span>;
+  const reset = changed && <span className={styles.changed}>{t('next.shell.changed')}<button type="button" disabled={disabled} onClick={() => {if (!disabled) props.reset(row);}}>{t('next.shell.reset')}</button></span>;
   let control: ReactNode;
   const change = (value: SettingsValue) => {if (!disabled) props.change(row, value);};
   const option = (text: string) => options.find(option => String(option.value) === text)?.value;
@@ -77,12 +82,12 @@ function Row({row, flat, dependent = false, inheritedDisabled = false, ...props}
   else if (c.type === 'table' && c.style === 'grid' && state.gridRows) control = <SettingsGrid label={label} rows={state.gridRows} columns={(c.columns ?? []).map(column => ({id: column.id!, label: t(column.label), kind: column.kind as SettingsTableColumn['kind'], width: column.width}))} />;
   else if (c.type === 'matrix' && state.value && typeof state.value === 'object' && !Array.isArray(state.value)) {
     const values = state.value as Readonly<Record<string, SettingsValue>>, defaults = state.defaultValue as Readonly<Record<string, SettingsValue>> | undefined;
-    control = <div className={styles.matrixControl} inert={disabled || undefined}><ChoiceMatrix label={label} choices={(c.columns ?? []).map(column => ({value: column.value!, label: t(column.label), description: column.hint && t(column.hint)}))}
-      rows={(c.items ?? []).map(item => ({id: item.id!, label: t(item.label), value: String(values[item.id!]), hint: defaults && values[item.id!] !== defaults[item.id!] ? <span className={styles.changed}>{t('next.shell.changed')}<button type="button" onClick={() => change({...values, [item.id!]: defaults[item.id!]})}>{t('next.shell.reset')}</button></span> : undefined}))} onChange={(id, value) => change({...values, [id]: value})} /></div>;
-  } else control = props.renderSpecial(row, state);
-  const body = flat || c.type === 'matrix' ? <div id={row.id} className={styles.specialRow} data-found={props.foundRowId === row.id || undefined}>{control}</div> : <SettingsRow id={row.id} dependent={dependent} found={props.foundRowId === row.id} stacked={['preview', 'list', 'table'].includes(c.type)}
+    control = <div className={styles.matrixControl} {...controlState}><ChoiceMatrix label={label} disabled={disabled} choices={(c.columns ?? []).map(column => ({value: column.value!, label: t(column.label), description: column.hint && t(column.hint)}))}
+      rows={(c.items ?? []).map(item => ({id: item.id!, label: t(item.label), value: String(values[item.id!]), hint: defaults && values[item.id!] !== defaults[item.id!] ? <span className={styles.changed}>{t('next.shell.changed')}<button type="button" disabled={disabled} onClick={() => change({...values, [item.id!]: defaults[item.id!]})}>{t('next.shell.reset')}</button></span> : undefined}))} onChange={(id, value) => change({...values, [id]: value})} /></div>;
+  } else control = props.renderSpecial(row, {...state, disabled});
+  const body = flat || c.type === 'matrix' ? <div id={row.id} className={styles.specialRow} data-found={props.foundRowId === row.id || undefined} {...controlState}>{control}</div> : <SettingsRow id={row.id} dependent={dependent} found={props.foundRowId === row.id} stacked={['preview', 'list', 'table'].includes(c.type)}
     label={<><MatchText text={label} query={props.query ?? ''} />{reset}</>} help={state.help ?? (row.help && <MatchText text={t(row.help)} query={props.query ?? ''} />)} className={disabled ? styles.disabled : undefined}>
-    <div className={styles.control} inert={disabled || undefined}>{changed && defaultLabel !== undefined && ['toggle','select','segmented','number'].includes(c.type) && <span className={styles.defaultValue}>{t('next.settings.defaultValue', {value: defaultLabel})}</span>}{control}</div>
+    <div className={styles.control} {...controlState}>{changed && defaultLabel !== undefined && ['toggle','select','segmented','number'].includes(c.type) && <span className={styles.defaultValue}>{t('next.settings.defaultValue', {value: defaultLabel})}</span>}{control}</div>
   </SettingsRow>;
   return <Fragment>{body}{state.error && <p className={styles.rowError} role="alert">{state.error}</p>}{row.children?.map(child => <Row key={child.id} row={child} {...props} dependent inheritedDisabled={disabled} />)}</Fragment>;
 }

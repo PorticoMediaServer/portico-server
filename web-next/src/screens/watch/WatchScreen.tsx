@@ -140,17 +140,7 @@ export function WatchScreen({binding, snapshot, expanded, onCollapse, onControls
     setPanel(null); setMore(false); setShortcuts(false); setFullWindow(false); setVisible(true); setLiveGuideOpen(false);
   }, [binding.runtime, playbackKey, fence?.playback]);
   useEffect(() => {if (!open) setLiveGuideOpen(false);}, [open]);
-  const focusEdge = useRef(false), expandedNow = useRef(expanded); expandedNow.current = expanded;
-  useLayoutEffect(() => {
-    const wasOpen = focusEdge.current; focusEdge.current = open;
-    // Only on the closed-to-open edge: a later autoplay entry change must not take
-    // focus, and an open surface above the player keeps it.
-    if (!open || wasOpen) return;
-    const element = root.current, active = document.activeElement;
-    if (!element || (active instanceof Node && element.contains(active))) return;
-    if (active instanceof Element && active.closest('[role="dialog"],[role="menu"],[aria-modal="true"]')) return;
-    element.focus({preventScroll: true});
-  }, [open]);
+  const expandedNow = useRef(expanded); expandedNow.current = expanded;
   useLayoutEffect(() => { pictureInput.cancel(); setTapFeedback(null); scrubDrag.current = null; setScrub(null); setHoverSeconds(null); }, [binding.runtime, snapshot.authority, sourceKey, pictureInput]);
   useEffect(() => () => pictureInput.cancel(), [pictureInput]);
   useLayoutEffect(() => { setFullWindow(false); }, [shapePortrait]);

@@ -5,7 +5,7 @@ import {ReaderSurface, type ReaderSurfaceProps} from './ReaderSurface';
 import styles from '../../kit/reader/surface.module.css';
 
 export type ReaderChromePresentation = Omit<ReaderChromeProps,
-  'title' | 'subtitle' | 'progression' | 'pageTurnsEnabled' | 'onBack' | 'onTurn' | 'onSeek' | 'subscribeSurfaceInput' | 'readActivity' | 'children' | 'fixedPage' | 'textSelectionActive'>;
+  'title' | 'subtitle' | 'progression' | 'pageTurnsEnabled' | 'onBack' | 'onTurn' | 'onSeek' | 'subscribeSurfaceInput' | 'readActivity' | 'children' | 'fixedPage' | 'comic' | 'textSelectionActive'>;
 export type ReadReaderProps<P extends object> = ReaderSurfaceProps<P> & Readonly<{
   /** Source/profile data is formatted by the real localized adapter, never a fixture here. */
   presentation: (snapshot: ReaderSnapshot<P>) => ReaderChromePresentation;
@@ -57,7 +57,7 @@ export function ReadReader<P extends object>({controller, source, format, initia
   const publicationReady = currentPublication && snapshot.status === 'ready';
   return <ReaderChrome {...chrome} title={metadata ? metadata.title : snapshot.metadata?.title} subtitle={metadata ? metadata.author : snapshot.metadata?.author}
     progression={snapshot.location?.progression} pageTurnsEnabled={publicationReady && snapshot.canTurnAtFit}
-    fixedPage={format !== 'epub'} holdOpen={chrome.holdOpen || !publicationReady || snapshot.selection !== null}
+    fixedPage={format !== 'epub'} comic={format === 'cbz' || format === 'cbr'} holdOpen={chrome.holdOpen || !publicationReady || snapshot.selection !== null}
     textSelectionActive={snapshot.selection !== null}
     subscribeSurfaceInput={controller.subscribeSurfaceInput} readActivity={readActivity} onTurn={turn} onSeek={seek} onBack={onBack}>
     <ReaderSurface controller={controller} source={source} format={format} initialLocation={initialLocation} metadata={metadata} signal={signal} authority={authority} reportError={reportError} crease={crease} />

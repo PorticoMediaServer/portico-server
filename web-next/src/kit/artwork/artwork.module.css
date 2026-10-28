@@ -166,6 +166,13 @@
 .pickertv .profileTile:focus-visible .profileName { color: var(--color-text); }
 .pickertv .profileTile:focus-visible > .profileFace, .pickertv .profileTile[data-selected] > .profileFace { transform: none; }
 .pickertv .profileFace::after { box-shadow: 0 0 0 5px var(--color-ink), 0 0 0 10px var(--color-focus), 0 30px 70px -10px rgba(213,239,255,.22); }
+@media (min-width: 600px) and (max-width: 1023px) {
+  .pickerauto .profileRow { gap: 26px; }
+  .pickerauto .profileTile { width: 150px; }
+  .pickerauto .profileTile > .profileFace { width: 142px; height: 142px; font-size: 56px; margin-bottom: 16px; }
+  .pickerauto .profileName { font-size: 20px; }
+  .pickerauto .profileBadge { margin-top: 5px; }
+}
 @media (width < 600px) {
   .pickerauto { align-items: stretch; }
   .pickerauto .profileRow { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 26px 8px; }

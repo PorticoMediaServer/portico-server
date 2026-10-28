@@ -21,7 +21,7 @@ const facts = {serverName: 'Portico demo', address: '192.168.1.20:32500', owner:
 
 test('states.html#3: the launch wait follows the drawn 2, 4, 8 second cadence and stops at a minute', () => {
   const steady = () => 0.5;
-  assert.deepEqual([0, 1, 2, 3, 4, 5, 6, 20].map(attempt => retryDelayMs(attempt, steady)), [2000, 4000, 8000, 16000, 32000, 60000, 60000, 60000]);
+  assert.deepEqual([0, 1, 2, 3, 4, 5, 6, 20].map(attempt => retryDelayMs(attempt, steady)), [2000, 4000, 8000, 15000, 30000, 60000, 60000, 60000]);
   // Jitter stays inside ten percent and never falls under a second.
   assert.equal(retryDelayMs(0, () => 0), 1800);
   assert.equal(retryDelayMs(0, () => 1), 2200);
@@ -49,26 +49,16 @@ test('a fresh load that cannot reach the server never draws cached library names
   assert.doesNotMatch(markup, /data-last-known-bar/);
 });
 
-test('states.html#3: the drawn page names the server, counts its real tries and offers only real actions', () => {
-  const now = facts.startedAt, markup = renderToStaticMarkup(createElement(LaunchUnreachableScreen, {facts, now, onRetry: () => {}, onSwitchServer: () => {}}));
-  assert.match(markup, new RegExp(defaultI18n.t('next.states.cantReach', {server: 'Portico demo'}).replace(/'/g, '&#x27;')));
-  assert.match(markup, /You&#x27;re still signed in\. Portico keeps trying/);
-  assert.match(markup, /Trying again in 9 seconds/);
-  assert.match(markup, /4 tries since/);
-  assert.match(markup, />Try again now</);
-  assert.match(markup, />Switch server</);
-  assert.match(markup, />Details</);
-  // The opened details carry the real address and the device's own state.
-  const withDetails = renderToStaticMarkup(createElement(LaunchUnreachableScreen, {facts: {...facts, owner: false}, now, initialDetailsOpen: true, onRetry: () => {}, onSwitchServer: () => {}}));
-  assert.match(withDetails, /192\.168\.1\.20:32500/);
-  assert.match(withDetails, /No answer/);
-  // Only the owner sees the owner's part, the real code and Copy details.
-  assert.doesNotMatch(withDetails, /For you, as the owner/);
-  assert.doesNotMatch(withDetails, /route_unavailable/);
-  const ownerMarkup = renderToStaticMarkup(createElement(LaunchUnreachableScreen, {facts, now, initialDetailsOpen: true, onRetry: () => {}, onSwitchServer: () => {}}));
-  assert.match(ownerMarkup, /For you, as the owner/);
-  assert.match(ownerMarkup, /route_unavailable/);
-  assert.match(ownerMarkup, /Copy details/);
+test('the launch page keeps only the approved title, real countdown and actions', () => {
+  for (const owner of [false, true]) {
+    const markup = renderToStaticMarkup(createElement(LaunchUnreachableScreen, {facts: {...facts, owner}, now: facts.startedAt, onRetry: () => {}, onSwitchServer: () => {}}));
+    assert.match(markup, new RegExp(defaultI18n.t('next.states.cantReach', {server: 'Portico demo'}).replace(/'/g, '&#x27;')));
+    assert.match(markup, /Trying again in 9 seconds/);
+    assert.match(markup, />Try again now</);
+    assert.match(markup, />Switch server</);
+    assert.doesNotMatch(markup, /still signed in|tries since|>Details<|Copy details|For you, as the owner/);
+    assert.doesNotMatch(markup, /192\.168\.1\.20:32500|route_unavailable/);
+  }
 });
 
 test('a server whose name was never cached keeps the page without inventing one', () => {
@@ -78,10 +68,11 @@ test('a server whose name was never cached keeps the page without inventing one'
   assert.match(markup, /Trying again/);
 });
 
-test('desktop-app.html#15: an offline computer says so instead of blaming the server', () => {
+test('an offline web client uses the approved short title without blaming the server', () => {
   const markup = renderToStaticMarkup(createElement(LaunchUnreachableScreen, {facts: {...facts, category: 'offline' as const}, now: facts.startedAt, onRetry: () => {}, onSwitchServer: () => {}}));
-  assert.match(markup, new RegExp(defaultI18n.t('next.states.thisComputerOffline')));
-  assert.match(markup, new RegExp(defaultI18n.t('next.states.reconnectsWhenBack').replace(/'/g, '&#x27;')));
+  assert.match(markup, /You&#x27;re offline/);
+  assert.doesNotMatch(markup, /This computer|still signed in|keeps trying/);
+  assert.match(markup, /Trying again in 9 seconds/);
   assert.doesNotMatch(markup, /Portico demo/);
 });
 
@@ -107,12 +98,12 @@ test('a retired wait stops waking on focus, view or network return', async t => 
     }
   });
   await bootstrap.start();
-  assert.equal(bootstrap.getSnapshot().phase, 'unreachable');
+  assert.equal(bootstrap.getSnapshot().phase, 'restoring');
   let unsubscribe = () => {};
   const retried = new Promise<void>(resolve => {
     unsubscribe = bootstrap.subscribe(() => {
       const snapshot = bootstrap.getSnapshot();
-      if (snapshot.phase === 'unreachable' && !snapshot.unreachable?.retrying && restores === 2) resolve();
+      if ((snapshot.phase === 'restoring' || snapshot.phase === 'unreachable') && !snapshot.unreachable?.retrying && restores === 2) resolve();
     });
   });
   globalThis.dispatchEvent(new Event('focus'));
@@ -140,13 +131,53 @@ const bootstrapped = (restore: () => Promise<unknown>) => new ShellBootstrap(asy
   selected: {read: async () => savedRecord as never}, restore: restore as never, actions: () => ({switchServer: async () => {}}) as never,
 });
 
+const settle = async () => { for (let index = 0; index < 12; index++) await Promise.resolve(); };
+test('a failed first probe stays hidden while retries continue on the original fifteen-second clock', async t => {
+  t.mock.timers.enable({apis: ['setTimeout', 'Date']});
+  t.mock.method(Math, 'random', () => 0.5);
+  let calls = 0;
+  const bootstrap = bootstrapped(async () => { calls++; throw transport(); });
+  t.after(() => bootstrap.dispose());
+  await bootstrap.start();
+  assert.equal(bootstrap.getSnapshot().phase, 'restoring');
+  assert.equal(calls, 1);
+  for (const delay of [2000, 4000, 8000]) {
+    t.mock.timers.tick(delay); await settle();
+    assert.equal(bootstrap.getSnapshot().phase, 'restoring');
+  }
+  assert.equal(calls, 4, 'quiet waiting does not stop the existing retry owner');
+  t.mock.timers.tick(999); await settle();
+  assert.equal(bootstrap.getSnapshot().phase, 'restoring');
+  t.mock.timers.tick(1); await settle();
+  assert.equal(bootstrap.getSnapshot().phase, 'unreachable');
+  assert.equal(calls, 4, 'revealing recovery does not create another request');
+});
+
+test('a pending restore reaches recovery without replacing its original request', async t => {
+  t.mock.timers.enable({apis: ['setTimeout', 'Date']});
+  const response = deferred<undefined>();
+  let calls = 0;
+  const bootstrap = bootstrapped(async () => { calls++; return response.promise; });
+  t.after(() => bootstrap.dispose());
+  const running = bootstrap.start();
+  await settle();
+  t.mock.timers.tick(15000); await settle();
+  assert.equal(bootstrap.getSnapshot().phase, 'unreachable');
+  assert.equal(bootstrap.getSnapshot().unreachable?.retrying, true);
+  assert.equal(calls, 1);
+  response.resolve(undefined); await running;
+  assert.equal(bootstrap.getSnapshot().phase, 'signed-out');
+  t.mock.timers.tick(60000); await settle();
+  assert.equal(calls, 1, 'a terminal result cancels the presentation timer');
+});
+
 test('selecting another server drops the old retry instead of letting it start a restore', async t => {
   t.mock.timers.enable({apis: ['setTimeout', 'Date']});
   const calls: number[] = [];
   let call = 0;
   const bootstrap = bootstrapped(async () => { calls.push(++call); if (call === 1) throw transport(); return undefined; });
   await bootstrap.start();
-  assert.equal(bootstrap.getSnapshot().phase, 'unreachable');
+  assert.equal(bootstrap.getSnapshot().phase, 'restoring');
   await bootstrap.selectServer('another-server');
   assert.equal(bootstrap.getSnapshot().phase, 'signed-out');
   t.mock.timers.tick(10000);
@@ -172,7 +203,7 @@ test('a retired attempt that settles late changes neither the phase nor a later 
   bootstrap.dispose();
 });
 
-test('only allowlisted transport codes can reach the page or the clipboard', async () => {
+test('only allowlisted transport codes enter retained launch facts', async () => {
   assert.equal(displayableTransportCode('route_unavailable'), 'route_unavailable');
   assert.equal(displayableTransportCode('request_failed'), 'request_failed');
   for (const unsafe of ['restore_integrity_failed', 'https://user:pw@server/x', 'auth.some-secret', '', 7, null]) assert.equal(displayableTransportCode(unsafe), undefined, String(unsafe));
@@ -181,11 +212,11 @@ test('only allowlisted transport codes can reach the page or the clipboard', asy
   const bootstrap = bootstrapped(async () => { throw codes[call++]; });
   await bootstrap.start();
   const first = bootstrap.getSnapshot();
-  assert.equal(first.phase, 'unreachable');
-  assert.equal(first.phase === 'unreachable' ? first.unreachable.code : 'x', 'route_unavailable');
+  assert.equal(first.phase, 'restoring');
+  assert.equal(first.unreachable?.code, 'route_unavailable');
   await bootstrap.retryNow();
   const second = bootstrap.getSnapshot();
-  assert.equal(second.phase, 'unreachable');
-  assert.equal(second.phase === 'unreachable' ? second.unreachable.code : 'x', undefined);
+  assert.equal(second.phase, 'restoring');
+  assert.equal(second.unreachable?.code, undefined);
   bootstrap.dispose();
 });

@@ -117,7 +117,7 @@ test('CoverCard reserves generated copy only while the card selection overlay is
   for (const selection of [undefined, {active: false, checked: false, onToggle() {}, onExit() {}}, {active: true, checked: false, onToggle() {}, onExit() {}}, {active: true, checked: true, onToggle() {}, onExit() {}}, {active: false, checked: true, onToggle() {}, onExit() {}}]) {
     const html = renderToStaticMarkup(createElement(CoverCard, {model, generated, selection, onNavigate() {}}));
     assert.equal(html.includes('generatedCover selectionClearance'), !!(selection?.active || selection?.checked));
-    assert.match(html, /aria-label="Supplied title"/);
+    assert.match(html, /aria-labelledby="([^"]+)"[^>]*>[\s\S]*?<span id="\1" class="accessible">Supplied title<\/span>/);
   }
   const standalone = renderToStaticMarkup(createElement(GeneratedCover, generated));
   assert.doesNotMatch(standalone, /selectionClearance/);

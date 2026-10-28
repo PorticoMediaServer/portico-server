@@ -105,7 +105,7 @@ export async function pdfText(engine:PdfEngine,page:PDFPageProxy,signal:AbortSig
 }
 
 export function pdfTextStream(page:PDFPageProxy,signal:AbortSignal):ReadableStream {
-  const reader=page.streamTextContent().getReader();let bytes=0,items=0,ended=false;
+  const reader=page.streamTextContent({includeMarkedContent:true}).getReader();let bytes=0,items=0,ended=false;
   const stop=async(reason?:unknown)=>{if(ended)return;ended=true;signal.removeEventListener('abort',abort);await reader.cancel(reason).catch(()=>{});reader.releaseLock();};
   const abort=()=>{void stop(abortReason(signal));};signal.addEventListener('abort',abort,{once:true});
   return new ReadableStream({

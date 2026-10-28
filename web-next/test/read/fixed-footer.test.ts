@@ -16,7 +16,7 @@ const {ReaderChrome} = await import('../../src/kit/reader/ReaderChrome.tsx');
 
 const fixedPageFooter: ReaderChromePresentation['fixedPageFooter'] = createElement('span', {'data-test-fixed-footer': true}, 'Observed fit');
 const props: ReaderChromeProps = {
-  copy: {back: 'Back', previous: 'Previous', next: 'Next', progress: 'Position'},
+  copy: {back: 'Back', previous: 'Previous', next: 'Next', progress: 'Position', showControls: 'Show controls'},
   direction: 'ltr', tapTurnEnabled: true, pageTurnsEnabled: true, showPageArrows: false,
   onBack() {}, onTurn() {}, actions: [], children: null, pages: 'Observed page', fixedPageFooter,
 };
@@ -36,4 +36,13 @@ test('prose ignores a fixed-page slot and fixed pages without one retain the gen
     assert.match(html, /Observed page/);
     assert.doesNotMatch(html, /data-test-fixed-footer/);
   }
+});
+
+test('comic chrome supplies its clear shade and custom footer without prose running labels', () => {
+  const html = render({fixedPage: true, comic: true, presentation: 'tablet', title: 'Comic title', chapter: 'Chapter', remainingInSection: 'Remaining'});
+  assert.match(html, /data-comic="true"/);
+  assert.match(html, /data-presentation="tablet"/);
+  assert.match(html, /data-reader-chrome-layer="shade"/);
+  assert.match(html, /data-test-fixed-footer/);
+  assert.doesNotMatch(html, /class="runningTitle"|class="runningFooter"|Observed page/);
 });

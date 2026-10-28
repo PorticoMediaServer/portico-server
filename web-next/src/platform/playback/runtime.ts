@@ -215,17 +215,17 @@ export class WebShellPlaybackRuntime {
     // A stale successful start is returned to the retired core owner so it can abandon the
     // actual server session. DELETE cleanup still uses its original viewer-bound API.
     const bound: V1Http = {send: request => inner.send(request.method === 'DELETE' ? request : {...request, signal: request.signal ? AbortSignal.any([request.signal, life.signal]) : life.signal})};
-    const capacity = capacityRetryHttp({http: bound, life: life.signal, timers: this.env.timers,
-      isCurrent: () => this.current(stackReference), captureCurrent: () => stackReference.capacityCurrent, publish: wait => {
-        if (!this.current(stackReference)) return;
-        stackReference.capacityWait = wait;
-        this.sync();
-      }});
     const page = this.env.page ?? (typeof document === 'undefined' ? undefined : document);
     const visibility = page ? {hidden: () => page.visibilityState !== 'visible', onVisible(listener: () => void) {
       const changed = () => {if (page.visibilityState === 'visible') listener();};
       page.addEventListener('visibilitychange', changed);return () => page.removeEventListener('visibilitychange', changed);
     }} : undefined;
+    const capacity = capacityRetryHttp({http: bound, life: life.signal, timers: this.env.timers, visibility,
+      isCurrent: () => this.current(stackReference), captureCurrent: () => stackReference.capacityCurrent, publish: wait => {
+        if (!this.current(stackReference)) return;
+        stackReference.capacityWait = wait;
+        this.sync();
+      }});
     const http = startFailureHttp({http: capacity, api: this.source.api, events: this.source.events, visibility, life: life.signal, now: this.env.timers?.now,
       isCurrent: () => this.current(stackReference), captureCurrent: () => stackReference.capacityCurrent,
       isInitial: () => !stackReference.queue.currentSession() && !stackReference.service.getSnapshot().session,

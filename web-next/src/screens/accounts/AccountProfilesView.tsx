@@ -93,7 +93,7 @@ export function AccountProfilesView({binding, onSwitchServer}: {binding: Profile
 
   return <>
     {selected ? <ServerProfilePIN key={JSON.stringify([selected.id, selected.pinRevision])} serverName={server.name} profile={selected} remember={remember} onRememberChange={value => {if (viewCurrent() && selectedNow.current === selection && !activeRecovery.current && !binding.getSnapshot().busy) setRemember(value);}}
-      busy={state.busy || seconds > 0} error={pinError} errorText={seconds ? defaultI18n.t('accounts.profiles.pinLocked', {seconds}) : undefined}
+      busy={state.busy || seconds > 0} error={pinError} rejectionKey={state.error} errorText={seconds ? defaultI18n.t('accounts.profiles.pinLocked', {seconds}) : undefined}
       failure={!pinError && !seconds ? state.error : undefined} onComplete={pin => {if (viewCurrent() && selectedNow.current === selection && !activeRecovery.current && !binding.getSnapshot().busy) void binding.chooseProfile(selected.id, pin, remember);}}
       onOtherProfiles={otherProfiles} onSwitchServer={switchServer} onForgotPIN={() => {
         if (!viewCurrent() || !flight || !selection || selectedNow.current !== selection || activeRecovery.current || binding.getSnapshot().busy) return;

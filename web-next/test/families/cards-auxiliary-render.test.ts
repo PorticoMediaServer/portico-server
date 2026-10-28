@@ -33,7 +33,7 @@ test('artwork actions are real buttons outside the primary target with their ori
   const buttons = [...html.matchAll(/<button\b[^>]*>[\s\S]*?<\/button>/g)].map(match => match[0]);
   assert.equal(buttons.length, 5);
   assert.ok(buttons.every(button => (button.match(/<button\b/g) ?? []).length === 1));
-  assert.match(buttons[0]!, /aria-label="Supplied title"/);
+  assert.match(buttons[0]!, /aria-labelledby="([^"]+)"[^>]*>[\s\S]*?<span id="\1" class="accessible">Supplied title<\/span>/);
   assert.match(buttons[2]!, /aria-haspopup="menu" aria-expanded="true"/);
   assert.match(buttons[4]!, /aria-pressed="false"/);
   assert.match(buttons[4]!, /aria-describedby="[^"]+"/);

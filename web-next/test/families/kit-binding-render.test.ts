@@ -50,7 +50,7 @@ test('SessionCard forwards the More button currentTarget and owns its expanded m
   const calls: unknown[] = [];
   const props = {model: {title: 'Actual title', caption: []}, viewer: {name: 'Actual viewer', device: 'Actual device'}, facts: [], onNavigate() {}, onMore: (anchor: HTMLButtonElement) => calls.push(anchor), moreExpanded: true};
   const html = renderToStaticMarkup(createElement(SessionCard, props));
-  assert.equal((html.match(/aria-label="More"/g) ?? []).length, 1);
+  assert.equal((html.match(/aria-label="More: Actual title"/g) ?? []).length, 1);
   assert.equal((html.match(/aria-haspopup="menu"/g) ?? []).length, 1);
   assert.match(html, /aria-expanded="true"/);
   assert.equal((html.match(/<button/g) ?? []).length, 2);

@@ -76,3 +76,43 @@ test('failed sign-in discards its proof and duplicate in-flight gestures cannot 
   f.set({phase: 'challenge'}); await form.completeChallenge('123456');
   assert.deepEqual(f.calls, [['challenge', '123456']]); form.dispose();
 });
+
+test('a local rate limit keeps its original deadline and guards new attempts until it expires', async t => {
+  let now = 1000, attempts = 0;
+  t.mock.method(Date, 'now', () => now);
+  const f = setup();
+  f.port.signIn = async () => {attempts++; f.set({phase: 'password', error: {status: 429, code: 'rate_limited', retryAfterSeconds: 32}});};
+  const form = new AccountSignInForm(f.port);
+  try {
+    await form.signIn('first', 'synthetic-password');
+    assert.equal(form.getSnapshot().busy, false);
+    assert.equal(form.getSnapshot().retryAt, 33000);
+    assert.doesNotMatch(JSON.stringify(form.getSnapshot()), /synthetic-password/);
+    now = 32999;
+    form.setUsername('second');
+    await form.signIn('second', 'synthetic-password');
+    assert.equal(attempts, 1);
+    assert.equal(form.getSnapshot().retryAt, 33000, 'editing and rerenders cannot restart the countdown');
+    now = 33000;
+    assert.equal(attempts, 1, 'expiry never submits credentials automatically');
+    await form.signIn('second', 'synthetic-password');
+    assert.equal(attempts, 2);
+    assert.equal(form.getSnapshot().retryAt, 65000);
+    f.retire();
+    assert.equal(form.getSnapshot().retryAt, undefined);
+  } finally {form.dispose();}
+});
+
+test('a late rate limit cannot populate a retired form, and an ordinary refusal invents no wait', async () => {
+  const f = setup(), pending = deferred<void>();
+  f.port.signIn = async () => {await pending.promise; f.set({phase: 'password', error: {status: 429, retryAfterSeconds: 32}});};
+  const form = new AccountSignInForm(f.port);
+  try {
+    const work = form.signIn('first', 'synthetic-password');
+    f.retire(); pending.resolve(); await work;
+    assert.equal(form.getSnapshot().retryAt, undefined);
+    f.port.signIn = async () => {f.set({phase: 'password', error: {status: 401}});};
+    await form.signIn('first', 'synthetic-password');
+    assert.equal(form.getSnapshot().retryAt, undefined);
+  } finally {form.dispose();}
+});

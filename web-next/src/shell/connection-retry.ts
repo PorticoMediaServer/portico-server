@@ -1,7 +1,7 @@
 import {presentError} from '@core/presentation/errors.ts';
 
 /** states.html#3: the drawn retry waits 2, 4 and 8 seconds and then keeps going. */
-const STEPS = [2000, 4000, 8000, 16000, 32000, 60000] as const;
+const STEPS = [2000, 4000, 8000, 15000, 30000, 60000] as const;
 
 /** `attempt` counts completed failed connections; 0 is the first scheduled retry. */
 export function retryDelayMs(attempt: number, random: () => number = Math.random): number {

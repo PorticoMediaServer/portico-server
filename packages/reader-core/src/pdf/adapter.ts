@@ -3,13 +3,15 @@ import {abortScope} from '../abort.ts';
 import type {ReaderAdapter,ReaderDocument,ReaderLocation} from '../ports.ts';
 import {mountFixed,type FixedPreferences} from './fixed-view.ts';
 import {openPdf,pdfText,pdfTextStream,PdfInputError,type PdfEngine,type PdfOptions} from './engine.ts';
+import {renderPdfStructure} from './struct-tree.ts';
 
 // Necessary text-layer geometry, adapted from Mozilla PDF.js6.4.299,
 // Copyright Mozilla Foundation, Apache-2.0. No viewer chrome is included.
 const textCss=`[data-reader-text]{color-scheme:only light;position:absolute;inset:0;overflow:clip;line-height:1;letter-spacing:normal;word-spacing:normal;text-size-adjust:none;forced-color-adjust:none;transform-origin:0 0;pointer-events:none;--min-font-size:1;--text-scale-factor:calc(var(--total-scale-factor)*var(--min-font-size));--min-font-size-inv:calc(1/var(--min-font-size))}
 [data-reader-text] :is(span,br){color:transparent;position:absolute;white-space:pre;cursor:text;transform-origin:0 0;pointer-events:auto;user-select:text;-webkit-user-select:text}
 [data-reader-text]>:not(.markedContent),[data-reader-text] .markedContent span:not(.markedContent){z-index:1;--font-height:0;font-size:calc(var(--text-scale-factor)*var(--font-height));--scale-x:1;--rotate:0deg;transform:rotate(var(--rotate)) scaleX(var(--scale-x)) scale(var(--min-font-size-inv))}
-[data-reader-text] .markedContent{display:contents}[data-reader-text] span[role=img]{user-select:none;cursor:default}[data-reader-text] ::selection{background:var(--reader-selection,Highlight);color:transparent}`;
+[data-reader-text] .markedContent{display:contents}[data-reader-text] span[role=img]{user-select:none;cursor:default}[data-reader-text] ::selection{background:var(--reader-selection,Highlight);color:transparent}
+[data-reader-structure]{position:absolute;inset:0;pointer-events:none;contain:strict}`;
 const position=(page:number,count:number):ReaderLocation=>({format:'pdf',page,progression:count===1?0:page/(count-1)});
 type ReaderTocEntry=ReaderDocument<object>['toc'][number];
 async function outline(engine:PdfEngine,signal:AbortSignal):Promise<readonly ReaderTocEntry[]>{
@@ -72,8 +74,11 @@ export function createPdfAdapter<P extends FixedPreferences>(options:PdfOptions=
                 const text=new engine.library.TextLayer({textContentSource:pdfTextStream(page,renderSignal),container:layer,viewport});
                 const render=page.render({canvas,viewport,...dpr!==1?{transform:[dpr,0,0,dpr,0,0]}:{},annotationMode:engine.library.AnnotationMode.DISABLE});
                 const abort=()=>{render.cancel();text.cancel();};renderSignal.addEventListener('abort',abort,{once:true});
-                try{await engine.run(Promise.all([render.promise,text.render()]),renderSignal);return ()=>{renderSignal.removeEventListener('abort',abort);abort();canvas.width=0;canvas.height=0;canvas.remove();layer.remove();};}
-                catch(error){renderSignal.removeEventListener('abort',abort);abort();canvas.width=0;canvas.height=0;canvas.remove();layer.remove();throw error;}
+                let structure:HTMLElement|null=null;
+                try{const [,,tree]=await engine.run(Promise.all([render.promise,text.render(),page.getStructTree()]),renderSignal);
+                  throwIfAborted(renderSignal);structure=renderPdfStructure(tree,layer);if(structure)target.insertBefore(structure,layer);
+                  return ()=>{renderSignal.removeEventListener('abort',abort);abort();canvas.width=0;canvas.height=0;canvas.remove();layer.remove();structure?.remove();};}
+                catch(error){renderSignal.removeEventListener('abort',abort);abort();canvas.width=0;canvas.height=0;canvas.remove();layer.remove();structure?.remove();throw error;}
               },dispose(){page.cleanup();}
             };
           },{...mountOptions,signal:combined,onLocation(location){mountOptions.onLocation({...location,...location.format==='pdf'&&labels?.[location.page]?{pageLabel:labels[location.page]}:{}});}});}catch(error){life.abort();scope.dispose();style.remove();throw error;}

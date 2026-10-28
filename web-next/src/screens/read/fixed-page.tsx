@@ -3,10 +3,11 @@ import {defaultI18n} from '@i18n';
 import type {ReadingPreferences} from '@portico/client-core';
 import {createWindowedCollection, type WindowedCollection} from '@core/collections/index.ts';
 import {WindowedGrid} from '../../kit/layout/WindowedGrid';
-import {readerErrorCode, type ReadingController, type ReaderErrorCode, type ReaderFit, type ReaderFormat, type ReaderLocation, type ReaderZoom, type ReaderZoomState} from '@portico/reader-core';
+import {readerErrorCode, type ReadingController, type ReaderCrease, type ReaderErrorCode, type ReaderFit, type ReaderFormat, type ReaderLocation, type ReaderViewport, type ReaderZoom, type ReaderZoomState} from '@portico/reader-core';
 import {Menu, MenuItem, MenuSeparator} from '../../kit/overlays';
 import {loadReadPagePreview, type ReadPagePreview} from './preview';
 import type {ReaderMountAuthority} from './mount';
+import {fixedPageWindow} from './fixed-page-window';
 import styles from './fixed-page.module.css';
 
 const {t} = defaultI18n;
@@ -49,6 +50,17 @@ export function FixedPageStrip({controller, authority, reportError, format}: Fix
 function PageThumb({controller, authority, reportError, format, index, count, current, pageLabel, large = false, signal, onSelect}: Fixed & Readonly<{
   index: number; count: number; current: boolean; pageLabel: string; large?: boolean; signal?: AbortSignal; onSelect: () => void;
 }>) {
+  return <button type="button" className={large ? `${styles.page} ${styles.large}` : styles.page} aria-current={current ? 'page' : undefined}
+    aria-label={count > 0 ? t('next.reader.pageOf', {page: defaultI18n.number(index + 1), count: defaultI18n.number(count)}) : pageLabel}
+    data-current={current || undefined} onClick={onSelect}>
+    <PageImage controller={controller} authority={authority} reportError={reportError} format={format} index={index} large={large} signal={signal}/>
+    <span className={styles.number} aria-hidden="true">{defaultI18n.number(index + 1)}</span>
+  </button>;
+}
+
+function PageImage({controller, authority, reportError, format, index, large = false, signal}: Fixed & Readonly<{
+  index: number; large?: boolean; signal?: AbortSignal;
+}>) {
   const [preview, setPreview] = useState<ReadPagePreview>();
   useEffect(() => {
     const life = new AbortController();
@@ -60,12 +72,66 @@ function PageThumb({controller, authority, reportError, format, index, count, cu
     return () => {alive = false; life.abort(); loaded?.dispose();};
     // A preview belongs to one page of one authorized document.
   }, [controller, index, authority, reportError, large, signal]);
-  return <button type="button" className={large ? `${styles.page} ${styles.large}` : styles.page} aria-current={current ? 'page' : undefined}
-    aria-label={count > 0 ? t('next.reader.pageOf', {page: defaultI18n.number(index + 1), count: defaultI18n.number(count)}) : pageLabel}
-    data-current={current || undefined} onClick={onSelect}>
-    {preview ? <img src={preview.url} alt="" width={preview.width} height={preview.height} loading="lazy" decoding="async"/> : <span className={styles.blank} aria-hidden="true">{format.toUpperCase()}</span>}
-    <span className={styles.number} aria-hidden="true">{defaultI18n.number(index + 1)}</span>
-  </button>;
+  return preview ? <img src={preview.url} alt="" width={preview.width} height={preview.height} loading="lazy" decoding="async"/> : <span className={styles.blank} aria-hidden="true">{format.toUpperCase()}</span>;
+}
+
+/** Comic pages use their clear-chrome footer, including the renderer's paired spreads. */
+export function ComicPageFooter({controller, authority, reportError, format, crease, presentation}: Fixed & Readonly<{
+  crease?: ReaderCrease; presentation: 'desktop' | 'tablet' | 'phone';
+}>) {
+  const snapshot = useSyncExternalStore(controller.subscribe, controller.getSnapshot, controller.getSnapshot);
+  const root = useRef<HTMLDivElement>(null), [viewport, setViewport] = useState<ReaderViewport>();
+  const count = snapshot.metadata?.pageCount, location = snapshot.location;
+  const comicFormat = format === 'cbz' || format === 'cbr' ? format : undefined;
+  const direction = snapshot.preferences.comicDirection === 'file' ? snapshot.metadata?.direction ?? 'ltr' : snapshot.preferences.comicDirection;
+  useLayoutEffect(() => {
+    const surface = root.current?.closest('[data-reader-root]')?.querySelector<HTMLElement>('[data-reader-surface]');
+    if (!surface) return;
+    const measure = () => {
+      const width = surface.clientWidth, height = surface.clientHeight;
+      if (width > 0 && height > 0) setViewport(value => value?.width === width && value.height === height ? value : {width, height});
+    };
+    const observer = new ResizeObserver(measure); observer.observe(surface); measure();
+    return () => observer.disconnect();
+  }, []);
+  const position = snapshot.status === 'ready' && authority.isCurrent() && comicFormat && count !== undefined && Number.isSafeInteger(count) && count > 0
+    && location && location.format === comicFormat && Number.isSafeInteger(location.page) && location.page >= 0 && location.page < count
+    ? {format: comicFormat, count, page: location.page, progression: location.progression} : undefined;
+  const page = position?.page;
+  const pageWindow = position && viewport ? fixedPageWindow({format: position.format, viewport: {...viewport, crease}, page: position.page, pageCount: position.count,
+    twoPages: snapshot.preferences.twoPages, firstPageAlone: snapshot.preferences.firstPageAlone, direction, fit: snapshot.zoom?.fit ?? snapshot.preferences.comicFit}) : undefined;
+  useLayoutEffect(() => {
+    root.current?.querySelector<HTMLElement>('[aria-current="page"]')?.scrollIntoView({block: 'nearest', inline: 'center', behavior: 'instant'});
+  }, [page, viewport, direction, snapshot.preferences.twoPages, snapshot.preferences.firstPageAlone]);
+  const pageNumbers = (pages: readonly number[]) => pages.map(value => defaultI18n.number(value + 1)).join('–');
+  const navigate = (page: number) => {
+    const current = controller.getSnapshot();
+    if (!position || !authority.isCurrent() || current.status !== 'ready' || current.sourceId !== snapshot.sourceId || current.sourceRevision !== snapshot.sourceRevision) return;
+    void controller.navigate({kind: 'location', location: {format: position.format, page, progression: position.count === 1 ? 0 : page / (position.count - 1)}}).catch(error => {
+      if (authority.isCurrent()) reportError(readerErrorCode(error));
+    });
+  };
+  return <div ref={root} className={styles.comicFooter} data-presentation={presentation}>
+    {position && <>
+      {pageWindow && <div className={styles.comicStrip} role="group" aria-label={t('next.reader.pagesStrip')} dir={direction === 'rtl' ? 'rtl' : 'ltr'}>
+        {pageWindow.groups.map(group => <button key={`${snapshot.sourceId}:${snapshot.sourceRevision}:${group.pages[0]}`} type="button" className={styles.spread}
+          aria-current={group.current ? 'page' : undefined} data-current={group.current || undefined}
+          aria-label={t('next.reader.pageOf', {page: pageNumbers(group.pages), count: defaultI18n.number(position.count)})} onClick={() => navigate(group.pages[0])}>
+          {group.pages.map(index => <PageImage key={index} controller={controller} authority={authority} reportError={reportError} format={format} index={index}/>)}
+        </button>)}
+      </div>}
+      <div className={styles.comicLine}>
+        <b>{t('next.reader.pageLabel', {page: pageNumbers(pageWindow?.current.pages ?? [position.page])})}</b>
+        <div className={styles.comicProgress} dir={direction === 'rtl' ? 'rtl' : 'ltr'}>
+          <span className={styles.comicTrack} aria-hidden="true"><i style={{width: `${position.progression * 100}%`}}/><b style={{insetInlineStart: `${position.progression * 100}%`}}/></span>
+          <input type="range" min={0} max={Math.max(0, position.count - 1)} step={1} value={position.page} disabled={position.count < 2}
+            aria-label={t('next.reader.position')} aria-valuetext={t('next.reader.pageOf', {page: pageNumbers(pageWindow?.current.pages ?? [position.page]), count: defaultI18n.number(position.count)})}
+            onChange={event => {const value = event.currentTarget.valueAsNumber; if (Number.isInteger(value) && value >= 0 && value < position.count) navigate(value);}}/>
+        </div>
+        <span>{t('next.reader.pageCount', {count: position.count})}</span>
+      </div>
+    </>}
+  </div>;
 }
 
 /** The actual document page count supplies ordinals; only visible previews mount. */
