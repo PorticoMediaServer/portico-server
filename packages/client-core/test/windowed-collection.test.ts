@@ -329,3 +329,30 @@ test('an open-ended total grows as pages arrive and settles on the end', async (
   assert.equal(c.getSnapshot().total, 260);
   assert.equal(c.getSnapshot().totalIsLowerBound, false, 'the last page knows the end');
 });
+
+test('a pinned item keeps its page past the budget, is loaded when absent, and a new query clears the pin', async () => {
+  const s = server(10_000);
+  const c = createWindowedCollection({fetchPage: s.fetchPage, pageSize: 10, maxResidentPages: 2, prefetchPages: 0, keyOf: i => i.id});
+  c.ensureRange(0, 5);
+  await settle();
+  c.pin(3);
+  for (const first of [100, 200, 300, 400]) { c.ensureRange(first, first + 5); await settle(); }
+  assert.equal(c.itemAt(3)?.n, 3, 'the focused item survived four pages of eviction');
+  assert.ok(c.resident().pages <= 3, 'only the pinned page goes past the budget');
+  // Moving the pin releases the old page to the ordinary budget.
+  c.pin(405);
+  c.ensureRange(500, 505); await settle();
+  c.ensureRange(600, 605); await settle();
+  assert.equal(c.itemAt(3), undefined);
+  assert.equal(c.itemAt(405)?.n, 405);
+  // A pin on a page that is not in memory loads it.
+  c.pin(5_000); await settle();
+  assert.equal(c.itemAt(5_000)?.n, 5_000);
+  c.invalidate(server(10_000, {prefix: 'b'}).fetchPage); await settle();
+  c.ensureRange(700, 705); await settle();
+  c.ensureRange(800, 805); await settle();
+  c.ensureRange(900, 905); await settle();
+  assert.equal(c.itemAt(5_000), undefined, 'a new filter or sort clears the pin');
+  c.pin(-1); c.pin(Number.NaN); c.pin(undefined);
+  c.dispose();
+});

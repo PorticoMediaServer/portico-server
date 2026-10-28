@@ -2,7 +2,13 @@ import {throwIfAborted} from './abort-lifetime.ts';
 import {routeBody} from "../../contracts/src/routes.ts";
 import type {RouteResponse} from "../../contracts/src/route-paths.ts";
 import {routePath} from "../../contracts/src/route-paths.ts";
-import {parseBackupsDocument,parseEnvelope,type BackupsDocument,type RestoreSource,type RestoreStaged} from './administration.ts';
+import {parseBackupsDocument,parseEnvelope,type BackupsDocument,type RestoreRecovery,type RestoreSource,type RestoreStaged} from './administration.ts';
+
+/** The owner notice for a damaged database, based only on the server's recovery report. */
+export function restoreRecoveryNotice(recovery?:RestoreRecovery):'repaired'|'recovered'|'partial'|undefined{
+ if(recovery?.salvaged)return (recovery.damagedTables?.length??0)>0||(recovery.removedRows??0)>0?'partial':'recovered';
+ return recovery?.indexesRebuilt?'repaired':undefined;
+}
 
 /** Typed clients for the spec §4 backup routes (`Spec — Backups (Plex model).md`).
  * Parsers live in administration.ts; this module holds transport only, no stored credentials.
@@ -60,7 +66,8 @@ export async function restoreBackup(transport:BackupTransport,serverId:string,op
   if(doc.lastRestore?.jobId===receipt||doc.restore?.jobId===receipt){observer.onProgress?.(doc);requireCurrent();}
   if(doc.lastRestore?.jobId===receipt){
    if(doc.lastRestore.outcome==='rolled_back')throw Object.assign(new Error('The restore was rolled back.'),{code:'restore_integrity_failed'});
-   return {staged:true,restartRequired:true,validation:{schemaVersion:doc.lastRestore.schemaVersion??0,integrity:'ok'}};
+   const recovery=doc.lastRestore.recovery;
+   return {staged:true,restartRequired:true,validation:{schemaVersion:doc.lastRestore.schemaVersion??0,integrity:restoreRecoveryNotice(recovery)?'recovered':'ok',...(recovery?{recovery}:{})}};
   }
   if(doc.restore?.jobId===receipt){
    if(doc.restore.errorCode)throw Object.assign(new Error('The restore could not be staged.'),{code:doc.restore.errorCode});

@@ -71,3 +71,21 @@ test('only start-addressable views get a window, and pages stay within the bound
   await assert.rejects(pages(0, 11, signal), /Invalid content window page/);
   await assert.rejects(pages(-1, 10, signal), /Invalid content window page/);
 });
+
+test('each accepted page hands its projection to the screen without its sections', async () => {
+  const s = server(60), seen: unknown[] = [];
+  const collection = window(libraryContentPages({api: s.api, scope, route, pageSize: 10, onPage: projection => seen.push(projection)}));
+  try {
+    collection.ensureRange(0, 9); await settle();
+    collection.ensureRange(10, 19); await settle();
+    assert.ok(seen.length >= 2);
+    const first = seen[0] as {heading: {fallback?: string}; sections: readonly unknown[]; scope: {viewerFence: string}};
+    assert.equal(first.heading.fallback, 'Movies');
+    assert.equal(first.scope.viewerFence, 'fence');
+    assert.deepEqual(first.sections, [], 'entries live only in the window');
+    const accepted = seen.length;
+    s.change({catalog: 9});
+    collection.ensureRange(50, 59); await settle();
+    assert.equal(seen.length, accepted, 'a changed library hands over nothing');
+  } finally {collection.dispose();}
+});

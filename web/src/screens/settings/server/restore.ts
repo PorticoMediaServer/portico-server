@@ -22,3 +22,9 @@ export const restoreRefusalMessage: Readonly<Record<RestoreRefusalCode, MessageI
   restore_not_portico: 'web.maintenance.restoreNotPortico',
   insufficient_disk: 'web.maintenance.restoreNoSpace',
 });
+
+export const restoreRecoveryMessage = Object.freeze({
+  repaired: 'web.maintenance.restoreRepaired',
+  recovered: 'web.maintenance.restoreRecovered',
+  partial: 'web.maintenance.restorePartial',
+} as const satisfies Record<string, MessageId>);

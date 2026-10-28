@@ -38,6 +38,8 @@ export function savedSectionWindow(service: SavedService, sectionId: string): Wi
       return item ? {kind: 'item', index, key: savedEntryKey(item), item} : {kind: 'placeholder', index, key: `placeholder:${index}`};
     },
     ensureRange: () => {},
+    // The service keeps the whole current page; it never evicts a focused item's page.
+    pin: () => {},
     indexOfLetter: () => undefined,
     invalidate: () => { if (!disposed) void service.refresh(); },
     revalidate: options => disposed ? Promise.resolve() : service.revalidate({settle: options?.hold}),
@@ -78,6 +80,8 @@ export function personalEntriesWindow(service: PersonalSavedService): WindowedCo
     // Advancing the service here would discard the page under the pointer.
     // The screen retains its explicit, existing continuation action.
     ensureRange: () => {},
+    // The service keeps the whole current page; it never evicts a focused item's page.
+    pin: () => {},
     indexOfLetter: () => undefined,
     invalidate: () => { if (!disposed) void service.refresh(); },
     revalidate: options => disposed ? Promise.resolve() : service.revalidate({settle: options?.hold}),
