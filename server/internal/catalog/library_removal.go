@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"fmt"
 	"portico.local/server/internal/requestinput"
 	"strings"
 	"sync"
@@ -108,7 +109,7 @@ func (s *Service) removalStep(ctx context.Context, batch func(*sql.Tx) (bool, er
 	out := operations.JobObservation{State: "running"}
 	for ctx.Err() == nil {
 		done := false
-		err := dbwork.WithWriteTx(ctx, s.db, dbwork.ClassBackgroundMedia, func(tx *sql.Tx) error {
+		err := dbwork.WithWriteTx(MutationWriteContext(ctx), s.db, dbwork.ClassBackgroundMedia, func(tx *sql.Tx) error {
 			var e error
 			done, e = batch(tx)
 			return e
@@ -309,16 +310,16 @@ func removeLibraryBatchTx(ctx context.Context, tx *sql.Tx, library string) (bool
 // is sought on its own, so the books and comics of a reading library, which
 // do not play, are never read here.
 func removeLibraryTitlesTx(ctx context.Context, tx *sql.Tx, handle int64) (bool, error) {
-	titles, err := scanInt64s(tx.QueryContext(ctx, `SELECT e.id FROM catalog_kinds k CROSS JOIN catalog_entities e INDEXED BY catalog_entities_library ON e.library_id=? AND e.kind=k.id WHERE k.playable=1 ORDER BY k.id,e.id LIMIT ?`, handle, removalBatch))
+	var title int64
+	err := tx.QueryRowContext(ctx, `SELECT e.id FROM catalog_kinds k CROSS JOIN catalog_entities e INDEXED BY catalog_entities_library ON e.library_id=? AND e.kind=k.id WHERE k.playable=1 ORDER BY k.id,e.id LIMIT 1`, handle).Scan(&title)
+	if errors.Is(err, sql.ErrNoRows) {
+		return false, nil
+	}
 	if err != nil {
 		return false, err
 	}
-	for _, title := range titles {
-		if err = RemoveTitleTx(ctx, tx, title); err != nil {
-			return false, err
-		}
-	}
-	return len(titles) > 0, nil
+	_, err = removeOwnedStepTx(ctx, tx, title, "library", fmt.Sprint(handle), 1, "remove")
+	return true, err
 }
 
 // 2. Scan records for files that never became titles, one folder at a time.
@@ -464,16 +465,20 @@ func removeLibraryContainersTx(ctx context.Context, tx *sql.Tx, handle int64, pr
 			return false, err
 		}
 		for _, id := range containers {
-			removed, e := removeLibraryContainerTx(ctx, tx, id)
+			step, e := removeOwnedStepTx(ctx, tx, id, "library", fmt.Sprint(handle), 1, "force")
 			if e != nil {
 				return false, e
 			}
-			if removed {
+			if !step.Complete {
+				return true, nil
+			}
+			if step.Outcome == "removed" {
 				progress.walkRemoved = true
 			} else {
 				progress.walkKept = true
 			}
 			progress.entityCursor = id
+			return true, nil
 		}
 		if len(containers) == containerBatch {
 			return true, nil
@@ -736,7 +741,7 @@ func clearReferencesTx(ctx context.Context, tx *sql.Tx, parent string, id any) e
 	for _, ref := range refs {
 		table, column := ref[0], ref[1]
 		switch table {
-		case "catalog_entities", "catalog_libraries", "libraries", "library_sources", "library_scan_policies":
+		case "catalog_entity_mutations", "catalog_entities", "catalog_libraries", "libraries", "library_sources", "library_scan_policies":
 			continue
 		}
 		if _, err = tx.ExecContext(ctx, `DELETE FROM "`+table+`" WHERE "`+column+`"=?`, id); err != nil {

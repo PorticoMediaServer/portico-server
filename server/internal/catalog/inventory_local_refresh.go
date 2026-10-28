@@ -19,6 +19,7 @@ import (
 // same fences as CommitInventoryAnalysis and settles the analysis queue row the same way. f.AnalysisOperations is the
 // object's complete operation list after the refresh.
 func (s *Service) CommitInventoryLocalRefresh(ctx context.Context, job, object, revision string, policyRevision int64, f assets.Facts) error {
+	ctx, audioAdmissions := withAudioMergeAdmissions(ctx)
 	gated, err := dbwork.Begin(ctx, s.db, dbwork.ClassFrom(ctx, dbwork.ClassInteractive))
 	if err != nil {
 		return err
@@ -118,6 +119,9 @@ func (s *Service) CommitInventoryLocalRefresh(ctx context.Context, job, object, 
 		return err
 	}
 	if err = inventoryEvent(ctx, tx, source.ID, job, object, asset, revision, "analysis_completed"); err != nil {
+		return err
+	}
+	if err = finishAudioMergeAdmissionsTx(ctx, tx, audioAdmissions); err != nil {
 		return err
 	}
 	return gated.Commit()

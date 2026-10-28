@@ -95,6 +95,9 @@ func IsLocatorKey(key string) bool {
 // the entity is left alone; one held by another live entity is reported as
 // taken (the caller decides whether that means the two are one title).
 func AddIdentityTx(ctx context.Context, tx *sql.Tx, entity int64, key string) (taken int64, err error) {
+	if err = RequireEntityAcquirableTx(ctx, tx, entity); err != nil {
+		return 0, err
+	}
 	if key == "" {
 		return 0, nil
 	}
@@ -207,6 +210,9 @@ func providerCompatibleTx(ctx context.Context, tx *sql.Tx, entity int64, p Provi
 // RecordProviderIdentityTx records proven identity without silently replacing
 // a different identity already accepted for this provider and kind.
 func RecordProviderIdentityTx(ctx context.Context, tx *sql.Tx, entity int64, p ProviderIdentity) error {
+	if err := RequireEntityAcquirableTx(ctx, tx, entity); err != nil {
+		return err
+	}
 	p, err := normalizedProvider(p)
 	if err != nil {
 		return err
@@ -307,6 +313,9 @@ func ResolveTitleTx(ctx context.Context, tx *sql.Tx, c TitleClaim) (id int64, cr
 		}
 	}
 	compatible := func(candidate int64) (bool, error) {
+		if err := RequireEntityAcquirableTx(ctx, tx, candidate); err != nil {
+			return false, err
+		}
 		if candidate == 0 {
 			return true, nil
 		}

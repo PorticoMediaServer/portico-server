@@ -16,6 +16,7 @@ import (
 
 	"portico.local/server/internal/catalog"
 	"portico.local/server/internal/compactcatalog"
+	"portico.local/server/internal/dbwork"
 	"portico.local/server/internal/storage"
 )
 
@@ -465,6 +466,7 @@ const deleteMemberBatch = 40
 // again later gets it back. A file that cannot be removed leaves its title in
 // the library and says so.
 func (s *Service) Delete(ctx context.Context, auth Authorize, actor string, request DeleteRequest) (DeleteResult, error) {
+	ctx = catalog.MutationWriteContext(ctx)
 	out := DeleteResult{Receipts: []DeleteReceipt{}, FilesRetained: !request.DeleteFiles}
 	if err := validTargets(request.ItemIDs); err != nil {
 		return out, err
@@ -560,23 +562,29 @@ func (s *Service) Delete(ctx context.Context, auth Authorize, actor string, requ
 		if !receipts[i].Removed {
 			continue
 		}
-		for start := 0; start < len(target.members); start += deleteMemberBatch {
-			end := min(start+deleteMemberBatch, len(target.members))
-			err = s.transaction(ctx, auth, func(tx *sql.Tx) error {
-				for _, plan := range target.members[start:end] {
-					removed, e := catalog.DeleteApprovedTitleTx(ctx, tx, plan)
+		for _, plan := range target.members {
+			complete := false
+			for !complete {
+				err = s.transaction(ctx, auth, func(tx *sql.Tx) error {
+					step, e := catalog.DeleteApprovedTitleStepTx(ctx, tx, plan, request.OperationID+":"+digest)
 					if e != nil {
 						return e
 					}
-					if !removed {
+					complete = step.Complete
+					if complete && step.Outcome != "removed" {
 						receipts[i].Removed, receipts[i].Code = false, "file_changed"
 					}
+					if complete {
+						_, e = tx.ExecContext(ctx, `UPDATE library_revisions SET revision=revision+1 WHERE library_id=?`, target.LibraryID)
+					}
+					return e
+				})
+				if err != nil {
+					return out, err
 				}
-				_, e := tx.ExecContext(ctx, `UPDATE library_revisions SET revision=revision+1 WHERE library_id=?`, target.LibraryID)
-				return e
-			})
-			if err != nil {
-				return out, err
+				if !complete {
+					dbwork.Yield(ctx)
+				}
 			}
 		}
 		// A zero-member pass only removes an empty container. Any new member

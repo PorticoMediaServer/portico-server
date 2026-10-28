@@ -402,8 +402,10 @@ func TestMusicBrainzExpiredOrphanCacheCleanup(t *testing.T) {
 	}
 
 	s := New(db, "")
-	if e = s.cleanupMusicBrainz(context.Background()); e != nil {
-		t.Fatal(e)
+	for quantum := 0; quantum < 8; quantum++ {
+		if e = s.cleanupMusicBrainz(context.Background()); e != nil {
+			t.Fatal(e)
+		}
 	}
 	var n int
 	if e = db.QueryRow(`SELECT count(*) FROM mb_recording_evidence`).Scan(&n); e != nil {

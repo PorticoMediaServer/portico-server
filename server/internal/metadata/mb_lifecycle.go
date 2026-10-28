@@ -5,7 +5,6 @@ import (
 	"database/sql"
 	"errors"
 	"strconv"
-	"time"
 
 	"portico.local/server/internal/dbwork"
 )
@@ -127,29 +126,8 @@ func (s *Service) mbReconcileAlbums(ctx context.Context) (bool, error) {
 	return true, nil
 }
 func (s *Service) cleanupMusicBrainz(ctx context.Context) error {
-	gated2, e := dbwork.Begin(ctx, s.db, dbwork.ClassBackgroundMedia)
-	if e != nil {
-		return e
+	if err := s.mbCleanupReceipts(ctx); err != nil {
+		return err
 	}
-	tx := gated2.Tx()
-	defer gated2.Rollback()
-	now := s.publicationTime().Format(time.RFC3339)
-	cutoff := s.publicationTime().Add(-30 * 24 * time.Hour).Format(time.RFC3339)
-	// Expired leases no longer confer publication authority. Terminal compact
-	// receipts and expired orphans are removed in bounded, deterministic batches.
-	if _, e = tx.ExecContext(ctx, `DELETE FROM mb_publication_operations WHERE id IN(SELECT o.id FROM mb_publication_operations o WHERE (o.status IN('applied','stale','failed') AND (o.finished_at<? OR o.id IN(SELECT id FROM mb_publication_operations WHERE status IN('applied','stale','failed') ORDER BY created_at DESC,id DESC LIMIT 128 OFFSET 4000))) OR (o.status IN('claimed','staged') AND o.lease_until<=? AND NOT EXISTS(SELECT 1 FROM mb_jobs j WHERE j.kind=o.kind AND j.entity_id=o.entity_id AND j.generation=o.job_generation AND j.lease=o.lease AND j.lease_until>?)) ORDER BY o.created_at,o.id LIMIT 128)`, cutoff, now, now); e != nil {
-		return e
-	}
-	for _, kind := range []string{"recording", "release"} {
-		if _, e = tx.ExecContext(ctx, `DELETE FROM mb_`+kind+`_aliases WHERE rowid IN(SELECT rowid FROM mb_`+kind+`_aliases WHERE observed_at<? ORDER BY observed_at,requested_id,evidence_revision LIMIT 100)`, cutoff); e != nil {
-			return e
-		}
-	}
-	if _, e = tx.ExecContext(ctx, `DELETE FROM mb_release_evidence WHERE revision_id IN(SELECT r.revision_id FROM mb_release_evidence r WHERE r.observed_at<? AND NOT EXISTS(SELECT 1 FROM mb_album_links l WHERE l.release_revision=r.revision_id) AND NOT EXISTS(SELECT 1 FROM mb_song_links l WHERE l.release_revision=r.revision_id) AND NOT EXISTS(SELECT 1 FROM mb_release_aliases a WHERE a.evidence_revision=r.revision_id) AND NOT EXISTS(SELECT 1 FROM mb_publication_operations o WHERE o.accepted_release_revision=r.revision_id OR o.result_release_revision=r.revision_id) AND NOT EXISTS(SELECT 1 FROM mb_album_reconciliations c WHERE c.release_revision=r.revision_id) ORDER BY r.observed_at,r.revision_id LIMIT 100)`, cutoff); e != nil {
-		return e
-	}
-	if _, e = tx.ExecContext(ctx, `DELETE FROM mb_recording_evidence WHERE revision_id IN(SELECT r.revision_id FROM mb_recording_evidence r WHERE r.observed_at<? AND NOT EXISTS(SELECT 1 FROM mb_song_links l WHERE l.recording_revision=r.revision_id) AND NOT EXISTS(SELECT 1 FROM mb_release_tracks t WHERE t.recording_revision=r.revision_id) AND NOT EXISTS(SELECT 1 FROM mb_recording_aliases a WHERE a.evidence_revision=r.revision_id) AND NOT EXISTS(SELECT 1 FROM mb_publication_operations o WHERE o.accepted_recording_revision=r.revision_id OR o.result_recording_revision=r.revision_id) ORDER BY r.observed_at,r.revision_id LIMIT 100)`, cutoff); e != nil {
-		return e
-	}
-	return gated2.Commit()
+	return s.mbRetireEvidence(ctx)
 }

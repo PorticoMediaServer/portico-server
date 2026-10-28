@@ -5162,22 +5162,22 @@ CREATE TRIGGER mb_release_evidence_initial_open BEFORE INSERT ON mb_release_evid
 CREATE TRIGGER mb_release_evidence_seal_once BEFORE UPDATE OF sealed ON mb_release_evidence WHEN OLD.sealed<>0 OR NEW.sealed<>1 BEGIN SELECT RAISE(ABORT,'MusicBrainz evidence seal is terminal');END;
 CREATE TRIGGER mb_recording_credits_immutable BEFORE UPDATE ON mb_recording_credits BEGIN SELECT RAISE(ABORT,'immutable MusicBrainz evidence child');END;
 CREATE TRIGGER mb_recording_credits_sealed_insert BEFORE INSERT ON mb_recording_credits WHEN COALESCE((SELECT sealed FROM mb_recording_evidence WHERE revision_id=NEW.revision_id),0)=1 BEGIN SELECT RAISE(ABORT,'sealed MusicBrainz child set');END;
-CREATE TRIGGER mb_recording_credits_sealed_delete BEFORE DELETE ON mb_recording_credits WHEN COALESCE((SELECT sealed FROM mb_recording_evidence WHERE revision_id=OLD.revision_id),0)=1 BEGIN SELECT RAISE(ABORT,'sealed MusicBrainz child set');END;
+CREATE TRIGGER mb_recording_credits_sealed_delete BEFORE DELETE ON mb_recording_credits WHEN COALESCE((SELECT sealed FROM mb_recording_evidence WHERE revision_id=OLD.revision_id),0)=1 AND NOT EXISTS(SELECT 1 FROM mb_evidence_builds WHERE kind='recording' AND revision_id=OLD.revision_id AND state IN('aborting','retiring')) BEGIN SELECT RAISE(ABORT,'sealed MusicBrainz child set');END;
 CREATE TRIGGER mb_release_credits_immutable BEFORE UPDATE ON mb_release_credits BEGIN SELECT RAISE(ABORT,'immutable MusicBrainz evidence child');END;
 CREATE TRIGGER mb_release_credits_sealed_insert BEFORE INSERT ON mb_release_credits WHEN COALESCE((SELECT sealed FROM mb_release_evidence WHERE revision_id=NEW.revision_id),0)=1 BEGIN SELECT RAISE(ABORT,'sealed MusicBrainz child set');END;
-CREATE TRIGGER mb_release_credits_sealed_delete BEFORE DELETE ON mb_release_credits WHEN COALESCE((SELECT sealed FROM mb_release_evidence WHERE revision_id=OLD.revision_id),0)=1 BEGIN SELECT RAISE(ABORT,'sealed MusicBrainz child set');END;
+CREATE TRIGGER mb_release_credits_sealed_delete BEFORE DELETE ON mb_release_credits WHEN COALESCE((SELECT sealed FROM mb_release_evidence WHERE revision_id=OLD.revision_id),0)=1 AND NOT EXISTS(SELECT 1 FROM mb_evidence_builds WHERE kind='release' AND revision_id=OLD.revision_id AND state IN('aborting','retiring')) BEGIN SELECT RAISE(ABORT,'sealed MusicBrainz child set');END;
 CREATE TRIGGER mb_release_group_types_immutable BEFORE UPDATE ON mb_release_group_types BEGIN SELECT RAISE(ABORT,'immutable MusicBrainz evidence child');END;
 CREATE TRIGGER mb_release_group_types_sealed_insert BEFORE INSERT ON mb_release_group_types WHEN COALESCE((SELECT sealed FROM mb_release_evidence WHERE revision_id=NEW.release_revision),0)=1 BEGIN SELECT RAISE(ABORT,'sealed MusicBrainz child set');END;
-CREATE TRIGGER mb_release_group_types_sealed_delete BEFORE DELETE ON mb_release_group_types WHEN COALESCE((SELECT sealed FROM mb_release_evidence WHERE revision_id=OLD.release_revision),0)=1 BEGIN SELECT RAISE(ABORT,'sealed MusicBrainz child set');END;
+CREATE TRIGGER mb_release_group_types_sealed_delete BEFORE DELETE ON mb_release_group_types WHEN COALESCE((SELECT sealed FROM mb_release_evidence WHERE revision_id=OLD.release_revision),0)=1 AND NOT EXISTS(SELECT 1 FROM mb_evidence_builds WHERE kind='release' AND revision_id=OLD.release_revision AND state IN('aborting','retiring')) BEGIN SELECT RAISE(ABORT,'sealed MusicBrainz child set');END;
 CREATE TRIGGER mb_release_media_immutable BEFORE UPDATE ON mb_release_media BEGIN SELECT RAISE(ABORT,'immutable MusicBrainz evidence child');END;
 CREATE TRIGGER mb_release_media_sealed_insert BEFORE INSERT ON mb_release_media WHEN COALESCE((SELECT sealed FROM mb_release_evidence WHERE revision_id=NEW.release_revision),0)=1 BEGIN SELECT RAISE(ABORT,'sealed MusicBrainz child set');END;
-CREATE TRIGGER mb_release_media_sealed_delete BEFORE DELETE ON mb_release_media WHEN COALESCE((SELECT sealed FROM mb_release_evidence WHERE revision_id=OLD.release_revision),0)=1 BEGIN SELECT RAISE(ABORT,'sealed MusicBrainz child set');END;
+CREATE TRIGGER mb_release_media_sealed_delete BEFORE DELETE ON mb_release_media WHEN COALESCE((SELECT sealed FROM mb_release_evidence WHERE revision_id=OLD.release_revision),0)=1 AND NOT EXISTS(SELECT 1 FROM mb_evidence_builds WHERE kind='release' AND revision_id=OLD.release_revision AND state IN('aborting','retiring')) BEGIN SELECT RAISE(ABORT,'sealed MusicBrainz child set');END;
 CREATE TRIGGER mb_release_tracks_immutable BEFORE UPDATE ON mb_release_tracks BEGIN SELECT RAISE(ABORT,'immutable MusicBrainz evidence child');END;
 CREATE TRIGGER mb_release_tracks_sealed_insert BEFORE INSERT ON mb_release_tracks WHEN COALESCE((SELECT sealed FROM mb_release_evidence WHERE revision_id=NEW.release_revision),0)=1 BEGIN SELECT RAISE(ABORT,'sealed MusicBrainz child set');END;
-CREATE TRIGGER mb_release_tracks_sealed_delete BEFORE DELETE ON mb_release_tracks WHEN COALESCE((SELECT sealed FROM mb_release_evidence WHERE revision_id=OLD.release_revision),0)=1 BEGIN SELECT RAISE(ABORT,'sealed MusicBrainz child set');END;
+CREATE TRIGGER mb_release_tracks_sealed_delete BEFORE DELETE ON mb_release_tracks WHEN COALESCE((SELECT sealed FROM mb_release_evidence WHERE revision_id=OLD.release_revision),0)=1 AND NOT EXISTS(SELECT 1 FROM mb_evidence_builds WHERE kind='release' AND revision_id=OLD.release_revision AND state IN('aborting','retiring')) BEGIN SELECT RAISE(ABORT,'sealed MusicBrainz child set');END;
 CREATE TRIGGER mb_track_credits_immutable BEFORE UPDATE ON mb_track_credits BEGIN SELECT RAISE(ABORT,'immutable MusicBrainz evidence child');END;
 CREATE TRIGGER mb_track_credits_sealed_insert BEFORE INSERT ON mb_track_credits WHEN COALESCE((SELECT sealed FROM mb_release_evidence WHERE revision_id=NEW.release_revision),0)=1 BEGIN SELECT RAISE(ABORT,'sealed MusicBrainz child set');END;
-CREATE TRIGGER mb_track_credits_sealed_delete BEFORE DELETE ON mb_track_credits WHEN COALESCE((SELECT sealed FROM mb_release_evidence WHERE revision_id=OLD.release_revision),0)=1 BEGIN SELECT RAISE(ABORT,'sealed MusicBrainz child set');END;
+CREATE TRIGGER mb_track_credits_sealed_delete BEFORE DELETE ON mb_track_credits WHEN COALESCE((SELECT sealed FROM mb_release_evidence WHERE revision_id=OLD.release_revision),0)=1 AND NOT EXISTS(SELECT 1 FROM mb_evidence_builds WHERE kind='release' AND revision_id=OLD.release_revision AND state IN('aborting','retiring')) BEGIN SELECT RAISE(ABORT,'sealed MusicBrainz child set');END;
 CREATE TRIGGER mb_album_links_requires_sealed_insert BEFORE INSERT ON mb_album_links WHEN (NEW.release_revision IS NOT NULL AND COALESCE((SELECT sealed FROM mb_release_evidence WHERE revision_id=NEW.release_revision),0)<>1) BEGIN SELECT RAISE(ABORT,'MusicBrainz reference requires sealed evidence');END;
 CREATE TRIGGER mb_album_links_requires_sealed_update BEFORE UPDATE ON mb_album_links WHEN (NEW.release_revision IS NOT NULL AND COALESCE((SELECT sealed FROM mb_release_evidence WHERE revision_id=NEW.release_revision),0)<>1) BEGIN SELECT RAISE(ABORT,'MusicBrainz reference requires sealed evidence');END;
 CREATE TRIGGER mb_song_links_requires_sealed_insert BEFORE INSERT ON mb_song_links WHEN (NEW.recording_revision IS NOT NULL AND COALESCE((SELECT sealed FROM mb_recording_evidence WHERE revision_id=NEW.recording_revision),0)<>1) OR (NEW.release_revision IS NOT NULL AND COALESCE((SELECT sealed FROM mb_release_evidence WHERE revision_id=NEW.release_revision),0)<>1) BEGIN SELECT RAISE(ABORT,'MusicBrainz reference requires sealed evidence');END;
@@ -11255,3 +11255,380 @@ CREATE TABLE screen_metadata_fanout(
 ) WITHOUT ROWID, STRICT;
 CREATE INDEX screen_metadata_fanout_due ON screen_metadata_fanout(last_served_ms,library_id,effect,next_attempt_ms) WHERE pending=1;
 CREATE INDEX screen_metadata_fanout_walk ON screen_metadata_work(library_id,target_kind,target_id);
+
+-- P2-52 MusicBrainz base accounting. Fresh baseline only; no retained-data backfill.
+-- Acceptance is positivity, never the cardinality of these symmetric references.
+CREATE TABLE mb_evidence_totals(
+ singleton INTEGER PRIMARY KEY CHECK(singleton=1),
+ releases INTEGER NOT NULL CHECK(releases>=0),
+ recordings INTEGER NOT NULL CHECK(recordings>=0),
+ charge INTEGER NOT NULL CHECK(charge>=0)
+) STRICT;
+INSERT INTO mb_evidence_totals VALUES(1,0,0,0);
+CREATE TABLE mb_release_accounting(
+ revision_id TEXT PRIMARY KEY REFERENCES mb_release_evidence(revision_id) ON DELETE CASCADE,
+ charge INTEGER NOT NULL CHECK(charge>=512),
+ observed_at TEXT NOT NULL,
+ retention_refs INTEGER NOT NULL DEFAULT 0 CHECK(retention_refs>=0),
+ direct_refs INTEGER NOT NULL DEFAULT 0 CHECK(direct_refs>=0)
+) STRICT;
+CREATE TABLE mb_recording_accounting(
+ revision_id TEXT PRIMARY KEY REFERENCES mb_recording_evidence(revision_id) ON DELETE CASCADE,
+ charge INTEGER NOT NULL CHECK(charge>=512),
+ observed_at TEXT NOT NULL,
+ retention_refs INTEGER NOT NULL DEFAULT 0 CHECK(retention_refs>=0),
+ direct_refs INTEGER NOT NULL DEFAULT 0 CHECK(direct_refs>=0),
+ release_refs INTEGER NOT NULL DEFAULT 0 CHECK(release_refs>=0)
+) STRICT;
+-- Both the grouped window and any exact pair probe start with the release.
+-- A recording-only index would examine unrelated shared-release tracks.
+CREATE INDEX mb_release_track_release_recording ON mb_release_tracks(release_revision,recording_revision);
+CREATE TRIGGER mb_account_release_insert AFTER INSERT ON mb_release_accounting
+BEGIN
+ UPDATE mb_evidence_totals SET releases=releases+1,charge=charge+NEW.charge WHERE singleton=1;
+END;
+CREATE TRIGGER mb_account_release_delete AFTER DELETE ON mb_release_accounting WHEN OLD.direct_refs=0
+BEGIN
+ UPDATE mb_evidence_totals SET releases=releases-1,charge=charge-OLD.charge WHERE singleton=1;
+END;
+CREATE TRIGGER mb_account_release_update AFTER UPDATE OF charge,direct_refs ON mb_release_accounting
+WHEN OLD.charge<>NEW.charge OR OLD.direct_refs<>NEW.direct_refs
+BEGIN
+ UPDATE mb_evidence_totals SET
+ releases=releases+(NEW.direct_refs=0)-(OLD.direct_refs=0),
+ charge=charge+(NEW.direct_refs=0)*NEW.charge-(OLD.direct_refs=0)*OLD.charge
+ WHERE singleton=1 AND (OLD.direct_refs=0 OR NEW.direct_refs=0);
+END;
+-- Named indivisible exception: one old and one new release, each <=10k tracks.
+-- No accepted-link scan. Repeated recordings are grouped inside this release.
+CREATE TRIGGER mb_account_release_acceptance AFTER UPDATE OF direct_refs ON mb_release_accounting
+WHEN (OLD.direct_refs=0)<>(NEW.direct_refs=0)
+BEGIN
+ UPDATE mb_recording_accounting
+ SET release_refs=release_refs+refs.n*CASE WHEN NEW.direct_refs>0 THEN 1 ELSE -1 END
+ FROM (SELECT recording_revision,count(*) AS n FROM mb_release_tracks INDEXED BY mb_release_track_release_recording
+       WHERE release_revision=NEW.revision_id GROUP BY recording_revision) AS refs
+ WHERE revision_id=refs.recording_revision;
+END;
+CREATE TRIGGER mb_account_recording_insert AFTER INSERT ON mb_recording_accounting
+BEGIN
+ UPDATE mb_evidence_totals SET recordings=recordings+1,charge=charge+NEW.charge WHERE singleton=1;
+END;
+CREATE TRIGGER mb_account_recording_delete AFTER DELETE ON mb_recording_accounting
+WHEN OLD.direct_refs=0 AND OLD.release_refs=0
+BEGIN
+ UPDATE mb_evidence_totals SET recordings=recordings-1,charge=charge-OLD.charge WHERE singleton=1;
+END;
+CREATE TRIGGER mb_account_recording_update AFTER UPDATE OF charge,direct_refs,release_refs ON mb_recording_accounting
+WHEN (OLD.charge<>NEW.charge OR OLD.direct_refs<>NEW.direct_refs OR OLD.release_refs<>NEW.release_refs)
+ AND ((OLD.direct_refs=0 AND OLD.release_refs=0) OR (NEW.direct_refs=0 AND NEW.release_refs=0))
+BEGIN
+ UPDATE mb_evidence_totals SET
+ recordings=recordings+(NEW.direct_refs=0 AND NEW.release_refs=0)-(OLD.direct_refs=0 AND OLD.release_refs=0),
+ charge=charge+(NEW.direct_refs=0 AND NEW.release_refs=0)*NEW.charge-(OLD.direct_refs=0 AND OLD.release_refs=0)*OLD.charge
+ WHERE singleton=1;
+END;
+
+CREATE TRIGGER mb_account_release_evidence_insert AFTER INSERT ON mb_release_evidence
+BEGIN
+ INSERT INTO mb_release_accounting(revision_id,charge,observed_at) VALUES(NEW.revision_id,length(CAST(NEW.payload AS BLOB))*8+512,NEW.observed_at);
+END;
+
+CREATE TRIGGER mb_account_recording_evidence_insert AFTER INSERT ON mb_recording_evidence
+BEGIN
+ INSERT INTO mb_recording_accounting(revision_id,charge,observed_at) VALUES(NEW.revision_id,length(CAST(NEW.payload AS BLOB))*8+512,NEW.observed_at);
+END;
+
+CREATE TRIGGER mb_account_mb_recording_credits_insert AFTER INSERT ON mb_recording_credits
+BEGIN
+ UPDATE mb_recording_accounting SET charge=charge+512 WHERE revision_id=NEW.revision_id;
+END;
+
+CREATE TRIGGER mb_account_mb_recording_credits_delete AFTER DELETE ON mb_recording_credits
+BEGIN
+ UPDATE mb_recording_accounting SET charge=charge-512 WHERE revision_id=OLD.revision_id;
+END;
+
+CREATE TRIGGER mb_account_mb_release_credits_insert AFTER INSERT ON mb_release_credits
+BEGIN
+ UPDATE mb_release_accounting SET charge=charge+512 WHERE revision_id=NEW.revision_id;
+END;
+
+CREATE TRIGGER mb_account_mb_release_credits_delete AFTER DELETE ON mb_release_credits
+BEGIN
+ UPDATE mb_release_accounting SET charge=charge-512 WHERE revision_id=OLD.revision_id;
+END;
+
+CREATE TRIGGER mb_account_mb_release_group_types_insert AFTER INSERT ON mb_release_group_types
+BEGIN
+ UPDATE mb_release_accounting SET charge=charge+512 WHERE revision_id=NEW.release_revision;
+END;
+
+CREATE TRIGGER mb_account_mb_release_group_types_delete AFTER DELETE ON mb_release_group_types
+BEGIN
+ UPDATE mb_release_accounting SET charge=charge-512 WHERE revision_id=OLD.release_revision;
+END;
+
+CREATE TRIGGER mb_account_mb_release_media_insert AFTER INSERT ON mb_release_media
+BEGIN
+ UPDATE mb_release_accounting SET charge=charge+512 WHERE revision_id=NEW.release_revision;
+END;
+
+CREATE TRIGGER mb_account_mb_release_media_delete AFTER DELETE ON mb_release_media
+BEGIN
+ UPDATE mb_release_accounting SET charge=charge-512 WHERE revision_id=OLD.release_revision;
+END;
+
+CREATE TRIGGER mb_account_mb_release_tracks_insert AFTER INSERT ON mb_release_tracks
+BEGIN
+ UPDATE mb_release_accounting SET charge=charge+512 WHERE revision_id=NEW.release_revision;
+ UPDATE mb_recording_accounting SET release_refs=release_refs+1
+ WHERE revision_id=NEW.recording_revision
+ AND EXISTS(SELECT 1 FROM mb_release_accounting WHERE revision_id=NEW.release_revision AND direct_refs>0);
+END;
+
+CREATE TRIGGER mb_account_mb_release_tracks_delete AFTER DELETE ON mb_release_tracks
+BEGIN
+ UPDATE mb_release_accounting SET charge=charge-512 WHERE revision_id=OLD.release_revision;
+ UPDATE mb_recording_accounting SET release_refs=release_refs-1
+ WHERE revision_id=OLD.recording_revision
+ AND EXISTS(SELECT 1 FROM mb_release_accounting WHERE revision_id=OLD.release_revision AND direct_refs>0);
+END;
+
+CREATE TRIGGER mb_account_mb_track_credits_insert AFTER INSERT ON mb_track_credits
+BEGIN
+ UPDATE mb_release_accounting SET charge=charge+512 WHERE revision_id=NEW.release_revision;
+END;
+
+CREATE TRIGGER mb_account_mb_track_credits_delete AFTER DELETE ON mb_track_credits
+BEGIN
+ UPDATE mb_release_accounting SET charge=charge-512 WHERE revision_id=OLD.release_revision;
+END;
+
+CREATE TRIGGER mb_account_mb_album_links_release_revision_insert AFTER INSERT ON mb_album_links
+WHEN NEW.release_revision IS NOT NULL
+BEGIN
+ UPDATE mb_release_accounting SET direct_refs=direct_refs+1 WHERE revision_id=NEW.release_revision;
+END;
+
+CREATE TRIGGER mb_account_mb_album_links_release_revision_delete AFTER DELETE ON mb_album_links
+WHEN OLD.release_revision IS NOT NULL
+BEGIN
+ UPDATE mb_release_accounting SET direct_refs=direct_refs-1 WHERE revision_id=OLD.release_revision;
+END;
+
+CREATE TRIGGER mb_account_mb_album_links_release_revision_update AFTER UPDATE OF release_revision ON mb_album_links
+WHEN OLD.release_revision IS NOT NEW.release_revision
+BEGIN
+ UPDATE mb_release_accounting SET direct_refs=direct_refs-1 WHERE revision_id=OLD.release_revision;
+ UPDATE mb_release_accounting SET direct_refs=direct_refs+1 WHERE revision_id=NEW.release_revision;
+END;
+
+CREATE TRIGGER mb_account_mb_song_links_release_revision_insert AFTER INSERT ON mb_song_links
+WHEN NEW.release_revision IS NOT NULL
+BEGIN
+ UPDATE mb_release_accounting SET direct_refs=direct_refs+1 WHERE revision_id=NEW.release_revision;
+END;
+
+CREATE TRIGGER mb_account_mb_song_links_release_revision_delete AFTER DELETE ON mb_song_links
+WHEN OLD.release_revision IS NOT NULL
+BEGIN
+ UPDATE mb_release_accounting SET direct_refs=direct_refs-1 WHERE revision_id=OLD.release_revision;
+END;
+
+CREATE TRIGGER mb_account_mb_song_links_release_revision_update AFTER UPDATE OF release_revision ON mb_song_links
+WHEN OLD.release_revision IS NOT NEW.release_revision
+BEGIN
+ UPDATE mb_release_accounting SET direct_refs=direct_refs-1 WHERE revision_id=OLD.release_revision;
+ UPDATE mb_release_accounting SET direct_refs=direct_refs+1 WHERE revision_id=NEW.release_revision;
+END;
+
+CREATE TRIGGER mb_account_mb_song_links_recording_revision_insert AFTER INSERT ON mb_song_links
+WHEN NEW.recording_revision IS NOT NULL
+BEGIN
+ UPDATE mb_recording_accounting SET direct_refs=direct_refs+1 WHERE revision_id=NEW.recording_revision;
+END;
+
+CREATE TRIGGER mb_account_mb_song_links_recording_revision_delete AFTER DELETE ON mb_song_links
+WHEN OLD.recording_revision IS NOT NULL
+BEGIN
+ UPDATE mb_recording_accounting SET direct_refs=direct_refs-1 WHERE revision_id=OLD.recording_revision;
+END;
+
+CREATE TRIGGER mb_account_mb_song_links_recording_revision_update AFTER UPDATE OF recording_revision ON mb_song_links
+WHEN OLD.recording_revision IS NOT NEW.recording_revision
+BEGIN
+ UPDATE mb_recording_accounting SET direct_refs=direct_refs-1 WHERE revision_id=OLD.recording_revision;
+ UPDATE mb_recording_accounting SET direct_refs=direct_refs+1 WHERE revision_id=NEW.recording_revision;
+END;
+
+
+-- Bounded evidence mutations. No payload copies, query state, or cascading owner FK.
+CREATE TABLE mb_evidence_builds(
+ build_id TEXT PRIMARY KEY,
+ kind TEXT NOT NULL CHECK(kind IN('recording','release')),
+ revision_id TEXT NOT NULL,
+ provider_id TEXT NOT NULL,
+ digest TEXT NOT NULL CHECK(length(digest)=64),
+ state TEXT NOT NULL CHECK(state IN('building','ready','aborting','retiring','done')),
+ phase TEXT NOT NULL,
+ cursor INTEGER NOT NULL DEFAULT 0 CHECK(cursor>=0),
+ generation INTEGER NOT NULL DEFAULT 1 CHECK(generation>0),
+ expected_shape_digest TEXT NOT NULL CHECK(length(expected_shape_digest)=64),
+ expected_rows INTEGER NOT NULL CHECK(expected_rows>0),
+ materialized_rows INTEGER NOT NULL DEFAULT 0 CHECK(materialized_rows>=0),
+ materialized_digest TEXT NOT NULL CHECK(length(materialized_digest)=64),
+ materialized_charge INTEGER NOT NULL DEFAULT 0 CHECK(materialized_charge>=0),
+ parent_build TEXT NOT NULL DEFAULT '',
+ owner_operation TEXT NOT NULL,
+ expires_at TEXT NOT NULL,
+ UNIQUE(kind,revision_id),UNIQUE(kind,provider_id,digest)
+) STRICT;
+CREATE INDEX mb_evidence_builds_due ON mb_evidence_builds(state,expires_at,build_id);
+CREATE INDEX mb_evidence_builds_owner ON mb_evidence_builds(owner_operation,state,build_id);
+CREATE TRIGGER mb_build_identity_immutable BEFORE UPDATE OF build_id,kind,revision_id,provider_id,digest,expected_shape_digest,expected_rows,expires_at ON mb_evidence_builds BEGIN SELECT RAISE(ABORT,'immutable MusicBrainz build identity');END;
+
+CREATE TRIGGER mb_recording_credits_build_frozen_insert BEFORE INSERT ON mb_recording_credits WHEN EXISTS(SELECT 1 FROM mb_evidence_builds WHERE kind='recording' AND revision_id=NEW.revision_id AND (state<>'building' OR phase<>'rows')) BEGIN SELECT RAISE(ABORT,'frozen MusicBrainz build');END;
+CREATE TRIGGER mb_recording_credits_build_frozen_delete BEFORE DELETE ON mb_recording_credits WHEN EXISTS(SELECT 1 FROM mb_evidence_builds WHERE kind='recording' AND revision_id=OLD.revision_id AND state NOT IN('aborting','retiring')) BEGIN SELECT RAISE(ABORT,'frozen MusicBrainz build');END;
+
+CREATE TRIGGER mb_release_credits_build_frozen_insert BEFORE INSERT ON mb_release_credits WHEN EXISTS(SELECT 1 FROM mb_evidence_builds WHERE kind='release' AND revision_id=NEW.revision_id AND (state<>'building' OR phase<>'rows')) BEGIN SELECT RAISE(ABORT,'frozen MusicBrainz build');END;
+CREATE TRIGGER mb_release_credits_build_frozen_delete BEFORE DELETE ON mb_release_credits WHEN EXISTS(SELECT 1 FROM mb_evidence_builds WHERE kind='release' AND revision_id=OLD.revision_id AND state NOT IN('aborting','retiring')) BEGIN SELECT RAISE(ABORT,'frozen MusicBrainz build');END;
+
+CREATE TRIGGER mb_release_group_types_build_frozen_insert BEFORE INSERT ON mb_release_group_types WHEN EXISTS(SELECT 1 FROM mb_evidence_builds WHERE kind='release' AND revision_id=NEW.release_revision AND (state<>'building' OR phase<>'rows')) BEGIN SELECT RAISE(ABORT,'frozen MusicBrainz build');END;
+CREATE TRIGGER mb_release_group_types_build_frozen_delete BEFORE DELETE ON mb_release_group_types WHEN EXISTS(SELECT 1 FROM mb_evidence_builds WHERE kind='release' AND revision_id=OLD.release_revision AND state NOT IN('aborting','retiring')) BEGIN SELECT RAISE(ABORT,'frozen MusicBrainz build');END;
+
+CREATE TRIGGER mb_release_media_build_frozen_insert BEFORE INSERT ON mb_release_media WHEN EXISTS(SELECT 1 FROM mb_evidence_builds WHERE kind='release' AND revision_id=NEW.release_revision AND (state<>'building' OR phase<>'rows')) BEGIN SELECT RAISE(ABORT,'frozen MusicBrainz build');END;
+CREATE TRIGGER mb_release_media_build_frozen_delete BEFORE DELETE ON mb_release_media WHEN EXISTS(SELECT 1 FROM mb_evidence_builds WHERE kind='release' AND revision_id=OLD.release_revision AND state NOT IN('aborting','retiring')) BEGIN SELECT RAISE(ABORT,'frozen MusicBrainz build');END;
+
+CREATE TRIGGER mb_release_tracks_build_frozen_insert BEFORE INSERT ON mb_release_tracks WHEN EXISTS(SELECT 1 FROM mb_evidence_builds WHERE kind='release' AND revision_id=NEW.release_revision AND (state<>'building' OR phase<>'rows')) BEGIN SELECT RAISE(ABORT,'frozen MusicBrainz build');END;
+CREATE TRIGGER mb_release_tracks_build_frozen_delete BEFORE DELETE ON mb_release_tracks WHEN EXISTS(SELECT 1 FROM mb_evidence_builds WHERE kind='release' AND revision_id=OLD.release_revision AND state NOT IN('aborting','retiring')) BEGIN SELECT RAISE(ABORT,'frozen MusicBrainz build');END;
+
+CREATE TRIGGER mb_track_credits_build_frozen_insert BEFORE INSERT ON mb_track_credits WHEN EXISTS(SELECT 1 FROM mb_evidence_builds WHERE kind='release' AND revision_id=NEW.release_revision AND (state<>'building' OR phase<>'rows')) BEGIN SELECT RAISE(ABORT,'frozen MusicBrainz build');END;
+CREATE TRIGGER mb_track_credits_build_frozen_delete BEFORE DELETE ON mb_track_credits WHEN EXISTS(SELECT 1 FROM mb_evidence_builds WHERE kind='release' AND revision_id=OLD.release_revision AND state NOT IN('aborting','retiring')) BEGIN SELECT RAISE(ABORT,'frozen MusicBrainz build');END;
+
+CREATE TRIGGER mb_recording_build_parent_delete BEFORE DELETE ON mb_recording_evidence WHEN EXISTS(SELECT 1 FROM mb_evidence_builds WHERE kind='recording' AND revision_id=OLD.revision_id AND state NOT IN('aborting','retiring')) BEGIN SELECT RAISE(ABORT,'MusicBrainz build requires bounded retirement');END;
+CREATE TRIGGER mb_recording_build_seal BEFORE UPDATE OF sealed ON mb_recording_evidence WHEN EXISTS(SELECT 1 FROM mb_evidence_builds WHERE kind='recording' AND revision_id=NEW.revision_id AND (state<>'building' OR phase<>'proving' OR cursor<>expected_rows OR materialized_rows<>expected_rows OR materialized_digest<>expected_shape_digest)) BEGIN SELECT RAISE(ABORT,'incomplete MusicBrainz build');END;
+
+CREATE TRIGGER mb_release_build_parent_delete BEFORE DELETE ON mb_release_evidence WHEN EXISTS(SELECT 1 FROM mb_evidence_builds WHERE kind='release' AND revision_id=OLD.revision_id AND state NOT IN('aborting','retiring')) BEGIN SELECT RAISE(ABORT,'MusicBrainz build requires bounded retirement');END;
+CREATE TRIGGER mb_release_build_seal BEFORE UPDATE OF sealed ON mb_release_evidence WHEN EXISTS(SELECT 1 FROM mb_evidence_builds WHERE kind='release' AND revision_id=NEW.revision_id AND (state<>'building' OR phase<>'proving' OR cursor<>expected_rows OR materialized_rows<>expected_rows OR materialized_digest<>expected_shape_digest)) BEGIN SELECT RAISE(ABORT,'incomplete MusicBrainz build');END;
+CREATE TRIGGER mb_album_links_build_ready_insert BEFORE INSERT ON mb_album_links WHEN EXISTS(SELECT 1 FROM mb_evidence_builds WHERE kind='release' AND revision_id=NEW.release_revision AND state<>'ready') BEGIN SELECT RAISE(ABORT,'MusicBrainz reference requires ready evidence');END;
+CREATE TRIGGER mb_album_links_build_ready_update BEFORE UPDATE ON mb_album_links WHEN EXISTS(SELECT 1 FROM mb_evidence_builds WHERE kind='release' AND revision_id=NEW.release_revision AND state<>'ready') BEGIN SELECT RAISE(ABORT,'MusicBrainz reference requires ready evidence');END;
+CREATE TRIGGER mb_song_links_build_ready_insert BEFORE INSERT ON mb_song_links WHEN EXISTS(SELECT 1 FROM mb_evidence_builds WHERE kind='recording' AND revision_id=NEW.recording_revision AND state<>'ready') OR EXISTS(SELECT 1 FROM mb_evidence_builds WHERE kind='release' AND revision_id=NEW.release_revision AND state<>'ready') BEGIN SELECT RAISE(ABORT,'MusicBrainz reference requires ready evidence');END;
+CREATE TRIGGER mb_song_links_build_ready_update BEFORE UPDATE ON mb_song_links WHEN EXISTS(SELECT 1 FROM mb_evidence_builds WHERE kind='recording' AND revision_id=NEW.recording_revision AND state<>'ready') OR EXISTS(SELECT 1 FROM mb_evidence_builds WHERE kind='release' AND revision_id=NEW.release_revision AND state<>'ready') BEGIN SELECT RAISE(ABORT,'MusicBrainz reference requires ready evidence');END;
+CREATE TRIGGER mb_recording_aliases_build_ready_insert BEFORE INSERT ON mb_recording_aliases WHEN EXISTS(SELECT 1 FROM mb_evidence_builds WHERE kind='recording' AND revision_id=NEW.evidence_revision AND state<>'ready') BEGIN SELECT RAISE(ABORT,'MusicBrainz reference requires ready evidence');END;
+CREATE TRIGGER mb_recording_aliases_build_ready_update BEFORE UPDATE ON mb_recording_aliases WHEN EXISTS(SELECT 1 FROM mb_evidence_builds WHERE kind='recording' AND revision_id=NEW.evidence_revision AND state<>'ready') BEGIN SELECT RAISE(ABORT,'MusicBrainz reference requires ready evidence');END;
+CREATE TRIGGER mb_release_aliases_build_ready_insert BEFORE INSERT ON mb_release_aliases WHEN EXISTS(SELECT 1 FROM mb_evidence_builds WHERE kind='release' AND revision_id=NEW.evidence_revision AND state<>'ready') BEGIN SELECT RAISE(ABORT,'MusicBrainz reference requires ready evidence');END;
+CREATE TRIGGER mb_release_aliases_build_ready_update BEFORE UPDATE ON mb_release_aliases WHEN EXISTS(SELECT 1 FROM mb_evidence_builds WHERE kind='release' AND revision_id=NEW.evidence_revision AND state<>'ready') BEGIN SELECT RAISE(ABORT,'MusicBrainz reference requires ready evidence');END;
+CREATE TRIGGER mb_release_tracks_build_ready_insert BEFORE INSERT ON mb_release_tracks WHEN EXISTS(SELECT 1 FROM mb_evidence_builds WHERE kind='recording' AND revision_id=NEW.recording_revision AND state<>'ready') BEGIN SELECT RAISE(ABORT,'MusicBrainz reference requires ready evidence');END;
+CREATE TRIGGER mb_release_tracks_build_ready_update BEFORE UPDATE ON mb_release_tracks WHEN EXISTS(SELECT 1 FROM mb_evidence_builds WHERE kind='recording' AND revision_id=NEW.recording_revision AND state<>'ready') BEGIN SELECT RAISE(ABORT,'MusicBrainz reference requires ready evidence');END;
+CREATE TRIGGER mb_album_reconciliations_build_ready_insert BEFORE INSERT ON mb_album_reconciliations WHEN EXISTS(SELECT 1 FROM mb_evidence_builds WHERE kind='release' AND revision_id=NEW.release_revision AND state<>'ready') BEGIN SELECT RAISE(ABORT,'MusicBrainz reference requires ready evidence');END;
+CREATE TRIGGER mb_album_reconciliations_build_ready_update BEFORE UPDATE ON mb_album_reconciliations WHEN EXISTS(SELECT 1 FROM mb_evidence_builds WHERE kind='release' AND revision_id=NEW.release_revision AND state<>'ready') BEGIN SELECT RAISE(ABORT,'MusicBrainz reference requires ready evidence');END;
+CREATE TRIGGER mb_publication_operations_build_ready_insert BEFORE INSERT ON mb_publication_operations WHEN EXISTS(SELECT 1 FROM mb_evidence_builds WHERE kind='recording' AND revision_id=NEW.accepted_recording_revision AND state<>'ready') OR EXISTS(SELECT 1 FROM mb_evidence_builds WHERE kind='release' AND revision_id=NEW.accepted_release_revision AND state<>'ready') OR EXISTS(SELECT 1 FROM mb_evidence_builds WHERE kind='recording' AND revision_id=NEW.result_recording_revision AND state<>'ready') OR EXISTS(SELECT 1 FROM mb_evidence_builds WHERE kind='release' AND revision_id=NEW.result_release_revision AND state<>'ready') BEGIN SELECT RAISE(ABORT,'MusicBrainz reference requires ready evidence');END;
+CREATE TRIGGER mb_publication_operations_build_ready_update BEFORE UPDATE ON mb_publication_operations WHEN EXISTS(SELECT 1 FROM mb_evidence_builds WHERE kind='recording' AND revision_id=NEW.accepted_recording_revision AND state<>'ready') OR EXISTS(SELECT 1 FROM mb_evidence_builds WHERE kind='release' AND revision_id=NEW.accepted_release_revision AND state<>'ready') OR EXISTS(SELECT 1 FROM mb_evidence_builds WHERE kind='recording' AND revision_id=NEW.result_recording_revision AND state<>'ready') OR EXISTS(SELECT 1 FROM mb_evidence_builds WHERE kind='release' AND revision_id=NEW.result_release_revision AND state<>'ready') BEGIN SELECT RAISE(ABORT,'MusicBrainz reference requires ready evidence');END;
+
+CREATE INDEX mb_evidence_builds_parent ON mb_evidence_builds(parent_build,state,build_id);
+
+-- P2-52b bounded retirement facts: exact reference counts, never query results.
+CREATE INDEX mb_release_accounting_retire ON mb_release_accounting(observed_at,revision_id) WHERE direct_refs=0 AND retention_refs=0;
+CREATE INDEX mb_recording_accounting_retire ON mb_recording_accounting(observed_at,revision_id) WHERE direct_refs=0 AND retention_refs=0 AND release_refs=0;
+CREATE TRIGGER mb_retention_mb_release_aliases_insert AFTER INSERT ON mb_release_aliases BEGIN UPDATE mb_release_accounting SET retention_refs=retention_refs+1 WHERE revision_id=NEW.evidence_revision; END;
+CREATE TRIGGER mb_retention_mb_release_aliases_delete AFTER DELETE ON mb_release_aliases BEGIN UPDATE mb_release_accounting SET retention_refs=retention_refs-1 WHERE revision_id=OLD.evidence_revision; END;
+CREATE TRIGGER mb_retention_mb_release_aliases_evidence_revision_update AFTER UPDATE OF evidence_revision ON mb_release_aliases WHEN OLD.evidence_revision IS NOT NEW.evidence_revision BEGIN UPDATE mb_release_accounting SET retention_refs=retention_refs-1 WHERE revision_id=OLD.evidence_revision; UPDATE mb_release_accounting SET retention_refs=retention_refs+1 WHERE revision_id=NEW.evidence_revision; END;
+CREATE TRIGGER mb_retention_mb_recording_aliases_insert AFTER INSERT ON mb_recording_aliases BEGIN UPDATE mb_recording_accounting SET retention_refs=retention_refs+1 WHERE revision_id=NEW.evidence_revision; END;
+CREATE TRIGGER mb_retention_mb_recording_aliases_delete AFTER DELETE ON mb_recording_aliases BEGIN UPDATE mb_recording_accounting SET retention_refs=retention_refs-1 WHERE revision_id=OLD.evidence_revision; END;
+CREATE TRIGGER mb_retention_mb_recording_aliases_evidence_revision_update AFTER UPDATE OF evidence_revision ON mb_recording_aliases WHEN OLD.evidence_revision IS NOT NEW.evidence_revision BEGIN UPDATE mb_recording_accounting SET retention_refs=retention_refs-1 WHERE revision_id=OLD.evidence_revision; UPDATE mb_recording_accounting SET retention_refs=retention_refs+1 WHERE revision_id=NEW.evidence_revision; END;
+CREATE TRIGGER mb_retention_mb_release_tracks_insert AFTER INSERT ON mb_release_tracks BEGIN UPDATE mb_recording_accounting SET retention_refs=retention_refs+1 WHERE revision_id=NEW.recording_revision; END;
+CREATE TRIGGER mb_retention_mb_release_tracks_delete AFTER DELETE ON mb_release_tracks BEGIN UPDATE mb_recording_accounting SET retention_refs=retention_refs-1 WHERE revision_id=OLD.recording_revision; END;
+CREATE TRIGGER mb_retention_mb_release_tracks_recording_revision_update AFTER UPDATE OF recording_revision ON mb_release_tracks WHEN OLD.recording_revision IS NOT NEW.recording_revision BEGIN UPDATE mb_recording_accounting SET retention_refs=retention_refs-1 WHERE revision_id=OLD.recording_revision; UPDATE mb_recording_accounting SET retention_refs=retention_refs+1 WHERE revision_id=NEW.recording_revision; END;
+CREATE TRIGGER mb_retention_mb_album_reconciliations_insert AFTER INSERT ON mb_album_reconciliations BEGIN UPDATE mb_release_accounting SET retention_refs=retention_refs+1 WHERE revision_id=NEW.release_revision; END;
+CREATE TRIGGER mb_retention_mb_album_reconciliations_delete AFTER DELETE ON mb_album_reconciliations BEGIN UPDATE mb_release_accounting SET retention_refs=retention_refs-1 WHERE revision_id=OLD.release_revision; END;
+CREATE TRIGGER mb_retention_mb_album_reconciliations_release_revision_update AFTER UPDATE OF release_revision ON mb_album_reconciliations WHEN OLD.release_revision IS NOT NEW.release_revision BEGIN UPDATE mb_release_accounting SET retention_refs=retention_refs-1 WHERE revision_id=OLD.release_revision; UPDATE mb_release_accounting SET retention_refs=retention_refs+1 WHERE revision_id=NEW.release_revision; END;
+CREATE TRIGGER mb_retention_mb_publication_operations_insert AFTER INSERT ON mb_publication_operations BEGIN UPDATE mb_recording_accounting SET retention_refs=retention_refs+1 WHERE revision_id=NEW.accepted_recording_revision; UPDATE mb_release_accounting SET retention_refs=retention_refs+1 WHERE revision_id=NEW.accepted_release_revision; UPDATE mb_recording_accounting SET retention_refs=retention_refs+1 WHERE revision_id=NEW.result_recording_revision; UPDATE mb_release_accounting SET retention_refs=retention_refs+1 WHERE revision_id=NEW.result_release_revision; END;
+CREATE TRIGGER mb_retention_mb_publication_operations_delete AFTER DELETE ON mb_publication_operations BEGIN UPDATE mb_recording_accounting SET retention_refs=retention_refs-1 WHERE revision_id=OLD.accepted_recording_revision; UPDATE mb_release_accounting SET retention_refs=retention_refs-1 WHERE revision_id=OLD.accepted_release_revision; UPDATE mb_recording_accounting SET retention_refs=retention_refs-1 WHERE revision_id=OLD.result_recording_revision; UPDATE mb_release_accounting SET retention_refs=retention_refs-1 WHERE revision_id=OLD.result_release_revision; END;
+CREATE TRIGGER mb_retention_mb_publication_operations_accepted_recording_revision_update AFTER UPDATE OF accepted_recording_revision ON mb_publication_operations WHEN OLD.accepted_recording_revision IS NOT NEW.accepted_recording_revision BEGIN UPDATE mb_recording_accounting SET retention_refs=retention_refs-1 WHERE revision_id=OLD.accepted_recording_revision; UPDATE mb_recording_accounting SET retention_refs=retention_refs+1 WHERE revision_id=NEW.accepted_recording_revision; END;
+CREATE TRIGGER mb_retention_mb_publication_operations_accepted_release_revision_update AFTER UPDATE OF accepted_release_revision ON mb_publication_operations WHEN OLD.accepted_release_revision IS NOT NEW.accepted_release_revision BEGIN UPDATE mb_release_accounting SET retention_refs=retention_refs-1 WHERE revision_id=OLD.accepted_release_revision; UPDATE mb_release_accounting SET retention_refs=retention_refs+1 WHERE revision_id=NEW.accepted_release_revision; END;
+CREATE TRIGGER mb_retention_mb_publication_operations_result_recording_revision_update AFTER UPDATE OF result_recording_revision ON mb_publication_operations WHEN OLD.result_recording_revision IS NOT NEW.result_recording_revision BEGIN UPDATE mb_recording_accounting SET retention_refs=retention_refs-1 WHERE revision_id=OLD.result_recording_revision; UPDATE mb_recording_accounting SET retention_refs=retention_refs+1 WHERE revision_id=NEW.result_recording_revision; END;
+CREATE TRIGGER mb_retention_mb_publication_operations_result_release_revision_update AFTER UPDATE OF result_release_revision ON mb_publication_operations WHEN OLD.result_release_revision IS NOT NEW.result_release_revision BEGIN UPDATE mb_release_accounting SET retention_refs=retention_refs-1 WHERE revision_id=OLD.result_release_revision; UPDATE mb_release_accounting SET retention_refs=retention_refs+1 WHERE revision_id=NEW.result_release_revision; END;
+CREATE TRIGGER mb_retire_recording_parent_empty BEFORE DELETE ON mb_recording_evidence WHEN EXISTS(SELECT 1 FROM mb_recording_credits WHERE revision_id=OLD.revision_id) BEGIN SELECT RAISE(ABORT,'MusicBrainz parent requires bounded child retirement');END;
+CREATE TRIGGER mb_retire_release_parent_empty BEFORE DELETE ON mb_release_evidence WHEN EXISTS(SELECT 1 FROM mb_release_credits WHERE revision_id=OLD.revision_id) OR EXISTS(SELECT 1 FROM mb_release_group_types WHERE release_revision=OLD.revision_id) OR EXISTS(SELECT 1 FROM mb_release_media WHERE release_revision=OLD.revision_id) OR EXISTS(SELECT 1 FROM mb_release_tracks WHERE release_revision=OLD.revision_id) OR EXISTS(SELECT 1 FROM mb_track_credits WHERE release_revision=OLD.revision_id) BEGIN SELECT RAISE(ABORT,'MusicBrainz parent requires bounded child retirement');END;
+CREATE TRIGGER mb_retire_track_empty BEFORE DELETE ON mb_release_tracks WHEN EXISTS(SELECT 1 FROM mb_track_credits WHERE release_revision=OLD.release_revision AND track_id=OLD.track_id) BEGIN SELECT RAISE(ABORT,'MusicBrainz track requires bounded credit retirement');END;
+CREATE TRIGGER mb_retire_medium_empty BEFORE DELETE ON mb_release_media WHEN EXISTS(SELECT 1 FROM mb_release_tracks WHERE release_revision=OLD.release_revision AND medium_position=OLD.position) BEGIN SELECT RAISE(ABORT,'MusicBrainz medium requires bounded track retirement');END;
+
+CREATE INDEX mb_operations_terminal_age ON mb_publication_operations(finished_at,created_at,id) WHERE status IN('applied','stale','failed');
+CREATE INDEX mb_operations_terminal_order ON mb_publication_operations(created_at DESC,id DESC) WHERE status IN('applied','stale','failed');
+CREATE INDEX mb_operations_expired ON mb_publication_operations(lease_until,id) WHERE status IN('claimed','staged');
+CREATE INDEX mb_release_aliases_retire ON mb_release_aliases(observed_at,requested_id,evidence_revision);
+CREATE INDEX mb_recording_aliases_retire ON mb_recording_aliases(observed_at,requested_id,evidence_revision);
+
+CREATE INDEX mb_evidence_builds_owned_due ON mb_evidence_builds(expires_at,build_id) WHERE state='ready' AND owner_operation<>'';
+
+
+-- P2-52b: admitted catalog mutation custody; never query result storage.
+CREATE TABLE catalog_entity_mutations(
+ mutation_id TEXT PRIMARY KEY,
+ generation INTEGER NOT NULL DEFAULT 1 CHECK(generation>0),
+ family_id TEXT NOT NULL,
+ parent_mutation_id TEXT REFERENCES catalog_entity_mutations(mutation_id) ON DELETE RESTRICT,
+ owner_kind TEXT NOT NULL CHECK(owner_kind IN('title','administration','missing','library','merge','identity','mb-adoption')),
+ owner_id TEXT NOT NULL,
+ owner_generation INTEGER NOT NULL CHECK(owner_generation>0),
+ entity_id INTEGER REFERENCES catalog_entities(id) ON DELETE RESTRICT,
+ subject_id INTEGER NOT NULL,
+ public_id TEXT NOT NULL,
+ entity_kind INTEGER NOT NULL,
+ library_id INTEGER NOT NULL,
+ entity_incarnation TEXT NOT NULL,
+ publication_incarnation TEXT NOT NULL,
+ source_digest TEXT NOT NULL,
+ target_id INTEGER REFERENCES catalog_entities(id) ON DELETE RESTRICT,
+ target_subject_id INTEGER NOT NULL DEFAULT 0,
+ target_public_id TEXT NOT NULL DEFAULT '',
+ target_incarnation TEXT NOT NULL DEFAULT '',
+ target_publication_incarnation TEXT NOT NULL DEFAULT '',
+ mode TEXT NOT NULL CHECK(mode IN('remove','members','force','merge','adopt')),
+ phase TEXT NOT NULL CHECK(phase IN('admitted','children','drain','finalize','album-identity','artist-identity','terminal')),
+ status TEXT NOT NULL DEFAULT 'active' CHECK(status IN('active','blocked','terminal')),
+ outcome TEXT NOT NULL DEFAULT 'pending' CHECK(outcome IN('pending','removed','retained','merged','stale','blocked')),
+ cursor INTEGER NOT NULL DEFAULT 0,
+ current_child TEXT REFERENCES catalog_entity_mutations(mutation_id) ON DELETE RESTRICT,
+ current_key INTEGER NOT NULL DEFAULT 0,
+ provider TEXT NOT NULL DEFAULT '',
+ provider_kind TEXT NOT NULL DEFAULT '',
+ provider_id TEXT NOT NULL DEFAULT '',
+ accepted_revision TEXT NOT NULL DEFAULT '',
+ cause_operation TEXT NOT NULL DEFAULT '',
+ acknowledged INTEGER NOT NULL DEFAULT 0 CHECK(acknowledged IN(0,1)),
+ CHECK((status='terminal' AND phase='terminal' AND entity_id IS NULL AND target_id IS NULL AND outcome<>'pending') OR
+       (status<>'terminal' AND entity_id IS NOT NULL AND phase<>'terminal'))
+) STRICT;
+CREATE UNIQUE INDEX catalog_entity_mutations_subject ON catalog_entity_mutations(entity_id) WHERE status<>'terminal' AND mode<>'adopt';
+CREATE UNIQUE INDEX catalog_entity_mutations_owner ON catalog_entity_mutations(owner_kind,owner_id,owner_generation,subject_id,mode);
+CREATE INDEX catalog_entity_mutations_target ON catalog_entity_mutations(target_id,family_id) WHERE status<>'terminal';
+CREATE INDEX catalog_entity_mutations_runnable ON catalog_entity_mutations(status,owner_kind,mutation_id);
+CREATE INDEX catalog_entity_mutations_parent ON catalog_entity_mutations(parent_mutation_id);
+CREATE INDEX catalog_entity_mutations_family ON catalog_entity_mutations(family_id,status);
+CREATE TRIGGER catalog_entity_pin_free_delete BEFORE DELETE ON catalog_entities
+ WHEN EXISTS(SELECT 1 FROM mb_song_links WHERE item_id=OLD.id) OR EXISTS(SELECT 1 FROM mb_album_links WHERE album_id=OLD.id)
+ BEGIN SELECT RAISE(ABORT,'catalog entity still has MusicBrainz pins'); END;
+CREATE TRIGGER mb_song_links_catalog_mutation_insert BEFORE INSERT ON mb_song_links
+ WHEN EXISTS(WITH RECURSIVE ancestors(id,depth) AS (
+ SELECT NEW.item_id,0 UNION ALL SELECT e.parent_id,a.depth+1 FROM ancestors a JOIN catalog_entities e ON e.id=a.id WHERE e.parent_id IS NOT NULL AND a.depth<4)
+ SELECT 1 FROM ancestors a JOIN catalog_entity_mutations m ON (m.entity_id=a.id OR m.target_id=a.id) WHERE m.status<>'terminal') BEGIN SELECT RAISE(ABORT,'catalog entity mutation fences MusicBrainz acquisition'); END;
+CREATE TRIGGER mb_song_links_catalog_mutation_update BEFORE UPDATE ON mb_song_links
+ WHEN EXISTS(WITH RECURSIVE ancestors(id,depth) AS (
+ SELECT NEW.item_id,0 UNION ALL SELECT e.parent_id,a.depth+1 FROM ancestors a JOIN catalog_entities e ON e.id=a.id WHERE e.parent_id IS NOT NULL AND a.depth<4)
+ SELECT 1 FROM ancestors a JOIN catalog_entity_mutations m ON (m.entity_id=a.id OR m.target_id=a.id) WHERE m.status<>'terminal') BEGIN SELECT RAISE(ABORT,'catalog entity mutation fences MusicBrainz acquisition'); END;
+CREATE TRIGGER mb_album_links_catalog_mutation_insert BEFORE INSERT ON mb_album_links
+ WHEN EXISTS(WITH RECURSIVE ancestors(id,depth) AS (
+ SELECT NEW.album_id,0 UNION ALL SELECT e.parent_id,a.depth+1 FROM ancestors a JOIN catalog_entities e ON e.id=a.id WHERE e.parent_id IS NOT NULL AND a.depth<4)
+ SELECT 1 FROM ancestors a JOIN catalog_entity_mutations m ON (m.entity_id=a.id OR m.target_id=a.id) WHERE m.status<>'terminal') BEGIN SELECT RAISE(ABORT,'catalog entity mutation fences MusicBrainz acquisition'); END;
+CREATE TRIGGER mb_album_links_catalog_mutation_update BEFORE UPDATE ON mb_album_links
+ WHEN EXISTS(WITH RECURSIVE ancestors(id,depth) AS (
+ SELECT NEW.album_id,0 UNION ALL SELECT e.parent_id,a.depth+1 FROM ancestors a JOIN catalog_entities e ON e.id=a.id WHERE e.parent_id IS NOT NULL AND a.depth<4)
+ SELECT 1 FROM ancestors a JOIN catalog_entity_mutations m ON (m.entity_id=a.id OR m.target_id=a.id) WHERE m.status<>'terminal') BEGIN SELECT RAISE(ABORT,'catalog entity mutation fences MusicBrainz acquisition'); END;
+
+CREATE INDEX catalog_entity_mutations_entity_fk ON catalog_entity_mutations(entity_id);
+
+CREATE INDEX catalog_entity_mutations_target_fk ON catalog_entity_mutations(target_id);
+
+CREATE INDEX catalog_entity_mutations_child_fk ON catalog_entity_mutations(current_child);

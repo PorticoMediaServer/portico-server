@@ -10,24 +10,16 @@ var errMBBudget = errors.New("MusicBrainz evidence retention budget exhausted")
 
 // Admission charges payload bytes conservatively plus every normalized row.
 // Accepted catalog evidence is protected authority, outside this cache budget.
+// Base accounting triggers maintain the singleton in the source transaction;
+// the original aggregate remains the independent test oracle.
 // Aliases and live stages remain in the budget and cannot be evicted to admit
-// another request. This check runs after construction in the same transaction;
-// refusal rolls back the entire prospective revision, including its children.
+// another request. A construction refusal rolls back that prospective quantum;
+// prior committed, unaccepted build rows remain charged until bounded cleanup.
+// Final publication checks after all tentative pin/catalog/receipt writes and
+// rolls back that entire final transaction on refusal.
 func checkMBEvidenceBudget(ctx context.Context, tx *sql.Tx) error {
 	var releases, recordings, charge int64
-	e := tx.QueryRowContext(ctx, `WITH unaccepted_releases AS (
- SELECT r.revision_id,length(CAST(r.payload AS BLOB))*8+512*(1+
- (SELECT count(*) FROM mb_release_credits c WHERE c.revision_id=r.revision_id)+
- (SELECT count(*) FROM mb_release_group_types c WHERE c.release_revision=r.revision_id)+
- (SELECT count(*) FROM mb_release_media c WHERE c.release_revision=r.revision_id)+
- (SELECT count(*) FROM mb_release_tracks c WHERE c.release_revision=r.revision_id)+
- (SELECT count(*) FROM mb_track_credits c WHERE c.release_revision=r.revision_id)) AS charge
- FROM mb_release_evidence r WHERE NOT EXISTS(SELECT 1 FROM mb_album_links l WHERE l.release_revision=r.revision_id) AND NOT EXISTS(SELECT 1 FROM mb_song_links l WHERE l.release_revision=r.revision_id)
- ),unaccepted_recordings AS (
- SELECT r.revision_id,length(CAST(r.payload AS BLOB))*8+512*(1+(SELECT count(*) FROM mb_recording_credits c WHERE c.revision_id=r.revision_id)) AS charge
- FROM mb_recording_evidence r WHERE NOT EXISTS(SELECT 1 FROM mb_song_links l WHERE l.recording_revision=r.revision_id)
- AND NOT EXISTS(SELECT 1 FROM mb_release_tracks t WHERE t.recording_revision=r.revision_id AND (EXISTS(SELECT 1 FROM mb_album_links l WHERE l.release_revision=t.release_revision) OR EXISTS(SELECT 1 FROM mb_song_links l WHERE l.release_revision=t.release_revision)))
- ) SELECT (SELECT count(*) FROM unaccepted_releases),(SELECT count(*) FROM unaccepted_recordings),COALESCE((SELECT sum(charge) FROM unaccepted_releases),0)+COALESCE((SELECT sum(charge) FROM unaccepted_recordings),0)`).Scan(&releases, &recordings, &charge)
+	e := tx.QueryRowContext(ctx, `SELECT releases,recordings,charge FROM mb_evidence_totals WHERE singleton=1`).Scan(&releases, &recordings, &charge)
 	if e != nil {
 		return e
 	}

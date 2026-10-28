@@ -13,6 +13,14 @@ import (
 	"portico.local/server/internal/metadataprovider"
 )
 
+// A pin move is indivisible: accepting the new release and releasing the old
+// one can change up to 20,000 recording counters, each with a singleton update.
+// This is the explicitly approved SRV023 exception, not the normal 160-row turn.
+var mbPublicationAccountingPlan = dbwork.WritePlan{
+	Name: "musicbrainz-publication-accounting", Rows: 50_000, Pages: 4096, VMOps: 8_000_000,
+	Why: "one atomic old/new accepted-release pin move, each already capped at 10,000 tracks; exact final budget refusal must roll back the pin and its accounting together",
+}
+
 // resolveMBEntity maps a job's public id to its integer entity id. The worker
 // holds a lease on live catalogue state; a vanished entity reads as a stale
 // base, which the worker already releases cleanly.
@@ -60,48 +68,37 @@ func (s *Service) mbPublishSong(ctx context.Context, j mbJob, result metadatapro
 	if e != nil {
 		return errPublicationInput
 	}
-	gated, e := dbwork.Begin(ctx, s.db, dbwork.ClassBackgroundMedia)
+	proof, e := s.mbStageRecording(ctx, j, stage, observed)
 	if e != nil {
 		return e
 	}
-	tx := gated.Tx()
-	if e = s.activeMB(ctx, tx, j); e != nil {
-		gated.Rollback()
+	if e = s.mbAttachStaged(ctx, j, proof); e != nil {
 		return e
 	}
-	revision, e := saveMBRecordingEvidence(ctx, tx, stage, observed)
-	if e != nil {
-		gated.Rollback()
-		return e
-	}
-	if e = checkMBEvidenceBudget(ctx, tx); e != nil {
-		gated.Rollback()
-		return e
-	}
-	if _, e = tx.ExecContext(ctx, `UPDATE mb_publication_operations SET result_recording_revision=?,result_digest=?,status='staged' WHERE id=?`, revision, stage.digest, j.operation); e != nil {
-		gated.Rollback()
-		return e
-	}
-	if e = s.commitMBCurrent(ctx, gated, j); e != nil {
-		return e
-	}
+	revision := proof.revision
 	var gated2 *dbwork.Write
-	gated2, e = dbwork.Begin(ctx, s.db, dbwork.ClassBackgroundMedia)
+	gated2, e = dbwork.Begin(dbwork.WithPlan(ctx, mbPublicationAccountingPlan), s.db, dbwork.ClassBackgroundMedia)
 	if e != nil {
 		return e
 	}
-	tx = gated2.Tx()
+	tx := gated2.Tx()
 	defer gated2.Rollback()
 	if e = s.activeMB(ctx, tx, j); e != nil {
 		return e
 	}
-	r, digest, e := loadMBRecordingEvidence(ctx, tx, revision, false)
-	if e != nil || digest != stage.digest {
-		if e != nil {
-			return e
+	if e = compactcatalog.RequireEntityAcquirableTx(ctx, tx, j.base.Entity); e != nil {
+		if errors.Is(e, compactcatalog.ErrEntityMutating) {
+			return errTVDBStale
 		}
-		return errPublicationInput
+		return e
 	}
+	// Canonical input was compared with immutable normalized components
+	// outside the writer. This PK/generation probe grants no catalog authority:
+	// activeMB above still owns every live publication fence.
+	if e = mbEvidenceReadyTx(ctx, tx, proof); e != nil {
+		return e
+	}
+	r := stage.value
 	if e = mbIdentityAllowed(ctx, tx, j, r.ID); e != nil {
 		gated2.Rollback()
 		if errors.Is(e, ErrMBConflict) {
@@ -169,48 +166,45 @@ func (s *Service) mbPublishAlbum(ctx context.Context, j mbJob, result metadatapr
 	if e != nil {
 		return errPublicationInput
 	}
-	gated3, e := dbwork.Begin(ctx, s.db, dbwork.ClassBackgroundMedia)
+	proof, e := s.mbStageRelease(ctx, j, stage, observed)
 	if e != nil {
 		return e
 	}
-	tx := gated3.Tx()
-	if e = s.activeMB(ctx, tx, j); e != nil {
-		gated3.Rollback()
+	if e = s.mbAttachStaged(ctx, j, proof); e != nil {
 		return e
 	}
-	revision, e := saveMBReleaseEvidence(ctx, tx, stage, observed)
-	if e != nil {
-		gated3.Rollback()
-		return e
+	return s.mbPublishAlbumReady(ctx, j, stage, proof, observed)
+}
+
+// The complete final publication remains one indivisible writer transaction.
+// Keeping the typed/proven token explicit makes its acceptance hold measurable
+// without timing acquisition or the separately committed construction quanta.
+func (s *Service) mbPublishAlbumReady(ctx context.Context, j mbJob, stage mbReleaseEvidence, proof mbBuildProof, observed string) error {
+	if proof.kind != "release" || proof.digest != stage.digest {
+		return errPublicationInput
 	}
-	if e = checkMBEvidenceBudget(ctx, tx); e != nil {
-		gated3.Rollback()
-		return e
-	}
-	if _, e = tx.ExecContext(ctx, `UPDATE mb_publication_operations SET result_release_revision=?,result_digest=?,status='staged' WHERE id=?`, revision, stage.digest, j.operation); e != nil {
-		gated3.Rollback()
-		return e
-	}
-	if e = s.commitMBCurrent(ctx, gated3, j); e != nil {
-		return e
-	}
+	revision := proof.revision
+	var e error
 	var gated4 *dbwork.Write
-	gated4, e = dbwork.Begin(ctx, s.db, dbwork.ClassBackgroundMedia)
+	gated4, e = dbwork.Begin(dbwork.WithPlan(ctx, mbPublicationAccountingPlan), s.db, dbwork.ClassBackgroundMedia)
 	if e != nil {
 		return e
 	}
-	tx = gated4.Tx()
+	tx := gated4.Tx()
 	defer gated4.Rollback()
 	if e = s.activeMB(ctx, tx, j); e != nil {
 		return e
 	}
-	r, digest, e := loadMBReleaseEvidence(ctx, tx, revision, false)
-	if e != nil || digest != stage.digest {
-		if e != nil {
-			return e
+	if e = compactcatalog.RequireEntityAcquirableTx(ctx, tx, j.base.Entity); e != nil {
+		if errors.Is(e, compactcatalog.ErrEntityMutating) {
+			return errTVDBStale
 		}
-		return errPublicationInput
+		return e
 	}
+	if e = mbEvidenceReadyTx(ctx, tx, proof); e != nil {
+		return e
+	}
+	r := stage.value
 	if e = mbIdentityAllowed(ctx, tx, j, r.ID); e != nil {
 		gated4.Rollback()
 		if errors.Is(e, ErrMBConflict) {
@@ -250,6 +244,9 @@ func (s *Service) mbPublishAlbum(ctx context.Context, j mbJob, result metadatapr
 	if e = compactcatalog.SetFieldsTx(ctx, tx, entity, compactcatalog.Automatic, fields); e != nil {
 		return e
 	}
+	if e = catalog.EnqueueMBAdoptionTx(ctx, tx, entity, j.base.Incarnation, revision, r.ID, j.operation); e != nil {
+		return e
+	}
 	if e = s.finishMBPublication(ctx, tx, j, stage.requested, revision); e != nil {
 		return e
 	}
@@ -258,19 +255,9 @@ func (s *Service) mbPublishAlbum(ctx context.Context, j mbJob, result metadatapr
 	if e = checkMBEvidenceBudget(ctx, tx); e != nil {
 		return e
 	}
-	if e = s.commitMBCurrent(ctx, gated4, j); e != nil {
-		return e
-	}
-	// Joining moves tracks between albums, which the publication's own fence
-	// would read as a change under it, so it follows in its own transaction.
-	// Titles that cannot be one (their identities disagree) stay apart.
-	if e = dbwork.WithWriteTx(ctx, s.db, dbwork.ClassBackgroundMedia, func(tx *sql.Tx) error {
-		return joinMusicBrainzAlbumTx(ctx, tx, entity, r.ID, revision)
-	}); errors.Is(e, catalog.ErrNotMergeable) || errors.Is(e, compactcatalog.ErrIdentityConflict) || errors.Is(e, sql.ErrNoRows) {
-		return nil
-	}
-	return e
+	return s.commitMBCurrent(ctx, gated4, j)
 }
+
 func (s *Service) finishMBPublication(ctx context.Context, tx *sql.Tx, j mbJob, requested, revision string) error {
 	entity, e := resolveMBEntity(ctx, tx, j.id)
 	if e != nil {
@@ -312,47 +299,4 @@ func replaceMusicBrainzIdentityTx(ctx context.Context, tx *sql.Tx, entity int64,
 		return err
 	}
 	return compactcatalog.RecordProviderIdentityTx(ctx, tx, entity, compactcatalog.ProviderIdentity{Provider: "musicbrainz", Kind: kind, ID: id})
-}
-
-// joinMusicBrainzAlbumTx gives a just-published album its release identity
-// and its artist the release's single credited artist, and joins any other
-// album or artist of the library already known by the same identity into
-// them, as films and shows are joined. A compilation's several credited
-// artists name no one artist, so they join nothing.
-func joinMusicBrainzAlbumTx(ctx context.Context, tx *sql.Tx, album int64, release, revision string) error {
-	var live bool
-	if err := tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM catalog_entities WHERE id=? AND retired=0)`, album).Scan(&live); err != nil || !live {
-		return err
-	}
-	if err := replaceMusicBrainzIdentityTx(ctx, tx, album, "release", release); err != nil {
-		return err
-	}
-	if _, err := catalog.AdoptProviderIdentityTx(ctx, tx, album, compactcatalog.ProviderIdentity{Provider: "musicbrainz", Kind: "release", ID: release}); err != nil {
-		return err
-	}
-	var credits int
-	var artistID string
-	if err := tx.QueryRowContext(ctx, `SELECT count(*),COALESCE(max(artist_id),'') FROM mb_release_credits WHERE revision_id=?`, revision).Scan(&credits, &artistID); err != nil {
-		return err
-	}
-	var artist int64
-	if err := tx.QueryRowContext(ctx, `SELECT artist_id FROM catalog_albums WHERE entity_id=?`, album).Scan(&artist); err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			return nil
-		}
-		return err
-	}
-	if credits != 1 || artistID == "" || artist == 0 {
-		return nil
-	}
-	if err := compactcatalog.RecordProviderIdentityTx(ctx, tx, artist, compactcatalog.ProviderIdentity{Provider: "musicbrainz", Kind: "artist", ID: artistID}); err != nil {
-		if errors.Is(err, compactcatalog.ErrIdentityConflict) {
-			// The local artist already stands for another MusicBrainz artist
-			// (two artists who share a name): nothing is joined.
-			return nil
-		}
-		return err
-	}
-	_, err := catalog.AdoptProviderIdentityTx(ctx, tx, artist, compactcatalog.ProviderIdentity{Provider: "musicbrainz", Kind: "artist", ID: artistID})
-	return err
 }

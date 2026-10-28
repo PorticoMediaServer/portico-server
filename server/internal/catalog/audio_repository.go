@@ -255,6 +255,9 @@ func settleEmptied(ctx context.Context, tx *sql.Tx, id int64, checks []string) e
 // page, link or request that already holds the first id reaches it there
 // instead of a 404. A retired container keeps its own id (and its state).
 func settleEmptiedInto(ctx context.Context, tx *sql.Tx, id, into int64, checks []string) error {
+	if held, err := entityMutationHeldTx(ctx, tx, id); err != nil || held {
+		return err
+	}
 	blocked, err := anyPresent(ctx, tx, id, checks)
 	if err != nil {
 		return err
@@ -316,7 +319,15 @@ func (s *Service) artist(ctx context.Context, tx *sql.Tx, library int64, name st
 	return id, compactcatalog.SetFactsTx(ctx, tx, id, map[string]any{"local_key": key})
 }
 
-func (s *Service) commitAudio(ctx context.Context, tx *sql.Tx, library, kind, root, asset, path string, f assets.Facts) error {
+func (s *Service) commitAudio(ctx context.Context, tx *sql.Tx, library, kind, root, asset, path string, f assets.Facts) (err error) {
+	_, outer := ctx.Value(audioMergeKey{}).(*audioMergeAdmissions)
+	ctx, admissions := withAudioMergeAdmissions(ctx)
+	defer func() {
+		if err == nil && !outer {
+			err = finishAudioMergeAdmissionsTx(ctx, tx, admissions)
+		}
+	}()
+
 	if kind == "music" && len(f.MusicCueTracks) > 0 {
 		c := f.MusicCueTracks[0]
 		if _, e := tx.ExecContext(ctx, `INSERT OR IGNORE INTO music_virtual_tracks(asset_id,ordinal,entity_id,start_seconds,end_seconds) SELECT ?,1,e.id,?,? FROM catalog_asset_links l JOIN catalog_assets a ON a.id=l.asset_id JOIN catalog_entities e ON e.id=l.entity_id JOIN catalog_libraries cl ON cl.id=e.library_id WHERE a.token=? AND cl.library_id=? AND e.kind=7 AND NOT EXISTS(SELECT 1 FROM music_virtual_tracks v WHERE v.asset_id=a.token) ORDER BY e.id LIMIT 1`, asset, c.Start, c.End, asset, library); e != nil {
@@ -371,6 +382,9 @@ func (s *Service) commitAudioTrack(ctx context.Context, tx *sql.Tx, library, kin
 	}
 	var existingItem int64
 	if err := tx.QueryRow(`SELECT l.entity_id FROM catalog_asset_links l INDEXED BY catalog_asset_links_asset JOIN catalog_entities i ON i.id=l.entity_id WHERE l.asset_id=? AND i.library_id=? LIMIT 1`, assetID, handle).Scan(&existingItem); err != nil && !errors.Is(err, sql.ErrNoRows) {
+		return err
+	}
+	if err = compactcatalog.RequireEntityAcquirableTx(ctx, tx, existingItem); err != nil {
 		return err
 	}
 	projected, errProjection := audioProjection(tx, library, existingItem, f)

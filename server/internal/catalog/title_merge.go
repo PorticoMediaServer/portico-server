@@ -27,6 +27,9 @@ var ErrNotMergeable = requestinput.New("titles of different kinds or libraries c
 // other's songs, files or albums (container_merge.go); a film, episode,
 // track or book part takes the other's files as versions.
 func MergeTitlesTx(ctx context.Context, tx *sql.Tx, from, into int64) error {
+	if err := requireCompleteMergeTx(ctx, tx, from, into); err != nil {
+		return err
+	}
 	if from == into {
 		return nil
 	}
@@ -60,6 +63,15 @@ func MergeTitlesTx(ctx context.Context, tx *sql.Tx, from, into int64) error {
 // absorbTx moves everything that hangs off one entity onto another of the
 // same kind and deletes the first. Children must already have been moved.
 func absorbTx(ctx context.Context, tx *sql.Tx, from, into int64, kind compactcatalog.Kind) error {
+	if err := compactcatalog.RequireNoEntityMBPinsTx(ctx, tx, from); err != nil {
+		return err
+	}
+	if err := compactcatalog.RequireEntityAcquirableTx(ctx, tx, from); err != nil {
+		return err
+	}
+	if err := compactcatalog.RequireEntityAcquirableTx(ctx, tx, into); err != nil {
+		return err
+	}
 	if err := moveChannelPlaysTx(ctx, tx, from, into); err != nil {
 		return err
 	}
@@ -451,6 +463,13 @@ func KeepApartTx(ctx context.Context, tx *sql.Tx, entity int64) error {
 // carries the same identity is the same title: it is merged into this one,
 // which keeps its id. It reports how many were merged.
 func AdoptProviderIdentityTx(ctx context.Context, tx *sql.Tx, entity int64, p compactcatalog.ProviderIdentity) (int, error) {
+	var kind compactcatalog.Kind
+	if err := tx.QueryRowContext(ctx, `SELECT kind FROM catalog_entities WHERE id=?`, entity).Scan(&kind); err != nil {
+		return 0, err
+	}
+	if p.Provider != "" && p.ID != "" && (kind == compactcatalog.Album || kind == compactcatalog.Artist || kind == compactcatalog.Track) {
+		return 0, enqueueIdentityAdoptionTx(ctx, tx, entity, p)
+	}
 	if p.Provider == "" || p.ID == "" {
 		return 0, nil
 	}
@@ -483,66 +502,60 @@ func AdoptProviderIdentityTx(ctx context.Context, tx *sql.Tx, entity int64, p co
 var titleMergePlan = dbwork.WritePlan{Name: "title-merge-batch", Rows: 1024, Pages: 512, VMOps: 1_000_000, Why: "a season moves with its episodes' derived rows in one batch; splitting a season's fan-out is writer-discipline item H (parent cascades)"}
 
 func (s *Service) MergeTitles(ctx context.Context, from, into string, authorize func(*sql.Tx) error) error {
-	ctx = dbwork.WithPlan(ctx, titleMergePlan)
 	if from == "" || into == "" || from == into || authorize == nil {
 		return ErrAdminQuery
 	}
+	ctx = MutationWriteContext(ctx)
+	var ref compactcatalog.MutationRef
+	owner := from + ">" + into
 	for {
-		done := false
+		var step compactcatalog.MutationStep
 		err := dbwork.WithWriteTx(ctx, s.db, dbwork.ClassFrom(ctx, dbwork.ClassInteractive), func(tx *sql.Tx) error {
-			done = false
-			if err := authorize(tx); err != nil {
-				return err
+			if e := authorize(tx); e != nil {
+				return e
 			}
-			a, err := entityid.Resolve(ctx, tx, from)
-			if err != nil {
-				return err
-			}
-			b, err := entityid.Resolve(ctx, tx, into)
-			if err != nil {
-				return err
-			}
-			if a == b {
-				done = true
-				return nil
-			}
-			var library string
-			if err = tx.QueryRowContext(ctx, `SELECT cl.library_id FROM catalog_entities e JOIN catalog_libraries cl ON cl.id=e.library_id WHERE e.id=? AND cl.retired=0`, b).Scan(&library); err != nil {
-				return err
-			}
-			var fromKind, intoKind compactcatalog.Kind
-			var fromLibrary, intoLibrary int64
-			if err = tx.QueryRowContext(ctx, `SELECT library_id,kind FROM catalog_entities WHERE id=?`, a).Scan(&fromLibrary, &fromKind); err != nil {
-				return err
-			}
-			if err = tx.QueryRowContext(ctx, `SELECT library_id,kind FROM catalog_entities WHERE id=?`, b).Scan(&intoLibrary, &intoKind); err != nil {
-				return err
-			}
-			if fromKind == compactcatalog.Show && intoKind == compactcatalog.Show && fromLibrary == intoLibrary {
-				more, err := mergeShowChildrenTx(ctx, tx, a, b, showMergeBatch)
-				if err != nil {
-					return err
-				}
-				if more {
+			if ref.ID == "" {
+				e := tx.QueryRowContext(ctx, `SELECT mutation_id,generation FROM catalog_entity_mutations WHERE owner_kind='merge' AND owner_id=? AND parent_mutation_id IS NULL AND status<>'terminal' LIMIT 1`, owner).Scan(&ref.ID, &ref.Generation)
+				if e == nil {
+					step = compactcatalog.PendingMutationStep()
 					return nil
 				}
-				err = absorbTx(ctx, tx, a, b, compactcatalog.Show)
-			} else {
-				err = MergeTitlesTx(ctx, tx, a, b)
+				if !errors.Is(e, sql.ErrNoRows) {
+					return e
+				}
+				var a, b int64
+				// Exact public IDs, never a redirect to a changed source/survivor.
+				if e = tx.QueryRowContext(ctx, `SELECT id FROM catalog_entities WHERE public_id=pid_blob(?)`, from).Scan(&a); e != nil {
+					return e
+				}
+				if e = tx.QueryRowContext(ctx, `SELECT e.id FROM catalog_entities e JOIN catalog_libraries cl ON cl.id=e.library_id AND cl.retired=0 WHERE e.public_id=pid_blob(?)`, into).Scan(&b); e != nil {
+					return e
+				}
+				var generation int64
+				if e = tx.QueryRowContext(ctx, `SELECT COALESCE(max(owner_generation),0)+1 FROM catalog_entity_mutations WHERE owner_kind='merge' AND owner_id=?`, owner).Scan(&generation); e != nil {
+					return e
+				}
+				ref, e = compactcatalog.BeginEntityMutationTx(ctx, tx, compactcatalog.MutationIntent{Entity: a, Target: b, OwnerKind: "merge", OwnerID: owner, OwnerGeneration: generation, Mode: "merge"})
+				step = compactcatalog.PendingMutationStep()
+				return e
 			}
-			if err != nil {
-				return err
-			}
-			done = true
-			_, err = tx.ExecContext(ctx, `UPDATE library_revisions SET revision=revision+1 WHERE library_id=?`, library)
-			return err
+			var e error
+			step, e = MergeTitlesStepTx(ctx, tx, ref)
+			return e
 		})
-		if err != nil || done {
+		if err != nil {
 			return err
 		}
-		if err = ctx.Err(); err != nil {
-			return err
+		if step.Complete {
+			if step.Outcome == "stale" {
+				return compactcatalog.ErrMutationStale
+			}
+			return nil
 		}
+		if !step.Progressed {
+			return compactcatalog.ErrEntityMutating
+		}
+		dbwork.Yield(ctx)
 	}
 }
 

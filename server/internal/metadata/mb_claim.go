@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"portico.local/server/internal/compactcatalog"
 	"portico.local/server/internal/dbwork"
 	"portico.local/server/internal/identity"
 )
@@ -93,10 +94,20 @@ func readMBHints(ctx context.Context, tx *sql.Tx, entity int64) (map[string]stri
 	return values, problem, rows.Err()
 }
 func readMBBase(ctx context.Context, tx *sql.Tx, kind, id string) (mbBase, error) {
+	var subject int64
+	if err := tx.QueryRowContext(ctx, `SELECT e.id FROM catalog_entities e JOIN catalog_libraries cl ON cl.id=e.library_id AND cl.retired=0 WHERE e.public_id=pid_blob(?)`, id).Scan(&subject); err != nil {
+		return mbBase{}, err
+	}
+	if err := compactcatalog.RequireEntityAcquirableTx(ctx, tx, subject); err != nil {
+		if errors.Is(err, compactcatalog.ErrEntityMutating) {
+			return mbBase{}, errTVDBStale
+		}
+		return mbBase{}, err
+	}
 	b := mbBase{Sources: []observedSource{}, Artists: []mbLocalArtist{}, Hints: map[string]string{}}
 	var e error
 	if kind == "album" {
-		e = tx.QueryRowContext(ctx, `SELECT cl.library_id,h.incarnation,h.revision,e.title,ea.title,h.membership_revision,COALESCE(l.release_revision,''),COALESCE(l.release_id,''),e.id FROM catalog_entities e JOIN catalog_albums ab ON ab.entity_id=e.id JOIN mb_album_heads h ON h.album_id=e.id JOIN catalog_entities ea ON ea.id=ab.artist_id AND ea.kind=5 AND ea.library_id=e.library_id JOIN catalog_libraries cl ON cl.id=e.library_id JOIN libraries lib ON lib.id=cl.library_id AND lib.kind='music' LEFT JOIN mb_album_links l ON l.album_id=e.id WHERE e.public_id=pid_blob(?) AND e.kind=6`, id).Scan(&b.Library, &b.Incarnation, &b.Revision, &b.Title, &b.Artist, &b.MembershipRevision, &b.ReleaseRevision, &b.ReleaseID, &b.Entity)
+		e = tx.QueryRowContext(ctx, `SELECT cl.library_id,h.incarnation,h.revision,e.title,ea.title,h.membership_revision,COALESCE(l.release_revision,''),COALESCE(l.release_id,''),e.id FROM catalog_entities e JOIN catalog_albums ab ON ab.entity_id=e.id JOIN mb_album_heads h ON h.album_id=e.id JOIN catalog_entities ea ON ea.id=ab.artist_id AND ea.kind=5 AND ea.library_id=e.library_id JOIN catalog_libraries cl ON cl.id=e.library_id AND cl.retired=0 JOIN libraries lib ON lib.id=cl.library_id AND lib.kind='music' LEFT JOIN mb_album_links l ON l.album_id=e.id WHERE e.public_id=pid_blob(?) AND e.kind=6`, id).Scan(&b.Library, &b.Incarnation, &b.Revision, &b.Title, &b.Artist, &b.MembershipRevision, &b.ReleaseRevision, &b.ReleaseID, &b.Entity)
 		if e != nil {
 			return b, e
 		}
@@ -115,7 +126,7 @@ func readMBBase(ctx context.Context, tx *sql.Tx, kind, id string) (mbBase, error
 	} else if kind == "song" {
 		// Matching searches with the song's own title, never an owner's display
 		// override: a locked owner title keeps the automatic value beside it.
-		e = tx.QueryRowContext(ctx, `SELECT cl.library_id,h.incarnation,h.revision,COALESCE((SELECT o.automatic_value FROM metadata_owner_fields o WHERE o.kind='item' AND o.entity_id=e.id AND o.field='title' AND o.locked=1 AND o.automatic_value<>''),e.title),ph.incarnation,ph.source_revision,ph.identity_revision,ph.metadata_revision,pid(ae.public_id),ah.incarnation,ah.revision,ah.membership_revision,cs.disc_number,cs.track_number,COALESCE(sl.recording_revision,''),COALESCE(sl.recording_id,''),COALESCE(al.release_revision,''),COALESCE(al.release_id,''),e.id,ae.id FROM catalog_entities e JOIN catalog_songs cs ON cs.entity_id=e.id JOIN catalog_libraries cl ON cl.id=e.library_id JOIN libraries lib ON lib.id=cl.library_id AND lib.kind='music' JOIN mb_song_heads h ON h.item_id=e.id JOIN metadata_publication_heads ph ON ph.item_id=e.id JOIN catalog_entities ae ON ae.id=cs.album_id AND ae.kind=6 JOIN mb_album_heads ah ON ah.album_id=ae.id LEFT JOIN mb_song_links sl ON sl.item_id=e.id LEFT JOIN mb_album_links al ON al.album_id=ae.id WHERE e.public_id=pid_blob(?) AND e.kind=7`, id).Scan(&b.Library, &b.Incarnation, &b.Revision, &b.Title, &b.ItemIncarnation, &b.ItemSource, &b.ItemIdentity, &b.ItemMetadata, &b.Album, &b.AlbumIncarnation, &b.AlbumRevision, &b.MembershipRevision, &b.Disc, &b.Position, &b.RecordingRevision, &b.RecordingID, &b.ReleaseRevision, &b.ReleaseID, &b.Entity, &b.AlbumID)
+		e = tx.QueryRowContext(ctx, `SELECT cl.library_id,h.incarnation,h.revision,COALESCE((SELECT o.automatic_value FROM metadata_owner_fields o WHERE o.kind='item' AND o.entity_id=e.id AND o.field='title' AND o.locked=1 AND o.automatic_value<>''),e.title),ph.incarnation,ph.source_revision,ph.identity_revision,ph.metadata_revision,pid(ae.public_id),ah.incarnation,ah.revision,ah.membership_revision,cs.disc_number,cs.track_number,COALESCE(sl.recording_revision,''),COALESCE(sl.recording_id,''),COALESCE(al.release_revision,''),COALESCE(al.release_id,''),e.id,ae.id FROM catalog_entities e JOIN catalog_songs cs ON cs.entity_id=e.id JOIN catalog_libraries cl ON cl.id=e.library_id AND cl.retired=0 JOIN libraries lib ON lib.id=cl.library_id AND lib.kind='music' JOIN mb_song_heads h ON h.item_id=e.id JOIN metadata_publication_heads ph ON ph.item_id=e.id JOIN catalog_entities ae ON ae.id=cs.album_id AND ae.kind=6 JOIN mb_album_heads ah ON ah.album_id=ae.id LEFT JOIN mb_song_links sl ON sl.item_id=e.id LEFT JOIN mb_album_links al ON al.album_id=ae.id WHERE e.public_id=pid_blob(?) AND e.kind=7`, id).Scan(&b.Library, &b.Incarnation, &b.Revision, &b.Title, &b.ItemIncarnation, &b.ItemSource, &b.ItemIdentity, &b.ItemMetadata, &b.Album, &b.AlbumIncarnation, &b.AlbumRevision, &b.MembershipRevision, &b.Disc, &b.Position, &b.RecordingRevision, &b.RecordingID, &b.ReleaseRevision, &b.ReleaseID, &b.Entity, &b.AlbumID)
 		if e != nil {
 			return b, e
 		}
@@ -251,7 +262,7 @@ func advanceMBAlbumHints(ctx context.Context, tx *sql.Tx, id string) (bool, erro
 // the provider not cooling down, and its library's MusicBrainz policy enabled.
 // mb_jobs.entity_id is the integer catalogue id; the album/song branches join
 // it to catalog_entities (kinds 6/7) and the library chain.
-const mbClaimable = `status='pending' AND next_attempt<=? AND lease_until<=? AND COALESCE((SELECT next_attempt FROM metadata_provider_cooldowns WHERE provider='musicbrainz'),'')<=? AND ((mb_jobs.kind='album' AND EXISTS(SELECT 1 FROM catalog_entities e JOIN catalog_albums ab ON ab.entity_id=e.id JOIN catalog_libraries cl ON cl.id=e.library_id JOIN libraries l ON l.id=cl.library_id AND l.kind='music' JOIN mb_provider_policies p ON p.library_id=l.id AND p.enabled=1 AND p.algorithm='mb-exact-identity-v1' WHERE e.kind=6 AND e.id=mb_jobs.entity_id)) OR (mb_jobs.kind='song' AND EXISTS(SELECT 1 FROM catalog_entities e JOIN catalog_songs cs ON cs.entity_id=e.id JOIN catalog_libraries cl ON cl.id=e.library_id JOIN libraries l ON l.id=cl.library_id AND l.kind='music' JOIN mb_provider_policies p ON p.library_id=l.id AND p.enabled=1 AND p.algorithm='mb-exact-identity-v1' WHERE e.kind=7 AND e.id=mb_jobs.entity_id)))`
+const mbClaimable = `NOT EXISTS(WITH RECURSIVE ancestors(id,depth) AS (SELECT mb_jobs.entity_id,0 UNION ALL SELECT e.parent_id,a.depth+1 FROM ancestors a JOIN catalog_entities e ON e.id=a.id WHERE e.parent_id IS NOT NULL AND a.depth<4) SELECT 1 FROM ancestors a JOIN catalog_entity_mutations m ON (m.entity_id=a.id OR m.target_id=a.id) WHERE m.status<>'terminal') AND status='pending' AND next_attempt<=? AND lease_until<=? AND COALESCE((SELECT next_attempt FROM metadata_provider_cooldowns WHERE provider='musicbrainz'),'')<=? AND ((mb_jobs.kind='album' AND EXISTS(SELECT 1 FROM catalog_entities e JOIN catalog_albums ab ON ab.entity_id=e.id JOIN catalog_libraries cl ON cl.id=e.library_id AND cl.retired=0 JOIN libraries l ON l.id=cl.library_id AND l.kind='music' JOIN mb_provider_policies p ON p.library_id=l.id AND p.enabled=1 AND p.algorithm='mb-exact-identity-v1' WHERE e.kind=6 AND e.id=mb_jobs.entity_id)) OR (mb_jobs.kind='song' AND EXISTS(SELECT 1 FROM catalog_entities e JOIN catalog_songs cs ON cs.entity_id=e.id JOIN catalog_libraries cl ON cl.id=e.library_id AND cl.retired=0 JOIN libraries l ON l.id=cl.library_id AND l.kind='music' JOIN mb_provider_policies p ON p.library_id=l.id AND p.enabled=1 AND p.algorithm='mb-exact-identity-v1' WHERE e.kind=7 AND e.id=mb_jobs.entity_id)))`
 
 // claimMB leases the next due job. Finding it can mean passing over every job
 // of a library whose policy is off, so the search runs on a background read
@@ -421,6 +432,18 @@ func (s *Service) commitMBCurrent(ctx context.Context, gatedArg *dbwork.Write, j
 	tx := gatedArg.Tx()
 	if e := ctx.Err(); e != nil {
 		gatedArg.Rollback()
+		return e
+	}
+	var entity int64
+	if e := tx.QueryRowContext(ctx, `SELECT e.id FROM catalog_entities e JOIN catalog_libraries cl ON cl.id=e.library_id AND cl.retired=0 WHERE e.public_id=pid_blob(?)`, j.id).Scan(&entity); e != nil {
+		gatedArg.Rollback()
+		return errTVDBStale
+	}
+	if e := compactcatalog.RequireMBPublicationMutationCurrentTx(ctx, tx, entity, j.operation); e != nil {
+		gatedArg.Rollback()
+		if errors.Is(e, compactcatalog.ErrEntityMutating) {
+			return errTVDBStale
+		}
 		return e
 	}
 	var current int

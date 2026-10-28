@@ -110,7 +110,46 @@ func TitleMembersTx(ctx context.Context, tx *sql.Tx, entity int64) ([]int64, err
 // DeleteTitleMembersTx removes up to limit of the playable titles under an
 // entity and reports how many remain. A long delete is several short
 // transactions, so nothing else waits on it for long.
-func DeleteTitleMembersTx(ctx context.Context, tx *sql.Tx, item string, limit int) (remaining int, err error) {
+func DeleteTitleMembersTx(ctx context.Context, tx *sql.Tx, item string, limit int) (int, error) {
+	if limit == 0 {
+		return deleteEmptyTitleMembersTx(ctx, tx, item, 0)
+	}
+	var ref compactcatalog.MutationRef
+	err := tx.QueryRowContext(ctx, `SELECT mutation_id,generation FROM catalog_entity_mutations WHERE owner_kind='title' AND owner_id=? AND parent_mutation_id IS NULL AND status<>'terminal' ORDER BY mutation_id LIMIT 1`, item).Scan(&ref.ID, &ref.Generation)
+	if err == nil {
+		step, e := RemoveTitleStepTx(ctx, tx, ref)
+		if step.More {
+			return 1, e
+		}
+		return 0, e
+	}
+	if !errors.Is(err, sql.ErrNoRows) {
+		return 0, err
+	}
+	var entity int64
+	var playable bool
+	err = tx.QueryRowContext(ctx, `SELECT e.id,(k.playable=1 OR k.id IN(20,21)) FROM catalog_entities e JOIN catalog_kinds k ON k.id=e.kind WHERE e.public_id=pid_blob(?)`, item).Scan(&entity, &playable)
+	if errors.Is(err, sql.ErrNoRows) {
+		return 0, nil
+	}
+	if err != nil {
+		return 0, err
+	}
+	mode := "members"
+	if playable {
+		mode = "remove"
+	}
+	// Each new command gets its own owner generation; retries use the active
+	// root above. A restored public identity never replays a terminal deletion.
+	var generation int64
+	if err = tx.QueryRowContext(ctx, `SELECT COALESCE(max(owner_generation),0)+1 FROM catalog_entity_mutations WHERE owner_kind='title' AND owner_id=?`, item).Scan(&generation); err != nil {
+		return 0, err
+	}
+	_, err = compactcatalog.BeginEntityMutationTx(ctx, tx, compactcatalog.MutationIntent{Entity: entity, OwnerKind: "title", OwnerID: item, OwnerGeneration: generation, Mode: mode})
+	return 1, err
+}
+
+func deleteEmptyTitleMembersTx(ctx context.Context, tx *sql.Tx, item string, limit int) (remaining int, err error) {
 	entity, err := entityid.Resolve(ctx, tx, item)
 	if errors.Is(err, entityid.ErrNotFound) {
 		return 0, nil
@@ -180,7 +219,7 @@ var titleRemovalPlan = dbwork.WritePlan{Name: "title-removal", Rows: 8192, Pages
 // title's identities. Files on disk are not touched: the owner's delete route
 // removes those first.
 func (s *Service) RemoveTitle(ctx context.Context, item string) error {
-	ctx = dbwork.WithPlan(ctx, titleRemovalPlan)
+	ctx = MutationWriteContext(ctx)
 	for {
 		remaining := 0
 		err := dbwork.WithWriteTx(ctx, s.db, dbwork.ClassFrom(ctx, dbwork.ClassInteractive), func(tx *sql.Tx) error {
@@ -191,5 +230,6 @@ func (s *Service) RemoveTitle(ctx context.Context, item string) error {
 		if err != nil || remaining == 0 {
 			return err
 		}
+		dbwork.Yield(ctx)
 	}
 }
