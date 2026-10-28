@@ -66,7 +66,7 @@ func (s *Service) RemoveLibrary(ctx context.Context, id, name string, expected i
 			`DELETE FROM inventory_source_active WHERE source_id IN(SELECT id FROM library_sources WHERE library_id=?)`,
 			`UPDATE library_sources SET enabled=0,health='removing',generation=generation+1,next_scan_at='' WHERE library_id=?`,
 			`UPDATE library_revisions SET revision=revision+1 WHERE library_id=?`,
-			`UPDATE library_configuration SET revision=revision+1 WHERE library_id=?`,
+			`UPDATE library_configuration SET revision=revision+1,metadata_revision=metadata_revision+1 WHERE library_id=?`,
 			`DELETE FROM catalog_removal_progress WHERE kind='library' AND target=?`,
 		} {
 			if _, err := tx.ExecContext(ctx, q, id); err != nil {

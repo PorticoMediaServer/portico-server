@@ -18,7 +18,7 @@ const (
 )
 
 func (s *Service) mbReconcileAlbums(ctx context.Context) (bool, error) {
-	// The settled-set walk must not hold the writer gate. Capture only a key;
+	// The maintained due index omits settled and noncurrent pins. Capture only a key;
 	// all facts used by reconciliation are read again after taking the gate.
 	// Albums take turns: the pick resumes after the album the last turn
 	// served and wraps to the lowest id, so an album whose membership keeps
@@ -27,7 +27,7 @@ func (s *Service) mbReconcileAlbums(ctx context.Context) (bool, error) {
 	after := s.mbReconcileAfter.Load()
 	e := dbwork.WithReadSnapshot(dbwork.WithClass(ctx, dbwork.ClassBackgroundMedia), s.db, func(readCtx context.Context) error {
 		pick := func(after int64) error {
-			return dbwork.QueryRow(readCtx, s.db, `SELECT c.album_id FROM mb_album_reconciliations c JOIN mb_album_heads h ON h.album_id=c.album_id JOIN mb_album_links l ON l.album_id=c.album_id AND l.release_revision=c.release_revision WHERE (c.status='pending' OR c.membership_revision<>h.membership_revision) AND c.album_id>? ORDER BY c.album_id LIMIT 1`, after).Scan(&pickedAlbum)
+			return dbwork.QueryRow(readCtx, s.db, `SELECT c.album_id FROM mb_album_reconciliations c INDEXED BY mb_album_reconciliations_pending JOIN mb_album_heads h ON h.album_id=c.album_id JOIN mb_album_links l ON l.album_id=c.album_id AND l.release_revision=c.release_revision WHERE c.status='pending' AND c.current_pin=1 AND c.album_id>? ORDER BY c.album_id LIMIT 1`, after).Scan(&pickedAlbum)
 		}
 		err := pick(after)
 		if errors.Is(err, sql.ErrNoRows) && after > 0 {

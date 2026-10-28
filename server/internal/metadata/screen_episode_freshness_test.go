@@ -63,6 +63,7 @@ func episodeFreshnessFixture(t *testing.T) (*Service, *sql.DB, *episodeFixturePr
 	s.screenProviders = map[string]ScreenProvider{"tmdb": p}
 	settle := func() {
 		t.Helper()
+		settleScreenFanout(t, s)
 		for n := 0; n < 200; n++ {
 			var due int
 			if err := db.QueryRow(`SELECT count(*) FROM screen_metadata_work WHERE library_id='tv' AND status IN('pending','searching','pending_children')`).Scan(&due); err != nil {
