@@ -9217,8 +9217,8 @@ CREATE TABLE reading_attribution_members(
  CHECK(numbered_order=0 OR number_value=0)) WITHOUT ROWID, STRICT;
 CREATE INDEX reading_attribution_issue_date ON reading_attribution_members(library_id,generation,publication_type,series_id,issue_date,item_id);
 CREATE INDEX reading_attribution_series_seek ON reading_attribution_members(library_id,generation,series_id,numbered_order,number_value,sort_key COLLATE BINARY,item_id);
-CREATE INDEX reading_attribution_author_facet ON reading_attribution_members(library_id,generation,author_key,item_id);
-CREATE INDEX reading_attribution_series_facet ON reading_attribution_members(library_id,generation,series_key,item_id);
+CREATE INDEX reading_attribution_author_facet ON reading_attribution_members(library_id,generation,author_key COLLATE BINARY,author_value COLLATE BINARY,item_id);
+CREATE INDEX reading_attribution_series_facet ON reading_attribution_members(library_id,generation,series_key COLLATE BINARY,series_value COLLATE BINARY,item_id);
 CREATE TRIGGER reading_attribution_namespace_immutable BEFORE UPDATE OF namespace,library_id ON reading_attribution_state BEGIN
  SELECT RAISE(ABORT,'reading attribution namespace is immutable'); END;
 CREATE TRIGGER reading_attribution_ready_insert BEFORE INSERT ON reading_attribution_members

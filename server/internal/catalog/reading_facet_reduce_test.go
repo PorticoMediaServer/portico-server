@@ -43,8 +43,9 @@ func (in *fixtureFacetInput) next(_ *Service, b *readingFacetBudget) (readingFac
 	}
 	return readingFacetMember{}, false, false, false, nil
 }
-func (in *fixtureFacetInput) reset()     { in.at, in.work = 0, 0 }
-func (in *fixtureFacetInput) bytes() int { return 64 } // fixture corpus is source data, not reducer state
+func (in *fixtureFacetInput) reset()           { in.at, in.work = 0, 0 }
+func (in *fixtureFacetInput) scalarBytes() int { return 0 }
+func (in *fixtureFacetInput) bytes() int       { return 64 } // fixture corpus is source data, not reducer state
 func fixtureFacetMembers(labels []string, counts []int) []readingFacetMember {
 	var rows []readingFacetMember
 	for i, label := range labels {
@@ -208,7 +209,7 @@ func TestReadingFacetSQLInputRequiresProductionOrderedIndex(t *testing.T) {
 		_, err := s.WithContext(ctx).newReadingFacetSQLInput(viewer, FacetRequest{Library: "reading", Field: "author"}, time.Now())
 		return err
 	})
-	if err != nil && !errors.Is(err, errReadingFacetIndex) {
+	if err != nil {
 		t.Fatal(err)
 	}
 }
@@ -216,18 +217,21 @@ func TestReadingFacetSQLInputRequiresProductionOrderedIndex(t *testing.T) {
 func runSQLFacet(t *testing.T, s *Service, viewer Viewer, request FacetRequest) (FacetPage, *readingFacetReduction) {
 	t.Helper()
 	var in *readingFacetSQLInput
+	var witness string
 	err := dbwork.WithReadSnapshot(context.Background(), s.db, func(ctx context.Context) error {
 		var err error
-		in, err = s.WithContext(ctx).newReadingFacetSQLInput(viewer, request, time.Date(2026, 10, 28, 12, 0, 0, 0, time.UTC))
+		ss := s.WithContext(ctx)
+		witness, err = ss.browseExactWitness(request.Library, viewer.Profile, viewer.EffectiveRestrictions())
+		if err != nil {
+			return err
+		}
+		in, err = ss.newReadingFacetSQLInput(viewer, request, time.Date(2026, 10, 28, 12, 0, 0, 0, time.UTC))
 		return err
 	})
-	if errors.Is(err, errReadingFacetIndex) {
-		t.Skip("production ordered facet baseline index pending parent slot; no fixture-only index")
-	}
 	if err != nil {
 		t.Fatal(err)
 	}
-	r, err := newReadingFacetReduction(request, "captured-test-witness", in, 1<<20)
+	r, err := newReadingFacetReduction(request, witness, in, 1<<20)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -236,7 +240,12 @@ func runSQLFacet(t *testing.T, s *Service, viewer Viewer, request FacetRequest) 
 		err = dbwork.WithReadSnapshot(context.Background(), s.db, func(ctx context.Context) error {
 			var err error
 			b := newReadingFacetBudget(2, 4096, time.Second)
-			done, err = r.step(s.WithContext(ctx), "captured-test-witness", b)
+			ss := s.WithContext(ctx)
+			current, e := ss.browseExactWitness(request.Library, viewer.Profile, viewer.EffectiveRestrictions())
+			if e != nil {
+				return e
+			}
+			done, err = r.step(ss, current, b)
 			if b.Raw < 0 {
 				t.Fatal("nested raw work exceeded")
 			}
@@ -436,5 +445,272 @@ func TestReadingFacetNestedMembershipAttributesResume(t *testing.T) {
 		if policy.Active() && turns < 10 {
 			t.Fatal("attribute history hidden as one raw unit", turns)
 		}
+	}
+}
+
+func TestReadingFacetProductionIndexSeekPlans(t *testing.T) {
+	c, s, viewer, _ := readingBrowseFixture(t, "book")
+	c.Drain()
+	err := dbwork.WithReadSnapshot(context.Background(), c.DB, func(ctx context.Context) error {
+		ss := s.WithContext(ctx)
+		for _, field := range []string{"author", "series"} {
+			in, err := ss.newReadingFacetSQLInput(viewer, FacetRequest{Library: "reading", Field: field}, time.Now())
+			if err != nil {
+				return err
+			}
+			for _, after := range []readingFacetMember{{}, {Key: "café author", Label: "Café Author", Item: 1}} {
+				in.after = after
+				query, args := in.memberQuery()
+				rows, err := ss.read().Query("EXPLAIN QUERY PLAN "+query, args...)
+				if err != nil {
+					return err
+				}
+				indexed := false
+				for rows.Next() {
+					var id, parent, unused int
+					var plan string
+					if err = rows.Scan(&id, &parent, &unused, &plan); err != nil {
+						rows.Close()
+						return err
+					}
+					if strings.Contains(plan, "TEMP B-TREE") || strings.Contains(plan, "SCAN ") {
+						t.Fatalf("unbounded member plan: %s", plan)
+					}
+					indexed = indexed || strings.Contains(plan, "reading_attribution_"+field+"_facet")
+				}
+				err = rows.Err()
+				rows.Close()
+				if err != nil {
+					return err
+				}
+				if !indexed {
+					t.Fatal("facet cursor did not seek the production base index")
+				}
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestReadingFacetArchiveObjectCursorChargesRejectedRows(t *testing.T) {
+	c, s, _, items := readingBrowseFixture(t, "comic")
+	var asset int64
+	var token, source, incarnation string
+	var size, modified int64
+	if err := c.DB.QueryRow(`SELECT a.id,a.token,a.size,a.modified_ns FROM reading_publications p JOIN catalog_assets a ON a.id=p.asset_id WHERE p.item_id=?`, items[0].ID).Scan(&asset, &token, &size, &modified); err != nil {
+		t.Fatal(err)
+	}
+	if err := c.DB.QueryRow(`SELECT id,incarnation FROM library_sources WHERE library_id='reading'`).Scan(&source, &incarnation); err != nil {
+		t.Fatal(err)
+	}
+	for i := 0; i < 30; i++ {
+		c.Exec(`INSERT INTO inventory_objects(id,source_id,asset_id,root_incarnation,relative_path,revision,evidence_json,size,modified_ns) VALUES(?,?,?,'old-root',?,'r','{}',?,?)`, fmt.Sprintf("archive-%02d", i), source, token, fmt.Sprintf("archive/%02d.cb7", i), size, modified)
+	}
+	c.Exec(`INSERT INTO inventory_objects(id,source_id,asset_id,root_incarnation,relative_path,revision,evidence_json,size,modified_ns,state) VALUES('archive-99',?,?,?,'archive/99.cb7','r','{}',?,?,'missing')`, source, token, incarnation, size, modified)
+	c.Drain()
+	// Exercise the local archive witness stage directly, independent of build
+	// format tags. The stage must retain unavailable current local objects and
+	// charge every rejected object instead of LIMIT after its witness filter.
+	var in *readingFacetSQLInput
+	err := dbwork.WithReadSnapshot(context.Background(), c.DB, func(ctx context.Context) error {
+		scope, err := s.WithContext(ctx).readingBrowseScope("reading")
+		if err != nil {
+			return err
+		}
+		in = &readingFacetSQLInput{scope: *scope, library: "reading", field: "author", clause: "1", current: readingFacetMember{Item: items[0].ID}, asset: asset, token: token, phase: "object"}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	finished := false
+	for turn := 0; turn < 40; turn++ {
+		err = dbwork.WithReadSnapshot(context.Background(), c.DB, func(ctx context.Context) error {
+			b := newReadingFacetBudget(1, 4096, time.Second)
+			_, eligible, present, _, err := in.next(s.WithContext(ctx), b)
+			if b.Raw < 0 {
+				t.Fatal("object raw bound exceeded")
+			}
+			if present {
+				finished = true
+				if !eligible || turn < 30 {
+					t.Fatal("local witness lost or raw rejects not charged", turn)
+				}
+			}
+			return err
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if finished {
+			break
+		}
+	}
+	if !finished {
+		t.Fatal("object cursor did not reach valid unavailable witness")
+	}
+}
+
+func TestReadingFacetFullWitnessRejectsLivePredicateDrift(t *testing.T) {
+	c, s, viewer, items := readingBrowseFixture(t, "book")
+	c.Drain()
+	var r *readingFacetReduction
+	err := dbwork.WithReadSnapshot(context.Background(), c.DB, func(ctx context.Context) error {
+		ss := s.WithContext(ctx)
+		witness, err := ss.browseExactWitness("reading", viewer.Profile, viewer.EffectiveRestrictions())
+		if err != nil {
+			return err
+		}
+		request := FacetRequest{Library: "reading", Field: "author"}
+		in, err := ss.newReadingFacetSQLInput(viewer, request, time.Now())
+		if err != nil {
+			return err
+		}
+		r, err = newReadingFacetReduction(request, witness, in, 1<<20)
+		if err != nil {
+			return err
+		}
+		done, err := r.step(ss, witness, newReadingFacetBudget(1, 4096, time.Second))
+		if done {
+			t.Fatal("unprocessed source exposed")
+		}
+		return err
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	c.Attributes(items[0].ID, "label", "new-live-policy-input")
+	err = dbwork.WithReadSnapshot(context.Background(), c.DB, func(ctx context.Context) error {
+		ss := s.WithContext(ctx)
+		current, err := ss.browseExactWitness("reading", viewer.Profile, viewer.EffectiveRestrictions())
+		if err != nil {
+			return err
+		}
+		_, err = r.step(ss, current, newReadingFacetBudget(2, 4096, time.Second))
+		return err
+	})
+	if !errors.Is(err, ErrReadingProjectionChanged) {
+		t.Fatalf("live epoch change reused partial reduction: %v", err)
+	}
+	if _, ok := r.result(); ok {
+		t.Fatal("stale result exposed")
+	}
+}
+
+func TestReadingFacetPublicationCursorChargesUnsupportedVersions(t *testing.T) {
+	c, s, _, items := readingBrowseFixture(t, "book")
+	c.Exec(`UPDATE reading_publications SET format='cbz' WHERE item_id=?`, items[0].ID)
+	// Add unsupported historical versions before the last admitted one. The FK
+	// requires a link for each, exactly the premise of the existence proof.
+	c.Write(func(ctx context.Context, tx *sql.Tx) error {
+		for i := 0; i < 20; i++ {
+			asset, _, err := compactcatalog.UpsertAssetTx(ctx, tx, compactcatalog.Asset{Path: fmt.Sprintf("/history-%d.pdf", i), Container: "pdf"})
+			if err != nil {
+				return err
+			}
+			if err = compactcatalog.LinkAssetTx(ctx, tx, items[0].ID, asset, compactcatalog.Link{}); err != nil {
+				return err
+			}
+			format := "cbz"
+			if i == 19 {
+				format = "pdf"
+			}
+			if _, err = tx.ExecContext(ctx, `INSERT INTO reading_publications(item_id,asset_id,format) VALUES(?,?,?)`, items[0].ID, asset, format); err != nil {
+				return err
+			}
+		}
+		return nil
+	})
+	c.Drain()
+	var in *readingFacetSQLInput
+	err := dbwork.WithReadSnapshot(context.Background(), c.DB, func(ctx context.Context) error {
+		ss := s.WithContext(ctx)
+		scope, err := ss.readingBrowseScope("reading")
+		if err != nil {
+			return err
+		}
+		var eligible bool
+		if err = ss.read().QueryRow(`SELECT ` + scope.eligibleSQL(fmt.Sprint(items[0].ID))).Scan(&eligible); err != nil {
+			return err
+		}
+		if !eligible {
+			t.Fatal("old primary existence rejected an admitted version")
+		}
+		in = &readingFacetSQLInput{scope: *scope, library: "reading", field: "author", clause: "1", current: readingFacetMember{Item: items[0].ID}, phase: "publication"}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	finished := false
+	for turn := 0; turn < 30; turn++ {
+		err = dbwork.WithReadSnapshot(context.Background(), c.DB, func(ctx context.Context) error {
+			b := newReadingFacetBudget(1, 4096, time.Second)
+			_, eligible, present, _, err := in.next(s.WithContext(ctx), b)
+			if b.Raw < 0 {
+				t.Fatal("publication bound exceeded")
+			}
+			if present {
+				finished = true
+				if !eligible || turn < 20 {
+					t.Fatal("publication history was not charged", turn)
+				}
+			}
+			return err
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if finished {
+			break
+		}
+	}
+	if !finished {
+		t.Fatal("publication cursor made no progress")
+	}
+}
+
+func TestReadingFacetRetainedMembershipCursorUsesIndexedRuns(t *testing.T) {
+	c, s, _, items := readingBrowseFixture(t, "book")
+	c.Drain()
+	c.Exec(`UPDATE catalog_generations SET retaining=1 WHERE singleton=1`)
+	c.Exec(`DELETE FROM catalog_browse_memberships WHERE entity_id=?`, items[0].ID)
+	query := `SELECT item_id,source FROM catalog_browse_memberships WHERE entity_id=? AND (item_id,source)>(?,?) ORDER BY item_id,source LIMIT 1`
+	err := dbwork.WithReadSnapshot(context.Background(), c.DB, func(ctx context.Context) error {
+		ss := s.WithContext(ctx)
+		rows, err := ss.read().Query("EXPLAIN QUERY PLAN "+query, items[0].ID, 0, -1)
+		if err != nil {
+			return err
+		}
+		for rows.Next() {
+			var id, parent, unused int
+			var plan string
+			if err = rows.Scan(&id, &parent, &unused, &plan); err != nil {
+				rows.Close()
+				return err
+			}
+			if strings.Contains(plan, "TEMP B-TREE") {
+				t.Fatalf("retained membership materialized before LIMIT: %s", plan)
+			}
+		}
+		err = rows.Err()
+		rows.Close()
+		if err != nil {
+			return err
+		}
+		var member, source int64
+		if err = ss.read().QueryRow(query, items[0].ID, 0, -1).Scan(&member, &source); err != nil {
+			return err
+		}
+		if member != items[0].ID {
+			t.Fatal("serving membership lost")
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
 	}
 }

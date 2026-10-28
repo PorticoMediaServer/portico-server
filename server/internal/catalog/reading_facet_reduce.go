@@ -59,6 +59,7 @@ type readingFacetInput interface {
 	next(*Service, *readingFacetBudget) (m readingFacetMember, eligible, present, eof bool, err error)
 	reset()
 	bytes() int
+	scalarBytes() int
 }
 
 type readingFacetChoice struct {
@@ -158,11 +159,12 @@ func (r *readingFacetReduction) step(s *Service, currentWitness string, b *readi
 			}
 			r.endPass()
 		}
-		// Account all retained strings, including oversize scalar state. At most
-		// one legal scalar may exceed the cap transiently; it is never cacheable.
+		// Charge retained state plus the projected DTO. A legal scalar may have
+		// a constant number of references/copies across cursor, reduction and
+		// output. The exception is O(B), never an unbounded page or cache entry.
 		size := r.bytes()
-		r.scalarBytes = max(r.scalarBytes, len(m.Key)+len(m.Label)+len(m.Source))
-		scalar := max(r.scalarBytes, r.input.bytes())
+		r.scalarBytes = max(r.scalarBytes, len(m.Key)+len(m.Label)+len(m.Source), r.input.scalarBytes())
+		scalar := r.scalarBytes
 		if b.oversized {
 			r.uncacheable = true
 		}
@@ -283,7 +285,23 @@ func (r *readingFacetReduction) bytes() int {
 		n += v.bytes()
 	}
 	n += (cap(r.page) - len(r.page)) * int(unsafe.Sizeof(readingFacetChoice{}))
+	return n + r.resultBytes()
+}
+
+// The protocol owner reserves both state and output until it drops the
+// computation. Text aliases are deliberately charged again conservatively.
+func (r *readingFacetReduction) resultBytes() int {
+	n := int(unsafe.Sizeof(FacetPage{})) + len(r.request.Field) + len(r.revision)
+	for _, v := range r.page {
+		n += int(unsafe.Sizeof(FacetValue{})) + 2*len(v.label)
+		if r.request.Field == "series" {
+			n += 43
+		}
+	}
 	return n
+}
+func (r *readingFacetReduction) cacheable() bool {
+	return r.phase == "done" && r.failed == nil && !r.uncacheable && r.bytes() <= r.memoryLimit
 }
 func (r *readingFacetReduction) result() (FacetPage, bool) {
 	if r.phase != "done" || r.failed != nil {

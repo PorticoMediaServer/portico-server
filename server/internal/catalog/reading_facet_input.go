@@ -120,16 +120,21 @@ func (in *readingFacetSQLInput) bytes() int {
 			n += len(v)
 		}
 	}
+	n += (cap(in.args) - len(in.args)) * int(unsafe.Sizeof(any(nil)))
 	for _, v := range in.restrictions.BlockedLabels {
 		n += int(unsafe.Sizeof(v)) + len(v)
 	}
 	for _, v := range in.restrictions.MemberDeniedLabels {
 		n += int(unsafe.Sizeof(v)) + len(v)
 	}
+	n += (cap(in.restrictions.BlockedLabels) - len(in.restrictions.BlockedLabels) + cap(in.restrictions.MemberDeniedLabels) - len(in.restrictions.MemberDeniedLabels)) * int(unsafe.Sizeof(""))
 	if in.restrictions.MaximumAge != nil {
 		n += int(unsafe.Sizeof(*in.restrictions.MaximumAge))
 	}
 	return n
+}
+func (in *readingFacetSQLInput) scalarBytes() int {
+	return max(len(in.current.Key)+len(in.current.Label)+len(in.current.Source), len(in.after.Key)+len(in.after.Label)+len(in.after.Source), len(in.token)+len(in.object))
 }
 func (in *readingFacetSQLInput) finish(eligible bool) (readingFacetMember, bool, bool, bool, error) {
 	m := in.current
@@ -149,14 +154,7 @@ func (in *readingFacetSQLInput) next(s *Service, b *readingFacetBudget) (reading
 		}
 		switch in.phase {
 		case "":
-			f := in.field
-			query := `SELECT m.` + f + `_key,m.` + f + `_value,m.` + f + `_source,m.item_id FROM reading_attribution_members m INDEXED BY reading_attribution_` + f + `_facet WHERE m.library_id=? AND m.generation=? AND m.` + f + `_key IS NOT NULL`
-			args := []any{in.scope.library, in.scope.generation.Ready}
-			if in.after.Item != 0 {
-				query += ` AND (m.` + f + `_key COLLATE BINARY,m.` + f + `_value COLLATE BINARY,m.item_id)>(?,?,?)`
-				args = append(args, in.after.Key, in.after.Label, in.after.Item)
-			}
-			query += ` ORDER BY m.` + f + `_key COLLATE BINARY,m.` + f + `_value COLLATE BINARY,m.item_id LIMIT 1`
+			query, args := in.memberQuery()
 			var m readingFacetMember
 			err := s.read().QueryRow(query, args...).Scan(&m.Key, &m.Label, &m.Source, &m.Item)
 			b.charge(m.bytes())
@@ -442,4 +440,17 @@ func compileReadingFacetNode(c *browseCompiler, n *BrowseNode, depth int, leaves
 		condition = "NOT " + condition
 	}
 	return condition, nil
+}
+
+// memberQuery is also used by the production-plan qualification test.
+func (in *readingFacetSQLInput) memberQuery() (string, []any) {
+	f := in.field
+	query := `SELECT m.` + f + `_key,m.` + f + `_value,m.` + f + `_source,m.item_id FROM reading_attribution_members m INDEXED BY reading_attribution_` + f + `_facet WHERE m.library_id=? AND m.generation=? AND m.` + f + `_key IS NOT NULL`
+	args := []any{in.scope.library, in.scope.generation.Ready}
+	if in.after.Item != 0 {
+		query += ` AND (m.` + f + `_key COLLATE BINARY,m.` + f + `_value COLLATE BINARY,m.item_id)>(?,?,?)`
+		args = append(args, in.after.Key, in.after.Label, in.after.Item)
+	}
+	query += ` ORDER BY m.` + f + `_key COLLATE BINARY,m.` + f + `_value COLLATE BINARY,m.item_id LIMIT 1`
+	return query, args
 }
