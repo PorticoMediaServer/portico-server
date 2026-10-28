@@ -5,7 +5,7 @@ Includes development, transitive and optional packages fetched by npm for the
 supported build environments. A package appearing here is not necessarily shipped
 in the browser bundle. The lockfiles retain resolved artifacts and integrity
 hashes; full copyrights and licence texts are in the upstream package archives.
-Refresh this table whenever either lockfile changes. Runtime assets and Go/native
+Refresh this table whenever the root lockfile changes. Runtime assets and Go/native
 components are described in [THIRD-PARTY-NOTICES.md](../THIRD-PARTY-NOTICES.md).
 
 | Package | Version | Declared licence |
@@ -251,7 +251,6 @@ components are described in [THIRD-PARTY-NOTICES.md](../THIRD-PARTY-NOTICES.md).
 | `locate-path` | 5.0.0 | MIT |
 | `lru-cache` | 5.1.1 | ISC |
 | `ms` | 2.1.3 | MIT |
-| `nanoid` | 3.3.19 | MIT |
 | `nanoid` | 3.3.20 | MIT |
 | `node-releases` | 2.0.55 | MIT |
 | `oxlint` | 1.86.0 | MIT |
@@ -263,7 +262,6 @@ components are described in [THIRD-PARTY-NOTICES.md](../THIRD-PARTY-NOTICES.md).
 | `picocolors` | 1.1.1 | ISC |
 | `picomatch` | 4.0.7 | MIT |
 | `pngjs` | 5.0.0 | MIT |
-| `postcss` | 8.5.28 | MIT |
 | `postcss` | 8.5.31 | MIT |
 | `qrcode` | 1.5.4 | MIT |
 | `radix-ui` | 1.6.7 | MIT |
@@ -282,7 +280,6 @@ components are described in [THIRD-PARTY-NOTICES.md](../THIRD-PARTY-NOTICES.md).
 | `seroval` | 1.6.7 | MIT |
 | `seroval-plugins` | 1.6.7 | MIT |
 | `set-blocking` | 2.0.0 | ISC |
-| `source-map-js` | 1.2.1 | BSD-3-Clause |
 | `source-map-js` | 1.2.2 | BSD-3-Clause |
 | `string-width` | 4.2.3 | MIT |
 | `strip-ansi` | 6.0.1 | MIT |
@@ -294,7 +291,6 @@ components are described in [THIRD-PARTY-NOTICES.md](../THIRD-PARTY-NOTICES.md).
 | `use-callback-ref` | 1.3.3 | MIT |
 | `use-sidecar` | 1.1.3 | MIT |
 | `use-sync-external-store` | 1.7.0 | MIT |
-| `vite` | 8.2.2 | MIT |
 | `vite` | 8.3.5 | MIT |
 | `which-module` | 2.0.1 | ISC |
 | `wrap-ansi` | 6.2.0 | MIT |
