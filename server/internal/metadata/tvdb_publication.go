@@ -21,7 +21,7 @@ const tvdbTerminalDeleteQuery = `DELETE FROM tvdb_publication_operations WHERE i
 
 // Captured authority shared by the acquisition and fresh-target projection phases.
 type tvdbPublication struct {
-	LookupEpoch                                                 int64
+	ConsentRevision, LookupEpoch                                int64
 	ScreenFence                                                 string
 	ID, Show, Incarnation, Library, Phase, Status, Title, Order string
 	// Show is the public id; ShowID is its integer entity row, used in every
@@ -68,6 +68,9 @@ func readTVDBPublication(ctx context.Context, tx *sql.Tx, show string) (tvdbPubl
 			return p, sql.ErrNoRows
 		}
 		p.LookupEpoch = epoch
+		if err = tx.QueryRowContext(ctx, `SELECT revision FROM screen_metadata_consent WHERE singleton=1`).Scan(&p.ConsentRevision); err != nil {
+			return p, err
+		}
 	}
 	if err == nil && screenTVDBRestricted(ctx) {
 		b, e := readScreenBase(ctx, tx, "show", show)
@@ -220,7 +223,7 @@ func (s *Service) claimTVDBAcquisition(ctx context.Context) (*tvdbPublication, e
 			return nil, tvdbProblem("invalid_selection")
 		}
 		var valid int
-		err = tx.QueryRowContext(ctx, `SELECT count(*) FROM tvdb_publication_sets WHERE show_id=? AND incarnation=? AND generation=? AND provider_id=? AND episode_order=? AND policy_incarnation=? AND policy_revision=?`, p.ShowID, p.Set, p.Generation, p.Provider, p.Order, p.Policy, p.PolicyRevision).Scan(&valid)
+		err = tx.QueryRowContext(ctx, `SELECT count(*) FROM tvdb_publication_sets WHERE show_id=? AND incarnation=? AND generation=? AND provider_id=? AND episode_order=? AND policy_incarnation=? AND policy_revision=? AND consent_revision=?`, p.ShowID, p.Set, p.Generation, p.Provider, p.Order, p.Policy, p.PolicyRevision, p.ConsentRevision).Scan(&valid)
 		if err != nil {
 			return nil, err
 		}
@@ -246,7 +249,7 @@ func (s *Service) claimTVDBAcquisition(ctx context.Context) (*tvdbPublication, e
 			if _, err = tx.ExecContext(ctx, `UPDATE tvdb_jobs SET generation=generation+1,revision=revision+1,page=0,apply_after='',staged_bytes=0,lease='',lease_until='' WHERE show_id=?`, p.ShowID); err != nil {
 				return nil, err
 			}
-			if _, err = tx.ExecContext(ctx, `INSERT INTO tvdb_publication_sets(show_id,generation,provider_id,episode_order,policy_incarnation,policy_revision) SELECT show_id,generation,provider_id,episode_order,?,? FROM tvdb_jobs WHERE show_id=?`, p.Policy, p.PolicyRevision, p.ShowID); err != nil {
+			if _, err = tx.ExecContext(ctx, `INSERT INTO tvdb_publication_sets(show_id,generation,provider_id,episode_order,policy_incarnation,policy_revision,consent_revision) SELECT show_id,generation,provider_id,episode_order,?,?,? FROM tvdb_jobs WHERE show_id=?`, p.Policy, p.PolicyRevision, p.ConsentRevision, p.ShowID); err != nil {
 				return nil, err
 			}
 			p, err = readTVDBPublication(ctx, tx, show)

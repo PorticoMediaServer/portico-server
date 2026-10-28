@@ -48,7 +48,9 @@ def main():
     parser.add_argument('--manifest', type=Path)
     parser.add_argument('--credentials', type=Path)
     parser.add_argument('--report', type=Path)
-    parser.add_argument('--resume-staged-sha256', help='Explicitly resume inspected generated media with this manifest SHA256')
+    media_mode = parser.add_mutually_exclusive_group()
+    media_mode.add_argument('--resume-staged-sha256', help='Explicitly resume inspected generated media with this manifest SHA256')
+    media_mode.add_argument('--reuse-fresh-media-sha256', help='Rotate appdata only, retaining an inspected freshly generated media tree with this manifest SHA256')
     args = parser.parse_args()
     if not args.execute:
         print(json.dumps({'mode': 'plan', 'stage': args.stage, 'fixturePin': FIXTURE_PIN,
@@ -93,12 +95,17 @@ def main():
         parser.error('Need at least 20 GiB free')
     task = HOME / 'astra-scratch/P2-53'
     staged = task / 'fresh-media'
+    reuse = args.reuse_fresh_media_sha256
     resume = args.resume_staged_sha256
-    if resume:
-        if len(resume) != 64 or any(c not in '0123456789abcdef' for c in resume):
+    inspected = reuse or resume
+    if inspected:
+        if len(inspected) != 64 or any(c not in '0123456789abcdef' for c in inspected):
             parser.error('Resume requires a lowercase SHA256')
-        if not staged.is_dir() or staged.is_symlink() or hashlib.sha256((staged / 'manifest.json').read_bytes()).hexdigest() != resume:
+        inspected_media = media if reuse else staged
+        if not inspected_media.is_dir() or inspected_media.is_symlink() or hashlib.sha256((inspected_media / 'manifest.json').read_bytes()).hexdigest() != inspected:
             parser.error('Inspected staged manifest does not match; no activation attempted')
+        if reuse and staged.exists():
+            parser.error('Unexpected staging tree exists; inspect it before retaining active fresh media')
     elif staged.exists():
         parser.error('Fresh media staging already exists; inspect it before explicitly resuming')
     else:
@@ -111,7 +118,7 @@ def main():
     isolated_source = task / 'reset-source'
     if isolated_source.exists():
         parser.error('Isolated reset source exists; reconcile the prior attempt')
-    if not resume:
+    if not inspected:
         shutil.copytree(source, isolated_source)
         try:
             run([python, isolated_source / 'fixtures/test-library/generate.py', '--root', staged, '--ffmpeg', ffmpeg])
@@ -147,8 +154,9 @@ def main():
     atomic(task / 'rollback.service', old_unit)
     atomic(task / 'rollback-health.py', (WORK / 'health.py').read_text())
     state.rename(retired_state)
-    media.rename(retired_media)
-    staged.rename(media)
+    if not reuse:
+        media.rename(retired_media)
+        staged.rename(media)
     state.mkdir(mode=0o700)
     for name in ['data', 'cache', 'transcode', 'tmp', 'recordings']:
         (state / name).mkdir(mode=0o700)
@@ -168,8 +176,9 @@ def main():
         time.sleep(1)
     receipt = {'commit': args.commit, 'build': str(build), 'state': str(state), 'media': str(media),
                'ready': ready, 'provisioned': False, 'hostedClaimed': False,
-               'retiredState': str(retired_state), 'retiredMedia': str(retired_media), 'resetAt': stamp,
-               'listener': '0.0.0.0:32500', 'localProxyRequired': False}
+               'retiredState': str(retired_state), 'retiredMedia': None if reuse else str(retired_media), 'resetAt': stamp,
+               'listener': '0.0.0.0:32500', 'localProxyRequired': False,
+               'freshMediaReused': bool(reuse), 'inspectedMediaManifestSHA256': inspected}
     atomic(WORK / 'deployment.json', json.dumps(receipt, indent=2) + '\n')
     if not ready:
         raise SystemExit('Fresh startup failed; rollback paths retained, no readiness claim')

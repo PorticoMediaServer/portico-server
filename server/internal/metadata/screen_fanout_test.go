@@ -21,11 +21,14 @@ func settleScreenFanout(t *testing.T, s *Service) {
 	t.Helper()
 	for i := 0; i < 1000; i++ {
 		var due bool
-		if err := s.db.QueryRow(`SELECT EXISTS(SELECT 1 FROM screen_metadata_fanout WHERE pending=1)`).Scan(&due); err != nil {
+		if err := s.db.QueryRow(`SELECT EXISTS(SELECT 1 FROM screen_metadata_fanout WHERE pending=1) OR EXISTS(SELECT 1 FROM metadata_lookup_fanout WHERE effect='screen_consent' AND pending=1)`).Scan(&due); err != nil {
 			t.Fatal(err)
 		}
 		if !due {
 			return
+		}
+		if err := s.LookupFanoutStep(context.Background()); err != nil {
+			t.Fatal(err)
 		}
 		if err := s.ScreenFanoutStep(context.Background()); err != nil {
 			t.Fatal(err)
@@ -472,7 +475,7 @@ func TestScreenFanoutProducerMatrix(t *testing.T) {
 				screen, art bool
 			}{
 				{`UPDATE screen_metadata_policies SET revision=revision+1`, true, false},
-				{`UPDATE screen_metadata_consent SET revision=revision+1`, true, false},
+				{`UPDATE screen_metadata_consent SET revision=revision+1`, false, false},
 				{`UPDATE library_preferences SET local_tags='off',revision=revision+1`, true, true},
 				{`UPDATE library_scan_policies SET revision=revision+1`, true, true},
 				{`UPDATE library_sources SET generation=generation+1`, true, true},
@@ -489,6 +492,12 @@ func TestScreenFanoutProducerMatrix(t *testing.T) {
 				}
 				if _, err = tx.Exec(tc.q); err != nil {
 					t.Fatal(tc.q, err)
+				}
+				if strings.Contains(tc.q, "UPDATE screen_metadata_consent") {
+					var pending bool
+					if err = tx.QueryRow(`SELECT pending FROM metadata_lookup_fanout WHERE effect='screen_consent'`).Scan(&pending); err != nil || !pending {
+						t.Fatal("missing global consent intent", err)
+					}
 				}
 				for _, effect := range []string{"screen", "artwork"} {
 					var pending bool
@@ -549,30 +558,5 @@ func TestScreenFanoutAcceptanceOwnsOneGenerationAndAuthority(t *testing.T) {
 	}
 	if got := publicationScalar(t, db, `SELECT (generation-?)||':'||rematch FROM screen_metadata_fanout WHERE library_id='lib' AND effect='screen'`, before); got != "1:0" {
 		t.Fatal("agent advanced twice or added rematch", got)
-	}
-}
-
-// A consent save retains its explicitly approved O(libraries) TVDB fence.
-// This is a 200-library acceptance observation, not an enforced library cap.
-func TestScreenFanoutConsentAcceptance200Libraries(t *testing.T) {
-	c := catalogtest.Open(t)
-	for i := 0; i < 200; i++ {
-		c.Library(fmt.Sprintf("lib-%03d", i), "Library", "movie", fmt.Sprintf("/films/%d", i))
-	}
-	s := New(c.DB, "")
-	p, err := s.ScreenPolicy(context.Background(), "lib-000")
-	if err != nil {
-		t.Fatal(err)
-	}
-	no := false
-	ctx, measure := dbwork.Measure(context.Background())
-	start := time.Now()
-	err = s.UpdateScreenPolicy(ctx, "lib-000", ScreenPolicyUpdate{ExpectedRevision: p.Revision, ExpectedConsentRevision: p.ConsentRevision, ConfirmRemote: &no, Enabled: true, Providers: p.Providers, Language: "en-US", RefreshMode: "replace_unlocked"}, nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Logf("200-library consent acceptance %s; cost %+v; named plan %+v", time.Since(start), measure(), screenPolicyConsentPlan)
-	if got := publicationScalar(t, c.DB, `SELECT count(*) FROM screen_metadata_fanout WHERE effect='screen' AND pending=1`); got != "200" {
-		t.Fatal("consent missed libraries", got)
 	}
 }

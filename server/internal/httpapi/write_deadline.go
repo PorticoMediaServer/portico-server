@@ -18,10 +18,13 @@ import (
 //
 // Two shapes, for the two kinds of write:
 //
-//   - A frame deadline for server-sent events. Each frame is small and a
-//     legitimate client accepts one in milliseconds, so twenty seconds — the
-//     heartbeat interval — is invisible when healthy and reclaims a dead socket
-//     within one beat.
+//   - A frame deadline for server-sent events, armed for one frame and cleared
+//     as soon as that frame has been written and flushed. Each frame is small
+//     and a legitimate client accepts one in milliseconds, so the budget is
+//     invisible when healthy and reclaims a dead socket within one frame. It
+//     covers the frame, never the stream: the quiet time between frames belongs
+//     to the heartbeat and the stream lifetime. Leaving it armed has no effect on
+//     a heartbeat paced faster than the budget and kills one paced slower.
 //   - A rolling deadline for media bodies, refreshed on every successful write.
 //     This is the one that has to be right: a fixed deadline would cut off a
 //     slow-but-alive client part way through a long file, which is exactly the
@@ -42,11 +45,32 @@ var (
 	deadlineRefreshInterval = 5 * time.Second
 )
 
-// frameDeadline bounds the next write on a stream. A response writer that cannot
-// take a deadline (a test recorder, a wrapper that does not unwrap) is left
-// alone: the deadline is a reclamation mechanism, not a correctness one.
-func frameDeadline(w http.ResponseWriter) {
-	_ = http.NewResponseController(w).SetWriteDeadline(time.Now().Add(streamFrameDeadline))
+// frameWrite writes one server-sent event frame and flushes it under the frame
+// deadline, then clears the deadline. Clearing is what makes the budget honest:
+// the deadline bounds this frame's write, and the idle time until the next
+// frame is bounded by that stream's heartbeat and lifetime instead. A response
+// writer that cannot take a deadline (a test recorder, a wrapper that does not
+// unwrap) is still written: the deadline is a reclamation mechanism, not a
+// correctness one.
+//
+// Because it clears the connection's write deadline, it belongs to a response
+// that owns that deadline: every caller is a realtime-lane event stream, which
+// never carries the rolling response deadline.
+func frameWrite(w http.ResponseWriter, write func(out io.Writer) (int, error)) error {
+	controller := http.NewResponseController(w)
+	_ = controller.SetWriteDeadline(time.Now().Add(streamFrameDeadline))
+	_, err := write(w)
+	if err == nil {
+		// The flush is part of the frame: bytes that cannot reach the peer within
+		// the budget have failed in the same way a blocked write does.
+		err = controller.Flush()
+	}
+	// Clear after the attempt, never before it. On success the frame is on the
+	// connection and the deadline is spent; on failure the stream is ending, and
+	// clearing keeps a keep-alive connection from carrying the deadline into the
+	// next response.
+	_ = controller.SetWriteDeadline(time.Time{})
+	return err
 }
 
 // rollingDeadlineWriter refreshes a write deadline as the body makes progress,

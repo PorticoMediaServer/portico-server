@@ -210,11 +210,6 @@ func (s *Service) UpdateScreenPolicy(ctx context.Context, library string, body S
 		return ErrScreenConflict
 	}
 	consentChanged := body.ConfirmRemote != nil && *body.ConfirmRemote != policy.Confirmed
-	if consentChanged {
-		if err = dbwork.UsePlan(tx, screenPolicyConsentPlan); err != nil {
-			return err
-		}
-	}
 	seen := map[string]bool{}
 	for _, p := range body.Providers {
 		allowed := false
@@ -270,11 +265,6 @@ func (s *Service) UpdateScreenPolicy(ctx context.Context, library string, body S
 	}
 	// The policy/consent triggers own the durable fanout generation. Explicit
 	// paths only OR rematch intent; rows transition in bounded worker turns.
-	if consentChanged {
-		if _, err = tx.ExecContext(ctx, `UPDATE tvdb_provider_policies SET revision=revision+1`); err != nil {
-			return err
-		}
-	}
 	if err = usermutation.SaveContext(ctx, tx, usermutation.Result{Status: "applied", TargetID: library, Revision: policy.Revision + 1}, time.Now().UnixMilli()); err != nil {
 		return err
 	}
