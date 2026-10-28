@@ -275,6 +275,9 @@ func TestReadingPathObjectHydrationSeeks(t *testing.T) {
 			t.Fatal(err)
 		}
 		for _, line := range plan {
+			if strings.Contains(line, "USE TEMP B-TREE") {
+				t.Fatalf("%s hydration materializes scalar rows: %s", name, line)
+			}
 			if !strings.HasPrefix(line, "SCAN ") {
 				continue
 			}

@@ -110,6 +110,11 @@ func TestReadPathObjectsCappedStopsAtTheOrdinaryByteBudget(t *testing.T) {
 		ids = append(ids, id)
 	}
 
+	// The raw prefix must follow caller order, independent of object primary
+	// key order; the streaming join must not sort hydrated scalar rows.
+	for left, right := 0, len(ids)-1; left < right; left, right = left+1, right-1 {
+		ids[left], ids[right] = ids[right], ids[left]
+	}
 	objects, n, err := readPathObjectsCapped(ctx, tx, ids)
 	if err != nil {
 		t.Fatal(err)

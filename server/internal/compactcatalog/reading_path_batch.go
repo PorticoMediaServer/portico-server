@@ -49,9 +49,11 @@ func (v pathObject) bytes() int {
 // pathObjectBatch is pathObjectColumns over a json_each id list, carrying the
 // list ordinal as its leading column. json_each is the leading table (CROSS
 // JOIN) so the planner seeks inventory_objects by id for each value instead of
-// scanning it; ORDER BY j.key keeps a window in caller order so "the next raw
-// id" is well defined for the byte stop.
-const pathObjectBatch = `SELECT j.key,` + pathObjectColumns + ` FROM json_each(?) j CROSS JOIN inventory_objects o ON o.id=j.value` + pathObjectJoins + ` WHERE o.retired=0 ORDER BY j.key`
+// scanning it. SQLite's json_each array xNext visits ordinals in array order;
+// the forced outer loop and unique point joins preserve that order. Do not sort
+// hydrated rows: a sorter would materialize every string before the byte stop.
+// The ordinal guard below makes this execution-order requirement explicit.
+const pathObjectBatch = `SELECT j.key,` + pathObjectColumns + ` FROM json_each(?) j CROSS JOIN inventory_objects o ON o.id=j.value` + pathObjectJoins + ` WHERE o.retired=0`
 
 // scanPathObjectRow scans one batch row: its json_each ordinal and the object.
 func scanPathObjectRow(rows *sql.Rows) (int, pathObject, error) {
@@ -114,12 +116,18 @@ func readPathObjectsCapped(ctx context.Context, tx *sql.Tx, ids []string) (map[s
 			return nil, 0, err
 		}
 		consumed := len(chunk)
+		lastOrdinal := -1
 		for rows.Next() {
 			ordinal, v, err := scanPathObjectRow(rows)
 			if err != nil {
 				rows.Close()
 				return nil, 0, err
 			}
+			if ordinal <= lastOrdinal || ordinal >= len(chunk) {
+				rows.Close()
+				return nil, 0, errors.New("reading hydration lost raw ordinal order")
+			}
+			lastOrdinal = ordinal
 			if _, seen := out[v.ID]; seen {
 				continue
 			}

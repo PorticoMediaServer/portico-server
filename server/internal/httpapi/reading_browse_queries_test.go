@@ -489,7 +489,7 @@ func TestReadingBrowsePublicCohortDispatchAndProofRefusal(t *testing.T) {
 	h := New(f.d)
 	pending := preparedReadingHTTP(t, h, "POST", path, f.f.owner.AccessToken, body, nil)
 	var envelope ReadingBrowsePreparing
-	if pending.Code != 202 || json.Unmarshal(pending.Body.Bytes(), &envelope) != nil || envelope.State != "preparing" || envelope.Kind != "reading-browse-preparing" || pending.Header().Get("Retry-After") != "1" || pending.Header().Get("Location") == "" {
+	if pending.Code != 202 || json.Unmarshal(pending.Body.Bytes(), &envelope) != nil || envelope.State != "preparing" || envelope.Kind != "reading-browse-preparing" || pending.Header().Get("Retry-After") != "0" || pending.Header().Get("Location") == "" {
 		t.Fatal(pending.Code, pending.Header(), pending.Body.String())
 	}
 	body["selectionBasis"] = strings.Repeat("a", 64)
