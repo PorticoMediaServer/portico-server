@@ -121,3 +121,36 @@ func TestChannelMapExactLookupRefusesDeniedCaller(t *testing.T) {
 		t.Fatalf("denied lookup %+v %v", page, err)
 	}
 }
+
+// Playlist positions start at 0, so the first page must include the first
+// channel, and a one-channel page walk must visit every channel once.
+func TestChannelMapPagesIncludeTheFirstChannel(t *testing.T) {
+	s, db, _ := newService(t)
+	ctx := context.Background()
+	source := channelLookupSource(t, db)
+	page, err := s.ChannelMap(ctx, allow, source, "", "", 20)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(page.Items) != 3 || page.Items[0].Name != "One" || page.Items[0].Position != 0 {
+		t.Fatalf("first page = %+v", page.Items)
+	}
+	var walked []string
+	token := ""
+	for range 4 {
+		step, err := s.ChannelMap(ctx, allow, source, token, "", 1)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, item := range step.Items {
+			walked = append(walked, item.Name)
+		}
+		if step.NextCursor == "" {
+			break
+		}
+		token = step.NextCursor
+	}
+	if strings.Join(walked, ",") != "One,Two,Three" {
+		t.Fatalf("paged walk = %v", walked)
+	}
+}

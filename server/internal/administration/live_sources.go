@@ -503,7 +503,12 @@ func (s *Service) ChannelMap(ctx context.Context, auth Authorize, id, token, cha
 			out = page
 			return readErr
 		}
-		page, readErr := channelMapPage(ctx, tx, id, c.Order, size)
+		after := c.Order
+		if token == "" {
+			// Positions start at 0; the first page starts before the first one.
+			after = -1
+		}
+		page, readErr := channelMapPage(ctx, tx, id, after, size)
 		out = page
 		return readErr
 	})
@@ -665,7 +670,7 @@ func (s *Service) SaveChannelMap(ctx context.Context, auth Authorize, id string,
 		if err = writeDocument(ctx, tx, scope, revision+1, settings, at); err != nil {
 			return err
 		}
-		if out, err = channelMapPage(ctx, tx, id, 0, DefaultPageSize); err != nil {
+		if out, err = channelMapPage(ctx, tx, id, -1, DefaultPageSize); err != nil {
 			return err
 		}
 		return saveReceipt(ctx, tx, "channel-map:"+id, change.OperationID, digest, out, at)
