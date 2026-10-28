@@ -1,3 +1,5 @@
+import {subscribePresentation} from '../../shell/fact-hooks';
+import {useShellFacts} from '../../shell/fact-hooks';
 import {useEffect,useLayoutEffect,useMemo,useRef,useState,useSyncExternalStore} from 'react';
 import {router} from '../../router';
 import {defaultI18n} from '@i18n';
@@ -21,7 +23,7 @@ import {castDisplayName} from '../../platform/cast';
 import {WatchInfoPanel} from './WatchInfoPanel';
 import {watchLossNotice} from './loss-copy';
 import {settingsPlatform} from '../../platform/settings-platform';
-const noSubscribe=()=>()=>{},noPreferences=()=>null;
+const noPreferences=()=>null;
 // The persistent media host is a sibling of RouterProvider, including while
 // signed out. Subscribe to the existing router directly; context hooks here
 // would throw before the credential screen can render.
@@ -45,7 +47,8 @@ function useQueueSelectionLife(context:ShellAssemblyContext|undefined,runtime:We
 }
 /** One adapter in the persistent parent; components borrow the existing runtime and stores. */
 export function useWatchPanels(binding:WatchBindings|undefined,snapshot:WebPlaybackRuntimeSnapshot|undefined,context:ShellAssemblyContext|undefined):WatchSurfaces|undefined {
- const preferences=useSyncExternalStore(context?.preferences?.subscribe??noSubscribe,()=>context?.preferences?.getSnapshot('web')??context?.facts.preferences??null,noPreferences);
+ useShellFacts(context);
+ const preferences=useSyncExternalStore((listener)=>subscribePresentation(context,listener),()=>context?.preferences?.getSnapshot('web')??context?.facts.preferences??null,noPreferences);
  const i18n=useMemo(()=>preferences?shellLanguage(preferences):defaultI18n,[preferences]);
  // This device's own setting, read from the app's device document in the same render.
  const deviceDocument=settingsPlatform()?.device?.getSnapshot().document;

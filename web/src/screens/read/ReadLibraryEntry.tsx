@@ -1,3 +1,5 @@
+import {useRouteLibrary} from '../browse/route-library';
+import {forwardIdentity} from '../detail/context';
 import {useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactNode} from 'react';
 import {calendarDate, defaultI18n} from '@i18n';
 import {generatedCoverTint} from '@design';
@@ -238,7 +240,7 @@ function BoundReadLibrary({captured, libraryId, header, onMore, view}: {captured
   const [selection, setSelection] = useState<ReadonlyMap<string, ReadingLibraryItem>>(), [bulk, setBulk] = useState<readonly ReadingLibraryItem[]>();
   const bulkAnchor = useRef<HTMLElement | null>(null);
   const errorSink = useRef(captured.binding.home.effects.reportError); errorSink.current = captured.binding.home.effects.reportError;
-  const library = captured.context.facts.identity.libraries.find(library => library.id === libraryId);
+  const library = useRouteLibrary(captured.context, libraryId);
   const isReading = library?.kind === 'book' || library?.kind === 'comic';
   const [resources, setResources] = useState<Resources>();
   const [retry, setRetry] = useState(0), [retired, setRetired] = useState(false);
@@ -251,12 +253,12 @@ function BoundReadLibrary({captured, libraryId, header, onMore, view}: {captured
     const off = bindings.authority.subscribe(() => {setRetired(true); setMenu(undefined); setEditor(undefined); setSelection(undefined); setBulk(undefined);});
     setResources({books, resume, bindings, artwork: captured.context.artwork, reportError: error => {if (bindings.authority.isCurrent()) errorSink.current(error);}});
     return () => {off();books.dispose();resume.dispose(); void bindings.dispose().catch(() => {});};
-  }, [captured.context, libraryId, isReading, retry]);
+  }, [captured.context, libraryId, library?.kind, isReading, retry]);
   const viewer = context.identity?.viewer, canEdit = viewer?.authority === 'local' && viewer.role === 'owner';
-  const editorContext = useMemo(() => ({...context, isCurrent: () => context.isCurrent() && !!editor && resources !== undefined && resources.bindings.authority.isCurrent()
-    && editor.item.libraryId === libraryId && resources.books.collection.residentItems().includes(editor.item)}), [context, editor, resources, libraryId]);
-  const bulkContext = useMemo(() => ({...context, isCurrent: () => context.isCurrent() && !!bulk && resources !== undefined && resources.bindings.authority.isCurrent()
-    && bulk.every(item => item.libraryId === libraryId && selection?.get(item.id) === item)}), [context, bulk, resources, libraryId, selection]);
+  const editorContext = useMemo(() => (forwardIdentity(context, {isCurrent: () => context.isCurrent() && !!editor && resources !== undefined && resources.bindings.authority.isCurrent()
+    && editor.item.libraryId === libraryId && resources.books.collection.residentItems().includes(editor.item)})), [context, editor, resources, libraryId]);
+  const bulkContext = useMemo(() => (forwardIdentity(context, {isCurrent: () => context.isCurrent() && !!bulk && resources !== undefined && resources.bindings.authority.isCurrent()
+    && bulk.every(item => item.libraryId === libraryId && selection?.get(item.id) === item)})), [context, bulk, resources, libraryId, selection]);
   const toggle = (item: ReadingLibraryItem) => {
     if (!canEdit || !context.isCurrent() || !resources?.bindings.authority.isCurrent() || !resources.books.collection.residentItems().includes(item) || item.libraryId !== libraryId) return;
     setSelection(previous => {const next = new Map(previous); if (next.has(item.id)) next.delete(item.id); else if (next.size < bulkTargetLimit) next.set(item.id, item); return next;});

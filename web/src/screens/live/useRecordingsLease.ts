@@ -1,3 +1,4 @@
+import {forwardIdentity} from '../detail/context';
 import {useLayoutEffect, useRef, useState} from 'react';
 import {screenLifetime, type ScreenContext} from '../detail/context';
 import {createRecordingsController, type RecordingsController, type RecordingsView} from './recordings-controller';
@@ -35,7 +36,7 @@ export function useRecordingsLease(context: ScreenContext | undefined, view: Rec
     let held: RecordingsLease | undefined;
     const routeCurrent = route.current;
     const current = () => !!held && held.live && context.isCurrent() && routeCurrent();
-    const screen: ScreenContext = {...context, isCurrent: current};
+    const screen: ScreenContext = forwardIdentity(context, {isCurrent: current});
     const life = screenLifetime(screen);
     const controller = createRecordingsController({api: life.api, serverId: context.scope.serverId, requestId: randomHex,
       signal: life.signal(), isCurrent: life.current});

@@ -1,3 +1,4 @@
+import {useScreenIdentity} from '../detail/context';
 import {generatedCoverTint} from '@design';
 import {useCardInteractionAdmission} from '../../kit/cards/use-interaction-admission';
 import type {SearchSelection} from './selection';
@@ -60,6 +61,7 @@ export function SearchScreen({binding, selection, linkedQuery, onConsumeLinkedQu
   const selectionEpoch = selection?.epoch();
   const compact = useShellWidth() < 600;
   const {service, context} = binding, initial = binding.session();
+  useScreenIdentity(context);
   const snapshot = useSyncExternalStore(binding.results.subscribe, binding.results.getSnapshot, binding.results.getSnapshot);
   useFreshDocument([dependsOn.libraries, ...titlesWithPersonalState(), dependsOn.settings('preferences'), dependsOn.event('stream.resync')], refresh => service.revalidate(refresh), () => service.getSnapshot().phase === 'ready');
   const preferences = useSyncExternalStore(context.preferences.subscribe, context.preferences.getSnapshot, context.preferences.getSnapshot);

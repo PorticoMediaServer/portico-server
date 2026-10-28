@@ -1,3 +1,4 @@
+import {subscribeFacts} from '../../../shell/fact-source';
 import {encodedRoutePath} from '../../../../../packages/contracts/src/routes.ts';
 import type {LibraryChannel} from '@core/library-channels.ts';
 import type {ShellAssemblyContext} from '../../../shell/bootstrap';
@@ -13,7 +14,8 @@ export function libraryChannelAdmission(context: ShellAssemblyContext, owner: Ow
     serverId: owner.serverId,
     isCurrent: owner.current,
     reportError: owner.reportError,
-    libraries: context.facts.identity.libraries,
+    get libraries() {return context.facts.identity.libraries;},
+    subscribe: (listener: () => void) => subscribeFacts(context, listener),
     timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
     logo: (channel: LibraryChannel, revision?: number) => owner.current() && context.isCurrent() ? context.artwork.channelLogo(channel.config.id, revision) : undefined,
     sampleArt: (id: string) => owner.current() && context.isCurrent() ? context.artwork.foreground(encodedRoutePath('get_items_id_art_kind', {id: encodeURIComponent(id), kind: 'poster'}), 80, 2 / 3) : undefined,

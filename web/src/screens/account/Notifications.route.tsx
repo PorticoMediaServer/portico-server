@@ -1,3 +1,4 @@
+import {useShellFacts} from '../../shell/fact-hooks';
 import {useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore} from 'react';
 import {useRouterState} from '@tanstack/react-router';
 import {defaultI18n} from '@i18n';
@@ -21,6 +22,7 @@ function NotificationsScreen() {
   return captured ? <BoundNotifications captured={captured} /> : null;
 }
 function BoundNotifications({captured}: {captured: NonNullable<ReturnType<typeof useProtectedWebScreenContext>>}) {
+  useShellFacts(captured.context);
   const {context, binding} = captured, service = context.inbox, state = useSyncExternalStore(service.subscribe, service.getSnapshot);
   const location = useRouterState({select: value => value.location});
   const [published, publish] = useState<Readonly<{context: typeof context; service: typeof service; location: typeof location; admission: NotificationScreenAdmission}>>();

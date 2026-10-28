@@ -1,3 +1,4 @@
+import {profileTargetKey, switchAuthorityKey, switchOfferKey} from './profile-offer';
 import {useEffect, useLayoutEffect, useRef, useState, type ComponentType, type ReactNode} from 'react';
 import {Link, useNavigate, useRouterState} from '@tanstack/react-router';
 import {ownerSwitchContextAllowed} from '../platform/secure-pending';
@@ -75,20 +76,32 @@ function ShellFrame({identity, OwnerActivity, dockVisible, serverAway, onSignOut
   const navigate = useNavigate();
   const [profileChoice,setProfileChoice]=useState<ProfileIdentity>(),[profilePin,setProfilePin]=useState(''),[profileError,setProfileError]=useState<unknown>(),[profileBusy,setProfileBusy]=useState(false);
   const profileRequest=useRef<AbortController|undefined>(undefined);
+  const profileProof = useRef<string | undefined>(undefined);
+  const profileKey = profileChoice ? JSON.stringify([switchAuthorityKey(identity), profileTargetKey(identity.profiles.find(profile => profile.id === profileChoice.id))]) : undefined;
+  useLayoutEffect(() => {
+    if (!profileChoice || profileProof.current === profileKey) return;
+    profileProof.current = undefined;profileRequest.current?.abort();setProfileChoice(undefined);setProfilePin('');setProfileError(undefined);setProfileBusy(false);
+  }, [profileKey, profileChoice]);
+  const offerProfile = (profile: ProfileIdentity) => {
+    profileProof.current = JSON.stringify([switchAuthorityKey(identity), profileTargetKey(profile)]);
+    setProfilePin('');setProfileError(undefined);setProfileChoice(Object.freeze({...profile}));
+  };
+  const profileDisplay = profileChoice && identity.profiles.find(profile => profile.id === profileChoice.id) || profileChoice;
   useEffect(()=>()=>profileRequest.current?.abort(),[]);
-  const chooseProfile=async(profile:ProfileIdentity,pin='')=>{if(!onSwitchProfile)return;profileRequest.current?.abort();const controller=profileRequest.current=new AbortController();setProfileBusy(true);setProfileError(undefined);try{await onSwitchProfile(profile.id,pin,controller.signal);if(!controller.signal.aborted)setProfileChoice(undefined);}catch(error){if(!controller.signal.aborted)setProfileError(error);}finally{if(profileRequest.current===controller)setProfileBusy(false);}};
+  const chooseProfile=async(profile:ProfileIdentity,pin='')=>{if(!onSwitchProfile || profileProof.current !== JSON.stringify([switchAuthorityKey(identity), profileTargetKey(profile)]))return;profileRequest.current?.abort();const controller=profileRequest.current=new AbortController();setProfileBusy(true);setProfileError(undefined);try{await onSwitchProfile(profile.id,pin,controller.signal);if(!controller.signal.aborted)setProfileChoice(undefined);}catch(error){if(!controller.signal.aborted)setProfileError(error);}finally{if(profileRequest.current===controller)setProfileBusy(false);}};
   const home = pathname === '/', settingsArea = pathname === '/settings' || pathname === '/dashboard', [accountOpen, setAccountOpen] = useState(false), [moreOpen, setMoreOpen] = useState(false);
   const [switchOpening, setSwitchOpening] = useState<SwitchProfileServerOpening>(), [hostedSelection, setHostedSelection] = useState<HostedSwitchSelection>();
   const switchOwner = useRef<SwitchProfileServerOpening | undefined>(undefined);
-  const committedSwitch = useRef<{identity: ShellIdentity; pathname: string; selectServer: typeof onSwitchServer; selectProfile: typeof onSwitchProfile} | undefined>(undefined);
+  const offerKey = switchOfferKey(identity);
+  const committedSwitch = useRef<{key: string; pathname: string; selectServer: typeof onSwitchServer; selectProfile: typeof onSwitchProfile} | undefined>(undefined);
   useLayoutEffect(() => {
-    committedSwitch.current = {identity, pathname, selectServer: onSwitchServer, selectProfile: onSwitchProfile};
+    committedSwitch.current = {key: offerKey, pathname, selectServer: onSwitchServer, selectProfile: onSwitchProfile};
     switchOwner.current = undefined; setSwitchOpening(undefined); setHostedSelection(undefined);
     return () => {committedSwitch.current = undefined; switchOwner.current = undefined;};
-  }, [identity, pathname, onSwitchServer, onSwitchProfile]);
+  }, [offerKey, pathname, onSwitchServer, onSwitchProfile]);
   const openSwitcher = () => {
     const original = committedSwitch.current;
-    if (!desktop || !original || original.identity !== identity || original.pathname !== pathname) return;
+    if (!desktop || !original || original.key !== offerKey || original.pathname !== pathname) return;
     setAccountOpen(false);
     const opening: SwitchProfileServerOpening = Object.freeze({
       current: () => switchOwner.current === opening && committedSwitch.current === original,
@@ -96,7 +109,7 @@ function ShellFrame({identity, OwnerActivity, dockVisible, serverAway, onSignOut
       profileId: identity.viewer.profileId, profiles: Object.freeze(identity.profiles.map(profile => Object.freeze({...profile}))),
       selectProfile: (profile: ProfileIdentity) => {
         if (!opening.current()) return;
-        setProfilePin(''); setProfileError(undefined); setProfileChoice(profile);
+        offerProfile(profile);
         if (onSwitchProfile && !profile.pinRequired) void chooseProfile(profile);
         else if (!onSwitchProfile) void navigate({to: '/profiles', search: {profileId: profile.id}});
       },
@@ -134,7 +147,7 @@ function ShellFrame({identity, OwnerActivity, dockVisible, serverAway, onSignOut
     serverChoices={!desktop&&onSwitchServer?savedServers?.map(server=>({...server,onSelect:()=>{void onSwitchServer(server.id);}})):undefined} signOutLabel={identity.serverName?t('accounts.signOut.namedServer',{server:identity.serverName}):undefined} profiles={identity.profiles} accountFacts={identity.accountFacts} serverAction={serverAction} actions={{
       ...(identity.canManageProfiles ? {manageProfiles: () => { void navigate({to: '/settings'}); }} : {}),
       ...(identity.canManageProfiles ? {addProfile: () => { void navigate({to: '/settings'}); }} : {}),
-      switchProfile: profile => {if(onSwitchProfile){setProfilePin('');setProfileError(undefined);setProfileChoice(profile);if(!profile.pinRequired)void chooseProfile(profile);}else{void navigate({to: '/profiles', search: {profileId: profile.id}});}},
+      switchProfile: profile => {if(onSwitchProfile){offerProfile(profile);if(!profile.pinRequired)void chooseProfile(profile);}else{void navigate({to: '/profiles', search: {profileId: profile.id}});}},
       switchServer: () => {if (desktop) openSwitcher(); else void navigate({to: '/servers'});},
       ...(identity.signIn === 'portico' && viewer.role === 'owner' && identity.capabilities?.manageServer === true && ownerSwitchContextAllowed() ? {switchToLocalSignIn: () => { void navigate({to: '/settings', search: {section: 'signin'}}); }} : {}),
       settings: () => { void navigate({to: '/settings'}); },
@@ -202,10 +215,10 @@ function ShellFrame({identity, OwnerActivity, dockVisible, serverAway, onSignOut
     </div>
     {awayShown && <ConnectionAway serverName={identity.serverName} />}
     {children}
-    <Dialog open={!!profileChoice&&(profileChoice.pinRequired===true||!!profileError)} onOpenChange={open=>{if(!open){profileRequest.current?.abort();setProfileChoice(undefined);setProfilePin('');setProfileError(undefined);}}} title={profileChoice?.name??identity.profileName} footer={<><Button variant="glass" onClick={()=>{profileRequest.current?.abort();setProfileChoice(undefined);setProfilePin('');}}>{t('accounts.profiles.cancel')}</Button><Button disabled={profileBusy||!!profileChoice?.pinRequired&&!/^\d{4}$/.test(profilePin)} onClick={()=>{if(profileChoice)void chooseProfile(profileChoice,profilePin);}}>{t('accounts.profiles.continue')}</Button></>}>
-      {profileChoice?.pinRequired&&<TextField type="password" inputMode="numeric" maxLength={4} autoComplete="off" label={t('accounts.profiles.pinForProfile',{profile:profileChoice.name})} value={profilePin} onChange={event=>setProfilePin(event.currentTarget.value)} error={(profileError as {code?:unknown}|undefined)?.code==='profile_pin_invalid'?t('accounts.profiles.pinFailed'):undefined} />}
+    <Dialog open={!!profileChoice&&(profileChoice.pinRequired===true||!!profileError)} onOpenChange={open=>{if(!open){profileProof.current=undefined;profileRequest.current?.abort();setProfileChoice(undefined);setProfilePin('');setProfileError(undefined);}}} title={profileDisplay?.name??identity.profileName} footer={<><Button variant="glass" onClick={()=>{profileProof.current=undefined;profileRequest.current?.abort();setProfileChoice(undefined);setProfilePin('');}}>{t('accounts.profiles.cancel')}</Button><Button disabled={profileBusy||!!profileChoice?.pinRequired&&!/^\d{4}$/.test(profilePin)} onClick={()=>{if(profileChoice)void chooseProfile(profileChoice,profilePin);}}>{t('accounts.profiles.continue')}</Button></>}>
+      {profileChoice?.pinRequired&&<TextField type="password" inputMode="numeric" maxLength={4} autoComplete="off" label={t('accounts.profiles.pinForProfile',{profile:profileDisplay?.name ?? profileChoice.name})} value={profilePin} onChange={event=>setProfilePin(event.currentTarget.value)} error={(profileError as {code?:unknown}|undefined)?.code==='profile_pin_invalid'?t('accounts.profiles.pinFailed'):undefined} />}
     </Dialog>
-    {switchOpening && <SwitchProfileServerHost opening={switchOpening} close={() => {if (switchOwner.current === switchOpening) switchOwner.current = undefined; setSwitchOpening(current => current === switchOpening ? undefined : current);}} />}
+    {switchOpening && <SwitchProfileServerHost opening={switchOpening} presentation={identity} close={() => {if (switchOwner.current === switchOpening) switchOwner.current = undefined; setSwitchOpening(current => current === switchOpening ? undefined : current);}} />}
     {overlays}
   </div>;
 }

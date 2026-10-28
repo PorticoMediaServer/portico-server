@@ -1,3 +1,4 @@
+import {subscribePresentation} from '../../shell/fact-hooks';
 import {useLayoutEffect, useMemo, useSyncExternalStore} from 'react';
 import type {ShellAssemblyContext} from '../../shell/bootstrap';
 import {shellLanguage} from '../../shell/settings';
@@ -6,7 +7,6 @@ import {canonicalVersionChoiceFormatter, versionChoiceRows} from '../../shell/ve
 import {WatchVersionChooser} from './VersionChooser';
 import {createWatchVersionPresentation, registerWatchVersionPresentation} from './version-presentation';
 
-const noSubscribe = () => () => {};
 /** One chooser, outside the route outlet, using the current captured locale and actual
  * canonical file facts. The route caller retains and guards its original options object. */
 export function WatchVersionPresentationOwner({context, reportError}: {context: ShellAssemblyContext; reportError(error: unknown): void}) {
@@ -14,7 +14,7 @@ export function WatchVersionPresentationOwner({context, reportError}: {context: 
   useLayoutEffect(() => registerWatchVersionPresentation(context, owner), [context, owner]);
   const shown = useSyncExternalStore(owner.subscribe, owner.getSnapshot, () => undefined);
   const readPreferences = () => context.preferences?.getSnapshot('web') ?? context.facts.preferences;
-  const preferences = useSyncExternalStore(context.preferences?.subscribe ?? noSubscribe, readPreferences, readPreferences);
+  const preferences = useSyncExternalStore(listener => subscribePresentation(context, listener), readPreferences, readPreferences);
   const language = shellLanguage(preferences), width = useShellWidth();
   if (!shown || !context.isCurrent()) return null;
   const formatter = canonicalVersionChoiceFormatter(language.t, language.region.formatLocale);
