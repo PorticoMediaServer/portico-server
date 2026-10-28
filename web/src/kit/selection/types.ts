@@ -36,8 +36,8 @@ export type SelectionBarProps = Readonly<{
   actions: SelectionActions;
   context?: string;
   typeCount?: number;
-  /** Omitted when the owner cannot honestly offer a whole-view or whole-row select. */
-  selectAll?: {kind: 'view'; total: number} | {kind: 'row'} | {kind: 'clear'};
+  /** An explicit unavailable view carries a reason, never a guessed total or executor. */
+  selectAll?: {kind: 'view'; total: number} | {kind: 'row'} | {kind: 'clear'} | {kind: 'unavailable'; reason: string};
   onSelectAll?: () => void;
   onExit: () => void;
   allInView?: {visible: number; scope?: 'library' | 'view'};
