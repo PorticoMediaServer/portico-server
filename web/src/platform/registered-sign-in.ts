@@ -2,6 +2,7 @@ import {HttpLocalApi, type LocalSession} from '@core/index.ts';
 import {type AppSessionStore, knownServerRoutes} from '@core/app-sessions.ts';
 import {installationIdentity} from '@core/installation.ts';
 import {type RegisteredSignIn, type ReturnPending, type ReturnPendingStore, prepareRegisteredSignIn, consumeSameTabReturn} from '@core/same-tab-return.ts';
+import {REGISTERED_SIGN_IN_CLOCK_SKEW_MS, registeredSignInExpiryWithinLifetime} from '@core/registered-sign-in-context.ts';
 import {assertFirstContactIdentity, routeBase64, routeBytes, routeOrigin, serverPin, sameServerPin, type ServerPin} from '@core/route-identity.ts';
 import {connectPairedServer, connectPairedPorticoServer, rememberNativeSession, type ConnectionEnvironment} from '@core/server-connections.ts';
 import {CodedError} from '@core/server-messages.ts';
@@ -121,8 +122,11 @@ export class BrowserRegisteredSignIn {
     this.attemptId = undefined;
     if (!record || record.version !== 1 || record.kind !== 'registered' || !record.pending) throw invalid();
     const saved = {...record, pending: record.pending}, url = new URL(captured.href), expires = Date.parse(saved.expiresAt), now = Date.now();
-    if (!Number.isSafeInteger(saved.pending.createdAt) || saved.pending.createdAt < 0 || saved.pending.createdAt > now + 60_000 ||
-      !Number.isFinite(expires) || expires <= now || expires > saved.pending.createdAt + 5 * 60_000 ||
+    // createdAt is this browser's clock, expires is the signing Server's. The
+    // signed prepare still bounds itself; this record adds only the same bounded
+    // skew and never accepts an expiry this browser already reached.
+    if (!Number.isSafeInteger(saved.pending.createdAt) || saved.pending.createdAt < 0 || saved.pending.createdAt > now + REGISTERED_SIGN_IN_CLOCK_SKEW_MS ||
+      !registeredSignInExpiryWithinLifetime(expires, saved.pending.createdAt, now) ||
       url.origin !== this.ports.pageOrigin() || url.origin !== saved.origin || saved.pending.registrationOrigin !== saved.origin || saved.pending.purpose !== 'sign-in' ||
       saved.pending.serverId !== saved.pin.serverId || saved.pending.installationId !== this.ports.installationId() ||
       !Number.isSafeInteger(saved.expectedRevision) || saved.expectedRevision < 0) throw invalid();

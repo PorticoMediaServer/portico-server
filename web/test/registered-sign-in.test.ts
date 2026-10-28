@@ -27,6 +27,7 @@ async function fixture() {
       expiresAt: '2099-01-01T00:00:00Z', authorizationHorizon: '2099-02-01T00:00:00Z', viewer: {authority: 'local', serverId: pin.serverId, accountId: 'server-account', profileId: 'main', role: 'account'}},
   };
   let afterFinalWrite: (() => void) | undefined;
+  let producerHeadroom = 299_000;
   const calls: string[] = [], retired: string[] = [], exposed: RegisteredSignIn[] = [];
   const connection = {pin, getSnapshot: () => ({phase: 'ready'}), dispose: () => {calls.push('dispose-prepared');}};
   const api = {baseUrl: origin, getRouteConnection: () => connection, setAccessToken: () => {},
@@ -51,7 +52,7 @@ async function fixture() {
       await store.change(() => pending);
       return {start: {serverId: pin.serverId, purpose: 'sign-in', claimOperationId: pending.claimOperationId, registrationId: pending.registrationId,
         state: pending.state, codeChallenge: 'p'.repeat(43), serverChallenge: pending.serverChallenge, installationId: pending.installationId},
-        registration: {id: pending.registrationId, origin}, hostedOrigin, expiresAt: new Date(pending.createdAt + 299000).toISOString()};
+        registration: {id: pending.registrationId, origin}, hostedOrigin, expiresAt: new Date(pending.createdAt + producerHeadroom).toISOString()};
     }) as Ports['prepare'],
     connect: (async () => {calls.push('connect'); return {api, connection};}) as Ports['connect'],
     consume: (async (_api, store) => {assert.equal(saved, undefined, 'the durable journal is spent before the request'); assert.equal((await store.read())?.state, pending.state); calls.push('exchange'); if (gate) await gate; return grant;}) as Ports['consume'],
@@ -63,6 +64,7 @@ async function fixture() {
   const prepare = () => flow.prepare(api, origin, hostedOrigin, installation, {moveTicket: pending.moveTicket});
   return {flow, prepare, callback, calls, retired, exposed, saved: () => saved, another: () => new BrowserRegisteredSignIn(ports), api,
     afterFinalWrite: (run: () => void) => {afterFinalWrite = run;},
+    ahead: (skew: number) => {producerHeadroom = 300_000 + skew;},
     revise: () => {revision++;}, changeInstallation: () => {currentInstallation = 'changed-installation'.padEnd(43, '_');},
     mutate: (update: (old: NonNullable<Pending>) => Pending) => {saved = update(saved!);},
     hold: () => {gate = new Promise(resolve => {resolveGate = resolve;});}, release: () => {resolveGate?.(); gate = undefined;},
@@ -170,4 +172,31 @@ test('a signed prepare that expires during its final private write never yields 
   assert.equal(f.calls.includes('exchange'), false);
   assert.equal(f.calls.includes('remember'), false);
   assert.deepEqual(f.retired, []);
+});
+
+/** Same real Chromium trace: the signed prepare answered while this browser's
+ * clock trailed the Server, so the producer's expiry sat more than one lifetime
+ * past the browser-recorded createdAt and the callback refused a genuine return. */
+test('a Server clock slightly ahead still completes the one-use return inside the bounded skew', async () => {
+  for (const skew of [1, 5_000, 60_000]) {
+    const f = await fixture(); f.ahead(skew); await f.prepare();
+    assert.equal(f.saved()?.expiresAt, new Date(f.saved()!.pending!.createdAt + 300_000 + skew).toISOString());
+    await f.flow.finish(f.callback);
+    assert.equal(f.calls.filter(value => value === 'exchange').length, 1);
+    assert.equal(f.calls.includes('remember'), true);
+    assert.equal(f.saved(), undefined, 'the journal is still spent once');
+  }
+});
+test('one millisecond past the bounded skew is refused before any server exchange', async () => {
+  const f = await fixture(); f.ahead(60_001); await f.prepare();
+  await assert.rejects(f.flow.finish(f.callback), {code: 'invalid_return'});
+  assert.equal(f.calls.includes('connect'), false); assert.equal(f.calls.includes('exchange'), false);
+  assert.equal(f.saved(), undefined);
+});
+test('an expiry this browser already reached is refused inside the same bounded window', async t => {
+  const f = await fixture(); f.ahead(5_000); await f.prepare();
+  const reached = Date.parse(f.saved()!.expiresAt);
+  t.mock.method(Date, 'now', () => reached);
+  await assert.rejects(f.flow.finish(f.callback), {code: 'invalid_return'});
+  assert.equal(f.calls.includes('exchange'), false); assert.equal(f.calls.includes('remember'), false);
 });

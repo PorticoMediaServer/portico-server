@@ -2,12 +2,11 @@ import {validInstallationId} from './installation.ts';
 import {currentUTCTimestamp} from './local-session.ts';
 import {routeBase64, routeBytes, routeOrigin} from './route-identity.ts';
 import type {RegisteredSignIn, RegisteredSignInWithContext} from './same-tab-return.ts';
-import {verifyRegisteredSignInContext} from './registered-sign-in-context.ts';
+import {verifyRegisteredSignInContext, registeredSignInExpiryWithinLifetime} from './registered-sign-in-context.ts';
 import type {RouteCrypto} from './route-identity.ts';
 
 const prefix = '#signIn=v1.';
 const maximumURL = 8192;
-const lifetime = 5 * 60_000;
 const topKeys = ['start', 'registration', 'hostedOrigin', 'expiresAt', 'context'];
 const startKeys = ['serverId', 'purpose', 'claimOperationId', 'registrationId', 'state', 'codeChallenge', 'serverChallenge', 'installationId'];
 const registrationKeys = ['id', 'origin'];
@@ -38,7 +37,11 @@ function checked(value: unknown, now: number): RegisteredSignInWithContext {
   if (registration.id !== registrationId) invalid();
   if (!currentUTCTimestamp(root.expiresAt) || !root.expiresAt.endsWith('Z') || root.expiresAt[10] !== 'T') invalid();
   const expires = Date.parse(root.expiresAt);
-  if (expires <= now || expires - now > lifetime) invalid();
+  // This envelope carries only the producer's signed expiry. Its ceiling is the
+  // one an authentic issuance can reach: verifyHostedSignInStart proves the
+  // signed facts hold this same expiry at most one lifetime after issuance and
+  // issued no more than one bounded skew ahead of this browser's clock.
+  if (!registeredSignInExpiryWithinLifetime(expires, now, now)) invalid();
   const context = object(root.context, ['payload', 'signature']);
   routeBytes(context.payload, undefined, 6144); routeBytes(context.signature, 64);
   // Construct one canonical order without copying protected or unrelated fields.
