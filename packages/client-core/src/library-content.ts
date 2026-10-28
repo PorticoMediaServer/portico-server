@@ -419,8 +419,10 @@ export const contentViewRehydratable = (view: ContentView): boolean => startView
  * The first page pins the viewer fence and catalogue revision. A later page from another one is a
  * changed library (`stale_continuation`), never spliced into the old offsets. Other views keep
  * `LibraryContentService`'s appended sections: their earlier pages cannot be read again.
+ * `onPage` receives each accepted page's projection (heading, sorts, query, scope and revision,
+ * without its sections), so a screen can draw its header from the same read as its window.
  */
-export function libraryContentPages(options: Readonly<{ api: LibraryContentApi; scope: ContentScope; route: ContentRoute; pageSize?: number }>): FetchPage<ContentEntry> {
+export function libraryContentPages(options: Readonly<{ api: LibraryContentApi; scope: ContentScope; route: ContentRoute; pageSize?: number; onPage?: (projection: ContentProjection) => void }>): FetchPage<ContentEntry> {
   const bound = scope(options.scope), selected = route(options.route), pageSize = options.pageSize ?? 40;
   if (!contentViewRehydratable(selected.view) || !Number.isInteger(pageSize) || pageSize < 1 || pageSize > 100) throw new Error('Invalid content window.');
   const changed = () => new ContentFailure('stale_continuation', 'The library changed. Refresh to continue.', true);
@@ -435,9 +437,10 @@ export function libraryContentPages(options: Readonly<{ api: LibraryContentApi; 
     if (pinned && (result.scope.viewerFence !== pinned.viewerFence || result.revision.catalog !== pinned.catalog)) throw changed();
     // The server leaves out an empty section: an empty library at the top, or a list that shrank under a later page.
     const grid = result.sections.find(section => section.id === 'items' && section.type === 'grid');
-    if (!grid) { if (start > 0) throw changed(); pinned ??= Object.freeze({ viewerFence: result.scope.viewerFence, catalog: result.revision.catalog }); return { items: Object.freeze([]), total: 0 }; }
+    if (!grid) { if (start > 0) throw changed(); pinned ??= Object.freeze({ viewerFence: result.scope.viewerFence, catalog: result.revision.catalog }); options.onPage?.(Object.freeze({ ...result, sections: Object.freeze([]) })); return { items: Object.freeze([]), total: 0 }; }
     if ((grid.start ?? 0) !== start || grid.entries.length > count) invalid();
     pinned ??= Object.freeze({ viewerFence: result.scope.viewerFence, catalog: result.revision.catalog });
+    options.onPage?.(Object.freeze({ ...result, sections: Object.freeze([]) }));
     return { items: grid.entries, total: grid.totalCount };
   };
 }
