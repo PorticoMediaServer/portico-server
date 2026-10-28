@@ -44,7 +44,7 @@ func TestArtworkAcquisitionUsesOriginalWhilePreviewKeepsProviderSize(t *testing.
 	})}
 	j := artworkWork{provider: "tmdb", origin: "https://image.tmdb.org/t/p/w780/picture.jpg"}
 	full, thumb, err := s.acquireArtworkObjects(ctx, j)
-	if err != nil || full.width != 2560 || thumb.width != 400 {
+	if err != nil || full.width != 2560 || thumb.width != artworkSmallEdge {
 		t.Fatal("full acquisition retained provider thumbnail cap", full.width, thumb.width, err)
 	}
 	j.preview = true

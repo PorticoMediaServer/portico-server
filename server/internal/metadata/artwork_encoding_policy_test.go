@@ -44,19 +44,13 @@ func TestArtworkContextCapturesActualPolicyAndGuardsPublicationRevision(t *testi
 		for i := range picture.Pix {
 			picture.Pix[i] = 255
 		}
-		raw, w, h, err := encodeDisplayArtworkContext(encoded, picture, artworkLargeEdge, true)
-		limit := 500000
-		if edge == 2560 {
-			limit = 888888
-		}
-		if err != nil || w != edge || h != edge*1080/2700 || len(raw) > limit {
+		raw, w, h, err := encodeArtworkSlot(encoded, picture, artworkSlotLarge)
+		if err != nil || w != edge || h != edge*1080/2700 || len(raw) > artworkLargeCap[edge] {
 			t.Fatal("captured policy did not reach real encoder", edge, w, h, len(raw), err)
 		}
-		for _, fixed := range []int{400, 800} {
-			_, w, h, err = encodeDisplayArtworkContext(encoded, picture, fixed, true)
-			if err != nil || max(w, h) != fixed {
-				t.Fatal("derived size changed", fixed, w, h, err)
-			}
+		_, w, h, err = encodeArtworkSlot(encoded, picture, artworkSlotSmall)
+		if err != nil || max(w, h) != artworkSmallEdge {
+			t.Fatal("small slot followed the large policy", w, h, err)
 		}
 		if _, err = dbwork.ExecWrite(ctx, s.db, dbwork.ClassMaintenance, `UPDATE metadata_runtime_settings SET revision=revision+1 WHERE singleton=1`); err != nil {
 			t.Fatal(err)
@@ -77,13 +71,23 @@ func TestArtworkContextHonoursLargerByteCeilingWithoutEnlargingPictures(t *testi
 		picture.Pix[i+2] = byte(random.Intn(256))
 		picture.Pix[i+3] = 255
 	}
+	// Noise needs more than 1920's whole allowance at the quality floor. The
+	// 2560 policy keeps it at full size inside its own allowance, never smaller.
+	setArtworkPolicy(t, s, 1920)
+	standard, _, err := s.CaptureArtworkContext(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, _, _, err = encodeArtworkSlot(standard, picture, artworkSlotLarge); !errors.Is(err, errArtworkCapUnreachable) {
+		t.Fatal("the 1920 cap was stretched or the picture was shrunk", err)
+	}
 	setArtworkPolicy(t, s, 2560)
 	larger, _, err := s.CaptureArtworkContext(ctx)
 	if err != nil {
 		t.Fatal(err)
 	}
-	raw, w, h, err := encodeDisplayArtworkContext(larger, picture, artworkLargeEdge, true)
-	if err != nil || len(raw) <= 500000 || len(raw) > 888888 || w > 1600 || h > 1000 {
+	raw, w, h, err := encodeArtworkSlot(larger, picture, artworkSlotLarge)
+	if err != nil || len(raw) <= 500000 || len(raw) > artworkLargeCap[2560]*3/2 || w != 1600 || h != 1000 {
 		t.Fatal("larger policy did not use its actual bounded byte allowance", len(raw), w, h, err)
 	}
 	small := image.NewUniform(color.NRGBA{R: 20, G: 40, B: 60, A: 255})
@@ -99,7 +103,7 @@ func TestArtworkContextHonoursLargerByteCeilingWithoutEnlargingPictures(t *testi
 		if err != nil {
 			t.Fatal(err)
 		}
-		_, w, h, err = encodeDisplayArtworkContext(encoded, bounded, artworkLargeEdge, true)
+		_, w, h, err = encodeArtworkSlot(encoded, bounded, artworkSlotLarge)
 		if err != nil || w != 640 || h != 320 {
 			t.Fatal("small picture was enlarged", edge, w, h, err)
 		}

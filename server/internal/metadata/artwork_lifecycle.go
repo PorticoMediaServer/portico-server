@@ -41,11 +41,6 @@ func (s *Service) ensureArtworkFiles(objects ...artworkInstalled) error {
 				}
 			}
 		}
-		if o.medium != nil {
-			if err := s.ensureArtworkFiles(*o.medium); err != nil {
-				return err
-			}
-		}
 	}
 	return nil
 }

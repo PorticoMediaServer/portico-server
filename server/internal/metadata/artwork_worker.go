@@ -201,21 +201,9 @@ type artworkInstalled struct {
 	digest, mime  string
 	width, height int
 	size          int
-	medium        *artworkInstalled
 	// raw keeps the bytes until the referencing transaction has committed, so
 	// a concurrently retired file can be reinstalled (artwork_lifecycle.go).
 	raw []byte
-}
-
-// thumbnailBounds contains a thumbnail inside 400x400 without cropping.
-func thumbnailBounds(w, h int) (int, int) {
-	if w <= 400 && h <= 400 {
-		return w, h
-	}
-	if w >= h {
-		return 400, max(1, h*400/w)
-	}
-	return max(1, w*400/h), 400
 }
 
 func normalizeArtwork(raw []byte) ([]byte, []byte, int, int, error) {
@@ -249,19 +237,16 @@ func normalizeArtworkFormatsContext(ctx context.Context, raw []byte, allowed map
 	if decoded.Bounds().Dx() != config.Width || decoded.Bounds().Dy() != config.Height {
 		return nil, nil, 0, 0, errors.New("dimension_limit")
 	}
-	// Keep bounded display representations, never the provider original.
-	original, w, h, err := encodeDisplayArtworkContext(ctx, decoded, artworkLargeEdge, format == "jpeg")
+	// One decode makes both slots; the provider original is never kept.
+	large, w, h, err := encodeArtworkSlot(ctx, decoded, artworkSlotLarge)
 	if err != nil {
 		return nil, nil, 0, 0, err
 	}
-	if err = ctx.Err(); err != nil {
-		return nil, nil, 0, 0, err
-	}
-	thumb, _, _, err := encodeDisplayArtworkContext(ctx, decoded, artworkSmallEdge, format == "jpeg")
+	small, _, _, err := encodeArtworkSlot(ctx, decoded, artworkSlotSmall)
 	if err == nil {
 		err = ctx.Err()
 	}
-	return original, thumb, w, h, err
+	return large, small, w, h, err
 }
 
 // ErrArtworkSpace is a refusal, not a failure: the image is fine, the volume is
@@ -274,56 +259,25 @@ func (s *Service) installArtwork(raw []byte, w, h int) (artworkInstalled, error)
 	return s.installArtworkContext(context.Background(), raw, w, h)
 }
 
-func (s *Service) installArtworkContext(ctx context.Context, raw []byte, w, h int) (artworkInstalled, error) {
-	a, err := s.installArtworkFile(raw, w, h)
-	if err != nil || max(w, h) <= 400 {
-		return a, err
-	}
-	release, err := imagework.Acquire(ctx)
-	if err != nil {
-		return a, err
-	}
-	defer release()
-	decoded, format, err := image.Decode(bytes.NewReader(raw))
-	if err != nil {
-		return a, err
-	}
-	if err = ctx.Err(); err != nil {
-		return a, err
-	}
-	medium, mw, mh, err := encodeDisplayArtworkContext(ctx, decoded, 800, format == "jpeg")
-	if err != nil {
-		return a, err
-	}
-	m, err := s.installArtworkFile(medium, mw, mh)
-	if err != nil {
-		return a, err
-	}
-	a.medium = &m
-	return a, nil
+func (s *Service) installArtworkContext(_ context.Context, raw []byte, w, h int) (artworkInstalled, error) {
+	return s.installArtworkFile(raw, w, h)
 }
 
 func recordArtworkObject(ctx context.Context, tx *sql.Tx, o artworkInstalled, stamp string) error {
-	if _, err := tx.ExecContext(ctx, `INSERT INTO artwork_objects VALUES(?,?,?,?,?,?,'ready') ON CONFLICT(digest) DO UPDATE SET status='ready'`, o.digest, o.mime, o.width, o.height, o.size, stamp); err != nil {
-		return err
-	}
-	if o.medium != nil {
-		if err := recordArtworkObject(ctx, tx, *o.medium, stamp); err != nil {
-			return err
-		}
-		_, err := tx.ExecContext(ctx, `INSERT INTO artwork_variants(source_digest,width,digest) VALUES(?,800,?) ON CONFLICT(source_digest,width) DO UPDATE SET digest=excluded.digest`, o.digest, o.medium.digest)
-		return err
-	}
-	return nil
+	_, err := tx.ExecContext(ctx, `INSERT INTO artwork_objects VALUES(?,?,?,?,?,?,'ready') ON CONFLICT(digest) DO UPDATE SET status='ready'`, o.digest, o.mime, o.width, o.height, o.size, stamp)
+	return err
 }
 
-func linkArtworkBuckets(ctx context.Context, tx *sql.Tx, full, thumbnail artworkInstalled) error {
+// linkArtworkBuckets maps the serving widths to the two slots: the small slot
+// answers every width up to its edge, the large slot answers 1920 when it is
+// no larger than that.
+func linkArtworkBuckets(ctx context.Context, tx *sql.Tx, full, small artworkInstalled) error {
 	for _, bucket := range []struct {
 		width  int
 		digest string
-	}{{400, thumbnail.digest}, {1920, full.digest}} {
+	}{{400, small.digest}, {artworkSmallEdge, small.digest}, {1920, full.digest}} {
 		if bucket.width == 1920 && max(full.width, full.height) > 1920 {
-			// A Larger original is not a 1920 representation. That fixed bucket
+			// A larger original is not a 1920 representation. That fixed bucket
 			// is generated lazily from the same selected immutable source.
 			continue
 		}
@@ -638,12 +592,12 @@ const artworkAttemptLimit = 5
 
 func (s *Service) failArtwork(ctx context.Context, j artworkWork, problem error) error {
 	code := problem.Error()
-	allowed := map[string]bool{"offline": true, "rate_limited": true, "not_found": true, "origin_rejected": true, "redirect_rejected": true, "size_limit": true, "unsupported_image": true, "dimension_limit": true, "malformed_image": true, "normalized_size_limit": true, "storage_unavailable": true, "provider_unavailable": true}
+	allowed := map[string]bool{"offline": true, "rate_limited": true, "not_found": true, "origin_rejected": true, "redirect_rejected": true, "size_limit": true, "unsupported_image": true, "dimension_limit": true, "malformed_image": true, "cap_unreachable": true, "storage_unavailable": true, "provider_unavailable": true}
 	if !allowed[code] {
 		code = "acquisition_failed"
 	}
 	status := "retry"
-	if (j.attempts >= artworkAttemptLimit && code != "storage_unavailable") || code == "origin_rejected" || code == "unsupported_image" || code == "dimension_limit" {
+	if (j.attempts >= artworkAttemptLimit && code != "storage_unavailable") || code == "origin_rejected" || code == "unsupported_image" || code == "dimension_limit" || code == "cap_unreachable" {
 		status = "failed"
 	}
 	delay := time.Duration(30*(1<<min(j.attempts, 8))) * time.Second

@@ -35,7 +35,7 @@ func (s *Service) sharedArtwork(ctx context.Context, j artworkWork) (artworkInst
 	if err != nil {
 		return a, b, false, err
 	}
-	edge, _ := artworkEncodingLimits(ctx, artworkLargeEdge)
+	edge, _ := artworkSlotLimits(ctx, artworkSlotLarge)
 	if max(a.width, a.height) < edge && fullArtworkOrigin(j.origin, j.provider) != j.origin {
 		// A retained provider thumbnail does not prove the original was small.
 		return a, b, false, nil
@@ -45,9 +45,9 @@ func (s *Service) sharedArtwork(ctx context.Context, j artworkWork) (artworkInst
 		if e != nil {
 			return a, b, false, nil
 		}
-		raw, e := io.ReadAll(io.LimitReader(f, artworkDisplayBytes+1))
+		raw, e := io.ReadAll(io.LimitReader(f, artworkMaxBytes+1))
 		f.Close()
-		if e != nil || len(raw) > artworkDisplayBytes || len(raw) != o.size {
+		if e != nil || len(raw) > artworkMaxBytes || len(raw) != o.size {
 			return a, b, false, nil
 		}
 		sum := sha256.Sum256(raw)

@@ -287,18 +287,15 @@ func (s *Service) ensureArtworkVariant(ctx context.Context, source string, width
 	} else if published {
 		return nil
 	}
-	decoded, format, err := image.Decode(f)
+	decoded, _, err := image.Decode(f)
 	if err != nil {
 		return ErrArtworkPending
 	}
 	if err = ctx.Err(); err != nil {
 		return err
 	}
-	ceiling := artworkDisplayBytes
-	if width == 2560 {
-		ceiling = 888888
-	}
-	raw, w, h, err := encodeDisplayArtworkWithinLimits(ctx, decoded, width, ceiling, format == "jpeg")
+	slot, limit := artworkWidthLimits(width)
+	raw, w, h, err := encodeArtworkWithin(ctx, decoded, slot, width, limit)
 	if err != nil {
 		return ErrArtworkPending
 	}

@@ -23,14 +23,11 @@ func readArtworkEncodingPolicyTx(ctx context.Context, tx *sql.Tx) (artworkEncodi
 	if out.revision < 1 {
 		return out, ErrRepairInput
 	}
-	switch out.edge {
-	case 1280, 1920:
-		out.ceiling = 500000
-	case 2560:
-		out.ceiling = 888888
-	default:
+	ceiling, ok := artworkLargeCap[out.edge]
+	if !ok {
 		return out, ErrRepairInput
 	}
+	out.ceiling = ceiling
 	return out, nil
 }
 
@@ -61,13 +58,4 @@ func (s *Service) CaptureArtworkContext(ctx context.Context) (context.Context, f
 		return nil
 	}
 	return context.WithValue(ctx, artworkEncodingPolicyKey{}, policy), check, nil
-}
-
-func artworkEncodingLimits(ctx context.Context, edge int) (int, int) {
-	// Derived 400/800 pictures and independently sized callers keep their fixed
-	// encoder limits. Only the stored full-display image follows this policy.
-	if policy, ok := ctx.Value(artworkEncodingPolicyKey{}).(artworkEncodingPolicy); ok && edge == artworkLargeEdge {
-		return policy.edge, policy.ceiling
-	}
-	return edge, artworkDisplayBytes
 }

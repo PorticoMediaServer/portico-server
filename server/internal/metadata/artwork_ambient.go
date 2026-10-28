@@ -82,15 +82,15 @@ func (s *Service) ensureAmbientArtwork(ctx context.Context, source string, f *os
 		return cached.Close()
 	}
 	info, err := f.Stat()
-	if err != nil || info.Size() < 1 || info.Size() > artworkDisplayBytes {
+	if err != nil || info.Size() < 1 || info.Size() > artworkMaxBytes {
 		return ErrArtworkPending
 	}
-	raw, err := io.ReadAll(ambientContextReader{ctx, io.LimitReader(f, artworkDisplayBytes+1)})
+	raw, err := io.ReadAll(ambientContextReader{ctx, io.LimitReader(f, artworkMaxBytes+1)})
 	if err != nil {
 		return err
 	}
 	sum := sha256.Sum256(raw)
-	if len(raw) > artworkDisplayBytes || hex.EncodeToString(sum[:]) != source {
+	if len(raw) > artworkMaxBytes || hex.EncodeToString(sum[:]) != source {
 		return ErrArtworkPending
 	}
 	encoded, _, _, err := encodeAmbientArtwork(ctx, raw)
@@ -155,7 +155,7 @@ func encodeAmbientArtwork(ctx context.Context, raw []byte) ([]byte, int, int, er
 	if err := ctx.Err(); err != nil {
 		return nil, 0, 0, err
 	}
-	if len(raw) < 1 || len(raw) > artworkDisplayBytes {
+	if len(raw) < 1 || len(raw) > artworkMaxBytes {
 		return nil, 0, 0, ErrRepairInput
 	}
 	cfg, format, err := image.DecodeConfig(ambientContextReader{ctx, bytes.NewReader(raw)})

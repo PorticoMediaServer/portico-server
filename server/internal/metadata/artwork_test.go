@@ -204,8 +204,8 @@ func TestArtworkReseedsAfterSourceFenceChanges(t *testing.T) {
 // (whose literals must match the encoding thresholds), and one undecodable
 // object is recorded and skipped instead of stalling the queue.
 func TestArtworkCompactionSkipsABadObjectAndSeeksCandidates(t *testing.T) {
-	if artworkDisplayBytes != 500000 || artworkLargeEdge != 1920 {
-		t.Fatal("artwork thresholds changed: update migration 0103's partial index and CompactArtworkStep together")
+	if artworkLargeCap[artworkLargeEdge] != 500000 || artworkLargeEdge != 1920 {
+		t.Fatal("artwork thresholds changed: update CompactArtworkStep's candidate predicate together")
 	}
 	s, db, _ := repairFixture(t)
 	ctx := context.Background()

@@ -3,6 +3,7 @@ package metadata
 import (
 	"context"
 	"database/sql"
+	"strconv"
 )
 
 func (s *Service) artworkDerivedEdge(ctx context.Context, digest string) (int, error) {
@@ -29,7 +30,10 @@ func (s *Service) nextArtworkCompaction(ctx context.Context, policy artworkEncod
 		s.compactionDone = false
 		s.compactionMu.Unlock()
 		var old string
-		err := s.db.QueryRowContext(ctx, `SELECT o.digest FROM artwork_objects o INDEXED BY artwork_objects_compaction WHERE o.status='ready' AND (o.bytes>500000 OR o.width>1920 OR o.height>1920) AND NOT EXISTS(SELECT 1 FROM artwork_compaction_failures f WHERE f.digest=o.digest) ORDER BY o.bytes DESC,o.digest LIMIT 1`).Scan(&old)
+		// The partial index still names the old 500,000 B cap, a superset of
+		// today's candidates; objects inside the 1.5x allowance are legal
+		// outliers and are filtered out, never re-encoded.
+		err := s.db.QueryRowContext(ctx, `SELECT o.digest FROM artwork_objects o INDEXED BY artwork_objects_compaction WHERE o.status='ready' AND (o.bytes>500000 OR o.width>1920 OR o.height>1920) AND (o.bytes>`+strconv.Itoa(artworkLargeCap[artworkLargeEdge]*3/2)+` OR o.width>1920 OR o.height>1920) AND NOT EXISTS(SELECT 1 FROM artwork_compaction_failures f WHERE f.digest=o.digest) ORDER BY o.bytes DESC,o.digest LIMIT 1`).Scan(&old)
 		return old, err
 	}
 	s.compactionMu.Lock()
@@ -77,14 +81,16 @@ func (s *Service) nextArtworkCompaction(ctx context.Context, policy artworkEncod
 		if o.status != "ready" || o.failed {
 			continue
 		}
-		edge, ceiling := policy.edge, policy.ceiling
-		if o.bytes > 500000 || max(o.width, o.height) > edge {
+		// An object within its slot's 1.5x allowance is a legal outlier, not a
+		// candidate: re-encoding it would only lose quality.
+		edge, ceiling := policy.edge, policy.ceiling*3/2
+		if o.bytes > ceiling || max(o.width, o.height) > edge {
 			derived, err := s.artworkDerivedEdge(ctx, o.digest)
 			if err != nil {
 				return "", err
 			}
 			if derived > 0 {
-				edge, ceiling = derived, 500000
+				edge, ceiling = artworkSmallEdge, artworkSmallCap*3/2
 			}
 		}
 		if o.bytes > ceiling || max(o.width, o.height) > edge {

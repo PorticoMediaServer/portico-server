@@ -28,7 +28,7 @@ func TestArtworkUploadsUseCurrentSizeAndKeepDerivedBucketsFixed(t *testing.T) {
 		if err = db.QueryRow(`SELECT original.width,original.height,thumb.width,medium.width FROM artwork_selections s JOIN artwork_objects original ON original.digest=s.digest JOIN artwork_objects thumb ON thumb.digest=s.thumbnail_digest JOIN artwork_variants v ON v.source_digest=s.digest AND v.width=800 JOIN artwork_objects medium ON medium.digest=v.digest WHERE s.entity_id=? AND s.role='poster'`, entity).Scan(&width, &height, &thumbWidth, &mediumWidth); err != nil {
 			t.Fatal(err)
 		}
-		if width != edge || height != edge*1080/2700 || thumbWidth != 400 || mediumWidth != 800 {
+		if width != edge || height != edge*1080/2700 || thumbWidth != artworkSmallEdge || mediumWidth != artworkSmallEdge {
 			t.Fatal("stored upload or derived buckets ignored actual policy", edge, width, height, thumbWidth, mediumWidth)
 		}
 		// The stored original is the policy edge. A request for the supported

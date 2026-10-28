@@ -84,7 +84,7 @@ func TestDetailAndPersonArtworkDescriptorsServeSelectedBytes(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if _, err = file.Write(editorPNG(t, 480, 720)); err != nil {
+		if _, err = file.Write(editorPNG(t, 960, 1440)); err != nil {
 			t.Fatal(err)
 		}
 		if err = form.Close(); err != nil {

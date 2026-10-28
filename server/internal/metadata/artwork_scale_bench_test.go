@@ -56,7 +56,7 @@ func TestArtworkCompactionStepScale(t *testing.T) {
 	}
 	measure("previous candidate query (whole table)", func() error {
 		var d string
-		err := db.QueryRow(`SELECT digest FROM artwork_objects WHERE status='ready' AND (bytes>? OR width>? OR height>?) ORDER BY bytes DESC,digest LIMIT 1`, artworkDisplayBytes, artworkLargeEdge, artworkLargeEdge).Scan(&d)
+		err := db.QueryRow(`SELECT digest FROM artwork_objects WHERE status='ready' AND (bytes>? OR width>? OR height>?) ORDER BY bytes DESC,digest LIMIT 1`, artworkLargeCap[artworkLargeEdge]*3/2, artworkLargeEdge, artworkLargeEdge).Scan(&d)
 		if err != nil && err.Error() != "sql: no rows in result set" {
 			return fmt.Errorf("%w", err)
 		}

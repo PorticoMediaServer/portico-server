@@ -80,7 +80,7 @@ func (s *Service) compactArtworkObject(ctx context.Context, old string) error {
 		return err
 	}
 	defer release()
-	decoded, format, err := image.Decode(bytes.NewReader(raw))
+	decoded, _, err := image.Decode(bytes.NewReader(raw))
 	if err != nil {
 		return fail("undecodable")
 	}
@@ -91,11 +91,14 @@ func (s *Service) compactArtworkObject(ctx context.Context, old string) error {
 	if err = ctx.Err(); err != nil {
 		return err
 	}
-	edge := artworkLargeEdge
+	slot := artworkSlotLarge
 	if derivedEdge > 0 {
-		edge = derivedEdge
+		slot = artworkSlotSmall
 	}
-	data, w, h, err := encodeDisplayArtworkContext(ctx, decoded, edge, format == "jpeg")
+	data, w, h, err := encodeArtworkSlot(ctx, decoded, slot)
+	if errors.Is(err, errArtworkCapUnreachable) {
+		return fail("cap_unreachable")
+	}
 	if err != nil {
 		return err
 	}
@@ -125,7 +128,7 @@ func (s *Service) compactArtworkObject(ctx context.Context, old string) error {
 		return err
 	}
 	// Retain all existing bucket links before the old source's ON DELETE
-	// CASCADE runs. The new 800 bucket was encoded from the new full image.
+	// CASCADE runs. The small slot does not depend on the large edge.
 	if _, err = tx.ExecContext(ctx, `INSERT INTO artwork_variants(source_digest,width,digest) SELECT ?,width,CASE WHEN digest=? THEN ? ELSE digest END FROM artwork_variants WHERE source_digest=? ON CONFLICT(source_digest,width) DO NOTHING`, installed.digest, old, installed.digest, old); err != nil {
 		return err
 	}

@@ -30,7 +30,7 @@ func TestArtworkCompactionShrinksSelectedUploadAndPreservesVariantReferences(t *
 	if err = db.QueryRow(`SELECT o.width,t.width,m.width,s.locked,(SELECT count(*) FROM artwork_variants WHERE source_digest=s.digest) FROM artwork_selections s JOIN artwork_objects o ON o.digest=s.digest JOIN artwork_objects t ON t.digest=s.thumbnail_digest JOIN artwork_variants v ON v.source_digest=s.digest AND v.width=800 JOIN artwork_objects m ON m.digest=v.digest WHERE s.role='poster'`).Scan(&width, &thumb, &medium, &locked, &buckets); err != nil {
 		t.Fatal(err)
 	}
-	if width != 1280 || thumb != 400 || medium != 800 || !locked || buckets != 3 {
+	if width != 1280 || thumb != artworkSmallEdge || medium != artworkSmallEdge || !locked || buckets != 3 {
 		t.Fatal("compaction lost current pixels, fixed buckets or owner lock", width, thumb, medium, locked, buckets)
 	}
 	var uploadedWidth, uploadedHeight int
@@ -65,8 +65,8 @@ func TestArtworkCompactionHonoursLargerCeilingWithoutReencodingValidObjects(t *t
 	for i := 0; i < len(picture.Pix); i += 4 {
 		picture.Pix[i], picture.Pix[i+1], picture.Pix[i+2], picture.Pix[i+3] = byte(random.Intn(256)), byte(random.Intn(256)), byte(random.Intn(256)), 255
 	}
-	raw, w, h, err := encodeDisplayArtworkContext(encoded, picture, artworkLargeEdge, true)
-	if err != nil || len(raw) <= 500000 || len(raw) > 888888 {
+	raw, w, h, err := encodeArtworkSlot(encoded, picture, artworkSlotLarge)
+	if err != nil || len(raw) <= artworkLargeCap[artworkLargeEdge]*3/2 || len(raw) > artworkLargeCap[2560]*3/2 {
 		t.Fatal("fixture did not exercise the Larger ceiling", len(raw), err)
 	}
 	installed, err := s.installArtworkContext(encoded, raw, w, h)

@@ -150,7 +150,7 @@ func TestAmbientArtworkRejectsMalformedBombsAndCancellation(t *testing.T) {
 		binary.BigEndian.PutUint32(raw[29:33], crc32.ChecksumIEEE(raw[12:29]))
 		return raw
 	}
-	for _, raw := range [][]byte{nil, []byte("not an image"), valid[:len(valid)/2], make([]byte, artworkDisplayBytes+1), header(10001, 1), header(1, 10001), header(6000, 6000), header(0, 1)} {
+	for _, raw := range [][]byte{nil, []byte("not an image"), valid[:len(valid)/2], make([]byte, artworkMaxBytes+1), header(10001, 1), header(1, 10001), header(6000, 6000), header(0, 1)} {
 		if _, _, _, err := encodeAmbientArtwork(context.Background(), raw); err == nil {
 			t.Fatal("malformed/oversize source accepted")
 		}
@@ -288,7 +288,7 @@ func TestAmbientArtworkQueuedDerivationIsCancellableAndSourceBounded(t *testing.
 	if _, err = os.Stat(filepath.Join(s.cacheRoot, ambientArtworkDigest(source)+".img")); !errors.Is(err, os.ErrNotExist) {
 		t.Fatal("cancelled work published", err)
 	}
-	for _, data := range [][]byte{make([]byte, artworkDisplayBytes+1), []byte("corrupt source")} {
+	for _, data := range [][]byte{make([]byte, artworkMaxBytes+1), []byte("corrupt source")} {
 		sum := sha256.Sum256(data)
 		digest := hex.EncodeToString(sum[:])
 		path := filepath.Join(s.cacheRoot, digest+".img")

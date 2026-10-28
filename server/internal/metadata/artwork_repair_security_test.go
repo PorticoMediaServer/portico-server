@@ -95,7 +95,7 @@ func TestArtworkRepairNormalizeBoundsAndAspect(t *testing.T) {
 		t.Fatal("metadata not stripped")
 	}
 	cfg, _, err := image.DecodeConfig(bytes.NewReader(thumb))
-	if err != nil || cfg.Width != 400 || cfg.Height != 200 {
+	if err != nil || cfg.Width != 800 || cfg.Height != 400 {
 		t.Fatalf("thumbnail changed aspect: %+v %v", cfg, err)
 	}
 	if _, _, _, _, err = normalizeArtwork([]byte(`<svg onload="active"/>`)); err == nil {
@@ -184,14 +184,14 @@ func TestArtworkJPEGNormalizationPreservesCompactEncoding(t *testing.T) {
 	if http.DetectContentType(original) != "image/jpeg" || http.DetectContentType(thumb) != "image/jpeg" {
 		t.Fatal("JPEG expanded to PNG")
 	}
-	if len(original) > 2*len(source.Bytes()) || len(thumb) > 200000 {
+	if len(original) > 2*len(source.Bytes()) || len(thumb) > artworkSmallCap*3/2 {
 		t.Fatalf("unexpected artwork expansion %d %d", len(original), len(thumb))
 	}
 	if w > 1000 || h > 1500 || (w*3-h*2 > 3 || w*3-h*2 < -3) {
 		t.Fatal("dimensions or aspect changed", w, h)
 	}
 	cfg, _, err := image.DecodeConfig(bytes.NewReader(thumb))
-	if err != nil || cfg.Height != 400 {
+	if err != nil || cfg.Height != artworkSmallEdge {
 		t.Fatal(cfg, err)
 	}
 }
