@@ -116,13 +116,15 @@ internal/catalog/title_merge.go	(*Service).MergeTitles	WithWriteTx	ClassFrom(ctx
 internal/catalog/title_merge.go	(*Service).SeparateFolder	WithWriteTx	ClassFrom(ctx, dbwork.ClassInteractive)	-
 internal/catalog/title_tombstones.go	(*Service).DismissRemovedTitle	WithWriteTx	ClassInteractive	-
 internal/catalog/title_tombstones.go	(*Service).PruneRemovedTitles	WithWriteTx	ClassMaintenance	-
-internal/catalog/visibility_classes.go	(*Service).RebuildVisibilityClass	WithWriteTx	ClassBackgroundMedia	-	×3
+internal/catalog/visibility_classes.go	(*Service).RebuildVisibilityClass	WithWriteTx	ClassBackgroundMedia	-	×4
 internal/catalog/visibility_classes.go	(*Service).clearVisibilityGeneration	ExecWrite	ClassBackgroundMedia	-	×3
-internal/catalog/visibility_incremental.go	(*Service).refreshVisibilityClass	WithWriteTx	ClassBackgroundMedia	-
+internal/catalog/visibility_frontier.go	(*Service).clearVisibilityDirtyThrough	WithWriteTx	ClassBackgroundMedia	-
+internal/catalog/visibility_frontier.go	(*Service).settleVisibilitySourceTarget	WithWriteTx	ClassBackgroundMedia	-
+internal/catalog/visibility_incremental.go	(*Service).refreshVisibilityClass	WithWriteTx	ClassBackgroundMedia	-	×2
 internal/catalogtest/catalogtest.go	(*Catalog).Write	WithWriteTx	ClassMaintenance	-
 internal/compactcatalog/derive.go	(*Worker).Rebuild	WithWriteTx	ClassMaintenance	-
 internal/compactcatalog/derive.go	(*Worker).Step	WithWriteTx	ClassMaintenance	DrainPlan|derivationUnitPlan
-internal/compactcatalog/derive.go	(*Worker).prepare	WithWriteTx	ClassMaintenance	-
+internal/compactcatalog/derive.go	(*Worker).prepare	WithWriteTx	ClassMaintenance	-	×2
 internal/compactcatalog/derive.go	(*Worker).setAside	WithWriteTx	ClassMaintenance	-
 internal/compactcatalog/local_genres.go	ProjectAudioLocalGenresBatch	Begin	ClassFrom(ctx, dbwork.ClassBackgroundMedia)	-
 internal/compactcatalog/ratings.go	ClassifyPendingRatings	WithWriteTx	ClassBackgroundMedia	-
@@ -284,6 +286,8 @@ internal/ingestion/service.go	(*Service).QueueContext	Begin	ClassBackgroundMedia
 internal/ingestion/service.go	(*Service).processQuantum	WithWriteTx	ClassBackgroundMedia	-
 internal/ingestion/sidecar_changes.go	(*Service).enqueueSidecarChanges	Begin	ClassBackgroundMedia	-
 internal/ingestion/sidecar_changes.go	(*Service).reconcileSidecars	Begin	ClassBackgroundMedia	-
+internal/ingestion/strict_intents.go	(*Service).RefreshLibraries	Begin	ClassBackgroundMedia	-
+internal/ingestion/strict_intents.go	(*Service).startStrictIntent	Begin	ClassBackgroundMedia	-	×2
 internal/ingestion/targeted.go	(*Service).ReportPaths	Begin	ClassBackgroundMedia	-
 internal/ingestion/targeted.go	(*Service).handOverToReports	Begin	ClassBackgroundMedia	-
 internal/ingestion/targeted.go	(*Service).startWaitingReports	Begin	ClassBackgroundMedia	-

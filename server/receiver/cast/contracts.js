@@ -94395,7 +94395,7 @@ var PorticoCastContracts = (function(exports) {
 					},
 					"retryAfterMs": {
 						"maximum": 9007199254740991,
-						"minimum": 1e3,
+						"minimum": 250,
 						"type": "integer"
 					},
 					"state": {
@@ -96194,7 +96194,7 @@ var PorticoCastContracts = (function(exports) {
 				},
 				"retryAfterMs": {
 					"maximum": 9007199254740991,
-					"minimum": 1e3,
+					"minimum": 250,
 					"type": "integer"
 				},
 				"state": {
