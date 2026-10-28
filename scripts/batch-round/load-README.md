@@ -1,39 +1,125 @@
-# Mixed client load
+# Real client load adapters
 
-Run the driver on mini-2 or portico-runner. Its only live target is mini-1's Tailscale IP. No CI entry point exists; `--execute` is refused in CI even if manually supplied.
+Operator-only; no CI entry point or automatic run. Execution requires exactly
+Node24.21.0, an owned0600 non-symlink manifest, an empty owned0700 mutation-store
+directory outside Git, and an explicit `--execute`. Receipts are exclusively
+created and failures never replace an older result. Credentials remain private.
+
+The default80/100-user campaign driver runs on mini-2 or portico-runner against
+mini-1's100.120.50.24 Tailscale address. `--rehearsal` separately permits1..3
+users/<=300s on loopback and labels every result non-acceptance. `--ingest`
+permits1..20 daily users on loopback or the campaign target; it qualifies only
+its300k ingest trend and never80/100-user capacity. All live modes refuse CI.
 
 ```sh
-node --experimental-transform-types scripts/batch-round/load.ts --users 80 --seconds 900
 node --experimental-transform-types scripts/batch-round/load.ts --self-check
-# AFTER batch start, on mini-2, with private configuration:
-node --experimental-transform-types scripts/batch-round/load.ts --users 80 --seconds 900 --ramp-seconds 60 --target "$TARGET" --manifest "$PRIVATE_MANIFEST" --out "$EVIDENCE/load-80.json" --execute
-node --experimental-transform-types scripts/batch-round/load.ts --users 100 --seconds 1800 --ramp-seconds 60 --target "$TARGET" --manifest "$PRIVATE_MANIFEST" --out "$EVIDENCE/load-100.json" --execute
+node --experimental-transform-types scripts/batch-round/load.ts --rehearsal \
+  --users 1 --seconds 60 --target http://127.0.0.1:32665 \
+  --manifest "$PRIVATE_MANIFEST" --mutation-store "$PRIVATE_STORE" \
+  --appdata "$APPDATA" --out "$EVIDENCE/tiny.json" --execute
+# Test round only, not run during preparation:
+node --experimental-transform-types scripts/batch-round/load.ts --users 100 \
+  --seconds 1800 --ramp-seconds 60 --target "$TARGET" \
+  --manifest "$PRIVATE_MANIFEST" --mutation-store "$PRIVATE_STORE" \
+  --appdata "$APPDATA" --rotate-sessions --out "$EVIDENCE/load-100.json" --execute
 ```
 
-For backup comparisons add `--label scheduled-backup` or `--label manual-backup` and `--operator-window <receipt-id>`; run the owner-triggered backup concurrently. These labels identify an operator-recorded window, they do not trigger or prove a backup. Use `observe-host.py` on the target to correlate physical WAL/RSS/cgroup data. No user write is paused.
+For the replacement300k target use the supervised commands in
+[ingest/README.md](ingest/README.md). The earlier1M/5M and proportional-reference
+builders are superseded. `provision-scale.py proposal` prints the replacement
+plan; `--scalable-count` refuses rather than executing the old design.
 
-The driver imports the real `HttpLocalApi`, `BrowseQueryBuilder`, `SearchService`, `HomeService`, `SessionsClient`, `ObservationReporter`, `CapabilityPublisher`, `LibraryManagementService`, `EventsClient` and Saved batch validators. It publishes captured real capabilities, verifies each identity/device against the API, staggers startup, opens real direct media bodies and paces byte consumption, reports the simulated consumer at 1 Hz, mixes browse/search/Home/Saved and owner scans, and gives a separate quiet profile an SSE stream. Progress is observation-driven and Stop sends the final position. It bounds metrics in logarithmic histograms and fails its declared latency/error/count/cleanup gates. Reported p99 is a conservative bucket upper bound. Default 2 s read/write and 2.5 s observation-gap gates are preparation proposals; the plan identifies where stricter established release gates also apply.
+## Workload and evidence
 
-The private manifest is an operator-owned, non-symlink 0600 JSON file, up to 4 MiB. Export `Manifest` and `User` shapes in load.ts are the schema. Top-level: `version:1`, exact `target` (`http[s]://100.120.50.24:<port>`), `serverId`, `conversionMode:'never'`, `stateAdapterReceipt`, `owner`, `quietMember`, and 80 or 100 `users`. Every identity needs a distinct `accessToken`, account/profile/device/installation IDs, `authority`, `role`, non-expiring `expiresAt` and an actual valid `capabilities` document. Each user also supplies `libraryId`, `pivot`, search text, known playable `itemIds`, `bytesPerSecond` and `directVerifiedAt`. Owner supplies a scan library. Existing three-account walk credentials are insufficient: provision 102 real independent identities before the 100-user run. No implicit token refresh/storage adapter is supplied; session lifetime is checked before starting.
+The driver imports the real HttpLocalApi, SessionsClient, CapabilityPublisher,
+ObservationReporter, BrowseQueryBuilder, HomeService, SearchService,
+LibraryManagementService, EventsClient and Saved validators. It publishes real
+captured capabilities, verifies account/profile/device admission, consumes real
+direct media bodies at the configured byte rate, reports progress at1Hz and
+stops with the exact generation/frozen final position. Early EOF, conversion,
+missing bytes, observation gaps, failed stop or unacknowledged custody fail.
+The driver proves network delivery and app behavior, not decoded pictures.
 
-Media must be long enough to cover the complete window; the short Contabo synthetic clips alone cannot establish sustained streaming. An early EOF is a failure. Repeated data with fake positions is never called decoding/device acceptance. Real hardware-only transcoding has no no-fallback launch flag in the inspected session contract: the driver locally refuses its 2–3 requested conversion slots and never starts software encoding. The direct-only result explicitly cannot establish the entire 80–100-user + hardware-conversion target. Close that gap with Media's controlled hardware-only process/encoder fixture before campaign acceptance; do not simply enable software fallback. Set server conversions to Never and independently read it back before the direct test. A manifest assertion alone is not proof of server settings.
+Users browse, search, Home, Settings, Reading and Saved; a quiet member listens
+on SSE. The owner normally scans once/minute. In ingest mode the orchestrator
+exclusively owns its six source scans. Source playback must exceed the full
+window+ramp+60s. Default p99 read/write gates are2000ms, observation gap2500ms,
+minimum delivered byte fraction0.8. Latency histograms report conservative
+bucket upper bounds; do not compare them to exact raw maxima as equal values.
 
-The 2-user/4-second `--self-check` is offline on mini-2. It exercises real client-core observer claim/sample/stop semantics and Saved validation with a mock wire, including no sends after retirement. It is not a complete server, browser, workload or performance check. Full workloads remain unrun before batch start. Retain JSON receipts privately; no bearer, request body, grant URL, source URL or raw server error is emitted.
+Private `Manifest`/identity shapes are exported from load.ts. Each identity
+has a separate real account/profile/device/installation/session family, current
+access+refresh tokens, captured server identity public key/fingerprint, role
+and capability document. Each measured user names an accessible library/pivot,
+known scanned playable item IDs, byte rate, search and Reading library/facet.
+The owner and quiet member are additional to measured users:100+1+1=102.
+The factory accepts `identities --members 100` for that exact cardinality.
+No real102-account creation or100-user run was done during preparation.
 
-## P2-53 adapter preparation (28 October)
+`provision-scale.py` provides plan-only-by-default media/bootstrap/identities/
+manifest steps. Bootstrap performs ordinary setup, declares movie+book sources,
+waits for actual terminal scans, reads browse/storage, cleanly stops and records
+the stopped appdata's own schema. It never writes/transposes a product DB.
+Use `media --distinct-copies` for a multi-title fixture: ordinary hardlinks
+collapse to one title, which bootstrap detects and refuses as a claimed100.
+Owner/member passwords are written0600 before account-creation requests.
+The appdata prep receipt must prove stopped+terminal scan+probed media+
+databaseUnderAppdata and match the manifest's exact stateAdapterReceipt.
 
-This change is prepare-only. Use **Node 24.21.0** exactly for execution and the offline check; another runtime is refused. No workflow, package script, CI execution entry point, automatic deployment or run trigger is added. Driver placement and the sole live target remain unchanged. Dry-run remains UNRUN.
+## Refresh, storage and mutation custody
 
-P251 custody is now configured through `HttpLocalApi.setUserMutationSession`, `configureUserMutations` and its actual typed `/v1/user-mutations/{key}` receipt protocol. Every manifest identity additionally supplies the **real captured** `sessionFamilyId`, `tokenGeneration` and `authorizationHorizon`; do not invent these from the account/profile or token. Authority, account, profile, family, device, server and origin are retained together. Identity/device API checks still run before the workload. A new `reading: {libraryId, pivot, facet}` on each user must name accessible real Reading content and an offered facet.
+FileConnectionStore uses private0700 directories/0600 files, atomic CAS,
+file+directory fsync, canonical parseRememberedServer readback and distinct
+unavailable/damaged outcomes. LocalSessionRefresher owns renewal. The canonical
+refreshStoredSession needs a process-global installation identity, so every
+rotation executes in a one-shot child for exactly one installation; the parent
+never swaps102 installations in global state. The child prints no tokens and
+its renewed store is parsed after completion. `--rotate-sessions` forces a real
+canonical rotation on every identity. Retired owner families abort; do not
+reuse Local owner credentials after a Hosted owner move.
 
-Live execution additionally requires `--mutation-store "$PRIVATE_MUTATION_DIRECTORY"`: an existing owned, non-symlink **0700** directory outside Git. The driver takes an exclusive `driver.lock` and uses scope-hashed **0600** files, atomic CAS, core state validation, file fsync, rename and directory fsync. Each of at most 102 identities is bounded by the canonical 256-entry/8 MiB limit. No credentials are serialized. Files and unknown work are never evicted. A leftover crash lock or nonempty custody refuses a fresh workload and requires separate operator review/recovery under the original authority. Do not delete those records to get a clean receipt. The lock is single-driver exclusion, not a cross-process general-purpose store API.
+Mutation custody uses FileMutationStore, exclusive driver.lock, scope hashes,
+canonical256-entry/8MiB bounds, atomic CAS and fsync. Saved retains operation IDs
+and bodies through ambiguity until a parsed applied receipt, then acknowledges.
+Final Stop memoizes successful exact-generation completion. Nonempty work or a
+crash lock refuses a new run; review/recover it under the original authority.
+Never delete unknown custody just to obtain a green result. Coordinators,
+observers, refreshers, service controllers and timers are disposed at exit.
 
-Saved keeps the same operation ID and body until parsed/receipted completion. It acknowledges only after the canonical batch parser or a matching validated **applied** compact recovery receipt. Recovered completion gets its own counter and never invents historical per-item counts. Final Stop freezes the first position and exact presentation generation, uses the canonical receipt-backed transport and acknowledgement callback, and memoizes successful completion. Cleanup uses a fresh bounded signal after the workload signal retires. The new custody-empty gate is additional to the existing gates; no latency, observation, error, byte or count assertion was loosened.
+Server diagnostics/storage are read before the window. The direct-only capacity
+campaign requires no configured conversion engine. Ingest records the engine
+but still requires actual direct plans; mixed-load.ts explicitly permits a
+configured hardware engine with a private paired-window gate and independently
+validated hardware receipt. Defaults remain direct-only. See
+[hardware/README.md](hardware/README.md) for exact mixed orchestration.
 
-Browse and Reading pages use `readBrowsePage`; Reading facets use `readReadingFacet`. These public adapters own 202/poll/Retry-After/cancellation behavior. The driver releases optional aggregate preparation through `releaseBrowseSelection` because this workload does not select the entire result. Reading is an additional measured read with the same latency gate.
+## Phases and trend
 
-For any later separately authorized live command above, append `--mutation-store "$PRIVATE_MUTATION_DIRECTORY"`. The old example command without that argument now refuses before requests.
+`--phases --control <0600 file>` reads an atomic JSON control or marker JSONL.
+Accepted API counts authorize markers; generated totalFiles never does.
+`--ingest` requires baseline,phase-1..6,after with>=20 samples/operation/phase,
+and resident markers50000,150000,300000. Receipts include per-op p50/p95/p99/max,
+epoch phase timestamps, resident reads and malformed-control counts.
+The trend fails missing evidence, p50>baseline*1.2+10ms, or
+p99>baseline*1.2+50ms or the absolute2000ms gate. `ingestTrendQualified` can be
+true only when every user gate and all trend evidence pass. Campaign/device/
+decoder acceptance stays false. A tiny rehearsal is never a qualified trend.
 
-The offline two-user/four-second check uses the real HTTP adapter with an injected socket-free transport, one persistent store and one memory store. It checks exclusive locking/CAS/reopen, canonical bounds, two Saved receipts (one lost response recovered with the same key), six prepared-handle releases, exact-generation frozen Stop and no requests after retirement. Its six-or-more observation assertion and original request flags/deadlines remain. It does **not** call the full `run` workload or a real HTTP app.
+Backup comparisons add `--label scheduled-backup|manual-backup` and
+`--operator-window <id>` while the owner runs backup-window.py with the same
+label/window. These labels identify a window, not proof of a backup. Host
+WAL/RSS/cgroup observation is supplementary; missing measures stay unavailable.
 
-Remaining gaps: no real mini2 tiny HTTP app rehearsal was attempted. That needs a bootstrapped disposable current Go server, isolated configured state/database, real auth/session-family/device issuance, scanned playable long media plus Reading inventory/facets, and compatible real capability documents. This patch supplies none of that bootstrap and makes no app rehearsal pass claim. The 102-identity provisioning, full-app-state/5M catalogue adapter and operator `stateAdapterReceipt` remain proposals/unverified prerequisites; a manifest label is not runtime proof. Token refresh is still absent. Hardware-only no-fallback conversion remains locally refused, with no software fallback or capacity/device acceptance claim. All 80/100-user runs, scale/reset/device/Services/Contabo and CI operations remain unrun in this preparation task.
+## What ran
+
+Offline checks pass canonical custody, Saved lost-response recovery, prepared
+handle releases, generation Stop, connection-store reopen/CAS, real local
+refresh child rotation/refusal, storage readback and phase/mode/trend gates.
+They use loopback mocks and make no external requests.
+A real private core fixture exercised setup, real scans/media, three identities
+and canonical rotation. Its original2000ms Reading workflow FAILED (p99 bucket
+2620ms); later5000ms overrides are readiness only, with disclosed409s, never
+capacity passes. The Reading producer repair is separately owned/measured.
+A distinct-copy fixture did scan100 actual titles. The joined300k daily-use
+trend,80/100-user campaigns and device work remain unrun. No Contabo or Hosted
+state was changed by this tooling.
