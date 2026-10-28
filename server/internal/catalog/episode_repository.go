@@ -132,7 +132,6 @@ func (s *Service) commitEpisodes(tx *sql.Tx, library, asset, name string, plan E
 	if err != nil {
 		return err
 	}
-	var created bool
 	var season int64
 	parent := show
 	if plan.Numbering == "seasonal" || plan.Numbering == "date" {
@@ -140,14 +139,9 @@ func (s *Service) commitEpisodes(tx *sql.Tx, library, asset, name string, plan E
 		if plan.Season == 0 {
 			title = "Specials"
 		}
-		season, created, err = compactcatalog.EnsureEntityTx(ctx, tx, compactcatalog.Entity{Library: handle, Kind: compactcatalog.Season, Parent: show, Key: compactcatalog.SeasonKey(key, plan.Season), Title: title})
+		season, _, err = compactcatalog.EnsureEntityWithFactsTx(ctx, tx, compactcatalog.Entity{Library: handle, Kind: compactcatalog.Season, Parent: show, Key: compactcatalog.SeasonKey(key, plan.Season), Title: title}, map[string]any{"show_id": show, "number": plan.Season})
 		if err != nil {
 			return err
-		}
-		if created {
-			if err = compactcatalog.SetFactsTx(ctx, tx, season, map[string]any{"show_id": show, "number": plan.Season}); err != nil {
-				return err
-			}
 		}
 		parent = season
 	}
@@ -182,21 +176,6 @@ func (s *Service) commitEpisodes(tx *sql.Tx, library, asset, name string, plan E
 			} else if plan.Numbering == "date" {
 				title = plan.AirDate
 			}
-			var fresh bool
-			if loose != 0 {
-				item = loose
-				loose = 0
-				_, err = tx.Exec(`UPDATE catalog_entities SET parent_id=?,retired=0 WHERE id=?`, parent, item)
-				if err == nil {
-					err = compactcatalog.SetFactsTx(ctx, tx, item, map[string]any{"title": title})
-				}
-			} else {
-				item, fresh, err = compactcatalog.EnsureEntityTx(ctx, tx, compactcatalog.Entity{Library: handle, Kind: compactcatalog.Episode, Parent: parent, Key: compactcatalog.EpisodeKey(key, plan.Numbering, plan.Season, number), Title: title, Added: catalogedNow()})
-			}
-			if err != nil {
-				return err
-			}
-			restore = restore || fresh
 			var airDate any
 			basis := "unspecified"
 			if plan.Numbering == "date" {
@@ -210,8 +189,26 @@ func (s *Service) commitEpisodes(tx *sql.Tx, library, asset, name string, plan E
 			if season != 0 {
 				seasonRef = season
 			}
-			if err = compactcatalog.SetFactsTx(ctx, tx, item, map[string]any{"show_id": show, "season_id": seasonRef, "numbering": plan.Numbering, "number": number, "local_identity_status": status, "air_date": airDate, "ordering_basis": basis}); err != nil {
+			facts := map[string]any{"show_id": show, "season_id": seasonRef, "numbering": plan.Numbering, "number": number, "local_identity_status": status, "air_date": airDate, "ordering_basis": basis}
+			var fresh bool
+			if loose != 0 {
+				item = loose
+				loose = 0
+				_, err = tx.Exec(`UPDATE catalog_entities SET parent_id=?,retired=0 WHERE id=?`, parent, item)
+				if err == nil {
+					err = compactcatalog.SetFactsTx(ctx, tx, item, map[string]any{"title": title})
+				}
+			} else {
+				item, fresh, err = compactcatalog.EnsureEntityWithFactsTx(ctx, tx, compactcatalog.Entity{Library: handle, Kind: compactcatalog.Episode, Parent: parent, Key: compactcatalog.EpisodeKey(key, plan.Numbering, plan.Season, number), Title: title, Added: catalogedNow()}, facts)
+			}
+			if err != nil {
 				return err
+			}
+			restore = restore || fresh
+			if !fresh {
+				if err = compactcatalog.SetFactsTx(ctx, tx, item, facts); err != nil {
+					return err
+				}
 			}
 		case err != nil:
 			return err

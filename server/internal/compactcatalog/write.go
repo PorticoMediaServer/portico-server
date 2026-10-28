@@ -140,17 +140,24 @@ func FindEntityTx(ctx context.Context, tx *sql.Tx, library int64, key string) (i
 // existing entity keeps its facts (a scanner's filename title never replaces a
 // provider's); it is only made live again and re-parented if that changed.
 func EnsureEntityTx(ctx context.Context, tx *sql.Tx, e Entity) (id int64, created bool, err error) {
-	return upsertEntity(ctx, tx, e, false)
+	return upsertEntity(ctx, tx, e, false, nil)
 }
 
 // UpsertEntityTx finds or creates the entity its identity key names and brings
 // its backbone facts up to date (unlocked fields only, for an existing entity).
 // A retired entity that reappears is live again.
 func UpsertEntityTx(ctx context.Context, tx *sql.Tx, e Entity) (id int64, created bool, err error) {
-	return upsertEntity(ctx, tx, e, true)
+	return upsertEntity(ctx, tx, e, true, nil)
 }
 
-func upsertEntity(ctx context.Context, tx *sql.Tx, e Entity, update bool) (id int64, created bool, err error) {
+// EnsureEntityWithFactsTx initializes facts only when it creates an entity.
+// Creation and initialization share the same complete derivation touch. Existing
+// entities and their facts are left as EnsureEntityTx would leave them.
+func EnsureEntityWithFactsTx(ctx context.Context, tx *sql.Tx, e Entity, facts map[string]any) (id int64, created bool, err error) {
+	return upsertEntity(ctx, tx, e, false, facts)
+}
+
+func upsertEntity(ctx context.Context, tx *sql.Tx, e Entity, update bool, initialFacts map[string]any) (id int64, created bool, err error) {
 	if err = RequireEntityAcquirableTx(ctx, tx, e.Parent); err != nil {
 		return 0, false, err
 	}
@@ -223,6 +230,17 @@ func upsertEntity(ctx context.Context, tx *sql.Tx, e Entity, update bool) (id in
 		}
 	} else if _, err = tx.ExecContext(ctx, `INSERT OR IGNORE INTO catalog_item_details(entity_id) SELECT ? FROM catalog_kinds WHERE id=? AND playable=1`, id, int(e.Kind)); err != nil {
 		return 0, false, err
+	}
+	if len(initialFacts) != 0 {
+		if err = requireFactAuthority(ctx, tx, id, initialFacts); err != nil {
+			return 0, false, err
+		}
+		// No worker can consume an uncommitted entity. Initialize its facts
+		// before the creation touch rather than incrementing the same dirty
+		// revisions a second time in this transaction.
+		if err = setFieldsWithQueue(ctx, tx, id, Automatic, initialFacts, false, false); err != nil {
+			return 0, false, err
+		}
 	}
 	return id, true, touchEntity(ctx, tx, id, e.Kind)
 }
@@ -358,6 +376,12 @@ func SetFieldsTx(ctx context.Context, tx *sql.Tx, id int64, source Source, field
 // names (title, year, …) to catalog_entities even where the kind's side table
 // has a column of that name (a season's title override).
 func setFields(ctx context.Context, tx *sql.Tx, id int64, source Source, fields map[string]any, backboneFirst bool) error {
+	return setFieldsWithQueue(ctx, tx, id, source, fields, backboneFirst, true)
+}
+
+// Only the creation path can defer this touch: it always queues the full new
+// entity after these writes. Ordinary edits retain their current touch behavior.
+func setFieldsWithQueue(ctx context.Context, tx *sql.Tx, id int64, source Source, fields map[string]any, backboneFirst, queue bool) error {
 	if len(fields) == 0 {
 		return nil
 	}
@@ -432,6 +456,9 @@ func setFields(ctx context.Context, tx *sql.Tx, id int64, source Source, fields 
 		for name := range values {
 			shared = shared || dependentFields[name]
 		}
+	}
+	if !queue {
+		return nil
 	}
 	switch {
 	case shared:
@@ -595,6 +622,13 @@ func valuesInOrder(values map[string]any, names []string) []any {
 // writer: locked fields are skipped as in SetFieldsTx. Use it right after
 // UpsertEntityTx for the kind's own facts.
 func SetFactsTx(ctx context.Context, tx *sql.Tx, id int64, fields map[string]any) error {
+	if err := requireFactAuthority(ctx, tx, id, fields); err != nil {
+		return err
+	}
+	return SetFieldsTx(ctx, tx, id, Automatic, fields)
+}
+
+func requireFactAuthority(ctx context.Context, tx *sql.Tx, id int64, fields map[string]any) error {
 	if err := RequireEntityAcquirableTx(ctx, tx, id); err != nil {
 		return err
 	}
@@ -605,7 +639,7 @@ func SetFactsTx(ctx context.Context, tx *sql.Tx, id int64, fields map[string]any
 			}
 		}
 	}
-	return SetFieldsTx(ctx, tx, id, Automatic, fields)
+	return nil
 }
 
 // RetireEntityTx retires an entity (a container that lost its last member):
