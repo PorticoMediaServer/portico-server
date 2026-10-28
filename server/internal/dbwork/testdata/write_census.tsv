@@ -230,7 +230,7 @@ internal/identity/refresh.go	(*Service).RefreshSession	Begin	ClassSecurityFence	
 internal/identity/restore.go	(*Service).SignEveryoneOutAfterRestore	WithWriteTx	ClassSecurityFence	-
 internal/identity/restore.go	ScrubBackupCopy	WithWriteTx	ClassMaintenance	-
 internal/identity/restrictions.go	(*Service).SetProfileRestrictions	Begin	ClassSecurityFence	-
-internal/identity/self_registration.go	(*Service).Register	Begin	ClassSecurityFence	-
+internal/identity/self_registration.go	(*Service).Register	Begin	ClassSecurityFence	selfRegistrationPlan
 internal/identity/self_registration.go	(*Service).SaveRegistrationPolicy	WithWriteTx	ClassSecurityFence	-
 internal/identity/service.go	(*Service).IssueWithDevice	Begin	ClassSecurityFence	-
 internal/identity/service.go	(*Service).retireUnreturnedLogin	ExecWrite	ClassSecurityFence	-
@@ -626,6 +626,7 @@ plan	internal/compactcatalog/derive.go	(*Worker).Step	DrainPlan
 plan	internal/compactcatalog/derive.go	(*Worker).Step	derivationUnitPlan
 plan	internal/hosted/membership_push.go	(*Service).pushMembers	memberPushPlan
 plan	internal/identity/account_moves.go	(*Service).ConfirmLocalMove	accountMovePlan
+plan	internal/identity/self_registration.go	(*Service).Register	selfRegistrationPlan
 plan	internal/metadata/screen_publish.go	(*Service).publishScreen	screenPublishPlan
 plan	internal/metadata/tvdb_episode_credits.go	(*Service).tvdbEpisodeCreditsStep	tvdbEpisodeCreditsPlan
 plan	internal/persistence/schema.go	installBaseline	baselinePlan
