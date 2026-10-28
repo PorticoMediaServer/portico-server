@@ -22,16 +22,19 @@ export function FacetPage({libraryId, field, pivot, request, onSelect}: {
   const [page, setPage] = useState<BrowseFacetPage>(), [values, setValues] = useState<readonly BrowseFacetValue[]>([]);
   const [failed, setFailed] = useState(false), [more, setMore] = useState(false), [retry, setRetry] = useState(0);
   const lifetime = useRef<AbortController>(undefined);
-  const pending = useRef(false), offset = useRef(0);
+  const pending = useRef(false), offset = useRef(0), basis = useRef('');
+  const scope = JSON.stringify([libraryId, field, pivot]);
   useEffect(() => {
     const operation = new AbortController();
-    lifetime.current = operation; pending.current = false; offset.current = 0;
-    setFailed(false); setPage(undefined); setValues([]); setMore(false);
+    lifetime.current = operation; pending.current = true; offset.current = 0;
+    if (basis.current !== scope) {basis.current = scope; setPage(undefined); setValues([]);}
+    setFailed(false); setMore(true);
     void loadFacetPage(request, {libraryId, field, pivot}, operation.signal)
       .then(first => {if (!operation.signal.aborted) {offset.current = first.values.length; setPage(first); setValues(first.values);}})
-      .catch(() => {if (!operation.signal.aborted) setFailed(true);});
+      .catch(() => {if (!operation.signal.aborted) setFailed(true);})
+      .finally(() => {if (!operation.signal.aborted) {pending.current = false; setMore(false);}});
     return () => operation.abort();
-  }, [libraryId, field, pivot, request, retry]);
+  }, [libraryId, field, pivot, request, retry, scope]);
   const loadMore = () => {
     const operation = lifetime.current;
     if (!page || pending.current || !operation || operation.signal.aborted) return;
