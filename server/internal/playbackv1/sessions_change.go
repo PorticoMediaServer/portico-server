@@ -407,7 +407,14 @@ func (s *Service) Stop(ctx context.Context, c Caller, id string, positionMs *int
 	}
 	if positionMs != nil && *positionMs >= 0 && r.media != "" {
 		_ = s.Playback.ProgressContext(ctx, c.Principal, r.media, r.mediaGeneration, int64(r.lastSeq)+1, float64(*positionMs)/1000, "paused")
-		_, _ = s.DB.ExecContext(ctx, `UPDATE playback_v1_sessions SET position_ms=?,last_seq=last_seq+1 WHERE id=? AND ended_ms=0`, *positionMs, r.id)
+		// The final position is a user intent, so it takes the writer gate at
+		// the established-playback class rather than committing on the
+		// foreground read pool: a raw write here waits on SQLite's file lock
+		// while a properly gated BEGIN holds the gate behind it, for the whole
+		// busy timeout. The error stays ignored exactly as before, and this is
+		// still its own autocommit statement between the progress transaction
+		// and End — not one transaction with them.
+		_, _ = dbwork.ExecWrite(ctx, s.DB, dbwork.ClassEstablishedPlayback, `UPDATE playback_v1_sessions SET position_ms=?,last_seq=last_seq+1 WHERE id=? AND ended_ms=0`, *positionMs, r.id)
 	}
 	return s.End(ctx, id, "stopped", "")
 }
