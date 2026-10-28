@@ -50,6 +50,10 @@ func (s *Service) StartRestoreWithPassphrase(ctx context.Context, source Source,
 		return "", err
 	}
 	s.mu.Lock()
+	if s.stopping {
+		s.mu.Unlock()
+		return "", context.Canceled
+	}
 	if s.restoreJob != nil && s.restoreJob.Phase != "failed" {
 		if operation != s.restoreOperation {
 			s.mu.Unlock()
@@ -82,6 +86,7 @@ func (s *Service) StartRestoreWithPassphrase(ctx context.Context, source Source,
 	id := newToken()
 	s.restoreOperation, s.restoreSource = operation, source
 	s.restoreJob = &RestoreJob{JobID: id, Phase: "queued"}
+	s.admitLocked()
 	s.mu.Unlock()
 	work := restoreIdentity{jobID: id, operation: operation}
 	supervise.Go("backup.restore", func() {
@@ -91,6 +96,7 @@ func (s *Service) StartRestoreWithPassphrase(ctx context.Context, source Source,
 }
 
 func (s *Service) runRestore(ctx context.Context, source Source, passphrase string, work restoreIdentity) {
+	defer s.leave()
 	var result StageResult
 	var err error
 	returned := false

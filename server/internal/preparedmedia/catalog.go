@@ -77,11 +77,11 @@ func selectSource(ctx context.Context, tx *sql.Tx, item, asset string, requireAv
 			return s, ErrUnsupported
 		}
 	}
-	var parts int
-	if e = tx.QueryRowContext(ctx, `SELECT count(DISTINCT ia.part_index) FROM catalog_asset_links ia JOIN catalog_entities i ON i.id=ia.entity_id WHERE i.public_id=pid_blob(?)`, item).Scan(&parts); e != nil {
+	single, e := DownloadSinglePartTx(ctx, tx, item)
+	if e != nil {
 		return s, e
 	}
-	if parts != 1 {
+	if !single {
 		return s, ErrUnsupported
 	}
 	return s, nil
@@ -149,11 +149,11 @@ func VersionsTx(ctx context.Context, tx *sql.Tx, item string) ([]Version, error)
 			v.Reason = "source_changed"
 			continue
 		}
-		var parts int
-		if err = tx.QueryRowContext(ctx, `SELECT count(DISTINCT ia.part_index) FROM catalog_asset_links ia JOIN catalog_entities i ON i.id=ia.entity_id WHERE i.public_id=pid_blob(?)`, item).Scan(&parts); err != nil {
+		single, err := DownloadSinglePartTx(ctx, tx, item)
+		if err != nil {
 			return out, err
 		}
-		if parts != 1 {
+		if !single {
 			v.Reason = "part_mapping_unavailable"
 			continue
 		}

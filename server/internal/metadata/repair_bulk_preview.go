@@ -4,13 +4,11 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
-	"errors"
 	"sort"
 	"strings"
 
 	"portico.local/server/internal/catalog"
 	"portico.local/server/internal/compactcatalog"
-	"portico.local/server/internal/dbwork"
 )
 
 type BulkPreviewValue struct {
@@ -19,7 +17,8 @@ type BulkPreviewValue struct {
 }
 type BulkPreviewField struct {
 	State         string             `json:"state"`
-	DistinctCount int64              `json:"distinctCount"`
+	DistinctCount int64              `json:"distinctCount,omitempty"`
+	AtLeast       int64              `json:"atLeast,omitempty"`
 	Value         *string            `json:"value,omitempty"`
 	Values        []BulkPreviewValue `json:"values"`
 	Entries       []BulkPreviewValue `json:"entries"`
@@ -111,149 +110,27 @@ func previewSchema(contentKind string) (BulkMetadataPreview, error) {
 	return out, nil
 }
 
-// BulkPreview releases the catalogue snapshot after every candidate page. The
-// exact DISTINCT/count sets live in a private disk-backed accumulator, not a
-// catalogue TEMP table, a long snapshot, or a slice of the selection's IDs.
-// Nothing is returned until a final fresh snapshot validates all three fences.
-func (s *Service) BulkPreview(ctx context.Context, source BulkPreviewSource, authorize func(context.Context, *sql.Tx) error) (out BulkMetadataPreview, err error) {
-	if source == nil || authorize == nil || dbwork.Snapshot(ctx) != nil {
-		return out, ErrRepairInput
-	}
-	spool, err := newBulkPreviewSpool(ctx, s.cacheRoot)
+// BulkPreview is the synchronous service adapter used by internal callers. The
+// HTTP boundary runs the same incremental reducer in the shared readprep store.
+// No preview path creates a database, TEMP table, or scratch file.
+func (s *Service) BulkPreview(ctx context.Context, source BulkPreviewSource, authorize func(context.Context, *sql.Tx) error) (BulkMetadataPreview, error) {
+	r, err := newBulkPreviewReduction(s, source, authorize, nil, "")
 	if err != nil {
-		return out, err
+		return BulkMetadataPreview{}, err
 	}
-	defer func() {
-		if closeErr := spool.close(); closeErr != nil {
-			out = BulkMetadataPreview{}
-			err = errors.Join(err, closeErr)
-		}
-	}()
-	return s.bulkPreview(ctx, source, authorize, s.bulkPreviewPageTx, func(ctx context.Context, out *BulkMetadataPreview, page bulkPreviewPage) error {
-		if err := spool.add(ctx, page.observations); err != nil {
-			return err
-		}
-		out.Total += page.preview.Total
-		out.Targets = append(out.Targets, page.preview.Targets...)
-		return nil
-	}, spool.fields)
-}
-
-// bulkPreview shares bounded snapshot, authority and final-fence validation
-// between the legacy reducer and the small explicit memory reducer.
-func (s *Service) bulkPreview(ctx context.Context, source BulkPreviewSource, authorize func(context.Context, *sql.Tx) error,
-	readPage func(context.Context, *sql.Tx, catalog.BulkMetadataSelection) (bulkPreviewPage, error),
-	accumulate func(context.Context, *BulkMetadataPreview, bulkPreviewPage) error,
-	fields func(context.Context, []RepairFieldSpec) (map[string]BulkPreviewField, error),
-) (out BulkMetadataPreview, err error) {
-	authority := dbwork.AuthorityGeneration()
-	var fence, revision string
-	initialized := false
-	var after int64
-	read := func(snapshot context.Context, final bool) (page bulkPreviewPage, next catalog.BulkMetadataSelectionPage, err error) {
-		tx := dbwork.Snapshot(snapshot)
-		if err = authorize(snapshot, tx); err != nil {
-			return
-		}
-		if dbwork.AuthorityGeneration() != authority {
-			err = catalog.ErrStaleContinuation
-			return
-		}
-		next, err = source(snapshot, tx, after)
-		if initialized && (next.Fence != "" && next.Fence != fence || errors.Is(err, sql.ErrNoRows)) {
-			err = catalog.ErrStaleContinuation
-		}
-		if err != nil {
-			return
-		}
-		if !initialized {
-			fence, revision = next.Fence, next.Selection.Revision
-			initialized = true
-		}
-		if next.Fence != fence || next.Selection.Revision != revision {
-			err = catalog.ErrStaleContinuation
-			return
-		}
-		if !final && strings.TrimSpace(next.Selection.SQL) != "" {
-			page, err = readPage(snapshot, tx, next.Selection)
-			if err != nil {
-				return
-			}
-		}
-		// Rebuild the fence even inside the page; a source may also bind external
-		// authority. Database revisions themselves share the page's WAL snapshot.
-		checked, e := source(snapshot, tx, after)
-		if e != nil {
-			err = e
-			return
-		}
-		if checked.Fence != fence || checked.Selection.Revision != revision {
-			err = catalog.ErrStaleContinuation
-			return
-		}
-		if err = authorize(snapshot, tx); err != nil {
-			return
-		}
-		if dbwork.AuthorityGeneration() != authority {
-			err = catalog.ErrStaleContinuation
-		}
-		return
-	}
-	for {
-		var page bulkPreviewPage
-		var next catalog.BulkMetadataSelectionPage
-		err = dbwork.WithReadSnapshot(ctx, s.db, func(snapshot context.Context) error { var e error; page, next, e = read(snapshot, false); return e })
-		if err != nil {
+	for !r.done {
+		if err = r.step(ctx); err != nil {
 			return BulkMetadataPreview{}, err
 		}
-		if dbwork.AuthorityGeneration() != authority {
-			return BulkMetadataPreview{}, catalog.ErrStaleContinuation
-		}
-		if page.preview.Total > 0 {
-			if out.Total == 0 {
-				out = page.preview
-				out.Total = 0
-				out.Targets = []BulkPreviewTarget{}
-			}
-			if out.ContentKind != page.preview.ContentKind {
-				return BulkMetadataPreview{}, ErrRepairInput
-			}
-			if err = accumulate(ctx, &out, page); err != nil {
-				return BulkMetadataPreview{}, err
-			}
-		}
-		if next.Done {
-			break
-		}
-		if next.After <= after {
-			return BulkMetadataPreview{}, ErrRepairInput
-		}
-		after = next.After
 	}
-	if out.Total == 0 {
-		return BulkMetadataPreview{}, ErrRepairInput
-	}
-	out.SelectionRevision = revision
-	if out.Fields, err = fields(ctx, out.Schema); err != nil {
-		return BulkMetadataPreview{}, err
-	}
-	// Finalize the aggregate BEFORE the last fresh catalogue snapshot: reduction
-	// cannot hide a late metadata mutation or revocation.
-	err = dbwork.WithReadSnapshot(ctx, s.db, func(snapshot context.Context) error { _, _, e := read(snapshot, true); return e })
-	if err != nil {
-		return BulkMetadataPreview{}, err
-	}
-	if dbwork.AuthorityGeneration() != authority {
-		return BulkMetadataPreview{}, catalog.ErrStaleContinuation
-	}
-	return out, nil
+	return r.out, nil
 }
 
 func (s *Service) bulkPreviewPageTx(ctx context.Context, tx *sql.Tx, selection catalog.BulkMetadataSelection) (page bulkPreviewPage, err error) {
 	if tx == nil || strings.TrimSpace(selection.SQL) == "" || len(selection.Targets) > catalog.BulkMetadataPageSize {
 		return page, ErrRepairInput
 	}
-	rows, err := tx.QueryContext(ctx, `SELECT k.name,count(*) FROM (`+selection.SQL+`) selected JOIN catalog_entities i ON i.id=selected.id JOIN catalog_kinds k ON k.id=i.kind GROUP BY k.name LIMIT 2`, selection.Args...)
+	rows, err := tx.QueryContext(ctx, `SELECT k.name FROM (`+selection.SQL+`) selected JOIN catalog_entities i ON i.id=selected.id JOIN catalog_kinds k ON k.id=i.kind`, selection.Args...)
 	if err != nil {
 		return page, err
 	}
@@ -261,8 +138,18 @@ func (s *Service) bulkPreviewPageTx(ctx context.Context, tx *sql.Tx, selection c
 	var total int64
 	kinds := 0
 	for rows.Next() {
-		kinds++
-		if err = rows.Scan(&contentKind, &total); err != nil {
+		var name string
+		if err = rows.Scan(&name); err != nil {
+			break
+		}
+		if kinds == 0 {
+			contentKind, kinds = name, 1
+		} else if name != contentKind {
+			kinds = 2
+		}
+		total++
+		if kinds > 1 || total > catalog.BulkMetadataPageSize {
+			err = ErrRepairInput
 			break
 		}
 	}
@@ -334,11 +221,11 @@ func (s *Service) bulkPreviewPageTx(ctx context.Context, tx *sql.Tx, selection c
    WHEN 'artist' THEN json_object('tags',COALESCE(ar.tags,'')) WHEN 'album' THEN json_object('label',COALESCE(al.label,''),'tags',COALESCE(al.tags,'')) WHEN 'book' THEN json_object('author',COALESCE(bk.author,''),'narrator',COALESCE(bk.narrator,''),'series',COALESCE(bk.series,''),'tags',COALESCE(bk.tags,''),'labels',COALESCE(bk.labels,'')) ELSE json_object() END),
    'locks',json(COALESCE((SELECT json_group_object(field,locked) FROM metadata_owner_fields owner WHERE owner.entity_id=i.id AND owner.kind=?),'{}')),
    'genreLocked',COALESCE((SELECT locked FROM metadata_relationship_decisions lock WHERE lock.entity_id=i.id AND lock.kind=? AND lock.relationship='genre'),0),
-   'genres',json(COALESCE((SELECT json_group_array(label) FROM (SELECT DISTINCT COALESCE(ts.label_override,t.label) AS label FROM catalog_entity_terms et JOIN catalog_terms t ON t.id=et.term_id JOIN catalog_term_sources ts ON ts.entity_id=et.entity_id AND ts.term_id=et.term_id WHERE et.entity_id=i.id AND t.vocab=1 ORDER BY label)),'[]')))`
-		args := append([]any{}, selection.Args...)
-		args = append(args, out.Kind, out.Kind)
-		vectors := `WITH selected AS MATERIALIZED (` + selection.SQL + `) SELECT ` + vector + ` AS vector FROM selected JOIN catalog_entities i ON i.id=selected.id JOIN catalog_kinds k ON k.id=i.kind LEFT JOIN catalog_item_details d ON d.entity_id=i.id LEFT JOIN catalog_shows sh ON sh.entity_id=i.id LEFT JOIN catalog_artists ar ON ar.entity_id=i.id LEFT JOIN catalog_albums al ON al.entity_id=i.id LEFT JOIN catalog_books bk ON bk.entity_id=i.id`
-		grouped, e := tx.QueryContext(ctx, `SELECT vector,count(*) FROM (`+vectors+`) GROUP BY vector`, args...)
+   'genres',json(COALESCE((SELECT json_group_array(COALESCE(ts.label_override,t.label)) FROM catalog_entity_terms et JOIN catalog_terms t ON t.id=et.term_id JOIN catalog_term_sources ts ON ts.entity_id=et.entity_id AND ts.term_id=et.term_id WHERE et.entity_id=i.id AND t.vocab=1),'[]')))`
+		// SELECT-expression placeholders precede the bounded selection subquery.
+		args := append([]any{out.Kind, out.Kind}, selection.Args...)
+		vectors := `SELECT ` + vector + ` AS vector FROM (` + selection.SQL + `) selected JOIN catalog_entities i ON i.id=selected.id JOIN catalog_kinds k ON k.id=i.kind LEFT JOIN catalog_item_details d ON d.entity_id=i.id LEFT JOIN catalog_shows sh ON sh.entity_id=i.id LEFT JOIN catalog_artists ar ON ar.entity_id=i.id LEFT JOIN catalog_albums al ON al.entity_id=i.id LEFT JOIN catalog_books bk ON bk.entity_id=i.id`
+		grouped, e := tx.QueryContext(ctx, `SELECT vector,1 FROM (`+vectors+`)`, args...)
 		if e != nil {
 			return page, e
 		}
@@ -382,52 +269,4 @@ func (s *Service) bulkPreviewPageTx(ctx context.Context, tx *sql.Tx, selection c
 	}
 	page.preview = out
 	return page, nil
-}
-
-// bulkPreviewTargetTx shares the editor snapshot/observation reader. An optional
-// revision reader can preflight the snapshot and CAS inputs before serialization.
-func bulkPreviewTargetTx(ctx context.Context, tx *sql.Tx, target catalog.BulkMetadataTarget, contentKind string, schema []RepairFieldSpec, explicit bool,
-	revisionReader func(context.Context, *sql.Tx, RepairTarget, RepairSnapshot, repairEntity) (string, error),
-) (observations []bulkPreviewObservation, result *BulkPreviewTarget, err error) {
-	repair := RepairTarget{Kind: target.Kind, ID: target.ID}
-	snapshot, entity, e := readRepairSnapshot(ctx, tx, repair)
-	if e != nil {
-		return nil, nil, e
-	}
-
-	if entity.library != target.LibraryID || entity.itemKind != contentKind {
-		return nil, nil, ErrRepairInput
-	}
-	if explicit {
-		if revisionReader == nil {
-			revisionReader = repairRevision
-		}
-		revision, e := revisionReader(ctx, tx, repair, snapshot, entity)
-		if e != nil {
-			return nil, nil, e
-		}
-		result = &BulkPreviewTarget{target.Kind, target.ID, target.LibraryID, revision}
-	}
-	for _, spec := range schema {
-		observation := bulkPreviewObservation{field: spec.Field, count: 1}
-		if spec.Field == "genres" {
-			genres := []string{}
-			for _, relationship := range snapshot.Relationships {
-				if relationship.Kind == "genre" {
-					genres = append(genres, relationship.Label)
-				}
-			}
-			observation.entries = bulkPreviewGenres(genres)
-			observation.value = encodeList(observation.entries)
-			observation.locked = snapshot.RelationshipLocks["genre"]
-		} else {
-			field, ok := snapshot.Fields[spec.Field]
-			if !ok {
-				return nil, nil, ErrRepairInput
-			}
-			observation.value, observation.entries, observation.locked = field.Value, field.Values, field.Locked
-		}
-		observations = append(observations, observation)
-	}
-	return observations, result, nil
 }

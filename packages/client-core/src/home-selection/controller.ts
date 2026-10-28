@@ -73,10 +73,13 @@ export class HomeSelectionController {
       this.publish({selection: snapshot, actions: selectionActions(snapshot.summary, this.environment)});
     }));
     this.cleanups.push(options.home.subscribe(() => this.homeChanged()));
-    this.cleanups.push(options.events.on('job.updated', () => {
+    const revalidateJobs = () => {
       // The durable job read remains authoritative; the shared feed never creates a second job.
       if (!this.options.isCurrent(this.state.context)) this.invalidate();
-    }));
+    };
+    this.cleanups.push(options.events.on('job.updated', revalidateJobs));
+    const offResync = options.events.onResync?.(revalidateJobs);
+    if (offResync) this.cleanups.push(offResync);
     this.homeChanged();
   }
   getSnapshot = (): HomeSelectionSnapshot => this.state;

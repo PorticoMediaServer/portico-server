@@ -1401,7 +1401,19 @@ func run() (runErr error) {
 		}
 		return readingService.OnFamilyRevokedTx(ctx, tx, family)
 	}
+	apiDependencies.SelectionActions = httpapi.NewSelectionActions(apiDependencies)
+	defer apiDependencies.SelectionActions.Close()
+	supervise.Go("cmd.selection-actions", func() {
+		if err := apiDependencies.SelectionActions.Run(ctx); err != nil && ctx.Err() == nil {
+			log.Printf("Selection action worker stopped: %v", err)
+		}
+	})
 	handler := httpapi.New(apiDependencies)
+	backupService.SetBeforeSnapshot(func(ctx context.Context) error {
+		flush, cancel := context.WithTimeout(ctx, 10*time.Second)
+		defer cancel()
+		return httpapi.FlushPlaybackObservations(flush, handler)
+	})
 	configCtx, stopConfig := context.WithCancel(ctx)
 	configDone := make(chan struct{})
 	supervise.Go("cmd.config-file", func() {
@@ -1485,6 +1497,16 @@ func run() (runErr error) {
 			log.Printf("Credential usage could not be saved before shutdown: %v", err)
 		}
 		finishFlush()
+		backupStop, finishBackup := context.WithTimeout(context.Background(), drainBudget)
+		if err := backupService.Shutdown(backupStop); err != nil {
+			log.Printf("Backup shutdown incomplete: %v", err)
+		}
+		finishBackup()
+		observationStop, finishObservations := context.WithTimeout(context.Background(), 10*time.Second)
+		if err := httpapi.ClosePlaybackObservations(observationStop, handler); err != nil {
+			log.Printf("Playback observations could not be saved before shutdown: %v", err)
+		}
+		finishObservations()
 		<-notified
 	})
 	certificates := claimHandler.Certificates()

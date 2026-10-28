@@ -1,3 +1,4 @@
+import {ResyncCoordinator, type ResyncReadContext, type ResyncRegistration} from '../resync-coordinator.ts';
 import {routePath} from "../../../contracts/src/route-paths.ts";
 /**
  * The one event feed (spec §15; style guide amendment 8; Public API ARCH-API-07): `/v1/events` as
@@ -61,6 +62,8 @@ type Listener = (event: ServerEvent) => void;
 
 export class EventsClient {
   private readonly o: EventsClientOptions;
+  /** Shared by imperative resync reads and the attached freshness hub. */
+  readonly resync: ResyncCoordinator;
   private listeners = new Map<string, Set<Listener>>();
   private anyListeners = new Set<Listener>();
   private resyncListeners = new Set<() => void>();
@@ -80,6 +83,7 @@ export class EventsClient {
 
   constructor(options: EventsClientOptions) {
     this.o = options;
+    this.resync = new ResyncCoordinator(options);
     this.status = Object.freeze({mode: 'stopped', connected: false, cursor: options.cursor, failures: 0});
     this.setTimer = options.setTimer ?? ((fn, ms) => setTimeout(fn, ms));
     this.clearTimer = options.clearTimer ?? (t => clearTimeout(t as ReturnType<typeof setTimeout>));
@@ -102,6 +106,11 @@ export class EventsClient {
 
   /** Refetch what you show: the server couldn't deliver everything since the cursor. */
   onResync(listener: () => void): () => void { this.resyncListeners.add(listener); return () => { this.resyncListeners.delete(listener); }; }
+
+  /** Register current-state recovery; barriers install debt synchronously. */
+  onResyncRead(read: (context: ResyncReadContext) => Promise<void>, options: {priority?: number; open?: boolean; admission?: 'external'} = {}): ResyncRegistration {
+    return this.resync.register(read, options);
+  }
 
   start(): void {
     if (this.running) return;
@@ -127,6 +136,7 @@ export class EventsClient {
     if (event.type === 'stream.resync') {
       // Every subscriber marks what it shows as stale before the cursor moves past the gap; a
       // throwing one must not keep the others from hearing it.
+      this.resync.invalidate();
       this.recent = []; this.recentSet.clear(); this.recentSize = 0;
       for (const listener of [...this.resyncListeners]) { try { listener(); } catch { /* the others still refetch */ } }
       this.setStatus({cursor: event.id});
@@ -223,7 +233,11 @@ export class EventsClient {
         if (signal.aborted || inner.signal.aborted) return;
         this.setStatus({connected: true});
         if (signal.aborted) return;
-        if (raw.resync) { for (const listener of [...this.resyncListeners]) listener(); return; }
+        if (raw.resync) {
+          this.resync.invalidate();
+          for (const listener of [...this.resyncListeners]) {try {listener();} catch { /* Install every consumer’s debt. */ }}
+          return;
+        }
         let parsed: unknown;
         try { parsed = JSON.parse(raw.data); } catch { return; }
         const event = parseEvent(parsed);

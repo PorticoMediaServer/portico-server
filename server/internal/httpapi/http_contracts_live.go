@@ -13,7 +13,7 @@ func registerLiveHTTPContracts(registry *apikit.Registry) error {
 		ProtocolVersion string                 `json:"protocolVersion"`
 		ServerID        string                 `json:"serverId"`
 		Value           livechannels.GuidePage `json:"page"`
-	}](registry, apikit.Metadata{Audience: apikit.Clients, ID: "get_guide_on_now", Method: "GET", Path: "/v1/guide/on-now", Summary: "Read guide on-now", Access: apikit.Device, Requires: apikit.ScopeRead, Lane: apikit.Browsing, Admission: laneBrowsing, Cost: apikit.PageSized, Status: 200, Query: []string{"kind", "sourceId", "group", "cursor", "limit"}, Errors: []string{"invalid_request", "unauthorized", "not_permitted", "internal"}}); err != nil {
+	}](registry, apikit.Metadata{Audience: apikit.Clients, ID: "get_guide_on_now", Method: "GET", Path: "/v1/guide/on-now", Summary: "Read guide on-now", Access: apikit.Device, Requires: apikit.ScopeRead, Lane: apikit.Browsing, Admission: laneBrowsing, Cost: apikit.PageSized, Status: 200, Query: []string{"kind", "sourceId", "group", "cursor", "limit"}, QueryIntegers: limitQuery(37, 50), Errors: []string{"invalid_request", "unauthorized", "not_permitted", "internal"}}); err != nil {
 		return err
 	}
 
@@ -21,7 +21,7 @@ func registerLiveHTTPContracts(registry *apikit.Registry) error {
 		ProtocolVersion string                 `json:"protocolVersion"`
 		ServerID        string                 `json:"serverId"`
 		Value           livechannels.GuidePage `json:"page"`
-	}](registry, apikit.Metadata{Audience: apikit.Clients, ID: "get_guide_now_next", Method: "GET", Path: "/v1/guide/now-next", Summary: "Read guide now-next", Access: apikit.Device, Requires: apikit.ScopeRead, Lane: apikit.Browsing, Admission: laneBrowsing, Cost: apikit.PageSized, Status: 200, Query: []string{"kind", "sourceId", "group", "cursor", "limit"}, Errors: []string{"invalid_request", "unauthorized", "not_permitted", "internal"}}); err != nil {
+	}](registry, apikit.Metadata{Audience: apikit.Clients, ID: "get_guide_now_next", Method: "GET", Path: "/v1/guide/now-next", Summary: "Read guide now-next", Access: apikit.Device, Requires: apikit.ScopeRead, Lane: apikit.Browsing, Admission: laneBrowsing, Cost: apikit.PageSized, Status: 200, Query: []string{"kind", "sourceId", "group", "cursor", "limit"}, QueryIntegers: limitQuery(37, 50), Errors: []string{"invalid_request", "unauthorized", "not_permitted", "internal"}}); err != nil {
 		return err
 	}
 
@@ -29,11 +29,11 @@ func registerLiveHTTPContracts(registry *apikit.Registry) error {
 		ProtocolVersion string                   `json:"protocolVersion"`
 		ServerID        string                   `json:"serverId"`
 		Value           livechannels.AiringsPage `json:"airings"`
-	}](registry, apikit.Metadata{Audience: apikit.Clients, ID: "get_guide_airings", Method: "GET", Path: "/v1/guide/airings", Summary: "Read guide airings", Access: apikit.Device, Requires: apikit.ScopeRead, Lane: apikit.Browsing, Admission: laneBrowsing, Cost: apikit.PageSized, Status: 200, Query: []string{"search", "seriesId", "title", "channelId", "sourceId", "kind", "start", "end", "cursor", "limit"}, Errors: []string{"invalid_request", "unauthorized", "not_permitted", "internal"}}); err != nil {
+	}](registry, apikit.Metadata{Audience: apikit.Clients, ID: "get_guide_airings", Method: "GET", Path: "/v1/guide/airings", Summary: "Read guide airings", Access: apikit.Device, Requires: apikit.ScopeRead, Lane: apikit.Browsing, Admission: laneBrowsing, Cost: apikit.PageSized, Status: 200, Query: []string{"search", "seriesId", "title", "channelId", "sourceId", "kind", "start", "end", "cursor", "limit"}, QueryIntegers: limitQuery(30, 50), Errors: []string{"invalid_request", "unauthorized", "not_permitted", "internal"}}); err != nil {
 		return err
 	}
 
-	if err := apikit.RegisterHTTP[struct{}, LiveOwnerResult[livechannels.ReminderPage]](registry, apikit.Metadata{Audience: apikit.Clients, ID: "get_guide_reminders", Method: "GET", Path: "/v1/guide/reminders", Summary: "Get guide reminders", Access: apikit.Device, Requires: apikit.ScopeRead, Lane: apikit.Browsing, Admission: laneBrowsing, Cost: apikit.PageSized, Status: 200, BodyLimit: 0, Query: []string{"cursor", "limit"}, Errors: []string{"invalid_request", "unauthorized", "not_permitted", "internal"}}); err != nil {
+	if err := apikit.RegisterHTTP[struct{}, LiveOwnerResult[livechannels.ReminderPage]](registry, apikit.Metadata{Audience: apikit.Clients, ID: "get_guide_reminders", Method: "GET", Path: "/v1/guide/reminders", Summary: "Get guide reminders", Access: apikit.Device, Requires: apikit.ScopeRead, Lane: apikit.Browsing, Admission: laneBrowsing, Cost: apikit.PageSized, Status: 200, BodyLimit: 0, Query: []string{"cursor", "limit"}, QueryIntegers: limitQuery(30, 50), Errors: []string{"invalid_request", "unauthorized", "not_permitted", "internal"}}); err != nil {
 		return err
 	}
 
@@ -51,7 +51,7 @@ func registerLiveHTTPContracts(registry *apikit.Registry) error {
 		return err
 	}
 
-	if err := apikit.RegisterHTTP[struct{}, LiveOwnerResult[dvr.GroupPage]](registry, apikit.Metadata{Audience: apikit.Clients, ID: "get_dvr_groups", Method: "GET", Path: "/v1/dvr/groups", Summary: "Read recording groups", Access: apikit.Device, Requires: apikit.ScopeRead, Lane: apikit.Browsing, Admission: laneBrowsing, Cost: apikit.PageSized, Status: 200, Query: []string{"sort", "cursor", "limit"}, Errors: []string{"invalid_request", "unauthorized", "not_permitted", "internal"}}); err != nil {
+	if err := apikit.RegisterHTTP[struct{}, LiveOwnerResult[dvr.GroupPage]](registry, apikit.Metadata{Audience: apikit.Clients, ID: "get_dvr_groups", Method: "GET", Path: "/v1/dvr/groups", Summary: "Read recording groups", Access: apikit.Device, Requires: apikit.ScopeRead, Lane: apikit.Browsing, Admission: laneBrowsing, Cost: apikit.PageSized, Status: 200, Query: []string{"sort", "cursor", "limit"}, QueryIntegers: limitQuery(30, 50), Errors: []string{"invalid_request", "unauthorized", "not_permitted", "internal"}}); err != nil {
 		return err
 	}
 
@@ -60,7 +60,7 @@ func registerLiveHTTPContracts(registry *apikit.Registry) error {
 	}
 
 	// internal/httpapi/dvr.go:82
-	if err := apikit.RegisterHTTP[struct{}, LiveOwnerResult[dvr.Page]](registry, apikit.Metadata{Audience: apikit.Clients, ID: "get_dvr", Method: "GET", Path: "/v1/dvr", Summary: "Read dvr", Access: apikit.Device, Requires: apikit.ScopeRead, Lane: apikit.Browsing, Admission: laneBrowsing, Cost: apikit.PageSized, BodyLimit: 0, Status: 200, Query: []string{"cursor", "limit", "state", "sort", "group"}, Errors: []string{"invalid_request", "unauthorized", "not_permitted", "not_found", "internal"}}); err != nil {
+	if err := apikit.RegisterHTTP[struct{}, LiveOwnerResult[dvr.Page]](registry, apikit.Metadata{Audience: apikit.Clients, ID: "get_dvr", Method: "GET", Path: "/v1/dvr", Summary: "Read dvr", Access: apikit.Device, Requires: apikit.ScopeRead, Lane: apikit.Browsing, Admission: laneBrowsing, Cost: apikit.PageSized, BodyLimit: 0, Status: 200, Query: []string{"cursor", "limit", "state", "sort", "group"}, QueryIntegers: emptyLimitQuery(50, 50), Errors: []string{"invalid_request", "unauthorized", "not_permitted", "not_found", "internal"}}); err != nil {
 		return err
 	}
 	// internal/httpapi/dvr.go:103
@@ -125,7 +125,7 @@ func registerLiveHTTPContracts(registry *apikit.Registry) error {
 		ProtocolVersion string                 `json:"protocolVersion"`
 		ServerID        string                 `json:"serverId"`
 		Directory       livechannels.Directory `json:"directory"`
-	}](registry, apikit.Metadata{Audience: apikit.Clients, ID: "get_guide_channels", Method: "GET", Path: "/v1/guide/channels", Summary: "Read guide channels", Access: apikit.Device, Requires: apikit.ScopeRead, Lane: apikit.Browsing, Admission: laneBrowsing, Cost: apikit.Constant, BodyLimit: 0, Status: 200, Query: []string{"anchorChannelId", "anchorProvenance", "anchorSourceId", "direction", "favorites", "group", "includeHidden", "includeServerHidden", "kind", "limit", "offset", "revision", "search", "sort", "sourceId", "timezone"}, Errors: []string{"invalid_request", "unauthorized", "not_permitted", "not_found", "internal"}}); err != nil {
+	}](registry, apikit.Metadata{Audience: apikit.Clients, ID: "get_guide_channels", Method: "GET", Path: "/v1/guide/channels", Summary: "Read guide channels", Access: apikit.Device, Requires: apikit.ScopeRead, Lane: apikit.Browsing, Admission: laneBrowsing, Cost: apikit.Constant, BodyLimit: 0, Status: 200, Query: []string{"anchorChannelId", "anchorProvenance", "anchorSourceId", "direction", "favorites", "group", "includeHidden", "includeServerHidden", "kind", "limit", "offset", "revision", "search", "sort", "sourceId", "timezone"}, QueryIntegers: []apikit.QueryInteger{{Name: "limit", Minimum: 1, Default: 50, Maximum: 50, Description: "With direction, the default is 1 and an explicit limit must be 1."}}, Errors: []string{"invalid_request", "unauthorized", "not_permitted", "not_found", "internal"}}); err != nil {
 		return err
 	}
 	// internal/httpapi/guide_directory.go:185
@@ -277,7 +277,7 @@ func registerLiveHTTPContracts(registry *apikit.Registry) error {
 		ProtocolVersion string             `json:"protocolVersion"`
 		ServerID        string             `json:"serverId"`
 		Guide           livechannels.Guide `json:"guide"`
-	}](registry, apikit.Metadata{Audience: apikit.Clients, ID: "get_guide", Method: "GET", Path: "/v1/guide", Summary: "Read guide", Access: apikit.Device, Requires: apikit.ScopeRead, Lane: apikit.Default, Admission: laneDefault, Cost: apikit.PageSized, BodyLimit: 0, Status: 200, Query: []string{"channels", "cursor", "end", "favorites", "group", "includeHidden", "includeServerHidden", "kind", "limit", "programmes", "search", "sourceId", "start", "timezone"}, Errors: []string{"invalid_request", "unauthorized", "not_permitted", "not_found", "internal"}}); err != nil {
+	}](registry, apikit.Metadata{Audience: apikit.Clients, ID: "get_guide", Method: "GET", Path: "/v1/guide", Summary: "Read guide", Access: apikit.Device, Requires: apikit.ScopeRead, Lane: apikit.Default, Admission: laneDefault, Cost: apikit.PageSized, BodyLimit: 0, Status: 200, Query: []string{"channels", "cursor", "end", "favorites", "group", "includeHidden", "includeServerHidden", "kind", "limit", "programmes", "search", "sourceId", "start", "timezone"}, QueryIntegers: []apikit.QueryInteger{{Name: "limit", Minimum: 1, Maximum: 50, Required: true}}, Errors: []string{"invalid_request", "unauthorized", "not_permitted", "not_found", "internal"}}); err != nil {
 		return err
 	}
 	// internal/httpapi/recording_owners.go:29

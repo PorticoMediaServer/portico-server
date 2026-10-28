@@ -48,7 +48,7 @@ func registerClientReports(registry *apikit.Registry, d Dependencies) error {
 	if err != nil {
 		return err
 	}
-	err = apikit.Register(registry, apikit.Route[struct{}, servicelog.ClientUploadPage]{Metadata: apikit.Metadata{Audience: apikit.Clients, Admission: laneAdminHeavy, ID: "get_client_logs", Method: "GET", Path: "/v1/admin/diagnostics/client-logs", Summary: "List client reports", Access: apikit.Owner, Requires: apikit.ScopeAdmin, Lane: apikit.Default, Cost: apikit.PageSized, Query: []string{"cursor", "limit"}, Status: 200, Errors: []string{"unauthorized", "invalid_request", "internal"}}, Handler: func(ctx context.Context, r *http.Request, _ struct{}) (servicelog.ClientUploadPage, error) {
+	err = apikit.Register(registry, apikit.Route[struct{}, servicelog.ClientUploadPage]{Metadata: apikit.Metadata{Audience: apikit.Clients, Admission: laneAdminHeavy, ID: "get_client_logs", Method: "GET", Path: "/v1/admin/diagnostics/client-logs", Summary: "List client reports", Access: apikit.Owner, Requires: apikit.ScopeAdmin, Lane: apikit.Default, Cost: apikit.PageSized, Query: []string{"cursor", "limit"}, QueryIntegers: []apikit.QueryInteger{{Name: "limit", Minimum: 1, Default: 25, Maximum: 100, DefaultBelowMinimum: true, EmptyIsDefault: true}}, Status: 200, Errors: []string{"unauthorized", "invalid_request", "internal"}}, Handler: func(ctx context.Context, r *http.Request, _ struct{}) (servicelog.ClientUploadPage, error) {
 		if store == nil {
 			return servicelog.ClientUploadPage{}, &apierror.Error{Code: "internal"}
 		}

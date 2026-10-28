@@ -4,7 +4,6 @@ import (
 	"context"
 	"database/sql"
 	"reflect"
-	"sort"
 	"strings"
 
 	"portico.local/server/internal/catalog"
@@ -42,7 +41,7 @@ func (s *Service) BulkPreviewMemory(ctx context.Context, source BulkPreviewSourc
 	if err := m.charge(64 << 10); err != nil {
 		return BulkMetadataPreview{}, err
 	}
-	m.counts = make(map[string]*bulkPreviewMemoryField)
+	m.initAggregate()
 	checkedSource := func(ctx context.Context, tx *sql.Tx, after int64) (catalog.BulkMetadataSelectionPage, error) {
 		page, err := source(ctx, tx, after)
 		if err != nil {
@@ -86,24 +85,20 @@ func (s *Service) BulkPreviewMemory(ctx context.Context, source BulkPreviewSourc
 	return s.bulkPreview(ctx, checkedSource, authorize, m.page, m.add, m.fields)
 }
 
-type bulkPreviewMemoryField struct {
-	values, entries map[string]*int64
-	locked          int64
-}
-
 type bulkPreviewMemory struct {
 	reserve         func(int64) error
 	used, transient int64
 	targets         int
 	ids             [bulkPreviewMemoryTargets]string
-	counts          map[string]*bulkPreviewMemoryField
+	aggregate       bulkPreviewAggregate
+	reserved        int64
 }
 
 func (m *bulkPreviewMemory) charge(bytes int64) error {
-	if bytes < 0 || bytes > bulkPreviewMemoryBytes-m.used-m.transient {
+	if bytes < 0 || bytes > bulkPreviewMemoryBytes-m.used-m.transient-m.aggregate.used {
 		return readprep.ErrCapacity
 	}
-	if err := m.reserve(m.used + m.transient + bytes); err != nil {
+	if err := m.reserveTotal(m.used + m.transient + m.aggregate.used + bytes); err != nil {
 		return err
 	}
 	m.used += bytes
@@ -243,106 +238,46 @@ func (m *bulkPreviewMemory) page(ctx context.Context, tx *sql.Tx, selection cata
 	return page, nil
 }
 
-func (m *bulkPreviewMemory) increment(set map[string]*int64, value string, count int64) error {
-	if counter := set[value]; counter != nil {
-		*counter += count
-		return nil
+// Preserve the original small adapter's monotonically growing delivery lease.
+// Released aggregate keys can reduce live memory without prematurely reducing
+// the reservation held through conversion, encoding and the actual write.
+func (m *bulkPreviewMemory) reserveTotal(n int64) error {
+	if n < 0 || n > bulkPreviewMemoryBytes {
+		return readprep.ErrCapacity
 	}
-	if err := m.charge(256 + 32*int64(len(value))); err != nil {
+	n = max(n, m.reserved)
+	if err := m.reserve(n); err != nil {
 		return err
 	}
-	// Only insert owned keys. Updating an existing Go string-map key can replace
-	// its backing string; pointed counters keep borrowed source backings out.
-	counter := new(int64)
-	*counter = count
-	set[strings.Clone(value)] = counter
+	m.reserved = n
 	return nil
 }
-
+func (m *bulkPreviewMemory) initAggregate() {
+	m.aggregate.reserve = func(n int64) error {
+		if n > bulkPreviewMemoryBytes-m.used-m.transient {
+			return readprep.ErrCapacity
+		}
+		return m.reserveTotal(m.used + m.transient + n)
+	}
+}
 func (m *bulkPreviewMemory) add(ctx context.Context, out *BulkMetadataPreview, page bulkPreviewPage) error {
-	for _, o := range page.observations {
-		if err := ctx.Err(); err != nil {
-			return err
-		}
-		field := m.counts[o.field]
-		if field == nil {
-			if err := m.charge(1024); err != nil {
-				return err
-			}
-			field = &bulkPreviewMemoryField{values: make(map[string]*int64), entries: make(map[string]*int64)}
-			m.counts[o.field] = field
-		}
-		if err := m.increment(field.values, o.value, o.count); err != nil {
-			return err
-		}
-		// Page preflight already reserves >=256 bytes per input entry, including
-		// this ephemeral map. Avoid quadratic duplicate comparisons for one legal
-		// large list; borrowed keys die before the next observation is read.
-		seen := make(map[string]struct{}, len(o.entries))
-		for _, entry := range o.entries {
-			if _, exists := seen[entry]; exists {
-				continue
-			}
-			seen[entry] = struct{}{}
-			if err := m.increment(field.entries, entry, o.count); err != nil {
-				return err
-			}
-		}
-
-		if o.locked {
-			field.locked += o.count
-		}
+	m.initAggregate()
+	if err := m.aggregate.add(ctx, page.observations); err != nil {
+		return err
 	}
 	if err := m.charge(256 * int64(len(page.preview.Targets))); err != nil {
 		return err
 	}
-	out.Total += page.preview.Total
+	if err := previewAddCount(&out.Total, page.preview.Total); err != nil {
+		return err
+	}
 	out.Targets = append(out.Targets, page.preview.Targets...)
 	return nil
 }
-
-func (m *bulkPreviewMemory) values(set map[string]*int64) ([]BulkPreviewValue, error) {
-	if err := m.charge(64*int64(len(set)) + 128*int64(min(len(set), bulkPreviewValues))); err != nil {
-		return nil, err
-	}
-	keys := make([]string, 0, len(set))
-	for key := range set {
-		keys = append(keys, key)
-	}
-	sort.Strings(keys) // Go byte order equals the legacy SQLite BINARY order.
-	out := make([]BulkPreviewValue, 0, min(len(keys), bulkPreviewValues))
-	for _, key := range keys[:min(len(keys), bulkPreviewValues)] {
-		out = append(out, BulkPreviewValue{Value: key, Count: *set[key]})
-	}
-	return out, nil
-}
-
 func (m *bulkPreviewMemory) fields(ctx context.Context, schema []RepairFieldSpec) (map[string]BulkPreviewField, error) {
-	if err := m.charge(2048 * int64(len(schema))); err != nil {
+	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
-	out := make(map[string]BulkPreviewField, len(schema))
-	for _, spec := range schema {
-		if err := ctx.Err(); err != nil {
-			return nil, err
-		}
-		counts := m.counts[spec.Field]
-		field := BulkPreviewField{State: "shared", DistinctCount: int64(len(counts.values)), Locked: counts.locked, Truncated: len(counts.values) > bulkPreviewValues || len(counts.entries) > bulkPreviewValues}
-		if field.DistinctCount > 1 {
-			field.State = "mixed"
-		}
-		var err error
-		if field.Values, err = m.values(counts.values); err != nil {
-			return nil, err
-		}
-		if field.Entries, err = m.values(counts.entries); err != nil {
-			return nil, err
-		}
-		if field.State == "shared" && len(field.Values) > 0 {
-			value := field.Values[0].Value
-			field.Value = &value
-		}
-		out[spec.Field] = field
-	}
-	return out, nil
+	m.initAggregate()
+	return m.aggregate.result(schema)
 }

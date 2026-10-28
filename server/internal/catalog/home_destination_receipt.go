@@ -105,6 +105,14 @@ func (s *Service) HomeDestinationReceiptTx(ctx context.Context, tx *sql.Tx, serv
 			out.UnresolvedJobIDs = append(out.UnresolvedJobIDs, id)
 		}
 	}
+	if in.Kind == "collection" {
+		denied, err := s.readingCollectionReceiptDenied(ctx, tx, p, in.JobIDs)
+		if err != nil {
+			return out, err
+		}
+		visible += ` AND NOT EXISTS(SELECT 1 FROM json_each(?) denied WHERE pid_blob(denied.value)=item.public_id)`
+		bound = append(bound, idsJSON(denied))
+	}
 	out.Complete = !out.Pending && len(out.UnresolvedJobIDs) == 0
 	current, err := s.homeRevision(v.Libraries, v.Profile)
 	if err != nil {
@@ -166,6 +174,30 @@ func (s *Service) HomeDestinationReceiptTx(ctx context.Context, tx *sql.Tx, serv
 	for _, failure := range out.Failures {
 		ids = append(ids, failure.ItemID)
 	}
-	out.FailureEntries, err = s.homeEntries(v.Profile, ids)
+	reading, err := s.homeReadingPage(v, ids, nil)
+	if err != nil {
+		return out, err
+	}
+	ordinary := []string{}
+	for _, id := range ids {
+		if _, ok := reading[id]; !ok {
+			ordinary = append(ordinary, id)
+		}
+	}
+	projected, err := s.homeEntries(v.Profile, ordinary)
+	if err != nil {
+		return out, err
+	}
+	byID := reading
+	for _, entry := range projected {
+		byID[entry.ID] = entry
+	}
+	for _, id := range ids {
+		entry, ok := byID[id]
+		if !ok {
+			return out, ErrStaleContinuation
+		}
+		out.FailureEntries = append(out.FailureEntries, entry)
+	}
 	return out, err
 }

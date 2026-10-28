@@ -41,12 +41,12 @@ test('editing sends only changed scalar fields and keeps genre and tag add/remov
   assert.deepEqual(editorUiDraft(body), draft);
   assert.ok(!Object.hasOwn(body.fields!, 'title'));
 });
-test('metadata preview preserves the exact distinct count and truncation instead of treating 64 values as the full distribution', () => {
-  const values = Array.from({length: 64}, (_, index) => ({value: String(1900 + index), count: 1}));
-  const preview = {schema: [{field: 'year', type: 'integer', bulk: true}], fields: {year: {state: 'mixed', distinctCount: 100, truncated: true, values, entries: [], locked: 0}}} as unknown as BulkMetadataPreview;
-  const shown = editorValues(preview).year;
-  assert.equal(shown.state, 'mixed'); assert.equal(shown.distinctCount, 100); assert.equal(shown.truncated, true);
-  assert.equal(shown.values, values);
+test('metadata preview preserves many as a lower bound and retains exact bounded entries', () => {
+  const entries = Array.from({length: 64}, (_, index) => ({value: String(index), count: 1}));
+  const preview = {schema: [{field: 'tags', type: 'list', bulk: true}], fields: {tags: {state: 'many', atLeast: 65, truncated: true, values: [], entries, locked: 23}}} as unknown as BulkMetadataPreview;
+  const shown = editorValues(preview).tags;
+  assert.equal(shown.state, 'many'); assert.equal(shown.atLeast, 65); assert.equal(shown.distinctCount, undefined); assert.equal(shown.truncated, true);
+  assert.equal(shown.entries, entries); assert.deepEqual(shown.values, []);
   assert.equal(editorValues(preview), preview.fields);
 });
 test('an actual shared empty string survives the editor display and unchanged draft omits it', () => {

@@ -92,6 +92,17 @@ export function bulkDraftValid(schema: readonly RepairFieldSpec[], values: Reado
   return changes > 0;
 }
 
+/** Only exact cardinalities are formatted as a number. */
+export function bulkFieldStateLabel(field: BulkFieldValues): string {
+  return selectionText(field.state === 'many' ? 'next.selection.manyValues' : 'next.selection.mixed');
+}
+export function bulkFieldHint(field: BulkFieldValues, count: number, edited: boolean, phone: boolean): string | undefined {
+  if (edited) return field.state !== 'shared' ? selectionText('next.selection.wasMixed') : undefined;
+  if (field.state === 'mixed') return selectionText('next.selection.valueCount', {count: field.distinctCount});
+  if (field.state === 'shared' && field.value !== undefined) return selectionText(phone ? 'next.selection.allCount' : 'next.selection.sameForAll', {count});
+  return undefined;
+}
+
 export type BulkSummaryLine = Readonly<{id: string; text: string; fieldLabel?: string; changedCount?: number; changedTitles?: readonly string[]}>;
 /** Display names never enter a metadata write. The draft always keeps the actual language tag. */
 export function bulkFieldDisplayValue(field: string, value: string): string {
@@ -102,8 +113,8 @@ export function bulkSummary(schema: readonly RepairFieldSpec[], values: Readonly
   for (const spec of schema.filter(field => field.bulk)) {
     if (Object.hasOwn(draft.fields, spec.field)) {
       const value = draft.fields[spec.field]!, original = values[spec.field];
-      const same = spec.type === 'list' || !original ? undefined : original.values.find(entry => entry.value === value)?.count ?? (original.truncated || original.state === 'shared' && original.value === undefined ? undefined : 0);
-      rows.push({id: spec.field, fieldLabel: spec.label, text: selectionText('next.selection.scalarChange', {field: spec.label, value: bulkFieldDisplayValue(spec.field, value) || selectionText('next.selection.notSet'), count}), changedCount: same === undefined ? undefined : count - same, changedTitles: original && !original.truncated && original.values.every(entry => entry.titles?.length === entry.count) ? original.values.filter(entry => entry.value !== value).flatMap(entry => entry.titles ?? []) : undefined});
+      const same = spec.type === 'list' || !original ? undefined : original.values.find(entry => entry.value === value)?.count ?? (original.state === 'many' || original.truncated || original.state === 'shared' && original.value === undefined ? undefined : 0);
+      rows.push({id: spec.field, fieldLabel: spec.label, text: selectionText('next.selection.scalarChange', {field: spec.label, value: bulkFieldDisplayValue(spec.field, value) || selectionText('next.selection.notSet'), count}), changedCount: same === undefined ? undefined : count - same, changedTitles: original && original.state !== 'many' && !original.truncated && original.values.every(entry => entry.titles?.length === entry.count) ? original.values.filter(entry => entry.value !== value).flatMap(entry => entry.titles ?? []) : undefined});
     }
     const list = draft.lists[spec.field];
     if (list?.add.length) rows.push({id: `${spec.field}-add`, fieldLabel: spec.label, text: selectionText('next.selection.listAdd', {field: spec.label, values: defaultI18n.list(list.add), count})});

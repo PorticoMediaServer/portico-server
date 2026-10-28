@@ -41,7 +41,7 @@ func registerMemberRoutes(registry *apikit.Registry, d Dependencies) error {
 	// Every member's devices, for the owner and administrators: the same device
 	// records sessions are bound to, with their approval. An administrator
 	// who is not the owner sees and decides about plain members' devices.
-	if err := apikit.Register(registry, apikit.Route[struct{}, access.PeopleDevicePage]{Metadata: apikit.Metadata{Audience: apikit.Clients, Admission: laneAdmin, ID: "get_admin_access_devices", Method: "GET", Path: "/v1/admin/access/devices", Summary: "List members' devices", Access: apikit.Admin, Requires: apikit.ScopeAdmin, AdminScope: "members", Lane: apikit.Security, Cost: apikit.PageSized, Query: []string{"cursor", "limit", "account", "sort"}, Status: 200, Errors: []string{"unauthorized", "not_permitted", "invalid_request", "internal"}}, Handler: func(ctx context.Context, r *http.Request, _ struct{}) (access.PeopleDevicePage, error) {
+	if err := apikit.Register(registry, apikit.Route[struct{}, access.PeopleDevicePage]{Metadata: apikit.Metadata{Audience: apikit.Clients, Admission: laneAdmin, ID: "get_admin_access_devices", Method: "GET", Path: "/v1/admin/access/devices", Summary: "List members' devices", Access: apikit.Admin, Requires: apikit.ScopeAdmin, AdminScope: "members", Lane: apikit.Security, Cost: apikit.PageSized, Query: []string{"cursor", "limit", "account", "sort"}, QueryIntegers: emptyLimitQuery(25, 100), Status: 200, Errors: []string{"unauthorized", "not_permitted", "invalid_request", "internal"}}, Handler: func(ctx context.Context, r *http.Request, _ struct{}) (access.PeopleDevicePage, error) {
 		p, err := d.foundationCaller(r.WithContext(ctx))
 		if err != nil {
 			return access.PeopleDevicePage{}, foundationAuthError(err)

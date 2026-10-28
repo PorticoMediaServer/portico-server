@@ -425,7 +425,13 @@ func (s *Service) prepare(ctx context.Context, id string) (plan, error) {
 	if e = tx.QueryRowContext(ctx, `SELECT source_asset_id FROM download_preparations WHERE id=?`, id).Scan(&version); e != nil {
 		return out, e
 	}
-	found, err := resolveVersionSource(ctx, tx, item, version)
+	var found source
+	var err error
+	if version != "" {
+		found, err = resolvePinnedDownloadSource(ctx, tx, item, version)
+	} else {
+		found, err = resolveSource(ctx, tx, item)
+	}
 	if reason := sourceReason(found, err); reason != "" {
 		if err != nil && !errors.Is(err, sql.ErrNoRows) {
 			return out, err
@@ -519,7 +525,7 @@ func (s *Service) prepare(ctx context.Context, id string) (plan, error) {
 // refreshed from the library, and the notifications seam is told, both inside
 // the transaction that made it ready.
 func (s *Service) settle(ctx context.Context, tx *sql.Tx, id string, now int64) error {
-	if e := refreshTitle(ctx, tx, id); e != nil {
+	if e := refreshPinnedDownloadTitle(ctx, tx, id); e != nil {
 		return e
 	}
 	return s.announce(ctx, tx, id, now, true, "")
@@ -538,7 +544,7 @@ func (s *Service) advanceOptimized(ctx context.Context, gatedArg *dbwork.Write, 
 	if profileID == "" {
 		profileID = preparedProfile(found.Kind, rung)
 	}
-	versions, e := preparedmedia.VersionsTx(ctx, tx, found.Item)
+	versions, e := selectionDownloadVersions(ctx, tx, found, profileID)
 	if e != nil {
 		return e
 	}

@@ -2,6 +2,7 @@ import {routePath} from '../../../../contracts/src/route-paths.ts';
 import {utcOrderKey} from '../../local-session.ts';
 import {call} from '../../playback-v1/http.ts';
 import type {EventsClient} from '../../playback-v1/events.ts';
+type ActivityEvents = Pick<EventsClient, 'on' | 'onResync'> & Partial<Pick<EventsClient, 'resync' | 'onResyncRead'>>;
 import {parseActivitySummary,parseDashboardSessions} from './parser.ts';
 import type {DashboardSessionsSnapshot, ActivitySummaryErrorCode, ActivitySummaryScope, ActivitySummarySnapshot, ActivitySummarySource, ActivitySummarySourceStore, ActivitySummaryTimers, OwnerActivitySummary} from './types.ts';
 
@@ -49,6 +50,7 @@ export class ActivitySummaryService {
   private lastStart = -Infinity;
   private retryAt = -Infinity;
   private releases: (() => void)[] = [];
+  private readEvents?: ActivityEvents;
 
   constructor(options: {source: ActivitySummarySourceStore; timers?: ActivitySummaryTimers; timeoutMs?: number}) {
     this.source = options.source;
@@ -95,15 +97,19 @@ export class ActivitySummaryService {
     if (this.current && !this.blocked) this.publish({phase: 'idle'});
   }
   /** Bind the current session's existing feed. It is never started, stopped or replaced here. */
-  attach(events: Pick<EventsClient, 'on' | 'onResync'> | null): void {
-    this.syncSource(); this.releaseFeed();
+  attach(events: ActivityEvents | null): void {
+    this.syncSource(); this.releaseFeed(); this.readEvents = events ?? undefined;
     if (this.disposed || !this.active || !this.current || this.blocked || !events) return;
     const source = this.current, epoch = this.epoch;
     const hint = () => {
       this.syncSource();
       if (this.epoch === epoch && same(source, this.current)) this.invalidate();
     };
-    this.releases = [...hintTypes.map(type => events.on(type, hint)), events.onResync(hint)];
+    const recovery = events.onResyncRead?.(async context => {
+      await this.revalidate({signal: context.signal});
+      if (this.state.phase === 'error') throw this.state.error;
+    }, {admission: 'external'});
+    this.releases = [...hintTypes.map(type => events.on(type, hint)), recovery ? () => recovery.dispose() : events.onResync(hint)];
   }
   private eligible(): boolean {
     this.syncSource();
@@ -123,9 +129,9 @@ export class ActivitySummaryService {
   load = (): Promise<void> => this.read();
   retry = (): Promise<void> => this.read();
   /** Compatible with the existing freshness document protocol; no content is retained after refusal. */
-  revalidate = (context?: {signal?: AbortSignal; settle?: () => Promise<void>}): Promise<void> => this.read(context);
+  revalidate = (context?: {signal?: AbortSignal; settle?: () => Promise<void>; admission?: object}): Promise<void> => this.read(context);
 
-  private read(context?: {signal?: AbortSignal; settle?: () => Promise<void>}): Promise<void> {
+  private read(context?: {signal?: AbortSignal; settle?: () => Promise<void>; admission?: object}): Promise<void> {
     if (!this.eligible()) return Promise.resolve();
     if (context?.signal?.aborted) { this.cancel(); return Promise.resolve(); }
     if (this.reading) return this.reading.promise;
@@ -151,7 +157,9 @@ export class ActivitySummaryService {
         });
         const document = await Promise.race([
           (async () => {
-            const response = await call(source.http, {method: 'GET', path: routePath('get_admin_activity'), headers: {'Cache-Control': 'no-cache, no-store'}, signal: controller.signal}, [200]);
+            const request = () => call(source.http, {method: 'GET', path: routePath('get_admin_activity'), headers: {'Cache-Control': 'no-cache, no-store'}, signal: controller.signal}, [200]);
+            const admission = this.readEvents?.resync;
+            const response = await (admission && context?.admission !== admission ? admission.run(controller.signal, request) : request());
             return parseActivitySummary(response.body);
           })(),
           interrupted,
@@ -223,6 +231,7 @@ export class DashboardSessionsService {
  private observed?:string;
  private blocked=false;
  private retryAt=-Infinity;
+ private readEvents?:ActivityEvents;
  constructor(options:{source:ActivitySummarySourceStore;timers?:ActivitySummaryTimers}) {
   this.source=options.source;this.timers=options.timers??defaults;this.sync();
   this.release=this.source.subscribe(()=>{if(this.sync() && this.active && this.current)this.invalidate();});
@@ -241,20 +250,22 @@ export class DashboardSessionsService {
  getSnapshot=():DashboardSessionsSnapshot=>{this.sync();return this.state;};
  subscribe=(fn:()=>void):(()=>void)=>{this.listeners.add(fn);return()=>{this.listeners.delete(fn);};};
  setActive(value:boolean):void {this.sync();if(value===this.active || this.disposed)return;this.active=value;if(!value){this.stop();for(const fn of this.feed)fn();this.feed=[];this.publish(unavailable);}else if(this.current)this.publish({phase:'idle'});}
- attach(events:Pick<EventsClient,'on'|'onResync'>|null):void {
-  this.sync();for(const fn of this.feed)fn();this.feed=[];
+ attach(events:ActivityEvents|null):void {
+  this.sync();for(const fn of this.feed)fn();this.feed=[];this.readEvents=events??undefined;
   if(!events || !this.active || !this.current || this.blocked || this.disposed)return;
   const epoch=this.epoch;const hint=()=>{this.sync();if(epoch===this.epoch)this.invalidate();};
-  this.feed=[events.on('admin.sessions',hint),events.onResync(hint)];
+  const recovery=events.onResyncRead?.(async context=>{await this.load(undefined,10,context.signal);if(this.state.phase==='error')throw this.state.error;},{admission:'external'});
+  this.feed=[events.on('admin.sessions',hint),recovery?()=>recovery.dispose():events.onResync(hint)];
  }
  private invalidate():void {
   if(this.timer!==undefined || !this.active || !this.current || this.blocked || this.disposed)return;
   this.timer=this.timers.setTimer(()=>{this.timer=undefined;void this.load();},Math.max(0,this.last+1000-this.timers.now(),this.retryAt-this.timers.now()));
  }
- async load(cursor?:string,limit=10):Promise<void> {
+ async load(cursor?:string,limit=10,signal?:AbortSignal):Promise<void> {
   this.sync();if(!this.active || !this.current || this.blocked || this.disposed)return;
   if(!Number.isSafeInteger(limit) || limit<1 || limit>200)throw new Error('invalid_activity_limit');
   this.controller?.abort();const source=this.current,epoch=this.epoch,serial=++this.serial,controller=new AbortController();this.controller=controller;this.last=this.timers.now();
+  const abort=()=>controller.abort();signal?.addEventListener('abort',abort,{once:true});if(signal?.aborted)abort();
   let rejectTimeout!:(error:Error)=>void;
   const timedOut=new Promise<never>((_,reject)=>{rejectTimeout=reject;controller.signal.addEventListener('abort',()=>reject(failure('request_timeout')),{once:true});});
   void timedOut.catch(()=>{});
@@ -263,7 +274,8 @@ export class DashboardSessionsService {
   try {
    this.sync();if(epoch!==this.epoch || serial!==this.serial || !same(source,this.current))return;
    const query=new URLSearchParams({limit:String(limit)});if(cursor)query.set('cursor',cursor);
-   const response=await Promise.race([call(source.http,{method:'GET',path:routePath('list_admin_sessions')+'?'+query,signal:controller.signal}),timedOut]);
+   const request=()=>call(source.http,{method:'GET',path:routePath('list_admin_sessions')+'?'+query,signal:controller.signal});
+   const response=await Promise.race([this.readEvents?.resync?this.readEvents.resync.run(controller.signal,request):request(),timedOut]);
    this.sync();if(epoch!==this.epoch || serial!==this.serial || !same(source,this.current))return;
    const document=parseDashboardSessions(response.body);
    if(document.scope.serverId!==source.scope.serverId || this.fence && this.fence!==document.scope.viewerFence || this.observed && utcOrderKey(document.observedAt)<utcOrderKey(this.observed))throw failure('permission_changed');
@@ -274,7 +286,7 @@ export class DashboardSessionsService {
    if(safe.retryAfterMs)this.retryAt=this.timers.now()+safe.retryAfterMs;
    if(safe.code==='not_permitted' || safe.code==='permission_changed')this.blocked=true;
    this.publish({phase:'error',error:safe});
-  } finally {this.timers.clearTimer(timeout);if(epoch===this.epoch && serial===this.serial)this.controller=undefined;}
+  } finally {signal?.removeEventListener('abort',abort);this.timers.clearTimer(timeout);if(epoch===this.epoch && serial===this.serial)this.controller=undefined;}
  }
  dispose():void {if(this.disposed)return;this.stop();for(const fn of this.feed)fn();this.feed=[];this.release();this.current=undefined;this.disposed=true;this.publish(unavailable);this.listeners.clear();}
 }

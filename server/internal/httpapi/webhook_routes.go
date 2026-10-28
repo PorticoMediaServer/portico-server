@@ -70,7 +70,12 @@ func registerWebhookRoutes(registry *apikit.Registry, d Dependencies) error {
 	base := []string{"unauthorized", "not_permitted", "insufficient_scope", "invalid_request", "administration_unavailable", "internal"}
 	found := append([]string{"not_found"}, base...)
 	meta := func(id, method, path, summary string, status int, bodyLimit int64, query []string, errs []string) apikit.Metadata {
-		return apikit.Metadata{Audience: apikit.Integrations, Admission: laneAdmin, ID: id, Method: method, Path: path, Summary: summary, Access: apikit.Owner, Requires: apikit.ScopeAdmin, Lane: apikit.Default, Cost: apikit.PageSized, Status: status, BodyLimit: bodyLimit, Query: query, Errors: errs}
+		var integers []apikit.QueryInteger
+		if id == "list_webhook_deliveries" {
+			integers = emptyLimitQuery(50, 100)
+		}
+
+		return apikit.Metadata{Audience: apikit.Integrations, Admission: laneAdmin, ID: id, Method: method, Path: path, Summary: summary, Access: apikit.Owner, Requires: apikit.ScopeAdmin, Lane: apikit.Default, Cost: apikit.PageSized, Status: status, BodyLimit: bodyLimit, Query: query, QueryIntegers: integers, Errors: errs}
 	}
 	err := apikit.Register(registry, apikit.Route[struct{}, webhooks.List]{Metadata: meta("list_webhooks", "GET", "/v1/admin/webhooks", "List webhooks and the events they can be sent", 200, 0, nil, base),
 		Handler: func(ctx context.Context, r *http.Request, _ struct{}) (webhooks.List, error) {

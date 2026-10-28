@@ -15,7 +15,7 @@ import {WindowedGrid} from '../../kit/layout';
 import {ReadBookHero} from '../../kit/reader/ReadBookHero';
 import type {ArtworkSource} from '../../kit/artwork';
 import {Skeleton, StateView} from '../../kit/states';
-import {SelectionBar} from '../../kit/selection';
+import {ReadSelectionBar} from './ReadSelectionBar';
 import {ServerMark} from '../../kit/shell';
 import {bulkTargetLimit} from '@core/metadata-bulk.ts';
 import {ReadBulkMetadata} from './ReadBulkMetadata';
@@ -131,9 +131,9 @@ function LiveSeriesRows({resources, context, retry}: {resources: Resources; cont
         {total === undefined ? null : <span>{t(resources.comic ? 'next.reader.volumeCount' : 'next.kit.books', {count: total})}</span>}
         {canEdit && <button type="button" className={styles.seriesSelect} aria-pressed={selection !== undefined}
           onClick={() => setSelection(selection === undefined ? new Map() : undefined)}>{t('next.selection.select')}<ServerMark size={22}/></button>}</div></> : <h2>{t('library.tab.series')}</h2>}
-    {selection && canEdit && <SelectionBar selection={{count: selection.size, kind: resources.comic ? 'comic' : 'ebook'}}
-      context={t('next.reader.bulkLimit', {count: bulkTargetLimit})} onExit={() => setSelection(undefined)}
-      actions={{...(selection.size ? {onEdit: (anchor: HTMLElement) => {bulkAnchor.current = anchor; setBulk(Object.freeze([...selection.values()]));}, ownerMark: <ServerMark size={22}/>} : {})}}/>}
+    {selection && canEdit && <ReadSelectionBar context={context} selection={selection} kind={resources.comic ? 'comic' : 'ebook'}
+      current={item => resources.bindings.authority.isCurrent() && resources.rows.collection.residentItems().includes(item)}
+      onExit={() => setSelection(undefined)} onEdit={anchor => {bulkAnchor.current = anchor; setBulk(Object.freeze([...selection.values()]));}}/>}
     <div ref={grid} className={styles.books}><WindowedGrid collection={resources.rows.collection} label={title ?? t('library.tab.series')}
       height={height} cardWidth={cardWidth} rowHeight={cardWidth * 1.5 + 58} gap={20} rowGap={30}
       renderPlaceholder={() => <Skeleton width={cardWidth} height={cardWidth * 1.5}/>}

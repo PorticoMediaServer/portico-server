@@ -163,7 +163,7 @@ func qualityReason(ctx context.Context, tx *sql.Tx, quality, recipe string, foun
 		if producible(recipe) {
 			return ""
 		}
-		if versions, e := preparedmedia.VersionsTx(ctx, tx, found.Item); e == nil && selectableVersionForSource(versions, recipe, found.Asset) != nil {
+		if versions, e := selectionDownloadVersions(ctx, tx, found, recipe); e == nil && selectableVersionForSource(versions, recipe, found.Asset) != nil {
 			return ""
 		}
 		return ReasonNotOptimized
@@ -172,7 +172,7 @@ func qualityReason(ctx context.Context, tx *sql.Tx, quality, recipe string, foun
 		if producible(recipe) {
 			return ""
 		}
-		if versions, e := preparedmedia.VersionsTx(ctx, tx, found.Item); e == nil && selectableVersionForSource(versions, recipe, found.Asset) != nil {
+		if versions, e := selectionDownloadVersions(ctx, tx, found, recipe); e == nil && selectableVersionForSource(versions, recipe, found.Asset) != nil {
 			return ""
 		}
 		return ReasonNotOptimized
@@ -190,7 +190,7 @@ func qualityReason(ctx context.Context, tx *sql.Tx, quality, recipe string, foun
 	if producible(recipe) {
 		return ""
 	}
-	versions, e := preparedmedia.VersionsTx(ctx, tx, found.Item)
+	versions, e := selectionDownloadVersions(ctx, tx, found, recipe)
 	if e == nil && selectableVersionForSource(versions, recipe, found.Asset) != nil {
 		return ""
 	}
@@ -454,7 +454,7 @@ func chooseRecipe(ctx context.Context, tx *sql.Tx, device playback.CapabilityDoc
 		return plain
 	}
 	if !preparedmedia.ProducibleForSource(rich, sourceChannels(facts)) {
-		versions, e := preparedmedia.VersionsTx(ctx, tx, found.Item)
+		versions, e := selectionDownloadVersions(ctx, tx, found, rich)
 		if e != nil || selectableVersionForSource(versions, rich, found.Asset) == nil {
 			return plain
 		}

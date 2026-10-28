@@ -68,7 +68,7 @@ func folderLimit(raw string) (int, error) {
 
 func registerSourceFolders(registry *apikit.Registry, d Dependencies) {
 	failures := []string{"unauthorized", "not_permitted", "not_found", "invalid_request", "revision_mismatch", "request_in_progress", "source_credentials_required", "source_unavailable", "source_folders_unsupported", "administration_unavailable", "internal"}
-	v1Route(registry, apikit.Metadata{Audience: apikit.Clients, ID: "get_storage_source_folders", Method: "GET", Path: "/v1/storage/sources/{id}/folders", Summary: "List one folder inside a saved remote source, folders only", Access: apikit.Owner, Requires: apikit.ScopeAdmin, Lane: apikit.Default, Admission: laneAdmin, Cost: apikit.PageSized, Query: []string{"path", "cursor", "limit", "showHidden"}, Status: 200, Errors: failures}, func(ctx context.Context, r *http.Request, _ noBody) (SourceFoldersResponse, error) {
+	v1Route(registry, apikit.Metadata{Audience: apikit.Clients, ID: "get_storage_source_folders", Method: "GET", Path: "/v1/storage/sources/{id}/folders", Summary: "List one folder inside a saved remote source, folders only", Access: apikit.Owner, Requires: apikit.ScopeAdmin, Lane: apikit.Default, Admission: laneAdmin, Cost: apikit.PageSized, Query: []string{"path", "cursor", "limit", "showHidden"}, QueryIntegers: emptyLimitQuery(200, 500), Status: 200, Errors: failures}, func(ctx context.Context, r *http.Request, _ noBody) (SourceFoldersResponse, error) {
 		p, scope, err := d.storageOwner(r)
 		if err != nil {
 			return SourceFoldersResponse{}, folderError(err)

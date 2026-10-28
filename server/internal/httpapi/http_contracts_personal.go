@@ -28,7 +28,7 @@ func registerPersonalHTTPContracts(registry *apikit.Registry) error {
 	if err := apikit.RegisterHTTP[struct{}, struct {
 		Collections []catalog.Collection `json:"collections"`
 		NextCursor  string               `json:"nextCursor"`
-	}](registry, apikit.Metadata{Audience: apikit.Clients, ID: "get_libraries_id_collections", Method: "GET", Path: "/v1/libraries/{id}/collections", Summary: "Read library collections", Access: apikit.Device, Requires: apikit.ScopeRead, Lane: apikit.Browsing, Admission: laneBrowsing, Cost: apikit.PageSized, BodyLimit: 0, Status: 200, Query: []string{"cursor", "limit"}, Errors: []string{"invalid_request", "unauthorized", "not_permitted", "not_found", "internal"}}); err != nil {
+	}](registry, apikit.Metadata{Audience: apikit.Clients, ID: "get_libraries_id_collections", Method: "GET", Path: "/v1/libraries/{id}/collections", Summary: "Read library collections", Access: apikit.Device, Requires: apikit.ScopeRead, Lane: apikit.Browsing, Admission: laneBrowsing, Cost: apikit.PageSized, BodyLimit: 0, Status: 200, Query: []string{"cursor", "limit"}, QueryIntegers: legacyBrowseLimitQuery, Errors: []string{"invalid_request", "unauthorized", "not_permitted", "not_found", "internal"}}); err != nil {
 		return err
 	}
 	// internal/httpapi/discovery.go:189
@@ -64,11 +64,11 @@ func registerPersonalHTTPContracts(registry *apikit.Registry) error {
 		return err
 	}
 	// internal/httpapi/playlists.go:50
-	if err := apikit.RegisterHTTP[struct{}, catalog.ContentEnvelope](registry, apikit.Metadata{Audience: apikit.Clients, ID: "get_playlists_id_content", Method: "GET", Path: "/v1/playlists/{id}/content", Summary: "Read playlists content", Access: apikit.Device, Requires: apikit.ScopeRead, Lane: apikit.Browsing, Admission: laneBrowsing, Cost: apikit.PageSized, BodyLimit: 0, Status: 200, Query: []string{"cursor", "limit", "sort", "direction", "filter"}, Errors: []string{"invalid_request", "unauthorized", "not_permitted", "not_found", "stale_continuation", "invalid_cursor", "internal"}}); err != nil {
+	if err := apikit.RegisterHTTP[struct{}, catalog.ContentEnvelope](registry, apikit.Metadata{Audience: apikit.Clients, ID: "get_playlists_id_content", Method: "GET", Path: "/v1/playlists/{id}/content", Summary: "Read playlists content", Access: apikit.Device, Requires: apikit.ScopeRead, Lane: apikit.Browsing, Admission: laneBrowsing, Cost: apikit.PageSized, BodyLimit: 0, Status: 200, Query: []string{"cursor", "limit", "sort", "direction", "filter"}, QueryIntegers: limitQuery(40, 100), Errors: []string{"invalid_request", "unauthorized", "not_permitted", "not_found", "stale_continuation", "invalid_cursor", "internal"}}); err != nil {
 		return err
 	}
 	// internal/httpapi/playlists.go:93
-	if err := apikit.RegisterHTTP[struct{}, catalog.PlaylistCandidates](registry, apikit.Metadata{Audience: apikit.Clients, ID: "get_playlists_id_share_candidates", Method: "GET", Path: "/v1/playlists/{id}/share-candidates", Summary: "Read playlists share candidates", Access: apikit.Device, Requires: apikit.ScopeRead, Lane: apikit.Browsing, Admission: laneBrowsing, Cost: apikit.PageSized, BodyLimit: 0, Status: 200, Query: []string{"cursor", "limit"}, Errors: []string{"invalid_request", "unauthorized", "not_permitted", "not_found", "stale_continuation", "invalid_cursor", "internal"}}); err != nil {
+	if err := apikit.RegisterHTTP[struct{}, catalog.PlaylistCandidates](registry, apikit.Metadata{Audience: apikit.Clients, ID: "get_playlists_id_share_candidates", Method: "GET", Path: "/v1/playlists/{id}/share-candidates", Summary: "Read playlists share candidates", Access: apikit.Device, Requires: apikit.ScopeRead, Lane: apikit.Browsing, Admission: laneBrowsing, Cost: apikit.PageSized, BodyLimit: 0, Status: 200, Query: []string{"cursor", "limit"}, QueryIntegers: limitQuery(40, 100), Errors: []string{"invalid_request", "unauthorized", "not_permitted", "not_found", "stale_continuation", "invalid_cursor", "internal"}}); err != nil {
 		return err
 	}
 	// internal/httpapi/playlists.go:131
@@ -100,7 +100,7 @@ func registerPersonalHTTPContracts(registry *apikit.Registry) error {
 		return err
 	}
 	// internal/httpapi/saved_resources.go:55
-	if err := apikit.RegisterHTTP[struct{}, catalog.SavedResourceCardsPage](registry, apikit.Metadata{Audience: apikit.Clients, ID: "get_saved_resources", Method: "GET", Path: "/v1/saved-resources", Summary: "Read saved resources", Access: apikit.Device, Requires: apikit.ScopeRead, Lane: apikit.Browsing, Admission: laneBrowsing, Cost: apikit.PageSized, BodyLimit: 0, Status: 200, Query: []string{"cursor", "kind", "pinned", "shape", "limit"}, Errors: []string{"invalid_request", "unauthorized", "not_permitted", "not_found", "internal"}}); err != nil {
+	if err := apikit.RegisterHTTP[struct{}, catalog.SavedResourceCardsPage](registry, apikit.Metadata{Audience: apikit.Clients, ID: "get_saved_resources", Method: "GET", Path: "/v1/saved-resources", Summary: "Read saved resources", Access: apikit.Device, Requires: apikit.ScopeRead, Lane: apikit.Browsing, Admission: laneBrowsing, Cost: apikit.PageSized, BodyLimit: 0, Status: 200, Query: []string{"cursor", "kind", "pinned", "shape", "limit"}, QueryIntegers: limitQuery(40, 100), Errors: []string{"invalid_request", "unauthorized", "not_permitted", "not_found", "internal"}}); err != nil {
 		return err
 	}
 	// internal/httpapi/saved_resources.go:81
@@ -108,7 +108,7 @@ func registerPersonalHTTPContracts(registry *apikit.Registry) error {
 		return err
 	}
 	// internal/httpapi/saved_resources.go:121
-	if err := apikit.RegisterHTTP[struct{}, catalog.SavedResourceCandidates](registry, apikit.Metadata{Audience: apikit.Clients, ID: "get_saved_resources_id_share_candidates", Method: "GET", Path: "/v1/saved-resources/{id}/share-candidates", Summary: "Read saved resources share candidates", Access: apikit.Device, Requires: apikit.ScopeRead, Lane: apikit.Browsing, Admission: laneBrowsing, Cost: apikit.PageSized, BodyLimit: 0, Status: 200, Query: []string{"cursor"}, Errors: []string{"invalid_request", "unauthorized", "not_permitted", "not_found", "internal"}}); err != nil {
+	if err := apikit.RegisterHTTP[struct{}, catalog.SavedResourceCandidates](registry, apikit.Metadata{Audience: apikit.Clients, ID: "get_saved_resources_id_share_candidates", Method: "GET", Path: "/v1/saved-resources/{id}/share-candidates", Summary: "Read saved resources share candidates", Access: apikit.Device, Requires: apikit.ScopeRead, Lane: apikit.Browsing, Admission: laneBrowsing, Cost: apikit.PageSized, BodyLimit: 0, Status: 200, Query: []string{"cursor", "limit"}, QueryIntegers: limitQuery(40, 100), Errors: []string{"invalid_request", "unauthorized", "not_permitted", "not_found", "internal"}}); err != nil {
 		return err
 	}
 	// internal/httpapi/saved_resources.go:140

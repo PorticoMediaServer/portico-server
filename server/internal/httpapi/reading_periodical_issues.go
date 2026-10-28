@@ -146,6 +146,6 @@ func (d Dependencies) readingPeriodicalIssues(w http.ResponseWriter, r *http.Req
 	write(w, 200, out)
 }
 func registerReadingPeriodicalIssuesHTTPContract(registry *apikit.Registry) error {
-	m := apikit.Metadata{Audience: apikit.Clients, ID: "get_reading_periodical_issues", Method: "GET", Path: "/v1/libraries/{libraryId}/reading/periodicals/{seriesId}/issues", Summary: "Read dated issues in one accepted typed Reading series", Access: apikit.Device, Requires: apikit.ScopeRead, Lane: apikit.Browsing, Admission: laneBrowsing, Cost: apikit.PageSized, Status: 200, Errors: []string{"invalid_request", "unauthorized", "not_permitted", "not_found", "revision_mismatch", "request_in_progress", "internal"}, Query: []string{"publicationType", "issueDate", "year", "month", "order", "cursor", "limit"}}
+	m := apikit.Metadata{Audience: apikit.Clients, ID: "get_reading_periodical_issues", Method: "GET", Path: "/v1/libraries/{libraryId}/reading/periodicals/{seriesId}/issues", Summary: "Read dated issues in one accepted typed Reading series", Access: apikit.Device, Requires: apikit.ScopeRead, Lane: apikit.Browsing, Admission: laneBrowsing, Cost: apikit.PageSized, Status: 200, Errors: []string{"invalid_request", "unauthorized", "not_permitted", "not_found", "revision_mismatch", "request_in_progress", "internal"}, Query: []string{"publicationType", "issueDate", "year", "month", "order", "cursor", "limit"}, QueryIntegers: emptyLimitQuery(50, 100)}
 	return apikit.RegisterHTTP[struct{}, ReadingPeriodicalIssuesResponse](registry, m)
 }

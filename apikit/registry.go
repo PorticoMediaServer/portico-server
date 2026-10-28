@@ -191,15 +191,31 @@ type ResponseHeader struct {
 	Required    bool   `json:"required,omitempty"`
 }
 
-// QueryInteger is an optional integer query parameter, such as a page-size
-// limit. An absent value means Default; one below Minimum is refused. A value
-// above Maximum is refused too, unless Clamped, when it is treated as Maximum.
+// QueryInteger documents an integer query parameter without changing its
+// handler. Unless Required or NoDefault, an absent value means Default. Bounds
+// refuse the value unless the corresponding fallback or upper clamp is declared.
 type QueryInteger struct {
 	Name    string `json:"name"`
 	Minimum int    `json:"minimum"`
 	Default int    `json:"default"`
 	Maximum int    `json:"maximum"`
 	Clamped bool   `json:"clamped,omitempty"`
+	// These flags describe existing permissive parsers. Fallback bounds are
+	// extensions, not JSON-Schema bounds that would promise a refusal.
+	DefaultBelowMinimum bool `json:"defaultBelowMinimum,omitempty"`
+	DefaultAboveMaximum bool `json:"defaultAboveMaximum,omitempty"`
+	// DefaultOnInvalid covers non-integer syntax. Parsers that saturate on
+	// integer overflow describe that separate range behavior in Description.
+	DefaultOnInvalid bool `json:"defaultOnInvalid,omitempty"`
+	EmptyIsDefault   bool `json:"emptyIsDefault,omitempty"`
+	Required         bool `json:"required,omitempty"`
+	// NoDefault omits a scalar default when absence means unbounded traversal
+	// or a query-dependent value, rather than a fixed integer.
+	NoDefault bool `json:"noDefault,omitempty"`
+	// ClampMaximum applies after validation when the accepted maximum is
+	// larger than the effective page size (unlike Clamped's unbounded input).
+	ClampMaximum int    `json:"clampMaximum,omitempty"`
+	Description  string `json:"description,omitempty"`
 }
 
 type Route[Request, Response any] struct {
@@ -650,8 +666,17 @@ func validate(m Metadata) error {
 		return errors.New("read route declares a request body")
 	}
 	for _, integer := range m.QueryIntegers {
-		if !slices.Contains(m.Query, integer.Name) || integer.Minimum > integer.Default || integer.Default > integer.Maximum {
+		if !slices.Contains(m.Query, integer.Name) || integer.Minimum > integer.Maximum || !integer.Required && !integer.NoDefault && (integer.Minimum > integer.Default || integer.Default > integer.Maximum) {
 			return fmt.Errorf("query integer %q must be a declared query parameter with minimum <= default <= maximum", integer.Name)
+		}
+		if integer.Clamped && integer.DefaultAboveMaximum || integer.Required && (integer.DefaultBelowMinimum || integer.DefaultAboveMaximum || integer.DefaultOnInvalid || integer.EmptyIsDefault) {
+			return fmt.Errorf("query integer %q has conflicting fallback policies", integer.Name)
+		}
+		if integer.ClampMaximum != 0 && (integer.Clamped || integer.DefaultAboveMaximum || integer.ClampMaximum < integer.Minimum || integer.ClampMaximum > integer.Maximum) {
+			return fmt.Errorf("query integer %q has an invalid post-validation clamp", integer.Name)
+		}
+		if integer.NoDefault && (integer.DefaultBelowMinimum || integer.DefaultAboveMaximum || integer.DefaultOnInvalid) {
+			return fmt.Errorf("query integer %q needs a default for its fallback policies", integer.Name)
 		}
 	}
 	for _, status := range m.SuccessStatuses {

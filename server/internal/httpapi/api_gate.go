@@ -16,6 +16,7 @@ import (
 	"portico.local/server/internal/dbwork"
 	"portico.local/server/internal/identity"
 	"portico.local/server/internal/operations"
+	"portico.local/server/internal/playbackv1"
 	"portico.local/server/internal/supervise"
 )
 
@@ -380,8 +381,9 @@ func (g *credentialGate) flushUses(ctx context.Context, store *access.Store) err
 // owner while keeping ordinary HTTP handling and nested MCP calls unchanged.
 type credentialUsageHandler struct {
 	http.Handler
-	gate  *credentialGate
-	store *access.Store
+	gate     *credentialGate
+	store    *access.Store
+	playback *playbackv1.Service
 }
 
 // FlushCredentialUse stops the router's timer and persists its pending usage.

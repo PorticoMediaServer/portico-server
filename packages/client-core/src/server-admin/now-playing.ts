@@ -1,3 +1,4 @@
+import type {ResyncReadContext, ResyncRegistration} from '../resync-coordinator.ts';
 /**
  * Server › Overview Now Playing on Playback Protocol v1 (spec §14, be/playback c85d526):
  * `GET /v1/admin/sessions` and `POST /v1/admin/sessions/{id}:terminate`. A server that
@@ -23,6 +24,7 @@ export const NOW_PLAYING_ROW_PX = 68;
 type EventsLike = {
   on(type: string, fn: () => void): () => void;
   onResync?(fn: () => void): () => void;
+  onResyncRead?(read: (context: ResyncReadContext) => Promise<void>, options?: {open?: boolean}): ResyncRegistration;
   getStatus(): {connected: boolean};
   subscribeStatus(fn: () => void): () => void;
 };
@@ -36,8 +38,9 @@ const browserEnv: Env = {
 };
 
 /** Reads now, then keeps the list current (see the module note). Returns a stop function. */
-export function driveNowPlaying(refresh: () => void, events: EventsLike | undefined, env: Env = browserEnv): () => void {
+export function driveNowPlaying(refresh: () => void | Promise<void>, events: EventsLike | undefined, env: Env = browserEnv): () => void {
   let timer: unknown, stopped = false;
+  let recovery: ResyncRegistration | undefined;
   const live = () => !!events?.getStatus().connected;
   const arrange = () => {
     env.clearTimer(timer); timer = undefined;
@@ -47,12 +50,14 @@ export function driveNowPlaying(refresh: () => void, events: EventsLike | undefi
   const offs: (() => void)[] = [];
   if (events) {
     offs.push(events.on('admin.sessions', refresh), events.on('session.updated', refresh));
-    if (events.onResync) offs.push(events.onResync(refresh));
+    recovery = events.onResyncRead?.(async context => {if (!stopped && !context.signal.aborted) await refresh();}, {open: !env.hidden()});
+    if (recovery) offs.push(() => recovery!.dispose());
+    else if (events.onResync) offs.push(events.onResync(refresh));
     let was = live();
     // The status also moves with every event's cursor; only a change of connection matters here.
     offs.push(events.subscribeStatus(() => { const now = live(); if (now !== was) { was = now; arrange(); } }));
   }
-  offs.push(env.onVisibility(() => { if (!env.hidden() && !live()) refresh(); arrange(); }));
+  offs.push(env.onVisibility(() => { recovery?.setOpen(!env.hidden()); if (!env.hidden() && !live()) refresh(); arrange(); }));
   refresh();
   arrange();
   return () => { stopped = true; env.clearTimer(timer); for (const off of offs) off(); };

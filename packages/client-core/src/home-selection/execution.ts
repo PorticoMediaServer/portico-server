@@ -50,12 +50,12 @@ export async function selectionJobTasks(target: SelectionTarget, command: JobCom
   for (const selector of selectors) out.push({request: {operationId: (await requestId()).replaceAll('-', ''), command, selector, args}, failures: [], observed: false});
   return out;
 }
-function pause(signal: AbortSignal, jobId: string, events?: Pick<EventsClient, 'on'>): Promise<void> {
+function pause(signal: AbortSignal, jobId: string, events?: Pick<EventsClient, 'on'> & Partial<Pick<EventsClient, 'onResync' | 'resync'>>): Promise<void> {
   return new Promise((resolve, reject) => {
     let finished = false;
-    let unsubscribe: (() => void) | undefined;
+    let unsubscribe: (() => void) | undefined, offResync: (() => void) | undefined;
     const finish = (cancelled = false) => {
-      if (finished) return; finished = true; clearTimeout(timer); unsubscribe?.(); signal.removeEventListener('abort', stop);
+      if (finished) return; finished = true; clearTimeout(timer); unsubscribe?.(); offResync?.(); signal.removeEventListener('abort', stop);
       if (cancelled) reject(selectionExecutionError('cancelled')); else resolve();
     };
     const stop = () => finish(true);
@@ -64,17 +64,22 @@ function pause(signal: AbortSignal, jobId: string, events?: Pick<EventsClient, '
       const data = event.data as {jobId?: unknown} | undefined;
       if (event.resource?.id === jobId || data?.jobId === jobId) finish();
     });
-    if (finished) unsubscribe?.();
+    if (!finished) offResync = events?.onResync?.(() => finish());
+    if (finished) {unsubscribe?.(); offResync?.();}
     if (!finished) {signal.addEventListener('abort', stop, {once: true}); if (signal.aborted) stop();}
   });
 }
 /** Durable submission bodies are retained unchanged across missing/ambiguous responses. */
-export async function runSelectionJobs(api: HomeApi, tasks: HomeJobTask[], signal: AbortSignal, isCurrent: () => boolean, progress: (value: HomeSelectionProgress, jobIds: readonly string[]) => void, beforeSubmit?: (task: HomeJobTask) => Promise<void>, events?: Pick<EventsClient, 'on'>, readFailures = true): Promise<void> {
+export async function runSelectionJobs(api: HomeApi, tasks: HomeJobTask[], signal: AbortSignal, isCurrent: () => boolean, progress: (value: HomeSelectionProgress, jobIds: readonly string[]) => void, beforeSubmit?: (task: HomeJobTask) => Promise<void>, events?: Pick<EventsClient, 'on'> & Partial<Pick<EventsClient, 'onResync' | 'resync'>>, readFailures = true): Promise<void> {
   const current = () => {if (signal.aborted || !isCurrent()) throw selectionExecutionError('cancelled');};
   const report = () => {
     const jobs = tasks.flatMap(task => task.job ? [task.job] : []);
     progress({phase: jobs.length === tasks.length && jobs.every(job => job.totalKnown) ? 'working' : 'preparing', done: jobs.reduce((n, job) => n + job.done, 0), total: jobs.reduce((n, job) => n + job.total, 0), totalKnown: jobs.length === tasks.length && jobs.every(job => job.totalKnown)}, jobs.map(job => job.jobId));
   };
+  const read = <T>(request: () => Promise<T>): Promise<T> => events?.resync ? events.resync.run(signal, request) : request();
+  let resyncDebt = 0;
+  const offResync = events?.onResync?.(() => {resyncDebt++;});
+  try {
   for (const task of tasks) {
     current();
     if (!task.job) {
@@ -91,15 +96,16 @@ export async function runSelectionJobs(api: HomeApi, tasks: HomeJobTask[], signa
     while (!isJobTerminal(task.job.state)) {
       current();
       if (Date.now() - started > 300000) throw selectionExecutionError('job_poll_timeout', true);
-      task.job = await getJob(api, task.job.jobId, signal); current();
+      const answering = resyncDebt;
+      task.job = await read(() => getJob(api, task.job!.jobId, signal)); current();
       report();
-      if (!isJobTerminal(task.job.state)) await pause(signal, task.job.jobId, events);
+      if (!isJobTerminal(task.job.state) && answering === resyncDebt) await pause(signal, task.job.jobId, events);
     }
     if (!task.observed) {
       const failures: JobFailure[] = [], cursors = new Set<string>();
       let cursor: string | undefined;
       if (readFailures && task.job.failed > 0) for (let page = 0; page < 50; page++) {
-        current(); const result = await getJobFailures(api, task.job.jobId, cursor, signal); current();
+        current(); const result = await read(() => getJobFailures(api, task.job!.jobId, cursor, signal)); current();
         failures.push(...result.items);
         if (!result.nextCursor) break;
         if (cursors.has(result.nextCursor) || page === 49) throw selectionExecutionError('job-failures-incomplete');
@@ -110,4 +116,5 @@ export async function runSelectionJobs(api: HomeApi, tasks: HomeJobTask[], signa
     }
     if (task.job.state === 'failed' && (task.job.errorCode || task.job.failed === 0)) throw selectionExecutionError(task.job.errorCode ?? 'job_failed');
   }
+  } finally {offResync?.();}
 }

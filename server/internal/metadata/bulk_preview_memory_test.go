@@ -67,7 +67,7 @@ func TestBulkPreviewMemoryLegacyOracle200AndNoScratch(t *testing.T) {
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("memory differs from legacy: got=%+v want=%+v", got, want)
 	}
-	if got.Total != 200 || len(got.Targets) != 200 || got.Fields["year"].DistinctCount != 70 || len(got.Fields["year"].Values) != 64 || !got.Fields["year"].Truncated || got.Fields["tags"].Locked != 1 {
+	if got.Total != 200 || len(got.Targets) != 200 || got.Fields["year"].DistinctCount != 0 || got.Fields["year"].AtLeast != 65 || got.Fields["year"].State != "many" || len(got.Fields["year"].Values) != 0 || !got.Fields["year"].Truncated || got.Fields["tags"].Locked != 1 {
 		t.Fatalf("inexact bounded preview: total=%d year=%+v tags=%+v", got.Total, got.Fields["year"], got.Fields["tags"])
 	}
 	if _, err := os.Stat(s.cacheRoot); !errors.Is(err, os.ErrNotExist) {
@@ -91,23 +91,11 @@ func TestBulkPreviewMemoryLegacyOracle200AndNoScratch(t *testing.T) {
 
 func TestBulkPreviewMemoryCountSetsBinaryOrderingAndDelivery(t *testing.T) {
 	ctx := context.Background()
-	root := t.TempDir()
-	spool, err := newBulkPreviewSpool(ctx, root)
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() {
-		if spool.db != nil {
-			if err := spool.close(); err != nil {
-				t.Error(err)
-			}
-		}
-	})
 	m := bulkPreviewMemory{reserve: memoryPreviewReservation(t)}
 	if err := m.charge(64 << 10); err != nil {
 		t.Fatal(err)
 	}
-	m.counts = make(map[string]*bulkPreviewMemoryField)
+	m.initAggregate()
 	observations := []bulkPreviewObservation{}
 	for i := 0; i < 200; i++ {
 		value := fmt.Sprintf("%02d", i%70)
@@ -122,20 +110,30 @@ func TestBulkPreviewMemoryCountSetsBinaryOrderingAndDelivery(t *testing.T) {
 	if err := m.add(ctx, &BulkMetadataPreview{}, page); err != nil {
 		t.Fatal(err)
 	}
-	if err := spool.add(ctx, observations); err != nil {
-		t.Fatal(err)
-	}
 	schema := []RepairFieldSpec{{Field: "list"}, {Field: "entries-only"}}
-	want, err := spool.fields(ctx, schema)
-	if err != nil {
-		t.Fatal(err)
-	}
 	got, err := m.fields(ctx, schema)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !reflect.DeepEqual(got, want) {
-		t.Fatalf("memory count sets differ: got=%+v want=%+v", got, want)
+	if f := got["list"]; f.State != "many" || f.AtLeast != 65 || f.DistinctCount != 0 || len(f.Values) != 0 || f.Locked != 67 || len(f.Entries) != 64 || !f.Truncated {
+		t.Fatal(f)
+	}
+	for _, entry := range got["list"].Entries {
+		var count int64
+		for _, o := range observations {
+			if o.field != "list" {
+				continue
+			}
+			for _, v := range o.entries {
+				if v == entry.Value {
+					count += o.count
+					break
+				}
+			}
+		}
+		if count != entry.Count {
+			t.Fatalf("entry count %q=%d want%d", entry.Value, entry.Count, count)
+		}
 	}
 	if got["entries-only"].DistinctCount != 1 || !got["entries-only"].Truncated || len(got["entries-only"].Entries) != 64 || got["entries-only"].Value == nil {
 		t.Fatalf("entry truncation changed shared value semantics: %+v", got["entries-only"])
@@ -151,29 +149,22 @@ func TestBulkPreviewMemoryCountSetsBinaryOrderingAndDelivery(t *testing.T) {
 		t.Fatalf("scalar truncated: %v", err)
 	}
 	raw, err := json.Marshal(fields)
-	if err != nil || int64(2*len(raw)) > m.used {
-		t.Fatalf("delivery not charged: json=%d reservation=%d err=%v", len(raw), m.used, err)
+	if err != nil || int64(2*len(raw)) > m.reserved {
+		t.Fatalf("delivery not charged: json=%d reservation=%d err=%v", len(raw), m.reserved, err)
 	}
-	if err := spool.close(); err != nil {
-		t.Fatal(err)
-	}
-	spool.db = nil
-	scratchEntries, err := os.ReadDir(root)
-	if err != nil || len(scratchEntries) != 0 {
-		t.Fatalf("oracle scratch survived: %v %v", scratchEntries, err)
-	}
+
 }
 
 func TestBulkPreviewMemoryCapacityBeforeRetention(t *testing.T) {
 	denied := errors.New("reservation denied")
 	m := bulkPreviewMemory{reserve: func(int64) error { return denied }}
-	set := make(map[string]*int64)
-	if err := m.increment(set, "value", 1); !errors.Is(err, denied) || len(set) != 0 {
-		t.Fatalf("allocated before reservation: set=%v err=%v", set, err)
+	m.initAggregate()
+	if _, err := m.aggregate.copyValue("value"); !errors.Is(err, denied) || m.aggregate.used != 0 {
+		t.Fatal(err, m.aggregate.used)
 	}
 	m.reserve = memoryPreviewReservation(t)
-	if err := m.increment(set, strings.Repeat("x", int(bulkPreviewMemoryBytes/32)), 1); !errors.Is(err, readprep.ErrCapacity) || len(set) != 0 {
-		t.Fatalf("oversized scalar entered reducer: set=%d err=%v", len(set), err)
+	if _, err := m.aggregate.copyValue(strings.Repeat("x", int(bulkPreviewMemoryBytes/32))); !errors.Is(err, readprep.ErrCapacity) || m.aggregate.used != 0 {
+		t.Fatal(err, m.aggregate.used)
 	}
 	if err := m.preflight(RepairSnapshot{Fields: map[string]RepairField{"title": {Value: strings.Repeat("x", int(bulkPreviewMemoryBytes/32))}}}, repairEntity{}); !errors.Is(err, readprep.ErrCapacity) {
 		t.Fatalf("oversized source snapshot accepted: %v", err)

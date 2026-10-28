@@ -97,16 +97,16 @@ func (s *Service) sourceManifestSafe(dir string, manifest Manifest) error {
 	if err != nil {
 		return err
 	}
-	for _, entry := range manifest.Files {
+	return visitManifest(context.Background(), dir, manifest, func(entry FileEntry) error {
 		info, err := os.Lstat(filepath.Join(dir, filepath.FromSlash(entry.Name)))
 		if os.IsNotExist(err) {
-			continue
+			return nil
 		}
 		if err != nil || liveSourceKind(info, files) != 0 {
 			return ErrSourceInvalid
 		}
-	}
-	return nil
+		return nil
+	})
 }
 
 // Selecting this server's own database is supported without reopening it:

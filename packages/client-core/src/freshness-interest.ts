@@ -119,13 +119,13 @@ export class Interest implements FreshnessInterest {
     };
     let outcome: InterestOutcome;
     try {
-      outcome = await this.options.read({signal: controller.signal,
+      outcome = await this.hub.read(controller.signal, () => this.options.read({signal: controller.signal,
         shared: async (key, read) => {
           try {
             const value = await this.hub.sharedReads.borrow(token, witness, controller.signal, key, read);
             learn(key, observationError(key, value)); return value;
           } catch (error) { learn(key, error); throw error; }
-        }});
+        }}));
     } catch (error) {
       if (isSharedReadSuperseded(error)) this.serverNotBefore = Math.max(this.serverNotBefore, supersededNextAllowedAt(error));
       // The guide parser's legacy terminal flag describes unreadable data, not

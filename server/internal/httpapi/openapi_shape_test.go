@@ -52,7 +52,7 @@ func TestGeneratedOpenAPIReadBodiesRequiredListsAndRecommendationQueries(t *test
 			}
 		}
 		// homeQueryLimit: absent means 12, below 1 is refused, above 60 is 60.
-		if limit == nil || limit["type"] != "integer" || limit["minimum"] != float64(1) || limit["default"] != float64(catalog.HomeRowDefaultLimit) || limit["x-clamp-maximum"] != float64(catalog.HomeRowMaxLimit) || limit["maximum"] != nil {
+		if limit == nil || len(limit["anyOf"].([]any)) != 2 || limit["anyOf"].([]any)[0].(map[string]any)["type"] != "integer" || limit["x-empty-is-default"] != true || limit["minimum"] != float64(1) || limit["default"] != float64(catalog.HomeRowDefaultLimit) || limit["x-clamp-maximum"] != float64(catalog.HomeRowMaxLimit) || limit["maximum"] != nil {
 			t.Fatalf("%s limit schema: %#v", path, limit)
 		}
 	}

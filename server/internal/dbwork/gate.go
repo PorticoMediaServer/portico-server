@@ -51,9 +51,10 @@ var ErrWriterCapacity = errors.New("dbwork: the database writer queue is full")
 // SQLite, where the loser only learns it lost by receiving SQLITE_BUSY.
 //
 // Admission is one bounded pool. User tickets (every class above background)
-// count against WriterQueueCapacity. Background tickets fill only the room users
-// leave: a user arrival always displaces them, and a displaced background
-// ticket keeps waiting rather than failing, so its durable work is deferred,
+// count against WriterQueueCapacity. Background acquisitions defer before
+// admission when users queue, or their supervisor already has two media tickets
+// (one maintenance ticket), including its holder. Users borrow background slots
+// first. Deferred callers retain their work and wait on the existing gate wake,
 // never dropped. Only a pool full of user tickets refuses anything, and then
 // it refuses an over-share owner's newest ticket, or a lower class's newest
 // ticket, before it refuses the arrival.
@@ -63,6 +64,12 @@ type Gate struct {
 	grant  *ticket
 	nextID uint64
 	queues [len(classNames)]classQueue
+	// Deferred acquisitions retain one small ticket record per waiting caller,
+	// using the same owner rotor. Only admitted tickets have a global bound;
+	// pending records remain proportional to producer concurrency. Neither queue
+	// holds SQL connections, WAL debits or work payloads. Callers keep their work.
+	deferred    [len(classNames)]classQueue
+	holderOwner string
 	// userQueued counts queued tickets of user classes; ownerQueued splits that
 	// count by owner. Both exclude the holder.
 	userQueued  int
@@ -121,12 +128,13 @@ type gateClassCounters struct {
 // ticket is one queued acquisition. It holds no SQL, payload or connection:
 // only its place, its owner and whether capacity took that place away.
 type ticket struct {
-	wal     *walRequest
-	id      uint64
-	class   Class
-	owner   string
-	since   time.Time
-	refused bool
+	wal      *walRequest
+	id       uint64
+	class    Class
+	owner    string
+	since    time.Time
+	refused  bool
+	deferred bool
 	// recovery marks the checkpoint owner's reserved turn. It is never in a
 	// class queue and is the only ticket a BEGIN pause selects.
 	recovery bool
@@ -191,13 +199,22 @@ func (g *Gate) acquire(ctx context.Context, class Class, stuck stuckClock) (func
 	g.mu.Lock()
 	g.nextID++
 	t := &ticket{id: g.nextID, class: class, owner: ownerFrom(ctx), since: start}
+	if class.Background() {
+		t.owner = backgroundOwnerFrom(ctx)
+	}
 	t.wal, _ = ctx.Value(walRequestKey{}).(*walRequest)
 	if !class.Background() && g.userQueued >= WriterQueueCapacity && !g.makeRoomLocked(t) {
 		g.refuseLocked(t)
 		g.mu.Unlock()
 		return nil, ErrWriterCapacity
 	}
+	if class.Background() {
+		t.deferred = true
+	} else {
+		g.makeBackgroundRoomLocked()
+	}
 	g.enqueueLocked(t)
+	g.admitBackgroundLocked()
 	if !g.active {
 		g.grant = g.pickWinnerLocked()
 		g.signalLocked()
@@ -248,7 +265,7 @@ func (g *Gate) acquireTicket(ctx context.Context, t *ticket, stuck stuckClock) (
 			}
 			g.stuckLogged = false
 			held := time.Now()
-			g.holderClass, g.heldSince = class, held
+			g.holderClass, g.heldSince, g.holderOwner = class, held, t.owner
 			metrics := &g.byClass[class]
 			metrics.acquired++
 			if queued {
@@ -286,7 +303,7 @@ func (g *Gate) acquireTicket(ctx context.Context, t *ticket, stuck stuckClock) (
 					g.active = false
 					g.holding.Store(false)
 					g.holderProbe = false
-					g.holderClass, g.heldSince = 0, time.Time{}
+					g.holderClass, g.heldSince, g.holderOwner = 0, time.Time{}, ""
 					g.grant = g.pickWinnerLocked()
 					g.holder = ""
 					g.signalLocked()
@@ -333,7 +350,8 @@ func (g *Gate) acquireTicket(ctx context.Context, t *ticket, stuck stuckClock) (
 // reserved for it. Call before unwinding, while the gate mutex is still held.
 func (g *Gate) abandonWaiterLocked(t *ticket) {
 	g.removeWaiterLocked(t, false)
-	if g.grant == t {
+	g.admitBackgroundLocked()
+	if !g.active {
 		g.grant = g.pickWinnerLocked()
 	}
 	g.signalLocked()
@@ -389,9 +407,8 @@ func (g *Gate) refuseLocked(t *ticket) {
 	g.refused.Add(1)
 }
 
-// signalLocked wakes every waiter so each can re-evaluate its own position. A
-// broadcast is correct rather than wasteful here: the queues are short and only
-// one waiter can win, so a targeted handoff would only move the priority
+// signalLocked wakes every waiter so each can re-evaluate its own position.
+// Only one waiter can win, so a targeted handoff would only move the priority
 // decision into the releasing goroutine, which does not know the ladder state
 // any better than the waiters do.
 func (g *Gate) signalLocked() {
@@ -401,6 +418,9 @@ func (g *Gate) signalLocked() {
 
 func (g *Gate) enqueueLocked(t *ticket) {
 	queue := &g.queues[t.class]
+	if t.deferred {
+		queue = &g.deferred[t.class]
+	}
 	if queue.byOwner == nil {
 		queue.byOwner = map[string]*ownerQueue{}
 	}
@@ -430,6 +450,9 @@ func (g *Gate) removeWaiterLocked(t *ticket, served bool) {
 		return
 	}
 	queue := &g.queues[t.class]
+	if t.deferred {
+		queue = &g.deferred[t.class]
+	}
 	owner := queue.byOwner[t.owner]
 	if owner == nil {
 		return
@@ -459,6 +482,87 @@ func (g *Gate) removeWaiterLocked(t *ticket, served bool) {
 	case served:
 		queue.rotation = append(slices.Delete(queue.rotation, position, position+1), owner)
 	}
+}
+
+// backgroundTicketLimit includes the current holder as well as queued tickets.
+func backgroundTicketLimit(class Class) int {
+	if class == ClassMaintenance {
+		return 1
+	}
+	return 2
+}
+
+func (g *Gate) backgroundQueuedLocked() int {
+	return g.queues[ClassBackgroundMedia].count + g.queues[ClassMaintenance].count
+}
+
+// admitBackgroundLocked uses the same per-owner rotor as dispatch. Admission
+// stops at user pressure, the global pool bound, or a supervisor's outstanding
+// limit. No producer is refused; its existing caller waits on the gate wake.
+func (g *Gate) admitBackgroundLocked() {
+	if g.userQueued != 0 || g.holdEpoch != 0 || g.pauseEpoch != 0 {
+		return
+	}
+	for g.backgroundQueuedLocked() < WriterQueueCapacity {
+		var next *ticket
+		now := time.Now()
+		for _, class := range []Class{ClassBackgroundMedia, ClassMaintenance} {
+			for _, owner := range g.deferred[class].rotation {
+				outstanding := 0
+				if admitted := g.queues[class].byOwner[owner.owner]; admitted != nil {
+					outstanding = len(admitted.tickets)
+				}
+				if g.active && g.holderClass == class && g.holderOwner == owner.owner {
+					outstanding++
+				}
+				if outstanding >= backgroundTicketLimit(class) {
+					continue
+				}
+				candidate := owner.tickets[0]
+				if next == nil || promotedPriority(class, candidate.since, now) < promotedPriority(next.class, next.since, now) ||
+					promotedPriority(class, candidate.since, now) == promotedPriority(next.class, next.since, now) && candidate.since.Before(next.since) {
+					next = candidate
+				}
+				break // Within a class, preserve the existing owner rotor.
+			}
+		}
+		if next == nil {
+			return
+		}
+		g.removeWaiterLocked(next, true)
+		next.deferred = false
+		g.enqueueLocked(next)
+	}
+}
+
+// A user borrows a background ticket before facing real user capacity. Return
+// the newest admission to its supervisor's pending work, ahead of newer work
+// for that owner. A pending grant has made no WAL debit and is safe to withdraw.
+func (g *Gate) makeBackgroundRoomLocked() {
+	if g.userQueued+g.backgroundQueuedLocked() < WriterQueueCapacity {
+		return
+	}
+	var newest *ticket
+	for _, class := range []Class{ClassBackgroundMedia, ClassMaintenance} {
+		g.queues[class].each(func(t *ticket) {
+			if newest == nil || t.id > newest.id {
+				newest = t
+			}
+		})
+	}
+	if newest == nil {
+		return
+	}
+	g.removeWaiterLocked(newest, false)
+	if g.grant == newest {
+		g.grant = nil
+	}
+	newest.deferred = true
+	g.enqueueLocked(newest)
+	owner := g.deferred[newest.class].byOwner[newest.owner]
+	// This was admitted before every still-deferred acquisition of its owner.
+	copy(owner.tickets[1:], owner.tickets[:len(owner.tickets)-1])
+	owner.tickets[0] = newest
 }
 
 // front is the ticket this class would serve next.
@@ -523,6 +627,7 @@ func (g *Gate) pickWinnerLocked() *ticket {
 		}
 		return nil // A blocked user is never overtaken by background work.
 	}
+	g.admitBackgroundLocked()
 	now := time.Now()
 	var selected *ticket
 	best := 0
@@ -557,11 +662,13 @@ func (g *Gate) QueueAges() (peak map[string]uint64, current map[string]uint64) {
 	now := time.Now()
 	for _, class := range Classes() {
 		oldest := time.Duration(0)
-		g.queues[class].each(func(t *ticket) {
+		visit := func(t *ticket) {
 			if age := now.Sub(t.since); age > oldest {
 				oldest = age
 			}
-		})
+		}
+		g.queues[class].each(visit)
+		g.deferred[class].each(visit)
 		if oldest > 0 {
 			current[class.String()] = uint64(oldest / time.Millisecond)
 		}
@@ -579,20 +686,21 @@ func (g *Gate) ActiveOrWaiting() bool {
 		return true
 	}
 	for _, class := range Classes() {
-		if g.queues[class].count > 0 {
+		if g.queues[class].count+g.deferred[class].count > 0 {
 			return true
 		}
 	}
 	return false
 }
 
-// Waiting returns the number of queued waiters per class, for diagnostics.
+// Waiting returns all waiting acquisitions per class, including pre-admission
+// background waits. Admission separates those from actual queued tickets.
 func (g *Gate) Waiting() map[string]int {
 	g.mu.Lock()
 	defer g.mu.Unlock()
 	out := map[string]int{}
 	for _, class := range Classes() {
-		if count := g.queues[class].count; count > 0 {
+		if count := g.queues[class].count + g.deferred[class].count; count > 0 {
 			out[class.String()] = count
 		}
 	}
@@ -606,7 +714,7 @@ type AdmissionStats struct {
 	Capacity         int `json:"capacity"`
 	UserQueued       int `json:"userQueued"`
 	BackgroundQueued int `json:"backgroundQueued"`
-	// Deferred is the background waiters users have displaced from the pool.
+	// Deferred is background acquisitions waiting before ticket admission.
 	// They are still waiting; none of their work has been dropped.
 	Deferred int `json:"deferred"`
 	// Refused counts user tickets turned away by a full pool, in total and by
@@ -632,6 +740,7 @@ func (g *Gate) Admission() AdmissionStats {
 	for _, class := range Classes() {
 		if class.Background() {
 			out.BackgroundQueued += g.queues[class].count
+			out.Deferred += g.deferred[class].count
 		}
 		if refused := g.byClass[class].refused; refused > 0 {
 			out.RefusedByClass[class.String()] = refused
@@ -639,9 +748,6 @@ func (g *Gate) Admission() AdmissionStats {
 		if busy := g.byClass[class].busy; busy > 0 {
 			out.BusyAfterAdmissionByClass[class.String()] = busy
 		}
-	}
-	if room := WriterQueueCapacity - out.UserQueued; out.BackgroundQueued > room {
-		out.Deferred = out.BackgroundQueued - max(room, 0)
 	}
 	return out
 }

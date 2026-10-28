@@ -40,12 +40,17 @@ type StageResult struct {
 // restoreMarker is restore-staged/restore.json: the one staged-restore marker.
 // Its states and how each resumes after a crash are described on ApplyStaged.
 type restoreMarker struct {
-	OperationID   string   `json:"operationId,omitempty"`
-	JobID         string   `json:"jobId,omitempty"`
-	State         string   `json:"state"`
-	Source        Source   `json:"source"`
-	SchemaVersion int      `json:"schemaVersion"`
-	Files         []string `json:"files"`
+	OperationID      string   `json:"operationId,omitempty"`
+	JobID            string   `json:"jobId,omitempty"`
+	State            string   `json:"state"`
+	Source           Source   `json:"source"`
+	SchemaVersion    int      `json:"schemaVersion"`
+	Files            []string `json:"files"`
+	PreRestoreSHA256 string   `json:"preRestoreSha256,omitempty"`
+	ManifestSHA256   string   `json:"manifestSha256,omitempty"`
+	StreamManifest   bool     `json:"streamManifest,omitempty"`
+	ManifestOffset   int64    `json:"manifestOffset,omitempty"`
+	ManifestLine     int64    `json:"manifestLine,omitempty"`
 	// Preserved files were copied from the current state, not replaced by the
 	// incoming restore. They belong to the recovery copy only.
 	Preserved  []string `json:"preserved,omitempty"`
@@ -82,6 +87,11 @@ func (s *Service) StageWithPassphrase(ctx context.Context, source Source, passph
 
 func (s *Service) stageWithPassphrase(ctx context.Context, source Source, passphrase string, work restoreIdentity) (StageResult, error) {
 	var out StageResult
+	ctx, leave, enterErr := s.enter(ctx)
+	if enterErr != nil {
+		return out, enterErr
+	}
+	defer leave()
 	if (source.BackupID == "") == (source.Path == "") {
 		return out, ErrSourceInvalid
 	}
@@ -113,6 +123,11 @@ func (s *Service) stageWithPassphrase(ctx context.Context, source Source, passph
 	}
 	defer cleanup()
 	s.restoreProgress(work, "verify-files", 0, 0)
+	if dir, streamed, err := s.streamSource(source); err != nil {
+		return out, err
+	} else if streamed {
+		return s.stageStream(ctx, dir, originalSource, work)
+	}
 	srcDB, srcDir, files, manifest, err := s.resolveSource(source)
 	if err != nil {
 		return out, err
@@ -192,7 +207,12 @@ func (s *Service) stageWithPassphrase(ctx context.Context, source Source, passph
 	if err = syncRestoreDirectories(incoming, incoming, files); err != nil {
 		return out, err
 	}
-	marker := restoreMarker{State: markerStaged, Source: originalSource, SchemaVersion: schemaVersion, Files: files, JobID: work.jobID, OperationID: work.operation, Recovery: inspected.Recovery}
+	stagedManifest, streamErr := writeStreamTree(ctx, incoming, Manifest{Format: Format, Version: StreamVersion, SchemaVersion: schemaVersion})
+	if streamErr != nil {
+		err = streamErr
+		return out, err
+	}
+	marker := restoreMarker{State: markerStaged, Source: originalSource, SchemaVersion: schemaVersion, StreamManifest: true, ManifestSHA256: stagedManifest.streamHash, JobID: work.jobID, OperationID: work.operation, Recovery: inspected.Recovery}
 	if err = writeMarker(incoming, marker); err != nil {
 		return out, err
 	}
