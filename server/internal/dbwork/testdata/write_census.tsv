@@ -387,6 +387,8 @@ internal/metadata/musicbrainz.go	(*Service).MusicBrainzStep	ExecWrite	ClassBackg
 internal/metadata/musicbrainz.go	(*Service).mbFailure	Begin	ClassBackgroundMedia	-
 internal/metadata/musicbrainz.go	(*Service).mbResult	Begin	ClassBackgroundMedia	-
 internal/metadata/musicbrainz.go	(*Service).mbStatus	Begin	ClassBackgroundMedia	-
+internal/metadata/refresh_all.go	(*Service).RefreshAll	Begin	ClassInteractive	-
+internal/metadata/refresh_all.go	(*Service).RefreshAllStep	Begin	ClassBackgroundMedia	-
 internal/metadata/repair.go	(*Service).Repair	Begin	ClassBackgroundMedia	-
 internal/metadata/repair_bulk.go	(*Service).bulkEditAuthorized	Begin	ClassBackgroundMedia	-	×2
 internal/metadata/repair_bulk.go	(*Service).bulkTarget	Begin	ClassBackgroundMedia	-
@@ -515,7 +517,6 @@ internal/playback/v1.go	(*Service).StopV1	Begin	ClassEstablishedPlayback	-
 internal/playbackruntime/linear.go	(*LinearRuntime).produceLive	Begin	ClassEstablishedPlayback	-
 internal/playbackv1/channels.go	(*Service).patchChannel	WithWriteTxContext	ClassEstablishedPlayback	-
 internal/playbackv1/channels.go	(*Service).startChannel	WithWriteTxContext	ClassPlaybackStart	-
-internal/playbackv1/channels.go	(*Service).timelineChannel	WithWriteTxContext	ClassEstablishedPlayback	-
 internal/playbackv1/observations.go	(*Service).applyObservationBatch	Begin	ClassEstablishedPlayback	observationBatchPlan(len(batch))
 internal/playbackv1/queue_build.go	(*Service).continueBuild	WithWriteTxContext	ClassBackgroundMedia	-
 internal/playbackv1/queue_build.go	(*Service).failBuild	WithWriteTxContext	ClassBackgroundMedia	-
@@ -540,9 +541,6 @@ internal/playbackv1/sessions.go	(*Service).endWhen	WithWriteTxContext	ClassEstab
 internal/playbackv1/sessions.go	(*Service).markReady	WithWriteTxContext	ClassPlaybackStart	-
 internal/playbackv1/sessions.go	(*Service).startPresentation	WithWriteTxContext	ClassPlaybackStart	-
 internal/playbackv1/sessions_change.go	(*Service).Patch	WithWriteTxContext	ClassEstablishedPlayback	-
-internal/playbackv1/sessions_change.go	(*Service).Timeline	ExecWrite	ClassEstablishedPlayback	-
-internal/playbackv1/sessions_change.go	(*Service).Timeline	WithWriteTxContext	ClassEstablishedPlayback	-
-internal/playbackv1/skips.go	(*Service).recordSkip	WithWriteTxContext	ClassBackgroundMedia	-
 internal/playbackv1/stop_generation.go	(*Service).StopGeneration	Begin	ClassSecurityFence	-
 internal/playbackv1/stop_generation.go	(*Service).StopGeneration	WithWriteTxContext	ClassEstablishedPlayback	-
 internal/playbackv1/transitions.go	(*Service).CommitNext	WithWriteTxContext	ClassPlaybackStart	-
