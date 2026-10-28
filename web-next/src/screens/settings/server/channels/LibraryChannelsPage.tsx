@@ -13,7 +13,6 @@ import {SettingsChannelActionsSource} from './channel-actions-source';
 import {SettingsChannelLogoSource} from './channel-logo-source';
 import type {LibraryChannelsPageProps} from './types';
 import styles from './channels.module.css';
-import {moveLibraryChannelTo} from './reorder-library-channels';
 
 const t = defaultI18n.t;
 let editorSequence = 0;
@@ -78,7 +77,7 @@ function ChannelPageBody({sources, ports}: Readonly<{sources: Sources; ports: Li
     if (!current() || blocked || moving.current) return;
     moving.current = true;setReordering(true);setReorderError(false);setAnnouncement('');
     try {
-      const done = await moveLibraryChannelTo(channel, target, {current, rows: () => sources.reader.getSnapshot().phase === 'ready' ? sources.reader.getSnapshot().channels : undefined, move: (selected, direction) => sources.actions.perform(selected, 'move', direction)});
+      const done = await sources.actions.moveTo(channel, target);
       if (current()) {
         setReorderError(!done);
         if (done) setAnnouncement(t('next.settings.moved', {name: channel.config.name, position: target + 1, count: sources.reader.getSnapshot().channels?.length ?? 0}));
