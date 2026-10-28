@@ -285,12 +285,13 @@ func TestGuideDirectoryHTTPFiltersPreferencesAndRevisionFences(t *testing.T) {
 	if w.Code != 409 || !strings.Contains(w.Body.String(), "guide_refresh_required") {
 		t.Fatalf("stale preference revision accepted: %d %s", w.Code, w.Body.String())
 	}
+	// A profile's own hidden mark is ignored: only the owner hides, for everyone.
 	favorites := f.directory(t, f.owner.AccessToken, url.Values{"favorites": {"true"}})
-	if favorites.Total != 1 || favorites.Channels[0].Name != "Channel 01" {
+	if favorites.Total != 2 || favorites.Channels[0].Hidden || !favorites.Channels[0].Favorite {
 		t.Fatalf("visible favorites: %+v", favorites)
 	}
 	hidden := f.directory(t, f.owner.AccessToken, url.Values{"favorites": {"true"}, "includeHidden": {"true"}})
-	if hidden.Total != 2 || !hidden.Channels[0].Hidden || !hidden.Channels[0].Favorite {
+	if hidden.Total != 2 || hidden.Channels[0].Hidden || !hidden.Channels[0].Favorite {
 		t.Fatalf("owner hidden favorites: %+v", hidden)
 	}
 	if got := f.directory(t, f.member.AccessToken, url.Values{"favorites": {"true"}}); got.Total != 0 {
@@ -305,7 +306,7 @@ func TestGuideDirectoryHTTPFiltersPreferencesAndRevisionFences(t *testing.T) {
 	for _, test := range []struct {
 		query                     string
 		channels, favorites, news int
-	}{{"", 59, 1, 29}, {"?includeHidden=true", 60, 2, 30}} {
+	}{{"", 60, 2, 30}, {"?includeHidden=true", 60, 2, 30}} { // a profile's own hidden mark no longer filters
 		w = f.call(t, "GET", "/v1/guide/sources"+test.query, f.owner.AccessToken, nil)
 		var summary livechannels.DirectorySummary
 		if w.Code != 200 || json.Unmarshal(w.Body.Bytes(), &summary) != nil || len(summary.Sources) != 2 {

@@ -77,6 +77,11 @@ func TestLibrarySummaryCoreHTTPUsesLiveAuthorityAndReadyProjection(t *testing.T)
 					child = profile
 				}
 			}
+			// The owner's main profile records by default and a new profile does not;
+			// Recordings is part of the summary policy, so give the child the same.
+			if _, err = r.f.db.Exec(`INSERT INTO profile_restrictions(profile_id,allow_dvr) VALUES(?,1)`, child.ID); err != nil {
+				t.Fatal(err)
+			}
 			selected, err := r.f.id.SelectDirectProfile(context.Background(), owner.AccountToken, child.ID, identity.DirectSelection{})
 			if err != nil {
 				t.Fatal(err)
