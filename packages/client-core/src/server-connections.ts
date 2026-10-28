@@ -357,8 +357,11 @@ export function refreshStoredSession(o:RefreshStoredOptions):Promise<LocalSessio
   try{next=parseLocalSession(raw,{authority:session.viewer.authority,accountId:session.viewer.accountId,profileId:session.viewer.profileId,serverId:session.viewer.serverId},{refreshReceipt:true});}
   catch{throw new SessionRefreshError('refresh_invalid','The renewed sign-in didn’t match this one.',false);}
   if(next.sessionFamilyId!==session.sessionFamilyId||BigInt(next.tokenGeneration)<=BigInt(session.tokenGeneration)||Date.parse(next.authorizationHorizon)<=now()||
-   !next.refreshToken||next.refreshToken===session.refreshToken||(session.deviceId!==undefined&&next.deviceId!==session.deviceId)||
-   (next.installationId!==undefined&&next.installationId!==identity.installationId)||(session.installationId!==undefined&&next.installationId!==session.installationId)||
+   !next.refreshToken||next.refreshToken===session.refreshToken||
+   // An expired receipt is adopted and renewed here with no caller in between, so its bindings
+   // are checked here. A live successor is returned, and the caller's own binding gate decides.
+   (Date.parse(next.expiresAt)<=now()&&((session.deviceId!==undefined&&next.deviceId!==session.deviceId)||
+    (next.installationId!==undefined&&next.installationId!==identity.installationId)||(session.installationId!==undefined&&next.installationId!==session.installationId)))||
    (session.viewer.role==='account'&&next.viewer.role!=='account')||(next.serverIdentity&&(next.serverIdentity.publicKey!==record.pin.publicKey||next.serverIdentity.fingerprint!==record.pin.fingerprint)))
    throw new SessionRefreshError('refresh_invalid','The renewed sign-in didn’t match this one.',false);
   const connection=sessionRoute(session.accessToken);let saved=false;
