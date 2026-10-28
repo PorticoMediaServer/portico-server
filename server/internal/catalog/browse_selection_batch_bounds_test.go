@@ -155,16 +155,16 @@ func TestSelectionBatchPreviousMemberTombstonesRawProgressAndPlan(t *testing.T) 
 
 func TestSelectionBatchSearchQualification(t *testing.T) {
 	for _, text := range []string{"日本", strings.Repeat("long", 20)} {
-		_, err := selectionBatchCompileTest(BrowseNode{Field: "search", Operator: "contains", Value: text}, "p", true)
-		if !errors.Is(err, ErrSelectionBatchUnsupported) {
-			t.Fatalf("unproved grouped fallback %q: %v", text, err)
+		got, err := selectionBatchCompileTest(BrowseNode{Field: "search", Operator: "contains", Value: text}, "p", true)
+		if err != nil || got.search == nil {
+			t.Fatalf("local grouped fallback %q: %+v %v", text, got, err)
 		}
 	}
 
 	for _, text := range []string{"a", "日本", strings.Repeat("long", 20), "alpha"} {
-		_, err := selectionBatchCompileTest(BrowseNode{Field: "search", Operator: "contains", Value: text}, "p", false)
-		if !errors.Is(err, ErrSelectionBatchUnsupported) {
-			t.Fatalf("unproved global search %q: %v", text, err)
+		got, err := selectionBatchCompileTest(BrowseNode{Field: "search", Operator: "contains", Value: text}, "p", false)
+		if err != nil || got.search == nil {
+			t.Fatalf("local bare search %q: %+v %v", text, got, err)
 		}
 	}
 	_, s, names := browseFixture(t)
