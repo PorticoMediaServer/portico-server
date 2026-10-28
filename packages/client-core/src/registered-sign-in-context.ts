@@ -3,6 +3,28 @@ import {validInstallationId} from './installation.ts';
 import {currentUTCTimestamp} from './local-session.ts';
 
 export type RegisteredSignInContext = Readonly<{payload: string; signature: string}>;
+/** The signing Server bounds every prepare by the Server challenge it answers,
+ * so the producer, never this browser, owns the signed issuance lifetime. */
+export const REGISTERED_SIGN_IN_LIFETIME_MS = 5 * 60_000;
+/** A browser keeps its own clock. Only a signed stamp may run this far ahead of
+ * it, and only within the same bounded difference every checkpoint applies. */
+export const REGISTERED_SIGN_IN_CLOCK_SKEW_MS = 60_000;
+export type RegisteredSignInIssuance = Readonly<{issuedAt: number; expiresAt: number; now: number}>;
+/** The only lifetime rule that can grant anything: authenticated facts, an
+ * expiry this clock has not reached, one producer lifetime and one bounded skew. */
+export function signedRegisteredSignInWithinLifetime({issuedAt, expiresAt, now}: RegisteredSignInIssuance): boolean {
+  return [issuedAt, expiresAt, now].every(Number.isSafeInteger) && issuedAt <= now + REGISTERED_SIGN_IN_CLOCK_SKEW_MS &&
+    expiresAt > now && expiresAt > issuedAt && expiresAt - issuedAt <= REGISTERED_SIGN_IN_LIFETIME_MS;
+}
+/** Checkpoints that hold only the producer's expiry plus a browser base time are
+ * not grants. They accept exactly the ceiling an authentic issuance can reach —
+ * one lifetime after issuance, issued at most one bounded skew ahead of this
+ * clock — and still refuse an expiry this browser has reached. The signed facts
+ * above remain the authority on the expiry itself. */
+export function registeredSignInExpiryWithinLifetime(expiresAt: number, basis: number, now: number): boolean {
+  return Number.isSafeInteger(expiresAt) && Number.isSafeInteger(basis) && Number.isSafeInteger(now) &&
+    expiresAt > now && expiresAt - basis <= REGISTERED_SIGN_IN_LIFETIME_MS + REGISTERED_SIGN_IN_CLOCK_SKEW_MS;
+}
 const fields = ['kind', 'version', 'serverId', 'publicKey', 'fingerprint', 'serverName', 'registrationId', 'registrationOrigin', 'hostedOrigin', 'claimOperationId', 'challenge', 'nonce', 'installationId', 'issuedAt', 'expiresAt'] as const;
 export type RegisteredSignInContextFacts = Readonly<Record<typeof fields[number], string>>;
 function invalid(): never {throw new TypeError('Invalid registered sign-in context.');}
@@ -32,7 +54,7 @@ export async function verifyRegisteredSignInContext(value: unknown, now = Date.n
   const utcNano = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{0,8}[1-9])?Z$/;
   if (!currentUTCTimestamp(facts.issuedAt) || !currentUTCTimestamp(facts.expiresAt) || !utcNano.test(facts.issuedAt) || !utcNano.test(facts.expiresAt)) invalid();
   const issued = Date.parse(facts.issuedAt), expires = Date.parse(facts.expiresAt);
-  if (issued > now + 60000 || expires <= now || expires <= issued || expires - issued > 300000) invalid();
+  if (!signedRegisteredSignInWithinLifetime({issuedAt: issued, expiresAt: expires, now})) invalid();
   await serverPin(facts.serverId, facts.publicKey, facts.fingerprint, crypto);
   if (!await crypto.verify(routeBytes(facts.publicKey, 32), signature, raw)) invalid();
   return Object.freeze({...facts});
