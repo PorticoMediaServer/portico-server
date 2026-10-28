@@ -119,6 +119,8 @@ type Dependencies struct {
 	DB                *sql.DB
 	Identity          *identity.Service
 	Catalog           *catalog.Service
+	FacetReads        FacetReadRuntime
+	GenreReads        GenreReadRuntime
 	Reading           *reading.Service
 	Ingestion         *ingestion.Service
 	Playback          *playback.Service

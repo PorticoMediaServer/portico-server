@@ -101,6 +101,11 @@ func tvdbAuthority(p tvdbPublication) tvdbPublication {
 	return p
 }
 func (s *Service) activeTVDBPublication(ctx context.Context, tx *sql.Tx, p tvdbPublication) error {
+	if ready, e := publicationSourcesReady(ctx, tx); e != nil {
+		return e
+	} else if !ready {
+		return errTVDBStale
+	}
 	now := tvdbStamp(s.publicationTime())
 	current, err := readTVDBPublication(ctx, tx, p.Show)
 	if errors.Is(err, sql.ErrNoRows) {
@@ -163,6 +168,9 @@ func (s *Service) claimTVDBAcquisition(ctx context.Context) (*tvdbPublication, e
 	}
 	tx := gated.Tx()
 	defer gated.Rollback()
+	if ready, e := publicationSourcesReady(ctx, tx); e != nil || !ready {
+		return nil, e
+	}
 	if err = s.cleanupTVDBPublications(ctx, tx); err != nil {
 		return nil, err
 	}

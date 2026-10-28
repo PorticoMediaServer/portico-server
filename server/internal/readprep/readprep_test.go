@@ -276,6 +276,59 @@ type testClock struct {
 func (c *testClock) now() time.Time      { c.mu.Lock(); defer c.mu.Unlock(); return c.at }
 func (c *testClock) add(d time.Duration) { c.mu.Lock(); c.at = c.at.Add(d); c.mu.Unlock() }
 
+func TestPrivateHandleCreatedAtDoesNotEnterSharedComputationKey(t *testing.T) {
+	clock := &testClock{at: time.Unix(1234, 0)}
+	s := storeFor(t, Config{Now: clock.now})
+	first := clock.now()
+	a := submit(t, s, "a", testKey, simplePlan("one shared result"))
+	ra := ready(t, s, "a", a)
+	if !ra.CreatedAt.Equal(first) {
+		t.Fatal("first admission time lost", ra.CreatedAt)
+	}
+	ra.Release()
+	clock.add(11 * time.Second)
+	b, err := s.Open(context.Background(), "b", testKey)
+	if err != nil {
+		t.Fatal(err)
+	}
+	rb, err := s.Poll(context.Background(), "b", b)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer rb.Release()
+	if !rb.CreatedAt.Equal(clock.now()) || string(rb.Payload) != "one shared result" || s.Stats().Entries != 1 {
+		t.Fatal("private age prevented equivalent result reuse", rb.CreatedAt, s.Stats())
+	}
+	ra, err = s.Poll(context.Background(), "a", a)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer ra.Release()
+	if !ra.CreatedAt.Equal(first) {
+		t.Fatal("poll reset the original handle age", ra.CreatedAt)
+	}
+}
+
+func TestOptionalBudgetGrowthCanDeclineWithoutPoisoningExactWork(t *testing.T) {
+	s := storeFor(t, Config{MaxBytes: 8192})
+	h := submit(t, s, "caller", testKey, Plan{InitialBytes: 64, New: func(context.Context, *Budget) (Computation, error) {
+		return &testWork{bytes: 64, step: func(_ context.Context, b *Budget) (StepResult, error) {
+			if ok, err := b.TryResize(8193); ok || err != nil {
+				t.Errorf("optional miss: %v %v", ok, err)
+			}
+			if err := b.Resize(64); err != nil {
+				return StepResult{}, err
+			}
+			return StepResult{Done: true, Payload: []byte("exact")}, nil
+		}}, nil
+	}})
+	r := ready(t, s, "caller", h)
+	defer r.Release()
+	if string(r.Payload) != "exact" || s.Stats().Bytes > s.MaxBytes() {
+		t.Fatal("optional allocation changed exact work", s.Stats())
+	}
+}
+
 func TestOriginalIdleAndCompleteExpiry(t *testing.T) {
 	clock := &testClock{at: time.Unix(1234, 0)}
 	s := storeFor(t, Config{Now: clock.now, OriginalTTL: 25 * time.Second, IdleTTL: 10 * time.Second, CompleteTTL: time.Minute})

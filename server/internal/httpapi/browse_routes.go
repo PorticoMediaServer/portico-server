@@ -302,7 +302,7 @@ func (d Dependencies) facetsHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	q := r.URL.Query()
 	for key, values := range q {
-		if (key != "field" && key != "q" && key != "limit" && key != "offset" && key != "pivot" && key != "query") || len(values) != 1 {
+		if (key != "field" && key != "q" && key != "limit" && key != "offset" && key != "pivot" && key != "query" && key != "after" && key != "before" && key != "at") || len(values) != 1 {
 			failure(w, catalog.ErrCursor)
 			return
 		}
@@ -337,6 +337,32 @@ func (d Dependencies) facetsHandler(w http.ResponseWriter, r *http.Request) {
 	query, e := catalog.ParseBrowseQuery(json.RawMessage(q.Get("query")), "query")
 	if e != nil {
 		browseFailure(w, e)
+		return
+	}
+	request := catalog.FacetRequest{Pivot: q.Get("pivot"), Query: query, Library: r.PathValue("id"), Profile: identity.PersonalKey(p.Viewer), Field: q.Get("field"), Q: q.Get("q"), Limit: limit, Offset: offset, Restrictions: restrictions,
+		After: q.Get("after"), Before: q.Get("before"), At: q.Get("at"), LimitPresent: q.Has("limit"), OffsetPresent: q.Has("offset")}
+	simple, e := d.Catalog.WithContext(r.Context()).IsSimpleFacetRequest(request)
+	if e != nil {
+		browseFailure(w, e)
+		return
+	}
+	anchors := 0
+	for _, name := range []string{"after", "before", "at"} {
+		if q.Has(name) {
+			anchors++
+			if !validFacetQueryID(q.Get(name)) {
+				browseFailure(w, catalog.ErrCursor)
+				return
+			}
+		}
+	}
+	if anchors > 1 || simple && q.Has("offset") || !simple && anchors != 0 {
+		browseFailure(w, catalog.ErrCursor)
+		return
+	}
+	if simple {
+		viewer := catalog.Viewer{Profile: request.Profile, Fence: restrictionFence, Libraries: []string{request.Library}, Restrictions: restrictions}
+		d.simpleFacetsHandler(w, r, p, viewer, request)
 		return
 	}
 	var out catalog.FacetPage

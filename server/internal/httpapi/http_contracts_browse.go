@@ -7,7 +7,7 @@ import (
 )
 
 func registerBrowseHTTPContracts(registry *apikit.Registry) error {
-	if err := apikit.RegisterHTTP[struct{}, catalog.SearchGenrePage](registry, apikit.Metadata{Audience: apikit.Clients, ID: "get_search_genres", Method: "GET", Path: "/v1/search/genres", Summary: "Read permitted video genres with selected representative artwork", Access: apikit.Device, Requires: apikit.ScopeRead, Lane: apikit.Browsing, Admission: laneExpensive, Cost: apikit.PageSized, Status: 200, Query: []string{"limit", "cursor"}, Errors: []string{"invalid_request", "unauthorized", "not_permitted", "not_found", "stale_continuation", "internal"}}); err != nil {
+	if err := apikit.RegisterHTTP[struct{}, genreReadResponse](registry, apikit.Metadata{Audience: apikit.Clients, ID: "get_search_genres", Method: "GET", Path: "/v1/search/genres", Summary: "Read permitted video genres with selected representative artwork", Access: apikit.Device, Requires: apikit.ScopeRead, Lane: apikit.Browsing, Admission: laneExpensive, Cost: apikit.PageSized, Status: 200, SuccessStatuses: []int{202}, ResponseHeaders: genrePreparingHeaders(), Query: []string{"limit", "cursor", "preview"}, Errors: []string{"invalid_request", "unauthorized", "not_permitted", "not_found", "stale_continuation", "search_busy", "metadata_unavailable", "internal"}}); err != nil {
 		return err
 	}
 

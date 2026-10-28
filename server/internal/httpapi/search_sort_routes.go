@@ -29,7 +29,20 @@ func registerSearchSortRoutes(registry *apikit.Registry, d Dependencies) error {
 	}, Serve: d.browseAcrossFacetsHandler}); err != nil {
 		return err
 	}
-	return apikit.RegisterRaw(registry, apikit.RawRoute[noBody, catalog.FacetPage]{Metadata: apikit.Metadata{Audience: apikit.Clients, Admission: laneBrowsing, ID: "get_library_facets", Method: "GET", Path: "/v1/libraries/{id}/facets", Summary: "Read counted facet choices", Access: apikit.Device, Requires: apikit.ScopeRead, Lane: apikit.Browsing, Cost: apikit.PageSized, Status: 200,
-		Query: []string{"field", "q", "limit", "offset", "query", "pivot"}, Errors: libraryFailures,
-	}, Serve: d.facetsHandler})
+	facetFailures := append(append([]string{}, libraryFailures...), "stale_continuation", "search_busy", "metadata_unavailable")
+	if err := apikit.RegisterRaw(registry, apikit.RawRoute[noBody, facetReadResponse]{Metadata: apikit.Metadata{Audience: apikit.Clients, Admission: laneBrowsing, ID: "get_library_facets", Method: "GET", Path: "/v1/libraries/{id}/facets", Summary: "Read counted facet choices", Access: apikit.Device, Requires: apikit.ScopeRead, Lane: apikit.Browsing, Cost: apikit.PageSized, Status: 200, SuccessStatuses: []int{202}, ResponseHeaders: facetPreparingHeaders(),
+		Query: []string{"field", "q", "limit", "offset", "query", "pivot", "after", "before", "at"}, Errors: facetFailures,
+	}, Serve: d.facetsHandler}); err != nil {
+		return err
+	}
+	if err := apikit.RegisterRaw(registry, apikit.RawRoute[noBody, facetQueryResponse]{Metadata: apikit.Metadata{Audience: apikit.Clients, Admission: laneBrowsing, ID: "get_facet_query", Method: "GET", Path: "/v1/facet-queries/{id}", Summary: "Read a facet preparation or its ready window", Access: apikit.Device, Requires: apikit.ScopeRead, Lane: apikit.Browsing, Cost: apikit.PageSized, Status: 200, SuccessStatuses: []int{202}, ResponseHeaders: facetPreparingHeaders(), Errors: facetFailures}, Serve: d.facetQueryHandler}); err != nil {
+		return err
+	}
+	if err := apikit.RegisterRaw(registry, apikit.RawRoute[noBody, struct{}]{Metadata: apikit.Metadata{Audience: apikit.Clients, Admission: laneBrowsing, ID: "cancel_facet_query", Method: "DELETE", Path: "/v1/facet-queries/{id}", Summary: "Release a facet preparation handle", Access: apikit.Device, Requires: apikit.ScopeRead, Lane: apikit.Browsing, Cost: apikit.Constant, Status: 204, Errors: facetFailures}, Serve: d.facetQueryHandler}); err != nil {
+		return err
+	}
+	if err := apikit.RegisterRaw(registry, apikit.RawRoute[noBody, genreReadResponse]{Metadata: apikit.Metadata{Audience: apikit.Clients, Admission: laneBrowsing, ID: "get_genre_query", Method: "GET", Path: "/v1/genre-queries/{id}", Summary: "Read a genre preparation or its ready window", Access: apikit.Device, Requires: apikit.ScopeRead, Lane: apikit.Browsing, Cost: apikit.PageSized, Status: 200, SuccessStatuses: []int{202}, ResponseHeaders: genrePreparingHeaders(), Errors: facetFailures}, Serve: d.genreQueryHandler}); err != nil {
+		return err
+	}
+	return apikit.RegisterRaw(registry, apikit.RawRoute[noBody, struct{}]{Metadata: apikit.Metadata{Audience: apikit.Clients, Admission: laneBrowsing, ID: "cancel_genre_query", Method: "DELETE", Path: "/v1/genre-queries/{id}", Summary: "Release a genre preparation handle", Access: apikit.Device, Requires: apikit.ScopeRead, Lane: apikit.Browsing, Cost: apikit.Constant, Status: 204, Errors: facetFailures}, Serve: d.genreQueryHandler})
 }
