@@ -180258,11 +180258,17 @@ export const schemas = {
       },
       "nextCursor": {
         "type": "string"
+      },
+      "total": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
       }
     },
     "required": [
       "limit",
-      "items"
+      "items",
+      "total"
     ],
     "type": "object"
   },
@@ -181114,11 +181120,17 @@ export const schemas = {
       },
       "nextCursor": {
         "type": "string"
+      },
+      "total": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
       }
     },
     "required": [
       "limit",
-      "items"
+      "items",
+      "total"
     ],
     "type": "object"
   },

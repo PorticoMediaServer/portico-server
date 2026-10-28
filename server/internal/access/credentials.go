@@ -91,6 +91,7 @@ type IssuedCredential struct {
 type CredentialPage struct {
 	Page
 	Items []Credential `json:"items"`
+	Total int          `json:"total"`
 }
 
 type CredentialRequest struct {
@@ -314,6 +315,9 @@ func (s *Store) Credentials(ctx context.Context, auth Authorize, q CredentialQue
 	}
 	out.Limit, out.Items = limit, []Credential{}
 	err = s.snapshot(ctx, auth, func(tx *sql.Tx) error {
+		if e := tx.QueryRowContext(ctx, `SELECT count(*)`+credentialJoins+` WHERE c.kind=? AND (?='' OR c.account_id=?)`, q.Kind, q.AccountID, q.AccountID).Scan(&out.Total); e != nil {
+			return e
+		}
 		rows, e := tx.QueryContext(ctx, `SELECT `+credentialColumns+credentialJoins+` WHERE c.kind=? AND (?='' OR c.account_id=?) AND (?=0 OR (c.created_ms,c.id)<(?,?)) ORDER BY c.created_ms DESC,c.id DESC LIMIT ?`,
 			q.Kind, q.AccountID, q.AccountID, created, created, after, limit+1)
 		if e != nil {

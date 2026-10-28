@@ -1393,3 +1393,49 @@ func TestPeopleDeviceSessionCountsUseActiveAuthorizationFamilies(t *testing.T) {
 		t.Fatalf("expected both real device rows, got %d", len(page.Items))
 	}
 }
+
+func TestCredentialTotalRespectsFiltersAndCursor(t *testing.T) {
+	store, db, _ := fixture(t)
+	ctx := context.Background()
+	issuer, err := identity.New(db, t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, account := range []string{"owner", "member"} {
+		env, err := issuer.Issue(account, account+"-profile", "local", account, 1)
+		if err != nil {
+			t.Fatal(err)
+		}
+		maker, err := issuer.Authenticate(env.AccessToken)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, op := range []string{"first", "second"} {
+			if _, err := store.CreateCredential(ctx, nil, issuer, maker, identity.CredentialKindToken, CredentialRequest{OperationID: account + "-" + op, Name: op, Scopes: []string{"read"}}); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+	q := CredentialQuery{Kind: identity.CredentialKindToken, AccountID: "member", Limit: "1"}
+	first, err := store.Credentials(ctx, nil, q)
+	if err != nil || first.Total != 2 || len(first.Items) != 1 || first.NextCursor == "" {
+		t.Fatalf("first: %+v %v", first, err)
+	}
+	q.Cursor = first.NextCursor
+	last, err := store.Credentials(ctx, nil, q)
+	if err != nil || last.Total != 2 || len(last.Items) != 1 || last.NextCursor != "" {
+		t.Fatalf("last: %+v %v", last, err)
+	}
+	all, err := store.Credentials(ctx, nil, CredentialQuery{Kind: identity.CredentialKindToken})
+	if err != nil || all.Total != 4 {
+		t.Fatalf("all: %+v %v", all, err)
+	}
+	keys, err := store.Credentials(ctx, nil, CredentialQuery{Kind: identity.CredentialKindKey})
+	if err != nil || keys.Total != 0 {
+		t.Fatalf("keys: %+v %v", keys, err)
+	}
+	_, err = store.Credentials(ctx, func(context.Context, *sql.Tx) error { return identity.ErrForbidden }, q)
+	if !errors.Is(err, identity.ErrForbidden) {
+		t.Fatalf("authorization: %v", err)
+	}
+}
