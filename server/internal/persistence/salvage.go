@@ -19,13 +19,11 @@ import (
 // with the free space there is: salvage writes a second copy beside it.
 var ErrRecoveryNoRoom = errors.New("there is not enough free space to recover this damaged database")
 
-// Salvage bounds: rows read per window, consecutive unreadable steps in one
-// table before the rest of it is given up (each step doubles, so 64 cover any
-// rowid range), and passes removing rows whose references were lost.
+// Salvage bounds: rows read per window, and probes past one stretch of
+// damage (each looks twice as far, so 64 cover any rowid range).
 const (
-	salvageWindow       = 64
-	salvageTableFaults  = 64
-	salvageOrphanPasses = 16
+	salvageWindow      = 64
+	salvageTableFaults = 64
 )
 
 // salvage rebuilds dir/name from every row that can still be read: a fresh
@@ -88,8 +86,12 @@ func salvageInto(ctx context.Context, dir, freshName, damaged string) (*Recovery
 		return nil, err
 	}
 	defer db.Close()
-	if _, err = db.ExecContext(ctx, `PRAGMA journal_mode=WAL`); err != nil {
-		return nil, err
+	// The fresh file is scratch until it passes its final check; it is
+	// synced once, after that, rather than at every window's commit.
+	for _, pragma := range []string{`PRAGMA journal_mode=WAL`, `PRAGMA synchronous=OFF`} {
+		if _, err = db.ExecContext(ctx, pragma); err != nil {
+			return nil, err
+		}
 	}
 	if err = db.WithTx(ctx, func(tx *sql.Tx) error {
 		if _, err := tx.ExecContext(ctx, baselineSQL); err != nil {
@@ -143,7 +145,18 @@ func salvageInto(ctx context.Context, dir, freshName, damaged string) (*Recovery
 		return nil, err
 	}
 	sort.Strings(out.DamagedTables)
-	return out, db.Close()
+	if err = db.Close(); err != nil {
+		return nil, err
+	}
+	file, err := os.OpenFile(filepath.Join(dir, filepath.FromSlash(freshName)), os.O_RDWR, 0)
+	if err != nil {
+		return nil, err
+	}
+	err = file.Sync()
+	if closeErr := file.Close(); err == nil {
+		err = closeErr
+	}
+	return out, err
 }
 
 // setTriggersAside drops every trigger and returns the statements that
@@ -241,113 +254,187 @@ func salvageTables(ctx context.Context, db *dbwork.Candidate) ([]salvageTable, e
 	return out, nil
 }
 
-// copyTable copies every readable row of one table, in key order, a window at
-// a time. Past a window that cannot be read, a rowid table is read a row at a
-// time up to the damage and then stepped over it, the step doubling until a
-// row reads again; a table keyed otherwise gives up the rest of it. It reports whether the whole
-// table was copied.
+// copyTable copies every readable row of one table and reports whether that
+// was all of it. It reads forward in key order a window at a time, narrowing
+// to single rows where a window fails, so everything before damage is kept.
+// Past damage, a rowid table probes further and further ahead for the next
+// readable row, then reads backwards from it down to the damage, so no
+// readable row between the two is skipped, and carries on forward from there.
+// A table keyed otherwise cannot be probed by number: it reads the rest of the
+// table backwards from its end, down to the damage.
 func copyTable(ctx context.Context, db *dbwork.Candidate, table salvageTable) (bool, error) {
+	c := newTableCopy(db, table)
+	whole := true
+	var last []any
+	probed := int64(0)
+	for {
+		var faulted bool
+		var err error
+		last, faulted, err = c.run(ctx, last, nil, false)
+		if err != nil || !faulted {
+			return whole, err
+		}
+		whole = false
+		if c.keyed {
+			_, _, err = c.run(ctx, nil, last, true)
+			return false, err
+		}
+		// Never probe from behind a point already found: a row that probes
+		// readable but then fails to copy must not bring the walk back.
+		from := probed
+		if last != nil {
+			if at, _ := last[0].(int64); at > from {
+				from = at
+			}
+		}
+		next, ok := c.probe(ctx, from)
+		if !ok {
+			// Nothing ahead reads by seeking; the end may still read backwards.
+			_, _, err = c.run(ctx, nil, last, true)
+			return false, err
+		}
+		if _, _, err = c.run(ctx, []any{next}, last, true); err != nil {
+			return false, err
+		}
+		probed, last = next, []any{next - 1}
+	}
+}
+
+type tableCopy struct {
+	db     *dbwork.Candidate
+	keyed  bool
+	keys   int
+	width  int
+	from   string
+	order  string
+	key    string
+	slots  string
+	insert string
+}
+
+func newTableCopy(db *dbwork.Candidate, table salvageTable) *tableCopy {
 	columns := quoteIdentifiers(table.columns)
-	keyed := table.keys != nil
 	keys := []string{"rowid"}
-	if keyed {
+	if table.keys != nil {
 		keys = table.keys
 	}
 	keyList := strings.Join(quoteIdentifiers(keys), ",")
-	selected := keyList + "," + strings.Join(columns, ",")
-	placeholders := strings.TrimSuffix(strings.Repeat("?,", len(keys)), ",")
-	where := ""
-	if keyed {
-		where = "(" + keyList + ")>(" + placeholders + ")"
-	} else {
-		where = "rowid>?"
+	key, slots := keyList, "?"
+	if len(keys) > 1 {
+		// A row value for a composite key. A single key stays bare: SQLite
+		// does not seek on a parenthesised one, and would rescan from the
+		// start of the table (into the damage) on every read.
+		key, slots = "("+keyList+")", "("+strings.TrimSuffix(strings.Repeat("?,", len(keys)), ",")+")"
 	}
-	name := quoteIdentifier(table.name)
-	read := `SELECT ` + selected + ` FROM damaged.` + name + ` WHERE ` + where + ` ORDER BY ` + keyList + ` LIMIT ` + fmt.Sprint(salvageWindow)
-	first := `SELECT ` + selected + ` FROM damaged.` + name + ` ORDER BY ` + keyList + ` LIMIT ` + fmt.Sprint(salvageWindow)
 	insertColumns := strings.Join(columns, ",")
 	values := strings.TrimSuffix(strings.Repeat("?,", len(columns)), ",")
-	if !keyed {
+	if table.keys == nil {
 		insertColumns, values = "rowid,"+insertColumns, "?,"+values
 	}
-	// A copied row replaces the fresh baseline's seeded one (settings
-	// singletons keep the owner's values). A row the schema itself refuses (a
-	// CHECK, or NOT NULL) is left out and reported.
-	insert := `INSERT OR REPLACE INTO main.` + name + `(` + insertColumns + `) VALUES(` + values + `)`
+	name := quoteIdentifier(table.name)
+	return &tableCopy{
+		db: db, keyed: table.keys != nil, keys: len(keys), width: len(keys) + len(columns),
+		from:  `SELECT ` + keyList + `,` + strings.Join(columns, ",") + ` FROM damaged.` + name,
+		order: keyList, key: key, slots: slots,
+		// A copied row replaces the fresh baseline's seeded one (settings
+		// singletons keep the owner's values). A row the schema itself
+		// refuses (a CHECK, or NOT NULL) is left out and reported.
+		insert: `INSERT OR REPLACE INTO main.` + name + `(` + insertColumns + `) VALUES(` + values + `)`,
+	}
+}
 
-	var last []any
-	whole := true
+// run copies rows strictly between lower and upper (either may be nil), in
+// ascending or descending key order, until the range ends or a single row
+// cannot be read. It returns the last key copied (lower when none was) and
+// whether it stopped at damage.
+func (c *tableCopy) run(ctx context.Context, upper, lower []any, descending bool) ([]any, bool, error) {
 	window := salvageWindow
-	faults, skip, steady := 0, int64(0), 0
+	at := lower
+	if descending {
+		at = upper
+	}
 	for {
-		query := read
-		args := last
-		if last == nil {
-			query, args = first, nil
+		query, args := c.from, []any{}
+		var where []string
+		bound := func(op string, key []any) {
+			if key != nil {
+				where = append(where, c.key+op+c.slots)
+				args = append(args, key...)
+			}
 		}
-		if window != salvageWindow {
-			query = strings.Replace(query, " LIMIT "+fmt.Sprint(salvageWindow), " LIMIT 1", 1)
+		if descending {
+			bound("<", at)
+			bound(">", lower)
+		} else {
+			bound(">", at)
+			bound("<", upper)
 		}
-		rows, err := readWindow(ctx, db, query, args, len(keys)+len(table.columns))
+		if len(where) > 0 {
+			query += ` WHERE ` + strings.Join(where, " AND ")
+		}
+		direction := ""
+		if descending {
+			direction = " DESC"
+		}
+		query += ` ORDER BY ` + strings.ReplaceAll(c.order, ",", direction+",") + direction + ` LIMIT ` + fmt.Sprint(window)
+		rows, err := readWindow(ctx, c.db, query, args, c.width)
 		if err != nil {
 			if ctx.Err() != nil {
-				return false, ctx.Err()
+				return at, false, ctx.Err()
 			}
-			whole = false
-			if keyed {
-				return false, nil
-			}
-			// Narrow to single rows to keep everything before the damage,
-			// then step past it, doubling the step until a row reads again.
-			if window != 1 {
+			if window > 1 {
 				window = 1
 				continue
 			}
-			if faults++; faults > salvageTableFaults {
-				return false, nil
-			}
-			skip = max(1, skip*2)
-			from := int64(0)
-			if last != nil {
-				from, _ = last[0].(int64)
-			}
-			last = []any{from + skip}
-			continue
+			return at, true, nil
 		}
 		if len(rows) == 0 {
-			return whole, nil
+			return at, false, nil
 		}
-		if window == 1 {
-			faults, skip = 0, 0
-			if steady++; steady >= salvageWindow {
-				window, steady = salvageWindow, 0
+		if err = c.write(ctx, rows); err != nil {
+			return at, false, err
+		}
+		at = rows[len(rows)-1][:c.keys]
+	}
+}
+
+func (c *tableCopy) write(ctx context.Context, rows [][]any) error {
+	return c.db.WithTx(ctx, func(tx *sql.Tx) error {
+		statement, err := tx.PrepareContext(ctx, c.insert)
+		if err != nil {
+			return err
+		}
+		defer statement.Close()
+		for _, row := range rows {
+			args := row
+			if c.keyed {
+				args = row[c.keys:]
 			}
-		}
-		err = db.WithTx(ctx, func(tx *sql.Tx) error {
-			statement, err := tx.PrepareContext(ctx, insert)
-			if err != nil {
+			if _, err = statement.ExecContext(ctx, args...); err != nil && !constraintFailure(err) {
 				return err
 			}
-			defer statement.Close()
-			for _, row := range rows {
-				args := row[len(keys):]
-				if !keyed {
-					args = row
-				}
-				if _, err = statement.ExecContext(ctx, args...); err != nil {
-					if !constraintFailure(err) {
-						return err
-					}
-					whole = false
-				}
-			}
-			return nil
-		})
-		if err != nil {
-			return false, err
 		}
-		last = rows[len(rows)-1][:len(keys)]
+		return nil
+	})
+}
+
+// probe finds a readable row past damage after rowid from, looking 1, 2, 4,
+// … rowids ahead; the backward read that follows recovers what it jumped.
+func (c *tableCopy) probe(ctx context.Context, from int64) (int64, bool) {
+	for skip, tries := int64(1), 0; tries < salvageTableFaults && skip > 0; skip, tries = skip*2, tries+1 {
+		rows, err := readWindow(ctx, c.db, c.from+` WHERE rowid>=? ORDER BY rowid LIMIT 1`, []any{from + skip}, c.width)
+		if err == nil {
+			if len(rows) == 0 {
+				return 0, false
+			}
+			next, _ := rows[0][0].(int64)
+			return next, true
+		}
+		if ctx.Err() != nil {
+			return 0, false
+		}
 	}
+	return 0, false
 }
 
 func readWindow(ctx context.Context, db *dbwork.Candidate, query string, after []any, width int) ([][]any, error) {
@@ -372,10 +459,14 @@ func readWindow(ctx context.Context, db *dbwork.Candidate, query string, after [
 }
 
 // removeLostReferences deletes rows whose foreign keys name a row that was
-// lost, repeating while a deletion leaves others pointing at nothing.
+// lost, repeating while a deletion leaves others pointing at nothing, until
+// foreign_key_check is empty. Every pass removes at least one row, so it ends.
 func removeLostReferences(ctx context.Context, db *dbwork.Candidate) (int64, error) {
 	var removed int64
-	for pass := 0; pass < salvageOrphanPasses; pass++ {
+	for {
+		if err := ctx.Err(); err != nil {
+			return removed, err
+		}
 		rows, err := db.QueryContext(ctx, `SELECT DISTINCT "table",fkid FROM pragma_foreign_key_check`)
 		if err != nil {
 			return removed, err
@@ -399,6 +490,7 @@ func removeLostReferences(ctx context.Context, db *dbwork.Candidate) (int64, err
 		if len(found) == 0 {
 			return removed, nil
 		}
+		pass := int64(0)
 		for _, v := range found {
 			statement, err := orphanDelete(ctx, db, v.table, v.fk)
 			if err != nil {
@@ -409,10 +501,15 @@ func removeLostReferences(ctx context.Context, db *dbwork.Candidate) (int64, err
 				return removed, err
 			}
 			n, _ := result.RowsAffected()
-			removed += n
+			pass += n
 		}
+		if pass == 0 {
+			// Violations that deleting orphans cannot clear: never publish
+			// a database whose references dangle.
+			return removed, ErrCandidateIntegrity
+		}
+		removed += pass
 	}
-	return removed, nil
 }
 
 // orphanDelete builds the statement deleting table's rows whose foreign key

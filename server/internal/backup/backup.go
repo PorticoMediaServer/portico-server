@@ -287,6 +287,13 @@ type Service struct {
 	// wait and then supersede in order instead of deleting each other's copy.
 	stageMu sync.Mutex
 
+	// copyMu runs one backup at a time, whichever entry point starts it;
+	// epoch names this service's artwork holds (holds.go).
+	copyMu sync.Mutex
+	epoch  string
+	// limits gives each kind's copy limits; tests shorten them.
+	limits func(Kind) copyLimits
+
 	mu         sync.Mutex
 	jobs       map[string]*Job
 	operations map[string]string
@@ -304,6 +311,8 @@ func New(state string, db *sql.DB, serverID, serverVersion string, schemaVersion
 		serverVersion: serverVersion,
 		schemaVersion: schemaVersion,
 		now:           time.Now,
+		epoch:         newToken(),
+		limits:        copyLimitsFor,
 		jobs:          map[string]*Job{},
 		operations:    map[string]string{},
 	}
@@ -498,6 +507,8 @@ func (s *Service) createBackup(ctx context.Context, job *Job, kind Kind) (string
 	if s.db == nil || s.state == "" {
 		return "", ErrInvalid
 	}
+	s.copyMu.Lock()
+	defer s.copyMu.Unlock()
 	if err := ctx.Err(); err != nil {
 		return "", err
 	}
@@ -596,11 +607,12 @@ func (s *Service) createBackup(ctx context.Context, job *Job, kind Kind) (string
 	}
 	// No collector may delete a file this backup's database names until the
 	// backup is published or abandoned (holds.go).
-	if err = s.holdBlobs(ctx, id, filepath.Base(partial)); err != nil {
+	limits := s.limits(kind)
+	if err = s.holdBlobs(ctx, limits, id, filepath.Base(partial)); err != nil {
 		return "", err
 	}
 	defer s.releaseHold(id)
-	if err = copyDatabase(ctx, s.db, filepath.Join(partial, DatabaseName), report, copyLimitsFor(kind)); err != nil {
+	if err = copyDatabase(ctx, s.db, filepath.Join(partial, DatabaseName), report, limits); err != nil {
 		_ = os.RemoveAll(partial)
 		return "", err
 	}
@@ -609,7 +621,7 @@ func (s *Service) createBackup(ctx context.Context, job *Job, kind Kind) (string
 		_ = os.RemoveAll(partial)
 		return "", err
 	}
-	if err = s.advanceHold(ctx, id, "files"); err != nil {
+	if err = s.advanceHold(ctx, limits, id, "files"); err != nil {
 		_ = os.RemoveAll(partial)
 		return "", err
 	}
@@ -645,7 +657,7 @@ func (s *Service) createBackup(ctx context.Context, job *Job, kind Kind) (string
 		_ = os.RemoveAll(partial)
 		return "", err
 	}
-	if err = s.advanceHold(ctx, id, "publishing"); err != nil {
+	if err = s.advanceHold(ctx, limits, id, "publishing"); err != nil {
 		_ = os.RemoveAll(partial)
 		return "", err
 	}

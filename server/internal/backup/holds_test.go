@@ -11,7 +11,9 @@ import (
 	"image/png"
 	"os"
 	"path/filepath"
+	"sync"
 	"testing"
+	"time"
 
 	"portico.local/server/internal/catalogtest"
 	"portico.local/server/internal/dbwork"
@@ -60,21 +62,21 @@ func TestBackupHoldsArtworkUntilItEnds(t *testing.T) {
 // A hold left by an earlier process is that process's interrupted backup:
 // start-up removes it. This process's own hold is never touched.
 func TestStartupReleasesOnlyAnInterruptedHold(t *testing.T) {
-	_, _, db := testService(t)
+	s, _, db := testService(t)
 	ctx := context.Background()
 	if _, err := db.Exec(`INSERT INTO backup_blob_holds(singleton,backup_id,process_epoch,scratch_token,created_ms,state) VALUES(1,'old','earlier-process','scratch',0,'files')`); err != nil {
 		t.Fatal(err)
 	}
-	if err := ReleaseInterruptedHold(ctx, db); err != nil {
+	if err := s.ReleaseInterruptedHold(ctx); err != nil {
 		t.Fatal(err)
 	}
 	if n, _ := holdRows(t, db); n != 0 {
 		t.Fatal("an interrupted backup's hold survived start-up")
 	}
-	if _, err := db.Exec(`INSERT INTO backup_blob_holds(singleton,backup_id,process_epoch,scratch_token,created_ms,state) VALUES(1,'mine',?,'scratch',0,'copying')`, processEpoch); err != nil {
+	if _, err := db.Exec(`INSERT INTO backup_blob_holds(singleton,backup_id,process_epoch,scratch_token,created_ms,state) VALUES(1,'mine',?,'scratch',0,'copying')`, s.epoch); err != nil {
 		t.Fatal(err)
 	}
-	if err := ReleaseInterruptedHold(ctx, db); err != nil {
+	if err := s.ReleaseInterruptedHold(ctx); err != nil {
 		t.Fatal(err)
 	}
 	if n, _ := holdRows(t, db); n != 1 {
@@ -174,4 +176,102 @@ func TestRestoreOfAFileLessArtworkSource(t *testing.T) {
 		t.Fatalf("owner upload after restore: %v", err)
 	}
 	file.Close()
+}
+
+// A hold whose release failed (same service, stale) never blocks the next
+// backup: one backup runs at a time, so the next one replaces it.
+func TestAStaleHoldDoesNotBlockTheNextBackup(t *testing.T) {
+	s, _, db := testService(t)
+	if _, err := db.Exec(`INSERT INTO backup_blob_holds(singleton,backup_id,process_epoch,scratch_token,created_ms,state) VALUES(1,'earlier','` + s.epoch + `','scratch',0,'files')`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.Create(context.Background(), KindManual); err != nil {
+		t.Fatalf("a stale hold blocked the next backup: %v", err)
+	}
+	if n, _ := holdRows(t, db); n != 0 {
+		t.Fatal("the backup left a hold")
+	}
+}
+
+// A scheduled backup takes even its hold as a maintenance ticket within its
+// no-progress budget: under constant user writes it gives up with
+// ErrBackupPressure before copying, instead of waiting without end.
+func TestScheduledBackupGivesUpOnItsHoldUnderConstantWrites(t *testing.T) {
+	s, _, db := testService(t)
+	s.limits = func(kind Kind) copyLimits {
+		limits := copyLimitsFor(kind)
+		limits.noProgress = 300 * time.Millisecond
+		return limits
+	}
+	if _, err := db.Exec(`CREATE TABLE churn(body BLOB)`); err != nil {
+		t.Fatal(err)
+	}
+	ctx, stop := context.WithCancel(context.Background())
+	var wg sync.WaitGroup
+	for i := 0; i < 4; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for ctx.Err() == nil {
+				_ = dbwork.WithWriteTx(ctx, db, dbwork.ClassInteractive, func(tx *sql.Tx) error {
+					_, err := tx.ExecContext(ctx, `INSERT INTO churn VALUES(randomblob(64))`)
+					time.Sleep(2 * time.Millisecond)
+					return err
+				})
+			}
+		}()
+	}
+	time.Sleep(20 * time.Millisecond)
+	_, err := s.Create(context.Background(), KindScheduled)
+	stop()
+	wg.Wait()
+	if !errors.Is(err, ErrBackupPressure) {
+		t.Fatalf("scheduled backup under constant writes: %v", err)
+	}
+	if list, _ := s.List(); len(list) != 0 {
+		t.Fatal("a failed backup was listed")
+	}
+}
+
+// An artwork file the collector moved aside a moment before the backup's hold
+// is still carried: the moved-aside file holds the same bytes.
+func TestBackupCarriesOwnerArtworkACollectorMovedAside(t *testing.T) {
+	s, _, state := policyFixture(t)
+	ctx := context.Background()
+	c := catalogtest.New(t, s.db)
+	item := c.Movie(c.Library("films", "Films", "movie", "/fixture"), "/fixture/movie.mkv", "Fixture", 2020)
+	artwork := filepath.Join(state, "Metadata", "artwork")
+	m := metadata.New(s.db, "")
+	if err := m.SetArtworkDirectory(artwork); err != nil {
+		t.Fatal(err)
+	}
+	target := metadata.RepairTarget{Kind: "item", ID: item.Public}
+	auth := func(*sql.Tx) error { return nil }
+	before, err := m.RepairState(ctx, target, auth)
+	if err != nil {
+		t.Fatal(err)
+	}
+	picture := image.NewRGBA(image.Rect(0, 0, 24, 36))
+	var encoded bytes.Buffer
+	if err = png.Encode(&encoded, picture); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = m.UploadArtwork(ctx, target, "poster", "", before.Revision, encoded.Bytes(), metadata.MBActor{Authority: "local", AccountID: "owner", ProfileID: "profile"}, auth); err != nil {
+		t.Fatal(err)
+	}
+	var blob string
+	if err = s.db.QueryRow(`SELECT s.small_blob FROM artwork_uploads u JOIN artwork_sources s ON s.digest=u.digest`).Scan(&blob); err != nil {
+		t.Fatal(err)
+	}
+	// Between the database copy and the file copy, the file is in transit.
+	s.SetCopyScrubber(func(context.Context, *dbwork.Candidate) error {
+		return os.Rename(filepath.Join(artwork, blob+".img"), filepath.Join(artwork, blob+".img.tomb-test"))
+	})
+	id, err := s.Create(ctx, KindManual)
+	if err != nil {
+		t.Fatalf("a moved-aside owner file failed the backup: %v", err)
+	}
+	if got := fileHashOrEmpty(t, filepath.Join(state, BackupsDir, id, "Metadata", "artwork", blob+".img")); got != blob {
+		t.Fatal("the moved-aside owner file was not carried")
+	}
 }

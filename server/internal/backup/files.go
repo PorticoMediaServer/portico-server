@@ -6,6 +6,7 @@ import (
 	"database/sql"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"io"
 	"io/fs"
 	"net/url"
@@ -83,8 +84,14 @@ func copyStateFilesForBackup(ctx context.Context, state, partial string, include
 			if entry.IsDir() {
 				return os.MkdirAll(filepath.Join(partial, filepath.FromSlash(name)), 0700)
 			}
+			if rebuildable(name) && strings.Contains(name, artworkTombMarker) {
+				return nil // a collector's file in transit, carried by its own name if needed
+			}
 			info, err := entry.Info()
 			if err != nil {
+				if rebuildable(name) && errors.Is(err, fs.ErrNotExist) {
+					return nil // collected while the walk ran; it can be fetched again
+				}
 				return err
 			}
 			if !info.Mode().IsRegular() {
@@ -92,6 +99,9 @@ func copyStateFilesForBackup(ctx context.Context, state, partial string, include
 			}
 			fileEntry, err := copyOneFileContext(ctx, path, filepath.Join(partial, filepath.FromSlash(name)), name, nil)
 			if err != nil {
+				if rebuildable(name) && errors.Is(err, fs.ErrNotExist) {
+					return nil
+				}
 				return err
 			}
 			entries = append(entries, fileEntry)
@@ -101,13 +111,18 @@ func copyStateFilesForBackup(ctx context.Context, state, partial string, include
 			return nil, err
 		}
 	}
-	if !includeArtwork {
-		owner, err := copyOwnerArtwork(ctx, state, partial)
-		if err != nil {
-			return nil, err
-		}
-		entries = append(entries, owner...)
+	// The owner's artwork is always carried, and checked against its digest,
+	// even when the whole folder was walked: the walk skips a file a
+	// collector had moved aside, and owner artwork must not be lost that way.
+	copied := make(map[string]bool, len(entries))
+	for _, entry := range entries {
+		copied[entry.Name] = true
 	}
+	owner, err := copyOwnerArtwork(ctx, state, partial, copied)
+	if err != nil {
+		return nil, err
+	}
+	entries = append(entries, owner...)
 	sort.Slice(entries, func(i, j int) bool { return entries[i].Name < entries[j].Name })
 	return entries, nil
 }
@@ -432,7 +447,7 @@ func hashFile(ctx context.Context, folder, name string) (FileEntry, error) {
 
 // Owner references come from the exact finalized SQLite snapshot, including undo
 // history. Remote images are excluded unless explicitly selected/edited by an owner.
-func copyOwnerArtwork(ctx context.Context, state, partial string) ([]FileEntry, error) {
+func copyOwnerArtwork(ctx context.Context, state, partial string, copied map[string]bool) ([]FileEntry, error) {
 	u := url.URL{Scheme: "file", Path: filepath.Join(partial, DatabaseName), RawQuery: "mode=ro"}
 	db, e := sql.Open("sqlite", u.String())
 	if e != nil {
@@ -455,7 +470,10 @@ func copyOwnerArtwork(ctx context.Context, state, partial string) ([]FileEntry, 
 			return nil, ErrIntegrity
 		}
 		name := "Metadata/artwork/" + digest + ".img"
-		entry, e := copyOneFileContext(ctx, filepath.Join(state, filepath.FromSlash(name)), filepath.Join(partial, filepath.FromSlash(name)), name, nil)
+		if copied[name] {
+			continue
+		}
+		entry, e := copyArtworkBlob(ctx, state, partial, name)
 		if e != nil {
 			return nil, e
 		}
@@ -465,6 +483,45 @@ func copyOwnerArtwork(ctx context.Context, state, partial string) ([]FileEntry, 
 		entries = append(entries, entry)
 	}
 	return entries, rows.Err()
+}
+
+// artworkTombMarker is the artwork collector's name for a file it has moved
+// aside while it checks whether the file is still named
+// (metadata/artwork_lifecycle.go): <digest>.img.tomb-<token>.
+const artworkTombMarker = ".img.tomb-"
+
+// copyArtworkBlob copies one artwork file. A collector that marked the file
+// before this backup's hold may have moved it aside for a moment; it puts it
+// back when it finds the file named, but the backup does not wait for that:
+// the moved-aside file has the same bytes (the name is their digest, and the
+// caller checks it).
+func copyArtworkBlob(ctx context.Context, state, partial, name string) (FileEntry, error) {
+	source := filepath.Join(state, filepath.FromSlash(name))
+	entry, err := copyOneFileContext(ctx, source, filepath.Join(partial, filepath.FromSlash(name)), name, nil)
+	if err == nil || !errors.Is(err, fs.ErrNotExist) {
+		return entry, err
+	}
+	tombs, globErr := filepath.Glob(source + strings.TrimPrefix(artworkTombMarker, ".img") + "*")
+	if globErr != nil {
+		return entry, err
+	}
+	for _, tomb := range tombs {
+		if moved, e := copyOneFileContext(ctx, tomb, filepath.Join(partial, filepath.FromSlash(name)), name, nil); e == nil {
+			return moved, nil
+		}
+	}
+	return entry, err
+}
+
+// rebuildable is a file under a folder of downloaded metadata, which can be
+// fetched again.
+func rebuildable(name string) bool {
+	for _, dir := range []string{"Metadata/artwork/", "Metadata/people/", "Metadata/guide-images/", "Metadata/analysis-artifacts/"} {
+		if strings.HasPrefix(name, dir) {
+			return true
+		}
+	}
+	return false
 }
 
 // Keys/config must remain stable across the online database snapshot. Their

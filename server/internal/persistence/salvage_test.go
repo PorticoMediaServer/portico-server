@@ -195,33 +195,91 @@ func indexOn(t *testing.T, path, table string) string {
 	return name
 }
 
-// A table page that cannot be read at all: restore salvages every other row
-// into a fresh database, says which table lost rows, and the result passes a
-// full integrity check and opens as this baseline.
-func TestRestoreSalvagesADamagedTable(t *testing.T) {
-	db, path := liveLibraries(t, 600)
-	// A setting the owner changed from its seeded default.
-	if _, err := dbwork.ExecWrite(context.Background(), db, dbwork.ClassInteractive, `UPDATE maintenance_policy SET background_priority='normal',revision=2`); err != nil {
+// cellsOn is how many rows a b-tree page holds, from dbstat.
+func cellsOn(t *testing.T, path string, page int64) int {
+	t.Helper()
+	db, err := sql.Open("sqlite", path)
+	if err != nil {
 		t.Fatal(err)
 	}
-	folded(t, db, path)
-	page := pageOf(t, path, "libraries", "leaf", 3)
+	defer db.Close()
+	var n int
+	if err = db.QueryRow(`SELECT ncell FROM dbstat WHERE pageno=?`, page).Scan(&n); err != nil {
+		t.Fatal(err)
+	}
+	return n
+}
+
+func spoil(t *testing.T, path string, page int64) {
+	t.Helper()
 	garbage := make([]byte, 4096)
 	for i := range garbage {
 		garbage[i] = 0xA5
 	}
 	overwritePage(t, path, page, garbage)
-	report, err := InspectCandidate(context.Background(), filepath.Dir(path), filepath.Base(path))
+}
+
+// A table page that cannot be read at all: restore salvages every other row
+// into a fresh database (exactly the rows on that page are lost, in a rowid
+// table and in a table keyed otherwise), removes rows left pointing at what
+// was lost, rebuilds full-text search from what it kept, says which tables
+// lost rows, and the result passes a full integrity check and opens as this
+// baseline.
+func TestRestoreSalvagesADamagedTable(t *testing.T) {
+	db, path := liveLibraries(t, 600)
+	ctx := context.Background()
+	exec := func(query string, args ...any) {
+		t.Helper()
+		if _, err := dbwork.ExecWrite(ctx, db, dbwork.ClassInteractive, query, args...); err != nil {
+			t.Fatal(err)
+		}
+	}
+	// A setting the owner changed from its seeded default.
+	exec(`UPDATE maintenance_policy SET background_priority='normal',revision=2`)
+	// Every library has a source, which names it.
+	exec(`INSERT INTO library_sources(id,library_id,configured_root,root) SELECT 'source-'||id,id,root||'/extra',root||'/extra' FROM libraries`)
+	// A table keyed by name, not rowid.
+	exec(`INSERT INTO catalog_credit_names(name,credits) WITH RECURSIVE n(value) AS (SELECT 1 UNION ALL SELECT value+1 FROM n WHERE value<600) SELECT printf('person %05d %s',value,'` + longName + `'),value FROM n`)
+	exec(`INSERT INTO catalog_people_names(name) VALUES('Ada Lovelace'),('Grace Hopper')`)
+	folded(t, db, path)
+	var libraries, sources int
+	probe, err := sql.Open("sqlite", path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = probe.QueryRow(`SELECT (SELECT count(*) FROM libraries),(SELECT count(*) FROM library_sources)`).Scan(&libraries, &sources); err != nil {
+		t.Fatal(err)
+	}
+	probe.Close()
+	libraryPage := pageOf(t, path, "libraries", "leaf", 3)
+	creditPage := pageOf(t, path, "catalog_credit_names", "leaf", 3)
+	lostLibraries, lostCredits := cellsOn(t, path, libraryPage), cellsOn(t, path, creditPage)
+	spoil(t, path, libraryPage)
+	spoil(t, path, creditPage)
+
+	report, err := InspectCandidate(ctx, filepath.Dir(path), filepath.Base(path))
 	if err != nil || report.Integrity != "recovered" || report.Recovery == nil || !report.Recovery.Salvaged {
 		t.Fatalf("table damage: %+v %v", report, err)
 	}
-	damaged := fmt.Sprint(report.Recovery.DamagedTables)
-	if damaged != "[libraries]" {
+	if damaged := fmt.Sprint(report.Recovery.DamagedTables); damaged != "[catalog_credit_names libraries]" {
 		t.Fatalf("damaged tables %s", damaged)
 	}
-	n := countIn(t, path, `SELECT count(*) FROM libraries`)
-	if n >= 600 || n < 500 {
-		t.Fatalf("salvage kept %d of 600 libraries", n)
+	if n := countIn(t, path, `SELECT count(*) FROM libraries`); n != libraries-lostLibraries {
+		t.Fatalf("salvage kept %d libraries; %d were readable", n, libraries-lostLibraries)
+	}
+	if n := countIn(t, path, `SELECT count(*) FROM catalog_credit_names`); n != 600-lostCredits {
+		t.Fatalf("salvage kept %d credit names; %d were readable", n, 600-lostCredits)
+	}
+	// The sources of lost libraries are gone, and nothing else.
+	// Each library has two sources (its own and the fixture's).
+	if n := countIn(t, path, `SELECT count(*) FROM library_sources`); n != sources-2*lostLibraries || report.Recovery.RemovedRows < int64(2*lostLibraries) {
+		t.Fatalf("sources %d of %d, %d libraries lost, %d rows removed", n, sources, lostLibraries, report.Recovery.RemovedRows)
+	}
+	if n := countIn(t, path, `SELECT count(*) FROM pragma_foreign_key_check`); n != 0 {
+		t.Fatalf("salvage left %d dangling references", n)
+	}
+	if n := countIn(t, path, `SELECT count(*) FROM catalog_people_names WHERE catalog_people_names MATCH 'Lovelace'`); n != 1 {
+		t.Fatalf("full-text search after salvage: %d", n)
 	}
 	if n := countIn(t, path, `SELECT count(*) FROM configuration`); n == 0 {
 		t.Fatal("salvage lost the configuration")

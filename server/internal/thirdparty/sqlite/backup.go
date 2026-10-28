@@ -116,13 +116,17 @@ func (b *Backup) Commit() (driver.Conn, error) {
 	}
 }
 
-// finishAttached ends every backup still reading from c, before c closes. It
-// runs under c's lock, from Close; database/sql never closes a connection a
-// caller is using, so no Step runs concurrently.
+// finishAttached ends every backup still reading from c, before c closes, and
+// closes each one's other connection (conn.Close is idempotent, so a later
+// Finish closing it again is harmless). It runs under c's lock, from Close;
+// database/sql never closes a connection a caller is using, so no Step runs
+// concurrently.
 func (c *conn) finishAttached() {
 	for b := range c.backups {
 		b.done = true
 		sqlite3.Xsqlite3_backup_finish(c.tls, b.pBackup)
+		// The other end belongs to the backup; nobody else can close it.
+		b.dstConn.Close()
 	}
 	c.backups = nil
 }

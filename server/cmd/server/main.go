@@ -1209,7 +1209,7 @@ func run() (runErr error) {
 	}
 	// A backup interrupted by the last stop left its artwork hold; its
 	// scratch is gone now, so artwork clean-up may resume.
-	if e = backup.ReleaseInterruptedHold(ctx, db); e != nil {
+	if e = backupService.ReleaseInterruptedHold(ctx); e != nil {
 		return e
 	}
 	backupPolicy.ConfigurationCommitted = configurationStore.FlushConfiguration

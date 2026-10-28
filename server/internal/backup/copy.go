@@ -8,6 +8,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"sync"
 	"time"
 
 	"portico.local/server/internal/dbwork"
@@ -130,6 +131,9 @@ func copyDatabaseGuarded(ctx context.Context, source *sql.DB, dest string, progr
 	}
 	defer file.Close()
 
+	if err = settleStranded(ctx, source); err != nil {
+		return err
+	}
 	run := &copyRun{source: source, dest: dest, limits: limits}
 	defer run.abandon()
 	if err = run.copy(ctx, sourcePath, progress, guard); err != nil {
@@ -317,17 +321,41 @@ func (r *copyRun) step(ctx context.Context, stepBytes int64) (out stepResult, er
 }
 
 // abandon finishes a backup an attempt left running, on its own connection
-// and under a ticket. A cancelled attempt still needs this, so it uses its own
-// short budget; if even that fails the backup stays attached to the writer
-// connection, which finishes it whenever it closes.
+// and under a ticket. Until it is finished, SQLite keeps it attached to the
+// writer connection and every user write also updates the abandoned copy, so
+// this must not quietly give up: it takes interactive tickets (a finish is a
+// tiny hold, and must not starve behind users like a maintenance step), and
+// what it still cannot finish is kept in stranded for the next attempt, which
+// finishes it before copying anything.
 func (r *copyRun) abandon() {
 	if r.backup == nil {
 		return
 	}
-	ctx, cancel := context.WithTimeout(dbwork.WithClass(context.Background(), r.limits.class), 30*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
 	defer cancel()
-	_, conn, release, err := dbwork.ReserveWriterConn(ctx, r.source, r.limits.class)
-	if err == nil {
+	if err := r.finish(ctx); err != nil {
+		log.Printf("warn: Backup could not release its unfinished copy yet; the next backup will: %v", err)
+		strandedMu.Lock()
+		stranded = append(stranded, r)
+		strandedMu.Unlock()
+	}
+}
+
+// finish ends r's backup on its own connection. A writer connection the pool
+// has replaced already finished it as it closed.
+func (r *copyRun) finish(ctx context.Context) error {
+	ctx = dbwork.WithClass(ctx, dbwork.ClassInteractive)
+	for {
+		_, conn, release, err := dbwork.ReserveWriterConn(ctx, r.source, dbwork.ClassInteractive)
+		if errors.Is(err, dbwork.ErrWriterCapacity) {
+			if err = sleepContext(ctx, backupBusyBackoff); err != nil {
+				return err
+			}
+			continue
+		}
+		if err != nil {
+			return err
+		}
 		err = conn.Raw(func(raw any) error {
 			if dbwork.RawConn(raw) != r.owner {
 				return errWriterReplaced
@@ -335,11 +363,45 @@ func (r *copyRun) abandon() {
 			return r.backup.Finish()
 		})
 		release()
+		if err == nil || errors.Is(err, errWriterReplaced) || errors.Is(err, sqlite.ErrBackupClosed) {
+			r.backup, r.owner = nil, nil
+			return nil
+		}
+		return err
 	}
-	if err != nil && !errors.Is(err, errWriterReplaced) && !errors.Is(err, sqlite.ErrBackupClosed) {
-		log.Printf("warn: Backup could not release its unfinished copy: %v", err)
+}
+
+// stranded are backups an earlier attempt could not finish (abandon).
+var (
+	strandedMu sync.Mutex
+	stranded   []*copyRun
+)
+
+// settleStranded finishes every stranded backup on source. A new copy never
+// starts while one is still attached.
+func settleStranded(ctx context.Context, source *sql.DB) error {
+	strandedMu.Lock()
+	defer strandedMu.Unlock()
+	kept := stranded[:0]
+	var failed error
+	for _, r := range stranded {
+		if r.source != source {
+			kept = append(kept, r)
+			continue
+		}
+		if err := r.finish(ctx); err != nil {
+			kept = append(kept, r)
+			failed = err
+		}
 	}
-	r.backup, r.owner = nil, nil
+	stranded = kept
+	if failed != nil {
+		if ctx.Err() == nil {
+			return ErrBackupPressure
+		}
+		return failed
+	}
+	return nil
 }
 
 func (r *copyRun) checkDisk(sourcePath string) error {

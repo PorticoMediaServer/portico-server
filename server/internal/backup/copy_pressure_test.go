@@ -234,3 +234,31 @@ func TestCopyAllowance(t *testing.T) {
 		t.Fatalf("large database allowance %d", got)
 	}
 }
+
+// A copy an earlier attempt could not finish stays attached to the writer
+// (every write would keep updating it); the next attempt finishes it before
+// copying anything.
+func TestNextCopyFinishesAStrandedOne(t *testing.T) {
+	db, dir := copyFixture(t)
+	ctx := context.Background()
+	limits := testCopyLimits(dbwork.ClassMaintenance)
+	if err := os.WriteFile(filepath.Join(dir, "stranded.sqlite"), nil, 0600); err != nil {
+		t.Fatal(err)
+	}
+	r := &copyRun{source: db, dest: filepath.Join(dir, "stranded.sqlite"), limits: limits}
+	if _, err := r.step(ctx, backupStepBytes); err != nil || r.backup == nil {
+		t.Fatalf("first step: %v", err)
+	}
+	strandedMu.Lock()
+	stranded = append(stranded, r)
+	strandedMu.Unlock()
+	if err := copyDatabase(ctx, db, filepath.Join(dir, "next.sqlite"), nil, limits); err != nil {
+		t.Fatal(err)
+	}
+	strandedMu.Lock()
+	left := len(stranded)
+	strandedMu.Unlock()
+	if left != 0 || r.backup != nil {
+		t.Fatalf("%d stranded copies left", left)
+	}
+}
