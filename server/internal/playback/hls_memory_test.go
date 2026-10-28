@@ -57,10 +57,11 @@ func TestMemoryPlacementBounds(t *testing.T) {
 		memory  bool
 	}{
 		{"under cap", memoryFacts{8 << 30, 16 << 30, 512 << 20, 512 << 20}, false, true},
-		{"over cap", memoryFacts{2 << 30, 16 << 30, 1 << 30, 1 << 30}, false, false},
+		{"bounded volume above allowance", memoryFacts{2 << 30, 16 << 30, 1 << 30, 1 << 30}, false, true},
 		{"floor", memoryFacts{(1 << 30) + (128 << 20), 4 << 30, 512 << 20, 512 << 20}, false, false},
 		{"filesystem free", memoryFacts{8 << 30, 16 << 30, 128 << 20, 512 << 20}, false, false},
-		{"unbounded filesystem", memoryFacts{8 << 30, 16 << 30, 8 << 30, 8 << 30}, false, false},
+		{"stock shm above cap", memoryFacts{8 << 30, 16 << 30, 8 << 30, 8 << 30}, false, true},
+		{"unbounded filesystem", memoryFacts{8 << 30, 16 << 30, 8 << 30, 0}, false, false},
 		{"unreadable", memoryFacts{}, true, false},
 	} {
 		t.Run(test.name, func(t *testing.T) {
@@ -322,11 +323,16 @@ func TestMemorySweepMeasurementPressureAndOneSpill(t *testing.T) {
 	h.sweepMemory(context.Background())
 	h.sweepMemory(context.Background())
 	if counter.count(filepath.Join(h.memoryRoot, "oldest")) != 1 {
-		t.Fatal("memory measured more often than 5s")
+		t.Fatal("memory measured more often than 1s")
 	}
 	h.mu.Lock()
 	h.usage["newer"].served = time.Now()
+	h.usage["oldest"].measured = time.Now().Add(-time.Second)
 	h.mu.Unlock()
+	h.sweepMemory(context.Background())
+	if counter.count(filepath.Join(h.memoryRoot, "oldest")) != 2 {
+		t.Fatal("memory output was not measured again after one second")
+	}
 	h.memoryFacts = func(string) (memoryFacts, error) {
 		return memoryFacts{available: 1 << 30, total: 16 << 30, free: 512 << 20, filesystemLimit: 512 << 20}, nil
 	}
@@ -491,17 +497,88 @@ func TestMemorySpillTimeoutAndReaderWait(t *testing.T) {
 	}
 }
 
-func TestMemoryAdoptedOutputCannotResumeOnOversizedFilesystem(t *testing.T) {
+func TestMemoryAdoptedOutputCanResumeOnLargerBoundedFilesystem(t *testing.T) {
 	h := memoryFixture(t)
 	writeMemoryOutput(t, h, "adopted")
 	h.memoryFacts = func(string) (memoryFacts, error) { return memoryFacts{8 << 30, 16 << 30, 8 << 30, 8 << 30}, nil }
-	if _, err := h.createOutput("adopted", true); !errors.Is(err, ErrSegmentPreparing) {
-		t.Fatal("oversized filesystem resumed conversion", err)
+	if _, err := h.createOutput("adopted", true); err != nil {
+		t.Fatal("bounded filesystem above cap refused conversion", err)
 	}
 	h.sweepMemory(context.Background())
-	if h.inMemory["adopted"] {
-		t.Fatal("unsafe adopted placement was not moved to disk")
+	if !h.inMemory["adopted"] {
+		t.Fatal("bounded filesystem above cap spilled without pressure")
 	}
+}
+
+func TestMemoryRefusedRestartAlwaysSpills(t *testing.T) {
+	for _, reason := range []string{"cap", "floor", "free", "unbounded", "unreadable", "unmeasured reservation"} {
+		t.Run(reason, func(t *testing.T) {
+			h := memoryFixture(t)
+			writeMemoryOutput(t, h, "adopted")
+			h.recordUsage("adopted", 1<<30, 2, time.Now())
+			facts := memoryFacts{8 << 30, 16 << 30, 8 << 30, 8 << 30}
+			switch reason {
+			case "cap":
+				h.recordUsage("adopted", 3<<30, 2, time.Now())
+			case "floor":
+				facts.available = 1 << 30
+			case "free":
+				facts.free = memoryHeadroom - 1
+			case "unbounded":
+				facts.filesystemLimit = 0
+			case "unmeasured reservation":
+				delete(h.usage, "adopted")
+				facts = memoryFacts{(1 << 30) + (128 << 20), 4 << 30, 8 << 30, 8 << 30}
+			}
+			h.memoryFacts = func(string) (memoryFacts, error) {
+				if reason == "unreadable" {
+					return memoryFacts{}, errors.New("unknown facts")
+				}
+				return facts, nil
+			}
+			if _, err := h.createOutput("adopted", true); !errors.Is(err, ErrSegmentPreparing) {
+				t.Fatal("unsafe restart admitted", err)
+			}
+			// A later sample can recover or remain unknown. Either way a refused
+			// restart must progress onto disk instead of sticking in preparing.
+			h.memoryFacts = func(string) (memoryFacts, error) { return memoryFacts{}, errors.New("unknown facts") }
+			h.sweepMemory(context.Background())
+			if h.inMemory["adopted"] {
+				t.Fatal("refused restart was not moved to disk")
+			}
+			if dir, err := h.createOutput("adopted", true); err != nil || filepath.Dir(dir) != h.root {
+				t.Fatal("spilled restart did not resume on disk", dir, err)
+			}
+		})
+	}
+}
+
+func TestMemoryMeasuredRestartNeedsNoNewFolderReservation(t *testing.T) {
+	h := memoryFixture(t)
+	writeMemoryOutput(t, h, "measured")
+	h.recordUsage("measured", 128<<20, 2, time.Now())
+	h.memoryFacts = func(string) (memoryFacts, error) {
+		return memoryFacts{(1 << 30) + (128 << 20), 4 << 30, memoryHeadroom, 2 << 30}, nil
+	}
+	if _, err := h.createOutput("measured", true); err != nil {
+		t.Fatal("measured restart was charged new-folder headroom", err)
+	}
+}
+
+func TestMemoryFactsReadOutsideProducerMutex(t *testing.T) {
+	h := memoryFixture(t)
+	h.memoryFacts = func(string) (memoryFacts, error) {
+		if !h.mu.TryLock() {
+			t.Fatal("memory facts read under producer mutex")
+		}
+		h.mu.Unlock()
+		return memoryFacts{8 << 30, 16 << 30, 8 << 30, 8 << 30}, nil
+	}
+	writeMemoryOutput(t, h, "fresh")
+	if _, err := h.createOutput("fresh", true); err != nil {
+		t.Fatal(err)
+	}
+	h.sweepMemory(context.Background())
 }
 
 func TestMemorySpillWaitsForRetentionMutation(t *testing.T) {
@@ -639,5 +716,100 @@ func TestMemorySpillIncompleteOutputRegeneratesFromAbsentDiskFolder(t *testing.T
 		if _, err := os.Stat(dir); !os.IsNotExist(err) {
 			t.Fatal("incomplete folder prevents next-request regeneration", dir, err)
 		}
+	}
+}
+
+func TestMemorySpillCancellationDoesNotFailProducer(t *testing.T) {
+	for _, timeout := range []bool{false, true} {
+		t.Run(map[bool]string{false: "producer exits", true: "producer outlives spill timeout"}[timeout], func(t *testing.T) {
+			db, h, id := conversionOutputFixture(t)
+			h.memoryCheck = func(string) error { return nil }
+			h.memoryFacts = func(string) (memoryFacts, error) {
+				return memoryFacts{8 << 30, 16 << 30, 8 << 30, 8 << 30}, nil
+			}
+			if err := os.RemoveAll(filepath.Join(h.root, id)); err != nil {
+				t.Fatal(err)
+			}
+			if err := h.ConfigureMemory(t.TempDir()); err != nil {
+				t.Fatal(err)
+			}
+			defer h.memoryOutputRoot.Close()
+			writeMemoryOutput(t, h, id)
+			s := New(db)
+			s.ConfigureHLS(h)
+			owner, err := s.RetainPreparation(context.Background(), id, 3)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer owner.Close()
+			producer := withProducerGeneration(owner.Context(), 3)
+			h.mu.Lock()
+			h.installOccurrenceLocked(id, owner.run, owner.cancel)
+			h.mu.Unlock()
+			remove := func() { h.mu.Lock(); h.removeOccurrenceLocked(id, owner.run); h.mu.Unlock() }
+			defer remove()
+			if timeout {
+				ctx, cancel := context.WithTimeout(context.Background(), 10*time.Millisecond)
+				defer cancel()
+				h.spillMemory(ctx, id)
+			} else {
+				failed := make(chan bool, 1)
+				go func() {
+					<-producer.Done()
+					failed <- h.failed(producer, id)
+					remove() // Actual producers remove admission only after failure handling.
+				}()
+				ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+				defer cancel()
+				h.spillMemory(ctx, id)
+				if <-failed {
+					t.Fatal("spill cancelled producer failed session")
+				}
+			}
+			if producer.Err() == nil || h.moving[id] != nil {
+				t.Fatal("test did not finish a cancelled move")
+			}
+			// A failure after finishMove must still recognize the exact cancelled run.
+			if h.failed(producer, id) {
+				t.Fatal("late spill failure failed session")
+			}
+			var state string
+			if err := db.QueryRow(`SELECT state FROM playback_sessions WHERE id=?`, id).Scan(&state); err != nil || state != "playing" {
+				t.Fatal("spill cancelled producer failed session", state, err)
+			}
+			// A different producer's real cancellation must not inherit the marker.
+			ctx, cancel := context.WithCancel(context.Background())
+			cancel()
+			if !h.failed(withProducerGeneration(ctx, 3), id) {
+				t.Fatal("spill marker suppressed a different producer's failure")
+			}
+		})
+	}
+}
+
+func TestMemorySweepSpillsForMeasuredPressure(t *testing.T) {
+	for _, reason := range []string{"within bounds", "cap", "floor", "free", "unbounded"} {
+		t.Run(reason, func(t *testing.T) {
+			h := memoryFixture(t)
+			writeMemoryOutput(t, h, "measured")
+			facts := memoryFacts{8 << 30, 16 << 30, 8 << 30, 8 << 30}
+			bytes := int64(128 << 20)
+			switch reason {
+			case "cap":
+				bytes = 3 << 30
+			case "floor":
+				facts.available = 1 << 30
+			case "free":
+				facts.free = memoryHeadroom - 1
+			case "unbounded":
+				facts.filesystemLimit = 0
+			}
+			h.recordUsage("measured", bytes, 2, time.Now())
+			h.memoryFacts = func(string) (memoryFacts, error) { return facts, nil }
+			h.sweepMemory(context.Background())
+			if h.inMemory["measured"] != (reason == "within bounds") {
+				t.Fatal("wrong placement after pressure sample", reason, h.inMemory)
+			}
+		})
 	}
 }

@@ -16,13 +16,14 @@ import (
 )
 
 const memoryHeadroom int64 = 256 << 20
-const memoryUsageInterval = 5 * time.Second
+const memoryUsageInterval = time.Second
 
 type memoryFacts struct{ available, total, free, filesystemLimit int64 }
 
 // ConfigureMemory is startup-only, before serving or starting maintenance. A
-// tmpfs size limit is an additional admission bound: a periodic userspace sweep
-// alone cannot bound a converter writing directly to the filesystem.
+// bounded tmpfs is required, but its volume limit may exceed our allowance.
+// Admission reserves headroom; the per-second sweep stops and spills producers
+// when measured output or host pressure exceeds the current allowance.
 func (h *HLS) ConfigureMemory(root string) error {
 	if !filepath.IsAbs(root) || root == filepath.VolumeName(root)+string(os.PathSeparator) {
 		return errors.New("invalid memory output directory")
@@ -150,54 +151,101 @@ func (h *HLS) memoryBytesLocked(reserve bool) int64 {
 	return ours
 }
 
+// memoryAdmissionLocked charges unmeasured folders a reservation. Restarting a
+// measured folder needs no new-folder headroom, but still needs tmpfs free space.
+func (h *HLS) memoryAdmissionLocked(id, setting string, facts memoryFacts) bool {
+	ours := h.memoryBytesLocked(true)
+	headroom := memoryHeadroom
+	if h.inMemory[id] {
+		if usage := h.usage[id]; usage != nil && !usage.measured.IsZero() {
+			headroom = 0
+		} else {
+			ours -= memoryHeadroom // This folder already has a reservation.
+		}
+	}
+	cap, floor := memoryBudget(setting, facts, h.memoryBytesLocked(false))
+	return facts.total > 0 && facts.filesystemLimit > 0 && ours+headroom <= cap && facts.available-headroom >= floor && facts.free >= memoryHeadroom
+}
+
 // createOutput decides once, under the same lock as producer/cleanup admission.
+// Facts and filesystem operations run outside h.mu. A creation lease fences
+// cleanup and makes a spill wait until the selected directory is installed.
 // Streaming callers classify disc/finite sources before creating their folder.
 func (h *HLS) createOutput(id string, streaming bool) (string, error) {
 	if !generatedDirectoryID.MatchString(id) {
 		return "", os.ErrInvalid
 	}
+	setting := h.configuration().MemoryCap
+	var facts memoryFacts
+	var factsErr error
+	if streaming && h.memoryRoot != "" {
+		facts, factsErr = h.readMemory()
+	}
 	h.mu.Lock()
-	defer h.mu.Unlock()
+	if h.moving[id] != nil || h.memoryFull[id] || h.cleaning[id] || h.outputBusy[id] > 0 {
+		h.mu.Unlock()
+		return "", ErrSegmentPreparing
+	}
+	if h.outputBusy == nil {
+		h.outputBusy = map[string]int{}
+	}
+	h.outputBusy[id]++
+	h.mu.Unlock()
+	defer func() {
+		h.mu.Lock()
+		h.outputBusy[id]--
+		if h.outputBusy[id] == 0 {
+			delete(h.outputBusy, id)
+		}
+		h.mu.Unlock()
+	}()
+
+	// Pin the placement through the disk lookup: a spill can begin while we
+	// read, but cannot flip it until this lease ends. Recheck its fence below.
+	dir := filepath.Join(h.root, id)
+	_, diskErr := os.Lstat(dir)
+	h.mu.Lock()
 	if h.moving[id] != nil || h.memoryFull[id] || h.cleaning[id] {
+		h.mu.Unlock()
 		return "", ErrSegmentPreparing
 	}
 	if h.inMemory[id] {
+		defer h.mu.Unlock()
 		if !streaming {
 			return "", errors.New("disk-only output has a memory placement")
 		}
-		// A process restart may adopt output from a larger/older tmpfs. Do not
-		// resume growth unless its kernel ceiling still fits today's allowance.
-		facts, err := h.readMemory()
-		cap, floor := memoryBudget(h.configuration().MemoryCap, facts, h.memoryBytesLocked(false))
-		if err != nil || facts.filesystemLimit <= 0 || facts.filesystemLimit > cap || facts.available < floor {
+		if factsErr != nil || !h.memoryAdmissionLocked(id, setting, facts) {
 			h.memoryRefused.Add(1)
+			// A refusal must force relocation even if the sweep's next sample
+			// recovers or cannot be read. Otherwise a restart can stay preparing.
+			h.markMemoryPressureLocked(id)
 			return "", ErrSegmentPreparing
 		}
 		return h.outputDirLocked(id), nil
 	}
-	dir := filepath.Join(h.root, id)
-	if _, err := os.Lstat(dir); err == nil {
-		return dir, nil
-	} else if !os.IsNotExist(err) {
-		return "", err
+	if diskErr == nil || !os.IsNotExist(diskErr) {
+		h.mu.Unlock()
+		return dir, diskErr
 	}
+	memory := false
 	if streaming && h.memoryRoot != "" {
-		facts, err := h.readMemory()
-		ours := h.memoryBytesLocked(true)
-		cap, floor := memoryBudget(h.configuration().MemoryCap, facts, h.memoryBytesLocked(false))
-		// Require a kernel-enforced ceiling which fits the current allowance. Even
-		// an arbitrarily fast/malformed FFmpeg output cannot consume beyond it.
-		if err == nil && facts.total > 0 && facts.filesystemLimit > 0 && facts.filesystemLimit <= cap && ours+memoryHeadroom <= cap && facts.available-memoryHeadroom >= floor && facts.free >= memoryHeadroom {
+		if factsErr == nil && h.memoryAdmissionLocked(id, setting, facts) {
 			dir = filepath.Join(h.memoryRoot, id)
-			if err = os.MkdirAll(dir, 0700); err != nil {
-				return "", err
-			}
 			h.inMemory[id] = true
-			return dir, nil
+			memory = true
+		} else {
+			h.memoryRefused.Add(1)
 		}
-		h.memoryRefused.Add(1)
 	}
-	return dir, os.MkdirAll(dir, 0700)
+	h.mu.Unlock()
+	err := os.MkdirAll(dir, 0700)
+	if err != nil && memory {
+		h.mu.Lock()
+		delete(h.inMemory, id)
+		delete(h.memoryFull, id)
+		h.mu.Unlock()
+	}
+	return dir, err
 }
 
 // waitOutputMove fences readers before resolving a path. Starts return the
@@ -232,8 +280,9 @@ func (h *HLS) sweepMemory(ctx context.Context) {
 	h.mu.Unlock()
 	h.enforceSessionCeilings(ids)
 	facts, err := h.readMemory()
-	// An explicit ENOSPC is independently known pressure, even if host memory
-	// facts became unreadable. Unknown facts alone never trigger a spill.
+	setting := h.configuration().MemoryCap
+	// ENOSPC and refused restarts independently require relocation, even if
+	// host memory facts became unreadable. Unknown facts alone never spill.
 	h.mu.Lock()
 	forced := false
 	for id := range h.memoryFull {
@@ -254,8 +303,8 @@ func (h *HLS) sweepMemory(ctx context.Context) {
 	}
 	h.mu.Lock()
 	ours := h.memoryBytesLocked(false)
-	cap, floor := memoryBudget(h.configuration().MemoryCap, facts, ours)
-	if !forced && ours <= cap && facts.available >= floor && facts.free >= memoryHeadroom && facts.filesystemLimit <= cap {
+	cap, floor := memoryBudget(setting, facts, ours)
+	if !forced && ours <= cap && facts.available >= floor && facts.free >= memoryHeadroom && facts.total > 0 && facts.filesystemLimit > 0 {
 		h.mu.Unlock()
 		return
 	}
@@ -297,6 +346,14 @@ func (h *HLS) spillMemory(ctx context.Context, id string) {
 		h.moving = map[string]chan struct{}{}
 	}
 	h.moving[id] = done
+	// Mark the exact runs as well as fencing the session. If a stalled producer
+	// outlives the move timeout, its eventual failure is still spill cancellation;
+	// a replacement run never inherits the marker. All accesses hold h.mu.
+	for key, run := range h.activeRuns {
+		if producerSession(key) == id {
+			run.spillCancelled = true
+		}
+	}
 	source := h.outputDirLocked(id)
 	h.mu.Unlock()
 	finishMove := func() {
@@ -454,14 +511,6 @@ func copySpill(ctx context.Context, source, dest string) error {
 	})
 }
 
-// MemoryOutputDirectory reports the startup-only configured memory root.
-func (s *Service) MemoryOutputDirectory() string {
-	if s == nil || s.hls == nil {
-		return ""
-	}
-	return s.hls.memoryRoot
-}
-
 // Disc and finite producers always create disk output, including private discs
 // that do not create a chapter sidecar while their source is being opened.
 func (h *HLS) createStreamingOutput(ctx context.Context, id string, plan *DeliveryPlan) (string, error) {
@@ -504,11 +553,16 @@ func (h *HLS) retryMemoryOutput(id string) bool {
 	if !h.inMemory[id] {
 		return false
 	}
+	h.markMemoryPressureLocked(id)
+	return true
+}
+
+// memoryFull also records a refused restart so the next sweep must move it.
+func (h *HLS) markMemoryPressureLocked(id string) {
 	if h.memoryFull == nil {
 		h.memoryFull = map[string]bool{}
 	}
 	h.memoryFull[id] = true
-	return true
 }
 
 // Early manifest/setup failures do not carry a converter failure code. If the
