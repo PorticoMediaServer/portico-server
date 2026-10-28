@@ -139,6 +139,12 @@ func (s *Service) registerDeviceTx(ctx context.Context, tx *sql.Tx, c deviceCall
 		Token(), c.authority, c.account, q.InstallationID, name, platform, app, version, clientIP(peer), now, now); e != nil {
 		return Device{}, e
 	}
+	// A real authenticated enrollment is the one place an installation lifetime
+	// is created (P2-62). It is a watermark for the registration handshake, not
+	// a grant, and it never rotates an existing lifetime.
+	if e := s.enrollInstallationTx(ctx, tx, q.InstallationID); e != nil {
+		return Device{}, e
+	}
 	device, e := s.deviceTx(ctx, tx, c.authority, c.account, q.InstallationID, "")
 	if e != nil {
 		return device, e

@@ -38,7 +38,15 @@ const (
 	MaxReceiptRecordBytes       = 1024
 )
 
-type Binding struct{ Authority, AccountID, ProfileID, FamilyID string }
+// Binding is the authenticated owner a receipt belongs to. RootID is the
+// optional P2-62 mutation root the client presented; an empty RootID is an
+// existing non-generic domain receipt, which stays rootless. The lifetimes
+// themselves are never taken from the caller: Check, Save and Lookup resolve the
+// current membership incarnation and profile lifetime from the transaction.
+type Binding struct {
+	Authority, AccountID, ProfileID, FamilyID string
+	RootID                                    string
+}
 type Envelope struct {
 	Key, Operation, Digest string
 	Stop                   bool
@@ -103,7 +111,7 @@ func bounded(s string, max int, empty bool) bool {
 	return (empty || s != "") && len(s) <= max && !strings.ContainsRune(s, 0)
 }
 func validBinding(b Binding) bool {
-	return (b.Authority == "local" || b.Authority == "hosted") && bounded(b.AccountID, MaxIDBytes, false) && bounded(b.ProfileID, MaxIDBytes, false) && bounded(b.FamilyID, MaxIDBytes, false)
+	return (b.Authority == "local" || b.Authority == "hosted") && bounded(b.AccountID, MaxIDBytes, false) && bounded(b.ProfileID, MaxIDBytes, false) && bounded(b.FamilyID, MaxIDBytes, false) && (b.RootID == "" || ValidRootID(b.RootID))
 }
 func hexLower(s string, n int) bool {
 	if len(s) != n {
@@ -167,13 +175,18 @@ func advance(ctx context.Context, tx *sql.Tx, now int64) error {
 type stored struct {
 	Receipt
 	scope                   int64
-	profile, family, digest string
+	profile                 string
+	family                  string
+	digest                  string
+	profileIncarnation      string
+	installationIncarnation string
+	rootID                  string
 	stop                    bool
 }
 
 func read(ctx context.Context, q reader, key string) (*stored, error) {
 	var r stored
-	err := q.QueryRowContext(ctx, `SELECT key,operation,status,target_id,revision,generation,position_ms,position_status,committed_ms,issued_ms+2592000000,scope_id,profile_id,family_id,digest,is_stop FROM user_mutation_receipts WHERE key=?`, key).Scan(&r.Key, &r.Operation, &r.Status, &r.TargetID, &r.Revision, &r.Generation, &r.PositionMs, &r.PositionStatus, &r.CommittedMs, &r.ExpiresMs, &r.scope, &r.profile, &r.family, &r.digest, &r.stop)
+	err := q.QueryRowContext(ctx, `SELECT key,operation,status,target_id,revision,generation,position_ms,position_status,committed_ms,issued_ms+2592000000,scope_id,profile_id,family_id,profile_incarnation,installation_incarnation,root_id,digest,is_stop FROM user_mutation_receipts WHERE key=?`, key).Scan(&r.Key, &r.Operation, &r.Status, &r.TargetID, &r.Revision, &r.Generation, &r.PositionMs, &r.PositionStatus, &r.CommittedMs, &r.ExpiresMs, &r.scope, &r.profile, &r.family, &r.profileIncarnation, &r.installationIncarnation, &r.rootID, &r.digest, &r.stop)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, nil
 	}
@@ -187,8 +200,8 @@ func scopeID(ctx context.Context, q reader, b Binding) (int64, error) {
 	}
 	return id, err
 }
-func matches(r *stored, id int64, b Binding, e Envelope) bool {
-	return r.scope == id && r.profile == b.ProfileID && r.family == b.FamilyID && r.Operation == e.Operation && r.digest == e.Digest && r.stop == e.Stop
+func matches(r *stored, id int64, b Binding, e Envelope, l lifetime) bool {
+	return bound(r, id, b, l) && r.Operation == e.Operation && r.digest == e.Digest && r.stop == e.Stop
 }
 func capacity(err error) error {
 	if err != nil && strings.Contains(err.Error(), "user_mutation_capacity") {
@@ -200,10 +213,24 @@ func capacity(err error) error {
 // Check returns a matching completed receipt, or reserves a fixed worst-case
 // receipt slot and returns nil. The reservation and all effects MUST share tx.
 // A committed 'reserved' row is a caller bug, and is never reported as success.
+//
+// The receipt is bound to the current membership incarnation, profile lifetime,
+// installation lifetime and mutation root resolved inside tx. A receipt from a
+// different lifetime is a conflict, never a replay, and a new intent under a
+// draining or gone root is refused rather than applied.
 func Check(ctx context.Context, tx *sql.Tx, b Binding, e Envelope, now int64) (*Receipt, error) {
 	issued, err := validate(b, e, now)
 	if err != nil {
 		return nil, err
+	}
+	l, err := resolveLifetime(ctx, tx, b)
+	if err != nil {
+		return nil, err
+	}
+	if !l.profileLive {
+		// An erased profile (or a membership that is no longer current) accepts
+		// nothing new; its retained history is read-only.
+		return nil, ErrConflict
 	}
 	if err = advance(ctx, tx, now); err != nil {
 		return nil, err
@@ -227,10 +254,19 @@ func Check(ctx context.Context, tx *sql.Tx, b Binding, e Envelope, now int64) (*
 		return nil, err
 	}
 	if old != nil {
-		if !matches(old, id, b, e) || old.Status == "reserved" {
+		// A committed result replays only under the lifetimes it was committed
+		// with. The stored profile lifetime is compared with the one read from
+		// this transaction, so reusing a profile id under a new lifetime never
+		// re-returns the old result.
+		if !matches(old, id, b, e, l) || old.Status == "reserved" {
 			return nil, ErrConflict
 		}
 		return &old.Receipt, nil
+	}
+	// A new intent needs a live root. Draining roots keep their recorded
+	// results readable, but nothing new is accepted through them.
+	if b.RootID != "" && l.rootState != "active" {
+		return nil, ErrConflict
 	}
 	// The savepoint also removes a newly allocated account fact on refusal, even
 	// if a caller inspects the error before rolling its outer transaction back.
@@ -264,7 +300,7 @@ func Check(ctx context.Context, tx *sql.Tx, b Binding, e Envelope, now int64) (*
 			return fail(err)
 		}
 	}
-	_, err = tx.ExecContext(ctx, `INSERT INTO user_mutation_receipts(key,scope_id,profile_id,family_id,operation,digest,is_stop,issued_ms,status) VALUES(?,?,?,?,?,?,?,?, 'reserved')`, e.Key, id, b.ProfileID, b.FamilyID, e.Operation, e.Digest, e.Stop, issued)
+	_, err = tx.ExecContext(ctx, `INSERT INTO user_mutation_receipts(key,scope_id,profile_id,family_id,profile_incarnation,installation_incarnation,root_id,operation,digest,is_stop,issued_ms,status) VALUES(?,?,?,?,?,?,?,?,?,?,?, 'reserved')`, e.Key, id, b.ProfileID, b.FamilyID, l.profile, l.installation, b.RootID, e.Operation, e.Digest, e.Stop, issued)
 	if err != nil {
 		return fail(err)
 	}
@@ -298,6 +334,10 @@ func Save(ctx context.Context, tx *sql.Tx, b Binding, e Envelope, r Result, now 
 	if !validStatus(r.Status) || !validPositionStatus(r.PositionStatus) || !bounded(r.TargetID, MaxIDBytes, true) || !bounded(r.PositionStatus, MaxStatusBytes, true) || r.Revision < 0 || r.Generation < 0 || r.PositionMs < 0 || r.PositionMs > 9007199254740991 || r.Revision > 9007199254740991 || r.Generation > 2147483647 {
 		return ErrConflict
 	}
+	l, err := resolveLifetime(ctx, tx, b)
+	if err != nil {
+		return err
+	}
 	cut, err := cutoff(ctx, tx, b, now)
 	if err != nil {
 		return err
@@ -316,7 +356,7 @@ func Save(ctx context.Context, tx *sql.Tx, b Binding, e Envelope, r Result, now 
 	if err != nil {
 		return err
 	}
-	if old == nil || !matches(old, id, b, e) {
+	if old == nil || !matches(old, id, b, e, l) {
 		return ErrConflict
 	}
 	if old.Status != "reserved" {
@@ -347,6 +387,10 @@ func LookupTx(ctx context.Context, tx *sql.Tx, b Binding, key string, now int64)
 	if err != nil {
 		return nil, err
 	}
+	l, err := resolveLifetime(ctx, tx, b)
+	if err != nil {
+		return nil, err
+	}
 	cut, err := cutoff(ctx, tx, b, now)
 	if err != nil {
 		return nil, err
@@ -365,7 +409,10 @@ func LookupTx(ctx context.Context, tx *sql.Tx, b Binding, key string, now int64)
 	if err != nil || r == nil {
 		return nil, err
 	}
-	if r.scope != id || r.profile != b.ProfileID || r.family != b.FamilyID {
+	// A recorded result is readable only under the lifetimes it was committed
+	// with. A drained root keeps its results readable; a gone root or a rotated
+	// lifetime does not, and never reports the old receipt.
+	if !bound(r, id, b, l) {
 		return nil, nil
 	}
 	if r.Status == "reserved" {
