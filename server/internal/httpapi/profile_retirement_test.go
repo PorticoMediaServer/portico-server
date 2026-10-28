@@ -100,3 +100,72 @@ func TestProfileRetirementHTTPRoutesKeepExactLifetimeUntilPhysicalCompletion(t *
 		t.Fatalf("unsanitized history label: %v %q %q %v %v %v", deleted, name, art, pin, libraries, err)
 	}
 }
+
+// The retirement response contains only its exact profile/lifetime/state tuple,
+// never catalog titles or the retained display name. Exercise real authority
+// and a successful response instead of exempting this route without a probe.
+func profileRetirementRestrictionCheck(t *testing.T) {
+	t.Helper()
+	f := administrationFixtureNew(t)
+	doc, err := f.deps.Identity.CreateDirectProfile(t.Context(), f.owner, "private-retirement-label", "mint")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var kid identity.DirectProfile
+	for _, p := range doc.Profiles {
+		if !p.Primary {
+			kid = p
+		}
+	}
+	selected, err := f.deps.Identity.SelectDirectProfile(t.Context(), f.owner, kid.ID, identity.DirectSelection{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	// This still-live child is a valid nonmanager viewer, not an expired bearer.
+	doc, err = f.deps.Identity.CreateDirectProfile(t.Context(), f.owner, "Restricted sibling", "blue")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var sibling string
+	for _, p := range doc.Profiles {
+		if !p.Primary && p.ID != kid.ID {
+			sibling = p.ID
+		}
+	}
+	restricted, err := f.deps.Identity.SelectDirectProfile(t.Context(), f.owner, sibling, identity.DirectSelection{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	preview, err := f.deps.Identity.PreviewDirectProfileDeletion(t.Context(), f.owner, kid.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	path := "/v1/direct/profiles/" + kid.ID
+	body := fmt.Sprintf(`{"expectedRevision":%d,"lifetime":%q,"deleteSavedResources":true}`, preview.Revision, preview.Lifetime)
+	if r := f.call("DELETE", path, f.owner, body); r.Code != http.StatusOK {
+		t.Fatalf("retire: %d %s", r.Code, r.Body)
+	}
+	status := path + "/retirement?lifetime=" + preview.Lifetime
+	r := f.call("GET", status, f.owner, "")
+	var got map[string]any
+	if r.Code != http.StatusOK || json.Unmarshal(r.Body.Bytes(), &got) != nil || len(got) != 3 || got["profileId"] != kid.ID || got["lifetime"] != preview.Lifetime || got["state"] != "removing" {
+		t.Fatalf("status DTO: %d %s", r.Code, r.Body)
+	}
+	for _, who := range []struct {
+		name, token string
+		code        int
+	}{{"anonymous", "", http.StatusUnauthorized}, {"retired child", selected.Session.AccessToken, http.StatusUnauthorized}, {"live child", restricted.Session.AccessToken, http.StatusForbidden}, {"other member", f.member, http.StatusNotFound}, {"other admin", f.admin, http.StatusNotFound}} {
+		r = f.call("GET", status, who.token, "")
+		if r.Code != who.code {
+			t.Fatalf("%s: %d want%d %s", who.name, r.Code, who.code, r.Body)
+		}
+		for _, private := range []string{kid.ID, preview.Lifetime, "private-retirement-label"} {
+			if strings.Contains(r.Body.String(), private) {
+				t.Fatalf("%s learned private retirement %q: %s", who.name, private, r.Body)
+			}
+		}
+	}
+}
+func TestProfileRetirementStatusRestrictionBoundary(t *testing.T) {
+	profileRetirementRestrictionCheck(t)
+}

@@ -1100,3 +1100,65 @@ func TestProfilePurgeRecordingRevisionLivesExactlyAsLongAsRecording(t *testing.T
 		t.Fatalf("orphan counter: %d %v", n, err)
 	}
 }
+
+// Recipient authority and resource ownership are independent erasure edges.
+// A received local grant on a Hosted resource is private to the local recipient;
+// every grant on an owned resource must drain before its guarded parent can go.
+func TestProfilePurgeSharesDrainOwnedAndReceivedEdgesIndependently(t *testing.T) {
+	s, db, login, kid, preview := profilePurgeFixture(t)
+	key := purgeTestPersonal(kid.ID)
+	for i := 0; i < 17; i++ {
+		id := fmt.Sprintf("owned-share-%02d", i)
+		purgeMustExec(t, db, `INSERT INTO catalog_playlists(token,owner_authority,owner_account,owner_profile,name,creation_operation,creation_hash,created_at) VALUES(?,'local',?,?,'Owned',?,'hash','2026-01-01T00:00:00Z')`, id, purgeTestAccount, kid.ID, id)
+		purgeMustExec(t, db, `INSERT INTO saved_resources(id,kind,owner_key,owner_authority,owner_account,owner_profile,name,created_at) VALUES(?,'collection',?,'local',?,?,'Owned','2026-01-01T00:00:00Z')`, id, key, purgeTestAccount, kid.ID)
+		recipients := 1
+		if i == 0 {
+			recipients = 35
+		} // A parent cascade would exceed the turn budget.
+		for n := 0; n < recipients; n++ {
+			recipient := fmt.Sprintf("someone-else-%02d", n)
+			purgeMustExec(t, db, `INSERT INTO playlist_shares(playlist_id,authority,account_id,profile_id,role) VALUES(?,'hosted','elsewhere',?,'editor')`, id, recipient)
+			purgeMustExec(t, db, `INSERT INTO saved_resource_shares(resource_id,authority,account_id,profile_id,role) VALUES(?,'hosted','elsewhere',?,'editor')`, id, recipient)
+		}
+	}
+	hostedKey := persistence.PersonalOwnerKey("hosted", purgeTestAccount, kid.ID)
+	purgeMustExec(t, db, `INSERT INTO catalog_playlists(token,owner_authority,owner_account,owner_profile,name,creation_operation,creation_hash,created_at) VALUES('foreign-shared','hosted',?,?,'Kept','create','hash','2026-01-01T00:00:00Z')`, purgeTestAccount, kid.ID)
+	purgeMustExec(t, db, `INSERT INTO saved_resources(id,kind,owner_key,owner_authority,owner_account,owner_profile,name,created_at) VALUES('foreign-shared','collection',?,'hosted',?,?,'Kept','2026-01-01T00:00:00Z')`, hostedKey, purgeTestAccount, kid.ID)
+	for _, table := range []string{"playlist_shares", "saved_resource_shares"} {
+		col := "playlist_id"
+		if table == "saved_resource_shares" {
+			col = "resource_id"
+		}
+		for _, who := range []struct{ authority, profile string }{{"local", kid.ID}, {"hosted", kid.ID}, {"local", "profile"}} {
+			purgeMustExec(t, db, "INSERT INTO "+table+"("+col+",authority,account_id,profile_id,role) VALUES('foreign-shared',?,?,?,'viewer')", who.authority, purgeTestAccount, who.profile)
+		}
+	}
+	if err := retireProfileAndDrainForTest(t, s, t.Context(), login.AccountToken, kid.ID, preview.Revision, true); err != nil {
+		t.Fatal(err)
+	}
+	for _, table := range []string{"catalog_playlists", "saved_resources"} {
+		col := "token"
+		if table == "saved_resources" {
+			col = "id"
+		}
+		var owned, foreign int
+		if err := db.QueryRow("SELECT count(*) FROM " + table + " WHERE " + col + " LIKE 'owned-share-%'").Scan(&owned); err != nil || owned != 0 {
+			t.Fatalf("owned %s parents/foreign recipients remain: %d %v", table, owned, err)
+		}
+		if err := db.QueryRow("SELECT count(*) FROM " + table + " WHERE " + col + "='foreign-shared'").Scan(&foreign); err != nil || foreign != 1 {
+			t.Fatalf("foreign %s resource lost: %d %v", table, foreign, err)
+		}
+	}
+	for _, table := range []string{"playlist_shares", "saved_resource_shares"} {
+		var ours, hosted, other int
+		if err := db.QueryRow("SELECT count(*) FROM "+table+" WHERE authority='local' AND account_id=? AND profile_id=?", purgeTestAccount, kid.ID).Scan(&ours); err != nil || ours != 0 {
+			t.Fatalf("received %s grant retained: %d %v", table, ours, err)
+		}
+		if err := db.QueryRow("SELECT count(*) FROM "+table+" WHERE authority='hosted' AND account_id=? AND profile_id=?", purgeTestAccount, kid.ID).Scan(&hosted); err != nil || hosted != 1 {
+			t.Fatalf("Hosted same-id %s grant lost: %d %v", table, hosted, err)
+		}
+		if err := db.QueryRow("SELECT count(*) FROM " + table + " WHERE authority='local' AND profile_id='profile'").Scan(&other); err != nil || other != 1 {
+			t.Fatalf("other local %s recipient lost: %d %v", table, other, err)
+		}
+	}
+}

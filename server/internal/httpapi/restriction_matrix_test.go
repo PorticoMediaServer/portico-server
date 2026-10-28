@@ -479,6 +479,7 @@ func restrictionRoutes() map[string]restrictionRoute {
 		"GET /v1/direct/pin-recovery":                        exempt(reasonNoTitles),
 		"GET /v1/direct/profiles/avatars":                    exempt(reasonNoTitles),
 		"GET /v1/direct/profiles/{id}/deletion-preview":      exempt(reasonNoTitles),
+		"GET /v1/direct/profiles/{id}/retirement":            {check: profileRetirementRestrictionCheck},
 		"GET /v1/direct/profiles/{id}/restrictions":          exempt("the restriction document itself, no titles"),
 		"GET /v1/direct/registration-policy":                 exempt(reasonNoTitles),
 		"GET /v1/direct/sessions":                            exempt(reasonNoTitles),
