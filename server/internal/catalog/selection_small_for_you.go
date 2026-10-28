@@ -117,7 +117,7 @@ func cloneSmallMap[K comparable, V any](m map[K]V) map[K]V {
 }
 func (f *smallForYouOrder) addTaste(facet string, v float64, reserve func(int64) error) error {
 	if _, ok := f.taste.values[facet]; !ok {
-		if err := reserve(128 + int64(len(facet))); err != nil {
+		if err := reserve(-(128 + int64(len(facet)))); err != nil {
 			return err
 		}
 	}
@@ -281,7 +281,7 @@ func (s *Service) smallForYouUnit(p *SmallSelectionOrder, reserve func(int64) er
 			return err
 		}
 		f.afterJob = work
-		if err = reserve(16); err != nil {
+		if err = reserve(-16); err != nil {
 			return err
 		}
 		f.jobs = append(f.jobs, work)
@@ -326,7 +326,7 @@ func (s *Service) smallForYouUnit(p *SmallSelectionOrder, reserve func(int64) er
 		long := next.Weight * math.Exp2((next.At-f.epoch)/compactcatalog.RecLongHalfLife)
 		short := next.Weight * math.Exp2((next.At-f.epoch)/compactcatalog.RecShortHalfLife)
 		f.contribution = (long-oldLong)*f.dl + (short-oldShort)*f.ds
-		if err = reserve(288); err != nil {
+		if err = reserve(-288); err != nil {
 			return err
 		}
 		f.taste.engaged[f.work], f.taste.hidden[f.work], f.taste.loaded[f.work] = next.Engaged, next.Hidden, true
@@ -394,7 +394,7 @@ func (s *Service) smallForYouUnit(p *SmallSelectionOrder, reserve func(int64) er
 			if err != nil {
 				return err
 			}
-			if err = reserve(288); err != nil {
+			if err = reserve(-288); err != nil {
 				return err
 			}
 			f.taste.engaged[c.id], f.taste.hidden[c.id], f.taste.loaded[c.id] = engaged || pending, hidden || pending, true
@@ -444,14 +444,14 @@ func (s *Service) smallForYouUnit(p *SmallSelectionOrder, reserve func(int64) er
 		f.afterPostingFacet, f.afterPostingLibrary, f.afterPostingQuality, f.postingStarted = facet, library, quality, true
 		c.data.quality, c.data.hasQuality = quality, true
 		if facet != compactcatalog.RecAllFacet {
-			if err = reserve(32 + int64(len(facet))); err != nil {
+			if err = reserve(-(32 + int64(len(facet)))); err != nil {
 				return err
 			}
 			c.data.facets = append(c.data.facets, facet)
 		}
 		return nil
 	case 13:
-		if err := reserve(int64(16 * (len(f.taste.values) + 1))); err != nil {
+		if err := reserve(-int64(16 * (len(f.taste.values) + 1))); err != nil {
 			return err
 		}
 		for key := range f.taste.values {
@@ -528,7 +528,7 @@ func (s *Service) smallForYouContribution(f *smallForYouOrder, reserve func(int6
 	return false, f.addTaste(facet, f.contribution, reserve)
 }
 func (s *Service) smallForYouRarity(f *smallForYouOrder, facet string, reserve func(int64) error) error {
-	if err := reserve(128 + int64(len(facet))); err != nil {
+	if err := reserve(-(128 + int64(len(facet)))); err != nil {
 		return err
 	}
 	var count float64
@@ -543,10 +543,13 @@ func (s *Service) smallForYouRarity(f *smallForYouOrder, facet string, reserve f
 // executing its WHERE. The scope comes from the original bound page; no second
 // SQL compiler is substituted. An ordinary day-scoped cached rank must retain
 // that same order even when a later preparation has a different wall instant.
-func (p *SmallSelectionOrder) BindForYouMemoScope(bound BoundBrowseQuery, viewer Viewer) error {
-	if p == nil || p.forYou == nil || bound.Library != p.forYou.library || viewer.Profile != p.forYou.profile || bound.Where == "" {
-		return ErrSelectionBatchUnsupported
-	}
+type SmallForYouMemoScope struct {
+ digest [12]byte
+ policy, library, profile string
+}
+func (m SmallForYouMemoScope) Bytes() int { return 64+len(m.policy)+len(m.library)+len(m.profile) }
+func NewSmallForYouMemoScope(bound BoundBrowseQuery, viewer Viewer) (SmallForYouMemoScope,error) {
+ if bound.Where=="" { return SmallForYouMemoScope{},ErrSelectionBatchUnsupported }
 	// JSON's worst-case escaping is bounded BEFORE its temporary buffers are
 	// allocated. Bound args are compiler scalars, never arbitrary object graphs.
 	encodedBound := int64(32 + 6*len(bound.Where))
@@ -559,23 +562,33 @@ func (p *SmallSelectionOrder) BindForYouMemoScope(bound BoundBrowseQuery, viewer
 		case nil, bool, int, int32, int64, uint, uint32, uint64, float32, float64:
 			encodedBound += 64
 		default:
-			return ErrSelectionBatchUnsupported
+			return SmallForYouMemoScope{}, ErrSelectionBatchUnsupported
 		}
 	}
 	if encodedBound > SelectionBatchMaximumBytes {
-		return ErrSelectionBatchCapacity
+		return SmallForYouMemoScope{}, ErrSelectionBatchCapacity
 	}
 	raw, err := json.Marshal(append([]any{bound.Where}, bound.Args...))
 	if err != nil {
-		return err
+		return SmallForYouMemoScope{}, err
 	}
 	if len(raw) > SelectionBatchMaximumBytes {
-		return ErrSelectionBatchCapacity
+		return SmallForYouMemoScope{}, ErrSelectionBatchCapacity
 	}
-	digest := sha256.Sum256(raw)
-	p.forYou.memoRow = "forYou:" + hex.EncodeToString(digest[:12]) + ":" + strconv.Itoa(len(p.ids))
-	p.forYou.memoPolicy = RestrictionFence(viewer.EffectiveRestrictions())
-	return nil
+
+ digest:=sha256.Sum256(raw)
+ m:=SmallForYouMemoScope{policy:RestrictionFence(viewer.EffectiveRestrictions()),library:bound.Library,profile:viewer.Profile}
+ copy(m.digest[:],digest[:12])
+ return m,nil
+}
+func (p *SmallSelectionOrder) BindForYouMemoScope(bound BoundBrowseQuery, viewer Viewer) error {
+ scope,err:=NewSmallForYouMemoScope(bound,viewer); if err!=nil{return err}; return p.bindForYouMemoScope(scope)
+}
+func(p *SmallSelectionOrder)bindForYouMemoScope(scope SmallForYouMemoScope)error{
+ if p==nil||p.forYou==nil||scope.library!=p.forYou.library||scope.profile!=p.forYou.profile{return ErrSelectionBatchUnsupported}
+ p.forYou.memoRow="forYou:"+hex.EncodeToString(scope.digest[:])+":"+strconv.Itoa(len(p.ids))
+ p.forYou.memoPolicy=scope.policy
+ return nil
 }
 
 func (s *Service) smallForYouReuseMemo(p *SmallSelectionOrder, reserve func(int64) error) (bool, error) {
@@ -594,7 +607,7 @@ func (s *Service) smallForYouReuseMemo(p *SmallSelectionOrder, reserve func(int6
 	key := strings.Join([]string{f.profile, f.memoPolicy, idsJSON([]string{f.library}), itoa(revision.Catalog), itoa(revision.Viewer), itoa(f.taste.revision), itoa(data), f.now.In(time.Local).Format("2006-01-02")}, "\x00") + "\x00" + f.memoRow
 	// Inspect without recMemo.get's unconditional full-result copy. Reserve
 	// output/copy memory first; never import cached candidate facets.
-	if err = reserve(int64(len(p.ids))*512 + 65536); err != nil {
+	if err = reserve(-(int64(len(p.ids))*512 + 65536)); err != nil {
 		return false, err
 	}
 	s.state.recMu.Lock()
@@ -654,7 +667,7 @@ func (s *Service) smallForYouReuseMemo(p *SmallSelectionOrder, reserve func(int6
 
 func finishSmallForYou(p *SmallSelectionOrder, reserve func(int64) error) error {
 	f := p.forYou
-	if err := reserve(int64(len(p.ids))*512 + 65536); err != nil {
+	if err := reserve(-(int64(len(p.ids))*512 + 65536)); err != nil {
 		return err
 	}
 	x := recSession{taste: f.taste, idf: f.idf, now: f.now, hydration: &recHydration{works: map[int64]*recWorkMetadata{}}}

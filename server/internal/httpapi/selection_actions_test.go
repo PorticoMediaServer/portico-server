@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"path/filepath"
 	"testing"
 	"time"
 
@@ -15,8 +16,15 @@ import (
 func actionHTTPFixture(t *testing.T, count int) *selectionHTTPFixture {
 	t.Helper()
 	f := newSelectionHTTPFixture(t)
+	var root string
+	if err := f.db.QueryRow(`SELECT root FROM libraries WHERE id='movies'`).Scan(&root); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := f.db.Exec(`INSERT OR IGNORE INTO library_sources(id,library_id,configured_root,root) VALUES('selection-action-root','movies',?,?)`, root, root); err != nil {
+		t.Fatal(err)
+	}
 	for i := 1; i < count; i++ {
-		f.c.Movie(f.c.Handle("movies"), fmt.Sprintf("/movies/action-%04d.mp4", i), fmt.Sprintf("Action %04d", i), 2000+i%20)
+		f.c.Movie(f.c.Handle("movies"), filepath.Join(root, fmt.Sprintf("action-%04d.mp4", i)), fmt.Sprintf("Action %04d", i), 2000+i%20)
 	}
 	f.c.Drain()
 	document, err := f.d.Administration.LibrarySettingsFor(context.Background(), nil, "movies")
@@ -38,7 +46,7 @@ func actionHTTPInput(t *testing.T, f *selectionHTTPFixture) selectionActionInput
 	pending, _ := f.prepare(t, nil)
 	descriptor, _ := selectionHTTPReady(t, f, "/v1/libraries/movies/browse-selection-queries/"+pending.QueryID)
 	remove := false
-	return selectionActionInput{Action: "delete", Selector: descriptor.Selector, Expected: catalog.JobExpected{CatalogRevision: descriptor.CatalogRevision}, Options: selectionactions.Options{DeleteFiles: &remove}}
+	return selectionActionInput{Action: "delete", Selector: catalog.JobSelector{Query: &descriptor.Selector.Query}, Expected: catalog.JobExpected{CatalogRevision: descriptor.CatalogRevision}, Options: selectionactions.Options{DeleteFiles: &remove}}
 }
 func actionHTTPPreview(t *testing.T, f *selectionHTTPFixture, input selectionActionInput) selectionactions.Preview {
 	t.Helper()

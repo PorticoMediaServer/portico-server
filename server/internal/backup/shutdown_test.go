@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"portico.local/server/internal/dbwork"
+	"portico.local/server/internal/storagepaths"
 )
 
 func TestBackupShutdownCancelsAndJoinsDetachedWorker(t *testing.T) {
@@ -72,5 +73,31 @@ func TestBackupShutdownJoinsSynchronousCreate(t *testing.T) {
 	}
 	if err := <-result; !errors.Is(err, context.Canceled) {
 		t.Fatal(err)
+	}
+}
+
+func TestBackupFlushPrecedesSnapshotAndPreservesLastGoodOnFailure(t *testing.T) {
+	s, state, db := testService(t)
+	s.SetBeforeSnapshot(func(ctx context.Context) error {
+		_, err := db.ExecContext(ctx, `INSERT INTO configuration(key,value) VALUES('pre_snapshot_flush','written')`)
+		return err
+	})
+	id, err := s.Create(t.Context(), KindManual)
+	if err != nil {
+		t.Fatal(err)
+	}
+	copy := openReadOnly(t, storagepaths.Path(state, BackupsDir, id, DatabaseName))
+	var value string
+	if err = copy.QueryRow(`SELECT value FROM configuration WHERE key='pre_snapshot_flush'`).Scan(&value); err != nil || value != "written" {
+		t.Fatal("snapshot missed pending flush", value, err)
+	}
+	failure := errors.New("flush unavailable")
+	s.SetBeforeSnapshot(func(context.Context) error { return failure })
+	if _, err = s.Create(t.Context(), KindManual); !errors.Is(err, failure) {
+		t.Fatal(err)
+	}
+	list, err := s.List()
+	if err != nil || len(list) != 1 || list[0].ID != id {
+		t.Fatal("failed flush consumed last good backup", list, err)
 	}
 }

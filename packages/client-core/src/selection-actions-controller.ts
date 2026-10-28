@@ -7,6 +7,8 @@ import {
 
 export type SelectionActionSource = Readonly<{
   isCurrent: () => boolean;
+  /** Exact count from the held model descriptor, when the caller has a model target. */
+  expectedTotal?: number;
   /** Notify model operation, route, principal, authority or source replacement synchronously. */
   subscribe: (changed: () => void) => () => void;
   signal?: AbortSignal;
@@ -21,12 +23,14 @@ export type SelectionActionControllerOptions = Readonly<{
 }>;
 type Ticket = {
   input: SelectionActionInput; source: SelectionActionSource; io: AbortController;
+  expectedTotal?: number;
   cleanup: () => void; preparation?: SelectionActionPreparation; body?: SelectionActionConfirmation;
   job?: SelectionActionJob; cancelRequested: boolean; promise?: Promise<void>;
 };
 const empty = (phase: SelectionActionPhase = 'idle'): SelectionActionSnapshot => Object.freeze({phase, input: null, preparation: null, confirmation: '', job: null, errorCode: null});
 const code = (error: unknown) => String((error as {code?: unknown})?.code ?? 'selection_action_unavailable');
 const definite = (error: unknown) => [400, 401, 403, 404, 409, 422].includes(Number((error as {status?: unknown})?.status));
+const authorityLost = (error: unknown) => [401, 403, 404].includes(Number((error as {status?: unknown})?.status));
 const cancelled = () => Object.assign(new Error('Selection retired'), {code: 'cancelled'});
 const timeoutMs = 30 * 60_000;
 const delayMs = (value: number) => Math.min(timeoutMs, Math.max(250, value));
@@ -77,9 +81,10 @@ export class SelectionActionController {
   async open(input: SelectionActionInput, source: SelectionActionSource): Promise<void> {
     if (this.disposed) throw cancelled();
     const checked = selectionActionInput(input);
+    if (source.expectedTotal !== undefined && (!Number.isSafeInteger(source.expectedTotal) || source.expectedTotal < 1)) throw Object.assign(new Error('Invalid selection count'), {code: 'invalid_selection_action'});
     this.retire('idle');
     if (source.signal?.aborted || !source.isCurrent()) {this.publish(empty('retired')); return;}
-    const ticket: Ticket = {input: checked, source, io: new AbortController(), cleanup: () => {}, cancelRequested: false};
+    const ticket: Ticket = {input: checked, source, expectedTotal: source.expectedTotal, io: new AbortController(), cleanup: () => {}, cancelRequested: false};
     this.ticket = ticket;
     const changed = () => {if (this.ticket === ticket && !this.live(ticket)) this.retire('retired');};
     const unsubscribe = source.subscribe(changed);
@@ -103,6 +108,7 @@ export class SelectionActionController {
         this.check(ticket, io); ticket.preparation = preparation;
         if (preparation.kind === 'selection-action-preview') {
           if (preparation.action !== ticket.input.action || preparation.basis !== ticket.input.selector.query.selectionBasis
+            || ticket.expectedTotal !== undefined && preparation.total !== ticket.expectedTotal
             || Date.parse(preparation.expiresAt) <= this.now()) throw Object.assign(new Error('Selection expired'), {code: 'stale_continuation'});
           this.publish({phase: 'ready', preparation, errorCode: null}); return;
         }
@@ -112,7 +118,7 @@ export class SelectionActionController {
         if (this.now() - started >= timeoutMs) throw Object.assign(new Error('Preparation timed out'), {code: 'selection_action_timeout'});
         preparation = await getSelectionActionPreparation(this.options.api, ticket.input.selector.query.libraryId, preparation.preparationId, io.signal);
       }
-    } catch (error) {if (this.live(ticket, io)) this.publish({phase: 'error', errorCode: code(error)});}
+    } catch (error) {if (this.live(ticket, io)) {if (authorityLost(error)) this.retire('retired'); else this.publish({phase: 'error', errorCode: code(error)});}}
   }
   setConfirmation(confirmation: string) {
     const ticket = this.ticket;
@@ -174,7 +180,7 @@ export class SelectionActionController {
         this.check(ticket, io); this.accept(ticket, job);
       }
     } catch (error) {
-      if (this.live(ticket, io)) this.publish({phase: definite(error) ? 'error' : 'uncertain', errorCode: code(error)});
+      if (this.live(ticket, io)) {if (authorityLost(error)) this.retire('retired'); else this.publish({phase: definite(error) ? 'error' : 'uncertain', errorCode: code(error)});}
     }
   }
   async retry(): Promise<void> {

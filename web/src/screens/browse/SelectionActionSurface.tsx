@@ -1,6 +1,8 @@
 import {useRef, useSyncExternalStore} from 'react';
 import {defaultI18n} from '@i18n';
-import {canonicalQualityLadder} from '../../../../packages/contracts/src/types.ts';
+import {canonicalMusicQualityLadder, canonicalQualityLadder} from '../../../../packages/contracts/src/types.ts';
+import {musicQualityPresentation, qualityPresentation} from '@core/playback-v1/quality-presentation.ts';
+import {presentError} from '@core/presentation/errors.ts';
 import {Button, Select, Switch, TextField} from '../../kit/controls';
 import {Dialog} from '../../kit/overlays';
 import {ProgressRing} from '../../kit/shell';
@@ -19,9 +21,16 @@ export function SelectionActionSurface({model, onClose, onOptionsChange}: Readon
   if (!state.input || state.phase === 'idle' || state.phase === 'retired') return null;
   const deleting = state.input.action === 'delete', preview = state.preparation?.kind === 'selection-action-preview' ? state.preparation : undefined;
   const busy = ['preparing', 'confirming', 'submitting', 'running', 'cancelling'].includes(state.phase);
-  const job = state.job, title = deleting ? preview || job ? t('next.selection.deleteTitles', {count: preview?.total ?? job!.total}) : t('next.selection.delete') : t('next.detail.download');
+  const job = state.job, count = preview?.total ?? job?.total;
+  const title = !deleting ? t('next.detail.download') : count === 1 && preview ? t('next.selection.deleteTitle', {title: preview.confirmation})
+    : count !== undefined ? t('next.selection.deleteTitles', {count}) : t('next.selection.delete');
   const canConfirm = state.phase === 'ready' && !!preview && state.confirmation === preview.confirmation && Date.parse(preview.expiresAt) > Date.now();
   const firstTransfer = transfers.items[0];
+  const music = state.input.selector.query.pivot === 'songs';
+  const qualities = state.input.selector.query.pivot === 'parts' ? [qualityPresentation('original', false, defaultI18n)]
+    : music ? canonicalMusicQualityLadder.map(row => musicQualityPresentation(row.id, false, defaultI18n))
+      : canonicalQualityLadder.map(row => qualityPresentation(row.id, false, defaultI18n));
+  const shownError = state.errorCode ? presentError({code: state.errorCode}, deleting ? 'library' : 'downloads', {operation: 'action'}).body : '';
   return <Dialog open onOpenChange={open => {if (!open) onClose();}} title={title} accessibilityLabel={title}
     width={520} className={styles.deleteDialog} bodyClassName={styles.deleteBody} footerClassName={styles.deleteFooter}
     initialFocusRef={input} footer={<>
@@ -34,7 +43,7 @@ export function SelectionActionSurface({model, onClose, onOptionsChange}: Readon
       <span>{t('next.selection.removeFiles')}</span><Switch checked={state.input.options.deleteFiles} disabled={!!job || busy || state.phase === 'uncertain'}
         onCheckedChange={deleteFiles => onOptionsChange({deleteFiles})} aria-label={t('next.selection.removeFiles')}/>
     </label> : state.input.action === 'download' && <Select label={t('next.detail.downloadQuality')} value={state.input.options.quality}
-      options={canonicalQualityLadder.map(row => ({value: row.id, label: row.id === 'original' ? t('web.downloads.original') : row.label}))}
+      options={qualities.map(row => ({value: row.id, label: row.label}))}
       disabled={!!job || busy || state.phase === 'uncertain'} onValueChange={quality => onOptionsChange({quality})}/>}
     {state.phase === 'preparing' && <p role="status">{t(deleting ? 'next.selection.checking' : 'web.downloads.requestPreparing')}</p>}
     {preview && !job && <>
@@ -46,13 +55,16 @@ export function SelectionActionSurface({model, onClose, onOptionsChange}: Readon
         disabled={state.phase !== 'ready'} inputMode={preview.confirmationKind === 'count' ? 'numeric' : 'text'} autoComplete="off" autoCapitalize="none" spellCheck={false}/>
     </>}
     {job && <div role="status">
-      <p>{deleting ? t('next.selection.deleteResult', {removed: job.done, failed: job.failed}) : t('web.downloads.requestProgress', {ready: job.done, total: job.total})}</p>
+      <p>{deleting ? t('next.selection.deleteResult', {removed: job.done, failed: job.failed}) : t('next.selection.jobProgress', {done: job.done + job.failed, total: job.total})}</p>
+      {deleting && <p>{t('next.selection.jobProgress', {done: job.done + job.failed, total: job.total})}</p>}
       {job.failed > 0 && !deleting && <p>{t('web.downloads.requestFailed', {failed: job.failed})}</p>}
       {['capturing', 'sealed'].includes(job.state) && <p>{t('web.selection.preparing')}</p>}
-      {job.errorCode && <p role="alert">{t('error.unavailable')}</p>}
+      {(job.state === 'cancelled' || job.errorCode === 'cancelled') && <p>{t('web.dvr.state.cancelled')}</p>}
+      {deleting && (job.filesDeleted > 0 || job.bytesDeleted > 0) && <p>{t('next.selection.files', {count: job.filesDeleted, size: defaultI18n.bytes(job.bytesDeleted)})} {t('next.selection.filesDeleted')}</p>}
+      {job.errorCode && job.errorCode !== 'cancelled' && <p role="alert">{presentError({code: job.errorCode}, deleting ? 'library' : 'downloads', {operation: 'action'}).body}</p>}
       {busy && <ProgressRing icon={deleting ? 'i-trash' : 'i-download'} fraction={job.state === 'capturing' ? job.admitted / job.total : (job.done + job.failed) / job.total}/>}
     </div>}
-    {state.errorCode && <p role="alert">{t(deleting ? 'next.selection.deleteUncertain' : 'error.unavailable')}</p>}
+    {shownError && <p role="alert">{state.phase === 'uncertain' && deleting ? t('next.selection.deleteUncertain') : shownError}</p>}
     {!deleting && firstTransfer && <div>
       <p>{firstTransfer.title.title}</p>
       <Button disabled={transfers.phase === 'handing-off'} onClick={() => {void model.transferNext();}}>{t('web.downloads.save')}</Button>

@@ -30,6 +30,7 @@ func (BulkPreviewField) JSONSchema() map[string]any {
 				hi = 1
 			}
 			properties["distinctCount"] = map[string]any{"type": "integer", "minimum": lo, "maximum": hi}
+			properties["values"] = map[string]any{"type": "array", "minItems": lo, "maxItems": hi, "items": value}
 			required = append(required, "distinctCount")
 		}
 		return map[string]any{"type": "object", "additionalProperties": false, "required": required, "properties": properties}

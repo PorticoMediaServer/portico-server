@@ -5,7 +5,6 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"math"
 	"strconv"
 	"time"
@@ -196,17 +195,18 @@ func (d Dependencies) newSelectionActionSource(ctx context.Context, p identity.P
 }
 
 type selectionActionComputation struct {
-	d           Dependencies
-	p           identity.Principal
-	intent      selectionActionIntent
-	source      selectionactions.Source
-	digest      selectionactions.Digest
-	sampleBytes int
-	fixed       int64
+	d            Dependencies
+	p            identity.Principal
+	intent       selectionActionIntent
+	source       selectionactions.Source
+	digest       selectionactions.Digest
+	sampleBytes  int
+	fixed        int64
+	payloadBytes int64
 }
 
 func (c *selectionActionComputation) AccountedBytes() int64 {
-	return c.fixed + int64(c.sampleBytes) + c.source.Bytes() + 16384
+	return c.fixed + int64(c.sampleBytes) + c.source.Bytes() + c.payloadBytes + 16384
 }
 func (c *selectionActionComputation) Step(ctx context.Context, b *readprep.Budget) (readprep.StepResult, error) {
 	if err := b.Resize(c.AccountedBytes() + 2*selectionactions.MaxSourceBytes + 65536); err != nil {
@@ -273,6 +273,7 @@ func (c *selectionActionComputation) Step(ctx context.Context, b *readprep.Budge
 	if err = b.Resize(c.AccountedBytes() + int64(8*len(raw)) + 65536); err != nil {
 		return readprep.StepResult{}, err
 	}
+	c.payloadBytes = int64(cap(raw))
 	return readprep.StepResult{Done: true, Payload: raw}, nil
 }
 
@@ -378,8 +379,12 @@ func (d Dependencies) selectionActionAuthorize(ctx context.Context, tx *sql.Tx, 
 	}
 	if target != nil {
 		if target.OperationID != "" {
+			family, err := d.Identity.SessionFamilyTx(ctx, tx, live)
+			if err != nil {
+				return err
+			}
 			var state string
-			err := tx.QueryRowContext(ctx, `SELECT state FROM selection_action_groups WHERE binding=? AND operation_id=?`, actionBinding(p), target.OperationID).Scan(&state)
+			err := tx.QueryRowContext(ctx, `SELECT state FROM selection_action_groups WHERE binding=? AND operation_id=?`, actionBinding(p, family.ID), target.OperationID).Scan(&state)
 			if err != nil {
 				return err
 			}
@@ -411,16 +416,22 @@ func (d Dependencies) actionExposure(ctx context.Context, p identity.Principal, 
 		return d.Catalog.WithContext(inner).CheckBrowseSelectionBasisTx(inner, tx, viewer, input.Selector.Query.LibraryID, input.Selector.Query.SelectionBasis)
 	})
 }
-func actionBinding(p identity.Principal) string {
-	return identity.Digest(fmt.Sprint([]any{"selection-action", p.ServerID, p.Hash, p.Authority, p.AccountID, p.ProfileID, p.Epoch, p.Grant}))
+func actionBinding(p identity.Principal, family string) string {
+	raw, _ := json.Marshal([]any{"selection-action", p.ServerID, family, p.Authority, p.AccountID, p.ProfileID, p.Epoch, p.Grant})
+	return identity.Digest(string(raw))
 }
-func actionAccount(p identity.Principal) string {
-	return identity.Digest(fmt.Sprint([]string{p.Authority, p.AccountID}))
-}
-func actionExpiry(result readprep.Result) time.Time {
-	expiry := time.Now().Add(time.Minute)
-	if result.OriginalExpiry.Before(expiry) {
-		expiry = result.OriginalExpiry
-	}
-	return expiry
+
+// Confirmed command lookup survives ordinary token renewal within the verified
+// session family. Volatile preparation handles remain exact-token private.
+func (d Dependencies) selectionActionBinding(ctx context.Context, p identity.Principal) (string, error) {
+	var binding string
+	err := dbwork.WithReadSnapshot(ctx, d.DB, func(inner context.Context) error {
+		family, err := d.Identity.SessionFamilyTx(inner, dbwork.Snapshot(inner), p)
+		if err != nil {
+			return err
+		}
+		binding = actionBinding(p, family.ID)
+		return nil
+	})
+	return binding, err
 }

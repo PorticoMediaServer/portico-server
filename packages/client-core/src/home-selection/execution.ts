@@ -50,7 +50,7 @@ export async function selectionJobTasks(target: SelectionTarget, command: JobCom
   for (const selector of selectors) out.push({request: {operationId: (await requestId()).replaceAll('-', ''), command, selector, args}, failures: [], observed: false});
   return out;
 }
-function pause(signal: AbortSignal, jobId: string, events?: Pick<EventsClient, 'on'> & Partial<Pick<EventsClient, 'onResync' | 'resync'>>): Promise<void> {
+function pause(signal: AbortSignal, jobId: string, events?: Pick<EventsClient, 'on'> & Partial<Pick<EventsClient, 'onResync' | 'resyncReads'>>): Promise<void> {
   return new Promise((resolve, reject) => {
     let finished = false;
     let unsubscribe: (() => void) | undefined, offResync: (() => void) | undefined;
@@ -70,13 +70,13 @@ function pause(signal: AbortSignal, jobId: string, events?: Pick<EventsClient, '
   });
 }
 /** Durable submission bodies are retained unchanged across missing/ambiguous responses. */
-export async function runSelectionJobs(api: HomeApi, tasks: HomeJobTask[], signal: AbortSignal, isCurrent: () => boolean, progress: (value: HomeSelectionProgress, jobIds: readonly string[]) => void, beforeSubmit?: (task: HomeJobTask) => Promise<void>, events?: Pick<EventsClient, 'on'> & Partial<Pick<EventsClient, 'onResync' | 'resync'>>, readFailures = true): Promise<void> {
+export async function runSelectionJobs(api: HomeApi, tasks: HomeJobTask[], signal: AbortSignal, isCurrent: () => boolean, progress: (value: HomeSelectionProgress, jobIds: readonly string[]) => void, beforeSubmit?: (task: HomeJobTask) => Promise<void>, events?: Pick<EventsClient, 'on'> & Partial<Pick<EventsClient, 'onResync' | 'resyncReads'>>, readFailures = true): Promise<void> {
   const current = () => {if (signal.aborted || !isCurrent()) throw selectionExecutionError('cancelled');};
   const report = () => {
     const jobs = tasks.flatMap(task => task.job ? [task.job] : []);
     progress({phase: jobs.length === tasks.length && jobs.every(job => job.totalKnown) ? 'working' : 'preparing', done: jobs.reduce((n, job) => n + job.done, 0), total: jobs.reduce((n, job) => n + job.total, 0), totalKnown: jobs.length === tasks.length && jobs.every(job => job.totalKnown)}, jobs.map(job => job.jobId));
   };
-  const read = <T>(request: () => Promise<T>): Promise<T> => events?.resync ? events.resync.run(signal, request) : request();
+  const read = <T>(request: () => Promise<T>): Promise<T> => events?.resyncReads ? events.resyncReads.run(signal, request) : request();
   let resyncDebt = 0;
   const offResync = events?.onResync?.(() => {resyncDebt++;});
   try {

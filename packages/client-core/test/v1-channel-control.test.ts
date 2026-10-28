@@ -611,3 +611,17 @@ test('channel close reports a refused Stop without leaving its completion barrie
     assert.deepEqual(server.consumed, [], 'refusal cannot consume an unconfirmed Stop');
   } finally {control.close();}
 });
+
+test('resync rereads the current channel without another join, seek, start or mutation', async () => {
+  const {EventsClient} = await import('../src/playback-v1/events.ts');
+  const server = new ChannelServer(), feed = new EventsClient({http: server});
+  const control = new V1ChannelControl({http: server, events: feed, key: () => 'channel-resync-key-000000', pollMs: 1_000_000});
+  try {
+    await control.open(channel, {state: () => {}, error: () => {}}); await settle();
+    const before = server.log.length;
+    feed.deliver({id: 'channel-gap', type: 'stream.resync'}); await settle();
+    const requests = server.log.slice(before);
+    assert.equal(requests.filter(r => r.method === 'GET').length, 1);
+    assert.equal(requests.some(r => r.method !== 'GET'), false);
+  } finally {control.close(); feed.resyncReads.dispose();}
+});

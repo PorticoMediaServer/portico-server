@@ -10,11 +10,13 @@ import (
 	"time"
 
 	"portico.local/server/internal/catalog"
+	"portico.local/server/internal/catalogtest"
 	"portico.local/server/internal/readprep"
 )
 
 func TestBulkPreviewPreparationSharesMemoryOnlyWorkAndChecksLiveBasis(t *testing.T) {
 	s, targets, _ := bulkFixture(t)
+	catalogtest.New(t, s.db).Drain()
 	var request catalog.BulkMetadataPreviewRequest
 	for _, target := range targets {
 		request.Targets = append(request.Targets, catalog.BulkMetadataTarget{Kind: target.Kind, ContentKind: "movie", ID: target.ID, LibraryID: "movies"})
@@ -111,6 +113,7 @@ func TestBulkPreviewPreparationSharesMemoryOnlyWorkAndChecksLiveBasis(t *testing
 
 func TestBulkPreviewPreparationHonestSharedCapacity(t *testing.T) {
 	s, targets, _ := bulkFixture(t)
+	catalogtest.New(t, s.db).Drain()
 	request := catalog.BulkMetadataPreviewRequest{Targets: []catalog.BulkMetadataTarget{{Kind: "item", ContentKind: "movie", ID: targets[0].ID, LibraryID: "movies"}}}
 	access := BulkPreviewPreparationAccess{CapturedBytes: 4096, Source: previewRequestSource(s, request), Authorize: previewAuthorize}
 	key, plan, err := s.PlanBulkPreview(context.Background(), "one", access)

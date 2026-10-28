@@ -125,7 +125,7 @@ export function runEventFeed(events: EventsClient, hub: FreshnessHub | undefined
     const state = `${env.visible()}:${wanted()}`;
     if (state === was) return;
     was = state;
-    events.resync.setActive(env.visible());
+    events.resyncReads.setActive(env.visible());
     hub?.setActive(env.visible());
     if (timer !== undefined) { clearTimer(timer); timer = undefined; }
     if (wanted()) { events.start(); return; }

@@ -584,9 +584,9 @@ export class FreshnessHub {
   // ── Foreground and input ──────────────────────────────────────────
 
   /** @internal Admission only: existing owners keep debt, waits and read outcomes. */
-  readAdmission(): object | undefined {return this.events?.resync;}
+  readAdmission(): object | undefined {return this.events?.resyncReads;}
   read<T>(signal: AbortSignal, read: () => Promise<T>): Promise<T> {
-    return this.events ? this.events.resync.run(signal, read) : read();
+    return this.events ? this.events.resyncReads.run(signal, read) : read();
   }
 
   isActive(): boolean { return this.active && !this.disposed; }

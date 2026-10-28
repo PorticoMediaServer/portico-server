@@ -946,6 +946,10 @@ export class WebPlayback implements PlaybackAdapter {
         self.endedListeners.add(listener);
         return () => { self.endedListeners.delete(listener); };
       },
+      async reconcileSession(sessionId: string, signal?: AbortSignal) {
+        if (self.retired.has(sessionId) || signal?.aborted) return;
+        await self.controller.sessionUpdated(sessionId, undefined, undefined, {signal, strict: true});
+      },
       sessionUpdated(sessionId: string, revision?: string, data?: unknown) {
         if (self.retired.has(sessionId)) return;
         const d = data && typeof data === 'object' ? data as {state?: unknown; reason?: unknown} : undefined;

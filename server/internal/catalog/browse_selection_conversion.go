@@ -18,7 +18,8 @@ import (
 type BrowseSelectionConversion struct {
 	IDs      []int64
 	Revision string
-	Basis    string
+	Basis string
+ Ordered bool
 	lease    readprep.Result
 }
 
@@ -133,7 +134,7 @@ func (s *Service) resolvePreparedBrowseSelection(viewer Viewer, query JobQuery, 
 		seen[id] = true
 	}
 	keep = true
-	return BrowseSelectionConversion{IDs: content.IDs, Revision: revision, Basis: query.SelectionBasis, lease: result}, nil
+	return BrowseSelectionConversion{IDs: content.IDs, Revision: revision, Basis: query.SelectionBasis, Ordered:content.Ordered, lease: result}, nil
 }
 
 func (s *Service) browsePreparedSelection(viewer Viewer, request BrowseRequest) (BrowseResult, error) {
@@ -178,13 +179,18 @@ func (s *Service) browsePreparedSelection(viewer Viewer, request BrowseRequest) 
 	if liveRevision != request.Range.Revision {
 		return out, ErrStaleContinuation
 	}
-	if !LocalSearchQueueSupported(request.Query, sorts) {
+	if !localSearchConversionOrderSupported(request.Query, sorts) {
 		return out, ErrSelectionBatchUnsupported
 	}
-	order, orderArgs, sizeExpr, sizeArgs, err := preparedSelectionOrder(viewer.Profile, sorts[0])
-	if err != nil {
-		return out, err
-	}
+	var order,sizeExpr string
+ var orderArgs,sizeArgs []any
+ if sorts[0].Field=="groupOrder"||sorts[0].Field=="forYou"{
+  if !converted.Ordered{return out,ErrStaleContinuation}
+  order,sizeExpr="picked.key ASC","''"
+ }else{
+  order,orderArgs,sizeExpr,sizeArgs,err=preparedSelectionOrder(viewer.Profile,sorts[0])
+  if err!=nil{return out,err}
+ }
 	// This endpoint is a complete bounded action conversion. Its consumer needs
 	// canonical identities/titles, not media details, asset lists or artwork.
 	// Preflight all variable row/order bytes on <=200 singleton identities before

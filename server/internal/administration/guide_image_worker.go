@@ -344,7 +344,7 @@ func (s *Service) GuideImageBytes(ctx context.Context, digest, mime string) ([]b
 // removed; anything else in the directory is left alone.
 func (s *Service) cleanupGuideImages(ctx context.Context) {
 	if _, err := dbwork.ExecWrite(ctx, s.db, dbwork.ClassBackgroundMedia,
-		`DELETE FROM live_programme_images WHERE NOT EXISTS(SELECT 1 FROM live_programme_icons i WHERE i.url=live_programme_images.url)`); err != nil {
+		`DELETE FROM live_programme_images WHERE NOT EXISTS(SELECT 1 FROM backup_blob_holds) AND NOT EXISTS(SELECT 1 FROM live_programme_icons i WHERE i.url=live_programme_images.url)`); err != nil {
 		log.Printf("guide image cleanup: %v", err)
 		return
 	}
@@ -367,17 +367,22 @@ func (s *Service) cleanupGuideImages(ctx context.Context) {
 			if !entry.Mode().IsRegular() || entry.ModTime().After(cut) {
 				continue
 			}
+			if canonical, _, tomb := strings.Cut(entry.Name(), guideImageTombMarker); tomb {
+				if digest, ok := guideImageName(canonical); ok {
+					if err := s.settleGuideImageTomb(ctx, root, entry.Name(), canonical, digest); err != nil {
+						log.Printf("guide image cleanup: %v", err)
+						return
+					}
+				}
+				continue
+			}
 			digest, ok := guideImageName(entry.Name())
 			if !ok {
 				continue
 			}
-			var referenced bool
-			if err := dbwork.ReadHandle(ctx, s.db).QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM live_programme_images WHERE small_digest=?) OR EXISTS(SELECT 1 FROM live_programme_images WHERE large_digest=?)`, digest, digest).Scan(&referenced); err != nil {
+			if err := s.retireGuideImage(ctx, root, entry.Name(), digest, nil); err != nil {
 				log.Printf("guide image cleanup: %v", err)
 				return
-			}
-			if !referenced {
-				_ = os.Remove(filepath.Join(root, entry.Name()))
 			}
 		}
 		if err != nil {

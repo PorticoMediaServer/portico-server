@@ -32,13 +32,31 @@ func NewSelectionActions(d Dependencies) *selectionactions.Service {
 			if d.Administration == nil {
 				return administration.ErrUnavailable
 			}
-			return d.Administration.ApplySelectionDelete(ctx, p, action, options, target, file, authorize, checkpoint)
+			err := d.Administration.ApplySelectionDelete(ctx, p, action, options, target, file, authorize, checkpoint)
+			var refusal *administration.SelectionDeleteError
+			if errors.As(err, &refusal) {
+				return &selectionactions.TargetFailure{Code: refusal.Code, Cause: err}
+			}
+			if errors.Is(err, administration.ErrNotFound) || errors.Is(err, sql.ErrNoRows) {
+				return &selectionactions.TargetFailure{Code: "target_not_found", Cause: err}
+			}
+			if errors.Is(err, administration.ErrDenied) {
+				return &selectionactions.TargetFailure{Code: "not_permitted", Cause: err}
+			}
+			return err
 		}
 		if action == "download" {
 			if d.Downloads == nil {
 				return downloads.ErrPolicy
 			}
-			return d.Downloads.ApplySelectionDownload(ctx, p, action, options, target, file, authorize, checkpoint)
+			err := d.Downloads.ApplySelectionDownload(ctx, p, action, options, target, file, authorize, checkpoint)
+			if errors.Is(err, downloads.ErrNotFound) || errors.Is(err, sql.ErrNoRows) {
+				return &selectionactions.TargetFailure{Code: "target_not_found", Cause: err}
+			}
+			if errors.Is(err, downloads.ErrPolicy) {
+				return &selectionactions.TargetFailure{Code: "not_permitted", Cause: err}
+			}
+			return err
 		}
 		return selectionactions.ErrInput
 	}
@@ -116,7 +134,7 @@ func registerSelectionActions(registry *apikit.Registry, d Dependencies) error {
 	if err := apikit.RegisterRaw(registry, apikit.RawRoute[noBody, noBody]{Metadata: apikit.Metadata{Audience: apikit.Clients, ID: "delete_selection_action_preparation", Method: "DELETE", Path: poll, Summary: "Release this caller's unconfirmed action preparation", Access: apikit.Device, Requires: apikit.ScopeRead, Lane: apikit.Browsing, Admission: laneBrowsing, Cost: apikit.Constant, Status: 204, NoResponseBody: true, Errors: failures}, Serve: d.deleteSelectionActionPreparation}); err != nil {
 		return err
 	}
-	v1Route(registry, apikit.Metadata{Audience: apikit.Clients, ID: "create_selection_action", Method: "POST", Path: "/v1/libraries/{id}/selection-actions", Summary: "Confirm the exact preview and admit durable immutable target commands", Access: apikit.Device, Requires: apikit.ScopePlayback, Lane: apikit.Default, Admission: laneDefault, Cost: apikit.SelectionAsync, Status: 202, BodyLimit: 131072, Errors: failures}, d.confirmSelectionAction)
+	v1Route(registry, apikit.Metadata{Audience: apikit.Clients, ID: "create_selection_action", Method: "POST", Path: "/v1/libraries/{id}/selection-actions", Summary: "Confirm the exact preview and admit durable immutable target commands", Access: apikit.Device, Requires: apikit.ScopeRead, Lane: apikit.Default, Admission: laneDefault, Cost: apikit.SelectionAsync, Status: 202, BodyLimit: 131072, Errors: failures}, d.confirmSelectionAction)
 	v1Route(registry, apikit.Metadata{Audience: apikit.Clients, ID: "get_selection_action", Method: "GET", Path: "/v1/selection-actions/{operationId}", Summary: "Read confirmed command progress", Access: apikit.Device, Requires: apikit.ScopeRead, Lane: apikit.Browsing, Admission: laneBrowsing, Cost: apikit.Constant, Status: 200, Errors: failures}, d.getSelectionAction)
 	v1Route(registry, apikit.Metadata{Audience: apikit.Clients, ID: "cancel_selection_action", Method: "DELETE", Path: "/v1/selection-actions/{operationId}", Summary: "Stop further command effects while preserving completed outcomes", Access: apikit.Device, Requires: apikit.ScopePlayback, Lane: apikit.Default, Admission: laneDefault, Cost: apikit.Constant, Status: 200, Errors: failures}, d.cancelSelectionAction)
 	return nil
@@ -177,6 +195,10 @@ func (d Dependencies) createSelectionActionPreparation(w http.ResponseWriter, r 
 		return
 	}
 	if err := input.validate(r.PathValue("id")); err != nil {
+		actionFailure(w, err)
+		return
+	}
+	if err := actionRequestScope(r, input.Action); err != nil {
 		actionFailure(w, err)
 		return
 	}
@@ -242,6 +264,10 @@ func (d Dependencies) pollSelectionAction(r *http.Request) (identity.Principal, 
 		return p, viewer, readprep.Result{}, readprep.ErrStale
 	}
 	if err = input.validate(r.PathValue("id")); err != nil {
+		result.Release()
+		return p, viewer, readprep.Result{}, err
+	}
+	if err = actionRequestScope(r, input.Action); err != nil {
 		result.Release()
 		return p, viewer, readprep.Result{}, err
 	}
@@ -338,10 +364,16 @@ func (d Dependencies) confirmSelectionAction(ctx context.Context, r *http.Reques
 	}
 	raw, _ := json.Marshal([]any{r.PathValue("id"), in})
 	hash := identity.Digest(string(raw))
-	binding := actionBinding(p)
+	binding, err := d.selectionActionBinding(ctx, p)
+	if err != nil {
+		return selectionactions.Job{}, err
+	}
 	if replay, found, err := d.SelectionActions.Replay(ctx, binding, in.OperationID, hash); err != nil {
 		return selectionactions.Job{}, actionError(err)
 	} else if found {
+		if err := actionRequestScope(r, replay.Action); err != nil {
+			return selectionactions.Job{}, err
+		}
 		return replay, nil
 	}
 	access, err := d.browseSelectionAccess(p, r.PathValue("id"), viewer)
@@ -380,6 +412,9 @@ func (d Dependencies) confirmSelectionAction(ctx context.Context, r *http.Reques
 	if err != nil || !time.Now().Before(expires) || intent.Preview.Total <= 0 || in.Confirmation != intent.Preview.Confirmation {
 		return selectionactions.Job{}, actionError(selectionactions.ErrStale)
 	}
+	if err = actionRequestScope(r, intent.Input.Action); err != nil {
+		return selectionactions.Job{}, err
+	}
 	if err = d.actionExposure(ctx, p, viewer, intent.Input); err != nil {
 		return selectionactions.Job{}, actionError(err)
 	}
@@ -412,7 +447,11 @@ func (d Dependencies) getSelectionAction(ctx context.Context, r *http.Request, _
 	if d.SelectionActions == nil {
 		return selectionactions.Job{}, actionError(selectionactions.ErrNotFound)
 	}
-	out, err := d.SelectionActions.Lookup(ctx, actionBinding(p), r.PathValue("operationId"))
+	binding, err := d.selectionActionBinding(ctx, p)
+	if err != nil {
+		return selectionactions.Job{}, err
+	}
+	out, err := d.SelectionActions.Lookup(ctx, binding, r.PathValue("operationId"))
 	return out, actionError(err)
 }
 func (d Dependencies) cancelSelectionAction(ctx context.Context, r *http.Request, _ noBody) (selectionactions.Job, error) {
@@ -426,6 +465,17 @@ func (d Dependencies) cancelSelectionAction(ctx context.Context, r *http.Request
 	if d.SelectionActions == nil {
 		return selectionactions.Job{}, actionError(selectionactions.ErrNotFound)
 	}
-	out, err := d.SelectionActions.Cancel(ctx, actionBinding(p), r.PathValue("operationId"))
+	binding, err := d.selectionActionBinding(ctx, p)
+	if err != nil {
+		return selectionactions.Job{}, err
+	}
+	out, err := d.SelectionActions.Cancel(ctx, binding, r.PathValue("operationId"))
 	return out, actionError(err)
+}
+
+func actionRequestScope(r *http.Request, action string) error {
+	if action == "delete" {
+		return registryScopeGate(r, apikit.ScopeLibrary)
+	}
+	return registryScopeGate(r, apikit.ScopePlayback)
 }

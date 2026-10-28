@@ -1,5 +1,5 @@
 import {routePath} from '../../contracts/src/route-paths.ts';
-import {canonicalQualityLadder} from '../../contracts/src/types.ts';
+import {canonicalMusicQualityLadder, canonicalQualityLadder} from '../../contracts/src/types.ts';
 import {jobRequestBody, type JobSelector} from './bulk-jobs.ts';
 import {parseBrowseNode} from './browse.ts';
 import {validSelectionBasis} from './selection-basis.ts';
@@ -61,7 +61,7 @@ export function selectionActionInput(raw: unknown): SelectionActionInput {
   } else {
     const quality = raw.options.quality;
     if (!exact(raw.options, ['deviceId', 'quality']) || !id(raw.options.deviceId) || typeof raw.options.quality !== 'string'
-      || !canonicalQualityLadder.some(q => q.id === quality)) invalid();
+      || ![...canonicalQualityLadder, ...canonicalMusicQualityLadder].some(q => q.id === quality)) invalid();
     options = {action: 'download', options: {deviceId: raw.options.deviceId, quality: raw.options.quality}};
   }
   return freeze({...options, selector: {query}, expected: {catalogRevision: raw.expected.catalogRevision}});

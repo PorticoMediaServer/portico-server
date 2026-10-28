@@ -38,7 +38,7 @@ const starts: ReadonlySet<string> = new Set([routePath('start_playback_session')
  * the first recovery). Exhaustion stops automation only: the original refusal stays
  * drawn and an explicit retry or a confirmed Stop still resumes the same request. */
 export function startFailureHttp(input: Readonly<{
-  http: V1Http; api: HttpLocalApi; events: Pick<EventsClient, 'on'> & Partial<Pick<EventsClient, 'onResync' | 'getStatus' | 'subscribeStatus'>>; life: AbortSignal;
+  http: V1Http; api: HttpLocalApi; events: Pick<EventsClient, 'on'> & Partial<Pick<EventsClient, 'onResync' | 'getStatus' | 'subscribeStatus' | 'resyncReads'>>; life: AbortSignal;
   /** Rechecks currentness when the platform's original caller changes. */
   subscribeCurrent?(listener: () => void): () => void;
   visibility?: PageVisibility;
@@ -128,7 +128,10 @@ export function startFailureHttp(input: Readonly<{
         let dirty = false, scheduled = false, refreshing = false, visibilityEpoch = 0;
         let offered: readonly RemotePlaybackControls[] = Object.freeze([]);
         const sessionListeners = new Set<(items: readonly RemotePlaybackControls[]) => void>();
-        const service = playbackControlsService(<T,>(path: string, method?: string, body?: unknown) => input.api.request<T>(path, method, body, signal));
+        const service = playbackControlsService(<T,>(path: string, method?: string, body?: unknown) => {
+          const request = () => input.api.request<T>(path, method, body, signal);
+          return input.events.resyncReads && (!method || method === 'GET') ? input.events.resyncReads.run(signal, request) : request();
+        });
         const shown = () => current() && active === failure;
         const check = () => {if (!shown()) throw retired();};
         const publishSessions = (rows: readonly RemotePlaybackControls[], latestLimit: typeof limit) => {

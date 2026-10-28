@@ -607,3 +607,22 @@ test('WEB-03: reloading media for the same session preserves timeline sequence a
   ctl.detach();ctl.reloadMedia();assert.equal(player.loads.length,2,'a detached session cannot be reloaded');
  }finally{ctl.dispose();}
 });
+
+test('resync strict current-session reads retain transient failures and bypass an unchanged row revision', async () => {
+  const server = new FakePlaybackServer(), inner = fakeHttp(server), c = clockwork(), player = new FakePlayer();
+  let fail = false, reads = 0;
+  const http = {send: async (request: Parameters<typeof inner.send>[0]) => {
+    if (request.method === 'GET' && request.path.startsWith('/v1/playback/sessions/')) {reads++; if (fail) throw new Error('unavailable');}
+    return inner.send(request);
+  }};
+  const controller = new PlaybackSessionController({http, player, timers: c, key});
+  try {
+    const session = await controller.start({itemId: 'movie-1'});
+    const before = player.loads.length;
+    fail = true;
+    await assert.rejects(controller.sessionUpdated(session.id, undefined, undefined, {strict: true}), /unavailable/);
+    fail = false;
+    await controller.sessionUpdated(session.id, undefined, undefined, {strict: true});
+    assert.equal(reads, 2); assert.equal(player.loads.length, before, 'same projection never reloads the engine');
+  } finally {controller.dispose();}
+});

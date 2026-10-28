@@ -24,6 +24,7 @@ type selectionReplaySpec struct {
 type selectionReplayContent struct {
 	IDs []int64
 	EOF bool
+ SortKeys map[int64]string
 }
 
 // BrowseSelectionReplayPage is a bounded delivery, never a complete hit cache.
@@ -34,7 +35,8 @@ type BrowseSelectionReplayPage struct {
 	EOF, Preparing bool
 	Basis          string
 	lease          readprep.Result
-	handle         readprep.Handle
+	handle readprep.Handle
+ SortKeys map[int64]string
 }
 
 func (p BrowseSelectionReplayPage) Release() { p.lease.Release() }
@@ -45,11 +47,16 @@ type selectionReplayComputation struct {
 	check                      func(*Service) error
 	factoryBytes, payloadBytes int64
 	ids                        [browseSelectionReplaySize]int64
-	count                      int
+	count int
+ order *SmallSelectionOrder
+ sortKeys map[int64]string
+ collected bool
 }
 
 func (c *selectionReplayComputation) AccountedBytes() int64 {
-	return c.factoryBytes + int64(unsafe.Sizeof(*c)) + int64(c.state.Bytes()) + c.payloadBytes
+	n:=c.factoryBytes+int64(unsafe.Sizeof(*c))+int64(c.state.Bytes()+c.order.Bytes())+c.payloadBytes
+ for _,key:=range c.sortKeys{n+=128+int64(len(key))}
+ return n
 }
 
 func (c *selectionReplayComputation) Step(ctx context.Context, budget *readprep.Budget) (readprep.StepResult, error) {
@@ -70,13 +77,14 @@ func (c *selectionReplayComputation) Step(ctx context.Context, budget *readprep.
 		}
 		return read.browseSelectionWitness(p.library, viewer.Profile, viewer.EffectiveRestrictions())
 	}
+ if !c.collected {
 	// Each reducer quantum can emit 128 hits. Return a page on the first nonempty
 	// quantum rather than accumulate across quanta and risk dropping a suffix.
-	next, work, err := c.service.StepBrowseSelectionBatch(ctx, c.state, witness, SelectionBatchLimits{ReserveTransient: func(transient int64) error {
+	next, work, stepErr := c.service.StepBrowseSelectionBatch(ctx, c.state, witness, SelectionBatchLimits{ReserveTransient: func(transient int64) error {
 		return budget.Resize(peak + max(int64(0), transient-SelectionBatchMaximumBytes))
 	}})
-	if err != nil {
-		return readprep.StepResult{}, selectionPreparationError(err)
+	if stepErr != nil {
+		return readprep.StepResult{}, selectionPreparationError(stepErr)
 	}
 	c.state = next
 	c.count = work.MatchCount
@@ -84,10 +92,17 @@ func (c *selectionReplayComputation) Step(ctx context.Context, budget *readprep.
 	if c.count == 0 && !next.Complete() {
 		return readprep.StepResult{}, nil
 	}
-	if err = budget.Resize(c.AccountedBytes() + 32768); err != nil {
+  c.collected=true
+ }
+ pendingOrder,err:=c.prepareGroupKeys(ctx,budget,witness)
+ if err!=nil{return readprep.StepResult{},err}
+ if pendingOrder{return readprep.StepResult{},nil}
+	encodingBound:=int64(32768)
+ for _,key:=range c.sortKeys{encodingBound+=4*int64(len(key))}
+ if err = budget.Resize(c.AccountedBytes() + encodingBound); err != nil {
 		return readprep.StepResult{}, err
 	}
-	encoded, err := json.Marshal(selectionReplayContent{IDs: c.ids[:c.count], EOF: next.Complete()})
+	encoded, err := json.Marshal(selectionReplayContent{IDs: c.ids[:c.count], EOF: c.state.Complete(), SortKeys:c.sortKeys})
 	if err != nil {
 		return readprep.StepResult{}, err
 	}
@@ -258,6 +273,7 @@ func (s *Service) PollBrowseSelectionReplay(library string, viewer Viewer, query
 			last = id
 		}
 		out.IDs = content.IDs
+ out.SortKeys=content.SortKeys
 		out.EOF = content.EOF
 	}
 	if err = s.CheckBrowseSelectionPreparationBasis(library, viewer, result.Basis, access); err != nil {

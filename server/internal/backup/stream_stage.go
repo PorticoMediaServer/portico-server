@@ -26,6 +26,9 @@ func (s *Service) streamSource(source Source) (string, bool, error) {
 	if err = s.sourceFilesSafe(filepath.Join(dir, ManifestName)); err != nil {
 		return "", false, err
 	}
+	if err = regularManifestFile(dir, ManifestName); err != nil {
+		return "", false, err
+	}
 	return dir, isStreamManifest(dir), nil
 }
 

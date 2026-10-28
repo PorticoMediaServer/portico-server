@@ -220,7 +220,7 @@ export class ReceiverHost{
  }
  private async readInbox(id:string,signal:AbortSignal){
   const request=()=>this.api.request<{grants?:unknown[];handoffs?:unknown[]}>(encodedRoutePath("social_get_v1_receivers_id_inbox", {"id": encodeURIComponent(id)}),'GET',undefined,signal);
-  const inbox=await (this.events?.resync?this.events.resync.run(signal,request):request());
+  const inbox=await (this.events?.resyncReads?this.events.resyncReads.run(signal,request):request());
   if(signal.aborted)return;
   const asking=(inbox.grants??[]).map(g=>parseReceiverGrant({protocolVersion:SOCIAL_PROTOCOL,serverTime:'',grant:g}))[0];
   if(asking?.id!==this.state.asking?.id)this.publish({asking});

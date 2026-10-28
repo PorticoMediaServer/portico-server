@@ -208,9 +208,10 @@ func (w *preparedMetadataWriter) Write(raw []byte) (int, error) {
 func TestBulkMetadataPreparedHTTPMemory200AndDelivery(t *testing.T) {
 	f, targets, root := preparedMetadataFixture(t, 200)
 	in, _, _, browseViewer := prepareMetadataHTTP(t, f)
-	// Compare against the existing real editor/spool semantics before making
-	// disk spooling impossible for the proof-bearing request.
+	// Compare against the real general memory editor before making the
+	// artwork-cache parent unusable for every preview path.
 	legacy := f.request("POST", preparedMetadataPath, nil, catalog.BulkMetadataPreviewRequest{Targets: targets})
+	legacy = bulkPreviewHTTPReady(t, f.h, f.token, legacy)
 	var oracle metadata.BulkMetadataPreview
 	if legacy.Code != 200 || json.Unmarshal(legacy.Body.Bytes(), &oracle) != nil || oracle.Total != 200 {
 		t.Fatalf("legacy oracle %d %s", legacy.Code, legacy.Body.String())
@@ -238,10 +239,10 @@ func TestBulkMetadataPreparedHTTPMemory200AndDelivery(t *testing.T) {
 				if err := json.Unmarshal(w.Body.Bytes(), &got); err != nil {
 					t.Fatal(err)
 				}
-				if got.Total != 200 || len(got.Targets) != 200 || got.SelectionRevision != in.Expected.CatalogRevision || got.ViewerFence == browseViewer.Fence || got.ViewerFence == "" || got.ServerID != f.d.Identity.ID() {
+				if got.Total != 200 || len(got.Targets) != 0 || got.SelectionRevision != in.Expected.CatalogRevision || got.ViewerFence == browseViewer.Fence || got.ViewerFence == "" || got.ServerID != f.d.Identity.ID() {
 					t.Fatalf("lost count/revision or route fence: %+v", got)
 				}
-				if !reflect.DeepEqual(got.Fields, oracle.Fields) || !reflect.DeepEqual(got.Targets, oracle.Targets) || !reflect.DeepEqual(got.Schema, oracle.Schema) {
+				if !reflect.DeepEqual(got.Fields, oracle.Fields) || !reflect.DeepEqual(got.Schema, oracle.Schema) {
 					t.Fatal("memory preview differs from the legacy editor oracle")
 				}
 			}
@@ -283,7 +284,7 @@ func TestBulkMetadataPreparedHTTPCachedRequestNoCensus(t *testing.T) {
 	}
 }
 
-func TestBulkMetadataPreparedHTTPLegacyGroupedSpool(t *testing.T) {
+func TestBulkMetadataPreparedHTTPLegacyGroupedMemory(t *testing.T) {
 	f, _, root := preparedMetadataFixture(t, 2)
 	r := httptest.NewRequest("POST", preparedMetadataPath, nil)
 	r.Header.Set("Authorization", "Bearer "+f.token)
@@ -319,16 +320,21 @@ func TestBulkMetadataPreparedHTTPLegacyGroupedSpool(t *testing.T) {
 	}
 	in := catalog.BulkMetadataPreviewRequest{Selector: &catalog.JobSelector{Query: &catalog.JobQuery{LibraryID: "movies", Pivot: "movies", Filter: filter, Sort: page.Applied.Sort}}, Expected: &catalog.JobExpected{CatalogRevision: page.PageInfo.Revision}}
 	w := f.request("POST", preparedMetadataPath, nil, in)
+	w = bulkPreviewHTTPReady(t, f.h, f.token, w)
 	var got metadata.BulkMetadataPreview
 	if w.Code != 200 || json.Unmarshal(w.Body.Bytes(), &got) != nil || got.Total != 2 || got.SelectionRevision != in.Expected.CatalogRevision {
 		t.Fatalf("legacy grouped request %d %s", w.Code, w.Body.String())
 	}
 	blockMetadataSpool(t, root)
 	w = f.request("POST", preparedMetadataPath, nil, in)
-	preparedMetadataError(t, w, 500, "internal")
-	if stats := f.store.Stats(); stats.Entries != 0 || stats.Deliveries != 0 {
-		t.Fatalf("legacy request entered preparation: %+v", stats)
+	w = bulkPreviewHTTPReady(t, f.h, f.token, w)
+	if w.Code != 200 || json.Unmarshal(w.Body.Bytes(), &got) != nil || got.Total != 2 || len(got.Targets) != 0 {
+		t.Fatalf("memory-only grouped request %d %s", w.Code, w.Body.String())
 	}
+	if stats := f.store.Stats(); stats.Entries < 1 || stats.Deliveries != 0 {
+		t.Fatalf("general request did not use bounded preparation: %+v", stats)
+	}
+
 }
 
 func TestBulkMetadataPreparedHTTPRefuses201(t *testing.T) {
@@ -452,7 +458,7 @@ func TestBulkMetadataPreparedHTTPErrorMappingAndDeclarations(t *testing.T) {
 	}{
 		{readprep.ErrStale, true, "stale_continuation", 409},
 		{catalog.ErrStaleContinuation, true, "stale_continuation", 409},
-		{catalog.ErrStaleContinuation, false, "revision_mismatch", 412},
+		{catalog.ErrStaleContinuation, false, "stale_continuation", 409},
 		{readprep.ErrCapacity, true, "rate_limited", 429},
 		{readprep.ErrClosed, true, "rate_limited", 429},
 		{readprep.ErrUncached, true, "rate_limited", 429},
