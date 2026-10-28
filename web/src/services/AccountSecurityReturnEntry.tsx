@@ -82,7 +82,12 @@ export function AccountSecurityReturnEntry({arrival}: {arrival: AccountSecurityE
           // Security original can never fall through to either grant consumer.
           const tx = await originalSecurityClient(location.origin).transaction(captured.transactionId, signal);
           if (!tx || tx.securityReturn || tx.mode === 'reauthenticate') throw invalid();
-          if (current(original)) setOrdinary(tx.mode === 'link' ? {identityTransaction: captured.transactionId} : {});
+          if (current(original)) {
+            // Login callbacks share Hosted's /account callback URL with Security,
+            // but resume the original sign-in/start root. Only linking stays here.
+            if (tx.mode === 'login') history.replaceState(null, '', '/');
+            setOrdinary(tx.mode === 'link' ? {identityTransaction: captured.transactionId} : {});
+          }
         }
       }
     })().catch(value => {if (current(original)) {original.handedOff=false;setError(value);}}).finally(() => {original.busy = false; if (current(original)) setBusy(false);});
