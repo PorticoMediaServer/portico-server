@@ -298,6 +298,7 @@ var routeLanes = map[string]string{
 	"GET /v1/direct/members/{id}/deletion-preview":                                "auth",
 	"GET /v1/direct/pin-recovery":                                                 "security-fence",
 	"GET /v1/direct/profiles/avatars":                                             "auth",
+	"GET /v1/direct/profiles/{id}/retirement":                                     "auth",
 	"GET /v1/direct/profiles/{id}/deletion-preview":                               "auth",
 	"GET /v1/direct/profiles/{id}/restrictions":                                   "security-fence",
 	"GET /v1/direct/registration-policy":                                          "auth",

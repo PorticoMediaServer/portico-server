@@ -572,6 +572,7 @@ func (s *Service) RevokeDirectTrust(ctx context.Context, bearer, profile, instal
 }
 
 type ProfileDeletionPreview struct {
+	Lifetime       string `json:"lifetime"`
 	ProfileID      string `json:"profileId"`
 	Revision       int64  `json:"revision"`
 	Name           string `json:"name"`
@@ -582,7 +583,7 @@ type ProfileDeletionPreview struct {
 
 func (s *Service) directDeletionTx(ctx context.Context, tx *sql.Tx, account, id string) (ProfileDeletionPreview, error) {
 	p := ProfileDeletionPreview{ProfileID: id}
-	e := tx.QueryRowContext(ctx, `SELECT name,revision,is_primary FROM direct_profiles WHERE account_id=? AND id=? AND deleted=0`, account, id).Scan(&p.Name, &p.Revision, &p.Primary)
+	e := tx.QueryRowContext(ctx, `SELECT name,revision,is_primary,lifetime FROM direct_profiles WHERE account_id=? AND id=? AND deleted=0`, account, id).Scan(&p.Name, &p.Revision, &p.Primary, &p.Lifetime)
 	if e != nil {
 		return p, e
 	}
@@ -601,48 +602,6 @@ func (s *Service) PreviewDirectProfileDeletion(ctx context.Context, bearer, id s
 		return ProfileDeletionPreview{}, e
 	}
 	return s.directDeletionTx(ctx, tx, c.account.ID, id)
-}
-func (s *Service) DeleteDirectProfile(ctx context.Context, bearer, id string, expected int64, deleteSaved bool) error {
-	if expected < 1 || !deleteSaved {
-		return ErrDirectInput
-	}
-	gated7, e := dbwork.Begin(ctx, s.db, dbwork.ClassSecurityFence)
-	if e != nil {
-		return e
-	}
-	tx := gated7.Tx()
-	defer gated7.Rollback()
-	c, e := s.profileManagerTx(ctx, tx, bearer)
-	if e != nil {
-		return e
-	}
-	p, e := s.directDeletionTx(ctx, tx, c.account.ID, id)
-	if e != nil {
-		return e
-	}
-	if p.Primary {
-		return ErrPrimaryProfile
-	}
-	if p.Revision != expected {
-		return ErrProfileChanged
-	}
-	if e = s.revokeDirectTx(ctx, tx, c.account.ID, id, ""); e != nil {
-		return e
-	}
-	if e = EraseProfileSavedDataTx(ctx, tx, Viewer{Authority: "local", AccountID: c.account.ID, ProfileID: id, ServerID: s.ID()}); e != nil {
-		return e
-	}
-	if _, e = tx.ExecContext(ctx, `DELETE FROM direct_profile_trust WHERE account_id=? AND profile_id=?`, c.account.ID, id); e != nil {
-		return e
-	}
-	if _, e = tx.ExecContext(ctx, `UPDATE direct_profiles SET deleted=1,name='Deleted profile',pin_hash=NULL,art='slate',revision=revision+1,pin_revision=pin_revision+1 WHERE id=?`, id); e != nil {
-		return e
-	}
-	// The owner's play history keeps this profile's plays without its name.
-	if e = ForgetPlayHistoryNamesTx(ctx, tx, "local", c.account.ID, id); e != nil {
-		return e
-	}
-	return gated7.Commit()
 }
 
 // EraseProfileSavedDataTx is deliberately authority-qualified. Physical media and

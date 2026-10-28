@@ -2970,6 +2970,7 @@ CREATE TABLE hosted_profile_erasure_receipts(
  job_id TEXT PRIMARY KEY,server_id TEXT NOT NULL,account_id TEXT NOT NULL,profile_id TEXT NOT NULL,
  revision INTEGER NOT NULL,applied_at TEXT NOT NULL) STRICT;
 CREATE TABLE direct_profiles(
+ lifetime TEXT NOT NULL DEFAULT (lower(hex(randomblob(16)))) CHECK(length(lifetime)=32),
  id TEXT PRIMARY KEY, account_id TEXT NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
  name TEXT NOT NULL, is_primary INTEGER NOT NULL DEFAULT 0 CHECK(is_primary IN(0,1)),
  position INTEGER NOT NULL DEFAULT 0, art TEXT NOT NULL DEFAULT 'blue',
@@ -11744,6 +11745,9 @@ WHEN NEW.owner_account_id IS NULL BEGIN
  UPDATE user_mutation_accounts SET account_id=NULL WHERE id=NEW.id;
 END;
 CREATE TABLE user_mutation_receipts(
+ profile_incarnation TEXT NOT NULL DEFAULT '' CHECK(length(profile_incarnation) IN(0,32)),
+ installation_incarnation TEXT NOT NULL DEFAULT '' CHECK(length(installation_incarnation) IN(0,32)),
+ root_id TEXT NOT NULL DEFAULT '' CHECK(length(root_id) IN(0,22)),
  key TEXT PRIMARY KEY CHECK(length(CAST(key AS BLOB))=51 AND substr(key,1,5)='p251_' AND substr(key,19,1)='_' AND substr(key,6,13) NOT GLOB '*[^0-9]*' AND substr(key,20,32) NOT GLOB '*[^0-9a-f]*'),
  scope_id INTEGER NOT NULL REFERENCES user_mutation_accounts(id),
  profile_id TEXT NOT NULL CHECK(length(CAST(profile_id AS BLOB)) BETWEEN 1 AND 128 AND instr(profile_id,char(0))=0),
@@ -11798,7 +11802,7 @@ CREATE TRIGGER user_mutation_receipt_release AFTER DELETE ON user_mutation_recei
  UPDATE user_mutation_global SET ordinary_count=ordinary_count-1+OLD.is_stop,stop_count=stop_count-OLD.is_stop,
  ordinary_bytes=ordinary_bytes-(1-OLD.is_stop)*4096,stop_bytes=stop_bytes-OLD.is_stop*4096 WHERE singleton=1;
 END;
-CREATE TRIGGER user_mutation_receipt_immutable BEFORE UPDATE OF key,scope_id,profile_id,family_id,operation,digest,is_stop,issued_ms ON user_mutation_receipts BEGIN
+CREATE TRIGGER user_mutation_receipt_immutable BEFORE UPDATE OF key,scope_id,profile_id,family_id,operation,digest,is_stop,issued_ms,profile_incarnation,installation_incarnation,root_id ON user_mutation_receipts BEGIN
  SELECT RAISE(ABORT,'user_mutation_immutable');
 END;
 -- Exact selection reads live input facts beyond Reading's predicate basis.
@@ -13010,3 +13014,57 @@ CREATE TABLE download_action_transfers(
  UNIQUE(profile_key,device_id,operation_id),
  CHECK((closed=0 AND closed_ms=0) OR (closed=1 AND closed_ms>0))
 ) STRICT;
+-- P251 lifetime owners and restartable profile retirement. No query results.
+CREATE TABLE identity_installations(
+ installation_hash TEXT PRIMARY KEY CHECK(length(installation_hash)=64),
+ incarnation TEXT NOT NULL UNIQUE CHECK(length(incarnation)=32),
+ registration_revision INTEGER NOT NULL DEFAULT 0
+  CHECK(registration_revision BETWEEN 0 AND 9007199254740991),
+ registration_nonce TEXT NOT NULL DEFAULT '' CHECK(length(registration_nonce) IN(0,22)),
+ registration_root TEXT NOT NULL DEFAULT '' CHECK(length(registration_root) IN(0,22)),
+ retired INTEGER NOT NULL DEFAULT 0 CHECK(retired IN(0,1))
+) STRICT;
+CREATE TABLE user_mutation_roots(
+ id TEXT PRIMARY KEY CHECK(length(id)=22),
+ installation_incarnation TEXT NOT NULL CHECK(length(installation_incarnation)=32),
+ account_id TEXT NOT NULL, profile_id TEXT NOT NULL,
+ account_incarnation TEXT NOT NULL, profile_incarnation TEXT NOT NULL CHECK(length(profile_incarnation)=32),
+ family_id TEXT NOT NULL,
+ registration_revision INTEGER NOT NULL CHECK(registration_revision BETWEEN 1 AND 9007199254740991),
+ state TEXT NOT NULL CHECK(state IN('active','draining')),
+ UNIQUE(installation_incarnation,registration_revision)
+) STRICT;
+CREATE UNIQUE INDEX user_mutation_roots_active ON user_mutation_roots(installation_incarnation) WHERE state='active';
+CREATE UNIQUE INDEX user_mutation_roots_draining ON user_mutation_roots(installation_incarnation) WHERE state='draining';
+CREATE INDEX user_mutation_roots_profile ON user_mutation_roots(account_id,profile_id,profile_incarnation,id);
+CREATE INDEX user_mutation_roots_family ON user_mutation_roots(family_id,id);
+CREATE TRIGGER user_mutation_root_capacity BEFORE INSERT ON user_mutation_roots BEGIN
+ SELECT CASE WHEN NOT EXISTS(SELECT 1 FROM user_mutation_global WHERE singleton=1
+ AND ordinary_bytes+stop_bytes+1024<=33554432 AND ordinary_bytes+1024<=31457280)
+ THEN RAISE(ABORT,'user_mutation_capacity') END;
+END;
+CREATE TRIGGER user_mutation_root_charge AFTER INSERT ON user_mutation_roots BEGIN
+ UPDATE user_mutation_global SET ordinary_bytes=ordinary_bytes+1024 WHERE singleton=1;
+END;
+CREATE TRIGGER user_mutation_root_release AFTER DELETE ON user_mutation_roots BEGIN
+ UPDATE user_mutation_global SET ordinary_bytes=ordinary_bytes-1024 WHERE singleton=1;
+END;
+CREATE TABLE security_purge_jobs(
+ job_id TEXT PRIMARY KEY CHECK(length(job_id)=22),
+ authority TEXT NOT NULL CHECK(authority='local'),
+ account_id TEXT NOT NULL, profile_id TEXT NOT NULL,
+ account_incarnation TEXT NOT NULL, profile_incarnation TEXT NOT NULL,
+ desired_revision INTEGER NOT NULL DEFAULT 1 CHECK(desired_revision>0),
+ phase INTEGER NOT NULL DEFAULT 0 CHECK(phase>=0),
+ cursor_key TEXT NOT NULL DEFAULT '' CHECK(length(cursor_key)<=512),
+ process_epoch TEXT NOT NULL DEFAULT '',
+ attempt INTEGER NOT NULL DEFAULT 0 CHECK(attempt>=0),
+ next_attempt_ms INTEGER NOT NULL DEFAULT 0 CHECK(next_attempt_ms>=0),
+ state TEXT NOT NULL CHECK(state IN('pending','running','blocked')),
+ UNIQUE(authority,account_id,profile_id,profile_incarnation)
+) STRICT;
+CREATE INDEX security_purge_due ON security_purge_jobs(state,next_attempt_ms,job_id);
+CREATE INDEX user_mutation_receipts_profile ON user_mutation_receipts(scope_id,profile_id,profile_incarnation,key);
+CREATE INDEX user_mutation_receipts_root ON user_mutation_receipts(root_id,key);
+CREATE INDEX personal_conflicts_profile ON personal_conflicts(profile_id,id);
+CREATE INDEX console_exports_actor ON console_exports(actor,id);
