@@ -24,7 +24,7 @@ test('the four Limits read the runtime document fields the server validates', ()
   assert.deepEqual(['storage.analysisSpace', 'storage.analysisStage', 'storage.subtitleTracks', 'storage.subtitleFile'].map(id => read(id)?.current),
     ['64', '256', '512', '128']);
   // The same reader supplies the retention figures the page keeps beside them.
-  assert.equal(read('history.keepHistory')?.current, '90');
+  assert.equal(read('history.keepHistory')?.current, '90d', 'the stored 90 days reads as the drawn 90d choice');
   assert.equal(read('storage.keepNotifications')?.current, '30');
   assert.equal(read('troubleshooting.keepLogs')?.current, '7');
   assert.deepEqual(read('troubleshooting.keepLogsByKind')?.current, {server: '14', playback: 'default', scan: 'default', network: 'default', client: 'default'});
