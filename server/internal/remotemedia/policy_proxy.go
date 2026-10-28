@@ -21,8 +21,9 @@ import (
 // PolicyProxy is the private upstream-rclone policy route. HTTPS is an opaque
 // CONNECT tunnel: no TLS interception, certificates or response/throttle claim.
 // The separate SFTP mode permits only CONNECT to exact native approvals and
-// preserves the hostname rclone uses for SSH host-key verification. SMB has no
-// proven proxy route here. Source limits belong to the one rclone process.
+// preserves the hostname rclone uses for SSH host-key verification. SMB uses
+// numeric hosts in its transient configuration instead of this proxy. Source
+// limits belong to the one rclone process.
 type PolicyProxy struct {
 	policy        Policy
 	check         func(context.Context) error

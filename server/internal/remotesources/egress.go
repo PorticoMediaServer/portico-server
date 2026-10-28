@@ -2,7 +2,9 @@ package remotesources
 
 import (
 	"context"
+	"net/netip"
 	"strconv"
+	"strings"
 	"sync"
 
 	"portico.local/server/internal/dbwork"
@@ -19,6 +21,8 @@ func (s *Service) startRcloneEgress(ctx context.Context, raw []byte, remote stri
 	}
 	sftpPolicy := remotemedia.Policy{Resolver: policy.Resolver}
 	seen := map[string]bool{}
+	hosts := map[string]netip.Addr{}
+	var pins []smbPin
 	for _, leaf := range leaves {
 		if leaf.Native.Scheme == "" {
 			continue
@@ -34,23 +38,52 @@ func (s *Service) startRcloneEgress(ctx context.Context, raw []byte, remote stri
 				break
 			}
 		}
-		if _, err = policy.CheckNativeEndpoint(ctx, leaf.Native, saved); err != nil {
+		checked, err := policy.CheckNativeEndpoint(ctx, leaf.Native, saved)
+		if err != nil {
 			return nil, err
+		}
+		if leaf.Native.Scheme == "smb" {
+			name, _, _ := strings.Cut(leaf.Remote, ":")
+			if _, pinned := hosts[name]; !pinned {
+				address, err := chooseSMBPin(checked, saved)
+				if err != nil {
+					return nil, err
+				}
+				hosts[name] = address
+				pins = append(pins, smbPin{endpoint: leaf.Native, approval: saved, address: address})
+			}
 		}
 		if leaf.Native.Scheme == "sftp" && !seen[root] {
 			seen[root] = true
 			sftpPolicy.Approvals = append(sftpPolicy.Approvals, saved)
 		}
 	}
+	var configuration []byte
+	if len(pins) != 0 {
+		configuration, err = pinSMBConfiguration(raw, hosts)
+		if err != nil {
+			return nil, err
+		}
+	}
+	keepConfiguration := false
+	defer func() {
+		if !keepConfiguration {
+			clear(configuration)
+		}
+	}()
 	httpProxy, err := remotemedia.StartPolicyProxy(ctx, policy, identity.Token(), identity.Token(), check)
 	if err != nil {
 		return nil, err
 	}
 	var sftpProxy *remotemedia.PolicyProxy
 	var once sync.Once
-	egress := &mounts.SourceEgress{HTTPProxy: httpProxy.Locator()}
+	egress := &mounts.SourceEgress{HTTPProxy: httpProxy.Locator(), Configuration: configuration}
+	if len(pins) != 0 {
+		egress.CheckSMBPins = func(ctx context.Context) error { return checkSMBPins(ctx, policy, pins) }
+	}
 	egress.Close = func() {
 		once.Do(func() {
+			clear(configuration)
 			httpProxy.Close()
 			if sftpProxy != nil {
 				sftpProxy.Close()
@@ -67,6 +100,7 @@ func (s *Service) startRcloneEgress(ctx context.Context, raw []byte, remote stri
 		}
 		egress.SFTPProxy = sftpProxy.Locator()
 	}
+	keepConfiguration = true
 	return egress, nil
 }
 

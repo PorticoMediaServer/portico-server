@@ -29,7 +29,8 @@ var ErrServeProgram = errors.New("approved remote source program changed or is u
 
 // ServeCommandSpec is private, already validated source configuration. Enforce
 // must install the source's enforcing outbound boundary, not just approve a URL
-// or set proxy environment variables (SFTP/SMB connect directly).
+// or set generic proxy environment variables. SFTP needs its native policy
+// tunnel; SMB leaf hosts must already be pinned in the transient Configuration.
 // There is deliberately no default enforcement or inherited environment.
 type ServeCommandSpec struct {
 	ApprovedProgramDigest string

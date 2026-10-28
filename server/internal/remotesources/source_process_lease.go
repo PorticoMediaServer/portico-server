@@ -234,7 +234,7 @@ func (l *sourceProcessLease) Check(ctx context.Context) error {
 	}
 	// DNS/provider checks happen outside the snapshot. A reconnect is admitted
 	// only against this source's saved native approval. SFTP's policy tunnel
-	// repeats this at each numeric dial; SMB's direct hostname gap remains.
+	// repeats this at each numeric dial; SMB reconnects retain the launch pin.
 	snapshot.Rollback()
 	if native != nil {
 		_, err = (remotemedia.Policy{Resolver: l.service.resolver}).CheckNativeEndpoint(ctx, native.endpoint, native.config.Approval)
@@ -248,6 +248,15 @@ func (l *sourceProcessLease) Check(ctx context.Context) error {
 	}
 	if imported != nil {
 		if err = l.service.checkImportedApprovals(ctx, *imported); err != nil {
+			if ctx.Err() != nil {
+				return ctx.Err()
+			}
+			l.cancel()
+			return err
+		}
+	}
+	if l.egress != nil && l.egress.CheckSMBPins != nil {
+		if err = l.egress.CheckSMBPins(ctx); err != nil {
 			if ctx.Err() != nil {
 				return ctx.Err()
 			}
