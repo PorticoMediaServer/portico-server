@@ -12,6 +12,7 @@ import (
 	"portico.local/server/internal/decoder"
 	"portico.local/server/internal/decodertest"
 	"portico.local/server/internal/identity"
+	"portico.local/server/internal/operations"
 	"portico.local/server/internal/playback"
 	"portico.local/server/internal/playbackv1"
 	"portico.local/server/internal/storage"
@@ -97,7 +98,7 @@ func v1SubtitleFixture(t *testing.T) (*v1Fixture, *subtitles.Service, identity.P
 // The session keeps its id; the presentation gets a new generation and URL,
 // and its decision says "burn". Off again returns to a plain stream (another
 // generation). The same track with delivery embeddedClient burns nothing.
-func v1BurnInFixture(t *testing.T) (*v1Fixture, string) {
+func v1BurnInFixture(t *testing.T, preferences ...playback.DeliveryPreferenceSource) (*v1Fixture, string) {
 	t.Helper()
 	ffmpeg := decodertest.QualifiedFFmpeg(t)
 	facts, err := decoder.ProbeToolchain(context.Background(), ffmpeg)
@@ -123,6 +124,12 @@ func v1BurnInFixture(t *testing.T) (*v1Fixture, string) {
 	player := playback.New(f.db)
 	player.ConfigureSubtitleDelivery(subs)
 	player.ConfigureHLS(hls)
+	for _, source := range preferences {
+		player.ConfigureDelivery(nil, source, nil, "")
+		if f.v1.Playback != player {
+			f.v1.Playback.ConfigureDelivery(nil, source, nil, "")
+		}
+	}
 	f.handler = New(Dependencies{DB: f.db, Identity: f.id, Catalog: f.cat, Playback: player, Subtitles: subs, PlaybackV1: f.v1})
 	f.call("PUT", "/v1/me/devices/current/capabilities", nil, webCapabilities(), 204, nil)
 	styled := "[Script Info]\nScriptType: v4.00+\n\n[V4+ Styles]\nFormat: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding\nStyle: Default,Arial,20,&H00FFFFFF,&H000000FF,&H00000000,&H00000000,0,0,0,0,100,100,0,0,1,2,0,2,10,10,10,1\n\n[Events]\nFormat: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text\nDialogue: 0,0:00:00.00,0:00:02.00,Default,,0,0,0,,{\\b1}Hello\n"
@@ -163,8 +170,41 @@ func TestPlaybackV1SubtitleBurnIn(t *testing.T) {
 	if drawn.Presentation.Generation != plain.Presentation.Generation {
 		t.Fatalf("embeddedClient burned: %+v", drawn.Presentation)
 	}
-	if w := f.raw("PATCH", "/v1/playback/sessions/"+s.ID, f.owner.AccessToken, map[string]string{"If-Match": drawn.Revision}, map[string]any{"subtitles": map[string]any{"trackId": trackID, "delivery": "sidecar"}}); w.Code != 400 {
-		t.Fatalf("a styled track as a sidecar: %d", w.Code)
+	// A styled track asked for as a sidecar is its plain words: no conversion.
+	var words playbackv1.SessionView
+	f.call("PATCH", "/v1/playback/sessions/"+s.ID, map[string]string{"If-Match": drawn.Revision}, map[string]any{"subtitles": map[string]any{"trackId": trackID, "delivery": "sidecar"}}, 200, &words)
+	if words.Presentation.Generation != drawn.Presentation.Generation || words.Presentation.Subtitle == nil || words.Presentation.Subtitle.Delivery != "sidecar" ||
+		len(words.Presentation.Subtitles) != 1 || words.Presentation.Subtitles[0].Format != "webvtt" || words.Presentation.Decision.Video != nil && words.Presentation.Decision.Video.Action == "burn" {
+		t.Fatalf("a styled track as a sidecar: %+v", words.Presentation)
+	}
+}
+
+// With "Styled subtitles" off, an engine that cannot draw the style shows the
+// track's words beside the stream: no burn-in, so no conversion is needed.
+func TestPlaybackV1StyledOffShowsPlainWordsWithoutConverting(t *testing.T) {
+	f, trackID := v1BurnInFixture(t, func(*sql.Tx, identity.Viewer, string) (playback.DeliveryPreferenceReader, error) {
+		return operations.PreferenceValues{"playback.keepSubtitleStyling": false}, nil
+	})
+	if _, err := f.db.Exec(`UPDATE playback_owner_policy SET transcoding_enabled=0`); err != nil {
+		t.Fatal(err)
+	}
+	var s playbackv1.SessionView
+	f.call("POST", "/v1/playback/sessions", map[string]string{"Idempotency-Key": "styled-off-0000000001"}, startBody(f.items[0], nil), 201, &s)
+	var words playbackv1.SessionView
+	f.call("PATCH", "/v1/playback/sessions/"+s.ID, map[string]string{"If-Match": s.Revision}, map[string]any{"subtitles": map[string]any{"trackId": trackID}}, 200, &words)
+	p := words.Presentation
+	if p.Generation != s.Presentation.Generation || p.Subtitle == nil || p.Subtitle.TrackID != trackID || p.Subtitle.Delivery != "sidecar" || len(p.Subtitles) != 1 || p.Subtitles[0].Format != "webvtt" {
+		t.Fatalf("styled off: %+v", p)
+	}
+	// The viewer can still insist on the picture; with converting off that is refused.
+	if w := f.raw("PATCH", "/v1/playback/sessions/"+s.ID, f.owner.AccessToken, map[string]string{"If-Match": words.Revision}, map[string]any{"subtitles": map[string]any{"trackId": trackID, "delivery": "burn"}}); w.Code != 403 {
+		t.Fatalf("an explicit burn with converting off: %d %s", w.Code, w.Body.String())
+	}
+	// A start that names the track plans no conversion for it either.
+	var started playbackv1.SessionView
+	f.call("POST", "/v1/playback/sessions", map[string]string{"Idempotency-Key": "styled-off-0000000002"}, startBody(f.items[0], map[string]any{"subtitles": map[string]any{"trackId": trackID}}), 201, &started)
+	if q := started.Presentation; q.Subtitle == nil || q.Subtitle.Delivery != "sidecar" || len(q.Subtitles) != 1 || q.Decision.Video != nil && q.Decision.Video.Action == "burn" {
+		t.Fatalf("styled off at start: %+v", q)
 	}
 }
 

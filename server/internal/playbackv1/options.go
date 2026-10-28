@@ -713,6 +713,10 @@ func (s *Service) Options(ctx context.Context, p identity.Principal, item string
 			return Options{}, &FieldError{Path: "subtitleId"}
 		}
 		burnable = renderers[subtitleID] == "burn_in"
+		if burnable && subtitleKindOf(formats[subtitleID]) == playback.SubtitleASS && s.Playback != nil && !s.Playback.KeepsSubtitleStylingTx(ctx, tx, p) {
+			// "Styled subtitles" off: the words beside the stream, never a burn.
+			burnable = false
+		}
 		if burnable {
 			choice.SubtitleKind = subtitleKindOf(formats[subtitleID])
 			choice.SubtitleBesideStream = subtitles.RenderingFormat(formats[subtitleID]) != "text"

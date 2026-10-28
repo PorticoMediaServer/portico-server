@@ -214,17 +214,38 @@ func TestCarriedSubtitleChoice(t *testing.T) {
 	}
 	// Styled and image tracks weigh in the engine choice; text and off do not.
 	pgs := &tracks.Resources[1]
-	if got := subtitleWeight(pgs, &SubtitleRequest{TrackID: "eng-pgs"}); got != playback.SubtitlePGS {
+	if got := subtitleWeight(pgs, &SubtitleRequest{TrackID: "eng-pgs"}, true); got != playback.SubtitlePGS {
 		t.Fatalf("pgs weighs %q", got)
 	}
-	if got := subtitleWeight(pgs, &SubtitleRequest{TrackID: "eng-pgs", Delivery: "burn"}); got != playback.SubtitleBurnAlways {
+	if got := subtitleWeight(pgs, &SubtitleRequest{TrackID: "eng-pgs", Delivery: "burn"}, true); got != playback.SubtitleBurnAlways {
 		t.Fatalf("burn weighs %q", got)
 	}
-	if got := subtitleWeight(pgs, &SubtitleRequest{TrackID: "eng-pgs", Delivery: "embeddedClient"}); got != "" {
+	if got := subtitleWeight(pgs, &SubtitleRequest{TrackID: "eng-pgs", Delivery: "embeddedClient"}, true); got != "" {
 		t.Fatalf("a track the client draws weighs %q", got)
 	}
-	if got := subtitleWeight(&tracks.Resources[2], &SubtitleRequest{TrackID: "eng-full"}); got != "" {
+	if got := subtitleWeight(&tracks.Resources[2], &SubtitleRequest{TrackID: "eng-full"}, true); got != "" {
 		t.Fatalf("text weighs %q", got)
+	}
+	// A styled track shown as plain words weighs nothing: asked for as a
+	// sidecar, or with "Styled subtitles" off and no delivery named. An image
+	// track cannot be plain words, and an explicit burn still burns.
+	styled := &subtitles.Resource{ID: "eng-ass", Format: "ass", Renderer: "burn_in", Enabled: true}
+	if got := subtitleWeight(styled, &SubtitleRequest{TrackID: "eng-ass"}, true); got != playback.SubtitleASS {
+		t.Fatalf("styled kept weighs %q", got)
+	}
+	for _, c := range []struct {
+		req  SubtitleRequest
+		keep bool
+	}{{SubtitleRequest{TrackID: "eng-ass", Delivery: "sidecar"}, true}, {SubtitleRequest{TrackID: "eng-ass"}, false}, {SubtitleRequest{TrackID: "eng-ass", Delivery: "auto"}, false}} {
+		if got := subtitleWeight(styled, &c.req, c.keep); got != "" || !styledAsText(styled, &c.req, c.keep) {
+			t.Fatalf("styled as text %+v keep=%v weighs %q", c.req, c.keep, got)
+		}
+	}
+	if got := subtitleWeight(styled, &SubtitleRequest{TrackID: "eng-ass", Delivery: "burn"}, false); got != playback.SubtitleBurnAlways {
+		t.Fatalf("an explicit burn with styling off weighs %q", got)
+	}
+	if styledAsText(pgs, &SubtitleRequest{TrackID: "eng-pgs", Delivery: "sidecar"}, false) || subtitleWeight(pgs, &SubtitleRequest{TrackID: "eng-pgs"}, false) != playback.SubtitlePGS {
+		t.Fatal("an image track is never plain words")
 	}
 	for format, kind := range map[string]string{"ass": "ass", "SSA": "ass", "hdmv_pgs_subtitle": "pgs", "dvd_subtitle": "vobsub", "dvb_subtitle": "dvb", "subrip": "text", "webvtt": "text"} {
 		if got := subtitleKindOf(format); got != kind {

@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"fmt"
 	"portico.local/server/internal/capabilityreport"
+	"portico.local/server/internal/dbwork"
 
 	"portico.local/server/internal/decoder"
 	"portico.local/server/internal/identity"
@@ -295,4 +296,27 @@ func valuesBool(values DeliveryPreferenceReader, key string, fallback bool) bool
 // DeliveryContext nor a client track choice can supply or override the fact.
 func publishedOriginalLanguageTx(ctx context.Context, tx *sql.Tx, item string) (string, error) {
 	return metadatalanguage.Published(ctx, tx, item)
+}
+
+// KeepsSubtitleStyling is the viewer's "Styled subtitles" setting (on unless
+// they turned it off). With it off, an engine that cannot draw a styled track
+// shows its words as plain text instead of having it burned into the picture.
+func (s *Service) KeepsSubtitleStyling(ctx context.Context, p identity.Principal) bool {
+	if s.deliveryPreferences == nil {
+		return true
+	}
+	tx, done, err := dbwork.BeginRead(ctx, s.db)
+	if err != nil {
+		return true
+	}
+	defer done()
+	return s.KeepsSubtitleStylingTx(ctx, tx, p)
+}
+
+// KeepsSubtitleStylingTx is KeepsSubtitleStyling inside a read the caller holds.
+func (s *Service) KeepsSubtitleStylingTx(ctx context.Context, tx *sql.Tx, p identity.Principal) bool {
+	if s.deliveryPreferences == nil {
+		return true
+	}
+	return valuesBool(preferenceReaderOrDefaults(s.viewerPreferences(tx, p, DeliveryContextFrom(ctx))), "playback.keepSubtitleStyling", true)
 }

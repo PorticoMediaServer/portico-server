@@ -35,9 +35,11 @@ type subtitleResult struct {
 //     the presentation draws that kind itself (draws, decided from the
 //     capability document) or the client insists (delivery embeddedClient):
 //     the device is handed the original file beside the stream (or reads the
-//     track from the file it is playing). Otherwise it is burned into the
-//     video (a conversion, and a new presentation); delivery "sidecar" for
-//     such a track is refused. Burn-in needs converting allowed.
+//     track from the file it is playing). A styled track is otherwise shown as
+//     its plain words in a text sidecar when the client asks for delivery
+//     "sidecar" or the viewer turned "Styled subtitles" off. Anything else is
+//     burned into the video (a conversion, and a new presentation); delivery
+//     "sidecar" for an image track is refused. Burn-in needs converting allowed.
 func (s *Service) applySubtitles(ctx context.Context, p identity.Principal, item, media string, req *SubtitleRequest, offsetMs, positionMs int64, operation string, draws bool) (subtitleResult, error) {
 	out := subtitleResult{files: []SubtitleFile{}}
 	if s.Subtitles == nil || media == "" {
@@ -62,8 +64,11 @@ func (s *Service) applySubtitles(ctx context.Context, p identity.Principal, item
 			burns := chosen.Renderer == "burn_in"
 			out.language = chosen.Language
 			switch {
-			case req.Delivery == "burn" && !burns, req.Delivery == "sidecar" && burns:
+			case req.Delivery == "burn" && !burns, req.Delivery == "sidecar" && burns && subtitleKindOf(chosen.Format) != playback.SubtitleASS:
 				return out, &FieldError{Path: "subtitles.delivery"}
+			case req.Delivery == "sidecar" && burns:
+				// The device shows the styled track's words as plain text.
+				m.Rendering = "text"
 			case req.Delivery == "embeddedClient":
 				// The client draws the track itself: it is handed the original
 				// file beside the stream instead of a burned-in picture.
@@ -86,6 +91,10 @@ func (s *Service) applySubtitles(ctx context.Context, p identity.Principal, item
 				}
 				out.shown = &PresentationSubtitle{TrackID: chosen.ID, Kind: subtitleKindOf(chosen.Format), Delivery: "device"}
 				return out, nil
+			case styledAsText(chosen, req, s.keepsStyling(ctx, p, chosen)):
+				// "Styled subtitles" is off and this engine cannot draw the
+				// style: the words, not a burned-in picture.
+				m.Rendering = "text"
 			}
 			m.Mode, m.ResourceID, m.ResourceRevision = "track", chosen.ID, chosen.Revision
 			m.OffsetUS = strconv.FormatInt(offsetMs*1000, 10)

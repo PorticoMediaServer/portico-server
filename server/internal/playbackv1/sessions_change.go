@@ -417,7 +417,8 @@ func (s *Service) subtitleReplans(ctx context.Context, c Caller, r row, current 
 	if err != nil {
 		return false
 	}
-	return subtitleWeight(resourceByID(s.subtitleResources(ctx, c.Principal, r.item, asset, r.stored().selectedDiscTitle()), string(req.TrackID)), req) != ""
+	chosen := resourceByID(s.subtitleResources(ctx, c.Principal, r.item, asset, r.stored().selectedDiscTitle()), string(req.TrackID))
+	return subtitleWeight(chosen, req, s.keepsStyling(ctx, c.Principal, chosen)) != ""
 }
 
 var seekIDPattern = regexp.MustCompile(`^[A-Za-z0-9_-]{1,64}$`)

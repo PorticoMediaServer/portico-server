@@ -863,7 +863,8 @@
       if(queue.transferId)body.castTransferId=queue.transferId;
     }
     // The sender's subtitle choice ("off", or a track id). This TV draws text only; the server
-    // delivers a styled or image track burned into the picture.
+    // delivers a styled or image track burned into the picture, or a styled track's plain words
+    // when the viewer turned "Styled subtitles" off.
     if (subtitleTrackId === 'off') body.subtitles = {trackId: null};
     else if (typeof subtitleTrackId === 'string' && /^[A-Za-z0-9._:-]{1,128}$/.test(subtitleTrackId)) body.subtitles = {trackId: subtitleTrackId};
     var key = token(16), answer, preparingIdentity=null, startSession=session, startScope=scope, startOrigin=base;

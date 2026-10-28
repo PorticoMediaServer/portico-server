@@ -668,10 +668,10 @@ func subtitleKindOf(format string) string {
 // subtitleWeight is how a chosen subtitle track weighs in planning: the kind
 // an engine must draw for it not to be burned in, playback.SubtitleBurnAlways
 // when it is burned in whatever the engine, and "" when it costs nothing
-// (off, no track, text delivered beside the stream, or a track the client
-// insists on drawing itself).
-func subtitleWeight(chosen *subtitles.Resource, req *SubtitleRequest) string {
-	if chosen == nil || req == nil || chosen.Renderer != "burn_in" || req.Delivery == "embeddedClient" {
+// (off, no track, text delivered beside the stream, a styled track shown as
+// its plain words, or a track the client insists on drawing itself).
+func subtitleWeight(chosen *subtitles.Resource, req *SubtitleRequest, keepStyling bool) string {
+	if chosen == nil || req == nil || chosen.Renderer != "burn_in" || req.Delivery == "embeddedClient" || styledAsText(chosen, req, keepStyling) {
 		return ""
 	}
 	kind := subtitleKindOf(chosen.Format)
@@ -679,6 +679,27 @@ func subtitleWeight(chosen *subtitles.Resource, req *SubtitleRequest) string {
 		return playback.SubtitleBurnAlways
 	}
 	return kind
+}
+
+// styledAsText is whether a styled (ASS/SSA) track an engine would otherwise
+// burn reaches the viewer as its plain words in a text sidecar: the client
+// asked for delivery "sidecar", or the viewer turned "Styled subtitles" off and
+// the client named no delivery. An engine that draws the style itself is still
+// handed the original (applySubtitles decides that first).
+func styledAsText(chosen *subtitles.Resource, req *SubtitleRequest, keepStyling bool) bool {
+	if chosen == nil || req == nil || chosen.Renderer != "burn_in" || subtitleKindOf(chosen.Format) != playback.SubtitleASS {
+		return false
+	}
+	return req.Delivery == "sidecar" || (req.Delivery == "" || req.Delivery == "auto") && !keepStyling
+}
+
+// keepsStyling reads the viewer's "Styled subtitles" setting only when it can
+// matter: a chosen styled track that would otherwise be burned in.
+func (s *Service) keepsStyling(ctx context.Context, p identity.Principal, chosen *subtitles.Resource) bool {
+	if chosen == nil || chosen.Renderer != "burn_in" || subtitleKindOf(chosen.Format) != playback.SubtitleASS || s.Playback == nil {
+		return true
+	}
+	return s.Playback.KeepsSubtitleStyling(ctx, p)
 }
 
 // subtitleResources lists one file's selectable subtitle tracks.
@@ -801,7 +822,8 @@ func (s *Service) present(ctx context.Context, c Caller, t presentationTarget) (
 			return playback.Session{}, Presentation{}, &FieldError{Path: "subtitles.trackId"}
 		}
 	}
-	choice.SubtitleKind = subtitleWeight(chosen, subtitle)
+	keepStyling := s.keepsStyling(ctx, c.Principal, chosen)
+	choice.SubtitleKind = subtitleWeight(chosen, subtitle, keepStyling)
 	// A styled or image track has an original the server hands over as it is
 	// (the .ass with its fonts, the .sup, the .idx and .sub, the DVB packets),
 	// so an engine that draws the kind needs no burn-in beside a stream either.
@@ -859,10 +881,12 @@ func (s *Service) present(ctx context.Context, c Caller, t presentationTarget) (
 		return media, view, nil
 	}
 	// Whether the engine the plan named draws the chosen track itself.
+	// A styled track shown as plain words weighs nothing in planning, but an
+	// engine that draws the style is still handed the original.
 	draws := false
-	if chosen != nil && plan != nil && choice.SubtitleKind != "" {
+	if kind := subtitleWeight(chosen, subtitle, true); chosen != nil && plan != nil && kind != "" {
 		profile := s.deviceDocument(ctx, c.DeviceID).Profile(plan.Engine)
-		draws = !playback.SubtitleNeedsBurnIn(profile, choice.SubtitleKind, plan.Mode, choice.SubtitleBesideStream)
+		draws = !playback.SubtitleNeedsBurnIn(profile, kind, plan.Mode, choice.SubtitleBesideStream)
 	}
 	// A burn-in chosen with the start re-plans what was just planned, under the
 	// same admission.

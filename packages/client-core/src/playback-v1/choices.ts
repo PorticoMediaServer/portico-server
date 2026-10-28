@@ -25,9 +25,11 @@ export type PlaybackChoices = Readonly<{
   subtitleTrackId?: string | null;
   /** How a styled or image subtitle track is to reach the viewer: `embeddedClient` when this device
    * draws the kind itself (it is handed the original file and the video is left alone), `burn` to
-   * have it put in the picture. Absent: the server decides from what the device said it draws.
-   * Sent with a change that names a track. */
-  subtitleDelivery?: 'embeddedClient' | 'burn';
+   * have it put in the picture, `sidecar` for a styled track's plain words beside the stream.
+   * Absent: the server decides from what the device said it draws and, for a styled track an
+   * engine cannot draw, from the viewer's "Styled subtitles" setting (off: plain words, not a
+   * burned-in picture). Sent with a change that names a track. */
+  subtitleDelivery?: 'embeddedClient' | 'burn' | 'sidecar';
   /** The viewer's subtitle timing correction, in milliseconds. Sent with a change that names a track. */
   subtitleOffsetMs?: number;
   /** This device's estimate of its connection to the server, sent with a quality change so the server can refuse one the connection cannot carry. */
