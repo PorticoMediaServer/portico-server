@@ -2,6 +2,7 @@
 """Explicit fresh Contabo setup. Defaults to a no-network plan. Never invoked by CI."""
 import argparse
 import datetime
+import hashlib
 import json
 import os
 from pathlib import Path
@@ -47,6 +48,7 @@ def main():
     parser.add_argument('--manifest', type=Path)
     parser.add_argument('--credentials', type=Path)
     parser.add_argument('--report', type=Path)
+    parser.add_argument('--resume-staged-sha256', help='Explicitly resume inspected generated media with this manifest SHA256')
     args = parser.parse_args()
     if not args.execute:
         print(json.dumps({'mode': 'plan', 'stage': args.stage, 'fixturePin': FIXTURE_PIN,
@@ -91,9 +93,16 @@ def main():
         parser.error('Need at least 20 GiB free')
     task = HOME / 'astra-scratch/P2-53'
     staged = task / 'fresh-media'
-    if staged.exists():
-        parser.error('Fresh media staging already exists; reconcile it before retrying')
-    staged.mkdir(mode=0o700)
+    resume = args.resume_staged_sha256
+    if resume:
+        if len(resume) != 64 or any(c not in '0123456789abcdef' for c in resume):
+            parser.error('Resume requires a lowercase SHA256')
+        if not staged.is_dir() or staged.is_symlink() or hashlib.sha256((staged / 'manifest.json').read_bytes()).hexdigest() != resume:
+            parser.error('Inspected staged manifest does not match; no activation attempted')
+    elif staged.exists():
+        parser.error('Fresh media staging already exists; inspect it before explicitly resuming')
+    else:
+        staged.mkdir(mode=0o700)
     python = WORK / 'runtime/venv/bin/python3'
     ffmpeg = HOME / 'work/fixtures/portico-v3/runtime/bundle/bin/ffmpeg'
     # The generator hardlinks its procedural Dolby Vision inputs. Copy source
@@ -102,11 +111,12 @@ def main():
     isolated_source = task / 'reset-source'
     if isolated_source.exists():
         parser.error('Isolated reset source exists; reconcile the prior attempt')
-    shutil.copytree(source, isolated_source)
-    try:
-        run([python, isolated_source / 'fixtures/test-library/generate.py', '--root', staged, '--ffmpeg', ffmpeg])
-    finally:
-        shutil.rmtree(isolated_source)
+    if not resume:
+        shutil.copytree(source, isolated_source)
+        try:
+            run([python, isolated_source / 'fixtures/test-library/generate.py', '--root', staged, '--ffmpeg', ffmpeg])
+        finally:
+            shutil.rmtree(isolated_source)
     stamp = datetime.datetime.now(datetime.timezone.utc).strftime('%Y%m%dT%H%M%SZ')
     unit = HOME / '.config/systemd/user/portico-test-server.service'
     deployment = json.loads((WORK / 'deployment.json').read_text())
@@ -120,8 +130,17 @@ def main():
                         'Environment=PORTICO_BIND=0.0.0.0:32500'}
     if len(bindings) != 1 or bindings[0] not in allowed_bindings:
         parser.error('Unknown managed listener; inspect before resetting')
-    units = ['portico-test-health.timer', 'portico-test-server.service', 'portico-test-live.service']
-    run(['systemctl', '--user', 'stop', *units])
+    # Stop the watchdog and socket activation before the server. Otherwise a
+    # last health probe can activate the proxy's Requires=server dependency and
+    # cancel the stop job while a reset is trying to quiesce the old process.
+    run(['systemctl', '--user', 'stop', 'portico-test-health.timer', 'portico-test-health.service'])
+    if (unit.parent / 'portico-test-local.socket').is_file():
+        run(['systemctl', '--user', 'disable', '--now', 'portico-test-local.socket'])
+    if (unit.parent / 'portico-test-local.service').is_file():
+        run(['systemctl', '--user', 'stop', 'portico-test-local.service'])
+    run(['systemctl', '--user', 'stop', 'portico-test-server.service', 'portico-test-live.service'])
+    if subprocess.run(['systemctl', '--user', 'is-active', '--quiet', 'portico-test-server.service']).returncode == 0:
+        raise SystemExit('Old server is still active; no state was replaced')
     # Preserve one private rollback while making the active paths genuinely fresh.
     retired_state = WORK / ('state-before-P2-53-' + stamp)
     retired_media = HOME / ('portico-test-library-before-P2-53-' + stamp)
@@ -135,12 +154,6 @@ def main():
         (state / name).mkdir(mode=0o700)
     atomic(unit, old_unit.replace(old_build, str(build)).replace(bindings[0], 'Environment=PORTICO_BIND=0.0.0.0:32500'))
     atomic(WORK / 'health.py', health_source)
-    # The real listener serves public and loopback clients on the same port.
-    # Retain the old proxy's files for rollback, but do not run or depend on it.
-    if (unit.parent / 'portico-test-local.socket').is_file():
-        run(['systemctl', '--user', 'disable', '--now', 'portico-test-local.socket'])
-    if (unit.parent / 'portico-test-local.service').is_file():
-        run(['systemctl', '--user', 'stop', 'portico-test-local.service'])
     run(['systemctl', '--user', 'daemon-reload'])
     run(['systemctl', '--user', 'start', 'portico-test-live.service', 'portico-test-server.service'])
     ready = False
