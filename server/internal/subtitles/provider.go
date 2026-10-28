@@ -190,7 +190,7 @@ func (s *Service) Search(ctx context.Context, p identity.Principal, item string,
 			break
 		}
 		id := identity.Token()
-		if _, e = tx.ExecContext(ctx, `INSERT INTO subtitle_provider_candidates(id,actor,item_id,source_id,source_size,source_modified_ns,provider,file_id,language,title,attribution,expires_at,lookup_epoch) SELECT ?,?,id,?,?,?,?,?,?,?,?,?,? FROM catalog_entities WHERE public_id=pid_blob(?)`, id, actor(p), src.ID, src.size, src.modified, s.provider.ID(), c.FileID, c.Language, safeTitle(c.Title), c.Attribution, out.ExpiresAt, lookupEpoch, item); e != nil {
+		if _, e = tx.ExecContext(ctx, `INSERT INTO subtitle_provider_candidates(id,actor,item_id,source_id,source_size,source_modified_ns,provider,file_id,language,title,attribution,expires_at) SELECT ?,?,id,?,?,?,?,?,?,?,?,? FROM catalog_entities WHERE public_id=pid_blob(?)`, id, actor(p), src.ID, src.size, src.modified, s.provider.ID(), c.FileID, c.Language, safeTitle(c.Title), c.Attribution, out.ExpiresAt, item); e != nil {
 			return out, e
 		}
 		out.Candidates = append(out.Candidates, SearchCandidate{id, c.Language, safeTitle(c.Title), c.Attribution})
@@ -233,7 +233,7 @@ func (s *Service) Apply(ctx context.Context, p identity.Principal, item string, 
 	}
 	var srcID, provider, language, title, attribution string
 	var size, modified, file int64
-	e = tx.QueryRowContext(ctx, `SELECT source_id,source_size,source_modified_ns,provider,file_id,language,title,attribution FROM subtitle_provider_candidates WHERE id=? AND actor=? AND item_id=(SELECT id FROM catalog_entities WHERE public_id=pid_blob(?)) AND expires_at>? AND lookup_epoch=(SELECT lookup_epoch FROM metadata_runtime_settings WHERE singleton=1)`, m.CandidateID, actor(p), item, time.Now().UTC().Format(time.RFC3339)).Scan(&srcID, &size, &modified, &provider, &file, &language, &title, &attribution)
+	e = tx.QueryRowContext(ctx, `SELECT source_id,source_size,source_modified_ns,provider,file_id,language,title,attribution FROM subtitle_provider_candidates WHERE id=? AND actor=? AND item_id=(SELECT id FROM catalog_entities WHERE public_id=pid_blob(?)) AND expires_at>?`, m.CandidateID, actor(p), item, time.Now().UTC().Format(time.RFC3339)).Scan(&srcID, &size, &modified, &provider, &file, &language, &title, &attribution)
 	if e != nil {
 		return Receipt{}, ErrConflict
 	}

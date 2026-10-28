@@ -2093,7 +2093,6 @@ CREATE TABLE subtitle_operations(
   PRIMARY KEY(actor,operation_id)) STRICT;
 CREATE TABLE subtitle_provider_candidates(
   id TEXT PRIMARY KEY, actor TEXT NOT NULL, item_id INTEGER NOT NULL REFERENCES catalog_entities(id) ON DELETE CASCADE,
-  lookup_epoch INTEGER NOT NULL DEFAULT 1 CHECK(lookup_epoch>0),
   source_id TEXT NOT NULL, source_size INTEGER NOT NULL, source_modified_ns INTEGER NOT NULL,
   provider TEXT NOT NULL, file_id INTEGER NOT NULL, language TEXT NOT NULL,
   title TEXT NOT NULL, attribution TEXT NOT NULL, expires_at TEXT NOT NULL) STRICT;
@@ -11264,23 +11263,6 @@ CREATE TABLE screen_metadata_fanout(
 ) WITHOUT ROWID, STRICT;
 CREATE INDEX screen_metadata_fanout_due ON screen_metadata_fanout(last_served_ms,library_id,effect,next_attempt_ms) WHERE pending=1;
 CREATE INDEX screen_metadata_fanout_walk ON screen_metadata_work(library_id,target_kind,target_id);
-
--- Global online policy mutation intent: at most six fixed policy classes.
--- No per-query result/work, payload, or per-item queue is retained here.
-CREATE TABLE metadata_lookup_fanout(
- effect TEXT PRIMARY KEY CHECK(effect IN('screen','mb','tvdb','artwork','screen_retry','subtitles')),
- generation INTEGER NOT NULL DEFAULT 1 CHECK(generation>0),
- served_generation INTEGER NOT NULL DEFAULT 0 CHECK(served_generation>=0 AND served_generation<=generation),
- pass_generation INTEGER NOT NULL DEFAULT 0 CHECK(pass_generation>=0 AND pass_generation<=generation),
- pending INTEGER NOT NULL DEFAULT 1 CHECK(pending IN(0,1)),
- rerun INTEGER NOT NULL DEFAULT 1 CHECK(rerun IN(0,1)),
- after_kind TEXT NOT NULL DEFAULT '',after_id INTEGER NOT NULL DEFAULT 0 CHECK(after_id>=0),
- upper_kind TEXT NOT NULL DEFAULT '',upper_id INTEGER NOT NULL DEFAULT 0 CHECK(upper_id>=0),
- last_served_ms INTEGER NOT NULL DEFAULT 0 CHECK(last_served_ms>=0),
- attempts INTEGER NOT NULL DEFAULT 0 CHECK(attempts>=0),
- next_attempt_ms INTEGER NOT NULL DEFAULT 0 CHECK(next_attempt_ms>=0),
- error_code TEXT NOT NULL DEFAULT ''
-) WITHOUT ROWID, STRICT;
 
 -- P2-51 tiny receipt ledger. Fixed conservative charges include secondary
 -- indexes and account facts, with 64 KiB reserved for roots/schema/rounding.

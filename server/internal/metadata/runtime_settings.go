@@ -356,7 +356,6 @@ func ApplyMetadataSettingsTx(ctx context.Context, tx *sql.Tx, in MetadataSetting
 	if e != nil {
 		return current, e
 	}
-	previousTMDB, previousTVDB := tmdb, tvdb
 	if current.Revision != in.ExpectedRevision {
 		return current, ErrScreenConflict
 	}
@@ -384,7 +383,6 @@ func ApplyMetadataSettingsTx(ctx context.Context, tx *sql.Tx, in MetadataSetting
 	if in.OnlineLookups != nil {
 		online = *in.OnlineLookups
 	}
-	lookupChanged := current.OnlineLookups != nil && online != *current.OnlineLookups
 	defaultLanguage, defaultRegion := current.DefaultLanguage, current.DefaultRegion
 	if in.DefaultLanguage != nil {
 		defaultLanguage = *in.DefaultLanguage
@@ -436,11 +434,11 @@ func ApplyMetadataSettingsTx(ctx context.Context, tx *sql.Tx, in MetadataSetting
 		subs.acoustid = strings.TrimSpace(*in.AcoustIDKey)
 	}
 	_, e = tx.ExecContext(ctx, `UPDATE metadata_runtime_settings SET revision=revision+1,local_artwork_limit_bytes=?,include_adult=?,artwork_max_edge=?,tmdb_read_token=?,tvdb_project_key=?,opensubtitles_api_key=?,opensubtitles_username=?,opensubtitles_password=?,default_language=?,default_region=?,lookup_epoch=lookup_epoch+CASE WHEN online_lookups<>? THEN 1 ELSE 0 END,online_lookups=?,artwork_policy_revision=artwork_policy_revision+CASE WHEN artwork_preference<>? OR artwork_language<>? THEN 1 ELSE 0 END,artwork_preference=?,artwork_language=?,refresh_policy=?,fallback_language=?,anime_titles=?,cast_photos=?,acoustid_key=? WHERE singleton=1`, in.LocalArtworkLimitBytes, in.IncludeAdult, edge, tmdb, tvdb, subs.key, subs.username, subs.password, defaultLanguage, defaultRegion, online, online, artworkPreference, artworkLanguage, artworkPreference, artworkLanguage, advanced.RefreshPolicy, advanced.FallbackLanguage, advanced.AnimeTitles, advanced.CastPhotos, subs.acoustid)
-	if e == nil && lookupChanged {
+	if e == nil && current.OnlineLookups != nil && online != *current.OnlineLookups {
 		e = invalidateLookupWorkTx(ctx, tx)
 	}
-	if e == nil && !lookupChanged && (artworkPreference != current.ArtworkPreference || artworkLanguage != current.ArtworkLanguage) {
-		e = requestLookupFanoutTx(ctx, tx, "artwork")
+	if e == nil && (artworkPreference != current.ArtworkPreference || artworkLanguage != current.ArtworkLanguage) {
+		_, e = tx.ExecContext(ctx, `INSERT INTO artwork_dirty(kind,entity_id) SELECT kind,entity_id FROM artwork_entity_heads WHERE true ON CONFLICT(kind,entity_id) DO NOTHING`)
 	}
 	if e == nil && edge != current.ArtworkMaxEdge {
 		e = scheduleArtworkSizeTx(ctx, tx, current.ArtworkMaxEdge, edge)
@@ -449,8 +447,8 @@ func ApplyMetadataSettingsTx(ctx context.Context, tx *sql.Tx, in MetadataSetting
 		return current, e
 	}
 	// Previously final authentication failures can recover after a key correction.
-	if tmdb != previousTMDB || tvdb != previousTVDB {
-		if e = requestLookupFanoutTx(ctx, tx, "screen_retry"); e != nil {
+	if in.TMDBReadToken != nil || in.TVDBProjectKey != nil {
+		if _, e = tx.ExecContext(ctx, `UPDATE screen_metadata_work SET status='pending',next_attempt='',attempts=0,error='',generation=generation+1,revision=revision+1 WHERE status='unavailable' AND error IN('request_rejected','provider_not_configured')`); e != nil {
 			return current, e
 		}
 	}

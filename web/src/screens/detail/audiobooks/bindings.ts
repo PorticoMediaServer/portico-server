@@ -1,7 +1,6 @@
 import {LibraryContentService, readListeningSimilar, type ContentEntry, type ContentProjection} from '@core/library-content.ts';
 import {getContainerState, setContainerFlag, setContainerState} from '@core/container-state.ts';
 import {browseCapabilitiesPath, parseBrowseCapabilities, validateBrowseQuery, type BrowseCapabilities} from '@core/browse.ts';
-import {RelationRowPager, type RelationPage} from '@core/relation-rows.ts';
 import {screenLifetime, type ScreenContext} from '../context';
 
 export type AudiobookTarget = Readonly<{libraryId: string; view: 'book' | 'author' | 'book_series'; entityId: string}>;
@@ -17,23 +16,6 @@ export function createAudiobookBindings(context: ScreenContext, input: Audiobook
       || page.entity?.id !== target.entityId || page.entity.kind !== target.view) throw new DOMException('Audiobook page changed', 'AbortError');
   };
   const entries = () => service.getSnapshot().appended.flatMap(section => section.entries);
-  const viewer = context.identity?.viewer;
-  const similarScope = viewer && (viewer.authority === 'local' || viewer.authority === 'hosted')
-    ? Object.freeze({serverId: context.scope.serverId, authority: viewer.authority, accountId: viewer.accountId, profileId: viewer.profileId}) : undefined;
-  /** Keep the source cursor even when every entry in this bounded page is filtered out.
-   * The visible shelf, rather than an eager scan, asks for each following source page. */
-  const readMoreBooks = async (page: ContentProjection, cursor?: string, signal?: AbortSignal): Promise<RelationPage> => {
-    current(page);
-    if (target.view !== 'book' || !similarScope) return Object.freeze({entries: Object.freeze([])});
-    const value = await readListeningSimilar(life.api, similarScope, target.entityId,
-      {limit: cursor ? 24 : 12, cursor, signal: life.signal(signal)});
-    current(page);
-    if (value.itemId !== target.entityId || value.libraryId !== target.libraryId || value.bySound
-      || value.revision.catalog !== page.revision.catalog || value.revision.viewer !== page.revision.viewer)
-      throw Object.assign(new Error('Book page changed'), {code: 'stale_continuation'});
-    return Object.freeze({entries: Object.freeze(value.entries.filter(entry => entry.kind === 'book' && entry.libraryId === target.libraryId && entry.available !== false && !entry.missing)),
-      ...(value.nextCursor ? {nextCursor: value.nextCursor} : {})});
-  };
   // The exact page whose checked filters may act, and the one opener both links use.
   let filterFact: Readonly<{page: ContentProjection; capabilities: BrowseCapabilities}> | undefined;
   const openFilter = async (page: ContentProjection, field: 'narrator' | 'series', name: string, member: boolean) => {
@@ -69,11 +51,18 @@ export function createAudiobookBindings(context: ScreenContext, input: Audiobook
       current(page);return result;
     },
     play,
-    /** The server's own related books, filtered without losing its source continuation. */
-    moreBooks(page: ContentProjection, signal?: AbortSignal) {return readMoreBooks(page, undefined, signal);},
-    moreBooksPager(page: ContentProjection, first: RelationPage) {
+    /** The server's own related books for this page, bounded and same-library; a refused read is
+     * no row rather than a guessed one. */
+    async moreBooks(page: ContentProjection) {
       current(page);
-      return new RelationRowPager(first, (cursor, signal) => readMoreBooks(page, cursor, signal));
+      const viewer = context.identity?.viewer;
+      if (target.view !== 'book' || !viewer || (viewer.authority !== 'local' && viewer.authority !== 'hosted')) return Object.freeze([]) as readonly ContentEntry[];
+      const value = await readListeningSimilar(life.api, {serverId: context.scope.serverId, authority: viewer.authority, accountId: viewer.accountId, profileId: viewer.profileId},
+        target.entityId, {limit: 12, signal: life.signal()});
+      current(page);
+      if (value.itemId !== target.entityId || value.libraryId !== target.libraryId
+        || value.revision.catalog !== page.revision.catalog || value.revision.viewer !== page.revision.viewer) throw new DOMException('Book page changed', 'AbortError');
+      return Object.freeze(value.entries.filter(entry => entry.kind === 'book' && entry.libraryId === target.libraryId && entry.available !== false && !entry.missing));
     },
     /** Reads once and retains this exact page's own checked Books capabilities: which real
      * filters it offers for book kinds, so only those become destinations. */
