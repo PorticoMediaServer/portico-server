@@ -400,3 +400,30 @@ func TestOrdinaryPlanIgnoresColdPriorityProbe(t *testing.T) {
 	h := submit(t, s, "a", testKey, p)
 	ready(t, s, "a", h).Release()
 }
+
+func TestColdPollAfterRetryDeadlineCannotPostponeProgress(t *testing.T) {
+	clock := &testClock{at: time.Unix(1234, 0)}
+	s := storeFor(t, Config{Now: clock.now})
+	var pressure atomic.Bool
+	pressure.Store(true)
+	p := simplePlan("ready")
+	p.ColdSearch = true
+	p.ShouldYield = pressure.Load
+	h := submit(t, s, "caller", coldKey("overdue"), p)
+	eventually(t, func() bool {
+		s.mu.Lock()
+		defer s.mu.Unlock()
+		return s.coldOwner != nil && !s.coldOwner.running && !s.coldOwner.retryAt.IsZero()
+	})
+	s.mu.Lock()
+	if s.wakeTimer != nil {
+		s.wakeTimer.Stop()
+	}
+	s.mu.Unlock()
+	clock.add(20 * time.Millisecond)
+	pressure.Store(false)
+	// Every poll is later than retryAt. The old code reset the timer to1s
+	// on each of these1ms polls, so no worker could resume. Keep the original
+	// ready helper's deadline and poll cadence; do not notify the cond manually.
+	ready(t, s, "caller", h).Release()
+}

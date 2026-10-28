@@ -546,6 +546,7 @@ internal/playbackv1/queue_commands.go	(*Service).DeleteQueue	WithWriteTxContext	
 internal/playbackv1/queue_commands.go	(*Service).finishCreate	ExecWrite	ClassInteractive	-
 internal/playbackv1/queue_commands.go	(*Service).queueWrite	WithWriteTxContext	ClassInteractive	-
 internal/playbackv1/queue_counts.go	(*Service).storeContainerCount	ExecWrite	ClassBackgroundMedia	-
+internal/playbackv1/queue_local_ordered.go	(*Service).continueLocalOrderedBuild	WithWriteTxContext	ClassBackgroundMedia	-
 internal/playbackv1/queue_save.go	(*Service).continueSave	WithWriteTx	ClassBackgroundMedia	-	×2
 internal/playbackv1/queue_save.go	(*Service).endSave	ExecWrite	ClassBackgroundMedia	-
 internal/playbackv1/queue_save.go	(*Service).linkSave	ExecWrite	ClassInteractive	-

@@ -740,8 +740,12 @@ func (s *Store) armWake(now time.Time) {
 		}
 		needed = true
 		delay = min(delay, e.pollUntil.Sub(now))
-		if !e.running && now.Before(e.retryAt) {
-			delay = min(delay, e.retryAt.Sub(now))
+		if !e.running && !e.retryAt.IsZero() {
+			// A poll may acquire mu after the retry deadline but before its
+			// timer callback. Keep an elapsed retry immediately runnable;
+			// resetting it to the prune interval lets frequent polls postpone
+			// all progress indefinitely.
+			delay = min(delay, max(time.Nanosecond, e.retryAt.Sub(now)))
 		}
 	}
 	if !needed {

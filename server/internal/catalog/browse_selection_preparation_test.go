@@ -49,14 +49,26 @@ func awaitSelectionPreparation(t *testing.T, s *Service, v Viewer, id string, ac
 	t.Helper()
 	deadline := time.Now().Add(5 * time.Second)
 	for time.Now().Before(deadline) {
-		result, err := pollSelectionPreparation(t, s, v, id, access, authority)
+		// Synchronize through memory, leaving a real quiet gap for the cold
+		// maintenance worker. The final public adapter poll still checks live
+		// authority and the complete witness in its own snapshot.
+		result, err := s.ReadPreparations().Poll(context.Background(), access.Caller, readprep.Handle(id))
+		state := result.State
+		result.Release()
 		if err != nil {
 			t.Fatal(err)
 		}
-		if result.Ready != nil {
-			return result
+		if state == readprep.Ready {
+			checked, err := pollSelectionPreparation(t, s, v, id, access, authority)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if checked.Ready == nil {
+				checked.Release()
+				t.Fatal("completed content did not produce a descriptor")
+			}
+			return checked
 		}
-		result.Release()
 		time.Sleep(time.Millisecond)
 	}
 	t.Fatal("bounded selection preparation did not finish")
