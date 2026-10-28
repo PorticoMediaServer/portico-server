@@ -360,22 +360,7 @@ func DrainEntityMBPinTx(ctx context.Context, tx *sql.Tx, ref MutationRef) (Mutat
 	if m.Status != "active" {
 		return MutationStep{Complete: m.Status == "terminal", More: m.Status != "terminal", Outcome: m.Outcome}, nil
 	}
-	// Only one actual link row; never another entity or the other table this turn.
-	for _, q := range []string{`DELETE FROM mb_song_links WHERE item_id=?`, `DELETE FROM mb_album_links WHERE album_id=?`} {
-		r, e := tx.ExecContext(ctx, q, m.Entity)
-		if e != nil {
-			return MutationStep{}, e
-		}
-		n, _ := r.RowsAffected()
-		if n != 0 {
-			if e = SetMutationPhaseTx(ctx, tx, ref, "drain"); e != nil {
-				return MutationStep{}, e
-			}
-			return MutationStep{More: true, PinDrained: true, Progressed: true, Outcome: "pending"}, nil
-		}
-	}
-	err = SetMutationPhaseTx(ctx, tx, ref, "finalize")
-	return PendingMutationStep(), err
+	return pinAccountingStepTx(ctx, tx, m)
 }
 
 // PinFreeMutationContextTx checks live custody before allowing catalog's final

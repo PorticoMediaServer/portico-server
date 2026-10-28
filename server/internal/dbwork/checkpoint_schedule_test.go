@@ -181,3 +181,42 @@ func TestCheckpointScheduleCopiedCountsCannotSettleUnshrunkAllocation(t *testing
 		t.Fatal("unshrunk allocation retried without cooldown")
 	}
 }
+
+func TestCheckpointReservationPressureUsesReservedRecoveryBelowPhysicalLimit(t *testing.T) {
+	db, s := checkpointScheduleFixture(t)
+	l := ledgerFor(db)
+	l.mu.Lock()
+	l.stats.AdmissionBytes = walSoftBytes - 4096
+	l.mu.Unlock()
+	r := &walRequest{ledger: l, bytes: 32768, qualified: true, class: ClassBackgroundMedia}
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	result := make(chan error, 1)
+	go func() {
+		release, e := WriteGate().Acquire(context.WithValue(ctx, walRequestKey{}, r), ClassBackgroundMedia)
+		if e == nil {
+			release()
+		}
+		result <- e
+	}()
+	deadline := time.Now().Add(time.Second)
+	for !l.reservationPressure() {
+		if time.Now().After(deadline) {
+			t.Fatal("no pressure from unready reservation")
+		}
+		time.Sleep(time.Millisecond)
+	}
+	if bytes, _ := checkpointFileBytes(s.walPath); bytes >= CheckpointHardFileBytes {
+		t.Fatal("fixture already physically hard", bytes)
+	}
+	out, ran := s.Tick(ctx)
+	if !ran || out.Err != nil || l.snapshot().Resets == 0 {
+		t.Fatalf("reservation pressure did not use reset: ran%v %+v ledger%+v", ran, out, l.snapshot())
+	}
+	if e := <-result; e != nil {
+		t.Fatal("reset did not release retained writer", e)
+	}
+	if l.reservationPressure() {
+		t.Fatal("verified reset retained pressure")
+	}
+}

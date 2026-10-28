@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"portico.local/server/internal/dbwork"
 	"portico.local/server/internal/mbaccounting"
@@ -151,5 +152,155 @@ func TestAccountingAbortKeepsOldFactsAndReleasesOwner(t *testing.T) {
 	fold(t, db)
 	if n := refs(t, db); n != 37 || state(t, db).Phase != "idle" {
 		t.Fatal("abort lost old authority", n)
+	}
+}
+
+func TestAccountingAbandonedPrivateOwnerExpiresWithoutChangingPinFacts(t *testing.T) {
+	db := accountingDB(t)
+	c := unpinFixture(t, db, 37)
+	start := time.Unix(1000, 0)
+	writer(t, db, func(tx *sql.Tx) error {
+		_, e := mbaccounting.BeginTx(mbaccounting.WithTime(context.Background(), start), tx, c)
+		return e
+	})
+	writer(t, db, func(tx *sql.Tx) error {
+		_, e := mbaccounting.PrepareTx(mbaccounting.WithTime(context.Background(), start.Add(10*time.Second)), tx, c)
+		return e
+	})
+	writer(t, db, func(tx *sql.Tx) error {
+		worked, e := mbaccounting.MaintainTx(mbaccounting.WithTime(context.Background(), start.Add(101*time.Second)), tx, nil)
+		if !worked && e == nil {
+			t.Fatal("expired cancelled owner retained global pause")
+		}
+		return e
+	})
+	fold(t, db)
+	if n := refs(t, db); n != 37 {
+		t.Fatal("expiry changed old authority", n)
+	}
+	writer(t, db, func(tx *sql.Tx) error { return mbaccounting.IdleTx(context.Background(), tx) })
+}
+
+func TestAccountingSlowRealProgressRenewsPrivateInactivityLease(t *testing.T) {
+	db := accountingDB(t)
+	c := unpinFixture(t, db, 37)
+	now := time.Unix(1000, 0)
+	writer(t, db, func(tx *sql.Tx) error {
+		_, e := mbaccounting.BeginTx(mbaccounting.WithTime(context.Background(), now), tx, c)
+		return e
+	})
+	ready := false
+	for n := 0; n < 20 && !ready; n++ {
+		now = now.Add(80 * time.Second)
+		writer(t, db, func(tx *sql.Tx) error {
+			ctx := mbaccounting.WithTime(context.Background(), now)
+			var e error
+			ready, e = mbaccounting.PrepareTx(ctx, tx, c)
+			if e != nil {
+				return e
+			}
+			worked, e := mbaccounting.MaintainTx(ctx, tx, nil)
+			if worked && e == nil {
+				t.Fatal("progressing owner expired")
+			}
+			return e
+		})
+	}
+	if !ready {
+		t.Fatal("slow copy did not finish")
+	}
+	if n := refs(t, db); n != 37 {
+		t.Fatal("slow private copy changed public counts", n)
+	}
+	if got := state(t, db).ExpiresMS; got != now.Add(90*time.Second).UnixMilli() {
+		t.Fatal("lease was not progress-relative", got)
+	}
+}
+
+func TestAccountingRestartAtEveryDurablePhaseReleasesProducers(t *testing.T) {
+	for _, phase := range []string{"prepare", "ready", "fold"} {
+		t.Run(phase, func(t *testing.T) {
+			db := accountingDB(t)
+			c := unpinFixture(t, db, 37)
+			writer(t, db, func(tx *sql.Tx) error {
+				for n := 0; n < 33; n++ {
+					id := fmt.Sprintf("unique-%03d", n)
+					exec(t, tx, `INSERT INTO mb_recording_evidence(revision_id,provider_id,digest,title,artist,disambiguation,observed_at,payload) VALUES(?,?,?,'T','A','','now','{}')`, id, id, fmt.Sprintf("%064x", n+100))
+					exec(t, tx, `UPDATE mb_recording_evidence SET sealed=1 WHERE revision_id=?`, id)
+					exec(t, tx, `INSERT INTO mb_release_tracks(release_revision,track_id,medium_position,position,number,title,artist,recording_revision) VALUES('release',?,1,?,'','T','A',?)`, id, n+100, id)
+				}
+				_, e := mbaccounting.BeginTx(context.Background(), tx, c)
+				return e
+			})
+			writer(t, db, func(tx *sql.Tx) error { _, e := mbaccounting.PrepareTx(context.Background(), tx, c); return e })
+			if phase != "prepare" {
+				prepare(t, db, c)
+			}
+			if phase == "fold" {
+				writer(t, db, func(tx *sql.Tx) error {
+					return mbaccounting.FlipTx(context.Background(), tx, c, func() error {
+						_, e := tx.Exec(`UPDATE mb_release_accounting SET direct_refs=0 WHERE revision_id='release'`)
+						return e
+					}, func() error { return nil })
+				})
+				writer(t, db, func(tx *sql.Tx) error { _, e := mbaccounting.FoldTx(context.Background(), tx); return e })
+				var next int
+				if e := db.QueryRow(`SELECT count(*) FROM mb_recording_accounting_next`).Scan(&next); e != nil || next == 0 {
+					t.Fatal("fixture did not interrupt a partial fold", next, e)
+				}
+			}
+			var seq int
+			var name, path string
+			if e := db.QueryRow(`PRAGMA database_list`).Scan(&seq, &name, &path); e != nil {
+				t.Fatal(e)
+			}
+			if e := db.Close(); e != nil {
+				t.Fatal(e)
+			}
+			reopened, e := persistence.OpenFresh(path)
+			if e != nil {
+				t.Fatal(e)
+			}
+			defer reopened.Close()
+			for turn := 0; turn < 20 && state(t, reopened).Phase != "idle"; turn++ {
+				writer(t, reopened, func(tx *sql.Tx) error {
+					_, e := mbaccounting.MaintainTx(context.Background(), tx, func(mbaccounting.Owner) (bool, error) { return false, nil })
+					return e
+				})
+			}
+			if state(t, reopened).Phase != "idle" {
+				t.Fatal("restart stranded accounting owner")
+			}
+			want := int64(70)
+			if phase == "fold" {
+				want = 0
+			}
+			if got := refs(t, reopened); got != want {
+				t.Fatal("restart changed accepted facts", got, want)
+			}
+			writer(t, reopened, func(tx *sql.Tx) error { return mbaccounting.IdleTx(context.Background(), tx) })
+		})
+	}
+}
+
+func TestAccountingPrivateOwnerDoesNotBlockUserOrPlaybackWriters(t *testing.T) {
+	db := accountingDB(t)
+	c := unpinFixture(t, db, 37)
+	writer(t, db, func(tx *sql.Tx) error { _, e := mbaccounting.BeginTx(context.Background(), tx, c); return e })
+	// These go through the real gate as ordinary user/playback writers while the
+	// accounting singleton is deliberately left held between separate turns.
+	for _, class := range []dbwork.Class{dbwork.ClassInteractive, dbwork.ClassEstablishedPlayback} {
+		ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+		e := dbwork.WithWriteTx(ctx, db, class, func(tx *sql.Tx) error {
+			_, e := tx.ExecContext(ctx, `INSERT INTO configuration(key,value) VALUES('accounting-user-test',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value`, class.String())
+			return e
+		})
+		cancel()
+		if e != nil {
+			t.Fatal(class, e)
+		}
+		if state(t, db).Phase != "prepare" {
+			t.Fatal("ordinary writer changed accounting custody")
+		}
 	}
 }

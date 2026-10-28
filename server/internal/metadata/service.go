@@ -155,14 +155,23 @@ func (s *Service) Run(ctx context.Context) {
 	defer unregister()
 	ctx, progress := metadataProgress(ctx)
 	worker.Run(ctx, "metadata.providers", wake, func(ctx context.Context) time.Duration {
+		// A provider setting cannot strand an accepted accounting fold or a
+		// cancelled private owner. Progress still uses this worker's one wake.
+		progress.Reset()
+		_, accountingWorked, accountingErr := s.mbAccountingMaintenance(ctx)
+		if accountingErr != nil && ctx.Err() == nil {
+			log.Printf("warning: [metadata] accounting maintenance: %v", accountingErr)
+		}
 		if s.Admission != nil {
 			allowed, e := s.Admission(ctx, nil, "metadata-refresh")
 			if e != nil || !allowed {
+				if accountingWorked {
+					return 10 * time.Millisecond
+				}
 				return time.Minute
 			}
 		}
 		// Provider refresh remains a bounded background batch under load.
-		progress.Reset()
 		_ = s.loadProviderSettings(ctx)
 		if !dbwork.Yield(ctx) {
 			return 0

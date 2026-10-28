@@ -227,6 +227,16 @@ func (g *Gate) acquire(ctx context.Context, class Class, stuck stuckClock) (func
 // acquisition and the reserved recovery turn.
 func (g *Gate) acquireTicket(ctx context.Context, t *ticket, stuck stuckClock) (func(), error) {
 	class, start := t.class, t.since
+	// Only qualified reservations can refuse on capacity. A failed disk probe
+	// or insufficient disk cannot be repaired by checkpointing indefinitely.
+	// One timer per waiting ticket preserves bounded refusal without polling SQL.
+	var capacity *time.Timer
+	var capacityC <-chan time.Time
+	if t.wal != nil && t.wal.qualified {
+		capacity = time.NewTimer(walCapacityWait)
+		capacityC = capacity.C
+		defer capacity.Stop()
+	}
 	g.mu.Lock()
 	queued := false
 	for {
@@ -315,6 +325,20 @@ func (g *Gate) acquireTicket(ctx context.Context, t *ticket, stuck stuckClock) (
 		notify := g.notify
 		g.mu.Unlock()
 		select {
+		case <-capacityC:
+			g.mu.Lock()
+			if !t.wal.ready() {
+				g.removeWaiterLocked(t, false)
+				g.refuseLocked(t)
+				g.admitBackgroundLocked()
+				if !g.active {
+					g.grant = g.pickWinnerLocked()
+				}
+				g.signalLocked()
+				g.mu.Unlock()
+				return nil, ErrWriterCapacity
+			}
+			capacity.Reset(walCapacityWait)
 		case <-stuck.C:
 			// A hold that outlasts StuckWait is a bug, not load: something is
 			// holding the writer across work that does not belong inside a

@@ -345,7 +345,7 @@ func checkpoint(ctx context.Context, db *sql.DB, knownWALPath string) (out Check
 		return out
 	}
 	frameBytes := pageSize + 24
-	hardPressure := int64(out.LogFrames)*frameBytes+32 >= CheckpointHardFileBytes || out.BeforeFileBytes >= CheckpointHardFileBytes || ledgerHard
+	hardPressure := int64(out.LogFrames)*frameBytes+32 >= CheckpointHardFileBytes || out.BeforeFileBytes >= CheckpointHardFileBytes || ledgerHard || ledgerFor(db).reservationPressure()
 	scope := checkpointReaderScope(conn)
 	if scope != nil {
 		out.Readers = scope.stats()

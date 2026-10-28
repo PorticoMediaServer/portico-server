@@ -8,6 +8,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"time"
 )
 
 var (
@@ -17,6 +18,22 @@ var (
 )
 
 const FactsPerTurn = 11
+const InactivityLease = 90 * time.Second
+
+type timeKey struct{}
+
+// WithTime uses the caller's existing worker clock for inactivity only. It is
+// never a domain-authority witness; the final writer still reauthorizes.
+func WithTime(ctx context.Context, at time.Time) context.Context {
+	return context.WithValue(ctx, timeKey{}, at)
+}
+func nowMS(ctx context.Context) int64 {
+	if at, ok := ctx.Value(timeKey{}).(time.Time); ok {
+		return at.UnixMilli()
+	}
+	return time.Now().UnixMilli()
+}
+func nextExpiry(ctx context.Context) int64 { return nowMS(ctx) + InactivityLease.Milliseconds() }
 
 type Owner struct {
 	Kind, Operation string
@@ -29,6 +46,7 @@ type Change struct {
 	OldRelease, NewRelease, OldRecording, NewRecording string
 }
 type State struct {
+	ExpiresMS                                                int64
 	Owner                                                    Owner
 	Phase, ID, Link, Digest, Source, Cursor                  string
 	Entity                                                   int64
@@ -38,7 +56,7 @@ type State struct {
 }
 
 func ReadTx(ctx context.Context, tx *sql.Tx) (s State, err error) {
-	err = tx.QueryRowContext(ctx, `SELECT phase,transition_id,published_next,owner_kind,owner_operation,owner_generation,stage_link,COALESCE(stage_entity,0),stage_pin_digest,stage_old_release,stage_new_release,stage_old_direct,stage_new_direct,stage_source,stage_cursor,stage_rows,stage_delta_recordings,stage_delta_charge FROM mb_accounting_state WHERE singleton=1`).Scan(&s.Phase, &s.ID, &s.Published, &s.Owner.Kind, &s.Owner.Operation, &s.Owner.Generation, &s.Link, &s.Entity, &s.Digest, &s.OldRelease, &s.NewRelease, &s.OldDirect, &s.NewDirect, &s.Source, &s.Cursor, &s.Rows, &s.DeltaRecordings, &s.DeltaCharge)
+	err = tx.QueryRowContext(ctx, `SELECT phase,transition_id,published_next,expires_ms,owner_kind,owner_operation,owner_generation,stage_link,COALESCE(stage_entity,0),stage_pin_digest,stage_old_release,stage_new_release,stage_old_direct,stage_new_direct,stage_source,stage_cursor,stage_rows,stage_delta_recordings,stage_delta_charge FROM mb_accounting_state WHERE singleton=1`).Scan(&s.Phase, &s.ID, &s.Published, &s.ExpiresMS, &s.Owner.Kind, &s.Owner.Operation, &s.Owner.Generation, &s.Link, &s.Entity, &s.Digest, &s.OldRelease, &s.NewRelease, &s.OldDirect, &s.NewDirect, &s.Source, &s.Cursor, &s.Rows, &s.DeltaRecordings, &s.DeltaCharge)
 	return
 }
 func IdleTx(ctx context.Context, tx *sql.Tx) error {
@@ -89,7 +107,7 @@ func BeginTx(ctx context.Context, tx *sql.Tx, c Change) (State, error) {
 	if c.OldRelease != "" && old <= 0 {
 		return s, ErrInvariant
 	}
-	_, e = tx.ExecContext(ctx, `UPDATE mb_accounting_state SET phase='prepare',transition_id=?,published_next=0,owner_kind=?,owner_operation=?,owner_generation=?,stage_kind=?,stage_link=?,stage_entity=?,stage_old_release=?,stage_new_release=?,stage_old_direct=?,stage_new_direct=?,stage_pin_digest=?,stage_cursor='',stage_source='old-tracks',stage_rows=0,stage_delta_recordings=0,stage_delta_charge=0 WHERE singleton=1 AND phase='idle'`, c.ID, c.Owner.Kind, c.Owner.Operation, c.Owner.Generation, changeKind(c), c.Link, c.Entity, c.OldRelease, c.NewRelease, old, next, c.Digest)
+	_, e = tx.ExecContext(ctx, `UPDATE mb_accounting_state SET phase='prepare',transition_id=?,published_next=0,expires_ms=?,owner_kind=?,owner_operation=?,owner_generation=?,stage_kind=?,stage_link=?,stage_entity=?,stage_old_release=?,stage_new_release=?,stage_old_direct=?,stage_new_direct=?,stage_pin_digest=?,stage_cursor='',stage_source='old-tracks',stage_rows=0,stage_delta_recordings=0,stage_delta_charge=0 WHERE singleton=1 AND phase='idle'`, c.ID, nextExpiry(ctx), c.Owner.Kind, c.Owner.Operation, c.Owner.Generation, changeKind(c), c.Link, c.Entity, c.OldRelease, c.NewRelease, old, next, c.Digest)
 	if e != nil {
 		return s, e
 	}
@@ -154,7 +172,7 @@ func advance(ctx context.Context, tx *sql.Tx, s State, source, cursor string, ad
 	if s.Rows+added > 20002 {
 		return ErrInvariant
 	}
-	r, e := tx.ExecContext(ctx, `UPDATE mb_accounting_state SET stage_source=?,stage_cursor=?,stage_rows=stage_rows+?,stage_delta_recordings=stage_delta_recordings+?,stage_delta_charge=stage_delta_charge+? WHERE singleton=1 AND phase='prepare' AND transition_id=? AND owner_generation=? AND stage_source=? AND stage_cursor=?`, source, cursor, added, records, charge, s.ID, s.Owner.Generation, s.Source, s.Cursor)
+	r, e := tx.ExecContext(ctx, `UPDATE mb_accounting_state SET stage_source=?,stage_cursor=?,expires_ms=?,stage_rows=stage_rows+?,stage_delta_recordings=stage_delta_recordings+?,stage_delta_charge=stage_delta_charge+? WHERE singleton=1 AND phase='prepare' AND transition_id=? AND owner_generation=? AND stage_source=? AND stage_cursor=?`, source, cursor, nextExpiry(ctx), added, records, charge, s.ID, s.Owner.Generation, s.Source, s.Cursor)
 	if e != nil {
 		return e
 	}
@@ -177,6 +195,9 @@ func PrepareTx(ctx context.Context, tx *sql.Tx, c Change) (ready bool, err error
 		return false, e
 	}
 	if !same(s, c) {
+		return false, ErrStale
+	}
+	if s.ExpiresMS <= nowMS(ctx) {
 		return false, ErrStale
 	}
 	if s.Phase == "ready" {
@@ -225,7 +246,7 @@ func PrepareTx(ctx context.Context, tx *sql.Tx, c Change) (ready bool, err error
 		if old != s.OldDirect || next != s.NewDirect {
 			return false, ErrStale
 		}
-		_, e = tx.ExecContext(ctx, `UPDATE mb_accounting_state SET phase='ready' WHERE singleton=1 AND phase='prepare' AND transition_id=? AND stage_source='done'`, s.ID)
+		_, e = tx.ExecContext(ctx, `UPDATE mb_accounting_state SET phase='ready',expires_ms=? WHERE singleton=1 AND phase='prepare' AND transition_id=? AND stage_source='done'`, nextExpiry(ctx), s.ID)
 		return e == nil, e
 	default:
 		return false, ErrInvariant
@@ -282,7 +303,7 @@ func FlipTx(ctx context.Context, tx *sql.Tx, c Change, apply func() error, check
 	if e != nil {
 		return e
 	}
-	if !same(s, c) || s.Phase != "ready" || apply == nil || checkCaps == nil {
+	if !same(s, c) || s.Phase != "ready" || s.ExpiresMS <= nowMS(ctx) || apply == nil || checkCaps == nil {
 		return ErrStale
 	}
 	if _, e = tx.ExecContext(ctx, `UPDATE mb_accounting_state SET phase='flip' WHERE singleton=1 AND phase='ready' AND transition_id=?`, s.ID); e != nil {
@@ -376,6 +397,38 @@ func FoldTx(ctx context.Context, tx *sql.Tx) (done bool, err error) {
 	if remains {
 		return false, nil
 	}
-	_, e = tx.ExecContext(ctx, `UPDATE mb_accounting_state SET phase='idle',transition_id='',published_next=0,owner_kind='',owner_operation='',owner_generation=0,stage_kind='',stage_link='',stage_entity=0,stage_old_release='',stage_new_release='',stage_old_direct=0,stage_new_direct=0,stage_pin_digest='',stage_cursor='',stage_source='',stage_rows=0,stage_delta_recordings=0,stage_delta_charge=0 WHERE singleton=1 AND phase='fold' AND transition_id=?`, s.ID)
+	_, e = tx.ExecContext(ctx, `UPDATE mb_accounting_state SET phase='idle',transition_id='',published_next=0,expires_ms=0,owner_kind='',owner_operation='',owner_generation=0,stage_kind='',stage_link='',stage_entity=0,stage_old_release='',stage_new_release='',stage_old_direct=0,stage_new_direct=0,stage_pin_digest='',stage_cursor='',stage_source='',stage_rows=0,stage_delta_recordings=0,stage_delta_charge=0 WHERE singleton=1 AND phase='fold' AND transition_id=?`, s.ID)
 	return e == nil, e
+}
+
+// MaintainTx releases an abandoned private owner, or advances an accepted fold.
+// live checks the existing domain's point-bound owner/lease; expiry is only a
+// cleanup deadline. A published transition is always folded, never undone.
+func MaintainTx(ctx context.Context, tx *sql.Tx, live func(Owner) (bool, error)) (worked bool, err error) {
+	s, e := ReadTx(ctx, tx)
+	if e != nil {
+		return false, e
+	}
+	if s.Phase == "idle" {
+		return false, nil
+	}
+	if s.Phase == "fold" {
+		_, e = FoldTx(ctx, tx)
+		return e == nil, e
+	}
+	if s.Phase != "prepare" && s.Phase != "ready" {
+		return false, ErrInvariant
+	}
+	alive := true
+	if s.ExpiresMS > nowMS(ctx) && live != nil {
+		alive, e = live(s.Owner)
+		if e != nil {
+			return false, e
+		}
+	}
+	if s.ExpiresMS <= nowMS(ctx) || !alive {
+		e = AbortTx(ctx, tx, s.Owner)
+		return e == nil, e
+	}
+	return false, nil
 }

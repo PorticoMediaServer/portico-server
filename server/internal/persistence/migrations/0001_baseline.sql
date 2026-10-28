@@ -12242,6 +12242,7 @@ CREATE TABLE mb_accounting_state(
  phase TEXT NOT NULL DEFAULT 'idle' CHECK(phase IN('idle','prepare','ready','flip','fold')),
  transition_id TEXT NOT NULL DEFAULT '',
  published_next INTEGER NOT NULL DEFAULT 0 CHECK(published_next IN(0,1)),
+ expires_ms INTEGER NOT NULL DEFAULT 0 CHECK(expires_ms>=0),
  owner_kind TEXT NOT NULL DEFAULT '' CHECK(owner_kind IN('','publication','entity-mutation','recovery')),
  owner_operation TEXT NOT NULL DEFAULT '', owner_generation INTEGER NOT NULL DEFAULT 0 CHECK(owner_generation>=0),
  stage_kind TEXT NOT NULL DEFAULT '' CHECK(stage_kind IN('','unpin','pin','move')),
