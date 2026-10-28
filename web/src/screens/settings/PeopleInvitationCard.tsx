@@ -6,6 +6,7 @@ import wordmark from '../../shell/wordmark.svg';
 import type {SettingsInvitations} from './invitations';
 import {invitationCardFacts} from '@core/invitation-card.ts';
 import {invitationPicture} from '../../kit/accounts/invitation-picture';
+import {copyText} from '../../platform/copy-text';
 import styles from '../../kit/accounts/InvitationCard.module.css';
 
 const t = defaultI18n.t;
@@ -22,12 +23,22 @@ export function PeopleInvitationCard({open, invitation, invitations, serverName,
   const scope = useMemo(() => ({open, invitation, invitations, facts, isCurrent}), [open, invitation, invitations, facts, isCurrent]);
   const active = useRef<{scope: typeof scope; request: AbortController} | undefined>(undefined);
   const [card, setCard] = useState<Card>(), [error, setError] = useState(false), [copied, setCopied] = useState(false), [retry, setRetry] = useState(0);
+  const [expired, setExpired] = useState<typeof scope>();
   if (active.current && (active.current.scope !== scope || !isCurrent())) {active.current.request.abort(); active.current = undefined;}
   useLayoutEffect(() => {
     setCard(undefined); setError(false); setCopied(false);
-    if (!open || !isCurrent() || invitation.state !== 'pending') return;
+    const expiresAt = Date.parse(facts.expiresAt);
+    if (!open || !isCurrent() || invitation.state !== 'pending' || !(expiresAt > Date.now())) return;
     const ticket = {scope, request: new AbortController()}; active.current = ticket;
-    const current = () => active.current === ticket && !ticket.request.signal.aborted && scope.isCurrent();
+    const current = () => active.current === ticket && !ticket.request.signal.aborted && scope.isCurrent() && expiresAt > Date.now();
+    let timer: ReturnType<typeof setTimeout>;
+    const expire = () => {
+      if (active.current !== ticket) return;
+      const remaining = expiresAt - Date.now();
+      if (remaining > 0) {timer = setTimeout(expire, Math.min(remaining, 2_147_483_647));return;}
+      ticket.request.abort();active.current = undefined;setCard(undefined);setExpired(scope);
+    };
+    expire();
     void (async () => {
       try {
         const link = await invitations.link(invitation, {signal: ticket.request.signal, isCurrent: current});
@@ -40,17 +51,17 @@ export function PeopleInvitationCard({open, invitation, invitations, serverName,
         if (current()) setCard({ticket, link, path, qr});
       } catch {if (current()) setError(true);}
     })();
-    return () => {ticket.request.abort(); if (active.current === ticket) active.current = undefined;};
-  }, [scope, open, invitation, invitations, isCurrent, retry]);
-  const available = invitation.state === 'pending' && Date.parse(facts.expiresAt) > Date.now();
+    return () => {clearTimeout(timer);ticket.request.abort(); if (active.current === ticket) active.current = undefined;};
+  }, [scope, open, invitation, invitations, facts, isCurrent, retry]);
+  const available = expired !== scope && invitation.state === 'pending' && Date.parse(facts.expiresAt) > Date.now();
   const current = (value: Card) => open && available && active.current?.scope === scope && value.ticket === active.current && !active.current.request.signal.aborted && isCurrent() && Date.parse(facts.expiresAt) > Date.now();
   const visible = card && current(card) ? card : undefined;
   const access = facts.allLibraries ? t('next.settings.allLibraries') : facts.libraryNames.length === facts.libraryCount && facts.libraryCount <= 3
     ? defaultI18n.list(facts.libraryNames) : t('next.settings.invitations.libraries', {count: facts.libraryCount});
   const expiry = t('api.credential.expires', {when: defaultI18n.dateTime(facts.expiresAt)});
-  const copy = async (value: Card) => {
+  const copy = async (value: Card, source: HTMLElement) => {
     if (!current(value)) return;
-    try {await navigator.clipboard.writeText(value.link); if (current(value)) setCopied(true);}
+    try {await copyText(value.link, source); if (current(value)) setCopied(true);}
     catch {if (current(value)) setError(true);}
   };
   const share = async (value: Card) => {
@@ -78,9 +89,9 @@ export function PeopleInvitationCard({open, invitation, invitations, serverName,
         <p className={styles.fin}>{t('accounts.invitation.shareJoinHelp', {method: signIn ?? 'other'})}</p>
       </article>
       <div className={styles.actions}>
-        <Button size="small" icon={copied ? 'i-check' : 'i-copy'} onClick={() => void copy(visible)}>{t(copied ? 'next.settings.invitations.linkCopied' : 'web.access.copyLink')}</Button>
+        <Button size="small" icon={copied ? 'i-check' : 'i-copy'} onClick={event => void copy(visible, event.currentTarget)}>{t(copied ? 'next.settings.invitations.linkCopied' : 'web.access.copyLink')}</Button>
         {typeof navigator.share === 'function' && <Button size="small" icon="i-share" onClick={() => void share(visible)}>{t('services.start.shareLink')}</Button>}
-        <Button className={styles.save} size="small" icon="i-download" onClick={() => void save(visible)}>{t('accounts.invitation.saveAsPicture')}</Button>
+        <Button size="small" icon="i-download" onClick={() => void save(visible)}>{t('accounts.invitation.saveAsPicture')}</Button>
       </div>
     </> : !error ? <p role="status">{t('next.settings.loading')}</p> : null}
     {error && <div role="alert"><p>{t('next.states.pageFailedBody')}</p>{!visible && <Button size="small" onClick={() => setRetry(value => value + 1)}>{t('action.tryAgain')}</Button>}</div>}

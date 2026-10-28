@@ -1,4 +1,4 @@
-import {useEffect, useLayoutEffect, useRef, useState} from 'react';
+import {useCallback, useEffect, useLayoutEffect, useRef, useState} from 'react';
 import {defaultI18n, type MessageId} from '@i18n';
 import type {ServerInvitation} from '@core/direct-account.ts';
 import {settingsSpec} from '@core/presentation/settings-spec.ts';
@@ -9,6 +9,7 @@ import {SettingsGroup, SettingsPageFailure, SettingsTable, type SettingsTableRow
 import kitStyles from '../../kit/settings/settings.module.css';
 import type {SettingsInvitations} from './invitations';
 import {InvitationsView, type InvitationScope, type ResidentInvitations, type InvitationOpening, type InvitationRead, type InvitationRevoke} from './people-invitations-view';
+import {PeopleInvitationCard} from './PeopleInvitationCard';
 
 const t = defaultI18n.t;
 const section = settingsSpec.find(candidate => candidate.scope === 'server' && candidate.id === 'people')!;
@@ -43,9 +44,12 @@ function invitationRow(invitation: ServerInvitation, libraries: readonly {id: st
 
 /** The drawn Invitations group: the honest server table, its counted pages and
  * the link/revoke commands. Nothing is cached: every read reauthorizes and the
- * short link is issued only by Copy link, for the row it was drawn for. */
-export function PeopleInvitations({invitations, libraries, authority, version, openInvite, openHome, reportError}: Readonly<{
+ * share link is prepared only for the explicit row opening, then copied with a
+ * fresh gesture from the existing ready card. */
+export function PeopleInvitations({invitations, serverName, signIn, libraries, authority, version, openInvite, openHome, reportError}: Readonly<{
   invitations: SettingsInvitations;
+  serverName: string;
+  signIn?: 'local' | 'portico';
   libraries: readonly {id: string; name: string}[];
   authority: Readonly<{isCurrent: () => boolean; onAuthorityChanged: () => void}>;
   /** Bumped by the create flow so a new invitation appears without a reload. */
@@ -66,14 +70,16 @@ export function PeopleInvitations({invitations, libraries, authority, version, o
   // A successor render cannot combine a predecessor's view with new ports.
   // A fresh layout entry also gives the child fresh query/page/modal state.
   return entry && entry.invitations === invitations && entry.authority === authority && entry.view.current()
-    && <InvitationTable key={entry.id} version={version} view={entry.view} invitations={entry.invitations} libraries={libraries} authority={entry.authority}
+    && <InvitationTable key={entry.id} version={version} view={entry.view} invitations={entry.invitations} serverName={serverName} signIn={signIn} libraries={libraries} authority={entry.authority}
     openInvite={openInvite} openHome={openHome} reportError={reportError} />;
 }
 
-function InvitationTable({view, invitations, libraries, authority, version, openInvite, openHome, reportError}: Readonly<{
+function InvitationTable({view, invitations, serverName, signIn, libraries, authority, version, openInvite, openHome, reportError}: Readonly<{
   view: InvitationsView;
   version: number;
   invitations: SettingsInvitations;
+  serverName: string;
+  signIn?: 'local' | 'portico';
   libraries: readonly {id: string; name: string}[];
   authority: Readonly<{isCurrent: () => boolean; onAuthorityChanged: () => void}>;
   openInvite: ((opener: HTMLElement) => void) | undefined;
@@ -87,6 +93,7 @@ function InvitationTable({view, invitations, libraries, authority, version, open
   const loading = !!busy;
   const [note, setNote] = useState<Readonly<{message: MessageId}>>();
   const [confirming, setConfirming] = useState<InvitationOpening>();
+  const [sharing, setSharing] = useState<InvitationOpening>();
   const [running, setRunning] = useState<InvitationRevoke>();
   const noteTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   useEffect(() => () => clearTimeout(noteTimer.current), []);
@@ -112,7 +119,7 @@ function InvitationTable({view, invitations, libraries, authority, version, open
   useLayoutEffect(() => {
     const {read} = setupPorts.current;
     const owned = view.replace(query);
-    setScope(owned);setResident(undefined);setBusy(owned);setError(undefined);setConfirming(undefined);setRunning(undefined);
+    setScope(owned);setResident(undefined);setBusy(owned);setError(undefined);setConfirming(undefined);setSharing(undefined);setRunning(undefined);
     const timer = setTimeout(() => {
       const ticket = view.beginRead(owned);
       if (ticket) {setBusy(ticket);read(ticket, '');}
@@ -124,6 +131,8 @@ function InvitationTable({view, invitations, libraries, authority, version, open
   useLayoutEffect(() => confirming ? view.commitOpening(confirming) : undefined, [view, confirming]);
   const page = view.pageCurrent(resident) ? resident : undefined;
   const opening = view.openingCurrent(confirming) ? confirming : undefined;
+  const shareOpening = view.openingCurrent(sharing) ? sharing : undefined;
+  const shareCurrent = useCallback(() => view.openingCurrent(sharing), [view, sharing]);
   const revoking = !!opening && running?.opening === opening;
   const more = () => {
     if (!scope || !page?.value.nextCursor) return;
@@ -135,18 +144,11 @@ function InvitationTable({view, invitations, libraries, authority, version, open
     clearTimeout(noteTimer.current);setNote(owned);
     noteTimer.current = setTimeout(() => {if (view.current()) setNote(before => before === owned ? undefined : before);}, 4000);
   };
-  const copy = async (selected: ResidentInvitations, invitation: ServerInvitation) => {
-    const current = () => view.rowCurrent(selected, invitation);
-    if (!current() || invitation.state !== 'pending') return;
-    try {
-      const link = await invitations.link(invitation, {signal: selected.life.signal, isCurrent: current});
-      if (!current()) return;
-      await navigator.clipboard.writeText(link);
-      if (current()) show('next.settings.invitations.linkCopied');
-    } catch (value) {if (current()) reportError(value);}
-  };
   const cancel = (selected: InvitationOpening) => {
     if (view.cancel(selected)) setConfirming(before => before === selected ? undefined : before);
+  };
+  const closeShare = (selected: InvitationOpening) => {
+    if (view.cancel(selected)) setSharing(before => before === selected ? undefined : before);
   };
   const revoke = async (selected: InvitationOpening) => {
     let ticket: InvitationRevoke | undefined;
@@ -196,7 +198,11 @@ function InvitationTable({view, invitations, libraries, authority, version, open
         // The local clock is used only for the display countdown above.
         const state = invitation.state;
         return <span style={{display: 'inline-flex', gap: 4}}>
-          {state === 'pending' && <Button size="xs" variant="text" onClick={() => {void copy(selected, invitation);}}>{t(actionCopy.label)}</Button>}
+          {state === 'pending' && <Button size="xs" variant="text" onClick={event => {
+            if (!view.rowCurrent(selected, invitation)) return;
+            const owned = view.open(selected, invitation, event.currentTarget);
+            if (owned) setSharing(owned);
+          }}>{t(actionCopy.label)}</Button>}
           {(state === 'pending' || state === 'expired') && <Button size="xs" variant="text" onClick={event => {
             const owned = view.open(selected, invitation, event.currentTarget);
             if (owned) setConfirming(owned);
@@ -204,6 +210,12 @@ function InvitationTable({view, invitations, libraries, authority, version, open
         </span>;
       }} />}
     </SettingsGroup>
+    {shareOpening && <Dialog open title={t('invite.readyTitle')} size="sm" width={560} returnFocusRef={shareOpening.focus}
+      onOpenChange={open => {if (!open) closeShare(shareOpening);}}
+      footer={<Button variant="primary" onClick={() => closeShare(shareOpening)}>{t('action.done')}</Button>}>
+      <PeopleInvitationCard open invitation={shareOpening.row} invitations={invitations} serverName={serverName} signIn={signIn}
+        libraries={libraries} isCurrent={shareCurrent} />
+    </Dialog>}
     {opening && <Dialog open title={t(revokeCopy.label)} onOpenChange={open => {if (!open) cancel(opening);}}
       returnFocusRef={opening.focus} footer={<><Button disabled={revoking} onClick={() => cancel(opening)}>{t('next.settings.cancel')}</Button>
         <Button variant="primary" className={kitStyles.danger} loading={revoking} onClick={() => {void revoke(opening);}}>{t(revokeCopy.label)}</Button></>}>
