@@ -873,6 +873,7 @@ export const webMessages = {
   'web.player.error.engineUnavailable': 'The player couldn’t load. Check your connection and try again.',
   'web.player.error.noStreaming': 'This browser can’t play the streams this server makes. Use a current version of Chrome, Edge, Firefox or Safari, or one of the Portico apps.',
   'web.player.error.cannotPlay': 'This browser can’t play this title, and the server has no other way to send it. Another browser or one of the Portico apps may be able to.',
+  'web.player.error.updateRequired': 'Update the app to play on this server.',
   'web.player.error.conversionOff': 'This title has to be converted to play in this browser, and converting is turned off on this server or for your account. The server owner can change that.',
   'web.player.error.notAvailable': 'This title isn’t available any more. Its file may have been moved or removed.',
   'web.player.error.streamLimit': 'Your account is already playing as many streams as it is allowed. Stop one and try again.',

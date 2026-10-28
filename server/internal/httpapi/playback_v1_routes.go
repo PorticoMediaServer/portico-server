@@ -2,10 +2,13 @@ package httpapi
 
 import (
 	"context"
+	"crypto/sha256"
 	"database/sql"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"net/http"
+	"os"
 	"slices"
 	"strconv"
 	"strings"
@@ -47,6 +50,8 @@ func newPlaybackV1(d Dependencies) *playbackv1.Service {
 	if s == nil {
 		return nil
 	}
+	// The observation protocol stays off until every client speaks it.
+	s.ObservationsEnabled = os.Getenv("PORTICO_PLAYBACK_OBSERVATIONS") == "1"
 	s.StopAuthorityTx = func(ctx context.Context, tx *sql.Tx, c playbackv1.Caller) error {
 		if d.Identity == nil || tx == nil || dbwork.Snapshot(ctx) != tx || c.DeviceID == "" {
 			return identity.ErrForbidden
@@ -317,7 +322,8 @@ func registerPlaybackV1Admin(r *apikit.Registry, d Dependencies) {
 // admission for new presentations and channel admission for channel starts.
 func (d Dependencies) v1ServiceCaller(q *http.Request, c v1Caller) playbackv1.Caller {
 	uploadLimited := false
-	return playbackv1.Caller{UploadLimited: &uploadLimited, Principal: c.Principal, DeviceID: c.DeviceID, Remote: d.v1Remote(q), TransportClass: d.deliveryContext(q).TransportClass, AuthorizeItem: func(ctx context.Context, item string) error {
+	protocol, _ := strconv.Atoi(q.Header.Get("Portico-Playback"))
+	return playbackv1.Caller{PlaybackProtocol: protocol, UploadLimited: &uploadLimited, Principal: c.Principal, DeviceID: c.DeviceID, Remote: d.v1Remote(q), TransportClass: d.deliveryContext(q).TransportClass, AuthorizeItem: func(ctx context.Context, item string) error {
 		return itemAdmission(d.itemAccess(ctx, c.Principal, item))
 	}, Admit: func(ctx context.Context, item string) (int, error) {
 		// A channel start admits with no item: there is no title to fence,
@@ -518,6 +524,42 @@ func registerPlaybackV1Sessions(r *apikit.Registry, d Dependencies) {
 				return noBody{}, d.playbackV1().StopGeneration(ctx, d.v1ServiceCaller(q, callerFrom(ctx)), q.PathValue("id"), *in.ExpectedGeneration)
 			}
 			return noBody{}, d.playbackV1().Stop(ctx, d.v1ServiceCaller(q, callerFrom(ctx)), q.PathValue("id"), in.PositionMs)
+		})
+	v1Route(r, apikit.Metadata{Admission: lanePlayback, ID: "claim_playback_observer", Method: "POST", Path: "/v1/playback/sessions/{id}/observer", Summary: "Become the player that reports this session; returns the epoch its observations carry",
+		Access: apikit.Device, Requires: apikit.ScopePlayback, Lane: apikit.Media, Cost: apikit.Constant, BodyLimit: 1 << 10, Status: 200, Errors: append(sessionErrors, "observation_owned", "observation_capacity")},
+		func(ctx context.Context, q *http.Request, in playbackv1.ObserverClaim) (playbackv1.ObserverGrant, error) {
+			return d.playbackV1().ClaimObserver(ctx, d.v1ServiceCaller(q, callerFrom(ctx)), q.PathValue("id"), in)
+		})
+	v1Route(r, apikit.Metadata{Admission: laneObservation, ID: "put_playback_observation", Method: "PUT", Path: "/v1/playback/sessions/{id}/observation", Summary: "Report the player's latest state about once a second; the latest wins and a missed one is replaced by the next",
+		Access: apikit.Device, Requires: apikit.ScopePlayback, Lane: apikit.Media, Cost: apikit.Constant, BodyLimit: 4 << 10, Status: 200, Errors: append(sessionErrors, "observation_epoch_changed", "rate_limited")},
+		func(ctx context.Context, q *http.Request, in playbackv1.Observation) (playbackv1.ObservationAck, error) {
+			caller := callerFrom(ctx)
+			if !timelineRate.allow(caller, time.Now()) {
+				return playbackv1.ObservationAck{}, &apierror.Error{Code: "rate_limited", RetryAfterSeconds: 1}
+			}
+			apikit.SetHeader(ctx, "Cache-Control", "no-store")
+			service, id := d.v1ServiceCaller(q, caller), q.PathValue("id")
+			ack, err := d.playbackV1().Observe(ctx, service, id, in)
+			if err != nil || !ack.Channel {
+				return ack, err
+			}
+			// A channel's view (window, programme, seek outcome) rides on the
+			// ack, so its player needs no second request a second. The view is
+			// sent only when it differs from the one the player holds.
+			view, err := d.playbackV1().Get(ctx, service, id)
+			if err != nil {
+				return ack, nil
+			}
+			raw, err := json.Marshal(view)
+			if err != nil {
+				return ack, nil
+			}
+			sum := sha256.Sum256(raw)
+			ack.ViewTag = hex.EncodeToString(sum[:16])
+			if ack.ViewTag != in.ViewTag {
+				ack.Session = &view
+			}
+			return ack, nil
 		})
 	v1Route(r, apikit.Metadata{Admission: lanePlayback, ID: "report_playback_timeline", Method: "POST", Path: "/v1/playback/sessions/{id}/timeline", Summary: "Report progress; renews the lease",
 		Access: apikit.Device, Requires: apikit.ScopePlayback, Lane: apikit.Media, Cost: apikit.Constant, BodyLimit: 4 << 10, Status: 204, Errors: append(sessionErrors, "rate_limited")},

@@ -21,7 +21,14 @@ var (
 	ErrQueueTooLarge   = errors.New("queue too large")
 	ErrNotControllable = errors.New("device not controllable")
 	ErrStreamExists    = errors.New("stream exists")
+	// ErrClientUpdateRequired refuses a playback from a client that does not
+	// speak the observation protocol, before anything is created.
+	ErrClientUpdateRequired = errors.New("client update required")
 )
+
+// PlaybackProtocol is the observation protocol a client must declare (the
+// Portico-Playback header) to start or continue playback once it is enabled.
+const PlaybackProtocol = 2
 
 // StreamLimitDetail is observed account capacity, never a list of hidden titles.
 type StreamLimitDetail struct {

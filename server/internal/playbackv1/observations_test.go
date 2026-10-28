@@ -74,6 +74,7 @@ func newObservationFixture(t *testing.T) *observationFixture {
 	f.service.Playback.PersonalProgress = proved.record
 	f.service.Now = clock.now
 	f.service.ObservationsEnabled = true
+	f.caller.PlaybackProtocol = PlaybackProtocol
 	q := f.queue()
 	t.Cleanup(func() {
 		// Let the worker exit with the test.
@@ -473,5 +474,67 @@ func TestBufferingIsNotAnEarlyWriteEdge(t *testing.T) {
 		if want := i == 0 || state == "paused"; e.edge != want {
 			t.Fatalf("sample %d (%s): edge %v, want %v", seq, state, e.edge, want)
 		}
+	}
+}
+
+// The control revision moves only on an accepted pause, play or seek (RN-09):
+// the player's own reports change the session's state but never the command.
+func TestControlRevisionMovesOnlyOnCommands(t *testing.T) {
+	f := newObservationFixture(t)
+	id := f.session.ID
+	view, err := f.service.Get(context.Background(), f.caller, id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if view.Control == nil || view.Control.Revision != "1" || view.Control.State != "playing" {
+		t.Fatalf("started control %+v, want revision 1 playing", view.Control)
+	}
+	paused, err := f.service.Patch(context.Background(), f.caller, id, view.Revision, Change{State: "paused"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if paused.Control.Revision != "2" || paused.Control.State != "paused" {
+		t.Fatalf("after pause %+v, want revision 2 paused", paused.Control)
+	}
+	// The renderer reports playing (a late own report): state moves, control does not.
+	epoch := f.claim(id, "")
+	f.clock.add(time.Second)
+	if _, err = f.tick(id, epoch, 1, "playing"); err != nil {
+		t.Fatal(err)
+	}
+	f.clock.add(observationFlush)
+	f.waitApplied(id)
+	after, err := f.service.Get(context.Background(), f.caller, id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if after.Control.Revision != "2" || after.Control.State != "paused" {
+		t.Fatalf("an observation moved the command: %+v", after.Control)
+	}
+	sought, err := f.service.Patch(context.Background(), f.caller, id, after.Revision, Change{Seek: &SeekRequest{PositionMs: 5000, ID: "seek-one"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if sought.Control.Revision != "3" || sought.Presentation.SeekID != "seek-one" {
+		t.Fatalf("after seek control %+v seek %q", sought.Control, sought.Presentation.SeekID)
+	}
+}
+
+// Once the protocol is on, a client that does not declare it is refused
+// before any session exists.
+func TestStartRefusesAClientWithoutTheObservationProtocol(t *testing.T) {
+	f := newCarryFixture(t, false)
+	f.service.ObservationsEnabled = true
+	_, err := f.service.CreateQueue(context.Background(), f.caller, "carry-create-queue-0001", CreateQueueRequest{Segments: []SegmentInput{{Source: Selector{Items: &ItemList{IDs: []string{f.items[0].Public}}}}}, StartPlayback: &StartPlayback{State: "playing"}})
+	if !errors.Is(err, ErrClientUpdateRequired) {
+		t.Fatalf("old client start: %v, want ErrClientUpdateRequired", err)
+	}
+	var sessions int
+	if err = f.catalog.DB.QueryRow(`SELECT count(*) FROM playback_v1_sessions`).Scan(&sessions); err != nil || sessions != 0 {
+		t.Fatalf("%d sessions after a refused start (%v)", sessions, err)
+	}
+	f.caller.PlaybackProtocol = PlaybackProtocol
+	if q := f.queue(); q.Session == nil {
+		t.Fatal("a current client could not start")
 	}
 }

@@ -342,6 +342,11 @@ func (s *Service) staleQueue(ctx context.Context, q queueRow) error {
 // current queue; with startPlayback the first session starts in the same
 // request (Play/Shuffle is one request).
 func (s *Service) CreateQueue(ctx context.Context, c Caller, key string, req CreateQueueRequest) (QueueReply, error) {
+	if req.StartPlayback != nil {
+		if err := s.requireObservationProtocol(c); err != nil {
+			return QueueReply{}, err
+		}
+	}
 	if key == "" {
 		return QueueReply{}, ErrKeyRequired
 	}
@@ -1190,6 +1195,9 @@ func (s *Service) UpdateQueue(ctx context.Context, c Caller, id, ifMatch string,
 // previous or a jump to an entry. With a session playing from this queue, the
 // next session starts in the same request, replacing it (slot transfer).
 func (s *Service) Advance(ctx context.Context, c Caller, id, ifMatch string, req AdvanceRequest) (QueueReply, error) {
+	if err := s.requireObservationProtocol(c); err != nil {
+		return QueueReply{}, err
+	}
 	if c.Principal.Grant == identity.GrantCastTarget && (req.Reason != "completion" || req.EntryID != "" || !keyPattern.MatchString(req.CompletionSessionID) || req.CompletionGeneration < 1) {
 		return QueueReply{}, identity.ErrForbidden
 	}

@@ -37,6 +37,9 @@ type discStartPending struct{}
 func (*discStartPending) Error() string { return "original Play input is preparing" }
 
 func (s *Service) StartPrepared(ctx context.Context, c Caller, key string, req StartRequest) (PreparedStart, error) {
+	if err := s.requireObservationProtocol(c); err != nil {
+		return PreparedStart{}, err
+	}
 	if ctx == nil {
 		return PreparedStart{}, disc.ErrProtocol
 	}

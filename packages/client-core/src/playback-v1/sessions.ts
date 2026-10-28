@@ -16,7 +16,11 @@ import type {StartPlaybackSessionResponse} from '../../../contracts/src/types.ts
  * (`onLeaseExpired`) so the title starts again where it was instead of showing an error.
  */
 import {GenerationGate} from './generation.ts';
-import {PlaybackApiError, call, enc, header, idempotencyKey, type V1Http} from './http.ts';
+import {PlaybackApiError, call, callOnce, enc, header, idempotencyKey, type V1Http} from './http.ts';
+import type {ObservationAck, ObservationSample, ObserverGrant} from './observation.ts';
+
+/** An observation that has not answered in this long is replaced by the next one. */
+const observationDeadlineMs = 1500;
 import type {MediaPlayer, PlayerEvent, PlayerObservation} from './port.ts';
 import type {QualityRequest} from './quality.ts';
 import type {PlayerFailureCode} from '../client-profile.ts';
@@ -242,6 +246,22 @@ export class SessionsClient {
 
   async stop(id: string, positionMs?: number, signal?: AbortSignal): Promise<void> {
     await call(this.http, {method: 'DELETE', path: encodedRoutePath("stop_playback_session", {"id": enc(id)}), ...(signal ? {signal} : {}), ...(positionMs !== undefined ? {body: {positionMs: Math.max(0, Math.round(positionMs))}} : {})}, [204, 200, 404, 410]);
+  }
+
+  /** Become the player reporting this session (P2-20): the epoch its samples carry. */
+  async claimObserver(id: string, body: Readonly<{generation: number; replaces?: string}>, signal?: AbortSignal): Promise<ObserverGrant> {
+    const v = (await call(this.http, {method: 'POST', path: encodedRoutePath("claim_playback_observer", {"id": enc(id)}), body, ...(signal ? {signal} : {})})).body as Record<string, unknown> | undefined;
+    if (!v || typeof v.epoch !== 'string' || !/^[A-Za-z0-9_-]{22}$/.test(v.epoch)) throw new ContractError('observer grant');
+    return Object.freeze({epoch: v.epoch, everyMs: typeof v.everyMs === 'number' && Number.isSafeInteger(v.everyMs) ? v.everyMs : 1000, ...(typeof v.leaseUntil === 'string' ? {leaseUntil: v.leaseUntil} : {})});
+  }
+
+  /** One observation: a single attempt with a short deadline. A failed one is replaced by the next. */
+  async observe(id: string, sample: ObservationSample, signal?: AbortSignal): Promise<ObservationAck> {
+    const v = (await callOnce(this.http, {method: 'PUT', path: encodedRoutePath("put_playback_observation", {"id": enc(id)}), body: sample, deadlineMs: observationDeadlineMs, singleAttempt: true, ...(signal ? {signal} : {})})).body as Record<string, unknown> | undefined;
+    if (!v || typeof v.acceptedSeq !== 'number') throw new ContractError('observation ack');
+    let session: Session | undefined;
+    if (v.session !== undefined) { try { session = parseSession(v.session); } catch { session = undefined; } }
+    return Object.freeze({acceptedSeq: v.acceptedSeq, ...(typeof v.leaseUntil === 'string' ? {leaseUntil: v.leaseUntil} : {}), ...(typeof v.viewTag === 'string' ? {viewTag: v.viewTag} : {}), ...(session ? {session} : {})});
   }
 
   async timeline(id: string, report: TimelineReport, signal?: AbortSignal): Promise<{reportEveryMs?: number}> {

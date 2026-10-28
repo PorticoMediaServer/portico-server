@@ -145,6 +145,12 @@ export const errors = [
     "retry": "never"
   },
   {
+    "code": "client_update_required",
+    "status": 400,
+    "message": "Update the app to play on this server.",
+    "retry": "never"
+  },
+  {
     "code": "confirmation_mismatch",
     "status": 409,
     "message": "Type the name exactly as shown to confirm.",
@@ -532,6 +538,24 @@ export const errors = [
     "code": "not_permitted",
     "status": 403,
     "message": "This action is not permitted.",
+    "retry": "never"
+  },
+  {
+    "code": "observation_capacity",
+    "status": 503,
+    "message": "The server is following as many players as it can. Try again shortly.",
+    "retry": "same_request"
+  },
+  {
+    "code": "observation_epoch_changed",
+    "status": 409,
+    "message": "Another player now reports this playback. Claim it again to continue.",
+    "retry": "after_refresh"
+  },
+  {
+    "code": "observation_owned",
+    "status": 409,
+    "message": "Another player on this device reports this playback.",
     "retry": "never"
   },
   {

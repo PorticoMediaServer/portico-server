@@ -37,6 +37,6 @@ export function playbackUserMessage(error:unknown):string {
 export function playbackFailurePermanent(error:unknown):boolean {
  const value=error&&typeof error==='object'?error as {code?:unknown;message?:unknown}:undefined;
  const text=typeof error==='string'?error:typeof value?.code==='string'?value.code:typeof value?.message==='string'?value.message:'';
- return ['no_admissible_delivery_route','cannot_play_here','streaming_unsupported','unsupported_media','unsupported_tuple','unknown_source_facts','transcoding_disabled','transcode_not_allowed','not_found','forbidden','access_revoked','unsupported_version',
+ return ['no_admissible_delivery_route','cannot_play_here','streaming_unsupported','unsupported_media','unsupported_tuple','unknown_source_facts','transcoding_disabled','transcode_not_allowed','not_found','forbidden','access_revoked','unsupported_version','client_update_required',
   'This title can’t be played on this device.','This title needs converting, and converting is turned off for this account.','This item isn’t available.'].includes(text);
 }

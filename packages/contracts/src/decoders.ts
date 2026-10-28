@@ -13,6 +13,7 @@ export function decodeChangeConnectivityPolicyResponse(input: unknown): types.Ch
 export function decodeChangeConsoleSettingsResponse(input: unknown): types.ChangeConsoleSettingsResponse { return decode("ChangeConsoleSettingsResponse", input) as types.ChangeConsoleSettingsResponse; }
 export function decodeChangePlaybackSessionResponse(input: unknown): types.ChangePlaybackSessionResponse { return decode("ChangePlaybackSessionResponse", input) as types.ChangePlaybackSessionResponse; }
 export function decodeCheckOpensubtitlesResponse(input: unknown): types.CheckOpensubtitlesResponse { return decode("CheckOpensubtitlesResponse", input) as types.CheckOpensubtitlesResponse; }
+export function decodeClaimPlaybackObserverResponse(input: unknown): types.ClaimPlaybackObserverResponse { return decode("ClaimPlaybackObserverResponse", input) as types.ClaimPlaybackObserverResponse; }
 export function decodeClearPlaybackFailureMemoryResponse(input: unknown): types.ClearPlaybackFailureMemoryResponse { return decode("ClearPlaybackFailureMemoryResponse", input) as types.ClearPlaybackFailureMemoryResponse; }
 export function decodeCommitQueueNextResponse(input: unknown): types.CommitQueueNextResponse { return decode("CommitQueueNextResponse", input) as types.CommitQueueNextResponse; }
 export function decodeControlAdminSessionResponse(input: unknown): types.ControlAdminSessionResponse { return decode("ControlAdminSessionResponse", input) as types.ControlAdminSessionResponse; }
@@ -690,6 +691,7 @@ export function decodePutListeningPreferencesResponse(input: unknown): types.Put
 export function decodePutLyricsProviderResponse(input: unknown): types.PutLyricsProviderResponse { return decode("PutLyricsProviderResponse", input) as types.PutLyricsProviderResponse; }
 export function decodePutMeLibraryNavigationResponse(input: unknown): types.PutMeLibraryNavigationResponse { return decode("PutMeLibraryNavigationResponse", input) as types.PutMeLibraryNavigationResponse; }
 export function decodePutMetadataSettingsResponse(input: unknown): types.PutMetadataSettingsResponse { return decode("PutMetadataSettingsResponse", input) as types.PutMetadataSettingsResponse; }
+export function decodePutPlaybackObservationResponse(input: unknown): types.PutPlaybackObservationResponse { return decode("PutPlaybackObservationResponse", input) as types.PutPlaybackObservationResponse; }
 export function decodePutPlaylistsIdSharesResponse(input: unknown): types.PutPlaylistsIdSharesResponse { return decode("PutPlaylistsIdSharesResponse", input) as types.PutPlaylistsIdSharesResponse; }
 export function decodePutReadingGroupMyListResponse(input: unknown): types.PutReadingGroupMyListResponse { return decode("PutReadingGroupMyListResponse", input) as types.PutReadingGroupMyListResponse; }
 export function decodePutReadingSessionsSessionIdAnnotationsResponse(input: unknown): types.PutReadingSessionsSessionIdAnnotationsResponse { return decode("PutReadingSessionsSessionIdAnnotationsResponse", input) as types.PutReadingSessionsSessionIdAnnotationsResponse; }

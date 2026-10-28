@@ -505,7 +505,7 @@ export class HttpLocalApi {
     });
   }
   /** Send with a live token; on a 401 renew once and resend (the server did not act on it). */
-  private async exchange(path: string, method: string, body: unknown, signal: AbortSignal | undefined, extra?: Readonly<Record<string, string>>): Promise<Response> {
+  private async exchange(path: string, method: string, body: unknown, signal: AbortSignal | undefined, extra?: Readonly<Record<string, string>>, singleAttempt = false): Promise<Response> {
     if (!path.startsWith(apiRoot))
       throw new Error("API path must remain on the selected server.");
     // Sign-in and refresh never refresh or retry themselves.
@@ -515,13 +515,15 @@ export class HttpLocalApi {
     if (this.auth && token && !exchange) { try { token = await waitForAuth(this.auth.token(token), signal); } catch { throwIfAborted(signal); /* send what we have; a 401 recovers below */ } }
     throwIfAborted(signal);
     let response = await this.send(path, method, body, signal, token, extra);
-    if (response.status === 401 && this.auth && token && !exchange && !signal?.aborted) {
+    // A single attempt is never resent: its 401 starts the renewal, and the next one goes out with it.
+    if (response.status === 401 && this.auth && token && !exchange && singleAttempt) { const auth = this.auth; try { void Promise.resolve(auth.recover(token)).catch(() => {}); } catch { /* the next request recovers */ } }
+    if (response.status === 401 && this.auth && token && !exchange && !singleAttempt && !signal?.aborted) {
       let next: string | undefined;
       try { next = await waitForAuth(this.auth.recover(token), signal); } catch { throwIfAborted(signal); next = undefined; }
       throwIfAborted(signal);
       if (next && next !== token) { void response.body?.cancel().catch(() => {}); response = await this.send(path, method, body, signal, next, extra); }
     }
-    if(response.status===403&&this.auth?.permissionDenied&&!exchange&&!path.startsWith(routePath("get_me"))&&!signal?.aborted){
+    if(response.status===403&&this.auth?.permissionDenied&&!exchange&&!singleAttempt&&!path.startsWith(routePath("get_me"))&&!signal?.aborted){
       let changed=false;try{changed=await waitForAuth(this.auth.permissionDenied(),signal);}catch{throwIfAborted(signal);}
       throwIfAborted(signal);
       if(changed){void response.body?.cancel().catch(()=>{});response=await this.send(path,method,body,signal,this.token,extra);}
@@ -557,9 +559,9 @@ export class HttpLocalApi {
    * Any status, with headers and the parsed body (playback v1's `V1Http` seam: 202, 412 `current`,
    * `ETag`, `Report-Every-Ms`). Rejects only when there is no response (offline, aborted).
    */
-  async requestRaw(path: string, method: string, options: Readonly<{headers?: Readonly<Record<string, string>>; body?: unknown; signal?: AbortSignal}> = {}): Promise<{status: number; headers: Record<string, string>; body?: unknown}> {
-    return withinDeadline(requestDeadlineMs(path, method), options.signal, async signal => {
-      const response = await this.exchange(path, method, options.body, signal, options.headers);
+  async requestRaw(path: string, method: string, options: Readonly<{headers?: Readonly<Record<string, string>>; body?: unknown; signal?: AbortSignal; deadlineMs?: number; singleAttempt?: boolean}> = {}): Promise<{status: number; headers: Record<string, string>; body?: unknown}> {
+    return withinDeadline(options.deadlineMs ?? requestDeadlineMs(path, method), options.signal, async signal => {
+      const response = await this.exchange(path, method, options.body, signal, options.headers, options.singleAttempt);
       const headers: Record<string, string> = {};
       response.headers.forEach((value, key) => { headers[key] = value; });
       let body: unknown;

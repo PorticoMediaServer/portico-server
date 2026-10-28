@@ -319,6 +319,9 @@ func (s *Service) PrepareNext(ctx context.Context, c Caller, id, ifMatch, key st
 
 // CommitNext commits a prepared next entry at the audio boundary (spec §18.3).
 func (s *Service) CommitNext(ctx context.Context, c Caller, id string, req CommitNextRequest) (QueueReply, error) {
+	if err := s.requireObservationProtocol(c); err != nil {
+		return QueueReply{}, err
+	}
 	if req.Token == "" {
 		return QueueReply{}, &FieldError{Path: "token"}
 	}

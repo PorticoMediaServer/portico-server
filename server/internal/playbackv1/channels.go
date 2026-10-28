@@ -129,6 +129,9 @@ func (s *Service) channelReference(ctx context.Context, channelID, generation st
 }
 
 func (s *Service) startChannel(ctx context.Context, c Caller, key, startDigest string, req StartRequest) (SessionView, bool, error) {
+	if err := s.requireObservationProtocol(c); err != nil {
+		return SessionView{}, false, err
+	}
 	if s.Channels == nil || !s.Channels.Configured() {
 		return SessionView{}, false, ErrChannelsUnavailable
 	}

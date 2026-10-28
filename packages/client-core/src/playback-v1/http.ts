@@ -6,7 +6,12 @@ import {WRITER_CAPACITY, retryWriterCapacity} from '../writer-capacity.ts';
  * `FakePlaybackServer`. Non-2xx responses become `PlaybackApiError` with the style guide's error
  * fields (§4.6): `code`, `retry` class, `current` (on 412) and `Retry-After`.
  */
-export type V1Request = Readonly<{method: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE'; path: string; headers?: Readonly<Record<string, string>>; body?: unknown; signal?: AbortSignal}>;
+export type V1Request = Readonly<{method: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE'; path: string; headers?: Readonly<Record<string, string>>; body?: unknown; signal?: AbortSignal;
+  /** Give up after this long (default: the transport's own deadline). */
+  deadlineMs?: number;
+  /** Send once: no token renewal and resend on a 401, no other retry. A playback observation
+   * is replaced by the next one a second later, so resending an old one only adds load. */
+  singleAttempt?: boolean}>;
 export type V1Response = Readonly<{status: number; headers: Readonly<Record<string, string>>; body?: unknown}>;
 export interface V1Http {
   /** Resolves with any HTTP response; rejects only when there is no response (offline, aborted). */
@@ -72,7 +77,8 @@ export function call(http: V1Http, request: V1Request, ok?: readonly number[]): 
   );
 }
 
-async function callOnce(http: V1Http, request: V1Request, ok?: readonly number[]): Promise<V1Response> {
+/** `call` without the writer-capacity resend: for requests that must never be sent twice. */
+export async function callOnce(http: V1Http, request: V1Request, ok?: readonly number[]): Promise<V1Response> {
   const r = await http.send(request);
   const good = ok ? ok.includes(r.status) : r.status >= 200 && r.status < 300;
   if (good) return r;

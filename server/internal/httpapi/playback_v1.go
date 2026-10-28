@@ -53,6 +53,12 @@ func v1ErrorDefinitions() []apierror.Definition {
 		{Code: "portico_services_unavailable", Status: 503, Message: hosted.ErrServicesUnavailable.Error(), Retry: apierror.SameRequest},
 		{Code: "idempotency_key_required", Status: 428, Message: "Send an Idempotency-Key with this request.", Retry: apierror.Never},
 		{Code: "session_ended", Status: 410, Message: "This playback has ended.", Retry: apierror.Never},
+		// Playback observations (P2-19/20). A client that cannot report is
+		// refused before any session exists; clients localise by code.
+		{Code: "client_update_required", Status: 400, Message: "Update the app to play on this server.", Retry: apierror.Never},
+		{Code: "observation_epoch_changed", Status: 409, Message: "Another player now reports this playback. Claim it again to continue.", Retry: apierror.AfterRefresh},
+		{Code: "observation_owned", Status: 409, Message: "Another player on this device reports this playback.", Retry: apierror.Never},
+		{Code: "observation_capacity", Status: 503, Message: "The server is following as many players as it can. Try again shortly.", Retry: apierror.SameRequest},
 		{Code: "conversion_capacity", Status: 429, Message: "This server is already converting as many streams as it is allowed. Wait a moment or stop another stream, then try again.", Retry: apierror.SameRequest},
 		{Code: "stream_limit_reached", Status: 409, Message: "This account is already playing as many streams as it is allowed.", Retry: apierror.Never},
 		{Code: "transcode_not_allowed", Status: 403, Message: "This title needs converting, and converting is turned off for this account.", Retry: apierror.Never},
@@ -174,6 +180,14 @@ func v1Error(err error) error {
 		code = "unsupported_media"
 	case errors.Is(err, playbackv1.ErrEnded):
 		code = "session_ended"
+	case errors.Is(err, playbackv1.ErrClientUpdateRequired):
+		code = "client_update_required"
+	case errors.Is(err, playbackv1.ErrObservationEpoch):
+		code = "observation_epoch_changed"
+	case errors.Is(err, playbackv1.ErrObservationOwned):
+		code = "observation_owned"
+	case errors.Is(err, playbackv1.ErrObservationsFull):
+		return &apierror.Error{Code: "observation_capacity", RetryAfterSeconds: 2, Cause: err}
 	case errors.Is(err, playbackv1.ErrRevisionRequired):
 		code = "revision_required"
 	case errors.Is(err, playbackv1.ErrRevision):

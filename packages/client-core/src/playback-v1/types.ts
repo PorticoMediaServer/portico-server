@@ -169,6 +169,8 @@ export type Decision = Readonly<{action: StreamAction; reasons: readonly string[
 export type PresentationSubtitle = Readonly<{trackId: string; kind: 'text' | 'ass' | 'pgs' | 'vobsub' | 'dvb' | 'other'; delivery: 'sidecar' | 'device' | 'burn' | 'other'}>;
 export type Presentation = Readonly<{
   generation: number; mode: 'direct' | 'stream'; url: string; startPositionMs: number;
+  /** The latest accepted seek of a VOD session: a new id is a new seek, even to an equal target. */
+  seekId?: string;
   /** The player engine the device must play this presentation with. */
   engine: PlaybackEngine;
   subtitles: readonly Readonly<{trackId: string; format: string; url: string; companionUrl?: string; fontsUrl?: string; linesUrl?: string; timeDomain?: 'source-relative'; offsetMs?: number}>[];
@@ -188,7 +190,13 @@ export type Presentation = Readonly<{
   audio?: AudioRenderV2;
 }>;
 export type SessionKind = 'vod' | 'audio' | 'live' | 'channel' | 'other';
+/** What the session's controllers asked for (RN-09). The revision moves only on an accepted pause,
+ * play or seek, never on the player's own reports, so a newer one is a command to apply once. */
+export type SessionControl = Readonly<{revision: string; state: 'playing' | 'paused'}>;
+
 export type Session = Readonly<{
+  /** Absent for channels (their desired state is in the channel view) and ended sessions. */
+  control?: SessionControl;
   id: string; revision: string; kind: SessionKind; role: 'local' | 'receiver' | 'group_member' | 'other';
   state: 'playing' | 'paused' | 'ended' | 'other'; itemId?: string; versionId?: string;
   discTitle?: DiscTitleRef;
@@ -228,7 +236,10 @@ export function parseSession(v: unknown): Session {
     try { observed = parseObservedPlayback(v.observedPlayback); } catch { /* Invalid optional facts never become output, or end valid playback. */ }
     if (v.kind === 'vod' || v.kind === 'audio' && playableAudio(presentation.audio)) { try { playbackInfo = parsePlaybackInfo(v.playbackInfo); } catch { /* Invalid comparison never replaces a valid session or renderer observation. */ } }
   }
+  const control = obj(v.control) && typeof v.control.revision === 'string' && /^[1-9]\d{0,15}$/.test(v.control.revision) && (v.control.state === 'playing' || v.control.state === 'paused')
+    ? Object.freeze({revision: v.control.revision, state: v.control.state}) : undefined;
   return Object.freeze({
+    ...(control ? {control} : {}),
     ...(observed !== undefined ? {observedPlayback: observed} : {}),
     ...(playbackInfo !== undefined ? {playbackInfo} : {}),
     id: id(v.id, 'session id'), revision: revision(v.revision), kind: oneOf(v.kind, ['vod', 'audio', 'live', 'channel'] as const, 'other' as never),
@@ -249,6 +260,7 @@ export function parsePresentation(p: unknown, prepared = false): Presentation {
   if (typeof generation !== 'number' || !Number.isSafeInteger(generation) || generation < 0) throw new ContractError('generation');
   const d = obj(p.decision) ? p.decision : {};
   return Object.freeze({
+    ...(typeof p.seekId === 'string' && /^[A-Za-z0-9_-]{1,64}$/.test(p.seekId) ? {seekId: p.seekId} : {}),
     generation, mode: oneOf(p.mode, ['direct', 'stream'] as const, 'stream'), url: prepared && (p.url === undefined || p.url === '') ? '' : url(p.url, 'presentation url'), startPositionMs: num(p.startPositionMs),
     engine: engineOf(p.engine), quality: parseQuality(p.quality),
     audioTrackId: typeof p.audioTrackId === 'string' && p.audioTrackId ? p.audioTrackId : undefined,

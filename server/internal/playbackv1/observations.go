@@ -107,8 +107,13 @@ type Observation struct {
 
 // ObservationAck answers an accepted (or harmlessly stale) sample.
 type ObservationAck struct {
-	AcceptedSeq int64     `json:"acceptedSeq"`
-	LeaseUntil  time.Time `json:"leaseUntil"`
+	// Session is a channel's current view, sent only when ViewTag changed.
+	Session     *SessionView `json:"session,omitempty"`
+	LeaseUntil  time.Time    `json:"leaseUntil"`
+	ViewTag     string       `json:"viewTag,omitempty"`
+	AcceptedSeq int64        `json:"acceptedSeq"`
+	// Channel says the caller should add the channel view (not on the wire).
+	Channel bool `json:"-"`
 }
 
 // ObserverClaim asks to own a session's observations.
@@ -272,6 +277,16 @@ func newEpoch() string {
 	return base64.RawURLEncoding.EncodeToString(raw[:])
 }
 
+// requireObservationProtocol refuses to create a session for a client that
+// cannot report it, once the protocol is enabled: such a client would play
+// with nobody keeping its lease or its place.
+func (s *Service) requireObservationProtocol(c Caller) error {
+	if s.observations() != nil && c.PlaybackProtocol < PlaybackProtocol {
+		return ErrClientUpdateRequired
+	}
+	return nil
+}
+
 // ClaimObserver makes the caller's device the owner of a session's
 // observations and returns a fresh epoch. It writes nothing.
 func (s *Service) ClaimObserver(ctx context.Context, c Caller, id string, claim ObserverClaim) (ObserverGrant, error) {
@@ -408,7 +423,7 @@ func (s *Service) Observe(ctx context.Context, c Caller, id string, ob Observati
 	default:
 		o.acceptLocked(e, ob, now)
 	}
-	ack := ObservationAck{AcceptedSeq: e.seq, LeaseUntil: e.leaseUntil}
+	ack := ObservationAck{AcceptedSeq: e.seq, LeaseUntil: e.leaseUntil, Channel: e.channel}
 	o.wakeLocked()
 	o.mu.Unlock()
 	return ack, nil

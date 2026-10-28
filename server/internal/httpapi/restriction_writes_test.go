@@ -690,6 +690,8 @@ func restrictionWriteRoutes() map[string]writeRoute {
 		"PATCH /v1/playback/sessions/{id}":                  writeExempt(reasonGrantWrite),
 		"DELETE /v1/playback/sessions/{id}":                 writeExempt(reasonGrantWrite),
 		"POST /v1/playback/sessions/{id}/timeline":          writeExempt(reasonGrantWrite),
+		"PUT /v1/playback/sessions/{id}/observation":        writeExempt(reasonGrantWrite),
+		"POST /v1/playback/sessions/{id}/observer":          writeExempt(reasonGrantWrite),
 		"PATCH /v1/queues/{id}":                             writeExempt(reasonGrantWrite),
 		"DELETE /v1/queues/{id}":                            writeExempt(reasonGrantWrite),
 		"DELETE /v1/queues/{id}/entries/{entryId}":          writeExempt(reasonGrantWrite),

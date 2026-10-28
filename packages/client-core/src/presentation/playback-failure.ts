@@ -25,6 +25,7 @@ const bodies: Readonly<Record<string, MessageId>> = {
   'This title needs converting, and converting is turned off for this account.': 'web.player.error.conversionOff',
   'This item isn’t available.': 'web.player.error.notAvailable',
   not_found: 'web.player.error.notAvailable',
+  client_update_required: 'web.player.error.updateRequired',
   'This account is already playing as many streams as it is allowed.': 'web.player.error.streamLimit',
 };
 

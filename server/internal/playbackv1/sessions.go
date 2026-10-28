@@ -138,7 +138,17 @@ type StopRequest struct {
 }
 
 // SessionView is the session resource (spec §5.1).
+// SessionControl is what the session's controllers asked for, apart from what
+// the player reports (RN-09): the revision moves only on an accepted pause,
+// play or seek, so a player applies each newer one once and never mistakes
+// its own report for a command.
+type SessionControl struct {
+	Revision string `json:"revision"`
+	State    string `json:"state"`
+}
+
 type SessionView struct {
+	Control      *SessionControl       `json:"control,omitempty"`
 	DiscTitle    *catalog.DiscTitleRef `json:"discTitle,omitempty"`
 	ID           string                `json:"id"`
 	Revision     string                `json:"revision"`
@@ -179,6 +189,8 @@ type Lease struct {
 	ReportEveryMs int    `json:"reportEveryMs"`
 }
 type Presentation struct {
+	// SeekID names the latest accepted seek of this session (VOD).
+	SeekID     string `json:"seekId,omitempty"`
 	Generation int    `json:"generation"`
 	Mode       string `json:"mode"`
 	URL        string `json:"url"`
@@ -239,6 +251,8 @@ type PresentationSubtitle struct {
 // clamps (spec §5.3).
 type Caller struct {
 	UploadLimited *bool
+	// PlaybackProtocol is the Portico-Playback version the client declared.
+	PlaybackProtocol int
 	// TransportClass is the actual normalized client link declaration, independent of Remote.
 	TransportClass string
 	Principal      identity.Principal
@@ -367,12 +381,17 @@ type storedRequest struct {
 	// default starts retain their existing resume and track-carry semantics.
 	SelectedDiscTitle *catalog.DiscTitleRef `json:"selectedDiscTitle,omitempty"`
 	State             string                `json:"state,omitempty"`
-	VersionID         string                `json:"versionId,omitempty"`
-	Quality           Quality               `json:"quality"`
-	Audio             *AudioRequest         `json:"audio,omitempty"`
-	Subtitles         *SubtitleRequest      `json:"subtitles,omitempty"`
-	SubtitleOffsetMs  int64                 `json:"subtitleOffsetMs,omitempty"`
-	Network           string                `json:"network,omitempty"`
+	// ControlRevision counts accepted pause, play and seek commands after the
+	// start (RN-09); observations never move it. SeekID names the latest
+	// accepted seek, so an equal target is still a new seek (lane 03).
+	ControlRevision  int64            `json:"controlRevision,omitempty"`
+	SeekID           string           `json:"seekId,omitempty"`
+	VersionID        string           `json:"versionId,omitempty"`
+	Quality          Quality          `json:"quality"`
+	Audio            *AudioRequest    `json:"audio,omitempty"`
+	Subtitles        *SubtitleRequest `json:"subtitles,omitempty"`
+	SubtitleOffsetMs int64            `json:"subtitleOffsetMs,omitempty"`
+	Network          string           `json:"network,omitempty"`
 	// Carry is the audio and subtitle choice this playback carries from the
 	// queue entry before (nil: none; the Settings decide).
 	Carry *TrackCarry `json:"carry,omitempty"`
@@ -494,8 +513,24 @@ func (s *Service) view(r row) SessionView {
 	v.Presentation.Generation = r.generation
 	if isChannel(r) {
 		v.Presentation = s.channelPresentation(r)
+	} else {
+		v.Presentation.SeekID = r.stored().SeekID
+	}
+	if r.ended == 0 && !isChannel(r) {
+		// A channel's desired state and seek live in its channel view.
+		v.Control = r.control()
 	}
 	return v
+}
+
+// control is the session's desired state and its command revision.
+func (r row) control() *SessionControl {
+	stored := r.stored()
+	state := stored.State
+	if state != "paused" {
+		state = "playing"
+	}
+	return &SessionControl{Revision: strconv.FormatInt(stored.ControlRevision+1, 10), State: state}
 }
 
 // owns reports whether the caller may see and control a session: its own
@@ -958,6 +993,9 @@ func (s *Service) readyWait() time.Duration {
 // session; the same key with another body is ErrIdempotencyMismatch (422
 // idempotency_key_reused, the one API-wide code; spec §17.1).
 func (s *Service) Start(ctx context.Context, c Caller, key string, req StartRequest) (SessionView, bool, error) {
+	if err := s.requireObservationProtocol(c); err != nil {
+		return SessionView{}, false, err
+	}
 	if req.DiscTitle != nil && (req.ItemID == "" && req.Queue == nil || req.VersionID == "" || req.PartIndex != 0 || req.ChannelID != "" || req.TransferID != "" || req.CastTransferID != "" || len(req.DiscTitle.ID) != 64 || len(req.DiscTitle.Revision) != 64) {
 		return SessionView{}, false, &FieldError{Path: "discTitle"}
 	}
@@ -1104,6 +1142,9 @@ func (s *Service) startItem(ctx context.Context, c Caller, key, startDigest stri
 // startPresentation creates the first presentation of a new session and
 // records it. base carries the kind, role, target and links.
 func (s *Service) startPresentation(ctx context.Context, c Caller, key, startDigest string, req StartRequest, base row, stored storedRequest) (SessionView, bool, error) {
+	if err := s.requireObservationProtocol(c); err != nil {
+		return SessionView{}, false, err
+	}
 	release := s.admission.hold(c.Principal.AccountID)
 	defer release()
 	ctx, preparationErr := s.prepareDiscStart(ctx, c, key, startDigest, req, base, stored)
@@ -1397,6 +1438,9 @@ func (s *Service) sessionEventsTx(ctx context.Context, tx *sql.Tx, r row, now ti
 		state = "ended"
 	}
 	data := map[string]any{"state": state, "deviceId": r.device, "generation": r.generation}
+	if r.ended == 0 && !isChannel(r) {
+		data["control"] = r.control()
+	}
 	if r.message != "" {
 		data["message"] = r.message
 	}

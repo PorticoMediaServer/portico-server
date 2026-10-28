@@ -298,6 +298,31 @@ export const routes = [
     "admission": "admin"
   },
   {
+    "id": "claim_playback_observer",
+    "method": "POST",
+    "path": "/v1/playback/sessions/{id}/observer",
+    "summary": "Become the player that reports this session; returns the epoch its observations carry",
+    "access": "device",
+    "requires": "playback",
+    "lane": "media",
+    "cost": "constant",
+    "bodyLimit": 1024,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_found",
+      "session_ended",
+      "revision_required",
+      "revision_mismatch",
+      "observation_owned",
+      "observation_capacity",
+      "timeout",
+      "writer_capacity"
+    ],
+    "status": 200,
+    "admission": "playback"
+  },
+  {
     "id": "clear_playback_failure_memory",
     "method": "DELETE",
     "path": "/v1/admin/playback/route-failures/{sourceId}",
@@ -16723,6 +16748,31 @@ export const routes = [
     ],
     "status": 200,
     "admission": "admin"
+  },
+  {
+    "id": "put_playback_observation",
+    "method": "PUT",
+    "path": "/v1/playback/sessions/{id}/observation",
+    "summary": "Report the player's latest state about once a second; the latest wins and a missed one is replaced by the next",
+    "access": "device",
+    "requires": "playback",
+    "lane": "media",
+    "cost": "constant",
+    "bodyLimit": 4096,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_found",
+      "session_ended",
+      "revision_required",
+      "revision_mismatch",
+      "observation_epoch_changed",
+      "rate_limited",
+      "timeout",
+      "writer_capacity"
+    ],
+    "status": 200,
+    "admission": "observation"
   },
   {
     "id": "put_playlists_id_shares",

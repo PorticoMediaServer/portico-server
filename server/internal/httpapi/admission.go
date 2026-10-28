@@ -24,14 +24,18 @@ import (
 // cannot express that, and a limit per route would be unmaintainable.
 
 const (
-	laneAuth          = "auth"
-	laneBrowsing      = "browsing"
-	laneExpensive     = "expensive"
-	lanePlayback      = "playback"
-	laneMedia         = "media"
-	laneMediaBody     = "media-body"
-	laneBulkTransfer  = "bulk-transfer"
-	laneRealtime      = "realtime"
+	laneAuth         = "auth"
+	laneBrowsing     = "browsing"
+	laneExpensive    = "expensive"
+	lanePlayback     = "playback"
+	laneMedia        = "media"
+	laneMediaBody    = "media-body"
+	laneBulkTransfer = "bulk-transfer"
+	laneRealtime     = "realtime"
+	// laneObservation carries the 1 Hz playback observations. Its handler
+	// touches only memory, so it has no queue: a tick that cannot start now is
+	// replaced by the next one, never waited on.
+	laneObservation   = "observation"
 	laneAdmin         = "admin"
 	laneAdminHeavy    = "admin-heavy"
 	laneAdminLong     = "admin-long"
@@ -87,6 +91,7 @@ var laneSpecs = map[string]laneSpec{
 	laneMediaBody:     {capacity: 256, queueWait: 0, budget: 0, class: dbwork.ClassEstablishedPlayback, pressure: false},
 	laneBulkTransfer:  {capacity: 16, queueWait: 0, budget: 0, class: dbwork.ClassForegroundTransfer, pressure: false},
 	laneRealtime:      {capacity: 512, queueWait: 0, budget: 0, class: dbwork.ClassInteractive, pressure: false},
+	laneObservation:   {capacity: 512, queueWait: 0, budget: 1500 * time.Millisecond, class: dbwork.ClassEstablishedPlayback, pressure: false},
 	laneAdmin:         {capacity: 100, queueWait: 1500 * time.Millisecond, budget: 5 * time.Second, class: dbwork.ClassInteractive, pressure: true},
 	laneAdminHeavy:    {capacity: 4, queueWait: 1500 * time.Millisecond, budget: 10 * time.Second, class: dbwork.ClassMaintenance, pressure: false},
 	// Owner operations that read or copy the whole database: staging a restore,

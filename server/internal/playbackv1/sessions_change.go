@@ -119,6 +119,16 @@ func (s *Service) Patch(ctx context.Context, c Caller, id, ifMatch string, chang
 	if change.State != "" {
 		next.State = change.State
 	}
+	if change.State != "" || change.Seek != nil {
+		next.ControlRevision++
+	}
+	if change.Seek != nil {
+		// The seeker's own id when it gives one (a resend keeps it), else ours.
+		next.SeekID = newID("sk_")
+		if seekIDPattern.MatchString(change.Seek.ID) {
+			next.SeekID = change.Seek.ID
+		}
+	}
 	presentation := r.presentationView()
 	bytes := change.Replan
 	if change.VersionID != "" && change.VersionID != r.version {
@@ -409,6 +419,8 @@ func (s *Service) subtitleReplans(ctx context.Context, c Caller, r row, current 
 	}
 	return subtitleWeight(resourceByID(s.subtitleResources(ctx, c.Principal, r.item, asset, r.stored().selectedDiscTitle()), string(req.TrackID)), req) != ""
 }
+
+var seekIDPattern = regexp.MustCompile(`^[A-Za-z0-9_-]{1,64}$`)
 
 // Stop is DELETE /v1/playback/sessions/{id} (spec §5.8): idempotent. One
 // writer transaction writes the renderer's unwritten latest sample, then the
