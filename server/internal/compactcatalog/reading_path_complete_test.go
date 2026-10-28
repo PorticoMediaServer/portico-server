@@ -1351,33 +1351,67 @@ func TestReadingCompleteSameLibraryChurnWaitsForQuietGap(t *testing.T) {
 // rail while the next library's build runs.
 func TestReadingCompleteSlotReleasedAtFlattenEOF(t *testing.T) {
 	x := newCompleteFixture(t, nil, "retire-x")
+	var px completePublication
 	for i := 1; i <= 12; i++ {
-		x.add(fmt.Sprintf("Author/Series/Series %02d.epub", i), "epub", 0)
+		p := x.add(fmt.Sprintf("Author/Series/Series %02d.epub", i), "epub", 0)
+		if i == 1 {
+			px = p
+		}
 	}
 	y := newCompleteFixture(t, x.c, "retire-y")
 	py := y.add("Writer/Saga/Saga 01.epub", "epub", 0)
 	y.add("Writer/Saga/Saga 02.epub", "epub", 0)
 	x.settle()
+	// Asset-feed order is independent of fixture insertion order. Normalize
+	// both open sources first, then deliberately publish the larger X build.
+	completeUntil(t, x.c, func() bool {
+		return scalar(t, x.c.DB, `SELECT count(*) FROM reading_path_dirty_work`) == 0 &&
+			scalar(t, x.c.DB, `SELECT count(*) FROM reading_path_scope WHERE parked=1 AND queued=1 AND ((library_id=? AND directory_key='Author/Series') OR (library_id=? AND directory_key='Writer/Saga'))`, x.handle, y.handle) == 2
+	})
+	if scalar(t, x.c.DB, `SELECT count(*) FROM reading_path_build`) != 0 {
+		t.Fatal("an open source claimed the publication slot")
+	}
 	x.seal()
+	var retiring int64
+	completeUntil(t, x.c, func() bool {
+		retiring = scalar(t, x.c.DB, `SELECT COALESCE((SELECT b.id FROM reading_path_build b JOIN reading_path_scope s ON s.id=b.scope_id WHERE s.library_id=? AND s.directory_key='Author/Series' AND b.phase='flatten'),0)`, x.handle)
+		return retiring != 0
+	})
+	// Y is already normalized and parked. Opening its barrier before X's
+	// flatten EOF leaves genuine X scratch debt while Y can claim the free slot.
 	y.seal()
-	overlapped := false
+	overlapped, released := false, false
 	completeUntil(t, x.c, func() bool {
 		var phase string
 		var slot sql.NullInt64
-		if err := x.c.DB.QueryRow(`SELECT COALESCE((SELECT phase FROM reading_path_build WHERE phase IN('cleanup','abort') ORDER BY id LIMIT 1),''),(SELECT build_id FROM reading_path_slot)`).Scan(&phase, &slot); err != nil {
+		if err := x.c.DB.QueryRow(`SELECT COALESCE((SELECT phase FROM reading_path_build WHERE id=?),''),(SELECT build_id FROM reading_path_slot)`, retiring).Scan(&phase, &slot); err != nil {
 			t.Fatal(err)
 		}
-		if phase != "" && slot.Valid && scalar(t, x.c.DB, `SELECT count(*) FROM reading_path_build WHERE id=? AND phase IN('cleanup','abort')`, slot.Int64) == 1 {
+		if phase == "cleanup" && !released {
+			released = true
+			if slot.Valid {
+				t.Fatal("flatten EOF did not release the publication slot")
+			}
+		}
+		if slot.Valid && scalar(t, x.c.DB, `SELECT count(*) FROM reading_path_build WHERE id=? AND phase IN('cleanup','abort')`, slot.Int64) != 0 {
 			t.Fatal("a retiring build still holds the slot")
 		}
-		if phase != "" && slot.Valid {
+		if phase == "cleanup" && slot.Valid && slot.Int64 != retiring &&
+			scalar(t, x.c.DB, `SELECT count(*) FROM reading_path_build b JOIN reading_path_scope s ON s.id=b.scope_id WHERE b.id=? AND s.library_id=?`, slot.Int64, y.handle) == 1 &&
+			scalar(t, x.c.DB, `SELECT (SELECT count(*) FROM reading_path_capture WHERE build_id=?1)+(SELECT count(*) FROM reading_path_stage WHERE build_id=?1)+(SELECT count(*) FROM reading_path_representative WHERE build_id=?1)`, retiring) > 0 {
 			overlapped = true
 		}
-		return scalar(t, x.c.DB, `SELECT count(*) FROM reading_path_head WHERE item_id=? AND series='Saga'`, py.item) == 1
+		// Observe every quantum through retirement, not merely Y's first head.
+		return scalar(t, x.c.DB, `SELECT count(*) FROM reading_path_dirty_work`) == 0 &&
+			scalar(t, x.c.DB, `SELECT count(*) FROM reading_path_build`) == 0 &&
+			scalar(t, x.c.DB, `SELECT count(*) FROM reading_path_scope WHERE queued=1`) == 0
 	})
-	completeDrain(t, x.c)
-	if !overlapped {
+	if !released || !overlapped {
 		t.Fatal("no build ran while another build's scratch was retiring")
+	}
+	if scalar(t, x.c.DB, `SELECT count(*) FROM reading_path_head WHERE item_id=? AND series='Series'`, px.item) != 1 ||
+		scalar(t, x.c.DB, `SELECT count(*) FROM reading_path_head WHERE item_id=? AND series='Saga'`, py.item) != 1 {
+		t.Fatal("overlapping builds did not both publish")
 	}
 	if scalar(t, x.c.DB, `SELECT count(*) FROM reading_path_capture`)+scalar(t, x.c.DB, `SELECT count(*) FROM reading_path_stage`)+scalar(t, x.c.DB, `SELECT count(*) FROM reading_path_representative`) != 0 {
 		t.Fatal("scratch leaked")
