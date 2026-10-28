@@ -148,8 +148,12 @@ export class BrowseSession<T> {
       this.selection?.abort(); this.selection = undefined;
       this.whole = page.wholeSelection;
       this.options.onWhole?.(page.wholeSelection);
+      if (!this.live() || signal.aborted) {releaseBrowseSelection(api, this.query.libraryId, result.response); throw browseSessionClosed();}
     }
-    if (first) this.options.onRevision?.(this.pinned);
+    if (first) {
+      this.options.onRevision?.(this.pinned);
+      if (!this.live() || signal.aborted) {releaseBrowseSelection(api, this.query.libraryId, result.response); throw browseSessionClosed();}
+    }
     this.options.onPage?.(page);
     if (this.retired || !this.options.current()) {releaseBrowseSelection(api, this.query.libraryId, result.response); throw browseSessionClosed();}
     // Start only after the first page's publication. This lifetime is session-owned:
@@ -158,7 +162,9 @@ export class BrowseSession<T> {
       && result.response.body !== null && 'wholeSelectionPreparing' in result.response.body) {
       this.startSelection(api, page, body, result.response);
     }
-    return {items: page.entries.map((entry, index) => this.options.item(entry, page, index)),
+    const items = page.entries.map((entry, index) => this.options.item(entry, page, index));
+    if (!this.live() || signal.aborted) {releaseBrowseSelection(api, this.query.libraryId, result.response); throw browseSessionClosed();}
+    return {items,
       total: page.pageInfo.total, totalIsLowerBound: page.pageInfo.totalIsLowerBound,
       positionIndex: Object.fromEntries(page.positionIndex.map(anchor => [anchor.key, anchor.index]))};
   };
