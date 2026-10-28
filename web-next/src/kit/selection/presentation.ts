@@ -1,9 +1,9 @@
 import {defaultI18n} from '@i18n';
-import type {BulkReceipt, BulkResult} from '@core/metadata-bulk';
 import {validBulkListEntry} from '@core/metadata-bulk';
+import {deleteSelectionGate} from '@core/selection-outcomes.ts';
 import type {RepairFieldSpec} from '@core/metadata-repair';
 import type {DeletePreview} from '@core/administration';
-import type {BulkEditorDraft, BulkFieldValues, BulkListDraft, BulkResultView, PickerResult, PickerFailure, SelectionCount, SelectionMediaKind} from './types';
+import type {BulkEditorDraft, BulkFieldValues, BulkListDraft, PickerFailure, SelectionCount, SelectionMediaKind} from './types';
 import {selectionText, type SelectionMessage} from './copy';
 
 const selectionCountKeys = {
@@ -114,19 +114,8 @@ export function bulkSummary(schema: readonly RepairFieldSpec[], values: Readonly
 
 /** The supplied preview remains authoritative. Destructive selections are never chunked. */
 export function deletePermission(owner: boolean, count: number, preview: DeletePreview | null, confirmation: string, busy = false): boolean {
-  return owner && !busy && Number.isSafeInteger(count) && count > 0 && count <= 200 && preview !== null && preview.targets.length === count && new Set(preview.targets.map(target => target.itemId)).size === count && preview.confirmation.length > 0 && preview.blocked.length === 0 && preview.targets.every(target => target.allowMediaDeletion) && new Set(preview.targets.map(target => target.libraryId)).size === 1 && confirmation === preview.confirmation;
+  return deleteSelectionGate({owner, selectionCount: count, preview, confirmation, pending: busy}).allowed;
 }
 
-/** Receipts remain with the controller; only each target's latest real outcome is displayed. */
-export function bulkReceiptView(receipts: readonly BulkReceipt[]): BulkResultView {
-  const latest = new Map<string, BulkResult>();
-  for (const receipt of receipts) for (const row of receipt.results) latest.set(JSON.stringify([row.kind, row.id]), row);
-  const results = [...latest.values()];
-  const updated = results.filter(row => row.ok).length;
-  return {results, updated, failed: results.length - updated};
-}
-
-/** Complete observations may still contain failures; missing counters prove no success. */
-export function pickerResultSucceeded(result: PickerResult): boolean {
-  return result.complete && result.inserted !== undefined && result.failed === 0 && (result.unknown === undefined || result.unknown === 0) && result.pending !== true && result.failures.length === 0;
-}
+/** Receipts and picker counters are read the same way on every client. */
+export {bulkReceiptView, pickerResultSucceeded} from '@core/selection-outcomes.ts';
