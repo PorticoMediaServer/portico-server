@@ -226,6 +226,15 @@ func removeFolderBatchTx(ctx context.Context, tx *sql.Tx, source string) (bool, 
 		}
 	}
 	if len(files) < removalBatch*4 {
+		var job string
+		e := tx.QueryRowContext(ctx, `SELECT job_id FROM inventory_reading_jobs WHERE source_id=? ORDER BY job_id LIMIT 1`, source).Scan(&job)
+		if e == nil {
+			_, e = DrainReadingClosuresTx(ctx, tx, job, 64)
+			return false, e
+		}
+		if !errors.Is(e, sql.ErrNoRows) {
+			return false, e
+		}
 		return true, clearRemovalProgressTx(ctx, tx, "folder", source)
 	}
 	progress.objectCursor = files[len(files)-1].object
@@ -388,6 +397,14 @@ func librarySourceIDsTx(ctx context.Context, tx *sql.Tx, library string) ([]stri
 // its folders in numbers, a bounded slice at a time. What is left for the
 // last statements to delete, or to cascade, is a handful of rows.
 func removeLibraryBookkeepingTx(ctx context.Context, tx *sql.Tx, library string) (bool, error) {
+	var closureJob string
+	e := tx.QueryRowContext(ctx, `SELECT c.job_id FROM jobs j INDEXED BY jobs_library_directory CROSS JOIN inventory_reading_jobs c ON c.job_id=j.id WHERE j.library_id=? LIMIT 1`, library).Scan(&closureJob)
+	if e == nil {
+		return DrainReadingClosuresTx(ctx, tx, closureJob, 64)
+	}
+	if !errors.Is(e, sql.ErrNoRows) {
+		return false, e
+	}
 	for _, q := range []string{
 		`DELETE FROM inventory_directories WHERE rowid IN(SELECT d.rowid FROM jobs j INDEXED BY jobs_library_directory CROSS JOIN inventory_directories d ON d.job_id=j.id WHERE j.library_id=?1 LIMIT 2000)`,
 		`DELETE FROM scan_queue WHERE rowid IN(SELECT q.rowid FROM jobs j INDEXED BY jobs_library_directory CROSS JOIN scan_queue q ON q.job_id=j.id WHERE j.library_id=?1 LIMIT 2000)`,
