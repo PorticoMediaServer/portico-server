@@ -21,6 +21,12 @@ func TestMemberTraitCountsRemainExactThroughMoveAndDeletion(t *testing.T) {
 		cc1Write(t, db, func(ctx context.Context, tx *sql.Tx) error {
 			return SetTermsTx(ctx, tx, ep, VocabGenre, "fixture", []Term{{SourceID: "common", Name: "Common"}, {SourceID: fmt.Sprint(i), Name: fmt.Sprintf("Unique %03d", i)}})
 		})
+		// Seed incrementally, as import does: bounded facet producers now need
+		// several admissions per episode. Keep the existing 500-turn empty-queue
+		// guard and every final 100/99/1/source/deletion oracle unchanged.
+		if i%8 == 0 {
+			cc1Drain(t, db)
+		}
 	}
 	cc1Drain(t, db)
 	if got := cc1Scalar(t, db, `SELECT total FROM catalog_rec_member_counts WHERE work_id=? AND facet='g:common'`, show); got != 100 {
