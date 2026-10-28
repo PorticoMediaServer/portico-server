@@ -52,3 +52,11 @@ test('a collection keeps its real selector and never treats its preview members 
   assert.throws(() => selectionSegments([{...collection, identity: {...collection.identity, id: 'forged'}}], true));
   assert.throws(() => selectionSegments([{...collection, identity: {...collection.identity, libraryId: 'other'}}], true));
 });
+
+test('a Play selection over the single-request segment ceiling is refused, while enqueue stays per segment', () => {
+  const show = (id: string): EntrySelection => ({identity: {id, kind: 'show', libraryId: 'library'}, entry: {id, kind: 'show', libraryId: 'library', title: id, playback: {itemId: `${id}-resume`}}, target: {itemId: `${id}-resume`}});
+  const items = Array.from({length: 17}, (_, index) => index % 2 ? leaf(`item-${index}`) : show(`show-${index}`));
+  assert.equal(selectionSegments(items.slice(0, 16), true).length, 16);
+  assert.throws(() => selectionSegments(items, true), (error: unknown) => error instanceof Error && error.message === 'queue_too_large');
+  assert.equal(selectionSegments(items, false).length, 17);
+});
