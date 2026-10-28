@@ -26,6 +26,13 @@ func (s *Service) PeriodicalIssuesAt(ctx context.Context, p identity.Principal, 
 	return page.SeriesPage, err
 }
 
+// Periodical issue membership publishes either actual order over the same total
+// issue-date/item tuple, so one direction never repeats or skips a member.
+const (
+	PeriodicalIssuesNewest = "newest"
+	PeriodicalIssuesOldest = "oldest"
+)
+
 type PeriodicalYear struct {
 	Year       string
 	IssueCount int64
@@ -42,16 +49,24 @@ type PeriodicalIssuePage struct {
 
 // Year buckets count the complete eligible series, before any date/year window.
 func (s *Service) PeriodicalIssuesInYear(ctx context.Context, p identity.Principal, library, series, publicationType, issueDate, year, cursor string, limit int) (PeriodicalIssuePage, error) {
-	return s.PeriodicalIssuesInMonth(ctx, p, library, series, publicationType, issueDate, year, "", cursor, limit)
+	return s.PeriodicalIssuesInMonth(ctx, p, library, series, publicationType, issueDate, year, "", PeriodicalIssuesNewest, cursor, limit)
 }
 
 // A newspaper month publishes actual available edition dates, not guessed days.
-func (s *Service) PeriodicalIssuesInMonth(ctx context.Context, p identity.Principal, library, series, publicationType, issueDate, year, month, cursor string, limit int) (PeriodicalIssuePage, error) {
+// The order is the requested actual direction; an empty value keeps the
+// canonical newest-first order.
+func (s *Service) PeriodicalIssuesInMonth(ctx context.Context, p identity.Principal, library, series, publicationType, issueDate, year, month, order, cursor string, limit int) (PeriodicalIssuePage, error) {
 	out := PeriodicalIssuePage{SeriesPage: SeriesPage{Items: []LibraryRow{}}, Years: []PeriodicalYear{}, Days: []PeriodicalDay{}}
 	if s == nil || s.DB == nil || s.Visible == nil || s.SeriesScope == nil {
 		return out, identity.ErrForbidden
 	}
 	if publicationType != "magazine" && publicationType != "newspaper" {
+		return out, ErrInvalid
+	}
+	if order == "" {
+		order = PeriodicalIssuesNewest
+	}
+	if order != PeriodicalIssuesNewest && order != PeriodicalIssuesOldest {
 		return out, ErrInvalid
 	}
 	if issueDate != "" && (!compactcatalog.ValidReadingIssueDate(issueDate) || publicationType == "newspaper" && len(issueDate) != 10) {
@@ -95,7 +110,7 @@ func (s *Service) PeriodicalIssuesInMonth(ctx context.Context, p identity.Princi
 	if filter == "" {
 		return out, identity.ErrForbidden
 	}
-	cursorDomain := "periodical-issues-v1:" + publicationType
+	cursorDomain := "periodical-issues-v1:" + publicationType + ":order:" + order
 	if issueDate != "" {
 		cursorDomain += ":date:" + issueDate
 	}
@@ -205,14 +220,18 @@ func (s *Service) PeriodicalIssuesInMonth(ctx context.Context, p identity.Princi
 		after = &anchor
 		current.Expiry = captured.Expiry
 	}
+	seek, sortOrder := `(m.issue_date,m.item_id)<(?,?)`, `m.issue_date DESC,m.item_id DESC`
+	if order == PeriodicalIssuesOldest {
+		seek, sortOrder = `(m.issue_date,m.item_id)>(?,?)`, `m.issue_date ASC,m.item_id ASC`
+	}
 	query := `SELECT e.id,pid(e.public_id),cl.library_id,e.title,p.format,a.token,
  EXISTS(SELECT 1 FROM inventory_item_availability available WHERE available.item_id=e.id AND available.asset_id=a.token AND available.available=1),
  0,0,m.issue_date` + base
 	if after != nil {
-		query += ` AND (m.issue_date,m.item_id)<(?,?)`
+		query += ` AND ` + seek
 		args = append(args, after.Sort, after.Item)
 	}
-	query += ` ORDER BY m.issue_date DESC,m.item_id DESC LIMIT ?`
+	query += ` ORDER BY ` + sortOrder + ` LIMIT ?`
 	args = append(args, limit+1)
 	rows, err := tx.QueryContext(ctx, query, args...)
 	if err != nil {

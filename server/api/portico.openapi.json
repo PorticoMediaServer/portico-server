@@ -152390,6 +152390,13 @@
             "pattern": "^[A-Za-z0-9_-]{171}\\.[A-Za-z0-9_-]{43}$",
             "type": "string"
           },
+          "order": {
+            "enum": [
+              "newest",
+              "oldest"
+            ],
+            "type": "string"
+          },
           "publicationType": {
             "enum": [
               "magazine",
@@ -489152,6 +489159,14 @@
           },
           {
             "in": "query",
+            "name": "order",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
             "name": "cursor",
             "required": false,
             "schema": {
@@ -489383,6 +489398,13 @@
                     },
                     "nextCursor": {
                       "pattern": "^[A-Za-z0-9_-]{171}\\.[A-Za-z0-9_-]{43}$",
+                      "type": "string"
+                    },
+                    "order": {
+                      "enum": [
+                        "newest",
+                        "oldest"
+                      ],
                       "type": "string"
                     },
                     "publicationType": {

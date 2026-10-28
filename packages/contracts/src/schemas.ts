@@ -147618,6 +147618,13 @@ export const schemas = {
         "pattern": "^[A-Za-z0-9_-]{171}\\.[A-Za-z0-9_-]{43}$",
         "type": "string"
       },
+      "order": {
+        "enum": [
+          "newest",
+          "oldest"
+        ],
+        "type": "string"
+      },
       "publicationType": {
         "enum": [
           "magazine",

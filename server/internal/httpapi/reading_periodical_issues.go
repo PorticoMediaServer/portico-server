@@ -21,6 +21,12 @@ func (ReadingIssueDate) JSONSchema() map[string]any {
 	return map[string]any{"type": "string", "pattern": "^[0-9]{4}-[0-9]{2}(-[0-9]{2})?$", "minLength": 7, "maxLength": 10}
 }
 
+type ReadingPeriodicalOrder string
+
+func (ReadingPeriodicalOrder) JSONSchema() map[string]any {
+	return map[string]any{"type": "string", "enum": []string{reading.PeriodicalIssuesNewest, reading.PeriodicalIssuesOldest}}
+}
+
 type ReadingPeriodicalIssue struct {
 	Item      ReadingItem      `json:"item"`
 	IssueDate ReadingIssueDate `json:"issueDate"`
@@ -74,6 +80,7 @@ type ReadingPeriodicalIssuesResponse struct {
 	SeriesID        string                   `json:"seriesId"`
 	PublicationType ReadingPeriodicalType    `json:"publicationType"`
 	IssueDate       ReadingIssueDate         `json:"issueDate,omitempty"`
+	Order           ReadingPeriodicalOrder   `json:"order,omitempty"`
 	Items           []ReadingPeriodicalIssue `json:"items"`
 	NextCursor      string                   `json:"nextCursor,omitempty"`
 }
@@ -86,6 +93,7 @@ func (ReadingPeriodicalIssuesResponse) JSONSchema() map[string]any {
 	props["year"].(map[string]any)["pattern"] = "^[0-9]{4}$"
 	props["years"].(map[string]any)["maxItems"] = 9999
 	props["month"].(map[string]any)["pattern"] = "^[0-9]{4}-[0-9]{2}$"
+	props["order"].(map[string]any)["enum"] = []string{reading.PeriodicalIssuesNewest, reading.PeriodicalIssuesOldest}
 	props["days"].(map[string]any)["maxItems"] = 31
 	props["items"].(map[string]any)["maxItems"] = 100
 	props["nextCursor"].(map[string]any)["pattern"] = "^[A-Za-z0-9_-]{171}\\.[A-Za-z0-9_-]{43}$"
@@ -110,12 +118,17 @@ func (d Dependencies) readingPeriodicalIssues(w http.ResponseWriter, r *http.Req
 	date := r.URL.Query().Get("issueDate")
 	year := r.URL.Query().Get("year")
 	month := r.URL.Query().Get("month")
-	page, err := d.readingService().PeriodicalIssuesInMonth(r.Context(), p, library, series, kind, date, year, month, r.URL.Query().Get("cursor"), limit)
+	order := r.URL.Query().Get("order")
+	if order != "" && order != reading.PeriodicalIssuesNewest && order != reading.PeriodicalIssuesOldest {
+		readingFailure(w, reading.ErrInvalid)
+		return
+	}
+	page, err := d.readingService().PeriodicalIssuesInMonth(r.Context(), p, library, series, kind, date, year, month, order, r.URL.Query().Get("cursor"), limit)
 	if err != nil {
 		readingFailure(w, err)
 		return
 	}
-	out := ReadingPeriodicalIssuesResponse{Month: month, Days: make([]ReadingPeriodicalDay, 0, len(page.Days)), Year: year, Years: make([]ReadingPeriodicalYear, 0, len(page.Years)), LibraryID: library, SeriesID: series, PublicationType: ReadingPeriodicalType(kind), IssueDate: ReadingIssueDate(date), Items: make([]ReadingPeriodicalIssue, 0, len(page.Items)), NextCursor: page.NextCursor}
+	out := ReadingPeriodicalIssuesResponse{Month: month, Days: make([]ReadingPeriodicalDay, 0, len(page.Days)), Year: year, Years: make([]ReadingPeriodicalYear, 0, len(page.Years)), LibraryID: library, SeriesID: series, PublicationType: ReadingPeriodicalType(kind), IssueDate: ReadingIssueDate(date), Order: ReadingPeriodicalOrder(order), Items: make([]ReadingPeriodicalIssue, 0, len(page.Items)), NextCursor: page.NextCursor}
 	for _, day := range page.Days {
 		out.Days = append(out.Days, ReadingPeriodicalDay{Date: ReadingIssueDate(day.Date), IssueCount: day.IssueCount})
 	}
@@ -128,6 +141,6 @@ func (d Dependencies) readingPeriodicalIssues(w http.ResponseWriter, r *http.Req
 	write(w, 200, out)
 }
 func registerReadingPeriodicalIssuesHTTPContract(registry *apikit.Registry) error {
-	m := apikit.Metadata{ID: "get_reading_periodical_issues", Method: "GET", Path: "/v1/libraries/{libraryId}/reading/periodicals/{seriesId}/issues", Summary: "Read dated issues in one accepted typed Reading series", Access: apikit.Device, Requires: apikit.ScopeRead, Lane: apikit.Browsing, Admission: laneBrowsing, Cost: apikit.PageSized, Status: 200, Errors: []string{"invalid_request", "unauthorized", "not_permitted", "not_found", "revision_mismatch", "request_in_progress", "internal"}, Query: []string{"publicationType", "issueDate", "year", "month", "cursor", "limit"}}
+	m := apikit.Metadata{ID: "get_reading_periodical_issues", Method: "GET", Path: "/v1/libraries/{libraryId}/reading/periodicals/{seriesId}/issues", Summary: "Read dated issues in one accepted typed Reading series", Access: apikit.Device, Requires: apikit.ScopeRead, Lane: apikit.Browsing, Admission: laneBrowsing, Cost: apikit.PageSized, Status: 200, Errors: []string{"invalid_request", "unauthorized", "not_permitted", "not_found", "revision_mismatch", "request_in_progress", "internal"}, Query: []string{"publicationType", "issueDate", "year", "month", "order", "cursor", "limit"}}
 	return apikit.RegisterHTTP[struct{}, ReadingPeriodicalIssuesResponse](registry, m)
 }

@@ -7744,6 +7744,7 @@ export const routes = [
       "issueDate",
       "year",
       "month",
+      "order",
       "cursor",
       "limit"
     ],
