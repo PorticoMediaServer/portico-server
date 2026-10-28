@@ -52,6 +52,25 @@ export class PreparingStartCustody {
   private readonly flights = new Set<Flight>();
   private readonly requests = new Map<string, Flight>();
   private disposed = false;
+  private readonly pendingListeners = new Set<() => void>();
+  private publishedPending = false;
+  /** Real flights (including authenticated cleanup) or installed IDs; empty
+   * registrations carry no media. This observes custody without transferring it. */
+  pending = (): boolean => this.current() && (this.flights.size > 0 || [...this.registrations].some(value => value.ids.size > 0));
+  subscribePending = (listener: () => void): (() => void) => {
+    if (this.disposed) return () => {};
+    this.pendingListeners.add(listener);
+    return () => {this.pendingListeners.delete(listener);};
+  };
+  private publishPending(): void {
+    const pending = this.pending();
+    if (pending === this.publishedPending) return;
+    this.publishedPending = pending;
+    for (const listener of [...this.pendingListeners]) {
+      // Observation cannot interrupt reservation, claim or release of custody.
+      try {listener();} catch { /* The custody transition is already committed. */ }
+    }
+  }
   /** `current` is the registry owner's own authority, when it has one. */
   constructor(private readonly owner: () => boolean = () => true) {}
   private current = () => !this.disposed && valid(this.owner);
@@ -68,11 +87,12 @@ export class PreparingStartCustody {
         if (flight.resource?.id === id) {flight.denied = true; flight.abort?.abort();}
       }
       if (live) registration.ids.add(id);
+      this.publishPending();
       return true;
     };
     const reserve = (key: string, continuation: () => boolean): PreparingFlight => {
       if (!live || typeof key !== 'string' || !key || this.requests.has(key)) throw retired();
-      const release = () => {this.flights.delete(flight); if (this.requests.get(key) === flight) this.requests.delete(key);};
+      const release = () => {this.flights.delete(flight); if (this.requests.get(key) === flight) this.requests.delete(key); this.publishPending();};
       const flight: Flight = {registration, seen: new Set(), denied: false, stopping: false, cleaning: false, done: false, view: undefined!};
       const current = () => live && !flight.done && this.current() && valid(continuation);
       const acquire = (resource: PreparingResource, ownerCurrent: () => boolean, stop: PreparingStop) => {
@@ -112,13 +132,13 @@ export class PreparingStartCustody {
         held: () => !flight.done && this.flights.has(flight),
         finish: () => {flight.done = true; if (!flight.cleaning) release();},
       });
-      this.flights.add(flight); this.requests.set(key, flight);
+      this.flights.add(flight); this.requests.set(key, flight); this.publishPending();
       return flight.view;
     };
     return Object.freeze<PreparingRegistration>({
       remember,
-      forget: (id: string) => {registration.ids.delete(id);},
-      dispose: () => {live = false; registration.ids.clear(); this.registrations.delete(registration);},
+      forget: (id: string) => {registration.ids.delete(id); this.publishPending();},
+      dispose: () => {live = false; registration.ids.clear(); this.registrations.delete(registration); this.publishPending();},
       reserve,
       flight: (key: string) => {const flight = this.requests.get(key); return flight?.registration === registration ? flight.view : undefined;},
     });
@@ -129,5 +149,6 @@ export class PreparingStartCustody {
     this.disposed = true;
     for (const flight of this.flights) {flight.denied = true; flight.abort?.abort();}
     this.flights.clear(); this.requests.clear(); this.registrations.clear();
+    this.publishPending(); this.pendingListeners.clear();
   };
 }

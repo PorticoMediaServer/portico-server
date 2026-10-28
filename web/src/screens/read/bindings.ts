@@ -1,3 +1,5 @@
+import type {ShellFactsSource} from '../../shell/fact-source';
+import {subscribePresentation} from '../../shell/fact-hooks';
 import {ReadingError, type HttpLocalApi, type LocalSession, type PreferenceSnapshot, type ReadingClient, type ReadingSession} from '@portico/client-core';
 import type {ReadPreferenceSource} from './preferences';
 import type {ReaderMountAuthority} from './mount';
@@ -5,7 +7,7 @@ import type {ReaderMountAuthority} from './mount';
 export type ReadBindingContext = Readonly<{
   api: Pick<HttpLocalApi, 'reading'>; session: () => Pick<LocalSession, 'viewer' | 'sessionFamilyId'>;
   isCurrent: () => boolean; preferences?: Omit<ReadPreferenceSource, 'getSnapshot'> & Readonly<{getSnapshot: () => PreferenceSnapshot | undefined}>;
-  facts: Readonly<{preferences: PreferenceSnapshot}>;
+  facts: Readonly<{preferences: PreferenceSnapshot}>; factsSource?: ShellFactsSource; libraryRouteSignal?: AbortSignal;
 }>;
 export type ReadBindings = Readonly<{
   client: ReadingClient; authority: ReaderMountAuthority; preferences: ReadPreferenceSource;
@@ -17,11 +19,14 @@ export type ReadBindings = Readonly<{
  * token access, preference projection or independent book state. */
 export function createReadBindings(context: ReadBindingContext): ReadBindings {
   const captured = context.session(), viewer = captured.viewer, life = new AbortController();
+  const stopRoute = () => life.abort();
+  context.libraryRouteSignal?.addEventListener('abort', stopRoute, {once: true});
+  if (context.libraryRouteSignal?.aborted) stopRoute();
   let alive = true, retiring = false, client: ReadingClient | undefined;
   let pending: AbortController | undefined, session: ReadingSession | undefined;
   let closing = Promise.resolve(), disposal: Promise<void> | undefined;
   const authorized = () => {
-    if (!alive || !context.isCurrent() || client?.signal.aborted) return false;
+    if (!alive || life.signal.aborted || !context.isCurrent() || client?.signal.aborted) return false;
     const current = context.session();
     return current.sessionFamilyId === captured.sessionFamilyId && current.viewer.serverId === viewer.serverId
       && current.viewer.authority === viewer.authority && current.viewer.accountId === viewer.accountId
@@ -31,8 +36,10 @@ export function createReadBindings(context: ReadBindingContext): ReadBindings {
   client = context.api.reading({viewer, isCurrent: authorized, signal: life.signal});
   const owner = client;
   const authority: ReaderMountAuthority = Object.freeze({isCurrent: current, subscribe(listener: () => void) {
-    owner.signal.addEventListener('abort', listener); life.signal.addEventListener('abort', listener);
-    return () => {owner.signal.removeEventListener('abort', listener); life.signal.removeEventListener('abort', listener);};
+    let notified = false;
+    const retired = () => {if (!notified) {notified = true;listener();}};
+    owner.signal.addEventListener('abort', retired); life.signal.addEventListener('abort', retired);
+    return () => {owner.signal.removeEventListener('abort', retired); life.signal.removeEventListener('abort', retired);};
   }});
   const close = () => {
     pending?.abort(new ReadingError('cancelled')); pending = undefined;
@@ -62,12 +69,12 @@ export function createReadBindings(context: ReadBindingContext): ReadBindings {
     if (disposal) return disposal;
     // Keep captured authority valid through explicit Close, then retire it.
     const stopped = close(); retiring = true;
-    disposal = stopped.finally(() => {alive = false; life.abort(); owner.dispose();});
+    disposal = stopped.finally(() => {alive = false; context.libraryRouteSignal?.removeEventListener('abort', stopRoute);life.abort(); owner.dispose();});
     return disposal;
   };
   const preferences: ReadPreferenceSource = Object.freeze({
     getSnapshot: () => context.preferences?.getSnapshot() ?? context.facts.preferences,
-    subscribe: listener => context.preferences?.subscribe(listener) ?? (() => {}),
+    subscribe: listener => subscribePresentation(context, listener),
   });
   return Object.freeze({client: owner, authority, preferences, open, close, dispose});
 }

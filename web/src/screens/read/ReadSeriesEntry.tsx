@@ -1,3 +1,5 @@
+import {useRouteLibrary} from '../browse/route-library';
+import {forwardIdentity} from '../detail/context';
 import {ReadGroupSavedAction} from './ReadGroupSavedAction';
 import {useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore, type CSSProperties} from 'react';
 import {defaultI18n} from '@i18n';
@@ -30,11 +32,12 @@ type Resources = Readonly<{id: string; context: Captured['context']; artwork: Ca
   libraryId: string; seriesId: string; rows: ReturnType<typeof createReadingSeriesCollection>; reportError: (error: unknown) => void}>;
 
 /** The canonical series cursor owns complete membership and ordering, including unnumbered volumes. */
-export function ReadSeriesEntry({libraryId, seriesId}: {libraryId: string; seriesId: string}) {
-  const captured = useProtectedWebScreenContext();
+export function ReadSeriesEntry({captured: provided, libraryId, seriesId}: {captured?: Captured; libraryId: string; seriesId: string}) {
+  const original = useProtectedWebScreenContext(), captured = provided ?? original;
   return captured ? <BoundSeries key={JSON.stringify([libraryId, seriesId])} captured={captured} libraryId={libraryId} seriesId={seriesId}/> : null;
 }
 function BoundSeries({captured, libraryId, seriesId}: {captured: Captured; libraryId: string; seriesId: string}) {
+  const kind = useRouteLibrary(captured.context, libraryId)?.kind;
   const [resources, setResources] = useState<Resources>(), [retry, setRetry] = useState(0), [retired, setRetired] = useState(false);
   // The opening reports through this commit's shell binding; a later binding identity
   // must not replay the committed cursor.
@@ -43,14 +46,15 @@ function BoundSeries({captured, libraryId, seriesId}: {captured: Captured; libra
   // A committed opening owns the bindings and the cursor: a strict replay publishes the new pair
   // in the same commit that retires the old one, so a disposed owner is never left on screen.
   useLayoutEffect(() => {
+    if (kind !== 'book' && kind !== 'comic') {setResources(undefined);return;}
     const effects = shellEffects.current;
     const bindings = createReadBindings(captured.context), rows = createReadingSeriesCollection(bindings.client, libraryId, seriesId);
     setRetired(false);
     const off = bindings.authority.subscribe(() => {setRetired(true); setResources(undefined);});
-    setResources({id: crypto.randomUUID(), context: captured.context, artwork: captured.context.artwork, bindings, comic: captured.context.facts.identity.libraries.find(library => library.id === libraryId)?.kind === 'comic', libraryId, seriesId, rows,
+    setResources({id: crypto.randomUUID(), context: captured.context, artwork: captured.context.artwork, bindings, comic: kind === 'comic', libraryId, seriesId, rows,
       reportError: error => {if (bindings.authority.isCurrent()) effects.reportError(error);}});
     return () => {off(); rows.dispose(); void bindings.dispose().catch(() => {});};
-  }, [captured.context, libraryId, seriesId, retry]);
+  }, [captured.context, libraryId, seriesId, kind, retry]);
   if (retired) return <StateView title={t('next.states.pageFailed')} body={t('next.states.pageFailedBody')} primary={{id: 'retry', label: t('next.states.tryAgain'), onPress: () => setRetry(value => value + 1)}}/>;
   return resources && resources.context === captured.context ? <SeriesRows resources={resources} captured={captured} retry={() => setRetry(value => value + 1)}/> : <Skeleton height={320}/>;
 }
@@ -141,7 +145,7 @@ function LiveSeriesRows({resources, context, retry}: {resources: Resources; cont
         onPlay={item.inventoryAvailable ? () => {if (resources.bindings.authority.isCurrent()) void router.navigate(readChosenDestination(item.id)).catch(report);} : undefined}
         playLabel={t('next.reader.read')}
         selection={canEdit ? {active: selection !== undefined, checked: selection?.has(item.id) ?? false, onToggle: () => toggle(item), onExit: () => setSelection(undefined)} : undefined}/>} /></div>
-    {bulk && canEdit && <ReadBulkMetadata context={{...context, isCurrent: () => context.isCurrent() && !!bulk && resources.bindings.authority.isCurrent() && bulk.every(item => resources.rows.collection.residentItems().includes(item))}}
+    {bulk && canEdit && <ReadBulkMetadata context={forwardIdentity(context, {isCurrent: () => context.isCurrent() && !!bulk && resources.bindings.authority.isCurrent() && bulk.every(item => resources.rows.collection.residentItems().includes(item))})}
       items={bulk} kind={resources.comic ? 'comic' : 'ebook'} anchor={bulkAnchor} onClose={() => {setBulk(undefined); setSelection(undefined);}}/>}
   </section>;
 }

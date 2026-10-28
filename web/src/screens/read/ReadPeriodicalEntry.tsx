@@ -25,8 +25,8 @@ type Resources = Groups | Issues;
 
 /** Only an actual server-offered type/series reaches this renderer. No dates or
  * group identifiers are derived from labels, loaded cards or folder strings. */
-export function ReadPeriodicalEntry({libraryId, kind, seriesId}: {libraryId: string; kind: ReadingPeriodicalType; seriesId?: string}) {
-  const captured = useProtectedWebScreenContext();
+export function ReadPeriodicalEntry({captured: provided, libraryId, kind, seriesId}: {captured?: Captured; libraryId: string; kind: ReadingPeriodicalType; seriesId?: string}) {
+  const original = useProtectedWebScreenContext(), captured = provided ?? original;
   return captured ? <BoundPeriodicals key={JSON.stringify([libraryId, kind, seriesId])} captured={captured} libraryId={libraryId} kind={kind} seriesId={seriesId}/> : null;
 }
 function BoundPeriodicals({captured, libraryId, kind, seriesId}: {captured: Captured; libraryId: string; kind: ReadingPeriodicalType; seriesId?: string}) {

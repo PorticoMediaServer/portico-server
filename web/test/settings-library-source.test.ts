@@ -249,3 +249,13 @@ test('Sonic selection retirement suppresses a late answer and removal of its pro
     assert.equal(signal?.aborted, true);release();assert.equal(await pending, false);assert.equal(f.source.getSnapshot().sonic, undefined);
   } finally {f.source.dispose();}
 });
+
+test('quiet selected library settings bypass selection cache and preserve unrelated source state',async()=>{
+ let revision=7,gets=0;const f=fixture(async<T>()=>{gets++;return document('selected',revision) as T;});
+ try{await f.source.select('selected');await f.source.select('selected');assert.equal(gets,1);revision=8;const before=f.source.getSnapshot();assert.deepEqual(await f.source.refreshSettings(),{kind:'adopted'});assert.equal(gets,2);assert.equal(f.source.getSnapshot().document?.revision,8);assert.equal(f.source.getSnapshot().libraryId,before.libraryId);assert.equal(f.source.getSnapshot().error,before.error);assert.equal(f.source.getSnapshot().saving,false);}finally{f.source.dispose();}
+});
+
+test('selected library quiet reads cannot overwrite a write that starts and finishes during I/O',async()=>{
+ let held=false,release!:(value:LibraryAdminDocument)=>void;const f=fixture(async<T>(_path:string,method?:string,body?:any)=>{if(method==='PUT')return {...document('selected',8),settings:body.settings} as T;if(held)return new Promise(resolve=>{release=resolve;}) as Promise<T>;return document('selected') as T;});
+ try{await f.source.select('selected');held=true;const pending=f.source.refreshSettings();await f.source.change('selected','libraries.cwWeeks',20);const before=f.source.getSnapshot();release(document('selected',99));assert.deepEqual(await pending,{kind:'deferred'});assert.equal(f.source.getSnapshot(),before);assert.equal(f.source.getSnapshot().document?.revision,8);}finally{f.source.dispose();}
+});

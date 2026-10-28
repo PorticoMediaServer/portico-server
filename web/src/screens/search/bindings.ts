@@ -1,3 +1,4 @@
+import {forwardIdentity} from '../detail/context';
 import {SearchService, readSearchHistory, clearSearchHistory, deleteSearchHistoryEntry, type SearchEntry, type SearchGroup, type SearchQuery} from '@core/search.ts';
 import {serviceI18n} from '@core/presentation/service-text.ts';
 import {guideWindow, parseChannelGuide, type GuideChannel} from '@core/channel-guide.ts';
@@ -74,7 +75,7 @@ export function createSearchBindings(context: ScreenContext) {
   let resultKey = '';
   let summary: Readonly<{key: string; groups: readonly Pick<SearchGroupResult, 'id' | 'status' | 'totalCount' | 'totalCountExact'>[]}> | undefined;
   const visible = new Set<SearchEntry>();
-  const commandContext: ScreenContext = {...context, effects: {...context.effects, async play(target, signal, callerCurrent = () => true) {
+  const commandContext: ScreenContext = forwardIdentity(context, {effects: {...context.effects, async play(target: Parameters<ScreenContext['effects']['play']>[0], signal: AbortSignal, callerCurrent = () => true) {
     life.assert();signal.throwIfAborted();
     const captured = results.getSnapshot(), query = requestKey(captured.query), source = resultKey;
     const current = () => {
@@ -85,7 +86,7 @@ export function createSearchBindings(context: ScreenContext) {
     if (results.getSnapshot().phase !== 'ready' || !query || !source || !current()) throw new DOMException('Search playback changed', 'AbortError');
     await context.effects.play(target, signal, current);
     if (!current()) throw new DOMException('Search playback changed', 'AbortError');
-  }}};
+  }}});
   const topTitle = createDetailBindings(commandContext), topShow = createShowBindings(commandContext);
   /** Live TV results are decorated from their own matched guide rows, never from another
    * query's answer: every read is retired by the next query, a newer search answer, a guide

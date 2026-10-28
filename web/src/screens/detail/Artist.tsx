@@ -1,3 +1,4 @@
+import {forwardIdentity} from '../detail/context';
 import {Fragment, useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore} from 'react';
 import {t} from './text';
 import {defaultI18n} from '@i18n';
@@ -119,10 +120,10 @@ function ArtistBody({context, libraryId, artistId, lease, retry, back}: {context
   }, [lease, artistId, libraryId, context, projection, admitted?.catalog, admitted?.viewer]);
   const section = (id: string): ContentSection | undefined => projection && admitted
     ? (content.appended.find(value => value.id === id) ?? projection.sections.find(value => value.id === id)) : undefined;
-  const recoveryContext: ScreenContext = {...context, isCurrent: lease.isCurrent, effects: {...context.effects,
+  const recoveryContext: ScreenContext = forwardIdentity(context, {isCurrent: lease.isCurrent, effects: {...context.effects,
     back: lease.onBack ? () => {if (lease.isCurrent()) lease.onBack?.();} : undefined,
     openHome: context.effects.openHome ? () => {if (lease.isCurrent()) context.effects.openHome?.();} : undefined,
-    chooseProfile: context.effects.chooseProfile ? () => {if (lease.isCurrent()) context.effects.chooseProfile?.();} : undefined}};
+    chooseProfile: context.effects.chooseProfile ? () => {if (lease.isCurrent()) context.effects.chooseProfile?.();} : undefined}});
   const localFailure = failed?.lease === lease && failed.snapshot === content ? failed : undefined;
   const readFailure = content.phase === 'error' || content.phase === 'refresh-required';
   const failureCurrent = () => service.getSnapshot() === content && (readFailure

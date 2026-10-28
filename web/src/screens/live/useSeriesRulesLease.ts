@@ -1,3 +1,4 @@
+import {forwardIdentity} from '../detail/context';
 import {useLayoutEffect, useRef, useState} from 'react';
 import {defaultI18n} from '@i18n';
 import type {ScreenContext} from '../detail/context';
@@ -27,7 +28,7 @@ export function useSeriesRulesLease(context: ScreenContext | undefined, routeCur
     if (!context || !context.isCurrent() || !routeCurrent()) return;
     let held: SeriesRulesLease | undefined;
     const current = () => !!held && held.live && context.isCurrent() && routeCurrent();
-    const screen: ScreenContext = {...context, isCurrent: current};
+    const screen: ScreenContext = forwardIdentity(context, {isCurrent: current});
     const binding = createSeriesRulesBindings(screen, {locale: defaultI18n.region.formatLocale,
       timezone: defaultI18n.region.timeZone ?? Intl.DateTimeFormat().resolvedOptions().timeZone});
     const lease: SeriesRulesLease = {id: crypto.randomUUID(), context, live: true, current, binding};

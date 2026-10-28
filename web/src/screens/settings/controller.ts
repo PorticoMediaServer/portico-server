@@ -1,5 +1,7 @@
+import type {QuietRefreshOutcome} from '@core/freshness-actions.ts';
+import type {QuietInput} from './quiet-refresh';
 import {LOG_DETAIL_MINUTES, type LogDetailMinutes} from '@core/server-administration.ts';
-import {ConsoleClient} from '@core/console.ts';
+import {ConsoleClient, type Measurement} from '@core/console.ts';
 import {PreferencesReader} from '@core/preferences-reader.ts';
 import {validatePreferencePatch, type PreferencePatch, type PreferenceScope, type PreferenceSnapshot} from '@core/preferences.ts';
 import {searchConfiguration, type SettingsConfiguration} from '@core/settings-configuration.ts';
@@ -24,6 +26,7 @@ import {SettingsLibraryFoldersSource} from './library-folders-source';
 import {SettingsBackupSource} from './backup-source';
 
 type DocumentForm = Readonly<{
+  invalidateQuiet: () => void; refresh: () => Promise<QuietRefreshOutcome>; subscribe: (listener: () => void) => () => void; blocked: () => boolean; settlement: () => unknown;
   load: () => Promise<void>; dispose: () => void;
   value: () => Readonly<Record<string, unknown>> | undefined;
   status: () => Readonly<Record<string, unknown>> | undefined;
@@ -38,6 +41,9 @@ function settingValue(value: unknown): SettingsValue {
 }
 function documentForm<T extends object, S>(form: DraftForm<T, S>): DocumentForm {
   return {
+    invalidateQuiet: form.invalidateQuiet, refresh: form.refresh.bind(form), subscribe: form.subscribe,
+    blocked: () => form.getSnapshot().saving || form.getSnapshot().loading || form.getSnapshot().saveError !== undefined,
+    settlement: () => form.getSnapshot().draft,
     load: form.load.bind(form), dispose: form.dispose.bind(form),
     value: () => form.getSnapshot().saved as Readonly<Record<string, unknown>> | undefined,
     status: () => {
@@ -87,7 +93,31 @@ export class SettingsController {
   private readonly offPreferences: () => void;
   private closed = false;
   private headerLoading?: Promise<void>;
+  private headerLoaded = false;
+  private headerHealth?: Measurement;
+  private headerStorage?: Measurement;
+  private readonly quietClients = new Map<string,{client:ConsoleClient;abort:AbortController}>();
+  private cancelQuietRead = (id: string) => {const read=this.quietClients.get(id);this.quietClients.delete(id);read?.abort.abort();read?.client.dispose();};
+  private async quietRead<T>(id:string,read:(client:ConsoleClient,signal:AbortSignal)=>Promise<T>,install:(value:T)=>void,serial?:number):Promise<QuietRefreshOutcome> {
+    this.cancelQuietRead(id);
+    const owner={client:new ConsoleClient(this.options.api,{serverId:this.options.serverId,viewerId:this.options.viewerId}),abort:new AbortController()};this.quietClients.set(id,owner);
+    const owns=()=>this.current() && !owner.abort.signal.aborted && this.quietClients.get(id)===owner && (serial===undefined || serial===this.writeSerial && !this.writing && !this.inputActive);
+    try {const value=await read(owner.client,AbortSignal.any([this.lifetime.signal,owner.abort.signal]));if(!owns())return {kind:'deferred'};install(value);this.publish({});return {kind:'adopted'};}
+    catch(error){return owns()?{kind:'unreadable',error}:{kind:'deferred'};}
+    finally{if(this.quietClients.get(id)===owner)this.quietClients.delete(id);owner.abort.abort();owner.client.dispose();}
+  }
   private writing = false;
+  private writeSerial = 0;
+  private inputActive = false;
+  setQuietInputActive = (active: boolean) => {
+    if (!this.current() || active === this.inputActive) return;
+    this.inputActive = active;++this.writeSerial;
+    if(active)this.cancelQuietRead('configuration');
+    if(active)this.library.invalidateQuiet();
+    if(active) for(const form of Object.values(this.forms))form.invalidateQuiet();
+    this.publish({});
+  };
+  private readonly offForms: (() => void)[] = [];
   private header: ReturnType<typeof settingsServerHeader> = {facts: []};
   constructor(options: SettingsControllerOptions) {
     this.options = options; this.preferences = options.preferences;
@@ -109,6 +139,7 @@ export class SettingsController {
       this.forms.maintenance = documentForm(maintenanceForm(deps));
       this.forms.alerts = documentForm(alertsForm(deps));
       this.forms.logs = documentForm(logsForm(deps));
+      for (const form of Object.values(this.forms)) this.offForms.push(form.subscribe(() => this.publish({})));
     }
   }
   private current = () => !this.closed && this.options.isCurrent();
@@ -224,7 +255,8 @@ export class SettingsController {
     if (section.scope === 'server' && this.forms.runtime && !this.headerLoading) this.headerLoading = (async () => {
       const [health, storage] = await Promise.allSettled([this.console.measurement('health'), this.console.measurement('storage')]);
       if (!this.current()) return;
-      this.header = settingsServerHeader(health.status === 'fulfilled' ? health.value : undefined, storage.status === 'fulfilled' ? storage.value : undefined);
+      this.headerHealth=health.status === 'fulfilled' ? health.value : undefined;this.headerStorage=storage.status === 'fulfilled' ? storage.value : undefined;this.headerLoaded=true;
+      this.header = settingsServerHeader(this.headerHealth,this.headerStorage);
       this.publish({});
     })();
     const formIds = new Set([...settingsRowIndex.values()].filter(location => location.section === section && this.eligible(location.row))
@@ -235,6 +267,41 @@ export class SettingsController {
     if (section.scope === 'server' && this.forms.runtime) reads.push({id: 'configuration', load: this.readConfiguration});
     if (section.scope === 'server' && section.id === 'storage' && this.forms.runtime) reads.push({id: 'backups', load: this.backups.load});
     return this.sectionReads.load(`${section.scope}/${section.id}`, reads);
+  };
+  quietInputs = (section: SettingsSection): readonly QuietInput[] => {
+    if (!this.current() || !this.sectionVisible(section)) return [];
+    const formIds = new Set([...settingsRowIndex.values()].filter(location => location.section === section && this.eligible(location.row))
+      .map(location => settingsBinding(location.row.id)?.form).map(id => id === 'connectivityStatus' ? 'connectivity' : id)
+      .filter((id): id is NonNullable<typeof id> => id !== undefined && !!this.forms[id]));
+    const inputs: QuietInput[] = [...formIds].map(id => {
+      const form = this.forms[id]!, key = `form/${id}`;
+      return {id: key, cancel:form.invalidateQuiet, subscribe: this.subscribe, blocked: () => this.inputActive || this.writing || form.blocked(), settlement: form.settlement,
+        refresh: () => this.sectionReads.hasRead(key) ? this.sectionReads.refresh(`${section.scope}/${section.id}`, [{id: key, refresh: form.refresh}]) : Promise.resolve({kind: 'deferred'})};
+    });
+    if (section.scope === 'server' && this.forms.runtime) {
+      inputs.push({id:'configuration',cancel:()=>this.cancelQuietRead('configuration'),subscribe:this.subscribe,
+        blocked:()=>this.inputActive || this.writing,settlement:()=>this.writeSerial,
+        refresh:async()=>{
+          if(!this.current() || this.inputActive || this.writing || !this.sectionReads.hasRead('configuration'))return {kind:'deferred'};
+          return this.quietRead('configuration',(client,signal)=>this.options.readConfiguration?.(signal) ?? client.configuration(),configuration=>{this.configuration=configuration;},this.writeSerial);
+        }});
+      for(const name of ['health','storage'] as const)inputs.push({id:`header/${name}`,cancel:()=>this.cancelQuietRead(`header/${name}`),subscribe:this.subscribe,
+        blocked:()=>!this.headerLoaded,
+        refresh:async()=>{
+          if(!this.current() || !this.headerLoaded)return {kind:'deferred'};
+          return this.quietRead(`header/${name}`,client=>client.measurement(name),measurement=>{
+            if(name==='health')this.headerHealth=measurement;else this.headerStorage=measurement;
+            this.header=settingsServerHeader(this.headerHealth,this.headerStorage);
+          });
+        }});
+    }
+    if(section.scope==='server' && section.id==='libraries') {
+      for(const [id,refresh] of [['selected-settings',this.library.refreshSettings],['selected-sonic',this.library.refreshSonic]] as const)inputs.push({
+        id,refresh,cancel:this.library.invalidateQuiet,subscribe:this.subscribe,
+        blocked:()=>this.inputActive || this.writing || this.library.quietBlocked(),settlement:()=>id==='selected-settings'?this.library.getSnapshot().document:this.library.getSnapshot().sonic,
+      });
+    }
+    return inputs;
   };
   private preferenceScope(row: SettingsRow, key: string): PreferenceScope {
     const field = this.preferences.registry.fields.find(field => field.key === key);
@@ -247,7 +314,7 @@ export class SettingsController {
   private write = async (row: SettingsRow, value: SettingsValue, reset: boolean, context?: SettingsContext) => {
     const state = this.rowState(row, context);
     if (this.writing || !this.current() || !state.present || state.readOnly) return;
-    this.writing = true; this.rowErrors.delete(row.id); this.publish({saveState: 'saving'});
+    ++this.writeSerial;this.cancelQuietRead('configuration');this.writing = true; this.rowErrors.delete(row.id); this.publish({saveState: 'saving'});
     try {
       if (row.id === 'storage.backupFolder' || row.id === 'storage.backupArtwork') {
         if (row.id === 'storage.backupFolder' && typeof value !== 'string' || row.id === 'storage.backupArtwork' && typeof value !== 'boolean') throw new Error('invalid_backup_setting');
@@ -305,7 +372,8 @@ export class SettingsController {
   change = (row: SettingsRow, value: SettingsValue, context?: SettingsContext) => {void this.write(row, value, false, context);};
   reset = (row: SettingsRow, context?: SettingsContext) => {const value = this.read(row, context)?.default; if (value !== undefined) void this.write(row, value as SettingsValue, true, context);};
   dispose = () => {
-    this.closed = true; this.backups.dispose(); this.library.dispose(); this.folders.dispose(); this.sectionReads.dispose(); this.lifetime.abort(); this.offDevice?.(); this.console.dispose(); this.offPreferences();
+    this.closed = true;for(const id of this.quietClients.keys())this.cancelQuietRead(id); this.backups.dispose(); this.library.dispose(); this.folders.dispose(); this.sectionReads.dispose(); this.lifetime.abort(); this.offDevice?.(); this.console.dispose(); this.offPreferences();
+    for (const off of this.offForms) off();
     for (const form of Object.values(this.forms)) form.dispose();
     this.configuration = undefined; this.header = {facts: []}; this.rowErrors.clear(); this.listeners.clear();
   };

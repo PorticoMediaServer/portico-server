@@ -552,7 +552,7 @@ function castController(t: TestContext, f: ReturnType<typeof setup>) {
   return {controller, sender, errors};
 }
 
-test('the MAIN SDK, canonical sender and mounted runtime wait for receiver ACK and use only its real clock', async t => {
+test('WEB002 the MAIN SDK, canonical sender and mounted runtime retain through picker, receiver ACK and stopped continuation', async t => {
   const f = setup(t); await f.runtime.play('movie', 25); await f.arrive();
   const local = f.hls.instances.at(-1)!, first = f.runtime.getSnapshot(), sessionId = first.session!.id;
   f.intercept(async (request, response) => request.path === '/v1/cast/bootstrap'
@@ -569,7 +569,8 @@ test('the MAIN SDK, canonical sender and mounted runtime wait for receiver ACK a
     addMessageListener: (_namespace, listener) => { listeners.add(listener); },
     removeMessageListener: (_namespace, listener) => { listeners.delete(listener); }, endSession() {},
   };
-  const context = {setOptions() {}, requestSession: () => { picks++; selected = session; return Promise.resolve(); }, getCurrentSession: () => selected, addEventListener() {}, removeEventListener() {}};
+  const picker=deferred();
+  const context = {setOptions() {}, requestSession: () => { picks++; selected = session; return picker.hold(); }, getCurrentSession: () => selected, addEventListener() {}, removeEventListener() {}};
   const browser: CastBrowser = {
     // The already available controlled native SDK never touches a script or DOM image loader.
     document: new Proxy({} as Document, {get() { throw new Error('unexpected_sdk_document_read'); }}),
@@ -582,7 +583,9 @@ test('the MAIN SDK, canonical sender and mounted runtime wait for receiver ACK a
   const errors: unknown[] = [];
   const controller = new PlayOnController({sender, runtime: f.runtime, isCurrent: f.source.isCurrent, reportError: error => errors.push(error), now: f.clock.now, setTimer: f.clock.setTimer, clearTimer: f.clock.clearTimer});
   t.after(() => controller.dispose());
+  const changes:boolean[]=[];f.runtime.onRetention(()=>changes.push(f.runtime.retainsMedia()));
   const started = controller.startCast(); assert.equal(picks, 1, 'native picker opens synchronously in the originating click');
+  assert.equal(sender.getSnapshot().phase,'connecting');assert.equal(sender.retainsMedia(),true);assert.equal(f.runtime.retainsMedia(),true);picker.resolve();
   await settle(); assert.equal(sender.getSnapshot().phase, 'pairing');
   reply({type: 'pair-pending'}); assert.equal(sender.getSnapshot().phase, 'waiting');
   assert.equal(f.runtime.getSnapshot().session!.id, sessionId); assert.equal(local.destroyed, false);
@@ -594,6 +597,7 @@ test('the MAIN SDK, canonical sender and mounted runtime wait for receiver ACK a
   assert.equal(f.runtime.getSnapshot().session!.id, sessionId); assert.equal(local.destroyed, false);
   reply({type: 'loaded', itemId: 'movie', requestId: load.requestId}); assert.equal(await started, true); await settle();
   assert.equal(f.runtime.getSnapshot().session, undefined); assert.equal(local.destroyed, true);
+  assert.equal(f.runtime.retainsMedia(),true,'the actual sender/PlayOn owner retains after the local session and dock have drained');assert.deepEqual(changes,[]);
   reply({type:'status',controller:{bindingId:'binding',controllerGeneration:1,connectionGeneration:1},occurrence:{sessionId:'receiver',generation:1,itemId:'movie'},itemId:'movie',positionSeconds:57, durationSeconds: 3186, paused: false, audioTracks: [], textTracks: []});
   assert.equal(controller.getSnapshot().remote!.positionSeconds, 57);
   controller.seek(controller.getSnapshot().remote!, 100); assert.equal(controller.getSnapshot().remote!.positionSeconds, 57);
@@ -602,7 +606,8 @@ test('the MAIN SDK, canonical sender and mounted runtime wait for receiver ACK a
   reply({type:'stopped',requestId:stop.requestId,target:stop.target,positionSeconds:57,durationSeconds:3186});
   assert.equal(controller.getSnapshot().remote!.phase, 'stopped'); assert.equal(controller.getSnapshot().remote!.positionSeconds, 57);
   assert.equal(messages.some(message => 'mediaUrl' in message || 'grant' in message || 'sessionId' in message), false);
-  assert.deepEqual(errors, []);
+  assert.deepEqual(errors, []);assert.equal(f.runtime.retainsMedia(),true);
+  controller.dispose();assert.equal(f.runtime.retainsMedia(),false);assert.deepEqual(changes,[false]);
 });
 
 test('Cast keeps the mounted local engine through pairing and waiting, handing off only on casting', async t => {
@@ -2767,4 +2772,332 @@ test('Cast picker refresh follows playback and seeks while refusing every replac
   sender.cancelConnecting();assert.equal(await started, false);assert.equal(read(), undefined);
   const next = controller.startCast(), nextRead = sender.starts.at(-1)![4]!;
   await f.runtime.play('another', 10);await f.arrive();assert.equal(await next, false);assert.equal(nextRead(), undefined);
+});
+
+// WEB002 uses the existing real runtime/service/queue/player fixture. Only I/O,
+// timers and the media element's external events are controlled by these tests.
+test('WEB002 real admission retains before the first await and dispose balances every original start', async t => {
+  const lifetime = (signal: AbortSignal) => ({signal, isCurrent: () => true});
+  const cases: {name: string; path: string; run(f: ReturnType<typeof setup>, signal: AbortSignal): Promise<unknown>}[] = [
+    {name:'play',path:'/v1/queues',run:(f)=>f.runtime.play('movie')},
+    {name:'start',path:'/v1/queues',run:(f)=>f.runtime.start({entry:selectionLeaf('movie').entry,target:{itemId:'movie'}})},
+    {name:'screen item preflight',path:'/v1/items/movie',run:(f,signal)=>f.runtime.playFromScreen({libraryId:'library',itemId:'movie',startSeconds:0},lifetime(signal))},
+    {name:'screen options preflight',path:'/v1/items/movie/playback-options',run:(f,signal)=>f.runtime.playFromScreen({libraryId:'library',itemId:'movie',startSeconds:0},lifetime(signal))},
+    {name:'version options preflight',path:'/v1/items/movie/playback-options',run:(f,signal)=>f.runtime.playVersion({itemId:'movie',versionId:'v1',context:selectionContext,signal},()=>true)},
+    {name:'catalogue queue',path:'/v1/queues',run:(f,signal)=>f.runtime.cataloguePlayback().playSegments([{source:{items:{ids:['movie']}}}],lifetime(signal))},
+    {name:'resource queue',path:'/v1/queues',run:(f,signal)=>f.runtime.playFromQueue({container:{kind:'collection',id:'ordered_release'}},lifetime(signal))},
+    {name:'selection',path:'/v1/queues',run:(f,signal)=>f.runtime.selectionPlayback(()=>true).play({context:selectionContext,items:[selectionLeaf('movie')],signal})},
+    {name:'selection enqueue',path:'/v1/queues',run:(f,signal)=>f.runtime.selectionPlayback(()=>true).enqueue({context:selectionContext,items:[selectionLeaf('movie')],placement:'end',signal})},
+    {name:'catalogue enqueue',path:'/v1/queues',run:(f,signal)=>f.runtime.catalogueQueue()!.enqueueSegments([{source:{items:{ids:['movie']}}}],'end',lifetime(signal))},
+    {name:'Home channel',path:'/v1/playback/sessions',run:(f,signal)=>f.runtime.playChannel(homeChannel,selectionContext,signal,()=>true)},
+    {name:'guide channel',path:'/v1/playback/sessions',run:(f,signal)=>f.runtime.playFromGuide(homeChannel.channel,lifetime(signal))},
+  ];
+  for (const entry of cases) await t.test(entry.name, async sub => {
+    const f=setup(sub),gate=deferred(),caller=new AbortController(),changes:boolean[]=[];
+    f.runtime.onRetention(()=>changes.push(f.runtime.retainsMedia()));
+    await settle();assert.equal(f.runtime.retainsMedia(),false,'constructed and mounted idle runtime is not media');
+    let held=false;
+    f.intercept(async(request,response)=>{if(!held&&request.path===entry.path){held=true;await gate.hold();}return response;});
+    const pending=entry.run(f,caller.signal).catch(()=>{});
+    assert.equal(f.runtime.retainsMedia(),true,'same synchronous admission turn, before any request settles');
+    assert.deepEqual(changes,[true]);await gate.started;
+    assert.equal(f.runtime.retainsMedia(),true);assert.equal(f.runtime.getSnapshot().session,undefined);
+    f.runtime.dispose();assert.equal(f.runtime.retainsMedia(),false);assert.deepEqual(changes,[true,false]);
+    caller.abort();gate.resolve();await pending;await settle();
+    assert.equal(f.runtime.retainsMedia(),false);assert.deepEqual(changes,[true,false],'late response/finally cannot resurrect or decrement another start');
+  });
+});
+
+test('WEB002 pre-abort, failed preflight and superseded flights never leak retention', async t => {
+  const f=setup(t),changes:boolean[]=[];f.runtime.onRetention(()=>changes.push(f.runtime.retainsMedia()));await settle();
+  await f.runtime.onTransition({state:f.runtime.dock.getSnapshot(),effects:[]});
+  assert.equal(f.runtime.retainsMedia(),false);assert.deepEqual(changes,[],'an empty dock transition is not media admission');
+  const caller=new AbortController();caller.abort();const before=f.log.length;
+  await assert.rejects(f.runtime.playFromScreen({libraryId:'library',itemId:'movie',startSeconds:0},{signal:caller.signal,isCurrent:()=>true}));
+  await assert.rejects(f.runtime.playVersion({context:selectionContext,itemId:'movie',versionId:'v1',signal:caller.signal},()=>true));
+  assert.equal(f.runtime.retainsMedia(),false);assert.equal(f.log.length,before);assert.deepEqual(changes,[]);
+  f.intercept(async(request,response)=>request.path==='/v1/items/movie'?{status:404,headers:{},body:{error:{code:'not_found'}}}:response);
+  await assert.rejects(f.runtime.playFromScreen({libraryId:'library',itemId:'movie',startSeconds:0},{signal:new AbortController().signal,isCurrent:()=>true}));
+  assert.equal(f.runtime.retainsMedia(),false);assert.deepEqual(changes,[true,false]);
+  const gate=deferred();f.intercept(async(request,response)=>{if(request.path==='/v1/items/movie')await gate.hold();return response;});
+  const old=f.runtime.playFromScreen({libraryId:'library',itemId:'movie',startSeconds:0},{signal:new AbortController().signal,isCurrent:()=>true});
+  const rejected=assert.rejects(old);await gate.started;
+  await f.runtime.play('newer');await f.arrive();const fence=f.runtime.getSnapshot().fence!;
+  await f.runtime.stop(fence);await settle();
+  assert.equal(f.runtime.retainsMedia(),false,'a superseded preflight ignoring abort cannot retain a drained successor');
+  gate.resolve();await rejected;assert.equal(f.runtime.retainsMedia(),false);
+  assert.deepEqual(changes,[true,false,true,false]);
+});
+
+test('WEB002 caller abort releases an item/options preflight even if its I/O ignores abort', async t => {
+  for(const path of ['/v1/items/movie','/v1/items/movie/playback-options'])await t.test(path,async sub=>{
+    const f=setup(sub),gate=deferred(),caller=new AbortController(),changes:boolean[]=[];
+    f.runtime.onRetention(()=>changes.push(f.runtime.retainsMedia()));
+    f.intercept(async(request,response)=>{if(request.path===path)await gate.hold();return response;});
+    const pending=f.runtime.playFromScreen({libraryId:'library',itemId:'movie',startSeconds:0},{signal:caller.signal,isCurrent:()=>true});
+    const rejected=assert.rejects(pending);assert.equal(f.runtime.retainsMedia(),true);await gate.started;
+    caller.abort();assert.equal(f.runtime.retainsMedia(),false);assert.deepEqual(changes,[true,false]);
+    gate.resolve();await rejected;assert.equal(f.runtime.retainsMedia(),false);assert.deepEqual(changes,[true,false]);
+  });
+});
+
+test('WEB002 actual playing, paused, expanded and retained bookmark resources notify only retention transitions', async t => {
+  const f=setup(t),changes:boolean[]=[];const off=f.runtime.onRetention(()=>changes.push(f.runtime.retainsMedia()));
+  assert.equal(f.runtime.retainsMedia(),false);await f.runtime.play('movie',20);const engine=await f.arrive();
+  const fence=f.runtime.getSnapshot().fence!;assert.equal(f.runtime.retainsMedia(),true);
+  await f.runtime.pause(fence);assert.equal(f.runtime.getSnapshot().presentation!.playing,false);assert.equal(f.runtime.retainsMedia(),true);
+  f.runtime.collapse(fence);f.runtime.open(fence);f.video.advance(24);f.video.fire('progress');await settle();
+  assert.equal(f.runtime.retainsMedia(),true);assert.equal(engine.destroyed,false);assert.deepEqual(changes,[true]);
+  await f.runtime.play('song_one',10);await f.arrive();assert.ok(f.runtime.getSnapshot().dock.resumeVideo);
+  await f.runtime.play('other',30);await f.arrive();assert.ok(f.runtime.getSnapshot().dock.parkedAudio);assert.ok(f.runtime.getSnapshot().dock.resumeVideo);
+  assert.equal(f.runtime.retainsMedia(),true);assert.deepEqual(changes,[true]);
+  f.runtime.dispose();assert.equal(f.runtime.retainsMedia(),false);assert.deepEqual(changes,[true,false]);off();
+});
+
+test('WEB002 actual local preparation, paused lease and final drain retain without a server session', async t => {
+  const port=new ControlledLocalMedia(),gate=deferred();port.gate=()=>gate.hold();
+  const f=setup(t,{}, {createPlayer:()=>port,createRender:null},localScope),changes:boolean[]=[];let released=0;
+  f.runtime.onRetention(()=>changes.push(f.runtime.retainsMedia()));
+  const pending=f.runtime.playLocalQueue({preparation:localPreparation(),release:async()=>{released++;}},{signal:new AbortController().signal,isCurrent:()=>true});
+  assert.equal(f.runtime.retainsMedia(),true);await gate.started;assert.equal(f.runtime.getSnapshot().session,undefined);
+  gate.resolve();await pending;const fence=f.runtime.getSnapshot().fence!;assert.equal(fence.kind,'local');
+  await f.runtime.pause(fence);assert.equal(port.observe().state,'paused');assert.equal(f.runtime.retainsMedia(),true);assert.deepEqual(changes,[true]);
+  await f.runtime.stop(fence);await settle();assert.equal(released,1);assert.equal(f.runtime.retainsMedia(),false);assert.deepEqual(changes,[true,false]);
+});
+
+test('WEB002 actual capacity wait and preparation retain until the original start is cancelled', async t => {
+  for(const mode of ['capacity','preparation'] as const)await t.test(mode,async sub=>{
+    const f=setup(sub),caller=new AbortController(),changes:boolean[]=[];
+    f.runtime.onRetention(()=>changes.push(f.runtime.retainsMedia()));
+    f.intercept(async(request,response)=>request.method==='POST'&&request.path===(mode==='capacity'?'/v1/queues':'/v1/playback/sessions')
+      ? mode==='capacity'?{status:429,headers:{'Retry-After':'1'},body:{error:{code:'conversion_capacity',retry:'same_request'}}}
+        :{status:202,headers:{},body:{retryAfterMs:1000}}:response);
+    const pending=f.runtime.cataloguePlayback().playSegments([{source:{items:{ids:['movie']}}}],{signal:caller.signal,isCurrent:()=>true,...(mode==='preparation'?{startSeconds:0}:{})});
+    const rejected=assert.rejects(pending);await settle();const state=f.runtime.getSnapshot();
+    assert.equal(f.runtime.retainsMedia(),true);assert.equal(state.session,undefined);
+    if(mode==='capacity')assert.equal(state.capacityWait?.isCurrent(),true);else assert.ok(state.playback.preparation|| (f.runtime as unknown as {stack:{queue:{getSnapshot():{phase:string}}}}).stack.queue.getSnapshot().phase==='preparing');
+    caller.abort();await rejected;await settle();assert.equal(f.runtime.retainsMedia(),false);assert.deepEqual(changes,[true,false]);
+  });
+});
+
+// These imports deliberately name the final integration paths. The fact owner
+// and its additive Home/core APIs are supplied by P2-50b-shell/P2-50a.
+test('WEB002 EACH five same-authority hints preserve actual media owners in all retained states; real Home fence retires it', async t => {
+  const {createShellFactOwner,shellAccount}=await import('../src/shell/facts.ts');
+  const {FreshnessHub}=await import('@core/freshness-hub.ts');
+  const {HomeService}=await import('@core/home-service.ts');
+  const {HomeDocumentResources}=await import('../src/shell/home-resources.ts');
+  const {parseDirectSnapshot}=await import('@core/profile-management.ts');
+  const {GUIDE_PROTOCOL}=await import('@core/channel-guide.ts');
+  const {WebMediaPlayer}=await import('../src/platform/playback/web-media-player.ts');
+  for(const state of ['playing','paused','expanded','parked','resume','local','remote','item-preflight','options-preflight','version-preflight','preparing','capacity'] as const)await t.test(state,async sub=>{
+    let player!:InstanceType<typeof WebMediaPlayer>|ControlledLocalMedia;
+    const local=state==='local'?new ControlledLocalMedia():undefined;
+    const f=setup(sub,{}, {createPlayer:(video,options)=>player=local??new WebMediaPlayer(video,options),createRender:null,subtitleSurface:false},local?localScope:undefined);
+    const caller=new AbortController(),gate=deferred();let pending:Promise<unknown>|undefined;
+    let remote:ReturnType<typeof castController>|undefined;
+    sub.after(async()=>{caller.abort();gate.resolve();await pending;});
+    if(state==='local'){
+      await f.runtime.playLocalQueue({preparation:localPreparation(),release:async()=>{}},{signal:caller.signal,isCurrent:()=>true});
+      await f.runtime.pause(f.runtime.getSnapshot().fence!);
+    }else if(state==='remote'){
+      remote=castController(sub,f);
+      remote.sender.publish({phase:'casting',itemId:'movie',title:'Actual remote',receiver:{itemId:'movie',positionSeconds:43,durationSeconds:3186,paused:true}});
+    }else if(['item-preflight','options-preflight','version-preflight','preparing','capacity'].includes(state)){
+      f.intercept(async(request,response)=>{
+        if(state==='capacity'&&request.method==='POST'&&request.path==='/v1/queues')return {status:429,headers:{'Retry-After':'1'},body:{error:{code:'conversion_capacity',retry:'same_request'}}};
+        if(state==='preparing'&&request.method==='POST'&&request.path==='/v1/playback/sessions')return {status:202,headers:{},body:{retryAfterMs:1000}};
+        if((state==='item-preflight'&&request.path==='/v1/items/movie')||(['options-preflight','version-preflight'].includes(state)&&request.path==='/v1/items/movie/playback-options'))await gate.hold();
+        return response;
+      });
+      pending=(state==='version-preflight'
+        ?f.runtime.playVersion({context:selectionContext,itemId:'movie',versionId:'v1',signal:caller.signal},()=>true)
+        :state==='capacity'||state==='preparing'
+          ?f.runtime.cataloguePlayback().playSegments([{source:{items:{ids:['movie']}}}],{signal:caller.signal,isCurrent:()=>true,...(state==='preparing'?{startSeconds:0}:{})})
+          :f.runtime.playFromScreen({libraryId:'library',itemId:'movie',startSeconds:0},{signal:caller.signal,isCurrent:()=>true})).catch(()=>{});
+      if(['preparing','capacity'].includes(state))await settle();else await gate.started;
+    }else{
+      if(state==='parked'){await f.runtime.play('song_one',12);await f.arrive();}
+      await f.runtime.play('movie',37);await f.arrive();
+      if(state==='resume'){await f.runtime.play('song_two',12);await f.arrive();await f.runtime.stop(f.runtime.getSnapshot().fence!);}
+      else{
+        const fence=f.runtime.getSnapshot().fence!;
+        if(state!=='playing')await f.runtime.pause(fence);
+        if(state==='expanded')f.runtime.open(fence);else f.runtime.collapse(fence);
+        f.video.advance(43);await settle();
+      }
+    }
+    const engine=f.hls.instances.findLast(instance=>!instance.destroyed);
+    assert.equal(f.runtime.retainsMedia(),true,state+' must have real retained ownership before any hint');
+    if(state==='local')assert.equal(local!.observe().state,'paused');
+    if(state==='remote')assert.equal(remote!.controller.getSnapshot().remote!.paused,true);
+    if(state==='resume'){assert.equal(f.runtime.getSnapshot().session,undefined);assert.ok(f.runtime.getSnapshot().dock.resumeVideo);}
+    if(state==='parked')assert.ok(f.runtime.getSnapshot().dock.parkedAudio);
+    if(state==='capacity')assert.equal(f.runtime.getSnapshot().capacityWait?.isCurrent(),true);
+    if(state==='preparing')assert.ok(f.runtime.getSnapshot().playback.preparation);
+    const stack=(f.runtime as unknown as {stack:{service:import('@core/index.ts').PlaybackService;queue:object;web:{dispose():void;slot:object}}}).stack;
+    const pause=sub.mock.method(stack.service,'pause'),leave=sub.mock.method(stack.service,'leave'),dispose=sub.mock.method(stack.web,'dispose'),playerDispose=sub.mock.method(player,'dispose'),videoPause=sub.mock.method(f.video,'pause');
+    const localPause=local?sub.mock.method(local,'pause'):undefined;
+    const original={runtime:f.runtime,source:f.source,authority:f.runtime.authority,service:stack.service,queue:stack.queue,web:stack.web,slot:stack.web.slot,player,video:f.video,dock:f.runtime.dock,session:f.runtime.getSnapshot().session,queueView:f.runtime.getSnapshot().queueView,loads:f.video.loads,plays:f.video.plays,position:f.video.currentTime,listeners:f.video.listenerCount(),fence:f.runtime.getSnapshot().fence,presentation:f.runtime.getSnapshot().presentation,dockState:f.runtime.dock.getSnapshot(),remote:remote?.controller.getSnapshot().remote,remoteCommands:remote?.sender.commands.length,local:local?.observe(),localLoads:local?.loads.length};
+    const time=manualClock(),hub=new FreshnessHub({...time,random:()=>0});
+    let retired=0,homeFence=homeViewerFence,revision=1;
+    const session={sessionFamilyId:'family',viewer:{...viewer,role:'owner'}} as import('@core/index.ts').LocalSession;
+    const system={id:'server',name:'Study',version:'1',signIn:'local' as const,move:null,setupRequired:false,hostedConfigured:false,hostedAttached:false};
+    const direct=()=>({authority:'local',serverId:'server',canManage:true,capabilities:{manageAccount:true,managePeople:true,manageServer:true,manageSignIn:true},account:{id:'account',username:'viewer '+revision,primaryProfileId:'profile',role:'owner',revision,disabled:false,allowedLibraries:[]},profiles:[{id:'profile',name:'Evening '+revision,primary:true,position:0,art:'mint',revision,pinRevision:1,pinRequired:false}]});
+    const witnesses={system,direct:parseDirectSnapshot(direct())};
+    const preferences={effective:{},deviceClass:'web'} as import('../src/shell/bootstrap.ts').ShellFacts['preferences'];
+    const initial={serverName:'Study',preferences,identity:{viewer:session.viewer,serverName:'Study',serverVersion:'1',libraries:[{id:'library',name:'Films',kind:'movies'}],...shellAccount(witnesses.direct,'profile'),liveAvailable:false,unread:0,showNotificationDot:false}} as import('../src/shell/bootstrap.ts').ShellFacts;
+    const retire=()=>{if(retired)return;retired++;f.invalidate();f.runtime.dispose();};
+    const home=new HomeService(f.api,{observation:{serverId:'server',isCurrent:f.source.isCurrent,observe:observation=>observation.viewerFence===homeViewerFence?'accept':'retire',retire,mismatch:retire}});
+    const reads:string[]=[];
+    f.intercept(async(request,response)=>{
+      const ok=(body:unknown)=>({status:200,headers:{},body});
+      if(request.path==='/v1/libraries'){reads.push('directory');return ok({items:[{id:'library',name:'Films '+revision,kind:'movies'}]});}
+      if(request.path==='/v1/system'){reads.push('server');return ok({...system,name:'Study '+revision,version:String(revision)});}
+      if(request.path==='/v1/direct'){reads.push('members');return ok(direct());}
+      if(request.path.startsWith('/v1/guide/sources?')){reads.push('guide');return ok({protocolVersion:GUIDE_PROTOCOL,serverId:'server',viewerFence:'guide',revision:String(revision),sources:[]});}
+      if(request.path==='/v1/home'){reads.push('home');return ok({serverId:'server',viewerFence:homeFence,rows:[],spotlight:[],layout:{revision:1,rowOrder:[],hiddenRowIds:[]},revision:{catalog:revision,viewer:1},generatedAt:'2026-10-28T12:00:00Z'});}
+      return response;
+    });
+    await home.load();
+    const resources=new HomeDocumentResources(home,{isCurrent:f.source.isCurrent,create:()=>({value:f.runtime,dispose:()=>f.runtime.dispose()}),changed(){},failed:assert.fail});
+    const owner=createShellFactOwner({api:f.api,session:()=>session,hub,home,initial,witnesses,isCurrent:f.source.isCurrent,retire,
+      auth:{reconcilePermissions:async()=>({kind:'confirmed-unchanged'})} as never,
+      preferences:{observePreferences:async()=>({kind:'ok',value:preferences})} as never});
+    owner.setRetained(f.runtime.retainsMedia());const off=f.runtime.onRetention(()=>owner.setRetained(f.runtime.retainsMedia()));
+    sub.after(()=>{off();owner.dispose();resources.dispose();home.dispose();hub.dispose();});
+    let factsChanged=0;owner.source.subscribe(()=>factsChanged++);
+    const hints=[{type:'libraries.changed',resource:{kind:'libraries',id:'all'},read:'directory'},
+      {type:'settings.changed',resource:{kind:'settings',id:'server'},read:'server'},
+      {type:'list.changed',resource:{kind:'list',id:'members'},read:'members'},
+      {type:'list.changed',resource:{kind:'list',id:'liveSources'},read:'guide'},
+      {type:'list.changed',resource:{kind:'list',id:'libraryChannels'},read:'guide'}];
+    const advance=async()=>{for(let i=0;i<4;i++){time.advance(500);await settle();}};
+    for(const hint of hints){
+      revision++;const before=reads.length;hub.accept({id:'hint-'+revision,type:hint.type,resource:hint.resource,revision:String(revision)});await advance();
+      assert.ok(reads.slice(before).includes(hint.read),hint.type+'/'+hint.resource.id+' must actually refresh its fact group');
+      const current=f.runtime.getSnapshot(),now=(f.runtime as unknown as {stack:typeof stack}).stack;
+      assert.equal(resources.get(),original.runtime);assert.equal(f.source,original.source);assert.equal(f.runtime.authority,original.authority);
+      assert.equal(now.service,original.service);assert.equal(now.queue,original.queue);assert.equal(now.web,original.web);assert.equal(now.web.slot,original.slot);assert.equal(player,original.player);
+      assert.equal(f.video,original.video);assert.equal(f.runtime.dock,original.dock);assert.equal(current.session,original.session);assert.equal(current.queueView,original.queueView);
+      assert.deepEqual(current.fence,original.fence);assert.equal(current.presentation,original.presentation);assert.equal(f.runtime.dock.getSnapshot(),original.dockState);
+      assert.equal(f.video.currentTime,original.position);assert.equal(f.video.loads,original.loads);assert.equal(f.video.plays,original.plays);assert.equal(f.video.listenerCount(),original.listeners);
+      if(engine)assert.equal(engine.destroyed,false);assert.equal(f.hls.instances.filter(instance=>!instance.destroyed).length,engine?1:0);
+      assert.equal(remote?.controller.getSnapshot().remote,original.remote);assert.equal(remote?.sender.commands.length,original.remoteCommands);assert.equal(local?.observe(),original.local);assert.equal(local?.loads.length,original.localLoads);assert.equal(f.runtime.retainsMedia(),true);assert.equal(retired,0);
+      for(const spy of [pause,leave,dispose,playerDispose,videoPause,...(localPause?[localPause]:[])])assert.equal(spy.mock.calls.length,0,hint.type+'/'+hint.resource.id+' cannot pause/leave/dispose actual media');
+      if(original.session)assert.equal(f.server.session(original.session.id)!.ended,false);
+    }
+    assert.ok(factsChanged>=3,'fresh names are published through the same fact source');
+    assert.equal(owner.source.getSnapshot().identity.libraries[0].name,'Films 2');assert.equal(owner.source.getSnapshot().serverName,'Study 3');assert.equal(owner.source.getSnapshot().identity.profileName,'Evening 4');
+    // A genuine authority manifest with a different visible-library/restriction
+    // fence uses the real HomeService observation/retirement boundary immediately.
+    homeFence='changed_visible_library_fence';revision++;
+    hub.accept({id:'real-fence',type:'libraries.changed',resource:{kind:'libraries',id:'all'},revision:String(revision)});await advance();
+    assert.equal(retired,1);assert.equal(f.runtime.getSnapshot().disposed,true);assert.equal(f.runtime.retainsMedia(),false);assert.equal(resources.get(),undefined);
+    if(localPause)assert.ok(localPause.mock.calls.length>0);else assert.ok(pause.mock.calls.length>0);assert.ok(leave.mock.calls.length>0);assert.equal(dispose.mock.calls.length,1);assert.equal(playerDispose.mock.calls.length,1);
+    if(engine)assert.equal(engine.destroyed,true);assert.equal(f.video.listenerCount(),0);
+    if(original.session)assert.equal(f.server.session(original.session.id)!.ended,true);
+    if(remote)assert.equal(remote.sender.disposed,true);
+    gate.resolve();await pending;
+  });
+});
+
+test('WEB002 real remote owner retains while playing, paused, stopped or transfer-pending without a local session', async t => {
+  const f=setup(t),{sender,controller}=castController(t,f),changes:boolean[]=[];
+  f.runtime.onRetention(()=>changes.push(f.runtime.retainsMedia()));assert.equal(f.runtime.retainsMedia(),false);
+  sender.publish({phase:'casting',itemId:'movie',title:'Actual title',receiver:{itemId:'movie',positionSeconds:57,durationSeconds:3186,paused:false}});
+  assert.equal(controller.getSnapshot().remote!.confirmed,true);assert.equal(f.runtime.getSnapshot().session,undefined);assert.equal(f.runtime.getSnapshot().dock.remote,null);
+  assert.equal(f.runtime.retainsMedia(),true);assert.deepEqual(changes,[true]);
+  sender.publish({phase:'casting',paused:true,receiver:{itemId:'movie',positionSeconds:57,durationSeconds:3186,paused:true}});
+  assert.equal(controller.getSnapshot().remote!.paused,true);assert.equal(f.runtime.retainsMedia(),true);assert.deepEqual(changes,[true]);
+  sender.publish({phase:'off',remoteStopped:true});assert.equal(controller.getSnapshot().remote!.phase,'stopped');assert.equal(f.runtime.retainsMedia(),true);
+  controller.dismiss(controller.getSnapshot().remote!);assert.equal(f.runtime.retainsMedia(),false);assert.deepEqual(changes,[true,false]);
+  sender.publish({phase:'off',transferPending:true,remoteStopped:false});assert.equal(f.runtime.retainsMedia(),true);
+  controller.dispose();assert.equal(f.runtime.retainsMedia(),false);assert.deepEqual(changes,[true,false,true,false]);
+});
+
+test('WEB002 actual group item preflight and capability admission retain before any media resource exists', async t => {
+  const {webDeclaredProfile}=await import('@core/client-profile.ts');
+  for(const mode of ['group-item','capability'] as const)await t.test(mode,async sub=>{
+    const gate=deferred(),caller=new AbortController();
+    const f=setup(sub,{},mode==='capability'?{capabilities:async()=>{await gate.hold();return webDeclaredProfile({app:'WEB002'});}}:{}),changes:boolean[]=[];
+    f.runtime.onRetention(()=>changes.push(f.runtime.retainsMedia()));
+    if(mode==='group-item')f.intercept(async(request,response)=>{if(request.path==='/v1/items/movie')await gate.hold();return response;});
+    const pending=mode==='group-item'
+      ?(f.runtime as unknown as {playGroupItem(id:string,seconds:number,playing:boolean,context:{signal:AbortSignal;isCurrent():boolean}):Promise<void>}).playGroupItem('movie',0,false,{signal:caller.signal,isCurrent:()=>true})
+      :f.runtime.play('movie');
+    const settled=pending.catch(()=>{});assert.equal(f.runtime.retainsMedia(),true);await gate.started;
+    assert.equal(f.runtime.getSnapshot().session,undefined);assert.deepEqual(changes,[true]);
+    f.runtime.dispose();assert.equal(f.runtime.retainsMedia(),false);caller.abort();gate.resolve();await settled;assert.deepEqual(changes,[true,false]);
+  });
+});
+
+test('WEB002 actual bookmark restoration holds continuous retention and preserves a resumable video after local drain', async t => {
+  const f=setup(t),changes:boolean[]=[];f.runtime.onRetention(()=>changes.push(f.runtime.retainsMedia()));
+  await f.runtime.play('song_one',12);await f.arrive();const audio=f.runtime.getSnapshot().session!;
+  await f.runtime.play('movie',30);await f.arrive();const gate=deferred();let held=false;
+  f.intercept(async(request,response)=>{if(!held&&request.method==='POST'&&request.path==='/v1/playback/sessions'){held=true;await gate.hold();}return response;});
+  const stopping=f.runtime.stop(f.runtime.getSnapshot().fence!);assert.equal(f.runtime.retainsMedia(),true);await gate.started;assert.deepEqual(changes,[true]);
+  gate.resolve();await stopping;await f.arrive();
+  assert.equal(f.runtime.getSnapshot().session!.queue!.queueId,audio.queue!.queueId);assert.equal(f.runtime.getSnapshot().presentation!.playing,false);assert.equal(f.runtime.retainsMedia(),true);assert.deepEqual(changes,[true]);
+  // A real resumeVideo bookmark alone must keep the feed after its current
+  // music session closes, without any invented server session or player count.
+  await f.runtime.play('video_again',22);await f.arrive();const video=f.runtime.getSnapshot().fence!;
+  await f.runtime.play('song_two',3);await f.arrive();await f.runtime.stop(f.runtime.getSnapshot().fence!);
+  assert.equal(f.runtime.getSnapshot().session,undefined);assert.equal(f.runtime.getSnapshot().dock.resumeVideo!.fence.sessionId,video.sessionId);
+  assert.equal(f.runtime.retainsMedia(),true);assert.deepEqual(changes,[true]);
+  f.runtime.dispose();assert.deepEqual(changes,[true,false]);
+});
+
+test('WEB002 actual SDK adoption retains validation and metadata preflight while off; disposal cannot leak it', async t => {
+  const {castProofKey}=await import('@core/cast/controller-proof.ts');
+  for(const ending of ['adopt','dispose-validation','dispose-metadata'] as const)await t.test(ending,async sub=>{
+    const f=setup(sub),validation=deferred(),metadata=deferred(),changes:boolean[]=[];
+    const scope={...viewer,senderDeviceId:'sender-device',senderFamilyId:'family'},contextProof={...scope,origin:'https://portico.test',publicKey:'a'.repeat(43)};
+    const binding={id:'binding',bootstrapId:'bootstrap',receiverId:'tv',targetId:'target',targetFamilyId:'target-family',targetGeneration:'1',scope};
+    const saved=new Map([[castProofKey(contextProof,'tv'),JSON.stringify({version:2,context:contextProof,binding,controlToken:'a'.repeat(48)})]]);
+    const previous=Object.getOwnPropertyDescriptor(globalThis,'localStorage');
+    Object.defineProperty(globalThis,'localStorage',{configurable:true,value:{getItem:(key:string)=>saved.get(key)??null,setItem:(key:string,value:string)=>saved.set(key,value),length:0,key:()=>null,removeItem:(key:string)=>saved.delete(key)}});
+    sub.after(()=>{if(previous)Object.defineProperty(globalThis,'localStorage',previous);else delete(globalThis as Record<string,unknown>).localStorage;validation.resolve();metadata.resolve();});
+    let first=true;
+    f.intercept(async(request,response)=>{
+      if(request.path!=='/v1/cast/controllers/validate')return response;
+      assert.equal(f.runtime.retainsMedia(),true,'real validation is retained before its first await');
+      if(first){first=false;await validation.hold();}
+      return {status:200,headers:{},body:{binding,attemptId:(request.body as {attemptId:string}).attemptId,ticket:'b'.repeat(43)}};
+    });
+    const messages:Record<string,unknown>[]=[],listeners=new Set<(namespace:string,body:string)=>void>();
+    const session:CastSession={getCastDevice:()=>({friendlyName:'TV',label:'tv'}),sendMessage:async(_namespace,message)=>{messages.push(message as Record<string,unknown>);},addMessageListener:(_namespace,listener)=>{listeners.add(listener);},removeMessageListener:(_namespace,listener)=>{listeners.delete(listener);},endSession(){}};
+    const context={setOptions(){},requestSession:async()=>{},getCurrentSession:()=>session,addEventListener(){},removeEventListener(){}};
+    const browser:CastBrowser={document:new Proxy({} as Document,{get(){throw Error('unexpected_sdk_document_read');}}),navigator:{userAgent:'Chrome/156.0 Linux'},chrome:{},cast:{framework:{CastContext:{getInstance:()=>context},CastContextEventType:{SESSION_STATE_CHANGED:'session'},SessionState:{SESSION_RESUMED:'resumed',SESSION_ENDED:'ended'}}},setTimeout:f.clock.setTimer,clearTimeout:f.clock.clearTimer};
+    const sender=new WebCastSender({api:f.api,serverOrigin:contextProof.origin,controllerContext:contextProof,isCurrent:f.source.isCurrent,castApplicationId:'APP123',browser,describe:async()=>{await metadata.hold();return 'Actual title';}});
+    const controller=new PlayOnController({sender,runtime:f.runtime,isCurrent:f.source.isCurrent,reportError:assert.fail});sub.after(()=>controller.dispose());
+    f.runtime.onRetention(()=>changes.push(f.runtime.retainsMedia()));const sequence=f.runtime.getSnapshot().sequence;
+    const ready=sender.prepareForPlayer();await validation.started;assert.equal(await ready,true);
+    assert.equal(sender.getSnapshot().phase,'off');assert.equal(controller.getSnapshot().remote,undefined);assert.equal(f.runtime.getSnapshot().session,undefined);assert.equal(f.runtime.retainsMedia(),true);assert.deepEqual(changes,[true]);
+    assert.equal(f.runtime.getSnapshot().sequence,sequence,'retention observation adds no runtime snapshot cadence');
+    if(ending==='dispose-validation'){controller.dispose();assert.equal(f.runtime.retainsMedia(),false);validation.resolve();await settle();assert.deepEqual(changes,[true,false]);assert.equal(messages.length,0);return;}
+    validation.resolve();await settle();const adopt=messages.find(message=>message.type==='adopt')!;assert.ok(adopt);
+    for(const listener of listeners)listener('urn:x-cast:tv.getportico.portico',JSON.stringify({type:'status',attemptId:adopt.attemptId,controller:{bindingId:'binding',controllerGeneration:1,connectionGeneration:1},occurrence:{sessionId:'receiver-session',generation:1,itemId:'movie'},itemId:'movie',positionSeconds:43,durationSeconds:3186,paused:true,audioTracks:[],textTracks:[]}));
+    await metadata.started;assert.equal(sender.getSnapshot().phase,'off');assert.equal(f.runtime.retainsMedia(),true);assert.deepEqual(changes,[true]);
+    if(ending==='dispose-metadata'){controller.dispose();assert.equal(f.runtime.retainsMedia(),false);metadata.resolve();await settle();assert.deepEqual(changes,[true,false]);return;}
+    metadata.resolve();await settle();assert.equal(sender.getSnapshot().phase,'casting');assert.equal(controller.getSnapshot().remote!.paused,true);assert.equal(f.runtime.retainsMedia(),true);assert.deepEqual(changes,[true]);
+    controller.dispose();assert.equal(f.runtime.retainsMedia(),false);assert.deepEqual(changes,[true,false]);
+  });
+});
+
+test('WEB002 cancelled actual SDK picker cannot retain a drained runtime while the SDK ignores cancellation', async t => {
+  const f=setup(t);await f.runtime.play('movie',25);await f.arrive();const fence=f.runtime.getSnapshot().fence!,gate=deferred(),changes:boolean[]=[];
+  const session:CastSession={getCastDevice:()=>({friendlyName:'TV'}),sendMessage:async()=>{},addMessageListener(){},removeMessageListener(){},endSession(){}};
+  const context={setOptions(){},requestSession:()=>gate.hold(),getCurrentSession:()=>session,addEventListener(){},removeEventListener(){}};
+  const browser:CastBrowser={document:new Proxy({} as Document,{get(){throw Error('unexpected_sdk_document_read');}}),navigator:{userAgent:'Chrome/156.0 Linux'},chrome:{},cast:{framework:{CastContext:{getInstance:()=>context},CastContextEventType:{SESSION_STATE_CHANGED:'session'},SessionState:{SESSION_RESUMED:'resumed',SESSION_ENDED:'ended'}}},setTimeout:f.clock.setTimer,clearTimeout:f.clock.clearTimer};
+  // No controller proof or catalogue reader means this idle SDK session cannot
+  // silently adopt a receiver before the explicit user picker admission.
+  const sender=new WebCastSender({api:f.api,serverOrigin:'https://portico.test',castApplicationId:'APP123',browser});await sender.prepareForPlayer();
+  const controller=new PlayOnController({sender,runtime:f.runtime,isCurrent:f.source.isCurrent,reportError:assert.fail});t.after(()=>{gate.resolve();controller.dispose();});
+  f.runtime.onRetention(()=>changes.push(f.runtime.retainsMedia()));const pending=controller.startCast();await gate.started;
+  assert.equal(sender.retainsMedia(),true);assert.equal(f.runtime.retainsMedia(),true);
+  await f.runtime.stop(fence);await settle();assert.equal(await pending,false);
+  assert.equal(sender.retainsMedia(),false);assert.equal(f.runtime.retainsMedia(),false);assert.deepEqual(changes,[false]);
+  gate.resolve();await settle();assert.equal(f.runtime.retainsMedia(),false);assert.deepEqual(changes,[false]);
 });
