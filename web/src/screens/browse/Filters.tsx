@@ -114,7 +114,8 @@ export function BrowseFilters({controller, model, labels, compact, medium = fals
       const excluded = own.filter(node => ['not-in', 'not-equals'].includes(node.operator)).flatMap(node => (Array.isArray(node.value) ? node.value : [node.value]).map(String));
       const page = facets[field.id] ?? {kind: 'values', values: [], query: '', status: 'loading'};
       const expanded = expandedValues.includes(field.id), total = page.total ?? page.values.length;
-      const values = page.status === 'loading' ? [] : page.query || expanded ? page.values : page.values.slice(0, compact ? 11 : 9);
+      const reading = state.capabilities?.library.kind === 'book' || state.capabilities?.library.kind === 'comic';
+      const values = page.status === 'loading' && !reading ? [] : page.query || expanded ? page.values : page.values.slice(0, compact ? 11 : 9);
       // Show all expands a complete bounded facet response. Larger vocabularies
       // retain real server search; this endpoint never claims to enumerate them.
       value = {...page, values, total: page.status !== 'loading' && !expanded && total <= page.values.length ? total : undefined, kind: 'values', included, excluded, match: own.some(node => node.operator === 'contains-all') ? 'all' : excluded.length && !included.length ? 'none' : 'any', summary};

@@ -353,3 +353,7 @@ button.circle:focus-visible { outline: 3px solid var(--color-focus); outline-off
   .deleteTargets > div { font-size: 13.5px; }
   .deleteArtwork { width: 24px; height: 36px; }
 }
+
+/* The unavailable whole-view control carries no count; its reason stays visible. */
+.selectAllUnavailable { margin-left: auto; display: inline-flex; flex-direction: column; align-items: flex-end; gap: 2px; }
+.selectAllUnavailable > small { max-width: 180px; color: var(--color-text-tertiary); font-size: 11px; line-height: 1.25; }

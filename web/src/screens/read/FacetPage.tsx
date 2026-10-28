@@ -22,31 +22,35 @@ export function FacetPage({libraryId, field, pivot, request, onSelect}: {
   const [page, setPage] = useState<BrowseFacetPage>(), [values, setValues] = useState<readonly BrowseFacetValue[]>([]);
   const [failed, setFailed] = useState(false), [more, setMore] = useState(false), [retry, setRetry] = useState(0);
   const lifetime = useRef<AbortController>(undefined);
-  const pending = useRef(false), offset = useRef(0);
+  const pending = useRef(false), offset = useRef(0), basis = useRef<Readonly<{scope: string; request: FacetRequest}>>(undefined);
+  const scope = JSON.stringify([libraryId, field, pivot]);
   useEffect(() => {
     const operation = new AbortController();
-    lifetime.current = operation; pending.current = false; offset.current = 0;
-    setFailed(false); setPage(undefined); setValues([]); setMore(false);
+    lifetime.current = operation; pending.current = true; offset.current = 0;
+    if (basis.current?.scope !== scope || basis.current.request !== request) {basis.current = {scope, request}; setPage(undefined); setValues([]);}
+    setFailed(false); setMore(true);
     void loadFacetPage(request, {libraryId, field, pivot}, operation.signal)
-      .then(first => {if (!operation.signal.aborted) {offset.current = first.values.length; setPage(first); setValues(first.values);}})
-      .catch(() => {if (!operation.signal.aborted) setFailed(true);});
+      .then(first => {if (!operation.signal.aborted && (request.isCurrent?.() ?? true)) {offset.current = first.values.length; setPage(first); setValues(first.values);}})
+      .catch(() => {if (!operation.signal.aborted && (request.isCurrent?.() ?? true)) setFailed(true);})
+      .finally(() => {if (!operation.signal.aborted && (request.isCurrent?.() ?? true)) {pending.current = false; setMore(false);}});
     return () => operation.abort();
-  }, [libraryId, field, pivot, request, retry]);
+  }, [libraryId, field, pivot, request, retry, scope]);
   const loadMore = () => {
     const operation = lifetime.current;
     if (!page || pending.current || !operation || operation.signal.aborted) return;
     pending.current = true;
     setMore(true);
     void loadFacetPage(request, {libraryId, field, pivot, offset: offset.current}, operation.signal)
-      .then(next => {if (!operation.signal.aborted) {
+      .then(next => {if (!operation.signal.aborted && (request.isCurrent?.() ?? true)) {
         if (!next.values.length && offset.current < next.total) throw new Error('invalid_document');
         offset.current += next.values.length; setPage(next);
         setValues(current => [...current, ...next.values.filter(entry => !current.some(seen => seen.value === entry.value))]);
       }})
-      .catch(() => {if (!operation.signal.aborted) setFailed(true);})
-      .finally(() => {if (!operation.signal.aborted) {pending.current = false; setMore(false);}});
+      .catch(() => {if (!operation.signal.aborted && (request.isCurrent?.() ?? true)) setFailed(true);})
+      .finally(() => {if (!operation.signal.aborted && (request.isCurrent?.() ?? true)) {pending.current = false; setMore(false);}});
   };
-  if (failed || page && values.length === 0) return <StateView title={t('next.states.pageFailed')} body={t('next.states.pageFailedBody')}
+  if (basis.current?.scope !== scope || basis.current.request !== request) return <Skeleton height={320}/>;
+  if (values.length === 0 && (failed || page !== undefined)) return <StateView title={t('next.states.pageFailed')} body={t('next.states.pageFailedBody')}
     primary={{id: 'retry', label: t('next.states.tryAgain'), onPress: () => setRetry(value => value + 1)}}/>;
   if (!page) return <Skeleton height={320}/>;
   return <div className={styles.facet}>
@@ -57,6 +61,6 @@ export function FacetPage({libraryId, field, pivot, request, onSelect}: {
       <span className={styles.label}>{entry.label}</span>
       <span className={styles.count}>{defaultI18n.number(entry.count)}{entry.countIsLowerBound ? '+' : ''}</span>
     </div>)}
-    {offset.current < page.total && <div className={styles.more}><Button variant="glass" onClick={loadMore} disabled={more}>{t('action.showMore')}</Button></div>}
+    {(failed || offset.current < page.total) && <div className={styles.more}><Button variant="glass" onClick={failed ? () => setRetry(value => value + 1) : loadMore} disabled={more}>{t(failed ? 'next.states.tryAgain' : 'action.showMore')}</Button></div>}
   </div>;
 }

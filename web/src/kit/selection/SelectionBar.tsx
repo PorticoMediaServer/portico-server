@@ -1,4 +1,5 @@
-import {useRef, useState, type ReactNode, type RefObject} from 'react';
+import {defaultI18n} from '@i18n';
+import {useId, useRef, useState, type ReactNode, type RefObject} from 'react';
 import {Button} from '../controls';
 import {Icon} from '../Icon';
 import {Menu, MenuGroup, MenuItem, type MenuEntry} from '../overlays';
@@ -19,6 +20,7 @@ function useActionMenus(selection: SelectionCount, actions: SelectionActions) {
   if (actions.onWatchedChange) extra.push({id: 'unwatched', label: text('next.selection.markUnwatched'), icon: 'i-eyeoff-selection', onSelect: () => actions.onWatchedChange!(false)});
   if (actions.onFavorite) extra.push({id: 'favorite', label: text('next.selection.favorite'), icon: 'i-heart', onSelect: actions.onFavorite});
   if (actions.onRemoveFromMyList) extra.push({id: 'remove', label: text('next.selection.removeFromMyList'), icon: 'i-x', onSelect: actions.onRemoveFromMyList});
+  if (actions.downloadDisabledReason) extra.push({id: 'download', label: defaultI18n.t('action.download'), icon: 'i-download', disabled: true, description: actions.downloadDisabledReason, onSelect: () => {}});
   if (actions.onRefresh) owner.push({id: 'refresh', label: text('next.selection.refresh'), icon: 'i-refresh', onSelect: actions.onRefresh});
   if (actions.onDelete || actions.deleteDisabledReason) owner.push({id: 'delete', label: text('next.selection.deleteMenu'), icon: 'i-trash', destructive: true, disabled: !!actions.deleteDisabledReason, description: actions.deleteDisabledReason ?? actions.deleteExplanation, onSelect: () => {actions.onDelete?.();}});
   const ownerLabel = <span className={styles.ownerMenuLabel}>{actions.ownerMark}<span>{text('next.selection.owner')}</span></span>;
@@ -41,7 +43,12 @@ function useActionMenus(selection: SelectionCount, actions: SelectionActions) {
   return {open, setOpen, queue, watched, more, menus, extra: phoneExtra};
 }
 
-function SelectAll({selectAll, onSelectAll}: {selectAll: Exclude<SelectionBarProps['selectAll'], undefined>; onSelectAll: () => void}) {
+function SelectAll({selectAll, onSelectAll}: {selectAll: Exclude<SelectionBarProps['selectAll'], undefined>; onSelectAll?: () => void}) {
+  const reasonId = useId();
+  if (selectAll.kind === 'unavailable') return <span className={styles.selectAllUnavailable}>
+    <Button variant="text" className={styles.selectAll} size="small" disabled aria-describedby={reasonId}>{text('next.selection.selectAllUnavailableLabel')}</Button>
+    <small id={reasonId}>{selectAll.reason}</small>
+  </span>;
   const label = selectAll.kind === 'row' ? text('next.selection.selectRow') : selectAll.kind === 'clear' ? text('next.selection.clear') : text('next.selection.selectAll', {count: selectAll.total});
   return <Button variant="text" className={styles.selectAll} size="small" onClick={onSelectAll}>{label}</Button>;
 }
@@ -63,11 +70,11 @@ export function SelectionBar({selection, actions, context, typeCount, selectAll,
       {actions.onWatchedChange && <Button size="compact" icon="i-check" iconSize={18} ref={menu.watched} className={styles.barAction} aria-label={text('next.selection.watchMenu')} aria-haspopup="menu" aria-expanded={menu.open === 'watched'} onClick={() => menu.setOpen(menu.open === 'watched' ? null : 'watched')}>{text('next.selection.watched')}<Icon name="i-down" size={16} /></Button>}
       {actions.onEdit && <Button size="compact" icon="i-edit" iconSize={18} className={[styles.barAction, actions.editMode === 'mixed' ? styles.mixedEdit : styles.ownerEdit].join(' ')} aria-label={text('next.selection.editAccessibility')} onClick={event => actions.onEdit!(event.currentTarget)}>{text('next.selection.edit')}</Button>}
       {menu.extra.length > 0 && <Button variant="icon" size="small" iconOnly icon="i-more" iconSize={20} ref={menu.more} aria-label={text('next.selection.moreActions')} aria-haspopup="menu" aria-expanded={menu.open === 'more'} className={styles.barMore} onClick={() => menu.setOpen(menu.open === 'more' ? null : 'more')} />}
-      <div className={styles.barRight}>{selectAll && onSelectAll && <SelectAll selectAll={selectAll} onSelectAll={onSelectAll} />}<Button variant="text" size="small" className={styles.done} onClick={onExit}>{text('next.selection.done')}</Button><kbd className={styles.escape} title={text('next.selection.escHint')}>{text('next.selection.esc')}</kbd></div>
+      <div className={styles.barRight}>{selectAll && (selectAll.kind === 'unavailable' || onSelectAll) && <SelectAll selectAll={selectAll} onSelectAll={onSelectAll} />}<Button variant="text" size="small" className={styles.done} onClick={onExit}>{text('next.selection.done')}</Button><kbd className={styles.escape} title={text('next.selection.escHint')}>{text('next.selection.esc')}</kbd></div>
     </div>
     <div className={styles.phoneHeader} role="toolbar" aria-label={text('next.selection.selection')}>
       <Button variant="text" size="small" className={styles.cancelSelection} onClick={onExit}>{text('next.selection.cancel')}</Button>
-      <b>{text('next.selection.selected', {count: selection.count})}</b>{selectAll && onSelectAll && <SelectAll selectAll={selectAll} onSelectAll={onSelectAll} />}
+      <b>{text('next.selection.selected', {count: selection.count})}</b>{selectAll && (selectAll.kind === 'unavailable' || onSelectAll) && <SelectAll selectAll={selectAll} onSelectAll={onSelectAll} />}
       {context && <small>{context}</small>}
     </div>
     {allInView && <div className={styles.allNote}><Icon name="i-check" size={18} /><span><b>{text(allInView.scope === 'view' ? 'next.selection.allSelectedViewNote' : 'next.selection.allSelectedNote', {items: selectionCountText(selection)})}</b> {text('next.selection.allSelectedRemainder', {visible: allInView.visible})}</span><Button variant="text" size="xs" onClick={onExit}>{text('next.selection.clear')}</Button></div>}

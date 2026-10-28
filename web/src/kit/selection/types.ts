@@ -25,6 +25,8 @@ export type SelectionActions = Readonly<{
   onRefresh?: () => void;
   onDelete?: () => void;
   deleteDisabledReason?: string;
+  /** No query-download producer: retain a truthful unavailable control and reason. */
+  downloadDisabledReason?: string;
   /** Explanatory dialog is reachable; this description does not disable its trigger. */
   deleteExplanation?: string;
   ownerMark?: ReactNode;
@@ -34,8 +36,8 @@ export type SelectionBarProps = Readonly<{
   actions: SelectionActions;
   context?: string;
   typeCount?: number;
-  /** Omitted when the owner cannot honestly offer a whole-view or whole-row select. */
-  selectAll?: {kind: 'view'; total: number} | {kind: 'row'} | {kind: 'clear'};
+  /** An explicit unavailable view carries a reason, never a guessed total or executor. */
+  selectAll?: {kind: 'view'; total: number} | {kind: 'row'} | {kind: 'clear'} | {kind: 'unavailable'; reason: string};
   onSelectAll?: () => void;
   onExit: () => void;
   allInView?: {visible: number; scope?: 'library' | 'view'};

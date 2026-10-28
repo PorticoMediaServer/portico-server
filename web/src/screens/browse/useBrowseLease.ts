@@ -27,7 +27,8 @@ export function useBrowseLease(context: ScreenContext, sourceKey: string, routeK
         async request<T>(path: string, method?: string, body?: unknown, signal?: AbortSignal): Promise<T> {
           assert();const value = await original.api.request<T>(path, method, body, signal);assert();return value;
         },
-        async requestRaw(...args: Parameters<typeof original.api.requestRaw>) {assert();const value = await original.api.requestRaw(...args);assert();return value;},
+        // The preparation reader guards publication and needs late raw handles for cleanup.
+        requestRaw: context.api.requestRaw.bind(context.api),
       },
       dispose: () => {live = false;original.dispose();},
     };
