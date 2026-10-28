@@ -25,7 +25,7 @@ func recordingChannelRefs(recordings []Recording) []recordingChannelRef {
 }
 
 // DVR's HTTP authority is source-level, as in recordingSourcesTx. Marks come
-// from the existing complete authorized CURRENT lineup in this same snapshot,
+// from the complete CURRENT source lineup in this same snapshot,
 // never from the recording page, a programme title or the retained old guide.
 func (s *Store) recordingChannelMarksTx(ctx context.Context, tx *sql.Tx, authority livechannels.Authority, owner livechannels.Owner, refs []recordingChannelRef) error {
 	for _, ref := range refs {

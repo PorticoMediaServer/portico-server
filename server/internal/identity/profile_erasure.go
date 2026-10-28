@@ -17,16 +17,6 @@ func eraseProfileRuntimeDataTx(ctx context.Context, tx *sql.Tx, v Viewer) error 
 		return yes, e
 	}
 	run := func(q string, args ...any) error { _, e := tx.ExecContext(ctx, q, args...); return e }
-	// Explicit recording permissions carry personal authority and must not
-	// survive a profile tombstone. Account-wide inherited grants belong to the
-	// account and are removed by account erasure, not a sibling profile deletion.
-	if ok, e := exists("dvr_recording_grants"); e != nil {
-		return e
-	} else if ok {
-		if e = run(`DELETE FROM dvr_recording_grants WHERE authority=? AND account_id=? AND profile_id=?`, v.Authority, v.AccountID, v.ProfileID); e != nil {
-			return e
-		}
-	}
 	// Live viewer preferences are optional until the live domain is installed.
 	for _, table := range []string{"live_channel_preferences", "live_preference_receipts"} {
 		if ok, e := exists(table); e != nil {

@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"portico.local/server/internal/dbwork"
 	"portico.local/server/internal/requestinput"
 	"sort"
@@ -104,10 +105,35 @@ func (r ProfileRestrictions) Content() ContentRestrictions {
 	return out
 }
 
-// DefaultRestrictions is what a profile with no stored row means: nothing blocked.
+// DefaultRestrictions is what a profile with no stored row means: nothing blocked,
+// except recording. Recording uses the server's disk, so it is off until the
+// server owner switches it on (Who can record); recordingDefault answers for the
+// owner's own main profile, which records from the start.
 func DefaultRestrictions(profile string) ProfileRestrictions {
-	return ProfileRestrictions{ProfileID: profile, MaximumAge: -1, AllowUnrated: true, BlockedLabels: []string{}, AllowDownloads: true, AllowLiveTV: true, AllowDVR: true, AllowWatchTogether: true, Revision: 1}
+	return ProfileRestrictions{ProfileID: profile, MaximumAge: -1, AllowUnrated: true, BlockedLabels: []string{}, AllowDownloads: true, AllowLiveTV: true, AllowDVR: false, AllowWatchTogether: true, Revision: 1}
 }
+
+type restrictionQuerier interface {
+	QueryRowContext(context.Context, string, ...any) *sql.Row
+}
+
+// defaultRestrictions is DefaultRestrictions for a profile with no stored row,
+// with Recordings on for the server owner's main profile.
+func defaultRestrictions(ctx context.Context, q restrictionQuerier, profile string) (ProfileRestrictions, error) {
+	out := DefaultRestrictions(profile)
+	e := q.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM direct_profiles p JOIN direct_memberships m ON m.account_id=p.account_id WHERE p.id=? AND p.is_primary=1 AND p.deleted=0 AND m.role='owner' AND m.disabled=0)`, profile).Scan(&out.AllowDVR)
+	return out, e
+}
+
+// RecordingDefaultSQL is the stored-or-default Recordings value for a profile row
+// p joined to its membership m and its optional restriction row r, for list
+// queries that cannot call RestrictionsTx per row.
+const RecordingDefaultSQL = `COALESCE(r.allow_dvr,CASE WHEN p.is_primary=1 AND m.role='owner' THEN 1 ELSE 0 END)`
+
+// ErrRecordingGrant refuses a restriction edit that would let a profile record
+// when the caller is not the server owner. Who can record is the owner's choice;
+// anyone who manages the profile may still switch Recordings off.
+var ErrRecordingGrant = fmt.Errorf("only the server owner can let a profile record: %w", ErrForbidden)
 
 // ProfileRestrictionEdit is a full replacement guarded by ExpectedRevision. A
 // partial patch is deliberately not offered: a restriction document read, shown
@@ -168,9 +194,34 @@ const restrictionColumns = `rating_system,maximum_age_rating,maximum_age,allow_u
 func RestrictionsTx(ctx context.Context, tx *sql.Tx, profile string) (ProfileRestrictions, error) {
 	out, e := scanRestrictions(tx.QueryRowContext(ctx, `SELECT `+restrictionColumns+` FROM profile_restrictions WHERE profile_id=?`, profile), profile)
 	if errors.Is(e, sql.ErrNoRows) {
-		return DefaultRestrictions(profile), nil
+		return defaultRestrictions(ctx, tx, profile)
 	}
 	return out, e
+}
+
+// SetRecordingAllowedTx is Who can record: the owner switches one profile's
+// Recordings on or off at the restriction document's revision, keeping every
+// other restriction as it is. The caller has proved server-owner authority and,
+// when allowing, that the profile's membership is current.
+func SetRecordingAllowedTx(ctx context.Context, tx *sql.Tx, account, profile string, allowed bool, expectedRevision int64) (ProfileRestrictions, error) {
+	var deleted int
+	if e := tx.QueryRowContext(ctx, `SELECT deleted FROM direct_profiles WHERE account_id=? AND id=?`, account, profile).Scan(&deleted); e != nil || deleted != 0 {
+		return ProfileRestrictions{}, ErrNotVisible
+	}
+	current, e := RestrictionsTx(ctx, tx, profile)
+	if e != nil {
+		return ProfileRestrictions{}, e
+	}
+	if current.Revision != expectedRevision {
+		return ProfileRestrictions{}, ErrRestrictionChanged
+	}
+	raw, _ := json.Marshal(current.BlockedLabels)
+	if _, e = tx.ExecContext(ctx, `INSERT INTO profile_restrictions(profile_id,rating_system,maximum_age_rating,maximum_age,allow_unrated,blocked_labels,allow_downloads,allow_live_tv,allow_dvr,allow_watch_together,revision) VALUES(?,?,?,?,?,?,?,?,?,?,?)
+ ON CONFLICT(profile_id) DO UPDATE SET allow_dvr=excluded.allow_dvr,revision=profile_restrictions.revision+1`,
+		profile, current.RatingSystem, current.MaximumAgeRating, current.MaximumAge, current.AllowUnrated, string(raw), current.AllowDownloads, current.AllowLiveTV, allowed, current.AllowWatchTogether, current.Revision+1); e != nil {
+		return ProfileRestrictions{}, e
+	}
+	return RestrictionsTx(ctx, tx, profile)
 }
 
 // API keys belong to a local account and inherit that owner's profile policy.
@@ -220,7 +271,7 @@ func (s *Service) ViewerRestrictions(ctx context.Context, p Principal) (ContentR
 	}
 	out, e := scanRestrictions(s.db.QueryRowContext(ctx, `SELECT `+restrictionColumns+` FROM profile_restrictions WHERE profile_id=?`, p.ProfileID), p.ProfileID)
 	if errors.Is(e, sql.ErrNoRows) {
-		return DefaultRestrictions(p.ProfileID).Content(), nil
+		out, e = defaultRestrictions(ctx, s.db, p.ProfileID)
 	}
 	if e != nil {
 		return ContentRestrictions{}, e
@@ -288,7 +339,11 @@ func (s *Service) SetProfileRestrictions(ctx context.Context, bearer, profile st
 	if e != nil {
 		return ProfileRestrictions{}, e
 	}
-	out, e := writeRestrictionsTx(ctx, tx, c.account.ID, profile, edit)
+	var owner bool
+	if e = tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM direct_memberships WHERE account_id=? AND role='owner' AND disabled=0)`, c.account.ID).Scan(&owner); e != nil {
+		return ProfileRestrictions{}, e
+	}
+	out, e := writeRestrictionsTx(ctx, tx, c.account.ID, profile, edit, owner)
 	if e != nil {
 		return out, e
 	}
@@ -321,7 +376,11 @@ func (edit *ProfileRestrictionEdit) normalize() error {
 //
 // The change applies live. The profile's devices stay signed in; what they may
 // see changes on their next request.
-func writeRestrictionsTx(ctx context.Context, tx *sql.Tx, account, profile string, edit ProfileRestrictionEdit) (ProfileRestrictions, error) {
+//
+// ownerGrant says the caller is the server owner, the only one who may switch
+// a profile's Recordings on (Who can record); switching it off is open to anyone
+// who manages the profile.
+func writeRestrictionsTx(ctx context.Context, tx *sql.Tx, account, profile string, edit ProfileRestrictionEdit, ownerGrant bool) (ProfileRestrictions, error) {
 	var deleted int
 	if e := tx.QueryRowContext(ctx, `SELECT deleted FROM direct_profiles WHERE account_id=? AND id=?`, account, profile).Scan(&deleted); e != nil || deleted != 0 {
 		return ProfileRestrictions{}, ErrNotVisible
@@ -332,6 +391,9 @@ func writeRestrictionsTx(ctx context.Context, tx *sql.Tx, account, profile strin
 	}
 	if current.Revision != edit.ExpectedRevision {
 		return ProfileRestrictions{}, ErrRestrictionChanged
+	}
+	if edit.AllowDVR && !current.AllowDVR && !ownerGrant {
+		return ProfileRestrictions{}, ErrRecordingGrant
 	}
 	ceiling, _ := RatingCeiling(edit.RatingSystem, edit.MaximumAgeRating)
 	raw, _ := json.Marshal(edit.BlockedLabels)
@@ -369,8 +431,7 @@ func (s *Service) WithProfileRestrictions(ctx context.Context, p Principal, chec
 	}
 	out, err := scanRestrictions(s.db.QueryRowContext(ctx, `SELECT `+restrictionColumns+` FROM profile_restrictions WHERE profile_id=?`, p.ProfileID), p.ProfileID)
 	if errors.Is(err, sql.ErrNoRows) {
-		out = DefaultRestrictions(p.ProfileID)
-		err = nil
+		out, err = defaultRestrictions(ctx, s.db, p.ProfileID)
 	}
 	if err != nil {
 		return err

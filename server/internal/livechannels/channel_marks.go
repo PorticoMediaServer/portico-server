@@ -5,10 +5,11 @@ import (
 	"database/sql"
 	"sort"
 	"strings"
+	"sync"
 	"unicode"
 )
 
-// ChannelMark is authoritative within a source's complete authorized lineup.
+// ChannelMark is authoritative within a source's complete current lineup.
 // Filtering and page boundaries never change the collision domain.
 type ChannelMark struct {
 	Text string `json:"text"`
@@ -89,21 +90,63 @@ func channelMarks(names []markName) map[string]ChannelMark {
 	}
 	return out
 }
-func directoryMarks(ctx context.Context, tx *sql.Tx, scope DirectoryScope, q DirectoryQuery, channels []Channel) error {
-	q.Search = ""
-	q.Group = ""
-	q.FavoritesOnly = false
-	q.SourceID = ""
-	q.Kind = "all"
-	q.IncludeHidden = false
-	rows, err := tx.QueryContext(ctx, directoryEligibleSQL+`SELECT source_id,channel_id,name,number FROM eligible ORDER BY source_id,channel_id`, directoryArgs(scope, q)...)
+
+// The process-wide LRU is shared by owner, guide and recording reads. Database
+// identity prevents cross-server reuse. At most four snapshots / 100,000 marks
+// are retained; builds run outside the mutex.
+const markCacheEntries = 4
+const markCacheChannels = 100000
+
+type markCacheKey struct {
+	db                 *sql.DB
+	source, generation string
+	revision           int64
+}
+type markCacheEntry struct {
+	key   markCacheKey
+	marks map[string]ChannelMark
+}
+
+var sourceMarkCache struct {
+	sync.Mutex
+	entries []markCacheEntry // oldest first
+}
+
+// SourceChannelMarksTx returns an immutable map keyed by source + NUL + channel.
+// It includes hidden channels and effective owner numbers in the caller's
+// snapshot. Authorization belongs to the caller, never the collision domain.
+// Pass the owning database on read-only snapshots to reuse the bounded cache;
+// pass nil in write transactions so rolled-back values can never be cached.
+func SourceChannelMarksTx(ctx context.Context, tx *sql.Tx, db *sql.DB, source string) (map[string]ChannelMark, error) {
+	key := markCacheKey{db: db, source: source}
+	err := tx.QueryRowContext(ctx, `SELECT active_generation,COALESCE((SELECT revision FROM admin_documents WHERE scope='live-source:'||live_sources.id),1) FROM live_sources WHERE id=?`, source).Scan(&key.generation, &key.revision)
 	if err != nil {
-		return err
+		return nil, err
+	}
+	if db != nil {
+		// The lock covers only the lookup and the insert: a cold build of a large
+		// lineup never stalls warm reads of other sources. Two cold readers of
+		// one source may both build; the second insert replaces the first.
+		sourceMarkCache.Lock()
+		for i, entry := range sourceMarkCache.entries {
+			if entry.key == key {
+				copy(sourceMarkCache.entries[i:], sourceMarkCache.entries[i+1:])
+				sourceMarkCache.entries[len(sourceMarkCache.entries)-1] = entry
+				sourceMarkCache.Unlock()
+				return entry.marks, nil
+			}
+		}
+		sourceMarkCache.Unlock()
+	}
+	rows, err := tx.QueryContext(ctx, `SELECT v.channel_id,v.name,COALESCE(NULLIF(n.number,''),v.number) FROM live_channel_versions v LEFT JOIN admin_channel_numbers n ON n.source_id=? AND n.channel_id=v.channel_id WHERE v.generation_id=?`, source, key.generation)
+	if err != nil {
+		return nil, err
 	}
 	names := []markName{}
 	for rows.Next() {
 		var n markName
-		if err = rows.Scan(&n.source, &n.id, &n.name, &n.number); err != nil {
+		n.source = source
+		if err = rows.Scan(&n.id, &n.name, &n.number); err != nil {
 			break
 		}
 		names = append(names, n)
@@ -113,11 +156,61 @@ func directoryMarks(ctx context.Context, tx *sql.Tx, scope DirectoryScope, q Dir
 	}
 	rows.Close()
 	if err != nil {
-		return err
+		return nil, err
 	}
 	marks := channelMarks(names)
+	if db != nil && len(marks) <= markCacheChannels {
+		sourceMarkCache.Lock()
+		defer sourceMarkCache.Unlock()
+		previous := sourceMarkCache.entries
+		kept := previous[:0]
+		total := len(marks)
+		for _, entry := range sourceMarkCache.entries {
+			// A changed generation/revision replaces this source's old snapshot.
+			if entry.key.db != db || entry.key.source != source {
+				kept = append(kept, entry)
+				total += len(entry.marks)
+			}
+		}
+		clear(previous[len(kept):])
+		for len(kept) > 0 && (len(kept) >= markCacheEntries || total > markCacheChannels) {
+			total -= len(kept[0].marks)
+			kept[0] = markCacheEntry{}
+			kept = kept[1:]
+		}
+		sourceMarkCache.entries = append(kept, markCacheEntry{key, marks})
+	}
+	return marks, nil
+}
+
+func (s *Store) directoryMarks(ctx context.Context, tx *sql.Tx, scope DirectoryScope, channels []Channel) error {
+	// Library configurations are already bounded to 64 rows. Live source marks
+	// use their full generation, independently of this viewer's projection.
+	names := make([]markName, 0, len(scope.LibraryRows))
+	for _, row := range scope.LibraryRows {
+		c := row.Channel
+		names = append(names, markName{c.SourceID, c.ID, c.Name, c.Number})
+	}
+	marks := channelMarks(names)
+	sources := map[string]map[string]ChannelMark{}
+	for _, c := range channels {
+		for _, source := range scope.AllowedLiveSources {
+			if c.SourceID == source && sources[source] == nil {
+				var err error
+				sources[source], err = SourceChannelMarksTx(ctx, tx, s.db, source)
+				if err != nil {
+					return err
+				}
+			}
+		}
+	}
 	for i := range channels {
-		if mark, ok := marks[channels[i].SourceID+"\x00"+channels[i].ID]; ok {
+		c := &channels[i]
+		domain := marks
+		if live := sources[c.SourceID]; live != nil {
+			domain = live
+		}
+		if mark, ok := domain[c.SourceID+"\x00"+c.ID]; ok {
 			channels[i].Mark = &mark
 		}
 	}

@@ -29011,6 +29011,9 @@ export const schemas = {
                 "accountName": {
                   "type": "string"
                 },
+                "canRecord": {
+                  "type": "boolean"
+                },
                 "owner": {
                   "properties": {
                     "accountId": {
@@ -29032,12 +29035,19 @@ export const schemas = {
                 },
                 "profileName": {
                   "type": "string"
+                },
+                "revision": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
                 }
               },
               "required": [
                 "owner",
                 "accountName",
-                "profileName"
+                "profileName",
+                "canRecord",
+                "revision"
               ],
               "type": "object"
             },
@@ -29080,9 +29090,6 @@ export const schemas = {
             "enabled": {
               "type": "boolean"
             },
-            "inheritProfiles": {
-              "type": "boolean"
-            },
             "owner": {
               "properties": {
                 "accountId": {
@@ -29111,7 +29118,6 @@ export const schemas = {
           "required": [
             "owner",
             "enabled",
-            "inheritProfiles",
             "revision"
           ],
           "type": "object"
@@ -32225,6 +32231,21 @@ export const schemas = {
                 "hidden": {
                   "type": "boolean"
                 },
+                "mark": {
+                  "properties": {
+                    "seed": {
+                      "type": "string"
+                    },
+                    "text": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "text",
+                    "seed"
+                  ],
+                  "type": "object"
+                },
                 "name": {
                   "type": "string"
                 },
@@ -32233,6 +32254,9 @@ export const schemas = {
                 },
                 "overridden": {
                   "type": "boolean"
+                },
+                "overrideNumber": {
+                  "type": "string"
                 },
                 "position": {
                   "maximum": 9007199254740991,
@@ -32252,7 +32276,9 @@ export const schemas = {
                 "guideChannelId",
                 "hidden",
                 "position",
-                "overridden"
+                "overridden",
+                "mark",
+                "overrideNumber"
               ],
               "type": "object"
             },
@@ -32261,11 +32287,17 @@ export const schemas = {
           "nextCursor": {
             "type": "string"
           },
+          "revision": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
           "sourceId": {
             "type": "string"
           }
         },
         "required": [
+          "revision",
           "sourceId",
           "generation",
           "items",
@@ -47650,6 +47682,9 @@ export const schemas = {
                           "recordUnavailableReason": {
                             "type": "string"
                           },
+                          "serverHidden": {
+                            "type": "boolean"
+                          },
                           "sourceId": {
                             "type": "string"
                           },
@@ -47675,6 +47710,7 @@ export const schemas = {
                           "recordAvailable",
                           "favorite",
                           "hidden",
+                          "serverHidden",
                           "preferenceRevision"
                         ],
                         "type": "object"
@@ -48073,6 +48109,9 @@ export const schemas = {
                 "recordUnavailableReason": {
                   "type": "string"
                 },
+                "serverHidden": {
+                  "type": "boolean"
+                },
                 "sourceId": {
                   "type": "string"
                 },
@@ -48098,6 +48137,7 @@ export const schemas = {
                 "recordAvailable",
                 "favorite",
                 "hidden",
+                "serverHidden",
                 "preferenceRevision"
               ],
               "type": "object"
@@ -48389,6 +48429,9 @@ export const schemas = {
                 "recordUnavailableReason": {
                   "type": "string"
                 },
+                "serverHidden": {
+                  "type": "boolean"
+                },
                 "sourceId": {
                   "type": "string"
                 },
@@ -48414,6 +48457,7 @@ export const schemas = {
                 "recordAvailable",
                 "favorite",
                 "hidden",
+                "serverHidden",
                 "preferenceRevision"
               ],
               "type": "object"
@@ -48717,6 +48761,9 @@ export const schemas = {
                 "recordUnavailableReason": {
                   "type": "string"
                 },
+                "serverHidden": {
+                  "type": "boolean"
+                },
                 "sourceId": {
                   "type": "string"
                 },
@@ -48742,6 +48789,7 @@ export const schemas = {
                 "recordAvailable",
                 "favorite",
                 "hidden",
+                "serverHidden",
                 "preferenceRevision"
               ],
               "type": "object"
@@ -49061,6 +49109,9 @@ export const schemas = {
                         "recordUnavailableReason": {
                           "type": "string"
                         },
+                        "serverHidden": {
+                          "type": "boolean"
+                        },
                         "sourceId": {
                           "type": "string"
                         },
@@ -49086,6 +49137,7 @@ export const schemas = {
                         "recordAvailable",
                         "favorite",
                         "hidden",
+                        "serverHidden",
                         "preferenceRevision"
                       ],
                       "type": "object"
@@ -49468,6 +49520,9 @@ export const schemas = {
                 "recordUnavailableReason": {
                   "type": "string"
                 },
+                "serverHidden": {
+                  "type": "boolean"
+                },
                 "sourceId": {
                   "type": "string"
                 },
@@ -49493,6 +49548,7 @@ export const schemas = {
                 "recordAvailable",
                 "favorite",
                 "hidden",
+                "serverHidden",
                 "preferenceRevision"
               ],
               "type": "object"
@@ -53939,6 +53995,9 @@ export const schemas = {
                                 "recordUnavailableReason": {
                                   "type": "string"
                                 },
+                                "serverHidden": {
+                                  "type": "boolean"
+                                },
                                 "sourceId": {
                                   "type": "string"
                                 },
@@ -53964,6 +54023,7 @@ export const schemas = {
                                 "recordAvailable",
                                 "favorite",
                                 "hidden",
+                                "serverHidden",
                                 "preferenceRevision"
                               ],
                               "type": "object"
@@ -60116,6 +60176,9 @@ export const schemas = {
                           "recordUnavailableReason": {
                             "type": "string"
                           },
+                          "serverHidden": {
+                            "type": "boolean"
+                          },
                           "sourceId": {
                             "type": "string"
                           },
@@ -60141,6 +60204,7 @@ export const schemas = {
                           "recordAvailable",
                           "favorite",
                           "hidden",
+                          "serverHidden",
                           "preferenceRevision"
                         ],
                         "type": "object"
@@ -69762,6 +69826,9 @@ export const schemas = {
                           "recordUnavailableReason": {
                             "type": "string"
                           },
+                          "serverHidden": {
+                            "type": "boolean"
+                          },
                           "sourceId": {
                             "type": "string"
                           },
@@ -69787,6 +69854,7 @@ export const schemas = {
                           "recordAvailable",
                           "favorite",
                           "hidden",
+                          "serverHidden",
                           "preferenceRevision"
                         ],
                         "type": "object"
@@ -75939,6 +76007,9 @@ export const schemas = {
                     "recordUnavailableReason": {
                       "type": "string"
                     },
+                    "serverHidden": {
+                      "type": "boolean"
+                    },
                     "sourceId": {
                       "type": "string"
                     },
@@ -75964,6 +76035,7 @@ export const schemas = {
                     "recordAvailable",
                     "favorite",
                     "hidden",
+                    "serverHidden",
                     "preferenceRevision"
                   ],
                   "type": "object"
@@ -90902,6 +90974,9 @@ export const schemas = {
                                 "recordUnavailableReason": {
                                   "type": "string"
                                 },
+                                "serverHidden": {
+                                  "type": "boolean"
+                                },
                                 "sourceId": {
                                   "type": "string"
                                 },
@@ -90927,6 +91002,7 @@ export const schemas = {
                                 "recordAvailable",
                                 "favorite",
                                 "hidden",
+                                "serverHidden",
                                 "preferenceRevision"
                               ],
                               "type": "object"
@@ -97079,6 +97155,9 @@ export const schemas = {
                           "recordUnavailableReason": {
                             "type": "string"
                           },
+                          "serverHidden": {
+                            "type": "boolean"
+                          },
                           "sourceId": {
                             "type": "string"
                           },
@@ -97104,6 +97183,7 @@ export const schemas = {
                           "recordAvailable",
                           "favorite",
                           "hidden",
+                          "serverHidden",
                           "preferenceRevision"
                         ],
                         "type": "object"
@@ -103298,6 +103378,9 @@ export const schemas = {
                           "recordUnavailableReason": {
                             "type": "string"
                           },
+                          "serverHidden": {
+                            "type": "boolean"
+                          },
                           "sourceId": {
                             "type": "string"
                           },
@@ -103323,6 +103406,7 @@ export const schemas = {
                           "recordAvailable",
                           "favorite",
                           "hidden",
+                          "serverHidden",
                           "preferenceRevision"
                         ],
                         "type": "object"
@@ -109475,6 +109559,9 @@ export const schemas = {
                     "recordUnavailableReason": {
                       "type": "string"
                     },
+                    "serverHidden": {
+                      "type": "boolean"
+                    },
                     "sourceId": {
                       "type": "string"
                     },
@@ -109500,6 +109587,7 @@ export const schemas = {
                     "recordAvailable",
                     "favorite",
                     "hidden",
+                    "serverHidden",
                     "preferenceRevision"
                   ],
                   "type": "object"
@@ -130513,6 +130601,9 @@ export const schemas = {
                 ],
                 "type": "object"
               },
+              "enabled": {
+                "type": "boolean"
+              },
               "enabledChannels": {
                 "items": {
                   "type": "string"
@@ -130639,6 +130730,53 @@ export const schemas = {
                 ],
                 "type": "object"
               },
+              "remote": {
+                "properties": {
+                  "confirmedLanRoots": {
+                    "items": {
+                      "type": "string"
+                    },
+                    "type": "array"
+                  },
+                  "guideUrl": {
+                    "type": "string"
+                  },
+                  "guideUrlRedacted": {
+                    "type": "boolean"
+                  },
+                  "kind": {
+                    "type": "string"
+                  },
+                  "ownerLimit": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "password": {
+                    "type": "string"
+                  },
+                  "refreshMs": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "useDiscoveredCapacity": {
+                    "type": "boolean"
+                  },
+                  "username": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "kind",
+                  "guideUrl",
+                  "guideUrlRedacted",
+                  "refreshMs",
+                  "ownerLimit",
+                  "useDiscoveredCapacity"
+                ],
+                "type": "object"
+              },
               "retryWindowMs": {
                 "maximum": 9007199254740991,
                 "minimum": -9007199254740991,
@@ -130652,6 +130790,9 @@ export const schemas = {
                 "type": "integer"
               },
               "userAgent": {
+                "type": "string"
+              },
+              "viewerAccess": {
                 "type": "string"
               }
             },
@@ -164945,6 +165086,9 @@ export const schemas = {
                                 "recordUnavailableReason": {
                                   "type": "string"
                                 },
+                                "serverHidden": {
+                                  "type": "boolean"
+                                },
                                 "sourceId": {
                                   "type": "string"
                                 },
@@ -164970,6 +165114,7 @@ export const schemas = {
                                 "recordAvailable",
                                 "favorite",
                                 "hidden",
+                                "serverHidden",
                                 "preferenceRevision"
                               ],
                               "type": "object"
@@ -171122,6 +171267,9 @@ export const schemas = {
                           "recordUnavailableReason": {
                             "type": "string"
                           },
+                          "serverHidden": {
+                            "type": "boolean"
+                          },
                           "sourceId": {
                             "type": "string"
                           },
@@ -171147,6 +171295,7 @@ export const schemas = {
                           "recordAvailable",
                           "favorite",
                           "hidden",
+                          "serverHidden",
                           "preferenceRevision"
                         ],
                         "type": "object"
@@ -177344,6 +177493,9 @@ export const schemas = {
                           "recordUnavailableReason": {
                             "type": "string"
                           },
+                          "serverHidden": {
+                            "type": "boolean"
+                          },
                           "sourceId": {
                             "type": "string"
                           },
@@ -177369,6 +177521,7 @@ export const schemas = {
                           "recordAvailable",
                           "favorite",
                           "hidden",
+                          "serverHidden",
                           "preferenceRevision"
                         ],
                         "type": "object"
@@ -183521,6 +183674,9 @@ export const schemas = {
                     "recordUnavailableReason": {
                       "type": "string"
                     },
+                    "serverHidden": {
+                      "type": "boolean"
+                    },
                     "sourceId": {
                       "type": "string"
                     },
@@ -183546,6 +183702,7 @@ export const schemas = {
                     "recordAvailable",
                     "favorite",
                     "hidden",
+                    "serverHidden",
                     "preferenceRevision"
                   ],
                   "type": "object"
@@ -233660,9 +233817,6 @@ export const schemas = {
       "enabled": {
         "type": "boolean"
       },
-      "inheritProfiles": {
-        "type": "boolean"
-      },
       "owner": {
         "properties": {
           "accountId": {
@@ -233691,7 +233845,6 @@ export const schemas = {
     "required": [
       "owner",
       "enabled",
-      "inheritProfiles",
       "revision"
     ],
     "type": "object"
@@ -233704,9 +233857,6 @@ export const schemas = {
       "result": {
         "properties": {
           "enabled": {
-            "type": "boolean"
-          },
-          "inheritProfiles": {
             "type": "boolean"
           },
           "owner": {
@@ -233737,7 +233887,6 @@ export const schemas = {
         "required": [
           "owner",
           "enabled",
-          "inheritProfiles",
           "revision"
         ],
         "type": "object"
@@ -234612,6 +234761,21 @@ export const schemas = {
                 "hidden": {
                   "type": "boolean"
                 },
+                "mark": {
+                  "properties": {
+                    "seed": {
+                      "type": "string"
+                    },
+                    "text": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "text",
+                    "seed"
+                  ],
+                  "type": "object"
+                },
                 "name": {
                   "type": "string"
                 },
@@ -234620,6 +234784,9 @@ export const schemas = {
                 },
                 "overridden": {
                   "type": "boolean"
+                },
+                "overrideNumber": {
+                  "type": "string"
                 },
                 "position": {
                   "maximum": 9007199254740991,
@@ -234639,7 +234806,9 @@ export const schemas = {
                 "guideChannelId",
                 "hidden",
                 "position",
-                "overridden"
+                "overridden",
+                "mark",
+                "overrideNumber"
               ],
               "type": "object"
             },
@@ -234648,11 +234817,17 @@ export const schemas = {
           "nextCursor": {
             "type": "string"
           },
+          "revision": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
           "sourceId": {
             "type": "string"
           }
         },
         "required": [
+          "revision",
           "sourceId",
           "generation",
           "items",
@@ -237658,6 +237833,9 @@ export const schemas = {
                   "recordUnavailableReason": {
                     "type": "string"
                   },
+                  "serverHidden": {
+                    "type": "boolean"
+                  },
                   "sourceId": {
                     "type": "string"
                   },
@@ -237683,6 +237861,7 @@ export const schemas = {
                   "recordAvailable",
                   "favorite",
                   "hidden",
+                  "serverHidden",
                   "preferenceRevision"
                 ],
                 "type": "object"
@@ -251748,6 +251927,9 @@ export const schemas = {
             ],
             "type": "object"
           },
+          "enabled": {
+            "type": "boolean"
+          },
           "enabledChannels": {
             "items": {
               "type": "string"
@@ -251874,6 +252056,53 @@ export const schemas = {
             ],
             "type": "object"
           },
+          "remote": {
+            "properties": {
+              "confirmedLanRoots": {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              "guideUrl": {
+                "type": "string"
+              },
+              "guideUrlRedacted": {
+                "type": "boolean"
+              },
+              "kind": {
+                "type": "string"
+              },
+              "ownerLimit": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "password": {
+                "type": "string"
+              },
+              "refreshMs": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "useDiscoveredCapacity": {
+                "type": "boolean"
+              },
+              "username": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "kind",
+              "guideUrl",
+              "guideUrlRedacted",
+              "refreshMs",
+              "ownerLimit",
+              "useDiscoveredCapacity"
+            ],
+            "type": "object"
+          },
           "retryWindowMs": {
             "maximum": 9007199254740991,
             "minimum": -9007199254740991,
@@ -251887,6 +252116,9 @@ export const schemas = {
             "type": "integer"
           },
           "userAgent": {
+            "type": "string"
+          },
+          "viewerAccess": {
             "type": "string"
           }
         },
@@ -252045,6 +252277,9 @@ export const schemas = {
                 ],
                 "type": "object"
               },
+              "enabled": {
+                "type": "boolean"
+              },
               "enabledChannels": {
                 "items": {
                   "type": "string"
@@ -252171,6 +252406,53 @@ export const schemas = {
                 ],
                 "type": "object"
               },
+              "remote": {
+                "properties": {
+                  "confirmedLanRoots": {
+                    "items": {
+                      "type": "string"
+                    },
+                    "type": "array"
+                  },
+                  "guideUrl": {
+                    "type": "string"
+                  },
+                  "guideUrlRedacted": {
+                    "type": "boolean"
+                  },
+                  "kind": {
+                    "type": "string"
+                  },
+                  "ownerLimit": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "password": {
+                    "type": "string"
+                  },
+                  "refreshMs": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "useDiscoveredCapacity": {
+                    "type": "boolean"
+                  },
+                  "username": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "kind",
+                  "guideUrl",
+                  "guideUrlRedacted",
+                  "refreshMs",
+                  "ownerLimit",
+                  "useDiscoveredCapacity"
+                ],
+                "type": "object"
+              },
               "retryWindowMs": {
                 "maximum": 9007199254740991,
                 "minimum": -9007199254740991,
@@ -252184,6 +252466,9 @@ export const schemas = {
                 "type": "integer"
               },
               "userAgent": {
+                "type": "string"
+              },
+              "viewerAccess": {
                 "type": "string"
               }
             },

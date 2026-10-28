@@ -18,12 +18,15 @@ func TestRecordingMarksUseCompleteAuthorizedCurrentLineup(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// A second channel, which is NOT on the one-row recording page, changes
+	// A second, server-hidden channel, which is NOT on the recording page, changes
 	// the first channel's collision disambiguation. Neither page nor title may
 	// become the naming or seed authority.
 	playlist := "#EXTM3U\n#EXTINF:-1 tvg-id=\"one\" tvg-chno=\"1\",One\nhttps://provider.invalid/one\n#EXTINF:-1 tvg-id=\"other\" tvg-chno=\"2\",One\nhttps://provider.invalid/other\n"
 	source, err = s.live.Save(ctx, authority, livechannels.SourceInput{ID: source.ID, RequestID: strings.Repeat("d", 48), ExpectedRevision: source.Revision, Name: "Antenna", TunerCount: 1, Playlist: playlist})
 	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = dbwork.ExecWrite(ctx, s.db, dbwork.ClassInteractive, `INSERT INTO admin_channel_numbers SELECT ?,channel_id,'','',1,1 FROM live_channel_versions WHERE generation_id=? AND channel_id<>?`, source.ID, source.Generation, programme.ChannelID); err != nil {
 		t.Fatal(err)
 	}
 	var expected *livechannels.ChannelMark
@@ -38,7 +41,7 @@ func TestRecordingMarksUseCompleteAuthorizedCurrentLineup(t *testing.T) {
 		expected = channels[0].Mark
 		return nil
 	})
-	if err != nil || expected == nil || expected.Seed != source.ID+":"+programme.ChannelID || expected.Text == "On" {
+	if err != nil || expected == nil || expected.Seed != source.ID+":"+programme.ChannelID || expected.Text != "O 1" {
 		t.Fatalf("fixture lacks full-domain collision: %+v %v", expected, err)
 	}
 	page, err := s.List(ctx, authority, owner, Query{State: "all", Limit: 1})
@@ -48,6 +51,15 @@ func TestRecordingMarksUseCompleteAuthorizedCurrentLineup(t *testing.T) {
 	detail, err := s.Detail(ctx, authority, owner, r.ID, "")
 	if err != nil || detail.Recording.Channel.Mark == nil || *detail.Recording.Channel.Mark != *expected {
 		t.Fatalf("detail mark: %+v %v", detail, err)
+	}
+	// A recording remains listed when its current channel is server-hidden.
+	// Visibility cannot strip or alter the authoritative mark on that recording.
+	if _, err = dbwork.ExecWrite(ctx, s.db, dbwork.ClassInteractive, `INSERT INTO admin_channel_numbers VALUES(?,?,'','',1,2)`, source.ID, programme.ChannelID); err != nil {
+		t.Fatal(err)
+	}
+	detail, err = s.Detail(ctx, authority, owner, r.ID, "")
+	if err != nil || detail.Recording.Channel.Mark == nil || *detail.Recording.Channel.Mark != *expected {
+		t.Fatalf("hidden recording channel mark: %+v %v", detail, err)
 	}
 	// A retained old guide may still supply the recorded name. Its removed
 	// channel has no CURRENT mark and must not acquire an invented seed.

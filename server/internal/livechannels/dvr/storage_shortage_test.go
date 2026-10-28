@@ -59,6 +59,7 @@ func TestStorageShortageWaitsForQueuedDeletionsBeforeFailingARecording(t *testin
 		t.Fatal(err)
 	}
 	defer db.Close()
+	recordingProfiles(t, db, "account", "profile")
 	src, gen, ch := strings.Repeat("a", 48), strings.Repeat("b", 48), strings.Repeat("c", 64)
 	now := time.Now().UTC().Truncate(time.Second)
 	start, end := now.Add(time.Hour), now.Add(2*time.Hour)
@@ -168,6 +169,7 @@ func TestRecordingsDueOnAFullDiskWaitForRetentionWithinOnePass(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer db.Close()
+	recordingProfiles(t, db, "account", "profile")
 	src, gen, ch := strings.Repeat("a", 48), strings.Repeat("b", 48), strings.Repeat("c", 64)
 	now := time.Now().UTC().Truncate(time.Second)
 	start, end := now.Add(time.Hour), now.Add(2*time.Hour)

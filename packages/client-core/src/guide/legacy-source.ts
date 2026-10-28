@@ -21,6 +21,7 @@ export type LegacyGuideOptions = Readonly<{
   favorites?: boolean;
   /** Owners: include hidden channels (to unhide them). */
   includeHidden?: boolean;
+  includeServerHidden?: boolean;
   /**
    * `server` keeps the server's order. `number`: sources in the owner's order, each by channel
    * number; `name` interleaves sources by name (§2.2).
@@ -38,6 +39,7 @@ function query(route: GuideRoute, cursor: string, select: GuideSelection = {}): 
   if (select.channels) q.set('channels', select.channels.join(','));
   if (select.rowsOnly) q.set('programmes', 'none');
   if (route.favorites !== undefined) q.set('favorites', String(route.favorites));
+  if (route.includeServerHidden) q.set('includeServerHidden', 'true');
   if (route.includeHidden) q.set('includeHidden', 'true');
   if (route.group) q.set('group', route.group);
   return routePath("get_guide") + "?" + (q.toString());
@@ -108,7 +110,7 @@ export function legacyProgram(p: GuideProgramme): GuideProgram {
 export function legacyGuideSource(api:ChannelApi,serverId:string,o:LegacyGuideOptions):GuideDataSource {
  let revision:string|undefined,viewerFence:string|undefined;
  const rows=new Map<string,GuideChannel>();
- const route=(kind:'live-source'|'library-channel',start:number,end:number):GuideRoute=>({kind,start:iso(start),end:iso(end),timezone:o.timezone,search:o.search??'',sourceId:o.kind==='all'?'':o.sourceId,...(o.group?{group:o.group}:{}),...(o.favorites!==undefined?{favorites:o.favorites}:{}),...(o.includeHidden?{includeHidden:true}:{})});
+ const route=(kind:'live-source'|'library-channel',start:number,end:number):GuideRoute=>({kind,start:iso(start),end:iso(end),timezone:o.timezone,search:o.search??'',sourceId:o.kind==='all'?'':o.sourceId,...(o.group?{group:o.group}:{}),...(o.favorites!==undefined?{favorites:o.favorites}:{}),...(o.includeServerHidden?{includeServerHidden:true}:{}),...(o.includeHidden?{includeHidden:true}:{})});
  return {
   reset(){revision=undefined;viewerFence=undefined;rows.clear();},
  async neighbor(channel,delta,signal){
@@ -116,7 +118,7 @@ export function legacyGuideSource(api:ChannelApi,serverId:string,o:LegacyGuideOp
   for(let attempt=0;attempt<2;attempt++){
    const q=new URLSearchParams({kind:o.kind,sourceId:o.sourceId,timezone:o.timezone,sort:o.sort??'server',limit:'1',anchorChannelId:native.id,anchorSourceId:native.sourceId,anchorProvenance:native.provenance,direction:delta>0?'next':'previous'});
    if(o.search)q.set('search',o.search);
-   if(o.group)q.set('group',o.group);if(o.favorites!==undefined)q.set('favorites',String(o.favorites));if(o.includeHidden)q.set('includeHidden','true');if(revision)q.set('revision',revision);
+   if(o.group)q.set('group',o.group);if(o.favorites!==undefined)q.set('favorites',String(o.favorites));if(o.includeServerHidden)q.set('includeServerHidden','true');if(o.includeHidden)q.set('includeHidden','true');if(revision)q.set('revision',revision);
    try{
     const page=parseGuideDirectory(await api.request(routePath("get_guide_channels") + "?" + (q),'GET',undefined,signal),serverId,undefined,1);
     if(signal.aborted)throw signal.reason??new Error('aborted');
@@ -136,7 +138,7 @@ export function legacyGuideSource(api:ChannelApi,serverId:string,o:LegacyGuideOp
    if(!Number.isSafeInteger(from)||from<0||!Number.isInteger(limit)||limit<1||limit>50)throw new Error('Use a bounded channel directory page.');
    const q=new URLSearchParams({kind:o.kind,sourceId:o.sourceId,timezone:o.timezone,sort:o.sort??'server',offset:String(from),limit:String(limit)});
    if(o.search)q.set('search',o.search);
-   if(o.group)q.set('group',o.group);if(o.favorites!==undefined)q.set('favorites',String(o.favorites));if(o.includeHidden)q.set('includeHidden','true');if(revision)q.set('revision',revision);
+   if(o.group)q.set('group',o.group);if(o.favorites!==undefined)q.set('favorites',String(o.favorites));if(o.includeServerHidden)q.set('includeServerHidden','true');if(o.includeHidden)q.set('includeHidden','true');if(revision)q.set('revision',revision);
    const page=parseGuideDirectory(await api.request(routePath("get_guide_channels") + "?" + (q),'GET',undefined,signal),serverId,from,limit);
     if(signal.aborted)throw signal.reason??new Error('aborted');
     if(revision&&revision!==page.revision||viewerFence&&viewerFence!==page.viewerFence)throw Object.assign(new Error('The guide changed. Refresh this view.'),{code:'guide_refresh_required',retryable:true});

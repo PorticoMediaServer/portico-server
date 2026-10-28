@@ -2,13 +2,13 @@ import type {LibraryContentApi} from '@core/library-content.ts';
 import {parseRecordingOwners, parseRecordingGrants, recordingOwnerKey, type RecordingOwnerChoice, type RecordingGrant} from '@core/server-admin/recording-policy.ts';
 import {OwnerStore, errorFacts, terminal} from '../../../live/owner/lifetime';
 import {envelope, text} from '../../../live/owner/checked';
-type Change = Readonly<{enabled: boolean; inheritProfiles: boolean}>;
+type Change = Readonly<{enabled: boolean}>;
 type State = Readonly<{loading: boolean; saving: boolean; owners: readonly RecordingOwnerChoice[]; grants: readonly RecordingGrant[]; cursor: string; edits: Readonly<Record<string, Change>>; error?: unknown; uncertain?: boolean}>;
 const empty: State = Object.freeze({loading: false, saving: false, owners: Object.freeze([]), grants: Object.freeze([]), cursor: '', edits: Object.freeze({})});
 const checkedOwner = (v: RecordingGrant['owner']) => Object.freeze({authority: v.authority, accountId: text(v.accountId, 256), profileId: text(v.profileId, 256)});
-const same = (grant: RecordingGrant, body: RecordingGrant) => recordingOwnerKey(grant.owner) === recordingOwnerKey(body.owner) && grant.enabled === body.enabled && grant.inheritProfiles === body.inheritProfiles && grant.revision > body.revision;
-/** Only the server's current owner candidates may receive new grants. An
- * existing missing member can still be revoked; explicit denial stays exact. */
+const same = (grant: RecordingGrant, body: RecordingGrant) => recordingOwnerKey(grant.owner) === recordingOwnerKey(body.owner) && grant.enabled === body.enabled && grant.revision > body.revision;
+/** Who can record: each current profile's own Recordings switch, fenced by its
+ * revision. The permission list names only the profiles that may record. */
 export class RecordingPermissionsController extends OwnerStore<State> {
   private pending?: Readonly<RecordingGrant>;
   constructor(private api: LibraryContentApi, private serverId: string, current: () => boolean, reportError: (error: unknown) => void) {super(empty, current, reportError);}
@@ -26,7 +26,7 @@ export class RecordingPermissionsController extends OwnerStore<State> {
       const raw = await this.api.request('/v1/admin/dvr/recording-owners?' + new URLSearchParams({limit: '100', cursor: more ? head.cursor : ''}), 'GET', undefined, attempt.abort.signal);if (!this.valid(attempt)) return;
       const result = envelope(raw, this.serverId).result;
       const page = parseRecordingOwners(result);if (page.items.length > 100 || page.nextCursor.length > 4096 || more && page.nextCursor && page.nextCursor === head.cursor) throw {code: 'invalid_response'};
-      const items = page.items.map(row => Object.freeze({owner: checkedOwner(row.owner), accountName: text(row.accountName, 512), profileName: text(row.profileName, 512)}));
+      const items = page.items.map(row => Object.freeze({owner: checkedOwner(row.owner), accountName: text(row.accountName, 512), profileName: text(row.profileName, 512), canRecord: row.canRecord, revision: row.revision}));
       const owners = more ? [...head.owners, ...items.filter(row => !head.owners.some(prior => recordingOwnerKey(prior.owner) === recordingOwnerKey(row.owner)))] : items;
       if (!this.valid(attempt)) return;
       const grants = this.grants(await this.api.request('/v1/admin/dvr/recording-permissions', 'GET', undefined, attempt.abort.signal));if (!this.valid(attempt)) return;
@@ -38,9 +38,9 @@ export class RecordingPermissionsController extends OwnerStore<State> {
     const key = recordingOwnerKey(owner), grant = this.snapshot.grants.find(row => recordingOwnerKey(row.owner) === key);
     const present = this.snapshot.owners.some(row => recordingOwnerKey(row.owner) === key);
     if (!present && !grant) return;
-    const original = {enabled: grant?.enabled ?? false, inheritProfiles: grant?.inheritProfiles ?? false};
+    const candidate = this.snapshot.owners.find(row => recordingOwnerKey(row.owner) === key);
+    const original = {enabled: grant?.enabled ?? candidate?.canRecord ?? false};
     const change = {...(this.snapshot.edits[key] ?? original), ...patch};if (!present && change.enabled) return;
-    if (!change.enabled) change.inheritProfiles = false;
     const edits = {...this.snapshot.edits};if (JSON.stringify(change) === JSON.stringify(original)) delete edits[key];else edits[key] = Object.freeze(change);
     this.publish({...this.snapshot, edits: Object.freeze(edits), error: undefined});
     void this.save();
@@ -53,7 +53,7 @@ export class RecordingPermissionsController extends OwnerStore<State> {
       for (const [key, change] of Object.entries(this.snapshot.edits)) {
         const grant = this.snapshot.grants.find(row => recordingOwnerKey(row.owner) === key), candidate = this.snapshot.owners.find(row => recordingOwnerKey(row.owner) === key);
         if (!candidate && (change.enabled || !grant)) throw {code: 'not_permitted'};
-        const body = this.pending ?? Object.freeze({owner: checkedOwner((candidate ?? grant)!.owner), ...change, revision: grant?.revision ?? 0});
+        const body = this.pending ?? Object.freeze({owner: checkedOwner((candidate ?? grant)!.owner), ...change, revision: grant?.revision ?? candidate!.revision});
         if (recordingOwnerKey(body.owner) !== key) throw {code: 'revision_mismatch'};
         this.pending = body;
         let receipt: RecordingGrant;
@@ -65,12 +65,17 @@ export class RecordingPermissionsController extends OwnerStore<State> {
         } catch (error) {
           if (!this.valid(attempt) || terminal(error)) throw error;
           const raw = await this.api.request('/v1/admin/dvr/recording-permissions', 'GET', undefined, attempt.abort.signal);if (!this.valid(attempt)) return;
-          const current = this.grants(raw).find(row => same(row, body));if (!current) throw error;receipt = current;
+          // The list names only profiles that may record, so a switch turned off
+          // landed exactly when the profile is no longer in it.
+          const listed = this.grants(raw).find(row => recordingOwnerKey(row.owner) === key);
+          if (body.enabled ? !listed || !same(listed, body) : !!listed) throw error;
+          receipt = listed ?? Object.freeze({owner: body.owner, enabled: false, revision: body.revision + 1});
         }
         this.pending = undefined;
         const edits = {...this.snapshot.edits};delete edits[key];
-        const grants = [...this.snapshot.grants.filter(row => recordingOwnerKey(row.owner) !== key), receipt];
-        this.publish({...this.snapshot, grants: Object.freeze(grants), edits: Object.freeze(edits), uncertain: false});if (!this.valid(attempt)) return;
+        const grants = [...this.snapshot.grants.filter(row => recordingOwnerKey(row.owner) !== key), ...(receipt.enabled ? [receipt] : [])];
+        const owners = this.snapshot.owners.map(row => recordingOwnerKey(row.owner) === key ? Object.freeze({...row, canRecord: receipt.enabled, revision: receipt.revision}) : row);
+        this.publish({...this.snapshot, owners: Object.freeze(owners), grants: Object.freeze(grants), edits: Object.freeze(edits), uncertain: false});if (!this.valid(attempt)) return;
       }
       this.publish({...this.snapshot, saving: false});
     } catch (error) {if (this.valid(attempt)) this.fail(error, {...this.snapshot, saving: false, uncertain: !!this.pending, error: errorFacts(error)});}

@@ -2889,7 +2889,9 @@ CREATE TABLE profile_restrictions(
  blocked_labels TEXT NOT NULL DEFAULT '[]' CHECK(json_valid(blocked_labels)),
  allow_downloads INTEGER NOT NULL DEFAULT 1 CHECK(allow_downloads IN(0,1)),
  allow_live_tv INTEGER NOT NULL DEFAULT 1 CHECK(allow_live_tv IN(0,1)),
- allow_dvr INTEGER NOT NULL DEFAULT 1 CHECK(allow_dvr IN(0,1)),
+ -- Recordings: who can record. Off unless the owner switches it on; the owner's main
+ -- profile with no stored row records (identity.recordingDefault).
+ allow_dvr INTEGER NOT NULL DEFAULT 0 CHECK(allow_dvr IN(0,1)),
  allow_watch_together INTEGER NOT NULL DEFAULT 1 CHECK(allow_watch_together IN(0,1)),
  revision INTEGER NOT NULL DEFAULT 1 CHECK(revision>0)
 ) STRICT;
@@ -3305,10 +3307,6 @@ CREATE TABLE admin_channel_numbers(
 CREATE TABLE maintenance_policy(singleton INTEGER PRIMARY KEY CHECK(singleton=1),revision INTEGER NOT NULL CHECK(revision>0),background_priority TEXT NOT NULL DEFAULT 'lower' CHECK(background_priority IN('lower','normal')),paused_until_ms INTEGER NOT NULL DEFAULT 0 CHECK(paused_until_ms>=0)) STRICT;
 CREATE TABLE maintenance_windows(id TEXT PRIMARY KEY,name TEXT NOT NULL,enabled INTEGER NOT NULL CHECK(enabled IN(0,1)),cadence TEXT NOT NULL,start_minute INTEGER NOT NULL CHECK(start_minute BETWEEN 0 AND 1439),duration_minutes INTEGER NOT NULL CHECK(duration_minutes BETWEEN 15 AND 1440),timezone TEXT NOT NULL) STRICT;
 CREATE TABLE maintenance_window_days(window_id TEXT NOT NULL REFERENCES maintenance_windows(id) ON DELETE CASCADE,day TEXT NOT NULL,PRIMARY KEY(window_id,day)) STRICT;
-CREATE TABLE dvr_recording_grants(
- authority TEXT NOT NULL CHECK(authority='local'),account_id TEXT NOT NULL,profile_id TEXT NOT NULL,
- enabled INTEGER NOT NULL CHECK(enabled IN(0,1)),inherit_profiles INTEGER NOT NULL CHECK(inherit_profiles IN(0,1)),revision INTEGER NOT NULL,
- PRIMARY KEY(authority,account_id,profile_id)) STRICT;
 CREATE TABLE dvr_defaults(singleton INTEGER PRIMARY KEY CHECK(singleton=1),revision INTEGER NOT NULL,before_seconds INTEGER NOT NULL,after_seconds INTEGER NOT NULL,retention_days INTEGER NOT NULL,episode_limit INTEGER NOT NULL,live_tuner_conflict TEXT NOT NULL DEFAULT 'keep-watching' CHECK(live_tuner_conflict IN('keep-watching','stop-watching')),show_folder_template TEXT NOT NULL DEFAULT '',movie_folder_template TEXT NOT NULL DEFAULT '') STRICT;
 CREATE TABLE direct_memberships(
  account_id TEXT PRIMARY KEY REFERENCES accounts(id) ON DELETE CASCADE,
@@ -5356,6 +5354,12 @@ CREATE TRIGGER audio_genre_projection_reset AFTER UPDATE OF revision ON audio_me
 CREATE TRIGGER direct_profile_capacity BEFORE INSERT ON direct_profiles
  WHEN NEW.deleted=0 AND (SELECT count(*) FROM direct_profiles WHERE account_id=NEW.account_id AND deleted=0)>=(SELECT max_profiles FROM direct_memberships WHERE account_id=NEW.account_id)
  BEGIN SELECT RAISE(ABORT,'profile_capacity'); END;
+-- Who can record is the profile's Recordings switch: a change to it is a change to the
+-- recording groups list the owner's Live TV page reads.
+CREATE TRIGGER profile_restrictions_recording_groups_list_insert AFTER INSERT ON profile_restrictions BEGIN
+ INSERT INTO api_change_pending(audience,type,resource_kind,resource_id,revision) VALUES('admin','list.changed','list','recordingGroups',CAST(CAST((julianday('now')-2440587.5)*86400000 AS INTEGER) AS TEXT)) ON CONFLICT(audience,type,resource_kind,resource_id) DO UPDATE SET revision=excluded.revision; END;
+CREATE TRIGGER profile_restrictions_recording_groups_list_update AFTER UPDATE OF allow_dvr ON profile_restrictions WHEN OLD.allow_dvr IS NOT NEW.allow_dvr BEGIN
+ INSERT INTO api_change_pending(audience,type,resource_kind,resource_id,revision) VALUES('admin','list.changed','list','recordingGroups',CAST(CAST((julianday('now')-2440587.5)*86400000 AS INTEGER) AS TEXT)) ON CONFLICT(audience,type,resource_kind,resource_id) DO UPDATE SET revision=excluded.revision; END;
 CREATE TRIGGER identity_restrictions_revision AFTER UPDATE ON profile_restrictions
  WHEN NEW.revision=OLD.revision BEGIN
  UPDATE profile_restrictions SET revision=OLD.revision+1 WHERE profile_id=NEW.profile_id;
@@ -8345,12 +8349,6 @@ CREATE TRIGGER admin_dvr_groups_recording_groups_list_insert AFTER INSERT ON adm
 CREATE TRIGGER admin_dvr_groups_recording_groups_list_update AFTER UPDATE ON admin_dvr_groups BEGIN
  INSERT INTO api_change_pending(audience,type,resource_kind,resource_id,revision) VALUES('admin','list.changed','list','recordingGroups',CAST(CAST((julianday('now')-2440587.5)*86400000 AS INTEGER) AS TEXT)) ON CONFLICT(audience,type,resource_kind,resource_id) DO UPDATE SET revision=excluded.revision; END;
 CREATE TRIGGER admin_dvr_groups_recording_groups_list_delete AFTER DELETE ON admin_dvr_groups BEGIN
- INSERT INTO api_change_pending(audience,type,resource_kind,resource_id,revision) VALUES('admin','list.changed','list','recordingGroups',CAST(CAST((julianday('now')-2440587.5)*86400000 AS INTEGER) AS TEXT)) ON CONFLICT(audience,type,resource_kind,resource_id) DO UPDATE SET revision=excluded.revision; END;
-CREATE TRIGGER dvr_recording_grants_recording_groups_list_insert AFTER INSERT ON dvr_recording_grants BEGIN
- INSERT INTO api_change_pending(audience,type,resource_kind,resource_id,revision) VALUES('admin','list.changed','list','recordingGroups',CAST(CAST((julianday('now')-2440587.5)*86400000 AS INTEGER) AS TEXT)) ON CONFLICT(audience,type,resource_kind,resource_id) DO UPDATE SET revision=excluded.revision; END;
-CREATE TRIGGER dvr_recording_grants_recording_groups_list_update AFTER UPDATE ON dvr_recording_grants BEGIN
- INSERT INTO api_change_pending(audience,type,resource_kind,resource_id,revision) VALUES('admin','list.changed','list','recordingGroups',CAST(CAST((julianday('now')-2440587.5)*86400000 AS INTEGER) AS TEXT)) ON CONFLICT(audience,type,resource_kind,resource_id) DO UPDATE SET revision=excluded.revision; END;
-CREATE TRIGGER dvr_recording_grants_recording_groups_list_delete AFTER DELETE ON dvr_recording_grants BEGIN
  INSERT INTO api_change_pending(audience,type,resource_kind,resource_id,revision) VALUES('admin','list.changed','list','recordingGroups',CAST(CAST((julianday('now')-2440587.5)*86400000 AS INTEGER) AS TEXT)) ON CONFLICT(audience,type,resource_kind,resource_id) DO UPDATE SET revision=excluded.revision; END;
 CREATE TRIGGER dvr_storage_policy_recording_storage_list_insert AFTER INSERT ON dvr_storage_policy BEGIN
  INSERT INTO api_change_pending(audience,type,resource_kind,resource_id,revision) VALUES('admin','list.changed','list','recordingStorage',CAST(CAST((julianday('now')-2440587.5)*86400000 AS INTEGER) AS TEXT)) ON CONFLICT(audience,type,resource_kind,resource_id) DO UPDATE SET revision=excluded.revision; END;

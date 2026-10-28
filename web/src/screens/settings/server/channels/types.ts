@@ -7,6 +7,7 @@ import type {ChannelLogoUpload} from './channel-logo-source';
 /** Supplied by the real primary-owner/manageServer Settings composition.
  * Neither credentials nor an alternative transport are owned by this page. */
 export type LibraryChannelsPageProps=Readonly<{
+  initialChannelId?:string;
   api:ChannelApi;
   serverId:string;
   isCurrent:()=>boolean;

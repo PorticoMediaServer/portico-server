@@ -106,8 +106,12 @@ INSERT INTO account_portico_links(account_id,hosted_account_id) VALUES('hosted-a
 		t.Fatalf("directory did not advance: %d pages", pages)
 	}
 	var grants int
-	if err = db.QueryRow(`SELECT count(*) FROM dvr_recording_grants`).Scan(&grants); err != nil || grants != 0 {
-		t.Fatalf("directory manufactured grants: %d %v", grants, err)
+	if err = db.QueryRow(`SELECT count(*) FROM profile_restrictions`).Scan(&grants); err != nil || grants != 0 {
+		t.Fatalf("directory manufactured restrictions: %d %v", grants, err)
+	}
+	// Who can record: the owner's main profile records by default; nobody else does.
+	if !seen["primary"].CanRecord || seen["child"].CanRecord || seen["hosted-profile"].CanRecord || seen["primary"].Revision != 1 {
+		t.Fatalf("recording defaults %#v", seen)
 	}
 	// A disabled Portico Account membership stops offering its profiles;
 	// the owner and child on the other account remain selectable.

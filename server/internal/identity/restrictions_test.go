@@ -316,3 +316,64 @@ func TestNarrowOnlyEverTightens(t *testing.T) {
 		t.Fatal("narrowing changed the profile's own restriction")
 	}
 }
+
+// Who can record is the server owner's choice. The owner's own main profile
+// records from the start; every other profile starts with Recordings off. The
+// owner may switch any profile on; someone managing only their own account may
+// switch Recordings off but never on.
+func TestRecordingsSwitchOnIsTheServerOwners(t *testing.T) {
+	ctx := context.Background()
+	s, db, login := directFixture(t)
+	owner, e := s.ProfileRestrictions(ctx, login.AccountToken, login.Account.PrimaryProfileID)
+	if e != nil || !owner.AllowDVR {
+		t.Fatalf("the owner's main profile records by default: %+v %v", owner, e)
+	}
+	snapshot, e := s.CreateDirectProfile(ctx, login.AccountToken, "Child", "mint")
+	if e != nil {
+		t.Fatal(e)
+	}
+	child := childProfile(t, snapshot)
+	current, e := s.ProfileRestrictions(ctx, login.AccountToken, child.ID)
+	if e != nil || current.AllowDVR {
+		t.Fatalf("a new profile starts with Recordings off: %+v %v", current, e)
+	}
+	on := ProfileRestrictionEdit{ExpectedRevision: current.Revision, AllowUnrated: true, AllowDownloads: true, AllowLiveTV: true, AllowDVR: true, AllowWatchTogether: true}
+	stored, e := s.SetProfileRestrictions(ctx, login.AccountToken, child.ID, on)
+	if e != nil || !stored.AllowDVR {
+		t.Fatalf("the owner switches a profile on: %+v %v", stored, e)
+	}
+
+	member, e := s.CreateDirectMember(ctx, login.AccountToken, DirectMemberCreate{Username: "member", Name: "Member", Password: "Testing2!", AllowedLibraries: []string{}})
+	if e != nil {
+		t.Fatal(e)
+	}
+	if _, e = db.Exec(`UPDATE direct_memberships SET role='admin' WHERE account_id=?`, member.ID); e != nil {
+		t.Fatal(e)
+	}
+	memberLogin, e := s.DirectLogin(ctx, "member", "Testing2!")
+	if e != nil {
+		t.Fatal(e)
+	}
+	mine, e := s.ProfileRestrictions(ctx, memberLogin.AccountToken, memberLogin.Account.PrimaryProfileID)
+	if e != nil || mine.AllowDVR {
+		t.Fatalf("an administrator's own profile does not record by default: %+v %v", mine, e)
+	}
+	on.ExpectedRevision = mine.Revision
+	if _, e = s.SetProfileRestrictions(ctx, memberLogin.AccountToken, memberLogin.Account.PrimaryProfileID, on); !errors.Is(e, ErrRecordingGrant) || !errors.Is(e, ErrForbidden) {
+		t.Fatalf("an administrator switched their own Recordings on: %v", e)
+	}
+	// After the owner allows it, the person can still switch it off themselves.
+	tx, e := db.BeginTx(ctx, nil)
+	if e != nil {
+		t.Fatal(e)
+	}
+	allowed, e := SetRecordingAllowedTx(ctx, tx, member.ID, memberLogin.Account.PrimaryProfileID, true, mine.Revision)
+	if e != nil || tx.Commit() != nil || !allowed.AllowDVR {
+		t.Fatalf("owner allow: %+v %v", allowed, e)
+	}
+	off := on
+	off.AllowDVR, off.ExpectedRevision = false, allowed.Revision
+	if got, e := s.SetProfileRestrictions(ctx, memberLogin.AccountToken, memberLogin.Account.PrimaryProfileID, off); e != nil || got.AllowDVR {
+		t.Fatalf("switching Recordings off is open to the profile's manager: %+v %v", got, e)
+	}
+}
