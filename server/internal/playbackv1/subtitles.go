@@ -40,7 +40,7 @@ type subtitleResult struct {
 //     "sidecar" or the viewer turned "Styled subtitles" off. Anything else is
 //     burned into the video (a conversion, and a new presentation); delivery
 //     "sidecar" for an image track is refused. Burn-in needs converting allowed.
-func (s *Service) applySubtitles(ctx context.Context, p identity.Principal, item, media string, req *SubtitleRequest, offsetMs, positionMs int64, operation string, draws bool) (subtitleResult, error) {
+func (s *Service) applySubtitles(ctx context.Context, p identity.Principal, item, media string, req *SubtitleRequest, offsetMs, positionMs int64, operation string, draws bool, exactOffset ...string) (subtitleResult, error) {
 	out := subtitleResult{files: []SubtitleFile{}}
 	if s.Subtitles == nil || media == "" {
 		return out, nil
@@ -98,6 +98,9 @@ func (s *Service) applySubtitles(ctx context.Context, p identity.Principal, item
 			}
 			m.Mode, m.ResourceID, m.ResourceRevision = "track", chosen.ID, chosen.Revision
 			m.OffsetUS = strconv.FormatInt(offsetMs*1000, 10)
+			if len(exactOffset) > 0 && exactOffset[0] != "" {
+				m.OffsetUS = exactOffset[0]
+			}
 		}
 		priorGeneration := plan.Generation
 		if plan, err = s.Subtitles.Select(ctx, p, item, media, m); err != nil {

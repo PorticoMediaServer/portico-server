@@ -106,6 +106,13 @@ func (s *Service) ChangeSubtitleDeliveryTx(ctx context.Context, tx *sql.Tx, p id
 	if err = s.completeDeliveryInputTx(ctx, tx, p, &input, values, true, explicit, boundDisc...); err != nil {
 		return err
 	}
+	if old.AirPlay {
+		input.Device = nil
+		input.Client = BaselineClientProfile()
+		input.Client.Transports = []ClientTransport{{Transport: TransportHLSTS, Containers: []string{"mpegts"}, Video: []string{"h264"}, Audio: []string{"aac"}}}
+		input.Client.SubtitleRendering = []string{SubtitleText}
+		input.Engine = EngineNative
+	}
 	plan, err := planDelivery(input)
 	if err != nil {
 		return err
@@ -129,6 +136,11 @@ func (s *Service) ChangeSubtitleDeliveryTx(ctx context.Context, tx *sql.Tx, p id
 		if err = reserveHLS(tx, session, session, &plan, cfg); err != nil {
 			return err
 		}
+	}
+
+	plan.AirPlay = old.AirPlay
+	if old.AirPlay {
+		plan.Renditions = nil
 	}
 	plan.SourceSize, plan.SourceModifiedNS, plan.FactsRevision = old.SourceSize, old.SourceModifiedNS, old.FactsRevision
 	plan.Target, plan.TargetReach = replanned.target, replanned.reach

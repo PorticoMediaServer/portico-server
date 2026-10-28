@@ -1054,6 +1054,11 @@ var PorticoCastContracts = (function(exports) {
 									"minimum": -9007199254740991,
 									"type": "integer"
 								},
+								"choiceRevision": {
+									"maximum": 9007199254740991,
+									"minimum": -9007199254740991,
+									"type": "integer"
+								},
 								"container": { "type": "string" },
 								"decision": {
 									"properties": {
@@ -2148,6 +2153,11 @@ var PorticoCastContracts = (function(exports) {
 								},
 								"audioTrackId": { "type": "string" },
 								"bitrateKbps": {
+									"maximum": 9007199254740991,
+									"minimum": -9007199254740991,
+									"type": "integer"
+								},
+								"choiceRevision": {
 									"maximum": 9007199254740991,
 									"minimum": -9007199254740991,
 									"type": "integer"
@@ -3435,6 +3445,11 @@ var PorticoCastContracts = (function(exports) {
 								},
 								"audioTrackId": { "type": "string" },
 								"bitrateKbps": {
+									"maximum": 9007199254740991,
+									"minimum": -9007199254740991,
+									"type": "integer"
+								},
+								"choiceRevision": {
 									"maximum": 9007199254740991,
 									"minimum": -9007199254740991,
 									"type": "integer"
@@ -8829,6 +8844,7 @@ var PorticoCastContracts = (function(exports) {
 					"minimum": -9007199254740991,
 					"type": "integer"
 				},
+				"subtitleOffsetUs": { "type": "string" },
 				"subtitles": {
 					"properties": {
 						"delivery": { "type": "string" },
@@ -9406,6 +9422,11 @@ var PorticoCastContracts = (function(exports) {
 						},
 						"audioTrackId": { "type": "string" },
 						"bitrateKbps": {
+							"maximum": 9007199254740991,
+							"minimum": -9007199254740991,
+							"type": "integer"
+						},
+						"choiceRevision": {
 							"maximum": 9007199254740991,
 							"minimum": -9007199254740991,
 							"type": "integer"
@@ -10498,6 +10519,11 @@ var PorticoCastContracts = (function(exports) {
 								},
 								"audioTrackId": { "type": "string" },
 								"bitrateKbps": {
+									"maximum": 9007199254740991,
+									"minimum": -9007199254740991,
+									"type": "integer"
+								},
+								"choiceRevision": {
 									"maximum": 9007199254740991,
 									"minimum": -9007199254740991,
 									"type": "integer"
@@ -13526,6 +13552,11 @@ var PorticoCastContracts = (function(exports) {
 								},
 								"audioTrackId": { "type": "string" },
 								"bitrateKbps": {
+									"maximum": 9007199254740991,
+									"minimum": -9007199254740991,
+									"type": "integer"
+								},
+								"choiceRevision": {
 									"maximum": 9007199254740991,
 									"minimum": -9007199254740991,
 									"type": "integer"
@@ -62149,6 +62180,7 @@ var PorticoCastContracts = (function(exports) {
 				"deliveryPlan": {
 					"nullable": true,
 					"properties": {
+						"airPlay": { "type": "boolean" },
 						"audioAction": { "type": "string" },
 						"audioBitrateBps": {
 							"maximum": 9007199254740991,
@@ -102967,6 +102999,11 @@ var PorticoCastContracts = (function(exports) {
 							"minimum": -9007199254740991,
 							"type": "integer"
 						},
+						"choiceRevision": {
+							"maximum": 9007199254740991,
+							"minimum": -9007199254740991,
+							"type": "integer"
+						},
 						"container": { "type": "string" },
 						"decision": {
 							"properties": {
@@ -143693,6 +143730,11 @@ var PorticoCastContracts = (function(exports) {
 									"minimum": -9007199254740991,
 									"type": "integer"
 								},
+								"choiceRevision": {
+									"maximum": 9007199254740991,
+									"minimum": -9007199254740991,
+									"type": "integer"
+								},
 								"container": { "type": "string" },
 								"decision": {
 									"properties": {
@@ -168264,6 +168306,481 @@ var PorticoCastContracts = (function(exports) {
 			],
 			"type": "object"
 		},
+		"PrepareAirplayReceiverRequest": {
+			"properties": {
+				"choiceRevision": {
+					"maximum": 9007199254740991,
+					"minimum": -9007199254740991,
+					"type": "integer"
+				},
+				"generation": {
+					"maximum": 9007199254740991,
+					"minimum": -9007199254740991,
+					"type": "integer"
+				},
+				"positionMs": {
+					"maximum": 9007199254740991,
+					"minimum": -9007199254740991,
+					"type": "integer"
+				}
+			},
+			"required": [
+				"generation",
+				"choiceRevision",
+				"positionMs"
+			],
+			"type": "object"
+		},
+		"PrepareAirplayReceiverResponse": {
+			"properties": {
+				"choiceRevision": {
+					"maximum": 9007199254740991,
+					"minimum": -9007199254740991,
+					"type": "integer"
+				},
+				"generation": {
+					"maximum": 9007199254740991,
+					"minimum": -9007199254740991,
+					"type": "integer"
+				},
+				"presentation": {
+					"properties": {
+						"audioRender": {
+							"properties": {
+								"bitDepth": {
+									"maximum": 9007199254740991,
+									"minimum": -9007199254740991,
+									"type": "integer"
+								},
+								"bytes": {
+									"maximum": 9007199254740991,
+									"minimum": -9007199254740991,
+									"type": "integer"
+								},
+								"channels": {
+									"maximum": 9007199254740991,
+									"minimum": -9007199254740991,
+									"type": "integer"
+								},
+								"codec": { "type": "string" },
+								"container": { "type": "string" },
+								"conversionGainDb": { "type": "number" },
+								"decoderConfig": { "type": "string" },
+								"downmixed": { "type": "boolean" },
+								"durationFrames": {
+									"maximum": 9007199254740991,
+									"minimum": -9007199254740991,
+									"type": "integer"
+								},
+								"gain": {
+									"properties": {
+										"albumDb": { "type": "number" },
+										"albumPeak": { "type": "number" },
+										"source": { "type": "string" },
+										"trackDb": { "type": "number" },
+										"trackPeak": { "type": "number" }
+									},
+									"required": ["source"],
+									"type": "object"
+								},
+								"id": { "type": "string" },
+								"loudnessAppliedDb": { "type": "number" },
+								"loudnessEnvelope": {
+									"properties": {
+										"endLufs": {
+											"items": { "type": "number" },
+											"type": "array"
+										},
+										"intervalMs": {
+											"maximum": 9007199254740991,
+											"minimum": -9007199254740991,
+											"type": "integer"
+										},
+										"startLufs": {
+											"items": { "type": "number" },
+											"type": "array"
+										}
+									},
+									"required": [
+										"intervalMs",
+										"startLufs",
+										"endLufs"
+									],
+									"type": "object"
+								},
+								"mode": { "type": "string" },
+								"prefetchBytes": {
+									"maximum": 9007199254740991,
+									"minimum": -9007199254740991,
+									"type": "integer"
+								},
+								"reason": { "type": "string" },
+								"sampleRate": {
+									"maximum": 9007199254740991,
+									"minimum": -9007199254740991,
+									"type": "integer"
+								},
+								"seekIndex": {
+									"properties": { "url": { "type": "string" } },
+									"required": ["url"],
+									"type": "object"
+								},
+								"sourceBitrateBps": {
+									"maximum": 9007199254740991,
+									"minimum": -9007199254740991,
+									"type": "integer"
+								},
+								"trim": {
+									"properties": {
+										"endFrames": {
+											"maximum": 9007199254740991,
+											"minimum": -9007199254740991,
+											"type": "integer"
+										},
+										"source": { "type": "string" },
+										"startFrames": {
+											"maximum": 9007199254740991,
+											"minimum": -9007199254740991,
+											"type": "integer"
+										}
+									},
+									"required": [
+										"startFrames",
+										"endFrames",
+										"source"
+									],
+									"type": "object"
+								},
+								"url": { "type": "string" },
+								"version": {
+									"maximum": 9007199254740991,
+									"minimum": -9007199254740991,
+									"type": "integer"
+								}
+							},
+							"required": [
+								"version",
+								"mode",
+								"id"
+							],
+							"type": "object"
+						},
+						"audioTrackId": { "type": "string" },
+						"bitrateKbps": {
+							"maximum": 9007199254740991,
+							"minimum": -9007199254740991,
+							"type": "integer"
+						},
+						"choiceRevision": {
+							"maximum": 9007199254740991,
+							"minimum": -9007199254740991,
+							"type": "integer"
+						},
+						"container": { "type": "string" },
+						"decision": {
+							"properties": {
+								"audio": {
+									"properties": {
+										"action": { "type": "string" },
+										"channels": {
+											"maximum": 9007199254740991,
+											"minimum": -9007199254740991,
+											"type": "integer"
+										},
+										"reasons": {
+											"items": { "type": "string" },
+											"type": "array"
+										},
+										"to": { "type": "string" }
+									},
+									"required": ["action", "reasons"],
+									"type": "object"
+								},
+								"subtitles": {
+									"properties": {
+										"action": { "type": "string" },
+										"channels": {
+											"maximum": 9007199254740991,
+											"minimum": -9007199254740991,
+											"type": "integer"
+										},
+										"reasons": {
+											"items": { "type": "string" },
+											"type": "array"
+										},
+										"to": { "type": "string" }
+									},
+									"required": ["action", "reasons"],
+									"type": "object"
+								},
+								"video": {
+									"properties": {
+										"action": { "type": "string" },
+										"channels": {
+											"maximum": 9007199254740991,
+											"minimum": -9007199254740991,
+											"type": "integer"
+										},
+										"reasons": {
+											"items": { "type": "string" },
+											"type": "array"
+										},
+										"to": { "type": "string" }
+									},
+									"required": ["action", "reasons"],
+									"type": "object"
+								}
+							},
+							"required": [],
+							"type": "object"
+						},
+						"engine": { "type": "string" },
+						"generation": {
+							"maximum": 9007199254740991,
+							"minimum": -9007199254740991,
+							"type": "integer"
+						},
+						"linear": {
+							"properties": {
+								"clocks": {
+									"items": {
+										"properties": {
+											"endMs": {
+												"maximum": 9007199254740991,
+												"minimum": -9007199254740991,
+												"type": "integer"
+											},
+											"offsetMs": {
+												"maximum": 9007199254740991,
+												"minimum": -9007199254740991,
+												"type": "integer"
+											},
+											"startMs": {
+												"maximum": 9007199254740991,
+												"minimum": -9007199254740991,
+												"type": "integer"
+											}
+										},
+										"required": [
+											"startMs",
+											"endMs",
+											"offsetMs"
+										],
+										"type": "object"
+									},
+									"type": "array"
+								},
+								"confirmedPositionMs": {
+									"maximum": 9007199254740991,
+									"minimum": -9007199254740991,
+									"type": "integer"
+								},
+								"errorCode": { "type": "string" },
+								"liveEdgeMs": {
+									"maximum": 9007199254740991,
+									"minimum": -9007199254740991,
+									"type": "integer"
+								},
+								"name": { "type": "string" },
+								"next": {
+									"properties": {
+										"endMs": {
+											"maximum": 9007199254740991,
+											"minimum": -9007199254740991,
+											"type": "integer"
+										},
+										"id": { "type": "string" },
+										"itemId": { "type": "string" },
+										"startMs": {
+											"maximum": 9007199254740991,
+											"minimum": -9007199254740991,
+											"type": "integer"
+										},
+										"title": { "type": "string" }
+									},
+									"required": [
+										"id",
+										"title",
+										"startMs",
+										"endMs"
+									],
+									"type": "object"
+								},
+								"nowMs": {
+									"maximum": 9007199254740991,
+									"minimum": -9007199254740991,
+									"type": "integer"
+								},
+								"originMs": {
+									"maximum": 9007199254740991,
+									"minimum": -9007199254740991,
+									"type": "integer"
+								},
+								"programme": {
+									"properties": {
+										"endMs": {
+											"maximum": 9007199254740991,
+											"minimum": -9007199254740991,
+											"type": "integer"
+										},
+										"id": { "type": "string" },
+										"itemId": { "type": "string" },
+										"startMs": {
+											"maximum": 9007199254740991,
+											"minimum": -9007199254740991,
+											"type": "integer"
+										},
+										"title": { "type": "string" }
+									},
+									"required": [
+										"id",
+										"title",
+										"startMs",
+										"endMs"
+									],
+									"type": "object"
+								},
+								"reservationRequiredAtMs": {
+									"maximum": 9007199254740991,
+									"minimum": -9007199254740991,
+									"type": "integer"
+								},
+								"seek": {
+									"properties": {
+										"acknowledged": { "type": "boolean" },
+										"error": { "type": "string" },
+										"id": { "type": "string" },
+										"live": { "type": "boolean" },
+										"positionMs": {
+											"maximum": 9007199254740991,
+											"minimum": -9007199254740991,
+											"type": "integer"
+										}
+									},
+									"required": ["id", "acknowledged"],
+									"type": "object"
+								},
+								"state": { "type": "string" },
+								"windowEndMs": {
+									"maximum": 9007199254740991,
+									"minimum": -9007199254740991,
+									"type": "integer"
+								},
+								"windowStartMs": {
+									"maximum": 9007199254740991,
+									"minimum": -9007199254740991,
+									"type": "integer"
+								}
+							},
+							"required": [
+								"name",
+								"originMs",
+								"windowStartMs",
+								"windowEndMs",
+								"liveEdgeMs",
+								"state"
+							],
+							"type": "object"
+						},
+						"mode": { "type": "string" },
+						"quality": {
+							"properties": {
+								"id": { "type": "string" },
+								"maxAudioBitrateKbps": {
+									"maximum": 9007199254740991,
+									"minimum": -9007199254740991,
+									"type": "integer"
+								},
+								"maxHeight": {
+									"maximum": 9007199254740991,
+									"minimum": -9007199254740991,
+									"type": "integer"
+								},
+								"maxVideoBitrateKbps": {
+									"maximum": 9007199254740991,
+									"minimum": -9007199254740991,
+									"type": "integer"
+								},
+								"mode": { "type": "string" },
+								"step": { "type": "string" }
+							},
+							"required": ["mode"],
+							"type": "object"
+						},
+						"seekId": { "type": "string" },
+						"startPositionMs": {
+							"maximum": 9007199254740991,
+							"minimum": -9007199254740991,
+							"type": "integer"
+						},
+						"subtitle": {
+							"properties": {
+								"delivery": { "type": "string" },
+								"kind": { "type": "string" },
+								"trackId": { "type": "string" }
+							},
+							"required": [
+								"trackId",
+								"kind",
+								"delivery"
+							],
+							"type": "object"
+						},
+						"subtitles": {
+							"items": {
+								"properties": {
+									"companionUrl": { "type": "string" },
+									"fontsUrl": { "type": "string" },
+									"format": { "type": "string" },
+									"linesUrl": { "type": "string" },
+									"offsetMs": {
+										"maximum": 9007199254740991,
+										"minimum": -9007199254740991,
+										"type": "integer"
+									},
+									"timeDomain": { "type": "string" },
+									"trackId": { "type": "string" },
+									"url": { "type": "string" }
+								},
+								"required": [
+									"timeDomain",
+									"offsetMs",
+									"trackId",
+									"format",
+									"url"
+								],
+								"type": "object"
+							},
+							"type": "array"
+						},
+						"url": { "type": "string" },
+						"videoHeight": {
+							"maximum": 9007199254740991,
+							"minimum": -9007199254740991,
+							"type": "integer"
+						}
+					},
+					"required": [
+						"generation",
+						"mode",
+						"url",
+						"engine",
+						"startPositionMs",
+						"subtitles",
+						"decision"
+					],
+					"type": "object"
+				},
+				"sessionId": { "type": "string" }
+			},
+			"required": [
+				"sessionId",
+				"generation",
+				"choiceRevision",
+				"presentation"
+			],
+			"type": "object"
+		},
 		"PrepareDiscTitleRequest": {
 			"properties": {
 				"revision": { "type": "string" },
@@ -168477,6 +168994,11 @@ var PorticoCastContracts = (function(exports) {
 						},
 						"audioTrackId": { "type": "string" },
 						"bitrateKbps": {
+							"maximum": 9007199254740991,
+							"minimum": -9007199254740991,
+							"type": "integer"
+						},
+						"choiceRevision": {
 							"maximum": 9007199254740991,
 							"minimum": -9007199254740991,
 							"type": "integer"
@@ -176803,6 +177325,11 @@ var PorticoCastContracts = (function(exports) {
 									"minimum": -9007199254740991,
 									"type": "integer"
 								},
+								"choiceRevision": {
+									"maximum": 9007199254740991,
+									"minimum": -9007199254740991,
+									"type": "integer"
+								},
 								"container": { "type": "string" },
 								"decision": {
 									"properties": {
@@ -181200,6 +181727,11 @@ var PorticoCastContracts = (function(exports) {
 								},
 								"audioTrackId": { "type": "string" },
 								"bitrateKbps": {
+									"maximum": 9007199254740991,
+									"minimum": -9007199254740991,
+									"type": "integer"
+								},
+								"choiceRevision": {
 									"maximum": 9007199254740991,
 									"minimum": -9007199254740991,
 									"type": "integer"
@@ -190961,6 +191493,11 @@ var PorticoCastContracts = (function(exports) {
 								"minimum": -9007199254740991,
 								"type": "integer"
 							},
+							"choiceRevision": {
+								"maximum": 9007199254740991,
+								"minimum": -9007199254740991,
+								"type": "integer"
+							},
 							"container": { "type": "string" },
 							"decision": { "anyOf": [{
 								"additionalProperties": false,
@@ -192027,6 +192564,11 @@ var PorticoCastContracts = (function(exports) {
 							},
 							"audioTrackId": { "type": "string" },
 							"bitrateKbps": {
+								"maximum": 9007199254740991,
+								"minimum": -9007199254740991,
+								"type": "integer"
+							},
+							"choiceRevision": {
 								"maximum": 9007199254740991,
 								"minimum": -9007199254740991,
 								"type": "integer"
@@ -193098,6 +193640,11 @@ var PorticoCastContracts = (function(exports) {
 								"minimum": -9007199254740991,
 								"type": "integer"
 							},
+							"choiceRevision": {
+								"maximum": 9007199254740991,
+								"minimum": -9007199254740991,
+								"type": "integer"
+							},
 							"container": { "type": "string" },
 							"decision": {
 								"additionalProperties": false,
@@ -194073,6 +194620,11 @@ var PorticoCastContracts = (function(exports) {
 							},
 							"audioTrackId": { "type": "string" },
 							"bitrateKbps": {
+								"maximum": 9007199254740991,
+								"minimum": -9007199254740991,
+								"type": "integer"
+							},
+							"choiceRevision": {
 								"maximum": 9007199254740991,
 								"minimum": -9007199254740991,
 								"type": "integer"
@@ -195071,6 +195623,11 @@ var PorticoCastContracts = (function(exports) {
 								"minimum": -9007199254740991,
 								"type": "integer"
 							},
+							"choiceRevision": {
+								"maximum": 9007199254740991,
+								"minimum": -9007199254740991,
+								"type": "integer"
+							},
 							"container": { "type": "string" },
 							"decision": {
 								"additionalProperties": false,
@@ -196054,6 +196611,11 @@ var PorticoCastContracts = (function(exports) {
 							},
 							"audioTrackId": { "type": "string" },
 							"bitrateKbps": {
+								"maximum": 9007199254740991,
+								"minimum": -9007199254740991,
+								"type": "integer"
+							},
+							"choiceRevision": {
 								"maximum": 9007199254740991,
 								"minimum": -9007199254740991,
 								"type": "integer"
@@ -197902,6 +198464,11 @@ var PorticoCastContracts = (function(exports) {
 									"minimum": -9007199254740991,
 									"type": "integer"
 								},
+								"choiceRevision": {
+									"maximum": 9007199254740991,
+									"minimum": -9007199254740991,
+									"type": "integer"
+								},
 								"container": { "type": "string" },
 								"decision": {
 									"properties": {
@@ -199344,6 +199911,7 @@ var PorticoCastContracts = (function(exports) {
 		"post_v1_items_itemId_subtitles_refresh": "/v1/items/{itemId}/subtitles/refresh",
 		"post_v1_items_itemId_subtitles_remote": "/v1/items/{itemId}/subtitles/remote",
 		"post_v1_items_itemId_subtitles_search": "/v1/items/{itemId}/subtitles/search",
+		"prepare_airplay_receiver": "/v1/playback/sessions/{id}/receivers/airplay",
 		"prepare_disc_title": "/v1/items/{id}/disc-titles/prepare",
 		"prepare_queue_next": "/v1/queues/{id}:prepare-next",
 		"preview_delete_title_version": "/v1/admin/items/{id}/files/{fileId}/delete/preview",

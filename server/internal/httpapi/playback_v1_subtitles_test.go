@@ -124,6 +124,7 @@ func v1BurnInFixture(t *testing.T, preferences ...playback.DeliveryPreferenceSou
 	player := playback.New(f.db)
 	player.ConfigureSubtitleDelivery(subs)
 	player.ConfigureHLS(hls)
+	f.v1.Playback = player
 	for _, source := range preferences {
 		player.ConfigureDelivery(nil, source, nil, "")
 		if f.v1.Playback != player {

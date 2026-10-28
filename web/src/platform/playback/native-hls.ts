@@ -5,8 +5,8 @@
  * connection for Automatic quality. Apple's browsers also play HLS themselves, and there are two
  * places where that is the better path:
  *
- * - **iPhone** (`first`). Safari on iPhone has no MediaSource, only ManagedMediaSource. A stream
- *   played through it cannot be sent to AirPlay, and full screen on iPhone is the system's own
+ * - **iPhone** (`first`). Safari on iPhone has no MediaSource, only ManagedMediaSource. MMS needs a native
+ *   source alternative for AirPlay, and full screen on iPhone is the system's own
  *   player in any case. The system's HLS player is what the phone is built around, so it is used
  *   for every stream.
  * - **Safari on Mac and iPad** (`fallback`). hls.js stays first. When it says it cannot play a

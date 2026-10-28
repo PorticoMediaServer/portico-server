@@ -27,6 +27,9 @@ func (h *HLS) loadTextRenditions(ctx context.Context, id string, p *DeliveryPlan
 		if e = rows.Scan(&r.Resource, &r.Revision, &r.Language, &r.Label, &r.Grant, &r.Selected, &r.Forced, &r.HearingImpaired); e != nil {
 			return e
 		}
+		if p.AirPlay && !r.Selected {
+			continue
+		}
 		r.Label = subtitles.ManifestSubtitleName(r.Label, r.Language, len(p.TextRenditions))
 		p.TextRenditions = append(p.TextRenditions, r)
 	}
@@ -37,7 +40,7 @@ func publishTextManifests(dir string, p *DeliveryPlan) error {
 	if count < 1 || count > 1440 {
 		return nil
 	}
-	for ordinal, r := range p.TextRenditions {
+	for ordinal, r := range manifestTextRenditions(p) {
 		var b strings.Builder
 		b.WriteString("#EXTM3U\n#EXT-X-VERSION:3\n#EXT-X-TARGETDURATION:60\n#EXT-X-MEDIA-SEQUENCE:0\n#EXT-X-PLAYLIST-TYPE:VOD\n")
 		for i := 0; i < count; i++ {

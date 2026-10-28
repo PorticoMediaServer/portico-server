@@ -31,6 +31,7 @@ export type PlaybackChoices = Readonly<{
    * burned-in picture). Sent with a change that names a track. */
   subtitleDelivery?: 'embeddedClient' | 'burn' | 'sidecar';
   /** The viewer's subtitle timing correction, in milliseconds. Sent with a change that names a track. */
+  subtitleOffsetUs?: string;
   subtitleOffsetMs?: number;
   /** This device's estimate of its connection to the server, sent with a quality change so the server can refuse one the connection cannot carry. */
   throughputKbps?: number;

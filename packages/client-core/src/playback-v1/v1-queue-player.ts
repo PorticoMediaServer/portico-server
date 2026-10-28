@@ -507,7 +507,8 @@ export class V1QueuePlayer implements QueueController {
     if (!context && choices.quality && !('step' in choices.quality && choices.quality.step)) this.qualityOverride = choices.quality;
     const change: SessionChange = {...(choices.replan ? {replan: true} : {}), ...(choices.quality ? {quality: choices.quality} : {}), ...(choices.versionId ? {versionId: choices.versionId} : {}), ...(choices.audioTrackId ? {audio: {trackId: choices.audioTrackId}} : {}),
       ...(choices.subtitleTrackId !== undefined ? {subtitles: {trackId: choices.subtitleTrackId, ...(choices.subtitleTrackId !== null && choices.subtitleDelivery ? {delivery: choices.subtitleDelivery} : {})}} : {}),
-      ...(choices.subtitleTrackId && choices.subtitleOffsetMs !== undefined && Number.isFinite(choices.subtitleOffsetMs) ? {subtitleOffsetMs: Math.round(choices.subtitleOffsetMs)} : {}), ...(choices.throughputKbps !== undefined ? {throughputKbps: choices.throughputKbps} : {})};
+      ...(choices.subtitleTrackId && choices.subtitleOffsetUs !== undefined ? {subtitleOffsetUs: choices.subtitleOffsetUs} : {}),
+      ...(choices.subtitleTrackId && choices.subtitleOffsetUs === undefined && choices.subtitleOffsetMs !== undefined && Number.isFinite(choices.subtitleOffsetMs) ? {subtitleOffsetMs: Math.round(choices.subtitleOffsetMs)} : {}), ...(choices.throughputKbps !== undefined ? {throughputKbps: choices.throughputKbps} : {})};
     if (!Object.keys(change).length) return context ? session : undefined;
     const generation = this.generation;
     const live = () => !this.disposed && generation === this.generation && this.session?.id === session.id
