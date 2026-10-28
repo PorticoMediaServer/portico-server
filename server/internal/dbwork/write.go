@@ -115,7 +115,7 @@ func Begin(ctx context.Context, db *sql.DB, class Class) (*Write, error) {
 	}
 	site := captureSite(2)
 	ctx = walContext(ctx, db, class, "")
-	release, err := gate.Acquire(ctx, class)
+	release, err := acquireCatalogWrite(ctx, db, class)
 	if err != nil {
 		return nil, err
 	}
@@ -474,7 +474,7 @@ func ExecWrite(ctx context.Context, db *sql.DB, class Class, query string, args 
 	}
 	site := captureSite(2)
 	ctx = walContext(ctx, db, class, query)
-	release, err := gate.Acquire(ctx, class)
+	release, err := acquireCatalogWrite(ctx, db, class)
 	if err != nil {
 		return nil, err
 	}
@@ -575,7 +575,7 @@ func ReserveWriterConn(ctx context.Context, db *sql.DB, class Class) (context.Co
 	if db == nil {
 		return nil, nil, nil, errors.New("dbwork: nil database")
 	}
-	releaseGate, err := gate.Acquire(ctx, class)
+	releaseGate, err := acquireCatalogWrite(ctx, db, class)
 	if err != nil {
 		return nil, nil, nil, err
 	}

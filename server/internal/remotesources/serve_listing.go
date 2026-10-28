@@ -42,7 +42,13 @@ type serveListingEntry struct {
 // serveListingFenceTx resolves the actual running inventory, including the
 // original job behind a verification listing. A private listing ID or a source
 // picker record is never inventory authority. No network runs in this method.
+// A listing under a source-verification key has no scan: it is fenced against
+// its library source and health epoch instead, and handled=true means that
+// fence answered.
 func (s *Service) serveListingFenceTx(ctx context.Context, tx *sql.Tx, b binding, relative, id, generation string) (serveListingCapture, error) {
+	if capture, handled, err := s.verificationServeListingFenceTx(ctx, tx, b, relative, id, generation); handled {
+		return capture, err
+	}
 	var capture serveListingCapture
 	directory := filepath.Join(b.Root, filepath.FromSlash(relative))
 	err := tx.QueryRowContext(ctx, `SELECT COALESCE((SELECT c.job_id FROM remote_inventory_checks c WHERE c.check_job=l.job_id),l.job_id) FROM remote_listing_sessions l WHERE l.id=? AND l.source_id=? AND l.generation=? AND l.directory=? AND l.ready=0`, id, b.ID, generation, directory).Scan(&capture.job)
@@ -109,7 +115,8 @@ func (s *Service) buildServeSnapshot(ctx context.Context, process *rcloneprogram
 	if err != nil {
 		return err
 	}
-	initial, err := dbwork.Begin(ctx, s.db, dbwork.ClassBackgroundMedia)
+	initialBegan := time.Now()
+	initial, err := dbwork.Begin(ctx, s.db, dbwork.ClassFrom(ctx, dbwork.ClassBackgroundMedia))
 	if err != nil {
 		return err
 	}
@@ -119,13 +126,27 @@ func (s *Service) buildServeSnapshot(ctx context.Context, process *rcloneprogram
 		err = process.CheckLocal(ctx)
 	}
 	if err == nil {
-		_, err = initial.Tx().ExecContext(ctx, `DELETE FROM remote_listing_entries WHERE listing_id=?`, id)
+		if isVerificationListing(ctx) {
+			_, err = initial.Tx().ExecContext(ctx, `DELETE FROM remote_listing_entries WHERE rowid IN(SELECT rowid FROM remote_listing_entries WHERE listing_id=? LIMIT ?)`, id, verificationReapBatch)
+		} else {
+			_, err = initial.Tx().ExecContext(ctx, `DELETE FROM remote_listing_entries WHERE listing_id=?`, id)
+		}
+	}
+	if err == nil && isVerificationListing(ctx) {
+		var remains bool
+		err = initial.Tx().QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM remote_listing_entries WHERE listing_id=?)`, id).Scan(&remains)
+		if err == nil && remains {
+			if err = verificationListingCommit(ctx, initial, initialBegan); err != nil {
+				return err
+			}
+			return storage.ErrBusy
+		}
 	}
 	if err == nil {
 		_, err = initial.Tx().ExecContext(ctx, `DELETE FROM remote_listing_progress WHERE listing_id=?`, id)
 	}
 	if err == nil {
-		err = initial.Commit()
+		err = verificationListingCommit(ctx, initial, initialBegan)
 	} else {
 		initial.Rollback()
 	}
@@ -157,7 +178,8 @@ func (s *Service) buildServeSnapshot(ctx context.Context, process *rcloneprogram
 	var count, bytes int64
 	batch := make([]serveListingEntry, 0, 128)
 	flush := func(ready bool) error {
-		writer, err := dbwork.Begin(ctx, s.db, dbwork.ClassBackgroundMedia)
+		began := time.Now()
+		writer, err := dbwork.Begin(ctx, s.db, dbwork.ClassFrom(ctx, dbwork.ClassBackgroundMedia))
 		if err != nil {
 			return err
 		}
@@ -205,7 +227,7 @@ func (s *Service) buildServeSnapshot(ctx context.Context, process *rcloneprogram
 				return err
 			}
 		}
-		if err = writer.Commit(); err != nil {
+		if err = verificationListingCommit(ctx, writer, began); err != nil {
 			return err
 		}
 		batch = batch[:0]
@@ -241,7 +263,8 @@ func (s *Service) buildServeSnapshot(ctx context.Context, process *rcloneprogram
 		if len(metaBatch) == 0 {
 			return nil
 		}
-		writer, err := dbwork.Begin(ctx, s.db, dbwork.ClassBackgroundMedia)
+		began := time.Now()
+		writer, err := dbwork.Begin(ctx, s.db, dbwork.ClassFrom(ctx, dbwork.ClassBackgroundMedia))
 		if err != nil {
 			return err
 		}
@@ -292,7 +315,7 @@ func (s *Service) buildServeSnapshot(ctx context.Context, process *rcloneprogram
 			}
 			enriched++
 		}
-		if err = writer.Commit(); err != nil {
+		if err = verificationListingCommit(ctx, writer, began); err != nil {
 			return err
 		}
 		metaBatch = metaBatch[:0]

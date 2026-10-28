@@ -622001,6 +622001,7 @@
           "unauthorized",
           "not_permitted",
           "not_found",
+          "storage_offline",
           "internal",
           "database_busy"
         ],
@@ -622421,6 +622422,7 @@
           "unauthorized",
           "not_permitted",
           "not_found",
+          "storage_offline",
           "internal",
           "database_busy"
         ],
@@ -648841,6 +648843,7 @@
           "conversion_capacity",
           "transcode_not_allowed",
           "source_unavailable",
+          "storage_offline",
           "unsupported_media",
           "connection_too_slow",
           "feature_restricted",
@@ -663618,6 +663621,7 @@
           "transcode_not_allowed",
           "unsupported_media",
           "source_unavailable",
+          "storage_offline",
           "timeout",
           "database_busy",
           "writer_capacity"

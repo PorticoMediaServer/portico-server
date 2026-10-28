@@ -10,6 +10,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"errors"
+	"log"
 	"strconv"
 	"strings"
 	"sync"
@@ -46,6 +47,11 @@ type facetRuntimeDemand struct {
 	changed         chan struct{}
 	charge          int64
 	turn            uint64
+	waitingSince    time.Time
+	ingestWindow    uint64
+	ingestSteps     uint64
+	ingestStarted   time.Time
+	ingestReported  bool
 }
 
 type FacetRuntime struct {
@@ -54,6 +60,10 @@ type FacetRuntime struct {
 	store                            *readprep.Store
 	check                            FacetWindowCheck
 	baseLimit, registryLimit         int64
+	ingestWindow                     uint64
+	ingestDemand                     *facetRuntimeDemand
+	starveAfter                      time.Duration
+	ingestHold                       time.Duration
 	mu                               sync.Mutex
 	demands                          map[FacetBaseScope]*facetRuntimeDemand
 	sources                          map[string]FacetBaseCapture
@@ -162,7 +172,7 @@ func (r *FacetRuntime) demand(scope FacetBaseScope) (*facetRuntimeDemand, error)
 	if len(r.demands) >= 64 || n > r.registryLimit-r.registryBytes {
 		return nil, ErrFacetBaseCapacity
 	}
-	d := &facetRuntimeDemand{scope: scope, touched: r.now(), charge: n, changed: make(chan struct{})}
+	d := &facetRuntimeDemand{scope: scope, touched: r.now(), waitingSince: r.now(), charge: n, changed: make(chan struct{})}
 	r.demands[scope] = d
 	r.registryBytes += n
 	r.wake.Wake()
@@ -602,6 +612,7 @@ func (r *FacetRuntime) Run(ctx context.Context) error {
 	remaining := 0
 	worker.RunWith(runctx, "facet-runtime", r.wake, r.shared, func(ctx context.Context) time.Duration {
 		started := time.Now()
+		r.cooperateWithColdBuild(ctx)
 		if err := r.writerReady(ctx); err != nil {
 			if errors.Is(err, compactcatalog.ErrFacetProducerFailed) {
 				r.failUnpreparedScopes()
@@ -630,7 +641,11 @@ func (r *FacetRuntime) Run(ctx context.Context) error {
 		}
 		wait := time.Duration(0)
 		if d != nil {
-			wait = r.maintain(ctx, d)
+			if dbwork.CatalogIngestWindowActive(r.db) {
+				wait = r.maintainColdBurst(ctx, d)
+			} else {
+				wait = r.maintain(ctx, d)
+			}
 		}
 		if err := r.collect(ctx); err != nil {
 			if ctx.Err() != nil {
@@ -645,6 +660,17 @@ func (r *FacetRuntime) Run(ctx context.Context) error {
 			fatal = err
 			cancel()
 			return 0
+		}
+		if dbwork.CatalogIngestWindowActive(r.db) {
+			// Every slice releases the writer gate. Skip quiet-time sleeps during the
+			// finite window, but return immediately when a user is waiting.
+			if dbwork.WriteGate().Admission().UserQueued > 0 {
+				return time.Millisecond
+			}
+			if wait > time.Millisecond {
+				return wait
+			}
+			return time.Nanosecond
 		}
 		if !dbwork.PaceBackground(ctx, started) {
 			return 0
@@ -676,6 +702,11 @@ func (r *FacetRuntime) Run(ctx context.Context) error {
 func (r *FacetRuntime) nextDemand(pendingOnly ...bool) *facetRuntimeDemand {
 	r.mu.Lock()
 	defer r.mu.Unlock()
+	if focus := r.ingestDemand; focus != nil && focus.ready == 0 && focus.err == nil && dbwork.CatalogIngestWindowActive(r.db) {
+		r.turn++
+		focus.turn = r.turn
+		return focus
+	}
 	now := r.now()
 	var selected *facetRuntimeDemand
 	for scope, d := range r.demands {
@@ -726,6 +757,7 @@ func (r *FacetRuntime) notify(d *facetRuntimeDemand) {
 }
 
 func (r *FacetRuntime) maintain(ctx context.Context, d *facetRuntimeDemand) time.Duration {
+	r.cooperateWithColdBuild(ctx)
 	if err := r.writerReady(ctx); err != nil {
 		if errors.Is(err, compactcatalog.ErrFacetProducerFailed) {
 			r.failUnpreparedScopes()
@@ -843,6 +875,7 @@ func (r *FacetRuntime) maintain(ctx context.Context, d *facetRuntimeDemand) time
 		return time.Millisecond
 	}
 	done := false
+	advanced := uint64(0)
 	err = r.writeBase(ctx, func(ctx context.Context, tx *sql.Tx) error {
 		snap, err := facetBaseSnapshot(ctx, tx, build, false)
 		if err != nil {
@@ -859,10 +892,25 @@ func (r *FacetRuntime) maintain(ctx context.Context, d *facetRuntimeDemand) time
 			return compactcatalog.ErrFacetProducerChanged
 		}
 		b := FacetBases{DB: r.db, Producer: plan.Producer, MaxBytes: r.baseLimit}
+		if d.scope.Source == RestrictedMemberFacetBaseSource && dbwork.CatalogIngestWindowActive(r.db) {
+			var witness restrictedFacetWitness
+			if json.Unmarshal([]byte(snap.Witness), &witness) != nil {
+				return ErrFacetBaseInput
+			}
+			if err = compactcatalog.ValidateFacetProducerFence(ctx, tx, witness.Fence); err != nil {
+				return err
+			}
+			ctx = context.WithValue(ctx, facetColdSourceKey{}, &facetColdSourceBudget{raw: 512, bytes: 256 << 10, started: time.Now(), tx: tx, fence: witness.Fence})
+		}
 		done, err = b.Step(ctx, tx, build)
 		if err != nil {
 			return err
 		}
+		advanced++
+		if budget := facetColdSource(ctx); budget != nil {
+			advanced = uint64(max(1, budget.used))
+		}
+
 		// Additional source rows (for example genre candidate-only final phases)
 		// also share the ledger, including a Done batch with no counted facts.
 		var used int64
@@ -877,6 +925,13 @@ func (r *FacetRuntime) maintain(ctx context.Context, d *facetRuntimeDemand) time
 	if err != nil {
 		return r.maintenanceFailure(ctx, d, build, err)
 	}
+	r.mu.Lock()
+	token := r.ingestWindow
+	if token != 0 && d.ingestWindow == token {
+		d.ingestSteps += advanced
+	}
+	r.mu.Unlock()
+	dbwork.ProgressCatalogIngestWindow(r.db, token)
 	if done {
 		r.mu.Lock()
 		d.ready = build
@@ -1149,7 +1204,7 @@ type FacetBaseRetirer interface {
 }
 
 func (r *FacetRuntime) retire(ctx context.Context, tx *sql.Tx, id int64) (bool, error) {
-	if err := facetRuntimeWriterReady(ctx, tx); err != nil {
+	if err := facetRuntimeWriterReadyDuring(ctx, tx, dbwork.CatalogIngestWindowActive(r.db)); err != nil {
 		return false, err
 	}
 	r.gcPending = true
@@ -1207,11 +1262,14 @@ func (r *FacetRuntime) finishGC(phase int) {
 var errFacetRuntimeDeferred = errors.New("facet BASE writes deferred for scan/source work")
 
 func facetRuntimeWriterReady(ctx context.Context, q compactcatalog.ReadQuery) error {
+	return facetRuntimeWriterReadyDuring(ctx, q, false)
+}
+func facetRuntimeWriterReadyDuring(ctx context.Context, q compactcatalog.ReadQuery, ingestHeld bool) error {
 	var active bool
 	if err := q.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM jobs INDEXED BY catalog_facet_active_scans WHERE status IN('queued','running'))`).Scan(&active); err != nil {
 		return err
 	}
-	if active {
+	if active && !ingestHeld {
 		return errFacetRuntimeDeferred
 	}
 	_, err := compactcatalog.CaptureFacetProducerFence(ctx, q)
@@ -1221,14 +1279,16 @@ func facetRuntimeWriterReady(ctx context.Context, q compactcatalog.ReadQuery) er
 	return err
 }
 func (r *FacetRuntime) writerReady(ctx context.Context) error {
-	return dbwork.WithReadSnapshot(dbwork.WithClass(ctx, dbwork.ClassBackgroundMedia), r.db, func(ctx context.Context) error { return facetRuntimeWriterReady(ctx, dbwork.Snapshot(ctx)) })
+	return dbwork.WithReadSnapshot(dbwork.WithClass(ctx, dbwork.ClassBackgroundMedia), r.db, func(ctx context.Context) error {
+		return facetRuntimeWriterReadyDuring(ctx, dbwork.Snapshot(ctx), dbwork.CatalogIngestWindowActive(r.db))
+	})
 }
 func (r *FacetRuntime) writeBase(ctx context.Context, fn func(context.Context, *sql.Tx) error) error {
 	if err := r.writerReady(ctx); err != nil {
 		return err
 	}
 	return dbwork.WithWriteTxContext(ctx, r.db, dbwork.ClassBackgroundMedia, func(ctx context.Context, tx *sql.Tx) error {
-		if err := facetRuntimeWriterReady(ctx, tx); err != nil {
+		if err := facetRuntimeWriterReadyDuring(ctx, tx, dbwork.CatalogIngestWindowActive(r.db)); err != nil {
 			return err
 		}
 		return fn(ctx, tx)
@@ -1248,6 +1308,7 @@ func (r *FacetRuntime) failUnpreparedScopes() {
 // This defer also runs before the composition root's supervisor recovers a
 // producer panic. The runtime cannot be restarted with partial in-memory state.
 func (r *FacetRuntime) stop() {
+	dbwork.ForgetCatalogIngestWindow(r.db, r.ingestWindow)
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	r.stopped = true
@@ -1255,4 +1316,119 @@ func (r *FacetRuntime) stop() {
 		d.err = readprep.ErrClosed
 		r.notify(d)
 	}
+}
+
+// The quiet-gap protocol remains the common path. Only a cold maintained class
+// still waiting after three minutes asks the existing writer scheduler for a
+// progress-renewed source-ingest window. Live users, playback and revocations stay live.
+func (r *FacetRuntime) cooperateWithColdBuild(ctx context.Context) {
+	threshold := r.starveAfter
+	if threshold <= 0 {
+		threshold = 3 * time.Minute
+	}
+	hold := r.ingestHold
+	if hold <= 0 {
+		hold = dbwork.CatalogIngestWindowLimit
+	}
+	now := r.now()
+	r.mu.Lock()
+	var cold *facetRuntimeDemand
+	pending := false
+	for _, d := range r.demands {
+		if d.ready == 0 && d.err == nil && now.Sub(d.touched) <= 30*time.Second {
+			pending = true
+			if !d.waitingSince.IsZero() && now.Sub(d.waitingSince) >= threshold && (cold == nil || d.waitingSince.Before(cold.waitingSince)) {
+				cold = d
+			}
+		}
+	}
+	token := r.ingestWindow
+	active := dbwork.CatalogIngestWindowActive(r.db)
+	for _, d := range r.demands {
+		if d.ingestWindow != 0 && !d.ingestReported && (d.ready != 0 || d.err != nil || !active) {
+			elapsed := time.Since(d.ingestStarted)
+			log.Printf("facet cold-build window library=%d field=%s source=%s source_visits=%d elapsed=%s visits_per_second=%.1f exact=%t", d.scope.LibraryID, d.scope.Field, d.scope.Source, d.ingestSteps, elapsed.Round(time.Millisecond), float64(d.ingestSteps)/max(elapsed.Seconds(), 0.001), d.ready != 0)
+			d.ingestReported = true
+		}
+	}
+	r.mu.Unlock()
+	if !pending || cold == nil {
+		if token != 0 {
+			dbwork.ReleaseCatalogIngestWindow(r.db, token)
+		}
+		r.mu.Lock()
+		r.ingestDemand = nil
+		r.mu.Unlock()
+		return
+	}
+	if active {
+		r.mu.Lock()
+		focused := r.ingestDemand == cold
+		r.mu.Unlock()
+		if focused {
+			return
+		}
+	}
+	// A retained COMPLETE basis makes this a refresh, which never holds ingest.
+	if active, err := r.active(ctx, cold.scope); err == nil && active.ID > 0 {
+		r.mu.Lock()
+		cold.ready = active.ID
+		r.notify(cold)
+		r.mu.Unlock()
+		return
+	}
+	id, _ := dbwork.RequestCatalogIngestWindow(r.db, hold)
+	if id == 0 {
+		return
+	}
+	r.mu.Lock()
+	r.ingestWindow = id
+	r.ingestDemand = cold
+	// Complete one cold class before spreading a finite window across others.
+	// Once it is ready, the next oldest class uses the remaining opportunity.
+	if cold.ingestWindow != id {
+		cold.ingestWindow = id
+		cold.ingestSteps = 0
+		cold.ingestStarted = time.Now()
+		cold.ingestReported = false
+		cold.next = time.Time{}
+		cold.gap = 0
+	}
+	r.mu.Unlock()
+}
+
+// A hold turn adapts to thousands of source/policy steps, using separate bounded
+// writer slices rather than growing a non-preemptible transaction. Existing row,
+// VM and byte budgets apply independently to every slice. No source cursor or
+// scalar buffer survives a slice. A user queued between slices gets the gate.
+func (r *FacetRuntime) maintainColdBurst(ctx context.Context, d *facetRuntimeDemand) time.Duration {
+	started := time.Now()
+	limit := 16
+	for step := 0; step < limit; step++ {
+		if ctx.Err() != nil || dbwork.WriteGate().Admission().UserQueued > 0 || !dbwork.CatalogIngestWindowActive(r.db) {
+			return time.Millisecond
+		}
+		r.mu.Lock()
+		before := d.ingestSteps
+		r.mu.Unlock()
+		wait := r.maintain(ctx, d)
+		r.mu.Lock()
+		progressed := d.ingestSteps > before
+		complete := d.ready != 0 || d.err != nil
+		r.mu.Unlock()
+		if complete {
+			r.cooperateWithColdBuild(ctx)
+			return 0
+		}
+		if !progressed {
+			return wait
+		}
+		elapsed := time.Since(started)
+		if elapsed >= 25*time.Millisecond {
+			return time.Nanosecond
+		}
+		// Aim for <=25ms of worker CPU per turn, still capped at4096 steps.
+		limit = min(4096, max(16, int(25*time.Millisecond/max(elapsed/time.Duration(step+1), time.Nanosecond))))
+	}
+	return time.Nanosecond
 }

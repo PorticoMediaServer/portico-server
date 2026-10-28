@@ -24,9 +24,14 @@ type nativeListing struct {
 // A detached listing is owned by the running inventory, not its HTTP/request
 // context. Every batch and readiness publication revalidates the actual scan
 // incarnation, credentials and process ownership in the writing transaction.
-func nativeListingFence(ctx context.Context, db interface {
+// A verification listing has no scan: it is fenced against its library source
+// and health epoch instead, and handled=true means that fence has answered.
+func (s *Service) nativeListingFence(ctx context.Context, db interface {
 	QueryRowContext(context.Context, string, ...any) *sql.Row
 }, id, owner string) error {
+	if handled, err := s.verificationNativeListingFence(ctx, db, id, owner); handled {
+		return err
+	}
 	var actualOwner, status, directory, root, generation, current string
 	var incarnationOK, removed bool
 	err := db.QueryRowContext(ctx, `SELECT n.owner,j.status,l.directory,ls.root,l.generation,CASE WHEN rs.kind IN('rclone','sftp','smb') THEN CAST(m.generation AS TEXT) ELSE CAST(rs.generation AS TEXT) END,
@@ -73,6 +78,10 @@ func nativeListingError(code string) error {
 	}
 }
 func (s *Service) startNativeListing(ctx context.Context, b binding, relative, id, generation string) error {
+	// The producer outlives this call, so its writers and cleanup carry the
+	// caller's class instead of raising themselves to background media. A
+	// verification walk is maintenance; an inventory run is background media.
+	class := dbwork.ClassFrom(ctx, dbwork.ClassBackgroundMedia)
 	s.listings.Lock()
 	defer s.listings.Unlock()
 	if s.nativeClosed {
@@ -115,7 +124,8 @@ func (s *Service) startNativeListing(ctx context.Context, b binding, relative, i
 		}
 	}()
 	owner := identity.Token()
-	gated, err := dbwork.Begin(ctx, s.db, dbwork.ClassBackgroundMedia)
+	began := time.Now()
+	gated, err := dbwork.Begin(ctx, s.db, class)
 	if err != nil {
 		return err
 	}
@@ -124,19 +134,39 @@ func (s *Service) startNativeListing(ctx context.Context, b binding, relative, i
 	// No in-memory producer owns this unpublished session: it either has never
 	// started, or the previous server process died. Discard ONLY its incomplete
 	// snapshot, once at adoption. Worker polling must never repeat this deletion.
-	if _, err = tx.ExecContext(ctx, `DELETE FROM remote_listing_entries WHERE listing_id=? AND EXISTS(SELECT 1 FROM remote_listing_sessions WHERE id=? AND ready=0)`, id, id); err != nil {
-		return err
+	if isVerificationListing(ctx) {
+		if _, err = tx.ExecContext(ctx, `DELETE FROM remote_listing_entries WHERE rowid IN(SELECT rowid FROM remote_listing_entries WHERE listing_id=? LIMIT ?)`, id, verificationReapBatch); err != nil {
+			return err
+		}
+		var remains bool
+		if err = tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM remote_listing_entries WHERE listing_id=?)`, id).Scan(&remains); err != nil {
+			return err
+		}
+		if remains {
+			if err = verificationListingCommit(ctx, gated, began); err != nil {
+				return err
+			}
+			return storage.ErrBusy
+		}
+	} else {
+		if _, err = tx.ExecContext(ctx, `DELETE FROM remote_listing_entries WHERE listing_id=? AND EXISTS(SELECT 1 FROM remote_listing_sessions WHERE id=? AND ready=0)`, id, id); err != nil {
+			return err
+		}
 	}
 	if _, err = tx.ExecContext(ctx, `INSERT INTO remote_native_listings(listing_id,owner,state,updated_at) VALUES(?,?,'running',?) ON CONFLICT(listing_id) DO UPDATE SET owner=excluded.owner,state='running',error_code='',entries=0,bytes=0,updated_at=excluded.updated_at`, id, owner, time.Now().UnixMilli()); err != nil {
 		return err
 	}
-	if err = nativeListingFence(ctx, tx, id, owner); err != nil {
+	if err = s.nativeListingFence(ctx, tx, id, owner); err != nil {
 		return err
 	}
-	if err = gated.Commit(); err != nil {
+	if err = verificationListingCommit(ctx, gated, began); err != nil {
 		return err
 	}
-	life, cancel := context.WithTimeout(runtime, 30*time.Minute)
+	lifeContext := dbwork.WithClass(runtime, class)
+	if isVerificationListing(ctx) {
+		lifeContext = withVerificationListing(lifeContext)
+	}
+	life, cancel := context.WithTimeout(lifeContext, 30*time.Minute)
 	p := &nativeListing{done: make(chan struct{}), retired: make(chan struct{}), cancel: cancel}
 	if s.nativeListings == nil {
 		s.nativeListings = map[string]*nativeListing{}
@@ -180,7 +210,7 @@ func (s *Service) startNativeListing(ctx context.Context, b binding, relative, i
 					return
 				case <-ticker.C:
 					check, done := context.WithTimeout(life, 2*time.Second)
-					err := nativeListingFence(check, s.db, id, owner)
+					err := s.nativeListingFence(check, s.db, id, owner)
 					done()
 					if err != nil {
 						cancel()
@@ -198,18 +228,18 @@ func (s *Service) startNativeListing(ctx context.Context, b binding, relative, i
 		cancel()
 		<-watchDone
 		if p.err != nil {
-			cleanup, done := context.WithTimeout(context.Background(), 5*time.Second)
+			cleanup, done := context.WithTimeout(dbwork.WithClass(context.Background(), class), 5*time.Second)
 			code := ErrorCode(p.err)
-			_, _ = dbwork.ExecWrite(cleanup, s.db, dbwork.ClassBackgroundMedia, `UPDATE remote_native_listings SET state='failed',error_code=?,updated_at=? WHERE listing_id=? AND owner=? AND state='running'`, code, time.Now().UnixMilli(), id, owner)
+			_, _ = dbwork.ExecWrite(cleanup, s.db, class, `UPDATE remote_native_listings SET state='failed',error_code=?,updated_at=? WHERE listing_id=? AND owner=? AND state='running'`, code, time.Now().UnixMilli(), id, owner)
 			done()
 		}
 		close(p.done)
 		// Do not release ownership/cancel hooks or clear partial work before the
 		// supervisor has retired the old process. Late writes cannot mix attempts.
 		<-p.retired
-		if p.err != nil {
-			cleanup, done := context.WithTimeout(context.Background(), 5*time.Second)
-			_, _ = dbwork.ExecWrite(cleanup, s.db, dbwork.ClassBackgroundMedia, `DELETE FROM remote_listing_entries WHERE listing_id=? AND EXISTS(SELECT 1 FROM remote_native_listings WHERE listing_id=? AND owner=? AND state='failed')`, id, id, owner)
+		if p.err != nil && !isVerificationListing(ctx) {
+			cleanup, done := context.WithTimeout(dbwork.WithClass(context.Background(), class), 5*time.Second)
+			_, _ = dbwork.ExecWrite(cleanup, s.db, class, `DELETE FROM remote_listing_entries WHERE listing_id=? AND EXISTS(SELECT 1 FROM remote_native_listings WHERE listing_id=? AND owner=? AND state='failed')`, id, id, owner)
 			done()
 		}
 		s.listings.Lock()

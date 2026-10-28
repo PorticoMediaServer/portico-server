@@ -293,6 +293,7 @@ index catalog_song_artists_artist
 index catalog_songs_album_entity
 index catalog_songs_album_order
 index catalog_songs_listening_order
+index catalog_source_verification_pending
 index catalog_term_entities
 index catalog_term_source_membership
 index catalog_term_sources_name_seek
@@ -940,6 +941,7 @@ table catalog_attribute_terms
 table catalog_automatic_collections
 table catalog_automatic_member_overrides
 table catalog_automatic_members
+table catalog_availability_work
 table catalog_book_chapters
 table catalog_book_context
 table catalog_book_evidence_clock
@@ -1121,6 +1123,7 @@ table catalog_shows
 table catalog_similar
 table catalog_song_artists
 table catalog_songs
+table catalog_source_verification
 table catalog_summary_classification_revision
 table catalog_term_sources
 table catalog_terms
@@ -2452,6 +2455,8 @@ trigger catalog_sort_catalog_songs_update
 trigger catalog_sort_plays_delete
 trigger catalog_sort_plays_insert
 trigger catalog_sort_plays_update
+trigger catalog_source_verification_delete
+trigger catalog_source_verification_health
 trigger catalog_title_grams_delete
 trigger catalog_title_grams_insert
 trigger catalog_title_grams_update

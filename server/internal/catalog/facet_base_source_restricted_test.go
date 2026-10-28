@@ -26,7 +26,7 @@ func facetRestrictedFixture(t *testing.T, shows bool) (*sql.DB, FacetBaseScope) 
  CREATE TABLE catalog_term_sources(entity_id INTEGER NOT NULL,provider TEXT NOT NULL,source_id TEXT NOT NULL,term_id INTEGER NOT NULL,label_override TEXT,PRIMARY KEY(entity_id,provider,source_id)) WITHOUT ROWID;
  CREATE TABLE catalog_episodes(entity_id INTEGER PRIMARY KEY,show_id INTEGER,season_id INTEGER,number INTEGER NOT NULL DEFAULT 0);
  CREATE INDEX catalog_episodes_show ON catalog_episodes(show_id,season_id,number,entity_id);
- CREATE TABLE compact_visibility_classes(id INTEGER PRIMARY KEY,class_key TEXT,library_id INTEGER,retired INTEGER,active_generation INTEGER);
+ CREATE TABLE compact_visibility_classes(id INTEGER PRIMARY KEY,class_key TEXT,library_id INTEGER,retired INTEGER,active_generation INTEGER,captured_sequence INTEGER NOT NULL DEFAULT 0);
  INSERT INTO content_rating_ages VALUES('pg',8),('r',18);
  INSERT INTO catalog_attribute_terms VALUES(1,1,'pg'),(2,1,'r'),(3,2,'x|y'),(4,3,'x');`)
 	if err != nil {
@@ -140,7 +140,7 @@ func TestFacetBaseSourceRestrictedShowsVisibleWitnessAndYear(t *testing.T) {
 	// Published decade's linked-episode class is a separate oracle. Presence
 	// cannot silently fall back to our live no-asset-link show semantics.
 	key, _ := visibilityClassKey(scope.Library, identity.ContentRestrictions{MaximumAge: &eight})
-	db.Exec(`INSERT INTO compact_visibility_classes VALUES(1,?,1,0,1)`, key)
+	db.Exec(`INSERT INTO compact_visibility_classes(id,class_key,library_id,retired,active_generation) VALUES(1,?,1,0,1)`, key)
 	if _, err = CaptureRestrictedFacetBaseWitness(context.Background(), db, scope); !errors.Is(err, ErrFacetBaseUnavailable) {
 		t.Fatal("published decade incorrectly unified", err)
 	}
@@ -192,7 +192,7 @@ func TestFacetBaseSourcePlanSelectsPublicLibraryKindsAndDecadePresence(t *testin
 			t.Fatal("unpublished decade", tc.public, plan.Scope.Source, err)
 		}
 		key, _ := visibilityClassKey(scope.Library, r)
-		if _, err = db.Exec(`INSERT INTO compact_visibility_classes VALUES(1,?,1,0,1)`, key); err != nil {
+		if _, err = db.Exec(`INSERT INTO compact_visibility_classes(id,class_key,library_id,retired,active_generation) VALUES(1,?,1,0,1)`, key); err != nil {
 			t.Fatal(err)
 		}
 		plan, err = CaptureSimpleFacetBasePlan(ctx, db, scope.LibraryID, scope.Library, "decade", r)

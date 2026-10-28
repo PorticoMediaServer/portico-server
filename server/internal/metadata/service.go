@@ -143,7 +143,7 @@ func imageURL(path, size string) string {
 	return "https://image.tmdb.org/t/p/" + size + path
 }
 func (s *Service) Run(ctx context.Context) {
-	ctx = dbwork.WithClass(ctx, dbwork.ClassBackgroundMedia)
+	ctx = dbwork.WithCatalogIngest(dbwork.WithClass(ctx, dbwork.ClassBackgroundMedia))
 	_ = s.loadProviderSettings(ctx)
 	s.logProviderState(ctx)
 	// Woken by any committed write rather than asking once a second whether
@@ -155,6 +155,9 @@ func (s *Service) Run(ctx context.Context) {
 	defer unregister()
 	ctx, progress := metadataProgress(ctx)
 	worker.Run(ctx, "metadata.providers", wake, func(ctx context.Context) time.Duration {
+		if err := dbwork.WaitCatalogIngest(ctx, s.db, dbwork.ClassBackgroundMedia); err != nil {
+			return 0
+		}
 		if s.Admission != nil {
 			allowed, e := s.Admission(ctx, nil, "metadata-refresh")
 			if e != nil || !allowed {
@@ -219,7 +222,7 @@ func (s *Service) Run(ctx context.Context) {
 // Separate bounded lanes keep artwork and local repair independent of metadata
 // providers that are slow or offline. Shutdown cancels I/O and releases handles.
 func (s *Service) RunArtwork(ctx context.Context) {
-	ctx = dbwork.WithClass(ctx, dbwork.ClassBackgroundMedia)
+	ctx = dbwork.WithCatalogIngest(dbwork.WithClass(ctx, dbwork.ClassBackgroundMedia))
 	var wg sync.WaitGroup
 	for i, step := range []func(context.Context) error{s.RepairMissingArtworkStep, s.ArtworkDiscoveryStep, s.ArtworkStep, s.CompactArtworkStep, s.RepairCascadeStep, s.GlobalArtworkSizeStep, s.RefreshAllStep} {
 		wg.Add(1)

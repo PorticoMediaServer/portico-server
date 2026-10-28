@@ -1123,10 +1123,13 @@ CREATE TABLE catalog_upstream_sources(
  inner_id INTEGER NOT NULL DEFAULT 0,
  inner_aux INTEGER NOT NULL DEFAULT 0,
  inner_key TEXT NOT NULL DEFAULT '',
+ pass_revision INTEGER NOT NULL DEFAULT 0,
+ fence_entity INTEGER,
  PRIMARY KEY(domain,source_id)) STRICT, WITHOUT ROWID;
 CREATE TABLE catalog_facet_source_state(
  singleton INTEGER PRIMARY KEY CHECK(singleton=1),
  source_epoch INTEGER NOT NULL DEFAULT 1,
+ availability_epoch INTEGER NOT NULL DEFAULT 1,
  policy_epoch INTEGER NOT NULL DEFAULT 1,
  genre_epoch INTEGER NOT NULL DEFAULT 1,
  projection_epoch INTEGER NOT NULL DEFAULT 1) STRICT;
@@ -5360,8 +5363,9 @@ CREATE TRIGGER inventory_policy_change AFTER UPDATE ON library_scan_policies BEG
  UPDATE library_configuration SET revision=revision+1,metadata_revision=metadata_revision+1 WHERE library_id=NEW.library_id;
  UPDATE admin_revision SET revision=revision+1 WHERE id=1;
 END;
-CREATE TRIGGER inventory_availability_source AFTER UPDATE OF health,enabled,incarnation,generation ON library_sources BEGIN
- UPDATE library_revisions SET revision=revision+1 WHERE library_id=NEW.library_id;
+CREATE TRIGGER inventory_availability_source AFTER UPDATE OF health,enabled,incarnation,generation ON library_sources
+ WHEN OLD.health IS NOT NEW.health OR OLD.enabled IS NOT NEW.enabled OR OLD.incarnation IS NOT NEW.incarnation OR OLD.generation IS NOT NEW.generation BEGIN
+ UPDATE library_revisions SET revision=revision+1 WHERE library_id=NEW.library_id AND (OLD.enabled IS NOT NEW.enabled OR OLD.incarnation IS NOT NEW.incarnation OR OLD.generation IS NOT NEW.generation OR (OLD.health IN('root_changed','removing')) IS NOT (NEW.health IN('root_changed','removing')));
  UPDATE admin_revision SET revision=revision+1 WHERE id=1;
 END;
 CREATE TRIGGER inventory_availability_object AFTER UPDATE OF state,retired,root_incarnation,unsupported_reason ON inventory_objects
@@ -5691,11 +5695,11 @@ CREATE VIEW inventory_item_availability AS
  SELECT l.entity_id AS item_id,a.token AS asset_id,
  CASE WHEN EXISTS(SELECT 1 FROM dvr_catalog_retirements gone WHERE gone.item_id=l.entity_id) THEN 0
  WHEN EXISTS(SELECT 1 FROM inventory_objects o JOIN library_sources s ON s.id=o.source_id WHERE o.asset_id=a.token AND s.library_id=cl.library_id)
- THEN EXISTS(SELECT 1 FROM inventory_objects o JOIN library_sources s ON s.id=o.source_id WHERE o.asset_id=a.token AND s.library_id=cl.library_id AND o.retired=0 AND o.state='available' AND o.unsupported_reason='' AND s.enabled=1 AND s.health NOT IN('offline','root_changed','removing') AND o.root_incarnation=s.incarnation)
+ THEN EXISTS(SELECT 1 FROM inventory_objects o JOIN library_sources s ON s.id=o.source_id WHERE o.asset_id=a.token AND s.library_id=cl.library_id AND o.retired=0 AND o.state='available' AND o.unsupported_reason='' AND s.enabled=1 AND s.health NOT IN('root_changed','removing') AND o.root_incarnation=s.incarnation)
  ELSE a.available=1 AND CASE
   WHEN EXISTS(SELECT 1 FROM library_sources s WHERE s.library_id=cl.library_id AND (substr(a.path,1,length(rtrim(s.root,'/\'))+1) IN(rtrim(s.root,'/\')||'/',rtrim(s.root,'/\')||'\') OR substr(a.path,1,length(rtrim(s.configured_root,'/\'))+1) IN(rtrim(s.configured_root,'/\')||'/',rtrim(s.configured_root,'/\')||'\')))
-  THEN NOT EXISTS(SELECT 1 FROM library_sources s WHERE s.library_id=cl.library_id AND (substr(a.path,1,length(rtrim(s.root,'/\'))+1) IN(rtrim(s.root,'/\')||'/',rtrim(s.root,'/\')||'\') OR substr(a.path,1,length(rtrim(s.configured_root,'/\'))+1) IN(rtrim(s.configured_root,'/\')||'/',rtrim(s.configured_root,'/\')||'\')) AND (s.enabled=0 OR s.health IN('offline','root_changed','removing')))
-  ELSE NOT EXISTS(SELECT 1 FROM library_sources s WHERE s.library_id=cl.library_id) OR EXISTS(SELECT 1 FROM library_sources s WHERE s.library_id=cl.library_id AND NOT (s.enabled=0 OR s.health IN('offline','root_changed','removing'))) END END AS available
+  THEN NOT EXISTS(SELECT 1 FROM library_sources s WHERE s.library_id=cl.library_id AND (substr(a.path,1,length(rtrim(s.root,'/\'))+1) IN(rtrim(s.root,'/\')||'/',rtrim(s.root,'/\')||'\') OR substr(a.path,1,length(rtrim(s.configured_root,'/\'))+1) IN(rtrim(s.configured_root,'/\')||'/',rtrim(s.configured_root,'/\')||'\')) AND (s.enabled=0 OR s.health IN('root_changed','removing')))
+  ELSE NOT EXISTS(SELECT 1 FROM library_sources s WHERE s.library_id=cl.library_id) OR EXISTS(SELECT 1 FROM library_sources s WHERE s.library_id=cl.library_id AND NOT (s.enabled=0 OR s.health IN('root_changed','removing'))) END END AS available
  FROM catalog_asset_links l JOIN catalog_entities e ON e.id=l.entity_id JOIN catalog_libraries cl ON cl.id=e.library_id JOIN catalog_assets a ON a.id=l.asset_id;
 CREATE VIEW listening_book_context AS
  SELECT e.id,cl.library_id,e.title,b.author,b.narrator,b.local_key,b.series,b.series_position,
@@ -5921,7 +5925,7 @@ END;
 CREATE TRIGGER catalog_availability_object_insert AFTER INSERT ON inventory_objects BEGIN
  UPDATE catalog_facet_source_state SET source_epoch=source_epoch+1 WHERE singleton=1;
  INSERT INTO catalog_upstream_sources(domain,source_id,token,flags) SELECT 41,id,token,3 FROM catalog_assets WHERE token=NEW.asset_id
- ON CONFLICT(domain,source_id) DO UPDATE SET token=excluded.token,flags=flags|excluded.flags,revision=revision+1,source_epoch=0,phase=0,has_after=0,after_id=0,after_aux=0,after_key='',active_id=NULL,active_key='',active_available=0,seen_inventory=0,inner_has=0,inner_id=0,inner_aux=0,inner_key='';
+ ON CONFLICT(domain,source_id) DO UPDATE SET token=excluded.token,flags=flags|excluded.flags,revision=revision+1,source_epoch=CASE WHEN catalog_upstream_sources.token IS excluded.token THEN source_epoch ELSE 0 END,phase=CASE WHEN catalog_upstream_sources.token IS excluded.token THEN phase ELSE 0 END,has_after=CASE WHEN catalog_upstream_sources.token IS excluded.token THEN has_after ELSE 0 END,after_id=CASE WHEN catalog_upstream_sources.token IS excluded.token THEN after_id ELSE 0 END,after_aux=CASE WHEN catalog_upstream_sources.token IS excluded.token THEN after_aux ELSE 0 END,after_key=CASE WHEN catalog_upstream_sources.token IS excluded.token THEN after_key ELSE '' END,active_id=CASE WHEN catalog_upstream_sources.token IS excluded.token THEN active_id ELSE NULL END,active_key=CASE WHEN catalog_upstream_sources.token IS excluded.token THEN active_key ELSE '' END,active_available=CASE WHEN catalog_upstream_sources.token IS excluded.token THEN active_available ELSE 0 END,seen_inventory=CASE WHEN catalog_upstream_sources.token IS excluded.token THEN seen_inventory ELSE 0 END,inner_has=CASE WHEN catalog_upstream_sources.token IS excluded.token THEN inner_has ELSE 0 END,inner_id=CASE WHEN catalog_upstream_sources.token IS excluded.token THEN inner_id ELSE 0 END,inner_aux=CASE WHEN catalog_upstream_sources.token IS excluded.token THEN inner_aux ELSE 0 END,inner_key=CASE WHEN catalog_upstream_sources.token IS excluded.token THEN inner_key ELSE '' END,pass_revision=CASE WHEN catalog_upstream_sources.token IS excluded.token THEN pass_revision ELSE 0 END,fence_entity=CASE WHEN catalog_upstream_sources.token IS excluded.token THEN fence_entity ELSE NULL END;
  INSERT INTO catalog_dirty(domain,entity_id,revision) SELECT 41,source_id,1 FROM catalog_upstream_sources WHERE domain=41 AND source_id=(SELECT id FROM catalog_assets WHERE token=NEW.asset_id)
  ON CONFLICT(domain,entity_id) DO UPDATE SET revision=revision+1;
 END;
@@ -5929,35 +5933,35 @@ CREATE TRIGGER catalog_availability_object_update AFTER UPDATE OF id,state,retir
  WHEN OLD.id IS NOT NEW.id OR OLD.state IS NOT NEW.state OR OLD.retired IS NOT NEW.retired OR OLD.root_incarnation IS NOT NEW.root_incarnation OR OLD.unsupported_reason IS NOT NEW.unsupported_reason OR OLD.source_id IS NOT NEW.source_id OR OLD.asset_id IS NOT NEW.asset_id BEGIN
  UPDATE catalog_facet_source_state SET source_epoch=source_epoch+1 WHERE singleton=1;
  INSERT INTO catalog_upstream_sources(domain,source_id,token,flags) SELECT 41,id,token,3 FROM catalog_assets WHERE token=OLD.asset_id
- ON CONFLICT(domain,source_id) DO UPDATE SET token=excluded.token,flags=flags|excluded.flags,revision=revision+1,source_epoch=0,phase=0,has_after=0,after_id=0,after_aux=0,after_key='',active_id=NULL,active_key='',active_available=0,seen_inventory=0,inner_has=0,inner_id=0,inner_aux=0,inner_key='';
+ ON CONFLICT(domain,source_id) DO UPDATE SET token=excluded.token,flags=flags|excluded.flags,revision=revision+1,source_epoch=CASE WHEN catalog_upstream_sources.token IS excluded.token THEN source_epoch ELSE 0 END,phase=CASE WHEN catalog_upstream_sources.token IS excluded.token THEN phase ELSE 0 END,has_after=CASE WHEN catalog_upstream_sources.token IS excluded.token THEN has_after ELSE 0 END,after_id=CASE WHEN catalog_upstream_sources.token IS excluded.token THEN after_id ELSE 0 END,after_aux=CASE WHEN catalog_upstream_sources.token IS excluded.token THEN after_aux ELSE 0 END,after_key=CASE WHEN catalog_upstream_sources.token IS excluded.token THEN after_key ELSE '' END,active_id=CASE WHEN catalog_upstream_sources.token IS excluded.token THEN active_id ELSE NULL END,active_key=CASE WHEN catalog_upstream_sources.token IS excluded.token THEN active_key ELSE '' END,active_available=CASE WHEN catalog_upstream_sources.token IS excluded.token THEN active_available ELSE 0 END,seen_inventory=CASE WHEN catalog_upstream_sources.token IS excluded.token THEN seen_inventory ELSE 0 END,inner_has=CASE WHEN catalog_upstream_sources.token IS excluded.token THEN inner_has ELSE 0 END,inner_id=CASE WHEN catalog_upstream_sources.token IS excluded.token THEN inner_id ELSE 0 END,inner_aux=CASE WHEN catalog_upstream_sources.token IS excluded.token THEN inner_aux ELSE 0 END,inner_key=CASE WHEN catalog_upstream_sources.token IS excluded.token THEN inner_key ELSE '' END,pass_revision=CASE WHEN catalog_upstream_sources.token IS excluded.token THEN pass_revision ELSE 0 END,fence_entity=CASE WHEN catalog_upstream_sources.token IS excluded.token THEN fence_entity ELSE NULL END;
  INSERT INTO catalog_dirty(domain,entity_id,revision) SELECT 41,source_id,1 FROM catalog_upstream_sources WHERE domain=41 AND source_id=(SELECT id FROM catalog_assets WHERE token=OLD.asset_id)
  ON CONFLICT(domain,entity_id) DO UPDATE SET revision=revision+1;
  UPDATE catalog_facet_source_state SET source_epoch=source_epoch+1 WHERE singleton=1;
  INSERT INTO catalog_upstream_sources(domain,source_id,token,flags) SELECT 41,id,token,3 FROM catalog_assets WHERE token=NEW.asset_id
- ON CONFLICT(domain,source_id) DO UPDATE SET token=excluded.token,flags=flags|excluded.flags,revision=revision+1,source_epoch=0,phase=0,has_after=0,after_id=0,after_aux=0,after_key='',active_id=NULL,active_key='',active_available=0,seen_inventory=0,inner_has=0,inner_id=0,inner_aux=0,inner_key='';
+ ON CONFLICT(domain,source_id) DO UPDATE SET token=excluded.token,flags=flags|excluded.flags,revision=revision+1,source_epoch=CASE WHEN catalog_upstream_sources.token IS excluded.token THEN source_epoch ELSE 0 END,phase=CASE WHEN catalog_upstream_sources.token IS excluded.token THEN phase ELSE 0 END,has_after=CASE WHEN catalog_upstream_sources.token IS excluded.token THEN has_after ELSE 0 END,after_id=CASE WHEN catalog_upstream_sources.token IS excluded.token THEN after_id ELSE 0 END,after_aux=CASE WHEN catalog_upstream_sources.token IS excluded.token THEN after_aux ELSE 0 END,after_key=CASE WHEN catalog_upstream_sources.token IS excluded.token THEN after_key ELSE '' END,active_id=CASE WHEN catalog_upstream_sources.token IS excluded.token THEN active_id ELSE NULL END,active_key=CASE WHEN catalog_upstream_sources.token IS excluded.token THEN active_key ELSE '' END,active_available=CASE WHEN catalog_upstream_sources.token IS excluded.token THEN active_available ELSE 0 END,seen_inventory=CASE WHEN catalog_upstream_sources.token IS excluded.token THEN seen_inventory ELSE 0 END,inner_has=CASE WHEN catalog_upstream_sources.token IS excluded.token THEN inner_has ELSE 0 END,inner_id=CASE WHEN catalog_upstream_sources.token IS excluded.token THEN inner_id ELSE 0 END,inner_aux=CASE WHEN catalog_upstream_sources.token IS excluded.token THEN inner_aux ELSE 0 END,inner_key=CASE WHEN catalog_upstream_sources.token IS excluded.token THEN inner_key ELSE '' END,pass_revision=CASE WHEN catalog_upstream_sources.token IS excluded.token THEN pass_revision ELSE 0 END,fence_entity=CASE WHEN catalog_upstream_sources.token IS excluded.token THEN fence_entity ELSE NULL END;
  INSERT INTO catalog_dirty(domain,entity_id,revision) SELECT 41,source_id,1 FROM catalog_upstream_sources WHERE domain=41 AND source_id=(SELECT id FROM catalog_assets WHERE token=NEW.asset_id)
  ON CONFLICT(domain,entity_id) DO UPDATE SET revision=revision+1;
 END;
 CREATE TRIGGER catalog_availability_object_delete AFTER DELETE ON inventory_objects BEGIN
  UPDATE catalog_facet_source_state SET source_epoch=source_epoch+1 WHERE singleton=1;
  INSERT INTO catalog_upstream_sources(domain,source_id,token,flags) SELECT 41,id,token,3 FROM catalog_assets WHERE token=OLD.asset_id
- ON CONFLICT(domain,source_id) DO UPDATE SET token=excluded.token,flags=flags|excluded.flags,revision=revision+1,source_epoch=0,phase=0,has_after=0,after_id=0,after_aux=0,after_key='',active_id=NULL,active_key='',active_available=0,seen_inventory=0,inner_has=0,inner_id=0,inner_aux=0,inner_key='';
+ ON CONFLICT(domain,source_id) DO UPDATE SET token=excluded.token,flags=flags|excluded.flags,revision=revision+1,source_epoch=CASE WHEN catalog_upstream_sources.token IS excluded.token THEN source_epoch ELSE 0 END,phase=CASE WHEN catalog_upstream_sources.token IS excluded.token THEN phase ELSE 0 END,has_after=CASE WHEN catalog_upstream_sources.token IS excluded.token THEN has_after ELSE 0 END,after_id=CASE WHEN catalog_upstream_sources.token IS excluded.token THEN after_id ELSE 0 END,after_aux=CASE WHEN catalog_upstream_sources.token IS excluded.token THEN after_aux ELSE 0 END,after_key=CASE WHEN catalog_upstream_sources.token IS excluded.token THEN after_key ELSE '' END,active_id=CASE WHEN catalog_upstream_sources.token IS excluded.token THEN active_id ELSE NULL END,active_key=CASE WHEN catalog_upstream_sources.token IS excluded.token THEN active_key ELSE '' END,active_available=CASE WHEN catalog_upstream_sources.token IS excluded.token THEN active_available ELSE 0 END,seen_inventory=CASE WHEN catalog_upstream_sources.token IS excluded.token THEN seen_inventory ELSE 0 END,inner_has=CASE WHEN catalog_upstream_sources.token IS excluded.token THEN inner_has ELSE 0 END,inner_id=CASE WHEN catalog_upstream_sources.token IS excluded.token THEN inner_id ELSE 0 END,inner_aux=CASE WHEN catalog_upstream_sources.token IS excluded.token THEN inner_aux ELSE 0 END,inner_key=CASE WHEN catalog_upstream_sources.token IS excluded.token THEN inner_key ELSE '' END,pass_revision=CASE WHEN catalog_upstream_sources.token IS excluded.token THEN pass_revision ELSE 0 END,fence_entity=CASE WHEN catalog_upstream_sources.token IS excluded.token THEN fence_entity ELSE NULL END;
  INSERT INTO catalog_dirty(domain,entity_id,revision) SELECT 41,source_id,1 FROM catalog_upstream_sources WHERE domain=41 AND source_id=(SELECT id FROM catalog_assets WHERE token=OLD.asset_id)
  ON CONFLICT(domain,entity_id) DO UPDATE SET revision=revision+1;
 END;
 CREATE TRIGGER catalog_availability_source_health AFTER UPDATE OF library_id,health,enabled,incarnation,generation ON library_sources
- WHEN OLD.library_id IS NOT NEW.library_id OR (OLD.health IN('offline','root_changed','removing')) IS NOT (NEW.health IN('offline','root_changed','removing')) OR OLD.enabled IS NOT NEW.enabled OR OLD.incarnation IS NOT NEW.incarnation OR OLD.generation IS NOT NEW.generation BEGIN
- UPDATE catalog_facet_source_state SET source_epoch=source_epoch+1 WHERE singleton=1;
+ WHEN OLD.library_id IS NOT NEW.library_id OR (OLD.health IN('root_changed','removing')) IS NOT (NEW.health IN('root_changed','removing')) OR OLD.enabled IS NOT NEW.enabled OR OLD.incarnation IS NOT NEW.incarnation OR OLD.generation IS NOT NEW.generation BEGIN
+ UPDATE catalog_facet_source_state SET source_epoch=source_epoch+1,availability_epoch=availability_epoch+1 WHERE singleton=1;
  INSERT INTO catalog_dirty(domain,entity_id,revision) SELECT 28,id,1 FROM catalog_libraries WHERE library_id IN(OLD.library_id,NEW.library_id)
  ON CONFLICT(domain,entity_id) DO UPDATE SET revision=revision+1;
 END;
 CREATE TRIGGER catalog_availability_source_insert AFTER INSERT ON library_sources BEGIN
- UPDATE catalog_facet_source_state SET source_epoch=source_epoch+1 WHERE singleton=1;
+ UPDATE catalog_facet_source_state SET source_epoch=source_epoch+1,availability_epoch=availability_epoch+1 WHERE singleton=1;
  INSERT INTO catalog_dirty(domain,entity_id,revision) SELECT 28,id,1 FROM catalog_libraries WHERE library_id=NEW.library_id
  ON CONFLICT(domain,entity_id) DO UPDATE SET revision=revision+1;
 END;
 CREATE TRIGGER catalog_availability_source_delete AFTER DELETE ON library_sources BEGIN
- UPDATE catalog_facet_source_state SET source_epoch=source_epoch+1 WHERE singleton=1;
+ UPDATE catalog_facet_source_state SET source_epoch=source_epoch+1,availability_epoch=availability_epoch+1 WHERE singleton=1;
  INSERT INTO catalog_dirty(domain,entity_id,revision) SELECT 28,id,1 FROM catalog_libraries WHERE library_id=OLD.library_id
  ON CONFLICT(domain,entity_id) DO UPDATE SET revision=revision+1;
 END;
@@ -6947,17 +6951,19 @@ CREATE TRIGGER metadata_publication_termsource_DELETE AFTER DELETE ON catalog_te
 CREATE TRIGGER metadata_publication_termsource_UPDATE AFTER UPDATE ON catalog_term_sources BEGIN UPDATE metadata_publication_heads SET metadata_revision=metadata_revision+1 WHERE item_id IN(OLD.entity_id,NEW.entity_id);END;
 -- Asset source work has current link owners; future links queue current facts.
 -- One UPDATE acceptance combines actions and resets even unchanged flag sets.
+-- Asset source work has current link owners; future links queue current facts.
+-- One UPDATE acceptance combines actions and resets even unchanged flag sets.
 CREATE TRIGGER metadata_source_asset_DELETE BEFORE DELETE ON catalog_assets WHEN EXISTS(SELECT 1 FROM catalog_asset_links INDEXED BY catalog_asset_links_asset WHERE asset_id=OLD.id) BEGIN
  UPDATE catalog_facet_source_state SET source_epoch=source_epoch+1 WHERE singleton=1;
  INSERT INTO catalog_upstream_sources(domain,source_id,token,flags) SELECT 41,OLD.id,OLD.token,12 WHERE 1
- ON CONFLICT(domain,source_id) DO UPDATE SET token=excluded.token,flags=flags|excluded.flags,revision=revision+1,source_epoch=0,phase=0,has_after=0,after_id=0,after_aux=0,after_key='',active_id=NULL,active_key='',active_available=0,seen_inventory=0,inner_has=0,inner_id=0,inner_aux=0,inner_key='';
+ ON CONFLICT(domain,source_id) DO UPDATE SET token=excluded.token,flags=flags|excluded.flags,revision=revision+1,source_epoch=CASE WHEN catalog_upstream_sources.token IS excluded.token THEN source_epoch ELSE 0 END,phase=CASE WHEN catalog_upstream_sources.token IS excluded.token THEN phase ELSE 0 END,has_after=CASE WHEN catalog_upstream_sources.token IS excluded.token THEN has_after ELSE 0 END,after_id=CASE WHEN catalog_upstream_sources.token IS excluded.token THEN after_id ELSE 0 END,after_aux=CASE WHEN catalog_upstream_sources.token IS excluded.token THEN after_aux ELSE 0 END,after_key=CASE WHEN catalog_upstream_sources.token IS excluded.token THEN after_key ELSE '' END,active_id=CASE WHEN catalog_upstream_sources.token IS excluded.token THEN active_id ELSE NULL END,active_key=CASE WHEN catalog_upstream_sources.token IS excluded.token THEN active_key ELSE '' END,active_available=CASE WHEN catalog_upstream_sources.token IS excluded.token THEN active_available ELSE 0 END,seen_inventory=CASE WHEN catalog_upstream_sources.token IS excluded.token THEN seen_inventory ELSE 0 END,inner_has=CASE WHEN catalog_upstream_sources.token IS excluded.token THEN inner_has ELSE 0 END,inner_id=CASE WHEN catalog_upstream_sources.token IS excluded.token THEN inner_id ELSE 0 END,inner_aux=CASE WHEN catalog_upstream_sources.token IS excluded.token THEN inner_aux ELSE 0 END,inner_key=CASE WHEN catalog_upstream_sources.token IS excluded.token THEN inner_key ELSE '' END,pass_revision=CASE WHEN catalog_upstream_sources.token IS excluded.token THEN pass_revision ELSE 0 END,fence_entity=CASE WHEN catalog_upstream_sources.token IS excluded.token THEN fence_entity ELSE NULL END;
  INSERT INTO catalog_dirty(domain,entity_id,revision) SELECT 41,source_id,1 FROM catalog_upstream_sources WHERE domain=41 AND source_id=(OLD.id)
  ON CONFLICT(domain,entity_id) DO UPDATE SET revision=revision+1;
 END;
 CREATE TRIGGER metadata_source_asset_INSERT AFTER INSERT ON catalog_assets WHEN EXISTS(SELECT 1 FROM catalog_asset_links INDEXED BY catalog_asset_links_asset WHERE asset_id=NEW.id) BEGIN
  UPDATE catalog_facet_source_state SET source_epoch=source_epoch+1 WHERE singleton=1;
  INSERT INTO catalog_upstream_sources(domain,source_id,token,flags) SELECT 41,NEW.id,NEW.token,12 WHERE 1
- ON CONFLICT(domain,source_id) DO UPDATE SET token=excluded.token,flags=flags|excluded.flags,revision=revision+1,source_epoch=0,phase=0,has_after=0,after_id=0,after_aux=0,after_key='',active_id=NULL,active_key='',active_available=0,seen_inventory=0,inner_has=0,inner_id=0,inner_aux=0,inner_key='';
+ ON CONFLICT(domain,source_id) DO UPDATE SET token=excluded.token,flags=flags|excluded.flags,revision=revision+1,source_epoch=CASE WHEN catalog_upstream_sources.token IS excluded.token THEN source_epoch ELSE 0 END,phase=CASE WHEN catalog_upstream_sources.token IS excluded.token THEN phase ELSE 0 END,has_after=CASE WHEN catalog_upstream_sources.token IS excluded.token THEN has_after ELSE 0 END,after_id=CASE WHEN catalog_upstream_sources.token IS excluded.token THEN after_id ELSE 0 END,after_aux=CASE WHEN catalog_upstream_sources.token IS excluded.token THEN after_aux ELSE 0 END,after_key=CASE WHEN catalog_upstream_sources.token IS excluded.token THEN after_key ELSE '' END,active_id=CASE WHEN catalog_upstream_sources.token IS excluded.token THEN active_id ELSE NULL END,active_key=CASE WHEN catalog_upstream_sources.token IS excluded.token THEN active_key ELSE '' END,active_available=CASE WHEN catalog_upstream_sources.token IS excluded.token THEN active_available ELSE 0 END,seen_inventory=CASE WHEN catalog_upstream_sources.token IS excluded.token THEN seen_inventory ELSE 0 END,inner_has=CASE WHEN catalog_upstream_sources.token IS excluded.token THEN inner_has ELSE 0 END,inner_id=CASE WHEN catalog_upstream_sources.token IS excluded.token THEN inner_id ELSE 0 END,inner_aux=CASE WHEN catalog_upstream_sources.token IS excluded.token THEN inner_aux ELSE 0 END,inner_key=CASE WHEN catalog_upstream_sources.token IS excluded.token THEN inner_key ELSE '' END,pass_revision=CASE WHEN catalog_upstream_sources.token IS excluded.token THEN pass_revision ELSE 0 END,fence_entity=CASE WHEN catalog_upstream_sources.token IS excluded.token THEN fence_entity ELSE NULL END;
  INSERT INTO catalog_dirty(domain,entity_id,revision) SELECT 41,source_id,1 FROM catalog_upstream_sources WHERE domain=41 AND source_id=(NEW.id)
  ON CONFLICT(domain,entity_id) DO UPDATE SET revision=revision+1;
 END;
@@ -6966,14 +6972,14 @@ WHEN (OLD.id IS NOT NEW.id OR OLD.token IS NOT NEW.token OR OLD.path IS NOT NEW.
  AND (EXISTS(SELECT 1 FROM catalog_asset_links INDEXED BY catalog_asset_links_asset WHERE asset_id=OLD.id) OR EXISTS(SELECT 1 FROM catalog_asset_links INDEXED BY catalog_asset_links_asset WHERE asset_id=NEW.id)) BEGIN
  UPDATE catalog_facet_source_state SET source_epoch=source_epoch+1 WHERE singleton=1 AND OLD.id IS NOT NEW.id;
  INSERT INTO catalog_upstream_sources(domain,source_id,token,flags) SELECT 41,OLD.id,OLD.token,12 WHERE OLD.id IS NOT NEW.id
- ON CONFLICT(domain,source_id) DO UPDATE SET token=excluded.token,flags=flags|excluded.flags,revision=revision+1,source_epoch=0,phase=0,has_after=0,after_id=0,after_aux=0,after_key='',active_id=NULL,active_key='',active_available=0,seen_inventory=0,inner_has=0,inner_id=0,inner_aux=0,inner_key='';
+ ON CONFLICT(domain,source_id) DO UPDATE SET token=excluded.token,flags=flags|excluded.flags,revision=revision+1,source_epoch=CASE WHEN catalog_upstream_sources.token IS excluded.token THEN source_epoch ELSE 0 END,phase=CASE WHEN catalog_upstream_sources.token IS excluded.token THEN phase ELSE 0 END,has_after=CASE WHEN catalog_upstream_sources.token IS excluded.token THEN has_after ELSE 0 END,after_id=CASE WHEN catalog_upstream_sources.token IS excluded.token THEN after_id ELSE 0 END,after_aux=CASE WHEN catalog_upstream_sources.token IS excluded.token THEN after_aux ELSE 0 END,after_key=CASE WHEN catalog_upstream_sources.token IS excluded.token THEN after_key ELSE '' END,active_id=CASE WHEN catalog_upstream_sources.token IS excluded.token THEN active_id ELSE NULL END,active_key=CASE WHEN catalog_upstream_sources.token IS excluded.token THEN active_key ELSE '' END,active_available=CASE WHEN catalog_upstream_sources.token IS excluded.token THEN active_available ELSE 0 END,seen_inventory=CASE WHEN catalog_upstream_sources.token IS excluded.token THEN seen_inventory ELSE 0 END,inner_has=CASE WHEN catalog_upstream_sources.token IS excluded.token THEN inner_has ELSE 0 END,inner_id=CASE WHEN catalog_upstream_sources.token IS excluded.token THEN inner_id ELSE 0 END,inner_aux=CASE WHEN catalog_upstream_sources.token IS excluded.token THEN inner_aux ELSE 0 END,inner_key=CASE WHEN catalog_upstream_sources.token IS excluded.token THEN inner_key ELSE '' END,pass_revision=CASE WHEN catalog_upstream_sources.token IS excluded.token THEN pass_revision ELSE 0 END,fence_entity=CASE WHEN catalog_upstream_sources.token IS excluded.token THEN fence_entity ELSE NULL END;
  INSERT INTO catalog_dirty(domain,entity_id,revision) SELECT 41,source_id,1 FROM catalog_upstream_sources WHERE domain=41 AND source_id=(OLD.id) AND OLD.id IS NOT NEW.id
  ON CONFLICT(domain,entity_id) DO UPDATE SET revision=revision+1;
  UPDATE catalog_facet_source_state SET source_epoch=source_epoch+1 WHERE singleton=1;
  INSERT INTO catalog_upstream_sources(domain,source_id,token,flags) SELECT 41,NEW.id,NEW.token,12
  | CASE WHEN OLD.available IS NOT NEW.available OR OLD.path IS NOT NEW.path THEN 3 ELSE 0 END
  | CASE WHEN OLD.size IS NOT NEW.size OR OLD.modified_ns IS NOT NEW.modified_ns OR OLD.path IS NOT NEW.path THEN 16 ELSE 0 END WHERE 1
- ON CONFLICT(domain,source_id) DO UPDATE SET token=excluded.token,flags=flags|excluded.flags,revision=revision+1,source_epoch=0,phase=0,has_after=0,after_id=0,after_aux=0,after_key='',active_id=NULL,active_key='',active_available=0,seen_inventory=0,inner_has=0,inner_id=0,inner_aux=0,inner_key='';
+ ON CONFLICT(domain,source_id) DO UPDATE SET token=excluded.token,flags=flags|excluded.flags,revision=revision+1,source_epoch=CASE WHEN catalog_upstream_sources.token IS excluded.token THEN source_epoch ELSE 0 END,phase=CASE WHEN catalog_upstream_sources.token IS excluded.token THEN phase ELSE 0 END,has_after=CASE WHEN catalog_upstream_sources.token IS excluded.token THEN has_after ELSE 0 END,after_id=CASE WHEN catalog_upstream_sources.token IS excluded.token THEN after_id ELSE 0 END,after_aux=CASE WHEN catalog_upstream_sources.token IS excluded.token THEN after_aux ELSE 0 END,after_key=CASE WHEN catalog_upstream_sources.token IS excluded.token THEN after_key ELSE '' END,active_id=CASE WHEN catalog_upstream_sources.token IS excluded.token THEN active_id ELSE NULL END,active_key=CASE WHEN catalog_upstream_sources.token IS excluded.token THEN active_key ELSE '' END,active_available=CASE WHEN catalog_upstream_sources.token IS excluded.token THEN active_available ELSE 0 END,seen_inventory=CASE WHEN catalog_upstream_sources.token IS excluded.token THEN seen_inventory ELSE 0 END,inner_has=CASE WHEN catalog_upstream_sources.token IS excluded.token THEN inner_has ELSE 0 END,inner_id=CASE WHEN catalog_upstream_sources.token IS excluded.token THEN inner_id ELSE 0 END,inner_aux=CASE WHEN catalog_upstream_sources.token IS excluded.token THEN inner_aux ELSE 0 END,inner_key=CASE WHEN catalog_upstream_sources.token IS excluded.token THEN inner_key ELSE '' END,pass_revision=CASE WHEN catalog_upstream_sources.token IS excluded.token THEN pass_revision ELSE 0 END,fence_entity=CASE WHEN catalog_upstream_sources.token IS excluded.token THEN fence_entity ELSE NULL END;
  INSERT INTO catalog_dirty(domain,entity_id,revision) SELECT 41,source_id,1 FROM catalog_upstream_sources WHERE domain=41 AND source_id=(NEW.id)
  ON CONFLICT(domain,entity_id) DO UPDATE SET revision=revision+1;
  INSERT INTO catalog_dirty(domain,entity_id,revision) VALUES(26,NEW.id,1) ON CONFLICT(domain,entity_id) DO UPDATE SET revision=revision+1;
@@ -11329,8 +11335,8 @@ CREATE TRIGGER browse_predicate_library_sources_insert AFTER INSERT ON library_s
  BEGIN UPDATE catalog_browse_predicate_epoch SET revision=revision+1 WHERE singleton=1; END;
 CREATE TRIGGER browse_predicate_library_sources_delete AFTER DELETE ON library_sources
  BEGIN UPDATE catalog_browse_predicate_epoch SET revision=revision+1 WHERE singleton=1; END;
-CREATE TRIGGER browse_predicate_library_sources_update AFTER UPDATE OF id,library_id,kind,incarnation,enabled,health,root,configured_root ON library_sources
- WHEN OLD.id IS NOT NEW.id OR OLD.library_id IS NOT NEW.library_id OR OLD.kind IS NOT NEW.kind OR OLD.incarnation IS NOT NEW.incarnation OR OLD.enabled IS NOT NEW.enabled OR OLD.health IS NOT NEW.health OR OLD.root IS NOT NEW.root OR OLD.configured_root IS NOT NEW.configured_root
+CREATE TRIGGER browse_predicate_library_sources_update AFTER UPDATE OF id,library_id,kind,incarnation,enabled,root,configured_root,health ON library_sources
+ WHEN OLD.id IS NOT NEW.id OR OLD.library_id IS NOT NEW.library_id OR OLD.kind IS NOT NEW.kind OR OLD.incarnation IS NOT NEW.incarnation OR OLD.enabled IS NOT NEW.enabled OR OLD.root IS NOT NEW.root OR OLD.configured_root IS NOT NEW.configured_root OR (OLD.health IN('root_changed','removing')) IS NOT (NEW.health IN('root_changed','removing'))
  BEGIN UPDATE catalog_browse_predicate_epoch SET revision=revision+1 WHERE singleton=1; END;
 CREATE TRIGGER browse_predicate_compact_visibility_classes_insert AFTER INSERT ON compact_visibility_classes
  BEGIN UPDATE catalog_browse_predicate_epoch SET revision=revision+1 WHERE singleton=1; END;
@@ -13206,3 +13212,61 @@ CREATE INDEX p2_62_purge_prepared_actor ON prepared_media_jobs(
  json_extract(principal_json,'$.authority'),
  json_extract(principal_json,'$.accountId'),
  json_extract(principal_json,'$.profileId'),id);
+
+
+-- Source-level reconnect verification; transient disconnects retain catalogue facts.
+CREATE TABLE catalog_source_verification(
+ source_id TEXT PRIMARY KEY,
+ incarnation TEXT NOT NULL,
+ configuration_generation INTEGER NOT NULL,
+ health_epoch INTEGER NOT NULL DEFAULT 1 CHECK(health_epoch>0),
+ pending INTEGER NOT NULL DEFAULT 0 CHECK(pending IN(0,1)),
+ started INTEGER NOT NULL DEFAULT 0 CHECK(started IN(0,1)),
+ after_object TEXT NOT NULL DEFAULT '',
+ fence_object TEXT NOT NULL DEFAULT ''
+) STRICT;
+CREATE INDEX catalog_source_verification_pending ON catalog_source_verification(pending,source_id);
+CREATE TRIGGER catalog_source_verification_health AFTER UPDATE OF health,enabled,incarnation,generation ON library_sources
+ WHEN OLD.health IS NOT NEW.health OR OLD.enabled IS NOT NEW.enabled OR OLD.incarnation IS NOT NEW.incarnation OR OLD.generation IS NOT NEW.generation BEGIN
+ INSERT INTO catalog_source_verification(source_id,incarnation,configuration_generation,pending)
+ VALUES(NEW.id,NEW.incarnation,NEW.generation,
+  NEW.enabled=1 AND OLD.health='offline' AND NEW.health NOT IN('offline','root_changed','removing'))
+ ON CONFLICT(source_id) DO UPDATE SET
+  health_epoch=health_epoch+1,
+  pending=CASE WHEN incarnation<>excluded.incarnation OR configuration_generation<>excluded.configuration_generation THEN excluded.pending ELSE max(pending,excluded.pending) END,
+  started=CASE WHEN incarnation<>excluded.incarnation OR configuration_generation<>excluded.configuration_generation OR (pending=0 AND excluded.pending=1) THEN 0 ELSE started END,
+  after_object=CASE WHEN incarnation<>excluded.incarnation OR configuration_generation<>excluded.configuration_generation OR (pending=0 AND excluded.pending=1) THEN '' ELSE after_object END,
+  fence_object=CASE WHEN incarnation<>excluded.incarnation OR configuration_generation<>excluded.configuration_generation OR (pending=0 AND excluded.pending=1) THEN '' ELSE fence_object END,
+  incarnation=excluded.incarnation,configuration_generation=excluded.configuration_generation;
+END;
+CREATE TRIGGER catalog_source_verification_delete AFTER DELETE ON library_sources BEGIN
+ DELETE FROM catalog_source_verification WHERE source_id=OLD.id;
+END;
+
+-- Actual file-evidence holder maintenance; never triggered by transient source health.
+CREATE TABLE catalog_availability_work(
+ entity_id INTEGER PRIMARY KEY,
+ revision INTEGER NOT NULL,
+ source_epoch INTEGER NOT NULL,
+ fence_asset INTEGER,
+ fence_object TEXT,
+ fence_source TEXT,
+ phase INTEGER NOT NULL DEFAULT 0 CHECK(phase BETWEEN 0 AND 2),
+ has_asset INTEGER NOT NULL DEFAULT 0 CHECK(has_asset IN(0,1)),
+ after_asset INTEGER NOT NULL DEFAULT 0,
+ asset_id INTEGER,
+ asset_token TEXT NOT NULL DEFAULT '',
+ asset_path TEXT NOT NULL DEFAULT '',
+ asset_available INTEGER NOT NULL DEFAULT 0 CHECK(asset_available IN(0,1)),
+ has_object INTEGER NOT NULL DEFAULT 0 CHECK(has_object IN(0,1)),
+ after_object TEXT NOT NULL DEFAULT '',
+ has_source INTEGER NOT NULL DEFAULT 0 CHECK(has_source IN(0,1)),
+ after_source TEXT NOT NULL DEFAULT '',
+ inventory_seen INTEGER NOT NULL DEFAULT 0 CHECK(inventory_seen IN(0,1)),
+ inventory_available INTEGER NOT NULL DEFAULT 0 CHECK(inventory_available IN(0,1)),
+ source_seen INTEGER NOT NULL DEFAULT 0 CHECK(source_seen IN(0,1)),
+ healthy_seen INTEGER NOT NULL DEFAULT 0 CHECK(healthy_seen IN(0,1)),
+ matching_seen INTEGER NOT NULL DEFAULT 0 CHECK(matching_seen IN(0,1)),
+ matching_unhealthy INTEGER NOT NULL DEFAULT 0 CHECK(matching_unhealthy IN(0,1)),
+ any_available INTEGER NOT NULL DEFAULT 0 CHECK(any_available IN(0,1))
+) STRICT;

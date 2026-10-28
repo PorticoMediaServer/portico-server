@@ -31,6 +31,24 @@ type RemoteInventoryVerifier interface {
 	VerifyInventoryDirectory(context.Context, string, string, string) error
 }
 
+// RemoteInventoryAbsence is the narrow remote per-file proof. Complete, fresh
+// directory evidence produced for the caller's key can establish that one exact
+// child is absent without materialising the directory again. Both methods belong
+// to the same adapter because a proof that cannot be revalidated in the
+// accepting writer must not be taken at all.
+type RemoteInventoryAbsence interface {
+	// InventoryAbsence reports whether the exact recorded file is absent from
+	// fresh evidence produced for this key. A present file is (false, nil); an
+	// absent file is (true, nil) only with such evidence. Pending evidence is
+	// ErrBusy, and an inconclusive or unavailable source is an error, never an
+	// absence.
+	InventoryAbsence(context.Context, string, InventoryRequest) (bool, error)
+	// ValidateInventoryAbsenceTx fences the exact listing for the same key and
+	// the captured source generation in the writer that accepts the missing
+	// mark.
+	ValidateInventoryAbsenceTx(context.Context, *sql.Tx, string, InventoryRequest) error
+}
+
 func RemoteDirectoryIdentity(source, path string) string {
 	return "remote-dir:" + source + ":" + identity.Digest(path)
 }

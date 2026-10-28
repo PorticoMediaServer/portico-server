@@ -670,6 +670,12 @@ func failure(w http.ResponseWriter, e error) {
 	if errors.Is(e, remotemedia.ErrPolicy) {
 		status, code, message = 403, "network_policy", remotemedia.ErrPolicy.Error()
 	}
+	// The selected storage is reachable but offline. Identity, lifetime, root and
+	// authorization were valid, so the same request may be retried unchanged.
+	if errors.Is(e, storage.ErrStorageOffline) {
+		status, code, message, retryable = 503, "storage_offline", "This title’s storage is offline right now.", true
+		w.Header().Set("Retry-After", "2")
+	}
 	if errors.Is(e, storage.ErrBusy) || errors.Is(e, storage.ErrPlaybackTimeout) || errors.Is(e, storage.ErrPlaybackSource) {
 		status, code, message, retryable = 503, "playback_source_unavailable", "Playback source is unavailable; retry when storage responds.", true
 		w.Header().Set("Retry-After", "2")

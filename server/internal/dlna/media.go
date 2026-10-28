@@ -10,6 +10,7 @@ import (
 	"portico.local/server/internal/assets"
 	"portico.local/server/internal/dbwork"
 	"portico.local/server/internal/entityid"
+	"portico.local/server/internal/storage"
 )
 
 var errWithdrawn = errors.New("dlna: switched off or no longer on the home network")
@@ -49,6 +50,13 @@ func (s *Server) serveMedia(w http.ResponseWriter, r *http.Request, name string)
 	}
 	source, err := assets.ResolveCatalogPlaybackSource(r.Context(), s.DB, token)
 	if err != nil {
+		// Storage that is only offline is a temporary state, not a withdrawn
+		// title: the same renderer request works once the source reconnects.
+		if errors.Is(err, storage.ErrStorageOffline) {
+			w.Header().Set("Retry-After", "2")
+			http.Error(w, http.StatusText(http.StatusServiceUnavailable), http.StatusServiceUnavailable)
+			return
+		}
 		http.NotFound(w, r)
 		return
 	}

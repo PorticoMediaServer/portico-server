@@ -6,68 +6,15 @@ import (
 	"errors"
 )
 
-// Availability (domain 20): whether an item can be played now, and which of
-// its files can. It follows inventory evidence, source health, trash and DVR
-// retirement through the inventory_item_availability view, and is queued by
-// the write API (links, asset evidence) and the feed triggers (inventory
-// objects, sources, trash, retirements). A source's health change queues its
-// library (domain 28), whose items are fanned out in bounded steps.
+// Availability (domain 20) maintains the last accepted file evidence through
+// inventory_item_availability. Real file changes, source configuration, trash
+// and DVR retirement queue bounded work. Transient offline/online is only a
+// source fact; playback checks it directly and it queues no item maintenance.
 
 const (
 	DomainLibraryAvailability = 28
 	DomainAssetIssues         = 29
 )
-
-func deriveAvailability(ctx context.Context, tx *sql.Tx, ids string) error {
-	// Each statement returns the items whose stored availability it changed;
-	// only those re-derive their browse rows. A rescan, or a source's health
-	// changing and back, re-checks every item of a library, and re-deriving
-	// the browse rows of all of them made the work of one scan grow with the
-	// library even when nothing could be played any differently.
-	changed := map[int64]bool{}
-	for _, q := range []string{
-		// Only a changed flag is written: an unchanged row is not a link change.
-		`UPDATE catalog_asset_links SET available=COALESCE((SELECT av.available FROM inventory_item_availability av JOIN catalog_assets a ON a.token=av.asset_id WHERE av.item_id=catalog_asset_links.entity_id AND a.id=catalog_asset_links.asset_id),0)
- WHERE entity_id IN(SELECT value FROM json_each(?1))
- AND available IS NOT COALESCE((SELECT av.available FROM inventory_item_availability av JOIN catalog_assets a ON a.token=av.asset_id WHERE av.item_id=catalog_asset_links.entity_id AND a.id=catalog_asset_links.asset_id),0)
- RETURNING entity_id`,
-		`DELETE FROM catalog_item_availability WHERE entity_id IN(SELECT value FROM json_each(?1)) AND NOT EXISTS(SELECT 1 FROM catalog_entities e WHERE e.id=catalog_item_availability.entity_id) RETURNING entity_id`,
-		`INSERT INTO catalog_item_availability(entity_id,available,retired)
- SELECT e.id,EXISTS(SELECT 1 FROM catalog_asset_links l WHERE l.entity_id=e.id AND l.available=1),EXISTS(SELECT 1 FROM dvr_catalog_retirements g WHERE g.item_id=e.id)
- FROM json_each(?1) j JOIN catalog_entities e ON e.id=j.value
- ON CONFLICT(entity_id) DO UPDATE SET available=excluded.available,retired=excluded.retired
- WHERE catalog_item_availability.available IS NOT excluded.available OR catalog_item_availability.retired IS NOT excluded.retired
- RETURNING entity_id`,
-	} {
-		rows, err := tx.QueryContext(ctx, q, ids)
-		if err != nil {
-			return err
-		}
-		for rows.Next() {
-			var id int64
-			if err = rows.Scan(&id); err != nil {
-				rows.Close()
-				return err
-			}
-			changed[id] = true
-		}
-		err = rows.Err()
-		rows.Close()
-		if err != nil {
-			return err
-		}
-	}
-	// A changed availability shows in the item's browse row and Home buckets,
-	// and (through its metrics fanout) in its containers' availability. Only
-	// an item whose published row disagrees is queued: re-deriving every row
-	// the batch touched derived each title's row twice in a rebuild.
-	for _, domain := range []int{DomainBrowseRows, DomainItemMetrics} {
-		if _, err := tx.ExecContext(ctx, availabilityStaleSQL, domain, ids); err != nil {
-			return err
-		}
-	}
-	return nil
-}
 
 // availabilityStaleSQL queues (domain ?1) the items of ?2 whose browse row's
 // availability or availability state differs from their facts.
@@ -167,8 +114,17 @@ func init() {
 	Register(DomainAvailability, Derivation{
 		Version: 2,
 		Drain: func(ctx context.Context, tx *sql.Tx, keys []Key, limit int) ([]int64, error) {
-			ids := keyIDs(keys)
-			return ids, deriveAvailability(ctx, tx, mustJSON(ids))
+			if len(keys) == 0 {
+				return nil, nil
+			}
+			// One holder per turn: its raw cursor is the unit of work, and the
+			// rest of the queue waits behind it rather than piling up a pass
+			// per item in one transaction.
+			done, _, err := deriveAvailabilityKey(ctx, tx, keys[0], limit)
+			if err != nil || !done {
+				return nil, err
+			}
+			return []int64{keys[0].ID}, nil
 		},
 		Backfill: func(ctx context.Context, tx *sql.Tx, after int64, limit int) ([]int64, error) {
 			return scanIDs(ctx, tx, `SELECT e.id FROM catalog_entities e JOIN catalog_kinds k ON k.id=e.kind WHERE (k.playable=1 OR k.id IN(20,21)) AND e.id>? ORDER BY e.id LIMIT ?`, after, limit)

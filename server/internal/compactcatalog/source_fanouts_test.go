@@ -85,14 +85,19 @@ func TestSourceAssetFanoutAcceptsOneMarkerRollbackResetAndReopen(t *testing.T) {
 	if groupRows(t, db, `SELECT * FROM catalog_upstream_sources WHERE domain=41`) != checkpoint || cc1Scalar(t, db, `SELECT sum(source_revision) FROM metadata_publication_heads`) != before {
 		t.Fatal("fanout rollback split checkpoint/output")
 	}
+	// Evidence/frontier phases publish no owner head. Advance to the raw
+	// owner phase, then one edge must produce exactly one head change.
+	for cc1Scalar(t, db, `SELECT phase FROM catalog_upstream_sources WHERE domain=41 AND source_id=?`, asset) != 3 {
+		facetTestTurn(t, db, 41, 1)
+	}
 	facetTestTurn(t, db, 41, 1)
 	if cc1Scalar(t, db, `SELECT sum(source_revision) FROM metadata_publication_heads`) != before+1 {
 		t.Fatal("one raw edge exceeded its metadata output budget")
 	}
-	// Re-touch must reset to the first raw PK even after output was accepted.
+	// Re-touch preserves this finite pass and owes one rerun after its frontier.
 	cc1Exec(t, db, `UPDATE catalog_assets SET size=300 WHERE id=?`, asset)
-	if cc1Scalar(t, db, `SELECT has_after FROM catalog_upstream_sources WHERE domain=41 AND source_id=?`, asset) != 0 {
-		t.Fatal("source re-touch retained stale raw cursor")
+	if cc1Scalar(t, db, `SELECT has_after FROM catalog_upstream_sources WHERE domain=41 AND source_id=?`, asset) != 1 {
+		t.Fatal("source re-touch reset the finite raw cursor")
 	}
 	facetTestTurn(t, db, 41, 1)
 	var seq int
@@ -106,7 +111,7 @@ func TestSourceAssetFanoutAcceptsOneMarkerRollbackResetAndReopen(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer db.Close()
-	for i := 0; i < 40; i++ {
+	for i := 0; i < 2*(len(items)+5); i++ {
 		old := cc1Scalar(t, db, `SELECT sum(source_revision) FROM metadata_publication_heads`)
 		if !facetTestTurn(t, db, 41, 1) {
 			break
@@ -273,5 +278,106 @@ func TestSourceLibraryKeepsMetadataTVDBHeadInvalidation(t *testing.T) {
 	}
 	if cc1Scalar(t, db, `SELECT count(*) FROM libraries WHERE id='source-library-heads' AND root='/shows-new'`) != 1 {
 		t.Fatal("live library source state delayed")
+	}
+}
+
+func TestSourceAssetEvidenceConvergesThroughChurnAndCapturedTail(t *testing.T) {
+	db := cc1OpenDB(t, "source-evidence-churn.sqlite")
+	lib := cc1Library(t, db, "evidence", "Evidence", "movie", "/evidence")
+	item := facetTestEntity(t, db, lib, "evidence:item")
+	asset := sourceTestAsset(t, db, []int64{item}, "/evidence/shared.mkv")
+	cc1Drain(t, db)
+	token := availabilityToken(t, db, asset)
+	cc1Exec(t, db, `WITH RECURSIVE n(i) AS(SELECT 1 UNION ALL SELECT i+1 FROM n WHERE i<24)
+ INSERT INTO inventory_objects(id,source_id,asset_id,root_incarnation,relative_path,revision,evidence_json,size,modified_ns,state)
+ SELECT printf('object-%03d',i),s.id,?,s.incarnation,printf('file-%03d.mkv',i),'r','{}',1,1,'missing' FROM n CROSS JOIN library_sources s WHERE s.id='evidence'`, token)
+	facetTestTurn(t, db, 41, 1) // capture both frontiers
+	captured := cc1Scalar(t, db, `SELECT pass_revision FROM catalog_upstream_sources WHERE domain=41 AND source_id=?`, asset)
+	if captured == 0 {
+		t.Fatal("source did not capture its revision")
+	}
+	cc1Exec(t, db, `INSERT INTO inventory_objects(id,source_id,asset_id,root_incarnation,relative_path,revision,evidence_json,size,modified_ns,state)
+ SELECT 'zz-tail',s.id,?,s.incarnation,'tail.mkv','r','{}',1,1,'available' FROM library_sources s WHERE s.id='evidence'`, token)
+	ended := false
+	for turn := 0; turn < 40; turn++ {
+		// An accepting edit before every turn must never reset the captured pass.
+		cc1Exec(t, db, `UPDATE inventory_objects SET retired=1-retired WHERE id='object-001'`)
+		facetTestTurn(t, db, 41, 1)
+		if cc1Scalar(t, db, `SELECT phase FROM catalog_upstream_sources WHERE domain=41 AND source_id=?`, asset) == 0 {
+			ended = true
+			break
+		}
+		if got := cc1Scalar(t, db, `SELECT pass_revision FROM catalog_upstream_sources WHERE domain=41 AND source_id=?`, asset); got != captured {
+			t.Fatalf("churn reset revision %d to %d", captured, got)
+		}
+	}
+	if !ended {
+		t.Fatal("captured pass did not finish under continuous same-asset churn")
+	}
+	sourceTestFinish(t, db, 41, 44, 20)
+	cc1Drain(t, db)
+	availabilityParity(t, db)
+	if got := cc1Scalar(t, db, `SELECT available FROM catalog_assets WHERE id=?`, asset); got != 1 {
+		t.Fatal("rerun lost appended positive evidence")
+	}
+	if cc1Scalar(t, db, `SELECT count(*) FROM catalog_missing_titles WHERE entity_id=?`, item) != 0 {
+		t.Fatal("positive evidence kept title missing")
+	}
+	// The final missing mark has the same exact eventual result as the former
+	// synchronous aggregate, after all source/holder/missing work drains.
+	cc1Exec(t, db, `UPDATE inventory_objects SET state='missing',retired=0 WHERE asset_id=?`, token)
+	sourceTestFinish(t, db, 41, 44, 20)
+	cc1Drain(t, db)
+	availabilityParity(t, db)
+	want := cc1Scalar(t, db, `SELECT available FROM inventory_asset_availability WHERE asset_id=?`, token)
+	got := cc1Scalar(t, db, `SELECT available FROM catalog_assets WHERE id=?`, asset)
+	if got != want || got != 0 {
+		t.Fatalf("asset aggregate got %d, synchronous oracle %d", got, want)
+	}
+	if cc1Scalar(t, db, `SELECT count(*) FROM catalog_missing_titles WHERE entity_id=?`, item) != 1 {
+		t.Fatal("all-missing evidence did not settle missing title")
+	}
+}
+
+func TestSourceAssetEvidenceIgnoresUnrelatedImportsAndFencesConfig(t *testing.T) {
+	for _, change := range []string{"unrelated", "config"} {
+		t.Run(change, func(t *testing.T) {
+			db := cc1OpenDB(t, "source-config-"+change+".sqlite")
+			lib := cc1Library(t, db, "config", "Config", "movie", "/config")
+			item := facetTestEntity(t, db, lib, "config:item")
+			asset := sourceTestAsset(t, db, []int64{item}, "/config/file.mkv")
+			cc1Drain(t, db)
+			token := availabilityToken(t, db, asset)
+			cc1Exec(t, db, `INSERT INTO inventory_objects(id,source_id,asset_id,root_incarnation,relative_path,revision,evidence_json,size,modified_ns,state)
+   SELECT 'object',id,?,incarnation,'file.mkv','r','{}',1,1,'missing' FROM library_sources WHERE id='config'`, token)
+			facetTestTurn(t, db, 41, 1)
+			epoch := cc1Scalar(t, db, `SELECT availability_epoch FROM catalog_facet_source_state`)
+			facetTestTurn(t, db, 41, 1) // the missing object
+			facetTestTurn(t, db, 41, 1) // EOF
+			if change == "config" {
+				cc1Exec(t, db, `UPDATE library_sources SET enabled=0 WHERE id='config'`)
+			} else {
+				for i := 0; i < 8; i++ {
+					facetTestEntity(t, db, lib, fmt.Sprintf("unrelated:%d", i))
+				}
+				if cc1Scalar(t, db, `SELECT availability_epoch FROM catalog_facet_source_state`) != epoch {
+					t.Fatal("unrelated import moved configuration witness")
+				}
+			}
+			facetTestTurn(t, db, 41, 1) // publication is one same-writer point
+			got := cc1Scalar(t, db, `SELECT available FROM catalog_assets WHERE id=?`, asset)
+			if change == "config" {
+				if got != 1 {
+					t.Fatal("configuration drift published mixed evidence")
+				}
+			} else if got != 0 {
+				t.Fatal("unrelated imports starved exact evidence publication")
+			}
+			sourceTestFinish(t, db, 41, 44, 20)
+			cc1Drain(t, db)
+			if cc1Scalar(t, db, `SELECT available FROM catalog_assets WHERE id=?`, asset) != 0 {
+				t.Fatal("final evidence did not converge")
+			}
+		})
 	}
 }

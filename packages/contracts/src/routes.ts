@@ -16494,6 +16494,7 @@ export const routes = [
       "transcode_not_allowed",
       "unsupported_media",
       "source_unavailable",
+      "storage_offline",
       "timeout",
       "database_busy",
       "writer_capacity"
@@ -24421,6 +24422,7 @@ export const routes = [
       "unauthorized",
       "not_permitted",
       "not_found",
+      "storage_offline",
       "internal",
       "database_busy"
     ],
@@ -24518,6 +24520,7 @@ export const routes = [
       "unauthorized",
       "not_permitted",
       "not_found",
+      "storage_offline",
       "internal",
       "database_busy"
     ],
@@ -40686,6 +40689,7 @@ export const routes = [
       "conversion_capacity",
       "transcode_not_allowed",
       "source_unavailable",
+      "storage_offline",
       "unsupported_media",
       "connection_too_slow",
       "feature_restricted",

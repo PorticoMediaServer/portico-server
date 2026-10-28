@@ -6,9 +6,8 @@ import (
 	"portico.local/server/internal/catalogtest"
 )
 
-// A file no inventory record knows follows the folder of the library that
-// holds it, whichever folder that is. Only the library's first folder used to
-// be consulted: a second folder going offline left its files playable.
+// Retained file evidence survives a transient offline folder. Explicit root
+// replacement and removal still follow the exact folder, including Windows roots.
 func TestUninventoriedFilesFollowTheirOwnFolder(t *testing.T) {
 	c := catalogtest.Open(t)
 	films := c.Library("m", "Movies", "movie", "/m")
@@ -46,14 +45,14 @@ func TestUninventoriedFilesFollowTheirOwnFolder(t *testing.T) {
 	}
 	check("all folders online", want{"first", first.ID, true}, want{"second", second.ID, true}, want{"windows", windows.ID, true}, want{"outside", outside.ID, true})
 	setHealth("m2", "offline")
-	check("second folder offline", want{"first", first.ID, true}, want{"second", second.ID, false}, want{"windows", windows.ID, true}, want{"outside", outside.ID, true})
+	check("second folder offline retains evidence", want{"first", first.ID, true}, want{"second", second.ID, true}, want{"windows", windows.ID, true}, want{"outside", outside.ID, true})
 	setHealth("m3", "root_changed")
 	check("third folder's root changed", want{"windows", windows.ID, false}, want{"outside", outside.ID, true})
 	setHealth("m", "offline")
-	check("every folder unavailable", want{"first", first.ID, false}, want{"second", second.ID, false}, want{"windows", windows.ID, false}, want{"outside", outside.ID, false})
+	check("transient offline retains evidence", want{"first", first.ID, true}, want{"second", second.ID, true}, want{"windows", windows.ID, false}, want{"outside", outside.ID, true})
 	setHealth("m2", "ready")
-	check("second folder back", want{"first", first.ID, false}, want{"second", second.ID, true}, want{"windows", windows.ID, false}, want{"outside", outside.ID, true})
+	check("second folder back", want{"first", first.ID, true}, want{"second", second.ID, true}, want{"windows", windows.ID, false}, want{"outside", outside.ID, true})
 	c.Exec(`UPDATE library_sources SET enabled=0,health='removing' WHERE id='m2'`)
 	c.Drain()
-	check("second folder removed", want{"second", second.ID, false}, want{"outside", outside.ID, false})
+	check("second folder removed", want{"second", second.ID, false}, want{"outside", outside.ID, true})
 }
