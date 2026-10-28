@@ -376,22 +376,35 @@ func (s *Service) analyzeOne(parent context.Context, job string, source catalog.
 		rooted = localmetadata.WithMusicTrackListing(rooted, musicListed)
 		rooted = localmetadata.WithArtworkListing(rooted, artworkListed)
 		rooted = localmetadata.WithArtworkReadCheck(rooted, func() { artworkObserved = false })
-		return storage.WithScanReadGuard(rooted, func(check context.Context, candidate string) error {
+		// One observation answers for both the admission check and the snapshot
+		// it already took. The guard keeps exactly its previous behaviour and
+		// discards the snapshot; the observation returns the request it saw so a
+		// caller can only use it for the identical candidate.
+		observe := func(check context.Context, candidate string) (storage.ScanReadWitness, error) {
 			if err := s.analysisAllowed(check, job, source.LibraryID, policy.Revision, operation); err != nil {
-				return err
+				return storage.ScanReadWitness{}, err
 			}
 			rel, err := filepath.Rel(source.ResolvedPath, candidate)
 			if err != nil || !filepath.IsLocal(rel) {
-				return catalog.ErrAdminQuery
+				return storage.ScanReadWitness{}, catalog.ErrAdminQuery
 			}
 			r := storage.InventoryRequest{Root: source.ResolvedPath, RootIdentity: source.RootIdentity, RelativePath: rel, FollowSymlinks: source.FollowSymlinks}
+			var current storage.Snapshot
 			if s.storage != nil {
-				_, err = s.storage.InventoryStat(check, source.ID, r)
+				current, err = s.storage.InventoryStat(check, source.ID, r)
 			} else {
-				_, err = storage.LocalInventoryStat(r)
+				current, err = storage.LocalInventoryStat(r)
 			}
+			if err != nil {
+				return storage.ScanReadWitness{}, err
+			}
+			return storage.ScanReadWitness{SourceID: source.ID, Root: r.Root, RootIdentity: r.RootIdentity,
+				RelativePath: rel, FollowSymlinks: r.FollowSymlinks, Snapshot: current}, nil
+		}
+		return storage.WithScanReadWitness(rooted, s.storage, func(check context.Context, candidate string) error {
+			_, err := observe(check, candidate)
 			return err
-		})
+		}, observe)
 	}
 	if remoteDisc {
 		// Root64: a remote disc image is an ordinary title. A scan never reads

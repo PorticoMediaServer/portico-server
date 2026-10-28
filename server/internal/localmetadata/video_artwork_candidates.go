@@ -53,12 +53,35 @@ func (s *Service) ReadArtworkCandidates(ctx context.Context, library, kind, root
 				return nil, false
 			}
 			request := storage.InventoryRequest{Root: root, RootIdentity: listing.RootIdentity, RelativePath: relative, FollowSymlinks: listing.FollowSymlinks}
-			check := func() bool {
+			// The unwitnessed proof: current admission, then the exact listing
+			// revision. This is also what a rejected observation falls back to.
+			explicit := func() bool {
 				if storage.CheckScanRead(ctx, path) != nil {
 					return false
 				}
 				current, err := s.storage.InventoryStat(ctx, listing.SourceID, request)
 				return err == nil && !current.Directory && current.Size >= 0 && current.Size <= 4<<20 && storage.InventoryRevision(current) == entry.Revision
+			}
+			admitted := func(v storage.Snapshot) bool {
+				return !v.Directory && v.Size >= 0 && v.Size <= 4<<20 && storage.InventoryRevision(v) == entry.Revision
+			}
+			check := func() bool {
+				// The ingestion guard already observed this candidate. Its exact
+				// snapshot is used only when it answered for this candidate under
+				// this producer; anything else falls back to the explicit proof.
+				observed, ok, err := storage.ObserveScanRead(ctx, path)
+				if err != nil {
+					return false
+				}
+				if !ok {
+					return explicit()
+				}
+				if observed.Client != s.storage || observed.SourceID != listing.SourceID || observed.Root != root ||
+					observed.RootIdentity != listing.RootIdentity || observed.FollowSymlinks != listing.FollowSymlinks ||
+					observed.RelativePath != relative {
+					return explicit()
+				}
+				return admitted(observed.Snapshot)
 			}
 			if !check() {
 				artworkReadFailed(ctx)
