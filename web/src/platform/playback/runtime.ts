@@ -42,6 +42,7 @@ import {loadDeviceEqualizer, subscribeDeviceEqualizer} from './audio/equalizer-s
 import type {EqualizerSettings} from './audio/equalizer.ts';
 import type {EqualizerPort} from '../../kit/media/equalizer-port.ts';
 import {ByteCache} from './audio/bytes.ts';
+import {airPlaySourceReady, wirelessPlayback} from './airplay.ts';
 import {browserNativeHlsPolicy} from './native-hls.ts';
 import {documentVisibility} from './page-visibility.ts';
 import {SubtitleSurface, type SubtitleHost} from './subtitle-surface.ts';
@@ -75,6 +76,7 @@ type OfferBinding = {
   detailFence?: string;
 };
 type Stack = {
+  airPlay?: {key: string; abort: AbortController; receipt?: Awaited<ReturnType<SessionsClient["prepareAirPlay"]>>; failed?: boolean};
   startFailure?: WebPlaybackStartFailure;
   capacityWait?: WebPlaybackCapacityWait;
   capacityCurrent?: () => boolean;
@@ -427,7 +429,7 @@ export class WebShellPlaybackRuntime {
       // One timeline for both drawn paths: the page's text cues and the drawn overlay.
       timeline: offset => { this.subtitleTimeline = offset; this.surface?.timeline(offset); stack.drawnSurface?.timeline(offset); },
       reset: () => { this.subtitleTimeline = null; this.surface?.reset(); stack.drawnSurface?.timeline(null); },
-    });
+    }, () => wirelessPlayback(this.video) ? 'airplay' : undefined);
   }
 
   private rememberCurrent(): void {
@@ -1114,6 +1116,7 @@ export class WebShellPlaybackRuntime {
         this.retiredFences.add(this.key(prior));
         this.trimRetiredFences();
       }
+      this.prepareAirPlay(stack, session, playback);
       this.selectSource(stack, playback, session);
       const offers = this.offers(stack, playback), fence = this.fence(stack, playback, session, offers);
       if (this.policyAdvanceFence && (!fence || !sameFence(this.policyAdvanceFence, fence))) this.policyAdvanceFence = undefined;
@@ -1231,6 +1234,28 @@ export class WebShellPlaybackRuntime {
     stack.preplay = progress.choice ? {versionId: pending.versionId, progress} : undefined;
   }
 
+  private prepareAirPlay(stack: Stack, session: Session | undefined, playback: PlaybackSnapshot): void {
+    if (!this.airPlayCanReplan() || !this.current(stack) || !session || session.kind !== 'vod' || session.role !== 'local' || playback.session?.id !== session.id || playback.session.generation !== session.presentation.generation) {
+      stack.airPlay?.abort.abort();stack.airPlay = undefined;stack.web.slot.setAirPlaySource(null);return;
+    }
+    const key = `${session.id}:${session.presentation.generation}:${session.presentation.choiceRevision}`;
+    if (stack.airPlay?.key === key) {
+      if (stack.airPlay.receipt) stack.web.slot.setAirPlaySource({sessionId: session.id, generation: session.presentation.generation, url: stack.airPlay.receipt.presentation.url});
+      return;
+    }
+    stack.airPlay?.abort.abort();stack.web.slot.setAirPlaySource(null);
+    const pending = stack.airPlay = {key, abort: new AbortController()} as NonNullable<Stack['airPlay']>;
+    const current = () => this.current(stack) && stack.airPlay === pending && !pending.abort.signal.aborted;
+    const client = new SessionsClient(stack.http, this.env.timers);
+    void client.prepareAirPlay(session, Math.round((playback.pendingSeek?.positionSeconds ?? playback.positionSeconds) * 1000), AbortSignal.any([pending.abort.signal, stack.life.signal])).then(receipt => {
+      if (!current()) return;
+      pending.receipt = receipt;
+      stack.web.slot.setAirPlaySource({sessionId: session.id, generation: receipt.generation, url: receipt.presentation.url});
+      if (this.runtimeProblem === 'playback_subtitles_failed') this.runtimeProblem = undefined;
+      this.sync();
+    }, () => {if (current()) {pending.failed = true;if (wirelessPlayback(this.video)) this.runtimeProblem = 'playback_subtitles_failed';this.sync();}});
+  }
+
   private selectSource(stack: Stack, playback: PlaybackSnapshot, session: Session | undefined): void {
     if (playback.channel || !playback.session || !playback.itemId || !session || session.id !== playback.session.id || session.presentation.generation !== playback.session.generation || session.itemId !== playback.itemId) { if (stack.sessionKey) this.clearSourceResources(stack); return; }
     const key = `${playback.intentId}:${playback.session.id}:${playback.session.generation}`;
@@ -1324,12 +1349,15 @@ export class WebShellPlaybackRuntime {
    * in this playback run. A refusal (the owner turned conversions off) leaves the problem shown. */
   private burnUndrawable(stack: Stack, plan: SubtitlePlan): void {
     const id = plan.selected?.id, offsetMs = Number(plan.offsetUs) / 1000;
-    if (!id || this.undrawable(stack, id) || !Number.isSafeInteger(offsetMs)) return;
+    if (!id || this.undrawable(stack, id)) return;
+    if (!Number.isSafeInteger(offsetMs)) {if (this.runtimeProblem !== 'playback_subtitles_failed') {this.runtimeProblem = 'playback_subtitles_failed';this.sync();}return;}
+    const playback = stack.service.getSnapshot(), sessionId = playback.session?.id, intentId = playback.intentId;
     const run = this.playbackRun(), before = stack.undrawable?.run === run ? stack.undrawable.ids : [];
     stack.undrawable = Object.freeze({run, ids: new Set([...before, id])});
+    const owns = () => this.current(stack) && this.playbackRun() === run && stack.service.getSnapshot().session?.id === sessionId && stack.service.getSnapshot().intentId === intentId;
     void stack.service.changePlayback({subtitleTrackId: id, subtitleDelivery: 'burn', subtitleOffsetMs: offsetMs})
-      .then(() => { if (this.current(stack)) { if (this.runtimeProblem === 'playback_subtitles_failed') this.runtimeProblem = undefined; this.sync(); } },
-        () => { if (this.current(stack)) { this.runtimeProblem = 'playback_subtitles_failed'; this.sync(); } });
+      .then(() => { if (owns()) { if (this.runtimeProblem === 'playback_subtitles_failed') this.runtimeProblem = undefined; this.sync(); } },
+        () => { if (owns() && stack.service.getSnapshot().session?.generation === plan.generation) { this.runtimeProblem = 'playback_subtitles_failed'; this.sync(); } });
   }
   /** The selected addresses and the original load lifetime are checked before every read. */
   private subtitleReader(stack: Stack, life: AbortSignal, addresses: ReadonlySet<string>, current: () => boolean): ReadSubtitleFile {
@@ -1459,6 +1487,16 @@ export class WebShellPlaybackRuntime {
   }
   private renderSubtitles(stack: Stack): void {
     const state = stack.subtitles?.getSnapshot() ?? emptySubtitle, plan = state.plan, surface = this.surface;
+    // The route can be activated by system controls as well as our picker. Only an exact
+    // current plan may request a replacement; off and native text never become burn requests.
+    const playback = stack.service.getSnapshot(), session = playback.session;
+    const currentPlan = plan && session && plan.sessionId === session.id && plan.generation === session.generation
+      && plan.sourceId === this.offers(stack, playback)?.current?.sourceId;
+    if (wirelessPlayback(this.video) && currentPlan && !state.suppressed) {
+      if (stack.airPlay?.receipt && stack.airPlay.receipt.generation === plan.generation && stack.airPlay.receipt.presentation.subtitle?.trackId === plan.selected?.id && stack.airPlay.receipt.presentation.subtitle?.delivery === 'burn' && plan.mode === 'track' && plan.renderer === 'client' && plan.selected?.enabled && this.drawnOriginal(plan)) this.burnUndrawable(stack, plan);
+      this.clearDrawnSubtitles(stack);this.clearTextSubtitles(stack);
+      return;
+    }
     // A styled or image track the plan has this browser draw comes from its own original file.
     const drawn = this.drawnOriginal(plan);
     if (drawn) {
@@ -1991,7 +2029,7 @@ export class WebShellPlaybackRuntime {
     const finishRetention = this.retainMediaStart(stack.life.signal, () => this.current(stack));
     try {
       // A track this playback could not draw is asked for in the picture again, not handed over.
-      await stack.service.changePlayback({subtitleTrackId: trackId, ...(track ? {subtitleOffsetMs: offsetMs} : {}), ...(this.undrawable(stack, trackId) ? {subtitleDelivery: 'burn' as const} : {})});
+      await stack.service.changePlayback({subtitleTrackId: trackId, ...(track ? {subtitleOffsetMs: offsetMs} : {}), ...(this.undrawable(stack, trackId) ? {subtitleDelivery:'burn' as const} : track && this.airPlayCanReplan() ? {subtitleDelivery:track.renderer === 'external_text' ? 'sidecar' as const : 'embeddedClient' as const} : {})});
       if (this.current(stack)) this.sync();
     } finally {finishRetention();}
   }
@@ -2009,7 +2047,7 @@ export class WebShellPlaybackRuntime {
     if (!Number.isSafeInteger(offsetMs) || Math.abs(offsetMs) > 600000) problem('playback_subtitle_unavailable');
     const finishRetention = this.retainMediaStart(stack.life.signal, () => this.current(stack));
     try {
-      await stack.service.changePlayback({subtitleTrackId: track.id, subtitleOffsetMs: offsetMs, ...(this.undrawable(stack, track.id) ? {subtitleDelivery: 'burn' as const} : {})});
+      await stack.service.changePlayback({subtitleTrackId: track.id, subtitleOffsetMs: offsetMs, ...(this.undrawable(stack, track.id) ? {subtitleDelivery:'burn' as const} : this.airPlayCanReplan() ? {subtitleDelivery:track.renderer === 'external_text' ? 'sidecar' as const : 'embeddedClient' as const} : {})});
       if (this.current(stack)) this.sync();
     } finally {finishRetention();}
   }
@@ -2143,6 +2181,18 @@ export class WebShellPlaybackRuntime {
     const slot = this.stack.web.slot, observed = slot.observe();
     return slot.loaded === fence.generation && !slot.settling && observed.generation === fence.generation
       && ['playing', 'paused', 'buffering'].includes(observed.state) && this.snapshot.dock.remote?.phase !== 'playing';
+  }
+
+  private airPlayCanReplan(): boolean {
+    return !this.env.createPlayer && typeof this.video?.webkitShowPlaybackTargetPicker === 'function' && !!this.video.canPlayType('application/vnd.apple.mpegurl');
+  }
+
+  /** A callable picker is not evidence that a receiver can fetch this generation. */
+  browserAirPlayReady(fence: PlaybackFence): boolean {
+    const receipt = this.stack.airPlay?.receipt, session = this.snapshot.session;
+    return this.browserMediaReady(fence) && !!this.video && airPlaySourceReady(this.video, fence.generation)
+      && receipt?.sessionId === fence.sessionId && receipt.generation === fence.generation
+      && receipt.choiceRevision === session?.presentation.choiceRevision;
   }
 
   /** Only VOD uses the element's title clock directly. Native and live clocks are not inferred. */

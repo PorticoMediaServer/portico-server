@@ -96,6 +96,18 @@ func checkSessionOccurrencePhysicalTx(ctx context.Context, tx *sql.Tx, id string
 	if invalidPhysical != 0 {
 		return identity.ErrUnauthorized
 	}
+	// Receiver capabilities are private but fully playable, confined to the exact live
+	// public session/choice revision and its original media owner. Ordinary prefetch remains limited.
+	var receiver, liveReceiver int
+	if e := tx.QueryRowContext(ctx, `SELECT count(*),COALESCE(sum(CASE WHEN v.ended_ms=0 AND v.lease_expires_ms>? AND v.generation=a.generation AND COALESCE(json_extract(NULLIF(v.presentation,''),'$.choiceRevision'),1)=a.choice_revision AND v.media_session_id=pp.owner_session_id AND v.account_id=ps.account_id AND v.profile_id=ps.profile_id THEN 1 ELSE 0 END),0) FROM playback_airplay_presentations a JOIN playback_v1_sessions v ON v.id=a.session_id JOIN playback_sessions ps ON ps.id=a.media_session_id JOIN playback_private_presentations pp ON pp.session_id=ps.id WHERE a.media_session_id=?`, time.Now().UnixMilli(), id).Scan(&receiver, &liveReceiver); e != nil {
+		return e
+	}
+	if receiver > 0 {
+		if liveReceiver != 1 {
+			return identity.ErrUnauthorized
+		}
+		return nil
+	}
 	var privateUntil sql.NullInt64
 	if e := tx.QueryRowContext(ctx, `SELECT expires_ms FROM playback_private_presentations WHERE session_id=?`, id).Scan(&privateUntil); e != nil && !errors.Is(e, sql.ErrNoRows) {
 		return e

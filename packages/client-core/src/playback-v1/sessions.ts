@@ -25,7 +25,7 @@ import type {MediaPlayer, PlayerEvent, PlayerObservation} from './port.ts';
 import type {QualityRequest} from './quality.ts';
 import type {PlayerFailureCode} from '../client-profile.ts';
 import {ObservationReporter, type ObservationReporterOptions} from './observation.ts';
-import {ContractError, id, parseDiscTitleRef, parseSession, parseSessionEnd, type DiscTitleRef, type Session, type SessionEnd} from './types.ts';
+import {ContractError, id, parseDiscTitleRef, parseSession, parseSessionEnd, parsePresentation, type Presentation, type DiscTitleRef, type Session, type SessionEnd} from './types.ts';
 import {requireSessionChangeCurrent, sessionChangeCurrent, type SessionChangeContext} from './change-context.ts';
 export type {SessionChangeContext} from './change-context.ts';
 
@@ -224,6 +224,19 @@ export class SessionsClient {
       if (abandon) {try {void Promise.resolve(abandon()).catch(() => {});} catch { /* Preserve the original start failure. */ }}
       throw error;
     }
+  }
+
+  async prepareAirPlay(session: Session, positionMs: number, signal?: AbortSignal): Promise<Readonly<{sessionId: string; generation: number; choiceRevision: number; presentation: Presentation}>> {
+    signal?.throwIfAborted();
+    const input = {generation: session.presentation.generation, choiceRevision: session.presentation.choiceRevision ?? 1, positionMs: Math.max(0, Math.round(positionMs))};
+    const raw = (await call(this.http, {method: 'POST', path: encodedRoutePath('prepare_airplay_receiver', {id: enc(session.id)}), body: input, signal})).body as Record<string, unknown>;
+    signal?.throwIfAborted();
+    if (raw.sessionId !== session.id || raw.generation !== input.generation || raw.choiceRevision !== input.choiceRevision) throw new ContractError('AirPlay preparation fence');
+    const presentation = parsePresentation(raw.presentation);
+    if (presentation.mode !== 'stream' || presentation.generation !== input.generation || presentation.choiceRevision !== input.choiceRevision || !/^\/v1\/media\/[A-Za-z0-9_-]+\/master\.m3u8$/.test(presentation.url)) throw new ContractError('AirPlay presentation');
+    const selected = session.presentation.subtitle;
+    if (session.presentation.audioTrackId && presentation.audioTrackId !== session.presentation.audioTrackId || (selected?.trackId ?? null) !== (presentation.subtitle?.trackId ?? null) || selected && presentation.subtitle?.delivery !== (selected.delivery === 'sidecar' || selected.kind === 'text' ? 'sidecar' : 'burn') || !selected && presentation.subtitles.length > 0) throw new ContractError('AirPlay choices');
+    return Object.freeze({sessionId: session.id, ...input, presentation});
   }
 
   async get(id: string, signal?: AbortSignal): Promise<Session> {

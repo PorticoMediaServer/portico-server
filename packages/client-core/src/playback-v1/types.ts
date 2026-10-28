@@ -168,6 +168,7 @@ export type Decision = Readonly<{action: StreamAction; reasons: readonly string[
  * from the file it is playing) or `burn` (in the picture). `kind` is the capability name of its format. */
 export type PresentationSubtitle = Readonly<{trackId: string; kind: 'text' | 'ass' | 'pgs' | 'vobsub' | 'dvb' | 'other'; delivery: 'sidecar' | 'device' | 'burn' | 'other'}>;
 export type Presentation = Readonly<{
+  choiceRevision?: number;
   generation: number; mode: 'direct' | 'stream'; url: string; startPositionMs: number;
   /** The latest accepted seek of a VOD session: a new id is a new seek, even to an equal target. */
   seekId?: string;
@@ -258,9 +259,11 @@ export function parsePresentation(p: unknown, prepared = false): Presentation {
   if (!obj(p)) throw new ContractError('presentation');
   const generation = p.generation;
   if (typeof generation !== 'number' || !Number.isSafeInteger(generation) || generation < 0) throw new ContractError('generation');
+  if (p.choiceRevision !== undefined && (typeof p.choiceRevision !== 'number' || !Number.isSafeInteger(p.choiceRevision) || p.choiceRevision < 1)) throw new ContractError('choice revision');
   const d = obj(p.decision) ? p.decision : {};
   return Object.freeze({
     ...(typeof p.seekId === 'string' && /^[A-Za-z0-9_-]{1,64}$/.test(p.seekId) ? {seekId: p.seekId} : {}),
+    choiceRevision: typeof p.choiceRevision === 'number' && Number.isSafeInteger(p.choiceRevision) && p.choiceRevision > 0 ? p.choiceRevision : 1,
     generation, mode: oneOf(p.mode, ['direct', 'stream'] as const, 'stream'), url: prepared && (p.url === undefined || p.url === '') ? '' : url(p.url, 'presentation url'), startPositionMs: num(p.startPositionMs),
     engine: engineOf(p.engine), quality: parseQuality(p.quality),
     audioTrackId: typeof p.audioTrackId === 'string' && p.audioTrackId ? p.audioTrackId : undefined,

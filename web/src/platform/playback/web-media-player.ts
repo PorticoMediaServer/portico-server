@@ -21,6 +21,7 @@
  *   the element's clock, and that surface is the single place a track meets the element.
  * - Everything DOM- or hls.js-shaped is behind small interfaces so the port is tested with fakes.
  */
+import {airPlaySources, wirelessPlayback, type AirPlaySource} from './airplay.ts';
 import type {MediaPlayer, PlayerEvent, PlayerObservation, PlayerSource, PlayerState} from '@core/playback-v1/index.ts';
 import {channelMediaTime, channelSourceTime, type DatedFragment} from '@core/playback/channel-clock.ts';
 
@@ -29,6 +30,8 @@ type Ranges = {readonly length: number; start(i: number): number; end(i: number)
 /** The parts of `HTMLVideoElement` the port uses. */
 export type VideoLike = {
   src: string;
+  readonly webkitCurrentPlaybackTargetIsWireless?: boolean;
+  webkitShowPlaybackTargetPicker?: () => void;
   currentTime: number;
   playbackRate: number;
   volume: number;
@@ -75,7 +78,7 @@ export type HlsLike = {
 export type HlsModule = {
   isSupported(): boolean;
   new (config: Record<string, unknown>): HlsLike;
-  Events: {ERROR: string; FRAG_LOADING?: string; FRAG_LOADED?: string; FRAG_CHANGED?: string; MANIFEST_PARSED?: string; SUBTITLE_TRACKS_UPDATED?: string};
+  Events: {MEDIA_ATTACHING?: string; MEDIA_DETACHING?: string; ERROR: string; FRAG_LOADING?: string; FRAG_LOADED?: string; FRAG_CHANGED?: string; MANIFEST_PARSED?: string; SUBTITLE_TRACKS_UPDATED?: string};
   ErrorTypes: {NETWORK_ERROR: string; MEDIA_ERROR: string};
 };
 
@@ -173,6 +176,10 @@ export class WebMediaPlayer implements MediaPlayer {
   private source?: PlayerSource;
   private hls?: HlsLike;
   private module?: HlsModule;
+  private airPlay?: ReturnType<typeof airPlaySources>;
+  private receiver?: AirPlaySource;
+  private receiverPlaying = false;
+  private awaitingReceiver = false;
   private loadSerial = 0;
   private subtitle: string | null = null;
   private disposed = false;
@@ -212,6 +219,7 @@ export class WebMediaPlayer implements MediaPlayer {
     this.silentMs = options.silentMs ?? 20_000;
     this.giveUpMs = options.giveUpMs ?? 90_000;
     const on = (type: string, fn: () => void) => { video.addEventListener(type, fn); this.handlers.push([type, fn]); };
+    on('webkitcurrentplaybacktargetiswirelesschanged', () => this.wirelessChanged());
     on('playing', () => this.onPlaying());
     on('play', () => this.onPlay());
     on('pause', () => this.onPause());
@@ -245,7 +253,8 @@ export class WebMediaPlayer implements MediaPlayer {
     this.started = false;
     this.settledMs = Math.max(0, source.startPositionMs);
     this.state = 'loading';
-    this.open(this.settledMs);
+    this.awaitingReceiver = wirelessPlayback(this.video);
+    if (!this.awaitingReceiver) this.open(this.settledMs);
     this.emit({type: 'state', observation: this.observe()});
   }
 
@@ -318,6 +327,35 @@ export class WebMediaPlayer implements MediaPlayer {
     return () => { this.noticeListeners.delete(listener); };
   }
 
+  /** Only a server-prepared receipt for this private load may become an alternative. */
+  setAirPlaySource(receiver: AirPlaySource | null): void {
+    const source = this.source;
+    if (!source || this.disposed || receiver && (receiver.sessionId !== source.sessionId || receiver.generation !== source.generation)) return;
+    if (receiver && this.receiver?.sessionId === receiver.sessionId && this.receiver.generation === receiver.generation && this.receiver.url === receiver.url && !this.awaitingReceiver) return;
+    if (!receiver && !this.receiver) return;
+    this.receiver = receiver ?? undefined;
+    if (receiver && wirelessPlayback(this.video)) this.openReceiver();
+    else this.airPlay?.setReceiver(receiver ? this.resolve(receiver.url) : undefined);
+    this.emit({type: 'state', observation: this.observe()});
+  }
+  private openReceiver(): void {
+    const receiver = this.receiver;
+    if (!receiver || !this.active() || this.suspended) return;
+    const at = this.target?.ms ?? this.positionMs();
+    this.airPlay?.detach();this.hls?.destroy();this.hls = undefined;this.airPlay?.dispose();
+    this.receiverPlaying = true;this.awaitingReceiver = false;
+    this.state = 'loading';this.started = false;
+    this.options.subtitles?.reset();this.options.subtitles?.timeline(0);
+    this.target = at > 0 ? {ms: at, assigned: false, start: true} : undefined;
+    this.video.src = this.resolve(receiver.url);this.video.load();
+  }
+  private wirelessChanged(): void {
+    if (!this.active() || this.suspended) return;
+    if (wirelessPlayback(this.video)) {if (this.receiver && !this.receiverPlaying) this.openReceiver();}
+    else if (this.receiverPlaying || this.awaitingReceiver) {this.receiverPlaying = false;this.awaitingReceiver = false;this.reopen();}
+    this.emit({type: 'state', observation: this.observe()});
+  }
+
   /** Whether a start or a seek is still on its way to its position. */
   get settling(): boolean { return !!this.target; }
 
@@ -351,7 +389,8 @@ export class WebMediaPlayer implements MediaPlayer {
     if (!this.source || !this.suspended) return;
     this.suspended = false;
     this.state = 'loading';
-    this.open(this.settledMs);
+    this.awaitingReceiver = wirelessPlayback(this.video);
+    if (!this.awaitingReceiver) this.open(this.settledMs);
   }
 
   /** Housekeeping: position landing, byte progress, starvation. Runs four times a second. */
@@ -383,11 +422,15 @@ export class WebMediaPlayer implements MediaPlayer {
     this.subtitleOffset = null;
     this.options.subtitles?.reset();
     const url = this.resolve(source.url);
+    this.airPlay?.dispose();
+    this.airPlay = airPlaySources(this.video, source.generation, () => !this.disposed && !this.suspended && this.source === source && serial === this.loadSerial);
+    this.airPlay.setReceiver(this.receiver ? this.resolve(this.receiver.url) : undefined);
     if (source.mode === 'direct') {
       this.options.subtitles?.timeline(0);
       this.subtitleOffset = 0;
       this.target = startMs > 0 ? {ms: startMs, assigned: false, start: true} : undefined;
       this.video.src = url;
+      this.airPlay.native(url);
       this.video.load();
       return;
     }
@@ -429,6 +472,8 @@ export class WebMediaPlayer implements MediaPlayer {
       engine.subtitleDisplay = false;
       const mine = () => !this.disposed && this.hls === engine;
       const on = (name: string | undefined, fn: (data: never) => void) => { if (name) engine.on(name, (_e, data) => { if (mine()) fn(data); }); };
+      on(Hls.Events.MEDIA_ATTACHING, () => this.airPlay?.attach());
+      on(Hls.Events.MEDIA_DETACHING, () => this.airPlay?.detach());
       on(Hls.Events.SUBTITLE_TRACKS_UPDATED, () => { engine.subtitleTrack = -1; });
       on(Hls.Events.MANIFEST_PARSED, () => this.pinLevel(engine));
       on(Hls.Events.FRAG_LOADING, (data: {frag?: HlsFragmentLike}) => { this.loading = data.frag; this.loadingAt = this.now(); this.loadedBytes = data.frag?.stats?.loaded ?? 0; });
@@ -447,6 +492,7 @@ export class WebMediaPlayer implements MediaPlayer {
     this.subtitleOffset = 0;
     this.target = startMs > 0 || this.live() !== undefined ? {ms: startMs, assigned: false, start: true} : undefined;
     this.video.src = url;
+    this.airPlay?.native(url);
     this.video.load();
   }
 
@@ -838,18 +884,23 @@ export class WebMediaPlayer implements MediaPlayer {
   private reopen() {
     if (!this.active() || this.suspended) return;
     const at = this.target?.ms ?? this.settledMs;
+    this.airPlay?.detach();
     this.hls?.destroy();
     this.hls = undefined;
+    this.airPlay?.dispose();
     this.video.removeAttribute('src');
     this.video.load();
     this.setState('loading');
-    this.open(at);
+    if (this.receiverPlaying && this.receiver && wirelessPlayback(this.video)) this.openReceiver();
+    else this.open(at);
   }
 
   private fail(code: string, detail?: string) {
     this.mediaRecoveryPause = undefined;
+    this.airPlay?.detach();
     this.hls?.destroy();
     this.hls = undefined;
+    this.airPlay?.dispose();
     this.loading = undefined;
     if (this.recovery?.timer !== undefined) this.clearTimer(this.recovery.timer);
     this.recovery = undefined;
@@ -862,8 +913,11 @@ export class WebMediaPlayer implements MediaPlayer {
   private teardown() {
     this.mediaRecoveryPause = undefined;
     this.loadSerial++;
+    this.receiver = undefined;this.receiverPlaying = false;this.awaitingReceiver = false;
+    this.airPlay?.detach();
     this.hls?.destroy();
     this.hls = undefined;
+    this.airPlay?.dispose();
     this.loading = undefined;
     this.target = undefined;
     if (this.recovery?.timer !== undefined) this.clearTimer(this.recovery.timer);

@@ -3101,3 +3101,83 @@ test('WEB002 cancelled actual SDK picker cannot retain a drained runtime while t
   assert.equal(sender.retainsMedia(),false);assert.equal(f.runtime.retainsMedia(),false);assert.deepEqual(changes,[false]);
   gate.resolve();await settle();assert.equal(f.runtime.retainsMedia(),false);assert.deepEqual(changes,[false]);
 });
+
+function airPlayCaptionFixture(f: ReturnType<typeof setup>, initial: 'off' | 'external_text' | 'client') {
+ let renderer: 'off'|'external_text'|'client'|'burn_in' = initial, refuse = false, stale = false;
+ const plan = (sessionId: string, generation: number) => {
+  const resource = {id:'s3',sourceId:'source_movie',revision:1,scope:'personal',language:'en',title:'Selected',format:renderer==='client'?'ass':'vtt',origin:'upload',rights:'Own transcript',offsetUs:'-2000',canManage:true,enabled:true,pinned:true,renderer:renderer==='off'?'external_text':renderer,default:false,forced:false,
+   deliveries:renderer==='client'?[{format:'ass',url:'/v1/media/subtitles/grant/s3/1/original.ass'}]:[{format:'text'}]};
+  return {version:1,sessionId,generation:stale?generation+100:generation,sourceId:'source_movie',revision:1,catalogRevision:1,renderer:renderer==='off'?'external_text':renderer,mode:renderer==='off'?'off':'track',offAvailable:true,offsetUs:renderer==='off'?'0':'-2000',selected:renderer==='off'?null:resource,resources:[resource],discovered:[],...(renderer==='external_text'?{documentUrl:'/v1/media/subtitles/grant/s3/1'}:{})};
+ };
+ Object.assign(f.video,{webkitShowPlaybackTargetPicker:()=>{},nativeHls:'probably'});
+ f.intercept(async(request,response)=>{
+  if(request.path.endsWith('/receivers/airplay')) {
+   if(refuse)return {status:403,headers:{},body:{error:{code:'transcoding_disabled',retry:'never'}}};
+   const input=request.body as {generation:number;choiceRevision:number;positionMs:number},sessionId=request.path.split('/')[4]!;
+   return {status:200,headers:{},body:{sessionId,generation:stale?input.generation+100:input.generation,choiceRevision:input.choiceRevision,presentation:{generation:input.generation,choiceRevision:input.choiceRevision,mode:'stream',engine:'native',audioTrackId:'a1',url:'/v1/media/receiver_'+input.generation+'/master.m3u8',startPositionMs:input.positionMs,subtitles:[],decision:{},...(renderer==='off'?{}:{subtitle:{trackId:'s3',kind:renderer==='client'?'ass':'text',delivery:renderer==='client'?'burn':'sidecar'}})}}};
+  }
+  if(request.method==='PATCH'&&(request.body as {subtitles?:{delivery?:string}})?.subtitles?.delivery==='burn') {
+   if(refuse)return {status:403,headers:{},body:{error:{code:'transcoding_disabled',retry:'never'}}};
+   renderer='burn_in';
+  }
+  const installChoice = (value: unknown): unknown => {
+   if(Array.isArray(value))return value.map(installChoice);
+   if(!value||typeof value!=='object')return value;
+   const object=value as Record<string,unknown>;
+   const updated=Object.fromEntries(Object.entries(object).map(([key,child])=>[key,installChoice(child)]));
+   if(typeof object.id==='string'&&object.presentation&&typeof object.presentation==='object') {
+    updated.presentation={...(object.presentation as object),...(renderer==='off'?{subtitle:undefined}:{subtitle:{trackId:'s3',kind:renderer==='client'?'ass':'text',delivery:renderer==='burn_in'?'burn':renderer==='client'?'device':'sidecar'}})};
+   }
+   return updated;
+  };
+  response={...response,body:installChoice(response.body)};
+  if(request.path.includes('/playback-offers?')) {
+   const body=response.body as {current:{sessionId:string;generation:number};controls:{id:string}[]};
+   return {...response,body:{...body,current:{...body.current,subtitleSelection:renderer==='off'?'off':'track'},controls:body.controls.map(control=>control.id==='subtitles'?{...control,enabled:true,reason:''}:control),subtitlePlan:plan(body.current.sessionId,body.current.generation)}};
+  }
+  const match=/\/playback\/([^/]+)\/subtitles/.exec(request.path);
+  if(match)return {status:200,headers:{},body:plan(match[1]!,f.server.session(match[1]!)!.generation)};
+  if(request.path==='/v1/items/movie/subtitles')return {status:200,headers:{},body:{version:1,itemId:'movie',revision:1,canShare:false,sources:[],resources:[],discovered:[],provider:{id:'opensubtitles',enabled:false}}};
+  return response;
+ });
+ return {set: (next: typeof initial) => {renderer=next;},refuse:()=>{refuse=true;},stale:()=>{stale=true;},refresh:async()=>{
+  const stack=(f.runtime as unknown as {stack:{subtitles?:{refresh():Promise<void>}}}).stack;await stack.subtitles?.refresh();await settle();
+ }};
+}
+
+for(const captions of ['off','external_text'] as const)test(`AirPlay ${captions} never requests a burn, including system activation and route return`,async t=>{
+ const f=setup(t),caption=airPlayCaptionFixture(f,captions),video=f.video as FakeVideo&{webkitCurrentPlaybackTargetIsWireless:boolean};
+ await f.runtime.play('movie');await f.arrive();await caption.refresh();video.webkitCurrentPlaybackTargetIsWireless=true;
+ assert.equal(f.runtime.getSnapshot().offers?.subtitlePlan?.mode,captions==='off'?'off':'track');
+ video.fire('webkitcurrentplaybacktargetiswirelesschanged');video.webkitCurrentPlaybackTargetIsWireless=false;video.fire('webkitcurrentplaybacktargetiswirelesschanged');await settle();
+ assert.equal(f.log.some(request=>request.method==='PATCH'),false);
+});
+
+test('AirPlay off to drawn while wireless burns the exact track and offset once, and retains delivery after route return only in this run',async t=>{
+ const f=setup(t),caption=airPlayCaptionFixture(f,'off'),video=f.video as FakeVideo&{webkitCurrentPlaybackTargetIsWireless:boolean};
+ await f.runtime.play('movie');await f.arrive();
+ video.webkitCurrentPlaybackTargetIsWireless=true;video.fire('webkitcurrentplaybacktargetiswirelesschanged');
+ caption.set('client');await caption.refresh();await f.runtime.selectSubtitle(f.runtime.getSnapshot().fence!,'s3');await settle();
+ const writes=f.log.filter(request=>request.method==='PATCH'&&(request.body as {subtitles?:{delivery?:string}}).subtitles?.delivery==='burn');assert.equal(writes.length,1,JSON.stringify({problem:f.runtime.getSnapshot().problem,session:f.runtime.getSnapshot().session,preparations:f.log.filter(r=>r.path.endsWith('/receivers/airplay')).map(r=>r.body)}));
+ assert.deepEqual((writes[0]!.body as {subtitles:unknown}).subtitles,{trackId:'s3',delivery:'burn'});assert.equal((writes[0]!.body as {subtitleOffsetMs:number}).subtitleOffsetMs,-2);
+ video.webkitCurrentPlaybackTargetIsWireless=false;video.fire('webkitcurrentplaybacktargetiswirelesschanged');await f.arrive();
+ const stack=(f.runtime as unknown as {stack:{service:{playbackChoices():{subtitleDelivery?:string}};undrawable?:{run:number;ids:Set<string>}}}).stack;
+ assert.equal(stack.service.playbackChoices().subtitleDelivery,'burn');assert.equal(stack.undrawable?.ids.has('s3'),true);
+ await f.runtime.play('other');await f.arrive();
+ const next=(f.runtime as unknown as {stack:typeof stack}).stack;
+ assert.equal(next.undrawable,undefined);assert.equal(next.service.playbackChoices().subtitleDelivery,undefined);
+});
+
+test('AirPlay drawn burn refusal remains explicit, does not retry on route changes, and stale subtitle generations cannot request a burn',async t=>{
+ for(const stale of [false,true]){
+  const f=setup(t),caption=airPlayCaptionFixture(f,'off'),video=f.video as FakeVideo&{webkitCurrentPlaybackTargetIsWireless:boolean};
+  await f.runtime.play('movie');await f.arrive();caption.refuse();if(stale)caption.stale();
+  video.webkitCurrentPlaybackTargetIsWireless=true;caption.set('client');await caption.refresh();
+  if(!stale)await f.runtime.selectSubtitle(f.runtime.getSnapshot().fence!,'s3');await settle();
+  const writes=()=>f.log.filter(request=>request.method==='PATCH'&&(request.body as {subtitles?:{delivery?:string}}).subtitles?.delivery==='burn');
+  assert.equal(writes().length,0);
+  if(!stale)assert.equal(f.runtime.getSnapshot().problem,'playback_subtitles_failed');
+  video.webkitCurrentPlaybackTargetIsWireless=false;video.fire('webkitcurrentplaybacktargetiswirelesschanged');video.webkitCurrentPlaybackTargetIsWireless=true;video.fire('webkitcurrentplaybacktargetiswirelesschanged');await settle();
+  assert.equal(writes().length,0);
+ }
+});

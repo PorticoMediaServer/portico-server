@@ -1372,6 +1372,7 @@ table play_counts
 table play_history
 table play_history_time
 table playback_admin_operations
+table playback_airplay_presentations
 table playback_artifacts
 table playback_audio_plans
 table playback_channel_sessions
@@ -2727,6 +2728,7 @@ trigger personal_music_radios_revision_INSERT
 trigger personal_music_radios_revision_UPDATE
 trigger personal_revision_insert
 trigger personal_revision_update
+trigger playback_airplay_renew
 trigger playback_disc_capture_inputs_delete
 trigger playback_disc_capture_inputs_immutable
 trigger playback_disc_capture_inputs_insert

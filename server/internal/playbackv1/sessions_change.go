@@ -295,6 +295,9 @@ func (s *Service) Patch(ctx context.Context, c Caller, id, ifMatch string, chang
 		presentation.StartPositionMs = position
 		generation = r.generation + 1
 	}
+	if bytes || change.Subtitles != nil || change.SubtitleOffsetMs != nil {
+		presentation.ChoiceRevision = r.choiceRevision() + 1
+	}
 	state := r.state
 	if change.State != "" && state != "preparing" {
 		state = change.State

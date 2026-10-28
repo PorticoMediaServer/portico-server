@@ -314,6 +314,19 @@ func manifestQuoted(s string) string {
 	}, s)
 }
 
+func manifestTextRenditions(p *DeliveryPlan) []TextRenditionPlan {
+	if !p.AirPlay {
+		return p.TextRenditions
+	}
+	selected := []TextRenditionPlan{}
+	for _, track := range p.TextRenditions {
+		if track.Selected {
+			selected = append(selected, track)
+		}
+	}
+	return selected
+}
+
 func hlsMasterManifest(p *DeliveryPlan) []byte {
 	var b strings.Builder
 	version := 4
@@ -321,7 +334,7 @@ func hlsMasterManifest(p *DeliveryPlan) []byte {
 		version = 7
 	}
 	fmt.Fprintf(&b, "#EXTM3U\n#EXT-X-VERSION:%d\n#EXT-X-INDEPENDENT-SEGMENTS\n", version)
-	for i, r := range p.TextRenditions {
+	for i, r := range manifestTextRenditions(p) {
 		def, auto, forced := "NO", "NO", "NO"
 		if r.Selected {
 			def, auto = "YES", "YES"
@@ -405,7 +418,7 @@ func hlsMasterManifest(p *DeliveryPlan) []byte {
 	if len(p.Renditions) > 0 {
 		b.WriteString(",AUDIO=\"audio\"")
 	}
-	if len(p.TextRenditions) > 0 {
+	if len(manifestTextRenditions(p)) > 0 {
 		b.WriteString(",SUBTITLES=\"subtitles\"")
 	}
 	if p.Trace != nil && p.Trace.Video != nil {

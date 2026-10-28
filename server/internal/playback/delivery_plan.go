@@ -95,6 +95,7 @@ type BurnInSpec struct {
 }
 
 type DeliveryPlan struct {
+	AirPlay             bool                      `json:"airPlay,omitempty"`
 	ConversionToolchain *decoder.ToolchainFacts   `json:"-"`
 	ConversionTarget    *decoder.ConversionTarget `json:"-"`
 	ConversionProbe     *decoder.HardwareProbe    `json:"-"`
@@ -1162,6 +1163,7 @@ func loadDeliveryPlan(ctx context.Context, q planRowQuery, session string) (*Del
 	if policy != "" {
 		var stored storedPolicy
 		if err = json.Unmarshal([]byte(policy), &stored); err == nil {
+			p.AirPlay = stored.AirPlay
 			p.Policy, p.Target, p.TargetReach, p.AudioSampleRate = stored.ResolvedDeliveryPolicy, stored.SessionTarget, stored.SessionReach, stored.AudioSampleRate
 			p.Engine, p.OutputBitDepth, p.OutputRange, p.AudioLossless, p.AudioPassthrough = stored.Engine, stored.OutputBitDepth, stored.OutputRange, stored.AudioLossless, stored.AudioPassthrough
 		}
@@ -1207,6 +1209,7 @@ func loadDeliveryPlan(ctx context.Context, q planRowQuery, session string) (*Del
 // the plan that have no column of their own (a v1 presentation's target and
 // the reach it was admitted with, the rate converted audio is resampled to).
 type storedPolicy struct {
+	AirPlay bool `json:"airPlay,omitempty"`
 	*ResolvedDeliveryPolicy
 	SessionTarget    *QualityTarget `json:"sessionTarget,omitempty"`
 	SessionReach     string         `json:"sessionReach,omitempty"`
@@ -1221,7 +1224,7 @@ type storedPolicy struct {
 func persistDeliveryPlan(tx *sql.Tx, session string, p *DeliveryPlan) error {
 	policy := ""
 	if p.Policy != nil || p.Target != nil || p.TargetReach != "" || p.AudioSampleRate != 0 || p.Engine != "" {
-		raw, err := json.Marshal(storedPolicy{p.Policy, p.Target, p.TargetReach, p.AudioSampleRate, p.Engine, p.OutputBitDepth, p.OutputRange, p.AudioLossless, p.AudioPassthrough})
+		raw, err := json.Marshal(storedPolicy{p.AirPlay, p.Policy, p.Target, p.TargetReach, p.AudioSampleRate, p.Engine, p.OutputBitDepth, p.OutputRange, p.AudioLossless, p.AudioPassthrough})
 		if err != nil {
 			return err
 		}
