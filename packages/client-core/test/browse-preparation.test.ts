@@ -137,13 +137,13 @@ test('BrowseSession works without AbortSignal.any and releases composed listener
   const add = AbortSignal.prototype.addEventListener, remove = AbortSignal.prototype.removeEventListener;
   const listeners = new Map<AbortSignal, Set<unknown>>();
   Object.defineProperty(AbortSignal, 'any', {...originalAny, value: undefined});
-  AbortSignal.prototype.addEventListener = function(type, listener, options) {
+  AbortSignal.prototype.addEventListener = function(type: string, listener: EventListenerOrEventListenerObject | null, options?: AddEventListenerOptions | boolean) {
     if (type === 'abort') {const held = listeners.get(this) ?? new Set(); held.add(listener); listeners.set(this, held);}
-    return add.call(this, type, listener, options);
+    if (listener !== null) return add.call(this, type, listener, options);
   };
-  AbortSignal.prototype.removeEventListener = function(type, listener, options) {
+  AbortSignal.prototype.removeEventListener = function(type: string, listener: EventListenerOrEventListenerObject | null, options?: EventListenerOptions | boolean) {
     if (type === 'abort') listeners.get(this)?.delete(listener);
-    return remove.call(this, type, listener, options);
+    if (listener !== null) return remove.call(this, type, listener, options);
   };
   try {
     for (const fail of [false, true]) for (const raw of [false, true]) {
@@ -168,4 +168,11 @@ domainTest('a known optional selection is canceled even when retirement precedes
   await assert.rejects(readBrowseSelection(api, 'lib', {revision: 'r1', pivot: 'books', query: null, sort: query.sorts}, response,
     {signal: controller.signal, isCurrent: () => false}, {pivot: 'books', sort: query.sorts}), {name: 'AbortError'});
   assert.deepEqual(calls, ['DELETE /v1/libraries/lib/browse-selection-queries/query-1']);
+});
+
+test('retirement inside a page publication callback cannot lend later callbacks to the next query', async () => {
+  const events: string[] = [];
+  let s!: BrowseSession<ContentEntry>;
+  s = session(undefined, {request: async () => page(), onRevision: () => {events.push('revision'); s.retire();}, onPage: () => events.push('page')});
+  await assert.rejects(s.fetchPage(0, 1, signal()), {name: 'AbortError'}); assert.deepEqual(events, ['revision']);
 });
