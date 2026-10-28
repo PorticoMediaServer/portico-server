@@ -84,7 +84,6 @@ type readingFacetReduction struct {
 	distinct, maxCount, low, high, threshold, above, tieSkip int
 	passes                                                   int
 	memoryLimit                                              int
-	uncacheable                                              bool
 	scalarBytes                                              int
 	failed                                                   error
 	// Installed by the shared-store adapter before adoption. It reserves the
@@ -175,9 +174,6 @@ func (r *readingFacetReduction) step(s *Service, currentWitness string, b *readi
 		// output. The exception is O(B), never an unbounded page or cache entry.
 		size := r.bytes()
 		r.scalarBytes = max(r.scalarBytes, len(m.Key)+len(m.Label)+len(m.Source), r.input.scalarBytes())
-		if b.oversized {
-			r.uncacheable = true
-		}
 		if size > r.memoryLimit {
 			r.fail(errReadingFacetCapacity)
 			return false, r.failed
@@ -334,8 +330,11 @@ func (r *readingFacetReduction) resultBytes() int {
 	}
 	return n
 }
+
+// Exhausting a read quantum only yields; reuse depends on retained state/output.
+// A lossless transient scalar never poisons a bounded final result.
 func (r *readingFacetReduction) cacheable() bool {
-	return r.phase == "done" && r.failed == nil && !r.uncacheable && r.bytes() <= r.memoryLimit
+	return r.phase == "done" && r.failed == nil && r.bytes() <= r.memoryLimit
 }
 func (r *readingFacetReduction) result() (FacetPage, bool) {
 	if r.phase != "done" || r.failed != nil {
