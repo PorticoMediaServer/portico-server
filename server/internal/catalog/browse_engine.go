@@ -68,7 +68,8 @@ type BrowseResult struct {
 	DisplayTargets []HomeDisplayTarget    `json:"displayTargets,omitempty"`
 	// WholeSelection is the exact whole-view aggregate for "Select all N".
 	// Absent whenever the view cannot be replayed exactly; never inferred.
-	WholeSelection *BrowseSelectionDescriptor `json:"wholeSelection,omitempty"`
+	WholeSelection          *BrowseSelectionDescriptor `json:"wholeSelection,omitempty"`
+	WholeSelectionPreparing *BrowseSelectionPreparing  `json:"wholeSelectionPreparing,omitempty"`
 	// Bound is the exact authorized WHERE this page was read with, for the
 	// same-snapshot whole-selection aggregate. Never serialized.
 	Bound *BoundBrowseQuery `json:"-"`
@@ -83,6 +84,7 @@ type BrowseRequest struct {
 	// selected viewer in the same Reading snapshot. Browse alone grants no
 	// personal state to internal or narrowed-session callers.
 	ReadingPersonalAuthorize func(*sql.Tx) error
+	SelectionBasis           string
 	ServerID                 string
 	Library                  string
 	Profile                  string
@@ -460,6 +462,9 @@ func (s *Service) BrowseEntities(viewer Viewer, request BrowseRequest) (BrowseRe
 		})
 		return result, err
 	}
+	if err := s.checkBrowseSelectionBasis(viewer, request.Library, request.SelectionBasis); err != nil {
+		return BrowseResult{}, err
+	}
 	if request.Pivot == "playlists" {
 		return s.browseMusicPlaylists(request)
 	}
@@ -484,6 +489,18 @@ func (s *Service) BrowseEntities(viewer Viewer, request BrowseRequest) (BrowseRe
 		var entries []ContentEntry
 		if readingScope != nil {
 			entries, err = readingScope.project(s, rows, request.Profile, request.ReadingPersonalAuthorize)
+		} else if request.SelectionBasis != "" && len(rows) > BrowseMaximumLimit {
+			// Keep each existing hydrator's ordinary page bound. The proof
+			// conversion is at most200 and all chunks use this same snapshot.
+			entries = make([]ContentEntry, 0, len(rows))
+			for start := 0; start < len(rows); start += BrowseMaximumLimit {
+				var chunk []ContentEntry
+				chunk, err = s.browseProjection(request.Profile, rows[start:min(start+BrowseMaximumLimit, len(rows))])
+				if err != nil {
+					break
+				}
+				entries = append(entries, chunk...)
+			}
 		} else {
 			entries, err = s.browseProjection(request.Profile, rows)
 		}
@@ -556,7 +573,13 @@ func (s *Service) browseSelect(request BrowseRequest) (BrowseResult, []browseRow
 		return out, nil, err
 	}
 	out.Applied = BrowseApplied{Query: request.Query, Sort: sorts, Seek: request.Seek}
+	requestedLimit := request.Limit
 	request.Limit = pageLimit(request.Limit)
+	// A held whole view may resolve one bounded explicit selection (at most200).
+	// Ordinary page limits and revision semantics remain unchanged.
+	if request.SelectionBasis != "" && requestedLimit > 0 {
+		request.Limit = min(requestedLimit, BrowseSelectionConversionLimit)
+	}
 	if request.Cursor != "" && request.Range != nil {
 		return out, nil, browseIssue("range", "a direct range cannot include a cursor")
 	}

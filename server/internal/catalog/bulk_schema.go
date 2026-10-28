@@ -14,7 +14,7 @@ func (JobSelector) JSONSchema() map[string]any {
 	variants := []any{
 		object(map[string]any{"container": object(map[string]any{"kind": map[string]any{"type": "string", "enum": []string{"show", "season", "album", "artist", "book", "collection", "playlist", "library"}}, "id": text()}, "kind", "id")}, "container"),
 		object(map[string]any{"items": object(map[string]any{"ids": map[string]any{"type": "array", "minItems": 1, "maxItems": 200, "uniqueItems": true, "items": text()}}, "ids")}, "items"),
-		object(map[string]any{"query": object(map[string]any{"libraryId": text(), "pivot": text(), "filter": map[string]any{"type": "object", "additionalProperties": map[string]any{}}, "sort": map[string]any{"type": "array", "items": object(map[string]any{"field": text(), "direction": map[string]any{"type": "string", "enum": []string{"asc", "desc"}}}, "field", "direction")}}, "libraryId", "pivot")}, "query"),
+		object(map[string]any{"query": object(map[string]any{"selectionBasis": map[string]any{"type": "string", "pattern": SelectionBasisExpression}, "libraryId": text(), "pivot": text(), "filter": map[string]any{"type": "object", "additionalProperties": map[string]any{}}, "sort": map[string]any{"type": "array", "items": object(map[string]any{"field": text(), "direction": map[string]any{"type": "string", "enum": []string{"asc", "desc"}}}, "field", "direction")}}, "libraryId", "pivot")}, "query"),
 	}
 	properties := map[string]any{}
 	for _, variant := range variants {

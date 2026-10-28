@@ -46,7 +46,7 @@ func (s *Service) bulkSelectionFence(tx *sql.Tx, v Viewer, selector JobSelector)
 	}
 	values := []any{legacy, "exact-bulk-v1"}
 	for _, library := range libraries {
-		witness, err := read.browseExactWitness(library, v.Profile, v.EffectiveRestrictions())
+		witness, err := read.browseSelectionWitness(library, v.Profile, v.EffectiveRestrictions())
 		if errors.Is(err, sql.ErrNoRows) {
 			return "", ErrSelectionBatchStale
 		}
