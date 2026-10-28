@@ -155,6 +155,7 @@ func Registry() []Field {
 		field("customCertificateDomain", "connectivity", "string", "", nil, nil, nil, "hot", "TLS listener and route publication", "The domain the custom certificate serves. It is published to members as an access URL on the remote access port."),
 		field("lanDiscoveryEnabled", "connectivity", "boolean", true, nil, nil, nil, "hot", "LAN discovery advertisement", "Advertise this server on the local network with mDNS/Bonjour. The connectivity status report says whether this host can."),
 		field("dlnaEnabled", "connectivity", "boolean", false, nil, nil, nil, "hot", "DLNA server", "Let DLNA players on the home networks browse and play every library without signing in. Off by default; never offered outside the home networks."),
+		field("integrations.compatibilityEnabled", "access", "boolean", false, nil, nil, nil, "hot", "integration protocol adapter", "Allow connected automation tools to use the integration compatibility endpoints. Off by default."),
 		field("apiRequestsPerMinute", "access", "integer", 0, bounded(0), bounded(100000), nil, "hot", "API key and access token admission", "How many requests one API key or personal access token may make each minute. 0 uses the default of 600."),
 		field("logLevel", "diagnostics", "enumeration", "info", nil, nil, LogLevels, "hot", "servicelog.Recorder", "How much detail the message log keeps. A debug window raises this temporarily without changing the saved value."),
 		field("logRetention", "diagnostics", "log-retention-list", []LogRetention{}, nil, nil, LogCategories, "hot", "servicelog.Recorder and ClientLogStore prune", "Days of message log and client report history to keep per category. A category with no entry keeps its bounded history."),
@@ -217,7 +218,8 @@ type Settings struct {
 	// APIRequestsPerMinute is the rate one API key or personal access token is
 	// held to; 0, the value a document saved before the field existed reads as,
 	// is the default (DefaultAPIRequestsPerMinute).
-	APIRequestsPerMinute int `json:"apiRequestsPerMinute"`
+	APIRequestsPerMinute     int  `json:"apiRequestsPerMinute"`
+	IntegrationCompatibility bool `json:"integrations.compatibilityEnabled"`
 	// Integration limits restrict existing credentials and deliveries; they grant no authority.
 
 	// Aggregated server-wide play counts stay off until an owner opts in.

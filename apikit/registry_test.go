@@ -20,7 +20,7 @@ type testResponse struct {
 }
 
 func testMetadata() Metadata {
-	return Metadata{ID: "test", Method: "POST", Path: "/v1/test", Summary: "Test route", Access: Device, Requires: ScopeRead, Lane: Default, Cost: Constant, BodyLimit: 128, Status: 200}
+	return Metadata{Audience: Clients, ID: "test", Method: "POST", Path: "/v1/test", Summary: "Test route", Access: Device, Requires: ScopeRead, Lane: Default, Cost: Constant, BodyLimit: 128, Status: 200}
 }
 func TestRegistryRequiresAccessAndEnforcesBeforeParsing(t *testing.T) {
 	r := New(nil, nil)
@@ -57,7 +57,7 @@ func TestStreamingRouteKeepsRegistryAccessAndQueryRules(t *testing.T) {
 		}
 		return nil
 	}, nil)
-	m := Metadata{ID: "events", Method: "GET", Path: "/v1/events", Summary: "Stream events", Access: Device, Requires: ScopeRead, Lane: Realtime, Cost: Constant, Status: 200, SSE: true, Query: []string{"after"}}
+	m := Metadata{Audience: Integrations, ID: "events", Method: "GET", Path: "/v1/events", Summary: "Stream events", Access: Device, Requires: ScopeRead, Lane: Realtime, Cost: Constant, Status: 200, SSE: true, Query: []string{"after"}}
 	if err := Register(r, Route[struct{}, testResponse]{Metadata: m, RawHandler: func(w http.ResponseWriter, _ *http.Request) {
 		served = true
 		w.Header().Set("Content-Type", "text/event-stream")
@@ -268,13 +268,13 @@ func TestAccessLabelsMustNameWhatTheAuthorizerChecks(t *testing.T) {
 		return testResponse{"ok", []string{}}, nil
 	}
 	for path, access := range map[string]Access{"/v1/items/{id}/thing": ViewerItem, "/v1/things": ViewerItem, "/v1/libraries/{id}/thing": ViewerLibrary, "/v1/list": ViewerLibrary} {
-		m := Metadata{ID: "labelled", Method: "GET", Path: path, Summary: "Labelled", Access: access, Requires: ScopeRead, Lane: Default, Cost: Constant, Status: 200}
+		m := Metadata{Audience: Clients, ID: "labelled", Method: "GET", Path: path, Summary: "Labelled", Access: access, Requires: ScopeRead, Lane: Default, Cost: Constant, Status: 200}
 		if err := Register(r, Route[struct{}, testResponse]{Metadata: m, Handler: handler}); err == nil {
 			t.Fatalf("%s was registered as %s without naming what is checked", path, access)
 		}
 	}
 	for path, access := range map[string]Access{"/v1/items/{itemId}/thing": ViewerItem, "/v1/libraries/{libraryId}/thing": ViewerLibrary} {
-		m := Metadata{ID: "ok_" + string(access), Method: "GET", Path: path, Summary: "Labelled", Access: access, Requires: ScopeRead, Lane: Default, Cost: Constant, Status: 200}
+		m := Metadata{Audience: Clients, ID: "ok_" + string(access), Method: "GET", Path: path, Summary: "Labelled", Access: access, Requires: ScopeRead, Lane: Default, Cost: Constant, Status: 200}
 		if err := Register(r, Route[struct{}, testResponse]{Metadata: m, Handler: handler}); err != nil {
 			t.Fatalf("%s as %s: %v", path, access, err)
 		}

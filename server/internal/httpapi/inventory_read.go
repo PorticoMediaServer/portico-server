@@ -12,7 +12,7 @@ import (
 )
 
 func registerInventoryRead(registry *apikit.Registry, d Dependencies) {
-	v1Route(registry, apikit.Metadata{Admission: laneAdminHeavy, ID: "get_library_inventory", Method: "GET", Path: "/v1/admin/libraries/{id}/inventory", Summary: "Read one page of library files, optionally locating one file by its asset id", Access: apikit.Admin, AdminScope: "libraries", Requires: apikit.ScopeLibrary, Lane: apikit.Default, Cost: apikit.PageSized, Status: 200, Query: []string{"sourceId", "assetId", "state", "cursor", "limit"}, Errors: []string{"unauthorized", "not_permitted", "invalid_request", "not_found", "revision_mismatch", "internal"}}, func(ctx context.Context, r *http.Request, _ noBody) (catalog.InventoryPageResult, error) {
+	v1Route(registry, apikit.Metadata{Audience: apikit.Clients, Admission: laneAdminHeavy, ID: "get_library_inventory", Method: "GET", Path: "/v1/admin/libraries/{id}/inventory", Summary: "Read one page of library files, optionally locating one file by its asset id", Access: apikit.Admin, AdminScope: "libraries", Requires: apikit.ScopeLibrary, Lane: apikit.Default, Cost: apikit.PageSized, Status: 200, Query: []string{"sourceId", "assetId", "state", "cursor", "limit"}, Errors: []string{"unauthorized", "not_permitted", "invalid_request", "not_found", "revision_mismatch", "internal"}}, func(ctx context.Context, r *http.Request, _ noBody) (catalog.InventoryPageResult, error) {
 		clone := r.Clone(ctx)
 		u := *r.URL
 		clone.URL = &u

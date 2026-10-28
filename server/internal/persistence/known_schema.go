@@ -29,6 +29,7 @@ index analysis_results_retention
 index analysis_stage_job
 index api_credentials_account
 index api_credentials_page
+index api_credentials_parent
 index api_events_activity_progress
 index api_events_audience
 index api_events_expiry
@@ -369,6 +370,7 @@ index identity_refresh_receipts_family
 index identity_security_return_actor
 index identity_setup_one_active
 index identity_unknown_attempts_age
+index integration_ids_expiry
 index inventory_analysis_object
 index inventory_analysis_pending
 index inventory_artwork_candidates_asset
@@ -1129,6 +1131,7 @@ table identity_setup_completions
 table identity_sign_in_policy
 table identity_state
 table identity_unknown_attempts
+table integration_ids
 table inventory_analysis_queue
 table inventory_artwork_candidates
 table inventory_artwork_sources

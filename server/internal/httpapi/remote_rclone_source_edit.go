@@ -12,7 +12,7 @@ import (
 )
 
 func registerRcloneSourceEdit(registry *apikit.Registry, d Dependencies) {
-	v1Route(registry, apikit.Metadata{ID: "update_storage_source_rclone", Method: "PUT", Path: "/v1/storage/sources/rclone/{id}", Summary: "Replace an imported source connection at its expected generation", Access: apikit.Owner, Requires: apikit.ScopeAdmin, Lane: apikit.Default, Admission: laneAdminLong, Cost: apikit.Constant, BodyLimit: 65536, Status: 200, Errors: []string{"unauthorized", "not_permitted", "invalid_request", "source_credentials_required", "administration_unavailable", "storage_command_conflict", "storage_operation_expired", "storage_command_capacity", "request_in_progress", "internal"}}, func(ctx context.Context, r *http.Request, in mounts.RcloneSourceEditInput) (RcloneSourceResponse, error) {
+	v1Route(registry, apikit.Metadata{Audience: apikit.Clients, ID: "update_storage_source_rclone", Method: "PUT", Path: "/v1/storage/sources/rclone/{id}", Summary: "Replace an imported source connection at its expected generation", Access: apikit.Owner, Requires: apikit.ScopeAdmin, Lane: apikit.Default, Admission: laneAdminLong, Cost: apikit.Constant, BodyLimit: 65536, Status: 200, Errors: []string{"unauthorized", "not_permitted", "invalid_request", "source_credentials_required", "administration_unavailable", "storage_command_conflict", "storage_operation_expired", "storage_command_capacity", "request_in_progress", "internal"}}, func(ctx context.Context, r *http.Request, in mounts.RcloneSourceEditInput) (RcloneSourceResponse, error) {
 		p, scope, err := d.storageOwner(r)
 		if err != nil {
 			return RcloneSourceResponse{}, rcloneSourceFailure(err)

@@ -38,6 +38,7 @@ export type RuntimeSettings=TranscodingSettings&{
  trustedProxies:string[];uploadCapacityKbps:number;pausedSessionTimeoutMinutes:number;advertisedInterface:string;
  customCertificatePath:string;customCertificateKeyPath:string;customCertificateDomain:string;ownAddressEnabled:boolean;
  connectionLimit:number;advertiseUrl:string;apiRequestsPerMinute:number;
+ 'integrations.compatibilityEnabled'?:boolean;
  logLevel:string;logRetention:{category:string;days:number}[];
 };
 export type MissingTitlesRule='immediately'|'after_days'|'never';

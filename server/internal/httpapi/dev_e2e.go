@@ -24,12 +24,12 @@ func init() {
 	devContracts = append(devContracts, func(registry *apikit.Registry) error {
 		if err := apikit.RegisterHTTP[struct{}, struct {
 			Username string `json:"username"`
-		}](registry, apikit.Metadata{ID: "get_dev_e2e", Method: "GET", Path: "/v1/dev/e2e", Summary: "Read the development test owner", Access: apikit.Public, Requires: apikit.ScopeSession, Lane: apikit.Security, Admission: laneAuth, Cost: apikit.Constant, Status: 200, Errors: []string{"not_found", "internal"}}); err != nil {
+		}](registry, apikit.Metadata{Audience: apikit.Clients, ID: "get_dev_e2e", Method: "GET", Path: "/v1/dev/e2e", Summary: "Read the development test owner", Access: apikit.Public, Requires: apikit.ScopeSession, Lane: apikit.Security, Admission: laneAuth, Cost: apikit.Constant, Status: 200, Errors: []string{"not_found", "internal"}}); err != nil {
 			return err
 		}
 		return apikit.RegisterHTTP[struct {
 			Username string `json:"username"`
-		}, identity.DirectSignIn](registry, apikit.Metadata{ID: "post_dev_e2e_sign_in", Method: "POST", Path: "/v1/dev/e2e/sign-in", Summary: "Sign in as the development test owner", Access: apikit.Public, Requires: apikit.ScopeSession, Lane: apikit.Security, Admission: laneAuth, Cost: apikit.Constant, BodyLimit: 65536, Status: 200, Errors: []string{"invalid_request", "not_found", "unauthorized", "internal"}})
+		}, identity.DirectSignIn](registry, apikit.Metadata{Audience: apikit.Clients, ID: "post_dev_e2e_sign_in", Method: "POST", Path: "/v1/dev/e2e/sign-in", Summary: "Sign in as the development test owner", Access: apikit.Public, Requires: apikit.ScopeSession, Lane: apikit.Security, Admission: laneAuth, Cost: apikit.Constant, BodyLimit: 65536, Status: 200, Errors: []string{"invalid_request", "not_found", "unauthorized", "internal"}})
 	})
 	routeLanes["GET /v1/dev/e2e"] = laneAuth
 	routeLanes["POST /v1/dev/e2e/sign-in"] = laneAuth

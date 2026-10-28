@@ -54,7 +54,7 @@ func sourceTestFailure(err error) error {
 }
 
 func registerSourceTest(registry *apikit.Registry, d Dependencies) {
-	v1Route(registry, apikit.Metadata{ID: "test_storage_source", Method: "POST", Path: "/v1/storage/sources/{id}/test", Summary: "Test a saved source's connection without changing it", Access: apikit.Owner, Requires: apikit.ScopeAdmin, Lane: apikit.Default, Admission: laneAdminLong, Cost: apikit.Constant, BodyLimit: 0, Status: 200, Errors: []string{"unauthorized", "not_permitted", "not_found", "invalid_request", "request_in_progress", "source_credentials_required", "administration_unavailable", "internal"}}, func(ctx context.Context, r *http.Request, _ noBody) (SourceTestResponse, error) {
+	v1Route(registry, apikit.Metadata{Audience: apikit.Clients, ID: "test_storage_source", Method: "POST", Path: "/v1/storage/sources/{id}/test", Summary: "Test a saved source's connection without changing it", Access: apikit.Owner, Requires: apikit.ScopeAdmin, Lane: apikit.Default, Admission: laneAdminLong, Cost: apikit.Constant, BodyLimit: 0, Status: 200, Errors: []string{"unauthorized", "not_permitted", "not_found", "invalid_request", "request_in_progress", "source_credentials_required", "administration_unavailable", "internal"}}, func(ctx context.Context, r *http.Request, _ noBody) (SourceTestResponse, error) {
 		p, scope, err := d.storageOwner(r)
 		if err != nil {
 			return SourceTestResponse{}, sourceTestFailure(err)

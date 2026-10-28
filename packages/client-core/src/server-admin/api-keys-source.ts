@@ -1,3 +1,4 @@
+import {revealApiKey} from '../integration-access.ts';
 import {ApiAccessError, createApiKey, getApiAccessOptions, listApiKeys, revokeApiKey, type ApiAccessOptions, type ApiAccessTransport, type ApiCredential, type ApiCredentialPage, type IssuedApiCredential, type NewApiCredential} from '../api-access.ts';
 import {randomId} from '../random-id.ts';
 
@@ -26,6 +27,7 @@ export class SettingsApiKeysSource {
   private read?: AbortController;
   private mutation?: Mutation;
   private intent?: NewApiCredential;
+  private readonly reveals = new Set<AbortController>();
   constructor(private readonly api: ApiAccessTransport, private readonly isCurrent: () => boolean, private readonly reportError: (error: unknown) => void, private readonly operationId: () => string = randomId) {}
   private current() {return !this.lifetime.signal.aborted && this.isCurrent();}
   private ownsRead(read: AbortController) {return this.current() && this.read === read && !read.signal.aborted && !this.mutation;}
@@ -40,6 +42,7 @@ export class SettingsApiKeysSource {
   private publish(patch: Partial<ApiKeysSnapshot>) {if (this.current()) {this.state = Object.freeze({...this.state, ...patch});for (const listener of this.listeners) listener();}}
   private failure(error: unknown, kind: Failure) {
     if (terminal(error)) {
+      for (const request of this.reveals) request.abort();this.reveals.clear();
       this.read?.abort();this.mutation?.controller.abort();this.mutation = undefined;this.intent = undefined;
       this.lifetime.abort();this.state = empty;for (const listener of this.listeners) listener();
       this.reportError(error);
@@ -112,5 +115,13 @@ export class SettingsApiKeysSource {
     finally {if (this.mutation === attempt) {this.mutation = undefined;this.publish({busy: false});}}
     if (this.current()) await this.readPage('', failed ? 'revoke' : undefined);
   };
-  dispose = () => {this.read?.abort();this.mutation?.controller.abort();this.mutation = undefined;this.intent = undefined;this.lifetime.abort();this.state = empty;this.listeners.clear();};
+  reveal = async (credential: ApiCredential): Promise<string|undefined> => {
+    if (!this.current() || this.state.busy || !this.state.page?.items.includes(credential) || credential.kind !== 'key' || credential.state !== 'active') return;
+    const request = new AbortController();this.reveals.add(request);
+    const owns = () => this.current() && !request.signal.aborted && this.reveals.has(request) && !!this.state.page?.items.includes(credential);
+    try {const secret = await revealApiKey(this.transport(owns), credential.id, request.signal);return owns() ? secret : undefined;}
+    catch (error) {if (owns()) this.failure(error, 'read');return undefined;}
+    finally {this.reveals.delete(request);}
+  };
+  dispose = () => {for (const request of this.reveals) request.abort();this.reveals.clear();this.read?.abort();this.mutation?.controller.abort();this.mutation = undefined;this.intent = undefined;this.lifetime.abort();this.state = empty;this.listeners.clear();};
 }

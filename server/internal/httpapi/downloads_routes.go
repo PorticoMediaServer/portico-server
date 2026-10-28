@@ -213,7 +213,7 @@ func registerDownloads(r *apikit.Registry, d Dependencies) {
 		if method != "GET" {
 			failures = write
 		}
-		return apikit.Metadata{Admission: admission(id), ID: id, Method: method, Path: path, Summary: summary, Access: access, Requires: scope(id), Lane: lane, Cost: cost, Status: status, BodyLimit: bodyLimit, Query: query, Errors: failures}
+		return apikit.Metadata{Audience: apikit.Clients, Admission: admission(id), ID: id, Method: method, Path: path, Summary: summary, Access: access, Requires: scope(id), Lane: lane, Cost: cost, Status: status, BodyLimit: bodyLimit, Query: query, Errors: failures}
 	}
 	v1Route(r, route("get_download_options", "GET", "/v1/items/{itemId}/download-options", "List offline qualities this device can play and this server can produce", apikit.ViewerItem, apikit.Browsing, apikit.PageSized, 200, 0, []string{"versionId"}), func(ctx context.Context, q *http.Request, _ noBody) (downloads.DownloadOptionsView, error) {
 		p, owner, e := d.downloadViewer(q)
@@ -362,7 +362,7 @@ func registerDownloads(r *apikit.Registry, d Dependencies) {
 		http.ServeContent(body, q, out.Artifact.FileName, out.Modified, reader)
 	}
 	rawRoute := func(id, method, path, summary string, lane apikit.Lane, query []string, serve http.HandlerFunc) {
-		m := apikit.Metadata{ResponseContentType: "application/octet-stream", Admission: admission(id), ID: id, Method: method, Path: path, Summary: summary, Access: apikit.Public, Requires: scope(id), Lane: lane, Cost: apikit.Constant, Status: 200, Query: query, Errors: []string{"invalid_request", "invalid_download_grant", "downloads_not_allowed", "download_unavailable", "download_not_ready", "download_source_offline", "downloads_unavailable", "not_found", "internal"}}
+		m := apikit.Metadata{Audience: apikit.Clients, ResponseContentType: "application/octet-stream", Admission: admission(id), ID: id, Method: method, Path: path, Summary: summary, Access: apikit.Public, Requires: scope(id), Lane: lane, Cost: apikit.Constant, Status: 200, Query: query, Errors: []string{"invalid_request", "invalid_download_grant", "downloads_not_allowed", "download_unavailable", "download_not_ready", "download_source_offline", "downloads_unavailable", "not_found", "internal"}}
 		if err := apikit.RegisterRaw(r, apikit.RawRoute[noBody, SubtitleBytesContract]{Metadata: m, Serve: serve}); err != nil {
 			panic(m.ID + ": " + err.Error())
 		}

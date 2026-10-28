@@ -32,7 +32,7 @@ type ResourceUsage struct {
 }
 
 func registerResourceUsage(registry *apikit.Registry, d Dependencies) error {
-	return apikit.Register(registry, apikit.Route[struct{}, ResourceUsage]{Metadata: apikit.Metadata{Admission: laneAdmin, ID: "get_admin_resource_usage", Method: "GET", Path: "/v1/admin/resource-usage", Summary: "Read current resource usage and owner limits", Access: apikit.Owner, Requires: apikit.ScopeAdmin, Lane: apikit.Default, Cost: apikit.PageSized, Status: 200, Errors: []string{"unauthorized", "not_permitted", "internal"}}, Handler: func(ctx context.Context, r *http.Request, _ struct{}) (ResourceUsage, error) {
+	return apikit.Register(registry, apikit.Route[struct{}, ResourceUsage]{Metadata: apikit.Metadata{Audience: apikit.Clients, Admission: laneAdmin, ID: "get_admin_resource_usage", Method: "GET", Path: "/v1/admin/resource-usage", Summary: "Read current resource usage and owner limits", Access: apikit.Owner, Requires: apikit.ScopeAdmin, Lane: apikit.Default, Cost: apikit.PageSized, Status: 200, Errors: []string{"unauthorized", "not_permitted", "internal"}}, Handler: func(ctx context.Context, r *http.Request, _ struct{}) (ResourceUsage, error) {
 		out := ResourceUsage{}
 		p, err := d.ownerContext(ctx, r)
 		if err != nil {

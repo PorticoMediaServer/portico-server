@@ -173,7 +173,7 @@ func consoleTypedReply[T any](d Dependencies, p identity.Principal, data T) Cons
 func registerConversionSettings(registry *apikit.Registry, d Dependencies) error {
 	begin := conversionSettingsAdmission(d)
 	failures := conversionSettingsFailures()
-	if err := apikit.Register(registry, apikit.Route[struct{}, ConsoleReply[ConsoleRegistryDocument]]{Metadata: apikit.Metadata{Admission: laneAdmin, ID: "get_console_registry", Method: "GET", Path: "/v1/console/registry", Summary: "Read the owner setting definitions", Access: apikit.Device, Requires: apikit.ScopeAdmin, Lane: apikit.Default, Cost: apikit.PageSized, Status: 200, Errors: failures}, Handler: func(ctx context.Context, r *http.Request, _ struct{}) (ConsoleReply[ConsoleRegistryDocument], error) {
+	if err := apikit.Register(registry, apikit.Route[struct{}, ConsoleReply[ConsoleRegistryDocument]]{Metadata: apikit.Metadata{Audience: apikit.Clients, Admission: laneAdmin, ID: "get_console_registry", Method: "GET", Path: "/v1/console/registry", Summary: "Read the owner setting definitions", Access: apikit.Device, Requires: apikit.ScopeAdmin, Lane: apikit.Default, Cost: apikit.PageSized, Status: 200, Errors: failures}, Handler: func(ctx context.Context, r *http.Request, _ struct{}) (ConsoleReply[ConsoleRegistryDocument], error) {
 		ctx, p, auth, done, err := begin(ctx, r, false)
 		if err != nil {
 			return ConsoleReply[ConsoleRegistryDocument]{}, err
@@ -202,7 +202,7 @@ func registerConversionOwnerSettings(registry *apikit.Registry, d Dependencies) 
 	begin := conversionSettingsAdmission(d)
 	failures := conversionSettingsFailures()
 
-	if err := apikit.Register(registry, apikit.Route[struct{}, ConsoleReply[operations.SettingsDocument]]{Metadata: apikit.Metadata{Admission: laneAdmin, ID: "get_console_settings", Method: "GET", Path: "/v1/admin/console/settings", Summary: "Read requested and effective owner settings", Access: apikit.Owner, Requires: apikit.ScopeAdmin, Lane: apikit.Default, Cost: apikit.Constant, Status: 200, Errors: failures}, Handler: func(ctx context.Context, r *http.Request, _ struct{}) (ConsoleReply[operations.SettingsDocument], error) {
+	if err := apikit.Register(registry, apikit.Route[struct{}, ConsoleReply[operations.SettingsDocument]]{Metadata: apikit.Metadata{Audience: apikit.Clients, Admission: laneAdmin, ID: "get_console_settings", Method: "GET", Path: "/v1/admin/console/settings", Summary: "Read requested and effective owner settings", Access: apikit.Owner, Requires: apikit.ScopeAdmin, Lane: apikit.Default, Cost: apikit.Constant, Status: 200, Errors: failures}, Handler: func(ctx context.Context, r *http.Request, _ struct{}) (ConsoleReply[operations.SettingsDocument], error) {
 		ctx, p, auth, done, err := begin(ctx, r, true)
 		if err != nil {
 			return ConsoleReply[operations.SettingsDocument]{}, err
@@ -219,7 +219,7 @@ func registerConversionOwnerSettings(registry *apikit.Registry, d Dependencies) 
 	}}); err != nil {
 		return err
 	}
-	return apikit.Register(registry, apikit.Route[ConsoleSettingsChange, ConsoleReply[operations.SettingsDocument]]{Metadata: apikit.Metadata{Admission: laneAdmin, ID: "change_console_settings", Method: "PATCH", Path: "/v1/admin/console/settings", Summary: "Save a complete owner settings document", Access: apikit.Owner, Requires: apikit.ScopeAdmin, Lane: apikit.Default, Cost: apikit.Constant, BodyLimit: 65536, Status: 200, Errors: failures}, Handler: func(ctx context.Context, r *http.Request, in ConsoleSettingsChange) (ConsoleReply[operations.SettingsDocument], error) {
+	return apikit.Register(registry, apikit.Route[ConsoleSettingsChange, ConsoleReply[operations.SettingsDocument]]{Metadata: apikit.Metadata{Audience: apikit.Clients, Admission: laneAdmin, ID: "change_console_settings", Method: "PATCH", Path: "/v1/admin/console/settings", Summary: "Save a complete owner settings document", Access: apikit.Owner, Requires: apikit.ScopeAdmin, Lane: apikit.Default, Cost: apikit.Constant, BodyLimit: 65536, Status: 200, Errors: failures}, Handler: func(ctx context.Context, r *http.Request, in ConsoleSettingsChange) (ConsoleReply[operations.SettingsDocument], error) {
 		ctx, p, auth, done, err := begin(ctx, r, true)
 		if err != nil {
 			return ConsoleReply[operations.SettingsDocument]{}, err

@@ -22,7 +22,7 @@ type SourceStatusResponse struct {
 // which libraries use its folders. It reads no provider.
 func registerSourceStatus(registry *apikit.Registry, d Dependencies) {
 	failures := []string{"unauthorized", "not_permitted", "not_found", "invalid_request", "administration_unavailable", "source_folders_unsupported", "internal"}
-	v1Route(registry, apikit.Metadata{ID: "get_storage_source_status", Method: "GET", Path: "/v1/storage/sources/{id}/status", Summary: "Read one remote source's present state and the libraries that use it", Access: apikit.Owner, Requires: apikit.ScopeAdmin, Lane: apikit.Default, Admission: laneAdmin, Cost: apikit.PageSized, Status: 200, Errors: failures}, func(ctx context.Context, r *http.Request, _ noBody) (SourceStatusResponse, error) {
+	v1Route(registry, apikit.Metadata{Audience: apikit.Clients, ID: "get_storage_source_status", Method: "GET", Path: "/v1/storage/sources/{id}/status", Summary: "Read one remote source's present state and the libraries that use it", Access: apikit.Owner, Requires: apikit.ScopeAdmin, Lane: apikit.Default, Admission: laneAdmin, Cost: apikit.PageSized, Status: 200, Errors: failures}, func(ctx context.Context, r *http.Request, _ noBody) (SourceStatusResponse, error) {
 		p, scope, err := d.storageOwner(r)
 		if err != nil {
 			return SourceStatusResponse{}, folderError(err)

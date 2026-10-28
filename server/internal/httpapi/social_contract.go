@@ -19,7 +19,7 @@ func socialContract[Req, Resp any](r *apikit.Registry, pattern string, h http.Ha
 	if parts[0] == "GET" {
 		lane = apikit.Browsing
 	}
-	m := apikit.Metadata{ID: "social_" + strings.NewReplacer("/", "_", "{", "", "}", "", "-", "_").Replace(strings.ToLower(parts[0])+parts[1]), Method: parts[0], Path: parts[1], Summary: "Manage shared playback for the signed-in profile", Access: apikit.Device, Requires: apikit.ScopePlayback, Lane: lane, Cost: apikit.PageSized, BodyLimit: 256 << 10, Status: status, Errors: socialErrorCodes()}
+	m := apikit.Metadata{Audience: apikit.Clients, ID: "social_" + strings.NewReplacer("/", "_", "{", "", "}", "", "-", "_").Replace(strings.ToLower(parts[0])+parts[1]), Method: parts[0], Path: parts[1], Summary: "Manage shared playback for the signed-in profile", Access: apikit.Device, Requires: apikit.ScopePlayback, Lane: lane, Cost: apikit.PageSized, BodyLimit: 256 << 10, Status: status, Errors: socialErrorCodes()}
 	if reflect.TypeFor[Req]() == reflect.TypeFor[noBody]() {
 		m.BodyLimit = 0
 	}

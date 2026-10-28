@@ -20,7 +20,7 @@ func TestContextualAuthorizerReachesTheHandler(t *testing.T) {
 		}
 		return context.WithValue(ctx, principalKey{}, "viewer-1"), nil
 	}, nil)
-	m := Metadata{ID: "who", Method: "GET", Path: "/v1/who", Summary: "Who", Access: Device, Requires: ScopeRead, Lane: Default, Cost: Constant, Status: 200}
+	m := Metadata{Audience: Clients, ID: "who", Method: "GET", Path: "/v1/who", Summary: "Who", Access: Device, Requires: ScopeRead, Lane: Default, Cost: Constant, Status: 200}
 	if err := Register(r, Route[struct{}, testResponse]{Metadata: m, Handler: func(ctx context.Context, _ *http.Request, _ struct{}) (testResponse, error) {
 		return testResponse{Name: ctx.Value(principalKey{}).(string), Items: []string{}}, nil
 	}}); err != nil {
@@ -42,7 +42,7 @@ func TestContextualAuthorizerReachesTheHandler(t *testing.T) {
 
 func TestHandlersSetStatusHeadersAndRevisionETags(t *testing.T) {
 	r := New(func(context.Context, *http.Request, Metadata) error { return nil }, nil)
-	start := Metadata{ID: "start", Method: "POST", Path: "/v1/things", Summary: "Start", Access: Device, Requires: ScopeRead, Lane: Default, Cost: Constant, BodyLimit: 128, Status: 201}
+	start := Metadata{Audience: Clients, ID: "start", Method: "POST", Path: "/v1/things", Summary: "Start", Access: Device, Requires: ScopeRead, Lane: Default, Cost: Constant, BodyLimit: 128, Status: 201}
 	if err := Register(r, Route[testRequest, testResponse]{Metadata: start, Handler: func(ctx context.Context, _ *http.Request, in testRequest) (testResponse, error) {
 		if in.Name == "later" {
 			SetStatus(ctx, 202)
@@ -53,14 +53,14 @@ func TestHandlersSetStatusHeadersAndRevisionETags(t *testing.T) {
 	}}); err != nil {
 		t.Fatal(err)
 	}
-	read := Metadata{ID: "read", Method: "GET", Path: "/v1/things/{id}", Summary: "Read", Access: Device, Requires: ScopeRead, Lane: Default, Cost: Constant, Status: 200}
+	read := Metadata{Audience: Clients, ID: "read", Method: "GET", Path: "/v1/things/{id}", Summary: "Read", Access: Device, Requires: ScopeRead, Lane: Default, Cost: Constant, Status: 200}
 	if err := Register(r, Route[struct{}, testResponse]{Metadata: read, Handler: func(ctx context.Context, q *http.Request, _ struct{}) (testResponse, error) {
 		SetHeader(ctx, "ETag", `"12"`)
 		return testResponse{Name: q.PathValue("id"), Items: []string{}}, nil
 	}}); err != nil {
 		t.Fatal(err)
 	}
-	stop := Metadata{ID: "stop", Method: "DELETE", Path: "/v1/things/{id}", Summary: "Stop", Access: Device, Requires: ScopeRead, Lane: Default, Cost: Constant, BodyLimit: 128, OptionalBody: true, Status: 204}
+	stop := Metadata{Audience: Clients, ID: "stop", Method: "DELETE", Path: "/v1/things/{id}", Summary: "Stop", Access: Device, Requires: ScopeRead, Lane: Default, Cost: Constant, BodyLimit: 128, OptionalBody: true, Status: 204}
 	var seen testRequest
 	if err := Register(r, Route[testRequest, struct{}]{Metadata: stop, Handler: func(ctx context.Context, _ *http.Request, in testRequest) (struct{}, error) {
 		seen = in
@@ -123,14 +123,14 @@ func TestRawRoutesKeepAccessAndQueryRules(t *testing.T) {
 		}
 		return nil
 	}, nil)
-	m := Metadata{ID: "events", Method: "GET", Path: "/v1/events", Summary: "Events", Access: Device, Requires: ScopeRead, Lane: Realtime, Cost: Constant, Query: []string{"after"}, Status: 200}
+	m := Metadata{Audience: Integrations, ID: "events", Method: "GET", Path: "/v1/events", Summary: "Events", Access: Device, Requires: ScopeRead, Lane: Realtime, Cost: Constant, Query: []string{"after"}, Status: 200}
 	if err := RegisterRaw(r, RawRoute[struct{}, testResponse]{Metadata: m, Serve: func(w http.ResponseWriter, q *http.Request) {
 		w.Header().Set("Content-Type", "text/event-stream")
 		_, _ = io.WriteString(w, "id: 1\nevent: hello\ndata: {}\n\n")
 	}}); err != nil {
 		t.Fatal(err)
 	}
-	if RegisterRaw(r, RawRoute[struct{}, testResponse]{Metadata: Metadata{ID: "x", Method: "GET", Path: "/v1/x", Summary: "X", Access: Device, Requires: ScopeRead, Lane: Realtime, Cost: Constant, Status: 200}}) == nil {
+	if RegisterRaw(r, RawRoute[struct{}, testResponse]{Metadata: Metadata{Audience: Clients, ID: "x", Method: "GET", Path: "/v1/x", Summary: "X", Access: Device, Requires: ScopeRead, Lane: Realtime, Cost: Constant, Status: 200}}) == nil {
 		t.Fatal("raw route without Serve accepted")
 	}
 	w := httptest.NewRecorder()
@@ -161,7 +161,7 @@ func TestRawRoutesKeepAccessAndQueryRules(t *testing.T) {
 // read with 304 and no composition, marshalling or hashing.
 func TestConditionalAnswersBeforeComposing(t *testing.T) {
 	r := New(func(context.Context, *http.Request, Metadata) error { return nil }, nil)
-	m := Metadata{ID: "page", Method: "GET", Path: "/v1/pages/{id}", Summary: "Page", Access: Device, Requires: ScopeRead, Lane: Default, Cost: Constant, Status: 200}
+	m := Metadata{Audience: Clients, ID: "page", Method: "GET", Path: "/v1/pages/{id}", Summary: "Page", Access: Device, Requires: ScopeRead, Lane: Default, Cost: Constant, Status: 200}
 	composed := 0
 	if err := Register(r, Route[struct{}, testResponse]{Metadata: m, Handler: func(ctx context.Context, q *http.Request, _ struct{}) (testResponse, error) {
 		if Conditional(ctx, "rev-"+q.PathValue("id")) {
@@ -197,7 +197,7 @@ func TestConditionalAnswersBeforeComposing(t *testing.T) {
 // A revision named through SetHeader is compared before the body is marshalled.
 func TestNamedValidatorIsComparedBeforeMarshalling(t *testing.T) {
 	r := New(func(context.Context, *http.Request, Metadata) error { return nil }, nil)
-	m := Metadata{ID: "doc", Method: "GET", Path: "/v1/doc", Summary: "Doc", Access: Device, Requires: ScopeRead, Lane: Default, Cost: Constant, Status: 200}
+	m := Metadata{Audience: Clients, ID: "doc", Method: "GET", Path: "/v1/doc", Summary: "Doc", Access: Device, Requires: ScopeRead, Lane: Default, Cost: Constant, Status: 200}
 	if err := Register(r, Route[struct{}, testResponse]{Metadata: m, Handler: func(ctx context.Context, _ *http.Request, _ struct{}) (testResponse, error) {
 		SetHeader(ctx, "ETag", `"7"`)
 		// A nil list is refused when marshalled: reaching the marshaller would answer 500.

@@ -43,7 +43,7 @@ func TestTypedRouteWriterRefusalAnswersWriterCapacity(t *testing.T) {
 	registry.WriteErrors("writer_capacity")
 	for index, err := range writerRefusals {
 		refusal := err
-		if registerErr := apikit.Register(registry, apikit.Route[struct{}, struct{}]{Metadata: apikit.Metadata{
+		if registerErr := apikit.Register(registry, apikit.Route[struct{}, struct{}]{Metadata: apikit.Metadata{Audience: apikit.Clients,
 			ID: "write_" + strconv.Itoa(index), Method: "POST", Path: "/v1/write/" + strconv.Itoa(index), Summary: "Write", Access: apikit.Public, Requires: apikit.ScopeOpen,
 			Lane: apikit.Default, Cost: apikit.Constant, Status: 204, Errors: []string{"internal"}, BodyLimit: 64,
 		}, Handler: func(context.Context, *http.Request, struct{}) (struct{}, error) { return struct{}{}, refusal }}); registerErr != nil {
@@ -86,7 +86,7 @@ func TestReadPressureAnswersDatabaseBusy(t *testing.T) {
 	}
 	registry := apikit.New(func(context.Context, *http.Request, apikit.Metadata) error { return nil }, policyCatalogue())
 	registry.RouteErrors("database_busy")
-	if err := apikit.Register(registry, apikit.Route[struct{}, struct{}]{Metadata: apikit.Metadata{
+	if err := apikit.Register(registry, apikit.Route[struct{}, struct{}]{Metadata: apikit.Metadata{Audience: apikit.Clients,
 		ID: "read", Method: "GET", Path: "/v1/read", Summary: "Read", Access: apikit.Public, Requires: apikit.ScopeOpen,
 		Lane: apikit.Default, Cost: apikit.Constant, Status: 200, Errors: []string{"internal"},
 	}, Handler: func(context.Context, *http.Request, struct{}) (struct{}, error) { return struct{}{}, refusal }}); err != nil {

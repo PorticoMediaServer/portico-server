@@ -38,10 +38,10 @@ func (d Dependencies) signInPolicyRoutes(mux *http.ServeMux) {
 }
 func registerSignInPolicyHTTPContracts(registry *apikit.Registry) error {
 	errors := []string{"invalid_request", "unauthorized", "not_permitted", "revision_required", "revision_mismatch", "factor_setup_required", "internal"}
-	if e := apikit.RegisterHTTP[struct{}, identity.SignInPolicy](registry, apikit.Metadata{ID: "get_sign_in_policy", Method: "GET", Path: "/v1/admin/sign-in/policy", Summary: "Read the server sign-in policy", Access: apikit.Owner, Requires: apikit.ScopeAdmin, Lane: apikit.Security, Admission: laneAdmin, Cost: apikit.Constant, Status: 200, Errors: errors}); e != nil {
+	if e := apikit.RegisterHTTP[struct{}, identity.SignInPolicy](registry, apikit.Metadata{Audience: apikit.Clients, ID: "get_sign_in_policy", Method: "GET", Path: "/v1/admin/sign-in/policy", Summary: "Read the server sign-in policy", Access: apikit.Owner, Requires: apikit.ScopeAdmin, Lane: apikit.Security, Admission: laneAdmin, Cost: apikit.Constant, Status: 200, Errors: errors}); e != nil {
 		return e
 	}
-	return apikit.RegisterHTTP[identity.SignInPolicyPatch, identity.SignInPolicy](registry, apikit.Metadata{ID: "patch_sign_in_policy", Method: "PATCH", Path: "/v1/admin/sign-in/policy", Summary: "Change the server sign-in policy", Access: apikit.Owner, Requires: apikit.ScopeAdmin, Lane: apikit.Security, Admission: laneSecurityFence, Cost: apikit.Constant, BodyLimit: 4096, Status: 200, Errors: errors})
+	return apikit.RegisterHTTP[identity.SignInPolicyPatch, identity.SignInPolicy](registry, apikit.Metadata{Audience: apikit.Clients, ID: "patch_sign_in_policy", Method: "PATCH", Path: "/v1/admin/sign-in/policy", Summary: "Change the server sign-in policy", Access: apikit.Owner, Requires: apikit.ScopeAdmin, Lane: apikit.Security, Admission: laneSecurityFence, Cost: apikit.Constant, BodyLimit: 4096, Status: 200, Errors: errors})
 }
 
 func signInPolicyFailure(w http.ResponseWriter, e error) {

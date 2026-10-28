@@ -197,7 +197,7 @@ func (d Dependencies) readingRemoveSavedGroup(rate *personalLimiter) http.Handle
 }
 
 func registerReadingSavedGroupHTTPContracts(registry *apikit.Registry) error {
-	m := apikit.Metadata{ID: "get_reading_group_my_list", Method: "GET", Path: "/v1/libraries/{libraryId}/reading/groups/{groupKind}/{seriesId}/my-list", Summary: "Read one current Reading group's dynamic My List reference", Access: apikit.Device, Requires: apikit.ScopeRead, Lane: apikit.Browsing, Admission: laneBrowsing, Cost: apikit.PageSized, Status: 200, Errors: []string{"invalid_request", "unauthorized", "not_permitted", "not_found", "revision_mismatch", "stale_continuation", "internal"}}
+	m := apikit.Metadata{Audience: apikit.Clients, ID: "get_reading_group_my_list", Method: "GET", Path: "/v1/libraries/{libraryId}/reading/groups/{groupKind}/{seriesId}/my-list", Summary: "Read one current Reading group's dynamic My List reference", Access: apikit.Device, Requires: apikit.ScopeRead, Lane: apikit.Browsing, Admission: laneBrowsing, Cost: apikit.PageSized, Status: 200, Errors: []string{"invalid_request", "unauthorized", "not_permitted", "not_found", "revision_mismatch", "stale_continuation", "internal"}}
 	if err := apikit.RegisterHTTP[struct{}, ReadingSavedGroupResponse](registry, m); err != nil {
 		return err
 	}

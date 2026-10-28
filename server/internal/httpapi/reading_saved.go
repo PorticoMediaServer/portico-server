@@ -104,7 +104,7 @@ func (d Dependencies) readingSetSaved(rate *personalLimiter) http.HandlerFunc {
 	}
 }
 func registerReadingSavedHTTPContracts(registry *apikit.Registry) error {
-	m := apikit.Metadata{ID: "get_items_itemId_reading_my_list", Method: "GET", Path: "/v1/items/{itemId}/reading/my-list", Summary: "Read this profile's Reading My List membership", Access: apikit.Device, Requires: apikit.ScopeRead, Lane: apikit.Browsing, Admission: laneBrowsing, Cost: apikit.Constant, Status: 200, Errors: []string{"invalid_request", "unauthorized", "not_permitted", "not_found", "internal"}}
+	m := apikit.Metadata{Audience: apikit.Clients, ID: "get_items_itemId_reading_my_list", Method: "GET", Path: "/v1/items/{itemId}/reading/my-list", Summary: "Read this profile's Reading My List membership", Access: apikit.Device, Requires: apikit.ScopeRead, Lane: apikit.Browsing, Admission: laneBrowsing, Cost: apikit.Constant, Status: 200, Errors: []string{"invalid_request", "unauthorized", "not_permitted", "not_found", "internal"}}
 	if err := apikit.RegisterHTTP[struct{}, ReadingSavedResponse](registry, m); err != nil {
 		return err
 	}

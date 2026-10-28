@@ -41,8 +41,10 @@ const (
 
 	// CredentialKindKey is an owner API key; CredentialKindToken is a personal
 	// access token any member may make for themselves.
-	CredentialKindKey   = "key"
-	CredentialKindToken = "token"
+	CredentialKindKey                = "key"
+	CredentialKindToken              = "token"
+	CredentialKindAppPassword        = "app_password"
+	CredentialKindIntegrationSession = "integration_session"
 
 	// credentialDevicePlatform marks the device row a credential is bound to,
 	// so device lists can tell it from a phone or a television.
@@ -100,7 +102,8 @@ func admitBearer(ctx context.Context, bearer string) error {
 
 // IssuedCredential is the result of issuing a key or token.
 type IssuedCredential struct {
-	// Secret is shown to its maker once. Only its digest is stored.
+	// Secret is returned at issuance. Authentication uses its digest; native
+	// owner recovery stores the permitted credential secret separately.
 	Secret   string
 	FamilyID string
 	DeviceID string
@@ -131,6 +134,10 @@ func (s *Service) IssueAPICredentialTx(ctx context.Context, tx *sql.Tx, maker Pr
 		prefix = APIKeyPrefix
 	case CredentialKindToken:
 		prefix = AccessTokenPrefix
+	case CredentialKindAppPassword:
+		prefix = "papp."
+	case CredentialKindIntegrationSession:
+		prefix = "pit."
 	default:
 		return out, ErrCredentialInput
 	}
@@ -167,10 +174,17 @@ func (s *Service) IssueAPICredentialTx(ctx context.Context, tx *sql.Tx, maker Pr
 	}
 	// The credential continues its maker's PIN-attempt lineage; it is not a new
 	// device chain with a budget of its own, so a maker with no session has none.
-	lineageCtx, err := withPINLineageOf(ctx, tx, familyForTokenTx(ctx, tx, maker.Hash))
-	if err != nil {
-		return out, err
+	lineageCtx := ctx
+	if kind != CredentialKindAppPassword || maker.Hash != "" {
+		var err error
+		lineageCtx, err = withPINLineageOf(ctx, tx, familyForTokenTx(ctx, tx, maker.Hash))
+		if err != nil {
+			return out, err
+		}
 	}
+	// A new owner-authorized app password is a fixed-profile origin device.
+	// Its descendants inherit this lineage; none may select a profile or use
+	// a PIN/session-only endpoint, so exchanges cannot create new PIN budgets.
 	if err := bindPINLineageTx(lineageCtx, tx, p.AccountID, out.DeviceID, out.FamilyID); err != nil {
 		return out, err
 	}

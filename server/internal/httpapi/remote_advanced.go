@@ -84,7 +84,7 @@ func advancedError(err error) error {
 func registerSourceAdvanced(registry *apikit.Registry, d Dependencies) {
 	failures := []string{"unauthorized", "not_permitted", "not_found", "invalid_request", "revision_mismatch", "request_in_progress", "administration_unavailable", "internal"}
 	putFailures := append(append([]string{}, failures...), "storage_executable_invalid", "storage_executable_too_old")
-	v1Route(registry, apikit.Metadata{ID: "get_storage_source_advanced", Method: "GET", Path: "/v1/storage/sources/{id}/settings/advanced", Summary: "Read one remote source's scan, cache and analysis settings", Access: apikit.Owner, Requires: apikit.ScopeAdmin, Lane: apikit.Default, Admission: laneAdmin, Cost: apikit.Constant, Status: 200, Errors: failures}, func(ctx context.Context, r *http.Request, _ noBody) (SourceAdvancedResponse, error) {
+	v1Route(registry, apikit.Metadata{Audience: apikit.Clients, ID: "get_storage_source_advanced", Method: "GET", Path: "/v1/storage/sources/{id}/settings/advanced", Summary: "Read one remote source's scan, cache and analysis settings", Access: apikit.Owner, Requires: apikit.ScopeAdmin, Lane: apikit.Default, Admission: laneAdmin, Cost: apikit.Constant, Status: 200, Errors: failures}, func(ctx context.Context, r *http.Request, _ noBody) (SourceAdvancedResponse, error) {
 		p, scope, err := d.storageOwner(r)
 		if err != nil {
 			return SourceAdvancedResponse{}, folderError(err)
@@ -101,7 +101,7 @@ func registerSourceAdvanced(registry *apikit.Registry, d Dependencies) {
 		}
 		return SourceAdvancedResponse{Scope: scope, Settings: settings}, nil
 	})
-	v1Route(registry, apikit.Metadata{ID: "put_storage_source_advanced", Method: "PUT", Path: "/v1/storage/sources/{id}/settings/advanced", Summary: "Save one remote source's scan, cache and analysis settings", Access: apikit.Owner, Requires: apikit.ScopeAdmin, Lane: apikit.Default, Admission: laneAdmin, Cost: apikit.Constant, BodyLimit: 8192, Status: 200, Errors: putFailures}, func(ctx context.Context, r *http.Request, in remotesources.SourceAdvancedChange) (SourceAdvancedResponse, error) {
+	v1Route(registry, apikit.Metadata{Audience: apikit.Clients, ID: "put_storage_source_advanced", Method: "PUT", Path: "/v1/storage/sources/{id}/settings/advanced", Summary: "Save one remote source's scan, cache and analysis settings", Access: apikit.Owner, Requires: apikit.ScopeAdmin, Lane: apikit.Default, Admission: laneAdmin, Cost: apikit.Constant, BodyLimit: 8192, Status: 200, Errors: putFailures}, func(ctx context.Context, r *http.Request, in remotesources.SourceAdvancedChange) (SourceAdvancedResponse, error) {
 		p, scope, err := d.storageOwner(r)
 		if err != nil {
 			return SourceAdvancedResponse{}, folderError(err)
@@ -125,7 +125,7 @@ func registerSourceAdvanced(registry *apikit.Registry, d Dependencies) {
 // source association is re-checked before it is accepted.
 func registerSourceProgram(registry *apikit.Registry, d Dependencies) {
 	failures := []string{"unauthorized", "not_permitted", "not_found", "invalid_request", "revision_mismatch", "idempotency_key_reused", "request_in_progress", "administration_unavailable", "storage_executable_invalid", "storage_executable_too_old", "internal"}
-	v1Route(registry, apikit.Metadata{ID: "put_storage_source_program", Method: "PUT", Path: "/v1/storage/sources/{id}/settings/program", Summary: "Change the rclone program that serves one mounted source", Access: apikit.Owner, Requires: apikit.ScopeAdmin, Lane: apikit.Default, Admission: laneAdminLong, Cost: apikit.Constant, BodyLimit: 8192, Status: 200, Errors: failures}, func(ctx context.Context, r *http.Request, in SourceProgramRequest) (SourceProgramResponse, error) {
+	v1Route(registry, apikit.Metadata{Audience: apikit.Clients, ID: "put_storage_source_program", Method: "PUT", Path: "/v1/storage/sources/{id}/settings/program", Summary: "Change the rclone program that serves one mounted source", Access: apikit.Owner, Requires: apikit.ScopeAdmin, Lane: apikit.Default, Admission: laneAdminLong, Cost: apikit.Constant, BodyLimit: 8192, Status: 200, Errors: failures}, func(ctx context.Context, r *http.Request, in SourceProgramRequest) (SourceProgramResponse, error) {
 		p, scope, err := d.storageOwner(r)
 		if err != nil {
 			return SourceProgramResponse{}, folderError(err)

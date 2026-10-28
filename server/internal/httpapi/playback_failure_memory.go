@@ -10,13 +10,13 @@ import (
 )
 
 func registerRouteFailureMemory(r *apikit.Registry, d Dependencies) {
-	v1Route(r, apikit.Metadata{Admission: laneAdmin, ID: "list_playback_failure_memory", Method: "GET", Path: "/v1/admin/playback/route-failures", Summary: "Read active remembered playback failures", Access: apikit.Owner, Requires: apikit.ScopeAdmin, Lane: apikit.Default, Cost: apikit.PageSized, Status: 200, Errors: []string{"unauthorized", "not_permitted", "internal"}}, func(ctx context.Context, _ *http.Request, _ noBody) (playback.RouteFailurePage, error) {
+	v1Route(r, apikit.Metadata{Audience: apikit.Clients, Admission: laneAdmin, ID: "list_playback_failure_memory", Method: "GET", Path: "/v1/admin/playback/route-failures", Summary: "Read active remembered playback failures", Access: apikit.Owner, Requires: apikit.ScopeAdmin, Lane: apikit.Default, Cost: apikit.PageSized, Status: 200, Errors: []string{"unauthorized", "not_permitted", "internal"}}, func(ctx context.Context, _ *http.Request, _ noBody) (playback.RouteFailurePage, error) {
 		if d.Playback == nil {
 			return playback.RouteFailurePage{}, errors.New("playback unavailable")
 		}
 		return d.Playback.RouteFailureMemory(ctx)
 	})
-	v1Route(r, apikit.Metadata{Admission: laneAdmin, ID: "clear_playback_failure_memory", Method: "DELETE", Path: "/v1/admin/playback/route-failures/{sourceId}", Summary: "Forget remembered failures for a media file", Access: apikit.Owner, Requires: apikit.ScopeAdmin, Lane: apikit.Default, Cost: apikit.Constant, Status: 204, Errors: []string{"unauthorized", "not_permitted", "invalid_request", "internal"}}, func(ctx context.Context, q *http.Request, _ noBody) (noBody, error) {
+	v1Route(r, apikit.Metadata{Audience: apikit.Clients, Admission: laneAdmin, ID: "clear_playback_failure_memory", Method: "DELETE", Path: "/v1/admin/playback/route-failures/{sourceId}", Summary: "Forget remembered failures for a media file", Access: apikit.Owner, Requires: apikit.ScopeAdmin, Lane: apikit.Default, Cost: apikit.Constant, Status: 204, Errors: []string{"unauthorized", "not_permitted", "invalid_request", "internal"}}, func(ctx context.Context, q *http.Request, _ noBody) (noBody, error) {
 		if d.Playback == nil {
 			return noBody{}, errors.New("playback unavailable")
 		}

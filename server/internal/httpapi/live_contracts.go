@@ -79,7 +79,7 @@ func liveContract[Req, Resp any](r *apikit.Registry, d Dependencies, method, pat
 		admission = laneUpload
 	}
 
-	m := apikit.Metadata{Admission: admission, ID: id, Method: method, Path: path, Summary: "Manage live source acquisition and guide settings", Access: apikit.Admin, AdminScope: "playback", Requires: apikit.ScopeAdmin, Lane: apikit.Default, Cost: apikit.PageSized, BodyLimit: limit, Status: 200, Errors: []string{"unauthorized", "not_permitted", "not_found", "invalid_request", "invalid_channel_input", "channel_revision_conflict", "channel_unavailable", "source_lan_confirmation_required", "source_network_policy", "source_credentials_required", "source_unavailable", "internal"}}
+	m := apikit.Metadata{Audience: apikit.Clients, Admission: admission, ID: id, Method: method, Path: path, Summary: "Manage live source acquisition and guide settings", Access: apikit.Admin, AdminScope: "playback", Requires: apikit.ScopeAdmin, Lane: apikit.Default, Cost: apikit.PageSized, BodyLimit: limit, Status: 200, Errors: []string{"unauthorized", "not_permitted", "not_found", "invalid_request", "invalid_channel_input", "channel_revision_conflict", "channel_unavailable", "source_lan_confirmation_required", "source_network_policy", "source_credentials_required", "source_unavailable", "internal"}}
 	if e := apikit.Register(r, apikit.Route[Req, Resp]{Metadata: m, Handler: func(ctx context.Context, q *http.Request, in Req) (Resp, error) {
 		var out Resp
 		p, e := d.ownerContext(ctx, q)

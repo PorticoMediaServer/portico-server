@@ -299,6 +299,11 @@ func GenerateWith(definitions []Definition, options Options) (Artifacts, error) 
 	anyJSON := false
 	nullable := false
 	for _, d := range definitions {
+		// Generation must refuse incomplete metadata even when a caller supplies
+		// definitions directly rather than going through Registry registration.
+		if err := validate(d.Metadata); err != nil {
+			return Artifacts{}, fmt.Errorf("route %s: %w", d.ID, err)
+		}
 		request, err := schema(d.Request, map[reflect.Type]bool{}, options.WireSchemas)
 		if err != nil {
 			return Artifacts{}, err
@@ -320,7 +325,10 @@ func GenerateWith(definitions []Definition, options Options) (Artifacts, error) 
 		if contentType == "" {
 			contentType = "application/json"
 		}
-		operation := map[string]any{"operationId": d.ID, "summary": d.Summary, "x-access": d.Access, "x-scope": d.Requires, "x-lane": d.Lane, "x-cost": d.Cost, "responses": map[string]any{fmt.Sprint(d.Status): map[string]any{"description": "Success", "content": map[string]any{contentType: map[string]any{"schema": schemaForStatus(d.Response, d.Status, response)}}}}}
+		operation := map[string]any{"operationId": d.ID, "summary": d.Summary, "tags": []string{string(d.Audience)}, "x-audience": d.Audience, "x-access": d.Access, "x-scope": d.Requires, "x-lane": d.Lane, "x-cost": d.Cost, "responses": map[string]any{fmt.Sprint(d.Status): map[string]any{"description": "Success", "content": map[string]any{contentType: map[string]any{"schema": schemaForStatus(d.Response, d.Status, response)}}}}}
+		if d.Protocol != "" {
+			operation["x-protocol"] = d.Protocol
+		}
 		parameters := []any{}
 		for _, part := range strings.Split(d.Path, "/") {
 			if strings.HasPrefix(part, "{") {
@@ -407,7 +415,10 @@ func GenerateWith(definitions []Definition, options Options) (Artifacts, error) 
 		}
 		components[name] = component
 	}
-	spec := map[string]any{"openapi": "3.1.0", "info": map[string]any{"title": options.Title, "version": "1"}, "paths": paths, "components": map[string]any{"schemas": components}}
+	spec := map[string]any{"openapi": "3.1.0", "info": map[string]any{"title": options.Title, "version": "1"}, "tags": []map[string]any{
+		{"name": string(Integrations), "description": "Operations intended for external integrations and automation. Audience is documentation; access rules and credential scopes still apply."},
+		{"name": string(Clients), "description": "Operations intended for Portico clients. Audience is documentation; access rules and credential scopes still apply."},
+	}, "paths": paths, "components": map[string]any{"schemas": components}}
 	openapi, err := json.Marshal(spec)
 	if err != nil {
 		return Artifacts{}, err

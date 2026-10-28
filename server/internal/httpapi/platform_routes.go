@@ -26,6 +26,8 @@ type PathChange struct {
 }
 
 type PathsChangedRequest struct {
+	// Empty preserves ordinary reporting. strict refuses any broader work.
+	Mode  string       `json:"mode,omitempty"`
 	Paths []PathChange `json:"paths"`
 }
 
@@ -50,7 +52,7 @@ func titleQueryError(err error) error {
 }
 
 func registerPlatformRoutes(registry *apikit.Registry, d Dependencies) error {
-	err := apikit.Register(registry, apikit.Route[struct{}, catalog.TitlePage]{Metadata: apikit.Metadata{Admission: laneBrowsing, ID: "query_titles", Method: "GET", Path: "/v1/titles", Summary: "List titles of one kind in one library, or find a title by its provider id",
+	err := apikit.Register(registry, apikit.Route[struct{}, catalog.TitlePage]{Metadata: apikit.Metadata{Audience: apikit.Integrations, Admission: laneBrowsing, ID: "query_titles", Method: "GET", Path: "/v1/titles", Summary: "List titles of one kind in one library, or find a title by its provider id",
 		// The library is a query parameter here, so the handler makes the
 		// library and restriction checks itself, inside the query.
 		Access: apikit.Device, Requires: apikit.ScopeRead, Lane: apikit.Browsing, Cost: apikit.PageSized, Status: 200,
@@ -122,7 +124,7 @@ func registerPlatformRoutes(registry *apikit.Registry, d Dependencies) error {
 	if err != nil {
 		return err
 	}
-	return apikit.Register(registry, apikit.Route[PathsChangedRequest, ingestion.PathReport]{Metadata: apikit.Metadata{Admission: laneDefault, ID: "report_changed_paths", Method: "POST", Path: "/v1/libraries/paths-changed", Summary: "Report paths that were added, changed or removed, and scan only those folders",
+	return apikit.Register(registry, apikit.Route[PathsChangedRequest, ingestion.PathReport]{Metadata: apikit.Metadata{Audience: apikit.Integrations, Admission: laneDefault, ID: "report_changed_paths", Method: "POST", Path: "/v1/libraries/paths-changed", Summary: "Report paths that were added, changed or removed, and scan only those folders",
 		Access: apikit.Owner, Requires: apikit.ScopeLibrary, Lane: apikit.Default, Cost: apikit.PageSized, BodyLimit: 1 << 20, Status: 202,
 		Errors: []string{"unauthorized", "not_permitted", "invalid_request", "body_too_large", "administration_unavailable", "internal"},
 	}, Handler: func(ctx context.Context, r *http.Request, body PathsChangedRequest) (ingestion.PathReport, error) {
@@ -137,6 +139,9 @@ func registerPlatformRoutes(registry *apikit.Registry, d Dependencies) error {
 		if len(body.Paths) == 0 || len(body.Paths) > ingestion.MaxReportedPaths {
 			return empty, &apierror.Error{Code: "invalid_request", Fields: []apierror.Field{{Path: "paths", Code: "invalid", Message: "Send between 1 and 200 paths."}}}
 		}
+		if body.Mode != "" && body.Mode != "strict" {
+			return empty, &apierror.Error{Code: "invalid_request", Fields: []apierror.Field{{Path: "mode", Code: "invalid", Message: "Use strict or omit mode."}}}
+		}
 		paths := make([]string, 0, len(body.Paths))
 		for _, change := range body.Paths {
 			switch change.Change {
@@ -146,7 +151,21 @@ func registerPlatformRoutes(registry *apikit.Registry, d Dependencies) error {
 			}
 			paths = append(paths, change.Path)
 		}
-		out, err := d.Ingestion.ReportPaths(ctx, paths, func(tx *sql.Tx) error { return d.resourceAuthorize(tx, p, "") })
+		var out ingestion.PathReport
+		if body.Mode == "strict" {
+			out, err = d.Ingestion.ReportPathsStrict(ctx, paths, func(tx *sql.Tx, library string) error { return d.resourceAuthorize(tx, p, library) })
+		} else {
+			out, err = d.Ingestion.ReportPaths(ctx, paths, func(tx *sql.Tx) error { return d.resourceAuthorize(tx, p, "") })
+		}
+		var refusal *ingestion.StrictPathRefusal
+		if errors.As(err, &refusal) {
+			if refusal.Retryable() {
+				// Reuse the native retryable 503 catalogue entry; do not label
+				// active work or a notice-mode boundary as invalid input.
+				return empty, &apierror.Error{Code: "administration_unavailable", Reason: string(refusal.Reason), RetryAfterSeconds: 2, Cause: err}
+			}
+			return empty, &apierror.Error{Code: "invalid_request", Reason: string(refusal.Reason), Fields: []apierror.Field{{Path: "paths", Code: string(refusal.Reason), Message: "No paths from this request were queued. Report a specific stable folder."}}}
+		}
 		switch {
 		case err == nil:
 			return out, nil

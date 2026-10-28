@@ -202,9 +202,11 @@ api_credentials.hint
 api_credentials.id
 api_credentials.kind
 api_credentials.name
+api_credentials.parent_id
 api_credentials.profile_id
 api_credentials.revoked_ms
 api_credentials.scopes
+api_credentials.secret
 api_credentials.secret_hash
 api_events.at_ms
 api_events.audience
@@ -2414,6 +2416,10 @@ identity_unknown_attempts.last_failure
 identity_unknown_attempts.locked_until
 identity_unknown_attempts.source_bucket
 identity_unknown_attempts.subject_hash
+integration_ids.expires_ms
+integration_ids.guid
+integration_ids.kind
+integration_ids.native_id
 inventory_analysis_queue.job_id
 inventory_analysis_queue.object_id
 inventory_analysis_queue.policy_revision
@@ -5961,6 +5967,7 @@ server_settings.hardwareSelection
 server_settings.hdrToneMapping
 server_settings.hdrToneMappingAlgorithm
 server_settings.home.communityActivityEnabled
+server_settings.integrations.compatibilityEnabled
 server_settings.jobDays
 server_settings.keyInAddress
 server_settings.lanDiscoveryEnabled

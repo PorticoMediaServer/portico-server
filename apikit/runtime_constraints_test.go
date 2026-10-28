@@ -31,7 +31,7 @@ func TestGeneratedRuntimeEnforcesConstraintsAndPreservesNullableUnions(t *testin
 	if _, e := exec.LookPath("node"); e != nil {
 		t.Fatal("node is required for actual generated decoder verification")
 	}
-	artifacts, e := Generate([]Definition{{Metadata: Metadata{ID: "constraint", Method: "GET", Path: "/v1/constraint", Summary: "Constraint fixture", Access: Public, Requires: ScopeOpen, Lane: Default, Cost: Constant, Status: 200}, Request: reflect.TypeFor[struct{}](), Response: reflect.TypeFor[constrainedMessage]()}})
+	artifacts, e := Generate([]Definition{{Metadata: Metadata{Audience: Clients, ID: "constraint", Method: "GET", Path: "/v1/constraint", Summary: "Constraint fixture", Access: Public, Requires: ScopeOpen, Lane: Default, Cost: Constant, Status: 200}, Request: reflect.TypeFor[struct{}](), Response: reflect.TypeFor[constrainedMessage]()}})
 	if e != nil {
 		t.Fatal(e)
 	}

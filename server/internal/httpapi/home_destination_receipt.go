@@ -11,7 +11,7 @@ import (
 )
 
 func registerHomeDestinationReceipt(registry *apikit.Registry, d Dependencies) {
-	v1Route(registry, apikit.Metadata{Admission: laneBrowsing, ID: "post_home_destination_receipt", Method: "POST", Path: "/v1/home/destination-receipt", Summary: "Read distinct durable membership outcomes for one authorized destination job set", Access: apikit.Device, Requires: apikit.ScopeRead, Lane: apikit.Browsing, Cost: apikit.PageSized, BodyLimit: 65536, Status: 200, Errors: []string{"invalid_request", "invalid_cursor", "unauthorized", "not_found", "revision_mismatch", "internal"}},
+	v1Route(registry, apikit.Metadata{Audience: apikit.Clients, Admission: laneBrowsing, ID: "post_home_destination_receipt", Method: "POST", Path: "/v1/home/destination-receipt", Summary: "Read distinct durable membership outcomes for one authorized destination job set", Access: apikit.Device, Requires: apikit.ScopeRead, Lane: apikit.Browsing, Cost: apikit.PageSized, BodyLimit: 65536, Status: 200, Errors: []string{"invalid_request", "invalid_cursor", "unauthorized", "not_found", "revision_mismatch", "internal"}},
 		func(ctx context.Context, r *http.Request, in catalog.HomeDestinationReceiptRequest) (catalog.HomeDestinationReceipt, error) {
 			ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
 			defer cancel()

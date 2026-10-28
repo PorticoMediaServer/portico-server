@@ -90,7 +90,7 @@ func TestCheckOpenAPIRefusesInvalidDocuments(t *testing.T) {
 
 func TestQueryIntegersPublishTheirBounds(t *testing.T) {
 	for _, integer := range []QueryInteger{{Name: "limit", Minimum: 1, Default: 12, Maximum: 60, Clamped: true}, {Name: "limit", Minimum: 1, Default: 50, Maximum: 200}} {
-		m := Metadata{Query: []string{"cursor", "limit"}, QueryIntegers: []QueryInteger{integer}}
+		m := Metadata{Audience: Clients, Query: []string{"cursor", "limit"}, QueryIntegers: []QueryInteger{integer}}
 		got := querySchema(m, "limit")
 		if got["type"] != "integer" || got["minimum"] != 1 || got["default"] != integer.Default {
 			t.Fatalf("%+v: %#v", integer, got)
@@ -102,7 +102,7 @@ func TestQueryIntegersPublishTheirBounds(t *testing.T) {
 			t.Fatal("an undeclared query parameter stays a string")
 		}
 	}
-	base := Metadata{ID: "get_things", Method: "GET", Path: "/v1/things", Summary: "Read things", Access: Public, Requires: ScopeRead, Lane: Default, Cost: PageSized, Status: 200, Query: []string{"limit"}}
+	base := Metadata{Audience: Clients, ID: "get_things", Method: "GET", Path: "/v1/things", Summary: "Read things", Access: Public, Requires: ScopeRead, Lane: Default, Cost: PageSized, Status: 200, Query: []string{"limit"}}
 	for name, integer := range map[string]QueryInteger{
 		"undeclared": {Name: "size", Minimum: 1, Default: 1, Maximum: 2},
 		"default":    {Name: "limit", Minimum: 5, Default: 1, Maximum: 10},

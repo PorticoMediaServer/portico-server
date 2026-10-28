@@ -12,7 +12,7 @@ import (
 )
 
 func registerRcloneSourceRemoval(registry *apikit.Registry, d Dependencies) {
-	v1Route(registry, apikit.Metadata{ID: "remove_storage_source_rclone", Method: "DELETE", Path: "/v1/storage/sources/rclone/{id}", Summary: "Remove an unused imported source at its expected generation", Access: apikit.Owner, Requires: apikit.ScopeAdmin, Lane: apikit.Default, Admission: laneAdmin, Cost: apikit.Constant, BodyLimit: 4096, Status: 200, Errors: []string{"unauthorized", "not_permitted", "invalid_request", "administration_unavailable", "request_in_progress", "storage_command_conflict", "storage_operation_expired", "storage_command_capacity", "internal"}}, func(ctx context.Context, r *http.Request, in mounts.RcloneSourceRemoveInput) (RcloneSourceResponse, error) {
+	v1Route(registry, apikit.Metadata{Audience: apikit.Clients, ID: "remove_storage_source_rclone", Method: "DELETE", Path: "/v1/storage/sources/rclone/{id}", Summary: "Remove an unused imported source at its expected generation", Access: apikit.Owner, Requires: apikit.ScopeAdmin, Lane: apikit.Default, Admission: laneAdmin, Cost: apikit.Constant, BodyLimit: 4096, Status: 200, Errors: []string{"unauthorized", "not_permitted", "invalid_request", "administration_unavailable", "request_in_progress", "storage_command_conflict", "storage_operation_expired", "storage_command_capacity", "internal"}}, func(ctx context.Context, r *http.Request, in mounts.RcloneSourceRemoveInput) (RcloneSourceResponse, error) {
 		p, scope, err := d.storageOwner(r)
 		if err != nil {
 			return RcloneSourceResponse{}, rcloneSourceFailure(err)

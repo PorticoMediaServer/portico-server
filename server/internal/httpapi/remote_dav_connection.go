@@ -44,7 +44,7 @@ func davConnectionFailure(err error) error {
 }
 
 func registerDAVConnectionTest(registry *apikit.Registry, d Dependencies) {
-	v1Route(registry, apikit.Metadata{ID: "test_storage_source_webdav", Method: "POST", Path: "/v1/storage/sources/webdav/test", Summary: "Test a new WebDAV connection and bounded ranges without saving a source", Access: apikit.Owner, Requires: apikit.ScopeAdmin, Lane: apikit.Default, Admission: laneAdminLong, Cost: apikit.Constant, BodyLimit: 65536, Status: 200, Errors: []string{"unauthorized", "not_permitted", "invalid_request", "source_credentials_required", "administration_unavailable", "internal"}}, func(ctx context.Context, r *http.Request, in remotesources.DAVConnectionInput) (DAVConnectionResponse, error) {
+	v1Route(registry, apikit.Metadata{Audience: apikit.Clients, ID: "test_storage_source_webdav", Method: "POST", Path: "/v1/storage/sources/webdav/test", Summary: "Test a new WebDAV connection and bounded ranges without saving a source", Access: apikit.Owner, Requires: apikit.ScopeAdmin, Lane: apikit.Default, Admission: laneAdminLong, Cost: apikit.Constant, BodyLimit: 65536, Status: 200, Errors: []string{"unauthorized", "not_permitted", "invalid_request", "source_credentials_required", "administration_unavailable", "internal"}}, func(ctx context.Context, r *http.Request, in remotesources.DAVConnectionInput) (DAVConnectionResponse, error) {
 		p, scope, err := d.storageOwner(r)
 		if err != nil {
 			return DAVConnectionResponse{}, davConnectionFailure(err)

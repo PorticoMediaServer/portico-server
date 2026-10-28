@@ -43,7 +43,7 @@ func registryErrorCode(t *testing.T, w *httptest.ResponseRecorder) string {
 	return body.Error.Code
 }
 
-func TestAPIKeyIsShownOnceAndAuthenticatesWithinItsScopes(t *testing.T) {
+func TestAPIKeyIssueReceiptAndAuthenticatesWithinItsScopes(t *testing.T) {
 	f := administrationFixtureNew(t)
 	request := `{"operationId":"key-create-1","name":"Automation","scopes":["read"]}`
 	key := issueCredential(t, f, "/v1/admin/api-keys", f.owner, request)
@@ -58,7 +58,7 @@ func TestAPIKeyIsShownOnceAndAuthenticatesWithinItsScopes(t *testing.T) {
 	if w.Code != 201 || strings.Contains(w.Body.String(), key.Secret) || !strings.Contains(w.Body.String(), key.Credential.ID) {
 		t.Fatalf("replay: %d %s", w.Code, w.Body)
 	}
-	// Only the digest is stored.
+	// Authentication keeps using the digest; recovery is a separate field and route.
 	var stored string
 	if err := f.deps.DB.QueryRow(`SELECT secret_hash FROM api_credentials WHERE id=?`, key.Credential.ID).Scan(&stored); err != nil || stored != identity.Digest(key.Secret) || strings.Contains(stored, key.Secret) {
 		t.Fatalf("stored secret: %q %v", stored, err)
@@ -100,7 +100,7 @@ func TestAPIKeyIsShownOnceAndAuthenticatesWithinItsScopes(t *testing.T) {
 		}
 	}
 	// It is listed with a last-used time only after the use is written; the
-	// list never carries the secret.
+	// ordinary list never carries the secret.
 	w = f.call("GET", "/v1/admin/api-keys", f.owner, "")
 	if w.Code != 200 || !strings.Contains(w.Body.String(), `"name":"Automation"`) || strings.Contains(w.Body.String(), key.Secret) {
 		t.Fatalf("list: %d %s", w.Code, w.Body)

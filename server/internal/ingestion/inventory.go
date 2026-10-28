@@ -353,7 +353,7 @@ func (s *Service) readDirectoryPage(ctx context.Context, job string, source cata
 			return e
 		}
 		defer gated.Rollback()
-		if e = recordNoticeTx(ctx, gated.Tx(), source.ID, relative, time.Now().UnixMilli()); e != nil {
+		if e = recordRunNoticeTx(ctx, gated.Tx(), job, source.ID, relative, time.Now().UnixMilli()); e != nil {
 			return e
 		}
 		if e = gated.Commit(); e != nil {
@@ -485,7 +485,7 @@ func (s *Service) verifyPage(ctx context.Context, job string, source catalog.Lib
 		if _, err = tx.ExecContext(ctx, `UPDATE inventory_runs SET phase='reconciling',authoritative=1,inventory_completed_at=?,reconcile_cursor='' WHERE job_id=? AND NOT EXISTS(SELECT 1 FROM inventory_directories WHERE job_id=? AND state='pending')`, now, job, job); err != nil {
 			return err
 		}
-		if _, err = tx.ExecContext(ctx, `UPDATE library_sources SET last_complete_job=?,last_complete_at=?,last_integrity_at=CASE WHEN (SELECT scan_mode FROM inventory_runs WHERE job_id=?) IN('first-import','full','integrity') THEN ? ELSE last_integrity_at END WHERE id=?`, job, now, job, now, source.ID); err != nil {
+		if _, err = tx.ExecContext(ctx, `UPDATE library_sources SET last_complete_job=?,last_complete_at=?,last_integrity_at=CASE WHEN (SELECT scan_mode FROM inventory_runs WHERE job_id=?) IN('first-import','full','integrity') THEN ? ELSE last_integrity_at END WHERE id=? AND (SELECT reported FROM inventory_runs WHERE job_id=?)<>?`, job, now, job, now, source.ID, job, strictReportMode); err != nil {
 			return err
 		}
 		_, err = tx.ExecContext(ctx, `INSERT OR IGNORE INTO inventory_changes(source_id,job_id,kind,created_at) VALUES(?,?,'inventory_completed',?)`, source.ID, job, now)
