@@ -20,17 +20,17 @@ var errReadingFacetIndex = errors.New("Reading facet ordered member index is not
 // archive objects, memberships and attributes. A rejected row advances its raw
 // cursor too. No LIMIT is placed outside a query predicate/join/GROUP BY.
 type readingFacetSQLInput struct {
-	scope                          readingBrowseScope
-	library, field, clause         string
-	args                           []any
-	restrictions                   identity.ContentRestrictions
-	after                          readingFacetMember
-	current                        readingFacetMember
-	phase                          string
-	asset                          int64
-	token, object                  string
-	member, memberSource, term     int64
-	hadMember, recognized, blocked bool
+	scope                              readingBrowseScope
+	library, field, clause, relativeAt string
+	args                               []any
+	restrictions                       identity.ContentRestrictions
+	after                              readingFacetMember
+	current                            readingFacetMember
+	phase                              string
+	asset                              int64
+	token, object                      string
+	member, memberSource, term         int64
+	hadMember, recognized, blocked     bool
 }
 
 // Construct in the admission snapshot, with the same evaluation instant used
@@ -96,8 +96,14 @@ func (s *Service) newReadingFacetSQLInput(viewer Viewer, request FacetRequest, i
 		age := *policy.MaximumAge
 		policy.MaximumAge = &age
 	}
-	return &readingFacetSQLInput{scope: *scope, library: request.Library, field: request.Field, clause: clause, args: c.args, restrictions: policy}, nil
+	relativeAt := ""
+	if browseRelative(browseAnd(request.Group, request.Query)) {
+		relativeAt = instant.UTC().Format(time.RFC3339Nano)
+	}
+	return &readingFacetSQLInput{scope: *scope, library: request.Library, field: request.Field, clause: clause, relativeAt: relativeAt, args: c.args, restrictions: policy}, nil
 }
+func (in *readingFacetSQLInput) fence() string { return in.relativeAt }
+func (in *readingFacetSQLInput) discard()      { *in = readingFacetSQLInput{} }
 func (in *readingFacetSQLInput) reset() {
 	in.after = readingFacetMember{}
 	in.current = readingFacetMember{}
@@ -113,7 +119,7 @@ func (in *readingFacetSQLInput) reset() {
 	in.blocked = false
 }
 func (in *readingFacetSQLInput) bytes() int {
-	n := int(unsafe.Sizeof(*in)) + len(in.library) + len(in.field) + len(in.clause) + in.after.bytes() + in.current.bytes() + len(in.token) + len(in.object)
+	n := int(unsafe.Sizeof(*in)) + len(in.library) + len(in.field) + len(in.clause) + len(in.relativeAt) + in.after.bytes() + in.current.bytes() + len(in.token) + len(in.object)
 	for _, a := range in.args {
 		n += int(unsafe.Sizeof(a))
 		if v, ok := a.(string); ok {
@@ -346,6 +352,25 @@ func compileReadingFacetNode(c *browseCompiler, n *BrowseNode, depth int, leaves
 	if depth > BrowseMaximumDepth+1 {
 		return "", browseIssue("query", "Reading facet query is too deep")
 	}
+	shapes := 0
+	if n.All != nil {
+		shapes++
+	}
+	if n.Any != nil {
+		shapes++
+	}
+	if n.Not != nil {
+		shapes++
+	}
+	if n.Field != "" || n.Operator != "" {
+		shapes++
+	}
+	if shapes != 1 {
+		return "", browseIssue("query", "query must have exactly one group or predicate")
+	}
+	if (n.All != nil || n.Any != nil || n.Not != nil) && n.Value != nil {
+		return "", browseIssue("query", "group cannot have a value")
+	}
 	switch {
 	case n.All != nil || n.Any != nil:
 		children, glue := n.All, " AND "
@@ -375,6 +400,17 @@ func compileReadingFacetNode(c *browseCompiler, n *BrowseNode, depth int, leaves
 	if !readingBrowseField(n.Field) {
 		return "", browseIssue("query.field", "field is not published for Reading")
 	}
+	field, ok := browseFieldByID(n.Field)
+	if !ok || !containsString(field.Operators, n.Operator) {
+		return "", browseIssue("query.operator", "operator is not valid for this field")
+	}
+	value, err := validateBrowseValue(field, n.Operator, n.Value, "query.value")
+	if err != nil {
+		return "", err
+	}
+	copy := *n
+	copy.Value = value
+	n = &copy
 	if n.Field != "author" && n.Field != "series" {
 		return c.predicate(*n)
 	}

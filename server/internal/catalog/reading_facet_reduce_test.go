@@ -3,6 +3,7 @@ package catalog
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"math/bits"
@@ -187,19 +188,20 @@ func TestReadingFacetReductionWitnessAndLosslessScalar(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	failure := error(nil)
 	for i := 0; i < 20; i++ {
-		done, e := r.step(nil, "w", newReadingFacetBudget(4, 4096, time.Second))
-		if e != nil {
-			t.Fatal(e)
-		}
-		if done {
+		_, failure = r.step(nil, "w", newReadingFacetBudget(4, 4096, time.Second))
+		if failure != nil {
 			break
 		}
 	}
-	page, ok := r.result()
-	if !ok || page.Values[0].Value != huge || !r.uncacheable || r.bytes() < len(huge) {
-		t.Fatal("oversize scalar lost or cacheable")
+	if !errors.Is(failure, errReadingFacetCapacity) || r.input != nil || len(r.page) != 0 || r.bytes() > 4096 {
+		t.Fatal("oversize payload retained in preparation state", failure, r.bytes())
 	}
+	if _, ok := r.result(); ok {
+		t.Fatal("capacity failure became a partial result")
+	}
+
 }
 
 func TestReadingFacetSQLInputRequiresProductionOrderedIndex(t *testing.T) {
@@ -707,6 +709,73 @@ func TestReadingFacetRetainedMembershipCursorUsesIndexedRuns(t *testing.T) {
 		}
 		if member != items[0].ID {
 			t.Fatal("serving membership lost")
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+}
+
+func (in *fixtureFacetInput) fence() string { return "" }
+func (in *fixtureFacetInput) discard()      { in.members = nil; in.rejected = nil }
+
+func TestReadingFacetPeakReservationPrecedesReads(t *testing.T) {
+	in := &fixtureFacetInput{members: fixtureFacetMembers([]string{"A"}, []int{1})}
+	r, err := newReadingFacetReduction(FacetRequest{Field: "author"}, "w", in, 1<<20)
+	if err != nil {
+		t.Fatal(err)
+	}
+	r.reservePeak = func(peak int) error {
+		if in.visited != 0 || peak < r.bytes()+8192 {
+			t.Fatal("peak was not reserved first", peak)
+		}
+		return errReadingFacetCapacity
+	}
+	if _, err = r.step(nil, "w", newReadingFacetBudget(4, 4096, time.Second)); !errors.Is(err, errReadingFacetCapacity) || in.visited != 0 {
+		t.Fatal("allocation/read preceded reservation", err)
+	}
+}
+
+func TestReadingFacetCompilerRejectsMalformedQueries(t *testing.T) {
+	malformed := []BrowseNode{{All: []BrowseNode{}}, {All: []BrowseNode{{Field: "title", Operator: "equals", Value: "A"}}, Any: []BrowseNode{{Field: "title", Operator: "equals", Value: "B"}}}, {Field: "author", Operator: "equals", Value: true}, {Field: "author", Operator: "equals", Value: ""}, {Field: "author", Operator: "in", Value: []any{}}, {Field: "title", Operator: "equals", Value: []any{"A"}}, {Field: "year", Operator: "equals", Value: "not a number"}, {Field: "author", Operator: "is-present", Value: "non-null"}, {Field: "dateAdded", Operator: "equals", Value: "invalid-date"}}
+	raw := []string{`{"all":[]}`, `{"all":[{"field":"title","operator":"equals","value":"A"}],"any":[{"field":"title","operator":"equals","value":"B"}]}`, `{"field":"author","operator":"equals","value":true}`, `{"field":"author","operator":"equals","value":""}`, `{"field":"author","operator":"in","value":[]}`, `{"field":"title","operator":"equals","value":["A"]}`, `{"field":"year","operator":"equals","value":"not a number"}`, `{"field":"author","operator":"is-present","value":"non-null"}`, `{"field":"dateAdded","operator":"equals","value":"invalid-date"}`}
+	for i, node := range malformed {
+		if _, err := ParseBrowseQuery(json.RawMessage(raw[i]), "query"); err == nil {
+			t.Fatal("test expected public parser rejection", raw[i])
+		}
+		c := &browseCompiler{reading: &readingBrowseScope{}}
+		leaves := 0
+		if _, err := compileReadingFacetNode(c, &node, 0, &leaves); err == nil {
+			t.Fatalf("malformed query accepted: %+v", node)
+		}
+	}
+}
+
+func TestReadingFacetRelativeRevisionBindsCapturedInstant(t *testing.T) {
+	c, s, viewer, _ := readingBrowseFixture(t, "book")
+	c.Drain()
+	err := dbwork.WithReadSnapshot(context.Background(), c.DB, func(ctx context.Context) error {
+		ss := s.WithContext(ctx)
+		witness, err := ss.browseExactWitness("reading", viewer.Profile, viewer.EffectiveRestrictions())
+		if err != nil {
+			return err
+		}
+		request := FacetRequest{Library: "reading", Field: "author", Query: &BrowseNode{Field: "dateAdded", Operator: "within-last-days", Value: float64(2)}}
+		revisions := []string{}
+		for _, at := range []time.Time{time.Date(2026, 10, 28, 0, 0, 0, 0, time.UTC), time.Date(2026, 10, 29, 0, 0, 0, 0, time.UTC)} {
+			in, err := ss.newReadingFacetSQLInput(viewer, request, at)
+			if err != nil {
+				return err
+			}
+			r, err := newReadingFacetReduction(request, witness, in, 1<<20)
+			if err != nil {
+				return err
+			}
+			revisions = append(revisions, r.revision)
+		}
+		if revisions[0] == revisions[1] {
+			t.Fatal("relative instant absent from result revision")
 		}
 		return nil
 	})

@@ -60,6 +60,8 @@ type readingFacetInput interface {
 	reset()
 	bytes() int
 	scalarBytes() int
+	fence() string
+	discard()
 }
 
 type readingFacetChoice struct {
@@ -85,6 +87,9 @@ type readingFacetReduction struct {
 	uncacheable                                              bool
 	scalarBytes                                              int
 	failed                                                   error
+	// Installed by the shared-store adapter before adoption. It reserves the
+	// normal read quantum's peak before any Step allocation; no store is owned here.
+	reservePeak func(int) error
 }
 
 func newReadingFacetReduction(request FacetRequest, witness string, input readingFacetInput, memoryLimit int) (*readingFacetReduction, error) {
@@ -106,7 +111,7 @@ func newReadingFacetReduction(request FacetRequest, witness string, input readin
 	if memoryLimit < 1 {
 		return nil, errReadingFacetCapacity
 	}
-	revision := fmt.Sprintf("%x", sha256.Sum256([]byte("reading-facet-v1:"+witness+":"+request.Library+":"+request.Field+":"+queryFingerprint(browseAnd(request.Group, request.Query)))))
+	revision := fmt.Sprintf("%x", sha256.Sum256([]byte("reading-facet-v1:"+witness+":"+request.Library+":"+request.Field+":"+queryFingerprint(browseAnd(request.Group, request.Query))+input.fence())))
 	return &readingFacetReduction{request: FacetRequest{Library: request.Library, Field: request.Field, Q: request.Q, Sort: request.Sort, Limit: request.Limit, Offset: request.Offset}, witness: witness, revision: revision, needle: compactcatalog.ReadingValueKey(request.Q), input: input, phase: "first", memoryLimit: memoryLimit}, nil
 }
 
@@ -116,7 +121,7 @@ func newReadingFacetReduction(request FacetRequest, witness string, input readin
 // exposing result(). No snapshot/Service/transaction is retained by this state.
 func (r *readingFacetReduction) step(s *Service, currentWitness string, b *readingFacetBudget) (bool, error) {
 	if currentWitness == "" || currentWitness != r.witness {
-		r.failed = ErrReadingProjectionChanged
+		r.fail(ErrReadingProjectionChanged)
 	}
 	if r.failed != nil {
 		return false, r.failed
@@ -124,10 +129,16 @@ func (r *readingFacetReduction) step(s *Service, currentWitness string, b *readi
 	if r.phase == "done" {
 		return true, nil
 	}
+	if r.reservePeak != nil {
+		if err := r.reservePeak(r.peakBytes(b.Bytes)); err != nil {
+			r.fail(err)
+			return false, err
+		}
+	}
 	for b.available() {
 		m, eligible, present, eof, err := r.input.next(s, b)
 		if err != nil {
-			r.failed = err
+			r.fail(err)
 			return false, err
 		}
 		if present && eligible {
@@ -164,15 +175,11 @@ func (r *readingFacetReduction) step(s *Service, currentWitness string, b *readi
 		// output. The exception is O(B), never an unbounded page or cache entry.
 		size := r.bytes()
 		r.scalarBytes = max(r.scalarBytes, len(m.Key)+len(m.Label)+len(m.Source), r.input.scalarBytes())
-		scalar := r.scalarBytes
 		if b.oversized {
 			r.uncacheable = true
 		}
 		if size > r.memoryLimit {
-			r.uncacheable = true
-		}
-		if size > r.memoryLimit+4*scalar {
-			r.failed = errReadingFacetCapacity
+			r.fail(errReadingFacetCapacity)
 			return false, r.failed
 		}
 		if r.phase == "done" {
@@ -278,7 +285,10 @@ func (r *readingFacetReduction) endPass() {
 	r.input.reset()
 }
 func (r *readingFacetReduction) bytes() int {
-	n := int(unsafe.Sizeof(*r)) + len(r.witness) + len(r.revision) + len(r.needle) + len(r.key) + len(r.label) + len(r.winner) + r.input.bytes()
+	n := int(unsafe.Sizeof(*r)) + len(r.witness) + len(r.revision) + len(r.needle) + len(r.key) + len(r.label) + len(r.winner)
+	if r.input != nil {
+		n += r.input.bytes()
+	}
 	n += len(r.request.Library) + len(r.request.Field) + len(r.request.Q) + len(r.request.Sort)
 	// Input owns the compiled bounded query. Do not retain the original AST.
 	for _, v := range r.page {
@@ -286,6 +296,30 @@ func (r *readingFacetReduction) bytes() int {
 	}
 	n += (cap(r.page) - len(r.page)) * int(unsafe.Sizeof(readingFacetChoice{}))
 	return n + r.resultBytes()
+}
+
+// Normal scalar peak reservation includes the current retained state, two read
+// payload copies and statement/argument scratch. A scalar larger than the byte
+// quantum is the separately charged O(B) exception; it never remains in state
+// beyond the cap. This accounts payload/backing storage, not SQLite's RSS.
+func (r *readingFacetReduction) peakBytes(quantum int) int {
+	n := r.bytes() + 2*max(0, quantum) + 4096
+	if r.input != nil {
+		n += 2 * r.input.bytes()
+	}
+	return n
+}
+func (r *readingFacetReduction) fail(err error) {
+	r.failed = err
+	if r.input != nil {
+		r.input.discard()
+		r.input = nil
+	}
+	r.page = nil
+	r.key = ""
+	r.label = ""
+	r.winner = ""
+	r.reservePeak = nil
 }
 
 // The protocol owner reserves both state and output until it drops the
