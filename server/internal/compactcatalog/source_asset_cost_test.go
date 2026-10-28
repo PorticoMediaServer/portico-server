@@ -84,9 +84,12 @@ func TestSourceAssetUnlinkedChangesThenLinkConsumers(t *testing.T) {
 	item := facetTestEntity(t, db, lib, "future:movie")
 	cc1Drain(t, db)
 	epoch := cc1Scalar(t, db, `SELECT source_epoch FROM catalog_facet_source_state`)
+	// CreateAssetTx retains one generic DomainAssetMetrics dirty row. Its
+	// existing upstream trigger stamps the source epoch independently; no
+	// owner-specific source marker is admitted for this unlinked asset.
 	asset := sourceTestAsset(t, db, nil, "/future-link/movie.mkv")
-	if cc1Scalar(t, db, `SELECT count(*) FROM catalog_upstream_sources WHERE domain=41`) != 0 || cc1Scalar(t, db, `SELECT source_epoch FROM catalog_facet_source_state`) != epoch {
-		t.Fatal("unlinked insert queued/fenced nonexistent owners")
+	if cc1Scalar(t, db, `SELECT count(*) FROM catalog_upstream_sources WHERE domain=41`) != 0 || cc1Scalar(t, db, `SELECT source_epoch FROM catalog_facet_source_state`) != epoch+1 {
+		t.Fatalf("unlinked insert queued/fenced nonexistent owners: sources=%d epoch=%d before=%d", cc1Scalar(t, db, `SELECT count(*) FROM catalog_upstream_sources WHERE domain=41`), cc1Scalar(t, db, `SELECT source_epoch FROM catalog_facet_source_state`), epoch)
 	}
 	if cc1Scalar(t, db, `SELECT count(*) FROM catalog_dirty WHERE domain=26 AND entity_id=?`, asset) != 1 {
 		t.Fatal("insert lost generic asset metrics work")
@@ -161,8 +164,10 @@ func TestSourceAssetRetouchResetsSameFlagsAndRollsBackAtomically(t *testing.T) {
 	cc1Write(t, db, func(ctx context.Context, tx *sql.Tx) error {
 		return SetAssetTx(ctx, tx, asset, map[string]any{"size": int64(300)})
 	})
-	if cc1Scalar(t, db, `SELECT revision FROM catalog_upstream_sources WHERE domain=41 AND source_id=?`, asset) != before+1 || cc1Scalar(t, db, `SELECT revision FROM catalog_dirty WHERE domain=41 AND entity_id=?`, asset) != dirty+1 || cc1Scalar(t, db, `SELECT source_epoch FROM catalog_facet_source_state`) != epoch+1 {
-		t.Fatal("real same-flags change was skipped or accepted more than once")
+	// One source marker reset plus one independent asset-metrics dirty wake
+	// each stamp the existing source fence; both source revisions advance once.
+	if cc1Scalar(t, db, `SELECT revision FROM catalog_upstream_sources WHERE domain=41 AND source_id=?`, asset) != before+1 || cc1Scalar(t, db, `SELECT revision FROM catalog_dirty WHERE domain=41 AND entity_id=?`, asset) != dirty+1 || cc1Scalar(t, db, `SELECT source_epoch FROM catalog_facet_source_state`) != epoch+2 {
+		t.Fatalf("real same-flags change: source revision %d -> %d, dirty %d -> %d, epoch %d -> %d", before, cc1Scalar(t, db, `SELECT revision FROM catalog_upstream_sources WHERE domain=41 AND source_id=?`, asset), dirty, cc1Scalar(t, db, `SELECT revision FROM catalog_dirty WHERE domain=41 AND entity_id=?`, asset), epoch, cc1Scalar(t, db, `SELECT source_epoch FROM catalog_facet_source_state`))
 	}
 	if cc1Scalar(t, db, `SELECT count(*) FROM catalog_upstream_sources WHERE domain=41 AND source_id=? AND flags=31 AND source_epoch=0 AND phase=0 AND has_after=0 AND after_id=0 AND active_id IS NULL AND inner_has=0`, asset) != 1 {
 		t.Fatal("same-flags change retained stale progress")
@@ -214,7 +219,7 @@ func TestSourceAssetRetouchResetsSameFlagsAndRollsBackAtomically(t *testing.T) {
 		if err := DeleteAssetTx(ctx, tx, asset); err != nil {
 			return err
 		}
-		_, err := tx.ExecContext(ctx, `INSERT INTO catalog_assets(id,token,path,size,duration,available) VALUES(?,'reused-lifetime','/retouch/reused.mkv',500,180,1)`, asset)
+		_, err := tx.ExecContext(ctx, `INSERT INTO catalog_assets(id,token,path,size,modified_ns,container,video_codec,audio_codec,width,height,duration,available) VALUES(?,'reused-lifetime','/retouch/reused.mkv',500,0,'','','',0,0,180,1)`, asset)
 		return err
 	})
 	facetTestTurn(t, db, 41, 1)
@@ -240,13 +245,15 @@ func TestSourceAssetOwnerGuardUsesIndexedSeek(t *testing.T) {
 	}
 	defer rows.Close()
 	found := false
+	plan := ""
 	for rows.Next() {
 		var id, parent, unused int
 		var detail string
 		if err := rows.Scan(&id, &parent, &unused, &detail); err != nil {
 			t.Fatal(err)
 		}
-		if strings.Contains(detail, "SEARCH catalog_asset_links USING COVERING INDEX catalog_asset_links_asset (asset_id=?)") {
+		plan += detail + "\n"
+		if strings.Contains(strings.ReplaceAll(detail, " EXISTS USING ", " USING "), "SEARCH catalog_asset_links USING COVERING INDEX catalog_asset_links_asset (asset_id=?)") {
 			found = true
 		}
 		if strings.Contains(detail, "SCAN catalog_asset_links") {
@@ -257,6 +264,6 @@ func TestSourceAssetOwnerGuardUsesIndexedSeek(t *testing.T) {
 		t.Fatal(err)
 	}
 	if !found {
-		t.Fatal("owner guard did not seek asset index")
+		t.Fatal("owner guard did not seek asset index", plan)
 	}
 }
