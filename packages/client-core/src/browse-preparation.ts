@@ -51,7 +51,8 @@ export function releaseBrowseSelection(api: LibraryContentApi, libraryId: string
 export async function readBrowsePage(api: LibraryContentApi, libraryId: string, body: unknown, lifetime: Lifetime): Promise<Readonly<{page: BrowseResult; response?: PreparationResponse}>> {
   const captured = capture(body);
   let reanchor = false;
-  const refreshed = object(captured) && object(captured.range) ? capture({...captured, range: {start: captured.range.start}}) : captured;
+  const refreshed = object(captured) ? capture(Object.fromEntries(Object.entries(captured).filter(([key]) => key !== 'cursor').map(([key, value]) =>
+    [key, key === 'range' && object(value) ? {start: value.start} : value]))) : captured;
   const path = browsePath(libraryId);
   if (!api.requestRaw) return {page: parseBrowseResult(await api.request(path, 'POST', captured, lifetime.signal))};
   const raw = api.requestRaw.bind(api);
