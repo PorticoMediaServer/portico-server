@@ -36,6 +36,7 @@ type ReaderLifetimeStats struct {
 }
 
 type readerScope struct {
+	wal                      *walLedger // shared while any pool/overlapping OpenHandle remains alive
 	plannerGeneration        atomic.Uint64
 	mu                       sync.Mutex
 	key                      string

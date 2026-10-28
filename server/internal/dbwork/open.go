@@ -108,6 +108,45 @@ func OpenHandle(path string, policy Policy) (*sql.DB, error) {
 			return nil, err
 		}
 	}
+	var pageSize int64
+	if err = db.QueryRow(`PRAGMA page_size`).Scan(&pageSize); err != nil {
+		db.Close()
+		return nil, err
+	}
+	var native bool
+	var scope *readerScope
+	conn, err := writer.Conn(context.Background())
+	if err != nil {
+		db.Close()
+		return nil, err
+	}
+	err = conn.Raw(func(inner any) error {
+		if c, ok := inner.(*observedConn); ok {
+			scope = c.readers
+			inner = c.inner
+		}
+		if counter, ok := inner.(interface{ WALWriteBytes() (uint64, bool) }); ok {
+			_, native = counter.WALWriteBytes()
+		}
+		return nil
+	})
+	_ = conn.Close()
+	if err != nil {
+		db.Close()
+		return nil, err
+	}
+	l := newWALLedger(path, pageSize)
+	l.native = native
+	if scope != nil {
+		scope.mu.Lock()
+		if scope.wal == nil {
+			scope.wal = l
+		} else {
+			l = scope.wal
+		}
+		scope.mu.Unlock()
+	}
+	db.Driver().(*splitDriver).wal = l
 	return db, nil
 }
 
