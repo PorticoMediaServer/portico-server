@@ -25,7 +25,7 @@ func TestPreparedChaptersNeverProjectOriginalClock(t *testing.T) {
 	if _, err = db.Exec(`INSERT INTO playback_sessions(id,session_hash,account_id,profile_id,item_id,asset_id,generation,state,grant_hash,grant_token,expires_at,request_id,duration) VALUES('session','current','account','profile',?,?,3,'playing','g','grant','2100-01-01T00:00:00Z','req',60)`, entity, token); err != nil {
 		t.Fatal(err)
 	}
-	if _, err = db.Exec(`INSERT INTO playback_source_pins VALUES('session',?,100,1)`, token); err != nil {
+	if _, err = db.Exec(`INSERT INTO playback_source_pins(session_id,asset_id,size,modified_ns) VALUES('session',?,100,1)`, token); err != nil {
 		t.Fatal(err)
 	}
 	if _, err = db.Exec(`INSERT INTO prepared_media_jobs(id,item_id,asset_id,library_id,profile_id,target_id,selection_json,source_revision,principal_json,state,phase,created_ms,updated_ms,version_id) VALUES('job',?,?,'l','profile','target','{}','source','{}','succeeded','complete',1,1,'prepared-version')`, entity, token); err != nil {

@@ -39,8 +39,11 @@ func FileObjectIdentity(file *os.File) (string, error) {
 }
 
 type request struct {
-	RootHandle      uint64 `json:"rootHandle,omitempty"`
-	ManagedArtifact bool   `json:"managedArtifact,omitempty"`
+	// PinnedPlayback distinguishes an accepted source-less pin from no session.
+	PinnedPlayback  bool             `json:"pinnedPlayback,omitempty"`
+	PlaybackBinding *PlaybackBinding `json:"playbackBinding,omitempty"`
+	RootHandle      uint64           `json:"rootHandle,omitempty"`
+	ManagedArtifact bool             `json:"managedArtifact,omitempty"`
 	// Argv is a media tool invocation built by mediaexec in the server, reading
 	// its input from descriptor 3 (inventory-command).
 	Argv        []string           `json:"argv,omitempty"`

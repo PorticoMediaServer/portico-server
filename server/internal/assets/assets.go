@@ -402,8 +402,7 @@ func SupportedForKind(path, kind string) bool {
 	return SupportedPath(path) && !audio
 }
 
-// OpenPlayback checks pinned size/mtime and current local inventory custody.
-// Immutable session-accepted object identity requires additional persisted pins.
+// OpenPlayback acquires the exact accepted local object and checks pinned size/mtime.
 func OpenPlayback(db *sql.DB, session, grantHash string) (*os.File, error) {
 	v, e := ResolvePlaybackSource(context.Background(), db, session, grantHash)
 	if e != nil {

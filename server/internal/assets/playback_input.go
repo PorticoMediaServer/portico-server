@@ -16,8 +16,8 @@ import (
 // inherits it as descriptor 3. On Windows the server holds it open with writers
 // and deleters locked out and the child opens the same path by name. Callers
 // therefore ask what to put after `-i` and whether to inherit. These lifetime
-// fences do not supply missing immutable session-acceptance evidence. In
-// particular, mounted remote inventory retains its managed-mount and size/mtime
+// fences complement the persisted session-acceptance binding. Mounted remote
+// inventory retains its managed-mount and size/mtime
 // checks without treating provider object IDs as filesystem inode identity.
 type PlaybackInput struct {
 	// File must stay open until the child exits. On Unix it is the inherited

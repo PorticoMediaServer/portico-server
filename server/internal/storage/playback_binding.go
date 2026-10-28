@@ -6,7 +6,8 @@ import (
 	"strings"
 )
 
-// PlaybackBinding is recorded scan evidence beneath an admitted source root.
+// PlaybackBinding is scan evidence beneath an admitted source root. Sessions
+// persist this tuple at acceptance; session-less reads use current evidence.
 // Mounted distinguishes remote inventory IDs from local filesystem identities;
 // that weaker path requires managed-mount acquisition and proves no immutable
 // accepted-object identity. It is not a fresh playback-time observation.
