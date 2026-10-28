@@ -34,7 +34,11 @@ export class SourceSettingsController extends OwnerStore<SourceSettingsSnapshot>
     if (!this.isActive() || this.snapshot.saving || this.snapshot.logoBusy || !this.snapshot.document || !this.snapshot.draft) return;
     const parsed = parseLiveSourceDocument({...this.snapshot.document, settings: {...this.snapshot.draft, ...patch}}).settings;
     const remote = patch.remote ?? this.snapshot.draft.remote;
-    const draft = {...parsed, ...(remote ? {remote: {...parsed.remote!, ...(remote.username === undefined ? {} : {username: remote.username}), ...(remote.password === undefined ? {} : {password: remote.password}), ...(remote.confirmedLanRoots ? {confirmedLanRoots: remote.confirmedLanRoots} : {})}} : {})};
+    const draft = {...parsed, ...(remote ? {remote: {...parsed.remote!,
+      ...(remote.username === undefined ? {} : {username: remote.username}),
+      ...(remote.password === undefined ? {} : {password: remote.password}),
+      ...(remote.confirmedLanRoots ? {confirmedLanRoots: remote.confirmedLanRoots} : {}),
+    }} : {})};
     this.publish({...this.snapshot, draft, error: undefined, saved: false});
   }
   discard() {if (this.isActive() && !this.snapshot.saving && this.snapshot.document) this.publish({...this.snapshot, draft: this.snapshot.document.settings, error: undefined});}

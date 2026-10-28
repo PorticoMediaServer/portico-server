@@ -1,6 +1,7 @@
 package livechannels
 
 import (
+	"bytes"
 	"context"
 	"database/sql"
 	"encoding/json"
@@ -62,6 +63,11 @@ func ReadPersistedConfigurationTx(ctx context.Context, tx *sql.Tx, id string, v 
 	if err != nil {
 		return err
 	}
+	v.Remote = publicRemoteConfiguration(c)
+	return nil
+}
+
+func publicRemoteConfiguration(c remoteConfig) *RemoteConfiguration {
 	guide := c.Draft.GuideURL
 	// URL query values can contain provider tokens. They are write-only too.
 	if u, e := url.Parse(guide); e == nil {
@@ -76,8 +82,7 @@ func ReadPersistedConfigurationTx(ctx context.Context, tx *sql.Tx, id string, v 
 	if c.PrivateGuideURL || guidePathHasCredential(c.Draft.GuideURL, c.Draft.Username, c.Draft.Password) {
 		guide = ""
 	}
-	v.Remote = &RemoteConfiguration{Kind: c.Draft.Kind, GuideURL: guide, GuideURLRedacted: guide != c.Draft.GuideURL, RefreshMs: c.Draft.RefreshMs, OwnerLimit: c.Draft.OwnerLimit, UseDiscoveredCapacity: c.Draft.UseDiscoveredCapacity}
-	return nil
+	return &RemoteConfiguration{Kind: c.Draft.Kind, GuideURL: guide, GuideURLRedacted: guide != c.Draft.GuideURL, RefreshMs: c.Draft.RefreshMs, OwnerLimit: c.Draft.OwnerLimit, UseDiscoveredCapacity: c.Draft.UseDiscoveredCapacity}
 }
 
 func guidePathHasCredential(raw string, secrets ...string) bool {
@@ -93,9 +98,110 @@ func guidePathHasCredential(raw string, secrets ...string) bool {
 	return false
 }
 
+// PersistedConfigurationSnapshot captures the private policy inputs in the
+// caller's authorized read snapshot. It must be prepared after that snapshot closes.
+type PersistedConfigurationSnapshot struct {
+	sealed []byte
+}
+
+// ReadPersistedConfigurationSnapshotTx copies the sealed policy inputs without
+// keeping the transaction or its connection alive during network admission.
+func ReadPersistedConfigurationSnapshotTx(ctx context.Context, tx *sql.Tx, id string) (*PersistedConfigurationSnapshot, error) {
+	var snapshot PersistedConfigurationSnapshot
+	if err := tx.QueryRowContext(ctx, `SELECT sealed FROM live_remote_configs WHERE source_id=?`, id).Scan(&snapshot.sealed); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, ErrInvalid
+		}
+		return nil, err
+	}
+	return &snapshot, nil
+}
+
+// PreparedPersistedConfiguration contains policy-checked inputs tied to the
+// exact sealed configuration that supplied the private URL and approvals.
+type PreparedPersistedConfiguration struct {
+	sealed    []byte
+	guide     string
+	approvals []remotemedia.Approval
+}
+
+// Prepare runs the same network admission as remote preview/save, with no SQL
+// transaction held. SavePersistedConfigurationTx fences these inputs before use.
+func (snapshot *PersistedConfigurationSnapshot) Prepare(ctx context.Context, v *LiveSourceSettings) (*PreparedPersistedConfiguration, error) {
+	if v.Remote == nil {
+		return nil, nil
+	}
+	if snapshot == nil {
+		return nil, ErrInvalid
+	}
+	var c remoteConfig
+	if json.Unmarshal(snapshot.sealed, &c) != nil {
+		return nil, ErrUnavailable
+	}
+	r := v.Remote
+	if r.Kind != c.Draft.Kind || r.RefreshMs < 300000 || r.RefreshMs > 86400000 || r.OwnerLimit < 0 || r.OwnerLimit > 256 || len(r.ConfirmedLANRoots) > 8 {
+		return nil, ErrInvalid
+	}
+	for _, entry := range []struct {
+		value *string
+		max   int
+	}{{r.Username, 512}, {r.Password, 2048}} {
+		if entry.value != nil && (*entry.value != "" && !validText(*entry.value, entry.max)) {
+			return nil, ErrInvalid
+		}
+	}
+	if c.Draft.Kind != "xtream" && (r.Username != nil || r.Password != nil) {
+		return nil, ErrInvalid
+	}
+	approvals := c.Approvals
+	policy := remotemedia.Policy{Approvals: approvals}
+	for _, root := range r.ConfirmedLANRoots {
+		approval, e := policy.Approve(ctx, root)
+		if e != nil {
+			return nil, sourceFetchError(e)
+		}
+		approvals = append(approvals, approval)
+	}
+	// A redacted address returned by GET is a placeholder for the private URL.
+	// Clearing/replacing it is explicit: clients clear this flag on an edit.
+	guide := r.GuideURL
+	if r.GuideURLRedacted {
+		if guide != publicRemoteConfiguration(c).GuideURL {
+			return nil, ErrInvalid
+		}
+		guide = c.Draft.GuideURL
+	}
+	if guide != c.Draft.GuideURL && guide != "" {
+		if !validLocator(guide) {
+			return nil, ErrInvalid
+		}
+		// New is the exact admission and pinned network policy used by ReadSource;
+		// it resolves/adopts the endpoint without issuing an extra HTTP request.
+		client, e := remotemedia.New(ctx, guide, remotemedia.Policy{Approvals: approvals})
+		if e != nil {
+			return nil, sourceFetchError(e)
+		}
+		client.Close()
+	}
+	return &PreparedPersistedConfiguration{sealed: snapshot.sealed, guide: guide, approvals: approvals}, nil
+}
+
 // SavePersistedConfigurationTx shares the caller's authority and revision-fenced
 // transaction. The original JSON maps retain unrecognized private fields.
-func SavePersistedConfigurationTx(ctx context.Context, tx *sql.Tx, id string, v *LiveSourceSettings) error {
+func SavePersistedConfigurationTx(ctx context.Context, tx *sql.Tx, id string, v *LiveSourceSettings, prepared *PreparedPersistedConfiguration) error {
+	if v.Remote != nil {
+		if prepared == nil {
+			return ErrInvalid
+		}
+		var sealed []byte
+		err := tx.QueryRowContext(ctx, `SELECT sealed FROM live_remote_configs WHERE source_id=?`, id).Scan(&sealed)
+		if errors.Is(err, sql.ErrNoRows) || err == nil && !bytes.Equal(sealed, prepared.sealed) {
+			return ErrConflict
+		}
+		if err != nil {
+			return err
+		}
+	}
 	if v.ViewerAccess != nil {
 		if *v.ViewerAccess != "owner-only" && *v.ViewerAccess != "server-members" {
 			return ErrInvalid
@@ -134,60 +240,10 @@ func SavePersistedConfigurationTx(ctx context.Context, tx *sql.Tx, id string, v 
 	}
 	r := v.Remote
 	root, draft, c, err := readRemoteConfiguration(ctx, tx, id)
-	if errors.Is(err, sql.ErrNoRows) {
-		return ErrInvalid
-	}
 	if err != nil {
 		return err
 	}
-	if r.Kind != c.Draft.Kind || r.RefreshMs < 300000 || r.RefreshMs > 86400000 || r.OwnerLimit < 0 || r.OwnerLimit > 256 || len(r.ConfirmedLANRoots) > 8 {
-		return ErrInvalid
-	}
-	for _, entry := range []struct {
-		value *string
-		max   int
-	}{{r.Username, 512}, {r.Password, 2048}} {
-		if entry.value != nil && (*entry.value != "" && !validText(*entry.value, entry.max)) {
-			return ErrInvalid
-		}
-	}
-	if c.Draft.Kind != "xtream" && (r.Username != nil || r.Password != nil) {
-		return ErrInvalid
-	}
-	approvals := c.Approvals
-	policy := remotemedia.Policy{Approvals: approvals}
-	for _, root := range r.ConfirmedLANRoots {
-		approval, e := policy.Approve(ctx, root)
-		if e != nil {
-			return sourceFetchError(e)
-		}
-		approvals = append(approvals, approval)
-	}
-	// A redacted address returned by GET is a placeholder for the private URL.
-	// Clearing/replacing it is explicit: clients clear this flag on an edit.
-	guide := r.GuideURL
-	if r.GuideURLRedacted {
-		current := LiveSourceSettings{}
-		if err = ReadPersistedConfigurationTx(ctx, tx, id, &current); err != nil {
-			return err
-		}
-		if guide != current.Remote.GuideURL {
-			return ErrInvalid
-		}
-		guide = c.Draft.GuideURL
-	}
-	if guide != c.Draft.GuideURL && guide != "" {
-		if !validLocator(guide) {
-			return ErrInvalid
-		}
-		// New is the exact admission and pinned network policy used by ReadSource;
-		// it resolves/adopts the endpoint without issuing an extra HTTP request.
-		client, e := remotemedia.New(ctx, guide, remotemedia.Policy{Approvals: approvals})
-		if e != nil {
-			return sourceFetchError(e)
-		}
-		client.Close()
-	}
+	guide, approvals := prepared.guide, prepared.approvals
 	set := func(key string, value any) { draft[key], _ = json.Marshal(value) }
 	// Preserve a private-path marker before old credentials are cleared/replaced.
 	// Otherwise the next GET could expose the old credential still in that URL.
