@@ -160,7 +160,8 @@ test('actual ReadItemEntry ignores a stale A response after B opens', async () =
   const a = deferred<any>();
   const f = await mountRead({open: sourceId => sourceId === epub.sourceId ? a.promise : Promise.resolve(makeSession(sourceId))});
   await f.settle(3);
-  versionButton(f).props.onClick(); f.flat();
+  assert.equal(versionButton(f), undefined, 'a pending read has no inline version control');
+  all(f.flat(), 'Button').find(node => node.props['aria-label'] === 'next.controls.more')!.props.onClick(); f.flat();
   versionItem(f, 'PDF').props.onSelect(); f.flat(); await f.settle();
   assert.deepEqual(f.openCalls, [epub.sourceId, pdf.sourceId]);
   a.resolve(makeSession(epub.sourceId)); await f.settle();

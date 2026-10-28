@@ -454,7 +454,7 @@ test('the actual screen renders one empty picture target and real identity, with
   const {WatchScreen} = await import('../src/screens/watch/WatchScreen.tsx');
   const shown = snapshot();
   const html = renderToStaticMarkup(createElement(WatchScreen, {
-    binding: {runtime: {getSnapshot: () => shown, onAction: async () => { throw new Error('render_must_not_command'); }} as never, artwork: {} as never, environment: {t: (key: string) => key} as never, skips: {back: 10, forward: 30}, reportError: error => { throw error; }},
+    binding: {runtime: {getSnapshot: () => shown, bufferedRanges: () => [], onAction: async () => { throw new Error('render_must_not_command'); }} as never, artwork: {} as never, environment: {t: (key: string) => key} as never, skips: {back: 10, forward: 30}, reportError: error => { throw error; }},
     snapshot: shown, expanded: true, surfaceSlotRef: {current: null}, onCollapse() {},
   }));
   assert.equal((html.match(/data-watch-picture-slot/g) ?? []).length, 1);
@@ -467,7 +467,7 @@ test('the actual screen renders one empty picture target and real identity, with
   dock.beginRemote({id: 'cast', kind: 'cast', phase: 'connecting', sequence: '1', playback, positionSeconds: 0}, 0);
   const pending = snapshot({dock: dock.getSnapshot()});
   const render = (value: WebPlaybackRuntimeSnapshot) => renderToStaticMarkup(createElement(WatchScreen, {
-    binding: {runtime: {getSnapshot: () => value} as never, artwork: {} as never, environment: {t: (key: string) => key} as never, skips: {back: 10, forward: 30}, reportError: error => { throw error; }},
+    binding: {runtime: {getSnapshot: () => value, bufferedRanges: () => []} as never, artwork: {} as never, environment: {t: (key: string) => key} as never, skips: {back: 10, forward: 30}, reportError: error => { throw error; }},
     snapshot: value, expanded: true, surfaceSlotRef: {current: null}, onCollapse() {},
   }));
   assert.doesNotMatch(render(pending), /class="watch" hidden/);

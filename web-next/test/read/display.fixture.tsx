@@ -8,6 +8,7 @@ import {IconSprite} from '../../src/kit/Icon';
 import {ReaderChrome} from '../../src/kit/reader/ReaderChrome';
 import {ReaderDisplaySheet, ReaderDisplaySidePanel, type ReaderDisplayRow} from '../../src/kit/reader/ReaderDisplay';
 import {loadReadFonts} from '../../src/screens/read/fonts';
+import {ReaderFirstRunHint} from '../../src/screens/read/ReaderFirstRunHint';
 
 /** Verbatim tablet-read6b controls. This isolated fixture proves no canonical
  * Reading preference, server session, real book, Settings write or full frame. */
@@ -27,9 +28,10 @@ window.readerDisplayInput = input => { for (const listener of listeners) listene
 const subscribe = (listener: (input: ReaderSurfaceInput) => void) => { listeners.add(listener); return () => { listeners.delete(listener); }; };
 const fonts = await loadReadFonts({document, signal: new AbortController().signal});
 const phone = new URLSearchParams(location.search).get('presentation') === 'phone';
+const firstHint = new URLSearchParams(location.search).get('hint') === '1';
 document.documentElement.style.setProperty('--reader-publisher-font', 'Georgia, serif');
 function DisplayFixture() {
-  const anchor = useRef<HTMLButtonElement>(null), [open, setOpen] = useState(true);
+  const anchor = useRef<HTMLButtonElement>(null), [open, setOpen] = useState(!firstHint), [hint, setHint] = useState(firstHint);
   const [theme, setTheme] = useState('sepia'), [font, setFont] = useState('literata'), [size, setSize] = useState(5), [twoPages, setTwoPages] = useState(true);
   const [values, setValues] = useState<Record<string, string>>({spacing: 'normal', margins: 'normal', alignment: 'justified', layout: 'pages'});
   const change = <T extends string | number | boolean,>(key: string, value: T, set: Dispatch<SetStateAction<T>>) => { probe.changes.push({key, value}); set(value); };
@@ -53,7 +55,7 @@ function DisplayFixture() {
   return <div style={{width: '100vw', height: '100dvh', position: 'relative'}}>
     <ReaderChrome copy={{back: 'Back', previous: 'Previous page', next: 'Next page', progress: 'Position in book', showControls: 'Show controls'}} direction="ltr" tapTurnEnabled pageTurnsEnabled
       onBack={() => {}} onTurn={turn => probe.turns.push(turn)} actions={[]} showPageArrows={false} panel={open ? panel : null} panelReflows={open && !phone}
-      onPanelDismiss={reason => dismiss(false, reason)} subscribeSurfaceInput={subscribe} initiallyVisible>
+      onPanelDismiss={reason => dismiss(false, reason)} subscribeSurfaceInput={subscribe} initiallyVisible hint={hint ? <ReaderFirstRunHint onDone={() => setHint(false)}/> : undefined}>
       <div style={{height: '100%', background: '#f1e6d1'}} />
     </ReaderChrome>
     <button ref={anchor} aria-label="Display: theme, font, size and layout" onClick={() => setOpen(value => !value)}

@@ -59,7 +59,7 @@ export function DiscoverTuners({api, serverId, isCurrent, reportError, openingId
       {result && !result.discoveryEnabled && <p>{t('web.liveSource.searchOff')}</p>}
       {result?.discoveryEnabled && !result.devices.length && <p>{t('web.liveSource.noTuners')}</p>}
       {result?.devices.map(tuner => <SettingsRow key={tuner.deviceId || tuner.address} label={tuner.friendlyName || tuner.model || t('web.liveSource.tunerFallback')}
-        help={[tuner.model, tuner.address, tuner.tunerCount ? t('server.live.tunerCount', {count: tuner.tunerCount}) : ''].filter(Boolean).join(' · ')}>
+        help={<span className={styles.facts}>{[tuner.model, tuner.address, tuner.tunerCount ? t('server.live.tunerCount', {count: tuner.tunerCount}) : ''].filter(Boolean).map((fact, index) => <span key={index}>{fact}</span>)}</span>}>
         {tuner.configured ? <span className={styles.badge}>{t('web.liveSource.alreadyAdded')}</span> : <Button size="small" onClick={() => chooseTuner(tuner)}>{t('web.liveSource.useThis')}</Button>}
       </SettingsRow>)}
     </div>

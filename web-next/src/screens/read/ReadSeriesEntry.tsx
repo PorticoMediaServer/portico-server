@@ -11,6 +11,7 @@ import {CoverCard} from '../../kit/cards';
 import {Button} from '../../kit/controls';
 import {WindowedGrid} from '../../kit/layout';
 import {ReadBookHero} from '../../kit/reader/ReadBookHero';
+import type {ArtworkSource} from '../../kit/artwork';
 import {Skeleton, StateView} from '../../kit/states';
 import {SelectionBar} from '../../kit/selection';
 import {ServerMark} from '../../kit/shell';
@@ -94,6 +95,14 @@ function LiveSeriesRows({resources, context, retry}: {resources: Resources; cont
     return () => {observer.disconnect(); window.removeEventListener('resize', measure);};
   }, [state.status]);
   const resident = resources.rows.collection.residentItems();
+  const [coverItems, setCoverItems] = useState<readonly ReadingLibraryItem[]>([]);
+  useEffect(() => {
+    if (!resources.comic || coverItems.length >= 3) return;
+    const next = [...coverItems, ...resident.filter(item => item.coverUrl && !coverItems.some(cover => cover.id === item.id))].slice(0, 3);
+    if (next.length > coverItems.length) setCoverItems(next);
+  }, [resources.comic, resident, coverItems]);
+  const seriesCovers = resources.comic ? (coverItems.length ? coverItems : resident.filter(item => item.coverUrl).slice(0, 3)).map(item => resources.artwork.foreground(item.coverUrl, 460, 2 / 3))
+    .filter((source): source is ArtworkSource => source !== undefined) : undefined;
   const title = overview?.title ?? resident.find(item => item.series)?.series?.name;
   const report = (error: unknown) => {resources.reportError(error);};
   const cardWidth = width < 600 ? 108 : 190;
@@ -111,6 +120,7 @@ function LiveSeriesRows({resources, context, retry}: {resources: Resources; cont
     {title ? <><ReadBookHero title={title} author={author ? {name: author} : undefined}
       facts={[...(total === undefined ? [] : [{id: 'count', text: t(resources.comic ? 'next.reader.volumeCount' : 'next.kit.books', {count: total}), role: 'value' as const}]), ...(overview ? [{id: 'read', text: t('next.reader.seriesReadCount', {read: defaultI18n.number(overview.completed), count: defaultI18n.number(overview.total)}), role: 'value' as const}] : [])]}
       cover={resources.artwork.foreground(coverItem?.coverUrl, 784, 2 / 3)}
+      seriesCovers={seriesCovers}
       ambient={<span className={readItemStyles.ambient} style={{'--read-tint-first': tint.first, '--read-tint-second': tint.second} as CSSProperties} aria-hidden="true"/>}
       actions={<><Button variant="primary" icon="i-book" onClick={start} disabled={!target}>{actionLabel}</Button>{state.status === 'ready' && <ReadGroupSavedAction client={resources.bindings.client} libraryId={resources.libraryId} groupKind="series" seriesId={resources.seriesId} isCurrent={() => resources.bindings.authority.isCurrent() && resources.rows.collection.getSnapshot().status === 'ready'} reportError={report}/>}</>}/>
       <div className={styles.seriesHeading}><h2>{t(resources.comic ? 'next.reader.volumes' : 'next.kit.booksInSeries')}</h2>

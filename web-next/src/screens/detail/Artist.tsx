@@ -11,7 +11,7 @@ import {useFreshDocument} from '../../platform/freshness';
 import {AmbientArt, CircleArt} from '../../kit/artwork';
 import {Button} from '../../kit/controls';
 import {Lockup} from '../../kit/layout';
-import {TitleFactsLine} from '../../kit/title/TitleParts';
+import {TitleFactsLine, TitleProse} from '../../kit/title/TitleParts';
 import {ScreenProblem} from './ScreenProblem';
 import {TrackTable, type TrackRowData} from '../../kit/browse';
 import {Menu} from '../../kit/overlays';
@@ -21,6 +21,7 @@ import {TitleRow} from './Detail';
 import {entrySubject} from './model';
 import {cardText} from '@core/presentation/kit-model';
 import {MusicEntryMenu} from './MusicEntryMenu';
+import {MusicDetailLoading} from './MusicLoading';
 import styles from './artist.module.css';
 
 export type ArtistScreenProps = Readonly<{context: ScreenContext; libraryId: string; artistId: string; onBack?: () => void}>;
@@ -60,7 +61,7 @@ export function ArtistScreen({context, libraryId, artistId, onBack}: ArtistScree
   const back = () => {if (active?.isCurrent()) active.onBack?.();};
   const retryOriginal = (failureCurrent: () => boolean) => {if (!active || active.claimed || !active.isCurrent() || !failureCurrent() || !active.isCurrent() || !failureCurrent()) return; active.claimed = true; active.live = false; setRetry(value => value === active.retry ? value + 1 : value);};
   return <div className={styles.page}>
-    {active ? <ArtistBody context={context} libraryId={libraryId} artistId={artistId} lease={active} retry={retryOriginal} back={back} /> : <><div className={styles.bar}>{onBack && <Button variant="icon" icon="i-left" iconOnly aria-label={t('next.states.back')} disabled onClick={back}/>}</div><p className={styles.loading} role="status">{t('music.loading')}</p></>}
+    {active ? <ArtistBody context={context} libraryId={libraryId} artistId={artistId} lease={active} retry={retryOriginal} back={back} /> : <><div className={styles.bar}>{onBack && <Button variant="icon" icon="i-left" iconOnly aria-label={t('next.states.back')} disabled onClick={back}/>}</div><MusicDetailLoading kind="artist" /></>}
   </div>;
 }
 
@@ -81,7 +82,7 @@ function ArtistBody({context, libraryId, artistId, lease, retry, back}: {context
     return () => { active = false; };
   }, [service, lease, libraryId, artistId, context]);
   useFreshDocument(() => [dependsOn.libraries], async refresh => { if (lease.isCurrent()) await service.revalidate(refresh); }, () => lease.isCurrent() && service.getSnapshot().phase === 'ready');
-  const projection: ContentProjection | undefined = content.phase === 'ready' ? content.projection ?? undefined : undefined;
+  const projection: ContentProjection | undefined = content.phase === 'ready' || content.phase === 'loading' ? content.projection ?? undefined : undefined;
   const artist = projection?.entity;
   const admitted = !!projection && !!artist && artist.kind === 'artist' && artist.id === artistId
     && projection.scope.libraryId === libraryId && projection.scope.view === 'artist' && projection.scope.entityId === artistId
@@ -128,7 +129,7 @@ function ArtistBody({context, libraryId, artistId, lease, retry, back}: {context
   const bar = <div className={styles.bar}>{lease.onBack && <Button variant="icon" icon="i-left" iconOnly aria-label={t('next.states.back')} onClick={back}/>} {admitted && artist && <span className={styles.barTitle}>{artist.title}</span>}</div>;
   if (!projection || !artist || !admitted) return <>{bar}{localFailure || readFailure
     ? <ScreenProblem context={recoveryContext} error={content.error ?? localFailure?.error} retry={() => retry(failureCurrent)} />
-    : <p className={styles.loading} role="status">{t('music.loading')}</p>}</>;
+    : <MusicDetailLoading kind="artist" />}</>;
   const albumsSection = section('items'), top = section('top_songs');
   const albums: readonly ContentEntry[] = albumsSection?.entries ?? [];
   const playArtist = context.effects.playArtist;
@@ -150,10 +151,12 @@ function ArtistBody({context, libraryId, artistId, lease, retry, back}: {context
   const long = artist.title.length > 24, details: [string, string][] = [];
   if (artist.artistType) details.push([t('title.albumType'), artist.artistType]);
   if (artist.genres?.length) details.push([t('title.genres'), artist.genres.filter(Boolean).join(', ')]);
+  const hasDetails = !!artist.overview || details.length > 0;
   return <div data-layout={phone ? 'phone' : 'desktop'}>
     {bar}
     <header className={styles.hero}>
-      <span className={styles.disc}><AmbientArt className={styles.ambient} treatment="phone" source={context.artwork.ambient(cover)} foreground={discArt} />
+      {!phone && <AmbientArt className={styles.ambient} treatment="artist" source={context.artwork.ambient(cover)} />}
+      <span className={styles.disc}>{phone ? <AmbientArt className={styles.phoneDiscAmbient} treatment="phone" source={context.artwork.ambient(cover)} foreground={discArt} /> : <AmbientArt className={styles.discGlow} treatment="cover" source={context.artwork.ambient(cover)} />}
         <CircleArt covers={discArt ? [discArt] : []} initials={artist.title.split(/\s+/).filter(Boolean).slice(0, 2).map(word => Array.from(word)[0]).join('')} alt="" /></span>
       <div className={styles.copy}>
         <p className={styles.kind}>{t('filter.field.artist')}</p>
@@ -180,20 +183,21 @@ function ArtistBody({context, libraryId, artistId, lease, retry, back}: {context
       <MusicEntryMenu context={context} seed={{id: artist.id, title: artist.title}} signal={lease.signal} current={witness}/>
     </Menu>}
     {top && <ArtistTopSongs context={context} lease={lease} libraryId={libraryId} top={top} witness={witness} phone={phone} />}
-    <section className={details.length > 0 ? styles.split : styles.full}>
+    <section className={hasDetails ? styles.split : styles.full}>
       <div className={styles.albums}>
-        {albums.length > 0 && <TitleRow heading={t('music.albums')} entries={albums} binding={{context}}
-          guard={() => {if (!witness()) throw new DOMException('Artist page changed', 'AbortError');}} />}
-        {albumsSection?.nextCursor && <div className={styles.more}><Button size="small" onClick={() => runScreenCommand(context, () => {
-          const now = service.getSnapshot();
-          if (!witness() || (now.appended.find(row => row.id === 'items') ?? now.projection?.sections.find(row => row.id === 'items')) !== albumsSection)
-            throw new DOMException('Artist page changed', 'AbortError');
-          return service.next('items');
-        })}>{t('title.nextPage')}</Button></div>}
+        {(albums.length > 0 || albumsSection?.nextCursor) && <TitleRow heading={t('music.albums')} entries={albums} binding={{context}}
+          guard={() => {if (!witness()) throw new DOMException('Artist page changed', 'AbortError');}}
+          pagination={{cursor: albumsSection?.nextCursor ?? '', loading: content.phase === 'loading', onMore: () => runScreenCommand(context, () => {
+            const now = service.getSnapshot();
+            if (!witness() || (now.appended.find(row => row.id === 'items') ?? now.projection?.sections.find(row => row.id === 'items')) !== albumsSection)
+              throw new DOMException('Artist page changed', 'AbortError');
+            return service.next('items');
+          })}} />}
       </div>
-      {details.length > 0 && <aside className={styles.aside}>
+      {hasDetails && <aside className={styles.aside}>
         <h2 className={styles.detailsTitle}>{t('title.details')}</h2>
-        <dl className={styles.facts}>{details.map(([label, value]) => <Fragment key={label}><dt>{label}</dt><dd>{value}</dd></Fragment>)}</dl>
+        {artist.overview && <><TitleProse className={styles.overview} markup={artist.overview} />{artist.overviewSource && <small className={styles.source}>{t('web.person.biographyFrom', {source: artist.overviewSource})}</small>}</>}
+        {details.length > 0 && <dl className={styles.facts}>{details.map(([label, value]) => <Fragment key={label}><dt>{label}</dt><dd>{value}</dd></Fragment>)}</dl>}
       </aside>}
     </section>
     {similar?.page === projection && similarRead.current === similar.token && similar.entries.length > 0 && <TitleRow heading={t('music.similarArtists')} subtitle={t(similar.bySound ? 'music.moreLikeThisBySound' : 'music.moreLikeThisHint')}

@@ -18,7 +18,7 @@ import {useProtectedWebScreenContext} from '../../route-registry-view';
 import {router} from '../../router';
 import {Icon} from '../../kit/Icon';
 import {Button, ResumeButton} from '../../kit/controls';
-import {Menu, MenuGroup, MenuItem} from '../../kit/overlays';
+import {Dialog, Menu, MenuGroup, MenuItem} from '../../kit/overlays';
 import {usePhone} from '../../kit/overlays/shared';
 import {runScreenCommand} from '../detail/context';
 import {Skeleton, StateView} from '../../kit/states';
@@ -53,7 +53,7 @@ function BoundReadItem({captured, eligibility}: {captured: Captured; eligibility
   const editorAnchor = useRef<HTMLButtonElement>(null);
   const errorSink = useRef(captured.binding.home.effects.reportError); errorSink.current = captured.binding.home.effects.reportError;
   const [sourceId, setSourceId] = useState(() => eligibility.versions.find(version => version.inventoryAvailable)?.sourceId);
-  const [menu, setMenu] = useState(false), [retry, setRetry] = useState(0);
+  const [menu, setMenu] = useState(false), [fileInfo, setFileInfo] = useState(false), [retry, setRetry] = useState(0);
   const [saving, setSaving] = useState(false), [rereading, setRereading] = useState(false);
   const [attempt, setAttempt] = useState<ReadAttempt>();
   const attemptRef = useRef<ReadAttempt | undefined>(undefined);
@@ -78,10 +78,9 @@ function BoundReadItem({captured, eligibility}: {captured: Captured; eligibility
   });
   useLayoutEffect(() => {
     const value: ReadAttempt = {context: captured.context, entry: routeLocation, sourceId, retry, fileLife: new AbortController(), live: true, ready: false};
-    attemptRef.current = value; setAttempt(value); setSaving(false); setRereading(false);
+    attemptRef.current = value; setAttempt(value); setSaving(false); setRereading(false); setMore(false); setMenu(false); setFileInfo(false);
     return () => retire(value);
   }, [captured.context, eligibility.itemId, routeLocation, sourceId, retry]);
-  const anchor = useRef<HTMLButtonElement>(null);
   const chooserAnchor = useRef<HTMLButtonElement>(null);
   const [chooserMenu, setChooserMenu] = useState(false);
   useEffect(() => {
@@ -149,12 +148,13 @@ function BoundReadItem({captured, eligibility}: {captured: Captured; eligibility
     setMenu(false); setChooserMenu(false);
     setSourceId(candidate.sourceId);
   };
+  const versionItems = eligibility.versions.map(candidate => <MenuItem key={candidate.sourceId} selected={candidate.sourceId === sourceId} disabled={!candidate.inventoryAvailable}
+    onSelect={() => pickVersion(candidate, attempt, sourceId)} description={defaultI18n.bytes(candidate.size)}>{candidate.format.toUpperCase()}</MenuItem>);
   const versionChooser = readVersionCanChoose(eligibility.versions) ? <div className={styles.versionRow}>
     <Button ref={chooserAnchor} size="small" variant="glass" onClick={() => setChooserMenu(value => !value)} aria-label={t('next.reader.version')}>
       {version?.format.toUpperCase() ?? t('next.reader.version')}<Icon name="i-down" size={14}/></Button>
     <Menu open={chooserMenu} onOpenChange={setChooserMenu} title={t('next.reader.version')} anchorRef={chooserAnchor}>
-      {eligibility.versions.map(candidate => <MenuItem key={candidate.sourceId} selected={candidate.sourceId === sourceId} disabled={!candidate.inventoryAvailable}
-        onSelect={() => pickVersion(candidate, attempt, sourceId)} description={defaultI18n.bytes(candidate.size)}>{candidate.format.toUpperCase()}</MenuItem>)}
+      {versionItems}
     </Menu>
   </div> : null;
   if (current(attempt) && detail.attempt === attempt && detail.failed) return <>
@@ -164,7 +164,11 @@ function BoundReadItem({captured, eligibility}: {captured: Captured; eligibility
     {versionChooser}
   </>;
   const manifest = current(attempt) && detail.attempt === attempt ? detail.manifest : undefined;
-  if (!manifest || !version || manifest.sourceId !== sourceId) return <>{phoneBack}{<Skeleton height={480}/>}{versionChooser}</>;
+  if (!manifest || !version || manifest.sourceId !== sourceId) return <>{phoneBack}<Skeleton height={480}/>
+    {versionChooser && <div className={styles.versionRow}>
+      <Button ref={chooserAnchor} size="small" variant="glass" icon="i-more" iconOnly aria-label={t('next.controls.more')} onClick={() => setChooserMenu(value => !value)}/>
+      <Menu open={chooserMenu} onOpenChange={setChooserMenu} title={t('next.reader.version')} anchorRef={chooserAnchor}>{versionItems}</Menu>
+    </div>}</>;
   const title = manifest.metadata.title ?? '', author = manifest.metadata.author;
   const metadata = manifest.metadata, series = metadata.series;
   const original = detail.attempt;
@@ -201,7 +205,7 @@ function BoundReadItem({captured, eligibility}: {captured: Captured; eligibility
       if (factsCurrent()) errorSink.current(error);
     });
   };
-  /** No Version control with one file (notes/read-web.md); the details keep format and size. */
+  /** Manual selection is a recovery action, offered only from More or a failed read. */
   const chooseVersion = eligibility.versions.length > 1;
   const viewer = context.identity?.viewer, canEdit = viewer?.authority === 'local' && viewer.role === 'owner';
   /** Reopens this exact source and refreshes only its file-derived facts. The owner
@@ -244,8 +248,6 @@ function BoundReadItem({captured, eligibility}: {captured: Captured; eligibility
     ...(manifest.metadata.language ? [{id: 'language', label: t('next.selection.language'), value: manifest.metadata.language}] : []),
     ...(metadata.wordCount !== undefined ? [{id: 'words', label: t('next.reader.wordsLabel'), value: defaultI18n.number(metadata.wordCount)}] : []),
     ...(manifest.format === 'cbz' && manifest.pageNames?.length ? [{id: 'pages', label: t('next.reader.pagesStrip'), value: defaultI18n.number(manifest.pageNames.length)}] : []),
-    {id: 'format', label: t('next.reader.format'), value: manifest.format.toUpperCase()},
-    {id: 'size', label: t('next.reader.fileSize'), value: defaultI18n.bytes(manifest.size)},
   ]}/>;
   return <>{phoneBack}<ReadBookHero cover={context.artwork.foreground(manifest.metadata.coverUrl, 784, 2 / 3)} title={title} titleStyle={readBookTitleStyle(title, !!metadata.openingLines)} author={author ? {name: author} : undefined} series={seriesPresentation} facts={[
       ...(metadata.wordCount !== undefined ? [{id: 'words', text: t('next.reader.wordCount', {count: metadata.wordCount}), role: 'context' as const}] : []),
@@ -255,11 +257,23 @@ function BoundReadItem({captured, eligibility}: {captured: Captured; eligibility
     ambient={<span className={styles.ambient} style={{'--read-tint-first': tint.first, '--read-tint-second': tint.second} as CSSProperties} aria-hidden="true"/>}
     actions={<>{progression !== undefined && progression > 0 ? <ResumeButton className={styles.primary} icon="i-book" progress={progression} remaining={defaultI18n.percent(progression)} onClick={() => open()}>{t('next.cards.read')}</ResumeButton>
       : <Button className={styles.primary} variant="primary" icon="i-book" onClick={() => open()}>{t('next.reader.read')}</Button>}{detail.client && <ReadSavedAction client={detail.client} itemId={eligibility.itemId} isCurrent={factsCurrent} reportError={error => errorSink.current(error)}/>}{detail.client && <ReadMarkAction client={detail.client} itemId={eligibility.itemId} isCurrent={factsCurrent} reportError={error => errorSink.current(error)}/>}</>}
-    under={<>{(canEdit || canSaveFile || favorite) && <><Button ref={editorAnchor} size="small" variant="glass" icon="i-more" iconOnly aria-label={t('next.controls.more')} onClick={() => setMore(value => !value)}/><Menu open={more} onOpenChange={setMore} title={title} anchorRef={editorAnchor}>{favorite && <MenuItem icon="i-heart" selected={favorite.selected} disabled={favorite.busy} onSelect={favorite.onSelect}>{favorite.label}</MenuItem>}{canSaveFile && <MenuItem disabled={saving} onSelect={() => {void saveFile();}}>{t('next.reader.saveFile')}</MenuItem>}{canEdit && <MenuGroup ownerOnly label={<span>{t('next.browse.server')}<ServerMark size={22}/></span>}><MenuItem onSelect={() => {if (context.isCurrent()) setEditing(true);}}>{t('entry.editMetadata')}</MenuItem><MenuItem disabled={rereading} onSelect={() => {if (context.isCurrent()) void reread();}}>{t('next.reader.readFileAgain')}</MenuItem></MenuGroup>}</Menu></>}{chooseVersion ? <><Button ref={anchor} size="small" variant="glass" onClick={() => setMenu(value => !value)} aria-label={t('next.reader.version')}>
-      {version.format.toUpperCase()}<Icon name="i-down" size={14}/></Button>
-      <Menu open={menu} onOpenChange={setMenu} title={t('next.reader.version')} anchorRef={anchor}>{eligibility.versions.map(candidate => <MenuItem key={candidate.sourceId}
-        selected={candidate.sourceId === sourceId} disabled={!candidate.inventoryAvailable} onSelect={() => {if (!factsCurrent()) return; pickVersion(candidate, attempt, sourceId);}} description={defaultI18n.bytes(candidate.size)}>
-        {candidate.format.toUpperCase()}</MenuItem>)}</Menu></> : null}</>}/>
+    under={<><Button ref={editorAnchor} size="small" variant="glass" icon="i-more" iconOnly aria-label={t('next.controls.more')} onClick={() => {if (factsCurrent()) setMore(value => !value);}}/>
+      <Menu open={more} onOpenChange={setMore} title={title} anchorRef={editorAnchor}>
+        {favorite && <MenuItem icon="i-heart" selected={favorite.selected} disabled={favorite.busy} onSelect={favorite.onSelect}>{favorite.label}</MenuItem>}
+        {canSaveFile && <MenuItem disabled={saving} onSelect={() => {void saveFile();}}>{t('next.reader.saveFile')}</MenuItem>}
+        {chooseVersion && <MenuItem icon="i-book" onSelect={() => {if (factsCurrent()) {setMore(false); setMenu(true);}}}>{t('next.reader.readDifferentVersion')}</MenuItem>}
+        <MenuItem icon="i-info" onSelect={() => {if (factsCurrent()) {setMore(false); setFileInfo(true);}}}>{t('next.overlays.fileInfo')}</MenuItem>
+        {canEdit && <MenuGroup ownerOnly label={<span>{t('next.browse.server')}<ServerMark size={22}/></span>}><MenuItem onSelect={() => {if (context.isCurrent()) setEditing(true);}}>{t('entry.editMetadata')}</MenuItem><MenuItem disabled={rereading} onSelect={() => {if (context.isCurrent()) void reread();}}>{t('next.reader.readFileAgain')}</MenuItem></MenuGroup>}
+      </Menu></>}/>
+    <Dialog open={fileInfo} onOpenChange={setFileInfo} title={t('next.overlays.fileInfo')} returnFocusRef={editorAnchor}>
+      {eligibility.versions.map(candidate => <ReadBookFacts key={candidate.sourceId} heading={candidate.format.toUpperCase()} facts={[
+        {id: 'format', label: t('next.reader.format'), value: candidate.format.toUpperCase()},
+        {id: 'size', label: t('next.reader.fileSize'), value: defaultI18n.bytes(candidate.size)},
+      ]}/>)}</Dialog>
+    <Dialog open={menu} onOpenChange={setMenu} title={t('next.reader.readDifferentVersion')} returnFocusRef={editorAnchor}>
+      {eligibility.versions.map(candidate => <Button key={candidate.sourceId} variant="glass" aria-pressed={candidate.sourceId === sourceId} disabled={!candidate.inventoryAvailable || candidate.sourceId === sourceId}
+        onClick={() => {if (factsCurrent()) pickVersion(candidate, attempt, sourceId);}}>{candidate.format.toUpperCase()}<span>{defaultI18n.bytes(candidate.size)}</span></Button>)}
+    </Dialog>
     {editing && canEdit && <ReadMetadata context={context} reading={captured.context} sourceId={manifest.sourceId} format={manifest.format} itemId={eligibility.itemId} anchor={editorAnchor} onClose={() => {if (!current(original)) return; setEditing(false); refresh(original);}}/>}
     <ReadBookSections labels={{contents: t('next.reader.contents'), details: t('next.reader.details')}}
       contents={detail.targets?.length ? <><h2>{t('next.reader.contents')}</h2><ReaderContents entries={detailContents(manifest.contents ?? [], index => open(index))}/></> : undefined} details={details}/></>;

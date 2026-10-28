@@ -4,19 +4,24 @@ import {cardText, type FactPart} from '@core/presentation/kit-model';
 import {LibraryContentService, readListeningSimilar, type ContentEntry, type ContentProjection, type LibraryContentSnapshot} from '@core/library-content.ts';
 import {albumBadgeText} from '@core/music-badges.ts';
 import {formatSignalText} from '@core/music-signal.ts';
+import {browseNameId} from '@core/presentation/browse-toolbar.ts';
+import {serverTextLabel} from '@core/presentation/server-text.ts';
+import {serviceI18n} from '@core/presentation/service-text.ts';
 import {defaultI18n} from '@i18n';
-import {AmbientArt, Artwork} from '../../kit/artwork';
+import {AmbientArt} from '../../kit/artwork';
 import {Button} from '../../kit/controls';
 import {Lockup} from '../../kit/layout';
-import {TrackTable} from '../../kit/browse';
+import {SortMenu, TrackTable} from '../../kit/browse';
 import {Menu} from '../../kit/overlays';
-import {TitleFactsLine} from '../../kit/title/TitleParts';
+import {TitleFactsLine, TitleProse} from '../../kit/title/TitleParts';
 import {useShellWidth} from '../../shell/viewport';
 import {runScreenCommand, screenLifetime, type ScreenContext} from './context';
 import {calendarDate, entrySubject, instantDate} from './model';
 import {ScreenProblem} from './ScreenProblem';
 import {MusicEntryMenu} from './MusicEntryMenu';
 import {TitleRow} from './Detail';
+import {albumSortRoute, albumTrackGroups} from './album-model';
+import {MusicDetailLoading} from './MusicLoading';
 import styles from './album.module.css';
 
 export type AlbumActions = (entry: ContentEntry) => Readonly<{onOpen: () => void; onPlay?: () => void}>;
@@ -29,7 +34,7 @@ type OpenMenu = Readonly<{page: Page; projection: ContentProjection; seed: Conte
  * including Strict Mode replay. The server's entity supplies complete header
  * facts; track pages are read only when the person asks for the next page. */
 export function AlbumScreen({context, libraryId, albumId, onBack}: AlbumScreenProps) {
-  const phone = useShellWidth() < 1024, more = useRef<HTMLButtonElement>(null);
+  const width = useShellWidth(), phone = width < 1024, more = useRef<HTMLButtonElement>(null);
   const [page, setPage] = useState<Page>(), [retry, setRetry] = useState(0);
   const [similar, setSimilar] = useState<Similar>(), [menu, setMenu] = useState<OpenMenu>();
   useEffect(() => {
@@ -65,11 +70,16 @@ export function AlbumScreen({context, libraryId, albumId, onBack}: AlbumScreenPr
   const snapshot = active?.snapshot, album = projection?.entity;
   if (!active || !snapshot || !projection || !album || album.id !== albumId || album.kind !== 'album' || album.libraryId !== libraryId) {
     if (snapshot?.phase === 'error' || snapshot?.phase === 'refresh-required') return <ScreenProblem context={context} error={snapshot.error} retry={() => setRetry(value => value + 1)}/>;
-    return <p className={styles.loading} role="status">{t('music.loading')}</p>;
+    return <div className={styles.page}><div className={styles.bar} /><MusicDetailLoading kind="album" /></div>;
   }
   const {life, service} = active;
   const current = () => life.current() && service.getSnapshot().phase === 'ready' && service.getSnapshot().projection === projection;
-  const songs = snapshot.appended.flatMap(section => section.entries).filter(entry => entry.kind === 'song');
+  const groups = albumTrackGroups(snapshot.appended), songs = groups.flatMap(group => group.entries);
+  const discNumbers = new Set(groups.flatMap(group => group.discNumber === undefined ? [] : [group.discNumber]));
+  const songSections = snapshot.appended.filter(section => section.entries.some(entry => entry.kind === 'song'));
+  const sorts = projection.sorts.map(sort => ({...sort, defaultDirection: sort.directions[0] ?? 'asc' as const, expensive: false, applicableKinds: []}));
+  const selectedSort = sorts.find(sort => sort.id === projection.query.sort);
+  const sort = {field: projection.query.sort, direction: projection.query.direction === 'desc' ? 'desc' as const : 'asc' as const, flippable: (selectedSort?.directions.length ?? 0) > 1, reshufflable: false};
   const songCurrent = (song: ContentEntry) => () => current() && service.getSnapshot().appended.some(section => section.entries.includes(song));
   const play = (song: ContentEntry) => {
     const witness = songCurrent(song);
@@ -96,17 +106,19 @@ export function AlbumScreen({context, libraryId, albumId, onBack}: AlbumScreenPr
   fact(t('title.albumType'), album.albumType);
   fact(t('title.genres'), genres.join(', '));
   fact(t('title.added'), instantDate(album.addedAt, locale));
+  const hasDetails = !!album.overview || details.length > 0;
   return <div className={styles.page}>
+    <AmbientArt className={styles.ambient} treatment="wash" source={context.artwork.ambient(album.posterUrl)} />
     <div className={styles.bar}>
       {onBack && <Button variant="icon" icon="i-left" iconOnly aria-label={t('next.states.back')} onClick={() => runScreenCommand(context, () => {if (life.current()) onBack();})}/>}
       <span className={styles.barTitle}>{album.title}</span>
     </div>
     <header className={styles.hero}>
-      <span className={styles.art}><AmbientArt className={styles.ambient} treatment="phone" source={context.artwork.ambient(album.posterUrl)} foreground={context.artwork.foreground(album.posterUrl, 760, 1)}/><Artwork source={context.artwork.foreground(album.posterUrl, 760, 1)} alt=""/></span>
+      <span className={styles.art}><AmbientArt treatment="cover" source={context.artwork.ambient(album.posterUrl)} foreground={context.artwork.foreground(album.posterUrl, 760, 1)} /></span>
       <div className={styles.copy}>
         <p className={styles.kind}>{t('next.browse.album')}</p>
         <Lockup title={album.title} long={long} platform={phone ? 'phone-web' : 'desktop'} className={styles.title}
-          style={{fontSize: phone ? (long ? 42 : 56) : (long ? 68 : 104), lineHeight: .98}}/>
+          style={{fontSize: undefined, fontWeight: undefined, lineHeight: undefined}}/>
         <div className={styles.meta}>
           {album.artist?.name && <span className={styles.by}>{album.artist.name}</span>}
           <TitleFactsLine parts={metaParts}/>
@@ -124,19 +136,30 @@ export function AlbumScreen({context, libraryId, albumId, onBack}: AlbumScreenPr
         </div>
       </div>
     </header>
-    <section className={details.length > 0 ? styles.split : styles.full}>
+    <section className={hasDetails ? styles.split : styles.full}>
       <div className={styles.tracks}>
-        <TrackTable variant="album" platform={phone ? 'phone' : 'desktop'} label={t('music.allSongs')} totalCount={songs.length}
-          rows={songs.map((song, index) => ({id: song.id, number: song.trackNumber ?? index + 1, plays: song.plays, playable: current() && !!song.playback && song.available !== false && !song.missing && song.libraryId === libraryId, text: cardText(entrySubject(song), 'song-row', env)}))}
-          onPlay={id => {const song = songs.find(song => song.id === id); if (song) play(song);}}
-          onMore={(id, anchor) => {const song = songs.find(song => song.id === id); if (song && anchor) open(song, anchor);}}/>
+        {sorts.length > 0 && <div className={styles.sortBar}><SortMenu sorts={sorts} value={sort}
+          label={value => {const id = browseNameId(value.id, value.labelKey, defaultI18n.has); return id && defaultI18n.has(id) ? t(id) : value.labelKey;}}
+          onValueChange={value => runScreenCommand(context, () => {const route = albumSortRoute(projection, value); if (route && current()) return service.select(route);})} /></div>}
+        {groups.map(group => {
+          const discNumber = group.discNumber !== undefined && (group.discNumber > 1 || discNumbers.size > 1) ? group.discNumber : undefined;
+          const heading = discNumber === undefined && songSections.length > 1 ? serverTextLabel(serviceI18n(), group.section.heading) : undefined;
+          return <div className={styles.trackGroup} key={group.key}>
+            {heading && <h3 className={styles.discHeading}>{heading}</h3>}
+            <TrackTable variant="album" platform={phone ? 'phone' : 'desktop'} label={discNumber === undefined ? heading ?? t('music.allSongs') : t('next.browse.disc', {number: discNumber})} discNumber={discNumber}
+              rows={group.entries.map((song, index) => ({id: song.id, number: song.trackNumber ?? index + 1, plays: song.plays, playable: current() && !!song.playback && song.available !== false && !song.missing && song.libraryId === libraryId, text: cardText(entrySubject(song), 'song-row', env)}))}
+              onPlay={id => {const song = group.entries.find(song => song.id === id); if (song) play(song);}}
+              onMore={(id, anchor) => {const song = group.entries.find(song => song.id === id); if (song && anchor) open(song, anchor);}} />
+          </div>;
+        })}
         {snapshot.appended.filter(section => section.nextCursor).map(section => <Button key={section.id} variant="glass" disabled={snapshot.phase !== 'ready'} onClick={() => runScreenCommand(context, () => {if (current()) return service.next(section.id);})}>{t('next.settings.loadMore')}</Button>)}
         {snapshot.phase === 'loading' && <p role="status">{t('music.loading')}</p>}
         {(snapshot.phase === 'error' || snapshot.phase === 'refresh-required') && <ScreenProblem context={context} error={snapshot.error} retry={() => setRetry(value => value + 1)}/>}
       </div>
-      {details.length > 0 && <aside className={styles.aside}>
+      {hasDetails && <aside className={styles.aside}>
         <h2 className={styles.detailsTitle}>{t('title.details')}</h2>
-        <dl className={styles.facts}>{details.map(([label, value]) => <Fragment key={label}><dt>{label}</dt><dd>{value}</dd></Fragment>)}</dl>
+        {album.overview && <><TitleProse className={styles.overview} markup={album.overview} />{album.overviewSource && <small className={styles.source}>{t('web.person.biographyFrom', {source: album.overviewSource})}</small>}</>}
+        {details.length > 0 && <dl className={styles.facts}>{details.map(([label, value]) => <Fragment key={label}><dt>{label}</dt><dd>{value}</dd></Fragment>)}</dl>}
       </aside>}
     </section>
     {recommendations && recommendations.entries.length > 0 && <TitleRow heading={t('music.moreLikeThis')}

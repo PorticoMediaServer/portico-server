@@ -8,11 +8,11 @@ import {useLayoutPresence} from './presence';
 import {useListRemovalFocus} from './use-list-removal-focus';
 import styles from './layout.module.css';
 
-export type RowProps = Omit<HTMLAttributes<HTMLElement>, 'title'> & {heading: ReactNode; subtitle?: ReactNode; actions?: ReactNode; actionsPlacement?: 'trailing' | 'inline'; onSeeAll?: () => void; seeAllHref?: string; seeAllLabel?: string; platform?: LayoutPlatform};
-export function Row({heading, subtitle, actions, actionsPlacement = 'trailing', onSeeAll, seeAllHref, seeAllLabel = defaultI18n.t('next.layout.seeAll'), platform = 'desktop', children, className, ...props}: RowProps) {
+export type RowProps = Omit<HTMLAttributes<HTMLElement>, 'title'> & {heading: ReactNode; subtitle?: ReactNode; actions?: ReactNode; actionsPlacement?: 'trailing' | 'inline'; onSeeAll?: () => void; seeAllHref?: string; seeAllLabel?: string; platform?: LayoutPlatform; sizeClass?: 'medium'};
+export function Row({heading, subtitle, actions, actionsPlacement = 'trailing', onSeeAll, seeAllHref, seeAllLabel = defaultI18n.t('next.layout.seeAll'), platform = 'desktop', sizeClass, children, className, ...props}: RowProps) {
   const id = useId(), type = platformType(platform);
-  return <section {...props} className={[styles.row, className].filter(Boolean).join(' ')} data-platform={platform} aria-labelledby={id}>
-    <header className={styles.rowHead}><h2 id={id} style={layoutType(type.rowHeading)}>{heading}</h2>
+  return <section {...props} className={[styles.row, className].filter(Boolean).join(' ')} data-platform={platform} data-size-class={sizeClass} aria-labelledby={id}>
+    <header className={styles.rowHead}><h2 id={id} style={{...layoutType(type.rowHeading), ...(sizeClass === 'medium' ? {fontSize: 21} : {})}}>{heading}</h2>
       {subtitle && <span className={styles.rowSubtitle} style={layoutType(type.rowSubtitle)}>{subtitle}</span>}
       {actions && <div className={styles.rowActions} data-placement={actionsPlacement}>{actions}</div>}
       {seeAllHref ? <a className={styles.seeAll} href={seeAllHref} onClick={onSeeAll} style={layoutType(type.seeAll)}>{seeAllLabel}<Icon name="i-right" size={16} /></a>
@@ -64,7 +64,7 @@ export function Shelf<T>({items, getKey, renderItem, onItemFocus, onVisibleRange
       const focusable = target.querySelector<HTMLElement>('[data-layout-primary],button:not(:disabled),a[href],[tabindex="0"]');
       if (!focusable) return;
       event.preventDefault(); focusable.focus({preventScroll: true});
-      const inset = platform === 'tv' ? 200 : platform === 'desktop' ? 64 : 20;
+      const inset = platform === 'tv' ? 200 : platform === 'desktop' ? 64 : props.sizeClass === 'medium' ? 28 : 20;
       scrollLayout(element, anchoredOffset(target.offsetLeft, target.offsetLeft + target.offsetWidth, element.clientWidth, element.scrollLeft, inset), 0, motion.reduced, event.repeat);
     }} onBlurCapture={event => { const next = event.relatedTarget as HTMLElement | null; if (!next || !event.currentTarget.contains(next) || !next.closest('[data-item-id]')) setFocusedKey(null); }}>
       {presence.present.map(item => { const key = getKey(item), index = items.findIndex(value => getKey(value) === key), leaving = presence.leaving.has(key); return <div key={key} className={styles.shelfItem} style={itemWidth ? {width: itemWidth} : undefined} data-layout-item={key} data-leaving={leaving || undefined} inert={leaving} aria-hidden={leaving || undefined} data-shelf-index={index} data-item-id={key}

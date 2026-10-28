@@ -33,6 +33,7 @@
 .warning { background:color-mix(in srgb,var(--color-amber) 9%,transparent);border:1px solid color-mix(in srgb,var(--color-amber) 22%,transparent); }
 .error { color:var(--color-record);background:color-mix(in srgb,var(--color-record) 9%,transparent);margin:0; }
 .success p,.warning p { margin:5px 0 0; }.warning ul { margin-bottom:0; }
+.facts { display:flex;flex-wrap:wrap;align-items:baseline;gap:4px 10px; }
 
 .accountHeading { margin:0;padding:16px 22px;font-size:var(--type-body-size);font-weight:var(--type-button-weight);border-bottom:1px solid var(--color-line-soft); }
 

@@ -26,6 +26,7 @@ import {WatchEndCardView} from './EndCard';
 import {LiveChrome} from '../live/LiveChrome';
 import type {LiveChromePort} from '../live/live-chrome-types';
 import {WatchPromptFocus, type PromptFocusHost} from './prompt-focus';
+import {bufferedSegments} from './buffered-ranges';
 
 const t = defaultI18n.t;
 const subscribeWindow = (changed: () => void) => { window.addEventListener('resize', changed); return () => window.removeEventListener('resize', changed); };
@@ -252,6 +253,8 @@ export function WatchScreen({binding, snapshot, expanded, onCollapse, onControls
   const activeScrub = scrub && fence && sameFence(scrub.fence, fence) && scrub.snapshot.authority === snapshot.authority ? scrub : null;
   const drawnPosition = activeScrub?.seconds ?? position;
   const previewSeconds = activeScrub?.seconds ?? hoverSeconds;
+  const buffered = bufferedSegments(fence ? binding.runtime.bufferedRanges(fence) : [], bounds);
+  const hoverPercent = bounds && previewSeconds !== null ? Math.min(100, Math.max(0, (previewSeconds - bounds.start) / (bounds.end - bounds.start) * 100)) : null;
   const trickplay = surfaces?.trickplay;
   const preview = open && chromeVisible && !panel && !more && !shortcuts ? watchPreviewFrame(snapshot, trickplay, previewSeconds) : null;
   const endsAt = presentation?.playing && duration > position && presentation.rate > 0
@@ -413,7 +416,10 @@ export function WatchScreen({binding, snapshot, expanded, onCollapse, onControls
         <div className={styles.center} inert={!chromeVisible || videoGesture?.active || undefined}>{transport}</div>
         <div className={styles.bottom} inert={!chromeVisible || videoGesture?.active || undefined}>
           <div className={styles.seek}>
-            <span className={styles.rail}><i style={{width: `${bounds ? Math.min(100, Math.max(0, (drawnPosition - bounds.start) / (bounds.end - bounds.start) * 100)) : 0}%`}} />
+            <span className={styles.rail}>
+              {buffered.map((range, index) => <span key={index} className={styles.buffered} aria-hidden="true" style={{left: `${range.left}%`, width: `${range.width}%`}} />)}
+              <i style={{width: `${bounds ? Math.min(100, Math.max(0, (drawnPosition - bounds.start) / (bounds.end - bounds.start) * 100)) : 0}%`}} />
+              {hoverPercent !== null && <><span className={styles.hoverFill} aria-hidden="true" style={{width: `${hoverPercent}%`}} /><span className={styles.hoverLine} aria-hidden="true" style={{left: `${hoverPercent}%`}} /></>}
               {presentation?.policy?.markers.map(marker => duration > 0 && <span key={marker.id} className={styles.marker} data-kind={marker.kind}
                 style={{...(marker.kind === 'credits' ? {right: `${(duration - marker.endSeconds) / duration * 100}%`} : {left: `${marker.startSeconds / duration * 100}%`}), width: `${(marker.endSeconds - marker.startSeconds) / duration * 100}%`}} />)}
               {preview && bounds && previewSeconds !== null && <ScrubPreview frame={preview.frame} source={preview.source} seconds={previewSeconds} phone={mobile}
@@ -427,7 +433,7 @@ export function WatchScreen({binding, snapshot, expanded, onCollapse, onControls
                   event.currentTarget.setPointerCapture(event.pointerId);
                 }}
                 onPointerMove={event => {
-                  if (coarsePointer || scrubDrag.current || event.pointerType !== 'mouse' || !bounds || !trickplay) return;
+                  if (coarsePointer || scrubDrag.current || event.pointerType !== 'mouse' || !bounds) return;
                   const rect = event.currentTarget.getBoundingClientRect();
                   if (rect.width > 0) setHoverSeconds(watchSeek(snapshot, bounds.start + (event.clientX - rect.left) / rect.width * (bounds.end - bounds.start)));
                 }}
@@ -485,8 +491,8 @@ export function WatchScreen({binding, snapshot, expanded, onCollapse, onControls
     }}>
       {surfaces?.body}
     </div>
-    {open && surfaces?.render({panel, snapshot, available: surfaces.available, reportProblem: surfaces.more?.find(action => action.id === 'report-problem'), layout: width < 1024 ? 'phone' : 'desktop', phoneTop: portrait ? geometry?.picture ? geometry.picture.top + geometry.picture.height : width * 9 / 16 + (window.visualViewport?.offsetTop ?? 0) : 0, close: () => setPanel(null), show: next => showPanel(next), returnFocusRef: panelAnchor})}
-    <Menu open={more} onOpenChange={setMore} title={t('player.more')} anchorRef={moreAnchor} returnFocusRef={moreAnchor} presentation="anchored" width={300} items={menuItems} />
+    {open && surfaces?.render({panel, snapshot, available: surfaces.available, reportProblem: surfaces.more?.find(action => action.id === 'report-problem'), layout: width < 1024 ? 'phone' : 'desktop', landscape: width < 1024 && width > height, phoneTop: portrait ? geometry?.picture ? geometry.picture.top + geometry.picture.height : width * 9 / 16 + (window.visualViewport?.offsetTop ?? 0) : 0, close: () => setPanel(null), show: next => showPanel(next), returnFocusRef: panelAnchor})}
+    <Menu className={styles.playerMenu} open={more} onOpenChange={setMore} title={t('player.more')} anchorRef={moreAnchor} returnFocusRef={moreAnchor} presentation="anchored" width={300} items={menuItems} />
     <KeyboardShortcuts open={shortcuts} onOpenChange={setShortcuts} skipBackSeconds={binding.skips.back} skipForwardSeconds={binding.skips.forward} returnFocusRef={moreAnchor} />
   </div>;
 }

@@ -54,3 +54,10 @@ export function anchoredOffset(start: number, end: number, viewport: number, cur
   if (end > current + viewport - inset) return Math.max(0, end - viewport + inset);
   return current;
 }
+
+/** Keep at most one active interaction mounted while the visible window moves past it. */
+export function gridRenderIndices(first: number, last: number, total: number, pinned?: number): readonly number[] {
+  const indices = Array.from({length: Math.max(0, last - first + 1)}, (_, offset) => first + offset);
+  if (pinned !== undefined && Number.isInteger(pinned) && pinned >= 0 && pinned < total && (pinned < first || pinned > last)) indices.push(pinned);
+  return indices.sort((a, b) => a - b);
+}

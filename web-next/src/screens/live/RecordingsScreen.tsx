@@ -214,7 +214,7 @@ export function UpcomingView({context, controller, snapshot, now, onResolve, con
     {!conflicted.length && !current.length && !later.length && <StateView title={t('recordings.noneScheduled')} body={t('recordings.noneScheduledBody')}/>}
     <RecordingsPager controller={controller} snapshot={snapshot}/>
     <Dialog open={!!shown} onOpenChange={open => {if (!open) closeShown(shown);}} title={shown?.programme.title} description={shown ? rangeOf(shown) : undefined} width={440}
-      footer={<Button variant="glass" onClick={() => closeShown(shown)}>{t('next.overlays.close')}</Button>}>{shown && <p className={styles.dialogText}>{recordingStateLabel(shown.state)}{shown.reason && <> · {recordingReason(shown.reason)}</>}</p>}</Dialog>
+      footer={<Button variant="glass" onClick={() => closeShown(shown)}>{t('next.overlays.close')}</Button>}>{shown && <p className={`${styles.dialogText} ${styles.dialogFacts}`}><span>{recordingStateLabel(shown.state)}</span>{shown.reason && <span>{recordingReason(shown.reason)}</span>}</p>}</Dialog>
   </div>;
 }
 
@@ -306,7 +306,7 @@ export function HistoryView({snapshot, now, controller}: {controller: Recordings
     : <StateView title={t('recordings.noneRecorded')} body={t('recordings.noneRecordedBody')}/>}
     <RecordingsPager controller={controller} snapshot={snapshot}/>
     <Dialog open={!!shown} onOpenChange={open => {if (!open) closeShown(shown);}} title={shown?.programme.title} description={shown ? rangeOf(shown) : undefined} width={440}
-      footer={<Button variant="glass" onClick={() => closeShown(shown)}>{t('next.overlays.close')}</Button>}>{shown && <p className={styles.dialogText}>{recordingStateLabel(shown.state)}{shown.reason && <> · {recordingReason(shown.reason)}</>}</p>}</Dialog>
+      footer={<Button variant="glass" onClick={() => closeShown(shown)}>{t('next.overlays.close')}</Button>}>{shown && <p className={`${styles.dialogText} ${styles.dialogFacts}`}><span>{recordingStateLabel(shown.state)}</span>{shown.reason && <span>{recordingReason(shown.reason)}</span>}</p>}</Dialog>
   </div>;
 }
 

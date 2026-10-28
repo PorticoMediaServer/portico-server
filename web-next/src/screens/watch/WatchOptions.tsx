@@ -3,7 +3,7 @@ import type {I18n} from '@i18n';
 import {Segmented,Switch} from '../../kit/controls';
 import {TrackChoices} from '../../kit/media';
 import {Icon, type IconName} from '../../kit/Icon';
-import {BottomSheet,Menu} from '../../kit/overlays';
+import {BottomSheet,Dialog,Menu} from '../../kit/overlays';
 import type {WatchPanelContext} from './types';
 import {phoneOptionRows,type WatchPanelModel,type WatchRadioChoice} from './panel-model';
 import styles from './panels.module.css';
@@ -132,7 +132,7 @@ export function WatchOptions({model,context,i18n,reportError,openSettings,info}:
   if(event.key==='Escape'){event.preventDefault();event.stopPropagation();context.close();}
   else if(event.defaultPrevented&&['ArrowLeft','ArrowRight','ArrowUp','ArrowDown'].includes(event.key))event.stopPropagation();
  }}>
-  {model.subtitles.length>0&&<div data-section="subtitles"><TrackChoices title={t('player.opt.subtitles')} choices={model.subtitles} layout={context.layout} onSelect={model.selectSubtitle} reportError={reportError} t={t}/>{model.subtitleTiming&&<TimingRow timing={model.subtitleTiming} reportError={reportError} t={t}/>}{model.subtitleAdditions.length>0&&<div className={styles.additions}><TrackChoices title={t('player.opt.notAdded')} choices={model.subtitleAdditions} layout={context.layout} onSelect={model.selectSubtitle} onAdd={id=>model.selectSubtitle(id)} reportError={reportError} t={t}/></div>}{model.subtitleForced&&<label className={styles.forcedRow}><Switch checked={model.subtitleForced.only} onCheckedChange={value=>{try{model.subtitleForced?.set(value);}catch(error){reportError(error);}}}/><span><b>{t('player.subtitles.forcedOnly')}</b><small>{t('player.subtitles.forcedOnlyHelp')}</small></span></label>}{model.subtitleSearch&&<div className={styles.searchRow} aria-disabled="true"><span className={styles.searchLabel}><Icon name="i-dl" size={18}/>{t('player.opt.findSubtitles')}</span><p className={styles.searchWhy}>{model.subtitleSearch.reason}</p></div>}</div>}
+  {model.subtitles.length>0&&<div data-section="subtitles"><TrackChoices title={t('player.opt.subtitles')} choices={model.subtitles} layout={context.layout} onSelect={model.selectSubtitle} reportError={reportError} t={t}/>{model.subtitleTiming&&<TimingRow timing={model.subtitleTiming} reportError={reportError} t={t}/>}{model.subtitleAdditions.length>0&&<div className={styles.additions}><TrackChoices title={t('player.opt.notAdded')} choices={model.subtitleAdditions} layout={context.layout} onSelect={model.selectSubtitle} onAdd={id=>model.selectSubtitle(id)} reportError={reportError} t={t}/></div>}{model.subtitleForced&&<label className={styles.forcedRow}><span><b>{t('player.subtitles.forcedOnly')}</b><small>{t('player.subtitles.forcedOnlyHelp')}</small></span><Switch checked={model.subtitleForced.only} onCheckedChange={value=>{try{model.subtitleForced?.set(value);}catch(error){reportError(error);}}}/></label>}{model.subtitleSearch&&<div className={styles.searchRow} aria-disabled="true"><span className={styles.searchLabel}><Icon name="i-dl" size={18}/>{t('player.opt.findSubtitles')}</span><p className={styles.searchWhy}>{model.subtitleSearch.reason}</p></div>}</div>}
   {(model.audio.length>0||model.quality.length>0)&&<div>
    {model.audio.length>0&&<div data-section="audio"><TrackChoices title={t('player.opt.audio')} choices={model.audio} layout={context.layout} onSelect={chooseAudio} reportError={reportError} t={t}/>{audioFailure}{model.audioNotes.length>0&&<div className={styles.optionFoot}>{model.audioNotes.map(note=><span key={note}>{note}</span>)}</div>}</div>}
    {model.quality.length>0&&<div data-section="quality"><RadioColumn title={t('player.opt.quality')} rows={model.quality} select={model.selectQuality} reportError={reportError}/>{model.qualityNotes.length>0&&<div className={styles.optionFoot}>{model.qualityNotes.map(note=><span key={note}>{note}</span>)}</div>}</div>}
@@ -148,11 +148,11 @@ export function WatchOptions({model,context,i18n,reportError,openSettings,info}:
   {model.subtitleStyle&&<div data-section="style" className={styles.column}>
    <h3>{t('player.opt.subtitleStyle')}</h3>
    <p className={styles.styleLabel}>{t('settings.row.subtitleSize')}</p>
-   <Segmented className={styles.speeds} aria-label={t('settings.row.subtitleSize')} value={model.subtitleStyle.size}
+   <Segmented className={styles.styleSegments} aria-label={t('settings.row.subtitleSize')} value={model.subtitleStyle.size}
     items={SUBTITLE_SIZES.map(value=>({value,label:t(SIZE_LABEL[value])}))}
     onValueChange={value=>{const next=SUBTITLE_SIZES.find(size=>size===value);if(next)model.subtitleStyle?.set({size:next});}}/>
    <p className={styles.styleLabel}>{t('settings.row.subtitleBackground')}</p>
-   <Segmented className={styles.speeds} aria-label={t('settings.row.subtitleBackground')} value={model.subtitleStyle.background}
+   <Segmented className={styles.styleSegments} aria-label={t('settings.row.subtitleBackground')} value={model.subtitleStyle.background}
     items={SUBTITLE_BACKGROUNDS.map(value=>({value,label:t(BACKGROUND_LABEL[value])}))}
     onValueChange={value=>{const next=SUBTITLE_BACKGROUNDS.find(background=>background===value);if(next)model.subtitleStyle?.set({background:next});}}/>
   </div>}
@@ -170,7 +170,10 @@ export function WatchOptions({model,context,i18n,reportError,openSettings,info}:
   <RadioRows label={t('player.opt.sleepTimer')} rows={[0,15,30,45,60,90].map(minutes=>({id:String(minutes),label:minutes?t('player.opt.minutes',{count:minutes}):t('player.opt.off'),selected:model.sleepTimer?.minutes===minutes,enabled:true}))}
    select={id=>{if(!model.isCurrent())return;model.sleepTimer?.set(Number(id));}} reportError={reportError}/>
  </div>:null;
- return context.layout==='phone'?<BottomSheet open title={section||phoneSleep?<span className={styles.subHeader}><button type="button" className={styles.back} aria-label={t('next.dock.backToOptions')} onClick={()=>{if(phoneSleep)closeSleep();else context.show('options');}}><Icon name="i-left" size={20}/></button><span>{phoneSleep?t('player.opt.sleepTimer'):section?sectionTitle(section):''}</span></span>:t('next.dock.options')}
+ const phoneTitle=section||phoneSleep?<span className={styles.subHeader}><button type="button" className={styles.back} aria-label={t('next.dock.backToOptions')} onClick={()=>{if(phoneSleep)closeSleep();else context.show('options');}}><Icon name="i-left" size={20}/></button><span>{phoneSleep?t('player.opt.sleepTimer'):section?sectionTitle(section):''}</span></span>:t('next.dock.options');
+ if(context.layout==='phone'&&context.landscape)return <Dialog open responsive={false} placement="right" width={356} className={styles.landscapeOptions} headerClassName={styles.landscapeHeader} title={phoneTitle}
+  onOpenChange={open=>{if(!open)context.close();}} returnFocusRef={context.returnFocusRef}>{phoneSleep??(section?subPanel:list)}</Dialog>;
+ return context.layout==='phone'?<BottomSheet open title={phoneTitle}
   headerAction={<button type="button" className={styles.done} onClick={context.close}>{t('action.done')}</button>} showCloseButton={false}
   onOpenChange={open=>{if(!open)context.close();}} returnFocusRef={context.returnFocusRef}
   detents={[Math.max(1,(typeof window==='undefined'?context.phoneTop:window.visualViewport?.height??window.innerHeight)-context.phoneTop)]}>{phoneSleep??(section?subPanel:list)}</BottomSheet>

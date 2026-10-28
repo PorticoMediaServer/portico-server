@@ -7,13 +7,15 @@ import type {WebQueueListSnapshot} from '../../../platform/playback/queue-list';
 import {Button, TextField} from '../../../kit/controls';
 import {Banner, Dialog} from '../../../kit/overlays';
 import {StateView} from '../../../kit/states';
+import {watchClock} from '../model';
 import styles from './listening-panel.module.css';
 const t = defaultI18n.t;
 
 /** Occurrence rows and accepted policy only. Every callback receives the exact
  * rendered queue witness; the existing owner remains the mutation authority. */
-export function ListeningQueue({snapshot, policy, policyBusy, onEdit, onPolicy, onRefresh, onMore, save, window}: Readonly<{
+export function ListeningQueue({snapshot, policy, policyBusy, onEdit, onPolicy, onRefresh, onMore, save, window, summary}: Readonly<{
   snapshot: WebQueueListSnapshot; window?: ListeningQueueWindowProps;
+  summary?: Readonly<{count: number; durationSeconds?: number; pivot: 'songs' | 'other'}>;
   policy?: Pick<QueueSnapshot, 'repeat' | 'shuffled'>;
   policyBusy?: boolean;
   onEdit?: (shown: WebQueueListSnapshot, entryId: string, action: 'remove' | -1 | 1) => void;
@@ -44,6 +46,8 @@ export function ListeningQueue({snapshot, policy, policyBusy, onEdit, onPolicy, 
       </div>}
     </div>)}</div>}
     <footer className={styles.footer}>
+      {summary && <span className={styles.summary}><span>{t('lib.count', {count: summary.count, pivot: summary.pivot})}</span>
+        {summary.durationSeconds !== undefined && <span>{watchClock(summary.durationSeconds)}</span>}</span>}
       {!window && snapshot.more !== null && snapshot.more > 0 && <span>{t('player.queueMore', {count: snapshot.more})}</span>}
       {onMore && <Button size="small" variant="glass" disabled={busy} onClick={() => onMore(snapshot)}>{t('next.live.more')}</Button>}
       {save && <Button size="small" variant="glass" disabled={busy || saving} onClick={() => save.openDialog(snapshot)}>{t('player.queueSave')}</Button>}

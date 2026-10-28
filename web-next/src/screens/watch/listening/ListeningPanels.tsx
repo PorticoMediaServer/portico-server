@@ -1,5 +1,6 @@
 import {defaultI18n} from '@i18n';
 import type {WebPlaybackRuntimeSnapshot} from '../../../platform/playback';
+import type {ShellArtwork} from '../../../shell/artwork';
 import {Button, Segmented} from '../../../kit/controls';
 import {StateView} from '../../../kit/states';
 import {LyricsPanel} from './LyricsPanel';
@@ -10,7 +11,7 @@ import {listeningSleepChoices} from './listening-owner';
 import styles from './listening-panel.module.css';
 const t = defaultI18n.t;
 /** All callbacks capture the drawn host opening and the original service page. */
-export function ListeningPanels({host, snapshot, reportError}: {host: ListeningHost; snapshot: WebPlaybackRuntimeSnapshot; reportError(error: unknown): void}) {
+export function ListeningPanels({host, snapshot, reportError, artwork, policyInTransport = false}: {host: ListeningHost; snapshot: WebPlaybackRuntimeSnapshot; artwork?: ShellArtwork; policyInTransport?: boolean; reportError(error: unknown): void}) {
   const {owner, state} = host, run = (task: () => unknown) => {try {void Promise.resolve(task()).catch(error => {if (owner.canReport(state,true)) reportError(error);});} catch (error) {if (owner.canReport(state,true)) reportError(error);}};
   // Save and editor methods publish failures only while their own command receipt
   // is live. Their rejected predecessor promises must not report through a panel
@@ -30,10 +31,16 @@ export function ListeningPanels({host, snapshot, reportError}: {host: ListeningH
     {owner.chaptersOffered()&&<Button onClick={()=>owner.show(state,'chapters')}>{t('player.opt.chapters')}</Button>}
   </div>;
   if (!owner.queueOffered() || !list?.current) return <StateView title={t('player.queueUnavailable')}/>;
-  const policy = snapshot.queueView?.queue;
-  return <ListeningQueue snapshot={list} policy={policy ? {repeat: policy.repeat, shuffled: policy.shuffled} : undefined} policyBusy={state.policyBusy}
+  const view = snapshot.queueView, policy = view?.queue;
+  const sameQueue = !!policy && policy.id === list.queueId && policy.revision === list.revision;
+  const page = state.window?.page;
+  const count = sameQueue ? view?.total ?? (page?.revision === list.revision ? page.total : undefined) : undefined;
+  const durationMs = sameQueue && view?.durationKnown === true ? view.totalDurationMs : undefined;
+  const summary = count !== undefined ? {count, pivot: snapshot.presentation?.kind === 'music' ? 'songs' as const : 'other' as const,
+    ...(durationMs === undefined ? {} : {durationSeconds: durationMs / 1000})} : undefined;
+  return <ListeningQueue snapshot={list} summary={summary} policy={!policyInTransport && policy ? {repeat: policy.repeat, shuffled: policy.shuffled} : undefined} policyBusy={state.policyBusy}
     onPolicy={(shown, intent) => inline(() => owner.policy(state, shown, intent))} onRefresh={() => inline(() => owner.reloadQueue(state))}
-    window={{snapshot: state.window, retained: state.retainedWindow, anchor: state.anchor, error: state.queueError, busy: state.policyBusy,
+    window={{artwork, snapshot: state.window, retained: state.retainedWindow, anchor: state.anchor, error: state.queueError, busy: state.policyBusy,
       onRetry: () => inline(() => owner.reloadQueue(state)), onEdit: (page, entryId, action) => inline(() => owner.queueEdit(state, page, entryId, action))}}
     save={{open: !!state.save, name: state.save?.name ?? '', progress: state.save?.progress ?? null, original: state.save?.list,
       busy: state.save?.busy, error: state.save?.error,

@@ -88,7 +88,7 @@ export function RemoteSourceDialog({api, serverId, isCurrent, reportError, tuner
         {value: '3600000', label: t('web.libraries.everyHour')}, {value: '21600000', label: t('web.libraries.every6h')},
         {value: '43200000', label: t('web.liveTv.every12h')}, {value: '86400000', label: t('web.libraries.daily')},
       ]} onValueChange={value => edit({refreshMs: Number(value)})}/>
-      {preview && <div className={styles.success} role="status"><b>{[t('server.live.channelCount', {count: preview.preview.channels}), t('server.live.programCount', {count: preview.preview.programmes})].join(' · ')}</b>
+      {preview && <div className={styles.success} role="status"><b className={styles.facts}><span>{t('server.live.channelCount', {count: preview.preview.channels})}</span><span>{t('server.live.programCount', {count: preview.preview.programmes})}</span></b>
         <p>{preview.preview.names.slice(0, 6).join(', ')}{preview.preview.names.length > 6 ? '…' : ''}</p></div>}
       {skipped && <div className={styles.warning}>{[skipped.summary, ...skipped.reasons].join(' ')}</div>}
       {confirm && <div className={styles.warning}><b>{t('web.liveTv.lanTitle')}</b><p>{t('web.liveTv.lanBody')}</p><ul>{confirm.map(root => <li key={root}>{root}</li>)}</ul></div>}

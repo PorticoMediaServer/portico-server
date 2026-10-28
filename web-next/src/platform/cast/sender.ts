@@ -168,7 +168,7 @@ export class WebCastSender {
 
   /** Invoke from the device-row click after availability. The SDK picker opens before any await.
    * The result is true only after the shared controller receives the receiver's load ACK. */
-  start(itemId: string, meta: CastMetadata, startSeconds: number, choices?: CastChoices): Promise<boolean> {
+  start(itemId: string, meta: CastMetadata, startSeconds: number, choices?: CastChoices, readStart?: () => number | undefined): Promise<boolean> {
     const controller = this.controller, context = this.context, framework = this.framework;
     if (this.disposed || this.pickerBusy || !this.snapshot.available || !controller || !context || !framework) return Promise.resolve(false);
     const operation = ++this.operation;
@@ -179,10 +179,10 @@ export class WebCastSender {
     let cancel!: () => void;
     const canceled = new Promise<boolean>(resolve => { cancel = () => resolve(false); });
     this.cancelStart = cancel;
-    const opening = this.openPicker(operation, itemId, meta, startSeconds, choices);
+    const opening = this.openPicker(operation, itemId, meta, startSeconds, choices, readStart);
     return Promise.race([opening, canceled]).finally(() => { if (this.cancelStart === cancel) this.cancelStart = undefined; });
   }
-  private async openPicker(operation: number, itemId: string, meta: CastMetadata, startSeconds: number, choices?: CastChoices): Promise<boolean> {
+  private async openPicker(operation: number, itemId: string, meta: CastMetadata, startSeconds: number, choices?: CastChoices, readStart?: () => number | undefined): Promise<boolean> {
     const controller = this.controller!, context = this.context!, framework = this.framework!;
     try {
       await context.requestSession();
@@ -190,7 +190,12 @@ export class WebCastSender {
       const session = context.getCurrentSession();
       if (!session) { controller.cancelConnecting(); return false; }
       this.device = confirmedCastDevice(session);
-      return await controller.start(this.transport(session, context, framework), itemId, meta, startSeconds, choices);
+      const transport = this.transport(session, context, framework);
+      // Read last, after the SDK picker has resolved and immediately before shared start.
+      // Undefined means the original playback/queue witness retired while the picker was open.
+      const position = readStart ? readStart() : startSeconds;
+      if (position === undefined || !Number.isFinite(position) || position < 0) {controller.cancelConnecting();return false;}
+      return await controller.start(transport, itemId, meta, position, choices);
     } catch {
       if (!this.disposed && operation === this.operation) controller.cancelConnecting();
       return false;

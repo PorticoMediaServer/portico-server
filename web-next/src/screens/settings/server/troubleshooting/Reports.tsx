@@ -1,5 +1,7 @@
+import {MetadataFacts} from '../../../../kit/MetadataFacts';
 import {useLayoutEffect, useMemo, useEffect, useRef, useState, useSyncExternalStore} from 'react';
 import {defaultI18n, type MessageId} from '@i18n';
+import {Tabs as TabsPrimitive} from 'radix-ui';
 import {type ClientReport} from '@core/client-reports.ts';
 import type {EvidenceRecord} from '@core/console.ts';
 import type {CatalogueFailure} from '@core/freshness.ts';
@@ -125,7 +127,7 @@ function ReadReport({report, source, onClose}: Readonly<{report: ClientReport; s
   const text = failed ? t('next.states.pageFailedBody') : body === undefined ? t('next.settings.loading') : body || t('server.reports.empty');
   return <Dialog open onOpenChange={open => {if (!open) close();}} size="lg" title={t('server.reports.title')} initialFocusRef={done} returnFocusRef={done}
     footer={<><Button size="small" disabled={!current()} onClick={() => {void download();}}>{t('web.diagnostics.clientReportDownload')}</Button><Button ref={done} size="small" onClick={close}>{t('next.settings.done')}</Button></>}>
-    <p className={styles.reportMeta}>{sender(report)} · {defaultI18n.dateTime(report.receivedAt)} · {defaultI18n.bytes(report.bytes)}</p>
+    <p className={styles.reportMeta}><MetadataFacts parts={[sender(report), defaultI18n.dateTime(report.receivedAt), defaultI18n.bytes(report.bytes)]} /></p>
     {downloadFailed && <p role="alert" className={styles.failure}>{t('next.states.pageFailedBody')}</p>}
     <pre className={styles.log}>{text}</pre>
   </Dialog>;
@@ -149,18 +151,20 @@ function SetAside({failures, more, onCheck}: Readonly<{failures: readonly Catalo
 
 /** What the server noted, by lane, a page at a time. */
 function Records({records, lane, next, onLane, onOlder, onLatest}: Readonly<{records: readonly EvidenceRecord[]; lane: RecordLane; next?: string; onLane: (lane: RecordLane) => void; onOlder: () => void; onLatest: () => void}>) {
-  return <section className={styles.panel}>
+  return <TabsPrimitive.Root value={lane} onValueChange={value => {const entry = LANES.find(entry => entry.id === value);if (entry) onLane(entry.id);}} asChild><section className={styles.panel}>
     <div className={styles.panelHead}><h3>{t('settings.server.records')}</h3></div>
     <p className={styles.lede}>{t('next.settings.recordsHelp')}</p>
-    <div className={styles.lanes} role="tablist">{LANES.map(entry => <button key={entry.id} type="button" role="tab" aria-selected={entry.id === lane}
-      className={styles.lane} onClick={() => onLane(entry.id)}>{t(entry.label)}</button>)}</div>
+    <TabsPrimitive.List className={styles.lanes} aria-label={t('settings.server.records')}>{LANES.map(entry => <TabsPrimitive.Trigger key={entry.id} value={entry.id}
+      className={styles.lane}>{t(entry.label)}</TabsPrimitive.Trigger>)}</TabsPrimitive.List>
+    <TabsPrimitive.Content value={lane} className={styles.lanePanel}>
     {records.length ? <ul className={styles.rows}>{records.map(record => <li key={record.sequence} className={styles.recordRow}>
       <span className={styles.level} data-level={record.severity ?? 'info'}>{levelLabel(record.severity)}</span>
       <div className={styles.reportText}><b>{sentence(record.code ?? record.action ?? '—')}{record.component ? <span className={styles.component}> {sentence(record.component)}</span> : null}</b>
-        <small>{[when(record.at), ...Object.entries(record.fields ?? {}).map(([key, value]) => `${sentence(key)} ${value}`)].filter(Boolean).join(' · ')}</small></div>
+        <small><MetadataFacts parts={[when(record.at), ...Object.entries(record.fields ?? {}).map(([key, value]) => `${sentence(key)} ${value}`)]} /></small></div>
       <span className={styles.sequence}>#{record.sequence}</span>
     </li>)}</ul> : <p className={styles.none}>{t('settings.server.records.none')}</p>}
     <div className={styles.pager}><Button variant="glass" size="small" onClick={onLatest}>{t('next.settings.recordsLatest')}</Button>
       <Button variant="glass" size="small" disabled={!next} onClick={onOlder}>{t('next.settings.recordsOlder')}</Button></div>
-  </section>;
+    </TabsPrimitive.Content>
+  </section></TabsPrimitive.Root>;
 }

@@ -49,6 +49,7 @@ export class ListeningOwner {
   private editor?: WebQueueEditOpening;
   private editorOff?: () => void;
   private operation?: object;
+  private transportPolicy?: object;
   private transition=0;
   private saveSerial=0;
   private editRequest?:object;
@@ -137,13 +138,13 @@ export class ListeningOwner {
     return ()=>opening?.controller.abort();
   }
   private detachPanel() {
-    const panel=this.panel;this.panel=undefined;this.operation=undefined;this.editRequest=undefined;this.settingsFlight=undefined;
+    const panel=this.panel;this.panel=undefined;if(this.operation!==this.transportPolicy)this.operation=undefined;this.editRequest=undefined;this.settingsFlight=undefined;
     const save=this.detachSave(),editor=this.detachEditor();
     return ()=>{try{save();}finally{try{panel?.controller.abort();}finally{editor();}}};
   }
   private retireView() {
     if(!this.view&&!this.panel)return this.transition;
-    const serial=++this.transition,view=this.view;this.view=undefined;
+    const serial=++this.transition,view=this.view;this.view=undefined;this.transportPolicy=undefined;
     const cleanup=this.detachPanel();
     try{view?.controller.abort();}finally{cleanup();}
     if(!this.dead&&this.transition===serial&&!this.view)this.publish({opening:null,panelOpening:null,window:null,retainedWindow:null,queueError:false,policyBusy:false,save:null});
@@ -191,7 +192,7 @@ export class ListeningOwner {
     const own=()=>!this.dead&&!!view&&this.view===view&&!view.controller.signal.aborted&&this.transition===serial;
     if(!own()||!this.current()||!own())return;
     this.panel={token:{},controller:new AbortController()};
-    this.publish({dockOpening:null,opening:view!.token,panelOpening:this.panel.token,panel,panelVisible:visible,focus:anchor?Object.freeze({current:anchor}):null,window:null,anchor:undefined,retainedWindow:null,queueError:false,policyBusy:false,save:null});
+    this.publish({dockOpening:null,opening:view!.token,panelOpening:this.panel.token,panel,panelVisible:visible,focus:anchor?Object.freeze({current:anchor}):null,window:null,anchor:undefined,retainedWindow:null,queueError:false,policyBusy:!!this.transportPolicy,save:null});
     if(!own())return;const shown=this.state;if(!this.admit(shown,true)||!own())return;
     if(panel==='queue')void this.reloadQueue(shown).catch(()=>{});
     else if(panel==='lyrics'&&this.lyricsOffered())void this.port!.lyrics.refresh().catch(()=>{});
@@ -316,18 +317,19 @@ export class ListeningOwner {
       else if (action === 'remove') await editor.remove(page, entryId);else await editor.move(page, entryId, action);
     } catch (error) {if (this.admit(shown, true) && this.editor === editor) this.publish({queueError: true});throw error;}
   }
-  async policy(shown: ListeningState, list: WebQueueListSnapshot, intent: V1QueuePolicyIntent) {
-    const lifetime = this.lifetime(shown, true), queue = this.port?.queue;if (!queue || this.operation) stale();
-    const token = {};this.operation = token;this.publish({policyBusy: true});
+  async policy(shown: ListeningState, list: WebQueueListSnapshot, intent: V1QueuePolicyIntent, panel = true) {
+    const lifetime = this.lifetime(shown, panel), queue = this.port?.queue;if (!queue || this.operation) stale();
+    const token = {};this.operation = token;if(!panel)this.transportPolicy=token;this.publish({policyBusy: true});
     try {
       if (!lifetime.isCurrent() || this.operation !== token) stale();await queue.policy(list, intent, lifetime);
-      if (!lifetime.isCurrent() || this.operation !== token) stale();await this.reloadQueue(this.state);
+      if (!lifetime.isCurrent() || this.operation !== token) stale();
+      if(this.state.panel==='queue'&&this.admit(this.state,true))await this.reloadQueue(this.state);
     } catch(error){
       if(this.operation===token&&lifetime.isCurrent()&&this.operation===token)this.publish({queueError:true});throw error;
     } finally {
       // Keep the slot reserved through external predicates; a retired predecessor
       // cannot publish idle over a successor started from that predicate.
-      if(this.operation===token&&lifetime.isCurrent()&&this.operation===token){this.operation=undefined;this.publish({policyBusy:false});}
+      if(this.operation===token&&lifetime.isCurrent()&&this.operation===token){this.operation=undefined;if(this.transportPolicy===token)this.transportPolicy=undefined;this.publish({policyBusy:false});}
     }
   }
   openSave(shown: ListeningState, list: WebQueueListSnapshot) {

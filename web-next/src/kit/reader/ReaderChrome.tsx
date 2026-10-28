@@ -87,7 +87,7 @@ export function ReaderChrome({title, subtitle, copy, chapter, pages, remainingIn
   const root = useRef<HTMLDivElement>(null), chrome = useRef<HTMLDivElement>(null);
   const [visible, setVisible] = useState(initiallyVisible), [focusWithin, setFocusWithin] = useState(false);
   const [focusRequest, requestFocus] = useState(0), focusedRequest = useRef(0);
-  const held = holdOpen || textSelectionActive || Boolean(panel) || focusWithin;
+  const held = holdOpen || textSelectionActive || Boolean(panel) || Boolean(hint) || focusWithin;
   const shown = visible || held;
   const show = useCallback(() => setVisible(true), []);
   const showControls = useCallback(() => {setVisible(true); requestFocus(value => value + 1);}, []);
@@ -103,20 +103,23 @@ export function ReaderChrome({title, subtitle, copy, chapter, pages, remainingIn
   useEffect(() => { if (!root.current?.contains(document.activeElement)) root.current?.focus({preventScroll: true}); }, []);
   useLayoutEffect(() => readActivity?.subscribe(readOn), [readActivity, readOn]);
   const tap = useCallback((fraction: number) => {
+    if (hint) return;
     if (panel) { onPanelDismiss?.('outside'); return; }
     const turn = readTapTurn(fraction, direction);
     if (turn === 'chrome') { if (!held) setVisible(value => !value); }
     else if (turn && tapTurnEnabled && pageTurnsEnabled && !textSelectionActive) onTurn(turn);
-  }, [panel, onPanelDismiss, direction, held, onTurn, tapTurnEnabled, pageTurnsEnabled, textSelectionActive]);
+  }, [hint, panel, onPanelDismiss, direction, held, onTurn, tapTurnEnabled, pageTurnsEnabled, textSelectionActive]);
   const key = useCallback((input: Extract<ReaderSurfaceInput, {kind: 'key'}>) => {
+    if (hint) return;
     if (input.alt || input.ctrl || input.meta) return;
     if (!shown && (input.key === 'Tab' || input.key === 'Escape')) {input.preventDefault(); showControls(); return;}
     if (input.editable || textSelectionActive) return;
     if (panel && input.key === 'Escape') { input.preventDefault(); onPanelDismiss?.('escape'); return; }
     const turn = readKeyTurn(input.key, direction, input.shift);
     if (turn && pageTurnsEnabled) { input.preventDefault(); onTurn(turn); }
-  }, [shown, showControls, panel, onPanelDismiss, direction, onTurn, pageTurnsEnabled, textSelectionActive]);
-  useEffect(() => subscribeSurfaceInput?.(input => {
+  }, [hint, shown, showControls, panel, onPanelDismiss, direction, onTurn, pageTurnsEnabled, textSelectionActive]);
+  useLayoutEffect(() => subscribeSurfaceInput?.(input => {
+    if (hint) return;
     if (input.kind === 'turned') {if (!held && !textSelectionActive) setVisible(false);}
     else if (input.kind === 'tap') tap(input.fraction);
     else if (input.kind === 'swipe') {
@@ -125,7 +128,7 @@ export function ReaderChrome({title, subtitle, copy, chapter, pages, remainingIn
       if ((turn === 'next' || turn === 'previous') && pageTurnsEnabled && !textSelectionActive) onTurn(turn);
     }
     else if (input.kind === 'key') key(input);
-  }), [subscribeSurfaceInput, tap, key, panel, onPanelDismiss, direction, pageTurnsEnabled, textSelectionActive, onTurn, held]);
+  }), [hint, subscribeSurfaceInput, tap, key, panel, onPanelDismiss, direction, pageTurnsEnabled, textSelectionActive, onTurn, held]);
   const progress = observedProgress(progression);
   useReaderChromeMotion(root, shown, reducedMotion);
   const customFixedFooter = fixedPage && fixedPageFooter != null;
@@ -136,8 +139,8 @@ export function ReaderChrome({title, subtitle, copy, chapter, pages, remainingIn
       if (readerInteractiveTarget(event.target) && (shown || event.key !== 'Tab' && event.key !== 'Escape')) return;
       key({kind: 'key', key: event.key, shift: event.shiftKey, alt: event.altKey, ctrl: event.ctrlKey, meta: event.metaKey, editable: false, preventDefault: () => event.preventDefault()});
     }}>
-    <button type="button" className={styles.srOnly} onClick={showControls}>{copy.showControls}</button>
-    <div className={styles.surface} data-reader-surface onScrollCapture={event => {
+    {!hint && <button type="button" className={styles.srOnly} onClick={showControls}>{copy.showControls}</button>}
+    <div className={styles.surface} data-reader-surface inert={!!hint} aria-hidden={hint ? true : undefined} onScrollCapture={event => {
       const target = event.target;
       // Foliate forwards its real scroll from the closed shadow root; fixed
       // pages scroll their own host/panes. Panel and control scrolls stay out.
@@ -150,9 +153,9 @@ export function ReaderChrome({title, subtitle, copy, chapter, pages, remainingIn
       const bounds = event.currentTarget.getBoundingClientRect();
       if (bounds.width > 0) tap((event.clientX - bounds.left) / bounds.width);
     }}>{children}</div>
-    {!comic && title && <div className={styles.runningTitle} aria-hidden={shown}>{title}</div>}
-    {!comic && (chapter || remainingInSection) && <div className={styles.runningFooter} aria-hidden={shown}><span>{chapter}</span><span>{remainingInSection}</span></div>}
-    <div ref={chrome} className={styles.chrome} inert={!shown} aria-hidden={!shown}
+    {!comic && title && <div className={styles.runningTitle} aria-hidden={shown || !!hint}>{title}</div>}
+    {!comic && (chapter || remainingInSection) && <div className={styles.runningFooter} aria-hidden={shown || !!hint}><span>{chapter}</span><span>{remainingInSection}</span></div>}
+    <div ref={chrome} className={styles.chrome} inert={!shown || !!hint} aria-hidden={!shown || !!hint}
       onFocusCapture={() => { setFocusWithin(true); show(); }} onBlurCapture={event => { if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setFocusWithin(false); }}>
       {comic && <div className={styles.fixedShade} data-reader-chrome-layer="shade" aria-hidden="true"/>}
       <header className={styles.top} dir="ltr" data-reader-chrome-layer="top">
@@ -183,8 +186,8 @@ export function ReaderChrome({title, subtitle, copy, chapter, pages, remainingIn
       </footer>
       {fixedPageStrip && <div className={styles.fixedStrip} data-reader-chrome-layer="strip">{fixedPageStrip}</div>}
     </div>
-    {searchNavigation && !panel && <div className={styles.searchNavigation}>{searchNavigation}</div>}
-    {panel}
+    {searchNavigation && !panel && <div className={styles.searchNavigation} inert={!!hint} aria-hidden={hint ? true : undefined}>{searchNavigation}</div>}
+    {!hint && panel}
     {hint}
   </div>;
 }

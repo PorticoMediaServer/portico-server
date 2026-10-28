@@ -1,13 +1,13 @@
 import {useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore} from 'react';
 import {defaultI18n} from '@i18n';
 import {playbackIdentity} from '@core/presentation/kit-model/index.ts';
-import {Artwork} from '../../../kit/artwork';
+import {AmbientArt, Artwork} from '../../../kit/artwork';
 import {Icon} from '../../../kit/Icon';
 import {Slider} from '../../../kit/controls';
-import {Menu, Dialog} from '../../../kit/overlays';
+import {Menu, Dialog, Banner} from '../../../kit/overlays';
 import {router} from '../../../router';
 import {ListeningNotice, SignalLine, SignalPath} from '../../../kit/media';
-import {dispatchWatch, watchClock, watchSeek, watchSeekBounds, type WatchIntent} from '../model';
+import {dispatchWatch, watchSeek, watchSeekBounds, type WatchIntent} from '../model';
 import {ListeningPanels,ListeningTabs} from '../listening/ListeningPanels';
 import type {ListeningHost} from '../listening/use-listening-owner';
 import {Button} from '../../../kit/controls';
@@ -16,7 +16,13 @@ import {watchMusicSignal} from './signal';
 import {readWatchMusicAudioFacts} from './audio-facts';
 import {fenceKey} from '../../../shell/playback-model';
 import {WatchEqualizerPanel, hostAdmit, surfaceAdmit, type WatchHostFacts, type WatchReceipt, type WatchSurfaceReceipt} from './EqualizerPanel';
-import type {WatchBindings, WatchScreenProps} from '../types';
+import type {WatchScreenProps} from '../types';
+import type {WatchPlaybackContext} from '../play-on-binding';
+import type {V1QueuePolicyIntent} from '@core/playback-v1/v1-queue-player.ts';
+import {ListeningSeek} from '../listening/ListeningSeek';
+import {musicQueueOrigin} from './queue-facts';
+import {useMusicFavorite} from './use-music-favorite';
+import ambientStyles from '../listening/listening-ambient.module.css';
 import styles from './now-playing.module.css';
 import type {MusicExpansion} from './expansion-owner';
 
@@ -27,7 +33,7 @@ const noEqualizer = () => null;
 /** The drawn expanded Now playing host for music (listening-notices frames 2 and 3).
  * It is the same authority-local runtime and the same retained media owner; this view
  * only presents facts, and the actionable DockNotice stays with the dock. */
-export function WatchMusicNowPlaying({binding, snapshot, expanded, onCollapse, phone, motion, isCurrent,listening}: Pick<WatchScreenProps, 'binding' | 'snapshot' | 'expanded' | 'onCollapse'> & {phone: boolean; motion?: MusicExpansion; isCurrent?: () => boolean;listening?:ListeningHost}) {
+export function WatchMusicNowPlaying({binding, snapshot, expanded, onCollapse, phone, motion, isCurrent,listening,playOn,context}: Pick<WatchScreenProps, 'binding' | 'snapshot' | 'expanded' | 'onCollapse'> & {phone: boolean; motion?: MusicExpansion; isCurrent?: () => boolean;listening?:ListeningHost;playOn?:(anchor?:HTMLButtonElement)=>void;context?:WatchPlaybackContext}) {
   const presentation = snapshot.presentation;
   const environment = binding.environment;
   const equalizer = binding.runtime.equalizerPort;
@@ -40,6 +46,7 @@ export function WatchMusicNowPlaying({binding, snapshot, expanded, onCollapse, p
   const identity = presentation ? playbackIdentity(presentation.subject, 'full', environment) : undefined;
   const artworkSource = presentation ? binding.artwork.foreground(presentation.posterUrl ?? presentation.backdropUrl, 560, 1, {group: 'playback', priority: 'high'}) : undefined;
   const open = expanded && presentation?.kind === 'music' && !!identity && (!isCurrent || isCurrent()) && (!motion || !!motion.scope);
+  const favorite = useMusicFavorite(context, binding.runtime, snapshot, open, binding.reportError, isCurrent);
   useLayoutEffect(() => {if (!open) {setSignalOpen(false); setEqOpen(false); setMoreOpen(false);}}, [open]);
   // Immutable rendered facts. A receipt is minted fresh for each layout setup/replay.
   const [hostReceipt, setHostReceipt] = useState<WatchReceipt | null>(null);
@@ -92,25 +99,39 @@ export function WatchMusicNowPlaying({binding, snapshot, expanded, onCollapse, p
   const bounds = watchSeekBounds(snapshot), at = presentation.positionSeconds, duration = presentation.durationSeconds;
   const can = (kind: string) => presentation.controls.includes(kind as never);
   const canSeek = can('seek') && !!bounds;
-  const artist = identity.subtitle.map(part => part.text).join(' · ');
-  const from = artist || identity.title;
+  const from = musicQueueOrigin(snapshot);
   const code = snapshot.playback.listeningNotice;
   const notice = code ? {code, sequence: snapshot.sequence} : undefined;
+  const listeningNotice = <ListeningNotice notice={notice} paused={snapshot.playback.intent === 'paused'}
+    stopped={snapshot.disposed || snapshot.playback.phase === 'idle' || snapshot.playback.phase === 'ended'}
+    errorShown={snapshot.playback.phase === 'error' || !!snapshot.playback.error || !!snapshot.problem}
+    expanded layout={phone ? 'phone' : 'desktop'} translate={t}/>;
+  const queue = snapshot.queueView?.queue, list = listenState?.queue;
+  const canPolicy = !!listenOwner?.queueOffered() && !!list?.current && !!queue && list.queueId === queue.id && list.revision === queue.revision;
+  const policyBusy = !canPolicy || listenState?.policyBusy || list?.change === 'sending';
+  const policy = (intent: V1QueuePolicyIntent) => {
+    if (!open || !listenOwner || !listenState || !list || policyBusy || motion?.scope && !motion.scope.current()) return;
+    void listenOwner.policy(listenState, list, intent, false).catch(error => {if (listenOwner.canReport(listenState)) binding.reportError(error);});
+  };
+  const favoriteAction = (retry = false) => {
+    if (!open || !favorite || motion?.scope && !motion.scope.current()) return;
+    void (retry ? favorite.owner.retry(favorite.state) : favorite.owner.toggle(favorite.state)).catch(error => {if (favorite.owner.current()) binding.reportError(error);});
+  };
   const seek = (seconds: number) => { const value = watchSeek(snapshot, seconds); if (value !== null) send({kind: 'seek', seconds: value}); };
   const eqPanel=eqOpen&&equalizer&&facts&&hostReceipt&&eqReceipt?<WatchEqualizerPanel receipt={eqReceipt} rendered={eqReceipt} published={publishedEq}
     host={facts} hostReceipt={hostReceipt} publishedHost={publishedHost}
     runtime={binding.runtime} port={equalizer} {...(isCurrent?{isCurrent}:{})} {...(scope?{scope}:{})}
     close={()=>closeEq(eqReceipt)} openSettings={()=>{if(!open)return;void router.navigate({to:'/settings',search:()=>({scope:'account' as const,section:'music'})});}}/>:null;
-  const panel=eqOpen?eqPanel:listening?<><ListeningTabs host={listening}/><ListeningPanels host={listening} snapshot={snapshot} reportError={binding.reportError}/></>:<StateView title={t('player.queueUnavailable')}/>;
-  return <section ref={motion?.scope ? motion.frame : undefined} className={styles.frame} data-music-motion-owned={!!motion?.scope || undefined} inert={!open || undefined} aria-hidden={!open || undefined} aria-label={t('next.music.nowPlaying')} tabIndex={-1} data-watch-music>
+  const panel=eqOpen?eqPanel:listening?<><ListeningTabs host={listening}/><ListeningPanels host={listening} snapshot={snapshot} reportError={binding.reportError} artwork={binding.artwork} policyInTransport/></>:<StateView title={t('player.queueUnavailable')}/>;
+  return <section ref={motion?.scope ? motion.frame : undefined} className={styles.frame} data-music-motion-owned={!!motion?.scope || undefined} inert={!open || undefined} aria-hidden={!open || undefined} aria-label={t('next.music.nowPlaying')} tabIndex={-1} data-watch-music data-phone={phone || undefined}>
+    <AmbientArt source={binding.artwork.ambient(presentation.posterUrl ?? presentation.backdropUrl)} className={`${ambientStyles.ambient}${phone ? ` ${ambientStyles.phone}` : ''}`}/>
     <header className={styles.top}>
       <button type="button" className={styles.round} aria-label={t('player.minimize')} onClick={onCollapse}><Icon name="i-down" size={22} /></button>
-      <span className={styles.from}>{t('next.music.playingFrom', {source: from})}</span>
-      <ListeningNotice notice={notice} paused={snapshot.playback.intent === 'paused'}
-        stopped={snapshot.disposed || snapshot.playback.phase === 'idle' || snapshot.playback.phase === 'ended'}
-        errorShown={snapshot.playback.phase === 'error' || !!snapshot.playback.error || !!snapshot.problem}
-        expanded layout={phone ? 'phone' : 'desktop'} translate={t} />
+      {from && <span className={styles.from}>{t('next.music.playingFrom', {source: from})}</span>}
+      {!phone && listeningNotice}
       <span className={styles.spacer} />
+      {playOn && listenOwner && listenState && <button type="button" className={styles.glass} aria-label={t('next.dock.playOn')}
+        onClick={event => {if (open) listenOwner.external(listenState, snapshot, () => playOn(event.currentTarget));}}><Icon name="i-cast" size={20}/></button>}
       {equalizer ? <button ref={moreAnchor} type="button" className={styles.glass} aria-label={t('player.more')} aria-haspopup="menu" aria-expanded={moreOpen}
         onClick={() => {
         if (moreOpen) {
@@ -126,32 +147,36 @@ export function WatchMusicNowPlaying({binding, snapshot, expanded, onCollapse, p
       }} title={t('player.more')} anchorRef={moreAnchor} returnFocusRef={moreAnchor} presentation="anchored" width={280}
         items={[{id: 'equalizer', label: t('next.media.eq.title'), description: t(settings?.enabled === true ? 'next.settings.on' : 'next.settings.off'),
           onSelect: () => {if (!surfaceAdmit(moreReceipt, publishedMore, publishedHost, hostReceipt, facts) || !retireMore(moreReceipt)) return; setMoreOpen(false);if(listenOwner&&listenState)listenOwner.cover(listenState);if(!hostAdmit(hostReceipt,publishedHost,facts))return;setEqOpen(true);}}]} /> : null}
-      {can('pause') || can('play') ? <button type="button" className={styles.glass} onClick={() => send({kind: presentation.playing ? 'pause' : 'play'})}>
-        <Icon name={presentation.playing ? 'i-pause' : 'i-play'} size={18} />{presentation.playing ? t('next.dock.pause') : t('next.dock.play')}</button> : null}
     </header>
     <div className={styles.main}>
       <div ref={motion?.scope ? motion.cover : undefined} className={styles.cover}>{!motion?.scope && <Artwork source={artworkSource} alt={identity.title} />}</div>
       <div className={styles.info}>
-        <div className={styles.fade1} data-music-content-group="0"><h1>{identity.title}</h1><p>{artist}</p></div>
+        <div className={`${styles.identity} ${styles.fade1}`} data-music-content-group="0">
+          <div><h1>{identity.title}</h1>{!!identity.subtitle.length && <p>{identity.subtitle.map(part => <span key={part.id}>{part.text}</span>)}</p>}</div>
+          {favorite?.offered && <button type="button" className={styles.ctl} aria-label={t(favorite.selected ? 'entry.removeFromFavorites' : 'entry.addToFavorites')}
+            aria-pressed={favorite.selected} disabled={favorite.busy || favorite.failed} onClick={() => favoriteAction()}><Icon name="i-heart" size={22}/></button>}
+        </div>
+        {favorite?.failed && <Banner action={{label: t('next.states.tryAgain'), onAction: () => favoriteAction(true)}}>{t('next.states.pageFailedBody')}</Banner>}
         {signal && <div className={styles.signal}><SignalLine model={signal} translate={t} layout={phone ? 'phone' : 'desktop'}
           ref={signalAnchor} aria-haspopup="dialog" aria-expanded={signalOpen} onClick={() => setSignalOpen(true)} />
           <SignalPath model={signal} translate={t} locale={environment.locale} layout={phone ? 'phone' : 'desktop'}
             open={open && signalOpen} onOpenChange={setSignalOpen} anchorRef={signalAnchor} /></div>}
-        <div className={`${styles.scrub} ${styles.fade2}`} data-music-content-group="1">
-          <span>{watchClock(at)}</span>
-          <input type="range" className={styles.track} min={bounds?.start ?? 0} max={bounds?.end ?? Math.max(duration, 1)} step={.1}
-            value={Math.min(bounds?.end ?? duration, Math.max(bounds?.start ?? 0, at))} disabled={!canSeek}
-            aria-label={t('player.position')} aria-valuetext={t('player.clockOf', {position: watchClock(at), duration: watchClock(duration)})}
-            onChange={event => { const value = event.currentTarget.valueAsNumber; if (Number.isFinite(value)) seek(value); }} />
-          <span>{watchClock(duration)}</span>
+        <div className={styles.fade2} data-music-content-group="1">
+          <ListeningSeek className={styles.scrub} position={at} duration={duration} bounds={bounds} disabled={!canSeek} phone={phone} onSeek={seek}/>
         </div>
         <div className={`${styles.controls} ${styles.fade2}`} data-music-content-group="1">
+          <button type="button" className={styles.ctl} aria-label={t(queue?.shuffled ? 'player.opt.shuffleOn' : 'player.opt.shuffleOff')}
+            aria-pressed={queue?.shuffled === true} disabled={policyBusy} onClick={() => policy({action: 'shuffle', shuffled: !queue?.shuffled})}><Icon name="i-shuffle" size={22}/></button>
           <button type="button" className={styles.ctl} aria-label={t('next.dock.previous')} disabled={!can('previous')} onClick={() => send({kind: 'previous'})}><Icon name="i-prev" size={24} /></button>
           <button type="button" className={styles.big} data-playback-primary aria-label={presentation.playing ? t('next.dock.pause') : t('next.dock.play')} disabled={!can(presentation.playing ? 'pause' : 'play')}
             onClick={() => send({kind: presentation.playing ? 'pause' : 'play'})}><Icon name={presentation.playing ? 'i-pause' : 'i-play'} size={28} /></button>
           <button type="button" className={styles.ctl} aria-label={t('next.dock.next')} disabled={!can('next')} onClick={() => send({kind: 'next'})}><Icon name="i-next" size={24} /></button>
+          <button type="button" className={styles.ctl} aria-label={t(queue?.repeat === 'one' ? 'player.opt.repeatOne' : queue?.repeat === 'all' ? 'player.opt.repeatAll' : 'player.opt.repeatOff')}
+            aria-pressed={!!queue && queue.repeat !== 'off'} disabled={policyBusy} onClick={() => policy({action: 'repeat', repeat: queue?.repeat === 'off' ? 'all' : queue?.repeat === 'all' ? 'one' : 'off'})}>
+            <Icon name="i-repeat" size={22}/>{queue?.repeat === 'one' && <span className={styles.repeatOne} aria-hidden="true">1</span>}</button>
         </div>
-        {can('volume') && <div className={`${styles.volume} ${styles.fade2}`} data-music-content-group="1"><button type="button" className={styles.ctl} aria-label={t(presentation.muted ? 'player.unmute' : 'player.mute')} onClick={() => send({kind: 'mute'})}><Icon name="i-vol" size={20} /></button>
+        {phone && <div className={styles.notice}>{listeningNotice}</div>}
+        {!phone && can('volume') && <div className={`${styles.volume} ${styles.fade2}`} data-music-content-group="1"><button type="button" className={styles.ctl} aria-label={t(presentation.muted ? 'player.unmute' : 'player.mute')} onClick={() => send({kind: 'mute'})}><Icon name="i-vol" size={20} /></button>
           <Slider min={0} max={1} step={.01} value={presentation.muted ? 0 : presentation.volume} aria-label={t('player.volume')} onValueChange={volume => send({kind: 'volume', volume})} /></div>}
       </div>
     </div>

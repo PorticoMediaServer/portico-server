@@ -54,7 +54,7 @@ function useSearchLease(context: ScreenContext | undefined, captured: ProtectedL
     let live = true;
     const current = () => live && context.isCurrent(), original: ScreenContext = {...context, isCurrent: current};
     const binding = createSearchBindings(original);
-    const selection = createSearchSelection(original, binding.service,
+    const selection = createSearchSelection(original, binding.results,
       {serverId: viewer.serverId, authority: viewer.authority, accountId: viewer.accountId, profileId: viewer.profileId},
       () => assembly.viewerFence, runtime);
     selection.start();

@@ -3,7 +3,7 @@ import {defaultI18n} from '@i18n';
 import type {BrowseNode} from '@core/browse.ts';
 import {fieldSelectionSummary, filterControlOf, filterValuesField, rangePresets, activeRangePreset} from '@core/presentation/browse-toolbar.ts';
 import type {BrowseToolbarModel} from '@portico/client-core/kit-model';
-import {BottomSheet, Dialog} from '../../kit/overlays';
+import {BottomSheet, Dialog, SidePanel} from '../../kit/overlays';
 import {Button} from '../../kit/controls';
 import {createInputCadence} from './input-cadence';
 import {Skeleton} from '../../kit/states';
@@ -11,13 +11,13 @@ import {FilterBuilder, type BrowseLabels, type FilterFieldChange, type FilterFie
 import type {BrowseController, BrowseState} from './controller';
 import styles from './browse.module.css';
 
-export type BrowseFiltersProps = Readonly<{controller: BrowseController; model: BrowseToolbarModel; labels: BrowseLabels; compact: boolean; open: boolean; resultCount?: string; canSaveView: boolean; onSaveView?: () => void; onClose: () => void; reportError: (error: unknown) => void}>;
+export type BrowseFiltersProps = Readonly<{controller: BrowseController; model: BrowseToolbarModel; labels: BrowseLabels; compact: boolean; medium?: boolean; docked?: boolean; open: boolean; resultCount?: string; canSaveView: boolean; onSaveView?: () => void; onClose: () => void; reportError: (error: unknown) => void}>;
 const t = defaultI18n.t;
 const valueLabel = (value: string) => {const key = `filter.value.${value}`;return defaultI18n.has(key) ? t(key) : value;};
 const simple = (nodes: readonly BrowseNode[]) => nodes.flatMap(node => 'field' in node ? [node] : []);
 type FilterOpening = {controller: BrowseController; cadence: ReturnType<typeof createInputCadence>; live: boolean; abort: AbortController; query?: BrowseState; pending?: Readonly<{id: string; raw: string}>};
 type FacetFields = Readonly<Record<string, Extract<FilterFieldState, {kind: 'values'}>>>;
-export function BrowseFilters({controller, model, labels, compact, open, resultCount, canSaveView, onSaveView, onClose, reportError}: BrowseFiltersProps) {
+export function BrowseFilters({controller, model, labels, compact, medium = false, docked = false, open, resultCount, canSaveView, onSaveView, onClose, reportError}: BrowseFiltersProps) {
   const state = useSyncExternalStore(controller.subscribe, controller.getSnapshot, controller.getSnapshot);
   const [openFields, setOpenFields] = useState<readonly string[]>([]), [queries, setQueries] = useState<Readonly<Record<string, string>>>({});
   const [facetState, setFacetState] = useState<Readonly<{opening: FilterOpening; query: BrowseState; fields: FacetFields}>>();
@@ -173,10 +173,12 @@ export function BrowseFilters({controller, model, labels, compact, open, resultC
     onFieldChange={change} onSearchChange={(id, query) => {if (drawn()) setQueries(before => ({...before, [id]: query}));}} onShowAll={id => {if (drawn()) setExpandedValues(before => [...before.filter(value => value !== id), id]);}}
     onRetry={id => {if (drawn()) setQueries(before => ({...before, [id]: before[id] ?? ''}));}}/>;
   const footer = <><Button variant="glass" size="hero" onClick={clearAll}>{t('next.browse.clearAll')}</Button><Button variant="primary" size="hero" onClick={closeFilters}>{t('action.done')}</Button></>;
+  if (docked) return <SidePanel open={open} onOpenChange={opened => {if (!opened) closeFilters();}} title={t('next.browse.filters')} width={380} topInset={0} className={styles.dockedFilters}
+    description={resultCount ? <span className={styles.filterCount}><b>{resultCount}</b> {t('next.browse.match')}</span> : undefined} footer={footer}>{body}</SidePanel>;
   return compact ? <BottomSheet open={open} onOpenChange={opened => {if (!opened) closeFilters();}} showCloseButton={false} detent={1}
     headerClassName={styles.phoneFilterHeader} title={<span className={styles.filterTitle}>{t('next.browse.filters')}<Button variant="text" size="small" onClick={clearAll}>{t('next.browse.clearAll')}</Button></span>}
     footerClassName={styles.filterFooter} footer={<>{onSaveView && <Button variant="glass" size="hero" disabled={!canSaveView} onClick={saveView}>{t('next.browse.saveView')}</Button>}<Button variant="primary" size="hero" disabled={!resultCount} aria-label={resultCount ? undefined : t('next.browse.filters')} onClick={closeFilters}>{resultCount ? t('next.browse.showCount', {count: resultCount}) : <Skeleton width={116} height={20}/>}</Button></>}>{body}</BottomSheet> :
-    <Dialog responsive={false} open={open} onOpenChange={opened => {if (!opened) closeFilters();}} title={t('next.browse.filters')} placement="right" width={520}
+    <Dialog responsive={false} open={open} onOpenChange={opened => {if (!opened) closeFilters();}} title={t('next.browse.filters')} placement="right" width={medium ? 420 : 520}
       headerClassName={styles.filterHeader} bodyClassName={styles.filterBody} footerClassName={styles.filterFooter}
       description={resultCount ? <span className={styles.filterCount}><b>{resultCount}</b> {t('next.browse.match')}</span> : undefined} footer={footer}>{body}</Dialog>;
 }

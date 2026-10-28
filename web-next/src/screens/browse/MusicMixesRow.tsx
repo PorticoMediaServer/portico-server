@@ -15,8 +15,9 @@ import styles from './music-mixes.module.css';
 const t = defaultI18n.t;
 /** Home and Discover render the same profile-owned source. Library identity and
  * navigation never become a predicate on this row or its captured commands. */
-export function MusicMixesRow({binding, artwork, more, empty, target = false, reducedMotion, reportError}: {
+export function MusicMixesRow({binding, artwork, more, empty, target = false, reducedMotion, reportError, sizeClass}: {
   binding: MusicMixesBinding; artwork: ShellArtwork; more?: ReactNode; empty?: ReactNode; target?: boolean; reducedMotion: boolean; reportError: (error: unknown) => void;
+  sizeClass?: 'medium';
 }) {
   const snapshot = useSyncExternalStore(binding.subscribe, binding.getSnapshot, binding.getSnapshot), width = useShellWidth();
   const root = useRef<HTMLDivElement>(null), targeted = useRef<MusicMixesBinding | undefined>(undefined);
@@ -32,14 +33,14 @@ export function MusicMixesRow({binding, artwork, more, empty, target = false, re
   }, [target, ready, binding]);
   const shown = menu && binding.contains(menu.row) ? menu : undefined;
   if (!ready) return <>{empty}</>;
-  const platform = width >= 1024 ? 'desktop' : 'phone-web', cardWidth = platform === 'desktop' ? 190 : 132;
+  const platform = width >= 1024 ? 'desktop' : 'phone-web', cardWidth = platform === 'desktop' ? 190 : sizeClass === 'medium' ? 152 : 132;
   const run = (row: MusicMixRow, action: 'play' | 'shuffle' | 'save') => {
     if (!binding.contains(row)) return;
     void (action === 'save' ? binding.save(row) : binding.play(row, action === 'shuffle')).catch(reportError);
   };
   return <div ref={root} className={styles.target} data-music-mixes>
     <Shelf focusScope={binding} heading={t('music.mixesForYou')} subtitle={platform === 'desktop' ? t('music.mixesFromListening') : undefined}
-      actions={more} platform={platform} reducedMotion={reducedMotion} itemWidth={cardWidth} items={snapshot.rows} getKey={row => row.mix.id}
+      actions={more} platform={platform} sizeClass={sizeClass} reducedMotion={reducedMotion} itemWidth={cardWidth} items={snapshot.rows} getKey={row => row.mix.id}
       renderItem={(row, position) => {
         const artists = row.mix.artists.map(artist => artist.name.replace(/ /g, '\u00a0')).join(', ') + (row.mix.more ? ` ${t('music.mixesAndMore')}` : '');
         return <SquareCard className={styles.card} model={{title: row.name, caption: [{id: 'artists', text: artists, role: 'identity'}]}}

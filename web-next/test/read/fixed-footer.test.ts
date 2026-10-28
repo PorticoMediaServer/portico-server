@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import {test} from 'node:test';
+import {defaultI18n} from '@i18n';
 import {createElement} from 'react';
 import {renderToStaticMarkup} from 'react-dom/server';
 import type {ReaderChromeProps} from '../../src/kit/reader/ReaderChrome.tsx';
@@ -45,4 +46,34 @@ test('comic chrome supplies its clear shade and custom footer without prose runn
   assert.match(html, /data-reader-chrome-layer="shade"/);
   assert.match(html, /data-test-fixed-footer/);
   assert.doesNotMatch(html, /class="runningTitle"|class="runningFooter"|Observed page/);
+});
+
+test('a first-run hint makes the reader surface/chrome inert and withholds portal-capable auxiliary panels', () => {
+  const html = render({hint: createElement('div', {role: 'dialog', 'aria-modal': true, 'data-reader-hint': true}, 'Got it'),
+    initiallyVisible: true, panel: createElement('button', null, 'Background panel')});
+  assert.match(html, /data-reader-surface[^>]*inert=""[^>]*aria-hidden="true"/);
+  assert.match(html, /class="chrome"[^>]*inert=""[^>]*aria-hidden="true"/);
+  assert.doesNotMatch(html, /Background panel/);
+  assert.match(html, /role="dialog" aria-modal="true"/);
+});
+
+
+const {FixedPageFooter} = await import('../../src/screens/read/fixed-page.tsx');
+const {ReadBookHero} = await import('../../src/kit/reader/ReadBookHero.tsx');
+test('compact PDF footer draws observed labels, range and Pages/Contents/Fit pills without a thumbnail strip', () => {
+  const snapshot: any = {status: 'ready', location: {format: 'pdf', page: 2, progression: .25, chapter: 'Actual heading'}, metadata: {pageCount: 9}, toc: [{title: 'Actual heading'}], zoom: {fit: 'width', scale: 1}};
+  const controller: any = {subscribe: () => () => {}, getSnapshot: () => snapshot};
+  const html = renderToStaticMarkup(createElement(FixedPageFooter, {controller, authority: {isCurrent: () => true} as any, format: 'pdf', reportError() {}, pages: '3 / 9', chapters: [{id: 'actual', start: 0, end: .5, current: true}], onPages() {}, onContents() {}, onFit() {}}));
+  for (const label of ['Actual heading', '3 / 9', defaultI18n.t('next.reader.pagesStrip'), defaultI18n.t('next.reader.contents'), defaultI18n.t('next.reader.fitWidth')]) assert.ok(html.includes(label));
+  assert.match(html, /type="range"[^>]*value="0.25"/);
+  assert.doesNotMatch(html, /<img/);
+  assert.equal((html.match(/<button/g) ?? []).length, 3);
+});
+test('series stack uses at most three supplied covers and never creates missing volumes', () => {
+  const sources = Array.from({length: 5}, (_, index) => ({key: `cover-${index}`, scheduler: {} as any}));
+  const base = {title: 'Actual series', facts: [], actions: null};
+  const html = renderToStaticMarkup(createElement(ReadBookHero, {...base, seriesCovers: sources}));
+  assert.match(html, /data-stack="3"/);assert.equal((html.match(/stackedCover/g) ?? []).length, 3);
+  const missing = renderToStaticMarkup(createElement(ReadBookHero, {...base, seriesCovers: []}));
+  assert.doesNotMatch(missing, /data-stack=|stackedCover/);
 });

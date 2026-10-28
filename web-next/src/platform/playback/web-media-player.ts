@@ -184,6 +184,9 @@ export class WebMediaPlayer implements MediaPlayer {
   private started = false;
   private rate = 1;
   private mediaRecoveries = 0;
+  /** hls.js recovery detaches src and calls load(), which queues one internal pause.
+   * Consume it only for this engine/load; metadata/readiness closes the reset window. */
+  private mediaRecoveryPause?: {engine: HlsLike; serial: number};
   /** This load has been handed to the browser's own HLS player. */
   private handedToNative = false;
   private recoveredAtMs = 0;
@@ -215,7 +218,7 @@ export class WebMediaPlayer implements MediaPlayer {
     on('waiting', () => this.onWaiting());
     // A late event from the presentation before this one must not speak for this one.
     on('ended', () => { if (this.active() && !this.suspended && this.video.ended) this.setState('ended'); });
-    on('loadedmetadata', () => { this.attempt(); this.finish(); });
+    on('loadedmetadata', () => { this.mediaRecoveryPause = undefined; this.attempt(); this.finish(); });
     on('loadeddata', () => this.onReady());
     on('canplay', () => this.onReady());
     on('durationchange', () => { this.attempt(); this.finish(); });
@@ -369,8 +372,11 @@ export class WebMediaPlayer implements MediaPlayer {
   private open(startMs: number) {
     const source = this.source!;
     const serial = ++this.loadSerial;
+    this.mediaRecoveryPause = undefined;
     this.started = false;
-    this.bytesAt = this.aliveAt = this.now();
+    // Opening a request is not evidence that the server is answering. Keep the
+    // no-media deadline tied to actual progress across native/direct reloads.
+    this.bytesAt = this.now();
     this.loadedBytes = 0;
     this.loading = undefined;
     this.waitingSince = 0;
@@ -577,6 +583,7 @@ export class WebMediaPlayer implements MediaPlayer {
   }
 
   private onReady() {
+    this.mediaRecoveryPause = undefined;
     if (!this.active() || this.suspended) return;
     this.attempt();
     this.finish();
@@ -627,6 +634,9 @@ export class WebMediaPlayer implements MediaPlayer {
   }
 
   private onPause() {
+    const internal = this.mediaRecoveryPause;
+    this.mediaRecoveryPause = undefined;
+    if (internal && internal.engine === this.hls && internal.serial === this.loadSerial) return;
     if (!this.active() || this.suspended) return;
     // Browsers publish a final pause just before `ended`; that is completion, not a pause.
     if (this.completed() || this.video.error) return;
@@ -742,7 +752,9 @@ export class WebMediaPlayer implements MediaPlayer {
     }
     // A download that is receiving bytes, or was only just asked for, is left alone: asking again
     // would throw away what has arrived.
-    const receiving = !!this.loading && at - Math.max(this.bytesAt, this.loadingAt) < this.silentMs;
+    const receiving = this.loading
+      ? at - Math.max(this.bytesAt, this.loadingAt) < this.silentMs
+      : !this.hls && at - this.bytesAt < this.silentMs;
     if (!receiving) r.retry();
     r.attempts++;
     r.timer = this.setTimer(() => this.recoveryTick(), Math.min(1000 * 2 ** r.attempts, 10_000));
@@ -790,7 +802,13 @@ export class WebMediaPlayer implements MediaPlayer {
       // profile the browser's demuxer guessed wrong.
       if (this.mediaRecoveries++ === 1) engine.swapAudioCodec();
       this.recoveredAtMs = this.now();
-      engine.recoverMediaError();
+      this.mediaRecoveryPause = !this.video.paused ? {engine, serial: this.loadSerial} : undefined;
+      try {
+        engine.recoverMediaError();
+        // A detached/transferred engine that did not reset this element cannot own its next pause.
+        if (!this.video.paused) this.mediaRecoveryPause = undefined;
+      }
+      catch (error) {this.mediaRecoveryPause = undefined;throw error;}
       return;
     }
     this.fail(data.type === Hls.ErrorTypes.MEDIA_ERROR ? 'decode_error' : 'engine_error', String(data.details ?? '').slice(0, 120));
@@ -829,6 +847,7 @@ export class WebMediaPlayer implements MediaPlayer {
   }
 
   private fail(code: string, detail?: string) {
+    this.mediaRecoveryPause = undefined;
     this.hls?.destroy();
     this.hls = undefined;
     this.loading = undefined;
@@ -841,6 +860,7 @@ export class WebMediaPlayer implements MediaPlayer {
   }
 
   private teardown() {
+    this.mediaRecoveryPause = undefined;
     this.loadSerial++;
     this.hls?.destroy();
     this.hls = undefined;

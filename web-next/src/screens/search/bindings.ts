@@ -12,6 +12,7 @@ import {SEARCH_CHIPS} from '@core/presentation/search-model.ts';
 import type {SearchData, SearchGroupResult} from '@core/search.ts';
 import {SearchGenresController} from './genres';
 import {SearchOnNowController} from './on-now';
+import {createSearchRows} from './rows';
 
 /** Group narrowing shares counts only within the same actual base query.
  * Page size and recording do not change membership; library scope/order do. */
@@ -64,6 +65,7 @@ const NO_LIVE_CARDS: ReadonlyMap<string, SearchLiveCard> = new Map();
 export function createSearchBindings(context: ScreenContext) {
   const life = screenLifetime(context);
   const service = new SearchService({api: life.api, scope: context.scope});
+  const results = createSearchRows(service, life.current);
   const genres = new SearchGenresController({api: life.api, signal: life.signal(), isCurrent: life.current, slot: 'backdrop', limit: 8});
   const onNow = new SearchOnNowController({api: life.api, serverId: context.scope.serverId,
     timezone: serviceI18n().region.timeZone ?? Intl.DateTimeFormat().resolvedOptions().timeZone,
@@ -74,13 +76,13 @@ export function createSearchBindings(context: ScreenContext) {
   const visible = new Set<SearchEntry>();
   const commandContext: ScreenContext = {...context, effects: {...context.effects, async play(target, signal, callerCurrent = () => true) {
     life.assert();signal.throwIfAborted();
-    const captured = service.getSnapshot(), query = requestKey(captured.query), source = resultKey;
+    const captured = results.getSnapshot(), query = requestKey(captured.query), source = resultKey;
     const current = () => {
-      const state = service.getSnapshot();
+      const state = results.getSnapshot();
       return life.current() && callerCurrent() && state.phase === 'ready' && state.generation === captured.generation
         && requestKey(state.query) === query && resultKey === source;
     };
-    if (service.getSnapshot().phase !== 'ready' || !query || !source || !current()) throw new DOMException('Search playback changed', 'AbortError');
+    if (results.getSnapshot().phase !== 'ready' || !query || !source || !current()) throw new DOMException('Search playback changed', 'AbortError');
     await context.effects.play(target, signal, current);
     if (!current()) throw new DOMException('Search playback changed', 'AbortError');
   }}};
@@ -93,13 +95,13 @@ export function createSearchBindings(context: ScreenContext) {
   const publishLive = (next: ReadonlyMap<string, SearchLiveCard>) => { cards = next; for (const listener of [...liveListeners]) listener(); };
   const retireLive = () => { liveController?.abort(); liveController = undefined; liveGeneration++; };
   const syncLive = () => {
-    const state = service.getSnapshot(), data = state.data;
+    const state = results.getSnapshot(), data = state.data;
     const result = data?.groups.find(value => value.id === 'live-tv');
     const entries = result?.status === 'success' ? result.items.filter((entry): entry is ChannelResult => entry.kind === 'channel') : [];
-    const key = data ? JSON.stringify([data.scope.viewerFence, data.revision, entries.map(entry => [entry.id, entry.navigation.sourceId ?? ''])]) : '';
+    const key = data && state.phase === 'ready' ? JSON.stringify([state.generation, requestKey(state.query), data.scope.viewerFence, data.revision, entries.map(entry => [entry.id, entry.navigation.sourceId ?? ''])]) : '';
     if (key === liveKey) return;
     liveKey = key; retireLive();
-    if (!entries.length || !data) { if (cards.size) publishLive(NO_LIVE_CARDS); return; }
+    if (!key || !entries.length || !data) { if (cards.size) publishLive(NO_LIVE_CARDS); return; }
     const bySource = new Map<string, string[]>();
     for (const entry of entries) {
       const sourceId = entry.navigation.sourceId ?? '';
@@ -107,9 +109,9 @@ export function createSearchBindings(context: ScreenContext) {
       bySource.set(sourceId, [...(bySource.get(sourceId) ?? []), entry.id]);
     }
     if (!bySource.size) { if (cards.size) publishLive(NO_LIVE_CARDS); return; }
-    const generation = liveGeneration, reading = data, controller = new AbortController(), signal = life.signal(controller.signal);
+    const generation = liveGeneration, controller = new AbortController(), signal = life.signal(controller.signal);
     liveController = controller;
-    const still = () => life.current() && !signal.aborted && generation === liveGeneration && service.getSnapshot().data === reading;
+    const still = () => life.current() && !signal.aborted && generation === liveGeneration && liveKey === key && results.getSnapshot().phase === 'ready';
     void (async () => {
       const next = new Map<string, SearchLiveCard>();
       const timezone = serviceI18n().region.timeZone;
@@ -117,19 +119,21 @@ export function createSearchBindings(context: ScreenContext) {
       if (!timezone) { publishLive(NO_LIVE_CARDS); return; }
       for (const [sourceId, ids] of bySource) {
         const route = {kind: 'live-source' as const, sourceId, timezone, search: '', ...guideWindow()};
-        const query = new URLSearchParams({...route, channels: ids.join(','), limit: '50'});
-        const raw = await life.api.request<unknown>(routePath('get_guide') + '?' + query, 'GET', undefined, signal);
-        if (!still()) return;
-        const guide = parseChannelGuide(raw, context.scope.serverId, route);
-        const now = Date.now();
-        for (const channel of guide.channels) next.set(channel.id, liveCard(channel, now, timezone));
+        for (let start = 0; start < ids.length; start += 50) {
+          const query = new URLSearchParams({...route, channels: ids.slice(start, start + 50).join(','), limit: '50'});
+          const raw = await life.api.request<unknown>(routePath('get_guide') + '?' + query, 'GET', undefined, signal);
+          if (!still()) return;
+          const guide = parseChannelGuide(raw, context.scope.serverId, route);
+          const now = Date.now();
+          for (const channel of guide.channels) next.set(channel.id, liveCard(channel, now, timezone));
+        }
       }
       if (!still()) return;
       publishLive(next);
     })().catch(() => { if (still()) publishLive(NO_LIVE_CARDS); });
   };
-  const off = service.subscribe(() => {
-    const state = service.getSnapshot(), data = state.data;
+  const off = results.subscribe(() => {
+    const state = results.getSnapshot(), data = state.data;
     try {
       if (!data) { visible.clear(); resultKey = ''; return; }
       const key = JSON.stringify([summaryKey(data), data.query.group, data.query.groups]);
@@ -159,10 +163,10 @@ export function createSearchBindings(context: ScreenContext) {
     subscribe: (listener: () => void) => { liveListeners.add(listener); return () => { liveListeners.delete(listener); }; },
   };
   return {
-    context: commandContext, service, genres, onNow, select, topTitle, topShow, live,
+    context: commandContext, service, results, genres, onNow, select, topTitle, topShow, live,
     session: () => ({text, group}),
     summary: () => {
-      const state = service.getSnapshot(), data = state.data;
+      const state = results.getSnapshot(), data = state.data;
       return life.current() && state.phase === 'ready' && data && summary?.key === summaryKey(data) ? summary.groups : [];
     },
     recent: (signal?: AbortSignal) => readSearchHistory(life.api, context.scope, life.signal(signal)),
@@ -170,24 +174,24 @@ export function createSearchBindings(context: ScreenContext) {
     removeRecent: (query: string) => { life.assert(); return deleteSearchHistoryEntry(life.api, context.scope, query, life.signal()); },
     open(entry: SearchEntry) {
       life.assert();
-      if (service.getSnapshot().phase !== 'ready' || !visible.has(entry)) throw new DOMException('Search result changed', 'AbortError');
+      if (results.getSnapshot().phase !== 'ready' || !visible.has(entry)) throw new DOMException('Search result changed', 'AbortError');
       context.effects.openEntry(entry);
     },
     async play(entry: SearchEntry) {
       life.assert();
-      if (service.getSnapshot().phase !== 'ready' || !visible.has(entry) || !('libraryId' in entry) || !entry.libraryId || !entry.playback || entry.available !== true) throw new DOMException('Search playback changed', 'AbortError');
+      if (results.getSnapshot().phase !== 'ready' || !visible.has(entry) || !('libraryId' in entry) || !entry.libraryId || !entry.playback || entry.available !== true) throw new DOMException('Search playback changed', 'AbortError');
       await commandContext.effects.play({libraryId: entry.libraryId, itemId: entry.playback.itemId, startSeconds: entry.playback.startSeconds ?? 0}, life.signal(), () => visible.has(entry));
     },
     canPlayArtist(entry: SearchEntry) {
-      return life.current() && service.getSnapshot().phase === 'ready' && visible.has(entry)
+      return life.current() && results.getSnapshot().phase === 'ready' && visible.has(entry)
         && entry.kind === 'artist' && !!context.effects.playArtist;
     },
     async playArtist(entry: SearchEntry) {
       life.assert();
-      const effect = context.effects.playArtist, captured = service.getSnapshot();
+      const effect = context.effects.playArtist, captured = results.getSnapshot();
       const query = requestKey(captured.query), source = resultKey;
       const current = () => {
-        const state = service.getSnapshot();
+        const state = results.getSnapshot();
         return life.current() && state.phase === 'ready' && state.generation === captured.generation
           && requestKey(state.query) === query && resultKey === source && visible.has(entry);
       };
@@ -195,7 +199,7 @@ export function createSearchBindings(context: ScreenContext) {
       await effect(entry.id, life.signal(), current);
       if (!current()) throw new DOMException('Search artist changed', 'AbortError');
     },
-    dispose() { text = ''; group = undefined; summary = undefined; visible.clear(); off(); retireLive(); cards = NO_LIVE_CARDS; liveListeners.clear(); genres.dispose(); onNow.dispose(); life.dispose(); topTitle.dispose(); topShow.dispose(); service.cancel(); service.dispose(); },
+    dispose() { text = ''; group = undefined; summary = undefined; resultKey = ''; visible.clear(); off(); results.dispose(); retireLive(); cards = NO_LIVE_CARDS; liveListeners.clear(); genres.dispose(); onNow.dispose(); life.dispose(); topTitle.dispose(); topShow.dispose(); service.cancel(); service.dispose(); },
   };
 }
 export type SearchBindings = ReturnType<typeof createSearchBindings>;

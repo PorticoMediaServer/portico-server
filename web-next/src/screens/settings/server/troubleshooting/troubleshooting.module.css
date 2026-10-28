@@ -19,6 +19,7 @@
 .log { margin: 0; max-height: 420px; overflow: auto; padding: 16px; border-radius: 12px; background: color-mix(in srgb, var(--color-ink) 70%, transparent); font-family: var(--font-mono); font-size: var(--type-caption-size); line-height: var(--type-troubleshooting-log-line); color: var(--color-text-secondary); white-space: pre-wrap; word-break: break-word; }
 .download { display: inline-flex; align-items: center; margin-right: auto; font-size: var(--type-row-subtitle-size); font-weight: var(--type-button-weight); color: var(--color-accent-strong); text-decoration: none; }
 .lanes { display: flex; align-items: center; gap: 6px; }
+.lanePanel { display: flex; flex-direction: column; gap: 12px; }
 .lane { border: 0; background: none; padding: 6px 10px; border-radius: 8px; font: inherit; font-size: var(--type-row-subtitle-size); font-weight: var(--type-body-strong-weight); color: var(--color-text-tertiary); cursor: pointer; }
 .lane[aria-selected="true"] { background: color-mix(in srgb, var(--color-text) 8%, transparent); color: var(--color-text); }
 .lane:focus-visible { outline: 3px solid var(--color-focus); outline-offset: 2px; }

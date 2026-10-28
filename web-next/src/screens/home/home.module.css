@@ -38,3 +38,9 @@
   .collection { margin: 0 20px 0; }
   .slowNotice { top: 104px; max-width: calc(100% - 16px); height: auto; min-height: 36px; padding: 8px 12px; white-space: normal; font-size: calc(var(--type-body-size) - 1.5px); }
 }
+
+@media (min-width: 600px) and (max-width: 1023px) {
+  .home[data-size-class='medium'] .rows[data-with-hero='true'] { margin-top: -6px; }
+  .home[data-size-class='medium'] .rowSlot + .rowSlot { margin-top: 30px; }
+  .home[data-size-class='medium'] .rows > [data-music-mixes]:not(:first-child), .home[data-size-class='medium'] .rows > [data-music-mixes] + .rowSlot { margin-top: 30px; }
+}

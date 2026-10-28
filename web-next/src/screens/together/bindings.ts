@@ -3,9 +3,11 @@ import {GroupSessionService, type GroupSessionSnapshot} from '@core/group-sessio
 import {encodedRoutePath} from '../../../../packages/contracts/src/routes.ts';
 import type {GetItemsIdResponse} from '../../../../packages/contracts/src/types.ts';
 import {parseMediaItem} from '@core/media-item.ts';
+import {subscribeFreshness} from '@core/freshness.ts';
 import type {ShellAssemblyContext} from '../../shell/bootstrap';
 import type {WatchBindings} from '../watch';
 import {router} from '../../router';
+import {TogetherItemSummaries} from './item-summaries';
 
 export type TogetherSnapshot = Readonly<{room: GroupSessionSnapshot; items: ReadonlyMap<string, GetItemsIdResponse>}>;
 /** Inert construction. The persistent Watch parent starts/disposes it for one captured session. */
@@ -28,27 +30,28 @@ export function createTogetherBindings(context: ShellAssemblyContext, playback: 
     guard();return value;
   }});
   const listeners = new Set<() => void>();
-  let snapshot: TogetherSnapshot = {room: service.getSnapshot(), items: new Map()}, key = '', reading: AbortController | undefined, offGroup: (() => void) | undefined, offPreferences: (() => void) | undefined, started = false;
+  let snapshot: TogetherSnapshot = {room: service.getSnapshot(), items: new Map()}, key = '', offGroup: (() => void) | undefined, offPreferences: (() => void) | undefined, offFreshness: (() => void) | undefined, started = false;
   const publish = (items = snapshot.items) => {snapshot = Object.freeze({room: service.getSnapshot(), items});for (const listener of [...listeners]) listener();};
+  const catalogueRevisions = new Map<string, string>();
+  const summaries = new TogetherItemSummaries<GetItemsIdResponse>({current: isCurrent, publish, reportError: playback.reportError,
+    read: async (id, signal) => {
+      const raw = await api.request<GetItemsIdResponse>(encodedRoutePath('get_items_id', {id: encodeURIComponent(id)}), 'GET', undefined, signal);
+      if (parseMediaItem(raw).id !== id) throw new Error('unexpected_group_item');
+      return raw;
+    },
+  });
   const off = service.subscribe(() => {
-    publish();const room = snapshot.room, group = room.group, queue = room.queue ?? group?.queue;
-    const next = group && (room.phase === 'live' || room.phase === 'reconnecting') ? `${group.id}:${queue?.revision ?? group.queueRevision}:${group.timeline.itemId}` : '';
-    if (next === key) return;key = next;reading?.abort();reading = undefined;publish(new Map());
-    if (!next || !group || !isCurrent()) return;
-    const controller = new AbortController();reading = controller;
-    const ids = [...new Set([group.timeline.itemId, ...(queue?.entries.filter(entry => !entry.unavailable).map(entry => entry.itemId) ?? [])].filter((id): id is string => !!id))];
-    void (async () => {
-      // The server-bounded real queue, one entitled catalogue read at a time. Never
-      // truncate membership to the currently visible page or make up unread title facts.
-      for (const id of ids) {
-        if (!isCurrent() || controller.signal.aborted || key !== next) return;
-        try {
-          const raw = await api.request<GetItemsIdResponse>(encodedRoutePath('get_items_id', {id: encodeURIComponent(id)}), 'GET', undefined, controller.signal);
-          if (parseMediaItem(raw).id !== id || controller.signal.aborted || key !== next) continue;
-          const values = new Map(snapshot.items);values.set(id, raw);publish(values);
-        } catch (error) {if (controller.signal.aborted || !isCurrent()) return;}
-      }
-    })();
+    const room = service.getSnapshot(), group = room.group, queue = room.queue ?? group?.queue;
+    const next = isCurrent() && group && (room.phase === 'live' || room.phase === 'reconnecting') ? JSON.stringify([group.id, queue?.revision ?? group.queueRevision, group.timeline.currentEntryId, group.timeline.itemId, queue?.eligibility?.currentEntryBlocked,
+      queue?.entries.map(entry => [entry.entryId, entry.itemId, entry.unavailable])]) : '';
+    if (next === key) {publish();return;}key = next;
+    // Scope/pruning publishes the room and its metadata together. Never notify a
+    // new room with the previous room's item map, even for one synchronous turn.
+    if (!next || !group || !isCurrent()) {summaries.update('', []);return;}
+    const currentEntry = queue?.entries.find(entry => entry.entryId === group.timeline.currentEntryId);
+    const currentId = !currentEntry?.unavailable && !queue?.eligibility?.currentEntryBlocked ? group.timeline.itemId : null;
+    const ids = [...new Set([currentId, ...(queue?.entries.filter(entry => !entry.unavailable).map(entry => entry.itemId) ?? [])].filter((id): id is string => !!id))];
+    summaries.update(group.id, ids);
   });
   return {
     service, runtime: playback.runtime, environment: playback.environment, artwork: playback.artwork, get t() {return i18n.t;}, get number() {return i18n.number;},
@@ -56,10 +59,20 @@ export function createTogetherBindings(context: ShellAssemblyContext, playback: 
     openSettings: () => {guard();void router.navigate({to: '/settings'});},
     isCurrent, getSnapshot: () => snapshot, subscribe: (listener: () => void) => {listeners.add(listener);return () => {listeners.delete(listener);};},
     start: () => {guard();if (started) return;started = true;offGroup = playback.runtime.bindGroup(service, isCurrent, playback.reportError);
+      offFreshness = subscribeFreshness(context.events, change => {
+        if (!isCurrent()) return;
+        if (change.type === 'libraries.changed') {catalogueRevisions.clear();summaries.invalidate(() => true);}
+        else if (change.type === 'library.changed') {
+          const revision = change.counters.content ?? change.revision;
+          if (revision !== undefined && catalogueRevisions.get(change.resourceId) === revision) return;
+          if (revision !== undefined) catalogueRevisions.set(change.resourceId, revision);
+          summaries.invalidate(value => value.libraryId === change.resourceId);
+        }
+      });
       offPreferences = context.preferences?.subscribe(() => {if (isCurrent()) {i18n = shellLanguage(context.preferences?.getSnapshot('web') ?? context.facts.preferences);service.setI18n(i18n);publish();}});
     },
     reportError: playback.reportError,
-    dispose: () => {if (life.signal.aborted) return;life.abort();reading?.abort();offGroup?.();offPreferences?.();off();service.dispose();snapshot = {room: service.getSnapshot(), items: new Map()};for (const listener of [...listeners]) listener();listeners.clear();},
+    dispose: () => {if (life.signal.aborted) return;life.abort();offFreshness?.();summaries.dispose();offGroup?.();offPreferences?.();off();service.dispose();snapshot = {room: service.getSnapshot(), items: new Map()};for (const listener of [...listeners]) listener();listeners.clear();},
   };
 }
 export type TogetherBindings = ReturnType<typeof createTogetherBindings>;

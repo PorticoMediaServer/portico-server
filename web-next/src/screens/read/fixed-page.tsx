@@ -5,6 +5,8 @@ import {createWindowedCollection, type WindowedCollection} from '@core/collectio
 import {WindowedGrid} from '../../kit/layout/WindowedGrid';
 import {readerErrorCode, type ReadingController, type ReaderCrease, type ReaderErrorCode, type ReaderFit, type ReaderFormat, type ReaderLocation, type ReaderViewport, type ReaderZoom, type ReaderZoomState} from '@portico/reader-core';
 import {Menu, MenuItem, MenuSeparator} from '../../kit/overlays';
+import {Icon} from '../../kit/Icon';
+import type {ReaderChapterMark} from './ReaderChrome';
 import {loadReadPagePreview, type ReadPagePreview} from './preview';
 import type {ReaderMountAuthority} from './mount';
 import {fixedPageWindow} from './fixed-page-window';
@@ -22,6 +24,36 @@ const fitLabel = (fit: ReaderFit): string => t(fit === 'page' ? 'next.reader.fit
 export function fixedPageZoomLabel(zoom: ReaderZoomState | null): string {
   if (!zoom) return t('next.reader.fit');
   return zoom.fit ? fitLabel(zoom.fit) : defaultI18n.percent(zoom.scale);
+}
+
+/** phone-read 9: fixed-page controls share the existing chrome's visibility. */
+export function FixedPageFooter({controller, authority, reportError, pages, chapters, onPages, onContents, onFit}: Fixed & Readonly<{
+  pages?: string; chapters: readonly ReaderChapterMark[];
+  onPages: () => void; onContents: () => void; onFit: (anchor: HTMLButtonElement) => void;
+}>) {
+  const snapshot = useSyncExternalStore(controller.subscribe, controller.getSnapshot, controller.getSnapshot);
+  const progression = snapshot.location?.progression;
+  const ready = snapshot.status === 'ready';
+  const seek = (value: number) => {
+    if (!ready || !authority.isCurrent() || controller.getSnapshot() !== snapshot || !Number.isFinite(value) || value < 0 || value > 1) return;
+    void controller.navigate({kind: 'progression', value}).catch(error => {if (authority.isCurrent()) reportError(readerErrorCode(error));});
+  };
+  return <div className={styles.footer}>
+    <div className={styles.footerLabels}><span>{snapshot.location?.chapter}</span><span>{pages}</span></div>
+    {progression !== undefined && Number.isFinite(progression) && progression >= 0 && progression <= 1 && <div className={styles.footerProgress}>
+      <span className={styles.footerTrack} aria-hidden="true"><i className={styles.footerFill} style={{width: `${progression * 100}%`}}/>
+        {chapters.map(mark => <span key={mark.id}><i className={styles.footerMark} style={{left: `${mark.start * 100}%`}}/>
+          {mark.current && mark.end !== undefined && mark.end > mark.start && <i className={styles.footerChapter} style={{left: `${mark.start * 100}%`, width: `${(mark.end - mark.start) * 100}%`}}/>}</span>)}
+        <i className={styles.footerThumb} style={{left: `${progression * 100}%`}}/></span>
+      <input type="range" min={0} max={1} step={.0001} value={progression} disabled={!ready} aria-label={t('next.reader.position')} aria-valuetext={pages}
+        onChange={event => seek(event.currentTarget.valueAsNumber)}/>
+    </div>}
+    <div className={styles.footerTools}>
+      <button type="button" disabled={!ready || !snapshot.metadata?.pageCount} onClick={onPages}><Icon name="i-thumbs" size={17}/>{t('next.reader.pagesStrip')}</button>
+      <button type="button" disabled={!ready || !snapshot.toc.length} onClick={onContents}><Icon name="i-chapters" size={17}/>{t('next.reader.contents')}</button>
+      <button type="button" disabled={!ready || !snapshot.zoom} onClick={event => onFit(event.currentTarget)}><Icon name="i-page" size={17}/>{fixedPageZoomLabel(snapshot.zoom)}<Icon name="i-down" size={14}/></button>
+    </div>
+  </div>;
 }
 
 /**
@@ -200,26 +232,27 @@ function FixedPagesWindow({controller, authority, reportError, format, count, cu
  * Zoom, fit and page pairing for fixed pages. Each choice is a live engine override in
  * this session, exactly like the display panel: closing the book restores the defaults.
  */
-export function FixedPageMenus({controller, authority, reportError, format, open, onOpenChange, anchorRef, directionRef}: Fixed & Readonly<{
-  open: 'zoom' | 'direction' | undefined; onOpenChange: (open: 'zoom' | 'direction' | undefined) => void;
-  anchorRef: RefObject<HTMLElement | null>; directionRef: RefObject<HTMLElement | null>;
+export function FixedPageMenus({controller, authority, reportError, format, open, onOpenChange, anchorRef, directionRef, moreRef}: Fixed & Readonly<{
+  open: 'zoom' | 'direction' | 'more' | undefined; onOpenChange: (open: 'zoom' | 'direction' | 'more' | undefined) => void;
+  anchorRef: RefObject<HTMLElement | null>; directionRef: RefObject<HTMLElement | null>; moreRef: RefObject<HTMLElement | null>;
 }>) {
   useSyncExternalStore(controller.subscribe, controller.getSnapshot, controller.getSnapshot);
   const snapshot = controller.getSnapshot(), zoom = snapshot.zoom, preferences = snapshot.preferences;
   const failed = (error: unknown) => {if (authority.isCurrent()) reportError(readerErrorCode(error));};
-  const apply = (value: ReaderZoom) => {if (authority.isCurrent()) void controller.setZoom(value).catch(failed);};
-  const override = (patch: Partial<ReadingPreferences>) => {if (authority.isCurrent()) void controller.setOverride(patch).catch(failed);};
+  const current = () => snapshot.status === 'ready' && !!zoom && authority.isCurrent() && controller.getSnapshot() === snapshot;
+  const apply = (value: ReaderZoom) => {if (current()) void controller.setZoom(value).catch(failed);};
+  const override = (patch: Partial<ReadingPreferences>) => {if (current()) void controller.setOverride(patch).catch(failed);};
   const scale = zoom?.scale ?? 1;
   const fits: readonly ReaderFit[] = format === 'pdf' ? ['page', 'width', 'spread'] : ['page', 'width', 'height'];
   return <>
-    <Menu open={open === 'zoom'} onOpenChange={value => onOpenChange(value ? 'zoom' : undefined)} title={t('next.reader.zoom')} anchorRef={anchorRef}>
-      <MenuItem onSelect={() => apply({kind: 'scale', value: Math.max(0.05, Math.round((scale / 1.25) * 100) / 100)})} disabled={scale <= 0.05}>{t('next.reader.zoomOut')}</MenuItem>
-      <MenuItem onSelect={() => apply({kind: 'scale', value: Math.min(8, Math.round(scale * 1.25 * 100) / 100)})} disabled={scale >= 8}>{t('next.reader.zoomIn')}</MenuItem>
+    <Menu open={open === 'zoom' || open === 'more'} onOpenChange={value => onOpenChange(value ? open : undefined)} title={t(open === 'more' ? 'next.controls.more' : 'next.reader.zoom')} anchorRef={open === 'more' ? moreRef : anchorRef}>
+      <MenuItem onSelect={() => apply({kind: 'scale', value: Math.max(0.05, Math.round((scale / 1.25) * 100) / 100)})} disabled={snapshot.status !== 'ready' || !zoom || scale <= 0.05}>{t('next.reader.zoomOut')}</MenuItem>
+      <MenuItem onSelect={() => apply({kind: 'scale', value: Math.min(8, Math.round(scale * 1.25 * 100) / 100)})} disabled={snapshot.status !== 'ready' || !zoom || scale >= 8}>{t('next.reader.zoomIn')}</MenuItem>
       <MenuSeparator/>
-      {fits.map(fit => <MenuItem key={fit} selected={zoom?.fit === fit} onSelect={() => apply({kind: 'fit', value: fit})}>{fitLabel(fit)}</MenuItem>)}
+      {fits.map(fit => <MenuItem key={fit} disabled={snapshot.status !== 'ready' || !zoom} selected={zoom?.fit === fit} onSelect={() => apply({kind: 'fit', value: fit})}>{fitLabel(fit)}</MenuItem>)}
       <MenuSeparator/>
-      <MenuItem selected={!preferences.twoPages} onSelect={() => override({twoPages: false})}>{t('next.reader.onePage')}</MenuItem>
-      <MenuItem selected={preferences.twoPages} onSelect={() => override({twoPages: true})}>{t('next.reader.twoPages')}</MenuItem>
+      <MenuItem disabled={snapshot.status !== 'ready' || !zoom} selected={!preferences.twoPages} onSelect={() => override({twoPages: false})}>{t('next.reader.onePage')}</MenuItem>
+      <MenuItem disabled={snapshot.status !== 'ready' || !zoom} selected={preferences.twoPages} onSelect={() => override({twoPages: true})}>{t('next.reader.twoPages')}</MenuItem>
     </Menu>
     {format === 'cbz' && <Menu open={open === 'direction'} onOpenChange={value => onOpenChange(value ? 'direction' : undefined)} title={t('next.reader.direction')} anchorRef={directionRef}>
       {(['file', 'ltr', 'rtl'] as const).map(direction => <MenuItem key={direction} selected={preferences.comicDirection === direction}

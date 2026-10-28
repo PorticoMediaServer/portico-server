@@ -6,6 +6,7 @@
 .approvalContent { width: 560px; }
 .approvalContent h1 { font-size: calc(var(--type-lockup-size) * 26 / 23); line-height: calc(var(--type-lockup-size) * 26 / 23 * .98); }
 .contentLibrary { width: 720px; padding-top: 112px; justify-content: flex-start; }
+.loadingContent.loadingContent { width: 100%; max-width: none; padding: 100px 20px; }
 .one { white-space: nowrap; }
 .lede { font-size: var(--type-subheading-size); line-height: calc(var(--type-subheading-size) * 1.5); color: var(--color-text-secondary); margin: 0 0 28px; }
 .field { margin-bottom: 16px; }

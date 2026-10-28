@@ -20,12 +20,29 @@ import {LocalPasswordRecoveryFlow} from './LocalPasswordRecoveryFlow';
 import {PorticoOwnerRecoveryFlow} from './PorticoOwnerRecoveryFlow';
 import {AccountIdentityFailure} from './AccountIdentityFailure';
 import {MemberMoveForm} from './MemberMoveForm';
+import {localAccountStorage, readRememberedLocalAccounts, rememberLocalAccount, rememberedLocalKey, type RememberedLocalAccount} from './remembered-local-accounts';
 
 type RecoveryTarget = Readonly<{entry: BrowserAccountEntry; origin: string; serverId: string; pin: NonNullable<ReturnType<BrowserAccountEntry['getSnapshot']>['pin']>}>;
 
 export function AccountSignInView({entry, form, takeReturn, takeMove, initialize = true, initialOrigin, onCancel}: {entry: BrowserAccountEntry; form: AccountSignInForm; takeReturn?: TakeAccountReturn; takeMove?: TakeAccountMove; initialize?: boolean; initialOrigin?: string; onCancel?: () => void}) {
   const state = useSyncExternalStore(entry.subscribe, entry.getSnapshot), input = useSyncExternalStore(form.subscribe, form.getSnapshot);
   const [error, setError] = useState<unknown>(), [initializing, setInitializing] = useState(initialize), [joining, setJoining] = useState(false), started = useRef(false), alive = useRef(true), joinOrigin = useRef<string | undefined>(undefined);
+  const rememberedKey = state.server?.signIn === 'local' && state.pin?.serverId === state.server.id ? rememberedLocalKey(state.pin) : undefined;
+  const [remembered, setRemembered] = useState<Readonly<{key: string; accounts: readonly RememberedLocalAccount[]}>>();
+  useEffect(() => {
+    if (!rememberedKey) {setRemembered(undefined);return;}
+    const read = () => setRemembered({key: rememberedKey, accounts: readRememberedLocalAccounts(localAccountStorage(), rememberedKey)});
+    const changed = (event: StorageEvent) => {if (event.key === rememberedKey || event.key === null) read();};
+    read();window.addEventListener('storage', changed);
+    return () => window.removeEventListener('storage', changed);
+  }, [rememberedKey]);
+  useEffect(() => {
+    if (!rememberedKey || entry.getSnapshot() !== state || state.busy || state.ownerResetSessionReady || input.factor || input.busy
+      || state.phase !== 'profiles' && state.phase !== 'ready' || !state.snapshot || state.snapshot.twoStepSetupRequired
+      || state.snapshot.serverId !== state.server?.id || state.snapshot.account.disabled) return;
+    const {id: accountId, username} = state.snapshot.account;
+    rememberLocalAccount(localAccountStorage(), rememberedKey, {accountId, username});
+  }, [entry, state, input, rememberedKey]);
   const [recoveryChoice, setRecoveryChoice] = useState(false);
   const [recovery, setRecovery] = useState<RecoveryTarget>();
   const [porticoRecovery, setPorticoRecovery] = useState<RecoveryTarget>();
@@ -153,6 +170,7 @@ export function AccountSignInView({entry, form, takeReturn, takeMove, initialize
     <Button variant="ghost" disabled={busy} onClick={() => setRecoveryChoice(false)}>{defaultI18n.t('action.cancel')}</Button>
   </AuthStage>;
   if (state.phase === 'password' && state.server?.signIn === 'local') return <LocalServerSignIn key={input.inputEpoch} serverName={state.server.name} initialUsername={input.username}
+    remembered={!state.invitation && remembered?.key === rememberedKey ? remembered?.accounts : undefined}
     busy={busy} error={failure} retryAt={input.retryAt} onSignIn={(username, password) => {setError(undefined); void form.signIn(username, password);}} onJoin={join}
     onForgotPassword={state.invitation ? undefined : openRecovery}
     onMoveCode={state.server.move === 'to_local' && !state.invitation ? () => openMember('code') : undefined} />;

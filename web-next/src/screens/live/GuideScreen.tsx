@@ -10,7 +10,9 @@ import {Icon} from '../../kit/Icon';
 import {Skeleton, StateView} from '../../kit/states';
 import {liveListPrograms} from './program-window';
 import {useGuideSwipe} from './guide-swipe';
+import {guideListRowHeight, guideVisibleRows} from './guide-window';
 import type {RowWitness} from './row-witness';
+import {useWindowHeight, useWindowWidth} from '../../kit/theme';
 import styles from './live.module.css';
 
 const t = defaultI18n.t;
@@ -37,13 +39,7 @@ export function guideCellProgress(cell: Pick<GuideCell, 'state' | 'start' | 'end
   return Math.min(1, Math.max(0, (now - cell.start) / (cell.end - cell.start)));
 }
 
-/** The rows to load for a guide body that scrolls with the page (`bodyTop` is its viewport offset). */
-export function guideVisibleRows(bodyTop: number, viewportHeight: number, rowHeight: number, total: number) {
-  if (!(rowHeight > 0) || total < 1) return {first: 0, last: 0};
-  const first = Math.min(total - 1, Math.max(0, Math.floor(-bodyTop / rowHeight) - 1));
-  const last = Math.min(total - 1, Math.max(first, Math.ceil((viewportHeight - bodyTop) / rowHeight) + 2));
-  return {first, last};
-}
+export {guideVisibleRows} from './guide-window';
 
 export type GuideRowData = Readonly<{
   /** Position in the complete filtered order; rows are placed by it. */
@@ -98,7 +94,7 @@ function CellButton({cell, channel, witness, now, timezone, selected, onSelect}:
   const label = t('guide.cellTime', {start: defaultI18n.time(programme.start), end: defaultI18n.time(programme.end)});
   return <button type="button" className={styles.guideCell} data-kind="program" data-state={cell.state} data-tier={cell.tier} data-selected={selected || undefined}
     style={{left: cell.x + GUIDE_CELL_INSET, width: Math.max(0, cell.width - GUIDE_CELL_INSET)}}
-    aria-label={`${programme.title}, ${label}`} aria-current={selected || undefined} onClick={() => onSelect(channel, programme, witness)}>
+    aria-label={[channel.number, channel.name, programme.title, label, recording === 'recording' ? t('next.kit.recording') : recording === 'scheduled' ? t('guide.recordingScheduled') : undefined].filter(Boolean).join(', ')} aria-current={selected || undefined} onClick={() => onSelect(channel, programme, witness)}>
     <span className={styles.guideCellTitle}>
       {cell.clippedStart && <Icon className={styles.guideClip} name="i-left" size={13}/>}
       {recording === 'recording' && <i className={styles.guideRecordDot} data-pulse title={t('next.kit.recording')}/>}
@@ -115,11 +111,11 @@ function CellButton({cell, channel, witness, now, timezone, selected, onSelect}:
   </button>;
 }
 
-function GuideChannelCell({channel, list, phone}: Readonly<{channel?: GuideChannelRow; list: boolean; phone: boolean}>) {
+function GuideChannelCell({channel, list, phone, landscape = false}: Readonly<{channel?: GuideChannelRow; list: boolean; phone: boolean; landscape?: boolean}>) {
   if (!channel) return <div className={styles.guideChannel}><Skeleton width={phone ? 36 : 180} height={34}/></div>;
   const mark: ChannelMarkModel | undefined = channel.mark ? {sourceId: channel.sourceId ?? '', id: channel.id, text: channel.mark.text, seed: channel.mark.seed} : undefined;
   return <div className={list ? styles.guideListChannel : styles.guideChannel}>
-    {mark ? <ChannelMark className={styles.guideChannelMark} mark={mark} size={40}/> : <span className={`${styles.guideChannelMark} ${styles.guideChannelMarkEmpty}`} aria-hidden="true"/>}
+    {mark ? <ChannelMark className={styles.guideChannelMark} mark={mark} size={list && phone ? 46 : landscape ? 32 : 40}/> : <span className={`${styles.guideChannelMark} ${styles.guideChannelMarkEmpty}`} aria-hidden="true"/>}
     <span className={styles.guideChannelText}>
       <b>{channel.name}{channel.favorite && <Icon className={styles.guideFavorite} name="i-star-f" size={13}/>}</b>
       <small>{channel.number}{list && channel.group && <span>{channel.group}</span>}</small>
@@ -129,8 +125,8 @@ function GuideChannelCell({channel, list, phone}: Readonly<{channel?: GuideChann
 
 
 /** One drawn row of the list view: the airing on now, or the next/later airing. */
-function ProgrammeSummary({programme, now, timezone, current = false, onSelect}: Readonly<{
-  programme: GuideProgram; now: number; timezone: string; current?: boolean; onSelect: () => void;
+function ProgrammeSummary({programme, channel, now, timezone, current = false, onSelect}: Readonly<{
+  programme: GuideProgram; channel: GuideChannelRow; now: number; timezone: string; current?: boolean; onSelect: () => void;
 }>) {
   const parts = programmeFactParts({startMs: programme.start, endMs: programme.end,
     episode: programme.episode ? {mode: 'seasonal', season: programme.episode.season, episode: programme.episode.number} : undefined,
@@ -141,7 +137,8 @@ function ProgrammeSummary({programme, now, timezone, current = false, onSelect}:
   const progress = current && programme.end > programme.start ? Math.min(1, Math.max(0, (now - programme.start) / (programme.end - programme.start))) : undefined;
   return <>
     {!current && <span className={styles.guideListAt}>{defaultI18n.time(programme.start)}</span>}
-    <b><button type="button" className={styles.guideListTitle} onClick={onSelect}>
+    <b><button type="button" className={styles.guideListTitle} onClick={onSelect}
+      aria-label={[channel.number, channel.name, programme.title, ...parts.map(part => part.text), programme.recording?.state === 'scheduled' ? t('guide.recordingScheduled') : undefined].filter(Boolean).join(', ')}>
       {programme.recording?.state === 'recording' && <i className={styles.guideRecordDot} data-pulse title={t('next.kit.recording')}/>}
       <span className={styles.guideCellName}>{programme.title}</span>
     </button></b>
@@ -156,12 +153,45 @@ function ProgrammeSummary({programme, now, timezone, current = false, onSelect}:
   </>;
 }
 
+/** The portrait List frame keeps status above the title and the next airing below progress. */
+function PhoneListProgramme({channel, current, next, now, timezone, onSelect}: Readonly<{
+  channel: GuideChannelRow; current?: GuideProgram; next?: GuideProgram; now: number; timezone: string;
+  onSelect(programme: GuideProgram): void;
+}>) {
+  const parts = current ? programmeFactParts({startMs: current.start, endMs: current.end,
+    episode: current.episode ? {mode: 'seasonal', season: current.episode.season, episode: current.episode.number} : undefined,
+    subtitle: current.subtitle, flags: current.flags, recording: current.recording?.state === 'recording'},
+  {t, locale: defaultI18n.region.formatLocale, timeZone: timezone}, now) : [];
+  const facts = guideCellFacts(parts), remaining = parts.find(part => part.id === 'remaining');
+  const detail = facts.detail.filter(part => part.id !== 'time-range'), selectable = current ?? next;
+  const progress = current && current.end > current.start ? Math.min(1, Math.max(0, (now - current.start) / (current.end - current.start))) : undefined;
+  return <div className={styles.phoneListProgramme}>
+    <div className={styles.phoneListStatus}>
+      {selectable ? <button type="button" className={styles.guideListChannelName} onClick={() => onSelect(selectable)}>{channel.name}</button>
+        : <span className={styles.guideListChannelName}>{channel.name}</span>}
+      {channel.favorite && <Icon className={styles.guideFavorite} name="i-star-f" size={12}/>}
+      {current?.recording?.state === 'recording' && <span className={styles.guideRecording}>{t('next.kit.recording')}</span>}
+      {facts.flags.map(part => <span key={part.id} className={styles.guideFlag} data-flag={FLAG_KINDS[part.id]}>{part.text}</span>)}
+      {remaining && <span className={styles.phoneListRemaining}>{remaining.text}</span>}
+    </div>
+    {current ? <button type="button" className={styles.phoneListTitle} onClick={() => onSelect(current)}>{current.title}</button>
+      : <b className={styles.phoneListTitle}>{t(channel.guide === 'none' ? 'guide.noGuide' : 'guide.noInformation')}</b>}
+    {!!detail.length && <div className={styles.phoneListFacts}>{detail.map(part => <span key={part.id}>{part.text}</span>)}</div>}
+    {channel.guide === 'none' && !current && <div className={styles.phoneListFacts}>{t('guide.noGuideBody')}</div>}
+    {progress !== undefined && <span className={styles.phoneListTrack} aria-hidden="true"><i style={{width: `${progress * 100}%`}}/></span>}
+    {next && <button type="button" className={styles.phoneListNext} onClick={() => onSelect(next)}>{t('guide.next', {title: next.title, time: defaultI18n.time(next.start)})}</button>}
+  </div>;
+}
+
 export function GuideScreen({title, switcher, summary, conflicts, onTabChange, chips, onNow, problem, empty, day, sort, view, time, onViewChange,
   span, rows, total, selected, onSelect, onPlay, onVisibleWindow, onRetry}: GuideScreenProps) {
   const body = useRef<HTMLDivElement>(null);
   const swipe = useGuideSwipe(time.onEarlier, time.onLater);
   const {start, end, now, scale, column, rowHeight, timezone} = span;
   const phone = column <= 60;
+  const width = useWindowWidth(), height = useWindowHeight();
+  const landscape = width >= 600 && height < 600 && width > height, compactHeader = phone || landscape;
+  const bodyRowHeight = view === 'list' ? guideListRowHeight(phone) : rowHeight;
   const ticks = useMemo(() => rulerTicks(start, end, scale, timezone), [start, end, scale, timezone]);
   const nowX = now >= start && now < end ? (now - start) * scale : undefined;
 
@@ -171,14 +201,14 @@ export function GuideScreen({title, switcher, summary, conflicts, onTabChange, c
     const update = () => {
       const element = body.current;
       if (!element) return;
-      const {first, last} = guideVisibleRows(element.getBoundingClientRect().top, globalThis.innerHeight, rowHeight, total);
+      const {first, last} = guideVisibleRows(element.getBoundingClientRect().top, globalThis.innerHeight, bodyRowHeight, total);
       onVisibleWindow(first, last);
     };
     update();
     globalThis.addEventListener('scroll', update, {passive: true});
     globalThis.addEventListener('resize', update);
     return () => {globalThis.removeEventListener('scroll', update);globalThis.removeEventListener('resize', update);};
-  }, [onVisibleWindow, rowHeight, total]);
+  }, [onVisibleWindow, bodyRowHeight, total, view]);
 
   const move = useCallback((from: EventTarget | null, offset: number) => {
     const cells = [...(from as HTMLElement | null)?.parentElement?.querySelectorAll<HTMLButtonElement>('button') ?? []];
@@ -194,13 +224,15 @@ export function GuideScreen({title, switcher, summary, conflicts, onTabChange, c
     if (event.key === 'n' || event.key === 'N') {event.preventDefault();time.onNow();}
   };
 
-  return <section className={styles.guideScreen} data-guide-screen>
+  return <section className={styles.guideScreen} data-guide-screen data-phone-landscape={landscape || undefined}>
+    <div className={styles.guideChrome}>
     <div className={styles.guideAmbient} data-guide-ambient aria-hidden="true"/>
     <header className={styles.guideHeader} data-guide-header>
       <h1>{title}</h1>
-      {phone && <Segmented className={styles.guidePhoneView} variant="view" aria-label={t('channels.view')} value={view} onValueChange={value => {if (value === 'guide' || value === 'list') onViewChange(value);}}
+      {compactHeader && <Segmented className={styles.guidePhoneView} variant="view" aria-label={t('channels.view')} value={view} onValueChange={value => {if (value === 'guide' || value === 'list') onViewChange(value);}}
         items={[{value: 'list', label: t('channels.viewList'), icon: 'i-list'}, {value: 'guide', label: t('channels.viewGuide'), icon: 'i-timeline'}]}/>}
-      {switcher && <Select className={styles.guideSwitcher} aria-label={t('channels.source')} value={switcher.value} options={switcher.options} onValueChange={switcher.onChange}/>}
+      {compactHeader && onTabChange && <Button className={styles.guideRecordings} variant="icon" iconOnly icon="i-rec" aria-label={t('recordings.title')} onClick={() => onTabChange('recordings')}/>}
+      {!compactHeader && switcher && <Select className={styles.guideSwitcher} aria-label={t('channels.source')} value={switcher.value} options={switcher.options} onValueChange={switcher.onChange}/>}
       {summary && <p className={styles.guideSource}>
         <strong>{summary.name}</strong>
         {summary.channels !== undefined && <span>{t('next.kit.channels', {count: summary.channels})}</span>}
@@ -209,9 +241,10 @@ export function GuideScreen({title, switcher, summary, conflicts, onTabChange, c
     </header>
     <Tabs className={styles.guideTabs} data-guide-tabs listClassName={styles.guideTabList} value="guide" aria-label={t('next.home.shell.live')}
       onValueChange={value => {if (value === 'recordings') onTabChange?.(value);}}
-      items={[{value: 'guide', label: t('channels.viewGuide')},
+      items={[{value: 'guide', label: t('channels.title')},
         {value: 'recordings', label: <>{t('recordings.title')}{conflicts !== undefined && <span className={styles.guideTabNote}>{t('next.live.conflicts', {count: conflicts})}</span>}</>}]}/>
     <div className={styles.guideChips} data-guide-chips role="group" aria-label={t('channels.filters')}>
+      {compactHeader && switcher && <Select className={styles.guideSourceChip} aria-label={t('channels.source')} value={switcher.value} options={switcher.options} onValueChange={switcher.onChange}/>}
       {chips.map(chip => <Chip className={styles.guideChip} key={chip.id} selected={chip.selected} count={chip.count} icon={chip.favorites ? 'i-star' : undefined} onClick={chip.onSelect}>{chip.label}</Chip>)}
     </div>
     {view === 'guide' && onNow}
@@ -230,16 +263,17 @@ export function GuideScreen({title, switcher, summary, conflicts, onTabChange, c
         <div className={styles.guideSortField}><span className={styles.guideSortPrefix}>{t('channels.sort')}</span>
           <Select className={styles.guideSort} aria-label={t('channels.sort')} value={sort.value} options={sort.options} onValueChange={sort.onChange}/>
         </div>
-        {!phone && <Segmented className={styles.guideView} variant="view" aria-label={t('channels.view')} value={view} onValueChange={value => {if (value === 'guide' || value === 'list') onViewChange(value);}}
-          items={[{value: 'guide', label: t('title.viewGrid'), icon: 'i-timeline', accessibleLabel: t('title.viewGrid')},
-            {value: 'list', label: t('title.viewList'), icon: 'i-list', accessibleLabel: t('title.viewList')}]}/>}
+        {!compactHeader && <Segmented className={styles.guideView} variant="view" aria-label={t('channels.view')} value={view} onValueChange={value => {if (value === 'guide' || value === 'list') onViewChange(value);}}
+          items={[{value: 'list', label: t('channels.viewList'), icon: 'i-list'},
+            {value: 'guide', label: t('channels.viewGuide'), icon: 'i-timeline'}]}/>}
       </div>
+    </div>
     </div>
     {problem && <div className={styles.guideProblem}>{problem}</div>}
     {empty ?? (view === 'guide'
-      ? <div {...swipe} className={styles.guide} data-guide-grid role="grid" aria-label={t('guide.label')} style={{'--guide-column': `${column}px`, '--guide-row': `${rowHeight}px`} as CSSProperties}>
+      ? <div {...swipe} className={styles.guide} data-guide-grid role="group" aria-label={t('guide.label')} style={{'--guide-column': `${column}px`, '--guide-row': `${rowHeight}px`} as CSSProperties}>
         <div className={styles.guideRuler}>
-          <div className={styles.guideCorner}>{phone ? <button type="button" className={styles.guideCornerNow} onClick={time.onNow}>{time.now}</button> : t('guide.channelColumn')}</div>
+          <div className={styles.guideCorner}>{landscape ? <Select className={styles.guideDay} aria-label={day.label} value={day.value} options={day.options} onValueChange={day.onChange}/> : phone ? <button type="button" className={styles.guideCornerNow} onClick={time.onNow}>{time.now}</button> : t('guide.channelColumn')}</div>
           <div className={styles.guideLane} data-now-outside={nowX === undefined || undefined}>
             {ticks.map(tick => <span key={tick.atMs} className={styles.guideTick} data-kind={tick.kind} style={{left: tick.x}}>{defaultI18n.time(tick.atMs)}</span>)}
             {nowX !== undefined && <span className={styles.guideNowPill} style={{left: nowX}}>{defaultI18n.time(now)}</span>}
@@ -251,15 +285,16 @@ export function GuideScreen({title, switcher, summary, conflicts, onTabChange, c
         <div className={styles.guideBody} ref={body}>
           {nowX !== undefined && <div className={styles.guidePastShade} style={{width: nowX}} aria-hidden="true"/>}
           <div className={styles.guideRows} style={{height: Math.max(0, total) * rowHeight}} onKeyDown={onKeyDown}>
-            {rows.map(row => <div className={styles.guideRow} key={row.channel?.id ?? row.index} style={{top: row.index * rowHeight}} data-guide-row={row.channel?.id}>
-              <GuideChannelCell channel={row.channel} list={false} phone={phone}/>
+            {rows.map(row => <div className={styles.guideRow} key={row.channel?.id ?? row.index} style={{top: row.index * rowHeight}} data-guide-row={row.channel?.id}
+              role={row.channel ? 'group' : undefined} aria-label={row.channel ? [row.channel.number, row.channel.name].filter(Boolean).join(', ') : undefined}>
+              <GuideChannelCell channel={row.channel} list={false} phone={phone} landscape={landscape}/>
               <div className={styles.guideLane}>
                 {!row.channel || !row.complete
                   ? row.failed ? <StateView title={t('guide.tileFailed')} primary={{id: 'retry', label: t('next.states.tryAgain'), onPress: () => onRetry?.()}}/>
                     : <Skeleton width="100%" height={rowHeight - 8}/>
                   : <>
                     {nowX !== undefined && <i className={styles.guideLaneNow} style={{left: nowX}} aria-hidden="true"/>}
-                    {layoutRow(row.programs, {viewStart: start, viewEnd: end, pxPerMs: scale, now, gapPx: 2, ...(phone ? {tiers: {full: 50, title2: 50, title: 24}} : {})})
+                    {layoutRow(row.programs, {viewStart: start, viewEnd: end, pxPerMs: scale, now, gapPx: 2, ...(compactHeader ? {tiers: {full: 50, title2: 50, title: 24}} : {})})
                       .map(cell => cell.kind === 'gap'
                         ? <div key={`gap:${cell.start}`} className={styles.guideCell} data-kind="gap" data-tier={cell.tier} data-wide-gap={row.channel!.guide === 'none' || undefined}
                             role="note" aria-label={row.channel!.guide === 'none' ? t('guide.noGuide') : t('guide.noInformation')}
@@ -280,25 +315,28 @@ export function GuideScreen({title, switcher, summary, conflicts, onTabChange, c
         <div className={styles.guideListHead} aria-hidden="true">
           <span>{t('guide.channelColumn')}</span><span>{t('guide.onNow')}</span><span>{t('guide.nextColumn')}</span><span>{t('guide.laterColumn')}</span><span/>
         </div>
-        {rows.map(row => <div className={styles.guideListRow} key={row.channel?.id ?? row.index} data-guide-row={row.channel?.id}>
+        <div className={styles.guideListRows} ref={body} style={{height: Math.max(0, total) * bodyRowHeight}}>
+        {rows.map(row => <div className={styles.guideListRow} key={row.channel?.id ?? row.index} data-guide-row={row.channel?.id} style={{top: row.index * bodyRowHeight, height: bodyRowHeight}}
+          role={row.channel ? 'group' : undefined} aria-label={row.channel ? [row.channel.number, row.channel.name].filter(Boolean).join(', ') : undefined}>
           <GuideChannelCell channel={row.channel} list phone={phone}/>
           {!row.channel || !row.complete
             ? <div className={styles.guideListNow}>{row.failed ? <StateView title={t('guide.tileFailed')} primary={{id: 'retry', label: t('next.states.tryAgain'), onPress: () => onRetry?.()}}/> : <Skeleton width="100%" height={rowHeight - 20}/>}</div>
             : (() => {
               const [current, next, later] = liveListPrograms(row.programs, now);
+              if (phone) return <PhoneListProgramme channel={row.channel!} current={current} next={next} now={now} timezone={timezone} onSelect={programme => onSelect(row.channel!, programme, row.witness)}/>;
               return <>
                 <div className={styles.guideListNow}>{current
-                  ? <ProgrammeSummary programme={current} now={now} timezone={timezone} current onSelect={() => onSelect(row.channel!, current, row.witness)}/>
+                  ? <ProgrammeSummary programme={current} channel={row.channel!} now={now} timezone={timezone} current onSelect={() => onSelect(row.channel!, current, row.witness)}/>
                   : <><b><span className={styles.guideListMuted}>{row.channel?.guide === 'none' ? t('guide.noGuide') : t('guide.noInformation')}</span></b>
                     {row.channel?.guide === 'none'
                       ? <small>{t('guide.noGuideBody')}</small>
                       : liveListPrograms(row.programs, now)[1] ? <small>{t('guide.until', {time: defaultI18n.time(liveListPrograms(row.programs, now)[1]!.start)})}</small> : null}</>}</div>
-                <div className={styles.guideListNext}>{next ? <ProgrammeSummary programme={next} now={now} timezone={timezone} onSelect={() => onSelect(row.channel!, next, row.witness)}/> : null}</div>
-                <div className={styles.guideListNext}>{later ? <ProgrammeSummary programme={later} now={now} timezone={timezone} onSelect={() => onSelect(row.channel!, later, row.witness)}/> : null}</div>
+                <div className={styles.guideListNext}>{next ? <ProgrammeSummary programme={next} channel={row.channel!} now={now} timezone={timezone} onSelect={() => onSelect(row.channel!, next, row.witness)}/> : null}</div>
+                <div className={`${styles.guideListNext} ${styles.guideListLater}`}>{later ? <ProgrammeSummary programme={later} channel={row.channel!} now={now} timezone={timezone} onSelect={() => onSelect(row.channel!, later, row.witness)}/> : null}</div>
                 <div className={styles.guideListActions}>{row.channel?.tuneAvailable && onPlay && <Button size="compact" icon="i-play" onClick={() => onPlay(row.channel!, row.witness)}>{t('channels.watch')}</Button>}</div>
               </>;
             })()}
-        </div>)}
+        </div>)}</div>
       </div>)}
     {view === 'guide' && <p className={styles.guideKbd} data-guide-kbd>{t('guide.keyboardHint')}</p>}
   </section>;

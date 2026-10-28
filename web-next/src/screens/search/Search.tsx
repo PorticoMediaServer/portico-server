@@ -6,7 +6,7 @@ import {t, locale} from '../detail/text';
 import {useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type MouseEvent as ReactMouseEvent} from 'react';
 import {preferenceValue} from '@core/preferences.ts';
 import {searchQueryProblem, type SearchEntry, type SearchGroup, type SearchGroupResult, type SearchHistoryPage} from '@core/search.ts';
-import {SEARCH_CHIPS, orderedSearchGroups, searchGroupLabel, topSearchResult} from '@core/presentation/search-model.ts';
+import {SEARCH_CHIPS, searchGroupLabel, topSearchResult} from '@core/presentation/search-model.ts';
 import {Button, Chip, TextField} from '../../kit/controls';
 import {useSelectionRangePreview, PosterCard, SquareCard, CircleCard, EpisodeTile, GenreTile, LiveCard, CoverCard} from '../../kit/cards';
 import {Artwork} from '../../kit/artwork';
@@ -36,11 +36,13 @@ import {channelTint, type FactPart} from '@portico/client-core/kit-model';
 import {clockText, durationText} from '@core/presentation/kit-model/text.ts';
 import {defaultI18n} from '@i18n';
 import {formatSignalText, musicFormatBadges} from '@core/music-signal.ts';
+import {AllResultsRow} from './AllResultsRow';
 
 type ChipId = SearchGroup | 'all';
 type HistoryLease = {retired: boolean; pending: boolean};
 type HistoryView = {lease: HistoryLease; page?: SearchHistoryPage};
 const keyOf = (entry: SearchEntry) => JSON.stringify(['libraryId' in entry ? entry.libraryId : '', entry.kind, entry.id]);
+const groupOrder = new Map<string, number>(SEARCH_CHIPS.map((chip, index) => [chip.id, index]));
 const searchTimezone = () => defaultI18n.region.timeZone ?? Intl.DateTimeFormat().resolvedOptions().timeZone;
 const onNowTime = (at: number) => new Intl.DateTimeFormat(locale(), {hour: 'numeric', minute: '2-digit', timeZone: searchTimezone()}).format(new Date(at));
 function onNowProgramme(card: SearchOnNowCard, now: number) {
@@ -58,7 +60,7 @@ export function SearchScreen({binding, selection, linkedQuery, onConsumeLinkedQu
   const selectionEpoch = selection?.epoch();
   const compact = useShellWidth() < 600;
   const {service, context} = binding, initial = binding.session();
-  const snapshot = useSyncExternalStore(service.subscribe, service.getSnapshot, service.getSnapshot);
+  const snapshot = useSyncExternalStore(binding.results.subscribe, binding.results.getSnapshot, binding.results.getSnapshot);
   useFreshDocument([dependsOn.libraries, ...titlesWithPersonalState(), dependsOn.settings('preferences'), dependsOn.event('stream.resync')], refresh => service.revalidate(refresh), () => service.getSnapshot().phase === 'ready');
   const preferences = useSyncExternalStore(context.preferences.subscribe, context.preferences.getSnapshot, context.preferences.getSnapshot);
   const [text, setText] = useState(linkedQuery ?? initial.text), [chip, setChip] = useState<ChipId>(initial.group ?? 'all');
@@ -169,13 +171,17 @@ export function SearchScreen({binding, selection, linkedQuery, onConsumeLinkedQu
     } catch (error) { lease.pending = false; context.effects.reportError(error); }
   } : undefined;
   const showing = snapshot.data?.query.q === text.trim() && snapshot.data.query.group === (group ?? '') ? snapshot.data : null;
-  const groups = showing ? snapshot.groups : [], top = !group && !selection?.isActive() ? topSearchResult(text, groups) : undefined;
+  const groups = showing ? snapshot.groups : [], top = showing && !group && !selection?.isActive() ? topSearchResult(text, service.getSnapshot().groups) : undefined;
   // Frame 4: a photo-less artist's circle is cut from one of their own albums in this answer.
   const topAlbumArt = top ? artistAlbumArt(top.entry, groups) : undefined;
-  useEffect(() => {if (selection && top?.entry && 'libraryId' in top.entry) return selection.register(top.entry, -1);}, [selection, top?.entry, selectionEpoch]);
+  useLayoutEffect(() => {if (selection && top?.entry && 'libraryId' in top.entry) return selection.register(top.entry, -1);}, [selection, top?.entry, selectionEpoch, snapshot.generation]);
   const failed = groups.filter(value => value.status === 'error');
   const size = preferenceValue<number>(preferences, 'appearance.cardSizePercent') / 100;
-  const empty = showing && groups.every(value => value.status === 'success' && !value.items.length);
+  const empty = showing && groups.every(value => value.status === 'success' && !value.items.length && !value.nextCursor);
+  // A filtered/unreadable page can contain no drawable entries while still offering
+  // a real continuation. Keep its pending row in the shared authored chip order.
+  const allRows = groups.filter(value => value.items.length > 0 || value.status === 'success' && !!value.nextCursor)
+    .sort((left, right) => (groupOrder.get(left.id) ?? 99) - (groupOrder.get(right.id) ?? 99));
   // The frame's "Browse instead" is the same genre browsing as the empty page, so the
   // tiles load for an empty answer too.
   useEffect(() => {
@@ -241,7 +247,7 @@ export function SearchScreen({binding, selection, linkedQuery, onConsumeLinkedQu
       const capability = showing?.capabilities.groups.find(item => item.id === value.id), result = groups.find(item => item.id === value.id) ?? binding.summary().find(item => item.id === value.id);
       if (value.id !== 'all' && capability?.available === false) return null;
       if (value.id === 'reading' && capability?.available !== true) return null;
-      const off = value.id !== 'all' && result?.status === 'success' && result.totalCountExact && result.totalCount === 0;
+      const off = value.id !== 'all' && result?.status === 'success' && result.totalCountExact && result.totalCount === 0 && !('nextCursor' in result && result.nextCursor);
       return <Chip key={value.id} variant="search" selected={chip === value.id} dim={off} disabled={off} retry={result?.status === 'error'}
         count={!off && result?.totalCountExact ? result.totalCount : undefined} onClick={() => { setChip(value.id); }}>{t(value.label)}</Chip>;
     })}</div>}
@@ -250,7 +256,7 @@ export function SearchScreen({binding, selection, linkedQuery, onConsumeLinkedQu
       {clearFailed && <p role="alert">{t('web.search.clearFailed')}</p>}
       {problem && <p role="status">{t(problem === 'short' ? 'web.search.tooShort' : problem === 'words' ? 'web.search.tooManyWords' : 'web.search.tooLong')}</p>}
       {snapshot.phase === 'loading' && !showing && <SearchLoading key={snapshot.generation} />}
-      {(snapshot.phase === 'error' || snapshot.phase === 'refresh-required') && <ScreenProblem context={context} error={snapshot.error} retry={() => { void service.retry(); }} />}
+      {(snapshot.phase === 'error' || snapshot.phase === 'refresh-required') && <ScreenProblem context={context} error={snapshot.error} retry={() => { if (binding.results.getSnapshot() === snapshot) void binding.results.retry().catch(context.effects.reportError); }} />}
       {failed.length > 0 && <div role="status" className={styles.partial}><Icon name="i-clock" size={22} /><span>{t('web.search.partial', {groups: new Intl.ListFormat(locale(), {style: 'long', type: 'conjunction'}).format(failed.map(value => t(searchGroupLabel(value.id))))})}</span><Button icon="i-retry" size="small" onClick={() => { void service.refresh(); }}>{t('next.states.tryAgain')}</Button></div>}
       {empty && <SearchEmpty title={t(group ? 'web.search.nothingIn' : 'web.search.noMatches', group ? {group: t(searchGroupLabel(group))} : {query: text.trim()})} body={group ? undefined : t('web.search.noMatchesBody')}
         action={group ? <Button variant="primary" size="compact" onClick={() => setChip('all')}>{t('web.search.everything')}</Button> : undefined} />}
@@ -258,43 +264,16 @@ export function SearchScreen({binding, selection, linkedQuery, onConsumeLinkedQu
       {top && <TopResult binding={binding} result={top} fallbackArtwork={topAlbumArt} compact={compact}
         onOpen={() => runScreenCommand(context, () => { if (!top) return; binding.open(top.entry); commit(); })} />}
       {group && !empty ? <SearchGroupWindow binding={binding} group={group} result={groups.find(value => value.id === group)} selection={selection} onCommit={commit} />
-        : orderedSearchGroups(groups).map((result, groupIndex) => {
-          const entries = result.items.filter(entry => entry !== top?.entry), cap = result.id === 'episodes' || result.id === 'songs' ? 4 : result.id === 'movies' || result.id === 'shows' ? 7 : 4;
-          if (!entries.length) return null;
-          const shown = entries.slice(0, cap);
-          // desktop-read 11: a mixed Reading answer draws its two shapes in two card rows under
-          // the group's one heading, count, Select all and See all.
-          const parts = result.id === 'reading' ? readingRows(shown) : [];
-          return <section key={result.id} className={styles.section} data-group={result.id}>
-            <header><h2>{t(searchGroupLabel(result.id))}</h2>{result.totalCountExact && <span>{result.totalCount > cap ? t('web.search.someOf', {shown: Math.min(cap, entries.length), total: result.totalCount}) : result.totalCount}</span>}
-              <div className={styles.sectionActions}>
-                {selection?.canSelectGroup(result, shown) && <Button variant="text" size="small" className={styles.selectGroup} onClick={() => {try {selection.selectGroup(result, shown);} catch (error) {context.effects.reportError(error);}}}>{t('next.selection.selectAll', {count: shown.length})}</Button>}
-                {(result.hasMore || entries.length > cap) && <Button variant="text" size="small" onClick={() => setChip(result.id)}><span className={styles.seeAll}>{t('web.search.seeAll')}<Icon name="i-right" size={18} /></span></Button>}
-              </div></header>
-            {parts.length > 1
-              ? parts.map(part => <div key={part.id} className={styles.cards}>{part.items.map(({entry, index}) => <SearchResult key={keyOf(entry)} entry={entry} binding={binding} selection={selection} position={groupIndex * 1000 + index} onCommit={commit}
-                albumArt={entry.kind === 'artist' ? artistAlbumArt(entry, groups) : undefined} />)}</div>)
-              : <div className={styles.cards}>{shown.map((entry, position) => <SearchResult key={keyOf(entry)} entry={entry} binding={binding} selection={selection} position={groupIndex * 1000 + position} onCommit={commit}
-                albumArt={entry.kind === 'artist' ? artistAlbumArt(entry, groups) : undefined} />)}</div>}
-          </section>;
+        : allRows.map((result, groupIndex, ordered) => {
+          const offset = ordered.slice(0, groupIndex).reduce((sum, value) => sum + value.items.length, 0);
+          return <AllResultsRow key={`${snapshot.generation}:${result.id}`} result={result} binding={binding} selection={selection} excluded={top?.entry} size={size} onSeeAll={() => setChip(result.id)}
+            renderEntry={(entry, position, selectionVisible) => <SearchResult key={keyOf(entry)} entry={entry} binding={binding} selection={selection} selectionVisible={selectionVisible} position={offset + position} onCommit={commit}
+              albumArt={entry.kind === 'artist' ? artistAlbumArt(entry, groups) : undefined} />} />;
         })}
     </div>
   </div>;
 }
 
-/** desktop-read 11: books and comics (2:3) and magazines/newspapers (3:4) are drawn as separate
- *  rows when a Reading answer carries both. Order inside each part is the result's own order, and
- *  an answer with only one shape keeps the single drawn row and its own heading. */
-function readingRows(entries: readonly SearchEntry[]): readonly Readonly<{id: string; items: readonly Readonly<{entry: SearchEntry; index: number}>[]}>[] {
-  const indexed = entries.map((entry, index) => ({entry, index}));
-  const periodical = (entry: SearchEntry) => entry.kind === 'ebook' || entry.kind === 'comic'
-    ? entry.publicationType === 'magazine' || entry.publicationType === 'newspaper' : false;
-  const papers = indexed.filter(({entry}) => periodical(entry)), books = indexed.filter(({entry}) => !periodical(entry));
-  if (!papers.length || !books.length) return [];
-  // Only magazines and newspapers are drawn as issues; a mixed answer of both keeps the one
-  // drawn heading, so no part is labelled with a kind it may not contain.
-  return [{id: 'books', items: books}, {id: 'issues', items: papers}];
-}
 function SearchLoading() {
   const elapsed = useLoadingClock();
   return <div className={styles.skeleton} role="status" aria-label={t('next.states.loading')}>{elapsed >= 300 && Array.from({length: 7}, (_, index) => <Skeleton className={styles.skeletonBlock} sheen={index === 2} key={index} />)}{elapsed >= 8000 && <Banner variant="quiet">{t('next.states.stillLoading')}</Banner>}</div>;
@@ -302,12 +281,12 @@ function SearchLoading() {
 
 const noSelectionSubscription = () => () => {};
 const noSelectionSnapshot = () => 0;
-export function SearchResult({entry, binding, selection, position = 0, onCommit, albumArt}: {entry: SearchEntry; binding: SearchBindings; selection?: SearchSelection; position?: number; onCommit: () => void; albumArt?: string}) {
+export function SearchResult({entry, binding, selection, selectionVisible = true, position = 0, onCommit, albumArt}: {entry: SearchEntry; binding: SearchBindings; selection?: SearchSelection; selectionVisible?: boolean; position?: number; onCommit: () => void; albumArt?: string}) {
   useSyncExternalStore(selection?.subscribe ?? noSelectionSubscription, selection?.getSnapshot ?? noSelectionSnapshot, selection?.getSnapshot ?? noSelectionSnapshot);
   const epoch = selection?.epoch();
-  useEffect(() => {if (selection && 'libraryId' in entry) return selection.register(entry, position);}, [selection, entry, position, epoch]);
+  useLayoutEffect(() => {if (selection && selectionVisible && 'libraryId' in entry) return selection.register(entry, position);}, [selection, entry, position, epoch, selectionVisible]);
   const interactionRoot = useRef<HTMLDivElement>(null);
-  const picked = useCardInteractionAdmission('libraryId' in entry ? selection?.card(entry) : undefined, interactionRoot);
+  const picked = useCardInteractionAdmission(selectionVisible && 'libraryId' in entry ? selection?.card(entry) : undefined, interactionRoot, !selectionVisible);
   const range = useSelectionRangePreview(picked);
   const {context} = binding, open = () => runScreenCommand(context, () => { binding.open(entry); onCommit(); });
   const liveCards = useSyncExternalStore(binding.live.subscribe, binding.live.getSnapshot, binding.live.getSnapshot);

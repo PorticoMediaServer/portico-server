@@ -244,6 +244,46 @@ test('a download that receives nothing is restarted; with no sign of life for lo
   player.dispose();
 });
 
+for (const mode of ['direct', 'stream'] as const) {
+  test(`${mode} through the native element gives up after reloads without real progress`, () => {
+    const {video, clock, player, events} = setup({hls: false, silentMs: 5000, giveUpMs: 30_000});
+    video.nativeHls = 'maybe';
+    player.load(source({mode, startPositionMs: 0}));
+    video.ready(0, 4);
+    video.starve();
+    video.fail(2);
+    const before = video.loads;
+    for (let i = 0; i < 50; i++) {clock.advance(1000);player.tick();}
+    assert.ok(video.loads > before, 'recovery tried the request again');
+    assert.equal(player.observe().state, 'error');
+    assert.equal(events.filter(event => event.type === 'error' && event.code === 'network_error').length, 1);
+    const failedLoads = video.loads;
+    clock.advance(60_000);
+    assert.equal(video.loads, failedLoads, 'terminal failure stops automatic reloads');
+    player.dispose();
+  });
+
+  test(`${mode} through the native element preserves a slow request while progress arrives`, () => {
+    const {video, clock, player, events} = setup({hls: false, silentMs: 5000, giveUpMs: 30_000});
+    video.nativeHls = 'maybe';
+    player.load(source({mode, startPositionMs: 0}));
+    video.ready(0, 4);
+    video.starve();
+    video.fail(2);
+    // Let recovery open a new request, then simulate a slow browser download.
+    clock.advance(7000);
+    const loads = video.loads;
+    for (let i = 0; i < 90; i++) {video.fire('progress');clock.advance(1000);player.tick();}
+    assert.equal(video.loads, loads, 'arriving bytes protect the request for longer than the give-up interval');
+    assert.equal(events.some(event => event.type === 'error'), false);
+    // Once that request goes silent, retries and the terminal deadline apply again.
+    for (let i = 0; i < 50; i++) {clock.advance(1000);player.tick();}
+    assert.ok(video.loads > loads);
+    assert.equal(player.observe().state, 'error');
+    player.dispose();
+  });
+}
+
 test('recovery never interrupts a download that is receiving bytes, and "still preparing" keeps a slow server alive', async () => {
   const {video, clock, instances, player, events} = setup({giveUpMs: 30_000});
   player.load(source({startPositionMs: 0}));
@@ -481,4 +521,54 @@ test('buffers are sized by bit rate: a high-rate stream holds fewer seconds than
   assert.ok(bufferTargets(80_000).back <= bufferTargets(8000).back);
   assert.equal(bufferTargets(undefined).forward, 30);
   assert.ok(bufferTargets(8000, 2).forward <= 20, 'a small device buffers less');
+});
+
+
+test('hls.js media reset pause is internal once per recovery, including the codec swap retry', async () => {
+  const f = setup();f.player.load(source({startPositionMs: 0}));await settle();f.video.ready(0);
+  try {
+    const hls = f.instances[0]!;
+    // Installed buffer-controller detaches src then calls load(). Model the queued
+    // pause from that reset, rather than the old fake's silent paused assignment.
+    hls.engine.recoverMediaError = () => {
+      hls.recoveries++;const playing = !f.video.paused;f.video.load();
+      if (playing) queueMicrotask(() => f.video.fire('pause'));
+    };
+    for (let recovery = 1; recovery <= 2; recovery++) {
+      hls.error({fatal: true, type: 'mediaError', details: 'bufferAppendError'});
+      await settle();
+      assert.equal(f.notices.some(notice => notice.type === 'unsolicited'), false);
+      assert.notEqual(f.player.observe().state, 'paused');
+      f.video.ready(0);assert.equal(f.video.paused, false);
+      assert.equal(hls.recoveries, recovery);
+    }
+    assert.equal(hls.swaps, 1);
+    f.video.pause();
+    assert.deepEqual(f.notices.filter(notice => notice.type === 'unsolicited'), [{type: 'unsolicited', state: 'paused'}]);
+    assert.equal(f.player.observe().state, 'paused');
+  } finally {f.player.dispose();}
+});
+
+test('a recovery without a reset pause cannot mask a later user pause or a replacement source', async () => {
+  for (const replace of [false, true]) {
+    const f = setup();f.player.load(source({startPositionMs: 0}));await settle();f.video.ready(0);
+    try {
+      f.instances[0]!.error({fatal: true, type: 'mediaError'});
+      if (replace) {f.player.load(source({generation: 2, startPositionMs: 0}));await settle();}
+      if (replace) f.video.ready(0);
+      f.video.pause();
+      assert.equal(f.player.observe().state, 'paused');
+      assert.equal(f.notices.filter(notice => notice.type === 'unsolicited' && notice.state === 'paused').length, 1);
+    } finally {f.player.dispose();}
+  }
+});
+
+test('recovering already paused media never reserves a future user pause', async () => {
+  const f = setup();f.player.load(source({startPositionMs: 0}));await settle();f.video.ready(0);f.player.pause();
+  try {
+    f.instances[0]!.error({fatal: true, type: 'mediaError'});
+    f.player.play();f.video.pause();
+    assert.equal(f.player.observe().state, 'paused');
+    assert.equal(f.notices.filter(notice => notice.type === 'unsolicited' && notice.state === 'paused').length, 1);
+  } finally {f.player.dispose();}
 });

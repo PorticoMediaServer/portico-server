@@ -1,6 +1,6 @@
 import type {CastChoices, CastMetadata, WebCastSender} from '../cast';
 import {sameFence} from '../../../../packages/player-core/src/index.ts';
-import type {WebPlaybackPresentation} from './types';
+import type {WebPlaybackPresentation, WebPlaybackRuntimeSnapshot} from './types';
 import type {WebShellPlaybackRuntime} from './runtime';
 
 /** Structural contract agreed with platform/cast. No SDK, script, receiver or URL logic here. */
@@ -51,6 +51,21 @@ export type PlayOnControllerOptions = Readonly<{
   setTimer?: (callback: () => void, ms: number) => unknown;
   clearTimer?: (timer: unknown) => void;
 }>;
+
+/** A picker may stay open through seeks, queue edits or source replacement. Only the
+ * original occurrence at its original queue revision may supply a fresh start clock. */
+export function castSourcePosition(original: WebPlaybackRuntimeSnapshot, latest: WebPlaybackRuntimeSnapshot): number | undefined {
+  const fence = original.fence, session = original.session, queue = original.queueView?.queue;
+  const now = latest.session, currentQueue = latest.queueView?.queue, presentation = latest.presentation;
+  if (fence?.kind !== 'queue' || !session?.queue || !queue || latest.disposed || latest.authority !== original.authority
+    || latest.playback.playbackRun !== original.playback.playbackRun || !sameFence(latest.fence, fence) || !sameFence(presentation?.fence, fence)
+    || now?.id !== session.id || now.itemId !== fence.itemId || now.presentation.generation !== session.presentation.generation
+    || now.presentation.generation !== fence.generation || now.queue?.queueId !== session.queue.queueId || now.queue?.entryId !== fence.entryId
+    || currentQueue?.id !== queue.id || currentQueue?.id !== session.queue.queueId || currentQueue?.revision !== queue.revision
+    || currentQueue?.currentEntryId !== fence.entryId || currentQueue?.currentPlaybackId !== session.id
+    || !presentation || !Number.isFinite(presentation.positionSeconds) || presentation.positionSeconds < 0) return;
+  return presentation.positionSeconds;
+}
 
 /** UI composition over the canonical sender. Its phase is the only receiver confirmation. */
 export class PlayOnController {
@@ -201,7 +216,10 @@ export class PlayOnController {
     // session grants or sign-in credentials. Only the authenticated bootstrap receives the source session id.
     const meta: CastMetadata = {title: item.show?.title || item.title, subtitle: item.show?.title ? item.title : item.artist ?? item.author,
       kind: source.kind, artworkPath: source.posterUrl ?? source.backdropUrl};
-    const started = this.options.sender.start(source.fence.itemId, meta, source.positionSeconds, this.attempt.choices);
+    const started = this.options.sender.start(source.fence.itemId, meta, source.positionSeconds, this.attempt.choices, () => {
+      if (!this.current() || serial !== this.serial || this.attempt?.serial !== serial || this.options.sender.getSnapshot().phase !== 'connecting') return;
+      return castSourcePosition(snapshot, this.options.runtime.getSnapshot());
+    });
     return started.then(ok => this.current() && serial === this.serial && ok && this.options.sender.getSnapshot().phase === 'casting');
   }
   startAirPlay(): void { this.assertCurrent(); if (!this.options.airPlay?.available()) {if (this.state.airPlayAvailable) this.publish({airPlayAvailable: false});return;} this.publish({panel: null}); this.options.airPlay.showPicker(); }

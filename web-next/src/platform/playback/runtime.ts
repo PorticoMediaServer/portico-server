@@ -31,6 +31,7 @@ import {CapabilityPublisher, PlaybackOptionsClient} from '@core/playback-v1/opti
 import {audioStreamIndex, qualityChoiceOf, qualityRequest, offeredQualities, type QualityChoice} from '@core/playback-v1/choices.ts';
 import {PlayerOffersService, type PlayerOffersData} from '@core/player-offers.ts';
 import {SubtitleService, fetchSubtitleDocument, type SubtitleDocument, type SubtitlePlan, type SubtitleSnapshot} from '@core/subtitles.ts';
+import {ImageSubtitleRetry, revalidateTextSubtitles, subtitleFetch} from './subtitle-retry.ts';
 import type {SubtitlePreferences} from '@core/preference-effects.ts';
 import type {PlaybackOptions, QueueHeader, Session} from '@core/playback-v1/types.ts';
 import type {PlaybackSubject} from '@core/presentation/kit-model/index.ts';
@@ -87,6 +88,7 @@ type Stack = {
   imageSurface?: ImageSubtitleSurface;
   imageKey?: string;
   imageAbort?: AbortController;
+  imageRetry?: ImageSubtitleRetry;
   /** This playback's temporary forced-only choice, gated by the offered lines of one image load. */
   forcedOnly?: boolean;
   forcedLines?: Readonly<{lines: SubtitleLines; key: string; epoch: number}>;
@@ -337,6 +339,9 @@ export class WebShellPlaybackRuntime {
     const volume = () => this.sync();
     video.addEventListener('volumechange', volume);
     this.lifecycle.push(() => video.removeEventListener('volumechange', volume));
+    // A paused title still receives buffer progress. Publish its actual ranges to the seek rail.
+    video.addEventListener('progress', volume);
+    this.lifecycle.push(() => video.removeEventListener('progress', volume));
     // The optional native local port is only known after this same persistent host
     // mounts. Publish that actual capability change to the app attachment.
     this.sync();
@@ -1181,7 +1186,7 @@ export class WebShellPlaybackRuntime {
       if (!current() || !addresses.has(address)) problem('playback_subtitle_unavailable');
       const url = this.source.api.mediaUrl(address);
       if (new URL(url).origin !== new URL(this.source.api.baseUrl).origin) problem('unexpected_subtitle_origin');
-      const file = await readSubtitleFile(this.env.fetch ?? fetch, url, maxBytes, joined);
+      const file = await readSubtitleFile(subtitleFetch(this.env.fetch ?? fetch), url, maxBytes, joined);
       joined.throwIfAborted();
       if (!current()) throw new DOMException('Playback changed', 'AbortError');
       return file;
@@ -1209,19 +1214,26 @@ export class WebShellPlaybackRuntime {
     const epoch = stack.imageEpoch = (stack.imageEpoch ?? 0) + 1;
     const abort = new AbortController(); stack.imageAbort = abort;
     const sessionKey = stack.sessionKey, run = this.playbackRun(), subtitles = stack.subtitles;
-    const current = () => {
+    const owns = () => {
       const active = subtitles?.getSnapshot(), selected = active?.plan?.selected;
-      return this.current(stack) && !abort.signal.aborted && !stack.life.signal.aborted && stack.expanded && !stack.imageFailed
+      return this.current(stack) && !abort.signal.aborted && !stack.life.signal.aborted && stack.expanded
         && stack.sessionKey === sessionKey && this.playbackRun() === run && stack.subtitles === subtitles
         && stack.imageKey === key && stack.imageEpoch === epoch && !active?.suppressed
         && active?.plan?.sessionId === plan.sessionId && active.plan.generation === plan.generation
         && active.plan.sourceId === plan.sourceId && active.plan.revision === plan.revision && active.plan.offsetUs === plan.offsetUs
         && selected?.id === plan.selected?.id && selected?.revision === plan.selected?.revision;
     };
+    const current = () => owns() && !stack.imageFailed;
     const addresses = new Set([original.url, ...(original.companionUrl ? [original.companionUrl] : []), ...(original.linesUrl ? [original.linesUrl] : [])]);
     const read = this.subtitleReader(stack, abort.signal, addresses, current);
-    const surface = stack.imageSurface = createImageSubtitleSurface(video as HTMLVideoElement, read,
-      () => { if (current()) { stack.imageFailed = true; stack.forcedLines = undefined; this.clearRecordedSidecar(stack, 'image', key); this.runtimeProblem = 'playback_subtitles_failed'; this.sync(); } });
+    const failed = (error: unknown) => {
+      if (!current()) return;
+      stack.imageFailed = true; stack.forcedLines = undefined;
+      this.clearRecordedSidecar(stack, 'image', key);
+      stack.imageRetry?.schedule(error);
+      this.runtimeProblem = 'playback_subtitles_failed'; this.sync();
+    };
+    const surface = stack.imageSurface = createImageSubtitleSurface(video as HTMLVideoElement, read, failed);
     if (!surface) { stack.imageKey = undefined; return; }
     surface.setDelay(Number(plan.offsetUs) / 1e6);
     surface.setForcedOnly(stack.forcedOnly === true);
@@ -1230,17 +1242,17 @@ export class WebShellPlaybackRuntime {
     const source: DrawnSubtitleSource = original.format === 'vobsub'
       ? {kind: 'vobsub', index: original.url, data: original.companionUrl ?? ''}
       : {kind: 'pgs', data: original.url};
-    void surface.present(source).then(() => {
-      if (!current()) return;
+    let attempt = 0;
+    const present = () => { const loading = ++attempt;void surface.present(source).then(() => {
+      if (!current() || loading !== attempt) return;
       this.recordSidecar(stack, 'image', key, plan.selected?.id ?? null);
-      if (original.linesUrl) void this.readForcedLines(stack, original.linesUrl, key, epoch, abort.signal, read, current);
+      if (original.linesUrl) void this.readForcedLines(stack, original.linesUrl, key, epoch, abort.signal, read, () => current() && loading === attempt);
+      if (this.runtimeProblem === 'playback_subtitles_failed') this.runtimeProblem = undefined;
       this.sync();
-    }).catch(() => {
-      if (!current()) return;
-      stack.imageFailed = true; stack.forcedLines = undefined;
-      this.clearRecordedSidecar(stack, 'image', key);
-      this.runtimeProblem = 'playback_subtitles_failed'; this.sync();
-    });
+    }).catch(failed); };
+    stack.imageRetry = new ImageSubtitleRetry({current: owns, retry: () => {stack.imageFailed = false;present();},
+      setTimer: (fn, ms) => this.setTimer(fn, ms), clearTimer: timer => this.clearTimer(timer)});
+    present();
   }
   /** The player's own observation of the track this runtime draws: never inferred from a choice. */
   private recordSidecar(stack: Stack, path: 'text' | 'image', key: string, id: string | null): void {
@@ -1257,6 +1269,7 @@ export class WebShellPlaybackRuntime {
   }
   /** The image overlay's own retirement: its reads, canvas, offer, identity and epoch all end here. */
   private clearImageSubtitles(stack: Stack): void {
+    stack.imageRetry?.dispose(); stack.imageRetry = undefined;
     stack.imageAbort?.abort(); stack.imageAbort = undefined;
     stack.imageSurface?.clear(); stack.imageSurface?.dispose(); stack.imageSurface = undefined;
     stack.imageKey = undefined; stack.imageEpoch = (stack.imageEpoch ?? 0) + 1;
@@ -1293,20 +1306,21 @@ export class WebShellPlaybackRuntime {
     stack.documentKey = key;
     stack.documentAbort?.abort(); this.clearTimer(stack.documentTimer);
     const abort = new AbortController(); stack.documentAbort = abort;
-    let document: SubtitleDocument | undefined, etag = '';
-    const load = async () => {
-      if (!this.current(stack) || stack.documentKey !== key || abort.signal.aborted) return;
-      try {
+    void revalidateTextSubtitles<SubtitleDocument>({signal: abort.signal,
+      current: () => this.current(stack) && stack.documentKey === key,
+      read: async (etag, signal) => {
         const url = this.source.api.mediaUrl(documentUrl);
         if (new URL(url).origin !== new URL(this.source.api.baseUrl).origin) problem('unexpected_subtitle_origin');
-        const read = await fetchSubtitleDocument(this.env.fetch ?? fetch, url, etag, abort.signal);
-        if (!this.current(stack) || stack.documentKey !== key || abort.signal.aborted) return;
-        if (!read.unchanged) { document = read.document; etag = read.etag; }
-        if (document) { surface.show(document.cues, Number(plan.offsetUs) / 1e6); surface.guard(true); this.recordSidecar(stack, 'text', key, plan.selected?.id ?? null); }
-      } catch { if (this.current(stack) && !abort.signal.aborted) { this.surface?.clear(); this.clearRecordedSidecar(stack, 'text', key); this.runtimeProblem = 'playback_subtitles_failed'; this.sync(); } }
-      finally { if (this.current(stack) && stack.documentKey === key && !abort.signal.aborted) stack.documentTimer = this.setTimer(() => { void load(); }, 25_000); }
-    };
-    void load();
+        return fetchSubtitleDocument(subtitleFetch(this.env.fetch ?? fetch), url, etag, signal);
+      },
+      show: document => {surface.show(document.cues, Number(plan.offsetUs) / 1e6);surface.guard(true);this.recordSidecar(stack, 'text', key, plan.selected?.id ?? null);},
+      recovered: () => {
+        if (this.runtimeProblem === 'playback_subtitles_failed') {this.runtimeProblem = undefined;this.sync();}
+      },
+      clear: () => {surface.guard(false);surface.clear();this.clearRecordedSidecar(stack, 'text', key);},
+      failed: () => {this.runtimeProblem = 'playback_subtitles_failed';this.sync();},
+      schedule: (load, ms) => {stack.documentTimer = this.setTimer(load, ms);},
+    });
   }
 
   private schedulePolicy(): void {
@@ -1915,6 +1929,13 @@ export class WebShellPlaybackRuntime {
     const slot = this.stack.web.slot, observed = slot.observe();
     return slot.loaded === fence.generation && !slot.settling && observed.generation === fence.generation
       && ['playing', 'paused', 'buffering'].includes(observed.state) && this.snapshot.dock.remote?.phase !== 'playing';
+  }
+
+  /** Only VOD uses the element's title clock directly. Native and live clocks are not inferred. */
+  bufferedRanges(fence: PlaybackFence): readonly Readonly<{start: number; end: number}>[] {
+    if (fence.kind !== 'queue' || !this.browserMediaReady(fence) || !this.video || this.stack.subject?.kind !== 'video') return [];
+    const ranges = this.video.buffered;
+    return Array.from({length: ranges.length}, (_, index) => ({start: ranges.start(index), end: ranges.end(index)}));
   }
 
   /** The ordinary browser has no qualified frame primitive. A platform command still owns

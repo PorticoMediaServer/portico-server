@@ -1,4 +1,5 @@
 import test from 'node:test';
+import {defaultI18n} from '@i18n';
 import assert from 'node:assert/strict';
 import type {PlayerChapter, PlayerChaptersSnapshot} from '@core/player-chapters.ts';
 import {readFileSync} from 'node:fs';
@@ -10,7 +11,7 @@ const loader = registerHooks({load(url, context, next) {
   if (url.endsWith('.module.css')) return module('export default new Proxy({}, {get:(_,k)=>String(k)});');
   if (url.endsWith('/kit/controls/index.ts')) return module("export const Button='button',Segmented='segmented',Slider='slider',TextField='input';");
   if (url.endsWith('/kit/overlays/index.ts')) return module("export const Banner='banner',Dialog='dialog';");
-  if (url.endsWith('/kit/artwork/index.ts')) return module("export const Artwork='artwork';");
+  if (url.endsWith('/kit/artwork/index.ts')) return module("export const Artwork='artwork',AmbientArt='ambient';");
   if (url.endsWith('/kit/states/index.ts')) return module("export const StateView='state';");
   if (url.endsWith('/kit/Icon.tsx')) return module("export const Icon='icon';");
   if (url.endsWith('.tsx')) return module(transformTsx(url));
@@ -19,6 +20,8 @@ const loader = registerHooks({load(url, context, next) {
 const {AudiobookListening} = await import('../src/screens/watch/listening/AudiobookListening.tsx');
 const {LyricsPanel} = await import('../src/screens/watch/listening/LyricsPanel.tsx');
 const {ListeningQueue} = await import('../src/screens/watch/listening/ListeningQueue.tsx');
+const {ListeningQueueWindow} = await import('../src/screens/watch/listening/ListeningQueueWindow.tsx');
+const {ListeningSeek} = await import('../src/screens/watch/listening/ListeningSeek.tsx');
 function elements(tree: ReactNode): any[] {const result: any[] = [];Children.forEach(tree, child => {if (isValidElement<any>(child)) {result.push(child);result.push(...elements((child as import('react').ReactElement<{children?: ReactNode}>).props.children));}});return result;}
 const noop = () => {};
 const chapter = (index: number, start: number, end: number): PlayerChapter => ({id: `source:${index}`, index, title: `Chapter ${index}`, startSeconds: start, endSeconds: end, action: {id: 'seek', positionSeconds: start}});
@@ -138,4 +141,40 @@ test('absent canonical lyrics choice capability offers no resource action', () =
   assert.equal(tree.some(e => e.type === 'button'), false);
   assert.equal(tree.some(e => e.props['aria-pressed'] !== undefined), false);
   assert.ok(tree.some(e => e.props.children === 'Second'));
+});
+
+
+test('queue rows use supplied art/artist/duration while hidden and unavailable rows reveal none', () => {
+  const calls: string[] = [];
+  const page: any = {start: 0, total: 3, revision: '7', canNext: false, canPrevious: false, rows: [
+    {entryId: 'one', itemId: 'one', position: 0, title: 'First', artist: 'Real artist', durationMs: 123000, artworkUrl: '/art/one', available: true, hidden: false, current: true},
+    {entryId: 'hidden', itemId: 'hidden', position: 1, title: 'Hidden title', artist: 'Hidden artist', durationMs: 456000, artworkUrl: '/art/hidden', available: true, hidden: true, current: false},
+    {entryId: 'absent', itemId: 'absent', position: 2, title: 'Unavailable title', artist: 'Unavailable artist', durationMs: 789000, artworkUrl: '/art/absent', available: false, hidden: false, current: false},
+  ]};
+  const tree = elements(ListeningQueueWindow({snapshot: {phase: 'ready', page, busy: false}, retained: null, anchor: 0, error: false, busy: false,
+    artwork: {foreground: (url: string) => {calls.push(url);return undefined;}} as any, onRetry: noop, onEdit: noop}));
+  assert.deepEqual(calls, ['/art/one']);
+  const text = tree.flatMap(element => Children.toArray(element.props.children).filter(child => typeof child === 'string'));
+  assert.ok(text.includes('Real artist'));assert.ok(text.includes('2:03'));
+  for (const privateText of ['Hidden title', 'Hidden artist', 'Unavailable title', 'Unavailable artist']) assert.equal(text.includes(privateText), false);
+});
+test('listening seek renders native range semantics over the drawn rail and puts remaining labels below on phone', () => {
+  const sought: number[] = [];
+  const tree = elements(ListeningSeek({position: 60, duration: 180, bounds: {start: 0, end: 180}, phone: true,
+    chapters: [{id: 'one', startSeconds: 0, endSeconds: 90}, {id: 'two', startSeconds: 90, endSeconds: 180}], onSeek: value => sought.push(value)}));
+  assert.equal(tree[0].props['data-phone'], true);
+  const input = tree.find(element => element.type === 'input');assert.equal(input.props['aria-label'], defaultI18n.t('player.position'));
+  input.props.onChange({currentTarget: {valueAsNumber: 120}});assert.deepEqual(sought, [120]);
+  assert.ok(tree.some(element => element.props.children === '−2:00'));
+  assert.equal(tree.filter(element => element.props.className === 'tick').length, 1);
+});
+
+
+test('Up next footer displays supplied canonical count and total duration separately', () => {
+  const snapshot: any = {current: true, queueId: 'queue', revision: '7', change: 'idle', more: null, entries: []};
+  const tree = elements(ListeningQueue({snapshot, onPolicy: noop, onRefresh: noop, summary: {count: 42, pivot: 'songs', durationSeconds: 4000}}));
+  assert.ok(tree.some(element => element.props.children === defaultI18n.t('lib.count', {count: 42, pivot: 'songs'})));
+  assert.ok(tree.some(element => element.props.children === '1:06:40'));
+  const unknown = elements(ListeningQueue({snapshot, onPolicy: noop, onRefresh: noop, summary: {count: 42, pivot: 'songs'}}));
+  assert.equal(unknown.some(element => element.props.children === '0:00'), false);
 });
