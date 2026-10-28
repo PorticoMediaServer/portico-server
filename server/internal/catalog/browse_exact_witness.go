@@ -26,6 +26,7 @@ func (s *Service) browseExactWitness(library, profile string, restrictions ident
 		Policy                                                                          identity.ContentRestrictions
 		Domains                                                                         [][6]int64
 		Reading, Formats                                                                string
+		Schema                                                                          int64
 	}
 	basis.Version, basis.Library, basis.Profile, basis.Policy = "exact-browse-v1", library, profile, restrictions
 	err := s.read().QueryRow(`SELECT l.id,r.revision,r.order_revision,COALESCE(v.revision,0),g.generation,g.retaining,p.revision,c.revision
@@ -36,6 +37,13 @@ func (s *Service) browseExactWitness(library, profile string, restrictions ident
  LEFT JOIN viewer_revisions v ON v.library_id=l.library_id AND v.profile_id=?
  WHERE l.library_id=? AND l.retired=0`, profile, library).Scan(&basis.LibraryID, &basis.Raw, &basis.Order, &basis.Viewer, &basis.Generation, &basis.Retaining, &basis.Predicate, &basis.Classification)
 	if err != nil {
+		return "", err
+	}
+	// A cold reducer uses a physical integer inventory cursor to avoid retaining
+	// arbitrarily large object keys. VACUUM can renumber hidden rowids; SQLite
+	// advances schema_version when it rebuilds those tables. Ordinary inventory
+	// insert/delete/key changes already advance the synchronous predicate epoch.
+	if err = s.read().QueryRow(`PRAGMA schema_version`).Scan(&basis.Schema); err != nil {
 		return "", err
 	}
 	if basis.Raw <= 0 || basis.Order <= 0 || basis.Generation <= 0 || basis.Predicate <= 0 || basis.Classification <= 0 {
