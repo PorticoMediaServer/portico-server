@@ -5,7 +5,7 @@ import type {PreferencesReader} from '@core/preferences-reader.ts';
 import {parseDirectSnapshot, type DirectSnapshot} from '@core/profile-management.ts';
 import {parseServerSignIn, type ServerSignIn} from '@core/sign-in.ts';
 import {parseLibraryList} from '@core/library-list.ts';
-import {fetchGuideSourceSummaries} from '@core/guide/directory.ts';
+import {fetchGuideSourceSummaries, type GuideSourceSummaries} from '@core/guide/directory.ts';
 import type {HomeService} from '@core/home-service.ts';
 import type {EventsClient} from '@core/playback-v1/events.ts';
 import {routePath} from '../../../packages/contracts/src/routes.ts';
@@ -13,7 +13,7 @@ import type {ShellFacts} from './bootstrap';
 import {createShellFactsSource} from './fact-source';
 
 export type ShellFactGroup = 'directory' | 'server' | 'members' | 'liveSources' | 'libraryChannels';
-export type ShellFactWitnesses = Readonly<{system: ServerSignIn; direct: DirectSnapshot}>;
+export type ShellFactWitnesses = Readonly<{system: ServerSignIn; direct: DirectSnapshot; guide?: Pick<GuideSourceSummaries, 'viewerFence' | 'revision'>}>;
 type ShellAccount = Pick<ShellFacts['identity'], 'username' | 'profileName' | 'profileArt' | 'primaryProfile' | 'profiles' | 'canManageProfiles' | 'accountFacts' | 'capabilities'>;
 
 export function shellAccount(snapshot: DirectSnapshot, profileId: string): ShellAccount {
@@ -30,8 +30,8 @@ const systemAuthority = (value: ServerSignIn) => JSON.stringify([value.id, value
 function directAuthority(value: DirectSnapshot, profileId: string) {
   const profile = value.profiles.find(row => row.id === profileId);
   return JSON.stringify([value.serverId, value.authority, value.account.id, value.account.role, value.account.disabled,
-    value.account.primaryProfileId, value.account.allowedLibraries, value.account.hostedAccountId, value.capabilities, value.canManage,
-    value.custodyPending, value.twoStepSetupRequired, profile?.id, profile?.primary, profile?.allowedLibraries]);
+    value.account.primaryProfileId, [...value.account.allowedLibraries].sort(), value.account.hostedAccountId, value.capabilities, value.canManage,
+    value.custodyPending, value.twoStepSetupRequired, profile?.id, profile?.primary, Array.isArray(profile?.allowedLibraries) ? [...profile.allowedLibraries].sort() : profile?.allowedLibraries]);
 }
 export function shellProofChanged(initial: ShellFactWitnesses, next: Partial<ShellFactWitnesses>, profileId: string): boolean {
   return !!(next.system && systemAuthority(initial.system) !== systemAuthority(next.system)
@@ -55,7 +55,7 @@ export function createShellFactOwner(o: Readonly<{
   isCurrent(): boolean; retire(): void; readonlyAccess?: boolean;
 }>) {
   const source = createShellFactsSource(o.initial), admitted = o.session(), initial = o.witnesses;
-  let closed = false, retained = false;
+  let closed = false, retained = false, confirmedGuide = initial.guide;
   const current = () => !closed && o.isCurrent();
   const interests: FreshnessInterest[] = [];
   const add = (name: string, dependencies: readonly string[], read: (context: InterestReadContext) => Promise<InterestOutcome>, background = false) => {
@@ -75,6 +75,14 @@ export function createShellFactOwner(o: Readonly<{
     project(); return answered;
   };
   const updateIdentity = (patch: Partial<ShellFacts['identity']>) => source.update({identity: {...source.getSnapshot().identity, ...patch}});
+  const adoptGuide = (value: GuideSourceSummaries | undefined) => {
+    const next = value && {viewerFence:value.viewerFence, revision:value.revision};
+    const available = !!value?.sources.length;
+    if (confirmedGuide?.viewerFence === next?.viewerFence && confirmedGuide?.revision === next?.revision
+      && source.getSnapshot().identity.liveAvailable === available) return;
+    // This proof stays in the guide domain; it is never a Home/preferences fence.
+    confirmedGuide = next; updateIdentity({liveAvailable:available});
+  };
   const guide = (context: InterestReadContext) => context.shared('guide', signal =>
     fetchGuideSourceSummaries(o.api, admitted.viewer.serverId, Intl.DateTimeFormat().resolvedOptions().timeZone, signal).catch(error => {
       if ((error as {status?: unknown} | null)?.status === 403) return undefined;
@@ -108,7 +116,7 @@ export function createShellFactOwner(o: Readonly<{
         if (shellProofChanged(initial, {system}, admitted.viewer.profileId)) {o.retire(); return {kind: 'superseded'};}
         return publish(context, captured, () => {source.update({serverName: system.name, identity: {...source.getSnapshot().identity, serverName: system.name, serverVersion: system.version}});});
       })(),
-      (async (): Promise<InterestOutcome> => {try {const value = await guide(context); return await publish(context, captured, () => updateIdentity({liveAvailable: !!value?.sources.length}));} catch (error) {return guideFailure(error);}})(),
+      (async (): Promise<InterestOutcome> => {try {const value = await guide(context); return await publish(context, captured, () => adoptGuide(value));} catch (error) {return guideFailure(error);}})(),
       adoptPreference(context, captured),
     ]);
     const outcomes = results.map(result => result.status === 'fulfilled' ? result.value : failed(result.reason));
@@ -116,7 +124,7 @@ export function createShellFactOwner(o: Readonly<{
   });
   const guideGroup = (name: 'liveSources' | 'libraryChannels') => add(name, [dependsOn.list(name)], async context => {
     const captured = o.session();
-    try {const value = await guide(context); return await publish(context, captured, () => updateIdentity({liveAvailable: !!value?.sources.length}));}
+    try {const value = await guide(context); return await publish(context, captured, () => adoptGuide(value));}
     catch (error) {return guideFailure(error);}
   });
   const liveSources = guideGroup('liveSources'), libraryChannels = guideGroup('libraryChannels');

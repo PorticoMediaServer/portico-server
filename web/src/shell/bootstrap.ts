@@ -122,7 +122,7 @@ async function readShellIdentity(api: HttpLocalApi, session: LocalSession, signa
     }),
   ]);
   if (system.id !== session.viewer.serverId) throw new Error('The server identity changed.');
-  return {libraries: libraries.items, direct: profile, profile: shellAccount(profile, session.viewer.profileId), system, liveAvailable: !!guide?.sources.length};
+  return {libraries: libraries.items, direct: profile, profile: shellAccount(profile, session.viewer.profileId), system, guide, liveAvailable: !!guide?.sources.length};
 }
 async function readFacts(api: HttpLocalApi, session: LocalSession, preferences: PreferencesReader, inbox: InboxService, signal: AbortSignal): Promise<{facts: ShellFacts; witnesses: ShellFactWitnesses}> {
   const [read, settings] = await Promise.all([readShellIdentity(api, session, signal), preferences.preferences('web')]);
@@ -130,7 +130,7 @@ async function readFacts(api: HttpLocalApi, session: LocalSession, preferences: 
   rememberShell(session.sessionFamilyId, system.name);
   await inbox.load();
   signal.throwIfAborted();
-  return {witnesses: {system: read.system, direct: read.direct}, facts: {identity: {viewer: session.viewer, libraries, serverName: system.name, serverVersion: system.version, signIn:system.signIn, ...profile,
+  return {witnesses: {system: read.system, direct: read.direct, guide: read.guide && {viewerFence:read.guide.viewerFence, revision:read.guide.revision}}, facts: {identity: {viewer: session.viewer, libraries, serverName: system.name, serverVersion: system.version, signIn:system.signIn, ...profile,
     accountFacts:[{id:'sign-in',role:'status',text:defaultI18n.t(signInLabelKey(system.signIn))}],
     liveAvailable, unread: inbox.getSnapshot().unread, showNotificationDot: settings.effective['notifications.badges'] === true}, preferences: settings, serverName: system.name}};
 }
