@@ -12,18 +12,14 @@ import (
 	"portico.local/server/internal/storage"
 )
 
-// TestFolderBatchPublishesOneBudgetedPrefix is SRV029 at the scan: one
-// quantum over 30 pending folders of 12 names, at the 64-name writer page,
-// publishes exactly five complete folders and four names of the sixth in one
-// commit, discards no listing, and leaves the rest untouched. It runs through
-// the in-process path and through the real helper process; the second quantum
-// starts at the cut folder and finishes it.
+// The source budget cuts real listings, through the in-process and helper
+// paths. The next turn continues the exact folder cursor without dropping names.
 func TestFolderBatchPublishesOneBudgetedPrefix(t *testing.T) {
 	for _, helper := range []bool{false, true} {
 		t.Run(fmt.Sprintf("helper=%v", helper), func(t *testing.T) {
-			files := []string{}
-			for i := 0; i < 30; i++ {
-				for j := 0; j < 12; j++ {
+			var files []string
+			for i := 0; i < 4; i++ {
+				for j := 0; j < 3; j++ {
 					files = append(files, fmt.Sprintf("F%02d/Film %02d (2000) - pt%d.mkv", i, i, j+1))
 				}
 			}
@@ -36,43 +32,45 @@ func TestFolderBatchPublishesOneBudgetedPrefix(t *testing.T) {
 				f.s.SetStorage(storage.New(binary))
 			}
 			job := f.queue()
-			// The root is the only pending folder, so it takes the one-folder
-			// path and seeds the 30 child folders.
-			f.s.processQuantum(context.Background(), job.ID, f.library)
-			if n := f.count(`SELECT count(*) FROM inventory_directories WHERE job_id=? AND state='pending'`, job.ID); n != 30 {
-				t.Fatalf("pending folders after the root page: %d", n)
+			source := startInventorySource(t, f, job)
+			// Seed children through bounded real root pages, without visiting them.
+			for f.count(`SELECT count(*) FROM inventory_directories WHERE job_id=? AND relative_path='.' AND state='pending'`, job.ID) > 0 {
+				if err := f.s.readDirectoryPage(context.Background(), job.ID, source, "."); err != nil {
+					t.Fatal(err)
+				}
 			}
-			f.s.processQuantum(context.Background(), job.ID, f.library)
-			if n := f.count(`SELECT count(*) FROM inventory_directories WHERE job_id=? AND state='done' AND relative_path<>'.' AND pages=1`, job.ID); n != 5 {
-				t.Fatalf("complete folders after one batch: %d, want 5", n)
+			if ok, err := f.s.inventoryFolders(context.Background(), job.ID, source); !ok || err != nil {
+				t.Fatalf("batch=%v: %v", ok, err)
 			}
-			if n := f.count(`SELECT count(*) FROM inventory_directories WHERE job_id=? AND relative_path='F05' AND state='pending' AND cursor<>'' AND pages=1`, job.ID); n != 1 {
-				t.Fatal("the sixth folder was not cut with a cursor")
+			if n := f.count(`SELECT count(*) FROM inventory_objects WHERE source_id=?`, f.source); n != inventorySourceNames {
+				t.Fatalf("first batch objects=%d", n)
 			}
-			if n := f.count(`SELECT count(*) FROM inventory_directories WHERE job_id=? AND pages=0`, job.ID); n != 24 {
-				t.Fatalf("untouched folders past the cut: %d, want 24", n)
+			if n := f.count(`SELECT count(*) FROM inventory_directories WHERE job_id=? AND relative_path='F00' AND state='pending' AND cursor<>'' AND pages=1`, job.ID); n != 1 {
+				t.Fatal("first folder did not retain its cursor")
 			}
-			if n := f.count(`SELECT count(*) FROM inventory_objects WHERE source_id=? AND retired=0`, f.source); n != 64 {
-				t.Fatalf("objects after one batch: %d, want 64", n)
+			if n := f.count(`SELECT count(*) FROM inventory_directories WHERE job_id=? AND relative_path<>'F00' AND relative_path<>'.' AND pages>0`, job.ID); n != 0 {
+				t.Fatal("listed beyond the shared raw allowance")
 			}
-			f.s.processQuantum(context.Background(), job.ID, f.library)
-			if n := f.count(`SELECT count(*) FROM inventory_directories WHERE job_id=? AND relative_path='F05' AND state='done' AND pages=2`, job.ID); n != 1 {
-				t.Fatal("the cut folder did not finish in the next batch")
+			if ok, err := f.s.inventoryFolders(context.Background(), job.ID, source); !ok || err != nil {
+				t.Fatalf("next batch=%v: %v", ok, err)
 			}
-			if n := f.count(`SELECT count(*) FROM inventory_objects WHERE source_id=? AND retired=0 AND relative_path LIKE 'F05/%'`, f.source); n != 12 {
-				t.Fatalf("the cut folder has %d objects across the cut, want 12", n)
+			if n := f.count(`SELECT count(*) FROM inventory_objects WHERE source_id=? AND relative_path LIKE 'F00/%'`, f.source); n != 3 {
+				t.Fatalf("continued folder objects=%d", n)
+			}
+			if n := f.count(`SELECT count(*) FROM inventory_objects WHERE source_id=? AND relative_path LIKE 'F01/%'`, f.source); n != 1 {
+				t.Fatalf("shared remainder objects=%d", n)
 			}
 		})
 	}
 }
 
-// TestFolderBatchOf32EmptyFoldersIsOneCommit: empty folders cost no budget, so
-// one quantum completes all of them, through either path.
-func TestFolderBatchOf32EmptyFoldersIsOneCommit(t *testing.T) {
+// Empty folders still own progress/cache/issue overhead: their count is capped
+// before listing, even though they consume no raw names.
+func TestFolderBatchBoundsEmptyFolderOverhead(t *testing.T) {
 	for _, helper := range []bool{false, true} {
 		t.Run(fmt.Sprintf("helper=%v", helper), func(t *testing.T) {
 			f := newLoopFixture(t, "movie")
-			for i := 0; i < 32; i++ {
+			for i := 0; i < 8; i++ {
 				if err := os.MkdirAll(filepath.Join(f.root, fmt.Sprintf("E%02d", i)), 0700); err != nil {
 					t.Fatal(err)
 				}
@@ -82,11 +80,20 @@ func TestFolderBatchOf32EmptyFoldersIsOneCommit(t *testing.T) {
 				f.s.SetStorage(storage.New(binary))
 			}
 			job := f.queue()
-			for n := 0; n < 2; n++ {
-				f.s.processQuantum(context.Background(), job.ID, f.library)
+			source := startInventorySource(t, f, job)
+			for f.count(`SELECT count(*) FROM inventory_directories WHERE job_id=? AND relative_path='.' AND state='pending'`, job.ID) > 0 {
+				if err := f.s.readDirectoryPage(context.Background(), job.ID, source, "."); err != nil {
+					t.Fatal(err)
+				}
 			}
-			if n := f.count(`SELECT count(*) FROM inventory_directories WHERE job_id=? AND state='done' AND relative_path<>'.'`, job.ID); n != 32 {
-				t.Fatalf("empty folders done after one batch: %d, want 32", n)
+			if ok, err := f.s.inventoryFolders(context.Background(), job.ID, source); !ok || err != nil {
+				t.Fatalf("batch=%v: %v", ok, err)
+			}
+			if n := f.count(`SELECT count(*) FROM inventory_directories WHERE job_id=? AND state='done' AND relative_path<>'.'`, job.ID); n != inventorySourceFolders {
+				t.Fatalf("completed empty folders=%d", n)
+			}
+			if n := f.count(`SELECT count(*) FROM inventory_directories WHERE job_id=? AND pages=0`, job.ID); n != 8-inventorySourceFolders {
+				t.Fatalf("untouched folders=%d", n)
 			}
 		})
 	}
@@ -122,7 +129,7 @@ func TestBudgetPrefixStopsBeforeTheFolderTheOneFolderPathOwns(t *testing.T) {
 // TestBudgetedFolderBatchScansToTheSameCatalogue is r3's parity check: a whole
 // scan of a mixed tree (small and large folders, nesting, Unicode, ignored
 // names, an empty folder) ends with the same objects, issues and completed
-// folders through the budgeted batch as through today's batch.
+// folders through the shared-budget batch as through one-folder traversal.
 func TestBudgetedFolderBatchScansToTheSameCatalogue(t *testing.T) {
 	files := []string{"Älien (1979)/Älien (1979).mkv", "Älien (1979)/.hidden", "Älien (1979)/@eaDir/x.jpg", "日本 (2001)/日本 (2001).mkv"}
 	for i := 0; i < 40; i++ {
@@ -154,10 +161,10 @@ func TestBudgetedFolderBatchScansToTheSameCatalogue(t *testing.T) {
 		}
 		return out
 	}
-	budgeted, today := scan(true), scan(false)
-	for name := range today {
-		if budgeted[name] != today[name] {
-			t.Errorf("%s differ:\nbudgeted %s\ntoday    %s", name, budgeted[name], today[name])
+	budgeted, singleFolder := scan(true), scan(false)
+	for name := range singleFolder {
+		if budgeted[name] != singleFolder[name] {
+			t.Errorf("%s differ:\nbudgeted %s\nsingle   %s", name, budgeted[name], singleFolder[name])
 		}
 	}
 	if budgeted["objects"] == "" {

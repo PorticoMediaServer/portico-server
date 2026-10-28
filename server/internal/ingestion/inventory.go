@@ -157,17 +157,22 @@ func (s *Service) inventoryPage(ctx context.Context, job string, source catalog.
 
 }
 
-// inventoryFolders lists and publishes the next pending folders of a local
-// source together: one helper lists them all, one transaction publishes them,
-// up to one page's worth of entries in all. It reports false, having published
-// nothing, when fewer than two folders could be taken (the first folder's
-// listing failed, was unstable or is the only one pending), or when the
-// shared publication failed; the caller then takes the first folder alone.
+// inventoryFolders lists at most inventorySourceFolders pending local folders
+// under one raw-name budget and publishes each real page together. It falls
+// back to the one-folder path when fewer than two requests are pending, the
+// first listing needs error/unstable handling, or publication fails. A healthy
+// single-page prefix of a batch can still be committed without rereading it.
 func (s *Service) inventoryFolders(ctx context.Context, job string, source catalog.LibrarySource) (bool, error) {
+	// Other platforms retain a source-owned directory stream. Without the
+	// shared raw-name budget, list just one bounded page; prelisting several
+	// full pages and keeping a prefix would discard unrelated source work.
+	if !budgetedFolderBatches {
+		return false, nil
+	}
 	// Resolve the disc-folder capability before the page writer opens; it may
 	// read bubblewrap's help once.
 	storage.DirectoryDiscScanSupported()
-	rows, err := s.db.QueryContext(ctx, `SELECT relative_path,cursor,revision FROM inventory_directories WHERE job_id=? AND state='pending' ORDER BY relative_path LIMIT ?`, job, storage.MaxInventoryBatch)
+	rows, err := s.db.QueryContext(ctx, `SELECT relative_path,cursor,revision FROM inventory_directories WHERE job_id=? AND state='pending' ORDER BY relative_path LIMIT ?`, job, inventorySourceFolders)
 	if err != nil {
 		return false, err
 	}
@@ -189,59 +194,15 @@ func (s *Service) inventoryFolders(ctx context.Context, job string, source catal
 	if err != nil || len(requests) < 2 {
 		return false, err
 	}
-	if budgetedFolderBatches {
-		return s.inventoryFoldersBudget(ctx, job, source, writes, requests, limit)
-	}
-	pages, errs := make([]storage.InventoryPage, len(requests)), make([]error, len(requests))
-	if s.storage != nil {
-		if pages, errs, err = s.storage.InventoryPages(ctx, source.ID, requests); err != nil {
-			return false, ctx.Err()
-		}
-	} else {
-		for i, r := range requests {
-			pages[i], errs[i] = storage.LocalInventoryPage(r)
-		}
-	}
-	// Take folders in order up to the first that needs the one-folder path,
-	// and stop at one page's worth of entries, so the transaction holds the
-	// write gate no longer than one full folder page does.
-	entries, taken := 0, 0
-	for i := range writes {
-		if errs[i] != nil || pages[i].Unstable || i > 0 && entries+len(pages[i].Entries) > limit {
-			break
-		}
-		writes[i].Page = pages[i]
-		entries += len(pages[i].Entries)
-		taken++
-	}
-	if taken < 2 {
-		return false, nil
-	}
-	writes = writes[:taken]
-	for i := range writes {
-		writes[i].DiscRoot, err = s.discRootObservation(ctx, source, writes[i].Relative, writes[i].Page)
-		if err != nil {
-			return false, err
-		}
-	}
-	if err = s.catalog.CommitInventoryPages(ctx, job, writes); err != nil {
-		if ctx.Err() != nil {
-			return false, ctx.Err()
-		}
-		return false, nil
-	}
-	for _, w := range writes {
-		s.noteDirectoryPage(job, w.Relative, w.Cursor, w.Page)
-	}
-	return true, nil
+	return s.inventoryFoldersBudget(ctx, job, source, writes, requests, limit)
 }
 
-// budgetedFolderBatches selects the shared-budget folder batch, which only
-// Linux has; elsewhere the batch is the per-folder listing it always was.
+// budgetedFolderBatches selects the shared-budget folder batch on Linux.
+// Other platforms use the bounded one-folder producer.
 var budgetedFolderBatches = runtime.GOOS == "linux"
 
 // inventoryFoldersBudget lists the batch under one shared raw-name budget, the
-// writer page cap, so it lists no more than one page's worth of names in all
+// source raw-name cap, with the folder cap applied before listing,
 // and publishes every page it listed up to the first folder the one-folder
 // path must handle (SRV029). The helper and the in-process path share
 // storage.LocalInventoryPagesBudget; either answer is checked whole before any

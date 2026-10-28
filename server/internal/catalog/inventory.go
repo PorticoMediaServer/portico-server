@@ -105,9 +105,14 @@ type InventoryPageWrite struct {
 	DiscRoot *storage.Snapshot
 }
 
-// inventoryPagesPlan bounds one inventory publication: at most one folder
-// page's worth of entries (128 at the fastest scan speed), each with its
-// catalogue, reading-path and dirty-work effects.
+// inventoryPagesPlan keeps the named exception for an indivisible publication.
+// The local ingestion producer requests <=2 raw names across <=2 folders before
+// listing (one folder on platforms without the shared budget). This includes
+// managed subtitle rows and bounds empty-folder/ignore diagnostic overhead.
+// It does not prove all legal entries fit the default plan: one existing object
+// can invalidate retained relationships/Reading facts, a folder can carry 257
+// ignore diagnostics, and remote ListPage still owns a fixed 128-entry envelope.
+// Never slice a listed page or reject a legal write to fit these estimates.
 var inventoryPagesPlan = dbwork.WritePlan{Name: "inventory-pages", Rows: 8192, Pages: 1024, VMOps: 2_000_000, Why: "a folder page's entries publish atomically with their reading-path effects; bounding a page's fan-out is DB-001's publication redesign (writer-discipline item H)"}
 
 // CommitInventoryPages publishes the pages of several folders in one
