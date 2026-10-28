@@ -3,6 +3,7 @@ cmd/server/maintenance.go	runDatabaseHousekeeping	Begin	ClassMaintenance	-
 cmd/server/maintenance.go	runDatabaseHousekeeping	ExecWrite	ClassMaintenance	-	×2
 internal/access/credentials.go	(*Store).PruneCredentials	ExecWrite	ClassMaintenance	-
 internal/access/credentials.go	(*Store).RecordCredentialUse	WithWriteTx	ClassMaintenance	-
+internal/access/members.go	(*Store).SetMemberProfilePicture	Begin	ClassInteractive	dbwork.WritePlan{Name: "member-profile-picture", Rows: 64, Pages: 1024, VMOps: 100000, Why: "The fixed renditions, profile revision and removal of superseded personal images publish atomically."}
 internal/access/store.go	(*Store).transaction	Begin	ClassSecurityFence	-
 internal/administration/activity_updates.go	(*Service).publishUpdateTransition	WithWriteTx	ClassMaintenance	-
 internal/administration/guide_image_worker.go	(*Service).RunGuideImageImports	ExecWrite	ClassBackgroundMedia	-
@@ -174,8 +175,8 @@ internal/identity/account_moves.go	(*Service).MakeMoveCodes	WithWriteTx	ClassSec
 internal/identity/account_moves.go	(*Service).PreviewAccountMove	WithWriteTx	ClassSecurityFence	-
 internal/identity/account_moves.go	(*Service).RedeemLocalMove	WithWriteTx	ClassSecurityFence	-
 internal/identity/account_moves.go	(*Service).RedeemPorticoMove	WithWriteTx	ClassSecurityFence	-
-internal/identity/avatars.go	(*Service).DeleteProfileAvatar	Begin	ClassSecurityFence	-
-internal/identity/avatars.go	(*Service).UploadProfileAvatar	Begin	ClassSecurityFence	-
+internal/identity/avatars.go	(*Service).DeleteProfileAvatar	Begin	ClassInteractive	-
+internal/identity/avatars.go	(*Service).UploadProfileAvatar	Begin	ClassInteractive	-
 internal/identity/browser_accounts.go	(*Service).ForgetBrowserAccount	Begin	ClassSecurityFence	-
 internal/identity/browser_accounts.go	(*Service).RememberBrowserAccount	Begin	ClassSecurityFence	-
 internal/identity/credential_security.go	(*Service).passwordAttempt	WithWriteTx	ClassSecurityFence	-
@@ -621,6 +622,7 @@ internal/webhooks/webhooks.go	(*Store).write	WithWriteTx	ClassFrom(ctx, dbwork.C
 # every declared plan: plan	file	function	plan
 plan	internal/access/invitations.go	(*Store).Accept	invitationAcceptPlan
 plan	internal/access/invitations.go	(*Store).AcceptPortico	invitationAcceptPlan
+plan	internal/access/members.go	(*Store).SetMemberProfilePicture	dbwork.WritePlan{Name: "member-profile-picture", Rows: 64, Pages: 1024, VMOps: 100000, Why: "The fixed renditions, profile revision and removal of superseded personal images publish atomically."}
 plan	internal/administration/library_settings.go	(*Service).SaveLibrarySettings	librarySettingsPlan
 plan	internal/catalog/admin.go	(*Service).OrderLibraries	libraryOrderPlan
 plan	internal/catalog/delete_title.go	(*Service).RemoveTitle	titleRemovalPlan
@@ -630,6 +632,7 @@ plan	internal/compactcatalog/derive.go	(*Worker).Step	DrainPlan
 plan	internal/compactcatalog/derive.go	(*Worker).Step	derivationUnitPlan
 plan	internal/hosted/membership_push.go	(*Service).pushMembers	memberPushPlan
 plan	internal/identity/account_moves.go	(*Service).ConfirmLocalMove	accountMovePlan
+plan	internal/identity/avatars.go	profilePictureWriteContext	dbwork.WritePlan{Name: "profile-picture", Rows: 64, Pages: 1024, VMOps: 100000, Why: "The fixed renditions, profile revision and removal of superseded personal images publish atomically."}
 plan	internal/identity/self_registration.go	(*Service).Register	selfRegistrationPlan
 plan	internal/metadata/screen_publish.go	(*Service).publishScreen	screenPublishPlan
 plan	internal/metadata/tvdb_episode_credits.go	(*Service).tvdbEpisodeCreditsStep	tvdbEpisodeCreditsPlan

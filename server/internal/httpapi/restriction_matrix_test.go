@@ -321,6 +321,7 @@ func restrictionRoutes() map[string]restrictionRoute {
 		"GET /v1/me/saved/summary":                                                    static("/v1/me/saved/summary"),
 		"GET /v1/me/removed-titles/{id}":                                              probe(func(m *restrictionEnv) []string { return prefixed("/v1/me/removed-titles/", m.hiddenItemSamples()) }),
 		"GET /v1/admin/activity":                                                      exempt(reasonAdmin),
+		"GET /v1/admin/access/members/{id}/profiles/{profileId}/avatar":               exempt(reasonAdmin),
 		"GET /v1/admin/access/events":                                                 exempt("administrator-only server maintenance events; no catalogue item, title, path or asset; a member is refused at admission"),
 		"GET /v1/admin/playback/route-failures":                                       exempt(reasonAdmin),
 		"GET /v1/downloads/artifacts/{grant}/artwork/{role}":                          exempt("download transfer grant rechecked against current item and library visibility by downloadExtra"),

@@ -13586,6 +13586,117 @@ var PorticoCastContracts = (function(exports) {
 			"required": ["webhook"],
 			"type": "object"
 		},
+		"DeleteAdminAccessMembersIdProfilesProfileAvatarRequest": {
+			"properties": { "expectedRevision": {
+				"maximum": 9007199254740991,
+				"minimum": -9007199254740991,
+				"type": "integer"
+			} },
+			"required": ["expectedRevision"],
+			"type": "object"
+		},
+		"DeleteAdminAccessMembersIdProfilesProfileAvatarResponse": {
+			"properties": {
+				"allowedLibraries": {
+					"items": { "type": "string" },
+					"type": "array"
+				},
+				"art": { "type": "string" },
+				"avatar": {
+					"properties": {
+						"profileId": { "type": "string" },
+						"sourceMime": { "type": "string" },
+						"updatedAt": { "type": "string" },
+						"url": { "type": "string" },
+						"version": {
+							"maximum": 9007199254740991,
+							"minimum": -9007199254740991,
+							"type": "integer"
+						}
+					},
+					"required": [
+						"profileId",
+						"version",
+						"updatedAt",
+						"sourceMime",
+						"url"
+					],
+					"type": "object"
+				},
+				"id": { "type": "string" },
+				"name": { "type": "string" },
+				"pinRequired": { "type": "boolean" },
+				"pinRevision": {
+					"maximum": 9007199254740991,
+					"minimum": -9007199254740991,
+					"type": "integer"
+				},
+				"position": {
+					"maximum": 9007199254740991,
+					"minimum": -9007199254740991,
+					"type": "integer"
+				},
+				"primary": { "type": "boolean" },
+				"restrictions": {
+					"properties": {
+						"allowDownloads": { "type": "boolean" },
+						"allowDvr": { "type": "boolean" },
+						"allowLiveTv": { "type": "boolean" },
+						"allowUnrated": { "type": "boolean" },
+						"allowWatchTogether": { "type": "boolean" },
+						"blockedLabels": {
+							"items": { "type": "string" },
+							"type": "array"
+						},
+						"maximumAge": {
+							"maximum": 9007199254740991,
+							"minimum": -9007199254740991,
+							"type": "integer"
+						},
+						"maximumAgeRating": { "type": "string" },
+						"profileId": { "type": "string" },
+						"ratingSystem": { "type": "string" },
+						"revision": {
+							"maximum": 9007199254740991,
+							"minimum": -9007199254740991,
+							"type": "integer"
+						}
+					},
+					"required": [
+						"profileId",
+						"ratingSystem",
+						"maximumAgeRating",
+						"maximumAge",
+						"allowUnrated",
+						"blockedLabels",
+						"allowDownloads",
+						"allowLiveTv",
+						"allowDvr",
+						"allowWatchTogether",
+						"revision"
+					],
+					"type": "object"
+				},
+				"revision": {
+					"maximum": 9007199254740991,
+					"minimum": -9007199254740991,
+					"type": "integer"
+				}
+			},
+			"required": [
+				"id",
+				"name",
+				"primary",
+				"position",
+				"art",
+				"revision",
+				"pinRevision",
+				"pinRequired",
+				"allowedLibraries",
+				"restrictions"
+			],
+			"type": "object"
+		},
 		"DeleteAdminBackupRequest": {
 			"properties": {},
 			"required": [],
@@ -17276,6 +17387,15 @@ var PorticoCastContracts = (function(exports) {
 			],
 			"type": "object"
 		},
+		"GetAdminAccessMembersIdProfilesProfileAvatarRequest": {
+			"properties": {},
+			"required": [],
+			"type": "object"
+		},
+		"GetAdminAccessMembersIdProfilesProfileAvatarResponse": {
+			"format": "binary",
+			"type": "string"
+		},
 		"GetAdminAccessMembersIdProfilesRequest": {
 			"properties": {},
 			"required": [],
@@ -17292,6 +17412,27 @@ var PorticoCastContracts = (function(exports) {
 								"type": "array"
 							},
 							"art": { "type": "string" },
+							"avatar": {
+								"properties": {
+									"profileId": { "type": "string" },
+									"sourceMime": { "type": "string" },
+									"updatedAt": { "type": "string" },
+									"url": { "type": "string" },
+									"version": {
+										"maximum": 9007199254740991,
+										"minimum": -9007199254740991,
+										"type": "integer"
+									}
+								},
+								"required": [
+									"profileId",
+									"version",
+									"updatedAt",
+									"sourceMime",
+									"url"
+								],
+								"type": "object"
+							},
 							"id": { "type": "string" },
 							"name": { "type": "string" },
 							"pinRequired": { "type": "boolean" },
@@ -140286,6 +140427,27 @@ var PorticoCastContracts = (function(exports) {
 					"type": "array"
 				},
 				"art": { "type": "string" },
+				"avatar": {
+					"properties": {
+						"profileId": { "type": "string" },
+						"sourceMime": { "type": "string" },
+						"updatedAt": { "type": "string" },
+						"url": { "type": "string" },
+						"version": {
+							"maximum": 9007199254740991,
+							"minimum": -9007199254740991,
+							"type": "integer"
+						}
+					},
+					"required": [
+						"profileId",
+						"version",
+						"updatedAt",
+						"sourceMime",
+						"url"
+					],
+					"type": "object"
+				},
 				"id": { "type": "string" },
 				"name": { "type": "string" },
 				"pinRequired": { "type": "boolean" },
@@ -143150,6 +143312,116 @@ var PorticoCastContracts = (function(exports) {
 			"required": ["accountIds", "action"],
 			"type": "object"
 		},
+		"PostAdminAccessMembersIdProfilesProfileAvatarRequest": {
+			"properties": { "image": {
+				"format": "binary",
+				"type": "string"
+			} },
+			"required": ["image"],
+			"type": "object"
+		},
+		"PostAdminAccessMembersIdProfilesProfileAvatarResponse": {
+			"properties": {
+				"allowedLibraries": {
+					"items": { "type": "string" },
+					"type": "array"
+				},
+				"art": { "type": "string" },
+				"avatar": {
+					"properties": {
+						"profileId": { "type": "string" },
+						"sourceMime": { "type": "string" },
+						"updatedAt": { "type": "string" },
+						"url": { "type": "string" },
+						"version": {
+							"maximum": 9007199254740991,
+							"minimum": -9007199254740991,
+							"type": "integer"
+						}
+					},
+					"required": [
+						"profileId",
+						"version",
+						"updatedAt",
+						"sourceMime",
+						"url"
+					],
+					"type": "object"
+				},
+				"id": { "type": "string" },
+				"name": { "type": "string" },
+				"pinRequired": { "type": "boolean" },
+				"pinRevision": {
+					"maximum": 9007199254740991,
+					"minimum": -9007199254740991,
+					"type": "integer"
+				},
+				"position": {
+					"maximum": 9007199254740991,
+					"minimum": -9007199254740991,
+					"type": "integer"
+				},
+				"primary": { "type": "boolean" },
+				"restrictions": {
+					"properties": {
+						"allowDownloads": { "type": "boolean" },
+						"allowDvr": { "type": "boolean" },
+						"allowLiveTv": { "type": "boolean" },
+						"allowUnrated": { "type": "boolean" },
+						"allowWatchTogether": { "type": "boolean" },
+						"blockedLabels": {
+							"items": { "type": "string" },
+							"type": "array"
+						},
+						"maximumAge": {
+							"maximum": 9007199254740991,
+							"minimum": -9007199254740991,
+							"type": "integer"
+						},
+						"maximumAgeRating": { "type": "string" },
+						"profileId": { "type": "string" },
+						"ratingSystem": { "type": "string" },
+						"revision": {
+							"maximum": 9007199254740991,
+							"minimum": -9007199254740991,
+							"type": "integer"
+						}
+					},
+					"required": [
+						"profileId",
+						"ratingSystem",
+						"maximumAgeRating",
+						"maximumAge",
+						"allowUnrated",
+						"blockedLabels",
+						"allowDownloads",
+						"allowLiveTv",
+						"allowDvr",
+						"allowWatchTogether",
+						"revision"
+					],
+					"type": "object"
+				},
+				"revision": {
+					"maximum": 9007199254740991,
+					"minimum": -9007199254740991,
+					"type": "integer"
+				}
+			},
+			"required": [
+				"id",
+				"name",
+				"primary",
+				"position",
+				"art",
+				"revision",
+				"pinRevision",
+				"pinRequired",
+				"allowedLibraries",
+				"restrictions"
+			],
+			"type": "object"
+		},
 		"PostAdminAccessMembersIdProfilesProfilePinResetRequest": {
 			"properties": { "expectedRevision": {
 				"maximum": 9007199254740991,
@@ -143166,6 +143438,27 @@ var PorticoCastContracts = (function(exports) {
 					"type": "array"
 				},
 				"art": { "type": "string" },
+				"avatar": {
+					"properties": {
+						"profileId": { "type": "string" },
+						"sourceMime": { "type": "string" },
+						"updatedAt": { "type": "string" },
+						"url": { "type": "string" },
+						"version": {
+							"maximum": 9007199254740991,
+							"minimum": -9007199254740991,
+							"type": "integer"
+						}
+					},
+					"required": [
+						"profileId",
+						"version",
+						"updatedAt",
+						"sourceMime",
+						"url"
+					],
+					"type": "object"
+				},
 				"id": { "type": "string" },
 				"name": { "type": "string" },
 				"pinRequired": { "type": "boolean" },
@@ -166088,6 +166381,27 @@ var PorticoCastContracts = (function(exports) {
 					"type": "array"
 				},
 				"art": { "type": "string" },
+				"avatar": {
+					"properties": {
+						"profileId": { "type": "string" },
+						"sourceMime": { "type": "string" },
+						"updatedAt": { "type": "string" },
+						"url": { "type": "string" },
+						"version": {
+							"maximum": 9007199254740991,
+							"minimum": -9007199254740991,
+							"type": "integer"
+						}
+					},
+					"required": [
+						"profileId",
+						"version",
+						"updatedAt",
+						"sourceMime",
+						"url"
+					],
+					"type": "object"
+				},
 				"id": { "type": "string" },
 				"name": { "type": "string" },
 				"pinRequired": { "type": "boolean" },

@@ -10,6 +10,7 @@ import (
 	"portico.local/server/internal/networkpolicy"
 	"time"
 
+	"portico.local/server/internal/dbwork"
 	"portico.local/server/internal/identity"
 	"portico.local/server/internal/streamlimits"
 )
@@ -460,6 +461,53 @@ func (s *Store) ClearMemberProfilePIN(ctx context.Context, auth Authorize, ids *
 	err = s.transaction(ctx, auth, func(tx *sql.Tx) error {
 		var e error
 		out, e = ids.ClearMemberProfilePINTx(ctx, tx, account, profile, q)
+		return e
+	})
+	return
+}
+
+// AuthorizeMemberProfilePicture checks before reading an upload or decoding it.
+func (s *Store) AuthorizeMemberProfilePicture(ctx context.Context, auth Authorize, account, profile string, revision int64) error {
+	if !validID(account) {
+		return invalid("accountId")
+	}
+	return s.snapshot(ctx, auth, func(tx *sql.Tx) error {
+		return identity.CheckMemberProfileRevisionTx(ctx, tx, account, profile, revision)
+	})
+}
+
+func (s *Store) SetMemberProfilePicture(ctx context.Context, auth Authorize, ids *identity.Service, account, profile string, revision int64, picture *identity.PreparedProfileAvatar) (out identity.MemberProfile, err error) {
+	if !validID(account) || ids == nil {
+		return out, invalid("accountId")
+	}
+	// A picture is a user edit, not an authority fence. A transparent 512px
+	// rendition can use a megabyte; replacement also collects the old renditions.
+	ctx = dbwork.WithPlan(ctx, dbwork.WritePlan{Name: "member-profile-picture", Rows: 64, Pages: 1024, VMOps: 100000, Why: "The fixed renditions, profile revision and removal of superseded personal images publish atomically."})
+	gated, err := dbwork.Begin(ctx, s.DB, dbwork.ClassInteractive)
+	if err != nil {
+		return out, err
+	}
+	defer gated.Rollback()
+	tx := gated.Tx()
+	if auth != nil {
+		if err = auth(ctx, tx); err != nil {
+			return out, err
+		}
+	}
+	out, err = ids.SetMemberProfilePictureTx(ctx, tx, account, profile, revision, picture)
+	if err != nil {
+		return out, err
+	}
+	return out, gated.Commit()
+}
+
+func (s *Store) MemberProfilePicture(ctx context.Context, auth Authorize, account, profile string, size int) (raw []byte, version int64, updated string, err error) {
+	if !validID(account) {
+		return nil, 0, "", invalid("accountId")
+	}
+	err = s.snapshot(ctx, auth, func(tx *sql.Tx) error {
+		var e error
+		raw, version, updated, e = identity.ReadMemberProfilePictureTx(ctx, tx, account, profile, size)
 		return e
 	})
 	return

@@ -3,6 +3,7 @@ package httpapi
 
 // routeLanes is a projection of the live API metadata plus non-API infrastructure.
 var routeLanes = map[string]string{
+	"DELETE /v1/admin/access/members/{id}/profiles/{profileId}/avatar":            "admin",
 	"DELETE /v1/admin/api-keys/{id}":                                              "security-fence",
 	"DELETE /v1/admin/backups/{id}":                                               "admin-heavy",
 	"DELETE /v1/admin/diagnostics/client-logs/{id}":                               "admin",
@@ -63,6 +64,7 @@ var routeLanes = map[string]string{
 	"GET /v1/admin/access/members/{id}":                                           "admin",
 	"GET /v1/admin/access/members/{id}/limits":                                    "admin",
 	"GET /v1/admin/access/members/{id}/profiles":                                  "admin",
+	"GET /v1/admin/access/members/{id}/profiles/{profileId}/avatar":               "admin",
 	"GET /v1/admin/activity":                                                      "admin",
 	"GET /v1/admin/analysis-operations":                                           "admin-heavy",
 	"GET /v1/admin/api-keys":                                                      "admin",
@@ -451,6 +453,7 @@ var routeLanes = map[string]string{
 	"POST /v1/admin/access/invitations/{id}/revoke":                               "security-fence",
 	"POST /v1/admin/access/invitations/{id}/short-code":                           "security-fence",
 	"POST /v1/admin/access/members/bulk":                                          "security-fence",
+	"POST /v1/admin/access/members/{id}/profiles/{profileId}/avatar":              "admin",
 	"POST /v1/admin/access/members/{id}/profiles/{profileId}/pin-reset":           "admin",
 	"POST /v1/admin/api-keys":                                                     "security-fence",
 	"POST /v1/admin/backups":                                                      "admin-heavy",

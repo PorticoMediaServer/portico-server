@@ -9,6 +9,8 @@ import (
 
 func policyErrorDefinitions() []apierror.Definition {
 	return []apierror.Definition{
+		{Code: "avatar_unsupported", Status: 415, Message: "Choose a JPEG or PNG picture smaller than 4 MB.", Retry: apierror.Never},
+		{Code: "avatar_not_found", Status: 404, Message: "This profile picture is no longer available.", Retry: apierror.AfterRefresh},
 		{Code: "profile_changed", Status: 409, Message: publicErrorMessage("profile_changed"), Retry: apierror.Never},
 		{Code: "search_busy", Status: 429, Message: "Too many searches are already running. Try again in a moment.", Retry: apierror.SameRequest},
 		{Code: "recording_root_request_expired", Status: 410, Message: publicErrorMessage("console_expired"), Retry: apierror.Never},

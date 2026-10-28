@@ -20764,6 +20764,159 @@
         ],
         "type": "object"
       },
+      "DeleteAdminAccessMembersIdProfilesProfileAvatarRequest": {
+        "properties": {
+          "expectedRevision": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "expectedRevision"
+        ],
+        "type": "object"
+      },
+      "DeleteAdminAccessMembersIdProfilesProfileAvatarResponse": {
+        "properties": {
+          "allowedLibraries": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "art": {
+            "type": "string"
+          },
+          "avatar": {
+            "properties": {
+              "profileId": {
+                "type": "string"
+              },
+              "sourceMime": {
+                "type": "string"
+              },
+              "updatedAt": {
+                "type": "string"
+              },
+              "url": {
+                "type": "string"
+              },
+              "version": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              }
+            },
+            "required": [
+              "profileId",
+              "version",
+              "updatedAt",
+              "sourceMime",
+              "url"
+            ],
+            "type": "object"
+          },
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "pinRequired": {
+            "type": "boolean"
+          },
+          "pinRevision": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "position": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "primary": {
+            "type": "boolean"
+          },
+          "restrictions": {
+            "properties": {
+              "allowDownloads": {
+                "type": "boolean"
+              },
+              "allowDvr": {
+                "type": "boolean"
+              },
+              "allowLiveTv": {
+                "type": "boolean"
+              },
+              "allowUnrated": {
+                "type": "boolean"
+              },
+              "allowWatchTogether": {
+                "type": "boolean"
+              },
+              "blockedLabels": {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              "maximumAge": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "maximumAgeRating": {
+                "type": "string"
+              },
+              "profileId": {
+                "type": "string"
+              },
+              "ratingSystem": {
+                "type": "string"
+              },
+              "revision": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              }
+            },
+            "required": [
+              "profileId",
+              "ratingSystem",
+              "maximumAgeRating",
+              "maximumAge",
+              "allowUnrated",
+              "blockedLabels",
+              "allowDownloads",
+              "allowLiveTv",
+              "allowDvr",
+              "allowWatchTogether",
+              "revision"
+            ],
+            "type": "object"
+          },
+          "revision": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "primary",
+          "position",
+          "art",
+          "revision",
+          "pinRevision",
+          "pinRequired",
+          "allowedLibraries",
+          "restrictions"
+        ],
+        "type": "object"
+      },
       "DeleteAdminBackupRequest": {
         "properties": {},
         "type": "object"
@@ -25903,6 +26056,14 @@
         ],
         "type": "object"
       },
+      "GetAdminAccessMembersIdProfilesProfileAvatarRequest": {
+        "properties": {},
+        "type": "object"
+      },
+      "GetAdminAccessMembersIdProfilesProfileAvatarResponse": {
+        "format": "binary",
+        "type": "string"
+      },
       "GetAdminAccessMembersIdProfilesRequest": {
         "properties": {},
         "type": "object"
@@ -25923,6 +26084,35 @@
                 },
                 "art": {
                   "type": "string"
+                },
+                "avatar": {
+                  "properties": {
+                    "profileId": {
+                      "type": "string"
+                    },
+                    "sourceMime": {
+                      "type": "string"
+                    },
+                    "updatedAt": {
+                      "type": "string"
+                    },
+                    "url": {
+                      "type": "string"
+                    },
+                    "version": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    }
+                  },
+                  "required": [
+                    "profileId",
+                    "version",
+                    "updatedAt",
+                    "sourceMime",
+                    "url"
+                  ],
+                  "type": "object"
                 },
                 "id": {
                   "type": "string"
@@ -218842,6 +219032,35 @@
           "art": {
             "type": "string"
           },
+          "avatar": {
+            "properties": {
+              "profileId": {
+                "type": "string"
+              },
+              "sourceMime": {
+                "type": "string"
+              },
+              "updatedAt": {
+                "type": "string"
+              },
+              "url": {
+                "type": "string"
+              },
+              "version": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              }
+            },
+            "required": [
+              "profileId",
+              "version",
+              "updatedAt",
+              "sourceMime",
+              "url"
+            ],
+            "type": "object"
+          },
           "id": {
             "type": "string"
           },
@@ -222842,6 +223061,158 @@
         ],
         "type": "object"
       },
+      "PostAdminAccessMembersIdProfilesProfileAvatarRequest": {
+        "properties": {
+          "image": {
+            "format": "binary",
+            "type": "string"
+          }
+        },
+        "required": [
+          "image"
+        ],
+        "type": "object"
+      },
+      "PostAdminAccessMembersIdProfilesProfileAvatarResponse": {
+        "properties": {
+          "allowedLibraries": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "art": {
+            "type": "string"
+          },
+          "avatar": {
+            "properties": {
+              "profileId": {
+                "type": "string"
+              },
+              "sourceMime": {
+                "type": "string"
+              },
+              "updatedAt": {
+                "type": "string"
+              },
+              "url": {
+                "type": "string"
+              },
+              "version": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              }
+            },
+            "required": [
+              "profileId",
+              "version",
+              "updatedAt",
+              "sourceMime",
+              "url"
+            ],
+            "type": "object"
+          },
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "pinRequired": {
+            "type": "boolean"
+          },
+          "pinRevision": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "position": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "primary": {
+            "type": "boolean"
+          },
+          "restrictions": {
+            "properties": {
+              "allowDownloads": {
+                "type": "boolean"
+              },
+              "allowDvr": {
+                "type": "boolean"
+              },
+              "allowLiveTv": {
+                "type": "boolean"
+              },
+              "allowUnrated": {
+                "type": "boolean"
+              },
+              "allowWatchTogether": {
+                "type": "boolean"
+              },
+              "blockedLabels": {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              "maximumAge": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "maximumAgeRating": {
+                "type": "string"
+              },
+              "profileId": {
+                "type": "string"
+              },
+              "ratingSystem": {
+                "type": "string"
+              },
+              "revision": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              }
+            },
+            "required": [
+              "profileId",
+              "ratingSystem",
+              "maximumAgeRating",
+              "maximumAge",
+              "allowUnrated",
+              "blockedLabels",
+              "allowDownloads",
+              "allowLiveTv",
+              "allowDvr",
+              "allowWatchTogether",
+              "revision"
+            ],
+            "type": "object"
+          },
+          "revision": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "primary",
+          "position",
+          "art",
+          "revision",
+          "pinRevision",
+          "pinRequired",
+          "allowedLibraries",
+          "restrictions"
+        ],
+        "type": "object"
+      },
       "PostAdminAccessMembersIdProfilesProfilePinResetRequest": {
         "properties": {
           "expectedRevision": {
@@ -222865,6 +223236,35 @@
           },
           "art": {
             "type": "string"
+          },
+          "avatar": {
+            "properties": {
+              "profileId": {
+                "type": "string"
+              },
+              "sourceMime": {
+                "type": "string"
+              },
+              "updatedAt": {
+                "type": "string"
+              },
+              "url": {
+                "type": "string"
+              },
+              "version": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              }
+            },
+            "required": [
+              "profileId",
+              "version",
+              "updatedAt",
+              "sourceMime",
+              "url"
+            ],
+            "type": "object"
           },
           "id": {
             "type": "string"
@@ -255103,6 +255503,35 @@
           },
           "art": {
             "type": "string"
+          },
+          "avatar": {
+            "properties": {
+              "profileId": {
+                "type": "string"
+              },
+              "sourceMime": {
+                "type": "string"
+              },
+              "updatedAt": {
+                "type": "string"
+              },
+              "url": {
+                "type": "string"
+              },
+              "version": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              }
+            },
+            "required": [
+              "profileId",
+              "version",
+              "updatedAt",
+              "sourceMime",
+              "url"
+            ],
+            "type": "object"
           },
           "id": {
             "type": "string"
@@ -298849,6 +299278,35 @@
                           "art": {
                             "type": "string"
                           },
+                          "avatar": {
+                            "properties": {
+                              "profileId": {
+                                "type": "string"
+                              },
+                              "sourceMime": {
+                                "type": "string"
+                              },
+                              "updatedAt": {
+                                "type": "string"
+                              },
+                              "url": {
+                                "type": "string"
+                              },
+                              "version": {
+                                "maximum": 9007199254740991,
+                                "minimum": -9007199254740991,
+                                "type": "integer"
+                              }
+                            },
+                            "required": [
+                              "profileId",
+                              "version",
+                              "updatedAt",
+                              "sourceMime",
+                              "url"
+                            ],
+                            "type": "object"
+                          },
                           "id": {
                             "type": "string"
                           },
@@ -299071,6 +299529,35 @@
                     "art": {
                       "type": "string"
                     },
+                    "avatar": {
+                      "properties": {
+                        "profileId": {
+                          "type": "string"
+                        },
+                        "sourceMime": {
+                          "type": "string"
+                        },
+                        "updatedAt": {
+                          "type": "string"
+                        },
+                        "url": {
+                          "type": "string"
+                        },
+                        "version": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        }
+                      },
+                      "required": [
+                        "profileId",
+                        "version",
+                        "updatedAt",
+                        "sourceMime",
+                        "url"
+                      ],
+                      "type": "object"
+                    },
                     "id": {
                       "type": "string"
                     },
@@ -299225,6 +299712,608 @@
         "x-scope": "admin"
       }
     },
+    "/v1/admin/access/members/{id}/profiles/{profileId}/avatar": {
+      "delete": {
+        "operationId": "delete_admin_access_members_id_profiles_profile_avatar",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "profileId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "expectedRevision": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  }
+                },
+                "required": [
+                  "expectedRevision"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "allowedLibraries": {
+                      "items": {
+                        "type": "string"
+                      },
+                      "type": "array"
+                    },
+                    "art": {
+                      "type": "string"
+                    },
+                    "avatar": {
+                      "properties": {
+                        "profileId": {
+                          "type": "string"
+                        },
+                        "sourceMime": {
+                          "type": "string"
+                        },
+                        "updatedAt": {
+                          "type": "string"
+                        },
+                        "url": {
+                          "type": "string"
+                        },
+                        "version": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        }
+                      },
+                      "required": [
+                        "profileId",
+                        "version",
+                        "updatedAt",
+                        "sourceMime",
+                        "url"
+                      ],
+                      "type": "object"
+                    },
+                    "id": {
+                      "type": "string"
+                    },
+                    "name": {
+                      "type": "string"
+                    },
+                    "pinRequired": {
+                      "type": "boolean"
+                    },
+                    "pinRevision": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "position": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "primary": {
+                      "type": "boolean"
+                    },
+                    "restrictions": {
+                      "properties": {
+                        "allowDownloads": {
+                          "type": "boolean"
+                        },
+                        "allowDvr": {
+                          "type": "boolean"
+                        },
+                        "allowLiveTv": {
+                          "type": "boolean"
+                        },
+                        "allowUnrated": {
+                          "type": "boolean"
+                        },
+                        "allowWatchTogether": {
+                          "type": "boolean"
+                        },
+                        "blockedLabels": {
+                          "items": {
+                            "type": "string"
+                          },
+                          "type": "array"
+                        },
+                        "maximumAge": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
+                        "maximumAgeRating": {
+                          "type": "string"
+                        },
+                        "profileId": {
+                          "type": "string"
+                        },
+                        "ratingSystem": {
+                          "type": "string"
+                        },
+                        "revision": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        }
+                      },
+                      "required": [
+                        "profileId",
+                        "ratingSystem",
+                        "maximumAgeRating",
+                        "maximumAge",
+                        "allowUnrated",
+                        "blockedLabels",
+                        "allowDownloads",
+                        "allowLiveTv",
+                        "allowDvr",
+                        "allowWatchTogether",
+                        "revision"
+                      ],
+                      "type": "object"
+                    },
+                    "revision": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "name",
+                    "primary",
+                    "position",
+                    "art",
+                    "revision",
+                    "pinRevision",
+                    "pinRequired",
+                    "allowedLibraries",
+                    "restrictions"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "error": {
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message"
+                      ],
+                      "type": "object"
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Request refused or unavailable"
+          }
+        },
+        "summary": "Delete another person's profile picture",
+        "x-access": "admin_scope",
+        "x-admission": "admin",
+        "x-cost": "constant",
+        "x-error-codes": [
+          "invalid_request",
+          "unauthorized",
+          "not_permitted",
+          "not_found",
+          "revision_mismatch",
+          "avatar_unsupported",
+          "avatar_not_found",
+          "internal",
+          "database_busy",
+          "writer_capacity"
+        ],
+        "x-lane": "default",
+        "x-max-body-bytes": 4096,
+        "x-scope": "admin"
+      },
+      "get": {
+        "operationId": "get_admin_access_members_id_profiles_profile_avatar",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "profileId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "v",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "size",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/octet-stream": {
+                "schema": {
+                  "format": "binary",
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "error": {
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message"
+                      ],
+                      "type": "object"
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Request refused or unavailable"
+          }
+        },
+        "summary": "Get another person's profile picture",
+        "x-access": "admin_scope",
+        "x-admission": "admin",
+        "x-cost": "constant",
+        "x-error-codes": [
+          "invalid_request",
+          "unauthorized",
+          "not_permitted",
+          "not_found",
+          "revision_mismatch",
+          "avatar_unsupported",
+          "avatar_not_found",
+          "internal",
+          "database_busy"
+        ],
+        "x-lane": "default",
+        "x-scope": "admin"
+      },
+      "post": {
+        "operationId": "post_admin_access_members_id_profiles_profile_avatar",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "profileId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "expectedRevision",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/octet-stream": {
+              "schema": {
+                "format": "binary",
+                "type": "string"
+              }
+            },
+            "image/jpeg": {
+              "schema": {
+                "format": "binary",
+                "type": "string"
+              }
+            },
+            "image/png": {
+              "schema": {
+                "format": "binary",
+                "type": "string"
+              }
+            },
+            "multipart/form-data": {
+              "schema": {
+                "properties": {
+                  "image": {
+                    "format": "binary",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "image"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "allowedLibraries": {
+                      "items": {
+                        "type": "string"
+                      },
+                      "type": "array"
+                    },
+                    "art": {
+                      "type": "string"
+                    },
+                    "avatar": {
+                      "properties": {
+                        "profileId": {
+                          "type": "string"
+                        },
+                        "sourceMime": {
+                          "type": "string"
+                        },
+                        "updatedAt": {
+                          "type": "string"
+                        },
+                        "url": {
+                          "type": "string"
+                        },
+                        "version": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        }
+                      },
+                      "required": [
+                        "profileId",
+                        "version",
+                        "updatedAt",
+                        "sourceMime",
+                        "url"
+                      ],
+                      "type": "object"
+                    },
+                    "id": {
+                      "type": "string"
+                    },
+                    "name": {
+                      "type": "string"
+                    },
+                    "pinRequired": {
+                      "type": "boolean"
+                    },
+                    "pinRevision": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "position": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "primary": {
+                      "type": "boolean"
+                    },
+                    "restrictions": {
+                      "properties": {
+                        "allowDownloads": {
+                          "type": "boolean"
+                        },
+                        "allowDvr": {
+                          "type": "boolean"
+                        },
+                        "allowLiveTv": {
+                          "type": "boolean"
+                        },
+                        "allowUnrated": {
+                          "type": "boolean"
+                        },
+                        "allowWatchTogether": {
+                          "type": "boolean"
+                        },
+                        "blockedLabels": {
+                          "items": {
+                            "type": "string"
+                          },
+                          "type": "array"
+                        },
+                        "maximumAge": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
+                        "maximumAgeRating": {
+                          "type": "string"
+                        },
+                        "profileId": {
+                          "type": "string"
+                        },
+                        "ratingSystem": {
+                          "type": "string"
+                        },
+                        "revision": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        }
+                      },
+                      "required": [
+                        "profileId",
+                        "ratingSystem",
+                        "maximumAgeRating",
+                        "maximumAge",
+                        "allowUnrated",
+                        "blockedLabels",
+                        "allowDownloads",
+                        "allowLiveTv",
+                        "allowDvr",
+                        "allowWatchTogether",
+                        "revision"
+                      ],
+                      "type": "object"
+                    },
+                    "revision": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "name",
+                    "primary",
+                    "position",
+                    "art",
+                    "revision",
+                    "pinRevision",
+                    "pinRequired",
+                    "allowedLibraries",
+                    "restrictions"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "error": {
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message"
+                      ],
+                      "type": "object"
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Request refused or unavailable"
+          }
+        },
+        "summary": "Post another person's profile picture",
+        "x-access": "admin_scope",
+        "x-admission": "admin",
+        "x-cost": "constant",
+        "x-error-codes": [
+          "invalid_request",
+          "unauthorized",
+          "not_permitted",
+          "not_found",
+          "revision_mismatch",
+          "avatar_unsupported",
+          "avatar_not_found",
+          "internal",
+          "database_busy",
+          "writer_capacity"
+        ],
+        "x-lane": "default",
+        "x-max-body-bytes": 5242880,
+        "x-scope": "admin"
+      }
+    },
     "/v1/admin/access/members/{id}/profiles/{profileId}/pin-reset": {
       "post": {
         "operationId": "post_admin_access_members_id_profiles_profile_pin_reset",
@@ -299280,6 +300369,35 @@
                     },
                     "art": {
                       "type": "string"
+                    },
+                    "avatar": {
+                      "properties": {
+                        "profileId": {
+                          "type": "string"
+                        },
+                        "sourceMime": {
+                          "type": "string"
+                        },
+                        "updatedAt": {
+                          "type": "string"
+                        },
+                        "url": {
+                          "type": "string"
+                        },
+                        "version": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        }
+                      },
+                      "required": [
+                        "profileId",
+                        "version",
+                        "updatedAt",
+                        "sourceMime",
+                        "url"
+                      ],
+                      "type": "object"
                     },
                     "id": {
                       "type": "string"
@@ -299525,6 +300643,35 @@
                     },
                     "art": {
                       "type": "string"
+                    },
+                    "avatar": {
+                      "properties": {
+                        "profileId": {
+                          "type": "string"
+                        },
+                        "sourceMime": {
+                          "type": "string"
+                        },
+                        "updatedAt": {
+                          "type": "string"
+                        },
+                        "url": {
+                          "type": "string"
+                        },
+                        "version": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        }
+                      },
+                      "required": [
+                        "profileId",
+                        "version",
+                        "updatedAt",
+                        "sourceMime",
+                        "url"
+                      ],
+                      "type": "object"
                     },
                     "id": {
                       "type": "string"
@@ -372468,12 +373615,6 @@
               }
             },
             "image/png": {
-              "schema": {
-                "format": "binary",
-                "type": "string"
-              }
-            },
-            "image/webp": {
               "schema": {
                 "format": "binary",
                 "type": "string"
