@@ -20,6 +20,7 @@ func TestRecordingIntentUsesGrantAndSnapshotsDefaults(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer db.Close()
+	recordingProfiles(t, db, "account", "profile")
 	src, gen, ch, prog := strings.Repeat("a", 48), strings.Repeat("b", 48), strings.Repeat("c", 64), strings.Repeat("d", 64)
 	now := time.Now().UTC()
 	start, end := now.Add(time.Hour).Format(time.RFC3339), now.Add(2*time.Hour).Format(time.RFC3339)
