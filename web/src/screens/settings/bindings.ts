@@ -18,7 +18,7 @@ export type SettingsSections = Readonly<{
 }>;
 
 /** The parent supplies actual domain adapters. This layer owns no query resolver or key map. */
-export function createSettingsBindings(controller: SettingsController, options: SettingsControllerOptions, identity: ShellIdentity, sections: SettingsSections): SettingsBindings {
+export function createSettingsBindings(controller: SettingsController, options: SettingsControllerOptions, identity: ShellIdentity, sections: SettingsSections, presentation?: Readonly<{identity: () => ShellIdentity; subscribe: (listener: () => void) => () => void; getSnapshot: () => unknown}>): SettingsBindings {
   /** A switch row belongs to the direction its server is not already in. Both
    * drawn directions have their own surface; without the captured owner switch
    * they stay out rather than becoming dead controls. The local change-owner row
@@ -51,10 +51,11 @@ export function createSettingsBindings(controller: SettingsController, options: 
     return {present: !!snapshot.document && snapshot.document.signIn === want, disabled: snapshot.loading};
   };
   return {
-    accountName: identity.profileName,
-    serverName: identity.serverName,
+    get accountName() {return (presentation?.identity() ?? identity).profileName;},
+    get serverName() {return (presentation?.identity() ?? identity).serverName;},
+    presentation,
     role: options.role,
-    environment: {...options.environment, role: options.role, signIn: identity.signIn},
+    get environment() {return {...options.environment, role: options.role, signIn: (presentation?.identity() ?? identity).signIn};},
     subscribe: listener => {
       const offController = controller.subscribe(listener), offSignIn = sections.signIn?.subscribe(listener);
       return () => {offController();offSignIn?.();};
@@ -79,4 +80,10 @@ export function createSettingsBindings(controller: SettingsController, options: 
     loadContext: controller.loadContext,
     openHome: sections.openHome,
   };
+}
+
+/** Spread copies must keep the live presentation getters as well as its notifier. */
+export function forwardSettingsBindings(base: SettingsBindings, extra: Partial<SettingsBindings>): SettingsBindings {
+  return {...base,...extra,presentation:base.presentation,
+    get accountName() {return base.accountName;},get serverName() {return base.serverName;},get environment() {return base.environment;}};
 }

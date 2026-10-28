@@ -1,4 +1,5 @@
-import {useEffect, useRef, useState, useSyncExternalStore, type ReactNode} from 'react';
+import {createSettingsOpen, SettingsOpenContext} from './quiet-refresh';
+import {useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore, type ReactNode} from 'react';
 import {defaultI18n} from '@i18n';
 import {settingsRowIndex, settingsSpec, type SettingsHolder, type SettingsRow, type SettingsSection, type SettingsValue} from '@core/presentation/settings-spec.ts';
 import {SettingsNav, type SettingsSearchGroup} from '../../kit/shell/SettingsSurfaces';
@@ -17,11 +18,16 @@ import kitStyles from '../../kit/settings/settings.module.css';
 import styles from './settings.module.css';
 
 const t = defaultI18n.t;
+const noPresentation = () => () => {};
+const emptyPresentation = () => undefined;
 export type SettingsContext = Readonly<{section: SettingsSection; panelId?: string; tabId?: string; recordId?: string}>;
 export type SettingsPageSnapshot = Readonly<{loading: boolean; error?: unknown; saveState?: 'saving' | 'saved'}>;
 export type SettingsConfigurationMatch = Readonly<{id: string; key: string; label: string; current: unknown; effective: unknown; default: unknown; source: string; configOnly: boolean; path: string}>;
 /** Session-owned, checked readers and commands. The screen holds navigation and focus only. */
 export type SettingsBindings = Readonly<{
+  setOpen?: (open: boolean) => void;
+  inputActive?: (active: boolean) => void;
+  presentation?: Readonly<{subscribe: (listener: () => void) => () => void; getSnapshot: () => unknown}>;
   accountName: string; serverName: string; role: 'owner' | 'admin' | 'member';
   environment: SettingsEnvironment;
   subscribe: (listener: () => void) => () => void; getSnapshot: (section: SettingsSection) => SettingsPageSnapshot;
@@ -48,9 +54,13 @@ export type SettingsBindings = Readonly<{
 export function SettingsScreen({bindings, route, navigate, openDetail = false}: {bindings: SettingsBindings; route: SettingsRoute; navigate: (route: SettingsRoute) => void;
   /** A link that names a scope or section asks for that page, not the compact list. */
   openDetail?: boolean}) {
+  useSyncExternalStore(bindings.presentation?.subscribe ?? noPresentation, bindings.presentation?.getSnapshot ?? emptyPresentation, emptyPresentation);
   const width = useShellWidth(), compact = width < 600, feedback = useWebAction('feedback');
+  const [quietOpen]=useState(createSettingsOpen);
   const [query, setQuery] = useState(''), [compactPage, setCompactPage] = useState(() => compact && openDetail), [advanced, setAdvanced] = useState(false);
   const [panel, setPanel] = useState<{id: string; recordId?: string; tab?: string} | undefined>();
+  const shown=!compact || compactPage;
+  useLayoutEffect(()=>{quietOpen.setOpen(shown);bindings.setOpen?.(shown);return()=>{quietOpen.setOpen(false);bindings.setOpen?.(false);};},[quietOpen,bindings,shown]);
   const [configurationKey, setConfigurationKey] = useState<string>();
   const opener = useRef<HTMLElement | null>(null);
   const environment = {...bindings.environment, role: bindings.role};
@@ -115,7 +125,9 @@ export function SettingsScreen({bindings, route, navigate, openDetail = false}: 
   const libraryTitle = typeof libraryName === 'string' && libraryName ? libraryName : panelState?.title ?? (panelSpec?.title ? t(panelSpec.title) : t(section.title));
   const audience = bindings.audience(section);
   const fact = configuration.find(fact => fact.key === configurationKey);
-  return <div className={styles.screen}><SettingsWorkspace scope={selected.scope} navigation={navigation} compactPage={compactPage} onBack={() => setCompactPage(false)}>
+  const editing = (target: EventTarget | null) => target instanceof HTMLElement && (target.isContentEditable || target instanceof HTMLTextAreaElement || target instanceof HTMLInputElement && !['button','checkbox','radio','range','submit','reset','file','color','hidden'].includes(target.type));
+  return <SettingsOpenContext.Provider value={quietOpen}><div className={styles.screen} onFocusCapture={event => {if(editing(event.target))bindings.inputActive?.(true);}}
+    onBlurCapture={event => {if(editing(event.target) && !editing(event.relatedTarget))bindings.inputActive?.(false);}}><SettingsWorkspace scope={selected.scope} navigation={navigation} compactPage={compactPage} onBack={() => setCompactPage(false)}>
     {selected.scope === 'server' && bindings.role !== 'member' && (bindings.role === 'owner' ? <ServerHeader serverName={bindings.serverName} viewerRole="owner" audience={audience} health={bindings.serverHealth?.()} facts={bindings.serverFacts()} /> : <ServerHeader serverName={bindings.serverName} viewerRole="administrator" audience="administrators" health={bindings.serverHealth?.()} facts={bindings.serverFacts()} />)}
     {libraryPage && <Button variant="glass" size="small" icon="i-left" onClick={() => {setPanel(undefined);opener.current?.focus();}}>{t(section.title)}</Button>}
     {libraryPage && bindings.panelHeader ? bindings.panelHeader(panelContext, libraryTitle) : <SettingsPageHeading title={libraryPage ? libraryTitle : t(section.title)} saveState={snapshot.saveState} />}
@@ -125,7 +137,7 @@ export function SettingsScreen({bindings, route, navigate, openDetail = false}: 
       saveState={snapshot.saveState} tabs={panelSpec.tabs?.map(tab => ({id: tab.id, title: t(tab.title), content: rows(tab, {...panelContext, tabId: tab.id})}))} selectedTab={panel.tab} onTabChange={value => setPanel(current => current && {...current, tab: value})}>
       {rows(tab ?? panelSpec, panelContext)}
     </SettingsPanel>}
-  </SettingsWorkspace></div>;
+  </SettingsWorkspace></div></SettingsOpenContext.Provider>;
 }
 
 function ConfigurationFact({fact}: {fact: SettingsConfigurationMatch}) {

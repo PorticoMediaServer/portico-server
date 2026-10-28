@@ -1,3 +1,4 @@
+import {useScreenIdentity} from '../detail/context';
 import {useCallback, useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore, type CSSProperties, type ReactNode} from 'react';
 import {useLocation} from '@tanstack/react-router';
 import {defaultI18n} from '@i18n';
@@ -334,6 +335,7 @@ function Boundary({context, view, routeCurrent, onView, onGuide}: {context: Scre
   onView: (view: 'upcoming' | 'recorded' | 'rules' | 'history' | 'storage') => void; onGuide: () => void}) {
   const [attempt, setAttempt] = useState(0);
   const [now, setNow] = useState(() => Date.now());
+  useScreenIdentity(context);
   const lease = useRecordingsLease(context, view, attempt, routeCurrent);
   const snapshot = useSyncExternalStore(lease?.controller.subscribe ?? noSubscribe, lease?.controller.getSnapshot ?? noSnapshot, lease?.controller.getSnapshot ?? noSnapshot);
   const summary = snapshot?.summary;

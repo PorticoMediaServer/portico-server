@@ -1,3 +1,4 @@
+import {useShellFacts} from '../../shell/fact-hooks';
 import {useEffect, useState, useSyncExternalStore} from 'react';
 import {defaultI18n} from '@i18n';
 import {captureReportContext} from '@core/report-context.ts';
@@ -18,6 +19,7 @@ const t = defaultI18n.t;
 export function DashboardPhoneEntry() {
   const protectedContext = useProtectedWebScreenContext();
   const context = protectedContext?.context;
+  useShellFacts(context);
   const preferences = useSyncExternalStore(context?.preferences?.subscribe ?? noPreferences, () => context?.preferences?.getSnapshot('web'), () => undefined);
   const [owned, setOwned] = useState<{context: typeof context; dashboard: DashboardBindings; chrome: DashboardPhoneChrome}>();
   const [failure, setFailure] = useState(false), [retry, setRetry] = useState(0);
@@ -25,7 +27,7 @@ export function DashboardPhoneEntry() {
   const permittedRole: 'owner' | 'admin' | undefined = viewer?.role === 'owner' || viewer?.role === 'admin' ? viewer.role : undefined;
   const permitted = !!context && !!viewer && identity?.primaryProfile === true && identity.capabilities?.manageServer === true && permittedRole !== undefined;
   useEffect(() => {
-    if (!context || !permittedRole || !context.isCurrent() || !preferences) return;
+    if (!context || !permitted || !permittedRole || !context.isCurrent() || !preferences) return;
     let active = true;
     const current = () => active && context.isCurrent();
     const language = shellLanguage(preferences), timeZone = language.region.timeZone || Intl.DateTimeFormat().resolvedOptions().timeZone;
@@ -36,9 +38,9 @@ export function DashboardPhoneEntry() {
       artwork: (id, kind, revision) => revision ? context.artwork.foreground(encodedRoutePath('get_items_id_art_kind', {id: encodeURIComponent(id), kind}) + '?' + new URLSearchParams({v: revision}), kind === 'backdrop' ? 800 : 400, kind === 'poster' ? 2 / 3 : kind === 'backdrop' ? 16 / 9 : 1) : undefined,
       effects: {openHome, openSettings, reportError: () => {if (current()) setFailure(true);}, openHistory: () => openSettings('history')}});
     setFailure(false);
-    setOwned({context, dashboard, chrome: {serverName: context.facts.identity.serverName, audience: permittedRole === 'owner' ? 'owner' : 'administrators'}});
+    setOwned({context, dashboard, chrome: {get serverName() {return context.facts.identity.serverName;}, audience: permittedRole === 'owner' ? 'owner' : 'administrators'}});
     return () => {active = false; dashboard.dispose();};
-  }, [context, preferences, retry, permittedRole]);
+  }, [context, preferences, retry, permittedRole, permitted]);
   const home = () => {void router.navigate({to: '/'});};
   // Before the protected context exists this route draws nothing, exactly like SettingsEntry.
   if (!protectedContext) return null;

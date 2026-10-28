@@ -1,4 +1,4 @@
-import {useEffect, useLayoutEffect, useState, useSyncExternalStore} from 'react';
+import {useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore} from 'react';
 import {defaultI18n} from '@i18n';
 import type {Library} from '@core/index.ts';
 import type {ChannelApi} from '@core/channel-guide.ts';
@@ -10,11 +10,13 @@ const t = defaultI18n.t;
 type Props = Readonly<{api: ChannelApi; libraries: readonly Library[]; libraryIds: readonly string[]; ids: readonly string[]; excluded?: boolean; locked: boolean; isCurrent: () => boolean; reportError: (error: unknown) => void; onChange: (ids: string[]) => void}>;
 export function ChannelPins(props: Props) {
   const [source, setSource] = useState<ChannelFieldsSource>();
+  const libraryScope=JSON.stringify(props.libraries.map(library=>[library.id,library.kind]));
+  const setup=useRef(props);useLayoutEffect(()=>{setup.current=props;});
   useLayoutEffect(() => {
-    const source = new ChannelFieldsSource(props.api, props.libraries, props.isCurrent, props.reportError);
+    const source = new ChannelFieldsSource(props.api, setup.current.libraries, props.isCurrent, props.reportError);
     setSource(source);
     return source.dispose;
-  }, [props.api, props.libraries, props.isCurrent, props.reportError]);
+  }, [props.api, libraryScope, props.isCurrent, props.reportError]);
   return source ? <Pins key={props.excluded ? 'exclude' : 'include'} {...props} source={source}/> : null;
 }
 function Pins({source, libraryIds, ids, excluded, locked, isCurrent, onChange}: Props & {source: ChannelFieldsSource}) {

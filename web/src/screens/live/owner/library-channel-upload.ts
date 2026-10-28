@@ -6,10 +6,11 @@ import {errorFacts, terminal} from './lifetime';
  * owns disposal and checks its complete captured owner identity on every call.
  * This port does not own channel models, receipts, retries or config revisions. */
 export function libraryChannelUpload(context: ShellAssemblyContext, isCurrent: () => boolean, reportError: (error: unknown) => void) {
-  const captured = context.session().viewer;
+  const original = context.session(), captured = Object.freeze({...original.viewer});
+  const admitted = captured.role === 'owner' && context.facts.identity.primaryProfile === true && context.facts.identity.capabilities?.manageServer === true;
   const current = () => {
     const viewer = context.session().viewer;
-    return isCurrent() && context.isCurrent() && viewer.role === 'owner' && viewer.serverId === captured.serverId && viewer.authority === captured.authority && viewer.accountId === captured.accountId && viewer.profileId === captured.profileId && context.facts.identity.primaryProfile === true && context.facts.identity.capabilities?.manageServer === true;
+    return admitted && isCurrent() && context.isCurrent() && context.session().sessionFamilyId === original.sessionFamilyId && context.session().deviceId === original.deviceId && viewer.role === 'owner' && viewer.serverId === captured.serverId && viewer.authority === captured.authority && viewer.accountId === captured.accountId && viewer.profileId === captured.profileId && context.facts.identity.primaryProfile === true && context.facts.identity.capabilities?.manageServer === true;
   };
   return async (channelId: string, file: File, operationId: string, signal: AbortSignal): Promise<unknown> => {
     if (!current() || signal.aborted) throw {code: 'cancelled'};

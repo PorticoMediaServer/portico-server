@@ -92,6 +92,9 @@ export class WatchReceivers implements PlayOnReceiversPort {
     for (const listener of [...this.listeners]) listener();
   };
 
+  /** Reproject confirmed rows only; no handoff, directory read or target replacement. */
+  refreshPresentation = (): void => {if (this.options.isCurrent()) this.publish();};
+
   getSnapshot = (): ReturnType<PlayOnReceiversPort['getSnapshot']> => this.state;
   subscribe = (listener: () => void): (() => void) => { this.listeners.add(listener); return () => { this.listeners.delete(listener); }; };
   refresh = (): void => {

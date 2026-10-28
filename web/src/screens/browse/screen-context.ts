@@ -1,3 +1,5 @@
+import {subscribeFacts} from '../../shell/fact-source';
+import {subscribePresentation, useShellFacts} from '../../shell/fact-hooks';
 import {createEntryMetadataEffect, retireEntryMetadata, type EntryMetadataPorts} from '../../shell/entry-metadata';
 import {createBrowserDownloadPort} from '../../platform/browser-download';
 import {useEffect, useLayoutEffect, useMemo, useRef, useState} from 'react';
@@ -18,6 +20,7 @@ function libraryScreenOwner(context: ProtectedLibraryScreen['context'], scopeKey
   if (viewer.authority !== 'local' && viewer.authority !== 'hosted') throw new DOMException('Screen authority unavailable', 'AbortError');
   let active = true;
   const downloadLifetime = new AbortController();
+  const downloadSignal = context.libraryRouteSignal ? AbortSignal.any([downloadLifetime.signal, context.libraryRouteSignal]) : downloadLifetime.signal;
   const principalCurrent = () => {
     if (!context.isCurrent() || getBinding().scopeKey !== scopeKey) return false;
     const value = context.session();
@@ -31,12 +34,12 @@ function libraryScreenOwner(context: ProtectedLibraryScreen['context'], scopeKey
   const entryPorts: EntryMetadataPorts = {artwork: context.artwork,pickerIdentity: {authority: viewer.authority, accountId: viewer.accountId, profileId: viewer.profileId, events: context.events}, api: context.api, serverId: viewer.serverId, viewerId: JSON.stringify([viewer.authority, viewer.accountId, viewer.profileId]), isCurrent: current, requestId: async () => crypto.randomUUID()};
   const entryEffects = {...(viewer.authority === 'local' && viewer.role === 'owner' ? {editMetadata: createEntryMetadataEffect(entryPorts, () => current() && context.session().viewer.role === 'owner' && context.session().viewer.authority === 'local')} : {}), addToPlaylist: addToDestinationEffect(entryPorts, 'playlist'), addToCollection: addToDestinationEffect(entryPorts, 'collection', viewer.role === 'owner'), ...(viewer.role === 'owner' ? {deleteTitle: deleteTitleEffect(entryPorts)} : {})};
   const value: ScreenContext = {
-    api: context.api, events: context.events, artwork: context.artwork, identity: context.facts.identity,
-    scope: {serverId: viewer.serverId, viewerId: JSON.stringify([viewer.authority, viewer.accountId, viewer.profileId])}, isCurrent: current,
+    api: context.api, events: context.events, artwork: context.artwork, get identity() {return context.facts.identity;}, subscribeIdentity: listener => subscribeFacts(context, listener),
+    scope: {serverId: viewer.serverId, viewerId: JSON.stringify([viewer.authority, viewer.accountId, viewer.profileId])}, isCurrent: current, libraryRouteSignal: context.libraryRouteSignal,
     preferences: {getSnapshot: () => context.preferences?.getSnapshot() ?? context.facts.preferences,
-      subscribe: listener => context.preferences?.subscribe(listener) ?? (() => {})},
+      subscribe: listener => subscribePresentation(context, listener)},
     effects: {
-      download: createBrowserDownloadPort(context.api, current, downloadLifetime.signal),
+      download: createBrowserDownloadPort(context.api, current, downloadSignal),
       reportError,
       openEntry(entry) {
         assert();
@@ -67,6 +70,7 @@ function libraryScreenOwner(context: ProtectedLibraryScreen['context'], scopeKey
 /** A current binding can gain its real media owner after Home arrives. The API,
  * viewer and reader remain captured to the original authority throughout. */
 export function useLibraryScreenContext(captured: ProtectedLibraryScreen): ScreenContext {
+  useShellFacts(captured.context);
   const binding = useRef<ShellBindings>(captured.binding);
   binding.current = captured.binding;
   const context = captured.context, scopeKey = captured.binding.scopeKey;
@@ -81,6 +85,7 @@ export function useLibraryScreenContext(captured: ProtectedLibraryScreen): Scree
  * keeps the original binding, never adopts a later one, and is replaced only
  * when its authority, route or actual playback runtime changes. */
 export function useCommittedLibraryScreenContext(captured: ProtectedLibraryScreen, routeKey: string, routeCurrent: () => boolean): ScreenContext | undefined {
+  useShellFacts(captured.context);
   const context = captured.context, binding = captured.binding, scopeKey = binding.scopeKey, runtime = binding.playback?.runtime;
   const [published, publish] = useState<Readonly<{context: typeof context; scopeKey: string; runtime: typeof runtime; routeKey: string; owner: ReturnType<typeof libraryScreenOwner>}>>();
   useLayoutEffect(() => {

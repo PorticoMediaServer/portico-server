@@ -1,3 +1,4 @@
+import {forwardIdentity} from '../detail/context';
 import {useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore, type CSSProperties} from 'react';
 import {defaultI18n} from '@i18n';
 import {channelTint, programmeFactParts, type ChannelMarkModel} from '@portico/client-core/kit-model';
@@ -190,7 +191,7 @@ export function ProgrammePanel(props: ProgrammePanelProps) {
   const [published, publish] = useState<ProgrammeLease>();
   useLayoutEffect(() => {
     // Every command belongs to this exact selected row as well as this page.
-    const screen: ScreenContext = {...context, isCurrent: () => context.isCurrent() && admission.row === channel && admission.current()};
+    const screen: ScreenContext = forwardIdentity(context, {isCurrent: () => context.isCurrent() && admission.row === channel && admission.current()});
     const binding = createProgrammeBindings(screen, channel, programme, {timezone,
       locale: defaultI18n.region.formatLocale, onChanged});
     const lease: ProgrammeLease = {id: crypto.randomUUID(), context, admission, channel, programme, timezone, onChanged, live: true, binding};

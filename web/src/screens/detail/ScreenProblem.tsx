@@ -1,3 +1,4 @@
+import {useScreenIdentity} from './context';
 import {presentError} from '@core/presentation/errors.ts';
 import {serviceI18n} from '@core/presentation/service-text.ts';
 import {StateLayout} from '../../kit/states';
@@ -6,6 +7,7 @@ import {t} from './text';
 
 /** A denied title carries no cached artwork. Names are genuine current-scope facts only. */
 export function ScreenProblem({context, error, subject, retry}: {context: ScreenContext; error: unknown; subject?: string; retry: () => void}) {
+  useScreenIdentity(context);
   const problem = presentError(error, 'detail', {i18n: serviceI18n()}), identity = context.identity;
   if (problem.silent || !context.isCurrent()) return null;
   const home = context.effects.openHome, back = context.effects.back, chooseProfile = context.effects.chooseProfile;

@@ -62,3 +62,16 @@ test('disposing during a command aborts it and does not launch a readback', asyn
   await controller.load();const action = controller.act(source, 'remove');controller.dispose();complete({});
   assert.equal(await action, false);assert.equal(signal?.aborted, true);assert.equal(calls, 2);
 });
+
+test('quiet directory/status never cancels or resets an independent command',async()=>{
+ let finish!:(value:unknown)=>void,commandSignal:AbortSignal|undefined,gets=0;const controller=new LiveSourceController({async request<T>(_path:string,method?:string,_body?:unknown,signal?:AbortSignal){if(method==='POST'){commandSignal=signal;return new Promise(resolve=>{finish=resolve;}) as Promise<T>;}gets++;return {...document,sources:[{...source,name:gets>1?'Renamed':source.name}]} as T;}},'server',()=>true,()=>{});
+ await controller.load();const command=controller.act(source,'toggle');const busy=controller.getSnapshot().busy;
+ assert.deepEqual(await controller.refreshQuietly(),{kind:'adopted'});assert.equal(commandSignal?.aborted,false);assert.equal(controller.getSnapshot().busy,busy);assert.equal(controller.getSnapshot().document?.sources[0].name,'Renamed');finish(actionReceipt);assert.equal(await command,true);controller.dispose();
+});
+
+test('command admission fences stale quiet directory and original Retry-After survives unreadability',async()=>{
+ let quiet=false,finish!:(value:unknown)=>void;const error=Object.assign(new Error('original'),{status:503,retryAfterSeconds:7200});let fail=false;
+ const controller=new LiveSourceController({async request<T>(_path:string,method?:string){if(method==='POST')return actionReceipt as T;if(fail)throw error;if(quiet){quiet=false;return new Promise(resolve=>{finish=resolve;}) as Promise<T>;}return document as T;}},'server',()=>true,()=>{});
+ await controller.load();quiet=true;const pending=controller.refreshQuietly();await controller.act(source,'toggle');const before=controller.getSnapshot();finish({...document,sources:[{...source,name:'Stale'}]});assert.deepEqual(await pending,{kind:'deferred'});assert.equal(controller.getSnapshot(),before);
+ fail=true;const answer=await controller.refreshQuietly();assert.equal(answer.kind,'unreadable');if(answer.kind==='unreadable')assert.equal(answer.error,error);assert.equal(controller.getSnapshot(),before);controller.dispose();
+});

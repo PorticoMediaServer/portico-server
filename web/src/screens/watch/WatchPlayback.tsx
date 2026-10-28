@@ -1,3 +1,4 @@
+import {subscribePresentation} from '../../shell/fact-hooks';
 import {useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore} from 'react';
 import {defaultI18n} from '@i18n';
 import {playbackIdentity} from '@core/presentation/kit-model/index.ts';
@@ -189,7 +190,7 @@ export function WatchPlayback({binding, context, surfaces, geometry, live}: Watc
   const cache = useMemo(() => new PlaybackPresentations(runtime), [runtime]);
   const dockPanelsCurrent = useCallback(() => context?.isCurrent() === true && cast?.controller.getSnapshot().remote?.phase !== 'playing', [context, cast]);
   const musicCurrent = useCallback(() => dockPanelsCurrent() && !cast?.controller.getSnapshot().remote, [dockPanelsCurrent, cast]);
-  const preferenceSubscribe=useCallback((changed:()=>void)=>context?.preferences?.subscribe(changed)??(()=>{}),[context]);
+  const preferenceSubscribe=useCallback((changed:()=>void)=>subscribePresentation(context,changed),[context]);
   const preferenceRead=useCallback(()=>context?.preferences?.getSnapshot('web')??context?.facts?.preferences,[context]);
   const listeningPreferences=useSyncExternalStore(preferenceSubscribe,preferenceRead,preferenceRead);
   const lyricsEnabled=!!listeningPreferences&&preferenceValue<boolean>(listeningPreferences,'playback.showSyncedLyrics')===true;

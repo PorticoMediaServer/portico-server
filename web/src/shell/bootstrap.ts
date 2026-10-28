@@ -1,3 +1,6 @@
+import {dependsOn} from '@core/freshness-hub.ts';
+import {createLibraryRouteProof} from './library-route-proof';
+import type {LibraryRouteProof} from './library-route-proof';
 import type {HttpLocalApi, LocalSession} from '@core/index.ts';
 import {parseLibraryList} from '@core/library-list.ts';
 import {LocalSessionRefresher} from '@core/session-refresh.ts';
@@ -5,8 +8,10 @@ import {selectedViewerRecord} from '@core/viewer-selection.ts';
 import {PreferencesReader} from '@core/preferences-reader.ts';
 import {appearancePreferences, regionPreferences} from '@core/preference-effects.ts';
 import type {PreferenceSnapshot} from '@core/preferences.ts';
-import {parseDirectSnapshot} from '@core/profile-management.ts';
+import {parseDirectSnapshot, type DirectSnapshot} from '@core/profile-management.ts';
 import {HomeService} from '@core/home-service.ts';
+import {createShellFactOwner, attachShellFactFeed, bindShellFactWake, shellAccount, type ShellFactWitnesses} from './facts';
+import type {ShellFactsSource} from './fact-source';
 import {InboxService} from '@core/inbox.ts';
 import {createNotificationScope} from '@core/notification-scope.ts';
 import {EventsClient} from '@core/playback-v1/events.ts';
@@ -33,7 +38,8 @@ export type ShellFacts = Readonly<{identity: ShellIdentity; preferences: Prefere
 export type ShellAssemblyContext = Readonly<{
   api: HttpLocalApi; session: () => LocalSession; auth: LocalSessionRefresher; events: EventsClient;
   freshness: FreshnessRuntime; home: HomeService; inbox: InboxService; artwork: ShellArtwork;
-  facts: ShellFacts; preferences?: PreferencesReader; epoch: number; viewerFence?: string; isCurrent: () => boolean;
+  libraryRouteProof?: LibraryRouteProof; libraryRouteSignal?: AbortSignal;
+  facts: ShellFacts; factsSource?: ShellFactsSource; homeAuthority?: () => void; observeDirect?: (snapshot: DirectSnapshot) => void; preferences?: PreferencesReader; epoch: number; viewerFence?: string; isCurrent: () => boolean;
   signOut: () => void; signOutPorticoAccount?: () => void; switchProfile:(profileId:string,pin:string,signal:AbortSignal)=>Promise<void>; switchServer:(serverId:string,expectedRevision?:number)=>Promise<void>; savedServers:readonly {id:string;label:string}[];
 }>;
 export type ShellAssembly = Readonly<{
@@ -41,6 +47,7 @@ export type ShellAssembly = Readonly<{
   subscribe: (listener: () => void) => () => void;
   /** Real playback decides whether the background event feed must remain open. */
   busy: () => boolean; onBusy: (listener: () => void) => () => void;
+  retainsMedia?: () => boolean; onRetention?: (listener: () => void) => () => void;
   dispose: () => void;
 }>;
 export type ShellAssembler = (context: ShellAssemblyContext) => Promise<ShellAssembly>;
@@ -108,53 +115,26 @@ export async function currentShellProfile(api: HttpLocalApi, session: LocalSessi
   }
 
 }
-/** The shell's own facts: what the restart-driving hints (`libraries.changed`, server settings,
- * members, live sources, library channels) stand for. */
+/** Initial admitted observations and their complete private proof witnesses. */
 async function readShellIdentity(api: HttpLocalApi, session: LocalSession, signal: AbortSignal) {
   const [libraries, profile, system, guide] = await Promise.all([
-    api.request(routePath('get_libraries'), 'GET', undefined, signal).then(parseLibraryList), currentShellProfile(api, session, signal), api.request(routePath('get_system'), 'GET', undefined, signal).then(parseServerSignIn),
+    api.request(routePath('get_libraries'), 'GET', undefined, signal).then(parseLibraryList),
+    api.request(routePath('get_direct_account'), 'GET', undefined, signal).then(raw => parseDirectSnapshot(raw, {authority:'local',accountId:session.viewer.accountId,serverId:session.viewer.serverId})), api.request(routePath('get_system'), 'GET', undefined, signal).then(parseServerSignIn),
     fetchGuideSourceSummaries(api, session.viewer.serverId, Intl.DateTimeFormat().resolvedOptions().timeZone, signal).catch(error => {
       if ((error as {status?: number}).status === 403) return undefined;
       throw error;
     }),
   ]);
   if (system.id !== session.viewer.serverId) throw new Error('The server identity changed.');
-  return {libraries: libraries.items, profile, system, liveAvailable: !!guide?.sources.length};
+  return {libraries: libraries.items, direct: profile, profile: shellAccount(profile, session.viewer.profileId), system, guide, liveAvailable: !!guide?.sources.length};
 }
-type ShellIdentityRead = Awaited<ReturnType<typeof readShellIdentity>>;
-const shellIdentityKey = (read: ShellIdentityRead) => JSON.stringify({libraries: read.libraries, profile: read.profile, name: read.system.name, version: read.system.version, signIn: read.system.signIn, live: read.liveAvailable});
-
-/**
- * What a shell does on `stream.resync`: refresh its in-place facts (unread count, preferences),
- * reread the facts behind its restart-driving hints, and call `moved` (a restart) only when those
- * differ from `key`, as the missed hint would have. Resyncs while a read is running share it and
- * one follow-up read. A failed read keeps the shell as it is; the next resync, wake or hint reads
- * again.
- */
-export function shellResyncRecheck(o: Readonly<{key: string; read(): Promise<string>; refresh(): void; moved(): void; isCurrent(): boolean}>): () => Promise<void> {
-  let running = false, again = false;
-  return async () => {
-    if (running) { again = true; return; }
-    running = true;
-    try {
-      do {
-        again = false;
-        o.refresh();
-        const key = await o.read();
-        if (!o.isCurrent()) return;
-        if (key !== o.key) { o.moved(); return; }
-      } while (again && o.isCurrent());
-    } catch { /* Keep the shell as it is; a later resync, wake or hint reads again. */ } finally { running = false; }
-  };
-}
-
-async function readFacts(api: HttpLocalApi, session: LocalSession, preferences: PreferencesReader, inbox: InboxService, signal: AbortSignal): Promise<{facts: ShellFacts; key: string}> {
+async function readFacts(api: HttpLocalApi, session: LocalSession, preferences: PreferencesReader, inbox: InboxService, signal: AbortSignal): Promise<{facts: ShellFacts; witnesses: ShellFactWitnesses}> {
   const [read, settings] = await Promise.all([readShellIdentity(api, session, signal), preferences.preferences('web')]);
   const {libraries, profile, system, liveAvailable} = read;
   rememberShell(session.sessionFamilyId, system.name);
   await inbox.load();
   signal.throwIfAborted();
-  return {key: shellIdentityKey(read), facts: {identity: {viewer: session.viewer, libraries, serverName: system.name, serverVersion: system.version, signIn:system.signIn, ...profile,
+  return {witnesses: {system: read.system, direct: read.direct, guide: read.guide && {viewerFence:read.guide.viewerFence, revision:read.guide.revision}}, facts: {identity: {viewer: session.viewer, libraries, serverName: system.name, serverVersion: system.version, signIn:system.signIn, ...profile,
     accountFacts:[{id:'sign-in',role:'status',text:defaultI18n.t(signInLabelKey(system.signIn))}],
     liveAvailable, unread: inbox.getSnapshot().unread, showNotificationDot: settings.effective['notifications.badges'] === true}, preferences: settings, serverName: system.name}};
 }
@@ -383,64 +363,93 @@ export class ShellBootstrap {
     const notificationScope = createNotificationScope(api, {serverId: session.viewer.serverId, signal, isCurrent,
       onRetired: () => { if (isCurrent()) this.restart(); }});
     cleanups.push(() => notificationScope.dispose());
-    const home = new HomeService(api), inbox = new InboxService(notificationScope);
+    let manifestFence: string | undefined;
+    let factOwner: ReturnType<typeof createShellFactOwner> | undefined;
+    const libraryRouteProof = createLibraryRouteProof({session: () => session, isCurrent,
+      directoryVersion: () => freshness.hub.version(dependsOn.libraries),
+      homeVersion: () => JSON.stringify([dependsOn.libraries, dependsOn.list('members'), dependsOn.settings('server'), dependsOn.settings('preferences')].map(key => freshness.hub.version(key))),
+      request: () => factOwner?.request('directory')});
+    cleanups.push(libraryRouteProof.dispose);
+    const home = new HomeService(api, {observation: {
+      serverId: session.viewer.serverId, isCurrent,
+      retire: () => {if (isCurrent()) this.restart();},
+      mismatch: () => factOwner?.authority(),
+      observe: observation => {
+        if (!isCurrent()) return 'retire';
+        if (manifestFence === undefined) manifestFence = observation.viewerFence;
+        else if (manifestFence !== observation.viewerFence) {this.restart(); return 'retire';}
+        // Home retirement is classified first; only accepted same-epoch manifests
+        // reach the route proof observer, never custom-layout row membership.
+        libraryRouteProof.observeHome(observation);
+        return isCurrent() ? 'accept' : 'retire';
+      },
+    }}), inbox = new InboxService(notificationScope);
     cleanups.push(() => home.dispose(), () => inbox.dispose());
-    const {facts, key: factsKey} = await readFacts(api, session, preferences, inbox, signal);
+    const {facts: initialFacts, witnesses} = await readFacts(api, session, preferences, inbox, signal);
     if (!isCurrent()) return;
+    factOwner = createShellFactOwner({api, session: () => session, auth, preferences, home, hub: freshness.hub,
+      initial: initialFacts, witnesses, libraryRouteProof, isCurrent, retire: () => {if (isCurrent()) this.restart();}, readonlyAccess: this.environment.readonlyAccess});
+    cleanups.push(factOwner.dispose);
+    const factsSource = factOwner.source;
+    const facts = () => factsSource.getSnapshot();
+    freshness.hub.attach(events);
     const homeFence = watchHomeViewerFence(home, isCurrent, () => this.restart());
     cleanups.push(homeFence.dispose);
     const authorityKey = shellArtworkAuthorityKey(session, epoch);
     const artwork = authenticatedArtwork({api, auth, identity: {serverId: session.viewer.serverId, viewerId: viewerId(session), authorityKey}, currentToken: () => session.accessToken, isCurrent});
     cleanups.push(() => artwork.dispose());
-    const signOutPorticoAccount=facts.identity.signIn==='portico'?()=>{if(!isCurrent())return;signingOut=true;this.fence();this.publish({phase:'signed-out'});void signOutBrowserPorticoAccount().catch(error=>this.publish({phase:'error',error})).finally(()=>api.getRouteConnection()?.dispose());}:undefined;
+    const signOutPorticoAccount=initialFacts.identity.signIn==='portico'?()=>{if(!isCurrent()||facts().identity.signIn!=='portico')return;signingOut=true;this.fence();this.publish({phase:'signed-out'});void signOutBrowserPorticoAccount().catch(error=>this.publish({phase:'error',error})).finally(()=>api.getRouteConnection()?.dispose());}:undefined;
     const switchProfile=async(profileId:string,pin:string,signal:AbortSignal)=>{if(!isCurrent())throw new Error('The viewer changed.');await (this.environment.actions?.()??browserAppSessionActions()).switchProfile(api,session,profileId,pin,signal,isCurrent);if(isCurrent())this.restart();};
-    const display=browserServerDisplay();display.remember(api,facts.serverName);
+    const display=browserServerDisplay();display.remember(api,facts().serverName);
     const saved=(await (this.environment.actions?.()??browserAppSessionActions()).store.read()).servers;
     const savedServers=await display.choices(saved.map(value=>({pin:value.connection.pin,origin:value.connection.logicalOrigin,signIn:value.signIn})),signal);
     if (!isCurrent()) return;
-    const context: ShellAssemblyContext = {api, session: () => session, auth, events, freshness, home, inbox, artwork, facts, preferences, epoch, get viewerFence() {return homeFence.viewerFence;}, isCurrent, signOut,signOutPorticoAccount,switchProfile,switchServer:this.selectServer,savedServers};
+    const context: ShellAssemblyContext = {api, session: () => session, auth, events, freshness, home, inbox, artwork, factsSource, libraryRouteProof: libraryRouteProof.source, homeAuthority: factOwner.authority, observeDirect: factOwner.observeDirect, get facts() {return facts();}, preferences, epoch, get viewerFence() {return homeFence.viewerFence;}, isCurrent, signOut,signOutPorticoAccount,switchProfile,switchServer:this.selectServer,get savedServers() {return savedServers.map(value => value.id === session.viewer.serverId ? {...value, label: facts().serverName} : value);}};
     const assembly = await this.assemble(context);
     if (!isCurrent()) { assembly.dispose(); return; }
     cleanups.push(() => assembly.dispose());
-    cleanups.push(runEventFeed(events, freshness.hub, browserFeedEnvironment(assembly.busy, assembly.onBusy)));
     const publishBinding = () => {
       if (!isCurrent()) return;
       const binding = assembly.getBinding();
       this.publish({phase: 'ready', context, binding: {...binding, shell: {...binding.shell,
-        identity: {...binding.shell.identity, unread: inbox.getSnapshot().unread, showNotificationDot: (preferences.getSnapshot('web') ?? facts.preferences).effective['notifications.badges'] === true}}}});
+        identity: {...binding.shell.identity, unread: inbox.getSnapshot().unread, showNotificationDot: (preferences.getSnapshot('web') ?? facts().preferences).effective['notifications.badges'] === true}}}});
     };
     cleanups.push(inbox.subscribe(publishBinding));
     cleanups.push(assembly.subscribe(publishBinding));
     cleanups.push(events.on('notification.changed', () => { void inbox.refreshUnread(); }));
     const restart = () => { if (isCurrent()) this.restart(); };
-    cleanups.push(events.on('libraries.changed', restart));
-    let regionKey = JSON.stringify(regionPreferences(facts.preferences));
+    let regionKey = JSON.stringify(regionPreferences(facts().preferences));
     cleanups.push(preferences.subscribe(() => {
       const next = preferences.getSnapshot('web'); if (!next || !isCurrent()) return;
       const key = JSON.stringify(regionPreferences(next));
       if (key !== regionKey) { regionKey = key; restart(); } else publishBinding();
     }));
-    const refreshPreferences = () => { void preferences.preferences('web').catch(() => { /* Keep the last confirmed values; a wake or later event retries. */ }); };
-    cleanups.push(events.on('settings.changed', event => { if (event.resource?.id === 'preferences') refreshPreferences(); else restart(); }));
-    cleanups.push(events.on('list.changed', event => { if (['members', 'liveSources', 'libraryChannels'].includes(event.resource?.id ?? '')) restart(); }));
-    // A resync means any of the hints above may have been missed. Reread what they stand for in
-    // place, and restart only when the shell's own facts really moved, as the missed hint would
-    // have. Nothing is torn down for a resync alone: playback, the dock and the page stay.
-    const recheck = shellResyncRecheck({key: factsKey, isCurrent, moved: restart,
-      refresh: () => { void inbox.refreshUnread(); refreshPreferences(); },
-      read: async () => shellIdentityKey(await readShellIdentity(api, session, signal))});
-    cleanups.push(events.onResync(() => { void recheck(); }));
-    const wake = () => {
-      if (!globalThis.document.hidden) { auth.wake(); void auth.permissionDenied(); refreshPreferences(); }
-    };
-    globalThis.document.addEventListener('visibilitychange', wake); window.addEventListener('online', wake);
-    cleanups.push(() => { globalThis.document.removeEventListener('visibilitychange', wake); window.removeEventListener('online', wake); });
+    // Classified hints reach their canonical interests through hub.attach above,
+    // retaining revision/address dedupe rather than invalidating a second time.
+    cleanups.push(events.on('settings.changed', event => {
+      const resource = event.resource?.id;
+      if (resource !== 'preferences' && resource !== 'server') restart();
+    }));
+    cleanups.push(attachShellFactFeed(events, freshness.hub, isCurrent, () => {
+      factOwner?.all(); void inbox.refreshUnread();
+    }));
+    cleanups.push(factsSource.subscribe(() => {
+      if (!isCurrent()) return;
+      display.remember(api, facts().serverName);
+      rememberShell(session.sessionFamilyId, facts().serverName);
+      publishBinding();
+    }));
+    const retention = () => factOwner?.setRetained(assembly.retainsMedia?.() ?? assembly.busy());
+    cleanups.push(assembly.onRetention?.(retention) ?? (() => {})); retention();
+    cleanups.push(bindShellFactWake(globalThis.document, window, {isCurrent,
+      retained: () => assembly.retainsMedia?.() ?? assembly.busy(), wakeAuth: () => auth.wake(), invalidate: () => factOwner?.all()}));
     const motion = globalThis.matchMedia('(prefers-reduced-motion: reduce)');
-    const applyMotion = () => { globalThis.document.documentElement.dataset.reduceMotion = String(appearancePreferences(preferences.getSnapshot('web') ?? facts.preferences, motion.matches).reducedMotion); };
+    const applyMotion = () => { globalThis.document.documentElement.dataset.reduceMotion = String(appearancePreferences(preferences.getSnapshot('web') ?? facts().preferences, motion.matches).reducedMotion); };
     applyMotion(); motion.addEventListener('change', applyMotion);
     cleanups.push(preferences.subscribe(applyMotion));
     cleanups.push(() => motion.removeEventListener('change', applyMotion));
-    void home.load();
+    cleanups.push(runEventFeed(events, freshness.hub, browserFeedEnvironment(assembly.busy, assembly.onBusy, assembly.retainsMedia, assembly.onRetention)));
+    void home.load().catch(error => {if (isCurrent()) this.publish({phase:'error', error});});
     publishBinding();
   }
   selectServer = async (serverId:string,expectedRevision?:number) => {if(this.disposed)return;this.clearWait();this.fence();const epoch=this.epoch;this.publish({phase:'restoring'});try{await (this.environment.actions?.()??browserAppSessionActions()).switchServer(serverId,()=>!this.disposed&&this.epoch===epoch,expectedRevision);if(!this.disposed&&this.epoch===epoch)await this.start();}catch(error){if(!this.disposed&&this.epoch===epoch)this.publish({phase:'error',error});}};

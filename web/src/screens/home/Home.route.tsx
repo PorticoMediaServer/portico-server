@@ -1,3 +1,5 @@
+import {useShellFacts} from '../../shell/fact-hooks';
+import {forwardFacts} from '../../shell/fact-source';
 import {useEffect, useState} from 'react';
 import {defineWebScreen} from '../../route-registry';
 import {useProtectedWebScreenContext} from '../../route-registry-view';
@@ -13,6 +15,7 @@ import {MusicDiscoverMore} from '../browse/music-discover-navigation';
 
 function HomeRouteScreen() {
   const captured = useProtectedWebScreenContext();
+  useShellFacts(captured?.context);
   const appearance = useScreenAppearance(captured?.context);
   const context = captured?.context, supported = !!context?.facts.identity.libraries.some(library => isReadingLibrary(library.kind));
   const musicMixes = useMusicMixes(captured, !!context?.facts.identity.libraries.some(library => library.kind === 'music'));
@@ -20,7 +23,7 @@ function HomeRouteScreen() {
   useEffect(() => {
     if (!context || !supported) return;
     const current = () => context.isCurrent() && router.state.location.pathname === '/';
-    const binding = createReadingContinueBindings({context: {...context, isCurrent: current}, open: destination => {
+    const binding = createReadingContinueBindings({context: forwardFacts(context, {isCurrent: current}), open: destination => {
       if (!current()) throw new DOMException('Home reading scope changed', 'AbortError');
       return router.navigate(destination);
     }});
