@@ -92,7 +92,7 @@ func (d Dependencies) memberProfilePictureRoutes(mux *http.ServeMux) {
 		}
 		raw, version, updated, e := store.MemberProfilePicture(r.Context(), d.accessTargetAuthority(p, r.PathValue("id"), false), r.PathValue("id"), r.PathValue("profileId"), size)
 		if e != nil {
-			failure(w, e)
+			accessFailure(w, e)
 			return
 		}
 		w.Header().Set("Cache-Control", "private, no-store")

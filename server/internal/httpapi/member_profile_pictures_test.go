@@ -34,6 +34,40 @@ func memberPictureBytes(t *testing.T, alpha bool) []byte {
 	return b.Bytes()
 }
 
+func TestMemberProfilePictureInvalidPathsHaveTypedClientErrors(t *testing.T) {
+	f := administrationFixtureNew(t)
+	for _, tc := range []struct {
+		name, account, profile string
+		want                   int
+		code                   string
+	}{
+		{"long account", strings.Repeat("A", 4000), "member-profile", 400, "invalid_request"},
+		{"nul account", "a%00b", "member-profile", 400, "invalid_request"},
+		{"invalid utf8 account", "%ff", "member-profile", 400, "invalid_request"},
+		{"long profile", "member", strings.Repeat("A", 4000), 400, "invalid_request"},
+		{"nul profile", "member", "a%00b", 400, "invalid_request"},
+		{"invalid utf8 profile", "member", "%ff", 400, "invalid_request"},
+		{"missing account", "missing", "member-profile", 404, "not_found"},
+		{"missing profile", "member", "missing", 404, "avatar_not_found"},
+		{"missing picture", "member", "member-profile", 404, "avatar_not_found"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			w := f.call("GET", "/v1/admin/access/members/"+tc.account+"/profiles/"+tc.profile+"/avatar", f.owner, "")
+			var body struct {
+				Error struct {
+					Code string
+				}
+			}
+			if err := json.Unmarshal(w.Body.Bytes(), &body); err != nil {
+				t.Fatal(err)
+			}
+			if w.Code != tc.want || body.Error.Code != tc.code {
+				t.Fatalf("got %d %s; want %d %s", w.Code, w.Body, tc.want, tc.code)
+			}
+		})
+	}
+}
+
 func TestMemberProfilePicturesTierAccountAndRevision(t *testing.T) {
 	f := administrationFixtureNew(t)
 	base := "/v1/admin/access/members/member/profiles/member-profile/avatar"
