@@ -405,7 +405,16 @@ func (s *Supervisor) runAdmission(ctx context.Context, key string, cmd *exec.Cmd
 		// The handoff is deferred so a contained panic still releases the slot and
 		// still answers the caller, rather than turning a crash into a hang.
 		var readErr, waitErr error
+		waited := false
 		defer func() {
+			if !waited {
+				// A consumer panic (or Goexit) must not retire a live helper.
+				// Keep its capacity until the process is killed and reaped; the
+				// outer supervisor still records the original panic.
+				killProcess(cmd)
+				waitErr = cmd.Wait()
+				readErr = errors.New("storage helper consumer ended before process wait")
+			}
 			stdout.Close()
 			release()
 			if readErr != nil {
@@ -419,6 +428,7 @@ func (s *Supervisor) runAdmission(ctx context.Context, key string, cmd *exec.Cmd
 			killProcess(cmd)
 		}
 		waitErr = cmd.Wait()
+		waited = true
 		if waitErr != nil {
 			waitErr = withStderr(waitErr, stderr.String())
 		}

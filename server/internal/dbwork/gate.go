@@ -80,13 +80,6 @@ func NewGate() *Gate {
 // A cancelled waiter removes itself from its queue and wakes the others, so an
 // abandoned request can never hold a place in the ladder.
 func (g *Gate) Acquire(ctx context.Context, class Class) (func(), error) {
-	if !class.Valid() {
-		class = ClassInteractive
-	}
-	if err := ctx.Err(); err != nil {
-		return nil, err
-	}
-	start := time.Now()
 	// The stuck-hold timer is created once, not once per wake. It used to be
 	// created inside the loop with a deferred Stop, so every spurious wake left
 	// another timer and another deferred call alive until Acquire returned — a
@@ -98,6 +91,17 @@ func (g *Gate) Acquire(ctx context.Context, class Class) (func(), error) {
 		defer timer.Stop()
 		stuck = timer.C
 	}
+	return g.acquire(ctx, class, stuck)
+}
+
+func (g *Gate) acquire(ctx context.Context, class Class, stuck <-chan time.Time) (func(), error) {
+	if !class.Valid() {
+		class = ClassInteractive
+	}
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	start := time.Now()
 	g.mu.Lock()
 	g.nextID++
 	id := g.nextID
@@ -109,14 +113,8 @@ func (g *Gate) Acquire(ctx context.Context, class Class) (func(), error) {
 	queued := false
 	for {
 		if err := ctx.Err(); err != nil {
-			g.removeWaiterLocked(class, id)
-			if g.grantID == id {
-				g.grantID = g.pickWinnerLocked()
-			}
-			g.signalLocked()
-			g.byClass[class].cancelled++
+			g.abandonWaiterLocked(class, id)
 			g.mu.Unlock()
-			g.cancelled.Add(1)
 			return nil, err
 		}
 		if !g.active && g.grantID == id {
@@ -130,7 +128,7 @@ func (g *Gate) Acquire(ctx context.Context, class Class) (func(), error) {
 			if traceHolders() {
 				g.holder = callerStack()
 			} else {
-				if pc, _, _, ok := runtime.Caller(1); ok {
+				if pc, _, _, ok := runtime.Caller(2); ok {
 					if fn := runtime.FuncForPC(pc); fn != nil {
 						g.holder = fn.Name()
 					}
@@ -189,23 +187,30 @@ func (g *Gate) Acquire(ctx context.Context, class Class) (func(), error) {
 		case <-stuck:
 			g.mu.Lock()
 			holder := g.holder
+			g.abandonWaiterLocked(class, id)
 			g.mu.Unlock()
 			panic(fmt.Sprintf("dbwork: the write gate has been held for more than %s while a %s writer waits.\nHolder:\n%s", StuckWait, class, holder))
 		case <-ctx.Done():
 			g.mu.Lock()
-			g.removeWaiterLocked(class, id)
-			if g.grantID == id {
-				g.grantID = g.pickWinnerLocked()
-			}
-			g.signalLocked()
-			g.byClass[class].cancelled++
+			g.abandonWaiterLocked(class, id)
 			g.mu.Unlock()
-			g.cancelled.Add(1)
 			return nil, ctx.Err()
 		case <-notify:
 			g.mu.Lock()
 		}
 	}
+}
+
+// A canceled or panicking waiter gives up both its queue entry and any grant
+// reserved for it. Call before unwinding, while the gate mutex is still held.
+func (g *Gate) abandonWaiterLocked(class Class, id uint64) {
+	g.removeWaiterLocked(class, id)
+	if g.grantID == id {
+		g.grantID = g.pickWinnerLocked()
+	}
+	g.signalLocked()
+	g.byClass[class].cancelled++
+	g.cancelled.Add(1)
 }
 
 // signalLocked wakes every waiter so each can re-evaluate its own position. A

@@ -99,8 +99,12 @@ func addProjection[Request, Response any](registry *apikit.Registry, mux *http.S
 	if strings.HasPrefix(path, "/v1/admin/play-history") || path == "/v1/admin/dashboard/report" {
 		access = apikit.Owner
 	}
+	bodyLimit := int64(0)
+	if method != http.MethodGet && method != http.MethodHead {
+		bodyLimit = 1048576
+	}
 	id := strings.ToLower(method) + "_" + strings.NewReplacer("/", "_", "{", "", "}", "", "-", "_", ":", "_").Replace(strings.TrimPrefix(path, "/v1/"))
-	return apikit.RegisterRaw(registry, apikit.RawRoute[Request, Response]{Metadata: apikit.Metadata{Admission: admission, ID: id, Method: method, Path: path, Summary: "Read or update the selected projection", Access: access, Requires: scope, Lane: lane, Cost: apikit.PageSized, Status: 200, BodyLimit: 1048576, Query: query, Errors: []string{"invalid_request", "unauthorized", "not_permitted", "not_found", "internal"}}, Serve: func(w http.ResponseWriter, r *http.Request) {
+	return apikit.RegisterRaw(registry, apikit.RawRoute[Request, Response]{Metadata: apikit.Metadata{Admission: admission, ID: id, Method: method, Path: path, Summary: "Read or update the selected projection", Access: access, Requires: scope, Lane: lane, Cost: apikit.PageSized, Status: 200, BodyLimit: bodyLimit, Query: query, Errors: []string{"invalid_request", "unauthorized", "not_permitted", "not_found", "internal"}}, Serve: func(w http.ResponseWriter, r *http.Request) {
 		// A projection whose handler this server did not mount (no scheduler,
 		// no console) is an unknown route and answers like one.
 		if _, mounted := mux.Handler(r); mounted == "" {

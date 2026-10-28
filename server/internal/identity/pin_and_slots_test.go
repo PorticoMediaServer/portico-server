@@ -35,13 +35,21 @@ func TestAProfilePINIsCheckedWithoutHoldingTheWriter(t *testing.T) {
 	s, login, profile := profileWithPIN(t)
 	s.hashSlots <- struct{}{}
 	s.hashSlots <- struct{}{}
+	waiting := make(chan struct{})
+	s.hashSlotWaiting = func() { close(waiting) }
 	done := make(chan error, 1)
 	go func() {
 		_, err := s.SelectDirectProfile(ctx, login.AccountToken, profile.ID, DirectSelection{PIN: "4821"})
 		done <- err
 	}()
-	// Give the selection time to reach the wait for a slot.
-	time.Sleep(150 * time.Millisecond)
+	// The observer runs only after admission found both slots occupied.
+	select {
+	case <-waiting:
+	case err := <-done:
+		t.Fatalf("the PIN entry did not wait for a hashing slot: %v", err)
+	case <-time.After(time.Second):
+		t.Fatal("the PIN entry never reached hashing admission")
+	}
 	write, cancel := context.WithTimeout(ctx, time.Second)
 	defer cancel()
 	started := time.Now()

@@ -7,6 +7,8 @@ import (
 	"encoding/json"
 	"errors"
 	"log"
+	"os"
+	"path/filepath"
 
 	"portico.local/server/internal/persistence"
 	"portico.local/server/internal/supervise"
@@ -19,6 +21,12 @@ type RestoreJob struct {
 	BytesTotal int64        `json:"bytesTotal"`
 	Result     *StageResult `json:"result,omitempty"`
 	ErrorCode  string       `json:"errorCode,omitempty"`
+}
+
+// A worker keeps the accepted identity for its entire lifetime. Progress and
+// journal writes must not borrow the service's mutable latest-job fields.
+type restoreIdentity struct {
+	jobID, operation string
 }
 
 // StartRestore returns immediately. Copy and integrity work keep their own
@@ -42,19 +50,26 @@ func (s *Service) StartRestoreWithPassphrase(ctx context.Context, source Source,
 		return "", err
 	}
 	s.mu.Lock()
+	if s.restoreJob != nil && s.restoreJob.Phase != "failed" {
+		if operation != s.restoreOperation {
+			s.mu.Unlock()
+			return "", ErrRestorePending
+		}
+		if source != s.restoreSource {
+			s.mu.Unlock()
+			return "", ErrInvalid
+		}
+		id := s.restoreJob.JobID
+		s.mu.Unlock()
+		return id, nil
+	}
 	if last != nil && last.OperationID == operation && last.JobID != "" && last.Outcome == "restored" {
 		if last.SourceDigest != restoreSourceDigest(source) {
 			s.mu.Unlock()
 			return "", ErrInvalid
 		}
 		s.restoreOperation, s.restoreSource = operation, source
-		s.restoreJob = &RestoreJob{JobID: last.JobID, Phase: "staged"}
-		if last.Outcome == "restored" {
-			s.restoreJob.Result = &StageResult{Staged: true, RestartRequired: true, Validation: Validation{SchemaVersion: last.SchemaVersion, Integrity: "ok"}}
-		} else {
-			s.restoreJob.Phase = "failed"
-			s.restoreJob.ErrorCode = "restore_integrity_failed"
-		}
+		s.restoreJob = &RestoreJob{JobID: last.JobID, Phase: "staged", Result: &StageResult{Staged: true, RestartRequired: true, Validation: Validation{SchemaVersion: last.SchemaVersion, Integrity: "ok"}}}
 		s.mu.Unlock()
 		return last.JobID, nil
 	}
@@ -63,33 +78,66 @@ func (s *Service) StartRestoreWithPassphrase(ctx context.Context, source Source,
 			s.mu.Unlock()
 			return "", ErrInvalid
 		}
-		if s.restoreJob.Phase != "failed" {
-			id := s.restoreJob.JobID
-			s.mu.Unlock()
-			return id, nil
-		}
-	}
-	if s.restoreJob != nil && s.restoreJob.Phase != "failed" {
-		s.mu.Unlock()
-		return "", ErrRestorePending
 	}
 	id := newToken()
 	s.restoreOperation, s.restoreSource = operation, source
 	s.restoreJob = &RestoreJob{JobID: id, Phase: "queued"}
 	s.mu.Unlock()
+	work := restoreIdentity{jobID: id, operation: operation}
 	supervise.Go("backup.restore", func() {
-		result, err := s.StageWithPassphrase(context.WithoutCancel(ctx), source, passphrase)
-		s.mu.Lock()
-		defer s.mu.Unlock()
-		if err != nil {
-			s.restoreJob.Phase = "failed"
-			s.restoreJob.ErrorCode = restoreCode(err)
-			return
-		}
-		s.restoreJob.Phase = "staged"
-		s.restoreJob.Result = &result
+		s.runRestore(context.WithoutCancel(ctx), source, passphrase, work)
 	})
 	return id, nil
+}
+
+func (s *Service) runRestore(ctx context.Context, source Source, passphrase string, work restoreIdentity) {
+	var result StageResult
+	var err error
+	returned := false
+	defer func() {
+		panicked := recover()
+		if !returned {
+			err = errors.New("backup: restore worker stopped before completion")
+			// A restart callback may panic after the durable staged marker was
+			// published. That restore is pending, not a failed job to supersede.
+			if staged, ok := stagedResult(s.state, source, work); ok {
+				result, err = staged, nil
+			}
+		}
+		s.mu.Lock()
+		if s.ownsRestore(work) {
+			if err != nil {
+				s.restoreJob.Phase = "failed"
+				s.restoreJob.ErrorCode = restoreCode(err)
+			} else {
+				s.restoreJob.Phase = "staged"
+				s.restoreJob.Result = &result
+			}
+		}
+		s.mu.Unlock()
+		if panicked != nil {
+			panic(panicked) // retain the supervisor's panic reporting
+		}
+	}()
+	result, err = s.stageWithPassphrase(ctx, source, passphrase, work)
+	returned = true
+}
+
+func stagedResult(state string, source Source, work restoreIdentity) (StageResult, bool) {
+	raw, err := os.ReadFile(filepath.Join(state, RestoreStagedDir, RestoreMarkerFile))
+	if err != nil {
+		return StageResult{}, false
+	}
+	var marker restoreMarker
+	if json.Unmarshal(raw, &marker) != nil || marker.JobID != work.jobID || marker.OperationID != work.operation || marker.Source != source || marker.State != markerStaged {
+		return StageResult{}, false
+	}
+	return StageResult{Staged: true, RestartRequired: true, Validation: Validation{SchemaVersion: marker.SchemaVersion, Integrity: "ok"}}, true
+}
+
+// Caller holds s.mu.
+func (s *Service) ownsRestore(work restoreIdentity) bool {
+	return work.jobID != "" && s.restoreJob != nil && s.restoreJob.JobID == work.jobID && s.restoreOperation == work.operation
 }
 
 func (s *Service) RestoreProgress() *RestoreJob {
@@ -102,9 +150,9 @@ func (s *Service) RestoreProgress() *RestoreJob {
 	return &copy
 }
 
-func (s *Service) restoreProgress(phase string, done, total int64) {
+func (s *Service) restoreProgress(work restoreIdentity, phase string, done, total int64) {
 	s.mu.Lock()
-	if s.restoreJob == nil {
+	if !s.ownsRestore(work) {
 		s.mu.Unlock()
 		return
 	}

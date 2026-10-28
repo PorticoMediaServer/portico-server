@@ -20,7 +20,8 @@ import {matchesBuildPin, buildStability} from '../lib/build.mjs';
 import {loadCredentials, redactor} from '../lib/creds.mjs';
 import {
   loadPlaywright, launch, Evidence, settle, clickAny, findAny, bodyText,
-  samplePlayback, playbackEvidence, surfaceState, watchSessions,
+  samplePlayback, playbackEvidence, surfaceState, watchSessions, projectSession,
+  seekEvidence, transcodeEvidence,
 } from '../lib/page.mjs';
 
 const origin = (process.env.SMOKE_ORIGIN || 'https://demo.getportico.tv').replace(/\/$/, '');
@@ -62,6 +63,11 @@ function watchApi(page, calls = [], state = {}) {
     if (!url.pathname.startsWith('/v1/')) return;
     calls.push({status: response.status(), method: response.request().method(), path: url.pathname});
     if (calls.length > 600) calls.shift();
+    if (url.pathname === '/v1/preferences' && response.status() === 200) {
+      response.json().then(body => {
+        state.skipForwardMs = body.effective?.['playback.skipForwardMs'];
+      }).catch(() => { state.preferencesUnreadable = true; });
+    }
     if (url.pathname === '/v1/direct/account') {
       response.json().then(body => {
         state.account = {
@@ -187,6 +193,7 @@ async function main() {
     page.__smokeErrors = [];
     page.on('pageerror', error => page.__smokeErrors.push(String(error).slice(0, 200)));
     watchApi(page, api, apiState);
+    watchSessions(page, sessions);
     return true;
   }
 
@@ -562,19 +569,32 @@ async function main() {
           return video && video.readyState >= 2 ? {currentTime: video.currentTime, paused: video.paused} : null;
         });
         assert(live, 'no playing video to control (playback-direct must pass first)');
+        const skipSeconds = apiState.skipForwardMs / 1000;
+        if (!Number.isFinite(skipSeconds) || skipSeconds <= 0) throw blocked('the effective forward-skip preference was not observed');
+        assert(live.paused === false, 'the playback fixture must be running before the Space pause check');
         await page.keyboard.press('Space');
-        await page.waitForTimeout(900);
-        const paused = await page.evaluate(() => document.querySelector('video')?.paused);
-        await page.keyboard.press('Space');
-        await page.waitForTimeout(900);
-        const resumed = await page.evaluate(() => document.querySelector('video')?.paused);
+        await page.waitForFunction(() => document.querySelector('video')?.paused === true, null, {timeout: 5000});
+        // Measure immediately before seeking while paused: elapsed playback cannot satisfy this check.
+        const before = await page.evaluate(() => {
+          const video = document.querySelector('video');
+          return {currentTime: video.currentTime, duration: video.duration, paused: video.paused};
+        });
+        if (!Number.isFinite(before.duration) || before.duration - before.currentTime < 1) throw blocked('the fixture has no remaining seek range');
+        const target = Math.min(before.currentTime + skipSeconds, before.duration);
         await page.keyboard.press('ArrowRight');
-        await page.waitForTimeout(1400);
-        const forward = await page.evaluate(() => document.querySelector('video')?.currentTime ?? null);
-        assert(paused === true, `Space did not pause (paused=${paused})`);
-        assert(resumed === false, `Space did not resume (paused=${resumed})`);
-        assert(forward !== null && forward > live.currentTime, `seek did not advance (${live.currentTime} -> ${forward})`);
-        return {detail: `pause ok, resume ok, ${live.currentTime.toFixed(2)}s -> ${forward.toFixed(2)}s`,
+        await page.waitForFunction(target => {
+          const video = document.querySelector('video');
+          return video?.paused && !video.seeking && Math.abs(video.currentTime - target) <= 0.75;
+        }, target, {timeout: 5000});
+        const after = await page.evaluate(() => {
+          const video = document.querySelector('video');
+          return {currentTime: video.currentTime, paused: video.paused};
+        });
+        const seek = seekEvidence(before, after, skipSeconds);
+        assert(seek.ok, seek.reason);
+        await page.keyboard.press('Space');
+        await page.waitForFunction(() => document.querySelector('video')?.paused === false, null, {timeout: 5000});
+        return {detail: `pause ok, resume ok, paused seek ${before.currentTime.toFixed(2)}s -> ${after.currentTime.toFixed(2)}s (requested ${skipSeconds}s)`,
           evidence: {screenshot: await evidence.shot(page, 'playback-controls')}};
       });
     }
@@ -595,12 +615,14 @@ async function main() {
         await page.waitForTimeout(900);
         const tracks = await page.evaluate(() => [...document.querySelectorAll('video')]
           .flatMap(v => [...v.textTracks].map(t => ({kind: t.kind, mode: t.mode, label: t.label}))));
-        await toggle.click({timeout: 8000}).catch(() => {});
-        await page.waitForTimeout(700);
+        await toggle.click({timeout: 8000});
+        await page.waitForFunction(() => [...document.querySelectorAll('video')]
+          .every(video => [...video.textTracks].every(track => track.mode !== 'showing')), null, {timeout: 5000});
         const after = await page.evaluate(() => [...document.querySelectorAll('video')]
           .flatMap(v => [...v.textTracks].map(t => ({kind: t.kind, mode: t.mode}))));
         assert(tracks.length > 0, 'the captions control produced no text track');
         assert(tracks.some(track => track.mode === 'showing'), `no text track is showing after the toggle: ${JSON.stringify(tracks)}`);
+        assert(after.every(track => track.mode !== 'showing'), `a text track is still showing after off: ${JSON.stringify(after)}`);
         return {detail: `tracks on: ${JSON.stringify(tracks)}; after off: ${JSON.stringify(after)}`,
           evidence: {screenshot: await evidence.shot(page, 'playback-subtitles'), tracks, after}};
       });
@@ -612,16 +634,40 @@ async function main() {
         const control = await findAny(page, [{css: '[data-size=hero][data-variant=primary]'}, {role: 'button', name: /^(Play|Resume)/}]);
         assert(control, 'no Play control to start a transcode check');
         const apiMark = api.length;
-        await control.click({timeout: 10000});
-        await page.waitForTimeout(2500);
-        // The drawn quality control decides the transcode; 240p is the measured case.
-        const quality = await findAny(page, [{role: 'button', name: /quality|240p/i}, {css: '[data-quality]'}]);
-        if (quality) {
-          await quality.click({timeout: 6000}).catch(() => {});
-          await page.waitForTimeout(700);
-          const choice = await findAny(page, [{role: 'menuitem', name: /240p/i}, {role: 'option', name: /240p/i}, {text: /^240p$/}]);
-          if (choice) { await choice.click({timeout: 6000}).catch(() => {}); await page.waitForTimeout(2500); }
-        }
+        const [started] = await Promise.all([
+          page.waitForResponse(response => response.request().method() === 'POST'
+            && new URL(response.url()).pathname === '/v1/playback/sessions', {timeout: 10000}),
+          control.click({timeout: 10000}),
+        ]);
+        assert([201, 202].includes(started.status()), `session start answered ${started.status()}`);
+        let baseline = await started.json();
+        assert(typeof baseline.id === 'string' && baseline.id, 'session start returned no session id');
+        const sessionPath = '/v1/playback/sessions/' + encodeURIComponent(baseline.id);
+        const chooseQuality = async label => {
+          const quality = await findAny(page, [{role: 'button', name: /quality|240p|original/i}, {css: '[data-quality]'}]);
+          if (!quality) throw blocked('the player draws no quality control');
+          await quality.click({timeout: 6000});
+          const name = label === '240p' ? /240p/i : /^Original\b/i;
+          const choice = await findAny(page, [{role: 'menuitem', name}, {role: 'option', name}, {text: name}]);
+          if (!choice) throw blocked(`the player offers no ${label} quality choice`);
+          const [changed] = await Promise.all([
+            page.waitForResponse(response => {
+              const request = response.request();
+              if (request.method() !== 'PATCH' || new URL(response.url()).pathname !== sessionPath) return false;
+              let quality;
+              try { quality = request.postDataJSON()?.quality; } catch { return false; }
+              return label === '240p' ? quality?.id === '240p' : quality?.mode === 'original';
+            }, {timeout: 10000}),
+            choice.click({timeout: 6000}),
+          ]);
+          assert(changed.status() === 200, `${label} quality change answered ${changed.status()}`);
+          return changed.json();
+        };
+        // Force an actual change even when the saved default already selected 240p.
+        if (baseline.presentation?.quality?.id === '240p') baseline = await chooseQuality('Original');
+        const changed = await chooseQuality('240p');
+        const converted = transcodeEvidence(baseline, changed);
+        assert(converted.ok, converted.reason, {before: projectSession(baseline), after: projectSession(changed)});
         const readings = await samplePlayback(page, {samples: 8, interval: 700});
         const verdict = playbackEvidence(readings);
         const calls = api.slice(apiMark);
@@ -636,8 +682,10 @@ async function main() {
             new Error(`transcoded playback did not decode: ${verdict.reason}; session ${session ? session.status : 'none'}; media ${media.map(m => m.status).join(',') || 'none'}`),
             {calls});
         }
-        return {detail: `decoded ${verdict.width}x${verdict.height}, advanced ${verdict.advanced.toFixed(1)}s; media ${media.map(m => m.status).join(',')}; quality control ${quality ? 'used' : 'not drawn'}`,
-          evidence: {screenshot: await evidence.shot(page, 'playback-transcode'), readings: readings.slice(0, 3), sessions: sessions.slice(-4)}};
+        const lastFrame = readings.findLast(reading => reading.present && reading.readyState >= 2 && reading.videoHeight > 0);
+        assert(lastFrame?.videoHeight <= 240, 'the video still displays a frame above the selected 240p output');
+        return {detail: `decoded ${verdict.width}x${verdict.height}, advanced ${verdict.advanced.toFixed(1)}s; media ${media.map(m => m.status).join(',')}; confirmed 240p transcode generation ${changed.presentation.generation}`,
+          evidence: {screenshot: await evidence.shot(page, 'playback-transcode'), readings: readings.slice(0, 3), presentation: projectSession(changed), sessions: sessions.slice(-4)}};
       });
     }
 

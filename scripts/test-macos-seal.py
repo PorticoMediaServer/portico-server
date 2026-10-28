@@ -10,8 +10,7 @@ import unittest
 
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 
-ROOT = pathlib.Path(__file__).resolve().parent.parent
-RCLONE = runpy.run_path(str(ROOT / "scripts/rclone-bundle.py"))
+from release_test_fixture import ReleaseFixture
 
 
 def digest(path):
@@ -23,6 +22,9 @@ class MacOSSealTests(unittest.TestCase):
         self.temp = tempfile.TemporaryDirectory()
         self.addCleanup(self.temp.cleanup)
         self.root = pathlib.Path(self.temp.name)
+        self.fixture = ReleaseFixture(self.root)
+        self.fixture.copy_inputs(("packaging/macos",))
+        self.rclone = runpy.run_path(str(self.fixture.repo / "scripts/rclone-bundle.py"))
         self.payload = self.root / "payload"
         self.tools = self.root / "tools"
         self.tools.mkdir()
@@ -30,29 +32,18 @@ class MacOSSealTests(unittest.TestCase):
         bundle = self.payload / "third_party/ffmpeg"
         (bundle / "bin").mkdir(parents=True)
         (bundle / "LICENSES").mkdir()
-        for name in ["bin/ffmpeg", "bin/ffprobe", "corresponding-source.tar.xz", "NOTICE.md",
-                     "sources.lock.json", "requirements.v1.json", "LICENSES/GPL.txt"]:
+        for name in ["bin/ffmpeg", "bin/ffprobe", "bin/portico-disc", "corresponding-source.tar.xz", "NOTICE.md",
+                     "sources.lock.json", "requirements.v1.json", "portico-dovi-profile.v1.json",
+                     "portico-disc-build.json", "LICENSES/portico-disc.txt", "LICENSES/GPL.txt"]:
             (bundle / name).write_text("fixture " + name)
         files = {str(p.relative_to(bundle)): digest(p) for p in bundle.rglob("*") if p.is_file()}
         (bundle / "toolchain-manifest.json").write_text(json.dumps({
             "schemaVersion": 1, "licenseMode": "gpl3", "target": "macos-arm64", "files": files}))
         rclone = self.payload / "third_party/rclone"
-        RCLONE["prepare"](rclone, "darwin-arm64", pathlib.Path(os.environ.get("PORTICO_RCLONE_TEST_CACHE", ROOT / ".cache/rclone")))
+        self.fixture.rclone(rclone, "darwin-arm64")
         (self.payload / "portico-server").write_text("fixture server")
-        self.key = Ed25519PrivateKey.generate()
-        self.keyfile = self.root / "release-key"
-        self.keyfile.write_bytes(self.key.private_bytes_raw())
-        self.keyfile.chmod(0o600)
-        manifest = {"schema": 1, "component": "server", "target": "darwin-arm64", "version": "0.1.0",
-                    "sourceDigest": "a" * 64, "buildId": "fixture", "officialRoot": "fixture-root",
-                    "artifact": {"path": "portico-server", "sha256": digest(self.payload / "portico-server")},
-                    "toolchainManifestSha256": digest(bundle / "toolchain-manifest.json"),
-                    "rcloneManifestSha256": digest(rclone / "bundle-manifest.json")}
-        raw = json.dumps(manifest).encode()
-        (self.payload / "manifest.json").write_bytes(raw)
-        (self.payload / "manifest.sig").write_bytes(self.key.sign(raw))
-        self.publicfile = self.root / "pinned-public-key"
-        self.publicfile.write_bytes(self.key.public_key().public_bytes_raw())
+        self.key, self.keyfile, self.publicfile = self.fixture.key, self.fixture.keyfile, self.fixture.publicfile
+        raw = self.fixture.sign(self.payload, "darwin-arm64")
         self.original_manifest = raw
         self.original_toolchain = (bundle / "toolchain-manifest.json").read_bytes()
         self.original_rclone = (rclone / "bundle-manifest.json").read_bytes()
@@ -90,7 +81,7 @@ if '--force' in sys.argv:
                         SIGN_LOG=str(self.sign_log))
 
     def package(self):
-        return subprocess.run(["bash", str(ROOT / "scripts/package-macos.sh"), "0.1.0",
+        return subprocess.run(["bash", str(self.fixture.repo / "scripts/package-macos.sh"), "0.1.0",
                                str(self.payload), str(self.root / "out"), "1"],
                               env=self.env, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
 
@@ -103,14 +94,14 @@ if '--force' in sys.argv:
         manifest = json.loads(raw)
         self.assertEqual(manifest["artifact"]["sha256"], digest(server / "portico-server"))
         self.assertEqual(manifest["toolchainManifestSha256"], digest(server / "third_party/ffmpeg/toolchain-manifest.json"))
-        subprocess.run(["python3", str(ROOT / "scripts/verify-ffmpeg-manifest.py"),
+        subprocess.run(["python3", str(self.fixture.repo / "scripts/verify-ffmpeg-manifest.py"),
                         str(server / "third_party/ffmpeg")], check=True, stdout=subprocess.PIPE)
         self.assertEqual((server / "source-seal/manifest.json").read_bytes(), self.original_manifest)
         self.assertEqual((server / "source-seal/toolchain-manifest.json").read_bytes(), self.original_toolchain)
         self.assertEqual((server / "source-seal/rclone-manifest.json").read_bytes(), self.original_rclone)
         self.assertEqual(manifest["rcloneManifestSha256"], digest(server / "third_party/rclone/bundle-manifest.json"))
         self.assertIn("third_party/rclone/rclone", self.sign_log.read_text())
-        RCLONE["verify"](server / "third_party/rclone", "darwin-arm64", codesigned=True)
+        self.rclone["verify"](server / "third_party/rclone", "darwin-arm64", codesigned=True)
         self.key.public_key().verify((server / "source-seal/manifest.sig").read_bytes(), self.original_manifest)
 
     def test_verification_needs_only_public_material(self):
@@ -120,7 +111,7 @@ if '--force' in sys.argv:
         public.write_bytes(self.key.public_key().public_bytes_raw())
         self.keyfile.unlink()
         server = self.root / "out/pkg-root/Applications/Portico Media Server.app/Contents/Resources/server"
-        result = subprocess.run(["python3", str(ROOT / "scripts/seal-macos-payload.py"),
+        result = subprocess.run(["python3", str(self.fixture.repo / "scripts/seal-macos-payload.py"),
                                  str(server), "--public-key", str(public), "--verify"],
                                 env=self.env, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
         self.assertEqual(result.returncode, 0, result.stderr)
@@ -141,7 +132,7 @@ if '--force' in sys.argv:
         raw = json.dumps(final).encode()
         (server / "manifest.json").write_bytes(raw)
         (server / "manifest.sig").write_bytes(self.key.sign(raw))
-        result = subprocess.run(["python3", str(ROOT / "scripts/seal-macos-payload.py"),
+        result = subprocess.run(["python3", str(self.fixture.repo / "scripts/seal-macos-payload.py"),
                                  str(server), "--public-key", str(self.publicfile), "--verify"],
                                 env=self.env, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
         self.assertNotEqual(result.returncode, 0, "a different signed source build was accepted")
@@ -169,7 +160,7 @@ if '--force' in sys.argv:
         self.assertEqual(result.returncode, 0, result.stderr)
         server = self.root / "out/pkg-root/Applications/Portico Media Server.app/Contents/Resources/server"
         (server / "source-seal/toolchain-manifest.json").write_text("tampered provenance")
-        result = subprocess.run(["python3", str(ROOT / "scripts/seal-macos-payload.py"),
+        result = subprocess.run(["python3", str(self.fixture.repo / "scripts/seal-macos-payload.py"),
                                  str(server), "--public-key", str(self.publicfile), "--verify"],
                                 env=self.env, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
         self.assertNotEqual(result.returncode, 0)
@@ -188,7 +179,7 @@ if '--force' in sys.argv:
         server = self.root / "out/pkg-root/Applications/Portico Media Server.app/Contents/Resources/server"
         with (server / "third_party/rclone/rclone").open("ab") as stream:
             stream.write(b"post-signing tamper")
-        result = subprocess.run(["python3", str(ROOT / "scripts/seal-macos-payload.py"), str(server), "--public-key", str(self.publicfile), "--verify"], env=self.env, capture_output=True, text=True)
+        result = subprocess.run(["python3", str(self.fixture.repo / "scripts/seal-macos-payload.py"), str(server), "--public-key", str(self.publicfile), "--verify"], env=self.env, capture_output=True, text=True)
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("modified rclone payload", result.stderr)
 

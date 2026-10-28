@@ -10,6 +10,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"syscall"
 	"testing"
@@ -65,13 +66,13 @@ func TestDecoderSandboxHelper(t *testing.T) {
 }
 
 func TestDecoderSandboxRestrictsEndpointAndFiles(t *testing.T) {
-	// These exact ports and one tiny helper require independent resource release.
-	allowed, err := net.Listen("tcp4", "127.0.0.1:19502")
+	// The exact granted endpoints and one tiny helper require independent release.
+	allowed, err := net.Listen("tcp4", "127.0.0.1:0")
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer allowed.Close()
-	ipv6, err := net.Listen("tcp6", "[::1]:19502")
+	ipv6, err := net.Listen("tcp6", net.JoinHostPort("::1", strconv.Itoa(allowed.Addr().(*net.TCPAddr).Port)))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -87,7 +88,7 @@ func TestDecoderSandboxRestrictsEndpointAndFiles(t *testing.T) {
 			t.Fatal("reservation can leak through exec")
 		}
 	}
-	other, err := net.Listen("tcp4", "127.0.0.1:19503")
+	other, err := net.Listen("tcp4", "127.0.0.1:0")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -108,7 +109,7 @@ func TestDecoderSandboxRestrictsEndpointAndFiles(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	args := []string{"-test.run=^TestDecoderSandboxHelper$", "--", "decoder-helper", allowed.Addr().String(), ipv6.Addr().String(), other.Addr().String(), "127.0.0.2:19502", private}
+	args := []string{"-test.run=^TestDecoderSandboxHelper$", "--", "decoder-helper", allowed.Addr().String(), ipv6.Addr().String(), other.Addr().String(), net.JoinHostPort("127.0.0.2", strconv.Itoa(allowed.Addr().(*net.TCPAddr).Port)), private}
 	built, err := confinedCommand(exe, args, allowed.Addr().String())
 	if err != nil {
 		t.Fatal(err)

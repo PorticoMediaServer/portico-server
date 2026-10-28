@@ -71,16 +71,50 @@ func TestANetworkChangeAloneNeverCallsHosted(t *testing.T) {
 	seedSchedule(t, f, time.Now().Add(7*24*time.Hour), time.Now().Add(30*24*time.Hour))
 	// The real loop, because the forcing this removed lived in the loop's own wake handling.
 	ctx, cancel := context.WithCancel(context.Background())
-	done := make(chan struct{})
-	go func() { defer close(done); f.service.runCurrent(ctx) }()
-	time.Sleep(250 * time.Millisecond) // the first pass, which finds nothing due
+	done, steps := make(chan struct{}), make(chan struct{}, 1)
+	// Fixture installation may have left a coalesced wake; start from idle.
+	select {
+	case <-f.service.wake:
+	default:
+	}
+	go func() {
+		defer close(done)
+		f.service.runCurrentObserved(ctx, func() {
+			select {
+			case steps <- struct{}{}:
+			case <-ctx.Done():
+			}
+		})
+	}()
+	defer func() {
+		cancel()
+		select {
+		case <-done:
+		case <-time.After(5 * time.Second):
+			t.Error("control loop did not stop")
+		}
+	}()
+	completed := func() {
+		t.Helper()
+		select {
+		case <-steps:
+		case <-done:
+			t.Fatal("control loop stopped before completing its pass")
+		case <-time.After(5 * time.Second):
+			t.Fatal("control loop did not complete a signalled pass")
+		}
+	}
+	completed() // The initial pass found nothing due.
 	for range 20 {
 		f.service.NetworkChanged()
-		time.Sleep(5 * time.Millisecond)
+		completed()
 	}
-	time.Sleep(250 * time.Millisecond)
 	cancel()
-	<-done
+	select {
+	case <-done:
+	case <-time.After(5 * time.Second):
+		t.Fatal("control loop did not stop")
+	}
 	if attempts := scheduleAttempts(t, f); attempts != 0 {
 		t.Fatal("a network change called Hosted", attempts)
 	}

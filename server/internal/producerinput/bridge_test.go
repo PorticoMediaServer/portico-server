@@ -62,9 +62,9 @@ func bridgeFixture(t *testing.T, source *fixtureSource) (*Bridge, context.Cancel
 	if err != nil {
 		t.Fatal(err)
 	}
-	listener, err := net.Listen("tcp4", "127.0.0.1:19502")
+	listener, err := net.Listen("tcp4", "127.0.0.1:0")
 	if err != nil {
-		t.Fatal("allocated19502 unavailable; no fallback", err)
+		t.Fatal("loopback listener unavailable", err)
 	}
 	owner, cancel := context.WithCancel(context.Background())
 	bridge, err := newBridge(owner, source, parent, listener, 16)
@@ -289,12 +289,12 @@ func TestProducerBridgePairSharesRetentionAndDrains(t *testing.T) {
 	if err = os.Chmod(parent, 0700); err != nil {
 		t.Fatal(err)
 	}
-	v4, err := net.ListenTCP("tcp4", &net.TCPAddr{IP: net.IPv4(127, 0, 0, 1), Port: 19502})
+	v4, err := net.ListenTCP("tcp4", &net.TCPAddr{IP: net.IPv4(127, 0, 0, 1), Port: 0})
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer v4.Close()
-	v6, err := net.ListenTCP("tcp6", &net.TCPAddr{IP: net.IPv6loopback, Port: 19502})
+	v6, err := net.ListenTCP("tcp6", &net.TCPAddr{IP: net.IPv6loopback, Port: v4.Addr().(*net.TCPAddr).Port})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -323,7 +323,7 @@ func TestProducerBridgePairSharesRetentionAndDrains(t *testing.T) {
 	if err = bridge.Shutdown(ctx); err != nil {
 		t.Fatal(err)
 	}
-	for _, address := range []string{"127.0.0.1:19502", "[::1]:19502"} {
+	for _, address := range []string{v4.Addr().String(), v6.Addr().String()} {
 		listener, e := net.Listen("tcp", address)
 		if e != nil {
 			t.Fatal("server loop did not drain", e)

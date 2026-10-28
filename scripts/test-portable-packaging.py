@@ -8,7 +8,7 @@ import tempfile
 import unittest
 import zipfile
 
-ROOT = pathlib.Path(__file__).resolve().parent.parent
+from release_test_fixture import PORTABLE_INPUTS, ReleaseFixture
 
 
 class PortablePackagingTests(unittest.TestCase):
@@ -16,6 +16,8 @@ class PortablePackagingTests(unittest.TestCase):
         self.temp = tempfile.TemporaryDirectory()
         self.addCleanup(self.temp.cleanup)
         self.root = pathlib.Path(self.temp.name)
+        self.fixture = ReleaseFixture(self.root)
+        self.fixture.copy_inputs(PORTABLE_INPUTS)
         self.stage = self.root / "stage"
         self.web = self.root / "web"
         self.out = self.root / "out"
@@ -23,8 +25,7 @@ class PortablePackagingTests(unittest.TestCase):
         (self.stage / "third_party/ffmpeg").mkdir(parents=True)
         self.web.mkdir()
         tools.mkdir()
-        for name in ["manifest.json", "manifest.sig", "third_party/ffmpeg/toolchain-manifest.json"]:
-            (self.stage / name).write_text("fixture")
+        (self.stage / "third_party/ffmpeg/toolchain-manifest.json").write_text('{"fixture":"portable packaging input"}\n')
         (self.web / "index.html").write_text("fixture web")
         binary = self.stage / "portico-server"
         binary.write_text('#!/bin/sh\nprintf "%s\\n" "$PORTICO_WEB_DIR" "$PORTICO_DATA_DIR" "$1"\n')
@@ -37,17 +38,25 @@ class PortablePackagingTests(unittest.TestCase):
             else:
                 tool.write_text("#!/bin/sh\nexit 0\n")
             tool.chmod(0o700)
-        self.env = dict(os.environ, PATH=str(tools) + os.pathsep + os.environ["PATH"])
+        self.env = dict(os.environ, PATH=str(tools) + os.pathsep + os.environ["PATH"],
+                        PORTICO_RELEASE_PUBLIC_KEY_FILE=str(self.fixture.publicfile))
         self.env.pop("PORTICO_WEB_DIR", None)
         self.env.pop("PORTICO_DATA_DIR", None)
 
+    def seal(self, platform):
+        target = platform + "-amd64"
+        self.fixture.rclone(self.stage / "third_party/rclone", target)
+        self.fixture.sign(self.stage, target)
+
     def package(self, platform):
-        subprocess.run(["bash", str(ROOT / "scripts/package-release.sh"), platform, "amd64",
-                        "0.1.0", str(self.stage), str(self.web), str(self.out), "1"],
-                       env=self.env, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        return subprocess.run(["bash", str(self.fixture.repo / "scripts/package-release.sh"), platform, "amd64",
+                               "0.1.0", str(self.stage), str(self.web), str(self.out), "1"],
+                              env=self.env, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
 
     def test_linux_archive_launches_from_unrelated_working_directory(self):
-        self.package("linux")
+        self.seal("linux")
+        result = self.package("linux")
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
         unpacked = self.root / "unpacked media server"
         unpacked.mkdir()
         with tarfile.open(self.out / "portico-media-server-linux-x64.tar.gz") as archive:
@@ -66,10 +75,30 @@ class PortablePackagingTests(unittest.TestCase):
 
     @unittest.skipUnless(shutil.which("zip"), "zip is unavailable")
     def test_windows_archive_supplies_launcher_and_instructions(self):
-        self.package("windows")
+        self.seal("windows")
+        result = self.package("windows")
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
         with zipfile.ZipFile(self.out / "Portico-Media-Server-Windows-x64-Portable.zip") as archive:
             self.assertIn("start-portico.cmd", archive.namelist())
             self.assertIn("README.txt", archive.namelist())
+
+    def test_modified_server_is_rejected_before_archive_creation(self):
+        self.seal("linux")
+        with (self.stage / "portico-server").open("ab") as stream:
+            stream.write(b"tampered")
+        result = self.package("linux")
+        self.assertNotEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertIn("Release server artifact changed", result.stderr)
+        self.assertFalse((self.out / "portico-media-server-linux-x64.tar.gz").exists())
+
+    def test_modified_rclone_is_rejected_before_archive_creation(self):
+        self.seal("linux")
+        with (self.stage / "third_party/rclone/rclone").open("ab") as stream:
+            stream.write(b"tampered")
+        result = self.package("linux")
+        self.assertNotEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertIn("Missing or modified rclone payload", result.stderr)
+        self.assertFalse((self.out / "portico-media-server-linux-x64.tar.gz").exists())
 
 
 if __name__ == "__main__":

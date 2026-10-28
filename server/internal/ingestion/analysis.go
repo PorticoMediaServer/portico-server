@@ -59,11 +59,10 @@ func (s *Service) enqueueAnalysisPage(ctx context.Context, job string, source ca
 		if _, err = tx.ExecContext(ctx, `UPDATE inventory_analysis_queue SET state='skipped' WHERE job_id=? AND state='pending'`, job); err != nil {
 			return err
 		}
-		followUp, err := finishScanTx(ctx, tx, job, source.ID)
-		if err != nil {
+		if err := finishScanTx(ctx, tx, job, source.ID); err != nil {
 			return err
 		}
-		return s.commitWithFollowUp(ctx, gated.Commit, source, followUp)
+		return gated.Commit()
 	}
 	var strmEnabled bool
 	var strmRevision int64
@@ -247,11 +246,10 @@ func (s *Service) analyzeOne(parent context.Context, job string, source catalog.
 		if _, e = catalog.InventoryFenceTx(parent, tx, job); e != nil {
 			return e
 		}
-		followUp, e := finishScanTx(parent, tx, job, source.ID)
-		if e != nil {
+		if e := finishScanTx(parent, tx, job, source.ID); e != nil {
 			return e
 		}
-		return s.commitWithFollowUp(parent, gated2.Commit, source, followUp)
+		return gated2.Commit()
 	}
 	if err != nil {
 		return err
@@ -898,21 +896,7 @@ func (s *Service) analysisOutcome(ctx context.Context, job, object, revision str
 	return gated3.Commit()
 }
 
-// commitWithFollowUp commits the finishing run, then queues the one bounded
-// second folder pass it asked for through the ordinary scan path. Queueing is
-// deduplicated per folder, so an active scan is not stacked.
-func (s *Service) commitWithFollowUp(ctx context.Context, commit func() error, source catalog.LibrarySource, followUp bool) error {
-	if err := commit(); err != nil {
-		return err
-	}
-	if !followUp {
-		return nil
-	}
-	_, err := s.QueueMode(ctx, source.LibraryID, source.ID, "incremental", nil)
-	return err
-}
-
-func finishScanTx(ctx context.Context, tx *sql.Tx, job, source string) (bool, error) {
+func finishScanTx(ctx context.Context, tx *sql.Tx, job, source string) error {
 	now := time.Now().UTC().Format(time.RFC3339Nano)
 	// A file the library couldn't turn into an item (an episode name needing
 	// assignment) keeps the scan from reading as clean, whichever scan last
@@ -921,44 +905,47 @@ func finishScanTx(ctx context.Context, tx *sql.Tx, job, source string) (bool, er
 	// seek on the issues-only index (0223).
 	attention := `EXISTS(SELECT 1 FROM episodic_sources e JOIN inventory_objects o ON o.asset_id=e.asset_id JOIN library_sources s ON s.id=o.source_id WHERE s.id=? AND e.library_id=s.library_id AND e.issue<>'' AND o.retired=0 AND o.state='available' AND o.root_incarnation=s.incarnation)`
 	if _, err := tx.ExecContext(ctx, `UPDATE jobs SET status=CASE WHEN (SELECT warnings FROM inventory_runs WHERE job_id=?)>0 OR `+attention+` THEN 'complete_with_warnings' ELSE 'complete' END WHERE id=? AND status='running'`, job, source, job); err != nil {
-		return false, err
+		return err
 	}
 	if _, err := tx.ExecContext(ctx, `UPDATE inventory_runs SET phase=(SELECT status FROM jobs WHERE id=?),finished_at=?,pause_reason='' WHERE job_id=?`, job, now, job); err != nil {
-		return false, err
+		return err
 	}
 	if _, err := tx.ExecContext(ctx, `UPDATE library_sources SET health=CASE WHEN (SELECT warnings FROM inventory_runs WHERE job_id=?)>0 OR `+attention+` THEN 'degraded' ELSE 'healthy' END,last_progress_at=? WHERE id=?`, job, source, now, source); err != nil {
-		return false, err
+		return err
 	}
 	if _, err := tx.ExecContext(ctx, `DELETE FROM inventory_source_active WHERE job_id=?`, job); err != nil {
-		return false, err
+		return err
 	}
 	if _, err := tx.ExecContext(ctx, `INSERT OR IGNORE INTO inventory_changes(source_id,job_id,kind,created_at) VALUES(?,?,'scan_completed',?)`, source, job, now); err != nil {
-		return false, err
+		return err
 	}
 	// One bounded second folder pass per initiating run: the run that asked for
 	// it is remembered, so the follow-up pass itself never asks again, and the
 	// caller queues exactly one job even when the folder's own interval is zero.
 	doubleCheck, err := remotesources.DoubleCheckFoldersTx(ctx, tx, source)
 	if err != nil {
-		return false, err
+		return err
 	}
 	var secondPass string
 	if err = tx.QueryRowContext(ctx, `SELECT double_check_job FROM library_sources WHERE id=?`, source).Scan(&secondPass); err != nil {
-		return false, err
+		return err
 	}
 	if secondPass != "" {
 		_, err = tx.ExecContext(ctx, `UPDATE library_sources SET double_check_job='' WHERE id=?`, source)
-		return false, err
+		return err
 	}
 	if !doubleCheck {
-		return false, nil
+		return nil
 	}
 	var changed bool
 	if err = tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM inventory_changes WHERE job_id=? AND kind<>'scan_completed')`, job).Scan(&changed); err != nil || !changed {
-		return false, err
+		return err
 	}
 	if _, err = tx.ExecContext(ctx, `UPDATE library_sources SET double_check_job=? WHERE id=?`, job, source); err != nil {
-		return false, err
+		return err
 	}
-	return true, nil
+	// The successor and the finishing run share one commit. Shutdown after
+	// this transaction can no longer strand the second-pass marker.
+	_, err = queueSourceTx(context.WithValue(ctx, scanModeKey{}, "incremental"), tx, source, false)
+	return err
 }

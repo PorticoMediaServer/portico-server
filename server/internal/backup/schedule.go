@@ -47,6 +47,7 @@ func (s *Scheduler) check(ctx context.Context) {
 	ctx = dbwork.WithClass(ctx, dbwork.ClassMaintenance)
 	policy, err := s.readPolicy(ctx)
 	if err != nil {
+		s.failed(ctx, err)
 		return
 	}
 	now := s.now()
@@ -56,6 +57,7 @@ func (s *Scheduler) check(ctx context.Context) {
 	}
 	latest, err := s.latestScheduled()
 	if err != nil {
+		s.failed(ctx, err)
 		return
 	}
 	if !latest.IsZero() && !latest.Before(start) {
@@ -92,8 +94,18 @@ func (s *Scheduler) check(ctx context.Context) {
 		}
 	}
 	if err = s.service.Prune(keep); err != nil {
-		log.Printf("warn: Scheduled backup prune: %v", err)
+		s.failed(ctx, err)
 	}
+}
+
+func (s *Scheduler) failed(ctx context.Context, err error) {
+	if ctx.Err() != nil {
+		return
+	}
+	if s.ReportFailure != nil {
+		s.ReportFailure(ctx, true)
+	}
+	log.Printf("warn: Scheduled backup: %v", err)
 }
 
 func (s *Scheduler) readPolicy(ctx context.Context) (workpolicy.Policy, error) {

@@ -15696,7 +15696,6 @@ export const schemas = {
                 "type": "boolean"
               }
             },
-            "required": [],
             "type": "object"
           },
           {
@@ -15789,7 +15788,6 @@ export const schemas = {
                       "type": "array"
                     }
                   },
-                  "required": null,
                   "type": "object"
                 },
                 "type": "object"
@@ -15810,7 +15808,6 @@ export const schemas = {
                     "type": "array"
                   }
                 },
-                "required": null,
                 "type": "object"
               },
               "lists": {
@@ -15830,7 +15827,6 @@ export const schemas = {
                       "type": "array"
                     }
                   },
-                  "required": null,
                   "type": "object"
                 },
                 "type": "object"
@@ -15839,13 +15835,11 @@ export const schemas = {
                 "type": "boolean"
               }
             },
-            "required": null,
             "type": "object"
           },
           {
             "additionalProperties": false,
             "properties": {},
-            "required": null,
             "type": "object"
           }
         ],
@@ -15883,7 +15877,6 @@ export const schemas = {
                   "type": "array"
                 }
               },
-              "required": null,
               "type": "object"
             },
             "type": "object"
@@ -15904,7 +15897,6 @@ export const schemas = {
                 "type": "array"
               }
             },
-            "required": null,
             "type": "object"
           },
           "lists": {
@@ -15924,7 +15916,6 @@ export const schemas = {
                   "type": "array"
                 }
               },
-              "required": null,
               "type": "object"
             },
             "type": "object"
@@ -15975,7 +15966,6 @@ export const schemas = {
             "type": "boolean"
           }
         },
-        "required": [],
         "type": "object"
       },
       "command": {
@@ -15995,7 +15985,6 @@ export const schemas = {
             "type": "string"
           }
         },
-        "required": [],
         "type": "object"
       },
       "operationId": {
@@ -16229,7 +16218,6 @@ export const schemas = {
             "type": "object"
           }
         },
-        "required": [],
         "type": "object"
       }
     },
@@ -206846,7 +206834,6 @@ export const schemas = {
             "type": "object"
           }
         },
-        "required": [],
         "type": "object"
       },
       "targets": {

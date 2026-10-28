@@ -1,6 +1,6 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
-import {playbackEvidence} from './page.mjs';
+import {playbackEvidence, seekEvidence, transcodeEvidence, projectSession, watchSessions} from './page.mjs';
 
 // Checkpoint-only classifier fixtures. Importing the helper never loads a browser.
 const frame = {present: true, videoWidth: 640, videoHeight: 360, readyState: 4,
@@ -67,4 +67,41 @@ test('an absent video sample contributes no measured clock', () => {
   const verdict = playbackEvidence([{present: false, currentTime: NaN}, ...samples({})]);
   assert.equal(verdict.ok, true);
   assert.equal(verdict.advanced, 1);
+});
+
+test('paused seek rejects a no-op and normal elapsed playback', () => {
+  const before = {currentTime: 10, duration: 120, paused: true};
+  assert.equal(seekEvidence(before, {currentTime: 40, paused: true}, 30).ok, true);
+  assert.equal(seekEvidence(before, {currentTime: 10, paused: true}, 30).ok, false);
+  assert.equal(seekEvidence(before, {currentTime: 12.3, paused: false}, 30).ok, false);
+  assert.equal(seekEvidence(before, {currentTime: 40, paused: false}, 30).ok, false);
+  assert.equal(seekEvidence({...before, currentTime: 115}, {currentTime: 120, paused: true}, 30).ok, true);
+});
+
+test('transcode requires a new 240p conversion generation on the same session', () => {
+  const before = {id: 'session', presentation: {generation: 1}};
+  const presentation = {generation: 2, mode: 'stream', decision: {video: {action: 'transcode'}}, quality: {id: '240p'}, videoHeight: 240};
+  assert.equal(transcodeEvidence(before, {id: 'session', presentation}).ok, true);
+  for (const change of [
+    {generation: 1}, {mode: 'direct'}, {decision: {video: {action: 'copy'}}},
+    {quality: {id: 'original'}}, {videoHeight: 360}, {videoHeight: undefined},
+  ]) assert.equal(transcodeEvidence(before, {id: 'session', presentation: {...presentation, ...change}}).ok, false);
+  assert.equal(transcodeEvidence(before, {id: 'other', presentation}).ok, false);
+});
+
+test('session evidence includes created responses and safe conversion facts', async () => {
+  let respond;
+  const sink = watchSessions({on(event, callback) { assert.equal(event, 'response'); respond = callback; }});
+  for (const status of [201, 202]) {
+    await respond({url: () => 'http://fixture/v1/playback/sessions', status: () => status,
+      request: () => ({method: () => 'POST'}), json: async () => ({id: 'session', presentation: {
+        generation: 2, mode: 'stream', url: '/v1/media/private-grant/master.m3u8',
+        quality: {id: '240p'}, videoHeight: 240, decision: {video: {action: 'transcode'}},
+      }})});
+  }
+  assert.equal(sink.length, 2);
+  assert.equal(sink[0].session.videoAction, 'transcode');
+  assert.equal(sink[0].session.qualityId, '240p');
+  assert.equal(sink[0].session.presentationGeneration, 2);
+  assert.equal(projectSession({presentation: {url: '/v1/media/grant/master.m3u8'}}).urlPresent, true);
 });

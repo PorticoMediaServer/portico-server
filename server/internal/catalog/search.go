@@ -968,9 +968,8 @@ func searchContext(kind string) (string, string) {
 	return "", "''"
 }
 
-// searchPeopleGroup pages canonical people by an offset cursor. People are a
-// small projection, so an offset page is both cheap and stable under the
-// response's revision fence.
+// searchPeopleGroup pages canonical people by an offset cursor whose signed
+// ordering stays the same throughout the traversal.
 func (s *Service) searchPeopleGroup(ctx context.Context, r SearchRequest, g searchGroupDefinition, match, scopeHash, fingerprint string, rev ContentRevision, pageSize int, out *SearchGroupResult) error {
 	libraries := r.Libraries
 	if r.AllLibraries {
@@ -987,6 +986,9 @@ func (s *Service) searchPeopleGroup(ctx context.Context, r SearchRequest, g sear
 	sortID := resolveSearchSort(g, r.Sort)
 	scope := s.groupCursorScope(r, g, scopeHash, sortID)
 	offset := 0
+	// The signed cursor names the ordering. Older offset-only cursors could
+	// cross from a name walk to relevance partway through the same traversal.
+	ordering := "people:" + sortID
 	if r.Cursor != "" {
 		c, e := s.decodeRevisionCursor(r.Cursor, scope, rev)
 		if e != nil {
@@ -995,7 +997,10 @@ func (s *Service) searchPeopleGroup(ctx context.Context, r SearchRequest, g sear
 		if c.Fingerprint != fingerprint {
 			c.Total = 0
 		}
-		if offset, e = strconv.Atoi(c.ID); e != nil || offset < 0 || offset > 100000 {
+		if c.Value != ordering {
+			return ErrCursor
+		}
+		if offset, e = strconv.Atoi(c.ID); e != nil || offset < 0 || offset > int(^uint(0)>>1)-pageSize-1 {
 			return ErrCursor
 		}
 	}
@@ -1017,8 +1022,11 @@ func (s *Service) searchPeopleGroup(ctx context.Context, r SearchRequest, g sear
 	}
 	out.Items = entries
 	if more {
+		if offset+pageSize > int(^uint(0)>>1)-pageSize-1 {
+			return ErrCursor
+		}
 		out.HasMore = true
-		out.NextCursor, e = s.encodeRevisionCursor(cursorValue{Scope: scope, Value: "offset", ID: strconv.Itoa(offset + pageSize), Fingerprint: fingerprint, Expires: time.Now().Add(30 * time.Minute).Unix()}, rev)
+		out.NextCursor, e = s.encodeRevisionCursor(cursorValue{Scope: scope, Value: ordering, ID: strconv.Itoa(offset + pageSize), Fingerprint: fingerprint, Expires: time.Now().Add(30 * time.Minute).Unix()}, rev)
 		if e != nil {
 			return e
 		}

@@ -13,6 +13,7 @@ import {join} from 'node:path';
 import {pathToFileURL} from 'node:url';
 import {createHash} from 'node:crypto';
 import {readingResponsePath} from './reading-response-path.mjs';
+import {redactAdminPath, runStep, flowFailed} from './flow-results.mjs';
 
 const base = process.env.PORTICO_FLOW_BASE;
 const output = process.env.PORTICO_FLOW_OUTPUT;
@@ -40,7 +41,7 @@ async function walk(page, viewportName) {
   page.on('request', request => {
     attempted.push(request.url()); if (attempted.length > 400) attempted.shift();
     const path = new URL(request.url()).pathname;
-    if (path.startsWith('/v1/admin/libraries/')) adminRequests.push(request.method() + ' ' + path.replace(/[^/]+/g, ':id'));
+    if (path.startsWith('/v1/admin/libraries/')) adminRequests.push(request.method() + ' ' + redactAdminPath(path));
   });
   page.on('response', response => {
     const path = new URL(response.url()).pathname;
@@ -77,13 +78,12 @@ async function walk(page, viewportName) {
   const step = async (name, fn) => {
     const started = Date.now();
     const before = {page: pageErrors.length, console: consoleErrors.length, failed: failedRequests.length};
-    try {
-      const detail = await fn();
-      steps.push({name, status: 'pass', ms: Date.now() - started, detail: detail ?? null});
-    } catch (error) {
-      steps.push({name, status: 'fail', ms: Date.now() - started, detail: excerpt(String(error?.message ?? error), 400),
-        console: consoleTail.slice(-12)});
+    const result = await runStep(name, fn, started);
+    if (result.status === 'fail') {
+      result.detail = excerpt(result.detail, 400);
+      result.console = consoleTail.slice(-12);
     }
+    steps.push(result);
     steps.at(-1).newErrors = {
       page: pageErrors.slice(before.page), console: consoleErrors.slice(before.console), failed: failedRequests.slice(before.failed),
     };
@@ -241,7 +241,8 @@ async function walk(page, viewportName) {
     await confirm.getByRole('button', {name: /^Remove folder$/i}).click();
     await settle(3000);
     body = await text();
-    return {added: creds.addPath, removed: !body.includes(creds.addPath)};
+    if (body.includes(creds.addPath)) throw new Error('the removed folder is still listed: ' + excerpt(body, 300));
+    return {added: creds.addPath, removed: true};
   });
 
   await step('settings-library-folders', async () => {
@@ -439,7 +440,7 @@ try {
     pageErrors: report.viewports.flatMap(view => view.pageErrors),
     failedRequests: report.viewports.flatMap(view => view.failedRequests), failed}, null, 2));
   if (process.env.PORTICO_FLOW_DUMP === '1') for (const view of report.viewports) for (const step of view.steps) console.log('STEP ' + view.viewport + ' ' + step.name + ' ' + step.status + ' ' + JSON.stringify(step.detail));
-  process.exitCode = failed.length ? 1 : 0;
+  process.exitCode = flowFailed(report) ? 1 : 0;
 } finally {
   await browser.close();
 }

@@ -1,6 +1,10 @@
+//go:build !windows
+
 package main
 
 import (
+	"context"
+	"errors"
 	"fmt"
 	"net/http"
 	"os"
@@ -9,6 +13,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"syscall"
 	"testing"
 	"time"
 )
@@ -25,6 +30,9 @@ import (
 func TestSIGTERMDrainsInsideItsBudgetAndLeavesNoChildren(t *testing.T) {
 	if testing.Short() {
 		t.Skip("launches the server")
+	}
+	if _, err := exec.LookPath("pgrep"); err != nil {
+		t.Skip("process-tree shutdown test requires pgrep")
 	}
 	state := t.TempDir()
 	if resolved, err := filepath.EvalSymlinks(state); err == nil {
@@ -50,11 +58,17 @@ func TestSIGTERMDrainsInsideItsBudgetAndLeavesNoChildren(t *testing.T) {
 	if err = server.Start(); err != nil {
 		t.Fatal(err)
 	}
+	waited := make(chan struct{})
+	var waitErr error
+	go func() {
+		waitErr = server.Wait()
+		close(waited)
+	}()
 	killed := false
 	defer func() {
 		if !killed {
 			_ = server.Process.Kill()
-			_, _ = server.Process.Wait()
+			<-waited
 		}
 	}()
 
@@ -81,6 +95,9 @@ func TestSIGTERMDrainsInsideItsBudgetAndLeavesNoChildren(t *testing.T) {
 	// A little traffic in flight, so the drain has something to drain.
 	var traffic sync.WaitGroup
 	stopTraffic := make(chan struct{})
+	var stopped sync.Once
+	stop := func() { stopped.Do(func() { close(stopTraffic) }); traffic.Wait() }
+	defer stop()
 	for worker := 0; worker < 8; worker++ {
 		traffic.Add(1)
 		go func() {
@@ -103,30 +120,30 @@ func TestSIGTERMDrainsInsideItsBudgetAndLeavesNoChildren(t *testing.T) {
 	t.Logf("children before shutdown: %d", len(children))
 
 	started := time.Now()
-	if err = server.Process.Signal(os.Interrupt); err != nil {
+	if err = server.Process.Signal(syscall.SIGTERM); err != nil {
 		t.Fatal(err)
 	}
-	waited := make(chan error, 1)
-	go func() { waited <- server.Wait() }()
 	select {
 	case <-waited:
 		killed = true
+		if waitErr != nil {
+			t.Fatal("server did not exit cleanly after SIGTERM", waitErr)
+		}
 	case <-time.After(drainBudget + 10*time.Second):
 		contents, _ := os.ReadFile(log.Name())
 		t.Fatalf("the server did not exit within %s of SIGTERM:\n%s", drainBudget+10*time.Second, contents)
 	}
 	elapsed := time.Since(started)
-	close(stopTraffic)
-	traffic.Wait()
+	stop()
 	t.Logf("SIGTERM to exit: %s (drain budget %s)", elapsed.Round(time.Millisecond), drainBudget)
 	if elapsed > drainBudget+5*time.Second {
 		t.Errorf("shutdown took %s; the barrier's budget is %s", elapsed, drainBudget)
 	}
 
-	// Nothing the server started may outlive it. On Unix the children are its
-	// process groups; on Windows the job object does this by closing.
+	// No snapshotted child or grandchild may outlive the server. Windows uses
+	// job-object tests; this file exercises Unix SIGTERM and signal-zero probes.
 	for _, pid := range children {
-		if processAlive(pid) {
+		if processAlive(t, pid) {
 			t.Errorf("child process %d outlived the server", pid)
 		}
 	}
@@ -138,26 +155,75 @@ func TestSIGTERMDrainsInsideItsBudgetAndLeavesNoChildren(t *testing.T) {
 	}
 }
 
+// Snapshot the whole descendant tree, not just the direct helper processes.
 func serverChildren(t *testing.T, pid int) []int {
 	t.Helper()
-	out, err := exec.Command("pgrep", "-P", strconv.Itoa(pid)).Output()
-	if err != nil {
-		return nil
-	}
 	var children []int
-	for _, line := range strings.Split(strings.TrimSpace(string(out)), "\n") {
-		if value, convErr := strconv.Atoi(strings.TrimSpace(line)); convErr == nil {
-			children = append(children, value)
+	pending := []int{pid}
+	seen := map[int]bool{pid: true}
+	for len(pending) > 0 {
+		parent := pending[0]
+		pending = pending[1:]
+		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+		out, err := exec.CommandContext(ctx, "pgrep", "-P", strconv.Itoa(parent)).Output()
+		cancel()
+		if err != nil {
+			var exited *exec.ExitError
+			if errors.As(err, &exited) && exited.ExitCode() == 1 {
+				continue // pgrep's documented no-matches result.
+			}
+			t.Fatalf("enumerating descendants of %d: %v", parent, err)
+		}
+		for _, line := range strings.Fields(string(out)) {
+			value, err := strconv.Atoi(line)
+			if err != nil || value <= 0 {
+				t.Fatalf("invalid child PID %q: %v", line, err)
+			}
+			if !seen[value] {
+				seen[value] = true
+				children = append(children, value)
+				pending = append(pending, value)
+			}
 		}
 	}
 	return children
 }
 
-func processAlive(pid int) bool {
+func processAlive(t *testing.T, pid int) bool {
+	t.Helper()
 	process, err := os.FindProcess(pid)
 	if err != nil {
+		t.Fatal("finding a Unix process", err)
+	}
+	defer process.Release()
+	// Signal 0 asks the kernel whether the process exists without touching it.
+	err = process.Signal(syscall.Signal(0))
+	if err == nil || errors.Is(err, syscall.EPERM) {
+		return true
+	}
+	if errors.Is(err, os.ErrProcessDone) || errors.Is(err, syscall.ESRCH) {
 		return false
 	}
-	// Signal 0 asks the kernel whether the process is there without touching it.
-	return process.Signal(nil) == nil
+	t.Fatalf("probing process %d: %v", pid, err)
+	return false
 }
+
+func TestShutdownProcessLivenessOracle(t *testing.T) {
+	if !processAlive(t, os.Getpid()) {
+		t.Fatal("the liveness probe reported its own process dead")
+	}
+	// Run a harmless child to completion, then check the same oracle after reap.
+	binary, err := os.Executable()
+	if err != nil {
+		t.Fatal(err)
+	}
+	child := exec.Command(binary, "-test.run=^TestShutdownExitedChild$")
+	if err = child.Run(); err != nil {
+		t.Fatal(err)
+	}
+	if processAlive(t, child.Process.Pid) {
+		t.Fatal("the liveness probe reported a reaped child alive")
+	}
+}
+
+func TestShutdownExitedChild(t *testing.T) {}

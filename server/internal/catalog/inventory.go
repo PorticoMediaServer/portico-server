@@ -98,6 +98,9 @@ func (s *Service) CommitInventoryPage(ctx context.Context, job, relative, cursor
 type InventoryPageWrite struct {
 	Relative, Cursor string
 	Page             storage.InventoryPage
+	// DiscRoot is observed outside the writer and committed with the page's
+	// cursor, so a restart cannot skip the title that this page discovered.
+	DiscRoot *storage.Snapshot
 }
 
 // CommitInventoryPages publishes the pages of several folders in one
@@ -127,6 +130,10 @@ func (s *Service) CommitInventoryPages(ctx context.Context, job string, pages []
 		}
 		if !keep {
 			if _, err = tx.ExecContext(ctx, `ROLLBACK TO inventory_page`); err != nil {
+				return err
+			}
+		} else if p.DiscRoot != nil {
+			if err = s.commitInventoryDiscRootTx(ctx, tx, job, source, p.Relative, *p.DiscRoot); err != nil {
 				return err
 			}
 		}
@@ -719,9 +726,6 @@ func (s *Service) reinterpretInventoryTx(ctx context.Context, tx *sql.Tx, source
 // analysis fence compares the same directory snapshot. The folder's own
 // children are not inventoried as loose files.
 func (s *Service) CommitInventoryDiscRoot(ctx context.Context, job, relative string, v storage.Snapshot) error {
-	if relative == "" || relative == "." || !v.Directory {
-		return ErrAdminQuery
-	}
 	gated, err := dbwork.Begin(ctx, s.db, dbwork.ClassBackgroundMedia)
 	if err != nil {
 		return err
@@ -731,6 +735,16 @@ func (s *Service) CommitInventoryDiscRoot(ctx context.Context, job, relative str
 	source, err := InventoryFenceTx(ctx, tx, job)
 	if err != nil {
 		return err
+	}
+	if err = s.commitInventoryDiscRootTx(ctx, tx, job, source, relative, v); err != nil {
+		return err
+	}
+	return gated.Commit()
+}
+
+func (s *Service) commitInventoryDiscRootTx(ctx context.Context, tx *sql.Tx, job string, source LibrarySource, relative string, v storage.Snapshot) error {
+	if relative == "" || relative == "." || !v.Directory {
+		return ErrAdminQuery
 	}
 	policy, err := ScanPolicyTx(ctx, tx, source.LibraryID)
 	if err != nil {
@@ -749,7 +763,7 @@ func (s *Service) CommitInventoryDiscRoot(ctx context.Context, job, relative str
 		return err
 	}
 	if policy.Tier == "file_list_only" {
-		return gated.Commit()
+		return nil
 	}
 	// Re-probe every time: a clip, playlist or VIDEO_TS member can change
 	// without changing the folder's revision.
@@ -759,7 +773,7 @@ func (s *Service) CommitInventoryDiscRoot(ctx context.Context, job, relative str
 	if _, err = tx.ExecContext(ctx, `INSERT INTO inventory_analysis_queue(job_id,object_id,revision,policy_revision) SELECT ?,id,revision,? FROM inventory_objects WHERE source_id=? AND relative_path=? AND retired=0 ON CONFLICT(job_id,object_id) DO UPDATE SET revision=excluded.revision,policy_revision=excluded.policy_revision,state='pending'`, job, policy.Revision, source.ID, relative); err != nil {
 		return err
 	}
-	return gated.Commit()
+	return nil
 }
 
 // DiscStructureWitness is the object-evidence token for a folder disc: the

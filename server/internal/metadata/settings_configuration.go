@@ -52,7 +52,17 @@ func artworkConfigurationEdge(value any) (int, bool) {
 	}
 	return edge, validArtworkEdge(edge)
 }
-func (d Configuration) Import(ctx context.Context, tx *sql.Tx, raw map[string]any, sources map[string]string, _ int64) (bool, error) {
+func (d Configuration) Import(ctx context.Context, tx *sql.Tx, raw map[string]any, sources map[string]string, now int64) (bool, error) {
+	apply, err := d.PrepareImport(ctx, tx, raw, sources, now)
+	if err != nil || apply == nil {
+		return false, err
+	}
+	if err = apply(); err != nil {
+		return false, err
+	}
+	return true, nil
+}
+func (d Configuration) PrepareImport(ctx context.Context, tx *sql.Tx, raw map[string]any, sources map[string]string, _ int64) (operations.ConfigurationApply, error) {
 	b := d.Bindings()[0]
 	field := d.SourceField(b.Field)
 	value, present := raw[b.Key]
@@ -61,31 +71,37 @@ func (d Configuration) Import(ctx context.Context, tx *sql.Tx, raw map[string]an
 		value, present = 1920, true
 	}
 	if !present {
-		return false, nil
+		return nil, nil
 	}
 	edge, valid := artworkConfigurationEdge(value)
 	if !valid {
-		return false, fmt.Errorf("invalid config key %s", b.Key)
+		return nil, fmt.Errorf("invalid config key %s", b.Key)
 	}
 	current, err := ReadMetadataSettingsTx(ctx, tx)
 	if err != nil {
-		return false, err
+		return nil, err
 	}
 	if current.ArtworkMaxEdge == edge && sources[field] == "file" && !removed {
-		return false, nil
+		return nil, nil
 	}
-	if current.ArtworkMaxEdge != edge {
-		_, err = ApplyMetadataSettingsTx(ctx, tx, MetadataSettingsUpdate{ExpectedRevision: current.Revision, LocalArtworkLimitBytes: current.LocalArtworkLimitBytes, IncludeAdult: current.IncludeAdult, ArtworkMaxEdge: &edge}, time.Time{})
-		if err != nil {
-			return false, err
+	update := MetadataSettingsUpdate{ExpectedRevision: current.Revision, LocalArtworkLimitBytes: current.LocalArtworkLimitBytes, IncludeAdult: current.IncludeAdult, ArtworkMaxEdge: &edge}
+	if current.ArtworkMaxEdge != edge && !validMetadataSettingsUpdate(update) {
+		return nil, ErrRepairInput
+	}
+	return func() error {
+		if current.ArtworkMaxEdge != edge {
+			_, err = ApplyMetadataSettingsTx(ctx, tx, update, time.Time{})
+			if err != nil {
+				return err
+			}
 		}
-	}
-	if removed {
-		_, err = tx.ExecContext(ctx, `DELETE FROM server_setting_sources WHERE field=?`, field)
-	} else {
-		_, err = tx.ExecContext(ctx, `INSERT INTO server_setting_sources VALUES(?,'file') ON CONFLICT(field) DO UPDATE SET source=excluded.source`, field)
-	}
-	return true, err
+		if removed {
+			_, err = tx.ExecContext(ctx, `DELETE FROM server_setting_sources WHERE field=?`, field)
+		} else {
+			_, err = tx.ExecContext(ctx, `INSERT INTO server_setting_sources VALUES(?,'file') ON CONFLICT(field) DO UPDATE SET source=excluded.source`, field)
+		}
+		return err
+	}, nil
 }
 func (d Configuration) Projection(ctx context.Context, tx *sql.Tx, sources map[string]string) (map[string]any, error) {
 	out := map[string]any{}

@@ -432,14 +432,13 @@ func (s *Service) People(viewer Viewer, server, q string, limit int) (PeopleDire
 	return out, nil
 }
 
-// peopleRankedMaximum is the most matching people a name search ranks by
-// relevance (bm25 with the exact-name and name-prefix boosts). A broader
-// search (a letter or two typed) reads people in name order instead, those
-// whose name starts with the typed text first, so its cost follows the page.
+// peopleRankedMaximum bounds the exact count of matching people. Relevance
+// ordering stays bm25 with exact-name and name-prefix boosts on every page,
+// even when the count is only a lower bound.
 const peopleRankedMaximum = 1000
 
 // peopleWalkWindow is how many people a broad name search reads in name order
-// for one page before it ranks the matches after all.
+// for one title-sorted page before falling back to the same order in SQL.
 const peopleWalkWindow = 20000
 
 // peopleWalkChunk is how many people of the window are tested at a time.
@@ -483,9 +482,9 @@ func (s *Service) peopleMatches(q, match string, viewer Viewer, limit, offset in
 		total = peopleRankedMaximum
 	}
 	ids := []int64(nil)
-	if !exact {
+	if !exact && order == "title" {
 		var walked bool
-		ids, walked, e = s.peopleNameWalk(q, match, viewer, limit, offset, order, direction)
+		ids, walked, e = s.peopleNameWalk(q, viewer, limit, offset, direction)
 		if e != nil {
 			return nil, 0, false, e
 		}
@@ -559,17 +558,15 @@ func (s *Service) peopleMatches(q, match string, viewer Viewer, limit, offset in
 	return out, total, exact, nil
 }
 
-// peopleNameWalk pages a broad name search in name order without ranking its
-// matches: for relevance, the people whose name starts with the typed text
-// first, then the rest; for the name sort, everyone in name order. Each
-// person read is tested against the name index by its id. ok is false when
+// peopleNameWalk pages a title-sorted broad search in name order. Matching
+// people are tested for a visible credit in chunks. ok is false when
 // peopleWalkWindow people held neither the page nor the end of the list.
-func (s *Service) peopleNameWalk(q, match string, viewer Viewer, limit, offset int, order, direction string) (ids []int64, ok bool, e error) {
+func (s *Service) peopleNameWalk(q string, viewer Viewer, limit, offset int, direction string) (ids []int64, ok bool, e error) {
 	credited, creditedArgs := personCreditedSQL(viewer, "people.id")
 	extra, extraArgs := searchCJKPredicate("portico_search_fold(people.name)", q)
 	want := offset + limit
 	dir := "ASC"
-	if order == "title" && direction == "desc" {
+	if direction == "desc" {
 		dir = "DESC"
 	}
 	// A person's name is tested here, as the name index tokens it: every typed
@@ -632,34 +629,14 @@ func (s *Service) peopleNameWalk(q, match string, viewer Viewer, limit, offset i
 		}
 		return found, read < peopleWalkWindow, nil
 	}
-	if order == "title" {
-		found, done, err := walk("", nil, want)
-		if err != nil || !done {
-			return nil, false, err
-		}
-		if offset >= len(found) {
-			return []int64{}, true, nil
-		}
-		return found[offset:], true, nil
-	}
-	lower := strings.ToLower(q)
-	prefix := ` AND people.sort_name>=? AND people.sort_name<?`
-	prefixArgs := []any{lower, lower + "\U0010ffff"}
-	first, done, err := walk(prefix, prefixArgs, want)
+	found, done, err := walk("", nil, want)
 	if err != nil || !done {
 		return nil, false, err
 	}
-	if len(first) < want {
-		rest, done, err := walk(` AND NOT (people.sort_name>=? AND people.sort_name<?)`, prefixArgs, want-len(first))
-		if err != nil || !done {
-			return nil, false, err
-		}
-		first = append(first, rest...)
-	}
-	if offset >= len(first) {
+	if offset >= len(found) {
 		return []int64{}, true, nil
 	}
-	return first[offset:], true, nil
+	return found[offset:], true, nil
 }
 
 type portraitSelection struct{ item, subject, digest string }

@@ -79,19 +79,16 @@ func socialFailure(w http.ResponseWriter, e error) {
 
 // socialBody decodes a bounded JSON request body.
 func socialBody(w http.ResponseWriter, r *http.Request, out any) bool {
-	if media := r.Header.Get("Content-Type"); media != "" && !strings.HasPrefix(media, "application/json") {
-		socialFailure(w, &social.Fault{Code: "invalid_request", Status: 415, Message: "Send application/json."})
-		return false
-	}
-	raw, e := io.ReadAll(http.MaxBytesReader(w, r.Body, 256<<10))
-	if e != nil {
-		socialFailure(w, &social.Fault{Code: "invalid_request", Status: 400, Message: "The request body could not be read."})
-		return false
-	}
-	decoder := json.NewDecoder(strings.NewReader(string(raw)))
-	decoder.DisallowUnknownFields()
-	if e = decoder.Decode(out); e != nil {
-		socialFailure(w, &social.Fault{Code: "invalid_request", Status: 400, Message: "The request body is not valid JSON for this operation."})
+	if err := strictDecodeLimit(w, r, out, 256<<10); err != nil {
+		status, message := http.StatusBadRequest, "The request body is not valid JSON for this operation."
+		var tooLarge *http.MaxBytesError
+		switch {
+		case errors.Is(err, errStrictMediaType):
+			status, message = http.StatusUnsupportedMediaType, "Send application/json."
+		case errors.As(err, &tooLarge):
+			status, message = http.StatusRequestEntityTooLarge, "The request body is too large."
+		}
+		socialFailure(w, &social.Fault{Code: "invalid_request", Status: status, Message: message})
 		return false
 	}
 	return true

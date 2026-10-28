@@ -16,15 +16,14 @@ import (
 	"os/signal"
 	"path/filepath"
 	adminops "portico.local/server/internal/administration"
-	"portico.local/server/internal/assets"
 	"portico.local/server/internal/archive7z"
+	"portico.local/server/internal/assets"
 	"portico.local/server/internal/audiofacts"
 	"portico.local/server/internal/backup"
 	"portico.local/server/internal/buildinfo"
 	"portico.local/server/internal/catalog"
 	"portico.local/server/internal/childprocess"
 	"portico.local/server/internal/compactcatalog"
-	"portico.local/server/internal/configfile"
 	"portico.local/server/internal/dbwork"
 	"portico.local/server/internal/dlna"
 	"portico.local/server/internal/driveoauth"
@@ -277,10 +276,6 @@ func run() (runErr error) {
 		return e
 	}
 	state := layout.Data
-	configuration := configfile.New(layout.Config)
-	if _, e = configuration.Reload(); e != nil {
-		return e
-	}
 	startupLog := servicelog.New(servicelog.Options{Directory: storagepaths.Path(state, "logs")})
 	installMessageLogOutput(startupLog)
 	defer startupLog.Close()
@@ -387,6 +382,12 @@ func run() (runErr error) {
 		}
 	}
 	doneRestore(nil)
+	// A staged restore may replace an invalid current config. Validate the
+	// resulting file only after ApplyStaged has had that opportunity; restored
+	// files are also checked before the restore is committed.
+	if e = validateStateConfiguration(state); e != nil {
+		return e
+	}
 	// Every FFmpeg and ffprobe this server starts goes through mediaexec. Now
 	// that this process owns the state directory, stop what a crashed previous
 	// run left encoding (BE-MEDIA-06) and turn on the limits and the ledger.
@@ -414,8 +415,7 @@ func run() (runErr error) {
 	}
 	defer db.Close()
 	backupPolicy := backup.NewPolicyStore(db, state)
-	configurationStore := operations.New(db)
-	configurationStore.ConfigurationDomains = []operations.ConfigurationDomain{adminops.MaintenanceConfiguration{}, backup.Configuration{Store: backupPolicy}, metadata.Configuration{}}
+	configurationStore := configurationStoreForState(db, state)
 	if e = configurationStore.InitializeConfiguration(ctx, layout.Config); e != nil {
 		return e
 	}
@@ -741,14 +741,18 @@ func run() (runErr error) {
 	recordingsRoot := ""
 	doneRecording := reporter.step("recording", "Open recording storage")
 	recordingStore, e := dvr.New(db, liveSources, recordingaccess.Policy{Cached: control}.Durable)
-	if e != nil { return e }
+	if e != nil {
+		return e
+	}
 	var recorder *recordingmedia.Driver
 	e = recordingroot.Activate(ctx, db, adminOperations, ident, state, operatorRecordingsRoot, func(root string) (recordingroot.StartupBinding, error) {
 		prepared, err := recordingmedia.New(root, ffmpegTool, ffprobeTool, filepath.SplitList(os.Getenv("PORTICO_LINEAR_DECODER_LIBRARIES")))
-		if err != nil { return recordingroot.StartupBinding{}, err }
+		if err != nil {
+			return recordingroot.StartupBinding{}, err
+		}
 		return recordingroot.StartupBinding{
 			Rollback: func() { _ = prepared.Close() },
-			Verify: prepared.ValidateRootBinding,
+			Verify:   prepared.ValidateRootBinding,
 			Publish: func() {
 				recorder = prepared
 				recordingsRoot = root
@@ -757,7 +761,9 @@ func run() (runErr error) {
 			},
 		}, nil
 	})
-	if e != nil { return errors.New("private recording storage configuration could not be accepted") }
+	if e != nil {
+		return errors.New("private recording storage configuration could not be accepted")
+	}
 	recordingLocks, e := livechannels.NewPhysicalLocks(storagepaths.Path(state, "live-source-locks"))
 	if e != nil {
 		_ = recorder.Close()
@@ -1072,7 +1078,9 @@ func run() (runErr error) {
 		console.AppliedTemporaryDirectory = &appliedConversionSetting
 		console.AppliedFFmpegPath = &startupMedia.FFmpegPath
 		console.RecordingRoot, e = recordingroot.Runtime(adminOperations, recordingStore, recordingsRoot, operatorRecordingsRoot != "")
-		if e != nil { return errors.New("recording folder admission could not be initialized") }
+		if e != nil {
+			return errors.New("recording folder admission could not be initialized")
+		}
 	}
 	doneConsole(e)
 	if e != nil {
@@ -1114,11 +1122,12 @@ func run() (runErr error) {
 	bindPortNumber, _ := strconv.Atoi(bindPort)
 	doneAdministration := reporter.step("administration", "Open administration and access")
 	administration, closeAdministration := initializeAdministration(ctx, db, console, ident, state, bindPortNumber, startupLog)
+	defer closeAdministration()
 	if err := administration.Access.LoadInvitationKey(layout.Keys); err != nil {
-		log.Fatalf("Invitation key: %v", err)
+		doneAdministration(err)
+		return fmt.Errorf("invitation key: %w", err)
 	}
 	doneAdministration(nil)
-	defer closeAdministration()
 	// The owner's preferred LAN interface is read from the console once per
 	// route observation; a read error keeps the last value (automatic until read).
 	if manager := claimHandler.Remote(); manager != nil && console != nil {

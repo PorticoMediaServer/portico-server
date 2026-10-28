@@ -84,12 +84,12 @@ func TestRealConfinedProbeRegisteredFixture(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer prepared.Close()
-	v4, err := net.ListenTCP("tcp4", &net.TCPAddr{IP: net.IPv4(127, 0, 0, 1), Port: 19502})
+	v4, err := net.ListenTCP("tcp4", &net.TCPAddr{IP: net.IPv4(127, 0, 0, 1), Port: 0})
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer v4.Close()
-	v6, err := net.ListenTCP("tcp6", &net.TCPAddr{IP: net.IPv6loopback, Port: 19502})
+	v6, err := net.ListenTCP("tcp6", &net.TCPAddr{IP: net.IPv6loopback, Port: v4.Addr().(*net.TCPAddr).Port})
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -332,25 +332,59 @@ func TestEpisodeAndSeasonQueriesUseViewerRestrictions(t *testing.T) {
 func TestShowWorkspaceTargetDefaultAndBoundedPaging(t *testing.T) {
 	s, _, names := workspaceFixture(t)
 	r := workspaceRequest(names)
-	var w, same ShowWorkspace
-	var e error
-	// The two reads must fall in the same second: a paging cursor carries a
-	// one-second-resolution expiry, so reads straddling a second boundary differ
-	// in their cursors for a reason unrelated to the behaviour tested (a loaded
-	// Linux runner crossed it). Retry the pair, never loosen the comparison.
-	for attempt := 0; attempt < 5; attempt++ {
-		started := time.Now().Unix()
-		w, e = s.ShowWorkspace(r)
-		if e != nil || w.Selected.SeasonID == nil || *w.Selected.SeasonID != names["season1"].Public || len(w.Seasons) != 3 || w.Seasons[0].Title != "Season 1" || w.Seasons[2].Title != "Specials" || len(w.Groups) != 0 || len(w.Episodes.Sections[0].Entries) != 7 {
-			t.Fatal(w, e)
+	started := time.Now()
+	w, e := s.ShowWorkspace(r)
+	if e != nil || w.Selected.SeasonID == nil || *w.Selected.SeasonID != names["season1"].Public || len(w.Seasons) != 3 || w.Seasons[0].Title != "Season 1" || w.Seasons[2].Title != "Specials" || len(w.Groups) != 0 || len(w.Episodes.Sections[0].Entries) != 7 {
+		t.Fatal(w, e)
+	}
+	same, e := s.ShowWorkspace(r)
+	finished := time.Now()
+	if e != nil {
+		t.Fatal(e)
+	}
+	// Compare all cursor claims independently of their issue-time-dependent
+	// expiry, then compare the complete content. Both signatures and TTLs still
+	// have to be valid; reads need not land inside the same wall-clock second.
+	compareCursor := func(first, second string) {
+		t.Helper()
+		if first == "" || second == "" {
+			if first != second {
+				t.Fatal("equal request changed cursor presence")
+			}
+			return
 		}
-		same, e = s.ShowWorkspace(r)
-		if time.Now().Unix() == started {
-			break
+		a, err := s.readSignedBrowseCursor(first)
+		if err != nil {
+			t.Fatal("first cursor signature", err)
+		}
+		b, err := s.readSignedBrowseCursor(second)
+		if err != nil {
+			t.Fatal("second cursor signature", err)
+		}
+		for _, value := range []cursorValue{a, b} {
+			if value.Expires < started.Add(30*time.Minute).Unix() || value.Expires > finished.Add(30*time.Minute).Unix() {
+				t.Fatal("cursor expiry outside its issue window", value.Expires)
+			}
+		}
+		a.Expires, b.Expires = 0, 0
+		if !reflect.DeepEqual(a, b) {
+			t.Fatal("equal request changed cursor claims", a, b)
 		}
 	}
-	if e != nil || !reflect.DeepEqual(w, same) {
-		t.Fatal("equal request changed", e)
+	left, right := w, same
+	compareCursor(left.NextSeasonCursor, right.NextSeasonCursor)
+	left.NextSeasonCursor, right.NextSeasonCursor = "", ""
+	left.Episodes.Sections = append([]ContentSection(nil), w.Episodes.Sections...)
+	right.Episodes.Sections = append([]ContentSection(nil), same.Episodes.Sections...)
+	if len(left.Episodes.Sections) != len(right.Episodes.Sections) {
+		t.Fatal("equal request changed section count")
+	}
+	for i := range left.Episodes.Sections {
+		compareCursor(left.Episodes.Sections[i].NextCursor, right.Episodes.Sections[i].NextCursor)
+		left.Episodes.Sections[i].NextCursor, right.Episodes.Sections[i].NextCursor = "", ""
+	}
+	if !reflect.DeepEqual(left, right) {
+		t.Fatal("equal request changed content")
 	}
 	r.ShowID = ""
 	r.EpisodeID = names["ep-185"].Public

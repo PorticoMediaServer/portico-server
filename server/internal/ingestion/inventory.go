@@ -213,6 +213,12 @@ func (s *Service) inventoryFolders(ctx context.Context, job string, source catal
 		return false, nil
 	}
 	writes = writes[:taken]
+	for i := range writes {
+		writes[i].DiscRoot, err = s.discRootObservation(ctx, source, writes[i].Relative, writes[i].Page)
+		if err != nil {
+			return false, err
+		}
+	}
 	if err = s.catalog.CommitInventoryPages(ctx, job, writes); err != nil {
 		if ctx.Err() != nil {
 			return false, ctx.Err()
@@ -221,19 +227,16 @@ func (s *Service) inventoryFolders(ctx context.Context, job string, source catal
 	}
 	for _, w := range writes {
 		s.noteDirectoryPage(job, w.Relative, w.Cursor, w.Page)
-		if err = s.observeDiscRootPage(ctx, job, source, w.Relative, w.Page); err != nil {
-			return false, err
-		}
 	}
 	return true, nil
 }
 
-// observeDiscRootPage publishes a folder that holds BDMV or VIDEO_TS as one
-// disc title after its page is committed. The directory is stat'ed outside any
-// writer, so the object carries the exact snapshot the analysis fence rechecks.
-func (s *Service) observeDiscRootPage(ctx context.Context, job string, source catalog.LibrarySource, relative string, page storage.InventoryPage) error {
+// discRootObservation stats a folder that holds BDMV or VIDEO_TS outside any
+// writer. Its exact snapshot is published in the page transaction, before the
+// cursor can advance past the observation.
+func (s *Service) discRootObservation(ctx context.Context, source catalog.LibrarySource, relative string, page storage.InventoryPage) (*storage.Snapshot, error) {
 	if relative == "" || relative == "." || source.Kind != "local" || !discRootOnPage(relative, page) {
-		return nil
+		return nil, nil
 	}
 	req := storage.InventoryRequest{Root: source.ResolvedPath, RelativePath: relative, RootIdentity: source.RootIdentity, FollowSymlinks: source.FollowSymlinks}
 	var v storage.Snapshot
@@ -245,10 +248,10 @@ func (s *Service) observeDiscRootPage(ctx context.Context, job string, source ca
 	}
 	if err != nil || !v.Directory {
 		// A folder that changed or vanished is left to the next observation.
-		return nil
+		return nil, ctx.Err()
 	}
 	v.Name = filepath.Base(relative)
-	return s.catalog.CommitInventoryDiscRoot(ctx, job, relative, v)
+	return &v, nil
 }
 
 // discRootOnPage reports whether this page holds the BDMV or VIDEO_TS folder
@@ -297,13 +300,14 @@ func (s *Service) readDirectoryPage(ctx context.Context, job string, source cata
 	if err != nil {
 		return &directoryReadError{err}
 	}
-	if err = s.catalog.CommitInventoryPage(ctx, job, relative, cursor, page); err != nil {
+	discRoot, err := s.discRootObservation(ctx, source, relative, page)
+	if err != nil {
+		return err
+	}
+	if err = s.catalog.CommitInventoryPages(ctx, job, []catalog.InventoryPageWrite{{Relative: relative, Cursor: cursor, Page: page, DiscRoot: discRoot}}); err != nil {
 		return err
 	}
 	s.noteDirectoryPage(job, relative, cursor, page)
-	if err = s.observeDiscRootPage(ctx, job, source, relative, page); err != nil {
-		return err
-	}
 	if page.Unstable {
 		gated, e := dbwork.Begin(ctx, s.db, dbwork.ClassBackgroundMedia)
 		if e != nil {

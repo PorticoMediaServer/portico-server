@@ -33,14 +33,13 @@ func fixtureLocatorBinding(root, scope, object string) LocatorBinding {
 	return fixtureBinding{resources: resources}
 }
 
-// This reviewed fixture uses only the root-reserved loopback port and in-memory
-// bytes. Listen itself is the atomic free-port check; failure never selects a
-// different port or stops another process. No tests in this file run in parallel.
+// Each fixture owns an ephemeral loopback listener and in-memory bytes, so
+// independent test packages never contend for the same fixed media port.
 func versionFixture(t *testing.T, handler http.HandlerFunc) (string, Policy) {
 	t.Helper()
-	l, err := net.Listen("tcp", "127.0.0.1:19502")
+	l, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
-		t.Fatalf("reserved media fixture port unavailable: %v", err)
+		t.Fatalf("media fixture listener unavailable: %v", err)
 	}
 	s := &http.Server{Handler: handler, ReadHeaderTimeout: time.Second, ErrorLog: log.New(io.Discard, "", 0)}
 	done := make(chan error, 1)

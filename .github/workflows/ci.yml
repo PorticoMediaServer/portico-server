@@ -21,6 +21,8 @@ env:
   PORTICO_TEST_TIER: default
 jobs:
   repository:
+    if: ${{ always() }}
+    needs: [python-regressions]
     runs-on: ubuntu-24.04
     timeout-minutes: 40
     steps:
@@ -35,12 +37,11 @@ jobs:
           node --version || true
           go version || true
       - run: scripts/check-repo-binaries.sh
-      - if: ${{ !cancelled() }}
-        run: |
-          status=0
-          python3 scripts/test-ci-affected.py > "$RUNNER_TEMP/full-ci.log" 2>&1 || status=$?
-          tail -n 80 "$RUNNER_TEMP/full-ci.log"
-          exit "$status"
+      - name: Require the Python regression inventory
+        if: ${{ always() }}
+        env:
+          PYTHON_RESULT: ${{ needs.python-regressions.result }}
+        run: test "$PYTHON_RESULT" = success
       - name: Retain full diagnostics
         if: ${{ always() }}
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
@@ -51,6 +52,33 @@ jobs:
             ${{ runner.temp }}/go-build.log
             ${{ runner.temp }}/types*.log
           if-no-files-found: ignore
+          retention-days: 7
+
+  python-regressions:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with: {ref: '${{ inputs.ref || github.sha }}', fetch-depth: 0}
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with: {node-version-file: .node-version}
+      - uses: actions/setup-go@d35c59abb061a4a6fb18e82ac0862c26744d6ab5
+        with: {go-version-file: server/go.mod, cache-dependency-path: server/go.sum}
+      - name: Provision the pinned release-test dependency
+        run: |
+          python3 -m venv "$RUNNER_TEMP/python-regressions-venv"
+          "$RUNNER_TEMP/python-regressions-venv/bin/python" -m pip install --disable-pip-version-check -r scripts/requirements-release.txt
+          echo "$RUNNER_TEMP/python-regressions-venv/bin" >> "$GITHUB_PATH"
+          for tool in bash tar zip sed; do command -v "$tool"; done
+      - name: Run the explicit offline regression inventory
+        run: python3 scripts/run-python-regressions.py --report-dir "$RUNNER_TEMP/python-regressions"
+      - name: Retain per-test receipts and complete suite logs
+        if: ${{ always() }}
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: ci-python-regressions
+          path: ${{ runner.temp }}/python-regressions/**
+          if-no-files-found: error
           retention-days: 7
 
   go-shards:

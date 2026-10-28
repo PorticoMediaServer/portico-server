@@ -6,11 +6,15 @@ import (
 	"errors"
 	"portico.local/server/internal/storagepaths"
 
+	adminops "portico.local/server/internal/administration"
 	"portico.local/server/internal/backup"
+	"portico.local/server/internal/configfile"
 	"portico.local/server/internal/livechannels/dvr"
 	"portico.local/server/internal/mediaartifact"
+	"portico.local/server/internal/metadata"
 	"portico.local/server/internal/mounts"
 	"portico.local/server/internal/networking"
+	"portico.local/server/internal/operations"
 	"portico.local/server/internal/persistence"
 	"portico.local/server/internal/storage"
 )
@@ -37,6 +41,7 @@ type restoredRequirement struct {
 // them. Each check is the code start-up itself runs for that step, or the
 // read-only half of it, so the two cannot disagree about what is acceptable:
 //
+//   - the config file, read with the same bounds and parser as start-up;
 //   - the server authority file (openCurrentAuthority);
 //   - the schema: every statement start-up and the services it constructs run
 //     needs its tables, their columns, indexes, triggers and views, so all of
@@ -68,6 +73,9 @@ type restoredRequirement struct {
 // A restored TLS key that cannot be read is replaced, and identity.New and
 // the stores create what they find missing; none of those stops a start.
 var restoredStateRequirements = []restoredRequirement{
+	{"the restored portico.toml cannot be read as a valid configuration file", func(ctx context.Context, db *sql.DB, state string) error {
+		return configurationStoreForState(db, state).ValidateConfiguration(ctx, storagepaths.Path(state, "portico.toml"))
+	}},
 	{"the restored state has no usable server authority file; restore from a whole, unmodified backup folder, or move the whole state folder", func(_ context.Context, _ *sql.DB, state string) error {
 		_, e := readCurrentAuthority(state)
 		return e
@@ -100,6 +108,20 @@ var restoredStateRequirements = []restoredRequirement{
 	{"the restored mount configuration folder is not a folder Portico can use", func(_ context.Context, _ *sql.DB, state string) error {
 		return mounts.InspectPrivateDirectory(state)
 	}},
+}
+
+// Keep registration shared with normal startup so restore cannot omit a domain.
+func configurationStoreForState(db *sql.DB, state string) *operations.Store {
+	store := operations.New(db)
+	store.ConfigurationDomains = []operations.ConfigurationDomain{adminops.MaintenanceConfiguration{}, backup.Configuration{Store: backup.NewPolicyStore(db, state)}, metadata.Configuration{}}
+	return store
+}
+
+// A fresh loader checks the on-disk file without creating or changing state,
+// importing settings, or keeping a previously valid document after an error.
+func validateStateConfiguration(state string) error {
+	_, err := configfile.New(storagepaths.Path(state, "portico.toml")).Reload()
+	return err
 }
 
 // verifyRestoredState is what a restored state folder must pass before the

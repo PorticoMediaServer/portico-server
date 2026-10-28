@@ -230,6 +230,9 @@ export function projectSession(body) {
     generation: body.generation,
     mode: presentation.mode,
     presentationGeneration: presentation.generation,
+    qualityId: presentation.quality?.id ?? null,
+    videoAction: presentation.decision?.video?.action ?? null,
+    videoHeight: presentation.videoHeight ?? null,
     urlPresent: typeof presentation.url === 'string' && presentation.url.length > 0,
     urlPathPrefix: pathPrefix(presentation.url),
     linearPresent: !!linear,
@@ -249,11 +252,34 @@ export function watchSessions(page, sink = []) {
     const url = new URL(response.url());
     if (!url.pathname.startsWith('/v1/playback/sessions')) return;
     const entry = {at: new Date().toISOString(), status: response.status(), method: response.request().method(), path: url.pathname};
-    if (response.status() === 200) {
+    if ([200, 201, 202].includes(response.status())) {
       try { entry.session = projectSession(await response.json()); } catch { entry.bodyUnreadable = true; }
     }
     sink.push(entry);
     if (sink.length > 20) sink.shift();
   });
   return sink;
+}
+
+/** A paused key seek must move by the configured increment (or the remaining range). */
+export function seekEvidence(before, after, seconds) {
+  if (before?.paused !== true || after?.paused !== true) return {ok: false, reason: 'seek was not measured while paused'};
+  if (![before.currentTime, before.duration, after.currentTime, seconds].every(Number.isFinite)
+    || seconds <= 0 || before.duration - before.currentTime < 1) return {ok: false, reason: 'seek has no valid expected range'};
+  const target = Math.min(before.currentTime + seconds, before.duration);
+  return Math.abs(after.currentTime - target) <= 0.75
+    ? {ok: true, target}
+    : {ok: false, reason: `seek missed its expected target (${before.currentTime} -> ${after.currentTime}, expected ${target})`};
+}
+
+/** Decoding alone does not establish conversion: require the committed new plan. */
+export function transcodeEvidence(before, after) {
+  const presentation = after?.presentation;
+  if (!before?.id || after?.id !== before.id) return {ok: false, reason: 'quality change did not retain the playback session'};
+  if (!Number.isInteger(before.presentation?.generation) || !Number.isInteger(presentation?.generation)
+    || presentation.generation <= before.presentation.generation) return {ok: false, reason: 'quality change did not publish a new generation'};
+  if (presentation.mode !== 'stream' || presentation.decision?.video?.action !== 'transcode'
+    || presentation.quality?.id !== '240p' || !Number.isInteger(presentation.videoHeight)
+    || presentation.videoHeight <= 0 || presentation.videoHeight > 240) return {ok: false, reason: 'quality change did not commit a 240p video transcode'};
+  return {ok: true};
 }

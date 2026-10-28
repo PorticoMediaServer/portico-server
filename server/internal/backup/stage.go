@@ -43,7 +43,10 @@ type restoreMarker struct {
 	Source        Source   `json:"source"`
 	SchemaVersion int      `json:"schemaVersion"`
 	Files         []string `json:"files"`
-	PreRestore    string   `json:"preRestore,omitempty"`
+	// Preserved files were copied from the current state, not replaced by the
+	// incoming restore. They belong to the recovery copy only.
+	Preserved  []string `json:"preserved,omitempty"`
+	PreRestore string   `json:"preRestore,omitempty"`
 	// Reason is why a rolling_back restore is being rolled back.
 	Reason      string `json:"reason,omitempty"`
 	CompletedAt string `json:"completedAt,omitempty"`
@@ -68,6 +71,10 @@ func (s *Service) Stage(ctx context.Context, source Source) (StageResult, error)
 }
 
 func (s *Service) StageWithPassphrase(ctx context.Context, source Source, passphrase string) (StageResult, error) {
+	return s.stageWithPassphrase(ctx, source, passphrase, restoreIdentity{})
+}
+
+func (s *Service) stageWithPassphrase(ctx context.Context, source Source, passphrase string, work restoreIdentity) (StageResult, error) {
 	var out StageResult
 	if (source.BackupID == "") == (source.Path == "") {
 		return out, ErrSourceInvalid
@@ -94,7 +101,7 @@ func (s *Service) StageWithPassphrase(ctx context.Context, source Source, passph
 		return out, err
 	}
 	defer cleanup()
-	s.restoreProgress("verify-files", 0, 0)
+	s.restoreProgress(work, "verify-files", 0, 0)
 	srcDB, srcDir, files, manifest, err := s.resolveSource(source)
 	if err != nil {
 		return out, err
@@ -135,7 +142,7 @@ func (s *Service) StageWithPassphrase(ctx context.Context, source Source, passph
 			_ = os.RemoveAll(incoming)
 		}
 	}()
-	if _, err = copyOneFileContext(ctx, srcDB, filepath.Join(incoming, DatabaseName), DatabaseName, func(done, total int64) { s.restoreProgress("copy", done, total) }); err != nil {
+	if _, err = copyOneFileContext(ctx, srcDB, filepath.Join(incoming, DatabaseName), DatabaseName, func(done, total int64) { s.restoreProgress(work, "copy", done, total) }); err != nil {
 		if errors.Is(err, ErrIntegrity) {
 			return out, err
 		}
@@ -164,7 +171,7 @@ func (s *Service) StageWithPassphrase(ctx context.Context, source Source, passph
 			return out, err
 		}
 	}
-	s.restoreProgress("integrity", estimate, estimate)
+	s.restoreProgress(work, "integrity", estimate, estimate)
 	schemaVersion, err := persistence.InspectCandidate(ctx, filepath.Join(incoming, DatabaseName))
 	if err != nil {
 		return out, err
@@ -172,13 +179,7 @@ func (s *Service) StageWithPassphrase(ctx context.Context, source Source, passph
 	if err = syncRestoreDirectories(incoming, incoming, files); err != nil {
 		return out, err
 	}
-	marker := restoreMarker{State: markerStaged, Source: originalSource, SchemaVersion: schemaVersion, Files: files}
-	if progress := s.RestoreProgress(); progress != nil {
-		marker.JobID = progress.JobID
-		s.mu.Lock()
-		marker.OperationID = s.restoreOperation
-		s.mu.Unlock()
-	}
+	marker := restoreMarker{State: markerStaged, Source: originalSource, SchemaVersion: schemaVersion, Files: files, JobID: work.jobID, OperationID: work.operation}
 	if err = writeMarker(incoming, marker); err != nil {
 		return out, err
 	}

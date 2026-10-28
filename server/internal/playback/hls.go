@@ -95,6 +95,9 @@ type HLS struct {
 	// production, where measureDirectory runs; a test replaces it to count the
 	// walks a sweep actually performs. Nothing else writes it.
 	measure func(dir string) (int64, int, error)
+	// execute replaces only converter execution in tests. Set before starting
+	// a session; nil uses the ordinary confined child-process executor.
+	execute func(context.Context, mediaexec.Job) (error, string)
 	// producers joins every produce goroutine, so shutdown can wait for the
 	// converters it just cancelled instead of leaving them to be killed with the
 	// process and orphan their ffmpeg children.
@@ -704,7 +707,11 @@ func (h *HLS) produce(ctx context.Context, id string, from, generation int, owne
 				return err, ""
 			}
 		}
-		cmd, err := mediaexec.CommandContext(processCtx, mediaexec.Job{Executable: h.binary, Args: args, Files: input.ExtraFiles(), InputFD: input.MountFD, InputMount: input.MountPath, ReadPaths: input.ReadPaths(), WriteDirs: []string{dir}, Fonts: true, Hardware: conversionJobHardware(plan, stages)})
+		job := mediaexec.Job{Executable: h.binary, Args: args, Files: input.ExtraFiles(), InputFD: input.MountFD, InputMount: input.MountPath, ReadPaths: input.ReadPaths(), WriteDirs: []string{dir}, Fonts: true, Hardware: conversionJobHardware(plan, stages)}
+		if h.execute != nil {
+			return h.execute(processCtx, job)
+		}
+		cmd, err := mediaexec.CommandContext(processCtx, job)
 		if err != nil {
 			return err, ""
 		}

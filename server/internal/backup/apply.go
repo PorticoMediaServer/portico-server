@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log"
 	"os"
 	"path/filepath"
 	"portico.local/server/internal/storagepaths"
@@ -117,6 +118,15 @@ func ApplyStaged(ctx context.Context, state string, verify VerifyFunc) error {
 	if _, ok := stateFileNames(entries); !ok {
 		return ErrSourceInvalid
 	}
+	for _, name := range marker.Preserved {
+		if name == DatabaseName || name == DatabaseName+"-wal" {
+			return ErrSourceInvalid
+		}
+		entries = append(entries, FileEntry{Name: name})
+	}
+	if _, ok := stateFileNames(entries); !ok {
+		return ErrSourceInvalid
+	}
 	if marker.PreRestore != "" && (checkID(marker.PreRestore) != nil || !strings.HasSuffix(marker.PreRestore, "-pre-restore")) {
 		return ErrSourceInvalid
 	}
@@ -145,7 +155,7 @@ func ApplyStaged(ctx context.Context, state string, verify VerifyFunc) error {
 			// file is lost.
 			return err
 		}
-		marker.State, marker.PreRestore = markerStaged, ""
+		marker.State, marker.PreRestore, marker.Preserved = markerStaged, "", nil
 		if err = writeMarker(staged, marker); err != nil {
 			return err
 		}
@@ -228,19 +238,56 @@ func applyMarker(ctx context.Context, state, staged string, marker restoreMarker
 		}
 	}
 	_ = os.Remove(serverDB + "-shm")
+	// The old database also references files absent from the incoming backup.
+	// Keep those bytes independently of the live tree (where later GC may
+	// remove them). Journal the copy-only names before creating any copies so
+	// a preparing rollback never mistakes them for files that moved out.
+	marker.Preserved, err = currentOnlyStateNames(ctx, state, pre)
+	if err != nil {
+		return failPreparing(state, staged, marker, err)
+	}
+	if err = writeMarker(staged, marker); err != nil {
+		return failPreparing(state, staged, marker, err)
+	}
+	for _, name := range marker.Preserved {
+		if err = applyStep("preserving:" + name); err != nil {
+			return err
+		}
+		entry, copyErr := copyOneFileContext(ctx, storagepaths.Path(state, filepath.FromSlash(name)), filepath.Join(pre, filepath.FromSlash(name)), name, nil)
+		if copyErr != nil {
+			return failPreparing(state, staged, marker, copyErr)
+		}
+		if strings.HasPrefix(name, "Metadata/artwork/") {
+			digest := strings.TrimSuffix(strings.TrimPrefix(name, "Metadata/artwork/"), ".img")
+			if raw, err := hex.DecodeString(digest); err == nil && len(raw) == sha256.Size && !strings.EqualFold(entry.SHA256, digest) {
+				// Preserve the actual previous bytes, including pre-existing
+				// damage, without preventing a valid incoming repair restore.
+				log.Printf("warn: Previous artwork %s does not match its digest; its existing bytes were preserved in the pre-restore copy", name)
+			}
+		}
+	}
+	// Finish every SQLite read before hashing. A read-only WAL connection may
+	// leave a rebuildable shared-memory file; it is not part of the backup.
+	schemaVersion := storedVersion(filepath.Join(pre, DatabaseName))
+	if err = removeRecoverySharedMemory(pre); err != nil {
+		return failPreparing(state, staged, marker, err)
+	}
 	hashed, err := hashTree(pre)
 	if err != nil {
 		return failPreparing(state, staged, marker, err)
 	}
 	manifest := Manifest{
 		Format: Format, Version: Version,
-		SchemaVersion: storedVersion(filepath.Join(pre, DatabaseName)), CreatedAt: now.Format(time.RFC3339),
+		SchemaVersion: schemaVersion, CreatedAt: now.Format(time.RFC3339),
 		Kind: KindPreRestore, Files: hashed,
 	}
 	if err = writeManifest(pre, manifest); err != nil {
 		return failPreparing(state, staged, marker, err)
 	}
-	if err = syncRestoreDirectories(state, pre, marker.Files); err != nil {
+	if err = checkManifestHashes(pre, manifest.Files); err != nil {
+		return failPreparing(state, staged, marker, err)
+	}
+	if err = syncRestoreDirectories(state, pre, append(append([]string(nil), marker.Files...), marker.Preserved...)); err != nil {
 		return failPreparing(state, staged, marker, err)
 	}
 	// 3. The pre-restore backup is complete: switch.
@@ -297,6 +344,12 @@ func undoPreparing(state string, marker restoreMarker) error {
 			return err
 		}
 	}
+	if err := removePreservedCopies(pre, marker.Preserved); err != nil {
+		return err
+	}
+	if err := removeRecoverySharedMemory(pre); err != nil {
+		return err
+	}
 	_ = os.Remove(filepath.Join(pre, ManifestName))
 	return removeEmptyTree(pre)
 }
@@ -307,7 +360,7 @@ func failPreparing(state, staged string, marker restoreMarker, cause error) erro
 	if err := undoPreparing(state, marker); err != nil {
 		return errors.Join(cause, err)
 	}
-	marker.State, marker.PreRestore = markerStaged, ""
+	marker.State, marker.PreRestore, marker.Preserved = markerStaged, "", nil
 	_ = writeMarker(staged, marker)
 	return cause
 }
@@ -381,6 +434,9 @@ func finishCompleted(state, staged string, marker restoreMarker) error {
 	}
 	if marker.State == markerRolledBack && marker.PreRestore != "" {
 		pre := storagepaths.Path(state, BackupsDir, marker.PreRestore)
+		if err := removePreservedCopies(pre, marker.Preserved); err != nil {
+			return err
+		}
 		if err := os.Remove(filepath.Join(pre, ManifestName)); err != nil && !os.IsNotExist(err) {
 			return err
 		}
@@ -408,6 +464,26 @@ func finishCompleted(state, staged string, marker restoreMarker) error {
 		return err
 	}
 	return syncDirectory(state)
+}
+
+// These names were copied, never moved out of live state. Removing them after
+// rollback leaves the original bytes in place and lets the recovery directory
+// be removed only once every moved file has also returned.
+func removePreservedCopies(pre string, names []string) error {
+	for _, name := range names {
+		if err := os.Remove(filepath.Join(pre, filepath.FromSlash(name))); err != nil && !os.IsNotExist(err) {
+			return err
+		}
+	}
+	return nil
+}
+
+func removeRecoverySharedMemory(pre string) error {
+	err := os.Remove(filepath.Join(pre, DatabaseName+"-shm"))
+	if os.IsNotExist(err) {
+		return nil
+	}
+	return err
 }
 
 // File bytes were already flushed. Persist both rename directory entries

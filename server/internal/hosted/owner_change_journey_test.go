@@ -10,6 +10,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -128,42 +129,59 @@ func startOwnerBridge(t *testing.T, f *claimFixture) *repairBridge {
 }
 func (b *repairBridge) read() repairReply {
 	b.t.Helper()
+	reply, err := b.readResult()
+	if err != nil {
+		b.t.Fatal(err)
+	}
+	return reply
+}
+func (b *repairBridge) readResult() (repairReply, error) {
 	for b.out.Scan() {
 		line := b.out.Text()
 		if !strings.HasPrefix(line, "PORTICO_REPAIR_JSON:") {
 			b.diagnostics.WriteString(line + "\n")
+			continue
 		}
-		if strings.HasPrefix(line, "PORTICO_REPAIR_JSON:") {
-			var r repairReply
-			if json.Unmarshal([]byte(strings.TrimPrefix(line, "PORTICO_REPAIR_JSON:")), &r) != nil {
-				b.t.Fatal("bad producer reply")
-			}
-			return r
+		var reply repairReply
+		if err := json.Unmarshal([]byte(strings.TrimPrefix(line, "PORTICO_REPAIR_JSON:")), &reply); err != nil {
+			return repairReply{}, fmt.Errorf("bad producer reply: %w", err)
 		}
+		return reply, nil
 	}
-	b.t.Fatal("real Hosted bridge closed unexpectedly", b.diagnostics.String())
-	return repairReply{}
+	return repairReply{}, fmt.Errorf("real Hosted bridge closed unexpectedly: %v: %s", b.out.Err(), b.diagnostics.String())
 }
 func (b *repairBridge) call(action, path, token string, body any) repairReply {
 	b.t.Helper()
+	reply, err := b.callResult(action, path, token, body)
+	if err != nil {
+		b.t.Fatal(err)
+	}
+	return reply
+}
+func (b *repairBridge) callResult(action, path, token string, body any) (repairReply, error) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
-	raw, _ := json.Marshal(map[string]any{"Action": action, "Path": path, "Token": token, "Operation": path, "Body": body, "Method": func() string {
+	raw, err := json.Marshal(map[string]any{"Action": action, "Path": path, "Token": token, "Operation": path, "Body": body, "Method": func() string {
 		if path == "/v1/servers" {
 			return "GET"
 		}
 		return "POST"
 	}()})
-	if _, e := b.in.Write(append(raw, '\n')); e != nil {
-		b.t.Fatal(e)
+	if err != nil {
+		return repairReply{}, err
 	}
-	return b.read()
+	if _, err = b.in.Write(append(raw, '\n')); err != nil {
+		return repairReply{}, err
+	}
+	return b.readResult()
 }
 func (b *repairBridge) post(path, token string, body any, out any) error {
-	r := b.call("http", path, token, body)
+	r, err := b.callResult("http", path, token, body)
+	if err != nil {
+		return err
+	}
 	if r.Status < 200 || r.Status >= 300 {
-		b.t.Logf("actual producer %s status %d: %s", path, r.Status, string(r.Body))
-		return networking.ErrUnavailable
+		return fmt.Errorf("actual producer %s status %d: %w", path, r.Status, networking.ErrUnavailable)
 	}
 	if out != nil {
 		return json.Unmarshal(r.Body, out)
@@ -264,20 +282,35 @@ func ownerRepairHandler(t *testing.T, f *claimFixture, b *repairBridge) (*networ
 }
 func localClaimCall(t *testing.T, h *networking.ClaimHandler, token, path string, q any, want int) networking.ClaimStatus {
 	t.Helper()
-	raw, _ := json.Marshal(q)
-	r := httptest.NewRequest("POST", "http://127.0.0.1:32500/v1/networking/claim/"+path, bytes.NewReader(raw))
+	out, err := localClaimResult(context.Background(), h, token, path, q, want)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return out
+}
+
+// Worker requests return their failures to the test goroutine. Fatal/Goexit
+// inside a helper must never strand the caller waiting for a result.
+func localClaimResult(ctx context.Context, h *networking.ClaimHandler, token, path string, q any, want int) (networking.ClaimStatus, error) {
+	raw, err := json.Marshal(q)
+	if err != nil {
+		return networking.ClaimStatus{}, err
+	}
+	r := httptest.NewRequest("POST", "http://127.0.0.1:32500/v1/networking/claim/"+path, bytes.NewReader(raw)).WithContext(ctx)
 	r.Header.Set("Content-Type", "application/json")
 	r.Header.Set("Authorization", "Bearer "+token)
 	w := httptest.NewRecorder()
 	h.ServeHTTP(w, r)
 	if w.Code != want {
-		t.Fatalf("local claim %s status %d want %d: %s", path, w.Code, want, w.Body.String())
+		return networking.ClaimStatus{}, fmt.Errorf("local claim %s status %d want %d: %s", path, w.Code, want, w.Body.String())
 	}
 	var out networking.ClaimStatus
-	if want == 200 && json.Unmarshal(w.Body.Bytes(), &out) != nil {
-		t.Fatal("claim JSON")
+	if want == 200 {
+		if err := json.Unmarshal(w.Body.Bytes(), &out); err != nil {
+			return out, fmt.Errorf("claim JSON: %w", err)
+		}
 	}
-	return out
+	return out, nil
 }
 func TestOwnerChangeRepairActualProducerConsumer(t *testing.T) {
 	for _, scenario := range []string{"linked-collision", "name-collision", "concurrent-ambiguity", "success", "writer-failure", "success-member", "success-remove", "cancel", "decline", "expiry", "switch", "switch-existing-state"} {
@@ -463,13 +496,35 @@ func TestOwnerChangeRepairActualProducerConsumer(t *testing.T) {
 
 			if scenario == "concurrent-ambiguity" {
 				entered, release := make(chan struct{}), make(chan struct{})
+				var released sync.Once
+				unblock := func() { released.Do(func() { close(release) }) }
+				defer unblock()
+				request, stop := context.WithTimeout(ctx, 15*time.Second)
+				defer stop()
 				tr.loseOnce = true
-				tr.before = func() { close(entered); <-release }
-				done := make(chan networking.ClaimStatus, 1)
+				tr.before = func() {
+					close(entered)
+					select {
+					case <-release:
+					case <-request.Done():
+					}
+				}
+				type claimResult struct {
+					status networking.ClaimStatus
+					err    error
+				}
+				done := make(chan claimResult, 1)
 				go func() {
-					done <- localClaimCall(t, h, f.owner.AccessToken, "continue", map[string]any{"expected": status.Operation}, 503)
+					result, err := localClaimResult(request, h, f.owner.AccessToken, "continue", map[string]any{"expected": status.Operation}, 503)
+					done <- claimResult{result, err}
 				}()
-				<-entered
+				select {
+				case <-entered:
+				case result := <-done:
+					t.Fatalf("claim returned before finalization barrier: %v", result.err)
+				case <-request.Done():
+					t.Fatal("claim never reached finalization barrier", request.Err())
+				}
 				// These independent SQL writers race the real network finalization; none
 				// relies on an API preflight or an in-memory lock.
 				other, e := sql.Open("sqlite", storagepaths.Path(f.state, "server.sqlite"))
@@ -482,8 +537,15 @@ func TestOwnerChangeRepairActualProducerConsumer(t *testing.T) {
 						t.Fatalf("competing identity writer bypassed durable collision fence: %s: %v", query, e)
 					}
 				}
-				close(release)
-				<-done
+				unblock()
+				select {
+				case result := <-done:
+					if result.err != nil {
+						t.Fatal(result.err)
+					}
+				case <-request.Done():
+					t.Fatal("claim did not finish after finalization was released", request.Err())
+				}
 				tr.before = nil
 				var reserved bool
 				f.db.QueryRow(`SELECT owner_change_reserved FROM networking_claim_intents WHERE operation_id=?`, status.Operation.OperationID).Scan(&reserved)

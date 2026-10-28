@@ -140,8 +140,24 @@ func (s *Service) SweepQueues(ctx context.Context) {
 	}
 }
 
-// removeQueue deletes one queue's chunks a batch per write, then the queue.
+// removeQueue rechecks the selection and retires the queue before deleting any
+// chunks. Queue commands recheck ownership inside their writer, so a touch that
+// wins the race keeps the queue, and retirement that wins denies later writes.
+// A stopped sweep resumes from the durable "!" owner on its next pass.
 func (s *Service) removeQueue(ctx context.Context, id string) error {
+	now := s.now()
+	res, err := dbwork.ExecWrite(ctx, s.DB, dbwork.ClassBackgroundMedia, `UPDATE queues_v1
+ SET owner_id=CASE WHEN substr(owner_id,1,1)='!' THEN owner_id ELSE '!'||owner_id END
+ WHERE id=? AND owner_kind='device' AND (
+ substr(owner_id,1,1)='!' OR
+ (substr(owner_id,1,1)='~' AND created_ms<?) OR
+ (substr(owner_id,1,1) NOT IN('~','!') AND (updated_ms<? OR NOT EXISTS(SELECT 1 FROM identity_devices d WHERE d.id=queues_v1.owner_id))))`, id, now.Add(-stagedQueueLifetime).UnixMilli(), now.Add(-queueIdleLifetime).UnixMilli())
+	if err != nil {
+		return err
+	}
+	if n, err := res.RowsAffected(); err != nil || n == 0 {
+		return err
+	}
 	for {
 		res, err := dbwork.ExecWrite(ctx, s.DB, dbwork.ClassBackgroundMedia, `DELETE FROM queue_v1_chunks WHERE (snapshot_id,chunk_no) IN (SELECT c.snapshot_id,c.chunk_no FROM queue_v1_snapshots sn JOIN queue_v1_chunks c ON c.snapshot_id=sn.id WHERE sn.queue_id=? LIMIT ?)`, id, sweepChunkBatch)
 		if err != nil {
@@ -151,6 +167,6 @@ func (s *Service) removeQueue(ctx context.Context, id string) error {
 			break
 		}
 	}
-	_, err := dbwork.ExecWrite(ctx, s.DB, dbwork.ClassBackgroundMedia, `DELETE FROM queues_v1 WHERE id=?`, id)
+	_, err = dbwork.ExecWrite(ctx, s.DB, dbwork.ClassBackgroundMedia, `DELETE FROM queues_v1 WHERE id=? AND owner_kind='device' AND substr(owner_id,1,1)='!'`, id)
 	return err
 }

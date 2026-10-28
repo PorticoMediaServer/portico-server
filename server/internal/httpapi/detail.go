@@ -79,7 +79,15 @@ func (d Dependencies) detailRoutes(mux *http.ServeMux) {
 		// it takes to build one. The viewer's authority fence is part of the
 		// validator, so a restriction change invalidates the client's copy.
 		if revision, revisionErr := d.Catalog.WithContext(r.Context()).ContentRevision(library, identity.PersonalKey(p.Viewer)); revisionErr == nil {
-			if conditional(w, r, responseTag("detail", r.PathValue("id"), fence, number(revision.Catalog), number(revision.Viewer))) {
+			// Analysis edits and detections have their own revision; they do not
+			// invalidate the whole library. Include the same source/policy fence
+			// used by the markers in the body before answering a conditional read.
+			markerRevision, markerErr := mediaanalysis.ViewerMarkerRevision(r.Context(), d.DB, d.markerAccess(p, library, r.PathValue("id"), fence), "")
+			if markerErr != nil {
+				failure(w, markerErr)
+				return
+			}
+			if conditional(w, r, responseTag("detail", r.PathValue("id"), fence, number(revision.Catalog), number(revision.Viewer), markerRevision)) {
 				return
 			}
 		}

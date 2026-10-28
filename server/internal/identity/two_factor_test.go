@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/base32"
 	"errors"
+	"fmt"
 	"portico.local/server/internal/dbwork"
 	"testing"
 	"time"
@@ -18,6 +19,58 @@ func currentTOTP(t *testing.T, secret string) string {
 		t.Fatal(e)
 	}
 	return totpCode(key, uint64(time.Now().Unix()/totpPeriod))
+}
+
+// wrongTOTP excludes every code the verifier could accept before this request
+// expires, including both drift steps. A six-digit zero is a valid TOTP too.
+func wrongTOTP(t *testing.T, ctx context.Context, secret string) string {
+	t.Helper()
+	deadline, ok := ctx.Deadline()
+	if !ok {
+		t.Fatal("wrong-code fixture requires a bounded request")
+	}
+	return wrongTOTPInWindow(t, secret, time.Now(), deadline)
+}
+
+func wrongTOTPInWindow(t *testing.T, secret string, first, last time.Time) string {
+	t.Helper()
+	key, err := base32.StdEncoding.WithPadding(base32.NoPadding).DecodeString(secret)
+	if err != nil || last.Before(first) {
+		t.Fatal("invalid wrong-code fixture", err)
+	}
+	accepted := make(map[string]bool)
+	for step := first.Unix()/totpPeriod - totpDrift; step <= last.Unix()/totpPeriod+totpDrift; step++ {
+		if step >= 0 {
+			accepted[totpCode(key, uint64(step))] = true
+		}
+	}
+	for n := 0; n < 1_000_000; n++ {
+		code := fmt.Sprintf("%06d", n)
+		if !accepted[code] {
+			return code
+		}
+	}
+	t.Fatal("fixture window contains every six-digit code")
+	return ""
+}
+
+func TestWrongTOTPFixtureExcludesTheFullWindowIncludingZero(t *testing.T) {
+	secret := base32.StdEncoding.WithPadding(base32.NoPadding).EncodeToString([]byte("12345678901234567890"))
+	// This fixed reference-key step produces the valid code 000000.
+	first := time.Unix(349495*totpPeriod, 0)
+	last := first.Add(time.Minute)
+	if _, ok := totpStep(secret, "000000", first, 0); !ok {
+		t.Fatal("all-zero reference TOTP must remain valid")
+	}
+	wrong := wrongTOTPInWindow(t, secret, first, last)
+	if len(wrong) != totpDigits || wrong == "000000" {
+		t.Fatal("wrong-code fixture selected a valid zero code", wrong)
+	}
+	for at := first; !at.After(last); at = at.Add(time.Second) {
+		if _, ok := totpStep(secret, wrong, at, 0); ok {
+			t.Fatal("wrong code became valid inside its request window", wrong, at)
+		}
+	}
 }
 
 func TestAccountChangePasswordHashRunsOutsideWriterAndCooloffSkipsSlots(t *testing.T) {
@@ -121,7 +174,8 @@ func TestTOTPMatchesTheReferenceVectorAndDoesNotReplay(t *testing.T) {
 }
 
 func TestTwoFactorEnrolmentIsNotInForceUntilVerified(t *testing.T) {
-	ctx := context.Background()
+	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
+	defer cancel()
 	s, _, login := directFixture(t)
 	state, e := s.TwoFactor(ctx, login.AccountToken)
 	if e != nil || state.Enabled || state.PendingEnrolment {
@@ -149,7 +203,7 @@ func TestTwoFactorEnrolmentIsNotInForceUntilVerified(t *testing.T) {
 	if e != nil || second.Challenge != nil {
 		t.Fatalf("a pending enrolment gated sign-in: %v %+v", e, second.Challenge)
 	}
-	if _, e = s.VerifyTwoFactor(ctx, login.AccountToken, "Testing1!", "000000"); !errors.Is(e, ErrFactorInvalid) {
+	if _, e = s.VerifyTwoFactor(ctx, login.AccountToken, "Testing1!", wrongTOTP(t, ctx, enrolment.Secret)); !errors.Is(e, ErrFactorInvalid) {
 		t.Fatalf("a wrong code completed enrolment: %v", e)
 	}
 	if _, e = s.VerifyTwoFactor(ctx, login.AccountToken, "Testing1!", currentTOTP(t, enrolment.Secret)); e != nil {
@@ -165,7 +219,8 @@ func TestTwoFactorEnrolmentIsNotInForceUntilVerified(t *testing.T) {
 }
 
 func TestSignInChallengeReplacesTheAccountSessionUntilTheFactorIsProven(t *testing.T) {
-	ctx := context.Background()
+	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
+	defer cancel()
 	s, _, login := directFixture(t)
 	enrolment, e := s.EnrolTwoFactor(ctx, login.AccountToken, "Testing1!")
 	if e != nil {
@@ -191,7 +246,7 @@ func TestSignInChallengeReplacesTheAccountSessionUntilTheFactorIsProven(t *testi
 	if _, e = s.DirectMe(ctx, challenged.Challenge.Token); !errors.Is(e, ErrUnauthorized) {
 		t.Fatal("a challenge token was accepted as an account session")
 	}
-	if _, e = s.CompleteSignInChallenge(ctx, challenged.Challenge.Token, "000000", true); !errors.Is(e, ErrFactorInvalid) {
+	if _, e = s.CompleteSignInChallenge(ctx, challenged.Challenge.Token, wrongTOTP(t, ctx, enrolment.Secret), true); !errors.Is(e, ErrFactorInvalid) {
 		t.Fatalf("a wrong code completed a challenge: %v", e)
 	}
 	// Enrolment consumed the current step, and the replay fence refuses a code at
@@ -220,7 +275,8 @@ func TestSignInChallengeReplacesTheAccountSessionUntilTheFactorIsProven(t *testi
 }
 
 func TestSignInChallengeAttemptsAreBounded(t *testing.T) {
-	ctx := context.Background()
+	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
+	defer cancel()
 	s, _, login := directFixture(t)
 	enrolment, e := s.EnrolTwoFactor(ctx, login.AccountToken, "Testing1!")
 	if e != nil {
@@ -234,7 +290,7 @@ func TestSignInChallengeAttemptsAreBounded(t *testing.T) {
 		t.Fatal(e)
 	}
 	for i := 0; i < signInChallengeAttempts; i++ {
-		if _, e = s.CompleteSignInChallenge(ctx, challenged.Challenge.Token, "000000", true); !errors.Is(e, ErrFactorInvalid) {
+		if _, e = s.CompleteSignInChallenge(ctx, challenged.Challenge.Token, wrongTOTP(t, ctx, enrolment.Secret), true); !errors.Is(e, ErrFactorInvalid) {
 			t.Fatalf("attempt %d: %v", i, e)
 		}
 	}

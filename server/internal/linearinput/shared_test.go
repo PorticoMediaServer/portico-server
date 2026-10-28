@@ -235,7 +235,20 @@ func TestSharedChannelRejoinDuringGraceRetainsUpstream(t *testing.T) {
 	}
 	closing := make(chan error, 1)
 	go func() { closing <- first.Close() }()
-	time.Sleep(100 * time.Millisecond)
+	// Rejoin only after the last lease actually entered its grace period.
+	deadline := time.NewTimer(time.Second)
+	defer deadline.Stop()
+	tick := time.NewTicker(time.Millisecond)
+	defer tick.Stop()
+	for !linearinput.SharedInputInGraceForTest(in.SourceID, in.ChannelID) {
+		select {
+		case e := <-closing:
+			t.Fatalf("last reader closed before grace was observed: %v", e)
+		case <-deadline.C:
+			t.Fatal("last reader did not enter its grace period")
+		case <-tick.C:
+		}
+	}
 	second, e := linearinput.Open(ctx, in)
 	if e != nil {
 		t.Fatal(e)

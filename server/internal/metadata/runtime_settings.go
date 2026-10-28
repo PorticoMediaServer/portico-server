@@ -176,7 +176,7 @@ func validProviderCredential(v *string) bool {
 	return true
 }
 func (s *Service) UpdateMetadataSettings(ctx context.Context, in MetadataSettingsUpdate, authorize func(*sql.Tx) error) (MetadataSettings, error) {
-	if in.ExpectedRevision < 1 || in.LocalArtworkLimitBytes < 1 || in.LocalArtworkLimitBytes > 1<<50 || !validProviderCredential(in.TMDBReadToken) || !validProviderCredential(in.TVDBProjectKey) || !validProviderCredential(in.OpenSubtitlesAPIKey) || !validSubtitleAccount(in.OpenSubtitlesUsername) || !validSubtitleAccount(in.OpenSubtitlesPassword) || in.ArtworkMaxEdge != nil && !validArtworkEdge(*in.ArtworkMaxEdge) {
+	if !validMetadataSettingsUpdate(in) {
 		return MetadataSettings{}, ErrRepairInput
 	}
 	write, e := dbwork.Begin(ctx, s.db, dbwork.ClassInteractive)
@@ -268,13 +268,17 @@ func ReadMetadataSettingsTx(ctx context.Context, tx *sql.Tx) (MetadataSettings, 
 	return out, err
 }
 
+func validMetadataSettingsUpdate(in MetadataSettingsUpdate) bool {
+	return !(in.ExpectedRevision < 1 || in.LocalArtworkLimitBytes < 1 || in.LocalArtworkLimitBytes > 1<<50 || !validProviderCredential(in.TMDBReadToken) || !validProviderCredential(in.TVDBProjectKey) || !validProviderCredential(in.OpenSubtitlesAPIKey) || !validSubtitleAccount(in.OpenSubtitlesUsername) || !validSubtitleAccount(in.OpenSubtitlesPassword) || in.ArtworkMaxEdge != nil && !validArtworkEdge(*in.ArtworkMaxEdge))
+}
+
 // ApplyMetadataSettingsTx is the single validated CAS writer. The caller authorizes
 // and commits; provider installation and file projection happen only after commit.
 func ApplyMetadataSettingsTx(ctx context.Context, tx *sql.Tx, in MetadataSettingsUpdate, _ time.Time) (MetadataSettings, error) {
 	if tx == nil {
 		return MetadataSettings{}, ErrRepairInput
 	}
-	if in.ExpectedRevision < 1 || in.LocalArtworkLimitBytes < 1 || in.LocalArtworkLimitBytes > 1<<50 || !validProviderCredential(in.TMDBReadToken) || !validProviderCredential(in.TVDBProjectKey) || !validProviderCredential(in.OpenSubtitlesAPIKey) || !validSubtitleAccount(in.OpenSubtitlesUsername) || !validSubtitleAccount(in.OpenSubtitlesPassword) || in.ArtworkMaxEdge != nil && !validArtworkEdge(*in.ArtworkMaxEdge) {
+	if !validMetadataSettingsUpdate(in) {
 		return MetadataSettings{}, ErrRepairInput
 	}
 	current, tmdb, tvdb, subs, e := readMetadataSettingsWithSubtitles(ctx, tx)

@@ -102,8 +102,10 @@ type Service struct {
 	db                               *sql.DB
 	serverID, setupPath              string
 	hashSlots                        chan struct{}
-	setupHashKey                     []byte
-	SetupClaimReadyTx                func(context.Context, *sql.Tx) (bool, error)
+	// A contention observer, installed before use by deterministic admission tests.
+	hashSlotWaiting   func()
+	setupHashKey      []byte
+	SetupClaimReadyTx func(context.Context, *sql.Tx) (bool, error)
 	// Integration must wire this before exposing descendant v2 authority.
 	OnFamilyRevokedTx func(context.Context, *sql.Tx, FamilyState) error
 	// Runs inside the accepting owner-transfer transaction, after its guards.
@@ -135,6 +137,9 @@ func (s *Service) takeHashSlot(ctx context.Context) error {
 	}
 	wait := time.NewTimer(hashSlotWait)
 	defer wait.Stop()
+	if s.hashSlotWaiting != nil {
+		s.hashSlotWaiting()
+	}
 	select {
 	case s.hashSlots <- struct{}{}:
 		return nil

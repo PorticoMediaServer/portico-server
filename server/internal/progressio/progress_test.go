@@ -2,99 +2,120 @@ package progressio
 
 import (
 	"context"
+	"errors"
 	"io"
 	"net/http"
-	"net/http/httptest"
 	"testing"
+	"testing/synctest"
 	"time"
 )
 
+type progressRoundTripper func(*http.Request) (*http.Response, error)
+
+func (f progressRoundTripper) RoundTrip(r *http.Request) (*http.Response, error) { return f(r) }
+
 func TestSlowResponseExtendsDeadlineAndStallEnds(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		for i := 0; i < 8; i++ {
-			_, _ = w.Write([]byte("x"))
-			w.(http.Flusher).Flush()
-			select {
-			case <-time.After(10 * time.Millisecond):
-			case <-r.Context().Done():
-				return
+	for _, stall := range []bool{false, true} {
+		synctest.Test(t, func(t *testing.T) {
+			// Keep the actual Transport/body wrappers, but use an in-process
+			// producer so all byte arrivals and deadlines use the virtual clock.
+			base := progressRoundTripper(func(r *http.Request) (*http.Response, error) {
+				reader, writer := io.Pipe()
+				stop := context.AfterFunc(r.Context(), func() { writer.CloseWithError(context.Cause(r.Context())) })
+				go func() {
+					defer writer.Close()
+					defer stop()
+					for range 8 {
+						if _, err := writer.Write([]byte("x")); err != nil {
+							return
+						}
+						time.Sleep(10 * time.Millisecond)
+					}
+					if stall {
+						<-r.Context().Done()
+						writer.CloseWithError(context.Cause(r.Context()))
+					}
+				}()
+				return &http.Response{StatusCode: 200, Header: make(http.Header), Body: reader}, nil
+			})
+			client := &http.Client{Transport: Transport{Base: base, Idle: 50 * time.Millisecond, Overall: time.Second}}
+			response, err := client.Get("http://fixture/progress")
+			if err != nil {
+				t.Fatal(err)
 			}
-		}
-		if r.URL.Path == "/stall" {
-			<-r.Context().Done()
-		}
-	}))
-	defer server.Close()
-	client := &http.Client{Transport: Transport{Base: server.Client().Transport, Idle: 50 * time.Millisecond, Overall: time.Second}}
-	response, err := client.Get(server.URL)
-	if err != nil {
-		t.Fatal(err)
-	}
-	data, err := io.ReadAll(response.Body)
-	response.Body.Close()
-	if err != nil || len(data) != 8 {
-		t.Fatalf("progressing body failed %q %v", data, err)
-	}
-	response, err = client.Get(server.URL + "/stall")
-	if err != nil {
-		t.Fatal(err)
-	}
-	_, err = io.ReadAll(response.Body)
-	response.Body.Close()
-	if err == nil {
-		t.Fatal("stalled response succeeded")
+			data, err := io.ReadAll(response.Body)
+			response.Body.Close()
+			if len(data) != 8 {
+				t.Fatalf("progressing body lost bytes: %q %v", data, err)
+			}
+			if stall && !errors.Is(err, context.DeadlineExceeded) || !stall && err != nil {
+				t.Fatalf("stall=%v: %v", stall, err)
+			}
+		})
 	}
 }
+
 func TestOverallSafetyCapAndParentCancellation(t *testing.T) {
-	ctx, watch := New(context.Background(), time.Second, 20*time.Millisecond)
-	defer watch.Close()
-	<-ctx.Done()
-	parent, cancel := context.WithCancel(context.Background())
-	ctx, other := New(parent, time.Second, 0)
-	defer other.Close()
-	cancel()
-	select {
-	case <-ctx.Done():
-	case <-time.After(time.Second):
-		t.Fatal("lost parent cancellation")
-	}
+	synctest.Test(t, func(t *testing.T) {
+		ctx, watch := New(context.Background(), time.Second, 20*time.Millisecond)
+		defer watch.Close()
+		time.Sleep(19 * time.Millisecond)
+		if ctx.Err() != nil {
+			t.Fatal("overall cap fired early")
+		}
+		time.Sleep(time.Millisecond)
+		synctest.Wait()
+		if !errors.Is(context.Cause(ctx), context.DeadlineExceeded) {
+			t.Fatal("overall cap did not expire", context.Cause(ctx))
+		}
+		parent, cancel := context.WithCancel(context.Background())
+		ctx, other := New(parent, time.Second, 0)
+		defer other.Close()
+		cancel()
+		if !errors.Is(context.Cause(ctx), context.Canceled) {
+			t.Fatal("lost parent cancellation")
+		}
+	})
 }
 
 func TestWaitingForAdmissionDoesNotStartIdleTimer(t *testing.T) {
-	ctx, watch := NewDormant(context.Background(), 20*time.Millisecond)
-	defer watch.Close()
-	time.Sleep(40 * time.Millisecond)
-	if ctx.Err() != nil {
-		t.Fatal("resource queue consumed the producer deadline")
-	}
-	watch.Ping()
-	select {
-	case <-ctx.Done():
-	case <-time.After(time.Second):
-		t.Fatal("started producer had no idle bound")
-	}
+	synctest.Test(t, func(t *testing.T) {
+		ctx, watch := NewDormant(context.Background(), 20*time.Millisecond)
+		defer watch.Close()
+		time.Sleep(40 * time.Millisecond)
+		if ctx.Err() != nil {
+			t.Fatal("resource queue consumed the producer deadline")
+		}
+		watch.Ping()
+		time.Sleep(20 * time.Millisecond)
+		synctest.Wait()
+		if !errors.Is(context.Cause(ctx), context.DeadlineExceeded) {
+			t.Fatal("started producer had no idle bound", context.Cause(ctx))
+		}
+	})
 }
 
 func TestQueuedExpiryDoesNotCancelNewProgress(t *testing.T) {
-	ctx, watch := New(context.Background(), 100*time.Millisecond, 0)
-	defer watch.Close()
-	// Queue actual progress first, then let the old callback queue on the same
-	// mutex. Go's mutex hands off to the long-waiting progress goroutine first.
-	watch.mu.Lock()
-	started, pinged := make(chan struct{}), make(chan struct{})
-	go func() { close(started); watch.Ping(); close(pinged) }()
-	<-started
-	time.Sleep(160 * time.Millisecond)
-	watch.mu.Unlock()
-	<-pinged
-	select {
-	case <-ctx.Done():
-		t.Fatal("queued expiry cancelled newly progressing work")
-	case <-time.After(20 * time.Millisecond):
-	}
-	select {
-	case <-ctx.Done():
-	case <-time.After(time.Second):
-		t.Fatal("real idle stall did not expire")
-	}
+	synctest.Test(t, func(t *testing.T) {
+		ctx, watch := New(context.Background(), 100*time.Millisecond, 0)
+		defer watch.Close()
+		// Hold back the old delivery, then invoke that same expiry callback
+		// after new bytes arrive. No mutex fairness or scheduler order is assumed.
+		watch.timer.Stop()
+		time.Sleep(100 * time.Millisecond)
+		watch.Ping()
+		watch.expireIdle()
+		if ctx.Err() != nil {
+			t.Fatal("queued expiry cancelled newly progressing work")
+		}
+		time.Sleep(99 * time.Millisecond)
+		if ctx.Err() != nil {
+			t.Fatal("renewed idle deadline fired early")
+		}
+		time.Sleep(time.Millisecond)
+		synctest.Wait()
+		if !errors.Is(context.Cause(ctx), context.DeadlineExceeded) {
+			t.Fatal("real idle stall did not expire", context.Cause(ctx))
+		}
+	})
 }

@@ -136,18 +136,16 @@ func (p *PolicyStore) Update(ctx context.Context, patch SettingsPatch) (Settings
 	}
 	return out, e
 }
-func (p *PolicyStore) UpdateTx(ctx context.Context, tx *sql.Tx, patch SettingsPatch) (Settings, error) {
-	s, sealed, e := p.read(ctx, tx)
-	if e != nil {
-		return s, e
-	}
+
+// prepareSettings checks the non-secret configuration without creating paths.
+func (p *PolicyStore) prepareSettings(s Settings, patch SettingsPatch) (Settings, error) {
 	if patch.BackupFolder != nil {
 		s.BackupFolder = *patch.BackupFolder
 		if s.BackupFolder == "" {
 			s.BackupFolder = filepath.Join(p.state, BackupsDir)
 		}
 	}
-	if e = ValidateDirectory(p.state, s.BackupFolder); e != nil {
+	if e := validateDirectory(p.state, s.BackupFolder, false); e != nil {
 		return s, e
 	}
 	if patch.IncludeArtwork != nil {
@@ -155,6 +153,18 @@ func (p *PolicyStore) UpdateTx(ctx context.Context, tx *sql.Tx, patch SettingsPa
 	}
 	if patch.PassphraseProtected != nil {
 		s.PassphraseProtected = *patch.PassphraseProtected
+	}
+	return s, nil
+}
+
+func (p *PolicyStore) UpdateTx(ctx context.Context, tx *sql.Tx, patch SettingsPatch) (Settings, error) {
+	s, sealed, e := p.read(ctx, tx)
+	if e != nil {
+		return s, e
+	}
+	s, e = p.prepareSettings(s, patch)
+	if e != nil {
+		return s, e
 	}
 	if patch.Passphrase != nil {
 		if len(*patch.Passphrase) < 12 || len(*patch.Passphrase) > 1024 {
@@ -181,11 +191,15 @@ func (p *PolicyStore) UpdateTx(ctx context.Context, tx *sql.Tx, patch SettingsPa
 		prefix := append(append([]byte(nil), policyMaterialMagic...), material.salt[:]...)
 		sealed = a.Seal(append(prefix, nonce...), nonce, material.key, prefix)
 	}
-	if s.PassphraseProtected && len(sealed) == 0 {
-		return s, ErrInvalid
+	s.PassphraseSet = len(sealed) > 0
+	if e = validateProtection(s); e != nil {
+		return s, e
 	}
 	if !s.PassphraseProtected {
 		sealed = nil
+	}
+	if e = ValidateDirectory(p.state, s.BackupFolder); e != nil {
+		return s, e
 	}
 	folder := s.BackupFolder
 	if folder == filepath.Join(p.state, BackupsDir) {
@@ -254,12 +268,23 @@ func (p *PolicyStore) secretKey(create bool) ([]byte, error) {
 
 // User-picked destinations must already exist and must not be data, metadata,
 // cache, keys, a filesystem root, or a link. Only minted backup children are written.
+func validateProtection(s Settings) error {
+	if s.PassphraseProtected && !s.PassphraseSet {
+		return ErrInvalid
+	}
+	return nil
+}
+
 func ValidateDirectory(state, dir string) error {
+	return validateDirectory(state, dir, true)
+}
+
+func validateDirectory(state, dir string, create bool) error {
 	if !filepath.IsAbs(dir) || filepath.Clean(dir) != dir || filepath.Dir(dir) == dir {
 		return ErrInvalid
 	}
 	if dir == filepath.Join(state, BackupsDir) {
-		return canonicalDirectory(dir, true)
+		return inspectCanonicalDirectory(dir, create, true)
 	}
 	if e := canonicalDirectory(dir, false); e != nil {
 		return ErrInvalid
@@ -275,10 +300,15 @@ func ValidateDirectory(state, dir string) error {
 	return nil
 }
 func canonicalDirectory(dir string, create bool) error {
+	return inspectCanonicalDirectory(dir, create, create)
+}
+
+// allowMissing permits the portable default folder before its first backup.
+func inspectCanonicalDirectory(dir string, create, allowMissing bool) error {
 	for p := dir; ; p = filepath.Dir(p) {
 		info, e := os.Lstat(p)
 		if e != nil {
-			if !create || !errors.Is(e, os.ErrNotExist) {
+			if !allowMissing || !errors.Is(e, os.ErrNotExist) {
 				return e
 			}
 		} else if !info.IsDir() || info.Mode()&os.ModeSymlink != 0 {

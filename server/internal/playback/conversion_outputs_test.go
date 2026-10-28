@@ -353,6 +353,20 @@ func TestConvertedFragmentClockSurvivesSeeks(t *testing.T) {
 	}
 	for _, codec := range []string{"h264", "hevc", "av1", "flac", "opus"} {
 		t.Run(codec, func(t *testing.T) {
+			// Qualify the optional codec from inventory before exercising planning.
+			// A planner error after this point is a regression, not an environment skip.
+			candidates := map[string][]string{
+				"h264": {"libx264"}, "hevc": {"libx265"},
+				"av1":  {"libsvtav1", "libaom-av1", "librav1e"},
+				"flac": {"flac"}, "opus": {"libopus"},
+			}[codec]
+			available := false
+			for _, encoder := range candidates {
+				available = available || facts.Encoders[encoder]
+			}
+			if !available {
+				decodertest.Unavailable(t, fmt.Sprintf("qualified FFmpeg has no %s encoder", codec))
+			}
 			audio := codec == "flac" || codec == "opus"
 			target := decoder.ConversionTarget{VideoCodec: codec, RateControl: "quality", Width: 160, Height: 90, FrameRate: 24, Packaging: "fmp4_hls"}
 			request := decoder.ConversionRequest{Target: &target, ConvertVideo: true, SoftwarePreset: "ultrafast", Toolchain: &facts}
@@ -365,7 +379,7 @@ func TestConvertedFragmentClockSurvivesSeeks(t *testing.T) {
 			}
 			graph, err := decoder.BuildConversion(request)
 			if err != nil {
-				t.Skip(err)
+				t.Fatalf("qualified %s conversion plan failed: %v", codec, err)
 			}
 			dir := t.TempDir()
 			firstPTS := 0.0

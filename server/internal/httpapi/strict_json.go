@@ -14,19 +14,34 @@ import (
 
 // errStrictJSON is a body strictDecode refused (400 invalid_request).
 var errStrictJSON = requestinput.New("invalid request body")
+var errStrictMediaType = requestinput.New("send application/json with UTF-8 encoding")
 
 func strictDecode(w http.ResponseWriter, r *http.Request, out any) error {
-	media, params, err := mime.ParseMediaType(r.Header.Get("Content-Type"))
-	if err != nil || media != "application/json" {
+	if err := strictDecodeLimit(w, r, out, 1<<20); err != nil {
 		return errStrictJSON
 	}
-	for key, value := range params {
-		if key != "charset" || value != "utf-8" {
-			return errStrictJSON
+	return nil
+}
+
+// strictDecodeLimit keeps the shared document/field checks while allowing an
+// edge to retain its own body limit and distinguish media/size refusals.
+func strictDecodeLimit(w http.ResponseWriter, r *http.Request, out any, limit int64) error {
+	if contentType := r.Header.Get("Content-Type"); contentType != "" {
+		media, params, err := mime.ParseMediaType(contentType)
+		if err != nil || media != "application/json" {
+			return errStrictMediaType
+		}
+		for key, value := range params {
+			if key != "charset" || !strings.EqualFold(value, "utf-8") {
+				return errStrictMediaType
+			}
 		}
 	}
-	raw, err := io.ReadAll(http.MaxBytesReader(w, r.Body, 1<<20))
-	if err != nil || !utf8.Valid(raw) {
+	raw, err := io.ReadAll(http.MaxBytesReader(w, r.Body, limit))
+	if err != nil {
+		return err
+	}
+	if !utf8.Valid(raw) {
 		return errStrictJSON
 	}
 	tokens := json.NewDecoder(bytes.NewReader(raw))

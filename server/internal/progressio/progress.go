@@ -46,25 +46,29 @@ func (w *Watch) Ping() {
 	if !w.closed {
 		w.lastProgress = time.Now()
 		if w.timer == nil {
-			w.timer = time.AfterFunc(w.idle, func() {
-				w.mu.Lock()
-				defer w.mu.Unlock()
-				if !w.closed {
-					// Reset cannot stop a callback that has already started and
-					// is waiting for this mutex. Recheck actual byte/work progress.
-					if remaining := time.Until(w.lastProgress.Add(w.idle)); remaining > 0 {
-						w.timer.Reset(remaining)
-						return
-					}
-					w.closed = true
-					w.expire()
-				}
-			})
+			w.timer = time.AfterFunc(w.idle, w.expireIdle)
 		} else {
 			w.timer.Reset(w.idle)
 		}
 	}
 }
+
+// expireIdle is also called by an already dispatched timer after Ping resets it.
+func (w *Watch) expireIdle() {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	if !w.closed {
+		// Reset cannot stop a callback that has already started and
+		// is waiting for this mutex. Recheck actual byte/work progress.
+		if remaining := time.Until(w.lastProgress.Add(w.idle)); remaining > 0 {
+			w.timer.Reset(remaining)
+			return
+		}
+		w.closed = true
+		w.expire()
+	}
+}
+
 func (w *Watch) Close() {
 	w.mu.Lock()
 	defer w.mu.Unlock()

@@ -335,6 +335,9 @@ func refreshBackupDatabaseManifest(t *testing.T, folder string) {
 func startable(t *testing.T, state string) error {
 	t.Helper()
 	ctx := context.Background()
+	if err := validateStateConfiguration(state); err != nil {
+		return err
+	}
 	runner, e := openCurrentAuthority(state)
 	if e != nil {
 		return e
@@ -396,6 +399,15 @@ func startable(t *testing.T, state string) error {
 func TestRestoreIsRefusedForEveryMissingStartupRequirement(t *testing.T) {
 	authority := "Keys/supervisor/authority-incarnation.v1"
 	cases := map[string]func(t *testing.T, state, folder string){
+		"configuration is invalid TOML": func(t *testing.T, _, folder string) {
+			addBackupFile(t, folder, "portico.toml", []byte("[unterminated"))
+		},
+		"configuration has a value of the wrong type": func(t *testing.T, _, folder string) {
+			addBackupFile(t, folder, "portico.toml", []byte("[backup]\ninclude_artwork = \"often\"\n"))
+		},
+		"configuration has an unknown choice": func(t *testing.T, _, folder string) {
+			addBackupFile(t, folder, "portico.toml", []byte("[general]\nheavy_work = \"sometimes\"\n"))
+		},
 		"authority file is not a valid value": func(t *testing.T, _, folder string) {
 			replaceBackupFile(t, folder, authority, []byte(strings.Repeat("z", 64)))
 		},
@@ -500,6 +512,58 @@ func TestRestoreIsRefusedForEveryMissingStartupRequirement(t *testing.T) {
 				t.Fatalf("the refusal was not recorded for the owner: %+v %v", last, e)
 			}
 		})
+	}
+}
+
+func TestConfigurationValidationDoesNotCreateOrChangeState(t *testing.T) {
+	state := t.TempDir()
+	path := storagepaths.Path(state, "portico.toml")
+	if err := validateStateConfiguration(state); err != nil {
+		t.Fatal("missing optional configuration was refused", err)
+	}
+	if _, err := os.Stat(path); !os.IsNotExist(err) {
+		t.Fatal("validation created configuration", err)
+	}
+	for _, raw := range [][]byte{[]byte("[unterminated"), []byte("name = 'valid'\n")} {
+		if err := os.WriteFile(path, raw, 0600); err != nil {
+			t.Fatal(err)
+		}
+		err := validateStateConfiguration(state)
+		if strings.HasPrefix(string(raw), "[") && err == nil {
+			t.Fatal("invalid configuration accepted")
+		}
+		if !strings.HasPrefix(string(raw), "[") && err != nil {
+			t.Fatal("valid configuration refused", err)
+		}
+		after, readErr := os.ReadFile(path)
+		if readErr != nil || string(after) != string(raw) {
+			t.Fatal("validation changed the configuration", readErr)
+		}
+	}
+}
+
+func TestStagedRestoreCanReplaceAnInvalidCurrentConfiguration(t *testing.T) {
+	state, serverID := startedState(t)
+	path := storagepaths.Path(state, "portico.toml")
+	if err := os.WriteFile(path, []byte("[invalid current config"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := validateStateConfiguration(state); err == nil {
+		t.Fatal("fixture current config is not invalid")
+	}
+	stageBackupFolder(t, state, serverID, "valid-config", func(folder string) {
+		replaceBackupFile(t, folder, "portico.toml", []byte("# restored configuration\n"))
+	})
+	// Startup now applies the pending restore before validating the current
+	// config. The restore's own verifier still rejects an invalid replacement.
+	if err := backup.ApplyStaged(context.Background(), state, verifyRestoredState(state)); err != nil {
+		t.Fatal(err)
+	}
+	if err := validateStateConfiguration(state); err != nil {
+		t.Fatal("valid staged config did not repair startup", err)
+	}
+	if _, probe := restoredProbe(t, state); probe != "valid-config" {
+		t.Fatal("configuration repair did not restore the database", probe)
 	}
 }
 

@@ -5,12 +5,12 @@ import (
 	"database/sql"
 	"encoding/json"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
 
 	"portico.local/server/internal/decoder"
+	"portico.local/server/internal/decodertest"
 	"portico.local/server/internal/identity"
 	"portico.local/server/internal/playback"
 	"portico.local/server/internal/playbackv1"
@@ -27,7 +27,7 @@ func TestPlaybackV1SubtitleSidecars(t *testing.T) {
 	var err error
 	receipt, err := subs.Mutate(context.Background(), principal, f.items[0], subtitles.Mutation{OperationID: "upload-english", SourceID: source, Scope: "personal", Format: "srt", Language: "en", Title: "English", Rights: "Owner transcript", OffsetUS: "0", Content: &body})
 	if err != nil {
-		t.Skipf("subtitle upload needs the storage helper here: %v", err)
+		t.Fatalf("subtitle upload failed: %v", err)
 	}
 	var options playbackv1.Options
 	f.call("GET", "/v1/items/"+f.items[0]+"/playback-options", nil, nil, 200, &options)
@@ -97,14 +97,15 @@ func v1SubtitleFixture(t *testing.T) (*v1Fixture, *subtitles.Service, identity.P
 // The session keeps its id; the presentation gets a new generation and URL,
 // and its decision says "burn". Off again returns to a plain stream (another
 // generation). The same track with delivery embeddedClient burns nothing.
-func TestPlaybackV1SubtitleBurnIn(t *testing.T) {
-	ffmpeg, err := exec.LookPath("ffmpeg")
-	if err != nil {
-		t.Skip("burn-in needs FFmpeg")
-	}
+func v1BurnInFixture(t *testing.T) (*v1Fixture, string) {
+	t.Helper()
+	ffmpeg := decodertest.QualifiedFFmpeg(t)
 	facts, err := decoder.ProbeToolchain(context.Background(), ffmpeg)
 	if err != nil {
-		t.Skipf("FFmpeg can't be probed: %v", err)
+		t.Fatalf("FFmpeg probe failed: %v", err)
+	}
+	if !facts.Encoders["libx264"] || !facts.Encoders["aac"] || !facts.Muxers["hls"] || !facts.Muxers["mp4"] {
+		decodertest.Unavailable(t, "burn-in planning needs the H.264/AAC HLS toolchain capability")
 	}
 	// This test plans the burn (the protocol and the delivery plan), it never
 	// runs the encoder, so a libass FFmpeg isn't required to exercise it; the
@@ -112,37 +113,40 @@ func TestPlaybackV1SubtitleBurnIn(t *testing.T) {
 	facts.Filters["ass"] = true
 	previous := decoder.CurrentToolchain()
 	decoder.ConfigureToolchain(facts)
-	defer decoder.RestoreToolchain(previous)
+	t.Cleanup(func() { decoder.RestoreToolchain(previous) })
 	f, subs, principal, source := v1SubtitleFixture(t)
 	// Burn-in is an HLS conversion: this server needs its HLS producer.
 	hls, err := playback.NewHLS(context.Background(), f.db, filepath.Join(t.TempDir(), "hls"), ffmpeg)
 	if err != nil {
-		t.Skipf("no HLS producer here: %v", err)
+		t.Fatalf("create HLS producer: %v", err)
 	}
 	player := playback.New(f.db)
 	player.ConfigureSubtitleDelivery(subs)
 	player.ConfigureHLS(hls)
 	f.handler = New(Dependencies{DB: f.db, Identity: f.id, Catalog: f.cat, Playback: player, Subtitles: subs, PlaybackV1: f.v1})
+	f.call("PUT", "/v1/me/devices/current/capabilities", nil, webCapabilities(), 204, nil)
 	styled := "[Script Info]\nScriptType: v4.00+\n\n[V4+ Styles]\nFormat: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding\nStyle: Default,Arial,20,&H00FFFFFF,&H000000FF,&H00000000,&H00000000,0,0,0,0,100,100,0,0,1,2,0,2,10,10,10,1\n\n[Events]\nFormat: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text\nDialogue: 0,0:00:00.00,0:00:02.00,Default,,0,0,0,,{\\b1}Hello\n"
 	var receipt subtitles.Receipt
 	receipt, err = subs.Mutate(context.Background(), principal, f.items[0], subtitles.Mutation{OperationID: "upload-styled", SourceID: source, Scope: "personal", Format: "ass", Language: "en", Title: "Styled", Rights: "Owner transcript", OffsetUS: "0", Content: &styled, Render: "styled"})
 	if err != nil {
-		t.Skipf("subtitle upload needs the storage helper here: %v", err)
+		t.Fatalf("subtitle upload failed: %v", err)
 	}
-	if _, err = f.db.Exec(`UPDATE playback_owner_policy SET transcoding_enabled=1`); err != nil {
+	return f, receipt.ResourceID
+}
+
+func TestPlaybackV1SubtitleBurnIn(t *testing.T) {
+	f, trackID := v1BurnInFixture(t)
+	if _, err := f.db.Exec(`UPDATE playback_owner_policy SET transcoding_enabled=1`); err != nil {
 		t.Fatal(err)
 	}
 	var s playbackv1.SessionView
 	f.call("POST", "/v1/playback/sessions", map[string]string{"Idempotency-Key": "burn-key-00000000001"}, startBody(f.items[0], nil), 201, &s)
 	var burned playbackv1.SessionView
-	w := f.raw("PATCH", "/v1/playback/sessions/"+s.ID, f.owner.AccessToken, map[string]string{"If-Match": s.Revision}, map[string]any{"subtitles": map[string]any{"trackId": receipt.ResourceID}})
-	if w.Code == 403 {
-		t.Skipf("this fixture's source can't be converted: %s", w.Body.String())
-	}
+	w := f.raw("PATCH", "/v1/playback/sessions/"+s.ID, f.owner.AccessToken, map[string]string{"If-Match": s.Revision}, map[string]any{"subtitles": map[string]any{"trackId": trackID}})
 	if w.Code != 200 {
 		t.Fatalf("burn: %d %s", w.Code, w.Body.String())
 	}
-	if err = json.Unmarshal(w.Body.Bytes(), &burned); err != nil {
+	if err := json.Unmarshal(w.Body.Bytes(), &burned); err != nil {
 		t.Fatal(err)
 	}
 	p := burned.Presentation
@@ -155,12 +159,30 @@ func TestPlaybackV1SubtitleBurnIn(t *testing.T) {
 		t.Fatalf("off after burn %+v", plain.Presentation)
 	}
 	var drawn playbackv1.SessionView
-	f.call("PATCH", "/v1/playback/sessions/"+s.ID, map[string]string{"If-Match": plain.Revision}, map[string]any{"subtitles": map[string]any{"trackId": receipt.ResourceID, "delivery": "embeddedClient"}}, 200, &drawn)
+	f.call("PATCH", "/v1/playback/sessions/"+s.ID, map[string]string{"If-Match": plain.Revision}, map[string]any{"subtitles": map[string]any{"trackId": trackID, "delivery": "embeddedClient"}}, 200, &drawn)
 	if drawn.Presentation.Generation != plain.Presentation.Generation {
 		t.Fatalf("embeddedClient burned: %+v", drawn.Presentation)
 	}
-	if w := f.raw("PATCH", "/v1/playback/sessions/"+s.ID, f.owner.AccessToken, map[string]string{"If-Match": drawn.Revision}, map[string]any{"subtitles": map[string]any{"trackId": receipt.ResourceID, "delivery": "sidecar"}}); w.Code != 400 {
+	if w := f.raw("PATCH", "/v1/playback/sessions/"+s.ID, f.owner.AccessToken, map[string]string{"If-Match": drawn.Revision}, map[string]any{"subtitles": map[string]any{"trackId": trackID, "delivery": "sidecar"}}); w.Code != 400 {
 		t.Fatalf("a styled track as a sidecar: %d", w.Code)
+	}
+}
+
+func TestPlaybackV1SubtitleBurnInRefusesDisabledConversion(t *testing.T) {
+	f, trackID := v1BurnInFixture(t)
+	if _, err := f.db.Exec(`UPDATE playback_owner_policy SET transcoding_enabled=0`); err != nil {
+		t.Fatal(err)
+	}
+	var session playbackv1.SessionView
+	f.call("POST", "/v1/playback/sessions", map[string]string{"Idempotency-Key": "burn-denied-00000001"}, startBody(f.items[0], nil), 201, &session)
+	w := f.raw("PATCH", "/v1/playback/sessions/"+session.ID, f.owner.AccessToken, map[string]string{"If-Match": session.Revision}, map[string]any{"subtitles": map[string]any{"trackId": trackID}})
+	if w.Code != 403 || v1Code(w) != "transcode_not_allowed" {
+		t.Fatalf("burn with conversion disabled: %d %s", w.Code, w.Body.String())
+	}
+	var unchanged playbackv1.SessionView
+	f.call("GET", "/v1/playback/sessions/"+session.ID, nil, nil, 200, &unchanged)
+	if unchanged.Revision != session.Revision || unchanged.Presentation.Generation != session.Presentation.Generation {
+		t.Fatal("refused burn changed the session", unchanged)
 	}
 }
 

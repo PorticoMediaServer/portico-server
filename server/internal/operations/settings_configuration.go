@@ -368,7 +368,40 @@ func (s *Store) ImportConfiguration(ctx context.Context) error {
 	}
 	return err
 }
+
+// ValidateConfiguration prepares exactly the startup import against a read-only
+// snapshot. It neither applies the plan nor drains the app-to-file outbox.
+func (s *Store) ValidateConfiguration(ctx context.Context, path string) error {
+	loader := configfile.New(path)
+	if _, err := loader.Reload(); err != nil {
+		return err
+	}
+	snapshot, err := dbwork.BeginSnapshot(ctx, s.DB)
+	if err != nil {
+		return err
+	}
+	defer snapshot.Rollback()
+	_, err = s.prepareConfiguration(ctx, snapshot.Tx(), loader)
+	return err
+}
+
 func (s *Store) importConfigurationLocked(ctx context.Context) (bool, error) {
+	applied := false
+	err := dbwork.WithWriteTx(ctx, s.DB, dbwork.ClassMaintenance, func(tx *sql.Tx) error {
+		apply, err := s.prepareConfiguration(ctx, tx, s.ConfigFile)
+		if err != nil || apply == nil {
+			return err
+		}
+		if err = apply(); err != nil {
+			return err
+		}
+		applied = true
+		return nil
+	})
+	return applied, err
+}
+
+func (s *Store) prepareConfiguration(ctx context.Context, tx *sql.Tx, loader *configfile.Loader) (ConfigurationApply, error) {
 	bindings := ConfigurationBindings()
 	raw := map[string]any{}
 	allBindings := append([]ConfigurationBinding{}, bindings...)
@@ -376,116 +409,122 @@ func (s *Store) importConfigurationLocked(ctx context.Context) (bool, error) {
 		allBindings = append(allBindings, domain.Bindings()...)
 	}
 	for _, b := range allBindings {
-		value, err := s.ConfigFile.Resolve(configfile.Binding{Key: b.Key})
+		value, err := loader.Resolve(configfile.Binding{Key: b.Key})
 		if err != nil {
-			return false, err
+			return nil, err
 		}
 		if value.Source == configfile.File {
 			raw[b.Key] = value.Value
 		}
 	}
-	applied := false
-	err := dbwork.WithWriteTx(ctx, s.DB, dbwork.ClassMaintenance, func(tx *sql.Tx) error {
-		document, err := readSettings(tx)
+	document, err := readSettings(tx)
+	if err != nil {
+		return nil, err
+	}
+	next := document.Requested
+	sources := map[string]string{}
+	rows, e := tx.QueryContext(ctx, `SELECT field,source FROM server_setting_sources`)
+	if e != nil {
+		return nil, e
+	}
+	for rows.Next() {
+		var k, v string
+		if e = rows.Scan(&k, &v); e != nil {
+			rows.Close()
+			return nil, e
+		}
+		sources[k] = v
+	}
+	e = rows.Err()
+	rows.Close()
+	if e != nil {
+		return nil, e
+	}
+	pending, e := configurationPending(ctx, tx)
+	if e != nil {
+		return nil, e
+	}
+	// A committed app edit wins until its file projection has completed.
+	// Other registered file edits can still be imported independently.
+	for _, b := range bindings {
+		field := b.Field
+		if _, exists := pending[field]; !exists {
+			continue
+		}
+		delete(raw, b.Key)
+	}
+	domainSources := make(map[string]string, len(sources))
+	for field, source := range sources {
+		if _, queued := pending[field]; !queued {
+			domainSources[field] = source
+		}
+	}
+	var domainChanges []ConfigurationApply
+	for _, domain := range s.ConfigurationDomains {
+		domainRaw := make(map[string]any, len(raw))
+		for key, value := range raw {
+			domainRaw[key] = value
+		}
+		for _, b := range domain.Bindings() {
+			if _, queued := pending[domain.SourceField(b.Field)]; queued {
+				delete(domainRaw, b.Key)
+			}
+		}
+		apply, err := domain.PrepareImport(ctx, tx, domainRaw, domainSources, s.now())
 		if err != nil {
-			return err
+			return nil, err
 		}
-		next := document.Requested
-		sources := map[string]string{}
-		rows, e := tx.QueryContext(ctx, `SELECT field,source FROM server_setting_sources`)
-		if e != nil {
-			return e
+		if apply != nil {
+			domainChanges = append(domainChanges, apply)
 		}
-		for rows.Next() {
-			var k, v string
-			if e = rows.Scan(&k, &v); e != nil {
-				rows.Close()
-				return e
-			}
-			sources[k] = v
+	}
+	defaults := SettingsValues(DefaultSettings())
+	removed := map[string]bool{}
+	changed := len(domainChanges) > 0
+	touched := map[string]bool{}
+	for _, b := range bindings {
+		if _, queued := pending[b.Field]; queued {
+			continue
 		}
-		e = rows.Err()
-		rows.Close()
-		if e != nil {
-			return e
+		if _, ok := raw[b.Key]; !ok && sources[b.Field] == "file" {
+			raw[b.Key] = configurationValue(b, defaults[b.Field])
+			removed[b.Field] = true
+			changed = true
 		}
-		pending, e := configurationPending(ctx, tx)
-		if e != nil {
-			return e
+	}
+
+	for _, b := range bindings {
+		if _, queued := pending[b.Field]; queued {
+			continue
 		}
-		// A committed app edit wins until its file projection has completed.
-		// Other registered file edits can still be imported independently.
-		for _, b := range bindings {
-			field := b.Field
-			if _, exists := pending[field]; !exists {
-				continue
-			}
-			delete(raw, b.Key)
+		value, ok := raw[b.Key]
+		if !ok {
+			continue
 		}
-		domainSources := make(map[string]string, len(sources))
-		for field, source := range sources {
-			if _, queued := pending[field]; !queued {
-				domainSources[field] = source
-			}
+		if sources[b.Field] == "" {
+			changed = true
+			touched[b.Field] = true
 		}
-		additionalChanged := false
-		for _, domain := range s.ConfigurationDomains {
-			domainRaw := make(map[string]any, len(raw))
-			for key, value := range raw {
-				domainRaw[key] = value
-			}
-			for _, b := range domain.Bindings() {
-				if _, queued := pending[domain.SourceField(b.Field)]; queued {
-					delete(domainRaw, b.Key)
-				}
-			}
-			changed, err := domain.Import(ctx, tx, domainRaw, domainSources, s.now())
-			if err != nil {
+		before := configurationValue(b, SettingsValues(next)[b.Field])
+		if err = assignConfiguration(&next, b, value); err != nil {
+			return nil, fmt.Errorf("invalid config key %s", b.Key)
+		}
+		if !reflect.DeepEqual(before, configurationValue(b, SettingsValues(next)[b.Field])) {
+			changed = true
+			touched[b.Field] = true
+		}
+	}
+	if err = validateSettings(&next); err != nil {
+		return nil, err
+	}
+	if !changed {
+		return nil, nil
+	}
+	return func() error {
+		for _, apply := range domainChanges {
+			if err := apply(); err != nil {
 				return err
 			}
-			additionalChanged = additionalChanged || changed
-		}
-		defaults := SettingsValues(DefaultSettings())
-		removed := map[string]bool{}
-		changed := additionalChanged
-		touched := map[string]bool{}
-		for _, b := range bindings {
-			if _, queued := pending[b.Field]; queued {
-				continue
-			}
-			if _, ok := raw[b.Key]; !ok && sources[b.Field] == "file" {
-				raw[b.Key] = configurationValue(b, defaults[b.Field])
-				removed[b.Field] = true
-				changed = true
-			}
-		}
-
-		for _, b := range bindings {
-			if _, queued := pending[b.Field]; queued {
-				continue
-			}
-			value, ok := raw[b.Key]
-			if !ok {
-				continue
-			}
-			if sources[b.Field] == "" {
-				changed = true
-				touched[b.Field] = true
-			}
-			before := configurationValue(b, SettingsValues(next)[b.Field])
-			if err = assignConfiguration(&next, b, value); err != nil {
-				return fmt.Errorf("invalid config key %s", b.Key)
-			}
-			if !reflect.DeepEqual(before, configurationValue(b, SettingsValues(next)[b.Field])) {
-				changed = true
-				touched[b.Field] = true
-			}
-		}
-		if err = validateSettings(&next); err != nil {
-			return err
-		}
-		if !changed {
-			return nil
 		}
 		if err = writeStoredSettings(tx, next, s.now()); err != nil {
 			return err
@@ -510,10 +549,8 @@ func (s *Store) importConfigurationLocked(ctx context.Context) (bool, error) {
 			}
 		}
 		_, err = tx.ExecContext(ctx, `UPDATE console_settings_revision SET revision=revision+1 WHERE singleton=1`)
-		applied = err == nil
 		return err
-	})
-	return applied, err
+	}, nil
 }
 
 func (s *Store) FlushConfiguration(ctx context.Context) error {
@@ -643,12 +680,16 @@ func configurationPending(ctx context.Context, tx *sql.Tx) (map[string]int64, er
 	return out, rows.Err()
 }
 
+// ConfigurationApply is a validated import's write phase, bound to its caller's
+// transaction. A nil plan means no change. Preparation must only read state.
+type ConfigurationApply func() error
+
 // ConfigurationDomain joins another normalized authority to this one file.
 // All reads and imports share the caller's snapshot or write transaction.
 type ConfigurationDomain interface {
 	Bindings() []ConfigurationBinding
 	SourceField(string) string
 	Read(context.Context, *sql.Tx, map[string]string) ([]ConfigurationValue, error)
-	Import(context.Context, *sql.Tx, map[string]any, map[string]string, int64) (bool, error)
+	PrepareImport(context.Context, *sql.Tx, map[string]any, map[string]string, int64) (ConfigurationApply, error)
 	Projection(context.Context, *sql.Tx, map[string]string) (map[string]any, error)
 }

@@ -10,8 +10,11 @@ import (
 func TestInstanceLockRefusesASecondHolderAndReleasesOnClose(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "server.lock")
 	first, err := acquireInstanceLock(path)
-	if err != nil {
+	if errors.Is(err, errInstanceLockUnsupported) {
 		t.Skipf("this filesystem does not support advisory locking: %v", err)
+	}
+	if err != nil {
+		t.Fatalf("acquiring the first instance lock failed: %v", err)
 	}
 	// A second acquisition in the same process exercises the same flock/LockFileEx
 	// call a second process would make: both hold their own open file description.

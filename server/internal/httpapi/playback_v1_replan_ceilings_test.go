@@ -5,11 +5,11 @@ import (
 	"database/sql"
 	"encoding/json"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"testing"
 
 	"portico.local/server/internal/decoder"
+	"portico.local/server/internal/decodertest"
 	"portico.local/server/internal/identity"
 	"portico.local/server/internal/playback"
 	"portico.local/server/internal/playbackv1"
@@ -24,13 +24,13 @@ import (
 // off, with headers that claim a local network) is planned at or under the
 // member's cap as it is now, and a lower cap takes effect on the next change.
 func TestSubtitleReplanRoutesHoldToTheMembersCurrentCeiling(t *testing.T) {
-	ffmpeg, err := exec.LookPath("ffmpeg")
-	if err != nil {
-		t.Skip("planning a burn-in needs an HLS producer, which needs FFmpeg")
-	}
+	ffmpeg := decodertest.QualifiedFFmpeg(t)
 	facts, err := decoder.ProbeToolchain(context.Background(), ffmpeg)
 	if err != nil {
-		t.Skipf("FFmpeg can't be probed: %v", err)
+		t.Fatalf("FFmpeg probe failed: %v", err)
+	}
+	if !facts.Encoders["libx264"] || !facts.Encoders["aac"] || !facts.Muxers["hls"] || !facts.Muxers["mp4"] {
+		decodertest.Unavailable(t, "burn-in planning needs the H.264/AAC HLS toolchain capability")
 	}
 	// The burn is planned, never encoded.
 	facts.Filters["ass"] = true
@@ -58,7 +58,7 @@ func TestSubtitleReplanRoutesHoldToTheMembersCurrentCeiling(t *testing.T) {
 	t.Cleanup(func() { subs.Close() })
 	hls, err := playback.NewHLS(context.Background(), f.db, filepath.Join(t.TempDir(), "hls"), ffmpeg)
 	if err != nil {
-		t.Skipf("no HLS producer here: %v", err)
+		t.Fatalf("create HLS producer: %v", err)
 	}
 	player := playback.New(f.db)
 	cfg := playback.DefaultDeliveryConfiguration()
@@ -69,6 +69,7 @@ func TestSubtitleReplanRoutesHoldToTheMembersCurrentCeiling(t *testing.T) {
 	f.v1.Subtitles = subs
 	f.deps.Playback, f.deps.Subtitles = player, subs
 	f.handler = New(f.deps)
+	f.callAs(member, "PUT", "/v1/me/devices/current/capabilities", nil, webCapabilities(), 204, nil)
 	principal, err := f.id.Authenticate(member)
 	if err != nil {
 		t.Fatal(err)
@@ -78,7 +79,7 @@ func TestSubtitleReplanRoutesHoldToTheMembersCurrentCeiling(t *testing.T) {
 		t.Helper()
 		receipt, err := subs.Mutate(context.Background(), principal, film, subtitles.Mutation{OperationID: operation, SourceID: f.names["member-film"].Token, Scope: "personal", Format: "ass", Language: "en", Title: title, Rights: "Owner transcript", OffsetUS: "0", Content: &styled, Render: "styled"})
 		if err != nil {
-			t.Skipf("subtitle upload needs the storage helper here: %v", err)
+			t.Fatalf("subtitle upload failed: %v", err)
 		}
 		return receipt.ResourceID
 	}
@@ -111,9 +112,6 @@ func TestSubtitleReplanRoutesHoldToTheMembersCurrentCeiling(t *testing.T) {
 			all[k] = v
 		}
 		w := f.rawFrom(peer, "PATCH", "/v1/playback/sessions/"+s.ID, member, all, map[string]any{"subtitles": map[string]any{"trackId": track}})
-		if w.Code == 403 {
-			t.Skipf("this fixture's source can't be converted: %s", w.Body.String())
-		}
 		var view playbackv1.SessionView
 		if w.Code != 200 || json.Unmarshal(w.Body.Bytes(), &view) != nil {
 			t.Fatalf("PATCH subtitles %v from %s: %d %s", track, peer, w.Code, w.Body.String())

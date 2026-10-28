@@ -29,6 +29,17 @@ import (
 // existing analysis authority, not a second one. A source whose clock analysis
 // refuses to establish simply has no viewer markers.
 func ViewerMarkers(ctx context.Context, db *sql.DB, a Access, sourceID string) (segmentmarkers.Set, error) {
+	return viewerMarkers(ctx, db, a, sourceID, true)
+}
+
+// ViewerMarkerRevision reads the same source, marker and policy fence as the
+// viewer projection without reading or composing the individual markers.
+func ViewerMarkerRevision(ctx context.Context, db *sql.DB, a Access, sourceID string) (string, error) {
+	out, err := viewerMarkers(ctx, db, a, sourceID, false)
+	return out.Revision, err
+}
+
+func viewerMarkers(ctx context.Context, db *sql.DB, a Access, sourceID string, includeMarkers bool) (segmentmarkers.Set, error) {
 	out := segmentmarkers.Set{Markers: []segmentmarkers.Marker{}}
 	if db == nil {
 		return out, ErrInput
@@ -39,7 +50,7 @@ func ViewerMarkers(ctx context.Context, db *sql.DB, a Access, sourceID string) (
 	}
 	tx := gated.Tx()
 	defer gated.Rollback()
-	out, e = ViewerMarkersTx(ctx, tx, a, sourceID)
+	out, e = viewerMarkersTx(ctx, tx, a, sourceID, includeMarkers)
 	if e != nil {
 		return out, e
 	}
@@ -49,6 +60,10 @@ func ViewerMarkers(ctx context.Context, db *sql.DB, a Access, sourceID string) (
 // ViewerMarkersTx runs inside a caller's transaction so item detail and playback
 // offers can project markers under the same read they already authorized.
 func ViewerMarkersTx(ctx context.Context, tx *sql.Tx, a Access, sourceID string) (segmentmarkers.Set, error) {
+	return viewerMarkersTx(ctx, tx, a, sourceID, true)
+}
+
+func viewerMarkersTx(ctx context.Context, tx *sql.Tx, a Access, sourceID string, includeMarkers bool) (segmentmarkers.Set, error) {
 	out := segmentmarkers.Set{Markers: []segmentmarkers.Marker{}}
 	if tx == nil || a.Authorize == nil || a.ItemID == "" || a.AccountID == "" || a.ProfileID == "" || a.Authority == "" {
 		return out, identity.ErrUnauthorized
@@ -99,6 +114,9 @@ func ViewerMarkersTx(ctx context.Context, tx *sql.Tx, a Access, sourceID string)
 	// The fence is the played source, the marker revision (detection and
 	// owner edits both move it) and whether the library's detection is on.
 	out.Revision = token(v.ID, v.Revision, v.MappingRevision, strconv.FormatInt(revision, 10), strconv.FormatBool(mode == SegmentModeOff), strconv.Itoa(policy.ViewerPercent), strconv.Itoa(policy.AutomaticPercent), strconv.FormatBool(policy.UseChapterNames))
+	if !includeMarkers {
+		return out, nil
+	}
 	rows, e := tx.QueryContext(ctx, `SELECT id,kind,start_us,end_us,confidence,provenance,approved FROM analysis_markers WHERE object_id=? AND source_revision=? AND source_binding=? AND deleted=0 AND end_us>? AND start_us<? ORDER BY start_us,id LIMIT 513`, v.ObjectID, v.Revision, v.SourceBinding, v.Start, v.End)
 	if e != nil {
 		return out, e

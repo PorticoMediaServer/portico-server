@@ -51,6 +51,10 @@ const (
 // timestampLayout names a backup folder, in UTC.
 const timestampLayout = "2006-01-02T150405Z"
 
+// In-process polling/idempotency receipts have a bounded replay lifetime.
+// Backup files and the last-result status have their own independent lifetimes.
+const backupReplayWindow = 24 * time.Hour
+
 // Kinds of backup. The keep count applies to scheduled backups;
 // pre-restore copies are the automatic copy taken before a restore applies.
 type Kind string
@@ -187,6 +191,7 @@ type Job struct {
 	bytesDone   int64
 	bytesTotal  int64
 	err         error
+	finishedAt  time.Time
 }
 
 // ID identifies the job for polling.
@@ -230,10 +235,11 @@ func (j *Job) report(phase string, done, total int64) {
 	}
 }
 
-func (j *Job) finish(err error) {
+func (j *Job) finish(err error, at time.Time) {
 	j.mu.Lock()
 	defer j.mu.Unlock()
 	j.err = err
+	j.finishedAt = at
 	close(j.done)
 }
 
@@ -348,6 +354,7 @@ func (s *Service) Start(ctx context.Context, kind Kind, operationID string) (str
 		return "", ErrInvalid
 	}
 	s.mu.Lock()
+	s.pruneJobsLocked(s.now())
 	if id, ok := s.operations[operationID]; ok {
 		if job, ok := s.jobs[id]; ok {
 			select {
@@ -361,8 +368,7 @@ func (s *Service) Start(ctx context.Context, kind Kind, operationID string) (str
 					s.mu.Unlock()
 					return job.id, nil
 				}
-				delete(s.jobs, id)
-				delete(s.operations, operationID)
+				s.forgetJobLocked(id)
 			default:
 				s.mu.Unlock()
 				return job.id, nil
@@ -385,8 +391,20 @@ func (s *Service) Start(ctx context.Context, kind Kind, operationID string) (str
 	s.running = job
 	s.mu.Unlock()
 	supervise.Go("backup.job", func() {
-		backupID, err := s.create(dbwork.WithClass(context.WithoutCancel(ctx), dbwork.ClassMaintenance), job, job.kind)
-		job.finish(err)
+		s.runBackup(dbwork.WithClass(context.WithoutCancel(ctx), dbwork.ClassMaintenance), job)
+	})
+	return job.id, nil
+}
+
+func (s *Service) runBackup(ctx context.Context, job *Job) {
+	var backupID string
+	var err error
+	returned := false
+	defer func() {
+		panicked := recover()
+		if !returned {
+			err = errors.New("backup: worker stopped before completion")
+		}
 		s.mu.Lock()
 		result := &BackupResult{JobID: job.id, BackupID: backupID, Outcome: "completed"}
 		if err != nil {
@@ -400,9 +418,15 @@ func (s *Service) Start(ctx context.Context, kind Kind, operationID string) (str
 		if s.running == job {
 			s.running = nil
 		}
+		job.finish(err, s.now())
+		s.pruneJobsLocked(s.now())
 		s.mu.Unlock()
-	})
-	return job.id, nil
+		if panicked != nil {
+			panic(panicked) // retain the supervisor's panic reporting
+		}
+	}()
+	backupID, err = s.create(ctx, job, job.kind)
+	returned = true
 }
 
 // Running reports the in-progress backup, if any.
@@ -419,8 +443,35 @@ func (s *Service) Running() (RunningJob, bool) {
 func (s *Service) Job(id string) (*Job, bool) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	s.pruneJobsLocked(s.now())
 	job, ok := s.jobs[id]
 	return job, ok
+}
+
+// Caller holds s.mu. Never evict a live worker or leave any of its operation
+// aliases behind when a terminal receipt leaves the replay window.
+func (s *Service) pruneJobsLocked(now time.Time) {
+	for id, job := range s.jobs {
+		select {
+		case <-job.done:
+			job.mu.Lock()
+			finished := job.finishedAt
+			job.mu.Unlock()
+			if !finished.IsZero() && !now.Before(finished.Add(backupReplayWindow)) {
+				s.forgetJobLocked(id)
+			}
+		default:
+		}
+	}
+}
+
+func (s *Service) forgetJobLocked(id string) {
+	delete(s.jobs, id)
+	for operation, jobID := range s.operations {
+		if jobID == id {
+			delete(s.operations, operation)
+		}
+	}
 }
 
 // databasePath is the live database file Create copies from.
@@ -516,7 +567,9 @@ func (s *Service) createBackup(ctx context.Context, job *Job, kind Kind) (string
 					clash = true
 					break
 				} else if !os.IsNotExist(e) {
-					return "", e
+					// A disconnected former destination cannot prevent a copy
+					// to the current, already-open destination.
+					log.Printf("warn: Former backup destination is offline (%s): %v", previous, e)
 				}
 			}
 			if !clash {
@@ -643,13 +696,17 @@ func (s *Service) List() ([]Info, error) {
 	if err != nil {
 		return nil, err
 	}
-	for _, dir := range roots {
+	for index, dir := range roots {
 		names, err := os.ReadDir(dir)
 		if os.IsNotExist(err) {
 			continue
 		}
 		if err != nil {
-			return nil, err
+			if index == 0 {
+				return nil, err
+			}
+			log.Printf("warn: Former backup destination is offline (%s): %v", dir, err)
+			continue
 		}
 		for _, name := range names {
 			id := name.Name()

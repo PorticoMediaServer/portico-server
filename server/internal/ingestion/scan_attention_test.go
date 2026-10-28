@@ -42,7 +42,7 @@ func TestAScanNeverReadsCleanWhileFilesNeedAttention(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if _, err = finishScanTx(context.Background(), tx, job, source); err != nil {
+		if err = finishScanTx(context.Background(), tx, job, source); err != nil {
 			t.Fatal(err)
 		}
 		if err = tx.Commit(); err != nil {

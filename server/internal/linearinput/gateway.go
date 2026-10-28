@@ -35,6 +35,9 @@ const maxManifest = 1 << 20
 const maxSegment = 64 << 20
 const ringBytes = 16 << 20
 
+// Bound slice and timestamp overhead even when the source returns tiny reads.
+const maxRawBlocks = 64 << 10
+
 type resource struct {
 	url   string
 	depth int
@@ -205,8 +208,8 @@ func (g *Gateway) RetryExpired() bool {
 func (g *Gateway) Snapshot() Span { g.mu.Lock(); defer g.mu.Unlock(); return g.span }
 func (g *Gateway) signal()        { close(g.changed); g.changed = make(chan struct{}) }
 func (g *Gateway) pump(r io.Reader) {
+	buf := make([]byte, 64<<10)
 	for {
-		buf := make([]byte, 64<<10)
 		n, e := r.Read(buf)
 		g.mu.Lock()
 		if n > 0 {
@@ -220,13 +223,17 @@ func (g *Gateway) pump(r io.Reader) {
 			}
 			g.span.Last = now
 			g.span.Bytes += int64(n)
-			g.raw = append(g.raw, buf[:n])
+			block := make([]byte, n)
+			copy(block, buf[:n])
+			g.raw = append(g.raw, block)
 			g.rawTimes = append(g.rawTimes, now)
 			g.total += int64(n)
 			seconds := g.input.StreamBufferSeconds
 			limit := min(int64(128<<20), max(int64(1<<20), int64(seconds)*4<<20))
-			for len(g.raw) > 1 && (g.total-g.base > limit || seconds > 0 && now.Sub(g.rawTimes[0]) > time.Duration(seconds)*time.Second) {
+			for len(g.raw) > 1 && (len(g.raw) > maxRawBlocks || g.total-g.base > limit || seconds > 0 && now.Sub(g.rawTimes[0]) > time.Duration(seconds)*time.Second) {
 				g.base += int64(len(g.raw[0]))
+				g.raw[0] = nil
+				g.rawTimes[0] = time.Time{}
 				g.raw = g.raw[1:]
 				g.rawTimes = g.rawTimes[1:]
 			}

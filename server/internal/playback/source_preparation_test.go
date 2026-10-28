@@ -162,9 +162,9 @@ func TestSourcePreparationRejectsStaleLocalSelection(t *testing.T) {
 }
 
 func TestSourcePreparationSTRMConditionalReadPolicyAndObject(t *testing.T) {
-	// Root-reserved port; Listen is the atomic ownership check. No fallback or
-	// parallel tests. Server bytes are in memory, never downloaded media.
-	listener, err := net.Listen("tcp", "127.0.0.1:19502")
+	// The fixture owns an ephemeral listener, independent of other packages.
+	// Server bytes are in memory, never downloaded media.
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
 		t.Fatal(err)
 	}

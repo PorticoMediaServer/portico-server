@@ -4,7 +4,11 @@ package catalog
 // fields. Publish that same validation to generated third-party clients.
 func (JobSelector) JSONSchema() map[string]any {
 	object := func(properties map[string]any, required ...string) map[string]any {
-		return map[string]any{"type": "object", "properties": properties, "required": required, "additionalProperties": false}
+		schema := map[string]any{"type": "object", "properties": properties, "additionalProperties": false}
+		if len(required) > 0 {
+			schema["required"] = required
+		}
+		return schema
 	}
 	text := func() map[string]any { return map[string]any{"type": "string", "minLength": 1, "maxLength": 256} }
 	variants := []any{
@@ -18,12 +22,12 @@ func (JobSelector) JSONSchema() map[string]any {
 			properties[key] = value
 		}
 	}
-	return map[string]any{"type": "object", "properties": properties, "required": []string{}, "additionalProperties": false, "oneOf": variants}
+	return map[string]any{"type": "object", "properties": properties, "additionalProperties": false, "oneOf": variants}
 }
 func (JobPersonalArgs) JSONSchema() map[string]any { return jobArgumentsSchema() }
 
 func personalArgumentsSchema() map[string]any {
-	return map[string]any{"type": "object", "additionalProperties": false, "minProperties": 1, "required": []string{}, "properties": map[string]any{
+	return map[string]any{"type": "object", "additionalProperties": false, "minProperties": 1, "properties": map[string]any{
 		"watched": map[string]any{"type": "boolean"}, "favorite": map[string]any{"type": "boolean"}, "watchlist": map[string]any{"type": "boolean"},
 		"rating": map[string]any{"type": "integer", "nullable": true, "minimum": 0, "maximum": 10},
 	}}
@@ -31,7 +35,11 @@ func personalArgumentsSchema() map[string]any {
 
 func jobArgumentsSchema() map[string]any {
 	object := func(p map[string]any, required ...string) map[string]any {
-		return map[string]any{"type": "object", "properties": p, "required": required, "additionalProperties": false}
+		schema := map[string]any{"type": "object", "properties": p, "additionalProperties": false}
+		if len(required) > 0 {
+			schema["required"] = required
+		}
+		return schema
 	}
 	text := map[string]any{"type": "string", "minLength": 1, "maxLength": 256}
 	revision := map[string]any{"type": "integer", "minimum": 1, "maximum": int64(9007199254740991)}
@@ -48,7 +56,7 @@ func jobArgumentsSchema() map[string]any {
 			properties[key] = value
 		}
 	}
-	return map[string]any{"type": "object", "properties": properties, "required": []string{}, "additionalProperties": false, "oneOf": variants}
+	return map[string]any{"type": "object", "properties": properties, "additionalProperties": false, "oneOf": variants}
 }
 
 func (JobRequest) JSONSchema() map[string]any {
@@ -56,6 +64,6 @@ func (JobRequest) JSONSchema() map[string]any {
 		"operationId": map[string]any{"type": "string", "pattern": "^[A-Za-z0-9_-]{1,128}$"},
 		"command":     map[string]any{"type": "string", "enum": []string{"personal-state", "playlist-add", "collection-add", "metadata-edit", "refresh"}},
 		"selector":    (JobSelector{}).JSONSchema(), "args": jobArgumentsSchema(),
-		"expected": map[string]any{"type": "object", "required": []string{}, "additionalProperties": false, "properties": map[string]any{"catalogRevision": map[string]any{"type": "string"}}},
+		"expected": map[string]any{"type": "object", "additionalProperties": false, "properties": map[string]any{"catalogRevision": map[string]any{"type": "string"}}},
 	}}
 }

@@ -86,6 +86,11 @@ const controlSafetyInterval = 6 * time.Hour
 const controlFloor = 2 * time.Second
 
 func (s *Service) runCurrent(ctx context.Context) {
+	s.runCurrentObserved(ctx, nil)
+}
+
+// afterStep observes completed passes without changing the loop's scheduling.
+func (s *Service) runCurrentObserved(ctx context.Context, afterStep func()) {
 	timer := time.NewTimer(time.Hour)
 	if !timer.Stop() {
 		<-timer.C
@@ -129,6 +134,9 @@ func (s *Service) runCurrent(ctx context.Context) {
 			return e
 		})
 		cancel()
+		if afterStep != nil {
+			afterStep()
+		}
 		if floor := time.Now().Add(controlFloor); due.Before(floor) {
 			due = floor
 		}

@@ -219,12 +219,27 @@ func (MaintenanceConfiguration) Read(ctx context.Context, tx *sql.Tx, sources ma
 	return out, nil
 }
 func (MaintenanceConfiguration) Import(ctx context.Context, tx *sql.Tx, raw map[string]any, sources map[string]string, now int64) (bool, error) {
+	apply, err := (MaintenanceConfiguration{}).PrepareImport(ctx, tx, raw, sources, now)
+	if err != nil || apply == nil {
+		return false, err
+	}
+	if err = apply(); err != nil {
+		return false, err
+	}
+	return true, nil
+}
+func (MaintenanceConfiguration) PrepareImport(ctx context.Context, tx *sql.Tx, raw map[string]any, sources map[string]string, now int64) (operations.ConfigurationApply, error) {
 	v, _, err := ReadMaintenanceConfiguration(ctx, tx)
 	if err != nil {
-		return false, err
+		return nil, err
 	}
 	defaults := maintenanceConfigurationValues(DefaultMaintenanceSettings())
 	changed := false
+	type sourceChange struct {
+		field   string
+		removed bool
+	}
+	var sourceChanges []sourceChange
 	for _, b := range (MaintenanceConfiguration{}).Bindings() {
 		key := "maintenance:" + b.Field
 		value, ok := raw[b.Key]
@@ -238,25 +253,34 @@ func (MaintenanceConfiguration) Import(ctx context.Context, tx *sql.Tx, raw map[
 		}
 		before := maintenanceConfigurationValues(v)[b.Field]
 		if err = assignMaintenanceConfiguration(&v, b, value); err != nil {
-			return false, fmt.Errorf("invalid config key %s", b.Key)
+			return nil, fmt.Errorf("invalid config key %s", b.Key)
 		}
 		different := !reflect.DeepEqual(before, maintenanceConfigurationValues(v)[b.Field])
 		if different || sources[key] == "" || removed {
 			changed = true
-			if removed {
-				_, err = tx.ExecContext(ctx, `DELETE FROM server_setting_sources WHERE field=?`, key)
-			} else {
-				_, err = tx.ExecContext(ctx, `INSERT INTO server_setting_sources VALUES(?,'file') ON CONFLICT(field) DO UPDATE SET source=excluded.source`, key)
-			}
-			if err != nil {
-				return false, err
-			}
+			sourceChanges = append(sourceChanges, sourceChange{key, removed})
 		}
 	}
-	if changed {
-		return true, WriteMaintenanceConfiguration(ctx, tx, v, now)
+	if !changed {
+		return nil, nil
 	}
-	return false, nil
+	normalizeMaintenance(&v)
+	if err := validateMaintenance(&v); err != nil {
+		return nil, err
+	}
+	return func() error {
+		for _, change := range sourceChanges {
+			if change.removed {
+				_, err = tx.ExecContext(ctx, `DELETE FROM server_setting_sources WHERE field=?`, change.field)
+			} else {
+				_, err = tx.ExecContext(ctx, `INSERT INTO server_setting_sources VALUES(?,'file') ON CONFLICT(field) DO UPDATE SET source=excluded.source`, change.field)
+			}
+			if err != nil {
+				return err
+			}
+		}
+		return WriteMaintenanceConfiguration(ctx, tx, v, now)
+	}, nil
 }
 
 // MaintenanceConfiguration connects the existing normalized scheduler authority
