@@ -51,8 +51,8 @@ export function browserEventStream(api: HttpLocalApi, viewer: string, token: () 
   return sharedStreamOpener('portico.events.' + viewer, open, shared);
 }
 
-/** When the feed runs in a tab: while the tab is in front, or while `busy` (something is playing). */
-export function browserFeedEnvironment(busy: () => boolean, onBusy: (listener: () => void) => () => void): EventFeedEnvironment {
+/** The feed follows foreground, playing intent and optional real media custody. */
+export function browserFeedEnvironment(busy: () => boolean, onBusy: (listener: () => void) => () => void, retain?: () => boolean, onRetain?: (listener: () => void) => () => void): EventFeedEnvironment {
   return {
     visible: () => document.visibilityState !== 'hidden',
     onVisibility: listener => {
@@ -60,6 +60,7 @@ export function browserFeedEnvironment(busy: () => boolean, onBusy: (listener: (
       return () => document.removeEventListener('visibilitychange', listener);
     },
     busy, onBusy,
+    ...(retain ? {retain} : {}), ...(onRetain ? {onRetain} : {}),
     graceMs: 30_000,
   };
 }

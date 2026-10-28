@@ -80,3 +80,52 @@ test('owner or registry authority loss and finished flights refuse cleanup', asy
   assert.equal(disposed.current(), false, 'a disposed registry admits no continuation');
   disposed.finish();
 });
+
+test('WEB002 custody pending observes real flights and remembered IDs, never empty registrations', () => {
+  const custody = new PreparingStartCustody(), changes: boolean[] = [];
+  const off = custody.subscribePending(() => changes.push(custody.pending()));
+  const first = custody.attach(), second = custody.attach();
+  assert.equal(custody.pending(), false);assert.deepEqual(changes, []);
+  const a = first.reserve('a', () => true), b = second.reserve('b', () => true);
+  assert.equal(custody.pending(), true);assert.deepEqual(changes, [true]);
+  first.remember('installed');first.remember('installed');a.finish();b.finish();
+  assert.equal(custody.pending(), true, 'an actual installed ID survives final flight release');
+  second.dispose();first.forget('missing');assert.deepEqual(changes, [true]);
+  first.forget('installed');assert.equal(custody.pending(), false);assert.deepEqual(changes, [true, false]);
+  first.remember('again');first.dispose();assert.deepEqual(changes, [true, false, true, false]);
+  off();custody.dispose();
+});
+
+test('WEB002 cleanup flight retains through registration retirement and finish until authenticated cleanup returns', async () => {
+  const custody = new PreparingStartCustody(), registration = custody.attach(), changes: boolean[] = [];
+  custody.subscribePending(() => changes.push(custody.pending()));
+  const flight = registration.reserve('cleanup', () => true);
+  let release!: () => void;
+  const wait = new Promise<void>(done => {release = done;});
+  const cleanup = flight.acquire(resource, () => true, async (_signal, _uninstalled, claim) => {assert.equal(claim(), true);await wait;})!;
+  const pending = cleanup();registration.dispose();flight.finish();
+  assert.equal(flight.held(), false, 'continuation finished while cleanup owns the flight');
+  assert.equal(custody.pending(), true);assert.deepEqual(changes, [true]);
+  release();await pending;
+  assert.equal(custody.pending(), false);assert.deepEqual(changes, [true, false]);custody.dispose();
+});
+
+test('WEB002 owner disposal releases pending once and aborts cleanup without late resurrection', async () => {
+  const custody = new PreparingStartCustody(), registration = custody.attach(), changes: boolean[] = [];
+  custody.subscribePending(() => changes.push(custody.pending()));
+  const flight = registration.reserve('cleanup', () => true);
+  let signal!: AbortSignal, release!: () => void;
+  const wait = new Promise<void>(done => {release = done;});
+  const cleanup = flight.acquire(resource, () => true, async (abort, _uninstalled, claim) => {signal = abort;assert.equal(claim(), true);await wait;})!;
+  const pending = cleanup();registration.remember('another');custody.dispose();custody.dispose();
+  assert.equal(signal.aborted, true);assert.equal(custody.pending(), false);assert.deepEqual(changes, [true, false]);
+  release();await pending;flight.finish();registration.forget('another');registration.dispose();
+  assert.equal(custody.pending(), false);assert.deepEqual(changes, [true, false]);
+});
+
+test('WEB002 pending observers cannot interrupt canonical custody and unsubscribe detaches', () => {
+  const custody = new PreparingStartCustody(), registration = custody.attach();let heard = 0;
+  const off = custody.subscribePending(() => {heard++;throw new Error('observer');});
+  const flight = registration.reserve('original', () => true);assert.equal(flight.current(), true);
+  off();flight.finish();assert.equal(heard, 1);assert.equal(custody.pending(), false);custody.dispose();
+});
