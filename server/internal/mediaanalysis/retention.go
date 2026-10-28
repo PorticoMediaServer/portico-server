@@ -2,6 +2,7 @@ package mediaanalysis
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"io"
 	"os"
@@ -46,6 +47,60 @@ func (s *Service) RunRetention(ctx context.Context) {
 		return 0
 	})
 }
+
+// retirePageSize bounds the live results one retire pass examines.
+const retirePageSize = 128
+
+// retirePage examines the next page of live results after s.retireCursor and
+// retires the stale ones, dropping their heads in the same transaction (the
+// other retire paths replace their head as they retire). The stale predicate
+// runs only inside the page, so a library whose results are all current costs
+// one indexed page per wake instead of a walk of every result (WJ2). The cursor
+// returns to the start after a short page.
+func (s *Service) retirePage(ctx context.Context, now time.Time) error {
+	examined, last := 0, ""
+	e := dbwork.WithWriteTxContext(ctx, s.db, dbwork.ClassBackgroundMedia, func(ctx context.Context, tx *sql.Tx) error {
+		examined, last = 0, ""
+		e := tx.QueryRowContext(ctx, `SELECT count(*),COALESCE(max(id),'') FROM (SELECT id FROM analysis_results INDEXED BY analysis_results_retention WHERE retired_ms=0 AND id>? ORDER BY id LIMIT ?)`, s.retireCursor, retirePageSize).Scan(&examined, &last)
+		if e != nil || examined == 0 {
+			return e
+		}
+		rows, e := tx.QueryContext(ctx, `UPDATE analysis_results SET retired_ms=? WHERE id IN(SELECT r.id FROM analysis_results r INDEXED BY analysis_results_retention WHERE r.retired_ms=0 AND r.id>? AND r.id<=? AND NOT EXISTS(SELECT 1 FROM inventory_objects o JOIN library_sources src ON src.id=o.source_id WHERE o.id=r.object_id AND o.revision=r.source_revision AND o.root_incarnation=r.root_incarnation AND o.retired=0 AND src.incarnation=r.root_incarnation AND src.generation=r.configuration_generation AND (r.evidence NOT LIKE 'remote:%' OR EXISTS(SELECT 1 FROM analysis_probe_bindings p WHERE p.object_id=o.id AND p.source_revision=o.revision AND p.evidence=r.evidence)))) RETURNING id`, now.UnixMilli(), s.retireCursor, last)
+		if e != nil {
+			return e
+		}
+		var retired []string
+		for rows.Next() {
+			var id string
+			if e = rows.Scan(&id); e != nil {
+				rows.Close()
+				return e
+			}
+			retired = append(retired, id)
+		}
+		e = rows.Err()
+		rows.Close()
+		if e != nil {
+			return e
+		}
+		for _, id := range retired {
+			if _, e = tx.ExecContext(ctx, `DELETE FROM analysis_heads WHERE result_id=?`, id); e != nil {
+				return e
+			}
+		}
+		return nil
+	})
+	if e != nil {
+		return e
+	}
+	if examined < retirePageSize {
+		s.retireCursor = ""
+	} else {
+		s.retireCursor = last
+	}
+	return nil
+}
+
 func (s *Service) Sweep(ctx context.Context) error {
 	s.publication.Lock()
 	defer s.publication.Unlock()
@@ -53,15 +108,10 @@ func (s *Service) Sweep(ctx context.Context) error {
 	cutoff := now.Add(-time.Duration(s.options.RetainDays) * 24 * time.Hour).UnixMilli()
 	// A source outage is not deletion. Only authoritative retirement, a changed
 	// inventory revision/incarnation/configuration, or removal invalidates a head.
-	_, e := dbwork.ExecWrite(ctx, s.db, dbwork.ClassBackgroundMedia, `UPDATE analysis_results SET retired_ms=? WHERE id IN(SELECT r.id FROM analysis_results r WHERE r.retired_ms=0 AND NOT EXISTS(SELECT 1 FROM inventory_objects o JOIN library_sources src ON src.id=o.source_id WHERE o.id=r.object_id AND o.revision=r.source_revision AND o.root_incarnation=r.root_incarnation AND o.retired=0 AND src.incarnation=r.root_incarnation AND src.generation=r.configuration_generation AND (r.evidence NOT LIKE 'remote:%' OR EXISTS(SELECT 1 FROM analysis_probe_bindings p WHERE p.object_id=o.id AND p.source_revision=o.revision AND p.evidence=r.evidence))) ORDER BY r.id LIMIT 32)`, now.UnixMilli())
-	if e != nil {
+	if e := s.retirePage(ctx, now); e != nil {
 		return e
 	}
-	_, e = dbwork.ExecWrite(ctx, s.db, dbwork.ClassBackgroundMedia, `DELETE FROM analysis_heads WHERE result_id IN(SELECT h.result_id FROM analysis_heads h JOIN analysis_results r ON r.id=h.result_id WHERE r.retired_ms>0 ORDER BY h.result_id LIMIT 32)`)
-	if e != nil {
-		return e
-	}
-	rows, e := s.db.QueryContext(ctx, `SELECT a.id,a.digest,a.size FROM analysis_artifacts a JOIN analysis_results r ON r.id=a.result_id WHERE r.retired_ms>0 AND r.retired_ms<? ORDER BY a.id LIMIT 32`, cutoff)
+	rows, e := s.db.QueryContext(ctx, `SELECT a.id,a.digest,a.size FROM analysis_results r INDEXED BY analysis_results_retention JOIN analysis_artifacts a ON a.result_id=r.id WHERE r.retired_ms>0 AND r.retired_ms<? ORDER BY r.retired_ms,r.id,a.id LIMIT 32`, cutoff)
 	if e != nil {
 		return e
 	}

@@ -41,6 +41,8 @@ const SegmentStage = "segment_evidence"
 
 const (
 	segmentCatchupPage    = 64
+	segmentOrphanPage     = 256
+	segmentDropPage       = 512
 	segmentChangesPage    = 128
 	segmentFullPassEvery  = 24 * time.Hour
 	segmentMatchBatch     = 8
@@ -147,9 +149,12 @@ func (s *Service) segmentCatchup(ctx context.Context) (bool, error) {
 		// thorough) has files to measure, and one turned off has queued
 		// work to drop.
 		state = segmentCatchupState{ChangeSequence: state.ChangeSequence, Modes: digest}
-		if _, err = tx.ExecContext(ctx, `DELETE FROM segment_files WHERE state<>'complete' AND library_id NOT IN(SELECT value FROM json_each(?))`, jsonString(keys(enabled))); err != nil {
-			return false, err
-		}
+	}
+	// Queued work in libraries that are now off is dropped a page at a time
+	// (SEG2). Until then the file step drops any such file it reaches, so a
+	// mode change never holds the writer for the size of the library.
+	if err = dropDisabledSegmentWork(ctx, tx, enabled); err != nil {
+		return false, err
 	}
 	if state.Settled && nowMS()-state.PassMS > segmentFullPassEvery.Milliseconds() {
 		state.Settled, state.Cursor = false, ""
@@ -220,12 +225,26 @@ func (s *Service) segmentCatchup(ctx context.Context) (bool, error) {
 	} else if len(enabled) == 0 {
 		state.Settled, state.Cursor = true, ""
 	}
-	// Forget files that left the inventory, and re-compare their shows.
-	if _, err = tx.ExecContext(ctx, `UPDATE segment_shows SET dirty=1,updated_ms=? WHERE show_id IN(SELECT f.show_id FROM segment_files f LEFT JOIN inventory_objects o ON o.id=f.object_id WHERE f.show_id>0 AND (o.id IS NULL OR o.retired=1) LIMIT 64)`, nowMS()); err != nil {
+	// Forget files that left the inventory, and re-compare their shows. Each
+	// look examines one page of segment rows after the orphan cursor, so a
+	// settled corpus costs a page per look, not a walk of every row (SRV022).
+	orphanCursor, orphanLast, orphanExamined := s.segmentOrphanCursor, "", 0
+	if err = tx.QueryRowContext(ctx, `SELECT count(*),COALESCE(max(object_id),'') FROM (SELECT object_id FROM segment_files WHERE object_id>? ORDER BY object_id LIMIT ?)`, orphanCursor, segmentOrphanPage).Scan(&orphanExamined, &orphanLast); err != nil {
 		return false, err
 	}
-	if _, err = tx.ExecContext(ctx, `DELETE FROM segment_files WHERE object_id IN(SELECT f.object_id FROM segment_files f LEFT JOIN inventory_objects o ON o.id=f.object_id WHERE o.id IS NULL OR o.retired=1 LIMIT 64)`); err != nil {
-		return false, err
+	if orphanExamined > 0 {
+		orphans := `SELECT f.object_id FROM segment_files f LEFT JOIN inventory_objects o ON o.id=f.object_id WHERE f.object_id>?1 AND f.object_id<=?2 AND (o.id IS NULL OR o.retired=1)`
+		if _, err = tx.ExecContext(ctx, `UPDATE segment_shows SET dirty=1,updated_ms=?3 WHERE show_id IN(SELECT f.show_id FROM segment_files f WHERE f.show_id>0 AND f.object_id IN(`+orphans+`))`, orphanCursor, orphanLast, nowMS()); err != nil {
+			return false, err
+		}
+		if _, err = tx.ExecContext(ctx, `DELETE FROM segment_files WHERE object_id IN(`+orphans+`)`, orphanCursor, orphanLast); err != nil {
+			return false, err
+		}
+		// Failed and unsupported rows of a library that is off go as the window
+		// passes them, so turning it back on measures them afresh.
+		if _, err = tx.ExecContext(ctx, `DELETE FROM segment_files WHERE object_id>? AND object_id<=? AND state<>'complete' AND library_id NOT IN(SELECT value FROM json_each(?))`, orphanCursor, orphanLast, jsonString(keys(enabled))); err != nil {
+			return false, err
+		}
 	}
 	// An unchanged upsert still changes SQLite rows and wakes this worker again.
 	// Keep real cursor/high-water progress durable, but leave a settled pass
@@ -235,7 +254,26 @@ func (s *Service) segmentCatchup(ctx context.Context) (bool, error) {
 			return false, err
 		}
 	}
-	return more, gated.Commit()
+	if err = gated.Commit(); err != nil {
+		return false, err
+	}
+	if orphanExamined < segmentOrphanPage {
+		s.segmentOrphanCursor = ""
+	} else {
+		s.segmentOrphanCursor = orphanLast
+	}
+	return more, nil
+}
+
+// dropDisabledSegmentWork deletes one page of pending work in libraries that
+// are off, found through the per-library projection and its partial index, so a
+// pass costs the page plus one row per library with pending work. Failed and
+// unsupported rows of those libraries go with the catch-up's orphan window.
+func dropDisabledSegmentWork(ctx context.Context, tx *sql.Tx, enabled map[string]segmentLibrary) error {
+	_, err := tx.ExecContext(ctx, `DELETE FROM segment_files WHERE object_id IN(
+ SELECT f.object_id FROM segment_pending_activity a JOIN segment_files f INDEXED BY segment_files_pending_by_library ON f.library_id=a.library_id AND f.state='pending'
+ WHERE a.library_id NOT IN(SELECT value FROM json_each(?)) LIMIT ?)`, jsonString(keys(enabled)), segmentDropPage)
+	return err
 }
 
 func keys(m map[string]segmentLibrary) []string {

@@ -698,37 +698,7 @@ func (s *Scheduler) advance(ctx context.Context, j Job) {
 		return
 	}
 	if a.Maintenance != nil {
-		// Cleanup hooks are required to be idempotent, so interrupted housekeeping
-		// can reconcile by rerunning. No filesystem deletion primitive is exposed.
-		updated, e := updateOperation(ctx, s.Store.DB, dbwork.ClassFrom(ctx, dbwork.ClassInteractive), j.ID, `UPDATE console_operations SET state='running',phase='maintenance',attempt=attempt+1,revision=revision+1,updated_ms=? WHERE id=? AND revision=?`, s.Store.now(), j.ID, j.Revision)
-		if e != nil {
-			return
-		}
-		if !updated {
-			return
-		}
-		j.Revision++
-		j.Attempt++
-		c, done := context.WithTimeout(dbwork.WithClass(ctx, workClass(a)), 30*time.Second)
-		s.mu.Lock()
-		s.running[j.ID] = done
-		s.mu.Unlock()
-		e = a.Maintenance(c, j.ID)
-		done()
-		lanes.release(j.ID)
-		s.mu.Lock()
-		delete(s.running, j.ID)
-		s.mu.Unlock()
-		if ctx.Err() != nil {
-			return
-		}
-		// Domain cleanup may count committed catalog mutations atomically.
-		_ = s.Store.DB.QueryRowContext(ctx, `SELECT processed FROM console_operations WHERE id=?`, j.ID).Scan(&j.Processed)
-		if e != nil {
-			s.finish(ctx, j, "failed", "maintenance failed", "maintenance-failed")
-		} else {
-			s.finish(ctx, j, "succeeded", "cleanup batch committed", "")
-		}
+		s.startMaintenance(ctx, j, a)
 		return
 	}
 	gated, e := dbwork.Begin(ctx, s.Store.DB, dbwork.ClassFrom(ctx, dbwork.ClassInteractive))
@@ -980,6 +950,59 @@ func (s *Scheduler) activeJobs() int {
 
 // The scheduler owns admission, cancellation and shutdown for long filesystem
 // steps. A slow copy never blocks the control loop or holds a SQLite writer.
+// startMaintenance runs a cleanup hook on the same supervised lifecycle as an
+// asynchronous step: it holds its lane and registers its cancel handle, and the
+// control loop returns at once. A slow hook used to run inline, delaying every
+// other lane's due work by up to its 30 s budget (WJ6).
+func (s *Scheduler) startMaintenance(ctx context.Context, j Job, a Adapter) {
+	lanes := s.laneSet()
+	s.mu.Lock()
+	if _, active := s.running[j.ID]; active {
+		s.mu.Unlock()
+		return
+	}
+	if !lanes.holds(j.ID) && !lanes.tryAcquire(resourceLane(a), j.ID) {
+		s.mu.Unlock()
+		return
+	}
+	c, done := context.WithTimeout(dbwork.WithClass(ctx, workClass(a)), 30*time.Second)
+	s.running[j.ID] = done
+	s.stepWG.Add(1)
+	s.mu.Unlock()
+	stop := func() {
+		done()
+		lanes.release(j.ID)
+		s.mu.Lock()
+		delete(s.running, j.ID)
+		s.mu.Unlock()
+	}
+	// Cleanup hooks are required to be idempotent, so interrupted housekeeping
+	// can reconcile by rerunning. No filesystem deletion primitive is exposed.
+	updated, e := updateOperation(ctx, s.Store.DB, dbwork.ClassFrom(ctx, dbwork.ClassInteractive), j.ID, `UPDATE console_operations SET state='running',phase='maintenance',attempt=attempt+1,revision=revision+1,updated_ms=? WHERE id=? AND revision=?`, s.Store.now(), j.ID, j.Revision)
+	if e != nil || !updated {
+		stop()
+		s.stepWG.Done()
+		return
+	}
+	j.Revision++
+	j.Attempt++
+	supervise.Go("operations.maintenance", func() {
+		defer s.stepWG.Done()
+		e := a.Maintenance(c, j.ID)
+		stop()
+		if ctx.Err() != nil {
+			return
+		}
+		// Domain cleanup may count committed catalog mutations atomically.
+		_ = s.Store.DB.QueryRowContext(ctx, `SELECT processed FROM console_operations WHERE id=?`, j.ID).Scan(&j.Processed)
+		if e != nil {
+			s.finish(ctx, j, "failed", "maintenance failed", "maintenance-failed")
+		} else {
+			s.finish(ctx, j, "succeeded", "cleanup batch committed", "")
+		}
+	})
+}
+
 func (s *Scheduler) startAsyncStep(ctx context.Context, j Job, a Adapter) {
 	s.mu.Lock()
 	if _, active := s.running[j.ID]; active {

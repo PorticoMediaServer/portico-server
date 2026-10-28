@@ -849,78 +849,48 @@ func (s *Service) Delete(ctx context.Context, p identity.Principal, item, id str
 // session. The object store separately rejects deletion with physical readers.
 func (s *Service) Run(ctx context.Context) {
 	ctx = dbwork.WithClass(ctx, dbwork.ClassBackgroundMedia)
-	// Resource/pin changes wake collection promptly. Clock-only expiry keeps
-	// the shared SafetyTick backstop without treating telemetry as new work.
+	// Resource/pin changes wake collection promptly, and the next queued
+	// revision's due time wakes it when nothing else does.
 	wake := worker.NewSignal()
 	unregister := watchSubtitleCollection(wake)
 	defer unregister()
 	worker.Run(ctx, "subtitles.cleanup", wake, func(ctx context.Context) time.Duration {
-		s.Cleanup(ctx)
-		return 0
+		next, _ := s.collect(ctx)
+		return next
 	})
 }
+
+// collectionPage bounds the queue entries one pass settles in its transaction.
+const collectionPage = 64
+
+// heldRetry is how long an entry still held by playback waits to be rechecked.
+const heldRetry = time.Hour
+
 func (s *Service) Cleanup(ctx context.Context) error {
+	_, e := s.collect(ctx)
+	return e
+}
+
+// collect settles the due part of subtitle_obsolete_revisions and returns how
+// long until the next entry is due (zero when nothing is queued). Every entry is
+// rechecked: a revision that is current again is forgotten, one still pinned by
+// playback or a private disc waits, and only the rest is deleted.
+func (s *Service) collect(ctx context.Context) (time.Duration, error) {
 	s.publication.Lock()
 	defer s.publication.Unlock()
-	gated2, e := dbwork.Begin(ctx, s.db, dbwork.ClassBackgroundMedia)
+	next, removed, e := s.settleDue(ctx)
 	if e != nil {
-		return e
+		return 0, e
 	}
-	tx := gated2.Tx()
-	defer gated2.Rollback()
-	if _, e = tx.ExecContext(ctx, `DELETE FROM subtitle_provider_candidates WHERE expires_at<?`, time.Now().UTC().Format(time.RFC3339)); e != nil {
-		return e
-	}
-	if _, e = tx.ExecContext(ctx, `DELETE FROM playback_subtitle_pins WHERE session_id IN(SELECT id FROM playback_sessions WHERE state IN ('stopped','ended','failed') OR expires_at<?)`, time.Now().UTC().Format(time.RFC3339)); e != nil {
-		return e
-	}
-	rows, e := tx.QueryContext(ctx, `SELECT v.resource_id,v.revision,v.digest,v.size FROM subtitle_revisions v JOIN subtitle_resources r ON r.id=v.resource_id WHERE (r.deleted=1 OR v.revision!=r.current_revision) AND v.created_at<? AND NOT EXISTS(SELECT 1 FROM playback_subtitle_pins p WHERE p.resource_id=v.resource_id AND p.resource_revision=v.revision) LIMIT 64`, time.Now().UTC().Add(-24*time.Hour).Format(time.RFC3339))
-	if e != nil {
-		return e
-	}
-	type old struct {
-		id       string
-		revision int64
-		object   mediaartifact.Object
-	}
-	var stale []old
-	for rows.Next() {
-		var r old
-		if e = rows.Scan(&r.id, &r.revision, &r.object.Digest, &r.object.Size); e != nil {
-			rows.Close()
-			return e
-		}
-		stale = append(stale, r)
-	}
-	e = rows.Err()
-	rows.Close()
-	if e != nil {
-		return e
-	}
-	for _, r := range stale {
-		if _, e = tx.ExecContext(ctx, `DELETE FROM subtitle_revisions WHERE resource_id=? AND revision=?`, r.id, r.revision); e != nil {
-			return e
-		}
-	}
-	if e = gated2.Commit(); e != nil {
-		return e
-	}
-	for _, r := range stale {
-		var refs int
-		if e = s.db.QueryRowContext(ctx, `SELECT (SELECT count(*) FROM subtitle_revisions WHERE digest=?1)+(SELECT count(*) FROM subtitle_original_revisions WHERE digest=?1)+(SELECT count(*) FROM subtitle_original_files WHERE digest=?1)`, r.object.Digest).Scan(&refs); e != nil {
-			return e
-		}
-		if refs == 0 && r.object.Size > 0 {
-			e = s.objects.Remove(r.object)
-			if e != nil && !errors.Is(e, mediaartifact.ErrLeased) {
-				return e
-			}
+	for _, object := range removed {
+		if e = s.removeUnreferenced(ctx, object); e != nil {
+			return 0, e
 		}
 	}
 	if s.inventory == nil {
 		s.inventory, e = s.objects.Inventory()
 		if e != nil {
-			return e
+			return 0, e
 		}
 	}
 	candidates, scanErr := s.inventory.Next(ctx, 64)
@@ -928,21 +898,145 @@ func (s *Service) Cleanup(ctx context.Context) error {
 		s.inventory.Close()
 		s.inventory = nil
 	} else if scanErr != nil {
-		return scanErr
+		return 0, scanErr
 	}
 	for _, candidate := range candidates {
 		if candidate.Modified.After(time.Now().Add(-24 * time.Hour)) {
 			continue
 		}
-		var references int
-		if e = s.db.QueryRowContext(ctx, `SELECT (SELECT count(*) FROM subtitle_revisions WHERE digest=?1)+(SELECT count(*) FROM subtitle_original_revisions WHERE digest=?1)+(SELECT count(*) FROM subtitle_original_files WHERE digest=?1)`, candidate.Object.Digest).Scan(&references); e != nil {
-			return e
+		if e = s.removeUnreferenced(ctx, candidate.Object); e != nil {
+			return 0, e
 		}
-		if references == 0 {
-			if e = s.objects.Remove(candidate.Object); e != nil && !errors.Is(e, mediaartifact.ErrLeased) {
-				return e
+	}
+	return next, nil
+}
+
+// settleDue runs the database half of collection. Catalogue and session writes
+// still reach this loop through their cascades into the subtitle tables, so a
+// wake first asks, on a read connection, whether anything is due at all; only
+// then does it take the writer.
+func (s *Service) settleDue(ctx context.Context) (time.Duration, []mediaartifact.Object, error) {
+	now := time.Now()
+	stamp := now.UTC().Format(time.RFC3339)
+	var work bool
+	var nextDue sql.NullInt64
+	if e := s.db.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM subtitle_provider_candidates WHERE expires_at<?1)
+ OR EXISTS(SELECT 1 FROM playback_subtitle_pins WHERE session_id IN(SELECT id FROM playback_sessions WHERE state IN ('stopped','ended','failed') OR expires_at<?1)),
+ (SELECT min(due_ms) FROM subtitle_obsolete_revisions)`, stamp).Scan(&work, &nextDue); e != nil {
+		return 0, nil, e
+	}
+	if !work && (!nextDue.Valid || nextDue.Int64 > now.UnixMilli()) {
+		if !nextDue.Valid {
+			return 0, nil, nil
+		}
+		return max(time.Until(time.UnixMilli(nextDue.Int64)), time.Millisecond), nil, nil
+	}
+	gated2, e := dbwork.Begin(ctx, s.db, dbwork.ClassBackgroundMedia)
+	if e != nil {
+		return 0, nil, e
+	}
+	tx := gated2.Tx()
+	defer gated2.Rollback()
+	if _, e = tx.ExecContext(ctx, `DELETE FROM subtitle_provider_candidates WHERE expires_at<?`, stamp); e != nil {
+		return 0, nil, e
+	}
+	if _, e = tx.ExecContext(ctx, `DELETE FROM playback_subtitle_pins WHERE session_id IN(SELECT id FROM playback_sessions WHERE state IN ('stopped','ended','failed') OR expires_at<?)`, stamp); e != nil {
+		return 0, nil, e
+	}
+	type entry struct {
+		id       string
+		revision int64
+	}
+	rows, e := tx.QueryContext(ctx, `SELECT resource_id,revision FROM subtitle_obsolete_revisions INDEXED BY subtitle_obsolete_revisions_due WHERE due_ms<=? ORDER BY due_ms,revision DESC LIMIT ?`, now.UnixMilli(), collectionPage)
+	if e != nil {
+		return 0, nil, e
+	}
+	var due []entry
+	for rows.Next() {
+		var q entry
+		if e = rows.Scan(&q.id, &q.revision); e != nil {
+			rows.Close()
+			return 0, nil, e
+		}
+		due = append(due, q)
+	}
+	e = rows.Err()
+	rows.Close()
+	if e != nil {
+		return 0, nil, e
+	}
+	var removed []mediaartifact.Object
+	for _, q := range due {
+		var obsolete, held bool
+		var object mediaartifact.Object
+		if q.revision > 0 {
+			e = tx.QueryRowContext(ctx, `SELECT v.digest,v.size,r.deleted=1 OR v.revision<>r.current_revision,
+ EXISTS(SELECT 1 FROM playback_subtitle_pins p WHERE p.resource_id=v.resource_id AND p.resource_revision=v.revision)
+ OR EXISTS(SELECT 1 FROM playback_manifest_subtitles m WHERE m.resource_id=v.resource_id AND m.resource_revision=v.revision)
+ OR EXISTS(SELECT 1 FROM playback_disc_subtitle_resources d WHERE d.resource_id=v.resource_id)
+ FROM subtitle_revisions v JOIN subtitle_resources r ON r.id=v.resource_id WHERE v.resource_id=? AND v.revision=?`, q.id, q.revision).Scan(&object.Digest, &object.Size, &obsolete, &held)
+		} else {
+			e = tx.QueryRowContext(ctx, `SELECT r.deleted=1,
+ EXISTS(SELECT 1 FROM subtitle_revisions v WHERE v.resource_id=r.id) OR EXISTS(SELECT 1 FROM playback_disc_subtitle_resources d WHERE d.resource_id=r.id)
+ FROM subtitle_resources r WHERE r.id=?`, q.id).Scan(&obsolete, &held)
+		}
+		if errors.Is(e, sql.ErrNoRows) {
+			obsolete, e = false, nil
+		}
+		if e != nil {
+			return 0, nil, e
+		}
+		switch {
+		case !obsolete:
+			_, e = tx.ExecContext(ctx, `DELETE FROM subtitle_obsolete_revisions WHERE resource_id=? AND revision=?`, q.id, q.revision)
+		case held:
+			_, e = tx.ExecContext(ctx, `UPDATE subtitle_obsolete_revisions SET due_ms=? WHERE resource_id=? AND revision=?`, now.Add(heldRetry).UnixMilli(), q.id, q.revision)
+		case q.revision > 0:
+			if _, e = tx.ExecContext(ctx, `DELETE FROM subtitle_revisions WHERE resource_id=? AND revision=?`, q.id, q.revision); e == nil {
+				_, e = tx.ExecContext(ctx, `DELETE FROM subtitle_obsolete_revisions WHERE resource_id=? AND revision=?`, q.id, q.revision)
+				removed = append(removed, object)
+			}
+		default:
+			if _, e = tx.ExecContext(ctx, `DELETE FROM subtitle_resources WHERE id=?`, q.id); e == nil {
+				_, e = tx.ExecContext(ctx, `DELETE FROM subtitle_obsolete_revisions WHERE resource_id=? AND revision=0`, q.id)
 			}
 		}
+		if e != nil {
+			return 0, nil, e
+		}
+	}
+	next := time.Duration(0)
+	if len(due) == collectionPage {
+		next = time.Millisecond
+	} else {
+		if e = tx.QueryRowContext(ctx, `SELECT min(due_ms) FROM subtitle_obsolete_revisions`).Scan(&nextDue); e != nil {
+			return 0, nil, e
+		}
+		if nextDue.Valid {
+			next = max(time.Until(time.UnixMilli(nextDue.Int64)), time.Millisecond)
+		}
+	}
+	if e = gated2.Commit(); e != nil {
+		return 0, nil, e
+	}
+	return next, removed, nil
+}
+
+// removeUnreferenced deletes a stored object no revision or original names.
+// Each count is one seek on its table's digest index.
+func (s *Service) removeUnreferenced(ctx context.Context, object mediaartifact.Object) error {
+	if object.Size <= 0 {
+		return nil
+	}
+	var references int
+	if e := s.db.QueryRowContext(ctx, `SELECT (SELECT count(*) FROM subtitle_revisions WHERE digest=?1)+(SELECT count(*) FROM subtitle_original_revisions WHERE digest=?1)+(SELECT count(*) FROM subtitle_original_files WHERE digest=?1)`, object.Digest).Scan(&references); e != nil {
+		return e
+	}
+	if references != 0 {
+		return nil
+	}
+	if e := s.objects.Remove(object); e != nil && !errors.Is(e, mediaartifact.ErrLeased) {
+		return e
 	}
 	return nil
 }
@@ -960,8 +1054,6 @@ func relative(root, path string) (string, error) {
 // still runs through worker.SafetyTick. Unrelated telemetry is not work.
 func watchSubtitleCollection(signal *worker.Signal) func() {
 	return dbwork.WakeOnTables(signal,
-		"subtitle_*", "playback_subtitle_pins", "playback_subtitle_state", "playback_subtitle_presentations",
-		"playback_manifest_subtitles", "playback_sessions", "prepared_media_session_pins", "catalog_assets",
-		"catalog_entities", "library_sources",
+		"subtitle_*", "playback_subtitle_pins", "playback_manifest_subtitles", "playback_disc_subtitle_resources",
 	)
 }

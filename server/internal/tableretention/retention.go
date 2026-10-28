@@ -8,6 +8,7 @@ import (
 	"errors"
 	"log"
 	"portico.local/server/internal/dbwork"
+	"sync"
 	"time"
 )
 
@@ -53,9 +54,112 @@ var Policies = []Policy{
 	{"live_reservations", 7, `end_ms<CAST(unixepoch('subsec')*1000 AS INTEGER) AND NOT EXISTS(SELECT 1 FROM dvr_recordings r WHERE r.id=d.id AND r.state NOT IN('deleted','failed','cancelled'))`},
 }
 
+// retentionCursor is the last age-ledger entry a policy examined. The next
+// sweep resumes just after it, so rows that stay protected by their predicate
+// are walked once per pass instead of once per run. It lives only for the
+// process lifetime and is scoped to the database handle it was measured on: a
+// restart, or another database, simply begins again at the oldest row.
+type retentionCursor struct {
+	db      *sql.DB
+	created int64
+	key     string
+	set     bool
+}
+
+var (
+	cursorMu sync.Mutex
+	cursors  = map[string]retentionCursor{}
+)
+
+// resetCursors makes the next sweep of every policy begin at the oldest row.
+func resetCursors() {
+	cursorMu.Lock()
+	cursors = map[string]retentionCursor{}
+	cursorMu.Unlock()
+}
+
+func loadCursor(db *sql.DB, table string) retentionCursor {
+	cursorMu.Lock()
+	defer cursorMu.Unlock()
+	cursor := cursors[table]
+	if !cursor.set || cursor.db != db {
+		return retentionCursor{}
+	}
+	return cursor
+}
+
+func storeCursor(db *sql.DB, table string, cursor retentionCursor) {
+	cursorMu.Lock()
+	defer cursorMu.Unlock()
+	if !cursor.set {
+		delete(cursors, table)
+		return
+	}
+	cursor.db = db
+	cursors[table] = cursor
+}
+
+// retentionPage is the bounded candidate slice a sweep examined, in age order.
+// Its length is the number of rows looked at, not the number deleted.
+type retentionPage struct {
+	length int
+	last   retentionCursor
+}
+
+// readPage reads at most limit age-ledger entries after the cursor. It names
+// maintenance_retention_age so SQLite walks the age order without a sort.
+func readPage(ctx context.Context, tx *sql.Tx, table string, cursor retentionCursor, cutoff int64, limit int) (retentionPage, error) {
+	query := `SELECT created_ms,record_key FROM maintenance_retention_rows INDEXED BY maintenance_retention_age
+ WHERE table_name=? AND created_ms<?`
+	args := []any{table, cutoff}
+	if cursor.set {
+		// The plain range test is redundant with the OR form, but it gives
+		// SQLite an index lower bound instead of a start-of-range scan.
+		query += ` AND created_ms>=? AND (created_ms>? OR (created_ms=? AND record_key>?))`
+		args = append(args, cursor.created, cursor.created, cursor.created, cursor.key)
+	}
+	query += ` ORDER BY created_ms,record_key LIMIT ?`
+	args = append(args, limit)
+	rows, err := tx.QueryContext(ctx, query, args...)
+	if err != nil {
+		return retentionPage{}, err
+	}
+	defer rows.Close()
+	page := retentionPage{}
+	for rows.Next() {
+		var created int64
+		var key string
+		if err = rows.Scan(&created, &key); err != nil {
+			return retentionPage{}, err
+		}
+		page.length++
+		page.last = retentionCursor{created: created, key: key, set: true}
+	}
+	return page, rows.Err()
+}
+
+// candidatePage appends the "same bounded page" restriction, from the cursor
+// up to and including last, to a query that already selected from
+// maintenance_retention_rows. The redundant created_ms range tests alongside
+// the OR form let the age index resolve both ends of the page, so the OR only
+// disambiguates keys that share a millisecond.
+func candidatePage(cursor retentionCursor, last retentionCursor, args []any) (string, []any) {
+	query := ``
+	if cursor.set {
+		query += ` AND created_ms>=? AND (created_ms>? OR (created_ms=? AND record_key>?))`
+		args = append(args, cursor.created, cursor.created, cursor.created, cursor.key)
+	}
+	query += ` AND created_ms<=? AND (created_ms<? OR (created_ms=? AND record_key<=?))`
+	args = append(args, last.created, last.created, last.created, last.key)
+	return query, args
+}
+
 // Sweep removes at most limit records per table, each in its own short
-// maintenance transaction. It returns true while a full batch needs another
-// turn. Calls do not hold a reader or writer while pacing background work.
+// maintenance transaction. It bounds the rows examined, not only the rows
+// deleted: each policy walks one candidate page of its age ledger per call, so
+// rows that stay protected by their predicate are not rescanned from the start
+// on every run. It returns true while a full page needs another turn. Calls do
+// not hold a reader or writer while pacing background work.
 func Sweep(ctx context.Context, db *sql.DB, now time.Time, limit int) (bool, error) {
 	if limit < 1 {
 		limit = 128
@@ -71,8 +175,9 @@ func Sweep(ctx context.Context, db *sql.DB, now time.Time, limit int) (bool, err
 		ctx = dbwork.WithBackgroundSpeed(ctx, dbwork.ReadBackgroundSpeed(ctx, db))
 		started := time.Now()
 		batchLimit := min(limit, 32*dbwork.BackgroundConcurrency(ctx))
+		cutoff := now.Add(-time.Duration(p.Days) * 24 * time.Hour).UnixMilli()
 		if p.Table == "social_groups" || p.Table == "social_receivers" {
-			backlog, err := pruneParent(ctx, db, p, now.Add(-time.Duration(p.Days)*24*time.Hour).UnixMilli(), batchLimit)
+			backlog, err := pruneParent(ctx, db, p, cutoff, batchLimit)
 			if err != nil {
 				return more, err
 			}
@@ -86,17 +191,36 @@ func Sweep(ctx context.Context, db *sql.DB, now time.Time, limit int) (bool, err
 		if p.Table == "queue_v1_container_counts" {
 			key = "selector"
 		}
-		result, err := dbwork.ExecWrite(ctx, db, dbwork.ClassMaintenance, `DELETE FROM `+p.Table+` WHERE `+key+` IN (
- SELECT d.`+key+` FROM maintenance_retention_rows age JOIN `+p.Table+` d ON d.`+key+`=age.record_key
- WHERE age.table_name=? AND age.created_ms<? AND (`+p.Predicate+`) LIMIT ?)`, p.Table, now.Add(-time.Duration(p.Days)*24*time.Hour).UnixMilli(), batchLimit)
+		cursor := loadCursor(db, p.Table)
+		var page retentionPage
+		err := dbwork.WithWriteTxContext(ctx, db, dbwork.ClassMaintenance, func(ctx context.Context, tx *sql.Tx) error {
+			var err error
+			page, err = readPage(ctx, tx, p.Table, cursor, cutoff, batchLimit)
+			if err != nil || page.length == 0 {
+				return err
+			}
+			query := `DELETE FROM ` + p.Table + ` WHERE ` + key + ` IN (
+ SELECT d.` + key + ` FROM (SELECT record_key,created_ms FROM maintenance_retention_rows INDEXED BY maintenance_retention_age
+  WHERE table_name=? AND created_ms<?`
+			args := []any{p.Table, cutoff}
+			var rangeClause string
+			rangeClause, args = candidatePage(cursor, page.last, args)
+			query += rangeClause + ` ORDER BY created_ms,record_key LIMIT ?) age
+ JOIN ` + p.Table + ` d ON d.` + key + `=age.record_key WHERE (` + p.Predicate + `))`
+			args = append(args, batchLimit)
+			_, err = tx.ExecContext(ctx, query, args...)
+			return err
+		})
 		if err != nil {
 			return more, err
 		}
-		count, err := result.RowsAffected()
-		if err != nil {
-			return more, err
+		full := page.length == batchLimit
+		if full {
+			storeCursor(db, p.Table, page.last)
+			more = true
+		} else {
+			storeCursor(db, p.Table, retentionCursor{})
 		}
-		more = more || count == int64(batchLimit)
 		if !dbwork.PaceBackground(ctx, started) {
 			return more, ctx.Err()
 		}
@@ -114,16 +238,42 @@ func pruneParent(ctx context.Context, db *sql.DB, policy Policy, cutoff int64, l
 		children = []string{"social_handoffs", "social_receiver_grants"}
 		foreignKey = "receiver_id"
 	}
+	cursor := loadCursor(db, policy.Table)
+	var next retentionCursor
+	advance := false
 	err := dbwork.WithWriteTxContext(ctx, db, dbwork.ClassMaintenance, func(ctx context.Context, tx *sql.Tx) error {
+		page, err := readPage(ctx, tx, policy.Table, cursor, cutoff, limit)
+		if err != nil {
+			return err
+		}
+		if page.length == 0 {
+			advance = true
+			return nil
+		}
+		full := page.length == limit
 		var id string
-		eligible := `SELECT d.id FROM maintenance_retention_rows age JOIN ` + policy.Table + ` d ON d.rowid=age.record_key WHERE age.table_name=? AND age.created_ms<? AND (` + policy.Predicate + `) ORDER BY age.created_ms,age.record_key LIMIT 1`
-		err := tx.QueryRowContext(ctx, eligible, policy.Table, cutoff).Scan(&id)
+		var found retentionCursor
+		eligible := `SELECT age.created_ms,age.record_key,d.id FROM (SELECT record_key,created_ms FROM maintenance_retention_rows INDEXED BY maintenance_retention_age
+ WHERE table_name=? AND created_ms<?`
+		args := []any{policy.Table, cutoff}
+		var rangeClause string
+		rangeClause, args = candidatePage(cursor, page.last, args)
+		eligible += rangeClause + ` ORDER BY created_ms,record_key LIMIT ?) age
+ JOIN ` + policy.Table + ` d ON d.rowid=age.record_key WHERE (` + policy.Predicate + `) ORDER BY age.created_ms,age.record_key LIMIT 1`
+		args = append(args, limit)
+		err = tx.QueryRowContext(ctx, eligible, args...).Scan(&found.created, &found.key, &id)
 		if errors.Is(err, sql.ErrNoRows) {
+			advance = true
+			if full {
+				next = page.last
+				more = true
+			}
 			return nil
 		}
 		if err != nil {
 			return err
 		}
+		found.set = true
 		for _, table := range children {
 			result, err := tx.ExecContext(ctx, `DELETE FROM `+table+` WHERE rowid IN(SELECT rowid FROM `+table+` WHERE `+foreignKey+`=? LIMIT ?)`, id, limit)
 			if err != nil {
@@ -141,9 +291,17 @@ func pruneParent(ctx context.Context, db *sql.DB, policy Policy, cutoff int64, l
 		if _, err = tx.ExecContext(ctx, `DELETE FROM `+policy.Table+` WHERE id=?`, id); err != nil {
 			return err
 		}
-		err = tx.QueryRowContext(ctx, `SELECT EXISTS(`+eligible+`)`, policy.Table, cutoff).Scan(&more)
-		return err
+		advance = true
+		next = found
+		more = true
+		return nil
 	})
+	if err != nil {
+		return more, err
+	}
+	if advance {
+		storeCursor(db, policy.Table, next)
+	}
 	return more, err
 }
 

@@ -4641,7 +4641,6 @@ CREATE INDEX progress_home_active ON progress_activity(profile_id,library_id,upd
 CREATE INDEX detail_jobs_due ON detail_jobs(status,next_attempt,item_id);
 CREATE INDEX personal_receipts_expiry ON personal_receipts(created_at);
 CREATE INDEX personal_receipts_profile ON personal_receipts(profile_id);
-CREATE INDEX playlist_shared_viewer ON playlist_shares(authority,account_id,profile_id,playlist_id);
 CREATE INDEX playlist_receipts_expiry ON playlist_receipts(created_at);
 CREATE INDEX tvdb_jobs_due ON tvdb_jobs(status,next_attempt,lease_until,show_id);
 CREATE INDEX tvdb_episode_numbers ON tvdb_episode_evidence(show_id,generation,season_number,number);
@@ -4667,7 +4666,6 @@ CREATE INDEX mb_song_release ON mb_song_links(release_revision);
 CREATE INDEX mb_operations_status ON mb_publication_operations(status,created_at,id);
 CREATE INDEX mb_operations_job ON mb_publication_operations(kind,entity_id,job_generation,lease);
 CREATE INDEX mb_selection_receipts_job ON mb_selection_receipts(kind,entity_id,job_generation,status);
-CREATE INDEX mb_tag_source_field ON audio_tag_evidence(library_id,asset_id,field);
 CREATE INDEX audio_local_field ON audio_local_evidence(library_id,asset_id,field);
 CREATE INDEX tvdb_page_owned_rows ON tvdb_evidence_page_ownership(show_id,set_incarnation,page,provider_id);
 CREATE INDEX tvdb_publication_terminal ON tvdb_publication_operations(status,created_at,id);
@@ -4696,6 +4694,30 @@ CREATE TRIGGER asset_subtitle_languages_move AFTER UPDATE OF language ON asset_s
 END;
 CREATE INDEX subtitle_resources_item ON subtitle_resources(item_id,source_id,deleted,scope,owner);
 CREATE INDEX subtitle_revisions_digest ON subtitle_revisions(digest);
+CREATE INDEX subtitle_original_revisions_digest ON subtitle_original_revisions(digest);
+CREATE INDEX subtitle_original_files_digest ON subtitle_original_files(digest);
+-- Collection work for subtitle storage. A revision stops being current, or a
+-- resource is deleted, and the trigger below records it with the moment it may
+-- go; revision 0 stands for the deleted resource row itself, collected once its
+-- revisions are gone (it is due a minute after them). Cleanup reads only due rows and rechecks each one, so an
+-- entry that became current again or is still held by playback is skipped or
+-- postponed rather than trusted. Live tracks, not history, then decide how close
+-- the subtitle tables are to their row ceilings.
+CREATE TABLE subtitle_obsolete_revisions(
+ resource_id TEXT NOT NULL, revision INTEGER NOT NULL CHECK(revision>=0), due_ms INTEGER NOT NULL,
+ PRIMARY KEY(resource_id,revision)) WITHOUT ROWID,STRICT;
+CREATE INDEX subtitle_obsolete_revisions_due ON subtitle_obsolete_revisions(due_ms,revision DESC);
+CREATE TRIGGER subtitle_obsolete_superseded AFTER UPDATE OF current_revision ON subtitle_resources
+WHEN NEW.current_revision<>OLD.current_revision
+BEGIN
+ INSERT INTO subtitle_obsolete_revisions(resource_id,revision,due_ms) VALUES(OLD.id,OLD.current_revision,CAST(unixepoch('subsec')*1000 AS INTEGER)+86400000) ON CONFLICT DO NOTHING;
+END;
+CREATE TRIGGER subtitle_obsolete_deleted AFTER UPDATE OF deleted ON subtitle_resources
+WHEN NEW.deleted=1 AND OLD.deleted=0
+BEGIN
+ INSERT INTO subtitle_obsolete_revisions(resource_id,revision,due_ms) SELECT resource_id,revision,CAST(unixepoch('subsec')*1000 AS INTEGER)+86400000 FROM subtitle_revisions WHERE resource_id=NEW.id ON CONFLICT DO NOTHING;
+ INSERT INTO subtitle_obsolete_revisions(resource_id,revision,due_ms) VALUES(NEW.id,0,CAST(unixepoch('subsec')*1000 AS INTEGER)+86460000) ON CONFLICT DO NOTHING;
+END;
 CREATE INDEX subtitle_candidates_expiry ON subtitle_provider_candidates(expires_at);
 CREATE INDEX playback_admin_retention ON playback_admin_operations(created_at);
 CREATE INDEX playback_vod_pending ON playback_vod_intervals(session_id,status,requested_order);
@@ -7505,19 +7527,19 @@ INSERT INTO maintenance_table_bounds(table_name,rows,maximum) SELECT 'social_gro
 CREATE TRIGGER social_group_invites_bound_check BEFORE INSERT ON social_group_invites WHEN (SELECT rows>=maximum FROM maintenance_table_bounds WHERE table_name='social_group_invites') AND NOT EXISTS(SELECT 1 FROM social_group_invites WHERE (id=NEW.id)) AND NOT EXISTS(SELECT 1 FROM social_group_invites WHERE (code_digest COLLATE BINARY=NEW.code_digest)) AND NOT EXISTS(SELECT 1 FROM social_group_invites WHERE (id COLLATE BINARY=NEW.id)) BEGIN SELECT RAISE(ABORT,'This server has reached its record storage limit.'); END;
 CREATE TRIGGER social_group_invites_bound_insert AFTER INSERT ON social_group_invites BEGIN UPDATE maintenance_table_bounds SET rows=rows+1 WHERE table_name='social_group_invites'; END;
 CREATE TRIGGER social_group_invites_bound_delete AFTER DELETE ON social_group_invites BEGIN UPDATE maintenance_table_bounds SET rows=rows-1 WHERE table_name='social_group_invites'; END;
-INSERT INTO maintenance_table_bounds(table_name,rows,maximum) SELECT 'subtitle_resources',count(*),10000000 FROM subtitle_resources;
+INSERT INTO maintenance_table_bounds(table_name,rows,maximum) SELECT 'subtitle_resources',count(*),100000000 FROM subtitle_resources;
 CREATE TRIGGER subtitle_resources_bound_check BEFORE INSERT ON subtitle_resources WHEN (SELECT rows>=maximum FROM maintenance_table_bounds WHERE table_name='subtitle_resources') AND NOT EXISTS(SELECT 1 FROM subtitle_resources WHERE (id=NEW.id)) AND NOT EXISTS(SELECT 1 FROM subtitle_resources WHERE (id COLLATE BINARY=NEW.id)) BEGIN SELECT RAISE(ABORT,'This server has reached its record storage limit.'); END;
 CREATE TRIGGER subtitle_resources_bound_insert AFTER INSERT ON subtitle_resources BEGIN UPDATE maintenance_table_bounds SET rows=rows+1 WHERE table_name='subtitle_resources'; END;
 CREATE TRIGGER subtitle_resources_bound_delete AFTER DELETE ON subtitle_resources BEGIN UPDATE maintenance_table_bounds SET rows=rows-1 WHERE table_name='subtitle_resources'; END;
-INSERT INTO maintenance_table_bounds(table_name,rows,maximum) SELECT 'subtitle_render_revisions',count(*),10000000 FROM subtitle_render_revisions;
+INSERT INTO maintenance_table_bounds(table_name,rows,maximum) SELECT 'subtitle_render_revisions',count(*),100000000 FROM subtitle_render_revisions;
 CREATE TRIGGER subtitle_render_revisions_bound_check BEFORE INSERT ON subtitle_render_revisions WHEN (SELECT rows>=maximum FROM maintenance_table_bounds WHERE table_name='subtitle_render_revisions') AND NOT EXISTS(SELECT 1 FROM subtitle_render_revisions WHERE (resource_id=NEW.resource_id AND revision=NEW.revision)) AND NOT EXISTS(SELECT 1 FROM subtitle_render_revisions WHERE (resource_id COLLATE BINARY=NEW.resource_id AND revision COLLATE BINARY=NEW.revision)) BEGIN SELECT RAISE(ABORT,'This server has reached its record storage limit.'); END;
 CREATE TRIGGER subtitle_render_revisions_bound_insert AFTER INSERT ON subtitle_render_revisions BEGIN UPDATE maintenance_table_bounds SET rows=rows+1 WHERE table_name='subtitle_render_revisions'; END;
 CREATE TRIGGER subtitle_render_revisions_bound_delete AFTER DELETE ON subtitle_render_revisions BEGIN UPDATE maintenance_table_bounds SET rows=rows-1 WHERE table_name='subtitle_render_revisions'; END;
-INSERT INTO maintenance_table_bounds(table_name,rows,maximum) SELECT 'subtitle_original_revisions',count(*),10000000 FROM subtitle_original_revisions;
+INSERT INTO maintenance_table_bounds(table_name,rows,maximum) SELECT 'subtitle_original_revisions',count(*),100000000 FROM subtitle_original_revisions;
 CREATE TRIGGER subtitle_original_revisions_bound_check BEFORE INSERT ON subtitle_original_revisions WHEN (SELECT rows>=maximum FROM maintenance_table_bounds WHERE table_name='subtitle_original_revisions') AND NOT EXISTS(SELECT 1 FROM subtitle_original_revisions WHERE (resource_id=NEW.resource_id AND revision=NEW.revision)) AND NOT EXISTS(SELECT 1 FROM subtitle_original_revisions WHERE (resource_id COLLATE BINARY=NEW.resource_id AND revision COLLATE BINARY=NEW.revision)) BEGIN SELECT RAISE(ABORT,'This server has reached its record storage limit.'); END;
 CREATE TRIGGER subtitle_original_revisions_bound_insert AFTER INSERT ON subtitle_original_revisions BEGIN UPDATE maintenance_table_bounds SET rows=rows+1 WHERE table_name='subtitle_original_revisions'; END;
 CREATE TRIGGER subtitle_original_revisions_bound_delete AFTER DELETE ON subtitle_original_revisions BEGIN UPDATE maintenance_table_bounds SET rows=rows-1 WHERE table_name='subtitle_original_revisions'; END;
-INSERT INTO maintenance_table_bounds(table_name,rows,maximum) SELECT 'subtitle_original_files',count(*),10000000 FROM subtitle_original_files;
+INSERT INTO maintenance_table_bounds(table_name,rows,maximum) SELECT 'subtitle_original_files',count(*),100000000 FROM subtitle_original_files;
 CREATE TRIGGER subtitle_original_files_bound_check BEFORE INSERT ON subtitle_original_files WHEN (SELECT rows>=maximum FROM maintenance_table_bounds WHERE table_name='subtitle_original_files') AND NOT EXISTS(SELECT 1 FROM subtitle_original_files WHERE (resource_id=NEW.resource_id AND revision=NEW.revision AND part=NEW.part)) AND NOT EXISTS(SELECT 1 FROM subtitle_original_files WHERE (resource_id COLLATE BINARY=NEW.resource_id AND revision COLLATE BINARY=NEW.revision AND part COLLATE BINARY=NEW.part)) BEGIN SELECT RAISE(ABORT,'This server has reached its record storage limit.'); END;
 CREATE TRIGGER subtitle_original_files_bound_insert AFTER INSERT ON subtitle_original_files BEGIN UPDATE maintenance_table_bounds SET rows=rows+1 WHERE table_name='subtitle_original_files'; END;
 CREATE TRIGGER subtitle_original_files_bound_delete AFTER DELETE ON subtitle_original_files BEGIN UPDATE maintenance_table_bounds SET rows=rows-1 WHERE table_name='subtitle_original_files'; END;
@@ -8281,6 +8303,120 @@ CREATE TABLE segment_catchup (
 ) STRICT;
 CREATE INDEX segment_files_work ON segment_files(state,next_ms,show_id,object_id);
 CREATE INDEX segment_files_show ON segment_files(show_id,state);
+-- Exact pending aggregate for the event publisher and the activity summary. One
+-- row per library that currently has at least one pending segment row, maintained
+-- by the triggers below in the same statement and transaction as every
+-- segment_files mutation. library_id is deliberately not a foreign key:
+-- segment_files has none, and a row can outlive its library until cleanup. Orphan
+-- ids and '' are valid keys.
+CREATE TABLE segment_pending_activity (
+  library_id TEXT NOT NULL PRIMARY KEY,
+  pending_count INTEGER NOT NULL CHECK(pending_count>0),
+  max_updated_ms INTEGER NOT NULL,
+  min_updated_ms INTEGER NOT NULL,
+  CHECK(min_updated_ms<=max_updated_ms)
+) STRICT;
+-- The removal proof. Equality on library_id plus the partial pending predicate,
+-- ordered by the timestamp: replacing a removed MAX or MIN is one endpoint seek,
+-- not a count or an aggregate over the backlog. object_id is not needed: MAX and
+-- MIN return the timestamp value, and ties are indistinguishable for this
+-- projection.
+CREATE INDEX segment_files_pending_by_library ON segment_files(library_id,updated_ms) WHERE state='pending';
+-- 1. A new pending row. Also the insert half of INSERT ... ON CONFLICT DO UPDATE.
+CREATE TRIGGER segment_pending_activity_ins AFTER INSERT ON segment_files WHEN NEW.state='pending' BEGIN
+  INSERT INTO segment_pending_activity(library_id,pending_count,max_updated_ms,min_updated_ms)
+  VALUES(NEW.library_id,1,NEW.updated_ms,NEW.updated_ms)
+  ON CONFLICT(library_id) DO UPDATE SET pending_count=pending_count+1,
+   max_updated_ms=max(max_updated_ms,excluded.max_updated_ms),
+   min_updated_ms=min(min_updated_ms,excluded.min_updated_ms);
+END;
+-- 2. A pending row is deleted. Remove its contribution; the last row removes the
+-- summary row rather than leaving a zero count (the CHECK forbids zero). A missing
+-- summary row aborts the mutation instead of silently under-counting.
+CREATE TRIGGER segment_pending_activity_del AFTER DELETE ON segment_files WHEN OLD.state='pending' BEGIN
+  SELECT RAISE(ABORT,'segment pending accounting missing')
+  WHERE NOT EXISTS(SELECT 1 FROM segment_pending_activity WHERE library_id=OLD.library_id);
+  DELETE FROM segment_pending_activity WHERE library_id=OLD.library_id AND pending_count=1;
+  UPDATE segment_pending_activity SET pending_count=pending_count-1,
+   max_updated_ms=CASE WHEN pending_count>1 AND OLD.updated_ms=max_updated_ms
+    THEN (SELECT updated_ms FROM segment_files INDEXED BY segment_files_pending_by_library
+          WHERE library_id=OLD.library_id AND state='pending' ORDER BY updated_ms DESC LIMIT 1)
+    ELSE max_updated_ms END,
+   min_updated_ms=CASE WHEN pending_count>1 AND OLD.updated_ms=min_updated_ms
+    THEN (SELECT updated_ms FROM segment_files INDEXED BY segment_files_pending_by_library
+          WHERE library_id=OLD.library_id AND state='pending' ORDER BY updated_ms ASC LIMIT 1)
+    ELSE min_updated_ms END
+  WHERE library_id=OLD.library_id AND pending_count>1;
+END;
+-- 3. A pending row moves to another library and stays pending. Remove from the old
+-- library, then add to the new one, in this one trigger/statement.
+CREATE TRIGGER segment_pending_activity_move AFTER UPDATE OF library_id ON segment_files
+WHEN OLD.state='pending' AND NEW.state='pending' AND OLD.library_id<>NEW.library_id BEGIN
+  SELECT RAISE(ABORT,'segment pending accounting missing')
+  WHERE NOT EXISTS(SELECT 1 FROM segment_pending_activity WHERE library_id=OLD.library_id);
+  DELETE FROM segment_pending_activity WHERE library_id=OLD.library_id AND pending_count=1;
+  UPDATE segment_pending_activity SET pending_count=pending_count-1,
+   max_updated_ms=CASE WHEN pending_count>1 AND OLD.updated_ms=max_updated_ms
+    THEN (SELECT updated_ms FROM segment_files INDEXED BY segment_files_pending_by_library
+          WHERE library_id=OLD.library_id AND state='pending' ORDER BY updated_ms DESC LIMIT 1)
+    ELSE max_updated_ms END,
+   min_updated_ms=CASE WHEN pending_count>1 AND OLD.updated_ms=min_updated_ms
+    THEN (SELECT updated_ms FROM segment_files INDEXED BY segment_files_pending_by_library
+          WHERE library_id=OLD.library_id AND state='pending' ORDER BY updated_ms ASC LIMIT 1)
+    ELSE min_updated_ms END
+  WHERE library_id=OLD.library_id AND pending_count>1;
+  INSERT INTO segment_pending_activity(library_id,pending_count,max_updated_ms,min_updated_ms)
+  VALUES(NEW.library_id,1,NEW.updated_ms,NEW.updated_ms)
+  ON CONFLICT(library_id) DO UPDATE SET pending_count=pending_count+1,
+   max_updated_ms=max(max_updated_ms,excluded.max_updated_ms),
+   min_updated_ms=min(min_updated_ms,excluded.min_updated_ms);
+END;
+-- 4. A pending row in the same library gets a new timestamp. Count is unchanged.
+-- If the changed row was a MAX or MIN representative (its old value equals the
+-- current endpoint and the new value does not pass it), one ordered endpoint seek
+-- finds the new endpoint. The seek runs against the post-update row set of this
+-- statement, so it also works for a single-row library and for ties.
+CREATE TRIGGER segment_pending_activity_time AFTER UPDATE OF updated_ms ON segment_files
+WHEN OLD.state='pending' AND NEW.state='pending' AND OLD.library_id=NEW.library_id AND OLD.updated_ms<>NEW.updated_ms BEGIN
+  SELECT RAISE(ABORT,'segment pending accounting missing')
+  WHERE NOT EXISTS(SELECT 1 FROM segment_pending_activity WHERE library_id=NEW.library_id);
+  UPDATE segment_pending_activity SET
+   max_updated_ms=CASE WHEN NEW.updated_ms>max_updated_ms THEN NEW.updated_ms
+    WHEN OLD.updated_ms<max_updated_ms THEN max_updated_ms
+    ELSE (SELECT updated_ms FROM segment_files INDEXED BY segment_files_pending_by_library
+          WHERE library_id=NEW.library_id AND state='pending' ORDER BY updated_ms DESC LIMIT 1) END,
+   min_updated_ms=CASE WHEN NEW.updated_ms<min_updated_ms THEN NEW.updated_ms
+    WHEN OLD.updated_ms>min_updated_ms THEN min_updated_ms
+    ELSE (SELECT updated_ms FROM segment_files INDEXED BY segment_files_pending_by_library
+          WHERE library_id=NEW.library_id AND state='pending' ORDER BY updated_ms ASC LIMIT 1) END
+  WHERE library_id=NEW.library_id;
+END;
+-- 5. A non-pending row becomes pending (complete/failed/unsupported -> pending).
+CREATE TRIGGER segment_pending_activity_enter AFTER UPDATE OF state ON segment_files
+WHEN OLD.state<>'pending' AND NEW.state='pending' BEGIN
+  INSERT INTO segment_pending_activity(library_id,pending_count,max_updated_ms,min_updated_ms)
+  VALUES(NEW.library_id,1,NEW.updated_ms,NEW.updated_ms)
+  ON CONFLICT(library_id) DO UPDATE SET pending_count=pending_count+1,
+   max_updated_ms=max(max_updated_ms,excluded.max_updated_ms),
+   min_updated_ms=min(min_updated_ms,excluded.min_updated_ms);
+END;
+-- 6. A pending row leaves the pending state (complete/failed/unsupported).
+CREATE TRIGGER segment_pending_activity_leave AFTER UPDATE OF state ON segment_files
+WHEN OLD.state='pending' AND NEW.state<>'pending' BEGIN
+  SELECT RAISE(ABORT,'segment pending accounting missing')
+  WHERE NOT EXISTS(SELECT 1 FROM segment_pending_activity WHERE library_id=OLD.library_id);
+  DELETE FROM segment_pending_activity WHERE library_id=OLD.library_id AND pending_count=1;
+  UPDATE segment_pending_activity SET pending_count=pending_count-1,
+   max_updated_ms=CASE WHEN pending_count>1 AND OLD.updated_ms=max_updated_ms
+    THEN (SELECT updated_ms FROM segment_files INDEXED BY segment_files_pending_by_library
+          WHERE library_id=OLD.library_id AND state='pending' ORDER BY updated_ms DESC LIMIT 1)
+    ELSE max_updated_ms END,
+   min_updated_ms=CASE WHEN pending_count>1 AND OLD.updated_ms=min_updated_ms
+    THEN (SELECT updated_ms FROM segment_files INDEXED BY segment_files_pending_by_library
+          WHERE library_id=OLD.library_id AND state='pending' ORDER BY updated_ms ASC LIMIT 1)
+    ELSE min_updated_ms END
+  WHERE library_id=OLD.library_id AND pending_count>1;
+END;
 CREATE INDEX segment_shows_dirty ON segment_shows(dirty,show_id) WHERE dirty=1;
 CREATE TABLE playback_conversion_observations(
  session_id TEXT NOT NULL REFERENCES playback_sessions(id) ON DELETE CASCADE,

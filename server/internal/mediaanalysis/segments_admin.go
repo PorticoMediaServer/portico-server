@@ -617,32 +617,78 @@ func (s *Service) SegmentApprove(ctx context.Context, authorize func(*sql.Tx) er
 }
 
 // SegmentRedetect measures a title's files again and compares them afresh.
-// Markers the owner approved, adjusted, dismissed or made are kept.
+// Markers the owner approved, adjusted, dismissed or made are kept. A show can
+// hold thousands of files, so the requeue runs in bounded batches, each in its
+// own short re-authorized transaction (SEG2). A requeue is idempotent: one that
+// is interrupted is finished by asking again.
 func (s *Service) SegmentRedetect(ctx context.Context, authorize func(*sql.Tx) error, id string) (int, error) {
+	total, after := 0, ""
+	for {
+		n, last, done, err := s.redetectBatch(ctx, authorize, id, after)
+		total += n
+		if err != nil || done {
+			return total, err
+		}
+		after = last
+	}
+}
+
+// redetectBatchSize bounds the files one redetect transaction requeues.
+const redetectBatchSize = 256
+
+func (s *Service) redetectBatch(ctx context.Context, authorize func(*sql.Tx) error, id, after string) (int, string, bool, error) {
 	gated, err := dbwork.Begin(ctx, s.db, dbwork.ClassInteractive)
 	if err != nil {
-		return 0, err
+		return 0, "", false, err
 	}
 	defer gated.Rollback()
 	tx := gated.Tx()
 	if authorize != nil {
 		if err = authorize(tx); err != nil {
-			return 0, err
+			return 0, "", false, err
 		}
 	}
 	entity, _, _, _, err := titleTx(ctx, tx, id)
 	if err != nil {
-		return 0, err
+		return 0, "", false, err
 	}
-	result, err := tx.ExecContext(ctx, `UPDATE segment_files SET state='pending',attempt=0,next_ms=0,error_code='',match_digest='',updated_ms=?2 WHERE object_id IN(SELECT object_id FROM (`+titleObjectsSQL+`))`, entity, nowMS())
+	rows, err := tx.QueryContext(ctx, `SELECT object_id FROM (`+titleObjectsSQL+`) WHERE object_id>?2 ORDER BY object_id LIMIT ?3`, entity, after, redetectBatchSize)
 	if err != nil {
-		return 0, err
+		return 0, "", false, err
 	}
-	n, _ := result.RowsAffected()
-	if err = markShowDirtyIfShow(ctx, tx, entity); err != nil {
-		return 0, err
+	var batch []string
+	for rows.Next() {
+		var object string
+		if err = rows.Scan(&object); err != nil {
+			rows.Close()
+			return 0, "", false, err
+		}
+		batch = append(batch, object)
 	}
-	return int(n), gated.Commit()
+	err = rows.Err()
+	rows.Close()
+	if err != nil {
+		return 0, "", false, err
+	}
+	var n int64
+	if len(batch) > 0 {
+		result, err := tx.ExecContext(ctx, `UPDATE segment_files SET state='pending',attempt=0,next_ms=0,error_code='',match_digest='',updated_ms=? WHERE object_id IN(SELECT value FROM json_each(?))`, nowMS(), jsonString(batch))
+		if err != nil {
+			return 0, "", false, err
+		}
+		n, _ = result.RowsAffected()
+	}
+	done := len(batch) < redetectBatchSize
+	if done {
+		if err = markShowDirtyIfShow(ctx, tx, entity); err != nil {
+			return 0, "", false, err
+		}
+	}
+	last := ""
+	if len(batch) > 0 {
+		last = batch[len(batch)-1]
+	}
+	return int(n), last, done, gated.Commit()
 }
 
 func markShowDirtyIfShow(ctx context.Context, tx *sql.Tx, entity int64) error {

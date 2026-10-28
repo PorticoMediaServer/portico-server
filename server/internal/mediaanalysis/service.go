@@ -67,6 +67,12 @@ type Service struct {
 	physical        *livechannels.PhysicalLocks
 	custody         *artifactCustody
 	inventory       *mediaartifact.Inventory
+	// retireCursor is the last result id the retire sweep examined; Sweep holds
+	// s.publication while it reads and moves it.
+	retireCursor string
+	// segmentOrphanCursor is the last segment row the catch-up's orphan check
+	// examined; only the segment worker's catch-up reads and moves it.
+	segmentOrphanCursor string
 }
 
 func New(o Options) (*Service, error) {

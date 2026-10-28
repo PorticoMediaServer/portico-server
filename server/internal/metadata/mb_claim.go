@@ -65,7 +65,7 @@ func readMBHints(ctx context.Context, tx *sql.Tx, entity int64) (map[string]stri
  SELECT a.token,a.size,a.modified_ns,cl.library_id FROM catalog_asset_links l JOIN catalog_assets a ON a.id=l.asset_id
  JOIN catalog_entities e ON e.id=l.entity_id JOIN catalog_libraries cl ON cl.id=e.library_id WHERE l.entity_id=?)
  SELECT DISTINCT field,lower(trim(value)) FROM (
- SELECT t.field,t.value FROM owned o CROSS JOIN audio_tag_evidence t INDEXED BY mb_tag_source_field ON t.library_id=o.library_id AND t.asset_id=o.token
+ SELECT t.field,t.value FROM owned o CROSS JOIN audio_tag_evidence t ON t.library_id=o.library_id AND t.asset_id=o.token
  AND t.field IN('musicbrainz_trackid','musicbrainz_albumid','musicbrainz_releasetrackid')
  UNION ALL SELECT x.field,x.value FROM owned o CROSS JOIN audio_local_evidence x INDEXED BY audio_local_field ON x.library_id=o.library_id AND x.asset_id=o.token
  AND x.field IN('musicbrainz_trackid','musicbrainz_albumid','musicbrainz_releasetrackid')

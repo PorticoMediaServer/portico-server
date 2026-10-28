@@ -5764,6 +5764,10 @@ segment_files.show_id
 segment_files.source_revision
 segment_files.state
 segment_files.updated_ms
+segment_pending_activity.library_id
+segment_pending_activity.max_updated_ms
+segment_pending_activity.min_updated_ms
+segment_pending_activity.pending_count
 segment_shows.dirty
 segment_shows.matched_ms
 segment_shows.show_id
@@ -6107,6 +6111,9 @@ subtitle_inventory_entries.source_id
 subtitle_inventory_evidence.asset_id
 subtitle_inventory_evidence.evidence
 subtitle_inventory_evidence.revision
+subtitle_obsolete_revisions.due_ms
+subtitle_obsolete_revisions.resource_id
+subtitle_obsolete_revisions.revision
 subtitle_operations.actor
 subtitle_operations.created_at
 subtitle_operations.item_id

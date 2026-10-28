@@ -152,7 +152,7 @@ func TestPinnedReplacementDeleteOffAndRevocation(t *testing.T) {
 	if e != nil || !strings.Contains(string(bytes), "Hello") || strings.Contains(string(bytes), "Goodbye") {
 		t.Fatal(string(bytes), e)
 	}
-	if _, e = f.db.Exec(`UPDATE subtitle_revisions SET created_at='2000-01-01T00:00:00Z'`); e != nil {
+	if _, e = f.db.Exec(`UPDATE subtitle_obsolete_revisions SET due_ms=0`); e != nil {
 		t.Fatal(e)
 	}
 	if e = f.s.Cleanup(ctx); e != nil {

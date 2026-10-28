@@ -208,8 +208,8 @@ const activityTasksCTE = `WITH tasks AS (
  CROSS JOIN catalog_assets asset ON asset.token=o.asset_id
  CROSS JOIN library_sources s ON s.id=r.source_id CROSS JOIN libraries l ON l.id=s.library_id
  UNION ALL
- SELECT 'segments:'||f.library_id,'segments',f.library_id,COALESCE(l.name,''),'queued','segment_evidence',NULL,NULL,'files',MIN(f.updated_ms)
- FROM segment_files f INDEXED BY segment_files_work LEFT JOIN libraries l ON l.id=f.library_id WHERE f.state='pending' GROUP BY f.library_id
+ SELECT 'segments:'||a.library_id,'segments',a.library_id,COALESCE(l.name,''),'queued','segment_evidence',NULL,NULL,'files',a.min_updated_ms
+ FROM segment_pending_activity a LEFT JOIN libraries l ON l.id=a.library_id
  ) `
 
 func (d Dependencies) activitySummaryTasks(ctx context.Context, tx *sql.Tx, out *ActivitySummary) error {

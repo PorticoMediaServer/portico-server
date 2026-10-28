@@ -484,7 +484,6 @@ index mb_song_links_release_revision_release_id_fk
 index mb_song_links_release_revision_track_id_fk
 index mb_song_recording
 index mb_song_release
-index mb_tag_source_field
 index media_analysis_item_candidates
 index media_analysis_item_mappings_publication_id_stream_index_fk
 index member_password_resets_issuer_id_fk
@@ -594,7 +593,6 @@ index playback_v1_sessions_media
 index playback_v1_sessions_paused
 index playback_vod_pending
 index playlist_receipts_expiry
-index playlist_shared_viewer
 index playlist_shares_listen_actor
 index ported_artwork_jobs_entity
 index portico_admitted_signer
@@ -690,6 +688,7 @@ index screen_metadata_publication_target
 index screen_metadata_work_target
 index screen_publications_provider
 index search_history_recent
+index segment_files_pending_by_library
 index segment_files_show
 index segment_files_work
 index segment_shows_dirty
@@ -710,6 +709,9 @@ index subtitle_candidates_expiry
 index subtitle_disc_resources_title
 index subtitle_inventory_entries_association
 index subtitle_inventory_entries_job
+index subtitle_obsolete_revisions_due
+index subtitle_original_files_digest
+index subtitle_original_revisions_digest
 index subtitle_provider_candidates_item_id_fk
 index subtitle_resources_item
 index subtitle_resources_source_id_fk
@@ -1538,6 +1540,7 @@ table screen_metadata_work
 table search_history
 table segment_catchup
 table segment_files
+table segment_pending_activity
 table segment_shows
 table server_configuration_pending
 table server_configuration_state
@@ -1566,6 +1569,7 @@ table subtitle_collections
 table subtitle_disc_resources
 table subtitle_inventory_entries
 table subtitle_inventory_evidence
+table subtitle_obsolete_revisions
 table subtitle_operations
 table subtitle_original_files
 table subtitle_original_revisions
@@ -2932,6 +2936,12 @@ trigger screen_wake_video_nfo_evidence_DELETE
 trigger screen_wake_video_nfo_evidence_INSERT
 trigger screen_wake_video_nfo_evidence_UPDATE
 trigger search_generation_published
+trigger segment_pending_activity_del
+trigger segment_pending_activity_enter
+trigger segment_pending_activity_ins
+trigger segment_pending_activity_leave
+trigger segment_pending_activity_move
+trigger segment_pending_activity_time
 trigger server_settings_hint
 trigger social_cast_bootstraps_retention_delete
 trigger social_cast_bootstraps_retention_insert
@@ -2962,6 +2972,8 @@ trigger social_receiver_grants_bound_delete
 trigger social_receiver_grants_bound_insert
 trigger social_receivers_retention_delete
 trigger social_receivers_retention_insert
+trigger subtitle_obsolete_deleted
+trigger subtitle_obsolete_superseded
 trigger subtitle_operations_retention_delete
 trigger subtitle_operations_retention_insert
 trigger subtitle_original_files_bound_check
