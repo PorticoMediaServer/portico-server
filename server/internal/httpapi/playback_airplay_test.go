@@ -246,3 +246,39 @@ func TestAirPlayReceiverRejectsWrongAccountProfileAndDeviceBeforePreparing(t *te
 		t.Fatal("an unrelated principal prepared a private receiver", count, err)
 	}
 }
+
+func TestAirPlayReceiverRefusesHiddenTitleAndAbsentSession(t *testing.T) {
+	airPlayRestrictionCheck(t)
+}
+
+// The restriction matrix calls this real route probe rather than exempting the
+// opaque session handle: a title can become hidden after its session was issued.
+func airPlayRestrictionCheck(t *testing.T) {
+	f := newV1Fixture(t, 1)
+	var local playbackv1.SessionView
+	f.call("POST", "/v1/playback/sessions", map[string]string{"Idempotency-Key": "airplay-restricted-title"}, startBody(f.items[0], nil), 201, &local)
+	var before int
+	if err := f.db.QueryRow(`SELECT count(*) FROM playback_sessions`).Scan(&before); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := f.db.Exec(`INSERT INTO profile_restrictions(profile_id,maximum_age,allow_unrated,revision) VALUES(?,12,0,2) ON CONFLICT(profile_id) DO UPDATE SET maximum_age=12,allow_unrated=0,revision=revision+1`, f.owner.Viewer.ProfileID); err != nil {
+		t.Fatal(err)
+	}
+	f.handler = New(f.deps)
+	input := playbackv1.AirPlayPrepare{Generation: local.Presentation.Generation, ChoiceRevision: local.Presentation.ChoiceRevision, PositionMs: 17000}
+	hidden := f.raw("POST", "/v1/playback/sessions/"+local.ID+"/receivers/airplay", f.owner.AccessToken, nil, input)
+	absent := f.raw("POST", "/v1/playback/sessions/"+local.ID+"-absent/receivers/airplay", f.owner.AccessToken, nil, input)
+	if hidden.Code != 404 || absent.Code != hidden.Code || bodyErrorCode(hidden.Body.String()) != bodyErrorCode(absent.Body.String()) {
+		t.Fatalf("hidden session/title differs from absent: %d %s / %d %s", hidden.Code, hidden.Body.String(), absent.Code, absent.Body.String())
+	}
+	if strings.Contains(hidden.Body.String(), f.items[0]) || strings.Contains(hidden.Body.String(), local.ID) {
+		t.Fatal("refusal disclosed a hidden title or session")
+	}
+	var receivers, after int
+	if err := f.db.QueryRow(`SELECT count(*) FROM playback_airplay_presentations`).Scan(&receivers); err != nil || receivers != 0 {
+		t.Fatal("refused hidden title created a receiver", receivers, err)
+	}
+	if err := f.db.QueryRow(`SELECT count(*) FROM playback_sessions`).Scan(&after); err != nil || after != before {
+		t.Fatal("refused hidden title created a media grant", before, after, err)
+	}
+}

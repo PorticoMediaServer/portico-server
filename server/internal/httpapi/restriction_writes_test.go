@@ -698,6 +698,7 @@ func restrictionWriteRoutes() map[string]writeRoute {
 		"POST /v1/me/recommendations:reset":                 writeExempt("names no title: clears the viewer's own not-interested marks and learned taste, and answers with a count only"),
 		"DELETE /v1/search/history":                         writeExempt(reasonOwnObject),
 		"PATCH /v1/playback/sessions/{id}":                  writeExempt(reasonGrantWrite),
+		"POST /v1/playback/sessions/{id}/receivers/airplay": {check: airPlayRestrictionCheck},
 		"DELETE /v1/playback/sessions/{id}":                 writeExempt(reasonGrantWrite),
 		"PUT /v1/playback/sessions/{id}/observation":        writeExempt(reasonGrantWrite),
 		"POST /v1/playback/sessions/{id}/observer":          writeExempt(reasonGrantWrite),
