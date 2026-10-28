@@ -8,6 +8,7 @@ import (
 	"strings"
 	"testing"
 
+	"portico.local/server/internal/access"
 	"portico.local/server/internal/identity"
 )
 
@@ -56,6 +57,7 @@ func queryHandleRestrictionCheck(t *testing.T, genre bool) {
 	// both real runtimes must defer until their source is ready. Cleanup closes
 	// the Store (and joins its workers) before the fixture closes the database.
 	composeHTTPFacetFixture(t, &f.d)
+	f.d.Access = AccessArea{Access: access.New(f.db)}
 	f.h = New(f.d)
 	ctx := context.Background()
 	owner, err := f.d.Identity.Authenticate(f.token)
@@ -89,17 +91,64 @@ func queryHandleRestrictionCheck(t *testing.T, genre bool) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	setRestrictions := func(account, profile, rating string) {
+		t.Helper()
+		if account == owner.AccountID {
+			policy, err := f.d.Identity.ProfileRestrictions(ctx, f.token, profile)
+			if err != nil {
+				t.Fatalf("read own profile restrictions: %v", err)
+			}
+			if _, err = f.d.Identity.SetProfileRestrictions(ctx, f.token, profile, identity.ProfileRestrictionEdit{
+				ExpectedRevision: policy.Revision, RatingSystem: "mpaa", MaximumAgeRating: rating, AllowUnrated: false,
+			}); err != nil {
+				t.Fatalf("set own profile restrictions: %v", err)
+			}
+			return
+		}
+		// People owns cross-account policy edits. The direct-profile service is
+		// intentionally scoped to the caller's account and would return 404 here.
+		ownerJSON := func(method, path string, body any) *httptest.ResponseRecorder {
+			t.Helper()
+			raw := ""
+			if body != nil {
+				encoded, err := json.Marshal(body)
+				if err != nil {
+					t.Fatal(err)
+				}
+				raw = string(encoded)
+			}
+			r := httptest.NewRequest(method, path, strings.NewReader(raw))
+			r.Header.Set("Authorization", "Bearer "+f.token)
+			r.Header.Set("Content-Type", "application/json")
+			w := httptest.NewRecorder()
+			f.h.ServeHTTP(w, r)
+			if w.Code != http.StatusOK {
+				t.Fatalf("owner policy %s %s: %d %s", method, path, w.Code, w.Body)
+			}
+			return w
+		}
+		path := "/v1/admin/access/members/" + account + "/profiles"
+		w := ownerJSON(http.MethodGet, path, nil)
+		var profiles identity.MemberProfiles
+		if err := json.Unmarshal(w.Body.Bytes(), &profiles); err != nil {
+			t.Fatal(err)
+		}
+		var revision int64
+		for _, p := range profiles.Items {
+			if p.ID == profile {
+				revision = p.Restrictions.Revision
+			}
+		}
+		if revision < 1 {
+			t.Fatal("missing managed member profile", profile)
+		}
+		ownerJSON(http.MethodPut, path+"/"+profile+"/restrictions", identity.ProfileRestrictionEdit{
+			ExpectedRevision: revision, RatingSystem: "mpaa", MaximumAgeRating: rating, AllowUnrated: false,
+		})
+	}
 	issueRestricted := func(account, profile string) string {
 		t.Helper()
-		policy, err := f.d.Identity.ProfileRestrictions(ctx, f.token, profile)
-		if err != nil {
-			t.Fatal(err)
-		}
-		if _, err = f.d.Identity.SetProfileRestrictions(ctx, f.token, profile, identity.ProfileRestrictionEdit{
-			ExpectedRevision: policy.Revision, RatingSystem: "mpaa", MaximumAgeRating: "PG", AllowUnrated: false,
-		}); err != nil {
-			t.Fatal(err)
-		}
+		setRestrictions(account, profile, "PG")
 		envelope, err := f.d.Identity.Issue(account, profile, "local", "member", owner.Epoch)
 		if err != nil {
 			t.Fatal(err)
@@ -228,15 +277,7 @@ func queryHandleRestrictionCheck(t *testing.T, genre bool) {
 	// must revalidate authority before returning even a preparing descriptor.
 	restrictedID := pending(call(http.MethodGet, initial, memberToken), prefix, kind, "")
 	privateIDs = append(privateIDs, restrictedID)
-	policy, err := f.d.Identity.ProfileRestrictions(ctx, f.token, member.PrimaryProfileID)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, err = f.d.Identity.SetProfileRestrictions(ctx, f.token, member.PrimaryProfileID, identity.ProfileRestrictionEdit{
-		ExpectedRevision: policy.Revision, RatingSystem: "mpaa", MaximumAgeRating: "G", AllowUnrated: false,
-	}); err != nil {
-		t.Fatal(err)
-	}
+	setRestrictions(member.ID, member.PrimaryProfileID, "G")
 	stale(call(http.MethodGet, prefix+restrictedID, memberToken))
 	ownerPending()
 	for range 2 {
