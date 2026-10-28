@@ -3,23 +3,28 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {defaultI18n} from '@i18n';
 import {runScreenCommand} from '../src/screens/detail/context.ts';
+import {createCardInteractionBinding} from '../src/kit/cards/interaction-admission.ts';
 import {componentModule} from '../../web/test/helpers/component-harness.mjs';
 import {all, createRenderer, one, tree} from '../../web/test/helpers/interaction-harness.mjs';
 const t = (key: any, values?: any) => defaultI18n.t(key, values);
-async function mount(entry: any, options: {play?: () => Promise<void>; live?: Map<string, any>; openFailure?: boolean} = {}) {
+async function mount(entry: any, options: {play?: () => Promise<void>; live?: Map<string, any>; openFailure?: boolean; selection?: any; selectionVisible?: () => boolean; position?: number} = {}) {
   const h = createRenderer(), calls: {name: string; value?: any}[] = [];
   const range = await componentModule(new URL('../src/kit/cards/selection-range.ts', import.meta.url), {react: h.react});
+  const admission = await componentModule(new URL('../src/kit/cards/use-interaction-admission.ts', import.meta.url), {
+    react: h.react, './interaction-admission': {createCardInteractionBinding},
+  });
   const binding = {live: {subscribe: () => () => {}, getSnapshot: () => options.live ?? new Map()},
     open: (value: any) => { calls.push({name: 'open', value}); if (options.openFailure) throw new Error('failed'); },
     play: (value: any) => { calls.push({name: 'play', value}); return options.play?.() ?? Promise.resolve(); },
     context: {artwork: {foreground: (path: string) => path}, effects: {reportError: (value: any) => calls.push({name: 'error', value})}}};
   const app = await componentModule(new URL('../src/screens/search/Search.tsx', import.meta.url), {
     react: h.react, '../detail/text': {t, locale: () => 'en-US'}, '../detail/context': {runScreenCommand},
+    '../../kit/cards/use-interaction-admission': admission,
     '../detail/model': {entryCard: (value: any) => ({title: value.title})},
     '../../kit/cards': {useSelectionRangePreview: range.useSelectionRangePreview, PosterCard: 'PosterCard', SquareCard: 'SquareCard', CircleCard: 'CircleCard', EpisodeTile: 'EpisodeTile', GenreTile: 'GenreTile', LiveCard: 'LiveCard'},
     '../../kit/artwork': {Artwork: 'Artwork'}, '../../kit/Icon': {Icon: 'Icon'}, './search.module.css': {default: {}},
   });
-  const flat = () => tree(h.render(() => app.SearchResult({entry, binding, onCommit: () => calls.push({name: 'commit'})})));
+  const flat = () => tree(h.render(() => app.SearchResult({entry, binding, selection: options.selection, selectionVisible: options.selectionVisible?.(), position: options.position, onCommit: () => calls.push({name: 'commit'})})));
   return {flat, calls};
 }
 const movie = {id: 'item', libraryId: 'library', kind: 'movie', title: 'Stored title', available: true, playback: {itemId: 'item'}, duration: 60};
@@ -85,4 +90,22 @@ test('failed navigation reports the error without committing history', async () 
   one(f.flat(), 'PosterCard').props.onNavigate();
   assert.deepEqual(f.calls.map(call => call.name), ['open', 'error']);
   assert.equal(all(f.flat(), 'PosterCard').length, 1);
+});
+
+test('a later-page card registers only while displayed or focused and releases its original selection window on withdrawal', async () => {
+  const entry = {...movie, id: 'movie-90'}, mounted = new Map<any, number>();
+  let visible = false, epoch = 1, released = 0;
+  const selection = {subscribe: () => () => {}, getSnapshot: () => 0, epoch: () => epoch,
+    register(value: any, position: number) {mounted.set(value, position);return () => {mounted.delete(value);released++;};},
+    card(value: any) {return mounted.has(value) ? {active: false, checked: false, onToggle() {}} : undefined;}};
+  const f = await mount(entry, {selection, selectionVisible: () => visible, position: 90});
+  f.flat();assert.equal(mounted.size, 0);assert.equal(one(f.flat(), 'PosterCard').props.selection, undefined);
+  visible = true;f.flat();f.flat();
+  assert.deepEqual([...mounted], [[entry, 90]]);assert.ok(one(f.flat(), 'PosterCard').props.selection);
+  visible = false;const withdrawn = f.flat();
+  assert.equal(one(withdrawn, 'PosterCard').props.selection, undefined);
+  assert.equal(mounted.size, 0);assert.equal(released, 1);
+  visible = true;f.flat();epoch++;f.flat();
+  assert.equal(released, 2, 'replacement selection lifetime releases the original registration');
+  assert.deepEqual([...mounted], [[entry, 90]]);
 });

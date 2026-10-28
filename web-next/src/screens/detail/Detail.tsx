@@ -39,8 +39,8 @@ import {ScreenProblem} from './ScreenProblem';
 import {runScreenCommand} from './context';
 import {DetailLoading} from './Loading';
 import {GenreNames} from './GenreNames';
-import {PreplayChoices} from './PreplayChoices';
 import {StartRadioMenuItem} from './StartRadio';
+import {PagedShelf} from '../browse/PagedShelf';
 export {DetailLoading} from './Loading';
 
 export type DetailScreenProps = {binding: DetailBindings; itemId: string; libraryId?: string; artworkClaim?: SourceArtClaim};
@@ -108,7 +108,6 @@ function TitleHero({binding, data, artworkClaim, showBackdrops}: {binding: Detai
       </div>
       <TitleActions binding={binding} data={data} />
       {item.overview && <TitleProse variant="hero" className={styles.phoneSynopsis} markup={item.overview}/>}
-      {(item.kind === 'movie' || item.kind === 'episode') && <PreplayChoices binding={binding} data={data} />}
     </header>;
   }
   return <header className={styles.hero}>
@@ -414,11 +413,13 @@ export function TitleRecommendationRow({row, binding, guard, subtitleVisible = t
   return <TitleRow heading={serverTextLabel(i18n, row.titleText, row.title)} subtitle={subtitleVisible ? serverTextLabel(i18n, row.subtitleText) : undefined} entries={row.entries} binding={binding} guard={guard} />;
 }
 
-export function TitleRow({heading, subtitle, entries, binding, guard}: {heading: ReactNode; subtitle?: ReactNode; entries: readonly ContentEntry[]; binding: Pick<DetailBindings, 'context'>; guard?: () => void}) {
-  const phone = useShellWidth() < 1024;
-  return <Shelf focusScope={binding.context} heading={heading} subtitle={phone ? undefined : subtitle} items={entries} getKey={entry => entry.id} renderItem={entry => {
+export function TitleRow({heading, subtitle, entries, binding, guard, pagination}: {heading: ReactNode; subtitle?: ReactNode; entries: readonly ContentEntry[]; binding: Pick<DetailBindings, 'context'>; guard?: () => void; pagination?: Readonly<{cursor: string; loading: boolean; onMore: () => void}>}) {
+  const width = useShellWidth(), phone = width < 1024;
+  const props = {focusScope: binding.context, heading, subtitle: phone ? undefined : subtitle, items: entries, getKey: (entry: ContentEntry) => entry.id, renderItem: (entry: ContentEntry) => {
     const props = {model: entryCard(entry, env), artwork: binding.context.artwork.foreground(entry.posterUrl, 380, 2 / 3), onNavigate: () => runScreenCommand(binding.context, () => { if (binding.context.isCurrent()) { guard?.(); binding.context.effects.openEntry(entry); } }), watched: entry.watched};
     return ['album', 'book'].includes(entry.kind) ? <SquareCard {...props} /> : <PosterCard {...props} />;
-  }} />;
+  }};
+  const square = entries.every(entry => ['album', 'book'].includes(entry.kind));
+  return pagination ? <PagedShelf {...props} hasMore={!!pagination.cursor} continuation={pagination.cursor} loading={pagination.loading} onMore={pagination.onMore} cardWidth={width < 600 ? square ? 132 : 118 : 190} artworkRatio={square ? 1 : 2 / 3} /> : <Shelf {...props} />;
 }
 export function ScreenFailure({retry}: {retry: () => void}) { return <StateView title={t('next.states.pageFailed')} body={t('next.states.pageFailedBody')} primary={{id: 'retry', label: t('next.states.tryAgain'), onPress: retry}} />; }

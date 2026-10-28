@@ -1,3 +1,4 @@
+import {homeLayout} from './layout';
 import {Fragment, useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore, type CSSProperties, type ReactNode} from 'react';
 import {defaultI18n} from '@i18n';
 import {heroSpec} from '@design';
@@ -154,8 +155,8 @@ export function HomeScreen(bindings: HomeBindings) {
 
 type Spotlight = Omit<ReturnType<typeof homeSpotlights>[number], 'reason'> & HeroCandidate & {causalReason: HomeReason; source: HomeSpotlight};
 export function HomeView({service, customization, document, nowMs, onMore, refreshLive, artwork, effects, selection, time, reducedMotion, appearance, musicMixes, musicMixesMore}: HomeBindings & {document: HomeDocument; nowMs: number; onMore: (rowId: string) => void; refreshLive: () => void}) {
-  const width = useShellWidth(), platform: LayoutPlatform = width >= 1024 ? 'desktop' : 'phone-web';
-  const heroPixels = Math.max(width, heroSpec.backdropWidth[platform === 'desktop' ? 'web' : 'phone']) * devicePixelRatio;
+  const width = useShellWidth(), layout = homeLayout(width), {platform, sizeClass} = layout;
+  const heroPixels = Math.max(width, heroSpec.backdropWidth[platform === 'desktop' || sizeClass === 'medium' ? 'web' : 'phone']) * devicePixelRatio;
   const hero = useVisible(), env = useMemo(() => ({t, locale: time.locale}), [time.locale]);
   const candidates: Spotlight[] = useMemo(() => homeSpotlights(document, env).map((slide, index) => ({...slide, long: longHeroTitle(slide.title), source: document.spotlight[index], causalReason: slide.reason, reason: serverTextLabel(defaultI18n, slide.reason.text)})), [document, env]);
   useEffect(() => {
@@ -165,16 +166,16 @@ export function HomeView({service, customization, document, nowMs, onMore, refre
   }, [document.spotlight, hero.visible, selection]);
   const rows = document.rows.filter(row => !row.platforms || row.platforms.includes('web'));
   const mixesAfter = rows.findIndex(row => row.id === 'listen_next');
-  const mixes = musicMixes ? <MusicMixesRow binding={musicMixes} artwork={artwork} more={musicMixesMore}
+  const mixes = musicMixes ? <MusicMixesRow binding={musicMixes} artwork={artwork} more={musicMixesMore} sizeClass={sizeClass}
     reducedMotion={appearance?.reducedMotion ?? reducedMotion} reportError={effects.reportError}/> : null;
   const play = (entry: ContentEntry, resume: ContentEntry) => {
     const target = homePlaybackTarget(entry, resume);
     if (target) void effects.play(entry, resume).catch(effects.reportError);
   };
-  return <div className={styles.home} data-home-document={document.viewerFence}>
-    {candidates.length > 0 && <div ref={hero.ref}><Hero<Spotlight> candidates={candidates} platform={platform} visible={hero.visible} reducedMotion={appearance?.reducedMotion ?? reducedMotion}
+  return <div className={styles.home} data-size-class={sizeClass} data-home-document={document.viewerFence}>
+    {candidates.length > 0 && <div ref={hero.ref}><Hero<Spotlight> candidates={candidates} platform={platform} sizeClass={sizeClass} visible={hero.visible} reducedMotion={appearance?.reducedMotion ?? reducedMotion}
       renderReason={slide => slide.reason}
-      renderMetadata={slide => <HeroFacts parts={slide.facts} platform={platform} />}
+      renderMetadata={slide => <HeroFacts parts={slide.facts} platform={platform} sizeClass={sizeClass} />}
       renderArtwork={(slide, context) => <HomeHeroArtwork slide={slide} context={context} platform={platform} artwork={artwork} appearance={appearance} heroPixels={heroPixels} />}
       renderThumbnail={(slide, context) => <Artwork source={artwork.foreground(slide.artwork.backdropUrl ?? slide.artwork.posterUrl, 132 * devicePixelRatio, 16 / 9, {group: 'home-thumbnails', order: context.index})} alt="" visible={context.visible} />}
       renderActions={slide => <>
@@ -185,7 +186,7 @@ export function HomeView({service, customization, document, nowMs, onMore, refre
       </>} /></div>}
     {selection.toolbar}
     <div className={styles.rows} data-with-hero={candidates.length > 0}>
-      {rows.map((row, index) => <Fragment key={row.id}><HomeRowView focusScope={service} row={row} rowIndex={index} platform={platform} nowMs={nowMs} refreshLive={refreshLive} onMore={() => onMore(row.id)}
+      {rows.map((row, index) => <Fragment key={row.id}><HomeRowView focusScope={service} row={row} rowIndex={index} platform={platform} layout={layout} nowMs={nowMs} refreshLive={refreshLive} onMore={() => onMore(row.id)}
         artwork={artwork} effects={effects} selection={selection} time={time} appearance={appearance} reducedMotion={appearance?.reducedMotion ?? reducedMotion} />{index === mixesAfter && mixes}</Fragment>)}
       {mixesAfter < 0 && mixes}
       {customization && <HomeCustomizeEntry service={service} binding={customization}/>}
@@ -193,7 +194,7 @@ export function HomeView({service, customization, document, nowMs, onMore, refre
   </div>;
 }
 
-type HomeRowProps = HomePresentation & {focusScope: object; row: HomeRow; rowIndex: number; platform: LayoutPlatform; nowMs: number; onMore: () => void; refreshLive: () => void};
+type HomeRowProps = HomePresentation & {focusScope: object; row: HomeRow; rowIndex: number; platform: LayoutPlatform; layout: ReturnType<typeof homeLayout>; nowMs: number; onMore: () => void; refreshLive: () => void};
 function HomeRowView(props: HomeRowProps) {
   const {row, rowIndex, selection, refreshLive} = props;
   const interest = useVisible(), [range, setRange] = useState<readonly [number, number]>(props.row.collection ? [0, 0] : [-1, -1]);
@@ -208,14 +209,14 @@ function HomeRowView(props: HomeRowProps) {
   }, [interest.visible, liveCurrent, refreshLive, selection, row, rowIndex, range]);
   return <div ref={interest.ref} className={styles.rowSlot} data-home-row={props.row.id}><HomeRowContents {...props} nowMs={props.row.live ? nowMs : props.nowMs} onRange={onRange} /></div>;
 }
-function HomeRowContents({row, rowIndex, platform, nowMs, onMore, onRange, focusScope, ...bindings}: HomeRowProps & {onRange: (first: number, last: number) => void}) {
+function HomeRowContents({row, rowIndex, platform, layout, nowMs, onMore, onRange, focusScope, ...bindings}: HomeRowProps & {onRange: (first: number, last: number) => void}) {
   const env = {t, locale: bindings.time.locale};
   const phone = platform !== 'desktop';
   // The On now row's drawn trailing link is "Guide", not "See all", and it stays visible
   // beside the heading instead of waiting for the row's hover (mock.html#home).
   const guide = !phone && row.seeAll?.type === 'guide';
   const header = {heading: serverTextLabel(defaultI18n, row.titleText, row.title),
-    subtitle: !phone || ['on_now', 'listen_next', 'continue_listening'].includes(row.id) ? serverTextLabel(defaultI18n, row.subtitleText) : undefined, platform,
+    subtitle: !phone || ['on_now', 'listen_next', 'continue_listening'].includes(row.id) ? serverTextLabel(defaultI18n, row.subtitleText) : undefined, platform, sizeClass: layout.sizeClass,
     actions: guide ? <button type="button" className={styles.rowGuide} onClick={() => bindings.effects.openSeeAll(row.seeAll!)}>{t('next.controls.guide')}<Icon name="i-right" size={18} /></button> : undefined,
     onSeeAll: row.seeAll && !guide && (!phone || !['continue', 'continue_books', 'community_watching'].includes(row.id)) ? () => bindings.effects.openSeeAll(row.seeAll!) : undefined};
   const wide = row.artworkShape === 'landscape', square = row.artworkShape === 'square';
@@ -223,7 +224,7 @@ function HomeRowContents({row, rowIndex, platform, nowMs, onMore, onRange, focus
   const scale = cardScale(bindings.appearance);
   // The ranked slot is the number plus the poster less the drawn overlap:
   // 240px on desktop and 170px on phone (92+170-22 / 70+116-16), matching the frame slot.
-  const cardWidth = (ranked ? platform === 'desktop' ? 240 : 170 : wide ? platform === 'desktop' ? 316 : 262 : square ? platform === 'desktop' ? 190 : 132 : platform === 'desktop' ? 190 : 118) * scale;
+  const cardWidth = (ranked ? platform === 'desktop' ? 240 : 170 : wide ? layout.wide : square ? layout.square : layout.poster) * scale;
   const live = currentHomeLive(row.live, nowMs);
   if (row.live) {
     if (!live) return null;
@@ -238,7 +239,7 @@ function HomeRowContents({row, rowIndex, platform, nowMs, onMore, onRange, focus
   }
   if (!row.entries.length) return null;
   return <PagedShelf {...header} focusScope={focusScope} items={row.entries} hasMore={!!row.nextCursor} continuation={row.nextCursor} onMore={onMore} cardWidth={cardWidth} artworkRatio={ranked ? cardWidth / ((platform === 'desktop' ? 255 : 174) * scale) : wide ? 16 / 9 : square ? 1 : 2 / 3} getKey={entry => entry.id} reducedMotion={bindings.reducedMotion} onVisibleRange={onRange}
-    renderItem={(entry, context) => <VisibleCard entry={entry} row={row} rowIndex={rowIndex} index={context.index} platform={platform} {...bindings} />} />;
+    renderItem={(entry, context) => <VisibleCard entry={entry} row={row} rowIndex={rowIndex} index={context.index} platform={platform} layout={layout} {...bindings} />} />;
 }
 
 function VisibleCollection({row, rowIndex, artwork, effects, selection, time, appearance}: HomePresentation & {row: HomeRow; rowIndex: number}) {
@@ -252,9 +253,9 @@ function VisibleCollection({row, rowIndex, artwork, effects, selection, time, ap
     actionLabel={t('next.home.openCollection')} actionVariant="glass" onAction={open} onNavigate={open} /></div>;
 }
 
-function VisibleCard({entry, row, rowIndex, index, platform, artwork, effects, selection, time, appearance}: HomePresentation & {entry: ContentEntry; row: HomeRow; rowIndex: number; index: number; platform: LayoutPlatform}) {
+function VisibleCard({entry, row, rowIndex, index, platform, layout, artwork, effects, selection, time, appearance}: HomePresentation & {entry: ContentEntry; row: HomeRow; rowIndex: number; index: number; platform: LayoutPlatform; layout: ReturnType<typeof homeLayout>}) {
   const interest = useVisible(), wide = row.artworkShape === 'landscape', square = row.artworkShape === 'square';
-  const scale = cardScale(appearance), width = (wide ? platform === 'desktop' ? 316 : 262 : square ? platform === 'desktop' ? 190 : 132 : platform === 'desktop' ? 190 : 118) * scale;
+  const scale = cardScale(appearance), width = (wide ? layout.wide : square ? layout.square : layout.poster) * scale;
   const resume = row.resumes?.find(value => value.entryId === entry.id)?.target ?? entry;
   const target = homePlaybackTarget(entry, resume);
   // A continuing Listen next card draws the bar under its art and the time left where the

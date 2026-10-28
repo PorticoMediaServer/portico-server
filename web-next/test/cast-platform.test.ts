@@ -253,3 +253,27 @@ test('a same-item successor occurrence never borrows the predecessor’s clock',
   assert.equal(service.getSnapshot().phase, 'replaced');
   assert.deepEqual(service.getSnapshot().receiver, {itemId: 'item', positionSeconds: 20, durationSeconds: 180, paused: true});
 });
+
+test('a delayed picker reads the current source clock only immediately before starting', async t => {
+  const {h, service} = await prepared(t);let finish!: () => void, position = 12, reads = 0;
+  h.picker = () => new Promise<void>(resolve => {finish = resolve;});h.acknowledge = true;
+  const started = service.start('item', {title: 'Song'}, 12, undefined, () => {reads++;return position;});
+  assert.equal(h.picks, 1);assert.equal(reads, 0);
+  for (let i = 0; i < 20; i++) {position += 5;await Promise.resolve();}
+  assert.equal(reads, 0);assert.equal(h.messages.length, 0);
+  position = 900; // A seek while the native picker is still open.
+  h.select();finish();assert.equal(await started, true);
+  assert.equal(reads, 1);assert.equal(h.messages.find(message => message.type === 'load')?.startSeconds, 900);
+});
+
+test('retired source or canceled picker cannot dispatch a start or consult an obsolete source', async t => {
+  for (const cancel of [false, true]) {
+    const {h, service} = await prepared(t);let finish!: () => void, reads = 0;
+    h.picker = () => new Promise<void>(resolve => {finish = resolve;});
+    const started = service.start('item', {title: 'Song'}, 12, undefined, () => {reads++;return undefined;});
+    if (cancel) service.cancelConnecting();
+    h.select();finish();assert.equal(await started, false);await settle();
+    assert.equal(reads, cancel ? 0 : 1);assert.equal(h.requests.length, 0);assert.equal(h.messages.length, 0);
+    assert.equal(service.getSnapshot().phase, 'off');
+  }
+});

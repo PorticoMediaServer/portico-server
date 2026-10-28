@@ -6,8 +6,9 @@ import {Button, Segmented, Select} from '../../kit/controls';
 import type {SelectOption} from '../../kit/controls';
 import {ChannelMark} from '../../kit/artwork';
 import {Icon} from '../../kit/Icon';
-import {Banner, Dialog, Menu, SidePanel, type MenuEntry} from '../../kit/overlays';
+import {Banner, BottomSheet, Dialog, Menu, SidePanel, type MenuEntry} from '../../kit/overlays';
 import {useShellWidth} from '../../shell/viewport';
+import {useWindowHeight} from '../../kit/theme';
 import type {ScreenContext} from '../detail/context';
 import type {SelectionAdmission} from './row-witness';
 import {createProgrammeBindings, defaultSeriesChoice, type PreviewAiring, type ProgrammeSnapshot, type SeriesChoice} from './programme-bindings';
@@ -203,8 +204,8 @@ export function ProgrammePanel(props: ProgrammePanelProps) {
 }
 function CommittedProgrammePanel({context, admission, channel, programme, now, timezone, open, onClose, onWatch, onViewRecordings, lease}:
   ProgrammePanelProps & {lease: ProgrammeLease}) {
-  const binding = lease.binding, width = useShellWidth();
-  const phone = width < 600;
+  const binding = lease.binding, width = useShellWidth(), height = useWindowHeight();
+  const portrait = width < 600 && height >= width, landscape = height < 600 && width > height;
   const snapshot = useSyncExternalStore(binding.subscribe, binding.getSnapshot, binding.getSnapshot);
   const reminders = useSyncExternalStore(subscribeReminders, reminderIds, reminderIds);
   const [seriesOpen, setSeriesOpen] = useState(false);
@@ -235,10 +236,11 @@ function CommittedProgrammePanel({context, admission, channel, programme, now, t
     onFavorite={() => {void binding.toggleFavorite();}} onSeriesOpenChange={openSeries} onChoice={change} onReminder={reminder}
     {...(programme ? {onProgrammeReminder: () => {if (!canWrite()) return; toggleReminder({programId: programme.id, channelId: channel.id, title: programme.title, channelName: channel.name, start: programme.start});}} : {})}
     {...(onViewRecordings ? {onViewRecordings} : {})}/>;
-  return phone ? <SidePanel open={open} onOpenChange={value => {if (!value) onClose();}} width={Math.min(600, width)} topInset={0}
-    className={styles.programmePanel} accessibilityLabel={programme?.title ?? channel.name} title={programme?.title ?? channel.name}>{view}</SidePanel>
-    : <SidePanel open={open} onOpenChange={value => {if (!value) onClose();}} width={600} topInset={76}
-      className={styles.programmePanel} accessibilityLabel={programme?.title ?? channel.name} title={programme?.title ?? channel.name}>{view}</SidePanel>;
+  return portrait ? <BottomSheet open={open} onOpenChange={value => {if (!value) onClose();}} fitContent showCloseButton={false}
+    className={styles.programmeSheet} headerClassName={styles.programmeSheetHeader} bodyClassName={styles.programmeSheetBody}
+    accessibilityLabel={programme?.title ?? channel.name} title={programme?.title ?? channel.name}>{view}</BottomSheet>
+    : <SidePanel open={open} onOpenChange={value => {if (!value) onClose();}} width={landscape ? 376 : Math.min(600, width)} topInset={0}
+      className={`${styles.programmePanel} ${landscape ? styles.programmeLandscape : ''}`} accessibilityLabel={programme?.title ?? channel.name} title={programme?.title ?? channel.name}>{view}</SidePanel>;
 }
 
 export type {ProgrammeSnapshot, SeriesChoice};

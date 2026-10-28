@@ -6,7 +6,7 @@ import type {WebListeningTarget} from './listening-port.ts';
 /** One row of one actually issued canonical page, kept truthful for presentation. */
 export type WebQueueEditRow = Readonly<{
   entryId: string; itemId: string; title: string; position: number;
-  available: boolean; hidden: boolean; current: boolean; artworkUrl?: string;
+  available: boolean; hidden: boolean; current: boolean; artworkUrl?: string; artist?: string; durationMs?: number;
 }>;
 
 /** An immutable Web presentation of one canonical bounded page (max 50 rows). */
@@ -114,6 +114,8 @@ export function createQueueEditOpening(input: WebQueueEditInput): WebQueueEditOp
     entryId: entry.entryId, itemId: entry.itemId, title: entry.title, position: entry.position,
     available: entry.available === true, hidden: input.hidden(entry.entryId), current: entry.entryId === input.currentEntryId,
     ...(entry.posterUrl ?? entry.stillUrl ? {artworkUrl: entry.posterUrl ?? entry.stillUrl} : {}),
+    ...(entry.artist ? {artist: entry.artist} : {}),
+    ...(entry.durationMs === undefined ? {} : {durationMs: entry.durationMs}),
   });
   const adopt = (canonical: V1QueueEditPage): WebQueueEditPage => {
     const rows = canonical.items.map(row);

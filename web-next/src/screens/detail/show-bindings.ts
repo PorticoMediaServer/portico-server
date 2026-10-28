@@ -137,6 +137,11 @@ export function createShowBindings(context: ScreenContext) {
       try { const result = await setContainerFlag(life.api, 'show', data.show.id, 'watchlisted', value, life.signal()); current(data); if (before === personal) { personal = result; publish(); } }
       finally { busy = false; publish(); }
     },
+    async setFavorite(data: ShowWorkspaceData, value: boolean) {
+      current(data); const before = personal; if (!before || busy) return; busy = true; publish();
+      try { const result = await setContainerFlag(life.api, 'show', data.show.id, 'favorite', value, life.signal()); current(data); if (before === personal) { personal = result; publish(); } }
+      finally { busy = false; publish(); }
+    },
     async setWatched(data: ShowWorkspaceData, value: boolean) {
       current(data); const before = personal; if (!before || busy) return; busy = true; publish();
       try { const result = await setContainerState(life.api, 'show', data.show.id, {expectedRevision: before.revision, watched: value}, life.signal()); current(data); if (before === personal) { personal = result; publish(); } await service.refresh(); }

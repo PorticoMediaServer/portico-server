@@ -53,10 +53,10 @@ test('strict raw-error lint rejects old pending paths and inline exceptions', t 
 test('hook rules reject conditional hooks and missing dependencies with warnings denied', t => {
   const f = fixture(t); f.write('bad.tsx', 'import {useEffect} from "react"; export function Bad({on}: {on: boolean}) { if (on) useEffect(() => {}, []); return null; }');
   const executable = new URL('../../node_modules/.bin/oxlint', import.meta.url).pathname;
-  const result = spawnSync(executable, ['-c', new URL('../.oxlintrc.json', import.meta.url).pathname, '--deny-warnings', f.root], {encoding: 'utf8'});
+  const result = spawnSync(executable, ['-c', new URL('../.oxlintrc.json', import.meta.url).pathname, '--deny-warnings', join(f.root, 'bad.tsx')], {encoding: 'utf8'});
   assert.notEqual(result.status, 0); assert.match(result.stdout + result.stderr, /rules-of-hooks/);
   f.write('bad.tsx', 'import {useEffect} from "react"; export function Bad({value}: {value: string}) { useEffect(() => { console.log(value); }, []); return null; }');
-  const deps = spawnSync(executable, ['-c', new URL('../.oxlintrc.json', import.meta.url).pathname, '--deny-warnings', f.root], {encoding: 'utf8'});
+  const deps = spawnSync(executable, ['-c', new URL('../.oxlintrc.json', import.meta.url).pathname, '--deny-warnings', join(f.root, 'bad.tsx')], {encoding: 'utf8'});
   assert.notEqual(deps.status, 0); assert.match(deps.stdout + deps.stderr, /exhaustive-deps/);
 });
 

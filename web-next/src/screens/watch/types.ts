@@ -25,6 +25,8 @@ export type WatchPanelContext = Readonly<{
   panel: WatchPanel | null;
   snapshot: WebPlaybackRuntimeSnapshot;
   layout: 'desktop' | 'phone';
+  /** A compact video window wider than it is tall uses the authored side sheet. */
+  landscape?: boolean;
   phoneTop: number;
   /** Current parent-offered title panels and the existing guarded feedback action. */
   available?: readonly WatchPanel[];

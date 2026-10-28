@@ -20,14 +20,16 @@ export type HeroProps<T extends HeroCandidate> = Omit<HTMLAttributes<HTMLElement
   renderSupplement?: (candidate: T, context: HeroRenderContext) => ReactNode;
   activeIndex?: number; defaultIndex?: number; onIndexChange?: (index: number) => void;
   active?: boolean; visible?: boolean; heroFocused?: boolean; reducedMotion?: boolean; platform?: LayoutPlatform;
+  /** tablet.html's centred medium-width Home composition. */
+  sizeClass?: 'medium';
   showNavigation?: boolean;
   contentVisible?: boolean;
   onArtworkReady?: (candidate: T) => void;
   onArtworkError?: (candidate: T) => void;
 };
 
-export function HeroFacts({parts, platform = 'desktop', children}: {parts: readonly FactPart[]; platform?: LayoutPlatform; children?: ReactNode}) {
-  return <div className={styles.facts} style={layoutType(platformType(platform).meta)}>{parts.map(part =>
+export function HeroFacts({parts, platform = 'desktop', sizeClass, children}: {parts: readonly FactPart[]; platform?: LayoutPlatform; sizeClass?: 'medium'; children?: ReactNode}) {
+  return <div className={styles.facts} style={{...layoutType(platformType(platform).meta), ...(sizeClass === 'medium' ? {fontSize: 15} : {})}}>{parts.map(part =>
     <span key={part.id} className={part.id === 'content-rating' || part.id === 'season-count' || part.id === 'duration' ? styles.tag : undefined} data-fact-role={part.role}>{part.text}</span>)}{children}</div>;
 }
 
@@ -38,7 +40,7 @@ export function HeroProgress({progress, remaining, label = defaultI18n.t('next.l
 }
 
 export function Hero<T extends HeroCandidate>({candidates, renderArtwork, renderThumbnail, renderActions, renderMetadata, renderReason, renderSupplement, activeIndex, defaultIndex = 0, onIndexChange,
-  active = true, visible = true, heroFocused = false, reducedMotion = false, showNavigation = true, contentVisible = true, onArtworkReady, onArtworkError, platform = 'desktop', className, onMouseEnter, onMouseLeave, onFocusCapture, onBlurCapture, ...props}: HeroProps<T>) {
+  active = true, visible = true, heroFocused = false, reducedMotion = false, showNavigation = true, contentVisible = true, onArtworkReady, onArtworkError, platform = 'desktop', sizeClass, className, onMouseEnter, onMouseLeave, onFocusCapture, onBlurCapture, ...props}: HeroProps<T>) {
   const [ownIndex, setOwnIndex] = useState(defaultIndex), [hovered, setHovered] = useState(false), [focused, setFocused] = useState(false);
   const motion = useLayoutMotion(reducedMotion), index = boundedIndex(activeIndex ?? ownIndex, candidates.length), id = useId();
   const paused = !active || !visible || !contentVisible || !motion.visible || motion.reduced || hovered || (platform === 'tv' ? !heroFocused : focused);
@@ -77,7 +79,7 @@ export function Hero<T extends HeroCandidate>({candidates, renderArtwork, render
     onReady: onArtworkReady ? () => onArtworkReady(candidate) : undefined, onError: onArtworkError ? () => onArtworkError(candidate) : undefined});
   const entry = candidates[index], context = entry ? contextFor(entry, index) : undefined;
   const reason = entry && context ? renderReason ? renderReason(entry, context) : entry.reason : undefined;
-  return <section {...props} className={[styles.hero, className].filter(Boolean).join(' ')} data-platform={platform} data-paused={paused} data-reduced-motion={motion.reduced} data-navigation={showNavigation && candidates.length > 1}
+  return <section {...props} className={[styles.hero, className].filter(Boolean).join(' ')} data-platform={platform} data-size-class={sizeClass} data-paused={paused} data-reduced-motion={motion.reduced} data-navigation={showNavigation && candidates.length > 1}
     aria-label={props['aria-label'] ?? defaultI18n.t('next.layout.featured')} aria-roledescription={defaultI18n.t('next.layout.carousel')}
     onMouseEnter={event => { setHovered(true); onMouseEnter?.(event); }} onMouseLeave={event => { setHovered(false); onMouseLeave?.(event); }}
     onFocusCapture={event => { setFocused(true); onFocusCapture?.(event); }} onBlurCapture={event => { if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setFocused(false); onBlurCapture?.(event); }}>
@@ -89,8 +91,8 @@ export function Hero<T extends HeroCandidate>({candidates, renderArtwork, render
     })}
     {entry && context && <div id={`${id}-panel`} className={styles.copy} data-active={contentVisible && copyId === currentId} inert={!contentVisible} aria-hidden={!contentVisible || undefined}
       role={platform !== 'tv' && showNavigation && candidates.length > 1 ? 'tabpanel' : undefined} aria-labelledby={platform !== 'tv' && showNavigation && candidates.length > 1 ? `${id}-tab-${index}` : undefined}>
-      {reason && <p className={styles.reason} style={layoutType(type.eyebrow)}>{reason}</p>}
-      <Lockup title={entry.title} long={entry.long} platform={platform} />
+      {reason && <p className={styles.reason} style={{...layoutType(type.eyebrow), ...(sizeClass === 'medium' ? {fontSize: 15} : {})}}>{reason}</p>}
+      <Lockup title={entry.title} long={entry.long} platform={platform} style={sizeClass === 'medium' ? {fontSize: 62, lineHeight: .94} : undefined} />
       {renderMetadata ? renderMetadata(entry, context) : entry.facts?.length ? <HeroFacts parts={entry.facts} platform={platform} /> : null}
       {entry.overview && <p className={styles.overview} style={layoutType(type.synopsis)}>{entry.overview}</p>}
       {renderActions && <div className={styles.actions}>{renderActions(entry, context)}</div>}

@@ -1,3 +1,4 @@
+import {MetadataFacts} from '../../kit/MetadataFacts';
 import {useLayoutEffect, useRef, useState} from 'react';
 import {defaultI18n} from '@i18n';
 import type {WebPlaybackRuntimeSnapshot} from '../../platform/playback';
@@ -96,7 +97,7 @@ export function WatchStillWatchingPrompt({binding, snapshot, environment, expand
       {drawn.offer.replayOffered && <Button variant="glass" size="small" icon="i-restart" disabled={busy} onClick={() => act('replay')}>{t('player.post.replay')}</Button>}
       <Button variant="glass" size="small" disabled={busy} onClick={() => act('stop')}>{t('player.post.close')}</Button>
     </>}>
-    <p className={styles.next}>{t('player.post.upNext')}{episode && <>{' · '}<b>{episode}</b></>}{' · '}<b>{next.title}</b></p>
+    <p className={styles.next}><MetadataFacts parts={[t('player.post.upNext'), episode && <b>{episode}</b>, <b>{next.title}</b>]} /></p>
     <p>{t('player.post.pausedAfterEpisodes')}</p>
   </Dialog>;
 }

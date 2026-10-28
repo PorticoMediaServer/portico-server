@@ -50,6 +50,13 @@
 .error.wait { background: rgba(232,188,106,.1); box-shadow: inset 0 0 0 1px rgba(232,188,106,.3); }
 .error.wait > svg { color: var(--color-amber); }
 .stage[data-layout="center"] .content { align-items: center; text-align: center; margin: 0; width: 100%; }
+.loadingCard { width: 480px; max-width: 100%; padding: 44px 24px; text-align: center; border-radius: 20px; background: rgba(13,27,37,.86); backdrop-filter: blur(26px) saturate(1.2); box-shadow: inset 0 0 0 1px rgba(237,245,250,.1), 0 40px 80px -28px rgba(0,0,0,.9); }
+.loadingCard h1 { margin: 0; font-size: 22px; line-height: 1.05; font-weight: 800; letter-spacing: -.035em; text-shadow: none; }
+.loadingSpinner { display: block; width: 20px; height: 20px; margin: 0 auto 18px; border: 2.5px solid rgba(237,245,250,.16); border-top-color: var(--color-accent-strong); border-radius: 50%; animation: preparing 1s linear infinite; }
+@keyframes preparing { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .loadingSpinner { animation: none; } }
+:global([data-reduce-motion='true']) .loadingSpinner { animation: none; }
+@media (prefers-reduced-transparency: reduce) { .loadingCard { background: var(--color-raised-soft); backdrop-filter: none; } }
 /* The picker heading is left-aligned over centred faces (auth.html 13 `.who h1`: text-align
    start inside a centred flex column), not the centred PIN copy of the same stage. */
 .pickerTitle { position: relative; font-size: 64px !important; line-height: normal !important; margin: 0 0 56px !important; text-align: start; }

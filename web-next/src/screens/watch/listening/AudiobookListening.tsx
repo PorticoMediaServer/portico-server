@@ -2,22 +2,24 @@ import type {ReactNode} from 'react';
 import {defaultI18n} from '@i18n';
 import type {PlayerChapter, PlayerChaptersSnapshot} from '@core/player-chapters.ts';
 import type {WebPlaybackRuntimeSnapshot} from '../../../platform/playback';
-import type {ArtworkSource} from '../../../kit/artwork';
-import {Artwork} from '../../../kit/artwork';
+import type {AmbientArtSource, ArtworkSource} from '../../../kit/artwork';
+import {AmbientArt, Artwork} from '../../../kit/artwork';
 import {Button, Segmented, Slider} from '../../../kit/controls';
 import {Banner} from '../../../kit/overlays';
 import {StateView} from '../../../kit/states';
 import {Icon} from '../../../kit/Icon';
 import type {WatchBindings} from '../types';
 import {watchClock, watchSeek, watchSeekBounds, type WatchIntent} from '../model';
+import {ListeningSeek} from './ListeningSeek';
+import ambientStyles from './listening-ambient.module.css';
 import styles from './audiobook-listening.module.css';
 const t = defaultI18n.t;
 
 /** Authored audiobook view of an existing local host. It mounts no media,
  * service, timer or runtime. Source-bearing callbacks carry the drawn witness. */
-export function AudiobookListening({snapshot, title, subtitle, cover, chapters, speedChoices, sleepChoices, sleepMinutes, skips, phone = false, sourceLabel, onShowPanel,canPlayOn,
+export function AudiobookListening({snapshot, title, subtitle, cover, ambient, chapters, speedChoices, sleepChoices, sleepMinutes, skips, phone = false, sourceLabel, onShowPanel,canPlayOn,
   onIntent, onSpeed, onSleep, onChapter, onChapterPage, onChapterRetry, onCollapse, aside, notice}: Readonly<{
-  snapshot: WebPlaybackRuntimeSnapshot; title: string; subtitle: string; cover?: ArtworkSource;
+  snapshot: WebPlaybackRuntimeSnapshot; title: string; subtitle: ReactNode; cover?: ArtworkSource; ambient?: AmbientArtSource;
   skips: WatchBindings['skips']; phone?: boolean; sourceLabel?: string;canPlayOn?:boolean;
   onShowPanel?: (shown: WebPlaybackRuntimeSnapshot, panel: 'speed' | 'sleep' | 'chapters' | 'play-on' | 'options') => void;
   chapters: PlayerChaptersSnapshot | null; speedChoices: readonly number[]; sleepChoices: readonly number[]; sleepMinutes: number;
@@ -37,21 +39,17 @@ export function AudiobookListening({snapshot, title, subtitle, cover, chapters, 
   const chapterIndex = active ? rows.indexOf(active) : -1, previous = rows[chapterIndex - 1], next = rows[chapterIndex + 1];
   const seek = (position: number) => {const seconds = watchSeek(snapshot, position);if (seconds !== null) onIntent(snapshot, {kind: 'seek', seconds});};
   return <section className={styles.frame} aria-label={t('player.nowPlayingTitle', {title})} tabIndex={-1} data-watch-audiobook data-phone={phone || undefined}>
+    <AmbientArt source={ambient} className={`${ambientStyles.ambient}${phone ? ` ${ambientStyles.phone}` : ''}`}/>
     <header className={styles.top}>
       <Button variant="glass" icon="i-down" aria-label={t('player.minimize')} onClick={onCollapse}/>
-      {sourceLabel && <span>{t('next.music.playingFrom', {source: sourceLabel})}</span>}{notice}
+      {sourceLabel && <span>{t('next.music.playingFrom', {source: sourceLabel})}</span>}{!phone && notice}
       {onShowPanel && <Button variant="glass" icon="i-more" aria-label={t('player.opt.menu')} onClick={() => onShowPanel(snapshot, 'options')}/>}
     </header>
     <div className={styles.main}>
       <div className={styles.bookTop}><div className={styles.cover}><Artwork source={cover} alt={title}/></div><div className={styles.identity}><h1>{title}</h1><p>{subtitle}</p></div></div>
       {active && <div className={styles.chapter}><b>{active.title}</b><span>{watchClock(p.positionSeconds - active.startSeconds)} / {watchClock(active.endSeconds - active.startSeconds)}</span></div>}
-      <div className={styles.scrub}>
-        <span>{watchClock(p.positionSeconds)}</span><input type="range" className={styles.track} aria-label={t('player.position')}
-          aria-valuetext={t('player.clockOf', {position: watchClock(p.positionSeconds), duration: watchClock(p.durationSeconds)})}
-          min={bounds?.start ?? 0} max={bounds?.end ?? Math.max(1, p.durationSeconds)} step={.1} value={Math.max(bounds?.start ?? 0, Math.min(bounds?.end ?? p.durationSeconds, p.positionSeconds))}
-          disabled={!bounds || !can('seek')} onChange={event => {const value = event.currentTarget.valueAsNumber;if (Number.isFinite(value)) seek(value);}}/>
-        <span>{watchClock(p.durationSeconds)}</span>
-      </div>
+      <ListeningSeek className={styles.scrub} position={p.positionSeconds} duration={p.durationSeconds} bounds={bounds}
+        chapters={rows} disabled={!can('seek')} phone={phone} onSeek={seek}/>
       <div className={styles.transport}>
         <Button variant="ghost" className={styles.control} iconOnly iconSize={phone ? 28 : 24} icon="i-prev" aria-label={t('next.dock.previous')} disabled={!chapters || !previous || !can('seek')} onClick={() => {if (chapters && previous) onChapter(chapters, previous);}}/>
         <button type="button" className={styles.skip} aria-label={t('next.dock.back', {seconds: skips.back})} disabled={!can('seek') || !bounds} onClick={() => seek(p.positionSeconds - skips.back)}><Icon name="i-back" size={phone ? 38 : 34}/><span>{skips.back}</span></button>
@@ -60,6 +58,7 @@ export function AudiobookListening({snapshot, title, subtitle, cover, chapters, 
         <button type="button" className={styles.skip} aria-label={t('next.dock.forward', {seconds: skips.forward})} disabled={!can('seek') || !bounds} onClick={() => seek(p.positionSeconds + skips.forward)}><Icon name="i-fwd" size={phone ? 38 : 34}/><span>{skips.forward}</span></button>
         <Button variant="ghost" className={styles.control} iconOnly iconSize={phone ? 28 : 24} icon="i-next" aria-label={t('next.dock.next')} disabled={!chapters || !next || !can('seek')} onClick={() => {if (chapters && next) onChapter(chapters, next);}}/>
       </div>
+      {phone && notice && <div className={styles.notice}>{notice}</div>}
       {!phone && <div className={styles.options}>
         {!!speedChoices.length && <div className={styles.option}><b>{t('player.opt.speed')}</b><Segmented className={styles.segments} aria-label={t('player.opt.speed')} value={String(p.rate)} items={speedChoices.map(rate => ({value: String(rate), label: `${defaultI18n.region.formatLocale ? new Intl.NumberFormat(defaultI18n.region.formatLocale).format(rate) : rate}×`}))}
           onValueChange={value => {const rate = Number(value);if (speedChoices.includes(rate)) onSpeed(snapshot, rate);}}/></div>}

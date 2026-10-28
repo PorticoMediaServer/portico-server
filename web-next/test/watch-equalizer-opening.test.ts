@@ -154,7 +154,7 @@ async function nowPlaying() {
   const app = await componentModule(new URL('../src/screens/watch/music/NowPlaying.tsx', import.meta.url), {
     react: h.react, '@i18n': {defaultI18n: {t: (key: string) => key}},
     '@core/presentation/kit-model/index.ts': {playbackIdentity: () => ({title: 'Song', subtitle: [{text: 'Artist'}]})},
-    '../../../kit/artwork': {Artwork: 'Artwork'}, '../../../kit/Icon': {Icon: 'Icon'}, '../../../kit/controls': {Slider: 'Slider'},
+    '../../../kit/artwork': {AmbientArt: 'AmbientArt', Artwork: 'Artwork'}, '../../../kit/Icon': {Icon: 'Icon'}, '../../../kit/controls': {Slider: 'Slider'},
     '../../../kit/overlays': {Menu: 'Menu'}, '../../../kit/media': media,
     '../model': {dispatchWatch: async () => {}, watchClock: () => '0:00', watchSeek: () => null, watchSeekBounds: () => null},
     '../queue-neighbours': {watchQueueNeighbours: () => ({})}, './signal': {watchMusicSignal: () => undefined},
@@ -162,7 +162,7 @@ async function nowPlaying() {
     '../../../router': {router: {navigate: async (to: any) => {navigations.push(to);}}},
     './EqualizerPanel': {WatchEqualizerPanel: panel.WatchEqualizerPanel, hostAdmit: panel.hostAdmit, surfaceAdmit: panel.surfaceAdmit},
   });
-  const binding = {runtime: runtime as any, artwork: {foreground: () => undefined}, environment: {locale: 'en'}, skips: {back: 10, forward: 30}, reportError: () => {}};
+  const binding = {runtime: runtime as any, artwork: {foreground: () => undefined, ambient: () => undefined}, environment: {locale: 'en'}, skips: {back: 10, forward: 30}, reportError: () => {}};
   let expanded = true;
   const show = (value: any = snapshot) => {
     const paint = () => tree(h.render(() => app.WatchMusicNowPlaying({binding: binding as any, snapshot: value as any, expanded, onCollapse: () => {}, phone: false})));

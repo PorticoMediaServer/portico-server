@@ -52,6 +52,36 @@ function searchPage(path: string, fence = 'search-only') {
       sorts: ['relevance', 'title'], directions: ['asc', 'desc'], maxLimit: 40, groupBudgetMs: 600}};
 }
 
+test('Search All continuation admits its appended action objects and withdraws them with the parent query', async () => {
+  const opened: unknown[] = [], played: unknown[] = [];
+  const owner = setup(async path => {
+    const params = new URL(path, 'https://local.invalid').searchParams, next = !!params.get('cursor'), raw = searchPage(path);
+    for (const result of raw.groups) {
+      result.nextCursor = next ? '' : 'offered-cursor';result.hasMore = !next;
+      result.items = result.items.map(item => ({...item, id: item.id + (next ? '-next' : ''), available: true,
+        playback: {itemId: item.id + (next ? '-next' : ''), startMs: 7000}, navigation: {...item.navigation, entityId: item.id + (next ? '-next' : '')}}));
+    }
+    return raw;
+  });
+  const binding = createSearchBindings({...owner.context, effects: {...owner.context.effects, openEntry: value => {opened.push(value);}, play: async value => {played.push(value);}}});
+  try {
+    await binding.select('harbor', {groups: ['movies']});
+    const parent = binding.service.getSnapshot(), first = binding.results.getSnapshot().groups[0];
+    await binding.results.next(first);
+    const combined = binding.results.getSnapshot(), continued = combined.groups[0].items[1];
+    assert.strictEqual(binding.service.getSnapshot(), parent);
+    assert.strictEqual(combined.data?.groups, combined.groups);
+    assert.equal(combined.groups[0].nextCursor, '');
+    binding.open(continued);await binding.play(continued);
+    assert.deepEqual(opened, [continued]);
+    assert.deepEqual(played, [{libraryId: 'library', itemId: 'library-movies-next', startSeconds: 7}]);
+    await binding.select('other query', {groups: ['movies']});
+    assert.throws(() => binding.open(continued), {name: 'AbortError'});
+    await assert.rejects(binding.play(continued), {name: 'AbortError'});
+    assert.equal(opened.length, 1);assert.equal(played.length, 1);
+  } finally {binding.dispose();}
+});
+
 test('Search summary counts follow actual library scope and ordering when the text and revisions stay the same', async () => {
   const owner = setup(async path => searchPage(path)), binding = createSearchBindings(owner.context);
   try {
@@ -153,6 +183,26 @@ const showPage = () => ({scope: {serverId: 'server', libraryId: 'library', viewe
     heading: {key: 'entity.title', fallback: 'show'}, navigation: [], query: {sort: 'episode', direction: 'asc', category: '', q: '', limit: 40, searchMode: 'none'},
     sorts: [{id: 'episode', labelKey: 'sort.episode', directions: ['asc']}], filters: [], sections: [{id: 'episodes', type: 'list', heading: {key: 'content.episodes', fallback: 'episodes'},
       entries: [{id: 'one', kind: 'episode', title: 'one', libraryId: 'library', available: true, navigation: {view: 'item', entityId: 'one'}, playback: {itemId: 'one', startMs: 10}}], totalCount: 1, nextCursor: ''}]}});
+
+test('show More favorites the show container and retires with the original page', async () => {
+  const writes: {path: string; body: unknown}[] = [], state = {revision: 1, watched: false, watermark: '', watchlisted: false, favorite: false, libraryId: 'library'};
+  const owner = setup(async (path, method, body) => {
+    if (path.includes('/show-workspace')) return showPage();
+    if (method === 'PUT') {writes.push({path, body}); return {...state, favorite: true};}
+    return state;
+  });
+  const binding = createShowBindings(owner.context);
+  try {
+    await binding.select({libraryId: 'library', showId: 'show'});
+    const data = binding.service.getSnapshot().data!;
+    await binding.setFavorite(data, true);
+    assert.deepEqual(writes, [{path: '/v1/containers/show/show/personal-state', body: {expectedRevision: 0, favorite: true}}]);
+    assert.equal(binding.personal.getSnapshot()?.favorite, true);
+    owner.retire();
+    await assert.rejects(binding.setFavorite(data, false), {name: 'AbortError'});
+    assert.equal(writes.length, 1);
+  } finally {binding.dispose();}
+});
 
 test('Watch body retains real title state across repeated presentation loads and retires My List', async () => {
   const owner = setup(async () => ({...detailPage('movie'), actions: [{id: 'watchlist', labelKey: 'action.watchlist', enabled: true}]}));

@@ -1,6 +1,6 @@
 import {useCallback, useEffect, useImperativeHandle, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, cloneElement, type CSSProperties, type HTMLAttributes, type ReactElement, type ReactNode, type Ref} from 'react';
 import type {WindowedCollection} from '@core/collections/windowed';
-import {gridColumns, gridWindow} from './geometry';
+import {gridColumns, gridWindow, gridRenderIndices} from './geometry';
 import {cancelLayoutScroll, scrollLayout, useLayoutMotion} from './motion';
 import {RemovalFocusOwner} from './removal-focus-owner';
 import {GridRemovalFocus} from './GridRemovalFocus';
@@ -18,6 +18,8 @@ export type WindowedGridProps<T> = {
   label: string; height: number | string; cardWidth: number; rowHeight: number; gap?: number; rowGap?: number; overscanRows?: number; stickyOffset?: number;
   /** Position once after this collection total and viewport are observed. */
   initialIndex?: number;
+  /** One active pointer interaction may outlive its visible row window. */
+  pinnedIndex?: number;
   onVisibleRange?: (first: number, last: number) => void; onItemFocus?: (item: T, index: number) => void; reducedMotion?: boolean;
   /** Opt-in original mounted paint only, bounded to40 visible outgoing slots. */
   retainRemovals?: boolean; paintScope?: object; empty?: ReactNode;
@@ -34,7 +36,7 @@ const emptyPaint = (root: HTMLElement): readonly HTMLElement[] => root.hasChildN
 const reducedAt = (node: HTMLElement | null) => typeof document !== 'undefined' && (window.matchMedia?.('(prefers-reduced-motion: reduce)').matches === true
   || !!node?.closest('[data-reduce-motion="true"]') || document.documentElement.dataset.reduceMotion === 'true' || document.body.dataset.reduceMotion === 'true');
 export function WindowedGrid<T>({collection, renderItem, renderPlaceholder, label, height, cardWidth, rowHeight, gap = 20, rowGap = 30, overscanRows = 1, stickyOffset = 0,
-  initialIndex, onVisibleRange, onItemFocus, reducedMotion = false, retainRemovals = false, paintScope, empty, ref, className, style}: WindowedGridProps<T>) {
+  initialIndex, pinnedIndex, onVisibleRange, onItemFocus, reducedMotion = false, retainRemovals = false, paintScope, empty, ref, className, style}: WindowedGridProps<T>) {
   const initialPosition = useRef<WindowedCollection<T> | undefined>(undefined);
   const root = useRef<HTMLDivElement>(null), pendingFocus = useRef<number | null>(null), [viewport, setViewport] = useState({width: 0, height: 0, top: 0});
   const [focused, setFocused] = useState<string | null>(null), motion = useLayoutMotion(reducedMotion);
@@ -90,7 +92,7 @@ export function WindowedGrid<T>({collection, renderItem, renderPlaceholder, labe
   }, [range.renderFirst, range.renderLast, pages, viewport]);
   const {contents, keys} = useMemo(() => { /* Preserve the original ownership/invalidation keys. */ void pages; void snapshot.generation;
     const contents = [], keys = new Set<string>();
-    for (let index = range.renderFirst; index <= range.renderLast; index++) {
+    for (const index of gridRenderIndices(range.renderFirst, range.renderLast, total, pinnedIndex)) {
       const slot = collection.slotAt(index);
       if (slot.kind === 'item') keys.add(slot.key);
       const content = slot.kind === 'item' ? renderItem(slot.item, {index, key: slot.key, focused: slot.key === focused}) : renderPlaceholder(index);
@@ -100,7 +102,7 @@ export function WindowedGrid<T>({collection, renderItem, renderPlaceholder, labe
       contents.push({slot, index, content, onFocusCapture});
     }
     return {contents, keys};
-  }, [collection, pages, snapshot.generation, snapshot.total, range.renderFirst, range.renderLast,
+  }, [collection, pages, snapshot.generation, snapshot.total, total, pinnedIndex, range.renderFirst, range.renderLast,
     // Restore every original rare geometry invalidator; keep raw scroll (logicalTop/viewport.top) out.
     columns, cardWidth, rowHeight, gap, pitch, stickyOffset, focused, onItemFocus, renderItem, renderPlaceholder]);
   const items = useMemo(() => contents.map(({slot, index, content, onFocusCapture}): PaintSlot => {

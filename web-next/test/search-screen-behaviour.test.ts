@@ -15,7 +15,7 @@ async function mount(context: any, options: {text?: string; remember?: boolean; 
   const store = (value: any) => ({subscribe: () => () => {}, getSnapshot: () => value});
   const service = {...store(options.snapshot ?? {phase: 'ready', query: {q: initial}, groups: [], pagination: {cursor: ''}}),
     cancel: record('cancel'), retry: record('retry'), refresh: record('refresh'), next: record('next')};
-  const binding = {service, session: () => ({text: initial, group: options.group}), summary: () => options.summary ?? [], select: record('select'),
+  const binding = {service, results: {...service, page: () => ({loading: false, error: null})}, session: () => ({text: initial, group: options.group}), summary: () => options.summary ?? [], select: record('select'),
     recent: async () => { calls.push({name: 'recent', args: []}); return {entries: [{q: 'Stored Query'}]}; },
     clearRecent: async () => { calls.push({name: 'clearRecent', args: []}); if (options.failClear?.()) throw new Error('unavailable'); },
     genres: {...store(options.genres ?? {phase: 'ready', genres: []}), load: record('genres'), browseTarget: (genre: any) => ({view: 'genre', id: genre.value})},
@@ -31,7 +31,7 @@ async function mount(context: any, options: {text?: string; remember?: boolean; 
     '../../kit/states/SearchEmpty': {SearchEmpty: 'SearchEmpty'}, '../../kit/Icon': {Icon: 'Icon'},
     '../../platform/freshness': {useFreshDocument() {}}, '../../shell/viewport': {useShellWidth: () => 1440},
     '../detail/Loading': {useLoadingClock: () => 0}, '../detail/ScreenProblem': {ScreenProblem: 'ScreenProblem'},
-    './RecentSearches': {RecentSearches: 'RecentSearches'}, './TopResult': {TopResult: 'TopResult'},
+    './RecentSearches': {RecentSearches: 'RecentSearches'}, './TopResult': {TopResult: 'TopResult'}, './AllResultsRow': {AllResultsRow: 'AllResultsRow'},
     './window': {appendedWindow: () => ({collection: {}, set(items: any[]) { calls.push({name: 'window', args: [items]}); }, dispose() {}})},
     './search.module.css': {default: {}},
   });
@@ -142,6 +142,21 @@ test('partial group failure uses refresh while unavailable capabilities hide the
   retry.props.onClick();
   assert.equal(f.calls.filter(call => call.name === 'refresh').length, 1);
   assert.equal(selects(f).length, 0);
+});
+
+test('empty-but-continuable All groups keep their pending row in authored order and never show No matches', async context => {
+  const groups = [
+    {id: 'songs', status: 'success', items: [], totalCount: 20, totalCountExact: true, nextCursor: 'songs-next'},
+    {id: 'shows', status: 'success', items: [], totalCount: 0, totalCountExact: true, nextCursor: ''},
+    {id: 'movies', status: 'success', items: [], totalCount: 12, totalCountExact: true, nextCursor: 'movies-next'},
+  ];
+  const f = await mount(context, {snapshot: {generation: 1, phase: 'ready', query: {q: 'harbor'}, groups, pagination: {cursor: ''},
+    data: {query: {q: 'harbor', group: ''}, capabilities: {groups: []}}}});
+  assert.equal(all(f.flat(), 'SearchEmpty').length, 0);
+  assert.deepEqual(all(f.flat(), 'AllResultsRow').map(node => node.props.result), [groups[2], groups[0]]);
+  groups[0].nextCursor = '';groups[2].nextCursor = '';
+  assert.equal(all(f.flat(), 'AllResultsRow').length, 0);
+  assert.equal(all(f.flat(), 'SearchEmpty').length, 1, 'true EOF with no entries is the empty answer');
 });
 
 

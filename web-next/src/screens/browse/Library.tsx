@@ -1,4 +1,5 @@
 import {useCallback, useEffect, useMemo, useState, useSyncExternalStore, type ReactNode} from 'react';
+import {useCoarsePointer} from '../../kit/theme';
 import {defaultI18n} from '@i18n';
 import type {BrowseNode, BrowseSortSelection} from '@core/browse.ts';
 import type {Library} from '@core/index.ts';
@@ -107,7 +108,8 @@ export function LibraryBrowse(bindings: LibraryBrowseBindings) {
   const snapshot = useSyncExternalStore(controller.collection.subscribe, controller.collection.getSnapshot, controller.collection.getSnapshot);
   const selected = useSyncExternalStore(selection.playSelection?.subscribe ?? noSelectionSubscribe, selection.playSelection?.getSnapshot ?? noSelectionSnapshot, selection.playSelection?.getSnapshot ?? noSelectionSnapshot);
   const selectionActive = selection.playSelection ? selected?.phase === 'ready' && selected.selection?.active === true : undefined;
-  const [filtersOpen, setFiltersOpen] = useState(false), width = useShellWidth(), compact = width < 600;
+  const [filtersOpen, setFiltersOpen] = useState(false), width = useShellWidth(), compact = width < 600, coarse = useCoarsePointer();
+  const docked = width >= 1024 && coarse;
   const {wrap: wrapCard, menu: cardMenu} = useLibraryCardMenu({admission: controller, queryRevision: state.queryRevision});
   const cardActions = useCallback((member: BrowseMember, index: number) => wrapCard(bindings.selection.actions(member, index), member.entry), [wrapCard, bindings.selection]);
   const model = useMemo(() => state.capabilities && state.sort ? browseToolbarModel(state.capabilities, library.kind, state.predicates, state.sort, {...env, owner: bindings.owner, scope: controller.source.base?.length ? 'group' : 'library'}) : undefined,
@@ -126,7 +128,8 @@ export function LibraryBrowse(bindings: LibraryBrowseBindings) {
   const filterCount = snapshot.refreshing || snapshot.status !== 'ready' ? undefined : resultCount;
   const shape = bindings.shape ?? (bindings.pivot === 'collections' ? 'collection' : ['music', 'audiobook'].includes(library.kind) ? 'square' : 'poster');
   return <>
-    <BrowseToolbar model={model} labels={browseLabels} platform={compact ? 'phone' : 'desktop'} resultCount={resultCount} accepted={snapshot} acceptedSource={controller.collection} topInset={compact ? 94 : 76} sticky
+    <div className={styles.browseContent} data-filters-docked={docked && filtersOpen}>
+    <BrowseToolbar model={model} labels={browseLabels} platform={compact ? 'phone' : 'desktop'} resultCount={resultCount} accepted={snapshot} acceptedSource={controller.collection} topInset={compact ? 94 : width < 1024 || coarse ? 0 : 76} sticky
       onQuickChange={(id, checked) => {const quick = [...model.quick, ...model.filterQuick].find(quick => quick.id === id);if (quick) setPredicates(checked ? [...state.predicates, quick.query] : state.predicates.filter(node => JSON.stringify(node) !== JSON.stringify(quick.query)));}}
       onFilters={() => setFiltersOpen(true)} filtersOpen={filtersOpen} onSortChange={sort}
       onReshuffle={() => sort({...model.sort, seed: crypto.getRandomValues(new Uint32Array(1))[0]})}
@@ -139,7 +142,8 @@ export function LibraryBrowse(bindings: LibraryBrowseBindings) {
       reducedMotion={bindings.preferences?.reducedMotion ?? bindings.reducedMotion} actions={cardActions} familyForEntry={bindings.familyForEntry} onVisibleRange={selection.registerWindow} onSort={sort}
       empty={state.predicates.length ? <BrowseFilteredEmpty controller={controller} model={model} labels={browseLabels} predicates={state.predicates}
         library={library.name} onDrop={setPredicates} onClear={() => setPredicates([])}/> : bindings.empty}/>
-    <BrowseFilters controller={controller} model={model} labels={browseLabels} compact={compact} open={filtersOpen} resultCount={filterCount} canSaveView={bindings.canSaveView} onSaveView={bindings.onSaveView} onClose={() => setFiltersOpen(false)} reportError={bindings.reportError}/>
+    </div>
+    <BrowseFilters controller={controller} model={model} labels={browseLabels} compact={compact} medium={width >= 600 && width < 1024} docked={docked} open={filtersOpen} resultCount={filterCount} canSaveView={bindings.canSaveView} onSaveView={bindings.onSaveView} onClose={() => setFiltersOpen(false)} reportError={bindings.reportError}/>
     {cardMenu}
   </>;
 }

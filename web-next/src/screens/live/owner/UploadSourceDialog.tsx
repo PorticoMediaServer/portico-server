@@ -65,7 +65,7 @@ export function UploadSourceDialog({api, serverId, isCurrent, reportError, openi
       <TextField label={t('web.liveTv.guideFile')} type="file" accept=".xml,text/xml,application/xml" disabled={busy} onChange={event => {const file = event.currentTarget.files?.[0];if (file) read('guide', file);}}/>
       <TextField label={t('web.dvrSettings.tuners')} description={t('web.liveTv.tunersHelp')} type="number" min={0} max={64} step={1} value={draft.tunerCount} disabled={busy}
         onChange={event => {const value = event.currentTarget.valueAsNumber;if (Number.isSafeInteger(value) && value >= 0 && value <= 64) edit({tunerCount: value});}}/>
-      {preview && <div className={styles.success} role="status"><b>{[t('server.live.channelCount', {count: preview.channels}), t('server.live.programCount', {count: preview.programmes})].join(' · ')}</b><p>{preview.names?.slice(0, 6).join(', ')}</p></div>}
+      {preview && <div className={styles.success} role="status"><b className={styles.facts}><span>{t('server.live.channelCount', {count: preview.channels})}</span><span>{t('server.live.programCount', {count: preview.programmes})}</span></b><p>{preview.names?.slice(0, 6).join(', ')}</p></div>}
       {!!error && <p role="alert" className={styles.error}>{errorMessage(error)}</p>}
     </div>
   </Dialog>;

@@ -98,3 +98,17 @@ test('retired cleanup cannot dispose a successor opening', async () => {
   assert.equal(second.opening.getSnapshot().phase, 'ready');
   assert.deepEqual(first.reads.filter(r => r === 'dispose').length, 1);
 });
+
+
+test('canonical artwork, artist and duration survive the bounded row projection without invented metadata', async () => {
+  const canonical: V1QueueEditPage = {...page(0, 2), items: [entry(0, {posterUrl: '/art/real', artist: 'Actual artist', durationMs: 184500}), entry(1)]};
+  const reader: V1QueueEditReader = {read: async () => canonical, next: async () => canonical, previous: async () => canonical, edit: async () => canonical, dispose() {}};
+  const opening = createQueueEditOpening({reader, current: () => true, lifetime: {signal: new AbortController().signal, isCurrent: () => true}, currentEntryId: 'e0', hidden: () => false});
+  try {
+    await opening.open();
+    const rows = opening.getSnapshot().page!.rows;
+    assert.equal(rows[0].artworkUrl, '/art/real');assert.equal(rows[0].artist, 'Actual artist');assert.equal(rows[0].durationMs, 184500);
+    assert.equal(rows[1].artist, undefined);assert.equal(rows[1].durationMs, undefined);assert.equal(rows[1].artworkUrl, undefined);
+    assert.ok(Object.isFrozen(rows[0]));
+  } finally {opening.dispose();}
+});

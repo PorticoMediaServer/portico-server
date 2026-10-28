@@ -1,4 +1,6 @@
 import {useCallback, useMemo, useState} from 'react';
+import {useWindowHeight, useWindowWidth} from '../../kit/theme';
+import {guideViewChoice} from './guide-view-choice';
 
 export type GuideView = 'guide' | 'list';
 export type GuideViewScope = Readonly<{serverId: string; viewerId: string; kind: string; sourceId: string}>;
@@ -7,6 +9,7 @@ const valid = (value: unknown): value is GuideView => value === 'guide' || value
 /** A browser view choice, separate from account settings. Only an explicit
  * selection writes; URL choices always take precedence over local memory. */
 export function useGuideViewPreference(scope: GuideViewScope, explicit: GuideView | undefined, current: () => boolean) {
+  const width = useWindowWidth(), height = useWindowHeight();
   const key = `portico.guide.view.v1:${JSON.stringify([scope.serverId, scope.viewerId, scope.kind, scope.sourceId])}`;
   const stored = useMemo(() => {
     try {
@@ -20,5 +23,5 @@ export function useGuideViewPreference(scope: GuideViewScope, explicit: GuideVie
     setChosen({key, value});
     try {globalThis.localStorage?.setItem(key, value);} catch { /* Disabled storage keeps the current mounted choice. */ }
   }, [key, current]);
-  return {view: explicit ?? (chosen?.key === key ? chosen.value : stored) ?? 'guide', remember};
+  return {view: guideViewChoice(explicit, chosen?.key === key ? chosen.value : stored, width, height), remember};
 }

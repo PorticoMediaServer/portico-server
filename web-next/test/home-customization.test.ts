@@ -37,3 +37,25 @@ test('failed layout reads leave Save and Reset unavailable', async () => {
   try {await controller.load();assert.equal(controller.getSnapshot().phase, 'load-error');assert.equal(await controller.save(), false);assert.equal(await controller.reset(), false);}
   finally {controller.dispose();}
 });
+test('reset sends the captured layout revision and keeps a stale editor conflicted until reload', async () => {
+  let revision = 4;
+  const requests: {key: string; expectedRevision?: number}[] = [];
+  const controller = new HomeCustomization({loadLayout: async () => ({...layout, revision}), saveLayout: async () => {throw Error('must not save');},
+    resetLayout: async (key, expectedRevision) => {
+      requests.push({key: key(), expectedRevision});
+      if (expectedRevision !== revision) throw Object.assign(Error('changed'), {code: 'home_layout_conflict'});
+      revision++;
+    }}, bindings);
+  try {
+    await controller.load();controller.show('new', false);revision = 5;
+    assert.equal(await controller.reset(), false);
+    assert.deepEqual(requests, [{key: 'actual-idempotency-key', expectedRevision: 4}]);
+    assert.equal(controller.getSnapshot().conflict, true);
+    assert.equal(controller.getSnapshot().draft?.hidden.has('new'), true);
+    assert.equal(await controller.reset(), false);
+    assert.equal(requests.length, 1, 'a conflict cannot be bypassed by another reset');
+    await controller.load();
+    assert.equal(await controller.reset(), true);
+    assert.equal(requests[1]?.expectedRevision, 5);
+  } finally {controller.dispose();}
+});

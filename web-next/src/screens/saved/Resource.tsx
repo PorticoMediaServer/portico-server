@@ -1,4 +1,4 @@
-import {CatalogueSelectionEntry} from '../browse/document-selection';
+import {CatalogueSelectionEntry, useCatalogueSelectionActive} from '../browse/document-selection';
 import {useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, Fragment, type ReactNode, type RefObject} from 'react';
 import {defaultI18n} from '@i18n';
 import type {ContentEntry} from '@core/library-content.ts';
@@ -6,13 +6,12 @@ import type {PersonalSavedIntent, PersonalResourceEntry} from '@core/personal-sa
 import type {HistoryPeriod, SavedIntent} from '@core/saved.ts';
 import {historyPeriods} from '@core/saved.ts';
 import {episodeLabel} from '@portico/client-core/kit-model';
-import {shapeFor, shapeAspect} from '@core/presentation/card-shape.ts';
+import {shapeFor} from '@core/presentation/card-shape.ts';
 import {AmbientArt, Artwork, CoverMosaic, type ArtworkSource} from '../../kit/artwork';
 import {Button, Chip, Select, Switch} from '../../kit/controls';
 import {ViewToggle} from '../../kit/browse';
 import {Dialog, Menu} from '../../kit/overlays';
 import {Skeleton, StateView} from '../../kit/states';
-import {CircleCard, PosterCard, SquareCard} from '../../kit/cards';
 import {WindowedGrid} from '../../kit/layout';
 import {useLayoutPresence} from '../../kit/layout/presence';
 import {applyRemovalFocus} from '../../kit/layout/focus-context';
@@ -26,16 +25,25 @@ import {sameSavedRoute} from './route.ts';
 import {playlistRemovalUndo, type PlaylistRemovalUndo} from './removal.ts';
 import {RemovalUndo} from './RemovalUndo';
 import {ResourceFields} from './ResourceFields';
+import {ResourceRow} from './ResourceRow';
+import {ResourceOrderHandle} from './ResourceOrderHandle';
+import {commitPreparedResourceOrder, preparePlaylistReorder, resourceOrderMove, resourceOrderComplete, resourceOrderEdge, resourceOrderPosition, type ResourceOrderPreparation, type ResourceReorder} from './resource-order';
 import {SavedDialog} from './SavedDialog';
 import {personalEntriesWindow} from './window.ts';
+import {useShellWidth} from '../../shell/viewport';
 import styles from './saved.module.css';
 
 const t = defaultI18n.t;
 export function SavedResourceScreen({bindings}: {bindings: SavedViewBindings}) {
   const {runtime, route, effects} = bindings;
+  const phone = useShellWidth() < 600;
+  const selecting = useCatalogueSelectionActive(bindings.catalogueSelection);
   const playlist = useSyncExternalStore(runtime.saved.subscribe, runtime.saved.getSnapshot, runtime.saved.getSnapshot), personal = useSyncExternalStore(runtime.personal.subscribe, runtime.personal.getSnapshot, runtime.personal.getSnapshot);
   const [menu, setMenu] = useState(false), [dialog, setDialog] = useState<'rename' | 'delete'>(), [name, setName] = useState(''), [summary, setSummary] = useState(''), [busy, setBusy] = useState(false);
   const [rowMenu, setRowMenu] = useState<Readonly<{entryId: string; media: ContentEntry}>>(), [undo, setUndo] = useState<PlaylistRemovalUndo>();
+  const [reorder, setReorder] = useState(false);
+  const [heldEntryId, setHeldEntryId] = useState<string>();
+  const [announcement, setAnnouncement] = useState({text: '', sequence: 0});
   const rowAnchor = useRef<HTMLElement>(null), pendingAction = useRef(false);
   const clearUndo = useCallback(() => setUndo(undefined), []);
   const cancel = useRef<HTMLButtonElement>(null), nameInput = useRef<HTMLInputElement>(null);
@@ -44,53 +52,99 @@ export function SavedResourceScreen({bindings}: {bindings: SavedViewBindings}) {
   const nameShown = isPlaylist ? playlist.playlist?.name : personal.resource?.name;
   const kind = isPlaylist ? 'playlist' : personal.resource?.kind === 'view' ? 'view' : 'collection';
   const actions = resource?.actions ?? [], pinned = resource?.pinned ?? false;
+  const entries = isPlaylist ? playlist.projection?.sections.flatMap(section => section.entries).filter(entry => entry.kind === 'playlist_entry') ?? [] : personal.entries;
+  const entryIds = entries.map(entry => entry.id), menuIndex = rowMenu ? entryIds.indexOf(rowMenu.entryId) : -1;
+  const completeOrder = resourceOrderComplete(entryIds, resource?.entryCount ?? -1,
+    isPlaylist ? playlist.pagination.cursor === null : personal.cursor === null,
+    isPlaylist ? [...(playlist.projection?.sections.map(section => section.nextCursor) ?? []), playlist.order?.nextCursor, ...playlist.pagination.next.map(page => page.cursor)] : [personal.nextCursor]);
   const selectedPlaylistEntry = rowMenu && playlist.projection?.sections.flatMap(section => section.entries).find(entry => entry.id === rowMenu.entryId);
   const selectedPersonalEntry = rowMenu && personal.entries.find(entry => entry.id === rowMenu.entryId);
   const menuMedia = isPlaylist ? selectedPlaylistEntry?.kind === 'playlist_entry' && !selectedPlaylistEntry.hidden ? selectedPlaylistEntry.media : undefined
     : selectedPersonalEntry && !selectedPersonalEntry.hidden ? selectedPersonalEntry.media : undefined;
-  const perform = (playlistIntent: SavedIntent, personalIntent: PersonalSavedIntent, done?: () => void) => {
+  const perform = (playlistIntent: SavedIntent, personalIntent: PersonalSavedIntent, done?: () => void, preparation?: ResourceOrderPreparation) => {
     if (pendingAction.current || !bindings.operations.current) return;
     pendingAction.current = true; setBusy(true);
     void bindings.operations.run(async () => {
-      if (isPlaylist) await runtime.saved.mutate(playlistIntent);
-      else if (!await runtime.personal.mutate(personalIntent)) throw runtime.personal.getSnapshot().mutationError;
+      const mutate = async () => {
+        if (!bindings.operations.current) return;
+        if (isPlaylist) await runtime.saved.mutate(playlistIntent);
+        else if (!await runtime.personal.mutate(personalIntent)) throw runtime.personal.getSnapshot().mutationError;
+      };
+      if (preparation) await commitPreparedResourceOrder(preparation, mutate);
+      else await mutate();
     }, () => { pendingAction.current = false; setBusy(false); done?.(); }).catch(error => { pendingAction.current = false; setBusy(false); effects.reportError(error); });
   };
+  const move = (intent: ResourceReorder, entryId: string) => {
+    if (!resource || !actions.includes('reorder')) return;
+    const cursor = isPlaylist ? playlist.pagination.cursor : personal.cursor;
+    const current = () => {
+      const savedNow = runtime.saved.getSnapshot(), personalNow = runtime.personal.getSnapshot(), value = isPlaylist ? savedNow.playlist : personalNow.resource;
+      return bindings.operations.current && (isPlaylist ? savedNow.pagination.cursor : personalNow.cursor) === cursor
+        && value?.id === resource.id && value.revision === resource.revision
+        && value.viewerFence === resource.viewerFence && value.actions.includes('reorder');
+    };
+    const entry = entries.find(entry => entry.id === entryId);
+    const title = entry && !entry.hidden && entry.media ? entry.media.displayTitle ?? entry.media.title : '';
+    const position = resourceOrderPosition(intent, entryIds, entryId, completeOrder);
+    perform(intent, intent, () => {
+      if (position !== undefined && title) setAnnouncement(value => ({sequence: value.sequence + 1, text: t('next.settings.moved', {name: title, position, count: resource.entryCount})}));
+    }, {current, prepare: async () => {
+      if (!current()) throw Object.assign(new Error(t('error.changed')), {code: 'revision_mismatch'});
+      if (isPlaylist) await preparePlaylistReorder(runtime.saved, intent, current);
+      if (!current()) throw Object.assign(new Error(t('error.changed')), {code: 'revision_mismatch'});
+    }});
+  };
+  const moveTo = (entryId: string, targetId: string) => {const intent = resourceOrderMove(entryIds, entryId, targetId); if (intent) move(intent, entryId);};
+  const orderHandle = reorder && actions.includes('reorder') ? (entryId: string, title: string) => <ResourceOrderHandle
+    entryId={entryId} entryIds={entryIds} title={title} disabled={busy} onMove={moveTo} onLiftChange={setHeldEntryId}/> : undefined;
   const failure = isPlaylist ? playlist.error : personal.error;
   if (!routeMatches) return null;
   if (!resource) return failure ? <StateView title={t('saved.listLoadFailed')} primary={{id: 'retry', label: t('action.tryAgain'), onPress: () => { void runtime.select(route); }}} /> : null;
   const paths = isPlaylist ? playlist.projection?.sections.flatMap(section => section.entries).flatMap(entry => entry.kind === 'playlist_entry' && !entry.hidden ? entry.media.posterUrl ? [entry.media.posterUrl] : [] : []).slice(0, 4) ?? [] : personal.resource?.artworkPaths ?? [];
   const covers = paths.map(path => bindings.artwork.foreground(path, 120, 1)).filter((source): source is ArtworkSource => !!source);
+  const ambient = bindings.presentation.backdrops ? paths.flatMap(path => {const source = bindings.artwork.ambient(path); return source ? [source] : [];}) : [];
+  const shownBindings = reorder && actions.includes('reorder') ? {...bindings, presentation: {...bindings.presentation, view: 'list' as const}} : bindings;
   const renameTitle = t(kind === 'playlist' ? 'web.saved.renamePlaylist' : kind === 'view' ? 'web.saved.renameView' : 'web.saved.renameCollection');
-  return <main className={styles.page}>
-    <div className={styles.resourceBack}><Button variant="text" icon="i-left" size="small" onClick={() => effects.selectRoute({view: kind === 'playlist' ? 'playlists' : kind === 'view' ? 'views' : 'collections'})}>{t('saved.title')}</Button></div>
+  const resourceMenu = <Menu open={menu} onOpenChange={setMenu} title={t('player.more')} width={260} trigger={<Button variant="icon" icon="i-more" iconOnly aria-label={t('player.more')} />}
+          items={[
+            ...(actions.includes('pin') ? [{id: 'pin', label: t(pinned ? 'pins.unpin' : 'pins.pin'), icon: 'i-bookmark' as const, disabled: busy, onSelect: () => perform({action: 'pin', pinned: !pinned}, {action: 'pin', pinned: !pinned})}] : []),
+            ...(actions.includes('rename') || actions.includes('update') ? [{id: 'rename', label: t('web.saved.rename'), icon: 'i-edit' as const, disabled: busy, onSelect: () => { setName(nameShown ?? ''); setSummary(resource.summary); setDialog('rename'); }}] : []),
+            ...(actions.includes('delete') ? [{id: 'delete-separator', separator: true} as const, {id: 'delete', label: t(kind === 'playlist' ? 'web.saved.deletePlaylist' : kind === 'view' ? 'web.saved.deleteView' : 'web.saved.deleteCollection'), icon: 'i-trash' as const, destructive: true, disabled: busy, onSelect: () => setDialog('delete')}] : []),
+          ]} />;
+  return <main className={styles.page} data-resource-order>
+    <span className={styles.orderAnnouncement} aria-live="polite" aria-atomic="true"><span key={announcement.sequence}>{announcement.text}</span></span>
+    {!!ambient.length && <AmbientArt sources={ambient} treatment={phone ? 'library-phone' : 'library'} className={phone ? undefined : styles.resourceAmbient}/>}
+    <div className={styles.resourceBack}><Button variant="text" icon="i-left" size="small" onClick={() => effects.selectRoute({view: kind === 'playlist' ? 'playlists' : kind === 'view' ? 'views' : 'collections'})}>{t('saved.title')}</Button>{phone && resourceMenu}</div>
     <header className={styles.resourceHeader}><div className={styles.resourceCover}><CoverMosaic covers={covers} shape="square" alt="" /></div><div>
       <span className={styles.resourceKind}>{t(kind === 'playlist' ? 'web.saved.playlist' : kind === 'view' ? 'web.saved.savedView' : resource.role === 'owner' ? 'web.saved.collection' : 'web.saved.sharedCollection')}</span>
       <h1>{nameShown}</h1><p>{kind === 'playlist' ? t('web.saved.items', {count: resource.entryCount}) : t('lib.count', {count: resource.entryCount, pivot: 'other'})}</p>{resource.summary && <p>{resource.summary}</p>}
       {!isPlaylist && personal.resource?.kind === 'collection' && personal.resource.actions.includes('update') && <label className={styles.resourceVisibility}><Switch checked={personal.resource.visibility === 'server'} disabled={busy} onCheckedChange={checked => perform({action: 'pin', pinned}, {action: 'update', visibility: checked ? 'server' : 'private'})} /><span><b>{t('web.saved.visibleToAll')}</b><small>{t('web.saved.sharedHelp')}</small></span></label>}
       <div className={styles.resourceActions}>
-        {effects.playResource && <><Button variant="primary" icon="i-play" size="compact" onClick={() => { void bindings.operations.run(signal => effects.playResource!({kind, id: resource.id, shuffle: false}, signal)).catch(effects.reportError); }}>{t('action.play')}</Button>
-          <Button icon="i-shuffle" size="compact" onClick={() => { void bindings.operations.run(signal => effects.playResource!({kind, id: resource.id, shuffle: true}, signal)).catch(effects.reportError); }}>{t('title.shuffle')}</Button></>}
-        {actions.includes('pin') && <Button icon="i-bookmark" size="compact" disabled={busy} onClick={() => perform({action: 'pin', pinned: !pinned}, {action: 'pin', pinned: !pinned})}>{t(pinned ? 'pins.unpin' : 'pins.pin')}</Button>}
-        <Menu open={menu} onOpenChange={setMenu} title={t('player.more')} width={260} trigger={<Button variant="icon" icon="i-more" iconOnly aria-label={t('player.more')} />}
-          items={[
-            ...(actions.includes('pin') ? [{id: 'pin', label: t(pinned ? 'pins.unpin' : 'pins.pin'), icon: 'i-bookmark' as const, disabled: busy, onSelect: () => perform({action: 'pin', pinned: !pinned}, {action: 'pin', pinned: !pinned})}] : []),
-            ...(actions.includes('rename') || actions.includes('update') ? [{id: 'rename', label: t('web.saved.rename'), icon: 'i-edit' as const, disabled: busy, onSelect: () => { setName(nameShown ?? ''); setSummary(resource.summary); setDialog('rename'); }}] : []),
-            ...(actions.includes('delete') ? [{id: 'delete-separator', separator: true} as const, {id: 'delete', label: t(kind === 'playlist' ? 'web.saved.deletePlaylist' : kind === 'view' ? 'web.saved.deleteView' : 'web.saved.deleteCollection'), icon: 'i-trash' as const, destructive: true, disabled: busy, onSelect: () => setDialog('delete')}] : []),
-          ]} />
+        {effects.playResource && <><Button className={styles.resourcePlay} variant="primary" icon="i-play" size="compact" onClick={() => { void bindings.operations.run(signal => effects.playResource!({kind, id: resource.id, shuffle: false}, signal)).catch(effects.reportError); }}>{t('action.play')}</Button>
+          <Button icon="i-shuffle" size="compact" iconOnly={phone} aria-label={t('title.shuffle')} onClick={() => { void bindings.operations.run(signal => effects.playResource!({kind, id: resource.id, shuffle: true}, signal)).catch(effects.reportError); }}>{phone ? undefined : t('title.shuffle')}</Button></>}
+        {actions.includes('pin') && <Button icon={pinned ? 'i-bookmark-f' : 'i-bookmark'} size="compact" iconOnly={phone} aria-label={t(pinned ? 'pins.unpin' : 'pins.pin')} aria-pressed={pinned} disabled={busy} onClick={() => perform({action: 'pin', pinned: !pinned}, {action: 'pin', pinned: !pinned})}>{phone ? undefined : t(pinned ? 'pins.unpin' : 'pins.pin')}</Button>}
+        {!phone && resourceMenu}
       </div>
     </div></header>
-    <div className={styles.toolbar}>{bindings.catalogueSelection?.toolbar ?? bindings.selection?.toolbar}<div className={styles.toolbarEnd}><span>{kind === 'playlist' ? t('web.saved.items', {count: resource.entryCount}) : t('lib.count', {count: resource.entryCount, pivot: 'other'})}</span><ViewToggle value={bindings.presentation.view} onValueChange={bindings.presentation.setView} /></div></div>
-    {isPlaylist ? playlist.projection?.sections.map(section => <SavedSection key={section.id} {...bindings} service={runtime.saved} section={section} onMore={(entry, anchor) => {
+    <div className={styles.toolbar}>{bindings.catalogueSelection?.toolbar ?? bindings.selection?.toolbar}
+      {resource.role === 'owner' && actions.includes('reorder') && <Button size="small" icon={reorder ? 'i-check' : 'i-grip'} aria-pressed={reorder} disabled={busy || selecting} onClick={() => setReorder(value => !value)}>{reorder ? t('action.done') : t('order.reorder')}</Button>}
+      <div className={styles.toolbarEnd}><span>{kind === 'playlist' ? t('web.saved.items', {count: resource.entryCount}) : t('lib.count', {count: resource.entryCount, pivot: 'other'})}</span><ViewToggle value={shownBindings.presentation.view} onValueChange={value => {setReorder(false);bindings.presentation.setView(value);}} /></div></div>
+    {isPlaylist ? playlist.projection?.sections.map(section => <SavedSection key={section.id} {...shownBindings} orderHandle={orderHandle} heldEntryId={heldEntryId} service={runtime.saved} section={section} onMore={(entry, anchor) => {
       if (entry.kind !== 'playlist_entry' || entry.hidden || !bindings.operations.current) return;
       rowAnchor.current = anchor; setRowMenu({entryId: entry.id, media: entry.media});
     }} />)
-      : <PersonalRows bindings={bindings} entries={personal.entries} onMore={(entry, anchor) => {
+      : <PersonalRows bindings={shownBindings} entries={personal.entries} orderHandle={orderHandle} heldEntryId={heldEntryId} onMore={(entry, anchor) => {
         if (!entry.media || entry.hidden || !bindings.operations.current) return;
         rowAnchor.current = anchor; setRowMenu({entryId: entry.id, media: entry.media});
       }} />}
     <Menu open={!!rowMenu && !!menuMedia} onOpenChange={open => { if (!open) setRowMenu(undefined); }} title={menuMedia?.displayTitle ?? menuMedia?.title ?? t('player.more')} anchorRef={rowAnchor} width={290}
       items={rowMenu && menuMedia ? [{id: 'go', label: t('web.saved.goToItem'), icon: 'i-info', onSelect: () => { if (bindings.operations.current) effects.openEntry(menuMedia); }},
+        ...(actions.includes('reorder') ? [
+          {id: 'move-up', label: t('web.profile.moveUp'), icon: 'i-up' as const, disabled: busy || menuIndex <= 0, onSelect: () => {if (menuIndex > 0) moveTo(rowMenu.entryId, entryIds[menuIndex - 1]);}},
+          {id: 'move-top', label: t('order.moveTop'), disabled: busy || !resourceOrderEdge(entryIds, rowMenu.entryId, 'top', completeOrder), onSelect: () => {const intent = resourceOrderEdge(entryIds, rowMenu.entryId, 'top', completeOrder);if (intent) move(intent, rowMenu.entryId);}},
+          ...(completeOrder ? [{id: 'move-bottom', label: t('order.moveBottom'), disabled: busy || !resourceOrderEdge(entryIds, rowMenu.entryId, 'bottom', completeOrder), onSelect: () => {const intent = resourceOrderEdge(entryIds, rowMenu.entryId, 'bottom', completeOrder);if (intent) move(intent, rowMenu.entryId);}}] : []),
+          {id: 'move-down', label: t('web.profile.moveDown'), icon: 'i-down' as const, disabled: busy || menuIndex < 0 || menuIndex >= entryIds.length - 1, onSelect: () => {if (menuIndex >= 0 && menuIndex < entryIds.length - 1) moveTo(rowMenu.entryId, entryIds[menuIndex + 1]);}},
+        ] : []),
         ...((isPlaylist ? actions.includes('remove') : kind === 'collection' && actions.includes('entries')) ? [
           {id: 'remove-separator', separator: true} as const,
           {id: 'remove', label: <span className={styles.removeMenuLabel}><svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" d="M6 12h12" /></svg>{t(isPlaylist ? 'web.saved.removeFromPlaylist' : 'web.saved.removeFromCollection')}</span>, destructive: true, disabled: busy, onSelect: () => {
@@ -115,7 +169,7 @@ export function SavedResourceScreen({bindings}: {bindings: SavedViewBindings}) {
   </main>;
 }
 
-function PersonalRows({bindings, entries, onMore}: {bindings: SavedViewBindings; entries: readonly PersonalResourceEntry[]; onMore: (entry: PersonalResourceEntry, anchor: HTMLButtonElement) => void}) {
+function PersonalRows({bindings, entries, onMore, orderHandle, heldEntryId}: {bindings: SavedViewBindings; entries: readonly PersonalResourceEntry[]; onMore: (entry: PersonalResourceEntry, anchor: HTMLButtonElement) => void; orderHandle?: (entryId: string, title: string) => ReactNode; heldEntryId?: string}) {
   const collection = useMemo(() => personalEntriesWindow(bindings.runtime.personal), [bindings.runtime.personal]);
   const root = useRef<HTMLDivElement>(null), [width, setWidth] = useState(0);
   useEffect(() => {
@@ -124,16 +178,15 @@ function PersonalRows({bindings, entries, onMore}: {bindings: SavedViewBindings;
     const observer = new ResizeObserver(read); observer.observe(element); read();
     return () => observer.disconnect();
   }, []);
-  const grid = bindings.presentation.view === 'grid', cardWidth = bindings.presentation.cardWidth, rowHeight = grid ? cardWidth * 1.5 + 48 : 90;
+  const grid = bindings.presentation.view === 'grid', cardWidth = bindings.presentation.cardWidth, rowHeight = grid ? cardWidth * 1.5 + 48 : 88;
   const columns = grid ? Math.max(1, Math.floor((width + 16) / (cardWidth + 16))) : 1;
   const height = Math.max(rowHeight, Math.min(window.innerHeight, Math.ceil(entries.length / columns) * (rowHeight + (grid ? 30 : 0))));
-  return <div className={styles.personalRows}><div ref={root}><WindowedGrid collection={collection} label={bindings.runtime.personal.getSnapshot().resource?.name ?? t('saved.title')}
+  return <div className={styles.personalRows}><div ref={root}><WindowedGrid collection={collection} pinnedIndex={heldEntryId ? entries.findIndex(entry => entry.id === heldEntryId) : undefined} label={bindings.runtime.personal.getSnapshot().resource?.name ?? t('saved.title')}
     height={height} cardWidth={grid ? cardWidth : Math.max(1, width)} rowHeight={rowHeight} gap={16} rowGap={grid ? 30 : 0} reducedMotion={bindings.presentation.reducedMotion}
     renderPlaceholder={() => <Skeleton width={grid ? cardWidth : width} height={grid ? cardWidth * 1.5 : 72} />} renderItem={(entry, context) => {
     const media = entry.media;
     if (!media || entry.hidden) return <div className={styles.hiddenRow}>{t('card.unavailable')}</div>;
-    const model = homeCardModel(media, false, {t, locale: defaultI18n.region.formatLocale}), shape = shapeFor(media.kind, grid ? 'grid' : 'list');
-    const artwork = bindings.artwork.foreground(media.posterUrl, (grid ? cardWidth : 64) * devicePixelRatio, shapeAspect(shape));
+    const model = homeCardModel(media, false, {t, locale: defaultI18n.region.formatLocale});
     const selectable = bindings.catalogueSelection?.member(media);
     return <CatalogueSelectionEntry selection={selectable ? bindings.catalogueSelection : undefined} entry={selectable ?? media} position={selectable ? bindings.catalogueSelection!.position(selectable) : context.index}>{documentSelection => {
     const common = {model, context: grid ? 'grid' as const : 'detail' as const, selection: documentSelection ?? bindings.selection?.personalCard(bindings.runtime.personal, entry), watched: media.watched,
@@ -142,8 +195,8 @@ function PersonalRows({bindings, entries, onMore}: {bindings: SavedViewBindings;
     if (grid) return <BrowseEntryCard entry={media} artwork={bindings.artwork} env={{t, locale: defaultI18n.region.formatLocale}} width={cardWidth} mixed visible order={context.index}
       group={`saved:${bindings.runtime.personal.getSnapshot().resource?.id ?? ''}`} backdrops={bindings.presentation.backdrops}
       actions={{onOpen: common.onNavigate, onPlay: common.onPlay, onMore: common.onMore, selection: common.selection}} />;
-    return <div className={grid ? undefined : styles.mediaListRow}>{shape === 'circle' ? <CircleCard {...common} covers={artwork ? [artwork] : []} variant="person" />
-      : shape === 'square' ? <SquareCard {...common} artwork={artwork} /> : <PosterCard {...common} artwork={artwork} />}</div>;
+    return <ResourceRow {...common} entryId={entry.id} media={media} artwork={bindings.artwork} handle={orderHandle?.(entry.id, model.title)}
+      ordinal={bindings.runtime.personal.getSnapshot().cursor === null ? context.index + 1 : undefined} library={bindings.libraries?.find(library => library.id === media.libraryId)?.name}/>;
     }}</CatalogueSelectionEntry>;
   }} /></div>{bindings.runtime.personal.getSnapshot().nextCursor && <Button size="small" className={styles.showMore} loading={bindings.runtime.personal.getSnapshot().loading} onClick={() => { void bindings.runtime.personal.next(); }}>{t('action.showMore')}</Button>}</div>;
 }

@@ -9,7 +9,7 @@ import {GroupSessionService} from '@core/group-session.ts';
 import {SOCIAL_PROTOCOL} from '@core/social-playback.ts';
 import {WebShellPlaybackRuntime} from '../src/platform/playback/runtime.ts';
 import {ByteCache} from '../src/platform/playback/audio/bytes.ts';
-import {PlayOnController, type WebCastPort} from '../src/platform/playback/play-on.ts';
+import {PlayOnController, castSourcePosition, type WebCastPort} from '../src/platform/playback/play-on.ts';
 import {playbackPolicyNext} from '../src/platform/playback/policy.ts';
 import {dispatchWatchNext, watchUpNextOffer} from '../src/screens/watch/up-next.ts';
 import {watchBodyTarget, watchBodyKey} from '../src/screens/watch/body-target.ts';
@@ -2519,12 +2519,14 @@ test('browser media readiness follows the actual loaded HTML source and rejects 
  const f=setup(t);await f.runtime.play('movie');
  const loading=f.runtime.getSnapshot().fence;if(loading)assert.equal(f.runtime.browserMediaReady(loading),false);
  await f.arrive();const first=f.runtime.getSnapshot().fence!;assert.equal(f.runtime.browserMediaReady(first),true);
- await f.runtime.seek(first,17);assert.equal(f.runtime.browserMediaReady(first),false);f.video.land(17);await settle();assert.equal(f.runtime.browserMediaReady(first),true);
+ f.video.bufferedRanges=[[0,12],[20,30]];assert.deepEqual(f.runtime.bufferedRanges(first),[{start:0,end:12},{start:20,end:30}]);
+ await f.runtime.seek(first,17);assert.equal(f.runtime.browserMediaReady(first),false);assert.deepEqual(f.runtime.bufferedRanges(first),[]);f.video.land(17);await settle();assert.equal(f.runtime.browserMediaReady(first),true);
  await f.runtime.play('other');assert.equal(f.runtime.browserMediaReady(first),false);await f.arrive();assert.equal(f.runtime.browserMediaReady(f.runtime.getSnapshot().fence!),true);
- f.runtime.dispose();assert.equal(f.runtime.browserMediaReady(first),false);
+ f.runtime.dispose();assert.equal(f.runtime.browserMediaReady(first),false);assert.deepEqual(f.runtime.bufferedRanges(first),[]);
  const {WebMediaPlayer}=await import('../src/platform/playback/web-media-player.ts');
  const native=setup(t,{}, {createPlayer:(video,options)=>new WebMediaPlayer(video,options),createRender:null});await native.runtime.play('movie');await native.arrive();
  assert.equal(native.runtime.getSnapshot().playback.phase,'ready');assert.equal(native.runtime.browserMediaReady(native.runtime.getSnapshot().fence!),false,'an app-installed media factory never borrows browser transport capabilities');
+ assert.deepEqual(native.runtime.bufferedRanges(native.runtime.getSnapshot().fence!),[],'native buffer ranges are never guessed from an idle browser element');
 });
 
 test('AirPlay rechecks its actual source at activation instead of trusting cached availability',async t=>{
@@ -2711,4 +2713,28 @@ test('Cast transport loss clears the remote instead of offering a false stopped 
  const token=controller.getSnapshot().remote!;assert.equal(token.phase,'playing');
  sender.publish({phase:'off',remoteStopped:false,itemId:undefined,reported:undefined});
  assert.equal(controller.getSnapshot().remote,undefined);await controller.continueHere(token);assert.equal(f.runtime.getSnapshot().session,undefined);
+});
+
+
+test('Cast picker refresh follows playback and seeks while refusing every replaced source or queue witness', async t => {
+  const f = setup(t);await f.runtime.play('movie', 25);await f.arrive();
+  const original = f.runtime.getSnapshot(), {controller, sender} = castController(t, f);
+  const started = controller.startCast(), read = sender.starts[0]![4]!;
+  assert.equal(read(), original.presentation!.positionSeconds);
+  f.video.advance(64);await settle();assert.equal(read(), 64);
+  await f.runtime.seek(original.fence!, 120);f.video.land(120);await settle();assert.equal(read(), 120);
+  const latest = f.runtime.getSnapshot(), queue = latest.queueView!.queue, session = latest.session!;
+  for (const changed of [
+    {...latest, authority: {...latest.authority}}, {...latest, disposed: true},
+    {...latest, playback: {...latest.playback, playbackRun: latest.playback.playbackRun + 1}},
+    {...latest, fence: {...latest.fence!, sourceId: 'replaced'}},
+    {...latest, session: {...session, id: 'replaced'}},
+    {...latest, session: {...session, presentation: {...session.presentation, generation: session.presentation.generation + 1}}},
+    {...latest, queueView: {...latest.queueView!, queue: {...queue, revision: 'replaced'}}},
+    {...latest, queueView: {...latest.queueView!, queue: {...queue, currentEntryId: 'duplicate-item-occurrence'}}},
+    {...latest, queueView: {...latest.queueView!, queue: {...queue, currentPlaybackId: 'replaced'}}},
+  ]) assert.equal(castSourcePosition(original, changed), undefined);
+  sender.cancelConnecting();assert.equal(await started, false);assert.equal(read(), undefined);
+  const next = controller.startCast(), nextRead = sender.starts.at(-1)![4]!;
+  await f.runtime.play('another', 10);await f.arrive();assert.equal(await next, false);assert.equal(nextRead(), undefined);
 });

@@ -28,6 +28,19 @@
 
 .section { flex: none; min-width: 0; }
 
+.pagedSection { max-width: 100%; width: min(100%, calc(var(--search-preview-count) * var(--search-preview-width) + (var(--search-preview-count) - 1) * 16px)); }
+.pagedRow.pagedRow { --layout-gutter: 0px; margin-top: 0; }
+.pagedRow.pagedRow > header { padding: 0; }
+.pagedRow.pagedRow > div { padding: 0 0 14px; gap: 16px; }
+.pagedRow [data-shelf-index] > * { width: 100%; }
+.followingRow.followingRow > header { display: none; }
+.section[data-group=songs] .pagedRow > div { display: grid; grid-auto-flow: column; grid-template-rows: repeat(4, 58px); gap: 0 16px; }
+@media (max-width: 1023px) {
+  .pagedSection { width: min(100%, calc(var(--search-preview-count) * var(--search-preview-width) + (var(--search-preview-count) - 1) * 12px)); }
+  .pagedRow.pagedRow > div { gap: 12px; }
+  .section[data-group=songs] .pagedRow > div { column-gap: 12px; }
+}
+
 .section header,.recent header,.emptySection header { display: flex; align-items: baseline; gap: 12px; margin-bottom: 16px; min-height: 30px; }
 
 .section header h2,.recent h2,.single h2,.emptySection h2 { font-size: var(--type-row-heading-size); font-weight: var(--type-button-weight); letter-spacing: var(--type-row-heading-tracking); line-height: normal; margin: 0; }

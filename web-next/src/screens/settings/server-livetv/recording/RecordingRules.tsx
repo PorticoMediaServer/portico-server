@@ -1,3 +1,4 @@
+import {MetadataFacts} from '../../../../kit/MetadataFacts';
 import {useEffect, useRef, useState, useSyncExternalStore} from 'react';
 import {defaultI18n} from '@i18n';
 import {recordingAllowed, recordingOwnerKey, recordingOwnerLabel} from '@core/server-admin/recording-policy.ts';
@@ -38,13 +39,13 @@ export function RecordingRules({controller, permissions, sources}: {controller: 
     {state.rules.map(rule => <SettingsRow key={rule.id} label={<span className={ruleStyles.label}>
       <span className={ruleStyles.art}><GeneratedArt glyph={Array.from(rule.name.trim())[0]?.toLocaleUpperCase() ?? ''}/></span>
       <span>{rule.name}</span><span className={styles.badge} data-tone={rule.enabled ? 'healthy' : undefined} data-paused={!rule.enabled || undefined}>{t(rule.enabled ? 'web.recordingRules.onRule' : 'web.recordingRules.pausedRule')}</span>
-    </span>} help={[
+    </span>} help={<MetadataFacts parts={[
       needsRuleOwner(rule) ? t('web.recordingRules.chooseOwner') : undefined,
       !needsRuleOwner(rule) ? t(rule.kind === 'title' ? 'web.recordingRules.titleMatch' : 'web.recordingRules.seriesKind') : undefined,
       sources.find(source => source.id === rule.sourceId)?.name,
       ...policy.owners.filter(row => recordingOwnerKey(row.owner) === recordingOwnerKey(rule.owner)).map(recordingOwnerLabel),
       rule.options.newEpisodesOnly ? t('guide.newOnly') : undefined,
-    ].filter(Boolean).join(' · ')}>
+    ]} />}>
 <Button size="small" disabled={busy || !!draft} onClick={() => controller.open(rule)}>{t(needsRuleOwner(rule) ? 'web.recordingRules.replaceOwned' : 'web.recordingRules.editRule')}</Button>
       <Menu open={menu === rule.id} onOpenChange={open => setMenu(open ? rule.id : undefined)} title={t('server.row.actions', {name: rule.name})}
         trigger={<Button size="small" variant="icon" icon="i-more" iconOnly disabled={busy || !!draft} aria-label={t('server.row.actions', {name: rule.name})}/>}

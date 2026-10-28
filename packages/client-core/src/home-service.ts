@@ -97,10 +97,6 @@ export class HomeService {
   private disposed = false;
   private hydrationGeneration = 0;
   private hydrations = new Set<AbortController>();
-  /** Rows on screen or about to be; undefined until a caller declares any, when every deferred row loads. */
-  private demand?: ReadonlySet<string>;
-  /** Deferred rows of the current document that wait for demand, each fetched at most once. */
-  private waiting = new Map<string, () => void>();
   private readonly api: () => HomeApi;
   private readonly timeoutMs: number;
   private readonly initialLimit: number | undefined;
@@ -111,18 +107,6 @@ export class HomeService {
     this.api = typeof api === 'function' ? api : () => api;
     this.timeoutMs = options.timeoutMs ?? 15_000;
     this.initialLimit = options.initialLimit;
-  }
-
-  /** Declares the row ids that are visible or about to be. A deferred row loads when first
-   * declared; the rest stay as they are until asked for. `undefined` loads every row again. */
-  setRowDemand(ids: readonly string[] | undefined): void {
-    this.demand = ids ? new Set(ids) : undefined;
-    for (const [id, start] of [...this.waiting]) if (this.wanted(id)) { this.waiting.delete(id); start(); }
-  }
-  /** The `for_you` placeholder is replaced by its family's rows; either id asks for it. */
-  private wanted(id: string): boolean {
-    const demand = this.demand;
-    return !demand || demand.has(id) || id === 'for_you' && !!this.state.document?.rows.some(row => row.family === 'for_you' && demand.has(row.id));
   }
 
   getSnapshot = (): HomeSnapshot => this.state;
@@ -140,13 +124,10 @@ export class HomeService {
     const epoch = ++this.hydrationGeneration;
     for (const controller of this.hydrations) controller.abort();
     this.hydrations.clear();
-    this.waiting.clear();
-    const queue: HomeDocument['rows'][number][] = [];
+    const queue = fresh.rows.filter(row => row.deferred);
     const mine = this.generation;
-    let running = 0;
     const consume = async () => {
-      running++;
-      try { while (queue.length && !this.disposed && epoch === this.hydrationGeneration && (quiet === undefined || quiet === this.quiet)) {
+      while (queue.length && !this.disposed && epoch === this.hydrationGeneration && (quiet === undefined || quiet === this.quiet)) {
         const descriptor = queue.shift()!;
         const controller = new AbortController();
         this.hydrations.add(controller);
@@ -173,15 +154,10 @@ export class HomeService {
           // A failed shelf keeps its previous cards. Other shelves continue;
           // the next quiet Home refresh retries the deferred endpoint.
         } finally { if (timer) clearTimeout(timer); controller.signal.removeEventListener('abort', abort); this.hydrations.delete(controller); }
-      } } finally { running--; }
+      }
     };
-    const pump = () => { while (running < 2 && queue.length) void consume(); };
-    for (const row of fresh.rows) {
-      if (!row.deferred) continue;
-      if (this.wanted(row.id)) queue.push(row);
-      else this.waiting.set(row.id, () => { if (epoch === this.hydrationGeneration) { queue.push(row); pump(); } });
-    }
-    pump();
+    void consume();
+    void consume();
   }
 
   private removeRow(id:string):void {
@@ -429,7 +405,6 @@ export class HomeService {
     this.hydrationGeneration++;
     for (const controller of this.hydrations) controller.abort();
     this.hydrations.clear();
-    this.waiting.clear();
     this.generation++;
     this.reading?.controller.abort();
     for (const page of this.pages.values()) page.abort();

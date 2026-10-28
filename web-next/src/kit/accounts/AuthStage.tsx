@@ -29,6 +29,11 @@ export function AuthStage({children, shape = 'side', phoneShape, layout = 'colum
 }
 export function AuthLinks({children}: {children: ReactNode}) { return <div className={styles.links}>{children}</div>; }
 
+/** The auth1d preparing state shares the public stage's colour-only backdrop. */
+export function AuthLoading({children}: {children: ReactNode}) {
+  return <div className={styles.loadingCard} role="status"><span className={styles.loadingSpinner} aria-hidden="true"/><h1>{children}</h1></div>;
+}
+
 /** One real password input retains browser autofill and native password-manager support. */
 export const AuthPasswordField = forwardRef<HTMLInputElement, Omit<TextFieldProps, 'type' | 'trailing'>>(function AuthPasswordField(props, ref) {
   const [shown, setShown] = useState(false);

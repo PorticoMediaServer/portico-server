@@ -1,5 +1,6 @@
 import {useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore} from 'react';
 import {defaultI18n, type MessageId} from '@i18n';
+import {RadioGroup} from 'radix-ui';
 import type {FeedbackReport, FeedbackStatus} from '@core/console.ts';
 import {Button} from '../../../../kit/controls';
 import {Icon} from '../../../../kit/Icon';
@@ -85,8 +86,9 @@ function TriageDialog({report, source, onClose}: Readonly<{report: FeedbackRepor
     {loaded.diagnostic && <p className={styles.reportMeta}>{t('server.feedback.sentFrom', {platform: loaded.diagnostic.platform, state: loaded.diagnostic.state, online: loaded.diagnostic.online ? 'yes' : 'no'})}</p>}
     <div className={styles.field}>
       <span className={styles.fieldLabel}>{t('web.feedback.status')}</span>
-      <div className={styles.statusChoice} role="radiogroup" aria-label={t('web.feedback.status')}>{STATUSES.map(value => <button key={value} type="button" role="radio" aria-checked={value === status}
-        className={styles.statusOption} data-status={value} disabled={busy} onClick={() => setStatus(value)}>{statusLabel(value)}</button>)}</div>
+      <RadioGroup.Root className={styles.statusChoice} orientation="horizontal" aria-label={t('web.feedback.status')} value={status} disabled={busy}
+        onValueChange={value => {const next = STATUSES.find(entry => entry === value);if (next) setStatus(next);}}>{STATUSES.map(value => <RadioGroup.Item key={value} value={value}
+        className={styles.statusOption} data-status={value}>{statusLabel(value)}</RadioGroup.Item>)}</RadioGroup.Root>
     </div>
     <div className={styles.field}>
       <label className={styles.fieldLabel} htmlFor="feedback-reply">{t('web.feedback.replyLabel')}</label>

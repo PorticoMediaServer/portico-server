@@ -1,5 +1,6 @@
 import type {LogDetailMinutes} from '@core/server-administration.ts';
 import {useEffect, useRef, useState, useSyncExternalStore, type ReactNode} from 'react';
+import {Tabs as TabsPrimitive} from 'radix-ui';
 import {defaultI18n, type MessageId} from '@i18n';
 import type {ReportTransport} from '@core/client-reports.ts';
 import {settingsRowIndex} from '@core/presentation/settings-spec.ts';
@@ -73,15 +74,17 @@ export function TroubleshootingPage({messages, reports, feedback, support, subsc
     </SettingsGroup>
     <SupportPanel source={support} subscribe={subscribe} reportError={reportError} exportOnly advancedRows={options} problems={problems} advancedSummary={advancedSummary}/>
   </div>;
-  return <div className={styles.page} data-view={view}>
+  return <TabsPrimitive.Root className={styles.page} data-view={view} value={view} onValueChange={value => {const tab = TABS.find(entry => entry.id === value);if (tab) setView(tab.id);}}>
     <Button variant="glass" size="small" icon="i-left" onClick={() => setView(undefined)}>{t('next.settingsSpec.server.troubleshooting.title')}</Button>
-    <div className={styles.tabs} role="tablist">{TABS.map(tab => <button key={tab.id} type="button" role="tab" aria-selected={tab.id === view}
-      className={styles.tab} onClick={() => setView(tab.id)}>{t(tab.label)}</button>)}</div>
+    <TabsPrimitive.List className={styles.tabs}>{TABS.map(tab => <TabsPrimitive.Trigger key={tab.id} value={tab.id}
+      className={styles.tab}>{t(tab.label)}</TabsPrimitive.Trigger>)}</TabsPrimitive.List>
+    <TabsPrimitive.Content value={view}>
     {view === 'messages' ? <MessagesPanel source={messages} detailMinutes={detailMinutes} reportError={reportError} />
       : view === 'feedback' ? <FeedbackPanel source={feedback} subscribe={subscribe} reportError={reportError} />
       : view === 'reports' ? <ReportsPanel source={reports} subscribe={subscribe} isCurrent={isCurrent} downloadBase={downloadBase} reportError={reportError} />
         : <SupportPanel source={support} subscribe={subscribe} reportError={reportError} hideExport />}
-  </div>;
+    </TabsPrimitive.Content>
+  </TabsPrimitive.Root>;
 }
 
 function DetailWindowRow({source, detailMinutes, reportError}: {source: SettingsMessagesSource; detailMinutes?: LogDetailMinutes; reportError: (error: unknown) => void}) {

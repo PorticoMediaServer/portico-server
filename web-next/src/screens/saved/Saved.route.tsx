@@ -164,6 +164,7 @@ function CommittedSaved({captured, lease, appearance, choice, setChoice}: {captu
     };
   }, [context, lease, runtime, route, playback, saved, posters, squares, personal, downloads, native.saveReadyPreparation]);
   return <SavedScreen catalogueSelection={selection} runtime={lease.viewRuntime} localDownloads={native.localDownloads} route={route} online={online} downloadsOffered artwork={context.artwork}
+    libraries={context.identity?.libraries}
     preparationArtwork={preparation => {
       if (!lease.current()) return undefined;
       // Reuse only authorized bounded Home facts, with no catalogue scan.

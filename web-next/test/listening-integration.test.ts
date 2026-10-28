@@ -474,3 +474,31 @@ for(const finalRead of [2,5])test(`actual host final session read ${finalRead} r
     assert.deepEqual(b.navigations,[{to:'/settings',search:{scope:'server',section:'libraries',row:'libraries.list'}}]);assert.equal(b.errors.length,0);
   }finally{b.close();}
 });
+
+
+test('transport policy remains available while an expanded music panel is covered, and cannot survive collapse', async () => {
+  const f = harness({kind: 'music'}), owner = f.owner();
+  try {
+    owner.commitExpanded(true);await tick();owner.cover(owner.getSnapshot());
+    const shown = owner.getSnapshot();assert.equal(shown.panelOpening, null);
+    await owner.policy(shown, shown.queue!, {action: 'shuffle', shuffled: true}, false);
+    assert.equal(f.snapshot.queueView!.queue.shuffled, true);
+    assert.equal(owner.getSnapshot().panelOpening, null);
+    const current = owner.getSnapshot();owner.close(current);
+    await assert.rejects(owner.policy(current, current.queue!, {action: 'repeat', repeat: 'all'}, false), {name: 'AbortError'});
+    assert.equal(f.calls.policies.length, 1);
+  } finally {owner.dispose();}
+});
+test('an expanded transport policy reserves its mutation slot across panel changes', async () => {
+  const f = harness({kind: 'music'}), owner = f.owner();
+  try {
+    owner.commitExpanded(true);await tick();const held = f.holdPolicy(), shown = owner.getSnapshot();
+    const pending = owner.policy(shown, shown.queue!, {action: 'repeat', repeat: 'all'}, false);
+    owner.show(owner.getSnapshot(), 'lyrics');const other = owner.getSnapshot();
+    assert.equal(other.policyBusy, true);
+    await assert.rejects(owner.policy(other, other.queue!, {action: 'shuffle', shuffled: true}, false), {name: 'AbortError'});
+    held.resolve();await pending;
+    assert.equal(f.calls.policies.length, 1);assert.equal(owner.getSnapshot().policyBusy, false);
+    assert.equal(owner.getSnapshot().panel, 'lyrics');
+  } finally {owner.dispose();}
+});

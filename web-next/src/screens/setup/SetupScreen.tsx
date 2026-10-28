@@ -1,8 +1,9 @@
 import {useLayoutEffect, useRef, useState, useSyncExternalStore} from 'react';
+import {RadioGroup} from 'radix-ui';
 import {defaultI18n} from '@i18n';
 import {FolderPicker} from '../settings/libraries/FolderPicker';
 import {Button, TextField} from '../../kit/controls';
-import {AuthStage} from '../../kit/accounts/AuthStage';
+import {AuthLoading, AuthStage} from '../../kit/accounts/AuthStage';
 import {ServicesStrength} from '../../kit/accounts/ServicesAuth';
 import {Icon} from '../../kit/Icon';
 import {addressSetupFailure, unavailableSetupFailure} from '../../platform/setup-failure.ts';
@@ -30,15 +31,15 @@ export function SetupScreen({ports}: {ports: SetupPorts}) {
 function SetupBody({flow}: {flow: SetupFlow}) {
   const state = useSyncExternalStore(flow.subscribe, flow.getSnapshot);
   const local = state.mode === 'local';
+  const preparing = state.phase === 'loading' || state.phase === 'waiting';
   // The panel belongs to the exact failure this render shows, never a later one.
   const errorFailure = state.phase === 'error' ? state.failure : undefined;
   const addressFailure = errorFailure && addressSetupFailure(errorFailure) ? errorFailure : undefined;
   const servicesFailure = errorFailure && unavailableSetupFailure(errorFailure) ? errorFailure : undefined;
   const steps = setupSteps({serverName: state.serverName, mode: state.mode, phase: state.phase === 'library' ? 'library' : 'form', local});
   return <div className={styles.host}>
-    {state.phase === 'library' ? <FirstLibrary flow={flow} state={state}/> : <AuthStage legal={false} contentClassName={state.phase === 'form' ? styles.content : styles.contentLibrary}>
-      {state.phase === 'loading' && <p className={styles.lede} role="status">{t('web.setup.preparing')}</p>}
-      {state.phase === 'waiting' && <p className={styles.lede} role="status">{t('web.setup.preparing')}</p>}
+    {state.phase === 'library' ? <FirstLibrary flow={flow} state={state}/> : <AuthStage legal={false} shape={preparing ? 'round' : 'side'} layout={preparing ? 'center' : 'column'} contentClassName={preparing ? styles.loadingContent : state.phase === 'form' ? styles.content : styles.contentLibrary}>
+      {preparing && <AuthLoading>{t('web.setup.preparing')}</AuthLoading>}
       {state.phase === 'error' && (addressFailure ? <>
         <p className={styles.error} role="alert"><Icon name="i-warn" size={20}/>{t('web.setup.notOnNetwork')}</p>
         <div className={styles.field}><TextField variant="auth" label={t('web.general.serverName')} value={state.name || state.serverName} readOnly/></div>
@@ -82,17 +83,20 @@ function SetupForm({flow, state, local}: {flow: SetupFlow; state: SetupSnapshot;
     <div className={styles.field}><TextField variant="auth" autoFocus label={t('web.general.serverName')} value={state.name} maxLength={80} required
       description={t('web.setup.serverNameHelp')} onChange={event => flow.setName(event.currentTarget.value)} disabled={state.busy}/></div>
     <div className={styles.legend}>{t('web.setup.howSignIn')}</div>
-    <button type="button" role="radio" aria-checked={hosted} className={hosted ? styles.choice : styles.qopt} onClick={() => flow.setMode('hosted')} disabled={state.busy}>
+    <RadioGroup.Root orientation="vertical" aria-label={t('web.setup.howSignIn')} value={hosted ? 'hosted' : 'local'} disabled={state.busy}
+      onValueChange={value => {if (value === 'hosted' || value === 'local') flow.setMode(value);}}>
+    <RadioGroup.Item value="hosted" className={hosted ? styles.choice : styles.qopt}>
       {hosted && <span className={styles.choiceIcon} aria-hidden="true"><Icon name="i-person" size={22}/></span>}
       <span className={styles.choiceCopy}><b>{t('accounts.settings.portico')}<span className={styles.rec}>{t('web.setup.recommended')}</span></b>
         <p>{t('web.setup.porticoBody')}</p></span>
       <span className={hosted ? styles.rad : styles.radOff} aria-hidden="true"/>
-    </button>
-    <button type="button" role="radio" aria-checked={!hosted} className={hosted ? styles.qopt : styles.choice} onClick={() => flow.setMode('local')} disabled={state.busy}>
+    </RadioGroup.Item>
+    <RadioGroup.Item value="local" className={hosted ? styles.qopt : styles.choice}>
       {!hosted && <span className={styles.choiceIcon} aria-hidden="true"><Icon name="i-server" size={22}/></span>}
       <span className={styles.qoptCopy}><b>{t('web.setup.localSignIn')}</b><br/>{t('web.setup.localSignInBody')}</span>
       <span className={!hosted ? styles.rad : styles.radOff} aria-hidden="true"/>
-    </button>
+    </RadioGroup.Item>
+    </RadioGroup.Root>
     {local && <>
       <div className={[styles.legend, styles.formLegend].join(' ')}>{t('web.setup.ownerTitle')}</div>
       <p className={styles.para}>{t('web.setup.ownerLede')}</p>

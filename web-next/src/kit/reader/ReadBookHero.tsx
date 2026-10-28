@@ -12,19 +12,23 @@ export type ReadBookHeroProps = Readonly<{
   title: string; author?: Readonly<{name: string; onOpen?: () => void; face?: ReactNode}>;
   series?: Readonly<{label: string; onOpen: () => void}>; facts: readonly FactPart[];
   cover?: ArtworkSource; periodical?: boolean; generatedFontScale?: number; ambient?: ReactNode;
+  /** Real volume covers only; an ordinary generated cover remains the empty fallback. */
+  seriesCovers?: readonly ArtworkSource[];
   titleStyle?: 'standard' | 'long' | 'sparse';
   description?: string; opening?: Readonly<{label: string; text: string}>;
   actions: ReactNode; under?: ReactNode;
 }>;
 
 /** desktop-read 3/3c/5; phone-read 3/3c/12; tablet-read 2/2c. */
-export function ReadBookHero({title, author, series, facts, cover, periodical = false, generatedFontScale, ambient, titleStyle, description, opening, actions, under}: ReadBookHeroProps) {
+export function ReadBookHero({title, author, series, facts, cover, seriesCovers, periodical = false, generatedFontScale, ambient, titleStyle, description, opening, actions, under}: ReadBookHeroProps) {
   const generated = <GeneratedCover title={title} author={author?.name} glyph={Array.from(title.trim())[0] ?? ''} tint={generatedCoverTint(title)} fontScale={generatedFontScale} />;
+  const stack = seriesCovers?.slice(0, 3);
   return <div className={styles.heroRegion}>
     {ambient && <div className={styles.ambient} aria-hidden="true">{ambient}</div>}
-    <header className={styles.hero}>
-      <div className={styles.cover} data-periodical={periodical || undefined}>
-        <Artwork source={cover} alt={title} fallback={generated} fit="cover" className={styles.coverImage} />
+    <header className={styles.hero} data-stack={stack?.length || undefined}>
+      <div className={styles.cover} data-periodical={periodical || undefined} data-stack={stack?.length || undefined}>
+        {stack?.length ? stack.map((source, index) => <Artwork key={`${source.key}:${index}`} source={source} alt="" fit="cover" className={`${styles.coverImage} ${styles.stackedCover}`} />)
+          : <Artwork source={cover} alt={title} fallback={generated} fit="cover" className={styles.coverImage} />}
       </div>
       <div className={styles.copy}>
         {series && <button type="button" className={styles.series} onClick={series.onOpen}>{series.label}</button>}

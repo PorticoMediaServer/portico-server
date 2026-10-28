@@ -50,10 +50,10 @@
 .subBody { padding: 2px 16px 10px; }
 .optionFoot { display: grid; gap: 2px; margin: 14px 12px 2px; color: var(--color-text-tertiary); font-size: var(--type-chip-size); line-height: calc(var(--type-chip-size) * 1.45); }
 .timing { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin: 12px 12px 2px; color: var(--color-text-secondary); font-size: var(--type-body-size); font-weight: var(--type-body-strong-weight); }
-.timingStep { display: inline-flex; align-items: center; gap: 8px; }
-.timingStep button { display: grid; place-items: center; width: 28px; height: 28px; padding: 0; border: 1px solid var(--color-line-control); border-radius: 8px; background: none; color: var(--color-text); font: inherit; font-size: var(--type-fixed-size-18px); line-height: var(--type-fixed-line-1); cursor: pointer; }
+.timingStep { display: inline-flex; align-items: center; gap: 6px; margin-left: auto; }
+.timingStep button { display: grid; place-items: center; width: 34px; height: 30px; padding: 0; border: 0; border-radius: 8px; background: color-mix(in srgb, var(--color-text) 8%, transparent); color: var(--color-text-secondary); font: inherit; font-size: var(--type-caption-size); font-weight: var(--type-lockup-weight); line-height: var(--type-fixed-line-1); cursor: pointer; }
 .timingStep button:focus-visible { outline: 2px solid var(--color-focus); outline-offset: 1px; }
-.timingStep b { min-width: 54px; text-align: center; font-variant-numeric: tabular-nums; font-weight: var(--type-body-strong-weight); }
+.timingStep b { min-width: 46px; text-align: center; font-size: calc(var(--type-body-size) * .9); color: var(--color-text); font-variant-numeric: tabular-nums; font-weight: var(--type-body-strong-weight); }
 .additions { margin-top: 6px; }
 .forcedRow { display: flex; align-items: flex-start; gap: 12px; margin: 10px 12px 2px; color: var(--color-text); font-size: var(--type-body-size); font-weight: var(--type-body-strong-weight); }
 .forcedRow small { display: block; margin-top: 1px; font-size: var(--type-caption-size); font-weight: var(--type-micro-weight); color: var(--color-text-tertiary); }
@@ -72,3 +72,13 @@
 .audioRetry { display: flex; align-items: center; gap: 12px; margin-top: 8px; padding: 8px 10px; border-radius: 8px; background: color-mix(in srgb, var(--color-danger) 14%, transparent); color: var(--color-text); font-size: var(--type-caption-size); line-height: var(--type-caption-line); }
 .audioRetry span { flex: 1; min-width: 0; }
 .audioRetry button { flex: none; padding: 0; border: 0; background: none; font: inherit; font-weight: var(--type-caption-strong-weight); color: var(--color-text); text-decoration: underline; cursor: pointer; }
+
+.styleSegments.styleSegments { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); gap: 3px; margin: 0 12px; padding: 3px; border-radius: 11px; background: color-mix(in srgb, var(--color-text) 7%, transparent); box-shadow: none; }
+.styleSegments.styleSegments > button { height: 34px; padding: 0 8px; border-radius: 8px; font-size: calc(var(--type-body-size) * .9); font-weight: var(--type-row-heading-weight); color: var(--color-text-secondary); white-space: nowrap; }
+.styleSegments.styleSegments > button[data-state='checked'] { color: var(--color-ink); background: var(--color-text); }
+.forcedRow > span { flex: 1; min-width: 0; }
+.forcedRow > button { flex: none; align-self: center; }
+.landscapeOptions.landscapeOptions[data-placement='right'] { inset: 12px max(52px, env(safe-area-inset-right, 0px)) 12px auto; width: min(356px, calc(100vw - 64px)); height: auto; max-height: calc(100dvh - 24px); border-radius: 20px; background: color-mix(in srgb, var(--color-raised) 95%, transparent); backdrop-filter: blur(30px); box-shadow: 0 30px 60px -16px var(--color-shadow), inset 0 0 0 1px color-mix(in srgb, var(--color-text) 9%, transparent); }
+.landscapeHeader { padding: 14px 48px 8px 18px; }
+@media (pointer: coarse) { .timingStep button { min-width: 44px; min-height: 44px; } }
+@media (prefers-reduced-transparency: reduce) { .landscapeOptions.landscapeOptions[data-placement='right'] { background: var(--color-raised); backdrop-filter: none; } }

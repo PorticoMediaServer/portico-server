@@ -41,7 +41,12 @@
 .control:focus-visible, .pill:focus-visible, .pictureTap:focus-visible, .rail input:focus-visible { outline: 3px solid var(--color-focus); outline-offset: 2px; }
 .bottom { position: absolute; left: 0; right: 0; bottom: 0; padding: 0 40px 24px; }
 .seek { position: relative; height: 22px; display: flex; align-items: center; }
-.rail { position: relative; flex: 1; height: 6px; border-radius: 3px; background: color-mix(in srgb, var(--color-text) 16%, transparent); }
+.rail { position: relative; flex: 1; height: 6px; border-radius: 3px; background: color-mix(in srgb, var(--color-text) 16%, transparent); transition: height var(--motion-standard) var(--ease-out); }
+.buffered, .hoverFill { position: absolute; top: 0; bottom: 0; border-radius: inherit; pointer-events: none; }
+.buffered { background: color-mix(in srgb, var(--color-text) 26%, transparent); }
+.hoverFill { left: 0; background: color-mix(in srgb, var(--color-text) 14%, transparent); }
+.hoverLine { position: absolute; top: -4px; bottom: -4px; width: 2px; margin-left: -1px; background: color-mix(in srgb, var(--color-white) 90%, transparent); pointer-events: none; }
+@media (hover: hover) and (pointer: fine) { .watch:not([data-mode='portrait']) .seek:hover .rail { height: 8px; } }
 .rail > i { position: absolute; left: 0; top: 0; bottom: 0; background: var(--color-accent-strong); border-radius: inherit; }
 .rail .marker { position: absolute; top: 0; bottom: 0; background: color-mix(in srgb, var(--color-white) 50%, transparent); box-shadow: inset 2px 0 0 color-mix(in srgb, var(--color-dim) 55%, transparent), inset -2px 0 0 color-mix(in srgb, var(--color-dim) 55%, transparent); }
 .rail input { position: absolute; left: 0; width: 100%; top: 50%; transform: translateY(-50%); height: 22px; margin: 0; appearance: none; background: transparent; pointer-events: auto; cursor: pointer; }
@@ -162,3 +167,10 @@
 
 /* A measured pre-expansion target carries no admitted controls or visible paint. */
 .watch[data-video-preview] { opacity: 0; pointer-events: none; }
+
+/* Only the full player's More popover uses the authored video glass treatment. */
+.playerMenu.playerMenu { padding: 6px; border-radius: 16px; background: color-mix(in srgb, var(--color-raised-high) 95%, transparent); backdrop-filter: blur(30px) saturate(1.3); box-shadow: 0 30px 60px -18px var(--color-shadow), inset 0 0 0 1px color-mix(in srgb, var(--color-text) 10%, transparent); }
+.playerMenu [role='menuitem'], .playerMenu [role='menuitemradio'] { min-height: 44px; padding: 6px 12px; border-radius: 10px; font-size: var(--type-body-size); font-weight: var(--type-body-strong-weight); color: var(--color-text); }
+@media (prefers-reduced-transparency: reduce) { .playerMenu.playerMenu { background: var(--color-raised-high); backdrop-filter: none; } }
+@media (prefers-reduced-motion: reduce) { .rail { transition: none; } }
+:global([data-reduce-motion='true']) .rail { transition: none; }

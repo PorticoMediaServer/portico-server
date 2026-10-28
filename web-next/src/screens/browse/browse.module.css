@@ -95,3 +95,9 @@
 .listRow:hover .listTitle > button[data-variant="row"],.listRow:focus-within .listTitle > button[data-variant="row"] { opacity: 1; }
 
 .songBadge { flex: none; white-space: nowrap; border: 1px solid color-mix(in srgb, var(--color-text) 30%, transparent); border-radius: 4px; padding: 2px 5px; color: var(--color-text-secondary); font-size: var(--type-fixed-size-12px); line-height: var(--type-fixed-line-1); font-weight: var(--type-fixed-weight-600); font-variant-numeric: tabular-nums; }
+
+/* Expanded touch libraries keep their results live beside the Filters region. */
+.browseContent { min-width: 0; }
+.browseContent[data-filters-docked='true'] { margin-right: 380px; }
+.dockedFilters { border-radius: 0; }
+.dockedFilters > footer { display: flex; gap: 10px; }

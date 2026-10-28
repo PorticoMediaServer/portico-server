@@ -11,6 +11,7 @@ import {defineWebScreen} from '../../route-registry';
 import {useProtectedWebScreenContext} from '../../route-registry-view';
 import {router} from '../../router';
 import {StateView} from '../../kit/states';
+import {useWindowHeight} from '../../kit/theme';
 import {useShellWidth} from '../../shell/viewport';
 import {useCommittedLibraryScreenContext, type ProtectedLibraryScreen} from '../browse/screen-context';
 import {useScreenAppearance} from '../browse/screen-preferences';
@@ -73,7 +74,7 @@ function BoundLive({captured}: {captured: ProtectedLibraryScreen}) {
 }
 
 function LiveArea({captured, context, search, pathname}: {captured: ProtectedLibraryScreen; context: ScreenContext; search: LiveScreenSearch; pathname: string}) {
-  const width = useShellWidth();
+  const width = useShellWidth(), height = useWindowHeight();
   const appearance = useScreenAppearance(captured.context)!;
   const timezone = defaultI18n.region.timeZone ?? Intl.DateTimeFormat().resolvedOptions().timeZone;
   const key = JSON.stringify({kind: search.kind ?? 'all', sourceId: search.sourceId ?? '', timezone, group: search.group, favorites: search.favorites,
@@ -151,8 +152,8 @@ function LiveArea({captured, context, search, pathname}: {captured: ProtectedLib
     }).catch(error => {if (!request.signal.aborted && attempt.current()) lease.screen.effects.reportError(error);});
     return () => {attempt.retire();request.abort();if (reads.current === attempt) reads.current = undefined;};
   }, [lease, search.sourceId, search.channelId, search.kind]);
-  const phone = width < 600, column = phone ? 60 : width < 1024 ? 180 : 284, rowHeight = phone ? 72 : width < 1024 ? 62 : 76;
-  const scale = pxPerMsFor(width < 1024 ? 90 : 240), end = start + Math.max(1, width - column) / scale;
+  const phone = width < 600, landscape = width >= 600 && height < 600 && width > height, column = phone ? 60 : width < 1024 || landscape ? 180 : 284, rowHeight = phone ? 72 : width < 1024 || landscape ? 62 : 76;
+  const scale = pxPerMsFor(width < 1024 || landscape ? 90 : 240), end = start + Math.max(1, width - column) / scale;
   const {view, remember} = useGuideViewPreference({...context.scope, kind: search.kind ?? 'all', sourceId: search.sourceId ?? ''}, search.view, context.isCurrent);
   const {start: readStart, end: readEnd} = liveProgramWindow(view, start, end, now);
   // The guide body scrolls with the page; the loaded window is the visible rows.

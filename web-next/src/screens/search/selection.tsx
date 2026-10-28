@@ -6,7 +6,7 @@ import {createCatalogueDocumentSelection, type CatalogueDocumentSource} from '..
 const searchableSelectionKinds = new Set(['movie', 'show', 'season', 'episode', 'album', 'song']);
 
 /** Search is explicit; its own fence/revision never becomes Browse query authority. */
-export function createSearchSelection(context: ScreenContext, service: SearchService, principal: Omit<BrowseSelectionScope, 'viewId'>,
+export function createSearchSelection(context: ScreenContext, service: Pick<SearchService, 'getSnapshot' | 'subscribe'>, principal: Omit<BrowseSelectionScope, 'viewId'>,
   metadataFence: () => string | undefined, runtime?: WebShellPlaybackRuntime) {
   const source: CatalogueDocumentSource = {subscribe: service.subscribe, getSnapshot: () => {
     const snapshot = service.getSnapshot(), data = snapshot.data, query = snapshot.query;

@@ -41,13 +41,18 @@ export type LiveChromeProps = Readonly<{
  * and every action rechecks that port's exact channel fence before it runs. */
 export function LiveChrome({port, playing, onCollapse, onStop, onPlayPause, onSkip, onSeek, onMore, right, onMiniGuideOpenChange, initialMiniGuideOpen = false, canPlayPause = true, canSeek = true, reportError}: LiveChromeProps) {
   const [miniGuide, setMiniGuide] = useState(initialMiniGuideOpen), [recordingBusy, setRecordingBusy] = useState(false), [scrub, setScrub] = useState<number>();
-  const guide = useRef<HTMLElement>(null), rail = useRef<HTMLDivElement>(null), drag = useRef<LiveChromeDrag | undefined>(undefined), scrubRef = useRef<number | undefined>(undefined);
+  const guide = useRef<HTMLElement>(null), guideTrigger = useRef<HTMLButtonElement>(null), rail = useRef<HTMLDivElement>(null), drag = useRef<LiveChromeDrag | undefined>(undefined), scrubRef = useRef<number | undefined>(undefined);
   const window = port.window, channel = port.channel, programme = port.programme;
   const displayWindow = scrub === undefined || !liveRailDragHeld(drag.current, port.fence) ? window : {...window, positionMs: scrub};
   const railFacts = liveRail(displayWindow), behindSeconds = Math.max(0, (window.liveEdgeMs - displayWindow.positionMs) / 1000);
   const behind = liveBehindLabel(behindSeconds), next = liveNextLine(port), range = programme ? liveTimeRange(programme.startMs, programme.endMs, time) : undefined;
   const recordLabel = liveRecordLabel(programme);
-  const openGuide = (value: boolean) => { setMiniGuide(value); onMiniGuideOpenChange?.(value); };
+  const openGuide = (value: boolean) => {
+    // Return focus before removing the focused row. Do not steal focus from a
+    // destination opened outside this mini-guide (for example the full Guide).
+    if (!value && guide.current?.contains(document.activeElement)) guideTrigger.current?.focus();
+    setMiniGuide(value); onMiniGuideOpenChange?.(value);
+  };
   useEffect(() => { if (!miniGuide) return; const rows = guide.current?.querySelectorAll<HTMLButtonElement>('[data-mini-row]'); if (rows?.length) (rows[Math.min(2, rows.length - 1)] ?? rows[0])?.focus(); }, [miniGuide]);
   const run = (work: () => void) => { if (port.isCurrent()) work(); };
   const act = (work: () => Promise<void>) => {
@@ -146,7 +151,7 @@ export function LiveChrome({port, playing, onCollapse, onStop, onPlayPause, onSk
         <span>{programme && t('guide.ends', {time: time(programme.endMs)})}</span>
       </div>
       <div className={styles.controls}>
-        <div className={styles.left}><Button className={styles.guideButton} variant="glass" size="small" icon="i-list" aria-expanded={miniGuide}
+        <div className={styles.left}><Button ref={guideTrigger} className={styles.guideButton} variant="glass" size="small" icon="i-list" aria-expanded={miniGuide}
           onClick={() => {run(() => openGuide(!miniGuide));}}>{t('player.live.guide')}</Button></div>
         <div className={styles.center}>
           <LiveControl icon="i-chdown" label={port.down ? t('next.live.channelDown', {channel: port.down.channel.name, number: port.down.channel.number}) : t('web.player.channelDown')}

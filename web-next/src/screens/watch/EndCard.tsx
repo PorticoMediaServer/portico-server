@@ -1,4 +1,5 @@
 import {useRef, useState} from 'react';
+import {MetadataFacts} from '../../kit/MetadataFacts';
 import {defaultI18n} from '@i18n';
 import {Artwork} from '../../kit/artwork';
 import {Button} from '../../kit/controls';
@@ -30,7 +31,7 @@ export function WatchEndCardView({card, canReplay, onReplay, onClose, reportErro
     <div className={styles.left}>
       <p className={styles.kicker}>{t('player.post.finished')}</p>
       <h2 className={styles.title}>{card.title}</h2>
-      {layout === 'phone' && (card.year !== undefined || card.genres?.length) && <div className={styles.meta}>{card.year !== undefined && <strong>{card.year}</strong>}{card.year !== undefined && card.genres?.length ? ' · ' : null}{card.genres?.length ? card.genres.join(', ') : null}</div>}
+      {layout === 'phone' && (card.year !== undefined || card.genres?.length) && <div className={styles.meta}><MetadataFacts parts={[card.year !== undefined && <strong>{card.year}</strong>, card.genres?.length ? card.genres.join(', ') : null]} /></div>}
       {card.rating && <div className={styles.rate}>
         <span>{stored == null ? t('player.rateThis') : t('player.rated', {stars: t('title.stars', {count: stored})})}</span>
         <div className={styles.stars} role="radiogroup" aria-label={t('player.rateThis')} onMouseLeave={() => setHover(null)}>
@@ -50,7 +51,7 @@ export function WatchEndCardView({card, canReplay, onReplay, onClose, reportErro
     {card.collection && <section className={styles.feature} aria-label={t('player.collection.next', {collection: card.collection.collectionName})}>
       <div className={styles.featureArt}><Artwork source={card.collection.posterUrl ? artwork(card.collection.posterUrl) : undefined} alt="" width="100%" height="100%" />
         <span className={styles.featureText}><small>{t('player.collection.next', {collection: card.collection.collectionName})}</small>
-          <b>{card.collection.title}</b>{(card.collection.year !== undefined || card.collection.genres?.length) && <span>{card.collection.year !== undefined ? card.collection.year : null}{card.collection.year !== undefined && card.collection.genres?.length ? ' · ' : null}{card.collection.genres?.length ? card.collection.genres.join(', ') : null}</span>}</span></div>
+          <b>{card.collection.title}</b>{(card.collection.year !== undefined || card.collection.genres?.length) && <MetadataFacts parts={[card.collection.year, card.collection.genres?.length ? card.collection.genres.join(', ') : null]} />}</span></div>
       <div className={styles.actions}><Button variant="primary" size="small" icon="i-play" onClick={() => act(() => card.collection!.play())}>{t('player.collection.play', {title: card.collection.title})}</Button>
         {card.collection.myList && <Button variant="glass" size="small" icon={card.collection.myList.listed ? 'i-check' : 'i-plus'} aria-pressed={card.collection.myList.listed} disabled={card.collection.myList.pending}
           onClick={() => {const myList = card.collection!.myList!;void myList.set(!myList.listed);}}>{t('next.controls.myList')}</Button>}</div>

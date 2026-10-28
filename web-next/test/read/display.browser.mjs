@@ -52,5 +52,37 @@ export async function checkReaderDisplay(page, origin, onCase = async () => {}) 
   await page.evaluate(() => window.disposeReaderDisplay());
   const final = await page.evaluate(() => window.readerDisplayProof);
   assert.deepEqual(final.cleanup, {listeners: 0, DOM: 0, fontFaces: 0});
+  await checkReaderFirstRunHint(page, origin, onCase);
   return {callbacks, scroll, motion, final, scope: 'controlled-components-only; no canonical Reading15/public Read/full frame acceptance'};
+}
+
+
+/** Actual focus/inert/keyboard behavior of the first-run modal over the reader. */
+export async function checkReaderFirstRunHint(page, origin, onCase = async () => {}) {
+  await page.setViewportSize({width: 390, height: 844});
+  await page.goto(`${origin}/test/read/display.html?presentation=phone&hint=1`, {waitUntil: 'networkidle'});
+  const hint = page.locator('[data-reader-hint]'), done = hint.getByRole('button');
+  await hint.waitFor();
+  assert.equal(await hint.getAttribute('aria-modal'), 'true');
+  assert.equal(await done.evaluate(element => element === document.activeElement), true);
+  for (const key of ['Tab', 'Shift+Tab', 'ArrowRight', 'ArrowLeft']) {
+    await page.keyboard.press(key);
+    assert.equal(await done.evaluate(element => element === document.activeElement), true);
+  }
+  assert.equal(await page.locator('[data-reader-surface]').evaluate(element => element.inert), true);
+  await page.evaluate(() => {
+    window.readerDisplayInput({kind: 'tap', fraction: .9});
+    window.readerDisplayInput({kind: 'swipe', direction: 'left'});
+    window.readerDisplayInput({kind: 'key', key: 'ArrowRight', shift: false, alt: false, ctrl: false, meta: false, editable: false, preventDefault() {}});
+    document.querySelector('[data-reader-root]').dispatchEvent(new KeyboardEvent('keydown', {key: 'ArrowRight', bubbles: true}));
+  });
+  assert.deepEqual(await page.evaluate(() => window.readerDisplayProof.turns), []);
+  await onCase({id: 'reader-first-hint-modal', locator: hint});
+  await done.click();
+  await hint.waitFor({state: 'detached'});
+  await page.waitForFunction(() => document.activeElement?.hasAttribute('data-reader-root'));
+  assert.equal(await page.locator('[data-reader-surface]').evaluate(element => element.inert), false);
+  await page.keyboard.press('ArrowRight');
+  assert.deepEqual(await page.evaluate(() => window.readerDisplayProof.turns), ['next']);
+  await page.evaluate(() => window.disposeReaderDisplay());
 }

@@ -1,11 +1,11 @@
 import {useCallback, useEffect, useLayoutEffect, useRef, useState} from 'react';
+import {RadioGroup} from 'radix-ui';
 import type {DetailProjection} from '@core/detail.ts';
 import type {AudioStream, MediaVersion, PlaybackOptions} from '@core/playback-v1/types.ts';
 import {audioStreamIndex} from '@core/playback-v1/choices.ts';
 import {channelsLabel, codecLabel} from '@core/presentation/title-files.ts';
 import {peekPendingTrackChoice, preplaySubtitles, setPendingTrackChoice, type PendingTrackChoice} from '@core/pending-track-choice.ts';
 import {BottomSheet} from '../../kit/overlays';
-import {RadioGroup, RadioItem} from '../../kit/controls';
 import {Icon} from '../../kit/Icon';
 import type {DetailBindings} from './bindings';
 import {locale, t} from './text';
@@ -44,7 +44,7 @@ export function PreplayChoices({binding, data}: {binding: DetailBindings; data: 
   const base = (track: AudioStream, index: number) => track.language && track.language !== 'und' ? language(track.language) : track.title ?? t('mediaInfo.track', {number: index + 1});
   const audioName = (track: AudioStream, index: number) => [base(track, index), channelsLabel({channels: track.channels, channelLayout: track.layout}, t)].filter(Boolean).join(' ');
   // Two tracks in one language and layout are told apart by their codec, never by their order.
-  const audioDetail = (track: AudioStream, index: number) => [base(track, index), codecLabel(track.codec), channelsLabel({channels: track.channels, channelLayout: track.layout}, t)].filter(Boolean).join(' · ');
+  const audioDetail = (track: AudioStream, index: number) => [base(track, index), codecLabel(track.codec), channelsLabel({channels: track.channels, channelLayout: track.layout}, t)].filter(Boolean);
   const preferred = audios.find(track => track.id === options?.preferred?.audioId) ?? audios.find(track => track.default) ?? audios[0];
   const defaultIndex = preferred ? audioStreamIndex(preferred.id) : undefined;
   const current = audios.find(track => audioStreamIndex(track.id) === (chosen.audio ?? defaultIndex)) ?? preferred;
@@ -76,18 +76,20 @@ export function PreplayChoices({binding, data}: {binding: DetailBindings; data: 
     </button>
     <BottomSheet open={open} onOpenChange={value => { if (!value) setOpen(false); }} title={t('title.playbackChoices')} returnFocusRef={trigger} fitContent>
       <div className={styles.preplaySheet}>
-        {audios.length > 1 && <RadioGroup asChild value={current.id} onValueChange={id => pick({audio: audioStreamIndex(id), subtitle: chosen.subtitle})} aria-label={t('title.audio')}><section className={styles.preplayGroup}>
+        {audios.length > 1 && <RadioGroup.Root className={styles.preplayGroup} orientation="vertical" aria-label={t('title.audio')} value={current.id}
+          onValueChange={id => {const track = audios.find(value => value.id === id);if (track) pick({audio: audioStreamIndex(track.id), subtitle: chosen.subtitle});}}>
           <h3>{t('title.audio')}</h3>
-          {audios.map((track, index) => <RadioItem key={track.id} value={track.id} className={styles.preplayRow}>
-            <span>{audioDetail(track, index)}{track.commentary && !/\bcommentary\b/i.test(track.title ?? '') && <small>{t('next.kit.commentary')}</small>}</span><Icon name="i-check" size={20} />
-          </RadioItem>)}
-        </section></RadioGroup>}
-        {subtitles.length > 0 && <RadioGroup asChild value={chosenSubtitle ?? ''} onValueChange={subtitle => pick({audio: chosen.audio, subtitle})} aria-label={t('title.subtitles')}><section className={styles.preplayGroup}>
+          {audios.map((track, index) => <RadioGroup.Item key={track.id} value={track.id} className={styles.preplayRow}>
+            <span><span className={styles.preplayFacts}>{audioDetail(track, index).map((fact, part) => <span key={part}>{fact}</span>)}</span>{track.commentary && !/\bcommentary\b/i.test(track.title ?? '') && <small>{t('next.kit.commentary')}</small>}</span><Icon name="i-check" size={20} />
+          </RadioGroup.Item>)}
+        </RadioGroup.Root>}
+        {subtitles.length > 0 && <RadioGroup.Root className={styles.preplayGroup} orientation="vertical" aria-label={t('title.subtitles')} value={chosenSubtitle === undefined ? 'auto' : chosenSubtitle === 'off' ? 'off' : `track:${chosenSubtitle}`}
+          onValueChange={value => {const id = value.startsWith('track:') ? value.slice(6) : undefined;if (value === 'auto' || value === 'off' || names.some(name => name.id === id)) pick({audio: chosen.audio, subtitle: value === 'auto' ? '' : value === 'off' ? 'off' : id});}}>
           <h3>{t('title.subtitles')}</h3>
-          <RadioItem value="" className={styles.preplayRow}><span>{t('title.subtitlesAutomatic')}</span><Icon name="i-check" size={20} /></RadioItem>
-          <RadioItem value="off" className={styles.preplayRow}><span>{t('title.subtitlesOff')}</span><Icon name="i-check" size={20} /></RadioItem>
-          {names.map(name => <RadioItem key={name.id} value={name.id} className={styles.preplayRow}><span>{name.label}</span><Icon name="i-check" size={20} /></RadioItem>)}
-        </section></RadioGroup>}
+          <RadioGroup.Item value="auto" className={styles.preplayRow}><span>{t('title.subtitlesAutomatic')}</span><Icon name="i-check" size={20} /></RadioGroup.Item>
+          <RadioGroup.Item value="off" className={styles.preplayRow}><span>{t('title.subtitlesOff')}</span><Icon name="i-check" size={20} /></RadioGroup.Item>
+          {names.map(name => <RadioGroup.Item key={name.id} value={`track:${name.id}`} className={styles.preplayRow}><span>{name.label}</span><Icon name="i-check" size={20} /></RadioGroup.Item>)}
+        </RadioGroup.Root>}
       </div>
     </BottomSheet>
   </>;

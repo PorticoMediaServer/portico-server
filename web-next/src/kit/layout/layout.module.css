@@ -136,3 +136,16 @@
   .thumbnail[data-active='true'] .timer i { transform: scaleX(1); }
 }
 .hero .copy[data-active='false'] > * { transition: none; }
+
+/* tablet.html frame 2: the medium Home keeps phone composition at tablet metrics. */
+.hero[data-size-class='medium'] { height: 560px; }
+.hero[data-size-class='medium'] .copy { left: 56px; right: 56px; bottom: 44px; }
+.hero[data-size-class='medium'][data-navigation='true'] .copy { bottom: 70px; }
+.hero[data-size-class='medium'] .reason { margin-bottom: 10px; }
+.hero[data-size-class='medium'] .lockup { margin-bottom: 12px; }
+.hero[data-size-class='medium'] .facts { gap: 6px 14px; margin-bottom: 20px; }
+.hero[data-size-class='medium'] .actions > button { height: 52px; font-size: 16px; padding: 0 26px; border-radius: 12px; }
+.hero[data-size-class='medium'] .dots { bottom: 44px; }
+.row[data-size-class='medium'] { --layout-gutter: 28px; }
+.row[data-size-class='medium'] .rowHead { margin-bottom: 8px; }
+.row[data-size-class='medium'] .track { gap: 14px; padding-inline: 28px; scroll-padding-inline: 28px; }

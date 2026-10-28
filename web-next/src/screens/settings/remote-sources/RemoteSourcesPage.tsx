@@ -1,4 +1,5 @@
 import {useCallback, useLayoutEffect, useEffect, useMemo, useRef, useState, useSyncExternalStore, type RefObject} from 'react';
+import {RadioGroup} from 'radix-ui';
 import {defaultI18n, type MessageId} from '@i18n';
 import {
   RemoteSourceService, cloudTokenDraft, driveOAuthDraft, driveServiceAccountDraft, s3SourceDraft, sourceReadPreset,
@@ -14,6 +15,7 @@ import {usePhone} from '../../../kit/overlays/shared';
 import {SettingsGroup, SettingsPanel} from '../../../kit/settings';
 import {SettingsRow} from '../../../kit/shell/SettingsSurfaces';
 import {Icon, type IconName} from '../../../kit/Icon';
+import {MetadataFacts} from '../../../kit/MetadataFacts';
 import styles from './remote-sources.module.css';
 import {DriveKeyPane, DriveModePane, DriveOAuthPane} from './DrivePanes';
 import {RemoteFolderPicker} from './RemoteFolderPicker';
@@ -244,7 +246,7 @@ function RemoteSourcesLoaded({api, serverId, viewerId, isCurrent, reportError, o
       {snapshot.loading && !sources.length && <p className={styles.muted} role="status">{t('next.remoteSources.loading')}</p>}
       {!snapshot.loading && !sources.length && !snapshot.error && <div className={styles.empty}><b>{t('next.remoteSources.empty')}</b><p>{t('next.remoteSources.emptyHelp')}</p></div>}
       {sources.map(source => <SettingsRow key={source.id} label={<><Icon name="i-globe" size={18} /> {source.name}</>}
-        help={<>{t(source.kind === 'rclone' ? 'web.storage.rcloneRemote' : 'next.remoteSources.kindWebdav')}{source.origin ? ` · ${source.origin}` : ''}{problemId(source) ? ` · ${t(problemId(source)!)}` : ''}</>}>
+        help={<MetadataFacts parts={[t(source.kind === 'rclone' ? 'web.storage.rcloneRemote' : 'next.remoteSources.kindWebdav'), source.origin, problemId(source) ? t(problemId(source)!) : undefined]}/>}>
         <span className={styles.rowActions}><SourceStatus source={source}/><Button size="small" variant="glass" onClick={() => setManaging(source)}>{t('next.settingsSpec.server.remote-sources.groups.0.rows.0.control.itemActions.0.label')}</Button>{source.kind === 'rclone' && <Button size="small" variant="glass" onClick={() => openReading(source)}>{t('next.remoteSources.reading')}</Button>}</span>
       </SettingsRow>)}
     </SettingsGroup>
@@ -942,26 +944,28 @@ function AddSourceLoaded({service, api, serverId, viewerId, open, returnFocusRef
     ]} footer={footer}>
     {error && <p className={styles.error} role="alert">{error}</p>}
     {finishError && <p className={styles.error} role="alert">{finishError}</p>}
-    {step === 'what' && <div className={styles.whatCards} role="radiogroup" aria-label={t('next.remoteSources.whatToConnect')}>
-      {whatOptions.map(option => <button key={option.family} type="button" role="radio" aria-checked={family === option.family} className={styles.whatCard}
-        data-picked={family === option.family || undefined} disabled={busy} onClick={() => chooseFamily(option.family, renderGuard, formToken)}>
+    {step === 'what' && <RadioGroup.Root className={styles.whatCards} aria-label={t('next.remoteSources.whatToConnect')} value={family} disabled={busy}
+      onValueChange={value => {const option = whatOptions.find(option => option.family === value);if (!busy && option) chooseFamily(option.family, renderGuard, formToken);}}>
+      {whatOptions.map(option => <RadioGroup.Item key={option.family} value={option.family} className={styles.whatCard}
+        data-picked={family === option.family || undefined} disabled={busy}>
         <span className={styles.choiceRadio} aria-hidden="true"/>
         <span className={styles.whatBody}><b>{t(option.label)}{option.tag && <span className={styles.choiceTag} data-tone={option.tag === 'next.remoteSources.kindCommon' ? 'good' : undefined}>{t(option.tag)}</span>}</b>
           <span className={styles.choiceHint}>{t(option.hint)}</span></span>
-      </button>)}
-    </div>}
+      </RadioGroup.Item>)}
+    </RadioGroup.Root>}
     {step === 'remote' && <>
-      {family === 'rclone' && <div className={styles.remoteKinds}>
+      {family === 'rclone' && <RadioGroup.Root className={styles.remoteKinds} aria-label={t('next.remoteSources.remoteKind')} value={sourceKind} disabled={busy}
+        onValueChange={value => {const kind = rcloneKindGroups.flatMap(group => group.kinds).find(kind => kind.value === value);if (!busy && kind) chooseRemoteKind(kind.value, renderGuard, formToken);}}>
         {rcloneKindGroups.map(group => <div key={group.title} className={styles.remoteGroup}>
           <p className={styles.advTitle}>{t(group.title)}</p>
-          <div className={styles.remoteKindList} role="radiogroup" aria-label={t('next.remoteSources.remoteKind')}>
-            {group.kinds.map(kind => <button key={kind.value} type="button" role="radio" aria-checked={sourceKind === kind.value} className={styles.remoteKind}
-              data-picked={sourceKind === kind.value || undefined} disabled={busy} onClick={() => chooseRemoteKind(kind.value, renderGuard, formToken)}>
+          <div className={styles.remoteKindList}>
+            {group.kinds.map(kind => <RadioGroup.Item key={kind.value} value={kind.value} className={styles.remoteKind}
+              data-picked={sourceKind === kind.value || undefined} disabled={busy}>
               <span className={styles.choiceRadio} aria-hidden="true"/><Icon name={kind.icon} size={20}/>{t(kind.label)}
-            </button>)}
+            </RadioGroup.Item>)}
           </div>
         </div>)}
-      </div>}
+      </RadioGroup.Root>}
       {sourceKind === 'webdav' ? <>
         <div className={styles.kind}><Icon name="i-globe" size={22} /><span><b>{t('next.settingsSpec.server.remote-sources.panels.newSource.tabs.0.groups.0.rows.0.control.options.0.label')}</b><small>{t('next.settingsSpec.server.remote-sources.panels.newSource.tabs.0.groups.0.rows.0.control.options.0.hint')}</small></span></div>
         <TextField label={t('next.remoteSources.name')} value={draft.name} maxLength={100} disabled={busy} onChange={event => updateDraft({name: event.target.value})}/>
@@ -1111,10 +1115,11 @@ function AddSourceLoaded({service, api, serverId, viewerId, open, returnFocusRef
       </div>
       {attachMode === 'new' ? <>
         <TextField label={t('next.remoteSources.libraryName')} value={libraryName} maxLength={100} disabled={finishBusy} onChange={event => setLibraryName(event.currentTarget.value)}/>
-        <div className={styles.kindTiles} role="radiogroup" aria-label={t('next.remoteSources.libraryKind')}>
-          {libraryKinds.map(value => <button key={value.id} type="button" role="radio" aria-checked={kind === value.id} className={styles.kindTile}
-            data-picked={kind === value.id || undefined} onClick={() => setKind(value.id)}><Icon name={value.icon} size={22}/>{t(value.label)}</button>)}
-        </div>
+        <RadioGroup.Root className={styles.kindTiles} aria-label={t('next.remoteSources.libraryKind')} value={kind} disabled={finishBusy}
+          onValueChange={value => {const next = libraryKinds.find(kind => kind.id === value);if (!finishBusy && next && wizardAction(renderGuard, 'folders', formToken)) setKind(next.id);}}>
+          {libraryKinds.map(value => <RadioGroup.Item key={value.id} value={value.id} className={styles.kindTile}
+            data-picked={kind === value.id || undefined}><Icon name={value.icon} size={22}/>{t(value.label)}</RadioGroup.Item>)}
+        </RadioGroup.Root>
         <p className={styles.note}>{t(libraryKinds.find(value => value.id === kind)!.hint)}</p>
       </> : (librarySnapshot.directory.data?.items.length
         ? <RichSelect aria-label={t('next.remoteSources.existingLibrary')} value={existingId} disabled={finishBusy}
@@ -1149,18 +1154,19 @@ function AddSourceLoaded({service, api, serverId, viewerId, open, returnFocusRef
         <Button size="compact" variant="primary" loading={leaveRemove} disabled={leaveRemove}
           onClick={() => {if (leaving === 'saved' && leaveChoice === 'remove') void removeAndLeave(); else close(true);}}>{t('next.remoteSources.leave')}</Button>
       </>}>
-      {leaving === 'saved' && <div className={styles.leaveRows} role="radiogroup" aria-label={t('next.remoteSources.leaveTitle')}>
-        <button type="button" role="radio" aria-checked={leaveChoice === 'keep'} className={styles.leaveRow}
-          data-picked={leaveChoice === 'keep' || undefined} onClick={() => setLeaveChoice('keep')}>
+      {leaving === 'saved' && <RadioGroup.Root className={styles.leaveRows} aria-label={t('next.remoteSources.leaveTitle')} value={leaveChoice} disabled={leaveRemove}
+        onValueChange={value => {if (!leaveRemove && renderGuard() && (value === 'keep' || value === 'remove')) setLeaveChoice(value);}}>
+        <RadioGroup.Item value="keep" className={styles.leaveRow}
+          data-picked={leaveChoice === 'keep' || undefined}>
           <span className={styles.choiceRadio} aria-hidden="true"/><span><b>{t('next.remoteSources.keepIt')}</b>
             <small>{t('next.remoteSources.keepItHelp', {name: sourceNow?.name ?? ''})}</small></span>
-        </button>
-        <button type="button" role="radio" aria-checked={leaveChoice === 'remove'} className={styles.leaveRow}
-          data-picked={leaveChoice === 'remove' || undefined} onClick={() => setLeaveChoice('remove')}>
+        </RadioGroup.Item>
+        <RadioGroup.Item value="remove" className={styles.leaveRow}
+          data-picked={leaveChoice === 'remove' || undefined}>
           <span className={styles.choiceRadio} aria-hidden="true"/><span><b>{t('next.remoteSources.removeIt')}</b>
             <small>{t('next.remoteSources.removeItHelp', {name: sourceNow?.name ?? ''})}</small></span>
-        </button>
-      </div>}
+        </RadioGroup.Item>
+      </RadioGroup.Root>}
       {leaveError && <p className={styles.error} role="alert">{leaveError}</p>}
     </Dialog>
   </SourceWizard>;
@@ -1363,7 +1369,8 @@ function ManageSourceLoaded({service, source, api, serverId, viewerId, openSecti
           : t('next.remoteSources.neverChecked')}</dd></div>
         <div><dt>{t('next.remoteSources.usedBy')}</dt><dd>{!status ? '—'
           : status.libraries.length
-            ? status.libraries.map(use => `${use.name} · ${use.folders}${use.lastCompleteAt ? ` · ${t('next.remoteSources.libraryComplete', {when: checkedWhen(use.lastCompleteAt)})}` : ''}`).join(', ') + (status.librariesTruncated ? ' …' : '')
+            ? <MetadataFacts parts={[...status.libraries.map(use => <MetadataFacts key={use.libraryId} parts={[use.name, use.folders,
+              use.lastCompleteAt ? t('next.remoteSources.libraryComplete', {when: checkedWhen(use.lastCompleteAt)}) : undefined]}/>), status.librariesTruncated ? '…' : undefined]}/>
             : t('next.remoteSources.noLibraryUses')}</dd></div>
         {!!status?.scanIntervalSeconds && <div><dt>{t('next.remoteSources.scanning')}</dt>
           <dd>{t('next.remoteSources.scansEveryHours', {hours: Math.round(status.scanIntervalSeconds / 3600) || 1})}</dd></div>}
@@ -1375,12 +1382,12 @@ function ManageSourceLoaded({service, source, api, serverId, viewerId, openSecti
             : t(contactWord(savedTest.result.errorCode!))}</span>}
         </span></dd></div>
         {status?.lastConnectedAt && <div><dt>{t('next.remoteSources.lastConnected')}</dt><dd>{checkedWhen(status.lastConnectedAt)}</dd></div>}
-        {status?.lastErrorAt && status.lastErrorCode && <div><dt>{t('next.remoteSources.lastError')}</dt><dd>{checkedWhen(status.lastErrorAt)} · {t(contactWord(status.lastErrorCode))}</dd></div>}
+        {status?.lastErrorAt && status.lastErrorCode && <div><dt>{t('next.remoteSources.lastError')}</dt><dd><MetadataFacts parts={[checkedWhen(status.lastErrorAt), t(contactWord(status.lastErrorCode))]}/></dd></div>}
         {status?.health && <div><dt>{t('next.remoteSources.health')}</dt><dd>{t(healthWord(status.health))}</dd></div>}
         {status?.lastCompleteAt && <div><dt>{t('next.remoteSources.lastComplete')}</dt><dd>{checkedWhen(status.lastCompleteAt)}</dd></div>}
         {status?.scan && <>
-          <div><dt>{t('next.remoteSources.scanState')}</dt><dd>{[scanStateWord(status.scan.state), scanModeWord(status.scan.mode), scanPhaseWord(status.scan.phase)]
-            .filter((word): word is MessageId => Boolean(word)).map(word => t(word)).join(' · ')}</dd></div>
+          <div><dt>{t('next.remoteSources.scanState')}</dt><dd><MetadataFacts parts={[scanStateWord(status.scan.state), scanModeWord(status.scan.mode), scanPhaseWord(status.scan.phase)]
+            .filter((word): word is MessageId => Boolean(word)).map(word => t(word))}/></dd></div>
           <div><dt>{t('next.remoteSources.scanFiles')}</dt><dd>{t('next.remoteSources.scanProcessedOf', {processed: status.scan.processed, discovered: status.scan.discovered})}</dd></div>
           <div><dt>{t('next.remoteSources.scanAnalyzed')}</dt><dd>{status.scan.analyzed}</dd></div>
           {status.scan.warnings > 0 && <div><dt>{t('next.remoteSources.scanWarnings')}</dt><dd>{status.scan.warnings}</dd></div>}
@@ -1415,9 +1422,9 @@ function ManageSourceLoaded({service, source, api, serverId, viewerId, openSecti
     <section className={styles.group}><h3>{t('next.remoteSources.foldersSection')}</h3>
       <p className={styles.note}>{t('next.remoteSources.foldersNote')}</p>
       {status?.program && <dl className={styles.statusRows}>
-        <div><dt>{t('next.remoteSources.program')}</dt><dd>{status.program}{status.programVersion ? ` · ${status.programVersion}` : ''}</dd></div>
+        <div><dt>{t('next.remoteSources.program')}</dt><dd><MetadataFacts parts={[status.program, status.programVersion]}/></dd></div>
         {status.remote && <div><dt>{t('next.remoteSources.remote')}</dt><dd className={styles.mono}>{status.remote}</dd></div>}
-        {status.backgroundSpeed && <div><dt>{t('next.remoteSources.backgroundSpeed')}</dt><dd>{status.backgroundSpeed} · {t('next.remoteSources.backgroundSpeedHelp')}</dd></div>}
+        {status.backgroundSpeed && <div><dt>{t('next.remoteSources.backgroundSpeed')}</dt><dd><MetadataFacts parts={[status.backgroundSpeed, t('next.remoteSources.backgroundSpeedHelp')]}/></dd></div>}
       </dl>}
       {!status ? <p className={styles.note} role="status">{error || t('next.remoteSources.loading')}</p> : status.libraries.length
         ? <ul className={styles.usedList}>{status.libraries.map(use => <li key={use.libraryId}>
@@ -1444,7 +1451,7 @@ function ManageSourceLoaded({service, source, api, serverId, viewerId, openSecti
           <Switch aria-label={t('next.remoteSources.customProgram')} checked={!status.programIncluded} disabled={!status.programRevision}
             onCheckedChange={value => {if (!value) void changeProgram({useIncluded: true}); else setPickingProgram(true);}}/></label>
         <div className={styles.programRow}><span>{t('next.remoteSources.program')}</span>
-          <span className={styles.mono}>{status.program}{status.programVersion ? ` · ${status.programVersion}` : ''}</span>
+          <MetadataFacts className={styles.mono} parts={[status.program, status.programVersion]}/>
           <Button size="xs" variant="glass" onClick={() => setPickingProgram(true)}>{t('next.remoteSources.chooseProgram')}</Button></div>
         {status.remote && <div className={styles.programRow}><span>{t('next.remoteSources.remote')}</span>
           <span className={styles.mono}>{status.remote}</span>

@@ -31,6 +31,7 @@ import {savedSectionWindow} from './window.ts';
 import {savedText as s} from './text.ts';
 import {SavedHistory, SavedResourceScreen} from './Resource';
 import {ResourceFields} from './ResourceFields';
+import {ResourceRow} from './ResourceRow';
 import {SavedDialog} from './SavedDialog';
 import {SavedPhoneDirectory} from './SavedPhoneDirectory';
 import {SavedPhoneNav} from './SavedPhoneNav';
@@ -65,6 +66,7 @@ export type SavedBindings = Readonly<{
   downloadsOffered: boolean;
   localDownloads?: SavedDownloadsPort;
   artwork: ShellArtwork;
+  libraries?: readonly Readonly<{id: string; name: string}>[];
   preparationArtwork: Parameters<typeof ServerDownloads>[0]['artwork'];
   presentation: SavedPresentation;
   selection?: SavedSelection;
@@ -339,7 +341,7 @@ function SavedListToolbar({bindings, projection, total}: {bindings: SavedViewBin
   </div>;
 }
 
-export function SavedSection(bindings: SavedViewBindings & {service: SavedService; section: SavedProjection['sections'][number]; heading?: Readonly<{label: string; count?: number}>; onMore?: (entry: SavedEntry, anchor: HTMLButtonElement) => void}) {
+export function SavedSection(bindings: SavedViewBindings & {service: SavedService; section: SavedProjection['sections'][number]; heading?: Readonly<{label: string; count?: number}>; onMore?: (entry: SavedEntry, anchor: HTMLButtonElement) => void; orderHandle?: (entryId: string, title: string) => ReactNode; heldEntryId?: string}) {
   const {service, section, artwork, effects, presentation, selection} = bindings;
   const collection = useMemo(() => savedSectionWindow(service, section.id), [service, section.id]);
   const cleanup = useRef<(() => void) | undefined>(undefined);
@@ -359,13 +361,14 @@ export function SavedSection(bindings: SavedViewBindings & {service: SavedServic
   const selecting = useCatalogueSelectionActive(bindings.catalogueSelection);
   const phoneRows = width > 0 && width < 600 && !selecting && section.entries.length > 0 && section.entries.every(entry => entry.kind === 'playlist');
   const oneColumn = presentation.view === 'list' || phoneRows;
-  const ratio = square ? 1 : 2 / 3, rowHeight = phoneRows ? 80 : presentation.view === 'list' ? 90 : presentation.cardWidth / ratio + 48;
+  const resourceRows = bindings.route.view === 'playlist' && presentation.view === 'list';
+  const ratio = square ? 1 : 2 / 3, rowHeight = phoneRows ? 80 : presentation.view === 'list' ? resourceRows ? 88 : 90 : presentation.cardWidth / ratio + 48;
   const columns = oneColumn ? 1 : Math.max(1, Math.floor((width + 16) / (presentation.cardWidth + 16)));
   const rows = Math.ceil(section.entries.length / columns);
   const height = Math.max(rowHeight, Math.min(window.innerHeight, rows * rowHeight + Math.max(0, rows - 1) * 16));
   return <section className={styles.savedSection} ref={root}>
     {bindings.heading && <div className={styles.sectionHeading}><h2>{bindings.heading.label}</h2>{bindings.heading.count !== undefined && <span>{defaultI18n.number(bindings.heading.count)}</span>}</div>}
-    <WindowedGrid collection={collection} label={bindings.heading?.label ?? serverTextLabel(defaultI18n, section.heading)} height={height} cardWidth={oneColumn ? Math.max(1, width) : presentation.cardWidth} rowHeight={rowHeight} rowGap={oneColumn ? 0 : 16} gap={phoneRows ? 0 : 16} reducedMotion={presentation.reducedMotion} onVisibleRange={onVisibleRange}
+    <WindowedGrid collection={collection} pinnedIndex={bindings.heldEntryId ? section.entries.findIndex(entry => entry.id === bindings.heldEntryId) : undefined} label={bindings.heading?.label ?? serverTextLabel(defaultI18n, section.heading)} height={height} cardWidth={oneColumn ? Math.max(1, width) : presentation.cardWidth} rowHeight={rowHeight} rowGap={oneColumn ? 0 : 16} gap={phoneRows ? 0 : 16} reducedMotion={presentation.reducedMotion} onVisibleRange={onVisibleRange}
       renderPlaceholder={() => phoneRows ? <Skeleton width={Math.max(1, width)} height={72} /> : <Skeleton width={presentation.cardWidth} height={presentation.cardWidth / ratio} />}
       renderItem={(entry, context) => {
         if (entry.kind === 'reading_group') return <ReadingGroupCard card={entry} service={service} runtime={bindings.runtime} operations={bindings.operations} artwork={artwork} width={presentation.cardWidth} open={effects.openReadingGroup} reportError={effects.reportError}/>;
@@ -392,6 +395,8 @@ export function SavedSection(bindings: SavedViewBindings & {service: SavedServic
           onPlay: media.playback && media.available !== false && !media.missing ? () => { void bindings.operations.run(signal => effects.playEntry(media, signal)).catch(effects.reportError); } : undefined,
           onMore: bindings.onMore ? (anchor: HTMLButtonElement) => bindings.onMore!(entry, anchor)
             : effects.openMore ? (anchor: HTMLButtonElement) => effects.openMore!(service, section.id, entry, anchor) : undefined};
+        if (resourceRows) return <ResourceRow {...common} entryId={entry.id} media={media} artwork={artwork} handle={bindings.orderHandle?.(entry.id, common.model.title)}
+          ordinal={service.getSnapshot().pagination.cursor === null ? context.index + 1 : undefined} library={bindings.libraries?.find(library => library.id === media.libraryId)?.name}/>;
         if (presentation.view === 'list') return <div className={styles.mediaListRow}><PosterCard {...common} /></div>;
         return <BrowseEntryCard entry={media} artwork={artwork} env={{t, locale: defaultI18n.region.formatLocale}} width={presentation.cardWidth} mixed visible order={context.index} group={`saved:${section.id}`} backdrops={presentation.backdrops}
           actions={{onOpen: common.onNavigate, onPlay: common.onPlay, onMore: common.onMore, selection: documentSelection ?? cardSelection}} />;

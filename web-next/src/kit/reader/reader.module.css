@@ -53,7 +53,7 @@
 @media (prefers-reduced-motion: reduce) { .reader :is(.runningTitle,.runningFooter) { transition-duration: var(--motion-reduced); } }
 
 /* Fixed-page assembly supplies its own drawn rows, inside the existing chrome lifecycle/backdrop. */
-.bottom.fixedPageFooter { display: block; }
+.bottom.fixedPageFooter { display: block; height: auto; padding-block: 12px calc(16px + env(safe-area-inset-bottom)); }
 .fixedStrip { position: absolute; inset: auto 0 88px; padding: 8px 28px 10px; background: linear-gradient(rgba(7,16,24,0), rgba(7,16,24,.9) 55%); pointer-events: auto;
   opacity: 1; }
 .reader[data-chrome="hidden"] .fixedStrip { opacity: 0; pointer-events: none; }

@@ -1,3 +1,4 @@
+import {MetadataFacts} from '../../../../kit/MetadataFacts';
 import {useEffect, useState, useSyncExternalStore} from 'react';
 import {defaultI18n, type MessageId} from '@i18n';
 import type {Library} from '@core/index.ts';
@@ -92,7 +93,7 @@ export function ChannelEditor({source, api, reportError, openPresets, presets, l
         {preview && conditionsValid && !hoursEditing && <><b>{t(preview.complete ? 'builder.matches' : 'next.browse.countAtLeast', {count})}</b>{preview.durationMs > 0 && <p>{t('builder.hours', {hours: Number((preview.durationMs / 3600000).toFixed(1))})}</p>}{unresolved > 0 && <p>{t('builder.unresolved', {count: unresolved})}</p>}
           {preview.complete && count === 0 && <p className={styles.help}>{t('builder.previewNoMatches')}</p>}
           <h4>{t('builder.samples')}</h4><ul className={styles.sampleList}>{preview.rules.flatMap(item => item.sample.map(sample => <li key={`${item.ruleId}/${sample.itemId}`}><Artwork source={sampleArt?.(sample.itemId)} alt="" width={28} height={42}/><span>{librarySampleLabel(sample)}</span></li>))}</ul>
-          {!!preview.firstDay.length && <><h4>{t('builder.firstDay')}</h4><ul>{preview.firstDay.map(entry => <li key={entry.id}>{channelClock(entry.startMs, config.timezone)} · {entry.itemId ? entry.title : t('builder.nothingScheduled')}</li>)}</ul></>}
+          {!!preview.firstDay.length && <><h4>{t('builder.firstDay')}</h4><ul>{preview.firstDay.map(entry => <li key={entry.id}><MetadataFacts parts={[channelClock(entry.startMs, config.timezone), entry.itemId ? entry.title : t('builder.nothingScheduled')]} /></li>)}</ul></>}
         </>}
       </aside>
     </div>}

@@ -72,14 +72,15 @@ test('the drawn Details facts come from the stored show record and never from fi
 });
 
 test('the drawn season rows carry the stored years, episode count and real watched progress', () => {
-  assert.equal(seasonMenuDescription({id: 's3', showId: 'the-simpsons', number: 3, title: 'Season 3', episodeCount: 24,
+  const render = (season: Parameters<typeof seasonMenuDescription>[0]) => renderToStaticMarkup(createElement('div', null, seasonMenuDescription(season)));
+  assert.equal(render({id: 's3', showId: 'the-simpsons', number: 3, title: 'Season 3', episodeCount: 24,
     watchedCount: 4, unwatchedCount: 20, firstAired: '1991-09-19', lastAired: '1992-05-14'}),
-  '1991 to 1992 · 24 episodes · 4 of 24 watched');
-  assert.equal(seasonMenuDescription({id: 's1', showId: 'the-simpsons', number: 1, title: 'Season 1', episodeCount: 13,
+  '<div><span class="seasonDescription"><span>1991 to 1992</span><span>24 episodes</span><span>4 of 24 watched</span></span></div>');
+  assert.equal(render({id: 's1', showId: 'the-simpsons', number: 1, title: 'Season 1', episodeCount: 13,
     watchedCount: 13, unwatchedCount: 0, firstAired: '1989-12-17', lastAired: '1990-05-13'}),
-  '1989 to 1990 · 13 episodes · 13 of 13 watched');
-  assert.equal(seasonMenuDescription({id: 'sp', showId: 'the-simpsons', number: 0, title: 'Specials', episodeCount: 12,
-    watchedCount: 0, unwatchedCount: 12}), '12 episodes · 0 of 12 watched');
+  '<div><span class="seasonDescription"><span>1989 to 1990</span><span>13 episodes</span><span>13 of 13 watched</span></span></div>');
+  assert.equal(render({id: 'sp', showId: 'the-simpsons', number: 0, title: 'Specials', episodeCount: 12,
+    watchedCount: 0, unwatchedCount: 12}), '<div><span class="seasonDescription"><span>12 episodes</span><span>0 of 12 watched</span></span></div>');
   assert.equal(seasonMenuDescription({id: 's2', showId: 'the-simpsons', number: 2, title: 'Season 2'}), undefined);
 });
 

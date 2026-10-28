@@ -1,4 +1,5 @@
 import {defaultI18n} from '@i18n';
+import {RadioGroup} from 'radix-ui';
 import type {SourceAdvanced} from '@core/remote-sources.ts';
 import {RichSelect, Switch} from '../../../kit/controls';
 import {SettingNumber} from '../../../kit/settings';
@@ -111,14 +112,16 @@ export function SourceAdvancedRows({values, cacheSupported, transportSupported, 
         ['waveforms', 'next.settingsSpec.server.remote-sources.panels.source.tabs.3.groups.1.rows.2.control.items.2.label'],
         ['loudness', 'next.settingsSpec.server.remote-sources.panels.source.tabs.3.groups.1.rows.2.control.items.3.label'],
         ['checksums', 'next.settingsSpec.server.remote-sources.panels.source.tabs.3.groups.1.rows.2.control.items.4.label'],
-      ] as const).map(([key, label]) => row(key, <div key={key} className={[styles.runSkipRow,
-        markers?.applicable.includes(key) && markers.changed.includes(key) ? markerStyles.analysisChanged : undefined].filter(Boolean).join(' ')}>
+      ] as const).map(([key, label]) => row(key, <RadioGroup.Root key={key} className={[styles.runSkipRow,
+        markers?.applicable.includes(key) && markers.changed.includes(key) ? markerStyles.analysisChanged : undefined].filter(Boolean).join(' ')}
+        orientation="horizontal" aria-label={t(label)} value={String(values[key])} disabled={disabled}
+        onValueChange={value => {if (!disabled && (value === 'true' || value === 'false')) set(key, value === 'true');}}>
         <span>{t(label)}</span>
-        <button type="button" role="radio" aria-checked={values[key]} aria-label={`${t(label)}: ${t('next.settingsSpec.server.remote-sources.panels.source.tabs.3.groups.1.rows.2.control.columns.0.label')}`}
-          className={styles.runSkipChoice} data-picked={values[key] || undefined} disabled={disabled} onClick={() => set(key, true)}>{t('next.settingsSpec.server.remote-sources.panels.source.tabs.3.groups.1.rows.2.control.columns.0.label')}</button>
-        <button type="button" role="radio" aria-checked={!values[key]} aria-label={`${t(label)}: ${t('next.settingsSpec.server.remote-sources.panels.source.tabs.3.groups.1.rows.2.control.columns.1.label')}`}
-          className={styles.runSkipChoice} data-picked={!values[key] || undefined} disabled={disabled} onClick={() => set(key, false)}>{t('next.settingsSpec.server.remote-sources.panels.source.tabs.3.groups.1.rows.2.control.columns.1.label')}</button>
-      </div>))}
+        <RadioGroup.Item value="true" aria-label={`${t(label)}: ${t('next.settingsSpec.server.remote-sources.panels.source.tabs.3.groups.1.rows.2.control.columns.0.label')}`}
+          className={styles.runSkipChoice} data-picked={values[key] || undefined} disabled={disabled}>{t('next.settingsSpec.server.remote-sources.panels.source.tabs.3.groups.1.rows.2.control.columns.0.label')}</RadioGroup.Item>
+        <RadioGroup.Item value="false" aria-label={`${t(label)}: ${t('next.settingsSpec.server.remote-sources.panels.source.tabs.3.groups.1.rows.2.control.columns.1.label')}`}
+          className={styles.runSkipChoice} data-picked={!values[key] || undefined} disabled={disabled}>{t('next.settingsSpec.server.remote-sources.panels.source.tabs.3.groups.1.rows.2.control.columns.1.label')}</RadioGroup.Item>
+      </RadioGroup.Root>))}
     </div>
     {row('introsMode', <RichSelect disabled={disabled} aria-label={t('next.settingsSpec.server.remote-sources.panels.source.tabs.3.groups.1.rows.3.label')}
       value={values.introsMode} options={introsOptions.map(option => ({value: option.value, label: t(option.label), description: t('next.settingsSpec.server.remote-sources.panels.source.tabs.3.groups.1.rows.3.help')}))}
