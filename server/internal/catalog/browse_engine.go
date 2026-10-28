@@ -81,6 +81,9 @@ type BrowseResult struct {
 // authorization facts into the revision so a permission change invalidates a
 // range the same way a catalog change does.
 type BrowseRequest struct {
+	// preparedTotal is admitted only by BrowseReadingWithPreparedCount in the
+	// same snapshot. It is never decoded from a public request.
+	preparedTotal *ReadingCountResult
 	// The HTTP boundary sets this only after admitting the original ordinary
 	// selected viewer in the same Reading snapshot. Browse alone grants no
 	// personal state to internal or narrowed-session callers.
@@ -673,7 +676,13 @@ func (s *Service) browseSelect(request BrowseRequest) (BrowseResult, []browseRow
 	// the signed cursor, so later pages don't count again.
 	var total int
 	counted := false
-	if !deferReadingCount && (request.Query == nil || summary.exact) {
+	if request.preparedTotal != nil {
+		if compiler.reading == nil {
+			return out, nil, ErrReadingProjectionChanged
+		}
+		total, counted = request.preparedTotal.RawTotal, true
+	}
+	if !counted && !deferReadingCount && (request.Query == nil || summary.exact) {
 		if summary.exact {
 			total = summary.total
 		} else if err = s.read().QueryRow(`SELECT count(*) FROM catalog_browse_rows e WHERE `+where, args...).Scan(&total); err != nil {
