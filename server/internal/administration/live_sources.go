@@ -263,6 +263,17 @@ func liveSourceExists(ctx context.Context, tx *sql.Tx, id string) (string, int, 
 	return name, tuners, err
 }
 
+// liveSourceDocumentRevision combines the two authorities in one monotonic
+// fence. Both counters only increase, so either authority moving changes the
+// sum; subtracting one preserves revision 1 for an untouched document/source.
+func liveSourceDocumentRevision(ctx context.Context, tx *sql.Tx, id string, adminRevision int64) (int64, error) {
+	var sourceRevision int64
+	if err := tx.QueryRowContext(ctx, `SELECT revision FROM live_sources WHERE id=?`, id).Scan(&sourceRevision); err != nil {
+		return 0, err
+	}
+	return adminRevision + sourceRevision - 1, nil
+}
+
 func (s *Service) liveSourceDocument(ctx context.Context, tx *sql.Tx, id string) (LiveSourceDocument, error) {
 	out := LiveSourceDocument{SourceID: id, Kinds: LiveSourceKinds}
 	name, tuners, err := liveSourceExists(ctx, tx, id)
@@ -291,11 +302,10 @@ func (s *Service) liveSourceDocument(ctx context.Context, tx *sql.Tx, id string)
 	if err = livechannels.ReadPersistedConfigurationTx(ctx, tx, id, &settings); err != nil {
 		return out, err
 	}
-	var sourceRevision int64
-	if err = tx.QueryRowContext(ctx, `SELECT revision FROM live_sources WHERE id=?`, id).Scan(&sourceRevision); err != nil {
+	revision, err = liveSourceDocumentRevision(ctx, tx, id, revision)
+	if err != nil {
 		return out, err
 	}
-	revision += sourceRevision - 1
 	effective := defaults
 	if settings.StreamBufferMs != nil {
 		effective.StreamBufferMs = *settings.StreamBufferMs
@@ -341,7 +351,43 @@ func (s *Service) SaveLiveSourceConfiguration(ctx context.Context, auth Authoriz
 		Expected int64              `json:"expected"`
 		Settings LiveSourceSettings `json:"settings"`
 	}{change.ExpectedRevision, value})
-	err := s.transaction(ctx, auth, func(tx *sql.Tx) error {
+	var snapshot *livechannels.PersistedConfigurationSnapshot
+	var replayed bool
+	err := s.snapshot(ctx, auth, func(tx *sql.Tx) error {
+		var err error
+		out, replayed, err = receipt[LiveSourceDocument](ctx, tx, scope, change.OperationID, digest)
+		if err != nil || replayed {
+			return err
+		}
+		if _, _, err = liveSourceExists(ctx, tx, id); err != nil {
+			return err
+		}
+		_, revision, err := readDocument(ctx, tx, scope, DefaultLiveSourceSettings())
+		if err != nil {
+			return err
+		}
+		revision, err = liveSourceDocumentRevision(ctx, tx, id, revision)
+		if err != nil {
+			return err
+		}
+		if revision != change.ExpectedRevision {
+			return ErrConflict
+		}
+		if value.Remote != nil {
+			snapshot, err = livechannels.ReadPersistedConfigurationSnapshotTx(ctx, tx, id)
+		}
+		return err
+	})
+	if err != nil || replayed {
+		return out, err
+	}
+	prepared, err := snapshot.Prepare(ctx, &value)
+	if err != nil {
+		return out, err
+	}
+	// Network work is complete. Reauthorize and recheck the revision and exact
+	// sealed policy inputs inside the accepting writer before applying anything.
+	err = s.transaction(ctx, auth, func(tx *sql.Tx) error {
 		stored, replayed, err := receipt[LiveSourceDocument](ctx, tx, scope, change.OperationID, digest)
 		if err != nil {
 			return err
@@ -365,15 +411,18 @@ func (s *Service) SaveLiveSourceConfiguration(ctx context.Context, auth Authoriz
 		if err != nil {
 			return err
 		}
-		var sourceRevision int64
-		if err = tx.QueryRowContext(ctx, `SELECT revision FROM live_sources WHERE id=?`, id).Scan(&sourceRevision); err != nil {
+		documentRevision, err := liveSourceDocumentRevision(ctx, tx, id, revision)
+		if err != nil {
 			return err
 		}
-		if revision+sourceRevision-1 != change.ExpectedRevision {
+		if documentRevision != change.ExpectedRevision {
 			return ErrConflict
 		}
 		at := s.milliseconds()
-		if err = livechannels.SavePersistedConfigurationTx(ctx, tx, id, &value); err != nil {
+		if err = livechannels.SavePersistedConfigurationTx(ctx, tx, id, &value, prepared); err != nil {
+			if errors.Is(err, livechannels.ErrConflict) {
+				return ErrConflict
+			}
 			return err
 		}
 		for _, accept := range accepted {
@@ -606,11 +655,11 @@ func (s *Service) SaveChannelMap(ctx context.Context, auth Authorize, id string,
 		if err != nil {
 			return err
 		}
-		var sourceRevision int64
-		if err = tx.QueryRowContext(ctx, `SELECT revision FROM live_sources WHERE id=?`, id).Scan(&sourceRevision); err != nil {
+		documentRevision, err := liveSourceDocumentRevision(ctx, tx, id, revision)
+		if err != nil {
 			return err
 		}
-		if revision+sourceRevision-1 != change.ExpectedRevision {
+		if documentRevision != change.ExpectedRevision {
 			return ErrConflict
 		}
 		if len(change.Overrides) > 0 {

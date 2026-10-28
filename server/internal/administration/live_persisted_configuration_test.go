@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"portico.local/server/internal/dbwork"
 	"portico.local/server/internal/livechannels"
 	"strings"
 	"testing"
@@ -127,12 +128,32 @@ func TestPersistedLiveConfigurationGuidePolicy(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	unchanged := func() {
+		t.Helper()
+		current, err := s.LiveSourceConfiguration(ctx, allow, id)
+		if err != nil || current.Revision != doc.Revision || current.Digest != doc.Digest {
+			t.Fatal("policy refusal changed the document", err)
+		}
+		var sealed string
+		if err = db.QueryRow(`SELECT sealed FROM live_remote_configs WHERE source_id=?`, id).Scan(&sealed); err != nil || sealed != raw {
+			t.Fatal("policy refusal changed private configuration", err)
+		}
+		var writes int
+		if err = db.QueryRow(`SELECT (SELECT COUNT(*) FROM admin_documents WHERE scope=?) + (SELECT COUNT(*) FROM admin_receipts WHERE scope=?)`, liveSourceScope(id), liveSourceScope(id)).Scan(&writes); err != nil || writes != 0 {
+			t.Fatal("policy refusal wrote a document or receipt", err)
+		}
+	}
 	for i, address := range []string{"http://169.254.169.254/latest/meta-data", "http://192.168.10.23/guide.xml"} {
 		doc.Settings.Remote.GuideURL = address
+		before := dbwork.WriteGate().Stats().Acquired
 		_, err = s.SaveLiveSourceConfiguration(ctx, allow, id, Change[LiveSourceSettings]{ExpectedRevision: doc.Revision, OperationID: []string{"guide-blocked", "guide-lan"}[i], Settings: doc.Settings})
 		if !errors.Is(err, livechannels.ErrNetworkPolicy) {
 			t.Fatalf("policy bypass: %v", err)
 		}
+		if dbwork.WriteGate().Stats().Acquired != before {
+			t.Fatal("policy refusal acquired the writer")
+		}
+		unchanged()
 		if i == 1 {
 			var lan *livechannels.LANConfirmationRequired
 			if !errors.As(err, &lan) || len(lan.Roots) != 1 {
@@ -141,6 +162,16 @@ func TestPersistedLiveConfigurationGuidePolicy(t *testing.T) {
 			doc.Settings.Remote.ConfirmedLANRoots = lan.Roots
 		}
 	}
+	// Approve must also refuse blocked confirmation roots before taking the writer.
+	roots := doc.Settings.Remote.ConfirmedLANRoots
+	doc.Settings.Remote.ConfirmedLANRoots = []string{"http://169.254.169.254/"}
+	before := dbwork.WriteGate().Stats().Acquired
+	_, err = s.SaveLiveSourceConfiguration(ctx, allow, id, Change[LiveSourceSettings]{ExpectedRevision: doc.Revision, OperationID: "guide-confirmation-blocked", Settings: doc.Settings})
+	if !errors.Is(err, livechannels.ErrNetworkPolicy) || dbwork.WriteGate().Stats().Acquired != before {
+		t.Fatal("confirmation policy refusal took the writer or was bypassed", err)
+	}
+	unchanged()
+	doc.Settings.Remote.ConfirmedLANRoots = roots
 	saved, err := s.SaveLiveSourceConfiguration(ctx, allow, id, Change[LiveSourceSettings]{ExpectedRevision: doc.Revision, OperationID: "guide-confirmed", Settings: doc.Settings})
 	if err != nil {
 		t.Fatal(err)
