@@ -27,6 +27,7 @@ const (
 type ReadingCountReduction struct {
 	library, profile, viewerFence, witness       string
 	evaluationAt                                 string
+	originalExpiry                               time.Time
 	queryFingerprint                             string
 	predicate                                    string
 	predicateArgs                                []any
@@ -77,6 +78,15 @@ func (r *ReadingCountReduction) EvaluationAt() string {
 	return r.evaluationAt
 }
 
+// OriginalExpiry is nonzero only for an admitted signed continuation. An
+// adapter must use the same ceiling for a preparation handle, never renew it.
+func (r *ReadingCountReduction) OriginalExpiry() time.Time {
+	if r == nil {
+		return time.Time{}
+	}
+	return r.originalExpiry
+}
+
 // MemoryBytes is a conservative reservation for this reduction's retained
 // SQL/arguments/cursors. Step also limits the logical source bytes it examines.
 func (r *ReadingCountReduction) MemoryBytes() int64 {
@@ -118,7 +128,7 @@ func (s *Service) NewReadingCountReduction(viewer Viewer, request BrowseRequest)
 	if !viewer.AllowsLibrary(request.Library) {
 		return nil, sql.ErrNoRows
 	}
-	if request.Cursor != "" || request.Range != nil || request.Seek != nil || request.HomeRowDisplay != "" || len(request.Rows) != 0 || len(request.RowSources) != 0 {
+	if request.Range != nil || request.Seek != nil || request.HomeRowDisplay != "" || len(request.Rows) != 0 || len(request.RowSources) != 0 {
 		return nil, browseIssue("query", "count reduction requires an ordinary Reading leaf query")
 	}
 	if dbwork.Snapshot(s.Context()) != nil || dbwork.InWriteTx(s.Context()) || s.readTx != nil {
@@ -132,7 +142,7 @@ func (s *Service) NewReadingCountReduction(viewer Viewer, request BrowseRequest)
 	if err != nil {
 		return nil, err
 	}
-	s, err = s.withBrowseInstant(query, "")
+	s, err = s.withBrowseInstant(query, request.Cursor)
 	if err != nil {
 		return nil, err
 	}
@@ -173,6 +183,26 @@ func (s *Service) NewReadingCountReduction(viewer Viewer, request BrowseRequest)
 		}
 		if len(policyRaw) > BrowseMaximumBytes {
 			return browseIssue("restrictions", "policy exceeds existing request input limit")
+		}
+		if request.Cursor != "" {
+			_, present, checkErr := read.BrowseReadingCarriedTotal(viewer, request)
+			e = checkErr
+			if e != nil {
+				return e
+			}
+			signed, e := read.readSignedBrowseCursor(request.Cursor)
+			if e != nil {
+				return e
+			}
+			r.originalExpiry = time.Unix(signed.Expires, 0)
+			if present {
+				decoded, e := read.decodeCursor(request.Cursor, signed.Scope)
+				if e != nil {
+					return e
+				}
+				r.count = decoded.Total
+				r.done = true
+			}
 		}
 		r.witness, e = read.browseExactWitness(r.library, r.profile, policy)
 		if e != nil {
