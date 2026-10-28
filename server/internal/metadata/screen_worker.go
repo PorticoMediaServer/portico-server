@@ -775,13 +775,6 @@ func screenQueryReceipt(b screenBase) string {
 	}{names, year, ids, b.Requested, b.Language, b.Region, screenAlgorithm})
 }
 func screenRaw(v any) string { b, _ := json.Marshal(v); return string(b) }
-func screenSafeReason(err error) string {
-	var p *metadataprovider.Error
-	if errors.As(err, &p) && len(p.Code) <= 128 && !strings.ContainsAny(p.Code, "/\\\r\n") {
-		return p.Code
-	}
-	return "provider_unavailable"
-}
 
 func (s *Service) screenRememberCooldown(ctx context.Context, provider string, problem error) error {
 	var pe *metadataprovider.Error

@@ -185,16 +185,6 @@ func deleteCompactFixtureEntity(t testing.TB, db *sql.DB, id int64) {
 	}
 }
 
-func setCompactFixtureTitle(t testing.TB, db *sql.DB, id int64, title string) {
-	t.Helper()
-	err := dbwork.WithWriteTx(context.Background(), db, dbwork.ClassInteractive, func(tx *sql.Tx) error {
-		return compactcatalog.SetFieldsTx(context.Background(), tx, id, compactcatalog.Owner, map[string]any{"title": title})
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-}
-
 func (h *harness) advance(t *testing.T) {
 	t.Helper()
 	if e := h.service.Advance(context.Background()); e != nil {

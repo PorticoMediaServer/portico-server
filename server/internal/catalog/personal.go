@@ -153,13 +153,6 @@ func fenceOperation(tx *sql.Tx, owner, domain, op, hash string) error {
 	_, e := tx.Exec(`INSERT OR IGNORE INTO saved_operation_fences VALUES(?,?,?,?,?)`, owner, domain, op, hash, time.Now().UTC().Format(time.RFC3339))
 	return e
 }
-func fenceEvidence(tx *sql.Tx, profile, item string) error {
-	id, e := personalID(tx, item)
-	if e != nil {
-		return e
-	}
-	return fenceEvidenceByID(tx, profile, id)
-}
 
 func fenceEvidenceByID(tx *sql.Tx, profile string, entityID int64) error {
 	if _, e := tx.Exec(`INSERT INTO personal_evidence_fences(profile_id,item_id,playback_id) SELECT profile_id,item_id,playback_id FROM progress WHERE profile_id=? AND item_id=? ON CONFLICT(profile_id,item_id) DO UPDATE SET playback_id=excluded.playback_id`, profile, entityID); e != nil {

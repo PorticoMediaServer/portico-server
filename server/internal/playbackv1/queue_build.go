@@ -61,18 +61,6 @@ type buildCaller struct {
 	Epoch  int             `json:"epoch"`
 }
 
-// openKeys resolves a selector to its key query in canonical order. A
-// playlist must be the caller's own; a container's library must be one the
-// caller may use (ErrNotFound otherwise, like an unknown one).
-func (s *Service) openKeys(ctx context.Context, tx *sql.Tx, p identity.Principal, in SegmentInput) (*sql.Rows, string, bool, error) {
-	k, err := s.keysQuery(ctx, tx, p, in)
-	if err != nil {
-		return nil, "", false, err
-	}
-	rows, err := tx.QueryContext(ctx, k.query, k.args...)
-	return rows, k.kind, k.specials, err
-}
-
 // selectorKeys is a selector's key query in canonical order, after the
 // caller's container checks: kind is "items" or "selector"; specials says a
 // show's specials are in.

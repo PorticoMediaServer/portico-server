@@ -70,11 +70,6 @@ func (o *discTestObject) Close() error {
 	o.closes++
 	return nil
 }
-func (o *discTestObject) closeCount() int {
-	o.mu.Lock()
-	defer o.mu.Unlock()
-	return o.closes
-}
 
 // discTestBody blocks the first Read until the test releases it, then returns
 // the supplied bytes. It counts its own Close calls.

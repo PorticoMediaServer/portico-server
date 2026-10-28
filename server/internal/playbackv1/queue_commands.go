@@ -810,19 +810,6 @@ func (l *layout) currentEntry() (string, bool) {
 	return entry, err == nil || errors.Is(err, ErrQueueBuilding)
 }
 
-func (l *layout) restoreCurrent(entry string) {
-	if entry == "" {
-		return
-	}
-	if src, _, ok := l.sourceIndexOf(entry); ok {
-		if l.q.shuffle {
-			l.reshuffle(src)
-			return
-		}
-		l.q.current = src
-	}
-}
-
 // AddSegment is POST /v1/queues/{id}/segments: Play next, Add to queue, or
 // insert after an entry.
 func (s *Service) AddSegment(ctx context.Context, c Caller, id, ifMatch string, req AddSegmentRequest) (QueueReply, error) {

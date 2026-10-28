@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"errors"
 	"portico.local/server/internal/requestinput"
-	"strconv"
 	"strings"
 
 	"golang.org/x/text/language"
@@ -715,8 +714,6 @@ func (s *Service) SelectAnimeSeason(ctx context.Context, show string, body Scree
 	}
 	return gated7.Commit()
 }
-
-func screenNumericID(id string) int64 { n, _ := strconv.ParseInt(id, 10, 64); return n }
 
 func screenRecordOrders(r metadataprovider.ScreenRecord) []metadataprovider.ScreenOrder {
 	if len(r.Orders) > 0 {

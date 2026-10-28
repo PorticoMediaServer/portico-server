@@ -216,10 +216,10 @@ type Settings struct {
 	// PeopleInvitationDays is how long a new invitation stays usable, in days.
 	// A document saved before the field existed reads as 0, which the accessor
 	// resolves to the shipped default of 7 days.
-	PeopleInvitationRole PeopleInviteRole `json:"people.invitation_role,omitempty"`
+	PeopleInvitationRole PeopleInviteRole     `json:"people.invitation_role,omitempty"`
 	PeopleInvitationDays PeopleInvitationDays `json:"people.invitation_days,omitempty"`
-	MissingTitles     string `json:"library.missingTitles"`
-	MissingTitlesDays int    `json:"library.missingTitlesDays"`
+	MissingTitles        string               `json:"library.missingTitles"`
+	MissingTitlesDays    int                  `json:"library.missingTitlesDays"`
 	// SegmentDetection is the server's intro and credits detection mode
 	// (SegmentDetectionModes). A document saved before the field existed
 	// reads as empty, which is the default, standard.
@@ -428,9 +428,6 @@ func readSettings(tx *sql.Tx) (SettingsDocument, error) {
 	effective, pending := effectiveMediaSettings(v)
 	return SettingsDocument{Revision: revision, Digest: Hash(string(b)), Requested: v, Effective: effective, ActiveRevision: revision, RestartFields: pending, RegistryRevision: RegistryRevision}, nil
 }
-
-// restartFields reports restart-applied settings the running process has not adopted.
-func restartFields(v Settings) []string { _, fields := effectiveMediaSettings(v); return fields }
 
 // SettingsTx reads the canonical stored settings in the exact caller-owned
 // transaction. It performs no tool validation, applied-runtime callbacks,

@@ -558,10 +558,6 @@ func startFault(e error) error {
 	return fmt.Errorf("%w: %w", channelFault("channel_start_failed", 503), e)
 }
 
-// linearPreparationPatience is how long a Library Channel waits, without a
-// word, for its scheduled title's preparation to be claimed.
-const linearPreparationPatience = 15 * time.Second
-
 func shortPlaybackID(id string) string {
 	if len(id) > 8 {
 		return id[:8]

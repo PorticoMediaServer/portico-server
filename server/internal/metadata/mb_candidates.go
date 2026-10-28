@@ -27,17 +27,7 @@ func (s *Service) mbAlbumCandidates(ctx context.Context, j mbJob, values []metad
 	j.fingerprintStatus = "not_applicable"
 	return s.mbStoreCandidates(ctx, j, rows)
 }
-func (s *Service) mbSongCandidates(ctx context.Context, j mbJob, values []metadataprovider.Recording) error {
-	rows, e := stageMBSongCandidates(values, j.title, j.artist)
-	if e != nil {
-		return fmt.Errorf("%w: candidate validation", errPublicationInput)
-	}
-	for n := range rows {
-		rankMusicSong(&rows[n], j, musicCandidateRecording(rows[n]), 0)
-	}
-	j.fingerprintStatus = musicFingerprintStatus(j, s.acoustid != nil)
-	return s.mbStoreCandidates(ctx, j, rows)
-}
+
 func (s *Service) mbStoreCandidates(ctx context.Context, j mbJob, rows []mbCandidateEvidence) error {
 	automatic, observation := rankMusicCandidates(rows, j)
 	gated, e := dbwork.Begin(ctx, s.db, dbwork.ClassBackgroundMedia)

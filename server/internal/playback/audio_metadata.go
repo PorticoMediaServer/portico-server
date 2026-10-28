@@ -31,7 +31,6 @@ type audioSegment struct {
 type audioPlaylist struct {
 	segments []audioSegment
 	target   float64
-	final    bool
 }
 type audioRate struct {
 	count                   int

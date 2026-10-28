@@ -801,9 +801,3 @@ func (s *Service) acrossQueue(ctx context.Context, tx *sql.Tx, viewer Viewer, qu
 	served, err := compactcatalog.SearchServingSQL(ctx, tx, compactcatalog.ServingSQL(query2))
 	return QueueSelection{SQL: served, Args: bound, Revision: revision}, err
 }
-
-// facetsInGroup uses the same canonical pivot and filtered scope as browse.
-func (s *Service) facetsInGroup(viewer Viewer, request FacetRequest, limit int) (FacetPage, error) {
-	request.Limit = limit
-	return s.contextualFacets(viewer, request)
-}

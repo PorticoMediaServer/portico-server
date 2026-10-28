@@ -24,12 +24,6 @@ import (
 // are never carried.
 func stateFiles() []string { return []string{"portico.toml", "Metadata", "Keys"} }
 
-// copyStateFiles copies the state file set from state into the staging folder
-// at the same relative paths, and returns the manifest entries. Names use "/".
-func copyStateFiles(state, partial string) ([]FileEntry, error) {
-	return copyStateFilesForBackup(context.Background(), state, partial, false)
-}
-
 func copyStateFilesForBackup(ctx context.Context, state, partial string, includeArtwork bool) ([]FileEntry, error) {
 	entries := []FileEntry{}
 	for _, rel := range stateFiles() {
@@ -316,15 +310,6 @@ func (s *Service) estimate(ctx context.Context, includeArtwork bool) (int64, err
 		total = 1 << 20
 	}
 	return total, nil
-}
-
-// manifestFileEntries reads the manifest's file list for hash comparison.
-func manifestFileEntries(dir string) ([]FileEntry, error) {
-	manifest, err := readManifest(dir)
-	if err != nil {
-		return nil, err
-	}
-	return manifest.Files, nil
 }
 
 // checkManifestHashes verifies every listed file's sha256 against the tree.

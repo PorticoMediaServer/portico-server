@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"math"
 	"net/http"
-	"os"
 	"path/filepath"
 	"portico.local/server/internal/decoder"
 	"portico.local/server/internal/identity"
@@ -155,13 +154,6 @@ func (d Dependencies) capacityComposer() *telemetry.Capacity {
 		capacity.Directory = &d.StorageLayout.Transcode
 	}
 	return capacity
-}
-
-func telemetryEnv(key, fallback string) string {
-	if v := os.Getenv(key); v != "" {
-		return v
-	}
-	return fallback
 }
 
 func (d Dependencies) stateDirectory() string {

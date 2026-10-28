@@ -38,16 +38,6 @@ func requestAppLanguage(r *http.Request) string {
 	return ""
 }
 
-// trustedProxy reports whether the immediate peer is a configured proxy, which
-// is the only case where a forwarded address may stand in for the peer's own.
-func (d Dependencies) trustedProxy(r *http.Request) bool {
-	if r == nil {
-		return false
-	}
-	peer, ok := peerAddress(r)
-	return ok && containsAddress(d.trustedProxyPrefixes(r.Context()), peer)
-}
-
 // DeviceClassHeader lets a client name the surface it is rendering on, which is
 // the scope of its device-class preferences.
 const DeviceClassHeader = "X-Portico-Device-Class"

@@ -333,15 +333,6 @@ func startTargetedTx(ctx context.Context, tx *sql.Tx, source string) (Job, error
 	return job, nil
 }
 
-// targeted reports whether a run is limited to reported folders. Every folder
-// such a run visits is a reported one or lies inside one, and a report says the
-// folder changed, so none of them is skipped on the strength of its timestamp.
-func (s *Service) targeted(ctx context.Context, job string) (bool, error) {
-	var limited int
-	err := s.db.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM inventory_run_targets WHERE job_id=?)`, job).Scan(&limited)
-	return limited != 0, err
-}
-
 // startWaitingReports begins the scans for reports that arrived while their
 // library folder was busy. It is called from the scan loop, which a finished
 // run wakes.

@@ -36,10 +36,6 @@ func decodeManualMetadata(w http.ResponseWriter, r *http.Request, value *catalog
 	return nil
 }
 
-func (d Dependencies) manualMetadataOwner(ctx context.Context, r *http.Request) (identity.Principal, error) {
-	return d.ownerContext(ctx, r)
-}
-
 func (d Dependencies) manualMetadataAdministrator(ctx context.Context, r *http.Request) (identity.Principal, error) {
 	return d.administrator(r.WithContext(ctx))
 }

@@ -4,7 +4,6 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
-	"strings"
 
 	"portico.local/server/internal/compactcatalog"
 	"portico.local/server/internal/identity"
@@ -122,9 +121,4 @@ func (s *Service) VisibleEntity(ctx context.Context, v Viewer, kind, id string) 
 	values := append([]any{id, compactKind}, args...)
 	var found int
 	return s.read().QueryRowContext(ctx, `SELECT 1 FROM catalog_browse_rows e JOIN catalog_libraries l ON l.id=e.library_id WHERE e.entity_id=(SELECT id FROM catalog_entities WHERE public_id=pid_blob(?)) AND e.kind=? AND `+clause, values...).Scan(&found)
-}
-
-func visibleCreditSQL(v Viewer, item string) (string, []any) {
-	clause, args := v.itemVisibilitySQL(item)
-	return strings.TrimSpace(clause), args
 }

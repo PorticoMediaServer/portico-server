@@ -274,11 +274,6 @@ func buildPlaybackV1(d Dependencies) *playbackv1.Service {
 	return playbackv1.New(d.DB, d.Playback, d.Subtitles)
 }
 
-func jsonStrings(v []string) string {
-	raw, _ := json.Marshal(v)
-	return string(raw)
-}
-
 type noBody struct{}
 
 // registerPlaybackV1 adds every Playback Protocol v1 route to the registry.

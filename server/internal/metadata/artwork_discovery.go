@@ -462,9 +462,7 @@ func (s *Service) ArtworkDiscoveryStep(ctx context.Context) error {
 	}
 	return gated3.Commit()
 }
-func (s *Service) discoverArtwork(ctx context.Context, provider, id string) ([]discoveredArtwork, error) {
-	return s.discoverArtworkFor(ctx, provider, id, "item", "en")
-}
+
 func (s *Service) discoverArtworkFor(ctx context.Context, provider, id, kind, locale string) ([]discoveredArtwork, error) {
 	ctx = s.lookupContext(ctx)
 	if provider == "coverartarchive" {

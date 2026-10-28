@@ -25,13 +25,6 @@ const readingPageRuleVersion = 1
 const maxCountDocument = 8 << 20
 const maxCountPublication = 64 << 20
 
-// Count only complete admitted XHTML spine text. A nil count is unknown, not
-// zero. This is descriptive metadata; no source or viewer grant comes from it.
-func countEPUBText(ctx context.Context, e *EPUB) (*int64, error) {
-	count, _, err := inspectEPUBText(ctx, e)
-	return count, err
-}
-
 // Opening text is retained only from complete, valid admitted body text. It is
 // a bounded excerpt, never an estimate or HTML returned for execution.
 func inspectEPUBText(ctx context.Context, e *EPUB) (*int64, string, error) {
@@ -96,14 +89,6 @@ func (o *openingText) add(value string) {
 	}
 }
 
-// Rule 1: count maximal Unicode letter/number/mark runs containing a letter or
-// number, in XHTML body character data. Inline markup preserves runs; element
-// boundaries for block/line containers separate them. Script/style/template and
-// head content are not publication text. Scripts requiring dictionary word
-// segmentation are unsupported, rather than receiving a whitespace guess.
-func countXHTMLText(ctx context.Context, data []byte) (int64, bool) {
-	return countXHTMLTextObserved(ctx, data, nil)
-}
 func countXHTMLTextObserved(ctx context.Context, data []byte, observe func(string)) (int64, bool) {
 	d := xml.NewDecoder(bytes.NewReader(data))
 	d.Strict = true

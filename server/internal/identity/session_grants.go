@@ -20,7 +20,6 @@ const (
 	GrantOwnerClaimCompletion = "owner_claim_completion"
 )
 
-type castTargetIssueKey struct{}
 type playbackRequestKey struct{}
 
 // WithPlaybackRequest marks a request as one a Cast target may make: starting,

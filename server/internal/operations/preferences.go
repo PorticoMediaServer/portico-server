@@ -101,11 +101,7 @@ func prefNumberEnum(key string, def float64, allowed []float64, scope string) Pr
 	}
 	return f
 }
-func prefText(key, def string, maxLength int, scope string) PreferenceField {
-	f := field(key, "string", def, scope)
-	f.maxLength = maxLength
-	return f
-}
+
 func prefList(key string, maxItems, maxLength int, scope string) PreferenceField {
 	f := field(key, "string-list", []string{}, scope)
 	f.maxItems, f.maxLength = maxItems, maxLength

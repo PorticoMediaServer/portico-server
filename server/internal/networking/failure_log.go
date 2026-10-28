@@ -42,12 +42,6 @@ func stepFailure(step string, err error) error {
 	}
 	return &failureStep{step: step, err: err}
 }
-func stepFailureDetail(step, detail string, err error) error {
-	if err == nil {
-		return nil
-	}
-	return &failureStep{step: step, detail: detail, err: err}
-}
 
 // keyFileError is a protected-key read that failed. It still answers
 // errors.Is(err, ErrUnavailable) exactly as the bare sentinel did; the cause is

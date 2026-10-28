@@ -17,7 +17,6 @@ import (
 // the screen worker took over film and TV matching; it was removed in B84. The
 // tables remain because migrations are immutable.
 
-var errPublicationStale = errors.New("metadata publication base changed")
 var errPublicationInput = errors.New("invalid provider evidence")
 
 const publicationClockFormat = time.RFC3339

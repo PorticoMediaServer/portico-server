@@ -84,15 +84,6 @@ func audioGenreProjectionRows(t *testing.T, db *sql.DB) []string {
 	return out
 }
 
-func audioGenreState(t *testing.T, db *sql.DB) string {
-	t.Helper()
-	var completed string
-	if err := db.QueryRow(`SELECT completed_at<>'' AND policy_revision=3 FROM audio_genre_projection WHERE library_id='music'`).Scan(&completed); err != nil {
-		t.Fatal(err)
-	}
-	return completed
-}
-
 func TestAudioGenreCatchUpRespectsOwnerLock(t *testing.T) {
 	ctx, db, ids := audioGenreBackfillFixture(t)
 	// The owner locked one item's genre class before the catch-up ran: its

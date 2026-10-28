@@ -8,9 +8,6 @@ import (
 	"portico.local/server/internal/metadataprovider"
 )
 
-func (s *Service) discoverTVDBArtwork(ctx context.Context, id string) ([]discoveredArtwork, error) {
-	return s.discoverTVDBArtworkFor(ctx, id, "show", "en")
-}
 func (s *Service) discoverTVDBArtworkFor(ctx context.Context, id, kind, locale string) ([]discoveredArtwork, error) {
 	p, ok := s.tvdb.(interface {
 		Artwork(context.Context, int64) ([]metadataprovider.ArtworkImage, error)

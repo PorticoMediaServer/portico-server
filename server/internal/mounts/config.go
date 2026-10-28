@@ -7,7 +7,6 @@ import (
 	"errors"
 	"fmt"
 	"golang.org/x/crypto/nacl/secretbox"
-	"io"
 	"os"
 	"path/filepath"
 	"portico.local/server/internal/rcloneprogram"
@@ -140,41 +139,6 @@ func migrateSealedConfigs(private string) {
 	}
 	// Best effort: a leftover key is inert and migrates again next start.
 	_ = os.Remove(keyPath)
-}
-func executableDigest(path string) (string, error) {
-	if !filepath.IsAbs(path) {
-		return "", ErrInvalid
-	}
-	canonical, err := filepath.EvalSymlinks(path)
-	if err != nil || canonical != filepath.Clean(path) {
-		return "", errors.New("rclone executable must be a canonical regular executable path")
-	}
-	f, err := os.Open(path)
-	if err != nil {
-		return "", err
-	}
-	defer f.Close()
-	info, err := f.Stat()
-	if err != nil || !info.Mode().IsRegular() || info.Mode().Perm()&0111 == 0 || info.Mode().Perm()&0022 != 0 || info.Size() > 256<<20 {
-		return "", ErrInvalid
-	}
-	var head [4]byte
-	if _, err = io.ReadFull(f, head[:]); err != nil {
-		return "", ErrInvalid
-	}
-	// Owner-selected native binary only: never a shell script.
-	magic := hex.EncodeToString(head[:])
-	if magic != "7f454c46" && magic != "cffaedfe" && magic != "feedfacf" && magic != "cafebabe" && magic != "bebafeca" {
-		return "", errors.New("rclone must be a native executable")
-	}
-	if _, err = f.Seek(0, 0); err != nil {
-		return "", err
-	}
-	hash := sha256.New()
-	if _, err = io.Copy(hash, f); err != nil {
-		return "", err
-	}
-	return hex.EncodeToString(hash.Sum(nil)), nil
 }
 
 // openSealedConfig decrypts one sealed-era config for the migration.

@@ -68,35 +68,6 @@ func acceptsAudioVariant(variants []string, a *SourceAudio, objects []string, pa
 	}
 	return true
 }
-func audioDisplayName(variant, codec, objects string) string {
-	switch variant {
-	case "dts_core":
-		return "DTS"
-	case "dts_hd_hra":
-		return "DTS-HD High Resolution"
-	case "dts_hd_ma":
-		return "DTS-HD Master Audio"
-	case "dtsx":
-		return "DTS-HD Master Audio (DTS:X)"
-	case "dts_express":
-		return "DTS Express"
-	case "truehd_atmos":
-		return "Dolby TrueHD with Atmos"
-	case "truehd":
-		return "Dolby TrueHD"
-	case "eac3_joc":
-		return "Dolby Digital Plus with Atmos"
-	case "eac3":
-		return "Dolby Digital Plus"
-	case "ac3":
-		return "Dolby Digital"
-	case "ac4":
-		return "Dolby AC-4"
-	case "lpcm":
-		return "LPCM"
-	}
-	return codec
-}
 
 // declaresHDR10Plus reports whether the engine and the display it is shown on
 // both state HDR10+ for the delivered codec. A list that states nothing is not

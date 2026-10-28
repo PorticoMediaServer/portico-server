@@ -74,9 +74,7 @@ func natService(t string) bool {
 func firewallService(t string) bool {
 	return t == "urn:schemas-upnp-org:service:WANIPv6FirewallControl:1"
 }
-func findUPnPService(device upnpDevice) (string, string) {
-	return findUPnPServiceOf(device, natService)
-}
+
 func findUPnPServiceOf(device upnpDevice, wanted func(string) bool) (string, string) {
 	for _, s := range device.Services {
 		if wanted(s.Type) {

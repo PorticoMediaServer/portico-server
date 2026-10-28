@@ -310,29 +310,6 @@ func (s *Service) visibilitySummary(library string, kinds []string, r identity.C
 	return out, true, nil
 }
 
-func (s *Service) visibilityCount(library, kindName string, decade *int, r identity.ContentRestrictions) (int, bool, error) {
-	key, generation, ready, err := s.publishedVisibilityClass(library, r)
-	if err != nil || !ready {
-		return 0, ready, err
-	}
-	kind, err := compactcatalog.ParseKind(kindName)
-	if err != nil {
-		return 0, false, err
-	}
-	query := `SELECT COALESCE(sum(vc.total),0) FROM compact_visibility_counts vc
-	 JOIN compact_visibility_classes c ON c.id=vc.class_id
-	 JOIN catalog_libraries l ON l.id=vc.library_id
-	 WHERE c.class_key=? AND vc.generation=? AND l.library_id=? AND c.retired=0 AND vc.kind=?`
-	args := []any{key, generation, library, int(kind)}
-	if decade != nil {
-		query += ` AND vc.decade=?`
-		args = append(args, *decade)
-	}
-	var count int
-	err = s.read().QueryRow(query, args...).Scan(&count)
-	return count, true, err
-}
-
 func (s *Service) visibilitySmallLibrary(library string) (bool, error) {
 	var large bool
 	err := s.read().QueryRow(`SELECT EXISTS(SELECT 1 FROM catalog_browse_rows

@@ -420,12 +420,6 @@ func (h *HLS) sessionTimeline(ctx context.Context, id string) *copyTimeline {
 	return t
 }
 
-func (h *HLS) timelineCount(id string) int {
-	h.mu.Lock()
-	defer h.mu.Unlock()
-	return h.timelines[id].count()
-}
-
 // siblingProbe finds ffprobe next to the ffmpeg this producer runs, which is
 // where every packaged build puts it, and falls back to the search path.
 func siblingProbe(ffmpeg string) string {

@@ -1006,29 +1006,6 @@ func bestCopyTransport(transports []ClientTransport, client ClientProfile, video
 	return name, best
 }
 
-// videoBudget is the encoder's bitrate ceiling. A rung names its own; automatic
-// takes the policy ceiling, and failing that the ladder step for the height.
-func videoBudget(t QualityTarget, sourceHeight int) int {
-	if t.MaxVideoBitrateBPS > 0 {
-		return t.MaxVideoBitrateBPS
-	}
-	height := t.MaxVideoHeight
-	if height <= 0 {
-		height = sourceHeight
-	}
-	if height <= 0 {
-		// No source resolution is invented. Use the widest canonical ceiling
-		// only if another observed device/policy reason requires conversion.
-		return QualityLadder[0].VideoBitrateBPS
-	}
-	for i := len(QualityLadder) - 1; i >= 0; i-- {
-		if QualityLadder[i].Height >= height {
-			return QualityLadder[i].VideoBitrateBPS
-		}
-	}
-	return QualityLadder[0].VideoBitrateBPS
-}
-
 func audioBudget(t QualityTarget) int {
 	if t.MaxAudioBitrateBPS > 0 {
 		return t.MaxAudioBitrateBPS

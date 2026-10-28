@@ -215,15 +215,6 @@ func (s *Service) resolvePolicy(tx *sql.Tx, p identity.Principal, d DeliveryCont
 	return ResolveDeliveryPolicy(s.viewerPreferences(tx, p, d), d.NetworkClass, d.ServerLocality, d.TransportClass, cfg)
 }
 
-// preferredAudioLanguages reads the viewer's ordered language list. The list
-// accessor is optional on the reader, so a test double need not implement it.
-func preferredAudioLanguages(values DeliveryPreferenceReader) []string {
-	if lister, ok := values.(interface{ List(string) []string }); ok && values != nil {
-		return lister.List("playback.preferredAudioLanguages")
-	}
-	return nil
-}
-
 // automaticSubtitles is what the viewer wants from subtitles without being
 // asked, beside the audio language this session will actually play.
 func preferenceReaderOrDefaults(values DeliveryPreferenceReader) DeliveryPreferenceReader {

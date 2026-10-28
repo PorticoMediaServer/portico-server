@@ -363,13 +363,6 @@ func (s *Service) resolveBackgroundTx(ctx context.Context, tx *sql.Tx, domain, l
 	return v, nil
 }
 
-// validateBackground rechecks the same catalog/fence tuple after bytes, and
-// during source extents, so a changed source cannot adopt a fact read from
-// older bytes. It keeps the text-count worker's domain.
-func (s *Service) validateBackground(ctx context.Context, selected Selection) error {
-	return s.validateBackgroundDomain(ctx, textCountWorkerDomain, selected)
-}
-
 func (s *Service) validateBackgroundDomain(ctx context.Context, domain string, selected Selection) error {
 	g, err := dbwork.BeginSnapshot(ctx, s.DB)
 	if err != nil {

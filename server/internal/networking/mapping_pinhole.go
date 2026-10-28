@@ -5,7 +5,6 @@ import (
 	"errors"
 	"net/netip"
 	"strconv"
-	"time"
 )
 
 // IPv6 inbound pinholes (UPnP IGDv2 WANIPv6FirewallControl:1).
@@ -91,15 +90,4 @@ func pinholeMap(ctx context.Context, m Mapping, lifetime uint32) (Mapping, error
 	}
 	m.PinholeID = id
 	return grantedMapping(m, min(lifetime, 86400), 0)
-}
-
-// pinholeOpen reports whether a live pinhole (or a gateway with its IPv6
-// firewall off) admits the listener on this IPv6 address now.
-func pinholeOpen(rows []Mapping, address string, now time.Time) bool {
-	for _, row := range rows {
-		if row.Protocol == pinholeProtocol && row.PinholeClient == address && row.State == "mapped" && now.Before(row.ExpiresAt) {
-			return true
-		}
-	}
-	return false
 }

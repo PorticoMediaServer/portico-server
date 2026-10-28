@@ -425,10 +425,6 @@ func (s *Service) removePending(ctx context.Context, m Mount) {
 	delete(s.paths, m.ID)
 	delete(s.available, m.ID)
 }
-func operationActor(authority, account, profile string) string {
-	raw, _ := json.Marshal([]string{authority, account, profile})
-	return string(raw)
-}
 
 func (s *Service) Revision() (int64, error) {
 	var n int64

@@ -36,15 +36,6 @@ func screenFactsRecord() metadataprovider.ScreenRecord {
 	}
 }
 
-func screenFactEntityID(t *testing.T, db *sql.DB, kind compactcatalog.Kind, title string) int64 {
-	t.Helper()
-	var id int64
-	if err := db.QueryRow(`SELECT id FROM catalog_entities WHERE kind=? AND title=? ORDER BY id LIMIT 1`, int(kind), title).Scan(&id); err != nil {
-		t.Fatal(err)
-	}
-	return id
-}
-
 func screenFactShowFixture(t *testing.T, libraryID, libraryName, kind, root string) (*Service, *sql.DB, catalogtest.Item, catalogtest.Item) {
 	t.Helper()
 	s, db, _ := publicationFixture(t)

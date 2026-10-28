@@ -683,17 +683,6 @@ func resourceByID(resources []subtitles.Resource, id string) *subtitles.Resource
 	return nil
 }
 
-// assetFacts reads a file's picture height and whole bitrate.
-func (s *Service) assetFacts(ctx context.Context, asset string) SourceFacts {
-	var out SourceFacts
-	var size int64
-	var duration float64
-	if dbwork.QueryRow(ctx, s.DB, `SELECT COALESCE(height,0),size,duration FROM catalog_assets WHERE token=?`, asset).Scan(&out.Height, &size, &duration) == nil && duration > 0 && size > 0 {
-		out.BitrateKbps = int(float64(size) * 8 / duration / 1000)
-	}
-	return out
-}
-
 // present creates a presentation (a playback_sessions row with its own grant)
 // and returns it with its view. It does not wait for production.
 //

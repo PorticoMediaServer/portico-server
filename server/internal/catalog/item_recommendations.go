@@ -58,29 +58,6 @@ func (s *Service) extendedRelations(item Item, genres []Genre) ([]recommendation
 	return out, nil
 }
 
-func (s *Service) episodicRelations(item Item, genres []Genre) ([]recommendationRelation, error) {
-	var show string
-	if item.Kind != "episode" {
-		return nil, nil
-	}
-	if err := s.read().QueryRow(`SELECT pid(sh.public_id) FROM catalog_entities i JOIN catalog_episodes ep ON ep.entity_id=i.id JOIN catalog_entities sh ON sh.id=ep.show_id WHERE i.public_id=pid_blob(?)`, item.ID).Scan(&show); err != nil {
-		return nil, err
-	}
-	candidates, err := s.recommendationCandidates(HomeRequest{Profile: "", Libraries: []string{item.LibraryID}, Restrictions: s.recRestrictions}, "related", item.ID)
-	if err != nil {
-		return nil, err
-	}
-	ids := []string{}
-	for _, c := range candidates {
-		ids = append(ids, c.ID)
-		if len(ids) == 12 {
-			break
-		}
-	}
-	// Related shows share accepted facets; episode lists remain on show detail.
-	return []recommendationRelation{{"show", "local", show, "More like " + item.Title, `SELECT value FROM json_each(?)`, []any{idsJSON(ids)}}}, nil
-}
-
 func (s *Service) creditQuery(department, visible string) string {
 	return `SELECT pid(i.public_id) FROM catalog_credits c JOIN catalog_entities i ON i.id=c.entity_id JOIN catalog_libraries l ON l.id=i.library_id JOIN catalog_credit_labels d ON d.id=c.department_id` +
 		` WHERE c.provider=? AND c.provider_person_id=? AND d.label='` + department + `' AND l.library_id=? AND i.kind=CASE ? WHEN 'movie' THEN 1 ELSE -1 END AND i.public_id<>pid_blob(?) AND ` + visible + ` ORDER BY i.year DESC,i.id LIMIT ?`

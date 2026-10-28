@@ -271,17 +271,6 @@ func homeUnique(ids []string) []string {
 //
 // --- candidate projections -------------------------------------------------
 
-// Visibility is read from the maintained projection rather than recomputed.
-//
-// `inventory_item_availability` is a view with four correlated `EXISTS` inside a
-// three-table join — about seven B-tree probes for every candidate row it is
-// asked about — and every surface in this package asked it about every row it
-// considered, including the `count(*)` next to the page. `item_visibility`
-// (internal/persistence/item_visibility.go) holds the same value, maintained by
-// trigger from the same five inputs, so the substitution is a change of where
-// the answer comes from and not of what the answer is. A reconciler diffs the
-// two continuously and a test asserts they agree.
-const homeAvailable = `EXISTS(SELECT 1 FROM catalog_item_availability v WHERE v.entity_id=%s AND v.available=1)`
 const homeRetired = `NOT EXISTS(SELECT 1 FROM dvr_catalog_retirements gone WHERE gone.item_id=%s)`
 
 // homeVisible requires a live entity and its available, non-DVR-retired item

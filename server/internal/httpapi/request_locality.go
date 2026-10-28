@@ -52,13 +52,7 @@ func remoteClient(r *http.Request, proxies []netip.Prefix, policy localityPolicy
 	client, ok := networkpolicy.Client(r, proxies)
 	return !ok || !networkpolicy.Contains(policy.lan, client)
 }
-func peerAddress(r *http.Request) (netip.Addr, bool) { return networkpolicy.Peer(r) }
-func forwardedClient(r *http.Request, proxies []netip.Prefix) (netip.Addr, bool) {
-	return networkpolicy.Forwarded(r, proxies)
-}
-func containsAddress(prefixes []netip.Prefix, addr netip.Addr) bool {
-	return networkpolicy.Contains(prefixes, addr)
-}
+
 func (d Dependencies) sameRequestOrigin(r *http.Request, origin string) bool {
 	if origin == "" {
 		return false

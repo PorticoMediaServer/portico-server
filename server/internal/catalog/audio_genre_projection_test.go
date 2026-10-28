@@ -56,15 +56,6 @@ func audioGenreCommit(t *testing.T, c *catalogtest.Catalog, s *Service, db *sql.
 	return nil
 }
 
-func audioGenreScalar(t *testing.T, db *sql.DB, query string) string {
-	t.Helper()
-	var v string
-	if err := db.QueryRow(query).Scan(&v); err != nil {
-		t.Fatal(err)
-	}
-	return v
-}
-
 func audioGenreExec(t *testing.T, db *sql.DB, query string) {
 	t.Helper()
 	if _, err := db.Exec(query); err != nil {

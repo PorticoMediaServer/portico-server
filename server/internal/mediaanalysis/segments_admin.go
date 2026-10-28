@@ -93,10 +93,6 @@ func countFiles(ctx context.Context, tx *sql.Tx, where string, args ...any) (Seg
 	return c, rows.Err()
 }
 
-// segmentTrust sorts a stored marker into the owner's counts.
-func segmentTrust(approved, edited, deleted bool, confidence float64, provenance string) string {
-	return segmentTrustWithPolicy(segmentmarkers.DefaultConfidencePolicy(), approved, edited, deleted, confidence, provenance)
-}
 func segmentTrustWithPolicy(policy segmentmarkers.ConfidencePolicy, approved, edited, deleted bool, confidence float64, provenance string) string {
 	switch {
 	case deleted && edited:

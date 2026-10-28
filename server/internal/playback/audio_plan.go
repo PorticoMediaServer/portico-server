@@ -13,11 +13,6 @@ var ErrConversionCapacity = errors.New("Media conversion capacity is in use. Wai
 const audioArtifactBytes int64 = 4 << 30
 const audioArtifactFiles = 4096
 
-type audioQuery interface {
-	QueryRow(string, ...any) *sql.Row
-	Query(string, ...any) (*sql.Rows, error)
-}
-
 func publicAudioText(s string, n int) string {
 	r := []rune(strings.TrimSpace(strings.Map(func(r rune) rune {
 		if unicode.IsControl(r) || unicode.Is(unicode.Cf, r) {

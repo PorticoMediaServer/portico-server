@@ -4,10 +4,8 @@ import (
 	"context"
 	"database/sql"
 	"errors"
-	"io"
 	"net/http"
 	"path/filepath"
-	"strings"
 	"testing"
 	"time"
 
@@ -20,9 +18,6 @@ import (
 type publicationTransport func(*http.Request) (*http.Response, error)
 
 func (f publicationTransport) RoundTrip(r *http.Request) (*http.Response, error) { return f(r) }
-func publicationResponse(status int, body string) *http.Response {
-	return &http.Response{StatusCode: status, Header: make(http.Header), Body: io.NopCloser(strings.NewReader(body))}
-}
 
 func publicationFixture(t *testing.T) (*Service, *sql.DB, *time.Time) {
 	t.Helper()

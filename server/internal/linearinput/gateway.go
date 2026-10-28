@@ -33,7 +33,6 @@ var (
 
 const maxManifest = 1 << 20
 const maxSegment = 64 << 20
-const ringBytes = 16 << 20
 
 // Bound slice and timestamp overhead even when the source returns tiny reads.
 const maxRawBlocks = 64 << 10

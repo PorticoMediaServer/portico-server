@@ -222,12 +222,6 @@ func (RequestQuality) JSONSchema() map[string]any {
 	}
 	return map[string]any{"type": "string", "enum": ids}
 }
-func (q RequestQuality) withDefault() RequestQuality {
-	if q == "" {
-		return QualityOriginal
-	}
-	return q
-}
 
 // Request is one preparation request of explicit items. Exactly one target form
 // is accepted; containers are durable requests (ContainerRequest).
@@ -269,8 +263,6 @@ type Page struct {
 	Items      []Preparation `json:"items"`
 	NextCursor string        `json:"nextCursor"`
 }
-
-func millis(t time.Time) int64 { return t.UnixMilli() }
 
 // stamp renders a stored millisecond instant the way every other Portico API
 // renders time. Zero means "not yet", and is published as an absent field.

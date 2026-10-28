@@ -231,7 +231,7 @@ func (s statementShape) invalidates() bool {
 	// Unknown commands, DDL, ATTACH/DETACH and every PRAGMA remain conservative.
 	return true
 }
-func cacheableStatement(query string) bool    { return describeStatement(query).retain() }
+
 func invalidatingStatement(query string) bool { return describeStatement(query).invalidates() }
 
 func (s *statementCache) remove(e *statementEntry) {

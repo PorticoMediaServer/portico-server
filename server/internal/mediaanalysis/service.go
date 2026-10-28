@@ -19,7 +19,6 @@ import (
 	"portico.local/server/internal/assets"
 	"portico.local/server/internal/catalog"
 	"portico.local/server/internal/decoder"
-	"portico.local/server/internal/identity"
 	"portico.local/server/internal/livechannels"
 	"portico.local/server/internal/mediaartifact"
 	"portico.local/server/internal/sonic"
@@ -245,6 +244,5 @@ func toolHash(path string) (string, error) {
 	}
 	return hex.EncodeToString(h.Sum(nil)), nil
 }
-func jsonString(v any) string  { b, _ := json.Marshal(v); return string(b) }
-func nowMS() int64             { return time.Now().UnixMilli() }
-func actorKey(v string) string { return identity.Digest(v) }
+func jsonString(v any) string { b, _ := json.Marshal(v); return string(b) }
+func nowMS() int64            { return time.Now().UnixMilli() }

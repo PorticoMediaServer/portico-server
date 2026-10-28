@@ -139,17 +139,6 @@ func firstCatalogAssetToken(t testing.TB, db *sql.DB) string {
 	return token
 }
 
-// mustAssetID resolves an asset token to its integer id in the caller's
-// transaction.
-func mustAssetID(t testing.TB, ctx context.Context, tx *sql.Tx, token string) int64 {
-	t.Helper()
-	id, err := compactcatalog.AssetByTokenTx(ctx, tx, token)
-	if err != nil || id == 0 {
-		t.Fatalf("asset %s: %v", token, err)
-	}
-	return id
-}
-
 // linkCatalogAsset records one more file of an entity and links it,
 // returning the asset's token.
 func linkCatalogAsset(t testing.TB, db *sql.DB, entity int64, asset compactcatalog.Asset) string {

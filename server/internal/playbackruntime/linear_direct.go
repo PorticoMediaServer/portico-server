@@ -2,7 +2,6 @@ package playbackruntime
 
 import (
 	"context"
-	"errors"
 	"sync"
 	"sync/atomic"
 
@@ -14,8 +13,6 @@ import (
 // (subtitlevideo.Runtime.OpenSubtitleInput: local roots, mounts, remote storage,
 // STRM, all fenced to the library's current configuration).
 type MediaInputs func(ctx context.Context, item, asset string) (subtitles.RenderInput, error)
-
-var errNoMediaInputs = errors.New("library channel input unavailable")
 
 type directInputs struct {
 	mu   sync.Mutex

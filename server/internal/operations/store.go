@@ -60,7 +60,7 @@ func auditAnchor(tx *sql.Tx) (AuditAnchor, error) {
 }
 
 type Store struct {
-	RecordingRoot *RecordingRootRuntime
+	RecordingRoot        *RecordingRootRuntime
 	ConfigFile           *configfile.Loader
 	ConfigPath           string
 	ConfigurationDomains []ConfigurationDomain
@@ -127,9 +127,6 @@ type Page[T any] struct {
 	NextCursor string `json:"nextCursor"`
 }
 
-func pageCursor[T any](items []T, limit int, seq int64) Page[T] {
-	return Page[T]{Items: items, NextCursor: strconv.FormatInt(seq, 10)}
-}
 func (s *Store) transaction(ctx context.Context, auth Authorize, item string, fn func(*sql.Tx) error) error {
 	gated, e := dbwork.Begin(ctx, s.DB, dbwork.ClassFrom(ctx, dbwork.ClassInteractive))
 	if e != nil {

@@ -5,7 +5,6 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"errors"
-	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -17,9 +16,6 @@ import (
 type providerTransport func(*http.Request) (*http.Response, error)
 
 func (f providerTransport) RoundTrip(r *http.Request) (*http.Response, error) { return f(r) }
-func providerResponse(status int, body string) *http.Response {
-	return &http.Response{StatusCode: status, Body: io.NopCloser(strings.NewReader(body)), Header: make(http.Header)}
-}
 
 // fakeOpenSubtitles stands in for api.opensubtitles.com: each test answers the
 // requests it cares about, and the fake records what arrived where.

@@ -347,9 +347,6 @@ func entryCandidate(ctx context.Context, tx *sql.Tx, v Entry) (Candidate, error)
 	c := Candidate{ItemID: v.ItemID, LibraryID: v.LibraryID, AssetID: v.AssetID, SourceFence: v.SourceFence, DurationMS: int64(duration*1000 + 0.5), Title: v.Title}
 	return c, ValidateCandidateTx(ctx, tx, c)
 }
-func entryAllowed(ctx context.Context, tx *sql.Tx, scope Scope, gen string, v Entry) bool {
-	return entryAccess(ctx, tx, scope, v) == ""
-}
 
 // Slate titles for a viewer who can't watch an entry. The lineup is shared, so a
 // restricted profile sees the same schedule with a slate in place of the title.

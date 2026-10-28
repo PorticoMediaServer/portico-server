@@ -57,16 +57,6 @@ func (l *lane) shareLimit() int {
 	return limit
 }
 
-// sharedLocked reports whether shares apply right now. Both conditions matter.
-// The lane has to be busy, because a share is a way of dividing something
-// scarce and nothing is scarce below three quarters. And more than one client
-// has to want it, because dividing a lane between one client and nobody is not
-// fairness, it is a limit — and a limit a lone viewer can reach is exactly what
-// this work is not allowed to add.
-func (l *lane) sharedLocked() bool {
-	return len(l.interest) > 1 && l.active.Load()*100 >= int64(l.spec.capacity*fairnessEngagesAbove)
-}
-
 // fairnessKey is the unauthenticated peer share. admission.clientKey replaces
 // it only for a credential recorded after successful authentication. Merely
 // presenting a different token, cookie or grant must not mint another share.

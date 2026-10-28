@@ -474,23 +474,6 @@ func (s *Service) forgetJobLocked(id string) {
 	}
 }
 
-// databasePath is the live database file Create copies from.
-func (s *Service) databasePath() string { return storagepaths.Path(s.state, "server.sqlite") }
-
-// backupsDir creates the backups folder if needed and returns it.
-func (s *Service) backupsDir() (string, error) {
-	snapshot, err := s.snapshot(context.Background())
-	if err != nil {
-		return "", err
-	}
-	defer snapshot.clear()
-	dir := snapshot.BackupFolder
-	if err := canonicalDirectory(dir, true); err != nil {
-		return "", err
-	}
-	return dir, nil
-}
-
 // Create writes one backup synchronously and returns its id.
 func (s *Service) Create(ctx context.Context, kind Kind) (string, error) {
 	return s.create(ctx, nil, kind)

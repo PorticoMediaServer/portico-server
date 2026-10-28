@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"log"
 	"os"
-	"path/filepath"
 	"portico.local/server/internal/storagepaths"
 )
 
@@ -26,20 +25,6 @@ func startupLayout() (storagepaths.Layout, error) {
 func startupMounts() []storagepaths.Mount {
 	mounts, _ := storagepaths.CurrentMounts()
 	return mounts
-}
-func startupDirectory(variable, fallback string) (string, error) {
-	directory := os.Getenv(variable)
-	if directory == "" {
-		return fallback, nil
-	}
-	if !filepath.IsAbs(directory) {
-		return "", fmt.Errorf("%s must name an absolute directory", variable)
-	}
-	directory = filepath.Clean(directory)
-	if err := os.MkdirAll(directory, 0700); err != nil {
-		return "", fmt.Errorf("%s: %w", variable, err)
-	}
-	return directory, nil
 }
 
 // Deleting stale work requires the same exclusive ownership as staged restore.

@@ -62,8 +62,6 @@ const (
 	// per-session ceiling exists to stop a runaway converter, and a converter
 	// cannot run away in less than this.
 	hlsUsageInterval = 30 * time.Second
-	// hlsSessionByteCeiling is the per-session cap that has always been here.
-	hlsSessionByteCeiling = 4 << 30
 )
 
 // hlsUsage is one generated session's measured footprint.

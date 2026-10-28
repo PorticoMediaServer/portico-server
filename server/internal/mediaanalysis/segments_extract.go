@@ -28,11 +28,6 @@ type segmentPlan struct {
 	Opening, Closing, Frames region
 }
 
-const (
-	minEpisodeUS int64 = 120_000_000 // shorter files are clips, not episodes
-	minFilmUS    int64 = 600_000_000
-)
-
 // planSegments chooses the regions for a file. An intro is looked for in the
 // first quarter of an episode (at least five minutes, at most ten, never past
 // its middle); credits in its last third, at most eight minutes. A film's

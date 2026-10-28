@@ -538,12 +538,6 @@ func convertedSampleRate(a *SourceAudio, codec string, output *ClientAudioCodec)
 	return chosen, chosen != 0
 }
 
-// audioConversionTarget is audioOutputFor with no transport to check against,
-// for callers that convert into MPEG-TS HLS as every device can take it.
-func audioConversionTarget(a *SourceAudio, client ClientProfile, target QualityTarget) convertedAudio {
-	return audioOutputFor(a, client, target, nil, currentConversionOutputs())
-}
-
 // audioOutputFor picks what a track is converted to for one device, from what
 // this server can produce and what the device's engine takes on the transport
 // (nil: not checked).

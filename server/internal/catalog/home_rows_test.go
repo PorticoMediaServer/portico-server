@@ -90,11 +90,6 @@ func homeExec(t *testing.T, db *sql.DB, query string, args ...any) {
 	}
 }
 
-func homeAsset(t *testing.T, db *sql.DB, id, path string) {
-	t.Helper()
-	catalogtest.New(t, db).File(homeItem(t, db, id).ID, path, 600)
-}
-
 func homeFixture(t *testing.T) *sql.DB {
 	t.Helper()
 	c := catalogtest.Open(t)

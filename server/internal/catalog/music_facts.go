@@ -18,8 +18,6 @@ type MusicTechnicalFacts struct {
 	Atmos      bool   `json:"atmos,omitempty"`
 }
 
-func audioLossless(codec string) bool { return assets.LosslessAudio(codec) }
-
 func persistMusicFacts(tx *sql.Tx, asset string, f assets.Facts) error {
 	for _, s := range f.Streams {
 		if s.Type != "audio" {

@@ -106,7 +106,6 @@ type serviceState struct {
 	anchorMu     sync.Mutex
 	anchorCache  map[string][]BrowsePositionAnchor
 	browseTotals map[string]int
-	facetMu      sync.Mutex
 	facetCache   *facetCache
 	schemaMu     sync.Mutex
 	schemaTables map[string]bool

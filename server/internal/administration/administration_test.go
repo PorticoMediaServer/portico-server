@@ -158,28 +158,6 @@ func addCatalogTestEntity(t *testing.T, db *sql.DB, library, key string, kind co
 	return public
 }
 
-// entityAssets lists a test item's asset tokens in link order.
-func entityAssets(t *testing.T, db *sql.DB, id int64) []string {
-	t.Helper()
-	rows, err := db.Query(`SELECT a.token FROM catalog_asset_links l JOIN catalog_assets a ON a.id=l.asset_id WHERE l.entity_id=? ORDER BY l.part_index`, id)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer rows.Close()
-	var out []string
-	for rows.Next() {
-		var token string
-		if err = rows.Scan(&token); err != nil {
-			t.Fatal(err)
-		}
-		out = append(out, token)
-	}
-	if err = rows.Err(); err != nil {
-		t.Fatal(err)
-	}
-	return out
-}
-
 func allow(context.Context, *sql.Tx) error { return nil }
 
 func TestLibraryContinueWatchingSettingsRoundTrip(t *testing.T) {
@@ -549,24 +527,6 @@ func TestStorageReportAndCleanupPolicy(t *testing.T) {
 	if _, err = os.Stat(fresh); err != nil {
 		t.Fatal("a file inside the retention window must survive")
 	}
-}
-
-func base64Raw(value []byte) string {
-	const alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_"
-	out := make([]byte, 0, (len(value)*8+5)/6)
-	bits, count := 0, 0
-	for _, b := range value {
-		bits = bits<<8 | int(b)
-		count += 8
-		for count >= 6 {
-			count -= 6
-			out = append(out, alphabet[(bits>>count)&63])
-		}
-	}
-	if count > 0 {
-		out = append(out, alphabet[(bits<<(6-count))&63])
-	}
-	return string(out)
 }
 
 // A link inside a permitted folder that points outside it is not a way to list

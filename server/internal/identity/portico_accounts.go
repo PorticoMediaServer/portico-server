@@ -238,11 +238,6 @@ func InheritPorticoAdmissionTx(ctx context.Context, tx *sql.Tx, from, to string)
 	return inheritPorticoAdmissionTx(ctx, tx, from, to)
 }
 
-func porticoFamilyTx(ctx context.Context, tx *sql.Tx, family string) bool {
-	admitted, _ := porticoAdmissionTx(ctx, tx, family)
-	return admitted
-}
-
 // porticoAdmissionTx reports whether a family was admitted through a Portico
 // identity assertion, and the signing key that admitted it.
 func porticoAdmissionTx(ctx context.Context, tx *sql.Tx, family string) (bool, string) {

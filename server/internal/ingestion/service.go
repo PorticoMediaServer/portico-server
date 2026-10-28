@@ -5,7 +5,6 @@ import (
 	"database/sql"
 	"errors"
 	"log"
-	"path/filepath"
 	"portico.local/server/internal/assets"
 	"portico.local/server/internal/catalog"
 	"portico.local/server/internal/compactcatalog"
@@ -618,24 +617,6 @@ func (s *Service) processQuantum(ctx context.Context, id, library string) bool {
 		s.forgetListing(id)
 	}
 	return err == nil && after != before && after.status == "running"
-}
-func (s *Service) enumerate(ctx context.Context, id, path string) error {
-	var sourceID string
-	if err := s.db.QueryRowContext(ctx, `SELECT source_id FROM inventory_runs WHERE job_id=?`, id).Scan(&sourceID); err != nil {
-		return err
-	}
-	source, err := s.catalog.LibrarySource(ctx, sourceID)
-	if err != nil {
-		return err
-	}
-	relative, err := filepath.Rel(source.ResolvedPath, path)
-	if err != nil {
-		return err
-	}
-	return s.readDirectoryPage(ctx, id, source, relative)
-}
-func (s *Service) enumerateIsolated(ctx context.Context, id, path string) error {
-	return s.enumerate(ctx, id, path)
 }
 
 func (s *Service) InterruptSource(ctx context.Context, source string) {

@@ -50,12 +50,11 @@ import (
 
 // browseBucket is one counted group.
 type browseBucket struct {
-	container  bool
-	head       string
-	ratingKey  string
-	labelKey   string
-	total      int
-	restricted bool
+	container bool
+	head      string
+	ratingKey string
+	labelKey  string
+	total     int
 }
 
 // browseSummary is what the buckets answered.

@@ -16,7 +16,6 @@ import (
 
 	"portico.local/server/internal/identity"
 	"portico.local/server/internal/operations"
-	"portico.local/server/internal/persistence"
 )
 
 const recCandidateLimit = 960
@@ -36,7 +35,6 @@ func normalizeFacetText(v string) string {
 	}
 	return v
 }
-func sqlFold(v string) string { return persistence.FoldFacetSQL(v) }
 
 // A bounded set of ranked works is hydrated. Each candidate's facets are read
 // by key from catalog_rec_facets (compactcatalog.DomainRecFacets), which the

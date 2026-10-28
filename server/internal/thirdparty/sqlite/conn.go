@@ -991,8 +991,7 @@ type userDefinedFunction struct {
 	eTextRep  int32
 	pApp      uintptr
 
-	scalar   bool
-	freeOnce sync.Once
+	scalar bool
 }
 
 func (c *conn) createFunctionInternal(fun *userDefinedFunction) error {

@@ -5,7 +5,6 @@ import (
 	"database/sql"
 	"encoding/json"
 	"portico.local/server/internal/apievents"
-	"strconv"
 	"sync"
 	"time"
 )
@@ -60,21 +59,6 @@ type eventHub struct {
 	waiters map[chan struct{}]struct{}
 }
 
-func (h *eventHub) subscribe() (chan struct{}, func()) {
-	h.mu.Lock()
-	defer h.mu.Unlock()
-	if h.waiters == nil {
-		h.waiters = map[chan struct{}]struct{}{}
-	}
-	ch := make(chan struct{}, 1)
-	h.waiters[ch] = struct{}{}
-	return ch, func() {
-		h.mu.Lock()
-		delete(h.waiters, ch)
-		h.mu.Unlock()
-	}
-}
-
 func (h *eventHub) wake() {
 	h.mu.Lock()
 	defer h.mu.Unlock()
@@ -95,15 +79,4 @@ func publishTx(_ context.Context, tx *sql.Tx, _ time.Time, audience, kind string
 		resourceKind, resourceID = resource.Kind, resource.ID
 	}
 	return apievents.Append(tx, audience, kind, resourceKind, resourceID, revision, data)
-}
-
-func eventFromRow(id int64, kind, resourceKind, resourceID, revision, data string, at int64) Event {
-	e := Event{ID: strconv.FormatInt(id, 10), Type: kind, At: time.UnixMilli(at).UTC().Format(time.RFC3339Nano), Revision: revision}
-	if resourceKind != "" {
-		e.Resource = &EventResource{Kind: resourceKind, ID: resourceID}
-	}
-	if data != "" {
-		e.Data = JSONValue(data)
-	}
-	return e
 }

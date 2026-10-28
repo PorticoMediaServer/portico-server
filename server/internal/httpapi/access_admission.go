@@ -3,7 +3,6 @@ package httpapi
 import (
 	"context"
 	"database/sql"
-	"encoding/json"
 	"errors"
 	"net/http"
 	"portico.local/server/internal/dbwork"
@@ -14,34 +13,6 @@ import (
 	"portico.local/server/internal/identity"
 	"portico.local/server/internal/operations"
 )
-
-// controlItemID reads just the subject out of a v2 control envelope. The
-// control service owns the full schema; admission needs only the one field,
-// and an envelope it cannot read yields an empty subject, which applies the
-// account-level limits and skips the per-title ones.
-func controlItemID(raw []byte) string {
-	var body struct {
-		ItemID  string `json:"itemId"`
-		Desired struct {
-			Context struct {
-				ItemID string `json:"itemId"`
-			} `json:"context"`
-		} `json:"desired"`
-		Subject struct {
-			ItemID string `json:"itemId"`
-		} `json:"subject"`
-	}
-	if json.Unmarshal(raw, &body) != nil {
-		return ""
-	}
-	if body.Desired.Context.ItemID != "" {
-		return body.Desired.Context.ItemID
-	}
-	if body.ItemID != "" {
-		return body.ItemID
-	}
-	return body.Subject.ItemID
-}
 
 // This file is the one place the per-member limits meet a running request.
 //

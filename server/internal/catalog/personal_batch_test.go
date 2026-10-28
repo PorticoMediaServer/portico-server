@@ -11,11 +11,6 @@ import (
 	"portico.local/server/internal/identity"
 )
 
-func listFixture(t *testing.T) (*sql.DB, *Service) {
-	db, s, _ := phase34ListFixture(t)
-	return db, s
-}
-
 func phase34ListFixture(t *testing.T) (*sql.DB, *Service, catalogtest.Names) {
 	t.Helper()
 	c := catalogtest.Open(t)

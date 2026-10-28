@@ -49,12 +49,6 @@ func frameDeadline(w http.ResponseWriter) {
 	_ = http.NewResponseController(w).SetWriteDeadline(time.Now().Add(streamFrameDeadline))
 }
 
-// clearWriteDeadline removes a deadline this package set, for a handler that
-// hands the connection on.
-func clearWriteDeadline(w http.ResponseWriter) {
-	_ = http.NewResponseController(w).SetWriteDeadline(time.Time{})
-}
-
 // rollingDeadlineWriter refreshes a write deadline as the body makes progress,
 // so what is bounded is a stall rather than the transfer.
 type rollingDeadlineWriter struct {

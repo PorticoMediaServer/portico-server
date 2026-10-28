@@ -887,12 +887,6 @@ func (r *cacheReadCloser) Close() error {
 	return nil
 }
 
-func (c *rangeCache) holdReader(ctx context.Context, offset, length int64, release func()) io.ReadCloser {
-	c.guard.mu.Lock()
-	defer c.guard.mu.Unlock()
-	return c.holdReaderLocked(ctx, offset, length, release)
-}
-
 // holdReaderLocked is the atomic form for a caller already holding the guard:
 // lookup and reader pin cannot be separated from the fill decision.
 func (c *rangeCache) holdReaderLocked(ctx context.Context, offset, length int64, release func()) io.ReadCloser {

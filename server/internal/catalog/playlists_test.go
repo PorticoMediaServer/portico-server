@@ -16,14 +16,6 @@ import (
 	"portico.local/server/internal/compactcatalog"
 )
 
-func phase34PlaylistMedia(c *catalogtest.Catalog, library int64, path, title string, year int, added string) catalogtest.Item {
-	c.T.Helper()
-	root := "/" + strings.Split(strings.TrimPrefix(path, "/"), "/")[0]
-	item := c.Entity(compactcatalog.Entity{Library: library, Kind: compactcatalog.Movie, Key: compactcatalog.ItemKey(root, path, 0), Title: title, Year: year, Added: added}, nil)
-	item.Asset, item.Token = c.File(item.ID, path, 5400)
-	return item
-}
-
 func phase34PlaylistDB(t *testing.T, path string) (*sql.DB, *catalogtest.Catalog, *Service) {
 	t.Helper()
 	db, err := persistence.Open(path)
