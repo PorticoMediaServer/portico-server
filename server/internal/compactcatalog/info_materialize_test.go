@@ -40,6 +40,13 @@ func infoTestChangeObject(t *testing.T, db *sql.DB, asset int64, token, objectID
  VALUES(?,0,0,'job','src',1,'root',?,'revision',1,?)`, change, objectID, make([]byte, 32)); err != nil {
 		t.Fatal(err)
 	}
+	// The real row triggers maintain each manifest. The reconciler fixture
+	// declares spare capacity first and seals only the exercised family below.
+	for family := 1; family <= 18; family++ {
+		if _, err = db.Exec(`INSERT INTO catalog_info_input_families(change_id,family,witness_ordinal,rows_expected,rows_staged,sealed) VALUES(?,?,0,1000000,0,0)`, change, family); err != nil {
+			t.Fatal(err)
+		}
+	}
 	return change
 }
 
@@ -52,9 +59,12 @@ func infoTestChange(t *testing.T, db *sql.DB, asset int64, token string, mask in
 // materialization phase, exactly as the producer's phase transition would.
 func infoTestSeal(t *testing.T, db *sql.DB, change int64, family, rows int) {
 	t.Helper()
-	if _, err := db.Exec(`INSERT INTO catalog_info_input_families(change_id,family,witness_ordinal,rows_expected,rows_staged,sealed)
- VALUES(?,?,0,?,?,1)`, change, family, rows, rows); err != nil {
+	result, err := db.Exec(`UPDATE catalog_info_input_families SET rows_expected=?,sealed=1 WHERE change_id=? AND family=? AND rows_staged=? AND sealed=0`, rows, change, family, rows)
+	if err != nil {
 		t.Fatal(err)
+	}
+	if n, err := result.RowsAffected(); err != nil || n != 1 {
+		t.Fatalf("seal family%d expected%d: rows%d %v", family, rows, n, err)
 	}
 }
 
@@ -436,7 +446,7 @@ func TestInfoMaterializeDiscTitlesPreservesIdentityAndChoice(t *testing.T) {
 	films := c.Library("m", "Movies", "movie", "/m")
 	movie := c.Movie(films, "/m/Disc.mkv", "Disc", 2020)
 	c.Drain()
-	c.Exec(`INSERT INTO library_sources(id,library_id,configured_root,root) VALUES('disc-source','m','/m','/m')`)
+	c.Exec(`INSERT INTO library_sources(id,library_id,configured_root,root) VALUES('disc-source','m','/disc-fixture','/disc-fixture')`)
 	c.Exec(`INSERT INTO inventory_objects(id,source_id,asset_id,root_incarnation,relative_path,revision,evidence_json,size,modified_ns)
  SELECT 'disc-object',src.id,a.token,src.incarnation,'/m/Disc','r','{}',a.size,a.modified_ns
  FROM catalog_assets a JOIN catalog_asset_links link ON link.asset_id=a.id JOIN catalog_entities item ON item.id=link.entity_id
@@ -451,8 +461,8 @@ func TestInfoMaterializeDiscTitlesPreservesIdentityAndChoice(t *testing.T) {
 	change := infoTestChangeObject(t, c.DB, movie.Asset, movie.Token, "disc-object", 1<<9|1<<10|1<<11) // facts, titles, clips
 	c.Exec(`INSERT INTO catalog_info_new_disc_facts(change_id,input_ordinal,object_id,asset_id,source_revision,source_generation,root_incarnation,kind,packaging,encryption,fingerprint,owner_title_key,choice_revision)
  VALUES(?,0,'disc-object',?,'r2',1,'root','bluray','iso','none',?,'tokB',2)`, change, movie.Token, fingerprint)
-	c.Exec(`INSERT INTO catalog_info_new_disc_titles(change_id,input_ordinal,object_id,title_key,selection_token,title_number,disc_order,duration_ms,angle_count,playlist) VALUES(?,1,'disc-object','A','tokA',2,0,600000,1,0)`)
-	c.Exec(`INSERT INTO catalog_info_new_disc_titles(change_id,input_ordinal,object_id,title_key,selection_token,title_number,disc_order,duration_ms,angle_count,playlist) VALUES(?,2,'disc-object','B','tokB',1,1,600000,1,1)`)
+	c.Exec(`INSERT INTO catalog_info_new_disc_titles(change_id,input_ordinal,object_id,title_key,selection_token,title_number,disc_order,duration_ms,angle_count,playlist) VALUES(?,1,'disc-object','A','tokA',2,0,600000,1,0)`, change)
+	c.Exec(`INSERT INTO catalog_info_new_disc_titles(change_id,input_ordinal,object_id,title_key,selection_token,title_number,disc_order,duration_ms,angle_count,playlist) VALUES(?,2,'disc-object','B','tokB',1,1,600000,1,1)`, change)
 	c.Exec(`INSERT INTO catalog_info_new_disc_clips(change_id,input_ordinal,object_id,title_key,sequence,file,in_time_90k,out_time_90k) VALUES(?,3,'disc-object','A',0,'/BDMV/STREAM/00001.m2ts',0,90000)`, change)
 	infoTestSeal(t, c.DB, change, 10, 1)
 	infoTestSeal(t, c.DB, change, 11, 2)
@@ -494,7 +504,7 @@ func TestInfoMaterializeDiscObjectIsolation(t *testing.T) {
 	films := c.Library("m", "Movies", "movie", "/m")
 	movie := c.Movie(films, "/m/Disc.mkv", "Disc", 2020)
 	c.Drain()
-	c.Exec(`INSERT INTO library_sources(id,library_id,configured_root,root) VALUES('disc-source','m','/m','/m')`)
+	c.Exec(`INSERT INTO library_sources(id,library_id,configured_root,root) VALUES('disc-source','m','/disc-fixture','/disc-fixture')`)
 	for _, object := range []string{"disc-a", "disc-b"} {
 		c.Exec(`INSERT INTO inventory_objects(id,source_id,asset_id,root_incarnation,relative_path,revision,evidence_json,size,modified_ns)
  SELECT ?,src.id,a.token,src.incarnation,?,'r','{}',a.size,a.modified_ns
@@ -566,7 +576,7 @@ func TestInfoMaterializeRefusesIncompleteInput(t *testing.T) {
 
 	short := infoTestChange(t, c.DB, movie.Asset, movie.Token, 1<<0)
 	c.Exec(`INSERT INTO catalog_info_new_stream_facts(change_id,input_ordinal,asset_id,revision,size,modified_ns,fingerprint) VALUES(?,0,?,1,?,?,'new')`, short, movie.Token, size, modified)
-	c.Exec(`INSERT INTO catalog_info_input_families(change_id,family,witness_ordinal,rows_expected,rows_staged,sealed) VALUES(?,1,0,2,1,0)`, short)
+	c.Exec(`UPDATE catalog_info_input_families SET rows_expected=2 WHERE change_id=? AND family=1`, short)
 	infoTestBeginPhase2(t, c.DB, short)
 	if err := infoTestQuantumError(t, c.DB, short); !errors.Is(err, compactcatalog.ErrInfoInvariant) {
 		t.Fatalf("an unsealed family was refused with %v", err)

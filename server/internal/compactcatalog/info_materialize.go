@@ -345,8 +345,9 @@ func infoCopyParkStep(table, staged string, tuple infoCopyTuple, scope infoCopyS
 		table:  table,
 		tuple:  tuple,
 		scope:  scope,
-		walk: "SELECT " + tuple.columns("c") + " FROM " + table + " c WHERE " + scope.predicate("c") +
-			" AND c.title_number<1000000 AND EXISTS(SELECT 1 FROM " + staged + " n WHERE n.change_id=? AND " + tuple.predicate("n") + ")",
+		// The preceding removal pass retained exactly the staged keys. Walk
+		// every raw survivor, including an already parked row after recovery.
+		walk: "SELECT " + tuple.columns("c") + " FROM " + table + " c WHERE " + scope.predicate("c"),
 		park: "UPDATE " + table + " SET title_number=title_number+1000000 WHERE " + tuple.predicate("") + " AND title_number<1000000",
 	}
 }
@@ -725,9 +726,6 @@ type infoCopyRun struct {
 func (r infoCopyRun) walkSQL(step *infoCopyStep, cursor infoCopyCursor) (string, []any) {
 	query := step.walk
 	args := step.scope.args(r.token, r.object)
-	if step.kind == infoCopyPark {
-		args = append(args, r.changeID)
-	}
 	if cursor.valid {
 		query += " AND " + step.tuple.rowValue("c") + " > (" + infoCopyPlaceholders(len(step.tuple.cols)) + ")"
 		args = append(args, step.tuple.args(cursor)...)

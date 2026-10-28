@@ -650,18 +650,6 @@ func stageInfoRowsTx(ctx context.Context, tx *sql.Tx, ref InfoInputRef, role Inf
 	if inserted != int64(len(rows)) {
 		return InfoStageReceipt{}, fmt.Errorf("%w: family %d inserted %d of %d rows", ErrInfoInvariant, family, inserted, len(rows))
 	}
-	result, err = tx.ExecContext(ctx, `UPDATE catalog_info_input_families SET rows_staged=rows_staged+?
- WHERE change_id=? AND family=? AND sealed=0 AND rows_staged+?<=rows_expected`, len(rows), h.changeID, family, len(rows))
-	if err != nil {
-		return InfoStageReceipt{}, infoInputClassifyWrite(err)
-	}
-	updated, err := result.RowsAffected()
-	if err != nil {
-		return InfoStageReceipt{}, err
-	}
-	if updated != 1 {
-		return InfoStageReceipt{}, fmt.Errorf("%w: family %d manifest did not advance", ErrInfoInputDrift, family)
-	}
 	receipt, err := infoInputReceipt(ctx, tx, h)
 	if err != nil {
 		return InfoStageReceipt{}, err
@@ -708,7 +696,7 @@ func SealInfoFamilyTx(ctx context.Context, tx *sql.Tx, ref InfoInputRef, family,
 			return InfoSealReceipt{}, err
 		}
 		var actual int64
-		if err = tx.QueryRowContext(ctx, `SELECT count(*) FROM `+table.table+` WHERE change_id=?`, h.changeID).Scan(&actual); err != nil {
+		if err = tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM `+table.table+` WHERE change_id=?)`, h.changeID).Scan(&actual); err != nil {
 			return InfoSealReceipt{}, err
 		}
 		if actual != 0 {
@@ -726,12 +714,8 @@ func SealInfoFamilyTx(ctx context.Context, tx *sql.Tx, ref InfoInputRef, family,
 		return InfoSealReceipt{}, fmt.Errorf("%w: object-scoped family %d belongs to witness %d, not %d", ErrInfoInputDrift, family, manifestWitness, witnessOrdinal)
 	}
 	if sealed == 0 {
-		var actual int64
-		if err = tx.QueryRowContext(ctx, `SELECT count(*) FROM `+table.table+` WHERE change_id=?`, h.changeID).Scan(&actual); err != nil {
-			return InfoSealReceipt{}, err
-		}
-		if actual != staged || staged != expected {
-			return InfoSealReceipt{}, fmt.Errorf("%w: family %d holds %d rows, manifest %d/%d", ErrInfoInputIncomplete, family, actual, staged, expected)
+		if staged != expected {
+			return InfoSealReceipt{}, fmt.Errorf("%w: family %d manifest %d/%d", ErrInfoInputIncomplete, family, staged, expected)
 		}
 		result, err := tx.ExecContext(ctx, `UPDATE catalog_info_input_families SET sealed=1
  WHERE change_id=? AND family=? AND sealed=0 AND rows_staged=rows_expected`, h.changeID, family)
@@ -848,6 +832,10 @@ func AcceptInfoInputTx(ctx context.Context, tx *sql.Tx, ref InfoInputRef) (InfoA
 	}
 	receipt, err = infoInputReceipt(ctx, tx, h)
 	if err != nil {
+		return InfoAcceptReceipt{}, err
+	}
+	// Accepted normalized input must drain even if its last link disappeared.
+	if err = queueSource(ctx, tx, DomainAssetSources, h.assetID, h.token, sourceInfo|sourceMetadata|sourceRevision); err != nil {
 		return InfoAcceptReceipt{}, err
 	}
 	return InfoAcceptReceipt{InfoInputReceipt: receipt, FrontierCaptured: h.slot == 0}, nil

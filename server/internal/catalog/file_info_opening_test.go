@@ -31,14 +31,15 @@ func fileInfoOpeningTestProof(now time.Time, scope DetailScope) fileInfoOpeningP
 		incarnation[i] = byte(0xf0 + i)
 	}
 	return fileInfoOpeningProof{
-		Item:            23,
-		Library:         4,
-		ItemIncarnation: incarnation,
-		PublicItem:      public,
-		InfoEpoch:       11,
-		Revision:        ContentRevision{Catalog: 41, Viewer: 7},
-		Expires:         now.Add(20 * time.Minute),
-		ScopeDigest:     fileInfoScopeDigest(scope),
+		Item:                  23,
+		Library:               4,
+		ItemIncarnation:       incarnation,
+		PublicItem:            public,
+		InfoEpoch:             11,
+		ConfigurationRevision: 3,
+		Revision:              ContentRevision{Catalog: 41, Viewer: 7},
+		Expires:               now.Add(20 * time.Minute),
+		ScopeDigest:           fileInfoScopeDigest(scope),
 	}
 }
 
@@ -66,7 +67,7 @@ func TestFileInfoOpeningRoundTripsOriginalDescriptorOnly(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(token) != 172 {
+	if len(token) != 183 {
 		t.Fatalf("opening token size %d", len(token))
 	}
 	raw, err := base64.RawURLEncoding.DecodeString(token)
@@ -316,20 +317,21 @@ func TestFileInfoOpeningRejectsInvalidDescriptor(t *testing.T) {
 	_, openings := fileInfoOpeningTestCodecs(t, func() time.Time { return now })
 	base := fileInfoOpeningTestProof(now, fileInfoOpeningTestScope())
 	cases := map[string]func(*fileInfoOpeningProof){
-		"zero item":         func(p *fileInfoOpeningProof) { p.Item = 0 },
-		"negative item":     func(p *fileInfoOpeningProof) { p.Item = -1 },
-		"zero library":      func(p *fileInfoOpeningProof) { p.Library = 0 },
-		"negative library":  func(p *fileInfoOpeningProof) { p.Library = -2 },
-		"zero incarnation":  func(p *fileInfoOpeningProof) { p.ItemIncarnation = [16]byte{} },
-		"zero epoch":        func(p *fileInfoOpeningProof) { p.InfoEpoch = 0 },
-		"negative epoch":    func(p *fileInfoOpeningProof) { p.InfoEpoch = -7 },
-		"negative catalog":  func(p *fileInfoOpeningProof) { p.Revision.Catalog = -1 },
-		"negative viewer":   func(p *fileInfoOpeningProof) { p.Revision.Viewer = -1 },
-		"zero expiry":       func(p *fileInfoOpeningProof) { p.Expires = time.Time{} },
-		"expiry at now":     func(p *fileInfoOpeningProof) { p.Expires = now },
-		"expiry in past":    func(p *fileInfoOpeningProof) { p.Expires = now.Add(-time.Second) },
-		"zero public item":  func(p *fileInfoOpeningProof) { p.PublicItem = [16]byte{} },
-		"zero scope digest": func(p *fileInfoOpeningProof) { p.ScopeDigest = [32]byte{} },
+		"zero item":              func(p *fileInfoOpeningProof) { p.Item = 0 },
+		"negative item":          func(p *fileInfoOpeningProof) { p.Item = -1 },
+		"zero library":           func(p *fileInfoOpeningProof) { p.Library = 0 },
+		"negative library":       func(p *fileInfoOpeningProof) { p.Library = -2 },
+		"zero incarnation":       func(p *fileInfoOpeningProof) { p.ItemIncarnation = [16]byte{} },
+		"negative configuration": func(p *fileInfoOpeningProof) { p.ConfigurationRevision = -1 },
+		"zero epoch":             func(p *fileInfoOpeningProof) { p.InfoEpoch = 0 },
+		"negative epoch":         func(p *fileInfoOpeningProof) { p.InfoEpoch = -7 },
+		"negative catalog":       func(p *fileInfoOpeningProof) { p.Revision.Catalog = -1 },
+		"negative viewer":        func(p *fileInfoOpeningProof) { p.Revision.Viewer = -1 },
+		"zero expiry":            func(p *fileInfoOpeningProof) { p.Expires = time.Time{} },
+		"expiry at now":          func(p *fileInfoOpeningProof) { p.Expires = now },
+		"expiry in past":         func(p *fileInfoOpeningProof) { p.Expires = now.Add(-time.Second) },
+		"zero public item":       func(p *fileInfoOpeningProof) { p.PublicItem = [16]byte{} },
+		"zero scope digest":      func(p *fileInfoOpeningProof) { p.ScopeDigest = [32]byte{} },
 	}
 	for name, mutate := range cases {
 		proof := base

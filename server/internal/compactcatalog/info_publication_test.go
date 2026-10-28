@@ -38,12 +38,10 @@ func newInfoPublicationFixture(t *testing.T, holders int) infoPublicationFixture
 	other := c.Movie(lib, "/info/unrelated.mkv", "Unrelated", 2026)
 	f.other = other.ID
 	c.Drain()
-	// The real baseline domain20 has finished. Exercise the new completion
-	// seam explicitly until its separately owned worker composition is merged.
 	for _, id := range append(append([]int64{}, f.items...), f.other) {
-		c.Write(func(ctx context.Context, tx *sql.Tx) error {
-			return compactcatalog.CompleteInfoAvailabilityTx(ctx, tx, id)
-		})
+		if h := f.head(t, id); !h.Ready() {
+			t.Fatal("real domain20 did not publish a ready informational head", id, h)
+		}
 	}
 	return f
 }
@@ -145,8 +143,11 @@ func TestInfoPublicationQueuedAvailabilityAndAcceptedDuration(t *testing.T) {
 			t.Fatal("holder released before availability completion", h)
 		}
 	}
-	var used int64
-	if err := f.c.DB.QueryRow(`SELECT used_bytes FROM catalog_info_input_budget WHERE singleton=1`).Scan(&used); err != nil || used != 0 {
+	var used, dictionary int64
+	if err := f.c.DB.QueryRow(`SELECT COALESCE(SUM(168+2*length(CAST(container AS BLOB))+2*length(CAST(video_codec AS BLOB))),0) FROM catalog_info_shapes`).Scan(&dictionary); err != nil {
+		t.Fatal(err)
+	}
+	if err := f.c.DB.QueryRow(`SELECT used_bytes FROM catalog_info_input_budget WHERE singleton=1`).Scan(&used); err != nil || used != dictionary {
 		t.Fatal("source retirement leaked ledger bytes", used, err)
 	}
 }
@@ -199,5 +200,42 @@ func TestInfoPublicationMoveAndDeleteDischargeAtomically(t *testing.T) {
 	})
 	if f.head(t, f.other).SourceBlockers != 0 {
 		t.Fatal("delete did not discharge", f.head(t, f.other))
+	}
+}
+
+// The released A5 worker owns source41 and domain20. No test-side completion
+// hook is permitted here: a real scalar input must reach exact summaries through
+// the production worker and release every ordinary holder itself.
+func TestInfoPublicationProductionSourceAndHolderComposition(t *testing.T) {
+	f := newInfoPublicationFixture(t, 17)
+	before := f.head(t, f.other)
+	f.c.Write(func(ctx context.Context, tx *sql.Tx) error {
+		return compactcatalog.SetAssetTx(ctx, tx, f.asset, map[string]any{"duration": 123.0, "height": 1080, "container": "matroska", "video_codec": "h264"})
+	})
+	if a := f.frame(t); a.Duration != 5400 {
+		t.Fatal("source accepted NEW before pre-fence", a)
+	}
+	f.c.Drain()
+	for _, id := range f.items {
+		var summary compactcatalog.InfoSummary
+		err := dbwork.WithReadSnapshot(context.Background(), f.c.DB, func(ctx context.Context) error {
+			var err error
+			summary, err = compactcatalog.ReadInfoSummary(ctx, dbwork.Snapshot(ctx), id)
+			return err
+		})
+		if err != nil || !f.head(t, id).Ready() || summary.Duration != 123 {
+			t.Fatalf("holder%d: %+v %+v %v", id, summary, f.head(t, id), err)
+		}
+		var matches bool
+		if err := f.c.DB.QueryRow(`SELECT s.container='matroska' AND s.video_codec='h264' AND s.height=1080 FROM catalog_asset_links l JOIN catalog_info_shapes s ON s.id=l.info_shape_id WHERE l.entity_id=? AND l.asset_id=?`, id, f.asset).Scan(&matches); err != nil || !matches {
+			t.Fatal("wrong accepted shape", id, matches, err)
+		}
+	}
+	if f.head(t, f.other) != before {
+		t.Fatal("unrelated informational head changed")
+	}
+	var pending int
+	if err := f.c.DB.QueryRow(`SELECT count(*) FROM catalog_info_changes`).Scan(&pending); err != nil || pending != 0 {
+		t.Fatal("source body not retired", pending, err)
 	}
 }

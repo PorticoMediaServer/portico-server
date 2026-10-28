@@ -46,8 +46,10 @@ type fileInfoOpeningProof struct {
 	// InfoEpoch is the exact accepted informational epoch of the item when the
 	// opening was accepted. It is not re-read from current content.
 	InfoEpoch int64
-	Revision  ContentRevision
-	Expires   time.Time
+	// ConfigurationRevision fences source/root configuration independently of scan content.
+	ConfigurationRevision int64
+	Revision              ContentRevision
+	Expires               time.Time
 	// ScopeDigest is SHA256 over the original accepted DetailScope, all four
 	// strings length-prefixed. CheckScope compares it exactly.
 	ScopeDigest [32]byte
@@ -58,8 +60,8 @@ const (
 	// continuation anchors are version 1, so the two forms never cross-decode.
 	fileInfoOpeningVersion byte = 2
 	// version(1) + item,library,infoEpoch,catalog,viewer,expiry(8 each = 48)
-	// + itemIncarnation(16) + publicItem(16) + scopeDigest(32) + mac(16).
-	fileInfoOpeningSize = 129
+	// + configuration(8) + itemIncarnation(16) + publicItem(16) + scopeDigest(32) + mac(16).
+	fileInfoOpeningSize = 137
 	// Domain separation keeps an opening MAC distinct from an anchor MAC even
 	// though both use the one process-scoped private key.
 	fileInfoOpeningDomain = "portico.catalog.fileinfo.opening.v2\x00"
@@ -112,7 +114,8 @@ func (c *fileInfoOpeningCodec) encodeOpening(caller readprep.Caller, proof fileI
 	binary.BigEndian.PutUint64(raw[57:65], uint64(proof.Expires.UnixNano()))
 	copy(raw[65:81], proof.PublicItem[:])
 	copy(raw[81:113], proof.ScopeDigest[:])
-	copy(raw[113:], c.mac(caller, raw[:113]))
+	binary.BigEndian.PutUint64(raw[113:121], uint64(proof.ConfigurationRevision))
+	copy(raw[121:], c.mac(caller, raw[:121]))
 	return base64.RawURLEncoding.EncodeToString(raw[:]), nil
 }
 
@@ -126,13 +129,14 @@ func (c *fileInfoOpeningCodec) decodeOpening(caller readprep.Caller, token strin
 		return proof, readprep.ErrStale
 	}
 	raw, err := base64.RawURLEncoding.DecodeString(token)
-	if err != nil || len(raw) != fileInfoOpeningSize || raw[0] != fileInfoOpeningVersion || base64.RawURLEncoding.EncodeToString(raw) != token || !hmac.Equal(raw[113:], c.mac(caller, raw[:113])) {
+	if err != nil || len(raw) != fileInfoOpeningSize || raw[0] != fileInfoOpeningVersion || base64.RawURLEncoding.EncodeToString(raw) != token || !hmac.Equal(raw[121:], c.mac(caller, raw[:121])) {
 		return fileInfoOpeningProof{}, readprep.ErrStale
 	}
 	proof = fileInfoOpeningProof{
-		Item:      int64(binary.BigEndian.Uint64(raw[1:9])),
-		Library:   int64(binary.BigEndian.Uint64(raw[9:17])),
-		InfoEpoch: int64(binary.BigEndian.Uint64(raw[33:41])),
+		Item:                  int64(binary.BigEndian.Uint64(raw[1:9])),
+		Library:               int64(binary.BigEndian.Uint64(raw[9:17])),
+		InfoEpoch:             int64(binary.BigEndian.Uint64(raw[33:41])),
+		ConfigurationRevision: int64(binary.BigEndian.Uint64(raw[113:121])),
 		Revision: ContentRevision{
 			Catalog: int64(binary.BigEndian.Uint64(raw[41:49])),
 			Viewer:  int64(binary.BigEndian.Uint64(raw[49:57])),
@@ -165,7 +169,7 @@ func (p fileInfoOpeningProof) valid(now time.Time) bool {
 	var zeroScope [32]byte
 	return p.Item > 0 && p.Library > 0 &&
 		p.ItemIncarnation != zeroIncarnation && p.PublicItem != zeroPublic && p.InfoEpoch > 0 &&
-		p.Revision.Catalog >= 0 && p.Revision.Viewer >= 0 &&
+		p.ConfigurationRevision >= 0 && p.Revision.Catalog >= 0 && p.Revision.Viewer >= 0 &&
 		p.ScopeDigest != zeroScope &&
 		p.Expires.UnixNano() > 0 && p.Expires.After(now)
 }

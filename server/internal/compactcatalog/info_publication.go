@@ -113,11 +113,15 @@ func AdvanceInfoPublicationTx(ctx context.Context, tx *sql.Tx, asset int64, toke
 		if unsealed {
 			return false, nil
 		}
-		if c.familyMask != 0 {
-			var present bool
-			if err = tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM catalog_info_input_families WHERE change_id=?)`, c.id).Scan(&present); err != nil || !present {
-				return false, err
-			}
+		// Typed input is accepted only by AcceptInfoInputTx after its producer
+		// validates and seals the complete observation. A worker cannot turn a
+		// staged body into an accepted receipt merely by seeing sealed rows.
+		var typed bool
+		if err = tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM catalog_info_input_witnesses WHERE change_id=?)`, c.id).Scan(&typed); err != nil {
+			return false, err
+		}
+		if c.familyMask != 0 || typed {
+			return false, nil
 		}
 		if _, err = EnsureInfoShapeTargetTx(ctx, tx, c.id); errors.Is(err, ErrInfoInputDeferred) {
 			// No holder has been pre-fenced. Reclaim only maintained unused
