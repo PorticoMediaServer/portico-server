@@ -31,14 +31,20 @@ const (
 
 // SelectionBatchLimits can narrow, but never widen, the shared preparation
 // quantum. Rows counts raw candidates, nested rows, scalar probes and EOF probes.
-type SelectionBatchLimits struct{ Rows, Bytes int }
+// Bytes bounds cumulative source work; RetainedBytes independently bounds state.
+type SelectionBatchLimits struct{ Rows, Bytes, RetainedBytes int }
 
-// Bytes is peak retained reducer bytes. TransientScalarBytes reports the largest
+const selectionBatchProbeBytes = 64
+
+// Bytes is peak retained reducer bytes. ExaminedBytes sums fixed probe costs and
+// decoded source bytes; DecodedBytes sums source scalars independently of capacity.
+// TransientScalarBytes reports the largest
 // legal source scalar consumed by a unit; it is never retained as a query result.
 // An oversize scalar ends the turn after that O(B) unit, without truncation.
 type SelectionBatchWork struct {
-	Rows, Bytes          int
-	TransientScalarBytes int
+	Rows, Bytes                 int
+	ExaminedBytes, DecodedBytes int
+	TransientScalarBytes        int
 }
 
 // SelectionBatchWitness must capture the complete predicate/serving witness in
@@ -151,12 +157,16 @@ func (s *Service) NewBrowseSelectionBatch(request BrowseRequest, viewer Viewer, 
 	if witness == "" {
 		return nil, ErrSelectionBatchStale
 	}
-	lib, err := s.library(bound.Library)
+	var libraryKind string
+	err := s.compactProjectionReady()
+	if err == nil {
+		err = s.read().QueryRow(`SELECT kind FROM libraries WHERE id=?`, bound.Library).Scan(&libraryKind)
+	}
 	if err != nil {
 		return nil, err
 	}
-	pivot, ok := pivotForKind(lib.Kind, bound.Pivot)
-	if !ok || !selectionLeafPivot(pivot) || !selectionAggregateLibraries[lib.Kind] ||
+	pivot, ok := pivotForKind(libraryKind, bound.Pivot)
+	if !ok || !selectionLeafPivot(pivot) || !selectionAggregateLibraries[libraryKind] ||
 		!browseQueryReplayable(bound.Query, bound.Sorts) || len(request.Rows) > 0 || len(request.RowSources) > 0 || !viewer.AllowsLibrary(bound.Library) {
 		return nil, ErrSelectionBatchUnsupported
 	}
@@ -231,9 +241,13 @@ func (s *Service) StepBrowseSelectionBatch(ctx context.Context, previous *Browse
 	if bytes <= 0 || bytes > SelectionBatchMaximumBytes {
 		bytes = SelectionBatchMaximumBytes
 	}
+	retained := limits.RetainedBytes
+	if retained <= 0 || retained > SelectionBatchMaximumBytes {
+		retained = SelectionBatchMaximumBytes
+	}
 	next := previous.Clone()
 	work.Bytes = next.Bytes()
-	if work.Bytes > bytes {
+	if work.Bytes > retained {
 		return nil, work, ErrSelectionBatchCapacity
 	}
 	// Yield between domain units; SQL in each unit is an indexed singleton or
@@ -248,7 +262,7 @@ func (s *Service) StepBrowseSelectionBatch(ctx context.Context, previous *Browse
 		if current == "" || current != next.plan.witness {
 			return ErrSelectionBatchStale
 		}
-		for !next.done && work.Rows < rows && (work.Rows == 0 || time.Now().Before(deadline)) {
+		for !next.done && work.Rows < rows && (work.Rows == 0 || work.ExaminedBytes+selectionBatchProbeBytes <= bytes) && (work.Rows == 0 || time.Now().Before(deadline)) {
 			if err = inner.Err(); err != nil {
 				return err
 			}
@@ -257,12 +271,14 @@ func (s *Service) StepBrowseSelectionBatch(ctx context.Context, previous *Browse
 			if err = read.selectionBatchUnit(next); err != nil {
 				return err
 			}
+			work.DecodedBytes += next.scalarBytes
+			work.ExaminedBytes += selectionBatchProbeBytes + next.scalarBytes
 			work.TransientScalarBytes = max(work.TransientScalarBytes, next.scalarBytes)
 			work.Bytes = max(work.Bytes, next.Bytes())
-			if work.Bytes > bytes {
+			if work.Bytes > retained {
 				return ErrSelectionBatchCapacity
 			}
-			if next.scalarBytes > bytes {
+			if work.ExaminedBytes >= bytes {
 				break
 			}
 		}
@@ -493,10 +509,8 @@ func (s *Service) selectionBatchUnit(state *BrowseSelectionBatchState) error {
 			c.matched = true
 			selectionBatchFinishTest(c, test)
 		} else if done {
-			c.relation.keys = nil
-			c.relation.owner = 0
-			c.relation.stream = 0
-			c.relation.ownerReady = false
+			members, member := c.relation.members, c.relation.member
+			c.relation = selectionBatchRelationCursor{members: members, member: member}
 			c.stage = 5
 		}
 		return nil
@@ -605,7 +619,7 @@ func (s *Service) selectionBatchCheckItem(p *selectionBatchPlan, check *selectio
 	}
 	var rated, denied bool
 	args := append(slices.Clone(p.visibilityArgs), check.item, check.after)
-	err := s.read().QueryRow(`SELECT edge.term_id,length(CAST(edge.source_value AS BLOB)),CASE WHEN term.field_id=1 AND ra.minimum_age>=0 THEN 1 ELSE 0 END,CASE WHEN (`+p.visibilitySQL+`) THEN 1 ELSE 0 END FROM (SELECT term_id,source_value FROM catalog_item_attribute_edges INDEXED BY sqlite_autoindex_catalog_item_attribute_edges_1 WHERE item_id=? AND term_id>? ORDER BY term_id LIMIT 1) edge LEFT JOIN catalog_attribute_terms term ON term.id=edge.term_id LEFT JOIN content_rating_ages ra ON ra.value_key=term.value_key`, args...).Scan(&check.after, scalarBytes, &rated, &denied)
+	err := s.read().QueryRow(`SELECT edge.term_id,length(CAST(edge.source_value AS BLOB))+COALESCE(length(CAST(term.value_key AS BLOB)),0),CASE WHEN term.field_id=1 AND ra.minimum_age>=0 THEN 1 ELSE 0 END,CASE WHEN (`+p.visibilitySQL+`) THEN 1 ELSE 0 END FROM (SELECT term_id,source_value FROM catalog_item_attribute_edges INDEXED BY sqlite_autoindex_catalog_item_attribute_edges_1 WHERE item_id=? AND term_id>? ORDER BY term_id LIMIT 1) edge LEFT JOIN catalog_attribute_terms term ON term.id=edge.term_id LEFT JOIN content_rating_ages ra ON ra.value_key=term.value_key`, args...).Scan(&check.after, scalarBytes, &rated, &denied)
 	if errors.Is(err, sql.ErrNoRows) {
 		check.done = true
 		check.visible = !p.blockUnrated || check.rated

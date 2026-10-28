@@ -1,6 +1,7 @@
 package httpapi
 
 import (
+	"bytes"
 	"context"
 	"crypto/sha256"
 	"database/sql"
@@ -12,6 +13,8 @@ import (
 	"portico.local/server/internal/catalog"
 	"portico.local/server/internal/dbwork"
 	"portico.local/server/internal/identity"
+	"portico.local/server/internal/readprep"
+	"reflect"
 	"strconv"
 )
 
@@ -23,6 +26,10 @@ import (
 // browseFailure answers a validation error with the offending path so a client
 // can attach the message to the control that produced it.
 func browseFailure(w http.ResponseWriter, e error) {
+	if isBrowseSelectionPreparationError(e) {
+		browseSelectionPreparationFailure(w, e)
+		return
+	}
 	if errors.Is(e, catalog.ErrReadingProjectionChanged) {
 		policyError(w, "revision_mismatch")
 		return
@@ -72,6 +79,7 @@ func (d Dependencies) browseLibrary(w http.ResponseWriter, r *http.Request) (ide
 }
 
 type browseRequestBody struct {
+	SelectionBasis string                        `json:"selectionBasis,omitempty"`
 	HomeRowDisplay string                        `json:"homeRowDisplay,omitempty"`
 	Pivot          string                        `json:"pivot"`
 	Query          json.RawMessage               `json:"query"`
@@ -80,6 +88,27 @@ type browseRequestBody struct {
 	Cursor         string                        `json:"cursor"`
 	Range          *catalog.BrowseRange          `json:"range"`
 	Seek           *catalog.BrowseSeek           `json:"seek"`
+}
+
+func (body *browseRequestBody) UnmarshalJSON(raw []byte) error {
+	type wire browseRequestBody
+	var value wire
+	decoder := json.NewDecoder(bytes.NewReader(raw))
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(&value); err != nil {
+		return err
+	}
+	if err := catalog.ValidateSelectionBasisJSON(raw); err != nil {
+		return err
+	}
+	*body = browseRequestBody(value)
+	return nil
+}
+func (browseRequestBody) JSONSchema() map[string]any {
+	type wire browseRequestBody
+	shape, _ := apikit.Schema(reflect.TypeFor[wire]())
+	shape["properties"].(map[string]any)["selectionBasis"].(map[string]any)["pattern"] = catalog.SelectionBasisExpression
+	return shape
 }
 
 func (d Dependencies) browseRoutes(mux *http.ServeMux) {
@@ -246,17 +275,23 @@ func (d Dependencies) browseHandler(w http.ResponseWriter, r *http.Request) {
 	// four consecutive states, which is what the second revision read inside
 	// browseSelect existed to detect.
 	var out catalog.BrowseResult
+	var selectionViewer catalog.Viewer
 	e = d.compose(r, restrictions, func(cat *catalog.Service) error {
 		viewer := catalog.Viewer{Profile: identity.PersonalKey(p.Viewer), Fence: fence, Libraries: []string{r.PathValue("id")}, Restrictions: restrictions}
 		viewer, composeErr := d.readingBrowseViewer(cat.Context(), p, r.PathValue("id"), viewer)
 		if composeErr != nil {
 			return composeErr
 		}
+		selectionViewer = viewer
 		rows, composeErr := d.resolveHomeRows(r, p, viewer, query, cat)
 		if composeErr != nil {
 			return composeErr
 		}
-		browseRequest := catalog.BrowseRequest{ServerID: d.Identity.ID(), Library: r.PathValue("id"), Profile: viewer.Profile, ViewerFence: viewer.Fence, HomeRowDisplay: body.HomeRowDisplay, Pivot: body.Pivot, Query: query, Sort: body.Sort, Limit: min(body.Limit, catalog.BrowseMaximumLimit), Cursor: body.Cursor, Range: body.Range, Seek: body.Seek, Restrictions: viewer.EffectiveRestrictions(), RowSources: rows}
+		limit := min(body.Limit, catalog.BrowseMaximumLimit)
+		if body.SelectionBasis != "" {
+			limit = min(body.Limit, catalog.BrowseSelectionConversionLimit)
+		}
+		browseRequest := catalog.BrowseRequest{SelectionBasis: body.SelectionBasis, ServerID: d.Identity.ID(), Library: r.PathValue("id"), Profile: viewer.Profile, ViewerFence: viewer.Fence, HomeRowDisplay: body.HomeRowDisplay, Pivot: body.Pivot, Query: query, Sort: body.Sort, Limit: limit, Cursor: body.Cursor, Range: body.Range, Seek: body.Seek, Restrictions: viewer.EffectiveRestrictions(), RowSources: rows}
 		if identity.CanUsePersonalState(p) {
 			browseRequest.ReadingPersonalAuthorize = func(tx *sql.Tx) error {
 				live, err := d.Identity.PrincipalByDigestTx(cat.Context(), tx, p.Hash)
@@ -282,10 +317,24 @@ func (d Dependencies) browseHandler(w http.ResponseWriter, r *http.Request) {
 		browseFailure(w, e)
 		return
 	}
-	if e = d.browseAuthorityAfter(r, p, catalog.Viewer{Fence: fence}); e != nil {
+	if out.WholeSelectionPreparing != nil {
+		var access catalog.SelectionPreparationAccess
+		access, e = d.browseSelectionAccess(p, r.PathValue("id"), selectionViewer)
+		if e == nil {
+			e = d.browseSelectionExposure(r, p, selectionViewer, out.WholeSelectionPreparing.CapturedBasis(), access)
+		}
+		if e != nil {
+			if store := d.Catalog.ReadPreparations(); store != nil && access.Caller != "" {
+				_ = store.Cancel(context.WithoutCancel(r.Context()), access.Caller, readprep.Handle(out.WholeSelectionPreparing.QueryID))
+			}
+			browseSelectionPreparationFailure(w, e)
+			return
+		}
+	} else if e = d.browseAuthorityAfter(r, p, catalog.Viewer{Fence: fence}); e != nil {
 		browseFailure(w, e)
 		return
 	}
+
 	// Authorization is proven again after the read so a revocation that landed
 	// mid-request cannot be answered with catalogue facts.
 	if e = d.allowedLibrary(r.Context(), p, r.PathValue("id")); e != nil {
@@ -376,6 +425,9 @@ func (d Dependencies) facetsHandler(w http.ResponseWriter, r *http.Request) {
 // a view whose job replay is provably identical. Every other page, and every
 // view the job compiler cannot reproduce, carries no field at all.
 func (d Dependencies) attachWholeSelection(r *http.Request, p identity.Principal, viewer catalog.Viewer, cat *catalog.Service, request catalog.BrowseRequest, body browseRequestBody, out *catalog.BrowseResult) error {
+	if d.PrepareBrowseSelections {
+		return d.attachWholeSelectionPreparation(r, p, viewer, cat, request, body, out)
+	}
 	if out.Bound == nil || out.PageInfo.Start != 0 || body.Cursor != "" || body.Range != nil || body.Seek != nil || body.HomeRowDisplay != "" {
 		return nil
 	}
