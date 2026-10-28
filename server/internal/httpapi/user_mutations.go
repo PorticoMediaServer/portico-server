@@ -27,6 +27,11 @@ func userMutationError(err error) *apierror.Error {
 		return &apierror.Error{Code: "invalid_mutation_key", Cause: err}
 	case errors.Is(err, usermutation.ErrExpired):
 		return &apierror.Error{Code: "receipt_expired", Cause: err}
+	case errors.Is(err, usermutation.ErrRootGone):
+		// A gone root's lifetime is no longer available; 410 through the
+		// catalogue's existing "receipt is no longer available" code. The
+		// request is refused before any domain mutation.
+		return &apierror.Error{Code: "receipt_expired", Cause: err}
 	case errors.Is(err, usermutation.ErrConflict):
 		return &apierror.Error{Code: "idempotency_conflict", Cause: err}
 	case errors.Is(err, usermutation.ErrCapacity):
@@ -123,6 +128,17 @@ func (d Dependencies) bindUserMutation(w http.ResponseWriter, r *http.Request) (
 	if err != nil {
 		failure(w, err)
 		return r, false
+	}
+	// P2-62: the client's mutation root travels with the request, and the store
+	// binds the receipt to that root's exact lifetimes. Only the identifier is
+	// captured here; the root is proved against the live owner inside the
+	// accepting transaction. An absent root keeps the existing rootless receipt.
+	if root := strings.TrimSpace(r.Header.Get("Portico-Mutation-Root")); root != "" {
+		if !usermutation.ValidRootID(root) {
+			policyError(w, "invalid_request")
+			return r, false
+		}
+		binding.RootID = root
 	}
 	issued, err := usermutation.IssuedMs(key, time.Now().UnixMilli())
 	if err != nil {

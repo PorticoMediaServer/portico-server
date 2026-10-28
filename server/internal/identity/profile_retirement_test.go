@@ -118,3 +118,22 @@ func retireProfileAndDrainForTest(t *testing.T, s *Service, ctx context.Context,
 	t.Fatal("purge failed to converge")
 	return nil
 }
+
+func TestProfileRetirementImmediatelyDeniesAnAlreadyPairedCastTarget(t *testing.T) {
+	s, _, login, kid, preview := retirementFixture(t)
+	selected, err := s.SelectDirectProfile(context.Background(), login.AccountToken, kid.ID, DirectSelection{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	screen := issueCastTarget(t, s, castScreen(t, "removed-child", "Kids TV"), login.Account.ID, kid.ID, selected.Session.SessionFamilyID)
+	playback := WithPlaybackRequest(context.Background())
+	if _, err = s.AuthenticateContext(playback, screen.AccessToken); err != nil {
+		t.Fatalf("live Cast control: %v", err)
+	}
+	if _, err = s.RetireDirectProfile(context.Background(), login.AccountToken, kid.ID, ProfileRetirementRequest{ExpectedRevision: preview.Revision, Lifetime: preview.Lifetime, DeleteSavedResources: true}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = s.AuthenticateContext(playback, screen.AccessToken); !errors.Is(err, ErrUnauthorized) {
+		t.Fatalf("retired Cast target retained authority: %v", err)
+	}
+}

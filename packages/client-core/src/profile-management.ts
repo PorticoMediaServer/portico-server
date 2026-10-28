@@ -46,12 +46,53 @@ export type ProfileSelectionInput=Readonly<{pin?:string;installationId?:string;t
 export type TrustedProfile=Readonly<{token:string;authority:ProfileAuthority;accountId:string;profileId:string;serverId:string;installationId:string;pinRevision:number;profileRevision:number;policyRevision?:number;membershipRevision?:number;trustRevision?:number;expiresAt:string}>;
 export type SignedProfileProof=Readonly<{payload:string;signature:string;keyId:string}>;
 export type DirectSelection=Readonly<{session:LocalSession;trustedSelection?:TrustedProfile}>;
-export type ProfileDeletion=Readonly<{id?:string;profileId:string;revision:number;name?:string;primary:boolean;status?:string;playlists?:number;savedResources?:number;servers?:readonly {id:string;name:string;acknowledged:boolean}[]}>;
+/** A deletion preview: the revision and the profile lifetime the server will retire. The lifetime is
+ * generated once by the server and never reused, so a replayed delete names the same retirement. */
+export type ProfileDeletion=Readonly<{id?:string;profileId:string;revision:number;lifetime:string;name?:string;primary:boolean;status?:string;playlists?:number;savedResources?:number;servers?:readonly {id:string;name:string;acknowledged:boolean}[]}>;
+/** Retirement is logical first, then a purge: only `removed` is finished. `blocked` is not success. */
+export type ProfileRetirementState='removing'|'removed'|'blocked';
+export type ProfileRetirement=Readonly<{profileId:string;lifetime:string;state:ProfileRetirementState}>;
+export type ProfileDeletionOptions=Readonly<{
+ signal?:AbortSignal;
+ /** Every checked state, in order: `removing` and `blocked` keep the UI's pending wording. */
+ onStatus?:(retirement:ProfileRetirement)=>void;
+ /** Focused tests shorten the check interval. */
+ intervalMs?:number;
+ /** Focused tests bound the whole wait. The UI omits it: a private purge may legally take
+  * longer than any fixed wait, so it keeps one repeated timer until `removed`, an error or the
+  * viewer's abort instead of giving up on a retirement that is still running. */
+ maxWaitMs?:number;
+}>;
 export type ProfilePolicy=Readonly<{serverId:string;allowedLibraries:readonly string[]|null}>;
 const obj=(v:unknown):v is Record<string,unknown>=>!!v&&typeof v==='object'&&!Array.isArray(v);
 const text=(v:unknown,max=256):v is string=>typeof v==='string'&&v.length>0&&v.length<=max&&!/[\x00-\x1f\x7f]/.test(v);
 const natural=(v:unknown):v is number=>typeof v==='number'&&Number.isSafeInteger(v)&&v>=0;
 const revision=(v:unknown):v is number=>natural(v)&&v>0;
+/** A profile lifetime is 32 lowercase hexadecimal characters; it is never guessed or reused. */
+const profileLifetime=(v:unknown):v is string=>typeof v==='string'&&/^[0-9a-f]{32}$/.test(v);
+/** A retirement names the exact profile and lifetime that was previewed. Anything else, a lost
+ * response included, is unreadable: it is never taken as `removed`. */
+export function parseProfileRetirement(raw:unknown,expected:Readonly<{profileId:string;lifetime:string}>):ProfileRetirement{
+ if(!obj(raw)||!text(raw.profileId,128)||!profileLifetime(raw.lifetime)||raw.profileId!==expected.profileId||raw.lifetime!==expected.lifetime||!['removing','removed','blocked'].includes(raw.state as string))invalid();
+ return Object.freeze({profileId:raw.profileId,lifetime:raw.lifetime,state:raw.state as ProfileRetirementState});
+}
+const retirementStopped=()=>Object.assign(new Error('Profile removal stopped'),{name:'AbortError'});
+const throwIfRetirementStopped=(signal?:AbortSignal):void=>{if(signal?.aborted)throw retirementStopped();};
+/** One timer at a time, cleared with its listener when the removal is retired. */
+function retirementSleep(signal?:AbortSignal):(ms:number)=>Promise<void>{
+ return ms=>new Promise<void>((resolve,reject)=>{
+  if(signal?.aborted){reject(retirementStopped());return;}
+  let timer:ReturnType<typeof setTimeout>|undefined;
+  const stop=()=>{if(timer!==undefined)clearTimeout(timer);signal?.removeEventListener('abort',stop);reject(retirementStopped());};
+  timer=setTimeout(()=>{signal?.removeEventListener('abort',stop);resolve();},ms);
+  signal?.addEventListener('abort',stop,{once:true});
+ });
+}
+/** A checked `Retry-After` hint, never an unbounded pause. */
+function retryAfterMs(error:unknown):number|undefined{
+ const seconds=(error as {retryAfterSeconds?:unknown}|null|undefined)?.retryAfterSeconds;
+ return typeof seconds==='number'&&Number.isSafeInteger(seconds)&&seconds>0&&seconds<=60?seconds*1000:undefined;
+}
 function invalid():never{throw new CodedError('invalid_response',unreadableServerResponse);}
 function ids(v:unknown):readonly string[]{if(!Array.isArray(v)||v.length>1000||v.some(x=>!text(x,128))||new Set(v).size!==v.length)invalid();return Object.freeze([...v] as string[]);}
 /**
@@ -178,10 +219,51 @@ export class ManagedProfilesClient {
  async forgetTrust(profileId:string,signal?:AbortSignal):Promise<void>{await this.api.request(routePath("delete_direct_trust"),'DELETE',{profileId},signal);}
  async previewDelete(profile:ManagedProfile,signal?:AbortSignal):Promise<ProfileDeletion>{
   if(profile.primary)throw new Error('The primary profile is managed through account settings.');const raw=await this.api.request<unknown>(this.path(profile.id,'preview'),'GET',undefined,signal);
-  if(!obj(raw)||raw.profileId!==profile.id||!revision(raw.revision)||raw.primary!==false)invalid();return raw as ProfileDeletion;
+  if(!obj(raw)||raw.profileId!==profile.id||!revision(raw.revision)||raw.primary!==false||!profileLifetime(raw.lifetime))invalid();return Object.freeze({...raw}) as ProfileDeletion;
  }
- async delete(preview:ProfileDeletion,signal?:AbortSignal):Promise<ProfileDeletion|undefined>{
-  if(preview.primary||!revision(preview.revision))throw new Error('Preview this profile deletion first.');return this.api.request<ProfileDeletion|undefined>(this.path(preview.profileId,'delete'),'DELETE',{expectedRevision:preview.revision,deleteSavedResources:true},signal);
+ private retirementPath(profileId:string,lifetime:string):string{
+  return routePath('get_direct_profiles_id_retirement',{id:profileId})+'?lifetime='+encodeURIComponent(lifetime);
+ }
+ /**
+  * Retire a profile for every client at once, then report the purge truthfully: the accepted body and
+  * lifetime are sent once and replayed unchanged if a response is lost, `removed` is reported only
+  * when the server says so, and `blocked`, an unreadable state or an abort is never success. The wait
+  * has no fixed end: one check timer at a time, until removed, an error, or the caller's abort.
+  */
+ async delete(preview:ProfileDeletion,options:ProfileDeletionOptions={}):Promise<ProfileRetirement>{
+  if(preview.primary||!revision(preview.revision)||!profileLifetime(preview.lifetime))throw new Error('Preview this profile deletion first.');
+  const {signal}=options,body=Object.freeze({expectedRevision:preview.revision,lifetime:preview.lifetime,deleteSavedResources:true});
+  throwIfRetirementStopped(signal);
+  const accepted=await this.api.request<RouteResponse<"delete_direct_profiles_id">>(this.path(preview.profileId,'delete'),'DELETE',body,signal);
+  // An answer that arrives after the viewer retired is not published as progress.
+  throwIfRetirementStopped(signal);
+  let status=parseProfileRetirement(accepted,{profileId:preview.profileId,lifetime:preview.lifetime});
+  options.onStatus?.(status);
+  const finish=(state:ProfileRetirement):ProfileRetirement=>{
+   if(state.state==='removed')return state;
+   if(state.state==='blocked')throw new CodedError('retirement_blocked','This profile could not be finished removing.');
+   return state;
+  };
+  if(status.state!=='removing')return finish(status);
+  const sleep=retirementSleep(signal),interval=Math.max(1,Math.floor(options.intervalMs??500));
+  const budget=options.maxWaitMs===undefined?undefined:Math.max(interval,Math.floor(options.maxWaitMs));
+  let waited=0;
+  while(budget===undefined||waited<budget){
+   const step=budget===undefined?interval:Math.min(interval,budget-waited);
+   await sleep(step);waited+=step;
+   throwIfRetirementStopped(signal);
+   try{
+    status=parseProfileRetirement(await this.api.request<unknown>(this.retirementPath(preview.profileId,preview.lifetime),'GET',undefined,signal),{profileId:preview.profileId,lifetime:preview.lifetime});
+   }catch(error){
+    // A bounded, server-asked pause is the only retry: no busy loop on an error.
+    const pause=retryAfterMs(error);if(pause===undefined||budget!==undefined&&waited+pause>=budget)throw error;
+    await sleep(pause);waited+=pause;continue;
+   }
+   throwIfRetirementStopped(signal);
+   options.onStatus?.(status);
+   if(status.state!=='removing')return finish(status);
+  }
+  throw new CodedError('retirement_pending','This profile is still being removed.');
  }
 }
 

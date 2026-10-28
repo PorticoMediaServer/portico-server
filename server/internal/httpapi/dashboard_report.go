@@ -61,10 +61,12 @@ func (d Dependencies) dashboardReportRoute(mux *http.ServeMux, service *telemetr
 	}
 	d.projectedHandle(mux, "GET /v1/admin/dashboard/report", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Cache-Control", "no-store")
-		if _, e := d.owner(r); e != nil {
+		p, e := d.owner(r)
+		if e != nil {
 			accessFailure(w, e)
 			return
 		}
+		audience := historyAudience(p)
 		if e := consoleQuery(r, dashboardReportQuery...); e != nil {
 			consoleError(w, e)
 			return
@@ -114,7 +116,7 @@ func (d Dependencies) dashboardReportRoute(mux *http.ServeMux, service *telemetr
 			dashboardFailure(w, e)
 			return
 		}
-		query := catalog.PlayHistoryQuery{TimeZone: values.Get("timeZone"), Until: values.Get("until"), Period: period, AccountID: values.Get("accountId"), LibraryID: values.Get("libraryId"), Media: values.Get("media"), Search: values.Get("q"), Sort: values.Get("sort"), Direction: values.Get("direction"), Cursor: values.Get("tableCursor"), Limit: tableLimit}
+		query := catalog.PlayHistoryQuery{Audience: audience, TimeZone: values.Get("timeZone"), Until: values.Get("until"), Period: period, AccountID: values.Get("accountId"), LibraryID: values.Get("libraryId"), Media: values.Get("media"), Search: values.Get("q"), Sort: values.Get("sort"), Direction: values.Get("direction"), Cursor: values.Get("tableCursor"), Limit: tableLimit}
 		out := DashboardReport{Context: ReportContext{TimeZone: query.TimeZone, Until: query.Until}}
 		// One actual, request-bounded read transaction: every aggregate borrows
 		// this context. It is released before response and creates no token.
@@ -129,7 +131,7 @@ func (d Dependencies) dashboardReportRoute(mux *http.ServeMux, service *telemetr
 			if out.Summary, e = d.Catalog.PlaySummary(ctx, query); e != nil {
 				return e
 			}
-			people := catalog.PlayHistoryQuery{TimeZone: query.TimeZone, Until: query.Until, Period: peoplePeriod, Cursor: values.Get("peopleCursor"), Limit: peopleLimit}
+			people := catalog.PlayHistoryQuery{Audience: audience, TimeZone: query.TimeZone, Until: query.Until, Period: peoplePeriod, Cursor: values.Get("peopleCursor"), Limit: peopleLimit}
 			if out.People, e = d.Catalog.DashboardPeople(ctx, people); e != nil {
 				return e
 			}

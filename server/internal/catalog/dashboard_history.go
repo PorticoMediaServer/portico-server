@@ -12,9 +12,50 @@ import (
 
 const dashboardKind = `CASE h.kind WHEN 1 THEN 'movies' WHEN 4 THEN 'tv' WHEN 7 THEN 'music' WHEN 9 THEN 'audiobooks' WHEN 0 THEN 'live' ELSE 'other' END`
 
+// historyProfileLabel is the name a play is attributed to. A removed profile
+// keeps its last display name in direct_profiles and its plays stay in the
+// owner's history, marked "(removed)"; a live profile keeps the name the play
+// was recorded under. A play without a retained profile row is unchanged.
+func historyProfileLabel() string {
+	return `CASE WHEN h.authority<>'local' THEN h.profile_name ELSE COALESCE((SELECT CASE WHEN dp.deleted=1 THEN dp.name||' (removed)' ELSE h.profile_name END
+	 FROM direct_profiles dp WHERE dp.account_id=h.account_id AND dp.id=h.profile_id),h.profile_name) END`
+}
+
+// historySeesRemoved says whether this audience is the live server owner's main
+// profile, the one principal allowed to read retained plays of removed
+// profiles. An admin, a member, another profile of the owner's account or a
+// stale principal is not. It reads the projection's own transaction, so the
+// authorization and the rows it guards share one boundary.
+func historySeesRemoved(ctx context.Context, tx *sql.Tx, audience *HistoryAudience) (bool, error) {
+	if tx == nil {
+		return false, sql.ErrTxDone
+	}
+	if audience == nil || audience.AccountID == "" || audience.ProfileID == "" {
+		return false, nil
+	}
+	var allowed bool
+	err := tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM accounts a
+	 JOIN direct_memberships m ON m.account_id=a.id
+	 JOIN direct_profiles main ON main.account_id=a.id AND main.id=a.profile_id
+	 WHERE a.id=? AND a.epoch=? AND a.profile_id=? AND main.is_primary=1 AND main.deleted=0
+	 AND m.role='owner' AND m.disabled=0)`, audience.AccountID, audience.Epoch, audience.ProfileID).Scan(&allowed)
+	return allowed, err
+}
+
+// historyRemovedFilter withholds retained plays of removed profiles from every
+// caller except the owner's main profile. Only a local profile can be removed;
+// a hosted row that happens to carry the same account and profile ids keeps its
+// stored attribution and is never hidden. Live-profile rows are unaffected.
+func historyRemovedFilter(seesRemoved bool) string {
+	if seesRemoved {
+		return ""
+	}
+	return `NOT EXISTS(SELECT 1 FROM direct_profiles dp WHERE h.authority='local' AND dp.account_id=h.account_id AND dp.id=h.profile_id AND dp.deleted=1)`
+}
+
 // This filter is shared with the full history table. Person is always the
 // server account id, never a name or a profile id.
-func historyFilter(q PlayHistoryQuery, interval reportwindow.Interval) (string, []any, error) {
+func historyFilter(q PlayHistoryQuery, interval reportwindow.Interval, seesRemoved bool) (string, []any, error) {
 	if len(q.AccountID) > 128 || len(q.LibraryID) > 128 || len(q.Search) > 200 {
 		return "", nil, ErrCursor
 	}
@@ -39,6 +80,9 @@ func historyFilter(q PlayHistoryQuery, interval reportwindow.Interval) (string, 
 	if q.Search != "" {
 		where = append(where, `(instr(lower(h.title),lower(?))>0 OR instr(lower(h.user_name),lower(?))>0 OR instr(lower(h.device_name),lower(?))>0)`)
 		args = append(args, q.Search, q.Search, q.Search)
+	}
+	if retained := historyRemovedFilter(seesRemoved); retained != "" {
+		where = append(where, retained)
 	}
 	return " WHERE " + strings.Join(where, " AND "), args, nil
 }
@@ -65,7 +109,7 @@ func (s *Service) historyInterval(ctx context.Context, q PlayHistoryQuery) (repo
 	if e != nil {
 		return r, ErrCursor
 	}
-	_, _, e = historyFilter(q, r)
+	_, _, e = historyFilter(q, r, false)
 	if e != nil {
 		return r, e
 	}
@@ -146,10 +190,6 @@ func (s *Service) DashboardPeople(ctx context.Context, q PlayHistoryQuery) (Dash
 	if q.Limit < 1 || q.Limit > 100 {
 		return out, ErrCursor
 	}
-	filter, args, e := historyFilter(q, r)
-	if e != nil {
-		return out, e
-	}
 	afterTime, afterID := int64(1<<62), ""
 	if q.Cursor != "" {
 		t, id, ok := strings.Cut(q.Cursor, ":")
@@ -165,6 +205,14 @@ func (s *Service) DashboardPeople(ctx context.Context, q PlayHistoryQuery) (Dash
 		return out, e
 	}
 	defer done()
+	seesRemoved, e := historySeesRemoved(ctx, tx, q.Audience)
+	if e != nil {
+		return out, e
+	}
+	filter, args, e := historyFilter(q, r, seesRemoved)
+	if e != nil {
+		return out, e
+	}
 	rows, e := tx.QueryContext(ctx, `WITH ranked AS (
  SELECT account_id,COALESCE((SELECT a.username FROM accounts a WHERE a.id=h.account_id),max(user_name)) username,count(*) plays,sum(`+historyWatched(r)+`) watched FROM play_history h`+filter+` GROUP BY account_id
  ) SELECT account_id,username,plays,watched FROM ranked WHERE watched<? OR watched=? AND account_id>? ORDER BY watched DESC,account_id LIMIT ?`, append(args, afterTime, afterTime, afterID, q.Limit+1)...)
@@ -211,7 +259,9 @@ func (s *Service) DashboardPeople(ctx context.Context, q PlayHistoryQuery) (Dash
 		if e != nil {
 			return out, e
 		}
-		rows, e = tx.QueryContext(ctx, `SELECT DISTINCT profile_name FROM play_history h`+filter+` AND account_id=? AND profile_name<>'' AND profile_name<>user_name ORDER BY profile_name LIMIT 8`, append(append([]any{}, args...), p.AccountID)...)
+		rows, e = tx.QueryContext(ctx, `WITH named AS (
+	 SELECT `+historyProfileLabel()+` profile_name,h.user_name FROM play_history h`+filter+` AND h.account_id=?)
+	 SELECT DISTINCT profile_name FROM named WHERE profile_name<>'' AND profile_name<>user_name ORDER BY profile_name LIMIT 8`, append(append([]any{}, args...), p.AccountID)...)
 		if e != nil {
 			return out, e
 		}
@@ -258,15 +308,19 @@ func (s *Service) DashboardHistory(ctx context.Context, q PlayHistoryQuery, topK
 	if topKind != "movies" && topKind != "tv" && topKind != "music" {
 		return out, ErrCursor
 	}
-	filter, args, e := historyFilter(q, r)
-	if e != nil {
-		return out, e
-	}
 	tx, done, e := historyRead(ctx, s.db)
 	if e != nil {
 		return out, e
 	}
 	defer done()
+	seesRemoved, e := historySeesRemoved(ctx, tx, q.Audience)
+	if e != nil {
+		return out, e
+	}
+	filter, args, e := historyFilter(q, r, seesRemoved)
+	if e != nil {
+		return out, e
+	}
 	for _, b := range r.Buckets {
 		out.Buckets = append(out.Buckets, DashboardBucket{Start: b.Start, End: b.End, Partial: b.Partial, Kinds: []DashboardKindTime{}})
 	}

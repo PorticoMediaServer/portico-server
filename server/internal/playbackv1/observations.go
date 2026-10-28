@@ -863,6 +863,15 @@ func (s *Service) drainObservationTx(ctx context.Context, tx *sql.Tx, id string)
 // session's state (with its event) and ends it on a reported end; a drain
 // leaves state to its command. post runs after commit, outside the writer.
 func (s *Service) applyObservationTx(ctx context.Context, tx *sql.Tx, o *observations, c observationCapture, drain bool) (observationResult, []func(), error) {
+	// A captured sample may outlive its HTTP request and the profile retirement
+	// commit. Deny before even a liveness-only lease update or channel write.
+	retired, fenceErr := identity.ProfileRetiredTx(ctx, tx, c.principal.Viewer)
+	if fenceErr != nil {
+		return observationResult{}, nil, fenceErr
+	}
+	if retired {
+		return observationResult{consumed: true, retire: true}, nil, nil
+	}
 	r, err := loadRow(ctx, tx, c.e.session)
 	if errors.Is(err, ErrNotFound) {
 		return observationResult{retire: true}, nil, nil

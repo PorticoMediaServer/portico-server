@@ -20,7 +20,7 @@ func init() { persistence.UseSchemaTemplate() }
 
 const testNow int64 = 1793196000000
 
-var testBinding = Binding{"local", "account", "profile", "family"}
+var testBinding = Binding{Authority: "local", AccountID: "account", ProfileID: "profile", FamilyID: "family"}
 
 func key(now int64, n int) string { return fmt.Sprintf("p251_%013d_%032x", now, n) }
 func envelope(n int) Envelope {
@@ -579,7 +579,7 @@ func TestSparseMaxAccountPhysicalAccounting(t *testing.T) {
 			if _, err := tx.ExecContext(ctx, `INSERT INTO accounts(id,username,password_hash,profile_id) VALUES(?,?,X'00',?)`, account, account, account); err != nil {
 				return err
 			}
-			b := Binding{"local", account, strings.Repeat("p", 128), strings.Repeat("f", 128)}
+			b := Binding{Authority: "local", AccountID: account, ProfileID: strings.Repeat("p", 128), FamilyID: strings.Repeat("f", 128)}
 			e := envelope(i)
 			e.Operation = strings.Repeat("o", 96)
 			if _, err := Check(ctx, tx, b, e, testNow); err != nil {

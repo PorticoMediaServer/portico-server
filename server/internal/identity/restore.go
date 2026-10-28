@@ -115,7 +115,151 @@ func endEverySessionTx(ctx context.Context, tx *sql.Tx, now time.Time) (ended, c
 			ended = live - kept
 		}
 	}
+	if err = scrubMutationLifetimesTx(ctx, tx); err != nil {
+		return 0, 0, err
+	}
 	return ended, changed, nil
+}
+
+// scrubMutationLifetimesTx retires the P251 lifetimes this copy carried, before
+// the copy is served or handed back as a backup.
+//
+// A restore puts an older database in front of people, but it must not put their
+// old mutation history back in front of them. Receipts and roots are removed
+// first, so nothing committed by an earlier sign-in can be replayed; the profile
+// and installation lifetimes are then rotated so the same textual profile id or
+// installation secret is a different lifetime, and a request carrying either of
+// the old ones cannot match. The profile rows themselves stay: an erased profile
+// keeps its sanitized deleted row for history, and deleting it here would also
+// delete the name a person's play history is shown under.
+//
+// A purge that was already promised is not superseded by the rotation, but only
+// the exact original promise may be carried forward. Each profile is rotated one
+// at a time in this same transaction: before its old lifetime is overwritten, the
+// jobs for that exact profile whose profile incarnation AND membership
+// incarnation match, and whose profile is the sanitized erased row, are moved to
+// the new lifetime and their walk restarts from the first phase. A job that names
+// a different lifetime, a different membership incarnation, or a profile that is
+// still live is left exactly as it is: it is stale for the old lifetime, so it
+// stays blocked rather than being rebound to a lifetime (or a profile) it never
+// promised to purge. Nothing is inferred from a reused textual id.
+//
+// API credentials are not touched: an old receipt still cannot apply across a
+// restore because the receipt is gone, not because the key is.
+func scrubMutationLifetimesTx(ctx context.Context, tx *sql.Tx) error {
+	present := func(table string) (bool, error) {
+		var ok bool
+		err := tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE type='table' AND name=?)`, table).Scan(&ok)
+		return ok, err
+	}
+	// Children before owners. The root release trigger keeps the shared P251
+	// byte budget exact, exactly as live cleanup does.
+	for _, table := range []string{"user_mutation_receipts", "user_mutation_roots"} {
+		ok, err := present(table)
+		if err != nil {
+			return err
+		}
+		if !ok {
+			continue
+		}
+		if _, err = tx.ExecContext(ctx, `DELETE FROM `+table); err != nil {
+			return err
+		}
+	}
+	profiles, err := present("direct_profiles")
+	if err != nil {
+		return err
+	}
+	memberships, err := present("direct_memberships")
+	if err != nil {
+		return err
+	}
+	jobs, err := present("security_purge_jobs")
+	if err != nil {
+		return err
+	}
+	if profiles {
+		if err = rotateProfileLifetimesTx(ctx, tx, jobs && memberships); err != nil {
+			return err
+		}
+	}
+	// The installation secret survives (the app still holds it) but its lifetime
+	// does not: the incarnation is new and the registration watermark is cleared,
+	// so no old registration tuple can replay. A retired lifetime is not
+	// resurrected here.
+	installations, err := present("identity_installations")
+	if err != nil {
+		return err
+	}
+	if installations {
+		if _, err = tx.ExecContext(ctx, `UPDATE identity_installations SET incarnation=lower(hex(randomblob(16))),registration_revision=0,registration_nonce='',registration_root=''`); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// rotateProfileLifetimesTx walks the profiles by keyset and rotates one old
+// lifetime to its new value at a time. Rebindable is decided against that
+// profile's own old lifetime and membership incarnation, read in this same
+// transaction before the update, so no job is ever matched by a textual id after
+// its old lifetime has been replaced. Memory stays at one bounded page.
+func rotateProfileLifetimesTx(ctx context.Context, tx *sql.Tx, rebindJobs bool) error {
+	const page = 128
+	lastAccount, lastProfile := "", ""
+	for {
+		rows, err := tx.QueryContext(ctx, `SELECT account_id,id,deleted,lifetime FROM direct_profiles WHERE account_id>? OR (account_id=? AND id>?) ORDER BY account_id,id LIMIT ?`, lastAccount, lastAccount, lastProfile, page)
+		if err != nil {
+			return err
+		}
+		// Read the whole bounded page before writing: a write must not run while
+		// this transaction's read cursor is still open.
+		type profileRow struct {
+			account, profile, old string
+			deleted               int
+		}
+		batch := make([]profileRow, 0, page)
+		for rows.Next() {
+			var row profileRow
+			if err = rows.Scan(&row.account, &row.profile, &row.deleted, &row.old); err != nil {
+				rows.Close()
+				return err
+			}
+			lastAccount, lastProfile = row.account, row.profile
+			batch = append(batch, row)
+		}
+		err = rows.Err()
+		rows.Close()
+		if err != nil {
+			return err
+		}
+		account, incarnation := "", ""
+		for _, row := range batch {
+			if row.account != account {
+				account, incarnation = row.account, ""
+				if rebindJobs {
+					if e := tx.QueryRowContext(ctx, `SELECT incarnation FROM direct_memberships WHERE account_id=?`, row.account).Scan(&incarnation); e != nil && !errors.Is(e, sql.ErrNoRows) {
+						return e
+					}
+				}
+			}
+			next := newMutationIncarnation()
+			// Only the sanitized erased row can still own a purge promise, and
+			// only the job that named its exact old lifetime and current membership
+			// incarnation is that promise. Everything else stays stale.
+			if rebindJobs && row.deleted != 0 && incarnation != "" {
+				if _, err = tx.ExecContext(ctx, `UPDATE security_purge_jobs SET profile_incarnation=?,phase=0,cursor_key='',process_epoch='',attempt=0,next_attempt_ms=0,state='pending' WHERE authority='local' AND account_id=? AND profile_id=? AND profile_incarnation=? AND account_incarnation=?`, next, row.account, row.profile, row.old, incarnation); err != nil {
+					return err
+				}
+			}
+			if _, err = tx.ExecContext(ctx, `UPDATE direct_profiles SET lifetime=? WHERE account_id=? AND id=?`, next, row.account, row.profile); err != nil {
+				return err
+			}
+		}
+		if len(batch) < page {
+			return nil
+		}
+	}
 }
 
 // ScrubBackupCopy ends every session in a finished backup copy of the database

@@ -491,6 +491,16 @@ func (s *Service) AdvanceBulkJob(ctx context.Context, id string, access BulkAcce
 			out = j
 			return nil
 		}
+		retired, fenceErr := identity.ProfileRetiredTx(ctx, tx, p.Viewer)
+		if fenceErr != nil {
+			return fenceErr
+		}
+		if retired {
+			// The purge owns this job and all of its children. A captured worker
+			// must not publish an event or recreate state for its retired actor.
+			out = j
+			return nil
+		}
 		var commandErr error
 		if jobOwnerCommand(j.Command) {
 			commandErr = s.authorizeBulkCommand(ctx, tx, p, j.Command, a, false)
