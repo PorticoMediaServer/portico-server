@@ -790,19 +790,7 @@ var (
 // whether a viewer may play at all. `internal/identity` takes the security-fence
 // class for all of these anyway, which is the declared signal; this is the
 // textual one, for the paths that take their class from a background loop.
-var authorityTables = []string{
-	"libraries", "library_sources",
-	"accounts", "direct_profiles", "direct_memberships", "direct_profile_trust",
-	"restrictions", "profile_restrictions", "restriction_outbox",
-	"policy", "library_network_policy", "playback_owner_policy",
-	"authorization_session_families", "authorization_family_tokens", "authorization_family_renewals",
-	"dvr_private_libraries", "onboarding_state_v1", "quick_connect_v1",
-	"api_credentials", "identity_account_factors", "identity_browser_accounts",
-	"hosted_profile_revisions", "hosted_profile_erasure_receipts", "social_group_members",
-	// Ending a claim revokes or deletes its grants. Track that authority,
-	// rather than preparation progress, to stop open downloads immediately.
-	"download_grants",
-}
+var authorityTables = registeredAuthorityTables()
 
 // noteWrite preserves statement-time invalidation and remembers authority writes
 // until commit. database/sql serializes driver calls on each connection.
