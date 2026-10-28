@@ -102,6 +102,11 @@ func (s *Service) stageWithPassphrase(ctx context.Context, source Source, passph
 		return out, ErrRestorePending
 	}
 	originalSource := source
+	source, liveCleanup, err := s.snapshotLiveSource(ctx, source)
+	if err != nil {
+		return out, err
+	}
+	defer liveCleanup()
 	source, cleanup, err := s.decryptSource(ctx, source, passphrase)
 	if err != nil {
 		return out, err
@@ -289,6 +294,9 @@ func (s *Service) resolveSource(source Source) (db, dir string, files []string, 
 		if err != nil {
 			return "", "", nil, nil, ErrSourceInvalid
 		}
+		if err = s.sourceFilesSafe(filepath.Join(folder, ManifestName)); err != nil {
+			return "", "", nil, nil, err
+		}
 		manifest, err := readManifest(folder)
 		if err != nil {
 			return "", "", nil, nil, ErrSourceInvalid
@@ -296,6 +304,9 @@ func (s *Service) resolveSource(source Source) (db, dir string, files []string, 
 		names, ok := stateFileNames(manifest.Files)
 		if !ok {
 			return "", "", nil, nil, ErrSourceInvalid
+		}
+		if err = s.sourceManifestSafe(folder, manifest); err != nil {
+			return "", "", nil, nil, err
 		}
 		if err = checkSourceHashes(folder, manifest); err != nil {
 			return "", "", nil, nil, err
@@ -311,6 +322,9 @@ func (s *Service) resolveSource(source Source) (db, dir string, files []string, 
 		return "", "", nil, nil, ErrSourceInvalid
 	}
 	if info.IsDir() {
+		if err = s.sourceFilesSafe(filepath.Join(path, ManifestName)); err != nil {
+			return "", "", nil, nil, err
+		}
 		manifest, err := readManifest(path)
 		if err != nil {
 			return "", "", nil, nil, ErrSourceInvalid
@@ -318,6 +332,9 @@ func (s *Service) resolveSource(source Source) (db, dir string, files []string, 
 		names, ok := stateFileNames(manifest.Files)
 		if !ok {
 			return "", "", nil, nil, ErrSourceInvalid
+		}
+		if err = s.sourceManifestSafe(path, manifest); err != nil {
+			return "", "", nil, nil, err
 		}
 		if err = checkSourceHashes(path, manifest); err != nil {
 			return "", "", nil, nil, err

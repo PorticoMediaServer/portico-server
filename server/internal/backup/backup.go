@@ -258,6 +258,7 @@ type Service struct {
 	settingsStore *PolicyStore
 	directory     string
 	db            *sql.DB
+	sourceGuard   sourceFileGuard
 	serverID      string
 	serverVersion string
 	schemaVersion int
@@ -307,6 +308,7 @@ func New(state string, db *sql.DB, serverID, serverVersion string, schemaVersion
 	return &Service{
 		state:         state,
 		db:            db,
+		sourceGuard:   newSourceFileGuard(db),
 		serverID:      serverID,
 		serverVersion: serverVersion,
 		schemaVersion: schemaVersion,
