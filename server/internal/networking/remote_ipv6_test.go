@@ -34,6 +34,22 @@ func routeHostedFake(t *testing.T, cert *CertificateManager, ctx context.Context
 	counts := &contactCounts{}
 	cert.transport.client.Transport = claimRoundTrip(func(r *http.Request) (*http.Response, error) {
 		switch {
+		case strings.HasSuffix(r.URL.Path, "/routes/prove"):
+			var in struct {
+				Endpoint struct {
+					BaseURL string `json:"baseUrl"`
+				} `json:"endpoint"`
+			}
+			_ = json.NewDecoder(r.Body).Decode(&in)
+			raw, _ := json.Marshal(EndpointReceipt{BaseURL: in.Endpoint.BaseURL, VerifiedAt: time.Now().UTC()})
+			return reply(200, string(raw)), nil
+		case strings.HasSuffix(r.URL.Path, "/direct-route/withdraw"):
+			var in struct {
+				Family string `json:"family"`
+			}
+			_ = json.NewDecoder(r.Body).Decode(&in)
+			raw, _ := json.Marshal(map[string]any{"namespace": q.Namespace, "family": in.Family, "withdrawn": true})
+			return reply(200, string(raw)), nil
 		case strings.HasSuffix(r.URL.Path, "/routes"):
 			var in RouteObservation
 			raw, _ := io.ReadAll(r.Body)
@@ -44,7 +60,15 @@ func routeHostedFake(t *testing.T, cert *CertificateManager, ctx context.Context
 			return reply(http.StatusOK, string(body)), nil
 		case strings.HasSuffix(r.URL.Path, "/direct-route"):
 			counts.names++
-			host := "c-0123456789abcdef0123456789abcdef." + q.Namespace + ".direct.getportico.tv"
+			var pub struct {
+				Address string `json:"address"`
+			}
+			_ = json.NewDecoder(r.Body).Decode(&pub)
+			prefix := "c4-"
+			if strings.Contains(pub.Address, ":") {
+				prefix = "c6-"
+			}
+			host := prefix + "0123456789abcdef0123456789abcdef." + q.Namespace + ".direct.getportico.tv"
 			body, _ := json.Marshal(certificateRoute{Namespace: q.Namespace, Hostname: host, BaseURL: "https://" + host + ":32500", CertificateDNSName: "*." + q.Namespace + ".direct.getportico.tv"})
 			return reply(http.StatusOK, string(body)), nil
 		}
@@ -53,40 +77,47 @@ func routeHostedFake(t *testing.T, cert *CertificateManager, ctx context.Context
 	return counts
 }
 
-// A global IPv6 address is published only when inbound IPv6 is known to reach
-// the server. With no pinhole and no owner confirmation it stays unpublished
-// and the status says why; the owner's confirmation publishes it.
-func TestUnverifiedIPv6IsNotPublished(t *testing.T) {
+// Global IPv6 is tried by default; an explicit owner disable withdraws it.
+func TestIPv6DefaultAllowedAndOwnerDisableWithdraws(t *testing.T) {
 	f, m, topo, _, ctx := contactFixture(t)
-	cert := m.h.certificates
 	m.h.endpoints.pending = map[string]endpointPending{}
+	cert := m.h.certificates
 	installSyntheticCertificate(t, cert, ctx)
 	cert.SetListening(32500, true)
 	counts := routeHostedFake(t, cert, ctx)
-	// The first snapshot binds the settings to the current claim authority.
-	if _, _, _, _, key, e := m.snapshot(ctx); e != nil {
+	c, _, _, _, key, e := m.snapshot(ctx)
+	clear(key)
+	if e != nil {
 		t.Fatal(e)
-	} else {
-		clear(key)
 	}
-	if _, e := f.db.Exec(`UPDATE networking_remote_settings SET enabled=1,mapping=0`); e != nil {
+	if !c.IPv6Open {
+		t.Fatal("new authority did not default to IPv6 allowed")
+	}
+	if _, e = f.db.Exec(`UPDATE networking_remote_settings SET enabled=1,mapping=0`); e != nil {
 		t.Fatal(e)
 	}
 	topo.Public = []string{"2a03:4000:6:8::1"}
-	if e := m.step(ctx); e != nil {
-		t.Logf("step: %v", e)
-	}
+	_ = m.step(ctx)
 	status := remoteStatusOf(t, f)
-	if status.IPv6 != "unverified" || counts.names != 0 {
-		t.Fatalf("unverified IPv6 published: ipv6=%q names=%d state=%s err=%s candidates=%v", status.IPv6, counts.names, status.State, status.ErrorCode, status.Candidates)
+	if status.IPv6 != "verified" || counts.names != 1 {
+		t.Fatalf("default IPv6 was not proven: %+v names=%d", status, counts.names)
 	}
-	if _, e := f.db.Exec(`UPDATE networking_remote_settings SET ipv6_open=1,revision=revision+1`); e != nil {
+	if _, e = f.db.Exec(`UPDATE networking_remote_settings SET ipv6_open=0,revision=revision+1`); e != nil {
 		t.Fatal(e)
 	}
 	_ = m.step(ctx)
 	status = remoteStatusOf(t, f)
-	if status.IPv6 != "owner_confirmed" || counts.names == 0 {
-		t.Fatalf("owner-confirmed IPv6 not published: ipv6=%q names=%d", status.IPv6, counts.names)
+	if status.IPv6 != "disabled" || counts.names != 1 {
+		t.Fatalf("disabled IPv6 was attempted: %+v names=%d", status, counts.names)
+	}
+	for _, candidate := range status.Candidates {
+		if strings.Contains(candidate.BaseURL, "c6-") {
+			t.Fatal("disabled IPv6 candidate retained", candidate)
+		}
+	}
+	var remaining int
+	if e = f.db.QueryRow(`SELECT count(*) FROM networking_route_names WHERE instr(address,':')>0`).Scan(&remaining); e != nil || remaining != 0 {
+		t.Fatal("IPv6 name not withdrawn", remaining, e)
 	}
 }
 
@@ -149,7 +180,7 @@ func TestIPv6PinholeOpensPublishesAndCloses(t *testing.T) {
 	}
 	topo.Public = []string{"2a03:4000:6:8::1"}
 	_ = m.step(ctx)
-	if status := remoteStatusOf(t, f); status.IPv6 != "pinhole" || gateway.opened != 1 || counts.names == 0 {
+	if status := remoteStatusOf(t, f); status.IPv6 != "verified" || gateway.opened != 1 || counts.names == 0 {
 		t.Fatalf("ipv6=%q opened=%d mappings=%v", status.IPv6, gateway.opened, status.Mappings)
 	}
 	topo.Public = []string{}
@@ -227,7 +258,7 @@ func TestPinholeProbeBacksOffWithoutFirewallControl(t *testing.T) {
 func TestRouteLabelDropsStaleCachedNames(t *testing.T) {
 	f, m, _, _, ctx := contactFixture(t)
 	const oldLabel, newLabel = "0123456789abcdef0123456789abcdef", "fedcba9876543210fedcba9876543210"
-	for _, row := range [][2]string{{"188.68.34.120", "https://c-" + oldLabel + ".ptc-aaaaaaaaaaaaaaaaaaaa.direct.getportico.tv:32500"}, {"2a03:4000:6:8::1", "https://c-" + newLabel + ".ptc-aaaaaaaaaaaaaaaaaaaa.direct.getportico.tv:32500"}} {
+	for _, row := range [][2]string{{"188.68.34.120", "https://c4-" + oldLabel + ".ptc-aaaaaaaaaaaaaaaaaaaa.direct.getportico.tv:32500"}, {"2a03:4000:6:8::1", "https://c6-" + newLabel + ".ptc-aaaaaaaaaaaaaaaaaaaa.direct.getportico.tv:32500"}} {
 		if _, e := f.db.Exec(`INSERT INTO networking_route_names(authority,address,port,url) VALUES('auth',?,32500,?)`, row[0], row[1]); e != nil {
 			t.Fatal(e)
 		}

@@ -7,14 +7,14 @@ import {routeOrigin} from './route-identity.ts';
 import {keepReadable} from './tolerant.ts';
 /**
  * Owner remote-access settings. A save sends the whole object back, so fields a server added
- * (lanSharing, ipv6Open) must round-trip: dropping one would reset it to false. Older servers
- * omit them.
+ * (lanSharing, ipv6Open) must round-trip. ipv6Open defaults to allowed; false
+ * disables IPv6 publication, and true still requires Hosted's inbound proof.
  */
 export type RemoteConfiguration={revision:string;enabled:boolean;mapping:boolean;pcp:boolean;natpmp:boolean;upnp:boolean;publicPort:number;gateway:string;lanSharing?:boolean;
- /** The owner confirms inbound IPv6 reaches this server (their router allows it); without it, or a pinhole, the IPv6 address isn't published. */
+ /** Allow proven inbound IPv6; false is the owner's disable override. */
  ipv6Open?:boolean};
 /** Why the server's global IPv6 address is (or isn't) published. */
-export type RemoteIPv6State='pinhole'|'firewall_open'|'owner_confirmed'|'unverified';
+export type RemoteIPv6State='pinhole'|'firewall_open'|'verified'|'disabled'|'unverified';
 export type RemoteAccess={authorityId:string;generation:string;config:RemoteConfiguration;state:string;errorCode?:string;topology:{gateway?:string;localAddress?:string;lan:string[];public:string[];bind:string;errorCode?:string};candidates:{baseUrl:string;class:'lan'|'public'|'manual';state:string;verifiedAt?:string}[];mappings:{protocol:string;state:string;errorCode?:string;externalPort:number;expiresAt:string}[];ipv6?:RemoteIPv6State|string;checkedAt?:string;nextAttempt?:string};
 const object=(v:unknown):v is Record<string,unknown>=>!!v&&typeof v==='object'&&!Array.isArray(v);
 const counter=(v:unknown)=>typeof v==='string'&&/^[1-9][0-9]{0,18}$/.test(v)&&BigInt(v)<=9223372036854775807n;

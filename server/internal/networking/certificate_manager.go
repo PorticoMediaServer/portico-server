@@ -10,6 +10,7 @@ import (
 	"net/url"
 	"os"
 	"strconv"
+	"strings"
 	"time"
 )
 
@@ -352,6 +353,10 @@ func (m *CertificateManager) updateRoute(ctx context.Context, q certificateState
 }
 
 func (m *CertificateManager) updateRouteLocked(ctx context.Context, q certificateState, c CertificateConfig) {
+	var enabled, ipv6Allowed bool
+	if e := m.store.db.QueryRowContext(ctx, `SELECT enabled,ipv6_open FROM networking_remote_settings WHERE singleton=1`).Scan(&enabled, &ipv6Allowed); e != nil || !enabled || strings.Contains(c.PublicAddress, ":") && !ipv6Allowed {
+		return
+	}
 	var route certificateRoute
 	e := m.transport.certificateCall(ctx, q.Scope.Intent, "route", "", struct {
 		Address string `json:"address"`
@@ -359,14 +364,16 @@ func (m *CertificateManager) updateRouteLocked(ctx context.Context, q certificat
 	}{c.PublicAddress, c.PublicPort}, &route)
 	if e == nil {
 		u, parse := url.Parse(route.BaseURL)
-		// A4: Hosted names routes with the member label (c-<label>.<ns>); the
-		// older current.<ns> stays accepted while Hosted deployments migrate. Port
-		// 443 is implicit in the URL.
-		port := u.Port()
+		// Every returned name pins the requested family and retains its own port.
+		// The existing wildcard covers both family names; 443 is implicit.
+		port := ""
+		if parse == nil {
+			port = u.Port()
+		}
 		if parse == nil && port == "" && c.PublicPort == 443 {
 			port = "443"
 		}
-		if parse != nil || u.Scheme != "https" || u.Hostname() != route.Hostname || port != strconv.Itoa(c.PublicPort) || u.Path != "" || u.User != nil || u.RawQuery != "" || u.Fragment != "" || route.Namespace != q.Namespace || !validHostedRouteName(route.Hostname, q.Namespace) || route.CertificateDNSName != "*."+q.Namespace+".direct.getportico.tv" {
+		if parse != nil || u.Scheme != "https" || u.Hostname() != route.Hostname || port != strconv.Itoa(c.PublicPort) || u.Path != "" || u.User != nil || u.RawQuery != "" || u.Fragment != "" || route.Namespace != q.Namespace || !validHostedRouteFamily(route.Hostname, q.Namespace, c.PublicAddress) || route.CertificateDNSName != "*."+q.Namespace+".direct.getportico.tv" {
 			e = ErrInvalid
 		}
 	}

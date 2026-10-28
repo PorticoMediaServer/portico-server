@@ -31,6 +31,7 @@ type HTTPTransport struct {
 	routeIPv4   *http.Client
 	routeIPv6   *http.Client
 	credentials CredentialReader
+	routeProofs *endpointRegistrations
 }
 
 // devHostedRoots is nil (the system roots) except in a development build
@@ -42,7 +43,7 @@ func NewHTTPTransport(origin string, credentials CredentialReader) (*HTTPTranspo
 		return nil, ErrInvalid
 	}
 	return &HTTPTransport{
-		origin: origin, credentials: credentials,
+		origin: origin, credentials: credentials, routeProofs: &endpointRegistrations{pending: make(map[string]endpointPending)},
 		client: newClaimHTTPClient(""), routeIPv4: newClaimHTTPClient("tcp4"), routeIPv6: newClaimHTTPClient("tcp6"),
 	}, nil
 }

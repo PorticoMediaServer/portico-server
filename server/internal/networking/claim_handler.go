@@ -110,7 +110,11 @@ func NewClaimHandler(store *SQLiteStore, runner *AuthorityRunner, transport Tran
 	if store == nil || runner == nil || transport == nil || signer == nil || authorize == nil || name == nil {
 		return nil, ErrInvalid
 	}
-	return &ClaimHandler{store: store, runner: runner, transport: transport, signer: signer, authorize: authorize, name: name, recoveryWake: make(chan struct{}, 1), endpoints: endpointRegistrations{pending: make(map[string]endpointPending)}, failures: sharedFailureLog}, nil
+	h := &ClaimHandler{store: store, runner: runner, transport: transport, signer: signer, authorize: authorize, name: name, recoveryWake: make(chan struct{}, 1), endpoints: endpointRegistrations{pending: make(map[string]endpointPending)}, failures: sharedFailureLog}
+	if t, ok := transport.(*HTTPTransport); ok {
+		t.routeProofs = &h.endpoints
+	}
+	return h, nil
 }
 
 // HTTPRegistrar is the route binding surface shared by net/http and the API registry.

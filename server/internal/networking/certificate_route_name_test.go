@@ -21,7 +21,7 @@ func TestCertificateRouteAcceptsTheMemberLabelName(t *testing.T) {
 		if e != nil {
 			t.Fatal(e)
 		}
-		host := "c-0123456789abcdef0123456789abcdef." + q.Namespace + ".direct.getportico.tv"
+		host := "c4-0123456789abcdef0123456789abcdef." + q.Namespace + ".direct.getportico.tv"
 		base := "https://" + host
 		if port != 443 {
 			base += ":32500"

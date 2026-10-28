@@ -35,7 +35,11 @@ func routeRaceFixture(t *testing.T) (*sqlFixture, *RemoteManager, CertificateCon
 		t.Fatal(e)
 	}
 	for _, address := range []string{"188.68.34.120", "2a03:4000:6:8::1"} {
-		if _, e = f.db.Exec(`INSERT INTO networking_route_names(authority,address,port,url) VALUES(?,?,32500,?)`, authority, address, "https://current."+q.Namespace+".direct.getportico.tv:32500"); e != nil {
+		prefix := "c4-"
+		if strings.Contains(address, ":") {
+			prefix = "c6-"
+		}
+		if _, e = f.db.Exec(`INSERT INTO networking_route_names(authority,address,port,url) VALUES(?,?,32500,?)`, authority, address, "https://"+prefix+"0123456789abcdef0123456789abcdef."+q.Namespace+".direct.getportico.tv:32500"); e != nil {
 			t.Fatal(e)
 		}
 	}
@@ -94,7 +98,7 @@ func TestRouteMutationSerializesCertificateNamingAndFamilyWithdrawal(t *testing.
 					remoteIPv4 = true
 					names++
 					mu.Unlock()
-					host := "current." + q.Namespace + ".direct.getportico.tv"
+					host := "c4-0123456789abcdef0123456789abcdef." + q.Namespace + ".direct.getportico.tv"
 					raw, _ := json.Marshal(certificateRoute{Namespace: q.Namespace, Hostname: host, BaseURL: "https://" + host + ":32500", CertificateDNSName: "*." + q.Namespace + ".direct.getportico.tv"})
 					return reply(200, string(raw)), nil
 				case strings.HasSuffix(r.URL.Path, "/routes"):

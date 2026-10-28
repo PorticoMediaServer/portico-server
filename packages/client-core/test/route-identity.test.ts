@@ -79,3 +79,19 @@ test('explicit HTTP origins work on public, overlay and IPv6 addresses',()=>{
  for(const origin of ['http://media.example:32500','http://100.64.1.2:32500','http://203.0.113.9:32500','http://[2001:db8::9]:32500']) assert.equal(routeOrigin(origin),origin);
  for(const origin of ['http://user:secret@media.example','http://media.example/path','http://media.example?secret=x']) assert.throws(()=>routeOrigin(origin));
 });
+
+test('signed per-family public candidates keep distinct ports and race the reachable family',async()=>{
+ const {RouteConnection}=await import('../src/route-connection.ts');
+ const origins=['https://ipv4-route.example:42424','https://ipv6-route.example:32500'];
+ const signed=signedLAN('https://'+alias+':32500');
+ const document=JSON.parse(Buffer.from(signed.payload,'base64url').toString());
+ document.candidates=origins.map(baseUrl=>({baseUrl,class:'public',quality:'reachable',generation:'1'}));
+ const raw=Buffer.from(JSON.stringify(document));
+ const verified=await verifyRoutes({payload:raw.toString('base64url'),signature:sign(null,raw,keys.privateKey).toString('base64url')},key,expected);
+ assert.deepEqual(verified.document.candidates.map(c=>c.baseUrl),origins);
+ for(const reachable of origins){
+  const probes:string[]=[];
+  const connection=new RouteConnection({pin,logicalOrigin:origins[0],memory:{current:verified,paired:[]},probe:async origin=>{probes.push(origin);if(origin!==reachable)throw new Error('family unavailable');return pin;}});
+  try{assert.equal(await connection.resolve(),reachable);assert(probes.includes(reachable));assert.equal(connection.getSnapshot().origin,reachable);}finally{connection.dispose();}
+ }
+});

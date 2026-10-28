@@ -6,6 +6,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"net/netip"
 	"net/url"
 	"portico.local/server/internal/dbwork"
 	"portico.local/server/internal/usermutation"
@@ -24,9 +25,8 @@ type RemoteConfig struct {
 	UPnP       bool   `json:"upnp"`
 	PublicPort int    `json:"publicPort"`
 	Gateway    string `json:"gateway"`
-	// IPv6Open: the owner says inbound IPv6 reaches this server (their router
-	// allows it and has no IGDv2 firewall control). Without it, or a pinhole,
-	// the server's global IPv6 address is not published.
+	// IPv6Open allows publication only after Hosted proves inbound IPv6. It is
+	// true by default; false is the owner's explicit disable override.
 	IPv6Open bool `json:"ipv6Open"`
 }
 type RemoteStatus struct {
@@ -38,8 +38,8 @@ type RemoteStatus struct {
 	Topology    Topology          `json:"topology"`
 	Candidates  []RemoteCandidate `json:"candidates"`
 	Mappings    []MappingSummary  `json:"mappings"`
-	// IPv6 says why the global IPv6 address is or isn't published: pinhole,
-	// firewall_open, owner_confirmed, or unverified (not published).
+	// IPv6 reports disabled, unverified, verified, pinhole or firewall_open.
+	// Router state alone never proves the public route.
 	IPv6        string     `json:"ipv6,omitempty"`
 	CheckedAt   *time.Time `json:"checkedAt,omitempty"`
 	NextAttempt *time.Time `json:"nextAttempt,omitempty"`
@@ -83,7 +83,7 @@ func seedRemoteSettings(ctx context.Context, db *sql.DB) error {
 		return e
 	}
 	defer clear(key)
-	if _, e = tx.ExecContext(ctx, `INSERT OR IGNORE INTO networking_remote_settings(singleton,signature_key) VALUES(1,?)`, key); e != nil {
+	if _, e = tx.ExecContext(ctx, `INSERT OR IGNORE INTO networking_remote_settings(singleton,signature_key,ipv6_open) VALUES(1,?,1)`, key); e != nil {
 		return e
 	}
 	return commitClaimDatabaseTx(ctx, gated)
@@ -121,8 +121,8 @@ func (m *RemoteManager) snapshot(ctx context.Context) (RemoteConfig, certificate
 				return c, cert, authority, state, key, e
 			}
 		}
-		c = RemoteConfig{Revision: c.Revision + 1, Enabled: enabled, PCP: true, NATPMP: true, UPnP: true, PublicPort: 32500}
-		if _, e = tx.ExecContext(ctx, `UPDATE networking_remote_settings SET authority=?,revision=?,enabled=?,lan_sharing=0,mapping=0,pcp=1,natpmp=1,upnp=1,public_port=32500,gateway='',manual_url='',ipv6_open=0 WHERE singleton=1`, authority, c.Revision, enabled); e != nil {
+		c = RemoteConfig{Revision: c.Revision + 1, Enabled: enabled, PCP: true, NATPMP: true, UPnP: true, PublicPort: 32500, IPv6Open: true}
+		if _, e = tx.ExecContext(ctx, `UPDATE networking_remote_settings SET authority=?,revision=?,enabled=?,lan_sharing=0,mapping=0,pcp=1,natpmp=1,upnp=1,public_port=32500,gateway='',manual_url='',ipv6_open=1 WHERE singleton=1`, authority, c.Revision, enabled); e != nil {
 			return c, cert, authority, state, key, e
 		}
 		if _, e = tx.ExecContext(ctx, `UPDATE networking_remote_state SET generation=generation+1,topology_digest='',route_digest='',next_attempt=0,attempts=0,status='{}' WHERE singleton=1`); e != nil {
@@ -256,13 +256,13 @@ func (m *RemoteManager) removeMapping(ctx context.Context, id string) error {
 func (m *RemoteManager) routeName(ctx context.Context, q certificateState, address string, port int, allowRequest bool) (string, error) {
 	var origin string
 	e := m.h.store.db.QueryRowContext(ctx, `SELECT url FROM networking_route_names WHERE authority=? AND address=? AND port=?`, q.Scope.ID, address, port).Scan(&origin)
-	if e == nil {
+	if e == nil && validHostedRouteFamilyOrigin(origin, q.Namespace, address, port) {
 		if port == 443 {
 			origin = strings.TrimSuffix(origin, ":443")
 		}
 		return origin, nil
 	}
-	if !errors.Is(e, sql.ErrNoRows) {
+	if e != nil && !errors.Is(e, sql.ErrNoRows) {
 		return "", e
 	}
 	if !allowRequest {
@@ -277,7 +277,7 @@ func (m *RemoteManager) routeName(ctx context.Context, q certificateState, addre
 		return "", e
 	}
 	u, e := url.Parse(route.BaseURL)
-	if e != nil || !endpointOrigin(route.BaseURL) || u.Hostname() != route.Hostname || route.Namespace != q.Namespace || route.CertificateDNSName != "*."+q.Namespace+".direct.getportico.tv" || !validHostedRouteName(route.Hostname, q.Namespace) || ((u.Port() == "" && port != 443) || (u.Port() != "" && u.Port() != strconv.Itoa(port))) {
+	if e != nil || !endpointOrigin(route.BaseURL) || u.Hostname() != route.Hostname || route.Namespace != q.Namespace || route.CertificateDNSName != "*."+q.Namespace+".direct.getportico.tv" || !validHostedRouteFamily(route.Hostname, q.Namespace, address) || ((u.Port() == "" && port != 443) || (u.Port() != "" && u.Port() != strconv.Itoa(port))) {
 		return "", ErrInvalid
 	}
 	e = m.h.store.WithInstalledTransaction(ctx, q.Scope.Intent, func(ctx context.Context, tx *sql.Tx) error {
@@ -287,7 +287,7 @@ func (m *RemoteManager) routeName(ctx context.Context, q certificateState, addre
 		// This row means "Hosted was last told this address". Keep only the newest per address
 		// family: if a connection flips A, B, then back to A, a remembered A would skip the
 		// report and leave Hosted and DNS pointing at B.
-		if _, e := tx.ExecContext(ctx, `DELETE FROM networking_route_names WHERE address<>? AND (instr(address,':')>0)=(instr(?,':')>0)`, address, address); e != nil {
+		if _, e := tx.ExecContext(ctx, `DELETE FROM networking_route_names WHERE (address<>? OR port<>?) AND (instr(address,':')>0)=(instr(?,':')>0)`, address, port, address); e != nil {
 			return e
 		}
 		_, e := tx.ExecContext(ctx, `INSERT OR REPLACE INTO networking_route_names(authority,address,port,url) VALUES(?,?,?,?)`, q.Scope.ID, address, port, route.BaseURL)
@@ -320,20 +320,25 @@ func (m *RemoteManager) currentConfigTx(ctx context.Context, tx *sql.Tx, authori
 
 func validHostedRouteName(host, namespace string) bool {
 	suffix := "." + namespace + ".direct.getportico.tv"
-	if host == "current"+suffix {
-		return true
-	}
 	if !strings.HasSuffix(host, suffix) {
 		return false
 	}
 	label := strings.TrimSuffix(host, suffix)
-	if len(label) != 34 || !strings.HasPrefix(label, "c-") {
+	if !strings.HasPrefix(label, "c4-") && !strings.HasPrefix(label, "c6-") {
 		return false
 	}
-	for _, r := range label[2:] {
-		if !(r >= '0' && r <= '9' || r >= 'a' && r <= 'f') {
-			return false
-		}
+	return len(label) == 35 && strings.Trim(label[3:], "0123456789abcdef") == ""
+}
+
+func validHostedRouteFamily(host, namespace, address string) bool {
+	ip, err := netip.ParseAddr(address)
+	if err != nil || ip.Is4In6() || !validHostedRouteName(host, namespace) {
+		return false
 	}
-	return true
+	return ip.Is4() && strings.HasPrefix(host, "c4-") || ip.Is6() && strings.HasPrefix(host, "c6-")
+}
+
+func validHostedRouteFamilyOrigin(origin, namespace, address string, port int) bool {
+	u, err := url.Parse(origin)
+	return err == nil && endpointOrigin(origin) && validHostedRouteFamily(u.Hostname(), namespace, address) && (u.Port() == strconv.Itoa(port) || u.Port() == "" && port == 443)
 }

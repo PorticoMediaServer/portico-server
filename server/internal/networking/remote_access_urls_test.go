@@ -74,7 +74,15 @@ func captureAccessURLs(t *testing.T, m *RemoteManager, ctx context.Context) *acc
 			}{in.Generation})
 			return reply(http.StatusOK, string(body)), nil
 		case strings.HasSuffix(r.URL.Path, "/direct-route"):
-			host := "c-0123456789abcdef0123456789abcdef." + namespace + ".direct.getportico.tv"
+			var pub struct {
+				Address string `json:"address"`
+			}
+			_ = json.NewDecoder(r.Body).Decode(&pub)
+			prefix := "c4-"
+			if strings.Contains(pub.Address, ":") {
+				prefix = "c6-"
+			}
+			host := prefix + "0123456789abcdef0123456789abcdef." + namespace + ".direct.getportico.tv"
 			body, _ := json.Marshal(certificateRoute{Namespace: namespace, Hostname: host, BaseURL: "https://" + host + ":32500", CertificateDNSName: "*." + namespace + ".direct.getportico.tv"})
 			return reply(http.StatusOK, string(body)), nil
 		}

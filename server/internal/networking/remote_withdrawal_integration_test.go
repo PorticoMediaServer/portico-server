@@ -35,7 +35,11 @@ func TestManagerIPv4LossDoesNotResurrectRetainedObservation(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, address := range []string{"188.68.34.120", "2a03:4000:6:8::1"} {
-		if _, err = f.db.Exec(`INSERT INTO networking_route_names(authority,address,port,url) VALUES(?,?,32500,?)`, q.Scope.ID, address, "https://current."+q.Namespace+".direct.getportico.tv:32500"); err != nil {
+		prefix := "c4-"
+		if strings.Contains(address, ":") {
+			prefix = "c6-"
+		}
+		if _, err = f.db.Exec(`INSERT INTO networking_route_names(authority,address,port,url) VALUES(?,?,32500,?)`, q.Scope.ID, address, "https://"+prefix+"0123456789abcdef0123456789abcdef."+q.Namespace+".direct.getportico.tv:32500"); err != nil {
 			t.Fatal(err)
 		}
 	}

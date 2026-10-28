@@ -3,6 +3,7 @@ package networking
 import (
 	"bytes"
 	"context"
+	"crypto/rand"
 	"encoding/base64"
 	"encoding/json"
 	"io"
@@ -24,7 +25,7 @@ func (*certificateHTTPError) Error() string {
 }
 func safeCertificateCode(code string) string {
 	switch code {
-	case "", "certificate_not_found", "certificate_not_due", "certificate_conflict", "certificate_configuration_required", "invalid_certificate_request",
+	case "", "address_unverified", "certificate_not_found", "certificate_not_due", "certificate_conflict", "certificate_configuration_required", "invalid_certificate_request",
 		"acceptance_uncertain", "authority_changed", "creation_started", "provider_rejected", "provider_response_invalid", "provider_order_invalid", "dns_validation_failed",
 		"coordinator_retry", "cleanup_retry", "revocation_retry", "provider_retry", "acme_account_configuration_or_retry", "dns_or_issuer_configuration":
 		return code
@@ -102,6 +103,7 @@ func (t *HTTPTransport) certificateCall(ctx context.Context, v Intent, operation
 	if operation == "route" {
 		var publication struct {
 			Address string `json:"address"`
+			Port    int    `json:"port"`
 		}
 		if json.Unmarshal(raw, &publication) != nil || publication.Address == "" || !validCertificateAddress(publication.Address) {
 			return ErrInvalid
@@ -110,6 +112,34 @@ func (t *HTTPTransport) certificateCall(ctx context.Context, v Intent, operation
 		if e != nil {
 			return ErrInvalid
 		}
+		if publication.Port < 1 || publication.Port > 65535 || t.routeProofs == nil {
+			return ErrInvalid
+		}
+		idBytes := make([]byte, 32)
+		if _, e = rand.Read(idBytes); e != nil {
+			return e
+		}
+		id := base64.RawURLEncoding.EncodeToString(idBytes)
+		t.routeProofs.Lock()
+		if t.routeProofs.pending == nil {
+			t.routeProofs.pending = make(map[string]endpointPending)
+		}
+		if len(t.routeProofs.pending) >= 2 {
+			t.routeProofs.Unlock()
+			return ErrUnavailable
+		}
+		t.routeProofs.pending[id] = endpointPending{v, routeURL(address, publication.Port, "https"), ctx}
+		t.routeProofs.Unlock()
+		defer func() { t.routeProofs.Lock(); delete(t.routeProofs.pending, id); t.routeProofs.Unlock() }()
+		raw, e = json.Marshal(struct {
+			Address        string `json:"address"`
+			Port           int    `json:"port"`
+			RegistrationID string `json:"registrationId"`
+		}{publication.Address, publication.Port, id})
+		if e != nil {
+			return e
+		}
+		defer clear(raw)
 		client = t.routeIPv6
 		if address.Is4() {
 			client = t.routeIPv4

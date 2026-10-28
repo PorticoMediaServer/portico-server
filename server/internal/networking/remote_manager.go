@@ -10,6 +10,7 @@ import (
 	"math/rand/v2"
 	"net"
 	"net/netip"
+	"net/url"
 	"portico.local/server/internal/dbwork"
 	"portico.local/server/internal/operations"
 	"sort"
@@ -140,7 +141,7 @@ func (m *RemoteManager) RouteLabel(ctx context.Context, label string) error {
 	if m == nil || len(label) != 32 || strings.Trim(label, "0123456789abcdef") != "" {
 		return ErrInvalid
 	}
-	result, e := dbwork.ExecWrite(ctx, m.h.store.db, dbwork.ClassFrom(ctx, dbwork.ClassInteractive), `DELETE FROM networking_route_names WHERE instr(url,'://c-'||?||'.')=0`, label)
+	result, e := dbwork.ExecWrite(ctx, m.h.store.db, dbwork.ClassFrom(ctx, dbwork.ClassInteractive), `DELETE FROM networking_route_names WHERE instr(url,'://c4-'||?||'.')=0 AND instr(url,'://c6-'||?||'.')=0`, label, label)
 	if e != nil {
 		return e
 	}
@@ -442,12 +443,10 @@ func (m *RemoteManager) stepRouteLocked(ctx context.Context) error {
 	observed := map[string]int{}
 	if c.Enabled && ready {
 		for _, raw := range topo.Public {
-			// A global IPv6 address is a route only when inbound connections reach
-			// it: a live pinhole or an open firewall (the mapping loop below adds
-			// those), or the owner saying so. Publishing it otherwise sends
-			// dual-stack clients to an address the router drops.
+			// Try global IPv6 by default. Hosted makes an inbound key proof to the
+			// exact address and port before it publishes any DNS answer.
 			if ip, err := netip.ParseAddr(raw); err == nil && ip.Is6() && !ip.Is4In6() && !c.IPv6Open {
-				status.IPv6 = "unverified"
+				status.IPv6 = "disabled"
 				continue
 			}
 			addresses[raw] = port
@@ -458,17 +457,17 @@ func (m *RemoteManager) stepRouteLocked(ctx context.Context) error {
 		}
 		if cert.Config.PublicAddress != "" {
 			ip, err := netip.ParseAddr(cert.Config.PublicAddress)
-			if err == nil && publicAddress(ip) {
+			if err == nil && publicAddress(ip) && (ip.Is4() || c.IPv6Open) {
 				addresses[ip.String()] = cert.Config.PublicPort
 			}
 		}
 	}
 	if c.IPv6Open && hasPublicIPv6(topo) {
-		status.IPv6 = "owner_confirmed"
+		status.IPv6 = "unverified"
 	}
 	for _, mapping := range mappings {
 		status.Mappings = append(status.Mappings, MappingSummary{mapping.Protocol, mapping.State, mapping.ErrorCode, mapping.ExternalPort, mapping.ExpiresAt})
-		if mapping.Protocol == pinholeProtocol && c.Enabled && ready && mapping.State == "mapped" && now.Before(mapping.ExpiresAt) && !c.IPv6Open {
+		if mapping.Protocol == pinholeProtocol && c.Enabled && ready && mapping.State == "mapped" && now.Before(mapping.ExpiresAt) && c.IPv6Open {
 			if mapping.FirewallOpen {
 				status.IPv6 = "firewall_open"
 			} else {
@@ -477,7 +476,7 @@ func (m *RemoteManager) stepRouteLocked(ctx context.Context) error {
 		}
 		if c.Enabled && ready && mapping.Authority == authority && mapping.Topology == digest && mapping.State == "mapped" && now.Before(mapping.ExpiresAt) {
 			ip, err := netip.ParseAddr(mapping.ExternalAddress)
-			if err == nil && publicAddress(ip) {
+			if err == nil && publicAddress(ip) && (ip.Is4() || c.IPv6Open) {
 				addresses[ip.String()] = mapping.ExternalPort
 				observed[ip.String()] = mapping.ExternalPort
 			} else {
@@ -523,7 +522,19 @@ func (m *RemoteManager) stepRouteLocked(ctx context.Context) error {
 			familyIPv6: !topo.Incomplete,
 			familyIPv4: present[familyIPv4] || !topo.Incomplete && !hasLocalIPv4(topo),
 		}
-		if withdrawErr = m.withdrawLostFamilies(ctx, q, authority, present, conclusive, now); withdrawErr != nil {
+		if !c.IPv6Open {
+			reported, err := m.reportedFamilies(ctx, authority)
+			if err != nil {
+				return err
+			}
+			if reported[familyIPv6] != "" || strings.Contains(q.RouteAddress, ":") {
+				withdrawErr = m.withdrawFamily(ctx, q, authority, familyIPv6)
+			}
+		}
+		if withdrawErr == nil {
+			withdrawErr = m.withdrawLostFamilies(ctx, q, authority, present, conclusive, now)
+		}
+		if withdrawErr != nil {
 			state.Attempts = min(state.Attempts+1, 6)
 			// NotBefore is the "attempt nothing against Hosted before this" deadline, which
 			// is exactly what a failed withdrawal earns: the same exponential, jittered rule
@@ -567,7 +578,12 @@ func (m *RemoteManager) stepRouteLocked(ctx context.Context) error {
 			status.ErrorCode = "route_name_retry"
 			if allowNaming {
 				nameErr = err
-				allowNaming = false
+				// A failed inbound proof of one family says nothing about the other.
+				// Global Hosted errors and Retry-After still stop the whole naming pass.
+				var fault *certificateHTTPError
+				if !errors.As(err, &fault) || fault.Status != 409 || fault.Code != "address_unverified" || fault.RetryAt.After(now) {
+					allowNaming = false
+				}
 			}
 			continue
 		}
@@ -666,6 +682,9 @@ func (m *RemoteManager) stepRouteLocked(ctx context.Context) error {
 			if err == nil {
 				status.Candidates[index].State = "reachable"
 				status.Candidates[index].VerifiedAt = &proof.VerifiedAt
+				if u, err := url.Parse(candidate.BaseURL); err == nil && strings.HasPrefix(u.Hostname(), "c6-") {
+					status.IPv6 = "verified"
+				}
 				verified = true
 			} else {
 				status.Candidates[index].State = "probe_required"
@@ -931,7 +950,7 @@ func (m *RemoteManager) reconcilePinholes(ctx context.Context, c RemoteConfig, a
 		return nil, e
 	}
 	wanted := map[string]bool{}
-	if enabled && !c.IPv6Open && t.Gateway != "" && t.LocalAddress != "" {
+	if enabled && c.IPv6Open && t.Gateway != "" && t.LocalAddress != "" {
 		for _, raw := range t.Public {
 			if ip, err := netip.ParseAddr(raw); err == nil && ip.Is6() && !ip.Is4In6() && len(wanted) < maxPinholes {
 				wanted[ip.String()] = true
