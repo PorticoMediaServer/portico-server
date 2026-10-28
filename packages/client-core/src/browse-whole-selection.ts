@@ -50,6 +50,7 @@ export function browseWholeSelectionQuery(whole: BrowseWholeSelection): Selectio
     library: Object.freeze({kind: 'single' as const, libraryId: whole.libraryId}),
     every: Object.freeze(every) as SelectionCapabilities,
     types: Object.freeze(types),
+    ...(whole.unavailableActions === undefined ? {} : {unavailableActions: Object.freeze({...whole.unavailableActions})}),
   };
   return Object.freeze({
     id: `browse-whole:${label(stable([whole.libraryId, whole.pivot, whole.filter, whole.sort, whole.catalogRevision]))}${whole.selectionBasis === undefined ? '' : ':' + whole.selectionBasis}`,

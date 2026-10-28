@@ -1,3 +1,4 @@
+import {validSelectionUnavailableActions} from './selection-model/unavailable-actions.ts';
 import {validSelectionBasis} from './selection-basis.ts';
 import {unreadableServerResponse} from './server-messages.ts';
 import {routePattern} from '../../contracts/src/routes.ts';
@@ -56,7 +57,7 @@ export type BrowseSelectionType=Readonly<{kind:string;count:number;capabilities:
  * unchanged as one job. Counts are displayed titles; nothing here is inferred from a loaded page.
  * selectionBasis is a server-issued full witness independent of the page revision;
  * its absence is supported only for legacy ordinary-200 descriptors. */
-export type BrowseWholeSelection=Readonly<{libraryId:string;pivot:string;filter:BrowseNode|null;sort:readonly BrowseSortSelection[];catalogRevision:string;selectionBasis?:string;total:number;types:readonly BrowseSelectionType[]}>;
+export type BrowseWholeSelection=Readonly<{libraryId:string;pivot:string;filter:BrowseNode|null;sort:readonly BrowseSortSelection[];catalogRevision:string;selectionBasis?:string;total:number;types:readonly BrowseSelectionType[];unavailableActions?:import('./selection-model/types.ts').SelectionUnavailableActions}>;
 export type BrowseWholeSelectionUnavailable=Readonly<{reason:'search_not_bounded'}>;
 export type BrowseResult=Readonly<{pivot:string;applied:BrowseApplied;entries:readonly ContentEntry[];pageInfo:BrowsePageInfo;positionIndex:readonly BrowsePositionAnchor[];displayTargets?:readonly BrowseDisplayTarget[];wholeSelection?:BrowseWholeSelection;wholeSelectionUnavailable?:BrowseWholeSelectionUnavailable}>;
 export type BrowseDisplayTarget=Readonly<{membershipId:string;entryId:string}>;
@@ -280,6 +281,7 @@ export function parseWholeSelection(raw:unknown,page?:WholeSelectionPage):Browse
   if(!obj(raw)||!obj(raw.selector))return;
   // Query-only: the existing job selector's container/items forms cannot describe a library view.
   if(Object.keys(raw.selector).some(key=>key!=='query')||!obj(raw.selector.query))return;
+  if(raw.unavailableActions!==undefined&&!validSelectionUnavailableActions(raw.unavailableActions))return;
   const query=raw.selector.query;
   if(Object.keys(query).some(key=>!['libraryId','pivot','filter','sort','selectionBasis'].includes(key)))return;
   if(query.selectionBasis!==undefined&&!validSelectionBasis(query.selectionBasis))return;
@@ -318,7 +320,7 @@ export function parseWholeSelection(raw:unknown,page?:WholeSelectionPage):Browse
    types.push({kind:value.kind,count:value.count,capabilities:capabilities as BrowseSelectionCapabilities,libraries:libraries});
   }
   if(summed!==raw.total)return;
-  return freeze({libraryId:query.libraryId,pivot:query.pivot,filter,sort,catalogRevision:raw.catalogRevision,...(query.selectionBasis===undefined?{}:{selectionBasis:query.selectionBasis as string}),total:raw.total,types});
+  return freeze({libraryId:query.libraryId,pivot:query.pivot,filter,sort,catalogRevision:raw.catalogRevision,...(query.selectionBasis===undefined?{}:{selectionBasis:query.selectionBasis as string}),total:raw.total,types,...(raw.unavailableActions===undefined?{}:{unavailableActions:raw.unavailableActions})});
  }catch{
   // A malformed optional descriptor never fails the page it rides on.
   return undefined;
