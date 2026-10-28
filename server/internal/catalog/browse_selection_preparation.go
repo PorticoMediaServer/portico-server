@@ -49,23 +49,21 @@ type SelectionPreparationAccess struct {
 }
 
 type selectionPreparationSpec struct {
-	Library  string
-	Pivot    string
-	Revision string
-	Query    json.RawMessage
-	Sorts    []BrowseSortSelection
-	Viewer   Viewer
+	Library string
+	Pivot   string
+	Query   json.RawMessage
+	Sorts   []BrowseSortSelection
+	Viewer  Viewer
 }
 
 // Only content counters and bounded query intent are shared. Full reducer work,
 // the authority callback and all SQL handles disappear at completion.
 type selectionPreparationContent struct {
-	Library  string
-	Pivot    string
-	Revision string
-	Query    json.RawMessage
-	Sorts    []BrowseSortSelection
-	Counts   [14][2]int
+	Library string
+	Pivot   string
+	Query   json.RawMessage
+	Sorts   []BrowseSortSelection
+	Counts  [14][2]int
 }
 
 type selectionPreparationComputation struct {
@@ -117,7 +115,7 @@ func (c *selectionPreparationComputation) Step(ctx context.Context, budget *read
 	if err = json.Unmarshal(p.sorts, &sorts); err != nil {
 		return readprep.StepResult{}, err
 	}
-	content := selectionPreparationContent{Library: p.library, Pivot: p.pivot, Revision: p.revision, Query: p.query, Sorts: sorts, Counts: next.counts}
+	content := selectionPreparationContent{Library: p.library, Pivot: p.pivot, Query: p.query, Sorts: sorts, Counts: next.counts}
 	encoded, err := json.Marshal(content)
 	if err != nil {
 		return readprep.StepResult{}, err
@@ -180,7 +178,10 @@ func (s *Service) SubmitBrowseSelectionPreparation(request BrowseRequest, viewer
 	if err != nil {
 		return BrowseSelectionPreparing{}, err
 	}
-	spec, err := json.Marshal(selectionPreparationSpec{Library: bound.Library, Pivot: bound.Pivot, Revision: bound.Revision, Query: query, Sorts: bound.Sorts, Viewer: viewer})
+	// Session fences and granted-library lists belong to private handles. The
+	// aggregate reads only this library under this effective content policy.
+	contentViewer := Viewer{Profile: viewer.Profile, Libraries: []string{bound.Library}, Restrictions: viewer.EffectiveRestrictions()}
+	spec, err := json.Marshal(selectionPreparationSpec{Library: bound.Library, Pivot: bound.Pivot, Query: query, Sorts: bound.Sorts, Viewer: contentViewer})
 	if err != nil {
 		return BrowseSelectionPreparing{}, err
 	}
@@ -223,7 +224,7 @@ func (s *Service) SubmitBrowseSelectionPreparation(request BrowseRequest, viewer
 			if err = json.Unmarshal(input.Query, &node); err != nil {
 				return err
 			}
-			bound := BoundBrowseQuery{Library: input.Library, Pivot: input.Pivot, Revision: input.Revision, Query: node, Sorts: input.Sorts, snapshot: dbwork.Snapshot(inner)}
+			bound := BoundBrowseQuery{Library: input.Library, Pivot: input.Pivot, Query: node, Sorts: input.Sorts, snapshot: dbwork.Snapshot(inner)}
 			state, err = read.NewBrowseSelectionBatch(BrowseRequest{}, input.Viewer, bound, basis)
 			return selectionPreparationError(err)
 		})
@@ -303,7 +304,7 @@ func (s *Service) PollBrowseSelectionPreparation(library string, viewer Viewer, 
 		if err = json.Unmarshal(result.Payload, &content); err != nil {
 			return BrowseSelectionPreparationResult{}, err
 		}
-		if content.Library != library || content.Pivot == "" || content.Revision == "" {
+		if content.Library != library || content.Pivot == "" {
 			return BrowseSelectionPreparationResult{}, readprep.ErrStale
 		}
 		for _, counts := range content.Counts {
@@ -316,7 +317,25 @@ func (s *Service) PollBrowseSelectionPreparation(library string, viewer Viewer, 
 		if err != nil {
 			return BrowseSelectionPreparationResult{}, err
 		}
-		state := &BrowseSelectionBatchState{done: true, counts: content.Counts, plan: &selectionBatchPlan{library: content.Library, pivot: content.Pivot, revision: content.Revision, query: content.Query, sorts: sorts, witness: result.Basis}}
+		var node *BrowseNode
+		if err = json.Unmarshal(content.Query, &node); err != nil {
+			return BrowseSelectionPreparationResult{}, err
+		}
+		var libraryKind string
+		if err = s.read().QueryRow(`SELECT kind FROM libraries WHERE id=?`, library).Scan(&libraryKind); err != nil {
+			return BrowseSelectionPreparationResult{}, err
+		}
+		pivot, ok := pivotForKind(libraryKind, content.Pivot)
+		if !ok {
+			return BrowseSelectionPreparationResult{}, readprep.ErrInvalid
+		}
+		// The ordinary page revision includes private caller authority. Rebind
+		// it in this snapshot rather than retaining the first submitter's fence.
+		revision, err := s.browseRevision(BrowseRequest{Library: library, Profile: viewer.Profile, ViewerFence: viewer.Fence, Query: node, Restrictions: viewer.EffectiveRestrictions()}, pivot, content.Sorts)
+		if err != nil {
+			return BrowseSelectionPreparationResult{}, err
+		}
+		state := &BrowseSelectionBatchState{done: true, counts: content.Counts, plan: &selectionBatchPlan{library: content.Library, pivot: content.Pivot, revision: revision, query: content.Query, sorts: sorts, witness: result.Basis}}
 		descriptor, err := s.FinishBrowseSelectionBatch(state, func(read *Service) (string, error) {
 			return read.browseSelectionWitness(library, viewer.Profile, viewer.EffectiveRestrictions())
 		}, authority)
