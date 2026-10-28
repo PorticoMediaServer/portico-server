@@ -26,7 +26,7 @@ const (
 // source lifetime prevents a later reused integer ID from continuing old work.
 func queueSource(ctx context.Context, tx *sql.Tx, domain int, id int64, token string, flags int64) error {
 	if _, err := tx.ExecContext(ctx, `INSERT INTO catalog_upstream_sources(domain,source_id,token,flags) VALUES(?,?,?,?)
- ON CONFLICT(domain,source_id) DO UPDATE SET token=excluded.token,flags=flags|excluded.flags,revision=revision+1,
+ ON CONFLICT(domain,source_id) DO UPDATE SET token=excluded.token,flags=flags|excluded.flags,revision=revision+1,source_epoch=0,
  phase=0,has_after=0,after_id=0,after_aux=0,after_key='',active_id=NULL,active_key='',active_available=0,seen_inventory=0,inner_has=0,inner_id=0,inner_aux=0,inner_key=''`, domain, id, token, flags); err != nil {
 		return err
 	}
@@ -52,6 +52,7 @@ type upstreamSource struct {
 	domain                    int
 	id, revision, flags       int64
 	token                     string
+	epoch                     int64
 	phase                     int
 	has                       bool
 	after, aux                int64
@@ -65,9 +66,9 @@ type upstreamSource struct {
 
 func readUpstreamSource(ctx context.Context, tx *sql.Tx, domain int, id int64) (upstreamSource, error) {
 	w := upstreamSource{domain: domain, id: id}
-	err := tx.QueryRowContext(ctx, `SELECT token,flags,revision,phase,has_after,after_id,after_aux,after_key,active_id,active_key,active_available,seen_inventory,inner_has,inner_id,inner_aux,inner_key
+	err := tx.QueryRowContext(ctx, `SELECT token,flags,revision,source_epoch,phase,has_after,after_id,after_aux,after_key,active_id,active_key,active_available,seen_inventory,inner_has,inner_id,inner_aux,inner_key
  FROM catalog_upstream_sources WHERE domain=? AND source_id=?`, domain, id).
-		Scan(&w.token, &w.flags, &w.revision, &w.phase, &w.has, &w.after, &w.aux, &w.key, &w.active, &w.activeKey, &w.available, &w.seen, &w.innerHas, &w.inner, &w.innerAux, &w.innerKey)
+		Scan(&w.token, &w.flags, &w.revision, &w.epoch, &w.phase, &w.has, &w.after, &w.aux, &w.key, &w.active, &w.activeKey, &w.available, &w.seen, &w.innerHas, &w.inner, &w.innerAux, &w.innerKey)
 	return w, err
 }
 func (w *upstreamSource) advance() {
@@ -89,8 +90,8 @@ func (w *upstreamSource) clearInner() {
 	w.seen = false
 }
 func (w *upstreamSource) checkpoint(ctx context.Context, tx *sql.Tx) error {
-	_, err := tx.ExecContext(ctx, `UPDATE catalog_upstream_sources SET phase=?,has_after=?,after_id=?,after_aux=?,after_key=?,active_id=?,active_key=?,active_available=?,seen_inventory=?,inner_has=?,inner_id=?,inner_aux=?,inner_key=?
- WHERE domain=? AND source_id=? AND revision=?`, w.phase, w.has, w.after, w.aux, w.key, w.active, w.activeKey, w.available, w.seen, w.innerHas, w.inner, w.innerAux, w.innerKey, w.domain, w.id, w.revision)
+	_, err := tx.ExecContext(ctx, `UPDATE catalog_upstream_sources SET source_epoch=?,phase=?,has_after=?,after_id=?,after_aux=?,after_key=?,active_id=?,active_key=?,active_available=?,seen_inventory=?,inner_has=?,inner_id=?,inner_aux=?,inner_key=?
+ WHERE domain=? AND source_id=? AND revision=?`, w.epoch, w.phase, w.has, w.after, w.aux, w.key, w.active, w.activeKey, w.available, w.seen, w.innerHas, w.inner, w.innerAux, w.innerKey, w.domain, w.id, w.revision)
 	return err
 }
 func (w *upstreamSource) finish(ctx context.Context, tx *sql.Tx) error {
@@ -351,6 +352,9 @@ func (w *upstreamSource) library(ctx context.Context, tx *sql.Tx, limit int) (in
 			}
 			w.advance()
 		}
+	}
+	if w.flags&(sourceMetadata|sourceTVDB|sourceArtwork) == 0 {
+		return 0, true, nil
 	}
 	if w.active.Valid {
 		q := `SELECT kind FROM artwork_entity_heads INDEXED BY artwork_entity_heads_entity WHERE entity_id=?`

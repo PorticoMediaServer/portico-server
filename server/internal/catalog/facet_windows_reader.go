@@ -11,6 +11,7 @@ import (
 	"encoding/json"
 	"errors"
 	"strconv"
+	"sync/atomic"
 	"time"
 
 	"portico.local/server/internal/dbwork"
@@ -76,6 +77,7 @@ type SimpleFacetPreparing struct {
 type SimpleFacetResult struct {
 	Page      *SimpleFacetPage
 	Preparing *SimpleFacetPreparing
+	Fallback  *SimpleFacetFallbackPage
 	release   func()
 }
 
@@ -94,11 +96,13 @@ type facetWindowSpec struct {
 	Direction byte   `json:"direction"`
 }
 type facetWindowSummary struct {
-	Spec    facetWindowSpec `json:"spec"`
-	IDs     []int64         `json:"ids"`
-	Total   int64           `json:"total"`
-	Earlier bool            `json:"earlier"`
-	Later   bool            `json:"later"`
+	Spec             facetWindowSpec `json:"spec"`
+	IDs              []int64         `json:"ids"`
+	Total            int64           `json:"total"`
+	Earlier          bool            `json:"earlier"`
+	Later            bool            `json:"later"`
+	CompleteMatchSet bool            `json:"completeMatchSet,omitempty"`
+	CompleteMatchIDs []int64         `json:"completeMatchIDs,omitempty"`
 }
 
 // Initial never performs a library aggregate or writes a query. No installed
@@ -142,13 +146,14 @@ func (w *FacetWindows) Continue(ctx context.Context, caller readprep.Caller, tok
 	if r.State != readprep.Ready {
 		return SimpleFacetResult{}, readprep.ErrStale
 	}
-	if err = r.ResizeDelivery(32768); err != nil {
+	if err = r.ResizeDelivery(facetWindowDecodeReservation(r.Payload)); err != nil {
 		return SimpleFacetResult{}, err
 	}
 	var summary facetWindowSummary
 	if err = json.Unmarshal(r.Payload, &summary); err != nil {
 		return SimpleFacetResult{}, readprep.ErrStale
 	}
+	summary.CompleteMatchIDs = nil // free seed decoding before hydration resizes delivery
 	// Row lifetime is checked in the immutable base, not resolved from raw facts.
 	var present bool
 	if err = dbwork.QueryRow(ctx, w.db, `SELECT EXISTS(SELECT 1 FROM catalog_facet_base_rows WHERE base_id=? AND value_id=?)`, snap.ID, t.row).Scan(&present); err != nil {
@@ -185,13 +190,14 @@ func (w *FacetWindows) Poll(ctx context.Context, caller readprep.Caller, queryID
 	if r.State == readprep.Preparing {
 		out.Preparing = &SimpleFacetPreparing{Kind: "facet-preparing", State: "preparing", QueryID: queryID, RetryAfterMs: 1000}
 	} else {
-		if err = r.ResizeDelivery(32768); err != nil {
+		if err = r.ResizeDelivery(facetWindowDecodeReservation(r.Payload)); err != nil {
 			return out, err
 		}
 		var summary facetWindowSummary
 		if r.Basis != strconv.FormatInt(snap.ID, 10) || json.Unmarshal(r.Payload, &summary) != nil {
 			return out, readprep.ErrStale
 		}
+		summary.CompleteMatchIDs = nil // page hydration never retains prefix candidates
 		page, err := w.hydrate(ctx, snap, summary, t, r)
 		if err != nil {
 			return out, err
@@ -226,15 +232,11 @@ func (w *FacetWindows) authorize(ctx context.Context, caller readprep.Caller, id
 	return s, nil
 }
 func (w *FacetWindows) submit(ctx context.Context, caller readprep.Caller, s FacetBaseSnapshot, spec facetWindowSpec, originalExpiry int64) (SimpleFacetResult, error) {
-	canonical, _ := json.Marshal(struct {
-		Scope                         FacetBaseScope
-		Witness, Authority, Algorithm string
-		Window                        facetWindowSpec
-	}{s.Scope, s.Witness, s.Authority, "simple-fold-byte-substring-count-ascii-v1", spec})
-	key := readprep.Key{Namespace: "simple-facets-v1", Basis: strconv.FormatInt(s.ID, 10), Canonical: string(canonical)}
-	// Full JSON/string equality is the store key; no hash-only equivalence. No
-	// prefix seed is used: a bounded top page is NOT a complete prior match set.
-	initial := int64(8192 + len(canonical) + len(spec.Needle))
+	key := facetWindowKey(s, spec)
+	// Full equality includes scope/policy/witness/authority/basis and window.
+	// Complete seed identities share this same store and its aggregate budget.
+	initial := int64(8192 + len(key.Canonical) + len(spec.Needle) + len(caller))
+	expiryNanos := &atomic.Int64{}
 	until := time.Time{}
 	if originalExpiry > 0 {
 		until = time.Unix(originalExpiry, 0)
@@ -243,12 +245,7 @@ func (w *FacetWindows) submit(ctx context.Context, caller readprep.Caller, s Fac
 		if err := b.Resize(initial); err != nil {
 			return nil, err
 		}
-		return &facetWindowScan{db: w.db, base: s.ID, spec: spec, bytes: initial, ids: make([]int64, 0, spec.Limit+1), total: func() int64 {
-			if spec.Needle == "" {
-				return s.Total
-			}
-			return 0
-		}()}, nil
+		return newFacetWindowScan(w, caller, s, spec, initial, expiryNanos), nil
 	}}, until)
 	if err != nil {
 		return SimpleFacetResult{}, err
@@ -258,6 +255,7 @@ func (w *FacetWindows) submit(ctx context.Context, caller readprep.Caller, s Fac
 		_ = w.store.Cancel(ctx, caller, h)
 		return SimpleFacetResult{}, err
 	}
+	expiryNanos.Store(expiry.UnixNano())
 	t := facetWindowToken{base: s.ID, handle: h, expires: expiry.Unix()}
 	out, err := w.Poll(ctx, caller, w.encode(t))
 	if err != nil {

@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"strings"
 
 	"portico.local/server/internal/compactcatalog"
 	"portico.local/server/internal/readprep"
@@ -39,11 +40,11 @@ func CaptureFacetAuthority(ctx context.Context, q compactcatalog.ReadQuery, scop
 		return "", err
 	}
 	var library, kind string
-	var policyEpoch int64
-	err = q.QueryRowContext(ctx, `SELECT c.library_id,l.kind,s.policy_epoch
+	var policyEpoch, genreEpoch int64
+	err = q.QueryRowContext(ctx, `SELECT c.library_id,l.kind,s.policy_epoch,s.genre_epoch
  FROM catalog_libraries c JOIN libraries l ON l.id=c.library_id
  CROSS JOIN catalog_facet_source_state s
- WHERE c.id=? AND c.library_id=? AND c.retired=0 AND s.singleton=1`, scope.LibraryID, scope.Library).Scan(&library, &kind, &policyEpoch)
+ WHERE c.id=? AND c.library_id=? AND c.retired=0 AND s.singleton=1`, scope.LibraryID, scope.Library).Scan(&library, &kind, &policyEpoch, &genreEpoch)
 	if err != nil {
 		return "", err
 	}
@@ -53,9 +54,16 @@ func CaptureFacetAuthority(ctx context.Context, q compactcatalog.ReadQuery, scop
 		Kind        string `json:"kind"`
 		Algorithm   int    `json:"algorithm"`
 		PolicyEpoch *int64 `json:"policyEpoch,omitempty"`
+		GenreEpoch  *int64 `json:"genreEpoch,omitempty"`
 	}{LibraryID: scope.LibraryID, Library: library, Kind: kind, Algorithm: 1}
 	if r.Active() {
 		document.PolicyEpoch = &policyEpoch
+		// Only Search genres has the empty-title fallback that a first hidden
+		// member can revoke. SIMPLE has no such witness; new-title materialization
+		// must not revoke its existing COMPLETE content basis during a scan.
+		if scope.Source == "search-video-genre-v1" || strings.HasPrefix(scope.Source, "search-video-genre-v1:") {
+			document.GenreEpoch = &genreEpoch
+		}
 	}
 	raw, err := json.Marshal(document)
 	return string(raw), err

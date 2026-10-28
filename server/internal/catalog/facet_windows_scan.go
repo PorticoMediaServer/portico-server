@@ -11,7 +11,8 @@ import (
 )
 
 // The reducer visits the maintained count-order index, not holders. It keeps
-// only <=201 integer identities and an exact total. Cold filtered windows are
+// only <=201 page identities, <=4096 complete seed identities and an exact total.
+// A larger match set drops the seed, keeping the bounded page. Cold windows are
 // O(V+label bytes), including deep pages; they are not advertised as O(page).
 // Matching precomputed sorttext.Fold bytes via BLOB instr is exactly Go's
 // strings.Contains, including a one-byte needle and embedded NUL bytes.
@@ -25,6 +26,7 @@ type facetWindowScan struct {
 	cursor         int64
 	total          int64
 	earlier, later bool
+	prefix         facetWindowPrefix
 }
 
 func (s *facetWindowScan) AccountedBytes() int64 { return s.bytes }
@@ -42,12 +44,16 @@ func (s *facetWindowScan) Step(ctx context.Context, budget *readprep.Budget) (re
 	if err := budget.Resize(s.bytes); err != nil {
 		return readprep.StepResult{}, err
 	}
+	ready, err := s.preparePrefix(ctx, budget)
+	if err != nil || !ready {
+		return readprep.StepResult{}, err
+	}
 	done := false
 	ctx = dbwork.WithClass(ctx, dbwork.ClassBackgroundMedia)
 	// Each SELECT owns one short implicit read snapshot, released by Rows.Close.
 	// COMPLETE inputs are immutable, so before/after basis checks suffice; an
 	// explicit multi-statement snapshot would impose a hard 500ms scalar cap.
-	err := func() error {
+	err = func() error {
 		tx := dbwork.ReadHandle(ctx, s.db)
 		if _, err := facetBaseSnapshot(ctx, tx, s.base, true); err != nil {
 			return readprep.ErrStale
@@ -57,19 +63,12 @@ func (s *facetWindowScan) Step(ctx context.Context, budget *readprep.Budget) (re
 			done, err = s.empty(ctx, tx)
 			return err
 		}
-		eligible := "1"
-		args := []any{s.spec.Needle}
-		if s.spec.Anchor > 0 {
-			op := ">"
-			if s.spec.Direction == 2 {
-				op = "<"
-			}
-			if s.spec.Direction == 3 {
-				op = ">="
-			}
-			eligible = facetWindowTuple + op + facetWindowAnchor
-			args = append(args, s.base, s.spec.Anchor)
+		if s.prefix.seeded {
+			var err error
+			done, err = s.candidateBatch(ctx, tx)
+			return err
 		}
+		eligible, args := s.eligibility()
 		query := `SELECT b.value_id,length(CAST(x.folded AS BLOB))+length(CAST(b.label_order AS BLOB))+length(CAST(b.value_order AS BLOB)),instr(CAST(x.folded AS BLOB),CAST(? AS BLOB))>0,` + eligible + `
  FROM catalog_facet_base_rows b INDEXED BY catalog_facet_base_order JOIN catalog_facet_base_texts x ON x.id=b.text_id WHERE b.base_id=?`
 		args = append(args, s.base)
@@ -96,21 +95,7 @@ func (s *facetWindowScan) Step(ctx context.Context, budget *readprep.Budget) (re
 			bytes += width
 			s.cursor = id
 			if match {
-				s.total++
-				if accept {
-					if s.spec.Direction == 2 {
-						if len(s.ids) == s.spec.Limit+1 {
-							s.ids = append(s.ids[:0], s.ids[1:]...)
-						}
-						s.ids = append(s.ids, id)
-					} else if len(s.ids) < s.spec.Limit+1 {
-						s.ids = append(s.ids, id)
-					}
-				} else if s.spec.Direction == 2 {
-					s.later = true
-				} else {
-					s.earlier = true
-				}
+				s.match(id, accept)
 			}
 			// Soft yield: do not cancel a successfully processed row or silently lose
 			// its cursor. A single legal scalar is the explicit O(B) exception.
@@ -145,17 +130,32 @@ func (s *facetWindowScan) Step(ctx context.Context, budget *readprep.Budget) (re
 			later = true
 		}
 	}
-	sum := facetWindowSummary{Spec: s.spec, IDs: s.ids, Total: s.total, Earlier: earlier, Later: later}
-	// Fixed bounded payload: <=201 integer IDs + <=300 folded query bytes. Charge
-	// a conservative peak for encoder backing memory and payload before allocation.
-	if err = budget.Resize(s.bytes + 32768); err != nil {
+	sum := facetWindowSummary{Spec: s.spec, IDs: s.ids, Total: s.total, Earlier: earlier, Later: later, CompleteMatchSet: s.prefix.initialized && !s.prefix.overflow, CompleteMatchIDs: s.prefix.matches}
+	// Bounded payload: page IDs + <=4096 COMPLETE candidate IDs + folded query.
+	// Charge encoder growth/overlap and the returned payload before allocation.
+	encodeBytes := int64(32768)
+	if sum.CompleteMatchSet {
+		encodeBytes = facetWindowPrefixEncodeBytes
+	}
+	ok, err := budget.TryResize(s.bytes + encodeBytes)
+	if err != nil {
 		return readprep.StepResult{}, err
+	}
+	if !ok {
+		// The exact page/total is already complete. Discard the optional seed
+		// when its encoder peak cannot fit; never refuse only to cache a seed.
+		sum.CompleteMatchSet, sum.CompleteMatchIDs = false, nil
+		s.prefix.matches, s.prefix.seed = nil, nil
+		encodeBytes = 32768
+		if err = budget.Resize(s.bytes + encodeBytes); err != nil {
+			return readprep.StepResult{}, err
+		}
 	}
 	payload, err := json.Marshal(sum)
 	if err != nil {
 		return readprep.StepResult{}, err
 	}
-	s.bytes += 32768
+	s.bytes += encodeBytes
 	return readprep.StepResult{Done: true, Payload: payload}, nil
 }
 

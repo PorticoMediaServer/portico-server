@@ -22,6 +22,16 @@ export type SimpleFacetPage = Readonly<{
 export type SimpleFacetPreparing = Readonly<{
   kind: 'facet-preparing'; state: 'preparing'; queryId: string; retryAfterMs: number;
 }>;
+export type SimpleFacetFallbackValue = Readonly<{
+  value: string; label: string; count: number; countIsLowerBound: true; seriesId?: string;
+}>;
+/** A bounded, explicitly lower-bound panel while the SAME preparation is still running.
+ * It has no continuation anchors and is never an exact SimpleFacetPage. */
+export type SimpleFacetFallbackPage = Readonly<{
+  kind: 'facet-fallback'; field: SimpleFacetField; revision?: string;
+  total: number; totalIsLowerBound: true; values: readonly SimpleFacetFallbackValue[];
+  preparation: SimpleFacetPreparing;
+}>;
 export type SimpleFacetRead = Readonly<{
   libraryId: string; field: SimpleFacetField; q?: string; limit?: number;
   after?: string; before?: string; at?: string;
@@ -95,6 +105,34 @@ export function parseSimpleFacetPreparing(input: unknown, response?: Preparation
   return Object.freeze({kind: 'facet-preparing', state: 'preparing', queryId: input.queryId, retryAfterMs: input.retryAfterMs});
 }
 
+/** Flattened Go FacetPage + preparation envelope. Every row is validated/preserved;
+ * lower bounds are mandatory, never inferred. Empty is still a preparing fallback. */
+export function parseSimpleFacetFallbackPage(
+  input: unknown, expected: Readonly<{field?: SimpleFacetField; limit?: number}> = {},
+  response?: PreparationResponse,
+): SimpleFacetFallbackPage {
+  if (!object(input) || !only(input, ['kind', 'field', 'revision', 'total', 'totalIsLowerBound', 'values', 'preparation'])
+      || input.kind !== 'facet-fallback' || !field(input.field) || expected.field !== undefined && input.field !== expected.field
+      || input.revision !== undefined && !opaque(input.revision)
+      || !safeCount(input.total) || input.totalIsLowerBound !== true || !Array.isArray(input.values)
+      || input.values.length > 200 || expected.limit !== undefined && input.values.length > expected.limit
+      || input.total < input.values.length) invalid(response);
+  const preparation = parseSimpleFacetPreparing(input.preparation, response);
+  const seen = new Set<string>();
+  const values = input.values.map(value => {
+    if (!object(value) || !only(value, ['value', 'label', 'count', 'countIsLowerBound', 'seriesId'])
+        || typeof value.value !== 'string' || value.value.length === 0 || typeof value.label !== 'string'
+        || !safeCount(value.count) || value.countIsLowerBound !== true || seen.has(value.value)
+        || value.seriesId !== undefined && (typeof value.seriesId !== 'string' || !/^[A-Za-z0-9_-]{43}$/.test(value.seriesId))) invalid(response);
+    seen.add(value.value);
+    return Object.freeze({value: value.value, label: value.label, count: value.count, countIsLowerBound: true as const,
+      ...(value.seriesId !== undefined ? {seriesId: value.seriesId as string} : {})});
+  });
+  return Object.freeze({kind: 'facet-fallback', field: input.field,
+    ...(input.revision !== undefined ? {revision: input.revision as string} : {}),
+    total: input.total, totalIsLowerBound: true, values: Object.freeze(values), preparation});
+}
+
 type CapturedRead = Readonly<SimpleFacetRead & {q: string; limit: number}>;
 function capture(input: SimpleFacetRead): CapturedRead {
   if (!object(input) || !only(input, ['libraryId', 'field', 'q', 'limit', 'after', 'before', 'at'])
@@ -150,10 +188,10 @@ function cacheable(page: SimpleFacetPage): boolean {
 
 export type FacetReadSessionOptions = Readonly<{
   api: PreparationRequestPort;
-  /** REQUIRED generated get_facet_query/cancel_facet_query adapters. Registration/generation
-   * belongs to root integration. These must return exactly /v1/facet-queries/{queryId};
-   * no raw Location navigation or handwritten route fallback is installed here. */
-  paths: Readonly<{poll(queryId: string): string; cancel(queryId: string): string}>;
+  /** Optional generated adapters; defaults use get_facet_query/cancel_facet_query. During
+   * root's pending generation callers can still supply these explicitly. They must return
+   * exactly /v1/facet-queries/{queryId}; no raw Location navigation or route fallback. */
+  paths?: Readonly<{poll(queryId: string): string; cancel(queryId: string): string}>;
   /** Explicit choice: true for a continuation owner; false for a one-shot count/preview. */
   retainReadyHandle: boolean;
   errorFromResponse(response: PreparationResponse): Error;
@@ -161,14 +199,27 @@ export type FacetReadSessionOptions = Readonly<{
   signal?: AbortSignal;
   runtime?: Partial<PreparationRuntime>;
   onPreparing?(pending: SimpleFacetPreparing, response: PreparationResponse): void;
+  /** Transient bounded lower-bound rows, including legal oversized scalars. The session
+   * never caches these rows or exposes fallback anchors. read() still awaits final exact. */
+  onFallback?(fallback: SimpleFacetFallbackPage, response: PreparationResponse): void;
 }>;
+// These registered route IDs are added by root's pending apigen run. Keep the temporary
+// type bridge here (not in generated files); routePath still fails closed if absent.
+const facetQueryPath = routePath as unknown as (
+  operation: 'get_facet_query' | 'cancel_facet_query', parameters: {id: string},
+) => string;
+const generatedQueryPaths = {
+  poll: (queryId: string) => facetQueryPath('get_facet_query', {id: queryId}),
+  cancel: (queryId: string) => facetQueryPath('cancel_facet_query', {id: queryId}),
+};
 type Operation = {controller: AbortController; detach(): void; release?: () => void; predecessor?: Operation};
 const cancelled = () => Object.assign(new Error('facet-read-cancelled'), {name: 'AbortError'});
 
 /** One SIMPLE domain/viewer session, one operation and at most one cached ordinary page.
  * Navigation is explicit, never a page-draining loop. Oversized pages are returned losslessly
  * but only their compact window/lease is retained. Call cancel on background, retire on scope
- * disposal. Parent renderers must also bound their pages; this session retains no history. */
+ * disposal. Fallback panels are callback-only and never retained. Parent renderers must also
+ * bound their pages; this session retains no history. */
 export class FacetReadSession {
   private readonly options: FacetReadSessionOptions;
   private operation?: Operation;
@@ -242,7 +293,7 @@ export class FacetReadSession {
     const current = () => this.live() && this.operation === operation && !controller.signal.aborted;
     let reanchored = false;
     try {
-      const result = await readPreparation({
+      const result = await readPreparation<CapturedRead, SimpleFacetPage, SimpleFacetFallbackPage>({
         api: this.options.api, descriptor,
         paths: {
           initial: simpleFacetPath,
@@ -262,10 +313,25 @@ export class FacetReadSession {
           }
           return page;
         },
+        parseIntermediateReady: (body, response) => {
+          if (!object(body) || body.kind !== 'facet-fallback') return undefined;
+          const fallback = parseSimpleFacetFallbackPage(body, {field: descriptor.field, limit: descriptor.limit}, response);
+          this.releasePredecessor(operation);
+          return {pending: fallback.preparation, value: fallback};
+        },
+        onIntermediateReady: (fallback, response) => {
+          if (!current()) throw cancelled();
+          this.options.onFallback?.(fallback, response);
+        },
         readyQueryId: (body, response) => {
           // Minimal ready-handle validation also permits safe late-200 cleanup, without rows.
-          if (!object(body) || body.kind !== 'simple-keyset' || body.field !== descriptor.field || !object(body.window)
-              || !opaque(body.window.queryId)) invalid(response);
+          if (!object(body) || body.field !== descriptor.field) invalid(response);
+          if (body.kind === 'facet-fallback') {
+            const preparation = parseSimpleFacetPreparing(body.preparation, response);
+            this.releasePredecessor(operation);
+            return preparation.queryId;
+          }
+          if (body.kind !== 'simple-keyset' || !object(body.window) || !opaque(body.window.queryId)) invalid(response);
           this.releasePredecessor(operation);
           return body.window.queryId;
         },
@@ -298,7 +364,7 @@ export class FacetReadSession {
     }
   }
   private domainPath(method: 'poll' | 'cancel', queryId: string): string {
-    const path = this.options.paths[method](queryId);
+    const path = (this.options.paths ?? generatedQueryPaths)[method](queryId);
     if (!opaque(queryId) || path !== `/v1/facet-queries/${queryId}`) throw new FacetWindowError('invalid_facet_request');
     return path;
   }

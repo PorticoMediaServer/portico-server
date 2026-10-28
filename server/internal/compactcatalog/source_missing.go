@@ -33,6 +33,23 @@ func (w *upstreamSource) publishMissing(ctx context.Context, tx *sql.Tx, present
 // or all inventory objects inside an EXISTS: both levels have raw PK cursors,
 // and rejected inventory objects advance. A positive witness may finish early.
 func (w *upstreamSource) missing(ctx context.Context, tx *sql.Tx, limit int) (int, bool, error) {
+	var pending bool
+	if err := tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM catalog_dirty WHERE domain=41) OR EXISTS(SELECT 1 FROM catalog_derivation_failures WHERE domain=41)`).Scan(&pending); err != nil {
+		return 0, false, err
+	}
+	if pending {
+		return 0, false, nil
+	}
+	var epoch int64
+	if err := tx.QueryRowContext(ctx, `SELECT source_epoch FROM catalog_facet_source_state WHERE singleton=1`).Scan(&epoch); err != nil {
+		return 0, false, err
+	}
+	if w.epoch != epoch {
+		w.epoch = epoch
+		w.has = false
+		w.after = 0
+		w.clearInner()
+	}
 	var lifetime string
 	err := tx.QueryRowContext(ctx, `SELECT lower(hex(public_id)) FROM catalog_entities WHERE id=?`, w.id).Scan(&lifetime)
 	if errors.Is(err, sql.ErrNoRows) || err == nil && lifetime != w.token {

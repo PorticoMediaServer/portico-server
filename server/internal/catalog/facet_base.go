@@ -284,7 +284,11 @@ func (b *FacetBases) put(ctx context.Context, tx *sql.Tx, s FacetBaseSnapshot, f
 	if charge > b.MaxBytes || used > b.MaxBytes-charge {
 		return ErrFacetBaseCapacity
 	}
-	_, err := tx.ExecContext(ctx, `INSERT INTO catalog_facet_base_rows(base_id,value_id,text_id,negative_count,label_order,value_order,charged_bytes) VALUES(?,?,?,?,?,?,?)`, s.ID, value, text, -f.Count, asciiLower(f.Label), f.Value, charge)
+	order := asciiLower(f.Label)
+	if strings.HasPrefix(s.Scope.Source, SearchVideoGenreSource+":") {
+		order = sorttext.Key(f.Label, "", "")
+	}
+	_, err := tx.ExecContext(ctx, `INSERT INTO catalog_facet_base_rows(base_id,value_id,text_id,negative_count,label_order,value_order,charged_bytes) VALUES(?,?,?,?,?,?,?)`, s.ID, value, text, -f.Count, order, f.Value, charge)
 	return err
 }
 
@@ -306,6 +310,16 @@ func (b *FacetBases) RetireStep(ctx context.Context, tx *sql.Tx, id int64) (bool
 	// must not resume a partially reclaimed base from its former source cursor.
 	if _, err := tx.ExecContext(ctx, `DELETE FROM catalog_facet_base_work WHERE base_id=?`, id); err != nil {
 		return false, err
+	}
+	var source string
+	if err := tx.QueryRowContext(ctx, `SELECT c.source FROM catalog_facet_bases b JOIN catalog_facet_base_classes c ON c.id=b.class_id WHERE b.id=?`, id).Scan(&source); err != nil && !errors.Is(err, sql.ErrNoRows) {
+		return false, err
+	}
+	if strings.HasPrefix(source, SearchVideoGenreSource+":") {
+		done, err := retireSearchGenreBaseStep(ctx, tx, id)
+		if err != nil || !done {
+			return false, err
+		}
 	}
 	r, err := tx.ExecContext(ctx, `DELETE FROM catalog_facet_base_rows WHERE base_id=? AND value_id IN(SELECT value_id FROM catalog_facet_base_rows WHERE base_id=? LIMIT 8)`, id, id)
 	if err != nil {

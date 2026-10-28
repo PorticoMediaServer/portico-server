@@ -209,6 +209,58 @@ export const routes = [
     "admission": "browsing"
   },
   {
+    "id": "cancel_facet_query",
+    "method": "DELETE",
+    "path": "/v1/facet-queries/{id}",
+    "summary": "Release a facet preparation handle",
+    "access": "device",
+    "requires": "read",
+    "lane": "browsing",
+    "cost": "constant",
+    "bodyLimit": 0,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal",
+      "revision_mismatch",
+      "stale_continuation",
+      "search_busy",
+      "metadata_unavailable",
+      "database_busy",
+      "writer_capacity"
+    ],
+    "status": 204,
+    "admission": "browsing"
+  },
+  {
+    "id": "cancel_genre_query",
+    "method": "DELETE",
+    "path": "/v1/genre-queries/{id}",
+    "summary": "Release a genre preparation handle",
+    "access": "device",
+    "requires": "read",
+    "lane": "browsing",
+    "cost": "constant",
+    "bodyLimit": 0,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal",
+      "revision_mismatch",
+      "stale_continuation",
+      "search_busy",
+      "metadata_unavailable",
+      "database_busy",
+      "writer_capacity"
+    ],
+    "status": 204,
+    "admission": "browsing"
+  },
+  {
     "id": "change_connectivity_policy",
     "method": "PATCH",
     "path": "/v1/admin/connectivity/policy",
@@ -4989,6 +5041,48 @@ export const routes = [
     "admission": "realtime"
   },
   {
+    "id": "get_facet_query",
+    "method": "GET",
+    "path": "/v1/facet-queries/{id}",
+    "summary": "Read a facet preparation or its ready window",
+    "access": "device",
+    "requires": "read",
+    "lane": "browsing",
+    "cost": "page_sized",
+    "bodyLimit": 0,
+    "responseHeaders": [
+      {
+        "status": 202,
+        "name": "Location",
+        "description": "Same-server facet preparation poll path",
+        "required": true
+      },
+      {
+        "status": 202,
+        "name": "Retry-After",
+        "description": "Minimum delay before polling",
+        "required": true
+      }
+    ],
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal",
+      "revision_mismatch",
+      "stale_continuation",
+      "search_busy",
+      "metadata_unavailable",
+      "database_busy"
+    ],
+    "status": 200,
+    "successStatuses": [
+      202
+    ],
+    "admission": "browsing"
+  },
+  {
     "id": "get_feedback_capabilities",
     "method": "GET",
     "path": "/v1/feedback/capabilities",
@@ -5060,6 +5154,48 @@ export const routes = [
     ],
     "status": 200,
     "admission": "default"
+  },
+  {
+    "id": "get_genre_query",
+    "method": "GET",
+    "path": "/v1/genre-queries/{id}",
+    "summary": "Read a genre preparation or its ready window",
+    "access": "device",
+    "requires": "read",
+    "lane": "browsing",
+    "cost": "page_sized",
+    "bodyLimit": 0,
+    "responseHeaders": [
+      {
+        "status": 202,
+        "name": "Location",
+        "description": "Same-server genre preparation poll path",
+        "required": true
+      },
+      {
+        "status": 202,
+        "name": "Retry-After",
+        "description": "Minimum delay before polling",
+        "required": true
+      }
+    ],
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal",
+      "revision_mismatch",
+      "stale_continuation",
+      "search_busy",
+      "metadata_unavailable",
+      "database_busy"
+    ],
+    "status": 200,
+    "successStatuses": [
+      202
+    ],
+    "admission": "browsing"
   },
   {
     "id": "get_guide",
@@ -6715,7 +6851,24 @@ export const routes = [
       "limit",
       "offset",
       "query",
-      "pivot"
+      "pivot",
+      "after",
+      "before",
+      "at"
+    ],
+    "responseHeaders": [
+      {
+        "status": 202,
+        "name": "Location",
+        "description": "Same-server facet preparation poll path",
+        "required": true
+      },
+      {
+        "status": 202,
+        "name": "Retry-After",
+        "description": "Minimum delay before polling",
+        "required": true
+      }
     ],
     "errors": [
       "invalid_request",
@@ -6724,9 +6877,15 @@ export const routes = [
       "not_found",
       "internal",
       "revision_mismatch",
+      "stale_continuation",
+      "search_busy",
+      "metadata_unavailable",
       "database_busy"
     ],
     "status": 200,
+    "successStatuses": [
+      202
+    ],
     "admission": "browsing"
   },
   {
@@ -8651,7 +8810,22 @@ export const routes = [
     "bodyLimit": 0,
     "query": [
       "limit",
-      "cursor"
+      "cursor",
+      "preview"
+    ],
+    "responseHeaders": [
+      {
+        "status": 202,
+        "name": "Location",
+        "description": "Same-server genre preparation poll path",
+        "required": true
+      },
+      {
+        "status": 202,
+        "name": "Retry-After",
+        "description": "Minimum delay before polling",
+        "required": true
+      }
     ],
     "errors": [
       "invalid_request",
@@ -8659,10 +8833,15 @@ export const routes = [
       "not_permitted",
       "not_found",
       "stale_continuation",
+      "search_busy",
+      "metadata_unavailable",
       "internal",
       "database_busy"
     ],
     "status": 200,
+    "successStatuses": [
+      202
+    ],
     "http": true,
     "admission": "expensive"
   },

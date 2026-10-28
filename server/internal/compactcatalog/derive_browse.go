@@ -450,7 +450,7 @@ func metricCursor(ctx context.Context, tx *sql.Tx, domain int, k Key) (afterEnti
 	}
 	afterEntity, afterSource, afterItem = 0, -1, 0
 	_, err = tx.ExecContext(ctx, `INSERT INTO catalog_browse_metric_cursors(domain,entity_id,sequence,projection_version,after_entity,after_source,after_item) VALUES(?,?,?,1,0,-1,0)
- ON CONFLICT(domain,entity_id) DO UPDATE SET sequence=excluded.sequence,after_entity=0,after_source=-1,after_item=0`, domain, k.ID, k.Revision)
+ ON CONFLICT(domain,entity_id) DO UPDATE SET sequence=excluded.sequence,after_entity=0,after_source=-1,after_item=0,after_item_started=0`, domain, k.ID, k.Revision)
 	return
 }
 
@@ -465,7 +465,19 @@ func deriveAssetFanout(ctx context.Context, tx *sql.Tx, k Key, limit int) (bool,
 	if err != nil {
 		return false, err
 	}
-	items, err := scanIDs(ctx, tx, `SELECT entity_id FROM catalog_asset_links INDEXED BY catalog_asset_links_asset WHERE asset_id=? AND entity_id>? ORDER BY entity_id LIMIT ?`, k.ID, afterItem, limit)
+	var started bool
+	if err = tx.QueryRowContext(ctx, `SELECT after_item_started FROM catalog_browse_metric_cursors WHERE domain=? AND entity_id=?`, DomainAssetMetrics, k.ID).Scan(&started); err != nil {
+		return false, err
+	}
+	q := `SELECT entity_id FROM catalog_asset_links INDEXED BY catalog_asset_links_asset WHERE asset_id=?`
+	args := []any{k.ID}
+	if started {
+		q += ` AND entity_id>?`
+		args = append(args, afterItem)
+	}
+	q += ` ORDER BY entity_id LIMIT ?`
+	args = append(args, limit)
+	items, err := scanIDs(ctx, tx, q, args...)
 	if err != nil {
 		return false, err
 	}
@@ -475,7 +487,7 @@ func deriveAssetFanout(ctx context.Context, tx *sql.Tx, k Key, limit int) (bool,
 	if len(items) < limit {
 		return true, finishMetricCursor(ctx, tx, DomainAssetMetrics, k.ID)
 	}
-	_, err = tx.ExecContext(ctx, `UPDATE catalog_browse_metric_cursors SET after_item=? WHERE domain=? AND entity_id=?`, items[len(items)-1], DomainAssetMetrics, k.ID)
+	_, err = tx.ExecContext(ctx, `UPDATE catalog_browse_metric_cursors SET after_item=?,after_item_started=1 WHERE domain=? AND entity_id=?`, items[len(items)-1], DomainAssetMetrics, k.ID)
 	return false, err
 }
 

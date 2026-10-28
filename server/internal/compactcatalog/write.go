@@ -799,9 +799,18 @@ const presentFileSQL = `(EXISTS(SELECT 1 FROM inventory_objects o WHERE o.asset_
 // existing mark keeps its time), and a title with one loses the mark. Every
 // writer that changes which files a title has, or whether a file is present,
 // calls it for the titles concerned.
+// Explicit point consumers (especially destructive cleanup) require this
+// synchronous live recheck. High-fanout ingress uses source jobs instead.
 func SettleMissingTx(ctx context.Context, tx *sql.Tx, items ...int64) error {
 	for _, item := range items {
-		if err := queueMissingSource(ctx, tx, item); err != nil {
+		if _, err := tx.ExecContext(ctx, `DELETE FROM catalog_missing_titles WHERE entity_id=?1
+ AND EXISTS(SELECT 1 FROM catalog_asset_links l CROSS JOIN catalog_assets a ON a.id=l.asset_id WHERE l.entity_id=?1 AND `+presentFileSQL+`)`, item); err != nil {
+			return err
+		}
+		if _, err := tx.ExecContext(ctx, `INSERT INTO catalog_missing_titles(entity_id,library_id,missing_since_ms)
+ SELECT e.id,e.library_id,?2 FROM catalog_entities e CROSS JOIN catalog_kinds k ON k.id=e.kind AND k.playable=1
+ WHERE e.id=?1 AND NOT EXISTS(SELECT 1 FROM catalog_asset_links l CROSS JOIN catalog_assets a ON a.id=l.asset_id WHERE l.entity_id=?1 AND `+presentFileSQL+`)
+ ON CONFLICT(entity_id) DO NOTHING`, item, time.Now().UnixMilli()); err != nil {
 			return err
 		}
 	}
@@ -865,7 +874,7 @@ func LinkAssetTx(ctx context.Context, tx *sql.Tx, item, asset int64, l Link) err
 	if err = touchLinked(ctx, tx, item); err != nil {
 		return err
 	}
-	return SettleMissingTx(ctx, tx, item)
+	return queueMissingSource(ctx, tx, item)
 }
 
 // UnlinkAssetTx detaches a file from an item. An item left with no file stays
@@ -881,7 +890,7 @@ func UnlinkAssetTx(ctx context.Context, tx *sql.Tx, item, asset int64) error {
 	if err = touchLinked(ctx, tx, item); err != nil {
 		return err
 	}
-	return SettleMissingTx(ctx, tx, item)
+	return queueMissingSource(ctx, tx, item)
 }
 
 func touchLinked(ctx context.Context, tx *sql.Tx, item int64) error {

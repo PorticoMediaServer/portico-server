@@ -32,14 +32,20 @@ type SearchGenre struct {
 }
 
 type SearchGenrePage struct {
-	Revision   string        `json:"revision"`
-	Genres     []SearchGenre `json:"genres"`
-	NextCursor string        `json:"nextCursor,omitempty"`
+	QueryID        string        `json:"queryId"`
+	PreviousCursor string        `json:"previousCursor,omitempty"`
+	ReloadCursor   string        `json:"reloadCursor,omitempty"`
+	HasGenres      *bool         `json:"hasGenres,omitempty"`
+	Revision       string        `json:"revision"`
+	Genres         []SearchGenre `json:"genres"`
+	NextCursor     string        `json:"nextCursor,omitempty"`
 }
 
 type SearchGenreRequest struct {
-	Limit  int
-	Cursor string
+	Preview      string
+	LimitPresent bool
+	Limit        int
+	Cursor       string
 }
 
 // SearchGenres is the shared video-only genre read (ruling 36). Counts and art

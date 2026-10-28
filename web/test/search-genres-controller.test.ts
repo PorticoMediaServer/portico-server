@@ -8,7 +8,7 @@ const artwork = (id: string, role: 'backdrop' | 'poster') => ({kind: 'item', id,
 const genre = (value: string, count: number, backdrop = true, covers = 2) => ({value, label: value, count,
   ...(backdrop ? {backdrop: artwork(value + '-backdrop', 'backdrop')} : {}),
   covers: Array.from({length: covers}, (_, index) => artwork(value + '-cover-' + index, 'poster'))});
-const page = (genres: readonly unknown[], nextCursor?: string, revision = 'genre-only-opaque') => ({revision, genres, ...(nextCursor ? {nextCursor} : {})});
+const page = (genres: readonly unknown[], nextCursor?: string, revision = 'genre-only-opaque') => ({queryId:'genre_query', revision, genres, ...(nextCursor ? {nextCursor} : {})});
 function deferred<T>() {let resolve!: (value: T) => void;const promise = new Promise<T>(done => {resolve = done;});return {promise, resolve};}
 function setup(handler: (path: string, signal?: AbortSignal) => Promise<unknown>, slot: SearchGenreSlot = 'backdrop', limit = 2) {
   let current = true, requests = 0;

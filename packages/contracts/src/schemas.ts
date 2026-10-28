@@ -10082,6 +10082,26 @@ export const schemas = {
     ],
     "type": "object"
   },
+  "CancelFacetQueryRequest": {
+    "properties": {},
+    "required": [],
+    "type": "object"
+  },
+  "CancelFacetQueryResponse": {
+    "properties": {},
+    "required": [],
+    "type": "object"
+  },
+  "CancelGenreQueryRequest": {
+    "properties": {},
+    "required": [],
+    "type": "object"
+  },
+  "CancelGenreQueryResponse": {
+    "properties": {},
+    "required": [],
+    "type": "object"
+  },
   "ChangeConnectivityPolicyRequest": {
     "properties": {
       "accessUrls": {
@@ -46893,6 +46913,251 @@ export const schemas = {
     ],
     "type": "object"
   },
+  "GetFacetQueryRequest": {
+    "properties": {},
+    "required": [],
+    "type": "object"
+  },
+  "GetFacetQueryResponse": {
+    "anyOf": [
+      {
+        "properties": {
+          "field": {
+            "type": "string"
+          },
+          "kind": {
+            "const": "simple-keyset",
+            "type": "string"
+          },
+          "revision": {
+            "type": "string"
+          },
+          "total": {
+            "maximum": 9007199254740991,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "totalIsLowerBound": {
+            "const": false,
+            "type": "boolean"
+          },
+          "values": {
+            "items": {
+              "properties": {
+                "count": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                },
+                "countIsLowerBound": {
+                  "type": "boolean"
+                },
+                "label": {
+                  "type": "string"
+                },
+                "seriesId": {
+                  "pattern": "^[A-Za-z0-9_-]{43}$",
+                  "type": "string"
+                },
+                "value": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "value",
+                "label",
+                "count",
+                "countIsLowerBound"
+              ],
+              "type": "object"
+            },
+            "maxItems": 200,
+            "type": "array"
+          },
+          "window": {
+            "properties": {
+              "basis": {
+                "type": "string"
+              },
+              "limit": {
+                "maximum": 200,
+                "minimum": 1,
+                "type": "integer"
+              },
+              "next": {
+                "maxLength": 512,
+                "minLength": 1,
+                "pattern": "^[A-Za-z0-9_-]+$",
+                "type": "string"
+              },
+              "previous": {
+                "maxLength": 512,
+                "minLength": 1,
+                "pattern": "^[A-Za-z0-9_-]+$",
+                "type": "string"
+              },
+              "queryId": {
+                "maxLength": 512,
+                "minLength": 1,
+                "pattern": "^[A-Za-z0-9_-]+$",
+                "type": "string"
+              },
+              "reload": {
+                "maxLength": 512,
+                "minLength": 1,
+                "pattern": "^[A-Za-z0-9_-]+$",
+                "type": "string"
+              },
+              "returned": {
+                "maximum": 200,
+                "minimum": 0,
+                "type": "integer"
+              }
+            },
+            "required": [
+              "queryId",
+              "basis",
+              "limit",
+              "returned"
+            ],
+            "type": "object"
+          }
+        },
+        "required": [
+          "kind",
+          "field",
+          "revision",
+          "total",
+          "totalIsLowerBound",
+          "values",
+          "window"
+        ],
+        "type": "object"
+      },
+      {
+        "properties": {
+          "field": {
+            "type": "string"
+          },
+          "kind": {
+            "type": "string"
+          },
+          "preparation": {
+            "properties": {
+              "kind": {
+                "const": "facet-preparing",
+                "type": "string"
+              },
+              "queryId": {
+                "maxLength": 512,
+                "minLength": 1,
+                "pattern": "^[A-Za-z0-9_-]+$",
+                "type": "string"
+              },
+              "retryAfterMs": {
+                "maximum": 9007199254740991,
+                "minimum": 1,
+                "type": "integer"
+              },
+              "state": {
+                "const": "preparing",
+                "type": "string"
+              }
+            },
+            "required": [
+              "kind",
+              "state",
+              "queryId",
+              "retryAfterMs"
+            ],
+            "type": "object"
+          },
+          "revision": {
+            "type": "string"
+          },
+          "total": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "totalIsLowerBound": {
+            "type": "boolean"
+          },
+          "values": {
+            "items": {
+              "properties": {
+                "count": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                },
+                "countIsLowerBound": {
+                  "type": "boolean"
+                },
+                "label": {
+                  "type": "string"
+                },
+                "seriesId": {
+                  "pattern": "^[A-Za-z0-9_-]{43}$",
+                  "type": "string"
+                },
+                "value": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "value",
+                "label",
+                "count",
+                "countIsLowerBound"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "kind",
+          "field",
+          "totalIsLowerBound",
+          "total",
+          "values",
+          "preparation"
+        ],
+        "type": "object"
+      },
+      {
+        "properties": {
+          "kind": {
+            "const": "facet-preparing",
+            "type": "string"
+          },
+          "queryId": {
+            "maxLength": 512,
+            "minLength": 1,
+            "pattern": "^[A-Za-z0-9_-]+$",
+            "type": "string"
+          },
+          "retryAfterMs": {
+            "maximum": 9007199254740991,
+            "minimum": 1,
+            "type": "integer"
+          },
+          "state": {
+            "const": "preparing",
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind",
+          "state",
+          "queryId",
+          "retryAfterMs"
+        ],
+        "type": "object"
+      }
+    ]
+  },
   "GetFeedbackCapabilitiesRequest": {
     "properties": {},
     "required": [],
@@ -47477,6 +47742,161 @@ export const schemas = {
       "data"
     ],
     "type": "object"
+  },
+  "GetGenreQueryRequest": {
+    "properties": {},
+    "required": [],
+    "type": "object"
+  },
+  "GetGenreQueryResponse": {
+    "anyOf": [
+      {
+        "properties": {
+          "genres": {
+            "items": {
+              "properties": {
+                "backdrop": {
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "kind": {
+                      "enum": [
+                        "item",
+                        "show"
+                      ],
+                      "type": "string"
+                    },
+                    "path": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "kind",
+                    "id",
+                    "path"
+                  ],
+                  "type": "object"
+                },
+                "count": {
+                  "maximum": 9007199254740991,
+                  "minimum": 1,
+                  "type": "integer"
+                },
+                "covers": {
+                  "items": {
+                    "properties": {
+                      "id": {
+                        "type": "string"
+                      },
+                      "kind": {
+                        "enum": [
+                          "item",
+                          "show"
+                        ],
+                        "type": "string"
+                      },
+                      "path": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "kind",
+                      "id",
+                      "path"
+                    ],
+                    "type": "object"
+                  },
+                  "maxItems": 2,
+                  "type": "array"
+                },
+                "label": {
+                  "type": "string"
+                },
+                "value": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "value",
+                "label",
+                "count",
+                "covers"
+              ],
+              "type": "object"
+            },
+            "maxItems": 50,
+            "type": "array"
+          },
+          "hasGenres": {
+            "type": "boolean"
+          },
+          "nextCursor": {
+            "maxLength": 512,
+            "minLength": 1,
+            "pattern": "^[A-Za-z0-9_-]+$",
+            "type": "string"
+          },
+          "previousCursor": {
+            "maxLength": 512,
+            "minLength": 1,
+            "pattern": "^[A-Za-z0-9_-]+$",
+            "type": "string"
+          },
+          "queryId": {
+            "maxLength": 512,
+            "minLength": 1,
+            "pattern": "^[A-Za-z0-9_-]+$",
+            "type": "string"
+          },
+          "reloadCursor": {
+            "maxLength": 512,
+            "minLength": 1,
+            "pattern": "^[A-Za-z0-9_-]+$",
+            "type": "string"
+          },
+          "revision": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "queryId",
+          "revision",
+          "genres"
+        ],
+        "type": "object"
+      },
+      {
+        "properties": {
+          "kind": {
+            "const": "genre-preparing",
+            "type": "string"
+          },
+          "queryId": {
+            "maxLength": 512,
+            "minLength": 1,
+            "pattern": "^[A-Za-z0-9_-]+$",
+            "type": "string"
+          },
+          "retryAfterMs": {
+            "maximum": 9007199254740991,
+            "minimum": 1,
+            "type": "integer"
+          },
+          "state": {
+            "const": "preparing",
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind",
+          "state",
+          "queryId",
+          "retryAfterMs"
+        ],
+        "type": "object"
+      }
+    ]
   },
   "GetGuideAiringsRequest": {
     "properties": {},
@@ -129335,61 +129755,301 @@ export const schemas = {
     "type": "object"
   },
   "GetLibraryFacetsResponse": {
-    "properties": {
-      "field": {
-        "type": "string"
-      },
-      "revision": {
-        "type": "string"
-      },
-      "total": {
-        "maximum": 9007199254740991,
-        "minimum": -9007199254740991,
-        "type": "integer"
-      },
-      "totalIsLowerBound": {
-        "type": "boolean"
-      },
-      "values": {
-        "items": {
-          "properties": {
-            "count": {
-              "maximum": 9007199254740991,
-              "minimum": -9007199254740991,
-              "type": "integer"
-            },
-            "countIsLowerBound": {
-              "type": "boolean"
-            },
-            "label": {
-              "type": "string"
-            },
-            "seriesId": {
-              "pattern": "^[A-Za-z0-9_-]{43}$",
-              "type": "string"
-            },
-            "value": {
-              "type": "string"
-            }
+    "anyOf": [
+      {
+        "properties": {
+          "field": {
+            "type": "string"
           },
-          "required": [
-            "value",
-            "label",
-            "count",
-            "countIsLowerBound"
-          ],
-          "type": "object"
+          "revision": {
+            "type": "string"
+          },
+          "total": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "totalIsLowerBound": {
+            "type": "boolean"
+          },
+          "values": {
+            "items": {
+              "properties": {
+                "count": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                },
+                "countIsLowerBound": {
+                  "type": "boolean"
+                },
+                "label": {
+                  "type": "string"
+                },
+                "seriesId": {
+                  "pattern": "^[A-Za-z0-9_-]{43}$",
+                  "type": "string"
+                },
+                "value": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "value",
+                "label",
+                "count",
+                "countIsLowerBound"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          }
         },
-        "type": "array"
+        "required": [
+          "field",
+          "totalIsLowerBound",
+          "total",
+          "values"
+        ],
+        "type": "object"
+      },
+      {
+        "properties": {
+          "field": {
+            "type": "string"
+          },
+          "kind": {
+            "const": "simple-keyset",
+            "type": "string"
+          },
+          "revision": {
+            "type": "string"
+          },
+          "total": {
+            "maximum": 9007199254740991,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "totalIsLowerBound": {
+            "const": false,
+            "type": "boolean"
+          },
+          "values": {
+            "items": {
+              "properties": {
+                "count": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                },
+                "countIsLowerBound": {
+                  "type": "boolean"
+                },
+                "label": {
+                  "type": "string"
+                },
+                "seriesId": {
+                  "pattern": "^[A-Za-z0-9_-]{43}$",
+                  "type": "string"
+                },
+                "value": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "value",
+                "label",
+                "count",
+                "countIsLowerBound"
+              ],
+              "type": "object"
+            },
+            "maxItems": 200,
+            "type": "array"
+          },
+          "window": {
+            "properties": {
+              "basis": {
+                "type": "string"
+              },
+              "limit": {
+                "maximum": 200,
+                "minimum": 1,
+                "type": "integer"
+              },
+              "next": {
+                "maxLength": 512,
+                "minLength": 1,
+                "pattern": "^[A-Za-z0-9_-]+$",
+                "type": "string"
+              },
+              "previous": {
+                "maxLength": 512,
+                "minLength": 1,
+                "pattern": "^[A-Za-z0-9_-]+$",
+                "type": "string"
+              },
+              "queryId": {
+                "maxLength": 512,
+                "minLength": 1,
+                "pattern": "^[A-Za-z0-9_-]+$",
+                "type": "string"
+              },
+              "reload": {
+                "maxLength": 512,
+                "minLength": 1,
+                "pattern": "^[A-Za-z0-9_-]+$",
+                "type": "string"
+              },
+              "returned": {
+                "maximum": 200,
+                "minimum": 0,
+                "type": "integer"
+              }
+            },
+            "required": [
+              "queryId",
+              "basis",
+              "limit",
+              "returned"
+            ],
+            "type": "object"
+          }
+        },
+        "required": [
+          "kind",
+          "field",
+          "revision",
+          "total",
+          "totalIsLowerBound",
+          "values",
+          "window"
+        ],
+        "type": "object"
+      },
+      {
+        "properties": {
+          "field": {
+            "type": "string"
+          },
+          "kind": {
+            "type": "string"
+          },
+          "preparation": {
+            "properties": {
+              "kind": {
+                "const": "facet-preparing",
+                "type": "string"
+              },
+              "queryId": {
+                "maxLength": 512,
+                "minLength": 1,
+                "pattern": "^[A-Za-z0-9_-]+$",
+                "type": "string"
+              },
+              "retryAfterMs": {
+                "maximum": 9007199254740991,
+                "minimum": 1,
+                "type": "integer"
+              },
+              "state": {
+                "const": "preparing",
+                "type": "string"
+              }
+            },
+            "required": [
+              "kind",
+              "state",
+              "queryId",
+              "retryAfterMs"
+            ],
+            "type": "object"
+          },
+          "revision": {
+            "type": "string"
+          },
+          "total": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "totalIsLowerBound": {
+            "type": "boolean"
+          },
+          "values": {
+            "items": {
+              "properties": {
+                "count": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                },
+                "countIsLowerBound": {
+                  "type": "boolean"
+                },
+                "label": {
+                  "type": "string"
+                },
+                "seriesId": {
+                  "pattern": "^[A-Za-z0-9_-]{43}$",
+                  "type": "string"
+                },
+                "value": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "value",
+                "label",
+                "count",
+                "countIsLowerBound"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "kind",
+          "field",
+          "totalIsLowerBound",
+          "total",
+          "values",
+          "preparation"
+        ],
+        "type": "object"
+      },
+      {
+        "properties": {
+          "kind": {
+            "const": "facet-preparing",
+            "type": "string"
+          },
+          "queryId": {
+            "maxLength": 512,
+            "minLength": 1,
+            "pattern": "^[A-Za-z0-9_-]+$",
+            "type": "string"
+          },
+          "retryAfterMs": {
+            "maximum": 9007199254740991,
+            "minimum": 1,
+            "type": "integer"
+          },
+          "state": {
+            "const": "preparing",
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind",
+          "state",
+          "queryId",
+          "retryAfterMs"
+        ],
+        "type": "object"
       }
-    },
-    "required": [
-      "field",
-      "totalIsLowerBound",
-      "total",
-      "values"
-    ],
-    "type": "object"
+    ]
   },
   "GetLibraryInventoryRequest": {
     "properties": {},
@@ -159756,94 +160416,154 @@ export const schemas = {
     "type": "object"
   },
   "GetSearchGenresResponse": {
-    "properties": {
-      "genres": {
-        "items": {
-          "properties": {
-            "backdrop": {
+    "anyOf": [
+      {
+        "properties": {
+          "genres": {
+            "items": {
               "properties": {
-                "id": {
-                  "type": "string"
-                },
-                "kind": {
-                  "enum": [
-                    "item",
-                    "show"
+                "backdrop": {
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "kind": {
+                      "enum": [
+                        "item",
+                        "show"
+                      ],
+                      "type": "string"
+                    },
+                    "path": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "kind",
+                    "id",
+                    "path"
                   ],
+                  "type": "object"
+                },
+                "count": {
+                  "maximum": 9007199254740991,
+                  "minimum": 1,
+                  "type": "integer"
+                },
+                "covers": {
+                  "items": {
+                    "properties": {
+                      "id": {
+                        "type": "string"
+                      },
+                      "kind": {
+                        "enum": [
+                          "item",
+                          "show"
+                        ],
+                        "type": "string"
+                      },
+                      "path": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "kind",
+                      "id",
+                      "path"
+                    ],
+                    "type": "object"
+                  },
+                  "maxItems": 2,
+                  "type": "array"
+                },
+                "label": {
                   "type": "string"
                 },
-                "path": {
+                "value": {
                   "type": "string"
                 }
               },
               "required": [
-                "kind",
-                "id",
-                "path"
+                "value",
+                "label",
+                "count",
+                "covers"
               ],
               "type": "object"
             },
-            "count": {
-              "maximum": 9007199254740991,
-              "minimum": 1,
-              "type": "integer"
-            },
-            "covers": {
-              "items": {
-                "properties": {
-                  "id": {
-                    "type": "string"
-                  },
-                  "kind": {
-                    "enum": [
-                      "item",
-                      "show"
-                    ],
-                    "type": "string"
-                  },
-                  "path": {
-                    "type": "string"
-                  }
-                },
-                "required": [
-                  "kind",
-                  "id",
-                  "path"
-                ],
-                "type": "object"
-              },
-              "maxItems": 2,
-              "type": "array"
-            },
-            "label": {
-              "type": "string"
-            },
-            "value": {
-              "type": "string"
-            }
+            "maxItems": 50,
+            "type": "array"
           },
-          "required": [
-            "value",
-            "label",
-            "count",
-            "covers"
-          ],
-          "type": "object"
+          "hasGenres": {
+            "type": "boolean"
+          },
+          "nextCursor": {
+            "maxLength": 512,
+            "minLength": 1,
+            "pattern": "^[A-Za-z0-9_-]+$",
+            "type": "string"
+          },
+          "previousCursor": {
+            "maxLength": 512,
+            "minLength": 1,
+            "pattern": "^[A-Za-z0-9_-]+$",
+            "type": "string"
+          },
+          "queryId": {
+            "maxLength": 512,
+            "minLength": 1,
+            "pattern": "^[A-Za-z0-9_-]+$",
+            "type": "string"
+          },
+          "reloadCursor": {
+            "maxLength": 512,
+            "minLength": 1,
+            "pattern": "^[A-Za-z0-9_-]+$",
+            "type": "string"
+          },
+          "revision": {
+            "type": "string"
+          }
         },
-        "type": "array"
+        "required": [
+          "queryId",
+          "revision",
+          "genres"
+        ],
+        "type": "object"
       },
-      "nextCursor": {
-        "type": "string"
-      },
-      "revision": {
-        "type": "string"
+      {
+        "properties": {
+          "kind": {
+            "const": "genre-preparing",
+            "type": "string"
+          },
+          "queryId": {
+            "maxLength": 512,
+            "minLength": 1,
+            "pattern": "^[A-Za-z0-9_-]+$",
+            "type": "string"
+          },
+          "retryAfterMs": {
+            "maximum": 9007199254740991,
+            "minimum": 1,
+            "type": "integer"
+          },
+          "state": {
+            "const": "preparing",
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind",
+          "state",
+          "queryId",
+          "retryAfterMs"
+        ],
+        "type": "object"
       }
-    },
-    "required": [
-      "revision",
-      "genres"
-    ],
-    "type": "object"
+    ]
   },
   "GetSearchHistoryRequest": {
     "properties": {},

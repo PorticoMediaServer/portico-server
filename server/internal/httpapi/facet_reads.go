@@ -39,11 +39,11 @@ func facetSchema[T any]() map[string]any {
 	return s
 }
 func (facetReadResponse) JSONSchema() map[string]any {
-	return map[string]any{"anyOf": []any{facetSchema[catalog.FacetPage](), facetSchema[catalog.SimpleFacetPage](), facetSchema[catalog.SimpleFacetPreparing]()}}
+	return map[string]any{"anyOf": []any{facetSchema[catalog.FacetPage](), facetSchema[catalog.SimpleFacetPage](), facetSchema[catalog.SimpleFacetFallbackPage](), facetSchema[catalog.SimpleFacetPreparing]()}}
 }
 func (facetReadResponse) JSONSchemaForStatus(status int) map[string]any {
 	if status == 200 {
-		return map[string]any{"anyOf": []any{facetSchema[catalog.FacetPage](), facetSchema[catalog.SimpleFacetPage]()}}
+		return map[string]any{"anyOf": []any{facetSchema[catalog.FacetPage](), facetSchema[catalog.SimpleFacetPage](), facetSchema[catalog.SimpleFacetFallbackPage]()}}
 	}
 	if status == 202 {
 		return facetSchema[catalog.SimpleFacetPreparing]()
@@ -51,11 +51,11 @@ func (facetReadResponse) JSONSchemaForStatus(status int) map[string]any {
 	return nil
 }
 func (facetQueryResponse) JSONSchema() map[string]any {
-	return map[string]any{"anyOf": []any{facetSchema[catalog.SimpleFacetPage](), facetSchema[catalog.SimpleFacetPreparing]()}}
+	return map[string]any{"anyOf": []any{facetSchema[catalog.SimpleFacetPage](), facetSchema[catalog.SimpleFacetFallbackPage](), facetSchema[catalog.SimpleFacetPreparing]()}}
 }
 func (facetQueryResponse) JSONSchemaForStatus(status int) map[string]any {
 	if status == 200 {
-		return facetSchema[catalog.SimpleFacetPage]()
+		return map[string]any{"anyOf": []any{facetSchema[catalog.SimpleFacetPage](), facetSchema[catalog.SimpleFacetFallbackPage]()}}
 	}
 	if status == 202 {
 		return facetSchema[catalog.SimpleFacetPreparing]()
@@ -67,12 +67,14 @@ func facetPreparingHeaders() []apikit.ResponseHeader {
 	return []apikit.ResponseHeader{
 		{Status: 202, Name: "Location", Description: "Same-server facet preparation poll path", Required: true},
 		{Status: 202, Name: "Retry-After", Description: "Minimum delay before polling", Required: true},
+		{Status: 200, Name: "Location", Description: "Same-server poll path when a lower-bound fallback is shown"},
+		{Status: 200, Name: "Retry-After", Description: "Minimum delay before polling a lower-bound fallback"},
 	}
 }
 
 // Family identity survives access-token rotation. Policy revision is private
 // authority, separate from the shared effective-policy content equivalence key.
-func (d Dependencies) facetCallerTx(ctx context.Context, tx *sql.Tx, r *http.Request, p identity.Principal) (readprep.Caller, error) {
+func (d Dependencies) facetCallerTx(ctx context.Context, tx *sql.Tx, r *http.Request, p identity.Principal, across bool) (readprep.Caller, error) {
 	family, err := d.Identity.SessionFamilyTx(ctx, tx, p)
 	if err != nil {
 		return "", err
@@ -81,7 +83,14 @@ func (d Dependencies) facetCallerTx(ctx context.Context, tx *sql.Tx, r *http.Req
 	if err != nil {
 		return "", err
 	}
-	raw, err := json.Marshal([]any{p.ServerID, family.ID, presentationIdentity(p), p.Epoch, fence})
+	if across {
+		_, scope, err := d.homeScopeFor(r.WithContext(ctx), p)
+		if err != nil {
+			return "", err
+		}
+		fence += ":" + scope
+	}
+	raw, err := json.Marshal([]any{p.ServerID, family.ID, presentationIdentity(p), p.Epoch, across, fence})
 	if err != nil {
 		return "", err
 	}
@@ -90,22 +99,26 @@ func (d Dependencies) facetCallerTx(ctx context.Context, tx *sql.Tx, r *http.Req
 }
 
 func (d Dependencies) facetReadContext(r *http.Request, p identity.Principal) (context.Context, readprep.Caller, error) {
+	return d.preparationReadContext(r, p, false)
+}
+
+func (d Dependencies) preparationReadContext(r *http.Request, p identity.Principal, across bool) (context.Context, readprep.Caller, error) {
 	var caller readprep.Caller
 	err := dbwork.WithReadSnapshot(r.Context(), d.DB, func(ctx context.Context) error {
 		var err error
-		caller, err = d.facetCallerTx(ctx, dbwork.Snapshot(ctx), r, p)
+		caller, err = d.facetCallerTx(ctx, dbwork.Snapshot(ctx), r, p, across)
 		return err
 	})
 	if err != nil {
 		return nil, "", err
 	}
 	guard := func(ctx context.Context, actual readprep.Caller, snapshot catalog.FacetBaseSnapshot) error {
-		if actual != caller {
+		if actual != caller || snapshot.Scope.Library == "" || snapshot.Scope.Policy == "" {
 			return catalog.ErrStaleContinuation
 		}
 		return dbwork.WithReadSnapshot(ctx, d.DB, func(ctx context.Context) error {
 			tx := dbwork.Snapshot(ctx)
-			now, err := d.facetCallerTx(ctx, tx, r, p)
+			now, err := d.facetCallerTx(ctx, tx, r, p, across)
 			if err != nil {
 				return err
 			}
@@ -142,9 +155,9 @@ func facetReadFailure(w http.ResponseWriter, err error) {
 	case errors.Is(err, readprep.ErrStale):
 		browseFailure(w, catalog.ErrStaleContinuation)
 	case errors.Is(err, readprep.ErrCapacity):
-		failure(w, &apierror.Error{Code: "search_busy", RetryAfterSeconds: 1, Cause: err})
+		policyErrors.Write(w, w.Header().Get("X-Request-Id"), &apierror.Error{Code: "search_busy", RetryAfterSeconds: 1, Cause: err})
 	case errors.Is(err, catalog.ErrFacetBaseUnavailable), errors.Is(err, catalog.ErrFacetBaseCapacity), errors.Is(err, readprep.ErrClosed):
-		failure(w, &apierror.Error{Code: "metadata_unavailable", RetryAfterSeconds: 1, Cause: err})
+		policyErrors.Write(w, w.Header().Get("X-Request-Id"), &apierror.Error{Code: "metadata_unavailable", RetryAfterSeconds: 1, Cause: err})
 	case errors.Is(err, catalog.ErrFacetBaseInput):
 		browseFailure(w, catalog.ErrCursor)
 	default:
@@ -154,13 +167,21 @@ func facetReadFailure(w http.ResponseWriter, err error) {
 
 func writeFacetRead(w http.ResponseWriter, result catalog.SimpleFacetResult) {
 	defer result.Release()
-	if result.Preparing != nil && result.Page == nil {
+	w.Header().Set("Cache-Control", "private, no-store")
+	if result.Fallback != nil && result.Page == nil && result.Preparing == nil {
+		pending := result.Fallback.Preparation
+		w.Header().Set("Location", "/v1/facet-queries/"+pending.QueryID)
+		w.Header().Set("Retry-After", strconv.Itoa(max(1, (pending.RetryAfterMs+999)/1000)))
+		write(w, http.StatusOK, result.Fallback)
+		return
+	}
+	if result.Preparing != nil && result.Page == nil && result.Fallback == nil {
 		w.Header().Set("Location", "/v1/facet-queries/"+result.Preparing.QueryID)
 		w.Header().Set("Retry-After", strconv.Itoa(max(1, (result.Preparing.RetryAfterMs+999)/1000)))
 		write(w, http.StatusAccepted, result.Preparing)
 		return
 	}
-	if result.Page == nil || result.Preparing != nil {
+	if result.Page == nil || result.Preparing != nil || result.Fallback != nil {
 		failure(w, errors.New("invalid facet preparation result"))
 		return
 	}

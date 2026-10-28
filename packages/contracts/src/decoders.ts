@@ -9,6 +9,8 @@ export function decodeBrowseAcrossResponse(input: unknown): types.BrowseAcrossRe
 export function decodeBrowseAcrossCountsResponse(input: unknown): types.BrowseAcrossCountsResponse { return decode("BrowseAcrossCountsResponse", input) as types.BrowseAcrossCountsResponse; }
 export function decodeBrowseLibraryResponse(input: unknown): types.BrowseLibraryResponse { return decode("BrowseLibraryResponse", input) as types.BrowseLibraryResponse; }
 export function decodeBrowseLibraryCountsResponse(input: unknown): types.BrowseLibraryCountsResponse { return decode("BrowseLibraryCountsResponse", input) as types.BrowseLibraryCountsResponse; }
+export function decodeCancelFacetQueryResponse(input: unknown): types.CancelFacetQueryResponse { return decode("CancelFacetQueryResponse", input) as types.CancelFacetQueryResponse; }
+export function decodeCancelGenreQueryResponse(input: unknown): types.CancelGenreQueryResponse { return decode("CancelGenreQueryResponse", input) as types.CancelGenreQueryResponse; }
 export function decodeChangeConnectivityPolicyResponse(input: unknown): types.ChangeConnectivityPolicyResponse { return decode("ChangeConnectivityPolicyResponse", input) as types.ChangeConnectivityPolicyResponse; }
 export function decodeChangeConsoleSettingsResponse(input: unknown): types.ChangeConsoleSettingsResponse { return decode("ChangeConsoleSettingsResponse", input) as types.ChangeConsoleSettingsResponse; }
 export function decodeChangePlaybackSessionResponse(input: unknown): types.ChangePlaybackSessionResponse { return decode("ChangePlaybackSessionResponse", input) as types.ChangePlaybackSessionResponse; }
@@ -208,9 +210,11 @@ export function decodeGetDvrRecordingsIdImageResponse(input: unknown): types.Get
 export function decodeGetDvrStorageResponse(input: unknown): types.GetDvrStorageResponse { return decode("GetDvrStorageResponse", input) as types.GetDvrStorageResponse; }
 export function decodeGetDvrSummaryResponse(input: unknown): types.GetDvrSummaryResponse { return decode("GetDvrSummaryResponse", input) as types.GetDvrSummaryResponse; }
 export function decodeGetEventsResponse(input: unknown): types.GetEventsResponse { return decode("GetEventsResponse", input) as types.GetEventsResponse; }
+export function decodeGetFacetQueryResponse(input: unknown): types.GetFacetQueryResponse { return decode("GetFacetQueryResponse", input) as types.GetFacetQueryResponse; }
 export function decodeGetFeedbackCapabilitiesResponse(input: unknown): types.GetFeedbackCapabilitiesResponse { return decode("GetFeedbackCapabilitiesResponse", input) as types.GetFeedbackCapabilitiesResponse; }
 export function decodeGetFeedbackReportsResponse(input: unknown): types.GetFeedbackReportsResponse { return decode("GetFeedbackReportsResponse", input) as types.GetFeedbackReportsResponse; }
 export function decodeGetFeedbackReportsIdResponse(input: unknown): types.GetFeedbackReportsIdResponse { return decode("GetFeedbackReportsIdResponse", input) as types.GetFeedbackReportsIdResponse; }
+export function decodeGetGenreQueryResponse(input: unknown): types.GetGenreQueryResponse { return decode("GetGenreQueryResponse", input) as types.GetGenreQueryResponse; }
 export function decodeGetGuideResponse(input: unknown): types.GetGuideResponse { return decode("GetGuideResponse", input) as types.GetGuideResponse; }
 export function decodeGetGuideAiringsResponse(input: unknown): types.GetGuideAiringsResponse { return decode("GetGuideAiringsResponse", input) as types.GetGuideAiringsResponse; }
 export function decodeGetGuideChannelsResponse(input: unknown): types.GetGuideChannelsResponse { return decode("GetGuideChannelsResponse", input) as types.GetGuideChannelsResponse; }

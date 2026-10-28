@@ -3,10 +3,11 @@ import assert from 'node:assert/strict';
 import {getEventListeners} from 'node:events';
 import {
   FacetReadSession, FacetWindowError, SIMPLE_FACET_PAGE_BYTES,
-  parseSimpleFacetPage, parseSimpleFacetPreparing, simpleFacetPath,
+  parseSimpleFacetPage, parseSimpleFacetPreparing, parseSimpleFacetFallbackPage, simpleFacetPath,
   type SimpleFacetRead, type FacetReadSessionOptions,
 } from '../src/facet-windows.ts';
 import type {PreparationResponse, PreparationRuntime} from '../src/read-preparation.ts';
+import {routePaths} from '../../contracts/src/route-paths.ts';
 
 const row = (value = 'Drama', label = value) => ({value, label, count: 5, countIsLowerBound: false});
 function page(queryId = 'query_1', over: Record<string, unknown> = {}) {
@@ -408,4 +409,178 @@ test('an unavailable edge performs no GET and keeps current interest until expli
   await assert.rejects(f.session.previous(), error => error instanceof FacetWindowError && error.code === 'facet_continuation_unavailable');
   assert.equal(f.gets().length, 1); assert.equal(f.deletes().length, 0); assert.equal(f.session.window?.queryId, 'query_1');
   f.session.retire(); assert.equal(f.deletes().length, 1);
+});
+
+function fallback(queryId = 'query_1', over: Record<string, unknown> = {}) {
+  return {kind: 'facet-fallback', field: 'genre', total: 1, totalIsLowerBound: true,
+    values: [{...row(), countIsLowerBound: true}], preparation: preparing(queryId), ...over};
+}
+
+test('strict fallback parser preserves explicit lower bounds, optional revision and legal long scalars', () => {
+  const scalar = '  é😀\n'.repeat(SIMPLE_FACET_PAGE_BYTES);
+  const raw = fallback('query_1', {revision: 'staging_1', total: Number.MAX_SAFE_INTEGER,
+    values: [{...row(scalar, ''), count: Number.MAX_SAFE_INTEGER, countIsLowerBound: true}]});
+  const parsed = parseSimpleFacetFallbackPage(raw, {field: 'genre', limit: 2});
+  assert.deepEqual(parsed, raw); assert.equal(parsed.values[0].value, scalar); assert.equal(parsed.values[0].label, '');
+  assert.ok(Object.isFrozen(parsed) && Object.isFrozen(parsed.values) && Object.isFrozen(parsed.values[0]) && Object.isFrozen(parsed.preparation));
+  assert.equal('window' in parsed, false);
+  assert.throws(() => parseSimpleFacetPage(parsed), FacetWindowError);
+  const zero = fallback('query_1', {values: [{...row(), count: 0, countIsLowerBound: true}]});
+  assert.equal(parseSimpleFacetFallbackPage(zero).values[0].count, 0, 'zero is a valid nonnegative lower bound');
+});
+
+test('fallback parser rejects exact flags, anchors, malformed preparation, unsafe counts and oversized row sets', async t => {
+  const bads: [string, unknown][] = [
+    ['legacy', {field: 'genre', total: 0, values: []}], ['exact', page()], ['pending', preparing()],
+    ['missing total flag', {...fallback(), totalIsLowerBound: undefined}],
+    ['false total flag', {...fallback(), totalIsLowerBound: false}],
+    ['row exact flag', {...fallback(), values: [row()]}],
+    ['row missing flag', {...fallback(), values: [{value: 'Drama', label: 'Drama', count: 1}]}],
+    ['window', {...fallback(), window: page().window}], ['next', {...fallback(), next: 'opaque'}],
+    ['after', {...fallback(), after: 'opaque'}], ['bad kind', {...fallback(), kind: 'simple-keyset'}],
+    ['wrong field', {...fallback(), field: 'actor'}], ['bad revision', {...fallback(), revision: null}],
+    ['missing preparation', {...fallback(), preparation: undefined}],
+    ['malformed preparation', {...fallback(), preparation: {...preparing(), state: 'ready'}}],
+    ['foreign ID', {...fallback(), preparation: preparing('https://foreign.example')}],
+    ['unsafe total', {...fallback(), total: Number.MAX_SAFE_INTEGER + 1}],
+    ['fraction total', {...fallback(), total: 1.5}], ['inconsistent total', {...fallback(), total: 0}],
+    ['unsafe row count', {...fallback(), values: [{...row(), count: Number.MAX_SAFE_INTEGER + 1, countIsLowerBound: true}]}],
+    ['negative row count', {...fallback(), values: [{...row(), count: -1, countIsLowerBound: true}]}],
+    ['empty row value', {...fallback(), values: [{...row(''), countIsLowerBound: true}]}],
+    ['duplicate rows', {...fallback(), total: 2, values: [{...row(), countIsLowerBound: true}, {...row(), countIsLowerBound: true}]}],
+    ['too many rows', {...fallback(), total: 201, values: Array.from({length: 201}, (_, i) => ({...row(String(i)), countIsLowerBound: true}))}],
+  ];
+  for (const [name, raw] of bads) await t.test(name, () => {
+    assert.throws(() => parseSimpleFacetFallbackPage(raw), error => error instanceof FacetWindowError && error.code === 'invalid_facet_window');
+  });
+  assert.throws(() => parseSimpleFacetFallbackPage(fallback(), {field: 'studio'}));
+  assert.throws(() => parseSimpleFacetFallbackPage(fallback('query_1', {total: 2, values: [
+    {...row('A'), countIsLowerBound: true}, {...row('B'), countIsLowerBound: true},
+  ]}), {limit: 1}));
+});
+
+test('pending/fallback/exact share one handle; fallback is callback-only and read awaits exact', async () => {
+  const raw = response(200, fallback(), {Location: '/v1/facet-queries/query_1', 'Retry-After': '120'});
+  const f = fixture([response(202, preparing()), raw, response(200, page())]);
+  f.session.retire();
+  const seen: unknown[] = [];
+  let rawSeen: PreparationResponse | undefined, finished = false;
+  const session = new FacetReadSession({...f.options, onFallback: (value, meta) => { seen.push(value); rawSeen = meta; }});
+  const done = session.read(read); void done.then(() => { finished = true; });
+  await flush(); assert.equal(seen.length, 0); f.clock.fire(); await flush();
+  assert.equal(seen.length, 1); assert.deepEqual(seen[0], fallback()); assert.equal(rawSeen, raw);
+  assert.equal(finished, false); assert.equal(session.page, undefined); assert.equal(session.window, undefined);
+  assert.equal(f.pendingEvents.length, 1); assert.deepEqual(f.clock.delays, [1001, 120_001]);
+  await assert.rejects(session.next(), error => error instanceof FacetWindowError && error.code === 'facet_continuation_unavailable');
+  assert.equal(f.gets().length, 2, 'fallback exposes no eager continuation');
+  f.clock.fire(); const exact = await done;
+  assert.equal(exact.kind, 'simple-keyset'); assert.equal(session.page, exact); assert.equal(session.window?.queryId, 'query_1');
+  assert.equal(f.deletes().length, 0); session.retire(); assert.equal(f.deletes().length, 1);
+});
+
+test('empty and oversized fallback panels remain transient, explicitly lower-bound and still preparing', async t => {
+  for (const large of [false, true]) await t.test(large ? 'oversized' : 'empty', async () => {
+    const scalar = '漢字😀'.repeat(SIMPLE_FACET_PAGE_BYTES);
+    const raw = fallback('query_1', large ? {values: [{...row(scalar, scalar), countIsLowerBound: true}]} : {values: [], total: 0});
+    const f = fixture([response(200, raw), response(200, page())]); f.session.retire();
+    let callbacks = 0;
+    const session = new FacetReadSession({...f.options, onFallback(value) {
+      callbacks++; assert.equal(value.totalIsLowerBound, true); assert.equal(value.preparation.state, 'preparing');
+      if (large) { assert.equal(value.values[0].value, scalar); assert.equal(value.values[0].label, scalar); }
+      else assert.deepEqual(value.values, []);
+    }});
+    const done = session.read(read); await flush();
+    assert.equal(callbacks, 1); assert.equal(session.page, undefined); assert.equal(session.window, undefined);
+    assert.equal(f.gets().length, 1); f.clock.fire(); await done; session.retire();
+  });
+});
+
+test('repeated fallbacks publish independently with no cached rows/history or early exact settlement', async () => {
+  const f = fixture([response(200, fallback()), response(200, fallback('query_1', {revision: 'staging_2', total: 2})), response(200, page())]);
+  f.session.retire(); let callbacks = 0;
+  const session = new FacetReadSession({...f.options, onFallback() { callbacks++; assert.equal(session.page, undefined); assert.equal(session.window, undefined); }});
+  const done = session.read(read); await flush(); f.clock.fire(); await flush();
+  assert.equal(callbacks, 2); assert.equal(f.gets().length, 2); assert.equal(f.deletes().length, 0);
+  f.clock.fire(); await done; assert.equal(session.page?.kind, 'simple-keyset'); session.retire();
+});
+
+test('foreign fallback Location, mismatched pending handle and malformed lower bounds never publish', async t => {
+  for (const mode of ['location', 'handle', 'flags']) await t.test(mode, async () => {
+    const raw = mode === 'location' ? response(200, fallback(), {Location: 'https://foreign.example/query_1'})
+      : mode === 'handle' ? response(200, fallback('query_2')) : response(200, {...fallback(), totalIsLowerBound: false});
+    const f = fixture([response(202, preparing()), raw]); f.session.retire(); let callbacks = 0;
+    const session = new FacetReadSession({...f.options, onFallback: () => { callbacks++; }});
+    const done = session.read(read), rejected = assert.rejects(done);
+    await flush(); f.clock.fire(); await rejected;
+    assert.equal(callbacks, 0); assert.equal(session.page, undefined); assert.equal(session.window, undefined);
+    assert.deepEqual(f.deletes().map(c => c.path), ['/v1/facet-queries/query_1']); session.retire();
+  });
+});
+
+test('fallback callback retirement/throw releases once and prevents further polls', async t => {
+  for (const mode of ['retire', 'throw']) await t.test(mode, async () => {
+    const f = fixture([response(200, fallback())]); f.session.retire();
+    const sentinel = new Error('fallback publication failed');
+    const session = new FacetReadSession({...f.options, onFallback: () => { if (mode === 'throw') throw sentinel; session.retire(); }});
+    await assert.rejects(session.read(read), error => mode === 'throw' ? error === sentinel : (error as Error).name === 'AbortError');
+    assert.equal(f.deletes().length, 1); assert.equal(f.clock.timers.size, 0); assert.equal(f.gets().length, 1);
+    assert.equal(session.page, undefined); session.retire();
+  });
+});
+
+test('late fallback after replacement cleans its handle without parsing/publishing rows or overwriting exact', async () => {
+  const late = deferred<PreparationResponse>(), f = fixture([late.promise, response(200, page('query_2'))]); f.session.retire();
+  let callbacks = 0;
+  const session = new FacetReadSession({...f.options, onFallback: () => { callbacks++; }});
+  const old = session.read(read), rejected = assert.rejects(old, {name: 'AbortError'});
+  const exact = await session.replace({...read, q: 'new'}); await rejected;
+  // Minimal kind/field/preparation validation safely releases the late interest even if
+  // its rows would fail the full parser. No fallback-row parser/publication is needed.
+  late.resolve(response(200, fallback('query_1', {values: 'unreadable'}))); await flush();
+  assert.equal(callbacks, 0); assert.equal(session.page, exact); assert.equal(session.window?.queryId, 'query_2');
+  assert.deepEqual(f.deletes().map(c => c.path), ['/v1/facet-queries/query_1']);
+  session.retire(); assert.equal(f.deletes().length, 2);
+});
+
+test('fallback stale refresh is one-shot and does not carry fallback rows/tokens into a new exact basis', async () => {
+  const newer = page('query_2', {revision: 'basis_2', window: {...page('query_2').window, basis: 'basis_2'}});
+  const f = fixture([response(200, fallback()), response(409), response(200, newer)]); f.session.retire();
+  let callbacks = 0;
+  const session = new FacetReadSession({...f.options, onFallback: () => { callbacks++; }});
+  const done = session.read({...read, after: 'old_anchor'}); await flush(); f.clock.fire(); const exact = await done;
+  assert.equal(callbacks, 1); assert.equal(exact.window.basis, 'basis_2');
+  const query = new URL(f.gets().at(-1)!.path, 'https://local.invalid').searchParams;
+  assert.equal(query.has('after'), false); assert.equal(query.get('q'), 'D');
+  assert.equal(session.page, exact); assert.equal(f.deletes().length, 1); session.retire();
+});
+
+test('one-shot fallback still polls final exact and releases only when exact arrives', async () => {
+  const f = fixture([response(200, fallback()), response(200, page())], {retainReadyHandle: false});
+  const done = f.session.read(read); await flush();
+  assert.equal(f.deletes().length, 0); assert.equal(f.session.page, undefined);
+  f.clock.fire(); const exact = await done;
+  assert.equal(exact.kind, 'simple-keyset'); assert.equal(f.deletes().length, 1); assert.equal(f.session.window, undefined);
+  f.session.retire(); assert.equal(f.deletes().length, 1);
+});
+
+test('default poll/cancel uses generated route IDs and fails closed while apigen is still pending', async () => {
+  const f = fixture([response(202, preparing()), response(200, page())], {paths: undefined});
+  const done = f.session.read(read);
+  if (!('get_facet_query' in routePaths) || !('cancel_facet_query' in routePaths)) {
+    await assert.rejects(done, /Unknown API operation/);
+    assert.equal(f.gets().length, 1); assert.equal(f.clock.timers.size, 0);
+  } else {
+    await flush(); f.clock.fire(); await done;
+    assert.equal(f.gets()[1].path, '/v1/facet-queries/query_1'); f.session.retire();
+    assert.equal(f.deletes()[0].path, '/v1/facet-queries/query_1');
+  }
+  f.session.retire();
+});
+
+test('malformed initial fallback rows release the minimally validated preparation interest', async () => {
+  const raw = response(200, {...fallback(), values: [row()]}), f = fixture([raw]);
+  await assert.rejects(f.session.read(read), error => error instanceof FacetWindowError && error.response === raw);
+  assert.equal(f.session.page, undefined); assert.equal(f.session.window, undefined);
+  assert.deepEqual(f.deletes().map(c => c.path), ['/v1/facet-queries/query_1']);
+  assert.equal(f.gets().length, 1); assert.equal(f.clock.timers.size, 0); f.session.retire();
 });
