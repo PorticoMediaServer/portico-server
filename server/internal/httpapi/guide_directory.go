@@ -26,7 +26,7 @@ func directoryQuery(q url.Values) (livechannels.DirectoryQuery, error) {
 			return out, livechannels.ErrInvalid
 		}
 		switch key {
-		case "kind", "sourceId", "search", "group", "favorites", "includeHidden", "sort", "offset", "limit", "revision", "timezone", "anchorChannelId", "anchorSourceId", "anchorProvenance", "direction":
+		case "kind", "sourceId", "search", "group", "favorites", "includeHidden", "includeServerHidden", "sort", "offset", "limit", "revision", "timezone", "anchorChannelId", "anchorSourceId", "anchorProvenance", "direction":
 		default:
 			return out, livechannels.ErrInvalid
 		}
@@ -54,7 +54,7 @@ func directoryQuery(q url.Values) (livechannels.DirectoryQuery, error) {
 			*target = v
 		}
 	}
-	for key, target := range map[string]*bool{"favorites": &out.FavoritesOnly, "includeHidden": &out.IncludeHidden} {
+	for key, target := range map[string]*bool{"favorites": &out.FavoritesOnly, "includeHidden": &out.IncludeHidden, "includeServerHidden": &out.IncludeServerHidden} {
 		if q.Has(key) {
 			if q.Get(key) != "true" && q.Get(key) != "false" {
 				return out, livechannels.ErrInvalid
@@ -82,7 +82,7 @@ func (d Dependencies) guideDirectoryAuthority(p identity.Principal, restrictionF
 		if err != nil {
 			return livechannels.DirectoryScope{}, err
 		}
-		scope := livechannels.DirectoryScope{Viewer: channelSubject(p), AllowedLiveSources: []string{}, LibraryRows: []livechannels.DirectoryRow{}}
+		scope := livechannels.DirectoryScope{Owner: channelOwner(p), Viewer: channelSubject(p), AllowedLiveSources: []string{}, LibraryRows: []livechannels.DirectoryRow{}}
 		rows, err := tx.QueryContext(ctx, `SELECT id FROM live_sources WHERE state='active' ORDER BY id`)
 		if err != nil {
 			return scope, livechannels.ErrUnavailable
@@ -164,7 +164,7 @@ func (d Dependencies) guideDirectoryRoutes(mux *http.ServeMux, store *livechanne
 		if err != nil {
 			return nil, err
 		}
-		if query.IncludeHidden && !channelOwner(p) {
+		if (query.IncludeHidden || query.IncludeServerHidden) && !channelOwner(p) {
 			return nil, livechannels.ErrDenied
 		}
 		_, fence, err := d.viewerRestrictions(r, p)
@@ -191,7 +191,7 @@ func (d Dependencies) guideDirectoryRoutes(mux *http.ServeMux, store *livechanne
 	d.httpHandle(mux, "GET /v1/guide/sources", handle(false, func(ctx context.Context, _ http.ResponseWriter, r *http.Request, p identity.Principal) (any, error) {
 		q := r.URL.Query()
 		for key, values := range q {
-			if len(values) != 1 || (key != "timezone" && key != "includeHidden") {
+			if len(values) != 1 || (key != "timezone" && key != "includeHidden" && key != "includeServerHidden") {
 				return nil, livechannels.ErrInvalid
 			}
 		}
@@ -199,14 +199,14 @@ func (d Dependencies) guideDirectoryRoutes(mux *http.ServeMux, store *livechanne
 		if err != nil {
 			return nil, err
 		}
-		if query.IncludeHidden && !channelOwner(p) {
+		if (query.IncludeHidden || query.IncludeServerHidden) && !channelOwner(p) {
 			return nil, livechannels.ErrDenied
 		}
 		_, fence, err := d.viewerRestrictions(r, p)
 		if err != nil {
 			return nil, err
 		}
-		summary, err := store.ChannelSourceSummary(ctx, d.guideDirectoryAuthority(p, fence), query.IncludeHidden, time.Now())
+		summary, err := store.ChannelSourceSummary(ctx, d.guideDirectoryAuthority(p, fence), query.IncludeHidden, time.Now(), query.IncludeServerHidden)
 		if err != nil {
 			return nil, err
 		}

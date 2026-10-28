@@ -394,10 +394,12 @@ type ChannelMapEntry struct {
 	Hidden         bool   `json:"hidden"`
 	Position       int    `json:"position"`
 	Overridden     bool   `json:"overridden"`
+	OverrideNumber string `json:"overrideNumber"`
 }
 
 // ChannelMapPage is one page of a source's channel map.
 type ChannelMapPage struct {
+	Revision   int64             `json:"revision"`
 	SourceID   string            `json:"sourceId"`
 	Generation string            `json:"generation"`
 	Items      []ChannelMapEntry `json:"items"`
@@ -413,6 +415,11 @@ func channelMapPage(ctx context.Context, tx *sql.Tx, id string, after int64, siz
 	}
 	if err := tx.QueryRowContext(ctx, `SELECT active_generation FROM live_sources WHERE id=?`, id).Scan(&out.Generation); err != nil {
 		return out, err
+	}
+	if _, revision, err := readDocument(ctx, tx, liveSourceScope(id), DefaultLiveSourceSettings()); err != nil {
+		return out, err
+	} else {
+		out.Revision = revision
 	}
 	if out.Generation == "" {
 		return out, nil
@@ -430,6 +437,7 @@ func channelMapPage(ctx context.Context, tx *sql.Tx, id string, after int64, siz
 			return out, err
 		}
 		e.Hidden = hidden != 0
+		e.OverrideNumber = override
 		if override != "" {
 			e.Number, e.Overridden = override, true
 		}
@@ -457,6 +465,11 @@ func channelMapEntry(ctx context.Context, tx *sql.Tx, id, channelID string) (Cha
 	if err := tx.QueryRowContext(ctx, `SELECT active_generation FROM live_sources WHERE id=?`, id).Scan(&out.Generation); err != nil {
 		return out, err
 	}
+	if _, revision, err := readDocument(ctx, tx, liveSourceScope(id), DefaultLiveSourceSettings()); err != nil {
+		return out, err
+	} else {
+		out.Revision = revision
+	}
 	if out.Generation == "" {
 		return out, ErrNotFound
 	}
@@ -471,6 +484,7 @@ func channelMapEntry(ctx context.Context, tx *sql.Tx, id, channelID string) (Cha
 		return out, err
 	}
 	e.Hidden = hidden != 0
+	e.OverrideNumber = override
 	if override != "" {
 		e.Number, e.Overridden = override, true
 	}

@@ -42,8 +42,8 @@ export type LiveSourceSettings=Readonly<{enabledGroups:readonly string[];enabled
 export type LiveSourceDocument=Readonly<{sourceId:string;sourceName:string;revision:number;digest:string;tunerCount:number;availableKinds:readonly LiveSourceKind[];settings:LiveSourceSettings;effective:LiveDefaults;/** What the logo worker uses, after the server-wide switch and any following choice. */effectiveLogoImport:Readonly<{enabled:boolean;overwriteExisting:boolean}>;
  /** The authoritative update mode when the server sends it; absent means unknown, not remote or upload. */
  acquisition?:LiveSourceAcquisition}>;
-export type ChannelMapEntry=Readonly<{channelId:string;name:string;sourceNumber:string;number:string;group:string;guideChannelId:string;hidden:boolean;position:number;overridden:boolean}>;
-export type ChannelMapPage=Readonly<{sourceId:string;generation:string;items:readonly ChannelMapEntry[];nextCursor:string}>;
+export type ChannelMapEntry=Readonly<{channelId:string;name:string;sourceNumber:string;number:string;group:string;guideChannelId:string;hidden:boolean;position:number;overridden:boolean;overrideNumber?:string}>;
+export type ChannelMapPage=Readonly<{sourceId:string;generation:string;revision?:number;items:readonly ChannelMapEntry[];nextCursor:string}>;
 export type FolderToken=Readonly<{token:string;description:string;example:string;supportsPadding:boolean}>;
 export type KeepPolicy=Readonly<{mode:'keep-all'|'keep-count'|'keep-days';keepCount:number;keepDays:number;keepUntilWatched:boolean}>;
 export type DVRDefaults=Readonly<{prePaddingMs:number;postPaddingMs:number;keepPolicy:KeepPolicy;conversion:Readonly<{mode:'none'|'remux'|'ladder';ladderId:string;deleteOriginal:boolean}>;folderTemplate:string;movieFolderTemplate:string;recordingProfile:string;sidecars:Readonly<{nfo:boolean;poster:boolean;fanart:boolean;thumbnail:boolean}>;tunerPreference:string;
@@ -281,12 +281,12 @@ export function parseChannelMapPage(v:unknown):ChannelMapPage{
  if(!object(v)||!filled(v.sourceId,256)||!text(v.generation,256)||!text(v.nextCursor,1024))invalid('channel map page');
  const items=firstOfEach('administration','channel map entries',readable(v.items,200,'channel map entries',entry=>{
   if(!object(entry)||!filled(entry.channelId,256)||!text(entry.name,512)||!text(entry.sourceNumber,16)||!text(entry.number,16)||!text(entry.group,256)||!text(entry.guideChannelId,256)||!flag(entry.hidden)||!count(entry.position)||!flag(entry.overridden))invalid('channel map entry');
-  return Object.freeze({channelId:entry.channelId,name:entry.name,sourceNumber:entry.sourceNumber,number:entry.number,group:entry.group,guideChannelId:entry.guideChannelId,hidden:entry.hidden,position:entry.position,overridden:entry.overridden});
+  return Object.freeze({channelId:entry.channelId,name:entry.name,sourceNumber:entry.sourceNumber,number:entry.number,group:entry.group,guideChannelId:entry.guideChannelId,hidden:entry.hidden,position:entry.position,overridden:entry.overridden,...(text(entry.overrideNumber,16)?{overrideNumber:entry.overrideNumber}:{})});
  }),entry=>entry.channelId);
  // Two channels served on the same number make the lineup ambiguous. Both are listed, so the owner can see the clash and fix it here.
  const served=items.filter(entry=>!entry.hidden&&entry.number!=='').map(entry=>entry.number);
  if(new Set(served).size!==served.length)noteSkipped('administration','duplicate channel number');
- return Object.freeze({sourceId:v.sourceId,generation:v.generation,items:Object.freeze(items),nextCursor:v.nextCursor});
+ return Object.freeze({sourceId:v.sourceId,generation:v.generation,...(count(v.revision)?{revision:v.revision}:{}),items:Object.freeze(items),nextCursor:v.nextCursor});
 }
 
 /** parseDVRDocument reads the recording defaults and the folder token vocabulary. */

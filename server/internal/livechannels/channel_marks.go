@@ -96,6 +96,8 @@ func directoryMarks(ctx context.Context, tx *sql.Tx, scope DirectoryScope, q Dir
 	q.SourceID = ""
 	q.Kind = "all"
 	q.IncludeHidden = false
+	// Owners retain the same collision domain when revealing server-hidden rows.
+	q.IncludeServerHidden = scope.Owner
 	rows, err := tx.QueryContext(ctx, directoryEligibleSQL+`SELECT source_id,channel_id,name,number FROM eligible ORDER BY source_id,channel_id`, directoryArgs(scope, q)...)
 	if err != nil {
 		return err

@@ -45,6 +45,8 @@ export const channelMessages = {
   'channels.removeFavorite': 'Remove from Favorites',
   'channels.hide': 'Hide channel',
   'channels.unhide': 'Show channel',
+  'channels.hiddenNotice': 'Channel hidden',
+  'channels.shownNotice': 'Channel shown',
   'channels.editChannel': 'Edit channel',
   'channels.channel': 'Channel {number}',
   'channels.noSourcesTitle': 'No channels yet',

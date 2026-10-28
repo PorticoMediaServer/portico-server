@@ -125,7 +125,7 @@ func registerLiveHTTPContracts(registry *apikit.Registry) error {
 		ProtocolVersion string                 `json:"protocolVersion"`
 		ServerID        string                 `json:"serverId"`
 		Directory       livechannels.Directory `json:"directory"`
-	}](registry, apikit.Metadata{ID: "get_guide_channels", Method: "GET", Path: "/v1/guide/channels", Summary: "Read guide channels", Access: apikit.Device, Requires: apikit.ScopeRead, Lane: apikit.Browsing, Admission: laneBrowsing, Cost: apikit.Constant, BodyLimit: 0, Status: 200, Query: []string{"anchorChannelId", "anchorProvenance", "anchorSourceId", "direction", "favorites", "group", "includeHidden", "kind", "limit", "offset", "revision", "search", "sort", "sourceId", "timezone"}, Errors: []string{"invalid_request", "unauthorized", "not_permitted", "not_found", "internal"}}); err != nil {
+	}](registry, apikit.Metadata{ID: "get_guide_channels", Method: "GET", Path: "/v1/guide/channels", Summary: "Read guide channels", Access: apikit.Device, Requires: apikit.ScopeRead, Lane: apikit.Browsing, Admission: laneBrowsing, Cost: apikit.Constant, BodyLimit: 0, Status: 200, Query: []string{"anchorChannelId", "anchorProvenance", "anchorSourceId", "direction", "favorites", "group", "includeHidden", "includeServerHidden", "kind", "limit", "offset", "revision", "search", "sort", "sourceId", "timezone"}, Errors: []string{"invalid_request", "unauthorized", "not_permitted", "not_found", "internal"}}); err != nil {
 		return err
 	}
 	// internal/httpapi/guide_directory.go:185
@@ -135,7 +135,7 @@ func registerLiveHTTPContracts(registry *apikit.Registry) error {
 		ViewerFence     string                       `json:"viewerFence"`
 		Revision        string                       `json:"revision"`
 		Sources         []livechannels.SourceSummary `json:"sources"`
-	}](registry, apikit.Metadata{ID: "get_guide_sources", Method: "GET", Path: "/v1/guide/sources", Summary: "Read guide sources", Access: apikit.Device, Requires: apikit.ScopeRead, Lane: apikit.Browsing, Admission: laneBrowsing, Cost: apikit.Constant, BodyLimit: 0, Status: 200, Query: []string{"includeHidden", "timezone"}, Errors: []string{"invalid_request", "unauthorized", "not_permitted", "not_found", "internal"}}); err != nil {
+	}](registry, apikit.Metadata{ID: "get_guide_sources", Method: "GET", Path: "/v1/guide/sources", Summary: "Read guide sources", Access: apikit.Device, Requires: apikit.ScopeRead, Lane: apikit.Browsing, Admission: laneBrowsing, Cost: apikit.Constant, BodyLimit: 0, Status: 200, Query: []string{"includeHidden", "includeServerHidden", "timezone"}, Errors: []string{"invalid_request", "unauthorized", "not_permitted", "not_found", "internal"}}); err != nil {
 		return err
 	}
 	// internal/httpapi/guide_images.go:14
@@ -277,7 +277,7 @@ func registerLiveHTTPContracts(registry *apikit.Registry) error {
 		ProtocolVersion string             `json:"protocolVersion"`
 		ServerID        string             `json:"serverId"`
 		Guide           livechannels.Guide `json:"guide"`
-	}](registry, apikit.Metadata{ID: "get_guide", Method: "GET", Path: "/v1/guide", Summary: "Read guide", Access: apikit.Device, Requires: apikit.ScopeRead, Lane: apikit.Default, Admission: laneDefault, Cost: apikit.PageSized, BodyLimit: 0, Status: 200, Query: []string{"channels", "cursor", "end", "favorites", "group", "includeHidden", "kind", "limit", "programmes", "search", "sourceId", "start", "timezone"}, Errors: []string{"invalid_request", "unauthorized", "not_permitted", "not_found", "internal"}}); err != nil {
+	}](registry, apikit.Metadata{ID: "get_guide", Method: "GET", Path: "/v1/guide", Summary: "Read guide", Access: apikit.Device, Requires: apikit.ScopeRead, Lane: apikit.Default, Admission: laneDefault, Cost: apikit.PageSized, BodyLimit: 0, Status: 200, Query: []string{"channels", "cursor", "end", "favorites", "group", "includeHidden", "includeServerHidden", "kind", "limit", "programmes", "search", "sourceId", "start", "timezone"}, Errors: []string{"invalid_request", "unauthorized", "not_permitted", "not_found", "internal"}}); err != nil {
 		return err
 	}
 	// internal/httpapi/recording_owners.go:29

@@ -20,15 +20,17 @@ export type ChannelMenuActions = Readonly<{
  * Edit channel on Library Channels. A hidden channel (shown only to an owner who asked) offers
  * Show channel instead. */
 export function guideChannelMenuEntries(channel: GuideChannelRow, actions: ChannelMenuActions): readonly MenuEntry[] {
-  const hidden = legacyChannel(channel)?.hidden ?? false;
+  const hidden = legacyChannel(channel)?.serverHidden ?? false;
   return [
     {id: 'favorite', label: t(channel.favorite ? 'channels.removeFavorite' : 'channels.addFavorite'), icon: channel.favorite ? 'i-star-f' : 'i-star',
       disabled: actions.busy, onSelect: () => actions.onFavorite(channel)},
-    ...(actions.owner ? [{id: 'hide', label: t(hidden ? 'channels.unhide' : 'channels.hide'), icon: hidden ? 'i-eye' as const : 'i-eyeoff' as const,
+    ...(actions.owner && channel.kind !== 'library' ? [{id: 'hide', label: t(hidden ? 'channels.unhide' : 'channels.hide'), icon: hidden ? 'i-eye' as const : 'i-eyeoff' as const,
       disabled: actions.busy, onSelect: () => actions.onHidden(channel, !hidden)}] : []),
     ...(actions.owner && channel.kind === 'library' ? [{id: 'edit', label: t('channels.editChannel'), icon: 'i-edit' as const, onSelect: () => actions.onEdit(channel)}] : []),
   ];
 }
+
+export const guideChannelEditorDestination = (channelId: string) => ({to: '/settings', search: {scope: 'server', section: 'live', row: 'live.lib.channels', channelId}} as const);
 
 /** A long press or the platform's context menu (right-click, Shift+F10, the Menu key, Android's
  * hold) opens the row's menu. A held touch that moves is a scroll, never a press. */

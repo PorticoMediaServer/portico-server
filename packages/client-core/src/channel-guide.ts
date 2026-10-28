@@ -26,11 +26,11 @@ export type GuideChannel = Readonly<{
  id: string; sourceId: string; provenance: ChannelKind; name: string; number: string; group: string;
  generation: string; logoPath?: string; mark?: GuideChannelMark; programmes: readonly GuideProgramme[]; tuneAvailable: boolean; recordAvailable: boolean;
  tuneUnavailableReason: LinearUnavailableReason; recordUnavailableReason: LinearUnavailableReason;
- favorite: boolean; hidden: boolean; preferenceRevision: number;
+ favorite: boolean; hidden: boolean; serverHidden?: boolean; preferenceRevision: number;
 }>;
 export type GuideSource = Readonly<{id: string; name: string; generation: string; publishedAt: string; availableStart: string; availableEnd: string; provenance: ChannelKind; refreshState: string}>;
 export type ChannelGuide = Readonly<{state: 'ready' | 'no-sources' | 'no-channels' | 'no-guide-data' | 'filter-empty' | 'guide-stale' | 'continuation-required'; viewerFence: string; start: string; end: string; timezone: string; channels: readonly GuideChannel[]; sources: readonly GuideSource[]; nextCursor: string; observedAt: string; /** Guide.days: how many calendar days from now are covered (today counts as 1), at most 31. Absent on older servers. */ days?: number}>;
-export type GuideRoute = Readonly<{kind: ChannelKind; start: string; end: string; timezone: string; search: string; sourceId: string; favorites?: boolean; includeHidden?: boolean; group?: string}>;
+export type GuideRoute = Readonly<{kind: ChannelKind; start: string; end: string; timezone: string; search: string; sourceId: string; favorites?: boolean; includeHidden?: boolean; includeServerHidden?: boolean; group?: string}>;
 export interface ChannelApi { request<T>(path: string, method?: string, body?: unknown, signal?: AbortSignal): Promise<T> }
 export type GuideSnapshot = Readonly<{phase: 'idle' | 'loading' | 'retained-refreshing' | 'ready' | 'error'; guide: ChannelGuide | null; route: GuideRoute | null; error: string | null; hasPrevious: boolean}>;
 const object = (v: unknown): v is Record<string, unknown> => v !== null && typeof v === 'object' && !Array.isArray(v);
@@ -167,7 +167,7 @@ export function parseGuideChannels(value: unknown, sources: readonly GuideSource
    if (programmeIDs.has(p.id) || Date.parse(p.start) < previousEnd || route !== undefined && (Date.parse(p.end) <= Date.parse(route.start) || Date.parse(p.start) >= Date.parse(route.end)) || ++total > 10000) invalid();
    previousEnd = Date.parse(p.end); programmeIDs.add(p.id); return p;
   });
-  return {id: v.id, sourceId: v.sourceId, provenance: v.provenance, name: v.name, number: (v.number ?? '') as string, group: (v.group ?? '') as string, generation: v.generation, logoPath: logoPath as string, ...(mark ? {mark} : {}), programmes, tuneAvailable, recordAvailable, tuneUnavailableReason, recordUnavailableReason, favorite: v.favorite === true, hidden: v.hidden === true, preferenceRevision: v.preferenceRevision as number} as GuideChannel;
+  return {id: v.id, sourceId: v.sourceId, provenance: v.provenance, name: v.name, number: (v.number ?? '') as string, group: (v.group ?? '') as string, generation: v.generation, logoPath: logoPath as string, ...(mark ? {mark} : {}), programmes, tuneAvailable, recordAvailable, tuneUnavailableReason, recordUnavailableReason, favorite: v.favorite === true, hidden: v.hidden === true, serverHidden: v.serverHidden === true, preferenceRevision: v.preferenceRevision as number} as GuideChannel;
  }); return channels;
 }
 export function parseChannelGuide(raw: unknown, serverId: string, route: GuideRoute): ChannelGuide {
@@ -183,6 +183,7 @@ export function parseChannelGuide(raw: unknown, serverId: string, route: GuideRo
 function path(route: GuideRoute, cursor: string): string {
  const q = new URLSearchParams({kind: route.kind, start: route.start, end: route.end, timezone: route.timezone, search: route.search, sourceId: route.sourceId, limit: '30', cursor});
  if (route.favorites !== undefined) q.set('favorites', String(route.favorites));
+ if (route.includeServerHidden) q.set('includeServerHidden', 'true');
  if (route.includeHidden !== undefined) q.set('includeHidden', String(route.includeHidden));
  if (route.group) q.set('group', route.group);
  return routePath("get_guide") + "?" + (q.toString());
