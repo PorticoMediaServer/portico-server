@@ -271,7 +271,7 @@ jobs:
       - name: Core and web types
         run: |
           status=0
-          for project in packages/client-core packages/player-core packages/reader-core web-next web; do
+          for project in packages/client-core packages/player-core packages/reader-core web-next; do
             npx --no-install tsc -p "$project/tsconfig.json" --noEmit > "$RUNNER_TEMP/types-${project//\//-}.log" 2>&1 || status=1
             echo "Types: $project"
             tail -n 20 "$RUNNER_TEMP/types-${project//\//-}.log"
@@ -281,9 +281,6 @@ jobs:
         name: Web lint (required)
         run: |
           status=0
-          npm run lint:design --workspace portico-web -- --strict || status=1
-          npm run lint:hooks --workspace portico-web || status=1
-          npm run lint:strings --workspace portico-web || status=1
           npm run lint:design --workspace portico-web-next || status=1
           npm run lint:hooks --workspace portico-web-next || status=1
           npm run lint:strings --workspace portico-web-next || status=1

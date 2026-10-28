@@ -3,7 +3,6 @@
   "private": true,
   "type": "module",
   "workspaces": [
-    "web",
     "web-next",
     "packages/client-core",
     "packages/design",
@@ -11,8 +10,8 @@
     "packages/reader-core"
   ],
   "scripts": {
-    "dev:web": "npm run dev --workspace portico-web",
-    "check:web": "npm run test:cast && npm run check --workspace portico-web",
+    "dev:web": "npm run dev --workspace portico-web-next",
+    "check:web": "npm run test:cast && npm run check --workspace portico-web-next",
     "test:core": "npm run test --workspace @portico/client-core",
     "test:cast": "node --test server/receiver/cast/test/*.test.cjs",
     "test:player": "npm run test --workspace @portico/player-core",

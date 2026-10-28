@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {ApiError} from '../../packages/client-core/src/index.ts';
 import {CredentialSessionService} from '../../packages/client-core/src/credentials.ts';
 import {routePath, routeBody} from '../../packages/contracts/src/hosted/routes.ts';
-import {componentModule} from '../../web/test/helpers/component-harness.mjs';
+import {componentModule} from './helpers/component-harness.mjs';
 
 const fragments = await componentModule(new URL('../src/services/fragments.ts', import.meta.url), {});
 const {verifyEmail} = await componentModule(new URL('../src/services/link-effects.ts', import.meta.url), {

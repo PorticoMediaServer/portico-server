@@ -2,8 +2,8 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {ApiError} from '@core/index.ts';
 import {ServicesAuthFlow} from '../src/services/auth-flow.ts';
-import {componentModule} from '../../web/test/helpers/component-harness.mjs';
-import {createRenderer,tree,textOf} from '../../web/test/helpers/interaction-harness.mjs';
+import {componentModule} from './helpers/component-harness.mjs';
+import {createRenderer,tree,textOf} from './helpers/interaction-harness.mjs';
 const options={password:true,registration:true,recovery:true,providers:[],verifiedContactRequired:true,accountSecurity:true};
 async function fixture(restored=false){
   const h=createRenderer(),flows:ServicesAuthFlow[]=[],calls:any[]=[],reads:any[]=[];

@@ -12,8 +12,8 @@ import assert from 'node:assert/strict';
 import {queueScope,playbackFence,type QueuePlaybackFence} from '../../packages/player-core/src/index.ts';
 import type {WebPlaybackAuthority} from '../src/platform/playback/types.ts';
 import {fenceKey} from '../src/shell/playback-model';
-import {componentModule} from '../../web/test/helpers/component-harness.mjs';
-import {all, createRenderer, one, tick, tree} from '../../web/test/helpers/interaction-harness.mjs';
+import {componentModule} from './helpers/component-harness.mjs';
+import {all, createRenderer, one, tick, tree} from './helpers/interaction-harness.mjs';
 
 const scopeToken=queueScope({serverId:'server',authority:'local',accountId:'account',profileId:'profile',controllerId:'controller',controllerEpoch:'epoch',commandLaneId:'lane'});
 const authority:WebPlaybackAuthority={serverId:'server',authority:'local',accountId:'account',profileId:'profile',epoch:1,viewerFence:'viewer'};

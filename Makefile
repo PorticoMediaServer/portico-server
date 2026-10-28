@@ -16,7 +16,7 @@ test-clients:
 	npm run check:web
 
 build-web:
-	npm run build --workspace portico-web
+	npm run build --workspace portico-web-next
 
 build-server:
 	cd server && CGO_ENABLED=0 go build -trimpath -o "$(abspath $(SERVER_OUTPUT))" ./cmd/server

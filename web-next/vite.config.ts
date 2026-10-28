@@ -3,9 +3,9 @@ import {servicesEntryPlugin} from './services/vite-entry.mjs';
 import react from '@vitejs/plugin-react';
 import {readerPdfAssets} from './scripts/pdf-assets.mjs';
 import {enUS} from '../packages/i18n/src/catalog/en-US.ts';
-import {aliases, assetNames, browserCheck, browserFloor, kitFamilies} from './scripts/config.mjs';
+import {aliases, assetNames, browserCheck, browserFloor, kitFamilies, vendoredFiles} from './scripts/config.mjs';
 export default defineConfig(({mode}) => ({
-  plugins: [servicesEntryPlugin(loadEnv(mode, process.cwd(), 'VITE_')), react(), readerPdfAssets(), browserCheck(enUS), kitFamilies()],
+  plugins: [servicesEntryPlugin(loadEnv(mode, process.cwd(), 'VITE_')), react(), readerPdfAssets(), vendoredFiles(), browserCheck(enUS), kitFamilies()],
   resolve: {alias: aliases, dedupe: ['react', 'react-dom']},
   server: {
     host: '127.0.0.1', port: 5174, strictPort: true,

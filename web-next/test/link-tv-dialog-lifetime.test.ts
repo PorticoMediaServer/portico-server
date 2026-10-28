@@ -8,8 +8,8 @@
  */
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {componentModule} from '../../web/test/helpers/component-harness.mjs';
-import {createRenderer, one, tick, tree} from '../../web/test/helpers/interaction-harness.mjs';
+import {componentModule} from './helpers/component-harness.mjs';
+import {createRenderer, one, tick, tree} from './helpers/interaction-harness.mjs';
 
 type Deferred<T> = {promise: Promise<T>; resolve(value: T): void; reject(error?: unknown): void};
 const deferred = <T,>(): Deferred<T> => {

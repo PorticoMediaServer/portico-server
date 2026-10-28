@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {componentModule} from '../../web/test/helpers/component-harness.mjs';
-import {all, createRenderer, tree} from '../../web/test/helpers/interaction-harness.mjs';
+import {componentModule} from './helpers/component-harness.mjs';
+import {all, createRenderer, tree} from './helpers/interaction-harness.mjs';
 
 test('title tabs follow the actual shell navigation, including changes without a width change', async t => {
   let width = 1280, navigation = 'sidebar', compact = false;

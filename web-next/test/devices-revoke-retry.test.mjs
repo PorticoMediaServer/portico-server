@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import {componentModule} from '../../web/test/helpers/component-harness.mjs';
-import {createRenderer, tree, all, textOf} from '../../web/test/helpers/interaction-harness.mjs';
+import {componentModule} from './helpers/component-harness.mjs';
+import {createRenderer, tree, all, textOf} from './helpers/interaction-harness.mjs';
 import {AccountSessionReviewService} from '../../packages/client-core/src/account-sessions.ts';
 
 // FX-201: the blocker's shape. Renders the real DevicesPanel and the real

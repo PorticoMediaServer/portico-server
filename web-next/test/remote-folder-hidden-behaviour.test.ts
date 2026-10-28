@@ -1,8 +1,8 @@
 /** Component-level regression: original directory, selection and request custody across hidden toggles. */
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {componentModule} from '../../web/test/helpers/component-harness.mjs';
-import {all, createRenderer, tree} from '../../web/test/helpers/interaction-harness.mjs';
+import {componentModule} from './helpers/component-harness.mjs';
+import {all, createRenderer, tree} from './helpers/interaction-harness.mjs';
 
 test('hidden filter preserves the nested selection and only the latest listing publishes', async () => {
   const h = createRenderer(); h.react.useId = () => 'folder-path';

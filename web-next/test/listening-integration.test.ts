@@ -9,8 +9,8 @@ import {createWebListeningPort,type WebListeningLifetime} from '../src/platform/
 import {createQueueEditOpening} from '../src/platform/playback/queue-edit-adapter.ts';
 import type {WebPlaybackRuntimeSnapshot,WebShellPlaybackRuntime,WebQueueListSnapshot,WebQueueListPort} from '../src/platform/playback';
 import {ListeningOwner} from '../src/screens/watch/listening/listening-owner.ts';
-import {componentModule} from '../../web/test/helpers/component-harness.mjs';
-import {all,createRenderer,one,tree} from '../../web/test/helpers/interaction-harness.mjs';
+import {componentModule} from './helpers/component-harness.mjs';
+import {all,createRenderer,one,tree} from './helpers/interaction-harness.mjs';
 import {PlaybackMediaOwner} from '../src/shell/playback-media-owner.ts';
 import {PlaybackPresentations,fenceKey,localVideoSurfaceActive,playbackPresentation,retainedPlaybackNotice} from '../src/shell/playback-model.ts';
 import {dispatchWatch,watchClock,watchSeek,watchSeekBounds} from '../src/screens/watch/model.ts';

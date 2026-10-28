@@ -3,8 +3,8 @@ import assert from 'node:assert/strict';
 import {springTiming, springs} from '@design';
 import {MusicExpansionPaint, type MusicPaintNodes} from '../src/screens/watch/music/expansion-paint.ts';
 import {claimDockWords, dockWordsOwner, releaseDockWords} from '../src/kit/dock/dock-words.ts';
-import {componentModule} from '../../web/test/helpers/component-harness.mjs';
-import {createRenderer} from '../../web/test/helpers/interaction-harness.mjs';
+import {componentModule} from './helpers/component-harness.mjs';
+import {createRenderer} from './helpers/interaction-harness.mjs';
 import {fenceKey} from '../src/shell/playback-model.ts';
 
 // UNRUN production visual-owner vectors. DOM/WAAPI/style observations below are controlled;

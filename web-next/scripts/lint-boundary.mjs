@@ -74,15 +74,9 @@ function cssImports(text) {
 }
 export function lintBoundary({repo, app = resolve(repo, 'web-next'), entries, paths} = {}) {
   repo = resolve(repo); app = resolve(app);
-  const old = resolve(repo, 'web'), oldReal = canonical(old), devRoot = resolve(app, 'src/dev'), devRootReal = canonical(devRoot), privateAssets = resolve(repo, '../../design-ui-v1/design/ui-v1/assets'), privateAssetsReal = canonical(privateAssets), failures = [], visited = new Set();
+  const devRoot = resolve(app, 'src/dev'), devRootReal = canonical(devRoot), privateAssets = resolve(repo, '../../design-ui-v1/design/ui-v1/assets'), privateAssetsReal = canonical(privateAssets), failures = [], visited = new Set();
   const configPaths = paths ?? JSON.parse(readFileSync(resolve(app, 'tsconfig.json'), 'utf8')).compilerOptions.paths;
   const aliases = Object.entries(configPaths).map(([key, values]) => ({key: key.replace(/\/\*$/, ''), star: key.endsWith('/*'), target: resolve(app, values[0].replace(/\/\*$/, ''))})).sort((a, b) => b.key.length - a.key.length);
-  function reject(path, from, specifier) {
-    if (within(old, resolve(path)) || within(oldReal, canonical(path))) {
-      failures.push(`${relative(repo, from)}: old UI boundary: ${specifier} -> ${relative(repo, path)}`); return true;
-    }
-    return false;
-  }
   function local(specifier, from) {
     let spec = specifier.replace(/[?#].*$/, '');
     if (spec.startsWith('file:')) return fileURLToPath(specifier);
@@ -96,14 +90,14 @@ export function lintBoundary({repo, app = resolve(repo, 'web-next'), entries, pa
     // no neighbouring stylesheet exists, as Vite supports package imports too.
     const neighbour = resolve(dirname(from), spec);
     if (extname(from) === '.css' && extensions.some(extension => existsSync(neighbour + extension))) return neighbour;
-    // Resolve installed packages too: a symlink must not disguise an old UI module.
+    // Resolve installed packages too.
     try { return createRequire(pathToFileURL(from)).resolve(spec); }
     catch { failures.push(`${relative(repo, from)}: unresolved import ${specifier}`); }
   }
   function follow(spec, from) {
     if (typeof spec !== 'string') { failures.push(`${relative(repo, from)}: dynamic imports must use a literal path`); return; }
     const target = local(spec, from);
-    if (!target || reject(target, from, spec)) return;
+    if (!target) return;
     const file = extensions.map(extension => target + extension).find(candidate => existsSync(candidate) && statSync(candidate).isFile());
     if (!file) {
       // The DEV gallery consumes private design frames and artwork by relative
@@ -116,11 +110,9 @@ export function lintBoundary({repo, app = resolve(repo, 'web-next'), entries, pa
       if (!existsSync(target) && devImporter && devAsset) return;
       failures.push(`${relative(repo, from)}: unresolved local import ${spec}`); return;
     }
-    if (reject(file, from, spec)) return;
     if (!file.includes('/node_modules/')) visit(file);
   }
   function visit(file) {
-    if (reject(file, file, file)) return;
     const real = canonical(file);
     if (visited.has(real)) return;
     visited.add(real);
@@ -153,5 +145,5 @@ if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1]
   const repo = fileURLToPath(new URL('../../', import.meta.url));
   const failures = lintBoundary({repo});
   if (failures.length) { console.error(failures.join('\n')); process.exit(1); }
-  console.log('old UI boundary clean');
+  console.log('import boundary clean');
 }

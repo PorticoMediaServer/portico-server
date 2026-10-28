@@ -5,7 +5,7 @@ import {existsSync, mkdirSync, mkdtempSync, openSync, readFileSync, rmSync, writ
 import net from 'node:net';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
-import {ChromeDriver} from '../../web/test/integration/chrome-driver.mjs';
+import {ChromeDriver} from './integration/chrome-driver.mjs';
 import {runtimeTestPassword} from './services-test-password.mjs';
 
 const repository = fileURLToPath(new URL('../../', import.meta.url));

@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {componentModule} from '../../../web/test/helpers/component-harness.mjs';
-import {createRenderer, tree, one} from '../../../web/test/helpers/interaction-harness.mjs';
+import {componentModule} from '../helpers/component-harness.mjs';
+import {createRenderer, tree, one} from '../helpers/interaction-harness.mjs';
 import * as routeSearch from '../../src/screens/read/route-search.ts';
 
 // Actual ReadHost callbacks and hook ownership with mocked existing ports. This

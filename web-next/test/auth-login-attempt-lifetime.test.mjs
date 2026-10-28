@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import {componentModule} from '../../web/test/helpers/component-harness.mjs';
+import {componentModule} from './helpers/component-harness.mjs';
 import {AccountAttemptIds, MFARequiredError} from '../../packages/client-core/src/hosted-security.ts';
 
 // FX-161: the blocker's shape against the actual ServicesAuthFlow. A password

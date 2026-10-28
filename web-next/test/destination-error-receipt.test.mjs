@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {componentModule} from '../../web/test/helpers/component-harness.mjs';
-import {createRenderer, tick} from '../../web/test/helpers/interaction-harness.mjs';
+import {componentModule} from './helpers/component-harness.mjs';
+import {createRenderer, tick} from './helpers/interaction-harness.mjs';
 
 /**
  * FX-156 / BLK-WEB-001 focused receipt test. It loads the actual `ChildRouteError` source through

@@ -334,8 +334,8 @@ var preferenceRuntimeSources = map[string][2]string{
 	"quality.home":                        {"server/internal/playback/delivery_policy.go", "function:SavedQualityPreference"},
 	"quality.remote":                      {"server/internal/httpapi/playback_v1_routes.go", "function:SavedQualityPreference"},
 	"quality.mobile":                      {"server/internal/httpapi/playback_v1_routes.go", "function:SavedQualityPreference"},
-	"appearance.cardSizePercent":          {"web/src/shell/Shell.tsx", "appearance.cardSizePercent"},
-	"appearance.showBackdrops":            {"web/src/shell/Shell.tsx", "appearance.showBackdrops"},
+	"appearance.cardSizePercent":          {"packages/client-core/src/preference-effects.ts", "appearance.cardSizePercent"},
+	"appearance.showBackdrops":            {"packages/client-core/src/preference-effects.ts", "appearance.showBackdrops"},
 	"audiobooks.skipBackMs":               {"packages/client-core/src/audiobook-preferences.ts", "audiobooks.skipBackMs"},
 	"audiobooks.skipForwardMs":            {"packages/client-core/src/audiobook-preferences.ts", "audiobooks.skipForwardMs"},
 	"audiobooks.resumeRewindMs":           {"server/internal/playback/service.go", "audiobooks.resumeRewindMs"},
@@ -348,32 +348,32 @@ var preferenceRuntimeSources = map[string][2]string{
 	"music.audioNormalization":            {"packages/client-core/src/music-preferences.ts", "music.audioNormalization"},
 	"music.crossfadeMs":                   {"packages/client-core/src/music-preferences.ts", "music.crossfadeMs"},
 	"music.gapless":                       {"packages/client-core/src/music-preferences.ts", "music.gapless"},
-	"notifications.badges":                {"web/src/shell/Shell.tsx", "notifications.badges"},
+	"notifications.badges":                {"web-next/src/shell/bootstrap.ts", "notifications.badges"},
 	"playback.autoplayNext":               {"server/internal/httpapi/playback_v1_routes.go", "playback.autoplayNext"},
-	"playback.creditsSkip":                {"web/src/player/Player.tsx", "playback.creditsSkip"},
-	"playback.defaultSpeed":               {"web/src/player/Player.tsx", "playback.defaultSpeed"},
-	"playback.introSkip":                  {"web/src/player/Player.tsx", "playback.introSkip"},
+	"playback.creditsSkip":                {"web-next/src/shell/settings.ts", "playback.creditsSkip"},
+	"playback.defaultSpeed":               {"web-next/src/shell/settings.ts", "playback.defaultSpeed"},
+	"playback.introSkip":                  {"web-next/src/shell/settings.ts", "playback.introSkip"},
 	"playback.passoutAfterEpisodes":       {"server/internal/httpapi/playback_v1_routes.go", "playback.passoutAfterEpisodes"},
 	"playback.passoutProtection":          {"server/internal/httpapi/playback_v1_routes.go", "playback.passoutProtection"},
 	"playback.playedThresholdPercent":     {"server/internal/catalog/personal_activity.go", "playback.playedThresholdPercent"},
 	"playback.preferredAudioLanguages":    {"server/internal/playback/delivery_context.go", "playback.preferredAudioLanguages"},
 	"playback.preferredSubtitleLanguages": {"server/internal/subtitles/provider.go", "playback.preferredSubtitleLanguages"},
-	"playback.recapSkip":                  {"web/src/player/Player.tsx", "playback.recapSkip"},
-	"playback.showSyncedLyrics":           {"web/src/player/Player.tsx", "playback.showSyncedLyrics"},
-	"playback.skipBackMs":                 {"web/src/player/Player.tsx", "playback.skipBackMs"},
-	"playback.skipForwardMs":              {"web/src/player/Player.tsx", "playback.skipForwardMs"},
+	"playback.recapSkip":                  {"web-next/src/shell/settings.ts", "playback.recapSkip"},
+	"playback.showSyncedLyrics":           {"web-next/src/shell/settings.ts", "playback.showSyncedLyrics"},
+	"playback.skipBackMs":                 {"web-next/src/shell/settings.ts", "playback.skipBackMs"},
+	"playback.skipForwardMs":              {"web-next/src/shell/settings.ts", "playback.skipForwardMs"},
 	"playback.sleepTimerMinutes":          {"server/internal/catalog/listening_preferences.go", "playback.sleepTimerMinutes"},
 	"playback.startNextDuringCredits":     {"server/internal/httpapi/playback_v1_routes.go", "playback.startNextDuringCredits"},
 	"playback.startedThresholdPercent":    {"server/internal/catalog/personal_activity.go", "playback.startedThresholdPercent"},
-	"playback.subtitleBackground":         {"web/src/player/Player.tsx", "playback.subtitleBackground"},
+	"playback.subtitleBackground":         {"packages/client-core/src/preference-effects.ts", "playback.subtitleBackground"},
 	"playback.subtitleMode":               {"server/internal/playback/delivery_context.go", "playback.subtitleMode"},
-	"playback.subtitleSize":               {"web/src/player/Player.tsx", "playback.subtitleSize"},
+	"playback.subtitleSize":               {"packages/client-core/src/preference-effects.ts", "playback.subtitleSize"},
 	"playback.upNextCountdownMs":          {"server/internal/httpapi/playback_v1_routes.go", "playback.upNextCountdownMs"},
 	"privacy.includeInWatchTogether":      {"server/internal/social/privacy.go", "function:watchTogetherVisible"},
 	"privacy.pauseWatchHistory":           {"server/internal/downloads/progress.go", "privacy.pauseWatchHistory"},
 	"privacy.showActivityToMembers":       {"server/internal/catalog/recommendation_engine.go", "privacy.showActivityToMembers"},
-	"region.hourCycle":                    {"web/src/app/i18n.ts", "region.hourCycle"},
-	"region.locale":                       {"web/src/app/i18n.ts", "region.locale"},
+	"region.hourCycle":                    {"packages/client-core/src/preference-effects.ts", "region.hourCycle"},
+	"region.locale":                       {"packages/client-core/src/preference-effects.ts", "region.locale"},
 	"search.rememberHistory":              {"server/internal/catalog/search_history.go", "search.rememberHistory"},
 	"playback.subtitleColor":              {"packages/client-core/src/preference-effects.ts", "playback.subtitleColor"},
 	"playback.subtitlePosition":           {"packages/client-core/src/preference-effects.ts", "playback.subtitlePosition"},
@@ -460,8 +460,9 @@ func TestStoredPreferencesHaveRuntimeConsumers(t *testing.T) {
 				continue
 			}
 			// Local readers take the key first; the canonical projection takes
-			// its parsed snapshot first and the literal key second.
-			pattern := `(?:\b(?:value|read)(?:<[^;\n]*?>)?\(\s*|\bpreferenceValue(?:<[^;\n]*?>)?\(\s*snapshot\s*,\s*)['"]` + regexp.QuoteMeta(witness[1]) + `['"]`
+			// its parsed snapshot (a name or an accessor call) first and the
+			// literal key second; a resolved document is indexed by the key.
+			pattern := `(?:\b(?:value|read)(?:<[^;\n]*?>)?\(\s*|\bpreferenceValue(?:<[^;\n]*?>)?\(\s*[A-Za-z_$][\w$]*(?:\(\))?\s*,\s*|\.effective\[\s*)['"]` + regexp.QuoteMeta(witness[1]) + `['"]`
 			found = regexp.MustCompile(pattern).Match(source)
 		}
 		if !found {

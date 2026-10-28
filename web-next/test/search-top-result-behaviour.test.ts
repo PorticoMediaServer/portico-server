@@ -3,8 +3,8 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {defaultI18n} from '@i18n';
 import {runScreenCommand} from '../src/screens/detail/context.ts';
-import {componentModule} from '../../web/test/helpers/component-harness.mjs';
-import {all, createRenderer, one, tree} from '../../web/test/helpers/interaction-harness.mjs';
+import {componentModule} from './helpers/component-harness.mjs';
+import {all, createRenderer, one, tree} from './helpers/interaction-harness.mjs';
 const t = (key: any, values?: any) => defaultI18n.t(key, values);
 async function mount(options: {kind?: 'movie' | 'show'; phase?: string; selectedId?: string; actions?: any[]; busy?: boolean} = {}) {
   const h = createRenderer(), calls: {name: string; args: any[]}[] = [];

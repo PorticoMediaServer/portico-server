@@ -25,10 +25,10 @@ TEST_INPUTS = (
     'scripts/vet-go.sh',
     'packages/i18n/src/catalog/en-US/settings.ts',
     'packages/client-core/src/music-preferences.ts',
-    'web/src/app/i18n.ts',
-    'web/src/player/Player.tsx',
-    'web/src/shell/Shell.tsx',
-    'web/public',
+    'packages/client-core/src/audiobook-preferences.ts',
+    'packages/client-core/src/preference-effects.ts',
+    'web-next/src/shell/bootstrap.ts',
+    'web-next/src/shell/settings.ts',
     'third_party/rclone/bundle.lock.json',
 )
 

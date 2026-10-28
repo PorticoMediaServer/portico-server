@@ -10,5 +10,5 @@ with tempfile.TemporaryDirectory() as tmp:
   samples=struct.unpack('<'+'f'*(len(raw)//4),raw)[::2]
   anchor=4096
   out[family]={'container':container,'data':base64.b64encode(path.read_bytes()).decode(),'anchor':anchor,'reference':[round(x,7) for x in samples[anchor:anchor+128]],'rawFrames':len(samples)}
-p=pathlib.Path(__file__).resolve().parents[2]/'web/src/bridge/audio/decoder-probes.ts'
+p=pathlib.Path(__file__).resolve().parents[2]/'web-next/src/platform/playback/audio/decoder-probes.ts'
 p.write_text('/** Short synthetic chirps for runtime decoder alignment checks. No library media is used. */\nexport const decoderProbes = '+json.dumps(out,separators=(',',':'))+' as const;\n')

@@ -2,14 +2,15 @@
 useDefault = true
 
 # The generic API-key rule reads this comma-separated controller assignment as
-# a key. Match only that expression at its original source path, not the file.
+# a key. Match only that expression at its source path, not the file. Commits
+# before the 28 Oct 2026 rename of web-next to web carry it at the old path.
 [[rules]]
 id = "generic-api-key"
 
 [[rules.allowlists]]
 description = "Account move controller variable assignment"
 condition = "AND"
-paths = ['''^web-next/src/platform/account-entry\.ts$''']
+paths = ['''^web(?:-next)?/src/platform/account-entry\.ts$''']
 regexTarget = "match"
 regexes = ['''^this\.api,proof=this\.moveProof;$''']
 

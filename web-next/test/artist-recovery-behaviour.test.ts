@@ -3,8 +3,8 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFile} from 'node:fs/promises';
 import {transformSync} from 'rolldown/utils';
-import {componentModule} from '../../web/test/helpers/component-harness.mjs';
-import {all, createRenderer, tree} from '../../web/test/helpers/interaction-harness.mjs';
+import {componentModule} from './helpers/component-harness.mjs';
+import {all, createRenderer, tree} from './helpers/interaction-harness.mjs';
 import {screenLifetime, runScreenCommand} from '../src/screens/detail/context.ts';
 
 /** Load the WHOLE actual route module; expose its private component only to this fixture. */

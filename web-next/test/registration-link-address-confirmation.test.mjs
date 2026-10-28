@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import {componentModule} from '../../web/test/helpers/component-harness.mjs';
+import {componentModule} from './helpers/component-harness.mjs';
 import {CredentialSessionService} from '../../packages/client-core/src/credentials.ts';
 
 // FX-199: the blocker's shape on this repo's own coordinator. A mailed signup

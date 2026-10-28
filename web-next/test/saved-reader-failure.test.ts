@@ -3,8 +3,8 @@
  * snapshots; models callback composition, not native React paint. UNRUN. */
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {componentModule} from '../../web/test/helpers/component-harness.mjs';
-import {all, createRenderer, one, textOf, tick, tree} from '../../web/test/helpers/interaction-harness.mjs';
+import {componentModule} from './helpers/component-harness.mjs';
+import {all, createRenderer, one, textOf, tick, tree} from './helpers/interaction-harness.mjs';
 import * as retryAdmission from '../src/screens/saved/retry-admission.ts';
 
 const route = {view: 'watchlist', sort: 'added', direction: 'desc'} as const;

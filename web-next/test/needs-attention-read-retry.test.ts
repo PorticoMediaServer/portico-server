@@ -8,8 +8,8 @@
  */
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {componentModule} from '../../web/test/helpers/component-harness.mjs';
-import {all, createRenderer, tick, tree} from '../../web/test/helpers/interaction-harness.mjs';
+import {componentModule} from './helpers/component-harness.mjs';
+import {all, createRenderer, tick, tree} from './helpers/interaction-harness.mjs';
 
 const entry = (id: string, title: string) => ({entityId: id, kind: 'item', itemKind: 'movie', parentId: '', actions: ['retry'], title, revision: 1, reason: 'unmatched', confidence: 0, candidates: []});
 const page = (entries: any[], nextCursor = '', libraryId = 'lib') => ({libraryId, total: entries.length, entries, nextCursor});

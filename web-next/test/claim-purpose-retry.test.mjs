@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import {test} from 'node:test';
 import {transformSync} from 'rolldown/utils';
-import {createRenderer, tree, all, textOf} from '../../web/test/helpers/interaction-harness.mjs';
+import {createRenderer, tree, all, textOf} from './helpers/interaction-harness.mjs';
 
 // FX-207: the blocker's route shape, on the repository's own hook harness. The
 // real ClaimApprovalRoute source is transpiled (compiled.code, never raw TS),

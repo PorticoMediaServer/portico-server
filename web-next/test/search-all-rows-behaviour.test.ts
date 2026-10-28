@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {componentModule} from '../../web/test/helpers/component-harness.mjs';
-import {all, createRenderer, one, tree, textOf} from '../../web/test/helpers/interaction-harness.mjs';
+import {componentModule} from './helpers/component-harness.mjs';
+import {all, createRenderer, one, tree, textOf} from './helpers/interaction-harness.mjs';
 import {displayedSearchEntries} from '../src/screens/search/selection-window.ts';
 
 test('actual Search shelf ranges register later visible cards, admit keyboard focus, and keep Select all within that displayed window', async context => {

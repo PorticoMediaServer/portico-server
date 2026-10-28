@@ -244,7 +244,7 @@ test('browserAccount routes legacy events through its one existing listener and 
   t.after(()=>{if(before)Object.defineProperty(globalThis,'addEventListener',before);else delete (globalThis as Record<string,unknown>).addEventListener;});
   t.mock.method(globalThis,'setTimeout',(()=>0) as unknown as typeof setTimeout);
   let syncs=0;
-  const {componentModule}=await import('../../web/test/helpers/component-harness.mjs');
+  const {componentModule}=await import('./helpers/component-harness.mjs');
   const csrf=await import('../src/platform/account-csrf.ts');
   const routes=await import('../../packages/contracts/src/hosted/routes.ts');
   const module=await componentModule(new URL('../src/platform/account.ts',import.meta.url),{

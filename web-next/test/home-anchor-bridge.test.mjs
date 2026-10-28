@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import {componentModule} from '../../web/test/helpers/component-harness.mjs';
-import {createRenderer, tree} from '../../web/test/helpers/interaction-harness.mjs';
+import {componentModule} from './helpers/component-harness.mjs';
+import {createRenderer, tree} from './helpers/interaction-harness.mjs';
 
 // FX177: the blocker's component/hook harness shape on this repo's own helpers.
 // Mounts the real HomePage, measures destination, card scroll and guarded anchor

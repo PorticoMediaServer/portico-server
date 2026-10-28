@@ -30,10 +30,8 @@
 FROM node:24.21.0-bookworm@sha256:3d27e5c11e5786e309ec3e03f93ae536eb36e6e5eb3714d5eb3300a36157add0 AS web
 WORKDIR /src
 COPY package.json package-lock.json ./
-COPY web ./web
-COPY packages/client-core ./packages/client-core
-COPY packages/design ./packages/design
-COPY packages/i18n ./packages/i18n
+COPY web-next ./web-next
+COPY packages ./packages
 COPY third_party/hls.js ./third_party/hls.js
 # The subtitle renderer and its fonts: the web build copies them, unchanged, into the application.
 COPY third_party/libass-wasm ./third_party/libass-wasm
@@ -46,9 +44,12 @@ ARG PORTICO_VERSION
 ARG PORTICO_BUILT_AT
 RUN PORTICO_VERSION="$PORTICO_VERSION" PORTICO_BUILT_AT="$PORTICO_BUILT_AT" node scripts/container-release.mjs
 RUN npm ci --ignore-scripts --no-audit --no-fund
-WORKDIR /src/web
-# This is the server-hosted application; do not enable Hosted-only Web mode.
-RUN node --input-type=module -e "import {build} from 'vite'; await build({build:{outDir:'/out/web',sourcemap:false}})"
+WORKDIR /src/web-next
+# This is the server-hosted application: no VITE_* switch reaches the build, so
+# the Portico Services entry (VITE_HOSTED_WEB with VITE_ACCOUNT_WORKSPACE) stays off.
+RUN test -z "$(env | grep '^VITE_')" && test -z "$(find . -maxdepth 1 -name '.env*')" \
+ && node --input-type=module -e "import {build} from 'vite'; await build({build:{outDir:'/out/web',sourcemap:false}})" \
+ && test -f /out/web/vendor/libass-wasm-4.2.4/subtitles-octopus-worker.js && test -d /out/web/vendor/subtitle-fonts-1
 RUN cp /out/portico-build.json /out/web/portico-build.json
 
 FROM golang:1.26.10-bookworm@sha256:632dff7351799a5a9954a48dc06670ade72ee44e8c351cdc0e5a57af2fea21af AS build
@@ -137,7 +138,7 @@ COPY server/internal/imagework/SCALE_LICENSE /usr/share/doc/portico/licenses/ima
 COPY server/internal/thirdparty/sqlite/LICENSE /usr/share/doc/portico/licenses/sqlite-driver.txt
 COPY server/internal/mediaexec/fonts/LICENSE /usr/share/doc/portico/licenses/decoder-fonts.txt
 COPY third_party/hls.js/LICENSE /usr/share/doc/portico/licenses/hls-js.txt
-COPY web/src/ui/fonts/OFL.txt /usr/share/doc/portico/licenses/manrope.txt
+COPY web-next/src/kit/fonts/OFL.txt /usr/share/doc/portico/licenses/manrope.txt
 COPY packages/design/LICENSE-LUCIDE /usr/share/doc/portico/licenses/lucide.txt
 COPY --from=rclone /rclone/LICENSE /usr/share/doc/portico/licenses/rclone.txt
 COPY --from=rclone /rclone/DEPENDENCY-NOTICES.txt /usr/share/doc/portico/licenses/rclone-dependencies.txt

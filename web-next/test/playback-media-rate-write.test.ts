@@ -1,7 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {WebMediaPlayer, type VideoLike} from '../src/platform/playback/web-media-player.ts';
-import {WebMediaPlayer as LegacyWebMediaPlayer} from '../../web/src/playback-v1/web-media-player.ts';
 import type {PlayerSource} from '@core/playback-v1/index.ts';
 
 /**
@@ -62,10 +61,9 @@ class CountingVideo implements VideoLike {
 const quietTimers = {setTicker: () => 0, clearTicker: () => {}};
 const source: PlayerSource = {url: '/v1/media/item', generation: 7, mode: 'direct', startPositionMs: 0, subtitles: [], autoplay: true};
 
-for (const [label, Player] of [['web-next', WebMediaPlayer], ['web', LegacyWebMediaPlayer]] as const) {
-function port(video: VideoLike) { return new Player(video, {timers: quietTimers}); }
+function port(video: VideoLike) { return new WebMediaPlayer(video, {timers: quietTimers}); }
 
-test(label + ': a tick asking for the rate the element already applies writes nothing to the element', () => {
+test('a tick asking for the rate the element already applies writes nothing to the element', () => {
   const video = new CountingVideo();
   const player = port(video);
   for (let tick = 0; tick < 40; tick++) player.setRate(1);
@@ -76,7 +74,7 @@ test(label + ': a tick asking for the rate the element already applies writes no
   player.dispose();
 });
 
-test(label + ': a genuine rate change writes once, and later ticks for the same rate write nothing', () => {
+test('a genuine rate change writes once, and later ticks for the same rate write nothing', () => {
   const video = new CountingVideo();
   const player = port(video);
   player.setRate(1.5);
@@ -91,7 +89,7 @@ test(label + ': a genuine rate change writes once, and later ticks for the same 
   player.dispose();
 });
 
-test(label + ': an element rate reset by the engine is restored while the port already holds the wanted rate', () => {
+test('an element rate reset by the engine is restored while the port already holds the wanted rate', () => {
   const video = new CountingVideo();
   const player = port(video);
   player.setRate(2);
@@ -110,7 +108,7 @@ test(label + ': an element rate reset by the engine is restored while the port a
   player.dispose();
 });
 
-test(label + ': a new load still applies the chosen rate to the element', () => {
+test('a new load still applies the chosen rate to the element', () => {
   const video = new CountingVideo();
   const player = port(video);
   player.setRate(1.75);
@@ -124,5 +122,3 @@ test(label + ': a new load still applies the chosen rate to the element', () => 
   assert.equal(player.observe().rate, 1.75);
   player.dispose();
 });
-
-}

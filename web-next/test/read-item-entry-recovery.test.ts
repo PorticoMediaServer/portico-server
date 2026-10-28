@@ -3,8 +3,8 @@
  * React timing or paint. UNRUN. */
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {componentModule} from '../../web/test/helpers/component-harness.mjs';
-import {all, createRenderer, one, tree, textOf} from '../../web/test/helpers/interaction-harness.mjs';
+import {componentModule} from './helpers/component-harness.mjs';
+import {all, createRenderer, one, tree, textOf} from './helpers/interaction-harness.mjs';
 import * as versionChoice from '../src/screens/read/read-version-choice.ts';
 
 const epub = {sourceId: 'epub-source', format: 'epub' as const, size: 900, inventoryAvailable: true};

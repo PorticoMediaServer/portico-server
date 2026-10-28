@@ -22,6 +22,49 @@ export function browserCheck(messages) {
     generateBundle() { this.emitFile({type: 'asset', fileName: 'browser-check.js', source: source()}); },
   };
 }
+/*
+ * Third-party files the styled-subtitle renderer fetches by name at run time: the libass
+ * WebAssembly worker (which looks for its `.wasm` beside itself) and the subtitle fonts. They are
+ * served exactly as vendored in `third_party/`, under fixed names, never bundled or renamed, and
+ * each folder carries its notices. The folder names carry a version so a new build is a new address.
+ */
+const vendored = {
+  'vendor/libass-wasm-4.2.4/': at('../../third_party/libass-wasm/files/'),
+  'vendor/subtitle-fonts-1/': at('../../third_party/subtitle-fonts/fonts/'),
+};
+const vendoredNotices = {
+  'vendor/libass-wasm-4.2.4/': ['LICENSE', 'COPYRIGHT', 'OFL-1.1.txt'].map(name => at('../../third_party/libass-wasm/' + name)),
+  'vendor/subtitle-fonts-1/': ['OFL-1.1.txt'].map(name => at('../../third_party/subtitle-fonts/' + name)),
+};
+const vendoredTypes = {js: 'text/javascript', wasm: 'application/wasm', woff2: 'font/woff2', ttf: 'font/ttf'};
+export function vendoredFiles() {
+  return {
+    name: 'portico-vendored-files',
+    configureServer(server) {
+      server.middlewares.use((request, response, next) => {
+        const path = (request.url ?? '').split('?')[0];
+        for (const [prefix, directory] of Object.entries(vendored)) {
+          if (!path.startsWith('/' + prefix)) continue;
+          const name = path.slice(prefix.length + 1);
+          if (!/^[A-Za-z0-9][A-Za-z0-9._-]*$/.test(name)) break;
+          try {
+            const bytes = readFileSync(directory + name);
+            response.setHeader('Content-Type', vendoredTypes[name.split('.').pop() ?? ''] ?? 'application/octet-stream');
+            response.setHeader('Content-Length', String(bytes.length));
+            return response.end(bytes);
+          } catch { break; }
+        }
+        next();
+      });
+    },
+    generateBundle() {
+      for (const [prefix, directory] of Object.entries(vendored))
+        for (const name of readdirSync(directory)) this.emitFile({type: 'asset', fileName: prefix + name, source: readFileSync(directory + name)});
+      for (const [prefix, files] of Object.entries(vendoredNotices))
+        for (const file of files) this.emitFile({type: 'asset', fileName: prefix + file.split(/[\\/]/).pop(), source: readFileSync(file)});
+    },
+  };
+}
 export function familyImports(root) {
   const directory = join(root, 'src/dev/families');
   const names = existsSync(directory) ? readdirSync(directory).filter(name => /^[a-z][a-z0-9-]*\.tsx$/.test(name)).sort() : [];

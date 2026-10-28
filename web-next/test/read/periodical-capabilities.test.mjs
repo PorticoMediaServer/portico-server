@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFile} from 'node:fs/promises';
 import {transformSync} from 'rolldown/utils';
-import {createRenderer, tree, one} from '../../../web/test/helpers/interaction-harness.mjs';
+import {createRenderer, tree, one} from '../helpers/interaction-harness.mjs';
 import {parseBrowseCapabilities, browseCapabilitiesPath} from '../../../packages/client-core/src/browse.ts';
 import {routePattern} from '../../../packages/contracts/src/routes.ts';
 

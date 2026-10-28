@@ -4,8 +4,8 @@ import assert from 'node:assert/strict';
 import {defaultI18n} from '@i18n';
 import {runScreenCommand} from '../src/screens/detail/context.ts';
 import {createCardInteractionBinding} from '../src/kit/cards/interaction-admission.ts';
-import {componentModule} from '../../web/test/helpers/component-harness.mjs';
-import {all, createRenderer, one, tree} from '../../web/test/helpers/interaction-harness.mjs';
+import {componentModule} from './helpers/component-harness.mjs';
+import {all, createRenderer, one, tree} from './helpers/interaction-harness.mjs';
 const t = (key: any, values?: any) => defaultI18n.t(key, values);
 async function mount(entry: any, options: {play?: () => Promise<void>; live?: Map<string, any>; openFailure?: boolean; selection?: any; selectionVisible?: () => boolean; position?: number} = {}) {
   const h = createRenderer(), calls: {name: string; value?: any}[] = [];

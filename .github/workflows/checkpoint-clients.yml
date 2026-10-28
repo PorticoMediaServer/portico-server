@@ -70,18 +70,6 @@ jobs:
         name: cast
         if: ${{ !cancelled() && steps.deps.outcome == 'success' }}
         run: bash "$RUNNER_TEMP/checkpoint-command" cast npm run test:cast
-      - id: legacy-checks
-        name: legacy-checks
-        if: ${{ !cancelled() && steps.deps.outcome == 'success' }}
-        run: bash "$RUNNER_TEMP/checkpoint-command" legacy-checks bash -c 'cd web; status=0; npm run tokens || status=1; npm run lint:design -- --strict || status=1; npm run lint:hooks || status=1; node ../packages/client-core/scripts/check-preference-consumers.mjs || status=1; npm run lint:strings || status=1; npx --no-install tsc --noEmit || status=1; exit $status'
-      - id: legacy-units
-        name: legacy-units
-        if: ${{ !cancelled() && steps.deps.outcome == 'success' }}
-        run: bash "$RUNNER_TEMP/checkpoint-command" legacy-units npm test --workspace portico-web
-      - id: legacy-build
-        name: legacy-build
-        if: ${{ !cancelled() && steps.deps.outcome == 'success' }}
-        run: bash "$RUNNER_TEMP/checkpoint-command" legacy-build npm run build --workspace portico-web
       - id: player-checks
         name: player-checks
         if: ${{ !cancelled() && steps.deps.outcome == 'success' }}
@@ -101,7 +89,7 @@ jobs:
       - id: next-checks
         name: next-checks
         if: ${{ !cancelled() && steps.deps.outcome == 'success' }}
-        run: bash "$RUNNER_TEMP/checkpoint-command" next-checks bash -c 'cd web-next; status=0; npm run tokens || status=1; npm run lint:design || status=1; npm run lint:hooks || status=1; npm run lint:strings || status=1; npm run lint:boundary || status=1; exit $status'
+        run: bash "$RUNNER_TEMP/checkpoint-command" next-checks bash -c 'cd web-next; status=0; npm run tokens || status=1; npm run lint:design || status=1; npm run lint:hooks || status=1; npm run lint:strings || status=1; npm run lint:boundary || status=1; node ../packages/client-core/scripts/check-preference-consumers.mjs || status=1; exit $status'
       - id: next-types
         name: next-types
         if: ${{ !cancelled() && steps.deps.outcome == 'success' }}

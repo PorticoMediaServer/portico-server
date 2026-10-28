@@ -138,7 +138,7 @@ test('parent disposal aborts both real shape-service transports and drops delaye
 // snapshot. Reuse the existing component hook fixture; no browser/runner job.
 import {DownloadsService} from '@core/downloads-service.ts';
 import {defaultI18n} from '@i18n';
-import {componentModule, hooks} from '../../web/test/helpers/component-harness.mjs';
+import {componentModule, hooks} from './helpers/component-harness.mjs';
 import {savedText} from '../src/screens/saved/text.ts';
 
 test('actual ServerDownloads keeps Retry for transient failures and shows feature-off/embedded-null only for genuine absence', async () => {

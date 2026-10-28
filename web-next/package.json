@@ -8,6 +8,7 @@
     "dev:tailscale": "vite --host 100.120.50.24 --port 5174",
     "build": "tsc --noEmit && vite build",
     "tokens": "node ../packages/design/scripts/tokens.mjs --check && node ../packages/design/scripts/next-icons.mjs --check",
+    "licences": "node --experimental-strip-types scripts/licences.ts",
     "lint:design": "node scripts/lint-design.mjs --strict",
     "lint:boundary": "node scripts/lint-boundary.mjs",
     "lint:hooks": "oxlint -c .oxlintrc.json --deny-warnings src",

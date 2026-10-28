@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {ApiError} from '../../packages/client-core/src/index.ts';
 import {CredentialSessionService} from '../../packages/client-core/src/credentials.ts';
-import {componentModule} from '../../web/test/helpers/component-harness.mjs';
+import {componentModule} from './helpers/component-harness.mjs';
 
 const {currentAccountWork, currentAccountRead} = await componentModule(new URL('../src/platform/account-work.ts', import.meta.url), {
   '@core/index.ts': {ApiError},

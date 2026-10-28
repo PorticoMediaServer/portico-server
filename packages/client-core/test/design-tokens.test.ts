@@ -145,9 +145,9 @@ test('icon registry carries the glyphs the audit found missing (X-17, CON-15/16)
   assert.equal(isIconId('constructor'), false);
 });
 
-// The generator has no dependency on the old web renderer and is safe to run from any cwd.
+// The generator is safe to run from any cwd.
 
-import {cpSync, mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync} from 'node:fs';
+import {cpSync, mkdtempSync, readFileSync, rmSync, writeFileSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import {fileURLToPath} from 'node:url';
@@ -192,14 +192,11 @@ test('web-next CSS is deterministic, complete and byte-identical to the canonica
   assert.doesNotMatch(css, /uppercase|0\.01ms|web\/src\/ui/);
 });
 
-test('generator check rejects missing and stale files without writing and never touches the old UI', () => {
+test('generator check rejects missing and stale files without writing', () => {
   const dir = mkdtempSync(join(tmpdir(), 'portico-design-tokens-'));
   try {
     const source = fileURLToPath(new URL('../../design', import.meta.url));
     cpSync(source, join(dir, 'packages/design'), {recursive: true});
-    const oldPath = join(dir, 'web/src/ui/tokens.css');
-    mkdirSync(join(dir, 'web/src/ui'), {recursive: true});
-    writeFileSync(oldPath, 'preserve the old UI');
     const script = join(dir, 'packages/design/scripts/tokens.mjs');
     const out = join(dir, 'web-next/src/kit/tokens.css');
     const run = (...args: string[]) => spawnSync(process.execPath, [script, ...args], {cwd: tmpdir(), encoding: 'utf8'});
@@ -213,6 +210,5 @@ test('generator check rejects missing and stale files without writing and never 
     assert.equal(stale.status, 1); assert.match(stale.stderr, /missing or stale/);
     assert.equal(readFileSync(out, 'utf8'), bytes + '\n/* stale */\n');
     assert.equal(run('--unexpected').status, 2);
-    assert.equal(readFileSync(oldPath, 'utf8'), 'preserve the old UI');
   } finally { rmSync(dir, {recursive: true, force: true}); }
 });

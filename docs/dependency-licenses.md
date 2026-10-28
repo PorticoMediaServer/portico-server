@@ -1,6 +1,6 @@
 # npm dependency licences
 
-Declared licence metadata from `package-lock.json` and `web/package-lock.json`.
+Declared licence metadata from `package-lock.json`.
 Includes development, transitive and optional packages fetched by npm for the
 supported build environments. A package appearing here is not necessarily shipped
 in the browser bundle. The lockfiles retain resolved artifacts and integrity
