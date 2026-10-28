@@ -313,7 +313,7 @@ func (s *Service) CreateBulkJob(ctx context.Context, p identity.Principal, v Vie
 		snap.Rollback()
 		return out, e
 	}
-	fence, e := bulkSelectionFence(snap.Tx(), v, in.Selector)
+	fence, e := s.WithContext(snap.Context()).bulkSelectionFence(snap.Tx(), v, in.Selector)
 	snap.Rollback()
 	if e != nil {
 		return out, e
@@ -342,7 +342,7 @@ func (s *Service) CreateBulkJob(ctx context.Context, p identity.Principal, v Vie
 		if !errors.Is(e, sql.ErrNoRows) {
 			return e
 		}
-		current, e := bulkSelectionFence(tx, v, in.Selector)
+		current, e := s.WithContext(ctx).bulkSelectionFence(tx, v, in.Selector)
 		if e != nil {
 			return e
 		}
