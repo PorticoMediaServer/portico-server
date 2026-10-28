@@ -65,12 +65,13 @@ type buildCaller struct {
 // caller's container checks: kind is "items" or "selector"; specials says a
 // show's specials are in.
 type selectorKeys struct {
-	query    string
-	args     []any
-	kind     string
-	specials bool
-	revision string
-	label    string
+	checkBasis func(context.Context, *sql.Tx) error
+	query      string
+	args       []any
+	kind       string
+	specials   bool
+	revision   string
+	label      string
 }
 
 // keysQuery checks the caller may use the selector's container and returns
@@ -118,7 +119,7 @@ func (s *Service) keysQuery(ctx context.Context, tx *sql.Tx, p identity.Principa
 		if err != nil {
 			return selectorKeys{}, err
 		}
-		return selectorKeys{query: selection.SQL, args: selection.Args, kind: "selector", revision: selection.Revision, label: selection.Label}, nil
+		return selectorKeys{query: selection.SQL, args: selection.Args, kind: "selector", revision: selection.Revision, label: selection.Label, checkBasis: selection.CheckBasis}, nil
 	case in.Source.Items != nil:
 		// Keep the caller's order; unknown and inaccessible ids are dropped alike.
 		// catalog_entities is facts, so no readiness wait.
@@ -205,6 +206,11 @@ type snapshotScan struct {
 func (sc *snapshotScan) writeBatch() error {
 	snap := sc.snap
 	err := dbwork.WithWriteTxContext(sc.ctx, sc.s.DB, dbwork.ClassBackgroundMedia, func(ctx context.Context, w *sql.Tx) error {
+		if snap.checkBasis != nil {
+			if err := snap.checkBasis(ctx, w); err != nil {
+				return err
+			}
+		}
 		if !snap.stored {
 			if sc.stage != nil {
 				if err := sc.stage(ctx, w); err != nil {
@@ -261,6 +267,11 @@ func (sc *snapshotScan) scan(tx *sql.Tx, keys *sql.Rows, p identity.Principal) e
 		return nil
 	}
 	admit := func() error {
+		if snap.checkBasis != nil {
+			if err := dbwork.WithReadSnapshot(sc.ctx, sc.s.DB, func(ctx context.Context) error { return snap.checkBasis(ctx, dbwork.Snapshot(ctx)) }); err != nil {
+				return err
+			}
+		}
 		allowed, err := visible(pending)
 		if err != nil {
 			return err
@@ -384,7 +395,7 @@ func (s *Service) buildSnapshot(ctx context.Context, p identity.Principal, queue
 	}
 	defer keys.Close()
 	kind, specials := k.kind, k.specials
-	snap.kind, snap.sourceRevision, snap.label = kind, k.revision, k.label
+	snap.kind, snap.sourceRevision, snap.label, snap.checkBasis = kind, k.revision, k.label, k.checkBasis
 	sc := &snapshotScan{s: s, ctx: ctx, snap: &snap, queue: queue, limit: limit, keep: true, budget: budget, stage: stage, anchorAt: -1, anchor: -1, exact: in.Source.Journey != nil}
 	if in.Anchor != nil {
 		sc.anchorItem = in.Anchor.ItemID
@@ -778,7 +789,7 @@ func (s *Service) continueBuild(parent context.Context, id string) error {
 	// A declared count (a shuffle that started at once) stays; otherwise the
 	// segment grows with the build.
 	declared := count > built
-	snap := snapshot{id: id, kind: kind, selector: selector, count: built, anchor: -1, stored: true}
+	snap := snapshot{id: id, kind: kind, selector: selector, count: built, anchor: -1, stored: true, checkBasis: k.checkBasis}
 	sc := &snapshotScan{s: s, ctx: ctx, snap: &snap, queue: queue, limit: s.queueKeyLimit(), skip: seen, chunkNo: (built + chunkKeys - 1) / chunkKeys, anchorAt: -1, anchor: -1}
 	if in.Anchor != nil {
 		sc.anchorItem = in.Anchor.ItemID
@@ -808,6 +819,11 @@ func (s *Service) continueBuild(parent context.Context, id string) error {
 	}
 	// Finish: the last chunks, the final count, ready; and the start that waited.
 	return dbwork.WithWriteTxContext(ctx, s.DB, dbwork.ClassBackgroundMedia, func(ctx context.Context, w *sql.Tx) error {
+		if snap.checkBasis != nil {
+			if err := snap.checkBasis(ctx, w); err != nil {
+				return err
+			}
+		}
 		for _, c := range snap.pending {
 			if err := writeQueueChunkTx(ctx, w, id, c.no, c.keys, false); err != nil {
 				return err

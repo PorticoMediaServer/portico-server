@@ -32,10 +32,11 @@ type JobItems struct {
 	IDs []string `json:"ids"`
 }
 type JobQuery struct {
-	LibraryID string                `json:"libraryId"`
-	Pivot     string                `json:"pivot"`
-	Filter    json.RawMessage       `json:"filter,omitempty"`
-	Sort      []BrowseSortSelection `json:"sort,omitempty"`
+	SelectionBasis string                `json:"selectionBasis,omitempty"`
+	LibraryID      string                `json:"libraryId"`
+	Pivot          string                `json:"pivot"`
+	Filter         json.RawMessage       `json:"filter,omitempty"`
+	Sort           []BrowseSortSelection `json:"sort,omitempty"`
 }
 type JobSelector struct {
 	Container *JobContainer `json:"container,omitempty"`

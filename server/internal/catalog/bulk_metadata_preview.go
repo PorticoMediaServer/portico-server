@@ -86,6 +86,9 @@ func (s *Service) BulkMetadataSelectionTx(ctx context.Context, tx *sql.Tx, v Vie
 		return out, nil
 	}
 	q := in.Selector.Query
+	if err := s.checkBrowseSelectionBasis(v, q.LibraryID, q.SelectionBasis); err != nil {
+		return out, err
+	}
 	if !v.AllowsLibrary(q.LibraryID) {
 		return out, sql.ErrNoRows
 	}

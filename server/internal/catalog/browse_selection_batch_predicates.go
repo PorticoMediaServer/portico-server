@@ -41,15 +41,18 @@ func (t selectionBatchTest) bytes() int {
 }
 
 type selectionBatchRelationCursor struct {
-	stream     int
-	phase      int
-	pending    []any
-	members    selectionBatchMemberCursor
-	member     int64
-	keys       []any
-	owner      int
-	rawOwner   int64
-	ownerReady bool
+	previousAfter              [3]int64
+	previousPending            [2]int64
+	previousReady, previousEOF bool
+	stream                     int
+	phase                      int
+	pending                    []any
+	members                    selectionBatchMemberCursor
+	member                     int64
+	keys                       []any
+	owner                      int
+	rawOwner                   int64
+	ownerReady                 bool
 }
 
 func (c selectionBatchRelationCursor) clone() selectionBatchRelationCursor {
@@ -127,33 +130,25 @@ func selectionBatchCompileTest(node BrowseNode, profile string, groupSearch bool
 		return test, err
 	}
 	if field.ID == "search" {
-		c.groupSearch = groupSearch
-		if groupSearch {
-			var err error
-			test.scalar, err = c.entityPredicate(field, node)
-			test.args = c.args
-			return test, err
-		}
 		text, ok := node.Value.(string)
 		if !ok {
 			return test, ErrSelectionBatchUnsupported
 		}
-		normalized, match, err := NormalizeSearch(text)
+		normalized, _, err := NormalizeSearch(text)
 		if err != nil {
 			return test, err
 		}
-		test.scalar = `EXISTS(SELECT 1 FROM catalog_search_titles JOIN catalog_search_documents d ON d.entity_id=catalog_search_titles.rowid WHERE catalog_search_titles.rowid=e.entity_id AND catalog_search_titles MATCH ?`
-		test.args = []any{match}
-		for _, word := range strings.Fields(normalized) {
-			if strings.ContainsFunc(word, facettext.CJK) {
-				test.scalar += ` AND instr(d.normalized,?)>0`
-				test.args = append(test.args, word)
-			}
+		// Only the existing exact per-entity prefix projection is qualified. FTS5
+		// may expand an unbounded global prefix vocabulary even with rowid equality.
+		if _, indexed := facettext.IndexedSearchTerms(normalized); !groupSearch || !indexed {
+			return test, fmt.Errorf("%w: search requires an exact bounded local evaluator", ErrSelectionBatchUnsupported)
 		}
-		test.scalar += `)`
-		test.sizeSQL = `COALESCE((SELECT length(CAST(normalized AS BLOB)) FROM catalog_search_documents WHERE entity_id=e.entity_id),0)`
-		return test, nil
+		c.groupSearch = true
+		test.scalar, err = c.entityPredicate(field, node)
+		test.args = c.args
+		return test, err
 	}
+
 	if field.ID == "match" {
 		attention := `(EXISTS(SELECT 1 FROM screen_metadata_attention a JOIN screen_metadata_work w ON w.target_id=a.entity_id AND w.target_kind=a.target_kind AND w.generation=a.generation WHERE a.entity_id=e.entity_id AND a.retired=0 AND a.reason NOT IN('pending','searching','pending_search','pending_episodes','pending_children','pending_apply')) OR EXISTS(SELECT 1 FROM listening_metadata_attention a WHERE a.entity_id=e.entity_id AND a.retired=0 AND a.kind IN('album','song') AND a.reason NOT IN('pending','searching','pending_search','pending_episodes','pending_children','pending_apply')))`
 		value := `CASE WHEN EXISTS(SELECT 1 FROM catalog_entities target WHERE target.id=e.entity_id AND target.retired=0) AND ` + attention + ` THEN 'unmatched' ELSE 'matched' END`
@@ -429,7 +424,10 @@ func (s *Service) selectionBatchRelation(test selectionBatchTest, entity int64, 
 		return false, false, nil
 	}
 	keys := strings.Split(test.keys, ",")
-	if cursor.phase == 0 || cursor.phase == 1 {
+	if cursor.phase == 1 {
+		return s.selectionBatchPreviousMember(test, cursor, scalarBytes)
+	}
+	if cursor.phase == 0 {
 		after := ""
 		args := []any{}
 		where := "1"
@@ -441,19 +439,11 @@ func (s *Service) selectionBatchRelation(test selectionBatchTest, entity int64, 
 			after = " AND (" + test.keys + ")>(" + placeholders(len(keys)) + ")"
 			args = append(args, cursor.keys...)
 		}
-		table := test.table
-		index := selectionBatchRawIndex(table)
-		prefix := ""
-		if cursor.phase == 1 {
-			table += "_previous"
-			index = "catalog_browse_membership_item_previous"
-			prefix = "generation=(SELECT generation FROM catalog_generations WHERE singleton=1 AND retaining=1) AND present=1 AND "
-		}
 		hint := " NOT INDEXED"
-		if index != "" {
+		if index := selectionBatchRawIndex(test.table); index != "" {
 			hint = " INDEXED BY " + index
 		}
-		query := `SELECT ` + test.keys + ` FROM ` + table + hint + ` WHERE ` + prefix + where + after + ` ORDER BY ` + test.keys + ` LIMIT 1`
+		query := `SELECT ` + test.keys + ` FROM ` + test.table + hint + ` WHERE ` + where + after + ` ORDER BY ` + test.keys + ` LIMIT 1`
 		got := make([]any, len(keys))
 		dest := make([]any, len(keys))
 		for i := range got {
@@ -463,13 +453,12 @@ func (s *Service) selectionBatchRelation(test selectionBatchTest, entity int64, 
 		if err != nil && !errors.Is(err, sql.ErrNoRows) {
 			return false, false, err
 		}
-		if cursor.phase == 0 {
-			cursor.pending = nil
-		}
-		if err == nil && (cursor.pending == nil || selectionBatchKeyLess(got, cursor.pending)) {
+		cursor.pending = nil
+		if err == nil {
 			cursor.pending = got
+			*scalarBytes += selectionBatchKeyBytes(got)
 		}
-		if cursor.phase == 0 && test.table == "catalog_browse_memberships" {
+		if test.table == "catalog_browse_memberships" {
 			cursor.phase = 1
 			return false, false, nil
 		}
@@ -483,6 +472,7 @@ func (s *Service) selectionBatchRelation(test selectionBatchTest, entity int64, 
 		}
 		return false, false, nil
 	}
+
 	aliases := make([]string, 0, len(keys)+1)
 	args := slices.Clone(cursor.pending)
 	for _, key := range keys {
@@ -498,7 +488,7 @@ func (s *Service) selectionBatchRelation(test selectionBatchTest, entity int64, 
 	query := `WITH raw AS (SELECT ` + strings.Join(aliases, ",") + `) SELECT COALESCE((SELECT 2*COALESCE(length(CAST((` + test.value + `) AS BLOB)),0)+CASE WHEN (` + test.condition + `) THEN 1 ELSE 0 END FROM raw CROSS JOIN (SELECT ? AS item_id,? AS entity_id) bei ` + test.join + ` WHERE (` + test.guard + `) LIMIT 1),0)`
 	var encoded int64
 	err := s.read().QueryRow(query, args...).Scan(&encoded)
-	*scalarBytes = int(encoded / 2)
+	*scalarBytes = int(encoded/2) + selectionBatchKeyBytes(cursor.pending)
 	yes := encoded%2 != 0
 	if err != nil {
 		return false, false, err
@@ -543,4 +533,79 @@ func selectionBatchKeyLess(a, b []any) bool {
 		}
 	}
 	return false
+}
+
+func selectionBatchKeyBytes(values []any) int {
+	n := 0
+	for _, value := range values {
+		if text, ok := value.(string); ok {
+			n += len(text)
+		}
+	}
+	return n
+}
+
+const selectionBatchPreviousMembershipRawSQL = `SELECT entity_id,item_id,source FROM catalog_browse_memberships_previous INDEXED BY sqlite_autoindex_catalog_browse_memberships_previous_1 WHERE generation=(SELECT generation FROM catalog_generations WHERE singleton=1 AND retaining=1) AND (entity_id,item_id,source)>(?,?,?) ORDER BY entity_id,item_id,source LIMIT 1`
+
+func (s *Service) selectionBatchPreviousMember(test selectionBatchTest, c *selectionBatchRelationCursor, scalarBytes *int) (bool, bool, error) {
+	if !c.previousReady && !c.previousEOF {
+		var entity, item, source int64
+		err := dbwork.Snapshot(s.Context()).QueryRowContext(s.Context(), selectionBatchPreviousMembershipRawSQL, c.previousAfter[0], c.previousAfter[1], c.previousAfter[2]).Scan(&entity, &item, &source)
+		if errors.Is(err, sql.ErrNoRows) {
+			c.previousEOF = true
+		} else if err != nil {
+			return false, false, err
+		} else {
+			c.previousAfter = [3]int64{entity, item, source}
+			if item != c.rawOwner {
+				return false, false, nil
+			}
+			c.previousPending = [2]int64{entity, source}
+			c.previousReady = true
+		}
+	}
+	if c.previousReady {
+		previous := []any{c.previousPending[0], c.previousPending[1]}
+		if c.pending == nil || !selectionBatchKeyLess(c.pending, previous) {
+			c.pending = previous
+			c.previousReady = false
+		}
+	}
+	c.phase = 2
+	if c.pending == nil {
+		c.owner++
+		c.ownerReady = false
+		c.keys = nil
+		c.phase = 0
+		return c.owner >= test.owners, false, nil
+	}
+	return false, false, nil
+}
+
+// Admission checks search qualification without constructing another reducer plan.
+func selectionBatchSearchQualified(node *BrowseNode) error {
+	grouped := browseRequiresGroup(node)
+	var visit func(*BrowseNode) error
+	visit = func(n *BrowseNode) error {
+		if n == nil {
+			return nil
+		}
+		if n.Field == "search" {
+			if _, err := selectionBatchCompileTest(*n, "", grouped); err != nil {
+				return err
+			}
+		}
+		for i := range n.All {
+			if err := visit(&n.All[i]); err != nil {
+				return err
+			}
+		}
+		for i := range n.Any {
+			if err := visit(&n.Any[i]); err != nil {
+				return err
+			}
+		}
+		return visit(n.Not)
+	}
+	return visit(node)
 }

@@ -72,6 +72,10 @@ func (d Dependencies) browseAcrossHandler(w http.ResponseWriter, r *http.Request
 		failure(w, e)
 		return
 	}
+	if body.SelectionBasis != "" {
+		browseFailure(w, catalog.ErrStaleContinuation)
+		return
+	}
 	if body.Seek != nil {
 		browseFailure(w, &catalog.BrowseValidationError{Path: "seek", Message: "seek is unavailable for lists across libraries"})
 		return

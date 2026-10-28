@@ -119,9 +119,12 @@ type Dependencies struct {
 	DB                *sql.DB
 	Identity          *identity.Service
 	Catalog           *catalog.Service
-	Reading           *reading.Service
-	Ingestion         *ingestion.Service
-	Playback          *playback.Service
+	// PrepareBrowseSelections is a startup composition/cohort gate. Default false
+	// retains the current foreground path until all clients support preparation.
+	PrepareBrowseSelections bool
+	Reading                 *reading.Service
+	Ingestion               *ingestion.Service
+	Playback                *playback.Service
 	// DiscCaptures is private byte custody only. Composition supplies it before
 	// New copies Dependencies; it does not enable remote disc admission.
 	DiscConditional playback.DiscConditionalSource
