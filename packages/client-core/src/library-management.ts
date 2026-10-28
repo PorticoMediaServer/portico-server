@@ -59,6 +59,9 @@ type Lane='directory'|'selected'|'jobs';type PageOperation={cursor:string|null;h
 export class LibraryManagementService{
  private readRetries:number;private retryBaseMs:number;private api:LibraryContentApi;private scope:ContentScope;private pageSize:number;private timeoutMs:number;private epoch=0;private generation=0;private disposed=false;private listeners=new Set<()=>void>();private controls:Partial<Record<Lane,AbortController>>={};private sequences:Record<Lane,number>={directory:0,selected:0,jobs:0};private operations:Partial<Record<'directory'|'jobs',PageOperation>>={};private mutationController?:AbortController;private mutationPromise?:Promise<void>;private mutationKey='';private viewerFence?:string;private state:LibraryManagementSnapshot;
  constructor(o:{api:LibraryContentApi;scope:ContentScope;pageSize?:number;timeoutMs?:number;readRetries?:number;retryBaseMs?:number}){this.readRetries=o.readRetries??3;this.retryBaseMs=o.retryBaseMs??1000;this.api=o.api;this.scope=checkScope(o.scope);this.pageSize=o.pageSize??40;this.timeoutMs=o.timeoutMs??15000;if(!Number.isInteger(this.pageSize)||this.pageSize<1||this.pageSize>40||!Number.isFinite(this.timeoutMs)||this.timeoutMs<1||this.timeoutMs>60000)throw new Error('Invalid management request bounds.');this.state=this.empty();}
+ private quietDirectory?:AbortController;
+ /** Cancels only the mounted quiet directory read; ordinary paging and command owners stay intact. */
+ invalidateQuietDirectory=():void=>{const c=this.quietDirectory;this.quietDirectory=undefined;c?.abort();if(c&&this.controls.directory===c)delete this.controls.directory;};
  getSnapshot=()=>this.state;subscribe=(listener:()=>void)=>{this.listeners.add(listener);return()=>this.listeners.delete(listener);};
  private empty():LibraryManagementSnapshot{return Object.freeze({generation:this.generation,scope:this.scope,selectedLibraryId:null,directory:blank(),selected:blank(),jobs:blank(),jobFilter:Object.freeze({}),mutation:Object.freeze({phase:'idle',kind:null,error:null})});}
  private active(){if(this.disposed)throw new Error('Library management service is disposed.');}
@@ -99,7 +102,7 @@ export class LibraryManagementService{
   if(this.disposed||this.state.directory.phase==='loading')return {kind:'deferred'};
   const original=this.operations.directory??{cursor:null,history:[],pageIndex:0},before=this.state.directory;
   const epoch=this.epoch,c=new AbortController(),seq=++this.sequences.directory,api=this.api;
-  this.controls.directory?.abort();this.controls.directory=c;
+  this.controls.directory?.abort();this.controls.directory=c;this.quietDirectory=c;
   const owns=()=>!this.disposed&&epoch===this.epoch&&seq===this.sequences.directory&&!c.signal.aborted&&this.state.directory===before;
   try{
    let result:{op:PageOperation;data:AdminPage<ManagedLibrary>}|undefined;
@@ -122,7 +125,7 @@ export class LibraryManagementService{
    if(!owns())return {kind:'deferred'};
    if(this.denied(error)){this.stop();this.publish({...this.empty(),directory:Object.freeze({...blank(),phase:'error',error:errorInfo(error)})});}
    return {kind:'unreadable',error};
-  }finally{if(this.controls.directory===c)delete this.controls.directory;}
+  }finally{if(this.controls.directory===c)delete this.controls.directory;if(this.quietDirectory===c)this.quietDirectory=undefined;}
  }
 
  private resource(libraryId:string):Promise<void>{return this.read('selected',encodedRoutePath("get_admin_libraries_id", {"id": encodeURIComponent(libraryId)}),raw=>{if(!object(raw))invalid();const scope=parseScope(raw.scope,this.scope);this.fence(scope.viewerFence);const library=parseLibrary(raw.library);if(library.id!==libraryId)invalid();return Object.freeze({scope,library});});}
