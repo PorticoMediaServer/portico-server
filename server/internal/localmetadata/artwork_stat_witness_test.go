@@ -647,3 +647,7 @@ func (r *artworkRemoteFixture) ReadInventoryBlob(_ context.Context, source strin
 	r.returned = append([]byte(nil), r.blob...)
 	return r.returned, nil
 }
+
+func (r *artworkRemoteFixture) ListInventoryPage(ctx context.Context, job, directory, after string, limit int) (storage.RemotePage, error) {
+	return r.ListPage(ctx, job, directory, after)
+}
