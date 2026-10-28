@@ -6,6 +6,8 @@ import (
 	"errors"
 	"os"
 	"sync"
+
+	"portico.local/server/internal/supervise"
 )
 
 // StrictEnv makes accidental transaction nesting fail loudly instead of quietly
@@ -193,8 +195,9 @@ const maxOwnerKey = 128
 // sets it from the same bounded identity its lanes already share load by: a
 // checked credential's device, or the peer address before a credential is
 // checked. The gate uses it only to rotate between owners and to decide whose
-// ticket a full pool refuses; it grants nothing. Work with no owner, such as
-// internal supervisors, shares one queue.
+// ticket a full pool refuses; it grants nothing. Background work uses its
+// supervised operation name instead; work without either identity shares one
+// conservative anonymous supervisor allowance.
 func WithOwner(ctx context.Context, owner string) context.Context {
 	if ctx == nil || owner == "" {
 		return ctx
@@ -211,4 +214,14 @@ func ownerFrom(ctx context.Context) string {
 	}
 	owner, _ := ctx.Value(ownerKey{}).(string)
 	return owner
+}
+
+// backgroundOwnerFrom uses the actual supervised operation, not a request owner
+// inherited by a background job. Legacy work without a supervised context
+// shares the anonymous allowance; request owners cannot multiply its slots.
+func backgroundOwnerFrom(ctx context.Context) string {
+	if operation := supervise.Operation(ctx); operation != "" {
+		return "supervisor:" + operation
+	}
+	return ""
 }

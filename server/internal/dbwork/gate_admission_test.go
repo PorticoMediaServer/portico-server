@@ -88,7 +88,7 @@ func TestPoolHoldsNinetyNineQueuedPlusTheHolder(t *testing.T) {
 	// Background work is never refused: it waits outside the users' share.
 	queueTicket(t, g, ClassBackgroundMedia, "", "background", closedChannel(), results)
 	stats := g.Admission()
-	if stats.Refused != 1 || stats.RefusedByClass[ClassInteractive.String()] != 1 || stats.BackgroundQueued != 1 || stats.Deferred != 1 {
+	if stats.Refused != 1 || stats.RefusedByClass[ClassInteractive.String()] != 1 || stats.BackgroundQueued != 0 || stats.Deferred != 1 {
 		t.Fatalf("admission accounting after refusal: %+v", stats)
 	}
 	hold()
@@ -269,36 +269,55 @@ func TestAdmissionUnderConcurrentChurn(t *testing.T) {
 		wg.Add(1)
 		go func(worker int) {
 			defer wg.Done()
+			life := supervisedGateContext(context.Background(), fmt.Sprintf("test.supervisor.%d", worker%17))
 			for round := 0; round < 20; round++ {
-				ctx := WithOwner(context.Background(), fmt.Sprintf("o%d", worker%17))
+				ctx := WithOwner(life, fmt.Sprintf("o%d", worker%17))
+				class := classes[(worker+round)%len(classes)]
 				var cancel context.CancelFunc
 				if (worker+round)%5 == 0 {
 					ctx, cancel = context.WithTimeout(ctx, time.Duration(worker%3)*time.Millisecond)
 				}
-				release, err := g.Acquire(ctx, classes[(worker+round)%len(classes)])
+				release, err := g.Acquire(ctx, class)
 				if cancel != nil {
 					cancel()
 				}
 				if err != nil {
+					if class.Background() && errors.Is(err, ErrWriterCapacity) {
+						t.Errorf("background acquisition refused: %v", err)
+					}
 					if !errors.Is(err, ErrWriterCapacity) && !errors.Is(err, context.DeadlineExceeded) {
 						t.Error(err)
 					}
 					continue
 				}
-				queued := g.Admission().UserQueued
+				stats := g.Admission()
+				queued := stats.UserQueued + stats.BackgroundQueued
 				peakMu.Lock()
 				peak = max(peak, queued)
 				peakMu.Unlock()
+				g.mu.Lock()
+				for _, background := range []Class{ClassBackgroundMedia, ClassMaintenance} {
+					for _, owner := range g.queues[background].rotation {
+						n := len(owner.tickets)
+						if g.active && g.holderClass == background && g.holderOwner == owner.owner {
+							n++
+						}
+						if n > backgroundTicketLimit(background) {
+							t.Errorf("%s/%s has %d outstanding", background, owner.owner, n)
+						}
+					}
+				}
+				g.mu.Unlock()
 				release()
 			}
 		}(worker)
 	}
 	wg.Wait()
 	if peak > WriterQueueCapacity {
-		t.Fatalf("pool held %d user tickets", peak)
+		t.Fatalf("pool held %d admitted tickets", peak)
 	}
 	stats := g.Admission()
-	if g.ActiveOrWaiting() || stats.UserQueued != 0 || stats.BackgroundQueued != 0 {
+	if g.ActiveOrWaiting() || stats.UserQueued != 0 || stats.BackgroundQueued != 0 || stats.Deferred != 0 {
 		t.Fatalf("tickets left behind: %+v", stats)
 	}
 	g.mu.Lock()
@@ -307,8 +326,10 @@ func TestAdmissionUnderConcurrentChurn(t *testing.T) {
 		t.Fatalf("owner counts leaked: %v", g.ownerQueued)
 	}
 	for _, class := range Classes() {
-		if q := g.queues[class]; q.count != 0 || len(q.rotation) != 0 || len(q.byOwner) != 0 {
-			t.Fatalf("%s queue leaked: %+v", class, q)
+		for _, q := range []*classQueue{&g.queues[class], &g.deferred[class]} {
+			if q.count != 0 || len(q.rotation) != 0 || len(q.byOwner) != 0 {
+				t.Fatalf("%s queue leaked: %+v", class, q)
+			}
 		}
 	}
 }
