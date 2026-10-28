@@ -198,13 +198,11 @@ func writePreRestoreManifest(t *testing.T, folder string) {
 		t.Fatal(err)
 	}
 	digest := sha256.Sum256(raw)
-	manifest, err := json.Marshal(backup.Manifest{Format: backup.Format, Version: backup.Version, SchemaVersion: persistence.SchemaVersion(), Kind: backup.KindPreRestore, CreatedAt: "2026-10-13T10:00:00Z", Files: []backup.FileEntry{{Name: backup.DatabaseName, Bytes: int64(len(raw)), SHA256: hex.EncodeToString(digest[:])}}})
+	manifest, err := json.Marshal(backup.Manifest{Format: backup.Format, Version: backup.StreamVersion, SchemaVersion: persistence.SchemaVersion(), Kind: backup.KindPreRestore, CreatedAt: "2026-10-13T10:00:00Z"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err = os.WriteFile(filepath.Join(folder, backup.ManifestName), manifest, 0600); err != nil {
-		t.Fatal(err)
-	}
+	writeBackupStream(t, folder, manifest, []backup.FileEntry{{Name: backup.DatabaseName, Bytes: int64(len(raw)), SHA256: hex.EncodeToString(digest[:])}})
 }
 
 func TestRealRestoreKeepsItsScrubbedRollbackBackupRestorable(t *testing.T) {
