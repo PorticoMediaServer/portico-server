@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"log"
 	"path/filepath"
 	"portico.local/server/internal/requestinput"
 	"sort"
@@ -11,6 +12,7 @@ import (
 	"time"
 	"unicode/utf8"
 
+	"portico.local/server/internal/catalog"
 	"portico.local/server/internal/dbwork"
 )
 
@@ -418,4 +420,73 @@ func (s *Service) widenTarget(ctx context.Context, job, relative string) (bool, 
 		return false, err
 	}
 	return true, gated.Commit()
+}
+
+// reportHandoverAfter is how long a run analyses before path reports waiting
+// for its source take the source over. A run holds its source for its whole
+// analysis backlog, which can take days after a large first import; without a
+// handover a file added meanwhile would not even be listed until then. The
+// floor keeps steady reports from starving the backlog: every run still gets
+// this much analysis, and its finished results stay finished.
+var reportHandoverAfter = 2 * time.Minute
+
+// handOverToReports ends a run whose discovery is done when new path reports
+// have waited for its source and it has analysed for reportHandoverAfter. It
+// runs between analysis quanta, so no probe or deep stage is cut off. The run
+// finishes exactly as it would at the end of its queue, and a targeted run for
+// the waiting reports starts in the same commit. Nothing is dropped: that run's
+// own analysis enqueue walks the whole source, so every object the old run had
+// not analysed yet is queued again, under the new run's fences.
+//
+// Only the basic phases hand over. The enqueue walk is bounded and must finish
+// for a run to analyse anything, so handing over during it would let a steady
+// stream of reports keep any analysis from starting.
+func (s *Service) handOverToReports(ctx context.Context, job string, source catalog.LibrarySource) (bool, error) {
+	s.mu.Lock()
+	if s.analysingSince == nil {
+		s.analysingSince = map[string]time.Time{}
+	}
+	since, seen := s.analysingSince[job]
+	if !seen {
+		since = time.Now()
+		s.analysingSince[job] = since
+	}
+	s.mu.Unlock()
+	if time.Since(since) < reportHandoverAfter {
+		return false, nil
+	}
+	var waiting bool
+	if err := s.db.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM inventory_path_notices WHERE source_id=?)`, source.ID).Scan(&waiting); err != nil || !waiting {
+		return false, err
+	}
+	gated, err := dbwork.Begin(ctx, s.db, dbwork.ClassBackgroundMedia)
+	if err != nil {
+		return false, err
+	}
+	defer gated.Rollback()
+	tx := gated.Tx()
+	if _, err = catalog.InventoryFenceTx(ctx, tx, job); err != nil {
+		return false, err
+	}
+	if err = finishScanTx(ctx, tx, job, source.ID); err != nil {
+		return false, err
+	}
+	// A second-pass successor queued by the finish holds the source instead;
+	// the reports then wait for it, as they would for any other active run.
+	next, err := startTargetedTx(ctx, tx, source.ID)
+	if err != nil && !errors.Is(err, sql.ErrNoRows) {
+		return false, err
+	}
+	if err = gated.Commit(); err != nil {
+		return false, err
+	}
+	s.forgetAnalysing(job)
+	log.Printf("library scan %s handed its source to waiting folder reports (scan %s); its remaining analysis continues there", job, next.ID)
+	return true, nil
+}
+
+func (s *Service) forgetAnalysing(job string) {
+	s.mu.Lock()
+	delete(s.analysingSince, job)
+	s.mu.Unlock()
 }

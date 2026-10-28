@@ -583,14 +583,10 @@ func TestAnalysisEnqueueSidecarFenceAndFileListOnlyPaths(t *testing.T) {
 		if _, cursor := f.runState(job.ID); cursor != "" {
 			t.Fatalf("sidecar page moved the analysis cursor to %q", cursor)
 		}
-		if n := f.count(`SELECT count(*) FROM inventory_sidecar_changes WHERE job_id=?`, job.ID); n != 1 {
-			t.Fatalf("sidecar change row after its first page=%d", n)
-		}
-		if err := f.s.enqueueAnalysisPage(context.Background(), job.ID, source); err != nil {
-			t.Fatal(err)
-		}
+		// The page read fewer rows than its window, so it finished the change
+		// itself: no separate empty continuation page.
 		if n := f.count(`SELECT count(*) FROM inventory_sidecar_changes WHERE job_id=?`, job.ID); n != 0 {
-			t.Fatalf("sidecar change row after its empty tail=%d", n)
+			t.Fatalf("sidecar change row after its only page=%d", n)
 		}
 		if err := f.s.enqueueAnalysisPage(context.Background(), job.ID, source); err != nil {
 			t.Fatal(err)

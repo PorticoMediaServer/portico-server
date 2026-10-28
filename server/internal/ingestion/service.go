@@ -52,9 +52,13 @@ type Service struct {
 	active        map[string]context.CancelFunc
 	activeSources map[string]bool
 	activityFiles map[string]*activityFileObservation
-	listingMu     sync.Mutex
-	listings      map[string]*scanListing
-	ignoreScopes  map[string]map[string]remoteIgnoreScope
+	// analysingSince is when this process first ran a basic-analysis quantum for
+	// a job; reports waiting for its source take over the source only after it
+	// has analysed this long (reportHandoverAfter).
+	analysingSince map[string]time.Time
+	listingMu      sync.Mutex
+	listings       map[string]*scanListing
+	ignoreScopes   map[string]map[string]remoteIgnoreScope
 }
 
 func New(db *sql.DB, c *catalog.Service, p assets.Probe) *Service {
@@ -604,7 +608,10 @@ func (s *Service) processQuantum(ctx context.Context, id, library string) bool {
 	case "analysis_enqueue":
 		err = s.enqueueAnalysisPage(ctx, id, source)
 	case "basic_pending", "basic_running":
-		err = s.analyzeOne(ctx, id, source)
+		var handed bool
+		if handed, err = s.handOverToReports(ctx, id, source); err == nil && !handed {
+			err = s.analyzeOne(ctx, id, source)
+		}
 	default:
 		err = catalog.ErrAdminQuery
 	}
@@ -618,6 +625,7 @@ func (s *Service) processQuantum(ctx context.Context, id, library string) bool {
 	after, err := s.scanPosition(ctx, id)
 	if err == nil && after.status != "running" && after.status != "queued" && after.status != "paused" {
 		s.forgetListing(id)
+		s.forgetAnalysing(id)
 	}
 	return err == nil && after != before && after.status == "running"
 }

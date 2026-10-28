@@ -142,7 +142,14 @@ type binding struct {
 	SonicBinding                                                      string
 }
 
-func (s *Service) bindingTx(ctx context.Context, tx *sql.Tx, r Request) (b binding, err error) {
+func (s *Service) bindingTx(ctx context.Context, tx *sql.Tx, r Request) (binding, error) {
+	return s.readBindingTx(ctx, tx, r, true)
+}
+
+// readBindingTx reads the binding; markers also prepares the object's marker
+// set, the one write a binding takes. Without it the read runs in a read-only
+// snapshot.
+func (s *Service) readBindingTx(ctx context.Context, tx *sql.Tx, r Request, markers bool) (b binding, err error) {
 	b.Request = r
 	b.Source, err = catalog.InventoryFenceTx(ctx, tx, r.JobID)
 	if err != nil {
@@ -188,9 +195,11 @@ func (s *Service) bindingTx(ctx context.Context, tx *sql.Tx, r Request) (b bindi
 	if err != nil {
 		return
 	}
-	_, err = tx.ExecContext(ctx, `INSERT OR IGNORE INTO analysis_marker_sets(object_id,source_revision) VALUES(?,?)`, r.ObjectID, r.SourceRevision)
-	if err == nil {
-		err = tx.QueryRowContext(ctx, `SELECT revision FROM analysis_marker_sets WHERE object_id=? AND source_revision=?`, r.ObjectID, r.SourceRevision).Scan(&b.MarkerRevision)
+	if markers {
+		_, err = tx.ExecContext(ctx, `INSERT OR IGNORE INTO analysis_marker_sets(object_id,source_revision) VALUES(?,?)`, r.ObjectID, r.SourceRevision)
+		if err == nil {
+			err = tx.QueryRowContext(ctx, `SELECT revision FROM analysis_marker_sets WHERE object_id=? AND source_revision=?`, r.ObjectID, r.SourceRevision).Scan(&b.MarkerRevision)
+		}
 	}
 	if err == nil && b.Container == "strm" {
 		var allowed bool

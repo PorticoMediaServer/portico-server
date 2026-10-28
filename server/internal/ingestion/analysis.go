@@ -42,6 +42,10 @@ func (s *Service) enqueueAnalysisPage(ctx context.Context, job string, source ca
 	if more, e := s.enqueueSidecarChanges(ctx, job, source); more || e != nil {
 		return e
 	}
+	answers, err := s.sonicPrepass(ctx, job, source)
+	if err != nil {
+		return err
+	}
 	gated, err := dbwork.Begin(ctx, s.db, dbwork.ClassBackgroundMedia)
 	if err != nil {
 		return err
@@ -64,11 +68,74 @@ func (s *Service) enqueueAnalysisPage(ctx context.Context, job string, source ca
 		}
 		return gated.Commit()
 	}
+	w, err := s.analysisWindowTx(ctx, tx, job, source, policy)
+	if err != nil {
+		return err
+	}
+	usable := answers.usable(w.cursor, policy.Revision, s.DeepAnalysis.SonicRuntimeToken())
+	for _, o := range w.batch {
+		// Availability is re-read for every row: the runtime can be swapped by a
+		// concurrent RetrySonic while this page holds its window open.
+		if !o.needs && policy.Allows(catalog.SonicOperation) && s.DeepAnalysis.SonicCanAttempt() {
+			if usable {
+				// The pre-pass answered for this window under this runtime. A row
+				// it did not answer for changed in between: queue it, which costs
+				// at most one quantum that finds it complete.
+				current, answered := answers.current[o.id+"\x00"+o.revision]
+				o.needs = !answered || !current
+			} else {
+				current, e := s.DeepAnalysis.SonicCurrentTx(ctx, tx, mediaanalysis.Request{JobID: job, ObjectID: o.id, SourceRevision: o.revision, PolicyRevision: policy.Revision})
+				if e != nil {
+					return e
+				}
+				o.needs = !current
+			}
+		}
+		if !o.needs {
+			continue
+		}
+		if _, err = tx.ExecContext(ctx, `INSERT INTO inventory_analysis_queue(job_id,object_id,revision,policy_revision,state) VALUES(?,?,?,?,'pending') ON CONFLICT(job_id,object_id) DO UPDATE SET revision=excluded.revision,policy_revision=excluded.policy_revision,state=excluded.state`, job, o.id, o.revision, policy.Revision); err != nil {
+			return err
+		}
+	}
+	// The cursor is the last raw id of the window, not the last row the predicate
+	// selected: filtered rows must be consumed too. Queue rows, cursor and phase
+	// move in this one commit, so a crash replays at most this window.
+	if w.atEnd {
+		_, err = tx.ExecContext(ctx, `UPDATE inventory_runs SET phase='basic_pending',reconcile_cursor='',policy_revision=? WHERE job_id=?`, policy.Revision, job)
+	} else {
+		_, err = tx.ExecContext(ctx, `UPDATE inventory_runs SET reconcile_cursor=?,policy_revision=? WHERE job_id=?`, w.last, policy.Revision, job)
+	}
+	if err != nil {
+		return err
+	}
+	return gated.Commit()
+}
+
+// analysisCandidate is one raw row of an enqueue window; needs is the
+// predicate's answer before the sonic currentness check.
+type analysisCandidate struct {
+	id, revision string
+	needs        bool
+}
+
+// analysisWindow is one enqueue page's plan: the raw window after cursor, the
+// predicate's answer for each eligible row, and whether the source ends here.
+type analysisWindow struct {
+	cursor, last string
+	batch        []analysisCandidate
+	atEnd        bool
+}
+
+// analysisWindowTx plans one enqueue page. It only reads, so the sonic pre-pass
+// can plan the same window in a read snapshot that the writer plans again.
+func (s *Service) analysisWindowTx(ctx context.Context, tx *sql.Tx, job string, source catalog.LibrarySource, policy catalog.ScanPolicy) (analysisWindow, error) {
+	var w analysisWindow
 	var strmEnabled bool
 	var strmRevision int64
-	err = tx.QueryRowContext(ctx, `SELECT enabled,revision FROM source_strm_analysis WHERE library_id=?`, source.LibraryID).Scan(&strmEnabled, &strmRevision)
+	err := tx.QueryRowContext(ctx, `SELECT enabled,revision FROM source_strm_analysis WHERE library_id=?`, source.LibraryID).Scan(&strmEnabled, &strmRevision)
 	if err != nil && !errors.Is(err, sql.ErrNoRows) {
-		return err
+		return w, err
 	}
 	required := append([]string(nil), policy.Operations...)
 	if !s.DeepAnalysis.SonicCanAttempt() {
@@ -86,7 +153,7 @@ func (s *Service) enqueueAnalysisPage(ctx context.Context, job string, source ca
 	// A remote source's own page can switch whole-file analysis stages off for
 	// the files found through it. Local folders keep the library's policy.
 	if switches, ok, e := remotesources.AnalysisSwitchesTx(ctx, tx, source.ID); e != nil {
-		return e
+		return w, e
 	} else if ok {
 		required = switches.Filter(required)
 	}
@@ -103,7 +170,7 @@ func (s *Service) enqueueAnalysisPage(ctx context.Context, job string, source ca
 	}
 	var cursor string
 	if err = tx.QueryRowContext(ctx, `SELECT reconcile_cursor FROM inventory_runs WHERE job_id=?`, job).Scan(&cursor); err != nil {
-		return err
+		return w, err
 	}
 	// Read the raw keyset window first, bounded by the existing
 	// (source_id, retired, id) index. The extra row is a probe: if it comes back
@@ -112,25 +179,21 @@ func (s *Service) enqueueAnalysisPage(ctx context.Context, job string, source ca
 	// reject are still consumed here, so a rejected prefix cannot repeat forever.
 	rows, err := tx.QueryContext(ctx, `SELECT o.id,o.revision FROM inventory_objects o INDEXED BY inventory_objects_source WHERE o.source_id=? AND o.retired=0 AND o.id>? ORDER BY o.id LIMIT ?`, source.ID, cursor, rawPageSize+1)
 	if err != nil {
-		return err
+		return w, err
 	}
-	type object struct {
-		id, revision string
-		needs        bool
-	}
-	window := []object{}
+	window := []analysisCandidate{}
 	for rows.Next() {
-		var o object
+		var o analysisCandidate
 		if err = rows.Scan(&o.id, &o.revision); err != nil {
 			rows.Close()
-			return err
+			return w, err
 		}
 		window = append(window, o)
 	}
 	err = rows.Err()
 	rows.Close()
 	if err != nil {
-		return err
+		return w, err
 	}
 	atEnd := len(window) <= rawPageSize
 	if !atEnd {
@@ -140,7 +203,7 @@ func (s *Service) enqueueAnalysisPage(ctx context.Context, job string, source ca
 	// The unchanged predicate is evaluated in one statement over exactly this
 	// window's ids, not one query per row. Unchanged candidates advance the
 	// cursor without creating queue rows.
-	batch := []object{}
+	batch := []analysisCandidate{}
 	if len(window) > 0 {
 		ids := make([]string, len(window))
 		for i := range window {
@@ -157,51 +220,91 @@ func (s *Service) enqueueAnalysisPage(ctx context.Context, job string, source ca
  (lower(substr(o.relative_path,-5))='.strm' AND NOT EXISTS(SELECT 1 FROM json_each(o.analysis_operations_json) done WHERE done.value=?))))
  FROM batch o JOIN inventory_runs r ON r.source_id=o.source_id WHERE r.job_id=? ORDER BY o.id`, job, string(idsJSON), strmEnabled && policy.Allows("probe"), policy.Revision, mediaanalysis.Algorithm, source.LibraryID, string(requiredJSON), string(requiredJSON), mediaanalysis.Algorithm, "strm_target:"+strconv.FormatInt(strmRevision, 10), job)
 		if err != nil {
-			return err
+			return w, err
 		}
 		for rows.Next() {
-			var o object
+			var o analysisCandidate
 			if err = rows.Scan(&o.id, &o.revision, &o.needs); err != nil {
 				rows.Close()
-				return err
+				return w, err
 			}
 			batch = append(batch, o)
 		}
 		err = rows.Err()
 		rows.Close()
 		if err != nil {
-			return err
+			return w, err
 		}
 	}
-	for _, o := range batch {
-		// Availability is re-read for every row: the runtime can be swapped by a
-		// concurrent RetrySonic while this page holds its window open.
-		if !o.needs && policy.Allows(catalog.SonicOperation) && s.DeepAnalysis.SonicCanAttempt() {
-			current, e := s.DeepAnalysis.SonicCurrentTx(ctx, tx, mediaanalysis.Request{JobID: job, ObjectID: o.id, SourceRevision: o.revision, PolicyRevision: policy.Revision})
-			if e != nil {
-				return e
-			}
-			o.needs = !current
-		}
-		if !o.needs {
+	w.cursor, w.batch, w.atEnd = cursor, batch, atEnd
+	if len(window) > 0 {
+		w.last = window[len(window)-1].id
+	}
+	return w, nil
+}
+
+// sonicAnswers are the pre-pass's sonic currentness answers for one window,
+// keyed by object id and revision, with what they were taken under.
+type sonicAnswers struct {
+	taken          bool
+	cursor         string
+	policyRevision int64
+	runtime        string
+	current        map[string]bool
+}
+
+// usable says whether the answers were taken for this window (the same cursor
+// and policy revision) under the runtime installed now.
+func (a sonicAnswers) usable(cursor string, policyRevision int64, runtime string) bool {
+	return a.taken && a.cursor == cursor && a.policyRevision == policyRevision && a.runtime == runtime
+}
+
+// sonicPrepass answers SonicCurrentTx for a sonic page's settled rows in a
+// read-only snapshot, before the page takes the writer. Each answer reads the
+// object's binding, up to 4097 track rows, so 32 of them inside the writer
+// held it for the whole binding read (ENQUEUE1 R2). The writer re-plans the
+// window and uses an answer only for the window, policy and runtime it was
+// taken under, so its decisions are those a page run at the snapshot would
+// have made; a change after the snapshot is seen as one after the page would
+// have been.
+func (s *Service) sonicPrepass(ctx context.Context, job string, source catalog.LibrarySource) (sonicAnswers, error) {
+	var a sonicAnswers
+	if !s.DeepAnalysis.SonicCanAttempt() {
+		return a, nil
+	}
+	runtime := s.DeepAnalysis.SonicRuntimeToken()
+	tx, done, err := dbwork.BeginRead(ctx, s.db)
+	if err != nil {
+		return a, err
+	}
+	defer done()
+	if _, err = catalog.InventoryFenceTx(ctx, tx, job); err != nil {
+		// The writer re-proves the fence and answers for it.
+		return a, nil
+	}
+	policy, err := catalog.ScanPolicyTx(ctx, tx, source.LibraryID)
+	if err != nil {
+		return a, err
+	}
+	if policy.Tier == "file_list_only" || !policy.Allows(catalog.SonicOperation) {
+		return a, nil
+	}
+	w, err := s.analysisWindowTx(ctx, tx, job, source, policy)
+	if err != nil {
+		return a, err
+	}
+	a = sonicAnswers{taken: true, cursor: w.cursor, policyRevision: policy.Revision, runtime: runtime, current: map[string]bool{}}
+	for _, o := range w.batch {
+		if o.needs {
 			continue
 		}
-		if _, err = tx.ExecContext(ctx, `INSERT INTO inventory_analysis_queue(job_id,object_id,revision,policy_revision,state) VALUES(?,?,?,?,'pending') ON CONFLICT(job_id,object_id) DO UPDATE SET revision=excluded.revision,policy_revision=excluded.policy_revision,state=excluded.state`, job, o.id, o.revision, policy.Revision); err != nil {
-			return err
+		current, err := s.DeepAnalysis.SonicCurrentTx(ctx, tx, mediaanalysis.Request{JobID: job, ObjectID: o.id, SourceRevision: o.revision, PolicyRevision: policy.Revision})
+		if err != nil {
+			return sonicAnswers{}, err
 		}
+		a.current[o.id+"\x00"+o.revision] = current
 	}
-	// The cursor is the last raw id of the window, not the last row the predicate
-	// selected: filtered rows must be consumed too. Queue rows, cursor and phase
-	// move in this one commit, so a crash replays at most this window.
-	if atEnd {
-		_, err = tx.ExecContext(ctx, `UPDATE inventory_runs SET phase='basic_pending',reconcile_cursor='',policy_revision=? WHERE job_id=?`, policy.Revision, job)
-	} else {
-		_, err = tx.ExecContext(ctx, `UPDATE inventory_runs SET reconcile_cursor=?,policy_revision=? WHERE job_id=?`, window[len(window)-1].id, policy.Revision, job)
-	}
-	if err != nil {
-		return err
-	}
-	return gated.Commit()
+	return a, nil
 }
 func (s *Service) playbackBusy(ctx context.Context, source string) (bool, error) {
 	var busy bool
@@ -235,8 +338,17 @@ func (s *Service) analyzeOne(parent context.Context, job string, source catalog.
 	}
 	var object, revision, relative, analyzed, operations, analysisState string
 	var queuedPolicy, analysisPolicy int64
-	err = s.db.QueryRowContext(parent, `SELECT q.object_id,q.revision,q.policy_revision,o.relative_path,o.analysis_revision,o.analysis_operations_json,o.analysis_policy,o.analysis_state FROM inventory_analysis_queue q JOIN inventory_objects o ON o.id=q.object_id WHERE q.job_id=? AND q.state='pending' ORDER BY q.object_id LIMIT 1`, job).Scan(&object, &revision, &queuedPolicy, &relative, &analyzed, &operations, &analysisPolicy, &analysisState)
+	// An object whose stage waits for a retry is passed over until it is due,
+	// so one delayed file cannot hold every later one behind it.
+	now := time.Now().UnixMilli()
+	err = s.db.QueryRowContext(parent, `SELECT q.object_id,q.revision,q.policy_revision,o.relative_path,o.analysis_revision,o.analysis_operations_json,o.analysis_policy,o.analysis_state FROM inventory_analysis_queue q JOIN inventory_objects o ON o.id=q.object_id WHERE q.job_id=? AND q.state='pending' AND NOT EXISTS(SELECT 1 FROM analysis_stage_runs w WHERE w.job_id=q.job_id AND w.object_id=q.object_id AND w.source_revision=q.revision AND w.policy_revision=q.policy_revision AND w.state NOT IN('failed','unsupported','complete') AND w.next_ms>?) ORDER BY q.object_id LIMIT 1`, job, now).Scan(&object, &revision, &queuedPolicy, &relative, &analyzed, &operations, &analysisPolicy, &analysisState)
 	if errors.Is(err, sql.ErrNoRows) {
+		// Everything left is waiting for a retry: no progress this turn, and the
+		// run is not over.
+		var waiting bool
+		if err = s.db.QueryRowContext(parent, `SELECT EXISTS(SELECT 1 FROM inventory_analysis_queue WHERE job_id=? AND state='pending')`, job).Scan(&waiting); err != nil || waiting {
+			return err
+		}
 		gated2, e := dbwork.Begin(parent, s.db, dbwork.ClassBackgroundMedia)
 		if e != nil {
 			return e
@@ -466,6 +578,15 @@ func (s *Service) analyzeOne(parent context.Context, job string, source catalog.
 		}
 		return storage.WithScanReadWitness(rooted, s.storage, observe)
 	}
+	if !remoteDisc && !descriptor && !discRequested && !before.Directory && basicNeeded {
+		evidence, e := s.localRefreshEvidence(ctx, source, object, revision, relative, analyzed, done, policy)
+		if e != nil {
+			return e
+		}
+		if evidence != nil {
+			return s.refreshLocalMetadata(parent, ctx, job, object, revision, queuedPolicy, policy, source, path, *evidence, readContext, &artworkObserved, stat, matches, before, deep)
+		}
+	}
 	if remoteDisc {
 		// Root64: a remote disc image is an ordinary title. A scan never reads
 		// the image, so publish its name and local metadata only and leave
@@ -658,7 +779,157 @@ func (s *Service) analyzeOne(parent context.Context, job string, source catalog.
 		}
 		return s.analysisOutcome(parent, job, object, revision, queuedPolicy, true, "analysis_publication_failed")
 	}
-	if f.SubtitleTextPending {
+	return s.finishBasicAnalysis(parent, ctx, job, object, revision, queuedPolicy, policy, source, completed, descriptor, deep, f.SubtitleTextPending)
+}
+
+// localRefresh is what a sidecar-only refresh reuses from the file's last
+// probe: which operations it must redo, and the embedded subtitle tracks and
+// timing that probe recorded.
+type localRefresh struct {
+	kind           string
+	done           []string
+	metadata, subs bool
+	embedded       []subtitles.Track
+	originUS       int64
+	timingKnown    bool
+}
+
+// localRefreshEvidence decides whether a queued video file needs only its
+// local metadata and subtitle discovery redone (S6). That is the case when its
+// analysis is of this exact revision with the probe and playback analysis
+// recorded, and the only allowed basic operations missing are local_metadata
+// and subtitles, which a sidecar change removes. Anything else, or a file
+// whose stored evidence doesn't match it, takes the full probe as before.
+func (s *Service) localRefreshEvidence(ctx context.Context, source catalog.LibrarySource, object, revision, relative, analyzed string, done []string, policy catalog.ScanPolicy) (*localRefresh, error) {
+	if source.Kind != "local" || analyzed != revision || assets.DiscImage(relative) || !policy.Allows("probe") {
+		return nil, nil
+	}
+	has := map[string]bool{}
+	for _, op := range done {
+		has[op] = true
+	}
+	if !has["probe"] || !has[assets.PlaybackAnalysisRevision] {
+		return nil, nil
+	}
+	r := localRefresh{done: done}
+	for _, op := range catalog.BasicScanOperations {
+		if !policy.Allows(op) || has[op] {
+			continue
+		}
+		switch op {
+		case "local_metadata":
+			r.metadata = true
+		case "subtitles":
+			r.subs = true
+		default:
+			return nil, nil
+		}
+	}
+	if !r.metadata && !r.subs {
+		return nil, nil
+	}
+	var asset, videoCodec string
+	var size, modified int64
+	err := s.db.QueryRowContext(ctx, `SELECT l.kind,a.token,a.video_codec,o.size,o.modified_ns FROM inventory_objects o JOIN catalog_assets a ON a.token=o.asset_id AND a.size=o.size AND a.modified_ns=o.modified_ns JOIN library_sources src ON src.id=o.source_id JOIN libraries l ON l.id=src.library_id WHERE o.id=? AND o.revision=? AND o.retired=0`, object, revision).Scan(&r.kind, &asset, &videoCodec, &size, &modified)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	if r.kind != "movie" && r.kind != "tv" && r.kind != "anime" || videoCodec == "" {
+		return nil, nil
+	}
+	if r.subs {
+		var ok bool
+		if r.embedded, r.originUS, r.timingKnown, ok, err = subtitles.StoredEmbedded(ctx, s.db, asset, size, modified); err != nil || !ok {
+			return nil, err
+		}
+	}
+	return &r, nil
+}
+
+// refreshLocalMetadata re-reads a video file's local metadata and subtitle
+// sidecars without probing it again, and publishes them with
+// CommitInventoryLocalRefresh. The reads are the basic path's own, under the
+// same scan read witness, and the file must still be this revision before and
+// after them.
+func (s *Service) refreshLocalMetadata(parent, ctx context.Context, job, object, revision string, queuedPolicy int64, policy catalog.ScanPolicy, source catalog.LibrarySource, path string, r localRefresh, readContext func(string) context.Context, artworkObserved *bool, stat func() (storage.Snapshot, error), matches func(storage.Snapshot) bool, before storage.Snapshot, deep bool) error {
+	var f assets.Facts
+	completed := append([]string(nil), r.done...)
+	var err error
+	if r.metadata && s.LocalMetadata != nil {
+		if err = s.analysisAllowed(ctx, job, source.LibraryID, policy.Revision, "local_metadata"); err != nil {
+			return nil
+		}
+		f = s.LocalMetadata.VideoNFO(readContext("local_metadata"), source.LibraryID, source.ResolvedPath, path, r.kind, f)
+		if r.kind == "movie" {
+			f = s.LocalMetadata.MovieArtwork(readContext("local_metadata"), source.LibraryID, path, f)
+		}
+		season := -1
+		if r.kind == "tv" || r.kind == "anime" {
+			if rel, rerr := filepath.Rel(source.ResolvedPath, path); rerr == nil {
+				if plan := catalog.ParseEpisode(rel, r.kind); plan.Issue == "" && plan.Season >= 0 && plan.Season <= 9999 {
+					season = plan.Season
+				}
+			}
+		}
+		extra := s.LocalMetadata.ReadSidecars(readContext("local_metadata"), source.LibraryID, r.kind, source.ResolvedPath, path, season)
+		if key := extra["album/cover"]; key != "" && f.ArtworkKey == "" {
+			f.ArtworkKey = key
+			delete(extra, "album/cover")
+		}
+		if len(extra) > 0 {
+			f.ArtworkExtra = extra
+		}
+		f.ArtworkCandidates, f.ArtworkCandidatesObserved = s.LocalMetadata.ReadArtworkCandidates(readContext("local_metadata"), source.LibraryID, r.kind, source.ResolvedPath, path, season)
+		if f.LocalMetadataIssue == "" {
+			completed = append(completed, "local_metadata")
+		}
+	}
+	if r.subs {
+		if err = s.analysisAllowed(ctx, job, source.LibraryID, policy.Revision, "subtitles"); err != nil {
+			return nil
+		}
+		relative, _ := filepath.Rel(source.ResolvedPath, filepath.Dir(path))
+		f.SubtitleInventory, err = subtitles.DiscoverManaged(readContext("subtitles"), s.db, s.storage, source.ID, source.Incarnation, job, relative, path, r.embedded, r.originUS, r.timingKnown)
+		if err == nil && f.SubtitleInventory != nil && f.SubtitleInventory.Status == "known" {
+			completed = append(completed, "subtitles")
+		}
+	}
+	if ctx.Err() != nil {
+		return nil
+	}
+	if err != nil {
+		return s.analysisOutcome(parent, job, object, revision, queuedPolicy, true, "probe_or_sidecar_failed")
+	}
+	after, err := stat()
+	if ctx.Err() != nil {
+		return nil
+	}
+	if err != nil || !matches(after) {
+		return s.analysisOutcome(parent, job, object, revision, queuedPolicy, true, "source_revision_changed")
+	}
+	f.ObservedSize, f.ObservedModifiedNS, f.ObservedRevision = before.Size, before.ModifiedNS, before.Revision
+	f.ArtworkObserved = r.metadata && s.LocalMetadata != nil && *artworkObserved && f.LocalMetadataIssue == ""
+	f.AnalysisOperations = completed
+	f.SubtitleTextPending = f.SubtitleInventory != nil && s.Subtitles != nil
+	if err = s.catalog.CommitInventoryLocalRefresh(ctx, job, object, revision, policy.Revision, f); err != nil {
+		if errors.Is(err, context.Canceled) {
+			return nil
+		}
+		return s.analysisOutcome(parent, job, object, revision, queuedPolicy, true, "analysis_publication_failed")
+	}
+	return s.finishBasicAnalysis(parent, ctx, job, object, revision, queuedPolicy, policy, source, completed, false, deep, f.SubtitleTextPending)
+}
+
+// finishBasicAnalysis is what follows a basic-analysis commit: the scan's
+// subtitle text import, the check that every allowed basic operation was
+// recorded, then the deep stages. A full probe and a local-metadata refresh
+// both end here.
+func (s *Service) finishBasicAnalysis(parent, ctx context.Context, job, object, revision string, queuedPolicy int64, policy catalog.ScanPolicy, source catalog.LibrarySource, completed []string, descriptor, deep, textPending bool) error {
+	var err error
+	if textPending {
 		var item, asset string
 		if err = s.db.QueryRowContext(ctx, `SELECT pid(e.public_id),a.token FROM inventory_objects o JOIN catalog_assets a ON a.token=o.asset_id JOIN catalog_asset_links l ON l.asset_id=a.id JOIN catalog_entities e ON e.id=l.entity_id JOIN catalog_libraries cl ON cl.id=e.library_id WHERE o.id=? AND o.revision=? AND cl.library_id=? ORDER BY e.id LIMIT 1`, object, revision, source.LibraryID).Scan(&item, &asset); errors.Is(err, sql.ErrNoRows) {
 			// The file never became an item (for example a naming issue left

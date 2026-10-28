@@ -3,6 +3,7 @@ package ingestion
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"path/filepath"
 	"portico.local/server/internal/catalog"
@@ -84,16 +85,56 @@ func (s *Service) reconcileSidecars(ctx context.Context, job string, source cata
 	return gated.Commit()
 }
 
+// sidecarChangePage is how many inventory rows one sidecar-change page reads
+// while it holds the writer.
+var sidecarChangePage = 64
+
+// The three keyset windows a sidecar-change page reads. Each one is answered in
+// order by its index, so LIMIT bounds the rows examined, not only those
+// returned.
+const (
+	sidecarSourceRows = `SELECT id,directory_path,0,root_incarnation=? AND state='available' FROM inventory_objects INDEXED BY inventory_objects_source WHERE source_id=? AND retired=0 AND id>? ORDER BY id LIMIT ?`
+	sidecarFolderRows = `SELECT id,directory_path,0,state='available' FROM inventory_objects INDEXED BY inventory_objects_directory WHERE source_id=? AND root_incarnation=? AND directory_path=? AND retired=0 AND id>? ORDER BY id LIMIT ?`
+	// The descendant window keys on the index's (directory_path, retired, id)
+	// tail. A retired=0 filter after the directory range would cost the index
+	// order (and a temporary sort of the whole subtree), so retired rows are
+	// read, counted against the window and never queued.
+	sidecarDescendantRows = `SELECT id,directory_path,retired,retired=0 AND state='available' FROM inventory_objects INDEXED BY inventory_objects_directory WHERE source_id=? AND root_incarnation=? AND (directory_path,retired,id)>(?,?,?) AND directory_path<? ORDER BY directory_path,retired,id LIMIT ?`
+)
+
+// sidecarCursor is where a folder's sidecar change has got to: the index key
+// (directory, retired, object id) of the last row a page read. An empty directory means the
+// folder's own files are still being read.
+type sidecarCursor struct {
+	Directory string `json:"d"`
+	Retired   int    `json:"r,omitempty"`
+	ID        string `json:"i"`
+}
+
 // A show/album sidecar may govern child seasons/discs. Queue those files in
-// bounded pages; a changed sidecar never invalidates technical/deep facts.
+// bounded pages; a changed sidecar never invalidates technical/deep facts, and
+// a video file is not probed again for it (S6).
+//
+// Every read is a raw keyset window that its index answers in order, so a page
+// examines at most sidecarChangePage rows whatever the size of the source: the
+// folder's own files by (directory_path, id), then its descendants as the
+// directory_path range below folder+separator, never a scan of the source for
+// rows that happen to match. Rows that are no longer available are consumed by
+// the window without being queued.
 func (s *Service) enqueueSidecarChanges(ctx context.Context, job string, source catalog.LibrarySource) (bool, error) {
-	var folder, cursor string
-	err := s.db.QueryRowContext(ctx, `SELECT relative_path,cursor FROM inventory_sidecar_changes WHERE job_id=? ORDER BY relative_path LIMIT 1`, job).Scan(&folder, &cursor)
+	var folder, cursorText string
+	err := s.db.QueryRowContext(ctx, `SELECT relative_path,cursor FROM inventory_sidecar_changes WHERE job_id=? ORDER BY relative_path LIMIT 1`, job).Scan(&folder, &cursorText)
 	if errors.Is(err, sql.ErrNoRows) {
 		return false, nil
 	}
 	if err != nil {
 		return false, err
+	}
+	var cursor sidecarCursor
+	if cursorText != "" {
+		if err = json.Unmarshal([]byte(cursorText), &cursor); err != nil {
+			return false, err
+		}
 	}
 	if s.LocalMetadata != nil {
 		s.LocalMetadata.InvalidateSidecars(filepath.Join(source.ResolvedPath, folder))
@@ -107,33 +148,68 @@ func (s *Service) enqueueSidecarChanges(ctx context.Context, job string, source 
 	if _, err = catalog.InventoryFenceTx(ctx, tx, job); err != nil {
 		return false, err
 	}
-	rows, err := tx.QueryContext(ctx, `SELECT id FROM inventory_objects WHERE source_id=? AND root_incarnation=? AND state='available' AND retired=0 AND id>? AND (?='.' OR directory_path=? OR substr(directory_path,1,length(?)+1)=?||?) ORDER BY id LIMIT 64`, source.ID, source.Incarnation, cursor, folder, folder, folder, folder, string(filepath.Separator))
-	if err != nil {
-		return false, err
+	type row struct {
+		id, directory string
+		retired       int
+		available     bool
 	}
-	ids := []string{}
-	for rows.Next() {
-		var id string
-		if err = rows.Scan(&id); err != nil {
-			rows.Close()
-			return false, err
+	read := func(query string, args ...any) ([]row, error) {
+		rows, err := tx.QueryContext(ctx, query, args...)
+		if err != nil {
+			return nil, err
 		}
-		ids = append(ids, id)
-	}
-	err = rows.Err()
-	rows.Close()
-	if err != nil {
-		return false, err
-	}
-	for _, id := range ids {
-		if _, err = tx.ExecContext(ctx, `UPDATE inventory_objects SET analysis_state='pending',analysis_revision='',analysis_operations_json=COALESCE((SELECT json_group_array(value) FROM json_each(analysis_operations_json) WHERE value NOT IN('local_metadata','subtitles')),'[]') WHERE id=?`, id); err != nil {
-			return false, err
+		defer rows.Close()
+		out := []row{}
+		for rows.Next() {
+			var r row
+			if err = rows.Scan(&r.id, &r.directory, &r.retired, &r.available); err != nil {
+				return nil, err
+			}
+			out = append(out, r)
 		}
+		return out, rows.Err()
 	}
-	if len(ids) > 0 {
-		_, err = tx.ExecContext(ctx, `UPDATE inventory_sidecar_changes SET cursor=? WHERE job_id=? AND relative_path=?`, ids[len(ids)-1], job, folder)
+	var window []row
+	done := false
+	if folder == "." {
+		window, err = read(sidecarSourceRows, source.Incarnation, source.ID, cursor.ID, sidecarChangePage)
+		done = err == nil && len(window) < sidecarChangePage
 	} else {
+		// Every descendant directory sorts in [folder+"/", folder+"0"): the
+		// separator's successor bounds the range, and a sibling such as
+		// "Album (Deluxe)" or "Album2" falls outside it.
+		below, after := folder+string(filepath.Separator), folder+string(rune(filepath.Separator+1))
+		if cursor.Directory == "" || cursor.Directory == folder {
+			window, err = read(sidecarFolderRows, source.ID, source.Incarnation, folder, cursor.ID, sidecarChangePage)
+			cursor = sidecarCursor{Directory: below}
+		}
+		if remaining := sidecarChangePage - len(window); err == nil && remaining > 0 {
+			var descendants []row
+			descendants, err = read(sidecarDescendantRows, source.ID, source.Incarnation, cursor.Directory, cursor.Retired, cursor.ID, after, remaining)
+			window = append(window, descendants...)
+			done = len(descendants) < remaining
+		}
+	}
+	if err != nil {
+		return false, err
+	}
+	for _, r := range window {
+		if !r.available {
+			continue
+		}
+		// Only the sidecar-derived operations are dropped. The analysis stays
+		// of this revision, so a video file re-reads its local metadata and
+		// subtitles without a new probe (refreshLocalMetadata).
+		if _, err = tx.ExecContext(ctx, `UPDATE inventory_objects SET analysis_state='pending',analysis_operations_json=COALESCE((SELECT json_group_array(value) FROM json_each(analysis_operations_json) WHERE value NOT IN('local_metadata','subtitles')),'[]') WHERE id=?`, r.id); err != nil {
+			return false, err
+		}
+	}
+	if done {
 		_, err = tx.ExecContext(ctx, `DELETE FROM inventory_sidecar_changes WHERE job_id=? AND relative_path=?`, job, folder)
+	} else {
+		last := window[len(window)-1]
+		next, _ := json.Marshal(sidecarCursor{Directory: last.directory, Retired: last.retired, ID: last.id})
+		_, err = tx.ExecContext(ctx, `UPDATE inventory_sidecar_changes SET cursor=? WHERE job_id=? AND relative_path=?`, string(next), job, folder)
 	}
 	if err != nil {
 		return false, err

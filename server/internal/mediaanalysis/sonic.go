@@ -96,13 +96,29 @@ func (s *Service) stageWorkAlgorithm(b binding, stage string) string {
 
 func (s *Service) SonicCanAttempt() bool { return s != nil && s.sonicRuntime().CanAttempt() }
 
-// SonicCurrentTx is used by the existing bounded inventory-enqueue page. It
-// detects a model/helper/range change without invalidating unrelated analysis.
+// SonicRuntimeToken names the installed sonic model and helper ("" when none
+// is installed), so a caller can tell whether SonicCurrentTx answers taken
+// earlier still apply.
+func (s *Service) SonicRuntimeToken() string {
+	if s == nil {
+		return ""
+	}
+	runtime := s.sonicRuntime()
+	if runtime == nil {
+		return ""
+	}
+	id := runtime.Identity()
+	return token(id.ID, id.Version, id.SHA256, runtime.HelperDigest())
+}
+
+// SonicCurrentTx is used by the bounded inventory-enqueue page. It detects a
+// model/helper/range change without invalidating unrelated analysis. It only
+// reads, so it can run in a read-only snapshot outside the writer.
 func (s *Service) SonicCurrentTx(ctx context.Context, tx *sql.Tx, request Request) (bool, error) {
 	if !s.SonicCanAttempt() {
 		return true, nil
 	}
-	b, err := s.bindingTx(ctx, tx, request)
+	b, err := s.readBindingTx(ctx, tx, request, false)
 	if err != nil {
 		return false, err
 	}
