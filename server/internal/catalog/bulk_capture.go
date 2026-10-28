@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"strconv"
 
 	"portico.local/server/internal/dbwork"
@@ -11,7 +12,7 @@ import (
 	"time"
 )
 
-func bulkSelectionFence(q interface {
+func bulkSelectionRevisionFence(q interface {
 	Query(string, ...any) (*sql.Rows, error)
 	QueryRow(string, ...any) *sql.Row
 }, v Viewer, selector JobSelector) (string, error) {
@@ -74,7 +75,11 @@ func (s *Service) bulkCaptureStep(ctx context.Context, id string) (out BulkJob, 
 			return out, e
 		}
 	}
-	current, e := bulkSelectionFence(snap.Tx(), v, selector)
+	current, e := s.WithContext(snap.Context()).bulkSelectionFence(snap.Tx(), v, selector)
+	if errors.Is(e, ErrSelectionBatchStale) {
+		current = ""
+		e = nil
+	}
 	if e != nil {
 		return out, e
 	}
@@ -145,7 +150,11 @@ func (s *Service) bulkCaptureStep(ctx context.Context, id string) (out BulkJob, 
 			out, e = scanBulk(tx.QueryRow(`SELECT `+bulkColumns+` FROM personal_jobs WHERE id=?`, id))
 			return e
 		}
-		now, e := bulkSelectionFence(tx, v, selector)
+		now, e := s.WithContext(ctx).bulkSelectionFence(tx, v, selector)
+		if errors.Is(e, ErrSelectionBatchStale) {
+			now = ""
+			e = nil
+		}
 		if e != nil {
 			return e
 		}

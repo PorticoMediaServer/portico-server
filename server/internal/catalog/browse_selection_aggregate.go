@@ -196,6 +196,12 @@ func (s *Service) BrowseSelectionAggregate(request BrowseRequest, viewer Viewer,
 	if err != nil {
 		return out, err
 	}
+	return selectionAggregateDescriptor(bound, authority, groups)
+}
+
+func selectionAggregateDescriptor(bound BoundBrowseQuery, authority HomeActionAuthority, groups map[string]*selectionAggregateGroup) (BrowseSelectionDescriptor, error) {
+	out := BrowseSelectionDescriptor{Types: []BrowseSelectionType{}}
+	var err error
 	// Delete is offered per library by the real administration setting, exactly
 	// as the entries' own selection block reads it.
 	deletion := map[string]bool{}
