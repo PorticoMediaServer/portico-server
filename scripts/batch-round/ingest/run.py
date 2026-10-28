@@ -103,6 +103,7 @@ def main():
                 os.killpg(process.pid, signal.SIGKILL)
                 process.wait()
                 result['forcedStop'] = True
+                result['passed'] = False
 
     try:
         call('quota-create', [sys.executable, str(here / 'quota.py'), 'create', '--root', str(quota), '--execute'])
