@@ -13,6 +13,7 @@ import (
 	"portico.local/server/internal/dbwork"
 	"portico.local/server/internal/persistence"
 	"portico.local/server/internal/storagepaths"
+	"portico.local/server/internal/worker"
 	"time"
 )
 
@@ -96,6 +97,8 @@ type Envelope struct {
 	AuthorizationHorizon string                `json:"authorizationHorizon"`
 }
 type Service struct {
+	profilePurgeWake *worker.Signal
+
 	PrepareIdentityDeparture         func(context.Context, string) (*DepartureNotice, error)
 	resetData, resetDir, resetSystem string
 	resetIO                          *resetFileOperations
@@ -172,7 +175,7 @@ func New(db *sql.DB, state string) (*Service, error) {
 	if err := os.MkdirAll(filepath.Dir(storagepaths.Path(state, "setup-token")), 0700); err != nil {
 		return nil, err
 	}
-	s := &Service{db: db, serverID: id, setupPath: storagepaths.Path(state, "setup-token"), hashSlots: make(chan struct{}, 2)}
+	s := &Service{profilePurgeWake: worker.NewSignal(), db: db, serverID: id, setupPath: storagepaths.Path(state, "setup-token"), hashSlots: make(chan struct{}, 2)}
 	keys := storagepaths.At(state).Keys
 	if err := prepareResetDirectory(keys); err != nil {
 		return nil, err

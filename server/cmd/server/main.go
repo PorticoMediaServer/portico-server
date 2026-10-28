@@ -1086,6 +1086,7 @@ func run() (runErr error) {
 	})
 	supervise.Supervise(ctx, "cmd.metadata", meta.Run)
 	supervise.Supervise(ctx, "cmd.artwork", meta.RunArtwork)
+	supervise.Supervise(ctx, "cmd.profile-purge", ident.RunProfilePurge)
 	supervise.Supervise(ctx, "cmd.hosted-control", control.Run)
 	setupCtx, stopSetup := context.WithCancel(ctx)
 	setupDone := make(chan struct{})

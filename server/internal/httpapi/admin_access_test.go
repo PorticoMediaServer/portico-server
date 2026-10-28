@@ -933,7 +933,7 @@ func TestPorticoProfilesRequireMainPINAndRetainRealWaitTimes(t *testing.T) {
 	if e != nil {
 		t.Fatal(e)
 	}
-	if e = s.DeleteDirectProfile(ctx, selected.Session.AccessToken, child.ID, preview.Revision, true); e != nil {
+	if e = retireProfileInHTTPTest(t, s, ctx, selected.Session.AccessToken, child.ID, preview.Revision, true); e != nil {
 		t.Fatalf("linked CRUD delete: %v", e)
 	}
 	if _, e = s.EditDirectProfile(ctx, f.owner, "member-profile", identity.DirectProfileEdit{ExpectedRevision: 2, Name: &name}); e == nil {

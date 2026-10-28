@@ -766,6 +766,7 @@ index screen_metadata_refresh_sweep_waiting
 index screen_metadata_work_target
 index screen_publications_provider
 index search_history_recent
+index security_purge_due
 index segment_files_pending_by_library
 index segment_files_show
 index segment_files_work
@@ -813,7 +814,13 @@ index tvdb_publication_terminal
 index user_mutation_accounts_cleanup
 index user_mutation_receipts_expiry
 index user_mutation_receipts_family
+index user_mutation_receipts_profile
+index user_mutation_receipts_root
 index user_mutation_receipts_scope_expiry
+index user_mutation_roots_active
+index user_mutation_roots_draining
+index user_mutation_roots_family
+index user_mutation_roots_profile
 index video_nfo_asset
 index video_nfo_status_asset_id_fk
 index viewer_revisions_library_id_fk
@@ -1201,6 +1208,7 @@ table identity_device_families
 table identity_devices
 table identity_factor_challenges
 table identity_family_pin_lineages
+table identity_installations
 table identity_managed_route
 table identity_move_codes
 table identity_move_link_tickets
@@ -1671,6 +1679,7 @@ table screen_metadata_policies
 table screen_metadata_publications
 table screen_metadata_work
 table search_history
+table security_purge_jobs
 table segment_catchup
 table segment_files
 table segment_pending_activity
@@ -1741,6 +1750,7 @@ table tvdb_series_candidates
 table user_mutation_accounts
 table user_mutation_global
 table user_mutation_receipts
+table user_mutation_roots
 table video_nfo_evidence
 table video_nfo_status
 table viewer_revisions
@@ -3668,6 +3678,9 @@ trigger user_mutation_receipt_capacity
 trigger user_mutation_receipt_charge
 trigger user_mutation_receipt_immutable
 trigger user_mutation_receipt_release
+trigger user_mutation_root_capacity
+trigger user_mutation_root_charge
+trigger user_mutation_root_release
 trigger viewer_revisions_bound_check
 trigger viewer_revisions_bound_delete
 trigger viewer_revisions_bound_insert
