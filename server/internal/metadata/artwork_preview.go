@@ -3,7 +3,6 @@ package metadata
 import (
 	"context"
 	"database/sql"
-	"errors"
 	"os"
 
 	"portico.local/server/internal/dbwork"
@@ -32,17 +31,14 @@ func queueArtworkPreview(ctx context.Context, tx *sql.Tx, t RepairTarget, candid
 	return err
 }
 
-// Caller authenticates a current owner. This route only opens installed bytes.
-// width is one of the display buckets (400, 800, 1920, 2560): a preview larger than
-// the bucket is reduced with the same resizer the variant path uses, after the
-// read snapshot is released, so no lock is held across the resize that is not
-// already held today. Previews are thumbnails already, so the resize only fires
-// for oversize rows and never upscales.
-func (s *Service) PreviewArtwork(ctx context.Context, t RepairTarget, candidate string, width int) (*os.File, string, error) {
+// Caller authenticates a current owner. This route only opens installed
+// bytes: a preview is a published source like any other, served at the slot
+// the caller asked for.
+func (s *Service) PreviewArtwork(ctx context.Context, t RepairTarget, candidate string, size ArtworkSize) (*os.File, string, error) {
 	if !artDigest(candidate) {
 		return nil, "", ErrRepairInput
 	}
-	if width != 400 && width != 800 && width != 1920 && width != 2560 {
+	if size != ArtworkSmall && size != ArtworkLarge {
 		return nil, "", ErrRepairInput
 	}
 	gated, err := dbwork.BeginSnapshot(ctx, s.db)
@@ -59,28 +55,13 @@ func (s *Service) PreviewArtwork(ctx context.Context, t RepairTarget, candidate 
 	if err != nil {
 		return nil, "", err
 	}
-	var digest string
-	if err = tx.QueryRowContext(ctx, `SELECT p.digest FROM artwork_previews p JOIN artwork_candidates c ON c.id=p.candidate_id JOIN artwork_objects o ON o.digest=p.digest AND o.status='ready' WHERE c.kind=? AND c.entity_id=? AND c.id=? AND p.source_fence=?`, t.Kind, entity, candidate, current).Scan(&digest); err != nil {
+	var source string
+	if err = tx.QueryRowContext(ctx, `SELECT p.digest FROM artwork_previews p JOIN artwork_candidates c ON c.id=p.candidate_id WHERE c.kind=? AND c.entity_id=? AND c.id=? AND p.source_fence=?`, t.Kind, entity, candidate, current).Scan(&source); err != nil {
 		return nil, "", ErrArtworkPending
 	}
-	if !artDigest(digest) {
-		return nil, "", ErrRepairInput
-	}
-	var haveW, haveH int
-	if err = tx.QueryRowContext(ctx, `SELECT width,height FROM artwork_objects WHERE digest=? AND status='ready'`, digest).Scan(&haveW, &haveH); err != nil {
-		if !errors.Is(err, sql.ErrNoRows) {
-			return nil, "", err
-		}
-		haveW, haveH = 0, 0
-	}
-	if haveW > width || haveH > width {
-		if err = gated.Commit(); err != nil {
-			return nil, "", err
-		}
-		if err = s.ensureArtworkVariant(ctx, digest, width, ""); err != nil {
-			return nil, "", err
-		}
-		return s.openPreviewVariant(ctx, digest, width)
+	digest, mime, err := artworkSourceBlob(ctx, tx, source, size)
+	if err != nil {
+		return nil, "", ErrArtworkPending
 	}
 	f, err := s.openArtworkObject(digest)
 	if err != nil {
@@ -89,24 +70,6 @@ func (s *Service) PreviewArtwork(ctx context.Context, t RepairTarget, candidate 
 	if err = gated.Commit(); err != nil {
 		f.Close()
 		return nil, "", err
-	}
-	return f, "image/png", nil
-}
-
-// openPreviewVariant opens a resized preview bucket published by
-// ensureArtworkVariant. A missing row or file is a pending preview, never a
-// different candidate's bytes.
-func (s *Service) openPreviewVariant(ctx context.Context, source string, width int) (*os.File, string, error) {
-	var digest, mime string
-	if err := s.db.QueryRowContext(ctx, `SELECT o.digest,o.mime FROM artwork_variants v JOIN artwork_objects o ON o.digest=v.digest AND o.status='ready' WHERE v.source_digest=? AND v.width=?`, source, width).Scan(&digest, &mime); err != nil {
-		return nil, "", ErrArtworkPending
-	}
-	if !artDigest(digest) {
-		return nil, "", ErrRepairInput
-	}
-	f, err := s.openArtworkObject(digest)
-	if err != nil {
-		return nil, "", ErrArtworkPending
 	}
 	return f, mime, nil
 }

@@ -53,10 +53,11 @@ func artworkTargetInstall(t *testing.T, s *Service, target RepairTarget, raw []b
 		t.Fatal(err)
 	}
 	entity := resolveArtworkTestEntity(t, s.db, target)
-	integrationExec(t, s.db, `INSERT OR IGNORE INTO artwork_objects VALUES(?,'image/png',20,20,?,'2026-10-27T00:00:00Z','ready')`, object.digest, object.size)
+	integrationExec(t, s.db, `INSERT OR IGNORE INTO artwork_blobs(digest,mime,width,height,bytes,created_at) VALUES(?,'image/png',20,20,?,'2026-10-27T00:00:00Z')`, object.digest, object.size)
+	integrationExec(t, s.db, fixtureArtworkSourceSQL, object.digest)
 	candidate := "target-read-" + target.ID
 	integrationExec(t, s.db, `INSERT INTO artwork_candidates(id,kind,entity_id,role,subject,provider,image_id,origin,attribution,source_fence,observed_at) VALUES(?,?,?,'poster','','fixture',?,'local','fixture','target-read','now')`, candidate, target.Kind, entity, candidate)
-	integrationExec(t, s.db, `INSERT INTO artwork_selections(kind,entity_id,role,subject,candidate_id,digest,thumbnail_digest,locked,revision,actor,observed_at) VALUES(?,?, 'poster','',?,?,?,0,1,'fixture','now')`, target.Kind, entity, candidate, object.digest, object.digest)
+	integrationExec(t, s.db, `INSERT INTO artwork_selections(kind,entity_id,role,subject,candidate_id,digest,locked,revision,actor,observed_at) VALUES(?,?, 'poster','',?,?,0,1,'fixture','now')`, target.Kind, entity, candidate, object.digest)
 	return object.digest
 }
 
@@ -68,7 +69,7 @@ func artworkTargetAssertBytes(t *testing.T, s *Service, target RepairTarget, dig
 		t.Fatalf("identity: %s %s %v", gotDigest, mime, err)
 	}
 	for _, version := range []string{"", digest} {
-		f, mime, err := s.EntityArtworkVariant(ctx, target, "poster", "", 400, version)
+		f, mime, err := s.EntityArtworkVariant(ctx, target, "poster", "", ArtworkSmall, version)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -83,7 +84,7 @@ func artworkTargetAssertBytes(t *testing.T, s *Service, target RepairTarget, dig
 	if artworkTargetTraceContains(trace(), "catalog_item_details") {
 		t.Fatal("served artwork loaded editor details", trace())
 	}
-	if _, _, err := s.EntityArtworkVariant(context.Background(), target, "poster", "", 400, strings.Repeat("f", 64)); !errors.Is(err, ErrArtworkVersion) {
+	if _, _, err := s.EntityArtworkVariant(context.Background(), target, "poster", "", ArtworkSmall, strings.Repeat("f", 64)); !errors.Is(err, ErrArtworkVersion) {
 		t.Fatal("version guard", err)
 	}
 }
@@ -171,7 +172,7 @@ func TestArtworkTargetReadAdmissionErrors(t *testing.T) {
 			if _, _, err := s.EntityArtworkIdentity(context.Background(), tc.target, "poster", "", false); !errors.Is(err, tc.want) {
 				t.Fatal("identity", err)
 			}
-			if _, _, err := s.EntityArtworkVariant(context.Background(), tc.target, "poster", "", 400, ""); !errors.Is(err, tc.want) {
+			if _, _, err := s.EntityArtworkVariant(context.Background(), tc.target, "poster", "", ArtworkSmall, ""); !errors.Is(err, tc.want) {
 				t.Fatal("serve", err)
 			}
 		})
@@ -182,7 +183,7 @@ func TestArtworkTargetReadAdmissionErrors(t *testing.T) {
 	if _, _, err := s.EntityArtworkIdentity(context.Background(), movie, "poster", "", false); !errors.Is(err, sql.ErrNoRows) {
 		t.Fatal("missing head identity", err)
 	}
-	if _, _, err := s.EntityArtworkVariant(context.Background(), movie, "poster", "", 400, ""); !errors.Is(err, sql.ErrNoRows) {
+	if _, _, err := s.EntityArtworkVariant(context.Background(), movie, "poster", "", ArtworkSmall, ""); !errors.Is(err, sql.ErrNoRows) {
 		t.Fatal("missing head serve", err)
 	}
 	cancelled, cancel := context.WithCancel(context.Background())
@@ -235,7 +236,7 @@ func TestArtworkTargetReadReadingFallbackParity(t *testing.T) {
 			if err != nil || got != digest || mime != "image/png" {
 				t.Fatal("Reading without AV head", got, mime, err)
 			}
-			f, _, err := s.EntityArtworkVariant(context.Background(), target, "poster", "", 400, digest)
+			f, _, err := s.EntityArtworkVariant(context.Background(), target, "poster", "", ArtworkSmall, digest)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -250,7 +251,7 @@ func TestArtworkTargetReadReadingFallbackParity(t *testing.T) {
 			if _, _, err := s.EntityArtworkIdentity(context.Background(), target, "poster", "", false); !errors.Is(err, ErrRepairInput) {
 				t.Fatal("invalid Reading owner", err)
 			}
-			if _, _, err := s.EntityArtworkVariant(context.Background(), target, "poster", "", 400, ""); !errors.Is(err, ErrRepairInput) {
+			if _, _, err := s.EntityArtworkVariant(context.Background(), target, "poster", "", ArtworkSmall, ""); !errors.Is(err, ErrRepairInput) {
 				t.Fatal("invalid Reading owner serve", err)
 			}
 			c.Exec(`DELETE FROM metadata_owner_fields WHERE entity_id=?`, c.ID(target.ID))
@@ -266,7 +267,7 @@ func TestArtworkTargetReadReadingFallbackParity(t *testing.T) {
 			artworkTargetReadParity(t, c.DB, target, nil)
 			c.Exec(`UPDATE catalog_entities SET retired=1 WHERE id=?`, c.ID(target.ID))
 			artworkTargetReadParity(t, c.DB, target, sql.ErrNoRows)
-			if _, _, err := s.EntityArtworkVariant(context.Background(), target, "poster", "", 400, ""); !errors.Is(err, sql.ErrNoRows) {
+			if _, _, err := s.EntityArtworkVariant(context.Background(), target, "poster", "", ArtworkSmall, ""); !errors.Is(err, sql.ErrNoRows) {
 				t.Fatal("retired Reading served", err)
 			}
 			var heads int

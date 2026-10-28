@@ -71,13 +71,13 @@ func readingArtworkProjectionTx(ctx context.Context, tx *sql.Tx, items []Library
 	for i := range items {
 		ids[i] = items[i].entity
 	}
-	covers, err := compactcatalog.ReadingCoverDigestsTx(ctx, tx, ids)
+	covers, err := compactcatalog.ReadingCoverQueriesTx(ctx, tx, ids)
 	if err != nil {
 		return err
 	}
 	for i := range items {
 		if digest := covers[items[i].entity]; digest != "" {
-			items[i].CoverURL = "/v1/items/" + url.PathEscape(items[i].ID) + "/art/cover?v=" + digest
+			items[i].CoverURL = "/v1/items/" + url.PathEscape(items[i].ID) + "/art/cover?" + digest
 		}
 	}
 	return nil

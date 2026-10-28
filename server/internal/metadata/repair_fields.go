@@ -672,7 +672,7 @@ func candidatePreviews(ctx context.Context, tx *sql.Tx, t RepairTarget) (map[str
 	if err != nil {
 		return out, err
 	}
-	rows, err := tx.QueryContext(ctx, `SELECT c.id,c.role,c.subject,c.provider,c.image_id,p.digest FROM artwork_candidates c JOIN artwork_previews p ON p.candidate_id=c.id AND p.source_fence=c.source_fence JOIN artwork_objects o ON o.digest=p.digest AND o.status='ready' WHERE c.kind=? AND c.entity_id=? ORDER BY c.role,c.id LIMIT 200`, t.Kind, entity)
+	rows, err := tx.QueryContext(ctx, `SELECT c.id,c.role,c.subject,c.provider,c.image_id,p.digest FROM artwork_candidates c JOIN artwork_previews p ON p.candidate_id=c.id AND p.source_fence=c.source_fence WHERE c.kind=? AND c.entity_id=? ORDER BY c.role,c.id LIMIT 200`, t.Kind, entity)
 	if err != nil {
 		return out, err
 	}

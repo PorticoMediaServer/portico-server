@@ -566,8 +566,11 @@ func overlapsTx(ctx context.Context, tx *sql.Tx, o livechannels.Owner, r Recordi
 	}
 	return out, nil
 }
-func (s *Store) ImageDigest(ctx context.Context, a livechannels.Authority, o livechannels.Owner, id string) (string, error) {
-	digest := ""
+
+// ImageRendition names the stored small or large rendition of a recording's
+// programme image after the recording's authority has been checked.
+func (s *Store) ImageRendition(ctx context.Context, a livechannels.Authority, o livechannels.Owner, id string, small bool) (string, string, error) {
+	digest, mime := "", ""
 	e := s.snapshot(ctx, a, o, func(tx *sql.Tx, allowed func(string, string) bool) error {
 		r, e := loadTx(ctx, tx, o, id)
 		if e != nil {
@@ -582,7 +585,7 @@ func (s *Store) ImageDigest(ctx context.Context, a livechannels.Authority, o liv
 		if r.State == "deleted" {
 			return ErrDenied
 		}
-		return tx.QueryRowContext(ctx, `SELECT digest FROM dvr_programme_images WHERE recording_id=?`, id).Scan(&digest)
+		return tx.QueryRowContext(ctx, `SELECT CASE WHEN ? THEN img.small_digest ELSE img.large_digest END,img.media_type FROM dvr_programme_images d JOIN live_programme_images img ON img.url=d.url WHERE d.recording_id=?`, small, id).Scan(&digest, &mime)
 	})
-	return digest, e
+	return digest, mime, e
 }

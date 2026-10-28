@@ -24,6 +24,7 @@ import (
 	_ "golang.org/x/image/webp"
 	"portico.local/server/internal/atomicfile"
 	"portico.local/server/internal/dbwork"
+	"portico.local/server/internal/metadata"
 )
 
 // CriterionField is one attribute a channel block can select on. The fields are
@@ -496,19 +497,34 @@ func (s *Service) UploadChannelLogo(ctx context.Context, auth Authorize, channel
 	if err != nil || config.Width < minLogoPixels || config.Height < minLogoPixels || config.Width > maxLogoPixels || config.Height > maxLogoPixels {
 		return out, ErrImage
 	}
+	// The upload is never kept: the logo is one rendition, 256 px on its long
+	// edge and capped like card artwork, lossless PNG when it has transparency.
+	logo, err := metadata.EncodeChannelLogo(ctx, raw, map[string]bool{"jpeg": true, "png": true, "webp": true})
+	if err != nil {
+		if ctx.Err() != nil {
+			return out, ctx.Err()
+		}
+		if errors.Is(err, metadata.ErrArtworkCapUnreachableEncoding) {
+			if e := metadata.RecordArtworkRefusal(ctx, s.db, err); e != nil {
+				return out, e
+			}
+		}
+		return out, ErrImage
+	}
 	root, err := s.logoRoot()
 	if err != nil {
 		return out, err
 	}
-	sum := sha256.Sum256(raw)
+	sum := sha256.Sum256(logo.Data)
 	digest := hex.EncodeToString(sum[:])
+	mime = logo.Mime
 	path := filepath.Join(root, digest+logoExtension(mime))
 	s.files.Lock()
 	if _, err = os.Stat(path); err != nil {
 		// The logo is addressed by the digest of its own bytes, so a reader that
 		// finds this name expects exactly these bytes. A partial write would be a
 		// file whose name is a promise it does not keep.
-		if err = atomicfile.Write(path, raw, 0600); err != nil {
+		if err = atomicfile.Write(path, logo.Data, 0600); err != nil {
 			s.files.Unlock()
 			return out, ErrUnavailable
 		}
@@ -541,10 +557,13 @@ func (s *Service) UploadChannelLogo(ctx context.Context, auth Authorize, channel
 			return saveReceipt(ctx, tx, scope, operationID, receiptDigest, out, s.milliseconds())
 		}
 		at := s.milliseconds()
-		if _, err = tx.ExecContext(ctx, `INSERT INTO admin_channel_logos VALUES(?,?,?,?,?,?,?,?) ON CONFLICT(channel_id) DO UPDATE SET digest=excluded.digest,media_type=excluded.media_type,bytes=excluded.bytes,width=excluded.width,height=excluded.height,revision=admin_channel_logos.revision+1,updated_ms=excluded.updated_ms`, channel, digest, mime, len(raw), config.Width, config.Height, revision+1, at); err != nil {
+		if _, err = tx.ExecContext(ctx, `INSERT INTO admin_channel_logos VALUES(?,?,?,?,?,?,?,?) ON CONFLICT(channel_id) DO UPDATE SET digest=excluded.digest,media_type=excluded.media_type,bytes=excluded.bytes,width=excluded.width,height=excluded.height,revision=admin_channel_logos.revision+1,updated_ms=excluded.updated_ms`, channel, digest, mime, len(logo.Data), logo.Width, logo.Height, revision+1, at); err != nil {
 			return err
 		}
-		out = ChannelLogo{ChannelID: channel, Digest: digest, MediaType: mime, Bytes: int64(len(raw)), Width: config.Width, Height: config.Height, Revision: revision + 1, UpdatedAt: timeFromMilliseconds(at), URL: "/v1/library-channels/" + channel + "/logo"}
+		if err = metadata.RecordArtworkOutcome(ctx, tx, "logo", logo); err != nil {
+			return err
+		}
+		out = ChannelLogo{ChannelID: channel, Digest: digest, MediaType: mime, Bytes: int64(len(logo.Data)), Width: logo.Width, Height: logo.Height, Revision: revision + 1, UpdatedAt: timeFromMilliseconds(at), URL: "/v1/library-channels/" + channel + "/logo"}
 		return saveReceipt(ctx, tx, scope, operationID, receiptDigest, out, at)
 	})
 	return out, err

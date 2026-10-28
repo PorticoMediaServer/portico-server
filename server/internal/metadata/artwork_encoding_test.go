@@ -59,10 +59,6 @@ func artworkLadder(t *testing.T, source image.Image, w, h int) map[int][]byte {
 	return out
 }
 
-func artworkTally(slot, format string) artworkEncodingCount {
-	return ArtworkEncodingCounts()[slot][format]
-}
-
 // Opaque art is JPEG at full slot size. The first ladder rung within the cap
 // wins; past every rung, only the floor may publish, inside 1.5x the cap, and
 // it is counted. Nothing is ever encoded below q75 or at a smaller size.
@@ -90,29 +86,22 @@ func TestArtworkSlotJPEGLadderFloorAndAllowance(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			before := artworkTally("small", "jpeg")
-			raw, gotW, gotH, err := encodeArtworkWithin(ctx, source, artworkSlotSmall, artworkSmallEdge, tc.limit)
-			after := artworkTally("small", "jpeg")
+			out, err := encodeArtworkWithin(ctx, source, artworkSlotSmall, artworkSmallEdge, tc.limit)
 			if tc.state == "unreachable" {
-				if !errors.Is(err, errArtworkCapUnreachable) || raw != nil {
-					t.Fatal("a picture past its allowance was published", len(raw), err)
-				}
-				if after.CapUnreachable != before.CapUnreachable+1 {
-					t.Fatal("cap_unreachable was not counted")
+				var refusal *artworkCapError
+				if !errors.Is(err, errArtworkCapUnreachable) || !errors.As(err, &refusal) || refusal.slot != artworkSlotSmall || refusal.png || out.data != nil {
+					t.Fatal("a picture past its allowance was published or its refusal is untyped", len(out.data), err)
 				}
 				return
 			}
-			if err != nil || gotW != w || gotH != h {
-				t.Fatal("the slot was not encoded at its full size", gotW, gotH, err)
+			if err != nil || out.width != w || out.height != h || out.mime != "image/jpeg" {
+				t.Fatal("the slot was not encoded at its full size", out.width, out.height, err)
 			}
-			if !bytes.Equal(raw, tc.want) {
-				t.Fatal("the encoder left the quality ladder", len(raw), len(tc.want))
+			if !bytes.Equal(out.data, tc.want) {
+				t.Fatal("the encoder left the quality ladder", len(out.data), len(tc.want))
 			}
-			if tc.state == "outlier" && (after.Outliers != before.Outliers+1 || len(raw) > tc.limit*3/2) {
-				t.Fatal("an outlier was not counted or exceeded the allowance", len(raw), tc.limit)
-			}
-			if tc.state == "within" && after.Within != before.Within+1 {
-				t.Fatal("a picture within its cap was not counted")
+			if out.outlier != (tc.state == "outlier") || len(out.data) > tc.limit*3/2 {
+				t.Fatal("outlier state or allowance is wrong", out.outlier, len(out.data), tc.limit)
 			}
 		})
 	}
@@ -125,11 +114,11 @@ func TestArtworkSlotsUseTheirApprovedEdgesAndCaps(t *testing.T) {
 	smooth := artworkFixture(2400, 1600, false, false)
 	for _, slot := range []artworkSlot{artworkSlotSmall, artworkSlotLarge} {
 		edge, limit := artworkSlotLimits(ctx, slot)
-		raw, w, h, err := encodeArtworkSlot(ctx, smooth, slot)
-		if err != nil || w != edge || h != edge*1600/2400 || len(raw) > limit {
-			t.Fatal("smooth art did not fit its slot at full size", slot, w, h, len(raw), err)
+		out, err := encodeArtworkSlot(ctx, smooth, slot)
+		if err != nil || out.width != edge || out.height != edge*1600/2400 || len(out.data) > limit || out.outlier {
+			t.Fatal("smooth art did not fit its slot at full size", slot, out.width, out.height, len(out.data), err)
 		}
-		if _, format, err := image.DecodeConfig(bytes.NewReader(raw)); err != nil || format != "jpeg" {
+		if _, format, err := image.DecodeConfig(bytes.NewReader(out.data)); err != nil || format != "jpeg" {
 			t.Fatal("opaque art was not JPEG", format, err)
 		}
 	}
@@ -142,7 +131,7 @@ func TestArtworkSlotsUseTheirApprovedEdgesAndCaps(t *testing.T) {
 		}
 	}
 	// Unscaled noise at exactly the small edge needs about 260 KB at q75.
-	if _, _, _, err := encodeArtworkSlot(ctx, artworkFixture(533, 800, true, false), artworkSlotSmall); !errors.Is(err, errArtworkCapUnreachable) {
+	if _, err := encodeArtworkSlot(ctx, artworkFixture(533, 800, true, false), artworkSlotSmall); !errors.Is(err, errArtworkCapUnreachable) {
 		t.Fatal("noise past the small allowance was published", err)
 	}
 }
@@ -157,11 +146,11 @@ func TestArtworkSlotEncodesOpaquePNGInputAsJPEG(t *testing.T) {
 	if err != nil || format != "png" {
 		t.Fatal(format, err)
 	}
-	raw, _, _, err := encodeArtworkSlot(context.Background(), decoded, artworkSlotSmall)
+	out, err := encodeArtworkSlot(context.Background(), decoded, artworkSlotSmall)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, format, err = image.DecodeConfig(bytes.NewReader(raw)); err != nil || format != "jpeg" {
+	if _, format, err = image.DecodeConfig(bytes.NewReader(out.data)); err != nil || format != "jpeg" {
 		t.Fatal("opaque PNG input stayed PNG", format, err)
 	}
 }
@@ -178,9 +167,9 @@ func TestArtworkSlotKeepsAlphaLossless(t *testing.T) {
 		}
 	}
 	for name, source := range map[string]*image.NRGBA{"palette": flat, "full colour": artworkFixture(700, 400, false, true)} {
-		before := artworkTally("small", "png")
-		raw, w, h, err := encodeArtworkSlot(ctx, source, artworkSlotSmall)
-		if err != nil || w != source.Bounds().Dx() || h != source.Bounds().Dy() {
+		out, err := encodeArtworkSlot(ctx, source, artworkSlotSmall)
+		raw, w, h := out.data, out.width, out.height
+		if err != nil || w != source.Bounds().Dx() || h != source.Bounds().Dy() || out.mime != "image/png" {
 			t.Fatal(name, "alpha slot changed size", w, h, err)
 		}
 		decoded, format, err := image.Decode(bytes.NewReader(raw))
@@ -201,16 +190,11 @@ func TestArtworkSlotKeepsAlphaLossless(t *testing.T) {
 		if _, paletted := decoded.(*image.Paletted); paletted != (name == "palette") {
 			t.Fatal(name, "exact palette choice", paletted)
 		}
-		if after := artworkTally("small", "png"); after.Within+after.Outliers != before.Within+before.Outliers+1 {
-			t.Fatal(name, "alpha encoding was not counted")
-		}
 	}
-	before := artworkTally("small", "png")
-	if _, _, _, err := encodeArtworkSlot(ctx, artworkFixture(700, 400, true, true), artworkSlotSmall); !errors.Is(err, errArtworkCapUnreachable) {
+	_, err := encodeArtworkSlot(ctx, artworkFixture(700, 400, true, true), artworkSlotSmall)
+	var refusal *artworkCapError
+	if !errors.Is(err, errArtworkCapUnreachable) || !errors.As(err, &refusal) || !refusal.png {
 		t.Fatal("noisy alpha past the allowance was published", err)
-	}
-	if after := artworkTally("small", "png"); after.CapUnreachable != before.CapUnreachable+1 {
-		t.Fatal("refused alpha was not counted")
 	}
 }
 
@@ -225,6 +209,10 @@ func TestArtworkBoundedBufferRefusesToGrow(t *testing.T) {
 	}
 }
 
+// A shrunk large-edge policy re-makes only the source's large file, from the
+// large file. The source identity, the lock, the upload and the undo history
+// are untouched byte for byte (HIST2), and an open reader of the old file keeps
+// working.
 func TestArtworkCompactionPreservesSelectionAndLocks(t *testing.T) {
 	s, db, target, _ := integrationScreen(t)
 	ctx := context.Background()
@@ -237,50 +225,59 @@ func TestArtworkCompactionPreservesSelectionAndLocks(t *testing.T) {
 	if err := s.ArtworkStep(ctx); err != nil {
 		t.Fatal(err)
 	}
-	// Model a pre-policy original while retaining the real candidate/selection.
-	old, err := s.installArtwork(p08cPNG(t, 2400, 1600), 2400, 1600)
-	if err != nil {
+	entity := resolveArtworkTestEntity(t, db, target)
+	integrationExec(t, db, `UPDATE metadata_runtime_settings SET artwork_max_edge=2560`)
+	old := publishTestArtwork(t, s, p08cPNG(t, 2400, 1600), "2020-01-01T00:00:00Z")
+	_, oldLarge, _ := testSourceBlobs(t, db, old.source)
+	integrationExec(t, db, `UPDATE artwork_selections SET digest=?,locked=1 WHERE entity_id=? AND role='poster'`, old.source, entity)
+	integrationExec(t, db, `INSERT INTO artwork_uploads SELECT candidate_id,kind,entity_id,role,subject,digest,'image/png',1,2400,1600,'owner','2020-01-01T00:00:00Z' FROM artwork_selections WHERE entity_id=? AND role='poster'`, entity)
+	history := `{"digest":"` + old.source + `"}`
+	integrationExec(t, db, `INSERT INTO metadata_owner_history(kind,entity_id,base_revision,revision,trigger,actor,observed_at,before_json,after_json) VALUES('item',?,'before','after','upload','owner','2020-01-01T00:00:00Z',?,?)`, entity, history, history)
+	var revision int64
+	if err := db.QueryRow(`SELECT revision FROM artwork_selections WHERE entity_id=? AND role='poster'`, entity).Scan(&revision); err != nil {
 		t.Fatal(err)
 	}
-	integrationExec(t, db, `INSERT INTO artwork_objects VALUES(?,'image/png',2400,1600,?,'2020-01-01T00:00:00Z','ready')`, old.digest, old.size)
-	integrationExec(t, db, `UPDATE artwork_selections SET digest=?,locked=1 WHERE entity_id=? AND role='poster'`, old.digest, resolveArtworkTestEntity(t, db, target))
-	// Undo and retained owner uploads must follow the same atomic replacement.
-	integrationExec(t, db, `INSERT INTO artwork_uploads SELECT candidate_id,kind,entity_id,role,subject,digest,thumbnail_digest,'image/png',?,2400,1600,'owner','2020-01-01T00:00:00Z' FROM artwork_selections WHERE entity_id=? AND role='poster'`, old.size, resolveArtworkTestEntity(t, db, target))
-	integrationExec(t, db, `INSERT INTO metadata_owner_history(kind,entity_id,base_revision,revision,trigger,actor,observed_at,before_json,after_json) VALUES('item',?,'before','after','upload','owner','2020-01-01T00:00:00Z',?,?)`, resolveArtworkTestEntity(t, db, target), `{"digest":"`+old.digest+`"}`, `{"digest":"`+old.digest+`"}`)
-	reader, err := os.Open(filepath.Join(s.cacheRoot, old.digest+".img"))
+	reader, err := os.Open(filepath.Join(s.cacheRoot, oldLarge+".img"))
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer reader.Close()
+	integrationExec(t, db, `UPDATE metadata_runtime_settings SET artwork_max_edge=1920`)
 	if err = s.CompactArtworkStep(ctx); err != nil {
 		t.Fatal(err)
 	}
 	var digest string
 	var locked int
-	if err = db.QueryRow(`SELECT digest,locked FROM artwork_selections WHERE entity_id=? AND role='poster'`, resolveArtworkTestEntity(t, db, target)).Scan(&digest, &locked); err != nil {
+	var after int64
+	if err = db.QueryRow(`SELECT digest,locked,revision FROM artwork_selections WHERE entity_id=? AND role='poster'`, entity).Scan(&digest, &locked, &after); err != nil {
 		t.Fatal(err)
 	}
+	if digest != old.source || locked != 1 || after != revision+1 {
+		t.Fatal("selection identity or lock changed, or cached pages were not retired", digest, locked, after, revision)
+	}
 	var retained string
-	if err = db.QueryRow(`SELECT digest FROM artwork_uploads WHERE entity_id=?`, resolveArtworkTestEntity(t, db, target)).Scan(&retained); err != nil || retained != digest {
-		t.Fatal("upload reference lost", retained, err)
+	if err = db.QueryRow(`SELECT digest FROM artwork_uploads WHERE entity_id=?`, entity).Scan(&retained); err != nil || retained != old.source {
+		t.Fatal("upload reference changed", retained, err)
 	}
-	var oldRefs int
-	if err = db.QueryRow(`SELECT count(*) FROM metadata_owner_history WHERE instr(before_json,?)>0 OR instr(after_json,?)>0`, old.digest, old.digest).Scan(&oldRefs); err != nil || oldRefs != 0 {
-		t.Fatal("undo reference left on original", err)
+	var before, afterJSON string
+	if err = db.QueryRow(`SELECT before_json,after_json FROM metadata_owner_history WHERE entity_id=?`, entity).Scan(&before, &afterJSON); err != nil || before != history || afterJSON != history {
+		t.Fatal("undo history was rewritten", before, afterJSON, err)
 	}
-	if digest == old.digest || locked != 1 {
-		t.Fatal("selection was lost or not compacted")
+	var largeEdge int
+	var large string
+	if err = db.QueryRow(`SELECT large_blob,large_edge FROM artwork_sources WHERE digest=?`, old.source).Scan(&large, &largeEdge); err != nil || large == oldLarge || largeEdge != 1920 {
+		t.Fatal("large slot was not re-made under the new edge", large, largeEdge, err)
 	}
 	f, _, err := s.Artwork(ctx, target.ID, "poster")
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer f.Close()
-	cfg, err := png.DecodeConfig(f)
+	cfg, _, err := image.DecodeConfig(f)
 	if err != nil || max(cfg.Width, cfg.Height) > artworkLargeEdge {
 		t.Fatal(cfg, err)
 	}
-	if data, err := io.ReadAll(reader); err != nil || len(data) != old.size {
+	if data, err := io.ReadAll(reader); err != nil || len(data) != old.large.size {
 		t.Fatal("old reader invalidated", err)
 	}
 	rows, err := db.Query(`PRAGMA foreign_key_check`)

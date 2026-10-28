@@ -1906,9 +1906,42 @@ CREATE TABLE metadata_repair_cascade_items(
  operation_id TEXT NOT NULL REFERENCES metadata_repair_cascades(id) ON DELETE CASCADE,item_id INTEGER NOT NULL,
  base_revision TEXT NOT NULL,status TEXT NOT NULL,reason TEXT NOT NULL DEFAULT '',PRIMARY KEY(operation_id,item_id)) STRICT;
 CREATE TABLE artwork_entity_heads(kind TEXT NOT NULL,entity_id INTEGER NOT NULL,incarnation TEXT NOT NULL DEFAULT(lower(hex(randomblob(16)))),revision INTEGER NOT NULL DEFAULT 1,PRIMARY KEY(kind,entity_id)) STRICT;
-CREATE TABLE artwork_objects(
- digest TEXT PRIMARY KEY,mime TEXT NOT NULL,width INTEGER NOT NULL,height INTEGER NOT NULL,bytes INTEGER NOT NULL,
+-- One physical artwork file, Metadata/artwork/<digest>.img, named by the
+-- SHA-256 of its bytes.
+CREATE TABLE artwork_blobs(
+ digest TEXT PRIMARY KEY CHECK(length(digest)=64 AND digest NOT GLOB '*[^0-9a-f]*'),
+ mime TEXT NOT NULL CHECK(mime IN('image/jpeg','image/png')),
+ width INTEGER NOT NULL CHECK(width>0),height INTEGER NOT NULL CHECK(height>0),bytes INTEGER NOT NULL CHECK(bytes>0),
  created_at TEXT NOT NULL,status TEXT NOT NULL DEFAULT 'ready' CHECK(status IN('ready','deleting'))) STRICT;
+-- A source is the identity of accepted artwork bytes (their SHA-256), which are
+-- never kept. Its two slots and the ambient effect are made together when it
+-- arrives, so a source with a missing slot cannot exist.
+CREATE TABLE artwork_sources(
+ digest TEXT PRIMARY KEY CHECK(length(digest)=64 AND digest NOT GLOB '*[^0-9a-f]*'),
+ accepted_mime TEXT NOT NULL CHECK(accepted_mime IN('image/jpeg','image/png','image/webp')),
+ accepted_width INTEGER NOT NULL CHECK(accepted_width BETWEEN 1 AND 10000),
+ accepted_height INTEGER NOT NULL CHECK(accepted_height BETWEEN 1 AND 10000),
+ small_blob TEXT NOT NULL REFERENCES artwork_blobs(digest),
+ large_blob TEXT NOT NULL REFERENCES artwork_blobs(digest),
+ ambient_blob TEXT NOT NULL REFERENCES artwork_blobs(digest),
+ large_edge INTEGER NOT NULL CHECK(large_edge IN(1280,1920,2560)),
+ small_outlier INTEGER NOT NULL CHECK(small_outlier IN(0,1)),
+ large_outlier INTEGER NOT NULL CHECK(large_outlier IN(0,1)),
+ encoder_revision INTEGER NOT NULL CHECK(encoder_revision>0),
+ created_at TEXT NOT NULL) STRICT;
+CREATE INDEX artwork_sources_small ON artwork_sources(small_blob);
+CREATE INDEX artwork_sources_large ON artwork_sources(large_blob);
+CREATE INDEX artwork_sources_ambient ON artwork_sources(ambient_blob);
+CREATE INDEX artwork_sources_created ON artwork_sources(created_at,digest);
+CREATE INDEX artwork_sources_large_edge ON artwork_sources(large_edge,digest);
+-- Durable encoder outcomes: counted when a source, guide image or logo is
+-- first published, and when a picture is refused as cap_unreachable.
+CREATE TABLE artwork_encoding_counters(
+ slot TEXT NOT NULL CHECK(slot IN('small','large','logo')),
+ format TEXT NOT NULL CHECK(format IN('jpeg','png')),
+ outcome TEXT NOT NULL CHECK(outcome IN('within','outlier','cap_unreachable')),
+ count INTEGER NOT NULL DEFAULT 0 CHECK(count>=0),
+ PRIMARY KEY(slot,format,outcome)) WITHOUT ROWID, STRICT;
 CREATE TABLE artwork_candidates(
  id TEXT PRIMARY KEY,kind TEXT NOT NULL,entity_id INTEGER NOT NULL,role TEXT NOT NULL,subject TEXT NOT NULL DEFAULT '',
  provider TEXT NOT NULL,image_id TEXT NOT NULL,origin TEXT NOT NULL,locale TEXT NOT NULL DEFAULT '',rank REAL NOT NULL DEFAULT 0,
@@ -1917,8 +1950,8 @@ CREATE TABLE artwork_candidates(
 CREATE INDEX artwork_candidates_source ON artwork_candidates(provider,origin,id);
 CREATE TABLE artwork_selections(
  kind TEXT NOT NULL,entity_id INTEGER NOT NULL,role TEXT NOT NULL,subject TEXT NOT NULL DEFAULT '',
- candidate_id TEXT NOT NULL REFERENCES artwork_candidates(id),digest TEXT NOT NULL REFERENCES artwork_objects(digest),
- thumbnail_digest TEXT NOT NULL REFERENCES artwork_objects(digest),locked INTEGER NOT NULL DEFAULT 0,
+ candidate_id TEXT NOT NULL REFERENCES artwork_candidates(id),digest TEXT NOT NULL REFERENCES artwork_sources(digest),
+ locked INTEGER NOT NULL DEFAULT 0,
  revision INTEGER NOT NULL DEFAULT 1,actor TEXT NOT NULL,observed_at TEXT NOT NULL,
  PRIMARY KEY(kind,entity_id,role,subject)) STRICT;
 CREATE TABLE artwork_jobs(
@@ -1930,7 +1963,7 @@ CREATE TABLE artwork_jobs(
  locked INTEGER NOT NULL DEFAULT 0,created_at TEXT NOT NULL,preview INTEGER NOT NULL DEFAULT 0,
  size_refresh INTEGER NOT NULL DEFAULT 0 CHECK(size_refresh IN(0,1)),
  UNIQUE(kind,entity_id,role,subject,preview)) STRICT;
-CREATE TABLE artwork_previews(candidate_id TEXT PRIMARY KEY REFERENCES artwork_candidates(id) ON DELETE CASCADE,digest TEXT NOT NULL REFERENCES artwork_objects(digest),source_fence TEXT NOT NULL,created_at TEXT NOT NULL) STRICT;
+CREATE TABLE artwork_previews(candidate_id TEXT PRIMARY KEY REFERENCES artwork_candidates(id) ON DELETE CASCADE,digest TEXT NOT NULL REFERENCES artwork_sources(digest),source_fence TEXT NOT NULL,created_at TEXT NOT NULL) STRICT;
 CREATE TABLE artwork_discovery(
  kind TEXT NOT NULL,entity_id INTEGER NOT NULL,provider TEXT NOT NULL,identity TEXT NOT NULL,source_fence TEXT NOT NULL,
  status TEXT NOT NULL DEFAULT 'pending',attempts INTEGER NOT NULL DEFAULT 0,next_attempt TEXT NOT NULL DEFAULT '',
@@ -3121,7 +3154,7 @@ CREATE TABLE social_rate(bucket TEXT PRIMARY KEY,window_start_ms INTEGER NOT NUL
 CREATE TABLE artwork_uploads(
  candidate_id TEXT PRIMARY KEY REFERENCES artwork_candidates(id) ON DELETE CASCADE,
  kind TEXT NOT NULL,entity_id INTEGER NOT NULL,role TEXT NOT NULL,subject TEXT NOT NULL DEFAULT '',
- digest TEXT NOT NULL,thumbnail_digest TEXT NOT NULL,mime TEXT NOT NULL,bytes INTEGER NOT NULL,
+ digest TEXT NOT NULL,mime TEXT NOT NULL,bytes INTEGER NOT NULL,
  width INTEGER NOT NULL,height INTEGER NOT NULL,actor TEXT NOT NULL,observed_at TEXT NOT NULL) STRICT;
 CREATE TABLE notification_revision(singleton INTEGER PRIMARY KEY CHECK(singleton=1),value INTEGER NOT NULL) STRICT;
 CREATE TABLE notification_inbox(
@@ -3570,12 +3603,6 @@ CREATE TABLE networking_claim_authority(
  FOREIGN KEY(operation_id,server_id,account_id,local_generation,claim_generation,credential_generation) REFERENCES networking_claim_intents(operation_id,server_id,account_id,local_generation,claim_generation,credential_generation)
 ) STRICT;
 CREATE TABLE networking_claim_schema(singleton INTEGER PRIMARY KEY CHECK(singleton=1),version INTEGER NOT NULL CHECK(version=3)) STRICT;
-CREATE TABLE "artwork_variants"(
- source_digest TEXT NOT NULL REFERENCES artwork_objects(digest) ON DELETE CASCADE,
- width INTEGER NOT NULL CHECK(width IN(400,800,1920,2560)),
- digest TEXT NOT NULL REFERENCES artwork_objects(digest),
- PRIMARY KEY(source_digest,width)
-) STRICT;
 CREATE TABLE playback_device_capabilities(
  device_id TEXT PRIMARY KEY REFERENCES identity_devices(id) ON DELETE CASCADE,
  account_id TEXT NOT NULL,
@@ -4043,7 +4070,7 @@ CREATE TABLE library_metadata_agents(
  agent TEXT NOT NULL DEFAULT 'online' CHECK(length(agent) BETWEEN 1 AND 64),
  revision INTEGER NOT NULL DEFAULT 1 CHECK(typeof(revision)='integer' AND revision>0)) WITHOUT ROWID, STRICT;
 CREATE TABLE artwork_compaction_failures(
- digest TEXT PRIMARY KEY REFERENCES artwork_objects(digest) ON DELETE CASCADE,
+ digest TEXT PRIMARY KEY REFERENCES artwork_sources(digest) ON DELETE CASCADE,
  reason TEXT NOT NULL,
  failed_at TEXT NOT NULL) WITHOUT ROWID, STRICT;
 CREATE TABLE playback_private_presentations(
@@ -4193,10 +4220,15 @@ CREATE TABLE live_programme_icons(
 ) WITHOUT ROWID, STRICT;
 CREATE TABLE live_programme_images(
  url TEXT PRIMARY KEY,
- digest TEXT NOT NULL,
+ small_digest TEXT NOT NULL,
+ large_digest TEXT NOT NULL,
  media_type TEXT NOT NULL,
- width INTEGER NOT NULL,
- height INTEGER NOT NULL,
+ small_width INTEGER NOT NULL,
+ small_height INTEGER NOT NULL,
+ small_bytes INTEGER NOT NULL,
+ large_width INTEGER NOT NULL,
+ large_height INTEGER NOT NULL,
+ large_bytes INTEGER NOT NULL,
  stored_ms INTEGER NOT NULL
 ) WITHOUT ROWID, STRICT;
 CREATE TABLE live_icon_jobs(
@@ -4874,11 +4906,9 @@ CREATE INDEX inventory_objects_directory ON inventory_objects(source_id,root_inc
 CREATE INDEX inventory_integrity_runs ON inventory_runs(source_id,scan_mode,inventory_completed_at);
 CREATE INDEX inventory_directory_children ON inventory_directory_cache(source_id,incarnation,parent_path,parent_revision,relative_path);
 CREATE INDEX artwork_selections_digest ON artwork_selections(digest);
-CREATE INDEX artwork_selections_thumbnail ON artwork_selections(thumbnail_digest);
 CREATE INDEX artwork_previews_digest ON artwork_previews(digest);
-CREATE INDEX artwork_objects_created ON artwork_objects(created_at);
+CREATE INDEX artwork_blobs_created ON artwork_blobs(created_at,digest);
 CREATE INDEX artwork_uploads_digest ON artwork_uploads(digest);
-CREATE INDEX artwork_uploads_thumbnail ON artwork_uploads(thumbnail_digest);
 CREATE INDEX identity_refresh_device ON identity_refresh_credentials(device_id);
 CREATE INDEX identity_refresh_receipts_expiry ON identity_refresh_receipts(expires_at);
 CREATE INDEX mount_operations_retention ON mount_operations(created_at);
@@ -4896,7 +4926,6 @@ CREATE INDEX networking_certificates_scope ON networking_certificates(scope_id,c
 CREATE UNIQUE INDEX networking_claim_one_active ON networking_claim_intents(server_id) WHERE stage NOT IN('cancelled','installed');
 CREATE UNIQUE INDEX networking_claim_one_installed ON networking_claim_intents(server_id) WHERE stage='installed';
 CREATE INDEX identity_refresh_receipts_family ON identity_refresh_receipts(family_id);
-CREATE INDEX artwork_variants_digest ON artwork_variants(digest);
 CREATE INDEX playback_v1_sessions_lease ON playback_v1_sessions(lease_expires_ms) WHERE ended_ms=0;
 CREATE INDEX playback_v1_sessions_device ON playback_v1_sessions(device_id,created_ms) WHERE ended_ms=0;
 CREATE INDEX playback_v1_sessions_account ON playback_v1_sessions(account_id,created_ms) WHERE ended_ms=0;
@@ -4947,8 +4976,6 @@ CREATE INDEX metadata_repair_cascades_entity ON metadata_repair_cascades(kind,en
 CREATE INDEX artwork_selections_candidate ON artwork_selections(candidate_id);
 CREATE INDEX listening_book_series_key ON listening_book_series(library_id,series_key,book_id);
 CREATE INDEX audio_tag_evidence_genre_value ON audio_tag_evidence(library_id,value COLLATE NOCASE) WHERE field='genre';
-CREATE INDEX artwork_objects_compaction ON artwork_objects(bytes DESC,digest)
- WHERE status='ready' AND (bytes>500000 OR width>1920 OR height>1920);
 CREATE INDEX metadata_details_provider ON metadata_details(provider,provider_id,item_id);
 CREATE INDEX screen_publications_provider ON screen_metadata_publications(provider,provider_id,target_kind,target_id) WHERE decision='accepted';
 CREATE INDEX personal_history_recent ON personal_history(updated_at,item_id,profile_id);
@@ -4960,7 +4987,8 @@ CREATE INDEX playback_v1_sessions_created ON playback_v1_sessions(created_ms,id)
 CREATE INDEX hosted_identity_nonces_expiry ON hosted_identity_nonces(expires_ms);
 CREATE INDEX hosted_identity_challenges_expiry ON hosted_identity_challenges(expires_ms);
 CREATE INDEX live_programme_icons_url ON live_programme_icons(url);
-CREATE INDEX live_programme_images_digest ON live_programme_images(digest);
+CREATE INDEX live_programme_images_small ON live_programme_images(small_digest);
+CREATE INDEX live_programme_images_large ON live_programme_images(large_digest);
 CREATE INDEX live_icon_jobs_due ON live_icon_jobs(state,next_attempt_ms,source_id);
 CREATE INDEX catalog_term_entities ON catalog_entity_terms(term_id,entity_id);
 CREATE INDEX catalog_asset_issues_asset ON catalog_asset_issues(asset_id);
@@ -8588,15 +8616,15 @@ END;
 CREATE TABLE live_reminders(id TEXT PRIMARY KEY,owner_key TEXT NOT NULL,kind TEXT NOT NULL CHECK(kind IN('live-source','library-channel')),source_id TEXT NOT NULL,channel_id TEXT NOT NULL,generation_id TEXT NOT NULL,programme_id TEXT NOT NULL,revision INTEGER NOT NULL,start_utc TEXT NOT NULL) STRICT;
 CREATE INDEX live_reminders_owner ON live_reminders(owner_key,id);
 CREATE TRIGGER live_reminders_bound BEFORE INSERT ON live_reminders WHEN (SELECT count(*) FROM live_reminders WHERE owner_key=NEW.owner_key)>=1000 AND NOT EXISTS(SELECT 1 FROM live_reminders WHERE id=NEW.id) BEGIN SELECT RAISE(ABORT,'This profile has reached its reminder limit.'); END;
-CREATE TABLE dvr_programme_images(recording_id TEXT PRIMARY KEY REFERENCES dvr_recordings(id) ON DELETE CASCADE,url TEXT NOT NULL REFERENCES live_programme_images(url),digest TEXT NOT NULL) STRICT;
+CREATE TABLE dvr_programme_images(recording_id TEXT PRIMARY KEY REFERENCES dvr_recordings(id) ON DELETE CASCADE,url TEXT NOT NULL REFERENCES live_programme_images(url)) STRICT;
 CREATE TRIGGER dvr_retain_programme_image AFTER INSERT ON dvr_recordings BEGIN
- INSERT OR IGNORE INTO dvr_programme_images SELECT NEW.id,img.url,img.digest FROM live_programme_icons i JOIN live_programme_images img ON img.url=i.url WHERE i.generation_id=NEW.guide_generation AND i.programme_id=NEW.programme_id;
+ INSERT OR IGNORE INTO dvr_programme_images SELECT NEW.id,img.url FROM live_programme_icons i JOIN live_programme_images img ON img.url=i.url WHERE i.generation_id=NEW.guide_generation AND i.programme_id=NEW.programme_id;
 END;
 CREATE TRIGGER dvr_refresh_programme_image AFTER UPDATE OF guide_generation,programme_json ON dvr_recordings WHEN NEW.state NOT IN('deleted','pending-delete') BEGIN
- INSERT OR IGNORE INTO dvr_programme_images SELECT NEW.id,img.url,img.digest FROM live_programme_icons i JOIN live_programme_images img ON img.url=i.url WHERE i.generation_id=NEW.guide_generation AND i.programme_id=NEW.programme_id;
+ INSERT OR IGNORE INTO dvr_programme_images SELECT NEW.id,img.url FROM live_programme_icons i JOIN live_programme_images img ON img.url=i.url WHERE i.generation_id=NEW.guide_generation AND i.programme_id=NEW.programme_id;
 END;
 CREATE TRIGGER dvr_retain_late_programme_image AFTER INSERT ON live_programme_images BEGIN
- INSERT OR IGNORE INTO dvr_programme_images SELECT r.id,NEW.url,NEW.digest FROM dvr_recordings r JOIN live_programme_icons i ON i.generation_id=r.guide_generation AND i.programme_id=r.programme_id WHERE i.url=NEW.url AND r.state NOT IN('deleted','pending-delete');
+ INSERT OR IGNORE INTO dvr_programme_images SELECT r.id,NEW.url FROM dvr_recordings r JOIN live_programme_icons i ON i.generation_id=r.guide_generation AND i.programme_id=r.programme_id WHERE i.url=NEW.url AND r.state NOT IN('deleted','pending-delete');
 END;
 CREATE TRIGGER dvr_release_programme_image AFTER UPDATE OF state ON dvr_recordings WHEN NEW.state='deleted' BEGIN DELETE FROM dvr_programme_images WHERE recording_id=NEW.id; END;
 CREATE TRIGGER dvr_preserve_programme_image BEFORE DELETE ON live_programme_images WHEN EXISTS(SELECT 1 FROM dvr_programme_images WHERE url=OLD.url) BEGIN SELECT RAISE(IGNORE); END;

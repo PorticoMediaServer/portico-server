@@ -35,7 +35,7 @@ func TestCandidatePreviewIsAThumbnailAndPublishesVotes(t *testing.T) {
 	if candidate.Votes != nil {
 		t.Fatalf("an upload has no provider vote count: %d", *candidate.Votes)
 	}
-	f, _, err := s.PreviewArtwork(ctx, target, candidate.ID, 400)
+	f, _, err := s.PreviewArtwork(ctx, target, candidate.ID, ArtworkSmall)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -44,7 +44,7 @@ func TestCandidatePreviewIsAThumbnailAndPublishesVotes(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if config.Width > 400 || config.Height > 400 {
+	if config.Width > artworkSmallEdge || config.Height > artworkSmallEdge {
 		t.Fatalf("candidate preview is %dx%d, not a thumbnail", config.Width, config.Height)
 	}
 }

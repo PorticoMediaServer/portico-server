@@ -578,6 +578,9 @@ func (s *Service) homeEngineEntries(profile string, ids []string) ([]ContentEntr
 		if e != nil {
 			return nil, e
 		}
+		if e = describeItemArtMap(s, artwork); e != nil {
+			return nil, e
+		}
 	}
 	for _, entity := range entities {
 		if isItemEntity(entity.kind) {

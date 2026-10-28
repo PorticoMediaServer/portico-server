@@ -100,3 +100,15 @@ test('removal carries revision and cannot send after saving-subscriber cancellat
   assert.equal(calls.length, 1);
   off(); service.dispose();
 });
+test('a definite upload refusal keeps the editor ready and names the reason', async () => {
+  for (const [status, code, reason] of [[422, 'artwork_cap_unreachable', /too detailed/], [415, 'unsupported_artwork', /JPEG, PNG or WebP/]] as const) {
+    const service = new MetadataRepairService({scope, api: {async request<T>() {return state() as T;}, async requestMetadataUpload() {throw Object.assign(new Error('refused'), {status, code});}}});
+    await service.load(target);
+    assert.equal(await service.uploadArtwork('poster', new Blob(['image'], {type: 'image/png'})), false);
+    const snapshot = service.getSnapshot();
+    assert.equal(snapshot.phase, 'ready');
+    assert.match(snapshot.error ?? '', reason);
+    assert.equal(snapshot.data?.revision, 'b'.repeat(64));
+    service.dispose();
+  }
+});

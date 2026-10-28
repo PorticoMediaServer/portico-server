@@ -123,21 +123,30 @@ func TestGuideImageImportStoresValidatesAndCleansUp(t *testing.T) {
 	if imported != 1 || skipped != 2 || len(calls) != 3 {
 		t.Fatalf("batch receipt: imported=%d skipped=%d calls=%v", imported, skipped, calls)
 	}
-	var digest, mime string
-	var width, height int
-	if err = db.QueryRow(`SELECT digest,media_type,width,height FROM live_programme_images WHERE url='https://img.invalid/good.png'`).Scan(&digest, &mime, &width, &height); err != nil {
+	// The provider original is not kept: the import stores the two card
+	// renditions, here lossless PNG for a picture with transparency, never
+	// enlarged.
+	var digest, large, mime string
+	var width, height, largeWidth, largeHeight, smallBytes int
+	if err = db.QueryRow(`SELECT small_digest,large_digest,media_type,small_width,small_height,small_bytes,large_width,large_height FROM live_programme_images WHERE url='https://img.invalid/good.png'`).Scan(&digest, &large, &mime, &width, &height, &smallBytes, &largeWidth, &largeHeight); err != nil {
 		t.Fatal(err)
 	}
-	sum := sha256.Sum256(raw.Bytes())
-	if digest != hex.EncodeToString(sum[:]) || mime != "image/png" || width != 64 || height != 64 {
-		t.Fatalf("stored image row: %q %q %dx%d", digest, mime, width, height)
+	if mime != "image/png" || width != 64 || height != 64 || largeWidth != 64 || largeHeight != 64 {
+		t.Fatalf("stored image row: %q %dx%d %dx%d", mime, width, height, largeWidth, largeHeight)
 	}
-	if _, err = os.Stat(storagepaths.Path(state, "guide-images", digest+".png")); err != nil {
-		t.Fatal(err)
+	for _, name := range []string{digest, large} {
+		stored, err := os.ReadFile(storagepaths.Path(state, "guide-images", name+".png"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		sum := sha256.Sum256(stored)
+		if hex.EncodeToString(sum[:]) != name || bytes.Equal(stored, raw.Bytes()) {
+			t.Fatal("rendition is not content-addressed or is the original", name)
+		}
 	}
-	got, gotMime, err := admin.GuideImageBytes(context.Background(), digest)
-	if err != nil || gotMime != "image/png" || !bytes.Equal(got, raw.Bytes()) {
-		t.Fatalf("stored image bytes: mime=%q bytes=%d err=%v", gotMime, len(got), err)
+	got, err := admin.GuideImageBytes(context.Background(), digest, mime)
+	if err != nil || len(got) != smallBytes {
+		t.Fatalf("stored image bytes: bytes=%d err=%v", len(got), err)
 	}
 	for _, url := range []string{"https://img.invalid/broken.png", "https://img.invalid/huge.png"} {
 		var attempts int
@@ -156,7 +165,7 @@ func TestGuideImageImportStoresValidatesAndCleansUp(t *testing.T) {
 	if strings.Contains(out.Message, guideImageFixtureHost) {
 		t.Fatalf("provider URL in message: %q", out.Message)
 	}
-	if _, _, err = admin.GuideImageBytes(context.Background(), strings.Repeat("0", 64)); !errors.Is(err, ErrNotFound) {
+	if _, err = admin.GuideImageBytes(context.Background(), strings.Repeat("0", 64), "image/png"); !errors.Is(err, ErrNotFound) {
 		t.Fatalf("unknown digest: %v", err)
 	}
 
@@ -164,11 +173,17 @@ func TestGuideImageImportStoresValidatesAndCleansUp(t *testing.T) {
 	// an unrelated file and the live image survive.
 	orphanDigest := strings.Repeat("de", 32)
 	strayDigest := strings.Repeat("cd", 32)
-	if _, err = db.Exec(`INSERT INTO live_programme_images(url,digest,media_type,width,height,stored_ms) VALUES(?,?,?,?,?,?)`, "https://img.invalid/orphan.png", orphanDigest, "image/png", 16, 16, time.Now().UnixMilli()); err != nil {
+	if _, err = db.Exec(`INSERT INTO live_programme_images(url,small_digest,large_digest,media_type,small_width,small_height,small_bytes,large_width,large_height,large_bytes,stored_ms) VALUES(?,?,?,?,16,16,1,16,16,1,?)`, "https://img.invalid/orphan.png", orphanDigest, orphanDigest, "image/png", time.Now().UnixMilli()); err != nil {
 		t.Fatal(err)
 	}
 	root := storagepaths.Path(state, "guide-images")
 	if err = os.WriteFile(filepath.Join(root, strayDigest+".png"), []byte("stale"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	// The sweep leaves files younger than an hour for an import that may be
+	// about to record them.
+	stale := time.Now().Add(-2 * time.Hour)
+	if err = os.Chtimes(filepath.Join(root, strayDigest+".png"), stale, stale); err != nil {
 		t.Fatal(err)
 	}
 	if err = os.WriteFile(filepath.Join(root, "readme.txt"), []byte("keep"), 0600); err != nil {

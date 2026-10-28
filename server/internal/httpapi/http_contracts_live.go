@@ -55,7 +55,7 @@ func registerLiveHTTPContracts(registry *apikit.Registry) error {
 		return err
 	}
 
-	if err := apikit.RegisterHTTP[struct{}, SubtitleBytesContract](registry, apikit.Metadata{ID: "get_dvr_recordings_id_image", Method: "GET", Path: "/v1/dvr/recordings/{id}/image", Summary: "Read retained recording programme image", Access: apikit.Device, Requires: apikit.ScopeRead, Lane: apikit.Media, Admission: laneMedia, Cost: apikit.Constant, Status: 200, ResponseContentType: "application/octet-stream", Errors: []string{"unauthorized", "not_permitted", "not_found", "internal"}}); err != nil {
+	if err := apikit.RegisterHTTP[struct{}, SubtitleBytesContract](registry, apikit.Metadata{ID: "get_dvr_recordings_id_image", Method: "GET", Path: "/v1/dvr/recordings/{id}/image", Summary: "Read retained recording programme image", Access: apikit.Device, Requires: apikit.ScopeRead, Lane: apikit.Media, Admission: laneMedia, Cost: apikit.Constant, Status: 200, Query: []string{"ld", "sd", "size", "w"}, ResponseContentType: "application/octet-stream", Errors: []string{"unauthorized", "not_permitted", "not_found", "internal"}}); err != nil {
 		return err
 	}
 
@@ -139,7 +139,7 @@ func registerLiveHTTPContracts(registry *apikit.Registry) error {
 		return err
 	}
 	// internal/httpapi/guide_images.go:14
-	if err := apikit.RegisterHTTP[struct{}, SubtitleBytesContract](registry, apikit.Metadata{ID: "get_guide_programme_image", Method: "GET", Path: "/v1/guide/programme-images/{generation}/{programme}", Summary: "Read guide images", Access: apikit.Device, Requires: apikit.ScopeRead, Lane: apikit.Media, Admission: laneMedia, Cost: apikit.Constant, BodyLimit: 0, Status: 200, ResponseContentType: "application/octet-stream", Errors: []string{"invalid_request", "unauthorized", "not_permitted", "not_found", "internal"}}); err != nil {
+	if err := apikit.RegisterHTTP[struct{}, SubtitleBytesContract](registry, apikit.Metadata{ID: "get_guide_programme_image", Method: "GET", Path: "/v1/guide/programme-images/{generation}/{programme}", Summary: "Read guide images", Access: apikit.Device, Requires: apikit.ScopeRead, Lane: apikit.Media, Admission: laneMedia, Cost: apikit.Constant, BodyLimit: 0, Status: 200, Query: []string{"ld", "sd", "size", "w"}, ResponseContentType: "application/octet-stream", Errors: []string{"invalid_request", "unauthorized", "not_permitted", "not_found", "internal"}}); err != nil {
 		return err
 	}
 	// internal/httpapi/library_channels.go:167

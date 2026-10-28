@@ -74,9 +74,12 @@ func TestSourcePublicationQueuesAndImportsAdvertisedLogo(t *testing.T) {
 	if state != "complete" || calls != 1 {
 		t.Fatalf("background import state=%q calls=%d err=%v", state, calls, err)
 	}
+	// The stored logo is its one rendition, made from the advertised image.
 	got, mime, _, err := admin.ChannelLogoBytes(context.Background(), "live:"+source+":"+channel)
-	if err != nil || mime != "image/png" || !bytes.Equal(got, raw.Bytes()) {
-		t.Fatalf("stored logo mime=%q bytes=%d err=%v", mime, len(got), err)
+	logo, format, decodeErr := image.DecodeConfig(bytes.NewReader(got))
+	want, _, _ := image.DecodeConfig(bytes.NewReader(raw.Bytes()))
+	if err != nil || mime != "image/png" || decodeErr != nil || format != "png" || logo.Width != min(want.Width, 256) || logo.Height != min(want.Height, 256) {
+		t.Fatalf("stored logo mime=%q bytes=%d %+v err=%v %v", mime, len(got), logo, err, decodeErr)
 	}
 	guide, err := store.Guide(context.Background(), authority, livechannels.GuideQuery{Kind: livechannels.LiveSource, Start: time.Now().Truncate(time.Hour), End: time.Now().Truncate(time.Hour).Add(time.Hour), Timezone: "UTC", Limit: 10})
 	if err != nil || len(guide.Channels) != 1 {

@@ -23,6 +23,7 @@ import (
 	"portico.local/server/internal/dbwork"
 	"portico.local/server/internal/livechannels/dvr"
 	"portico.local/server/internal/storage"
+	"portico.local/server/internal/storagepaths"
 	"sort"
 	"strings"
 	"sync"
@@ -90,6 +91,11 @@ type Service struct {
 	Discover    func(context.Context, time.Duration) ([]TunerDevice, error)
 	updateMu    sync.Mutex
 	updateFeeds map[string]*cachedUpdateFeed
+	// DataUsage measures the data and transcode folders for the data storage
+	// page; the storage snapshot measures it in the same pass as the storage
+	// care categories, so both pages read one observation.
+	DataUsage func(context.Context) (storagepaths.Usage, error)
+	usage     storageUsageSnapshot
 }
 
 func (s *Service) pickerPolicy() storage.SourcePolicy {

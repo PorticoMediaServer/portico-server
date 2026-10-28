@@ -171,8 +171,8 @@ func TestRetainedSourceArtworkIsAcquiredOnlyOnce(t *testing.T) {
 	if e := db.QueryRow(`SELECT c.origin FROM artwork_candidates c JOIN artwork_selections a ON a.candidate_id=c.id WHERE a.entity_id=? AND a.role='poster'`, entity).Scan(&origin); e != nil {
 		t.Fatal(e)
 	}
-	a, b, e := s.acquireArtworkObjects(ctx, artworkWork{provider: "tmdb", origin: origin})
-	if e != nil || len(a.raw) == 0 || len(b.raw) == 0 || requests != 1 {
+	m, e := s.acquireArtworkMaterial(ctx, artworkWork{provider: "tmdb", origin: origin})
+	if e != nil || !m.reused || m.source == "" || requests != 1 {
 		t.Fatal("source was downloaded again", requests, e)
 	}
 }

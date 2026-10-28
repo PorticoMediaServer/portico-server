@@ -80,9 +80,9 @@ func TestLocalArtworkOrderSurvivesRestartAndCompositeContinuation(t *testing.T) 
 			if err != nil || preferred == nil || *preferred != first[0] {
 				t.Fatal("default disagrees with canonical page", preferred, err)
 			}
-			c.Exec(`INSERT INTO artwork_objects(digest,mime,width,height,bytes,created_at) VALUES(?,'image/jpeg',1,1,1,'now')`, canonical.Key)
+			c.Exec(`INSERT INTO artwork_blobs(digest,mime,width,height,bytes,created_at) VALUES(?,'image/jpeg',1,1,1,'now'); INSERT OR IGNORE INTO artwork_sources(digest,accepted_mime,accepted_width,accepted_height,small_blob,large_blob,ambient_blob,large_edge,small_outlier,large_outlier,encoder_revision,created_at) SELECT digest,mime,width,height,digest,digest,digest,1920,0,0,1,created_at FROM artwork_blobs`, canonical.Key)
 			c.Exec(`INSERT INTO artwork_candidates(id,kind,entity_id,role,provider,image_id,origin,attribution,source_fence,observed_at) VALUES('owner-choice','item',?,'poster','local','owner',?,'Local file','owner-fence','now')`, item.ID, "local:"+key(7))
-			c.Exec(`INSERT INTO artwork_selections(kind,entity_id,role,candidate_id,digest,thumbnail_digest,locked,actor,observed_at) VALUES('item',?,'poster','owner-choice',?,?,0,'owner','now')`, item.ID, canonical.Key, canonical.Key)
+			c.Exec(`INSERT INTO artwork_selections(kind,entity_id,role,candidate_id,digest,locked,actor,observed_at) SELECT column1,column2,column3,column4,column5,column7,column8,column9 FROM (VALUES('item',?,'poster','owner-choice',?,?,0,'owner','now'))`, item.ID, canonical.Key, canonical.Key)
 			checkDefault := func(blocked bool) {
 				t.Helper()
 				tx, err := db.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})

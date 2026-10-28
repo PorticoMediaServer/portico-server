@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"portico.local/server/internal/artworkref"
 	"portico.local/server/internal/requestinput"
 	"strconv"
 	"strings"
@@ -332,9 +333,10 @@ func (s *Service) readRepairState(ctx context.Context, tx *sql.Tx, t RepairTarge
 	out.CanMakeEpisodeThumbnail, err = s.CanMakeEpisodeThumbnailTx(ctx, tx, t)
 	if err == nil && out.TargetItemKind == "episode" {
 		var show, digest string
-		e := tx.QueryRowContext(ctx, `SELECT pid(parent.public_id),o.digest FROM catalog_entities child JOIN catalog_episodes ep ON ep.entity_id=child.id JOIN catalog_shows sh ON sh.entity_id=ep.show_id JOIN catalog_entities parent ON parent.id=sh.entity_id AND parent.library_id=child.library_id JOIN artwork_selections a ON a.kind='show' AND a.entity_id=parent.id AND a.role='backdrop' AND a.subject='' JOIN artwork_objects o ON o.digest=a.digest AND o.status='ready' WHERE child.public_id=pid_blob(?) AND NOT EXISTS(SELECT 1 FROM artwork_selections own JOIN artwork_objects bytes ON bytes.digest=own.digest AND bytes.status='ready' WHERE own.kind='item' AND own.entity_id=child.id AND own.role IN('still','thumbnail') AND own.subject='')`, t.ID).Scan(&show, &digest)
+		var d artworkref.Descriptor
+		e := tx.QueryRowContext(ctx, `SELECT pid(parent.public_id),src.digest,`+artworkref.Columns+` FROM catalog_entities child JOIN catalog_episodes ep ON ep.entity_id=child.id JOIN catalog_shows sh ON sh.entity_id=ep.show_id JOIN catalog_entities parent ON parent.id=sh.entity_id AND parent.library_id=child.library_id JOIN artwork_selections a ON a.kind='show' AND a.entity_id=parent.id AND a.role='backdrop' AND a.subject='' JOIN artwork_sources src ON src.digest=a.digest JOIN artwork_blobs sb ON sb.digest=src.small_blob JOIN artwork_blobs lb ON lb.digest=src.large_blob WHERE child.public_id=pid_blob(?) AND NOT EXISTS(SELECT 1 FROM artwork_selections own JOIN artwork_sources bytes ON bytes.digest=own.digest WHERE own.kind='item' AND own.entity_id=child.id AND own.role IN('still','thumbnail') AND own.subject='')`, t.ID).Scan(append([]any{&show, &digest}, d.ScanTargets()...)...)
 		if e == nil {
-			out.ArtworkFallbackURL = artworkPath(RepairTarget{Kind: "show", ID: show}, "backdrop", "", digest)
+			out.ArtworkFallbackURL = describedArtworkPath(RepairTarget{Kind: "show", ID: show}, "backdrop", "", digest, d)
 		} else if !errors.Is(e, sql.ErrNoRows) {
 			err = e
 		}
@@ -654,7 +656,7 @@ func (s *Service) Repair(ctx context.Context, t RepairTarget, m RepairCommand, a
 				return RepairState{}, ErrRepairInput
 			}
 		} else {
-			if err = s.verifyRestorableArtwork(saved.Artwork); err != nil {
+			if err = s.verifyRestorableArtwork(ctx, saved.Artwork); err != nil {
 				return RepairState{}, err
 			}
 			if err = restoreArtworkChoices(ctx, tx, t, saved.Artwork, who, now); err != nil {

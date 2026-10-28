@@ -8,6 +8,7 @@ import (
 	"image"
 	"image/color"
 	"image/png"
+	"portico.local/server/internal/metadata"
 	"strings"
 	"testing"
 
@@ -176,7 +177,8 @@ func TestLogoImportWorkerUsesTheEffectiveSourceChoice(t *testing.T) {
 	if err != nil || !done || first.Imported != 1 || first.Skipped != 0 || calls != 1 {
 		t.Fatalf("following source: %+v done=%t calls=%d err=%v", first, done, calls, err)
 	}
-	if stored, mime, _, err := s.ChannelLogoBytes(context.Background(), "live:"+source+":"+channel); err != nil || mime != "image/png" || !bytes.Equal(stored, logo) {
+	// The stored logo is the one rendition made from the advertised image.
+	if stored, mime, _, err := s.ChannelLogoBytes(context.Background(), "live:"+source+":"+channel); err != nil || mime != "image/png" || !bytes.Equal(stored, logoRendition(t, logo)) {
 		t.Fatalf("stored logo mime=%q bytes=%d err=%v", mime, len(stored), err)
 	}
 
@@ -196,4 +198,14 @@ func TestLogoImportWorkerUsesTheEffectiveSourceChoice(t *testing.T) {
 	if third.Message != "Logo import is switched off for this source." {
 		t.Fatalf("explicit off message: %q", third.Message)
 	}
+}
+
+// logoRendition is the stored rendition of an advertised logo.
+func logoRendition(t *testing.T, raw []byte) []byte {
+	t.Helper()
+	logo, err := metadata.EncodeChannelLogo(context.Background(), raw, map[string]bool{"jpeg": true, "png": true, "webp": true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return logo.Data
 }

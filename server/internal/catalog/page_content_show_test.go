@@ -19,7 +19,7 @@ func TestShowPageContent(t *testing.T) {
 	seasonArtworkID := names["season1"].Public
 	episodeArtworkID := names["ep-001"].Public
 	still, seasonArt, backdrop, portrait := strings.Repeat("c", 64), strings.Repeat("d", 64), strings.Repeat("e", 64), strings.Repeat("f", 64)
-	if _, err := db.Exec(`INSERT INTO artwork_objects VALUES(?, 'image/jpeg',1280,720,10,'now','ready'),(?, 'image/jpeg',680,1000,10,'now','ready'),(?, 'image/jpeg',1920,1080,10,'now','ready'),(?, 'image/jpeg',300,450,10,'now','ready')`, still, seasonArt, backdrop, portrait); err != nil {
+	if _, err := db.Exec(`INSERT INTO artwork_blobs(digest,mime,width,height,bytes,created_at,status) VALUES(?, 'image/jpeg',1280,720,10,'now','ready'),(?, 'image/jpeg',680,1000,10,'now','ready'),(?, 'image/jpeg',1920,1080,10,'now','ready'),(?, 'image/jpeg',300,450,10,'now','ready'); INSERT OR IGNORE INTO artwork_sources(digest,accepted_mime,accepted_width,accepted_height,small_blob,large_blob,ambient_blob,large_edge,small_outlier,large_outlier,encoder_revision,created_at) SELECT digest,mime,width,height,digest,digest,digest,1920,0,0,1,created_at FROM artwork_blobs`, still, seasonArt, backdrop, portrait); err != nil {
 		t.Fatal(err)
 	}
 	art := []struct {
@@ -36,7 +36,7 @@ func TestShowPageContent(t *testing.T) {
 		if _, err := db.Exec(`INSERT INTO artwork_candidates(id,kind,entity_id,role,subject,provider,image_id,origin,attribution,source_fence,observed_at) VALUES(?,?,?,?,?,'tvdb',?,'provider','tvdb','fence','now')`, row.id, row.kind, row.entity, row.role, row.subject, row.id); err != nil {
 			t.Fatal(err)
 		}
-		if _, err := db.Exec(`INSERT INTO artwork_selections(kind,entity_id,role,subject,candidate_id,digest,thumbnail_digest,locked,revision,actor,observed_at) VALUES(?,?,?,?,?,?,?,0,1,'','now')`, row.kind, row.entity, row.role, row.subject, row.id, row.digest, row.digest); err != nil {
+		if _, err := db.Exec(`INSERT INTO artwork_selections(kind,entity_id,role,subject,candidate_id,digest,locked,revision,actor,observed_at) SELECT column1,column2,column3,column4,column5,column6,column8,column9,column10,column11 FROM (VALUES(?,?,?,?,?,?,?,0,1,'','now'))`, row.kind, row.entity, row.role, row.subject, row.id, row.digest, row.digest); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -64,7 +64,7 @@ func TestShowPageContent(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if len(w.ShowCredits) != 2 || w.ShowCredits[0].Name != "Ada Actor" || w.ShowCredits[0].ID != movieActor || w.ShowCredits[0].ID != storedActor || !strings.Contains(w.ShowCredits[0].PortraitURL, "/v1/metadata/show/"+names["show"].Public+"/art/portrait?subject=tvdb%3A77&v="+portrait) {
+		if len(w.ShowCredits) != 2 || w.ShowCredits[0].Name != "Ada Actor" || w.ShowCredits[0].ID != movieActor || w.ShowCredits[0].ID != storedActor || w.ShowCredits[0].PortraitURL != fixtureArtURL("show", names["show"].Public, "portrait", "tvdb:77", portrait, 300, 450, 10) {
 			t.Fatalf("restricted=%t cast: %+v", restricted, w.ShowCredits)
 		}
 		if w.ShowCredits[1].Name != "Cleo Creator" || w.ShowCredits[1].ID == "" || w.ShowCredits[1].PortraitURL != "" {

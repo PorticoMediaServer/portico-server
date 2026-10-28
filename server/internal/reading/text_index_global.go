@@ -212,7 +212,7 @@ func (s *Service) projectIndexedBodyHits(ctx context.Context, tx *sql.Tx, hits [
 	if err != nil {
 		return nil, err
 	}
-	covers, err := compactcatalog.ReadingCoverDigestsTx(ctx, tx, items)
+	covers, err := compactcatalog.ReadingCoverQueriesTx(ctx, tx, items)
 	if err != nil {
 		return nil, err
 	}
@@ -224,7 +224,7 @@ func (s *Service) projectIndexedBodyHits(ctx context.Context, tx *sql.Tx, hits [
 		}
 		cover := ""
 		if digest := covers[hit.ItemID]; digest != "" {
-			cover = "/v1/items/" + url.PathEscape(value.publicID) + "/art/cover?v=" + digest
+			cover = "/v1/items/" + url.PathEscape(value.publicID) + "/art/cover?" + digest
 		}
 		out = append(out, IndexedBodyHit{
 			EntityID:          hit.ItemID,

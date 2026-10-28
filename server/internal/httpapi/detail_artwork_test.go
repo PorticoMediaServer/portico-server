@@ -9,6 +9,7 @@ import (
 	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
+	"portico.local/server/internal/artworkref"
 	"strings"
 	"testing"
 
@@ -60,8 +61,14 @@ func TestDetailAndPersonArtworkDescriptorsServeSelectedBytes(t *testing.T) {
 			t.Fatalf("%s %s: %d, want %d: %s", method, path, response.StatusCode, want, raw)
 		}
 		if strings.HasPrefix(path, "/v1/metadata/item/") && method == "GET" && strings.Contains(path, "?v=") && token == owner {
-			if !strings.HasPrefix(response.Header.Get("Content-Type"), "image/") || len(raw) == 0 || response.Header.Get("Cache-Control") != "private, max-age=31536000, immutable" {
-				t.Fatal("descriptor did not serve immutable image bytes", response.Header)
+			// A described URL revalidates; the slot a client chose, named by its
+			// token r, is cached for good.
+			want := "private, no-cache"
+			if strings.Contains(path, "&r=") {
+				want = "private, max-age=31536000, immutable"
+			}
+			if !strings.HasPrefix(response.Header.Get("Content-Type"), "image/") || len(raw) == 0 || response.Header.Get("Cache-Control") != want {
+				t.Fatal("descriptor did not serve image bytes with the right lifetime", path, response.Header)
 			}
 		}
 		return raw
@@ -96,9 +103,6 @@ func TestDetailAndPersonArtworkDescriptorsServeSelectedBytes(t *testing.T) {
 		}
 		for _, art := range saved.Snapshot.Artwork {
 			if art.Role == role {
-				if art.Digest == art.Thumbnail {
-					t.Fatal("fixture must distinguish selected and thumbnail versions")
-				}
 				selected[role] = art.Digest
 			}
 		}
@@ -112,8 +116,8 @@ func TestDetailAndPersonArtworkDescriptorsServeSelectedBytes(t *testing.T) {
  SELECT 'portrait-fixture',a.kind,a.entity_id,'portrait','tmdb:42','fixture',candidate.image_id,candidate.origin,candidate.attribution,candidate.source_fence,candidate.observed_at
  FROM artwork_selections a JOIN artwork_candidates candidate ON candidate.id=a.candidate_id
  WHERE a.kind='item' AND a.entity_id=(SELECT id FROM catalog_entities WHERE public_id=pid_blob(?)) AND a.role='poster' AND a.subject=''`, item)
-	c.Exec(`INSERT INTO artwork_selections(kind,entity_id,role,subject,candidate_id,digest,thumbnail_digest,locked,revision,actor,observed_at)
- SELECT kind,entity_id,'portrait','tmdb:42','portrait-fixture',digest,thumbnail_digest,0,1,'fixture','now'
+	c.Exec(`INSERT INTO artwork_selections(kind,entity_id,role,subject,candidate_id,digest,locked,revision,actor,observed_at)
+ SELECT kind,entity_id,'portrait','tmdb:42','portrait-fixture',digest,0,1,'fixture','now'
  FROM artwork_selections WHERE kind='item' AND entity_id=(SELECT id FROM catalog_entities WHERE public_id=pid_blob(?)) AND role='poster' AND subject=''`, item)
 	var portraitDigest string
 	if err := db.QueryRow(`SELECT digest FROM artwork_selections WHERE kind='item' AND entity_id=(SELECT id FROM catalog_entities WHERE public_id=pid_blob(?)) AND role='portrait' AND subject='tmdb:42'`, item).Scan(&portraitDigest); err != nil {
@@ -125,10 +129,16 @@ func TestDetailAndPersonArtworkDescriptorsServeSelectedBytes(t *testing.T) {
 	if err := json.Unmarshal(request("GET", "/v1/items/"+item+"/detail", owner, "", nil), &detail); err != nil {
 		t.Fatal(err)
 	}
+	described, err := artworkref.Load(context.Background(), db, []string{selected["poster"], selected["backdrop"], selected["portrait"]})
+	for _, role := range []string{"poster", "backdrop", "portrait"} {
+		if _, ok := described[selected[role]]; err != nil || !ok {
+			t.Fatal("selected source is not published", role, described, err)
+		}
+	}
 	prefix := "/v1/metadata/item/" + item + "/art/"
-	wantPoster := prefix + "poster?v=" + selected["poster"] + "&w=400"
-	wantBackdrop := prefix + "backdrop?v=" + selected["backdrop"] + "&w=1920"
-	wantPortrait := prefix + "portrait?v=" + selected["portrait"] + "&w=400&subject=tmdb%3A42"
+	wantPoster := prefix + "poster?" + described[selected["poster"]].Query(selected["poster"])
+	wantBackdrop := prefix + "backdrop?" + described[selected["backdrop"]].Query(selected["backdrop"])
+	wantPortrait := prefix + "portrait?" + described[selected["portrait"]].Query(selected["portrait"]) + "&subject=tmdb%3A42"
 	if detail.Item.PosterURL != wantPoster || detail.Item.BackdropURL != wantBackdrop || len(detail.Metadata.Credits) != 1 || detail.Metadata.Credits[0].PortraitURL != wantPortrait {
 		t.Fatal("detail descriptors", detail.Item, detail.Metadata.Credits)
 	}
@@ -167,6 +177,12 @@ func TestDetailAndPersonArtworkDescriptorsServeSelectedBytes(t *testing.T) {
 	for _, path := range []string{wantPoster, wantBackdrop, wantPortrait} {
 		request("GET", path, owner, "", nil)
 		request("GET", path, member, "", nil)
+	}
+	for _, role := range []string{"poster", "backdrop"} {
+		d := described[selected[role]]
+		for size, slot := range map[string]artworkref.Slot{"small": d.Small, "large": d.Large} {
+			request("GET", prefix+role+"?v="+selected[role]+"&size="+size+"&r="+slot.Blob[:artworkref.TokenLength], owner, "", nil)
+		}
 	}
 	request("GET", "/v1/items/"+item+"/detail", member, "", nil)
 }

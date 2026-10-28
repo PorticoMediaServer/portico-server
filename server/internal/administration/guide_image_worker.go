@@ -21,6 +21,7 @@ import (
 	_ "golang.org/x/image/webp"
 	"portico.local/server/internal/atomicfile"
 	"portico.local/server/internal/dbwork"
+	"portico.local/server/internal/metadata"
 	"portico.local/server/internal/storagepaths"
 	"portico.local/server/internal/worker"
 )
@@ -224,27 +225,46 @@ func (s *Service) importGuideImagesBatch(ctx context.Context, source, generation
 			out.Skipped++
 			continue
 		}
-		mime := sniffLogo(raw)
-		sum := sha256.Sum256(raw)
-		digest := hex.EncodeToString(sum[:])
-		root, err := s.guideImageRoot()
+		// The provider original is never kept: the image becomes the two card
+		// slots now, and requests only ever choose between them.
+		small, large, err := metadata.EncodeArtworkSlots(ctx, raw, map[string]bool{"jpeg": true, "png": true, "webp": true})
+		if err != nil {
+			if ctx.Err() != nil {
+				return out, after, false, ctx.Err()
+			}
+			if errors.Is(err, metadata.ErrArtworkCapUnreachableEncoding) {
+				if err = metadata.RecordArtworkRefusal(ctx, s.db, err); err != nil {
+					return out, after, false, err
+				}
+			}
+			if rememberErr := s.rememberLogoFailure(ctx, url); rememberErr != nil {
+				return out, after, false, rememberErr
+			}
+			after = url
+			out.Skipped++
+			continue
+		}
+		smallDigest, err := s.storeGuideImage(small)
 		if err != nil {
 			return out, after, false, err
 		}
-		path := filepath.Join(root, digest+logoExtension(mime))
-		s.files.Lock()
-		if _, err = os.Stat(path); err != nil {
-			// The image is addressed by the digest of its own bytes, so a
-			// reader that finds this name expects exactly these bytes. A
-			// partial write would be a file whose name is a promise it does
-			// not keep.
-			if err = atomicfile.Write(path, raw, 0600); err != nil {
-				s.files.Unlock()
-				return out, after, false, ErrUnavailable
-			}
+		largeDigest, err := s.storeGuideImage(large)
+		if err != nil {
+			return out, after, false, err
 		}
-		s.files.Unlock()
-		if _, err = dbwork.ExecWrite(ctx, s.db, dbwork.ClassBackgroundMedia, `INSERT INTO live_programme_images(url,digest,media_type,width,height,stored_ms) VALUES(?,?,?,?,?,?) ON CONFLICT(url) DO NOTHING`, url, digest, mime, config.Width, config.Height, s.milliseconds()); err != nil {
+		if err = dbwork.WithWriteTx(ctx, s.db, dbwork.ClassBackgroundMedia, func(tx *sql.Tx) error {
+			result, err := tx.ExecContext(ctx, `INSERT INTO live_programme_images(url,small_digest,large_digest,media_type,small_width,small_height,small_bytes,large_width,large_height,large_bytes,stored_ms) VALUES(?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(url) DO NOTHING`, url, smallDigest, largeDigest, large.Mime, small.Width, small.Height, len(small.Data), large.Width, large.Height, len(large.Data), s.milliseconds())
+			if err != nil {
+				return err
+			}
+			if n, _ := result.RowsAffected(); n == 0 {
+				return nil
+			}
+			if err = metadata.RecordArtworkOutcome(ctx, tx, "small", small); err != nil {
+				return err
+			}
+			return metadata.RecordArtworkOutcome(ctx, tx, "large", large)
+		}); err != nil {
 			return out, after, false, err
 		}
 		if _, err = dbwork.ExecWrite(ctx, s.db, dbwork.ClassBackgroundMedia, `DELETE FROM live_logo_failures WHERE url=?`, url); err != nil {
@@ -277,35 +297,51 @@ func (s *Service) guideImageRoot() (string, error) {
 	return root, nil
 }
 
-// GuideImageBytes reads a stored image after the HTTP caller has authorized
-// its programme. A content digest is storage identity, not an access grant.
-func (s *Service) GuideImageBytes(ctx context.Context, digest string) ([]byte, string, error) {
-	if s == nil || s.db == nil {
-		return nil, "", ErrUnavailable
-	}
-	var mime string
-	err := s.db.QueryRowContext(ctx, `SELECT media_type FROM live_programme_images WHERE digest=? LIMIT 1`, digest).Scan(&mime)
-	if errors.Is(err, sql.ErrNoRows) {
-		return nil, "", ErrNotFound
-	}
+// storeGuideImage writes one encoded rendition under the digest of its own
+// bytes. A reader that finds this name expects exactly these bytes, so the
+// write is atomic.
+func (s *Service) storeGuideImage(e metadata.EncodedArtwork) (string, error) {
+	sum := sha256.Sum256(e.Data)
+	digest := hex.EncodeToString(sum[:])
+	root, err := s.guideImageRoot()
 	if err != nil {
-		return nil, "", err
+		return "", err
+	}
+	path := filepath.Join(root, digest+logoExtension(e.Mime))
+	s.files.Lock()
+	defer s.files.Unlock()
+	if _, err = os.Stat(path); err != nil {
+		if err = atomicfile.Write(path, e.Data, 0600); err != nil {
+			return "", ErrUnavailable
+		}
+	}
+	return digest, nil
+}
+
+// GuideImageBytes reads a stored rendition after the HTTP caller has
+// authorized its programme. A content digest is storage identity, not an
+// access grant.
+func (s *Service) GuideImageBytes(ctx context.Context, digest, mime string) ([]byte, error) {
+	if s == nil || s.db == nil {
+		return nil, ErrUnavailable
 	}
 	root, err := s.guideImageRoot()
 	if err != nil {
-		return nil, "", err
+		return nil, err
 	}
 	raw, err := os.ReadFile(filepath.Join(root, digest+logoExtension(mime)))
 	if err != nil {
-		return nil, "", ErrNotFound
+		return nil, ErrNotFound
 	}
-	return raw, mime, nil
+	return raw, nil
 }
 
 // cleanupGuideImages drops stored images no programme icon references any
-// more, then removes the files whose digest no row references. Only names
-// shaped like <64 hex><ext> are ever removed; anything else in the directory
-// is left alone.
+// more (a recording keeps its row through dvr_preserve_programme_image), then
+// removes files that neither rendition column names. The directory is walked
+// in bounded batches, and a file younger than an hour is left for the import
+// that may be about to record it. Only names shaped like <64 hex><ext> are ever
+// removed; anything else in the directory is left alone.
 func (s *Service) cleanupGuideImages(ctx context.Context) {
 	if _, err := dbwork.ExecWrite(ctx, s.db, dbwork.ClassBackgroundMedia,
 		`DELETE FROM live_programme_images WHERE NOT EXISTS(SELECT 1 FROM live_programme_icons i WHERE i.url=live_programme_images.url)`); err != nil {
@@ -316,28 +352,36 @@ func (s *Service) cleanupGuideImages(ctx context.Context) {
 	if err != nil {
 		return
 	}
-	entries, err := os.ReadDir(root)
+	directory, err := os.Open(root)
 	if err != nil {
 		return
 	}
-	for _, entry := range entries {
-		if ctx.Err() != nil {
+	defer directory.Close()
+	cut := time.Now().Add(-time.Hour)
+	for ctx.Err() == nil {
+		entries, err := directory.Readdir(128)
+		for _, entry := range entries {
+			if ctx.Err() != nil {
+				return
+			}
+			if !entry.Mode().IsRegular() || entry.ModTime().After(cut) {
+				continue
+			}
+			digest, ok := guideImageName(entry.Name())
+			if !ok {
+				continue
+			}
+			var referenced bool
+			if err := dbwork.ReadHandle(ctx, s.db).QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM live_programme_images WHERE small_digest=?) OR EXISTS(SELECT 1 FROM live_programme_images WHERE large_digest=?)`, digest, digest).Scan(&referenced); err != nil {
+				log.Printf("guide image cleanup: %v", err)
+				return
+			}
+			if !referenced {
+				_ = os.Remove(filepath.Join(root, entry.Name()))
+			}
+		}
+		if err != nil {
 			return
-		}
-		if entry.IsDir() {
-			continue
-		}
-		digest, ok := guideImageName(entry.Name())
-		if !ok {
-			continue
-		}
-		var referenced bool
-		if err := dbwork.ReadHandle(ctx, s.db).QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM live_programme_images WHERE digest=?)`, digest).Scan(&referenced); err != nil {
-			log.Printf("guide image cleanup: %v", err)
-			return
-		}
-		if !referenced {
-			_ = os.Remove(filepath.Join(root, entry.Name()))
 		}
 	}
 }

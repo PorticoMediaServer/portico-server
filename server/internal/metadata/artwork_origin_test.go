@@ -43,12 +43,12 @@ func TestArtworkAcquisitionUsesOriginalWhilePreviewKeepsProviderSize(t *testing.
 		return &http.Response{StatusCode: 200, Body: io.NopCloser(bytes.NewReader(body)), Header: http.Header{}}, nil
 	})}
 	j := artworkWork{provider: "tmdb", origin: "https://image.tmdb.org/t/p/w780/picture.jpg"}
-	full, thumb, err := s.acquireArtworkObjects(ctx, j)
-	if err != nil || full.width != 2560 || thumb.width != artworkSmallEdge {
-		t.Fatal("full acquisition retained provider thumbnail cap", full.width, thumb.width, err)
+	m, err := s.acquireArtworkMaterial(ctx, j)
+	if err != nil || m.large.width != 2560 || m.small.width != artworkSmallEdge || m.acceptedWidth != 2700 {
+		t.Fatal("full acquisition retained provider thumbnail cap", m.large.width, m.small.width, err)
 	}
 	j.preview = true
-	if _, _, err = s.acquireArtworkObjects(ctx, j); err != nil {
+	if _, err = s.acquireArtworkMaterial(ctx, j); err != nil {
 		t.Fatal(err)
 	}
 	if len(paths) != 2 || paths[0] != "/t/p/original/picture.jpg" || paths[1] != "/t/p/w780/picture.jpg" {

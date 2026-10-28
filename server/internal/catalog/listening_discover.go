@@ -236,6 +236,9 @@ func (s *Service) musicDiscoverPlaylists(r ContentRequest, offset int) (ContentS
 		if err != nil {
 			return sec, err
 		}
+		if err = describeItemArtIn(s, e.ArtworkPaths, func(p *string) *string { return p }); err != nil {
+			return sec, err
+		}
 	}
 	return sec, nil
 }

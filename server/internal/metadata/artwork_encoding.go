@@ -8,7 +8,6 @@ import (
 	"image/color"
 	"image/jpeg"
 	"image/png"
-	"sync/atomic"
 
 	"portico.local/server/internal/imagework"
 )
@@ -19,6 +18,9 @@ const (
 	artworkSmallEdge = 800
 	artworkSmallCap  = 150_000
 	artworkLargeEdge = 1920
+	// A channel logo is one rendition, not a card.
+	artworkLogoEdge = 256
+	artworkLogoCap  = 96_000
 )
 
 // artworkLargeCap is the encoded-byte cap for each permitted large edge.
@@ -35,6 +37,16 @@ var artworkJPEGQualities = []int{90, 82, 75}
 // allowance even at the quality floor. Nothing smaller or softer is published.
 var errArtworkCapUnreachable = errors.New("cap_unreachable")
 
+// artworkCapError is errArtworkCapUnreachable for one slot and format, so the
+// refusal can be counted where it is recorded.
+type artworkCapError struct {
+	slot artworkSlot
+	png  bool
+}
+
+func (e *artworkCapError) Error() string        { return errArtworkCapUnreachable.Error() }
+func (e *artworkCapError) Is(target error) bool { return target == errArtworkCapUnreachable }
+
 // errArtworkEncodedTooLarge stops an encoder once its output passes the
 // allowance, so its buffer never grows past the bytes the slot can publish.
 var errArtworkEncodedTooLarge = errors.New("artwork encoding exceeded its allowance")
@@ -44,51 +56,30 @@ type artworkSlot int
 const (
 	artworkSlotSmall artworkSlot = iota
 	artworkSlotLarge
+	artworkSlotLogo
 )
 
-// artworkEncodingCount is the outcome tally for one slot and format, counted
-// per process. A picture over its cap but within the allowance is an outlier.
-type artworkEncodingCount struct {
-	Within, Outliers, CapUnreachable int64
+func (slot artworkSlot) String() string {
+	return [...]string{"small", "large", "logo"}[slot]
 }
 
-var artworkEncodingTally [2][2]struct{ within, outliers, unreachable atomic.Int64 }
-
-// ArtworkEncodingCounts reports the outcomes since start, keyed by slot
-// ("small", "large") and format ("jpeg", "png").
-func ArtworkEncodingCounts() map[string]map[string]artworkEncodingCount {
-	out := map[string]map[string]artworkEncodingCount{}
-	for slot, name := range []string{"small", "large"} {
-		out[name] = map[string]artworkEncodingCount{}
-		for format, kind := range []string{"jpeg", "png"} {
-			t := &artworkEncodingTally[slot][format]
-			out[name][kind] = artworkEncodingCount{t.within.Load(), t.outliers.Load(), t.unreachable.Load()}
-		}
-	}
-	return out
-}
-
-func countArtworkEncoding(slot artworkSlot, png bool, size, limit int) {
-	format := 0
-	if png {
-		format = 1
-	}
-	t := &artworkEncodingTally[slot][format]
-	switch {
-	case size < 0:
-		t.unreachable.Add(1)
-	case size > limit:
-		t.outliers.Add(1)
-	default:
-		t.within.Add(1)
-	}
+// artworkEncoded is one encoded slot. An outlier is over its cap but inside
+// the 1.5x allowance at the quality floor.
+type artworkEncoded struct {
+	data          []byte
+	mime          string
+	width, height int
+	outlier       bool
 }
 
 // artworkSlotLimits returns the edge and cap for one slot. The large slot
 // follows the captured encoder policy; without one it uses the default edge.
 func artworkSlotLimits(ctx context.Context, slot artworkSlot) (int, int) {
-	if slot == artworkSlotSmall {
+	switch slot {
+	case artworkSlotSmall:
 		return artworkSmallEdge, artworkSmallCap
+	case artworkSlotLogo:
+		return artworkLogoEdge, artworkLogoCap
 	}
 	if policy, ok := ctx.Value(artworkEncodingPolicyKey{}).(artworkEncodingPolicy); ok {
 		return policy.edge, policy.ceiling
@@ -96,32 +87,20 @@ func artworkSlotLimits(ctx context.Context, slot artworkSlot) (int, int) {
 	return artworkLargeEdge, artworkLargeCap[artworkLargeEdge]
 }
 
-// artworkWidthLimits maps a requested serving width to the slot whose cap it
-// keeps: widths up to the small edge are small, the rest are large edges.
-func artworkWidthLimits(width int) (artworkSlot, int) {
-	if width <= artworkSmallEdge {
-		return artworkSlotSmall, artworkSmallCap
-	}
-	if limit, ok := artworkLargeCap[width]; ok {
-		return artworkSlotLarge, limit
-	}
-	return artworkSlotLarge, artworkLargeCap[artworkLargeEdge]
-}
-
 // encodeArtworkSlot encodes one slot from the decoded source: aspect kept,
 // never enlarged, never reduced for bytes. Opaque art is JPEG on the quality
 // ladder; art with transparency is lossless PNG. A result over the cap is kept
 // only within 1.5x the cap, and is counted as an outlier.
-func encodeArtworkSlot(ctx context.Context, source image.Image, slot artworkSlot) ([]byte, int, int, error) {
+func encodeArtworkSlot(ctx context.Context, source image.Image, slot artworkSlot) (artworkEncoded, error) {
 	edge, limit := artworkSlotLimits(ctx, slot)
 	return encodeArtworkWithin(ctx, source, slot, edge, limit)
 }
 
-func encodeArtworkWithin(ctx context.Context, source image.Image, slot artworkSlot, edge, limit int) ([]byte, int, int, error) {
+func encodeArtworkWithin(ctx context.Context, source image.Image, slot artworkSlot, edge, limit int) (artworkEncoded, error) {
 	bounds := source.Bounds()
 	w, h := bounds.Dx(), bounds.Dy()
 	if w < 1 || h < 1 {
-		return nil, 0, 0, errors.New("dimension_limit")
+		return artworkEncoded{}, errors.New("dimension_limit")
 	}
 	if max(w, h) > edge {
 		w = max(1, w*edge/max(bounds.Dx(), bounds.Dy()))
@@ -129,10 +108,10 @@ func encodeArtworkWithin(ctx context.Context, source image.Image, slot artworkSl
 	}
 	scaled := image.NewNRGBA(image.Rect(0, 0, w, h))
 	if err := imagework.CatmullRom(ctx, scaled, source); err != nil {
-		return nil, 0, 0, err
+		return artworkEncoded{}, err
 	}
 	if err := ctx.Err(); err != nil {
-		return nil, 0, 0, err
+		return artworkEncoded{}, err
 	}
 	allowance := limit * 3 / 2
 	// The one output buffer is charged at the allowance up front and never
@@ -142,14 +121,12 @@ func encodeArtworkWithin(ctx context.Context, source image.Image, slot artworkSl
 	if !opaque {
 		err := encodeArtworkPNG(out, scaled)
 		if errors.Is(err, errArtworkEncodedTooLarge) {
-			countArtworkEncoding(slot, true, -1, limit)
-			return nil, 0, 0, errArtworkCapUnreachable
+			return artworkEncoded{}, &artworkCapError{slot, true}
 		}
 		if err != nil {
-			return nil, 0, 0, err
+			return artworkEncoded{}, err
 		}
-		countArtworkEncoding(slot, true, len(out.b), limit)
-		return bytes.Clone(out.b), w, h, nil
+		return artworkEncoded{bytes.Clone(out.b), "image/png", w, h, len(out.b) > limit}, nil
 	}
 	floor := artworkJPEGQualities[len(artworkJPEGQualities)-1]
 	for _, quality := range artworkJPEGQualities {
@@ -157,17 +134,15 @@ func encodeArtworkWithin(ctx context.Context, source image.Image, slot artworkSl
 		err := jpeg.Encode(out, scaled, &jpeg.Options{Quality: quality})
 		overflow := errors.Is(err, errArtworkEncodedTooLarge)
 		if err != nil && !overflow {
-			return nil, 0, 0, err
+			return artworkEncoded{}, err
 		}
 		// The first rung within the cap wins. Only the floor may publish over
 		// the cap, and then only inside the allowance.
 		if !overflow && (len(out.b) <= limit || quality == floor) {
-			countArtworkEncoding(slot, false, len(out.b), limit)
-			return bytes.Clone(out.b), w, h, nil
+			return artworkEncoded{bytes.Clone(out.b), "image/jpeg", w, h, len(out.b) > limit}, nil
 		}
 	}
-	countArtworkEncoding(slot, false, -1, limit)
-	return nil, 0, 0, errArtworkCapUnreachable
+	return artworkEncoded{}, &artworkCapError{slot, false}
 }
 
 // encodeArtworkPNG writes lossless PNG at best compression. When the picture

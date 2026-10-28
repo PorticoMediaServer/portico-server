@@ -8,6 +8,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"portico.local/server/internal/artworkref"
 	"regexp"
 	"strings"
 	"time"
@@ -241,11 +242,11 @@ func decorateTx(ctx context.Context, tx *sql.Tx, o livechannels.Owner, r *Record
 		return e
 	}
 	r.Overlaps = []Overlap{}
-	var digest string
-	if e := tx.QueryRowContext(ctx, `SELECT digest FROM dvr_programme_images WHERE recording_id=?`, r.ID).Scan(&digest); e != nil && !errors.Is(e, sql.ErrNoRows) {
+	var image artworkref.Descriptor
+	if e := tx.QueryRowContext(ctx, `SELECT img.small_digest,img.small_width,img.small_height,img.small_bytes,img.large_digest,img.large_width,img.large_height,img.large_bytes FROM dvr_programme_images d JOIN live_programme_images img ON img.url=d.url WHERE d.recording_id=?`, r.ID).Scan(image.ScanTargets()...); e != nil && !errors.Is(e, sql.ErrNoRows) {
 		return e
 	} else if e == nil {
-		r.Programme.Image = "/v1/dvr/recordings/" + r.ID + "/image"
+		r.Programme.Image = "/v1/dvr/recordings/" + r.ID + "/image?" + image.Slots()
 	}
 	r.Watched = nil
 	if r.ItemID == "" {

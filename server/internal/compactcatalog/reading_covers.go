@@ -5,11 +5,13 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"portico.local/server/internal/artworkref"
 )
 
-// ReadingCoverDigestsTx projects ready selected covers for an already admitted
-// bounded set of entities. It supplies no visibility or source-access grant.
-func ReadingCoverDigestsTx(ctx context.Context, tx *sql.Tx, entities []int64) (map[int64]string, error) {
+// ReadingCoverQueriesTx projects ready selected covers for an already admitted
+// bounded set of entities, as the artwork query naming each cover's source and
+// describing its two slots. It supplies no visibility or source-access grant.
+func ReadingCoverQueriesTx(ctx context.Context, tx *sql.Tx, entities []int64) (map[int64]string, error) {
 	out := map[int64]string{}
 	if len(entities) == 0 {
 		return out, nil
@@ -21,9 +23,8 @@ func ReadingCoverDigestsTx(ctx context.Context, tx *sql.Tx, entities []int64) (m
 	if err != nil {
 		return nil, err
 	}
-	rows, err := tx.QueryContext(ctx, `SELECT a.entity_id,o.digest FROM json_each(?) selected
- CROSS JOIN artwork_selections a ON a.kind='item' AND a.entity_id=selected.value AND a.role='cover' AND a.subject=''
- JOIN artwork_objects o ON o.digest=a.digest AND o.status='ready'`, string(encoded))
+	rows, err := tx.QueryContext(ctx, `SELECT a.entity_id,a.digest,`+artworkref.Columns+` FROM json_each(?) selected
+ CROSS JOIN artwork_selections a ON a.kind='item' AND a.entity_id=selected.value AND a.role='cover' AND a.subject=''`+artworkref.Joins("a.digest"), string(encoded))
 	if err != nil {
 		return nil, err
 	}
@@ -31,10 +32,11 @@ func ReadingCoverDigestsTx(ctx context.Context, tx *sql.Tx, entities []int64) (m
 	for rows.Next() {
 		var entity int64
 		var digest string
-		if err = rows.Scan(&entity, &digest); err != nil {
+		var d artworkref.Descriptor
+		if err = rows.Scan(append([]any{&entity, &digest}, d.ScanTargets()...)...); err != nil {
 			return nil, err
 		}
-		out[entity] = digest
+		out[entity] = d.Query(digest)
 	}
 	return out, rows.Err()
 }

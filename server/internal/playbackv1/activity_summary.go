@@ -166,7 +166,7 @@ func enrichActivityItems(ctx context.Context, tx *sql.Tx, items []AdminSession, 
  SELECT c.public_id,a.kind,pid(e.public_id) art_id,a.role,a.digest,
  row_number() OVER(PARTITION BY c.public_id,CASE a.role WHEN 'backdrop' THEN 'backdrop' WHEN 'cover' THEN 'square' WHEN 'square' THEN 'square' ELSE 'poster' END ORDER BY c.priority,a.role) rank
  FROM candidates c CROSS JOIN artwork_selections a ON a.kind=c.kind AND a.entity_id=c.entity_id AND a.subject='' AND a.role IN('poster','backdrop','cover','square')
- CROSS JOIN artwork_objects o ON o.digest=a.digest AND o.status='ready' CROSS JOIN catalog_entities e ON e.id=a.entity_id
+ CROSS JOIN artwork_sources o ON o.digest=a.digest CROSS JOIN catalog_entities e ON e.id=a.entity_id
  ) SELECT public_id,kind,art_id,role,digest FROM ranked WHERE rank=1 ORDER BY public_id,role`, string(raw))
 	if err != nil {
 		return err

@@ -27,9 +27,9 @@ func TestLocalArtworkCandidatesKeepMultiplicityFencesAndOwnerPick(t *testing.T) 
  VALUES('image-object',?,?,?,'Film (2000).mkv','r1','{}',1,1)`, source.ID, item.Token, source.Incarnation)
 	primary := strings.Repeat("c", 64)
 	c.Exec(`INSERT INTO local_artwork(library_id,kind,entity_id,role,art_key,observed_at) VALUES('m','item',?,'poster',?,'now')`, item.ID, primary)
-	c.Exec(`INSERT INTO artwork_objects(digest,mime,width,height,bytes,created_at) VALUES(?,'image/jpeg',1,1,1,'now')`, primary)
+	c.Exec(`INSERT INTO artwork_blobs(digest,mime,width,height,bytes,created_at) VALUES(?,'image/jpeg',1,1,1,'now'); INSERT OR IGNORE INTO artwork_sources(digest,accepted_mime,accepted_width,accepted_height,small_blob,large_blob,ambient_blob,large_edge,small_outlier,large_outlier,encoder_revision,created_at) SELECT digest,mime,width,height,digest,digest,digest,1920,0,0,1,created_at FROM artwork_blobs`, primary)
 	c.Exec(`INSERT INTO artwork_candidates(id,kind,entity_id,role,provider,image_id,origin,attribution,source_fence,observed_at) VALUES('owner-image','item',?,'poster','local','primary',?,'Local file','fence','now')`, item.ID, "local:"+primary)
-	c.Exec(`INSERT INTO artwork_selections(kind,entity_id,role,candidate_id,digest,thumbnail_digest,locked,actor,observed_at) VALUES('item',?,'poster','owner-image',?,?,1,'owner','now')`, item.ID, primary, primary)
+	c.Exec(`INSERT INTO artwork_selections(kind,entity_id,role,candidate_id,digest,locked,actor,observed_at) SELECT column1,column2,column3,column4,column5,column7,column8,column9 FROM (VALUES('item',?,'poster','owner-image',?,?,1,'owner','now'))`, item.ID, primary, primary)
 	a, b := strings.Repeat("a", 64), strings.Repeat("b", 64)
 	candidates := []assets.LocalArtworkCandidate{{Slot: "item/poster", Key: b}, {Slot: "item/poster", Key: a}, {Slot: "item/poster", Key: a}}
 	write := func(binding LibrarySource, revision, kind string, values []assets.LocalArtworkCandidate) error {

@@ -127,10 +127,13 @@ func TestArtworkSizeRefreshReacquiresExactSelectionWithoutOwnerAuthority(t *test
 	}
 	var current, digest string
 	var after int64
-	if err := db.QueryRow(`SELECT candidate_id,digest,revision,actor,locked FROM artwork_selections WHERE entity_id=? AND role='poster'`, entity).Scan(&current, &digest, &after, &actor, &locked); err != nil || current != candidate || digest == oldDigest || after != revision+1 || actor != "local:owner:profile" || !locked || requests != 2 {
-		t.Fatal(current, digest, after, actor, locked, requests, err)
+	// The same accepted bytes are the same source: only its large slot is
+	// re-made, and the selection moves to a new revision.
+	var largeEdge int
+	if err := db.QueryRow(`SELECT a.candidate_id,a.digest,a.revision,a.actor,a.locked,o.large_edge FROM artwork_selections a JOIN artwork_sources o ON o.digest=a.digest WHERE a.entity_id=? AND a.role='poster'`, entity).Scan(&current, &digest, &after, &actor, &locked, &largeEdge); err != nil || current != candidate || digest != oldDigest || largeEdge != 2560 || after <= revision || actor != "local:owner:profile" || !locked || requests != 2 {
+		t.Fatal(current, digest, after, actor, locked, largeEdge, requests, err)
 	}
-	f, _, err := restarted.EntityArtworkVariant(ctx, target, "poster", "", 2560, digest)
+	f, _, err := restarted.EntityArtworkVariant(ctx, target, "poster", "", ArtworkLarge, digest)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -145,6 +148,31 @@ func TestArtworkSizeRefreshReacquiresExactSelectionWithoutOwnerAuthority(t *test
 	}
 	if got := integrationValue(t, db, `SELECT count(*) FROM metadata_artwork_size_requests`); got != "0" {
 		t.Fatal("completed request retained", got)
+	}
+}
+
+// A source whose accepted image was no larger than its large slot gains
+// nothing from a bigger edge, and is not fetched again.
+func TestArtworkSizeRefreshSkipsSourcesThatCannotGrow(t *testing.T) {
+	s, db, _, _ := integrationScreen(t)
+	ctx := context.Background()
+	s.artClient = &http.Client{Transport: roundTripFunc(func(*http.Request) (*http.Response, error) {
+		return &http.Response{StatusCode: 200, Body: io.NopCloser(bytes.NewReader(p08cPNG(t, 20, 20))), Header: http.Header{}}, nil
+	})}
+	if err := s.ScreenStep(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.ArtworkStep(ctx); err != nil {
+		t.Fatal(err)
+	}
+	saveArtworkEdge(t, s, 2560)
+	for n := 0; n < 2; n++ {
+		if err := s.GlobalArtworkSizeStep(ctx); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if got := integrationValue(t, db, `SELECT count(*) FROM artwork_jobs WHERE size_refresh=1`); got != "0" {
+		t.Fatal("a source that cannot grow was fetched again", got)
 	}
 }
 
@@ -192,8 +220,9 @@ func TestArtworkSizeRefreshRetainsWorkerFailureBudget(t *testing.T) {
 	ctx := context.Background()
 	now := time.Now().UTC()
 	s.now = func() time.Time { return now }
+	body := editorJPEG(t, 2700, 1080)
 	s.artClient = &http.Client{Transport: roundTripFunc(func(*http.Request) (*http.Response, error) {
-		return &http.Response{StatusCode: 200, Body: io.NopCloser(bytes.NewReader(p08cPNG(t, 20, 20))), Header: http.Header{}}, nil
+		return &http.Response{StatusCode: 200, Body: io.NopCloser(bytes.NewReader(body)), Header: http.Header{}}, nil
 	})}
 	if err := s.ScreenStep(ctx); err != nil {
 		t.Fatal(err)
@@ -232,7 +261,7 @@ func TestArtworkSizeSweepIsBoundedAndIdleDoesNotWrite(t *testing.T) {
 	}
 	// Generated pictures are deliberately ineligible for this acquisition lane.
 	// A large real selection set still advances at most one 32-row page.
-	integrationExec(t, db, `UPDATE artwork_candidates SET provider='generated'; WITH RECURSIVE n(x) AS(VALUES(1) UNION ALL SELECT x+1 FROM n WHERE x<40) INSERT INTO artwork_selections SELECT kind,entity_id,role,printf('%03d',x),candidate_id,digest,thumbnail_digest,locked,revision,actor,observed_at FROM artwork_selections CROSS JOIN n WHERE subject=''`)
+	integrationExec(t, db, `UPDATE artwork_candidates SET provider='generated'; WITH RECURSIVE n(x) AS(VALUES(1) UNION ALL SELECT x+1 FROM n WHERE x<40) INSERT INTO artwork_selections SELECT kind,entity_id,role,printf('%03d',x),candidate_id,digest,locked,revision,actor,observed_at FROM artwork_selections CROSS JOIN n WHERE subject=''`)
 	saveArtworkEdge(t, s, 2560)
 	if err := s.GlobalArtworkSizeStep(ctx); err != nil {
 		t.Fatal(err)

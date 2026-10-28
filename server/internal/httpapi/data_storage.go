@@ -19,6 +19,15 @@ func registerDataStorage(registry *apikit.Registry, d Dependencies) {
 		if d.StorageLayout == nil {
 			return storagepaths.Usage{}, &apierror.Error{Code: "not_found"}
 		}
+		// The maintained snapshot the storage care page also reads; a server
+		// assembled without it measures directly.
+		if d.Administration != nil && d.Administration.DataUsage != nil {
+			out, err := d.Administration.DataStorageUsage(ctx)
+			if err != nil {
+				return out, &apierror.Error{Code: "internal", Cause: err}
+			}
+			return out, nil
+		}
 		var mounts []storagepaths.Mount
 		if file, err := os.Open("/proc/self/mountinfo"); err == nil {
 			mounts = storagepaths.ParseMountInfo(file)

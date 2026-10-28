@@ -76,12 +76,12 @@ func ResolveReadingSavedGroupTx(ctx context.Context, tx *sql.Tx, viewer Viewer, 
 	if first == "" || first != last || !utf8.ValidString(first) || len(first) > 1<<20 || !utf8.ValidString(out.Title) || out.Title == "" || utf8.RuneCountInString(out.Title) > 4096 || out.Count < 1 || out.Count > 9007199254740991 {
 		return ReadingSavedGroupProjection{}, ErrReadingProjectionChanged
 	}
-	covers, err := compactcatalog.ReadingCoverDigestsTx(ctx, tx, []int64{entity})
+	covers, err := compactcatalog.ReadingCoverQueriesTx(ctx, tx, []int64{entity})
 	if err != nil {
 		return out, err
 	}
 	if digest := covers[entity]; digest != "" {
-		out.PosterURL = "/v1/items/" + url.PathEscape(public) + "/art/cover?v=" + digest
+		out.PosterURL = "/v1/items/" + url.PathEscape(public) + "/art/cover?" + digest
 	}
 	out.Proof = ReadingSavedGroupProof{Key: first, ViewerFence: viewer.Fence}
 	out.GenerationFence = scope.fence()

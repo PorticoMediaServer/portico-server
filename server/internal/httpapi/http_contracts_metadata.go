@@ -28,7 +28,7 @@ func registerMetadataHTTPContracts(registry *apikit.Registry) error {
 		return err
 	}
 	// internal/httpapi/metadata_repair.go:102
-	if err := apikit.RegisterHTTP[struct{}, SubtitleBytesContract](registry, apikit.Metadata{ID: "get_metadata_kind_id_art_role", Method: "GET", Path: "/v1/metadata/{kind}/{id}/art/{role}", Summary: "Read metadata art", Access: apikit.Admin, AdminScope: "metadata", Requires: apikit.ScopeRead, Lane: apikit.Media, Admission: laneMedia, Cost: apikit.PageSized, BodyLimit: 0, Status: 200, Query: []string{"candidate", "size", "subject", "v", "w"}, ResponseContentType: "application/octet-stream", Errors: []string{"invalid_request", "unauthorized", "not_permitted", "not_found", "internal"}}); err != nil {
+	if err := apikit.RegisterHTTP[struct{}, SubtitleBytesContract](registry, apikit.Metadata{ID: "get_metadata_kind_id_art_role", Method: "GET", Path: "/v1/metadata/{kind}/{id}/art/{role}", Summary: "Read metadata art", Access: apikit.Admin, AdminScope: "metadata", Requires: apikit.ScopeRead, Lane: apikit.Media, Admission: laneMedia, Cost: apikit.PageSized, BodyLimit: 0, Status: 200, Query: []string{"candidate", "ld", "r", "sd", "size", "subject", "v", "w"}, ResponseContentType: "application/octet-stream", Errors: []string{"invalid_request", "unauthorized", "not_permitted", "not_found", "internal"}}); err != nil {
 		return err
 	}
 	// internal/httpapi/musicbrainz.go:12

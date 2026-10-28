@@ -3,6 +3,7 @@ package catalog
 import (
 	"context"
 	"database/sql"
+	"portico.local/server/internal/artworkref"
 	"strings"
 	"testing"
 
@@ -27,9 +28,9 @@ func TestMusicAlbumBackgroundUsesNormalAutomaticSourceAndPreservesOwner(t *testi
 		return nil
 	})
 	digest := strings.Repeat("a", 64)
-	c.Exec(`INSERT INTO artwork_objects(digest,mime,width,height,bytes,created_at) VALUES(?,'image/jpeg',1,1,1,'now')`, digest)
+	c.Exec(`INSERT INTO artwork_blobs(digest,mime,width,height,bytes,created_at) VALUES(?,'image/jpeg',1,1,1,'now'); INSERT OR IGNORE INTO artwork_sources(digest,accepted_mime,accepted_width,accepted_height,small_blob,large_blob,ambient_blob,large_edge,small_outlier,large_outlier,encoder_revision,created_at) SELECT digest,mime,width,height,digest,digest,digest,1920,0,0,1,created_at FROM artwork_blobs`, digest)
 	c.Exec(`INSERT INTO artwork_candidates(id,kind,entity_id,role,provider,image_id,origin,attribution,source_fence,observed_at) VALUES('owned-background','album',?,'backdrop','local','owner','local:owner-background','Local file','fence','now')`, album.ID)
-	c.Exec(`INSERT INTO artwork_selections(kind,entity_id,role,candidate_id,digest,thumbnail_digest,locked,actor,observed_at) VALUES('album',?,'backdrop','owned-background',?,?,1,'owner','now')`, album.ID, digest, digest)
+	c.Exec(`INSERT INTO artwork_selections(kind,entity_id,role,candidate_id,digest,locked,actor,observed_at) SELECT column1,column2,column3,column4,column5,column7,column8,column9 FROM (VALUES('album',?,'backdrop','owned-background',?,?,1,'owner','now'))`, album.ID, digest, digest)
 	c.Write(func(ctx context.Context, tx *sql.Tx) error {
 		return musicAlbumBackdropTx(ctx, tx, album.ID, map[string]string{"album/backdrop": "artist-fallback"})
 	})
@@ -38,7 +39,8 @@ func TestMusicAlbumBackgroundUsesNormalAutomaticSourceAndPreservesOwner(t *testi
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := selectedArtworkURL("album", album.Public, "backdrop", "", digest, 1920)
+	fixture := artworkref.Slot{Blob: digest, Width: 1, Height: 1, Bytes: 1}
+	want := selectedArtworkURL("album", album.Public, "backdrop", "", digest, artworkref.Descriptor{Small: fixture, Large: fixture})
 	if got[target].BackdropURL != want {
 		t.Fatal("automatic art displaced actual owner selection", got[target], want)
 	}
@@ -66,9 +68,9 @@ func TestMusicAlbumBackgroundChangeRetiresOnlyAutomaticSelectionAndLease(t *test
 			if owner {
 				actor = "owner"
 			}
-			c.Exec(`INSERT INTO artwork_objects(digest,mime,width,height,bytes,created_at) VALUES(?,'image/jpeg',1,1,1,'now')`, digest)
+			c.Exec(`INSERT INTO artwork_blobs(digest,mime,width,height,bytes,created_at) VALUES(?,'image/jpeg',1,1,1,'now'); INSERT OR IGNORE INTO artwork_sources(digest,accepted_mime,accepted_width,accepted_height,small_blob,large_blob,ambient_blob,large_edge,small_outlier,large_outlier,encoder_revision,created_at) SELECT digest,mime,width,height,digest,digest,digest,1920,0,0,1,created_at FROM artwork_blobs`, digest)
 			c.Exec(`INSERT INTO artwork_candidates(id,kind,entity_id,role,provider,image_id,origin,attribution,source_fence,observed_at) VALUES('old-background','album',?,'backdrop','local','old','local:old-background','Local file','fence','now')`, album.ID)
-			c.Exec(`INSERT INTO artwork_selections(kind,entity_id,role,candidate_id,digest,thumbnail_digest,locked,actor,observed_at) VALUES('album',?,'backdrop','old-background',?,?,?,?,'now')`, album.ID, digest, digest, owner, actor)
+			c.Exec(`INSERT INTO artwork_selections(kind,entity_id,role,candidate_id,digest,locked,actor,observed_at) SELECT column1,column2,column3,column4,column5,column7,column8,column9 FROM (VALUES('album',?,'backdrop','old-background',?,?,?,?,'now'))`, album.ID, digest, digest, owner, actor)
 			c.Exec(`INSERT INTO artwork_jobs(id,kind,entity_id,role,candidate_id,origin,provider,source_fence,status,lease,lease_until,actor,locked,created_at) VALUES('old-job','album',?,'backdrop','old-background','local:old-background','local','fence','running','old-lease','later',?,?,'now')`, album.ID, actor, owner)
 			c.Write(func(ctx context.Context, tx *sql.Tx) error {
 				return musicAlbumBackdropTx(ctx, tx, album.ID, map[string]string{"album/backdrop": "new-background"})
@@ -95,7 +97,7 @@ func TestMusicAlbumBackgroundChangeRetiresOnlyAutomaticSelectionAndLease(t *test
 			if err := c.DB.QueryRow(`SELECT backdrop_url FROM catalog_item_details WHERE entity_id=?`, album.ID).Scan(&field); err != nil || field != "local:new-background" {
 				t.Fatal(field, err)
 			}
-			if rows(t, c, `SELECT count(*) FROM artwork_objects WHERE digest=?`, digest) != 1 {
+			if rows(t, c, `SELECT count(*) FROM artwork_blobs WHERE digest=?`, digest) != 1 {
 				t.Fatal("replacement removed retained art bytes")
 			}
 		})

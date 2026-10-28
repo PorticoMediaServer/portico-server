@@ -18,11 +18,10 @@ func selectSearchGenreArt(t *testing.T, c *catalogtest.Catalog, item catalogtest
 	t.Helper()
 	key := fmt.Sprintf("genre-%d-%s", item.ID, role)
 	digest := fmt.Sprintf("%x", sha256.Sum256([]byte(key)))
-	c.Exec(`INSERT INTO artwork_objects VALUES(?,'image/jpeg',1920,1080,100,'now','ready')`, digest)
+	c.Exec(`INSERT INTO artwork_blobs(digest,mime,width,height,bytes,created_at,status) VALUES(?,'image/jpeg',1920,1080,100,'now','ready'); INSERT OR IGNORE INTO artwork_sources(digest,accepted_mime,accepted_width,accepted_height,small_blob,large_blob,ambient_blob,large_edge,small_outlier,large_outlier,encoder_revision,created_at) SELECT digest,mime,width,height,digest,digest,digest,1920,0,0,1,created_at FROM artwork_blobs`, digest)
 	c.Exec(`INSERT INTO artwork_candidates(id,kind,entity_id,role,subject,provider,image_id,origin,attribution,source_fence,observed_at)
 	 VALUES(?,?,?,?,'','fixture',?,'local','fixture','fence','now')`, key, kind, item.ID, role, key)
-	c.Exec(`INSERT INTO artwork_selections(kind,entity_id,role,subject,candidate_id,digest,thumbnail_digest,locked,revision,actor,observed_at)
-	 VALUES(?,?,?,'',?,?,?,0,1,'fixture','now')`, kind, item.ID, role, key, digest, digest)
+	c.Exec(`INSERT INTO artwork_selections(kind,entity_id,role,subject,candidate_id,digest,locked,revision,actor,observed_at) SELECT column1,column2,column3,column4,column5,column6,column8,column9,column10,column11 FROM (VALUES(?,?,?,'',?,?,?,0,1,'fixture','now'))`, kind, item.ID, role, key, digest, digest)
 	return digest
 }
 
@@ -193,8 +192,8 @@ func TestSearchGenresRuling36CountsOrderAndRepresentativeArt(t *testing.T) {
 	if _, err = s.SearchGenres(otherViewer, SearchGenreRequest{Limit: 2, Cursor: short.NextCursor}); !errors.Is(err, ErrCursor) {
 		t.Fatal("cursor crossed an authority fence", err)
 	}
-	// A cached counted list must still check actual ready bytes in this snapshot.
-	c.Exec(`UPDATE artwork_objects SET status='deleting' WHERE digest=(SELECT digest FROM artwork_selections WHERE entity_id=? AND role='backdrop')`, items["a"].ID)
+	// A cached counted list must still follow the current selections.
+	c.Exec(`DELETE FROM artwork_selections WHERE entity_id=? AND role='backdrop'`, items["a"].ID)
 	withoutReady, err := s.SearchGenres(viewer, SearchGenreRequest{})
 	if err != nil || withoutReady.Genres[0].Backdrop == nil || withoutReady.Genres[0].Backdrop.ID != items["b"].Public {
 		t.Fatal("cached art outlived readiness", withoutReady, err)

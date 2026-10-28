@@ -98,7 +98,7 @@ func TestEpisodeThumbnailPublicationSelectsExactlyOneActualEpisode(t *testing.T)
 	if err = c.DB.QueryRow(`SELECT COUNT(*) FROM artwork_selections WHERE kind='item' AND entity_id=?`, c.ID(second.ID)).Scan(&count); err != nil || count != 0 {
 		t.Fatalf("another episode changed: %d %v", count, err)
 	}
-	file, _, err := s.EntityArtworkVariant(ctx, first, "still", "", 800, "")
+	file, _, err := s.EntityArtworkVariant(ctx, first, "still", "", ArtworkSmall, "")
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -565,7 +565,7 @@ func (s *Service) keepLooseEpisode(ctx context.Context, library string, in Atten
 
 // Candidate previews use the existing allowlisted artwork worker. Listing a
 // candidate never fetches its image or makes a browser contact the provider.
-func (s *Service) PreviewAttentionArtwork(ctx context.Context, t RepairTarget, key string, width int, authorize func(*sql.Tx) error) (*os.File, string, error) {
+func (s *Service) PreviewAttentionArtwork(ctx context.Context, t RepairTarget, key string, size ArtworkSize, authorize func(*sql.Tx) error) (*os.File, string, error) {
 	var candidate string
 	err := dbwork.WithWriteTx(ctx, s.db, dbwork.ClassInteractive, func(tx *sql.Tx) error {
 		if authorize == nil {
@@ -617,7 +617,7 @@ func (s *Service) PreviewAttentionArtwork(ctx context.Context, t RepairTarget, k
 	if err != nil {
 		return nil, "", err
 	}
-	return s.PreviewArtwork(ctx, t, candidate, width)
+	return s.PreviewArtwork(ctx, t, candidate, size)
 }
 
 func init() {

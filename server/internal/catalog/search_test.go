@@ -79,9 +79,9 @@ func TestSearchGroupsPagingAndIndexUpdates(t *testing.T) {
 	c.Song(album, 1, "/mu/song.flac", "Harbor Song")
 	movieFixtures := searchBulkMovies(t, c, movies, "/m", 43, func(i int) string { return fmt.Sprintf("Harbor Movie %02d", i) })
 	selected, thumb := strings.Repeat("a", 64), strings.Repeat("b", 64)
-	c.Exec(`INSERT INTO artwork_objects VALUES(?, 'image/png',1920,1280,100,'now','ready'),(?, 'image/png',400,267,50,'now','ready')`, selected, thumb)
+	c.Exec(`INSERT INTO artwork_blobs(digest,mime,width,height,bytes,created_at,status) VALUES(?, 'image/png',1920,1280,100,'now','ready'),(?, 'image/png',400,267,50,'now','ready'); INSERT OR IGNORE INTO artwork_sources(digest,accepted_mime,accepted_width,accepted_height,small_blob,large_blob,ambient_blob,large_edge,small_outlier,large_outlier,encoder_revision,created_at) SELECT digest,mime,width,height,digest,digest,digest,1920,0,0,1,created_at FROM artwork_blobs`, selected, thumb)
 	c.Exec(`INSERT INTO artwork_candidates(id,kind,entity_id,role,subject,provider,image_id,origin,attribution,source_fence,observed_at) VALUES('search-poster','show',?,'poster','','fixture','show','local','fixture','fence','now')`, show.ID)
-	c.Exec(`INSERT INTO artwork_selections(kind,entity_id,role,subject,candidate_id,digest,thumbnail_digest,locked,revision,actor,observed_at) VALUES('show',?,'poster','','search-poster',?,?,0,1,'fixture','now')`, show.ID, selected, thumb)
+	c.Exec(`INSERT INTO artwork_selections(kind,entity_id,role,subject,candidate_id,digest,locked,revision,actor,observed_at) SELECT column1,column2,column3,column4,column5,column6,column8,column9,column10,column11 FROM (VALUES('show',?,'poster','','search-poster',?,?,0,1,'fixture','now'))`, show.ID, selected, thumb)
 	c.Drain()
 	s := New(db)
 	libraries := []string{"m", "tv", "an", "music", "b"}
@@ -102,7 +102,7 @@ func TestSearchGroupsPagingAndIndexUpdates(t *testing.T) {
 			}
 			found := false
 			for _, item := range group.Items {
-				if item.ID == wanted && strings.Contains(item.PosterURL, "v="+selected+"&w=400") {
+				if item.ID == wanted && strings.Contains(item.PosterURL, "?"+fixtureArtQuery(selected, 1920, 1280, 100)) {
 					found = true
 				}
 			}

@@ -66,28 +66,17 @@ func TestArtworkFortyCardReadLatency(t *testing.T) {
 		if err := jpeg.Encode(&encoded, img, &jpeg.Options{Quality: 82}); err != nil {
 			t.Fatal(err)
 		}
-		object, err := s.installArtwork(encoded.Bytes(), 800, 1200)
-		if err != nil {
-			t.Fatal(err)
-		}
+		object := publishTestArtwork(t, s, encoded.Bytes(), "2026-09-23T00:00:00Z")
 		candidate := "candidate-" + id
-		if _, err = db.Exec(`INSERT INTO artwork_objects VALUES(?,'image/jpeg',800,1200,?,'2026-09-23T00:00:00Z','ready')`, object.digest, object.size); err != nil {
-			t.Fatal(err)
-		}
 		if _, err = db.Exec(`INSERT INTO artwork_candidates(id,kind,entity_id,role,subject,provider,image_id,origin,attribution,source_fence,observed_at)
 			VALUES(?,'item',?,'poster','','fixture',?,'local','fixture','bench','2026-09-23T00:00:00Z')`, candidate, entity, id); err != nil {
 			t.Fatal(err)
 		}
-		if _, err = db.Exec(`INSERT INTO artwork_selections(kind,entity_id,role,subject,candidate_id,digest,thumbnail_digest,locked,revision,actor,observed_at)
-			VALUES('item',?,'poster','',?,?,?,0,1,'fixture','2026-09-23T00:00:00Z')`, entity, candidate, object.digest, object.digest); err != nil {
+		// Arrival made both slots; the timing is the read path an actual card
+		// load takes after the import has completed.
+		if _, err = db.Exec(`INSERT INTO artwork_selections(kind,entity_id,role,subject,candidate_id,digest,locked,revision,actor,observed_at)
+			VALUES('item',?,'poster','',?,?,0,1,'fixture','2026-09-23T00:00:00Z')`, entity, candidate, object.source); err != nil {
 			t.Fatal(err)
-		}
-		// Import pre-generates 400 and 800; the timing is the read path an
-		// actual card load takes after the import has completed.
-		for _, width := range []int{400, 800} {
-			if err = s.ensureArtworkVariant(ctx, object.digest, width, ""); err != nil {
-				t.Fatal(err)
-			}
 		}
 		targets = append(targets, RepairTarget{"item", public})
 	}
@@ -95,7 +84,7 @@ func TestArtworkFortyCardReadLatency(t *testing.T) {
 		start := time.Now()
 		var bytesRead int64
 		for _, target := range targets {
-			file, mime, err := s.EntityArtworkVariant(ctx, target, "poster", "", 400, "")
+			file, mime, err := s.EntityArtworkVariant(ctx, target, "poster", "", ArtworkSmall, "")
 			if err != nil || mime != "image/jpeg" {
 				t.Fatalf("%s: %s %v", target.ID, mime, err)
 			}
@@ -113,5 +102,5 @@ func TestArtworkFortyCardReadLatency(t *testing.T) {
 	if firstBytes != repeatBytes {
 		t.Fatal("immutable card bytes changed between reads")
 	}
-	t.Logf("40 cards (400 px) selected variant open+stream: first=%s repeat=%s bytes=%d", first, repeat, firstBytes)
+	t.Logf("40 cards (small slot) selected variant open+stream: first=%s repeat=%s bytes=%d", first, repeat, firstBytes)
 }

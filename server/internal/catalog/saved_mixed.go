@@ -246,7 +246,7 @@ func (s *Service) savedMixedCards(r ContentRequest, rows []savedMixedRow, scope 
 		}
 		byID[entry.ID] = entry
 	}
-	covers, err := compactcatalog.ReadingCoverDigestsTx(s.Context(), s.readTxOrSnapshot(), coverIDs)
+	covers, err := compactcatalog.ReadingCoverQueriesTx(s.Context(), s.readTxOrSnapshot(), coverIDs)
 	if err != nil {
 		return nil, err
 	}
@@ -278,7 +278,7 @@ func (s *Service) savedMixedCards(r ContentRequest, rows []savedMixedRow, scope 
 				return nil, ErrReadingProjectionChanged
 			}
 			if digest := covers[row.Cover]; digest != "" {
-				card.PosterURL = "/v1/items/" + url.PathEscape(row.CoverPublic) + "/art/cover?v=" + digest
+				card.PosterURL = "/v1/items/" + url.PathEscape(row.CoverPublic) + "/art/cover?" + digest
 			}
 		}
 		cards = append(cards, SavedCard{ReadingGroup: card})

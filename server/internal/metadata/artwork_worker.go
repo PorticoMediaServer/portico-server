@@ -1,13 +1,11 @@
 package metadata
 
 import (
-	"bytes"
 	"context"
 	"crypto/sha256"
 	"database/sql"
 	"encoding/hex"
 	"errors"
-	"image"
 	"io"
 	"net"
 	"net/http"
@@ -26,7 +24,6 @@ import (
 	"portico.local/server/internal/dbwork"
 	"portico.local/server/internal/diskspace"
 	"portico.local/server/internal/identity"
-	"portico.local/server/internal/imagework"
 	"portico.local/server/internal/metadataprovider"
 )
 
@@ -206,87 +203,11 @@ type artworkInstalled struct {
 	raw []byte
 }
 
-func normalizeArtwork(raw []byte) ([]byte, []byte, int, int, error) {
-	return normalizeArtworkFormats(raw, map[string]bool{"jpeg": true, "png": true})
-}
-
-func normalizeArtworkFormats(raw []byte, allowed map[string]bool) ([]byte, []byte, int, int, error) {
-	return normalizeArtworkFormatsContext(context.Background(), raw, allowed)
-}
-
-func normalizeArtworkFormatsContext(ctx context.Context, raw []byte, allowed map[string]bool) ([]byte, []byte, int, int, error) {
-	config, format, err := image.DecodeConfig(bytes.NewReader(raw))
-	if err != nil || !allowed[format] {
-		return nil, nil, 0, 0, errors.New("unsupported_image")
-	}
-	if config.Width < 1 || config.Height < 1 || config.Width > 10000 || config.Height > 10000 || int64(config.Width)*int64(config.Height) > 24000000 {
-		return nil, nil, 0, 0, errors.New("dimension_limit")
-	}
-	release, err := imagework.Acquire(ctx)
-	if err != nil {
-		return nil, nil, 0, 0, err
-	}
-	defer release()
-	decoded, _, err := image.Decode(bytes.NewReader(raw))
-	if err != nil {
-		return nil, nil, 0, 0, errors.New("malformed_image")
-	}
-	if err = ctx.Err(); err != nil {
-		return nil, nil, 0, 0, err
-	}
-	if decoded.Bounds().Dx() != config.Width || decoded.Bounds().Dy() != config.Height {
-		return nil, nil, 0, 0, errors.New("dimension_limit")
-	}
-	// One decode makes both slots; the provider original is never kept.
-	large, w, h, err := encodeArtworkSlot(ctx, decoded, artworkSlotLarge)
-	if err != nil {
-		return nil, nil, 0, 0, err
-	}
-	small, _, _, err := encodeArtworkSlot(ctx, decoded, artworkSlotSmall)
-	if err == nil {
-		err = ctx.Err()
-	}
-	return large, small, w, h, err
-}
-
 // ErrArtworkSpace is a refusal, not a failure: the image is fine, the volume is
 // not. The work stays queued and runs once there is room, because artwork that
 // fills the disk holding server.sqlite costs far more than artwork that arrives
 // late.
 var ErrArtworkSpace = errors.New("not enough free space to store artwork")
-
-func (s *Service) installArtwork(raw []byte, w, h int) (artworkInstalled, error) {
-	return s.installArtworkContext(context.Background(), raw, w, h)
-}
-
-func (s *Service) installArtworkContext(_ context.Context, raw []byte, w, h int) (artworkInstalled, error) {
-	return s.installArtworkFile(raw, w, h)
-}
-
-func recordArtworkObject(ctx context.Context, tx *sql.Tx, o artworkInstalled, stamp string) error {
-	_, err := tx.ExecContext(ctx, `INSERT INTO artwork_objects VALUES(?,?,?,?,?,?,'ready') ON CONFLICT(digest) DO UPDATE SET status='ready'`, o.digest, o.mime, o.width, o.height, o.size, stamp)
-	return err
-}
-
-// linkArtworkBuckets maps the serving widths to the two slots: the small slot
-// answers every width up to its edge, the large slot answers 1920 when it is
-// no larger than that.
-func linkArtworkBuckets(ctx context.Context, tx *sql.Tx, full, small artworkInstalled) error {
-	for _, bucket := range []struct {
-		width  int
-		digest string
-	}{{400, small.digest}, {artworkSmallEdge, small.digest}, {1920, full.digest}} {
-		if bucket.width == 1920 && max(full.width, full.height) > 1920 {
-			// A larger original is not a 1920 representation. That fixed bucket
-			// is generated lazily from the same selected immutable source.
-			continue
-		}
-		if _, err := tx.ExecContext(ctx, `INSERT INTO artwork_variants(source_digest,width,digest) VALUES(?,?,?) ON CONFLICT(source_digest,width) DO NOTHING`, full.digest, bucket.width, bucket.digest); err != nil {
-			return err
-		}
-	}
-	return nil
-}
 
 func (s *Service) installArtworkFile(raw []byte, w, h int) (artworkInstalled, error) {
 	sum := sha256.Sum256(raw)
@@ -395,12 +316,6 @@ func (s *Service) ArtworkStep(ctx context.Context) error {
 	if err = tx.QueryRowContext(ctx, `SELECT status FROM artwork_jobs WHERE id=?`, j.id).Scan(&claimed); err != nil {
 		return err
 	}
-	if claimed == "running" && j.attempts >= artworkAttemptLimit {
-		if _, err = tx.ExecContext(ctx, `UPDATE artwork_jobs SET status='failed',error='acquisition_failed',lease='',lease_until='' WHERE id=?`, j.id); err != nil {
-			return err
-		}
-		return gated.Commit()
-	}
 	if j.target.ID, err = entityid.Public(ctx, tx, entity); errors.Is(err, entityid.ErrNotFound) {
 		// The entity is gone; retire its job instead of wedging the step.
 		if _, err = tx.ExecContext(ctx, `UPDATE artwork_jobs SET status='stale',error='entity_missing',lease='',lease_until='' WHERE id=?`, j.id); err != nil {
@@ -409,6 +324,13 @@ func (s *Service) ArtworkStep(ctx context.Context) error {
 		return gated.Commit()
 	} else if err != nil {
 		return err
+	}
+	// A vanished entity is reported as such even at the attempt cap.
+	if claimed == "running" && j.attempts >= artworkAttemptLimit {
+		if _, err = tx.ExecContext(ctx, `UPDATE artwork_jobs SET status='failed',error='acquisition_failed',lease='',lease_until='' WHERE id=?`, j.id); err != nil {
+			return err
+		}
+		return gated.Commit()
 	}
 	enabled, err := s.artworkJobEnabled(ctx, tx, j)
 	if err != nil {
@@ -457,7 +379,7 @@ func (s *Service) ArtworkStep(ctx context.Context) error {
 	workCtx, cancel := s.artworkRequestContext(ctx, j.target, j.provider, j.fence,
 		s.renewArtworkLease(`UPDATE artwork_jobs SET lease_until=? WHERE lease_until>? AND id=? AND lease=? AND status='running'`, j.id, j.lease))
 	defer cancel()
-	a, b, err := s.acquireArtworkObjects(workCtx, j)
+	material, err := s.acquireArtworkMaterial(workCtx, j)
 	if err != nil {
 		return s.failArtwork(ctx, j, err)
 	}
@@ -472,7 +394,7 @@ func (s *Service) ArtworkStep(ctx context.Context) error {
 		if err := gated2.Commit(); err != nil {
 			return err
 		}
-		return s.ensureArtworkFiles(a, b)
+		return s.ensureArtworkFiles(material.installed()...)
 	}
 	var live bool
 	err = tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM artwork_jobs WHERE id=? AND status='running' AND lease=? AND lease_until>?)`, j.id, j.lease, s.publicationTime().Format(time.RFC3339Nano)).Scan(&live)
@@ -534,13 +456,11 @@ func (s *Service) ArtworkStep(ctx context.Context) error {
 		return err
 	}
 	stamp = s.publicationTime().Format(time.RFC3339Nano)
-	for _, o := range []artworkInstalled{a, b} {
-		if err = recordArtworkObject(ctx, tx, o, stamp); err != nil {
-			return err
-		}
+	if err = publishArtworkSource(ctx, tx, material, stamp); err != nil {
+		return err
 	}
 	if j.preview {
-		if _, err = tx.ExecContext(ctx, `INSERT INTO artwork_previews VALUES(?,?,?,?) ON CONFLICT(candidate_id) DO UPDATE SET digest=excluded.digest,source_fence=excluded.source_fence,created_at=excluded.created_at`, j.candidate, b.digest, j.fence, stamp); err != nil {
+		if _, err = tx.ExecContext(ctx, `INSERT INTO artwork_previews VALUES(?,?,?,?) ON CONFLICT(candidate_id) DO UPDATE SET digest=excluded.digest,source_fence=excluded.source_fence,created_at=excluded.created_at`, j.candidate, material.source, j.fence, stamp); err != nil {
 			return err
 		}
 		if _, err = tx.ExecContext(ctx, `UPDATE artwork_jobs SET status='complete',lease='',lease_until='',error='' WHERE id=? AND lease=?`, j.id, j.lease); err != nil {
@@ -548,10 +468,7 @@ func (s *Service) ArtworkStep(ctx context.Context) error {
 		}
 		return commit()
 	}
-	if err = linkArtworkBuckets(ctx, tx, a, b); err != nil {
-		return err
-	}
-	if _, err = tx.ExecContext(ctx, `INSERT INTO artwork_selections VALUES(?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(kind,entity_id,role,subject) DO UPDATE SET candidate_id=excluded.candidate_id,digest=excluded.digest,thumbnail_digest=excluded.thumbnail_digest,locked=excluded.locked,revision=artwork_selections.revision+1,actor=CASE WHEN ? THEN artwork_selections.actor ELSE excluded.actor END,observed_at=excluded.observed_at`, j.target.Kind, entity, j.role, j.subject, j.candidate, a.digest, b.digest, j.locked, 1, j.actor, stamp, j.sizeRefresh); err != nil {
+	if _, err = tx.ExecContext(ctx, `INSERT INTO artwork_selections VALUES(?,?,?,?,?,?,?,?,?,?) ON CONFLICT(kind,entity_id,role,subject) DO UPDATE SET candidate_id=excluded.candidate_id,digest=excluded.digest,locked=excluded.locked,revision=artwork_selections.revision+1,actor=CASE WHEN ? THEN artwork_selections.actor ELSE excluded.actor END,observed_at=excluded.observed_at`, j.target.Kind, entity, j.role, j.subject, j.candidate, material.source, j.locked, 1, j.actor, stamp, j.sizeRefresh); err != nil {
 		return err
 	}
 	if err = projectSelectedArtwork(ctx, tx, j.target, j.role); err != nil {
@@ -609,8 +526,14 @@ func (s *Service) failArtwork(ctx context.Context, j artworkWork, problem error)
 	if errors.As(problem, &retry) && retry.after.After(next) {
 		next = retry.after
 	}
-	_, err := dbwork.ExecWrite(ctx, s.db, dbwork.ClassBackgroundMedia, `UPDATE artwork_jobs SET status=?,error=?,next_attempt=?,lease='',lease_until='' WHERE id=? AND lease=? AND status='running'`, status, code, next.Format(time.RFC3339Nano), j.id, j.lease)
-	return err
+	result, err := dbwork.ExecWrite(ctx, s.db, dbwork.ClassBackgroundMedia, `UPDATE artwork_jobs SET status=?,error=?,next_attempt=?,lease='',lease_until='' WHERE id=? AND lease=? AND status='running'`, status, code, next.Format(time.RFC3339Nano), j.id, j.lease)
+	if err != nil {
+		return err
+	}
+	if n, _ := result.RowsAffected(); n == 1 {
+		return recordArtworkRefusal(ctx, s.db, problem)
+	}
+	return nil
 }
 func projectSelectedArtwork(ctx context.Context, tx *sql.Tx, t RepairTarget, role string) error {
 	entity, err := artworkEntity(ctx, tx, t.ID)
@@ -673,9 +596,19 @@ func artworkMemberEntities(ctx context.Context, tx *sql.Tx, query string, contai
 	return out, rows.Err()
 }
 
-// GC is reference-aware, not an LRU over selected artwork. Restorable snapshots
-// and active publications pin objects. Open readers own their descriptors; on
-// platforms forbidding unlink of an open file, deletion is retried later.
+// GC is reference-aware, not an LRU over selected artwork. It runs in two
+// passes, each paging 64 rows past an in-memory cursor that wraps at the end,
+// so objects kept by a pin never starve the ones after them:
+//
+//  1. Sources nothing names (selection, upload, preview, size request or an
+//     owner-history pin) are deleted. History is streamed once per page, and
+//     the delete only commits while no history row was added since that scan.
+//  2. Blobs no source names are retired with the tomb protocol
+//     (artwork_lifecycle.go): marked deleting, file set aside, row deleted
+//     only if still unnamed, otherwise restored.
+//
+// Open readers own their descriptors; on platforms forbidding unlink of an open
+// file, deletion is retried later.
 func (s *Service) CleanupArtwork(ctx context.Context) error {
 	if s.cacheRoot == "" {
 		return nil
@@ -698,71 +631,12 @@ func (s *Service) CleanupArtwork(ctx context.Context) error {
 	if err := s.db.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM artwork_jobs WHERE status='running')`).Scan(&running); err != nil || running {
 		return err
 	}
-	// Candidates are found with indexed anti-joins only (one
-	// NOT EXISTS per referencing column, never an OR across two). The owner
-	// history is small and JSON, so it is checked here rather than by instr()
-	// per object. Each candidate is re-checked by the database while its file is
-	// set aside, with no lock (artwork_lifecycle.go).
 	cut := s.publicationTime().Add(-24 * time.Hour).Format(time.RFC3339Nano)
-	rows, err := s.db.QueryContext(ctx, `SELECT digest FROM artwork_objects o WHERE created_at<? AND `+artUnreferenced+` ORDER BY created_at LIMIT 64`, cut)
-	if err != nil {
+	if err := s.collectArtworkSources(ctx, cut); err != nil {
 		return err
 	}
-	candidates := []string{}
-	for rows.Next() {
-		var d string
-		if err = rows.Scan(&d); err != nil {
-			rows.Close()
-			return err
-		}
-		candidates = append(candidates, d)
-	}
-	err = rows.Err()
-	rows.Close()
-	if err != nil {
+	if err := s.collectArtworkBlobs(ctx, cut); err != nil {
 		return err
-	}
-	digests := make([]string, 0, len(candidates))
-	if len(candidates) > 0 {
-		history, err := s.ownerHistoryDigests(ctx, candidates)
-		if err != nil {
-			return err
-		}
-		for _, d := range candidates {
-			if !history[d] {
-				digests = append(digests, d)
-			}
-		}
-	}
-	for _, d := range digests {
-		if !artDigest(d) {
-			continue
-		}
-		marked, err := dbwork.ExecWrite(ctx, s.db, dbwork.ClassBackgroundMedia, `UPDATE artwork_objects SET status='deleting' WHERE digest=? AND `+artUnreferencedBy("?"), artUnreferencedArgs(d)...)
-		if err != nil {
-			return err
-		}
-		if n, _ := marked.RowsAffected(); n == 0 {
-			continue // referenced since the candidate scan
-		}
-		gone, err := s.retireArtworkFile(ctx, d, func(ctx context.Context) (bool, error) {
-			// Still unreferenced now that the file is set aside? A publication
-			// that referenced it meanwhile keeps it (and reset it to ready).
-			deleted, err := dbwork.ExecWrite(ctx, s.db, dbwork.ClassBackgroundMedia, `DELETE FROM artwork_objects WHERE digest=? AND status='deleting' AND `+artUnreferencedBy("?"), artUnreferencedArgs(d)...)
-			if err != nil {
-				return false, err
-			}
-			n, _ := deleted.RowsAffected()
-			return n == 1, nil
-		})
-		if err != nil {
-			return err
-		}
-		if !gone {
-			if _, err = dbwork.ExecWrite(ctx, s.db, dbwork.ClassBackgroundMedia, `UPDATE artwork_objects SET status='ready' WHERE digest=? AND status='deleting'`, d); err != nil {
-				return err
-			}
-		}
 	}
 	// Crash-before-database-publication leaves only unreferenced content-addressed
 	// files or private stages. Finite directory batches retain all younger writers.
@@ -791,7 +665,7 @@ func (s *Service) CleanupArtwork(ctx context.Context) error {
 		}
 		if _, err = s.retireArtworkFile(ctx, digest, func(ctx context.Context) (bool, error) {
 			var used bool
-			err := s.db.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM artwork_objects WHERE digest=?)`, digest).Scan(&used)
+			err := s.db.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM artwork_blobs WHERE digest=?)`, digest).Scan(&used)
 			return !used, err
 		}); err != nil {
 			return err
@@ -806,27 +680,123 @@ func (s *Service) CleanupArtwork(ctx context.Context) error {
 // and explicit maintenance can still sweep on demand.
 const ArtCleanupInterval = 10 * time.Minute
 
-// artUnreferenced is the indexed "nothing points at o.digest" predicate.
-//
-// Lane B's 800 px variants are referenced objects too: a variant digest stays
-// while its source's artwork_variants row exists (the row cascades with the
-// source), via the artwork_variants_digest index.
-const artUnreferenced = `NOT EXISTS(SELECT 1 FROM artwork_variants v WHERE v.digest=o.digest AND v.source_digest<>o.digest) AND NOT EXISTS(SELECT 1 FROM artwork_previews p WHERE p.digest=o.digest) AND NOT EXISTS(SELECT 1 FROM artwork_selections a WHERE a.digest=o.digest) AND NOT EXISTS(SELECT 1 FROM artwork_selections a WHERE a.thumbnail_digest=o.digest) AND NOT EXISTS(SELECT 1 FROM artwork_uploads u WHERE u.digest=o.digest) AND NOT EXISTS(SELECT 1 FROM artwork_uploads u WHERE u.thumbnail_digest=o.digest)`
+// artSourceUnreferenced is the indexed "nothing names source o.digest"
+// predicate: one NOT EXISTS per referencing column, never an OR across two.
+// Owner-history pins are text, not keys, and are checked separately.
+const artSourceUnreferenced = `NOT EXISTS(SELECT 1 FROM artwork_selections a WHERE a.digest=o.digest) AND NOT EXISTS(SELECT 1 FROM artwork_uploads u WHERE u.digest=o.digest) AND NOT EXISTS(SELECT 1 FROM artwork_previews p WHERE p.digest=o.digest) AND NOT EXISTS(SELECT 1 FROM metadata_artwork_size_requests r WHERE r.digest=o.digest)`
 
-// artUnreferencedBy is the same predicate against a bound digest parameter,
-// for the re-check while the file is set aside.
-func artUnreferencedBy(p string) string {
-	return strings.ReplaceAll(artUnreferenced, "o.digest", p)
+// artBlobUnreferenced is the indexed "no source names blob o.digest" predicate.
+const artBlobUnreferenced = `NOT EXISTS(SELECT 1 FROM artwork_sources x WHERE x.small_blob=o.digest) AND NOT EXISTS(SELECT 1 FROM artwork_sources x WHERE x.large_blob=o.digest) AND NOT EXISTS(SELECT 1 FROM artwork_sources x WHERE x.ambient_blob=o.digest)`
+
+// artworkSweepCursor is a disposable (created_at, digest) position.
+type artworkSweepCursor struct{ created, digest string }
+
+// nextArtworkPage reads the next page of unreferenced rows created before cut,
+// wrapping to the start once the walk reaches the end.
+func (s *Service) nextArtworkPage(ctx context.Context, table string, cursor *artworkSweepCursor, cut, predicate string) ([]string, error) {
+	s.artSweepMu.Lock()
+	at := *cursor
+	s.artSweepMu.Unlock()
+	rows, err := s.db.QueryContext(ctx, `SELECT o.digest,o.created_at FROM `+table+` o WHERE o.created_at<? AND (o.created_at>? OR o.created_at=? AND o.digest>?) AND `+predicate+` ORDER BY o.created_at,o.digest LIMIT 64`, cut, at.created, at.created, at.digest)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	page := []string{}
+	next := artworkSweepCursor{}
+	for rows.Next() {
+		if err = rows.Scan(&next.digest, &next.created); err != nil {
+			return nil, err
+		}
+		page = append(page, next.digest)
+	}
+	if err = rows.Err(); err != nil {
+		return nil, err
+	}
+	if len(page) < 64 {
+		next = artworkSweepCursor{}
+	}
+	s.artSweepMu.Lock()
+	*cursor = next
+	s.artSweepMu.Unlock()
+	return page, nil
 }
 
-// artUnreferencedArgs binds the digest for "digest=?" plus every placeholder
-// artUnreferencedBy("?") introduces.
-func artUnreferencedArgs(d string) []any {
-	args := make([]any, 1+strings.Count(artUnreferenced, "o.digest"))
-	for i := range args {
-		args[i] = d
+func (s *Service) collectArtworkSources(ctx context.Context, cut string) error {
+	page, err := s.nextArtworkPage(ctx, "artwork_sources", &s.artSourceCursor, cut, artSourceUnreferenced)
+	if err != nil || len(page) == 0 {
+		return err
 	}
-	return args
+	// The high-water mark is read before the history scan. Any pin written
+	// after it raises MAX(id) (the id is AUTOINCREMENT, and only its revision
+	// column is ever updated in place), and the delete below then refuses
+	// this pass rather than racing a new undo point.
+	var highWater int64
+	if err = s.db.QueryRowContext(ctx, `SELECT COALESCE(MAX(id),0) FROM metadata_owner_history`).Scan(&highWater); err != nil {
+		return err
+	}
+	pinned, err := s.ownerHistoryDigests(ctx, page)
+	if err != nil {
+		return err
+	}
+	for _, d := range page {
+		if pinned[d] || !artDigest(d) {
+			continue
+		}
+		if _, err = s.deleteUnreferencedArtworkSource(ctx, d, highWater); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// deleteUnreferencedArtworkSource deletes source only while nothing names it
+// and no owner-history row was written after highWater was read.
+func (s *Service) deleteUnreferencedArtworkSource(ctx context.Context, source string, highWater int64) (bool, error) {
+	result, err := dbwork.ExecWrite(ctx, s.db, dbwork.ClassBackgroundMedia, `DELETE FROM artwork_sources AS o WHERE o.digest=? AND `+artSourceUnreferenced+` AND (SELECT COALESCE(MAX(id),0) FROM metadata_owner_history)=?`, source, highWater)
+	if err != nil {
+		return false, err
+	}
+	n, _ := result.RowsAffected()
+	return n == 1, nil
+}
+
+func (s *Service) collectArtworkBlobs(ctx context.Context, cut string) error {
+	page, err := s.nextArtworkPage(ctx, "artwork_blobs", &s.artBlobCursor, cut, artBlobUnreferenced)
+	if err != nil {
+		return err
+	}
+	for _, d := range page {
+		if !artDigest(d) {
+			continue
+		}
+		marked, err := dbwork.ExecWrite(ctx, s.db, dbwork.ClassBackgroundMedia, `UPDATE artwork_blobs AS o SET status='deleting' WHERE o.digest=? AND `+artBlobUnreferenced, d)
+		if err != nil {
+			return err
+		}
+		if n, _ := marked.RowsAffected(); n == 0 {
+			continue // named since the page was read
+		}
+		gone, err := s.retireArtworkFile(ctx, d, func(ctx context.Context) (bool, error) {
+			// Still unnamed now that the file is set aside? A publication that
+			// named it meanwhile keeps it (and reset it to ready).
+			deleted, err := dbwork.ExecWrite(ctx, s.db, dbwork.ClassBackgroundMedia, `DELETE FROM artwork_blobs AS o WHERE o.digest=? AND o.status='deleting' AND `+artBlobUnreferenced, d)
+			if err != nil {
+				return false, err
+			}
+			n, _ := deleted.RowsAffected()
+			return n == 1, nil
+		})
+		if err != nil {
+			return err
+		}
+		if !gone {
+			if _, err = dbwork.ExecWrite(ctx, s.db, dbwork.ClassBackgroundMedia, `UPDATE artwork_blobs SET status='ready' WHERE digest=? AND status='deleting'`, d); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
 }
 
 // Stream one history row at a time; never concatenate the whole owner journal.

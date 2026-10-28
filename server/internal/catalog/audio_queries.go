@@ -111,12 +111,15 @@ func (s *Service) Albums(viewer Viewer, artist, cursor string, limit int) ([]Alb
 		}
 		out = append(out, row)
 	}
+	if err = rows.Err(); err != nil {
+		return nil, "", err
+	}
 	next := ""
 	if len(out) > limit {
 		out = out[:limit]
 		next = out[len(out)-1].ID
 	}
-	return out, next, rows.Err()
+	return out, next, describeItemArtIn(s, out, func(a *Album) *string { return &a.PosterURL })
 }
 
 func (s *Service) Books(viewer Viewer, library, cursor string, limit int) ([]Book, string, error) {
@@ -167,12 +170,15 @@ func (s *Service) Books(viewer Viewer, library, cursor string, limit int) ([]Boo
 		}
 		out = append(out, row)
 	}
+	if err = rows.Err(); err != nil {
+		return nil, "", err
+	}
 	next := ""
 	if len(out) > limit {
 		out = out[:limit]
 		next = out[len(out)-1].ID
 	}
-	return out, next, rows.Err()
+	return out, next, describeItemArtIn(s, out, func(b *Book) *string { return &b.PosterURL })
 }
 
 func (s *Service) LibraryForAudioEntity(kind, id string) (string, error) {

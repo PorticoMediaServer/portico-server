@@ -137,14 +137,14 @@ func workspaceRename(db *sql.DB, names catalogtest.Names, title string) error {
 func TestShowWorkspaceProjectsSelectedLogoSeparatelyFromPoster(t *testing.T) {
 	s, db, names := workspaceFixture(t)
 	logo, poster := strings.Repeat("a", 64), strings.Repeat("b", 64)
-	if _, err := db.Exec(`INSERT INTO artwork_objects VALUES(?, 'image/png',800,300,10,'now','ready'),(?, 'image/png',800,1200,10,'now','ready')`, logo, poster); err != nil {
+	if _, err := db.Exec(`INSERT INTO artwork_blobs(digest,mime,width,height,bytes,created_at,status) VALUES(?, 'image/png',800,300,10,'now','ready'),(?, 'image/png',800,1200,10,'now','ready'); INSERT OR IGNORE INTO artwork_sources(digest,accepted_mime,accepted_width,accepted_height,small_blob,large_blob,ambient_blob,large_edge,small_outlier,large_outlier,encoder_revision,created_at) SELECT digest,mime,width,height,digest,digest,digest,1920,0,0,1,created_at FROM artwork_blobs`, logo, poster); err != nil {
 		t.Fatal(err)
 	}
 	for _, candidate := range []struct{ id, role, digest string }{{"logo", "logo", logo}, {"poster", "poster", poster}} {
 		if _, err := db.Exec(`INSERT INTO artwork_candidates(id,kind,entity_id,role,subject,provider,image_id,origin,attribution,source_fence,observed_at) VALUES(?,'show',?,?,'','fixture',?,'local','fixture','fence','now')`, candidate.id, names["show"].ID, candidate.role, candidate.id); err != nil {
 			t.Fatal(err)
 		}
-		if _, err := db.Exec(`INSERT INTO artwork_selections(kind,entity_id,role,subject,candidate_id,digest,thumbnail_digest,locked,revision,actor,observed_at) VALUES('show',?,?,'',?,?,?,0,1,'fixture','now')`, names["show"].ID, candidate.role, candidate.id, candidate.digest, candidate.digest); err != nil {
+		if _, err := db.Exec(`INSERT INTO artwork_selections(kind,entity_id,role,subject,candidate_id,digest,locked,revision,actor,observed_at) SELECT column1,column2,column3,column4,column5,column6,column8,column9,column10,column11 FROM (VALUES('show',?,?,'',?,?,?,0,1,'fixture','now'))`, names["show"].ID, candidate.role, candidate.id, candidate.digest, candidate.digest); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -152,7 +152,7 @@ func TestShowWorkspaceProjectsSelectedLogoSeparatelyFromPoster(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(page.Show.LogoURL, "/art/logo?v="+logo+"&w=800") || !strings.Contains(page.Show.PosterURL, "/art/poster?v="+poster+"&w=400") {
+	if !strings.Contains(page.Show.LogoURL, "/art/logo?"+fixtureArtQuery(logo, 800, 300, 10)) || !strings.Contains(page.Show.PosterURL, "/art/poster?"+fixtureArtQuery(poster, 800, 1200, 10)) {
 		t.Fatalf("show hero artwork roles were mixed: %+v", page.Show)
 	}
 }
@@ -190,13 +190,13 @@ func TestShowWorkspaceEpisodeCreditsUseSelectedVisibleItem(t *testing.T) {
 	if err := db.QueryRow(`SELECT id,token FROM catalog_people WHERE identity_key='fixture:visible'`).Scan(&visibleID, &visibleToken); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := db.Exec(`INSERT INTO artwork_objects VALUES(?, 'image/png',800,800,10,'now','ready'),(?, 'image/png',400,400,10,'now','ready')`, digest, thumbnail); err != nil {
+	if _, err := db.Exec(`INSERT INTO artwork_blobs(digest,mime,width,height,bytes,created_at,status) VALUES(?, 'image/png',800,800,10,'now','ready'),(?, 'image/png',400,400,10,'now','ready'); INSERT OR IGNORE INTO artwork_sources(digest,accepted_mime,accepted_width,accepted_height,small_blob,large_blob,ambient_blob,large_edge,small_outlier,large_outlier,encoder_revision,created_at) SELECT digest,mime,width,height,digest,digest,digest,1920,0,0,1,created_at FROM artwork_blobs`, digest, thumbnail); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := db.Exec(`INSERT INTO artwork_candidates(id,kind,entity_id,role,subject,provider,image_id,origin,attribution,source_fence,observed_at) VALUES('portrait','item',?,'portrait','fixture:visible','fixture','portrait','local','fixture','fence','now')`, names["ep-001"].ID); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := db.Exec(`INSERT INTO artwork_selections(kind,entity_id,role,subject,candidate_id,digest,thumbnail_digest,locked,revision,actor,observed_at) VALUES('item',?,'portrait','fixture:visible','portrait',?,?,0,1,'fixture','now')`, names["ep-001"].ID, digest, thumbnail); err != nil {
+	if _, err := db.Exec(`INSERT INTO artwork_selections(kind,entity_id,role,subject,candidate_id,digest,locked,revision,actor,observed_at) SELECT column1,column2,column3,column4,column5,column6,column8,column9,column10,column11 FROM (VALUES('item',?,'portrait','fixture:visible','portrait',?,?,0,1,'fixture','now'))`, names["ep-001"].ID, digest, thumbnail); err != nil {
 		t.Fatal(err)
 	}
 	c.Attributes(names["ep-001"].ID, "contentRating", "PG")
@@ -212,7 +212,7 @@ func TestShowWorkspaceEpisodeCreditsUseSelectedVisibleItem(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(page.EpisodeCredits) != 1 || page.EpisodeCredits[0].ID != visibleToken || page.EpisodeCredits[0].PortraitURL != "/v1/metadata/item/"+names["ep-001"].Public+"/art/portrait?v="+digest+"&w=400&subject=fixture%3Avisible" {
+	if len(page.EpisodeCredits) != 1 || page.EpisodeCredits[0].ID != visibleToken || page.EpisodeCredits[0].PortraitURL != fixtureArtURL("item", names["ep-001"].Public, "portrait", "fixture:visible", digest, 800, 800, 10) {
 		t.Fatalf("selected episode credits: %+v", page.EpisodeCredits)
 	}
 	r.EpisodeID = names["ep-002"].Public

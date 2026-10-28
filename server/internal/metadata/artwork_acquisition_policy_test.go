@@ -23,18 +23,18 @@ func TestArtworkUploadsUseCurrentSizeAndKeepDerivedBucketsFixed(t *testing.T) {
 		if _, err = s.UploadArtwork(ctx, target, "poster", "", before.Revision, editorJPEG(t, 2700, 1080), editorActor(), allowAll); err != nil {
 			t.Fatal(edge, err)
 		}
-		var width, height, thumbWidth, mediumWidth int
+		var width, height, thumbWidth, largeEdge int
 		entity := resolveArtworkTestEntity(t, db, target)
-		if err = db.QueryRow(`SELECT original.width,original.height,thumb.width,medium.width FROM artwork_selections s JOIN artwork_objects original ON original.digest=s.digest JOIN artwork_objects thumb ON thumb.digest=s.thumbnail_digest JOIN artwork_variants v ON v.source_digest=s.digest AND v.width=800 JOIN artwork_objects medium ON medium.digest=v.digest WHERE s.entity_id=? AND s.role='poster'`, entity).Scan(&width, &height, &thumbWidth, &mediumWidth); err != nil {
+		if err = db.QueryRow(`SELECT large.width,large.height,small.width,o.large_edge FROM artwork_selections s JOIN artwork_sources o ON o.digest=s.digest JOIN artwork_blobs large ON large.digest=o.large_blob JOIN artwork_blobs small ON small.digest=o.small_blob WHERE s.entity_id=? AND s.role='poster'`, entity).Scan(&width, &height, &thumbWidth, &largeEdge); err != nil {
 			t.Fatal(err)
 		}
-		if width != edge || height != edge*1080/2700 || thumbWidth != artworkSmallEdge || mediumWidth != artworkSmallEdge {
-			t.Fatal("stored upload or derived buckets ignored actual policy", edge, width, height, thumbWidth, mediumWidth)
+		if width != edge || height != edge*1080/2700 || thumbWidth != artworkSmallEdge || largeEdge != edge {
+			t.Fatal("stored slots ignored actual policy", edge, width, height, thumbWidth, largeEdge)
 		}
 		// The stored original is the policy edge. A request for the supported
 		// 2560 representation is at or above that edge, so it opens the selected
 		// original itself instead of a derived bucket.
-		selected, _, err := s.EntityArtworkVariant(ctx, target, "poster", "", 2560, "")
+		selected, _, err := s.EntityArtworkVariant(ctx, target, "poster", "", ArtworkLarge, "")
 		if err != nil {
 			t.Fatal(edge, err)
 		}
@@ -43,16 +43,16 @@ func TestArtworkUploadsUseCurrentSizeAndKeepDerivedBucketsFixed(t *testing.T) {
 		if err != nil || cfg.Width != edge {
 			t.Fatalf("supported 2560 representation opened %d px (%v), want the %d px selected original", cfg.Width, err, edge)
 		}
-		// The legacy EntityArtwork default stays 1920: it never upscales a
-		// smaller original and downscales the 2560 one.
+		// The default representation is the large slot itself: nothing is
+		// resized on request, so it is the policy edge.
 		legacy, _, err := s.Artwork(ctx, target.ID, "poster")
 		if err != nil {
 			t.Fatal(edge, err)
 		}
 		cfg, _, err = image.DecodeConfig(legacy)
 		legacy.Close()
-		if err != nil || cfg.Width != min(edge, 1920) {
-			t.Fatalf("legacy default served %d px (%v), want %d", cfg.Width, err, min(edge, 1920))
+		if err != nil || cfg.Width != edge {
+			t.Fatalf("default served %d px (%v), want %d", cfg.Width, err, edge)
 		}
 	}
 }

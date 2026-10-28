@@ -11,6 +11,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"portico.local/server/internal/artworkref"
 	"sort"
 	"strings"
 	"time"
@@ -782,7 +783,7 @@ func (s *Store) Guide(ctx context.Context, a Authority, q GuideQuery) (Guide, er
 		// Programme images (BEAPI-1), one query for the page like the
 		// programmes above, keyed by generation and programme.
 		type programmeKey struct{ generation, id string }
-		digests := map[programmeKey]string{}
+		images := map[programmeKey]artworkref.Descriptor{}
 		ids := []string{}
 		for i := range out.Channels {
 			for _, p := range out.Channels[i].Programmes {
@@ -795,17 +796,18 @@ func (s *Store) Guide(ctx context.Context, a Authority, q GuideQuery) (Guide, er
 				return out, ErrUnavailable
 			}
 			imgArgs := append(append(make([]any, 0, len(gens)+1), args[:len(gens)]...), string(encoded))
-			imgRows, e := tx.QueryContext(ctx, `SELECT i.generation_id,i.programme_id,img.digest FROM live_programme_icons i JOIN live_programme_images img ON img.url=i.url WHERE i.generation_id IN (`+marks+`) AND i.programme_id IN(SELECT value FROM json_each(?))`, imgArgs...)
+			imgRows, e := tx.QueryContext(ctx, `SELECT i.generation_id,i.programme_id,img.small_digest,img.small_width,img.small_height,img.small_bytes,img.large_digest,img.large_width,img.large_height,img.large_bytes FROM live_programme_icons i JOIN live_programme_images img ON img.url=i.url WHERE i.generation_id IN (`+marks+`) AND i.programme_id IN(SELECT value FROM json_each(?))`, imgArgs...)
 			if e != nil {
 				return out, ErrUnavailable
 			}
 			for imgRows.Next() {
-				var gen, pid, digest string
-				if e = imgRows.Scan(&gen, &pid, &digest); e != nil {
+				var gen, pid string
+				var image artworkref.Descriptor
+				if e = imgRows.Scan(append([]any{&gen, &pid}, image.ScanTargets()...)...); e != nil {
 					imgRows.Close()
 					return out, ErrUnavailable
 				}
-				digests[programmeKey{gen, pid}] = digest
+				images[programmeKey{gen, pid}] = image
 			}
 			e = imgRows.Err()
 			imgRows.Close()
@@ -818,8 +820,8 @@ func (s *Store) Guide(ctx context.Context, a Authority, q GuideQuery) (Guide, er
 		for i := range out.Channels {
 			c := &out.Channels[i]
 			for j := range c.Programmes {
-				if _, ok := digests[programmeKey{c.Generation, c.Programmes[j].ID}]; ok {
-					c.Programmes[j].Image = "/v1/guide/programme-images/" + c.Generation + "/" + c.Programmes[j].ID
+				if image, ok := images[programmeKey{c.Generation, c.Programmes[j].ID}]; ok {
+					c.Programmes[j].Image = "/v1/guide/programme-images/" + c.Generation + "/" + c.Programmes[j].ID + "?" + image.Slots()
 				}
 				c.Programmes[j].Admit(q.ProgrammeAllowed)
 			}

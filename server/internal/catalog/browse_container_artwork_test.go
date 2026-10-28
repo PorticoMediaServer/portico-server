@@ -25,12 +25,15 @@ func TestBrowseShowAndArtistRowsCarrySelectedArtwork(t *testing.T) {
 	album := c.Album(names["artist"], "Album", 2026)
 	c.Song(album, 1, "/mu/song.flac", "Song")
 	poster, portrait, thumb := strings.Repeat("a", 64), strings.Repeat("c", 64), strings.Repeat("b", 64)
-	c.Exec(`INSERT INTO artwork_objects VALUES(?, 'image/png',1000,1500,100,'now','ready'),(?, 'image/png',1000,1000,100,'now','ready'),(?, 'image/png',400,400,50,'now','ready')`, poster, portrait, thumb)
+	c.Exec(`INSERT INTO artwork_blobs(digest,mime,width,height,bytes,created_at,status) VALUES(?, 'image/png',1000,1500,100,'now','ready'),(?, 'image/png',1000,1000,100,'now','ready'),(?, 'image/png',400,400,50,'now','ready'); INSERT OR IGNORE INTO artwork_sources(digest,accepted_mime,accepted_width,accepted_height,small_blob,large_blob,ambient_blob,large_edge,small_outlier,large_outlier,encoder_revision,created_at) SELECT digest,mime,width,height,digest,digest,digest,1920,0,0,1,created_at FROM artwork_blobs`, poster, portrait, thumb)
 	c.Exec(`INSERT INTO artwork_candidates(id,kind,entity_id,role,subject,provider,image_id,origin,attribution,source_fence,observed_at) VALUES('show-poster','show',?,'poster','','fixture','show','local','fixture','fence','now'),('artist-portrait','artist',?,'portrait','','fixture','artist','local','fixture','fence','now')`, names["show"].ID, names["artist"].ID)
-	c.Exec(`INSERT INTO artwork_selections(kind,entity_id,role,subject,candidate_id,digest,thumbnail_digest,locked,revision,actor,observed_at) VALUES('show',?,'poster','','show-poster',?, ?,0,1,'fixture','now'),('artist',?,'portrait','','artist-portrait',?, ?,0,1,'fixture','now')`, names["show"].ID, poster, thumb, names["artist"].ID, portrait, thumb)
+	c.Exec(`INSERT INTO artwork_selections(kind,entity_id,role,subject,candidate_id,digest,locked,revision,actor,observed_at) SELECT column1,column2,column3,column4,column5,column6,column8,column9,column10,column11 FROM (VALUES('show',?,'poster','','show-poster',?, ?,0,1,'fixture','now'),('artist',?,'portrait','','artist-portrait',?, ?,0,1,'fixture','now'))`, names["show"].ID, poster, thumb, names["artist"].ID, portrait, thumb)
 	c.Drain()
 	s := New(c.DB)
-	for _, item := range []struct{ library, pivot, name, digest string }{{"tv", "shows", "show", poster}, {"music", "artists", "artist", portrait}} {
+	for _, item := range []struct {
+		library, pivot, name, digest string
+		height                       int
+	}{{"tv", "shows", "show", poster, 1500}, {"music", "artists", "artist", portrait, 1000}} {
 		page, e := s.BrowseEntities(Viewer{Profile: "p", Fence: "f", Libraries: []string{item.library}}, BrowseRequest{Library: item.library, Profile: "p", ViewerFence: "f", Pivot: item.pivot, Limit: 20})
 		if e != nil {
 			t.Fatal(item.pivot, e)
@@ -39,7 +42,7 @@ func TestBrowseShowAndArtistRowsCarrySelectedArtwork(t *testing.T) {
 		for _, entry := range page.Entries {
 			if entry.ID == names[item.name].Public {
 				found = true
-				if !strings.Contains(entry.PosterURL, "v="+item.digest+"&w=400") {
+				if !strings.Contains(entry.PosterURL, "?"+fixtureArtQuery(item.digest, 1000, item.height, 100)) {
 					t.Fatalf("%s %s has no selected artwork: %+v", item.pivot, item.name, entry)
 				}
 			} else if entry.PosterURL != "" {

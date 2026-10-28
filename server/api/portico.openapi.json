@@ -21968,9 +21968,6 @@
                     "subject": {
                       "type": "string"
                     },
-                    "thumbnailDigest": {
-                      "type": "string"
-                    },
                     "url": {
                       "type": "string"
                     }
@@ -21980,7 +21977,6 @@
                     "subject",
                     "candidateId",
                     "digest",
-                    "thumbnailDigest",
                     "locked",
                     "revision",
                     "attribution",
@@ -36942,6 +36938,34 @@
           },
           "result": {
             "properties": {
+              "artworkEncoding": {
+                "items": {
+                  "properties": {
+                    "count": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "format": {
+                      "type": "string"
+                    },
+                    "outcome": {
+                      "type": "string"
+                    },
+                    "slot": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "slot",
+                    "format",
+                    "outcome",
+                    "count"
+                  ],
+                  "type": "object"
+                },
+                "type": "array"
+              },
               "categories": {
                 "items": {
                   "properties": {
@@ -37043,7 +37067,8 @@
               "totalBytes",
               "totalBytesText",
               "observedAt",
-              "truncated"
+              "truncated",
+              "artworkEncoding"
             ],
             "type": "object"
           },
@@ -135954,9 +135979,6 @@
                     "subject": {
                       "type": "string"
                     },
-                    "thumbnailDigest": {
-                      "type": "string"
-                    },
                     "url": {
                       "type": "string"
                     }
@@ -135966,7 +135988,6 @@
                     "subject",
                     "candidateId",
                     "digest",
-                    "thumbnailDigest",
                     "locked",
                     "revision",
                     "attribution",
@@ -229803,9 +229824,6 @@
                     "subject": {
                       "type": "string"
                     },
-                    "thumbnailDigest": {
-                      "type": "string"
-                    },
                     "url": {
                       "type": "string"
                     }
@@ -229815,7 +229833,6 @@
                     "subject",
                     "candidateId",
                     "digest",
-                    "thumbnailDigest",
                     "locked",
                     "revision",
                     "attribution",
@@ -230525,9 +230542,6 @@
                     "subject": {
                       "type": "string"
                     },
-                    "thumbnailDigest": {
-                      "type": "string"
-                    },
                     "url": {
                       "type": "string"
                     }
@@ -230537,7 +230551,6 @@
                     "subject",
                     "candidateId",
                     "digest",
-                    "thumbnailDigest",
                     "locked",
                     "revision",
                     "attribution",
@@ -328590,6 +328603,34 @@
                     },
                     "result": {
                       "properties": {
+                        "artworkEncoding": {
+                          "items": {
+                            "properties": {
+                              "count": {
+                                "maximum": 9007199254740991,
+                                "minimum": -9007199254740991,
+                                "type": "integer"
+                              },
+                              "format": {
+                                "type": "string"
+                              },
+                              "outcome": {
+                                "type": "string"
+                              },
+                              "slot": {
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "slot",
+                              "format",
+                              "outcome",
+                              "count"
+                            ],
+                            "type": "object"
+                          },
+                          "type": "array"
+                        },
                         "categories": {
                           "items": {
                             "properties": {
@@ -328691,7 +328732,8 @@
                         "totalBytes",
                         "totalBytesText",
                         "observedAt",
-                        "truncated"
+                        "truncated",
+                        "artworkEncoding"
                       ],
                       "type": "object"
                     },
@@ -368793,6 +368835,38 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "in": "query",
+            "name": "ld",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "sd",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "size",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "w",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "responses": {
@@ -382489,6 +382563,38 @@
             "in": "path",
             "name": "programme",
             "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "ld",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "sd",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "size",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "w",
+            "required": false,
             "schema": {
               "type": "string"
             }
@@ -421165,6 +421271,30 @@
             "in": "path",
             "name": "kind",
             "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "ld",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "r",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "sd",
+            "required": false,
             "schema": {
               "type": "string"
             }
@@ -498204,9 +498334,6 @@
                               "subject": {
                                 "type": "string"
                               },
-                              "thumbnailDigest": {
-                                "type": "string"
-                              },
                               "url": {
                                 "type": "string"
                               }
@@ -498216,7 +498343,6 @@
                               "subject",
                               "candidateId",
                               "digest",
-                              "thumbnailDigest",
                               "locked",
                               "revision",
                               "attribution",
@@ -499006,9 +499132,6 @@
                               "subject": {
                                 "type": "string"
                               },
-                              "thumbnailDigest": {
-                                "type": "string"
-                              },
                               "url": {
                                 "type": "string"
                               }
@@ -499018,7 +499141,6 @@
                               "subject",
                               "candidateId",
                               "digest",
-                              "thumbnailDigest",
                               "locked",
                               "revision",
                               "attribution",
@@ -499308,6 +499430,30 @@
           {
             "in": "query",
             "name": "candidate",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "ld",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "r",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "sd",
             "required": false,
             "schema": {
               "type": "string"
@@ -499822,9 +499968,6 @@
                               "subject": {
                                 "type": "string"
                               },
-                              "thumbnailDigest": {
-                                "type": "string"
-                              },
                               "url": {
                                 "type": "string"
                               }
@@ -499834,7 +499977,6 @@
                               "subject",
                               "candidateId",
                               "digest",
-                              "thumbnailDigest",
                               "locked",
                               "revision",
                               "attribution",
@@ -500500,9 +500642,6 @@
                               "subject": {
                                 "type": "string"
                               },
-                              "thumbnailDigest": {
-                                "type": "string"
-                              },
                               "url": {
                                 "type": "string"
                               }
@@ -500512,7 +500651,6 @@
                               "subject",
                               "candidateId",
                               "digest",
-                              "thumbnailDigest",
                               "locked",
                               "revision",
                               "attribution",

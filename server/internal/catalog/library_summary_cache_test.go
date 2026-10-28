@@ -129,17 +129,17 @@ func TestLibrarySummaryCoreParityPoliciesAndLiveDecoration(t *testing.T) {
 	if scans != 0 || live.FirstScan {
 		t.Fatal(scans, live)
 	}
-	// Current physical object readiness changes without selection/library revision.
+	// A selection published with its source is live decoration: the core key
+	// does not move, and the cover appears without a rescan.
 	digest := strings.Repeat("c", 64)
-	c.Exec(`INSERT INTO artwork_objects VALUES(?,'image/png',400,600,100,'now','deleting')`, digest)
+	c.Exec(`INSERT INTO artwork_blobs(digest,mime,width,height,bytes,created_at,status) VALUES(?,'image/png',400,600,100,'now','ready'); INSERT OR IGNORE INTO artwork_sources(digest,accepted_mime,accepted_width,accepted_height,small_blob,large_blob,ambient_blob,large_edge,small_outlier,large_outlier,encoder_revision,created_at) SELECT digest,mime,width,height,digest,digest,digest,1920,0,0,1,created_at FROM artwork_blobs`, digest)
 	c.Exec(`INSERT INTO artwork_candidates(id,kind,entity_id,role,subject,provider,image_id,origin,attribution,source_fence,observed_at) VALUES('summary-art','item',?,'poster','','fixture','poster','local','fixture','fence','now')`, names["m2"].ID)
-	c.Exec(`INSERT INTO artwork_selections(kind,entity_id,role,subject,candidate_id,digest,thumbnail_digest,locked,revision,actor,observed_at) VALUES('item',?,'poster','','summary-art',?,?,0,1,'fixture','now')`, names["m2"].ID, digest, digest)
+	c.Exec(`INSERT INTO artwork_selections(kind,entity_id,role,subject,candidate_id,digest,locked,revision,actor,observed_at) SELECT column1,column2,column3,column4,column5,column6,column8,column9,column10,column11 FROM (VALUES('item',?,'poster','','summary-art',?,?,0,1,'fixture','now'))`, names["m2"].ID, digest, digest)
 	c.Drain()
 	summaryRead(t, s, viewer, lib)
 	key = summaryKeyRead(t, s, viewer, lib)
-	c.Exec(`UPDATE artwork_objects SET status='ready' WHERE digest=?`, digest)
 	if key != summaryKeyRead(t, s, viewer, lib) {
-		t.Fatal("physical readiness changed core key")
+		t.Fatal("decoration changed core key")
 	}
 	live, scans = summaryRead(t, s, viewer, lib)
 	if scans != 0 {
@@ -149,7 +149,6 @@ func TestLibrarySummaryCoreParityPoliciesAndLiveDecoration(t *testing.T) {
 	if !strings.Contains(strings.Join(live.CoverURLs, " "), digest) {
 		t.Fatal("ready artwork not live", live)
 	}
-	c.Exec(`UPDATE artwork_objects SET status='deleting' WHERE digest=?`, digest)
 	live, scans = summaryRead(t, s, viewer, lib)
 	if scans != 0 {
 		t.Fatal(scans)

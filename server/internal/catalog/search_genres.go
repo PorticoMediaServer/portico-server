@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"portico.local/server/internal/artworkref"
 	"strconv"
 	"time"
 
@@ -154,9 +155,9 @@ func (s *Service) SearchGenres(viewer Viewer, request SearchGenreRequest) (Searc
 	 JOIN catalog_entities entity ON entity.id=title.entity_id
 	 CROSS JOIN artwork_selections a ON a.entity_id=title.entity_id AND a.kind=CASE title.kind WHEN 1 THEN 'item' ELSE 'show' END
 	 AND a.subject='' AND a.role IN('backdrop','poster')
-	 CROSS JOIN artwork_objects object ON object.digest=a.digest AND object.status='ready'
+	 CROSS JOIN artwork_sources object ON object.digest=a.digest
 	 WHERE genre.value IN(SELECT value FROM json_each(?))
-	 ) SELECT value,entity_id,kind,id,role,digest FROM ranked WHERE position<=? ORDER BY value,role,position`, append(bound, string(raw), 2*len(values))...)
+	 ) SELECT value,entity_id,kind,id,role,ranked.digest,`+artworkref.Columns+` FROM ranked`+artworkref.Joins("ranked.digest")+` WHERE position<=? ORDER BY value,role,position`, append(bound, string(raw), 2*len(values))...)
 	if err != nil {
 		return out, err
 	}
@@ -168,14 +169,11 @@ func (s *Service) SearchGenres(viewer Viewer, request SearchGenreRequest) (Searc
 	for rows.Next() {
 		var value, role, digest string
 		var c candidate
-		if err = rows.Scan(&value, &c.entity, &c.art.Kind, &c.art.ID, &role, &digest); err != nil {
+		var d artworkref.Descriptor
+		if err = rows.Scan(append([]any{&value, &c.entity, &c.art.Kind, &c.art.ID, &role, &digest}, d.ScanTargets()...)...); err != nil {
 			break
 		}
-		width := 400
-		if role == "backdrop" {
-			width = 1920
-		}
-		c.art.Path = selectedArtworkURL(c.art.Kind, c.art.ID, role, "", digest, width)
+		c.art.Path = selectedArtworkURL(c.art.Kind, c.art.ID, role, "", digest, d)
 		if role == "backdrop" {
 			backdrops[value] = append(backdrops[value], c)
 		} else {

@@ -301,7 +301,7 @@ func (s *Service) estimate(ctx context.Context, includeArtwork bool) (int64, err
 	}
 	if !includeArtwork {
 		var ownerBytes int64
-		if err := s.db.QueryRowContext(ctx, `SELECT COALESCE(sum(bytes),0) FROM artwork_objects WHERE digest IN (`+ownerArtworkReferences+`)`).Scan(&ownerBytes); err != nil {
+		if err := s.db.QueryRowContext(ctx, `SELECT COALESCE(sum(bytes),0) FROM artwork_blobs WHERE digest IN (`+ownerArtworkReferences+`)`).Scan(&ownerBytes); err != nil {
 			return 0, err
 		}
 		total += ownerBytes
@@ -506,8 +506,15 @@ func excludedDownloadedMetadata(name string) bool {
 	return name == "Metadata/artwork" || name == "Metadata/people" || name == "Metadata/guide-images" || name == "Metadata/analysis-artifacts"
 }
 
-const ownerArtworkReferences = `SELECT digest FROM artwork_uploads UNION SELECT thumbnail_digest FROM artwork_uploads
+// ownerArtworkReferences is the backup's artwork closure: every blob of every
+// source an owner made irreplaceable (uploads, locked or owner-chosen
+// selections, and undo history pins). Each source carries both slots and its
+// ambient effect; a blob shared by several sources is listed once. Provider
+// art is re-fetched after a restore and is not carried.
+const ownerArtworkReferences = `WITH roots(digest) AS (
+ SELECT digest FROM artwork_uploads
  UNION SELECT digest FROM artwork_selections WHERE locked=1 OR actor<>''
- UNION SELECT thumbnail_digest FROM artwork_selections WHERE locked=1 OR actor<>''
- UNION SELECT j.value FROM metadata_owner_history h,json_tree(h.before_json) j JOIN artwork_objects o ON o.digest=j.value WHERE j.type='text'
- UNION SELECT j.value FROM metadata_owner_history h,json_tree(h.after_json) j JOIN artwork_objects o ON o.digest=j.value WHERE j.type='text'`
+ UNION SELECT j.value FROM metadata_owner_history h,json_tree(h.before_json) j WHERE j.type='text' AND length(j.value)=64
+ UNION SELECT j.value FROM metadata_owner_history h,json_tree(h.after_json) j WHERE j.type='text' AND length(j.value)=64
+ ), sources AS MATERIALIZED (SELECT s.small_blob,s.large_blob,s.ambient_blob FROM roots r JOIN artwork_sources s ON s.digest=r.digest)
+ SELECT small_blob FROM sources UNION SELECT large_blob FROM sources UNION SELECT ambient_blob FROM sources`

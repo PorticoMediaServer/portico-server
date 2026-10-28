@@ -130,7 +130,7 @@ func (d Dependencies) peopleRoutes(mux *http.ServeMux) {
 			failure(w, err)
 			return
 		}
-		f, mime, err := d.Metadata.EntityArtworkVariant(r.Context(), metadata.RepairTarget{Kind: "item", ID: item}, "portrait", subject, artworkWidth(r), r.URL.Query().Get("v"))
+		f, mime, err := d.Metadata.EntityArtworkVariant(r.Context(), metadata.RepairTarget{Kind: "item", ID: item}, "portrait", subject, artworkSize(r), r.URL.Query().Get("v"))
 		if err != nil {
 			if artworkVersionFailure(w, err) {
 				return

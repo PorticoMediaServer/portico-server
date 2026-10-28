@@ -9,6 +9,7 @@ import (
 	"portico.local/server/internal/catalog"
 	"portico.local/server/internal/dbwork"
 	"portico.local/server/internal/livechannels"
+	"portico.local/server/internal/metadata"
 )
 
 // Images retain programme identity so knowing an old URL never substitutes for
@@ -19,19 +20,22 @@ func (d Dependencies) guideImageRoutes(mux *http.ServeMux) {
 			administrationFailure(w, administration.ErrUnavailable)
 			return
 		}
-		digest, err := d.guideImageDigest(r)
+		// No resize happens here: size or w only chooses between the two
+		// renditions made at import, and the default is the large one.
+		small := artworkSize(r) == metadata.ArtworkSmall
+		digest, mime, err := d.guideImageDigest(r, small)
 		if err != nil {
 			administrationFailure(w, err)
 			return
 		}
-		raw, mime, err := d.Administration.GuideImageBytes(r.Context(), digest)
+		raw, err := d.Administration.GuideImageBytes(r.Context(), digest, mime)
 		if err != nil {
 			administrationFailure(w, err)
 			return
 		}
 		// A rule or publication may change while the file is read. Recheck before
 		// returning bytes, including on conditional requests.
-		current, err := d.guideImageDigest(r)
+		current, _, err := d.guideImageDigest(r, small)
 		if err != nil {
 			administrationFailure(w, err)
 			return
@@ -49,44 +53,44 @@ func (d Dependencies) guideImageRoutes(mux *http.ServeMux) {
 	})
 }
 
-func (d Dependencies) guideImageDigest(r *http.Request) (string, error) {
+func (d Dependencies) guideImageDigest(r *http.Request, small bool) (string, string, error) {
 	p, err := d.strictPrincipalFor(r)
 	if err != nil {
-		return "", err
+		return "", "", err
 	}
 	generation, programme := r.PathValue("generation"), r.PathValue("programme")
 	if len(generation) > 128 || len(programme) > 128 {
-		return "", administration.ErrNotFound
+		return "", "", administration.ErrNotFound
 	}
 	restrictions, _, err := d.viewerRestrictions(r.WithContext(dbwork.WithClass(r.Context(), dbwork.ClassSecurityFence)), p)
 	if err != nil {
-		return "", err
+		return "", "", err
 	}
 	gate, err := dbwork.BeginSnapshot(r.Context(), d.DB)
 	if err != nil {
-		return "", err
+		return "", "", err
 	}
 	defer gate.Rollback()
 	_, allowed, err := d.liveAuthority(p)(r.Context(), gate.Tx(), false)
 	if err != nil {
-		return "", err
+		return "", "", err
 	}
-	var source, channel, digest, facts string
-	err = gate.Tx().QueryRowContext(r.Context(), `SELECT s.id,p.channel_id,img.digest,COALESCE(m.facts,'{}')
+	var source, channel, digest, mime, facts string
+	err = gate.Tx().QueryRowContext(r.Context(), `SELECT s.id,p.channel_id,CASE WHEN ? THEN img.small_digest ELSE img.large_digest END,img.media_type,COALESCE(m.facts,'{}')
  FROM live_programmes p JOIN live_generations g ON g.id=p.generation_id
  JOIN live_sources s ON s.id=g.source_id AND s.active_generation=g.id AND s.state='active'
  JOIN live_programme_icons i ON i.generation_id=p.generation_id AND i.programme_id=p.id
  JOIN live_programme_images img ON img.url=i.url
  LEFT JOIN live_programme_metadata m ON m.generation_id=p.generation_id AND m.id=p.id
- WHERE p.generation_id=? AND p.id=?`, generation, programme).Scan(&source, &channel, &digest, &facts)
+ WHERE p.generation_id=? AND p.id=?`, small, generation, programme).Scan(&source, &channel, &digest, &mime, &facts)
 	if errors.Is(err, sql.ErrNoRows) {
-		return "", administration.ErrNotFound
+		return "", "", administration.ErrNotFound
 	}
 	if err != nil {
-		return "", err
+		return "", "", err
 	}
 	if allowed == nil || !allowed(source, channel) || !validGuideImageDigest(digest) {
-		return "", administration.ErrNotFound
+		return "", "", administration.ErrNotFound
 	}
 	var item livechannels.Programme
 	item.ApplyFacts(facts)
@@ -95,9 +99,9 @@ func (d Dependencies) guideImageDigest(r *http.Request) (string, error) {
 		rating = item.Rating.Value
 	}
 	if restrictions.Active() && !catalog.RatingAllowed(restrictions, rating) {
-		return "", administration.ErrNotFound
+		return "", "", administration.ErrNotFound
 	}
-	return digest, nil
+	return digest, mime, nil
 }
 
 func validGuideImageDigest(digest string) bool {

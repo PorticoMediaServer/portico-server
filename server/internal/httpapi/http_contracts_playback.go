@@ -196,7 +196,7 @@ func registerPlaybackHTTPContracts(registry *apikit.Registry) error {
 		return err
 	}
 	// internal/httpapi/router.go:1018
-	if err := apikit.RegisterHTTP[struct{}, SubtitleBytesContract](registry, apikit.Metadata{ID: "get_items_id_art_kind", Method: "GET", Path: "/v1/items/{id}/art/{kind}", Summary: "Read title art", Access: apikit.Device, Requires: apikit.ScopeRead, Lane: apikit.Media, Admission: laneMedia, Cost: apikit.Constant, BodyLimit: 0, Status: 200, Query: []string{"size", "v", "w"}, ResponseContentType: "application/octet-stream", Errors: []string{"invalid_request", "unauthorized", "not_permitted", "not_found", "internal"}}); err != nil {
+	if err := apikit.RegisterHTTP[struct{}, SubtitleBytesContract](registry, apikit.Metadata{ID: "get_items_id_art_kind", Method: "GET", Path: "/v1/items/{id}/art/{kind}", Summary: "Read title art", Access: apikit.Device, Requires: apikit.ScopeRead, Lane: apikit.Media, Admission: laneMedia, Cost: apikit.Constant, BodyLimit: 0, Status: 200, Query: []string{"ld", "r", "sd", "size", "v", "w"}, ResponseContentType: "application/octet-stream", Errors: []string{"invalid_request", "unauthorized", "not_permitted", "not_found", "internal"}}); err != nil {
 		return err
 	}
 	// internal/httpapi/router.go:1053

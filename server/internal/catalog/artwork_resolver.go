@@ -4,7 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"net/url"
-	"strconv"
+	"portico.local/server/internal/artworkref"
 )
 
 type artworkTarget struct {
@@ -17,17 +17,49 @@ type artworkTarget struct {
 // a placeholder rather than repeat the show's art (Spec — Page Content §0.2).
 type resolvedArtwork struct{ PosterURL, BackdropURL, LogoURL, StillURL string }
 
-// selectedArtworkURL describes bytes already selected by an authorized read.
-// The version is the full selected object, independent of the requested width.
-func selectedArtworkURL(kind, id, role, subject, digest string, width int) string {
-	if digest == "" {
+// selectedArtworkURL describes a source already selected by an authorized
+// read: its identity (v) and both slots' actual width, height, bytes and
+// rendition token, so a client picks a slot without another request.
+func selectedArtworkURL(kind, id, role, subject, source string, d artworkref.Descriptor) string {
+	if source == "" {
 		return ""
 	}
-	path := "/v1/metadata/" + url.PathEscape(kind) + "/" + url.PathEscape(id) + "/art/" + role + "?v=" + url.QueryEscape(digest) + "&w=" + strconv.Itoa(width)
+	path := "/v1/metadata/" + url.PathEscape(kind) + "/" + url.PathEscape(id) + "/art/" + role + "?" + d.Query(source)
 	if subject != "" {
 		path += "&subject=" + url.QueryEscape(subject)
 	}
 	return path
+}
+
+// describeItemArt rewrites a page's bare item art routes into described,
+// cacheable URLs, with one keyed read per role.
+func (s *Service) describeItemArt(urls ...*string) error {
+	return artworkref.DescribeItemURLs(s.Context(), s.read(), urls...)
+}
+
+// describeItemArtIn is describeItemArt for one field of every element.
+func describeItemArtIn[T any](s *Service, list []T, field func(*T) *string) error {
+	urls := make([]*string, 0, len(list))
+	for i := range list {
+		urls = append(urls, field(&list[i]))
+	}
+	return s.describeItemArt(urls...)
+}
+
+// describeItemArtMap is describeItemArt for the values of a map.
+func describeItemArtMap(s *Service, m map[string]string) error {
+	keys := make([]string, 0, len(m))
+	urls := make([]string, 0, len(m))
+	for k, v := range m {
+		keys, urls = append(keys, k), append(urls, v)
+	}
+	if err := describeItemArtIn(s, urls, func(u *string) *string { return u }); err != nil {
+		return err
+	}
+	for i, k := range keys {
+		m[k] = urls[i]
+	}
+	return nil
 }
 
 // resolveArtwork resolves a page, including container inheritance, in one read.
@@ -51,16 +83,11 @@ func (s *Service) resolveArtworkContext(ctx context.Context, targets []artworkTa
 	for rows.Next() {
 		var t artworkTarget
 		var kind, id, role, digest string
-		if err = rows.Scan(&t.Kind, &t.ID, &kind, &id, &role, &digest); err != nil {
+		var d artworkref.Descriptor
+		if err = rows.Scan(append([]any{&t.Kind, &t.ID, &kind, &id, &role, &digest}, d.ScanTargets()...)...); err != nil {
 			return nil, err
 		}
-		width := 400
-		if role == "backdrop" {
-			width = 1920
-		} else if role == "logo" || role == "still" || role == "thumbnail" {
-			width = 800
-		}
-		path := selectedArtworkURL(kind, id, role, "", digest, width)
+		path := selectedArtworkURL(kind, id, role, "", digest, d)
 		art := out[t]
 		if role == "backdrop" {
 			art.BackdropURL = path
@@ -97,5 +124,5 @@ const artworkResolutionQuery = `WITH requested AS MATERIALIZED (
  a.digest digest,
  row_number() OVER(PARTITION BY c.kind,c.id,CASE a.role WHEN 'backdrop' THEN 'backdrop' WHEN 'logo' THEN 'logo' WHEN 'still' THEN 'still' WHEN 'thumbnail' THEN 'still' ELSE 'poster' END ORDER BY c.priority,CASE a.role WHEN 'poster' THEN 0 WHEN 'still' THEN 0 ELSE 1 END,a.role) rank
  FROM candidates c CROSS JOIN artwork_selections a ON a.kind=c.target_kind AND a.entity_id=c.target_id AND a.subject='' AND a.role IN('poster','cover','portrait','square','backdrop','logo','still','thumbnail') AND (a.role NOT IN('still','thumbnail') OR c.priority=0)
- CROSS JOIN artwork_objects o ON o.digest=a.digest AND o.status='ready'
- ) SELECT r.kind,r.id,r.target_kind,pid(t.public_id),r.role,r.digest FROM ranked r CROSS JOIN catalog_entities t ON t.id=r.target_id WHERE r.rank=1`
+ CROSS JOIN artwork_sources o ON o.digest=a.digest
+ ) SELECT r.kind,r.id,r.target_kind,pid(t.public_id),r.role,r.digest,` + artworkref.Columns + ` FROM ranked r CROSS JOIN catalog_entities t ON t.id=r.target_id CROSS JOIN artwork_sources src ON src.digest=r.digest CROSS JOIN artwork_blobs sb ON sb.digest=src.small_blob CROSS JOIN artwork_blobs lb ON lb.digest=src.large_blob WHERE r.rank=1`

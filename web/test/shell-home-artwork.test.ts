@@ -4,10 +4,17 @@ import {authenticatedArtwork, artworkFailure, foregroundArtwork} from '../src/sh
 
 const identity = {serverId: 'server', viewerId: 'account-profile', authorityKey: 'current-authority'};
 const url = '/v1/items/item/art/backdrop?v=' + 'a'.repeat(64);
-test('foreground keeps selected version identity, uses a sharp bucket and refuses arbitrary assets', () => {
+test('foreground keeps selected version identity, picks a sharp slot and refuses arbitrary assets', () => {
   const source = foregroundArtwork(url, 620, 16 / 9, identity)!;
-  assert.equal(new URL(source.url, 'https://server.invalid').searchParams.get('w'), '800');
-  assert.equal(new URL(source.url, 'https://server.invalid').searchParams.get('v'), 'a'.repeat(64));
+  const params = new URL(source.url, 'https://server.invalid').searchParams;
+  assert.equal(params.get('size'), 'small');
+  assert.equal(params.get('w'), null);
+  assert.equal(params.get('v'), 'a'.repeat(64));
+  // A described URL is requested at the slot whose actual pixels cover the box,
+  // with that slot's token, so the bytes are cached for good.
+  const described = url.split('?')[0] + '?v=' + 'a'.repeat(64) + '&sd=800x450.90000.' + '1'.repeat(16) + '&ld=1920x1080.400000.' + '2'.repeat(16);
+  const wide = new URL(foregroundArtwork(described, 1600, 16 / 9, identity)!.url, 'https://server.invalid').searchParams;
+  assert.deepEqual([wide.get('size'), wide.get('r'), wide.get('sd'), wide.get('ld')], ['large', '2'.repeat(16), null, null]);
   assert.equal(foregroundArtwork('/assets/reference.jpg', 620, 1, identity), undefined);
   assert.equal(foregroundArtwork('/v1/items/item/art/backdrop', 620, 1, identity), undefined);
   assert.equal(foregroundArtwork('https://other.invalid' + url, 620, 1, identity), undefined);

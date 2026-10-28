@@ -72,7 +72,8 @@ test('pairs with a server-issued code, then loads the title with its display fie
   assert.equal(h.controller.getSnapshot().phase, 'waiting', 'the TV is asking the person watching');
   r.reply({type: 'paired'});
   assert.equal(await started, true);
-  assert.deepEqual(r.sent[1], {type: 'load', requestId: 'load-1', itemId: 'item-1', startSeconds: 42, title: 'Pilot', seriesTitle: 'The Show', season: 1, episode: 1, kind: 'episode', artworkPath: '/v1/artwork/x'});
+  // The receiver is told the one artwork slot its cover box needs.
+  assert.deepEqual(r.sent[1], {type: 'load', requestId: 'load-1', itemId: 'item-1', startSeconds: 42, title: 'Pilot', seriesTitle: 'The Show', season: 1, episode: 1, kind: 'episode', artworkPath: '/v1/artwork/x?size=small'});
   const s = h.controller.getSnapshot();
   assert.equal(s.phase, 'casting');
   assert.equal(s.deviceName, 'Living Room TV');

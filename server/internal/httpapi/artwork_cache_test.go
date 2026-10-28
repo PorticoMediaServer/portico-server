@@ -2,6 +2,7 @@ package httpapi
 
 import (
 	"bytes"
+	"database/sql"
 	"encoding/json"
 	"fmt"
 	"image"
@@ -141,7 +142,7 @@ func TestArtworkThumbnailHasItsOwnBytesAndValidator(t *testing.T) {
 		t.Fatal("thumbnail reused original validator", thumb.Code)
 	}
 	cfg, _, err := image.DecodeConfig(bytes.NewReader(thumb.Body.Bytes()))
-	if err != nil || cfg.Height != 400 {
+	if err != nil || cfg.Height != 800 {
 		t.Fatal(cfg, err)
 	}
 	cached := editorRequestWithHeader(t, h, "GET", "/v1/items/"+editOne+"/art/poster?size=thumbnail", owner, map[string]string{"If-None-Match": thumb.Header().Get("ETag")})
@@ -154,7 +155,11 @@ func TestArtworkThumbnailHasItsOwnBytesAndValidator(t *testing.T) {
 	}
 }
 
-func TestArtworkImmutableWidthsAndReplacedVersion(t *testing.T) {
+// A URL is cached for good only when it names the source (v), the slot and
+// that slot file's token (r). Legacy widths choose a slot and revalidate, and
+// a replaced selection makes the old address refuse rather than serve the new
+// bytes.
+func TestArtworkImmutableSlotsAndReplacedVersion(t *testing.T) {
 	h, owner, _, db := editorHTTPFixtureDB(t)
 	editOne := editorItemPublic(t, db, "Alpha")
 	state := editorState(t, h, owner, editOne)
@@ -168,32 +173,45 @@ func TestArtworkImmutableWidthsAndReplacedVersion(t *testing.T) {
 		t.Fatal(err)
 	}
 	settleCompactCatalogue(t, db)
-	full := editorRequest(t, h, "GET", "/v1/items/"+editOne+"/art/poster", owner, "", nil)
-	version := strings.Trim(full.Header().Get("ETag"), `"`)
-	for _, width := range []int{400, 800, 1920} {
-		path := fmt.Sprintf("/v1/metadata/item/%s/art/poster?v=%s&w=%d", editOne, version, width)
+	version := selectedArtworkSource(t, db, editOne, "poster")
+	var small, large string
+	if err := db.QueryRow(`SELECT small_blob,large_blob FROM artwork_sources WHERE digest=?`, version).Scan(&small, &large); err != nil {
+		t.Fatal(err)
+	}
+	for _, tc := range []struct {
+		size, blob string
+		edge       int
+	}{{"small", small, 800}, {"large", large, 1920}} {
+		path := fmt.Sprintf("/v1/metadata/item/%s/art/poster?v=%s&size=%s&r=%s", editOne, version, tc.size, tc.blob[:16])
 		response := editorRequest(t, h, "GET", path, owner, "", nil)
 		if response.Code != 200 {
-			t.Fatal(width, response.Code, response.Body.String())
+			t.Fatal(tc.size, response.Code, response.Body.String())
 		}
 		cfg, _, err := image.DecodeConfig(bytes.NewReader(response.Body.Bytes()))
-		if err != nil || max(cfg.Width, cfg.Height) != width {
-			t.Fatal(width, cfg, err)
+		if err != nil || max(cfg.Width, cfg.Height) != tc.edge || response.Header().Get("ETag") != `"`+tc.blob+`"` {
+			t.Fatal(tc.size, cfg, response.Header(), err)
 		}
 		if response.Header().Get("Cache-Control") != "private, max-age=31536000, immutable" {
 			t.Fatal(response.Header())
 		}
 		cached := editorRequestWithHeader(t, h, "GET", path, owner, map[string]string{"If-None-Match": response.Header().Get("ETag")})
 		if cached.Code != 304 || cached.Body.Len() != 0 {
-			t.Fatal(width, cached.Code)
+			t.Fatal(tc.size, cached.Code)
+		}
+		// The other slot's token, or none, never makes this URL immutable.
+		for _, other := range []string{"", "&r=" + strings.Repeat("0", 16)} {
+			loose := editorRequest(t, h, "GET", fmt.Sprintf("/v1/metadata/item/%s/art/poster?v=%s&size=%s%s", editOne, version, tc.size, other), owner, "", nil)
+			if loose.Code != 200 || loose.Header().Get("Cache-Control") != "private, no-cache" {
+				t.Fatal("an unmatched token was cached for good", tc.size, other, loose.Header())
+			}
 		}
 	}
-	for _, tc := range []struct{ requested, bucket int }{{1, 400}, {500, 800}, {801, 1920}, {5000, 1920}} {
+	for _, tc := range []struct{ requested, edge int }{{1, 800}, {500, 800}, {800, 800}, {801, 1920}, {5000, 1920}} {
 		path := fmt.Sprintf("/v1/metadata/item/%s/art/poster?v=%s&w=%d&size=thumbnail", editOne, version, tc.requested)
 		response := editorRequest(t, h, "GET", path, owner, "", nil)
 		cfg, _, err := image.DecodeConfig(bytes.NewReader(response.Body.Bytes()))
-		if response.Code != 200 || err != nil || max(cfg.Width, cfg.Height) != tc.bucket {
-			t.Fatalf("width %d should use bucket %d: code=%d cfg=%+v err=%v", tc.requested, tc.bucket, response.Code, cfg, err)
+		if response.Code != 200 || err != nil || max(cfg.Width, cfg.Height) != tc.edge || response.Header().Get("Cache-Control") != "private, no-cache" {
+			t.Fatalf("width %d should open the %d slot: code=%d cfg=%+v err=%v", tc.requested, tc.edge, response.Code, cfg, err)
 		}
 	}
 	body, contentType = editorUpload(t, saved.Revision, editorPNG(t, 30, 40))
@@ -201,13 +219,15 @@ func TestArtworkImmutableWidthsAndReplacedVersion(t *testing.T) {
 		t.Fatal(w.Code, w.Body.String())
 	}
 	settleCompactCatalogue(t, db)
-	stale := editorRequest(t, h, "GET", "/v1/items/"+editOne+"/art/poster?v="+version+"&w=800", owner, "", nil)
+	stale := editorRequest(t, h, "GET", "/v1/items/"+editOne+"/art/poster?v="+version+"&size=small&r="+small[:16], owner, "", nil)
 	if stale.Code == 200 || stale.Code == 304 || strings.Contains(stale.Header().Get("Cache-Control"), "immutable") {
 		t.Fatal("old address served new bytes", stale.Code)
 	}
 }
 
-func TestArtworkMissingWidthRegeneratesFromSelectedVersion(t *testing.T) {
+// A missing slot file is pending until the source is re-acquired: no request
+// resizes the other slot or writes a file.
+func TestArtworkMissingSlotIsPendingAndNeverRebuiltOnRequest(t *testing.T) {
 	d, owner, _ := tl6SupportFixture(t)
 	variant := tl6FixtureMovie(t, d, "private-library", "variant-item.mkv", "Variant", 2020)
 	service := metadata.New(d.DB, "test-token")
@@ -223,32 +243,38 @@ func TestArtworkMissingWidthRegeneratesFromSelectedVersion(t *testing.T) {
 		t.Fatal(response.Code, response.Body.String())
 	}
 	settleCompactCatalogue(t, d.DB)
-	full := editorRequest(t, h, "GET", "/v1/items/"+variant.Public+"/art/poster", owner.AccessToken, "", nil)
-	version := strings.Trim(full.Header().Get("ETag"), `"`)
-	for _, width := range []int{400, 800} {
-		if _, err := d.DB.Exec(`DELETE FROM artwork_variants WHERE source_digest=? AND width=?`, version, width); err != nil {
-			t.Fatal(err)
-		}
-		path := fmt.Sprintf("/v1/metadata/item/%s/art/poster?v=%s&w=%d", variant.Public, version, width)
-		response := editorRequest(t, h, "GET", path, owner.AccessToken, "", nil)
-		cfg, _, err := image.DecodeConfig(bytes.NewReader(response.Body.Bytes()))
-		if response.Code != http.StatusOK || err != nil || max(cfg.Width, cfg.Height) != width {
-			t.Fatalf("regenerated %d: code=%d cfg=%+v err=%v", width, response.Code, cfg, err)
-		}
-		var count int
-		if err = d.DB.QueryRow(`SELECT count(*) FROM artwork_variants WHERE source_digest=? AND width=?`, version, width).Scan(&count); err != nil || count != 1 {
-			t.Fatalf("regenerated bucket %d not cached: %d %v", width, count, err)
-		}
-	}
-	var variantDigest string
-	if err := d.DB.QueryRow(`SELECT digest FROM artwork_variants WHERE source_digest=? AND width=400`, version).Scan(&variantDigest); err != nil {
+	version := selectedArtworkSource(t, d.DB, variant.Public, "poster")
+	var small string
+	if err := d.DB.QueryRow(`SELECT small_blob FROM artwork_sources WHERE digest=?`, version).Scan(&small); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.Remove(filepath.Join(artworkDir, variantDigest+".img")); err != nil {
+	if err := os.Remove(filepath.Join(artworkDir, small+".img")); err != nil {
 		t.Fatal(err)
 	}
-	repaired := editorRequest(t, h, "GET", "/v1/metadata/item/"+variant.Public+"/art/poster?v="+version+"&w=400", owner.AccessToken, "", nil)
-	if repaired.Code != http.StatusOK {
-		t.Fatalf("missing physical variant was not rebuilt: %d %s", repaired.Code, repaired.Body.String())
+	entries, err := os.ReadDir(artworkDir)
+	if err != nil {
+		t.Fatal(err)
 	}
+	missing := editorRequest(t, h, "GET", "/v1/metadata/item/"+variant.Public+"/art/poster?v="+version+"&size=small", owner.AccessToken, "", nil)
+	if missing.Code == http.StatusOK || missing.Header().Get("Retry-After") != "5" || !bytes.Contains(missing.Body.Bytes(), []byte("artwork_pending")) {
+		t.Fatalf("a missing slot was served: %d %s", missing.Code, missing.Body.String())
+	}
+	if large := editorRequest(t, h, "GET", "/v1/metadata/item/"+variant.Public+"/art/poster?v="+version+"&size=large", owner.AccessToken, "", nil); large.Code != http.StatusOK {
+		t.Fatalf("the other slot stopped serving: %d", large.Code)
+	}
+	after, err := os.ReadDir(artworkDir)
+	if err != nil || len(after) != len(entries) {
+		t.Fatal("a request wrote artwork", len(entries), len(after), err)
+	}
+}
+
+// selectedArtworkSource is the source digest a title's role selection names:
+// the v of its artwork URLs (the served file's ETag is a blob, not a source).
+func selectedArtworkSource(t testing.TB, db *sql.DB, item, role string) string {
+	t.Helper()
+	var source string
+	if err := db.QueryRow(`SELECT a.digest FROM artwork_selections a JOIN catalog_entities e ON e.id=a.entity_id WHERE e.public_id=pid_blob(?) AND a.role=? AND a.subject=''`, item, role).Scan(&source); err != nil {
+		t.Fatal(err)
+	}
+	return source
 }

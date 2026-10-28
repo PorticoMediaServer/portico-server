@@ -300,7 +300,11 @@ func (s *Service) List(viewer Viewer, library, cursor string, limit int) ([]Item
 		projectArtwork(i)
 		out = append(out, *i)
 	}
-	return out, next, nil
+	urls := make([]*string, 0, 2*len(out))
+	for i := range out {
+		urls = append(urls, &out[i].PosterURL, &out[i].BackdropURL)
+	}
+	return out, next, s.describeItemArt(urls...)
 }
 func (s *Service) Get(profile, id string) (Item, error) {
 	return s.getItem(profile, id, true)
@@ -345,6 +349,9 @@ func (s *Service) getItem(profile, id string, includeSources bool) (Item, error)
 		return i, e
 	}
 	projectArtwork(&i)
+	if e = s.describeItemArt(&i.PosterURL, &i.BackdropURL); e != nil {
+		return i, e
+	}
 	if i.Kind == "episode" {
 		art, err := s.resolveArtwork([]artworkTarget{{"item", i.ID}})
 		if err != nil {

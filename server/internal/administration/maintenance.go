@@ -8,6 +8,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"portico.local/server/internal/metadata"
 	"portico.local/server/internal/storagepaths"
 	"sort"
 	"time"
@@ -69,16 +70,23 @@ type StorageReport struct {
 	ObservedAt              string         `json:"observedAt"`
 	// Truncated says at least one category held more files than one sweep read.
 	Truncated bool `json:"truncated"`
+	// ArtworkEncoding counts every artwork rendition published, by slot and
+	// format: within its byte cap, a counted outlier inside 1.5x the cap, or
+	// refused because the cap was unreachable at the quality floor.
+	ArtworkEncoding []metadata.ArtworkEncodingCounter `json:"artworkEncoding"`
 }
 
 // maxMeasuredFiles bounds one sweep so a huge artwork tree cannot hold a
 // request open.
 const maxMeasuredFiles = 200000
 
-func measure(root string, now time.Time) (int64, int64, int, bool, error) {
+func measure(ctx context.Context, root string, now time.Time) (int64, int64, int, bool, error) {
 	var bytes, count int64
 	oldest, truncated := 0, false
 	err := filepath.WalkDir(root, func(path string, entry fs.DirEntry, err error) error {
+		if e := ctx.Err(); e != nil {
+			return e
+		}
 		if err != nil {
 			// An unreadable subtree is skipped rather than failing the report.
 			if entry != nil && entry.IsDir() {
@@ -107,22 +115,33 @@ func measure(root string, now time.Time) (int64, int64, int, bool, error) {
 	return bytes, count, oldest, truncated, err
 }
 
-// Storage measures every category. It reads the filesystem only; nothing is
-// removed and nothing is written.
+// Storage reports every category from the maintained storage snapshot. The
+// owner is checked first; nothing is removed and nothing is written.
 func (s *Service) Storage(ctx context.Context, auth Authorize) (StorageReport, error) {
-	out := StorageReport{StateDirectory: s.StateDirectory(), Categories: []StorageUsage{}, ObservedAt: timeFromMilliseconds(s.milliseconds())}
 	if s.StateDirectory() == "" {
-		return out, ErrUnavailable
+		return StorageReport{StateDirectory: s.StateDirectory(), Categories: []StorageUsage{}, ObservedAt: timeFromMilliseconds(s.milliseconds())}, ErrUnavailable
 	}
 	// The owner is checked before anything is measured.
 	if err := s.snapshot(ctx, auth, func(*sql.Tx) error { return nil }); err != nil {
-		return out, err
+		return StorageReport{}, err
 	}
+	snapshot, err := s.storageSnapshot(ctx)
+	return snapshot.report, err
+}
+
+// measureStorage walks every category once. It reads the filesystem only.
+// Artwork is measured as files: each blob is one content-addressed file,
+// whichever sources and slots name it, so shared files count once.
+func (s *Service) measureStorage(ctx context.Context) (StorageReport, error) {
+	out := StorageReport{StateDirectory: s.StateDirectory(), Categories: []StorageUsage{}, ObservedAt: timeFromMilliseconds(s.milliseconds())}
 	out.StateDirectoryOnNetwork = observedNetworkDirectory(out.StateDirectory)
 	now := s.now()
 	for _, category := range StorageCategories() {
 		usage := StorageUsage{StorageCategory: category, Paths: []string{}}
 		for _, name := range category.Directories {
+			if err := ctx.Err(); err != nil {
+				return out, err
+			}
 			path := storagepaths.Path(s.StateDirectory(), name)
 			info, err := os.Stat(path)
 			if err != nil || !info.IsDir() {
@@ -130,7 +149,10 @@ func (s *Service) Storage(ctx context.Context, auth Authorize) (StorageReport, e
 			}
 			usage.Present = true
 			usage.Paths = append(usage.Paths, path)
-			bytes, count, oldest, truncated, _ := measure(path, now)
+			bytes, count, oldest, truncated, err := measure(ctx, path, now)
+			if err != nil && ctx.Err() != nil {
+				return out, ctx.Err()
+			}
 			usage.Bytes += bytes
 			usage.FileCount += count
 			if oldest > usage.OldestDays {
@@ -143,6 +165,11 @@ func (s *Service) Storage(ctx context.Context, auth Authorize) (StorageReport, e
 		out.Categories = append(out.Categories, usage)
 	}
 	out.TotalBytesText = formatBytes(out.TotalBytes)
+	counters, err := metadata.New(s.db, "").ArtworkEncodingCounts(ctx)
+	if err != nil {
+		return out, err
+	}
+	out.ArtworkEncoding = counters
 	return out, nil
 }
 

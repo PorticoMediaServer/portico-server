@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"net/url"
+	"portico.local/server/internal/artworkref"
 	"regexp"
 	"strings"
 
@@ -34,7 +35,6 @@ type ArtworkChoice struct {
 	Subject     string `json:"subject"`
 	CandidateID string `json:"candidateId"`
 	Digest      string `json:"digest"`
-	Thumbnail   string `json:"thumbnailDigest"`
 	Locked      bool   `json:"locked"`
 	Revision    int64  `json:"revision"`
 	Attribution string `json:"attribution"`
@@ -84,23 +84,34 @@ func artworkPath(t RepairTarget, role, subject, digest string) string {
 	}
 	return path
 }
+
+// describedArtworkPath is artworkPath for a published source, carrying both
+// slots' descriptors so a client can choose one without another request.
+func describedArtworkPath(t RepairTarget, role, subject, source string, d artworkref.Descriptor) string {
+	path := "/v1/metadata/" + url.PathEscape(t.Kind) + "/" + url.PathEscape(t.ID) + "/art/" + url.PathEscape(role) + "?" + d.Query(source)
+	if subject != "" {
+		path += "&subject=" + url.QueryEscape(subject)
+	}
+	return path
+}
 func readArtworkChoices(ctx context.Context, tx *sql.Tx, t RepairTarget) ([]ArtworkChoice, error) {
 	out := []ArtworkChoice{}
 	entity, err := artworkEntity(ctx, tx, t.ID)
 	if err != nil {
 		return out, err
 	}
-	rows, err := tx.QueryContext(ctx, `SELECT a.role,a.subject,a.candidate_id,a.digest,a.thumbnail_digest,a.locked,a.revision,c.attribution FROM artwork_selections a JOIN artwork_candidates c ON c.id=a.candidate_id WHERE a.kind=? AND a.entity_id=? ORDER BY a.role,a.subject LIMIT 200`, t.Kind, entity)
+	rows, err := tx.QueryContext(ctx, `SELECT a.role,a.subject,a.candidate_id,a.digest,a.locked,a.revision,c.attribution,`+artworkref.Columns+` FROM artwork_selections a JOIN artwork_candidates c ON c.id=a.candidate_id JOIN artwork_sources src ON src.digest=a.digest JOIN artwork_blobs sb ON sb.digest=src.small_blob JOIN artwork_blobs lb ON lb.digest=src.large_blob WHERE a.kind=? AND a.entity_id=? ORDER BY a.role,a.subject LIMIT 200`, t.Kind, entity)
 	if err != nil {
 		return out, err
 	}
 	defer rows.Close()
 	for rows.Next() {
 		var a ArtworkChoice
-		if err = rows.Scan(&a.Role, &a.Subject, &a.CandidateID, &a.Digest, &a.Thumbnail, &a.Locked, &a.Revision, &a.Attribution); err != nil {
+		var d artworkref.Descriptor
+		if err = rows.Scan(append([]any{&a.Role, &a.Subject, &a.CandidateID, &a.Digest, &a.Locked, &a.Revision, &a.Attribution}, d.ScanTargets()...)...); err != nil {
 			return out, err
 		}
-		a.URL = artworkPath(t, a.Role, a.Subject, a.Digest)
+		a.URL = describedArtworkPath(t, a.Role, a.Subject, a.Digest, d)
 		out = append(out, a)
 	}
 	return out, rows.Err()
@@ -359,18 +370,14 @@ func restoreArtworkChoices(ctx context.Context, tx *sql.Tx, t RepairTarget, choi
 		}
 	}
 	for _, a := range choices {
-		var n int
-		if err := tx.QueryRowContext(ctx, `SELECT count(*) FROM artwork_objects WHERE digest IN(?,?) AND status='ready'`, a.Digest, a.Thumbnail).Scan(&n); err != nil {
+		var published bool
+		if err := tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM artwork_sources WHERE digest=?)`, a.Digest).Scan(&published); err != nil {
 			return err
 		}
-		expected := 2
-		if a.Digest == a.Thumbnail {
-			expected = 1
-		}
-		if n != expected {
+		if !published {
 			return fmt.Errorf("retained artwork needs repair before restore")
 		}
-		_, err := tx.ExecContext(ctx, `INSERT INTO artwork_selections VALUES(?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(kind,entity_id,role,subject) DO UPDATE SET candidate_id=excluded.candidate_id,digest=excluded.digest,thumbnail_digest=excluded.thumbnail_digest,locked=excluded.locked,revision=artwork_selections.revision+1,actor=excluded.actor,observed_at=excluded.observed_at`, t.Kind, entity, a.Role, a.Subject, a.CandidateID, a.Digest, a.Thumbnail, a.Locked, 1, actor, now)
+		_, err := tx.ExecContext(ctx, `INSERT INTO artwork_selections VALUES(?,?,?,?,?,?,?,?,?,?) ON CONFLICT(kind,entity_id,role,subject) DO UPDATE SET candidate_id=excluded.candidate_id,digest=excluded.digest,locked=excluded.locked,revision=artwork_selections.revision+1,actor=excluded.actor,observed_at=excluded.observed_at`, t.Kind, entity, a.Role, a.Subject, a.CandidateID, a.Digest, a.Locked, 1, actor, now)
 		if err != nil {
 			return err
 		}

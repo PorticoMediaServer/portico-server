@@ -84,7 +84,7 @@ func TestArtworkLifecycleNeedsNoLock(t *testing.T) {
 	// Collection: an old unreferenced object goes; a tomb left by a crash is
 	// restored while its object is known.
 	old := time.Now().Add(-48 * time.Hour).UTC().Format(time.RFC3339Nano)
-	if _, err = db.Exec(`INSERT INTO artwork_objects VALUES(?,?,12,12,?,?,'ready')`, o.digest, o.mime, o.size, old); err != nil {
+	if _, err = db.Exec(`INSERT INTO artwork_blobs(digest,mime,width,height,bytes,created_at) VALUES(?,?,12,12,?,?)`, o.digest, o.mime, o.size, old); err != nil {
 		t.Fatal(err)
 	}
 	tomb := o.digest + artworkTombMarker + "crash"
@@ -101,7 +101,7 @@ func TestArtworkLifecycleNeedsNoLock(t *testing.T) {
 		t.Fatal(err)
 	}
 	var left int
-	if err = db.QueryRow(`SELECT count(*) FROM artwork_objects WHERE digest=?`, o.digest).Scan(&left); err != nil || left != 0 {
+	if err = db.QueryRow(`SELECT count(*) FROM artwork_blobs WHERE digest=?`, o.digest).Scan(&left); err != nil || left != 0 {
 		t.Fatal("unreferenced object was not collected", left, err)
 	}
 	if _, err = os.Stat(path); !errors.Is(err, os.ErrNotExist) {
@@ -204,18 +204,18 @@ func TestArtworkReseedsAfterSourceFenceChanges(t *testing.T) {
 // (whose literals must match the encoding thresholds), and one undecodable
 // object is recorded and skipped instead of stalling the queue.
 func TestArtworkCompactionSkipsABadObjectAndSeeksCandidates(t *testing.T) {
-	if artworkLargeCap[artworkLargeEdge] != 500000 || artworkLargeEdge != 1920 {
-		t.Fatal("artwork thresholds changed: update CompactArtworkStep's candidate predicate together")
-	}
 	s, db, _ := repairFixture(t)
 	ctx := context.Background()
+	setArtworkPolicy(t, s, 2560)
 	bad := strings.Repeat("0", 64)
 	if err := os.WriteFile(filepath.Join(s.cacheRoot, bad+".img"), []byte("not an image"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := db.Exec(`INSERT INTO artwork_objects VALUES(?,'image/png',4000,4000,9000000,'2020-01-01T00:00:00Z','ready')`, bad); err != nil {
-		t.Fatal(err)
-	}
+	integrationExec(t, db, `INSERT INTO artwork_blobs(digest,mime,width,height,bytes,created_at) VALUES(?,'image/png',4000,4000,9000000,'2020-01-01T00:00:00Z')`, bad)
+	integrationExec(t, db, fixtureArtworkSourceSQL, bad)
+	integrationExec(t, db, `UPDATE artwork_sources SET large_edge=2560 WHERE digest=?`, bad)
+	good := publishTestArtwork(t, s, p08cPNG(t, 2400, 1), "2020-01-01T00:00:00Z")
+	setArtworkPolicy(t, s, 1920)
 	if err := s.CompactArtworkStep(ctx); err != nil {
 		t.Fatal("a recorded content failure must not fail the step", err)
 	}
@@ -223,22 +223,16 @@ func TestArtworkCompactionSkipsABadObjectAndSeeksCandidates(t *testing.T) {
 	if err := db.QueryRow(`SELECT reason FROM artwork_compaction_failures WHERE digest=?`, bad).Scan(&reason); err != nil || reason != "undecodable" {
 		t.Fatal("failure not recorded", reason, err)
 	}
-	good, err := s.installArtworkFile(p08cPNG(t, 2000, 1), 2000, 1)
-	if err != nil {
-		t.Fatal(err)
-	}
-	integrationExec(t, db, `INSERT INTO artwork_objects VALUES(?,'image/png',2000,1,?,'2020-01-01T00:00:00Z','ready')`, good.digest, good.size)
 	if err := s.CompactArtworkStep(ctx); err != nil {
 		t.Fatal("the recorded failure still blocks the queue", err)
 	}
-	var remains bool
-	if err := db.QueryRow(`SELECT EXISTS(SELECT 1 FROM artwork_objects WHERE digest=?)`, good.digest).Scan(&remains); err != nil || remains {
-		t.Fatal("valid object behind corrupt object did not compact", remains, err)
+	var edge int
+	if err := db.QueryRow(`SELECT large_edge FROM artwork_sources WHERE digest=?`, good.source).Scan(&edge); err != nil || edge != 1920 {
+		t.Fatal("valid source behind a corrupt one did not compact", edge, err)
 	}
-
-	rows, err := db.Query(`EXPLAIN QUERY PLAN SELECT o.digest FROM artwork_objects o INDEXED BY artwork_objects_compaction WHERE o.status='ready' AND (o.bytes>500000 OR o.width>1920 OR o.height>1920) ORDER BY o.bytes DESC,o.digest LIMIT 1`)
+	rows, err := db.Query(`EXPLAIN QUERY PLAN SELECT s.digest FROM artwork_sources s INDEXED BY artwork_sources_large_edge WHERE s.large_edge>1920 ORDER BY s.large_edge,s.digest LIMIT 1`)
 	if err != nil {
-		t.Fatal("partial index unusable for the step's predicate", err)
+		t.Fatal("large-edge index unusable for the walk", err)
 	}
 	rows.Close()
 }
@@ -264,7 +258,7 @@ func TestArtworkSlowPublicationDoesNotBlockReadsOrPreviews(t *testing.T) {
 	if err := db.QueryRow(`SELECT candidate_id,locked FROM artwork_selections WHERE entity_id=? AND role='poster'`, resolveArtworkTestEntity(t, db, target)).Scan(&candidate, &locked); err != nil {
 		t.Fatal(err)
 	}
-	integrationExec(t, db, `INSERT INTO artwork_previews SELECT c.id,s.thumbnail_digest,c.source_fence,c.observed_at FROM artwork_candidates c JOIN artwork_selections s ON s.candidate_id=c.id WHERE c.id=?`, candidate)
+	integrationExec(t, db, `INSERT INTO artwork_previews SELECT c.id,s.digest,c.source_fence,c.observed_at FROM artwork_candidates c JOIN artwork_selections s ON s.candidate_id=c.id WHERE c.id=?`, candidate)
 	// An ordinary automatic retry is correctly refused for an occupied slot.
 	// Queue the real exact-selection size-refresh shape instead: it deliberately
 	// reacquires this candidate while retaining the old readable selection/preview.
@@ -325,7 +319,7 @@ func TestArtworkSlowPublicationDoesNotBlockReadsOrPreviews(t *testing.T) {
 			var file *os.File
 			var err error
 			if preview {
-				file, _, err = s.PreviewArtwork(ctx, target, candidate, 400)
+				file, _, err = s.PreviewArtwork(ctx, target, candidate, ArtworkSmall)
 			} else {
 				file, _, err = s.Artwork(ctx, target.ID, "poster")
 			}

@@ -170,12 +170,12 @@ func (d Dependencies) topShelfRoutes(mux *http.ServeMux) {
 			failure(w, errors.New("artwork is unavailable on this server"))
 			return
 		}
-		width := artworkWidth(r)
-		if width == 0 {
+		size := artworkSize(r)
+		if size != metadata.ArtworkSmall && size != metadata.ArtworkLarge {
 			failure(w, metadata.ErrRepairInput)
 			return
 		}
-		file, mime, e := d.topShelfArtwork(r.Context(), r.PathValue("id"), width)
+		file, mime, e := d.topShelfArtwork(r.Context(), r.PathValue("id"), size)
 		if e != nil {
 			if errors.Is(e, metadata.ErrArtworkPending) {
 				w.Header().Set("Retry-After", "5")
@@ -202,7 +202,7 @@ func (d Dependencies) topShelfRoutes(mux *http.ServeMux) {
 
 // Episode cards are posters: prefer season artwork, then the show, then the
 // item's own poster. The grant already authorizes the specific episode.
-func (d Dependencies) topShelfArtwork(ctx context.Context, item string, width int) (*os.File, string, error) {
+func (d Dependencies) topShelfArtwork(ctx context.Context, item string, size metadata.ArtworkSize) (*os.File, string, error) {
 	var season, show string
 	err := dbwork.ReadHandle(ctx, d.DB).QueryRowContext(ctx, `SELECT COALESCE((SELECT pid(public_id) FROM catalog_entities WHERE id=ep.season_id),''),(SELECT pid(public_id) FROM catalog_entities WHERE id=ep.show_id) FROM catalog_entities e JOIN catalog_episodes ep ON ep.entity_id=e.id WHERE e.public_id=pid_blob(?)`, item).Scan(&season, &show)
 	if err != nil && err != sql.ErrNoRows {
@@ -213,7 +213,7 @@ func (d Dependencies) topShelfArtwork(ctx context.Context, item string, width in
 			if target.ID == "" {
 				continue
 			}
-			f, mime, e := d.Metadata.EntityArtworkVariant(ctx, target, "poster", "", width, "")
+			f, mime, e := d.Metadata.EntityArtworkVariant(ctx, target, "poster", "", size, "")
 			if e == nil {
 				return f, mime, nil
 			}
@@ -222,7 +222,7 @@ func (d Dependencies) topShelfArtwork(ctx context.Context, item string, width in
 			}
 		}
 	}
-	return d.Metadata.EntityArtworkVariant(ctx, metadata.RepairTarget{Kind: "item", ID: item}, "poster", "", width, "")
+	return d.Metadata.EntityArtworkVariant(ctx, metadata.RepairTarget{Kind: "item", ID: item}, "poster", "", size, "")
 }
 
 func topShelfSection(row catalog.HomeRow) TopShelfSection {

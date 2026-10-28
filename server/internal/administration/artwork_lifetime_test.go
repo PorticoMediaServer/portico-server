@@ -31,7 +31,7 @@ func TestArtworkBytesSurviveCleanupUntilTheirLastTitleIsDeleted(t *testing.T) {
 		raw := []byte("retained artwork " + name)
 		digest := fmt.Sprintf("%x", sha256.Sum256(raw))
 		digests[name] = digest
-		if _, err := db.Exec(`INSERT INTO artwork_objects VALUES(?,'image/jpeg',?,1,1,'2000-01-01T00:00:00Z','ready')`, digest, len(raw)); err != nil {
+		if _, err := db.Exec(`INSERT INTO artwork_blobs(digest,mime,width,height,bytes,created_at) VALUES(?,'image/jpeg',?,1,?,'2000-01-01T00:00:00Z')`, digest, len(raw), len(raw)); err != nil {
 			t.Fatal(err)
 		}
 		path := filepath.Join(directory, digest+".img")
@@ -39,6 +39,13 @@ func TestArtworkBytesSurviveCleanupUntilTheirLastTitleIsDeleted(t *testing.T) {
 			t.Fatal(err)
 		}
 		if err := os.Chtimes(path, time.Unix(0, 0), time.Unix(0, 0)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	// Each source's small slot is the shared thumbnail file; its large slot
+	// and ambient effect are its own file.
+	for _, name := range []string{"shared", "unique"} {
+		if _, err := db.Exec(`INSERT INTO artwork_sources(digest,accepted_mime,accepted_width,accepted_height,small_blob,large_blob,ambient_blob,large_edge,small_outlier,large_outlier,encoder_revision,created_at) VALUES(?,'image/jpeg',1,1,?,?,?,1920,0,0,1,'2000-01-01T00:00:00Z')`, digests[name], digests["thumbnail"], digests[name], digests[name]); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -53,7 +60,7 @@ func TestArtworkBytesSurviveCleanupUntilTheirLastTitleIsDeleted(t *testing.T) {
 		if _, err := db.Exec(`INSERT INTO artwork_candidates(id,kind,entity_id,role,provider,image_id,origin,attribution,source_fence,observed_at) VALUES(?,'item',?,?,'owner',?,'upload','','fence','2000-01-01')`, v.id, v.entityID, v.role, v.id); err != nil {
 			t.Fatal(err)
 		}
-		if _, err := db.Exec(`INSERT INTO artwork_selections(kind,entity_id,role,candidate_id,digest,thumbnail_digest,actor,observed_at) VALUES('item',?,?,?,?,?,'owner','2000-01-01')`, v.entityID, v.role, v.id, digests[v.digest], digests["thumbnail"]); err != nil {
+		if _, err := db.Exec(`INSERT INTO artwork_selections(kind,entity_id,role,candidate_id,digest,actor,observed_at) VALUES('item',?,?,?,?,'owner','2000-01-01')`, v.entityID, v.role, v.id, digests[v.digest]); err != nil {
 			t.Fatal(err)
 		}
 	}

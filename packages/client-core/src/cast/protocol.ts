@@ -1,6 +1,7 @@
 import {castControllerStamp,castReceiverOccurrence,castRemoteIdentity,type CastControllerStamp,type CastReceiverOccurrence,type CastRemoteIdentity} from './remote-identity.ts';
 import {castBinding,type CastControllerBinding} from './controller-proof.ts';
 import {apiRoot} from "../../../contracts/src/routes.ts";
+import {artworkRenditionFor} from '../artwork/renditions.ts';
 /**
  * The Portico Cast channel (`urn:x-cast:tv.getportico.cast`), shared by every sender. The receiver
  * is `server/receiver/cast/receiver.js`.
@@ -125,7 +126,11 @@ export function parseCastEvent(raw: unknown): CastEvent | undefined {
   }
 }
 
-/** Display fields for `load`: only what's present, bounded, integers for season and episode. */
+/** The receiver paints cover art into a 560 px square at 1080p (cast-receiver frames). */
+const castArtworkBox = Object.freeze({width: 560, height: 560, dpr: 1, fit: 'cover' as const});
+
+/** Display fields for `load`: only what's present, bounded, integers for season and episode.
+ * Artwork names the one slot the receiver's cover box needs. */
 export function castMetadataFields(meta: CastMetadata): Record<string, string | number> {
   const out: Record<string, string | number> = {title: meta.title.slice(0, 200)};
   if (meta.subtitle) out.subtitle = meta.subtitle.slice(0, 200);
@@ -133,7 +138,7 @@ export function castMetadataFields(meta: CastMetadata): Record<string, string | 
   if (Number.isInteger(meta.season)) out.season = meta.season!;
   if (Number.isInteger(meta.episode)) out.episode = meta.episode!;
   if (meta.kind) out.kind = meta.kind.slice(0, 32);
-  if (meta.artworkPath && meta.artworkPath.startsWith(apiRoot)) out.artworkPath = meta.artworkPath.slice(0, 512);
+  if (meta.artworkPath && meta.artworkPath.startsWith(apiRoot)) out.artworkPath = artworkRenditionFor(meta.artworkPath, castArtworkBox).url.slice(0, 512);
   return out;
 }
 

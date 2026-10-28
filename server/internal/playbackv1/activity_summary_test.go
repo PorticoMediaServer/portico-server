@@ -19,9 +19,9 @@ func TestActivitySummarySessionsExactTotalAndRealDisplay(t *testing.T) {
 	episode := c.Episode(show, season, 3, "/private/episode.mkv")
 	c.Drain()
 	digest := strings.Repeat("a", 64)
-	c.Exec(`INSERT INTO artwork_objects VALUES(?,'image/png',400,600,100,'now','ready')`, digest)
+	c.Exec(`INSERT INTO artwork_blobs(digest,mime,width,height,bytes,created_at,status) VALUES(?,'image/png',400,600,100,'now','ready'); INSERT OR IGNORE INTO artwork_sources(digest,accepted_mime,accepted_width,accepted_height,small_blob,large_blob,ambient_blob,large_edge,small_outlier,large_outlier,encoder_revision,created_at) SELECT digest,mime,width,height,digest,digest,digest,1920,0,0,1,created_at FROM artwork_blobs`, digest)
 	c.Exec(`INSERT INTO artwork_candidates(id,kind,entity_id,role,subject,provider,image_id,origin,attribution,source_fence,observed_at) VALUES('art','show',?,'poster','','fixture','one','local','fixture','fence','now')`, show.ID)
-	c.Exec(`INSERT INTO artwork_selections(kind,entity_id,role,subject,candidate_id,digest,thumbnail_digest,locked,revision,actor,observed_at) VALUES('show',?,'poster','','art',?,?,0,1,'fixture','now')`, show.ID, digest, digest)
+	c.Exec(`INSERT INTO artwork_selections(kind,entity_id,role,subject,candidate_id,digest,locked,revision,actor,observed_at) SELECT column1,column2,column3,column4,column5,column6,column8,column9,column10,column11 FROM (VALUES('show',?,'poster','','art',?,?,0,1,'fixture','now'))`, show.ID, digest, digest)
 	now := time.Now()
 	s := &Service{DB: c.DB, Now: func() time.Time { return now }}
 	for n := 0; n < 7; n++ {

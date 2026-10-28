@@ -40,7 +40,7 @@ export function ambientArtworkSource(artworkUrl: string | null | undefined, iden
     })) return null;
   } catch { return null; }
   const params = new URLSearchParams(query);
-  const allowed = new Set(['v', 'subject', 'w', 'size']);
+  const allowed = new Set(['v', 'subject', 'w', 'size', 'sd', 'ld', 'r']);
   for (const key of params.keys()) if (!allowed.has(key) || params.getAll(key).length !== 1) return null;
   const version = params.get('v');
   if (version === null || !/^[a-f0-9]{64}$/.test(version)) return null;
@@ -52,7 +52,7 @@ export function ambientArtworkSource(artworkUrl: string | null | undefined, iden
     }, 0);
     if (bytes > 160 || /[\x00-\x1f\x7f]/.test(subject)) return null;
   }
-  params.delete('w');
+  for (const key of ['w', 'sd', 'ld', 'r']) params.delete(key);
   params.set('size', 'ambient-v1');
   params.sort();
   const url = path + '?' + params.toString();

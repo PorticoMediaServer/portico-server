@@ -5,6 +5,8 @@ import (
 	"image"
 	"net/http/httptest"
 	"testing"
+
+	"portico.local/server/internal/metadata"
 )
 
 // NEW-21: when an artwork URL carries both size= and w=, w= wins. Every
@@ -19,26 +21,26 @@ func TestArtworkWidthPrefersExplicitWidth(t *testing.T) {
 	}
 	cases := []struct {
 		query string
-		want  int
+		want  metadata.ArtworkSize
 	}{
-		{"size=thumbnail&w=800", 800},
-		{"size=thumbnail&w=200", 400},
-		{"size=thumbnail&w=10000", 2560},
-		{"size=thumbnail", 400},
-		{"size=full", 1920},
-		{"", 1920},
-		{"w=800", 800},
-		{"w=1920", 1920},
-		{"w=1921", 2560},
-		{"w=abc", 0},
-		{"w=0", 0},
-		{"w=-5", 0},
+		{"size=thumbnail&w=800", metadata.ArtworkSmall},
+		{"size=thumbnail&w=200", metadata.ArtworkSmall},
+		{"size=thumbnail&w=10000", metadata.ArtworkLarge},
+		{"size=thumbnail", metadata.ArtworkSmall},
+		{"size=full", metadata.ArtworkLarge},
+		{"", metadata.ArtworkLarge},
+		{"w=800", metadata.ArtworkSmall},
+		{"w=1920", metadata.ArtworkLarge},
+		{"w=1921", metadata.ArtworkLarge},
+		{"w=abc", -1},
+		{"w=0", -1},
+		{"w=-5", -1},
 	}
 	for _, path := range paths {
 		for _, tc := range cases {
 			r := httptest.NewRequest("GET", path+"?"+tc.query, nil)
-			if got := artworkWidth(r); got != tc.want {
-				t.Fatalf("%s?%s: width=%d, want %d", path, tc.query, got, tc.want)
+			if got := artworkSize(r); got != tc.want {
+				t.Fatalf("%s?%s: size=%d, want %d", path, tc.query, got, tc.want)
 			}
 		}
 	}
@@ -60,7 +62,7 @@ func TestItemsArtworkWidthBeatsSize(t *testing.T) {
 		bucket      int
 	}{
 		{"?w=800&size=thumbnail", "explicit 800", 800},
-		{"?w=200&size=thumbnail", "explicit 200 buckets to 400", 400},
+		{"?w=1000&size=thumbnail", "explicit 1000 beats thumbnail", 1920},
 	} {
 		response := editorRequest(t, h, "GET", "/v1/items/"+editOne+"/art/poster"+tc.query, owner, "", nil)
 		if response.Code != 200 {
@@ -99,7 +101,7 @@ func TestCandidatePreviewHonorsSize(t *testing.T) {
 		query, name string
 		limit       int
 	}{
-		{"?candidate=" + candidate + "&size=thumbnail", "thumbnail", 400},
+		{"?candidate=" + candidate + "&size=thumbnail", "thumbnail", 800},
 		{"?candidate=" + candidate + "&w=800", "explicit 800", 800},
 	} {
 		response := editorRequest(t, h, "GET", "/v1/metadata/item/"+editOne+"/art/poster"+tc.query, owner, "", nil)

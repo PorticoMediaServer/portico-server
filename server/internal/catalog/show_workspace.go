@@ -5,7 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"net/url"
+	"portico.local/server/internal/artworkref"
 	"portico.local/server/internal/compactcatalog"
 	"portico.local/server/internal/metadatalanguage"
 	"portico.local/server/internal/personalstate"
@@ -257,7 +257,7 @@ func (s *Service) showCredits(show string, viewer Viewer) ([]ShowCredit, error) 
 	 AND NOT EXISTS(SELECT 1 FROM projected)
 	 ), credits AS (SELECT * FROM projected UNION ALL SELECT * FROM fallback)
 	 SELECT COALESCE(p.token,''),c.identity_key,c.name,c.role,c.department,c.ordinal,
-	 COALESCE((SELECT a.digest FROM artwork_selections a JOIN artwork_objects o ON o.digest=a.digest AND o.status='ready' WHERE a.kind='show' AND a.entity_id=c.show_id AND a.role='portrait' AND a.subject=c.identity_key),'')
+	 COALESCE((SELECT a.digest FROM artwork_selections a JOIN artwork_sources o ON o.digest=a.digest WHERE a.kind='show' AND a.entity_id=c.show_id AND a.role='portrait' AND a.subject=c.identity_key),'')
 	 FROM credits c LEFT JOIN catalog_people p INDEXED BY catalog_people_identity ON p.identity_key=c.identity_key
 	 ORDER BY CASE WHEN c.department IN('Acting','Cast','Actor') THEN 0 WHEN c.department IN('Creator','Writing','Writer','Directing','Director','Production','Producer') THEN 1 ELSE 2 END,c.ordinal,c.name`, show)
 	if err != nil {
@@ -265,6 +265,11 @@ func (s *Service) showCredits(show string, viewer Viewer) ([]ShowCredit, error) 
 	}
 	credits := []ShowCredit{}
 	ids := []string{}
+	type ownPortrait struct {
+		index       int
+		key, source string
+	}
+	own := []ownPortrait{}
 	for rows.Next() {
 		var credit ShowCredit
 		var key, digest string
@@ -273,7 +278,7 @@ func (s *Service) showCredits(show string, viewer Viewer) ([]ShowCredit, error) 
 			return nil, err
 		}
 		if digest != "" {
-			credit.PortraitURL = "/v1/metadata/show/" + url.PathEscape(show) + "/art/portrait?subject=" + url.QueryEscape(key) + "&v=" + url.QueryEscape(digest) + "&w=400"
+			own = append(own, ownPortrait{len(credits), key, digest})
 		} else if credit.ID != "" {
 			ids = append(ids, credit.ID)
 		}
@@ -283,6 +288,17 @@ func (s *Service) showCredits(show string, viewer Viewer) ([]ShowCredit, error) 
 	rows.Close()
 	if err != nil {
 		return nil, err
+	}
+	sources := make([]string, 0, len(own))
+	for _, p := range own {
+		sources = append(sources, p.source)
+	}
+	described, err := artworkref.Load(s.Context(), s.read(), sources)
+	if err != nil {
+		return nil, err
+	}
+	for _, p := range own {
+		credits[p.index].PortraitURL = selectedArtworkURL("show", show, "portrait", p.key, p.source, described[p.source])
 	}
 	portraits, err := s.portraitSelections(ids, viewer)
 	if err != nil {

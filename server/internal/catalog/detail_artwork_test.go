@@ -13,10 +13,10 @@ import (
 
 func selectedDetailArtwork(c *catalogtest.Catalog, item catalogtest.Item, kind, role, subject, digest, thumbnail string) {
 	c.T.Helper()
-	c.Exec(`INSERT OR IGNORE INTO artwork_objects VALUES(?,'image/png',800,600,100,'now','ready'),(?,'image/png',400,300,50,'now','ready')`, digest, thumbnail)
+	c.Exec(`INSERT OR IGNORE INTO artwork_blobs(digest,mime,width,height,bytes,created_at,status) VALUES(?,'image/png',800,600,100,'now','ready'),(?,'image/png',400,300,50,'now','ready'); INSERT OR IGNORE INTO artwork_sources(digest,accepted_mime,accepted_width,accepted_height,small_blob,large_blob,ambient_blob,large_edge,small_outlier,large_outlier,encoder_revision,created_at) SELECT digest,mime,width,height,digest,digest,digest,1920,0,0,1,created_at FROM artwork_blobs`, digest, thumbnail)
 	candidate := fmt.Sprintf("%d-%s-%s", item.ID, role, subject)
 	c.Exec(`INSERT INTO artwork_candidates(id,kind,entity_id,role,subject,provider,image_id,origin,attribution,source_fence,observed_at) VALUES(?,?,?,?,?,'fixture','image','local','fixture','fence','now')`, candidate, kind, item.ID, role, subject)
-	c.Exec(`INSERT INTO artwork_selections(kind,entity_id,role,subject,candidate_id,digest,thumbnail_digest,locked,revision,actor,observed_at) VALUES(?,?,?,?,?,?,?,0,1,'fixture','now')`, kind, item.ID, role, subject, candidate, digest, thumbnail)
+	c.Exec(`INSERT INTO artwork_selections(kind,entity_id,role,subject,candidate_id,digest,locked,revision,actor,observed_at) SELECT column1,column2,column3,column4,column5,column6,column8,column9,column10,column11 FROM (VALUES(?,?,?,?,?,?,?,0,1,'fixture','now'))`, kind, item.ID, role, subject, candidate, digest, thumbnail)
 }
 
 func TestDetailArtworkUsesReadySelectedDescriptors(t *testing.T) {
@@ -35,8 +35,8 @@ func TestDetailArtworkUsesReadySelectedDescriptors(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	wantPoster := "/v1/metadata/item/" + movie.Public + "/art/poster?v=" + poster + "&w=400"
-	wantBackdrop := "/v1/metadata/item/" + movie.Public + "/art/backdrop?v=" + backdrop + "&w=1920"
+	wantPoster := fixtureArtURL("item", movie.Public, "poster", "", poster, 800, 600, 100)
+	wantBackdrop := fixtureArtURL("item", movie.Public, "backdrop", "", backdrop, 800, 600, 100)
 	if detail.Item.PosterURL != wantPoster || detail.Item.BackdropURL != wantBackdrop {
 		t.Fatal("detail did not publish selected versions", detail.Item.PosterURL, detail.Item.BackdropURL)
 	}
@@ -44,11 +44,11 @@ func TestDetailArtworkUsesReadySelectedDescriptors(t *testing.T) {
 	if err != nil || blank.Item.PosterURL != "" || blank.Item.BackdropURL != "" {
 		t.Fatal("unselected evidence invented artwork", blank.Item, err)
 	}
-	c.Exec(`UPDATE artwork_objects SET status='deleting' WHERE digest=?`, backdrop)
+	c.Exec(`DELETE FROM artwork_selections WHERE digest=?`, backdrop)
 	c.Drain()
 	detail, err = s.Detail(viewer, "server", movie.Public, false)
 	if err != nil || detail.Item.PosterURL != wantPoster || detail.Item.BackdropURL != "" {
-		t.Fatal("non-ready selection fell back to legacy evidence", detail.Item, err)
+		t.Fatal("a withdrawn selection fell back to legacy evidence", detail.Item, err)
 	}
 	c.Attributes(movie.ID, "label", "Hidden")
 	c.Drain()
@@ -70,7 +70,7 @@ func TestDetailEpisodeArtworkNamesActualInheritedSelection(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if detail.Item.PosterURL != "/v1/metadata/season/"+names["season1"].Public+"/art/poster?v="+poster+"&w=400" || detail.Item.BackdropURL != "/v1/metadata/show/"+names["show"].Public+"/art/backdrop?v="+backdrop+"&w=1920" || detail.Item.StillURL != "/v1/metadata/item/"+names["ep-001"].Public+"/art/still?v="+still+"&w=800" {
+	if detail.Item.PosterURL != fixtureArtURL("season", names["season1"].Public, "poster", "", poster, 800, 600, 100) || detail.Item.BackdropURL != fixtureArtURL("show", names["show"].Public, "backdrop", "", backdrop, 800, 600, 100) || detail.Item.StillURL != fixtureArtURL("item", names["ep-001"].Public, "still", "", still, 800, 600, 100) {
 		t.Fatal("detail guessed an artwork owner or inherited a still", detail.Item)
 	}
 }
@@ -92,7 +92,7 @@ func TestCreditAndPersonArtworkUseVisibleReadySelectedVersion(t *testing.T) {
 	viewer := Viewer{Profile: "viewer", Fence: "f", Libraries: []string{"movies"}, Restrictions: identity.ContentRestrictions{BlockedLabels: []string{"Hidden"}}}
 	person := personToken(t, c.DB, "tmdb:42")
 	c.Exec(`UPDATE catalog_people SET portrait_url='https://untrusted.invalid/portrait.png' WHERE token=?`, person)
-	want := "/v1/metadata/item/" + visible.Public + "/art/portrait?v=" + full + "&w=400&subject=tmdb%3A42"
+	want := fixtureArtURL("item", visible.Public, "portrait", "tmdb:42", full, 800, 600, 100)
 	assertPortraits := func(expected string) {
 		t.Helper()
 		detail, err := s.Detail(viewer, "server", visible.Public, false)
@@ -113,7 +113,7 @@ func TestCreditAndPersonArtworkUseVisibleReadySelectedVersion(t *testing.T) {
 		}
 	}
 	assertPortraits(want)
-	c.Exec(`UPDATE artwork_objects SET status='deleting' WHERE digest=?`, full)
+	c.Exec(`DELETE FROM artwork_selections WHERE digest=?`, full)
 	c.Drain()
 	assertPortraits("")
 	if _, err := s.ItemCredits(viewer, hidden.Public, "cast", "", 10); !errors.Is(err, sql.ErrNoRows) {

@@ -118,9 +118,11 @@ func (s *Service) GlobalArtworkSizeStep(ctx context.Context) error {
 		var candidate, digest, provider, fence string
 		var revision int64
 		var locked bool
-		var width, height int
-		err = tx.QueryRowContext(ctx, `SELECT a.candidate_id,a.digest,a.revision,a.locked,c.provider,c.source_fence,o.width,o.height FROM artwork_selections a JOIN artwork_candidates c ON c.id=a.candidate_id JOIN artwork_objects o ON o.digest=a.digest WHERE a.kind=? AND a.entity_id=? AND a.role=? AND a.subject=?`, r.kind, r.entity, r.role, r.subject).Scan(&candidate, &digest, &revision, &locked, &provider, &fence, &width, &height)
-		if errors.Is(err, sql.ErrNoRows) || err == nil && (r.edge != policy.edge || candidate != r.candidate || digest != r.digest || revision != r.revision || max(width, height) >= policy.edge || provider == "upload" || provider == "generated") {
+		var largeEdge, acceptedEdge int
+		err = tx.QueryRowContext(ctx, `SELECT a.candidate_id,a.digest,a.revision,a.locked,c.provider,c.source_fence,o.large_edge,max(o.accepted_width,o.accepted_height) FROM artwork_selections a JOIN artwork_candidates c ON c.id=a.candidate_id JOIN artwork_sources o ON o.digest=a.digest WHERE a.kind=? AND a.entity_id=? AND a.role=? AND a.subject=?`, r.kind, r.entity, r.role, r.subject).Scan(&candidate, &digest, &revision, &locked, &provider, &fence, &largeEdge, &acceptedEdge)
+		// A refresh helps only when the large slot was made under a smaller edge
+		// and the accepted image had more pixels than that edge kept.
+		if errors.Is(err, sql.ErrNoRows) || err == nil && (r.edge != policy.edge || candidate != r.candidate || digest != r.digest || revision != r.revision || largeEdge >= policy.edge || acceptedEdge <= largeEdge || provider == "upload" || provider == "generated") {
 			if err = remove(); err != nil {
 				return err
 			}

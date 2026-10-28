@@ -1009,6 +1009,9 @@ func (s *Service) ProjectPlaylistSamples(v Viewer, entries []ContentEntry) error
 			err = rows.Err()
 		}
 		rows.Close()
+		if err == nil {
+			err = describeItemArtMap(s, legacy)
+		}
 		if err != nil {
 			return err
 		}

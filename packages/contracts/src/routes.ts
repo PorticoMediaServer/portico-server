@@ -4693,6 +4693,12 @@ export const routes = [
     "lane": "media",
     "cost": "constant",
     "bodyLimit": 0,
+    "query": [
+      "ld",
+      "sd",
+      "size",
+      "w"
+    ],
     "errors": [
       "unauthorized",
       "not_permitted",
@@ -5054,6 +5060,12 @@ export const routes = [
     "lane": "media",
     "cost": "constant",
     "bodyLimit": 0,
+    "query": [
+      "ld",
+      "sd",
+      "size",
+      "w"
+    ],
     "errors": [
       "invalid_request",
       "unauthorized",
@@ -5398,6 +5410,9 @@ export const routes = [
     "cost": "constant",
     "bodyLimit": 0,
     "query": [
+      "ld",
+      "r",
+      "sd",
       "size",
       "v",
       "w"
@@ -6958,6 +6973,9 @@ export const routes = [
     "bodyLimit": 0,
     "query": [
       "candidate",
+      "ld",
+      "r",
+      "sd",
       "size",
       "subject",
       "v",

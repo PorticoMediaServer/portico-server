@@ -55,14 +55,17 @@ func TestProgrammeIconsStoredProjectedAndRestricted(t *testing.T) {
 		}
 	}
 	digest := strings.Repeat("ab", 32)
-	if _, err = s.db.Exec(`INSERT INTO live_programme_images(url,digest,media_type,width,height,stored_ms) VALUES(?,?,?,?,?,?)`, "https://img.invalid/a.png", digest, "image/png", 64, 64, time.Now().UnixMilli()); err != nil {
+	if _, err = s.db.Exec(`INSERT INTO live_programme_images(url,small_digest,large_digest,media_type,small_width,small_height,small_bytes,large_width,large_height,large_bytes,stored_ms) SELECT column1,column2,column2,column3,column4,column5,1,column4,column5,1,column6 FROM (VALUES(?,?,?,?,?,?))`, "https://img.invalid/a.png", digest, "image/png", 64, 64, time.Now().UnixMilli()); err != nil {
 		t.Fatal(err)
 	}
 	guide, err = s.Guide(ctx, a, iconTestQuery())
 	if err != nil {
 		t.Fatal(err)
 	}
-	imagePath := func(p Programme) string { return "/v1/guide/programme-images/" + saved.Generation + "/" + p.ID }
+	// Each image URL describes the two renditions made at import.
+	imagePath := func(p Programme) string {
+		return "/v1/guide/programme-images/" + saved.Generation + "/" + p.ID + "?sd=64x64.1." + digest[:16] + "&ld=64x64.1." + digest[:16]
+	}
 	byTitle := map[string]Programme{}
 	for _, p := range guide.Channels[0].Programmes {
 		byTitle[p.Title] = p

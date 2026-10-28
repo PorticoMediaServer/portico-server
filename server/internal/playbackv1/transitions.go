@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"net/url"
+	"portico.local/server/internal/artworkref"
 	"portico.local/server/internal/identity"
 	"time"
 
@@ -722,7 +723,7 @@ func (s *Service) collectionSuccessor(ctx context.Context, tx *sql.Tx, p identit
 	var backdrop bool
 	var library string
 	err := tx.QueryRowContext(ctx, `SELECT pid(c.public_id),c.title,library.library_id,pid(i.public_id),i.id,i.title,i.year,
- EXISTS(SELECT 1 FROM artwork_selections art JOIN artwork_objects obj ON obj.digest=art.digest AND obj.status='ready' WHERE art.kind='item' AND art.entity_id=i.id AND art.role='backdrop' AND art.subject='')
+ EXISTS(SELECT 1 FROM artwork_selections art JOIN artwork_sources obj ON obj.digest=art.digest WHERE art.kind='item' AND art.entity_id=i.id AND art.role='backdrop' AND art.subject='')
  FROM catalog_entities current JOIN catalog_collection_members anchor ON anchor.item_id=current.id
  JOIN catalog_entities c ON c.id=anchor.collection_id AND c.retired=0
  JOIN catalog_libraries library ON library.id=c.library_id AND library.retired=0
@@ -753,8 +754,11 @@ func (s *Service) collectionSuccessor(ctx context.Context, tx *sql.Tx, p identit
 		}
 		out.Next.Genres = append(out.Next.Genres, name)
 	}
+	if err = rows.Err(); err != nil {
+		return nil, err
+	}
 	if backdrop {
 		out.Next.BackdropURL = "/v1/items/" + url.PathEscape(out.Next.ID) + "/art/backdrop"
 	}
-	return out, rows.Err()
+	return out, artworkref.DescribeItemURLs(ctx, tx, &out.Next.BackdropURL)
 }

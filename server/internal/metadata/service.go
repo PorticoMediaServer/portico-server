@@ -63,28 +63,32 @@ type Service struct {
 	SubtitleCredentials func(key, username, password string)
 	// SubtitleStatus and SubtitleCheck report on OpenSubtitles for the owner:
 	// the last exchange, and a fresh test of the credentials in force.
-	SubtitleStatus   func() OpenSubtitlesStatus
-	SubtitleCheck    func(context.Context) OpenSubtitlesStatus
-	LocalArtwork     func(string) (*os.File, string, error)
-	db               *sql.DB
-	token            string
-	client           *http.Client
-	base             string
-	cacheRoot        string
-	settingsMu       sync.Mutex
-	settingsRevision int64
-	artDirMu         sync.Mutex
-	compactionMu     sync.Mutex
-	compactionEdge   int
-	compactionCursor string
-	compactionDone   bool
-	missingMu        sync.Mutex
-	missingArtwork   map[missingArtwork]struct{}
-	missingWake      worker.Broadcast
-	acoustid         AcousticProvider
-	acoustidConfig   string
-	artClient        *http.Client
-	artDirectory     *os.File
+	SubtitleStatus       func() OpenSubtitlesStatus
+	SubtitleCheck        func(context.Context) OpenSubtitlesStatus
+	LocalArtwork         func(string) (*os.File, string, error)
+	db                   *sql.DB
+	token                string
+	client               *http.Client
+	base                 string
+	cacheRoot            string
+	settingsMu           sync.Mutex
+	settingsRevision     int64
+	artDirMu             sync.Mutex
+	compactionMu         sync.Mutex
+	artSweepMu           sync.Mutex
+	artSourceCursor      artworkSweepCursor
+	artBlobCursor        artworkSweepCursor
+	compactionEdge       int
+	compactionCursor     string
+	compactionCursorEdge int
+	compactionDone       bool
+	missingMu            sync.Mutex
+	missingArtwork       map[missingArtwork]struct{}
+	missingWake          worker.Broadcast
+	acoustid             AcousticProvider
+	acoustidConfig       string
+	artClient            *http.Client
+	artDirectory         *os.File
 }
 
 func New(db *sql.DB, token string) *Service {

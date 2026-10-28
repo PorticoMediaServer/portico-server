@@ -379,7 +379,7 @@ func registerDownloads(r *apikit.Registry, d Dependencies) {
 			r.Errors().Write(w, "", &apierror.Error{Code: "not_found"})
 			return
 		}
-		f, mime, e := d.Metadata.EntityArtworkVariant(q.Context(), metadata.RepairTarget{Kind: "item", ID: scope.ItemID}, q.PathValue("role"), "", width, "")
+		f, mime, e := d.Metadata.EntityArtworkVariant(q.Context(), metadata.RepairTarget{Kind: "item", ID: scope.ItemID}, q.PathValue("role"), "", metadata.ArtworkSizeForWidth(width), "")
 		if errors.Is(e, metadata.ErrArtworkPending) {
 			// The picture exists and its smaller copy is being made.
 			r.Errors().Write(w, "", &apierror.Error{Code: "download_not_ready", RetryAfterSeconds: 5})

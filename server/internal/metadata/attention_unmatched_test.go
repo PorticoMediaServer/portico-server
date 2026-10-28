@@ -95,7 +95,7 @@ func TestAttentionCandidatePosterUsesOwnerProxyWithoutFetching(t *testing.T) {
 		t.Fatal("provider image escaped proxy", candidate.PosterURL)
 	}
 	denied := errors.New("revoked")
-	if _, _, err = service.PreviewAttentionArtwork(ctx, RepairTarget{Kind: "item", ID: item.Public}, candidate.Key, 400, func(*sql.Tx) error { return denied }); !errors.Is(err, denied) {
+	if _, _, err = service.PreviewAttentionArtwork(ctx, RepairTarget{Kind: "item", ID: item.Public}, candidate.Key, ArtworkSmall, func(*sql.Tx) error { return denied }); !errors.Is(err, denied) {
 		t.Fatal("preview authority not rechecked", err)
 	}
 	var jobs int
@@ -106,14 +106,14 @@ func TestAttentionCandidatePosterUsesOwnerProxyWithoutFetching(t *testing.T) {
 		t.Fatal("listing waited on or queued provider images", jobs)
 	}
 	target := RepairTarget{Kind: "item", ID: item.Public}
-	if _, _, err = service.PreviewAttentionArtwork(ctx, target, candidate.Key, 400, allowAll); !errors.Is(err, ErrArtworkPending) {
+	if _, _, err = service.PreviewAttentionArtwork(ctx, target, candidate.Key, ArtworkSmall, allowAll); !errors.Is(err, ErrArtworkPending) {
 		t.Fatal("authorized candidate was not queued for the existing artwork worker", err)
 	}
 	if err = db.QueryRow(`SELECT count(*) FROM artwork_jobs WHERE preview=1 AND origin='https://image.tmdb.org/t/p/original/candidate.jpg'`).Scan(&jobs); err != nil || jobs != 1 {
 		t.Fatal("candidate preview did not retain its allowlisted origin", jobs, err)
 	}
 	publicationExec(t, db, `UPDATE screen_metadata_work SET title_seed='Changed after search' WHERE target_id=?`, item.ID)
-	if _, _, err = service.PreviewAttentionArtwork(ctx, target, candidate.Key, 400, allowAll); !errors.Is(err, ErrScreenConflict) {
+	if _, _, err = service.PreviewAttentionArtwork(ctx, target, candidate.Key, ArtworkSmall, allowAll); !errors.Is(err, ErrScreenConflict) {
 		t.Fatal("stale candidate was not refused", err)
 	}
 }

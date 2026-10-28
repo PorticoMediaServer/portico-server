@@ -5,7 +5,6 @@ import (
 	"context"
 	"database/sql"
 	"errors"
-	"image"
 	"time"
 
 	"portico.local/server/internal/dbwork"
@@ -21,6 +20,10 @@ import (
 const UploadBytes = 10 << 20
 
 var ErrArtworkUpload = errors.New("the image could not be accepted")
+
+// ErrArtworkCapUnreachable refuses an image that cannot be stored within its
+// byte cap's allowance at the quality floor.
+var ErrArtworkCapUnreachable = errors.New("the image cannot be stored within its size limit")
 
 // sniffArtworkUpload identifies the container from the bytes themselves. A
 // declared content type or filename extension is never trusted.
@@ -59,21 +62,20 @@ func (s *Service) UploadArtwork(ctx context.Context, t RepairTarget, role, subje
 	}
 	// Decoding happens before any transaction is opened: a slow or hostile image
 	// never holds a database write lock.
-	original, thumb, w, h, err := normalizeArtworkFormatsContext(ctx, raw, map[string]bool{"jpeg": true, "png": true, "webp": true})
+	material, err := s.materializeArtwork(ctx, raw, map[string]bool{"jpeg": true, "png": true, "webp": true})
 	if err != nil {
-		if errors.Is(err, imagework.ErrBusy) || ctx.Err() != nil {
+		if errors.Is(err, imagework.ErrBusy) || errors.Is(err, ErrArtworkSpace) || errors.Is(err, errArtworkStorage) || ctx.Err() != nil {
 			return RepairState{}, err
 		}
+		if errors.Is(err, errArtworkCapUnreachable) {
+			// A picture that cannot meet its cap at the quality floor is refused,
+			// never softened or shrunk. The refusal is counted.
+			if e := recordArtworkRefusal(ctx, s.db, err); e != nil {
+				return RepairState{}, e
+			}
+			return RepairState{}, ErrArtworkCapUnreachable
+		}
 		return RepairState{}, ErrArtworkUpload
-	}
-	full, err := s.installArtworkContext(ctx, original, w, h)
-	if err != nil {
-		return RepairState{}, err
-	}
-	tc, _, _ := image.DecodeConfig(bytes.NewReader(thumb))
-	small, err := s.installArtworkContext(ctx, thumb, tc.Width, tc.Height)
-	if err != nil {
-		return RepairState{}, err
 	}
 	gated, err := dbwork.Begin(ctx, s.db, dbwork.ClassBackgroundMedia)
 	if err != nil {
@@ -114,22 +116,21 @@ func (s *Service) UploadArtwork(ctx context.Context, t RepairTarget, role, subje
 	}
 	now := s.publicationTime().Format(time.RFC3339Nano)
 	who := actor.Authority + ":" + actor.AccountID + ":" + actor.ProfileID
-	for _, o := range []artworkInstalled{full, small} {
-		if err = recordArtworkObject(ctx, tx, o, now); err != nil {
-			return RepairState{}, err
-		}
-	}
-	if err = linkArtworkBuckets(ctx, tx, full, small); err != nil {
+	if err = publishArtworkSource(ctx, tx, material, now); err != nil {
 		return RepairState{}, err
 	}
-	candidate, err := insertArtworkCandidate(ctx, tx, t, role, subject, "upload", full.digest, "upload:"+full.digest, "", "Uploaded by the library owner", fence, now, 1000)
+	var acceptedWidth, acceptedHeight int
+	if err = tx.QueryRowContext(ctx, `SELECT accepted_width,accepted_height FROM artwork_sources WHERE digest=?`, material.source).Scan(&acceptedWidth, &acceptedHeight); err != nil {
+		return RepairState{}, err
+	}
+	candidate, err := insertArtworkCandidate(ctx, tx, t, role, subject, "upload", material.source, "upload:"+material.source, "", "Uploaded by the library owner", fence, now, 1000)
 	if err != nil {
 		return RepairState{}, err
 	}
-	if _, err = tx.ExecContext(ctx, `INSERT INTO artwork_uploads VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)`, candidate, t.Kind, entity, role, subject, full.digest, small.digest, mime, len(raw), w, h, who, now); err != nil {
+	if _, err = tx.ExecContext(ctx, `INSERT INTO artwork_uploads VALUES(?,?,?,?,?,?,?,?,?,?,?,?)`, candidate, t.Kind, entity, role, subject, material.source, mime, len(raw), acceptedWidth, acceptedHeight, who, now); err != nil {
 		return RepairState{}, err
 	}
-	if _, err = tx.ExecContext(ctx, `INSERT INTO artwork_previews VALUES(?,?,?,?) ON CONFLICT(candidate_id) DO UPDATE SET digest=excluded.digest,source_fence=excluded.source_fence,created_at=excluded.created_at`, candidate, small.digest, fence, now); err != nil {
+	if _, err = tx.ExecContext(ctx, `INSERT INTO artwork_previews VALUES(?,?,?,?) ON CONFLICT(candidate_id) DO UPDATE SET digest=excluded.digest,source_fence=excluded.source_fence,created_at=excluded.created_at`, candidate, material.source, fence, now); err != nil {
 		return RepairState{}, err
 	}
 	// An acquisition already in flight for this role must not replace the bytes
@@ -137,7 +138,7 @@ func (s *Service) UploadArtwork(ctx context.Context, t RepairTarget, role, subje
 	if _, err = tx.ExecContext(ctx, `UPDATE artwork_jobs SET status='stale',lease='',lease_until='',error='owner_upload' WHERE kind=? AND entity_id=? AND role=? AND subject=? AND preview=0 AND status IN('pending','running','retry')`, t.Kind, entity, role, subject); err != nil {
 		return RepairState{}, err
 	}
-	if _, err = tx.ExecContext(ctx, `INSERT INTO artwork_selections VALUES(?,?,?,?,?,?,?,1,1,?,?) ON CONFLICT(kind,entity_id,role,subject) DO UPDATE SET candidate_id=excluded.candidate_id,digest=excluded.digest,thumbnail_digest=excluded.thumbnail_digest,locked=1,revision=artwork_selections.revision+1,actor=excluded.actor,observed_at=excluded.observed_at`, t.Kind, entity, role, subject, candidate, full.digest, small.digest, who, now); err != nil {
+	if _, err = tx.ExecContext(ctx, `INSERT INTO artwork_selections VALUES(?,?,?,?,?,?,1,1,?,?) ON CONFLICT(kind,entity_id,role,subject) DO UPDATE SET candidate_id=excluded.candidate_id,digest=excluded.digest,locked=1,revision=artwork_selections.revision+1,actor=excluded.actor,observed_at=excluded.observed_at`, t.Kind, entity, role, subject, candidate, material.source, who, now); err != nil {
 		return RepairState{}, err
 	}
 	if err = projectSelectedArtwork(ctx, tx, t, role); err != nil {
@@ -156,7 +157,7 @@ func (s *Service) UploadArtwork(ctx context.Context, t RepairTarget, role, subje
 	if err = gated.Commit(); err != nil {
 		return out, err
 	}
-	return out, s.ensureArtworkFiles(full, small)
+	return out, s.ensureArtworkFiles(material.installed()...)
 }
 
 // DeleteUploadedArtwork withdraws one uploaded candidate. Only an upload can be

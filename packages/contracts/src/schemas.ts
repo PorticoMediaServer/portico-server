@@ -20034,9 +20034,6 @@ export const schemas = {
                 "subject": {
                   "type": "string"
                 },
-                "thumbnailDigest": {
-                  "type": "string"
-                },
                 "url": {
                   "type": "string"
                 }
@@ -20046,7 +20043,6 @@ export const schemas = {
                 "subject",
                 "candidateId",
                 "digest",
-                "thumbnailDigest",
                 "locked",
                 "revision",
                 "attribution",
@@ -34569,6 +34565,34 @@ export const schemas = {
       },
       "result": {
         "properties": {
+          "artworkEncoding": {
+            "items": {
+              "properties": {
+                "count": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                },
+                "format": {
+                  "type": "string"
+                },
+                "outcome": {
+                  "type": "string"
+                },
+                "slot": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "slot",
+                "format",
+                "outcome",
+                "count"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          },
           "categories": {
             "items": {
               "properties": {
@@ -34670,7 +34694,8 @@ export const schemas = {
           "totalBytes",
           "totalBytesText",
           "observedAt",
-          "truncated"
+          "truncated",
+          "artworkEncoding"
         ],
         "type": "object"
       },
@@ -131849,9 +131874,6 @@ export const schemas = {
                 "subject": {
                   "type": "string"
                 },
-                "thumbnailDigest": {
-                  "type": "string"
-                },
                 "url": {
                   "type": "string"
                 }
@@ -131861,7 +131883,6 @@ export const schemas = {
                 "subject",
                 "candidateId",
                 "digest",
-                "thumbnailDigest",
                 "locked",
                 "revision",
                 "attribution",
@@ -208174,9 +208195,6 @@ export const schemas = {
                 "subject": {
                   "type": "string"
                 },
-                "thumbnailDigest": {
-                  "type": "string"
-                },
                 "url": {
                   "type": "string"
                 }
@@ -208186,7 +208204,6 @@ export const schemas = {
                 "subject",
                 "candidateId",
                 "digest",
-                "thumbnailDigest",
                 "locked",
                 "revision",
                 "attribution",
@@ -208891,9 +208908,6 @@ export const schemas = {
                 "subject": {
                   "type": "string"
                 },
-                "thumbnailDigest": {
-                  "type": "string"
-                },
                 "url": {
                   "type": "string"
                 }
@@ -208903,7 +208917,6 @@ export const schemas = {
                 "subject",
                 "candidateId",
                 "digest",
-                "thumbnailDigest",
                 "locked",
                 "revision",
                 "attribution",

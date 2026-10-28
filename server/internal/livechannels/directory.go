@@ -611,7 +611,7 @@ type airingsCursor struct {
 // a source's existence as permission, and never projects a provider locator.
 const airingCandidatesSQL = `, airings AS (
  SELECT e.channel_id,e.source_id,e.provenance,e.name,e.number,e.group_name,e.generation,p.id,p.title,p.start_utc,p.end_utc,p.lineage,COALESCE(m.series_id,'') series_id,COALESCE(m.episode_id,'') episode_id,COALESCE(m.new_evidence,'unknown') new_evidence,COALESCE(m.description,'') description,COALESCE(m.facts,'{}') facts,
- COALESCE((SELECT '/v1/guide/programme-images/'||i.generation_id||'/'||i.programme_id FROM live_programme_icons i JOIN live_programme_images img ON img.url=i.url WHERE i.generation_id=p.generation_id AND i.programme_id=p.id),'') image
+ COALESCE((SELECT '/v1/guide/programme-images/'||i.generation_id||'/'||i.programme_id||'?sd='||img.small_width||'x'||img.small_height||'.'||img.small_bytes||'.'||substr(img.small_digest,1,16)||'&ld='||img.large_width||'x'||img.large_height||'.'||img.large_bytes||'.'||substr(img.large_digest,1,16) FROM live_programme_icons i JOIN live_programme_images img ON img.url=i.url WHERE i.generation_id=p.generation_id AND i.programme_id=p.id),'') image
  FROM eligible e JOIN live_programmes p ON e.provenance='live-source' AND p.generation_id=e.generation AND p.channel_id=e.channel_id LEFT JOIN live_programme_metadata m ON m.generation_id=p.generation_id AND m.id=p.id
  UNION ALL
  SELECT e.channel_id,e.source_id,e.provenance,e.name,e.number,e.group_name,e.generation,l.occurrence_id,l.title,strftime('%Y-%m-%dT%H:%M:%SZ',l.start_ms/1000,'unixepoch'),strftime('%Y-%m-%dT%H:%M:%SZ',l.end_ms/1000,'unixepoch'),'generated','','','unknown','',json_object('subtitle',COALESCE((SELECT title FROM catalog_entities WHERE id=l.item_id),'')),''

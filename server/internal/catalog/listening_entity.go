@@ -135,7 +135,7 @@ func (s *Service) listeningEntity(r ContentRequest, title string) (*ContentEntry
 			out.PosterURL = "/v1/items/" + url.PathEscape(itemID) + "/art/poster"
 		}
 	}
-	return out, nil
+	return out, s.describeItemArt(&out.PosterURL)
 }
 
 // listeningArtistFacts fills the artist entity's biography, source, country

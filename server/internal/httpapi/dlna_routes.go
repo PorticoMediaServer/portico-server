@@ -21,7 +21,7 @@ func (d Dependencies) dlnaRoutes(mux *http.ServeMux) {
 	}
 	if d.Metadata != nil {
 		server.Artwork = func(ctx context.Context, namespace, id, role string) (*os.File, string, error) {
-			return d.Metadata.EntityArtworkVariant(ctx, metadata.RepairTarget{Kind: namespace, ID: id}, role, "", 400, "")
+			return d.Metadata.EntityArtworkVariant(ctx, metadata.RepairTarget{Kind: namespace, ID: id}, role, "", metadata.ArtworkSmall, "")
 		}
 	}
 	mux.Handle(dlna.Prefix, server)

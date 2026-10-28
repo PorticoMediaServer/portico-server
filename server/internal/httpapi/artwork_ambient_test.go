@@ -18,22 +18,22 @@ import (
 func TestArtworkAmbientExplicitSizeKeepsNormalWidthPriority(t *testing.T) {
 	for _, tc := range []struct {
 		query string
-		want  int
+		want  metadata.ArtworkSize
 	}{
-		{"size=ambient-v1", 64},
-		{"size=ambient-v1&w=1", 400},
-		{"size=ambient-v1&w=64", 400},
-		{"size=ambient-v1&w=800", 800},
-		{"size=ambient-v1&w=900", 1920},
-		{"size=ambient-v1&w=bad", 0},
-		{"size=ambient-v1&w=0", 0},
-		{"size=ambient-v1&w=-1", 0},
-		{"w=32", 400},
-		{"size=thumbnail", 400},
-		{"size=full", 1920},
-		{"", 1920},
+		{"size=ambient-v1", metadata.ArtworkAmbient},
+		{"size=ambient-v1&w=1", metadata.ArtworkSmall},
+		{"size=ambient-v1&w=64", metadata.ArtworkSmall},
+		{"size=ambient-v1&w=800", metadata.ArtworkSmall},
+		{"size=ambient-v1&w=900", metadata.ArtworkLarge},
+		{"size=ambient-v1&w=bad", -1},
+		{"size=ambient-v1&w=0", -1},
+		{"size=ambient-v1&w=-1", -1},
+		{"w=32", metadata.ArtworkSmall},
+		{"size=thumbnail", metadata.ArtworkSmall},
+		{"size=full", metadata.ArtworkLarge},
+		{"", metadata.ArtworkLarge},
 	} {
-		if got := artworkWidth(httptest.NewRequest("GET", "/?"+tc.query, nil)); got != tc.want {
+		if got := artworkSize(httptest.NewRequest("GET", "/?"+tc.query, nil)); got != tc.want {
 			t.Fatalf("%s: %d != %d", tc.query, got, tc.want)
 		}
 	}
@@ -58,7 +58,7 @@ func TestArtworkAmbientHTTPAuthorityVersionsValidatorsAndRevocation(t *testing.T
 	if full.Code != 200 {
 		t.Fatal(full.Code, full.Body.String())
 	}
-	version := strings.Trim(full.Header().Get("ETag"), `"`)
+	version := selectedArtworkSource(t, db, item, "poster")
 	itemPath := fullPath + "?v=" + version + "&size=ambient-v1"
 	metaPath := "/v1/metadata/item/" + item + "/art/poster?v=" + version + "&size=ambient-v1"
 	// Real HTTP requests prove bytes and conditional handling on the mounted
@@ -99,7 +99,8 @@ func TestArtworkAmbientHTTPAuthorityVersionsValidatorsAndRevocation(t *testing.T
 		if err != nil || format != "png" || cfg.Width != 42 || cfg.Height != 64 || len(raw) > 20000 {
 			t.Fatal(cfg, format, len(raw), err)
 		}
-		if header.Get("Content-Type") != "image/png" || header.Get("X-Content-Type-Options") != "nosniff" || header.Get("Cache-Control") != "private, max-age=31536000, immutable" {
+		// The ambient effect has no descriptor token, so it revalidates.
+		if header.Get("Content-Type") != "image/png" || header.Get("X-Content-Type-Options") != "nosniff" || header.Get("Cache-Control") != "private, no-cache" {
 			t.Fatal(header)
 		}
 		if tag != "" && (tag != header.Get("ETag") || !bytes.Equal(ambientBytes, raw)) {
@@ -186,24 +187,15 @@ func TestArtworkAmbientMissingPhysicalSourceCannotReturn304(t *testing.T) {
 	}
 	settleCompactCatalogue(t, d.DB)
 	full := editorRequest(t, h, "GET", "/v1/items/"+item.Public+"/art/poster", owner.AccessToken, "", nil)
-	version := strings.Trim(full.Header().Get("ETag"), `"`)
+	version := selectedArtworkSource(t, d.DB, item.Public, "poster")
 	path := "/v1/items/" + item.Public + "/art/poster?v=" + version + "&size=ambient-v1"
 	first := editorRequest(t, h, "GET", path, owner.AccessToken, "", nil)
-	if first.Code != 200 {
+	if first.Code != 200 || full.Code != 200 {
 		t.Fatal(first.Code, first.Body.String())
 	}
-	derivedPath := filepath.Join(cache, strings.Trim(first.Header().Get("ETag"), `"`)+".img")
-	if err := os.Remove(derivedPath); err != nil {
-		t.Fatal(err)
-	}
-	rebuilt := editorRequestWithHeader(t, h, "GET", path, owner.AccessToken, map[string]string{"If-None-Match": first.Header().Get("ETag")})
-	if rebuilt.Code != 304 || rebuilt.Body.Len() != 0 {
-		t.Fatal("missing ambient cache did not rebuild before conditional response", rebuilt.Code, rebuilt.Body.String())
-	}
-	if _, err := os.Stat(derivedPath); err != nil {
-		t.Fatal("304 extended a physically missing ambient cache", err)
-	}
-	if err := os.Remove(filepath.Join(cache, version+".img")); err != nil {
+	// The ambient file was made at arrival. A missing file is pending: it is
+	// never rebuilt on request and never answered from a client validator.
+	if err := os.Remove(filepath.Join(cache, strings.Trim(first.Header().Get("ETag"), `"`)+".img")); err != nil {
 		t.Fatal(err)
 	}
 	for _, route := range []string{path, "/v1/metadata/item/" + item.Public + "/art/poster?v=" + version + "&size=ambient-v1"} {

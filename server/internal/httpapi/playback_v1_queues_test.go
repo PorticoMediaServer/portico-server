@@ -214,7 +214,7 @@ func TestPlaybackV1QueueAuthorization(t *testing.T) {
 func TestPlaybackV1QueueWindowArtwork(t *testing.T) {
 	f := newV1Fixture(t, 3)
 	digest := fmt.Sprintf("%064x", 7)
-	if _, err := f.db.Exec(`INSERT INTO artwork_objects VALUES(?,'image/jpeg',800,1200,10,'2000-01-01T00:00:00Z','ready')`, digest); err != nil {
+	if _, err := f.db.Exec(`INSERT INTO artwork_blobs(digest,mime,width,height,bytes,created_at,status) VALUES(?,'image/jpeg',800,1200,10,'2000-01-01T00:00:00Z','ready'); INSERT OR IGNORE INTO artwork_sources(digest,accepted_mime,accepted_width,accepted_height,small_blob,large_blob,ambient_blob,large_edge,small_outlier,large_outlier,encoder_revision,created_at) SELECT digest,mime,width,height,digest,digest,digest,1920,0,0,1,created_at FROM artwork_blobs`, digest); err != nil {
 		t.Fatal(err)
 	}
 	for i, v := range []struct{ item, role string }{{f.items[1], "poster"}, {f.items[2], "still"}} {
@@ -226,7 +226,7 @@ func TestPlaybackV1QueueWindowArtwork(t *testing.T) {
 		if _, err := f.db.Exec(`INSERT INTO artwork_candidates(id,kind,entity_id,role,provider,image_id,origin,attribution,source_fence,observed_at) VALUES(?,'item',?,?,'owner',?,'upload','','fence','2000-01-01')`, candidate, entity, v.role, candidate); err != nil {
 			t.Fatal(err)
 		}
-		if _, err := f.db.Exec(`INSERT INTO artwork_selections(kind,entity_id,role,candidate_id,digest,thumbnail_digest,actor,observed_at) VALUES('item',?,?,?,?,?,'owner','2000-01-01')`, entity, v.role, candidate, digest, digest); err != nil {
+		if _, err := f.db.Exec(`INSERT INTO artwork_selections(kind,entity_id,role,candidate_id,digest,actor,observed_at) SELECT column1,column2,column3,column4,column5,column7,column8 FROM (VALUES('item',?,?,?,?,?,'owner','2000-01-01'))`, entity, v.role, candidate, digest, digest); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -239,10 +239,11 @@ func TestPlaybackV1QueueWindowArtwork(t *testing.T) {
 	if w := created.Window[0]; w.PosterURL != "" || w.StillURL != "" {
 		t.Fatalf("no artwork: %+v", w)
 	}
-	if w := created.Window[1]; w.PosterURL != "/v1/items/"+f.items[1]+"/art/poster" || w.StillURL != "" {
+	described := "v=" + digest + "&sd=800x1200.10." + digest[:16] + "&ld=800x1200.10." + digest[:16]
+	if w := created.Window[1]; w.PosterURL != "/v1/items/"+f.items[1]+"/art/poster?"+described || w.StillURL != "" {
 		t.Fatalf("poster: %+v", w)
 	}
-	if w := created.Window[2]; w.PosterURL != "" || w.StillURL != "/v1/metadata/item/"+f.items[2]+"/art/still?v="+digest+"&w=800" {
+	if w := created.Window[2]; w.PosterURL != "" || w.StillURL != "/v1/metadata/item/"+f.items[2]+"/art/still?"+described {
 		t.Fatalf("still: %+v", w)
 	}
 }

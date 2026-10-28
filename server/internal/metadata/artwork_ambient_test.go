@@ -16,9 +16,6 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
-	"time"
-
-	"portico.local/server/internal/imagework"
 )
 
 func ambientTestPNG(t *testing.T, w, h int, alpha bool) []byte {
@@ -89,10 +86,7 @@ func TestAmbientArtworkEncodingIsSoftBoundedAndDeterministic(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			source, _, _, _, err := normalizeArtwork(original)
-			if err != nil {
-				t.Fatal(err)
-			}
+			source := original
 			ambient, _, _, err := encodeAmbientArtwork(ctx, source)
 			if err != nil {
 				t.Fatal(err)
@@ -177,19 +171,23 @@ func ambientSelectionFixture(t *testing.T) (*Service, *sql.DB, RepairTarget, str
 	if _, err = s.UploadArtwork(ctx, target, "poster", "", state.Revision, ambientTestPNG(t, 256, 128, true), editorActor(), allowAll); err != nil {
 		t.Fatal(err)
 	}
-	digest, _, err := s.EntityArtworkIdentity(ctx, target, "poster", "", false)
-	if err != nil || digest == "" {
+	var digest string
+	if err = db.QueryRow(`SELECT digest FROM artwork_selections WHERE role='poster'`).Scan(&digest); err != nil || digest == "" {
 		t.Fatal(digest, err)
 	}
 	return s, db, target, digest
 }
 
-func TestAmbientArtworkCacheVersionSourceAndCleanup(t *testing.T) {
+// The ambient effect is made when the source arrives, stored as a
+// content-addressed blob the source names, and only opened on request: a GET
+// never derives, repairs or writes it.
+func TestAmbientArtworkIsMadeAtArrivalAndNeverDerivedOnRequest(t *testing.T) {
 	s, db, target, source := ambientSelectionFixture(t)
 	ctx := context.Background()
+	_, _, ambient := testSourceBlobs(t, db, source)
 	read := func() ([]byte, string) {
 		t.Helper()
-		f, mime, err := s.EntityArtworkVariant(ctx, target, "poster", "", ArtworkAmbientEdge, source)
+		f, mime, err := s.EntityArtworkVariant(ctx, target, "poster", "", ArtworkAmbient, source)
 		if err != nil || mime != "image/png" {
 			t.Fatal(mime, err)
 		}
@@ -201,108 +199,37 @@ func TestAmbientArtworkCacheVersionSourceAndCleanup(t *testing.T) {
 		return raw, f.Name()
 	}
 	first, path := read()
-	want := filepath.Join(s.cacheRoot, ambientArtworkDigest(source)+".img")
-	if path != want || filepath.Base(path) == source+".img" {
-		t.Fatal("variant identity not separated", path)
+	if path != filepath.Join(s.cacheRoot, ambient+".img") || ambient == source {
+		t.Fatal("ambient is not its own content-addressed blob", path)
 	}
-	info, err := os.Stat(path)
-	if err != nil || info.Mode().Perm() != 0600 {
-		t.Fatal("cache not private", err)
+	sum := sha256.Sum256(first)
+	if hex.EncodeToString(sum[:]) != ambient {
+		t.Fatal("ambient file name is not the digest of its bytes")
 	}
-	second, _ := read()
-	info2, err := os.Stat(path)
-	if err != nil || !bytes.Equal(first, second) || !info.ModTime().Equal(info2.ModTime()) {
-		t.Fatal("cache was not reused", err)
+	cfg, err := png.DecodeConfig(bytes.NewReader(first))
+	if err != nil || max(cfg.Width, cfg.Height) > ArtworkAmbientEdge || len(first) > artworkAmbientBytes {
+		t.Fatal("ambient bounds", cfg, len(first), err)
 	}
-	var n int
-	if err = db.QueryRow(`SELECT count(*) FROM artwork_objects WHERE digest=?`, ambientArtworkDigest(source)).Scan(&n); err != nil || n != 0 {
-		t.Fatal("disposable ambient cache became persistent metadata", n, err)
+	var mime string
+	if err = db.QueryRow(`SELECT mime FROM artwork_blobs WHERE digest=?`, ambient).Scan(&mime); err != nil || mime != "image/png" {
+		t.Fatal("ambient blob row", mime, err)
 	}
 	if err = os.Remove(path); err != nil {
 		t.Fatal(err)
 	}
-	third, _ := read()
-	if !bytes.Equal(first, third) {
-		t.Fatal("rebuild changed immutable bytes")
-	}
-	if err = os.WriteFile(path, first[:len(first)/2], 0600); err != nil {
-		t.Fatal(err)
-	}
-	repaired, _ := read()
-	if !bytes.Equal(first, repaired) {
-		t.Fatal("corrupt cache was served rather than repaired")
-	}
-	// The ordinary bounded directory cleanup owns ambient retirement, even
-	// while the source remains selected; a subsequent access derives it again.
-	old := s.publicationTime().Add(-25 * time.Hour)
-	if err = os.Chtimes(path, old, old); err != nil {
-		t.Fatal(err)
-	}
-	if err = s.CleanupArtwork(ctx); err != nil {
-		t.Fatal(err)
+	if f, _, err := s.EntityArtworkVariant(ctx, target, "poster", "", ArtworkAmbient, source); !errors.Is(err, ErrArtworkPending) {
+		if f != nil {
+			f.Close()
+		}
+		t.Fatal("a missing ambient file was rebuilt or served on request", err)
 	}
 	if _, err = os.Stat(path); !errors.Is(err, os.ErrNotExist) {
-		t.Fatal("old derived cache not retired", err)
+		t.Fatal("a GET wrote an ambient file", err)
 	}
-	fourth, _ := read()
-	if !bytes.Equal(first, fourth) {
-		t.Fatal("cleanup rebuild changed bytes")
-	}
-	// A retained derived file cannot substitute for the exact physical source.
-	if err = os.Remove(filepath.Join(s.cacheRoot, source+".img")); err != nil {
-		t.Fatal(err)
-	}
-	if f, _, err := s.EntityArtworkVariant(ctx, target, "poster", "", ArtworkAmbientEdge, source); !errors.Is(err, ErrArtworkPending) {
+	if f, _, err := s.EntityArtworkVariant(ctx, target, "poster", "", ArtworkAmbient, "wrong-version"); !errors.Is(err, ErrArtworkVersion) {
 		if f != nil {
 			f.Close()
 		}
-		t.Fatal("missing source served cached ambient", err)
-	}
-	if f, _, err := s.EntityArtworkVariant(ctx, target, "poster", "", ArtworkAmbientEdge, "wrong-version"); !errors.Is(err, ErrArtworkVersion) {
-		if f != nil {
-			f.Close()
-		}
-		t.Fatal("stale source served cached ambient", err)
-	}
-}
-
-func TestAmbientArtworkQueuedDerivationIsCancellableAndSourceBounded(t *testing.T) {
-	s, _, _, source := ambientSelectionFixture(t)
-	f, err := s.openArtworkObject(source)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer f.Close()
-	release, err := imagework.Acquire(context.Background())
-	if err != nil {
-		t.Fatal(err)
-	}
-	ctx, cancel := context.WithCancel(context.Background())
-	result := make(chan error, 1)
-	go func() { result <- s.ensureAmbientArtwork(ctx, source, f) }()
-	cancel()
-	if err = <-result; !errors.Is(err, context.Canceled) {
-		t.Fatal(err)
-	}
-	release()
-	if _, err = os.Stat(filepath.Join(s.cacheRoot, ambientArtworkDigest(source)+".img")); !errors.Is(err, os.ErrNotExist) {
-		t.Fatal("cancelled work published", err)
-	}
-	for _, data := range [][]byte{make([]byte, artworkMaxBytes+1), []byte("corrupt source")} {
-		sum := sha256.Sum256(data)
-		digest := hex.EncodeToString(sum[:])
-		path := filepath.Join(s.cacheRoot, digest+".img")
-		if err = os.WriteFile(path, data, 0600); err != nil {
-			t.Fatal(err)
-		}
-		f, err := s.openArtworkObject(digest)
-		if err != nil {
-			t.Fatal(err)
-		}
-		err = s.ensureAmbientArtwork(context.Background(), digest, f)
-		f.Close()
-		if !errors.Is(err, ErrArtworkPending) {
-			t.Fatal("invalid source accepted", err)
-		}
+		t.Fatal("stale source served ambient", err)
 	}
 }

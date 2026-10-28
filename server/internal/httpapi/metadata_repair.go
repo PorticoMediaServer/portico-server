@@ -188,12 +188,12 @@ func (d Dependencies) metadataRepairRoutes(mux *http.ServeMux) {
 				return
 			}
 			if strings.HasPrefix(candidate, "attention:") {
-				f, mime, err = d.Metadata.PreviewAttentionArtwork(r.Context(), target, strings.TrimPrefix(candidate, "attention:"), artworkWidth(r), func(tx *sql.Tx) error { return d.manualMetadataAuthorize(r.Context(), tx, p) })
+				f, mime, err = d.Metadata.PreviewAttentionArtwork(r.Context(), target, strings.TrimPrefix(candidate, "attention:"), artworkSize(r), func(tx *sql.Tx) error { return d.manualMetadataAuthorize(r.Context(), tx, p) })
 			} else {
-				f, mime, err = d.Metadata.PreviewArtwork(r.Context(), target, candidate, artworkWidth(r))
+				f, mime, err = d.Metadata.PreviewArtwork(r.Context(), target, candidate, artworkSize(r))
 			}
 		} else {
-			f, mime, err = d.Metadata.EntityArtworkVariant(r.Context(), target, r.PathValue("role"), r.URL.Query().Get("subject"), artworkWidth(r), r.URL.Query().Get("v"))
+			f, mime, err = d.Metadata.EntityArtworkVariant(r.Context(), target, r.PathValue("role"), r.URL.Query().Get("subject"), artworkSize(r), r.URL.Query().Get("v"))
 		}
 		if err != nil {
 			if artworkVersionFailure(w, err) {

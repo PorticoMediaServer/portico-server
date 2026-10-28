@@ -10,7 +10,7 @@ function deferred(){let resolve!:(v:any)=>void;return {promise:new Promise<any>(
 test('repair projections require exact target, authority fence and canonical roles',()=>{
  const raw=response();assert.equal(validateRepair(raw,scope,target).revision,raw.revision);
  for(const patch of [{serverId:'other'},{libraryId:'other'},{viewerFence:'invalid'},{target:{kind:'album',id:'movie'}}])assert.throws(()=>validateRepair({...raw,...patch},scope,target));
- const art={role:'still',subject:'',candidateId:'c'.repeat(64),digest:'d'.repeat(64),thumbnailDigest:'e'.repeat(64),locked:true,revision:1,attribution:'Local artwork',url:'/v1/metadata/item/movie/art/still?v='+ 'd'.repeat(64)};
+ const art={role:'still',subject:'',candidateId:'c'.repeat(64),digest:'d'.repeat(64),locked:true,revision:1,attribution:'Local artwork',url:'/v1/metadata/item/movie/art/still?v='+ 'd'.repeat(64)};
  assert.equal(validateRepair({...raw,snapshot:{...raw.snapshot,artwork:[art]}},scope,target).snapshot.artwork.length,1);
  assert.deepEqual(validateRepair({...raw,snapshot:{...raw.snapshot,artwork:[{...art,role:'clearart'}]}},scope,target).snapshot.artwork,[]);
  assert.deepEqual(validateRepair({...raw,snapshot:{...raw.snapshot,artwork:[{...art,url:'https://provider.invalid/private'}]}},scope,target).snapshot.artwork,[]);

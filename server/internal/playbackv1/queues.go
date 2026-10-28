@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"errors"
 	"net/url"
+	"portico.local/server/internal/artworkref"
 	"strconv"
 	"strings"
 	"time"
@@ -713,14 +714,14 @@ func (s *Service) window(ctx context.Context, l *layout, p identity.Principal, f
 	rows, err := l.tx.QueryContext(ctx, `SELECT pid(i.public_id),i.id,k.name,i.title,COALESCE(lib.library_id,''),
  COALESCE((SELECT a.duration FROM catalog_asset_links x JOIN catalog_assets a ON a.id=x.asset_id WHERE x.entity_id=i.id ORDER BY x.part_index,a.id LIMIT 1),0),
  COALESCE(pid(album.public_id),pid(book.public_id),''),COALESCE(s.disc_number,b.disc_number,0),COALESCE(s.track_number,b.part_number,0),
- COALESCE((SELECT a.role||'/'||a.digest FROM artwork_selections a JOIN artwork_objects o ON o.digest=a.digest AND o.status='ready' WHERE a.kind='item' AND a.entity_id=i.id AND a.role IN('still','thumbnail') AND a.subject='' ORDER BY a.role LIMIT 1),''),
- EXISTS(SELECT 1 FROM artwork_selections a JOIN artwork_objects o ON o.digest=a.digest AND o.status='ready' WHERE a.subject='' AND (
+ COALESCE((SELECT a.role||'/'||a.digest FROM artwork_selections a JOIN artwork_sources o ON o.digest=a.digest WHERE a.kind='item' AND a.entity_id=i.id AND a.role IN('still','thumbnail') AND a.subject='' ORDER BY a.role LIMIT 1),''),
+ EXISTS(SELECT 1 FROM artwork_selections a JOIN artwork_sources o ON o.digest=a.digest WHERE a.subject='' AND (
   (a.kind='item' AND a.entity_id=i.id AND a.role IN('poster','cover')) OR (a.kind='album' AND a.entity_id=s.album_id AND a.role='cover') OR
   (a.kind='book' AND a.entity_id=b.book_id AND a.role='cover') OR (a.kind='season' AND a.entity_id=ep.season_id AND a.role='poster') OR
   (a.kind='show' AND a.entity_id=ep.show_id AND a.role='poster'))),
  COALESCE(album.title,book.title,''),COALESCE(pid(artist.public_id),''),COALESCE(artist.title,''),
  COALESCE(pid(show.public_id),''),COALESCE(pid(season.public_id),''),COALESCE(sn.number,0),COALESCE(ep.number,0),
- EXISTS(SELECT 1 FROM artwork_selections a JOIN artwork_objects o ON o.digest=a.digest AND o.status='ready' WHERE a.subject='' AND a.role='backdrop' AND ((a.kind='item' AND a.entity_id=i.id) OR (a.kind='show' AND a.entity_id=ep.show_id)))
+ EXISTS(SELECT 1 FROM artwork_selections a JOIN artwork_sources o ON o.digest=a.digest WHERE a.subject='' AND a.role='backdrop' AND ((a.kind='item' AND a.entity_id=i.id) OR (a.kind='show' AND a.entity_id=ep.show_id)))
 	FROM catalog_entities i JOIN catalog_kinds k ON k.id=i.kind AND k.playable=1
  LEFT JOIN catalog_libraries lib ON lib.id=i.library_id AND lib.retired=0
 	LEFT JOIN catalog_songs s ON s.entity_id=i.id LEFT JOIN catalog_entities album ON album.id=s.album_id
@@ -767,6 +768,7 @@ func (s *Service) window(ctx context.Context, l *layout, p identity.Principal, f
 	for _, id := range allowed {
 		visible[id] = true
 	}
+	stills := map[int][2]string{}
 	for i := range out {
 		if out[i].Kind == "pending" {
 			continue
@@ -789,13 +791,35 @@ func (s *Service) window(ctx context.Context, l *layout, p identity.Principal, f
 				out[i].PosterURL = "/v1/items/" + escaped + "/art/poster"
 			}
 			if role, digest, ok := strings.Cut(v.still, "/"); ok {
-				out[i].StillURL = "/v1/metadata/item/" + escaped + "/art/" + role + "?v=" + url.QueryEscape(digest) + "&w=800"
+				stills[i] = [2]string{role, digest}
 			}
 		} else {
 			// A title that's gone or became restricted after the snapshot is a
 			// placeholder: no id, no title, not playable.
 			out[i].ItemID, out[i].Kind, out[i].Available = "", "unavailable", false
 		}
+	}
+	// Every picture carries its source and both slots, so a client caches it
+	// for good and picks the slot its box needs.
+	sources := make([]string, 0, len(stills))
+	for _, still := range stills {
+		sources = append(sources, still[1])
+	}
+	described, err := artworkref.Load(ctx, l.tx, sources)
+	if err != nil {
+		return nil, err
+	}
+	urls := make([]*string, 0, 2*len(out))
+	for i := range out {
+		if still, ok := stills[i]; ok {
+			if d, ok := described[still[1]]; ok {
+				out[i].StillURL = "/v1/metadata/item/" + url.PathEscape(out[i].ItemID) + "/art/" + still[0] + "?" + d.Query(still[1])
+			}
+		}
+		urls = append(urls, &out[i].PosterURL, &out[i].BackdropURL)
+	}
+	if err = artworkref.DescribeItemURLs(ctx, l.tx, urls...); err != nil {
+		return nil, err
 	}
 	return out, nil
 }

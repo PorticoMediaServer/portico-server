@@ -17,6 +17,7 @@ import (
 	"portico.local/server/internal/identity"
 	"portico.local/server/internal/livechannels"
 	"portico.local/server/internal/livechannels/dvr"
+	"portico.local/server/internal/metadata"
 )
 
 func dvrFailure(w http.ResponseWriter, e error) {
@@ -139,12 +140,13 @@ func (d Dependencies) dvrRoutes(mux *http.ServeMux) {
 			dvrFailure(w, dvr.ErrUnavailable)
 			return
 		}
-		digest, e := d.DVR.ImageDigest(r.Context(), d.dvrAuthority(p), channelSubject(p), r.PathValue("id"))
+		small := artworkSize(r) == metadata.ArtworkSmall
+		digest, mime, e := d.DVR.ImageRendition(r.Context(), d.dvrAuthority(p), channelSubject(p), r.PathValue("id"), small)
 		if e != nil {
 			dvrFailure(w, e)
 			return
 		}
-		raw, mime, e := d.Administration.GuideImageBytes(r.Context(), digest)
+		raw, e := d.Administration.GuideImageBytes(r.Context(), digest, mime)
 		if e != nil {
 			dvrFailure(w, e)
 			return
@@ -154,7 +156,7 @@ func (d Dependencies) dvrRoutes(mux *http.ServeMux) {
 			dvrFailure(w, dvr.ErrDenied)
 			return
 		}
-		again, e := d.DVR.ImageDigest(r.Context(), d.dvrAuthority(p), channelSubject(p), r.PathValue("id"))
+		again, _, e := d.DVR.ImageRendition(r.Context(), d.dvrAuthority(p), channelSubject(p), r.PathValue("id"), small)
 		if e != nil || again != digest {
 			dvrFailure(w, dvr.ErrDenied)
 			return

@@ -1,11 +1,9 @@
 package metadata
 
 import (
-	"bytes"
 	"context"
 	"database/sql"
 	"errors"
-	"image"
 	"time"
 
 	"portico.local/server/internal/dbwork"
@@ -29,24 +27,15 @@ func (s *Service) AdoptReadingCover(ctx context.Context, item, sourceRevision st
 	if err != nil {
 		return err
 	}
-	original, thumb, w, h, err := normalizeArtworkFormatsContext(ctx, raw, map[string]bool{"jpeg": true, "png": true, "webp": true})
+	material, err := s.materializeArtwork(ctx, raw, map[string]bool{"jpeg": true, "png": true, "webp": true})
 	if err != nil {
-		if errors.Is(err, imagework.ErrBusy) || ctx.Err() != nil {
+		if errors.Is(err, imagework.ErrBusy) || errors.Is(err, ErrArtworkSpace) || errors.Is(err, errArtworkStorage) || ctx.Err() != nil {
 			return err
 		}
+		if errors.Is(err, errArtworkCapUnreachable) {
+			_ = recordArtworkRefusal(ctx, s.db, err)
+		}
 		return ErrArtworkUpload
-	}
-	full, err := s.installArtworkContext(ctx, original, w, h)
-	if err != nil {
-		return err
-	}
-	shape, _, err := image.DecodeConfig(bytes.NewReader(thumb))
-	if err != nil {
-		return ErrArtworkUpload
-	}
-	small, err := s.installArtworkContext(ctx, thumb, shape.Width, shape.Height)
-	if err != nil {
-		return err
 	}
 	gate, err := dbwork.Begin(ctx, s.db, dbwork.ClassBackgroundMedia)
 	if err != nil {
@@ -80,22 +69,17 @@ func (s *Service) AdoptReadingCover(ctx context.Context, item, sourceRevision st
 		return err
 	}
 	stamp := s.publicationTime().Format(time.RFC3339Nano)
-	for _, object := range []artworkInstalled{full, small} {
-		if err = recordArtworkObject(ctx, tx, object, stamp); err != nil {
-			return err
-		}
-	}
-	if err = linkArtworkBuckets(ctx, tx, full, small); err != nil {
+	if err = publishArtworkSource(ctx, tx, material, stamp); err != nil {
 		return err
 	}
-	candidate, err := insertArtworkCandidate(ctx, tx, target, "cover", "", "local", full.digest, "reading:"+sourceRevision, "", "Artwork from the publication", fence, stamp, 100)
+	candidate, err := insertArtworkCandidate(ctx, tx, target, "cover", "", "local", material.source, "reading:"+sourceRevision, "", "Artwork from the publication", fence, stamp, 100)
 	if err != nil {
 		return err
 	}
-	if _, err = tx.ExecContext(ctx, `INSERT INTO artwork_previews VALUES(?,?,?,?) ON CONFLICT(candidate_id) DO UPDATE SET digest=excluded.digest,source_fence=excluded.source_fence,created_at=excluded.created_at`, candidate, small.digest, fence, stamp); err != nil {
+	if _, err = tx.ExecContext(ctx, `INSERT INTO artwork_previews VALUES(?,?,?,?) ON CONFLICT(candidate_id) DO UPDATE SET digest=excluded.digest,source_fence=excluded.source_fence,created_at=excluded.created_at`, candidate, material.source, fence, stamp); err != nil {
 		return err
 	}
-	if _, err = tx.ExecContext(ctx, `INSERT INTO artwork_selections(kind,entity_id,role,subject,candidate_id,digest,thumbnail_digest,locked,revision,actor,observed_at) VALUES('item',?,'cover','',?,?,?,0,1,'automatic',?) ON CONFLICT(kind,entity_id,role,subject) DO NOTHING`, entity, candidate, full.digest, small.digest, stamp); err != nil {
+	if _, err = tx.ExecContext(ctx, `INSERT INTO artwork_selections(kind,entity_id,role,subject,candidate_id,digest,locked,revision,actor,observed_at) VALUES('item',?,'cover','',?,?,0,1,'automatic',?) ON CONFLICT(kind,entity_id,role,subject) DO NOTHING`, entity, candidate, material.source, stamp); err != nil {
 		return err
 	}
 	if err = projectSelectedArtwork(ctx, tx, target, "cover"); err != nil {
@@ -107,5 +91,5 @@ func (s *Service) AdoptReadingCover(ctx context.Context, item, sourceRevision st
 	if err = gate.Commit(); err != nil {
 		return err
 	}
-	return s.ensureArtworkFiles(full, small)
+	return s.ensureArtworkFiles(material.installed()...)
 }

@@ -217,7 +217,7 @@ func (r *readingBrowseScope) project(s *Service, rows []browseRow, profile strin
 	for i, row := range rows {
 		entities[i] = row.entity
 	}
-	covers, err := compactcatalog.ReadingCoverDigestsTx(s.Context(), dbwork.Snapshot(s.Context()), entities)
+	covers, err := compactcatalog.ReadingCoverQueriesTx(s.Context(), dbwork.Snapshot(s.Context()), entities)
 	if err != nil {
 		return nil, err
 	}
@@ -232,7 +232,7 @@ func (r *readingBrowseScope) project(s *Service, rows []browseRow, profile strin
 			entry.ReadingMark.ItemID = row.id
 		}
 		if digest := covers[row.entity]; digest != "" {
-			entry.PosterURL = "/v1/items/" + url.PathEscape(row.id) + "/art/cover?v=" + digest
+			entry.PosterURL = "/v1/items/" + url.PathEscape(row.id) + "/art/cover?" + digest
 		}
 
 		entry.Kind = row.kind

@@ -198,8 +198,13 @@ func TestRepairRestorePreservesAvailablePreviousArtwork(t *testing.T) {
 			_, err = db.Exec(`INSERT INTO artwork_candidates(id,kind,entity_id,role,provider,image_id,origin,attribution,source_fence,observed_at)
  VALUES('previous-upload','item',1,'poster','local','previous-upload','local','fixture','','now')`)
 			if err == nil {
-				_, err = db.Exec(`INSERT INTO artwork_uploads(candidate_id,kind,entity_id,role,digest,thumbnail_digest,mime,bytes,width,height,actor,observed_at)
- VALUES('previous-upload','item',1,'poster',?,?,'image/png',1,1,1,'owner','now')`, digest, digest)
+				_, err = db.Exec(`INSERT INTO artwork_blobs(digest,mime,width,height,bytes,created_at) VALUES(?,'image/jpeg',1,1,1,'now')`, digest)
+			}
+			if err == nil {
+				_, err = db.Exec(`INSERT INTO artwork_sources(digest,accepted_mime,accepted_width,accepted_height,small_blob,large_blob,ambient_blob,large_edge,small_outlier,large_outlier,encoder_revision,created_at) VALUES(?1,'image/jpeg',1,1,?1,?1,?1,1920,0,0,1,'now')`, digest)
+			}
+			if err == nil {
+				_, err = db.Exec(`INSERT INTO artwork_uploads(candidate_id,kind,entity_id,role,digest,mime,bytes,width,height,actor,observed_at) SELECT column1,column2,column3,column4,column5,column7,column8,column9,column10,column11,column12 FROM (VALUES('previous-upload','item',1,'poster',?,?,'image/png',1,1,1,'owner','now'))`, digest, digest)
 			}
 			db.Close()
 			if err != nil {

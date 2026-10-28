@@ -3,6 +3,7 @@ package catalog
 import (
 	"database/sql"
 	"encoding/json"
+	"portico.local/server/internal/artworkref"
 	"portico.local/server/internal/facettext"
 	"portico.local/server/internal/requestinput"
 	"strconv"
@@ -250,7 +251,11 @@ func (s *Service) person(id string, viewer Viewer) (Person, error) {
 		return out, e
 	}
 	// A provider portrait URL is evidence, never a client-reachable address.
-	out.PortraitURL = selectedArtworkURL("item", item, "portrait", subject, digest, 400)
+	described, e := artworkref.Load(s.Context(), s.read(), []string{digest})
+	if e != nil {
+		return out, e
+	}
+	out.PortraitURL = selectedArtworkURL("item", item, "portrait", subject, digest, described[digest])
 	return out, nil
 }
 
@@ -639,10 +644,13 @@ func (s *Service) peopleNameWalk(q string, viewer Viewer, limit, offset int, dir
 	return found[offset:], true, nil
 }
 
-type portraitSelection struct{ item, subject, digest string }
+type portraitSelection struct {
+	item, subject, digest string
+	slots                 artworkref.Descriptor
+}
 
 func (p portraitSelection) url() string {
-	return selectedArtworkURL("item", p.item, "portrait", p.subject, p.digest, 400)
+	return selectedArtworkURL("item", p.item, "portrait", p.subject, p.digest, p.slots)
 }
 
 // portraitSelections resolves ready portraits for a page in one statement.
@@ -657,15 +665,15 @@ func (s *Service) portraitSelections(ids []string, viewer Viewer) (map[string]po
 	for _, id := range ids {
 		args = append(args, id)
 	}
-	rows, err := s.read().Query(`SELECT p.token,pid(owner.public_id),a.subject,a.digest
+	rows, err := s.read().Query(`SELECT p.token,pid(owner.public_id),a.subject,a.digest,`+artworkref.Columns+`
  FROM catalog_people p CROSS JOIN artwork_selections a
  ON a.kind='item' AND a.role='portrait' AND a.subject=p.identity_key AND a.entity_id=(
  SELECT pc.entity_id FROM catalog_credits pc INDEXED BY catalog_credits_person
  CROSS JOIN catalog_entities i ON i.id=pc.entity_id
  CROSS JOIN artwork_selections chosen ON chosen.kind='item' AND chosen.entity_id=i.id AND chosen.role='portrait' AND chosen.subject=p.identity_key
- CROSS JOIN artwork_objects o ON o.digest=chosen.digest AND o.status='ready'
+ CROSS JOIN artwork_sources o ON o.digest=chosen.digest
  WHERE pc.person_id=p.id AND `+visible+` ORDER BY pc.entity_id LIMIT 1)
- CROSS JOIN catalog_entities owner ON owner.id=a.entity_id
+ CROSS JOIN catalog_entities owner ON owner.id=a.entity_id`+artworkref.Joins("a.digest")+`
  WHERE p.token IN (`+placeholders(len(ids))+`)`, args...)
 	if err != nil {
 		return nil, err
@@ -674,7 +682,7 @@ func (s *Service) portraitSelections(ids []string, viewer Viewer) (map[string]po
 	for rows.Next() {
 		var id string
 		var selected portraitSelection
-		if err = rows.Scan(&id, &selected.item, &selected.subject, &selected.digest); err != nil {
+		if err = rows.Scan(append([]any{&id, &selected.item, &selected.subject, &selected.digest}, selected.slots.ScanTargets()...)...); err != nil {
 			return nil, err
 		}
 		out[id] = selected

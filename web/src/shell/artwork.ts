@@ -1,15 +1,17 @@
 import {encodedRoutePath, routePattern} from '../../../packages/contracts/src/routes.ts';
 import {retryAfterSecondsFrom, type AuthRecovery, type HttpLocalApi} from '@core/index.ts';
-import {ambientArtworkSource, artworkWidthBucket, type AmbientArtworkIdentity, type ArtworkFailure, type ArtworkRequestOptions} from '@core/artwork/index.ts';
+import {ambientArtworkSource, artworkRenditionFor, type AmbientArtworkIdentity, type ArtworkFailure, type ArtworkRequestOptions} from '@core/artwork/index.ts';
 import {createArtworkRuntime, type ArtworkLoadRequest} from '../kit/artwork/source';
 import type {ArtworkImage} from '../kit/artwork/types';
 
+/** pixels is the painted width in device pixels and aspect its width ÷ height:
+ * the box the picture covers. The slot whose actual pixels fill that box is
+ * requested by name and token, so each picture downloads once per slot. */
 export function foregroundArtwork(url: string | undefined, pixels: number, aspect: number, identity: AmbientArtworkIdentity) {
   // The accepted ambient parser also validates selected route, digest and query identity.
   if (!ambientArtworkSource(url, identity)) return undefined;
-  const [path, query] = url!.split('?'), params = new URLSearchParams(query);
-  params.delete('size'); params.set('w', String(artworkWidthBucket(pixels, {aspect}))); params.sort();
-  const selected = path + '?' + params.toString();
+  const ratio = aspect > 0 && Number.isFinite(aspect) ? aspect : 1;
+  const selected = artworkRenditionFor(url!, {width: pixels, height: pixels / ratio, dpr: 1}).url;
   return {url: selected, cacheKey: JSON.stringify([identity.serverId, identity.viewerId, identity.authorityKey, selected])};
 }
 const channelLogoPattern = new RegExp('^' + routePattern('get_library_channels_id_logo').replace('{id}', '[A-Za-z0-9_-]{1,128}') + '$');

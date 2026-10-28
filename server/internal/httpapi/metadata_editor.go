@@ -187,6 +187,10 @@ func (d Dependencies) writeRepairState(w http.ResponseWriter, r *http.Request, c
 }
 
 func uploadFailure(w http.ResponseWriter, err error) {
+	if errors.Is(err, metadata.ErrArtworkCapUnreachable) {
+		write(w, 422, map[string]any{"error": map[string]any{"code": "artwork_cap_unreachable", "message": "This image is too detailed to store at full quality within the size limit. Try a simpler or smaller image.", "retryable": false}})
+		return
+	}
 	if errors.Is(err, metadata.ErrArtworkUpload) {
 		write(w, 415, map[string]any{"error": map[string]any{"code": "unsupported_artwork", "message": "Upload a JPEG, PNG or WebP image no larger than 10 MiB.", "retryable": false}})
 		return

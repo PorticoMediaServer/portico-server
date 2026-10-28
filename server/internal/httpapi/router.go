@@ -1253,7 +1253,7 @@ func New(d Dependencies) http.Handler {
 			failure(w, errors.New("artwork unavailable"))
 			return
 		}
-		f, mime, e := d.Metadata.EntityArtworkVariant(r.Context(), metadata.RepairTarget{Kind: "item", ID: r.PathValue("id")}, r.PathValue("kind"), "", artworkWidth(r), r.URL.Query().Get("v"))
+		f, mime, e := d.Metadata.EntityArtworkVariant(r.Context(), metadata.RepairTarget{Kind: "item", ID: r.PathValue("id")}, r.PathValue("kind"), "", artworkSize(r), r.URL.Query().Get("v"))
 		if e != nil {
 			if artworkVersionFailure(w, e) {
 				return

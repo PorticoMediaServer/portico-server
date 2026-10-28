@@ -40,13 +40,13 @@ func TestTopShelfEpisodeUsesSizedShowPoster(t *testing.T) {
 	if upload.Code != http.StatusOK {
 		t.Fatal(upload.Code, upload.Body.String())
 	}
-	f, _, err := d.topShelfArtwork(context.Background(), episode.Public, 400)
+	f, _, err := d.topShelfArtwork(context.Background(), episode.Public, metadata.ArtworkSmall)
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer f.Close()
 	cfg, _, err := image.DecodeConfig(f)
-	if err != nil || max(cfg.Width, cfg.Height) != 400 {
+	if err != nil || max(cfg.Width, cfg.Height) != 800 {
 		t.Fatalf("episode shelf did not use a sized show poster: %+v %v", cfg, err)
 	}
 	entry := topShelfEntry(catalog.ContentEntry{ID: episode.Public, Kind: "episode"}, "grant")

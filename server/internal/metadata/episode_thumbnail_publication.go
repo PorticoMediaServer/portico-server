@@ -1,10 +1,8 @@
 package metadata
 
 import (
-	"bytes"
 	"context"
 	"database/sql"
-	"image"
 	"math"
 	"time"
 
@@ -101,7 +99,7 @@ type episodeThumbnailPublicationAuthority interface {
 	CheckTx(context.Context, *sql.Tx) error
 }
 type episodeThumbnailEncoding struct {
-	full, small artworkInstalled
+	material    artworkMaterial
 	checkSizeTx func(context.Context, *sql.Tx) error
 }
 
@@ -110,18 +108,8 @@ func (s *Service) prepareEpisodeThumbnail(ctx context.Context, raw []byte, check
 	if checkSizeTx == nil {
 		return out, ErrRepairInput
 	}
-	full, small, w, h, err := normalizeArtworkFormatsContext(ctx, raw, map[string]bool{"jpeg": true})
-	if err != nil {
-		return out, err
-	}
-	if out.full, err = s.installArtworkContext(ctx, full, w, h); err != nil {
-		return out, err
-	}
-	shape, _, err := image.DecodeConfig(bytes.NewReader(small))
-	if err != nil {
-		return out, err
-	}
-	out.small, err = s.installArtworkContext(ctx, small, shape.Width, shape.Height)
+	var err error
+	out.material, err = s.materializeArtwork(ctx, raw, map[string]bool{"jpeg": true})
 	return out, err
 }
 
@@ -165,16 +153,11 @@ func (s *Service) publishEpisodeThumbnail(ctx context.Context, captured episodeT
 		return RepairState{}, err
 	}
 	stamp := s.publicationTime().Format(time.RFC3339Nano)
-	for _, o := range []artworkInstalled{picture.full, picture.small} {
-		if err = recordArtworkObject(ctx, tx, o, stamp); err != nil {
-			return RepairState{}, err
-		}
-	}
-	if err = linkArtworkBuckets(ctx, tx, picture.full, picture.small); err != nil {
+	if err = publishArtworkSource(ctx, tx, picture.material, stamp); err != nil {
 		return RepairState{}, err
 	}
 	origin := "episode:" + publicationDigest([]any{current.LibrarySourceID, current.ObjectID, current.SourceRevision, current.Incarnation, current.Generation, current.StartUS, current.EndUS})
-	candidate, err := insertArtworkCandidate(ctx, tx, current.Target, "still", "", "generated", picture.full.digest, origin, "", "", current.ArtworkFence, stamp, 0)
+	candidate, err := insertArtworkCandidate(ctx, tx, current.Target, "still", "", "generated", picture.material.source, origin, "", "", current.ArtworkFence, stamp, 0)
 	if err != nil {
 		return RepairState{}, err
 	}
@@ -182,7 +165,7 @@ func (s *Service) publishEpisodeThumbnail(ctx context.Context, captured episodeT
 	if manual {
 		who = actor.Authority + ":" + actor.AccountID + ":" + actor.ProfileID
 	}
-	_, err = tx.ExecContext(ctx, `INSERT INTO artwork_selections(kind,entity_id,role,subject,candidate_id,digest,thumbnail_digest,locked,revision,actor,observed_at) VALUES('item',?,'still','',?,?,?,?,1,?,?) ON CONFLICT(kind,entity_id,role,subject) DO UPDATE SET candidate_id=excluded.candidate_id,digest=excluded.digest,thumbnail_digest=excluded.thumbnail_digest,locked=excluded.locked,revision=artwork_selections.revision+1,actor=excluded.actor,observed_at=excluded.observed_at`, entity, candidate, picture.full.digest, picture.small.digest, manual, who, stamp)
+	_, err = tx.ExecContext(ctx, `INSERT INTO artwork_selections(kind,entity_id,role,subject,candidate_id,digest,locked,revision,actor,observed_at) VALUES('item',?,'still','',?,?,?,1,?,?) ON CONFLICT(kind,entity_id,role,subject) DO UPDATE SET candidate_id=excluded.candidate_id,digest=excluded.digest,locked=excluded.locked,revision=artwork_selections.revision+1,actor=excluded.actor,observed_at=excluded.observed_at`, entity, candidate, picture.material.source, manual, who, stamp)
 	if err != nil {
 		return RepairState{}, err
 	}
@@ -216,5 +199,5 @@ func (s *Service) publishEpisodeThumbnail(ctx context.Context, captured episodeT
 	if err = gated.Commit(); err != nil {
 		return out, err
 	}
-	return out, s.ensureArtworkFiles(picture.full, picture.small)
+	return out, s.ensureArtworkFiles(picture.material.installed()...)
 }

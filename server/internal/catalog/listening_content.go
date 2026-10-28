@@ -719,5 +719,5 @@ func (s *Service) enrichListeningEntries(r ContentRequest, spec listeningSection
 			}
 		}
 	}
-	return nil
+	return describeItemArtIn(s, sec.Entries, func(c *ContentEntry) *string { return &c.PosterURL })
 }

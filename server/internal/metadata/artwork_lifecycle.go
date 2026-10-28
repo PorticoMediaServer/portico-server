@@ -83,7 +83,7 @@ func (s *Service) settleArtworkTomb(ctx context.Context, name string) error {
 		return nil
 	}
 	var known bool
-	if err := s.db.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM artwork_objects WHERE digest=?)`, digest).Scan(&known); err != nil {
+	if err := s.db.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM artwork_blobs WHERE digest=?)`, digest).Scan(&known); err != nil {
 		return err
 	}
 	tomb := filepath.Join(s.cacheRoot, name)

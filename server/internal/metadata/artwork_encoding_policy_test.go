@@ -44,11 +44,13 @@ func TestArtworkContextCapturesActualPolicyAndGuardsPublicationRevision(t *testi
 		for i := range picture.Pix {
 			picture.Pix[i] = 255
 		}
-		raw, w, h, err := encodeArtworkSlot(encoded, picture, artworkSlotLarge)
+		out, err := encodeArtworkSlot(encoded, picture, artworkSlotLarge)
+		raw, w, h := out.data, out.width, out.height
 		if err != nil || w != edge || h != edge*1080/2700 || len(raw) > artworkLargeCap[edge] {
 			t.Fatal("captured policy did not reach real encoder", edge, w, h, len(raw), err)
 		}
-		_, w, h, err = encodeArtworkSlot(encoded, picture, artworkSlotSmall)
+		out, err = encodeArtworkSlot(encoded, picture, artworkSlotSmall)
+		w, h = out.width, out.height
 		if err != nil || max(w, h) != artworkSmallEdge {
 			t.Fatal("small slot followed the large policy", w, h, err)
 		}
@@ -78,7 +80,7 @@ func TestArtworkContextHonoursLargerByteCeilingWithoutEnlargingPictures(t *testi
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, _, _, err = encodeArtworkSlot(standard, picture, artworkSlotLarge); !errors.Is(err, errArtworkCapUnreachable) {
+	if _, err = encodeArtworkSlot(standard, picture, artworkSlotLarge); !errors.Is(err, errArtworkCapUnreachable) {
 		t.Fatal("the 1920 cap was stretched or the picture was shrunk", err)
 	}
 	setArtworkPolicy(t, s, 2560)
@@ -86,7 +88,8 @@ func TestArtworkContextHonoursLargerByteCeilingWithoutEnlargingPictures(t *testi
 	if err != nil {
 		t.Fatal(err)
 	}
-	raw, w, h, err := encodeArtworkSlot(larger, picture, artworkSlotLarge)
+	out, err := encodeArtworkSlot(larger, picture, artworkSlotLarge)
+	raw, w, h := out.data, out.width, out.height
 	if err != nil || len(raw) <= 500000 || len(raw) > artworkLargeCap[2560]*3/2 || w != 1600 || h != 1000 {
 		t.Fatal("larger policy did not use its actual bounded byte allowance", len(raw), w, h, err)
 	}
@@ -103,7 +106,8 @@ func TestArtworkContextHonoursLargerByteCeilingWithoutEnlargingPictures(t *testi
 		if err != nil {
 			t.Fatal(err)
 		}
-		_, w, h, err = encodeArtworkSlot(encoded, bounded, artworkSlotLarge)
+		out, err = encodeArtworkSlot(encoded, bounded, artworkSlotLarge)
+		w, h = out.width, out.height
 		if err != nil || w != 640 || h != 320 {
 			t.Fatal("small picture was enlarged", edge, w, h, err)
 		}

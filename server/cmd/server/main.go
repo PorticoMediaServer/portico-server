@@ -1275,6 +1275,16 @@ func run() (runErr error) {
 	if manager := claimHandler.Remote(); manager != nil {
 		manager.SetAccessURLs(accessURLsProvider(console, manager))
 	}
+	// Both storage pages read one maintained measurement; the data folder
+	// walk is part of the same pass.
+	adminOperations.DataUsage = func(ctx context.Context) (storagepaths.Usage, error) {
+		var mounts []storagepaths.Mount
+		if file, err := os.Open("/proc/self/mountinfo"); err == nil {
+			mounts = storagepaths.ParseMountInfo(file)
+			file.Close()
+		}
+		return layout.Usage(ctx, mounts)
+	}
 	apiDependencies := httpapi.Dependencies{TelemetryContext: ctx, RcloneProgram: &rcloneStatus, DriveOAuth: newDriveOAuth(), CacheDirectory: cache, StorageLayout: &layout, LocalArtworkUsage: localMeta.ArtworkUsage, ConnectionUsage: func() httpapi.ConnectionUsage {
 		held, _ := transport.Held()
 		ordinary, ordinaryLimit := transport.ordinaryUsage()

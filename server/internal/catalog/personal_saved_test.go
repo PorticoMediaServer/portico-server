@@ -341,9 +341,9 @@ func TestHomeCoverSamplesUseCurrentViewerOnDirectBrowse(t *testing.T) {
 	c.Attributes(hiddenSong.ID, "label", "adult")
 	for i, album := range []catalogtest.Item{first, hidden} {
 		digest := strings.Repeat([]string{"a", "b"}[i], 64)
-		c.Exec(`INSERT INTO artwork_objects VALUES(?,'image/png',400,400,100,'now','ready')`, digest)
+		c.Exec(`INSERT INTO artwork_blobs(digest,mime,width,height,bytes,created_at,status) VALUES(?,'image/png',400,400,100,'now','ready'); INSERT OR IGNORE INTO artwork_sources(digest,accepted_mime,accepted_width,accepted_height,small_blob,large_blob,ambient_blob,large_edge,small_outlier,large_outlier,encoder_revision,created_at) SELECT digest,mime,width,height,digest,digest,digest,1920,0,0,1,created_at FROM artwork_blobs`, digest)
 		c.Exec(`INSERT INTO artwork_candidates(id,kind,entity_id,role,subject,provider,image_id,origin,attribution,source_fence,observed_at)VALUES(?,'album',?,'cover','','fixture','album','local','fixture','fence','now')`, album.Public, album.ID)
-		c.Exec(`INSERT INTO artwork_selections(kind,entity_id,role,subject,candidate_id,digest,thumbnail_digest,locked,revision,actor,observed_at)VALUES('album',?,'cover','',?,?,?,0,1,'fixture','now')`, album.ID, album.Public, digest, digest)
+		c.Exec(`INSERT INTO artwork_selections(kind,entity_id,role,subject,candidate_id,digest,locked,revision,actor,observed_at) SELECT column1,column2,column3,column4,column5,column6,column8,column9,column10,column11 FROM (VALUES('album',?,'cover','',?,?,?,0,1,'fixture','now'))`, album.ID, album.Public, digest, digest)
 	}
 	c.Drain()
 	s := New(c.DB)
@@ -353,7 +353,7 @@ func TestHomeCoverSamplesUseCurrentViewerOnDirectBrowse(t *testing.T) {
 		t.Fatal(page, err)
 	}
 	covers := page.Entries[0].ArtworkPaths
-	want := "/v1/metadata/album/" + first.Public + "/art/cover?v=" + strings.Repeat("a", 64) + "&w=400"
+	want := fixtureArtURL("album", first.Public, "cover", "", strings.Repeat("a", 64), 400, 400, 100)
 	if len(covers) != 1 || covers[0] != want {
 		t.Fatal("restricted cover leaked in direct browse", covers, want)
 	}

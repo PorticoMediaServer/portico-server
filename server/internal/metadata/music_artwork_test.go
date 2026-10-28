@@ -18,9 +18,10 @@ func TestMusicAlbumBackgroundEntersFencedWorkerAndKeepsOwner(t *testing.T) {
 			c.Fields(album.ID, map[string]any{"backdrop_url": "local:album-background"})
 			if owner {
 				digest := strings.Repeat("a", 64)
-				c.Exec(`INSERT INTO artwork_objects(digest,mime,width,height,bytes,created_at) VALUES(?,'image/jpeg',1,1,1,'now')`, digest)
+				c.Exec(fixtureArtworkBlobSQL, digest)
+				c.Exec(fixtureArtworkSourceSQL, digest)
 				c.Exec(`INSERT INTO artwork_candidates(id,kind,entity_id,role,provider,image_id,origin,attribution,source_fence,observed_at) VALUES('owner-background','album',?,'backdrop','local','owner','local:owner-background','Local file','owner-fence','now')`, album.ID)
-				c.Exec(`INSERT INTO artwork_selections(kind,entity_id,role,candidate_id,digest,thumbnail_digest,locked,actor,observed_at) VALUES('album',?,'backdrop','owner-background',?,?,1,'owner','now')`, album.ID, digest, digest)
+				c.Exec(`INSERT INTO artwork_selections(kind,entity_id,role,candidate_id,digest,locked,actor,observed_at) VALUES('album',?,'backdrop','owner-background',?,1,'owner','now')`, album.ID, digest)
 			}
 			c.Write(func(ctx context.Context, tx *sql.Tx) error {
 				target := RepairTarget{"album", album.Public}

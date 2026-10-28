@@ -128,12 +128,26 @@ func TestArtworkRepairInstallPreservesOpenReaderAndRejectsMissingRestore(t *test
 	if err != nil || !bytes.Equal(raw, got) {
 		t.Fatal("reader lost its bytes")
 	}
-	choice := ArtworkChoice{Digest: a.digest, Thumbnail: a.digest}
-	if err = s.verifyRestorableArtwork([]ArtworkChoice{choice}); err != nil {
+}
+
+// Undo restores a source only while it is published with all three files.
+func TestArtworkRestoreNeedsEveryFileOfTheSource(t *testing.T) {
+	s, db, _ := repairFixture(t)
+	ctx := context.Background()
+	m := publishTestArtwork(t, s, p08cPNG(t, 40, 30), "2026-01-01T00:00:00Z")
+	choice := ArtworkChoice{Digest: m.source}
+	if err := s.verifyRestorableArtwork(ctx, []ArtworkChoice{choice}); err != nil {
 		t.Fatal(err)
 	}
+	_, large, _ := testSourceBlobs(t, db, m.source)
+	if err := os.Remove(filepath.Join(s.cacheRoot, large+".img")); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.verifyRestorableArtwork(ctx, []ArtworkChoice{choice}); err == nil {
+		t.Fatal("restore accepted a source missing its large file")
+	}
 	choice.Digest = string(bytes.Repeat([]byte("a"), 64))
-	if err = s.verifyRestorableArtwork([]ArtworkChoice{choice}); err == nil {
+	if err := s.verifyRestorableArtwork(ctx, []ArtworkChoice{choice}); err == nil {
 		t.Fatal("dangling restore accepted")
 	}
 }

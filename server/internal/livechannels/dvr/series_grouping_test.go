@@ -156,7 +156,7 @@ func TestDVRGroupsSummaryTitleRulesAndRetainedPictures(t *testing.T) {
 	if _, e = s.db.Exec(`INSERT INTO live_programme_icons(generation_id,programme_id,url) VALUES(?,?,?)`, source.Generation, p.ID, url); e != nil {
 		t.Fatal(e)
 	}
-	if _, e = s.db.Exec(`INSERT INTO live_programme_images VALUES(?,?,'image/png',16,16,1)`, url, digest); e != nil {
+	if _, e = s.db.Exec(`INSERT INTO live_programme_images(url,small_digest,large_digest,media_type,small_width,small_height,small_bytes,large_width,large_height,large_bytes,stored_ms) VALUES(?,?,?,'image/png',16,16,10,16,16,20,1)`, url, digest, digest); e != nil {
 		t.Fatal(e)
 	}
 	if _, e = s.db.Exec(`DELETE FROM live_programme_icons WHERE generation_id=?`, source.Generation); e != nil {
@@ -165,11 +165,11 @@ func TestDVRGroupsSummaryTitleRulesAndRetainedPictures(t *testing.T) {
 	if _, e = s.db.Exec(`DELETE FROM live_programme_images WHERE url=?`, url); e != nil {
 		t.Fatal(e)
 	}
-	image, e := s.ImageDigest(ctx, a, owner, recording.ID)
-	if e != nil || image != digest {
+	image, mime, e := s.ImageRendition(ctx, a, owner, recording.ID, false)
+	if e != nil || image != digest || mime != "image/png" {
 		t.Fatalf("retained picture %q %v", image, e)
 	}
-	if _, e = s.ImageDigest(ctx, a, livechannels.Owner{Authority: "local", AccountID: "account", ProfileID: "other"}, recording.ID); e == nil {
+	if _, _, e = s.ImageRendition(ctx, a, livechannels.Owner{Authority: "local", AccountID: "account", ProfileID: "other"}, recording.ID, true); e == nil {
 		t.Fatal("foreign profile image")
 	}
 	if _, e = s.db.Exec(`UPDATE dvr_recordings SET state='completed' WHERE id=?`, recording.ID); e != nil {
@@ -184,13 +184,13 @@ func TestDVRGroupsSummaryTitleRulesAndRetainedPictures(t *testing.T) {
 		t.Fatalf("groups %+v %v", groups, e)
 	}
 	episodes, e := s.List(ctx, a, owner, Query{State: "recorded", Sort: "title", Group: groups.Groups[0].Key, Limit: 50})
-	if e != nil || len(episodes.Recordings) != 1 || episodes.Recordings[0].Programme.Image != "/v1/dvr/recordings/"+recording.ID+"/image" {
+	if e != nil || len(episodes.Recordings) != 1 || episodes.Recordings[0].Programme.Image != "/v1/dvr/recordings/"+recording.ID+"/image?sd=16x16.10."+digest[:16]+"&ld=16x16.20."+digest[:16] {
 		t.Fatalf("group episodes %+v %v", episodes, e)
 	}
 	if _, e = s.db.Exec(`UPDATE dvr_recordings SET state='deleted' WHERE id=?`, recording.ID); e != nil {
 		t.Fatal(e)
 	}
-	if _, e = s.ImageDigest(ctx, a, owner, recording.ID); e == nil {
+	if _, _, e = s.ImageRendition(ctx, a, owner, recording.ID, false); e == nil {
 		t.Fatal("deleted image remained visible")
 	}
 }

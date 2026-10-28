@@ -1,67 +1,50 @@
 package metadata
 
 import (
-	"bytes"
 	"context"
-	"crypto/sha256"
 	"database/sql"
-	"encoding/hex"
 	"errors"
-	"image"
-	"io"
 	"net/url"
 	"strings"
 
 	"portico.local/server/internal/dbwork"
 )
 
-// Reuse the same provider/source variant from a retained selection. There is
-// no new cache lifetime: its objects live only as long as the usual references.
-func (s *Service) sharedArtwork(ctx context.Context, j artworkWork) (artworkInstalled, artworkInstalled, bool, error) {
-	var a, b artworkInstalled
-	// Existing retained objects do not record their encoding policy. Re-fetch
-	// non-standard sizes rather than treating an old 1920 image as a 2560
-	// original, or publishing an oversized object under the smaller policy.
-	if policy, ok := ctx.Value(artworkEncodingPolicyKey{}).(artworkEncodingPolicy); ok && policy.edge != artworkLargeEdge {
-		return a, b, false, nil
-	}
+// Reuse the source a retained selection of the same provider image already
+// published at the current policy. There is no new cache lifetime: the source
+// lives only as long as the usual references.
+func (s *Service) sharedArtwork(ctx context.Context, j artworkWork) (artworkMaterial, bool, error) {
+	var m artworkMaterial
 	if j.sizeRefresh || j.provider == "local" || j.provider == "upload" || j.actor != "" {
-		return a, b, false, nil
-	}
-	err := dbwork.QueryRow(ctx, s.db, `SELECT o.digest,o.mime,o.width,o.height,o.bytes,t.digest,t.mime,t.width,t.height,t.bytes FROM artwork_candidates c JOIN artwork_selections s ON s.candidate_id=c.id JOIN artwork_objects o ON o.digest=s.digest AND o.status='ready' JOIN artwork_objects t ON t.digest=s.thumbnail_digest AND t.status='ready' WHERE c.provider=? AND c.origin=? LIMIT 1`, j.provider, j.origin).Scan(&a.digest, &a.mime, &a.width, &a.height, &a.size, &b.digest, &b.mime, &b.width, &b.height, &b.size)
-	if errors.Is(err, sql.ErrNoRows) {
-		return a, b, false, nil
-	}
-	if err != nil {
-		return a, b, false, err
+		return m, false, nil
 	}
 	edge, _ := artworkSlotLimits(ctx, artworkSlotLarge)
-	if max(a.width, a.height) < edge && fullArtworkOrigin(j.origin, j.provider) != j.origin {
+	var acceptedWidth, acceptedHeight int
+	err := dbwork.QueryRow(ctx, s.db, `SELECT o.digest,o.accepted_width,o.accepted_height FROM artwork_candidates c JOIN artwork_selections s ON s.candidate_id=c.id JOIN artwork_sources o ON o.digest=s.digest WHERE c.provider=? AND c.origin=? AND o.large_edge=? AND o.encoder_revision=? LIMIT 1`, j.provider, j.origin, edge, artworkEncoderRevision).Scan(&m.source, &acceptedWidth, &acceptedHeight)
+	if errors.Is(err, sql.ErrNoRows) {
+		return m, false, nil
+	}
+	if err != nil {
+		return m, false, err
+	}
+	if max(acceptedWidth, acceptedHeight) < edge && fullArtworkOrigin(j.origin, j.provider) != j.origin {
 		// A retained provider thumbnail does not prove the original was small.
-		return a, b, false, nil
+		return m, false, nil
 	}
-	for _, o := range []*artworkInstalled{&a, &b} {
-		f, e := s.openArtworkObject(o.digest)
-		if e != nil {
-			return a, b, false, nil
-		}
-		raw, e := io.ReadAll(io.LimitReader(f, artworkMaxBytes+1))
-		f.Close()
-		if e != nil || len(raw) > artworkMaxBytes || len(raw) != o.size {
-			return a, b, false, nil
-		}
-		sum := sha256.Sum256(raw)
-		if hex.EncodeToString(sum[:]) != o.digest {
-			return a, b, false, nil
-		}
-		o.raw = raw
+	if !s.publishedArtworkSource(ctx, m.source, edge) {
+		return m, false, nil
 	}
-	return a, b, true, nil
+	m.reused, m.largeEdge = true, edge
+	return m, true, nil
 }
-func (s *Service) acquireArtworkObjects(ctx context.Context, j artworkWork) (artworkInstalled, artworkInstalled, error) {
-	a, b, held, e := s.sharedArtwork(ctx, j)
+
+// acquireArtworkMaterial fetches and materialises the job's image. The work
+// stays in the producer job until the source is published: re-fetched bytes
+// with another hash are simply another source.
+func (s *Service) acquireArtworkMaterial(ctx context.Context, j artworkWork) (artworkMaterial, error) {
+	m, held, e := s.sharedArtwork(ctx, j)
 	if e != nil || held {
-		return a, b, e
+		return m, e
 	}
 	origin := j.origin
 	if !j.preview {
@@ -69,25 +52,13 @@ func (s *Service) acquireArtworkObjects(ctx context.Context, j artworkWork) (art
 	}
 	raw, e := s.fetchArtwork(ctx, origin, j.provider)
 	if e != nil {
-		return a, b, e
+		return m, e
 	}
-	original, thumb, w, h, e := normalizeArtworkFormatsContext(ctx, raw, map[string]bool{"jpeg": true, "png": true})
-	if e != nil {
-		return a, b, e
+	m, e = s.materializeArtwork(ctx, raw, map[string]bool{"jpeg": true, "png": true})
+	if errors.Is(e, ErrArtworkSpace) {
+		e = errArtworkStorage
 	}
-	a, e = s.installArtworkContext(ctx, original, w, h)
-	if e != nil {
-		return a, b, errors.New("storage_unavailable")
-	}
-	tc, _, e := image.DecodeConfig(bytes.NewReader(thumb))
-	if e != nil {
-		return a, b, e
-	}
-	b, e = s.installArtworkContext(ctx, thumb, tc.Width, tc.Height)
-	if e != nil {
-		return a, b, errors.New("storage_unavailable")
-	}
-	return a, b, nil
+	return m, e
 }
 
 // Use the original of the same admitted TMDB image, never a larger host/origin

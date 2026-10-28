@@ -268,7 +268,9 @@ func TestBackupDefaultFilterPreservesRealOwnerUploadAndUndo(t *testing.T) {
 		t.Fatal(e)
 	}
 	folder := filepath.Join(state, BackupsDir, id)
-	rows, e := s.db.Query(`SELECT digest FROM artwork_uploads UNION SELECT thumbnail_digest FROM artwork_uploads`)
+	// Every file of every uploaded source is carried: both slots and the
+	// ambient effect.
+	rows, e := s.db.Query(`SELECT s.small_blob FROM artwork_uploads u JOIN artwork_sources s ON s.digest=u.digest UNION SELECT s.large_blob FROM artwork_uploads u JOIN artwork_sources s ON s.digest=u.digest UNION SELECT s.ambient_blob FROM artwork_uploads u JOIN artwork_sources s ON s.digest=u.digest`)
 	if e != nil {
 		t.Fatal(e)
 	}

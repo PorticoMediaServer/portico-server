@@ -27,5 +27,8 @@ func (s *Service) musicGenreCovers(viewer Viewer, library, genre string) ([]stri
 		}
 		covers = append(covers, "/v1/items/"+id+"/art/poster")
 	}
-	return covers, rows.Err()
+	if err = rows.Err(); err != nil {
+		return nil, err
+	}
+	return covers, describeItemArtIn(s, covers, func(u *string) *string { return u })
 }

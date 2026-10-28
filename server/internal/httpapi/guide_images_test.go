@@ -81,7 +81,7 @@ func TestGuideImageServing(t *testing.T) {
 	image := bytes.Repeat([]byte{7}, 1024)
 	sum := sha256.Sum256(image)
 	digest := hex.EncodeToString(sum[:])
-	if _, err = db.Exec(`INSERT INTO live_programme_images(url,digest,media_type,width,height,stored_ms) VALUES(?,?,?,?,?,?)`, "https://img.invalid/kept.png", digest, "image/png", 64, 64, time.Now().UnixMilli()); err != nil {
+	if _, err = db.Exec(`INSERT INTO live_programme_images(url,small_digest,large_digest,media_type,small_width,small_height,small_bytes,large_width,large_height,large_bytes,stored_ms) SELECT column1,column2,column2,column3,column4,column5,1,column4,column5,1,column6 FROM (VALUES(?,?,?,?,?,?))`, "https://img.invalid/kept.png", digest, "image/png", 64, 64, time.Now().UnixMilli()); err != nil {
 		t.Fatal(err)
 	}
 	if err = os.MkdirAll(storagepaths.Path(root, "guide-images"), 0700); err != nil {
