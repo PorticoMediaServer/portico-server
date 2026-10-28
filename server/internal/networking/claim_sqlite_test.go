@@ -567,10 +567,19 @@ func TestClaimSQLiteConcurrentInstallThenCancel(t *testing.T) {
 			return ctx.Err()
 		}
 	}
-	ctx, cancel := context.WithTimeout(fixtureClaimContext(t), 3*time.Second)
+	// Concurrent requests acquire separate leases from the same process gate.
+	// Sharing one lease spuriously fences the second request when SQLite releases
+	// its writer before the first lease's Commit callback has returned.
+	_, runner := lifecycleRunner(t)
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()
 	installed := make(chan error, 1)
-	go func() { _, e := f.store.Install(ctx, v, result); installed <- e }()
+	go func() {
+		installed <- runner.Do(ctx, func(scoped context.Context) error {
+			_, e := f.store.Install(scoped, v, result)
+			return e
+		})
+	}()
 	select {
 	case <-entered:
 	case <-ctx.Done():
@@ -578,7 +587,13 @@ func TestClaimSQLiteConcurrentInstallThenCancel(t *testing.T) {
 	}
 	started := make(chan struct{})
 	cancelled := make(chan error, 1)
-	go func() { close(started); _, _, e := other.BeginCancel(ctx, v.Binding, assertion); cancelled <- e }()
+	go func() {
+		cancelled <- runner.Do(ctx, func(scoped context.Context) error {
+			close(started)
+			_, _, e := other.BeginCancel(scoped, v.Binding, assertion)
+			return e
+		})
+	}()
 	<-started
 	close(release)
 	select {
