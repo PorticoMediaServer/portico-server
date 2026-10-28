@@ -2,7 +2,10 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {registerHooks} from 'node:module';
 import {Children, isValidElement, type ReactNode} from 'react';
-import {HomeService} from '@core/home-service.ts';
+import {HomeAuthorityRetired, HomeService} from '@core/home-service.ts';
+import {FreshnessHub} from '@core/freshness-hub.ts';
+import {createShellHomeDocument} from '../src/shell/home-freshness.ts';
+import {quietClock} from './settings-quiet-clock.ts';
 import {homeChannelSelection, homeEntrySelection} from '@core/home-selection.ts';
 import {transformTsx} from './transform-tsx.mjs';
 import type {HomeBindings} from '../src/screens/home/Home';
@@ -23,7 +26,7 @@ const loader = registerHooks({load(url, context, next) {
   if (url.endsWith('.module.css')) return module('export default new Proxy({}, {get:(_,key)=>String(key)});');
   if (url.endsWith('/src/router.tsx')) return module(`export const router=globalThis.${key}.router;`);
   if (url.endsWith('/shell/viewport.ts')) return module(`export const useShellWidth=()=>globalThis.${key}.width;`);
-  if (url.endsWith('/platform/freshness.ts')) return module(`export const usePooledService=(_key,make)=>{const service=make();return {service,snapshot:service.getSnapshot()}};export const useQuietRefresh=(_name,refresh)=>{globalThis.${key}.quiet=refresh};export const useFreshness=()=>({});`);
+  if (url.endsWith('/platform/freshness.ts')) return module(`export const usePooledService=(_key,make)=>{const service=make();return {service,snapshot:service.getSnapshot()}};export const useFreshness=()=>({hub:globalThis.${key}.hub});export const useRecovering=document=>{const state=globalThis.${key}.frame.useSyncExternalStore(document.subscribe,document.getState);return(state.stale||state.revalidating)&&state.failures<2};`);
   const leaves: Record<string, string[]> = {'layout': ['Hero','HeroFacts','Shelf'], 'artwork': ['Artwork','AmbientArt','ColourBackdrop','GeneratedArt'], 'cards': ['CollectionBanner','LiveCard','PosterCard','RankedCard','SquareCard','WideCard'], 'controls': ['Button','Switch'], 'states': ['HomeSkeleton','StateLayout','Skeleton'], 'selection': ['SelectionCircle']};
   for (const [area, names] of Object.entries(leaves)) if (url.endsWith(`/kit/${area}/index.ts`)) return module(names.map(name=>`export const ${name}=${JSON.stringify(name)};`).join(''));
   if (url.endsWith('/shell/SelectionSurfaces.tsx')) return module("export const SelectionSurfaces='SelectionSurfaces',SelectionPhoneBar='SelectionPhoneBar';");
@@ -91,14 +94,17 @@ async function fixture(t:import('node:test').TestContext) {
   const originals=Object.fromEntries(['window','document','IntersectionObserver','devicePixelRatio','setTimeout','clearTimeout'].map(name=>[name,(globalThis as any)[name]]));const realNow=Date.now;Date.now=()=>now;
   Object.assign(globalThis,{window:Object.assign(browser,{innerWidth:1440,innerHeight:1000,scrollY:0}),document:page,devicePixelRatio:1,setTimeout:(fn:()=>void)=>{timers.set(++serial,fn);return serial;},clearTimeout:(id:number)=>timers.delete(id),IntersectionObserver:class {target:any;constructor(readonly notify:any){observers.add(this);}observe(target:any){this.target=target;}disconnect(){observers.delete(this);}}});
   const api:any={requestMetadataUpload:()=>{assert.fail('Home Live selection must not upload metadata');},request:async(_path:string,_method:string,_body:unknown,signal?:AbortSignal)=>next==='pending'?new Promise((resolve,reject)=>reads.push({resolve,reject,signal})):structuredClone(next)};
-  const service=new HomeService(api);await service.load();assert.equal(service.getSnapshot().phase,'ready');
+  const service=new HomeService(api,{observation:{serverId:'server',isCurrent:()=>current,observe:()=> 'accept',retire:()=>{current=false;},mismatch:()=>{}}});await service.load();assert.equal(service.getSnapshot().phase,'ready');
   const errors:unknown[]=[],played:unknown[]=[];
+  // Observe the original rejection entering the canonical document; rethrow so debt remains owed.
+  const refresh=service.refresh.bind(service);service.refresh=async input=>{try{return await refresh(input);}catch(error){errors.push(error);throw error;}};
+  const clock=quietClock(),hub=new FreshnessHub({...clock.env,gatherMs:0,settleMs:0,backoffMs:[1000]}),display=createShellHomeDocument(hub,service);bridge.hub=hub;
   const context={home:service,api,session:()=>({viewer:{serverId:'server',authority:'local',accountId:'account',profileId:'profile',role:'owner'}}),events:{on:()=>()=>{}},isCurrent:()=>current} as unknown as ShellAssemblyContext;
   const facade=createShellSelection(context,{play:async()=>{},enqueue:async()=>{},playChannel:async()=>{}},e=>errors.push(e),()=>false);
-  const tree=new Tree({service,selection:facade.selection,artwork:{foreground:()=>undefined,ambient:()=>undefined} as any,time:{locale:'en-US',timeZone:'UTC'},reducedMotion:true,effects:{reportError:e=>errors.push(e),play:async()=>{},playChannel:async c=>{played.push(c);},openEntry(){},openSeeAll(){},openMore(){},setMyList:async()=>{}}});
+  const tree=new Tree({service,displayDocument:display.document,selection:facade.selection,artwork:{foreground:()=>undefined,ambient:()=>undefined} as any,time:{locale:'en-US',timeZone:'UTC'},reducedMotion:true,effects:{reportError:e=>errors.push(e),play:async()=>{},playChannel:async c=>{played.push(c);},openEntry(){},openSeeAll(){},openMore(){},setMyList:async()=>{}}});
   const intersect=(id:string,visible:boolean)=>{for(const observer of [...observers])if(observer.target?.frame?.rowId===id)observer.notify([{isIntersecting:visible}]);};
-  t.after(()=>{tree.unmount();facade.dispose();service.dispose();Object.assign(globalThis,originals);Date.now=realNow;});
-  return {service,facade,tree,errors,played,reads,timers,page,setTime:(value:number)=>{now=value;},setNext:(value:any)=>{next=value;},retire:()=>{current=false;facade.dispose();service.dispose();},intersect,resize:()=>{(window as any).innerHeight=3307;browser.dispatchEvent(new Event('resize'));intersect('on_now',true);}};
+  t.after(()=>{tree.unmount();display.dispose();hub.dispose();facade.dispose();service.dispose();Object.assign(globalThis,originals);Date.now=realNow;});
+  return {service,facade,tree,errors,played,reads,timers,page,display:display.document,flushDisplay:(ms=0)=>clock.advance(ms),setTime:(value:number)=>{now=value;},setNext:(value:any)=>{next=value;},retire:()=>{current=false;facade.dispose();service.dispose();},intersect,resize:()=>{(window as any).innerHeight=3307;browser.dispatchEvent(new Event('resize'));intersect('on_now',true);}};
 }
 async function settle() {for(let i=0;i<12;i++)await Promise.resolve();}
 
@@ -106,7 +112,7 @@ test('actual Home: fresh mount, offscreen expiry, tall resize, fenced canonical 
   const f=await fixture(t);f.tree.render();assert.equal(f.tree.live().length,1);f.intersect('recent',true);f.tree.render();
   const ordinary=f.service.getSnapshot().document!.rows[0],entry=ordinary.entries[0];assert.ok(f.facade.selection.card(ordinary,entry));
   const stale=f.service.getSnapshot().document!.rows[1],oldAction=f.tree.live()[0].props.onPlay;
-  f.setNext('pending');f.setTime(start+10000);f.resize();
+  f.setNext('pending');f.setTime(start+10000);f.resize();await f.flushDisplay();
   assert.doesNotThrow(()=>f.tree.render(),'expired visibility must never throw through Home into a Boundary');
   assert.equal(f.tree.live().length,0,'no expired Live action is rendered');assert.deepEqual(f.errors,[]);
   await oldAction();assert.deepEqual(f.played,[],'a retained expired Play callback cannot tune');
@@ -121,15 +127,23 @@ test('actual Home: fresh mount, offscreen expiry, tall resize, fenced canonical 
   assert.ok(f.facade.selection.card(ordinary,entry),'unchanged ordinary row stays selectable');
 });
 
-test('actual Home refresh: a competing document wins and an older response cannot resurrect its row',async t=>{
-  const f=await fixture(t);f.tree.render();f.setNext('pending');f.setTime(start+10000);f.resize();f.tree.render();assert.ok(f.reads.length);
-  const old=f.reads[0];f.setNext(response(start+10000,'new-authority','other-viewer'));await f.service.revalidate();f.tree.render();
+test('actual Home refresh: a competing explicit load wins and an older response cannot resurrect its row',async t=>{
+  const f=await fixture(t);f.tree.render();f.setNext('pending');f.setTime(start+10000);f.resize();await f.flushDisplay();f.tree.render();assert.ok(f.reads.length);
+  const old=f.reads[0];f.setNext(response(start+10000,'new-document'));await f.service.load();f.tree.render();
   const current=f.service.getSnapshot().document!;old.resolve(response(start+10000,'late-old'));await settle();f.tree.render();
-  assert.equal(f.service.getSnapshot().document,current);assert.equal(current.viewerFence,'other-viewer');assert.equal(old.signal?.aborted,true);
+  assert.equal(f.service.getSnapshot().document,current);assert.equal(current.viewerFence,'viewer');assert.equal(current.rows[1].live!.channels[0].channel.id,'new-document');assert.equal(old.signal?.aborted,true);
+});
+
+test('an actual changed Home fence retires the observed owner instead of adopting a successor document',async t=>{
+  const f=await fixture(t);f.tree.render();const shown=f.service.getSnapshot().document!,row=shown.rows[1],oldAction=f.tree.live()[0].props.onPlay;
+  f.setNext(response(start,'foreign-channel','other-viewer'));
+  await assert.rejects(f.service.load(),HomeAuthorityRetired);
+  assert.equal(f.service.getSnapshot().document,shown);assert.equal(f.facade.selection.channel(row,row.live!.channels[0]),undefined);
+  await oldAction();assert.deepEqual(f.played,[]);
 });
 
 test('actual Home refresh: unmount/current authority retirement aborts the old read and rejects all old registrations',async t=>{
-  const f=await fixture(t);f.tree.render();const oldRow=f.service.getSnapshot().document!.rows[1];f.setNext('pending');f.setTime(start+10000);f.resize();f.tree.render();assert.ok(f.reads.length);
+  const f=await fixture(t);f.tree.render();const oldRow=f.service.getSnapshot().document!.rows[1];f.setNext('pending');f.setTime(start+10000);f.resize();await f.flushDisplay();f.tree.render();assert.ok(f.reads.length);
   const shown=f.service.getSnapshot().document;f.tree.unmount();f.reads.forEach(r=>r.resolve(response(start+10000,'late')));await settle();assert.ok(f.reads.every(r=>r.signal?.aborted));assert.equal(f.service.getSnapshot().document,shown,'an unmounted screen cannot publish its late refresh');f.retire();
   assert.equal(f.facade.selection.registerWindow(oldRow,1,0,0),undefined);assert.equal(f.facade.selection.channel(oldRow,oldRow.live!.channels[0]),undefined);
 });
@@ -141,10 +155,10 @@ test('controller admission still rejects actual expiry, wrong row identity and o
 });
 
 test('actual Home: failed expired-window refresh leaves no stale actions and foreground retries through the service',async t=>{
-  const f=await fixture(t);f.tree.render();f.setNext('pending');f.setTime(start+10000);f.resize();f.tree.render();
-  f.reads[0].reject(Object.assign(new Error('unavailable'),{status:503}));await settle();f.tree.render();
-  assert.equal(f.tree.live().length,0);assert.ok(f.errors.length);assert.ok(f.errors.every((error:any)=>error.status===503));
-  f.setNext(response(start+10000,'recovered'));f.page.dispatchEvent(new Event('visibilitychange'));await settle();f.tree.render();
+  const f=await fixture(t);f.tree.render();f.setNext('pending');f.setTime(start+10000);f.resize();await f.flushDisplay();f.tree.render();
+  const error=Object.assign(new Error('unavailable'),{status:503});f.reads[0].reject(error);await settle();f.tree.render();
+  assert.equal(f.tree.live().length,0);assert.ok(f.errors.length);assert.ok(f.errors.every((error:any)=>error.status===503));assert.equal(f.errors[0],error);assert.equal(f.display.getState().failures,1);assert.equal(f.display.getState().stale,true);
+  f.setNext(response(start+10000,'recovered'));f.page.dispatchEvent(new Event('visibilitychange'));await f.flushDisplay(1000);await settle();f.tree.render();
   assert.equal(f.tree.live()[0].props.channel.id,'recovered');
 });
 
@@ -152,7 +166,7 @@ test('expiry clears an expired Live selection while keeping a genuine ordinary s
   const f=await fixture(t);f.tree.render();f.intersect('recent',true);f.intersect('on_now',true);f.tree.render();
   const document=f.service.getSnapshot().document!,ordinary=document.rows[0],live=document.rows[1];
   const channel=f.facade.selection.channel(live,live.live!.channels[0])!;channel.onToggle({range:false});assert.equal(f.facade.controller.getSnapshot().selection.active,true);
-  f.setNext('pending');f.setTime(start+10000);f.resize();f.tree.render();assert.equal(f.facade.controller.getSnapshot().selection.active,false);
+  f.setNext('pending');f.setTime(start+10000);f.resize();await f.flushDisplay();f.tree.render();assert.equal(f.facade.controller.getSnapshot().selection.active,false);
   const entry=homeEntrySelection(ordinary.entries[0],{platform:'web',playbackAvailable:true,queueAvailable:true})!;
   assert.equal(f.facade.controller.toggle('home:recent',f.facade.controller.key(entry)).ok,true);
   assert.equal(f.facade.controller.getSnapshot().selection.active,true);assert.equal(f.facade.selection.registerWindow(live,1,0,0),undefined);

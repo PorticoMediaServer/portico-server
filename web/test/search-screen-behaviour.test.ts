@@ -22,8 +22,9 @@ async function mount(context: any, options: {text?: string; remember?: boolean; 
     onNow: {...store(options.onNow ?? {phase: 'ready', cards: [], sourceNames: []}), load: record('onNow')},
     context: {isCurrent: () => current, identity: {liveAvailable: options.liveAvailable === true}, effects: {reportError: record('error'), openBrowse: record('openBrowse')}, artwork: {foreground: (path: string) => options.missingArt ? undefined : path},
       preferences: store({effective: {'search.rememberHistory': options.remember !== false, 'appearance.cardSizePercent': 100}})}};
+  const identity = await componentModule(new URL('../src/screens/detail/context.ts', import.meta.url), {react: h.react});
   const app = await componentModule(new URL('../src/screens/search/Search.tsx', import.meta.url), {
-    react: h.react, '../detail/context': {runScreenCommand}, '../detail/text': {t, locale: () => 'en-US'},
+    react: h.react, '../detail/context': {...identity, runScreenCommand}, '../detail/text': {t, locale: () => 'en-US'},
     '../../kit/controls': {Button: 'Button', Chip: 'Chip', TextField: 'TextField'},
     '../../kit/cards': {PosterCard: 'PosterCard', SquareCard: 'SquareCard', CircleCard: 'CircleCard', EpisodeTile: 'EpisodeTile', GenreTile: 'GenreTile', LiveCard: 'LiveCard'},
     '../../kit/artwork': {Artwork: 'Artwork'}, '../../kit/layout': {WindowedGrid: 'WindowedGrid'},
