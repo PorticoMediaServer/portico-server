@@ -253,3 +253,39 @@ func TestSelectionPreparationFactoryReservesBeforeSourceConstruction(t *testing.
 	}
 	t.Fatal("factory did not return typed capacity")
 }
+
+func TestSelectionPreparationSharesAcrossSessionFences(t *testing.T) {
+	_, s, _ := browseFixture(t)
+	store, err := readprep.New(readprep.Config{Workers: 1})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	s.UseReadPreparations(store)
+	firstViewer := Viewer{Profile: "p", Fence: "session-one", Libraries: []string{"a", "b"}}
+	secondViewer := Viewer{Profile: "p", Fence: "session-two", Libraries: []string{"a"}}
+	firstAccess := SelectionPreparationAccess{Caller: "first", Check: func(*Service) error { return nil }}
+	secondAccess := SelectionPreparationAccess{Caller: "second", Check: func(*Service) error { return nil }}
+	first, firstRevision := submitSelectionPreparation(t, s, firstViewer, firstAccess)
+	second, secondRevision := submitSelectionPreparation(t, s, secondViewer, secondAccess)
+	if firstRevision == secondRevision || first.QueryID == second.QueryID || store.Stats().Entries != 1 {
+		t.Fatalf("caller fences prevented content sharing: %s %s %+v", firstRevision, secondRevision, store.Stats())
+	}
+	for _, item := range []struct {
+		viewer       Viewer
+		access       SelectionPreparationAccess
+		id, revision string
+	}{
+		{firstViewer, firstAccess, first.QueryID, firstRevision},
+		{secondViewer, secondAccess, second.QueryID, secondRevision},
+	} {
+		ready := awaitSelectionPreparation(t, s, item.viewer, item.id, item.access, HomeActionAuthority{})
+		if ready.Ready.CatalogRevision != item.revision || ready.Ready.Total != 5 {
+			t.Fatalf("private revision was not rebound: %+v", ready.Ready)
+		}
+		ready.Release()
+	}
+	if _, err := pollSelectionPreparation(t, s, secondViewer, first.QueryID, secondAccess, HomeActionAuthority{}); !errors.Is(err, readprep.ErrStale) {
+		t.Fatal("shared content exposed another caller's handle", err)
+	}
+}
