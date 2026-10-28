@@ -1,6 +1,6 @@
 import {throwSignalAborted as throwIfAborted} from '../abort.ts';
 import {abortScope,abortReason} from '../abort.ts';
-import type {ReaderDocument,ReaderLocation,ReaderView} from '../ports.ts';
+import type {ReaderDocument,ReaderFixedViewport,ReaderLocation,ReaderView} from '../ports.ts';
 import {planFixedLayout, fixedVisualPanes, validReaderCrease} from '../layout.ts';
 
 /** Adapter-private projection of the canonical Reading facade, never a store. */
@@ -8,6 +8,32 @@ export type FixedPreferences={twoPages:boolean;firstPageAlone:boolean;comicFit:'
 export type PageSurface=Readonly<{width:number;height:number;mount(target:HTMLElement,scale:number,signal:AbortSignal):Promise<()=>void>;dispose():void}>;
 export type FixedPageLoader=(page:number,options:{width:number;signal:AbortSignal})=>Promise<PageSurface>;
 type Zoom={kind:'scale';value:number}|{kind:'fit';value:'page'|'width'|'height'|'spread'};
+
+export type FixedPageViewportInput=Readonly<{
+  page:number;pageWidth:number;pageHeight:number;scale:number;fittedScale:number;
+  /** Measured scroll offset and visible box of the page's own scroll host. */
+  scroll:Readonly<{left:number;top:number;width:number;height:number}>;
+  /** Reported window the host fills, used for the box when it is not measured. */
+  viewport:Readonly<{width:number;height:number}>;
+}>;
+const fraction=(value:number)=>Math.min(1,Math.max(0,value));
+/** What a zoomed fixed page actually shows, in 0..1 page fractions. A page at or
+ * below its fitted scale has nothing to report, so the result is absent at fit,
+ * before layout, and for any input that cannot describe a real page. */
+export function fixedPageViewport(input:FixedPageViewportInput):ReaderFixedViewport|undefined{
+  const {page,pageWidth,pageHeight,scale,fittedScale,scroll,viewport}=input;
+  const boxWidth=scroll.width>0?scroll.width:viewport.width,boxHeight=scroll.height>0?scroll.height:viewport.height;
+  if(!Number.isSafeInteger(page)||page<0||!Number.isFinite(pageWidth)||pageWidth<=0||!Number.isFinite(pageHeight)||pageHeight<=0
+    ||!Number.isFinite(scale)||scale<=0||!Number.isFinite(fittedScale)||fittedScale<=0
+    ||!Number.isFinite(scroll.left)||!Number.isFinite(scroll.top)||!Number.isFinite(boxWidth)||boxWidth<=0||!Number.isFinite(boxHeight)||boxHeight<=0)return;
+  if(scale-fittedScale<=1e-6)return;
+  const width=pageWidth*scale,height=pageHeight*scale;
+  // A page smaller than its box is centred by the flex host; a larger one starts at zero.
+  const offsetX=Math.max(0,(boxWidth-width)/2),offsetY=Math.max(0,(boxHeight-height)/2);
+  const x=fraction((scroll.left-offsetX)/width),y=fraction((scroll.top-offsetY)/height);
+  const right=fraction((scroll.left+boxWidth-offsetX)/width),bottom=fraction((scroll.top+boxHeight-offsetY)/height);
+  return Object.freeze({page,pageWidth,pageHeight,x,y,width:Math.max(0,right-x),height:Math.max(0,bottom-y),scale});
+}
 
 /** Both fixed formats use the common spread planner and their own real page renderer. */
 export async function mountFixed<P extends FixedPreferences>(format:'pdf'|'cbz'|'cbr',pageCount:number,fileDirection:'ltr'|'rtl'|'vertical',load:FixedPageLoader,options:Parameters<ReaderDocument<P>['mount']>[0]):Promise<ReaderView<P>>{
@@ -18,8 +44,24 @@ export async function mountFixed<P extends FixedPreferences>(format:'pdf'|'cbz'|
   let preferences=options.preferences,viewport=options.viewport,page=0,closed=false,version=0,mutation=0,rendering=0,scrolling=false;
   let zoom:Zoom|undefined,scale=1,fittedScale=1,verticalWidth:number|undefined,location:ReaderLocation|null=null,cleanup:(()=>void)[]=[],pending:AbortController|undefined;
   let foldPanes:Map<number,{clip:HTMLDivElement;scale:number}>|undefined,dragPane:HTMLDivElement|undefined,gesturePage:number|undefined;
+  let pageGeometry:{page:number;width:number;height:number;scale:number;fittedScale:number}|undefined,reportedViewport:ReaderFixedViewport|undefined,viewportFrame:number|undefined;
   const scrollState=(at=gesturePage??page)=>{const pane=foldPanes?.get(at);return pane?{left:pane.clip.scrollLeft,top:pane.clip.scrollTop,width:pane.clip.clientWidth,height:pane.clip.clientHeight}:{left:host.scrollLeft,top:host.scrollTop,width:viewport.width,height:viewport.height};};
   const scrollTo=(left:number,top:number,at=gesturePage??page)=>{const pane=foldPanes?.get(at);if(pane){pane.clip.scrollLeft=Math.max(0,left);pane.clip.scrollTop=Math.max(0,top);}else{host.scrollLeft=Math.max(0,left);host.scrollTop=Math.max(0,top);}};
+  // The single-page host is the scroll boundary here; it uses the same positive
+  // scroll offsets the pan/scroll code above already clamps to.
+  const currentViewport=(at=page)=>{const geometry=pageGeometry;
+    return geometry&&geometry.page===at?fixedPageViewport({page:at,pageWidth:geometry.width,pageHeight:geometry.height,scale:geometry.scale,
+      fittedScale:geometry.fittedScale,scroll:scrollState(at),viewport}):undefined;};
+  const sameViewport=(left:ReaderFixedViewport|undefined,right:ReaderFixedViewport|undefined)=>left===right||!!left&&!!right
+    &&left.page===right.page&&left.pageWidth===right.pageWidth&&left.pageHeight===right.pageHeight&&left.scale===right.scale
+    &&left.x===right.x&&left.y===right.y&&left.width===right.width&&left.height===right.height;
+  const locate=(next=currentViewport())=>{reportedViewport=next;
+    return location={format,page,progression:pageCount===1?0:page/(pageCount-1),...(next?{viewport:next}:{})};};
+  // Pan geometry changes at pointer/scroll rate; one publish per frame at most.
+  const scheduleViewport=()=>{if(viewportFrame!==undefined||closed)return;
+    viewportFrame=requestAnimationFrame(()=>{viewportFrame=undefined;publishViewport();});};
+  const publishViewport=()=>{if(closed)return;const next=currentViewport();
+    if(!sameViewport(reportedViewport,next))options.onLocation(locate(next));};
   const surfacesByPage=new Map<number,PageSurface>();
   const lifetime=new AbortController(),scope=abortScope([lifetime.signal,options.signal]),signal=scope.signal;
   const direction=():'ltr'|'rtl'|'vertical'=>{const value:FixedPreferences['comicDirection']=preferences.comicDirection;return format!=='pdf'&&value!=='file'?value:fileDirection;};
@@ -82,7 +124,7 @@ export async function mountFixed<P extends FixedPreferences>(format:'pdf'|'cbz'|
         }
         if(!(applied>0))throw new Error('page_invalid');
         if(closed||current!==version)throw new DOMException('','AbortError');
-        clean();cleanup=releases;host.replaceChildren(next);foldPanes=panesById;page=at;scale=applied;fittedScale=fittedCurrent;verticalWidth=undefined;
+        clean();cleanup=releases;host.replaceChildren(next);foldPanes=panesById;page=at;scale=applied;fittedScale=fittedCurrent;verticalWidth=undefined;pageGeometry=undefined;
       }else{
       const width=vertical?(verticalWidth??surfaces[visualPages.indexOf(at)].width):surfaces.reduce((sum,s)=>sum+s.width,0),height=vertical?surfaces.reduce((sum,s)=>sum+s.height*width/s.width,0):Math.max(...surfaces.map(s=>s.height));
       const currentSurface=surfaces[visualPages.indexOf(at)],fitHeight=vertical?currentSurface.height*width/currentSurface.width:height;
@@ -97,12 +139,13 @@ export async function mountFixed<P extends FixedPreferences>(format:'pdf'|'cbz'|
       }
       if(closed||current!==version)throw new DOMException('','AbortError');
       clean();cleanup=releases;host.replaceChildren(next);foldPanes=undefined;page=at;scale=requested;fittedScale=fitted;if(vertical)verticalWidth=width;
+      pageGeometry=!vertical&&surfaces.length===1?{page:at,width:surfaces[0].width,height:surfaces[0].height,scale:requested,fittedScale:fitted}:undefined;
       }
       for(const [index,surface]of created)surfacesByPage.set(index,surface);
       for(const [index,surface]of surfacesByPage)if(!visualPages.includes(index)){surface.dispose();surfacesByPage.delete(index);}
       if(foldPanes){for(const {clip} of foldPanes.values()){clip.scrollLeft=0;clip.scrollTop=0;}}
       else{host.scrollLeft=direction()==='rtl'?host.scrollWidth-host.clientWidth:0;host.scrollTop=vertical?(next.querySelector<HTMLElement>(`[data-reader-page="${at}"]`)!.offsetTop+(anchorOffset??0)):0;}
-      location={format,page,progression:pageCount===1?0:page/(pageCount-1)};options.onLocation(location);
+      location=locate();options.onLocation(location);
     }catch(error){for(const release of releases.reverse())release();for(const surface of created.values())surface.dispose();throw error;}finally{rendering--;task.dispose();}
   }
   const pointers=new Map<number,{x:number;y:number}>();let pinch:number|undefined,drag:{x:number;y:number;left:number;top:number}|undefined,tap:{id:number;x:number;y:number;multiple:boolean;moved:boolean}|undefined;
@@ -125,7 +168,7 @@ export async function mountFixed<P extends FixedPreferences>(format:'pdf'|'cbz'|
     if(pointers.size>1||tap?.moved)options.onSurfaceInput?.({kind:'activity'});
     pointers.set(event.pointerId,{x:event.clientX,y:event.clientY});const nextDistance=distance();
     if(pinch&&nextDistance){const next=Math.max(.05,Math.min(8,scale*nextDistance/pinch));pinch=nextDistance;gestureZoom({kind:'scale',value:next});}
-    else if(drag&&tap?.moved){if(dragPane){dragPane.scrollLeft=Math.max(0,drag.left+drag.x-event.clientX);dragPane.scrollTop=Math.max(0,drag.top+drag.y-event.clientY);}else scrollTo(drag.left+drag.x-event.clientX,drag.top+drag.y-event.clientY);}
+    else if(drag&&tap?.moved){if(dragPane){dragPane.scrollLeft=Math.max(0,drag.left+drag.x-event.clientX);dragPane.scrollTop=Math.max(0,drag.top+drag.y-event.clientY);}else scrollTo(drag.left+drag.x-event.clientX,drag.top+drag.y-event.clientY);scheduleViewport();}
   };
   const onUp=(event:PointerEvent)=>{dragPane=undefined;
     pointers.delete(event.pointerId);pinch=undefined;drag=undefined;if(!pointers.size)gesturePage=undefined;
@@ -163,7 +206,7 @@ export async function mountFixed<P extends FixedPreferences>(format:'pdf'|'cbz'|
       throwIfAborted(taskSignal);const own=++mutation,previous=preferences,before=plan(),held=scrollState();preferences=next;
       const after=plan(),samePages=before.visualPages.join(',')===after.visualPages.join(',');
       if(samePages&&before.fit===after.fit&&before.direction===after.direction)return;
-      try{await render(page,taskSignal);if(samePages&&zoom?.kind==='scale')scrollTo(held.left,held.top,page);}
+      try{await render(page,taskSignal);if(samePages&&zoom?.kind==='scale'){scrollTo(held.left,held.top,page);publishViewport();}}
       catch(error){if(own===mutation)preferences=previous;throw error;}
     },
     async resize(next,taskSignal){const own=++mutation,previous=viewport;viewport=next;try{await render(page,taskSignal);}catch(error){if(own===mutation)viewport=previous;throw error;}},
@@ -171,15 +214,15 @@ export async function mountFixed<P extends FixedPreferences>(format:'pdf'|'cbz'|
     async setZoom(next,taskSignal){
       if(next.kind==='scale'&&(!Number.isFinite(next.value)||next.value<.05||next.value>8)||next.kind==='fit'&&!['page','width','height','spread'].includes(next.value))throw new Error('zoom_invalid');
       const own=++mutation,previous=zoom,anchor=gesturePage??page,held=scrollState(anchor),x=(held.left+held.width/2)/scale,y=(held.top+held.height/2)/scale;zoom=next;
-      try{await render(page,taskSignal);scrollTo(x*scale-held.width/2,y*scale-held.height/2,anchor);}catch(error){if(own===mutation)zoom=previous;throw error;}
+      try{await render(page,taskSignal);scrollTo(x*scale-held.width/2,y*scale-held.height/2,anchor);publishViewport();}catch(error){if(own===mutation)zoom=previous;throw error;}
     },
     getZoom(){return {scale,...zoom?.kind==='scale'?{}:{fit:plan().fit}};},
     canTurnAtFit(){return zoom?.kind!=='scale'||Math.abs(scale-fittedScale)<=1e-6;},
-    async pan(position,taskSignal){throwIfAborted(taskSignal);if(closed||!Number.isFinite(position.x)||!Number.isFinite(position.y))throw new Error('pan_invalid');scrollTo(position.x,position.y,page);},
-    dispose(){if(closed)return;closed=true;version++;clearTap();pending?.abort();lifetime.abort();scope.dispose();clean();for(const surface of surfacesByPage.values())surface.dispose();surfacesByPage.clear();paneStyle.remove();host.remove();}
+    async pan(position,taskSignal){throwIfAborted(taskSignal);if(closed||!Number.isFinite(position.x)||!Number.isFinite(position.y))throw new Error('pan_invalid');scrollTo(position.x,position.y,page);publishViewport();},
+    dispose(){if(closed)return;closed=true;version++;clearTap();if(viewportFrame!==undefined){cancelAnimationFrame(viewportFrame);viewportFrame=undefined;}pending?.abort();lifetime.abort();scope.dispose();clean();for(const surface of surfacesByPage.values())surface.dispose();surfacesByPage.clear();paneStyle.remove();host.remove();}
   };
   const onScroll=()=>{
-    clearTap();if(closed||rendering||scrolling)return;options.onSurfaceInput?.({kind:'activity'});
+    clearTap();if(closed||rendering||scrolling)return;options.onSurfaceInput?.({kind:'activity'});scheduleViewport();
     if(direction()!=='vertical')return;
     const bounds=host.getBoundingClientRect();let greatest=0,visible:HTMLElement|undefined;
     for(const element of host.querySelectorAll<HTMLElement>('[data-reader-page]')){
@@ -187,7 +230,7 @@ export async function mountFixed<P extends FixedPreferences>(format:'pdf'|'cbz'|
       if(intersection>greatest){greatest=intersection;visible=element;}
     }
     if(!visible)return;const at=Number(visible.dataset.readerPage);if(at===page)return;
-    const offset=host.scrollTop-visible.offsetTop;page=at;location={format,page,progression:pageCount===1?0:page/(pageCount-1)};options.onLocation(location);
+    const offset=host.scrollTop-visible.offsetTop;page=at;location=locate();options.onLocation(location);
     mutation++;scrolling=true;
     void render(at,signal,offset).then(()=>{if(!closed)options.onSurfaceInput?.({kind:'activity'});}).catch(()=>{}).finally(()=>{scrolling=false;});
   };

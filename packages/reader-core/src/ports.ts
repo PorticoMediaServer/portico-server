@@ -45,9 +45,16 @@ type ObservedLocation = Readonly<{
   pageLabel?: string;
   pagesLeftInSection?: number;
 }>;
+/** The visible part of one fixed page while a single page is zoomed past its fit,
+ * as 0..1 page fractions. Live presentation only: absent at fit, on a spread, at
+ * a fold crease and before a page is drawn, and never a persisted position. */
+export type ReaderFixedViewport = Readonly<{
+  page: number; pageWidth: number; pageHeight: number;
+  x: number; y: number; width: number; height: number; scale: number;
+}>;
 export type ReaderLocation = ObservedLocation & (
   | Readonly<{format: 'epub'; cfi: string; section?: string}>
-  | Readonly<{format: 'pdf' | ReaderComicFormat; page: number}>
+  | Readonly<{format: 'pdf' | ReaderComicFormat; page: number; viewport?: ReaderFixedViewport}>
 );
 export type ReaderTocItem = Readonly<{
   id: string; label: string; location: ReaderLocation; children?: readonly ReaderTocItem[];
