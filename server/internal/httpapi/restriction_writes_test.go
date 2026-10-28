@@ -444,6 +444,7 @@ func restrictionWriteRoutes() map[string]writeRoute {
 		"PUT /v1/reading/sessions/{sessionId}/annotations":                            {check: readingRestrictionCheck("PUT /v1/reading/sessions/{sessionId}/annotations")},
 		"POST /v1/reading/sessions/{sessionId}/file-save":                             {check: readingRestrictionCheck("POST /v1/reading/sessions/{sessionId}/file-save")},
 		"POST /v1/reading/offline/progress":                                           {check: readingOfflineRestrictionCheck},
+		"POST /v1/reading/offline/progress/read":                                      {check: readingOfflineReadRestrictionCheck},
 		"DELETE /v1/reading/sessions/{sessionId}":                                     {check: readingRestrictionCheck("DELETE /v1/reading/sessions/{sessionId}")},
 		"DELETE /v1/me/removed-titles/{id}":                                           perHidden("DELETE", "/v1/me/removed-titles/ID", "", "item"),
 		"POST /v1/home/destination-picker": writeProbes(func(m *restrictionEnv) []idProbe {

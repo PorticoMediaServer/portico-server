@@ -125,7 +125,7 @@ func (d Dependencies) readingOfflineProgressRead(w http.ResponseWriter, r *http.
 		}
 		progress, err := d.readingService().OfflineProgress(r.Context(), p, claims.ItemID, claims.Publication.SourceID, claims.Publication.Revision)
 		switch {
-		case errors.Is(err, identity.ErrForbidden):
+		case errors.Is(err, identity.ErrForbidden), errors.Is(err, identity.ErrContentRestricted):
 			result.Refused = "receipt_rejected"
 		case errors.Is(err, reading.ErrUnavailable), errors.Is(err, reading.ErrChanged), errors.Is(err, reading.ErrInvalid):
 			result.Refused = "source_unavailable"
@@ -141,7 +141,9 @@ func (d Dependencies) readingOfflineProgressRead(w http.ResponseWriter, r *http.
 	write(w, 200, out)
 }
 
-// offlineReceiptRefusal separates a receipt's own lost authority from a server fault.
+// offlineReceiptRefusal separates a receipt's own lost authority from a server
+// fault. A title or library the profile may no longer see is lost authority
+// for that one copy, refused as a removed title is, not a failed request.
 func offlineReceiptRefusal(err error) bool {
-	return errors.Is(err, downloads.ErrReceipt) || errors.Is(err, identity.ErrForbidden) || errors.Is(err, sql.ErrNoRows) || errors.Is(err, downloads.ErrUnavailable) || errors.Is(err, downloads.ErrNotFound) || errors.Is(err, downloads.ErrPolicy)
+	return errors.Is(err, downloads.ErrReceipt) || errors.Is(err, identity.ErrForbidden) || errors.Is(err, identity.ErrContentRestricted) || errors.Is(err, sql.ErrNoRows) || errors.Is(err, downloads.ErrUnavailable) || errors.Is(err, downloads.ErrNotFound) || errors.Is(err, downloads.ErrPolicy)
 }
