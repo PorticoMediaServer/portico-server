@@ -24,6 +24,11 @@
 import type {EventsClient} from './playback-v1/events.ts';
 import type {ServerEvent} from './playback-v1/types.ts';
 import {parseFreshnessChange} from './freshness.ts';
+import {FreshnessHistory} from './freshness-memory.ts';
+import {Interest, type FreshnessInterest, type FreshnessInterestOptions} from './freshness-interest.ts';
+import {FreshnessSharedReads} from './freshness-shared.ts';
+export type {InterestOutcome, InterestReadContext, FreshnessInterest, FreshnessInterestOptions} from './freshness-interest.ts';
+export {isSharedReadSuperseded} from './freshness-shared.ts';
 
 /** A named thing a document was built from. Build them with `dependsOn`. */
 export type FreshnessDependency = string;
@@ -378,8 +383,12 @@ type Tuning = Required<Pick<FreshnessHubOptions, 'gatherMs' | 'progressGatherMs'
 export class FreshnessHub {
   readonly timers: FreshnessTimers;
   readonly tuning: Tuning;
-  private versions = new Map<FreshnessDependency, number>();
-  private counters = new Map<string, string>();
+  private history = new FreshnessHistory();
+  private versionFloor = 0;
+  private highestVersion = 0;
+  /** @internal Fixed guide/preferences cohorts for the opt-in interest scheduler. */
+  readonly sharedReads = new FreshnessSharedReads(() => this.timers.now(), () => this.tuning.gatherMs);
+  private interests = new Set<Interest>();
   private documents = new Set<Document>();
   private watchers = new Set<{dependencies: ReadonlySet<FreshnessDependency>; listener: () => void}>();
   private events: EventsClient | null = null;
@@ -450,8 +459,8 @@ export class FreshnessHub {
     const differs = (name: string, value: string | undefined) => {
       // A counter the hint does not carry is unknown, so it is taken to have moved.
       if (value === undefined) return true;
-      if (this.counters.get(name) === value) return false;
-      this.counters.set(name, value);
+      if (this.history.get(`c:${name}`) === value) return false;
+      this.remember(`c:${name}`, value);
       return true;
     };
     if (change) {
@@ -465,7 +474,7 @@ export class FreshnessHub {
         if (order) moved.push(dependsOn.order(id), dependsOn.order());
       } else if (change.type === 'personal.changed' || change.type === 'progress.changed') {
         // A position hint names the watched-state counter too, unchanged: seeing it for the first time is not a change to it.
-        const known = this.counters.has(`personal:${id}`);
+        const known = this.history.has(`c:personal:${id}`);
         const personal = change.counters.personal === undefined ? change.type === 'personal.changed' : differs(`personal:${id}`, change.counters.personal) && (known || change.type === 'personal.changed');
         const progress = change.counters.observation === undefined ? change.type === 'progress.changed' : differs(`progress:${id}`, change.counters.observation);
         if (personal) moved.push(dependsOn.personal(id), dependsOn.personal());
@@ -491,15 +500,31 @@ export class FreshnessHub {
   /** The feed could not say everything that happened: every document is out of date. */
   resync(): void {
     if (this.disposed) return;
-    this.counters.clear();
-    for (const dependency of [...this.versions.keys()]) this.versions.set(dependency, (this.versions.get(dependency) ?? 0) + 1);
+    this.history.clear();
+    this.invalidateHistory();
+  }
+
+  private remember(key: string, value: string | number): void {
+    if (this.history.set(key, value)) this.invalidateHistory();
+  }
+
+  private invalidateHistory(): void {
+    // Forgotten versions must never look equal to any pre-eviction witness.
+    this.versionFloor = ++this.highestVersion;
+    this.sharedReads.move();
     for (const document of [...this.documents]) document.moved(false);
+    for (const interest of [...this.interests]) interest.moved();
     for (const watcher of [...this.watchers]) watcher.listener();
   }
 
   private bump(moved: readonly FreshnessDependency[]): void {
     const set = new Set(moved);
-    for (const dependency of set) this.versions.set(dependency, (this.versions.get(dependency) ?? 0) + 1);
+    for (const dependency of set) {
+      const next = this.version(dependency) + 1;
+      this.highestVersion = Math.max(this.highestVersion, next);
+      this.remember(`v:${dependency}`, next);
+    }
+    this.sharedReads.move([...set]);
     for (const document of [...this.documents]) {
       let any = false, progressOnly = true;
       for (const dependency of document.dependencies()) {
@@ -509,6 +534,7 @@ export class FreshnessHub {
       }
       if (any) document.moved(progressOnly);
     }
+    for (const interest of [...this.interests]) if (interest.dependencies().some(dependency => set.has(dependency))) interest.moved();
     for (const watcher of [...this.watchers]) for (const dependency of set) if (watcher.dependencies.has(dependency)) { watcher.listener(); break; }
   }
 
@@ -521,8 +547,11 @@ export class FreshnessHub {
     if (!this.disposed) this.bump([dependency]);
   }
 
-  /** How many times a dependency has moved while this hub has been listening. */
-  version(dependency: FreshnessDependency): number { return this.versions.get(dependency) ?? 0; }
+  /** Monotonic dependency witness; eviction/resync may advance its conservative floor. */
+  version(dependency: FreshnessDependency): number {
+    const stored = this.history.get(`v:${dependency}`);
+    return Math.max(typeof stored === 'number' ? stored : 0, this.versionFloor);
+  }
 
   /** Hear when any of these dependencies moves (for a store that is not a document: a scan tracker, a badge). */
   watch(dependencies: readonly FreshnessDependency[], listener: () => void): () => void {
@@ -540,6 +569,15 @@ export class FreshnessHub {
   }
 
   forget(document: FreshDocument): void { this.documents.delete(document as Document); }
+
+  /** One bounded obligation; initially open, with no read owed until invalidated. */
+  interest(options: FreshnessInterestOptions): FreshnessInterest {
+    const interest = new Interest(this, options);
+    if (this.disposed) interest.dispose(); else this.interests.add(interest);
+    return interest;
+  }
+  /** @internal */
+  forgetInterest(interest: Interest): void { this.interests.delete(interest); }
 
   // ── Foreground and input ──────────────────────────────────────────
 
@@ -559,6 +597,7 @@ export class FreshnessHub {
       this.setReachability('reachable');
       for (const waiter of [...this.settleWaiters]) waiter();
     }
+    for (const interest of [...this.interests]) interest.check();
   }
 
   /** The person pressed, clicked, scrolled or moved focus just now. */
@@ -626,6 +665,8 @@ export class FreshnessHub {
     if (this.disposed) return;
     this.detach?.(); this.detach = undefined; this.events = null;
     for (const document of [...this.documents]) document.dispose();
+    for (const interest of [...this.interests]) interest.dispose();
+    this.sharedReads.dispose(); this.history.clear();
     this.disposed = true;
     this.clearReachTimer();
     this.watchers.clear(); this.reachListeners.clear();
