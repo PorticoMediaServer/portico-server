@@ -39,6 +39,9 @@ func (QueueQuery) JSONSchema() map[string]any {
 }
 
 type QueueSelection struct {
+	// Iterator replaces SQL only for bounded local-search replay. It owns no
+	// transaction; Close releases its private shared-store handle/delivery.
+	Iterator QueueKeyIterator
 	// CheckBasis is ephemeral content proof, checked in each fresh capture/commit snapshot.
 	CheckBasis func(context.Context, *sql.Tx) error
 	SQL        string
@@ -93,6 +96,9 @@ func (s *Service) QueueKeysTx(ctx context.Context, tx *sql.Tx, viewer Viewer, ac
 		query = &QueueQuery{LibraryID: d.LibraryID, Pivot: d.Pivot, Query: d.Query, Sort: d.Sort}
 	}
 	if query != nil && query.LibraryID == AcrossLibraries {
+		if selectionBatchHasLocalSearch(query.Query) {
+			return QueueSelection{}, ErrSelectionBatchUnsupported
+		}
 		return s.acrossQueue(ctx, tx, viewer, query, rows)
 	}
 	if query == nil || !viewer.AllowsLibrary(query.LibraryID) {
@@ -124,6 +130,12 @@ func (s *Service) QueueKeysTx(ctx context.Context, tx *sql.Tx, viewer Viewer, ac
 	node, err := ParseBrowseQuery(raw, "query")
 	if err != nil {
 		return QueueSelection{}, err
+	}
+	if selectionBatchHasLocalSearch(node) {
+		if !LocalSearchQueueSupported(node, sorts) {
+			return QueueSelection{}, ErrSelectionBatchUnsupported
+		}
+		return s.localOrderedQueue(ctx, tx, viewer, query, node, pivot, sorts, prefix, label, lib.Name)
 	}
 	where, args := browseScopeSQL(query.LibraryID, pivot)
 	compiler := &browseCompiler{now: s.recommendationNow(s.browseInstant), profile: viewer.Profile, restrictions: viewer.Restrictions, rows: rows}
