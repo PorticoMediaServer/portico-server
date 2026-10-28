@@ -25,6 +25,7 @@ import {liveProgramWindow} from './program-window';
 import {useGuideViewPreference} from './guide-view-preference';
 import {LiveOnNow} from './OnNow';
 import {GuideScreen, type GuideRowData} from './GuideScreen';
+import {guideChannelMenuEntries} from './channel-menu';
 import {useLiveLease, type LiveLease} from './useLiveLease';
 import type {RowWitness, SelectionAdmission} from './row-witness';
 import styles from './live.module.css';
@@ -77,8 +78,9 @@ function LiveArea({captured, context, search, pathname}: {captured: ProtectedLib
   const width = useShellWidth(), height = useWindowHeight();
   const appearance = useScreenAppearance(captured.context)!;
   const timezone = defaultI18n.region.timeZone ?? Intl.DateTimeFormat().resolvedOptions().timeZone;
+  const owner = context.identity?.viewer.role === 'owner';
   const key = JSON.stringify({kind: search.kind ?? 'all', sourceId: search.sourceId ?? '', timezone, group: search.group, favorites: search.favorites,
-    search: search.q, sort: search.sort ?? 'number'} satisfies LegacyGuideOptions);
+    search: search.q, sort: search.sort ?? 'number', ...(owner && search.hidden ? {includeHidden: true} : {})} satisfies LegacyGuideOptions);
   const runtime = captured.binding.playback?.runtime, routeCurrent = () => router.state.location.pathname === pathname;
   const [reopen, setReopen] = useState(0);
   const lease = useLiveLease(context, key, pathname, routeCurrent, runtime, reopen);
@@ -97,7 +99,7 @@ function LiveArea({captured, context, search, pathname}: {captured: ProtectedLib
   }, [lease, attempt]);
   const searchKey = JSON.stringify(search);
   const navigate = useCallback((change: Partial<LiveScreenSearch>) => {
-    const filtersChanged = ['sourceId', 'kind', 'group', 'favorites', 'q'].some(key => Object.hasOwn(change, key));
+    const filtersChanged = ['sourceId', 'kind', 'group', 'favorites', 'q', 'hidden'].some(key => Object.hasOwn(change, key));
     if (context.isCurrent()) void router.navigate({to: '/live', search: {...JSON.parse(searchKey), ...(filtersChanged ? {channelId: undefined} : {}), ...change}, replace: true, resetScroll: false}).catch(context.effects.reportError);
   }, [context, searchKey]);
   const [start, setStart] = useState(nowStart), [now, setNow] = useState(Date.now), [selected, setSelected] = useState<Selected>();
@@ -199,6 +201,17 @@ function LiveArea({captured, context, search, pathname}: {captured: ProtectedLib
     lease.bindings.store.invalidate();
     setAttempt(value => value + 1);
   }, [lease]);
+  // One channel preference at a time: the next one is made against the re-read row's revision.
+  const [preferenceBusy, setPreferenceBusy] = useState<LiveLease>();
+  const channelPreference = (channel: GuideChannelRow, witness: RowWitness | undefined, values: Readonly<{favorite: boolean; hidden: boolean}>) => {
+    if (!lease || preferenceBusy === lease || !witness || witness.row !== channel || !witness.current() || !admittedChannel(lease.options, channel)) return;
+    setPreferenceBusy(lease);
+    void lease.bindings.channelPreference(channel, values).then(onChanged, lease.screen.effects.reportError)
+      .finally(() => {if (lease.life.current()) setPreferenceBusy(current => current === lease ? undefined : current);});
+  };
+  const editChannel = () => {
+    if (context.isCurrent()) void router.navigate({to: '/settings', search: {scope: 'server', section: 'live', row: 'live.lib.channels'}}).catch(context.effects.reportError);
+  };
   const openRecordings = useCallback((target: Selected) => {
     // An old panel's callback cannot retire or navigate away from a successor.
     const committed = committedSelectionRef.current;
@@ -245,6 +258,7 @@ function LiveArea({captured, context, search, pathname}: {captured: ProtectedLib
     {id: 'all', label: t('channels.filterAll'), count: snapshot.total, selected: !search.group && !search.favorites, onSelect: () => navigate({group: undefined, favorites: undefined})},
     {id: 'favorites', label: t('channels.favorites'), favorites: true, count: favoriteCount, selected: search.favorites === true, onSelect: () => navigate({favorites: !search.favorites || undefined, group: undefined})},
     ...groups.map(([group, count]) => ({id: `group:${group}`, label: group, count, selected: search.group === group, onSelect: () => navigate({group, favorites: undefined})})),
+    ...(owner ? [{id: 'hidden', label: t('channels.showHidden'), selected: search.hidden === true, onSelect: () => navigate({hidden: !search.hidden || undefined})}] : []),
   ];
   const sourceOptions = [{value: 'all', label: t('channels.all')},
     ...(sources ?? []).map(source => ({value: JSON.stringify(['source', source.provenance, source.id]), label: source.provenance === 'library-channel' ? t('channels.custom.name') : source.name}))];
@@ -280,6 +294,10 @@ function LiveArea({captured, context, search, pathname}: {captured: ProtectedLib
           selected={currentSelection ? {channelId: currentSelection.selection.channel.id, ...(currentSelection.selection.programme ? {programmeId: currentSelection.selection.programme.id} : {})} : undefined}
           onSelect={(channel, programme, witness) => {if (!witness || witness.row !== channel || !witness.current() || !admittedChannel(lease.options, channel)) return;selectRow({lease, channel, ...(programme ? {programme} : {}), admission: witness});}}
           onPlay={onPlay}
+          channelMenu={(channel, witness) => guideChannelMenuEntries(channel, {owner, busy: preferenceBusy === lease,
+            onFavorite: row => channelPreference(row, witness, {favorite: !row.favorite, hidden: legacyChannel(row)?.hidden ?? false}),
+            onHidden: (row, hidden) => channelPreference(row, witness, {favorite: row.favorite, hidden}),
+            onEdit: editChannel})}
           onVisibleWindow={onVisibleWindow} onRetry={() => {if (lease.life.current()) lease.bindings.store.retry();}}/>}
     {currentSelection && <ProgrammePanel key={JSON.stringify([currentSelection.selection.lease.id, currentSelection.selection.channel.sourceId, currentSelection.selection.channel.id, currentSelection.selection.programme?.id, currentSelection.selection.programme?.start])} context={lease.screen} admission={currentSelection.admission} channel={currentSelection.selection.channel} programme={currentSelection.selection.programme}
       now={now} timezone={timezone} open onClose={() => closeSelection(currentSelection.selection)}

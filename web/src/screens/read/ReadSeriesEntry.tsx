@@ -20,7 +20,7 @@ import {ReadBulkMetadata} from './ReadBulkMetadata';
 import {useShellWidth} from '../../shell/viewport';
 import {createReadBindings} from './bindings';
 import {createReadingSeriesCollection, type ReadingContinueItem, type ReadingLibraryItem} from './library-collection';
-import {readDestination} from './navigation';
+import {readChosenDestination} from './navigation';
 import styles from './entry.module.css';
 import readItemStyles from './read-item.module.css';
 
@@ -111,7 +111,7 @@ function LiveSeriesRows({resources, context, retry}: {resources: Resources; cont
   const first = resident.find(item => item.inventoryAvailable);
   const target = continued?.item ?? first, number = target?.series?.number;
   const actionLabel = continued ? number === undefined ? t('next.reader.readNext') : t('next.reader.readVolume', {number: defaultI18n.number(number)}) : t('next.reader.readNext');
-  const start = () => {if (!target || !resources.bindings.authority.isCurrent()) return; void router.navigate(readDestination(target.id, target.sourceId)).catch(report);};
+  const start = () => {if (!target || !resources.bindings.authority.isCurrent()) return; void router.navigate(readChosenDestination(target.id)).catch(report);};
   const author = overview?.author?.value;
   const total = overview?.total ?? (state.total !== undefined && !state.totalIsLowerBound ? state.total : undefined);
   const tint = generatedCoverTint(title ?? '');
@@ -138,7 +138,7 @@ function LiveSeriesRows({resources, context, retry}: {resources: Resources; cont
           caption: [...(item.series?.number !== undefined ? [{id: 'number', text: t(resources.comic ? 'next.reader.volumeNumber' : 'next.reader.bookNumber', {number: defaultI18n.number(item.series.number, {maximumFractionDigits: 20})}), role: 'identity' as const}] : []), ...(item.author ? [{id: 'author', text: item.author.value, role: 'identity' as const}] : [])]}}
         generated={{title: item.title, glyph: Array.from(item.title)[0] ?? '', tint: generatedCoverTint(item.title)}} disabled={!item.inventoryAvailable}
         onNavigate={() => {if (resources.bindings.authority.isCurrent()) void router.navigate({to: '/item/$itemId', params: {itemId: item.id}}).catch(report);}}
-        onPlay={item.inventoryAvailable ? () => {if (resources.bindings.authority.isCurrent()) void router.navigate(readDestination(item.id, item.sourceId)).catch(report);} : undefined}
+        onPlay={item.inventoryAvailable ? () => {if (resources.bindings.authority.isCurrent()) void router.navigate(readChosenDestination(item.id)).catch(report);} : undefined}
         playLabel={t('next.reader.read')}
         selection={canEdit ? {active: selection !== undefined, checked: selection?.has(item.id) ?? false, onToggle: () => toggle(item), onExit: () => setSelection(undefined)} : undefined}/>} /></div>
     {bulk && canEdit && <ReadBulkMetadata context={{...context, isCurrent: () => context.isCurrent() && !!bulk && resources.bindings.authority.isCurrent() && bulk.every(item => resources.rows.collection.residentItems().includes(item))}}

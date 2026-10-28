@@ -1,15 +1,17 @@
-import {useCallback, useEffect, useMemo, useRef, type CSSProperties, type KeyboardEvent, type ReactNode} from 'react';
+import {useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type KeyboardEvent, type ReactNode} from 'react';
 import {defaultI18n} from '@i18n';
-import {layoutRow, type GuideCell, type GuideChannelRow, type GuideProgram} from '@core/guide/index.ts';
+import {layoutRow, legacyChannel, type GuideCell, type GuideChannelRow, type GuideProgram} from '@core/guide/index.ts';
 import {rulerTicks} from '@core/guide/time.ts';
 import {programmeFactParts, type ChannelMarkModel, type FactPart} from '@portico/client-core/kit-model';
 import {ChannelMark} from '../../kit/artwork';
 import {Button, Chip, Segmented, Select, Tabs} from '../../kit/controls';
 import type {SelectOption} from '../../kit/controls';
 import {Icon} from '../../kit/Icon';
+import {Menu, type MenuEntry} from '../../kit/overlays';
 import {Skeleton, StateView} from '../../kit/states';
 import {liveListPrograms} from './program-window';
 import {useGuideSwipe} from './guide-swipe';
+import {useChannelMenuGestures} from './channel-menu';
 import {guideListRowHeight, guideVisibleRows} from './guide-window';
 import type {RowWitness} from './row-witness';
 import {useWindowHeight, useWindowWidth} from '../../kit/theme';
@@ -76,6 +78,8 @@ export type GuideScreenProps = Readonly<{
   selected?: Readonly<{channelId: string; programmeId?: string}>;
   onSelect(channel: GuideChannelRow, programme?: GuideProgram, witness?: RowWitness): void;
   onPlay?(channel: GuideChannelRow, witness?: RowWitness): void;
+  /** A drawn row's channel menu (desktop-live List view, tablet-play 6). */
+  channelMenu?(channel: GuideChannelRow, witness?: RowWitness): readonly MenuEntry[];
   onVisibleWindow?(first: number, last: number): void;
   onRetry?(): void;
 }>;
@@ -111,7 +115,7 @@ function CellButton({cell, channel, witness, now, timezone, selected, onSelect}:
   </button>;
 }
 
-function GuideChannelCell({channel, list, phone, landscape = false}: Readonly<{channel?: GuideChannelRow; list: boolean; phone: boolean; landscape?: boolean}>) {
+function GuideChannelCell({channel, list, phone, landscape = false, children}: Readonly<{channel?: GuideChannelRow; list: boolean; phone: boolean; landscape?: boolean; children?: ReactNode}>) {
   if (!channel) return <div className={styles.guideChannel}><Skeleton width={phone ? 36 : 180} height={34}/></div>;
   const mark: ChannelMarkModel | undefined = channel.mark ? {sourceId: channel.sourceId ?? '', id: channel.id, text: channel.mark.text, seed: channel.mark.seed} : undefined;
   return <div className={list ? styles.guideListChannel : styles.guideChannel}>
@@ -120,6 +124,33 @@ function GuideChannelCell({channel, list, phone, landscape = false}: Readonly<{c
       <b>{channel.name}{channel.favorite && <Icon className={styles.guideFavorite} name="i-star-f" size={13}/>}</b>
       <small>{channel.number}{list && channel.group && <span>{channel.group}</span>}</small>
     </span>
+    {children}
+  </div>;
+}
+
+
+const channelKey = (channel: GuideChannelRow) => JSON.stringify([channel.kind, channel.sourceId ?? '', channel.id]);
+
+/** The row's channel menu. Desktop and tablet anchor it to the row's More button, shown on
+ * hover and focus; the phone has no button and opens the same menu as a sheet. */
+function ChannelMenu({channel, items, open, onOpenChange, button, className}: Readonly<{
+  channel: GuideChannelRow; items: readonly MenuEntry[]; open: boolean; onOpenChange(open: boolean): void; button: boolean; className?: string;
+}>) {
+  return <Menu open={open} onOpenChange={value => onOpenChange(value)} title={channel.name} items={items}
+    trigger={button ? <Button className={className} variant="ghost" size="small" iconOnly icon="i-more" aria-haspopup="menu" data-channel-menu=""
+      aria-label={t('channels.moreFor', {channel: channel.name})}/> : undefined}/>;
+}
+
+/** A guide or list row. A long press, a right-click or the keyboard's menu key on the row opens
+ * its channel menu; the release that ends a hold does not also press what is under it. */
+function GuideRowFrame({channel, onMenu, className, style, children}: Readonly<{
+  channel?: GuideChannelRow; onMenu?: () => void; className: string; style: CSSProperties; children: ReactNode;
+}>) {
+  const gestures = useChannelMenuGestures(() => onMenu?.());
+  return <div className={className} style={style} data-guide-row={channel?.id} data-hidden={channel && legacyChannel(channel)?.hidden || undefined}
+    role={channel ? 'group' : undefined} aria-label={channel ? [channel.number, channel.name].filter(Boolean).join(', ') : undefined}
+    {...(channel && onMenu ? gestures : {})}>
+    {children}
   </div>;
 }
 
@@ -184,8 +215,9 @@ function PhoneListProgramme({channel, current, next, now, timezone, onSelect}: R
 }
 
 export function GuideScreen({title, switcher, summary, conflicts, onTabChange, chips, onNow, problem, empty, day, sort, view, time, onViewChange,
-  span, rows, total, selected, onSelect, onPlay, onVisibleWindow, onRetry}: GuideScreenProps) {
+  span, rows, total, selected, onSelect, onPlay, channelMenu, onVisibleWindow, onRetry}: GuideScreenProps) {
   const body = useRef<HTMLDivElement>(null);
+  const [menuFor, setMenuFor] = useState<string>();
   const swipe = useGuideSwipe(time.onEarlier, time.onLater);
   const {start, end, now, scale, column, rowHeight, timezone} = span;
   const phone = column <= 60;
@@ -285,9 +317,12 @@ export function GuideScreen({title, switcher, summary, conflicts, onTabChange, c
         <div className={styles.guideBody} ref={body}>
           {nowX !== undefined && <div className={styles.guidePastShade} style={{width: nowX}} aria-hidden="true"/>}
           <div className={styles.guideRows} style={{height: Math.max(0, total) * rowHeight}} onKeyDown={onKeyDown}>
-            {rows.map(row => <div className={styles.guideRow} key={row.channel?.id ?? row.index} style={{top: row.index * rowHeight}} data-guide-row={row.channel?.id}
-              role={row.channel ? 'group' : undefined} aria-label={row.channel ? [row.channel.number, row.channel.name].filter(Boolean).join(', ') : undefined}>
-              <GuideChannelCell channel={row.channel} list={false} phone={phone} landscape={landscape}/>
+            {rows.map(row => <GuideRowFrame className={styles.guideRow} key={row.channel?.id ?? row.index} style={{top: row.index * rowHeight}} channel={row.channel}
+              onMenu={row.channel && channelMenu ? () => setMenuFor(channelKey(row.channel!)) : undefined}>
+              <GuideChannelCell channel={row.channel} list={false} phone={phone} landscape={landscape}>
+                {row.channel && channelMenu && <ChannelMenu channel={row.channel} items={channelMenu(row.channel, row.witness)} button={!phone} className={styles.guideChannelMore}
+                  open={menuFor === channelKey(row.channel)} onOpenChange={open => setMenuFor(open ? channelKey(row.channel!) : undefined)}/>}
+              </GuideChannelCell>
               <div className={styles.guideLane}>
                 {!row.channel || !row.complete
                   ? row.failed ? <StateView title={t('guide.tileFailed')} primary={{id: 'retry', label: t('next.states.tryAgain'), onPress: () => onRetry?.()}}/>
@@ -306,7 +341,7 @@ export function GuideScreen({title, switcher, summary, conflicts, onTabChange, c
                             selected={selected?.channelId === row.channel!.id && (selected.programmeId === undefined || selected.programmeId === cell.program?.id)} onSelect={onSelect}/>)}
                   </>}
               </div>
-            </div>)}
+            </GuideRowFrame>)}
           </div>
           {nowX !== undefined && <div className={styles.guideNowLine} style={{left: nowX}} aria-hidden="true"/>}
         </div>
@@ -316,9 +351,12 @@ export function GuideScreen({title, switcher, summary, conflicts, onTabChange, c
           <span>{t('guide.channelColumn')}</span><span>{t('guide.onNow')}</span><span>{t('guide.nextColumn')}</span><span>{t('guide.laterColumn')}</span><span/>
         </div>
         <div className={styles.guideListRows} ref={body} style={{height: Math.max(0, total) * bodyRowHeight}}>
-        {rows.map(row => <div className={styles.guideListRow} key={row.channel?.id ?? row.index} data-guide-row={row.channel?.id} style={{top: row.index * bodyRowHeight, height: bodyRowHeight}}
-          role={row.channel ? 'group' : undefined} aria-label={row.channel ? [row.channel.number, row.channel.name].filter(Boolean).join(', ') : undefined}>
-          <GuideChannelCell channel={row.channel} list phone={phone}/>
+        {rows.map(row => <GuideRowFrame className={styles.guideListRow} key={row.channel?.id ?? row.index} style={{top: row.index * bodyRowHeight, height: bodyRowHeight}} channel={row.channel}
+          onMenu={row.channel && channelMenu ? () => setMenuFor(channelKey(row.channel!)) : undefined}>
+          <GuideChannelCell channel={row.channel} list phone={phone}>
+            {phone && row.channel && channelMenu && <ChannelMenu channel={row.channel} items={channelMenu(row.channel, row.witness)} button={false}
+              open={menuFor === channelKey(row.channel)} onOpenChange={open => setMenuFor(open ? channelKey(row.channel!) : undefined)}/>}
+          </GuideChannelCell>
           {!row.channel || !row.complete
             ? <div className={styles.guideListNow}>{row.failed ? <StateView title={t('guide.tileFailed')} primary={{id: 'retry', label: t('next.states.tryAgain'), onPress: () => onRetry?.()}}/> : <Skeleton width="100%" height={rowHeight - 20}/>}</div>
             : (() => {
@@ -333,10 +371,14 @@ export function GuideScreen({title, switcher, summary, conflicts, onTabChange, c
                       : liveListPrograms(row.programs, now)[1] ? <small>{t('guide.until', {time: defaultI18n.time(liveListPrograms(row.programs, now)[1]!.start)})}</small> : null}</>}</div>
                 <div className={styles.guideListNext}>{next ? <ProgrammeSummary programme={next} channel={row.channel!} now={now} timezone={timezone} onSelect={() => onSelect(row.channel!, next, row.witness)}/> : null}</div>
                 <div className={`${styles.guideListNext} ${styles.guideListLater}`}>{later ? <ProgrammeSummary programme={later} channel={row.channel!} now={now} timezone={timezone} onSelect={() => onSelect(row.channel!, later, row.witness)}/> : null}</div>
-                <div className={styles.guideListActions}>{row.channel?.tuneAvailable && onPlay && <Button size="compact" icon="i-play" onClick={() => onPlay(row.channel!, row.witness)}>{t('channels.watch')}</Button>}</div>
+                <div className={styles.guideListActions} data-menu-open={menuFor === channelKey(row.channel!) || undefined}>
+                  {row.channel?.tuneAvailable && onPlay && <Button size="compact" icon="i-play" onClick={() => onPlay(row.channel!, row.witness)}>{t('channels.watch')}</Button>}
+                  {channelMenu && <ChannelMenu channel={row.channel!} items={channelMenu(row.channel!, row.witness)} button
+                    open={menuFor === channelKey(row.channel!)} onOpenChange={open => setMenuFor(open ? channelKey(row.channel!) : undefined)}/>}
+                </div>
               </>;
             })()}
-        </div>)}</div>
+        </GuideRowFrame>)}</div>
       </div>)}
     {view === 'guide' && <p className={styles.guideKbd} data-guide-kbd>{t('guide.keyboardHint')}</p>}
   </section>;

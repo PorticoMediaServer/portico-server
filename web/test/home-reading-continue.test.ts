@@ -52,7 +52,8 @@ test('Home Continue binds the canonical profile-wide read lazily and preserves a
     assert.equal(first.progress.location.progression, .25);assert.equal(first.item.format, 'epub');
     assert.equal(Object.isFrozen(first.progress.location), true);
     await f.binding.open(first);
-    assert.deepEqual(f.opened, [{to: '/read/$itemId', params: {itemId: first.item.id}, search: {sourceId: first.item.sourceId}}]);
+    // Read opens the version the server chooses for this reader (DECISIONS 28 Oct), as the title page does.
+    assert.deepEqual(f.opened, [{to: '/read/$itemId', params: {itemId: first.item.id}, search: {}}]);
     await assert.rejects(f.binding.open(second), {name: 'AbortError'});
     await assert.rejects(f.binding.open({...first}), {name: 'AbortError'});
     assert.equal(f.calls.length, 1, 'opening only dispatches the existing route; no per-row Prepare');

@@ -1,13 +1,13 @@
 import {createReadBindings, type ReadBindingContext} from '../read/bindings';
 import {createReadingContinueCollection, type ReadingContinueItem} from '../read/library-collection';
-import {readDestination} from '../read/navigation';
+import {readChosenDestination, type ReadDestination} from '../read/navigation';
 
 /** A captured Home/Library data door. The canonical collection alone owns
  * cursor rows and reading progress; construction never fetches or Prepares. */
 export function createReadingContinueBindings(options: Readonly<{
   context: ReadBindingContext;
   libraryId?: string;
-  open: (destination: ReturnType<typeof readDestination>) => void | Promise<void>;
+  open: (destination: ReadDestination) => void | Promise<void>;
 }>) {
   const reading = createReadBindings(options.context), rows = createReadingContinueCollection(reading.client, options.libraryId);
   const open = options.open;
@@ -29,7 +29,7 @@ export function createReadingContinueBindings(options: Readonly<{
     contains,
     async open(row: ReadingContinueItem) {
       if (!contains(row) || !row.item.inventoryAvailable) throw new DOMException('Reading Continue changed', 'AbortError');
-      await open(readDestination(row.item.id, row.item.sourceId));
+      await open(readChosenDestination(row.item.id));
     },
     dispose,
   });

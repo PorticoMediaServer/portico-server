@@ -20,7 +20,7 @@ import {ReadBulkMetadata} from './ReadBulkMetadata';
 import {ReadMetadata} from './ReadMetadata';
 import {createReadBindings} from './bindings';
 import {createReadingCollection, createReadingContinueCollection, type ReadingContinueItem, type ReadingLibraryItem} from './library-collection';
-import {readDestination} from './navigation';
+import {readChosenDestination} from './navigation';
 import {recentCards, type RecentReadingItem} from './recent-cards';
 import {ReadDiscovery, type ReadDiscoveryRow, type ReadResumeItem} from './ReadLibrary';
 import styles from './entry.module.css';
@@ -57,7 +57,7 @@ function resumeRows(resources: Resources, items: readonly ReadingContinueItem[])
     ...(row.progress.stale || !row.progress.location.section ? {} : {location: {id: 'section', text: row.progress.location.section, role: 'context' as const}}),
     fallback: generated(row.item), disabled: !row.item.inventoryAvailable, visible: true, playLabel: t('next.reader.read'),
     onNavigate: () => {if (resources.bindings.authority.isCurrent()) void router.navigate({to: '/item/$itemId', params: {itemId: row.item.id}}).catch(resources.reportError);},
-    onPlay: row.item.inventoryAvailable ? () => {if (resources.bindings.authority.isCurrent()) void router.navigate(readDestination(row.item.id, row.item.sourceId)).catch(resources.reportError);} : undefined,
+    onPlay: row.item.inventoryAvailable ? () => {if (resources.bindings.authority.isCurrent()) void router.navigate(readChosenDestination(row.item.id)).catch(resources.reportError);} : undefined,
   }}));
 }
 
@@ -147,7 +147,7 @@ function LibraryRows({resources, libraryId, name, comic, view, onMore, onRetry, 
       items: recentCards(recent, {kind: comic ? 'comic' : 'book', read: t('next.reader.read'),
         open: entry => {if (resources.bindings.authority.isCurrent()) void router.navigate({to: '/item/$itemId', params: {itemId: entry.id}}).catch(resources.reportError);},
         artwork: url => resources.artwork.foreground(url, 380, 2 / 3),
-        play: entry => {if (resources.bindings.authority.isCurrent()) void router.navigate(readDestination(entry.id, entry.sourceId)).catch(resources.reportError);}}),
+        play: entry => {if (resources.bindings.authority.isCurrent()) void router.navigate(readChosenDestination(entry.id)).catch(resources.reportError);}}),
     }] : []),
     ...(shortReads.length ? [{id: 'short-reads', kind: 'covers' as const, heading: t('next.reader.shortReads'), subtitle: t('next.reader.shortReadsFromWordCount'),
       items: shortReads.map(entry => ({id: entry.item.id, card: {
@@ -156,7 +156,7 @@ function LibraryRows({resources, libraryId, name, comic, view, onMore, onRetry, 
         generated: {title: entry.item.title, glyph: Array.from(entry.item.title)[0] ?? '', tint: generatedCoverTint(entry.item.title)},
         disabled: !entry.item.inventoryAvailable, playLabel: t('next.reader.read'),
         onNavigate: () => {if (resources.bindings.authority.isCurrent()) void router.navigate({to: '/item/$itemId', params: {itemId: entry.item.id}}).catch(resources.reportError);},
-        onPlay: entry.item.inventoryAvailable ? () => {if (resources.bindings.authority.isCurrent()) void router.navigate(readDestination(entry.item.id, entry.item.sourceId)).catch(resources.reportError);} : undefined,
+        onPlay: entry.item.inventoryAvailable ? () => {if (resources.bindings.authority.isCurrent()) void router.navigate(readChosenDestination(entry.item.id)).catch(resources.reportError);} : undefined,
       }})),
     }] : []),
     ...(series.length ? [{id: 'series', kind: 'series' as const, heading: t('next.reader.yourSeries'),
@@ -183,7 +183,7 @@ function LibraryRows({resources, libraryId, name, comic, view, onMore, onRetry, 
         model: {title: issue.item.series?.name ?? issue.item.title, caption: [{id: 'date', text: calendarDate(defaultI18n, issue.issueDate), role: 'identity' as const}]},
         disabled: !issue.item.inventoryAvailable, playLabel: t('next.reader.read'),
         onNavigate: () => {if (resources.bindings.authority.isCurrent()) void router.navigate({to: '/item/$itemId', params: {itemId: issue.item.id}}).catch(resources.reportError);},
-        onPlay: issue.item.inventoryAvailable ? () => {if (resources.bindings.authority.isCurrent()) void router.navigate(readDestination(issue.item.id, issue.item.sourceId)).catch(resources.reportError);} : undefined,
+        onPlay: issue.item.inventoryAvailable ? () => {if (resources.bindings.authority.isCurrent()) void router.navigate(readChosenDestination(issue.item.id)).catch(resources.reportError);} : undefined,
       }})),
     }] : []),
   ];
@@ -202,7 +202,7 @@ function LibraryRows({resources, libraryId, name, comic, view, onMore, onRetry, 
           covers={[resources.artwork.foreground(newspaper.latest.item.coverUrl, 1000, 3 / 4)].flatMap(cover => cover ? [cover] : [])}
           artwork={resources.artwork.foreground(newspaper.latest.item.coverUrl, 1000, 3 / 4)} fallback={generated(newspaper.latest.item)}
           actionLabel={t('next.reader.readThisEdition')} actionVariant="primary"
-          onAction={newspaper.latest.item.inventoryAvailable ? () => {if (resources.bindings.authority.isCurrent()) void router.navigate(readDestination(newspaper.latest.item.id, newspaper.latest.item.sourceId)).catch(resources.reportError);} : undefined}
+          onAction={newspaper.latest.item.inventoryAvailable ? () => {if (resources.bindings.authority.isCurrent()) void router.navigate(readChosenDestination(newspaper.latest.item.id)).catch(resources.reportError);} : undefined}
           visible disabled={!newspaper.latest.item.inventoryAvailable}
           onNavigate={() => {if (resources.bindings.authority.isCurrent()) void router.navigate({to: '/library/$libraryId', params: {libraryId}, search: {view: 'series', pivot: 'newspapers', entityId: newspaper.id}}).catch(resources.reportError);}}/>
       </Row> : undefined}
@@ -216,7 +216,7 @@ function LibraryRows({resources, libraryId, name, comic, view, onMore, onRetry, 
           renderItem={item => <CoverCard artwork={resources.artwork.foreground(item.coverUrl, cardWidth * 2, 2 / 3)} kind={comic ? 'comic' : 'book'} model={{title: item.title, caption: authorFacts(item.author)}} context="grid" density="grid" visible
             generated={{title: item.title, glyph: Array.from(item.title)[0] ?? '', tint: generatedCoverTint(item.title)}} disabled={!item.inventoryAvailable && !onToggle}
             onNavigate={() => {if (resources.bindings.authority.isCurrent()) void router.navigate({to: '/item/$itemId', params: {itemId: item.id}}).catch(resources.reportError);}}
-            onPlay={item.inventoryAvailable ? () => {if (resources.bindings.authority.isCurrent()) void router.navigate(readDestination(item.id, item.sourceId)).catch(resources.reportError);} : undefined}
+            onPlay={item.inventoryAvailable ? () => {if (resources.bindings.authority.isCurrent()) void router.navigate(readChosenDestination(item.id)).catch(resources.reportError);} : undefined}
             selection={onToggle ? {active: selecting, checked: selection?.has(item.id) ?? false, onToggle: () => onToggle(item), onExit: onExitSelection} : undefined}
             playLabel={t('next.reader.read')} onMore={onMore ? anchor => {if (resources.bindings.authority.isCurrent()) onMore(item, anchor);} : undefined}/>} />
       </div>}

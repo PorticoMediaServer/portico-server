@@ -12,7 +12,7 @@ import {Skeleton, StateView} from '../../kit/states';
 import {useShellWidth} from '../../shell/viewport';
 import {createReadBindings} from './bindings';
 import {createReadingPeriodicalGroupsCollection, createReadingPeriodicalIssuesCollection} from './library-collection';
-import {readDestination} from './navigation';
+import {readChosenDestination} from './navigation';
 import {NewspaperCalendar} from './NewspaperCalendar';
 import styles from './entry.module.css';
 
@@ -90,7 +90,7 @@ function GroupRows({resources, retry}: {resources: Groups; retry: () => void}) {
       artwork={resources.context.artwork.foreground(group.latest.item.coverUrl, 380, 3 / 4)} fallback={<Icon name="i-book" size={40}/>}
       model={{title: group.name, caption: [{id: 'date', text: calendarDate(defaultI18n, group.latest.issueDate), role: 'identity'}, {id: 'issues', text: t('next.reader.issueCount', {count: group.issueCount}), role: 'identity'}]}}
       playLabel={t('next.reader.read')} onPlay={group.latest.item.inventoryAvailable ? () => {
-        if (resources.bindings.authority.isCurrent()) void router.navigate(readDestination(group.latest.item.id, group.latest.item.sourceId)).catch(resources.reportError);
+        if (resources.bindings.authority.isCurrent()) void router.navigate(readChosenDestination(group.latest.item.id)).catch(resources.reportError);
       } : undefined}
       onNavigate={() => {if (resources.bindings.authority.isCurrent()) void router.navigate({to: '/library/$libraryId', params: {libraryId: resources.libraryId}, search: {view: 'series', pivot: resources.kind === 'magazine' ? 'magazines' : 'newspapers', entityId: group.id}}).catch(resources.reportError);}}/>}/>}</GridFrame></section>;
 }
@@ -101,7 +101,7 @@ function IssueRows({resources, retry}: {resources: Issues; retry: () => void}) {
   if (state.status === 'ready' && state.total === 0) return <StateView title={t('title.nothingHere')}/>;
   const open = (issue: ReadingPeriodicalIssue, read: boolean) => {
     if (!resources.bindings.authority.isCurrent()) return;
-    void router.navigate(read ? readDestination(issue.item.id, issue.item.sourceId) : {to: '/item/$itemId', params: {itemId: issue.item.id}}).catch(resources.reportError);
+    void router.navigate(read ? readChosenDestination(issue.item.id) : {to: '/item/$itemId', params: {itemId: issue.item.id}}).catch(resources.reportError);
   };
   return <section className={styles.library}>{name && <h2>{name}</h2>}{state.status === 'ready' && <ReadGroupSavedAction client={resources.bindings.client} libraryId={resources.libraryId} groupKind={resources.kind} seriesId={resources.seriesId}
     isCurrent={() => resources.bindings.authority.isCurrent() && resources.pages.collection.getSnapshot().status === 'ready'} reportError={resources.reportError}/>}<GridFrame>{(height, width) => <WindowedGrid collection={resources.pages.collection} label={name ?? t(resources.kind === 'magazine' ? 'library.tab.magazines' : 'library.tab.newspapers')}

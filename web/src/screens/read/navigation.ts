@@ -9,7 +9,13 @@ export async function readItemEligibility(client: ReadingClient, itemId: string,
     return result.versions.length ? Object.freeze({itemId, versions: result.versions, chosenSourceId: result.chosenSourceId}) : null;
   } catch (error) {if (error instanceof ReadingError && error.status === 404) return null; throw error;}
 }
-export function readDestination(itemId: string, sourceId: string) {
-  return {to: '/read/$itemId' as const, params: {itemId}, search: {sourceId}};
+export type ReadDestination = Readonly<{to: '/read/$itemId'; params: {itemId: string}; search: {sourceId?: string}}>;
+export function readDestination(itemId: string, sourceId: string): ReadDestination {
+  return {to: '/read/$itemId', params: {itemId}, search: {sourceId}};
+}
+/** A shelf's Read opens the version the server chooses for this reader (`chosenSourceId`),
+ * exactly as the title page does, never the row's own version. */
+export function readChosenDestination(itemId: string): ReadDestination {
+  return {to: '/read/$itemId', params: {itemId}, search: {}};
 }
 export type ReadItemEligibility = NonNullable<Awaited<ReturnType<typeof readItemEligibility>>>;
