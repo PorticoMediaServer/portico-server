@@ -260,3 +260,30 @@ test('the64th fresh page is reachable and its entire Back chain uses the new rev
  assert.deepEqual(await s.refreshDirectory(),{kind:'adopted'});assert.equal(paths.length,65);assert.equal(s.getSnapshot().directory.cursor,'2:lib-62');
  for(let page=1;page<64;page++)await s.previousLibraries();assert.equal(s.getSnapshot().directory.cursor,null);assert.equal(s.getSnapshot().directory.canPrevious,false);s.dispose();
 });
+
+
+test('quiet directory cancellation is bound and preserves visible page, selected, jobs and mutation receipts',async()=>{
+ let hold=false,signal:AbortSignal|undefined;const pending=deferred();
+ const s=service(async(p,_m,_b,a)=>{if(hold&&p.startsWith('/v1/admin/libraries?')){signal=a;return pending.promise;}return data(p);});
+ await s.loadLibraries();await s.selectLibrary('one');const before=s.getSnapshot();hold=true;
+ const read=s.refreshDirectory();const cancel=s.invalidateQuietDirectory;cancel();
+ assert.equal(signal?.aborted,true);assert.equal(s.getSnapshot(),before);
+ assert.deepEqual(await read,{kind:'deferred'});pending.resolve({...data('/v1/admin/libraries'),items:[library('one','Late')]});await settleRetries();assert.equal(s.getSnapshot(),before);s.dispose();
+});
+
+test('quiet directory cancellation cannot abort newer ordinary paging or its selected/jobs/write owners',async()=>{
+ let hold=false;const held:ReturnType<typeof deferred>[]=[],signals:AbortSignal[]=[];
+ const s=service(async(p,m,_b,a)=>{if(hold&&(p.startsWith('/v1/admin/libraries?')||m==='PATCH')){const read=deferred();held.push(read);signals.push(a!);return read.promise;}return data(p);});
+ await s.loadLibraries();await s.selectLibrary('one');hold=true;const quiet=s.refreshDirectory();const ordinary=s.loadLibraries();
+ const selected=s.getSnapshot().selected,jobs=s.getSnapshot().jobs;
+ s.invalidateQuietDirectory();assert.equal(signals[0].aborted,true);assert.equal(signals[1].aborted,false);
+ held[1].resolve(data('/v1/admin/libraries'));await ordinary;assert.deepEqual(await quiet,{kind:'deferred'});assert.equal(s.getSnapshot().selected,selected);assert.equal(s.getSnapshot().jobs,jobs);
+ const write=s.rename('Updated',1);assert.equal(signals[2].aborted,false);s.invalidateQuietDirectory();assert.equal(signals[2].aborted,false);
+ hold=false;held[2].resolve({scope:wireScope,library:library('one','Updated',2)});await write;assert.equal(s.getSnapshot().mutation.phase,'complete');s.dispose();
+});
+
+test('an older quiet completion cannot detach the newer quiet read cancellation owner',async()=>{
+ let hold=false;const held:ReturnType<typeof deferred>[]=[],signals:AbortSignal[]=[];
+ const s=service(async(p,_m,_b,a)=>{if(hold&&p.startsWith('/v1/admin/libraries?')){const read=deferred();held.push(read);signals.push(a!);return read.promise;}return data(p);});
+ await s.loadLibraries();const before=s.getSnapshot();hold=true;const first=s.refreshDirectory(),second=s.refreshDirectory();assert.equal(signals[0].aborted,true);assert.deepEqual(await first,{kind:'deferred'});s.invalidateQuietDirectory();assert.equal(signals[1].aborted,true);assert.deepEqual(await second,{kind:'deferred'});assert.equal(s.getSnapshot(),before);s.dispose();
+});
