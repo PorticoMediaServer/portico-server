@@ -9,7 +9,7 @@ import (
 func (h *HLS) rememberConversionFailure(ctx context.Context, id, code, diagnostic string) {
 	write, cancel := persist(ctx)
 	defer cancel()
-	diagnostic = sanitizeConverterOutput(diagnostic, h.root)
+	diagnostic = sanitizeConverterOutput(diagnostic, h.root, h.memoryRoot)
 	if len(diagnostic) > 2000 {
 		diagnostic = string([]rune(diagnostic)[:min(2000, len([]rune(diagnostic)))])
 	}

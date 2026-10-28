@@ -9,6 +9,7 @@ import (
 	"portico.local/server/internal/supervise"
 	"strconv"
 	"strings"
+	"syscall"
 )
 
 func (h *HLS) publicationFailed(id string, owned *hlsWindow, err error) {
@@ -22,6 +23,9 @@ func (h *HLS) publicationFailed(id string, owned *hlsWindow, err error) {
 // A changed initialization retires the entire presentation. No old grant can
 // observe a differently shaped playlist; the controller publishes a new generation.
 func (h *HLS) fragmentedFailure(ctx context.Context, id string, plan *DeliveryPlan, position float64, cause error) {
+	if errors.Is(cause, syscall.ENOSPC) && h.retryMemoryOutput(id) {
+		return
+	}
 	if !errors.Is(cause, errMP4InitChanged) || plan == nil {
 		h.failedWith(ctx, id, FailureConverter, "fragmented output could not be published")
 		return
@@ -59,7 +63,7 @@ func (h *HLS) fragmentedFailure(ctx context.Context, id string, plan *DeliveryPl
 	for _, done := range waits {
 		<-done
 	}
-	dir := filepath.Join(h.root, id)
+	dir := h.outputDir(id)
 	entries, _ := os.ReadDir(dir)
 	for _, entry := range entries {
 		if strings.HasPrefix(entry.Name(), "segment-") || strings.HasPrefix(entry.Name(), "audio-") || strings.HasPrefix(entry.Name(), "init") || strings.HasSuffix(entry.Name(), ".m3u8") {
