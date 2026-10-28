@@ -289,3 +289,81 @@ func TestSelectionPreparationSharesAcrossSessionFences(t *testing.T) {
 		t.Fatal("shared content exposed another caller's handle", err)
 	}
 }
+
+func TestSelectionPreparationLiveAvailabilityDriftBeforePublication(t *testing.T) {
+	db, s, names := browseFixture(t)
+	store, err := readprep.New(readprep.Config{Workers: 1})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	s.UseReadPreparations(store)
+	viewer := Viewer{Profile: "p", Fence: "f", Libraries: []string{"a"}}
+	access := SelectionPreparationAccess{Caller: "availability-drift", Check: func(*Service) error { return nil }}
+	pending, revision := submitSelectionPreparation(t, s, viewer, access)
+	before := awaitSelectionPreparation(t, s, viewer, pending.QueryID, access, HomeActionAuthority{Playback: true})
+	oldPlay := before.Ready.Types[0].CapabilityCounts.Play
+	before.Release()
+	// A no-op and a rolled-back change do not retire a valid held result.
+	if _, err = db.Exec(`UPDATE catalog_item_availability SET available=available WHERE entity_id=?`, names["m1"].ID); err != nil {
+		t.Fatal(err)
+	}
+	tx, err := db.Begin()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = tx.Exec(`UPDATE catalog_item_availability SET available=0 WHERE entity_id=?`, names["m1"].ID); err != nil {
+		tx.Rollback()
+		t.Fatal(err)
+	}
+	if err = tx.Rollback(); err != nil {
+		t.Fatal(err)
+	}
+	unchanged, err := pollSelectionPreparation(t, s, viewer, pending.QueryID, access, HomeActionAuthority{Playback: true})
+	if err != nil {
+		t.Fatal("no-op/rollback retired unchanged facts", err)
+	}
+	unchanged.Release()
+	// The live availability relation changes before any asynchronous browse
+	// publication. The held aggregate must not use its old play/queue counters.
+	if _, err = db.Exec(`UPDATE catalog_item_availability SET available=0 WHERE entity_id=?`, names["m1"].ID); err != nil {
+		t.Fatal(err)
+	}
+	ordinary, err := s.BrowseEntities(viewer, BrowseRequest{Library: "a", Pivot: "movies", Limit: 1})
+	if err != nil || ordinary.PageInfo.Revision != revision {
+		t.Fatal("ordinary publication token changed", ordinary.PageInfo.Revision, err)
+	}
+	if _, err = pollSelectionPreparation(t, s, viewer, pending.QueryID, access, HomeActionAuthority{Playback: true}); !errors.Is(err, readprep.ErrStale) {
+		t.Fatal("unpublished live availability reused aggregate", err)
+	}
+	replacement, _ := submitSelectionPreparation(t, s, viewer, access)
+	after := awaitSelectionPreparation(t, s, viewer, replacement.QueryID, access, HomeActionAuthority{Playback: true})
+	defer after.Release()
+	if after.Ready.Types[0].CapabilityCounts.Play != oldPlay-1 {
+		t.Fatal("new basis missed live availability", after.Ready.Types)
+	}
+}
+
+func TestSelectionPreparationMissingInputEpochIsMiss(t *testing.T) {
+	db, s, _ := browseFixture(t)
+	store, err := readprep.New(readprep.Config{Workers: 1})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	s.UseReadPreparations(store)
+	viewer := Viewer{Profile: "p", Fence: "f", Libraries: []string{"a"}}
+	access := SelectionPreparationAccess{Caller: "missing-input", Check: func(*Service) error { return nil }}
+	pending, _ := submitSelectionPreparation(t, s, viewer, access)
+	ready := awaitSelectionPreparation(t, s, viewer, pending.QueryID, access, HomeActionAuthority{})
+	ready.Release()
+	if _, err = db.Exec(`DELETE FROM catalog_selection_predicate_epoch`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = pollSelectionPreparation(t, s, viewer, pending.QueryID, access, HomeActionAuthority{}); !errors.Is(err, readprep.ErrStale) {
+		t.Fatal("missing input reused result", err)
+	}
+	if store.Stats().Deliveries != 0 {
+		t.Fatal("miss leaked delivery", store.Stats())
+	}
+}
