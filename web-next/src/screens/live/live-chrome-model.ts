@@ -27,6 +27,12 @@ export function liveTimeRange(startMs: number, endMs: number, format: (ms: numbe
   return t('guide.cellTime', {start: same ? from.slice(0, -(meridiem.length + 1)) : from, end: to});
 }
 
+/** The slider speaks wall-clock position, programme span and live delay together. */
+export function liveRailValueText(window: LiveChromeWindow, programme: LiveChromePort['programme'], format: (ms: number) => string): string {
+  return [format(window.positionMs), programme ? liveTimeRange(programme.startMs, programme.endMs, format) : undefined,
+    liveBehindLabel(Math.max(0, (window.liveEdgeMs - window.positionMs) / 1000)) ?? t('guide.live')].filter(Boolean).join(', ');
+}
+
 export function liveBehindLabel(seconds: number): string | undefined {
   if (!(seconds > 2)) return undefined;
   const duration = seconds < 3600 && seconds % 60 === 0 ? t('next.live.behindMinutes', {count: seconds / 60}) : formatBehindSec(seconds);
