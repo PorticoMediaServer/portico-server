@@ -60,6 +60,19 @@ func (c *browseCompiler) savedCollectionPredicate(node BrowseNode) (string, erro
 		return `SELECT sre.item_id FROM saved_resources res JOIN saved_resource_entries sre ON sre.resource_id=res.id WHERE res.id IN(` + placeholders(len(values)) + `) AND res.kind='collection' AND res.deleted=0 AND sre.item_id IS NOT NULL
  AND (res.owner_key=? OR res.visibility='server' OR EXISTS(SELECT 1 FROM saved_resource_shares share WHERE share.resource_id=res.id AND share.authority=? AND share.account_id=? AND share.profile_id=?))`
 	}
+	if c.bounded {
+		direct := `EXISTS(SELECT 1 FROM (` + entries() + ` AND sre.item_id=e.entity_id))`
+		held := `EXISTS(SELECT 1 FROM catalog_browse_memberships bei WHERE bei.entity_id=e.entity_id AND EXISTS(SELECT 1 FROM (` + entries() + ` AND sre.item_id=bei.item_id)) AND `
+		restriction, args := ItemRestrictionSQL("bei.item_id", c.restrictions)
+		c.args = append(c.args, args...)
+		held += restriction + `)`
+		parts := `EXISTS(SELECT 1 FROM catalog_browse_memberships bei WHERE bei.item_id=e.entity_id AND EXISTS(SELECT 1 FROM (` + entries() + ` AND sre.item_id=bei.entity_id)))`
+		clause := "(" + direct + " OR " + held + " OR " + parts + ")"
+		if negative {
+			clause = "NOT " + clause
+		}
+		return clause, nil
+	}
 	direct := `e.entity_id IN(` + entries() + `)`
 	held := `e.entity_id IN(SELECT bei.entity_id FROM (` + entries() + `) entry CROSS JOIN catalog_browse_memberships bei INDEXED BY catalog_browse_membership_item ON bei.item_id=entry.item_id WHERE `
 	restriction, args := ItemRestrictionSQL("bei.item_id", c.restrictions)
@@ -96,6 +109,9 @@ func (c *browseCompiler) episodeGroupPredicate(node BrowseNode) (string, error) 
 	}
 	c.args = append(c.args, show)
 	of := `ep.show_id=(SELECT id FROM catalog_entities WHERE public_id=pid_blob(?))`
+	if c.bounded && !strings.HasPrefix(group, "range:") {
+		of += ` AND ep.entity_id=e.entity_id`
+	}
 	switch {
 	case group == "all":
 		return `e.entity_id IN(SELECT ep.entity_id FROM catalog_episodes ep WHERE ` + of + `)`, nil
@@ -404,9 +420,12 @@ func (s *Service) browseGroupFence(node *BrowseNode, rows map[string][]int64, so
 	}
 	if len(saved) > 0 {
 		var fence sql.NullString
-		if err := s.read().QueryRow(`SELECT group_concat(id||':'||revision||':'||deleted||':'||visibility||':'||(SELECT count(*) FROM saved_resource_entries e WHERE e.resource_id=saved_resources.id)) FROM saved_resources WHERE id IN(SELECT value FROM json_each(?))`, idsJSON(saved)).Scan(&fence); err != nil {
+		if err := s.read().QueryRow(`SELECT group_concat(id||':'||revision||':'||deleted||':'||visibility) FROM saved_resources WHERE id IN(SELECT value FROM json_each(?))`, idsJSON(saved)).Scan(&fence); err != nil {
 			return "", err
 		}
+		// saved_resource_generation moves on every entry INSERT/UPDATE/DELETE as
+		// well as resource/share changes. Counting all collection entries adds no
+		// fence strength and would turn a preview page into an unbounded scan.
 		var shares int64
 		if err := s.read().QueryRow(`SELECT COALESCE((SELECT revision FROM saved_resource_generation WHERE id=1),0)`).Scan(&shares); err != nil {
 			return "", err
