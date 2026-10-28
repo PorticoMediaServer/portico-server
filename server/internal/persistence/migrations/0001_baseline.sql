@@ -10613,3 +10613,206 @@ CREATE TRIGGER summary_classification_update AFTER UPDATE OF value_key,minimum_a
 WHEN OLD.value_key IS NOT NEW.value_key OR OLD.minimum_age IS NOT NEW.minimum_age BEGIN
  UPDATE catalog_summary_classification_revision SET revision=revision+1 WHERE singleton=1;
 END;
+
+-- Complete exact-browse predicate inputs. Global by design: unrelated writes
+-- may invalidate reuse; no query, result or work state is persisted here.
+CREATE TABLE catalog_browse_predicate_epoch(
+ singleton INTEGER PRIMARY KEY CHECK(singleton=1),
+ revision INTEGER NOT NULL CHECK(revision>0)) STRICT;
+INSERT INTO catalog_browse_predicate_epoch VALUES(1,1);
+CREATE TRIGGER browse_predicate_catalog_browse_rows_insert AFTER INSERT ON catalog_browse_rows
+ BEGIN UPDATE catalog_browse_predicate_epoch SET revision=revision+1 WHERE singleton=1; END;
+CREATE TRIGGER browse_predicate_catalog_browse_rows_delete AFTER DELETE ON catalog_browse_rows
+ BEGIN UPDATE catalog_browse_predicate_epoch SET revision=revision+1 WHERE singleton=1; END;
+CREATE TRIGGER browse_predicate_catalog_browse_rows_update AFTER UPDATE OF entity_id,library_id,kind,title,sort_key,head,year,added_text,item_id,rating_key,label_key,available,recent,backdrop,duration_max,rating_max,recent_text,release_key,latest_aired_key,critic_key,episode_count,album_key,artist_key,track_key,file_size,resolution_key,random_key,availability_state ON catalog_browse_rows
+ WHEN OLD.entity_id IS NOT NEW.entity_id OR OLD.library_id IS NOT NEW.library_id OR OLD.kind IS NOT NEW.kind OR OLD.title IS NOT NEW.title OR OLD.sort_key IS NOT NEW.sort_key OR OLD.head IS NOT NEW.head OR OLD.year IS NOT NEW.year OR OLD.added_text IS NOT NEW.added_text OR OLD.item_id IS NOT NEW.item_id OR OLD.rating_key IS NOT NEW.rating_key OR OLD.label_key IS NOT NEW.label_key OR OLD.available IS NOT NEW.available OR OLD.recent IS NOT NEW.recent OR OLD.backdrop IS NOT NEW.backdrop OR OLD.duration_max IS NOT NEW.duration_max OR OLD.rating_max IS NOT NEW.rating_max OR OLD.recent_text IS NOT NEW.recent_text OR OLD.release_key IS NOT NEW.release_key OR OLD.latest_aired_key IS NOT NEW.latest_aired_key OR OLD.critic_key IS NOT NEW.critic_key OR OLD.episode_count IS NOT NEW.episode_count OR OLD.album_key IS NOT NEW.album_key OR OLD.artist_key IS NOT NEW.artist_key OR OLD.track_key IS NOT NEW.track_key OR OLD.file_size IS NOT NEW.file_size OR OLD.resolution_key IS NOT NEW.resolution_key OR OLD.random_key IS NOT NEW.random_key OR OLD.availability_state IS NOT NEW.availability_state
+ BEGIN UPDATE catalog_browse_predicate_epoch SET revision=revision+1 WHERE singleton=1; END;
+CREATE TRIGGER browse_predicate_catalog_browse_rows_previous_insert AFTER INSERT ON catalog_browse_rows_previous
+ BEGIN UPDATE catalog_browse_predicate_epoch SET revision=revision+1 WHERE singleton=1; END;
+CREATE TRIGGER browse_predicate_catalog_browse_rows_previous_delete AFTER DELETE ON catalog_browse_rows_previous
+ BEGIN UPDATE catalog_browse_predicate_epoch SET revision=revision+1 WHERE singleton=1; END;
+CREATE TRIGGER browse_predicate_catalog_browse_rows_previous_update AFTER UPDATE OF generation,present,entity_id,library_id,kind,title,sort_key,head,year,added_text,item_id,rating_key,label_key,available,recent,backdrop,duration_max,rating_max,recent_text,release_key,latest_aired_key,critic_key,episode_count,album_key,artist_key,track_key,file_size,resolution_key,random_key,availability_state ON catalog_browse_rows_previous
+ WHEN OLD.generation IS NOT NEW.generation OR OLD.present IS NOT NEW.present OR OLD.entity_id IS NOT NEW.entity_id OR OLD.library_id IS NOT NEW.library_id OR OLD.kind IS NOT NEW.kind OR OLD.title IS NOT NEW.title OR OLD.sort_key IS NOT NEW.sort_key OR OLD.head IS NOT NEW.head OR OLD.year IS NOT NEW.year OR OLD.added_text IS NOT NEW.added_text OR OLD.item_id IS NOT NEW.item_id OR OLD.rating_key IS NOT NEW.rating_key OR OLD.label_key IS NOT NEW.label_key OR OLD.available IS NOT NEW.available OR OLD.recent IS NOT NEW.recent OR OLD.backdrop IS NOT NEW.backdrop OR OLD.duration_max IS NOT NEW.duration_max OR OLD.rating_max IS NOT NEW.rating_max OR OLD.recent_text IS NOT NEW.recent_text OR OLD.release_key IS NOT NEW.release_key OR OLD.latest_aired_key IS NOT NEW.latest_aired_key OR OLD.critic_key IS NOT NEW.critic_key OR OLD.episode_count IS NOT NEW.episode_count OR OLD.album_key IS NOT NEW.album_key OR OLD.artist_key IS NOT NEW.artist_key OR OLD.track_key IS NOT NEW.track_key OR OLD.file_size IS NOT NEW.file_size OR OLD.resolution_key IS NOT NEW.resolution_key OR OLD.random_key IS NOT NEW.random_key OR OLD.availability_state IS NOT NEW.availability_state
+ BEGIN UPDATE catalog_browse_predicate_epoch SET revision=revision+1 WHERE singleton=1; END;
+CREATE TRIGGER browse_predicate_catalog_browse_memberships_insert AFTER INSERT ON catalog_browse_memberships
+ BEGIN UPDATE catalog_browse_predicate_epoch SET revision=revision+1 WHERE singleton=1; END;
+CREATE TRIGGER browse_predicate_catalog_browse_memberships_delete AFTER DELETE ON catalog_browse_memberships
+ BEGIN UPDATE catalog_browse_predicate_epoch SET revision=revision+1 WHERE singleton=1; END;
+CREATE TRIGGER browse_predicate_catalog_browse_memberships_update AFTER UPDATE OF entity_id,item_id,source ON catalog_browse_memberships
+ WHEN OLD.entity_id IS NOT NEW.entity_id OR OLD.item_id IS NOT NEW.item_id OR OLD.source IS NOT NEW.source
+ BEGIN UPDATE catalog_browse_predicate_epoch SET revision=revision+1 WHERE singleton=1; END;
+CREATE TRIGGER browse_predicate_catalog_browse_memberships_previous_insert AFTER INSERT ON catalog_browse_memberships_previous
+ BEGIN UPDATE catalog_browse_predicate_epoch SET revision=revision+1 WHERE singleton=1; END;
+CREATE TRIGGER browse_predicate_catalog_browse_memberships_previous_delete AFTER DELETE ON catalog_browse_memberships_previous
+ BEGIN UPDATE catalog_browse_predicate_epoch SET revision=revision+1 WHERE singleton=1; END;
+CREATE TRIGGER browse_predicate_catalog_browse_memberships_previous_update AFTER UPDATE OF generation,present,entity_id,item_id,source ON catalog_browse_memberships_previous
+ WHEN OLD.generation IS NOT NEW.generation OR OLD.present IS NOT NEW.present OR OLD.entity_id IS NOT NEW.entity_id OR OLD.item_id IS NOT NEW.item_id OR OLD.source IS NOT NEW.source
+ BEGIN UPDATE catalog_browse_predicate_epoch SET revision=revision+1 WHERE singleton=1; END;
+CREATE TRIGGER browse_predicate_catalog_entities_insert AFTER INSERT ON catalog_entities
+ BEGIN UPDATE catalog_browse_predicate_epoch SET revision=revision+1 WHERE singleton=1; END;
+CREATE TRIGGER browse_predicate_catalog_entities_delete AFTER DELETE ON catalog_entities
+ BEGIN UPDATE catalog_browse_predicate_epoch SET revision=revision+1 WHERE singleton=1; END;
+CREATE TRIGGER browse_predicate_catalog_entities_update AFTER UPDATE OF id,public_id,library_id,kind,parent_id,title,sort_key,year,added_ms,retired ON catalog_entities
+ WHEN OLD.id IS NOT NEW.id OR OLD.public_id IS NOT NEW.public_id OR OLD.library_id IS NOT NEW.library_id OR OLD.kind IS NOT NEW.kind OR OLD.parent_id IS NOT NEW.parent_id OR OLD.title IS NOT NEW.title OR OLD.sort_key IS NOT NEW.sort_key OR OLD.year IS NOT NEW.year OR OLD.added_ms IS NOT NEW.added_ms OR OLD.retired IS NOT NEW.retired
+ BEGIN UPDATE catalog_browse_predicate_epoch SET revision=revision+1 WHERE singleton=1; END;
+CREATE TRIGGER browse_predicate_catalog_libraries_insert AFTER INSERT ON catalog_libraries
+ BEGIN UPDATE catalog_browse_predicate_epoch SET revision=revision+1 WHERE singleton=1; END;
+CREATE TRIGGER browse_predicate_catalog_libraries_delete AFTER DELETE ON catalog_libraries
+ BEGIN UPDATE catalog_browse_predicate_epoch SET revision=revision+1 WHERE singleton=1; END;
+CREATE TRIGGER browse_predicate_catalog_libraries_update AFTER UPDATE OF id,library_id,root,name,kind,retired ON catalog_libraries
+ WHEN OLD.id IS NOT NEW.id OR OLD.library_id IS NOT NEW.library_id OR OLD.root IS NOT NEW.root OR OLD.name IS NOT NEW.name OR OLD.kind IS NOT NEW.kind OR OLD.retired IS NOT NEW.retired
+ BEGIN UPDATE catalog_browse_predicate_epoch SET revision=revision+1 WHERE singleton=1; END;
+CREATE TRIGGER browse_predicate_libraries_insert AFTER INSERT ON libraries
+ BEGIN UPDATE catalog_browse_predicate_epoch SET revision=revision+1 WHERE singleton=1; END;
+CREATE TRIGGER browse_predicate_libraries_delete AFTER DELETE ON libraries
+ BEGIN UPDATE catalog_browse_predicate_epoch SET revision=revision+1 WHERE singleton=1; END;
+CREATE TRIGGER browse_predicate_libraries_update AFTER UPDATE OF id,name,kind,root,position ON libraries
+ WHEN OLD.id IS NOT NEW.id OR OLD.name IS NOT NEW.name OR OLD.kind IS NOT NEW.kind OR OLD.root IS NOT NEW.root OR OLD.position IS NOT NEW.position
+ BEGIN UPDATE catalog_browse_predicate_epoch SET revision=revision+1 WHERE singleton=1; END;
+CREATE TRIGGER browse_predicate_catalog_attribute_terms_insert AFTER INSERT ON catalog_attribute_terms
+ BEGIN UPDATE catalog_browse_predicate_epoch SET revision=revision+1 WHERE singleton=1; END;
+CREATE TRIGGER browse_predicate_catalog_attribute_terms_delete AFTER DELETE ON catalog_attribute_terms
+ BEGIN UPDATE catalog_browse_predicate_epoch SET revision=revision+1 WHERE singleton=1; END;
+CREATE TRIGGER browse_predicate_catalog_attribute_terms_update AFTER UPDATE OF id,field_id,value_key ON catalog_attribute_terms
+ WHEN OLD.id IS NOT NEW.id OR OLD.field_id IS NOT NEW.field_id OR OLD.value_key IS NOT NEW.value_key
+ BEGIN UPDATE catalog_browse_predicate_epoch SET revision=revision+1 WHERE singleton=1; END;
+CREATE TRIGGER browse_predicate_catalog_item_attribute_edges_insert AFTER INSERT ON catalog_item_attribute_edges
+ BEGIN UPDATE catalog_browse_predicate_epoch SET revision=revision+1 WHERE singleton=1; END;
+CREATE TRIGGER browse_predicate_catalog_item_attribute_edges_delete AFTER DELETE ON catalog_item_attribute_edges
+ BEGIN UPDATE catalog_browse_predicate_epoch SET revision=revision+1 WHERE singleton=1; END;
+CREATE TRIGGER browse_predicate_catalog_item_attribute_edges_update AFTER UPDATE OF item_id,term_id,source_value,source_rowid ON catalog_item_attribute_edges
+ WHEN OLD.item_id IS NOT NEW.item_id OR OLD.term_id IS NOT NEW.term_id OR OLD.source_value IS NOT NEW.source_value OR OLD.source_rowid IS NOT NEW.source_rowid
+ BEGIN UPDATE catalog_browse_predicate_epoch SET revision=revision+1 WHERE singleton=1; END;
+CREATE TRIGGER browse_predicate_content_rating_ages_insert AFTER INSERT ON content_rating_ages
+ BEGIN UPDATE catalog_browse_predicate_epoch SET revision=revision+1 WHERE singleton=1; END;
+CREATE TRIGGER browse_predicate_content_rating_ages_delete AFTER DELETE ON content_rating_ages
+ BEGIN UPDATE catalog_browse_predicate_epoch SET revision=revision+1 WHERE singleton=1; END;
+CREATE TRIGGER browse_predicate_content_rating_ages_update AFTER UPDATE OF value_key,minimum_age ON content_rating_ages
+ WHEN OLD.value_key IS NOT NEW.value_key OR OLD.minimum_age IS NOT NEW.minimum_age
+ BEGIN UPDATE catalog_browse_predicate_epoch SET revision=revision+1 WHERE singleton=1; END;
+CREATE TRIGGER browse_predicate_dvr_catalog_provenance_insert AFTER INSERT ON dvr_catalog_provenance
+ BEGIN UPDATE catalog_browse_predicate_epoch SET revision=revision+1 WHERE singleton=1; END;
+CREATE TRIGGER browse_predicate_dvr_catalog_provenance_delete AFTER DELETE ON dvr_catalog_provenance
+ BEGIN UPDATE catalog_browse_predicate_epoch SET revision=revision+1 WHERE singleton=1; END;
+CREATE TRIGGER browse_predicate_dvr_catalog_provenance_update AFTER UPDATE OF item_id,recording_id,asset_id,source_id,channel_id,programme_id,guide_generation,artifact_digest,captured_start_ms,captured_end_ms,state ON dvr_catalog_provenance
+ WHEN OLD.item_id IS NOT NEW.item_id OR OLD.recording_id IS NOT NEW.recording_id OR OLD.asset_id IS NOT NEW.asset_id OR OLD.source_id IS NOT NEW.source_id OR OLD.channel_id IS NOT NEW.channel_id OR OLD.programme_id IS NOT NEW.programme_id OR OLD.guide_generation IS NOT NEW.guide_generation OR OLD.artifact_digest IS NOT NEW.artifact_digest OR OLD.captured_start_ms IS NOT NEW.captured_start_ms OR OLD.captured_end_ms IS NOT NEW.captured_end_ms OR OLD.state IS NOT NEW.state
+ BEGIN UPDATE catalog_browse_predicate_epoch SET revision=revision+1 WHERE singleton=1; END;
+CREATE TRIGGER browse_predicate_catalog_generations_insert AFTER INSERT ON catalog_generations
+ BEGIN UPDATE catalog_browse_predicate_epoch SET revision=revision+1 WHERE singleton=1; END;
+CREATE TRIGGER browse_predicate_catalog_generations_delete AFTER DELETE ON catalog_generations
+ BEGIN UPDATE catalog_browse_predicate_epoch SET revision=revision+1 WHERE singleton=1; END;
+CREATE TRIGGER browse_predicate_catalog_generations_update AFTER UPDATE OF singleton,generation,retaining ON catalog_generations
+ WHEN OLD.singleton IS NOT NEW.singleton OR OLD.generation IS NOT NEW.generation OR OLD.retaining IS NOT NEW.retaining
+ BEGIN UPDATE catalog_browse_predicate_epoch SET revision=revision+1 WHERE singleton=1; END;
+CREATE TRIGGER browse_predicate_catalog_derivations_insert AFTER INSERT ON catalog_derivations
+ BEGIN UPDATE catalog_browse_predicate_epoch SET revision=revision+1 WHERE singleton=1; END;
+CREATE TRIGGER browse_predicate_catalog_derivations_delete AFTER DELETE ON catalog_derivations
+ BEGIN UPDATE catalog_browse_predicate_epoch SET revision=revision+1 WHERE singleton=1; END;
+CREATE TRIGGER browse_predicate_catalog_derivations_update AFTER UPDATE OF domain,version,rebuilding,active_slot,cleaning,first_build ON catalog_derivations
+ WHEN OLD.domain IS NOT NEW.domain OR OLD.version IS NOT NEW.version OR OLD.rebuilding IS NOT NEW.rebuilding OR OLD.active_slot IS NOT NEW.active_slot OR OLD.cleaning IS NOT NEW.cleaning OR OLD.first_build IS NOT NEW.first_build
+ BEGIN UPDATE catalog_browse_predicate_epoch SET revision=revision+1 WHERE singleton=1; END;
+CREATE TRIGGER browse_predicate_reading_attribution_state_insert AFTER INSERT ON reading_attribution_state
+ BEGIN UPDATE catalog_browse_predicate_epoch SET revision=revision+1 WHERE singleton=1; END;
+CREATE TRIGGER browse_predicate_reading_attribution_state_delete AFTER DELETE ON reading_attribution_state
+ BEGIN UPDATE catalog_browse_predicate_epoch SET revision=revision+1 WHERE singleton=1; END;
+CREATE TRIGGER browse_predicate_reading_attribution_state_update AFTER UPDATE OF namespace,library_id,publication_rule_version,input_generation,ready_generation,build_generation,phase ON reading_attribution_state
+ WHEN OLD.namespace IS NOT NEW.namespace OR OLD.library_id IS NOT NEW.library_id OR OLD.publication_rule_version IS NOT NEW.publication_rule_version OR OLD.input_generation IS NOT NEW.input_generation OR OLD.ready_generation IS NOT NEW.ready_generation OR OLD.build_generation IS NOT NEW.build_generation OR OLD.phase IS NOT NEW.phase
+ BEGIN UPDATE catalog_browse_predicate_epoch SET revision=revision+1 WHERE singleton=1; END;
+CREATE TRIGGER browse_predicate_reading_attribution_members_insert AFTER INSERT ON reading_attribution_members
+ BEGIN UPDATE catalog_browse_predicate_epoch SET revision=revision+1 WHERE singleton=1; END;
+CREATE TRIGGER browse_predicate_reading_attribution_members_delete AFTER DELETE ON reading_attribution_members
+ BEGIN UPDATE catalog_browse_predicate_epoch SET revision=revision+1 WHERE singleton=1; END;
+CREATE TRIGGER browse_predicate_reading_attribution_members_update AFTER UPDATE OF library_id,generation,item_id,publication_type,publication_type_source,issue_date,issue_date_source,author_value,author_key,author_source,series_value,series_key,series_id,series_source,numbered_order,number_value,sort_key ON reading_attribution_members
+ WHEN OLD.library_id IS NOT NEW.library_id OR OLD.generation IS NOT NEW.generation OR OLD.item_id IS NOT NEW.item_id OR OLD.publication_type IS NOT NEW.publication_type OR OLD.publication_type_source IS NOT NEW.publication_type_source OR OLD.issue_date IS NOT NEW.issue_date OR OLD.issue_date_source IS NOT NEW.issue_date_source OR OLD.author_value IS NOT NEW.author_value OR OLD.author_key IS NOT NEW.author_key OR OLD.author_source IS NOT NEW.author_source OR OLD.series_value IS NOT NEW.series_value OR OLD.series_key IS NOT NEW.series_key OR OLD.series_id IS NOT NEW.series_id OR OLD.series_source IS NOT NEW.series_source OR OLD.numbered_order IS NOT NEW.numbered_order OR OLD.number_value IS NOT NEW.number_value OR OLD.sort_key IS NOT NEW.sort_key
+ BEGIN UPDATE catalog_browse_predicate_epoch SET revision=revision+1 WHERE singleton=1; END;
+CREATE TRIGGER browse_predicate_reading_publications_insert AFTER INSERT ON reading_publications
+ BEGIN UPDATE catalog_browse_predicate_epoch SET revision=revision+1 WHERE singleton=1; END;
+CREATE TRIGGER browse_predicate_reading_publications_delete AFTER DELETE ON reading_publications
+ BEGIN UPDATE catalog_browse_predicate_epoch SET revision=revision+1 WHERE singleton=1; END;
+CREATE TRIGGER browse_predicate_reading_publications_update AFTER UPDATE OF item_id,asset_id,format ON reading_publications
+ WHEN OLD.item_id IS NOT NEW.item_id OR OLD.asset_id IS NOT NEW.asset_id OR OLD.format IS NOT NEW.format
+ BEGIN UPDATE catalog_browse_predicate_epoch SET revision=revision+1 WHERE singleton=1; END;
+CREATE TRIGGER browse_predicate_catalog_asset_links_insert AFTER INSERT ON catalog_asset_links
+ BEGIN UPDATE catalog_browse_predicate_epoch SET revision=revision+1 WHERE singleton=1; END;
+CREATE TRIGGER browse_predicate_catalog_asset_links_delete AFTER DELETE ON catalog_asset_links
+ BEGIN UPDATE catalog_browse_predicate_epoch SET revision=revision+1 WHERE singleton=1; END;
+CREATE TRIGGER browse_predicate_catalog_asset_links_update AFTER UPDATE OF entity_id,asset_id,part_index,available,start_seconds,end_seconds,edition ON catalog_asset_links
+ WHEN OLD.entity_id IS NOT NEW.entity_id OR OLD.asset_id IS NOT NEW.asset_id OR OLD.part_index IS NOT NEW.part_index OR OLD.available IS NOT NEW.available OR OLD.start_seconds IS NOT NEW.start_seconds OR OLD.end_seconds IS NOT NEW.end_seconds OR OLD.edition IS NOT NEW.edition
+ BEGIN UPDATE catalog_browse_predicate_epoch SET revision=revision+1 WHERE singleton=1; END;
+CREATE TRIGGER browse_predicate_catalog_assets_insert AFTER INSERT ON catalog_assets
+ BEGIN UPDATE catalog_browse_predicate_epoch SET revision=revision+1 WHERE singleton=1; END;
+CREATE TRIGGER browse_predicate_catalog_assets_delete AFTER DELETE ON catalog_assets
+ BEGIN UPDATE catalog_browse_predicate_epoch SET revision=revision+1 WHERE singleton=1; END;
+CREATE TRIGGER browse_predicate_catalog_assets_update AFTER UPDATE OF id,token,size,modified_ns,path,available ON catalog_assets
+ WHEN OLD.id IS NOT NEW.id OR OLD.token IS NOT NEW.token OR OLD.size IS NOT NEW.size OR OLD.modified_ns IS NOT NEW.modified_ns OR OLD.path IS NOT NEW.path OR OLD.available IS NOT NEW.available
+ BEGIN UPDATE catalog_browse_predicate_epoch SET revision=revision+1 WHERE singleton=1; END;
+CREATE TRIGGER browse_predicate_dvr_catalog_retirements_insert AFTER INSERT ON dvr_catalog_retirements
+ BEGIN UPDATE catalog_browse_predicate_epoch SET revision=revision+1 WHERE singleton=1; END;
+CREATE TRIGGER browse_predicate_dvr_catalog_retirements_delete AFTER DELETE ON dvr_catalog_retirements
+ BEGIN UPDATE catalog_browse_predicate_epoch SET revision=revision+1 WHERE singleton=1; END;
+CREATE TRIGGER browse_predicate_dvr_catalog_retirements_update AFTER UPDATE OF item_id,requested_ms ON dvr_catalog_retirements
+ WHEN OLD.item_id IS NOT NEW.item_id OR OLD.requested_ms IS NOT NEW.requested_ms
+ BEGIN UPDATE catalog_browse_predicate_epoch SET revision=revision+1 WHERE singleton=1; END;
+CREATE TRIGGER browse_predicate_inventory_objects_insert AFTER INSERT ON inventory_objects
+ BEGIN UPDATE catalog_browse_predicate_epoch SET revision=revision+1 WHERE singleton=1; END;
+CREATE TRIGGER browse_predicate_inventory_objects_delete AFTER DELETE ON inventory_objects
+ BEGIN UPDATE catalog_browse_predicate_epoch SET revision=revision+1 WHERE singleton=1; END;
+CREATE TRIGGER browse_predicate_inventory_objects_update AFTER UPDATE OF id,source_id,asset_id,retired,root_incarnation,size,modified_ns,state,unsupported_reason ON inventory_objects
+ WHEN OLD.id IS NOT NEW.id OR OLD.source_id IS NOT NEW.source_id OR OLD.asset_id IS NOT NEW.asset_id OR OLD.retired IS NOT NEW.retired OR OLD.root_incarnation IS NOT NEW.root_incarnation OR OLD.size IS NOT NEW.size OR OLD.modified_ns IS NOT NEW.modified_ns OR OLD.state IS NOT NEW.state OR OLD.unsupported_reason IS NOT NEW.unsupported_reason
+ BEGIN UPDATE catalog_browse_predicate_epoch SET revision=revision+1 WHERE singleton=1; END;
+CREATE TRIGGER browse_predicate_library_sources_insert AFTER INSERT ON library_sources
+ BEGIN UPDATE catalog_browse_predicate_epoch SET revision=revision+1 WHERE singleton=1; END;
+CREATE TRIGGER browse_predicate_library_sources_delete AFTER DELETE ON library_sources
+ BEGIN UPDATE catalog_browse_predicate_epoch SET revision=revision+1 WHERE singleton=1; END;
+CREATE TRIGGER browse_predicate_library_sources_update AFTER UPDATE OF id,library_id,kind,incarnation,enabled,health,root,configured_root ON library_sources
+ WHEN OLD.id IS NOT NEW.id OR OLD.library_id IS NOT NEW.library_id OR OLD.kind IS NOT NEW.kind OR OLD.incarnation IS NOT NEW.incarnation OR OLD.enabled IS NOT NEW.enabled OR OLD.health IS NOT NEW.health OR OLD.root IS NOT NEW.root OR OLD.configured_root IS NOT NEW.configured_root
+ BEGIN UPDATE catalog_browse_predicate_epoch SET revision=revision+1 WHERE singleton=1; END;
+CREATE TRIGGER browse_predicate_compact_visibility_classes_insert AFTER INSERT ON compact_visibility_classes
+ BEGIN UPDATE catalog_browse_predicate_epoch SET revision=revision+1 WHERE singleton=1; END;
+CREATE TRIGGER browse_predicate_compact_visibility_classes_delete AFTER DELETE ON compact_visibility_classes
+ BEGIN UPDATE catalog_browse_predicate_epoch SET revision=revision+1 WHERE singleton=1; END;
+CREATE TRIGGER browse_predicate_compact_visibility_classes_update AFTER UPDATE OF id,class_key,library_id,policy_json,active_generation,catalog_revision,retired ON compact_visibility_classes
+ WHEN OLD.id IS NOT NEW.id OR OLD.class_key IS NOT NEW.class_key OR OLD.library_id IS NOT NEW.library_id OR OLD.policy_json IS NOT NEW.policy_json OR OLD.active_generation IS NOT NEW.active_generation OR OLD.catalog_revision IS NOT NEW.catalog_revision OR OLD.retired IS NOT NEW.retired
+ BEGIN UPDATE catalog_browse_predicate_epoch SET revision=revision+1 WHERE singleton=1; END;
+CREATE TRIGGER browse_predicate_compact_visibility_rows_insert AFTER INSERT ON compact_visibility_rows
+ BEGIN UPDATE catalog_browse_predicate_epoch SET revision=revision+1 WHERE singleton=1; END;
+CREATE TRIGGER browse_predicate_compact_visibility_rows_delete AFTER DELETE ON compact_visibility_rows
+ BEGIN UPDATE catalog_browse_predicate_epoch SET revision=revision+1 WHERE singleton=1; END;
+CREATE TRIGGER browse_predicate_compact_visibility_rows_update AFTER UPDATE OF class_id,generation,entity_id,library_id,kind,sort_key,head,decade,added,year,duration,rating,recent,random_key,availability_state ON compact_visibility_rows
+ WHEN OLD.class_id IS NOT NEW.class_id OR OLD.generation IS NOT NEW.generation OR OLD.entity_id IS NOT NEW.entity_id OR OLD.library_id IS NOT NEW.library_id OR OLD.kind IS NOT NEW.kind OR OLD.sort_key IS NOT NEW.sort_key OR OLD.head IS NOT NEW.head OR OLD.decade IS NOT NEW.decade OR OLD.added IS NOT NEW.added OR OLD.year IS NOT NEW.year OR OLD.duration IS NOT NEW.duration OR OLD.rating IS NOT NEW.rating OR OLD.recent IS NOT NEW.recent OR OLD.random_key IS NOT NEW.random_key OR OLD.availability_state IS NOT NEW.availability_state
+ BEGIN UPDATE catalog_browse_predicate_epoch SET revision=revision+1 WHERE singleton=1; END;
+CREATE TRIGGER browse_predicate_profile_restrictions_insert AFTER INSERT ON profile_restrictions
+ BEGIN UPDATE catalog_browse_predicate_epoch SET revision=revision+1 WHERE singleton=1; END;
+CREATE TRIGGER browse_predicate_profile_restrictions_delete AFTER DELETE ON profile_restrictions
+ BEGIN UPDATE catalog_browse_predicate_epoch SET revision=revision+1 WHERE singleton=1; END;
+CREATE TRIGGER browse_predicate_profile_restrictions_update AFTER UPDATE OF profile_id,rating_system,maximum_age_rating,maximum_age,allow_unrated,blocked_labels,allow_downloads,allow_live_tv,allow_dvr,allow_watch_together,revision ON profile_restrictions
+ WHEN OLD.profile_id IS NOT NEW.profile_id OR OLD.rating_system IS NOT NEW.rating_system OR OLD.maximum_age_rating IS NOT NEW.maximum_age_rating OR OLD.maximum_age IS NOT NEW.maximum_age OR OLD.allow_unrated IS NOT NEW.allow_unrated OR OLD.blocked_labels IS NOT NEW.blocked_labels OR OLD.allow_downloads IS NOT NEW.allow_downloads OR OLD.allow_live_tv IS NOT NEW.allow_live_tv OR OLD.allow_dvr IS NOT NEW.allow_dvr OR OLD.allow_watch_together IS NOT NEW.allow_watch_together OR OLD.revision IS NOT NEW.revision
+ BEGIN UPDATE catalog_browse_predicate_epoch SET revision=revision+1 WHERE singleton=1; END;
+CREATE TRIGGER browse_predicate_direct_profiles_insert AFTER INSERT ON direct_profiles
+ BEGIN UPDATE catalog_browse_predicate_epoch SET revision=revision+1 WHERE singleton=1; END;
+CREATE TRIGGER browse_predicate_direct_profiles_delete AFTER DELETE ON direct_profiles
+ BEGIN UPDATE catalog_browse_predicate_epoch SET revision=revision+1 WHERE singleton=1; END;
+CREATE TRIGGER browse_predicate_direct_profiles_update AFTER UPDATE OF id,account_id,deleted,revision ON direct_profiles
+ WHEN OLD.id IS NOT NEW.id OR OLD.account_id IS NOT NEW.account_id OR OLD.deleted IS NOT NEW.deleted OR OLD.revision IS NOT NEW.revision
+ BEGIN UPDATE catalog_browse_predicate_epoch SET revision=revision+1 WHERE singleton=1; END;
+CREATE TRIGGER browse_predicate_direct_memberships_insert AFTER INSERT ON direct_memberships
+ BEGIN UPDATE catalog_browse_predicate_epoch SET revision=revision+1 WHERE singleton=1; END;
+CREATE TRIGGER browse_predicate_direct_memberships_delete AFTER DELETE ON direct_memberships
+ BEGIN UPDATE catalog_browse_predicate_epoch SET revision=revision+1 WHERE singleton=1; END;
+CREATE TRIGGER browse_predicate_direct_memberships_update AFTER UPDATE OF account_id,incarnation,role,revision,disabled,allowed_libraries ON direct_memberships
+ WHEN OLD.account_id IS NOT NEW.account_id OR OLD.incarnation IS NOT NEW.incarnation OR OLD.role IS NOT NEW.role OR OLD.revision IS NOT NEW.revision OR OLD.disabled IS NOT NEW.disabled OR OLD.allowed_libraries IS NOT NEW.allowed_libraries
+ BEGIN UPDATE catalog_browse_predicate_epoch SET revision=revision+1 WHERE singleton=1; END;
+CREATE TRIGGER browse_predicate_access_limits_insert AFTER INSERT ON access_limits
+ BEGIN UPDATE catalog_browse_predicate_epoch SET revision=revision+1 WHERE singleton=1; END;
+CREATE TRIGGER browse_predicate_access_limits_delete AFTER DELETE ON access_limits
+ BEGIN UPDATE catalog_browse_predicate_epoch SET revision=revision+1 WHERE singleton=1; END;
+CREATE TRIGGER browse_predicate_access_limits_update AFTER UPDATE OF account_id,revision,updated_ms,body ON access_limits
+ WHEN OLD.account_id IS NOT NEW.account_id OR OLD.revision IS NOT NEW.revision OR OLD.updated_ms IS NOT NEW.updated_ms OR OLD.body IS NOT NEW.body
+ BEGIN UPDATE catalog_browse_predicate_epoch SET revision=revision+1 WHERE singleton=1; END;
+CREATE TRIGGER browse_predicate_policy_insert AFTER INSERT ON policy
+ BEGIN UPDATE catalog_browse_predicate_epoch SET revision=revision+1 WHERE singleton=1; END;
+CREATE TRIGGER browse_predicate_policy_delete AFTER DELETE ON policy
+ BEGIN UPDATE catalog_browse_predicate_epoch SET revision=revision+1 WHERE singleton=1; END;
+CREATE TRIGGER browse_predicate_policy_update AFTER UPDATE OF server_id,revision,payload,expires_at ON policy
+ WHEN OLD.server_id IS NOT NEW.server_id OR OLD.revision IS NOT NEW.revision OR OLD.payload IS NOT NEW.payload OR OLD.expires_at IS NOT NEW.expires_at
+ BEGIN UPDATE catalog_browse_predicate_epoch SET revision=revision+1 WHERE singleton=1; END;

@@ -2,14 +2,26 @@ package catalog
 
 import (
 	"bytes"
+	"context"
 	"database/sql"
 	"encoding/json"
 	"strconv"
 
+	"portico.local/server/internal/dbwork"
 	"portico.local/server/internal/identity"
 )
 
 func (s *Service) bulkSelection(p identity.Principal, v Viewer, in JobRequest) (string, []any, error) {
+	if s.readTx == nil && dbwork.Snapshot(s.Context()) == nil && !dbwork.InWriteTx(s.Context()) {
+		var query string
+		var args []any
+		err := dbwork.WithReadSnapshot(s.Context(), s.db, func(ctx context.Context) error {
+			var err error
+			query, args, err = s.WithContext(ctx).bulkSelection(p, v, in)
+			return err
+		})
+		return query, args, err
+	}
 	selector := in.Selector
 	metadataEdit := in.Command == "metadata-edit"
 	n := 0
@@ -119,7 +131,7 @@ func (s *Service) bulkSelection(p identity.Principal, v Viewer, in JobRequest) (
 		}
 		args = append(args, values...)
 		args = append(args, c.args...)
-		revision, e = s.browseRevision(BrowseRequest{Library: library, Profile: v.Profile, ViewerFence: v.Fence, Query: node}, pivot, sorts)
+		revision, e = s.browseRevision(BrowseRequest{Library: library, Profile: v.Profile, ViewerFence: v.Fence, Restrictions: v.EffectiveRestrictions(), Query: node}, pivot, sorts)
 		if e != nil {
 			return "", nil, e
 		}

@@ -795,6 +795,8 @@ catalog_browse_metric_cursors.domain
 catalog_browse_metric_cursors.entity_id
 catalog_browse_metric_cursors.projection_version
 catalog_browse_metric_cursors.sequence
+catalog_browse_predicate_epoch.revision
+catalog_browse_predicate_epoch.singleton
 catalog_browse_rows.added_text
 catalog_browse_rows.album_key
 catalog_browse_rows.artist_key

@@ -405,13 +405,11 @@ func (s *Service) browseRevision(request BrowseRequest, pivot browsePivot, sorts
 		}
 		extra += "\x00" + fence
 	}
-	readingScope, err := s.readingBrowseScope(request.Library)
+	witness, err := s.browseExactWitness(request.Library, request.Profile, request.Restrictions)
 	if err != nil {
 		return "", err
 	}
-	if readingScope != nil {
-		extra += "\x00" + readingScope.fence()
-	}
+	extra += "\x00" + witness
 	extra += s.relativeBrowseFence(request.Query)
 	digest := sha256.Sum256([]byte(fmt.Sprintf("%s\x00%s\x00%s\x00%s\x00%s\x00%d\x00%d\x00%s", request.Library, pivot.ID, request.ViewerFence, queryFingerprint(request.Query)+"\x00display:"+request.HomeRowDisplay, canonicalSort(sorts), revision.Catalog, revision.Viewer, extra)))
 	return "browse_" + hex.EncodeToString(digest[:]), nil
@@ -582,14 +580,8 @@ func (s *Service) browseSelect(request BrowseRequest) (BrowseResult, []browseRow
 	// The viewer's content restriction is the last clause, after the authorized
 	// library scope and the client's own query, so neither can widen it.
 	live, liveArgs := EntityRestrictionSQL("e.entity_id", request.Restrictions)
-	// A live restriction reads mutable classification and attribute facts.
-	// Normal age writes clear the envelope's total through the raw library
-	// revision, but not every live input advances that revision or the order
-	// fingerprint (for example, an attribute term's value_key). Until all of
-	// those inputs have a complete fence, a restricted total must be recounted. Only the literal "1" clause — no live restriction at
-	// all — is revision-invariant. This is deliberately the compiled clause,
-	// not Restriction.Active(): a predicate that compiles to SQL matters even
-	// when some individual switch does not change membership.
+	// Non-Reading surfaces retain their existing restriction reuse guard.
+	// Reading binds the full exact witness into its fingerprint below.
 	restrictionBound := live != "1"
 	if restrictionBound {
 		// The published class refuses a title the viewer may see none of by
@@ -695,21 +687,20 @@ func (s *Service) browseSelect(request BrowseRequest) (BrowseResult, []browseRow
 				return out, nil, err
 			}
 		}
-		if !counted && cursor.Total > 0 && !restrictionBound {
+		if !counted && (cursor.Total > 0 || cursor.TotalPresent && cursor.Total == 0) && (!restrictionBound || compiler.reading != nil) {
 			total, counted = cursor.Total, true
 		}
 	}
 	if !counted {
 		switch {
 		case request.Query == nil:
-			// An unfiltered Reading continuation whose cursor cannot carry the
-			// total (a page from before totals were carried, a zero/absent
-			// count, or a restriction-bound page) still owes the exact total,
+			// An unfiltered Reading continuation with an absent legacy total
+			// still owes the exact total,
 			// never the capped filter count.
 			if err = s.read().QueryRow(`SELECT count(*) FROM catalog_browse_rows e WHERE `+where, args...).Scan(&total); err != nil {
 				return out, nil, err
 			}
-		case restrictionBound:
+		case restrictionBound && compiler.reading == nil:
 			// The carried total was refused above because the live restriction
 			// is not revision-invariant, so this page recounts after every
 			// cursor check. A posted filter keeps its existing capped count and
@@ -881,7 +872,7 @@ func (s *Service) browseSelect(request BrowseRequest) (BrowseResult, []browseRow
 			keys = readingBrowseBoundedKeys(keys)
 		}
 		// The cursor carries the integer entity id; cursors are opaque and signed.
-		out.PageInfo.NextCursor, err = s.encodeCursor(cursorValue{EvaluationAt: s.relativeBrowseTime(request.Query), Scope: scope, Value: strconv.Itoa(start + len(selected)), ID: strconv.FormatInt(last.entity, 10), Keys: keys, Fingerprint: revision, Total: total, Expires: expires})
+		out.PageInfo.NextCursor, err = s.encodeCursor(cursorValue{EvaluationAt: s.relativeBrowseTime(request.Query), Scope: scope, Value: strconv.Itoa(start + len(selected)), ID: strconv.FormatInt(last.entity, 10), Keys: keys, Fingerprint: revision, Total: total, TotalPresent: true, Expires: expires})
 		if err != nil {
 			return out, nil, err
 		}
