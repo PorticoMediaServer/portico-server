@@ -36,7 +36,7 @@ export class ProfileSettingsSource {
   };
   quietBlocked = () => this.inputActive || this.snapshot.busy || !!this.pending;
 
-  constructor(private readonly api: ProfileAPI, scope: ProfileSettingsScope, private readonly isCurrent: () => boolean, upload?: (path: string, body: Parameters<IdentityUpload>[1], contentType: string, signal: AbortSignal) => Promise<unknown>) {
+  constructor(private readonly api: ProfileAPI, scope: ProfileSettingsScope, private readonly isCurrent: () => boolean, upload?: (path: string, body: Parameters<IdentityUpload>[1], contentType: string, signal: AbortSignal) => Promise<unknown>, private readonly observeDirect?: (document: DirectSnapshot) => void) {
     this.scope = Object.freeze({...scope});
     this.snapshot = Object.freeze({...this.snapshot, inUseId: this.scope.profileId});
     this.client = new ManagedProfilesClient(api, {...scope, authority: 'local'});
@@ -53,6 +53,8 @@ export class ProfileSettingsSource {
   private async read(signal = this.lifetime.signal): Promise<DirectSnapshot> {
     const raw = await this.api.request(routePath('get_direct_account'), 'GET', undefined, AbortSignal.any([this.lifetime.signal,signal]));
     const document = parseDirectSnapshot(raw, {...this.scope, authority: 'local'});
+    const guard = () => {if(!this.current() || signal.aborted || this.lifetime.signal.aborted)throw new DOMException('Profile read retired','AbortError');};
+    guard();this.observeDirect?.(document);guard();
     const viewer = document.profiles.find(profile => profile.id === this.scope.profileId);
     if (!viewer || document.account.disabled || !viewer.primary && Object.values(document.capabilities).some(Boolean)) {
       throw new CodedError('forbidden', 'The selected profile is no longer available.');
@@ -62,7 +64,7 @@ export class ProfileSettingsSource {
   refresh = async (): Promise<QuietRefreshOutcome> => {
     if (!this.current() || this.quietBlocked()) return {kind: 'deferred'};
     this.invalidateQuiet();const serial = this.refreshSerial, before = this.snapshot.document, read = this.quietRead = new AbortController();
-    const owns = () => this.current() && serial === this.refreshSerial && !this.quietBlocked() && this.snapshot.document === before;
+    const owns = () => this.current() && !read.signal.aborted && serial === this.refreshSerial && !this.quietBlocked() && this.snapshot.document === before;
     try {
       const document = await this.read(read.signal);
       if (!owns()) return {kind: 'deferred'};

@@ -249,7 +249,7 @@ export function SettingsEntry() {
         const response = await api.routeFetch(api.baseUrl + path, {method: 'POST', signal, headers: {Authorization: 'Bearer ' + context.session().accessToken, 'Content-Type': contentType}, body: body as BodyInit});
         if (!response.ok) throw Object.assign(new Error('Profile picture could not be saved.'), {status: response.status});
         return response.json();
-      }) : undefined;
+      }, buildContext.observeDirect) : undefined;
     const restrictions = profiles ? new ProfileRestrictionsSource(api, profiles, current) : undefined;
     const offRestrictions = restrictions?.subscribe(() => {if (current() && restrictions.getSnapshot().error) reportError();});
     const profileDevices = profiles && identity.signIn === 'local' ? new ProfileDevicesSource(api, profiles, current) : undefined;
