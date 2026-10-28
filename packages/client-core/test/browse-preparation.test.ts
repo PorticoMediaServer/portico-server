@@ -7,8 +7,14 @@ import {parseBrowseCapabilities} from '../src/browse.ts';
 import type {LibraryContentApi, ContentEntry} from '../src/library-content.ts';
 import type {PreparationResponse, PreparationRuntime} from '../src/read-preparation.ts';
 
-const installed = 'get_library_reading_facet_query' in routePaths;
-const domainTest = installed ? test : test.skip;
+test('official generated preparation operation IDs are installed', () => {
+  for (const id of ['get_library_reading_facet_query', 'delete_library_reading_facet_query',
+    'get_library_reading_browse_query', 'delete_library_reading_browse_query',
+    'get_library_browse_selection_query', 'delete_library_browse_selection_query'] as const) {
+    assert.equal(typeof routePaths[id], 'string', id);
+    assert.match(routePaths[id], /^\/v1\/libraries\/\{id\}\//);
+  }
+});
 const signal = () => new AbortController().signal;
 const tick = async () => {for (let n = 0; n < 20; n++) await Promise.resolve();};
 const ready = (body: unknown, headers: Record<string, string> = {}): PreparationResponse => ({status: 200, headers, body});
@@ -62,7 +68,7 @@ test('one 409 re-anchors the captured POST without its stale revision, then surf
   await assert.rejects(readBrowsePage(api, 'lib', original, {isCurrent: () => true}), (e: any) => e.status === 409 && e.response === response);
   assert.deepEqual(bodies, [original, {...original, range: {start: 1}}]); assert.ok(Object.isFrozen(bodies[0].sort));
 });
-domainTest('Reading facets honor body and full Retry-After floors before GET, release after ready', async () => {
+test('Reading facets honor body and full Retry-After floors before GET, release after ready', async () => {
   const time = clock(), calls: string[] = []; let count = 0;
   const response = {...pending('reading-facet', 'query-1', 1800), headers: {'Retry-After': '2', Location: '/v1/libraries/lib/reading-facet-queries/query-1', 'X-Proof': 'preserved'}};
   const api: LibraryContentApi = {request: async () => {throw 0;}, requestRaw: async (target, method) => {calls.push(`${method} ${target}`); return count++ ? ready(facet) : response;}};
@@ -71,14 +77,14 @@ domainTest('Reading facets honor body and full Retry-After floors before GET, re
   await time.advance(1); assert.equal((await work).total, 1);
   assert.deepEqual(calls.slice(1), ['GET /v1/libraries/lib/reading-facet-queries/query-1', 'DELETE /v1/libraries/lib/reading-facet-queries/query-1']);
 });
-domainTest('initial Reading browse 202 polls GET and never publishes an empty successful page', async () => {
+test('initial Reading browse 202 polls GET and never publishes an empty successful page', async () => {
   const time = clock(), calls: string[] = []; let published = false;
   const s = session(async (target, method) => {calls.push(`${method} ${target}`); return method === 'POST' ? pending('reading-browse') : ready(page());}, {preparationRuntime: time.runtime, onPage: () => {published = true;}});
   const work = s.fetchPage(0, 1, signal()); await tick(); assert.equal(published, false);
   await time.advance(251); assert.equal((await work).items[0]?.id, 'book-0'); assert.equal(published, true);
   assert.match(calls[1]!, /^GET .*reading-browse-queries/); s.retire();
 });
-domainTest('ordinary page resolves immediately; selection has its own lifetime and notifies late onWhole', async () => {
+test('ordinary page resolves immediately; selection has its own lifetime and notifies late onWhole', async () => {
   const time = clock(), events: string[] = [], calls: string[] = [], controller = new AbortController();
   const s = session(async (target, method) => {calls.push(`${method} ${target}`); return method === 'POST' ? ready(page(0, {wholeSelectionPreparing: pending('browse-selection').body})) : ready(whole());},
     {preparationRuntime: time.runtime, onPage: () => events.push('page'), onWhole: () => events.push('whole')});
@@ -86,14 +92,14 @@ domainTest('ordinary page resolves immediately; selection has its own lifetime a
   controller.abort(); await tick(); assert.equal(calls.length, 1, 'completed fetch cancellation cannot cancel the aggregate');
   await time.advance(251); assert.deepEqual(events, ['page', 'whole']); assert.equal(s.wholeSelection()?.total, 4); s.retire();
 });
-domainTest('retiring/query switching cancels pending selection and rejects a late ready response', async () => {
+test('retiring/query switching cancels pending selection and rejects a late ready response', async () => {
   const time = clock(), calls: string[] = [], events: unknown[] = []; let finish!: (value: PreparationResponse) => void;
   const s = session(async (target, method) => {calls.push(`${method} ${target}`); if (method === 'POST') return ready(page(0, {wholeSelectionPreparing: pending('browse-selection').body}));
     if (method === 'DELETE') return ready(undefined); return new Promise(resolve => {finish = resolve;});}, {preparationRuntime: time.runtime, onWhole: value => events.push(value)});
   await s.fetchPage(0, 1, signal()); await tick(); await time.advance(251); s.retire(); finish(ready(whole())); await tick();
   assert.equal(s.wholeSelection(), undefined); assert.deepEqual(events, []); assert.equal(calls.filter(call => call.startsWith('DELETE')).length, 1);
 });
-domainTest('later pages never install a whole descriptor while the original aggregate is preparing', async () => {
+test('later pages never install a whole descriptor while the original aggregate is preparing', async () => {
   const time = clock(); let post = 0;
   const s = session(async (_target, method) => method === 'POST' ? ready(post++ ? page(1, {wholeSelection: whole({total: 0, types: []})}) : page(0, {wholeSelectionPreparing: pending('browse-selection').body})) : ready(whole()), {preparationRuntime: time.runtime});
   await s.fetchPage(0, 1, signal()); await s.fetchPage(1, 1, signal()); assert.equal(s.wholeSelection(), undefined); await tick();
@@ -102,19 +108,19 @@ domainTest('later pages never install a whole descriptor while the original aggr
 for (const changed of [{catalogRevision: 'other'}, {selector: {query: {libraryId: 'other', pivot: 'books', sort: query.sorts}}},
   {selector: {query: {libraryId: 'lib', pivot: 'movies', sort: query.sorts}}}, {selector: {query: {libraryId: 'lib', pivot: 'books', sort: [{field: 'title', direction: 'desc'}]}}},
   {selector: {query: {libraryId: 'lib', pivot: 'books', filter: {field: 'title', operator: 'equals', value: 'other'}, sort: query.sorts}}}]) {
-  domainTest(`prepared selection refuses changed original page basis: ${JSON.stringify(changed)}`, async () => {
+  test(`prepared selection refuses changed original page basis: ${JSON.stringify(changed)}`, async () => {
     const time = clock(); let stale = false;
     const s = session(async (_target, method) => method === 'POST' ? ready(page(0, {wholeSelectionPreparing: pending('browse-selection').body})) : ready(whole(changed)), {preparationRuntime: time.runtime, onStale: () => {stale = true;}});
     await s.fetchPage(0, 1, signal()); await tick(); await time.advance(251); assert.equal(s.wholeSelection(), undefined); assert.equal(stale, true); s.retire();
   });
 }
-domainTest('revocation during preparation remains an error and cancels known caller demand', async () => {
+test('revocation during preparation remains an error and cancels known caller demand', async () => {
   const time = clock(), calls: string[] = []; let number = 0;
   const api: LibraryContentApi = {request: async () => {throw 0;}, requestRaw: async (target, method) => {calls.push(`${method} ${target}`); return number++ ? {status: 403, headers: {'X-Proof': 'revoked'}, body: {error: {code: 'forbidden'}}} : pending('reading-facet');}};
   const work = readReadingFacet(api, 'lib', path, 'author', {isCurrent: () => true, runtime: time.runtime}); const rejected = assert.rejects(work, (e: any) => e.status === 403 && e.code === 'forbidden');
   await tick(); await time.advance(251); await rejected; assert.match(calls.at(-1)!, /^DELETE /);
 });
-domainTest('late initial Reading 202 after cancellation is released without publishing', async () => {
+test('late initial Reading 202 after cancellation is released without publishing', async () => {
   const time = clock(), abort = new AbortController(), calls: string[] = []; let finish!: (value: PreparationResponse) => void;
   const api: LibraryContentApi = {request: async () => {throw 0;}, requestRaw: async (target, method) => {calls.push(`${method} ${target}`); if (method === 'DELETE') return ready(undefined); return new Promise(resolve => {finish = resolve;});}};
   const work = readReadingFacet(api, 'lib', path, 'author', {signal: abort.signal, isCurrent: () => true, runtime: time.runtime});
@@ -161,7 +167,7 @@ test('BrowseSession works without AbortSignal.any and releases composed listener
   }
 });
 
-domainTest('a known optional selection is canceled even when retirement precedes its first shared-reader seam', async () => {
+test('a known optional selection is canceled even when retirement precedes its first shared-reader seam', async () => {
   const controller = new AbortController(); controller.abort(); const calls: string[] = [];
   const response = ready(page(0, {wholeSelectionPreparing: pending('browse-selection').body}));
   const api: LibraryContentApi = {request: async () => {throw 0;}, requestRaw: async (path, method) => {calls.push(`${method} ${path}`); return ready(undefined);}};
