@@ -83,3 +83,23 @@
 /* phone-read 6: retained match controls above the existing progress footer. */
 .searchNavigation { position: absolute; z-index: 9; inset: auto 20px 112px; display: flex; justify-content: center; pointer-events: none; }
 .searchNavigation > * { pointer-events: auto; }
+
+/* phone-read 26 / tablet-read 9: zoomed fixed page, its map and the brief zoom level. */
+.zoomLayer, .zoomLens { pointer-events: none; }
+.zoomLayer { position: absolute; z-index: 8; inset: 0; }
+.zoomPill { position: absolute; left: 50%; top: 60px; transform: translateX(-50%); height: 32px; padding: 0 14px; border-radius: 16px; display: inline-flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 800; color: var(--color-text); background: rgba(7,16,24,.78); -webkit-backdrop-filter: blur(16px); backdrop-filter: blur(16px); box-shadow: 0 0 0 1px rgba(237,245,250,.12); font-variant-numeric: tabular-nums; white-space: nowrap; opacity: 0; transition: opacity 160ms var(--ease-out); }
+.zoomPill[data-shown] { opacity: 1; }
+.zoomPill > span { color: var(--color-text-tertiary); font-weight: 600; }
+.pageMap { position: absolute; right: 14px; bottom: 40px; width: 62px; height: 94px; border-radius: 6px; overflow: hidden; background: #f1e9d6; box-shadow: 0 10px 24px -8px #000, 0 0 0 1px rgba(237,245,250,.2); }
+.pageMap > img { display: block; width: 100%; height: 100%; object-fit: cover; opacity: .7; }
+.pageMap > i { position: absolute; border-radius: 2px; box-shadow: 0 0 0 1.5px var(--color-accent-strong), 0 0 0 200px rgba(7,16,24,.38); }
+.zoomLens { position: absolute; z-index: 9; right: 48px; top: 112px; width: 300px; padding: 10px; border-radius: 16px; background: rgba(22,44,58,.94); -webkit-backdrop-filter: blur(20px); backdrop-filter: blur(20px); box-shadow: 0 30px 60px -18px #000, 0 0 0 1px rgba(237,245,250,.1); }
+.reader[data-presentation="tablet"] .zoomLens { right: 20px; width: 262px; }
+.lensMap { position: relative; display: flex; border-radius: 8px; overflow: hidden; }
+.lensMap > img { display: block; height: 150px; width: auto; opacity: .8; }
+.reader[data-presentation="tablet"] .lensMap > img { height: 112px; }
+.lensMap > span { position: absolute; border: 2px solid var(--color-accent-strong); border-radius: 3px; box-shadow: 0 0 0 999px rgba(7,16,24,.45); }
+.zoomLens > p { margin: 10px 4px 2px; font-size: 12.5px; line-height: 1.5; color: var(--color-text-tertiary); }
+.zoomLens > p > b { color: var(--color-text-secondary); }
+.reader[data-reduced-motion] .zoomPill { transition: none; }
+@media (prefers-reduced-motion: reduce) { .zoomPill { transition: none; } }

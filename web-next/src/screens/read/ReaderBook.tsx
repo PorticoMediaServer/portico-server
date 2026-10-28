@@ -17,7 +17,7 @@ import {ReaderSearch, type ReaderSearchHit} from '../../kit/reader/ReaderSearch'
 import {ReadReader} from './ReadReader';
 import {ReadingDisplay} from './ReadingDisplay';
 import {ReaderFirstRunHint} from './ReaderFirstRunHint';
-import {ComicPageFooter, FixedPageFooter, FixedPageMenus, FixedPageStrip, FixedPagesPanel, fixedPageZoomLabel} from './fixed-page';
+import {ComicPageFooter, FixedPageFooter, FixedPageMenus, FixedPageZoom, FixedPageStrip, FixedPagesPanel, fixedPageZoomLabel} from './fixed-page';
 import {readingDisplayCopy} from './display-copy';
 import {readerBookPresentation, type ReaderEnvironment} from './native/tablet-presentation';
 import type {ReaderMountAuthority} from './mount';
@@ -243,6 +243,8 @@ export function ReaderBook({book, active, reportError, onBack, onOpenSettings, o
         pages={readerPagePosition(value.location, value.metadata?.pageCount)} chapters={readerChapterMarks(value.toc, value.location ?? undefined)}
         onPages={() => {setFixedPane('pages'); setPanel('contents');}} onContents={() => {setFixedPane('contents'); setPanel('contents');}}
         onFit={element => {zoomAnchor.current = element; setFixedMenu(fixedMenu === 'zoom' ? undefined : 'zoom');}}/> : undefined,
+      fixedPageZoom: publication.format === 'pdf' && value.location && value.location.format !== 'epub' && value.location.viewport
+        ? <FixedPageZoom controller={controller} authority={authority} format={publication.format} reportError={engineError} viewport={value.location.viewport} presentation={presentation}/> : undefined,
       fixedPageStrip: publication.format === 'pdf' && !compactDocument ? <FixedPageStrip controller={controller} authority={authority} format={publication.format} reportError={engineError}/> : undefined,
       onPanelDismiss: () => setPanel(undefined), actions: [
         ...(compactDocument ? [{id: 'search', label: t('next.reader.search'), icon: 'i-search' as const, expanded: panel === 'search', onPress: (element: HTMLButtonElement) => {anchor.current = element; setPanel(panel === 'search' ? undefined : 'search');}}] : []),

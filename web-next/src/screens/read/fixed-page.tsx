@@ -3,9 +3,10 @@ import {defaultI18n} from '@i18n';
 import type {ReadingPreferences} from '@portico/client-core';
 import {createWindowedCollection, type WindowedCollection} from '@core/collections/index.ts';
 import {WindowedGrid} from '../../kit/layout/WindowedGrid';
-import {readerErrorCode, type ReadingController, type ReaderCrease, type ReaderErrorCode, type ReaderFit, type ReaderFormat, type ReaderLocation, type ReaderViewport, type ReaderZoom, type ReaderZoomState} from '@portico/reader-core';
+import {readerErrorCode, type ReadingController, type ReaderCrease, type ReaderErrorCode, type ReaderFit, type ReaderFixedViewport, type ReaderFormat, type ReaderLocation, type ReaderViewport, type ReaderZoom, type ReaderZoomState} from '@portico/reader-core';
 import {Menu, MenuItem, MenuSeparator} from '../../kit/overlays';
 import {Icon} from '../../kit/Icon';
+import {ReaderZoomMap} from '../../kit/reader/ReaderZoomMap';
 import type {ReaderChapterMark} from './ReaderChrome';
 import {loadReadPagePreview, type ReadPagePreview} from './preview';
 import type {ReaderMountAuthority} from './mount';
@@ -105,6 +106,14 @@ function PageImage({controller, authority, reportError, format, index, large = f
     // A preview belongs to one page of one authorized document.
   }, [controller, index, authority, reportError, large, signal]);
   return preview ? <img src={preview.url} alt="" width={preview.width} height={preview.height} loading="lazy" decoding="async"/> : <span className={styles.blank} aria-hidden="true">{format.toUpperCase()}</span>;
+}
+
+/** The zoom map reuses the authorized page preview of the page in view. */
+export function FixedPageZoom({controller, authority, reportError, format, viewport, presentation}: Fixed & Readonly<{
+  viewport: ReaderFixedViewport; presentation: 'phone' | 'tablet' | 'desktop';
+}>) {
+  return <ReaderZoomMap viewport={viewport} presentation={presentation} percent={defaultI18n.percent(viewport.scale)}
+    page={<PageImage controller={controller} authority={authority} reportError={reportError} format={format} index={viewport.page} large/>}/>;
 }
 
 /** Comic pages use their clear-chrome footer, including the renderer's paired spreads. */

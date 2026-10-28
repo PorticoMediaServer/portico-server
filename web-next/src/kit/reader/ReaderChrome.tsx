@@ -35,6 +35,8 @@ export type ReaderChromeProps = Readonly<{
   fixedPageFooter?: ReactNode;
   /** Optional drawn strip (page thumbnails) that sits above the footer on fixed pages. */
   fixedPageStrip?: ReactNode;
+  /** A zoomed fixed page's map; drawn over the page whether or not the controls are shown. */
+  fixedPageZoom?: ReactNode;
   /** Optional one-time coach mark (phone-read 14) drawn above the page and chrome. */
   hint?: ReactNode;
   /** The same page tap closes a docked panel without also navigating the book. */
@@ -83,7 +85,7 @@ function useReaderChromeMotion(root: RefObject<HTMLDivElement | null>, shown: bo
 }
 
 export function ReaderChrome({title, subtitle, copy, chapter, pages, remainingInSection, percent, remainingInBook, progression, chapters = [], direction, tapTurnEnabled, pageTurnsEnabled,
-  onBack, onTurn, onSeek, actions, children, panel, panelReflows = false, onPanelDismiss, showPageArrows, presentation, holdOpen = false, textSelectionActive = false, initiallyVisible = true, reducedMotion = false, fixedPage = false, comic = false, fixedPageFooter, fixedPageStrip, searchNavigation, hint, subscribeSurfaceInput, readActivity}: ReaderChromeProps) {
+  onBack, onTurn, onSeek, actions, children, panel, panelReflows = false, onPanelDismiss, showPageArrows, presentation, holdOpen = false, textSelectionActive = false, initiallyVisible = true, reducedMotion = false, fixedPage = false, comic = false, fixedPageFooter, fixedPageStrip, fixedPageZoom, searchNavigation, hint, subscribeSurfaceInput, readActivity}: ReaderChromeProps) {
   const root = useRef<HTMLDivElement>(null), chrome = useRef<HTMLDivElement>(null);
   const [visible, setVisible] = useState(initiallyVisible), [focusWithin, setFocusWithin] = useState(false);
   const [focusRequest, requestFocus] = useState(0), focusedRequest = useRef(0);
@@ -153,6 +155,7 @@ export function ReaderChrome({title, subtitle, copy, chapter, pages, remainingIn
       const bounds = event.currentTarget.getBoundingClientRect();
       if (bounds.width > 0) tap((event.clientX - bounds.left) / bounds.width);
     }}>{children}</div>
+    {fixedPage && fixedPageZoom}
     {!comic && title && <div className={styles.runningTitle} aria-hidden={shown || !!hint}>{title}</div>}
     {!comic && (chapter || remainingInSection) && <div className={styles.runningFooter} aria-hidden={shown || !!hint}><span>{chapter}</span><span>{remainingInSection}</span></div>}
     <div ref={chrome} className={styles.chrome} inert={!shown || !!hint} aria-hidden={!shown || !!hint}
