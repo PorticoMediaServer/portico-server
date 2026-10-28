@@ -35,7 +35,7 @@ export type ShellFacts = Readonly<{identity: ShellIdentity; preferences: Prefere
 export type ShellAssemblyContext = Readonly<{
   api: HttpLocalApi; session: () => LocalSession; auth: LocalSessionRefresher; events: EventsClient;
   freshness: FreshnessRuntime; home: HomeService; inbox: InboxService; artwork: ShellArtwork;
-  facts: ShellFacts; factsSource?: ShellFactsSource; homeAuthority?: () => void; preferences?: PreferencesReader; epoch: number; viewerFence?: string; isCurrent: () => boolean;
+  facts: ShellFacts; factsSource?: ShellFactsSource; homeAuthority?: () => void; observeDirect?: (snapshot: DirectSnapshot) => void; preferences?: PreferencesReader; epoch: number; viewerFence?: string; isCurrent: () => boolean;
   signOut: () => void; signOutPorticoAccount?: () => void; switchProfile:(profileId:string,pin:string,signal:AbortSignal)=>Promise<void>; switchServer:(serverId:string,expectedRevision?:number)=>Promise<void>; savedServers:readonly {id:string;label:string}[];
 }>;
 export type ShellAssembly = Readonly<{
@@ -392,7 +392,7 @@ export class ShellBootstrap {
     const saved=(await (this.environment.actions?.()??browserAppSessionActions()).store.read()).servers;
     const savedServers=await display.choices(saved.map(value=>({pin:value.connection.pin,origin:value.connection.logicalOrigin,signIn:value.signIn})),signal);
     if (!isCurrent()) return;
-    const context: ShellAssemblyContext = {api, session: () => session, auth, events, freshness, home, inbox, artwork, factsSource, homeAuthority: factOwner.authority, get facts() {return facts();}, preferences, epoch, get viewerFence() {return homeFence.viewerFence;}, isCurrent, signOut,signOutPorticoAccount,switchProfile,switchServer:this.selectServer,get savedServers() {return savedServers.map(value => value.id === session.viewer.serverId ? {...value, label: facts().serverName} : value);}};
+    const context: ShellAssemblyContext = {api, session: () => session, auth, events, freshness, home, inbox, artwork, factsSource, homeAuthority: factOwner.authority, observeDirect: factOwner.observeDirect, get facts() {return facts();}, preferences, epoch, get viewerFence() {return homeFence.viewerFence;}, isCurrent, signOut,signOutPorticoAccount,switchProfile,switchServer:this.selectServer,get savedServers() {return savedServers.map(value => value.id === session.viewer.serverId ? {...value, label: facts().serverName} : value);}};
     const assembly = await this.assemble(context);
     if (!isCurrent()) { assembly.dispose(); return; }
     cleanups.push(() => assembly.dispose());

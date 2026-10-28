@@ -57,6 +57,13 @@ export function createShellFactOwner(o: Readonly<{
   const source = createShellFactsSource(o.initial), admitted = o.session(), initial = o.witnesses;
   let closed = false, retained = false, confirmedGuide = initial.guide;
   const current = () => !closed && o.isCurrent();
+  // A mounted owner can return the same strictly parsed proof without another
+  // network read. Known eligibility changes still retire before its display work.
+  const acceptDirect = (snapshot: DirectSnapshot): boolean => {
+    if (!current()) return false;
+    if (shellProofChanged(initial, {direct: snapshot}, admitted.viewer.profileId)) {o.retire();return false;}
+    return true;
+  };
   const interests: FreshnessInterest[] = [];
   const add = (name: string, dependencies: readonly string[], read: (context: InterestReadContext) => Promise<InterestOutcome>, background = false) => {
     const interest = o.hub.interest({name: 'shell-' + name, dependencies, read,
@@ -150,7 +157,7 @@ export function createShellFactOwner(o: Readonly<{
       // The strict parse of this same body is required before absence/eligibility inference.
       const snapshot = parseDirectSnapshot(raw);
       if (!sameRequest(captured, context.signal)) return {kind: 'superseded'};
-      if (shellProofChanged(initial, {direct: snapshot}, admitted.viewer.profileId)) {o.retire(); return {kind: 'superseded'};}
+      if (!acceptDirect(snapshot)) return {kind: 'superseded'};
       directProjection = {snapshot, session: captured}; members.invalidate(); return answered;
     } catch (error) {return failed(error);}
   }, true);
@@ -176,6 +183,7 @@ export function createShellFactOwner(o: Readonly<{
   };
   return {
     source, request,
+    observeDirect: (snapshot: DirectSnapshot) => {acceptDirect(snapshot);},
     preferences: () => o.hub.note(dependsOn.settings('preferences')),
     authority: () => homeAuthority.invalidate(),
     all() {if (!current()) return; for (const group of ['directory', 'server', 'members', 'liveSources', 'libraryChannels'] as const) request(group); preferences.invalidate(); direct.invalidate(); permission?.invalidate(); homeAuthority.invalidate();},

@@ -106,3 +106,10 @@ test('guide Retry-After remains binding when later hints switch server, live-sou
   await h.time.advance(1);assert.equal(guideReads(),2,'all three groups coalesce at the original response-time floor');
   assert.equal(h.counts().retired,0);h.dispose();assert.equal(h.time.pending(),0);
 });
+
+test('mounted strict direct proof retires synchronously through the original classifier without another request', async () => {
+  const h=harness();h.hub.touch();h.owner.observeDirect(parseDirectSnapshot({...direct(),account:{...direct().account,disabled:true}}));
+  assert.equal(h.counts().retired,1);assert.equal(h.calls.length,0);assert.equal(h.owner.source.getSnapshot().identity.profileName,'Evening');h.dispose();
+  const renamed=harness(),proof=direct();proof.account.username='New';proof.profiles[0].name='New';
+  renamed.owner.observeDirect(parseDirectSnapshot(proof));assert.equal(renamed.counts().retired,0);assert.equal(renamed.calls.length,0);renamed.dispose();
+});
