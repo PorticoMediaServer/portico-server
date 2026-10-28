@@ -110,7 +110,7 @@ func TestReadingBrowsePreparationHTTPLeaseReadyCancelAndDrift(t *testing.T) {
 	}
 	path := base + "/reading-browse-queries/" + pending.QueryID
 	w = preparedReadingHTTP(t, mux, "GET", path, f.f.owner.AccessToken, nil, checkLease)
-	if w.Code != 202 || store.Stats().Deliveries != 0 {
+	if w.Code != 202 || w.Header().Get("Retry-After") != "1" || !strings.Contains(w.Body.String(), `"retryAfterMs":1000`) || store.Stats().Deliveries != 0 {
 		t.Fatal(w.Code, w.Body.String(), store.Stats())
 	}
 	// A Poll lease alone is insufficient for the pending envelope. Ordinary
