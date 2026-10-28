@@ -42,6 +42,10 @@ func downloadErrorDefinitions() []apierror.Definition {
 // downloadError maps this area's errors onto registered codes. A fence failure
 // carries the current row, so a client re-renders without a second read.
 func downloadError(e error) error {
+	if mutation := userMutationError(e); mutation != nil {
+		return mutation
+	}
+
 	var public *apierror.Error
 	if e == nil || errors.As(e, &public) {
 		return e
@@ -597,7 +601,7 @@ func registerDownloads(r *apikit.Registry, d Dependencies) {
 		if e != nil {
 			return downloads.Settings{}, e
 		}
-		out, e := d.Downloads.ApplySettings(ctx, p, body)
+		out, e := d.Downloads.ApplySettings(ctx, p, body, func(tx *sql.Tx) error { return d.ownerAuthorityTx(ctx, tx, p) })
 		if errors.Is(e, downloads.ErrConflict) {
 			return out, &apierror.Error{Code: "download_conflict", Current: out, Cause: e}
 		}

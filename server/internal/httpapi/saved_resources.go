@@ -7,6 +7,7 @@ import (
 	"portico.local/server/internal/catalog"
 	"portico.local/server/internal/identity"
 	"portico.local/server/internal/requestinput"
+	"portico.local/server/internal/usermutation"
 	"strconv"
 )
 
@@ -265,7 +266,8 @@ func (d Dependencies) savedResourceRoutes(mux *http.ServeMux) {
 			// Membership reports per item. Hidden and absent titles have the
 			// same outcome, so a saved list cannot reveal a restricted title.
 			rejected := []catalog.EntryOutcome{}
-			if route.action == "entries" && len(m.AddItemIDs) > 0 {
+			_, _, protocol := usermutation.RequestFrom(r.Context())
+			if !protocol && route.action == "entries" && len(m.AddItemIDs) > 0 {
 				keep := []string{}
 				for _, id := range m.AddItemIDs {
 					if err := d.savedResourceItemAccess(r.Context(), p, id); err != nil {
@@ -284,7 +286,7 @@ func (d Dependencies) savedResourceRoutes(mux *http.ServeMux) {
 				}
 				m.AddItemIDs = keep
 			}
-			out, e := d.Catalog.MutateSavedResource(resourceActor(p), r.PathValue("id"), route.action, m, func(tx *sql.Tx) error {
+			out, e := d.Catalog.WithContext(r.Context()).MutateSavedResource(resourceActor(p), r.PathValue("id"), route.action, m, func(tx *sql.Tx) error {
 				if e := d.resourceAuthorize(tx, p, ""); e != nil {
 					return e
 				}
@@ -294,6 +296,9 @@ func (d Dependencies) savedResourceRoutes(mux *http.ServeMux) {
 					}
 				}
 				for _, id := range m.AddItemIDs {
+					if protocol {
+						break
+					}
 					var library string
 					if e := tx.QueryRow(`SELECT cl.library_id FROM catalog_entities e JOIN catalog_libraries cl ON cl.id=e.library_id WHERE e.public_id=pid_blob(?)`, id).Scan(&library); e != nil {
 						return e
@@ -309,6 +314,15 @@ func (d Dependencies) savedResourceRoutes(mux *http.ServeMux) {
 					return d.shareTargetTx(tx, m.Authority, m.AccountID, m.ProfileID)
 				}
 				return nil
+			}, func(tx *sql.Tx, id string) error {
+				if !protocol {
+					return nil
+				}
+				err := d.savedResourceItemAuthorityTx(r.Context(), tx, p, id)
+				if errors.Is(err, identity.ErrNotVisible) || errors.Is(err, identity.ErrContentRestricted) || errors.Is(err, identity.ErrForbidden) {
+					return sql.ErrNoRows
+				}
+				return err
 			})
 			if e != nil {
 				failure(w, e)
@@ -322,6 +336,11 @@ func (d Dependencies) savedResourceRoutes(mux *http.ServeMux) {
 				out.Entries.Failed = append(out.Entries.Failed, rejected...)
 			}
 			dead, revision, e := d.Catalog.WithContext(r.Context()).SavedResourceReceiptStatus(out.ResourceID, resourceActor(p))
+			if _, _, protocol := usermutation.RequestFrom(r.Context()); protocol && errors.Is(e, sql.ErrNoRows) {
+				dead = true
+				revision = out.Revision
+				e = nil
+			}
 			if e != nil {
 				failure(w, e)
 				return
@@ -340,7 +359,7 @@ func (d Dependencies) savedResourceRoutes(mux *http.ServeMux) {
 			failure(w, e)
 			return
 		}
-		out, e := d.Catalog.MutateSavedPin(resourceActor(p), r.PathValue("kind"), r.PathValue("id"), m, func(tx *sql.Tx) error { return d.resourceAuthorize(tx, p, "") })
+		out, e := d.Catalog.WithContext(r.Context()).MutateSavedPin(resourceActor(p), r.PathValue("kind"), r.PathValue("id"), m, func(tx *sql.Tx) error { return d.resourceAuthorize(tx, p, "") })
 		if e != nil {
 			failure(w, e)
 			return

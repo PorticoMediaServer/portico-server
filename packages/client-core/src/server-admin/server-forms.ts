@@ -8,6 +8,7 @@ import {loadCertificate, saveCertificate, type CertificateApi, type CertificateC
 import {certificateClaimed} from './secure-connection.ts';
 import type {HttpLocalApi} from '../index.ts';
 import {DraftForm, type Loaded} from './draft-form.ts';
+import {UserMutationError, sameUserMutationScope, type UserMutationScope} from '../user-mutations.ts';
 
 /**
  * The server's settings documents as draft forms (`draft-form.ts`), one per document, for the
@@ -21,7 +22,7 @@ import {DraftForm, type Loaded} from './draft-form.ts';
 export type ServerFormId = 'runtime' | 'connectivity' | 'remote' | 'certificate' | 'alerts' | 'liveDefaults' | 'recording' | 'maintenance' | 'logs';
 
 export type ServerFormDeps = Readonly<{
-  api: Pick<HttpLocalApi, 'request'>;
+  api: Pick<HttpLocalApi, 'request'> & Partial<Pick<HttpLocalApi, 'acknowledgeUserMutation' | 'awaitUserMutationsReady' | 'getUserMutationCoordinator' | 'getUserMutationScope'>>;
   console: ConsoleClient;
   /** The server every administration answer must name. */
   serverId: string;
@@ -157,14 +158,39 @@ export function alertsForm(deps: ServerFormDeps): DraftForm<AlertThresholds, {re
 
 // ── Live TV and recording defaults ──────────────────────────────────────────────────────────
 
+/** A failed parse or durable acknowledgement keeps the original ID, body and
+ * revision. A changed draft must be reviewed before it can become another write. */
+function settingsSave<D>(deps: ServerFormDeps, path: string, method: string, parse: (raw: unknown) => D) {
+  let pending: {payload: string; body: string; operationId: string; dispatched: boolean; scope?: UserMutationScope; parsed?: {value: D}} | undefined;
+  return async (payload: object): Promise<D> => {
+    await deps.api.awaitUserMutationsReady?.();
+    const scope = deps.api.getUserMutationScope?.(), coordinator = deps.api.getUserMutationCoordinator?.();
+    if (pending?.scope && (!scope || !sameUserMutationScope(pending.scope, scope))) throw new UserMutationError('mutation_scope_changed');
+    // Only an explicit later Save may release this opening's cache after root
+    // review has removed the original durable command. Never clear on failure.
+    if (pending?.dispatched && pending.scope && coordinator && !(await coordinator.inspectIntent(pending.operationId))) pending = undefined;
+    const serialized = JSON.stringify(payload);
+    if (pending && pending.payload !== serialized) throw new UserMutationError('mutation_needs_review');
+    if (!pending) {
+      const operationId = deps.operationId();
+      pending = {payload: serialized, body: JSON.stringify({...JSON.parse(serialized), operationId}), operationId, dispatched: false, ...(scope ? {scope} : {})};
+    }
+    const original = pending;
+    if (!original.parsed) {original.dispatched = true;original.parsed = {value: parse(await deps.api.request(path, method, JSON.parse(original.body)))};}
+    await deps.api.acknowledgeUserMutation?.(original.operationId);
+    pending = undefined;
+    return original.parsed.value;
+  };
+}
+
 function documentForm<T extends object, D extends {revision: number; settings: T}>(deps: ServerFormDeps, path: string, parse: (raw: unknown) => D, validate?: (draft: T, doc: D | undefined) => string | undefined): DraftForm<T, D> {
-  const ids = createOperationIds(deps.operationId);
+  const save = settingsSave(deps, path, 'PUT', raw => parseEnvelope(raw, deps.serverId, parse).result);
   return new DraftForm<T, D>({
     load: async signal => { const doc = await orAbsent(deps.api.request<unknown>(path, 'GET', undefined, signal).then(raw => parseEnvelope(raw, deps.serverId, parse).result)); return doc && {value: doc.settings, status: doc}; },
     save: async (draft, _saved, doc) => {
       const revision = doc?.revision ?? 0;
-      await deps.api.request(path, 'PUT', {expectedRevision: revision, operationId: ids.forPayload(JSON.stringify({revision, settings: draft})), settings: draft});
-      ids.release();
+      const stored = await save({expectedRevision: revision, settings: draft});
+      return {value: stored.settings, status: stored};
     },
     validate,
   });
@@ -233,14 +259,13 @@ export function scheduledJobs(doc: Pick<MaintenanceDocument, 'tasks'>, settings:
 export type LogsDraft = Readonly<{logLevel: LogSettings['logLevel']; logDetailMinutes: LogDetailMinutes; retention: LogSettings['retention']}>;
 
 export function logsForm(deps: ServerFormDeps): DraftForm<LogsDraft, LogSettings> {
-  const ids = createOperationIds(deps.operationId);
+  const save = settingsSave(deps, routePath('patch_admin_logs_settings'), 'PATCH', parseLogSettings);
   return new DraftForm<LogsDraft, LogSettings>({
     load: async signal => { const settings = parseLogSettings(await deps.api.request(routePath("get_admin_logs_settings"), 'GET', undefined, signal)); return {value: {logLevel: settings.logLevel, logDetailMinutes: settings.logDetailMinutes ?? 30, retention: settings.retention}, status: settings}; },
     save: async (draft, _saved, status) => {
       const payload = {logLevel: draft.logLevel, retention: draft.retention, ...(status?.logDetailMinutes === undefined ? {} : {logDetailMinutes: draft.logDetailMinutes})};
-      const intent = {expectedRevision: status?.revision ?? 0, operationId: ids.forPayload(JSON.stringify({revision: status?.revision, ...payload})), ...payload};
-      await deps.api.request(routePath("patch_admin_logs_settings"), 'PATCH', routeBody("patch_admin_logs_settings", intent));
-      ids.release();
+      const settings = await save({expectedRevision: status?.revision ?? 0, ...payload});
+      return {value: {logLevel: settings.logLevel, logDetailMinutes: settings.logDetailMinutes ?? 30, retention: settings.retention}, status: settings};
     },
   });
 }

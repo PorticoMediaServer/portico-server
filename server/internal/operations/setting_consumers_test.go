@@ -31,6 +31,10 @@ END;`
 // Semantic tests beside those consumers verify behavior; this guard catches new
 // unowned fields and consumer removal. It is not a substitute for runtime tests.
 var settingConsumers = map[string]settingConsumer{
+	// integrationEnabled reads the persisted switch on each compatibility admission.
+	// TestCompatibilityDisabledPublicAndDeclaredAliasBoundary exercises off/on/off
+	// for both public discovery and an authenticated catalogue route.
+	"operations.Settings.integrations.compatibilityEnabled":                  {"internal/httpapi/integration_credentials_routes.go", "literal:integrations.compatibilityEnabled", "Refuse compatibility routes while disabled and admit them through native authority when enabled"},
 	"livechannels.LiveSourceSettings.enabled":                                {"internal/livechannels/persisted_configuration.go", "Enabled", "Pause or activate the source and fence its publishers"},
 	"livechannels.LiveSourceSettings.viewerAccess":                           {"internal/livechannels/persisted_configuration.go", "ViewerAccess", "Persist and enforce owner-only or server-member access"},
 	"livechannels.LiveSourceSettings.remote.kind":                            {"internal/livechannels/persisted_configuration.go", "Kind", "Keep the saved remote provider grammar immutable"},

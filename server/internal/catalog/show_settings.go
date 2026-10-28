@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"portico.local/server/internal/usermutation"
 	"strconv"
 	"strings"
 	"time"
@@ -80,6 +81,13 @@ func (s *Service) SetShowSettings(ctx context.Context, library, show string, nex
 	if e = authorize(tx); e != nil {
 		return ShowSettings{}, e
 	}
+	r, e := usermutation.CheckContext(ctx, tx, time.Now().UnixMilli())
+	if e != nil {
+		return ShowSettings{}, e
+	}
+	if r != nil {
+		return readShowSettings(tx, show)
+	}
 	var entity int64
 	if e = tx.QueryRowContext(ctx, `SELECT s.id FROM catalog_entities s JOIN catalog_shows d ON d.entity_id=s.id JOIN catalog_libraries l ON l.id=s.library_id WHERE s.public_id=pid_blob(?) AND l.library_id=? AND s.retired=0`, show, library).Scan(&entity); e != nil {
 		return ShowSettings{}, e
@@ -96,6 +104,9 @@ func (s *Service) SetShowSettings(ctx context.Context, library, show string, nex
 	if _, e = tx.ExecContext(ctx, `INSERT INTO catalog_show_settings(entity_id,hide_seasons,absolute_numbering,ranges,newest_first,revision) VALUES(?,?,?,?,?,?)
  ON CONFLICT(entity_id) DO UPDATE SET hide_seasons=excluded.hide_seasons,absolute_numbering=excluded.absolute_numbering,ranges=excluded.ranges,newest_first=excluded.newest_first,revision=excluded.revision`,
 		entity, next.HideSeasons, next.AbsoluteNumbering, next.Ranges, next.NewestFirst, next.Revision); e != nil {
+		return ShowSettings{}, e
+	}
+	if e = usermutation.SaveContext(ctx, tx, usermutation.Result{Status: "applied", TargetID: show, Revision: int64(next.Revision)}, time.Now().UnixMilli()); e != nil {
 		return ShowSettings{}, e
 	}
 	return next, gated.Commit()

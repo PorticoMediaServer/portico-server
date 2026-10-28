@@ -12,8 +12,10 @@ import (
 	"os"
 	"path/filepath"
 	"portico.local/server/internal/atomicfile"
+	"portico.local/server/internal/usermutation"
 	"runtime"
 	"strings"
+	"time"
 
 	"portico.local/server/internal/dbwork"
 )
@@ -111,12 +113,31 @@ func (p *PolicyStore) Snapshot(ctx context.Context) (Snapshot, error) {
 	}
 	return out, nil
 }
-func (p *PolicyStore) Update(ctx context.Context, patch SettingsPatch) (Settings, error) {
-	w, e := dbwork.Begin(ctx, p.db, dbwork.ClassMaintenance)
+func (p *PolicyStore) Update(ctx context.Context, patch SettingsPatch, authorize ...func(*sql.Tx) error) (Settings, error) {
+	w, e := dbwork.Begin(ctx, p.db, dbwork.ClassFrom(ctx, dbwork.ClassInteractive))
 	if e != nil {
 		return Settings{}, e
 	}
 	defer w.Rollback()
+	for _, auth := range authorize {
+		if auth == nil {
+			return Settings{}, ErrInvalid
+		}
+		if e = auth(w.Tx()); e != nil {
+			return Settings{}, e
+		}
+	}
+	if _, _, protocol := usermutation.RequestFrom(ctx); protocol && len(authorize) == 0 {
+		return Settings{}, ErrInvalid
+	}
+	r, e := usermutation.CheckContext(ctx, w.Tx(), time.Now().UnixMilli())
+	if e != nil {
+		return Settings{}, e
+	}
+	if r != nil {
+		return p.ReadTx(ctx, w.Tx())
+	}
+
 	before, e := p.ReadTx(ctx, w.Tx())
 	if e != nil {
 		return Settings{}, e
@@ -128,6 +149,10 @@ func (p *PolicyStore) Update(ctx context.Context, patch SettingsPatch) (Settings
 	if e = (Configuration{Store: p}).queueChange(ctx, w.Tx(), before, out); e != nil {
 		return out, e
 	}
+	if e = usermutation.SaveContext(ctx, w.Tx(), usermutation.Result{Status: "applied", TargetID: "backups"}, time.Now().UnixMilli()); e != nil {
+		return out, e
+	}
+
 	if e = w.Commit(); e != nil {
 		return out, e
 	}
@@ -346,11 +371,11 @@ func (s *Service) Settings(ctx context.Context) (Settings, error) {
 	}
 	return s.settingsStore.Settings(ctx)
 }
-func (s *Service) UpdateSettings(ctx context.Context, patch SettingsPatch) (Settings, error) {
+func (s *Service) UpdateSettings(ctx context.Context, patch SettingsPatch, authorize ...func(*sql.Tx) error) (Settings, error) {
 	if s.settingsStore == nil {
 		return Settings{}, ErrInvalid
 	}
-	return s.settingsStore.Update(ctx, patch)
+	return s.settingsStore.Update(ctx, patch, authorize...)
 }
 
 // CleanupDestinationPartials runs once at startup, before any job can start.

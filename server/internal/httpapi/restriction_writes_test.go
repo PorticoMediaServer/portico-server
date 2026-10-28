@@ -151,7 +151,12 @@ func (p idProbe) with(id string) idProbe {
 }
 
 // absentTwin names something with the same shape as id that doesn't exist.
-func absentTwin(id string) string { return id + "-absent" }
+func absentTwin(id string) string {
+	if guid, ok := absentIntegrationGUID(id); ok {
+		return guid
+	}
+	return id + "-absent"
+}
 
 func (m *restrictionEnv) compareHiddenAbsent(t *testing.T, pattern string, p idProbe) {
 	t.Helper()
@@ -423,7 +428,7 @@ const (
 // restrictionWriteRoutes classifies every non-GET route except owner
 // administration (/v1/admin/…), which is probed by rule.
 func restrictionWriteRoutes() map[string]writeRoute {
-	return map[string]writeRoute{
+	routes := map[string]writeRoute{
 		"POST /v1/direct/security-return/prepare":                                     writeExempt("original provider credential-change opening only; no catalogue content or title lookup"),
 		"POST /v1/direct/security-return/confirm":                                     writeExempt("original provider credential-change confirmation only; no catalogue content or title lookup"),
 		"POST /v1/direct/security-return/check":                                       writeExempt("original Account Settings opening scope check only; no catalogue content or title lookup"),
@@ -840,6 +845,8 @@ func restrictionWriteRoutes() map[string]writeRoute {
 		"POST /v1/networking/endpoint-proof":       writeExempt(reasonNetworking),
 		"POST /v1/networking/identity-proof":       writeExempt(reasonNetworking),
 	}
+	addIntegrationRestrictionWrites(routes)
+	return routes
 }
 
 // toolSecurity calls the tool endpoint with a personal access token the

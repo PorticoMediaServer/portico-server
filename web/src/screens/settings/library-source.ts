@@ -1,5 +1,5 @@
 import type {QuietRefreshOutcome} from '@core/freshness-actions.ts';
-import type {LibraryAdminDocument} from '@core/administration.ts';
+import type {LibraryAdminDocument, LibrarySettings} from '@core/administration.ts';
 import {defaultI18n} from '@i18n';
 import {LibraryManagementService} from '@core/library-management.ts';
 import type {ContentScope, LibraryContentApi} from '@core/library-content.ts';
@@ -7,6 +7,10 @@ import {patchLibrarySettingsBinding, readLibrarySettingsBinding, patchLibrarySon
 import {randomId} from '@core/random-id.ts';
 import {readLibrarySettings, saveLibrarySettings} from '@core/server-admin/libraries.ts';
 import {readLibrarySonic, retryLibrarySonic, saveLibrarySonic, type LibrarySonicDocument} from '@core/server-admin/library-sonic.ts';
+
+import {sameUserMutationScope, UserMutationError, type UserMutationScope} from '@core/user-mutations.ts';
+
+type PendingSettings = {document: LibraryAdminDocument; settings: string; draft: string; operationId: string; scope?: UserMutationScope; dispatched: boolean};
 
 export type SettingsLibrarySnapshot = Readonly<{libraryId?: string; document?: LibraryAdminDocument; sonic?: LibrarySonicDocument; loading: boolean; saving: boolean; error?: unknown}>;
 const empty: SettingsLibrarySnapshot = Object.freeze({loading: false, saving: false});
@@ -17,10 +21,11 @@ export class SettingsLibrarySource {
   private request?: AbortController;
   private pending?: Promise<void>;
   private closed = false;
+  private settingsPending = new Map<string, PendingSettings>();
   private quietSerial = 0;
   private readonly quietReads = new Map<string,AbortController>();
   invalidateQuiet = () => {++this.quietSerial;for(const read of this.quietReads.values())read.abort();this.quietReads.clear();};
-  quietBlocked = () => this.state.loading || this.state.saving || !!this.state.error && !this.state.document;
+  quietBlocked = () => this.state.loading || this.state.saving || !!this.state.libraryId && this.settingsPending.has(this.state.libraryId) || !!this.state.error && !this.state.document;
   private async quiet(kind:'settings'|'sonic'):Promise<QuietRefreshOutcome> {
     if(!this.current() || this.quietBlocked())return {kind:'deferred'};
     const {libraryId,document,sonic}=this.state;
@@ -94,21 +99,62 @@ export class SettingsLibrarySource {
       if (typeof value !== 'boolean') throw new Error('Invalid Sonic setting value.');
       return this.sonicCommand(libraryId, value);
     }
-    const before = this.document(libraryId);
-    if (!before || this.state.loading || this.state.saving) return false;
+    const retained = this.settingsPending.get(libraryId), before = this.document(libraryId) ?? retained?.document;
+    if (!this.current() || !before || this.state.libraryId !== libraryId || this.state.loading || this.state.saving) return false;
     if (rowId === 'libraries.name') return this.rename(libraryId, value, before);
-    const settings = patchLibrarySettingsBinding(rowId, value, before);
     this.invalidateQuiet();const request = new AbortController();this.request = request;
-    this.publish({...this.state, libraryId, document: before, loading: false, saving: true});
+    this.publish({...this.state, libraryId, saving: true});
+    const requireCurrent = () => {if (!this.owns(request, libraryId)) throw new UserMutationError('mutation_scope_changed');};
     try {
-      const document = await saveLibrarySettings(this.api, before, settings, randomId(), request.signal);
-      if (this.owns(request, libraryId)) {this.publish({libraryId, document, sonic: this.offersSonic(document) ? this.state.sonic : undefined, loading: false, saving: false});return true;}
+      let pending = retained;
+      if (pending?.dispatched && pending.scope && this.api.awaitUserMutationsReady && this.api.getUserMutationCoordinator && this.api.getUserMutationScope) {
+        requireCurrent(); await this.api.awaitUserMutationsReady?.(); requireCurrent();
+        const scope = this.api.getUserMutationScope(); requireCurrent();
+        if (!scope || !sameUserMutationScope(scope, pending.scope)) throw new UserMutationError('mutation_scope_changed');
+        const coordinator = this.api.getUserMutationCoordinator(); requireCurrent();
+        const retained = coordinator && await coordinator.inspectIntent(pending.operationId); requireCurrent();
+        if (coordinator && !retained) {
+          this.settingsPending.delete(libraryId); pending = undefined;
+        }
+      }
+      const draft = JSON.stringify([rowId, value]);
+      if (pending && pending.draft !== draft) throw new UserMutationError('mutation_needs_review');
+      if (!pending) {
+        const document = this.document(libraryId);
+        if (!document) throw new UserMutationError('mutation_needs_review');
+        const settings = patchLibrarySettingsBinding(rowId, value, document);
+        requireCurrent(); const scope = this.api.getUserMutationScope?.(); requireCurrent();
+        pending = {document: JSON.parse(JSON.stringify(document)), settings: JSON.stringify(settings), draft, operationId: randomId(), scope: scope && {...scope}, dispatched: false};
+        this.settingsPending.set(libraryId, pending);
+      }
+      requireCurrent();
+      const api: LibraryContentApi = {
+        ...(this.api.awaitUserMutationsReady ? {awaitUserMutationsReady: async () => {
+          requireCurrent(); await this.api.awaitUserMutationsReady!(); requireCurrent();
+        }} : {}),
+        ...(this.api.getUserMutationCoordinator ? {getUserMutationCoordinator: () => {
+          requireCurrent(); const value = this.api.getUserMutationCoordinator!(); requireCurrent(); return value;
+        }} : {}),
+        ...(this.api.getUserMutationScope ? {getUserMutationScope: () => {
+          requireCurrent(); const value = this.api.getUserMutationScope!(); requireCurrent(); return value;
+        }} : {}),
+        request: async <T,>(path: string, method?: string, body?: unknown, signal?: AbortSignal): Promise<T> => {
+          requireCurrent(); pending!.dispatched = true;
+          const value = await this.api.request<T>(path, method, body, signal); requireCurrent(); return value;
+        },
+        ...(this.api.acknowledgeUserMutation ? {acknowledgeUserMutation: async (id: string) => {
+          requireCurrent(); await this.api.acknowledgeUserMutation!(id); requireCurrent();
+        }} : {}),
+      };
+      const document = await saveLibrarySettings(api, pending.document, JSON.parse(pending.settings) as LibrarySettings, pending.operationId, request.signal);
+      requireCurrent(); this.settingsPending.delete(libraryId);
+      this.publish({libraryId, document, sonic: this.offersSonic(document) ? this.state.sonic : undefined, loading: false, saving: false});return true;
     } catch (error) {
-      // A lost/conflicting response needs a genuine reread before another edit.
       if (this.owns(request, libraryId)) {this.publish({libraryId, loading: false, saving: false, error});throw error;}
     } finally {if (this.request === request) this.request = undefined;}
     return false;
   }
+
   private async rename(libraryId: string, value: unknown, before: LibraryAdminDocument): Promise<boolean> {
     const management = this.management;
     if (!management || typeof value !== 'string' || !before.actions.includes('rename')) return false;
@@ -136,7 +182,7 @@ export class SettingsLibrarySource {
   retrySonic = (libraryId: string) => this.sonicCommand(libraryId);
   private async sonicCommand(libraryId: string, enabled?: boolean): Promise<boolean> {
     const document = this.document(libraryId), sonic = this.state.sonic;
-    if (!document || !sonic || this.state.loading || this.state.saving || !readLibrarySonicSettingsBinding('libraries.sonicAnalysis', document, sonic)) return false;
+    if (!document || !sonic || this.state.loading || this.state.saving || !!this.state.libraryId && this.settingsPending.has(this.state.libraryId) || !readLibrarySonicSettingsBinding('libraries.sonicAnalysis', document, sonic)) return false;
     const patch = enabled === undefined ? undefined : patchLibrarySonicSettingsBinding('libraries.sonicAnalysis', enabled, document, sonic);
     this.invalidateQuiet();const request = new AbortController();this.request = request;
     this.publish({...this.state, saving: true});
@@ -148,5 +194,5 @@ export class SettingsLibrarySource {
     } finally {if (this.request === request) this.request = undefined;}
     return false;
   }
-  dispose() {this.invalidateQuiet();this.closed = true;this.management?.dispose();this.request?.abort();this.request = undefined;this.pending = undefined;this.state = empty;}
+  dispose() {this.invalidateQuiet();this.closed = true;this.management?.dispose();this.request?.abort();this.request = undefined;this.pending = undefined;this.state = empty;this.settingsPending.clear();}
 }

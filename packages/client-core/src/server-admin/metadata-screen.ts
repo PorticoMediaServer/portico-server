@@ -9,7 +9,7 @@ import {encodedRoutePath} from "../../../contracts/src/route-paths.ts";
  * takes precedence. The switch sends `enabled` with the library's providers, language, region and
  * refresh mode as they are (an empty provider list means the server's per-kind defaults). It adds
  * `confirmRemote: true` only to re-grant from `needs_consent`, and never sends
- * `confirmRemote: false` (that is the server-wide withdrawal). A 409 is stale: reload, retry once.
+ * `confirmRemote: false` (that is the server-wide withdrawal). A conflict keeps the original request for review.
  */
 export type ScreenLookupPolicy = Readonly<{
   libraryKind: string;
@@ -92,16 +92,10 @@ export function lookupUpdate(p: ScreenLookupPolicy, on: boolean): Record<string,
 }
 
 type Request = <T>(path: string, method?: string, body?: unknown) => Promise<T>;
-/** Saves the switch; a 409 (someone changed it meanwhile) reloads and retries once. */
+/** Saves the authored switch against its original policy revision. */
 export async function saveLookup(request: Request, libraryId: string, policy: ScreenLookupPolicy, on: boolean): Promise<void> {
   const path = encodedRoutePath("get_libraries_id_metadata_screen", {"id": encodeURIComponent(libraryId)});
-  try {
-    await request(path, 'PUT', lookupUpdate(policy, on));
-  } catch (e) {
-    if ((e as {status?: unknown} | null)?.status !== 409) throw e;
-    const fresh = parseScreenLookup(await request<unknown>(path, 'GET'));
-    await request(path, 'PUT', lookupUpdate(fresh, on));
-  }
+  await request(path, 'PUT', lookupUpdate(policy, on));
 }
 
 /** Catalogue id for the library's metadata status line. */

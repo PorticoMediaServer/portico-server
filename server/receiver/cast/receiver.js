@@ -372,18 +372,26 @@
     var active={abort:abort,timer:timer};activeRequests.add(active);
     try {
       var response = await fetch((options.origin === undefined ? base : options.origin) + path, {method: options.method || 'POST', headers: headers, signal: abort.signal, body: options.body === undefined ? undefined : JSON.stringify(options.body)});
+      var responseHeaders={};response.headers.forEach(function(value,name){responseHeaders[name]=value;});
+      var payload;
+      try {
       var text = '';
       if (response.body) {
         var reader = response.body.getReader(), decoder = new TextDecoder(), size = 0;
         try { for (;;) { var chunk = await reader.read(); if (chunk.done) break; size += chunk.value.byteLength; if (size > 1048576) throw new Error('response_too_large'); text += decoder.decode(chunk.value, {stream: true}); } text += decoder.decode(); } finally { reader.releaseLock(); }
       }
-      var payload = text ? JSON.parse(text) : {};
-      if (!response.ok) {
+      payload = text ? JSON.parse(text) : {};
+      } catch(error) {
+        if(!options.raw||!(response.status>=200&&response.status<300)&&response.status<500&&response.status!==429)throw error;
+        // Unreadable accepted/proxy responses keep same-key lookup custody.
+        payload=undefined;
+      }
+      if (!response.ok && !options.raw) {
         var failure = payload.error || {};
         var error = new Error(failure.code || 'http_' + response.status); error.code = error.message; error.status = response.status; error.current = failure.current;
         throw error;
       }
-      return {status: response.status, body: payload};
+      return {status: response.status, body: payload, headers:responseHeaders};
     } finally { activeRequests.delete(active);clearTimeout(timer);abort.abort(); }
   }
   function post(path, body, bearer, origin) { return request(path, {body: body, bearer: bearer, origin: origin}).then(function (r) { return r.body; }); }
@@ -573,6 +581,7 @@
     scope = result.scope;
     var identity=pairingIdentity(result,base);if(identity){installedPairings.delete(identity);installedPairings.set(identity,true);while(installedPairings.size>16)installedPairings.delete(installedPairings.keys().next().value);}
     writeToken(result.deviceToken);
+    if(stopMutationScope())stopCoordinator().start().catch(function(){notice(copy('notice.stopFailed'),5000);});
     profiled = false;
     say('');
     return prepareProfile(undefined,installation).then(function () { requirePairInstallation(installation,true);return result; });
@@ -829,19 +838,84 @@
     return load;
   }
 
-  async function stopPlayback(ended,lease,expected) {
-    requireLease(lease);if(expected&&playback!==expected)return;
-    clearTimeout(reportTimer); clearTimeout(bufferingTimer);
-    if (!playback) return;
-    var stoppedClock=clockFacts(),id = playback.id, at = Math.round(position() * 1000);
-    playback = null; meta = null;cafOccurrence=null;platformOccurrence=null;
-    if (manager) mediaCommand('STOP');
-    mediaAddresses.clear();
-    showIdle();
-    // A session that has already ended (404, 410) is simply gone.
-    await api(sessionPath(id), {method: 'DELETE', body: ended ? undefined : {positionMs: at}},lease).catch(function (e) { if (!e.status || e.status >= 500 || lease&&e.status!==404&&e.status!==410) throw e; });
-    return stoppedClock;
+  var stopMutations=null,stopClockOffset=0,completedStops=new Map();
+  function stopMutationScope(){
+    var current=session,viewer=current&&current.viewer;
+    if(!current||!viewer||!current.sessionFamilyId)return undefined;
+    return {serverId:viewer.serverId,origin:base||window.location.origin,authority:viewer.authority,accountId:viewer.accountId,profileId:viewer.profileId,familyId:current.sessionFamilyId,deviceId:current.deviceId};
   }
+  function stopCoordinator(){
+    if(stopMutations)return stopMutations;
+    var contracts=PorticoCastContracts;
+    var exchange=async function(entry,path,method,body,signal){
+      var current=stopMutationScope();
+      if(!current||!contracts.sameUserMutationScope(current,entry.scope))throw new contracts.UserMutationError('mutation_scope_changed',entry.key);
+      var credential=session;
+      var result=await request(path,{method:method,body:body,headers:entry.headers,bearer:credential.accessToken,origin:base,raw:true});
+      current=stopMutationScope();if(!current||!contracts.sameUserMutationScope(current,entry.scope))throw new contracts.UserMutationError('mutation_scope_changed',entry.key);
+      var retry=result.headers&&result.headers['retry-after'];if(retry&&!/^[0-9]+$/.test(retry.trim())){var date=Date.parse(retry);if(Number.isFinite(date))result.headers['retry-after']=String(Math.max(0,Math.ceil((date-(Date.now()+stopClockOffset))/1000)));}
+      return result;
+    };
+    stopMutations=new contracts.UserMutationCoordinator({store:new contracts.IndexedDBUserMutationStore(),scope:stopMutationScope,now:function(){return Date.now();},transport:{
+      send:function(entry,signal){return exchange(entry,entry.path,entry.method,entry.body,signal);},
+      lookup:function(entry,signal){return exchange(entry,'/v1/user-mutations/'+encodeURIComponent(entry.key),'GET',undefined,signal);},
+      recover:async function(entry,receipt){if(receipt.status!=='applied'&&receipt.status!=='already_stopped')throw new contracts.UserMutationError('mutation_needs_review',entry.key,receipt);return {status:204,headers:{}};}
+    }});
+    return stopMutations;
+  }
+  async function originalStopReceipt(lease,key,target) {
+    requireLease(lease);
+    if(!sameControllerStamp(target.controller,controllerStamp(lease)))throw new Error('controller_replaced');
+    var originalScope=stopMutationScope();if(!originalScope)throw new Error('mutation_scope_changed');
+    // Read with the captured original bearer/family. Never renew or borrow a
+    // successor credential while reconciling an absent local command.
+    var result=await request('/v1/user-mutations/'+encodeURIComponent(key),{method:'GET',bearer:lease.bearer,origin:lease.origin,raw:true});
+    requireLease(lease);
+    var currentScope=stopMutationScope();
+    if(!currentScope||!PorticoCastContracts.sameUserMutationScope(originalScope,currentScope))throw new Error('mutation_scope_changed');
+    if(result.status===404&&result.body&&result.body.error&&result.body.error.code==='receipt_unknown')return false;
+    if(result.status!==200)throw new Error('mutation_receipt_pending');
+    var receipt=PorticoCastContracts.decodeGetUserMutationResponse(result.body);
+    if(receipt.key!==key||receipt.operation!=='stop_playback_session'||receipt.targetId!==target.occurrence.sessionId||receipt.generation!==target.occurrence.generation||receipt.expiresMs<receipt.committedMs||
+      !(receipt.status==='applied'&&['applied','unchanged'].includes(receipt.positionStatus)||receipt.status==='already_stopped'&&receipt.positionStatus==='already_stopped'))throw new Error('mutation_needs_review');
+    return true;
+  }
+  async function stopPlayback(ended,lease,expected,mutationKey,preserveError) {
+    requireLease(lease);if(expected&&playback!==expected)return;
+    if (!playback) return;
+    var owner=playback,id=owner.id,generation=owner.generation,identity='stop:'+id+':'+generation;
+    // Caller custody survives policy/IDB failure. Capture the final evidence only
+    // once, before either await; retry never samples a later renderer position.
+    var frozen=owner.stopIntent;
+    if(!frozen)frozen=owner.stopIntent={scope:stopMutationScope(),clock:clockFacts(),body:Object.freeze({generation:generation,positionMs:Math.max(0,Math.round(position()*1000))}),key:PorticoCastContracts.isUserMutationKey(mutationKey||'')?mutationKey:null};
+    if(!frozen.scope||!stopMutationScope()||!PorticoCastContracts.sameUserMutationScope(frozen.scope,stopMutationScope()))throw new Error('mutation_scope_changed');
+    if(frozen.key&&PorticoCastContracts.isUserMutationKey(mutationKey||'')&&mutationKey!==frozen.key)throw new Error('idempotency_conflict');
+    if(!frozen.key){
+      var policy=await api('/v1/user-mutations/policy',{method:'GET'},lease);
+      if(!Number.isSafeInteger(policy.body.serverTimeMs))throw new Error('mutation_not_queued');
+      stopClockOffset=policy.body.serverTimeMs-Date.now();frozen.key=PorticoCastContracts.newUserMutationKey(policy.body.serverTimeMs);
+    }
+    requireLease(lease);
+    if(playback!==owner||!stopMutationScope()||!PorticoCastContracts.sameUserMutationScope(frozen.scope,stopMutationScope()))throw new Error('occurrence_replaced');
+    var coordinator=stopCoordinator();
+    var releaseRenderer=function(){
+      var accepted=coordinator.snapshot().some(function(entry){return entry.intentId===identity&&entry.key===frozen.key&&PorticoCastContracts.sameUserMutationScope(entry.scope,frozen.scope);});
+      if(!accepted||playback!==owner)return;
+      clearTimeout(reportTimer);clearTimeout(bufferingTimer);
+      playback=null;meta=null;cafOccurrence=null;platformOccurrence=null;
+      if(manager)mediaCommand('STOP');
+      mediaAddresses.clear();if(!preserveError)showIdle();
+    };
+    var unsubscribe=coordinator.subscribe(releaseRenderer);
+    try{
+      await coordinator.run({operation:'stop_playback_session',method:'DELETE',path:sessionPath(id),target:identity,intentId:identity,key:frozen.key,body:frozen.body});
+      releaseRenderer();
+      var entry=coordinator.snapshot().find(function(entry){return entry.intentId===identity&&entry.state==='confirmed';});
+      if(entry)await coordinator.acknowledge(entry.key);
+      return frozen.clock;
+    }finally{unsubscribe();}
+  }
+
   /** Starts a v1 session for the item and answers CAF's load request for it. A session already
    * playing here is replaced in the same request, so this TV holds one playback slot. */
   async function resolvePlayback(itemId, startSeconds, identity, subtitleTrackId, queue,lease,pending,attempt,versionId,audioTrackId) {
@@ -973,7 +1047,7 @@
     showLoading(null); // Never label the new occurrence with the old title or artwork.
     var load;
     try { load=loadRequest(current,'',true);await loadMedia(load); }
-    catch(e) { await stopPlayback().catch(function(){});showError(e&&(e.code||e.message));throw e; }
+    catch(e) { var stopped=stopPlayback(false,undefined,undefined,undefined,true);showError(e&&(e.code||e.message));await stopped;throw e; }
     showPlaying();scheduleReport(0);refreshCatalogueDisplay(current,load.media.contentId);broadcast();return true;
   }
 
@@ -1066,13 +1140,13 @@
   function terminalPlayback(owner, code) {
     return serial(async function(){
       if (shuttingDown || !owner || playback !== owner) return;
-      // Retire locally immediately, even if the best-effort server Stop must wait
-      // for its request timeout. The ordinary lease still bounds lost cleanup.
-      var stopped = stopPlayback(false,undefined,owner);
+      // Keep the terminal card visible while durable acceptance retires the
+      // renderer; the frozen owner keeps final evidence if storage refuses it.
+      var stopped = stopPlayback(false,undefined,owner,undefined,true);
       showError(code);
       if (controllerSender) send(controllerSender,{type:'load-failed',code:'playback_failed'});
       broadcast();
-      await stopped.catch(function(){/* The server will expire a lost Stop's lease. */});
+      await stopped.catch(function(error){notice(copy('notice.stopFailed'),5000);throw error;});
     });
   }
   function recover(code, expected) {
@@ -1428,6 +1502,38 @@
       var commandLease=captureController(senderId,false);try{await controllerAuthority(senderId,undefined,commandLease);requireLease(commandLease);}catch(e){if(leaseCurrent(commandLease))reply({type:'pair-required'});return;}
       var requestedTarget=readRemoteIdentity(message.target);
       if(renewedStampRequired&&!sameControllerStamp(message.controller||(requestedTarget&&requestedTarget.controller),controllerStamp(commandLease)))return;
+      // Re-proved original authority may reconcile an old Stop after its live
+      // occurrence is gone (or a successor is playing). Never execute a room Stop.
+      if(message.type==='stop'&&requestedTarget&&typeof message.requestId==='string'){
+        if(!sameControllerStamp(requestedTarget.controller,controllerStamp(commandLease))){reply({type:'control-failed',requestId:message.requestId,target:requestedTarget});return;}
+        var priorStop=completedStops.get(message.requestId),liveStopScope=stopMutationScope();
+        if(priorStop&&priorStop.until>Date.now()&&PorticoCastContracts.sameUserMutationScope(priorStop.scope,liveStopScope)&&sameRemoteIdentity(priorStop.target,requestedTarget)){
+          reply(Object.assign({type:'stopped',requestId:message.requestId,target:requestedTarget},priorStop.clock));return;
+        }
+        var durableStop=stopMutations&&stopMutations.snapshot().find(function(entry){return entry.key===message.requestId&&entry.operation==='stop_playback_session'&&entry.intentId==='stop:'+requestedTarget.occurrence.sessionId+':'+requestedTarget.occurrence.generation&&PorticoCastContracts.sameUserMutationScope(entry.scope,liveStopScope);});
+        if(durableStop&&sameControllerStamp(requestedTarget.controller,controllerStamp(commandLease))){
+          try{
+            await stopMutations.run({operation:durableStop.operation,method:durableStop.method,path:durableStop.path,target:durableStop.target,intentId:durableStop.intentId,key:durableStop.key,body:durableStop.body});
+            requireLease(commandLease);
+            var completed=stopMutations.snapshot().find(function(entry){return entry.key===durableStop.key&&entry.state==='confirmed';});
+            if(completed)await stopMutations.acknowledge(completed.key);
+            requireLease(commandLease);
+            completedStops.set(message.requestId,{target:requestedTarget,scope:liveStopScope,until:Date.now()+30*86400000});
+            while(completedStops.size>32)completedStops.delete(completedStops.keys().next().value);
+            reply({type:'stopped',requestId:message.requestId,target:requestedTarget});
+          }catch(e){if(leaseCurrent(commandLease))reply({type:'control-failed',requestId:message.requestId,target:requestedTarget});}
+          return;
+        }
+        if(PorticoCastContracts.isUserMutationKey(message.requestId)){
+          try{
+            if(await originalStopReceipt(commandLease,message.requestId,requestedTarget)){
+              // The server receipt survives receiver restart/history eviction.
+              // It proves only this original occurrence; no current Stop is sent.
+              reply({type:'stopped',requestId:message.requestId,target:requestedTarget});return;
+            }
+          }catch(e){if(leaseCurrent(commandLease))reply({type:'control-failed',requestId:message.requestId,target:requestedTarget});return;}
+        }
+      }
       if(message.target!==undefined&&(!requestedTarget||!sameRemoteIdentity(requestedTarget,remoteIdentity(commandLease,playback)))){
         if(requestedTarget&&typeof message.requestId==='string'&&/^[A-Za-z0-9._:-]{1,128}$/.test(message.requestId))reply({type:'control-failed',requestId:message.requestId,target:requestedTarget});
         return;
@@ -1454,9 +1560,14 @@
         case 'subtitles': if(Array.isArray(message.trackIds)&&message.trackIds.length<=1&&message.trackIds.every(Number.isSafeInteger)) manager.getTextTracksManager().setActiveByIds(message.trackIds); break;
         case 'stop': {
           var stopOwner=playback,stoppedTarget=remoteIdentity(commandLease,stopOwner);
-          commandQueue(commandLease,function(){return stopPlayback(false,commandLease,stopOwner);}).then(function(stopClock){
+          commandQueue(commandLease,function(){return stopPlayback(false,commandLease,stopOwner,message.requestId);}).then(function(stopClock){
             requireLease(commandLease);
-            if(stoppedTarget&&typeof message.requestId==='string'&&/^[A-Za-z0-9._:-]{1,128}$/.test(message.requestId))reply(Object.assign({type:'stopped',requestId:message.requestId,target:stoppedTarget},stopClock));
+            if(stoppedTarget&&typeof message.requestId==='string'&&/^[A-Za-z0-9._:-]{1,128}$/.test(message.requestId)){
+              // Bounded acknowledgement history only; pending commands live in the durable coordinator.
+              completedStops.set(message.requestId,{target:stoppedTarget,scope:stopMutationScope(),clock:stopClock,until:Date.now()+30*86400000});
+              while(completedStops.size>32)completedStops.delete(completedStops.keys().next().value);
+              reply(Object.assign({type:'stopped',requestId:message.requestId,target:stoppedTarget},stopClock));
+            }
             broadcast();
           }).catch(function(){if(leaseCurrent(commandLease)){notice(copy('notice.stopFailed'),5000);if(stoppedTarget&&typeof message.requestId==='string')reply({type:'control-failed',requestId:message.requestId,target:stoppedTarget});}});
           break;
@@ -1540,7 +1651,7 @@
     });
     var statusInterval=setInterval(function(){if(playback){broadcast();playingView();}},2000);
     if(cast.framework.system.EventType.SHUTDOWN)context.addEventListener(cast.framework.system.EventType.SHUTDOWN,function(){
-      shuttingDown=true;activeRequests.forEach(function(active){clearTimeout(active.timer);active.abort.abort();});activeRequests.clear();
+      shuttingDown=true;if(stopMutations)stopMutations.dispose();activeRequests.forEach(function(active){clearTimeout(active.timer);active.abort.abort();});activeRequests.clear();
       resetViewPlayback();clearInterval(statusInterval);clearTimeout(reportTimer);clearTimeout(bufferingTimer);clearTimeout(errorTimer);clearTimeout(noticeTimer);if(pendingPair)clearTimeout(pendingPair.timer);
     });
     // The standard idle timeout closes the app when nothing is playing and nobody is connected (CAST-01 §5).

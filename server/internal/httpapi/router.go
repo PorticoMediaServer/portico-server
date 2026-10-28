@@ -281,7 +281,7 @@ func reportHTTPFailure(status int, code string, err error) {
 // mapping can't present it as that feature being unavailable. It reports
 // whether it answered.
 func writerRefused(w http.ResponseWriter, e error) bool {
-	if !dbwork.Overloaded(e) && !errors.Is(e, dbwork.ErrReadPressure) && !errors.Is(e, dbwork.ErrLongReadBusy) {
+	if userMutationError(e) == nil && !dbwork.Overloaded(e) && !errors.Is(e, dbwork.ErrReadPressure) && !errors.Is(e, dbwork.ErrLongReadBusy) {
 		return false
 	}
 	failure(w, e)
@@ -289,6 +289,10 @@ func writerRefused(w http.ResponseWriter, e error) bool {
 }
 
 func failure(w http.ResponseWriter, e error) {
+	if err := userMutationError(e); err != nil {
+		policyErrors.Write(w, w.Header().Get("X-Request-Id"), err)
+		return
+	}
 	if errors.Is(e, identity.ErrOwnerResetExpired) {
 		policyErrors.Write(w, w.Header().Get("X-Request-Id"), &apierror.Error{Code: "owner_reset_expired"})
 		return
@@ -1508,6 +1512,10 @@ func New(d Dependencies) http.Handler {
 		}
 		if release != nil {
 			defer release()
+		}
+		r, ok = d.bindUserMutation(w, r)
+		if !ok {
+			return
 		}
 		admitted.ServeHTTP(w, d.withDelivery(r))
 		if d.Hosted != nil && r.Method != "GET" && r.Method != "HEAD" && membershipPath(r.URL.Path) {

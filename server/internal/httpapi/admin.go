@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"portico.local/server/internal/catalog"
 	"portico.local/server/internal/identity"
+	"portico.local/server/internal/usermutation"
 	"strconv"
 	"time"
 )
@@ -120,7 +121,19 @@ func (d Dependencies) adminRoutes(mux *http.ServeMux) {
 			failure(w, e)
 			return
 		}
-		write(w, 200, map[string]any{"libraryIds": body.LibraryIDs})
+		ids := body.LibraryIDs
+		if _, _, protocol := usermutation.RequestFrom(r.Context()); protocol {
+			libraries, err := d.Catalog.WithContext(r.Context()).Libraries()
+			if err != nil {
+				failure(w, err)
+				return
+			}
+			ids = make([]string, 0, len(libraries))
+			for _, library := range libraries {
+				ids = append(ids, library.ID)
+			}
+		}
+		write(w, 200, map[string]any{"libraryIds": ids})
 	})
 	// How one show's episodes are presented (Spec — Title Pages §4): the owner's, from the show's page.
 	d.httpHandle(mux, "PUT /v1/admin/libraries/{id}/shows/{show}/settings", func(w http.ResponseWriter, r *http.Request) {

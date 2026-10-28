@@ -6,7 +6,9 @@ import (
 	"encoding/json"
 	"errors"
 	"portico.local/server/internal/requestinput"
+	"portico.local/server/internal/usermutation"
 	"strings"
+	"time"
 
 	"golang.org/x/text/language"
 	"portico.local/server/internal/dbwork"
@@ -179,6 +181,9 @@ func (s *Service) UpdateScreenPolicy(ctx context.Context, library string, body S
 	if body.ConfirmRemote != nil && *body.ConfirmRemote && body.DisclosureVersion != ScreenDisclosureVersion {
 		return requestinput.New("review the current provider disclosure before confirming")
 	}
+	if _, _, protocol := usermutation.RequestFrom(ctx); protocol && authorize == nil {
+		return ErrScreenConflict
+	}
 	gated2, err := dbwork.Begin(ctx, s.db, dbwork.ClassBackgroundMedia)
 	if err != nil {
 		return err
@@ -189,6 +194,13 @@ func (s *Service) UpdateScreenPolicy(ctx context.Context, library string, body S
 		if err = authorize(tx); err != nil {
 			return err
 		}
+	}
+	r, err := usermutation.CheckContext(ctx, tx, time.Now().UnixMilli())
+	if err != nil {
+		return err
+	}
+	if r != nil {
+		return nil
 	}
 	policy, err := readScreenPolicy(ctx, tx, library)
 	if err != nil {
@@ -262,6 +274,9 @@ func (s *Service) UpdateScreenPolicy(ctx context.Context, library string, body S
 		if _, err = tx.ExecContext(ctx, `UPDATE tvdb_provider_policies SET revision=revision+1`); err != nil {
 			return err
 		}
+	}
+	if err = usermutation.SaveContext(ctx, tx, usermutation.Result{Status: "applied", TargetID: library, Revision: policy.Revision + 1}, time.Now().UnixMilli()); err != nil {
+		return err
 	}
 	return gated2.Commit()
 }

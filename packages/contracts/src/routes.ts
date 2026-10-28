@@ -306,6 +306,9 @@ export const routes = [
     "lane": "default",
     "cost": "constant",
     "bodyLimit": 65536,
+    "headers": [
+      "Idempotency-Key"
+    ],
     "errors": [
       "unauthorized",
       "not_permitted",
@@ -315,6 +318,9 @@ export const routes = [
       "rate_limited",
       "internal",
       "revision_required",
+      "idempotency_conflict",
+      "receipt_expired",
+      "invalid_mutation_key",
       "database_busy",
       "writer_capacity"
     ],
@@ -16657,6 +16663,9 @@ export const routes = [
     "lane": "default",
     "cost": "constant",
     "bodyLimit": 65536,
+    "headers": [
+      "Idempotency-Key"
+    ],
     "errors": [
       "invalid_request",
       "unauthorized",
@@ -16667,6 +16676,9 @@ export const routes = [
       "idempotency_key_reused",
       "rate_limited",
       "internal",
+      "idempotency_conflict",
+      "receipt_expired",
+      "invalid_mutation_key",
       "database_busy",
       "writer_capacity"
     ],
@@ -16685,6 +16697,9 @@ export const routes = [
     "lane": "default",
     "cost": "constant",
     "bodyLimit": 65536,
+    "headers": [
+      "Idempotency-Key"
+    ],
     "errors": [
       "invalid_request",
       "unauthorized",
@@ -16695,6 +16710,9 @@ export const routes = [
       "idempotency_key_reused",
       "rate_limited",
       "internal",
+      "idempotency_conflict",
+      "receipt_expired",
+      "invalid_mutation_key",
       "database_busy",
       "writer_capacity"
     ],
@@ -16713,6 +16731,9 @@ export const routes = [
     "lane": "default",
     "cost": "constant",
     "bodyLimit": 65536,
+    "headers": [
+      "Idempotency-Key"
+    ],
     "errors": [
       "invalid_request",
       "unauthorized",
@@ -16723,6 +16744,9 @@ export const routes = [
       "idempotency_key_reused",
       "rate_limited",
       "internal",
+      "idempotency_conflict",
+      "receipt_expired",
+      "invalid_mutation_key",
       "database_busy",
       "writer_capacity"
     ],
@@ -16762,6 +16786,9 @@ export const routes = [
     "lane": "default",
     "cost": "page_sized",
     "bodyLimit": 4096,
+    "headers": [
+      "Idempotency-Key"
+    ],
     "errors": [
       "invalid_request",
       "unauthorized",
@@ -16774,6 +16801,9 @@ export const routes = [
       "personal_state_conflict",
       "idempotency_key_reused",
       "operation_expired",
+      "idempotency_conflict",
+      "receipt_expired",
+      "invalid_mutation_key",
       "database_busy",
       "writer_capacity"
     ],
@@ -16821,6 +16851,9 @@ export const routes = [
     "lane": "default",
     "cost": "constant",
     "bodyLimit": 65536,
+    "headers": [
+      "Idempotency-Key"
+    ],
     "errors": [
       "invalid_request",
       "unauthorized",
@@ -16828,6 +16861,9 @@ export const routes = [
       "not_found",
       "revision_mismatch",
       "internal",
+      "idempotency_conflict",
+      "receipt_expired",
+      "invalid_mutation_key",
       "database_busy",
       "writer_capacity"
     ],
@@ -16846,6 +16882,9 @@ export const routes = [
     "lane": "default",
     "cost": "constant",
     "bodyLimit": 65536,
+    "headers": [
+      "Idempotency-Key"
+    ],
     "errors": [
       "invalid_request",
       "unauthorized",
@@ -16853,6 +16892,9 @@ export const routes = [
       "not_found",
       "revision_mismatch",
       "internal",
+      "idempotency_conflict",
+      "receipt_expired",
+      "invalid_mutation_key",
       "database_busy",
       "writer_capacity"
     ],
@@ -25502,6 +25544,50 @@ export const routes = [
   },
   {
     "audience": "Clients",
+    "id": "get_user_mutation",
+    "method": "GET",
+    "path": "/v1/user-mutations/{key}",
+    "summary": "Read the original sign-in's compact mutation receipt",
+    "access": "device",
+    "requires": "playback",
+    "lane": "default",
+    "cost": "constant",
+    "bodyLimit": 0,
+    "errors": [
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "receipt_unknown",
+      "receipt_expired",
+      "invalid_mutation_key",
+      "internal",
+      "database_busy"
+    ],
+    "status": 200,
+    "admission": "default"
+  },
+  {
+    "audience": "Clients",
+    "id": "get_user_mutation_policy",
+    "method": "GET",
+    "path": "/v1/user-mutations/policy",
+    "summary": "Read server time and the mutation replay cutoff",
+    "access": "device",
+    "requires": "playback",
+    "lane": "default",
+    "cost": "constant",
+    "bodyLimit": 0,
+    "errors": [
+      "unauthorized",
+      "not_permitted",
+      "internal",
+      "database_busy"
+    ],
+    "status": 200,
+    "admission": "default"
+  },
+  {
+    "audience": "Clients",
     "id": "get_v1_items_id_chapters_chapter_image",
     "method": "GET",
     "path": "/v1/items/{id}/chapters/{chapter}/image",
@@ -27448,12 +27534,18 @@ export const routes = [
     "lane": "default",
     "cost": "constant",
     "bodyLimit": 65536,
+    "headers": [
+      "Idempotency-Key"
+    ],
     "errors": [
       "invalid_request",
       "unauthorized",
       "not_permitted",
       "not_found",
       "internal",
+      "idempotency_conflict",
+      "receipt_expired",
+      "invalid_mutation_key",
       "database_busy",
       "writer_capacity"
     ],
@@ -27498,12 +27590,18 @@ export const routes = [
     "lane": "default",
     "cost": "constant",
     "bodyLimit": 65536,
+    "headers": [
+      "Idempotency-Key"
+    ],
     "errors": [
       "invalid_request",
       "unauthorized",
       "not_permitted",
       "not_found",
       "internal",
+      "idempotency_conflict",
+      "receipt_expired",
+      "invalid_mutation_key",
       "database_busy",
       "writer_capacity"
     ],
@@ -27522,12 +27620,18 @@ export const routes = [
     "lane": "default",
     "cost": "constant",
     "bodyLimit": 65536,
+    "headers": [
+      "Idempotency-Key"
+    ],
     "errors": [
       "invalid_request",
       "unauthorized",
       "not_permitted",
       "not_found",
       "internal",
+      "idempotency_conflict",
+      "receipt_expired",
+      "invalid_mutation_key",
       "database_busy",
       "writer_capacity"
     ],
@@ -27713,6 +27817,9 @@ export const routes = [
     "lane": "default",
     "cost": "constant",
     "bodyLimit": 65536,
+    "headers": [
+      "Idempotency-Key"
+    ],
     "errors": [
       "invalid_request",
       "unauthorized",
@@ -27723,6 +27830,9 @@ export const routes = [
       "idempotency_key_reused",
       "rate_limited",
       "internal",
+      "idempotency_conflict",
+      "receipt_expired",
+      "invalid_mutation_key",
       "database_busy",
       "writer_capacity"
     ],
@@ -27741,12 +27851,18 @@ export const routes = [
     "lane": "default",
     "cost": "constant",
     "bodyLimit": 65536,
+    "headers": [
+      "Idempotency-Key"
+    ],
     "errors": [
       "invalid_request",
       "unauthorized",
       "not_permitted",
       "not_found",
       "internal",
+      "idempotency_conflict",
+      "receipt_expired",
+      "invalid_mutation_key",
       "database_busy",
       "writer_capacity"
     ],
@@ -27765,6 +27881,9 @@ export const routes = [
     "lane": "default",
     "cost": "constant",
     "bodyLimit": 65536,
+    "headers": [
+      "Idempotency-Key"
+    ],
     "errors": [
       "invalid_request",
       "unauthorized",
@@ -27772,6 +27891,9 @@ export const routes = [
       "not_found",
       "revision_mismatch",
       "internal",
+      "idempotency_conflict",
+      "receipt_expired",
+      "invalid_mutation_key",
       "database_busy",
       "writer_capacity"
     ],
@@ -29528,12 +29650,18 @@ export const routes = [
     "lane": "browsing",
     "cost": "constant",
     "bodyLimit": 65536,
+    "headers": [
+      "Idempotency-Key"
+    ],
     "errors": [
       "invalid_request",
       "unauthorized",
       "not_permitted",
       "not_found",
       "internal",
+      "idempotency_conflict",
+      "receipt_expired",
+      "invalid_mutation_key",
       "database_busy",
       "writer_capacity"
     ],
@@ -31003,6 +31131,9 @@ export const routes = [
     "lane": "default",
     "cost": "page_sized",
     "bodyLimit": 4096,
+    "headers": [
+      "Idempotency-Key"
+    ],
     "errors": [
       "invalid_request",
       "unauthorized",
@@ -31015,6 +31146,9 @@ export const routes = [
       "personal_needs_resolution",
       "operation_expired",
       "idempotency_key_reused",
+      "idempotency_conflict",
+      "receipt_expired",
+      "invalid_mutation_key",
       "database_busy",
       "writer_capacity"
     ],
@@ -31033,12 +31167,18 @@ export const routes = [
     "lane": "default",
     "cost": "constant",
     "bodyLimit": 4096,
+    "headers": [
+      "Idempotency-Key"
+    ],
     "errors": [
       "invalid_request",
       "unauthorized",
       "not_permitted",
       "not_found",
       "internal",
+      "idempotency_conflict",
+      "receipt_expired",
+      "invalid_mutation_key",
       "database_busy",
       "writer_capacity"
     ],
@@ -31506,12 +31646,18 @@ export const routes = [
     "lane": "default",
     "cost": "constant",
     "bodyLimit": 65536,
+    "headers": [
+      "Idempotency-Key"
+    ],
     "errors": [
       "invalid_request",
       "unauthorized",
       "not_permitted",
       "not_found",
       "internal",
+      "idempotency_conflict",
+      "receipt_expired",
+      "invalid_mutation_key",
       "database_busy",
       "writer_capacity"
     ],
@@ -31650,6 +31796,9 @@ export const routes = [
     "lane": "default",
     "cost": "constant",
     "bodyLimit": 65536,
+    "headers": [
+      "Idempotency-Key"
+    ],
     "errors": [
       "invalid_request",
       "unauthorized",
@@ -31659,6 +31808,9 @@ export const routes = [
       "idempotency_key_reused",
       "rate_limited",
       "internal",
+      "idempotency_conflict",
+      "receipt_expired",
+      "invalid_mutation_key",
       "database_busy",
       "writer_capacity"
     ],
@@ -31677,6 +31829,9 @@ export const routes = [
     "lane": "default",
     "cost": "constant",
     "bodyLimit": 65536,
+    "headers": [
+      "Idempotency-Key"
+    ],
     "errors": [
       "invalid_request",
       "unauthorized",
@@ -31688,6 +31843,9 @@ export const routes = [
       "rate_limited",
       "operation_expired",
       "internal",
+      "idempotency_conflict",
+      "receipt_expired",
+      "invalid_mutation_key",
       "database_busy",
       "writer_capacity"
     ],
@@ -31966,12 +32124,18 @@ export const routes = [
     "lane": "default",
     "cost": "constant",
     "bodyLimit": 65536,
+    "headers": [
+      "Idempotency-Key"
+    ],
     "errors": [
       "invalid_request",
       "unauthorized",
       "not_permitted",
       "not_found",
       "internal",
+      "idempotency_conflict",
+      "receipt_expired",
+      "invalid_mutation_key",
       "database_busy",
       "writer_capacity"
     ],
@@ -33076,11 +33240,17 @@ export const routes = [
     "lane": "default",
     "cost": "constant",
     "bodyLimit": 8192,
+    "headers": [
+      "Idempotency-Key"
+    ],
     "errors": [
       "unauthorized",
       "invalid_request",
       "administration_unavailable",
       "internal",
+      "idempotency_conflict",
+      "receipt_expired",
+      "invalid_mutation_key",
       "database_busy",
       "writer_capacity"
     ],
@@ -33169,12 +33339,18 @@ export const routes = [
     "lane": "default",
     "cost": "constant",
     "bodyLimit": 65536,
+    "headers": [
+      "Idempotency-Key"
+    ],
     "errors": [
       "invalid_request",
       "unauthorized",
       "not_permitted",
       "not_found",
       "internal",
+      "idempotency_conflict",
+      "receipt_expired",
+      "invalid_mutation_key",
       "database_busy",
       "writer_capacity"
     ],
@@ -33194,12 +33370,18 @@ export const routes = [
     "lane": "default",
     "cost": "constant",
     "bodyLimit": 65536,
+    "headers": [
+      "Idempotency-Key"
+    ],
     "errors": [
       "invalid_request",
       "unauthorized",
       "not_permitted",
       "not_found",
       "internal",
+      "idempotency_conflict",
+      "receipt_expired",
+      "invalid_mutation_key",
       "database_busy",
       "writer_capacity"
     ],
@@ -33219,12 +33401,18 @@ export const routes = [
     "lane": "default",
     "cost": "constant",
     "bodyLimit": 65536,
+    "headers": [
+      "Idempotency-Key"
+    ],
     "errors": [
       "invalid_request",
       "unauthorized",
       "not_permitted",
       "not_found",
       "internal",
+      "idempotency_conflict",
+      "receipt_expired",
+      "invalid_mutation_key",
       "database_busy",
       "writer_capacity"
     ],
@@ -33243,6 +33431,9 @@ export const routes = [
     "lane": "default",
     "cost": "page_sized",
     "bodyLimit": 4096,
+    "headers": [
+      "Idempotency-Key"
+    ],
     "errors": [
       "invalid_request",
       "invalid_analysis",
@@ -33254,6 +33445,9 @@ export const routes = [
       "analysis_conflict",
       "analysis_unavailable",
       "internal",
+      "idempotency_conflict",
+      "receipt_expired",
+      "invalid_mutation_key",
       "database_busy",
       "writer_capacity"
     ],
@@ -33273,12 +33467,18 @@ export const routes = [
     "lane": "default",
     "cost": "constant",
     "bodyLimit": 65536,
+    "headers": [
+      "Idempotency-Key"
+    ],
     "errors": [
       "invalid_request",
       "unauthorized",
       "not_permitted",
       "not_found",
       "internal",
+      "idempotency_conflict",
+      "receipt_expired",
+      "invalid_mutation_key",
       "database_busy",
       "writer_capacity"
     ],
@@ -33345,6 +33545,9 @@ export const routes = [
     "lane": "default",
     "cost": "constant",
     "bodyLimit": 65536,
+    "headers": [
+      "Idempotency-Key"
+    ],
     "errors": [
       "unauthorized",
       "invalid_request",
@@ -33355,6 +33558,9 @@ export const routes = [
       "administration_unavailable",
       "internal",
       "revision_required",
+      "idempotency_conflict",
+      "receipt_expired",
+      "invalid_mutation_key",
       "database_busy",
       "writer_capacity"
     ],
@@ -33539,6 +33745,9 @@ export const routes = [
     "lane": "default",
     "cost": "constant",
     "bodyLimit": 4096,
+    "headers": [
+      "Idempotency-Key"
+    ],
     "errors": [
       "download_conflict",
       "storage_full",
@@ -33555,6 +33764,9 @@ export const routes = [
       "internal",
       "timeout",
       "revision_required",
+      "idempotency_conflict",
+      "receipt_expired",
+      "invalid_mutation_key",
       "database_busy",
       "writer_capacity"
     ],
@@ -33789,12 +34001,18 @@ export const routes = [
     "lane": "browsing",
     "cost": "page_sized",
     "bodyLimit": 1048576,
+    "headers": [
+      "Idempotency-Key"
+    ],
     "errors": [
       "invalid_request",
       "unauthorized",
       "not_permitted",
       "not_found",
       "internal",
+      "idempotency_conflict",
+      "receipt_expired",
+      "invalid_mutation_key",
       "database_busy",
       "writer_capacity"
     ],
@@ -33812,6 +34030,9 @@ export const routes = [
     "lane": "default",
     "cost": "constant",
     "bodyLimit": 4096,
+    "headers": [
+      "Idempotency-Key"
+    ],
     "errors": [
       "invalid_request",
       "unauthorized",
@@ -33825,6 +34046,9 @@ export const routes = [
       "operation_expired",
       "idempotency_key_reused",
       "stale_continuation",
+      "idempotency_conflict",
+      "receipt_expired",
+      "invalid_mutation_key",
       "database_busy",
       "writer_capacity"
     ],
@@ -33843,6 +34067,9 @@ export const routes = [
     "lane": "default",
     "cost": "constant",
     "bodyLimit": 4096,
+    "headers": [
+      "Idempotency-Key"
+    ],
     "errors": [
       "invalid_request",
       "unauthorized",
@@ -33856,6 +34083,9 @@ export const routes = [
       "operation_expired",
       "idempotency_key_reused",
       "stale_continuation",
+      "idempotency_conflict",
+      "receipt_expired",
+      "invalid_mutation_key",
       "database_busy",
       "writer_capacity"
     ],
@@ -33874,6 +34104,9 @@ export const routes = [
     "lane": "default",
     "cost": "constant",
     "bodyLimit": 4096,
+    "headers": [
+      "Idempotency-Key"
+    ],
     "errors": [
       "invalid_request",
       "unauthorized",
@@ -33887,6 +34120,9 @@ export const routes = [
       "operation_expired",
       "idempotency_key_reused",
       "stale_continuation",
+      "idempotency_conflict",
+      "receipt_expired",
+      "invalid_mutation_key",
       "database_busy",
       "writer_capacity"
     ],
@@ -33905,12 +34141,18 @@ export const routes = [
     "lane": "browsing",
     "cost": "page_sized",
     "bodyLimit": 1048576,
+    "headers": [
+      "Idempotency-Key"
+    ],
     "errors": [
       "invalid_request",
       "unauthorized",
       "not_permitted",
       "not_found",
       "internal",
+      "idempotency_conflict",
+      "receipt_expired",
+      "invalid_mutation_key",
       "database_busy",
       "writer_capacity"
     ],
@@ -33928,12 +34170,18 @@ export const routes = [
     "lane": "browsing",
     "cost": "constant",
     "bodyLimit": 65536,
+    "headers": [
+      "Idempotency-Key"
+    ],
     "errors": [
       "invalid_request",
       "unauthorized",
       "not_permitted",
       "not_found",
       "internal",
+      "idempotency_conflict",
+      "receipt_expired",
+      "invalid_mutation_key",
       "database_busy",
       "writer_capacity"
     ],
@@ -33953,12 +34201,18 @@ export const routes = [
     "lane": "browsing",
     "cost": "constant",
     "bodyLimit": 65536,
+    "headers": [
+      "Idempotency-Key"
+    ],
     "errors": [
       "invalid_request",
       "unauthorized",
       "not_permitted",
       "not_found",
       "internal",
+      "idempotency_conflict",
+      "receipt_expired",
+      "invalid_mutation_key",
       "database_busy",
       "writer_capacity"
     ],
@@ -33978,12 +34232,18 @@ export const routes = [
     "lane": "browsing",
     "cost": "constant",
     "bodyLimit": 65536,
+    "headers": [
+      "Idempotency-Key"
+    ],
     "errors": [
       "invalid_request",
       "unauthorized",
       "not_permitted",
       "not_found",
       "internal",
+      "idempotency_conflict",
+      "receipt_expired",
+      "invalid_mutation_key",
       "database_busy",
       "writer_capacity"
     ],
@@ -34003,6 +34263,9 @@ export const routes = [
     "lane": "default",
     "cost": "constant",
     "bodyLimit": 65536,
+    "headers": [
+      "Idempotency-Key"
+    ],
     "errors": [
       "unauthorized",
       "not_permitted",
@@ -34013,6 +34276,9 @@ export const routes = [
       "internal",
       "timeout",
       "revision_required",
+      "idempotency_conflict",
+      "receipt_expired",
+      "invalid_mutation_key",
       "database_busy",
       "writer_capacity"
     ],
@@ -34030,12 +34296,18 @@ export const routes = [
     "lane": "browsing",
     "cost": "constant",
     "bodyLimit": 65536,
+    "headers": [
+      "Idempotency-Key"
+    ],
     "errors": [
       "invalid_request",
       "unauthorized",
       "not_permitted",
       "not_found",
       "internal",
+      "idempotency_conflict",
+      "receipt_expired",
+      "invalid_mutation_key",
       "database_busy",
       "writer_capacity"
     ],
@@ -34102,6 +34374,9 @@ export const routes = [
     "lane": "default",
     "cost": "page_sized",
     "bodyLimit": 262144,
+    "headers": [
+      "Idempotency-Key"
+    ],
     "errors": [
       "unauthorized",
       "not_permitted",
@@ -34110,6 +34385,9 @@ export const routes = [
       "internal",
       "timeout",
       "revision_required",
+      "idempotency_conflict",
+      "receipt_expired",
+      "invalid_mutation_key",
       "database_busy",
       "writer_capacity"
     ],
@@ -34154,6 +34432,9 @@ export const routes = [
     "lane": "default",
     "cost": "constant",
     "bodyLimit": 65536,
+    "headers": [
+      "Idempotency-Key"
+    ],
     "errors": [
       "invalid_request",
       "unauthorized",
@@ -34164,6 +34445,9 @@ export const routes = [
       "idempotency_key_reused",
       "rate_limited",
       "internal",
+      "idempotency_conflict",
+      "receipt_expired",
+      "invalid_mutation_key",
       "database_busy",
       "writer_capacity"
     ],
@@ -34182,6 +34466,9 @@ export const routes = [
     "lane": "default",
     "cost": "page_sized",
     "bodyLimit": 4096,
+    "headers": [
+      "Idempotency-Key"
+    ],
     "errors": [
       "invalid_request",
       "unauthorized",
@@ -34194,6 +34481,9 @@ export const routes = [
       "personal_state_conflict",
       "idempotency_key_reused",
       "operation_expired",
+      "idempotency_conflict",
+      "receipt_expired",
+      "invalid_mutation_key",
       "database_busy",
       "writer_capacity"
     ],
@@ -34274,6 +34564,9 @@ export const routes = [
     "lane": "browsing",
     "cost": "constant",
     "bodyLimit": 65536,
+    "headers": [
+      "Idempotency-Key"
+    ],
     "errors": [
       "invalid_request",
       "unauthorized",
@@ -34281,6 +34574,9 @@ export const routes = [
       "not_found",
       "revision_mismatch",
       "internal",
+      "idempotency_conflict",
+      "receipt_expired",
+      "invalid_mutation_key",
       "database_busy",
       "writer_capacity"
     ],
@@ -34299,12 +34595,18 @@ export const routes = [
     "lane": "browsing",
     "cost": "constant",
     "bodyLimit": 65536,
+    "headers": [
+      "Idempotency-Key"
+    ],
     "errors": [
       "invalid_request",
       "unauthorized",
       "not_permitted",
       "not_found",
       "internal",
+      "idempotency_conflict",
+      "receipt_expired",
+      "invalid_mutation_key",
       "database_busy",
       "writer_capacity"
     ],
@@ -34323,6 +34625,9 @@ export const routes = [
     "lane": "default",
     "cost": "constant",
     "bodyLimit": 65536,
+    "headers": [
+      "Idempotency-Key"
+    ],
     "errors": [
       "invalid_request",
       "unauthorized",
@@ -34330,6 +34635,9 @@ export const routes = [
       "not_found",
       "revision_mismatch",
       "internal",
+      "idempotency_conflict",
+      "receipt_expired",
+      "invalid_mutation_key",
       "database_busy",
       "writer_capacity"
     ],
@@ -34348,6 +34656,9 @@ export const routes = [
     "lane": "default",
     "cost": "constant",
     "bodyLimit": 65536,
+    "headers": [
+      "Idempotency-Key"
+    ],
     "errors": [
       "invalid_request",
       "unauthorized",
@@ -34355,6 +34666,9 @@ export const routes = [
       "not_found",
       "revision_mismatch",
       "internal",
+      "idempotency_conflict",
+      "receipt_expired",
+      "invalid_mutation_key",
       "database_busy",
       "writer_capacity"
     ],
@@ -34447,6 +34761,9 @@ export const routes = [
     "lane": "default",
     "cost": "constant",
     "bodyLimit": 8192,
+    "headers": [
+      "Idempotency-Key"
+    ],
     "errors": [
       "unauthorized",
       "not_permitted",
@@ -34460,6 +34777,9 @@ export const routes = [
       "storage_executable_too_old",
       "timeout",
       "revision_required",
+      "idempotency_conflict",
+      "receipt_expired",
+      "invalid_mutation_key",
       "database_busy",
       "writer_capacity"
     ],
@@ -34477,6 +34797,9 @@ export const routes = [
     "lane": "default",
     "cost": "constant",
     "bodyLimit": 8192,
+    "headers": [
+      "Idempotency-Key"
+    ],
     "errors": [
       "unauthorized",
       "not_permitted",
@@ -34491,6 +34814,9 @@ export const routes = [
       "internal",
       "timeout",
       "revision_required",
+      "idempotency_conflict",
+      "receipt_expired",
+      "invalid_mutation_key",
       "database_busy",
       "writer_capacity"
     ],
@@ -34508,6 +34834,9 @@ export const routes = [
     "lane": "default",
     "cost": "constant",
     "bodyLimit": 4096,
+    "headers": [
+      "Idempotency-Key"
+    ],
     "errors": [
       "unauthorized",
       "not_permitted",
@@ -34520,6 +34849,9 @@ export const routes = [
       "internal",
       "timeout",
       "revision_required",
+      "idempotency_conflict",
+      "receipt_expired",
+      "invalid_mutation_key",
       "database_busy",
       "writer_capacity"
     ],
@@ -34854,6 +35186,9 @@ export const routes = [
     "lane": "default",
     "cost": "page_sized",
     "bodyLimit": 65536,
+    "headers": [
+      "Idempotency-Key"
+    ],
     "errors": [
       "invalid_request",
       "invalid_cursor",
@@ -34865,6 +35200,9 @@ export const routes = [
       "internal",
       "timeout",
       "revision_required",
+      "idempotency_conflict",
+      "receipt_expired",
+      "invalid_mutation_key",
       "database_busy",
       "writer_capacity"
     ],
@@ -34882,6 +35220,9 @@ export const routes = [
     "lane": "default",
     "cost": "constant",
     "bodyLimit": 65536,
+    "headers": [
+      "Idempotency-Key"
+    ],
     "errors": [
       "invalid_request",
       "unauthorized",
@@ -34889,6 +35230,9 @@ export const routes = [
       "not_found",
       "revision_mismatch",
       "internal",
+      "idempotency_conflict",
+      "receipt_expired",
+      "invalid_mutation_key",
       "database_busy",
       "writer_capacity"
     ],
@@ -34919,6 +35263,28 @@ export const routes = [
     ],
     "status": 202,
     "admission": "default"
+  },
+  {
+    "audience": "Clients",
+    "id": "retire_user_mutations",
+    "method": "POST",
+    "path": "/v1/admin/user-mutations/retire",
+    "summary": "Retire an account's old receipt history without changing user data",
+    "access": "owner",
+    "requires": "admin",
+    "lane": "security",
+    "cost": "constant",
+    "bodyLimit": 1024,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "internal",
+      "database_busy",
+      "writer_capacity"
+    ],
+    "status": 200,
+    "admission": "admin"
   },
   {
     "audience": "Clients",
@@ -35263,6 +35629,9 @@ export const routes = [
     "lane": "default",
     "cost": "page_sized",
     "bodyLimit": 2048,
+    "headers": [
+      "Idempotency-Key"
+    ],
     "errors": [
       "invalid_request",
       "unauthorized",
@@ -35273,6 +35642,9 @@ export const routes = [
       "internal",
       "timeout",
       "revision_required",
+      "idempotency_conflict",
+      "receipt_expired",
+      "invalid_mutation_key",
       "database_busy",
       "writer_capacity"
     ],
@@ -35291,6 +35663,9 @@ export const routes = [
     "lane": "default",
     "cost": "page_sized",
     "bodyLimit": 65536,
+    "headers": [
+      "Idempotency-Key"
+    ],
     "errors": [
       "unauthorized",
       "not_permitted",
@@ -35305,6 +35680,9 @@ export const routes = [
       "source_unavailable",
       "internal",
       "revision_required",
+      "idempotency_conflict",
+      "receipt_expired",
+      "invalid_mutation_key",
       "database_busy",
       "writer_capacity"
     ],
@@ -35323,6 +35701,9 @@ export const routes = [
     "lane": "default",
     "cost": "page_sized",
     "bodyLimit": 8388608,
+    "headers": [
+      "Idempotency-Key"
+    ],
     "errors": [
       "unauthorized",
       "not_permitted",
@@ -35337,6 +35718,9 @@ export const routes = [
       "source_unavailable",
       "internal",
       "revision_required",
+      "idempotency_conflict",
+      "receipt_expired",
+      "invalid_mutation_key",
       "database_busy",
       "writer_capacity"
     ],
@@ -38098,6 +38482,9 @@ export const routes = [
     "lane": "media",
     "cost": "constant",
     "bodyLimit": 4096,
+    "headers": [
+      "Idempotency-Key"
+    ],
     "errors": [
       "unauthorized",
       "not_permitted",
@@ -38108,10 +38495,14 @@ export const routes = [
       "session_ended",
       "internal",
       "timeout",
+      "idempotency_conflict",
+      "receipt_expired",
+      "invalid_mutation_key",
       "database_busy",
       "writer_capacity"
     ],
     "status": 204,
+    "optionalBody": true,
     "admission": "security-fence"
   },
   {
@@ -38125,12 +38516,18 @@ export const routes = [
     "lane": "media",
     "cost": "constant",
     "bodyLimit": 1024,
+    "headers": [
+      "Idempotency-Key"
+    ],
     "errors": [
       "invalid_request",
       "unauthorized",
       "not_found",
       "revision_mismatch",
       "timeout",
+      "idempotency_conflict",
+      "receipt_expired",
+      "invalid_mutation_key",
       "database_busy",
       "writer_capacity"
     ],
@@ -38334,6 +38731,9 @@ export const routes = [
     "lane": "default",
     "cost": "page_sized",
     "bodyLimit": 2048,
+    "headers": [
+      "Idempotency-Key"
+    ],
     "errors": [
       "invalid_request",
       "unauthorized",
@@ -38344,6 +38744,9 @@ export const routes = [
       "internal",
       "operation_expired",
       "timeout",
+      "idempotency_conflict",
+      "receipt_expired",
+      "invalid_mutation_key",
       "database_busy",
       "writer_capacity"
     ],

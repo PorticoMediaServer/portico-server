@@ -7,6 +7,7 @@ import (
 	"errors"
 	"portico.local/server/internal/apiwire"
 	"portico.local/server/internal/dbwork"
+	"portico.local/server/internal/usermutation"
 	"slices"
 	"strconv"
 	"strings"
@@ -1012,6 +1013,14 @@ func (s *Store) ApplyNotificationSettings(ctx context.Context, p identity.Princi
 	}
 	e = s.transaction(ctx, auth, "", func(tx *sql.Tx) error {
 		now := s.now()
+		receipt, err := usermutation.CheckContext(ctx, tx, now)
+		if err != nil {
+			return err
+		}
+		if receipt != nil {
+			out, err = readNotificationSettings(tx)
+			return err
+		}
 		current, err := readNotificationSettings(tx)
 		if err != nil {
 			return err
@@ -1047,7 +1056,7 @@ func (s *Store) ApplyNotificationSettings(ctx context.Context, p identity.Princi
 			return err
 		}
 		out = current
-		return nil
+		return usermutation.SaveContext(ctx, tx, usermutation.Result{Status: "applied", TargetID: "notifications", Revision: out.Revision}, now)
 	})
 	return
 }

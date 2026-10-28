@@ -160,7 +160,7 @@ export class ReadingError extends Error {
   constructor(code: string, status?: number) { super(code); this.name = 'ReadingError'; this.code = code; this.status = status; }
 }
 type Sender = (path: string, init: RequestInit) => Promise<Response>;
-type Capture = Readonly<{send: Sender; isCurrent: () => boolean; subscribe: (retire: () => void) => () => void}>;
+type Capture = Readonly<{acknowledge?: (key: string) => Promise<void>; send: Sender; isCurrent: () => boolean; subscribe: (retire: () => void) => () => void}>;
 function fail(code: string): never { throw new ReadingError(code); }
 const serverCodes = new Set<string>(errors.map(error => error.code));
 const cancellation = (signal: AbortSignal) => signal.reason instanceof ReadingError ? signal.reason : new ReadingError('cancelled');
@@ -484,7 +484,7 @@ export class ReadingClient {
       throw new ReadingError('network_error');
     } finally { op.release(); }
   }
-  async json<T>(path: string, method: string, body: unknown, signal: AbortSignal | undefined, decode: (value: unknown) => T, max: number, headers?: Record<string, string>, sessionSignal?: AbortSignal, sourceRevision?: (value: T) => string): Promise<T> {
+  async json<T>(path: string, method: string, body: unknown, signal: AbortSignal | undefined, decode: (value: unknown, recovered: boolean) => T, max: number, headers?: Record<string, string>, sessionSignal?: AbortSignal, sourceRevision?: (value: T) => string): Promise<T> {
     const payload = body === undefined ? undefined : JSON.stringify(body);
     if (payload !== undefined && new TextEncoder().encode(payload).length > 8192) fail('request_size');
     return this.response(path, {method, headers: {...headers, Accept: 'application/json', ...(payload === undefined ? {} : {'Content-Type': 'application/json'})}, ...(payload === undefined ? {} : {body: payload})}, signal, async (r, active, check) => {
@@ -492,10 +492,12 @@ export class ReadingClient {
       if (mime(r.headers.get('Content-Type')) !== 'application/json') return fail('invalid_response');
       const raw = await bytes(r, max, active, check);
       let value: T;
-      try { value = frozen(decode(JSON.parse(new TextDecoder('utf-8', {fatal: true}).decode(raw)))); }
+      try { value = frozen(decode(JSON.parse(new TextDecoder('utf-8', {fatal: true}).decode(raw)), r.headers.get('Portico-Mutation-Recovered') === 'true')); }
       catch { return fail('invalid_document'); }
       const tag = sourceRevision ? '"' + sourceRevision(value) + '"' : headers?.['If-Match'];
       if (tag !== undefined && r.headers.get('ETag') !== tag) fail('source_changed');
+      const key = r.headers.get('Portico-Mutation-Key');
+      if (key) await this.#capture.acknowledge?.(key);
       return value;
     }, sessionSignal);
   }
@@ -517,13 +519,13 @@ export class ReadingClient {
   async getFavorite(itemId: string, signal?: AbortSignal) {
     const path = readingFavoritePath('GET', itemId);
     if (!path) fail('unsupported');
-    return this.json(path, 'GET', undefined, signal, value => parseReadingFavorite(value, this.viewer.serverId, itemId), 4096);
+    return this.json(path, 'GET', undefined, signal, (value, recovered) => parseReadingFavorite(value, this.viewer.serverId, itemId), 4096);
   }
   async setFavorite(itemId: string, command: ReadingFavoriteCommand, signal?: AbortSignal) {
     const path = readingFavoritePath('PUT', itemId);
     if (!path || !validReadingFavoriteCommand(command)) fail('invalid_request');
     const captured = Object.freeze({...command});
-    return this.json(path, 'PUT', captured, signal, value => parseReadingFavorite(value, this.viewer.serverId, itemId, captured.operationId), 4096);
+    return this.json(path, 'PUT', captured, signal, (value, recovered) => parseReadingFavorite(value, this.viewer.serverId, itemId, recovered ? undefined : captured.operationId), 4096);
   }
   canUseGroupMyList(target: ReadingSavedGroupTarget): boolean {
     const viewer = this.viewer;
@@ -533,12 +535,12 @@ export class ReadingClient {
   async getGroupMyList(target: ReadingSavedGroupTarget, signal?: AbortSignal) {
     const captured = Object.freeze({...target}), path = readingSavedGroupPath('GET', captured);
     if (!path) fail('unsupported');
-    return this.json(path, 'GET', undefined, signal, value => parseReadingSavedGroupMembership(value, this.viewer.serverId, captured), 4096);
+    return this.json(path, 'GET', undefined, signal, (value, recovered) => parseReadingSavedGroupMembership(value, this.viewer.serverId, captured), 4096);
   }
   async setGroupMyList(target: ReadingSavedGroupTarget, command: ReadingSavedGroupCommand, signal?: AbortSignal) {
     const capturedTarget = Object.freeze({...target}), captured = Object.freeze({...command}), path = readingSavedGroupPath('PUT', capturedTarget);
     if (!path || !validReadingSavedGroupCommand(captured)) fail('invalid_request');
-    return this.json(path, 'PUT', captured, signal, value => parseReadingSavedGroupMembership(value, this.viewer.serverId, capturedTarget, captured.operationId), 4096);
+    return this.json(path, 'PUT', captured, signal, (value, recovered) => parseReadingSavedGroupMembership(value, this.viewer.serverId, capturedTarget, recovered ? undefined : captured.operationId), 4096);
   }
   canUseMyList(itemId: string): boolean {
     const viewer = this.viewer;
@@ -548,13 +550,13 @@ export class ReadingClient {
   async getMyList(itemId: string, signal?: AbortSignal) {
     const path = readingSavedPath('GET', itemId);
     if (!path) fail('unsupported');
-    return this.json(path, 'GET', undefined, signal, value => parseReadingSavedMembership(value, this.viewer.serverId, itemId), 4096);
+    return this.json(path, 'GET', undefined, signal, (value, recovered) => parseReadingSavedMembership(value, this.viewer.serverId, itemId), 4096);
   }
   async setMyList(itemId: string, command: ReadingListCommand, signal?: AbortSignal) {
     const path = readingSavedPath('PUT', itemId);
     if (!path || !validReadingSavedCommand(command)) fail('invalid_request');
     const captured = Object.freeze({...command});
-    return this.json(path, 'PUT', captured, signal, value => parseReadingSavedMembership(value, this.viewer.serverId, itemId, captured.operationId), 4096);
+    return this.json(path, 'PUT', captured, signal, (value, recovered) => parseReadingSavedMembership(value, this.viewer.serverId, itemId, recovered ? undefined : captured.operationId), 4096);
   }
   canMarkRead(itemId: string): boolean {
     const viewer = this.viewer;
@@ -564,13 +566,13 @@ export class ReadingClient {
   async readMark(itemId: string, signal?: AbortSignal) {
     const path = readingMarkPath('GET', itemId);
     if (!path) fail('unsupported');
-    return this.json(path, 'GET', undefined, signal, value => parseReadingMark(value, this.viewer.serverId, itemId), 4096);
+    return this.json(path, 'GET', undefined, signal, (value, recovered) => parseReadingMark(value, this.viewer.serverId, itemId), 4096);
   }
   async setReadMark(itemId: string, command: ReadingReadMarkCommand, signal?: AbortSignal) {
     const path = readingMarkPath('PUT', itemId);
     if (!path || !validReadingMarkCommand(command)) fail('invalid_request');
     const captured = Object.freeze({...command});
-    return this.json(path, 'PUT', captured, signal, value => parseReadingMark(value, this.viewer.serverId, itemId, captured.operationId), 4096);
+    return this.json(path, 'PUT', captured, signal, (value, recovered) => parseReadingMark(value, this.viewer.serverId, itemId, recovered ? undefined : captured.operationId), 4096);
   }
   async list(options: Readonly<{libraryId?: string; cursor?: string; limit?: number}> = {}, signal?: AbortSignal): Promise<GetReadingItemsResponse> {
     if (options.libraryId !== undefined && !id(options.libraryId) || !integer(options.limit ?? 50, 1, 100) || (options.cursor !== undefined && !/^\d{1,20}$/.test(options.cursor))) fail('invalid_request');

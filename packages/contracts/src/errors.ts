@@ -379,6 +379,12 @@ export const errors = [
     "retry": "never"
   },
   {
+    "code": "idempotency_conflict",
+    "status": 409,
+    "message": "This request key belongs to a different change.",
+    "retry": "never"
+  },
+  {
     "code": "idempotency_key_required",
     "status": 428,
     "message": "Send an Idempotency-Key with this request.",
@@ -431,6 +437,12 @@ export const errors = [
     "status": 401,
     "message": "Request a new download link.",
     "retry": "after_refresh"
+  },
+  {
+    "code": "invalid_mutation_key",
+    "status": 400,
+    "message": "The change could not be identified. Refresh before trying again.",
+    "retry": "never"
   },
   {
     "code": "invalid_query",
@@ -706,6 +718,18 @@ export const errors = [
     "code": "rate_limited",
     "status": 429,
     "message": "Too many attempts. Try again later.",
+    "retry": "same_request"
+  },
+  {
+    "code": "receipt_expired",
+    "status": 410,
+    "message": "This change needs review because its receipt is no longer available.",
+    "retry": "never"
+  },
+  {
+    "code": "receipt_unknown",
+    "status": 404,
+    "message": "No receipt is available for this change yet.",
     "retry": "same_request"
   },
   {

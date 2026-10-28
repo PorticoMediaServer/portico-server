@@ -79,8 +79,8 @@ test('collection receipts preserve added, unchanged and refused item outcomes fo
   {added:[],removed:[],unchanged:[],failed:[{itemId:'item',code:'item_unavailable'}]},
  ]){
   const s=setup(async(_p,m,b)=>m==='GET'?content():{serverId:'server',viewerFence:'fence',receipt:{operationId:b.operationId,resourceId:'collection',revision:2,deleted:false,entries}});
-  await s.select({view:'resource',resourceId:'collection'});assert.equal(await s.mutate({action:'entries',addItemIds:['item']}),true);
-  assert.deepEqual(s.getSnapshot().result?.entries,entries);assert.ok(Object.isFrozen(s.getSnapshot().result?.entries));s.dispose();
+  await s.select({view:'resource',resourceId:'collection'});assert.equal(await s.mutate({action:'entries',addItemIds:['item']}),entries.failed.length===0);
+  assert.equal(s.getSnapshot().retryPending,entries.failed.length>0);assert.deepEqual(s.getSnapshot().result?.entries,entries);assert.ok(Object.isFrozen(s.getSnapshot().result?.entries));s.dispose();
  }
 });
 test('malformed collection outcome cannot become a successful receipt',async()=>{
@@ -104,10 +104,14 @@ test('a several-entry reorder refused because the collection changed surfaces th
  assert.equal(s.getSnapshot().mutationError?.conflict,true);assert.equal(s.getSnapshot().revision,4,'the newer collection is shown');
  s.dispose();
 });
-test('a collection move sends the entry and its new neighbour; a move refused because the collection changed is made again once, silently',async()=>{
+test('a collection move preserves its refused revision until the viewer explicitly reviews and rebases',async()=>{
  const writes:any[]=[];const paths:string[]=[];let revision=3;const s=setup(async(p,m,b)=>{if(m==='GET')return content(resource({revision,actions:['pin','update','delete','entries','reorder','share']}),[{id:'e1',hidden:false,media:media('a')},{id:'e2',hidden:false,media:media('b')}]);paths.push(p);writes.push(b);if(writes.length===1){revision=4;throw Object.assign(new Error('Changed'),{code:'revision_mismatch'});}revision=5;return {serverId:'server',viewerFence:'fence',receipt:{operationId:b.operationId,resourceId:'collection',revision,deleted:false}};});
  await s.select({view:'resource',resourceId:'collection'});
- assert.equal(await s.mutate({action:'reorder',entryIds:['e2'],afterEntryId:''}),true);
+ assert.equal(await s.mutate({action:'reorder',entryIds:['e2'],afterEntryId:''}),false);
+ assert.equal(writes.length,1,'a conflict never authors another operation automatically');
+ assert.equal(writes[0].expectedRevision,3);
+ assert.equal(s.getSnapshot().mutationError?.code,'revision_mismatch');
+ assert.equal(await s.rebase(),true);
  assert.deepEqual(paths,['/v1/saved-resources/collection/order','/v1/saved-resources/collection/order']);
  assert.deepEqual([writes[0].expectedRevision,writes[1].expectedRevision],[3,4]);
  assert.deepEqual(writes[1].entryIds,['e2']);assert.equal(writes[1].afterEntryId,'');assert.notEqual(writes[0].operationId,writes[1].operationId);

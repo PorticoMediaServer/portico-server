@@ -1,7 +1,6 @@
 const test=require('node:test'), assert=require('node:assert/strict'),vm=require('node:vm'),fs=require('node:fs'),crypto=require('node:crypto');
 const source=fs.readFileSync(require('node:path').join(__dirname,'../receiver.js'),'utf8');
 async function harness(fixture={}){
- const contracts=await import('../../../../packages/contracts/src/decoders.ts');
  const calls=[],loads=[],metadataUpdates=[],interceptors={},events={},timers=new Map(),storage=new Map(),sent=[],ctxEvents={},senders=[],queueItems=[],trackSelections=[];let timer=0,at=0,state='PAUSED',listener,urlResolver,activeAudio,activeText=[],tracksReady=true;
  // The real SDK exposes QUEUE_NEXT/PREV enum values but rejects them as interceptors.
  const supportedInterceptors=new Set(['LOAD','PLAY','PAUSE','SEEK','STOP','PRELOAD','QUEUE_INSERT','QUEUE_LOAD','QUEUE_UPDATE','QUEUE_REMOVE','QUEUE_REORDER','GET_STATUS','MEDIA_STATUS','CLOUD_STATUS','QUEUE_GET_ITEMS','QUEUE_GET_ITEM_IDS']);
@@ -16,14 +15,17 @@ async function harness(fixture={}){
  };
  const sessionFor=(body,start)=>({id:fixture.nextSessionId||'ps_1',revision:String(generation),kind:'vod',role:'local',state:'playing',itemId:body?.itemId||'movie',...(body?.versionId||fixture.versionId?{versionId:body?.versionId||fixture.versionId}:{}),...(body?.queue?{queue:body.queue}:fixture.queue?{queue:{queueId:'q-1',entryId:'entry-1'}}:{}),lease:{expiresAt:'2099-01-01T00:00:00Z',reportEveryMs:10000},presentation:presentation(start)});
  const reply=(payload,status=200)=>new Response(status===204?null:JSON.stringify(payload),{status});
- const context={PorticoCastContracts:contracts,document,cast,navigator:fixture.mediaCapabilities?{mediaCapabilities:fixture.mediaCapabilities}:{},URL,URLSearchParams,TextDecoder,AbortController,Uint8Array,console,Number,Promise,setTimeout:(fn,ms)=>{const id=++timer,invoke=()=>{timers.delete(id);fn()};const handle=fixture.schedule?.(invoke,ms);timers.set(id,{fn:invoke,ms,handle});return id},clearTimeout:id=>{const value=timers.get(id);if(value)fixture.cancel?.(value.handle);timers.delete(id)},setInterval:(fn,ms)=>{timers.set(++timer,{fn,ms});return timer},clearInterval:id=>timers.delete(id),fetch:async(url,options)=>{
+ const context={document,cast,navigator:fixture.mediaCapabilities?{mediaCapabilities:fixture.mediaCapabilities}:{},URL,URLSearchParams,TextDecoder,AbortController,Uint8Array,console,Number,Promise,setTimeout:(fn,ms)=>{const id=++timer,invoke=()=>{timers.delete(id);fn()};const handle=fixture.schedule?.(invoke,ms);timers.set(id,{fn:invoke,ms,handle});return id},clearTimeout:id=>{const value=timers.get(id);if(value)fixture.cancel?.(value.handle);timers.delete(id)},setInterval:(fn,ms)=>{timers.set(++timer,{fn,ms});return timer},clearInterval:id=>timers.delete(id),fetch:async(url,options)=>{
   const body=options.body?JSON.parse(options.body):undefined;calls.push({url,body,method:options.method,headers:options.headers});
   const path=url.replace(/^https?:\/\/[^/]+/,'');
+  if(path==='/v1/user-mutations/policy'&&fixture.policyFailure)throw new Error('policy unavailable');
+  if(path==='/v1/user-mutations/policy')return reply({serverTimeMs:Date.now(),retiredBeforeMs:0,retentionDays:30});
+  if(path.startsWith('/v1/user-mutations/')){const key=path.split('/').pop();if(fixture.receiptLookup)return fixture.receiptLookup(key,options);if(fixture.receiptHistory?.has(key))return reply(fixture.receiptHistory.get(key));const stop=calls.find(call=>call.method==='DELETE'&&call.headers['Idempotency-Key']===key);return stop?reply({key,operation:'stop_playback_session',status:'applied',targetId:stop.url.split('/').pop(),generation:stop.body.generation,positionMs:stop.body.positionMs,positionStatus:'applied',committedMs:Date.now(),expiresMs:Date.now()+2592000000}):reply({error:{code:'receipt_unknown'}},404);}
   if(path.startsWith('/v2/'))throw new Error('removed v2 route '+path);
   if(path.endsWith('/reconnect')&&fixture.revoked)return reply({error:{code:'cast_device_revoked',message:'That receiver pairing was revoked.',retryable:false}},403);
   if(path.endsWith('/preview'))return reply({controllerBootstrapId:'cbs_'+body.code,expiresAt:'2099-01-01T00:00:00Z',scope:{accountId:String(body.code||'').startsWith('OTHER')?'other':'account',profileId:'profile',authority:'hosted'}});
   if(path.endsWith('/redeem')&&fixture.redeemWait){fixture.redeemCalled?.();await fixture.redeemWait;}
-  if(path.endsWith('/redeem')||path.endsWith('/reconnect'))return reply({controllerBootstrapId:'cbs_'+(body?.code||'renewed'),device:{id:'cdv_'+(body?.code||'renewed'),generation:'1'},session:{accessToken:'bearer-'+(body?.code||'renewed')},deviceToken:'device-'+(body?.code||'renewed'),scope:{accountId:String(body?.code||'').startsWith('OTHER')?'other':'account',profileId:'profile',authority:'hosted'}});
+  if(path.endsWith('/redeem')||path.endsWith('/reconnect'))return reply({controllerBootstrapId:'cbs_'+(body?.code||'renewed'),device:{id:'cdv_'+(body?.code||'renewed'),generation:'1'},session:{accessToken:'bearer-'+(body?.code||'renewed'),viewer:{serverId:'server',authority:'hosted',accountId:String(body?.code||'').startsWith('OTHER')?'other':'account',profileId:'profile'},sessionFamilyId:'receiver-family-'+(body?.code||'renewed'),deviceId:'receiver'},deviceToken:'device-'+(body?.code||'renewed'),scope:{accountId:String(body?.code||'').startsWith('OTHER')?'other':'account',profileId:'profile',authority:'hosted'}});
   if(path==='/v1/cast/controllers/register'){registeredBinding={id:'cct_current',bootstrapId:body.bootstrapId,receiverId:'sdk-tv',targetId:'cdv_target',targetFamilyId:'target-family',targetGeneration:'1',scope:{serverId:'server',authority:'local',accountId:'account',profileId:'profile',senderDeviceId:'phone',senderFamilyId:'source-family'}};return reply({binding:registeredBinding});}
   if(path==='/v1/cast/controllers/check'){
     if(fixture.firstController401&&!controllerExpired){controllerExpired=true;return reply({error:{code:'unauthorized'}},401);}
@@ -61,7 +63,7 @@ async function harness(fixture={}){
    if(options.headers['If-Match']!==String(generation))return reply({error:{code:'precondition_failed',current:sessionFor({},0)}},412);
    generation++;return reply(sessionFor({},body.seek?body.seek.positionMs:body.positionMs||0));
   }
-  if((path==='/v1/playback/sessions/ps_1'||path==='/v1/playback/sessions/ps_known')&&options.method==='DELETE'){if(fixture.stopWait){fixture.stopCalled?.();await fixture.stopWait;}if(body?.expectedGeneration!==undefined&&body.expectedGeneration!==generation)return reply({error:{code:'revision_mismatch'}},412);if(fixture.cleanupStatus)return reply({error:{code:'precondition_failed'}},fixture.cleanupStatus);acceptedStops++;return reply({},204);}
+  if((path==='/v1/playback/sessions/ps_1'||path==='/v1/playback/sessions/ps_2'||path==='/v1/playback/sessions/ps_known')&&options.method==='DELETE'){if(fixture.stopWait){fixture.stopCalled?.();await fixture.stopWait;}if(body?.generation!==undefined){const entry=context.stopStoreState.entries.find(entry=>entry.key===options.headers['Idempotency-Key']);assert(entry,'receiver durable custody precedes Stop HTTP');assert.equal(entry.state,'pending');assert.deepEqual(JSON.parse(JSON.stringify(entry.body)),body);}if(body?.expectedGeneration!==undefined&&body.expectedGeneration!==generation)return reply({error:{code:'revision_mismatch'}},412);if(fixture.stop503&&body?.generation!==undefined)return new Response('<html>upstream unavailable</html>',{status:503,headers:{'Retry-After':'120'}});if(fixture.cleanupStatus)return reply({error:{code:'precondition_failed'}},fixture.cleanupStatus);acceptedStops++;if(fixture.receiptHistory&&body?.generation!==undefined)fixture.receiptHistory.set(options.headers['Idempotency-Key'],{key:options.headers['Idempotency-Key'],operation:'stop_playback_session',status:'applied',targetId:path.split('/').pop(),generation:body.generation,positionMs:body.positionMs,positionStatus:'applied',committedMs:Date.now(),expiresMs:Date.now()+2592000000});return reply({},204);}
   if(path.startsWith('/v1/cast/devices/')&&options.method==='DELETE')return reply({},204);
   throw new Error('unexpected path '+path);
  }};
@@ -69,8 +71,16 @@ async function harness(fixture={}){
  if(fixture.clock)context.Date=class extends Date{static now(){return fixture.clock.now}};
  context.window={cast,porticoCastView:fixture.view,porticoCastText:fixture.text,addEventListener:(name,fn)=>{ctxEvents['window:'+name]=fn},crypto:crypto.webcrypto,location:{origin:'https://cast.getportico.tv'},localStorage:{getItem:k=>storage.get(k),setItem:(k,v)=>storage.set(k,v),removeItem:k=>storage.delete(k)}};
  if(!fixture.text)vm.runInNewContext(fs.readFileSync(require('node:path').join(__dirname,'..','receiver-text.js'),'utf8'),context);
+ vm.runInNewContext(fs.readFileSync(require('node:path').join(__dirname,'../contracts.js'),'utf8'),context);
+ context.crypto=crypto.webcrypto;context.TextEncoder=TextEncoder;context.URL=URL;
+ context.stopStoreFailure=next=>fixture.stopStoreFailure||fixture.stopAckFailure&&context.stopStoreState.entries.some(entry=>entry.state==='confirmed')&&next.entries.length===0;
+ context.stopStoreState=fixture.stopStoreState||{version:1,revision:0,entries:[]};
+ context.mutationSetTimeout=(fn,ms)=>{if(ms===0){const handle={active:true};queueMicrotask(()=>{if(handle.active)fn();});return handle;}const handle=setTimeout(fn,ms);handle.unref();return handle;};context.mutationClearTimeout=handle=>{if(handle&&typeof handle.active==='boolean')handle.active=false;else clearTimeout(handle);};
+ vm.runInNewContext(`PorticoCastContracts.IndexedDBUserMutationStore=class {async read(){return JSON.parse(JSON.stringify(stopStoreState));}async compareAndSwap(revision,next){if(stopStoreFailure(next))throw new Error('IDB full');if(stopStoreState.revision!==revision)return false;stopStoreState=JSON.parse(JSON.stringify(next));return true;}};
+ const ActualCoordinator=PorticoCastContracts.UserMutationCoordinator;
+ PorticoCastContracts.UserMutationCoordinator=class extends ActualCoordinator {constructor(options){super({...options,ownerId:'receiver-test',timers:{setTimeout:mutationSetTimeout,clearTimeout:mutationClearTimeout}});}};`,context);
  vm.runInNewContext(source,context);await new Promise(setImmediate);
- return {trackSelections,activeTracks:()=>({audio:activeAudio,text:activeText.slice()}),readyTracks:()=>{tracksReady=true;},serverState:()=>({generation,acceptedStops}),replaceServerGeneration:()=>{generation++},finish:()=>{document.getElementById('player').ended=true;state='IDLE';events.MEDIA_FINISHED({endedReason:'END_OF_STREAM'});},metadataUpdates,resolved:request=>urlResolver(request),receiver:context.window.porticoCastReceiver,calls,loads,interceptors,events,castContext,timers,manager,sent,ctxEvents,senders,nodes,storage,queueItems,message:async(senderId,data)=>{listener({senderId,data});for(let i=0;i<20;i++)await new Promise(setImmediate);},fire:id=>{const t=timers.get(id);timers.delete(id);t.fn();},uiState:()=>nodes.ui?.attrs['data-state']};
+ return {mutationState:()=>context.stopStoreState,trackSelections,activeTracks:()=>({audio:activeAudio,text:activeText.slice()}),readyTracks:()=>{tracksReady=true;},serverState:()=>({generation,acceptedStops}),replaceServerGeneration:()=>{generation++},finish:()=>{document.getElementById('player').ended=true;state='IDLE';events.MEDIA_FINISHED({endedReason:'END_OF_STREAM'});},metadataUpdates,resolved:request=>urlResolver(request),receiver:context.window.porticoCastReceiver,calls,loads,interceptors,events,castContext,timers,manager,sent,ctxEvents,senders,nodes,storage,queueItems,message:async(senderId,data)=>{listener({senderId,data});for(let i=0;i<20;i++)await new Promise(setImmediate);},fire:id=>{const t=timers.get(id);timers.delete(id);t.fn();},uiState:()=>nodes.ui?.attrs['data-state']};
 }
 for(const [name,fixture,want]of[
  ['Chromecast 3',{supports:()=>false},['h264','vp8']],
@@ -1152,4 +1162,75 @@ test('CAF MEDIA_UNKNOWN 100 terminates playback',async()=>{
  const h=await harness();await h.receiver.redeem('ABCD');await h.receiver.startPlayback('movie',0);
  h.events.ERROR({detailedErrorCode:100});await settle();
  assert.equal(h.receiver.state().playbackId,null);assert.equal(h.uiState(),'error');assert(h.calls.some(c=>c.method==='DELETE'));
+});
+
+test('identical targeted Stop lost-ack retry acknowledges original even while a successor plays',async()=>{
+ const f={direct:true},h=await harness(f);await h.message('phone',{type:'pair',code:'ABC123',origin:'https://server.test'});
+ await h.message('phone',{type:'load',itemId:'movie'});await h.message('phone',{type:'status'});
+ const status=h.sent.filter(x=>x.body.type==='status'&&x.body.occurrence).at(-1).body,target={controller:status.controller,occurrence:status.occurrence};
+ const command={type:'stop',target,requestId:'p251_'+Date.now()+'_'+'a'.repeat(32)};
+ await h.message('phone',command);const first=h.sent.find(x=>x.body.type==='stopped'&&x.body.requestId===command.requestId).body;
+ const count=h.calls.filter(x=>x.method==='DELETE').length;h.sent.length=0;
+ await h.message('phone',command);assert.deepEqual(j(h.sent.find(x=>x.body.type==='stopped').body),j(first));
+ f.nextSessionId='ps_2';await h.message('phone',{type:'load',itemId:'successor'});h.sent.length=0;
+ await h.message('phone',command);assert.deepEqual(j(h.sent.find(x=>x.body.type==='stopped').body),j(first));
+ assert.equal(h.receiver.state().playbackId,'ps_2');assert.equal(h.calls.filter(x=>x.method==='DELETE').length,count);
+ await h.message('phone',{...command,target:{...target,occurrence:{...target.occurrence,generation:2}}});
+ assert(h.sent.some(x=>x.body.type==='control-failed'));assert.equal(h.receiver.state().playbackId,'ps_2');
+});
+for(const failure of ['policyFailure','stopStoreFailure'])test('Stop retains frozen final position and owner across '+failure,async()=>{
+ const f={direct:true},h=await harness(f);await h.receiver.redeem('ABC123');await h.receiver.startPlayback('movie',0);
+ h.manager.seek(42);f[failure]=true;
+ assert.equal(await h.interceptors.STOP({}),null);assert.equal(h.receiver.state().playbackId,'ps_1');assert.equal(h.calls.filter(x=>x.method==='DELETE').length,0);
+ h.manager.seek(99);f[failure]=false;
+ assert(await h.interceptors.STOP({}));assert.equal(h.receiver.state().playbackId,null);
+ const write=h.calls.find(x=>x.method==='DELETE');assert.equal(write.body.positionMs,42000);assert.match(write.headers['Idempotency-Key'],/^p251_/);
+});
+
+test('Cast malformed Stop 503 preserves pending receipt lookup custody and Retry-After floor',async()=>{
+ const h=await harness({direct:true,stop503:true});await h.message('phone',{type:'pair',code:'ABC123',origin:'https://server.test'});
+ await h.message('phone',{type:'load',itemId:'movie'});await h.message('phone',{type:'status'});
+ const status=h.sent.filter(x=>x.body.type==='status'&&x.body.occurrence).at(-1).body;
+ await h.message('phone',{type:'stop',target:{controller:status.controller,occurrence:status.occurrence},requestId:'p251_'+Date.now()+'_'+'b'.repeat(32)});
+ const entry=h.mutationState().entries[0];assert.equal(entry.state,'pending');assert.ok(entry.dueMs>=Date.now()+119000);assert.equal(entry.body.generation,1);
+ assert.equal(h.receiver.state().playbackId,null,'durable custody permits renderer release');
+ h.ctxEvents.shutdown();
+});
+
+test('targeted Stop reconciles its durable confirmed receipt before requiring a live occurrence',async()=>{
+ const f={direct:true,stopAckFailure:true},h=await harness(f);await h.message('phone',{type:'pair',code:'ABC123',origin:'https://server.test'});
+ await h.message('phone',{type:'load',itemId:'movie'});await h.message('phone',{type:'status'});
+ const status=h.sent.filter(x=>x.body.type==='status'&&x.body.occurrence).at(-1).body;
+ const command={type:'stop',target:{controller:status.controller,occurrence:status.occurrence},requestId:'p251_'+Date.now()+'_'+'c'.repeat(32)};
+ await h.message('phone',command);assert.equal(h.receiver.state().playbackId,null);assert.equal(h.mutationState().entries[0].state,'confirmed');
+ f.stopAckFailure=false;h.sent.length=0;await h.message('phone',command);
+ assert(h.sent.some(x=>x.body.type==='stopped'&&x.body.requestId===command.requestId));assert.equal(h.mutationState().entries.length,0);assert.equal(h.calls.filter(x=>x.method==='DELETE').length,1);
+});
+
+test('receiver restart with no local history reconciles original Stop receipt without stopping a successor',async()=>{
+ const receiptHistory=new Map(),first=await harness({direct:true,receiptHistory});await first.message('phone',{type:'pair',code:'ABC123',origin:'https://server.test'});await first.message('phone',{type:'load',itemId:'movie'});await first.message('phone',{type:'status'});
+ const status=first.sent.filter(x=>x.body.type==='status'&&x.body.occurrence).at(-1).body,command={type:'stop',target:{controller:status.controller,occurrence:status.occurrence},requestId:'p251_'+Date.now()+'_'+'d'.repeat(32)};
+ await first.message('phone',command);assert(first.sent.some(x=>x.body.type==='stopped'));assert.equal(first.mutationState().entries.length,0);assert(receiptHistory.has(command.requestId));first.ctxEvents.shutdown();
+ for(const successor of [false,true]){
+  const h=await harness({direct:true,receiptHistory,nextSessionId:'ps_2'});try{
+   await h.message('phone',{type:'pair',code:'ABC123',origin:'https://server.test'});if(successor)await h.message('phone',{type:'load',itemId:'successor'});
+   assert.equal(h.mutationState().entries.length,0);await h.message('phone',command);
+   const ack=h.sent.find(x=>x.body.type==='stopped'&&x.body.requestId===command.requestId);assert(ack);assert.deepEqual(j(ack.body.target),j(command.target));assert.equal(ack.body.positionSeconds,undefined);
+   const lookup=h.calls.find(x=>x.url.endsWith('/v1/user-mutations/'+command.requestId));assert(lookup);assert.equal(lookup.headers.Authorization,'Bearer bearer-ABC123');assert.equal(h.calls.filter(x=>x.method==='DELETE').length,0);assert.equal(h.receiver.state().playbackId,successor?'ps_2':null);
+  }finally{h.ctxEvents.shutdown();}
+ }
+});
+for(const patch of [{operation:'stop_account_playback'},{targetId:'other-session'},{generation:2},{status:'partial'},{status:'applied',positionStatus:'policy_rejected'},{positionStatus:'not_renderer'},{positionStatus:'invented'},{extra:'not a tiny receipt'}])test('no-history Stop rejects mismatched/review receipt '+JSON.stringify(patch),async()=>{
+ const key='p251_'+Date.now()+'_'+'e'.repeat(32),target={controller:{bindingId:'cct_current',controllerGeneration:1,connectionGeneration:1},occurrence:{sessionId:'ps_1',generation:1,itemId:'movie'}};
+ const receipt={key,operation:'stop_playback_session',status:'applied',targetId:'ps_1',generation:1,positionStatus:'applied',committedMs:Date.now(),expiresMs:Date.now()+2592000000,...patch};
+ const h=await harness({receiptLookup:()=>Response.json(receipt)});try{await h.message('phone',{type:'pair',code:'ABC123',origin:'https://server.test'});await h.message('phone',{type:'stop',target,requestId:key});assert(!h.sent.some(x=>x.body.type==='stopped'));assert(h.sent.some(x=>x.body.type==='control-failed'));assert(!h.calls.some(x=>x.method==='DELETE'));}finally{h.ctxEvents.shutdown();}
+});
+test('unknown original Stop receipt cannot stop a successor occurrence',async()=>{
+ const h=await harness({direct:true,nextSessionId:'ps_2'});try{await h.message('phone',{type:'pair',code:'ABC123',origin:'https://server.test'});await h.message('phone',{type:'load',itemId:'successor'});
+ const target={controller:{bindingId:'cct_current',controllerGeneration:1,connectionGeneration:1},occurrence:{sessionId:'ps_1',generation:1,itemId:'movie'}},key='p251_'+Date.now()+'_'+'f'.repeat(32);
+ await h.message('phone',{type:'stop',target,requestId:key});assert(h.calls.some(x=>x.url.endsWith('/v1/user-mutations/'+key)));assert(!h.calls.some(x=>x.method==='DELETE'));assert.equal(h.receiver.state().playbackId,'ps_2');assert(!h.sent.some(x=>x.body.type==='stopped'));}finally{h.ctxEvents.shutdown();}
+});
+for(const change of ['disconnect','family'])test('no-history Stop lookup cannot acknowledge after '+change+' changes authority',async()=>{
+ const gate=held(),entered=held(),key='p251_'+Date.now()+'_'+'a'.repeat(32),h=await harness({receiptLookup:async()=>{entered.resolve();await gate.promise;return Response.json({key,operation:'stop_playback_session',status:'applied',targetId:'ps_1',generation:1,positionStatus:'applied',committedMs:Date.now(),expiresMs:Date.now()+2592000000});}});
+ try{await h.message('phone',{type:'pair',code:'ABC123',origin:'https://server.test'});const command={type:'stop',target:{controller:{bindingId:'cct_current',controllerGeneration:1,connectionGeneration:1},occurrence:{sessionId:'ps_1',generation:1,itemId:'movie'}},requestId:key};await h.message('phone',command);await entered.promise;if(change==='disconnect')h.ctxEvents.disconnect({senderId:'phone'});else await h.receiver.redeem('OTHER1');gate.resolve();await settle0();assert(!h.sent.some(x=>x.body.type==='stopped'));assert(!h.calls.some(x=>x.method==='DELETE'));}finally{gate.resolve();h.ctxEvents.shutdown();}
 });

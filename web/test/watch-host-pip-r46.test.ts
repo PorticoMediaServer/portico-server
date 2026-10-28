@@ -231,12 +231,15 @@ test('actual bound AirPlay availability and activation both refuse page captions
  t.after(()=>{if(previous)Object.defineProperty(globalThis,'navigator',previous);else Reflect.deleteProperty(globalThis,'navigator');
   if(previousObserver)Object.defineProperty(globalThis,'MutationObserver',previousObserver);else Reflect.deleteProperty(globalThis,'MutationObserver');});
  const listeners=new Set<()=>void>();let live=snapshot(),ready=true,valid=true,picks=0,requests=0;
- const runtime={getSnapshot:()=>live,browserMediaReady:()=>ready,subscribe:(changed:()=>void)=>{listeners.add(changed);return()=>{listeners.delete(changed);};}} as unknown as WebShellPlaybackRuntime;
+ const retention=new Set<unknown>();
+ const runtime={getSnapshot:()=>live,browserMediaReady:()=>ready,subscribe:(changed:()=>void)=>{listeners.add(changed);return()=>{listeners.delete(changed);};},
+  bindRemoteRetention:(source:unknown)=>{retention.add(source);return()=>{retention.delete(source);};}} as unknown as WebShellPlaybackRuntime;
  class AirVideo extends EventTarget{webkitShowPlaybackTargetPicker=()=>{picks++;};}
  const context={api:{baseUrl:'https://portico.test',getRouteConnection:()=>({pin:{publicKey:'route-pin'}}),request:async()=>{requests++;throw Error('unexpected API read');}},session:()=>({viewer:authority}),isCurrent:()=>valid,epoch:1};
  const binding={runtime,reportError:(error:unknown)=>{throw error;}};
  const owner=createWatchPlayOn(context as never,binding as never,new AirVideo() as unknown as HTMLVideoElement);
  const changed=()=>{for(const listener of [...listeners])listener();};
+ assert.equal(retention.size,1);
  try{
   assert.equal(owner.controller.getSnapshot().airPlayAvailable,true);owner.controller.startAirPlay();assert.equal(picks,1);
   live=snapshot({offers:{subtitlePlan:subtitlePlan()} as never});
@@ -246,5 +249,5 @@ test('actual bound AirPlay availability and activation both refuse page captions
   live=snapshot({offers:{subtitlePlan:subtitlePlan({renderer:'burn_in'})} as never});changed();assert.equal(owner.controller.getSnapshot().airPlayAvailable,true);owner.controller.startAirPlay();assert.equal(picks,2);
   ready=false;changed();assert.equal(owner.controller.getSnapshot().airPlayAvailable,false);owner.controller.startAirPlay();assert.equal(picks,2);
   ready=true;valid=false;changed();assert.throws(()=>owner.controller.startAirPlay(),/authority_retired/);assert.equal(picks,2);assert.equal(requests,0);
- }finally{owner.dispose();assert.equal(observerStops,1);assert.equal(listeners.size,0);}
+ }finally{owner.dispose();assert.equal(observerStops,1);assert.equal(listeners.size,0);assert.equal(retention.size,0);}
 });

@@ -606,17 +606,17 @@ test('closing the tab ends the session with its position; hiding it only reports
   t.web.pageHidden(false);
   assert.equal(t.farewells.length, 0, 'a hidden tab keeps its session');
   t.web.pageHidden(true);
-  assert.deepEqual(t.farewells, [{path: `/v1/playback/sessions/${id}`, method: 'DELETE', body: {positionMs: 77_000}}]);
+  assert.deepEqual(t.farewells, [{path: `/v1/playback/sessions/${id}`, method: 'DELETE', body: {generation: 1, positionMs: 77_000}}]);
 });
 
 test('closing the tab on a live channel ends the channel\'s session too; hiding it does not', ctx => {
   const t = setup(ctx);
   // A channel's session is the channel control's, so the controller holds none: the playback service says what is tuned.
-  (t.web as unknown as {service: {getSnapshot(): unknown}}).service = {getSnapshot: () => ({channel: {channelId: 'ch1'}, session: {id: 'live session/1'}, positionSeconds: 0, audioEffects: {rendering: false}})};
+  (t.web as unknown as {service: {getSnapshot(): unknown}}).service = {getSnapshot: () => ({channel: {channelId: 'ch1'}, session: {id: 'live session/1', generation: 3}, positionSeconds: 0, audioEffects: {rendering: false}})};
   t.web.pageHidden(false);
   assert.equal(t.farewells.length, 0, 'a hidden tab keeps watching');
   t.web.pageHidden(true);
-  assert.deepEqual(t.farewells, [{path: '/v1/playback/sessions/live%20session%2F1', method: 'DELETE', body: undefined}]);
+  assert.deepEqual(t.farewells, [{path: '/v1/playback/sessions/live%20session%2F1', method: 'DELETE', body: {generation: 3}}]);
 });
 
 test('leaving stops the session at the last position', async ctx => {
@@ -629,7 +629,7 @@ test('leaving stops the session at the last position', async ctx => {
   t.playback.leave();
   await settle();
   const stop = t.log.find(r => r.method === 'DELETE' && r.path === `/v1/playback/sessions/${id}`);
-  assert.deepEqual(stop!.body, {positionMs: 55_000});
+  assert.deepEqual(stop!.body, {generation: 1, positionMs: 55_000});
   assert.equal(t.instances.at(-1)!.destroyed, true, 'the media is let go');
 });
 

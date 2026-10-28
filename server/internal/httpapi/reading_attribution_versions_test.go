@@ -23,6 +23,9 @@ func TestReadingPrivatePathPrimaryVersionAttribution(t *testing.T) {
 	r := newReadingFixture(t, "book", "pdf")
 	ctx := context.Background()
 	first := readingTreeFile(t, r, "Author One/Original publication.epub")
+	// Allocate the intended lower version through a real completed scan.
+	// Directory enumeration/page boundaries do not promise creation order.
+	readingScan(t, r.f, r.library)
 	second := readingTreeFile(t, r, "Author Two/Original publication.pdf")
 	readingScan(t, r.f, r.library)
 	var entity int64
@@ -53,6 +56,9 @@ func TestReadingPrivatePathPrimaryVersionAttribution(t *testing.T) {
 	}
 	firstAsset, firstToken := attach(first)
 	secondAsset, secondToken := attach(second)
+	if firstAsset >= secondAsset {
+		t.Fatalf("version fixture did not establish its intended asset order: %d >= %d", firstAsset, secondAsset)
+	}
 	// The root fixture publication is no longer a version under test; retire it
 	// through the real scan. The two new siblings force a genuine republish of
 	// each folder after the attach, not a hand-written source row.
@@ -84,6 +90,12 @@ func TestReadingPrivatePathPrimaryVersionAttribution(t *testing.T) {
 		}
 		t.Fatal("title vanished from the authorized page")
 		return reading.LibraryRow{}
+	}
+	// Establish the availability tie as well as the id order before testing
+	// its projection. An unsettled/absent version must not satisfy the setup.
+	var availableBefore int
+	if err := r.f.db.QueryRow(`SELECT count(*) FROM inventory_item_availability WHERE item_id=? AND asset_id IN(?,?) AND available=1`, entity, firstToken, secondToken).Scan(&availableBefore); err != nil || availableBefore != 2 {
+		t.Fatalf("version fixture did not establish two available versions: %d %v", availableBefore, err)
 	}
 	firstRow := row()
 	if firstRow.Author == nil || firstRow.Author.Value != "Author One" || firstRow.Author.Source != compactcatalog.ReadingFolder {

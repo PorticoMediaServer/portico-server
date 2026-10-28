@@ -6,8 +6,9 @@
 import type {HttpLocalApi} from '../index.ts';
 import type {V1Http} from './http.ts';
 
-export function localV1Http(api: Pick<HttpLocalApi, 'requestRaw'>): V1Http {
+export function localV1Http(api: Pick<HttpLocalApi, 'requestRaw'> & Partial<Pick<HttpLocalApi, 'acknowledgeUserMutation'>>): V1Http {
   return {
+    acknowledgeUserMutation: intentId => api.acknowledgeUserMutation?.(intentId) ?? Promise.resolve(),
     send: request => api.requestRaw(request.path, request.method, {headers: request.headers, body: request.body, signal: request.signal,
       ...(request.deadlineMs !== undefined ? {deadlineMs: request.deadlineMs} : {}), ...(request.singleAttempt ? {singleAttempt: true} : {})}),
   };

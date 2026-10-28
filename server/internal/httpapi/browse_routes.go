@@ -144,7 +144,7 @@ func (d Dependencies) browseRoutes(mux *http.ServeMux) {
 			failure(w, e)
 			return
 		}
-		out, e := d.Catalog.SetPinOrder(resourceActor(p), body.ExpectedRevision, body.Order, func(tx *sql.Tx) error {
+		out, e := d.Catalog.WithContext(r.Context()).SetPinOrder(resourceActor(p), body.ExpectedRevision, body.Order, func(tx *sql.Tx) error {
 			return d.resourceAuthorize(tx, p, "")
 		})
 		if e != nil {

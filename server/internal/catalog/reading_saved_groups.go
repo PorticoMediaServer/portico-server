@@ -12,6 +12,7 @@ import (
 	"portico.local/server/internal/dbwork"
 	"portico.local/server/internal/identity"
 	"portico.local/server/internal/requestinput"
+	"portico.local/server/internal/usermutation"
 )
 
 type ReadingSavedGroupKind string
@@ -112,6 +113,9 @@ func bumpReadingSavedGroups(ctx context.Context, tx *sql.Tx, owner, server strin
 }
 
 func (s *Service) RemoveReadingSavedReference(p identity.Principal, server, reference, operation string, expected int64, authorize ReadingSavedReferenceAuthorizer) (ReadingSavedGroupRemoval, error) {
+	if err := requireCatalogMutationContext(s.Context(), operation); err != nil {
+		return ReadingSavedGroupRemoval{}, err
+	}
 	var out ReadingSavedGroupRemoval
 	if err := readingSavedGroupActor(p, server); err != nil {
 		return out, err
@@ -131,6 +135,14 @@ func (s *Service) RemoveReadingSavedReference(p identity.Principal, server, refe
 	if err = authorize(s.Context(), tx, p); err != nil {
 		return out, err
 	}
+	_, _, protocol := usermutation.RequestFrom(s.Context())
+	priorReceipt, err := usermutation.CheckContext(s.Context(), tx, time.Now().UnixMilli())
+	if err != nil {
+		return out, err
+	}
+	if priorReceipt != nil {
+		return ReadingSavedGroupRemoval{ReferenceID: priorReceipt.TargetID, Revision: priorReceipt.Revision, Removed: true, OperationID: operation}, nil
+	}
 	owner := identity.PersonalKey(p.Viewer)
 	// Select no target/key/metadata. Foreign and absent references both miss.
 	var revision int64
@@ -142,25 +154,27 @@ func (s *Service) RemoveReadingSavedReference(p identity.Principal, server, refe
 		Kind, Reference string
 		Expected        int64
 	}{"reference-remove", reference, expected})
-	var previous, receipt string
-	err = tx.QueryRowContext(s.Context(), `SELECT request_hash,response FROM reading_saved_group_receipts WHERE owner_key=? AND server_id=? AND operation_id=? AND created_at>=?`, owner, server, operation, time.Now().Add(-30*24*time.Hour).UTC().Format(time.RFC3339)).Scan(&previous, &receipt)
-	if err == nil {
-		if previous != hash {
-			return out, ErrOperationConflict
+	if !protocol {
+		var previous, receipt string
+		err = tx.QueryRowContext(s.Context(), `SELECT request_hash,response FROM reading_saved_group_receipts WHERE owner_key=? AND server_id=? AND operation_id=? AND created_at>=?`, owner, server, operation, time.Now().Add(-30*24*time.Hour).UTC().Format(time.RFC3339)).Scan(&previous, &receipt)
+		if err == nil {
+			if previous != hash {
+				return out, ErrOperationConflict
+			}
+			if err = json.Unmarshal([]byte(receipt), &out); err != nil {
+				return out, err
+			}
+			if out.ReferenceID != reference || out.OperationID != operation || !out.Removed || out.Revision < 1 || out.Revision > 9007199254740991 {
+				return ReadingSavedGroupRemoval{}, ErrReadingProjectionChanged
+			}
+			return out, g.Commit()
 		}
-		if err = json.Unmarshal([]byte(receipt), &out); err != nil {
+		if !errors.Is(err, sql.ErrNoRows) {
 			return out, err
 		}
-		if out.ReferenceID != reference || out.OperationID != operation || !out.Removed || out.Revision < 1 || out.Revision > 9007199254740991 {
-			return ReadingSavedGroupRemoval{}, ErrReadingProjectionChanged
+		if err = checkRetired(tx, owner, "reading_saved_group:"+server, operation, hash); err != nil {
+			return out, err
 		}
-		return out, g.Commit()
-	}
-	if !errors.Is(err, sql.ErrNoRows) {
-		return out, err
-	}
-	if err = checkRetired(tx, owner, "reading_saved_group:"+server, operation, hash); err != nil {
-		return out, err
 	}
 	if revision != expected {
 		return out, ErrPersonalConflict
@@ -186,6 +200,12 @@ func (s *Service) RemoveReadingSavedReference(p identity.Principal, server, refe
 		}
 	}
 	out = ReadingSavedGroupRemoval{ReferenceID: reference, Revision: revision, Removed: true, OperationID: operation}
+	if protocol {
+		if err = usermutation.SaveContext(s.Context(), tx, usermutation.Result{Status: "removed", TargetID: reference, Revision: out.Revision}, time.Now().UnixMilli()); err != nil {
+			return out, err
+		}
+		return out, g.Commit()
+	}
 	encoded, err := json.Marshal(out)
 	if err != nil {
 		return out, err
@@ -225,6 +245,9 @@ func (s *Service) ReadingSavedGroup(p identity.Principal, server string, target 
 // Membership changes one dynamic private reference. It never expands the group
 // into leaf saves, changes files, or writes reading/progress/playback state.
 func (s *Service) SetReadingSavedGroup(p identity.Principal, server string, target ReadingSavedGroupTarget, operation string, expected int64, listed bool, resolve ReadingSavedGroupResolver) (ReadingSavedGroupState, ReadingSavedGroupProof, error) {
+	if err := requireCatalogMutationContext(s.Context(), operation); err != nil {
+		return ReadingSavedGroupState{}, ReadingSavedGroupProof{}, err
+	}
 	var out ReadingSavedGroupState
 	var proof ReadingSavedGroupProof
 	if err := readingSavedGroupActor(p, server); err != nil {
@@ -239,6 +262,28 @@ func (s *Service) SetReadingSavedGroup(p identity.Principal, server string, targ
 	}
 	defer g.Rollback()
 	tx := g.Tx()
+	_, _, protocol := usermutation.RequestFrom(s.Context())
+	priorReceipt, err := usermutation.CheckContext(s.Context(), tx, time.Now().UnixMilli())
+	if err != nil {
+		return out, proof, err
+	}
+	if priorReceipt != nil {
+		out = ReadingSavedGroupState{ReadingSavedGroupTarget: target, ReferenceID: priorReceipt.TargetID, Revision: priorReceipt.Revision, OperationID: operation}
+		if out.ReferenceID != "" {
+			err = tx.QueryRowContext(s.Context(), `SELECT listed,revision FROM reading_saved_groups WHERE reference_id=? AND owner_key=? AND server_id=?`, out.ReferenceID, identity.PersonalKey(p.Viewer), server).Scan(&out.Listed, &out.Revision)
+			if errors.Is(err, sql.ErrNoRows) {
+				err = nil
+			}
+		}
+		if err != nil {
+			return out, proof, err
+		}
+		proof, err = readingSavedGroupProof(s.Context(), tx, p, target, resolve)
+		if errors.Is(err, sql.ErrNoRows) || errors.Is(err, ErrReadingProjectionChanged) {
+			err = nil
+		}
+		return out, proof, err
+	}
 	proof, err = readingSavedGroupProof(s.Context(), tx, p, target, resolve)
 	if err != nil {
 		return out, proof, err
@@ -250,25 +295,27 @@ func (s *Service) SetReadingSavedGroup(p identity.Principal, server string, targ
 		Expected int64
 		Listed   bool
 	}{target, proof.Key, expected, listed})
-	var previous, receipt string
-	err = tx.QueryRowContext(s.Context(), `SELECT request_hash,response FROM reading_saved_group_receipts WHERE owner_key=? AND server_id=? AND operation_id=? AND created_at>=?`, owner, server, operation, time.Now().Add(-30*24*time.Hour).UTC().Format(time.RFC3339)).Scan(&previous, &receipt)
-	if err == nil {
-		if previous != hash {
-			return out, proof, ErrOperationConflict
+	if !protocol {
+		var previous, receipt string
+		err = tx.QueryRowContext(s.Context(), `SELECT request_hash,response FROM reading_saved_group_receipts WHERE owner_key=? AND server_id=? AND operation_id=? AND created_at>=?`, owner, server, operation, time.Now().Add(-30*24*time.Hour).UTC().Format(time.RFC3339)).Scan(&previous, &receipt)
+		if err == nil {
+			if previous != hash {
+				return out, proof, ErrOperationConflict
+			}
+			if err = json.Unmarshal([]byte(receipt), &out); err != nil {
+				return out, proof, err
+			}
+			if out.ReadingSavedGroupTarget != target || out.OperationID != operation || out.Revision < 0 || out.Revision > 9007199254740991 {
+				return ReadingSavedGroupState{}, proof, ErrReadingProjectionChanged
+			}
+			return out, proof, g.Commit()
 		}
-		if err = json.Unmarshal([]byte(receipt), &out); err != nil {
+		if !errors.Is(err, sql.ErrNoRows) {
 			return out, proof, err
 		}
-		if out.ReadingSavedGroupTarget != target || out.OperationID != operation || out.Revision < 0 || out.Revision > 9007199254740991 {
-			return ReadingSavedGroupState{}, proof, ErrReadingProjectionChanged
+		if err = checkRetired(tx, owner, "reading_saved_group:"+server, operation, hash); err != nil {
+			return out, proof, err
 		}
-		return out, proof, g.Commit()
-	}
-	if !errors.Is(err, sql.ErrNoRows) {
-		return out, proof, err
-	}
-	if err = checkRetired(tx, owner, "reading_saved_group:"+server, operation, hash); err != nil {
-		return out, proof, err
 	}
 	out, err = readReadingSavedGroup(s.Context(), tx, owner, server, target, proof.Key)
 	if err != nil {
@@ -312,6 +359,12 @@ func (s *Service) SetReadingSavedGroup(p identity.Principal, server string, targ
 		}
 	}
 	out.OperationID = operation
+	if protocol {
+		if err = usermutation.SaveContext(s.Context(), tx, usermutation.Result{Status: "applied", TargetID: out.ReferenceID, Revision: out.Revision}, time.Now().UnixMilli()); err != nil {
+			return out, proof, err
+		}
+		return out, proof, g.Commit()
+	}
 	encoded, err := json.Marshal(out)
 	if err != nil {
 		return out, proof, err

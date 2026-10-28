@@ -244,8 +244,9 @@ export class SessionsClient {
     }
   }
 
-  async stop(id: string, positionMs?: number, signal?: AbortSignal): Promise<void> {
-    await call(this.http, {method: 'DELETE', path: encodedRoutePath("stop_playback_session", {"id": enc(id)}), ...(signal ? {signal} : {}), ...(positionMs !== undefined ? {body: {positionMs: Math.max(0, Math.round(positionMs))}} : {})}, [204, 200, 404, 410]);
+  async stop(id: string, positionMs?: number, signal?: AbortSignal, generation?: number): Promise<void> {
+    await call(this.http, {method: 'DELETE', path: encodedRoutePath("stop_playback_session", {"id": enc(id)}), ...(signal ? {signal} : {}), ...((positionMs !== undefined || generation !== undefined) ? {body: {...(positionMs !== undefined ? {positionMs: Math.max(0, Math.round(positionMs))} : {}), ...(generation !== undefined ? {generation} : {})}} : {})}, [204, 200]);
+    if (generation !== undefined) await this.http.acknowledgeUserMutation?.(`stop:${id}:${generation}`);
   }
 
   /** Become the player reporting this session (P2-20): the epoch its samples carry. */
@@ -403,7 +404,7 @@ export class PlaybackSessionController {
       if (!admitted() || token !== this.startToken || this.disposed) {
         if (token === this.startToken && !this.disposed) this.publish({preparation: undefined});
         // The request may have created a session even though its caller moved on.
-        if (this.state.session?.id !== session.id || this.disposed) await this.client.stop(session.id).catch(() => {});
+        if (this.state.session?.id !== session.id || this.disposed) await this.client.stop(session.id, undefined, undefined, session.presentation.generation);
         return undefined;
       }
       this.gate.reset();
@@ -734,7 +735,7 @@ export class PlaybackSessionController {
     this.player.pause();
     this.publish({phase: 'ended', changing: false});
     await finalReport;
-    if (session) await this.client.stop(session.id, at).catch(() => {});
+    if (session) {try {await this.client.stop(session.id, at, undefined, session.presentation.generation);} catch (error) {this.publish({phase:'error',error:error as Error});throw error;}}
   }
 
   dispose() {

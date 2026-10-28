@@ -2322,5 +2322,50 @@ class CliTests(unittest.TestCase):
         self.assertIn("FAIL fails.test.mjs", result.stdout)
 
 
+class CatalogShardCoverageTests(unittest.TestCase):
+    def test_built_inventory_preserves_tests_examples_and_fuzz_seeds(self):
+        output = "TestBeta\nTestAlpha\nExample\nExampleLibrary_title\nFuzzCursor\nTestMain\nok example/catalog\n"
+        with patch.object(ci, "run_capture", return_value=output) as run:
+            names = ci.catalog_run_names("server")
+        self.assertEqual(set(names), {"TestAlpha", "TestBeta", "Example", "ExampleLibrary_title", "FuzzCursor"})
+        self.assertEqual(run.call_args.args[0], ["go", "test", "-list", "^(Test|Example|Fuzz)", "./internal/catalog"])
+        with patch.object(ci, "run_capture", return_value="ok example/catalog\n"):
+            with self.assertRaisesRegex(RuntimeError, "inventory is empty"):
+                ci.catalog_run_names("server")
+
+    def test_every_catalog_parent_runs_once_and_other_packages_keep_their_shards(self):
+        names = [f"TestCase{i:04d}" for i in range(754)] + ["ExampleLibrary", "FuzzCursor"]
+        packages = ["./internal/a", "./internal/catalog", "./internal/httpapi", "./internal/z"]
+        selected = []
+        with patch.object(ci, "catalog_run_names", return_value=names):
+            for index in range(4):
+                plan = ci.full_go_selection("server", packages, index, 4)
+                ordinary = [p for p, pattern in plan if pattern is None]
+                self.assertEqual(ordinary, [p for p in ci.shard(packages, index, 4) if p != "./internal/catalog"])
+                for package, pattern in plan:
+                    if package == "./internal/catalog":
+                        selected.extend(ci.selected_names(pattern))
+        self.assertEqual(sorted(selected), sorted(names))
+        self.assertEqual(len(set(selected)), len(selected))
+        with patch.object(ci, "catalog_run_names", side_effect=AssertionError("unexpected split")):
+            self.assertEqual(ci.full_go_selection("server", packages, 0, 1), [(p, None) for p in sorted(packages)])
+            self.assertEqual(ci.full_go_selection("apikit", packages, 0, 4), [(p, None) for p in ci.shard(packages, 0, 4)])
+
+    def test_full_ci_passes_anchored_groups_to_the_existing_bounded_runner(self):
+        with patch.dict(ci.os.environ, {"CI_FULL_TREE":"1", "CI_SHARD_INDEX":"1", "CI_SHARD_TOTAL":"4"}), \
+                patch.object(ci, "module_packages", return_value=["./internal/catalog"]), \
+                patch.object(ci, "catalog_run_names", return_value=["TestOne", "TestTwo", "Example"]), \
+                patch.object(ci, "go_test", return_value=0) as run, \
+                patch.object(ci, "run_all_status", return_value=0) as vet:
+            ci.go_checks("server", "affected")
+        self.assertEqual(run.call_args.args[2:], (1, 4))
+        for package, pattern in run.call_args.args[1]:
+            self.assertEqual(package, "./internal/catalog")
+            self.assertIsNotNone(ci.selected_names(pattern))
+        self.assertEqual(ci.GO_TEST_TIMEOUT, 780)
+        self.assertEqual(ci.GO_PACKAGE_BACKSTOP, 900)
+        self.assertEqual(vet.call_args.args[0], [(["bash", str(ci.ROOT / "scripts/vet-go.sh")], ci.ROOT / "server")])
+
+
 if __name__ == "__main__":
     unittest.main()

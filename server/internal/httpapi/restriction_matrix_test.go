@@ -295,7 +295,9 @@ const (
 
 // restrictionRoutes classifies every GET route the router registers.
 func restrictionRoutes() map[string]restrictionRoute {
-	return map[string]restrictionRoute{
+	routes := map[string]restrictionRoute{
+		"GET /v1/user-mutations/{key}":                                        {check: userMutationReceiptRestrictionCheck},
+		"GET /v1/user-mutations/policy":                                       exempt("server time and numeric replay cutoff only; no catalogue identifiers or content"),
 		"GET /v1/reading/search":                                              {check: readingBodySearchRestrictionCheck},
 		"GET /v1/reading/sessions/{sessionId}/search":                         {check: readingBodySearchRestrictionCheck},
 		"GET /v1/libraries/{libraryId}/reading/mark-all":                      perLibrary("/reading/mark-all"),
@@ -762,6 +764,8 @@ func restrictionRoutes() map[string]restrictionRoute {
 		}),
 		"GET /v1/library-channels/{id}/logo": exempt("channel logo image; library channels apply the profile restriction to their schedule (channel_restriction_test)"),
 	}
+	addIntegrationRestrictionReads(routes)
+	return routes
 }
 
 // restrictionReadPOSTs are the POST routes whose answer is catalogue content.
@@ -1420,6 +1424,7 @@ func buildRestrictionMatrix(t *testing.T) *restrictionEnv {
 		}
 	}
 	catalogFixtures.Drain()
+	prepareIntegrationRestrictionMatrix(t, m)
 	return m
 }
 

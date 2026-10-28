@@ -10,6 +10,7 @@ import (
 	"portico.local/server/internal/dbwork"
 	"portico.local/server/internal/identity"
 	"portico.local/server/internal/requestinput"
+	"portico.local/server/internal/usermutation"
 	"strconv"
 	"strings"
 	"time"
@@ -431,6 +432,13 @@ func (s *Service) OrderLibraries(ctx context.Context, ids []string, authorize fu
 	if e = authorize(tx); e != nil {
 		return e
 	}
+	r, e := usermutation.CheckContext(ctx, tx, time.Now().UnixMilli())
+	if e != nil {
+		return e
+	}
+	if r != nil {
+		return nil
+	}
 	rows, e := tx.QueryContext(ctx, `SELECT id FROM libraries WHERE NOT EXISTS(SELECT 1 FROM catalog_libraries gone WHERE gone.library_id=libraries.id AND gone.retired=1) ORDER BY position,name,id`)
 	if e != nil {
 		return e
@@ -467,6 +475,9 @@ func (s *Service) OrderLibraries(ctx context.Context, ids []string, authorize fu
 			return e
 		}
 	}
+	if e = usermutation.SaveContext(ctx, tx, usermutation.Result{Status: "applied", TargetID: "libraries", Revision: 0}, time.Now().UnixMilli()); e != nil {
+		return e
+	}
 	return gated.Commit()
 }
 
@@ -487,6 +498,13 @@ func (s *Service) RenameLibrary(ctx context.Context, id, name string, expected i
 	if e = authorize(tx); e != nil {
 		return e
 	}
+	r, e := usermutation.CheckContext(ctx, tx, time.Now().UnixMilli())
+	if e != nil {
+		return e
+	}
+	if r != nil {
+		return nil
+	}
 	var revision int64
 	var current string
 	if e = tx.QueryRowContext(ctx, `SELECT c.revision,l.name FROM library_configuration c JOIN libraries l ON l.id=c.library_id WHERE l.id=?`, id).Scan(&revision, &current); e != nil {
@@ -499,6 +517,12 @@ func (s *Service) RenameLibrary(ctx context.Context, id, name string, expected i
 		if _, e = tx.ExecContext(ctx, `UPDATE libraries SET name=? WHERE id=?`, name, id); e != nil {
 			return e
 		}
+	}
+	if e = tx.QueryRowContext(ctx, `SELECT revision FROM library_configuration WHERE library_id=?`, id).Scan(&revision); e != nil {
+		return e
+	}
+	if e = usermutation.SaveContext(ctx, tx, usermutation.Result{Status: "applied", TargetID: id, Revision: revision}, time.Now().UnixMilli()); e != nil {
+		return e
 	}
 	return gated.Commit()
 }

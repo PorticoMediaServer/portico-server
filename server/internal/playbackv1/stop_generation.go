@@ -12,6 +12,7 @@ import (
 	"portico.local/server/internal/identity"
 	"portico.local/server/internal/playback"
 	"portico.local/server/internal/supervise"
+	"portico.local/server/internal/usermutation"
 )
 
 // stopBinding deliberately excludes progress, revision and readiness. A delayed
@@ -49,10 +50,19 @@ func (s *Service) StopGeneration(ctx context.Context, c Caller, id string, expec
 	if s.StopAuthorityTx == nil || s.Playback == nil || c.DeviceID == "" || dbwork.Snapshot(ctx) != nil {
 		return identity.ErrForbidden
 	}
+	key := stopKey(ctx)
+	if key != "" {
+		if replay, err := s.stopGenerationReplay(ctx, c); err != nil || replay != nil {
+			if err != nil {
+				return err
+			}
+			return s.replayStop(ctx, replay)
+		}
+	}
 	// The renderer's unwritten sample is written first, in its own short write,
 	// while its media session still accepts evidence: the stop's fences below
 	// then hold exactly that state. Only this device's own observer drains.
-	if s.observedBy(id, c) {
+	if key == "" && s.observedBy(id, c) {
 		if err := dbwork.WithWriteTxContext(ctx, s.DB, dbwork.ClassEstablishedPlayback, func(ctx context.Context, tx *sql.Tx) error {
 			return s.drainObservationTx(ctx, tx, id)
 		}); err != nil {
@@ -175,6 +185,14 @@ func (s *Service) StopGeneration(ctx context.Context, c Caller, id string, expec
 	for i := range targets {
 		targets[i].claim, err = s.Playback.ClaimStopOccurrence(ctx, targets[i].id, targets[i].generation)
 		if err != nil {
+			if key != "" {
+				if replay, replayErr := s.stopGenerationReplay(ctx, c); replayErr != nil || replay != nil {
+					if replayErr != nil {
+						return replayErr
+					}
+					return s.replayStop(ctx, replay)
+				}
+			}
 			if errors.Is(err, playback.ErrOccurrenceChanged) {
 				return ErrRevision
 			}
@@ -186,7 +204,30 @@ func (s *Service) StopGeneration(ctx context.Context, c Caller, id string, expec
 		return err
 	}
 	defer w.Rollback()
+	var completion *stopCompletion
+	commitStarted := false
+	defer func() {
+		if !commitStarted {
+			s.releaseStopCompletion(key, completion)
+		}
+	}()
 	writer, tx := w.Context(), w.Tx()
+	if err = s.StopAuthorityTx(writer, tx, c); err != nil {
+		return err
+	}
+	replay, err := checkStopReceipt(writer, tx, s.now().UnixMilli())
+	if err != nil {
+		return err
+	}
+	if replay != nil {
+		if err = s.AuthorizeStopReceipt(writer, c, *replay); err != nil {
+			return err
+		}
+		if err = w.Commit(); err != nil {
+			return err
+		}
+		return s.replayStop(ctx, replay)
+	}
 	current, err := check(writer, tx)
 	if err != nil {
 		return err
@@ -195,9 +236,29 @@ func (s *Service) StopGeneration(ctx context.Context, c Caller, id string, expec
 		return ErrRevision
 	}
 	if current.ended != 0 {
-		// This includes an ordinary end racing this request: no captured process is
-		// cancelled and no retired generation is rediscovered by id.
-		return w.Commit()
+		// An ordinary end may race this request. Legacy calls do nothing;
+		// keyed calls finish only the captured current generation's fences.
+		var finish func(context.Context) error
+		if key != "" {
+			if completion, err = s.reserveStopCompletion(key); err != nil {
+				return err
+			}
+			if finish, err = s.stopCleanupForRowTx(writer, tx, current, key); err != nil {
+				return err
+			}
+			completion.finish = finish
+		}
+		if err = saveStopReceipt(writer, tx, current, usermutation.Result{Status: "already_stopped", TargetID: id, Revision: int64(current.revision), Generation: current.generation, PositionMs: current.position, PositionStatus: "already_stopped"}, s.now().UnixMilli()); err != nil {
+			return err
+		}
+		commitStarted = true
+		if err = w.Commit(); err != nil {
+			return err
+		}
+		if key != "" {
+			return s.finishStop(ctx, key, finish)
+		}
+		return nil
 	}
 	if original.ended != 0 {
 		return ErrRevision
@@ -212,6 +273,33 @@ func (s *Service) StopGeneration(ctx context.Context, c Caller, id string, expec
 	for i := range children {
 		if actual[i] != children[i] {
 			return ErrRevision
+		}
+	}
+	if completion, err = s.reserveStopCompletion(key); err != nil {
+		return err
+	}
+	// The keyed drain shares quota, evidence, fences, and receipt in this writer.
+	// Claims were captured before the drain, so rebind only its state/login facts.
+	if key != "" && s.observedBy(id, c) {
+		if err = s.drainObservationTx(writer, tx, id); err != nil {
+			return err
+		}
+		if current, err = check(writer, tx); err != nil {
+			return err
+		}
+		if !sameStopBinding(original, current) {
+			return ErrRevision
+		}
+		for i := range targets {
+			t := targets[i]
+			if err = t.claim.RebindAfterDrainTx(writer, tx, func(ctx context.Context, tx *sql.Tx) error {
+				if err := s.StopAuthorityTx(ctx, tx, c); err != nil {
+					return err
+				}
+				return s.Playback.CheckStopOccurrenceTx(ctx, tx, c.Principal, t.id, t.generation, t.item)
+			}); err != nil {
+				return err
+			}
 		}
 	}
 	for i := range targets {
@@ -315,6 +403,31 @@ func (s *Service) StopGeneration(ctx context.Context, c Caller, id string, expec
 	if err = s.sessionEventsTx(writer, tx, current, now, true); err != nil {
 		return err
 	}
+	if err = saveStopReceipt(writer, tx, current, usermutation.Result{Status: "applied", TargetID: id, Revision: int64(current.revision), Generation: current.generation, PositionMs: current.position, PositionStatus: "unchanged"}, now.UnixMilli()); err != nil {
+		return err
+	}
+	finish := func(cleanup context.Context) error {
+		errs := make([]error, len(targets))
+		var joins sync.WaitGroup
+		for i := range targets {
+			errs[i] = errors.New("stop occurrence cleanup did not complete")
+			joins.Add(1)
+			supervise.Go("playbackv1.stop-join", func() {
+				defer joins.Done()
+				if key != "" {
+					errs[i] = s.Playback.FinishStoppedOccurrence(cleanup, targets[i].id, targets[i].generation)
+				} else {
+					errs[i] = targets[i].claim.Commit(cleanup)
+				}
+			})
+		}
+		joins.Wait()
+		return errors.Join(errs...)
+	}
+	if completion != nil {
+		completion.finish = finish
+	}
+	commitStarted = true
 	if err = w.Commit(); err != nil {
 		return err
 	}
@@ -323,15 +436,26 @@ func (s *Service) StopGeneration(ctx context.Context, c Caller, id string, expec
 	// long to join. Never retry an id-only stop or reopen on this error.
 	cleanup, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
 	defer cancel()
-	// Start every exact cancellation before waiting for any one slow join.
-	errs := make([]error, len(targets))
-	var joins sync.WaitGroup
-	for i := range targets {
-		// A recovered cleanup panic must still leave the committed stop reporting failure.
-		errs[i] = errors.New("stop occurrence cleanup did not complete")
-		joins.Add(1)
-		supervise.Go("playbackv1.stop-join", func() { defer joins.Done(); errs[i] = targets[i].claim.Commit(cleanup) })
+	return s.finishStop(cleanup, key, finish)
+}
+
+// A fresh lookup rolls back its capacity reservation. The final writer repeats
+// Check before the observation drain or any durable fence.
+func (s *Service) stopGenerationReplay(ctx context.Context, c Caller) (*usermutation.Receipt, error) {
+	w, err := dbwork.Begin(ctx, s.DB, dbwork.ClassSecurityFence)
+	if err != nil {
+		return nil, err
 	}
-	joins.Wait()
-	return errors.Join(errs...)
+	defer w.Rollback()
+	if err = s.StopAuthorityTx(w.Context(), w.Tx(), c); err != nil {
+		return nil, err
+	}
+	receipt, err := checkStopReceipt(w.Context(), w.Tx(), s.now().UnixMilli())
+	if err != nil || receipt == nil {
+		return receipt, err
+	}
+	if err = s.AuthorizeStopReceipt(w.Context(), c, *receipt); err != nil {
+		return nil, err
+	}
+	return receipt, nil
 }

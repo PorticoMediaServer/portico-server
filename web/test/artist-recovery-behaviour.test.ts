@@ -52,8 +52,9 @@ test('Artist Back and retry keep their committed entry and never adopt successor
     cancel = () => {this.cancelled++;}; dispose = () => {this.disposed++;};
   }
   const t = (key: string) => key;
+  const identity = await componentModule(new URL('../src/screens/detail/context.ts', import.meta.url), {react: h.react});
   const problem = await componentModule(new URL('../src/screens/detail/ScreenProblem.tsx', import.meta.url), {
-    react: h.react, '@core/presentation/errors.ts': {presentError: (error: any) => ({category: error?.code === 'not-found' ? 'not-found' : 'failed', action: 'retry'})},
+    react: h.react, './context': identity, '@core/presentation/errors.ts': {presentError: (error: any) => ({category: error?.code === 'not-found' ? 'not-found' : 'failed', action: 'retry'})},
     '@core/presentation/service-text.ts': {serviceI18n: () => ({})}, '../../kit/states': {StateLayout: 'StateLayout'}, './text': {t},
   });
   const app = await componentModule(new URL('../src/screens/detail/Artist.tsx', import.meta.url), {
@@ -64,7 +65,8 @@ test('Artist Back and retry keep their committed entry and never adopt successor
     '../../kit/controls': {Button: 'Button'}, '../../kit/artwork': {AmbientArt: 'AmbientArt', CircleArt: 'CircleArt'},
     '../../kit/layout': {Lockup: 'Lockup'}, '../../kit/title/TitleParts': {TitleFactsLine: 'TitleFactsLine', TitleProse: 'TitleProse'},
     '../../kit/browse': {TrackTable: 'TrackTable'}, '../../kit/overlays': {Menu: 'Menu'}, '../../kit/Icon': {Icon: 'Icon'},
-    '../../shell/viewport': {useShellWidth: () => 1440}, './context': {screenLifetime, runScreenCommand},
+    '../../shell/viewport': {useShellWidth: () => 1440}, './context': {...identity, screenLifetime, runScreenCommand},
+    '../detail/context': identity,
     './ScreenProblem': {ScreenProblem: problem.ScreenProblem}, './Detail': {TitleRow: 'TitleRow'}, './model': {entrySubject: () => ({})},
     './MusicEntryMenu': {MusicEntryMenu: 'MusicEntryMenu'}, './MusicLoading': {MusicDetailLoading: 'MusicDetailLoading'}, './artist.module.css': {default: {}},
   });

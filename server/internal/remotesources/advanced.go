@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"portico.local/server/internal/usermutation"
 	"reflect"
 	"strconv"
 	"time"
@@ -425,6 +426,14 @@ func (s *Service) SaveSourceAdvanced(ctx context.Context, identities *identity.S
 	if err = currentLocalOwnerTx(ctx, tx, identities, owner); err != nil {
 		return SourceAdvancedSettings{}, err
 	}
+	r, err := usermutation.CheckContext(ctx, tx, time.Now().UnixMilli())
+	if err != nil {
+		return SourceAdvancedSettings{}, err
+	}
+	if r != nil {
+		gated.Rollback()
+		return s.ReadSourceAdvanced(ctx, identities, owner, source)
+	}
 	row, err := sourceRowTx(ctx, tx, source)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
@@ -453,6 +462,9 @@ func (s *Service) SaveSourceAdvanced(ctx context.Context, identities *identity.S
 	}
 	settings, err := s.applySourceAdvancedValuesTx(ctx, tx, source, current, v)
 	if err != nil {
+		return SourceAdvancedSettings{}, err
+	}
+	if err = usermutation.SaveContext(ctx, tx, usermutation.Result{Status: "applied", TargetID: source, Revision: settings.revision}, time.Now().UnixMilli()); err != nil {
 		return SourceAdvancedSettings{}, err
 	}
 	if err = gated.Commit(); err != nil {
@@ -486,7 +498,7 @@ func (s *Service) SaveSourceAdvanced(ctx context.Context, identities *identity.S
 	}
 	out := advancedSettings(row, settings, cacheError)
 	out.CacheSupported = true
-	if used, e := s.cacheUsed(context.Background(), source); e == nil {
+	if used, e := s.cacheUsed(ctx, source); e == nil {
 		out.CacheUsedBytes = used
 	}
 	return out, nil

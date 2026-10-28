@@ -13,6 +13,10 @@ FAKE_GO = '''#!/usr/bin/env python3
 import json, os, sys
 
 args = sys.argv[1:]
+# Toolchain diagnostics are independent of the test-execution inventory below.
+if args == ["version"]:
+    print("go version go1.26.10 test-fixture")
+    raise SystemExit(0)
 with open(os.environ["CALLS"], "a", encoding="utf-8") as log:
     log.write(json.dumps(args) + "\\n")
 if args[0] == "list":

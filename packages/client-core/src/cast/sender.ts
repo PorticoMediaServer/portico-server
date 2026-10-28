@@ -1,3 +1,4 @@
+import {newUserMutationKey, isUserMutationKey} from '../user-mutations.ts';
 import {sameCastController,sameCastRemote,type CastControllerStamp,type CastRemoteIdentity} from './remote-identity.ts';
 import {castBinding,castContext,castScopeEqual,castProofKey,readCastProof,type CastControllerContext,type CastControllerBinding,type CastControllerProof} from './controller-proof.ts';
 import {routeBody} from "../../../contracts/src/routes.ts";
@@ -29,7 +30,7 @@ export interface CastTransport {
   end(stopReceiver: boolean): void;
 }
 
-export type CastApi = {request<T>(path: string, method?: string, body?: unknown, signal?: AbortSignal): Promise<T>};
+export type CastApi = {createUserMutationKey?():Promise<string>;request<T>(path: string, method?: string, body?: unknown, signal?: AbortSignal): Promise<T>};
 
 export type CastPhase = 'off' | 'connecting' | 'pairing' | 'waiting' | 'casting' | 'error' | 'replaced';
 
@@ -119,7 +120,7 @@ export class CastController {
   private acceptedController?:CastControllerStamp;
   private renewal?:{attemptId:string;binding:CastControllerBinding;proof:CastControllerProof;transport:CastTransport;generation:number;controller:CastControllerStamp;timer:unknown};
   private expectedPairId?:string;
-  private stopping?:{requestId:string;target:CastRemoteIdentity;transport:CastTransport;generation:number;versionId?:string;timer:unknown};
+  private stopping?:{storageKey:string;requestId:string;target:CastRemoteIdentity;transport:CastTransport;generation:number;versionId?:string;timer:unknown};
   private current(){return !this.disposed&&this.callerCurrent();}
   /** External caller/storage ports never get to change the operation being proved. */
   private original(transport=this.transport,generation=this.startGeneration,controller=this.acceptedController){
@@ -502,6 +503,7 @@ export class CastController {
         if(!pending||e.requestId!==pending.requestId||!sameCastRemote(e.target,pending.target)||this.transport!==pending.transport||this.startGeneration!==pending.generation)return;
         this.clearTimer(pending.timer);this.stopping=undefined;this.statusRevision++;
         if(e.type==='control-failed'){this.redacted(pending.transport,pending.generation,this.statusRevision);return;}
+        try {const records=JSON.parse(this.controllerStorage!.get(pending.storageKey)??'[]') as {key:string;state:string}[];const record=records.find(record=>record.key===pending.requestId);if(!record)throw new Error('mutation_store_damaged');record.state='confirmed';this.controllerStorage!.set(pending.storageKey,JSON.stringify(records));} catch {this.redacted(pending.transport,pending.generation,this.statusRevision);return;}
         // Only the correlated actual receiver Stop receipt keeps a stopped view.
         // It grants no media, queue, or local engine occurrence.
         this.publish({phase:'off',remoteStopped:true,controlPending:false,paused:true,remoteIdentity:pending.target,versionId:pending.versionId,audioTracks:[],textTracks:[],
@@ -651,7 +653,7 @@ export class CastController {
   setAudioTrack(trackId:number,expected?:CastRemoteIdentity) { if(this.controlTarget(expected)&&Number.isSafeInteger(trackId))this.sendControl({type:'audio',trackId,...this.targetFields(expected)},expected); }
   /** `null` turns subtitles off. */
   setSubtitleTrack(trackId:number|null,expected?:CastRemoteIdentity) { if(this.controlTarget(expected))this.sendControl({type:'subtitles',trackIds:trackId===null?[]:[trackId],...this.targetFields(expected)},expected); }
-  stop(expected?:CastRemoteIdentity) {
+  stop(expected?:CastRemoteIdentity, suppliedMutationKey?:string) {
     if(expected&&!sameCastRemote(expected,this.state.remoteIdentity))return;
     if(this.adopting){this.release(false,false);return;}
     this.clearTimer(this.takeoverTimer);
@@ -668,10 +670,34 @@ export class CastController {
     }
     const target=expected??this.state.remoteIdentity,transport=this.transport;
     if(target&&transport&&this.controlTarget(target)){
-      const generation=this.startGeneration,requestId='stop-'+(++this.requestSequence);
+      if (!suppliedMutationKey && this.api.createUserMutationKey) {
+        const generation=this.startGeneration;
+        void this.api.createUserMutationKey().then(key=>{if(this.current()&&this.startGeneration===generation&&this.transport===transport&&sameCastRemote(target,this.state.remoteIdentity))this.stop(target,key);},()=>this.fail('cast.error.unreachable'));
+        return;
+      }
+      const generation=this.startGeneration;
+      const storageKey='portico.cast.stop:v1:'+JSON.stringify([this.proofContext,transport.deviceId,]);
+      let requestId: string;
+      try {
+        if(!this.controllerStorage)throw new Error('mutation_not_queued');
+        const raw=this.controllerStorage.get(storageKey), records: {key:string;target:CastRemoteIdentity;state:string}[]=raw?JSON.parse(raw):[];
+        if(!Array.isArray(records)||records.length>256||records.some(record=>!isUserMutationKey(record.key)||!record.target?.occurrence||!['pending','confirmed'].includes(record.state)))throw new Error('mutation_store_damaged');
+        const occurrence=target.occurrence;
+        const prior=records.find(record=>record.target.occurrence.sessionId===occurrence.sessionId&&record.target.occurrence.generation===occurrence.generation&&record.target.occurrence.itemId===occurrence.itemId);
+        if(prior?.state==='confirmed'){this.publish({remoteStopped:true,controlPending:false});return;}
+        requestId=prior?.key??suppliedMutationKey??newUserMutationKey();
+        if(!prior){
+          // Receipt UI has already consumed previous completed commands. Pending
+          // commands for other occurrences keep their original custody and key.
+          const next=records.filter(record=>record.state==='pending');if(next.length>=256)throw new Error('mutation_not_queued');
+          next.push({key:requestId,target,state:'pending'});const value=JSON.stringify(next);
+          this.controllerStorage.set(storageKey,value);if(this.controllerStorage.get(storageKey)!==value)throw new Error('mutation_not_queued');
+        }
+      } catch {this.fail('cast.error.unreachable');return;}
+
       const refuse=()=>{if(this.stopping?.requestId!==requestId)return;this.redacted(transport,generation,this.statusRevision);};
       this.statusRevision++;
-      this.stopping={requestId,target,transport,generation,versionId:this.state.versionId,timer:this.setTimer(refuse,35_000)};
+      this.stopping={storageKey,requestId,target,transport,generation,versionId:this.state.versionId,timer:this.setTimer(refuse,35_000)};
       this.publish({controlPending:true});
       void transport.send({type:'stop',requestId,target}).catch(refuse);return;
     }

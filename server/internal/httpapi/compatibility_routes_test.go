@@ -8,6 +8,7 @@ import (
 	"net/http/httptest"
 	"portico.local/server/internal/catalogtest"
 	"portico.local/server/internal/integrationids"
+	"portico.local/server/internal/operations"
 	"portico.local/server/internal/playbackv1"
 	"strings"
 	"testing"
@@ -27,25 +28,39 @@ func compatibilityCall(f administrationFixture, method, path, secret, body strin
 }
 func TestCompatibilityDisabledPublicAndDeclaredAliasBoundary(t *testing.T) {
 	f := administrationFixtureNew(t)
-	for _, path := range []string{"/System/Info/Public", "/system/info/public", "/mediabrowser/System/Info/Public"} {
+	for _, path := range []string{"/System/Info/Public", "/system/info/public", "/mediabrowser/System/Info/Public", "/mediabrowser/system/info/public"} {
 		w := compatibilityCall(f, "GET", path, "", "")
 		if w.Code != 404 || w.Header().Get("Cache-Control") != "no-store" {
 			t.Fatalf("disabled compatibility %s: %d", path, w.Code)
 		}
 	}
+	if w := compatibilityCall(f, "GET", "/Items", f.member, ""); w.Code != 404 {
+		t.Fatalf("disabled authenticated route: %d %s", w.Code, w.Body)
+	}
 	if _, err := f.deps.DB.Exec(`INSERT INTO server_settings(singleton,"integrations.compatibilityEnabled") VALUES(1,1) ON CONFLICT(singleton) DO UPDATE SET "integrations.compatibilityEnabled"=1`); err != nil {
 		t.Fatal(err)
 	}
-	for _, path := range []string{"/System/Info/Public", "/system/info/public", "/mediabrowser/System/Info/Public"} {
+	for _, path := range []string{"/System/Info/Public", "/system/info/public", "/mediabrowser/System/Info/Public", "/mediabrowser/system/info/public"} {
 		w := compatibilityCall(f, "GET", path, "", "")
 		if w.Code != 200 || !strings.Contains(w.Body.String(), `"ProductName":"Portico"`) {
 			t.Fatalf("public compatibility %s: %d %s", path, w.Code, w.Body)
 		}
 	}
+	if w := compatibilityCall(f, "GET", "/Items", f.member, ""); w.Code != 200 {
+		t.Fatalf("enabled authenticated route: %d %s", w.Code, w.Body)
+	}
 	for _, path := range []string{"/Videos/anything/stream", "/socket", "/Sessions/Playing/Progress"} {
 		w := compatibilityCall(f, "POST", path, "", `{}`)
 		if w.Code == 200 {
 			t.Fatalf("undeclared player API unexpectedly succeeded: %s", path)
+		}
+	}
+	if _, err := f.deps.DB.Exec(`UPDATE server_settings SET "integrations.compatibilityEnabled"=0 WHERE singleton=1`); err != nil {
+		t.Fatal(err)
+	}
+	for _, request := range []struct{ path, token string }{{"/System/Info/Public", ""}, {"/Items", f.member}} {
+		if w := compatibilityCall(f, "GET", request.path, request.token, ""); w.Code != 404 {
+			t.Fatalf("disabled again: %s %d %s", request.path, w.Code, w.Body)
 		}
 	}
 }
@@ -212,5 +227,27 @@ func TestCompatibilityNativeTransportUsesResourceRevisionAndRejectsLargerControl
 	w = f.raw("POST", "/Sessions/"+guid+"/Playing/Stop", f.owner.AccessToken, nil, nil)
 	if w.Code != 200 {
 		t.Fatalf("stop: %d %s", w.Code, w.Body)
+	}
+}
+
+func TestCompatibilityNotificationUsesNativeOwnerRefusal(t *testing.T) {
+	f := integrationFixture(t)
+	f.deps.Console = operations.New(f.deps.DB)
+	f.handler = New(f.deps)
+	for _, path := range integrationMatrixAliases("/Notifications/Admin") {
+		w := compatibilityCall(f, "POST", path, f.member, `{"Name":"Library update","Description":"New files are ready","ImageUrl":"https://unused.invalid/image"}`)
+		if w.Code != 403 || registryErrorCode(t, w) != "not_permitted" {
+			t.Fatalf("native permission refusal: %d %s", w.Code, w.Body)
+		}
+	}
+	w := compatibilityCall(f, "POST", "/Notifications/Admin", f.owner, `{"Name":"Library update","Description":"New files are ready"}`)
+	if w.Code != 200 {
+		t.Fatalf("native owner notification: %d %s", w.Code, w.Body)
+	}
+	for _, path := range []string{"/Items/not-a-guid/PlaybackInfo", "/Shows/not-a-guid/Episodes"} {
+		w = compatibilityCall(f, "GET", path, f.member, "")
+		if w.Code != 404 {
+			t.Fatalf("unknown GUID: %d %s", w.Code, w.Body)
+		}
 	}
 }

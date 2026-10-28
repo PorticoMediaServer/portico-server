@@ -1,7 +1,6 @@
 package catalog
 
 import (
-	"context"
 	"crypto/sha256"
 	"database/sql"
 	"encoding/json"
@@ -10,6 +9,7 @@ import (
 	"portico.local/server/internal/dbwork"
 	"portico.local/server/internal/identity"
 	"portico.local/server/internal/requestinput"
+	"portico.local/server/internal/usermutation"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -125,6 +125,9 @@ func (s *Service) MutatePlaylist(a ResourceActor, id, action, target string, m P
 // after receipt replay, with the original request hash already fixed. Ordinary
 // public playlist mutations keep their existing hash and behavior unchanged.
 func (s *Service) mutatePlaylistCaptured(a ResourceActor, id, action, target string, m PlaylistMutation, authorize func(*sql.Tx) error, capture func(*sql.Tx) ([]string, error)) (PlaylistReceipt, error) {
+	if err := requireCatalogMutationContext(s.Context(), m.OperationID); err != nil {
+		return PlaylistReceipt{}, err
+	}
 	out := PlaylistReceipt{OperationID: m.OperationID, PlaylistID: id}
 	if a.Authority == "" || a.AccountID == "" || a.ProfileID == "" || !personalOperation.MatchString(m.OperationID) || m.ExpectedRevision < 0 {
 		return out, requestinput.New("invalid playlist operation")
@@ -158,12 +161,37 @@ func (s *Service) mutatePlaylistCaptured(a ResourceActor, id, action, target str
 		Mutation           PlaylistMutation
 	}{id, action, target, m})
 	hash := fmt.Sprintf("%x", sha256.Sum256(raw))
-	gated, e := dbwork.Begin(context.Background(), s.db, dbwork.ClassFrom(context.Background(), dbwork.ClassInteractive))
+	gated, e := dbwork.Begin(s.Context(), s.db, dbwork.ClassFrom(s.Context(), dbwork.ClassInteractive))
 	if e != nil {
 		return out, e
 	}
 	tx := gated.Tx()
 	defer gated.Rollback()
+	_, _, protocol := usermutation.RequestFrom(s.Context())
+	prior, e := usermutation.CheckContext(s.Context(), tx, time.Now().UnixMilli())
+	if e != nil {
+		return out, e
+	}
+	if prior != nil {
+		out.PlaylistID, out.Revision = prior.TargetID, prior.Revision
+		role, _, deleted, err := playlistRole(tx, out.PlaylistID, a)
+		if err != nil {
+			var exists bool
+			if e = tx.QueryRow(`SELECT EXISTS(SELECT 1 FROM catalog_playlists WHERE token=?)`, out.PlaylistID).Scan(&exists); e != nil {
+				return out, e
+			}
+			if exists || !errors.Is(err, sql.ErrNoRows) {
+				return out, err
+			}
+			deleted = true
+		} else if deleted && role != "owner" {
+			return out, sql.ErrNoRows
+		} else if role != "owner" && (action != "add" && action != "remove" && action != "reorder" || role != "editor") {
+			return out, identity.ErrUnauthorized
+		}
+		out.Deleted = deleted || prior.Status == "deleted"
+		return out, nil
+	}
 	if authorize != nil {
 		if e = authorize(tx); e != nil {
 			return out, e
@@ -181,43 +209,45 @@ func (s *Service) mutatePlaylistCaptured(a ResourceActor, id, action, target str
 			return out, identity.ErrUnauthorized
 		}
 	}
-	cutoff := time.Now().UTC().Add(-30 * 24 * time.Hour).Format(time.RFC3339)
-	if _, e = tx.Exec(`DELETE FROM playlist_receipts WHERE rowid IN(SELECT rowid FROM playlist_receipts WHERE created_at<? LIMIT 1000)`, cutoff); e != nil {
-		return out, e
-	}
-	var priorHash, receipt string
-	e = tx.QueryRow(`SELECT request_hash,response FROM playlist_receipts WHERE authority=? AND account_id=? AND profile_id=? AND operation_id=? AND created_at>=?`, a.Authority, a.AccountID, a.ProfileID, m.OperationID, cutoff).Scan(&priorHash, &receipt)
-	if e == nil {
-		if hash != priorHash {
-			return out, ErrOperationConflict
-		}
-		if e = json.Unmarshal([]byte(receipt), &out); e != nil {
+	if !protocol {
+		cutoff := time.Now().UTC().Add(-30 * 24 * time.Hour).Format(time.RFC3339)
+		if _, e = tx.Exec(`DELETE FROM playlist_receipts WHERE rowid IN(SELECT rowid FROM playlist_receipts WHERE created_at<? LIMIT 1000)`, cutoff); e != nil {
 			return out, e
 		}
-		_, _, out.Deleted, e = playlistRole(tx, out.PlaylistID, a)
-		if e != nil {
-			return out, e
-		}
-		return out, nil
-	}
-	if !errors.Is(e, sql.ErrNoRows) {
-		return out, e
-	}
-	if action == "create" {
-		var originalHash string
-		e = tx.QueryRow(`SELECT token,creation_hash,revision,deleted FROM catalog_playlists WHERE owner_authority=? AND owner_account=? AND owner_profile=? AND creation_operation=?`, a.Authority, a.AccountID, a.ProfileID, m.OperationID).Scan(&out.PlaylistID, &originalHash, &out.Revision, &out.Deleted)
+		var priorHash, receipt string
+		e = tx.QueryRow(`SELECT request_hash,response FROM playlist_receipts WHERE authority=? AND account_id=? AND profile_id=? AND operation_id=? AND created_at>=?`, a.Authority, a.AccountID, a.ProfileID, m.OperationID, cutoff).Scan(&priorHash, &receipt)
 		if e == nil {
-			if originalHash != hash {
+			if hash != priorHash {
 				return out, ErrOperationConflict
+			}
+			if e = json.Unmarshal([]byte(receipt), &out); e != nil {
+				return out, e
+			}
+			_, _, out.Deleted, e = playlistRole(tx, out.PlaylistID, a)
+			if e != nil {
+				return out, e
 			}
 			return out, nil
 		}
 		if !errors.Is(e, sql.ErrNoRows) {
 			return out, e
 		}
-	}
-	if e = checkRetired(tx, actorKey(a), "playlist", m.OperationID, hash); e != nil {
-		return out, e
+		if action == "create" {
+			var originalHash string
+			e = tx.QueryRow(`SELECT token,creation_hash,revision,deleted FROM catalog_playlists WHERE owner_authority=? AND owner_account=? AND owner_profile=? AND creation_operation=?`, a.Authority, a.AccountID, a.ProfileID, m.OperationID).Scan(&out.PlaylistID, &originalHash, &out.Revision, &out.Deleted)
+			if e == nil {
+				if originalHash != hash {
+					return out, ErrOperationConflict
+				}
+				return out, nil
+			}
+			if !errors.Is(e, sql.ErrNoRows) {
+				return out, e
+			}
+		}
+		if e = checkRetired(tx, actorKey(a), "playlist", m.OperationID, hash); e != nil {
+			return out, e
+		}
 	}
 	if deleted {
 		return out, sql.ErrNoRows
@@ -228,12 +258,14 @@ func (s *Service) mutatePlaylistCaptured(a ResourceActor, id, action, target str
 	// Idempotency receipts expire after 30 days; one profile's are bounded (an
 	// abuse bound, not a list limit). There is no server-wide bound: one busy
 	// profile must not stop everyone else's playlists.
-	var receiptCount int
-	if e = tx.QueryRow(`SELECT count(*) FROM playlist_receipts WHERE authority=? AND account_id=? AND profile_id=?`, a.Authority, a.AccountID, a.ProfileID).Scan(&receiptCount); e != nil {
-		return out, e
-	}
-	if receiptCount >= 10000 {
-		return out, ErrPlaylistCapacity
+	if !protocol {
+		var receiptCount int
+		if e = tx.QueryRow(`SELECT count(*) FROM playlist_receipts WHERE authority=? AND account_id=? AND profile_id=?`, a.Authority, a.AccountID, a.ProfileID).Scan(&receiptCount); e != nil {
+			return out, e
+		}
+		if receiptCount >= 10000 {
+			return out, ErrPlaylistCapacity
+		}
 	}
 	touchedEntries := []string{}
 	switch action {
@@ -381,6 +413,16 @@ func (s *Service) mutatePlaylistCaptured(a ResourceActor, id, action, target str
 	}
 	_ = touchedEntries
 	out.Revision = rev
+	if protocol {
+		status := "applied"
+		if out.Deleted {
+			status = "deleted"
+		}
+		if e = usermutation.SaveContext(s.Context(), tx, usermutation.Result{Status: status, TargetID: out.PlaylistID, Revision: out.Revision}, time.Now().UnixMilli()); e != nil {
+			return out, e
+		}
+		return out, gated.Commit()
+	}
 	if e = fenceOperation(tx, actorKey(a), "playlist", m.OperationID, hash); e != nil {
 		return out, e
 	}

@@ -1,14 +1,16 @@
 import {useLayoutEffect, useRef, useState} from 'react';
-import {ApiError} from '@core/index.ts';
+import {randomId} from '@core/random-id.ts';
+import {isUserMutationKey, parseUserMutationReceipt, UserMutationError} from '@core/user-mutations.ts';
 import {createReadingMarkAllCommand, parseReadingMarkAllProjection, parseReadingMarkAllReceipt, readingMarkAllPath,
   type ReadingMarkAllCommand, type ReadingMarkAllProjection} from '@core/reading-mark-all.ts';
 import {screenLifetime, type ScreenContext} from '../detail/context';
 
-type Opening = {context: ScreenContext; libraryId: string; routeKey: string; life: ReturnType<typeof screenLifetime>; live: boolean; busy: boolean;
+type Opening = {context: ScreenContext; libraryId: string; routeKey: string; life: ReturnType<typeof screenLifetime>; live: boolean; busy: boolean; review?: boolean;
   proof?: ReadingMarkAllProjection; command?: ReadingMarkAllCommand; onCommitted: () => void};
 type View = Readonly<{opening?: Opening; proof?: ReadingMarkAllProjection; busy?: boolean}>;
-const definite = new Set(['personal_state_conflict', 'personal_needs_resolution', 'operation_expired', 'idempotency_key_reused',
-  'stale_continuation', 'invalid_request', 'not_found', 'not_permitted', 'unauthorized']);
+const reviewCodes = new Set(['personal_state_conflict', 'personal_needs_resolution', 'operation_expired', 'idempotency_key_reused',
+  'stale_continuation', 'invalid_request', 'not_found', 'not_permitted', 'unauthorized', 'receipt_expired', 'idempotency_conflict', 'mutation_needs_review', 'revision_mismatch']);
+const object = (value: unknown): value is Record<string, unknown> => value !== null && typeof value === 'object' && !Array.isArray(value);
 
 /** A whole-library explicit Reading intent, captured to this original opening.
  * A projection is only a CAS witness; POST always re-admits its original actor.
@@ -40,36 +42,44 @@ export function useReadingMarkAll(context: ScreenContext, libraryId: string, rou
     // request. Parent refresh is allowed only while this opening remains live.
   }, [context, libraryId, routeKey]);
   const held = view.opening, proof = view.proof;
-  if (!held || !proof || !current(held) || held.busy || proof.count === 0) return undefined;
+  if (!held || !proof || !current(held) || held.busy || held.review || proof.count === 0) return undefined;
   const rendered = view, command = held.command;
   return () => {
-    if (!current(held) || held.busy || shown.current !== rendered || held.proof !== proof || held.command !== command) return;
+    if (!current(held) || held.busy || held.review || shown.current !== rendered || held.proof !== proof || held.command !== command) return;
     const path = readingMarkAllPath('POST', held.libraryId);
     if (!path) return;
-    const operation = command ?? createReadingMarkAllCommand(proof, crypto.randomUUID());
+    const operation = command ?? createReadingMarkAllCommand(proof, randomId());
     held.command = operation; held.busy = true; publish({opening: held, proof, busy: true});
-    void held.life.api.request(path, 'POST', operation).then(raw => {
-      parseReadingMarkAllReceipt(raw, proof, operation);
+    void held.life.api.request(path, 'POST', operation).then(async raw => {
+      if (!current(held) || held.command !== operation) return;
+      if (object(raw) && raw.mutationReceipt !== undefined) {
+        const marker = raw.mutationReceipt;
+        if (!object(marker) || typeof marker.key !== 'string' || !isUserMutationKey(marker.key)) throw new Error('invalid_reading_mark_all');
+        const receipt = parseUserMutationReceipt(marker, {key: marker.key, operation: 'post_libraries_libraryId_reading_mark_all'});
+        if (receipt.targetId !== held.libraryId) throw new Error('invalid_reading_mark_all');
+        if (receipt.status !== 'applied') throw new UserMutationError('mutation_needs_review', receipt.key, receipt);
+        const readPath = readingMarkAllPath('GET', held.libraryId);
+        if (!readPath) throw new Error('invalid_reading_mark_all');
+        const rawCurrent = await held.life.api.request(readPath, 'GET');
+        if (!current(held) || held.command !== operation) return;
+        const fresh = parseReadingMarkAllProjection(rawCurrent, held.context.scope.serverId, held.libraryId);
+        if (fresh.viewerFence !== proof.viewerFence || fresh.revision.catalog < proof.revision.catalog || receipt.revision === undefined || fresh.revision.viewer < receipt.revision) throw new Error('invalid_reading_mark_all');
+        // Current counts belong to this read. No historical changed/count result is reconstructed.
+      } else parseReadingMarkAllReceipt(raw, proof, operation);
+      if (!current(held) || held.command !== operation) return;
+      await held.context.api.acknowledgeUserMutation?.(operation.operationId);
       if (!current(held) || held.command !== operation) return;
       held.command = undefined;
       // The receipt describes the old operation. Remount actual collections,
       // summary and action proof rather than presenting its count as new state.
       held.onCommitted();
-    }).catch(async error => {
+    }).catch(error => {
       if (!current(held) || held.command !== operation) return;
       held.context.effects.reportError(error);
-      if (error instanceof ApiError && definite.has(error.code)) {
-        held.command = undefined; held.proof = undefined;
-        publish({opening: held, busy: true});
-        try {
-          const readPath = readingMarkAllPath('GET', held.libraryId);
-          if (!readPath) return;
-          const raw = await held.life.api.request(readPath, 'GET');
-          const fresh = parseReadingMarkAllProjection(raw, held.context.scope.serverId, held.libraryId);
-          if (!current(held)) return;
-          held.proof = fresh; held.busy = false; publish({opening: held, proof: fresh});
-        } catch (readError) {if (current(held)) {held.busy = false; publish({opening: held}); held.context.effects.reportError(readError);}}
-      } else {held.busy = false; publish({opening: held, proof});}
+      if (object(error) && typeof error.code === 'string' && reviewCodes.has(error.code)) held.review = true;
+      // Keep the original proof and command through conflicts and ambiguous failures.
+      // A fresh projection is not permission to author a replacement operation.
+      held.busy = false; publish({opening: held, proof});
     }).finally(() => {held.busy = false;});
   };
 }

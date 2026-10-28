@@ -9,6 +9,7 @@ import (
 	"portico.local/server/internal/dbwork"
 	"portico.local/server/internal/mediaanalysis"
 	"portico.local/server/internal/metadata"
+	"portico.local/server/internal/usermutation"
 	"reflect"
 	"sort"
 	"strings"
@@ -904,6 +905,18 @@ func (s *Service) SaveLibrarySettings(ctx context.Context, auth Authorize, id st
 		Settings LibrarySettings `json:"settings"`
 	}{change.ExpectedRevision, mask, sent})
 	err := s.transaction(ctx, auth, func(tx *sql.Tx) error {
+		r, err := usermutation.CheckContext(ctx, tx, s.milliseconds())
+		if err != nil {
+			return err
+		}
+		if r != nil {
+			out, err = s.libraryDocument(ctx, tx, id)
+			if err != nil {
+				return err
+			}
+			return s.librarySonicEligibility(ctx, tx, &out, sonic, true)
+		}
+
 		// A receipt written before the mask carries a digest over the sent document
 		// alone. It cannot say which controls its first attempt named, so it must
 		// never answer this one: the masks differ in shape, so such a receipt can
@@ -974,7 +987,7 @@ func (s *Service) SaveLibrarySettings(ctx context.Context, auth Authorize, id st
 		if err = s.librarySonicEligibility(ctx, tx, &out, sonic, false); err != nil {
 			return err
 		}
-		return saveReceipt(ctx, tx, scope, change.OperationID, digest, out, at)
+		return saveSettingsReceipt(ctx, tx, scope, change.OperationID, digest, out, id, out.Revision, at)
 	})
 	return out, err
 }

@@ -48,8 +48,8 @@ const channel = () => parseLibraryChannel({
 });
 
 test('actual channel editor clones the offered config, change and save with no global structuredClone', () => withoutStructuredClone(async () => {
-  const original = channel(); let reloads = 0;
-  const reader = {getSnapshot: () => ({phase: 'ready', channels: [original]}), load: async () => {reloads++;}} as unknown as SettingsLibraryChannelsSource;
+  const original = channel(); let reloads = 0, invalidations = 0;
+  const reader = {getSnapshot: () => ({phase: 'ready', channels: [original]}), load: async () => {reloads++;}, invalidateQuiet: () => {invalidations++;}} as unknown as SettingsLibraryChannelsSource;
   const sent: {path: string; method?: string; body?: unknown}[] = [];
   const editor = new SettingsChannelEditorSource({request: async <T>(path: string, method?: string, body?: unknown): Promise<T> => {
     sent.push({path, method, body});
@@ -65,7 +65,7 @@ test('actual channel editor clones the offered config, change and save with no g
     assert.equal(original.config.name, 'Channel'); assert.deepEqual(original.config.rules[0].query.libraryIds, ['library']);
     const saved = await editor.save(); assert.equal(saved?.revision, 2); assert.equal(sent.length, 1);
     assert.equal(sent[0].method, 'POST'); assert.equal(sent[0].path, '/v1/admin/library-channels');
-    assert.equal(editor.getSnapshot().phase, 'closed'); assert.equal(reloads, 1);
+    assert.equal(editor.getSnapshot().phase, 'closed'); assert.equal(reloads, 1); assert.equal(invalidations, 1);
   } finally {editor.dispose();}
 }));
 

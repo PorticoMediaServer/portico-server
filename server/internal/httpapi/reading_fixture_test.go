@@ -3,6 +3,7 @@ package httpapi
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"net/http/httptest"
 	"net/url"
 	"os"
@@ -11,6 +12,7 @@ import (
 	"testing"
 	"time"
 
+	"portico.local/server/internal/administration"
 	"portico.local/server/internal/assets"
 	"portico.local/server/internal/compactcatalog"
 	"portico.local/server/internal/identity"
@@ -65,6 +67,21 @@ func newReadingFixture(t *testing.T, kind, format string, publications ...[]byte
 	library, err := f.cat.Create("Original reading", kind, root)
 	if err != nil {
 		t.Fatal(err)
+	}
+	// This fixture requests each scan explicitly. A monitor's startup scan can
+	// otherwise replace the requested job's sealed barrier just as the helper
+	// stops ingestion, leaving attribution correctly parked on an OPEN scan.
+	// Use the owner's real setting so only the requested scans own this source.
+	settingsPath := "/v1/admin/libraries/" + library.ID + "/settings"
+	w := readingHTTP(t, f.handler, "GET", settingsPath, f.owner.AccessToken, "", nil)
+	var document administration.LibraryDocument
+	if w.Code != 200 || json.Unmarshal(w.Body.Bytes(), &document) != nil {
+		t.Fatalf("reading fixture settings: %d %s", w.Code, w.Body.String())
+	}
+	document.Settings.MonitorChanges = false
+	w = readingHTTP(t, f.handler, "PUT", settingsPath, f.owner.AccessToken, "", administration.Change[administration.LibrarySettings]{ExpectedRevision: document.Revision, OperationID: "reading-fixture-monitor", Settings: document.Settings})
+	if w.Code != 200 || json.Unmarshal(w.Body.Bytes(), &document) != nil || document.Settings.MonitorChanges {
+		t.Fatalf("reading fixture explicit scans: %d %s", w.Code, w.Body.String())
 	}
 	readingScan(t, f, library.ID)
 	d := f.deps
@@ -191,17 +208,27 @@ func readingScanWithin(t *testing.T, f *v1Fixture, library string, timeout time.
 	// COMPLETE path publication is now separate durable catalogue work. These
 	// tests ask for completed attribution, rather than the approved interim view.
 	worker := compactcatalog.NewWorker(f.db)
-	for i := 0; i < 10000; i++ {
+	settleCtx, stop := context.WithDeadline(context.Background(), deadline)
+	defer stop()
+	for settleCtx.Err() == nil {
 		var pending bool
-		if err := f.db.QueryRow(`SELECT EXISTS(SELECT 1 FROM reading_path_scope q JOIN catalog_libraries cl ON cl.id=q.library_id WHERE cl.library_id=? AND q.queued=1) OR EXISTS(SELECT 1 FROM reading_path_dirty_work w JOIN catalog_libraries cl ON cl.id=w.library_id WHERE cl.library_id=?) OR EXISTS(SELECT 1 FROM reading_path_build)`, library, library).Scan(&pending); err != nil {
+		if err := f.db.QueryRowContext(settleCtx, `SELECT EXISTS(SELECT 1 FROM reading_path_scope q JOIN catalog_libraries cl ON cl.id=q.library_id WHERE cl.library_id=? AND q.queued=1) OR EXISTS(SELECT 1 FROM reading_path_dirty_work w JOIN catalog_libraries cl ON cl.id=w.library_id WHERE cl.library_id=?) OR EXISTS(SELECT 1 FROM reading_path_build)`, library, library).Scan(&pending); err != nil {
 			t.Fatal(err)
 		}
 		if !pending {
 			return
 		}
-		if _, err := worker.Step(context.Background(), 64); err != nil {
+		worked, err := worker.Step(settleCtx, 64)
+		if err != nil {
 			t.Fatal(err)
 		}
+		if worked == 0 {
+			// D1 may deliberately await a real quiet gap after consecutive
+			// scans. Tight iteration counts can expire before that clock moves.
+			// Keep the caller's existing whole-scan deadline, and pace only idle
+			// turns; successful attribution/byte assertions remain unchanged.
+			time.Sleep(10 * time.Millisecond)
+		}
 	}
-	t.Fatal("completed Reading path attribution did not drain")
+	t.Fatal("completed Reading path attribution did not drain before the scan deadline")
 }

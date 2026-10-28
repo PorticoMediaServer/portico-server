@@ -1,10 +1,22 @@
 import type {LibraryContentApi} from '@core/library-content.ts';
 import {parseEnvelope, parseLiveSourceDocument, type LiveSourceDocument, type LiveSourceSettings} from '@core/administration.ts';
+import {sameUserMutationScope, type UserMutationCoordinator, type UserMutationScope} from '@core/user-mutations.ts';
 import {rebaseDraft, type QuietRefreshOutcome} from '@core/freshness-actions.ts';
 import {lanConfirmationRoots} from '@core/linear-api.ts';
 import {confirmRoots} from '../../live/owner/checked';
 import {channelRequestID} from '@core/live-source-draft.ts';
-import {OwnerStore, errorFacts, terminal} from '../../live/owner/lifetime';
+import {OwnerStore, errorFacts} from '../../live/owner/lifetime';
+type SourceSettingsApi = LibraryContentApi & {
+  acknowledgeUserMutation?(intentId: string): Promise<void>;
+  awaitUserMutationsReady?(): Promise<void>;
+  getUserMutationCoordinator?(): UserMutationCoordinator | undefined;
+  getUserMutationScope?(): UserMutationScope | undefined;
+};
+type Command = {body: Readonly<{expectedRevision: number; operationId: string; settings: LiveSourceSettings}>; binding?: UserMutationScope; retained: boolean};
+function freeze<T>(value: T): T {
+  if (value && typeof value === 'object') {for (const child of Object.values(value)) freeze(child);Object.freeze(value);}
+  return value;
+}
 export type SourceSettingsSnapshot = Readonly<{loading: boolean; saving: boolean; document?: LiveSourceDocument; draft?: LiveSourceSettings; error?: unknown; saved?: boolean; logoBusy?: boolean; logoResult?: Readonly<{requested: number; imported: number; skipped: number}>}>;
 
 /** One mounted source configuration, over the existing administration document.
@@ -13,10 +25,11 @@ export class SourceSettingsController extends OwnerStore<SourceSettingsSnapshot>
   private quietSerial = 0;
   private quietRead?: AbortController;
   private uncertain = false;
-  quietBlocked = () => this.snapshot.loading || this.snapshot.saving || !!this.snapshot.logoBusy || this.uncertain;
+  quietBlocked = () => this.snapshot.loading || this.snapshot.saving || !!this.snapshot.logoBusy || this.uncertain || !!this.command;
   invalidateQuiet = () => {++this.quietSerial;this.quietRead?.abort();this.quietRead = undefined;};
   private operations = new Map<string, string>();
-  constructor(private api: LibraryContentApi, private serverId: string, readonly sourceId: string, current: () => boolean,
+  private command?: Command;
+  constructor(private api: SourceSettingsApi, private serverId: string, readonly sourceId: string, current: () => boolean,
     reportError: (error: unknown) => void, private makeId = channelRequestID) {
     super(Object.freeze({loading: false, saving: false}), current, reportError);
     if (!/^[a-f0-9]{48}$/.test(sourceId)) throw new Error('live_source_identity_invalid');
@@ -26,6 +39,18 @@ export class SourceSettingsController extends OwnerStore<SourceSettingsSnapshot>
     const doc = parseEnvelope(raw, this.serverId, parseLiveSourceDocument).result;
     if (doc.sourceId !== this.sourceId) throw new Error('live_source_identity_changed');
     return doc;
+  }
+  private async reconcileCommand(): Promise<'released' | 'not-queued' | undefined> {
+    const command = this.command, coordinator = this.api.getUserMutationCoordinator?.();
+    if (!command || !coordinator || !command.binding) return;
+    await this.api.awaitUserMutationsReady?.();
+    const scope = this.api.getUserMutationScope?.();
+    if (!scope || !sameUserMutationScope(scope, command.binding)) throw {code: 'mutation_scope_changed'};
+    const retained = await coordinator.inspectIntent(command.body.operationId);
+    if (this.command !== command || !this.isActive()) throw {code: 'cancelled'};
+    if (retained) {command.retained = true;return;}
+    this.command = undefined;
+    return command.retained ? 'released' : 'not-queued';
   }
   refreshQuietly = async (): Promise<QuietRefreshOutcome> => {
     if (!this.isActive() || this.quietBlocked()) return {kind: 'deferred'};
@@ -41,7 +66,7 @@ export class SourceSettingsController extends OwnerStore<SourceSettingsSnapshot>
       return {kind: 'adopted'};
     } catch (error) {
       if (!owns()) return {kind: 'deferred'};
-      if (terminal(error)) this.fail(error, this.snapshot);
+      if ([401,403].includes(errorFacts(error).status ?? 0)) this.fail(error, this.snapshot);
       return {kind: 'unreadable', error};
     } finally {if (this.quietRead === read) this.quietRead = undefined;};
   };
@@ -49,6 +74,8 @@ export class SourceSettingsController extends OwnerStore<SourceSettingsSnapshot>
     if (!this.isActive() || this.snapshot.saving || this.snapshot.logoBusy) return;
     this.invalidateQuiet();const attempt = this.begin();this.publish({...this.snapshot, loading: true, error: undefined});if (!this.valid(attempt)) return;
     try {
+      await this.reconcileCommand();if (!this.valid(attempt)) return;
+      if (this.command) {this.publish({...this.snapshot, loading: false});return;}
       const raw = await this.api.request(this.path(), 'GET', undefined, attempt.abort.signal);if (!this.valid(attempt)) return;
       const document = this.checked(raw);this.publish({loading: false, saving: false, document, draft: document.settings});
     } catch (error) {if (this.valid(attempt)) this.fail(error, {...this.snapshot, loading: false, error: errorFacts(error)});}
@@ -69,27 +96,37 @@ export class SourceSettingsController extends OwnerStore<SourceSettingsSnapshot>
     const {document, draft} = this.snapshot;
     if (!this.isActive() || this.snapshot.loading || this.snapshot.saving || this.snapshot.logoBusy || !document || !draft || JSON.stringify(document.settings) === JSON.stringify(draft)) return false;
     this.invalidateQuiet();const attempt = this.begin();this.publish({...this.snapshot, saving: true, error: undefined});
-    const put = async (revision: number, settings: LiveSourceSettings) => {
-      if (!this.valid(attempt)) throw {code: 'cancelled'};
-      const key = JSON.stringify({revision, settings});let operationId = this.operations.get(key);
-      if (!operationId) {if (this.operations.size >= 128) throw {code: 'server_busy'};operationId = this.makeId();this.operations.set(key, operationId);}
-      if (!this.valid(attempt)) throw {code: 'cancelled'};
-      return this.checked(await this.api.request(this.path(), 'PUT', {expectedRevision: revision, operationId, settings}, attempt.abort.signal));
-    };
     try {
       if (!this.valid(attempt)) return false;
-      let saved: LiveSourceDocument;
-      try {saved = await put(document.revision, draft);}
-      catch (error) {
-        if (!this.valid(attempt) || terminal(error) || errorFacts(error).status !== 409 || JSON.stringify(document.settings.remote) !== JSON.stringify(draft.remote)) throw error;
-        const raw = await this.api.request(this.path(), 'GET', undefined, attempt.abort.signal);if (!this.valid(attempt)) return false;
-        const fresh = this.checked(raw), rebased = rebaseDraft(document.settings, draft, fresh.settings);
-        if (rebased.conflict) throw error;
-        saved = await put(fresh.revision, rebased.merged);
-      }
+      const coordinator = this.api.getUserMutationCoordinator?.();
+      if (coordinator) {await this.api.awaitUserMutationsReady?.();await coordinator.reconcile();}
       if (!this.valid(attempt)) return false;
-      this.uncertain = false;this.operations.clear();this.publish({loading: false, saving: false, document: saved, draft: saved.settings, saved: true});return this.valid(attempt);
+      const released = await this.reconcileCommand();if (!this.valid(attempt)) return false;
+      if (released === 'released') {
+        const fresh = this.checked(await this.api.request(this.path(), 'GET', undefined, attempt.abort.signal));
+        if (this.valid(attempt)) this.publish({loading: false, saving: false, document: fresh, draft: fresh.settings});
+        return false; // Review current state before authoring a replacement.
+      }
+      const scope = this.api.getUserMutationScope?.();
+      if (this.command?.binding && (!scope || !sameUserMutationScope(scope, this.command.binding))) throw {code: 'mutation_scope_changed'};
+      const retained = coordinator?.snapshot().find(entry => scope && sameUserMutationScope(entry.scope, scope) && entry.path === this.path() && entry.method === 'PUT');
+      // Only durable acknowledgement or the guarded Pending changes review can
+      // release an accepted command. Loading, editing and conflicts cannot.
+      if (retained && retained.intentId !== this.command?.body.operationId) throw {code: 'mutation_needs_review'};
+      if (this.command && JSON.stringify({expectedRevision: document.revision, settings: draft}) !== JSON.stringify({expectedRevision: this.command.body.expectedRevision, settings: this.command.body.settings})) throw {code: 'mutation_needs_review'};
+      if (!this.command) this.command = {body: freeze(JSON.parse(JSON.stringify({expectedRevision: document.revision, operationId: this.makeId(), settings: draft}))), ...(scope ? {binding: {...scope}} : {}), retained: false};
+      const command = this.command;
+      const saved = this.checked(await this.api.request(this.path(), 'PUT', command.body, attempt.abort.signal));
+      command.retained = true;
+      if (!this.valid(attempt)) return false;
+      const live = this.api.getUserMutationScope?.();
+      if (command.binding && (!live || !sameUserMutationScope(live, command.binding))) throw {code: 'mutation_scope_changed'};
+      await this.api.acknowledgeUserMutation?.(command.body.operationId);
+      if (!this.valid(attempt)) return false;
+      this.command = undefined;this.uncertain = false;this.operations.clear();this.publish({loading: false, saving: false, document: saved, draft: saved.settings, saved: true});return this.valid(attempt);
     } catch (error) {
+      const command = this.command;
+      if (command && this.api.getUserMutationCoordinator?.()?.snapshot().some(entry => entry.intentId === command.body.operationId && command.binding && sameUserMutationScope(entry.scope, command.binding))) command.retained = true;
       this.uncertain = ![400,401,403,409,412,422].includes(errorFacts(error).status ?? 0);
       let roots: readonly string[] | undefined;
       try {const candidate = lanConfirmationRoots(error);roots = candidate ? confirmRoots(candidate) : undefined;} catch {roots = undefined;}
@@ -114,5 +151,5 @@ export class SourceSettingsController extends OwnerStore<SourceSettingsSnapshot>
       this.uncertain = false;this.operations.delete(key);this.publish({...this.snapshot, logoBusy: false, logoResult: result});
     } catch (error) {this.uncertain = ![400,401,403,409,412,422].includes(errorFacts(error).status ?? 0);if (this.valid(attempt)) this.fail(error, {...this.snapshot, logoBusy: false, error: errorFacts(error)});}
   }
-  override dispose() {this.invalidateQuiet();this.operations?.clear();super.dispose();}
+  override dispose() {this.invalidateQuiet();this.command = undefined;this.operations?.clear();super.dispose();}
 }

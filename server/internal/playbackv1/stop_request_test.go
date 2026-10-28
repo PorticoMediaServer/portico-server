@@ -46,6 +46,11 @@ func TestStopRequestSchemaProducerBoundary(t *testing.T) {
 		{"ordinary negative", `{"positionMs":-1}`, true},
 		{"ordinary safe minimum", `{"positionMs":-9007199254740991}`, true},
 		{"ordinary safe maximum", `{"positionMs":9007199254740991}`, true},
+		{"captured generation and position", `{"generation":2,"positionMs":5}`, true},
+		{"captured generation only", `{"generation":2}`, true},
+		{"captured null generation", `{"generation":null}`, false},
+		{"captured zero generation", `{"generation":0}`, false},
+		{"two generation contracts", `{"generation":2,"expectedGeneration":2}`, false},
 		{"conditional minimum", `{"expectedGeneration":1}`, true},
 		{"conditional maximum", `{"expectedGeneration":9007199254740991}`, true},
 		{"both fields", `{"expectedGeneration":1,"positionMs":5}`, false},
@@ -101,6 +106,7 @@ func TestStopRequestDuplicateAndTrailingFieldsRemainProducerErrors(t *testing.T)
 	// presence-aware producer must continue refusing these before authority IO.
 	for _, raw := range []string{
 		`{"positionMs":5,"positionMs":6}`,
+		`{"generation":1,"generation":2}`,
 		`{"positionMs":null,"positionMs":5}`,
 		`{"expectedGeneration":1,"expectedGeneration":2}`,
 		`{"expectedGeneration":1,"expectedGeneration":null}`,

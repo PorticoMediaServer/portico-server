@@ -9,6 +9,7 @@ import (
 	"portico.local/server/internal/dbwork"
 	"portico.local/server/internal/diagnostics"
 	"portico.local/server/internal/identity"
+	"portico.local/server/internal/usermutation"
 	"strconv"
 	"strings"
 	"time"
@@ -569,6 +570,7 @@ func (s *Store) Acknowledge(ctx context.Context, p identity.Principal, auth Auth
 		return SaveReceipt(tx, scope, c.IdempotencyKey, digest, map[string]bool{"acknowledged": true}, s.now())
 	})
 }
+
 // retentionBatch bounds one retention transaction to 16 parent rows, so a
 // parent's cascading children (report events, alert parameters, played
 // intervals) still fit a maintenance write plan. Each batch commits on its own:
@@ -580,6 +582,24 @@ const retentionBatch = 16
 func (s *Store) Prune(ctx context.Context) error {
 	class := dbwork.ClassFrom(ctx, dbwork.ClassMaintenance)
 	now := s.now()
+	// Receipt reclamation shares this existing maintenance wake. Each turn
+	// advances its durable cutoff and reclaims at most 32 rows before yielding.
+	for {
+		var removed int64
+		if err := dbwork.WithWriteTx(ctx, s.DB, class, func(tx *sql.Tx) error {
+			var err error
+			removed, err = usermutation.Prune(ctx, tx, now)
+			return err
+		}); err != nil {
+			return err
+		}
+		if removed < usermutation.PruneLimit {
+			break
+		}
+		if !dbwork.Yield(ctx) {
+			return ctx.Err()
+		}
+	}
 	var v SettingsDocument
 	auditThrough := int64(-1)
 	// One short transaction reads the retention settings and keeps a

@@ -6,6 +6,8 @@ import (
 	"encoding/json"
 	"errors"
 	"portico.local/server/internal/requestinput"
+	"portico.local/server/internal/usermutation"
+	"time"
 
 	"portico.local/server/internal/dbwork"
 	"portico.local/server/internal/localonly"
@@ -169,6 +171,9 @@ func (s *Service) LibraryAgent(ctx context.Context, library string) (LibraryAgen
 // SetLibraryAgent changes a library's metadata source under an optimistic
 // revision.
 func (s *Service) SetLibraryAgent(ctx context.Context, library string, expected int64, agent string, authorize func(*sql.Tx) error) (LibraryAgent, error) {
+	if _, _, protocol := usermutation.RequestFrom(ctx); protocol && authorize == nil {
+		return LibraryAgent{}, ErrLibraryAgentConflict
+	}
 	gated, err := dbwork.Begin(ctx, s.db, dbwork.ClassFrom(ctx, dbwork.ClassInteractive))
 	if err != nil {
 		return LibraryAgent{}, err
@@ -179,6 +184,13 @@ func (s *Service) SetLibraryAgent(ctx context.Context, library string, expected 
 		if err = authorize(tx); err != nil {
 			return LibraryAgent{}, err
 		}
+	}
+	r, err := usermutation.CheckContext(ctx, tx, time.Now().UnixMilli())
+	if err != nil {
+		return LibraryAgent{}, err
+	}
+	if r != nil {
+		return readLibraryAgent(ctx, tx, library)
 	}
 	current, err := readLibraryAgent(ctx, tx, library)
 	if err != nil {
@@ -193,6 +205,9 @@ func (s *Service) SetLibraryAgent(ctx context.Context, library string, expected 
 	out, err := readLibraryAgent(ctx, tx, library)
 	if err != nil {
 		return out, err
+	}
+	if err = usermutation.SaveContext(ctx, tx, usermutation.Result{Status: "applied", TargetID: library, Revision: out.Revision}, time.Now().UnixMilli()); err != nil {
+		return LibraryAgent{}, err
 	}
 	return out, gated.Commit()
 }

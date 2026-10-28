@@ -20,7 +20,11 @@ function requireCurrent(lifetime: CatalogueSelectionLifetime): void {
   if (lifetime.signal.aborted || !lifetime.isCurrent()) throw Object.assign(new Error('cancelled'), {name: 'AbortError', code: 'cancelled'});
 }
 function capturedApi(api: DetailApi, lifetime: CatalogueSelectionLifetime): DetailApi {
-  return {request: async<T>(path: string, method?: string, body?: unknown, signal?: AbortSignal): Promise<T> => {
+  return {acknowledgeUserMutation: api.acknowledgeUserMutation ? async key => {
+    requireCurrent(lifetime);
+    await api.acknowledgeUserMutation!(key);
+    requireCurrent(lifetime);
+  } : undefined, request: async<T>(path: string, method?: string, body?: unknown, signal?: AbortSignal): Promise<T> => {
     requireCurrent(lifetime);
     const value = await api.request<T>(path, method, body, signal);
     requireCurrent(lifetime);
