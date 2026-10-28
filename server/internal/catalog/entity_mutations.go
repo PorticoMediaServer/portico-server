@@ -144,6 +144,9 @@ func CatalogMutationStepTx(ctx context.Context, tx *sql.Tx, ref compactcatalog.M
 	if err != nil {
 		return compactcatalog.MutationStep{}, err
 	}
+	if m.OwnerKind == "empty-parent" {
+		return emptyParentStepTx(ctx, tx, ref)
+	}
 	switch m.Mode {
 	case "merge":
 		return MergeTitlesStepTx(ctx, tx, ref)
@@ -155,10 +158,14 @@ func CatalogMutationStepTx(ctx context.Context, tx *sql.Tx, ref compactcatalog.M
 }
 func RemoveTitleStepTx(ctx context.Context, tx *sql.Tx, ref compactcatalog.MutationRef) (compactcatalog.MutationStep, error) {
 	m, step, err := checkedMutationTx(ctx, tx, ref)
+	if err == nil && m.OwnerKind == "empty-parent" {
+		return emptyParentStepTx(ctx, tx, ref)
+	}
 	if err != nil || m.Status != "active" || step.Complete || step.Outcome == "blocked" {
 		return step, err
 	}
 	ctx = compactcatalog.WithMutationFamily(ctx, m.Family)
+	ctx = context.WithValue(ctx, parentCleanupKey{}, parentCleanupCustody{family: m.Family, library: m.OwnerKind == "library"})
 	if m.Child != "" {
 		return advanceMutationChildTx(ctx, tx, m)
 	}
@@ -265,7 +272,7 @@ func settleRemovedMembersTx(ctx context.Context, tx *sql.Tx, entity int64, kind 
 	case compactcatalog.Show:
 		return removeContainerTx(ctx, tx, entity)
 	case compactcatalog.Season:
-		return removeContainerTx(ctx, tx, entity)
+		return removeEmptySeasonAndSettleShowTx(ctx, tx, entity)
 	case compactcatalog.Collection:
 		return compactcatalog.DeleteEntityTx(ctx, tx, entity)
 	case compactcatalog.Album:

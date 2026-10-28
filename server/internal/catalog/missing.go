@@ -264,24 +264,9 @@ func RemoveTitleTx(ctx context.Context, tx *sql.Tx, entity int64) error {
 			return err
 		}
 	}
-	if show.Valid && !entityMutationHeld(ctx, tx, show.Int64) {
-		var episodes bool
-		if err = tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM catalog_episodes INDEXED BY catalog_episodes_show WHERE show_id=?)`, show.Int64).Scan(&episodes); err != nil {
+	if show.Valid {
+		if err = enqueueEmptyShowTx(ctx, tx, show.Int64); err != nil {
 			return err
-		}
-		if !episodes {
-			seasons, e := scanInt64s(tx.QueryContext(ctx, `SELECT entity_id FROM catalog_seasons WHERE show_id=?`, show.Int64))
-			if e != nil {
-				return e
-			}
-			for _, id := range seasons {
-				if e = removeContainerTx(ctx, tx, id); e != nil {
-					return e
-				}
-			}
-			if e = removeContainerTx(ctx, tx, show.Int64); e != nil {
-				return e
-			}
 		}
 	}
 	if album.Valid && !entityMutationHeld(ctx, tx, album.Int64) {

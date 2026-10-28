@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"testing"
 
+	"portico.local/server/internal/catalog"
 	"portico.local/server/internal/catalogtest"
 	"portico.local/server/internal/compactcatalog"
 	"portico.local/server/internal/persistence"
@@ -149,5 +150,66 @@ func TestP252bInterruptedDeleteFreshApprovalResumesAfterRestart(t *testing.T) {
 				t.Fatal("durable fresh receipt replay", replay, e)
 			}
 		})
+	}
+}
+
+func TestP252bDirectEpisodeAdministrationDefersBoundedEmptyShow(t *testing.T) {
+	s, db, root := newService(t)
+	c := catalogtest.New(t, db)
+	library := c.Library("tv", "TV", "tv", root)
+	show := c.Show(library, "Show", 2020)
+	season := c.Season(show, 1)
+	for n := 2; n <= 41; n++ {
+		c.Season(show, n)
+	}
+	ep := c.Episode(show, season, 1, filepath.Join(root, "episode.mkv"))
+	c.Drain()
+	doc, e := s.LibrarySettingsFor(context.Background(), allow, "tv")
+	if e != nil {
+		t.Fatal(e)
+	}
+	doc.Settings.AllowMediaDeletion = true
+	if _, e = s.SaveLibrarySettings(context.Background(), allow, "tv", Change[LibrarySettings]{ExpectedRevision: doc.Revision, Settings: doc.Settings, OperationID: "episode-policy"}); e != nil {
+		t.Fatal(e)
+	}
+	preview, e := s.PreviewDelete(context.Background(), allow, []string{ep.Public})
+	if e != nil {
+		t.Fatal(e)
+	}
+	request := DeleteRequest{ItemIDs: []string{ep.Public}, ExpectedRevision: preview.Revision, Confirmation: preview.Confirmation, OperationID: "episode-delete"}
+	out, e := s.Delete(context.Background(), allow, "owner", request)
+	if e != nil || out.Removed != 1 {
+		t.Fatal(out, e)
+	}
+	var count int
+	db.QueryRow(`SELECT count(*) FROM catalog_seasons WHERE show_id=?`, show.ID).Scan(&count)
+	if count != 40 {
+		t.Fatal("admin Episode writer deleted all empty Seasons", count)
+	}
+	var id string
+	if e = db.QueryRow(`SELECT mutation_id FROM catalog_entity_mutations WHERE owner_kind='empty-parent' AND subject_id=? AND status='active'`, show.ID).Scan(&id); e != nil {
+		t.Fatal(e)
+	}
+	for turn := 0; turn < 44; turn++ {
+		before := count
+		job, e := catalog.New(db).MutationAdapter().Step(context.Background(), id)
+		if e != nil {
+			t.Fatal(job, e)
+		}
+		db.QueryRow(`SELECT count(*) FROM catalog_seasons WHERE show_id=?`, show.ID).Scan(&count)
+		if before-count > 1 {
+			t.Fatal("admin parent continuation bulk deleted", before, count)
+		}
+		if job.State == "succeeded" {
+			break
+		}
+	}
+	db.QueryRow(`SELECT count(*) FROM catalog_entities WHERE id=?`, show.ID).Scan(&count)
+	if count != 0 {
+		t.Fatal("admin empty Show consequence did not finish")
+	}
+	replay, e := s.Delete(context.Background(), allow, "owner", request)
+	if e != nil || replay.Removed != 1 {
+		t.Fatal("admin receipt depended on pending parent", replay, e)
 	}
 }

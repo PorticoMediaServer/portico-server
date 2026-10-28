@@ -11569,7 +11569,7 @@ CREATE TABLE catalog_entity_mutations(
  generation INTEGER NOT NULL DEFAULT 1 CHECK(generation>0),
  family_id TEXT NOT NULL,
  parent_mutation_id TEXT REFERENCES catalog_entity_mutations(mutation_id) ON DELETE RESTRICT,
- owner_kind TEXT NOT NULL CHECK(owner_kind IN('title','administration','missing','library','merge','identity','mb-adoption')),
+ owner_kind TEXT NOT NULL CHECK(owner_kind IN('title','administration','missing','library','merge','identity','mb-adoption','empty-parent')),
  owner_id TEXT NOT NULL,
  owner_generation INTEGER NOT NULL CHECK(owner_generation>0),
  entity_id INTEGER REFERENCES catalog_entities(id) ON DELETE RESTRICT,
@@ -11607,6 +11607,7 @@ CREATE TABLE catalog_entity_mutations(
  cause_operation TEXT NOT NULL DEFAULT '',
  acknowledged INTEGER NOT NULL DEFAULT 0 CHECK(acknowledged IN(0,1)),
  child_count INTEGER NOT NULL DEFAULT 0 CHECK(child_count>=0),
+ CHECK(owner_kind<>'empty-parent' OR (entity_kind=2 AND mode='members' AND parent_mutation_id IS NULL AND target_id IS NULL AND target_subject_id=0 AND target_public_id='' AND target_incarnation='' AND target_publication_incarnation='' AND current_child IS NULL AND cause_operation='empty-show' AND provider='' AND provider_kind='' AND provider_id='' AND accepted_revision='' AND owner_id=public_id AND public_id<>'' AND phase IN('admitted','finalize','terminal') AND status IN('active','terminal'))),
  CHECK(status<>'waiting' OR (owner_kind='mb-adoption' AND mode='adopt' AND phase='artist-identity' AND entity_kind=6 AND parent_mutation_id IS NULL AND target_id IS NULL AND current_child IS NULL AND provider='musicbrainz' AND provider_kind='release' AND accepted_revision<>'' AND cause_operation<>'' AND public_id<>'' AND entity_incarnation<>'' AND subject_ancestor_1 IS NOT NULL)),
  CHECK((status='terminal' AND phase='terminal' AND entity_id IS NULL AND target_id IS NULL AND outcome<>'pending') OR
        (status<>'terminal' AND entity_id IS NOT NULL AND phase<>'terminal'))

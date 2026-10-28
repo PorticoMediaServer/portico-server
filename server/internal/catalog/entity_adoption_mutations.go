@@ -48,6 +48,17 @@ func EnqueueMBAdoptionTx(ctx context.Context, tx *sql.Tx, album int64, albumInca
 	if err != nil {
 		return err
 	}
+	// The final publication and this admission are one writer. A second
+	// accepted cause must roll back rather than create mutually frozen roots
+	// for the same live identity index. Retrying after the first root finishes
+	// captures a fresh index, including this publication's actual identity.
+	var competing bool
+	if err = tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM catalog_entities e CROSS JOIN catalog_entity_mutations m INDEXED BY catalog_entity_mutations_provider ON m.library_id=e.library_id AND m.entity_kind=e.kind WHERE e.id=? AND m.provider='musicbrainz' AND m.provider_kind='release' AND m.provider_id=? AND m.mode='adopt' AND m.status<>'terminal' AND NOT(m.owner_kind='mb-adoption' AND m.entity_id=e.id AND m.cause_operation=?))`, album, releaseID, causeOperation).Scan(&competing); err != nil {
+		return err
+	}
+	if competing {
+		return compactcatalog.ErrEntityMutating
+	}
 	ref, err := compactcatalog.BeginEntityMutationTx(ctx, tx, compactcatalog.MutationIntent{Entity: album, OwnerKind: "mb-adoption", OwnerID: policyInc + ":" + causeOperation, OwnerGeneration: policyRev, Mode: "adopt", Provider: "musicbrainz", ProviderKind: "release", ProviderID: releaseID, AcceptedRevision: releaseRevision, CauseOperation: causeOperation})
 	if err != nil {
 		return err
@@ -69,6 +80,35 @@ func enqueueIdentityAdoptionTx(ctx context.Context, tx *sql.Tx, entity int64, p 
 			return e
 		} else if found {
 			return nil
+		}
+	}
+	if kind == compactcatalog.Album {
+		var existing compactcatalog.MutationRef
+		e := tx.QueryRowContext(ctx, `SELECT m.mutation_id,m.generation FROM catalog_entity_mutations m INDEXED BY catalog_entity_mutations_provider WHERE m.provider=? AND m.provider_kind=? AND m.provider_id=? AND m.library_id=? AND m.entity_kind=6 AND m.mode='adopt' AND m.status<>'terminal' AND m.parent_mutation_id IS NULL LIMIT 1`, p.Provider, p.Kind, p.ID, library).Scan(&existing.ID, &existing.Generation)
+		if e == nil {
+			if _, e = readMutationConsoleTx(ctx, tx, existing.ID); errors.Is(e, sql.ErrNoRows) {
+				return compactcatalog.ErrEntityMutating
+			} else if e != nil {
+				return e
+			}
+			var known bool
+			if e = tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM catalog_external_ids WHERE entity_id=? AND provider=? AND provider_kind=? AND provider_id=?)`, entity, p.Provider, p.Kind, p.ID).Scan(&known); e != nil {
+				return e
+			}
+			if !known {
+				return compactcatalog.ErrEntityMutating
+			}
+			m, e := compactcatalog.CheckEntityMutationBindingsTx(ctx, tx, existing)
+			if e == nil {
+				e = adoptionCurrentTx(ctx, tx, m)
+			}
+			if errors.Is(e, compactcatalog.ErrMutationStale) || errors.Is(e, sql.ErrNoRows) {
+				return compactcatalog.ErrEntityMutating
+			}
+			return e
+		}
+		if !errors.Is(e, sql.ErrNoRows) {
+			return e
 		}
 	}
 	cause := ""
@@ -268,7 +308,7 @@ func (s *Service) MutationAdapter() operations.Adapter {
 					if e = completeMutationConsoleTx(ctx, tx, custody, id, step.Outcome); e != nil {
 						return e
 					}
-					if m.OwnerKind == "identity" || m.OwnerKind == "mb-adoption" {
+					if m.OwnerKind == "identity" || m.OwnerKind == "mb-adoption" || m.OwnerKind == "empty-parent" {
 						return acknowledgeMutationTx(ctx, tx, ref)
 					}
 					return nil
@@ -276,7 +316,7 @@ func (s *Service) MutationAdapter() operations.Adapter {
 				// Automatic identity/MB custody is revalidated by the root on EVERY
 				// turn, including while recursively draining its current child.
 				// Manual requests have no persisted management grant or callback.
-				if m.OwnerKind != "identity" && m.OwnerKind != "mb-adoption" {
+				if m.OwnerKind != "identity" && m.OwnerKind != "mb-adoption" && m.OwnerKind != "empty-parent" {
 					out.State = "paused"
 					out.Phase = "authorized owner resume required"
 					return nil

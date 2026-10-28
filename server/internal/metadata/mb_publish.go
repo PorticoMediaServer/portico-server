@@ -21,6 +21,10 @@ var mbPublicationAccountingPlan = dbwork.WritePlan{
 	Why: "one atomic old/new accepted-release pin move, each already capped at 10,000 tracks; exact final budget refusal must roll back the pin and its accounting together",
 }
 
+// Adoption contention is stale publication authority with a bounded retry
+// delay. It must not keep a rejected head job ahead of unrelated provider work.
+var errMBAdoptionPending = errors.Join(errTVDBStale, errors.New("MusicBrainz adoption is pending"))
+
 // resolveMBEntity maps a job's public id to its integer entity id. The worker
 // holds a lease on live catalogue state; a vanished entity reads as a stale
 // base, which the worker already releases cleanly.
@@ -262,6 +266,9 @@ func (s *Service) mbPublishAlbumReady(ctx context.Context, j mbJob, stage mbRele
 		return e
 	}
 	if e = catalog.EnqueueMBAdoptionTx(ctx, tx, entity, j.base.Incarnation, revision, r.ID, j.operation); e != nil {
+		if errors.Is(e, compactcatalog.ErrEntityMutating) {
+			return errMBAdoptionPending
+		}
 		return e
 	}
 	if e = s.finishMBPublication(ctx, tx, j, stage.requested, revision); e != nil {

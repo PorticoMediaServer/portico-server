@@ -230,3 +230,44 @@ func TestP252bAutomaticMissingNeverUnwindsAndRestoresAcquisition(t *testing.T) {
 		t.Fatal("automatic never physically deleted source")
 	}
 }
+
+func TestP252bAutomaticNeverPreservesManualMissingCommand(t *testing.T) {
+	c, _, songs := drainFixture(t, 1)
+	song := songs[0]
+	drainEvidence(t, c, "manual-never", 1)
+	drainPin(t, c, song, "manual-never", false)
+	asset, token := identityFile(t, c, "m", "/m/manual-never.flac", 1)
+	c.Write(func(ctx context.Context, tx *sql.Tx) error {
+		return compactcatalog.LinkAssetTx(ctx, tx, song, asset, compactcatalog.Link{})
+	})
+	markMissing(t, c, "m", token, time.Now().Add(-time.Hour))
+	c.Exec(`INSERT INTO server_settings(singleton,"library.missingTitles") VALUES(1,'never') ON CONFLICT(singleton) DO UPDATE SET "library.missingTitles"='never'`)
+	s := New(c.DB)
+	cutoff := time.Now()
+	if _, e := s.EmptyMissing(context.Background(), "m", cutoff, nil); e != nil {
+		t.Fatal(e)
+	}
+	if out, e := s.EmptyMissingDue(context.Background()); e != nil || out.Titles != 0 {
+		t.Fatal(out, e)
+	}
+	if n := rows(t, c, `SELECT count(*) FROM catalog_entity_mutations WHERE cause_operation='manual-missing' AND status='active'`); n != 1 {
+		t.Fatal("automatic policy consumed manual custody", n)
+	}
+	if n := rows(t, c, `SELECT count(*) FROM mb_song_links WHERE item_id=?`, song); n != 1 {
+		t.Fatal("automatic never drained manual pin")
+	}
+	titles := 0
+	for turn := 0; turn < 8; turn++ {
+		out, e := s.EmptyMissing(context.Background(), "m", cutoff, nil)
+		if e != nil {
+			t.Fatal(e)
+		}
+		titles += out.Titles
+		if !out.More {
+			break
+		}
+	}
+	if titles != 1 {
+		t.Fatal("manual empty-now under never did not finish", titles)
+	}
+}

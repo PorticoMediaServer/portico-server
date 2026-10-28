@@ -220,7 +220,7 @@ func AcknowledgeAdministrationTx(ctx context.Context, tx *sql.Tx, owner string) 
 func supersedeAdministrationTx(ctx context.Context, tx *sql.Tx, entity int64, newOwner string) (bool, error) {
 	var ref compactcatalog.MutationRef
 	e := tx.QueryRowContext(ctx, `WITH RECURSIVE ancestors(id,depth) AS (SELECT ?1,0 UNION ALL SELECT e.parent_id,a.depth+1 FROM ancestors a JOIN catalog_entities e ON e.id=a.id WHERE e.parent_id IS NOT NULL AND a.depth<4)
- SELECT m.mutation_id,m.generation FROM ancestors a JOIN catalog_entity_mutations m ON m.entity_id=a.id WHERE m.owner_kind='administration' AND m.owner_id<>?2 AND m.status IN('active','blocked') ORDER BY a.depth LIMIT 1`, entity, newOwner).Scan(&ref.ID, &ref.Generation)
+ SELECT m.mutation_id,m.generation FROM ancestors a CROSS JOIN catalog_entity_mutations m INDEXED BY catalog_entity_mutations_entity_fk ON m.entity_id=a.id WHERE m.owner_kind='administration' AND m.owner_id<>?2 AND m.status IN('active','blocked') ORDER BY a.depth LIMIT 1`, entity, newOwner).Scan(&ref.ID, &ref.Generation)
 	if errors.Is(e, sql.ErrNoRows) {
 		return false, nil
 	}

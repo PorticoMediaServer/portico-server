@@ -89,12 +89,12 @@ func driveArtistHandoffOperations(t *testing.T, db *sql.DB) {
 	t.Fatal("artist handoff operations deadlocked")
 }
 func TestP252bArtistHandoffTwoAlbumsAndTwoArtists(t *testing.T) {
-	for _, separate := range []bool{false, true} {
-		t.Run(fmt.Sprint("separateArtists=", separate), func(t *testing.T) {
+	for _, identity := range []string{"sameArtist", "knownOtherArtist", "newOtherArtist"} {
+		t.Run(identity, func(t *testing.T) {
 			db, names := mbLaneDB(t)
 			c := catalogtest.New(t, db)
 			artist := names["artist"]
-			if separate {
+			if identity != "sameArtist" {
 				c.Write(func(ctx context.Context, tx *sql.Tx) error {
 					id, _, e := compactcatalog.EnsureEntityTx(ctx, tx, compactcatalog.Entity{Library: 1, Kind: compactcatalog.Artist, Key: "separate-artist", Title: "Artist"})
 					if e != nil {
@@ -104,7 +104,10 @@ func TestP252bArtistHandoffTwoAlbumsAndTwoArtists(t *testing.T) {
 					if e = compactcatalog.SetFactsTx(ctx, tx, id, map[string]any{"local_key": "separate"}); e != nil {
 						return e
 					}
-					return compactcatalog.RecordProviderIdentityTx(ctx, tx, id, compactcatalog.ProviderIdentity{Provider: "musicbrainz", Kind: "artist", ID: mbLaneArtistID})
+					if identity == "knownOtherArtist" {
+						return compactcatalog.RecordProviderIdentityTx(ctx, tx, id, compactcatalog.ProviderIdentity{Provider: "musicbrainz", Kind: "artist", ID: mbLaneArtistID})
+					}
+					return nil
 				})
 			}
 			second := c.Album(artist, "Second Album", 2020)
@@ -122,6 +125,20 @@ func TestP252bArtistHandoffTwoAlbumsAndTwoArtists(t *testing.T) {
 			})
 			if !errors.Is(e, compactcatalog.ErrEntityMutating) {
 				t.Fatal("waiting outgoing fence bypassed", e)
+			}
+			out, e := catalog.New(db).MutationAdapter().Step(context.Background(), a)
+			if e != nil || out.State != "succeeded" {
+				t.Fatal("album cause did not hand off", out, e)
+			}
+			var independent int
+			if e = db.QueryRow(`SELECT count(*) FROM catalog_entity_mutations m JOIN console_operations o ON o.kind='catalog-mutation' AND o.resource=m.mutation_id WHERE m.owner_kind='identity' AND m.entity_kind=5 AND m.status='active' AND m.parent_mutation_id IS NULL`).Scan(&independent); e != nil || independent != 1 {
+				t.Fatal("cause completion lost independent Artist root", independent, e)
+			}
+			if identity == "newOtherArtist" {
+				out, e = catalog.New(db).MutationAdapter().Step(context.Background(), b)
+				if e != nil || out.State != "running" {
+					t.Fatal("new identity entered old frozen root", out, e)
+				}
 			}
 			// Real restart reconciliation state, not just a fresh Service pointer.
 			if _, e = db.Exec(`UPDATE console_operations SET state='reconciling',revision=revision+1 WHERE kind='catalog-mutation' AND state IN('queued','running')`); e != nil {
