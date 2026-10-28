@@ -18,9 +18,12 @@ func (s *Service) QueueMode(ctx context.Context, library, source, mode string, a
 	return s.QueueContext(context.WithValue(ctx, scanModeKey{}, mode), library, source, authorize)
 }
 func scanModeTx(ctx context.Context, tx *sql.Tx, source string) (string, error) {
-	// Only ReportPathsStrict sets this internal key. Public QueueMode retains
+	// Strict targets and explicit integration refreshes request incremental work.
+	// Public QueueMode retains
 	// its first-import/integrity selection, including for "incremental".
-	if strict, _ := ctx.Value(strictQueueKey{}).(bool); strict {
+	strict, _ := ctx.Value(strictQueueKey{}).(bool)
+	refresh, _ := ctx.Value(integrationRefreshKey{}).(bool)
+	if strict || refresh {
 		return "incremental", nil
 	}
 	mode, _ := ctx.Value(scanModeKey{}).(string)

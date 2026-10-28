@@ -455,6 +455,7 @@ index inventory_scan_issues_job
 index inventory_scan_issues_protected
 index inventory_scan_issues_reading_coverage
 index inventory_sidecars_directory
+index inventory_strict_intents_library
 index inventory_version_links_item
 index item_extras_asset
 index item_extras_owner
@@ -1259,6 +1260,7 @@ table inventory_scan_issues
 table inventory_sidecar_changes
 table inventory_sidecars
 table inventory_source_active
+table inventory_strict_intents
 table inventory_version_links
 table inventory_video_ids
 table inventory_video_names

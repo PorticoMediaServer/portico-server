@@ -160,7 +160,7 @@ func (s *Service) ChangeSubtitleDeliveryTx(ctx context.Context, tx *sql.Tx, p id
 	if _, err = tx.ExecContext(ctx, `DELETE FROM playback_hls_windows WHERE session_id=?`, session); err != nil {
 		return err
 	}
-	_, err = tx.ExecContext(ctx, `DELETE FROM playback_hls_stages WHERE session_id=?`, session)
+	_, err = tx.ExecContext(ctx, `UPDATE playback_hls_stages SET stages_json=json_set(CASE WHEN json_type(stages_json)='object' THEN stages_json ELSE json_object('stages',json(stages_json)) END,'$.stages',json('[]')) WHERE session_id=?`, session)
 	return err
 }
 

@@ -3,7 +3,7 @@ import test from 'node:test';
 import {
  accessTokenPrefix,apiKeyPrefix,apiScopePresets,createAccessToken,createApiKey,createWebhook,isApiCredentialSecret,listApiKeys,listAccessTokens,listWebhookDeliveries,
  parseApiAccessOptions,parseApiCredential,parseIssuedApiCredential,parseIssuedWebhook,parsePathReport,parseTitlePage,parseWebhook,parseWebhookDelivery,parseWebhookDeliveryPage,parseWebhookList,
- changeWebhook,presetOf,queryTitles,reportChangedPaths,revokeApiKey,sendWebhookTest,updateWebhook,webhookChangeApplies,webhookEdits,type ApiAccessTransport,
+ changeWebhook,presetOf,queryTitles,reportChangedPaths,refreshIntegrationLibraries,revokeApiKey,sendWebhookTest,updateWebhook,webhookChangeApplies,webhookEdits,type ApiAccessTransport,
 } from '../src/api-access.ts';
 
 const member={accountId:'owner',username:'sam',profileId:'p1',profile:'Sam'};
@@ -136,4 +136,12 @@ test('a credential page carries the exact total across pages and refuses a page 
  assert.equal((await listApiKeys(page.transport)).total,250);
  await assert.rejects(listApiKeys(recorder({items:[credential],limit:100}).transport));
  await assert.rejects(listApiKeys(recorder({items:[credential],limit:100,total:-1}).transport));
+});
+
+test('deferred integration work is explicit and never invents job IDs',async()=>{
+ const raw={paths:[{path:'/media/A',status:'deferred',scanScope:'source',libraryId:'films',sourceId:'source'}],jobs:[],deferred:true};
+ const parsed=parsePathReport(raw);assert.equal(parsed.deferred,true);assert.deepEqual(parsed.jobIds,[]);assert.equal(parsed.paths[0].scanScope,'source');
+ assert.throws(()=>parsePathReport({...raw,deferred:'yes'}));assert.throws(()=>parsePathReport({...raw,paths:[{...raw.paths[0],scanScope:'everything'}]}));
+ const queued=parsePathReport({paths:[],jobs:[{id:'real'}]});assert.equal(queued.deferred,false);assert.deepEqual(queued.jobIds,['real']);
+ const request=recorder(raw);await refreshIntegrationLibraries(request.transport,'films');assert.equal(request.calls[0].path,'/v1/integrations/refresh');assert.deepEqual(request.calls[0].body,{libraryId:'films'});
 });

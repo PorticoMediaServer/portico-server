@@ -44,6 +44,11 @@ type Service struct {
 	DeepAnalysis  *mediaanalysis.Service
 	LocalMetadata *localmetadata.Service
 	AnalyzeSTRM   func(context.Context, string, string) (assets.Facts, error)
+
+	strictIntentAfter   string
+	strictIntentRetry   time.Time
+	strictIntentFolders map[string]string
+
 	db            *sql.DB
 	catalog       *catalog.Service
 	probe         assets.Probe
@@ -395,10 +400,12 @@ func (s *Service) Run(ctx context.Context) {
 	workerloop.RunWith(life, "ingestion.scan", advanced, wake, func(ctx context.Context) time.Duration {
 		iterationHook(ctx)
 		pending := false
+		intentPending := false
 		{
 			ctx = dbwork.WithBackgroundSpeed(ctx, dbwork.ReadBackgroundSpeed(ctx, s.db))
 			s.recoverPolicyChanges(ctx)
 			s.schedule(ctx)
+			intentPending = s.startStrictIntents(ctx)
 			s.startWaitingReports(ctx)
 			if !time.Now().Before(nextPrune) {
 				var source string
@@ -488,6 +495,9 @@ func (s *Service) Run(ctx context.Context) {
 		s.mu.Unlock()
 		if active > 0 {
 			return quantumPoll
+		}
+		if intentPending {
+			return 2 * time.Second
 		}
 		if pending {
 			return time.Minute

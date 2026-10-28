@@ -1,3 +1,4 @@
+import {parseHardwareExecution} from '../../delivery.ts';
 import {currentUTCTimestamp, utcOrderKey} from '../../local-session.ts';
 import type {OwnerActivitySummary, DashboardSessionsPage} from './types.ts';
 
@@ -153,7 +154,9 @@ const sourceVideo=record({id,codec:label},{interlaced:bool,profile:label,level:c
 const sourceAudio=record({id,codec:label,atmos:bool,default:bool,commentary:bool,visualImpaired:bool},{profile:label,channels:count,layout:label,language:label,title:words,bitDepth:count,sampleRate:count,variant:label,objectAudio:label,dtsx:bool});
 const sourceSubtitles=record({id,format:label},{language:label});
 const media=record({},{video:sourceVideo,audio:sourceAudio,subtitles:sourceSubtitles,videoHardware:bool});
-const delivery=record({streams:list(record({kind:label,inputCodec:text(128),outputCodec:text(128),action:label}),4)},{videoHeight:count,videoBitrateBps:count,audioBitrateBps:count,audioChannels:count});
+const hardwareExecution:Reader=v=>parseHardwareExecution(v)??invalid();
+const hardware=record({backend:choice(['software','videotoolbox','vaapi','qsv','nvenc','amf']),stages:list(record({operation:choice(['decode','deinterlace','tone_map','subtitle_burn_in','scale','encode']),execution:choice(['hardware','software'])}),16)},{execution:hardwareExecution});
+const delivery=record({streams:list(record({kind:label,inputCodec:text(128),outputCodec:text(128),action:label}),4)},{hardware,videoHeight:count,videoBitrateBps:count,audioBitrateBps:count,audioChannels:count});
 /** Whitelist display facts; never retain a producer's capability or path. */
 export function parseDashboardSessionFacts(value:unknown):Record<string,unknown>{
  if(!object(value))invalid();

@@ -56,11 +56,12 @@ var ErrPathReport = requestinput.New("invalid path report")
 // ReportedPath is what became of one path in a report.
 type ReportedPath struct {
 	Path string `json:"path"`
-	// Status is "queued", or why nothing will be scanned for this path:
+	// Status is "queued", "deferred" for accepted maintained work, or why nothing will be scanned:
 	// "outside_libraries" (no library folder contains it) or "invalid".
 	Status    string `json:"status"`
 	LibraryID string `json:"libraryId,omitempty"`
 	SourceID  string `json:"sourceId,omitempty"`
+	ScanScope string `json:"scanScope,omitempty"`
 	// Folder is the folder that will be scanned, relative to the library
 	// folder; "." is the library folder itself.
 	Folder string `json:"folder,omitempty"`
@@ -68,7 +69,8 @@ type ReportedPath struct {
 
 // PathReport is the answer to a report.
 type PathReport struct {
-	Paths []ReportedPath `json:"paths"`
+	Deferred bool           `json:"deferred,omitempty"`
+	Paths    []ReportedPath `json:"paths"`
 	// Jobs are the scans that were started or were already running for the
 	// affected library folders.
 	Jobs []Job `json:"jobs"`

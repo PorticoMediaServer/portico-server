@@ -661,6 +661,7 @@ func (h *HLS) produce(ctx context.Context, id string, from, generation int, owne
 	} else {
 		close(watchDone)
 	}
+	fallbackLaunch := false
 	run := func(plan *DeliveryPlan) (error, string) {
 		if remoteInput != nil {
 			// The remote-input runner starts and reaps the converter itself, and
@@ -681,7 +682,7 @@ func (h *HLS) produce(ctx context.Context, id string, from, generation int, owne
 					}
 					releaseRemote = release
 				}
-				return subtitles.WindowCommand{Args: args, Hardware: conversionJobHardware(plan, stages)}, err
+				return subtitles.WindowCommand{Args: args, Hardware: conversionJobHardware(plan, stages), Started: func() { h.recordConversionStart(ctx, id, plan, args, stages, generation, fallbackLaunch) }}, err
 			})
 			releaseRemote()
 			return err, windowConverterDiagnostic(err, path, h.root, h.memoryRoot)
@@ -749,7 +750,8 @@ func (h *HLS) produce(ctx context.Context, id string, from, generation int, owne
 		}
 		tail := &tailWriter{limit: 4096}
 		cmd.Stderr = tail
-		err = childprocess.Run(processCtx, cmd)
+		launchCtx := childprocess.WithStarted(processCtx, func() { h.recordConversionStart(ctx, id, plan, args, stages, generation, fallbackLaunch) })
+		err = childprocess.Run(launchCtx, cmd)
 		if err == nil && input.Validate != nil {
 			err = validateOwnedInput(processCtx, input.Validate)
 		}
@@ -798,6 +800,7 @@ func (h *HLS) produce(ctx context.Context, id string, from, generation int, owne
 		} else {
 			close(watchDone)
 		}
+		fallbackLaunch = true
 		e, diagnostic = run(delivery)
 		stopWatch()
 		<-watchDone
@@ -831,6 +834,7 @@ func (h *HLS) produce(ctx context.Context, id string, from, generation int, owne
 		} else {
 			close(watchDone)
 		}
+		fallbackLaunch = true
 		e, diagnostic = run(delivery)
 		stopWatch()
 		<-watchDone
@@ -1029,7 +1033,7 @@ func (h *HLS) recordStages(ctx context.Context, id string, plan *DeliveryPlan, s
 	}
 	write, cancel := persist(ctx)
 	defer cancel()
-	_, _ = h.producerWrite(write, id, dbwork.ClassEstablishedPlayback, `INSERT INTO playback_hls_stages(session_id,backend,stages_json) VALUES(?,?,?) ON CONFLICT(session_id) DO UPDATE SET backend=excluded.backend,stages_json=excluded.stages_json`, id, backend, string(raw))
+	_, _ = h.producerWrite(write, id, dbwork.ClassEstablishedPlayback, `INSERT INTO playback_hls_stages(session_id,backend,stages_json) VALUES(?,?,json_object('stages',json(?))) ON CONFLICT(session_id) DO UPDATE SET backend=excluded.backend,stages_json=json_set(CASE WHEN json_type(playback_hls_stages.stages_json)='object' THEN playback_hls_stages.stages_json ELSE json_object('stages',json(playback_hls_stages.stages_json)) END,'$.stages',json(?))`, id, backend, string(raw), string(raw))
 }
 
 // producerGenerationKey carries the session generation a producer started

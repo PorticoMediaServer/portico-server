@@ -49,10 +49,10 @@ func (s *Service) ConversionLoad(ctx context.Context) (ConversionLoad, error) {
 		if e = rows.Scan(&id, &raw); e != nil {
 			return out, e
 		}
-		var stages []struct{ Operation, Execution string }
+		record := readConversionStages(raw)
 		known := false
-		if json.Unmarshal([]byte(raw), &stages) == nil {
-			for _, stage := range stages {
+		if record.Stages != nil {
+			for _, stage := range record.Stages {
 				if stage.Operation == "encode" {
 					if stage.Execution == "hardware" {
 						out.Hardware++
