@@ -1,3 +1,4 @@
+import {UserMutationRecoveryModel} from '@core/user-mutation-recovery.ts';
 import {appearancePreferences} from '@core/preference-effects.ts';
 import {homeSelectionContext} from '@core/home-selection/index.ts';
 import type {SelectionContext} from '@core/selection-model/index.ts';
@@ -39,6 +40,9 @@ export const assembleShellBindings: ShellAssembler = async context => {
     hourCycle: language.region.hour12 === true ? 'h12' as const : language.region.hour12 === false ? 'h23' as const : undefined};
   const feedback = new ShellFeedback(language, current), life = new AbortController();
   const resources: (() => void)[] = [() => retireArtworkScope(artworkScope), feedback.dispose, () => life.abort(), openAppLogContext(current)];
+  const coordinator = context.api.getUserMutationCoordinator();
+  const recovery = coordinator ? new UserMutationRecoveryModel({api: context.api, coordinator, scope: () => current() ? context.api.getUserMutationScope() : undefined}) : undefined;
+  if (recovery) resources.push(recovery.dispose);
   const preparingStarts = createWebPreparingStarts(context.api, captured, context.session, current);
   if (preparingStarts) resources.push(preparingStarts.dispose);
   const dispose = () => { if (!active) return; active = false; for (const cleanup of resources.splice(0).reverse()) { try { cleanup(); } catch { /* Continue fencing every other private owner. */ } } };
@@ -101,7 +105,7 @@ export const assembleShellBindings: ShellAssembler = async context => {
     const visibleDock = dockVisible();
     return {api: context.api, events: context.events, scopeKey: JSON.stringify([viewer.serverId, authority, viewer.accountId, viewer.profileId, captured.sessionFamilyId, context.epoch]),
       playback: playerResources?.get()?.binding,
-      shell: {identity: context.facts.identity, OwnerActivity: activity.OwnerActivity, dockVisible: visibleDock, onSignOut: context.signOut,onSignOutPorticoAccount:context.signOutPorticoAccount,onSwitchProfile:context.switchProfile,onSwitchServer:context.switchServer,savedServers:context.savedServers,
+      shell: {pendingChanges: recovery ? {scopeKey: artworkScope, model: recovery, reportError: feedback.reportError} : undefined, identity: context.facts.identity, OwnerActivity: activity.OwnerActivity, dockVisible: visibleDock, onSignOut: context.signOut,onSignOutPorticoAccount:context.signOutPorticoAccount,onSwitchProfile:context.switchProfile,onSwitchServer:context.switchServer,savedServers:context.savedServers,
         phoneSelection: playerResources?.get()?.selection.phoneSelection(), overlays: <ShellFeedbackHost source={feedback} dockVisible={visibleDock} />},
       home: {service: context.home, artwork: context.artwork, time, serverName: context.facts.identity.serverName, reducedMotion: appearancePreferences(currentPreferences(), globalThis.matchMedia('(prefers-reduced-motion: reduce)').matches).reducedMotion, selection: homeSelection,
         customization: {isCurrent: current, requestId: randomId, createSavedViews: () => {

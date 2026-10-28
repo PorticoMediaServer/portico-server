@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import type {ScreenContext} from '../src/screens/detail/context.ts';
+import {screenLifetime, type ScreenContext} from '../src/screens/detail/context.ts';
 import {createDetailBindings} from '../src/screens/detail/bindings.ts';
 import {createShowBindings} from '../src/screens/detail/show-bindings.ts';
 
@@ -38,4 +38,14 @@ test('a show binding tolerates the screen cleanup that follows its dispose', () 
   show.dispose();
   assert.doesNotThrow(() => show.cancel());
   assert.throws(() => show.service.cancel(), /disposed/);
+});
+
+
+test('screen lifetime forwards optional acknowledgement under its captured authority', async () => {
+  let current=true;const acks:string[]=[];
+  const source={...context,isCurrent:()=>current,api:{...context.api,acknowledgeUserMutation:async(id:string)=>{acks.push(id);}}} as ScreenContext;
+  const life=screenLifetime(source);
+  await life.api.acknowledgeUserMutation?.('original');assert.deepEqual(acks,['original']);
+  current=false;await assert.rejects(life.api.acknowledgeUserMutation!('retired'),{name:'AbortError'});assert.deepEqual(acks,['original']);life.dispose();
+  const optional=screenLifetime(context);await optional.api.acknowledgeUserMutation?.('legacy');optional.dispose();
 });

@@ -55,6 +55,11 @@ export function screenLifetime(context: ScreenContext) {
   const assert = () => { if (!current()) throw new DOMException('Screen authority changed', 'AbortError'); };
   const signal = (input?: AbortSignal) => input ? AbortSignal.any([life.signal, input]) : life.signal;
   const api = {
+    async acknowledgeUserMutation(intentId: string): Promise<void> {
+      assert();
+      await context.api.acknowledgeUserMutation?.(intentId);
+      assert();
+    },
     async request<T>(path: string, method?: string, body?: unknown, input?: AbortSignal): Promise<T> {
       assert();
       const active = signal(input); active.throwIfAborted();

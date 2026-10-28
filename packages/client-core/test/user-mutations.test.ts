@@ -235,3 +235,60 @@ test('507 never becomes terminal proof or releases uncertain custody',async()=>{
  const abort=new AbortController(),pending=core.run(input,abort.signal),cancelled=assert.rejects(pending,{name:'AbortError'});await timers.tick();abort.abort();await cancelled;
  assert.equal(store.state.entries[0].state,'pending');assert.equal(store.state.entries[0].terminalProof,undefined);await assert.rejects(core.dismissReviewed(store.state.entries[0].key));core.dispose();
 });
+
+test('one explicit native Stop consumer waits for foreground receipt consumption and then releases on the existing pump',async()=>{
+ const store=new Store(),timers=new Timers();let consumed:Promise<boolean>|undefined,requested=false;
+ const core=coordinator(store,timers,{send:async()=>ok,lookup:async entry=>receipt(entry),recover:async()=>ok});
+ const off=core.subscribe(()=>{const entry=core.snapshot().find(entry=>entry.state==='confirmed');if(entry&&!requested){requested=true;consumed=core.consumeConfirmedStop(entry.key);}});
+ const pending=core.run({operation:'stop_playback_session',method:'DELETE',path:'/v1/playback/sessions/s',target:'stop:s:1',intentId:'stop:s:1',body:{generation:1,positionMs:20}});
+ await timers.tick();await pending;assert.equal(await consumed,false,'foreground waiters prevented early deletion');
+ await timers.tick(1000);assert.equal(store.state.entries.length,0,'the original consumer request drains after the waiter without another API call');off();core.dispose();
+});
+
+function held<T=void>(){let resolve!:(value:T)=>void;const promise=new Promise<T>(done=>{resolve=done;});return {promise,resolve};}
+for(const boundary of ['read','CAS'])test('disposed pump cannot dispatch or quarantine after held '+boundary+' during same-family rebuild',async()=>{
+ const store=new Store(),timers=new Timers(),gate=held(),entered=held();let captured=false,live:UserMutationScope|undefined=scope,sends=0,applied=false;
+ const read=store.read.bind(store),cas=store.compareAndSwap.bind(store);
+ if(boundary==='read')store.read=async()=>{const state=await read();if(!captured&&state.entries[0]?.state==='pending'){captured=true;entered.resolve();await gate.promise;}return state;};
+ else store.compareAndSwap=async(revision,next)=>{const accepted=await cas(revision,next);if(!captured&&accepted&&next.entries[0]?.attempts===1){captured=true;entered.resolve();await gate.promise;}return accepted;};
+ const transport={send:async()=>{sends++;applied=true;return ok;},lookup:async(e:UserMutationEntry)=>applied?receipt(e):{status:404,headers:{},body:{error:{code:'receipt_unknown'}}},recover:async()=>ok};
+ const old=coordinator(store,timers,transport,()=>live as UserMutationScope),pending=old.run(input);const retired=assert.rejects(pending,UserMutationError);
+ await timers.tick();await entered.promise;const original=copy(store.state.entries[0]);old.dispose();live=undefined;gate.resolve();await retired;await timers.tick();
+ assert.equal(sends,0);assert.equal(store.state.entries[0].state,'pending');assert.equal(store.state.entries[0].key,original.key);assert.deepEqual(store.state.entries[0].body,original.body);
+ const fresh=coordinator(store,timers,transport);try{await fresh.start();await timers.tick(31000);assert.equal(sends,1);assert.equal(store.state.entries[0].state,'confirmed');assert.equal(store.state.entries[0].key,original.key);}finally{fresh.dispose();old.dispose();gate.resolve();}
+});
+test('native Stop consumption waits for both confirmed foreground recoveries',async()=>{
+ const store=new Store(),timers=new Timers(),gates=[held<UserMutationResponse>(),held<UserMutationResponse>()];let recoveries=0;
+ const core=coordinator(store,timers,{send:async()=>ok,lookup:async e=>receipt(e),recover:async()=>gates[recoveries++].promise});
+ const stop={...input,operation:'stop_playback_session',method:'DELETE',path:'/v1/playback/sessions/original',target:'stop:original:1',intentId:'stop:original:1',body:{generation:1,positionMs:42000}};
+ try{
+  const initial=core.run(stop);await timers.tick();await initial;const key=store.state.entries[0].key;
+  store.state.entries[0].nativeStopOwner='vega';store.state.entries[0].nativeStopConsumed=true;
+  const first=core.run(stop),second=core.run(stop);for(let n=0;n<20&&recoveries<2;n++)await setImmediate();assert.equal(recoveries,2);
+  assert.equal(await core.consumeConfirmedStop(key),false);assert.equal(store.state.entries.length,1);
+  gates[0].resolve(ok);await first;await timers.tick();assert.equal(store.state.entries.length,1,'one foreground reader still owns the result');
+  gates[1].resolve(ok);await second;await timers.tick();assert.equal(store.state.entries.length,0);
+ }finally{gates.forEach(gate=>gate.resolve(ok));core.dispose();}
+});
+for(const status of ['applied','partial','receipt_unknown','receipt_expired'])test('targeted review Check again looks up only and retains unresolved '+status,async()=>{
+ const store=new Store(),timers=new Timers();let sends=0,lookups=0;
+ const core=coordinator(store,timers,{send:async()=>{sends++;return {status:400,headers:{},body:{error:{code:'needs_review'}}};},lookup:async e=>{lookups++;return status==='receipt_unknown'?{status:404,headers:{},body:{error:{code:status}}}:status==='receipt_expired'?{status:410,headers:{},body:{error:{code:status}}}:receipt(e,status);},recover:async()=>ok});
+ try{
+  const refused=assert.rejects(core.run(input),UserMutationError);await timers.tick();await refused;const entry=copy(store.state.entries[0]);let notifications=0;core.subscribe(()=>{notifications++;});
+  await core.reconcile(entry.key);assert.equal(sends,1);assert.equal(lookups,1);assert.equal(store.state.entries[0].key,entry.key);
+  if(status==='applied'){assert.equal(store.state.entries[0].state,'confirmed');assert.equal(store.state.entries[0].body,undefined);assert.equal(store.state.entries[0].fingerprint,'');assert.ok(notifications>0);}
+  else if(status==='partial'){assert.equal(store.state.entries[0].state,'review');assert.deepEqual(store.state.entries[0].body,entry.body);assert.equal(store.state.entries[0].receipt?.status,'partial');}
+  else assert.deepEqual(store.state.entries[0],entry);
+ }finally{core.dispose();}
+});
+for(const race of ['entry','scope'])test('targeted receipt lookup cannot overwrite a changed '+race+' witness',async()=>{
+ const store=new Store(),timers=new Timers(),gate=held<UserMutationResponse>();let entry!:UserMutationEntry,live=scope;
+ const core=coordinator(store,timers,{send:async()=>({status:400,headers:{},body:{error:{code:'review'}}}),lookup:async e=>{entry=copy(e);return gate.promise;},recover:async()=>ok},()=>live);
+ try{
+  const refused=assert.rejects(core.run(input));await timers.tick();await refused;const key=store.state.entries[0].key;
+  const check=core.reconcile(key);if(race==='scope')check.catch(()=>{});for(let n=0;n<20&&!entry;n++)await setImmediate();assert.ok(entry);
+  if(race==='scope')live={...scope,familyId:'successor'};else store.state.entries[0].errorCode='review_changed';
+  gate.resolve(receipt(entry));if(race==='scope')await assert.rejects(check,UserMutationError);else await check;
+  assert.equal(store.state.entries[0].state,'review');assert.ok(store.state.entries[0].body);assert.equal(store.state.entries[0].receipt,undefined);
+ }finally{gate.resolve(ok);core.dispose();}
+});

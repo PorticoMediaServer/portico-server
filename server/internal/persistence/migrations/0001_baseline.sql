@@ -10676,6 +10676,7 @@ CREATE TABLE user_mutation_receipts(
  issued_ms INTEGER NOT NULL CHECK(issued_ms>0 AND issued_ms=CAST(substr(key,6,13) AS INTEGER)),
  status TEXT NOT NULL CHECK(status IN('reserved','applied','already_stopped','conflict','invalid','terminal','deleted','removed','partial')),
  target_id TEXT NOT NULL DEFAULT '' CHECK(length(CAST(target_id AS BLOB))<=128 AND instr(target_id,char(0))=0),
+ stop_item_id TEXT NOT NULL DEFAULT '' CHECK(length(CAST(stop_item_id AS BLOB))<=128 AND instr(stop_item_id,char(0))=0),
  revision INTEGER NOT NULL DEFAULT 0 CHECK(revision BETWEEN 0 AND 9007199254740991),
  generation INTEGER NOT NULL DEFAULT 0 CHECK(generation BETWEEN 0 AND 2147483647),
  position_ms INTEGER NOT NULL DEFAULT 0 CHECK(position_ms BETWEEN 0 AND 9007199254740991),

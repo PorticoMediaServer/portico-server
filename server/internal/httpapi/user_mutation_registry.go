@@ -39,6 +39,7 @@ var userMutationRoutes = map[string]bool{
 	"post_library_channels_preferences":          true,
 	"put_listening_preferences":                  true,
 	"post_networking_remote_config":              true,
+	"stop_account_playback":                      true,
 	"stop_playback_session":                      true,
 	"post_playlists":                             true,
 	"delete_playlists_id":                        true,

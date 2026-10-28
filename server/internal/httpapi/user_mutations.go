@@ -17,6 +17,7 @@ import (
 	"portico.local/apikit/apierror"
 	"portico.local/server/internal/dbwork"
 	"portico.local/server/internal/identity"
+	"portico.local/server/internal/playbackv1"
 	"portico.local/server/internal/usermutation"
 )
 
@@ -146,7 +147,7 @@ func (d Dependencies) bindUserMutation(w http.ResponseWriter, r *http.Request) (
 		return r, false
 	}
 	digest := sha256.Sum256(canonical)
-	envelope := usermutation.Envelope{Key: key, Operation: meta.ID, Digest: hex.EncodeToString(digest[:]), Stop: meta.ID == "stop_playback_session"}
+	envelope := usermutation.Envelope{Key: key, Operation: meta.ID, Digest: hex.EncodeToString(digest[:]), Stop: meta.ID == "stop_playback_session" || meta.ID == "stop_account_playback"}
 	ctx := usermutation.WithRequest(dbwork.WithDurableUser(r.Context()), binding, envelope)
 	ctx = usermutation.WithAuthority(ctx, func(ctx context.Context, tx *sql.Tx) error {
 		family, err := d.Identity.SessionFamilyTx(ctx, tx, p)
@@ -172,7 +173,7 @@ func (d Dependencies) userMutationReceiptAccess(ctx context.Context, p identity.
 	if tx == nil {
 		return errors.New("receipt authorization requires a snapshot")
 	}
-	var definitions []apikit.Metadata
+	var definitions []apikit.Definition
 	if d.registry != nil {
 		definitions = d.registry.Definitions()
 	}
@@ -185,6 +186,31 @@ func (d Dependencies) userMutationReceiptAccess(ctx context.Context, p identity.
 		}
 	}
 	switch receipt.Operation {
+	case "stop_playback_session", "stop_account_playback":
+		return v1Error(d.playbackV1().AuthorizeStopReceipt(ctx, playbackv1.Caller{Principal: p, AuthorizeItem: func(ctx context.Context, item string) error {
+			return itemAdmission(d.itemAccess(ctx, p, item))
+		}}, *receipt))
+	case "put_saved_pins_kind_id":
+		// A pin needs current read access, including viewer shares and server-
+		// visible collections. Prove existence separately: a revoked share must
+		// not be mistaken for the genuine absence that permits acknowledgement.
+		var kind string
+		err := tx.QueryRowContext(ctx, `SELECT kind FROM saved_resources WHERE id=? UNION ALL SELECT 'playlist' FROM catalog_playlists WHERE token=?`, receipt.TargetID, receipt.TargetID).Scan(&kind)
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil
+		}
+		if err != nil {
+			return err
+		}
+		switch kind {
+		case "collection", "view":
+			_, _, err = d.Catalog.WithContext(ctx).SavedResourceReceiptStatus(receipt.TargetID, resourceActor(p))
+		case "playlist":
+			_, err = d.Catalog.WithContext(ctx).PlaylistReceiptStatus(receipt.TargetID, resourceActor(p))
+		default:
+			return sql.ErrNoRows
+		}
+		return err
 	case "put_items_personal_state_batch":
 		return nil // No historical per-item identifiers are retained.
 	case "put_items_id_personal_state", "put_items_itemId_reading_favorite", "put_items_itemId_reading_mark", "put_items_itemId_reading_my_list":
@@ -331,6 +357,13 @@ func registerUserMutationRoutes(registry *apikit.Registry, d Dependencies) error
 		})
 		if err != nil {
 			return usermutation.Receipt{}, mutationRouteError(err)
+		}
+		// The receipt and its current scope are proved above. Release that read
+		// snapshot before completing the Stop's captured process/grant fences.
+		if receipt.Operation == "stop_playback_session" || receipt.Operation == "stop_account_playback" {
+			if err = d.playbackV1().CompleteStopReceipt(ctx, *receipt); err != nil {
+				return usermutation.Receipt{}, mutationRouteError(err)
+			}
 		}
 		apikit.SetHeader(ctx, "Cache-Control", "no-store")
 		return *receipt, nil

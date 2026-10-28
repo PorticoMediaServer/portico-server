@@ -452,6 +452,11 @@ func TestReceiptPhysicalBytesAndMaxRecord(t *testing.T) {
 					if err := Save(ctx, tx, b, e, r, testNow); err != nil {
 						return err
 					}
+					if worst {
+						if _, err := tx.ExecContext(ctx, `UPDATE user_mutation_receipts SET stop_item_id=? WHERE key=?`, strings.Repeat("i", 128), e.Key); err != nil {
+							return err
+						}
+					}
 				}
 				return nil
 			})
@@ -532,7 +537,7 @@ func TestSQLHardBoundsAndIndexedCleanup(t *testing.T) {
 	if err := apply(t, db, testBinding, envelope(402), Result{Status: "applied"}, testNow); err != nil {
 		t.Fatal(err)
 	}
-	for _, set := range []string{`status='body'`, `position_status='body'`, `target_id=replace(hex(zeroblob(65)),'0','x')`, `operation=replace(hex(zeroblob(49)),'0','x')`, `profile_id=char(0)`, `generation=-1`, `revision=9007199254740992`, `digest='x'`} {
+	for _, set := range []string{`status='body'`, `position_status='body'`, `target_id=replace(hex(zeroblob(65)),'0','x')`, `stop_item_id=replace(hex(zeroblob(65)),'0','x')`, `stop_item_id=char(0)`, `operation=replace(hex(zeroblob(49)),'0','x')`, `profile_id=char(0)`, `generation=-1`, `revision=9007199254740992`, `digest='x'`} {
 		if _, err := db.Exec(`UPDATE user_mutation_receipts SET ` + set); err == nil {
 			t.Fatalf("unbounded SQL accepted %s", set)
 		}
@@ -581,6 +586,9 @@ func TestSparseMaxAccountPhysicalAccounting(t *testing.T) {
 				return err
 			}
 			if err := Save(ctx, tx, b, e, Result{Status: "already_stopped", TargetID: strings.Repeat("t", 128), Revision: 9007199254740991, Generation: 2147483647, PositionMs: 9007199254740991, PositionStatus: "already_stopped"}, testNow); err != nil {
+				return err
+			}
+			if _, err := tx.ExecContext(ctx, `UPDATE user_mutation_receipts SET stop_item_id=? WHERE key=?`, strings.Repeat("i", 128), e.Key); err != nil {
 				return err
 			}
 		}

@@ -352,7 +352,10 @@ export class V1ChannelControl implements ChannelPlayback {
   }
 
   private stop(id: string, generation?: number): Promise<unknown> {
-    const work = call(this.http, {method: 'DELETE', path: encodedRoutePath("stop_playback_session", {"id": enc(id)}), body: {generation}}, [200, 204]);
+    const work = call(this.http, {method: 'DELETE', path: encodedRoutePath("stop_playback_session", {"id": enc(id)}), body: {generation}}, [200, 204]).then(async response => {
+      if (generation !== undefined) await this.http.acknowledgeUserMutation?.(`stop:${id}:${generation}`);
+      return response;
+    });
     this.stopping = Promise.all([this.stopping.catch(() => {}), work]);
     return work;
   }

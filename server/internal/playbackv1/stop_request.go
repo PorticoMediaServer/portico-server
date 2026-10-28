@@ -96,3 +96,30 @@ func (StopRequest) JSONSchema() map[string]any {
 		}},
 	}}
 }
+
+// AccountStopRequest carries the occurrence selected by the controls read.
+// Legacy unkeyed callers may omit it; participating protocol callers may not.
+type AccountStopRequest struct {
+	Generation *int `json:"generation,omitempty"`
+}
+
+func (s *AccountStopRequest) UnmarshalJSON(raw []byte) error {
+	var parsed StopRequest
+	if err := parsed.UnmarshalJSON(raw); err != nil {
+		return err
+	}
+	var fields map[string]json.RawMessage
+	if err := json.Unmarshal(raw, &fields); err != nil {
+		return err
+	}
+	for key := range fields {
+		if key != "generation" {
+			return errors.New("unknown account Stop field")
+		}
+	}
+	s.Generation = parsed.Generation
+	return nil
+}
+func (AccountStopRequest) JSONSchema() map[string]any {
+	return map[string]any{"type": "object", "additionalProperties": false, "properties": map[string]any{"generation": map[string]any{"type": "integer", "minimum": 1, "maximum": 2147483647}}}
+}

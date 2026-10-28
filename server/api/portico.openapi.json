@@ -16783,6 +16783,11 @@
             "minimum": -9007199254740991,
             "type": "integer"
           },
+          "generation": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
           "positionMs": {
             "maximum": 9007199254740991,
             "minimum": -9007199254740991,
@@ -16801,6 +16806,7 @@
         "required": [
           "sessionId",
           "revision",
+          "generation",
           "state",
           "positionMs",
           "actions"
@@ -37179,6 +37185,11 @@
             "minimum": -9007199254740991,
             "type": "integer"
           },
+          "generation": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
           "positionMs": {
             "maximum": 9007199254740991,
             "minimum": -9007199254740991,
@@ -37197,6 +37208,7 @@
         "required": [
           "sessionId",
           "revision",
+          "generation",
           "state",
           "positionMs",
           "actions"
@@ -153490,6 +153502,11 @@
                   "minimum": -9007199254740991,
                   "type": "integer"
                 },
+                "generation": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                },
                 "item": {
                   "properties": {
                     "id": {
@@ -153627,6 +153644,7 @@
               "required": [
                 "sessionId",
                 "revision",
+                "generation",
                 "state",
                 "positionMs",
                 "actions",
@@ -291755,7 +291773,14 @@
         ]
       },
       "StopAccountPlaybackRequest": {
-        "properties": {},
+        "additionalProperties": false,
+        "properties": {
+          "generation": {
+            "maximum": 2147483647,
+            "minimum": 1,
+            "type": "integer"
+          }
+        },
         "type": "object"
       },
       "StopAccountPlaybackResponse": {
@@ -291767,6 +291792,11 @@
           {
             "additionalProperties": false,
             "properties": {
+              "generation": {
+                "maximum": 2147483647,
+                "minimum": 1,
+                "type": "integer"
+              },
               "positionMs": {
                 "anyOf": [
                   {
@@ -343257,6 +343287,11 @@
                       "minimum": -9007199254740991,
                       "type": "integer"
                     },
+                    "generation": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
                     "positionMs": {
                       "maximum": 9007199254740991,
                       "minimum": -9007199254740991,
@@ -343275,6 +343310,7 @@
                   "required": [
                     "sessionId",
                     "revision",
+                    "generation",
                     "state",
                     "positionMs",
                     "actions"
@@ -343391,6 +343427,11 @@
                       "minimum": -9007199254740991,
                       "type": "integer"
                     },
+                    "generation": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
                     "positionMs": {
                       "maximum": 9007199254740991,
                       "minimum": -9007199254740991,
@@ -343409,6 +343450,7 @@
                   "required": [
                     "sessionId",
                     "revision",
+                    "generation",
                     "state",
                     "positionMs",
                     "actions"
@@ -530739,6 +530781,11 @@
                             "minimum": -9007199254740991,
                             "type": "integer"
                           },
+                          "generation": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
                           "item": {
                             "properties": {
                               "id": {
@@ -530876,6 +530923,7 @@
                         "required": [
                           "sessionId",
                           "revision",
+                          "generation",
                           "state",
                           "positionMs",
                           "actions",
@@ -530985,18 +531033,33 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "requestBody": {
           "content": {
             "application/json": {
               "schema": {
-                "properties": {},
+                "additionalProperties": false,
+                "properties": {
+                  "generation": {
+                    "maximum": 2147483647,
+                    "minimum": 1,
+                    "type": "integer"
+                  }
+                },
                 "type": "object"
               }
             }
           },
-          "required": true
+          "required": false
         },
         "responses": {
           "204": {
@@ -531047,6 +531110,9 @@
           "session_ended",
           "internal",
           "timeout",
+          "idempotency_conflict",
+          "receipt_expired",
+          "invalid_mutation_key",
           "database_busy",
           "writer_capacity"
         ],
@@ -539904,6 +539970,11 @@
                   {
                     "additionalProperties": false,
                     "properties": {
+                      "generation": {
+                        "maximum": 2147483647,
+                        "minimum": 1,
+                        "type": "integer"
+                      },
                       "positionMs": {
                         "anyOf": [
                           {

@@ -792,7 +792,7 @@ export class WebPlayback implements PlaybackAdapter {
     // ends it too, so its tuner (or its conversion) is free at once instead of when its lease lapses.
     const tuned = this.service?.getSnapshot();
     if (final && this.host.farewell && tuned?.channel && tuned.session?.id && !held.session) {
-      this.host.farewell(`/v1/playback/sessions/${encodeURIComponent(tuned.session.id)}`, 'DELETE', {generation: tuned.session.presentation.generation});
+      this.host.farewell(`/v1/playback/sessions/${encodeURIComponent(tuned.session.id)}`, 'DELETE', {generation: tuned.session.generation});
       return;
     }
     if (!held.session || held.phase === 'ended') return;

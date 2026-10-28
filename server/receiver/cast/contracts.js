@@ -10723,6 +10723,11 @@ var PorticoCastContracts = (function(exports) {
 					"minimum": -9007199254740991,
 					"type": "integer"
 				},
+				"generation": {
+					"maximum": 9007199254740991,
+					"minimum": -9007199254740991,
+					"type": "integer"
+				},
 				"positionMs": {
 					"maximum": 9007199254740991,
 					"minimum": -9007199254740991,
@@ -10735,6 +10740,7 @@ var PorticoCastContracts = (function(exports) {
 			"required": [
 				"sessionId",
 				"revision",
+				"generation",
 				"state",
 				"positionMs",
 				"actions"
@@ -25939,6 +25945,11 @@ var PorticoCastContracts = (function(exports) {
 					"minimum": -9007199254740991,
 					"type": "integer"
 				},
+				"generation": {
+					"maximum": 9007199254740991,
+					"minimum": -9007199254740991,
+					"type": "integer"
+				},
 				"positionMs": {
 					"maximum": 9007199254740991,
 					"minimum": -9007199254740991,
@@ -25951,6 +25962,7 @@ var PorticoCastContracts = (function(exports) {
 			"required": [
 				"sessionId",
 				"revision",
+				"generation",
 				"state",
 				"positionMs",
 				"actions"
@@ -106449,6 +106461,11 @@ var PorticoCastContracts = (function(exports) {
 								"minimum": -9007199254740991,
 								"type": "integer"
 							},
+							"generation": {
+								"maximum": 9007199254740991,
+								"minimum": -9007199254740991,
+								"type": "integer"
+							},
 							"item": {
 								"properties": {
 									"id": { "type": "string" },
@@ -106536,6 +106553,7 @@ var PorticoCastContracts = (function(exports) {
 						"required": [
 							"sessionId",
 							"revision",
+							"generation",
 							"state",
 							"positionMs",
 							"actions",
@@ -192591,8 +192609,12 @@ var PorticoCastContracts = (function(exports) {
 			}
 		] },
 		"StopAccountPlaybackRequest": {
-			"properties": {},
-			"required": [],
+			"additionalProperties": false,
+			"properties": { "generation": {
+				"maximum": 2147483647,
+				"minimum": 1,
+				"type": "integer"
+			} },
 			"type": "object"
 		},
 		"StopAccountPlaybackResponse": {
@@ -192602,12 +192624,19 @@ var PorticoCastContracts = (function(exports) {
 		},
 		"StopPlaybackSessionRequest": { "oneOf": [{
 			"additionalProperties": false,
-			"properties": { "positionMs": {
-				"maximum": 9007199254740991,
-				"minimum": -9007199254740991,
-				"nullable": true,
-				"type": "integer"
-			} },
+			"properties": {
+				"generation": {
+					"maximum": 2147483647,
+					"minimum": 1,
+					"type": "integer"
+				},
+				"positionMs": {
+					"maximum": 9007199254740991,
+					"minimum": -9007199254740991,
+					"nullable": true,
+					"type": "integer"
+				}
+			},
 			"type": "object"
 		}, {
 			"additionalProperties": false,
@@ -194580,6 +194609,9 @@ var PorticoCastContracts = (function(exports) {
 	}
 	//#endregion
 	//#region packages/contracts/src/decoders.ts
+	function decodeGetUserMutationResponse(input) {
+		return decode("GetUserMutationResponse", input);
+	}
 	function decodeStartPlaybackSessionResponse(input) {
 		return decode("StartPlaybackSessionResponse", input);
 	}
@@ -194599,7 +194631,12 @@ var PorticoCastContracts = (function(exports) {
 	function isUserMutationKey(key) {
 		return /^p251_[0-9]{13}_[a-f0-9]{32}$/.test(key);
 	}
-	function newUserMutationKey(now = Date.now(), random = (out) => globalThis.crypto.getRandomValues(out)) {
+	function newUserMutationKey(now = Date.now(), random = (out) => {
+		const bytes = new Uint8Array(out.length);
+		globalThis.crypto.getRandomValues(bytes);
+		out.set(bytes);
+		return out;
+	}) {
 		if (!integer(now) || String(now).length !== 13) throw new UserMutationError("mutation_clock");
 		return "p251_" + now + "_" + Array.from(random(/* @__PURE__ */ new Uint8Array(16)), (v) => v.toString(16).padStart(2, "0")).join("");
 	}
@@ -194632,7 +194669,11 @@ var PorticoCastContracts = (function(exports) {
 			path: input.path,
 			target: input.target,
 			body: input.body,
-			headers: input.headers ?? {}
+			headers: input.headers ?? {},
+			...input.requiresReentry ? {
+				requiresReentry: true,
+				secretFields: input.secretFields ?? []
+			} : {}
 		});
 	}
 	function freeze(value) {
@@ -194642,14 +194683,29 @@ var PorticoCastContracts = (function(exports) {
 		}
 		return value;
 	}
-	function secretField(key) {
+	function userMutationSecretField(key) {
 		const normalized = key.replace(/[^a-z0-9]/gi, "").toLowerCase();
+		if (normalized === "undotoken") return false;
 		return /(?:token|password|passphrase|secret|apikey|privatekey|tvdbprojectkey|acoustidkey)$/.test(normalized) || ["authorization", "cookie"].includes(normalized);
 	}
+	/** URLs with embedded credentials must never enter durable request/fingerprint data. */
+	function userMutationCredentialURL(value) {
+		if (typeof value !== "string") return false;
+		for (const candidate of value.match(/[a-z][a-z0-9+.-]*:\/\/[^\s"'<>]*/gi) ?? []) {
+			if ((candidate.split("://")[1]?.split(/[/?#]/, 1)[0] ?? "").includes("@")) return true;
+			const query = candidate.split("?")[1]?.split("#")[0];
+			if (query === void 0) continue;
+			for (const name of new URLSearchParams(query).keys()) {
+				const normalized = name.replace(/[^a-z0-9]/gi, "").toLowerCase();
+				if (userMutationSecretField(name) || /^(?:auth|credential|credentials|user|username|pass|pwd|key|sig|signature|awsaccesskeyid|xamzcredential|xamzsignature|xgoogcredential|xgoogsignature)$/.test(normalized)) return true;
+			}
+		}
+		return false;
+	}
 	function safeRequest(value) {
-		if (typeof value === "string") return value.split("://").slice(1).every((tail) => !tail.split(/[/?#\s]/, 1)[0].includes("@"));
+		if (typeof value === "string") return !userMutationCredentialURL(value);
 		if (Array.isArray(value)) return value.every(safeRequest);
-		if (object(value)) return (Object.getPrototypeOf(value) === Object.prototype || Object.getPrototypeOf(value) === null) && Object.entries(value).every(([key, v]) => !(secretField(key) && v !== void 0 && v !== null && v !== "") && safeRequest(v));
+		if (object(value)) return (Object.getPrototypeOf(value) === Object.prototype || Object.getPrototypeOf(value) === null) && Object.entries(value).every(([key, v]) => !(userMutationSecretField(key) && v !== void 0 && v !== null && v !== "") && safeRequest(v));
 		return value === void 0 || value === null || typeof value === "boolean" || typeof value === "number" && Number.isFinite(value);
 	}
 	function validateUserMutationState(raw) {
@@ -194683,6 +194739,14 @@ var PorticoCastContracts = (function(exports) {
 			].includes(Number(entry.terminalProof.httpStatus)) || typeof entry.terminalProof.code !== "string")) throw new UserMutationError("mutation_store_damaged");
 			if (entry.state === "confirmed" && (!entry.receipt || entry.fingerprint !== "" || entry.body !== void 0)) throw new UserMutationError("mutation_store_damaged");
 			if (entry.leaseUntilMs !== void 0 && !integer(entry.leaseUntilMs) || entry.leaseOwner !== void 0 && typeof entry.leaseOwner !== "string") throw new UserMutationError("mutation_store_damaged");
+			if (entry.nativeStopOwner !== void 0 && (typeof entry.nativeStopOwner !== "string" || !entry.nativeStopOwner || entry.nativeStopOwner.length > 256) || entry.nativeStopConsumed !== void 0 && typeof entry.nativeStopConsumed !== "boolean") throw new UserMutationError("mutation_store_damaged");
+			if (entry.requiresReentry !== void 0 && entry.requiresReentry !== true || entry.secretFields !== void 0 && (!Array.isArray(entry.secretFields) || entry.secretFields.length > 64 || entry.secretFields.some((name) => typeof name !== "string" || name.length > 256))) throw new UserMutationError("mutation_store_damaged");
+			if (entry.recoveryDeviceClass !== void 0 && ![
+				"web",
+				"mobile",
+				"tablet",
+				"television"
+			].includes(String(entry.recoveryDeviceClass))) throw new UserMutationError("mutation_store_damaged");
 			seen.add(entry.key);
 		}
 		return raw;
@@ -194727,6 +194791,14 @@ var PorticoCastContracts = (function(exports) {
 			...raw.positionStatus !== void 0 ? { positionStatus: raw.positionStatus } : {}
 		};
 	}
+	function receivedUserMutationReceipt(raw, entry) {
+		try {
+			return parseUserMutationReceipt(raw, entry);
+		} catch (error) {
+			if (error instanceof UserMutationError && error.code === "mutation_receipt_invalid") throw new Error("mutation_receipt_pending");
+			throw error;
+		}
+	}
 	function userMutationRetryAfterMs(value, now = Date.now()) {
 		if (!value) return 0;
 		const trimmed = value.trim();
@@ -194760,6 +194832,9 @@ var PorticoCastContracts = (function(exports) {
 	}
 	var UserMutationCoordinator = class {
 		options;
+		stopConsumers = /* @__PURE__ */ new Map();
+		confirmedForeground = /* @__PURE__ */ new Map();
+		confirmedAborts = /* @__PURE__ */ new Set();
 		owner;
 		now;
 		random;
@@ -194800,6 +194875,7 @@ var PorticoCastContracts = (function(exports) {
 				} catch (error) {
 					throw error instanceof UserMutationError ? error : new UserMutationError("mutation_store_unavailable");
 				}
+				if (this.stopped) throw new UserMutationError("mutation_scope_changed");
 				const next = clone(before), result = work(next);
 				next.revision = before.revision + 1;
 				validateUserMutationState(next);
@@ -194810,7 +194886,7 @@ var PorticoCastContracts = (function(exports) {
 					throw error instanceof UserMutationError ? error : new UserMutationError("mutation_store_unavailable");
 				}
 				if (swapped) {
-					this.publish(next);
+					if (!this.stopped) this.publish(next);
 					return result;
 				}
 			}
@@ -194821,9 +194897,91 @@ var PorticoCastContracts = (function(exports) {
 			await this.reconcile();
 		}
 		/** Resume durable background reconciliation, including after a scope change. */
-		async reconcile() {
+		async reconcile(key) {
 			if (this.stopped) return;
-			await this.pump();
+			if (key === void 0) {
+				await this.pump();
+				return;
+			}
+			if (!isUserMutationKey(key)) throw new UserMutationError("invalid_mutation_key", key);
+			let state;
+			try {
+				state = validateUserMutationState(await this.options.store.read());
+			} catch (error) {
+				throw error instanceof UserMutationError ? error : new UserMutationError("mutation_store_unavailable", key);
+			}
+			if (this.stopped) return;
+			const original = state.entries.find((entry) => entry.key === key), scope = this.options.scope();
+			if (!original || !scope || !sameUserMutationScope(scope, original.scope)) throw new UserMutationError("mutation_scope_changed", key);
+			const busy = () => this.running.has(key) || this.recovering.has(key) || this.waiters.has(key) || (this.confirmedForeground.get(key) ?? 0) > 0;
+			if (!["review", "confirmed"].includes(original.state) || busy()) return;
+			const witness = canonical(original), abort = new AbortController();
+			this.recovering.add(key);
+			this.confirmedAborts.add(abort);
+			try {
+				const lookup = await this.options.transport.lookup(freeze(clone(original)), abort.signal);
+				if (this.stopped) return;
+				const live = this.options.scope();
+				if (!live || !sameUserMutationScope(live, original.scope)) throw new UserMutationError("mutation_scope_changed", key);
+				if (lookup.status !== 200) return;
+				const receipt = receivedUserMutationReceipt(lookup.body, original), review = [
+					"partial",
+					"conflict",
+					"invalid",
+					"terminal"
+				].includes(receipt.status) || receipt.positionStatus === "policy_rejected";
+				await this.change((current) => {
+					const entry = current.entries.find((entry) => entry.key === key), live = this.options.scope();
+					if (!entry || canonical(entry) !== witness || !live || !sameUserMutationScope(live, original.scope) || this.running.has(key) || this.waiters.has(key) || (this.confirmedForeground.get(key) ?? 0) > 0) return;
+					entry.receipt = receipt;
+					entry.state = review ? "review" : "confirmed";
+					delete entry.terminalProof;
+					if (review) entry.errorCode = receipt.positionStatus === "policy_rejected" ? "final_position_rejected" : "mutation_needs_review";
+					else {
+						delete entry.body;
+						entry.fingerprint = "";
+						entry.headers = { "Idempotency-Key": entry.key };
+						delete entry.errorCode;
+						delete entry.leaseOwner;
+						delete entry.leaseUntilMs;
+					}
+				});
+			} finally {
+				this.recovering.delete(key);
+				this.confirmedAborts.delete(abort);
+			}
+		}
+		/** Native result consumers wait for local foreground consumers before releasing Stop metadata. */
+		async consumeConfirmedStop(key) {
+			const scope = this.options.scope();
+			if (!scope || !isUserMutationKey(key)) return false;
+			if (this.stopConsumers.has(key)) {
+				this.wake();
+				return false;
+			}
+			if (this.stopConsumers.size >= 256) throw new UserMutationError("mutation_store_busy", key);
+			this.stopConsumers.set(key, clone(scope));
+			await this.drainStopConsumers();
+			this.wake();
+			return !this.stopConsumers.has(key) && !this.entries.some((entry) => entry.key === key);
+		}
+		async drainStopConsumers() {
+			if (!this.stopConsumers.size) return;
+			const done = await this.change((state) => {
+				const done = [], scope = this.options.scope();
+				for (const [key, requestedScope] of this.stopConsumers) {
+					const entry = state.entries.find((entry) => entry.key === key);
+					if (!scope || !sameUserMutationScope(scope, requestedScope) || !entry || !sameUserMutationScope(entry.scope, requestedScope) || ["review", "quarantined"].includes(entry.state) || !["stop_playback_session", "stop_account_playback"].includes(entry.operation)) {
+						done.push(key);
+						continue;
+					}
+					if (entry.state !== "confirmed" || !entry.receipt || entry.nativeStopOwner && !entry.nativeStopConsumed || this.waiters.has(key) || this.recovering.has(key) || this.running.has(key) || (this.confirmedForeground.get(key) ?? 0) > 0) continue;
+					state.entries = state.entries.filter((entry) => entry.key !== key);
+					done.push(key);
+				}
+				return done;
+			});
+			for (const key of done) this.stopConsumers.delete(key);
 		}
 		/** Explicit caller acknowledgement; never evict unresolved or quarantined drafts. */
 		async acknowledge(key) {
@@ -194854,6 +195012,7 @@ var PorticoCastContracts = (function(exports) {
 			this.stopped = true;
 			if (this.timer !== void 0) this.timers.clearTimeout(this.timer);
 			this.timer = void 0;
+			for (const abort of this.confirmedAborts) abort.abort();
 			for (const { abort } of this.running.values()) abort.abort();
 			for (const [key] of this.waiters) this.reject(key, new UserMutationError("mutation_scope_changed", key));
 		}
@@ -194921,6 +195080,11 @@ var PorticoCastContracts = (function(exports) {
 					]) if (name in body) body[name] = key;
 				}
 				const next = {
+					...input.recoveryDeviceClass ? { recoveryDeviceClass: input.recoveryDeviceClass } : {},
+					...input.requiresReentry ? {
+						requiresReentry: true,
+						secretFields: clone(input.secretFields ?? [])
+					} : {},
 					key,
 					operation: input.operation,
 					method: input.method,
@@ -194943,20 +195107,31 @@ var PorticoCastContracts = (function(exports) {
 				if (bytes(state) + state.entries.filter((e) => e.state === "pending").length * 2048 > 8388608) throw new UserMutationError("mutation_not_queued");
 				return clone(next);
 			});
+			if (this.stopped) throw new UserMutationError("mutation_scope_changed", entry.key);
 			if (entry.state === "review" || entry.state === "quarantined") throw new UserMutationError(entry.errorCode ?? "mutation_needs_review", entry.key, entry.receipt);
 			if (entry.state === "confirmed" && entry.receipt) {
 				const current = this.options.scope();
 				if (!current || !sameUserMutationScope(current, entry.scope)) throw new UserMutationError("mutation_scope_changed", entry.key);
 				const abort = new AbortController(), cancel = () => abort.abort();
+				this.confirmedForeground.set(entry.key, (this.confirmedForeground.get(entry.key) ?? 0) + 1);
+				this.confirmedAborts.add(abort);
 				signal?.addEventListener("abort", cancel, { once: true });
 				try {
 					if (signal?.aborted) abort.abort();
+					if (abort.signal.aborted) throw new DOMException("The request was cancelled.", "AbortError");
 					const response = await this.options.transport.recover(freeze(entry), entry.receipt, abort.signal);
+					if (this.stopped) throw new UserMutationError("mutation_scope_changed", entry.key);
+					if (abort.signal.aborted) throw new DOMException("The request was cancelled.", "AbortError");
 					const live = this.options.scope();
 					if (!live || !sameUserMutationScope(live, entry.scope)) throw new UserMutationError("mutation_scope_changed", entry.key);
 					return response;
 				} finally {
 					signal?.removeEventListener("abort", cancel);
+					this.confirmedAborts.delete(abort);
+					const remaining = (this.confirmedForeground.get(entry.key) ?? 1) - 1;
+					if (remaining > 0) this.confirmedForeground.set(entry.key, remaining);
+					else this.confirmedForeground.delete(entry.key);
+					this.wake();
 				}
 			}
 			return new Promise((resolve, reject) => {
@@ -194997,6 +195172,8 @@ var PorticoCastContracts = (function(exports) {
 			if (this.stopped || this.pumping) return;
 			this.pumping = true;
 			try {
+				await this.drainStopConsumers();
+				if (this.stopped) return;
 				const scope = this.options.scope(), now = this.now();
 				let nextDue = now + pollMs;
 				for (const { abort, scope: original } of this.running.values()) if (!scope || !sameUserMutationScope(scope, original)) abort.abort();
@@ -195035,6 +195212,7 @@ var PorticoCastContracts = (function(exports) {
 					}
 					return picks;
 				});
+				if (this.stopped) return;
 				for (const entry of this.entries) {
 					if (entry.state === "quarantined") this.reject(entry.key, new UserMutationError("mutation_scope_changed", entry.key));
 					if (entry.state === "confirmed" && entry.receipt && this.waiters.has(entry.key) && !this.running.has(entry.key) && !this.recovering.has(entry.key)) {
@@ -195049,11 +195227,15 @@ var PorticoCastContracts = (function(exports) {
 							const live = this.options.scope();
 							if (!live || !sameUserMutationScope(live, entry.scope)) this.reject(entry.key, new UserMutationError("mutation_scope_changed", entry.key, receipt));
 							else this.resolve(entry.key, response);
-						}, () => this.reject(entry.key, new UserMutationError("mutation_readback_unavailable", entry.key, receipt))).finally(() => this.recovering.delete(entry.key));
+						}, () => this.reject(entry.key, new UserMutationError("mutation_readback_unavailable", entry.key, receipt))).finally(() => {
+							this.recovering.delete(entry.key);
+							this.wake();
+						});
 					}
 					if (entry.state === "review" && !this.running.has(entry.key)) this.reject(entry.key, new UserMutationError(entry.errorCode ?? "mutation_needs_review", entry.key, entry.receipt));
 				}
 				for (const entry of picked) {
+					if (this.stopped) return;
 					const abort = new AbortController(), promise = Promise.resolve().then(() => this.perform(freeze(entry), abort.signal)).finally(() => {
 						this.running.delete(entry.key);
 						this.wake();
@@ -195118,7 +195300,7 @@ var PorticoCastContracts = (function(exports) {
 					this.reject(entry.key, new UserMutationError("mutation_scope_changed", entry.key, receipt));
 					return;
 				}
-				if (!response) try {
+				if (!response || response.body === void 0) try {
 					response = await this.options.transport.recover(entry, receipt, signal ?? new AbortController().signal);
 				} catch {
 					this.reject(entry.key, new UserMutationError("mutation_readback_unavailable", entry.key, receipt));
@@ -195135,13 +195317,15 @@ var PorticoCastContracts = (function(exports) {
 		async perform(entry, signal) {
 			let retryFloor = 0;
 			try {
+				if (this.stopped) return;
 				const current = this.options.scope();
 				if (!current || !sameUserMutationScope(current, entry.scope)) throw new UserMutationError("mutation_scope_changed", entry.key);
-				if (entry.attempts > 1) {
+				if (entry.attempts > 1 || entry.requiresReentry) {
 					const lookup = await this.options.transport.lookup(entry, signal);
+					if (this.stopped) return;
 					retryFloor = userMutationRetryAfterMs(header(lookup, "retry-after"), this.now());
 					if (lookup.status >= 200 && lookup.status < 300) {
-						await this.complete(entry, parseUserMutationReceipt(lookup.body, entry), void 0, signal);
+						await this.complete(entry, receivedUserMutationReceipt(lookup.body, entry), void 0, signal);
 						return;
 					}
 					if (lookup.status === 404 && retryFloor > 0) throw new Error("mutation_lookup_pending");
@@ -195153,14 +195337,16 @@ var PorticoCastContracts = (function(exports) {
 				const scope = this.options.scope();
 				if (!scope || !sameUserMutationScope(scope, entry.scope)) throw new UserMutationError("mutation_scope_changed", entry.key);
 				const response = await this.options.transport.send(entry, signal);
+				if (this.stopped) return;
 				retryFloor = userMutationRetryAfterMs(header(response, "retry-after"), this.now());
 				if (response.status >= 200 && response.status < 300) {
 					const live = this.options.scope();
 					if (!live || !sameUserMutationScope(live, entry.scope)) throw new UserMutationError("mutation_scope_changed", entry.key);
 					const lookup = await this.options.transport.lookup(entry, signal);
+					if (this.stopped) return;
 					retryFloor = Math.max(retryFloor, userMutationRetryAfterMs(header(lookup, "retry-after"), this.now()));
 					if (lookup.status >= 200 && lookup.status < 300) {
-						await this.complete(entry, parseUserMutationReceipt(lookup.body, entry), response, signal);
+						await this.complete(entry, receivedUserMutationReceipt(lookup.body, entry), response, signal);
 						return;
 					}
 					if (lookup.status >= 400 && lookup.status < 500 && lookup.status !== 429 && lookup.status !== 404) throw refusal(entry, lookup);
@@ -195169,6 +195355,7 @@ var PorticoCastContracts = (function(exports) {
 				if (response.status >= 400 && response.status < 500 && response.status !== 429) throw refusal(entry, response);
 				throw new Error("mutation_transport_pending");
 			} catch (error) {
+				if (this.stopped) return;
 				if (error instanceof UserMutationError && error.code.startsWith("mutation_store_")) {
 					this.reject(entry.key, new UserMutationError(error.code, entry.key));
 					throw error;
@@ -195328,6 +195515,7 @@ var PorticoCastContracts = (function(exports) {
 	exports.IndexedDBUserMutationStore = IndexedDBUserMutationStore;
 	exports.UserMutationCoordinator = UserMutationCoordinator;
 	exports.UserMutationError = UserMutationError;
+	exports.decodeGetUserMutationResponse = decodeGetUserMutationResponse;
 	exports.decodeStartPlaybackSessionResponse = decodeStartPlaybackSessionResponse;
 	exports.isUserMutationKey = isUserMutationKey;
 	exports.newUserMutationKey = newUserMutationKey;

@@ -18,6 +18,7 @@ type ControlCommand struct {
 type SessionControls struct {
 	SessionID  string `json:"sessionId"`
 	Revision   string `json:"revision"`
+	Generation int    `json:"generation"`
 	State      string `json:"state"`
 	PositionMs int64  `json:"positionMs"`
 	// DurationMs is the length of the version being played, from the
@@ -31,7 +32,7 @@ func controlsOf(r row) SessionControls {
 	if r.ended == 0 {
 		actions = []string{"pause", "resume", "seek", "stop"}
 	}
-	return SessionControls{SessionID: r.id, Revision: strconv.Itoa(r.revision), State: r.state, PositionMs: r.position, Actions: actions}
+	return SessionControls{SessionID: r.id, Generation: r.generation, Revision: strconv.Itoa(r.revision), State: r.state, PositionMs: r.position, Actions: actions}
 }
 
 // controlsWithDuration is controlsOf with the version's length.
@@ -194,7 +195,20 @@ func (s *Service) RemoteControls(ctx context.Context, c Caller, cursor string, l
 // StopAccountSession lets a viewer free their own account's stream slot even
 // when the playing profile's title is hidden. It never discloses that title or
 // grants transport, track or media access across profiles.
-func (s *Service) StopAccountSession(ctx context.Context, c Caller, id string) error {
+func (s *Service) StopAccountSession(ctx context.Context, c Caller, id string, selected ...*int) error {
+	var generation *int
+	if len(selected) > 0 {
+		generation = selected[0]
+	}
+	if stopKey(ctx) != "" && generation == nil {
+		return &FieldError{Path: "generation"}
+	}
+	// The selected occurrence is checked inside the accepting writer, after
+	// current receipt authority and before any drain, fence or Stop effect.
+	if stopKey(ctx) != "" || generation != nil {
+		return s.stopWithReceipt(ctx, c, id, nil, generation, true)
+	}
+
 	r, err := loadRow(ctx, s.DB, id)
 	if err != nil {
 		return err

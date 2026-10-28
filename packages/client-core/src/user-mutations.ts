@@ -3,12 +3,12 @@
 export type UserMutationScope = Readonly<{serverId:string;origin:string;authority:string;accountId:string;profileId:string;familyId:string;deviceId?:string}>;
 export type UserMutationResponse = Readonly<{status:number;headers:Readonly<Record<string,string>>;body?:unknown}>;
 export type UserMutationReceipt = Readonly<{key:string;operation:string;status:'applied'|'already_stopped'|'deleted'|'removed'|'partial'|'conflict'|'invalid'|'terminal';targetId?:string;revision?:number;generation?:number;positionMs?:number;positionStatus?:''|'applied'|'already_stopped'|'not_renderer'|'policy_rejected'|'unchanged';committedMs:number;expiresMs:number}>;
-export type UserMutationInput = Readonly<{operation:string;method:string;path:string;target:string;intentId?:string;key?:string;body?:unknown;headers?:Readonly<Record<string,string>>}>;
+export type UserMutationInput = Readonly<{operation:string;method:string;path:string;target:string;intentId?:string;key?:string;recoveryDeviceClass?:string;requiresReentry?:boolean;secretFields?:readonly string[];body?:unknown;headers?:Readonly<Record<string,string>>}>;
 export type UserMutationTerminalProof = Readonly<{kind:'refused';httpStatus:400|409|412|422;code:string}>;
 export type UserMutationEntry = {
  key:string;operation:string;method:string;path:string;target:string;intentId:string;fingerprint:string;scope:UserMutationScope;
- body?:unknown;headers:Record<string,string>;state:'pending'|'review'|'quarantined'|'confirmed';receipt?:UserMutationReceipt;
- attempts:number;dueMs:number;leaseOwner?:string;leaseUntilMs?:number;errorCode?:string;terminalProof?:UserMutationTerminalProof;
+ recoveryDeviceClass?:string;requiresReentry?:boolean;secretFields?:readonly string[];body?:unknown;headers:Record<string,string>;state:'pending'|'review'|'quarantined'|'confirmed';receipt?:UserMutationReceipt;
+ nativeStopOwner?:string;nativeStopConsumed?:boolean;attempts:number;dueMs:number;leaseOwner?:string;leaseUntilMs?:number;errorCode?:string;terminalProof?:UserMutationTerminalProof;
 };
 export type UserMutationState = {version:1;revision:number;entries:UserMutationEntry[]};
 export interface DurableUserMutationStore {
@@ -36,7 +36,7 @@ const integer=(v:unknown):v is number=>typeof v==='number'&&Number.isSafeInteger
 export const emptyUserMutationState=():UserMutationState=>({version:1,revision:0,entries:[]});
 export const sameUserMutationScope=(a:UserMutationScope,b:UserMutationScope)=>a.serverId===b.serverId&&a.origin===b.origin&&a.authority===b.authority&&a.accountId===b.accountId&&a.profileId===b.profileId&&a.familyId===b.familyId&&a.deviceId===b.deviceId;
 export function isUserMutationKey(key:string):boolean{return /^p251_[0-9]{13}_[a-f0-9]{32}$/.test(key);}
-export function newUserMutationKey(now=Date.now(),random:(out:Uint8Array)=>Uint8Array=out=>globalThis.crypto.getRandomValues(out)):string{
+export function newUserMutationKey(now=Date.now(),random:(out:Uint8Array)=>Uint8Array=out=>{const bytes=new Uint8Array(out.length);globalThis.crypto.getRandomValues(bytes);out.set(bytes);return out;}):string{
  if(!integer(now)||String(now).length!==13)throw new UserMutationError('mutation_clock');
  return 'p251_'+now+'_'+Array.from(random(new Uint8Array(16)),v=>v.toString(16).padStart(2,'0')).join('');
 }
@@ -48,19 +48,34 @@ function canonical(value:unknown):string {
  return JSON.stringify(normalize(value));
 }
 export function userMutationFingerprint(input:UserMutationInput):string {
- return canonical({operation:input.operation,method:input.method,path:input.path,target:input.target,body:input.body,headers:input.headers??{}});
+ return canonical({operation:input.operation,method:input.method,path:input.path,target:input.target,body:input.body,headers:input.headers??{},...(input.requiresReentry?{requiresReentry:true,secretFields:input.secretFields??[]}: {})});
 }
 function freeze<T>(value:T):T {
  if(value&&typeof value==='object'){for(const child of Object.values(value))freeze(child);Object.freeze(value);}return value;
 }
-function secretField(key:string):boolean {
+export function userMutationSecretField(key:string):boolean {
  const normalized=key.replace(/[^a-z0-9]/gi,'').toLowerCase();
+ if(normalized==='undotoken')return false; // Domain undo reference, scoped and validated by the original family.
  return /(?:token|password|passphrase|secret|apikey|privatekey|tvdbprojectkey|acoustidkey)$/.test(normalized)||['authorization','cookie'].includes(normalized);
 }
+/** URLs with embedded credentials must never enter durable request/fingerprint data. */
+export function userMutationCredentialURL(value:unknown):boolean {
+ if(typeof value!=='string')return false;
+ for(const candidate of value.match(/[a-z][a-z0-9+.-]*:\/\/[^\s"'<>]*/gi)??[]){
+  const authority=candidate.split('://')[1]?.split(/[/?#]/,1)[0]??'';
+  if(authority.includes('@'))return true;
+  const query=candidate.split('?')[1]?.split('#')[0];if(query===undefined)continue;
+  for(const name of new URLSearchParams(query).keys()){
+   const normalized=name.replace(/[^a-z0-9]/gi,'').toLowerCase();
+   if(userMutationSecretField(name)||/^(?:auth|credential|credentials|user|username|pass|pwd|key|sig|signature|awsaccesskeyid|xamzcredential|xamzsignature|xgoogcredential|xgoogsignature)$/.test(normalized))return true;
+  }
+ }
+ return false;
+}
 function safeRequest(value:unknown):boolean{
- if(typeof value==='string')return value.split('://').slice(1).every(tail=>!tail.split(/[/?#\s]/,1)[0].includes('@'));
+ if(typeof value==='string')return !userMutationCredentialURL(value);
  if(Array.isArray(value))return value.every(safeRequest);
- if(object(value))return (Object.getPrototypeOf(value)===Object.prototype||Object.getPrototypeOf(value)===null)&&Object.entries(value).every(([key,v])=>!(secretField(key)&&v!==undefined&&v!==null&&v!=='')&&safeRequest(v));
+ if(object(value))return (Object.getPrototypeOf(value)===Object.prototype||Object.getPrototypeOf(value)===null)&&Object.entries(value).every(([key,v])=>!(userMutationSecretField(key)&&v!==undefined&&v!==null&&v!=='')&&safeRequest(v));
  return value===undefined||value===null||typeof value==='boolean'||typeof value==='number'&&Number.isFinite(value);
 }
 export function validateUserMutationState(raw:unknown):UserMutationState {
@@ -72,6 +87,9 @@ export function validateUserMutationState(raw:unknown):UserMutationState {
   if(entry.terminalProof!==undefined&&(!object(entry.terminalProof)||entry.terminalProof.kind!=='refused'||![400,409,412,422].includes(Number(entry.terminalProof.httpStatus))||typeof entry.terminalProof.code!=='string'))throw new UserMutationError('mutation_store_damaged');
   if(entry.state==='confirmed'&&(!entry.receipt||entry.fingerprint!==''||entry.body!==undefined))throw new UserMutationError('mutation_store_damaged');
   if(entry.leaseUntilMs!==undefined&&!integer(entry.leaseUntilMs)||entry.leaseOwner!==undefined&&typeof entry.leaseOwner!=='string')throw new UserMutationError('mutation_store_damaged');
+  if(entry.nativeStopOwner!==undefined&&(typeof entry.nativeStopOwner!=='string'||!entry.nativeStopOwner||entry.nativeStopOwner.length>256)||entry.nativeStopConsumed!==undefined&&typeof entry.nativeStopConsumed!=='boolean')throw new UserMutationError('mutation_store_damaged');
+  if(entry.requiresReentry!==undefined&&entry.requiresReentry!==true||entry.secretFields!==undefined&&(!Array.isArray(entry.secretFields)||entry.secretFields.length>64||entry.secretFields.some((name:unknown)=>typeof name!=='string'||name.length>256)))throw new UserMutationError('mutation_store_damaged');
+  if(entry.recoveryDeviceClass!==undefined&&!['web','mobile','tablet','television'].includes(String(entry.recoveryDeviceClass)))throw new UserMutationError('mutation_store_damaged');
   seen.add(entry.key);
  }
  return raw as UserMutationState;
@@ -85,6 +103,11 @@ export function parseUserMutationReceipt(raw:unknown,entry:Pick<UserMutationEntr
  if(raw.positionStatus!==undefined&&!['','applied','already_stopped','not_renderer','policy_rejected','unchanged'].includes(String(raw.positionStatus)))throw new UserMutationError('mutation_receipt_invalid',entry.key);
  // Deliberately copy only the closed receipt fields, never an expanded response.
  return {key:entry.key,operation:entry.operation,status:raw.status as UserMutationReceipt['status'],committedMs:raw.committedMs,expiresMs:raw.expiresMs,...(raw.targetId!==undefined?{targetId:raw.targetId as string}:{}),...(raw.revision!==undefined?{revision:raw.revision as number}:{}),...(raw.generation!==undefined?{generation:raw.generation as number}:{}),...(raw.positionMs!==undefined?{positionMs:raw.positionMs as number}:{}),...(raw.positionStatus!==undefined?{positionStatus:raw.positionStatus as UserMutationReceipt['positionStatus']}:{})};
+}
+// A malformed network receipt is unknown history, not a terminal disposition.
+// Store validation still uses the strict parser directly.
+function receivedUserMutationReceipt(raw:unknown,entry:Pick<UserMutationEntry,'key'|'operation'>):UserMutationReceipt {
+ try{return parseUserMutationReceipt(raw,entry);}catch(error){if(error instanceof UserMutationError&&error.code==='mutation_receipt_invalid')throw new Error('mutation_receipt_pending');throw error;}
 }
 export function userMutationRetryAfterMs(value:string|undefined,now=Date.now()):number{
  if(!value)return 0;const trimmed=value.trim();
@@ -102,6 +125,9 @@ function refusal(entry:UserMutationEntry,response:UserMutationResponse):UserMuta
 }
 type Waiter={resolve:(r:UserMutationResponse)=>void;reject:(e:unknown)=>void};
 export class UserMutationCoordinator {
+ private stopConsumers=new Map<string,UserMutationScope>();
+ private confirmedForeground=new Map<string,number>();
+ private confirmedAborts=new Set<AbortController>();
  private readonly owner:string;private readonly now:()=>number;private readonly random:()=>number;
  private readonly timers:Pick<typeof globalThis,'setTimeout'|'clearTimeout'>;
  private timer:ReturnType<typeof setTimeout>|undefined;private stopped=false;private pumping=false;
@@ -118,16 +144,66 @@ export class UserMutationCoordinator {
   for(let attempt=0;attempt<32;attempt++){
    let before:UserMutationState;
    try{before=validateUserMutationState(await this.options.store.read());}catch(error){throw error instanceof UserMutationError?error:new UserMutationError('mutation_store_unavailable');}
+   if(this.stopped)throw new UserMutationError('mutation_scope_changed');
    const next=clone(before),result=work(next);
    next.revision=before.revision+1;validateUserMutationState(next);
    let swapped:boolean;try{swapped=await this.options.store.compareAndSwap(before.revision,next);}catch(error){throw error instanceof UserMutationError?error:new UserMutationError('mutation_store_unavailable');}
-   if(swapped){this.publish(next);return result;}
+   if(swapped){if(!this.stopped)this.publish(next);return result;}
   }
   throw new UserMutationError('mutation_store_busy');
  }
  async start():Promise<void>{this.stopped=false;await this.reconcile();}
  /** Resume durable background reconciliation, including after a scope change. */
- async reconcile():Promise<void>{if(this.stopped)return;await this.pump();}
+ async reconcile(key?:string):Promise<void>{
+  if(this.stopped)return;
+  if(key===undefined){await this.pump();return;}
+  if(!isUserMutationKey(key))throw new UserMutationError('invalid_mutation_key',key);
+  let state:UserMutationState;
+  try{state=validateUserMutationState(await this.options.store.read());}catch(error){throw error instanceof UserMutationError?error:new UserMutationError('mutation_store_unavailable',key);}
+  if(this.stopped)return;
+  const original=state.entries.find(entry=>entry.key===key),scope=this.options.scope();
+  if(!original||!scope||!sameUserMutationScope(scope,original.scope))throw new UserMutationError('mutation_scope_changed',key);
+  const busy=()=>this.running.has(key)||this.recovering.has(key)||this.waiters.has(key)||(this.confirmedForeground.get(key)??0)>0;
+  if(!['review','confirmed'].includes(original.state)||busy())return;
+  const witness=canonical(original),abort=new AbortController();
+  this.recovering.add(key);this.confirmedAborts.add(abort);
+  try{
+   const lookup=await this.options.transport.lookup(freeze(clone(original)),abort.signal);
+   if(this.stopped)return;
+   const live=this.options.scope();if(!live||!sameUserMutationScope(live,original.scope))throw new UserMutationError('mutation_scope_changed',key);
+   // Unknown, expired or ambiguous history never sends, rewrites or releases a draft.
+   if(lookup.status!==200)return;
+   const receipt=receivedUserMutationReceipt(lookup.body,original),review=['partial','conflict','invalid','terminal'].includes(receipt.status)||receipt.positionStatus==='policy_rejected';
+   await this.change(current=>{
+    const entry=current.entries.find(entry=>entry.key===key),live=this.options.scope();
+    if(!entry||canonical(entry)!==witness||!live||!sameUserMutationScope(live,original.scope)||this.running.has(key)||this.waiters.has(key)||(this.confirmedForeground.get(key)??0)>0)return;
+    entry.receipt=receipt;entry.state=review?'review':'confirmed';delete entry.terminalProof;
+    if(review)entry.errorCode=receipt.positionStatus==='policy_rejected'?'final_position_rejected':'mutation_needs_review';
+    else{delete entry.body;entry.fingerprint='';entry.headers={'Idempotency-Key':entry.key};delete entry.errorCode;delete entry.leaseOwner;delete entry.leaseUntilMs;}
+   });
+  }finally{this.recovering.delete(key);this.confirmedAborts.delete(abort);}
+ }
+ /** Native result consumers wait for local foreground consumers before releasing Stop metadata. */
+ async consumeConfirmedStop(key:string):Promise<boolean>{
+  const scope=this.options.scope();if(!scope||!isUserMutationKey(key))return false;
+  if(this.stopConsumers.has(key)){this.wake();return false;}
+  if(this.stopConsumers.size>=USER_MUTATION_MAX_ENTRIES)throw new UserMutationError('mutation_store_busy',key);
+  this.stopConsumers.set(key,clone(scope));await this.drainStopConsumers();this.wake();
+  return !this.stopConsumers.has(key)&&!this.entries.some(entry=>entry.key===key);
+ }
+ private async drainStopConsumers():Promise<void>{
+  if(!this.stopConsumers.size)return;
+  const done=await this.change(state=>{
+   const done:string[]=[],scope=this.options.scope();
+   for(const [key,requestedScope]of this.stopConsumers){
+    const entry=state.entries.find(entry=>entry.key===key);
+    if(!scope||!sameUserMutationScope(scope,requestedScope)||!entry||!sameUserMutationScope(entry.scope,requestedScope)||['review','quarantined'].includes(entry.state)||!['stop_playback_session','stop_account_playback'].includes(entry.operation)){done.push(key);continue;}
+    if(entry.state!=='confirmed'||!entry.receipt||entry.nativeStopOwner&&!entry.nativeStopConsumed||this.waiters.has(key)||this.recovering.has(key)||this.running.has(key)||(this.confirmedForeground.get(key)??0)>0)continue;
+    state.entries=state.entries.filter(entry=>entry.key!==key);done.push(key);
+   }return done;
+  });
+  for(const key of done)this.stopConsumers.delete(key);
+ }
  /** Explicit caller acknowledgement; never evict unresolved or quarantined drafts. */
  async acknowledge(key:string):Promise<void>{await this.change(state=>{const entry=state.entries.find(e=>e.key===key);if(!entry)return;const scope=this.options.scope();if(entry.state!=='confirmed'||!entry.receipt||!scope||!sameUserMutationScope(entry.scope,scope))throw new UserMutationError('mutation_needs_review',key);state.entries=state.entries.filter(e=>e.key!==key);});}
  /** Only an explicit user review may release a terminal draft. Unknown history
@@ -139,7 +215,7 @@ export class UserMutationCoordinator {
    state.entries=state.entries.filter(e=>e.key!==key);
   });
  }
- dispose(){this.stopped=true;if(this.timer!==undefined)this.timers.clearTimeout(this.timer);this.timer=undefined;for(const {abort} of this.running.values())abort.abort();for(const [key]of this.waiters)this.reject(key,new UserMutationError('mutation_scope_changed',key));}
+ dispose(){this.stopped=true;if(this.timer!==undefined)this.timers.clearTimeout(this.timer);this.timer=undefined;for(const abort of this.confirmedAborts)abort.abort();for(const {abort} of this.running.values())abort.abort();for(const [key]of this.waiters)this.reject(key,new UserMutationError('mutation_scope_changed',key));}
  private wake(delay=0){if(this.stopped)return;if(this.timer!==undefined)this.timers.clearTimeout(this.timer);this.timer=this.timers.setTimeout(()=>{this.timer=undefined;void this.pump().catch(()=>{this.wake(1000);});},Math.min(60_000,Math.max(0,delay)));}
  async run(input:UserMutationInput,signal?:AbortSignal):Promise<UserMutationResponse>{
   if(this.stopped)throw new UserMutationError('mutation_scope_changed');
@@ -178,12 +254,30 @@ export class UserMutationCoordinator {
    if(state.entries.length>=USER_MUTATION_MAX_ENTRIES)throw new UserMutationError('mutation_not_queued');
    const body=input.body===undefined?undefined:clone(input.body),headers={...input.headers,'Idempotency-Key':key};
    if(object(body))for(const name of ['operationId','idempotencyKey','requestId'])if(name in body)body[name]=key;
-   const next:UserMutationEntry={key,operation:input.operation,method:input.method,path:input.path,target:input.target,intentId,fingerprint:original,scope:clone(scope),...(body===undefined?{}:{body}),headers,state:'pending',attempts:0,dueMs:now};
+   const next:UserMutationEntry={...(input.recoveryDeviceClass?{recoveryDeviceClass:input.recoveryDeviceClass}:{}),...(input.requiresReentry?{requiresReentry:true,secretFields:clone(input.secretFields??[])}:{}),key,operation:input.operation,method:input.method,path:input.path,target:input.target,intentId,fingerprint:original,scope:clone(scope),...(body===undefined?{}:{body}),headers,state:'pending',attempts:0,dueMs:now};
    if(bytes({body,headers})>USER_MUTATION_MAX_REQUEST_BYTES)throw new UserMutationError('mutation_not_queued');
    state.entries.push(next);if(bytes(state)+state.entries.filter(e=>e.state==='pending').length*USER_MUTATION_COMPLETION_RESERVE_BYTES>USER_MUTATION_MAX_BYTES)throw new UserMutationError('mutation_not_queued');return clone(next);
   });
+  if(this.stopped)throw new UserMutationError('mutation_scope_changed',entry.key);
   if(entry.state==='review'||entry.state==='quarantined')throw new UserMutationError(entry.errorCode??'mutation_needs_review',entry.key,entry.receipt);
-  if(entry.state==='confirmed'&&entry.receipt){const current=this.options.scope();if(!current||!sameUserMutationScope(current,entry.scope))throw new UserMutationError('mutation_scope_changed',entry.key);const abort=new AbortController(),cancel=()=>abort.abort();signal?.addEventListener('abort',cancel,{once:true});try{if(signal?.aborted)abort.abort();const response=await this.options.transport.recover(freeze(entry),entry.receipt,abort.signal);const live=this.options.scope();if(!live||!sameUserMutationScope(live,entry.scope))throw new UserMutationError('mutation_scope_changed',entry.key);return response;}finally{signal?.removeEventListener('abort',cancel);}}
+  if(entry.state==='confirmed'&&entry.receipt){
+   const current=this.options.scope();if(!current||!sameUserMutationScope(current,entry.scope))throw new UserMutationError('mutation_scope_changed',entry.key);
+   const abort=new AbortController(),cancel=()=>abort.abort();
+   this.confirmedForeground.set(entry.key,(this.confirmedForeground.get(entry.key)??0)+1);this.confirmedAborts.add(abort);
+   signal?.addEventListener('abort',cancel,{once:true});
+   try{
+    if(signal?.aborted)abort.abort();if(abort.signal.aborted)throw new DOMException('The request was cancelled.','AbortError');
+    const response=await this.options.transport.recover(freeze(entry),entry.receipt,abort.signal);
+    if(this.stopped)throw new UserMutationError('mutation_scope_changed',entry.key);
+    if(abort.signal.aborted)throw new DOMException('The request was cancelled.','AbortError');
+    const live=this.options.scope();if(!live||!sameUserMutationScope(live,entry.scope))throw new UserMutationError('mutation_scope_changed',entry.key);return response;
+   }finally{
+    signal?.removeEventListener('abort',cancel);this.confirmedAborts.delete(abort);
+    const remaining=(this.confirmedForeground.get(entry.key)??1)-1;if(remaining>0)this.confirmedForeground.set(entry.key,remaining);else this.confirmedForeground.delete(entry.key);
+    this.wake();
+   }
+  }
+
   return new Promise((resolve,reject)=>{
    const waiters=this.waiters.get(entry.key)??new Set<Waiter>();this.waiters.set(entry.key,waiters);
    const onAbort=()=>{waiters.delete(waiter);if(waiters.size===0)this.waiters.delete(entry.key);reject(new DOMException('The request was cancelled.','AbortError'));};
@@ -196,6 +290,8 @@ export class UserMutationCoordinator {
  private async pump():Promise<void>{
   if(this.stopped||this.pumping)return;this.pumping=true;
   try{
+   await this.drainStopConsumers();
+   if(this.stopped)return;
    const scope=this.options.scope(),now=this.now();let nextDue=now+pollMs;
    for(const {abort,scope:original}of this.running.values())if(!scope||!sameUserMutationScope(scope,original))abort.abort();
    const picked=await this.change(state=>{
@@ -223,16 +319,18 @@ export class UserMutationCoordinator {
      picks.push(clone(entry));occupied++;
     }return picks;
    });
+   if(this.stopped)return;
    for(const entry of this.entries){
     if(entry.state==='quarantined')this.reject(entry.key,new UserMutationError('mutation_scope_changed',entry.key));
     if(entry.state==='confirmed'&&entry.receipt&&this.waiters.has(entry.key)&&!this.running.has(entry.key)&&!this.recovering.has(entry.key)){
      const current=this.options.scope();if(!current||!sameUserMutationScope(current,entry.scope)){this.reject(entry.key,new UserMutationError('mutation_scope_changed',entry.key));continue;}
      this.recovering.add(entry.key);const receipt=entry.receipt;
-     void this.options.transport.recover(freeze(clone(entry)),receipt,new AbortController().signal).then(response=>{const live=this.options.scope();if(!live||!sameUserMutationScope(live,entry.scope))this.reject(entry.key,new UserMutationError('mutation_scope_changed',entry.key,receipt));else this.resolve(entry.key,response);},()=>this.reject(entry.key,new UserMutationError('mutation_readback_unavailable',entry.key,receipt))).finally(()=>this.recovering.delete(entry.key));
+     void this.options.transport.recover(freeze(clone(entry)),receipt,new AbortController().signal).then(response=>{const live=this.options.scope();if(!live||!sameUserMutationScope(live,entry.scope))this.reject(entry.key,new UserMutationError('mutation_scope_changed',entry.key,receipt));else this.resolve(entry.key,response);},()=>this.reject(entry.key,new UserMutationError('mutation_readback_unavailable',entry.key,receipt))).finally(()=>{this.recovering.delete(entry.key);this.wake();});
     }
     if(entry.state==='review'&&!this.running.has(entry.key))this.reject(entry.key,new UserMutationError(entry.errorCode??'mutation_needs_review',entry.key,entry.receipt));
    }
    for(const entry of picked){
+    if(this.stopped)return;
     const abort=new AbortController(),promise=Promise.resolve().then(()=>this.perform(freeze(entry),abort.signal)).finally(()=>{this.running.delete(entry.key);this.wake();});
     this.running.set(entry.key,{abort,promise,scope:entry.scope});void promise.catch(()=>{/* Failed storage retains the original durable entry. */});
    }
@@ -251,7 +349,7 @@ export class UserMutationCoordinator {
   if(review){let currentState:UserMutationResponse|undefined;try{currentState=await this.options.transport.recover(entry,receipt,signal??new AbortController().signal);}catch{/* The draft and receipt remain available for review. */}this.reject(entry.key,new UserMutationError(reviewCode,entry.key,receipt,currentState));return;}
   if(this.waiters.has(entry.key)){
    const scope=this.options.scope();if(!scope||!sameUserMutationScope(scope,entry.scope)){this.reject(entry.key,new UserMutationError('mutation_scope_changed',entry.key,receipt));return;}
-   if(!response){try{response=await this.options.transport.recover(entry,receipt,signal??new AbortController().signal);}catch{this.reject(entry.key,new UserMutationError('mutation_readback_unavailable',entry.key,receipt));return;}}
+   if(!response||response.body===undefined){try{response=await this.options.transport.recover(entry,receipt,signal??new AbortController().signal);}catch{this.reject(entry.key,new UserMutationError('mutation_readback_unavailable',entry.key,receipt));return;}}
    const currentScope=this.options.scope();if(!currentScope||!sameUserMutationScope(currentScope,entry.scope)){this.reject(entry.key,new UserMutationError('mutation_scope_changed',entry.key,receipt));return;}
    this.resolve(entry.key,response);
   }
@@ -259,25 +357,27 @@ export class UserMutationCoordinator {
  private async perform(entry:UserMutationEntry,signal:AbortSignal):Promise<void>{
   let retryFloor=0;
   try{
+   if(this.stopped)return;
    const current=this.options.scope();if(!current||!sameUserMutationScope(current,entry.scope))throw new UserMutationError('mutation_scope_changed',entry.key);
-   if(entry.attempts>1){
-    const lookup=await this.options.transport.lookup(entry,signal);retryFloor=userMutationRetryAfterMs(header(lookup,'retry-after'),this.now());
-    if(lookup.status>=200&&lookup.status<300){await this.complete(entry,parseUserMutationReceipt(lookup.body,entry),undefined,signal);return;}
+   if(entry.attempts>1||entry.requiresReentry){
+    const lookup=await this.options.transport.lookup(entry,signal);if(this.stopped)return;retryFloor=userMutationRetryAfterMs(header(lookup,'retry-after'),this.now());
+    if(lookup.status>=200&&lookup.status<300){await this.complete(entry,receivedUserMutationReceipt(lookup.body,entry),undefined,signal);return;}
     if(lookup.status===404&&retryFloor>0)throw new Error('mutation_lookup_pending');
     if(lookup.status!==404||errorCode(lookup)!=='receipt_unknown'){if(lookup.status>=400&&lookup.status<500&&lookup.status!==429)throw refusal(entry,lookup);throw new Error('mutation_lookup_pending');}
    }
    const scope=this.options.scope();if(!scope||!sameUserMutationScope(scope,entry.scope))throw new UserMutationError('mutation_scope_changed',entry.key);
-   const response=await this.options.transport.send(entry,signal);retryFloor=userMutationRetryAfterMs(header(response,'retry-after'),this.now());
+   const response=await this.options.transport.send(entry,signal);if(this.stopped)return;retryFloor=userMutationRetryAfterMs(header(response,'retry-after'),this.now());
    if(response.status>=200&&response.status<300){
     const live=this.options.scope();if(!live||!sameUserMutationScope(live,entry.scope))throw new UserMutationError('mutation_scope_changed',entry.key);
-    const lookup=await this.options.transport.lookup(entry,signal);retryFloor=Math.max(retryFloor,userMutationRetryAfterMs(header(lookup,'retry-after'),this.now()));
-    if(lookup.status>=200&&lookup.status<300){await this.complete(entry,parseUserMutationReceipt(lookup.body,entry),response,signal);return;}
+    const lookup=await this.options.transport.lookup(entry,signal);if(this.stopped)return;retryFloor=Math.max(retryFloor,userMutationRetryAfterMs(header(lookup,'retry-after'),this.now()));
+    if(lookup.status>=200&&lookup.status<300){await this.complete(entry,receivedUserMutationReceipt(lookup.body,entry),response,signal);return;}
     if(lookup.status>=400&&lookup.status<500&&lookup.status!==429&&lookup.status!==404)throw refusal(entry,lookup);
     throw new Error('mutation_receipt_pending');
    }
    if(response.status>=400&&response.status<500&&response.status!==429)throw refusal(entry,response);
    throw new Error('mutation_transport_pending');
   }catch(error){
+   if(this.stopped)return;
    if(error instanceof UserMutationError&&error.code.startsWith('mutation_store_')){this.reject(entry.key,new UserMutationError(error.code,entry.key));throw error;}
    if(error instanceof UserMutationError){
     const persisted=await this.update(entry,current=>{current.state=['mutation_scope_changed','mutation_authority_changed','unauthorized'].includes(error.code)?'quarantined':'review';current.errorCode=error.code;if(error.terminalProof)current.terminalProof=error.terminalProof;});

@@ -49,6 +49,8 @@ type Command struct {
 	// Only ConfigureReadCache binds this non-wire configuration precondition;
 	// its accepting callback travels through the private command call, not JSON.
 	readCacheGeneration int64
+	// Only ConfigureSourceProgram can opt into the P2-51 acceptance seam.
+	sourceProgram *sourceProgramMutation
 }
 type Receipt struct {
 	OperationID     string `json:"operationId"`
@@ -155,6 +157,9 @@ func (s *Service) command(ctx context.Context, actor, id string, c Command, auth
 	var zero Receipt
 	if actor == "" || authorize == nil {
 		return zero, ErrInvalid
+	}
+	if c.sourceProgram != nil {
+		return s.sourceProgramCommand(ctx, actor, id, c, authorize)
 	}
 	if _, e := operationTime(c.OperationID); e != nil {
 		return zero, e

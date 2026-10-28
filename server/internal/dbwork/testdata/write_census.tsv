@@ -426,6 +426,7 @@ internal/mounts/allocations.go	(*Service).reserveAllocation	ExecWrite	ClassFrom(
 internal/mounts/commands.go	(*Service).command	Begin	ClassFrom(ctx, dbwork.ClassInteractive)	-	×2
 internal/mounts/commands.go	(*Service).removePending	ExecWrite	ClassFrom(ctx, dbwork.ClassInteractive)	-
 internal/mounts/configuration.go	(*Service).configure	Begin	ClassFrom(ctx, dbwork.ClassInteractive)	-
+internal/mounts/program.go	(*Service).sourceProgramCommand	Begin	ClassFrom(ctx, dbwork.ClassInteractive)	-
 internal/mounts/service.go	(*Service).Action	ExecWrite	ClassFrom(context.Background(), dbwork.ClassInteractive)	-
 internal/mounts/service.go	(*Service).Delete	ExecWrite	ClassFrom(ctx, dbwork.ClassInteractive)	-
 internal/mounts/service.go	(*Service).create	Begin	ClassFrom(ctx, dbwork.ClassInteractive)	-
@@ -551,6 +552,8 @@ internal/playbackv1/sessions.go	(*Service).startPresentation	WithWriteTxContext	
 internal/playbackv1/sessions_change.go	(*Service).Patch	WithWriteTxContext	ClassEstablishedPlayback	-
 internal/playbackv1/stop_generation.go	(*Service).StopGeneration	Begin	ClassSecurityFence	-
 internal/playbackv1/stop_generation.go	(*Service).StopGeneration	WithWriteTxContext	ClassEstablishedPlayback	-
+internal/playbackv1/stop_generation.go	(*Service).stopGenerationReplay	Begin	ClassSecurityFence	-
+internal/playbackv1/stop_receipt.go	(*Service).stopWithReceipt	Begin	ClassEstablishedPlayback	-
 internal/playbackv1/transitions.go	(*Service).CommitNext	WithWriteTxContext	ClassPlaybackStart	-
 internal/playbackv1/transitions.go	(*Service).PrepareNext	WithWriteTxContext	ClassInteractive	-
 internal/playbackv1/transitions.go	(*Service).cancelPrepared	WithWriteTxContext	ClassInteractive	-

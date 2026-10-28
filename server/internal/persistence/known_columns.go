@@ -6456,6 +6456,7 @@ user_mutation_receipts.profile_id
 user_mutation_receipts.revision
 user_mutation_receipts.scope_id
 user_mutation_receipts.status
+user_mutation_receipts.stop_item_id
 user_mutation_receipts.target_id
 video_nfo_evidence.asset_id
 video_nfo_evidence.coordinate

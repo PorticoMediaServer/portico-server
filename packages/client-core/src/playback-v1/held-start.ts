@@ -228,7 +228,7 @@ export function startFailureHttp(input: Readonly<{
           async stop(row) {
             check();if (scope !== 'account' || busy || refreshing || !offered.includes(row) || !row.actions.includes('stop')) throw retired();
             busy = true;++readSerial;
-            try {await service.stopAccount(row.sessionId);check();await confirmFreed(row);} finally {busy = false;if (dirty) invalidate();}
+            try {await service.stopAccount(row);check();await confirmFreed(row);} finally {busy = false;if (dirty) invalidate();}
           },
         });
         mine = active = failure;

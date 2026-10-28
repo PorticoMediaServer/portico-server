@@ -14845,6 +14845,11 @@ export const schemas = {
         "minimum": -9007199254740991,
         "type": "integer"
       },
+      "generation": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      },
       "positionMs": {
         "maximum": 9007199254740991,
         "minimum": -9007199254740991,
@@ -14863,6 +14868,7 @@ export const schemas = {
     "required": [
       "sessionId",
       "revision",
+      "generation",
       "state",
       "positionMs",
       "actions"
@@ -34788,6 +34794,11 @@ export const schemas = {
         "minimum": -9007199254740991,
         "type": "integer"
       },
+      "generation": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      },
       "positionMs": {
         "maximum": 9007199254740991,
         "minimum": -9007199254740991,
@@ -34806,6 +34817,7 @@ export const schemas = {
     "required": [
       "sessionId",
       "revision",
+      "generation",
       "state",
       "positionMs",
       "actions"
@@ -149165,6 +149177,11 @@ export const schemas = {
               "minimum": -9007199254740991,
               "type": "integer"
             },
+            "generation": {
+              "maximum": 9007199254740991,
+              "minimum": -9007199254740991,
+              "type": "integer"
+            },
             "item": {
               "properties": {
                 "id": {
@@ -149302,6 +149319,7 @@ export const schemas = {
           "required": [
             "sessionId",
             "revision",
+            "generation",
             "state",
             "positionMs",
             "actions",
@@ -269169,8 +269187,14 @@ export const schemas = {
     ]
   },
   "StopAccountPlaybackRequest": {
-    "properties": {},
-    "required": [],
+    "additionalProperties": false,
+    "properties": {
+      "generation": {
+        "maximum": 2147483647,
+        "minimum": 1,
+        "type": "integer"
+      }
+    },
     "type": "object"
   },
   "StopAccountPlaybackResponse": {
@@ -269183,6 +269207,11 @@ export const schemas = {
       {
         "additionalProperties": false,
         "properties": {
+          "generation": {
+            "maximum": 2147483647,
+            "minimum": 1,
+            "type": "integer"
+          },
           "positionMs": {
             "maximum": 9007199254740991,
             "minimum": -9007199254740991,

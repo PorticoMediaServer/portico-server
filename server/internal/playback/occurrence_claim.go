@@ -28,6 +28,7 @@ type occurrenceEntry struct {
 	runs         map[*occurrenceRun]struct{}
 	budgets      map[*prefetchRecord]struct{}
 	claim        *occurrenceClaim
+	stopped      *occurrenceClaim
 }
 type occurrenceIntent struct {
 	registry *occurrenceRegistry
@@ -289,6 +290,7 @@ func (c *occurrenceClaim) markCommitted() {
 	}
 	c.phase = 1
 	c.entry.committed = true
+	c.entry.stopped = c
 	c.entry.claim = nil
 }
 
@@ -381,6 +383,39 @@ func (s *Service) ClaimStopOccurrence(ctx context.Context, id string, generation
 	return out, nil
 }
 
+// RebindAfterDrainTx admits only the state/login changes made by the renderer's
+// evidence drain in this exact writer. The caller repeats current authority and
+// the original v1/media/child binding; all physical and occurrence facts remain
+// frozen. It cannot adopt a successor generation or a stopped/failed row.
+func (c *StopOccurrenceClaim) RebindAfterDrainTx(ctx context.Context, tx *sql.Tx, check func(context.Context, *sql.Tx) error) error {
+	if c == nil || ctx == nil || tx == nil || check == nil || dbwork.Snapshot(ctx) != tx || !dbwork.InWriteTx(ctx) || c.original.Done() != ctx.Done() || c.original.Err() != nil || ctx.Err() != nil {
+		return ErrOccurrenceChanged
+	}
+	if err := check(ctx, tx); err != nil {
+		return err
+	}
+	actual, err := readStopOccurrence(tx.QueryRowContext(ctx, stopOccurrenceSelect, c.id))
+	if err != nil {
+		return err
+	}
+	if actual.state == "stopped" || actual.state == "failed" {
+		return ErrOccurrenceChanged
+	}
+	original := c.tuple
+	original.state, original.login = actual.state, actual.login
+	if actual != original {
+		return ErrOccurrenceChanged
+	}
+	r := c.phase.registry
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if c.phase.phase != 0 || c.phase.fencing || r.entries[c.id] != c.phase.entry || c.phase.entry.claim != c.phase {
+		return ErrOccurrenceChanged
+	}
+	c.tuple = actual
+	return nil
+}
+
 // FenceTx requires the original live writer and an original-caller check. Its
 // after-commit marker cannot be forged by a caller or fired by a rollback.
 func (c *StopOccurrenceClaim) FenceTx(ctx context.Context, tx *sql.Tx, check func(context.Context, *sql.Tx) error) error {
@@ -450,4 +485,75 @@ func (s *Service) occurrenceRegistry() *occurrenceRegistry {
 		return &s.hls.occurrences
 	}
 	return &s.occurrences
+}
+
+// FinishStoppedOccurrence joins only this generation's registered processes.
+// The caller has already committed its grant fence (and, for keyed commands,
+// its receipt). Unlike StopV1 this never performs an id-only database update.
+// A retained committed claim can finish even after a successor replaced the
+// durable row; its run handles are still the exact original ones.
+func (s *Service) FinishStoppedOccurrence(ctx context.Context, id string, generation int) error {
+	if ctx == nil || dbwork.Snapshot(ctx) != nil {
+		return ErrOccurrenceChanged
+	}
+	r := s.occurrenceRegistry()
+	r.mu.Lock()
+	var committed *occurrenceClaim
+	if e := r.entries[id]; e != nil && e.stopped != nil && e.stopped.generation == generation {
+		committed = e.stopped
+	}
+	r.mu.Unlock()
+	if committed != nil {
+		return committed.commit(ctx)
+	}
+	// The old generation must already be durably stopped or retired. Reprove
+	// this before acquiring or cancelling any recovery process handles.
+	var actual int
+	var state string
+	err := s.db.QueryRowContext(ctx, `SELECT generation,state FROM playback_sessions WHERE id=?`, id).Scan(&actual, &state)
+	if err != nil && !errors.Is(err, sql.ErrNoRows) {
+		return err
+	}
+	if err == nil && (actual < generation || (actual == generation && state != "stopped")) {
+		return ErrOccurrenceChanged
+	}
+	phase, err := r.claim(ctx, id, generation)
+	if err != nil {
+		if !errors.Is(err, errOccurrenceClaimed) {
+			return err
+		}
+		// A successor may already own the registry. Join only the original
+		// generation's exact handles, without fencing successor publication.
+		r.mu.Lock()
+		e := r.entries[id]
+		if e == nil {
+			r.mu.Unlock()
+			return nil
+		}
+		old := &occurrenceClaim{registry: r, id: id, generation: generation, entry: e, phase: 1}
+		for run := range e.runs {
+			if run.generation == generation {
+				old.runs = append(old.runs, run)
+			}
+		}
+		for budget := range e.budgets {
+			if budget.generation == generation {
+				old.budgets = append(old.budgets, budget)
+			}
+		}
+		r.mu.Unlock()
+		return old.commit(ctx)
+	}
+	defer phase.abort()
+	err = s.db.QueryRowContext(ctx, `SELECT generation,state FROM playback_sessions WHERE id=?`, id).Scan(&actual, &state)
+	if err != nil && !errors.Is(err, sql.ErrNoRows) {
+		return err
+	}
+	if err == nil && (actual < generation || (actual == generation && state != "stopped")) {
+		return ErrOccurrenceChanged
+	}
+	// The exact stopped row is the durable acceptance proof on recovery, when
+	// an unknown COMMIT may not have delivered the original after-commit hook.
+	phase.markCommitted()
+	return phase.commit(ctx)
 }

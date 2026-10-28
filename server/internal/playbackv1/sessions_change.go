@@ -427,8 +427,8 @@ var seekIDPattern = regexp.MustCompile(`^[A-Za-z0-9_-]{1,64}$`)
 // final position, then ends the session, so none of them can be lost between
 // the others. A final position counts only from the playing device itself: a
 // remote controller cannot say where the renderer was, and the renderer's own
-// latest sample stands.
-// Stop accepts an optional captured renderer generation. expectedGeneration's
+// latest sample stands. An optional generation captures the renderer occurrence;
+// expectedGeneration's
 // conditional cleanup contract remains a separate StopGeneration operation.
 func (s *Service) Stop(ctx context.Context, c Caller, id string, positionMs *int64, generation ...*int) error {
 	var captured *int

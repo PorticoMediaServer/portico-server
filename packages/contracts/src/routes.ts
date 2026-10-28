@@ -21637,6 +21637,9 @@ export const routes = [
     "lane": "media",
     "cost": "constant",
     "bodyLimit": 4096,
+    "headers": [
+      "Idempotency-Key"
+    ],
     "errors": [
       "unauthorized",
       "not_permitted",
@@ -21647,10 +21650,14 @@ export const routes = [
       "session_ended",
       "internal",
       "timeout",
+      "idempotency_conflict",
+      "receipt_expired",
+      "invalid_mutation_key",
       "database_busy",
       "writer_capacity"
     ],
     "status": 204,
+    "optionalBody": true,
     "admission": "security-fence"
   },
   {

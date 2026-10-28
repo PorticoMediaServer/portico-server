@@ -34,6 +34,7 @@ export const userMutationRouteIds = [
   'put_listening_preferences',
   'post_networking_remote_config',
   'stop_playback_session',
+  'stop_account_playback',
   'post_playlists',
   'delete_playlists_id',
   'patch_playlists_id',
@@ -65,6 +66,6 @@ export function userMutationRoute(path: string, method: string) {
  const segments = path.split('?')[0].split('/');
  return userMutationRoutes.find(route => route.method === method && (() => {
   const pattern = route.path.split('/');
-  return pattern.length === segments.length && pattern.every((part, i) => part.startsWith('{') ? !!segments[i] && !/%(?:2f|5c)/i.test(segments[i]) : part === segments[i]);
+  return pattern.length === segments.length && pattern.every((part, i) => {const open=part.indexOf('{'),close=part.indexOf('}');if(open<0)return part===segments[i];const prefix=part.slice(0,open),suffix=part.slice(close+1),value=segments[i];return value.startsWith(prefix)&&value.endsWith(suffix)&&value.length>prefix.length+suffix.length&&!/%(?:2f|5c)/i.test(value);});
  })());
 }

@@ -64,11 +64,13 @@ test('known revision conflicts keep drafts but permit a deliberate revised submi
  c.setDraft('runtime-settings',{revision:1,values});await assert.rejects(c.applySettings(1,values),/revision: 4/);assert.equal(c.hasUnconfirmed(),false);assert.ok(c.getDraft('runtime-settings'));
  conflict=false;assert.equal((await c.applySettings(4,values)).revision,5);c.dispose();
 });
-test('an edit whose fields are unchanged is reread and retried at the current revision',async()=>{
+test('a covered edit keeps its original revision until the owner explicitly reviews current settings',async()=>{
  const sent:any[]=[];let current=4;
  const c=client(async(_path:string,method?:string,body?:any)=>{if(method==='GET')return envelope(settings(current));sent.push(body);if(body.expectedRevision!==current)throw new ConsoleTransportError(409,'console_conflict',current,[]);return envelope(settings(current+1));});
  current=1;await c.settings();current=4;
- assert.equal((await c.applySettings(1,{...values,name:'Renamed'})).revision,5);
+ await assert.rejects(c.applySettings(1,{...values,name:'Renamed'}),/revision: 4/);
+ assert.equal(sent.length,1,'no automatic revision rewrite');
+ await c.settings();assert.equal((await c.applySettings(4,{...values,name:'Renamed'})).revision,5);
  assert.deepEqual(sent.map(b=>b.expectedRevision),[1,4]);
  assert.deepEqual(sent[1].values,sent[0].values,'the same change, against the newer document');
  assert.equal(c.hasUnconfirmed(),false);c.dispose();
@@ -196,7 +198,7 @@ test('complete owner settings retain missing-title and API policies after the me
  for(const bad of [{'library.missingTitles':'trash'},{'library.missingTitlesDays':0},{connectionLimit:65537},{apiRequestsPerMinute:100001},{conversionMode:'automatic'},{outputFormat:'vp9'},{downloadMaxQuality:'automatic'},{musicAwayQuality:'256'},{dlnaEnabled:'yes'}])assert.throws(()=>parseSettings({...settings(),requested:{...values,...bad}}));
 });
 
-test('a runtime save rebases only edited fields and preserves concurrent owner changes',async()=>{
+test('a runtime conflict retains the original body while a reviewed save preserves concurrent owner changes',async()=>{
  let stored={...values},rev=1;const bodies:any[]=[];
  const c=client(async(_path,method,body)=>{
   if(method==='GET')return envelope({...settings(rev),requested:stored,effective:stored});
@@ -204,7 +206,7 @@ test('a runtime save rebases only edited fields and preserves concurrent owner c
   stored={...stored,...body.values};rev++;return envelope({...settings(rev),requested:stored,effective:stored});
  });
  const initial=await c.settings();stored={...stored,connectionLimit:123};rev=2;
- try {await c.applySettings(initial.revision,{...initial.requested,name:'Renamed'});
+ try {await assert.rejects(c.applySettings(initial.revision,{...initial.requested,name:'Renamed'}));assert.equal(bodies.length,1);const reviewed=await c.settings();await c.applySettings(reviewed.revision,{...reviewed.requested,name:'Renamed'});
   assert.equal(stored.name,'Renamed');assert.equal(stored.connectionLimit,123);
   assert.deepEqual(Object.keys(bodies.at(-1).values).sort(),Object.keys(values).sort(),'the strict server receives a complete document');
   assert.equal(bodies[0].values.connectionLimit,values.connectionLimit);assert.equal(bodies.at(-1).values.connectionLimit,123);
@@ -276,7 +278,7 @@ test('only a setting changed here and elsewhere is reported, and the newer docum
  form.dispose();
 });
 
-test('retrying a save after a rebase and a lost response reuses the exact committed payload',async()=>{
+test('a reviewed save whose response is lost keeps its exact committed payload and key',async()=>{
  let stored={...values},rev=1,lost=true;const sent:any[]=[];
  const c=client(async(_path,method,body)=>{
   if(method==='GET')return envelope({...settings(rev),requested:stored,effective:stored});
@@ -286,7 +288,7 @@ test('retrying a save after a rebase and a lost response reuses the exact commit
   stored={...stored,...body.values};rev++;if(lost){lost=false;throw new Error('lost');}return envelope({...settings(rev),requested:stored,effective:stored});
  });
  await c.settings();stored={...stored,connectionLimit:123};rev=2;
- try {await assert.rejects(c.applySettings(1,{...values,name:'Renamed'}));assert.equal(c.hasUnconfirmed(),true);await c.applySettings(1,{...values,name:'Renamed'});assert.deepEqual(sent[2],sent[1]);assert.equal(stored.connectionLimit,123);}finally{c.dispose();}
+ try {await assert.rejects(c.applySettings(1,{...values,name:'Renamed'}));assert.equal(sent.length,1);assert.equal(c.hasUnconfirmed(),false);const reviewed=await c.settings();const body={...reviewed.requested,name:'Renamed'};await assert.rejects(c.applySettings(2,body));assert.equal(c.hasUnconfirmed(),true);await c.applySettings(2,body);assert.deepEqual(sent[2],sent[1]);assert.equal(stored.connectionLimit,123);}finally{c.dispose();}
 });
 
 test('a first partial edit reads a genuine complete document and refuses an unknown stale baseline',async()=>{

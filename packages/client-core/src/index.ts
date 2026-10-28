@@ -68,9 +68,10 @@ import {parseLibraryList} from './library-list.ts';
 import {installationHeaders,issuesCredentials,provesIdentity} from './installation.ts';
 import {AudioSelection,emptyAudio,type AudioPlan,type AudioBinding,type AudioSelectionSnapshot} from './audio-selection.ts';
 export type {AudioPlan,AudioBinding,AudioSelectionSnapshot} from './audio-selection.ts';
-import {UserMutationCoordinator, UserMutationError, newUserMutationKey, isUserMutationKey, sameUserMutationScope, type DurableUserMutationStore, type UserMutationScope, type UserMutationEntry, type UserMutationReceipt, type UserMutationResponse} from './user-mutations.ts';
-import {userMutationRoute} from './user-mutation-routes.ts';
+import {UserMutationCoordinator, UserMutationError, userMutationFingerprint, userMutationSecretField, userMutationCredentialURL, newUserMutationKey, isUserMutationKey, sameUserMutationScope, type DurableUserMutationStore, type UserMutationScope, type UserMutationEntry, type UserMutationReceipt, type UserMutationResponse} from './user-mutations.ts';
+import {userMutationRoute, type userMutationRouteIds} from './user-mutation-routes.ts';
 export * from './user-mutations.ts';
+export * from './user-mutation-recovery.ts';
 /** Portable wire types and services. No renderer, native module or process globals. */
 export type Viewer = {
   accountId: string;
@@ -324,13 +325,19 @@ export function transportJSON(value:unknown):string {return JSON.stringify(value
 /** The selected server's HTTP API. Playback sessions are not started here: they are Playback
  * Protocol v1 sessions (`playback-v1/sessions.ts`), spoken through `requestRaw`. */
 export class HttpLocalApi {
+  private ephemeralMutationBodies = new Map<string, unknown>();
+  private mutationStore?: DurableUserMutationStore;
   private mutationSession?: LocalSession;
   private mutationCoordinator?: UserMutationCoordinator;
+  getUserMutationCoordinator(): UserMutationCoordinator | undefined { return this.mutationCoordinator; }
+  async awaitUserMutationsReady(): Promise<void> { await this.mutationReady; }
   private mutationReady?: Promise<void>;
   private mutationClockOffset = 0;
   private mutationClockRead = false;
   /** Full selected authority, supplied by the mounted session owner, never inferred from a token. */
   setUserMutationSession(session: LocalSession | undefined) {
+    const previous=this.mutationSession;
+    if (!session || previous && (session.sessionFamilyId!==previous.sessionFamilyId || session.deviceId!==previous.deviceId || (['serverId','authority','accountId','profileId'] as const).some(key=>session.viewer[key]!==previous.viewer[key]))) this.ephemeralMutationBodies.clear();
     this.mutationSession = session ? {...session, viewer: {...session.viewer}} : undefined;
     this.setAccessToken(session?.accessToken ?? '');
   }
@@ -343,8 +350,18 @@ export class HttpLocalApi {
   };
   configureUserMutations(store: DurableUserMutationStore): UserMutationCoordinator {
     this.mutationCoordinator?.dispose();
+    this.mutationStore = store;
     const coordinator = new UserMutationCoordinator({store, scope: this.getUserMutationScope, transport: {
-      send: (entry, signal) => this.mutationExchange(entry, entry.path, entry.method, entry.body, signal, entry.headers),
+      send: (entry, signal) => {
+        let body = entry.body;
+        if (entry.requiresReentry) {
+          const raw = this.ephemeralMutationBodies.get(JSON.stringify([entry.scope,entry.intentId]));
+          if (!raw) return Promise.reject(new UserMutationError('secret_reentry_required', entry.key));
+          body = JSON.parse(JSON.stringify(raw));
+          if (body && typeof body === 'object') for (const name of ['operationId','idempotencyKey','requestId']) if (name in (body as object)) (body as Record<string,unknown>)[name] = entry.key;
+        }
+        return this.mutationExchange(entry, entry.path, entry.method, body, signal, entry.headers);
+      },
       lookup: (entry, signal) => this.mutationExchange(entry, encodedRoutePath('get_user_mutation', {key: entry.key}), 'GET', undefined, signal),
       recover: (entry, receipt, signal) => this.recoverUserMutation(entry, receipt, signal),
     }});
@@ -357,9 +374,48 @@ export class HttpLocalApi {
   async acknowledgeUserMutation(intentId: string): Promise<void> {
     const scope = this.getUserMutationScope(), coordinator = this.mutationCoordinator;
     const entry = coordinator?.snapshot().find(entry => scope && sameUserMutationScope(scope, entry.scope) && (entry.intentId === intentId || entry.key === intentId) && entry.state === 'confirmed');
-    if (entry) await coordinator!.acknowledge(entry.key);
+    if (entry) {if(entry.nativeStopOwner){await coordinator!.consumeConfirmedStop(entry.key);}else await coordinator!.acknowledge(entry.key);this.ephemeralMutationBodies.delete(JSON.stringify([entry.scope,entry.intentId]));}
+  }
+  async consumeUserMutation(key: string): Promise<boolean> {
+    return this.mutationCoordinator?.consumeConfirmedStop(key) ?? false;
+  }
+  async dismissReviewedUserMutation(intentId: string): Promise<void> {
+    const scope=this.getUserMutationScope(),coordinator=this.mutationCoordinator;
+    const entry=coordinator?.snapshot().find(entry=>scope&&sameUserMutationScope(scope,entry.scope)&&(entry.intentId===intentId||entry.key===intentId));
+    if(entry){await coordinator!.dismissReviewed(entry.key);this.ephemeralMutationBodies.delete(JSON.stringify([entry.scope,entry.intentId]));}
+  }
+  async createUserMutationKey(): Promise<string> {
+    const scope=this.getUserMutationScope();if(!scope)throw new UserMutationError('mutation_scope_changed');
+    const response=await this.mutationExchange({key:'',scope} as UserMutationEntry,routePath('get_user_mutation_policy'),'GET',undefined,new AbortController().signal);
+    const policy=response.body as {serverTimeMs?:unknown}|undefined;
+    if(response.status!==200||!Number.isSafeInteger(policy?.serverTimeMs))throw new UserMutationError('mutation_not_queued');
+    this.mutationClockOffset=Number(policy!.serverTimeMs)-Date.now();this.mutationClockRead=true;
+    return newUserMutationKey(Number(policy!.serverTimeMs));
+  }
+  /** Called only after the person explicitly re-enters a pending secret draft. */
+  async reenterUserMutationSecrets(key: string, rawBody: unknown, signal?: AbortSignal): Promise<UserMutationResponse> {
+    const store=this.mutationStore, coordinator=this.mutationCoordinator, scope=this.getUserMutationScope();
+    if(!store||!coordinator||!scope)throw new UserMutationError('mutation_scope_changed',key);
+    const raw=JSON.parse(JSON.stringify(rawBody));
+    for(let attempt=0;attempt<32;attempt++){
+      const state=await store.read(), entry=state.entries.find(entry=>entry.key===key);
+      if(!entry||!sameUserMutationScope(entry.scope,scope)||entry.state!=='review'||entry.errorCode!=='secret_reentry_required'||!entry.requiresReentry)throw new UserMutationError('mutation_needs_review',key);
+      const original=JSON.parse(entry.fingerprint) as {operation:string;method:string;path:string;target:string;body?:unknown;headers?:Record<string,string>};
+      const names:string[]=[];
+      const strip=(value:unknown,path=''):unknown=>Array.isArray(value)?value.map((v,i)=>strip(v,path+'.'+i)):value&&typeof value==='object'?Object.fromEntries(Object.entries(value).flatMap(([name,v])=>{const field=path?path+'.'+name:name;if((userMutationSecretField(name)||original.operation==='set_live_source_configuration'&&field==='settings.remote.guideUrl'&&userMutationCredentialURL(v))&&v!==undefined&&v!==null&&v!==''){names.push(field);return [];}return [[name,strip(v,field)]];})):value;
+      const safe=strip(raw);
+      if(userMutationFingerprint({...original,body:safe,requiresReentry:true,secretFields:names})!==entry.fingerprint)throw new UserMutationError('idempotency_conflict',key);
+      const custodyKey=JSON.stringify([entry.scope,entry.intentId]),prior=this.ephemeralMutationBodies.get(custodyKey);
+      if(prior&&JSON.stringify(prior)!==JSON.stringify(raw))throw new UserMutationError('idempotency_conflict',key);
+      this.ephemeralMutationBodies.set(custodyKey,raw);
+      const revision=state.revision;state.revision++;entry.state='pending';entry.dueMs=Date.now();delete entry.errorCode;delete entry.leaseOwner;delete entry.leaseUntilMs;
+      if(await store.compareAndSwap(revision,state)) return coordinator.run({...original,intentId:entry.intentId,key,requiresReentry:true,secretFields:names},signal);
+    }
+    throw new UserMutationError('mutation_store_busy',key);
   }
   private async mutationExchange(entry: Readonly<UserMutationEntry>, path: string, method: string, body: unknown, signal: AbortSignal, headers?: Readonly<Record<string,string>>): Promise<UserMutationResponse> {
+    return withinDeadline(requestDeadlineMs(path, method), signal, async bounded => {
+    signal = bounded;
     const check = () => {const current = this.getUserMutationScope(); if (!current || !sameUserMutationScope(current, entry.scope)) throw new UserMutationError('mutation_scope_changed', entry.key);};
     check();
     let token = this.token;
@@ -371,34 +427,133 @@ export class HttpLocalApi {
       if (next && next !== token && next === this.token) {await response.body?.cancel(); response = await this.send(path, method, body, signal, next, headers);}
     }
     check();
-    return this.mutationResponse(response);
+    return this.mutationResponse(response, signal);
+    });
   }
-  private async mutationResponse(response: Response): Promise<UserMutationResponse> {
+  private async mutationResponse(response: Response, signal: AbortSignal): Promise<UserMutationResponse> {
     const headers: Record<string,string> = {}; response.headers.forEach((v,k) => {headers[k] = v;});
-    const text = await response.text(); let body: unknown;
+    const retry = headers['retry-after'];
+    if (retry && !/^[0-9]+$/.test(retry.trim())) {
+      const retryAt = Date.parse(retry), serverNow = Date.now() + this.mutationClockOffset;
+      if (Number.isFinite(retryAt)) headers['retry-after'] = String(Math.max(0, Math.ceil((retryAt-serverNow)/1000)));
+    }
+    let body: unknown;
+    try {
+    const maximum=1048576,declared=response.headers.get('Content-Length');
+    if(declared!==null&&(!/^[0-9]+$/.test(declared)||Number(declared)>maximum)){void response.body?.cancel().catch(()=>{});throw new UserMutationError('mutation_response_invalid');}
+    let text:string;
+    if(response.body&&typeof response.body.getReader==='function'){
+      const reader=response.body.getReader(),chunks:Uint8Array[]=[];let total=0;
+      const cancel=()=>{void reader.cancel().catch(()=>{});};signal.addEventListener('abort',cancel,{once:true});
+      try{throwIfAborted(signal);for(;;){const part=await reader.read();throwIfAborted(signal);if(part.done)break;total+=part.value.byteLength;if(total>maximum)throw new UserMutationError('mutation_response_invalid');chunks.push(part.value);}const bytes=new Uint8Array(total);let at=0;for(const chunk of chunks){bytes.set(chunk,at);at+=chunk.byteLength;}text=new TextDecoder('utf-8',{fatal:true}).decode(bytes);}
+      finally{signal.removeEventListener('abort',cancel);void reader.cancel().catch(()=>{});try{reader.releaseLock();}catch{}}
+    }else{text=await response.text();if(consoleUTF8Size(text)>maximum)throw new UserMutationError('mutation_response_invalid');}
+    throwIfAborted(signal);
     if (text) {try {body = JSON.parse(text);} catch {throw new UserMutationError('mutation_response_invalid');}}
+    } catch (error) {
+      throwIfAborted(signal);
+      if (!(response.status >= 200 && response.status < 300) && response.status < 500 && response.status !== 429) throw error;
+      // An unreadable accepted response or proxy error page is no proof of refusal.
+      // Keep status/headers so the coordinator looks up the same key with the retry floor.
+    }
     return {status: response.status, headers, ...(body === undefined ? {} : {body})};
   }
   private async recoverUserMutation(entry: Readonly<UserMutationEntry>, receipt: UserMutationReceipt, signal: AbortSignal): Promise<UserMutationResponse> {
-    if (entry.operation === 'stop_playback_session') return {status: 204, headers: {}};
-    // Compact receipts prove the historical disposition, never historical membership arrays.
-    // Read current typed state where that route exists; callers retain their draft and refresh.
-    const path = entry.path.split('?')[0];
-    const reader = routes.find(route => route.method === 'GET' && route.path.split('/').length === path.split('/').length && route.path.split('/').every((part,i) => part.startsWith('{') || part === path.split('/')[i]));
-    if (reader) await this.mutationExchange(entry, path, 'GET', undefined, signal);
-    throw new UserMutationError('mutation_needs_review', entry.key, receipt);
+    if (entry.operation === 'stop_playback_session' || entry.operation === 'stop_account_playback') return {status: 204, headers: {}};
+    // Each operation explicitly chooses a compatible current-state document or
+    // the tiny receipt marker. A current read never recreates historical arrays.
+    const adapters: Record<typeof userMutationRouteIds[number], string | null> = {
+      put_admin_backup_settings: 'get_admin_backup_settings',
+      change_console_settings: 'get_console_settings',
+      put_admin_dvr_settings: 'get_admin_dvr_settings',
+      put_admin_libraries_order: null,
+      patch_admin_libraries_id: 'get_admin_libraries_id',
+      put_admin_libraries_id_scan_policy: null,
+      put_library_settings: 'get_library_settings',
+      put_admin_libraries_id_shows_show_settings: null,
+      put_admin_libraries_id_sonic_analysis: 'get_admin_libraries_id_sonic_analysis',
+      set_live_source_configuration: 'get_live_source_configuration',
+      set_live_settings: 'get_live_settings',
+      patch_admin_logs_settings: 'get_admin_logs_settings',
+      put_admin_maintenance_settings: 'get_admin_maintenance_settings',
+      put_metadata_settings: 'get_metadata_settings',
+      patch_admin_notifications_settings: 'get_admin_notifications_settings',
+      post_channels_preferences: null,
+      set_container_personal_state: null,
+      undo_container_personal_state: null,
+      put_download_settings: 'get_download_settings',
+      put_items_personal_state_batch: null,
+      put_items_id_personal_state: null,
+      put_items_itemId_reading_favorite: 'get_items_itemId_reading_favorite',
+      put_items_itemId_reading_mark: 'get_items_itemId_reading_mark',
+      put_items_itemId_reading_my_list: 'get_items_itemId_reading_my_list',
+      put_libraries_id_metadata_agent: 'get_libraries_id_metadata_agent',
+      put_libraries_id_metadata_screen: 'get_libraries_id_metadata_screen',
+      put_libraries_id_strm_analysis_policy: 'get_libraries_id_strm_analysis_policy',
+      put_reading_group_my_list: 'get_reading_group_my_list',
+      post_libraries_libraryId_reading_mark_all: null,
+      post_library_channels_preferences: null,
+      put_listening_preferences: 'get_listening_preferences',
+      post_networking_remote_config: 'get_networking_remote',
+      stop_playback_session: null,
+      stop_account_playback: null,
+      post_playlists: null,
+      delete_playlists_id: null,
+      patch_playlists_id: null,
+      post_playlists_id_entries: null,
+      delete_playlists_id_entries_entryId: null,
+      reorder_playlist_window: null,
+      delete_playlists_id_shares: null,
+      put_playlists_id_shares: null,
+      patch_preferences: 'get_preferences',
+      delete_reading_saved_group_reference: null,
+      put_saved_pins_order: null,
+      put_saved_pins_kind_id: null,
+      post_saved_resources: null,
+      delete_saved_resources_id: null,
+      patch_saved_resources_id: null,
+      put_saved_resources_id_entries: null,
+      reorder_saved_collection: null,
+      delete_saved_resources_id_shares: null,
+      put_saved_resources_id_shares: null,
+      put_storage_source_advanced: 'get_storage_source_advanced',
+      put_storage_source_program: null,
+      put_storage_source_read_profile: 'get_storage_source_read_profile',
+    };
+    const operation = entry.operation as keyof typeof adapters;
+    if (!(operation in adapters)) throw new UserMutationError('mutation_needs_review', entry.key, receipt);
+    const marker = (): UserMutationResponse => ({status: 200, headers: {'portico-mutation-recovered':'true'}, body: {mutationReceipt: receipt}});
+    const readerId = adapters[operation];
+    if (readerId === null) return marker();
+    const writer = userMutationRoute(entry.path, entry.method), reader = routes.find(route => route.id === readerId && route.method === 'GET');
+    if (!writer || writer.id !== operation || !reader) throw new UserMutationError('mutation_needs_review', entry.key, receipt);
+    const segments = entry.path.split('?')[0].split('/');
+    const params = Object.fromEntries(writer.path.split('/').flatMap((part,i) => part.startsWith('{') ? [[part.slice(1,-1),segments[i]]] : []));
+    let path = reader.path.replace(/\{([^}]+)\}/g, (_,name: string) => params[name]);
+    if (operation === 'patch_preferences') {
+      // Retained even after the confirmed command body is erased.
+      if (!entry.recoveryDeviceClass) return marker();
+      path += '?deviceClass=' + encodeURIComponent(entry.recoveryDeviceClass);
+    }
+    const current = await this.mutationExchange(entry, path, 'GET', undefined, signal);
+    if (current.status >= 200 && current.status < 300) return {...current, headers: {...current.headers, 'portico-mutation-recovered':'true'}};
+    throw new UserMutationError('mutation_readback_unavailable', entry.key, receipt);
   }
+
   private async coordinatedMutation(path: string, method: string, body: unknown, headers?: Readonly<Record<string,string>>, signal?: AbortSignal): Promise<UserMutationResponse> {
+    const capturedScope = this.getUserMutationScope();
+    body = body === undefined ? undefined : JSON.parse(JSON.stringify(body));
+    headers = headers ? {...headers} : undefined;
     const route = userMutationRoute(path, method), coordinator = this.mutationCoordinator;
     if (!route || !coordinator) throw new UserMutationError('mutation_not_queued');
     await this.mutationReady;
-    const scope = this.getUserMutationScope(); if (!scope) throw new UserMutationError('mutation_scope_changed');
+    const scope = this.getUserMutationScope(); if (!scope || !capturedScope || !sameUserMutationScope(scope,capturedScope)) throw new UserMutationError('mutation_scope_changed');
     const obj = body && typeof body === 'object' && !Array.isArray(body) ? body as Record<string,unknown> : undefined;
     const headerKey = Object.entries(headers ?? {}).find(([name]) => name.toLowerCase() === 'idempotency-key')?.[1];
     const originalId = ['operationId','idempotencyKey','requestId'].map(name => obj?.[name]).find(value => typeof value === 'string') as string | undefined;
-    const sessionId = route.id === 'stop_playback_session' ? decodeURIComponent(path.split('?')[0].split('/').pop()!) : undefined;
+    const sessionId = route.id === 'stop_playback_session' ? decodeURIComponent(path.split('?')[0].split('/').pop()!) : route.id === 'stop_account_playback' ? decodeURIComponent(path.split('?')[0].split('/').pop()!.replace(/:stop$/, '')) : undefined;
     const generation = obj?.generation ?? obj?.expectedGeneration;
-    if (sessionId && (!Number.isSafeInteger(generation) || Number(generation) < 0)) throw new UserMutationError('mutation_not_queued');
+    if (sessionId && (!Number.isSafeInteger(generation) || Number(generation) < 1 || Number(generation) > 2147483647)) throw new UserMutationError('mutation_not_queued');
     const target = sessionId ? `stop:${sessionId}:${generation}` : path.split('?')[0];
     // Calibrate once before minting; a failed policy read keeps custody with the caller.
     if (!this.mutationClockRead) {
@@ -409,16 +564,34 @@ export class HttpLocalApi {
       this.mutationClockOffset = value.serverTimeMs - Date.now(); this.mutationClockRead = true;
     }
     const suppliedKey = originalId && isUserMutationKey(originalId) ? originalId : headerKey && isUserMutationKey(headerKey) ? headerKey : undefined;
+    const mutationKey = suppliedKey ?? newUserMutationKey(Date.now() + this.mutationClockOffset);
+    const currentScope=this.getUserMutationScope();if(!currentScope||!sameUserMutationScope(currentScope,scope))throw new UserMutationError('mutation_scope_changed');
+    const secretFields: string[] = [];
+    const redact = (value: unknown, path = ''): unknown => Array.isArray(value) ? value.map((v,i) => redact(v, path+'.'+i)) : value && typeof value === 'object' ? Object.fromEntries(Object.entries(value).flatMap(([name,v]) => {
+      const field = path ? path+'.'+name : name;
+      if ((userMutationSecretField(name) || route.id === 'set_live_source_configuration' && field === 'settings.remote.guideUrl' && userMutationCredentialURL(v)) && v !== undefined && v !== null && v !== '') {secretFields.push(field);return [];}
+      return [[name,redact(v,field)]];
+    })) : value;
+    const safeBody = redact(body);
+    const semanticHeaders = Object.fromEntries(Object.entries(headers ?? {}).filter(([name]) => ['content-type','if-match','if-unmodified-since'].includes(name.toLowerCase())));
+    // Older declarative settings callers have no operation ID. Their exact
+    // immutable draft is the retry identity until a consumer acknowledges it.
+    const intentId = sessionId ? target : originalId ?? headerKey ?? 'request:'+userMutationFingerprint({operation:route.id,method,path,target,body:safeBody,headers:semanticHeaders,...(secretFields.length?{requiresReentry:true,secretFields}: {})});
+    if (secretFields.length) {
+      const custodyKey = JSON.stringify([scope,intentId]), prior = this.ephemeralMutationBodies.get(custodyKey);
+      const raw = JSON.parse(JSON.stringify(body));
+      if (prior && JSON.stringify(prior) !== JSON.stringify(raw)) throw new UserMutationError('idempotency_conflict');
+      if (!prior) this.ephemeralMutationBodies.set(custodyKey, raw);
+    }
     let response: UserMutationResponse;
     try {response = await coordinator.run({operation: route.id, method, path, target,
-      intentId: sessionId ? target : originalId ?? headerKey,
-      key: suppliedKey ?? newUserMutationKey(Date.now() + this.mutationClockOffset), body, headers}, signal);}
+      intentId, key: mutationKey, body: safeBody, headers: semanticHeaders, ...(route.id === 'patch_preferences' && typeof obj?.deviceClass === 'string' ? {recoveryDeviceClass:obj.deviceClass} : {}), ...(secretFields.length ? {requiresReentry:true,secretFields} : {})}, signal);}
     catch (error) {if (error instanceof UserMutationError && error.response) response = error.response; else throw error;}
     // Existing domain parsers correlate their original caller intent ID. Only the wire and
     // durable command use the protocol ID; translate the actual acknowledgement at this seam.
-    const key = coordinator.snapshot().find(entry => sameUserMutationScope(entry.scope, scope) && (sessionId ? entry.intentId === target : originalId || headerKey ? entry.intentId === (originalId ?? headerKey) : entry.key === suppliedKey))?.key ?? Object.entries(response.headers).find(([name]) => name.toLowerCase() === 'portico-mutation-key')?.[1];
+    const key = coordinator.snapshot().find(entry => sameUserMutationScope(entry.scope, scope) && entry.intentId === intentId)?.key ?? Object.entries(response.headers).find(([name]) => name.toLowerCase() === 'portico-mutation-key')?.[1];
     const restore = (value: unknown): unknown => Array.isArray(value) ? value.map(restore) : value && typeof value === 'object' ? Object.fromEntries(Object.entries(value).map(([name,v]) => [name, ['operationId','idempotencyKey','requestId'].includes(name) && v === key && originalId ? originalId : restore(v)])) : value;
-    return {...response, body: restore(response.body)};
+    return {...response, headers: {...response.headers, ...(key ? {'portico-mutation-key':key} : {})}, body: restore(response.body)};
   }
   readonly baseUrl: string;
   private token: string;
@@ -512,6 +685,7 @@ export class HttpLocalApi {
     const token = this.token, epoch = this.certificateSessionEpoch, fetcher = this.fetcher;
     const isCurrent = () => this.token === token && this.certificateSessionEpoch === epoch;
     return new ReadingClient({
+      acknowledge: key => this.acknowledgeUserMutation(key),
       isCurrent,
       subscribe: retire => this.subscribeCertificateSession(retire),
       send: (path, init) => {
@@ -566,7 +740,17 @@ export class HttpLocalApi {
     if(!path.startsWith(apiRoot)||path.includes('#')||path.includes('\\')||!['GET','POST','PATCH','PUT'].includes(method))throw new Error('Invalid console request.');
     const payload=body===undefined?undefined:JSON.stringify(body);
     if(payload!==undefined&&consoleUTF8Size(payload)>65536)throw new Error('Console request is too large.');
-    if (this.mutationCoordinator && userMutationRoute(path, method)) return this.mutationValue<T>(await this.coordinatedMutation(path, method, body, undefined, signal));
+    if (this.mutationCoordinator && userMutationRoute(path, method)) {
+      const response = await withinDeadline(requestDeadlineMs(path,method), signal, bounded => this.coordinatedMutation(path, method, body, undefined, bounded));
+      const value = await readConsoleJson<T>(new Response(response.body === undefined ? null : JSON.stringify(response.body), {status: response.status, headers: response.headers}), signal);
+      // Settings have consumed the bounded JSON envelope here. Domain commands
+      // with caller-owned IDs acknowledge only after their specific parser settles.
+      const object = body && typeof body === 'object' ? body as Record<string,unknown> : undefined;
+      if (!object || !['operationId','idempotencyKey','requestId'].some(name => typeof object[name] === 'string')) {
+        const key = response.headers['portico-mutation-key']; if (key) await this.acknowledgeUserMutation(key);
+      }
+      return value;
+    }
     const token=this.token,c=new AbortController();const abort=()=>c.abort();signal.addEventListener('abort',abort,{once:true});
     if(signal.aborted)c.abort();const timer=setTimeout(abort,10000);
     try{
@@ -645,7 +829,7 @@ export class HttpLocalApi {
    */
   farewell(path: string, method: string, body?: unknown): void {
     if (!path.startsWith(apiRoot) || provesIdentity(path, method)) return;
-    if (this.mutationCoordinator && userMutationRoute(path, method)) { void this.coordinatedMutation(path, method, body).catch(() => { /* The coordinator keeps the durable Stop and publishes its state. */ }); return; }
+    if (this.mutationCoordinator && userMutationRoute(path, method)) { void this.coordinatedMutation(path, method, body).then(async response => {if(response.status>=200&&response.status<300){const key=response.headers['portico-mutation-key'];if(key)await this.acknowledgeUserMutation(key);}}).catch(() => { /* The coordinator keeps unresolved Stop custody and publishes its state. */ }); return; }
     try { void this.send(path, method, body, undefined, this.token, undefined, true).then(r => { void r.body?.cancel().catch(() => {}); }, () => {}); } catch { /* the page is going away */ }
   }
   /** One artwork upload under the captured selected-server session. Never refresh/replay a lost write. */
@@ -685,7 +869,7 @@ export class HttpLocalApi {
    * `ETag`, `Report-Every-Ms`). Rejects only when there is no response (offline, aborted).
    */
   async requestRaw(path: string, method: string, options: Readonly<{headers?: Readonly<Record<string, string>>; body?: unknown; signal?: AbortSignal; deadlineMs?: number; singleAttempt?: boolean}> = {}): Promise<{status: number; headers: Record<string, string>; body?: unknown}> {
-    if (this.mutationCoordinator && userMutationRoute(path, method)) return this.coordinatedMutation(path, method, options.body, options.headers, options.signal);
+    if (this.mutationCoordinator && userMutationRoute(path, method)) return withinDeadline(options.deadlineMs ?? requestDeadlineMs(path,method), options.signal, bounded => this.coordinatedMutation(path, method, options.body, options.headers, bounded));
     return withinDeadline(options.deadlineMs ?? requestDeadlineMs(path, method), options.signal, async signal => {
       const response = await this.exchange(path, method, options.body, signal, options.headers, options.singleAttempt);
       const headers: Record<string, string> = {};
@@ -704,7 +888,17 @@ export class HttpLocalApi {
     body?: unknown,
     signal?: AbortSignal
   ): Promise<T> {
-    if (this.mutationCoordinator && userMutationRoute(path, method)) return this.mutationValue<T>(await this.coordinatedMutation(path, method, body, undefined, signal));
+    if (this.mutationCoordinator && userMutationRoute(path, method)) {
+      const response = await withinDeadline(requestDeadlineMs(path,method), signal, bounded => this.coordinatedMutation(path, method, body, undefined, bounded));
+      const value = await this.mutationValue<T>(response);
+      // Settings have consumed the bounded JSON envelope here. Domain commands
+      // with caller-owned IDs acknowledge only after their specific parser settles.
+      const object = body && typeof body === 'object' ? body as Record<string,unknown> : undefined;
+      if (!object || !['operationId','idempotencyKey','requestId'].some(name => typeof object[name] === 'string')) {
+        const key = response.headers['portico-mutation-key']; if (key) await this.acknowledgeUserMutation(key);
+      }
+      return value;
+    }
     // No request waits for ever: one the server never answers fails as timed out (see `requestDeadlineMs`).
     // A change the writer refused before it began is sent again, not dropped (`writer-capacity.ts`).
     return retryWriterCapacity(

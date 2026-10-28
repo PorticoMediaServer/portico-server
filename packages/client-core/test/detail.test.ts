@@ -1,6 +1,7 @@
 import {wireFixture} from './wire-fixture.ts';
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import {HttpLocalApi, emptyUserMutationState, type UserMutationState, type LocalSession} from '../src/index.ts';
 import { DetailService, parseCreditPage, type DetailApi, type PersonalState } from '../src/detail.ts';
 const scope = { serverId: 'server', viewerId: JSON.stringify(['local','account','profile']) };
 const target = { libraryId: 'library', itemId: 'item' };
@@ -13,9 +14,9 @@ function data(itemId = 'item', state = personal()): any {
 function receipt(body: any, state: PersonalState, itemId = 'item'): any { return { operationId: body.operationId, serverId: 'server', libraryId: 'library', itemId, viewerFence: 'fence', personal: state }; }
 function deferred<T>() { let resolve!: (v: T) => void; const promise = new Promise<T>(r => { resolve = r; }); return { promise, resolve }; }
 const tick = () => new Promise(resolve => setTimeout(resolve, 0));
-function setup(handler: (path: string, method?: string, body?: any, signal?: AbortSignal) => Promise<any>, timeoutMs = 1000) {
+function setup(handler: (path: string, method?: string, body?: any, signal?: AbortSignal) => Promise<any>, timeoutMs = 1000, acknowledge?: (intentId: string) => Promise<void>) {
   let ids = 0;
-  const api: DetailApi = { request: <T>(p: string, m?: string, b?: unknown, s?: AbortSignal) => handler(p,m,b,s).then(v=>wireFixture(v,{'duration': 'durationMs', 'progressSeconds': 'progressMs', 'startSeconds': 'startMs', 'positionSeconds': 'positionMs'})) as Promise<T> };
+  const api: DetailApi = { acknowledgeUserMutation: acknowledge, request: <T>(p: string, m?: string, b?: unknown, s?: AbortSignal) => handler(p,m,b,s).then(v=>wireFixture(v,{'duration': 'durationMs', 'progressSeconds': 'progressMs', 'startSeconds': 'startMs', 'positionSeconds': 'positionMs'})) as Promise<T> };
   return new DetailService({ api, scope, timeoutMs, requestId: async () => `12345678-1234-4123-8123-${String(++ids).padStart(12,'0')}` });
 }
 
@@ -80,24 +81,27 @@ test('late pre-mutation read cannot roll back confirmed personal state', async (
   assert.equal(service.getSnapshot().data!.personal.favorite,true); assert.equal(service.getSnapshot().data!.personal.revision,1);
 });
 
-test('a change that lost a race is read again and sent with the current revision, without asking the person', async () => {
-  let current=personal(),writes:any[]=[];
-  const service=setup(async (_p,m,b)=>{ if(m==='GET')return data('item',current); writes.push(b); if(writes.length===1){current={...personal(5),watchlisted:true};throw Object.assign(new Error('Personal state changed'),{code:'personal_state_conflict',retryable:true});} current={...current,favorite:true,revision:6};return receipt(b,current); });
+test('personal conflict retains the original draft and revision until explicit review', async () => {
+  let current=personal(); const writes:any[]=[],acks:string[]=[];
+  const service=setup(async (_p,m,b)=>{ if(m==='GET')return data('item',current); writes.push(structuredClone(b)); current={...personal(5),watchlisted:true};throw Object.assign(new Error('Personal state changed'),{code:'personal_state_conflict',retryable:true}); },1000,async key=>{acks.push(key);});
   await service.select(target); await service.mutate({action:'favorite',value:true}); await tick();
-  assert.equal(writes.length,2);assert.notEqual(writes[0].operationId,writes[1].operationId);assert.equal(writes[1].expectedRevision,5);
-  assert.equal(service.getSnapshot().mutationError,null);assert.equal(service.getSnapshot().pending.length,0);
-  assert.equal(service.getSnapshot().data!.personal.watchlisted,true);assert.equal(service.getSnapshot().data!.personal.favorite,true);
+  assert.equal(writes.length,1); assert.equal(writes[0].expectedRevision,0);
+  assert.equal(service.getSnapshot().mutationError!.code,'personal_state_conflict');
+  assert.deepEqual(service.getSnapshot().pending,[{intent:{action:'favorite',value:true},phase:'conflict'}]);
+  assert.equal(service.getSnapshot().data!.personal.revision,5);
+  assert.equal(service.getSnapshot().data!.personal.favorite,false);
+  assert.throws(()=>service.retryMutation(),/review/); await tick();
+  assert.equal(writes.length,1); assert.equal(writes[0].expectedRevision,0); assert.deepEqual(acks,[]);
+  service.dispose();
 });
 
-test('a change another device already made is simply done; one that keeps losing is shown as a conflict', async () => {
-  let current=personal(),writes:any[]=[];
-  const done=setup(async (_p,m,b)=>{ if(m==='GET')return data('item',current); writes.push(b); current={...personal(5),favorite:true};throw Object.assign(new Error('Personal state changed'),{code:'personal_state_conflict',retryable:true}); });
-  await done.select(target); await done.mutate({action:'favorite',value:true}); await tick();
-  assert.equal(writes.length,1);assert.equal(done.getSnapshot().mutationError,null);assert.equal(done.getSnapshot().pending.length,0);assert.equal(done.getSnapshot().data!.personal.favorite,true);
-  let revision=1;writes=[];
-  const losing=setup(async (_p,m,b)=>{ if(m==='GET')return data('item',personal(revision)); writes.push(b); revision++;throw Object.assign(new Error('Personal state changed'),{code:'personal_state_conflict',retryable:true}); });
-  await losing.select(target); await losing.mutate({action:'favorite',value:true}); await tick(); await tick();
-  assert.equal(writes.length,3);assert.equal(losing.getSnapshot().pending[0].phase,'conflict');assert.equal(losing.getSnapshot().mutationError!.code,'personal_state_conflict');
+test('a matching current value cannot prove that a conflicted historical action applied', async () => {
+  let current=personal(); const writes:any[]=[];
+  const service=setup(async (_p,m,b)=>{ if(m==='GET')return data('item',current); writes.push(b); current={...personal(5),favorite:true};throw Object.assign(new Error('Personal state changed'),{code:'personal_state_conflict',retryable:true}); });
+  await service.select(target); await service.mutate({action:'favorite',value:true}); await tick();
+  assert.equal(writes.length,1); assert.equal(service.getSnapshot().mutationError!.code,'personal_state_conflict');
+  assert.deepEqual(service.getSnapshot().pending,[{intent:{action:'favorite',value:true},phase:'conflict'}]);
+  assert.equal(service.getSnapshot().data!.personal.favorite,true); service.dispose();
 });
 
 test('scope change prevents queued writes and late mutation publication in new account/profile/item', async () => {
@@ -252,4 +256,103 @@ test('a page that reads recommendations itself asks detail for none, on every re
   assert.deepEqual(paths.map(path => path.split('?')[1]), ['related=none', 'related=none', 'related=none', 'related=all']);
   assert.throws(() => service.select(target, {related: 'some' as never}));
   service.dispose();
+});
+
+
+test('Detail acknowledges only validated and consumed personal receipts', async () => {
+  for (const valid of [false,true]) {
+    const acks:string[]=[]; let body:any;
+    const service=setup(async (_p,m,b)=>{if(m==='GET')return data();body=b;return {...receipt(b,{...personal(1),favorite:true}),...(!valid?{viewerFence:'other'}:{})};},1000,async key=>{assert.equal(service.getSnapshot().data!.personal.favorite,true);acks.push(key);});
+    await service.select(target);await service.mutate({action:'favorite',value:true});
+    assert.deepEqual(acks,valid?[body.operationId]:[]);
+    assert.equal(service.getSnapshot().pending.length,valid?0:1);service.dispose();
+  }
+});
+
+const compactReceipt = () => ({key:'p251_1793200000000_0123456789abcdef0123456789abcdef',operation:'put_items_id_personal_state',status:'applied',targetId:'item',revision:1,committedMs:1793200000000,expiresMs:1795792000000});
+test('compact personal recovery reads current Detail without inferring historical failure from changed values', async () => {
+  const acks:string[]=[],writes:any[]=[];let reads=0;
+  const service=setup(async (_p,m,b)=>{if(m==='GET')return ++reads===1?data():data('item',{...personal(5),favorite:false,rating:7});writes.push(b);return {mutationReceipt:compactReceipt()};},1000,async key=>{assert.equal(service.getSnapshot().data!.personal.rating,7);acks.push(key);});
+  await service.select(target);await service.mutate({action:'favorite',value:true});await tick();
+  assert.equal(writes.length,1);assert.deepEqual(acks,[writes[0].operationId]);assert.equal(service.getSnapshot().pending.length,0);
+  assert.equal(service.getSnapshot().data!.personal.favorite,false);assert.equal(service.getSnapshot().data!.personal.revision,5);service.dispose();
+});
+
+test('compact recovery refuses wrong receipts and unreadable or wrong-scope Detail before acknowledgement', async () => {
+  for(const change of ['operation','target','status','revision','unreadable','fence','read-failed']) {
+    const acks:string[]=[];let reads=0;
+    const service=setup(async (_p,m)=>{
+      if(m==='GET') {if(++reads===1)return data();if(change==='read-failed')throw new TypeError('offline');const current=data();if(change==='fence')current.scope.viewerFence='other';if(change==='unreadable')delete current.personal;return current;}
+      const r=compactReceipt();if(change==='operation')r.operation='put_saved_pins_order';if(change==='target')r.targetId='other';if(change==='status')r.status='conflict';if(change==='revision')r.revision=-1;return {mutationReceipt:r};
+    },1000,async key=>{acks.push(key);});
+    await service.select(target);await service.mutate({action:'favorite',value:true});
+    assert.deepEqual(acks,[],change);assert.equal(service.getSnapshot().pending.length,1,change);service.dispose();
+  }
+});
+
+
+function mountedDetail(options: {invalid?: boolean; loseResponse?: boolean} = {}) {
+  let state=personal(),committed=false;const writes:any[]=[],reads:string[]=[];
+  const store={state:emptyUserMutationState(),async read(){return structuredClone(this.state);},async compareAndSwap(revision:number,next:UserMutationState){if(this.state.revision!==revision)return false;this.state=structuredClone(next);return true;}};
+  const session:LocalSession={accessToken:'token',expiresAt:'2099-01-01T00:00:00Z',authorizationHorizon:'2099-01-02T00:00:00Z',tokenGeneration:'1',sessionFamilyId:'family',deviceId:'device',viewer:{serverId:'server',authority:'local',accountId:'account',profileId:'profile',role:'owner'}};
+  const api=new HttpLocalApi('http://detail.test',session.accessToken,async (input,init)=>{
+    const path=new URL(String(input)).pathname;reads.push(path);
+    if(path==='/v1/user-mutations/policy')return Response.json({serverTimeMs:Date.now(),retiredBeforeMs:0});
+    if(path.startsWith('/v1/user-mutations/')) {
+      if(!committed)return Response.json({error:{code:'receipt_unknown'}},{status:404});
+      const key=path.split('/').at(-1)!;return Response.json({...compactReceipt(),key,revision:state.revision});
+    }
+    if(init?.method==='PUT') {
+      const body=JSON.parse(String(init.body));writes.push({key:new Headers(init.headers).get('Idempotency-Key'),body});
+      assert.equal(body.expectedRevision,state.revision);state={...state,favorite:body.favorite,revision:state.revision+1};committed=true;
+      if(options.loseResponse)throw new TypeError('response lost after commit');
+      return Response.json(wireFixture({...receipt(body,state),...(options.invalid?{viewerFence:'other'}:{})},{progressSeconds:'progressMs'}));
+    }
+    assert.equal(path,'/v1/items/item/detail');return Response.json(wireFixture(data('item',state),{duration:'durationMs',progressSeconds:'progressMs',startSeconds:'startMs'}));
+  });
+  api.setUserMutationSession(session);const coordinator=api.configureUserMutations(store);let ids=0;
+  const service=new DetailService({api,scope,timeoutMs:4000,requestId:async()=>`12345678-1234-4123-8123-${String(++ids).padStart(12,'0')}`});
+  return {service,store,coordinator,writes,reads};
+}
+
+test('mounted successful Detail actions release capacity beyond the 256-entry intent quota', async () => {
+  const f=mountedDetail();try {
+    await f.service.select(target);
+    for(let n=0;n<257;n++) {
+      await f.service.mutate({action:'favorite',value:n%2===0});
+      assert.equal(f.service.getSnapshot().mutationError,null);
+      assert.equal(f.store.state.entries.length,0,'validated consumer must release confirmed custody');
+    }
+    assert.equal(f.writes.length,257);assert.equal(new Set(f.writes.map(write=>write.key)).size,257);
+    assert.deepEqual(f.writes.map(write=>write.body.expectedRevision),Array.from({length:257},(_,n)=>n));
+  } finally {f.service.dispose();f.coordinator.dispose();}
+});
+
+test('mounted invalid Detail receipt retains confirmed custody for review', async () => {
+  const f=mountedDetail({invalid:true});try {
+    await f.service.select(target);await f.service.mutate({action:'favorite',value:true});
+    assert.equal(f.store.state.entries.length,1);assert.equal(f.store.state.entries[0].state,'confirmed');
+    assert.equal(f.service.getSnapshot().mutationError!.code,'invalid_detail');
+  } finally {f.service.dispose();f.coordinator.dispose();}
+});
+
+
+test('mounted Detail recovers a lost committed response by same-key lookup and current detail', async () => {
+  const f=mountedDetail({loseResponse:true});try {
+    await f.service.select(target);await f.service.mutate({action:'favorite',value:true});
+    assert.equal(f.service.getSnapshot().mutationError,null);assert.equal(f.service.getSnapshot().pending.length,0);
+    assert.equal(f.writes.length,1);assert.equal(f.writes[0].body.expectedRevision,0);
+    assert.ok(f.reads.includes('/v1/user-mutations/'+f.writes[0].key));
+    assert.ok(f.reads.filter(path=>path==='/v1/items/item/detail').length>=2);
+    assert.equal(f.store.state.entries.length,0);assert.equal(f.service.getSnapshot().data!.personal.favorite,true);
+  } finally {f.service.dispose();f.coordinator.dispose();}
+});
+
+test('an acknowledgement storage failure retains the validated command and retries its original identity', async () => {
+  const writes:any[]=[],acks:string[]=[];let fail=true;
+  const service=setup(async(_p,m,b)=>{if(m==='GET')return data('item',personal(3));writes.push(structuredClone(b));return receipt(b,{...personal(4),favorite:true});},1000,async key=>{acks.push(key);if(fail){fail=false;throw new Error('ack storage unavailable');}});
+  try{await service.select(target);await service.mutate({action:'favorite',value:true});await tick();
+    assert.equal(service.getSnapshot().pending[0].phase,'retry-required');
+    await service.retryMutation();assert.deepEqual(writes[0],writes[1]);assert.deepEqual(acks,[writes[0].operationId,writes[0].operationId]);assert.equal(service.getSnapshot().pending.length,0);
+  }finally{service.dispose();}
 });
