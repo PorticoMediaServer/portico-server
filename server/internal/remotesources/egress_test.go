@@ -33,7 +33,7 @@ func TestRcloneSFTPRoutePreservesHostKeyIdentityThroughWrappers(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if egress.HTTPProxy == "" || egress.SFTPProxy == "" || egress.HTTPProxy == egress.SFTPProxy || !bytes.Equal(before, raw) {
+		if egress.HTTPProxy == "" || egress.SFTPProxy == "" || egress.HTTPProxy == egress.SFTPProxy || !bytes.Equal(before, raw) || !bytes.Equal(before, egress.TransientConfiguration(raw)) || egress.CheckSMBPins != nil {
 			egress.Close()
 			t.Fatal("SFTP route replaced host-key configuration or reused HTTP authority")
 		}

@@ -1,9 +1,6 @@
 package remotesources
 
 import (
-	"net/netip"
-	"strings"
-
 	"portico.local/server/internal/storage"
 )
 
@@ -24,7 +21,7 @@ type backendCapabilities struct {
 	MetadataEqualityProvesBytes    bool
 }
 
-func sourceBackendCapabilities(backend, host string) (backendCapabilities, error) {
+func sourceBackendCapabilities(backend, _ string) (backendCapabilities, error) {
 	facts := backendCapabilities{Backend: backend, AdmittedOperationsBounded: true, HiddenRetriesWithinOperation: true, ThrottleReportsAsynchronous: true}
 	switch backend {
 	case "sftp":
@@ -32,8 +29,7 @@ func sourceBackendCapabilities(backend, host string) (backendCapabilities, error
 		facts.SFTPConnectionPoolBounded = true
 	case "smb":
 		facts.NativeDirect = true
-		_, err := netip.ParseAddr(strings.Trim(host, "[]"))
-		facts.NativeHostnameCheckConnectGap = err != nil
+		// Every SMB launch replaces leaf hosts with checked numeric addresses.
 		facts.SMBIdlePoolMayExceedOperations = true
 	case "s3", "b2", "drive", "onedrive", "dropbox", "webdav", "http":
 		facts.HTTPProxyConfigured, facts.HTTPSOpaque = true, true

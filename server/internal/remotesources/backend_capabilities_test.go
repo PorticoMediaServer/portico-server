@@ -9,7 +9,7 @@ func TestBackendCapabilitiesRetainAcceptedTransportLimits(t *testing.T) {
 			t.Fatal(backend, facts, err)
 		}
 		native := backend == "sftp" || backend == "smb"
-		if facts.NativeDirect != (backend == "smb") || facts.NativeHostnameCheckConnectGap != (backend == "smb") || facts.HTTPProxyConfigured != (backend != "smb") || facts.HTTPSOpaque != !native || facts.SFTPConnectionPoolBounded != (backend == "sftp") || facts.SMBIdlePoolMayExceedOperations != (backend == "smb") {
+		if facts.NativeDirect != (backend == "smb") || facts.NativeHostnameCheckConnectGap || facts.HTTPProxyConfigured != (backend != "smb") || facts.HTTPSOpaque != !native || facts.SFTPConnectionPoolBounded != (backend == "sftp") || facts.SMBIdlePoolMayExceedOperations != (backend == "smb") {
 			t.Fatal("backend facts do not match the enforcing transport", facts)
 		}
 		if native {
