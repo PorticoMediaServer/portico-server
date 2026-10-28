@@ -75,6 +75,9 @@ func (s *Service) refreshVisibilityClass(ctx context.Context, library string, r 
 	}); err != nil {
 		return err
 	}
+	if err := s.settleVisibilitySourceTarget(ctx, target); err != nil {
+		return err
+	}
 	clause, clauseArgs := visibilityMembershipSQL("e.entity_id", r)
 	started := time.Now()
 	for {

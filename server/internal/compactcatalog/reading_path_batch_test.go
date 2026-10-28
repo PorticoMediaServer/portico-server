@@ -142,14 +142,14 @@ func seedPathBatchObjects(t *testing.T, tx *sql.Tx) []pathBatchSeed {
 		// The retired twin shares b1's witness key but never hydrates, and it
 		// must not displace b1 in the witness seek.
 		{id: "b1-twin"},
-		{id: "b3", hydrated: true, context: true},
+		{id: "b3", hydrated: true},
 		{id: "b4", hydrated: true},
 		{id: "c1", hydrated: true, eligible: true, context: true},
 		{id: "c2", hydrated: true, eligible: true, context: true},
 		// cb7/cbr outside a local source is not eligible for a comic.
-		{id: "c3", hydrated: true, context: true},
-		{id: "n1", hydrated: true, context: true},
-		{id: "u1", hydrated: true, context: true},
+		{id: "c3", hydrated: true},
+		{id: "n1", hydrated: true},
+		{id: "u1", hydrated: true},
 		// A movie library is not a Reading library.
 		{id: "m1"},
 		// Retired raw objects are outside the projection entirely.

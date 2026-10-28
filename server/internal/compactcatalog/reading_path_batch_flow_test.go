@@ -58,8 +58,9 @@ func readingBatchRows(t *testing.T, db *sql.DB, q string) []string {
 }
 
 type readingBatchState struct {
-	capture, representative, build, keys, scopes, heads []string
-	values                                              map[int64]compactcatalog.ReadingValues
+	capture, representative, build, keys, scopes, heads   []string
+	values                                                map[int64]compactcatalog.ReadingValues
+	lowItem, lowAsset, highAsset, secondItem, secondAsset int64
 }
 
 func runReadingBatchFixture(t *testing.T, limit int) readingBatchState {
@@ -81,6 +82,10 @@ func runReadingBatchFixture(t *testing.T, limit int) readingBatchState {
 	bare := f.add("Author/Series/Series 04.epub", "epub", 0)
 	f.c.Exec(`DELETE FROM reading_publications WHERE item_id=? AND asset_id=?`, bare.item, bare.asset)
 	f.c.Exec(`UPDATE inventory_objects SET id='zzz-zzz' WHERE id=?`, bare.object)
+	// A second supported title in the same folder is what makes the counted
+	// folder context valid: one title alone publishes its author but no series.
+	// It leaves the two-files-one-item representative branch above untouched.
+	second := f.add("Author/Series/Series 05.epub", "epub", 0)
 
 	f.settle()
 	f.seal()
@@ -94,6 +99,7 @@ func runReadingBatchFixture(t *testing.T, limit int) readingBatchState {
 		t.Fatal("fixture never reached the capture/stage boundary")
 	}
 	state := readingBatchState{
+		lowItem: low.item, lowAsset: low.asset, highAsset: high.asset, secondItem: second.item, secondAsset: second.asset,
 		capture:        readingBatchRows(t, f.c.DB, `SELECT item_id,asset_id,object_id,source_revision,relative_path,item_kind,series_evidence FROM reading_path_capture ORDER BY item_id,asset_id,object_id`),
 		representative: readingBatchRows(t, f.c.DB, `SELECT item_id,asset_id,series_evidence FROM reading_path_representative ORDER BY item_id`),
 		build:          readingBatchRows(t, f.c.DB, `SELECT after_object,title_count,non_series_count FROM reading_path_build ORDER BY id`),
@@ -112,11 +118,17 @@ func runReadingBatchFixture(t *testing.T, limit int) readingBatchState {
 		t.Fatalf("fixture did not drain at raw budget %d", limit)
 	}
 	state.keys = readingBatchRows(t, f.c.DB, `SELECT object_id,scope_id,item_id,context_active,asset_id,source_revision,relative_path,eligible FROM reading_path_object_keys ORDER BY object_id`)
-	state.scopes = readingBatchRows(t, f.c.DB, `SELECT id,library_id,source_id,directory_key,desired,completed,queued,pending,sealed FROM reading_path_scope ORDER BY id`)
+	// Desired is a monotone build-attempt fence, not a content count. The
+	// batch size may coalesce a different number of attempts; each run must
+	// still accept its own exact desired fence and publish identical facts.
+	if n := scalar(t, f.c.DB, `SELECT count(*) FROM reading_path_scope WHERE completed<>desired OR queued<>0`); n != 0 {
+		t.Fatalf("%d scopes failed their exact completion fence", n)
+	}
+	state.scopes = readingBatchRows(t, f.c.DB, `SELECT id,library_id,source_id,directory_key,desired=completed,queued,pending,sealed FROM reading_path_scope ORDER BY id`)
 	state.heads = readingBatchRows(t, f.c.DB, `SELECT item_id,asset_id,object_id,source_revision,author,author_source,issue_date,series,series_source,series_number FROM reading_path_head ORDER BY item_id,asset_id`)
-	state.values = map[int64]compactcatalog.ReadingValues{low.item: completeValues(t, f.c, low.item)}
-	if high.item != low.item {
-		state.values[high.item] = completeValues(t, f.c, high.item)
+	state.values = map[int64]compactcatalog.ReadingValues{
+		low.item:    completeValues(t, f.c, low.item),
+		second.item: completeValues(t, f.c, second.item),
 	}
 	return state
 }
@@ -129,31 +141,49 @@ func TestReadingCompleteBatchHydrationMatchesSingleObjectSteps(t *testing.T) {
 	}
 	// Independent expectations on the batched run, so the oracle cannot pass by
 	// both paths making the same mistake.
-	if len(batch.capture) != 2 {
-		t.Fatalf("capture has %d rows, want the item's two publications: %v", len(batch.capture), batch.capture)
+	if len(batch.capture) != 3 {
+		t.Fatalf("capture has %d rows, want two versions of one title plus the second title: %v", len(batch.capture), batch.capture)
 	}
-	if len(batch.representative) != 1 || !strings.HasSuffix(batch.representative[0], "|1") {
-		t.Fatalf("representative is %v, want the item's lowest asset with series evidence", batch.representative)
+	wantRepresentative := map[int64]int64{batch.lowItem: batch.lowAsset, batch.secondItem: batch.secondAsset}
+	if len(batch.representative) != len(wantRepresentative) {
+		t.Fatalf("representative is %v, want one lowest asset per title", batch.representative)
 	}
-	if len(batch.build) != 1 || !strings.HasPrefix(batch.build[0], "zzz-zzz|1|0") {
-		t.Fatalf("capture cursor/counters are %v, want the full raw window consumed (zzz-zzz|1|0)", batch.build)
+	for _, row := range batch.representative {
+		var item, asset int64
+		var evidence int
+		if _, err := fmt.Sscanf(row, "%d|%d|%d", &item, &asset, &evidence); err != nil {
+			t.Fatalf("representative row %q: %v", row, err)
+		}
+		want, ok := wantRepresentative[item]
+		if !ok || asset != want || evidence != 1 {
+			t.Fatalf("representative %q, want the lowest asset (%d) with series evidence for item %d", row, want, item)
+		}
 	}
-	if len(batch.keys) != 4 {
-		t.Fatalf("object keys are %v, want the scope's four raw objects", batch.keys)
+	if len(batch.build) != 1 || !strings.HasPrefix(batch.build[0], "zzz-zzz|2|0") {
+		t.Fatalf("capture cursor/counters are %v, want the full raw window consumed over two titles (zzz-zzz|2|0)", batch.build)
 	}
-	if len(batch.heads) != 2 {
-		t.Fatalf("heads are %v, want one head per publication of the item", batch.heads)
+	if len(batch.keys) != 5 {
+		t.Fatalf("object keys are %v, want the scope's five raw objects", batch.keys)
 	}
-	if v := batch.values[point.valuesKey()]; v.Series == nil || v.Series.Value != "Series" {
-		t.Fatalf("published series is %+v", v)
+	if len(batch.heads) != 3 {
+		t.Fatalf("heads are %v, want one head per publication", batch.heads)
 	}
-}
-
-// valuesKey is the item id of the single fixture value, kept out of the state
-// comparison so both runs are compared by content only.
-func (s readingBatchState) valuesKey() int64 {
-	for item := range s.values {
-		return item
+	published := map[string]bool{}
+	for _, row := range batch.heads {
+		if fields := strings.SplitN(row, "|", 3); len(fields) == 3 {
+			published[fields[0]+"|"+fields[1]] = true
+		}
 	}
-	return 0
+	for _, pair := range [][2]int64{{batch.lowItem, batch.lowAsset}, {batch.lowItem, batch.highAsset}, {batch.secondItem, batch.secondAsset}} {
+		if !published[fmt.Sprintf("%d|%d", pair[0], pair[1])] {
+			t.Fatalf("heads are %v, want a head for item %d asset %d", batch.heads, pair[0], pair[1])
+		}
+	}
+	// Two counted titles with no non-series witness is what carries the folder
+	// series; a single-title folder deliberately publishes no series.
+	for _, item := range []int64{batch.lowItem, batch.secondItem} {
+		if v := batch.values[item]; v.Series == nil || v.Series.Value != "Series" {
+			t.Fatalf("published series for item %d is %+v, want the folder series", item, v)
+		}
+	}
 }

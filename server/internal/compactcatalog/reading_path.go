@@ -261,10 +261,15 @@ func rootPrefix(root string) string {
 
 // ReadingNormalizeObjectTx normalizes ONE raw object, never its siblings. This
 // seam is used on observation and by the durable feed for all other writers.
+// One object is admitted alone even when its own scalars exceed the window
+// budget, so the point seam stays O(B).
 func ReadingNormalizeObjectTx(ctx context.Context, tx *sql.Tx, id string) error {
-	objects, err := readPathObjects(ctx, tx, []string{id})
+	objects, n, err := readPathObjectsCapped(ctx, tx, []string{id})
 	if err != nil {
 		return err
+	}
+	if n != 1 {
+		return errPathObjectProgress
 	}
 	v, found := objects[id]
 	return normalizePathObjectTx(ctx, tx, id, v, found)
@@ -1365,13 +1370,20 @@ func pathCaptureStep(ctx context.Context, tx *sql.Tx, b pathBuild, s pathScope, 
 		_, err = tx.ExecContext(ctx, `UPDATE reading_path_build SET phase='stage' WHERE id=?`, b.ID)
 		return 1, err
 	}
-	// One bounded statement hydrates the whole raw window. An id absent from the
-	// map is today's sql.ErrNoRows: it was still in the window, so it consumed
-	// budget and stays behind the durable after_object cursor below.
-	objects, err := readPathObjects(ctx, tx, ids)
+	// One bounded statement hydrates the raw window without retaining more than
+	// the ordinary byte budget, so it may consume only a prefix. n is that RAW
+	// prefix, including ids whose joins were absent: an id inside the prefix but
+	// absent from the map is today's sql.ErrNoRows and stays behind the durable
+	// after_object cursor below, while ids past n were never read and stay in
+	// front of the cursor for the next step rather than being treated as missing.
+	objects, n, err := readPathObjectsCapped(ctx, tx, ids)
 	if err != nil {
 		return 0, err
 	}
+	if n <= 0 {
+		return 0, errPathObjectProgress
+	}
+	ids = ids[:n]
 	for _, id := range ids {
 		v, ok := objects[id]
 		if !ok {

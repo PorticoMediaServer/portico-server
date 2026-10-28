@@ -363,16 +363,8 @@ func (s *Service) RebuildVisibilityClass(ctx context.Context, library string, r 
 		return err
 	}
 	generation := active + 1
-	var ready bool
-	if err = dbwork.WithWriteTx(ctx, s.db, dbwork.ClassBackgroundMedia, func(tx *sql.Tx) error {
-		var err error
-		ready, err = compactcatalog.VisibilitySourceTargetReadyTx(ctx, tx, target)
+	if err = s.settleVisibilitySourceTarget(ctx, target); err != nil {
 		return err
-	}); err != nil {
-		return err
-	}
-	if !ready {
-		return ErrVisibilityBuilding
 	}
 	if err = s.clearVisibilityDirtyThrough(ctx, classID, target); err != nil {
 		return err

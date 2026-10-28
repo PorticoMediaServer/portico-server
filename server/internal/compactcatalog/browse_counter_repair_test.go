@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"fmt"
 	"math/rand"
+	"strings"
 	"testing"
 
 	"portico.local/server/internal/dbwork"
@@ -111,16 +112,35 @@ func browseCounterRandomMetric(t *testing.T, db *sql.DB, rng *rand.Rand) (contai
 	return container, item, source, true
 }
 
+// browseCounterApply runs one random mutation in its own write transaction.
+// Some moves are legitimately rejected by auxiliary uniqueness (for example a
+// link move that collides with a playback-origin association): the transaction
+// rolls back, so the counters must still match the unchanged catalogue. Any
+// error other than a constraint rejection fails the test.
+func browseCounterApply(t *testing.T, db *sql.DB, fn func(context.Context, *sql.Tx) error) bool {
+	t.Helper()
+	err := dbwork.WithWriteTxContext(context.Background(), db, dbwork.ClassMaintenance, fn)
+	if err == nil {
+		return true
+	}
+	if !strings.Contains(err.Error(), "constraint failed") && !strings.Contains(err.Error(), "UNIQUE constraint") {
+		t.Fatalf("random mutation: %v", err)
+	}
+	browseCounterCheckExact(t, db, "rejected mutation")
+	return false
+}
+
 // browseCounterRandomOp applies one link, membership or metric insert, update
 // or delete, or an entity move, directly to the maintained tables so the
-// triggers are the only thing keeping the counters honest.
+// triggers are the only thing keeping the counters honest. A move that an
+// auxiliary table legitimately rejects is rolled back and checked as a no-op.
 func browseCounterRandomOp(t *testing.T, db *sql.DB, rng *rand.Rand, items, shows, assets []int64) string {
 	t.Helper()
 	switch rng.Intn(11) {
 	case 0:
 		item, asset := items[rng.Intn(len(items))], assets[rng.Intn(len(assets))]
 		available := rng.Intn(2)
-		cc1Write(t, db, func(ctx context.Context, tx *sql.Tx) error {
+		browseCounterApply(t, db, func(ctx context.Context, tx *sql.Tx) error {
 			_, err := tx.ExecContext(ctx, `INSERT INTO catalog_asset_links(entity_id,asset_id,available) VALUES(?,?,?) ON CONFLICT(entity_id,asset_id) DO NOTHING`, item, asset, available)
 			return err
 		})
@@ -130,7 +150,7 @@ func browseCounterRandomOp(t *testing.T, db *sql.DB, rng *rand.Rand, items, show
 		if !ok {
 			return "link update (none)"
 		}
-		cc1Write(t, db, func(ctx context.Context, tx *sql.Tx) error {
+		browseCounterApply(t, db, func(ctx context.Context, tx *sql.Tx) error {
 			_, err := tx.ExecContext(ctx, `UPDATE catalog_asset_links SET available=1-available WHERE entity_id=? AND asset_id=?`, item, asset)
 			return err
 		})
@@ -140,7 +160,7 @@ func browseCounterRandomOp(t *testing.T, db *sql.DB, rng *rand.Rand, items, show
 		if !ok {
 			return "link delete (none)"
 		}
-		cc1Write(t, db, func(ctx context.Context, tx *sql.Tx) error {
+		browseCounterApply(t, db, func(ctx context.Context, tx *sql.Tx) error {
 			_, err := tx.ExecContext(ctx, `DELETE FROM catalog_asset_links WHERE entity_id=? AND asset_id=?`, item, asset)
 			return err
 		})
@@ -151,14 +171,14 @@ func browseCounterRandomOp(t *testing.T, db *sql.DB, rng *rand.Rand, items, show
 			return "link move (none)"
 		}
 		target := items[rng.Intn(len(items))]
-		cc1Write(t, db, func(ctx context.Context, tx *sql.Tx) error {
+		browseCounterApply(t, db, func(ctx context.Context, tx *sql.Tx) error {
 			_, err := tx.ExecContext(ctx, `UPDATE OR IGNORE catalog_asset_links SET entity_id=? WHERE entity_id=? AND asset_id=?`, target, item, asset)
 			return err
 		})
 		return "link move"
 	case 4:
 		container, item, source := shows[rng.Intn(len(shows))], items[rng.Intn(len(items))], rng.Intn(9)
-		cc1Write(t, db, func(ctx context.Context, tx *sql.Tx) error {
+		browseCounterApply(t, db, func(ctx context.Context, tx *sql.Tx) error {
 			_, err := tx.ExecContext(ctx, `INSERT INTO catalog_browse_memberships(entity_id,item_id,source) VALUES(?,?,?) ON CONFLICT(entity_id,item_id,source) DO NOTHING`, container, item, source)
 			return err
 		})
@@ -169,7 +189,7 @@ func browseCounterRandomOp(t *testing.T, db *sql.DB, rng *rand.Rand, items, show
 			return "membership move (none)"
 		}
 		target := shows[rng.Intn(len(shows))]
-		cc1Write(t, db, func(ctx context.Context, tx *sql.Tx) error {
+		browseCounterApply(t, db, func(ctx context.Context, tx *sql.Tx) error {
 			_, err := tx.ExecContext(ctx, `UPDATE OR IGNORE catalog_browse_memberships SET entity_id=? WHERE entity_id=? AND item_id=? AND source=?`, target, container, item, source)
 			return err
 		})
@@ -180,7 +200,7 @@ func browseCounterRandomOp(t *testing.T, db *sql.DB, rng *rand.Rand, items, show
 			return "membership source update (none)"
 		}
 		next := rng.Intn(9)
-		cc1Write(t, db, func(ctx context.Context, tx *sql.Tx) error {
+		browseCounterApply(t, db, func(ctx context.Context, tx *sql.Tx) error {
 			_, err := tx.ExecContext(ctx, `UPDATE OR IGNORE catalog_browse_memberships SET source=? WHERE entity_id=? AND item_id=? AND source=?`, next, container, item, source)
 			return err
 		})
@@ -190,7 +210,7 @@ func browseCounterRandomOp(t *testing.T, db *sql.DB, rng *rand.Rand, items, show
 		if !ok {
 			return "membership delete (none)"
 		}
-		cc1Write(t, db, func(ctx context.Context, tx *sql.Tx) error {
+		browseCounterApply(t, db, func(ctx context.Context, tx *sql.Tx) error {
 			_, err := tx.ExecContext(ctx, `DELETE FROM catalog_browse_memberships WHERE entity_id=? AND item_id=? AND source=?`, container, item, source)
 			return err
 		})
@@ -201,7 +221,7 @@ func browseCounterRandomOp(t *testing.T, db *sql.DB, rng *rand.Rand, items, show
 			return "metric insert (none)"
 		}
 		available, unavailable := rng.Intn(3), rng.Intn(3)
-		cc1Write(t, db, func(ctx context.Context, tx *sql.Tx) error {
+		browseCounterApply(t, db, func(ctx context.Context, tx *sql.Tx) error {
 			_, err := tx.ExecContext(ctx, `INSERT INTO catalog_browse_member_metrics(entity_id,item_id,source,available_links,unavailable_links) VALUES(?,?,?,?,?) ON CONFLICT(entity_id,item_id,source) DO NOTHING`, container, item, source, available, unavailable)
 			return err
 		})
@@ -212,7 +232,7 @@ func browseCounterRandomOp(t *testing.T, db *sql.DB, rng *rand.Rand, items, show
 			return "metric update (none)"
 		}
 		available, unavailable := rng.Intn(3), rng.Intn(3)
-		cc1Write(t, db, func(ctx context.Context, tx *sql.Tx) error {
+		browseCounterApply(t, db, func(ctx context.Context, tx *sql.Tx) error {
 			_, err := tx.ExecContext(ctx, `UPDATE catalog_browse_member_metrics SET available_links=?,unavailable_links=? WHERE entity_id=? AND item_id=? AND source=?`, available, unavailable, container, item, source)
 			return err
 		})
@@ -222,7 +242,7 @@ func browseCounterRandomOp(t *testing.T, db *sql.DB, rng *rand.Rand, items, show
 		if !ok {
 			return "metric delete (none)"
 		}
-		cc1Write(t, db, func(ctx context.Context, tx *sql.Tx) error {
+		browseCounterApply(t, db, func(ctx context.Context, tx *sql.Tx) error {
 			_, err := tx.ExecContext(ctx, `DELETE FROM catalog_browse_member_metrics WHERE entity_id=? AND item_id=? AND source=?`, container, item, source)
 			return err
 		})

@@ -92,7 +92,7 @@ func clearBrowseRowKeysPage(ctx context.Context, tx *sql.Tx, domain, limit int) 
 // no-row case. This is the approved unavoidable one-shot O(B) output scalar.
 func browseRowKeyScalar(ctx context.Context, tx *sql.Tx, domain, field int) (string, error) {
 	var out string
-	err := tx.QueryRowContext(ctx, `SELECT COALESCE(group_concat(value_key,'|'),'') FROM (SELECT value_key FROM catalog_browse_row_keys WHERE domain=? AND field=? ORDER BY value_key)`, domain, field).Scan(&out)
+	err := tx.QueryRowContext(ctx, `WITH keys AS MATERIALIZED (SELECT value_key FROM catalog_browse_row_keys WHERE domain=? AND field=? ORDER BY value_key) SELECT COALESCE(group_concat(value_key,'|'),'') FROM keys`, domain, field).Scan(&out)
 	return out, err
 }
 

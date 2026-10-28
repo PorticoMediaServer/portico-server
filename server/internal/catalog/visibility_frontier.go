@@ -59,3 +59,36 @@ func (s *Service) clearVisibilityDirtyThrough(ctx context.Context, classID, targ
 		}
 	}
 }
+
+// A class rebuild is itself a background maintenance operation. It may help
+// expand the fixed source window it captured, so callers need not start a
+// second worker merely to complete this base-fact dependency. Each writer
+// turn remains a bounded source quantum; newer events cannot extend the wait.
+func (s *Service) settleVisibilitySourceTarget(ctx context.Context, target int64) error {
+	for {
+		started := time.Now()
+		if err := visibilityBoundary(ctx, started); err != nil {
+			return err
+		}
+		ready := false
+		progress := 0
+		err := dbwork.WithWriteTx(ctx, s.db, dbwork.ClassBackgroundMedia, func(tx *sql.Tx) error {
+			var err error
+			ready, err = compactcatalog.VisibilitySourceTargetReadyTx(ctx, tx, target)
+			if err != nil || ready {
+				return err
+			}
+			progress, err = compactcatalog.StepVisibilitySourceFanout(ctx, tx, compactcatalog.BatchLimit)
+			return err
+		})
+		if err != nil {
+			return err
+		}
+		if ready {
+			return nil
+		}
+		if progress == 0 {
+			return ErrVisibilityBuilding
+		}
+	}
+}

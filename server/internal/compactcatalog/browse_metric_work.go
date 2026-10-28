@@ -116,7 +116,7 @@ const publishItemMetricScalarsSQL = `INSERT INTO catalog_browse_item_metrics(ite
  ON CONFLICT(item_id) DO UPDATE SET available_links=excluded.available_links,
  unavailable_links=excluded.unavailable_links,duration=excluded.duration,rating=excluded.rating,added=excluded.added`
 
-// The INSERT selects from the current membership and its container row: a
+// The INSERT selects from the current membership: a
 // membership that departed between the edge page and this write inserts no
 // row, and the caller's explicit existence check removes the old metric. The
 // applied link totals come from the item's published row, not from the
@@ -124,7 +124,7 @@ const publishItemMetricScalarsSQL = `INSERT INTO catalog_browse_item_metrics(ite
 const upsertMemberMetricSQL = `INSERT INTO catalog_browse_member_metrics(entity_id,item_id,source,
  duration,rating,added,air_key,critic,file_size,resolution,available_links,unavailable_links)
  SELECT m.entity_id,m.item_id,m.source,?4,?5,?6,?7,?8,?9,?10,?11,?12
- FROM catalog_browse_memberships m JOIN catalog_browse_rows r ON r.entity_id=m.entity_id
+ FROM catalog_browse_memberships m
  WHERE m.entity_id=?1 AND m.item_id=?2 AND m.source=?3
  ON CONFLICT(entity_id,item_id,source) DO UPDATE SET duration=excluded.duration,rating=excluded.rating,
  added=excluded.added,air_key=excluded.air_key,critic=excluded.critic,file_size=excluded.file_size,
@@ -196,19 +196,6 @@ func deriveItemMetricsBounded(ctx context.Context, tx *sql.Tx, k Key, limit int,
 			edges, err := metricEdges(ctx, tx, k.ID, job.afterEntity, job.afterSource, per)
 			if err != nil {
 				return false, err
-			}
-			// A newly queued parent row replaces the old inline parent
-			// derivation. Preserve this edge cursor until that bounded row
-			// producer has accepted (or rejected) the parent, so a missing
-			// row cannot make the item silently forget its metric fanout.
-			for _, edge := range edges {
-				var waiting bool
-				if err = tx.QueryRowContext(ctx, `SELECT NOT EXISTS(SELECT 1 FROM catalog_browse_rows WHERE entity_id=?1) AND EXISTS(SELECT 1 FROM catalog_dirty WHERE domain=18 AND entity_id=?1)`, edge.entity).Scan(&waiting); err != nil {
-					return false, err
-				}
-				if waiting {
-					return false, checkpointItemMetricJobRow(ctx, tx, k.ID, &job)
-				}
 			}
 			if err = applyMemberMetricPage(ctx, tx, k.ID, &job, edges, touched); err != nil {
 				return false, err
@@ -379,12 +366,11 @@ func applyMemberMetricPage(ctx context.Context, tx *sql.Tx, item int64, job *ite
 		return err
 	}
 	for _, edge := range edges {
-		// Check the current membership and container row first: a missing
+		// Check the current membership first: a missing
 		// membership must remove the old applied row, and a no-op UPSERT may
 		// report zero changed rows on some drivers.
 		var present bool
 		err := tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM catalog_browse_memberships m
- JOIN catalog_browse_rows r ON r.entity_id=m.entity_id
  WHERE m.entity_id=?1 AND m.item_id=?2 AND m.source=?3)`, edge.entity, item, edge.source).Scan(&present)
 		if err != nil {
 			return err
