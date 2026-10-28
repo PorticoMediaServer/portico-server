@@ -82,3 +82,14 @@ test('online reconciles retained hidden authority without opening display or dep
   assert.equal(h.calls.filter(path=>path==='/v1/libraries'||path==='/v1/system').length,0);
   off();browser.dispatchEvent(new Event('online'));assert.equal(wakes,1);h.dispose();
 });
+
+test('canonical hint delivery preserves server revision and preference address replay dedupe', async () => {
+  const h=harness();const server={id:'one',type:'settings.changed',resource:{kind:'settings',id:'server'},revision:'2'};
+  h.hub.accept(server);await h.time.advance(1500);const first=h.calls.length;
+  h.hub.accept({...server,id:'replay'});await h.time.advance(1500);assert.equal(h.calls.length,first);
+  const pref={id:'p',type:'settings.changed',resource:{kind:'settings',id:'preferences'},revision:'3',data:{scope:'profile-device-class',deviceClass:'web'}};
+  h.hub.accept(pref);await h.time.advance(1500);const second=h.calls.length;
+  h.hub.accept({...pref,id:'p-replay'});await h.time.advance(1500);assert.equal(h.calls.length,second);
+  h.hub.accept({...pref,id:'other-scope',data:{scope:'profile-server'}});await h.time.advance(1500);assert.equal(h.calls.length,second+1);
+  h.dispose();
+});
