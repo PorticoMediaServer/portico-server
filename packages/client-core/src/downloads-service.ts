@@ -39,20 +39,23 @@ export class DownloadsService{
  private failures=0;
  /** Rotate bounded probes through claims outside the first active pages. */
  private probeOffset=0;
- /** The waits of request followers, so disposal leaves no timer behind. */
- private waits=new Set<ReturnType<typeof setTimeout>>();
+ /** One bounded, fair poller follows all container requests. */
+ private requestTimer?:ReturnType<typeof setTimeout>;
+ private requestPoll?:Promise<void>;
+ private requestRefresh?:Promise<void>;
+ /** A failed discovery is read again quietly; the list's own error stays the list's. */
+ private rediscover?:ReturnType<typeof setTimeout>;
+ private pendingRequests=new Set<string>();
+ private lifetime=new AbortController();
  /** Whole-container requests followed on this device, by request id. */
  private tracked=new Map<string,TrackedDownloadRequest>();
  /** The device whose whole-container requests are found again on the server (`followDevice`). */
  private deviceId='';
- /** Requests with a follower running. A list refresh doesn't end a follower: only disposal, the
-  * request finishing or a 404 does, so a whole-season download keeps its progress current. */
- private following=new Set<string>();
  constructor(api:DownloadsApi,operationId:()=>string=()=>randomId(),pollMs=5000){this.api=api;this.operationId=operationId;this.pollMs=pollMs;}
  getSnapshot=()=>this.state;
  subscribe=(fn:()=>void)=>{this.listeners.add(fn);return()=>{this.listeners.delete(fn);};};
  private publish(patch:Partial<DownloadsSnapshot>){if(this.disposed)return;this.state=Object.freeze({...this.state,...patch});this.listeners.forEach(f=>f());}
- dispose(){this.disposed=true;this.generation++;clearTimeout(this.timer);for(const wait of this.waits)clearTimeout(wait);this.waits.clear();this.listeners.clear();}
+ dispose(){this.disposed=true;this.generation++;clearTimeout(this.timer);clearTimeout(this.requestTimer);clearTimeout(this.rediscover);this.lifetime.abort();this.pendingRequests.clear();this.listeners.clear();}
 
  /** Starts following the list. Safe to call again; `stop` ends the polling without forgetting. */
  start(){this.watching=true;void this.refresh();void this.refreshRequests();}
@@ -113,6 +116,23 @@ export class DownloadsService{
    if(generation!==this.generation||this.disposed)return;
    this.publish({loadingMore:false,error:say(e,'downloads.error.load'),failure:e});
   }
+ }
+ /** Reads exact preparations without walking or extending the on-screen list. Callers recover
+  * their durable preparation ids in batches of at most 200, within their own owner lifetime. */
+ async lookupPreparations(ids:readonly string[],signal?:AbortSignal):Promise<readonly DownloadPreparation[]>{
+  if(ids.length>200||ids.some(id=>!/^[A-Za-z0-9_-]{1,160}$/.test(id)))throw new Error('Read up to 200 preparation ids.');
+  if(this.disposed||signal?.aborted)throw Object.assign(new Error('Download lookup cancelled.'),{name:'AbortError'});
+  const wanted=new Set(ids);
+  if(!wanted.size)return Object.freeze([]);
+  const controller=new AbortController(),abort=()=>controller.abort();
+  signal?.addEventListener('abort',abort,{once:true});this.lifetime.signal.addEventListener('abort',abort,{once:true});
+  try{
+   const query=new URLSearchParams({limit:'200',ids:[...wanted].join(',')});
+   const result=parseDownloadPage(await this.api.request<unknown>(routePath("list_download_preparations")+'?'+query,'GET',undefined,controller.signal));
+   if(controller.signal.aborted)throw Object.assign(new Error('Download lookup cancelled.'),{name:'AbortError'});
+   if(result.nextCursor||result.items.some(p=>!wanted.has(p.id)))throw new Error(unreadableServerResponse);
+   return Object.freeze(result.items);
+  }finally{signal?.removeEventListener('abort',abort);this.lifetime.signal.removeEventListener('abort',abort);}
  }
  private schedule(generation:number){
   if(!this.watching||generation!==this.generation||this.disposed)return;
@@ -205,7 +225,8 @@ export class DownloadsService{
   const request=await createDownloadRequest(this.api,{operationId:input.operationId??this.operationId(),target:{kind:input.target.kind,id:input.target.id},deviceId:input.deviceId,quality:input.quality,policy:{...input.policy}});
   this.tracked.set(request.requestId,Object.freeze({request,title}));
   this.publish({requests:Object.freeze([...this.tracked.values()])});
-  void this.followRequest(request.requestId);
+  if(!isDownloadRequestTerminal(request.state))this.pendingRequests.add(request.requestId);
+  this.scheduleRequests();
   return request;
  }
  /** Names the device this service runs on. The whole-show, season, album, book and playlist
@@ -217,59 +238,76 @@ export class DownloadsService{
   this.deviceId=deviceId;
   if(this.watching)void this.refreshRequests();
  }
- /** Re-reads every followed container request (bounded: at most 20). */
- async refreshRequests():Promise<void>{
-  const generation=this.generation;
-  if(this.deviceId){
-   try{
-    const listed=await listDownloadRequests(this.api,this.deviceId);
-    if(generation!==this.generation||this.disposed)return;
-    for(const summary of listed)if(!this.tracked.has(summary.requestId)){
-     // Listed, not yet read: an indeterminate request until its first read below.
-     this.tracked.set(summary.requestId,Object.freeze({title:summary.title,request:Object.freeze({requestId:summary.requestId,total:0,totalKnown:false,state:summary.state,ready:0,preparing:0,queued:0,failed:0,paused:0,items:Object.freeze([]),nextCursor:''})}));
+ /** Discovers requests and queues every followed id. Each turn reads at most 20, two at a time;
+  * unfinished ids return to the tail so requests after the first 20 cannot starve. */
+ refreshRequests():Promise<void>{
+  if(this.disposed)return Promise.resolve();
+  if(this.requestRefresh)return this.requestRefresh;
+  const work=(async()=>{
+   let deviceId:string;
+   do{
+    deviceId=this.deviceId;
+    if(deviceId){
+     try{
+      const listed=await listDownloadRequests(this.api,deviceId,this.lifetime.signal);
+      if(this.disposed)return;
+      if(deviceId!==this.deviceId)continue;
+      for(const summary of listed)if(!this.tracked.has(summary.requestId)){
+       this.tracked.set(summary.requestId,Object.freeze({title:summary.title,request:Object.freeze({requestId:summary.requestId,total:0,totalKnown:false,state:summary.state,ready:0,preparing:0,queued:0,failed:0,paused:0,items:Object.freeze([]),nextCursor:''})}));
+      }
+     }catch{
+      // Requests already followed are still read below; discovery is tried again later.
+      if(this.disposed)return;
+      if(deviceId===this.deviceId&&this.rediscover===undefined)this.rediscover=setTimeout(()=>{this.rediscover=undefined;if(this.watching)void this.refreshRequests();},this.pollMs*3);
+     }
     }
-   }catch{/* the requests already followed are still read below */}
-  }
-  const ids=[...this.tracked.keys()].slice(0,20);
-  await Promise.all(ids.map(async id=>{
-   try{
-    const request=await getDownloadRequest(this.api,id);
-    if(generation!==this.generation||this.disposed)return;
-    const prior=this.tracked.get(id);
-    if(prior)this.tracked.set(id,Object.freeze({...prior,request,error:undefined}));
-   }catch(e){
-    if(generation!==this.generation||this.disposed)return;
-    const prior=this.tracked.get(id);
-    if(prior&&(e as {status?:number}|null)?.status!==404)this.tracked.set(id,Object.freeze({...prior,error:say(e,'downloads.error.load')}));
-    else this.tracked.delete(id);
-   }
-  }));
-  if(generation===this.generation&&!this.disposed)this.publish({requests:Object.freeze([...this.tracked.values()])});
-  for(const [id,tracked] of this.tracked)if(!isDownloadRequestTerminal(tracked.request.state))void this.followRequest(id);
+    if(deviceId!==this.deviceId)continue;
+    for(const id of this.tracked.keys())this.pendingRequests.add(id);
+    await this.pollRequests();
+    // Native starts the list before supplying its device. Coalescing must not lose
+    // that discovery, or a device change made while the preceding list was pending.
+   }while(!this.disposed&&deviceId!==this.deviceId);
+  })();
+  const tracked=work.finally(()=>{if(this.requestRefresh===tracked)this.requestRefresh=undefined;});
+  this.requestRefresh=tracked;return tracked;
  }
- private async followRequest(requestId:string):Promise<void>{
-  if(this.following.has(requestId))return;
-  this.following.add(requestId);
-  try{
-   for(;;){
-    await new Promise<void>(resolve=>{const wait=setTimeout(()=>{this.waits.delete(wait);resolve();},this.pollMs);this.waits.add(wait);});
-    if(this.disposed)return;
-    const prior=this.tracked.get(requestId);
-    if(!prior||isDownloadRequestTerminal(prior.request.state)){void this.refresh();return;}
+ private scheduleRequests(){
+  if(this.disposed||this.requestTimer!==undefined||this.requestPoll||!this.pendingRequests.size)return;
+  this.requestTimer=setTimeout(()=>{this.requestTimer=undefined;void this.pollRequests();},this.pollMs);
+ }
+ private pollRequests():Promise<void>{
+  if(this.disposed)return Promise.resolve();
+  if(this.requestPoll)return this.requestPoll;
+  clearTimeout(this.requestTimer);this.requestTimer=undefined;
+  const ids=[...this.pendingRequests].slice(0,20);
+  for(const id of ids)this.pendingRequests.delete(id);
+  let next=0,completed=false;
+  const worker=async()=>{
+   while(next<ids.length&&!this.disposed){
+    const id=ids[next++],prior=this.tracked.get(id);
+    if(!prior)continue;
     try{
-     const request=await getDownloadRequest(this.api,requestId);
+     const request=await getDownloadRequest(this.api,id,{signal:this.lifetime.signal});
      if(this.disposed)return;
-     const current=this.tracked.get(requestId);
-     if(!current)return;
-     this.tracked.set(requestId,Object.freeze({...current,request,error:undefined}));
-     this.publish({requests:Object.freeze([...this.tracked.values()])});
-     if(isDownloadRequestTerminal(request.state)){void this.refresh();return;}
+     const current=this.tracked.get(id);
+     if(!current)continue;
+     this.tracked.set(id,Object.freeze({...current,request,error:undefined}));
+     if(!isDownloadRequestTerminal(request.state))this.pendingRequests.add(id);
+     else completed=completed||!isDownloadRequestTerminal(prior.request.state);
     }catch(e){
      if(this.disposed)return;
-     if((e as {status?:number}|null)?.status===404){this.tracked.delete(requestId);this.publish({requests:Object.freeze([...this.tracked.values()])});return;}
+     if((e as {status?:number}|null)?.status===404)this.tracked.delete(id);
+     else{const current=this.tracked.get(id);if(current){this.tracked.set(id,Object.freeze({...current,error:say(e,'downloads.error.load')}));this.pendingRequests.add(id);}}
     }
    }
-  }finally{this.following.delete(requestId);}
+  };
+  const work=Promise.all([worker(),worker()]).then(()=>{
+   if(this.disposed)return;
+   this.publish({requests:Object.freeze([...this.tracked.values()])});
+   if(completed)void this.refresh();
+  });
+  const tracked=work.finally(()=>{if(this.requestPoll===tracked)this.requestPoll=undefined;this.scheduleRequests();});
+  this.requestPoll=tracked;return tracked;
  }
  /** Applies one action. The server fences an action on the row's revision; when the row moved
   * between the screen reading it and the person pressing the button, the row is read again and

@@ -85,6 +85,7 @@ class CastFailure extends Error {
 const idle: CastSnapshot = Object.freeze({available: false, phase: 'off', positionSeconds: 0, durationSeconds: 0, paused: false, audioTracks: Object.freeze([]), textTracks: Object.freeze([])});
 
 type CastTransferFlight={id?:string;transport:CastTransport;source:CastQueueSource;itemId:string;position:number;cancellation?:Promise<CastTransferReceipt|undefined>};
+type CastStatusRead={transport:CastTransport|undefined;generation:number;controller:CastControllerStamp|undefined;revision:number;event:Extract<CastEvent,{type:'status'}>;remote?:CastRemoteIdentity;failures:number;pending:boolean;timer?:unknown};
 export class CastController {
   private transferFlight?:CastTransferFlight;
   private recoveryTransfer?:CastTransferFlight;
@@ -111,6 +112,7 @@ export class CastController {
   private readonly callerCurrent:()=>boolean;
   private readonly describe?:(itemId:string)=>Promise<string|undefined>;
   private statusRevision=0;
+  private statusRead?:CastStatusRead;
   private acceptedController?:CastControllerStamp;
   private renewal?:{attemptId:string;binding:CastControllerBinding;proof:CastControllerProof;transport:CastTransport;generation:number;controller:CastControllerStamp;timer:unknown};
   private expectedPairId?:string;
@@ -519,12 +521,52 @@ export class CastController {
         const remoteIdentity=e.controller&&e.occurrence?Object.freeze({controller:e.controller,occurrence:e.occurrence}):undefined;
         const transport=this.transport,generation=this.startGeneration,revision=++this.statusRevision;
         const publish=(title?:string)=>{if(this.current()&&this.transport===transport&&this.startGeneration===generation&&this.statusRevision===revision&&(this.state.phase==='casting'||this.state.remoteStopped))this.publish({phase:e.itemId?'casting':'off',remoteIdentity,remoteStopped:false,controlPending:false,itemId:e.itemId||undefined,title,positionSeconds:e.positionSeconds,durationSeconds:e.durationSeconds,paused:e.paused,audioTracks:e.audioTracks,textTracks:e.textTracks,reported:e.itemId&&e.clockKnown?Object.freeze({itemId:e.itemId,positionSeconds:e.positionSeconds,durationSeconds:e.durationSeconds,paused:e.paused}):undefined});};
-        if(!e.itemId){publish();return;}
-        if(this.describe)void this.describe(e.itemId).then(title=>{if(title)publish(title);else this.redacted(transport,generation,revision);},()=>this.redacted(transport,generation,revision));
+        if(!e.itemId){this.clearStatusRead();publish();return;}
+        if(this.describe){
+          let read=this.statusRead;
+          const same=read&&read.transport===transport&&read.generation===generation&&read.controller===this.acceptedController&&read.event.itemId===e.itemId&&(remoteIdentity?sameCastRemote(read.remote,remoteIdentity):!read.remote);
+          if(!same){this.clearStatusRead();if(!original.current()||this.statusRevision!==revision)return;read={transport,generation,controller:this.acceptedController,revision,event:e,remote:remoteIdentity,failures:0,pending:false};this.statusRead=read;}
+          else {read!.event=e;read!.revision=revision;}
+          if(!read!.pending&&read!.timer===undefined)this.describeStatus(read!);
+        }
         else publish(this.state.itemId===e.itemId?this.state.title:undefined);
       }
         return;
     }
+  }
+
+  private clearStatusRead(){const read=this.statusRead;this.statusRead=undefined;if(read?.timer!==undefined)this.clearTimer(read.timer);}
+  private statusReadCurrent(read:CastStatusRead){
+    const pure=()=>this.statusRead===read&&this.transport===read.transport&&this.startGeneration===read.generation&&this.acceptedController===read.controller&&this.statusRevision===read.revision&&(this.state.phase==='casting'||!!this.state.remoteStopped);
+    return pure()&&this.current()&&pure();
+  }
+  private describeStatus(read:CastStatusRead){
+    if(!this.describe||!this.statusReadCurrent(read))return;
+    read.pending=true;
+    void Promise.resolve().then(()=>this.statusReadCurrent(read)?this.describe!(read.event.itemId):undefined).then(title=>{
+      if(!this.statusReadCurrent(read))return;
+      read.pending=false;
+      if(!title){this.redacted(read.transport,read.generation,read.revision);return;}
+      read.failures=0;
+      this.publishStatusRead(read,title);
+    },error=>{
+      if(!this.statusReadCurrent(read))return;
+      read.pending=false;
+      const status=(error as {status?:unknown}|null)?.status;
+      if(status===401||status===403||status===404||status===410){this.redacted(read.transport,read.generation,read.revision);return;}
+      // A failed lookup grants no new disclosure. Only a previously checked
+      // occurrence keeps its title and live controls while this read retries.
+      if(this.state.itemId===read.event.itemId&&(read.remote?sameCastRemote(this.state.remoteIdentity,read.remote):!this.state.remoteIdentity))this.publishStatusRead(read,this.state.title);
+      if(!this.statusReadCurrent(read))return;
+      let fired=false;
+      const timer=this.setTimer(()=>{fired=true;read.timer=undefined;if(this.statusReadCurrent(read))this.describeStatus(read);},Math.min(30000,1000*2**Math.min(read.failures++,5)));
+      if(!fired&&this.statusReadCurrent(read))read.timer=timer;else this.clearTimer(timer);
+    });
+  }
+  private publishStatusRead(read:CastStatusRead,title?:string){
+    const e=read.event,revision=read.revision;
+    this.publish({phase:'casting',remoteIdentity:read.remote,remoteStopped:false,controlPending:false,itemId:e.itemId,title,positionSeconds:e.positionSeconds,durationSeconds:e.durationSeconds,paused:e.paused,audioTracks:e.audioTracks,textTracks:e.textTracks,
+      reported:e.clockKnown?Object.freeze({itemId:e.itemId,positionSeconds:e.positionSeconds,durationSeconds:e.durationSeconds,paused:e.paused}):undefined},()=>this.statusReadCurrent(read)&&read.revision===revision);
   }
 
   private redacted(transport:CastTransport|undefined,generation:number,revision:number){
@@ -545,12 +587,14 @@ export class CastController {
     // may synchronously start a successor; nothing below selects latest state.
     const renewal=this.renewal,stopping=this.stopping,adoptTimer=this.adoptTimer,settle=this.settleAdoption;
     const flight=this.transferFlight,transport=this.transport,waiting=this.waiting,loads=[...this.loads.values()],detach=this.detach.splice(0);
+    const statusRead=this.statusRead;this.statusRead=undefined;
     this.renewal=undefined;this.stopping=undefined;this.acceptedController=undefined;this.expectedPairId=undefined;
     this.adoptTimer=undefined;this.settleAdoption=undefined;this.adopting=false;
     this.transferFlight=undefined;this.transport=undefined;this.waiting=undefined;this.loads.clear();
     if(flight?.id)this.recoveryTransfer=flight;
     if(renewal)this.clearTimer(renewal.timer);
     if(stopping)this.clearTimer(stopping.timer);
+    if(statusRead?.timer!==undefined)this.clearTimer(statusRead.timer);
     this.clearTimer(adoptTimer);settle?.(false);
     for(const off of detach)off();
     waiting?.reject(new CastFailure('cast.error.noAnswer'));

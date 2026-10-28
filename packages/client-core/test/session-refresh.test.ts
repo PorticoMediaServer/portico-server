@@ -9,7 +9,7 @@ import {LocalSessionRefresher} from '../src/session-refresh.ts';
 
 /**
  * Lane C's device-bound sessions (939a746): 15-minute access tokens, rotating refresh
- * credentials, a five-minute exact-retry receipt, and plain 401 for reuse or revocation.
+ * credentials, an exact-retry receipt through the family horizon, and plain 401 for reuse or revocation.
  */
 const ORIGIN = 'https://portico.test';
 const INSTALLATION = 'install_0123456789abcdef0123456789';
@@ -64,7 +64,7 @@ class FakeAuthServer {
         this.refresh = next;
         this.rotations++;
         const response = this.envelope(access, next, g);
-        this.receipts.set(q.refreshToken, {requestId: q.requestId, response, until: clock + 5 * MIN});
+        this.receipts.set(q.refreshToken, {requestId: q.requestId, response, until: Date.parse(response.authorizationHorizon)});
         if (this.dropAfterCommit > 0) { this.dropAfterCommit--; throw new TypeError('network connection lost'); }
         return json(200, response);
       }
@@ -506,4 +506,144 @@ test('an initially short sliding family still gets its first proactive renewal',
   assert.ok(Date.parse(refresher.current().expiresAt) > clock + 90_000);
   timers.advance(13 * MIN); await settle();
   assert.equal(server.refreshCalls, 2, 'advancing expiry schedules normal proactive refresh');
+});
+
+
+test('an expired replay is durably adopted and renewed inside one lock before concurrent callers receive access', async t => {
+  const {server, store, env} = setup(t);
+  const sent: {refreshToken: string; requestId: string}[] = [];
+  const api = new HttpLocalApi(ORIGIN, '', async (input, init) => {
+    const body = JSON.parse(String(init?.body));
+    sent.push(body);
+    assert.equal(store.peek()?.session.refreshToken, body.refreshToken, 'successor was saved before use');
+    assert.equal(store.peek()?.pendingRefresh, body.requestId, 'each credential uses its durable request id');
+    return server.fetch(input, init);
+  });
+  const refresh = () => refreshStoredSession({env, api, family: {sessionFamilyId: 'family_1', serverId: 'srv'}, rejected: 'access_1'});
+  server.dropAfterCommit = 1;
+  await assert.rejects(refresh(), /network connection lost/);
+  const lostId = store.peek()!.pendingRefresh;
+  clock += 16 * MIN;
+  const [a, b] = await Promise.all([refresh(), refresh()]);
+  assert.equal(a.accessToken, 'access_3');assert.equal(b.accessToken, 'access_3');
+  assert.ok(Date.parse(a.expiresAt) > clock);
+  assert.equal(server.rotations, 2, 'one lost rotation and one successor rotation');
+  assert.equal(sent.length, 3, 'the concurrent waiter adopts the fresh durable result');
+  assert.equal(sent[1]!.requestId, lostId);
+  assert.notEqual(sent[2]!.requestId, lostId);
+  assert.equal(store.peek()?.session.accessToken, 'access_3');assert.equal(store.peek()?.pendingRefresh, undefined);
+});
+
+test('an expired successor is never rotated before a failed durable adoption can be retried', async t => {
+  const {server, store, env} = setup(t);
+  server.dropAfterCommit = 1;
+  await assert.rejects(refreshDirectly(env, server));
+  const original = structuredClone(store.peek());
+  clock += 16 * MIN;
+  let fail = true;
+  const flaky: ConnectionEnvironment = {storage: {read: store.read, change: async update => {
+    if (fail) throw new Error('secure store busy');
+    await store.change(update);
+  }}};
+  await assert.rejects(refreshDirectly(flaky, server), {code: 'store_unavailable', signOut: false});
+  assert.equal(server.rotations, 1, 'no request spends the unpersisted successor');
+  assert.deepEqual(store.peek(), original, 'predecessor and exact receipt id remain recoverable');
+  fail = false;
+  const restarted = await refreshDirectly(flaky, server);
+  assert.equal(restarted.accessToken, 'access_3');assert.equal(server.rotations, 2);
+});
+
+test('expired replay validation retains every family, viewer, pin, installation and horizon fence', async t => {
+  const {server, store, env} = setup(t);
+  const original = structuredClone(store.peek()!);
+  const expired = {...server.envelope('access_1', 'refresh_000000000002', 2), expiresAt: iso(clock - MIN)};
+  const invalid = [
+    {...expired, sessionFamilyId: 'other'},
+    {...expired, tokenGeneration: '1'},
+    {...expired, viewer: {...viewer, authority: 'hosted'}},
+    {...expired, viewer: {...viewer, accountId: 'other'}},
+    {...expired, viewer: {...viewer, profileId: 'other'}},
+    {...expired, viewer: {...viewer, serverId: 'other'}},
+    {...expired, serverIdentity: {publicKey: 'x'.repeat(43), fingerprint: 'y'.repeat(43)}},
+    {...expired, installationId: 'another_'.repeat(6)},
+    {...expired, deviceId: 'another_device'},
+    {...expired, authorizationHorizon: iso(clock - 1)},
+    {...expired, refreshToken: original.session.refreshToken},
+    {...expired, unexpected: true},
+  ];
+  for (const answer of invalid) {
+    await store.change(() => ({...original, pendingRefresh: 'held_receipt'}));
+    server.refreshAnswers.push(() => new Response(JSON.stringify(answer), {headers: {'Content-Type': 'application/json'}}));
+    await assert.rejects(refreshDirectly(env, server), {code: 'refresh_invalid', signOut: false});
+    assert.equal(store.peek()?.session.tokenGeneration, '1');
+    assert.equal(store.peek()?.pendingRefresh, 'held_receipt');
+  }
+  assert.equal(server.rotations, 0);
+});
+
+test('a losing refresh claim never dispatches when its verification read fails', async t => {
+  const {server, store} = setup(t);
+  let reads = 0;
+  const env: ConnectionEnvironment = {storage: {
+    read: async () => { if (++reads === 2) throw new Error('temporarily locked'); return store.read(); },
+    change: async update => {
+      await store.change(current => ({...current!, pendingRefresh: 'winning_other_context'}));
+      await store.change(update);
+    },
+  }};
+  await assert.rejects(refreshDirectly(env, server), {code: 'refresh_unavailable_now', signOut: false});
+  assert.equal(server.refreshCalls, 0);
+  assert.equal(store.peek()?.pendingRefresh, 'winning_other_context');
+  assert.equal(store.peek()?.session.accessToken, 'access_1');
+});
+
+test('a missing or replaced post-claim selection ends only the stale waiter without dispatch', async t => {
+  const {server, store} = setup(t);
+  const original = structuredClone(store.peek()!);
+  for (const replacement of [undefined, {...original, selectionId: 'N'.repeat(32)}, {...original, session: {...original.session, sessionFamilyId: 'another_family'}}]) {
+    await store.change(() => original);
+    const env: ConnectionEnvironment = {storage: {read: store.read, change: async () => {await store.change(() => replacement);}}};
+    await assert.rejects(refreshDirectly(env, server), {code: 'session_replaced', signOut: true});
+    assert.equal(server.refreshCalls, 0);
+    assert.deepEqual(store.peek(), replacement);
+  }
+});
+
+
+test('an expired receipt whose guarded adoption becomes a no-op is not spent', async t => {
+  const {server, store} = setup(t);
+  await store.change(current=>({...current!,pendingRefresh:'saved_receipt'}));
+  const answer={...server.envelope('access_1','refresh_000000000002',2),expiresAt:iso(clock-MIN)};
+  server.refreshAnswers.push(()=>new Response(JSON.stringify(answer),{headers:{'Content-Type':'application/json'}}));
+  const env:ConnectionEnvironment={storage:{read:store.read,change:async update=>{
+    await store.change(current=>({...current!,selectionId:'N'.repeat(32)}));
+    await store.change(update);
+  }}};
+  await assert.rejects(refreshDirectly(env,server),{code:'refresh_unavailable_now',signOut:false});
+  assert.equal(server.refreshCalls,1);assert.equal(store.peek()?.session.tokenGeneration,'1');
+  assert.equal(store.peek()?.pendingRefresh,'saved_receipt');assert.equal(store.peek()?.selectionId,'N'.repeat(32));
+});
+
+test('a fresh answer that could not be saved remains recoverable after restart and access expiry', async t => {
+  const {server,store,env}=setup(t);let fail=true;
+  const first:ConnectionEnvironment={storage:{read:store.read,change:async update=>{
+    const next=update(await store.read());
+    if(fail&&next?.session.tokenGeneration==='2'){fail=false;throw new Error('write failed');}
+    await store.change(()=>next);
+  }}};
+  assert.equal((await refreshDirectly(first,server)).accessToken,'access_2');
+  assert.equal(store.peek()?.session.accessToken,'access_1');assert.ok(store.peek()?.pendingRefresh);
+  clock+=16*MIN;
+  assert.equal((await refreshDirectly(env,server)).accessToken,'access_3');assert.equal(server.rotations,2);
+});
+
+test('an unhelpful server cannot create an unbounded chain of expired successors',async t=>{
+  const {server,store,env}=setup(t);
+  await store.change(current=>({...current!,pendingRefresh:'saved_receipt'}));
+  for(const generation of [2,3,4]){
+    const answer={...server.envelope('access_1','refresh_'+String(generation).padStart(12,'0'),generation),expiresAt:iso(clock-MIN)};
+    server.refreshAnswers.push(()=>new Response(JSON.stringify(answer),{headers:{'Content-Type':'application/json'}}));
+  }
+  await assert.rejects(refreshDirectly(env,server),{code:'refresh_unavailable_now',signOut:false});
+  assert.equal(server.refreshCalls,2);assert.equal(store.peek()?.session.tokenGeneration,'3');assert.equal(store.peek()?.pendingRefresh,undefined);
 });

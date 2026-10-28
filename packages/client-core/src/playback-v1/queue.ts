@@ -288,8 +288,9 @@ export async function saveQueueAsPlaylist(client: Pick<QueueClient, 'saveAsPlayl
     if (save.state !== 'saving') return save;
     await new Promise<void>((resolve, reject) => {
       const timer = setTimeout(done, wait(attempt));
-      function done() { clearTimeout(timer); options.signal?.removeEventListener('abort', done); options.signal?.aborted ? reject(new DOMException('Aborted', 'AbortError')) : resolve(); }
+      function done() { clearTimeout(timer); options.signal?.removeEventListener('abort', done); options.signal?.aborted ? reject(Object.assign(new Error('Aborted'), {name: 'AbortError'})) : resolve(); }
       options.signal?.addEventListener('abort', done, {once: true});
+      if (options.signal?.aborted) done();
     });
   }
 }

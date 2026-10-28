@@ -179,6 +179,7 @@ export type SubtitleTransport=Readonly<{install:(presentation:SubtitlePresentati
 export class SubtitleService {
  private state:SubtitleSnapshot={catalog:null,plan:null,busy:false,loading:true,suppressed:false,error:null,canRetry:false,candidates:[]};
  private listeners=new Set<()=>void>();private active=false;private life=0;private interval?:ReturnType<typeof setInterval>;
+ private refreshing?:Promise<void>;private refreshRetry?:ReturnType<typeof setTimeout>;
  private controllers=new Set<AbortController>();private queue:Promise<void>=Promise.resolve();private queued=0;private retryOperation?:Readonly<{task:()=>Promise<void>;context?:SubtitleSaveContext}>;
  private api:LibraryContentApi; target:SubtitleTarget; private operationId:()=>string; private transport?:SubtitleTransport;
  constructor(api:LibraryContentApi,target:SubtitleTarget,operationId:()=>string,transport?:SubtitleTransport){this.api=api;this.target=target;this.operationId=operationId;this.transport=transport;if(!id(target.itemId)||(target.sourceId!==undefined?!id(target.sourceId):!id(target.sessionId)||!integer(target.generation)))throw new Error('Invalid subtitle target.');}
@@ -193,7 +194,7 @@ export class SubtitleService {
  /** PERF-24: re-reading the catalogue every 25 s is only worth it while subtitles are on or their
   * menu is open; a client turns it off otherwise (a later `setPolling(true)` reads at once). */
  setPolling(on:boolean){if(this.polling===on)return;this.polling=on;this.arm();if(on&&this.active)void this.refresh();}
- stop(){this.active=false;this.life++;if(this.interval)clearInterval(this.interval);for(const c of this.controllers)c.abort();this.controllers.clear();this.retryOperation=undefined;this.publish({catalog:null,plan:null,candidates:[],suppressed:true,loading:false});}
+ stop(){this.active=false;this.life++;if(this.interval)clearInterval(this.interval);if(this.refreshRetry!==undefined)clearTimeout(this.refreshRetry);this.refreshRetry=undefined;this.refreshing=undefined;for(const c of this.controllers)c.abort();this.controllers.clear();this.retryOperation=undefined;this.publish({catalog:null,plan:null,candidates:[],suppressed:true,loading:false});}
  private async request(path:string,method='GET',body?:unknown,context?:SubtitleSaveContext):Promise<unknown>{
   checkSave(context);
   const c=new AbortController(),life=this.life;this.controllers.add(c);const timer=setTimeout(()=>c.abort(),method==='GET'?15000:110000);
@@ -215,7 +216,44 @@ export class SubtitleService {
   this.publish({error:denied?serviceText('subtitles.error.denied'):conflict?serviceText('subtitles.error.changed'):invalidInput?serviceText('subtitles.error.invalidInput'):missing?serviceText('subtitles.error.missing'):invalidData?unreadableServerResponse:serviceText('subtitles.error.failed'),canRetry,suppressed:denied||invalidData||!this.state.plan,...(denied?{catalog:null,plan:null,candidates:[]}: {})});
   if(!canRetry)this.retryOperation=undefined;
  }
- async refresh(){if(!this.active||this.queued)return;const life=this.life;this.publish({loading:true});try{const [raw]=await Promise.all([this.request(this.path()),this.target.sourceId===undefined?this.plan():Promise.resolve(null)]);if(!this.active||life!==this.life||this.queued)return;const catalog=validateSubtitleCatalog(raw);if(catalog.itemId!==this.target.itemId||this.target.sourceId!==undefined&&!catalog.sources.some(source=>source.id===this.target.sourceId))invalid();if(!this.state.catalog||catalog.revision>=this.state.catalog.revision)this.publish({catalog});this.publish({loading:false,error:null,suppressed:false});}catch(e){if(life===this.life){this.publish({loading:false});this.fail(e);}}}
+ /** One short recovery burst also runs with catalogue polling disabled. Route/foreground
+  * recovery can call refresh again; it never reinstates the 25 s polling loop. */
+ refresh():Promise<void>{return this.refreshAttempt(0);}
+ private refreshAttempt(attempt:number):Promise<void>{
+  if(!this.active||this.queued)return Promise.resolve();
+  if(this.refreshing)return this.refreshing;
+  if(this.refreshRetry!==undefined)clearTimeout(this.refreshRetry);this.refreshRetry=undefined;
+  const life=this.life;
+  const work=Promise.resolve().then(()=>this.readRefresh(life,attempt)).finally(()=>{if(this.refreshing===work)this.refreshing=undefined;});
+  this.refreshing=work;return work;
+ }
+ private async readRefresh(life:number,attempt:number){
+  if(!this.active||life!==this.life||this.queued)return;
+  this.publish({loading:true});
+  if(!this.active||life!==this.life||this.queued)return;
+  try{
+   const [raw]=await Promise.all([this.request(this.path()),this.target.sourceId===undefined?this.plan():Promise.resolve(null)]);
+   if(!this.active||life!==this.life||this.queued)return;
+   const catalog=validateSubtitleCatalog(raw);
+   if(catalog.itemId!==this.target.itemId||this.target.sourceId!==undefined&&!catalog.sources.some(source=>source.id===this.target.sourceId))invalid();
+   if(!this.state.catalog||catalog.revision>=this.state.catalog.revision)this.publish({catalog});
+   this.publish({loading:false,error:null,suppressed:false,canRetry:false});
+  }catch(e){
+   if(!this.active||life!==this.life)return;
+   this.publish({loading:false});this.fail(e);
+   const problem=e as {retryable?:boolean;retry?:string;retryAfterMs?:number;retryAfterSeconds?:number}|null;
+   const retryable=problem?.retryable!==false&&(problem?.retry===undefined||problem.retry==='same_request');
+   if(this.active&&life===this.life&&this.state.canRetry&&retryable&&attempt<2&&!this.queued){
+    const milliseconds=problem?.retryAfterMs,seconds=problem?.retryAfterSeconds;
+    const delay=Math.max(500*2**attempt,typeof milliseconds==='number'&&Number.isFinite(milliseconds)&&milliseconds>0?milliseconds:0,typeof seconds==='number'&&Number.isFinite(seconds*1000)&&seconds>0?seconds*1000:0);
+    const wait=(remaining:number)=>{this.refreshRetry=setTimeout(()=>{
+     this.refreshRetry=undefined;if(!this.active||life!==this.life)return;
+     if(remaining>2147483647)wait(remaining-2147483647);else void this.refreshAttempt(attempt+1);
+    },Math.min(remaining,2147483647));};
+    wait(delay);
+   }
+  }
+ }
  private enqueue(task:()=>Promise<void>,context?:SubtitleSaveContext){
   if(context&&(!this.active||!saveCurrent(context))){this.retryOperation=undefined;if(this.active)this.publish({error:null,canRetry:false});return Promise.reject(saveRetired());}
   if(!this.active)return Promise.resolve();const life=this.life;this.queued++;this.publish({busy:true,error:null,canRetry:false});

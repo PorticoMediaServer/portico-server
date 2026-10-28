@@ -119,3 +119,36 @@ test('a browser credential Hosted refuses (CSRF, origin, mode) ends the sign-in;
   assert.equal(storage.value()?.active===undefined,signedOut,code);
  }
 });
+
+
+test('a failed initial credential read can be retried without discarding the saved family or revocations', async () => {
+ const storage=store();const saved:CredentialRecord={version:1,active:{session:session(),authority:'refresh-one',context:{profileId:'p'}},revocations:['retired']};
+ await storage.save(saved);let loads=0,available=false;
+ const service=new CredentialSessionService(api(async()=>session()),{load:async()=>{loads++;if(!available)throw new Error('secure store locked');return storage.load();},save:storage.save},uuid);
+ await assert.rejects(service.synchronize(),/secure store locked/);
+ assert.equal(service.getSnapshot().phase,'error');assert.deepEqual(storage.value(),saved);
+ available=true;await service.synchronize();
+ assert.equal(service.getSnapshot().phase,'ready');assert.equal(service.getSnapshot().session?.accessToken,'access-one');
+ assert.equal(service.getSnapshot().pendingRevocations,1);assert.deepEqual(storage.value(),saved);assert.ok(loads>1);
+});
+
+test('authentication retries initial loading and concurrent recovery shares the in-flight load', async () => {
+ const storage=store(),release=held<void>();let loads=0,initial=true,callbacks=0;
+ const service=new CredentialSessionService(api(async()=>session()),{load:async()=>{loads++;if(initial)throw new Error('locked');if(loads===2)await release.promise;return storage.load();},save:storage.save},uuid);
+ await assert.rejects(service.synchronize(),/locked/);initial=false;
+ const a=service.synchronize(),b=service.synchronize();
+ await new Promise(r=>setImmediate(r));assert.equal(loads,2,'one shared retry is waiting for storage');
+ release.resolve();await Promise.all([a,b]);
+ await service.authenticate(async()=>{callbacks++;return session();});
+ assert.equal(callbacks,1);assert.equal(service.getSnapshot().phase,'ready');assert.equal(storage.value()?.active?.session.accessToken,'access-one');
+});
+
+test('authentication after a failed initial read never calls the account service while storage remains unknown', async () => {
+ const storage=store();let available=false,calls=0;
+ const service=new CredentialSessionService(api(async()=>session()),{load:async()=>{if(!available)throw new Error('locked');return storage.load();},save:storage.save},uuid);
+ await assert.rejects(service.synchronize(),/locked/);
+ await assert.rejects(service.authenticate(async()=>{calls++;return session();}),/locked/);
+ assert.equal(calls,0);assert.equal(service.getSnapshot().phase,'error');assert.equal(storage.value(),undefined);
+ available=true;await service.authenticate(async()=>{calls++;return session();});
+ assert.equal(calls,1);assert.equal(service.getSnapshot().phase,'ready');
+});

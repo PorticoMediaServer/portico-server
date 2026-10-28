@@ -171,12 +171,17 @@ export class PersonalSavedService{
  subscribe=(fn:()=>void)=>{this.listeners.add(fn);return()=>{this.listeners.delete(fn);};};
  private publish(patch:Partial<PersonalSavedSnapshot>){if(this.disposed)return;this.state=freeze({...this.state,...patch});for(const fn of this.listeners)fn();}
  private alive(g:number){return !this.disposed&&g===this.generation;}
- private async bounded<T>(operation:(signal:AbortSignal)=>Promise<T>):Promise<T>{
-  const c=new AbortController();this.controllers.add(c);let timer:ReturnType<typeof setTimeout>|undefined;let abort:(()=>void)|undefined;
-  try{return await Promise.race([operation(c.signal),new Promise<never>((_,reject)=>{abort=()=>reject(Object.assign(new Error('The request was cancelled.'),{code:'cancelled'}));c.signal.addEventListener('abort',abort,{once:true});timer=setTimeout(()=>{reject(Object.assign(new Error('The server took too long. Retry the same operation to reconcile it.'),{code:'timeout'}));c.abort();},15000);})]);}
-  finally{if(timer)clearTimeout(timer);if(abort)c.signal.removeEventListener('abort',abort);this.controllers.delete(c);}
+ private async bounded<T>(operation:(signal:AbortSignal)=>Promise<T>,signal?:AbortSignal):Promise<T>{
+  const cancelled=()=>Object.assign(new Error('The request was cancelled.'),{code:'cancelled',name:'AbortError'});
+  if(this.disposed||signal?.aborted)throw cancelled();
+  const c=new AbortController(),stop=()=>c.abort();this.controllers.add(c);let timer:ReturnType<typeof setTimeout>|undefined;let abort:(()=>void)|undefined;
+  signal?.addEventListener('abort',stop,{once:true});
+  try{
+   const interrupted=new Promise<never>((_,reject)=>{abort=()=>reject(cancelled());c.signal.addEventListener('abort',abort,{once:true});timer=setTimeout(()=>{reject(Object.assign(new Error('The server took too long. Retry the same operation to reconcile it.'),{code:'timeout'}));c.abort();},15000);});
+   return await Promise.race([interrupted,operation(c.signal)]);
+  }finally{if(timer)clearTimeout(timer);if(abort)c.signal.removeEventListener('abort',abort);signal?.removeEventListener('abort',stop);this.controllers.delete(c);}
  }
- private request<T>(path:string,method='GET',body?:unknown):Promise<T>{return this.bounded(signal=>this.api.request<T>(path,method,body,signal));}
+ private request<T>(path:string,method='GET',body?:unknown,signal?:AbortSignal):Promise<T>{return this.bounded(combined=>this.api.request<T>(path,method,body,combined),signal);}
  select(route:SavedRoute,position:{cursor?:string|null;history?:readonly (string|null)[]}={}):Promise<void>{
   if(this.disposed)throw new Error('Saved service is disposed.');if(!isPersonalSavedRoute(route)||route.view==='resource'&&!id(route.resourceId))throw new Error('Invalid personal resource destination.');
   if((position.history?.length??0)>64||position.cursor!=null&&!str(position.cursor,4096)||position.history?.some(c=>c!==null&&!str(c,4096)))throw new Error('Invalid Saved position.');
@@ -188,7 +193,7 @@ export class PersonalSavedService{
   * A failed read rejects and changes nothing. Nothing is read while a change made here is pending.
   */
  revalidate=async(context?:{signal?:AbortSignal;settle?:()=>Promise<void>}):Promise<void>=>{
-  if(this.disposed||!this.state.route||this.state.loading||this.state.pending||this.command||this.state.error||!this.state.viewerFence)return;
+  if(this.disposed||context?.signal?.aborted||!this.state.route||this.state.loading||this.state.pending||this.command||this.state.error||!this.state.viewerFence)return;
   // Paged past the first page (or shown as one long first page since): every page on screen is read again, not only the last one.
   if(this.state.history.length||this.seen>PAGE){const g=this.generation;try{if(await this.readThrough(context??{}))return;}catch(e){if(!this.alive(g)||context?.signal?.aborted)return;if(['unauthorized','forbidden','not_found','scope_changed','invalid_saved'].includes(info(e).code))return this.load(null,[]);throw e;}}
   await this.load(this.state.cursor,this.state.history,context??{});
@@ -198,9 +203,9 @@ export class PersonalSavedService{
  next=()=>this.state.nextCursor&&this.state.history.length<64?this.load(this.state.nextCursor,[...this.state.history,this.state.cursor]):Promise.resolve();
  previous=()=>this.state.history.length?this.load(this.state.history.at(-1)!,this.state.history.slice(0,-1)):Promise.resolve();
  private async load(cursor:string|null,history:readonly (string|null)[],quiet?:{signal?:AbortSignal;settle?:()=>Promise<void>}):Promise<void>{
-  const route=this.state.route,g=this.generation,ticket=++this.readTicket;if(!route||this.disposed)return;if(!quiet)this.publish({loading:true,error:null});
+  const route=this.state.route,g=this.generation,ticket=++this.readTicket;if(!route||this.disposed||quiet?.signal?.aborted)return;if(!quiet)this.publish({loading:true,error:null});
   try{
-   const patch=await this.page(route,cursor,history);if(!this.alive(g)||ticket!==this.readTicket)return;
+   const patch=await this.page(route,cursor,history,quiet?.signal);if(!this.alive(g)||ticket!==this.readTicket||quiet?.signal?.aborted)return;
    if(this.state.viewerFence&&this.state.viewerFence!==patch.viewerFence)throw Object.assign(new Error('Your access changed. Reopen Saved to continue.'),{code:'scope_changed'});
    if(quiet){await quiet.settle?.();if(!this.alive(g)||ticket!==this.readTicket||quiet.signal?.aborted||this.state.pending||this.command)return;}
    // What the viewer has on screen: the first page, and every page appended after it.
@@ -220,12 +225,15 @@ export class PersonalSavedService{
  private async readThrough(quiet:{signal?:AbortSignal;settle?:()=>Promise<void>}):Promise<boolean>{
   const route=this.state.route,want=this.seen,g=this.generation,ticket=++this.readTicket;
   if(!route||this.disposed||want>DEEP_PAGES*PAGE)return false;
-  const first=await this.page(route,null,[]);if(!this.alive(g)||ticket!==this.readTicket)return true;
+  const current=()=>this.alive(g)&&ticket===this.readTicket&&!quiet.signal?.aborted;
+  if(!current())return true;
+  const first=await this.page(route,null,[],quiet.signal);if(!current())return true;
   const all=[...shownOf(route,first)] as {id:string}[],seen=new Set(all.map(x=>x.id));let next=first.nextCursor,last=first;
   for(let pages=1;next&&all.length<want;pages++){
+   if(!current())return true;
    if(pages>=DEEP_PAGES)return false;
-   let page:typeof first;try{page=await this.page(route,next,[]);}catch(e){if(['stale_continuation','invalid_cursor'].includes(info(e).code))return false;throw e;}
-   if(!this.alive(g)||ticket!==this.readTicket)return true;
+   let page:typeof first;try{page=await this.page(route,next,[],quiet.signal);}catch(e){if(!current())return true;if(['stale_continuation','invalid_cursor'].includes(info(e).code))return false;throw e;}
+   if(!current())return true;
    if(page.viewerFence!==first.viewerFence||page.revision!==first.revision)return false;
    for(const x of shownOf(route,page) as {id:string}[])if(!seen.has(x.id)){seen.add(x.id);all.push(x);}
    next=page.nextCursor===next?'':page.nextCursor;last=page;
@@ -237,12 +245,12 @@ export class PersonalSavedService{
   return true;
  }
  /** One page of the route, read and checked. */
- private async page(route:SavedRoute,cursor:string|null,history:readonly (string|null)[]){
+ private async page(route:SavedRoute,cursor:string|null,history:readonly (string|null)[],signal?:AbortSignal){
    const query=new URLSearchParams({limit:String(PAGE),...(cursor?{cursor}:{})});
    const path=route.view==='resource'?encodedRoutePath("get_saved_resources_id_content", {"id": encodeURIComponent(route.resourceId!)}):route.view==='history'?routePath("get_personal_history"):routePath("get_saved_resources");
    if(route.view==='collections'||route.view==='views'){query.set('kind',route.view==='collections'?'collection':'view');if('shape'in route&&route.shape)query.set('shape',route.shape);}
    if(route.view==='history'&&'period'in route&&route.period)query.set('period',route.period);
-   const raw=await this.request<unknown>(path+'?'+query);
+   const raw=await this.request<unknown>(path+'?'+query,'GET',undefined,signal);
    if(!obj(raw)||!str(raw.nextCursor,4096))bad();let patch:{-readonly [K in keyof PersonalSavedSnapshot]?:PersonalSavedSnapshot[K]}&{viewerFence:string;revision:number;nextCursor:string}={resource:null,resources:[],entries:[],browse:null,nextCursor:raw.nextCursor,cursor,history:[...history],viewerFence:'',revision:0};
    if(route.view==='resource'){
     const r=resource(raw.resource,this.scope);if(r.id!==route.resourceId)bad();patch.resource=r;patch.viewerFence=r.viewerFence;patch.revision=r.revision;

@@ -65,6 +65,8 @@ test('pendingRefresh, an expired copy and a different family or viewer are refus
     [record(), expected({sessionFamilyId: 'family-2'})],
     [record(), expected({viewer: {...state.viewer, serverId: 'srv-2'}})],
     [record(), expected({viewer: {...state.viewer, profileId: 'another'}})],
+    [record(), expected({viewer: {...state.viewer, authority: 'hosted'}})],
+    [record(), expected({viewer: {...state.viewer, role: 'member'}})],
   ];
   for (const [saved, original] of variants) {
     const h = harness(saved);

@@ -242,13 +242,17 @@ export class ArtworkScheduler<V> {
     const owned = entry;
     if (this.screen && !this.screen.pending.has(key)) { this.screen.requested++; this.screen.pending.add(key); }
     return new Promise<V>((resolve, reject) => {
-      const waiter: Waiter<V> = {resolve, reject};
-      owned.waiters.add(waiter);
-      signal?.addEventListener('abort', () => {
+      const abort = () => {
         if (!owned.waiters.delete(waiter)) return;
-        reject(abortError());
+        waiter.reject(abortError());
         this.abandonIfUnwanted(key, owned);
-      }, {once: true});
+      };
+      const waiter: Waiter<V> = {
+        resolve: value => {signal?.removeEventListener('abort', abort);resolve(value);},
+        reject: error => {signal?.removeEventListener('abort', abort);reject(error);},
+      };
+      owned.waiters.add(waiter);
+      signal?.addEventListener('abort', abort, {once: true});
       const promote = options.priority === 'high' && !owned.priority;
       if (promote) owned.priority = true;
       const moved = this.place(key, owned, options.order, options.group);

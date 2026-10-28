@@ -122,6 +122,15 @@
      {
       "codec": "h264",
       "evidence": "declared",
+      "profiles": [
+       "baseline",
+       "constrained_baseline",
+       "main",
+       "high"
+      ],
+      "chromaSubsampling": [
+       "4:2:0"
+      ],
       "bitDepths": [
        8
       ],
@@ -135,6 +144,13 @@
      {
       "codec": "hevc",
       "evidence": "declared",
+      "profiles": [
+       "main",
+       "main_10"
+      ],
+      "chromaSubsampling": [
+       "4:2:0"
+      ],
       "bitDepths": [
        8,
        10
@@ -296,6 +312,15 @@
      {
       "codec": "h264",
       "evidence": "declared",
+      "profiles": [
+       "baseline",
+       "constrained_baseline",
+       "main",
+       "high"
+      ],
+      "chromaSubsampling": [
+       "4:2:0"
+      ],
       "bitDepths": [
        8
       ],
@@ -309,6 +334,13 @@
      {
       "codec": "hevc",
       "evidence": "declared",
+      "profiles": [
+       "main",
+       "main_10"
+      ],
+      "chromaSubsampling": [
+       "4:2:0"
+      ],
       "bitDepths": [
        8,
        10
@@ -2216,12 +2248,12 @@
        "sdr"
       ],
       "evidence": "probed",
-      "maxFrameRate": 60,
-      "maxWidth": 7680,
-      "maxHeight": 4320,
       "chromaSubsampling": [
        "4:2:0"
       ],
+      "maxWidth": 7680,
+      "maxHeight": 4320,
+      "maxFrameRate": 60,
       "limits": [
        {
         "bitDepths": [
@@ -2243,12 +2275,12 @@
        "sdr"
       ],
       "evidence": "probed",
-      "maxFrameRate": 60,
-      "maxWidth": 7680,
-      "maxHeight": 4320,
       "chromaSubsampling": [
        "4:2:0"
       ],
+      "maxWidth": 7680,
+      "maxHeight": 4320,
+      "maxFrameRate": 60,
       "limits": [
        {
         "bitDepths": [
@@ -2278,12 +2310,12 @@
        "sdr"
       ],
       "evidence": "probed",
-      "maxFrameRate": 60,
-      "maxWidth": 7680,
-      "maxHeight": 4320,
       "chromaSubsampling": [
        "4:2:0"
       ],
+      "maxWidth": 7680,
+      "maxHeight": 4320,
+      "maxFrameRate": 60,
       "limits": [
        {
         "bitDepths": [
@@ -2454,12 +2486,12 @@
        "sdr"
       ],
       "evidence": "probed",
-      "maxFrameRate": 60,
-      "maxWidth": 7680,
-      "maxHeight": 4320,
       "chromaSubsampling": [
        "4:2:0"
       ],
+      "maxWidth": 7680,
+      "maxHeight": 4320,
+      "maxFrameRate": 60,
       "limits": [
        {
         "bitDepths": [
@@ -2483,12 +2515,15 @@
        "hlg"
       ],
       "evidence": "probed",
-      "maxFrameRate": 60,
-      "maxWidth": 7680,
-      "maxHeight": 4320,
       "chromaSubsampling": [
        "4:2:0"
       ],
+      "codecTags": [
+       "hvc1"
+      ],
+      "maxWidth": 7680,
+      "maxHeight": 4320,
+      "maxFrameRate": 60,
       "limits": [
        {
         "bitDepths": [
@@ -2506,9 +2541,6 @@
         "maxHeight": 4320,
         "maxFrameRate": 60
        }
-      ],
-      "codecTags": [
-       "hvc1"
       ]
      }
     ],
@@ -2658,6 +2690,15 @@
      {
       "codec": "h264",
       "evidence": "declared",
+      "profiles": [
+       "baseline",
+       "constrained_baseline",
+       "main",
+       "high"
+      ],
+      "chromaSubsampling": [
+       "4:2:0"
+      ],
       "bitDepths": [
        8
       ],
@@ -2671,6 +2712,13 @@
      {
       "codec": "hevc",
       "evidence": "probed",
+      "profiles": [
+       "main",
+       "main_10"
+      ],
+      "chromaSubsampling": [
+       "4:2:0"
+      ],
       "bitDepths": [
        8,
        10
@@ -3124,6 +3172,15 @@
      {
       "codec": "h264",
       "evidence": "declared",
+      "profiles": [
+       "baseline",
+       "constrained_baseline",
+       "main",
+       "high"
+      ],
+      "chromaSubsampling": [
+       "4:2:0"
+      ],
       "bitDepths": [
        8
       ],
@@ -3137,6 +3194,13 @@
      {
       "codec": "hevc",
       "evidence": "probed",
+      "profiles": [
+       "main",
+       "main_10"
+      ],
+      "chromaSubsampling": [
+       "4:2:0"
+      ],
       "bitDepths": [
        8,
        10

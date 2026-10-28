@@ -416,6 +416,70 @@ function deferred<T>() {
   return {promise, resolve, reject};
 }
 
+test('saving a layout supersedes an earlier quiet read with or without an editor lifetime',async()=>{
+ for(const scoped of [false,true]){
+  const stale=deferred<unknown>();let reads=0,settles=0;
+  const old=document([row('a',['one']),row('b',['two'])]);
+  const fresh=document([row('b',['two'])],{layout:{revision:3,rowOrder:['b','a'],hiddenRowIds:['a']}});
+  const service=new HomeService(api((path,method)=>{
+   if(path==='/v1/home/layout'&&method==='PUT')return fresh.layout;
+   if(path==='/v1/home')return ++reads===1?old:reads===2?stale.promise:fresh;
+   throw new Error(path);
+  }));
+  try{
+   await service.load();
+   const quiet=service.revalidate({settle:async()=>{settles++;}});
+   const controller=new AbortController();
+   await service.saveLayout(['b','a'],['a'],()=> 'layout-save',2,scoped?{signal:controller.signal,isCurrent:()=>true}:undefined);
+   const saved=service.getSnapshot().document;
+   assert.equal(saved?.layout.revision,3);
+   stale.resolve(old);await quiet;
+   assert.equal(service.getSnapshot().document,saved);
+   assert.equal(settles,0,'the obsolete quiet reader cannot enter its settle callback');
+   assert.deepEqual(saved?.rows.map(r=>r.id),['b']);
+  }finally{service.dispose();}
+ }
+});
+
+test('Home rejects an older layout document and never hydrates its hidden shelves',async()=>{
+ const fresh=document([row('b',['two'])],{layout:{revision:3,rowOrder:['b','a'],hiddenRowIds:['a']}});
+ const old=document([row('a',[],{deferred:true}),row('b',['two'])]);
+ let reads=0,shelfReads=0;
+ const service=new HomeService(api(path=>{
+  if(path==='/v1/home')return reads++?old:fresh;
+  shelfReads++;return row('a',['one']);
+ }));
+ try{
+  await service.load();const shown=service.getSnapshot().document!;
+  await service.revalidate();await new Promise<void>(resolve=>setImmediate(resolve));
+  assert.equal(service.getSnapshot().document,shown);
+  assert.equal(shelfReads,0);
+  const other=validateHomeDocument({...old,viewerFence:'new-viewer',rows:old.rows.map((r:any)=>({...r,viewerFence:'new-viewer'}))});
+  assert.equal(mergeHomeDocument(shown,other),other,'layout revisions from different viewers are unrelated');
+ }finally{service.dispose();}
+});
+
+test('a fenced See all quiet read cannot discard a page appended before it settles',async()=>{
+ for(const duringSettle of [false,true]){
+  const first=deferred<unknown>(),settle=deferred<void>();let reads=0,settles=0;
+  const pager=new HomeRowPager(api(path=>{
+   if(path.includes('cursor='))return row('because_you_watched',['c','d'],{start:2,nextCursor:'third'});
+   return reads++?first.promise:row('because_you_watched',['a','b'],{nextCursor:'second'});
+  }),'because_you_watched',2);
+  try{
+   await pager.load();
+   const quiet=pager.revalidate({settle:()=>{settles++;return settle.promise;}});
+   if(duringSettle){first.resolve(row('because_you_watched',['new','a'],{nextCursor:'fresh-second'}));await new Promise<void>(resolve=>setImmediate(resolve));}
+   await pager.more();const appended=pager.getSnapshot();
+   first.resolve(row('because_you_watched',['new','a'],{nextCursor:'fresh-second'}));settle.resolve();await quiet;
+   assert.equal(pager.getSnapshot(),appended);
+   assert.deepEqual(appended.entries.map(e=>e.id),['a','b','c','d']);
+   assert.equal(appended.nextCursor,'third');
+   assert.equal(settles,duringSettle?1:0);
+  }finally{pager.dispose();}
+ }
+});
+
 test('quiet reads settle in order: the later-started answer wins and owns deferred shelves', async () => {
   const reads: ReturnType<typeof deferred<unknown>>[] = [];
   let shelfCalls = 0;

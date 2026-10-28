@@ -427,6 +427,14 @@ export class PlaybackSessionController {
     this.publish({phase: 'idle', session: undefined, observation: undefined, error: undefined, ended: undefined, changing: false});
   }
 
+  /** Reload the current presentation after a renderer handoff. The host must retire
+   * the old renderer first; the same session keeps its reporter and increasing seq. */
+  reloadMedia(options: Readonly<{autoplay?: boolean; startPositionMs?: number}> = {}): void {
+    const session = this.state.session;
+    if (this.disposed || this.state.phase !== 'active' || !session) return;
+    this.loadMedia(session, options.autoplay ?? this.autoplay(session), options.startPositionMs ?? this.state.observation?.positionMs);
+  }
+
   private autoplay(session: Session): boolean {
     return this.wantsPlaying ? this.wantsPlaying() : session.state !== 'paused';
   }
@@ -440,6 +448,11 @@ export class PlaybackSessionController {
     this.publish({session, phase: 'active', ended: undefined});
     if (!fresh) return;
     this.reporter.setGeneration(session.presentation.generation);
+    this.loadMedia(session, autoplay, startPositionMs);
+  }
+
+  private loadMedia(session: Session, autoplay: boolean, startPositionMs?: number) {
+    if (this.disposed || this.state.session !== session || this.state.phase !== 'active') return;
     this.player.load({
       url: session.presentation.url, generation: session.presentation.generation, mode: session.presentation.mode,
       startPositionMs: startPositionMs !== undefined ? Math.max(0, Math.round(startPositionMs)) : session.presentation.startPositionMs, subtitles: session.presentation.subtitles, autoplay,

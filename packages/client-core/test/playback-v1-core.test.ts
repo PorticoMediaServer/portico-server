@@ -106,10 +106,10 @@ test('options: tolerant parse, plan summary, default selection, markers and prev
   // The capability document goes up only when it changes, and never when the server would refuse it.
   const publisher = new CapabilityPublisher(fakeHttp(server));
   const document = withMpvEngine(androidDeclaredProfile({television: true}));
-  assert.equal(await publisher.publish(document), true);
-  assert.equal(await publisher.publish(document), false);
-  assert.equal(await publisher.publish(withViewerSettings(document, {engine: 'mpv', overrides: {forceStereo: true}})), true);
-  assert.equal(await publisher.publish({...document, version: 1} as never), false, 'a document the server would refuse is not sent');
+  assert.equal(await publisher.publish(document), 'accepted');
+  assert.equal(await publisher.publish(document), 'current');
+  assert.equal(await publisher.publish(withViewerSettings(document, {engine: 'mpv', overrides: {forceStereo: true}})), 'accepted');
+  assert.equal(await publisher.publish({...document, version: 1} as never), 'failed', 'a document the server would refuse is not sent');
   assert.deepEqual((server.capabilities.get('device-1') as {overrides?: unknown} | undefined)?.overrides ?? (([...server.capabilities.values()][0]) as {overrides?: unknown}).overrides, {forceStereo: true, disablePassthrough: false, disableHdr: false});
   assert.equal(server.capabilities.size, 1);
 });
@@ -588,5 +588,19 @@ test('a retired controller change cannot adopt a 412 recovery presentation or re
  try{const session=(await ctl.start({itemId:'movie'}))!;server.bump(session.id,{audio:{trackId:'a2'}});
   const pending=ctl.change({subtitles:{trackId:'s1',delivery:'burn'}},{recoverEnded:false,isCurrent:()=>current});const rejected=assert.rejects(pending,{name:'AbortError'});await reached;current=false;release();await rejected;
   assert.equal(patches,1);assert.equal(player.loads.length,1);assert.equal(ctl.getSnapshot().session,session);
+ }finally{ctl.dispose();}
+});
+
+test('WEB-03: reloading media for the same session preserves timeline sequence and position',async()=>{
+ const c=clockwork(),server=new FakePlaybackServer({now:c.now}),player=new FakePlayer();
+ const ctl=new PlaybackSessionController({http:fakeHttp(server),player,timers:c,key});
+ try{
+  const session=(await ctl.start({itemId:'song'}))!;
+  player.positionMs=42000;player.emit('state');await settle();await c.advance(11000);
+  const before=server.session(session.id)!.reports.at(-1)!;assert.ok(Number(before.seq)>=2);
+  ctl.reloadMedia({autoplay:false});assert.equal(player.loads.length,2);assert.equal(player.loads[1].generation,session.presentation.generation);assert.equal(player.loads[1].startPositionMs,42000);assert.equal(player.loads[1].autoplay,false);
+  player.emit('state');await settle();const after=server.session(session.id)!.reports.at(-1)!;
+  assert.ok(Number(after.seq)>Number(before.seq));assert.equal(after.positionMs,42000);assert.equal(after.state,'paused');assert.equal(server.session(session.id)!.lastSeq,after.seq);
+  ctl.detach();ctl.reloadMedia();assert.equal(player.loads.length,2,'a detached session cannot be reloaded');
  }finally{ctl.dispose();}
 });

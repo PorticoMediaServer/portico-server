@@ -516,6 +516,15 @@ export class LibraryContentService {
       const result = projection(raw, route, bound, this.pageSize);
       await context?.settle?.();
       if (this.disposed || generation !== this.generation || controller.signal.aborted || this.snapshot.phase !== 'ready') return;
+      if (result.scope.viewerFence !== this.snapshot.projection?.scope.viewerFence) {
+        // An old tail and its cursors belong to the previous visibility policy.
+        this.history = []; this.current = { cursor: null };
+        this.operation = { route, page: this.current, history: [], fence: null };
+        this.publish({ projection: result, sections: result.sections, appended: result.sections, error: null,
+          head: Object.freeze({ serial: ++this.headSerial, sections: result.sections }),
+          pagination: Object.freeze({ cursor: null, canPrevious: false, next: Object.freeze(result.sections.filter(s => s.nextCursor).map(s => Object.freeze({ sectionId: s.id, cursor: s.nextCursor }))) }) });
+        return;
+      }
       // Nothing changed on the first page: nothing is published, so nothing re-renders.
       if (this.current.cursor === null && JSON.stringify(result) === JSON.stringify(this.snapshot.projection)) return;
       const head = Object.freeze({ serial: ++this.headSerial, sections: result.sections });

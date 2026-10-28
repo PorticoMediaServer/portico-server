@@ -32,6 +32,7 @@ export class HomeRowPager {
   private state: HomeRowPageSnapshot = Object.freeze({phase: 'loading', entries: Object.freeze([]), total: 0, nextCursor: '', paging: false, restarts: 0});
   private listeners = new Set<() => void>();
   private generation = 0;
+  private appendEpoch = 0;
   private controller?: AbortController;
   private disposed = false;
   private readonly api: HomeApi;
@@ -72,33 +73,38 @@ export class HomeRowPager {
    * a refused fenced cursor restarts the row instead of retaining part of an obsolete ranking.
    */
   async revalidate(context?: {signal?: AbortSignal; settle?: () => Promise<void>}): Promise<void> {
-    if (this.disposed || this.state.phase !== 'ready' || this.state.paging) return;
-    const mine = this.generation;
+    if (this.disposed || this.state.phase !== 'ready' || this.state.paging || context?.signal?.aborted) return;
+    const mine = this.generation, appendEpoch = this.appendEpoch;
+    const current = () => !this.disposed && mine === this.generation && appendEpoch === this.appendEpoch && !context?.signal?.aborted;
     const shown = this.state.entries.length;
     const row = await fetchHomeRow(this.api, this.rowId, {limit: this.limit}, context?.signal);
+    if (!current()) return;
     const fresh = [...row.entries];
     let cursor = row.nextCursor;
     while (cursor && fresh.length < shown) {
-      if(this.disposed||mine!==this.generation||context?.signal?.aborted)return;
+      if(!current())return;
       let page: HomeRow;
       try { page = await fetchHomeRow(this.api, this.rowId, {limit: this.limit, cursor}, context?.signal); } catch (e) {
         if (codeOf(e) === 'stale_continuation' || codeOf(e) === 'invalid_cursor') {
           if (hasFencedHomeMembership(this.rowId)) {
+            if (!current()) return;
             await context?.settle?.();
-            if (!this.disposed && mine === this.generation && !context?.signal?.aborted && this.state.phase === 'ready' && !this.state.paging) await this.load(true);
+            if (current() && this.state.phase === 'ready' && !this.state.paging) await this.load(true);
             return;
           }
           break;
         }
         throw e;
       }
+      if (!current()) return;
       const seen = new Set(fresh.map(e => e.id));
       fresh.push(...page.entries.filter(e => !seen.has(e.id)));
       if(page.nextCursor===cursor)throw Object.assign(new Error('The row cursor did not advance.'),{code:'nonprogressing_cursor'});
       cursor = page.nextCursor;
     }
+    if (!current()) return;
     await context?.settle?.();
-    if (this.disposed || mine !== this.generation || context?.signal?.aborted || this.state.phase !== 'ready' || this.state.paging) return;
+    if (!current() || this.state.phase !== 'ready' || this.state.paging) return;
     const entries = mergeRevalidatedList(this.state.entries, fresh, e => e.id, {complete: hasFencedHomeMembership(this.rowId) || !cursor, same: (a, b) => JSON.stringify(a) === JSON.stringify(b)});
     const keptTail = entries.length > fresh.length;
     this.publish({row, entries: entries === this.state.entries ? entries : Object.freeze([...entries]), total: row.total, nextCursor: keptTail ? this.state.nextCursor : cursor});
@@ -115,6 +121,7 @@ export class HomeRowPager {
       const seen = new Set(this.state.entries.map(e => e.id));
       const entries = [...this.state.entries, ...page.entries.filter(e => !seen.has(e.id))];
       if(page.nextCursor===cursor)throw Object.assign(new Error('The row cursor did not advance.'),{code:'nonprogressing_cursor'});
+      this.appendEpoch++;
       this.publish({entries: Object.freeze(entries), total: page.total, nextCursor: page.nextCursor, paging: false});
     } catch (e) {
       if (mine !== this.generation) return;

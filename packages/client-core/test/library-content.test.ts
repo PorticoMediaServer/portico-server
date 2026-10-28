@@ -512,6 +512,30 @@ test('a quiet read while on a later page keeps that page and publishes the fresh
   assert.equal(gone.getSnapshot().phase, 'error'); assert.equal(gone.getSnapshot().error!.code, 'not_found');
 });
 
+test('a changed viewer fence replaces every loaded library page and retires its cursor history',async()=>{
+ let fence='old-fence';const cursors:string[]=[];
+ const nav=service(async path=>{
+  const data=projection(path),cursor=new URL(path,'https://server.test').searchParams.get('cursor')??'';
+  cursors.push(cursor);data.scope.viewerFence=fence;
+  data.sections[0].entries=[entry(fence+'-'+(cursor?'tail':'head'))];
+  data.sections[0].nextCursor=cursor?'':fence+'-next';
+  return data;
+ });
+ try{
+  await nav.select(route);await nav.next('server-grid');
+  assert.equal(nav.getSnapshot().appended[0].entries.length,2);
+  fence='new-fence';await nav.revalidate();
+  const fresh=nav.getSnapshot();
+  for(const sections of [fresh.sections,fresh.appended,fresh.head!.sections])assert.deepEqual(sections[0].entries.map(e=>e.id),['new-fence-head']);
+  assert.equal(fresh.projection!.scope.viewerFence,'new-fence');
+  assert.deepEqual(fresh.pagination,{cursor:null,canPrevious:false,next:[{sectionId:'server-grid',cursor:'new-fence-next'}]});
+  const before=cursors.length;await nav.previous();assert.equal(cursors.length,before,'old cursor history is gone');
+  await nav.retry();assert.equal(cursors.at(-1),'','Retry now belongs to the fresh first page');
+  await nav.next('server-grid');assert.equal(cursors.at(-1),'new-fence-next');
+  assert.deepEqual(nav.getSnapshot().appended[0].entries.map(e=>e.id),['new-fence-head','new-fence-tail']);
+ }finally{nav.dispose();}
+});
+
 test('everything read so far is one list per section: later pages append, More works on any section, and a quiet read merges in place', async () => {
   const shelf = (id: string, ids: string[], nextCursor = '') => ({ id, type: 'rail', heading: { key: id, fallback: id }, entries: ids.map(entry), totalCount: 9, nextCursor });
   let first = [shelf('a', ['a1', 'a2'], 'a-next'), shelf('b', ['b1', 'b2'], 'b-next')];

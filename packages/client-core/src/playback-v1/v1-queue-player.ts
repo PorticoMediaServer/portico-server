@@ -204,6 +204,8 @@ export class V1QueuePlayer implements QueueController {
   private readonly queueListeners = new Set<() => void>();
   private completionPolicy: CompletionPolicy = () => 'advance';
   private endedId?: string;
+  private completionRetry?: ReturnType<typeof setTimeout>;
+  private completionFailures = 0;
   private generation = 0;
   private preparingStart?: {generation: number; intent: number; notice?: StartPreparation};
   private changeSequence = 0;
@@ -1305,14 +1307,34 @@ export class V1QueuePlayer implements QueueController {
     if (this.maybePrepareAudio()) return;
     const p = this.playback.getSnapshot();
     const session = this.session;
-    if (this.disposed || !session || p.channel || p.phase !== 'ended' || p.session?.id !== session.id || this.endedId === session.id) return;
+    if (this.disposed || !session || p.channel || p.phase !== 'ended' || p.session?.id !== session.id) {this.clearCompletionRetry();return;}
+    if (this.endedId === session.id) return;
     this.endedId = session.id;
-    const intent = p.intentId;
+    const intent = p.intentId, epoch = this.epoch;
+    const current = () => {const held=this.playback.getSnapshot();return !this.disposed&&epoch===this.epoch&&this.session?.id===session.id&&held.intentId===intent&&held.phase==='ended'&&held.session?.id===session.id;};
     void (async () => {
       try {
-        await this.playback.confirmQueueEnd(intent);
-        if (this.disposed || this.playback.getSnapshot().intentId !== intent) return;
+        try {await this.playback.confirmQueueEnd(intent);}
+        catch(error) {
+          const problem=error as {status?:number;retry?:string;retryable?:boolean;retryAfterMs?:number;retryAfterSeconds?:number}|null;
+          const retryable=problem?.retryable??(problem?.retry!==undefined?problem.retry==='same_request':!problem?.status||problem.status===429||problem.status>=500);
+          if(current()&&retryable&&this.completionFailures<2){
+            const directed=problem?.retryAfterMs??(problem?.retryAfterSeconds??0)*1000;
+            const delay=Math.max(1000*2**this.completionFailures++,Number.isFinite(directed)&&directed>0?directed:0);
+            const wait=(remaining:number)=>{this.completionRetry=setTimeout(()=>{
+              this.completionRetry=undefined;
+              if(!current())return;
+              if(remaining>2147483647)wait(remaining-2147483647);else {this.endedId=undefined;this.observed();}
+            },Math.min(remaining,2147483647));};
+            wait(delay);
+          }
+          else if(current())this.publishQueue({phase:'ready',error:message(error,serviceText('queuePlayer.changeFailed'))});
+          return;
+        }
+        if (!current()) return;
+        this.clearCompletionRetry();
         await this.refresh();
+        if (!current()) return;
         const view = this.state.view;
         const item = view?.items.find(x => x.entryId === view.queue.currentEntryId);
         const kind = item?.kind ?? '';
@@ -1332,6 +1354,8 @@ export class V1QueuePlayer implements QueueController {
       } catch { /* the engine stays ended; the viewer can choose again */ }
     })();
   }
+
+  private clearCompletionRetry(){if(this.completionRetry)clearTimeout(this.completionRetry);this.completionRetry=undefined;this.completionFailures=0;}
 
   setCompletionPolicy(policy: CompletionPolicy) { this.completionPolicy = policy; }
 
@@ -1418,9 +1442,9 @@ export class V1QueuePlayer implements QueueController {
     if (original) this.playback.reportStartPreparation(original.intent, undefined);
   }
 
-  async cancel(_invalidateSelection = true): Promise<void> { ++this.generation; ++this.epoch; this.prepared = undefined; this.audioReadyToken = undefined; this.clearStartPreparation(); this.publish({phase: 'ready'}); }
+  async cancel(_invalidateSelection = true): Promise<void> { ++this.generation; ++this.epoch; this.clearCompletionRetry(); this.prepared = undefined; this.audioReadyToken = undefined; this.clearStartPreparation(); this.publish({phase: 'ready'}); }
 
-  leave() { ++this.generation; ++this.epoch; this.prepared = undefined; this.audioReadyToken = undefined; this.clearStartPreparation(); this.publish({completion: null}); }
+  leave() { ++this.generation; ++this.epoch; this.clearCompletionRetry(); this.prepared = undefined; this.audioReadyToken = undefined; this.clearStartPreparation(); this.publish({completion: null}); }
 
   dispose() {
     if (this.disposed) return;

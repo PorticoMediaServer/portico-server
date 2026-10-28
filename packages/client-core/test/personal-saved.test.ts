@@ -131,6 +131,39 @@ test('a collection paged past its first page is read again through every page on
  s.dispose();
 });
 
+test('cancelling a deep Saved quiet reread aborts its pending page and never reads the next one',async()=>{
+ for(const retire of ['caller','dispose'] as const){
+  const late=deferred();let quiet=false,reads=0,settles=0,signal:AbortSignal|undefined;
+  const page=(at:number)=>({...content(resource(),Array.from({length:40},(_,i)=>({id:'member-'+(at+i),hidden:true}))),nextCursor:String(at+40)});
+  const s=setup(async(path,_method,_body,current)=>{
+   const at=Number(new URL(path,'https://server.test').searchParams.get('cursor')??0);
+   if(quiet){reads++;signal=current;return late.promise;}
+   return page(at);
+  });
+  await s.select({view:'resource',resourceId:'collection'});await s.next();await s.next();
+  const shown=s.getSnapshot(),controller=new AbortController();quiet=true;
+  const refresh=s.revalidate({signal:controller.signal,settle:async()=>{settles++;}});
+  if(retire==='caller')controller.abort();else s.dispose();
+  await refresh;
+  assert.equal(signal?.aborted,true);
+  assert.equal(reads,1);
+  assert.equal(settles,0);
+  assert.equal(s.getSnapshot(),shown);
+  late.resolve(page(0));await tick();
+  assert.equal(reads,1,'an ignored abort by transport cannot resume page traversal');
+  s.dispose();
+ }
+});
+
+test('an already-cancelled Saved quiet read dispatches no request',async()=>{
+ let reads=0;
+ const s=setup(async()=>{reads++;return directory([resource()]);});
+ await s.select({view:'collections'});
+ const controller=new AbortController();controller.abort();
+ await s.revalidate({signal:controller.signal});
+ assert.equal(reads,1);s.dispose();
+});
+
 test('capturing and reopening a saved view preserves relative dates verbatim', async () => {
  const definition={libraryId:'library',pivot:'movies',query:{field:'dateAdded',operator:'within-last-days',value:30},sort:[{field:'added',direction:'desc'}],presentation:'grid'} as const;
  let stored:any;const writes:any[]=[];

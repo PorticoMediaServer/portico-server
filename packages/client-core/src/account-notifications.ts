@@ -125,13 +125,13 @@ export class AccountNotificationsClient {
 
 /** A cancellation a caller can tell apart from a failed or unfinished export. */
 function throwIfExportAborted(signal?: AbortSignal): void {
-  if (signal?.aborted) throw new DOMException('Account export stopped', 'AbortError');
+  if (signal?.aborted) throw Object.assign(new Error('Account export stopped'), {name: 'AbortError'});
 }
 
 /** The default wait between polls, stopped with its timer and listener when the run is aborted. */
 function exportSleep(signal?: AbortSignal): (ms: number) => Promise<void> {
   return ms => new Promise<void>((resolve, reject) => {
-    const stop = () => new DOMException('Account export stopped', 'AbortError');
+    const stop = () => Object.assign(new Error('Account export stopped'), {name: 'AbortError'});
     if (signal?.aborted) { reject(stop()); return; }
     let timer: ReturnType<typeof setTimeout> | undefined;
     const onAbort = () => { if (timer !== undefined) clearTimeout(timer); signal?.removeEventListener('abort', onAbort); reject(stop()); };

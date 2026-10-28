@@ -48,5 +48,5 @@ export async function readEventStream(response:Response,onEvent:(event:ServerEve
    }
    if(kept()+buffer.length>MAX_FRAME)throw oversized();
   }
- }finally{signal?.removeEventListener('abort',abort);try{reader.releaseLock();}catch{}}
+ }finally{signal?.removeEventListener('abort',abort);void reader.cancel().catch(()=>{});try{reader.releaseLock();}catch{}}
 }

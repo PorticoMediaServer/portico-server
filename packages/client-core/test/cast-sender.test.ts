@@ -164,11 +164,11 @@ const context:CastControllerContext={...scope,origin:'https://server.test',publi
 const controllerStamp={bindingId:'cct_test',controllerGeneration:2,connectionGeneration:3};
 const occurrence={sessionId:'playback-original',generation:7,itemId:'movie'};
 const binding={id:'cct_test',bootstrapId:'cbs_test',receiverId:'tv-a',targetId:'cdv_target',targetFamilyId:'target-family',targetGeneration:'1',scope};
-function returning(options:{context?:CastControllerContext;legacy?:boolean;validate?:()=>Promise<void>;describe?:()=>Promise<string|undefined>}={}){
+function returning(options:{context?:CastControllerContext;legacy?:boolean;validate?:()=>Promise<void>;describe?:()=>Promise<string|undefined>;setTimer?:(fn:()=>void,ms:number)=>unknown;clearTimer?:(timer:unknown)=>void}={}){
  const saved=new Map([[castProofKey(context,'tv-a'),options.legacy?'a'.repeat(48):JSON.stringify({version:2,context,binding,controlToken:'a'.repeat(48)})]]);
  let current=true,first=true;const requests:string[]=[];
  const controller=new CastController({origin:context.origin,displayName:'Phone',controllerContext:options.context??context,isCurrent:()=>current,
- controllerStorage:{get:k=>saved.get(k),set:(k,v)=>{saved.set(k,v);}},describe:options.describe??(async()=> 'Film'),
+ controllerStorage:{get:k=>saved.get(k),set:(k,v)=>{saved.set(k,v);}},describe:options.describe??(async()=> 'Film'),setTimer:options.setTimer,clearTimer:options.clearTimer,
  api:{request:async<T,>(path:string,_method?:string,body?:unknown)=>{requests.push(path);if(first){first=false;await options.validate?.();}return {binding,attemptId:(body as {attemptId:string}).attemptId,ticket:'b'.repeat(43)} as T;}}});
  return {controller,requests,retire:()=>{current=false;controller.dispose();}};
 }
@@ -501,4 +501,45 @@ test('adoption refusal cannot release a successor started by its captured timer 
  armed=true;old.reply({type:'pair-required'});assert.equal(await adopted,false);await settle();assert.ok(next);
  assert.equal(nextTV.listeners,1);assert.equal(controller.getSnapshot().phase,'pairing');assert.equal(nextTV.ended,undefined);
  nextTV.reply({type:'paired',binding,controlToken:'a'.repeat(48),controller:controllerStamp});assert.equal(await next,true);assert.equal(controller.getSnapshot().itemId,'next');controller.dispose();
+});
+
+test('CAST-03: same-occurrence statuses share a slow description and publish the newest clock',async()=>{
+ let calls=0,resolve!:(title:string)=>void;
+ const h=returning({describe:()=>++calls===1?Promise.resolve('Film'):new Promise<string>(done=>{resolve=done;})}),tv=receiver('TV','tv-a');
+ try{
+  const adopting=h.controller.adopt(tv.transport);await settle();const command=tv.sent[0];assert.equal(command.type,'adopt');if(command.type!=='adopt')return;
+  const status={type:'status',controller:controllerStamp,occurrence,itemId:'movie',positionSeconds:80,durationSeconds:600,paused:false};
+  tv.reply({...status,attemptId:command.attemptId});assert.equal(await adopting,true);
+  tv.reply({...status,positionSeconds:90});await settle();
+  tv.reply({...status,positionSeconds:92});tv.reply({...status,positionSeconds:94});await settle();
+  assert.equal(calls,2,'regular status packets do not supersede the in-flight description');
+  resolve('Film');await settle();assert.equal(h.controller.getSnapshot().title,'Film');assert.equal(h.controller.getSnapshot().positionSeconds,94);
+ }finally{h.controller.dispose();}
+});
+
+test('CAST-03: transient descriptions keep authorized controls and retry; denial still redacts',async()=>{
+ const timers=new Map<number,{fn:()=>void;ms:number}>();let next=0,calls=0,failure=0;
+ const h=returning({describe:async()=>{calls++;if(failure)throw Object.assign(new Error('lookup failed'),{status:failure});return 'Film';},setTimer:(fn,ms)=>{timers.set(++next,{fn,ms});return next;},clearTimer:t=>{timers.delete(t as number);}}),tv=receiver('TV','tv-a');
+ try{
+  const adopting=h.controller.adopt(tv.transport);await settle();const command=tv.sent[0];assert.equal(command.type,'adopt');if(command.type!=='adopt')return;
+  const status={type:'status',controller:controllerStamp,occurrence,itemId:'movie',positionSeconds:80,durationSeconds:600,paused:false};
+  tv.reply({...status,attemptId:command.attemptId});assert.equal(await adopting,true);
+  failure=503;tv.reply({...status,positionSeconds:90});await settle();
+  assert.equal(h.controller.getSnapshot().phase,'casting');assert.equal(h.controller.getSnapshot().title,'Film');assert.equal(h.controller.getSnapshot().positionSeconds,90);assert.equal(tv.listeners,1);
+  h.controller.pause();assert.equal(tv.sent.at(-1)?.type,'pause');
+  tv.reply({...status,positionSeconds:92});await settle();assert.equal(calls,2,'status packets respect the backoff');
+  const retry=[...timers].find(([,t])=>t.ms===1000);assert.ok(retry);timers.delete(retry[0]);failure=0;retry[1].fn();await settle();
+  assert.equal(calls,3);assert.equal(h.controller.getSnapshot().positionSeconds,92);
+  failure=403;tv.reply({...status,positionSeconds:94});await settle();assert.equal(h.controller.getSnapshot().phase,'off');assert.equal(h.controller.getSnapshot().title,undefined);assert.equal(h.controller.getSnapshot().remoteIdentity,undefined);assert.equal(tv.listeners,0);assert.equal(tv.ended,undefined);
+ }finally{h.controller.dispose();}
+});
+
+test('V01: selected audio identity travels with load and malformed identities are omitted',async()=>{
+ assert.deepEqual(castChoiceFields({audioTrackId:'a2'}),{audioTrackId:'a2'});
+ assert.deepEqual(castChoiceFields({audioTrackId:'a b'}),{});
+ const h=harness(),r=receiver();
+ try{
+  const started=h.controller.start(r.transport,'item-1',{title:'Pilot'},0,{audioTrackId:'a2',subtitleTrackId:null});await settle();r.reply({type:'paired'});assert.equal(await started,true);
+  const load=r.sent.find(m=>m.type==='load');assert.ok(load);assert.equal(load.audioTrackId,'a2');assert.equal(load.subtitleTrackId,'off');
+ }finally{h.controller.dispose();}
 });

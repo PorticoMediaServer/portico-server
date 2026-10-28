@@ -161,6 +161,7 @@ export function createWindowedCollection<T>(options: WindowedCollectionOptions<T
 
   const inFlight = (g: Generation<T>) => { let n = 0; for (const p of g.pages.values()) if (p.status === 'loading') n++; return n; };
   const pageCount = (g: Generation<T>) => (g.total === undefined ? undefined : Math.ceil(g.total / pageSize));
+  const exactEmpty = (g: Generation<T>) => g.total === 0 && !g.totalIsLowerBound;
 
   function notifyPage(page: number) { const set = pageListeners.get(page); if (set) for (const l of [...set]) l(); }
   function notifyAllPages() { for (const [, set] of pageListeners) for (const l of [...set]) l(); }
@@ -182,7 +183,7 @@ export function createWindowedCollection<T>(options: WindowedCollectionOptions<T
 
   /** Pages wanted for the current visible range, visible first (centre-out), then prefetch in travel order. */
   function interest(g: Generation<T>): {visible: number[]; wanted: number[]} {
-    if (visibleFirst < 0) return {visible: [], wanted: []};
+    if (visibleFirst < 0 || exactEmpty(g)) return {visible: [], wanted: []};
     const count = pageCount(g);
     const clamp = (p: number) => (count === undefined ? p : Math.min(p, Math.max(0, count - 1)));
     const firstPage = clamp(pageOfIndex(visibleFirst)), lastPage = clamp(pageOfIndex(visibleLast));
@@ -259,7 +260,7 @@ export function createWindowedCollection<T>(options: WindowedCollectionOptions<T
   function quietSettled(g: Generation<T>) {
     const quiet = g.quiet!;
     const {visible} = interest(g);
-    const pages = visible.length ? visible : [g.gate];
+    const pages = exactEmpty(g) ? [] : visible.length ? visible : [g.gate];
     const failed = pages.find(p => g.pages.get(p)?.status === 'error');
     if (failed !== undefined) {
       const error = (g.pages.get(failed) as {error: unknown}).error;

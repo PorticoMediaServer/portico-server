@@ -69,3 +69,55 @@ test('a v1 direct presentation reaches the adapter with its URL and the resume s
   assert.equal(s.getSnapshot().positionSeconds, 33);
   s.leave();
 });
+
+function changingPage() {
+  let hidden = false;
+  const listeners = new Set<() => void>();
+  const visibility: PageVisibility & {hide(): void; show(): void; observers(): number} = {
+    hidden: () => hidden,
+    onVisible: listener => {const change=()=>{if(!hidden)listener();};listeners.add(change);return()=>{listeners.delete(change);};},
+    onChange: listener => {listeners.add(listener);return()=>{listeners.delete(listener);};},
+    hide: () => {hidden=true;for(const listener of [...listeners])listener();},
+    show: () => {hidden=false;for(const listener of [...listeners])listener();},
+    observers: () => listeners.size,
+  };
+  return visibility;
+}
+
+test('backgrounding pauses the remaining startup deadline before suspended timers can fire', async t => {
+  t.mock.timers.enable({apis: ['setTimeout', 'Date']});
+  const visibility=changingPage();
+  const s=new PlaybackService(api,()=> 'k',{startupTimeoutMs:20000,seekTimeoutMs:60000,pageVisibility:visibility});
+  try {
+    await s.play('movie',0);t.mock.timers.tick(5000);visibility.hide();
+    t.mock.timers.tick(120000);assert.equal(s.getSnapshot().phase,'starting');
+    visibility.show();t.mock.timers.tick(14999);assert.equal(s.getSnapshot().phase,'starting');
+    t.mock.timers.tick(1);assert.equal(s.getSnapshot().phase,'error');
+  } finally {s.leave();}
+  assert.equal(visibility.observers(),0);
+});
+
+test('a pending seek keeps its target and remaining deadline across a long background interval', async t => {
+  t.mock.timers.enable({apis: ['setTimeout', 'Date']});
+  const visibility=changingPage();
+  const s=new PlaybackService(api,()=> 'k',{pageVisibility:visibility,seekTimeoutMs:15000});
+  try {
+    await s.play('movie',0);let snapshot=s.getSnapshot();s.ready(snapshot.intentId);
+    assert.equal(s.seekApplied(snapshot.intentId,snapshot.pendingSeek!.revision,0,'playing'),true);
+    s.seek(90);t.mock.timers.tick(4000);visibility.hide();t.mock.timers.tick(120000);
+    assert.equal(s.getSnapshot().pendingSeek?.positionSeconds,90);assert.equal(s.getSnapshot().seekError,undefined);
+    visibility.show();t.mock.timers.tick(10999);assert.equal(s.getSnapshot().pendingSeek?.positionSeconds,90);
+    t.mock.timers.tick(1);snapshot=s.getSnapshot();assert.equal(snapshot.pendingSeek,undefined);assert.equal(snapshot.failedSeek?.positionSeconds,90);
+    assert.equal(snapshot.intent,'paused');assert.equal(snapshot.phase,'ready');
+  } finally {s.leave();}
+  assert.equal(visibility.observers(),0);
+});
+
+test('retiring hidden playback removes both deadline listeners and foreground cannot revive it', async t => {
+  t.mock.timers.enable({apis: ['setTimeout', 'Date']});
+  const visibility=changingPage();
+  const s=new PlaybackService(api,()=> 'k',{pageVisibility:visibility});
+  await s.play('movie',0);visibility.hide();assert.equal(visibility.observers(),2);
+  s.leave();assert.equal(visibility.observers(),0);visibility.show();t.mock.timers.tick(60000);
+  assert.equal(s.getSnapshot().phase,'idle');assert.equal(s.getSnapshot().pendingSeek,undefined);
+});

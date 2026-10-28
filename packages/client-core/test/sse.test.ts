@@ -22,6 +22,13 @@ test('an oversized frame is refused rather than buffered without bound',async()=
  await assert.rejects(readEventStream(stream(['data: '+'x'.repeat(300000)]),()=>{}),/oversized/);
 });
 
+test('a parse failure cancels the underlying open response before releasing its reader',async()=>{
+ let cancelled=0;
+ const response=new Response(new ReadableStream({start(c){c.enqueue(new TextEncoder().encode('data: '+'x'.repeat(300000)));},cancel(){cancelled++;}}));
+ await assert.rejects(readEventStream(response,()=>{}),/oversized/);
+ assert.equal(cancelled,1);assert.equal(response.body!.locked,false);
+});
+
 test('a frame of many small data lines that never ends is refused once it passes the cap',async()=>{
  // Each chunk is far below the cap and ends its line, so nothing waits unparsed between reads.
  const line='data: '+'x'.repeat(1000)+'\n';let sent=0,events=0;

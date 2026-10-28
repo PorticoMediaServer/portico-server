@@ -221,6 +221,17 @@ async function withinDeadline<T>(ms: number, signal: AbortSignal | undefined, wo
     signal?.removeEventListener('abort', cancel);
   }
 }
+/** Detach only this request from shared credential work; rotation keeps its own lifetime. */
+function waitForAuth<T>(work: Promise<T>, signal: AbortSignal | undefined): Promise<T> {
+  if (!signal) return work;
+  return new Promise<T>((resolve, reject) => {
+    const detach = () => signal.removeEventListener('abort', abort);
+    const abort = () => { detach(); try { throwIfAborted(signal); } catch (error) { reject(error); } };
+    signal.addEventListener('abort', abort, {once: true});
+    void work.then(value => { detach(); resolve(value); }, error => { detach(); reject(error); });
+    if (signal.aborted) abort();
+  });
+}
 export class ApiError extends Error {
   code: string;
   retryable: boolean;
@@ -313,16 +324,26 @@ export class HttpLocalApi {
   private routes?: RouteConnection;
   private routeListeners = new Set<() => void>();
   private routeUnsubscribe?: () => void;
-  readonly subscribeRoute = (listener: () => void) => { this.routeListeners.add(listener); return () => { this.routeListeners.delete(listener); }; };
+  readonly subscribeRoute = (listener: () => void) => {
+    this.routeListeners.add(listener); this.observeRoutes();
+    return () => {
+      this.routeListeners.delete(listener);
+      if (!this.routeListeners.size) { this.routeUnsubscribe?.(); this.routeUnsubscribe = undefined; }
+    };
+  };
+  private observeRoutes() {
+    if (this.routes && this.routeListeners.size && !this.routeUnsubscribe)
+      this.routeUnsubscribe = this.routes.subscribe(() => { for (const listener of this.routeListeners) listener(); });
+  }
   readonly getRouteSnapshot = () => this.routes?.getSnapshot() ?? null;
   readonly routeFetch: typeof fetch = (input,init) => this.fetcher(input,init);
   getRouteConnection() { return this.routes; }
   useRoutes(routes: RouteConnection) {
     if (routes.logicalOrigin !== this.baseUrl) throw new Error('This route belongs to another logical server origin.');
     if (this.routes === routes) return;
-    this.routeUnsubscribe?.(); this.routes = routes;
+    this.routeUnsubscribe?.(); this.routeUnsubscribe = undefined; this.routes = routes;
     this.fetcher = routes.fetch;
-    this.routeUnsubscribe = routes.subscribe(() => { for (const listener of this.routeListeners) listener(); });
+    this.observeRoutes();
     if (this.token) bindSessionRoute(this.token,routes);
   }
   recoverRoute() { return this.routes?.recover() ?? Promise.reject(new Error('No remembered server routes are available.')); }
@@ -479,15 +500,19 @@ export class HttpLocalApi {
     // Sign-in and refresh never refresh or retry themselves.
     const exchange = provesIdentity(path, method);
     let token = this.token;
-    if (this.auth && token && !exchange) { try { token = await this.auth.token(token); } catch { /* send what we have; a 401 recovers below */ } }
+    throwIfAborted(signal);
+    if (this.auth && token && !exchange) { try { token = await waitForAuth(this.auth.token(token), signal); } catch { throwIfAborted(signal); /* send what we have; a 401 recovers below */ } }
+    throwIfAborted(signal);
     let response = await this.send(path, method, body, signal, token, extra);
     if (response.status === 401 && this.auth && token && !exchange && !signal?.aborted) {
       let next: string | undefined;
-      try { next = await this.auth.recover(token); } catch { next = undefined; }
+      try { next = await waitForAuth(this.auth.recover(token), signal); } catch { throwIfAborted(signal); next = undefined; }
+      throwIfAborted(signal);
       if (next && next !== token) { void response.body?.cancel().catch(() => {}); response = await this.send(path, method, body, signal, next, extra); }
     }
     if(response.status===403&&this.auth?.permissionDenied&&!exchange&&!path.startsWith(routePath("get_me"))&&!signal?.aborted){
-      let changed=false;try{changed=await this.auth.permissionDenied();}catch{}
+      let changed=false;try{changed=await waitForAuth(this.auth.permissionDenied(),signal);}catch{throwIfAborted(signal);}
+      throwIfAborted(signal);
       if(changed){void response.body?.cancel().catch(()=>{});response=await this.send(path,method,body,signal,this.token,extra);}
     }
     return response;
@@ -551,13 +576,14 @@ export class HttpLocalApi {
       try {
         data = await response.json();
       } catch {}
+      throwIfAborted(signal);
       const error = new ApiError(
         response.status,
         data?.error?.code ?? data?.code ?? "request_failed",
         data?.error?.message ?? `Request failed (${response.status}).`,
         // Two envelopes: the older `retryable` boolean, and the registry's `retry` class, where
         // only "send the same request again" is a retry of this request.
-        data?.error?.retryable ?? (data?.error?.retry === "same_request" || response.status >= 500),
+        data?.error?.retryable !== undefined ? data.error.retryable === true : (data?.error?.retry !== undefined ? data.error.retry === "same_request" : response.status >= 500),
         retryAfterSecondsFrom(response.headers.get("Retry-After")),
         data?.error?.serverTime
       );
@@ -720,16 +746,15 @@ export type PlaybackOptions = {
   /** Development builds: log why a start timed out (see setStartupProbe). */
   diagnostics?: boolean;
   /**
-   * Web: whether the page is hidden. Browsers defer loading media in a hidden page, so a start
-   * there can't become ready; the startup window then waits for the page to be shown and starts
-   * again, instead of failing the play (O4, 24 Sep).
+   * Whether the page/app is hidden. Startup and seek deadlines pause while media loading
+   * is suspended; platforms with onChange preserve the remaining foreground window.
    */
   pageVisibility?: PageVisibility;
-  /** The wall clock (tests). A channel's tuner deadline is compared with it. */
+  /** The wall clock (tests), for tuner deadlines and foreground media windows. */
   now?: () => number;
 };
-/** A hidden page and a way to hear when it is shown again (web `document.visibilityState`). */
-export type PageVisibility = {hidden(): boolean; onVisible(listener: () => void): () => void};
+/** Page/app visibility. onChange reports both hide and show before suspended timers resume. */
+export type PageVisibility = {hidden(): boolean; onVisible(listener: () => void): () => void; onChange?(listener: () => void): () => void};
 /** One selectable audio track of the playing source. */
 export type AudioTrackOffer = Readonly<{streamIndex:number;label:string;language?:string;channels?:number;codec:string}>;
 export type AudioTracksSnapshot = Readonly<{tracks:readonly AudioTrackOffer[];selected:number|null;pending?:number}>;
@@ -844,7 +869,7 @@ export class PlaybackService {
   private seekRearm?: () => void;
   private startupRearm?: () => void;
   private escalations = 0;
-  private seekTimer?: ReturnType<typeof setTimeout>;
+  private seekWait?: () => void;
   private hasObserved = false;
   private bookmarkProtected = true;
   private lastProgress = 0;
@@ -857,7 +882,6 @@ export class PlaybackService {
   private localSessions = new Map<string, PlaybackApi['localPlayback']>();
   private progressRunning = new Set<string>();
   private requestId: () => string;
-  private startupTimer?: ReturnType<typeof setTimeout>;
   private startupWait?: () => void;
   private journalTail = Promise.resolve();
   private restored?: Promise<void>;
@@ -1220,34 +1244,46 @@ export class PlaybackService {
     this.checkpoint(this.snapshot.intent);void this.persist();return true;
   }
   private clearStartup() {
-    if (this.startupTimer) clearTimeout(this.startupTimer);
-    this.startupTimer = undefined;
     this.startupRearm = undefined;
     this.startupWait?.();
     this.startupWait = undefined;
   }
-  /**
-   * The startup window: `expire` runs when a start hasn't become ready in time. While the page
-   * is hidden (web), the window doesn't expire; it waits for the page to be shown and starts a
-   * full window again, since a browser loads no media in a hidden page.
-   */
-  private armStartup(expire: () => void) {
-    const ms = this.options.startupTimeoutMs ?? 20000;
-    const arm = () => {
-      this.startupTimer = setTimeout(() => {
-        this.startupTimer = undefined;
-        const visibility = this.options.pageVisibility;
-        if (visibility?.hidden()) {
-          this.startupWait?.();
-          this.startupWait = visibility.onVisible(() => { this.startupWait?.(); this.startupWait = undefined; arm(); });
-          return;
-        }
-        expire();
-      }, ms);
-      (this.startupTimer as any)?.unref?.();
+  /** Both media deadlines count foreground time, with the same progress-based rearm. */
+  private visibleDeadline(ms: number, expire: () => void) {
+    const visibility = this.options.pageVisibility, now = this.options.now ?? Date.now;
+    let timer: ReturnType<typeof setTimeout> | undefined, off: (() => void) | undefined;
+    let remaining = ms, started = 0, closed = false;
+    const pause = () => {
+      if (timer === undefined) return;
+      clearTimeout(timer); timer = undefined;
+      remaining = Math.max(0, remaining - Math.max(0, now() - started));
     };
+    const clear = () => { closed = true; pause(); off?.(); off = undefined; };
+    const arm = () => {
+      if (closed || timer !== undefined || visibility?.hidden()) return;
+      started = now();
+      timer = setTimeout(() => {
+        timer = undefined;
+        // Older adapters expose only onVisible. A timer firing while hidden waits for
+        // a fresh visible window; adapters with onChange paused it at backgrounding.
+        if (visibility?.hidden()) { remaining = ms; return; }
+        clear(); expire();
+      }, remaining);
+      (timer as any)?.unref?.();
+    };
+    const rearm = () => { if (!closed) { pause(); remaining = ms; arm(); } };
+    off = visibility?.onChange
+      ? visibility.onChange(() => { if (visibility.hidden()) pause(); else arm(); })
+      : visibility?.onVisible(rearm);
     arm();
-    this.startupRearm = () => { if (this.startupTimer) { clearTimeout(this.startupTimer); arm(); } };
+    return {clear, rearm};
+  }
+  /** The start and its foreground deadline retire together on readiness or replacement. */
+  private armStartup(expire: () => void) {
+    this.clearStartup();
+    const deadline = this.visibleDeadline(this.options.startupTimeoutMs ?? 20000, expire);
+    this.startupWait = deadline.clear;
+    this.startupRearm = deadline.rearm;
   }
   /** Channel selection uses this same service/adapter owner, but never a VOD
    * create, persisted catalog placeholder, resume checkpoint or chapter query. */
@@ -1294,8 +1330,8 @@ export class PlaybackService {
         this.clearSeek();this.channelSeekId=seek.seekCommandId;this.channelSubmittedSeek=undefined;
         const revision=this.snapshot.seekRevision+1,intent=this.snapshot.intentId;
         patch.seekRevision=revision;patch.pendingSeek=Object.freeze({revision,positionSeconds:target});patch.failedSeek=undefined;patch.seekError=undefined;
-        this.seekTimer=setTimeout(()=>this.seekFailed(intent,revision,'That position is no longer available. Choose Go Live or another position.'),this.options.seekTimeoutMs??15000);
-        (this.seekTimer as any)?.unref?.();
+        const deadline=this.visibleDeadline(this.options.seekTimeoutMs??15000,()=>this.seekFailed(intent,revision,'That position is no longer available. Choose Go Live or another position.'));
+        this.seekWait=deadline.clear;
       }
       if(linear.acknowledgedSeekCommandId===seek.seekCommandId&&this.channelSubmittedSeek===seek.seekCommandId&&this.channelObservedSeek!==seek.seekCommandId&&!linear.seekError){
         this.channelObservedSeek=seek.seekCommandId;this.clearSeek();patch.pendingSeek=undefined;patch.seekError=undefined;patch.failedSeek=undefined;
@@ -1719,8 +1755,8 @@ export class PlaybackService {
     }
   }
   private clearSeek() {
-    if (this.seekTimer) clearTimeout(this.seekTimer);
-    this.seekTimer = undefined;
+    this.seekWait?.();
+    this.seekWait = undefined;
     this.seekRearm = undefined;
   }
   private requestSeek(positionSeconds: number, patch: Partial<PlaybackSnapshot> = {}) {
@@ -1729,12 +1765,9 @@ export class PlaybackService {
     const target = Math.max(0, Math.min(positionSeconds, duration || positionSeconds));
     this.failedRecovery = { positionSeconds: target, intent: patch.intent ?? this.snapshot.intent };
     const revision = this.snapshot.seekRevision + 1, intentId = this.snapshot.intentId;
-    const arm = () => {
-      this.seekTimer = setTimeout(() => this.seekFailed(intentId, revision, "That position is not available to seek yet. Try again."), this.options.seekTimeoutMs ?? 15000);
-      (this.seekTimer as any)?.unref?.();
-    };
-    arm();
-    this.seekRearm = () => { if (this.seekTimer) { clearTimeout(this.seekTimer); arm(); } };
+    const deadline = this.visibleDeadline(this.options.seekTimeoutMs ?? 15000, () => this.seekFailed(intentId, revision, "That position is not available to seek yet. Try again."));
+    this.seekWait = deadline.clear;
+    this.seekRearm = deadline.rearm;
     this.update({...patch, seekRevision: revision, pendingSeek: Object.freeze({revision, positionSeconds: target}), seekError: undefined, failedSeek: undefined});
   }
   seek(positionSeconds: number) {
@@ -1779,14 +1812,14 @@ export class PlaybackService {
     const safe = typeof message === "string" && message.trim() && message.length <= 512 && !/[\x00-\x1f\x7f]/.test(message) ? message : "That position could not be reached. Try again.";
     this.update({failedSeek: this.snapshot.pendingSeek, pendingSeek: undefined, seekError: safe, intent: "paused" as const});
   }
-  /** A lost engine must restore the last settled observation before checkpoints resume. */
+  /** A lost engine restores an outstanding seek first, then the last settled observation. */
   engineLost(intentId: number) {
     if(this.snapshot.channel){
       if(intentId===this.snapshot.intentId&&this.snapshot.session&&this.channelObservedSeek)this.channels?.seek(this.snapshot.positionSeconds);
       return;
     }
     if (intentId !== this.snapshot.intentId || !this.snapshot.session || !["starting", "ready"].includes(this.snapshot.phase)) return;
-    const target = this.hasObserved ? this.snapshot.positionSeconds : this.snapshot.session.resumeSeconds;
+    const target = this.snapshot.pendingSeek?.positionSeconds ?? (this.hasObserved ? this.snapshot.positionSeconds : this.snapshot.session.resumeSeconds);
     this.bookmarkProtected = true;
     this.requestSeek(target);
   }

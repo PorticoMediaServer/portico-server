@@ -475,7 +475,11 @@ export class FreshnessHub {
         if (personal) moved.push(...(change.titles ? change.titles.map(t => `personal:title:${t}`) : [`personal:any:${id}`, `personal:any:${ALL}`]));
         if (progress) moved.push(...(change.titles ? change.titles.map(t => `progress:title:${t}`) : [`progress:any:${id}`, `progress:any:${ALL}`]));
       } else if (change.type === 'settings.changed') {
-        if (differs(`settings:${id}`, change.revision)) moved.push(`settings:${id}`);
+        // Each preference scope/device address has its own revision counter.
+        // Unknown addresses still invalidate; they cannot safely be deduped.
+        const address = change.preferenceAddress;
+        const key = id === 'preferences' && address ? `settings:${id}:${JSON.stringify([address.scope, address.deviceClass ?? '', address.deviceId ?? ''])}` : `settings:${id}`;
+        if (differs(key, id === 'preferences' && !address ? undefined : change.revision)) moved.push(`settings:${id}`);
       }
     } else if (!event.type.startsWith('stream.')) {
       moved.push(dependsOn.event(event.type));

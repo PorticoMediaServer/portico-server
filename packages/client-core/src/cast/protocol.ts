@@ -22,7 +22,7 @@ export type CastMetadata = Readonly<{title: string; subtitle?: string; seriesTit
 export type CastTrack = Readonly<{id: number; language: string; name: string}>;
 
 /**
- * The viewer's choices carried to the TV with `load`: the subtitle track chosen on the sender
+ * The viewer's choices carried to the TV with `load`: the audio and subtitle tracks chosen on the sender
  * (`null` for off). The TV starts its own session with it, and the server delivers that track as
  * the TV can show it: text, or burned into the picture for an image or styled track the TV cannot
  * draw itself. Absent: the profile's usual choice.
@@ -30,11 +30,12 @@ export type CastTrack = Readonly<{id: number; language: string; name: string}>;
 export type CastQueueRef = Readonly<{queueId: string; entryId: string; transferId?: string}>;
 /** Sent only to the authenticated bootstrap endpoint, never to the receiver. */
 export type CastQueueSource = Readonly<{sessionId: string; generation: number; queueId: string; entryId: string; queueRevision: string}>;
-export type CastChoices = Readonly<{subtitleTrackId?: string | null; queue?: CastQueueRef; source?: CastQueueSource}>;
+export type CastChoices = Readonly<{audioTrackId?: string; subtitleTrackId?: string | null; queue?: CastQueueRef; source?: CastQueueSource}>;
 const trackIdPattern = /^[A-Za-z0-9._:-]{1,128}$/;
 /** `load` fields for `choices`: `subtitleTrackId` is a track id, or "off". */
 export function castChoiceFields(choices: CastChoices | undefined): Record<string, string | CastQueueRef> {
   const fields: Record<string, string | CastQueueRef> = {};
+  if (typeof choices?.audioTrackId === 'string' && trackIdPattern.test(choices.audioTrackId)) fields.audioTrackId = choices.audioTrackId;
   if (choices?.subtitleTrackId === null) fields.subtitleTrackId = 'off';
   else if (typeof choices?.subtitleTrackId === 'string' && trackIdPattern.test(choices.subtitleTrackId)) fields.subtitleTrackId = choices.subtitleTrackId;
   if (choices?.queue && typeof choices.queue.queueId === 'string' && typeof choices.queue.entryId === 'string' && trackIdPattern.test(choices.queue.queueId) && trackIdPattern.test(choices.queue.entryId)) fields.queue = {queueId: choices.queue.queueId, entryId: choices.queue.entryId,...(choices.queue.transferId&&trackIdPattern.test(choices.queue.transferId)?{transferId:choices.queue.transferId}:{})};

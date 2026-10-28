@@ -4,7 +4,7 @@ import {createHash,generateKeyPairSync,sign} from 'node:crypto';
 import {ApiError,HttpLocalApi,type LocalSession} from '../src/index.ts';
 import {RouteConnection,sessionRoute} from '../src/route-connection.ts';
 import {type ServerPin} from '../src/route-identity.ts';
-import {parseRememberedServer,rememberNativeSession,restoreNativeSession,rememberRotatedSession,prepareRoutedSession,commitRoutedSession,type RememberedServer,type ServerConnectionStorage} from '../src/server-connections.ts';
+import {parseRememberedServer,rememberNativeSession,restoreNativeSession,restoreExactNativeSession,rememberRotatedSession,prepareRoutedSession,commitRoutedSession,type RememberedServer,type ServerConnectionStorage} from '../src/server-connections.ts';
 import {SetupCodeService,type SetupCodeJournal} from '../src/setup-code.ts';
 import {SessionSelectionService} from '../src/session-selection.ts';
 const tick=()=>new Promise<void>(r=>setTimeout(r,5));
@@ -377,4 +377,90 @@ test('account-only restoration rotates once within account scope and refuses an 
    else assert.equal(current?.session.viewer.role,'account');
   }finally{restored?.api.getRouteConnection()?.dispose();initial.connection.dispose();}
  }
+});
+
+
+async function roleRestoreCase(from: string, to: string, nearExpiry = false) {
+ const store=storage(),initial=await ready();
+ const saved={...session('role_before'),refreshToken:'refresh_'+'a'.repeat(24),viewer:{...session().viewer,role:from},
+  ...(nearExpiry?{expiresAt:new Date(Date.now()+30000).toISOString()}:{} )};
+ await rememberNativeSession(initial.api,saved,{storage:store});
+ let refreshes=0;
+ const json=(value:unknown)=>new Response(JSON.stringify(value),{headers:{'Content-Type':'application/json'}});
+ const fetcher:typeof fetch=async(input,init)=>{
+  if(String(input).endsWith('/v1/networking/identity-proof')){
+   const q=JSON.parse(String(init?.body));return json(signed({kind:'portico.route-proof',version:'1',...pin,...q,issuedAt:new Date().toISOString(),expiresAt:new Date(Date.now()+29000).toISOString()}));
+  }
+  if(String(input).endsWith('/v1/auth/refresh')){
+   refreshes++;return json({...session('role_after','2'),refreshToken:'refresh_'+'b'.repeat(24),viewer:{...saved.viewer,role:to}});
+  }
+  assert.ok(String(input).endsWith('/v1/me'));
+  return json({viewer:{...saved.viewer,role:to}});
+ };
+ return {store,initial,saved,env:{storage:store,fetcher},refreshes:()=>refreshes};
+}
+
+test('ordinary restore reconciles promotions and demotions into the matching protected family',async t=>{
+ const {setInstallationIdentity}=await import('../src/installation.ts');
+ setInstallationIdentity({installationId:'inst_restore_'+'x'.repeat(24),name:'Test',platform:'ios',app:'portico-apple',appVersion:'1.0.0'});t.after(()=>setInstallationIdentity(undefined));
+ for(const [from,to,nearExpiry] of [['owner','member',false],['member','admin',false],['admin','owner',true]] as const){
+  const h=await roleRestoreCase(from,to,nearExpiry);let restored:Awaited<ReturnType<typeof restoreNativeSession>>;
+  try{restored=await restoreNativeSession(h.env,undefined,h.saved);
+   assert.equal(restored?.session.viewer.role,to);assert.equal((await h.store.read())?.session.viewer.role,to);
+   assert.equal(restored?.session.sessionFamilyId,h.saved.sessionFamilyId);assert.equal(h.refreshes(),nearExpiry?1:0);
+  }finally{restored?.api.getRouteConnection()?.dispose();h.initial.connection.dispose();}
+ }
+});
+
+test('exact Security restore still rejects a changed role without reconciling the stored viewer',async()=>{
+ const h=await roleRestoreCase('owner','member');
+ try{await assert.rejects(restoreExactNativeSession(h.env,h.saved),{code:'identity_mismatch'});assert.equal((await h.store.read())?.session.viewer.role,'owner');assert.equal(h.refreshes(),0);}
+ finally{h.initial.connection.dispose();}
+});
+
+test('exact Security restore refuses an old role after ordinary reconciliation before sending any request',async()=>{
+ const h=await roleRestoreCase('owner','member');let restored:Awaited<ReturnType<typeof restoreNativeSession>>,requests=0;
+ try{
+  restored=await restoreNativeSession(h.env,undefined,h.saved);
+  assert.equal(restored?.session.viewer.role,'member');
+  assert.equal(restored?.session.accessToken,h.saved.accessToken);
+  const exact=await restoreExactNativeSession({...h.env,fetcher:async(input,init)=>{requests++;return h.env.fetcher(input,init);}},h.saved);
+  assert.equal(exact,undefined);assert.equal(requests,0);assert.equal(h.refreshes(),0);
+ }finally{restored?.api.getRouteConnection()?.dispose();h.initial.connection.dispose();}
+});
+
+test('exact Security restore rejects a role reconciled while proof or live validation is in flight',async()=>{
+ for(const during of ['proof','me'] as const){
+  const h=await roleRestoreCase('owner','owner');let bearers=0;
+  const fetcher:typeof fetch=async(input,init)=>{
+   const result=await h.env.fetcher(input,init),isMe=String(input).endsWith('/v1/me');
+   if(isMe)bearers++;
+   if((during==='me')===isMe)await h.store.change(current=>({...current!,session:{...current!.session,viewer:{...current!.session.viewer,role:'member'}}}));
+   return result;
+  };
+  try{await assert.rejects(restoreExactNativeSession({...h.env,fetcher},h.saved),{code:'cancelled'});assert.equal(bearers,during==='proof'?0:1);assert.equal((await h.store.read())?.session.viewer.role,'member');}
+  finally{h.initial.connection.dispose();}
+ }
+});
+
+test('ordinary role reconciliation preserves all stable viewer identity fences',async()=>{
+ for(const field of ['accountId','profileId','serverId','authority'] as const){
+  const h=await roleRestoreCase('owner','member'),fetcher:typeof fetch=async(input,init)=>{
+   if(String(input).endsWith('/v1/me'))return new Response(JSON.stringify({viewer:{...h.saved.viewer,role:'member',[field]:field==='authority'?'hosted':'other'}}),{headers:{'Content-Type':'application/json'}});
+   return h.env.fetcher(input,init);
+  };
+  try{await assert.rejects(restoreNativeSession({...h.env,fetcher}),{code:'identity_mismatch'});assert.equal((await h.store.read())?.session.viewer.role,'owner');}
+  finally{h.initial.connection.dispose();}
+ }
+});
+
+test('role reconciliation cannot overwrite a newer saved selection',async()=>{
+ const h=await roleRestoreCase('owner','member');let replacement:RememberedServer|undefined;
+ const fetcher:typeof fetch=async(input,init)=>{
+  const result=await h.env.fetcher(input,init);
+  if(String(input).endsWith('/v1/me'))await h.store.change(current=>{replacement={...current!,selectionId:'Z'.repeat(32)};return replacement;});
+  return result;
+ };
+ try{await assert.rejects(restoreNativeSession({...h.env,fetcher}),{code:'cancelled'});assert.deepEqual(await h.store.read(),replacement);assert.equal(replacement?.session.viewer.role,'owner');}
+ finally{h.initial.connection.dispose();}
 });

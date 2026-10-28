@@ -81,7 +81,19 @@ export function playbackInfoProjection(info:PlaybackInfo,observed:ObservedPlayba
  if(info.routes.sound){
   const delivered=sound(info.delivered.audio);
   if(observed?.audio)delivered.output=words.output(observed.audio);
-  sections.push(Object.freeze({kind:'sound',route:info.routes.sound,rows:rows(sound(info.source.audio),delivered,['format','channels','sampleRate','output']),losses:Object.freeze(info.losses.filter(loss=>loss.feature==='atmos'||loss.feature==='dtsx').map(loss=>words.loss(loss)))}));
+  const source=info.source.audio,target=info.delivered.audio;
+  const copied=info.routes.sound!=='converted'&&source?.codec===target?.codec;
+  const sameFormat=(!source?.profile||!target?.profile||source.profile===target.profile)&&(!source?.variant||!target?.variant||source.variant===target.variant);
+  const losses=info.losses.filter(loss=>{
+   if(loss.feature!=='atmos'&&loss.feature!=='dtsx')return false;
+   // A same-occurrence output observation can disprove the planner's decode
+   // assumption for a copied bitstream. A converted track still lost its objects.
+   // Generic DTS/DTS-HD output does not prove that its DTS:X objects survived.
+   const passthrough=loss.feature==='atmos'&&observed?.audio?.handling==='passthrough'&&observed.audio.codec===target?.codec&&sameFormat;
+   const preserved=copied&&source?.objectAudio===loss.feature&&(observed?.audio?.objectAudio===loss.feature||passthrough);
+   return !preserved;
+  });
+  sections.push(Object.freeze({kind:'sound',route:info.routes.sound,rows:rows(sound(info.source.audio),delivered,['format','channels','sampleRate','output']),losses:Object.freeze(losses.map(loss=>words.loss(loss)))}));
  }
  if(info.routes.subtitles){
   sections.push(Object.freeze({kind:'subtitles',route:info.routes.subtitles,rows:rows({track:subtitleName(info.source.subtitles,words)},{track:subtitleName(info.delivered.subtitles,words),shown:observed?.subtitles?words.shown(observed.subtitles.rendering):undefined},['track','shown']),losses:Object.freeze([])}));

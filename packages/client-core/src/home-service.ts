@@ -51,6 +51,8 @@ const permissionDenied=(error:unknown):boolean=>typeof error==='object'&&error!=
 /** `fresh` merged into `shown`: only reanchorable rows may keep a bounded tail. Returns `shown` when nothing changed. */
 export function mergeHomeDocument(shown: HomeDocument, fresh: HomeDocument): HomeDocument {
   if (shown.serverId !== fresh.serverId || shown.viewerFence !== fresh.viewerFence) return fresh;
+  // Layout owns row order and hidden membership, so an older layout cannot replace either.
+  if (fresh.layout.revision < shown.layout.revision) return shown;
   const before = new Map(shown.rows.map(row => [row.id, row]));
   let changed = shown.rows.length !== fresh.rows.length;
   const rows = fresh.rows.flatMap((row, index) => {
@@ -117,6 +119,8 @@ export class HomeService {
   }
 
   private hydrateRows(fresh: HomeDocument, quiet?: number): void {
+    const shown = this.state.document;
+    if (shown && shown.serverId === fresh.serverId && shown.viewerFence === fresh.viewerFence && fresh.layout.revision < shown.layout.revision) return;
     const epoch = ++this.hydrationGeneration;
     for (const controller of this.hydrations) controller.abort();
     this.hydrations.clear();
@@ -348,6 +352,7 @@ export class HomeService {
 
   /** The rows follow a new arrangement at once, without a loading state when Home is already showing. */
   private async afterLayout(lifetime?: HomeLayoutWriteLifetime): Promise<void> {
+    this.quiet++;
     if (lifetime) {
       this.assertLayoutCurrent(lifetime);
       if (this.state.phase === 'ready' && this.state.document) {
@@ -355,6 +360,7 @@ export class HomeService {
         try {
           const fresh = await this.read(lifetime.signal);this.assertLayoutCurrent(lifetime);
           if (mine === this.generation && this.state.document) {
+            this.quiet++;
             this.publish({document: mergeHomeDocument(this.state.document, fresh)});this.hydrateRows(fresh);
           }
         } catch (error) {this.assertLayoutCurrent(lifetime);throw error;}
@@ -368,6 +374,7 @@ export class HomeService {
       try {
         const fresh = await this.read(new AbortController().signal);
         if (!this.disposed && mine === this.generation && this.state.document) {
+          this.quiet++;
           this.publish({document: mergeHomeDocument(this.state.document, fresh)});this.hydrateRows(fresh);
         }
         return;

@@ -187,7 +187,6 @@ export class EventsClient {
         if (signal.aborted || inner.signal.aborted) return;
         this.setStatus({connected: true});
         if (signal.aborted) return;
-        this.streamFailures = 0;
         if (raw.resync) { for (const listener of [...this.resyncListeners]) listener(); return; }
         let parsed: unknown;
         try { parsed = JSON.parse(raw.data); } catch { return; }
@@ -199,6 +198,9 @@ export class EventsClient {
           inner.abort();
           return;
         }
+        // A greeting (or malformed/control frame) proves only that headers arrived.
+        // Require useful new data before forgiving repeated short-lived streams.
+        if (!event.type.startsWith('stream.') && !this.recentSet.has(event.id)) this.streamFailures = 0;
         this.deliver(event);
       }, inner.signal);
     } catch (e) {

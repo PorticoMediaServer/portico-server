@@ -172,10 +172,16 @@ export class GroupSessionService{
   if(this.room!==room||room.abort.signal.aborted)return;
   const alive=()=>{clearTimeout(room.watchdog);room.watchdog=setTimeout(()=>turn.abort(),SILENCE_MS);};
   const turn=new AbortController();const stop=()=>turn.abort();room.abort.signal.addEventListener('abort',stop,{once:true});
-  let refused=0;
+  let refused=0,retryAfterMs=0;
   try{
+   alive();
    const response=await this.stream(path(room.id,'/events'),room.lastEventId,turn.signal);
-   if(!response.ok)refused=response.status;
+   if(!response.ok){
+    refused=response.status;
+    const after=response.headers.get('Retry-After')?.trim();
+    const wait=after&&/^\d+$/.test(after)?Number(after)*1000:after?Date.parse(after)-this.now():0;
+    if(Number.isFinite(wait)&&wait>0)retryAfterMs=wait;
+   }
    alive();
    await readEventStream(response,event=>{
     if(this.room!==room)return;alive();attempt=0;
@@ -184,13 +190,18 @@ export class GroupSessionService{
     this.receive(room,event.event,event.data);
    },turn.signal);
   }catch(e){refused=refused||status(e);}
-  finally{clearTimeout(room.watchdog);room.abort.signal.removeEventListener('abort',stop);}
+  finally{turn.abort();clearTimeout(room.watchdog);room.abort.signal.removeEventListener('abort',stop);}
   if(this.room!==room||room.abort.signal.aborted)return;
   // Refused outright: this viewer is no longer in the group (removed, or it ended while away).
   if(refused===403||refused===404||refused===410){void this.reread(room);if(refused!==403){this.publish({phase:'ended'});this.close('ended');return;}}
   this.publish({phase:'reconnecting'});
-  const delay=Math.min(15000,500*2**Math.min(attempt,5))*(0.75+Math.random()/2);
-  room.retry=setTimeout(()=>void this.connect(room,attempt+1),delay);
+  const delay=Math.max(retryAfterMs,Math.min(15000,500*2**Math.min(attempt,5))*(0.75+Math.random()/2));
+  // Keep a long server floor without overflowing the platform's timer range.
+  const wait=(remaining:number)=>{room.retry=setTimeout(()=>{
+   if(this.room!==room||room.abort.signal.aborted)return;
+   if(remaining>2147483647)wait(remaining-2147483647);else void this.connect(room,attempt+1);
+  },Math.min(remaining,2147483647));};
+  wait(delay);
  }
  private receive(room:NonNullable<GroupSessionService['room']>,kind:string,data:string){
   let body:unknown;try{body=JSON.parse(data);}catch{return;}

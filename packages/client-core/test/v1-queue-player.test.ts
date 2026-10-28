@@ -10,6 +10,7 @@ import type {QueuedSelectionRetirer} from '../src/playback-v1/selection-registra
 import {QueueClient} from '../src/playback-v1/queue.ts';
 import {playbackUserMessage, sessionEndMessage} from '../src/playback-messages.ts';
 import {PlaybackApiError, type V1Http, type V1Request, type V1Response} from '../src/playback-v1/http.ts';
+import {serviceI18n,setServiceI18n} from '../src/presentation/service-text.ts';
 
 const viewer = {serverId: 'server', authority: 'local' as const, accountId: 'account', profileId: 'profile'};
 
@@ -1107,4 +1108,45 @@ test('a stale older queue preparation cannot publish over its successor', async 
     assert.equal(snapshot.itemId, 'other', 'the successor owns the current intent');
     assert.ok(snapshot.session);
   } finally { f.stop(); await drainPreparation(f, runs); }
+});
+
+test('V15: a transient final confirmation failure retries and advances only after confirmation',async t=>{
+ const f=setup();
+ try{
+  await f.player.playEntries(['a','b'].map(queueItemInput));
+  const confirm=f.playback.confirmQueueEnd.bind(f.playback);let calls=0;
+  t.mock.method(f.playback,'confirmQueueEnd',async(intent:number)=>{if(++calls===1)throw new PlaybackApiError(503,'timeline_unconfirmed','same_request');await confirm(intent);});
+  t.mock.timers.enable({apis:['setTimeout']});
+  const flush=async()=>{for(let n=0;n<100;n++)await Promise.resolve();};
+  playToEnd(f.playback);await flush();assert.equal(calls,1);assert.equal(f.playback.getSnapshot().itemId,'a');
+  t.mock.timers.tick(999);await flush();assert.equal(calls,1);
+  t.mock.timers.tick(1);await flush();assert.equal(calls,2);assert.equal(f.playback.getSnapshot().itemId,'b');
+  assert.equal(f.log.filter(r=>r.path.endsWith(':advance')).length,1);
+ }finally{f.stop();}
+});
+
+test('V15: a pending end-confirmation retry cannot advance a replacement playback',async t=>{
+ const f=setup();
+ try{
+  await f.player.playEntries(['a','b'].map(queueItemInput));let calls=0;
+  t.mock.method(f.playback,'confirmQueueEnd',async()=>{calls++;throw new PlaybackApiError(503,'timeline_unconfirmed','same_request');});
+  t.mock.timers.enable({apis:['setTimeout']});const flush=async()=>{for(let n=0;n<100;n++)await Promise.resolve();};
+  playToEnd(f.playback);await flush();assert.equal(calls,1);
+  await f.player.playEntries(['replacement'].map(queueItemInput));t.mock.timers.tick(5000);await flush();
+  assert.equal(calls,1);assert.equal(f.playback.getSnapshot().itemId,'replacement');assert.equal(f.log.filter(r=>r.path.endsWith(':advance')).length,0);
+ }finally{f.stop();}
+});
+
+test('V15: final confirmation honors Retry-After and exposes failure after three attempts',async t=>{
+ const f=setup(),previous=serviceI18n();setServiceI18n({...previous,t:id=>id,has:()=>true});t.after(()=>setServiceI18n(previous));
+ try{
+  await f.player.playEntries(['a','b'].map(queueItemInput));let calls=0;
+  t.mock.method(f.playback,'confirmQueueEnd',async()=>{calls++;throw new PlaybackApiError(503,'timeline_unconfirmed','same_request',undefined,5000);});
+  t.mock.timers.enable({apis:['setTimeout']});const flush=async()=>{for(let n=0;n<100;n++)await Promise.resolve();};
+  playToEnd(f.playback);await flush();assert.equal(calls,1);
+  t.mock.timers.tick(4999);await flush();assert.equal(calls,1);
+  t.mock.timers.tick(1);await flush();assert.equal(calls,2);
+  t.mock.timers.tick(5000);await flush();assert.equal(calls,3);assert.ok(f.player.workspace.service.getSnapshot().error);
+  t.mock.timers.tick(60000);await flush();assert.equal(calls,3);assert.equal(f.playback.getSnapshot().itemId,'a');assert.equal(f.log.filter(r=>r.path.endsWith(':advance')).length,0);
+ }finally{f.stop();}
 });

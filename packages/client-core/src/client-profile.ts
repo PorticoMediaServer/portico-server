@@ -226,8 +226,8 @@ export function appleDeclaredProfile(options:{television:boolean;osVersion?:stri
   engines:{native:{
    name:'avplayer',evidence:'declared',
    video:[
-    v('h264',{bitDepths:[8],maxWidth:4096,maxHeight:2304,maxFrameRate:60,dynamicRanges:['sdr']}),
-    v('hevc',{bitDepths:[8,10],maxWidth:4096,maxHeight:2304,maxFrameRate:60,dynamicRanges:['sdr'],codecTags:['hvc1','dvh1']}),
+    v('h264',{profiles:['baseline','constrained_baseline','main','high'],chromaSubsampling:['4:2:0'],bitDepths:[8],maxWidth:4096,maxHeight:2304,maxFrameRate:60,dynamicRanges:['sdr']}),
+    v('hevc',{profiles:['main','main_10'],chromaSubsampling:['4:2:0'],bitDepths:[8,10],maxWidth:4096,maxHeight:2304,maxFrameRate:60,dynamicRanges:['sdr'],codecTags:['hvc1','dvh1']}),
    ],
    audio:[a('aac',8),a('mp3',2),a('ac3',6),a('eac3',8),a('alac',8),a('flac',8),a('pcm',8)],
    transports:[
@@ -519,13 +519,13 @@ const videoProbes:VideoProbe[]=[
  {codec:'av1',contentType:mp4('av01.0.08M.08'),tenBit:mp4('av01.0.12M.10.0.110.09.16.09.0'),uhd:mp4('av01.0.12M.08'),hdr:true},
  {codec:'vp9',contentType:'video/webm; codecs="vp09.00.40.08"',tenBit:'video/webm; codecs="vp09.02.40.10"',uhd:'video/webm; codecs="vp09.00.51.08"',uhdTenBit:'video/webm; codecs="vp09.02.51.10"',hdr:true},
 ];
-const audioProbes:{codec:string;mse:string[];element:string[];channels:number;objectAudio?:('atmos')[]}[]=[
+const audioProbes:{codec:string;mse:string[];element:string[];mp4?:string[];channels:number;objectAudio?:('atmos')[]}[]=[
  {codec:'aac',mse:[mp4Audio('mp4a.40.2')],element:[mp4Audio('mp4a.40.2')],channels:6},
  {codec:'mp3',mse:['audio/mpeg',mp4Audio('mp3')],element:['audio/mpeg'],channels:2},
  {codec:'ac3',mse:[mp4Audio('ac-3')],element:[mp4Audio('ac-3')],channels:6},
  {codec:'eac3',mse:[mp4Audio('ec-3')],element:[mp4Audio('ec-3')],channels:8},
- {codec:'flac',mse:[mp4Audio('flac'),mp4Audio('fLaC')],element:['audio/flac'],channels:6},
- {codec:'opus',mse:[mp4Audio('opus'),'audio/webm; codecs="opus"'],element:['audio/ogg; codecs="opus"','audio/webm; codecs="opus"'],channels:6},
+ {codec:'flac',mse:[mp4Audio('flac'),mp4Audio('fLaC')],element:['audio/flac'],mp4:[mp4Audio('flac'),mp4Audio('fLaC')],channels:6},
+ {codec:'opus',mse:[mp4Audio('opus'),'audio/webm; codecs="opus"'],element:['audio/ogg; codecs="opus"','audio/webm; codecs="opus"'],mp4:[mp4Audio('opus')],channels:6},
  {codec:'vorbis',mse:['audio/webm; codecs="vorbis"'],element:['audio/ogg; codecs="vorbis"'],channels:6},
  {codec:'alac',mse:[mp4Audio('alac')],element:[mp4Audio('alac')],channels:6},
  {codec:'pcm',mse:[],element:['audio/wav; codecs="1"'],channels:2},
@@ -618,18 +618,22 @@ export async function probeWebProfile(env:WebProbeEnvironment):Promise<Capabilit
  if(!h264Denied&&!video.some(x=>x.codec==='h264'))video.unshift(floor.video![0]!);
 
  const outputChannels=Number.isSafeInteger(env.audioOutputChannels)&&env.audioOutputChannels!>0?Math.min(8,env.audioOutputChannels!):2;
- const audio:ClientAudioCodec[]=[],directAudio:string[]=[],sourceAudio:string[]=[],tsAudio:string[]=[];
+ const audio:ClientAudioCodec[]=[],directAudio:string[]=[],mp4DirectAudio:string[]=[],sourceAudio:string[]=[],tsAudio:string[]=[];
  for(const probe of audioProbes){
   const inElement=probe.element.some(element),inSource=probe.mse.some(source);
-  if(!inElement&&!inSource&&!(probe.codec==='aac'||probe.codec==='mp3'))continue;
-  audio.push({codec:probe.codec,maxChannels:probe.channels,evidence:inElement||inSource?'probed':'declared',...(probe.objectAudio&&(inElement||inSource)?{objectAudio:probe.objectAudio}:{})});
+  // Codec support in Ogg, WebM or a standalone FLAC file says nothing about
+  // MP4 sample entries. Direct files and MSE each need their own MP4 answer.
+  const inMp4Element=probe.mp4?probe.mp4.some(element):inElement;
+  const inMp4Source=probe.mp4?probe.mp4.some(source):inSource;
+  if(!inElement&&!inSource&&!inMp4Element&&!(probe.codec==='aac'||probe.codec==='mp3'))continue;
+  audio.push({codec:probe.codec,maxChannels:probe.channels,evidence:inElement||inSource||inMp4Element?'probed':'declared',...(probe.objectAudio&&(inElement||inSource)?{objectAudio:probe.objectAudio}:{})});
   if(inElement||probe.codec==='aac'||probe.codec==='mp3')directAudio.push(probe.codec);
-  if(inSource)sourceAudio.push(probe.codec);
+  if((inMp4Element||probe.codec==='aac'||probe.codec==='mp3')&&['aac','mp3','ac3','eac3','flac','opus','alac'].includes(probe.codec))mp4DirectAudio.push(probe.codec);
+  if(inMp4Source)sourceAudio.push(probe.codec);
   // hls.js demuxes AAC, MP3 and (where the browser decodes them) AC-3 and E-AC-3 from MPEG-TS.
   if(['aac','mp3'].includes(probe.codec)||['ac3','eac3'].includes(probe.codec)&&(inSource||nativeHls&&inElement))tsAudio.push(probe.codec);
  }
 
- const mp4DirectAudio=directAudio.filter(x=>['aac','mp3','ac3','eac3','flac','opus','alac'].includes(x));
  const transports:ClientTransport[]=[{transport:'direct',containers:['mp4','m4v','mov'],video:direct.length?direct:['h264'],audio:mp4DirectAudio}];
  if(webm.length)transports.push({transport:'direct',containers:['webm'],video:webm,audio:directAudio.filter(x=>x==='opus'||x==='vorbis')});
  const fileContainers:Record<string,string[]>={mp3:['mp3'],aac:['m4a','m4b','aac'],flac:['flac'],opus:['opus','ogg'],vorbis:['ogg'],pcm:['wav'],alac:['m4a']};
@@ -694,10 +698,14 @@ export function appleProfile(options:{television:boolean;osVersion?:string;model
   // Software HEVC on an old device stutters at 4K; keep it to 1080p.
   hevc.maxWidth=1920;hevc.maxHeight=1080;hevc.evidence='probed';
  }else if(facts.hardwareDecode?.hevc)hevc.evidence='probed';
+ // HDR10+ needs an exact native eligibility fact as well as hardware HEVC;
+ // an HDR10 display or a model name alone cannot grant dynamic metadata.
+ const hdr10Plus=facts.hardwareDecode?.hevc===true&&facts.videoEligibility?.hdr10Plus===true;
  // What the screen shows right now.
  const display:DynamicRange[]=['sdr'];
  if(facts.eligibleForHDRPlayback!==false){
   if(facts.hdrModes?.hdr10)display.push('hdr10');
+  if(hdr10Plus&&facts.hdrModes?.hdr10Plus===true)display.push('hdr10plus');
   if(facts.hdrModes?.hlg)display.push('hlg');
   if(facts.hdrModes?.dolbyVision)display.push('dolby_vision');
  }
@@ -707,7 +715,7 @@ export function appleProfile(options:{television:boolean;osVersion?:string;model
  // `toneMapsHdr` says the engine bridges the two.
  const hardwareHevc=facts.hardwareDecode?.hevc===true;
  engine.toneMapsHdr=hardwareHevc;
- hevc.dynamicRanges=hardwareHevc?[...new Set<DynamicRange>(['sdr','hdr10','hlg',...display])]:[...display];
+ hevc.dynamicRanges=hardwareHevc?[...new Set<DynamicRange>(['sdr','hdr10','hlg',...(hdr10Plus?['hdr10plus' as const]:[]),...display])]:[...display];
  // Exact AVURLAsset MIME eligibility describes parser support, separately
  // from available display modes and the actual applied-output observations.
  const dvProfiles:number[]=[];
@@ -725,7 +733,7 @@ export function appleProfile(options:{television:boolean;osVersion?:string;model
  const h264=engine.video!.find(x=>x.codec==='h264');
  if(h264&&(/^AppleTV5,/.test(facts.model??'')||facts.hardwareDecode?.hevc===false)){h264.maxWidth=1920;h264.maxHeight=1080;h264.evidence='probed';}
  if(facts.hardwareDecode?.av1){
-  engine.video!.push({codec:'av1',bitDepths:[8,10],maxWidth:4096,maxHeight:2304,maxFrameRate:60,dynamicRanges:hardwareHevc?['sdr','hdr10','hlg']:display.filter(x=>x!=='dolby_vision'),evidence:'probed'});
+  engine.video!.push({codec:'av1',profiles:['main'],chromaSubsampling:['4:2:0'],bitDepths:[8,10],maxWidth:4096,maxHeight:2304,maxFrameRate:60,dynamicRanges:hardwareHevc?['sdr','hdr10','hlg']:display.filter(x=>x!=='dolby_vision'&&x!=='hdr10plus'),evidence:'probed'});
   for(const t of engine.transports!)if((t.transport==='direct'&&t.video?.length)||t.transport==='hls_fmp4')t.video=[...t.video!,'av1'];
  }
  document.display={...(facts.screen?{width:Math.round(facts.screen.width),height:Math.round(facts.screen.height),maxFrameRate:facts.screen.maxFrameRate??60}:{}),dynamicRanges:display};

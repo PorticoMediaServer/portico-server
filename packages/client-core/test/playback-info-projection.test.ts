@@ -45,3 +45,32 @@ test('unknown output is omitted, estimates never impersonate measured delivery, 
  assert.equal(model.sections.find(s=>s.kind==='subtitles')?.rows.find(r=>r.field==='shown'),undefined);
  assert.ok(!JSON.stringify(model).includes('3000'));
 });
+
+
+test('observed copied passthrough clears false object-audio loss without hiding conversion losses',()=>{
+ for(const feature of ['atmos','dtsx'] as const){
+  const codec=feature==='atmos'?'eac3':'dts';
+  const info=parsePlaybackInfo({route:'repackaged',routes:{sound:'repackaged'},reason:{kind:'container'},source:{audio:{codec,objectAudio:feature}},delivered:{audio:{codec,delivery:'decoded'}},losses:[{feature,replacement:{audioCodec:codec}}],network:'home',basis:'committed_delivery_plan'});assert.ok(info);
+  const losses=(observed:Parameters<typeof playbackInfoProjection>[1],current=info)=>playbackInfoProjection(current,observed,words).sections[0]!.losses;
+  assert.deepEqual(losses({audio:{handling:'passthrough',codec}}),feature==='atmos'?[]:[`${feature} lost`]);
+  if(feature==='dtsx')assert.deepEqual(losses({audio:{handling:'passthrough',codec:'dts_hd'}}),[`${feature} lost`]);
+  assert.deepEqual(losses({audio:{handling:'passthrough'}}),[`${feature} lost`]);
+  assert.deepEqual(losses({audio:{handling:'passthrough',codec,objectAudio:feature}}),[]);
+  assert.deepEqual(losses({audio:{handling:'decoded',objectAudio:feature}}),[]);
+  assert.deepEqual(losses(undefined),[`${feature} lost`]);
+  assert.deepEqual(losses({audio:{handling:'decoded',codec}}),[`${feature} lost`]);
+  assert.deepEqual(losses({audio:{handling:'pcm',codec:'pcm'}}),[`${feature} lost`]);
+  assert.deepEqual(losses({audio:{handling:'passthrough',codec:'aac'}}),[`${feature} lost`]);
+  const converted={...info,route:'converted' as const,routes:{sound:'converted' as const}};
+  assert.deepEqual(losses({audio:{handling:'passthrough',codec}},converted),[`${feature} lost`]);
+  assert.deepEqual(info.losses.map(loss=>loss.feature),[feature],'the committed server document is not mutated');
+ }
+});
+
+test('a copied codec with a different delivered variant or profile retains loss without object observation',()=>{
+ for(const field of ['profile','variant'] as const){
+  const info=parsePlaybackInfo({route:'repackaged',routes:{sound:'repackaged'},reason:{kind:'container'},source:{audio:{codec:'eac3',objectAudio:'atmos',[field]:'eac3_joc'}},delivered:{audio:{codec:'eac3',delivery:'decoded',[field]:'eac3'}},losses:[{feature:'atmos',replacement:{audioCodec:'eac3'}}],network:'home',basis:'committed_delivery_plan'});assert.ok(info);
+  assert.deepEqual(playbackInfoProjection(info,{audio:{handling:'passthrough',codec:'eac3'}},words).sections[0]!.losses,['atmos lost']);
+  assert.deepEqual(playbackInfoProjection(info,{audio:{handling:'passthrough',codec:'eac3',objectAudio:'atmos'}},words).sections[0]!.losses,[]);
+ }
+});

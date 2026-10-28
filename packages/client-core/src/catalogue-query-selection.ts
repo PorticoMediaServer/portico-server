@@ -31,7 +31,7 @@ export function catalogueQuerySelectionSegments<C>(target: QuerySelectionTarget<
     ...(sort?.length ? {sort} : {}), selectionRevision: checked.expected.catalogRevision}}, order: {mode: 'source'}}]);
 }
 function current(lifetime: CatalogueSelectionLifetime) {
-  if (lifetime.signal.aborted || !lifetime.isCurrent()) throw new DOMException('Selection retired', 'AbortError');
+  if (lifetime.signal.aborted || !lifetime.isCurrent()) throw Object.assign(new Error('Selection retired'), {name: 'AbortError'});
 }
 export async function playCatalogueQuerySelection<C>(player: Pick<V1QueuePlayer, 'playSegments'>, target: QuerySelectionTarget<C>, lifetime: CatalogueSelectionLifetime) {
   const captured = Object.freeze({...lifetime});current(captured);

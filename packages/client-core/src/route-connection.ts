@@ -165,7 +165,7 @@ export class RouteConnection {
  }
  networkChanged(network:string){if(this.disposed||network===this.state.network)return;this.rejected.clear();this.invalidate(network);void this.resolve().catch(()=>{});}
  private invalidate(network=this.state.network){this.promotion?.abort();this.promotion=undefined;this.serial++;this.run?.controller.abort();this.run=undefined;if(this.retry)clearTimeout(this.retry);this.retry=undefined;this.publish({phase:'probing',errorCode:undefined,origin:null,network,message:'The network changed. Verifying the same server before reconnecting.'});}
- recover():Promise<string>{if(this.run)return this.run.promise;this.invalidate();return this.resolve();}
+ recover(signal?:AbortSignal):Promise<string>{if(!this.run)this.invalidate();return this.resolve(signal);}
  async resolve(signal?:AbortSignal):Promise<string>{
   if(this.disposed)throw new RouteError('cancelled','This server connection is closed.');if(signal?.aborted)throw new RouteError('cancelled','Connection request cancelled.');
   if(this.state.phase==='ready'&&this.state.origin)return this.state.origin;
@@ -224,11 +224,11 @@ export class RouteConnection {
   // A gateway answering for the server (a 502/503/504 that isn't Portico's own JSON: the
   // server is down or restarting behind its proxy) is a lost route, not an answer. Probe
   // again so the shell can show one reconnecting state; reads retry once after recovery.
-  try{const response=await perform();if(!gatewayFailure(response)||init.signal?.aborted||this.disposed||sentGeneration===undefined)return response;const recovery=sentGeneration===this.serial?this.recover():this.resolve(init.signal??undefined);if(read){await recovery;return perform();}void recovery.catch(()=>{});return response;}catch(error){
+  try{const response=await perform();if(!gatewayFailure(response)||init.signal?.aborted||this.disposed||sentGeneration===undefined)return response;const recovery=sentGeneration===this.serial?this.recover(init.signal??undefined):this.resolve(init.signal??undefined);if(read){await recovery;return perform();}void recovery.catch(()=>{});return response;}catch(error){
    if(init.signal?.aborted||this.disposed||sentGeneration===undefined)throw error;
    // An old socket's delayed failure must not cancel the replacement race or
    // invalidate a newer proven transport. Read retry only; no mutation replay.
-   const recovery=sentGeneration===this.serial?this.recover():this.resolve(init.signal??undefined);
+   const recovery=sentGeneration===this.serial?this.recover(init.signal??undefined):this.resolve(init.signal??undefined);
    if(read){await recovery;return perform();}void recovery.catch(()=>{});throw error;
   }
  };

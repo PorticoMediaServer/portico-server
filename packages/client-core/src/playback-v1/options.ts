@@ -99,28 +99,64 @@ export function markerAt(o: PlaybackOptions, positionMs: number) {
  * Publishes this device's capability document (`client-profile.ts`) when it differs from the last
  * one the server accepted: `PUT /v1/me/devices/current/capabilities`, answered 204 with the new
  * revision in `ETag`. The document belongs to the device, not the sign-in, so one publish serves
- * every later sign-in of the device. A document the server would refuse is never sent. A failure
- * is swallowed by design: a device that could not publish is planned against the server's
- * baseline, which always plays, and publishing is tried again the next time anything calls this.
+ * later requests in that server/device scope. A document the server would refuse is never sent. On a
+ * failure the server may still hold an older, broader document: a start gate must retry once
+ * and refuse to start unless the result is `accepted` or `current`. Superseded requests also
+ * return `failed`; their caller must use the newest still-current document before starting.
  */
+export type CapabilityPublishResult = 'accepted' | 'current' | 'failed';
+type CapabilityPublication = {key: string; scope: string; epoch: number; document: CapabilityDocument; signal?: AbortSignal; promise: Promise<CapabilityPublishResult>; resolve(result: CapabilityPublishResult): void};
 export class CapabilityPublisher {
   private http: V1Http;
   private last?: string;
-  private inflight?: Promise<boolean>;
+  private inflight?: CapabilityPublication;
+  private desired?: CapabilityPublication;
+  private epoch = 0;
   private readonly scope: () => string;
   /** `scope` names the server and device (a different scope publishes again). */
   constructor(http: V1Http, scope: () => string = () => '') { this.http = http; this.scope = scope; }
-  publish(document: CapabilityDocument, signal?: AbortSignal): Promise<boolean> {
-    if (capabilityDocumentProblem(document)) return Promise.resolve(false);
-    const key = this.scope() + '\n' + JSON.stringify(document);
-    if (key === this.last) return Promise.resolve(false);
-    if (this.inflight) return this.inflight;
-    const work = call(this.http, {method: 'PUT', path: routePath("put_device_capabilities"), body: document, signal})
-      .then(() => { this.last = key; return true; })
-      .catch(() => false)
-      .finally(() => { if (this.inflight === work) this.inflight = undefined; });
-    this.inflight = work;
-    return work;
+  publish(document: CapabilityDocument, signal?: AbortSignal): Promise<CapabilityPublishResult> {
+    if (signal?.aborted || capabilityDocumentProblem(document)) return Promise.resolve('failed');
+    const scope = this.scope(), body = JSON.stringify(document), key = scope + '\n' + body;
+    // Only callers with the same lifetime share cancellation. A newer live
+    // caller must survive an older same-document caller being retired.
+    if (this.inflight?.key === key && this.inflight.epoch === this.epoch && this.inflight.signal === signal && !this.inflight.signal?.aborted) {
+      // A-B-A cancels the queued B: the latest desire is again the running A.
+      this.desired?.resolve('failed'); this.desired = undefined;
+      return this.inflight.promise;
+    }
+    if (!this.inflight && key === this.last) return Promise.resolve('current');
+    if (this.desired?.key === key && this.desired.epoch === this.epoch && this.desired.signal === signal && !this.desired.signal?.aborted) return this.desired.promise;
+    let resolve!: CapabilityPublication['resolve'];
+    const promise = new Promise<CapabilityPublishResult>(done => { resolve = done; });
+    const next: CapabilityPublication = {key, scope, epoch: this.epoch, document: JSON.parse(body), signal, promise, resolve};
+    this.desired?.resolve('failed'); this.desired = undefined;
+    if (this.inflight) this.desired = next; else this.send(next);
+    return promise;
+  }
+  private send(next: CapabilityPublication): void {
+    this.inflight = next;
+    const current = () => next.epoch === this.epoch && next.scope === this.scope() && !next.signal?.aborted;
+    void (async () => {
+      let result: CapabilityPublishResult = 'failed';
+      try {
+        if (current() && this.last === next.key) result = this.desired ? 'failed' : 'current';
+        else if (current()) {
+          // A failed PUT is ambiguous: it may have replaced the previous document.
+          this.last = undefined;
+          await call(this.http, {method: 'PUT', path: routePath("put_device_capabilities"), body: next.document, signal: next.signal});
+          if (current()) { this.last = next.key; result = this.desired ? 'failed' : 'accepted'; }
+        }
+      } catch { /* Failure remains explicit; a start gate cannot treat it as current. */ }
+      finally {
+        next.resolve(result);
+        if (this.inflight === next) {
+          this.inflight = undefined;
+          const desired = this.desired; this.desired = undefined;
+          if (desired) this.send(desired);
+        }
+      }
+    })();
   }
   /** What the server holds for this device, or undefined when it has published nothing. */
   async read(signal?: AbortSignal): Promise<StoredCapabilities | undefined> {
@@ -135,5 +171,5 @@ export class CapabilityPublisher {
     }
   }
   /** Forget what was sent (sign-in, server switch). */
-  reset() { this.last = undefined; }
+  reset() { this.epoch++; this.last = undefined; this.desired?.resolve('failed'); this.desired = undefined; }
 }

@@ -34,6 +34,28 @@ test('quiet clean SSE closures back off before falling back to long poll, retain
  c.fire();await settle();assert.equal(streams,3);assert.equal(polls,1);assert.equal(events.getStatus().mode,'poll');events.stop();
 });
 
+test('SSE greetings, control and invalid frames do not forgive repeated stream failures',async()=>{
+ for(const frame of [{id:'hello',type:'stream.opened'},{id:'resync',type:'stream.resync'},null]){
+  const c=timers();let streams=0,polls=0;
+  const events=new EventsClient({http:{send:()=>{polls++;return held();}},openStream:async(_cursor,event)=>{streams++;event({data:frame?JSON.stringify(frame):'invalid json'});},random:()=>0.5,setTimer:c.setTimer,clearTimer:c.clearTimer});
+  try{
+   events.start();await settle();assert.equal(streams,1);
+   c.fire();await settle();assert.equal(streams,2);
+   c.fire();await settle();assert.equal(streams,3);assert.equal(polls,1);assert.equal(events.getStatus().mode,'poll');
+  }finally{events.stop();}
+ }
+});
+
+test('a newly delivered application event forgives preceding short stream failures',async()=>{
+ const c=timers();let streams=0,polls=0;
+ const events=new EventsClient({http:{send:()=>{polls++;return held();}},openStream:async(_cursor,event)=>{if(++streams===2)event({data:JSON.stringify({id:'one',type:'session.updated'})});},random:()=>0.5,setTimer:c.setTimer,clearTimer:c.clearTimer});
+ try{
+  events.start();await settle();c.fire();await settle();c.fire();await settle();
+  assert.equal(streams,3);assert.equal(polls,0);
+  c.fire();await settle();assert.equal(streams,4);assert.equal(polls,1);
+ }finally{events.stop();}
+});
+
 test('stream errors retain Retry-After even when the next request switches to long poll',async()=>{
  const c=timers();let polls=0;
  const events=new EventsClient({http:{send:()=>{polls++;return held();}},openStream:async()=>{throw {status:503,retryAfterMs:60_000};},streamFailuresBeforePoll:1,random:()=>0.5,setTimer:c.setTimer,clearTimer:c.clearTimer});

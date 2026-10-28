@@ -118,14 +118,15 @@ export async function restoreNativeSession(env:ConnectionEnvironment,source?:(re
  return restoreStoredSession(env,source,expected,false);
 }
 /** Closed Security continuations may inspect only their exact original saved
- * family/token generation. They never renew, adopt a newer token, contact Hosted
+ * family/token generation and viewer. They never renew, adopt a newer token, contact Hosted
  * for routes, or publish route persistence into another opening. */
 export async function restoreExactNativeSession(env:ConnectionEnvironment,expected:LocalSession):Promise<{api:HttpLocalApi;session:LocalSession}|undefined>{
  return restoreStoredSession(env,undefined,expected,true);
 }
 async function restoreStoredSession(env:ConnectionEnvironment,source:((record:RememberedServer)=>HostedConnectionSource|undefined)|undefined,expected:LocalSession|undefined,exact:boolean):Promise<{api:HttpLocalApi;session:LocalSession}|undefined>{
  const record=parseRememberedServer(await env.storage.read());if(!record)return;
- if(exact&&(!expected||record.pendingRefresh||record.session.tokenGeneration!==expected.tokenGeneration||record.session.accessToken!==expected.accessToken||Date.parse(record.session.expiresAt)<=Date.now()))return;
+ const exactViewerMatches=(saved:RememberedServer|undefined)=>!!saved&&!!expected&&(['authority','accountId','profileId','serverId','role'] as const).every(field=>saved.session.viewer[field]===expected.viewer[field]);
+ if(exact&&(!expected||!exactViewerMatches(record)||record.pendingRefresh||record.session.tokenGeneration!==expected.tokenGeneration||record.session.accessToken!==expected.accessToken||Date.parse(record.session.expiresAt)<=Date.now()))return;
  // The protected store may hold a newer rotation of the same family than the caller's copy.
  if(expected&&(record.session.sessionFamilyId!==expected.sessionFamilyId||BigInt(record.session.tokenGeneration)<BigInt(expected.tokenGeneration)||(record.session.tokenGeneration===expected.tokenGeneration&&record.session.accessToken!==expected.accessToken)||record.session.viewer.serverId!==expected.viewer.serverId||record.session.viewer.accountId!==expected.viewer.accountId||record.session.viewer.profileId!==expected.viewer.profileId))return;
  const pin=await serverPin(record.pin.serverId,record.pin.publicKey,record.pin.fingerprint,env.crypto??webRouteCrypto);
@@ -137,7 +138,7 @@ async function restoreStoredSession(env:ConnectionEnvironment,source:((record:Re
  try{
   await connection.resolve();
   const selected=await env.storage.read();
-  if(!sameSelection(selected,record)||selected!.session.accessToken!==record.session.accessToken)throw new RouteError('cancelled','The saved selection changed during reconnect.');
+  if(!sameSelection(selected,record)||selected!.session.accessToken!==record.session.accessToken||(exact&&!exactViewerMatches(selected)))throw new RouteError('cancelled','The saved selection changed during reconnect.');
   const api=new HttpLocalApi(record.logicalOrigin,'',env.fetcher);api.useRoutes(connection);api.setAccessToken(record.session.accessToken);let renewedNow=false;
   // A sign-in saved more than a few minutes ago has an expired access token: renew it first.
   if(!exact&&record.session.refreshToken&&(record.pendingRefresh||Date.parse(record.session.expiresAt)-Date.now()<REFRESH_MIN_VALID_MS)){
@@ -165,7 +166,14 @@ async function restoreStoredSession(env:ConnectionEnvironment,source:((record:Re
     return;
    }
    const me=await api.me();
-   if(JSON.stringify(Object.entries(me.viewer).sort())!==JSON.stringify(Object.entries(viewer).sort()))throw new RouteError('identity_mismatch','The saved viewer no longer matches this server session.');
+   for(const field of ['authority','accountId','profileId','serverId'] as const)if(me.viewer[field]!==viewer[field])throw new RouteError('identity_mismatch','The saved viewer no longer matches this server session.');
+   if(me.viewer.role!==viewer.role){
+    // Ordinary restoration adopts current permissions; captured Security continuations stay exact.
+    if(exact||!['owner','admin','member'].includes(me.viewer.role))throw new RouteError('identity_mismatch','The saved viewer no longer matches this server session.');
+    const next=parseLocalSession({...record.session,viewer:me.viewer},{authority:viewer.authority,accountId:viewer.accountId,profileId:viewer.profileId,serverId:viewer.serverId},{stored:true});
+    await env.storage.change(current=>sameSelection(current,record)&&current!.session.accessToken===record.session.accessToken?{...current!,session:{...current!.session,viewer:next.viewer}}:current);
+    record.session=next;
+   }
   };
   try{await validateLiveScope();}
   catch(e){
@@ -179,7 +187,7 @@ async function restoreStoredSession(env:ConnectionEnvironment,source:((record:Re
    catch(again){const s=statusOf(again);if(s===401||s===403)throw refusedAccess();throw again;}
   }
   const selectedAfter=await env.storage.read();
-  if(!sameSelection(selectedAfter,record)||selectedAfter!.session.accessToken!==record.session.accessToken)throw new RouteError('cancelled','The saved selection changed during reconnect.');
+  if(!sameSelection(selectedAfter,record)||selectedAfter!.session.accessToken!==record.session.accessToken||(exact&&!exactViewerMatches(selectedAfter)))throw new RouteError('cancelled','The saved selection changed during reconnect.');
   if(!exact){attachPersistence(connection,env,record,hosted);bindSessionRoute(record.session.accessToken,connection);}return {api,session:record.session};
  }catch(e){connection.dispose();throw e;}
 }
@@ -270,12 +278,15 @@ export type RefreshStoredOptions=Readonly<{
  * under the credential lock, re-read the store (another tab or a restore may already have
  * rotated), persist the request id before sending, send, then store the next access and refresh
  * credential in one atomic change. A crash after sending replays the same request id and the
- * server returns its stored answer (five minutes). Refusals end the sign-in.
+ * server returns its stored answer until the successor is used or the family horizon ends.
+ * An expired replay is persisted and renewed once more within this same lock. Refusals end the sign-in.
  */
 export function refreshStoredSession(o:RefreshStoredOptions):Promise<LocalSession>{
  const now=o.now??Date.now,minValid=o.minValidMs??REFRESH_MIN_VALID_MS;
  const same=(r:RememberedServer|undefined)=>!!r&&r.session.sessionFamilyId===o.family.sessionFamilyId&&r.pin.serverId===o.family.serverId;
  return credentialLock()('portico.session-refresh:'+o.family.serverId,async()=>{
+  // A receipt plus one successor rotation, never an unbounded chain or a nested credential lock.
+  for(let attempt=0;attempt<2;attempt++){
   let record:RememberedServer|undefined,stored:unknown;
   // Three different things can be wrong with the saved sign-in, and only the store can tell the
   // first two apart. It cannot be read right now (locked, busy, timed out): nothing is known about
@@ -301,17 +312,18 @@ export function refreshStoredSession(o:RefreshStoredOptions):Promise<LocalSessio
    // here together: the store's own atomic change lets exactly one id in, and the other tab
    // reads it back and sends the very same request, which the server answers once for both.
    // Sending two different ids for one refresh credential would look like theft and end the sign-in.
-   await o.env.storage.change(current=>same(current)&&current!.session.refreshToken===session.refreshToken&&!current!.pendingRefresh?{...current!,pendingRefresh:id}:current);
+   await o.env.storage.change(current=>sameSelection(current,record!)&&current!.session.refreshToken===session.refreshToken&&!current!.pendingRefresh?{...current!,pendingRefresh:id}:current);
    let after:RememberedServer|undefined;
-   try{after=parseRememberedServer(await o.env.storage.read());}catch{after=undefined;}
-   if(after&&same(after)){
-    if(after.session.refreshToken!==session.refreshToken){
-     // Another context finished the renewal in the meantime: use what it stored, send nothing.
-     if(Date.parse(after.session.expiresAt)-now()>minValid&&!after.pendingRefresh)return after.session;
-     throw new SessionRefreshError('refresh_unavailable_now','The server couldn’t renew your sign-in right now.',false);
-    }
-    if(after.pendingRefresh)requestId=after.pendingRefresh;
+   try{after=parseRememberedServer(await o.env.storage.read());}
+   catch{throw new SessionRefreshError('refresh_unavailable_now','This device couldn’t verify its saved renewal right now.',false);}
+   if(!after||!same(after)||after.selectionId!==record.selectionId)throw new SessionRefreshError('session_replaced','This sign-in was replaced or ended on this device.',true);
+   if(after.session.refreshToken!==session.refreshToken){
+    // Another context finished the renewal in the meantime: use what it stored, send nothing.
+    if(Date.parse(after.session.expiresAt)-now()>minValid&&!after.pendingRefresh)return after.session;
+    throw new SessionRefreshError('refresh_unavailable_now','The server couldn’t renew your sign-in right now.',false);
    }
+   if(!after.pendingRefresh)throw new SessionRefreshError('refresh_unavailable_now','This device couldn’t verify its saved renewal right now.',false);
+   requestId=after.pendingRefresh;
   }
   // React Native lacks AbortSignal.any/timeout: a plain controller bounds the request.
   const bound=new AbortController(),abort=()=>bound.abort(),timer=setTimeout(abort,o.timeoutMs??15_000);
@@ -342,15 +354,25 @@ export function refreshStoredSession(o:RefreshStoredOptions):Promise<LocalSessio
    throw busy;
   }finally{clearTimeout(timer);o.signal?.removeEventListener('abort',abort);}
   let next:LocalSession;
-  try{next=parseLocalSession(raw,{authority:session.viewer.authority,accountId:session.viewer.accountId,profileId:session.viewer.profileId,serverId:session.viewer.serverId});}
+  try{next=parseLocalSession(raw,{authority:session.viewer.authority,accountId:session.viewer.accountId,profileId:session.viewer.profileId,serverId:session.viewer.serverId},{refreshReceipt:true});}
   catch{throw new SessionRefreshError('refresh_invalid','The renewed sign-in didn’t match this one.',false);}
-  if(next.sessionFamilyId!==session.sessionFamilyId||BigInt(next.tokenGeneration)<=BigInt(session.tokenGeneration)||(session.viewer.role==='account'&&next.viewer.role!=='account')||(next.serverIdentity&&(next.serverIdentity.publicKey!==record.pin.publicKey||next.serverIdentity.fingerprint!==record.pin.fingerprint)))
+  if(next.sessionFamilyId!==session.sessionFamilyId||BigInt(next.tokenGeneration)<=BigInt(session.tokenGeneration)||Date.parse(next.authorizationHorizon)<=now()||
+   !next.refreshToken||next.refreshToken===session.refreshToken||(session.deviceId!==undefined&&next.deviceId!==session.deviceId)||
+   (next.installationId!==undefined&&next.installationId!==identity.installationId)||(session.installationId!==undefined&&next.installationId!==session.installationId)||
+   (session.viewer.role==='account'&&next.viewer.role!=='account')||(next.serverIdentity&&(next.serverIdentity.publicKey!==record.pin.publicKey||next.serverIdentity.fingerprint!==record.pin.fingerprint)))
    throw new SessionRefreshError('refresh_invalid','The renewed sign-in didn’t match this one.',false);
-  const connection=sessionRoute(session.accessToken);
+  const connection=sessionRoute(session.accessToken);let saved=false;
   try{
-   await o.env.storage.change(current=>{if(!same(current)||current!.session.refreshToken!==session.refreshToken)return current;const {pendingRefresh:_done,...rest}=current!;return {...rest,session:next};});
-  }catch{/* The request id stays stored: the next attempt replays and stores this same answer. */}
+   await o.env.storage.change(current=>{if(!sameSelection(current,record!)||current!.session.refreshToken!==session.refreshToken||current!.pendingRefresh!==requestId)return current;const {pendingRefresh:_done,...rest}=current!;saved=true;return {...rest,session:next};});
+  }catch{
+   // Never spend an expired successor before its durable adoption: the predecessor receipt
+   // must remain replayable after a failed write or process exit.
+   if(Date.parse(next.expiresAt)<=now())throw new SessionRefreshError('store_unavailable','This device couldn’t save its renewed sign-in right now.',false);
+  }
+  if(Date.parse(next.expiresAt)<=now()&&!saved)throw new SessionRefreshError('refresh_unavailable_now','The saved sign-in changed during renewal. Try again.',false);
   if(connection)bindSessionRoute(next.accessToken,connection);
-  return next;
+  if(Date.parse(next.expiresAt)>now())return next;
+  }
+  throw new SessionRefreshError('refresh_unavailable_now','The server couldn’t renew your sign-in right now.',false);
  });
 }

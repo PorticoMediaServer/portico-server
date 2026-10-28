@@ -94,7 +94,8 @@ export class CredentialSessionService<Authority = string> {
   };
   private listeners = new Set<() => void>();
   private generation = 0;
-  private ready: Promise<void>;
+  private loaded = false;
+  private loading?: Promise<void>;
   private storageTail = Promise.resolve();
   private flight?: {
     generation: number;
@@ -115,8 +116,12 @@ export class CredentialSessionService<Authority = string> {
     this.timeout = timeout;
     let operationTail=Promise.resolve();
     this.coordinator=coordinator??{runExclusive:<T>(operation:()=>Promise<T>)=>{const result=operationTail.then(operation);operationTail=result.then(()=>{},()=>{});return result;}};
-    this.ready = storage
-      .load()
+    void this.ensureLoaded().catch(() => {});
+  }
+  private ensureLoaded(): Promise<void> {
+    if (this.loaded) return Promise.resolve();
+    if (this.loading) return this.loading;
+    const promise = Promise.resolve().then(() => this.storage.load())
       .then((value) => {
         if (value) {
           if (value.version !== 1 || !Array.isArray(value.revocations))
@@ -124,8 +129,8 @@ export class CredentialSessionService<Authority = string> {
           if(this.generation===0)this.record=value;
           else { this.record.revocations.push(...value.revocations);if(value.active)this.addRevocation(value.active.authority); }
         }
+        this.loaded = true;
         this.publish();
-
       })
       .catch((e) => {
         this.state = {
@@ -136,8 +141,11 @@ export class CredentialSessionService<Authority = string> {
         };
         this.emit();
         throw e;
+      }).finally(() => {
+        if (this.loading === promise) this.loading = undefined;
       });
-    void this.ready.catch(() => {});
+    this.loading = promise;
+    return promise;
   }
   getSnapshot = () => this.state;
   subscribe = (fn: () => void) => {
@@ -202,9 +210,9 @@ export class CredentialSessionService<Authority = string> {
     if(loaded.active && current && !loaded.active.session.accessToken && loaded.active.session.familyId===current.session.familyId && loaded.active.session.expiresAt===current.session.expiresAt && loaded.active.pendingRequestId===current.pendingRequestId)loaded.active.session={...loaded.active.session,accessToken:current.session.accessToken};
     this.record=loaded;if(publish)this.publish();
   }
-  async synchronize(){const generation=this.generation;await this.ready;return this.coordinator.runExclusive(async()=>{await this.reload(false);if(generation===this.generation)this.publish()});}
+  async synchronize(){const generation=this.generation;await this.ensureLoaded();return this.coordinator.runExclusive(async()=>{await this.reload(false);if(generation===this.generation)this.publish()});}
   async authenticate(callback:(signal:AbortSignal)=>Promise<HostedSession>,context:CredentialContext={}){
-    const generation=++this.generation;await this.ready;
+    const generation=++this.generation;await this.ensureLoaded();
     return this.coordinator.runExclusive(async()=>{
       await this.reload(false);if(generation!==this.generation)throw new CodedError('cancelled',"Sign-in was cancelled.");
       if(this.record.active){await this.logoutInside(false);if(this.record.revocations.length)throw new CodedError('account_signout_pending',"Reconnect to finish signing out before switching accounts.");}
@@ -221,7 +229,7 @@ export class CredentialSessionService<Authority = string> {
     // A form's lifetime is separate from the singleton credential service. Keep
     // its result visible to this owner so an abandoned grant can be retired.
     const admitted=()=>{try{return callerCurrent()===true;}catch{return false;}};
-    await this.ready;
+    await this.ensureLoaded();
     return this.coordinator.runExclusive(async()=>{
       await this.reload(false);
       if(!admitted())throw new CodedError('cancelled',"Sign-in was cancelled.");
@@ -241,7 +249,7 @@ export class CredentialSessionService<Authority = string> {
       await this.adoptInside(session,context,admitted);return this.publicSession(session);
     });
   }
-  async adopt(session:HostedSession,context:CredentialContext={}){const generation=++this.generation;await this.ready;return this.coordinator.runExclusive(async()=>{await this.reload(false);if(generation!==this.generation)throw new CodedError('cancelled',"Sign-in was cancelled.");await this.adoptInside(session,context)});}
+  async adopt(session:HostedSession,context:CredentialContext={}){const generation=++this.generation;await this.ensureLoaded();return this.coordinator.runExclusive(async()=>{await this.reload(false);if(generation!==this.generation)throw new CodedError('cancelled',"Sign-in was cancelled.");await this.adoptInside(session,context)});}
   private async adoptInside(session: HostedSession, context: CredentialContext = {}, callerCurrent:()=>boolean=()=>true) {
     if (!session.familyId || !session.refreshExpiresAt)
       throw new Error(
@@ -295,7 +303,7 @@ export class CredentialSessionService<Authority = string> {
     this.publish();
     await this.retryInside();
   }
-  async updateContext(context:CredentialContext){const generation=this.generation;await this.ready;return this.coordinator.runExclusive(async()=>{await this.reload(false);if(generation!==this.generation||!this.record.active)return;this.record.active={...this.record.active,context};await this.persist();if(generation===this.generation)this.publish()});}
+  async updateContext(context:CredentialContext){const generation=this.generation;await this.ensureLoaded();return this.coordinator.runExclusive(async()=>{await this.reload(false);if(generation!==this.generation||!this.record.active)return;this.record.active={...this.record.active,context};await this.persist();if(generation===this.generation)this.publish()});}
   async accessSession(forceRefresh=false,expected?:CredentialAccessExpectation):Promise<Omit<HostedSession,"refreshToken">>{
     const original=expected?{accountId:expected.accountId,familyId:expected.familyId,accessToken:expected.accessToken}:undefined;
     const originalGeneration=original?this.generation:undefined;
@@ -303,7 +311,7 @@ export class CredentialSessionService<Authority = string> {
       if(original&&(!original.accountId||!original.familyId||!original.accessToken||!session||session.account.id!==original.accountId||session.familyId!==original.familyId))
         throw new CodedError('account_session_changed',"Session changed.");
     };
-    await this.ready;
+    await this.ensureLoaded();
     if(originalGeneration!==undefined&&originalGeneration!==this.generation)throw new CodedError('account_session_changed',"Session changed.");
     check(this.record.active?.session);
     if(this.flight?.generation===this.generation){const session=await this.flight.promise;check(session);return session;}
@@ -410,7 +418,7 @@ export class CredentialSessionService<Authority = string> {
   }
   async logout(){
     ++this.generation;const authority=this.record.active?.authority;this.record.active=undefined;this.publish("signedOut");
-    await this.ready;
+    await this.ensureLoaded();
     return this.coordinator.runExclusive(async()=>{await this.reload(false);if(authority!==undefined)this.addRevocation(authority);await this.logoutInside()});
   }
   /** End the reviewed family without clearing an account adopted while cleanup waits. */
@@ -424,7 +432,7 @@ export class CredentialSessionService<Authority = string> {
     ++this.generation;
     this.record.active = undefined;
     this.publish("signedOut");
-    await this.ready;
+    await this.ensureLoaded();
     return this.coordinator.runExclusive(async () => {
       await this.reload(false);
       this.addRevocation(authority);
@@ -453,12 +461,12 @@ export class CredentialSessionService<Authority = string> {
    * about twelve requests a year. Automatic: it defers to the shared circuit and never signs
    * anyone out on failure (only an explicit refusal does that, in rotate). */
   async keepAlive(now=Date.now()):Promise<boolean>{
-    await this.ready;
+    await this.ensureLoaded();
     const expires=Date.parse(this.record.active?.session.refreshExpiresAt??"");
     if(!Number.isFinite(expires)||expires-now>KEEP_ALIVE_REMAINING_MS||(this.api.gate?.blockedFor()??0)>0)return false;
     try{await this.accessSession(true);return true;}catch{return false;}
   }
-  async retryRevocations(){if((this.api.gate?.blockedFor()??0)>0)return;const generation=this.generation;await this.ready;return this.coordinator.runExclusive(async()=>{await this.reload(false);if(generation!==this.generation)return;this.publish();await this.retryInside()});}
+  async retryRevocations(){if((this.api.gate?.blockedFor()??0)>0)return;const generation=this.generation;await this.ensureLoaded();return this.coordinator.runExclusive(async()=>{await this.reload(false);if(generation!==this.generation)return;this.publish();await this.retryInside()});}
   private async retryInside(){
     await Promise.all([...this.record.revocations].map(async authority=>{
       const key=JSON.stringify(authority);if(this.revoking.has(key))return;this.revoking.add(key);
