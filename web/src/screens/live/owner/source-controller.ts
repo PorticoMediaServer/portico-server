@@ -1,8 +1,9 @@
+import type {QuietRefreshOutcome} from '@core/freshness-actions.ts';
 import type {LibraryContentApi} from '@core/library-content.ts';
 import type {RefreshStatus} from '@core/linear-api.ts';
 import {canRefreshSource} from '@core/server-admin/panel-logic.ts';
 import {channelRequestID} from '@core/live-source-draft.ts';
-import {OwnerStore, errorFacts} from './lifetime';
+import {OwnerStore, errorFacts, terminal} from './lifetime';
 import {sourceDocument, actionReceipt} from './checked';
 
 export type OwnerLiveSource = Readonly<{
@@ -16,12 +17,31 @@ const sourcePath = '/v1/admin/live-sources';
 
 /** Uncertain commands retain their immutable body and id across A/B/A. */
 export class LiveSourceController extends OwnerStore<SourceSnapshot> {
+  private quietSerial = 0;
+  private quietRead?: AbortController;
   private operations = new Map<string, Readonly<Record<string, unknown>>>();
   constructor(private api: LibraryContentApi, private serverId: string, isCurrent: () => boolean, reportError: (error: unknown) => void,
     private requestId: () => string = channelRequestID) {super(Object.freeze({loading: false}), isCurrent, reportError);}
+  invalidateQuiet = () => {++this.quietSerial;this.quietRead?.abort();this.quietRead = undefined;};
+  refreshQuietly = async (): Promise<QuietRefreshOutcome> => {
+    if (!this.isActive() || this.snapshot.loading) return {kind: 'deferred'};
+    this.invalidateQuiet();const read = this.quietRead = new AbortController(), serial = this.quietSerial;
+    const owns = () => this.isActive() && !read.signal.aborted && this.quietSerial === serial;
+    try {
+      const raw = await this.api.request(sourcePath, 'GET', undefined, read.signal);
+      if (!owns()) return {kind: 'deferred'};
+      const document = sourceDocument(raw, this.serverId);
+      this.publish({...this.snapshot, document, checkedAt: Date.now()});
+      return {kind: 'adopted'};
+    } catch (error) {
+      if (!owns()) return {kind: 'deferred'};
+      if (terminal(error)) this.fail(error, this.snapshot);
+      return {kind: 'unreadable', error};
+    } finally {if (this.quietRead === read) this.quietRead = undefined;};
+  };
   async load() {
     if (!this.isActive()) return;
-    const attempt = this.begin();this.publish({...this.snapshot, loading: true, error: undefined});
+    this.invalidateQuiet();const attempt = this.begin();this.publish({...this.snapshot, loading: true, error: undefined});
     if (!this.valid(attempt)) return;
     try {
       const raw = await this.api.request(sourcePath, 'GET', undefined, attempt.abort.signal);
@@ -39,7 +59,7 @@ export class LiveSourceController extends OwnerStore<SourceSnapshot> {
     let body = this.operations.get(key);
     if (!body && this.operations.size >= 256) return false;
     if (!body) {body = Object.freeze({expectedRevision: stored.revision, ...(action === 'refresh' ? {} : {requestId: this.requestId()}), ...(action === 'toggle' ? {enabled: stored.state === 'disabled'} : {})});this.operations.set(key, body);}
-    const attempt = this.begin();this.publish({...this.snapshot, busy: stored.id, error: undefined});
+    this.invalidateQuiet();const attempt = this.begin();this.publish({...this.snapshot, busy: stored.id, error: undefined});
     if (!this.valid(attempt)) return false;
     try {
       const receipt = await this.api.request(`${sourcePath}/${encodeURIComponent(stored.id)}/${action === 'toggle' ? 'enabled' : action}`, 'POST', body, attempt.abort.signal);
@@ -56,5 +76,5 @@ export class LiveSourceController extends OwnerStore<SourceSnapshot> {
       return false;
     }
   }
-  override dispose() {this.operations.clear();super.dispose();}
+  override dispose() {this.invalidateQuiet();this.operations.clear();super.dispose();}
 }

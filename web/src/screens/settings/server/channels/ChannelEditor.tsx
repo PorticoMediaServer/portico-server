@@ -52,7 +52,7 @@ export function ChannelEditor({source, api, reportError, openPresets, presets, l
     dismissOnBack={!state.busy} dismissOnOutsidePress={!state.busy} showCloseButton={!state.busy}
     footer={<>{preview && <span className={styles.footerCount}>{t(preview.complete ? 'builder.matches' : 'next.browse.countAtLeast', {count})}</span>}<Button size="compact" variant="glass" disabled={state.busy} onClick={close}>{t('builder.cancel')}</Button><Button size="compact" variant="primary" disabled={state.busy || !config} onClick={save}>{state.pending ? t('action.tryAgain') : creating ? t('builder.create') : t('builder.save')}</Button></>}>
     {state.phase === 'loading' && !state.error && <p role="status">{t('next.settings.loading')}</p>}
-    {config && rule && <div className={styles.editorGrid}>
+    {config && rule && <div className={styles.editorGrid} onFocusCapture={() => source.setQuietInputActive(true)} onBlurCapture={event => {if(!event.currentTarget.contains(event.relatedTarget))source.setQuietInputActive(false);}}>
       <fieldset className={styles.editorFields} disabled={locked}>
         <TextField label={t('builder.name')} value={config.name} maxLength={120} disabled={locked} error={tried && !config.name.trim() ? t('builder.error.name') : undefined} onChange={event => {const name = event.target.value;change(value => ({...value, name}));}}/>
         <TextField label={t('builder.description')} value={config.description} maxLength={2048} disabled={locked} onChange={event => {const description = event.target.value;change(value => ({...value, description}));}}/>
@@ -64,7 +64,7 @@ export function ChannelEditor({source, api, reportError, openPresets, presets, l
           {tried && !rule.query.kinds.length && <p role="alert" className={styles.warning}>{t('builder.kindsHelp')}</p>}
           <ChannelConditions api={api} libraries={libraries} query={rule.query} locked={locked} isCurrent={isCurrent} reportError={reportError} onChange={(conditions, complete) => {
             if (!current() || locked) return false;
-            validation.conditions = complete;setConditionsValid(complete);
+            validation.conditions = complete;source.setQuietIncomplete('conditions',!complete);setConditionsValid(complete);
             if (complete) source.change(value => applyChannelConditions(value, conditions));
             return true;
           }}/>
@@ -77,7 +77,7 @@ export function ChannelEditor({source, api, reportError, openPresets, presets, l
         {rule.query.kinds.includes('episode') && <label className={styles.control}><span>{t('builder.episodes')}</span><RichSelect aria-label={t('builder.episodes')} value={rule.episodeMode} disabled={locked} options={episodes.map((mode, index) => ({value: mode, label: t(episodeWords[index]!)}))} onValueChange={value => changeRule({episodeMode: value as LibraryChannelRule['episodeMode']})}/></label>}
         <TextField label={t('builder.recent')} type="number" min={0} max={36500} value={rule.query.recentDays} disabled={locked} onChange={event => query({recentDays: Number(event.target.value)})}/>
         <label className={styles.control}><span>{t('builder.on')}</span><Switch aria-label={t('builder.on')} checked={config.enabled} disabled={locked} onCheckedChange={enabled => change(value => ({...value, enabled}))}/></label>
-        <ChannelHours presets={presets} openPresets={openPresets} config={config} locked={locked} isCurrent={isCurrent} onChange={change} onEditing={editing => {if (isCurrent()) {validation.hours = !editing;setHoursEditing(editing);}}}/>
+        <ChannelHours presets={presets} openPresets={openPresets} config={config} locked={locked} isCurrent={isCurrent} onChange={change} onEditing={editing => {if (isCurrent()) {validation.hours = !editing;source.setQuietIncomplete('hours',editing);setHoursEditing(editing);}}}/>
         <p className={styles.help}>{t('builder.audience')}</p>
         <Button size="small" variant="text" onClick={() => setAdvanced(value => !value)}>{t(advanced ? 'builder.hideAdvanced' : 'builder.advanced')}</Button>
         {advanced && <section className={styles.editorSection}>

@@ -1,4 +1,8 @@
-import {useCallback, useEffect, useRef, useState, useSyncExternalStore, type ReactNode} from 'react';
+import {dependsOn} from '@core/freshness-hub.ts';
+import {useFreshness} from '../../platform/freshness';
+import {mountQuietInput, SettingsOpenContext} from './quiet-refresh';
+import {peopleQuietInputs} from './people-refresh';
+import {useContext, useCallback, useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore, type ReactNode} from 'react';
 import {defaultI18n} from '@i18n';
 import {SettingsPeopleClient, type SettingsPeoplePage, type SettingsPeopleQuery, type SettingsPersonRow, type SettingsBulkAccess, type SettingsBulkAction} from '@core/settings-people.ts';
 import {personMemberResetCodeRow, settingsRowIndex, settingsSpec, type SettingsRow, type SettingsValue} from '@core/presentation/settings-spec.ts';
@@ -56,6 +60,8 @@ export type PeopleStreamLimits = Readonly<{
   patchBulk: (access: SettingsBulkAccess | undefined, choice: SettingsValue) => SettingsBulkAccess;
 }>;
 export type PeopleBindings = Readonly<{
+  inputActivity?: Readonly<{active:()=>boolean;revision:()=>number;subscribe:(listener:()=>void)=>()=>void}>;
+  subscribe?: (listener: () => void) => () => void;
   memberResetCodes?: MemberResetCodeSource; devices?: PeopleDevicesApi;
   client: SettingsPeopleClient; serverName: string; libraries: readonly {id: string; name: string}[]; actor: {accountId: string; role: AccessTier};
   authority: Readonly<{scope: SettingsViewerScope; isCurrent: () => boolean; subscribe: (listener: () => void) => () => void; onAuthorityChanged: () => void}>;
@@ -79,6 +85,10 @@ export function PeopleScreen({bindings, initialStatus, rowActions, advancedRows}
 
 function PeopleWorkspace({bindings, initialStatus, rowActions, advancedRows}: {bindings: PeopleBindings; initialStatus?: SettingsPeopleQuery['status']; rowActions?: (person: SettingsPersonRow) => ReactNode; advancedRows?: ReactNode}) {
   const {client} = bindings;
+  const {hub} = useFreshness();
+  const visibility=useContext(SettingsOpenContext);
+  const [, redrawFacts] = useState(0);
+  useEffect(() => bindings.subscribe?.(() => redrawFacts(value => value + 1)), [bindings]);
   const [issued, setIssued] = useState<ServerInvitation>(), [inviteOpen, setInviteOpen] = useState(false);
   const [invitationVersion, setInvitationVersion] = useState(0);
   const [formOpen, setFormOpen] = useState(false), [choices, setChoices] = useState<InviteChoices>(defaultInviteChoices);
@@ -150,6 +160,8 @@ function PeopleWorkspace({bindings, initialStatus, rowActions, advancedRows}: {b
   const [command, setCommand] = useState<{action: SettingsBulkAction; rows: readonly SettingsPersonRow[]} | undefined>(), [bulk, setBulk] = useState<SettingsBulkAccess>();
   const [bulkLibraryChoice, setBulkLibraryChoice] = useState<BulkLibraryChoice>('keep'), [bulkLibraryIds, setBulkLibraryIds] = useState<readonly string[]>([]);
   const tableRef = useRef<SettingsTableHandle>(null), opener = useRef<HTMLElement | null>(null), generation = useRef(0), mounted = useRef(true);
+  const firstPageIds = useRef<ReadonlySet<string>>(new Set());
+  const quietSerial = useRef(0), quietListeners = useRef(new Set<() => void>());
   const requests = useRef(new Set<AbortController>()), retired = useRef(false);
   const confirmOpener = useRef<HTMLElement | null>(null);
   useEffect(() => {const activeRequests = requests.current;mounted.current = true;return () => {mounted.current = false;for (const request of activeRequests) request.abort();activeRequests.clear();};}, []);
@@ -167,9 +179,9 @@ function PeopleWorkspace({bindings, initialStatus, rowActions, advancedRows}: {b
   }, [bindings.authority, client]);
   useEffect(() => {
     if (!live || denied) return;
-    const current = ++generation.current, controller = new AbortController();
+    ++quietSerial.current;const current = ++generation.current, controller = new AbortController();
     setPage(undefined); setLoading(true); setError(undefined); setSelected(new Set());
-    const timer = setTimeout(() => {void client.read(queryOf(query), '', controller.signal).then(value => {if (current === generation.current && bindings.authority.isCurrent()) setPage(value);}).catch(error => {if (!controller.signal.aborted && current === generation.current) failure(error);}).finally(() => {if (current === generation.current) setLoading(false);});}, query.search ? 200 : 0);
+    const timer = setTimeout(() => {void client.read(queryOf(query), '', controller.signal).then(value => {if (current === generation.current && bindings.authority.isCurrent()) {firstPageIds.current = new Set(value.items.map(row => row.accountId));setPage(value);}}).catch(error => {if (!controller.signal.aborted && current === generation.current) failure(error);}).finally(() => {if (current === generation.current) setLoading(false);});}, query.search ? 200 : 0);
     return () => {clearTimeout(timer); controller.abort();};
   }, [client, query, refresh, live, denied, failure, bindings.authority]);
   useEffect(() => {
@@ -178,6 +190,27 @@ function PeopleWorkspace({bindings, initialStatus, rowActions, advancedRows}: {b
     void client.person(personId, controller.signal).then(value => {if (!controller.signal.aborted && bindings.authority.isCurrent()) setPerson(value);}).catch(error => {if (!controller.signal.aborted) failure(error);});
     return () => controller.abort();
   }, [client, personId, live, denied, failure, bindings.authority]);
+  const quiet = useRef({page,query,personId,person,saving,loading,command,denied,live});
+  useLayoutEffect(() => {
+    const before=quiet.current;
+    if(before.personId!==personId)++quietSerial.current;
+    quiet.current={page,query,personId,person,saving,loading,command,denied,live};
+    for(const listener of quietListeners.current)listener();
+  });
+  useEffect(() => {
+    const current=() => mounted.current && bindings.authority.isCurrent() && !retired.current;
+    const listeners=quietListeners.current;
+    const subscribe=(listener: () => void) => {listeners.add(listener);const off=bindings.inputActivity?.subscribe(listener);return () => {off?.();listeners.delete(listener);};};
+    const blocked=() => !!bindings.inputActivity?.active() || !quiet.current.live || quiet.current.denied || quiet.current.saving || quiet.current.loading || !!quiet.current.command;
+    const inputs=peopleQuietInputs({client,current,blocked,subscribe,serial:()=>quietSerial.current+(bindings.inputActivity?.revision()??0),
+      get:()=>({...quiet.current,query:queryOf(quiet.current.query)}),firstPageIds:()=>firstPageIds.current,requests:requests.current,
+      installPage:(page,ids)=>{firstPageIds.current=ids;quiet.current={...quiet.current,page};setPage(page);},
+      installPerson:person=>{quiet.current={...quiet.current,person};setPerson(person);},
+      closePerson:id=>{if(quiet.current.personId===id){quiet.current={...quiet.current,personId:undefined,person:undefined};setPersonId(undefined);setPerson(undefined);setSelected(before=>new Set([...before].filter(value=>value!==id)));}},
+      denied:failure,
+    }).map(input=>mountQuietInput(hub,'settings/people',[dependsOn.list('members'),dependsOn.settings('server')],input,visibility));
+    return () => {for(const input of inputs)input.dispose();};
+  },[hub,client,bindings.authority,bindings.inputActivity,failure,visibility]);
   const more = () => {
     if (!live || denied || !bindings.authority.isCurrent() || loading || !page?.nextCursor) return;
     const current = generation.current, before = page, request = new AbortController();requests.current.add(request);setLoading(true);
@@ -187,7 +220,7 @@ function PeopleWorkspace({bindings, initialStatus, rowActions, advancedRows}: {b
     }}).catch(error => {if (!request.signal.aborted && current === generation.current) failure(error);}).finally(() => {requests.current.delete(request);if (current === generation.current) setLoading(false);});
   };
   const run = async (action: () => Promise<void>) => {
-    if (!live || denied || !bindings.authority.isCurrent() || saving) return; setSaving(true); setSaved(false); setError(undefined);
+    if (!live || denied || !bindings.authority.isCurrent() || saving) return; ++quietSerial.current;quiet.current={...quiet.current,saving:true};setSaving(true); setSaved(false); setError(undefined);
     try {await action(); if (mounted.current && bindings.authority.isCurrent() && !retired.current) {setSaved(true); setRefresh(value => value + 1);}}
     catch (error) {if (!failure(error)) bindings.reportError(error);}
     finally {if (mounted.current) setSaving(false);}
@@ -301,7 +334,7 @@ function PeopleWorkspace({bindings, initialStatus, rowActions, advancedRows}: {b
     {advancedRows}
     {personId && <SettingsPanel open onClose={() => {if (resetView && !resetView.leave()) return; setPersonId(undefined); setPerson(undefined);}} title={person?.username ?? personRow?.username ?? t(section.title)} audience={t(bindings.actor.role === 'owner' ? 'next.shell.serverVisibility.ownerShared' : 'next.shell.serverVisibility.administrator')}
       returnFocusRef={opener} selectedTab={tab} onTabChange={next => {if (next === tab) return; if (resetView && !resetView.leave()) return; setTab(next);}} saveState={saving ? 'saving' : saved ? 'saved' : undefined}
-      error={error ? t('next.states.pageFailedBody') : undefined} tabs={personPanel.tabs!.map(tab => ({id: tab.id, title: t(tab.title), content: !person ? <p role="status">{t('next.settings.loading')}</p> : tab.id === 'devices' && bindings.devices ? <PeopleDevices key={`${person.accountId}/${person.revision}`} accountId={person.accountId} api={bindings.devices} isCurrent={bindings.authority.isCurrent} canSignOut={canEdit} onError={failure} /> : <SettingsRows holder={tab} state={state} change={change} reset={() => {}} advancedOpen={advanced} onAdvancedChange={setAdvanced}
+      error={error ? t('next.states.pageFailedBody') : undefined} tabs={personPanel.tabs!.map(tab => ({id: tab.id, title: t(tab.title), content: !person ? <p role="status">{t('next.settings.loading')}</p> : tab.id === 'devices' && bindings.devices ? <PeopleDevices key={person.accountId} accountId={person.accountId} api={bindings.devices} isCurrent={bindings.authority.isCurrent} canSignOut={canEdit} onError={failure} /> : <SettingsRows holder={tab} state={state} change={change} reset={() => {}} advancedOpen={advanced} onAdvancedChange={setAdvanced}
         renderSpecial={special} />
       }))} />}
     {resetView?.sheet && <MemberResetCodeSheet {...resetView.sheet} />}

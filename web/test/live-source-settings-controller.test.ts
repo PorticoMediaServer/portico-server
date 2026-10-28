@@ -47,3 +47,24 @@ test('guide address policy confirmation remains explicit and never includes erro
  const controller=new SourceSettingsController({async request<T>(_path:string,method?:string){if(method==='PUT')throw {status:400,code:'source_lan_confirmation_required',message:'private-password',confirmRoots:['http://192.168.1.23:80/']};return response({...doc,settings:{...settings,remote}}) as T;}},'server',id,()=>true,()=>{});
  await controller.load();controller.edit({remote:{...remote,guideUrl:'http://192.168.1.23/guide.xml'}});assert.equal(await controller.save(),false);assert.deepEqual((controller.getSnapshot().error as any).confirmRoots,['http://192.168.1.23']);assert(!JSON.stringify(controller.getSnapshot().error).includes('private-password'));controller.dispose();
 });
+
+test('quiet configuration conflict preserves base, draft, acknowledgement and original revision for Save',async()=>{
+ let fresh=false,put:any;const controller=new SourceSettingsController({async request<T>(_path:string,method?:string,body?:any){if(method==='PUT'){put=body;return response({...doc,revision:9,settings:body.settings}) as T;}return response(fresh?{...doc,revision:8,settings:{...settings,userAgent:'C'}}:doc) as T;}},'server',id,()=>true,()=>{},()=> 'b'.repeat(48));
+ await controller.load();controller.edit({userAgent:'B'});const before=controller.getSnapshot();fresh=true;
+ assert.deepEqual(await controller.refreshQuietly(),{kind:'conflict'});assert.equal(controller.getSnapshot(),before);assert.equal(await controller.save(),true);assert.equal(put.expectedRevision,7);assert.equal(put.settings.userAgent,'B');controller.dispose();
+});
+
+test('quiet configuration rebases current edits made during I/O',async()=>{
+ let finish!:(value:unknown)=>void,fresh=false;const controller=new SourceSettingsController({async request<T>(){return fresh?new Promise(resolve=>{finish=resolve;}) as Promise<T>:response() as T;}},'server',id,()=>true,()=>{});
+ await controller.load();fresh=true;const pending=controller.refreshQuietly();controller.edit({userAgent:'B'});const before=controller.getSnapshot();finish(response({...doc,revision:8,settings:{...settings,retryWindowMs:90000}}));assert.deepEqual(await pending,{kind:'adopted'});assert.equal(controller.getSnapshot().draft?.userAgent,'B');assert.equal(controller.getSnapshot().draft?.retryWindowMs,90000);assert.equal(controller.getSnapshot().document?.revision,8);assert.equal(controller.getSnapshot().saved,before.saved);assert.equal(controller.getSnapshot().error,before.error);controller.dispose();
+});
+
+test('Save and logo admission fence earlier quiet configuration reads even after completion',async()=>{
+ for(const command of ['save','logo'] as const){let quiet=false,finish!:(value:unknown)=>void;const controller=new SourceSettingsController({async request<T>(path:string,method?:string,body?:any){if(method==='PUT')return response({...doc,revision:8,settings:body.settings}) as T;if(path.endsWith('/logos'))return {serverId:'server',protocolVersion:'1.0',result:{requested:1,imported:1,skipped:0}} as T;if(quiet)return new Promise(resolve=>{finish=resolve;}) as Promise<T>;return response() as T;}},'server',id,()=>true,()=>{});
+ await controller.load();if(command==='save')controller.edit({userAgent:'B'});quiet=true;const pending=controller.refreshQuietly();if(command==='save')await controller.save();else await controller.importLogos();const before=controller.getSnapshot();finish(response({...doc,revision:99,settings:{...settings,userAgent:'stale'}}));assert.deepEqual(await pending,{kind:'deferred'});assert.equal(controller.getSnapshot(),before);controller.dispose();}
+});
+
+test('unreadable configuration keeps exact retry error; uncertain write cannot borrow a revision',async()=>{
+ const error=Object.assign(new Error('original'),{status:503,retryAfterSeconds:7200});let fail=false;const controller=new SourceSettingsController({async request<T>(_p:string,method?:string){if(fail||method==='PUT')throw error;return response() as T;}},'server',id,()=>true,()=>{});
+ await controller.load();const before=controller.getSnapshot();fail=true;const result=await controller.refreshQuietly();assert.equal(result.kind,'unreadable');if(result.kind==='unreadable')assert.equal(result.error,error);assert.equal(controller.getSnapshot(),before);fail=false;controller.edit({userAgent:'B'});await controller.save();const uncertain=controller.getSnapshot();assert.deepEqual(await controller.refreshQuietly(),{kind:'deferred'});assert.equal(controller.getSnapshot(),uncertain);controller.dispose();
+});

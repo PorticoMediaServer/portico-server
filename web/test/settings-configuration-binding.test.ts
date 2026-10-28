@@ -72,3 +72,19 @@ test('denied members start no owner reads; an injected reader retains the same l
   assert.deepEqual(f.controller.configurationMatches('integrations.max_webhooks'), []);
   f.dispose();assert.equal(signal?.aborted, true);
 });
+
+test('current-section quiet configuration bypasses successful memoization without changing page acknowledgement',async()=>{
+ let reads=0;const f=fixture({readConfiguration:async()=>({...configuration,revision:++reads,path:reads===1?'/first':'/fresh'})});
+ try{await f.controller.load(section);const before=f.controller.getSnapshot(section),inputs=f.controller.quietInputs(section),configurationInput=inputs.find(input=>input.id==='configuration')!;
+  assert.deepEqual(await configurationInput.refresh(),{kind:'adopted'});assert.equal(reads,2);assert.equal(f.controller.configurationMatches('integrations.max_webhooks')?.[0]?.path,'/fresh');assert.deepEqual(f.controller.getSnapshot(section),before);
+  assert.deepEqual(inputs.map(input=>input.id),['configuration','header/health','header/storage']);
+ }finally{f.dispose();}
+});
+
+test('quiet section input admission cancels stale configuration while unreadability keeps original error and confirmed data',async()=>{
+ let reads=0,signal:AbortSignal|undefined,release!:(value:SettingsConfiguration)=>void,fail=false;const error=Object.assign(new Error('original'),{retryAfterSeconds:7200});
+ const f=fixture({readConfiguration:async active=>{if(++reads===1)return configuration;if(fail)throw error;signal=active;return new Promise(resolve=>{release=resolve;});}});
+ try{await f.controller.load(section);const input=f.controller.quietInputs(section).find(input=>input.id==='configuration')!,pending=input.refresh();f.controller.setQuietInputActive(true);assert.equal(signal?.aborted,true);f.controller.setQuietInputActive(false);release({...configuration,path:'/stale'});assert.deepEqual(await pending,{kind:'deferred'});assert.equal(f.controller.configurationMatches('integrations.max_webhooks')?.[0]?.path,configuration.path);
+  fail=true;const before=f.controller.getSnapshot(section),result=await input.refresh();assert.equal(result.kind,'unreadable');if(result.kind==='unreadable')assert.equal(result.error,error);assert.equal(f.controller.getSnapshot(section),before);
+ }finally{f.dispose();}
+});

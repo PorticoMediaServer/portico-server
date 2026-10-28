@@ -1,4 +1,7 @@
-import {useEffect, useRef, useState, useSyncExternalStore} from 'react';
+import {dependsOn} from '@core/freshness-hub.ts';
+import {useFreshness} from '../../../platform/freshness';
+import {mountQuietInput, SettingsOpenContext} from '../quiet-refresh';
+import {useContext, useEffect, useRef, useState, useSyncExternalStore} from 'react';
 import {defaultI18n} from '@i18n';
 import type {LibraryContentApi} from '@core/library-content.ts';
 import {LibraryManagementService, type ManagedLibrary} from '@core/library-management.ts';
@@ -25,6 +28,16 @@ const kindIcons: Readonly<Record<LibraryKind, IconName>> = {movie: 'i-film', tv:
 export function LibrariesPanel({api, service, onEdit, onError, serverName}: {
   api: LibraryContentApi; service: LibraryManagementService; onEdit: (libraryId: string) => void; onError: (error: unknown) => void; serverName?: string;
 }) {
+  const {hub}=useFreshness();
+  const visibility=useContext(SettingsOpenContext);
+  useEffect(() => {
+    const input=mountQuietInput(hub,'settings/libraries',[dependsOn.libraries,dependsOn.settings('server')],{
+      id:'directory',refresh:service.refreshDirectory.bind(service),cancel:service.invalidateQuietDirectory,subscribe:service.subscribe,
+      blocked:() => service.getSnapshot().directory.phase==='loading' || service.getSnapshot().mutation.phase==='pending',
+      settlement:() => service.getSnapshot().mutation,
+    },visibility);
+    return () => input.dispose();
+  },[hub,service,visibility]);
   const snapshot = useSyncExternalStore(service.subscribe, service.getSnapshot, service.getSnapshot);
   const [busy, setBusy] = useState<string>(), [menu, setMenu] = useState<string>(), [adding, setAdding] = useState(false), [removing, setRemoving] = useState<string>();
   const directory = snapshot.directory;
