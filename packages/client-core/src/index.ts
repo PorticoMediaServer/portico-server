@@ -208,6 +208,9 @@ export class RequestTimeoutError extends Error {
  * do not come through here and have no such limit.
  */
 export function requestDeadlineMs(path: string, method: string): number {
+  // This owner read advances capped server snapshots; selection size sets its
+  // duration. The screen owns cancellation, rather than a whole-scan timer.
+  if (method === 'POST' && path === routePath('post_metadata_bulk_preview')) return Infinity;
   // The server's claim watch lasts ten minutes and streams whitespace until its
   // final JSON answer. Give the body the whole approval window plus a margin.
   if (method === 'POST' && path.split('?')[0] === routePath('post_networking_claim_await_approval')) return 615_000;
@@ -222,14 +225,14 @@ async function withinDeadline<T>(ms: number, signal: AbortSignal | undefined, wo
   let timedOut = false;
   const cancel = () => controller.abort();
   if (signal?.aborted) cancel(); else signal?.addEventListener('abort', cancel, {once: true});
-  const timer = setTimeout(() => { timedOut = true; controller.abort(); }, ms);
+  const timer = ms === Infinity ? undefined : setTimeout(() => { timedOut = true; controller.abort(); }, ms);
   try {
     return await work(controller.signal);
   } catch (error) {
     if (timedOut && !signal?.aborted) throw new RequestTimeoutError();
     throw error;
   } finally {
-    clearTimeout(timer);
+    if (timer !== undefined) clearTimeout(timer);
     signal?.removeEventListener('abort', cancel);
   }
 }
@@ -598,7 +601,7 @@ export class HttpLocalApi {
     body?: unknown,
     signal?: AbortSignal
   ): Promise<T> {
-    // No request waits for ever: one the server never answers fails as timed out (see `requestDeadlineMs`).
+    // Ordinary requests time out; the paged owner preview belongs to caller cancellation (see `requestDeadlineMs`).
     // A change the writer refused before it began is sent again, not dropped (`writer-capacity.ts`).
     return retryWriterCapacity(
       () => withinDeadline(requestDeadlineMs(path, method), signal, bounded => this.answered<T>(path, method, body, bounded)),

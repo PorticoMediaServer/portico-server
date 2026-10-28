@@ -5,12 +5,10 @@ import (
 	"database/sql"
 	"errors"
 	"net/http"
-	"time"
 
 	"portico.local/apikit"
 	"portico.local/apikit/apierror"
 	"portico.local/server/internal/catalog"
-	"portico.local/server/internal/dbwork"
 	"portico.local/server/internal/metadata"
 )
 
@@ -27,8 +25,6 @@ func registerBulkMetadataPreview(registry *apikit.Registry, d Dependencies) {
 				}
 				err = bulkError(err)
 			}()
-			ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
-			defer cancel()
 			r = r.WithContext(ctx)
 			if r.URL.RawQuery != "" {
 				return out, metadataAttentionError(metadata.ErrRepairInput)
@@ -44,41 +40,27 @@ func registerBulkMetadataPreview(registry *apikit.Registry, d Dependencies) {
 				return out, err
 			}
 			var fence string
-			// The preview reads the whole selection in one snapshot, so it
-			// takes the single owner-long read permit (background connection,
-			// at most ten minutes, ended with a retryable refusal under hard
-			// WAL pressure). The request's own deadline still applies.
-			long, release, err := dbwork.AcquireLongRead(ctx, dbwork.LongReadBulkMetadataPreview)
-			if err != nil {
-				return out, err
-			}
-			defer release()
-			err = dbwork.WithReadSnapshot(long, d.DB, func(snapshot context.Context) error {
+			// Each source call and metadata page runs in its own capped snapshot.
+			// The owner request may span many pages; only the caller's deadline
+			// bounds the whole operation, and cancellation cleans its spill file.
+			source := func(snapshot context.Context, tx *sql.Tx, after int64) (catalog.BulkMetadataSelectionPage, error) {
 				request := r.WithContext(snapshot)
 				libraries, bound, err := d.homeScopeFor(request, p)
 				if err != nil {
-					return err
+					return catalog.BulkMetadataSelectionPage{}, err
 				}
-				fence = bound
+				if fence == "" {
+					fence = bound
+				} else if bound != fence {
+					return catalog.BulkMetadataSelectionPage{}, catalog.ErrStaleContinuation
+				}
 				viewer, err := d.catalogViewer(request, p, libraries, bound)
 				if err != nil {
-					return err
+					return catalog.BulkMetadataSelectionPage{}, err
 				}
-				tx := dbwork.Snapshot(snapshot)
-				if tx == nil {
-					return errors.New("metadata preview read snapshot unavailable")
-				}
-				authorize := func(tx *sql.Tx) error { return d.manualMetadataAuthorize(snapshot, tx, p) }
-				if err = authorize(tx); err != nil {
-					return err
-				}
-				selection, err := d.Catalog.BulkMetadataSelectionTx(snapshot, tx, viewer, in)
-				if err != nil {
-					return bulkError(err)
-				}
-				out, err = d.Metadata.BulkPreviewTx(snapshot, tx, selection, authorize)
-				return err
-			})
+				return d.Catalog.BulkMetadataSelectionPageTx(snapshot, tx, viewer, in, after)
+			}
+			out, err = d.Metadata.BulkPreview(ctx, source, func(snapshot context.Context, tx *sql.Tx) error { return d.manualMetadataAuthorize(snapshot, tx, p) })
 			if err != nil {
 				return out, metadataAttentionError(err)
 			}

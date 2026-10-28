@@ -36,9 +36,6 @@ const (
 	LongReadIntegrity      LongRead = "integrity"
 	LongReadRepair         LongRead = "repair"
 	LongReadRestoreStaging LongRead = "restore-staging"
-	// LongReadBulkMetadataPreview is the owner's shared/mixed metadata preview
-	// over a whole selection, which today reads the selection in one snapshot.
-	LongReadBulkMetadataPreview LongRead = "bulk-metadata-preview"
 )
 
 // ErrLongReadBusy reports that another owner-long read holds the permit.
@@ -74,7 +71,7 @@ type longReadKey struct{}
 // qualify, and a second concurrent request is refused, never queued.
 func AcquireLongRead(ctx context.Context, op LongRead) (context.Context, func(), error) {
 	switch op {
-	case LongReadIntegrity, LongReadRepair, LongReadRestoreStaging, LongReadBulkMetadataPreview:
+	case LongReadIntegrity, LongReadRepair, LongReadRestoreStaging:
 	default:
 		return nil, nil, fmt.Errorf("dbwork: %q is not a whole-database read", op)
 	}

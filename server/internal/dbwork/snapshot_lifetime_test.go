@@ -71,7 +71,7 @@ func TestHardPressureCancelsTheLongReadAndShrinksTheWAL(t *testing.T) {
 		}
 	}
 	write()
-	long, release, err := AcquireLongRead(ctx, LongReadBulkMetadataPreview)
+	long, release, err := AcquireLongRead(ctx, LongReadRestoreStaging)
 	if err != nil {
 		t.Fatal(err)
 	}
