@@ -213,8 +213,21 @@ type PlayHistoryPage struct {
 	NextCursor string `json:"nextCursor"`
 }
 
+// HistoryAudience is the live principal asking for the owner's play history.
+// Watch history from a removed profile is retained for its owner and shown as
+// "Name (removed)". Only the server owner's main profile, checked live in the
+// same read, may see those rows; a nil audience sees live profiles only.
+type HistoryAudience struct {
+	AccountID string
+	ProfileID string
+	Epoch     int
+}
+
 // PlayHistoryQuery filters the history. Every field is optional.
 type PlayHistoryQuery struct {
+	// Audience decides whether retained plays of removed profiles are visible.
+	// The HTTP edge sets it from the authenticated owner; no query or body does.
+	Audience  *HistoryAudience
 	TimeZone  string
 	Until     string
 	AccountID string
@@ -279,16 +292,19 @@ func (s *Service) PlayHistory(ctx context.Context, q PlayHistoryQuery) (PlayHist
 		afterSort = values[0]
 		beforeID = values[1]
 	}
-	filter, args, err := historyFilter(q, r)
-	if err != nil {
-		return out, err
-	}
-
 	tx, done, err := historyRead(ctx, s.db)
 	if err != nil {
 		return out, err
 	}
 	defer done()
+	seesRemoved, err := historySeesRemoved(ctx, tx, q.Audience)
+	if err != nil {
+		return out, err
+	}
+	filter, args, err := historyFilter(q, r, seesRemoved)
+	if err != nil {
+		return out, err
+	}
 	page, pageArgs := filter, append([]any{}, args...)
 	if q.Cursor == "" {
 		var total int64
@@ -323,7 +339,7 @@ func (s *Service) PlayHistory(ctx context.Context, q PlayHistoryQuery) (PlayHist
 	if custom {
 		ordering = sortExpression + " " + order + ",h.id " + order
 	}
-	rows, err := tx.QueryContext(ctx, `SELECT h.id,h.user_name,h.profile_name,h.account_id,h.kind,h.title,h.parent_title,h.season,h.episode,
+	rows, err := tx.QueryContext(ctx, `SELECT h.id,h.user_name,`+historyProfileLabel()+`,h.account_id,h.kind,h.title,h.parent_title,h.season,h.episode,
 	 COALESCE((SELECT pid(e.public_id) FROM catalog_entities e WHERE e.id=h.item_id AND e.retired=0),''),
 	 h.library_id,h.device_name,h.platform,h.started_ms,h.position_ms,h.duration_ms,h.completed,`+historyWatched(r)+`,h.location,`+sortExpression+`
 	 FROM play_history h`+page+` ORDER BY `+ordering+` LIMIT ?`, append(pageArgs, q.Limit+1)...)
@@ -406,15 +422,19 @@ func (s *Service) PlaySummary(ctx context.Context, q PlayHistoryQuery) (PlaySumm
 	if err != nil {
 		return out, err
 	}
-	filter, args, err := historyFilter(q, r)
-	if err != nil {
-		return out, err
-	}
 	tx, done, err := historyRead(ctx, s.db)
 	if err != nil {
 		return out, err
 	}
 	defer done()
+	seesRemoved, err := historySeesRemoved(ctx, tx, q.Audience)
+	if err != nil {
+		return out, err
+	}
+	filter, args, err := historyFilter(q, r, seesRemoved)
+	if err != nil {
+		return out, err
+	}
 	if err = tx.QueryRowContext(ctx, `SELECT count(*),count(DISTINCT authority||'/'||account_id),COALESCE(sum(`+historyWatched(r)+`),0),COALESCE(sum(converted),0) FROM play_history h`+filter, args...).Scan(&out.Plays, &out.People, &out.WatchedMs, &out.Converted); err != nil {
 		return out, err
 	}
@@ -441,7 +461,8 @@ func (s *Service) PlaySummary(ctx context.Context, q PlayHistoryQuery) (PlaySumm
 	if out.MostPlayed, err = top(`CASE WHEN kind IN(` + strconv.Itoa(int(compactcatalog.Episode)) + `,` + strconv.Itoa(int(compactcatalog.Part)) + `) AND parent_title<>'' THEN parent_title ELSE title END`); err != nil {
 		return out, err
 	}
-	out.MostActive, err = top(`CASE WHEN profile_name<>'' THEN user_name||' · '||profile_name ELSE user_name END`)
+	label := historyProfileLabel()
+	out.MostActive, err = top(`CASE WHEN ` + label + `<>'' THEN h.user_name||' · '||` + label + ` ELSE h.user_name END`)
 	return out, err
 }
 

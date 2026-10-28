@@ -143,3 +143,18 @@ func (s *Service) RunProfilePurge(ctx context.Context) {
 		return 0
 	})
 }
+
+func (ProfileRetirement) JSONSchema() map[string]any {
+	return map[string]any{"type": "object", "additionalProperties": false, "required": []string{"profileId", "lifetime", "state"}, "properties": map[string]any{
+		"profileId": map[string]any{"type": "string", "minLength": 1, "maxLength": 128},
+		"lifetime":  map[string]any{"type": "string", "pattern": "^[0-9a-f]{32}$"},
+		"state":     map[string]any{"type": "string", "enum": []string{"removing", "removed", "blocked"}},
+	}}
+}
+func (ProfileRetirementRequest) JSONSchema() map[string]any {
+	return map[string]any{"type": "object", "additionalProperties": false, "required": []string{"expectedRevision", "lifetime", "deleteSavedResources"}, "properties": map[string]any{
+		"expectedRevision":     map[string]any{"type": "integer", "minimum": 1, "maximum": 9007199254740991},
+		"lifetime":             map[string]any{"type": "string", "pattern": "^[0-9a-f]{32}$"},
+		"deleteSavedResources": map[string]any{"type": "boolean", "enum": []bool{true}},
+	}}
+}
