@@ -488,3 +488,72 @@ func TestReadingCountReducerVacuumInvalidatesPhysicalCursor(t *testing.T) {
 		t.Fatal("physical cursor survived vacuum", err)
 	}
 }
+
+func TestReadingCountContinuationAdmissionReusesOnlyValidatedTotals(t *testing.T) {
+	c, s, v, _ := readingBrowseFixture(t, "book")
+	c.Drain()
+	first, err := s.BrowseEntities(v, BrowseRequest{Library: "reading", Limit: 1})
+	if err != nil {
+		t.Fatal(err)
+	}
+	original, err := s.readSignedBrowseCursor(first.PageInfo.NextCursor)
+	if err != nil {
+		t.Fatal(err)
+	}
+	original.Expires = time.Now().Add(time.Minute).Unix()
+	for _, tt := range []struct {
+		name    string
+		mutate  func(*cursorValue)
+		present bool
+		refuse  bool
+	}{
+		{"carried", func(*cursorValue) {}, true, false},
+		{"zero present", func(c *cursorValue) { c.Total = 0; c.TotalPresent = true }, true, false},
+		{"legacy absent", func(c *cursorValue) { c.Total = 0; c.TotalPresent = false }, false, false},
+		{"wrong envelope", func(c *cursorValue) { c.CatalogRevision-- }, false, false},
+		{"missing anchor", func(c *cursorValue) { c.ID = "999999999" }, false, true},
+		{"wrong fingerprint", func(c *cursorValue) { c.Fingerprint = "other" }, false, true},
+		{"expired", func(c *cursorValue) { c.Expires = time.Now().Add(-time.Second).Unix() }, false, true},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			cursor := original
+			tt.mutate(&cursor)
+			// Preserve the deliberately stale envelope when signing this test case.
+			raw, err := s.encodeRevisionCursor(cursor, ContentRevision{Catalog: cursor.CatalogRevision, Viewer: cursor.ViewerRevision})
+			if err != nil {
+				t.Fatal(err)
+			}
+			request := BrowseRequest{Library: "reading", Limit: 1, Cursor: raw}
+			ctx, trace := dbwork.TraceStatements(context.Background())
+			_, present, err := s.WithContext(ctx).BrowseReadingCarriedTotal(v, request)
+			if tt.refuse {
+				if !errors.Is(err, ErrStaleContinuation) {
+					t.Fatal(err)
+				}
+			} else if err != nil || present != tt.present {
+				t.Fatal(present, err)
+			}
+			if a, b := browseRowCountStatements(trace()); a != 0 || b != 0 {
+				t.Fatal("admission counted", a, b)
+			}
+			if tt.refuse {
+				return
+			}
+			r, err := s.NewReadingCountReduction(v, request)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if r.done != tt.present || r.OriginalExpiry().Unix() != original.Expires {
+				t.Fatal("count presence or original expiry lost", r.done, r.OriginalExpiry())
+			}
+			if !tt.present {
+				finishReadingCount(t, s, v, r, defaultReadingCountBudget)
+				result, _ := r.Result()
+				_, err = s.WithContext(ctx).BrowseReadingWithPreparedCount(v, request, result)
+				if err != nil {
+					t.Fatal(err)
+				}
+			}
+		})
+	}
+}
