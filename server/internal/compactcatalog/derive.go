@@ -301,7 +301,7 @@ func (w *Worker) Run(ctx context.Context) {
 	}
 	w.mu.Unlock()
 	signal := worker.NewSignal()
-	unregister := dbwork.WakeOnTables(signal, "catalog_*", "compact_*")
+	unregister := dbwork.WakeOnTables(signal, "catalog_*", "compact_*", "reading_path_dirty_work", "reading_path_source_barrier", "reading_path_availability_pending")
 	defer unregister()
 	worker.Run(ctx, "catalogue derived data", signal, func(ctx context.Context) time.Duration {
 		if !dbwork.Yield(ctx) {
@@ -322,7 +322,13 @@ func (w *Worker) Run(ctx context.Context) {
 			}
 			return time.Millisecond
 		}
-		return w.retryWait()
+		// Blocked Reading scopes are parked until a dependency write wakes
+		// this loop; only a quiet-gap hold needs the timer.
+		wait := w.retryWait()
+		if d := readingPathNextDue(ctx, w.db); d > 0 && (wait == 0 || d < wait) {
+			wait = d
+		}
+		return wait
 	})
 }
 
@@ -771,7 +777,7 @@ func acknowledgeDerived(ctx context.Context, tx *sql.Tx, domain int, id, revisio
 // domain has work it can finish.
 const readingAttributionStep = 8
 
-var steps = [...]func(context.Context, *sql.Tx, int) (int, error){StepCollectionVisibleCounts, StepCategoryVisibility, StepVisibilitySortBuckets, StepPersonalSortBuckets, StepBookContextEvidence, StepBookGroupVisibleCounts, StepContentEligible, StepRecProfiles, readingAttributionStep: StepReadingAttribution}
+var steps = [...]func(context.Context, *sql.Tx, int) (int, error){StepCollectionVisibleCounts, StepCategoryVisibility, StepVisibilitySortBuckets, StepPersonalSortBuckets, StepBookContextEvidence, StepBookGroupVisibleCounts, StepContentEligible, StepRecProfiles, readingAttributionStep: StepReadingAttribution, StepReadingPaths}
 
 func (w *Worker) runSteps(ctx context.Context, tx *sql.Tx, limit int) (int, int, error) {
 	w.mu.Lock()
@@ -785,7 +791,7 @@ func (w *Worker) runSteps(ctx context.Context, tx *sql.Tx, limit int) (int, int,
 		}
 		if n > 0 {
 			total += n
-			if kind == readingAttributionStep {
+			if kind == readingAttributionStep || kind == readingAttributionStep+1 {
 				// Its EOF, obsolete cleanup and ready publication must be
 				// separate committed batches, including an empty library. Do
 				// not re-enter this step in the same writer transaction.

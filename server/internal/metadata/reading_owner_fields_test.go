@@ -194,8 +194,7 @@ func seedReadingSourceValues(t *testing.T, c *catalogtest.Catalog, target Repair
 	}
 	c.Exec(`INSERT INTO inventory_objects(id,source_id,asset_id,root_incarnation,relative_path,revision,evidence_json,size,modified_ns) VALUES('reading-object',?,?,?,'Original.pdf','r1','{}',1,1)`, source, token, incarnation)
 	c.Exec(`INSERT INTO reading_source_values(item_id,asset_id,field,text_value,source,inventory_object_id,source_revision) VALUES(?,?,'author','Genuine Author','file-metadata','reading-object','r1')`, entity, asset)
-	c.Exec(`INSERT INTO reading_source_values(item_id,asset_id,field,text_value,source,inventory_object_id,source_revision) VALUES(?,?,'series','Genuine Series','folder','reading-object','r1')`, entity, asset)
-	c.Exec(`INSERT INTO reading_source_values(item_id,asset_id,field,number_value,source,inventory_object_id,source_revision) VALUES(?,?,'seriesNumber',2.5,'file-name','reading-object','r1')`, entity, asset)
+	c.Exec(`INSERT INTO reading_path_head(item_id,asset_id,publisher_sequence,object_id,source_revision,series,series_source,series_number) VALUES(?,?,1,'reading-object','r1','Genuine Series','folder',2.5)`, entity, asset)
 }
 
 // The canonical source is the value even when no owner row exists at all: the
@@ -205,7 +204,7 @@ func TestReadingOwnerFieldsReadCanonicalValuesWithoutOwnerRows(t *testing.T) {
 	s, c, target := readingOwnerFixture(t, compactcatalog.Ebook, "book")
 	ctx := context.Background()
 	seedReadingSourceValues(t, c, target)
-	c.Exec(`UPDATE reading_source_values SET number_value=0 WHERE item_id=? AND field='seriesNumber'`, c.ID(target.ID))
+	c.Exec(`UPDATE reading_path_head SET series_number=0 WHERE item_id=?`, c.ID(target.ID))
 	var rows int
 	if err := c.DB.QueryRow(`SELECT count(*) FROM metadata_owner_fields WHERE kind='item' AND entity_id=?`, c.ID(target.ID)).Scan(&rows); err != nil || rows != 0 {
 		t.Fatalf("fixture has owner rows: %d %v", rows, err)
@@ -235,6 +234,7 @@ func TestReadingOwnerCanonicalAbsenceClearsStaleAutomatic(t *testing.T) {
 		{"withdrawn", func(c *catalogtest.Catalog, target RepairTarget) {
 			seedReadingSourceValues(t, c, target)
 			c.Exec(`DELETE FROM reading_source_values WHERE item_id=?`, c.ID(target.ID))
+			c.Exec(`DELETE FROM reading_path_head WHERE item_id=?`, c.ID(target.ID))
 		}},
 		{"current-source-invalid", func(c *catalogtest.Catalog, target RepairTarget) {
 			seedReadingSourceValues(t, c, target)

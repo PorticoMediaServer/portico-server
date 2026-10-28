@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"path/filepath"
+	"portico.local/server/internal/compactcatalog"
 	"portico.local/server/internal/storage"
 )
 
@@ -18,6 +19,11 @@ func InventoryIssueTx(ctx context.Context, tx *sql.Tx, job string, issue storage
 		return err
 	}
 	n, _ := result.RowsAffected()
+	if n > 0 && issue.Protect {
+		if err = compactcatalog.ReadingQueuePathCoverageTx(ctx, tx, job); err != nil {
+			return err
+		}
+	}
 	if n > 0 && issue.Warning {
 		_, err = tx.ExecContext(ctx, `UPDATE inventory_runs SET warnings=warnings+1 WHERE job_id=?`, job)
 	}

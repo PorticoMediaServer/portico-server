@@ -3,6 +3,7 @@ package compactcatalog_test
 import (
 	"context"
 	"database/sql"
+	"strings"
 	"testing"
 
 	"portico.local/server/internal/compactcatalog"
@@ -69,5 +70,58 @@ func TestReadingIdempotentAssetAndLinkWritesKeepInputGeneration(t *testing.T) {
 	})
 	if generation() <= before {
 		t.Fatal("real link change did not invalidate")
+	}
+}
+
+// Health is read live at browse time, so a scan's health flips must not restart
+// the whole-library attribution build; a real source change still does.
+func TestReadingSourceHealthFlipKeepsInputGeneration(t *testing.T) {
+	c, library, _ := readingProjectionFixture(t, 1)
+	generation := func() int64 {
+		t.Helper()
+		var g int64
+		if err := c.DB.QueryRow(`SELECT input_generation FROM reading_attribution_state WHERE library_id=?`, library).Scan(&g); err != nil {
+			t.Fatal(err)
+		}
+		return g
+	}
+	var source string
+	if err := c.DB.QueryRow(`SELECT s.id FROM library_sources s JOIN catalog_libraries cl ON cl.library_id=s.library_id WHERE cl.id=?`, library).Scan(&source); err != nil {
+		t.Fatal(err)
+	}
+	before := generation()
+	for _, health := range []string{"inventory_running", "healthy", "inventory_running", "healthy"} {
+		c.Exec(`UPDATE library_sources SET health=? WHERE id=?`, health, source)
+	}
+	c.Exec(`UPDATE library_sources SET enabled=enabled,root=root WHERE id=?`, source)
+	if after := generation(); after != before {
+		t.Fatalf("health or same-value source writes restarted attribution: %d -> %d", before, after)
+	}
+	c.Exec(`UPDATE library_sources SET generation=generation+1 WHERE id=?`, source)
+	if generation() <= before {
+		t.Fatal("real source generation change did not invalidate")
+	}
+}
+
+// The attribution page walks one library in id order inside the writer.
+func TestReadingAttributionPageUsesLibraryIDIndex(t *testing.T) {
+	c, library, _ := readingProjectionFixture(t, 1)
+	rows, err := c.DB.Query(`EXPLAIN QUERY PLAN SELECT e.id FROM catalog_entities e JOIN catalog_libraries cl ON cl.id=e.library_id JOIN libraries lib ON lib.id=cl.library_id WHERE e.library_id=? AND e.id>? ORDER BY e.id LIMIT ?`, library, 0, 100)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer rows.Close()
+	var plan []string
+	for rows.Next() {
+		var id, parent, unused int
+		var detail string
+		if err = rows.Scan(&id, &parent, &unused, &detail); err != nil {
+			t.Fatal(err)
+		}
+		plan = append(plan, detail)
+	}
+	joined := strings.Join(plan, "\n")
+	if !strings.Contains(joined, "catalog_entities_library_id") || strings.Contains(joined, "TEMP B-TREE") {
+		t.Fatalf("attribution page plan does not seek (library_id,id):\n%s", joined)
 	}
 }

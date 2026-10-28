@@ -94,23 +94,6 @@ func MarkInventoryMissingTx(ctx context.Context, tx *sql.Tx, source, job, object
 			return err
 		}
 	}
-	var readingRelative string
-	readingErr := tx.QueryRowContext(ctx, `SELECT o.relative_path FROM inventory_objects o JOIN library_sources s ON s.id=o.source_id JOIN libraries lib ON lib.id=s.library_id WHERE o.id=? AND lib.kind IN('book','comic')`, object).Scan(&readingRelative)
-	if readingErr != nil && readingErr != sql.ErrNoRows {
-		return readingErr
-	}
-	if readingErr == nil {
-		current, e := InventoryFenceTx(ctx, tx, job)
-		if e != nil {
-			return e
-		}
-		if current.ID != source {
-			return context.Canceled
-		}
-		if e = refreshReadingDirectoryTx(ctx, tx, job, current, filepath.Dir(readingRelative)); e != nil {
-			return e
-		}
-	}
 	_, err = tx.ExecContext(ctx, `INSERT OR IGNORE INTO inventory_changes(source_id,job_id,object_id,asset_id,revision,kind,created_at) VALUES(?,?,?,?,?,'missing',?)`, source, job, object, asset, revision, now.UTC().Format(time.RFC3339Nano))
 	return err
 }

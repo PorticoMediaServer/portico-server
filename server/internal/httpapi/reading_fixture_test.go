@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"portico.local/server/internal/assets"
+	"portico.local/server/internal/compactcatalog"
 	"portico.local/server/internal/identity"
 	"portico.local/server/internal/ingestion"
 	"portico.local/server/internal/reading"
@@ -187,4 +188,20 @@ func readingScanWithin(t *testing.T, f *v1Fixture, library string, timeout time.
 	}
 	cancel()
 	<-done
+	// COMPLETE path publication is now separate durable catalogue work. These
+	// tests ask for completed attribution, rather than the approved interim view.
+	worker := compactcatalog.NewWorker(f.db)
+	for i := 0; i < 10000; i++ {
+		var pending bool
+		if err := f.db.QueryRow(`SELECT EXISTS(SELECT 1 FROM reading_path_scope q JOIN catalog_libraries cl ON cl.id=q.library_id WHERE cl.library_id=? AND q.queued=1) OR EXISTS(SELECT 1 FROM reading_path_dirty_work w JOIN catalog_libraries cl ON cl.id=w.library_id WHERE cl.library_id=?) OR EXISTS(SELECT 1 FROM reading_path_build)`, library, library).Scan(&pending); err != nil {
+			t.Fatal(err)
+		}
+		if !pending {
+			return
+		}
+		if _, err := worker.Step(context.Background(), 64); err != nil {
+			t.Fatal(err)
+		}
+	}
+	t.Fatal("completed Reading path attribution did not drain")
 }
