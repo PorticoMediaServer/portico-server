@@ -124,3 +124,22 @@ test('Playlist sort exclusion survives wire/model/rules without reducing grants 
     const collection = await selectionJobTasks(target as never, 'collection-add', {collectionId: 'collection', expectedRevision: 1}, async () => 'operation');assert.equal(collection.length, 1);
   } finally {picker.dispose();model.dispose();}
 });
+test('Delete sort exclusion preserves exact facts, owner precedence and the existing 200-title limit', () => {
+  const input = wire(200, {delete: 'unsupported-sort'});input.selector.query.sort = [{field: 'groupOrder', direction: 'asc'}];
+  const parsed = parseWholeSelection(input);assert(parsed);
+  const descriptor = browseWholeSelectionQuery(parsed);assert(descriptor);
+  const model = new BrowseSelectionModel(context);assert(model.registerQuery(model.captureContext(), descriptor).ok);assert(model.selectWholeQuery(descriptor.id).ok);
+  const summary = model.getSnapshot().summary;
+  assert.deepEqual(summary.unavailableActions, {delete: 'unsupported-sort'});assert.equal(summary.count, 200);
+  assert.equal(summary.every.delete, true);assert.equal(descriptor.summary.types[0].capabilityCounts.delete, 200);
+  for (const platform of ['desktop-web', 'mobile-web', 'phone-app', 'tv'] as const) {
+    const owner = {platform, isOwner: true, canEditMetadata: true};
+    assert.deepEqual(selectionActions(summary, owner).delete, {state: 'disabled', reason: 'unsupported-sort'});
+    assert.equal(selectionActions(summary, {...owner, isOwner: false}).delete.state, 'hidden');
+    assert.deepEqual(selectionActions({...summary, every: {...summary.every, delete: false}}, owner).delete, {state: 'disabled', reason: 'not-permitted'});
+    assert.deepEqual(selectionActions({...summary, count: 201}, owner).delete, {state: 'explain', reason: 'delete-limit'});
+    assert.equal(selectionActions({...summary, unavailableActions: undefined}, owner).delete.state, 'ready');
+    for (const action of ['edit', 'collection', 'my-list'] as const) assert.equal(selectionActions(summary, owner)[action].state, 'ready');
+  }
+  assert.equal(parseWholeSelection(wire(200, {delete: 'preview-limit'})), undefined);model.dispose();
+});

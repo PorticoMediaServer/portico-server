@@ -43,6 +43,7 @@ export function selectionCallbacks(snapshot: HomeSelectionSnapshot, controller: 
     ...(unsupported('play') ? {playDisabledReason: unsupported('play')} : {}),
     ...(unsupported('play-next') ? {queueDisabledReason: unsupported('play-next')} : {}),
     ...(unsupported('playlist') ? {playlistDisabledReason: unsupported('playlist')} : {}),
+    ...(unsupported('delete') ? {deleteDisabledReason: unsupported('delete')} : {}),
     ...(unsupported('edit') ? {editDisabledReason: unsupported('edit')} : {}),
     ...(ready('play') ? {onPlay: () => execute('play')} : {}),
     ...(ready('play-next') && ready('play-later') ? {onQueue: (placement: 'next' | 'end') => execute(placement === 'next' ? 'play-next' : 'play-later')} : {}),
@@ -54,6 +55,6 @@ export function selectionCallbacks(snapshot: HomeSelectionSnapshot, controller: 
     ...(ready('favorite') ? {onFavorite: () => execute('favorite')} : {}),
     ...(ready('remove-my-list') ? {onRemoveFromMyList: () => execute('remove-my-list')} : {}),
     ...(ready('refresh') ? {onRefresh: () => execute('refresh')} : {}),
-    ...(ready('delete') || snapshot.actions.delete.state === 'disabled' ? {onDelete: () => runSelectionCommand(() => controller.openDelete(), reportError)} : {}),
+    ...(ready('delete') || snapshot.actions.delete.state === 'disabled' && snapshot.actions.delete.reason !== 'unsupported-sort' ? {onDelete: () => runSelectionCommand(() => controller.openDelete(), reportError)} : {}),
   };
 }
