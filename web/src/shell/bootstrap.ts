@@ -5,7 +5,7 @@ import {selectedViewerRecord} from '@core/viewer-selection.ts';
 import {PreferencesReader} from '@core/preferences-reader.ts';
 import {appearancePreferences, regionPreferences} from '@core/preference-effects.ts';
 import type {PreferenceSnapshot} from '@core/preferences.ts';
-import {parseDirectSnapshot} from '@core/profile-management.ts';
+import {parseDirectSnapshot, type DirectSnapshot} from '@core/profile-management.ts';
 import {HomeService} from '@core/home-service.ts';
 import {createShellFactOwner, attachShellFactFeed, bindShellFactWake, shellAccount, type ShellFactWitnesses} from './facts';
 import type {ShellFactsSource} from './fact-source';
