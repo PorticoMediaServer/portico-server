@@ -82,28 +82,44 @@ const availabilityStaleSQL = `INSERT INTO catalog_dirty(domain,entity_id,revisio
 // library; true when the library is done.
 func deriveLibraryAvailability(ctx context.Context, tx *sql.Tx, k Key, limit int) (bool, error) {
 	var after, revision int64
-	err := tx.QueryRowContext(ctx, `SELECT after,revision FROM catalog_fanouts WHERE domain=? AND key=?`, DomainLibraryAvailability, k.ID).Scan(&after, &revision)
+	var hasAfter bool
+	err := tx.QueryRowContext(ctx, `SELECT after,revision,has_after FROM catalog_fanouts WHERE domain=? AND key=?`, DomainLibraryAvailability, k.ID).Scan(&after, &revision, &hasAfter)
 	if errors.Is(err, sql.ErrNoRows) || err == nil && revision != k.Revision {
 		after = 0
-		if _, err = tx.ExecContext(ctx, `INSERT INTO catalog_fanouts(domain,key,revision,after) VALUES(?,?,?,0) ON CONFLICT(domain,key) DO UPDATE SET revision=excluded.revision,after=0`, DomainLibraryAvailability, k.ID, k.Revision); err != nil {
-			return false, err
-		}
-	} else if err != nil {
-		return false, err
+		hasAfter = false
+		_, err = tx.ExecContext(ctx, `INSERT INTO catalog_fanouts(domain,key,revision,after) VALUES(?,?,?,0) ON CONFLICT(domain,key) DO UPDATE SET revision=excluded.revision,after=0,has_after=0`, DomainLibraryAvailability, k.ID, k.Revision)
 	}
-	ids, err := scanIDs(ctx, tx, `SELECT e.id FROM catalog_entities e INDEXED BY catalog_entities_library JOIN catalog_kinds k ON k.id=e.kind
- WHERE (k.playable=1 OR k.id IN(20,21)) AND e.library_id=? AND e.id>? ORDER BY e.id LIMIT ?`, k.ID, after, limit)
 	if err != nil {
 		return false, err
 	}
-	if err = TouchTx(ctx, tx, DomainAvailability, ids...); err != nil {
+	// Index order is (library,id), not (library,kind,id). Raw rejects consume
+	// the quantum and its cursor; no kind filter/sort precedes LIMIT.
+	q := `SELECT e.id,k.playable=1 OR k.id IN(20,21) FROM catalog_entities e INDEXED BY catalog_entities_library_id
+ CROSS JOIN catalog_kinds k ON k.id=e.kind WHERE e.library_id=?`
+	args := []any{k.ID}
+	if hasAfter {
+		q += ` AND e.id>?`
+		args = append(args, after)
+	}
+	q += ` ORDER BY e.id LIMIT ?`
+	args = append(args, min(limit, upstreamQuantum))
+	edges, err := querySourceEdges(ctx, tx, 3, q, args...)
+	if err != nil {
 		return false, err
 	}
-	if len(ids) < limit {
-		_, err = tx.ExecContext(ctx, `DELETE FROM catalog_fanouts WHERE domain=? AND key=?`, DomainLibraryAvailability, k.ID)
+	for _, edge := range edges {
+		if edge.flag {
+			if err = TouchTx(ctx, tx, DomainAvailability, edge.id); err != nil {
+				return false, err
+			}
+		}
+		after = edge.id
+	}
+	if len(edges) == 0 {
+		_, err = tx.ExecContext(ctx, `DELETE FROM catalog_fanouts WHERE domain=? AND key=? AND revision=?`, DomainLibraryAvailability, k.ID, k.Revision)
 		return true, err
 	}
-	_, err = tx.ExecContext(ctx, `UPDATE catalog_fanouts SET after=? WHERE domain=? AND key=?`, ids[len(ids)-1], DomainLibraryAvailability, k.ID)
+	_, err = tx.ExecContext(ctx, `UPDATE catalog_fanouts SET after=?,has_after=1 WHERE domain=? AND key=? AND revision=?`, after, DomainLibraryAvailability, k.ID, k.Revision)
 	return false, err
 }
 
@@ -159,10 +175,10 @@ func init() {
 		},
 	})
 	Register(DomainLibraryAvailability, Derivation{
-		Version: 2,
+		Version: 3,
 		Drain: func(ctx context.Context, tx *sql.Tx, keys []Key, limit int) ([]int64, error) {
 			var done []int64
-			for _, k := range keys {
+			for _, k := range keys[:min(1, len(keys))] {
 				finished, err := deriveLibraryAvailability(ctx, tx, k, limit)
 				if err != nil {
 					return nil, err

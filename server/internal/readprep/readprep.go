@@ -75,7 +75,10 @@ type Result struct {
 	Key            Key
 	Payload        []byte
 	OriginalExpiry time.Time
-	delivery       *delivery
+	// CreatedAt is this private handle's first admission time, unchanged by
+	// polls or reuse of another caller's equivalent shared computation.
+	CreatedAt time.Time
+	delivery  *delivery
 }
 
 // Release returns the in-flight delivery reservation, including after Close or
@@ -318,10 +321,10 @@ type entry struct {
 }
 
 type lease struct {
-	caller         Caller
-	e              *entry
-	original, idle time.Time
-	bytes          int64
+	caller                  Caller
+	e                       *entry
+	original, idle, created time.Time
+	bytes                   int64
 }
 
 type Store struct {
@@ -351,26 +354,42 @@ type Budget struct {
 }
 
 func (b *Budget) Resize(bytes int64) error {
+	_, err := b.resize(bytes, false)
+	return err
+}
+
+// TryResize admits an optional optimization before allocating it. Capacity
+// returns false,nil without changing the reservation or poisoning the quantum;
+// the computation may continue using its already-reserved exact algorithm.
+// Invalid sizes, retirement and closure remain terminal, as with Resize.
+func (b *Budget) TryResize(bytes int64) (bool, error) {
+	return b.resize(bytes, true)
+}
+
+func (b *Budget) resize(bytes int64, optional bool) (bool, error) {
 	b.s.mu.Lock()
 	defer b.s.mu.Unlock()
 	if b.err != nil {
-		return b.err
+		return false, b.err
 	}
 	if b.e.retired || b.s.closed {
 		b.err = ErrStale
-		return b.err
+		return false, b.err
 	}
 	if bytes < 0 {
 		b.err = ErrInvalid
-		return b.err
+		return false, b.err
 	}
 	if bytes > b.e.reserved && !b.s.room(bytes-b.e.reserved, b.e) {
+		if optional {
+			return false, nil
+		}
 		b.err = ErrCapacity
-		return b.err
+		return false, b.err
 	}
 	b.s.used += bytes - b.e.reserved
 	b.e.reserved = bytes
-	return nil
+	return true, nil
 }
 
 // Submit opens a fresh private handle, sharing only exactly identical content.
@@ -484,7 +503,7 @@ func (s *Store) open(ctx context.Context, caller Caller, key Key, plan *Plan, un
 		s.cond.Signal()
 	}
 	s.handles[h] = &lease{caller: Caller(strings.Clone(string(caller))), e: e,
-		original: expires, idle: now.Add(s.cfg.IdleTTL), bytes: hbytes}
+		original: expires, idle: now.Add(s.cfg.IdleTTL), created: now, bytes: hbytes}
 	s.used += hbytes
 	e.refs++
 	e.touched = now
@@ -533,7 +552,7 @@ func (s *Store) Poll(ctx context.Context, caller Caller, h Handle) (Result, erro
 	if e.err != nil {
 		return Result{}, e.err
 	}
-	result := Result{State: Preparing, Basis: e.key.Basis, Key: e.key, OriginalExpiry: l.original}
+	result := Result{State: Preparing, Basis: e.key.Basis, Key: e.key, OriginalExpiry: l.original, CreatedAt: l.created}
 	// These immutable strings can outlive eviction of their original entry.
 	n := deliveryOverhead + int64(len(e.key.Namespace)+len(e.key.Basis)+len(e.key.Canonical))
 	if e.complete {
