@@ -13,7 +13,7 @@ func TestScanReadGuardReplacesTheObservationItSupersedes(t *testing.T) {
 	denied := errors.New("denied")
 	client := New("")
 	witnessed := 0
-	ctx := WithScanReadWitness(context.Background(), client, func(context.Context, string) error { return nil },
+	ctx := WithScanReadWitness(context.Background(), client,
 		func(context.Context, string) (ScanReadWitness, error) {
 			witnessed++
 			return ScanReadWitness{SourceID: "source", RelativePath: "poster.png", Snapshot: Snapshot{Size: 1}}, nil
@@ -59,7 +59,6 @@ func TestScanReadGuardAloneKeepsItsErrorOnlyBehaviour(t *testing.T) {
 func TestScanReadObservationErrorIsNeverUsable(t *testing.T) {
 	revoked := errors.New("policy revoked")
 	ctx := WithScanReadWitness(context.Background(), New(""),
-		func(context.Context, string) error { return revoked },
 		func(context.Context, string) (ScanReadWitness, error) {
 			return ScanReadWitness{}, revoked
 		})
@@ -70,7 +69,7 @@ func TestScanReadObservationErrorIsNeverUsable(t *testing.T) {
 	cancelled, cancel := context.WithCancel(ctx)
 	cancel()
 	attempted := 0
-	ctx = WithScanReadWitness(cancelled, New(""), func(context.Context, string) error { return nil },
+	ctx = WithScanReadWitness(cancelled, New(""),
 		func(context.Context, string) (ScanReadWitness, error) {
 			attempted++
 			return ScanReadWitness{SourceID: "source"}, nil
@@ -86,12 +85,50 @@ func TestScanReadObservationErrorIsNeverUsable(t *testing.T) {
 // The returned observation stays bound to the exact producer that took it.
 func TestScanReadObservationKeepsItsProducerIdentity(t *testing.T) {
 	first, second := New(""), New("")
-	ctx := WithScanReadWitness(context.Background(), first, func(context.Context, string) error { return nil },
+	ctx := WithScanReadWitness(context.Background(), first,
 		func(context.Context, string) (ScanReadWitness, error) {
 			return ScanReadWitness{SourceID: "source", Root: "/root", RelativePath: "poster.png"}, nil
 		})
 	obs, ok, err := ObserveScanRead(ctx, "/root/poster.png")
 	if err != nil || !ok || obs.Client != first || obs.Client == second {
 		t.Fatal("the observation lost its producer identity", obs, ok, err)
+	}
+}
+
+// Admission and observation are the same authority: one installed witness
+// answers CheckScanRead and ObserveScanRead, and a transition from allow to deny
+// is seen by both without reinstalling anything.
+func TestScanReadGuardAndObservationShareOneWitness(t *testing.T) {
+	denied := errors.New("policy revoked")
+	allow := true
+	paths := []string{}
+	ctx := WithScanReadWitness(context.Background(), New(""),
+		func(_ context.Context, path string) (ScanReadWitness, error) {
+			paths = append(paths, path)
+			if !allow {
+				return ScanReadWitness{}, denied
+			}
+			return ScanReadWitness{SourceID: "source", RelativePath: "poster.png", Snapshot: Snapshot{Size: 3}}, nil
+		})
+	if err := CheckScanRead(ctx, "/root/poster.png"); err != nil {
+		t.Fatal("an allowed witness refused admission", err)
+	}
+	if obs, ok, err := ObserveScanRead(ctx, "/root/poster.png"); err != nil || !ok || obs.RelativePath != "poster.png" || obs.Snapshot.Size != 3 {
+		t.Fatal("an allowed witness did not answer the observation", obs, ok, err)
+	}
+	allow = false
+	if err := CheckScanRead(ctx, "/root/poster.png"); !errors.Is(err, denied) {
+		t.Fatal("a denied witness still admitted", err)
+	}
+	if obs, ok, err := ObserveScanRead(ctx, "/root/poster.png"); !ok || !errors.Is(err, denied) || obs != (ScanReadObservation{}) {
+		t.Fatal("a denied witness was returned as usable", obs, ok, err)
+	}
+	if len(paths) != 4 {
+		t.Fatal("admission and observation did not consult the one witness", len(paths))
+	}
+	for _, path := range paths {
+		if path != "/root/poster.png" {
+			t.Fatal("the witness was consulted for another path", path)
+		}
 	}
 }

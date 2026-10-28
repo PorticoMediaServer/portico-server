@@ -5,7 +5,9 @@ import "context"
 // scanReadCheck is the one authoritative scan-read entry. The guard and the
 // observation it already takes live together, so a caller that installs a newer
 // guard replaces both: an observation taken under an older authority can never
-// outlive or speak for the guard that replaced it.
+// outlive or speak for the guard that replaced it. When an observation is
+// installed, its guard is derived from that same closure, so an entry can never
+// admit under one authority and answer from another.
 type scanReadCheck struct {
 	guard   ScanReadGuard
 	client  *Client
@@ -46,13 +48,23 @@ func WithScanReadGuard(ctx context.Context, guard ScanReadGuard) context.Context
 	return context.WithValue(ctx, scanReadGuardKey{}, scanReadCheck{guard: guard})
 }
 
-// WithScanReadWitness installs the scan-read guard together with the observation
-// that guard invocation already takes, as a single authoritative entry. The
-// witness must apply the guard's own policy and containment checks on every call
-// and return the request it observed; client binds the observation to the exact
-// producer so another storage namespace cannot satisfy it. Nothing is cached:
-// each call is a fresh observation.
-func WithScanReadWitness(ctx context.Context, client *Client, guard ScanReadGuard, witness ScanReadWitnessFunc) context.Context {
+// WithScanReadWitness installs the observation a scan-read check already takes,
+// as a single authoritative entry. The witness must apply the policy and
+// containment checks admission needs on every call and return the request it
+// observed; client binds the observation to the exact producer so another
+// storage namespace cannot satisfy it. Storage derives the error-only admission
+// guard from this same closure, so a mismatched guard is unrepresentable and
+// every check that reaches this entry makes one fresh observation. Nothing is
+// cached: each call is a fresh observation. A nil witness installs no entry,
+// exactly as an unwitnessed context.
+func WithScanReadWitness(ctx context.Context, client *Client, witness ScanReadWitnessFunc) context.Context {
+	if witness == nil {
+		return ctx
+	}
+	guard := func(check context.Context, path string) error {
+		_, err := witness(check, path)
+		return err
+	}
 	return context.WithValue(ctx, scanReadGuardKey{}, scanReadCheck{guard: guard, client: client, witness: witness})
 }
 

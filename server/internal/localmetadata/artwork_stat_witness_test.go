@@ -154,20 +154,21 @@ func (f *artworkWitnessFixture) listing(dir string) func(string) (ArtworkDirecto
 }
 
 // context builds the exact read context ingestion builds: the counted
-// observation, or only the guard when witness is false.
+// observation, or only the guard when witness is false. Storage derives the
+// admission guard from the witness, so a witnessed context has one authority for
+// the candidate's pre-check, its byte admission and its post-check.
 func (f *artworkWitnessFixture) context(dir string, witness bool, revoked *error) context.Context {
 	f.t.Helper()
 	ctx := storage.WithScanInput(context.Background(), f.store, "source", storage.InventoryRequest{Root: f.root, RootIdentity: f.identity})
 	ctx = WithArtworkListing(ctx, f.listing(dir))
-	guard := func(check context.Context, candidate string) error {
-		f.guarded++
-		_, err := f.observe(check, candidate, revoked)
-		return err
-	}
 	if !witness {
-		return storage.WithScanReadGuard(ctx, guard)
+		return storage.WithScanReadGuard(ctx, func(check context.Context, candidate string) error {
+			f.guarded++
+			_, err := f.observe(check, candidate, revoked)
+			return err
+		})
 	}
-	return storage.WithScanReadWitness(ctx, f.store, guard, func(check context.Context, candidate string) (storage.ScanReadWitness, error) {
+	return storage.WithScanReadWitness(ctx, f.store, func(check context.Context, candidate string) (storage.ScanReadWitness, error) {
 		f.observed++
 		return f.observe(check, candidate, revoked)
 	})
@@ -198,15 +199,15 @@ func TestArtworkCandidateConsumesTheIngestionObservationOnBothSides(t *testing.T
 		t.Fatal("the witnessed candidate was not read", cold, complete)
 	}
 	calls := f.calls()
-	if calls["inventory-stat Film/poster-1.png"] != 3 || calls["inventory-blob Film/poster-1.png"] != 1 || f.observed != 2 || f.guarded != 1 {
-		t.Fatal("cold candidate did not take two observations and one admitted byte read", calls, f.observed, f.guarded)
+	if calls["inventory-stat Film/poster-1.png"] != 3 || calls["inventory-blob Film/poster-1.png"] != 1 || f.observed != 3 || f.guarded != 0 {
+		t.Fatal("cold candidate did not observe at its pre-check, byte admission and post-check", calls, f.observed, f.guarded)
 	}
 	warm, complete := f.read(ctx, "Film/Movie (2020).mkv")
 	if !complete || len(warm) != 1 || warm[0] != cold[0] {
 		t.Fatal("the warm candidate changed", warm, complete)
 	}
 	calls = f.calls()
-	if calls["inventory-stat Film/poster-1.png"] != 5 || calls["inventory-blob Film/poster-1.png"] != 1 || f.observed != 4 || f.guarded != 1 {
+	if calls["inventory-stat Film/poster-1.png"] != 5 || calls["inventory-blob Film/poster-1.png"] != 1 || f.observed != 5 || f.guarded != 0 {
 		t.Fatal("warm candidate did not stay at two fresh observations", calls, f.observed, f.guarded)
 	}
 }
@@ -237,37 +238,49 @@ func TestArtworkCandidateWithoutObservationKeepsItsExplicitProof(t *testing.T) {
 }
 
 // An observation that answered a different request or came from another storage
-// namespace never decides: the exact baseline proof runs instead.
+// namespace never decides: it takes the real observation, then returns an
+// identity that is not this candidate, and the exact baseline proof runs instead.
 func TestArtworkCandidateRejectsAnObservationForAnotherRequestOrProducer(t *testing.T) {
 	for _, mismatch := range []string{"request", "producer"} {
 		t.Run(mismatch, func(t *testing.T) {
 			f := newArtworkWitnessFixture(t, "Film/poster-1.png")
 			ctx := storage.WithScanInput(context.Background(), f.store, "source", storage.InventoryRequest{Root: f.root, RootIdentity: f.identity})
 			ctx = WithArtworkListing(ctx, f.listing("Film"))
-			// The observation is well formed but says the candidate is a
-			// directory under another request: if it decided, the candidate
-			// would be refused.
-			foreign := func(context.Context, string) (storage.ScanReadWitness, error) {
-				return storage.ScanReadWitness{SourceID: "source", Root: f.root, RootIdentity: f.identity,
-					RelativePath: "Film/other.png", FollowSymlinks: mismatch == "request",
-					Snapshot: storage.Snapshot{Path: "x", Name: "x", Size: 3, Directory: true}}, nil
-			}
-			guard := func(check context.Context, candidate string) error {
-				_, err := f.observe(check, candidate, nil)
-				return err
+			// The witness observes the candidate for real, then reports an
+			// identity that answers another request (or another producer). If
+			// that observation decided, its directory snapshot would refuse the
+			// candidate.
+			witness := func(check context.Context, candidate string) (storage.ScanReadWitness, error) {
+				f.observed++
+				observation, err := f.observe(check, candidate, nil)
+				if err != nil {
+					return observation, err
+				}
+				observation.Snapshot = storage.Snapshot{Path: "x", Name: "x", Size: 3, Directory: true}
+				if mismatch == "request" {
+					observation.RelativePath = "Film/other.png"
+					observation.FollowSymlinks = true
+				}
+				return observation, nil
 			}
 			producer := f.store
 			if mismatch == "producer" {
 				producer = storage.New(f.store.Binary)
 			}
-			ctx = storage.WithScanReadWitness(ctx, producer, guard, foreign)
+			ctx = storage.WithScanReadWitness(ctx, producer, witness)
 			values, complete := f.read(ctx, "Film/Movie (2020).mkv")
 			if !complete || len(values) != 1 || values[0].SourceName != "poster-1.png" {
 				t.Fatal("a foreign observation decided the candidate", values, complete)
 			}
-			// The foreign observation took no stat; only the exact pair did.
-			if calls := f.calls(); calls["inventory-stat Film/poster-1.png"] < 5 {
+			// The witness observed on both candidate sides and at byte
+			// admission; the mismatched identity then ran the exact guard and
+			// stat pair on each side, never a cheaper proof.
+			calls := f.calls()
+			if calls["inventory-stat Film/poster-1.png"] != 7 || calls["inventory-blob Film/poster-1.png"] != 1 {
 				t.Fatal("the exact baseline proof did not run after the mismatch", calls)
+			}
+			if f.observed != 5 {
+				t.Fatal("the mismatched witness was not consulted as the one authority", f.observed)
 			}
 		})
 	}
@@ -275,11 +288,8 @@ func TestArtworkCandidateRejectsAnObservationForAnotherRequestOrProducer(t *test
 	f := newArtworkWitnessFixture(t, "Film/poster-1.png")
 	ctx := storage.WithScanInput(context.Background(), f.store, "source", storage.InventoryRequest{Root: f.root, RootIdentity: f.identity})
 	ctx = WithArtworkListing(ctx, f.listing("Film"))
-	guard := func(check context.Context, candidate string) error {
-		_, err := f.observe(check, candidate, nil)
-		return err
-	}
-	ctx = storage.WithScanReadWitness(ctx, f.store, guard, func(check context.Context, candidate string) (storage.ScanReadWitness, error) {
+	ctx = storage.WithScanReadWitness(ctx, f.store, func(check context.Context, candidate string) (storage.ScanReadWitness, error) {
+		f.observed++
 		observation, err := f.observe(check, candidate, nil)
 		if err == nil {
 			observation.Snapshot.Directory = true
@@ -325,11 +335,65 @@ func TestArtworkCandidateObservationStaysFreshBetweenTheTwoChecks(t *testing.T) 
 	if values, complete := f.read(ctx, "Film/Movie (2020).mkv"); complete || len(values) != 0 {
 		t.Fatal("a candidate changed between the two observations was published", values, complete)
 	}
-	if f.observed != 2 || f.guarded != 1 {
+	if f.observed != 3 || f.guarded != 0 {
 		t.Fatal("the candidate was not observed independently on both sides", f.observed, f.guarded)
 	}
 	if calls := f.calls(); calls["inventory-stat Film/poster-1.png"] != 3 {
 		t.Fatal("the second side was not a fresh inventory stat", calls)
+	}
+}
+
+// The same witness can be revoked between the two sides: the bytes already read
+// do not buy publication, and the refused candidate records no cache key.
+func TestArtworkCandidateRefusesASameWitnessRevocationBetweenTheTwoSides(t *testing.T) {
+	f := newArtworkWitnessFixture(t, "Film/poster-1.png")
+	var revoked error
+	ctx := f.context("Film", true, &revoked)
+	poster := filepath.Join(f.root, "Film/poster-1.png")
+	inner := f.service.readSmall
+	f.service.readSmall = func(ctx context.Context, library, path string, limit int64) ([]byte, error) {
+		raw, err := inner(ctx, library, path, limit)
+		revoked = errors.New("analysis authority revoked")
+		return raw, err
+	}
+	if values, complete := f.read(ctx, "Film/Movie (2020).mkv"); complete || len(values) != 0 {
+		t.Fatal("a witness revoked after the byte read still published", values, complete)
+	}
+	// The pre-check and the byte admission were allowed; the post-check was the
+	// first denial and was answered before its stat.
+	if f.observed != 3 {
+		t.Fatal("the post-check did not re-enter the same witness", f.observed)
+	}
+	if calls := f.calls(); calls["inventory-stat Film/poster-1.png"] != 2 || calls["inventory-blob Film/poster-1.png"] != 1 {
+		t.Fatal("the denied side was not answered before its stat", calls)
+	}
+	f.service.mu.Lock()
+	_, cached := f.service.artworkCandidateObservations[poster]
+	f.service.mu.Unlock()
+	if cached {
+		t.Fatal("a refused candidate published a cache key")
+	}
+}
+
+// A cached key does not skip the witness: after revocation the fresh pre-check
+// refuses before the cached bytes are used, with no stat and no byte read.
+func TestArtworkCandidateRevokesAFreshCheckForACachedKey(t *testing.T) {
+	f := newArtworkWitnessFixture(t, "Film/poster-1.png")
+	var revoked error
+	ctx := f.context("Film", true, &revoked)
+	if values, complete := f.read(ctx, "Film/Movie (2020).mkv"); !complete || len(values) != 1 {
+		t.Fatal("the candidate was not read before revocation", values, complete)
+	}
+	before, stats := f.observed, f.calls()["inventory-stat Film/poster-1.png"]
+	revoked = errors.New("analysis authority revoked")
+	if values, complete := f.read(ctx, "Film/Movie (2020).mkv"); complete || len(values) != 0 {
+		t.Fatal("a cached candidate survived its witness revocation", values, complete)
+	}
+	if f.observed != before+1 {
+		t.Fatal("the cached candidate did not re-check the witness exactly once", f.observed-before)
+	}
+	if calls := f.calls(); calls["inventory-stat Film/poster-1.png"] != stats || calls["inventory-blob Film/poster-1.png"] != 1 {
+		t.Fatal("the revoked cached candidate read bytes or took a stat", calls)
 	}
 }
 
@@ -364,7 +428,9 @@ func TestArtworkCandidateRefusesAFailedOrCancelledObservation(t *testing.T) {
 	if values, complete := cancelled.read(cancelledCtx, "Film/Movie (2020).mkv"); complete || len(values) != 0 {
 		t.Fatal("a cancelled analysis published a candidate", values, complete)
 	}
-	if cancelled.observed != 1 {
+	// One observation answered the pre-check and the byte admission; the
+	// cancellation between the sides answered before the second observation.
+	if cancelled.observed != 2 {
 		t.Fatal("cancellation was not answered before the second observation", cancelled.observed)
 	}
 }
@@ -378,11 +444,7 @@ func TestArtworkCandidateRefusesAChangedRootIdentity(t *testing.T) {
 		return ArtworkDirectoryListing{SourceID: "source", RootIdentity: "another-root-identity",
 			Entries: []ArtworkListingEntry{{Name: "poster-1.png", Revision: f.revision("Film/poster-1.png")}}}, true
 	})
-	guard := func(check context.Context, candidate string) error {
-		_, err := f.observe(check, candidate, nil)
-		return err
-	}
-	ctx = storage.WithScanReadWitness(ctx, f.store, guard, func(check context.Context, candidate string) (storage.ScanReadWitness, error) {
+	ctx = storage.WithScanReadWitness(ctx, f.store, func(check context.Context, candidate string) (storage.ScanReadWitness, error) {
 		return f.observe(check, candidate, nil)
 	})
 	if values, complete := f.read(ctx, "Film/Movie (2020).mkv"); complete || len(values) != 0 {
@@ -430,7 +492,10 @@ func TestArtworkCandidateKeysOrderAndRanksMatchTheExplicitProof(t *testing.T) {
 }
 
 // Remote artwork bytes keep their rooted custody: the observation is not a read
-// grant, and the media target stays the admission's target.
+// grant, and the media target stays the admission's target. One witness answers
+// all four authority uses — the candidate's pre-check, the read's pre-admission,
+// its post-read admission and the candidate's post-check — and a denial at any of
+// them refuses. A post-read denial still clears the bytes it returned.
 func TestArtworkCandidateRemoteBytesKeepTheirRootedCustody(t *testing.T) {
 	root := filepath.Join(string(filepath.Separator), "remote", "library")
 	binary, err := os.Executable()
@@ -440,10 +505,6 @@ func TestArtworkCandidateRemoteBytesKeepTheirRootedCustody(t *testing.T) {
 	store := storage.New(binary)
 	remote := &artworkRemoteFixture{root: root, identity: "remote-root-identity"}
 	store.Remote = remote
-	service, err := New(t.TempDir(), "", store)
-	if err != nil {
-		t.Fatal(err)
-	}
 	var raw bytes.Buffer
 	img := image.NewRGBA(image.Rect(0, 0, 8, 12))
 	img.SetRGBA(0, 0, color.RGBA{R: 4, G: 255, A: 255})
@@ -455,55 +516,81 @@ func TestArtworkCandidateRemoteBytesKeepTheirRootedCustody(t *testing.T) {
 	admission := storage.InventoryBlobAdmission{Purpose: storage.InventoryBlobAnalysisSidecar,
 		JobID: "job", LibraryID: "library", LibrarySourceID: "source", RootIdentity: remote.identity,
 		PolicyRevision: 1, ObjectID: "media-object", SourceRevision: "media-revision", Operation: "local_metadata"}
-	checks := 0
-	ctx := storage.WithScanInput(context.Background(), store, "source", storage.InventoryRequest{Root: root, RootIdentity: remote.identity}, admission)
-	ctx = WithArtworkListing(ctx, func(string) (ArtworkDirectoryListing, bool) {
-		return ArtworkDirectoryListing{SourceID: "source", RootIdentity: remote.identity,
-			Entries: []ArtworkListingEntry{{Name: "poster-1.png", Revision: revision}}}, true
-	})
-	observe := func(check context.Context, candidate string) (storage.ScanReadWitness, error) {
-		relative, err := filepath.Rel(root, candidate)
-		if err != nil || !filepath.IsLocal(relative) {
-			return storage.ScanReadWitness{}, errors.New("candidate escaped its root")
-		}
-		request := storage.InventoryRequest{Root: root, RootIdentity: remote.identity, RelativePath: relative}
-		current, err := store.InventoryStat(check, "source", request)
-		if err != nil {
-			return storage.ScanReadWitness{}, err
-		}
-		return storage.ScanReadWitness{SourceID: "source", Root: root, RootIdentity: remote.identity, RelativePath: relative, Snapshot: current}, nil
+	media := filepath.Join(root, "Film/Movie (2020).mkv")
+	// buildContext installs the one authority ingestion installs. Every call to
+	// it is one authority use, whichever side of the read asked.
+	buildContext := func(denyAt int) (context.Context, *int) {
+		checks := 0
+		ctx := storage.WithScanInput(context.Background(), store, "source", storage.InventoryRequest{Root: root, RootIdentity: remote.identity}, admission)
+		ctx = WithArtworkListing(ctx, func(string) (ArtworkDirectoryListing, bool) {
+			return ArtworkDirectoryListing{SourceID: "source", RootIdentity: remote.identity,
+				Entries: []ArtworkListingEntry{{Name: "poster-1.png", Revision: revision}}}, true
+		})
+		ctx = storage.WithScanReadWitness(ctx, store, func(check context.Context, candidate string) (storage.ScanReadWitness, error) {
+			checks++
+			if checks == denyAt {
+				return storage.ScanReadWitness{}, storage.ErrRemoteChanged
+			}
+			relative, err := filepath.Rel(root, candidate)
+			if err != nil || !filepath.IsLocal(relative) {
+				return storage.ScanReadWitness{}, errors.New("candidate escaped its root")
+			}
+			request := storage.InventoryRequest{Root: root, RootIdentity: remote.identity, RelativePath: relative}
+			current, err := store.InventoryStat(check, "source", request)
+			if err != nil {
+				return storage.ScanReadWitness{}, err
+			}
+			return storage.ScanReadWitness{SourceID: "source", Root: root, RootIdentity: remote.identity,
+				RelativePath: relative, Snapshot: current}, nil
+		})
+		return ctx, &checks
 	}
-	guard := func(check context.Context, candidate string) error {
-		checks++
-		if checks == remote.denyAt {
-			return storage.ErrRemoteChanged
-		}
-		_, err := observe(check, candidate)
-		return err
+	service, err := New(t.TempDir(), "", store)
+	if err != nil {
+		t.Fatal(err)
 	}
-	ctx = storage.WithScanReadWitness(ctx, store, guard, observe)
-	values, complete := service.ReadArtworkCandidates(ctx, "library", "movie", root, filepath.Join(root, "Film/Movie (2020).mkv"), -1)
+	ctx, checks := buildContext(0)
+	values, complete := service.ReadArtworkCandidates(ctx, "library", "movie", root, media, -1)
 	if !complete || len(values) != 1 || values[0].SourceName != "poster-1.png" {
 		t.Fatal("the remote candidate was not read", values, complete)
 	}
 	if remote.reads != 1 || remote.request.RelativePath != "Film/poster-1.png" || remote.request.Root != root ||
-		remote.admission != admission || checks != 2 {
-		t.Fatal("remote bytes left their rooted custody", remote.reads, remote.request, remote.admission, checks)
+		remote.admission != admission || *checks != 4 {
+		t.Fatal("remote bytes left their rooted custody", remote.reads, remote.request, remote.admission, *checks)
 	}
-	// The post-read admission still decides: bytes a later denial revokes are
-	// cleared and never published. A fresh service keeps the byte read rather
-	// than a cached key.
-	fresh, err := New(t.TempDir(), "", store)
-	if err != nil {
-		t.Fatal(err)
-	}
-	remote.returned, remote.denyAt = nil, checks+2
-	if values, complete = fresh.ReadArtworkCandidates(ctx, "library", "movie", root, filepath.Join(root, "Film/Movie (2020).mkv"), -1); complete || len(values) != 0 {
-		t.Fatal("a post-read denial still published remote bytes", values, complete)
-	}
-	for _, b := range remote.returned {
-		if b != 0 {
-			t.Fatal("revoked remote bytes were retained")
+	// A denial at any one of the four uses refuses. The two candidate checks and
+	// the read's pre-admission deny before any byte is read; the post-read
+	// admission denies after it, and the returned bytes are cleared.
+	for _, denyAt := range []int{1, 2, 3, 4} {
+		remote.reads, remote.returned, remote.request, remote.admission = 0, nil, storage.InventoryRequest{}, storage.InventoryBlobAdmission{}
+		fresh, err := New(t.TempDir(), "", store)
+		if err != nil {
+			t.Fatal(err)
+		}
+		ctx, checks := buildContext(denyAt)
+		values, complete := fresh.ReadArtworkCandidates(ctx, "library", "movie", root, media, -1)
+		if complete || len(values) != 0 {
+			t.Fatalf("denial %d published remote bytes", denyAt)
+		}
+		if *checks != denyAt {
+			t.Fatalf("denial %d did not land on the expected authority use: %d", denyAt, *checks)
+		}
+		wantReads := 0
+		if denyAt >= 3 {
+			wantReads = 1
+		}
+		if remote.reads != wantReads {
+			t.Fatalf("denial %d reached the blob reader %d times", denyAt, remote.reads)
+		}
+		if denyAt == 3 {
+			if len(remote.returned) == 0 {
+				t.Fatal("the post-read denial did not exercise a returned blob")
+			}
+			for _, b := range remote.returned {
+				if b != 0 {
+					t.Fatal("revoked remote bytes were retained")
+				}
+			}
 		}
 	}
 }
@@ -515,7 +602,6 @@ type artworkRemoteFixture struct {
 	identity  string
 	blob      []byte
 	reads     int
-	denyAt    int
 	request   storage.InventoryRequest
 	admission storage.InventoryBlobAdmission
 	returned  []byte

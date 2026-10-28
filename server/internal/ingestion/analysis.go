@@ -377,9 +377,10 @@ func (s *Service) analyzeOne(parent context.Context, job string, source catalog.
 		rooted = localmetadata.WithArtworkListing(rooted, artworkListed)
 		rooted = localmetadata.WithArtworkReadCheck(rooted, func() { artworkObserved = false })
 		// One observation answers for both the admission check and the snapshot
-		// it already took. The guard keeps exactly its previous behaviour and
-		// discards the snapshot; the observation returns the request it saw so a
-		// caller can only use it for the identical candidate.
+		// it already took. Storage derives the admission guard from this same
+		// closure, so it cannot disagree with the observation; the observation
+		// returns the request it saw so a caller can only use it for the
+		// identical candidate.
 		observe := func(check context.Context, candidate string) (storage.ScanReadWitness, error) {
 			if err := s.analysisAllowed(check, job, source.LibraryID, policy.Revision, operation); err != nil {
 				return storage.ScanReadWitness{}, err
@@ -401,10 +402,7 @@ func (s *Service) analyzeOne(parent context.Context, job string, source catalog.
 			return storage.ScanReadWitness{SourceID: source.ID, Root: r.Root, RootIdentity: r.RootIdentity,
 				RelativePath: rel, FollowSymlinks: r.FollowSymlinks, Snapshot: current}, nil
 		}
-		return storage.WithScanReadWitness(rooted, s.storage, func(check context.Context, candidate string) error {
-			_, err := observe(check, candidate)
-			return err
-		}, observe)
+		return storage.WithScanReadWitness(rooted, s.storage, observe)
 	}
 	if remoteDisc {
 		// Root64: a remote disc image is an ordinary title. A scan never reads
