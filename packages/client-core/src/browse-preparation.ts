@@ -1,3 +1,4 @@
+import {validSelectionBasis} from './selection-basis.ts';
 import {routePath} from '../../contracts/src/route-paths.ts';
 import {ApiError} from './index.ts';
 import {browsePath, parseBrowseFacets, parseBrowseResult, parseWholeSelection, type BrowseFacetPage, type BrowseResult, type BrowseWholeSelection, type WholeSelectionPage} from './browse.ts';
@@ -96,6 +97,16 @@ export async function readReadingFacet(api: LibraryContentApi, libraryId: string
   return result.value;
 }
 
+/** Prepared aggregates require the complete witness even when the ordinary page
+ * revision stayed unchanged. Legacy ordinary-200 descriptors remain optional. */
+export function parsePreparedBrowseSelection(value: unknown, libraryId: string, basis: WholeSelectionPage, response?: PreparationResponse): BrowseWholeSelection {
+  const whole = parseWholeSelection(value, basis);
+  if (!whole || whole.libraryId !== libraryId || !validSelectionBasis(whole.selectionBasis)) {
+    throw Object.assign(new Error('browse-selection-basis-changed'), {code: 'stale_continuation', response});
+  }
+  return whole;
+}
+
 /** Seed the shared reader with the explicit pending aggregate beside the ordinary
  * successful page, including all original headers, before making any poll request. */
 export async function readBrowseSelection(api: LibraryContentApi, libraryId: string, page: WholeSelectionPage, response: PreparationResponse, lifetime: Lifetime, originalBody: unknown): Promise<BrowseWholeSelection> {
@@ -122,11 +133,10 @@ export async function readBrowseSelection(api: LibraryContentApi, libraryId: str
       // Re-read the captured page once; its exact original basis must still match.
       refresh: () => refreshPath, poll: id => queryPath('browse-selection', libraryId, id), cancel: id => queryPath('browse-selection', libraryId, id, true)},
     parseReady: (value, metadata) => {
-      const whole = parseWholeSelection(value, basis);
+      const whole = parsePreparedBrowseSelection(value, libraryId, basis, metadata);
       if (!object(body) || JSON.stringify(body.query ?? null) !== JSON.stringify(basis.query) || JSON.stringify(body.sort ?? []) !== JSON.stringify(basis.sort)) {
         throw Object.assign(new Error('browse-selection-query-changed'), {code: 'stale_continuation', response: metadata});
       }
-      if (!whole || whole.libraryId !== libraryId) throw Object.assign(new Error('browse-selection-basis-changed'), {code: 'stale_continuation', response: metadata});
       return whole;
     }, parsePreparing: (value, metadata) => parseBrowsePreparing(value, 'browse-selection', metadata),
     errorFromResponse: browsePreparationError, ...lifetime});}

@@ -25,6 +25,8 @@ export type SelectionActions = Readonly<{
   onRefresh?: () => void;
   onDelete?: () => void;
   deleteDisabledReason?: string;
+  /** No query-download producer: retain a truthful unavailable control and reason. */
+  downloadDisabledReason?: string;
   /** Explanatory dialog is reachable; this description does not disable its trigger. */
   deleteExplanation?: string;
   ownerMark?: ReactNode;

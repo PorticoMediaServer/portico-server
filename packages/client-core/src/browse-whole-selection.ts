@@ -1,3 +1,4 @@
+import {validSelectionBasis} from './selection-basis.ts';
 import type {BrowseWholeSelection} from './browse.ts';
 import {contentEntryKind} from './library-content.ts';
 import {selectionCapabilityNames} from './selection-model/capabilities.ts';
@@ -35,7 +36,7 @@ function label(text: string): string {
  * aggregate for a view its job compiler replays unchanged.
  */
 export function browseWholeSelectionQuery(whole: BrowseWholeSelection): SelectionQuery | undefined {
-  if (!whole.total || !whole.types.length) return undefined;
+  if (!whole.total || !whole.types.length || whole.selectionBasis !== undefined && !validSelectionBasis(whole.selectionBasis)) return undefined;
   const types: SelectionQueryType[] = [];
   for (const type of whole.types) {
     if (!contentEntryKind(type.kind) || type.count < 1) return undefined;
@@ -51,8 +52,9 @@ export function browseWholeSelectionQuery(whole: BrowseWholeSelection): Selectio
     types: Object.freeze(types),
   };
   return Object.freeze({
-    id: `browse-whole:${label(stable([whole.libraryId, whole.pivot, whole.filter, whole.sort, whole.catalogRevision]))}`,
+    id: `browse-whole:${label(stable([whole.libraryId, whole.pivot, whole.filter, whole.sort, whole.catalogRevision]))}${whole.selectionBasis === undefined ? '' : ':' + whole.selectionBasis}`,
     selector: Object.freeze({query: Object.freeze({libraryId: whole.libraryId, pivot: whole.pivot,
+      ...(whole.selectionBasis === undefined ? {} : {selectionBasis: whole.selectionBasis}),
       ...(whole.filter === null ? {} : {filter: whole.filter}),
       ...(whole.sort.length === 0 ? {} : {sort: Object.freeze(whole.sort.map(({field, direction}) => Object.freeze({field, direction})))})})}),
     total: whole.total,
