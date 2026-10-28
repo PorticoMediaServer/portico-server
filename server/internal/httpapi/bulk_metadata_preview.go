@@ -12,21 +12,20 @@ import (
 	"portico.local/apikit/apierror"
 	"portico.local/server/internal/catalog"
 	"portico.local/server/internal/metadata"
+	"portico.local/server/internal/readprep"
 )
+
+// Retains the decoded conversion, target mapping and its overlapping JSON/SQL
+// buffers independently of the memory reducer's TOTAL additional reservation.
+const bulkMetadataConversionBytes int64 = 8 << 20
 
 // The preview shares the live administrator/metadata transaction guard with
 // POST metadata/bulk; a preview does not grant mutation authority.
 func registerBulkMetadataPreview(registry *apikit.Registry, d Dependencies) {
-	v1Route(registry, apikit.Metadata{Audience: apikit.Clients, Admission: laneBrowsing, ID: "post_metadata_bulk_preview", Method: "POST", Path: "/v1/metadata/bulk/preview", Summary: "Read shared and mixed metadata for an authorized selection", Access: apikit.Admin, AdminScope: "metadata", Requires: apikit.ScopeLibrary, Lane: apikit.Browsing, Cost: apikit.PageSized, BodyLimit: 524288, Status: 200, Errors: []string{"invalid_request", "unauthorized", "not_permitted", "not_found", "revision_mismatch", "internal"}},
+	v1Route(registry, apikit.Metadata{Audience: apikit.Clients, Admission: laneBrowsing, ID: "post_metadata_bulk_preview", Method: "POST", Path: "/v1/metadata/bulk/preview", Summary: "Read shared and mixed metadata for an authorized selection", Access: apikit.Admin, AdminScope: "metadata", Requires: apikit.ScopeLibrary, Lane: apikit.Browsing, Cost: apikit.PageSized, BodyLimit: 524288, Status: 200, Errors: []string{"invalid_request", "unauthorized", "not_permitted", "not_found", "revision_mismatch", "stale_continuation", "rate_limited", "internal"}},
 		func(ctx context.Context, r *http.Request, in catalog.BulkMetadataPreviewRequest) (out metadata.BulkMetadataPreview, err error) {
-			// Selection validation can originate in either service. Translate it
-			// at the HTTP boundary while retaining authentication and fault errors.
-			defer func() {
-				if errors.Is(err, metadata.ErrRepairInput) {
-					err = &apierror.Error{Code: "invalid_request", Cause: err}
-				}
-				err = bulkError(err)
-			}()
+			var heldQuery *catalog.JobQuery
+			defer func() { err = bulkMetadataPreviewError(err, heldQuery != nil) }()
 			r = r.WithContext(ctx)
 			if r.URL.RawQuery != "" {
 				return out, metadataAttentionError(metadata.ErrRepairInput)
@@ -42,7 +41,6 @@ func registerBulkMetadataPreview(registry *apikit.Registry, d Dependencies) {
 				return out, err
 			}
 			var conversion *catalog.BrowseSelectionConversion
-			var heldQuery *catalog.JobQuery
 			var heldRevision string
 			if in.Selector != nil && in.Selector.Query != nil && in.Selector.Query.SelectionBasis != "" {
 				q := *in.Selector.Query
@@ -72,7 +70,7 @@ func registerBulkMetadataPreview(registry *apikit.Registry, d Dependencies) {
 							value.Release()
 							return catalog.ErrStaleContinuation
 						}
-						if e = value.Reserve(8 << 20); e != nil {
+						if e = value.Reserve(bulkMetadataConversionBytes); e != nil {
 							return e
 						}
 						raw, e := json.Marshal(value.IDs)
@@ -109,8 +107,8 @@ func registerBulkMetadataPreview(registry *apikit.Registry, d Dependencies) {
 			}
 			var fence string
 			// Each source call and metadata page runs in its own capped snapshot.
-			// The owner request may span many pages; only the caller's deadline
-			// bounds the whole operation, and cancellation cleans its spill file.
+			// The legacy reducer owns its spill file; prepared small conversions
+			// keep their delivery lease and aggregate entirely in memory.
 			source := func(snapshot context.Context, tx *sql.Tx, after int64) (catalog.BulkMetadataSelectionPage, error) {
 				request := r.WithContext(snapshot)
 				libraries, bound, err := d.homeScopeFor(request, p)
@@ -134,13 +132,17 @@ func registerBulkMetadataPreview(registry *apikit.Registry, d Dependencies) {
 				return d.Catalog.BulkMetadataSelectionPageTx(snapshot, tx, viewer, in, after)
 			}
 			if conversion != nil {
-				out, err = d.Metadata.BulkPreviewMemory(ctx, source, func(snapshot context.Context, tx *sql.Tx) error { return d.manualMetadataAuthorize(snapshot, tx, p) }, conversion.Reserve)
+				out, err = d.Metadata.BulkPreviewMemory(ctx, source, func(snapshot context.Context, tx *sql.Tx) error { return d.manualMetadataAuthorize(snapshot, tx, p) }, func(bytes int64) error {
+					// ResizeDelivery sets a total, so preserve the still-live
+					// conversion allowance while the reducer grows its own total.
+					return conversion.Reserve(bulkMetadataConversionBytes + bytes)
+				})
 				out.SelectionRevision = heldRevision
 			} else {
 				out, err = d.Metadata.BulkPreview(ctx, source, func(snapshot context.Context, tx *sql.Tx) error { return d.manualMetadataAuthorize(snapshot, tx, p) })
 			}
 			if err != nil {
-				return out, metadataAttentionError(err)
+				return out, err
 			}
 			if _, err = d.manualMetadataAdministrator(ctx, r); err != nil {
 				return metadata.BulkMetadataPreview{}, err
@@ -151,10 +153,25 @@ func registerBulkMetadataPreview(registry *apikit.Registry, d Dependencies) {
 				return metadata.BulkMetadataPreview{}, err
 			}
 			if bound != fence {
-				return metadata.BulkMetadataPreview{}, bulkError(catalog.ErrStaleContinuation)
+				return metadata.BulkMetadataPreview{}, catalog.ErrStaleContinuation
 			}
 			out.ServerID = d.Identity.ID()
 			out.ViewerFence = fence
 			return out, nil
 		})
+}
+
+// Keep prepared-content failures in the same grammar as selection preparation.
+// Legacy metadata revisions retain their existing precondition response.
+func bulkMetadataPreviewError(err error, prepared bool) error {
+	switch {
+	case errors.Is(err, readprep.ErrStale), prepared && (errors.Is(err, catalog.ErrStaleContinuation) || errors.Is(err, catalog.ErrSelectionBatchStale) || errors.Is(err, catalog.ErrReadingProjectionChanged)):
+		return &apierror.Error{Code: "stale_continuation", Cause: err}
+	case errors.Is(err, readprep.ErrCapacity), errors.Is(err, readprep.ErrClosed), errors.Is(err, readprep.ErrUncached), errors.Is(err, catalog.ErrSelectionBatchCapacity):
+		return &apierror.Error{Code: "rate_limited", RetryAfterSeconds: 1, Cause: err}
+	case errors.Is(err, catalog.ErrSelectionBatchUnsupported):
+		return &apierror.Error{Code: "invalid_request", Cause: err}
+	default:
+		return metadataAttentionError(err)
+	}
 }
