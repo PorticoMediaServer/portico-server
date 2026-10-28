@@ -2,7 +2,7 @@ import {type CastControllerContext, type CastRemoteIdentity, CastController, sam
 import {castDisplayName, currentCastBrowser, isCastBrowser, loadCastSdk, type CastBrowser, type CastContext, type CastFramework, type CastSession, type CastSessionEvent} from './sdk';
 import {castTransportFor, confirmedCastDevice, type ConfirmedCastDevice} from './transport';
 
-export type ConfirmedCastPlayback = Readonly<{itemId: string; positionSeconds: number; durationSeconds: number; paused: boolean}>;
+export type ConfirmedCastPlayback = Readonly<{itemId: string; versionId?: string; positionSeconds: number; durationSeconds: number; paused: boolean}>;
 export type WebCastSnapshot = CastSnapshot & Readonly<{
   device?: ConfirmedCastDevice;
   /** Caller lifetime only; never a server authority or media grant. */

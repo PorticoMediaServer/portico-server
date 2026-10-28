@@ -303,6 +303,35 @@ test('a network interruption discards the actual prepared edge silently and reta
   assert.ok(disposed > 0);
 });
 
+test('WEB-03: turning the last effect off hands the same session from the renderer to the element under its own reporter', async ctx => {
+  const t = setup(ctx, {createRender: service => ({
+    apply(snapshot) {
+      service.ready(snapshot.intentId);
+      if (snapshot.pendingSeek) service.seekApplied(snapshot.intentId, snapshot.pendingSeek.revision, snapshot.pendingSeek.positionSeconds, 'playing');
+    }, transportPosition: () => 30, dispose() {},
+  })});
+  // Music settings that need no processing; the device equalizer alone selects the renderer.
+  t.playback.setAudioEffects({gapless: false, crossfadeSeconds: 0, normalization: 'off', neverBoost: false, smoothTransitions: false});
+  t.playback.setDeviceAudioProcessing(true);
+  await t.player.playItem('song_handoff'); await settle();
+  assert.equal(t.playback.getSnapshot().audioEffects.rendering, true);
+  const session = t.playback.getSnapshot().session!, starts = t.sessions().length, engines = t.instances.length;
+  t.playback.seek(30); t.clock.advance(5_000); await settle();
+  assert.equal(t.playback.getSnapshot().positionSeconds, 30);
+  const server = t.server.session(session.id)!, before = server.lastSeq, sent = server.reports.length;
+  assert.ok(before > 0, 'the renderer reported its timeline');
+  t.playback.setDeviceAudioProcessing(false);
+  const hls = await t.arrive();
+  assert.equal(t.playback.getSnapshot().audioEffects.rendering, false);
+  assert.ok(t.instances.length > engines, 'the element loads the same presentation');
+  assert.equal(t.playback.getSnapshot().session!.id, session.id, 'the same session continues');
+  assert.equal(t.sessions().length, starts, 'no new session is started for the handoff');
+  assert.ok(Number(hls.config.startPosition) > 0, 'the element resumes where the renderer was, not from the start');
+  t.video.advance(Number(hls.config.startPosition) + 4); t.clock.advance(5_000); await settle();
+  const after = server.reports.slice(sent).map(report => report.seq as number);
+  assert.ok(after.length > 0 && after.every(seq => seq > before), `reports after the handoff continue the same increasing seq (${before} then ${after.join(',')})`);
+});
+
 test('a start loads where the server says to resume, plays, and reports a full timeline', async ctx => {
   const t = setup(ctx);
   await t.player.playItem('movie', 100);

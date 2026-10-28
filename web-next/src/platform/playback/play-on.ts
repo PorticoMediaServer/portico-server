@@ -15,6 +15,8 @@ export type CastRemoteToken = Readonly<{id: string; sequence: number}>;
 export type CastRemoteView = CastRemoteToken & Readonly<{
   phase: CastRemotePhase; confirmed: boolean; itemId?: string; title?: string; deviceName?: string;
   positionKnown: boolean; positionSeconds: number; durationSeconds: number; paused: boolean;
+  /** The version the receiver reported playing, correlated to this occurrence. */
+  versionId?: string;
   source?: WebPlaybackPresentation; metadata?: CastMetadata;
 }>;
 /** A Portico television the viewer may send to, named by the server's receiver directory. */
@@ -164,7 +166,7 @@ export class PlayOnController {
       id: attempt?.id ?? previous?.id ?? (this.options.key ?? (() => crypto.randomUUID()))(), sequence: ++this.sequence,
       phase, confirmed, source, itemId, metadata: itemChanged ? undefined : previous?.metadata,
       title: itemChanged ? undefined : previous?.metadata?.title ?? (source || !previous?.itemId ? cast.title : previous?.title), deviceName: cast.device?.name ?? cast.deviceName ?? previous?.deviceName,
-      positionKnown: !!receiver, positionSeconds: receiver?.positionSeconds ?? 0, durationSeconds: receiver?.durationSeconds ?? 0, paused: receiver?.paused ?? cast.paused,
+      positionKnown: !!receiver, ...(receiver?.versionId ? {versionId: receiver.versionId} : {}), positionSeconds: receiver?.positionSeconds ?? 0, durationSeconds: receiver?.durationSeconds ?? 0, paused: receiver?.paused ?? cast.paused,
     });
     this.publish({cast, remote, ...(phase === 'stopped' || phase === 'replaced' || phase === 'error' ? {panel: null} : {})});
     if (itemId && this.options.describeItem && this.describedItem !== itemId) {
@@ -208,7 +210,10 @@ export class PlayOnController {
     const serial = ++this.serial;
     const queue=snapshot.queueView?.queue;
     if(!queue||queue.id!==snapshot.session.queue.queueId||queue.currentEntryId!==source.fence.entryId||queue.currentPlaybackId!==snapshot.session.id)return Promise.resolve(false);
+    // Version and audio come from this exact fenced session, never a later unrelated playback.
+    const {versionId} = snapshot.session, audioTrackId = snapshot.session.presentation.audioTrackId;
     this.attempt = {id: (this.options.key ?? (() => crypto.randomUUID()))(), serial, source, choices: {
+      ...(versionId ? {versionId} : {}), ...(audioTrackId ? {audioTrackId} : {}),
       queue:Object.freeze({...snapshot.session.queue}), source:Object.freeze({sessionId:snapshot.session.id,generation:snapshot.session.presentation.generation,
         queueId:queue.id,entryId:source.fence.entryId,queueRevision:queue.revision})}, handedOff: false};
     this.publish({panel: null, remote: undefined});
@@ -254,9 +259,10 @@ export class PlayOnController {
   async continueHere(token: CastRemoteToken): Promise<void> {
     const remote = this.requireRemote(token);
     if (!remote || !remote.confirmed || !remote.positionKnown || remote.phase !== 'stopped' || !remote.itemId) return;
-    const position = remote.positionSeconds, itemId = remote.itemId;
+    const position = remote.positionSeconds, itemId = remote.itemId, versionId = remote.versionId;
     this.dismiss(token);
-    await this.options.runtime.play(itemId, position);
+    // Continue the edition the television was actually playing, not the server's default.
+    await this.options.runtime.play(itemId, position, versionId ? {versionId} : undefined);
   }
   answerTakeover(allow:boolean,expected?:PlayOnSnapshot['cast']['takeover']):void {this.assertCurrent();if(expected&&expected===this.state.cast.takeover)this.options.sender.answerTakeover(allow,expected);}
   dispose(): void {

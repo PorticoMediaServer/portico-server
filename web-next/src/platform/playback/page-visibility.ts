@@ -13,4 +13,11 @@ export const documentVisibility: PageVisibility = {
     document.addEventListener('visibilitychange', changed);
     return () => document.removeEventListener('visibilitychange', changed);
   },
+  /** Every hide and show, so foreground-only deadlines pause with their remaining time. */
+  onChange(listener) {
+    if (typeof document === 'undefined') return () => {};
+    const changed = () => listener();
+    document.addEventListener('visibilitychange', changed);
+    return () => document.removeEventListener('visibilitychange', changed);
+  },
 };

@@ -392,9 +392,11 @@ export class WebPlayback implements PlaybackAdapter {
     if (!session || next.phase === 'error') { this.release(); return; }
     if (this.blocked) return;
     if (this.host.createRender && next.audioEffects.rendering) { this.applyRender(next, session); return; }
-    this.endRender();
+    // The renderer is giving this same session back to the element: keep its reporter.
+    const handoff = !!this.render && !next.channel && this.holdsPresentation(session);
+    this.endRender(handoff);
     const key = `${session.id}:${session.generation}`;
-    if (this.loadedKey !== key && this.load(next, session)) {
+    if (this.loadedKey !== key && this.load(next, session, handoff)) {
       this.loadedKey = key;
       this.carriedSeek = next.pendingSeek?.revision;
       this.seekRevision = next.pendingSeek?.revision;
@@ -418,7 +420,12 @@ export class WebPlayback implements PlaybackAdapter {
   };
 
   /** Hand the snapshot's session to the controller (or, for a live channel, straight to the port). */
-  private load(next: PlaybackSnapshot, session: PlaybackSession): boolean {
+  private holdsPresentation(session: PlaybackSession): boolean {
+    const held = this.controller.getSnapshot().session;
+    return !!held && held.id === session.id && held.presentation.generation === session.generation;
+  }
+
+  private load(next: PlaybackSnapshot, session: PlaybackSession, handoff = false): boolean {
     const startPositionMs = Math.max(0, Math.round((next.pendingSeek?.positionSeconds ?? session.resumeSeconds) * 1000));
     const autoplay = next.intent === 'playing';
     this.slot.hold(false);
@@ -436,7 +443,9 @@ export class WebPlayback implements PlaybackAdapter {
     if (known.presentation.generation > session.generation) return false;
     if (known.presentation.generation === session.generation) {
       this.direct = false;
-      this.controller.attach(known, {autoplay, startPositionMs});
+      // A same-session handoff resumes where the renderer was, under the same reporter and seq.
+      if (handoff && this.holdsPresentation(session)) this.controller.reloadMedia({autoplay, startPositionMs: next.pendingSeek ? startPositionMs : Math.max(0, Math.round(next.positionSeconds * 1000))});
+      else this.controller.attach(known, {autoplay, startPositionMs});
       return true;
     }
     // The service was handed a newer presentation than the controller has seen: a subtitle
@@ -642,14 +651,16 @@ export class WebPlayback implements PlaybackAdapter {
     } catch (error) { service.setDeviceAudioProcessing(false); throw error; }
   }
 
-  private endRender() {
+  /** `handoff` keeps the session attached for a same-session reload into the element;
+   * every true retirement (unmount, release, dispose, replacement) still detaches. */
+  private endRender(handoff = false) {
     if (!this.render) return;
     this.render.dispose();
     this.render = undefined;
     this.renderState = undefined;
     this.loadedKey = '';
     // Attached for its timeline only: whatever plays next attaches afresh and loads.
-    if (this.controller.getSnapshot().session) this.controller.detach();
+    if (!handoff && this.controller.getSnapshot().session) this.controller.detach();
     this.slot.hold(false);
   }
 

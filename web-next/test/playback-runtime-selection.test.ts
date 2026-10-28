@@ -48,7 +48,8 @@ test('a collection keeps its real selector and never treats its preview members 
   ]);
   assert.deepEqual(selectionSegments([collection], false), [{source: {container: {kind: 'collection', id: 'collection'}}}]);
   assert.equal(selectionStartSeconds([collection, album]), undefined);
-  assert.equal(selectionStartSeconds([album, collection]), 12);
+  assert.equal(selectionStartSeconds([album, collection]), undefined);
+  assert.equal(selectionStartSeconds([{...album, startIntent: 'explicit'}, collection]), 12);
   assert.throws(() => selectionSegments([{...collection, identity: {...collection.identity, id: 'forged'}}], true));
   assert.throws(() => selectionSegments([{...collection, identity: {...collection.identity, libraryId: 'other'}}], true));
 });
@@ -59,4 +60,12 @@ test('a Play selection over the single-request segment ceiling is refused, while
   assert.equal(selectionSegments(items.slice(0, 16), true).length, 16);
   assert.throws(() => selectionSegments(items, true), (error: unknown) => error instanceof Error && error.message === 'queue_too_large');
   assert.equal(selectionSegments(items, false).length, 17);
+});
+
+test('the first target start intent decides the queue start, as native does', () => {
+  assert.equal(selectionStartSeconds([{...album, startIntent: 'resume'}]), undefined);
+  assert.equal(selectionStartSeconds([{...album, startIntent: 'start-over', target: {itemId: 'song-two', startSeconds: 0}}]), 0);
+  assert.equal(selectionStartSeconds([{...album, startIntent: 'explicit'}]), 12);
+  assert.throws(() => selectionStartSeconds([{...album, startIntent: 'explicit', target: {itemId: 'song-two'}}]));
+  assert.throws(() => selectionStartSeconds([{...album, startIntent: 'explicit', target: {itemId: 'song-two', startSeconds: -1}}]));
 });

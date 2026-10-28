@@ -610,7 +610,9 @@ test('Cast keeps the mounted local engine through pairing and waiting, handing o
   const {controller, sender, errors} = castController(t, f), start = controller.startCast();
   assert.equal(sender.starts.length, 1, 'picker call stays synchronous with the row click');
   const queue = f.runtime.getSnapshot().queueView!.queue;
-  assert.deepEqual(sender.starts[0]![3], {queue: session.queue, source: {
+  // V01/V02: the exact fenced session's version and audio track travel with the load.
+  assert.ok(session.versionId && session.presentation.audioTrackId);
+  assert.deepEqual(sender.starts[0]![3], {versionId: session.versionId, audioTrackId: session.presentation.audioTrackId, queue: session.queue, source: {
     sessionId: session.id, generation: session.presentation.generation,
     queueId: queue.id, entryId: session.queue.entryId, queueRevision: queue.revision}});
   assert.deepEqual(Object.keys(sender.starts[0]![1]).sort(), ['artworkPath', 'kind', 'subtitle', 'title']);
@@ -666,6 +668,18 @@ test('Cast stopped continuation uses retained receiver time, expires at fifteen 
   sender.publish({phase: 'casting', itemId: 'movie', receiver: {itemId: 'movie', positionSeconds: 60, durationSeconds: 3186, paused: false}});
   sender.publish({phase: 'replaced'}); f.clock.advance(15_000);
   assert.equal(controller.getSnapshot().remote, undefined); assert.equal(f.runtime.getSnapshot().session!.itemId, 'movie');
+});
+
+test('Cast continue-here plays the version the receiver reported, not the server default (V02)', async t => {
+  const f = setup(t); await f.runtime.play('movie', 25); await f.arrive();
+  const {controller, sender} = castController(t, f), start = controller.startCast();
+  sender.publish({phase: 'casting', receiver: {itemId: 'movie', versionId: 'v2', positionSeconds: 57, durationSeconds: 3186, paused: false}}); sender.acknowledge(true); await start; await settle();
+  sender.stop(); const token = controller.getSnapshot().remote!;
+  assert.equal(token.versionId, 'v2');
+  const before = f.log.length;
+  await controller.continueHere(token); await f.arrive();
+  const started = f.log.slice(before).filter(request => request.method === 'POST' && request.path === '/v1/playback/sessions').at(-1)?.body as {versionId?: string} | undefined;
+  assert.equal(started?.versionId, 'v2');
 });
 
 test('entry version choice uses the real grouped version id and fresh title resume under section21', async t => {
@@ -1810,7 +1824,7 @@ test('runtime Home selection binds distinct Home and detail fences to the actual
     return response;
   });
   assert.ok('target' in picked);
-  const receipt = await f.runtime.selectionPlayback(context => context === selectionContext).play({context: selectionContext, items: [{...picked, target: {...picked.target, startSeconds: 1040}}], signal: new AbortController().signal});
+  const receipt = await f.runtime.selectionPlayback(context => context === selectionContext).play({context: selectionContext, items: [{...picked, startIntent: 'explicit', target: {...picked.target, startSeconds: 1040}}], signal: new AbortController().signal});
   const engine = await f.arrive(), state = f.runtime.getSnapshot(), fence = state.fence;
   assert.ok(fence); assert.equal(fence.kind, 'queue');
   assert.equal(state.authority.viewerFence, homeViewerFence);
@@ -2622,6 +2636,24 @@ test('catalogue playback cannot manufacture a queue when actual capability admis
  assert.equal(f.runtime.getSnapshot().queueView!.queue.id,header.id,'the same captured port can retry after a genuine successful admission');
 });
 
+
+test('a start is admitted only by an accepted capability publication, retried once (FMT-02)',async t=>{
+ const {webDeclaredProfile}=await import('../../packages/client-core/src/client-profile.ts');let refusals=2,puts=0;
+ const f=setup(t,{}, {capabilities:async()=>webDeclaredProfile({app:'fmt02-test'})});
+ f.intercept(async(request,response)=>{
+  if(request.method!=='PUT'||!request.path.includes('capabilities'))return response;
+  puts++;if(refusals<=0)return response;refusals--;
+  return {status:503,headers:{},body:{error:{code:'unavailable',message:'unavailable'}}};
+ });
+ const port=f.runtime.cataloguePlayback();
+ await assert.rejects(port.playSegments([{source:{items:{ids:['movie']}}}],{signal:new AbortController().signal,isCurrent:()=>true}),/playback_start_failed/);
+ assert.equal(puts,2,'the same document is published at most twice');
+ assert.equal(f.log.some(r=>r.method==='POST'&&r.path==='/v1/queues'),false,'a refused publication never creates a queue');
+ refusals=1;puts=0;
+ const header=await port.playSegments([{source:{items:{ids:['movie']}}}],{signal:new AbortController().signal,isCurrent:()=>true});await f.arrive();
+ assert.equal(puts,2,'one failure is retried once');
+ assert.equal(f.runtime.getSnapshot().queueView!.queue.id,header.id);
+});
 
 const committedInfo=()=>({route:'original',routes:{picture:'original',sound:'original'},reason:{kind:'compatible'},
  source:{video:{codec:'h264',width:1920,height:1080,interlaced:false},audio:{codec:'flac',sampleRate:96000,bitDepth:24,channels:2}},

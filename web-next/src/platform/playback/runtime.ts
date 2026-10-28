@@ -280,7 +280,13 @@ export class WebShellPlaybackRuntime {
       try {
         const profile = await (this.env.capabilities ?? browserClientProfile)();
         if (!this.current(stackReference)) return;
-        await this.capabilityPublisher.publish(profile, life.signal);
+        // Only an accepted or already-current document admits the start. A failed or
+        // superseded publication of this same document is retried once, then refused.
+        let published = await this.capabilityPublisher.publish(profile, life.signal);
+        if (!this.current(stackReference)) return;
+        if (published === 'failed') published = await this.capabilityPublisher.publish(profile, life.signal);
+        if (!this.current(stackReference)) return;
+        if (published === 'failed') problem('capability_rejected');
       } catch (error) {stackReference.capabilityRejected = true;throw error;}
     }});
     const queue = new V1QueuePlayer({http, api: web.transport, playback: service, viewer: this.source.authority, events: this.source.events, key: this.env.key, musicDefaults: this.source.settings.musicDefaults, audiobookPreferences: this.source.settings.audiobookPreferences, quality: this.source.settings.defaultQuality, retainQueueIds: () => this.retainedQueueIds(stackReference),
@@ -458,14 +464,15 @@ export class WebShellPlaybackRuntime {
 
   /** PlaybackService-shaped Home effect. The real item supplies display metadata; no fixture or
    * invented title is installed while that read is outstanding. */
-  async play(itemId: string, startSeconds?: number): Promise<void> {
+  async play(itemId: string, startSeconds?: number, choices?: Readonly<{versionId?: string}>): Promise<void> {
     this.assertCurrent();
-    if (!/^[A-Za-z0-9_.-]{1,128}$/.test(itemId) || startSeconds !== undefined && !validSeconds(startSeconds)) problem('invalid_playback_target');
+    if (!/^[A-Za-z0-9_.-]{1,128}$/.test(itemId) || startSeconds !== undefined && !validSeconds(startSeconds)
+      || choices?.versionId !== undefined && !/^[A-Za-z0-9._:-]{1,128}$/.test(choices.versionId)) problem('invalid_playback_target');
     const serial = ++this.operation, stack = this.replace();
     stack.expanded = true;
     const current = () => this.current(stack) && serial === this.operation;
     stack.capacityCurrent = current;
-    try {await stack.service.play(itemId, startSeconds);} finally {if (stack.capacityCurrent === current) stack.capacityCurrent = undefined;}
+    try {await stack.service.play(itemId, startSeconds, undefined, undefined, undefined, choices?.versionId ? {versionId: choices.versionId} : undefined);} finally {if (stack.capacityCurrent === current) stack.capacityCurrent = undefined;}
     if (!this.current(stack) || serial !== this.operation) return;
     this.sync();
   }
