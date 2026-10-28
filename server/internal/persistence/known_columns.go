@@ -2830,6 +2830,7 @@ library_preferences.revision
 library_preferences.sort_ignore_articles
 library_preferences.title_source
 library_revisions.library_id
+library_revisions.metadata_revision
 library_revisions.order_revision
 library_revisions.revision
 library_scan_policies.episode_thumbnail_mode

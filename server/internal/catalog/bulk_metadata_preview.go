@@ -205,8 +205,8 @@ func (s *Service) BulkMetadataSelectionPageTx(ctx context.Context, tx *sql.Tx, v
 	// slice of every entity or every library in the catalogue.
 
 	type revision struct {
-		Library                                                       string
-		Metadata, Order, ReadingNamespace, ReadingInput, ReadingReady int64
+		Library                                                                string
+		Catalog, Metadata, Order, ReadingNamespace, ReadingInput, ReadingReady int64
 	}
 	for _, library := range libraries {
 		if !v.AllowsLibrary(library) {
@@ -217,7 +217,7 @@ func (s *Service) BulkMetadataSelectionPageTx(ctx context.Context, tx *sql.Tx, v
 	if err != nil {
 		return out, err
 	}
-	fenceRows, err := tx.QueryContext(ctx, `SELECT r.library_id,r.revision,r.order_revision,COALESCE(a.namespace,0),COALESCE(a.input_generation,0),COALESCE(a.ready_generation,0)
+	fenceRows, err := tx.QueryContext(ctx, `SELECT r.library_id,r.revision,r.metadata_revision,r.order_revision,COALESCE(a.namespace,0),COALESCE(a.input_generation,0),COALESCE(a.ready_generation,0)
  FROM json_each(?) requested JOIN library_revisions r ON r.library_id=requested.value
  LEFT JOIN catalog_libraries l ON l.library_id=r.library_id
  LEFT JOIN reading_attribution_state a ON a.library_id=l.id ORDER BY r.library_id`, string(raw))
@@ -227,7 +227,7 @@ func (s *Service) BulkMetadataSelectionPageTx(ctx context.Context, tx *sql.Tx, v
 	revisions := make([]revision, 0, len(libraries))
 	for fenceRows.Next() {
 		var r revision
-		if err = fenceRows.Scan(&r.Library, &r.Metadata, &r.Order, &r.ReadingNamespace, &r.ReadingInput, &r.ReadingReady); err != nil {
+		if err = fenceRows.Scan(&r.Library, &r.Catalog, &r.Metadata, &r.Order, &r.ReadingNamespace, &r.ReadingInput, &r.ReadingReady); err != nil {
 			break
 		}
 		revisions = append(revisions, r)

@@ -149,8 +149,8 @@ func previewRequestSource(s *Service, in catalog.BulkMetadataPreviewRequest) Bul
 func previewSQLSource(s *Service, selection catalog.BulkMetadataSelection) BulkPreviewSource {
 	return func(ctx context.Context, tx *sql.Tx, after int64) (catalog.BulkMetadataSelectionPage, error) {
 		out := catalog.BulkMetadataSelectionPage{After: after, Selection: selection}
-		var revision int64
-		if err := tx.QueryRowContext(ctx, `SELECT revision FROM library_revisions WHERE library_id='movies'`).Scan(&revision); err != nil {
+		var revision string
+		if err := tx.QueryRowContext(ctx, `SELECT printf('%d:%d',revision,metadata_revision) FROM library_revisions WHERE library_id='movies'`).Scan(&revision); err != nil {
 			return out, err
 		}
 		out.Fence = fmt.Sprint(revision)
@@ -368,8 +368,8 @@ func TestBulkMetadataPreviewReadingQueryUsesCanonicalOwnerAttribution(t *testing
 	}
 	c.Drain()
 	source := func(ctx context.Context, tx *sql.Tx, after int64) (catalog.BulkMetadataSelectionPage, error) {
-		var revision int64
-		if e := tx.QueryRowContext(ctx, `SELECT revision FROM library_revisions WHERE library_id='read'`).Scan(&revision); e != nil {
+		var revision string
+		if e := tx.QueryRowContext(ctx, `SELECT printf('%d:%d',revision,metadata_revision) FROM library_revisions WHERE library_id='read'`).Scan(&revision); e != nil {
 			return catalog.BulkMetadataSelectionPage{}, e
 		}
 		return catalog.BulkMetadataSelectionPage{Done: true, Fence: fmt.Sprint(revision), Selection: catalog.BulkMetadataSelection{SQL: `SELECT id FROM catalog_entities WHERE public_id=pid_blob(?)`, Args: []any{target.ID}, Revision: "reading-query"}}, nil

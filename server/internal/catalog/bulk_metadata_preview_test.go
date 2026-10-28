@@ -71,6 +71,40 @@ func TestBulkMetadataPreviewQueryBindsRevisionAndDoesNotExpandShows(t *testing.T
 	}
 }
 
+func TestBulkMetadataPreviewLockFencePreservesOrdinaryBrowseRevision(t *testing.T) {
+	service, _, _, viewer, _, fixture, names := bulkFixture(t, 3)
+	request := BulkMetadataPreviewRequest{Targets: []BulkMetadataTarget{{Kind: "show", ContentKind: "show", ID: names["show"].Public, LibraryID: "lib"}}}
+	fence := func() string {
+		t.Helper()
+		var page BulkMetadataSelectionPage
+		err := dbwork.WithReadSnapshot(context.Background(), fixture.DB, func(ctx context.Context) error {
+			var err error
+			page, err = service.BulkMetadataSelectionPageTx(ctx, dbwork.Snapshot(ctx), viewer, request, 0)
+			return err
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return page.Fence
+	}
+	browse := func() string {
+		t.Helper()
+		page, err := service.BrowseEntities(viewer, BrowseRequest{Library: "lib", Pivot: "shows", Limit: 1})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return page.PageInfo.Revision
+	}
+	beforeFence, beforeBrowse := fence(), browse()
+	fixture.Exec(`INSERT INTO metadata_owner_fields(kind,entity_id,field,value,automatic_value,locked,actor,observed_at) VALUES('show',?,'year','2026','2026',1,'owner','now')`, names["show"].ID)
+	if fence() == beforeFence {
+		t.Fatal("owner lock did not retire the private preview fence")
+	}
+	if browse() != beforeBrowse {
+		t.Fatal("owner lock invalidated an unchanged ordinary browse receipt")
+	}
+}
+
 func TestBulkMetadataPreviewPagesBoundCandidatesAndAdvanceEmptyPages(t *testing.T) {
 	service, _, _, viewer, _, fixture, names := bulkFixture(t, BulkMetadataPageSize*2+1)
 	sorts := []BrowseSortSelection{{Field: "title", Direction: "asc"}}
