@@ -553,16 +553,21 @@ func (h *HLS) produce(ctx context.Context, id string, from, generation int, owne
 		fragmented := plan != nil && plan.OutputContainer == "fmp4_hls"
 		if fragmented {
 			args = append(args, "-map_metadata", "-1", "-fflags", "+bitexact")
-			if plan.OutputVideoCodec == "hevc" {
-				entry := hevcSampleEntry(plan)
-				args = append(args, "-tag:v", entry)
-				if entry == "dvh1" || entry == "dvhe" {
-					args = append(args, "-strict", "unofficial")
-				}
-			}
 		}
-		if plan != nil && plan.AudioAction == "copy" && (plan.OutputAudioCodec == "truehd" || plan.OutputAudioCodec == "flac") {
-			args = append(args, "-strict", "-2")
+		if plan != nil {
+			profile := 0
+			videoCodec := ""
+			if plan.VideoAction != "none" {
+				videoCodec = plan.OutputVideoCodec
+			}
+			if plan.VideoAction == "copy" {
+				profile, _ = deliveredDolbyVision(plan)
+			}
+			copiedAudioCodec := ""
+			if plan.AudioAction == "copy" {
+				copiedAudioCodec = plan.OutputAudioCodec
+			}
+			args = append(args, decoder.HLSMuxArgs(fragmented, videoCodec, copiedAudioCodec, profile)...)
 		}
 		if plan != nil && plan.VideoAction == "convert" && plan.AudioAction == "copy" && grid && from > 0 {
 			args = append(args, "-bsf:a", "noise=drop='lt(pts*tb,0)'")

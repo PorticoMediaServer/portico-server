@@ -88,7 +88,7 @@ func TestPlaybackComparisonTargetFactsNeverBecomeRendererObservations(t *testing
 	if info.Source.Audio.ObjectAudio != "atmos" || info.Delivered.Audio.ObjectAudio != "" || info.Delivered.Audio.Codec != "flac" || info.Delivered.Audio.BitDepth != 24 || info.Delivered.Audio.SampleRate != 96000 || info.Delivered.Audio.Layout != "7.1" {
 		t.Fatal("FLAC target lost full rate/depth or invented object retention", info)
 	}
-	want := []PlaybackLoss{{Feature: "dolbyVision", Replacement: PlaybackReplacement{DynamicRange: "sdr"}}, {Feature: "hdr", Replacement: PlaybackReplacement{DynamicRange: "sdr"}}, {Feature: "atmos", Replacement: PlaybackReplacement{AudioCodec: "flac", Channels: 8, Layout: "7.1"}}}
+	want := []PlaybackLoss{{Feature: "hdr10plus", Replacement: PlaybackReplacement{DynamicRange: "sdr"}}, {Feature: "dolbyVision", Replacement: PlaybackReplacement{DynamicRange: "sdr"}}, {Feature: "hdr", Replacement: PlaybackReplacement{DynamicRange: "sdr"}}, {Feature: "atmos", Replacement: PlaybackReplacement{AudioCodec: "flac", Channels: 8, Layout: "7.1"}}}
 	if !reflect.DeepEqual(info.Losses, want) || info.EstimatedBitrateKbps != 0 {
 		t.Fatal("structured losses/unknown lossless total", info)
 	}
@@ -224,5 +224,44 @@ func TestHDR10PlusMetadataLossIsReportedOnlyWhereItIsLost(t *testing.T) {
 	}
 	if info := PlaybackInfoForPlan(kept, nil); info == nil || info.Delivered.Video.HDR10Plus == nil || !*info.Delivered.Video.HDR10Plus {
 		t.Fatalf("an HDR10+ device lost its metadata: %+v", info)
+	}
+}
+
+func TestHDR10PlusConversionReportsMetadataLossForHDRAndSDR(t *testing.T) {
+	plus := hdr10Detail
+	plus.HDR10Plus = true
+	source := videoSource("mkv", "hevc", plus, SourceAudio{Codec: "aac", Channels: 2})
+	for _, allowHDR := range []bool{true, false} {
+		plan := decide(t, source, appleTVProfile(), func(in *DeliveryInput) {
+			in.FMP4Output = true
+			in.Server = matrixToolchain()
+			in.Target = QualityTarget{RungID: "720p", Kind: QualityFixed, MaxVideoHeight: 720, MaxVideoBitrateBPS: 2_000_000, AllowHDR: allowHDR}
+		})
+		if plan.VideoAction != "convert" || !containsString(plan.Trace.Notes, NoteHDR10PlusLost) {
+			t.Fatal("conversion did not record HDR10+ loss", plan)
+		}
+		info := PlaybackInfoForPlan(plan, nil)
+		if info == nil || info.Source.Video.HDR10Plus == nil || !*info.Source.Video.HDR10Plus || info.Delivered.Video.HDR10Plus != nil {
+			t.Fatal("source and delivered metadata facts disagree", info)
+		}
+		wantRange := assets.RangeSDR
+		if allowHDR {
+			wantRange = assets.RangeHDR10
+		}
+		if info.Delivered.Video.DynamicRange != wantRange {
+			t.Fatal("conversion did not exercise the requested delivered range", info.Delivered.Video)
+		}
+		losses := 0
+		for _, loss := range info.Losses {
+			if loss.Feature == "hdr10plus" {
+				losses++
+				if loss.Replacement.DynamicRange != info.Delivered.Video.DynamicRange {
+					t.Fatal("loss names the wrong delivered range", loss, info.Delivered.Video)
+				}
+			}
+		}
+		if losses != 1 {
+			t.Fatal("conversion omitted or duplicated HDR10+ loss", info.Losses)
+		}
 	}
 }

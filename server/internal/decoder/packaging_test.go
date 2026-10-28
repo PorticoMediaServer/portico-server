@@ -28,6 +28,31 @@ func TestHLSPackagingArguments(t *testing.T) {
 	}
 }
 
+func TestHLSCodecMuxArguments(t *testing.T) {
+	for _, tc := range []struct {
+		video, audio string
+		profile      int
+		tag, strict  string
+	}{
+		{"h264", "aac", 0, "", ""},
+		{"hevc", "aac", 0, "hvc1", ""},
+		{"hevc", "aac", 5, "dvh1", "unofficial"},
+		{"hevc", "aac", 7, "dvhe", "unofficial"},
+		{"hevc", "aac", 8, "dvh1", "unofficial"},
+		{"hevc", "truehd", 7, "dvhe", "-2"},
+		{"", "truehd", 0, "", "-2"},
+		{"", "flac", 0, "", "-2"},
+	} {
+		args := HLSMuxArgs(true, tc.video, tc.audio, tc.profile)
+		if argValue(args, "-tag:v") != tc.tag || argValue(args, "-strict") != tc.strict {
+			t.Fatal(tc, args)
+		}
+		if len(HLSMuxArgs(false, tc.video, tc.audio, tc.profile)) != 0 {
+			t.Fatal("MP4 codec signalling leaked into MPEG-TS", tc)
+		}
+	}
+}
+
 func TestFragmentedConversionKeepsInitAcrossWindows(t *testing.T) {
 	binary := decodertest.QualifiedFFmpeg(t)
 	probe := decodertest.QualifiedFFprobe(t)

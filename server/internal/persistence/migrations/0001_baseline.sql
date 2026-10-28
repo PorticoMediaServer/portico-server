@@ -3213,6 +3213,7 @@ CREATE TABLE download_receipts(
  profile_key TEXT NOT NULL, authority TEXT NOT NULL, account_id TEXT NOT NULL, profile_id TEXT NOT NULL,
  item_id INTEGER NOT NULL, item_public TEXT NOT NULL DEFAULT '', library_id TEXT NOT NULL DEFAULT '',
  preparation_id TEXT NOT NULL, quality TEXT NOT NULL,
+ publication_required INTEGER NOT NULL CHECK(publication_required IN (0,1)),
  artifact_digest TEXT NOT NULL, artifact_bytes INTEGER NOT NULL CHECK(artifact_bytes>0),
  key_id TEXT NOT NULL REFERENCES download_receipt_keys(id),
  issued_ms INTEGER NOT NULL, expires_ms INTEGER NOT NULL,

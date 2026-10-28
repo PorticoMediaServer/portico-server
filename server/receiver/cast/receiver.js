@@ -27,7 +27,7 @@
  *
  * Sender protocol:
  *   pair  {displayName}                         → paired | pair-pending | pair-failed {code: 'tv_busy' | …}
- *   load  {title, subtitle, seriesTitle, season, episode, kind, artworkPath, subtitleTrackId}
+ *   load  {title, subtitle, seriesTitle, season, episode, kind, artworkPath, subtitleTrackId, versionId}
  *   controller receives takeover-requested {requester} and replies takeover {allow}
  *   a replaced controller receives {type: 'replaced'}
  *
@@ -221,14 +221,40 @@
   // gates; an external JSON request cannot reproduce their private identity.
   var localRequests = new WeakSet(), localRequestId = 0;
   var cafOccurrence = null,platformOccurrence=null;
-  async function loadMedia(request,lease,attempt) {
+  function selectedTracks() {
+    var selected = {};
+    if (!manager) return selected;
+    var audio = manager.getAudioTracksManager(), textTracks = manager.getTextTracksManager();
+    if (typeof audio.getActiveId === 'function') {
+      var id = audio.getActiveId();
+      if (Number.isSafeInteger(id) && id >= 0) selected.audio = id;
+    }
+    if (typeof textTracks.getActiveIds === 'function') {
+      var ids = textTracks.getActiveIds();
+      if (Array.isArray(ids) && ids.length <= 1 && ids.every(function(id){return Number.isSafeInteger(id) && id >= 0;}) && (ids.length || textTracks.getTracks().length)) selected.text = ids.slice();
+    }
+    return selected;
+  }
+  function restoreTracks(occurrence) {
+    var selected = occurrence && occurrence.tracks, media = manager && manager.getMediaInformation();
+    if (!selected || platformOccurrence !== occurrence || !playback || playback.id !== occurrence.id || playback.generation !== occurrence.generation || !media || media.contentId !== occurrence.contentId) return;
+    var audio = manager.getAudioTracksManager(), textTracks = manager.getTextTracksManager();
+    if (selected.audio !== undefined && audio.getTracks().some(function(track){return track.trackId === selected.audio;})) {
+      audio.setActiveById(selected.audio); delete selected.audio;
+    }
+    if (selected.text !== undefined && selected.text.every(function(id){return textTracks.getTracks().some(function(track){return track.trackId === id;});})) {
+      textTracks.setActiveByIds(selected.text); delete selected.text;
+    }
+  }
+  async function loadMedia(request,lease,attempt,selected) {
     requireLease(lease);
     // Bind the single CAF deck to the exact accepted server presentation.
-    var owner=playback, occurrence={id:owner&&owner.id,generation:owner&&owner.generation,contentId:request.media.contentId,finished:false};
+    var owner=playback, occurrence={id:owner&&owner.id,generation:owner&&owner.generation,contentId:request.media.contentId,finished:false,tracks:selected&&Object.assign({},selected)};
+    if (selected && selected.text !== undefined && request.media.tracks) request.activeTrackIds = selected.text.filter(function(id){return request.media.tracks.some(function(track){return track.trackId === id;});});
     cafOccurrence=null;platformOccurrence=occurrence;if(attempt)attempt.caf=occurrence;localRequests.add(request);
     await manager.load(request);
     requireLease(lease);
-    if(playback&&owner&&playback.id===owner.id&&playback.generation===owner.generation)cafOccurrence=occurrence;
+    if(playback===owner){cafOccurrence=occurrence;restoreTracks(occurrence);}
   }
   function finishedOccurrence(owner, occurrence) {
     var media=manager&&manager.getMediaInformation(),element=$('player');
@@ -240,7 +266,7 @@
     localRequests.add(request);manager.sendLocalMediaRequest(request);
   }
 
-  var reportTimer = null, reportSeq = 0, reportFailures = 0, recoveries = 0, recovering = false, bufferingTimer = null;
+  var reportTimer = null, reportSeq = 0, reportFailures = 0, recoveries = 0, recovering = null, networkRetries = 0, networkRetryPosition = 0, bufferingTimer = null;
   var commands = Promise.resolve();
   function serial(work) { var result = commands.then(work); commands = result.catch(function () {}); return result; }
   function token(bytes) { var a = new Uint8Array(bytes || 24); window.crypto.getRandomValues(a); return Array.from(a, function (x) { return x.toString(16).padStart(2, '0'); }).join(''); }
@@ -753,7 +779,7 @@
     return [d.video, d.audio, d.subtitles].some(function (x) { return !!x && (x.action === 'transcode' || x.action === 'burn'); });
   }
   function track(session) {
-    return {id: session.id, revision: session.revision, itemId: session.itemId || '', generation: session.presentation.generation, serverSeek: serverSeek(session), queue: queueRef(session.queue)};
+    return {id: session.id, revision: session.revision, itemId: session.itemId || '', versionId: session.versionId, generation: session.presentation.generation, serverSeek: serverSeek(session), queue: queueRef(session.queue), presentation: session.presentation, subtitleTrackId: session.presentation.subtitle ? session.presentation.subtitle.trackId : 'off'};
   }
   /** CAF's load request for a session's presentation. */
   function loadRequest(session, image, autoplay,lease) {
@@ -784,6 +810,15 @@
     var metadata = castMetadata(meta, image);
     if (metadata) media.metadata = metadata;
     var load = {media: media, currentTime: Math.max(0, (p.startPositionMs || 0) / 1000), autoplay: autoplay !== false};
+    if (p.mode !== 'stream' && p.subtitle && p.subtitle.delivery === 'sidecar') {
+      var subtitle = (p.subtitles || []).filter(function(file){return file.trackId === p.subtitle.trackId && file.format === 'webvtt';})[0];
+      // The server's WebVTT endpoint has already applied the saved/session offset.
+      // Only this presentation's own grant can supply its selected text track.
+      var address = subtitle && /^\/v1\/media\/subtitles\/([^/\\\s?#]+)\/([^/\\\s?#]+)\/([1-9][0-9]*)\.vtt$/.exec(subtitle.url);
+      if (!subtitle || !address || address[1] !== p.url.split('/')[3] || address[2] !== subtitle.trackId || subtitle.timeDomain !== 'source-relative' || subtitle.offsetMs !== 0) throw new Error('unsupported_subtitle_presentation');
+      media.tracks = [{trackId: 1, type: 'TEXT', subtype: 'SUBTITLES', trackContentId: (lease ? lease.origin : base) + subtitle.url, trackContentType: 'text/vtt'}];
+      load.activeTrackIds = [1];
+    }
     // Only the actual current media enters CAF. The server owns the next item;
     // preloadTime remains a hint and never establishes that bytes were prefetched.
     if (queueRef(session.queue)) load.queueData = {items:[{media:media,autoplay:load.autoplay,startTime:load.currentTime,preloadTime:10}],startIndex:0};
@@ -805,9 +840,10 @@
   }
   /** Starts a v1 session for the item and answers CAF's load request for it. A session already
    * playing here is replaced in the same request, so this TV holds one playback slot. */
-  async function resolvePlayback(itemId, startSeconds, identity, subtitleTrackId, queue,lease,pending,attempt) {
+  async function resolvePlayback(itemId, startSeconds, identity, subtitleTrackId, queue,lease,pending,attempt,versionId) {
     requireLease(lease);
     if (!session || !manager || !/^[A-Za-z0-9_-]{1,128}$/.test(itemId)) throw new Error('playback_unavailable');
+    if (versionId !== undefined && (typeof versionId !== 'string' || !/^[A-Za-z0-9._:-]{1,128}$/.test(versionId))) throw new Error('invalid_cast_version');
     clearTimeout(reportTimer); clearTimeout(bufferingTimer);
     var previousOwner=playback,replaces=previousOwner&&previousOwner.id,requestedMeta=identity||null;
     showLoading(requestedMeta);
@@ -815,6 +851,7 @@
     await prepareProfile(lease);
     requireLease(lease);
     var body = {itemId: itemId, state: 'playing'};
+    if (versionId !== undefined) body.versionId = versionId;
     if (Number.isFinite(startSeconds)) body.startPositionMs = Math.round(Math.max(0, startSeconds) * 1000); else body.startFrom = 'resume';
     if (replaces) body.replacesSessionId = replaces;
     if(queue&&!queueRef(queue))throw new Error('invalid_cast_queue');
@@ -897,18 +934,18 @@
     reportSeq = 0; reportFailures = 0;
     return load;
   }
-  function startPlayback(itemId,startSeconds,identity,subtitleTrackId,queue,lease,pending) { return commandQueue(lease,async function(){
-    requireLease(lease);recoveries=0;
+  function startPlayback(itemId,startSeconds,identity,subtitleTrackId,queue,lease,pending,versionId) { return commandQueue(lease,async function(){
+    requireLease(lease);recoveries=0;networkRetries=0;
     var captured,attempt={adopted:false};
     if(queue&&queue.transferId){
-      var digest=JSON.stringify({itemId:itemId,startSeconds:startSeconds,subtitleTrackId:subtitleTrackId,queue:queue}),now=Date.now();
+      var digest=JSON.stringify({itemId:itemId,startSeconds:startSeconds,subtitleTrackId:subtitleTrackId,queue:queue,versionId:versionId}),now=Date.now();
       transferStarts.forEach(function(value,key){if(value.expires<=now)transferStarts.delete(key);});
       captured=transferStarts.get(queue.transferId);
       if(captured&&(captured.digest!==digest||captured.scope!==scope||captured.origin!==base))throw new Error('cast_transfer_changed');
       if(captured&&captured.accepted)return captured.accepted;
       if(!captured){if(transferStarts.size>=8)throw new Error('cast_transfer_busy');captured={digest:digest,scope:scope,origin:base,expires:now+180000};transferStarts.set(queue.transferId,captured);}
     }
-    try{var load=await resolvePlayback(itemId,startSeconds,identity,subtitleTrackId,queue,lease,pending,attempt);var startedOwner=attempt.owner;if(playback!==startedOwner)throw new Error('occurrence_replaced');await loadMedia(load,lease,attempt);requireLease(lease);if(playback!==startedOwner)throw new Error('occurrence_replaced');attempt.adopted=true;showPlaying();scheduleReport(0);refreshCatalogueDisplay({id:playback.id,itemId:playback.itemId,presentation:{generation:playback.generation}},load.media.contentId,lease);if(captured)captured.accepted=playback;return playback;}
+    try{var load=await resolvePlayback(itemId,startSeconds,identity,subtitleTrackId,queue,lease,pending,attempt,versionId);var startedOwner=attempt.owner;if(playback!==startedOwner)throw new Error('occurrence_replaced');recoveries=0;networkRetries=0;await loadMedia(load,lease,attempt);requireLease(lease);if(playback!==startedOwner)throw new Error('occurrence_replaced');attempt.adopted=true;showPlaying();scheduleReport(0);refreshCatalogueDisplay({id:playback.id,itemId:playback.itemId,presentation:{generation:playback.generation}},load.media.contentId,lease);if(captured)captured.accepted=playback;return playback;}
     catch(e){await cleanupFailedLoad(attempt);if(leaseCurrent(lease)&&(!attempt.owner||!playback||playback===attempt.owner))showError(e&&(e.code||e.message));throw e;}
   }); }
 
@@ -924,7 +961,7 @@
     var answer = await api(queuePath(owner.queue.queueId) + ':advance',{body:{reason:'completion',completionSessionId:owner.id,completionGeneration:owner.generation},headers:{'If-Match':head.revision,'Idempotency-Key':token(16)}});
     if (playback !== owner || !answer.body.session) return false;
     var current=answer.body.session;
-    playback=track(current);meta=null;reportSeq=0;reportFailures=0;recoveries=0;
+    playback=track(current);meta=null;reportSeq=0;reportFailures=0;recoveries=0;networkRetries=0;
     showLoading(null); // Never label the new occurrence with the old title or artwork.
     var load;
     try { load=loadRequest(current,'',true);await loadMedia(load); }
@@ -960,17 +997,18 @@
     reportTimer = setTimeout(function () { serial(function () { return report(); }).catch(function () {}).finally(function () { scheduleReport(); }); }, ms);
   }
   /** Reload the media after the server produced a new presentation (a server seek, a recovery). */
-  async function adoptPresentation(updated, autoplay,lease,expected) {
+  async function adoptPresentation(updated, autoplay,lease,expected,recovery) {
     requireLease(lease);if(expected&&playback!==expected)return;
     if (!playback || updated.id !== playback.id) return;
-    var fresh = updated.presentation.generation !== playback.generation;
+    var fresh = updated.presentation.generation !== playback.generation, selected = fresh ? recovery ? recovery.tracks : selectedTracks() : null;
     playback = track(updated);
+    if (recovery && recovery.owner === expected) recovery.owner = playback;
     if (!fresh) return;
-    var adopted=playback;await loadMedia(loadRequest(updated, '', autoplay,lease),lease);
+    var adopted=playback;await loadMedia(loadRequest(updated, '', autoplay,lease),lease,undefined,selected);
     requireLease(lease);if(playback!==adopted)return;showPlaying();
   }
   /** PATCH the session. A 412 carries the server's session: adopt it and apply the change to it. */
-  async function change(body,lease,expected) {
+  async function change(body,lease,expected,recovery) {
     requireLease(lease);var owner=expected||playback;
     if(!owner||playback!==owner)return;
     var id=owner.id;
@@ -980,11 +1018,11 @@
     catch(e){
       requireLease(lease);
       if(e.status!==412||!e.current||!e.current.presentation||e.current.id!==id||playback!==owner)throw e;
-      await adoptPresentation(e.current,!paused(),lease,owner);requireLease(lease);
+      await adoptPresentation(e.current,recovery?recovery.autoplay:!paused(),lease,owner,recovery);requireLease(lease);
       if(!playback||playback.id!==id)throw new Error('occurrence_replaced');owner=playback;answer=await patch();
     }
     requireLease(lease);if(playback!==owner||!answer.body||answer.body.id!==id)return;
-    await adoptPresentation(answer.body,!paused(),lease,owner);
+    await adoptPresentation(answer.body,recovery?recovery.autoplay:!paused(),lease,owner,recovery);
   }
   function seekTo(seconds,lease) {
     var owner=playback;
@@ -996,20 +1034,56 @@
     });
   }
 
-  function recover(code) {
-    if(recovering||!playback)return;
-    // Up to three silent recoveries; after them the drawn card says this TV can't play the title
-    // (frame 13), rather than leaving a broken picture up with nobody able to stop it.
-    if(recoveries>=3){showError(code);return;}
-    recovering=true;recoveries++;broadcast();
-    serial(async function(){var item=playback.itemId,at=position(),wasPaused=paused(),identity=meta;
-      // The server remembers that this way of delivering the file failed here and re-plans the
-      // same session another way, from where the picture stopped.
-      try { await change({failure:{code:code,detail:''},positionMs:Math.round(Math.max(0,at)*1000)}); return; }
+  function terminalPlayback(owner, code) {
+    return serial(async function(){
+      if (shuttingDown || !owner || playback !== owner) return;
+      // Retire locally immediately, even if the best-effort server Stop must wait
+      // for its request timeout. The ordinary lease still bounds lost cleanup.
+      var stopped = stopPlayback(false,undefined,owner);
+      showError(code);
+      if (controllerSender) send(controllerSender,{type:'load-failed',code:'playback_failed'});
+      broadcast();
+      await stopped.catch(function(){/* The server will expire a lost Stop's lease. */});
+    });
+  }
+  function recover(code, expected) {
+    var owner = expected === undefined ? playback : expected;
+    if (shuttingDown || !owner || playback !== owner || recovering && recovering.owner === owner) return;
+    var network = code === 'network_error';
+    // Network retries never consume decoder fallbacks or poison route memory.
+    if ((network ? networkRetries : recoveries) >= 3) { terminalPlayback(owner,code); return; }
+    var operation = {owner:owner}, at = position(), wasPaused = paused(), identity = meta, selected = selectedTracks();
+    operation.autoplay = !wasPaused;operation.tracks = selected;
+    recovering = operation;
+    var delay = network ? [1000,2000,5000][networkRetries++] : 0;
+    if (network) networkRetryPosition = at; else recoveries++;
+    clearTimeout(bufferingTimer);broadcast();
+    // Waiting outside the command lane leaves Stop and replacement loads usable.
+    function attemptRecovery() { return (delay ? wait(delay) : Promise.resolve()).then(function(){return serial(async function(){
+      if (shuttingDown || playback !== operation.owner) return;
+      if (network) {
+        var retry = Object.assign({},owner,{presentation:Object.assign({},owner.presentation,{startPositionMs:Math.round(Math.max(0,at)*1000)})});
+        await loadMedia(loadRequest(retry,'',!wasPaused),undefined,undefined,selected);
+        if (playback === operation.owner) { showPlaying();scheduleReport(0); }
+        return;
+      }
+      // The server remembers a decoder/stall failure and replans this occurrence.
+      try { await change({failure:{code:code,detail:''},positionMs:Math.round(Math.max(0,at)*1000)},undefined,owner,operation); return; }
       catch (e) { if (e.code!=='unsupported_media'||code!=='stalled_without_data') throw (e.code==='unsupported_media'?new Error('playback_failed'):e); }
-      // Nothing else to try and the stream only stalled: load the same title again.
-      var load=await resolvePlayback(item,at,identity);load.autoplay=!wasPaused;await loadMedia(load);showPlaying();scheduleReport(0);
-    }).then(function(){notice('');}).catch(function(e){notice('');showError(code==='decode_error'?'decode':e&&(e.code||e.message));}).finally(function(){recovering=false;broadcast();});
+      if (playback !== operation.owner) return;
+      // A stall restart retains the current queue occurrence and session choices.
+      var subtitle = selected.text && selected.text.length === 0 && owner.presentation.subtitle && owner.presentation.subtitle.delivery === 'sidecar' ? 'off' : owner.subtitleTrackId;
+      var load = await resolvePlayback(owner.itemId,at,identity,subtitle,owner.queue,undefined,undefined,undefined,owner.versionId);
+      operation.owner = playback;load.autoplay = !wasPaused;
+      await loadMedia(load,undefined,undefined,selected);showPlaying();scheduleReport(0);
+    });}).catch(function(e){
+      if (network && !shuttingDown && playback === operation.owner && networkRetries < 3) { delay = [1000,2000,5000][networkRetries++];return attemptRecovery(); }
+      throw e;
+    }); }
+    attemptRecovery().then(function(){if(!shuttingDown&&playback===operation.owner)notice('');}).catch(function(e){
+      if (shuttingDown || playback !== operation.owner) return;
+      notice('');return terminalPlayback(operation.owner,network?'network_error':code==='decode_error'?'decode':e&&(e.code||e.message));
+    }).finally(function(){if(recovering===operation)recovering=null;if(!shuttingDown)broadcast();});
   }
 
   // --- Control: who may drive this TV (SEC-14, CAST-04, D-FEAT-10) ------------
@@ -1143,10 +1217,10 @@
   function isController(senderId) { return !!controllerSender && controllerPresent && senderId === controllerSender; }
   function statusBody(lease) {
     var status = {
-      type:'status',...(controllerStamp(lease)?{controller:controllerStamp(lease)}:{}),...(playback?{occurrence:occurrenceFact(playback)}:{}),paired:!!session,itemId: playback ? playback.itemId || '' : '',
+      type:'status',...(controllerStamp(lease)?{controller:controllerStamp(lease)}:{}),...(playback?{occurrence:occurrenceFact(playback)}:{}),paired:!!session,itemId: playback ? playback.itemId || '' : '',...(playback&&playback.versionId?{versionId:playback.versionId}:{}),
       audioTracks: manager ? manager.getAudioTracksManager().getTracks().map(function(t){return {id:t.trackId,language:t.language||'',name:t.name||''};}) : [],
       textTracks: manager ? manager.getTextTracksManager().getTracks().map(function(t){return {id:t.trackId,language:t.language||'',name:t.name||''};}) : [],
-      paused: paused(), state: recovering?'recovering':playback?(paused()?'paused':'playing'):'idle'
+      paused: paused(), state: recovering&&recovering.owner===playback?'recovering':playback?(paused()?'paused':'playing'):'idle'
     };
     // A bookkeeping fallback zero is not a receiver clock fact.
     return Object.assign(status, clockFacts());
@@ -1247,7 +1321,7 @@
       if (!custom.itemId || fromOther(request)) { return null; }
       var lease;try{lease=await controllerAuthority(request.senderId);}catch(e){return null;}
       var identity = displayMeta(custom) || (request.media.metadata ? displayMeta({title: request.media.metadata.title, subtitle: request.media.metadata.subtitle || request.media.metadata.seriesTitle}) : null);
-      return commandQueue(lease,function(){recoveries=0;return resolvePlayback(custom.itemId,custom.startSeconds,identity,undefined,undefined,lease);}).then(function(load){requireLease(lease);platformOccurrence={id:playback.id,generation:playback.generation,contentId:load.media.contentId};showPlaying();scheduleReport(0);return load;}).catch(function(e){if(leaseCurrent(lease))showError(e&&(e.code||e.message));return null;});
+      return commandQueue(lease,function(){recoveries=0;networkRetries=0;return resolvePlayback(custom.itemId,custom.startSeconds,identity,custom.subtitleTrackId,undefined,lease,undefined,undefined,custom.versionId);}).then(function(load){requireLease(lease);platformOccurrence={id:playback.id,generation:playback.generation,contentId:load.media.contentId};showPlaying();scheduleReport(0);return load;}).catch(function(e){if(leaseCurrent(lease))showError(e&&(e.code||e.message));return null;});
     });
     // Play and pause are the player's own; the timeline reports them. A seek the server must
     // produce again is sent to it and the new presentation loaded here instead.
@@ -1335,7 +1409,7 @@
           startPlayback(String(message.itemId || ''), typeof message.startSeconds === 'number' ? message.startSeconds : undefined, displayMeta(message), message.subtitleTrackId, queueRef(message.queue),commandLease,function(evidence){
             requireLease(commandLease);
             if(typeof message.requestId==='string'&&/^[A-Za-z0-9._:-]{1,128}$/.test(message.requestId))reply({type:'load-pending',requestId:message.requestId,itemId:String(message.itemId||''),startId:evidence.startId,sequence:evidence.sequence,controller:controllerStamp(commandLease)});
-          }).then(function (accepted) {
+          },message.versionId).then(function (accepted) {
             requireLease(commandLease);
             if (typeof message.requestId === 'string' && /^[A-Za-z0-9._:-]{1,128}$/.test(message.requestId)) reply({type:'loaded',requestId:message.requestId,itemId:accepted ? accepted.itemId : ''});
             broadcast();
@@ -1366,12 +1440,28 @@
     // Status goes only to the controller (SEC-14).
     broadcast = function () { if (controllerSender && controllerPresent) {var sender=controllerSender,lease=captureController(sender,false);controllerStatus(sender,controllerAttempt,lease).catch(function(){if(leaseCurrent(lease))send(sender,{type:'pair-required'});});} };
     var events=cast.framework.events.EventType;
-    manager.addEventListener(events.ERROR,function(e){var code=Number(e.detailedErrorCode);if(code>=300&&code<500)recover('decode_error');});
-    manager.addEventListener(events.BUFFERING,function(e){viewBuffering=e.isBuffering===true;playingView();clearTimeout(bufferingTimer);if(e.isBuffering)bufferingTimer=setTimeout(function(){recover('stalled_without_data');},20000);});
+    manager.addEventListener(events.ERROR,function(e){
+      var code=Number(e&&e.detailedErrorCode),owner=playback;
+      // CAF MEDIA_DECODE, MEDIA_SRC_NOT_SUPPORTED and SOURCE_BUFFER_FAILURE.
+      if ([102,104,110].indexOf(code)>=0) recover('decode_error',owner);
+      // MEDIA_NETWORK, SEGMENT_NETWORK and HLS master/media playlist failures.
+      else if ([103,301,311,312].indexOf(code)>=0) recover('network_error',owner);
+      else if (code>=300&&code<=499) recover('decode_error',owner);
+      else if (code===100||code===905) terminalPlayback(owner,'playback_failed');
+    });
+    manager.addEventListener(events.BUFFERING,function(e){viewBuffering=e.isBuffering===true;playingView();clearTimeout(bufferingTimer);var owner=playback;if(e.isBuffering)bufferingTimer=setTimeout(function(){recover('stalled_without_data',owner);},20000);});
     // The title is over whether or not its last report gets through: the TV must not stay on a
     // finished title, still reporting, with nobody connected to stop it.
     manager.addEventListener(events.MEDIA_FINISHED,function(event){
-      if(!event||event.endedReason!==cast.framework.events.EndedReason.END_OF_STREAM)return;
+      if(!event)return;
+      if(event.endedReason==='ERROR'){
+        var failed=playback;
+        // A companion ERROR end does not race the recovery already chosen for
+        // this deck. An old completion cannot terminate a newly playing deck.
+        if(failed&&manager.getPlayerState()==='IDLE'&&!(recovering&&recovering.owner===failed))terminalPlayback(failed,'playback_failed');
+        return;
+      }
+      if(event.endedReason!==cast.framework.events.EndedReason.END_OF_STREAM)return;
       var owner=playback,occurrence=cafOccurrence;
       // MEDIA_FINISHED has no item/session field. Require the real single deck's
       // ended state and its loaded content identity, then consume this event once.
@@ -1401,10 +1491,11 @@
       if(!viewLoading){if(meta&&meta.title)showLoading(meta);else viewCall('splash');}
     });
     // LOADED_DATA is the SDK's first-frame-loaded event; PLAYING confirms playback start.
-    [events.LOADED_DATA,events.PLAYING].filter(Boolean).forEach(function(name){manager.addEventListener(name,function(){pictureReady=true;viewLoading=false;stopPreparing();playingView(name===events.PLAYING);scheduleReport(0);broadcast();});});
+    [events.LOADED_DATA,events.PLAYING].filter(Boolean).forEach(function(name){manager.addEventListener(name,function(){restoreTracks(platformOccurrence);pictureReady=true;viewLoading=false;stopPreparing();playingView(name===events.PLAYING);scheduleReport(0);broadcast();});});
+    if(events.PLAYER_LOAD_COMPLETE)manager.addEventListener(events.PLAYER_LOAD_COMPLETE,function(){restoreTracks(platformOccurrence);});
     // A state change or a completed seek is reported at once.
     [events.PAUSE,events.SEEKED].filter(Boolean).forEach(function(name){manager.addEventListener(name,function(){playingView(true);scheduleReport(0);broadcast();});});
-    [events.TIME_UPDATE,events.DURATION_CHANGE,events.MEDIA_STATUS].filter(Boolean).forEach(function(name){manager.addEventListener(name,function(){playingView();});});
+    [events.TIME_UPDATE,events.DURATION_CHANGE,events.MEDIA_STATUS].filter(Boolean).forEach(function(name){manager.addEventListener(name,function(){if(name===events.TIME_UPDATE&&networkRetries&&position()>networkRetryPosition)networkRetries=0;playingView();});});
     context.addEventListener(cast.framework.system.EventType.SENDER_CONNECTED,function(e){if(e&&e.senderId){bumpConnection(e.senderId);disconnectedSenders.delete(e.senderId);if(e.senderId===controllerSender)controllerPresent=false;}});
     context.addEventListener(cast.framework.system.EventType.SENDER_DISCONNECTED,function(e){
       if(e&&e.senderId){bumpConnection(e.senderId);disconnectedSenders.add(e.senderId);}

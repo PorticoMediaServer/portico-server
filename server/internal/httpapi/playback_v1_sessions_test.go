@@ -73,10 +73,10 @@ func TestPlaybackV1SessionLifecycle(t *testing.T) {
 		}
 	}
 
-	// GET carries the revision ETag; another profile's device can't see it.
+	// GET validates the whole representation; commands keep their own revision.
 	w = f.call("GET", "/v1/playback/sessions/"+s.ID, nil, nil, 200, nil)
-	if w.Header().Get("ETag") != `"1"` {
-		t.Fatalf("get etag %q", w.Header().Get("ETag"))
+	if tag := w.Header().Get("ETag"); tag == "" || tag == `"1"` {
+		t.Fatalf("GET must carry a representation ETag, got %q", tag)
 	}
 
 	// Invariant 2: PATCH needs If-Match; a stale one is 412 with the current session.

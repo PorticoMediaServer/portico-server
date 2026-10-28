@@ -122,17 +122,12 @@ func (r *Remote) AnalyzeDescriptor(parent context.Context, library, path string)
 	}
 	input := newSTRMObject(ctx, target, descriptor, current)
 	defer input.Close()
-	bridge, closeBridge, err := storage.RemoteProbeBridge(ctx, input)
-	if err != nil {
-		return facts, err
-	}
-	defer closeBridge()
 	u, _ := url.Parse(locator)
 	extension := filepath.Ext(u.Path)
 	if extension == "" {
 		extension = ".mp4"
 	}
-	facts, err = r.probe.InspectRemote(ctx, bridge, extension)
+	facts, err = r.probe.InspectRemote(ctx, input, extension)
 	if err != nil {
 		return facts, remotemedia.ErrUnsupported
 	}

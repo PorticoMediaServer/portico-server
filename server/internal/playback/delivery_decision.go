@@ -60,8 +60,8 @@ const (
 	// NoteObjectAudioDecoded marks a copied object-audio track that the engine
 	// decodes without its objects: the channel bed plays, the objects do not.
 	NoteObjectAudioDecoded = "object_audio_decoded_without_objects"
-	// NoteHDR10PlusLost marks a copied HDR10+ picture whose dynamic metadata
-	// the device does not declare: it plays as the HDR10 base picture.
+	// NoteHDR10PlusLost marks dynamic metadata dropped by conversion or not
+	// supported by the device. The delivered picture reports its actual range.
 	NoteHDR10PlusLost                   = "hdr10plus_dynamic_metadata_lost"
 	NoteOverrideStereo                  = "viewer_override_force_stereo"
 	NoteOverrideNoPassthrough           = "viewer_override_disable_passthrough"

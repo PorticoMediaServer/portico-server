@@ -52,6 +52,8 @@ func audioContentType(container string) string {
 		return "audio/x-dff"
 	case "mka", "mkv", "matroska":
 		return "audio/x-matroska"
+	case "webm":
+		return "audio/webm"
 	case "wma", "asf":
 		return "audio/x-ms-wma"
 	case "tta":

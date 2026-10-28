@@ -25,9 +25,12 @@ func TestLinearHLSNormalizesOnlySelectedCopiedAACForFragmentedMP4(t *testing.T) 
 		t.Run(tc.name, func(t *testing.T) {
 			const input = "http://127.0.0.1:43210/input/index.m3u8"
 			const output = "http://127.0.0.1:43210/output/0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef/"
-			args, err := linearHLSArgs(input, output, tc.plan)
+			args, hardware, err := linearHLSArgs(input, output, tc.plan)
 			if err != nil {
 				t.Fatal(err)
+			}
+			if hardware {
+				t.Fatal("ordinary copy/audio conversion acquired a GPU")
 			}
 			var withoutFilter []string
 			count := 0
@@ -51,7 +54,7 @@ func TestLinearHLSNormalizesOnlySelectedCopiedAACForFragmentedMP4(t *testing.T) 
 			}
 			baseline := tc.plan
 			baseline.CopyAAC = false
-			originalArgs, err := linearHLSArgs(input, output, baseline)
+			originalArgs, _, err := linearHLSArgs(input, output, baseline)
 			if err != nil || !reflect.DeepEqual(withoutFilter, originalArgs) {
 				t.Fatalf("changed unrelated input/output/mapping/conversion/guard argv: %v; baseline %v: %v", args, originalArgs, err)
 			}

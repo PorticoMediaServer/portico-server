@@ -160,27 +160,29 @@ func codecMatches(declared, codec string) bool {
 	return declared == codec || declared == "pcm" && strings.HasPrefix(codec, "pcm_")
 }
 
-// audioContainerFamily compares declared container names with audiofacts'
-// measured demuxer identity. Matroska never establishes WebM compatibility.
-func audioContainerFamily(name string) string {
+// containerFamily compares declared container names with the measured demuxer
+// identity. Matroska never establishes WebM compatibility.
+func containerFamily(name string) string {
 	switch name = strings.ToLower(strings.TrimSpace(name)); name {
 	case "mov", "mp4", "m4a", "m4b", "m4v":
 		return "mp4"
 	case "matroska", "mkv", "mka":
 		return "matroska"
+	case "mpegts", "ts", "m2ts", "mts":
+		return "mpegts"
 	case "aac", "adts":
 		return "adts"
 	}
 	return name
 }
 
-func audioContainersAllow(declared []string, measured string) bool {
-	want := audioContainerFamily(measured)
+func containersAllow(declared []string, measured string) bool {
+	want := containerFamily(measured)
 	if want == "" {
 		return false
 	}
 	for _, name := range declared {
-		if audioContainerFamily(name) == want {
+		if containerFamily(name) == want {
 			return true
 		}
 	}
@@ -193,13 +195,13 @@ func (c AudioDecodeCap) decodes(f audiofacts.Facts) bool {
 	if f.Codec == "aac" && strings.EqualFold(c.Via, "webcodecs") && f.Profile != "" && !strings.EqualFold(f.Profile, "LC") {
 		return false
 	}
-	return codecMatches(c.Codec, f.Codec) && audioContainersAllow(c.Containers, f.Container) && capAllowsRate(c, f.SampleRate) &&
+	return codecMatches(c.Codec, f.Codec) && containersAllow(c.Containers, f.Container) && capAllowsRate(c, f.SampleRate) &&
 		(c.MaxChannels <= 0 || f.Channels <= c.MaxChannels) && (c.MaxBitDepth <= 0 || f.BitDepth <= c.MaxBitDepth)
 }
 
 func findCap(caps []AudioDecodeCap, codec, container string) (AudioDecodeCap, bool) {
 	for _, c := range caps {
-		if codecMatches(c.Codec, codec) && audioContainersAllow(c.Containers, container) {
+		if codecMatches(c.Codec, codec) && containersAllow(c.Containers, container) {
 			return c, true
 		}
 	}

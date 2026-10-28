@@ -369,8 +369,16 @@ func (s *Service) storeReceipt(ctx context.Context, tx *sql.Tx, p identity.Princ
 	if e != nil {
 		return "", nil, e
 	}
-	if _, e := tx.ExecContext(ctx, `INSERT INTO download_receipts(id,profile_key,authority,account_id,profile_id,item_id,item_public,library_id,preparation_id,quality,artifact_digest,artifact_bytes,key_id,issued_ms,expires_ms,sequence) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
-		id, operations.ViewerKey(p), p.Authority, p.AccountID, p.ProfileID, entity, item, library, preparation, quality, artifactDigest, size, keyID, now, expires, sequence); e != nil {
+	doc, e := publicationTx(ctx, tx, preparation)
+	if e != nil {
+		return "", nil, e
+	}
+	publicationRequired := 0
+	if doc != nil {
+		publicationRequired = 1
+	}
+	if _, e := tx.ExecContext(ctx, `INSERT INTO download_receipts(id,profile_key,authority,account_id,profile_id,item_id,item_public,library_id,preparation_id,quality,artifact_digest,artifact_bytes,key_id,issued_ms,expires_ms,sequence,publication_required) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+		id, operations.ViewerKey(p), p.Authority, p.AccountID, p.ProfileID, entity, item, library, preparation, quality, artifactDigest, size, keyID, now, expires, sequence, publicationRequired); e != nil {
 		return "", nil, e
 	}
 	claims := ReceiptClaims{
@@ -382,10 +390,6 @@ func (s *Service) storeReceipt(ctx context.Context, tx *sql.Tx, p identity.Princ
 		QualityLabel:  qualityLabel(quality),
 		Artifact:      ReceiptArtifact{SHA256: artifactDigest, Bytes: size},
 		IssuedAt:      stamp(now), ExpiresAt: stamp(expires),
-	}
-	doc, e := publicationTx(ctx, tx, preparation)
-	if e != nil {
-		return "", nil, e
 	}
 	if doc != nil {
 		claims.Publication = &ReceiptPublication{doc.SourceID, doc.Revision, doc.Format, doc.Digest()}
@@ -463,7 +467,8 @@ func (s *Service) Revalidate(ctx context.Context, p identity.Principal, serverID
 	for _, id := range receiptIDs {
 		var item, library, preparation, quality, artifactDigest string
 		var size, revoked, revision int64
-		err := tx.QueryRowContext(ctx, `SELECT item_public,library_id,preparation_id,quality,artifact_digest,artifact_bytes,revoked_ms,revision FROM download_receipts WHERE id=? AND profile_key=?`, id, key).Scan(&item, &library, &preparation, &quality, &artifactDigest, &size, &revoked, &revision)
+		var publicationRequired bool
+		err := tx.QueryRowContext(ctx, `SELECT item_public,library_id,preparation_id,quality,artifact_digest,artifact_bytes,revoked_ms,revision,publication_required FROM download_receipts WHERE id=? AND profile_key=?`, id, key).Scan(&item, &library, &preparation, &quality, &artifactDigest, &size, &revoked, &revision, &publicationRequired)
 		if errors.Is(err, sql.ErrNoRows) {
 			out = append(out, ReceiptOutcome{ReceiptID: id, Outcome: OutcomeRefused, Code: ReasonUnknownReceipt})
 			continue
@@ -529,6 +534,15 @@ func (s *Service) Revalidate(ctx context.Context, p identity.Principal, serverID
 			continue
 		}
 		doc, err := publicationTx(ctx, tx, preparation)
+		if errors.Is(err, sql.ErrNoRows) {
+			// The receipt records whether its signed claims need a publication,
+			// even after both the preparation and catalogue title are gone.
+			if publicationRequired {
+				err = ErrUnavailable
+			} else {
+				doc, err = nil, nil
+			}
+		}
 		if errors.Is(err, ErrUnavailable) {
 			if err = revokeReceipt(tx, id, ReasonRevoked, now); err != nil {
 				return out, err

@@ -32,6 +32,7 @@ type AudioRenditionPlan struct {
 	StreamIndex int    `json:"streamIndex"`
 	Action      string `json:"action"`
 	Codec       string `json:"codec"`
+	Profile     string `json:"profile,omitempty"`
 	// Packaging is derived from the containing delivery plan, including when
 	// that plan is loaded. It is not another persisted or public decision.
 	Packaging     string `json:"-"`
@@ -79,7 +80,7 @@ func planAudioRenditions(p DeliveryPlan, source DeliverySource, client ClientPro
 		}
 	}
 	for _, a := range tracks {
-		r := AudioRenditionPlan{Ordinal: len(out), StreamIndex: a.Index, Action: "copy", Codec: a.Codec, Channels: a.Channels, BitrateBPS: int(a.BitRate), Language: manifestAudioLanguage(a.Language), Default: a.Index == p.AudioStream, Commentary: a.Commentary, Title: strings.TrimSpace(strings.Map(func(r rune) rune {
+		r := AudioRenditionPlan{Ordinal: len(out), StreamIndex: a.Index, Action: "copy", Codec: a.Codec, Profile: a.Profile, Channels: a.Channels, BitrateBPS: int(a.BitRate), Language: manifestAudioLanguage(a.Language), Default: a.Index == p.AudioStream, Commentary: a.Commentary, Title: strings.TrimSpace(strings.Map(func(r rune) rune {
 			if r < 32 || r == 127 {
 				return ' '
 			}
@@ -125,10 +126,21 @@ func planAudioRenditions(p DeliveryPlan, source DeliverySource, client ClientPro
 	return out
 }
 
-func audioCodecString(codec string) string {
+func audioCodecString(codec, action, profile string) string {
 	switch codec {
 	case "aac":
-		return "mp4a.40.2"
+		if action == "convert" {
+			return "mp4a.40.2"
+		}
+		switch strings.ToLower(profile) {
+		case "lc":
+			return "mp4a.40.2"
+		case "he-aac":
+			return "mp4a.40.5"
+		case "he-aacv2":
+			return "mp4a.40.29"
+		}
+		return ""
 	case "ac3":
 		return "ac-3"
 	case "eac3":
@@ -140,9 +152,10 @@ func audioCodecString(codec string) string {
 	case "flac":
 		return "fLaC"
 	case "dts":
-		// Every DTS stream is scanned as "dts", whatever its variant; the
-		// codec string names the core that MPEG-TS carries.
-		return "dtsc"
+		// DTS variants and muxers differ: even core DTS may be carried as
+		// mp4a with an ES object type rather than a dtsc sample entry. Until
+		// the exact output init is measured, let the player inspect it.
+		return ""
 	case "truehd":
 		return "mlpa"
 	}
@@ -265,7 +278,29 @@ func videoCodecString(p *DeliveryPlan) string {
 		}
 		return fmt.Sprintf("av01.%d.%02dM.%02d", profile, level, depth)
 	case "vp9":
-		return "vp09.00.41.08"
+		if p.VideoAction != "copy" || p.Trace == nil || p.Trace.Video == nil {
+			return ""
+		}
+		v := p.Trace.Video
+		profile := -1
+		switch strings.ToLower(strings.TrimSpace(v.Profile)) {
+		case "profile 0":
+			profile = 0
+		case "profile 1":
+			profile = 1
+		case "profile 2":
+			profile = 2
+		case "profile 3":
+			profile = 3
+		}
+		if profile < 0 || (profile < 2 && v.BitDepth != 8) || (profile >= 2 && v.BitDepth != 10 && v.BitDepth != 12) {
+			return ""
+		}
+		switch v.Level {
+		case 10, 11, 20, 21, 30, 31, 40, 41, 50, 51, 52, 60, 61, 62:
+			return fmt.Sprintf("vp09.%02d.%02d.%02d", profile, v.Level, v.BitDepth)
+		}
+		return ""
 	}
 	return ""
 }
@@ -316,19 +351,25 @@ func hlsMasterManifest(p *DeliveryPlan) []byte {
 			auto = "NO"
 		}
 		fmt.Fprintf(&b, "#EXT-X-MEDIA:TYPE=AUDIO,GROUP-ID=\"audio\",NAME=\"%s\",LANGUAGE=\"%s\",DEFAULT=%s,AUTOSELECT=%s,CHANNELS=\"%d\",URI=\"audio-%d.m3u8\"\n", manifestQuoted(r.Label), r.Language, def, auto, max(1, r.Channels), r.Ordinal)
-		if audioCodecString(r.Codec) == "" {
+		c := audioCodecString(r.Codec, r.Action, r.Profile)
+		if c == "" {
 			completeCodecs = false
 		}
-		if c := audioCodecString(r.Codec); c != "" && !containsString(codecs, c) {
+		if c != "" && !containsString(codecs, c) {
 			codecs = append(codecs, c)
 		}
 		audioRate = max(audioRate, r.BitrateBPS)
 	}
 	if len(p.Renditions) == 0 && p.AudioAction != "none" {
-		if audioCodecString(p.OutputAudioCodec) == "" {
+		profile := ""
+		if p.Trace != nil && p.Trace.Audio != nil {
+			profile = p.Trace.Audio.Profile
+		}
+		c := audioCodecString(p.OutputAudioCodec, p.AudioAction, profile)
+		if c == "" {
 			completeCodecs = false
 		}
-		if c := audioCodecString(p.OutputAudioCodec); c != "" {
+		if c != "" {
 			codecs = append(codecs, c)
 		}
 	}
@@ -611,6 +652,11 @@ func (h *HLS) startRenditionOwned(ctx context.Context, id string, r AudioRenditi
 func (h *HLS) produceRendition(ctx context.Context, id string, r AudioRenditionPlan, from int, w *hlsWindow, generation int) {
 	ctx = withProducerGeneration(ctx, generation)
 	failed := func(code string) {
+		// Relocation and shutdown cancel the old window, including its plan
+		// load. They must not publish a source failure into the shared plan.
+		if ctx.Err() != nil {
+			return
+		}
 		if r.Default {
 			h.failedWith(ctx, id, code, "")
 		} else {
@@ -907,18 +953,11 @@ func (h *HLS) renditionFile(ctx context.Context, id, name string, p *DeliveryPla
 }
 
 func hevcSampleEntry(p *DeliveryPlan) string {
-	profile, _ := deliveredDolbyVision(p)
-	// A repackaged stream keeps the sample entry its profile requires: dvh1
-	// for Apple's single-layer profiles 5 and 8, dvhe for untouched profile 7.
+	profile := 0
 	if p != nil && p.OutputVideoCodec == "hevc" && p.VideoAction == "copy" {
-		switch profile {
-		case 5, 8:
-			return "dvh1"
-		case 7:
-			return "dvhe"
-		}
+		profile, _ = deliveredDolbyVision(p)
 	}
-	return "hvc1"
+	return decoder.HEVCSampleEntry(profile)
 }
 
 var ErrAudioRenditionUnavailable = errors.New("This audio track is unavailable for this playback. Choose another audio track.")

@@ -119,8 +119,8 @@ func confinedCommand(executable string, args []string, endpoint string, librarie
 
 // confinedOutputCommand is confinedCommand for a live HLS job that PUTs its
 // output to the gateway.
-func confinedOutputCommand(executable string, args []string, endpoint, output string, libraries ...string) (*exec.Cmd, error) {
-	return decoderJob{executable: executable, args: args, endpoint: endpoint, libraries: libraries, outputPath: output}.command()
+func confinedOutputCommand(executable string, args []string, endpoint, output string, hardware bool, libraries ...string) (*exec.Cmd, error) {
+	return decoderJob{executable: executable, args: args, endpoint: endpoint, libraries: libraries, outputPath: output, hardware: hardware}.command()
 }
 
 // confinedHLSCommand is confinedCommand for a job writing into its private

@@ -53,6 +53,35 @@ func TestLiveHLSRunsWithTheBaselineWithoutASandbox(t *testing.T) {
 	})
 }
 
+func TestLinearOutputCommandKeepsGPUGrantInsideSandbox(t *testing.T) {
+	if !bridgeSandbox() {
+		t.Skip("bubblewrap with user namespaces is unavailable here")
+	}
+	for _, gpu := range []bool{false, true} {
+		plan := LinearEncoding{Video: true, ConvertVideo: true}
+		if gpu {
+			plan.HDRToSDR = true
+			plan.Toolchain = &ToolchainFacts{VulkanAvailable: true, Filters: map[string]bool{"libplacebo": true}}
+		}
+		args, hardware, err := linearHLSArgs(linearTestInput, linearTestOutput, plan)
+		if err != nil || hardware != gpu {
+			t.Fatal(hardware, err)
+		}
+		output := strings.TrimPrefix(linearTestOutput, "http://127.0.0.1:43210")
+		cmd, err := confinedOutputCommand(realTool(t), args, "127.0.0.1:43210", output, hardware)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(cmd.Args) != 3 || cmd.Args[1] != linuxHelperFlag {
+			t.Fatal("GPU filter bypassed the decoder sandbox", cmd.Args)
+		}
+		spec, err := decodeLinux(cmd.Args[2])
+		if err != nil || spec.Hardware != gpu || spec.OutputPath != output || spec.Endpoint != "127.0.0.1:43210" || spec.OutputDirectory != "" {
+			t.Fatal("GPU grant widened or lost the output scope", spec, err)
+		}
+	}
+}
+
 func liveHLS(t *testing.T, check func(*exec.Cmd, string)) {
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
@@ -91,7 +120,7 @@ func liveHLS(t *testing.T, check func(*exec.Cmd, string)) {
 	endpoint := listener.Addr().String()
 	args := []string{"-nostdin", "-hide_banner", "-loglevel", "error", "-f", "lavfi", "-i", "testsrc=size=160x90:rate=10", "-t", "3", "-c:v", "mpeg2video",
 		"-f", "hls", "-hls_time", "1", "-hls_list_size", "12", "-method", "PUT", "-hls_segment_filename", "http://" + endpoint + output + "segment-%09d.ts", "http://" + endpoint + output + "index.m3u8"}
-	cmd, err := confinedOutputCommand(ffmpeg, args, endpoint, output, libraries...)
+	cmd, err := confinedOutputCommand(ffmpeg, args, endpoint, output, false, libraries...)
 	if err != nil {
 		t.Fatal(err)
 	}

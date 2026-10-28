@@ -14,7 +14,7 @@ func observedProfile7Source(layer string) *DeliverySource {
 		DynamicRange: assets.RangeDolbyVision, DolbyVisionProfile: 7,
 		DolbyVisionCompatibility: 6, DolbyVisionLevel: 6, EnhancementLayer: true,
 		StreamBreadth: assets.StreamBreadth{DolbyVisionMetadataKnown: true, DolbyVisionRPU: true, DolbyVisionBaseLayer: true, DolbyVisionEnhancementType: layer},
-	}, SourceAudio{Codec: "aac", Channels: 2, Default: true, StreamDetail: assets.StreamDetail{SampleRate: 48000}})
+	}, SourceAudio{Codec: "aac", Channels: 2, Default: true, StreamDetail: assets.StreamDetail{Profile: "LC", SampleRate: 48000}})
 }
 
 func packetQualifiedUnitFacts() *decoder.ToolchainFacts {

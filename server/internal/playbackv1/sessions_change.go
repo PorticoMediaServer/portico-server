@@ -174,6 +174,7 @@ func (s *Service) Patch(ctx context.Context, c Caller, id, ifMatch string, chang
 	oldMediaGeneration := r.mediaGeneration
 	rMediaBefore := r.media
 	committed := false
+	restartConversion := false
 	generation, media, mediaGeneration := r.generation, r.media, r.mediaGeneration
 	position := r.position
 	if change.PositionMs != nil {
@@ -271,14 +272,14 @@ func (s *Service) Patch(ctx context.Context, c Caller, id, ifMatch string, chang
 			presentation.StartPositionMs = position
 			mediaGeneration, generation = result.replaced.Generation, r.generation+1
 		} else if change.Seek != nil && presentation.converting() {
-			s.Playback.RestartConversion(ctx, r.media, float64(position)/1000)
+			restartConversion = true
 			presentation.StartPositionMs = position
 			generation = r.generation + 1
 		}
 	case change.Seek != nil && presentation.converting():
 		// Production restarts at the position; the client reloads the same URL
 		// there because the generation moved.
-		s.Playback.RestartConversion(ctx, r.media, float64(position)/1000)
+		restartConversion = true
 		presentation.StartPositionMs = position
 		generation = r.generation + 1
 	}
@@ -357,6 +358,12 @@ func (s *Service) Patch(ctx context.Context, c Caller, id, ifMatch string, chang
 		return SessionView{}, err
 	}
 	committed = true
+	if restartConversion {
+		// A losing revision must leave the current producer and its output
+		// intact. The account admission gate still orders this restart before
+		// another command can replace this presentation.
+		s.Playback.RestartConversion(ctx, r.media, float64(position)/1000)
+	}
 	if bytes {
 		_ = s.Playback.StopV1(context.WithoutCancel(ctx), rMediaBefore)
 	}

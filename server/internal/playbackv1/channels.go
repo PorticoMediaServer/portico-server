@@ -377,48 +377,53 @@ func (s *Service) timelineChannel(ctx context.Context, r row, report Report) (ti
 	now := s.now()
 	lease := now.Add(s.lease()).UnixMilli()
 	state := r.state
-	switch report.State {
-	case "playing", "paused":
-		state = report.State
-	}
 	err := dbwork.WithWriteTxContext(ctx, s.DB, dbwork.ClassEstablishedPlayback, func(ctx context.Context, tx *sql.Tx) error {
-		if report.Seq <= r.lastSeq {
+		st, err := s.Channels.ReadTx(ctx, tx, rowPrincipal(r), r.id)
+		if err != nil {
+			return err
+		}
+		if report.Seq <= r.lastSeq || strconv.Itoa(report.Generation) != st.Media.BufferGeneration {
 			_, err := tx.ExecContext(ctx, `UPDATE playback_v1_sessions SET lease_expires_ms=? WHERE id=? AND ended_ms=0`, lease, r.id)
 			return err
+		}
+		switch report.State {
+		case "playing", "paused":
+			state = report.State
 		}
 		changed := state != r.state
 		revision := r.revision
 		if changed {
 			revision++
 		}
-		result, err := tx.ExecContext(ctx, `UPDATE playback_v1_sessions SET state=?,position_ms=?,last_seq=?,lease_expires_ms=?,revision=?,updated_ms=?,`+pausedSinceUpdate+` WHERE id=? AND ended_ms=0 AND generation=? AND last_seq<?`, state, report.PositionMs, report.Seq, lease, revision, now.UnixMilli(), state, now.UnixMilli(), r.id, r.generation, report.Seq)
+		// The runtime snapshot can lag a newly committed buffer. Keep its
+		// durable generation in the acceptance predicate as well.
+		result, err := tx.ExecContext(ctx, `UPDATE playback_v1_sessions SET state=?,position_ms=?,last_seq=?,lease_expires_ms=?,revision=?,updated_ms=?,`+pausedSinceUpdate+` WHERE id=? AND ended_ms=0 AND generation=? AND last_seq<? AND EXISTS(SELECT 1 FROM playback_channel_sessions c WHERE c.session_id=playback_v1_sessions.id AND c.buffer_ordinal=? AND c.ended_ms=0)`, state, report.PositionMs, report.Seq, lease, revision, now.UnixMilli(), state, now.UnixMilli(), r.id, r.generation, report.Seq, report.Generation)
 		if err != nil {
 			return err
 		}
 		if accepted, _ := result.RowsAffected(); accepted == 0 {
-			return nil
+			state = r.state
+			_, err := tx.ExecContext(ctx, `UPDATE playback_v1_sessions SET lease_expires_ms=? WHERE id=? AND ended_ms=0`, lease, r.id)
+			return err
 		}
 		if e := catalog.RecordLivePlaybackTx(tx, r.id, now.UnixMilli(), report.State); e != nil {
 			return e
 		}
-		st, err := s.Channels.ReadTx(ctx, tx, rowPrincipal(r), r.id)
-		if err == nil && strconv.Itoa(report.Generation) == st.Media.BufferGeneration {
-			ack := ""
-			if q := st.Desired.Seek; q != nil && q.Kind == "position" && q.PositionUS != nil && q.Generation == st.Media.BufferGeneration && st.AcknowledgedSeekID != q.ID {
-				target, _ := strconv.ParseInt(*q.PositionUS, 10, 64)
-				if d := report.PositionMs*1000 - target; d >= -1_000_000 && d <= 1_000_000 {
-					ack = q.ID
-				}
+		ack := ""
+		if q := st.Desired.Seek; q != nil && q.Kind == "position" && q.PositionUS != nil && q.Generation == st.Media.BufferGeneration && st.AcknowledgedSeekID != q.ID {
+			target, _ := strconv.ParseInt(*q.PositionUS, 10, 64)
+			if d := report.PositionMs*1000 - target; d >= -1_000_000 && d <= 1_000_000 {
+				ack = q.ID
 			}
-			// A position outside the window or a gap is recorded as the seek's error;
-			// neither fails the report.
-			if observedErr := s.Channels.ObserveTx(ctx, tx, r.id, st.Media.BufferGeneration, report.Seq, report.PositionMs*1000, ack); observedErr != nil {
-				if !isControlFault(observedErr) {
-					return observedErr
-				}
-			} else if err := playback.StoreObservedPlaybackTx(ctx, tx, r.id, r.device, r.generation, report.Generation, report.Seq, now.UnixMilli(), report.ObservedPlayback); err != nil {
-				return err
+		}
+		// A position outside the window or a gap is recorded as the seek's error;
+		// neither fails the report.
+		if observedErr := s.Channels.ObserveTx(ctx, tx, r.id, st.Media.BufferGeneration, report.Seq, report.PositionMs*1000, ack); observedErr != nil {
+			if !isControlFault(observedErr) {
+				return observedErr
 			}
+		} else if err := playback.StoreObservedPlaybackTx(ctx, tx, r.id, r.device, r.generation, report.Generation, report.Seq, now.UnixMilli(), report.ObservedPlayback); err != nil {
+			return err
 		}
 		if changed {
 			r.state, r.revision = state, revision

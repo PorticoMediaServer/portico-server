@@ -260,7 +260,7 @@ func (s *Service) planInputsTx(ctx context.Context, tx *sql.Tx, p identity.Princ
 	if e := s.completeDeliveryInputTx(ctx, tx, p, &input, values, catalogued, explicitAudio, boundDisc...); e != nil {
 		return planInputs{}, e
 	}
-	if rung, ok := LadderPreset(strings.TrimPrefix(v1.QualityID, "automatic:")); ok && input.Source.Video != nil {
+	if rung, ok := LadderPreset(strings.TrimPrefix(v1.QualityID, "automatic:")); ok && input.Source != nil && input.Source.Video != nil {
 		rate := input.Source.BitRate
 		if input.Source.Video.BitRate > 0 {
 			rate = input.Source.Video.BitRate

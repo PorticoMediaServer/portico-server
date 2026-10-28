@@ -23,13 +23,7 @@ func (s *Service) inspectRemote(ctx context.Context, path string, before storage
 		if obj.Snapshot().Revision != before.Revision {
 			return facts, storage.ErrRemoteChanged
 		}
-		var url string
-		var closeBridge func()
-		url, closeBridge, err = storage.RemoteProbeBridge(work, obj)
-		if err == nil {
-			defer closeBridge()
-			facts, err = s.probe.InspectRemote(work, url, filepath.Ext(path))
-		}
+		facts, err = s.probe.InspectRemote(work, obj, filepath.Ext(path))
 		if err == nil {
 			_, err = obj.Observe(work)
 		}

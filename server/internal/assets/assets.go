@@ -306,6 +306,9 @@ func (p Probe) inspect(ctx context.Context, path string, options []string) (Fact
 	if err != nil {
 		return Facts{}, err
 	}
+	if err := p.completeContainer(ctx, path, &f); err != nil {
+		return Facts{}, err
+	}
 	if err := p.completeMusepackTimeline(ctx, path, &f); err != nil {
 		return Facts{}, err
 	}

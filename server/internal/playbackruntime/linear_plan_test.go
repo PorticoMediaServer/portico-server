@@ -130,7 +130,7 @@ func TestLinearPlanUsesFragmentedMP4WhereItKeepsTheSignal(t *testing.T) {
 	w := playback.LinearWork{ClientProfile: p, TranscodingEnabled: true}
 	raw := []byte(`{"streams":[{"codec_type":"video","codec_name":"hevc","profile":"Main","pix_fmt":"yuv420p","width":1920,"height":1080,"avg_frame_rate":"25/1"},{"codec_type":"audio","codec_name":"flac","channels":2,"sample_rate":"48000"}]}`)
 	plan, err := linearPlan(raw, w, playback.LinearEither)
-	if err != nil || !plan.Fragmented || plan.ConvertVideo || plan.ConvertAudio || !plan.CopyHEVC {
+	if err != nil || !plan.Fragmented || plan.ConvertVideo || plan.ConvertAudio || !plan.CopyHEVC || plan.AudioCodec != "flac" {
 		t.Fatalf("%+v %v", plan, err)
 	}
 	// The same device on a buffer that already holds MPEG-TS is planned for MPEG-TS.
@@ -141,6 +141,19 @@ func TestLinearPlanUsesFragmentedMP4WhereItKeepsTheSignal(t *testing.T) {
 	raw = []byte(`{"streams":[{"codec_type":"video","codec_name":"h264","profile":"High","pix_fmt":"yuv420p","width":1920,"height":1080,"avg_frame_rate":"25/1"},{"codec_type":"audio","codec_name":"aac","profile":"LC","channels":2,"sample_rate":"48000"}]}`)
 	if plan, err = linearPlan(raw, w, playback.LinearEither); err != nil || plan.Fragmented {
 		t.Fatalf("%+v %v", plan, err)
+	}
+}
+
+func TestLinearPlanCarriesCopiedTrueHDCodec(t *testing.T) {
+	profile := playback.BaselineClientProfile()
+	profile.Audio = append(profile.Audio, playback.ClientAudioCodec{Codec: "truehd", MaxChannels: 2})
+	profile.Transports = append(profile.Transports, playback.ClientTransport{Transport: playback.TransportHLSFMP4, Containers: []string{"fmp4"}, Video: []string{"h264"}, Audio: []string{"truehd"}})
+	work := playback.LinearWork{ClientProfile: profile, TranscodingEnabled: false}
+	work.Selection.Quality.Mode = "original"
+	raw := []byte(`{"streams":[{"codec_type":"video","codec_name":"h264","profile":"High","pix_fmt":"yuv420p","width":1920,"height":1080,"avg_frame_rate":"25/1","field_order":"progressive"},{"codec_type":"audio","codec_name":"truehd","channels":2,"sample_rate":"48000"}]}`)
+	plan, err := linearPlan(raw, work, playback.LinearFragmentedOnly)
+	if err != nil || !plan.Fragmented || !plan.Audio || plan.ConvertVideo || plan.ConvertAudio || plan.AudioCodec != "truehd" || plan.CopyAAC {
+		t.Fatal("selected TrueHD copy lost its mux codec", plan, err)
 	}
 }
 

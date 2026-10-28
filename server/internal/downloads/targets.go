@@ -344,14 +344,17 @@ func expandTargets(ctx context.Context, tx *sql.Tx, r Request) ([]string, string
 
 // nextEpisode is the one episode that follows the named one: the next number in
 // the same season, else the first episode of the next season of the same show.
-// Absolute numbering is followed on its own axis. It answers one item, never a
-// tail, so an auto-next download stays one episode ahead rather than silently
-// pulling a season.
+// Absolute numbering is followed on its own axis; dated episodes follow air
+// date and entity id within their show. It answers one item, never a tail, so
+// an auto-next download stays one episode ahead rather than silently pulling
+// a season.
 func nextEpisode(ctx context.Context, tx *sql.Tx, after string) ([]string, error) {
 	var show, numbering string
 	var season sql.NullString
 	var number int
-	e := tx.QueryRowContext(ctx, `SELECT pid(show.public_id),e.numbering,pid(season.public_id),e.number FROM catalog_entities item JOIN catalog_episodes e ON e.entity_id=item.id JOIN catalog_entities show ON show.id=e.show_id LEFT JOIN catalog_entities season ON season.id=e.season_id WHERE item.public_id=pid_blob(?)`, after).Scan(&show, &numbering, &season, &number)
+	var airDate sql.NullInt64
+	var entity int64
+	e := tx.QueryRowContext(ctx, `SELECT pid(show.public_id),e.numbering,pid(season.public_id),e.number,e.air_date,e.entity_id FROM catalog_entities item JOIN catalog_episodes e ON e.entity_id=item.id JOIN catalog_entities show ON show.id=e.show_id LEFT JOIN catalog_entities season ON season.id=e.season_id WHERE item.public_id=pid_blob(?)`, after).Scan(&show, &numbering, &season, &number, &airDate, &entity)
 	if errors.Is(e, sql.ErrNoRows) {
 		return nil, ErrNotFound
 	}
@@ -361,6 +364,11 @@ func nextEpisode(ctx context.Context, tx *sql.Tx, after string) ([]string, error
 	var next string
 	if numbering == "absolute" {
 		e = tx.QueryRowContext(ctx, `SELECT pid(item.public_id) FROM catalog_entities show JOIN catalog_episodes e ON e.show_id=show.id JOIN catalog_entities item ON item.id=e.entity_id WHERE show.public_id=pid_blob(?) AND e.numbering='absolute' AND e.number>? ORDER BY e.number LIMIT 1`, show, number).Scan(&next)
+	} else if numbering == "date" {
+		if !airDate.Valid {
+			return nil, ErrNotFound
+		}
+		e = tx.QueryRowContext(ctx, `SELECT pid(item.public_id) FROM catalog_entities show JOIN catalog_episodes e ON e.show_id=show.id JOIN catalog_entities item ON item.id=e.entity_id WHERE show.public_id=pid_blob(?) AND e.numbering='date' AND (e.air_date>? OR (e.air_date=? AND e.entity_id>?)) ORDER BY e.air_date,e.entity_id LIMIT 1`, show, airDate.Int64, airDate.Int64, entity).Scan(&next)
 	} else {
 		e = tx.QueryRowContext(ctx, `SELECT pid(item.public_id) FROM catalog_entities season CROSS JOIN catalog_episodes e INDEXED BY catalog_episodes_season ON e.season_id=season.id CROSS JOIN catalog_entities item ON item.id=e.entity_id WHERE season.public_id=pid_blob(?) AND e.numbering='seasonal' AND e.number>? ORDER BY e.number LIMIT 1`, season.String, number).Scan(&next)
 		if errors.Is(e, sql.ErrNoRows) {

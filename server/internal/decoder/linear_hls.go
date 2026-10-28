@@ -25,8 +25,12 @@ type LinearEncoding struct {
 	MaxHeight, VideoBitrate              int
 	// Fragmented publishes fragmented MP4 (an init segment and .m4s
 	// fragments) instead of MPEG-TS. CopyHEVC marks a copied HEVC picture,
-	// which MP4 must label hvc1 for Apple's players.
+	// whose MP4 sample entry follows its delivered Dolby Vision profile.
 	Fragmented, CopyHEVC bool
+	// AudioCodec is the selected output codec. CopyDolbyVisionProfile names
+	// an untouched copied picture when no conversion target was needed.
+	AudioCodec             string
+	CopyDolbyVisionProfile int
 	// CopyAAC records the selected original AAC-copy/fMP4 packaging case.
 	// The muxer needs ADTS normalization without converting the audio.
 	CopyAAC bool
@@ -77,9 +81,9 @@ func LinearProbe(ctx context.Context, supervisor *storage.Supervisor, key, execu
 	}
 	return runOwned(ctx, supervisor, key, cmd, endpoint, reservation)
 }
-func linearHLSArgs(input, output string, p LinearEncoding) ([]string, error) {
+func linearHLSArgs(input, output string, p LinearEncoding) ([]string, bool, error) {
 	if !p.Video && !p.Audio || p.SeekUS < 0 || p.ClipEndUS < 0 || p.Finite && p.ClipEndUS <= p.SeekUS || p.MaxHeight < 0 || p.MaxHeight > 4320 || p.VideoBitrate < 0 || p.VideoBitrate > 200000000 || p.HDRToSDR && !p.ConvertVideo {
-		return nil, ErrInvalidConfiguration
+		return nil, false, ErrInvalidConfiguration
 	}
 	protocols, formats := "http,tcp", "mpegts"
 	if p.HLSInput {
@@ -95,15 +99,14 @@ func linearHLSArgs(input, output string, p LinearEncoding) ([]string, error) {
 	if p.Finite {
 		args = append(args, "-readrate", "1", "-readrate_initial_burst", "12", "-ss", seconds(p.SeekUS))
 	}
-	var graph ConversionGraph
-	if p.ConvertVideo || p.ConvertAudio {
-		var err error
-		graph, err = BuildConversion(ConversionRequest{Target: p.Target, ConvertVideo: p.ConvertVideo, ConvertAudio: p.ConvertAudio, CopyVideo: p.Video && !p.ConvertVideo, CopyAudio: p.Audio && !p.ConvertAudio, ToneMap: p.HDRToSDR, Deinterlace: p.Deinterlace, MaxHeight: p.MaxHeight, MaxFrameRate: p.MaxFrameRate, VideoBitrateBPS: p.VideoBitrate, KeyframeSeconds: 4, Toolchain: p.Toolchain})
-		if err != nil {
-			return nil, err
-		}
-		args = append(args, graph.Input...)
+	// Copy graphs may strip or rewrite Dolby Vision packets. They need the
+	// same target/toolchain checks as a graph that converts picture or sound.
+	graph, err := BuildConversion(ConversionRequest{Target: p.Target, ConvertVideo: p.ConvertVideo, ConvertAudio: p.ConvertAudio, CopyVideo: p.Video && !p.ConvertVideo, CopyAudio: p.Audio && !p.ConvertAudio, ToneMap: p.HDRToSDR, Deinterlace: p.Deinterlace, MaxHeight: p.MaxHeight, MaxFrameRate: p.MaxFrameRate, VideoBitrateBPS: p.VideoBitrate, KeyframeSeconds: 4, Toolchain: p.Toolchain})
+	if err != nil {
+		return nil, false, err
 	}
+	hardware := HardwareStagesRequireDevice(graph.Stages)
+	args = append(args, graph.Input...)
 	args = append(args, "-i", input)
 	// With copyts/start_at_zero, the stop coordinate is on the preserved source
 	// clock, not the duration since this worker's mid-programme join.
@@ -111,13 +114,13 @@ func linearHLSArgs(input, output string, p LinearEncoding) ([]string, error) {
 		args = append(args, "-t", seconds(p.ClipEndUS))
 	}
 	if p.Video {
-		args = append(args, "-map", "0:v:0", "-c:v", "copy")
+		args = append(args, "-map", "0:v:0")
 	}
 	if p.Audio {
-		args = append(args, "-map", "0:a:0", "-c:a", "copy")
+		args = append(args, "-map", "0:a:0")
 	}
+	args = append(args, graph.Video...)
 	if p.ConvertVideo {
-		args = append(args, graph.Video...)
 		args = append(args, "-force_key_frames", "expr:if(isnan(prev_forced_t),1,gte(t,prev_forced_t+4))")
 		if p.Profile != "" {
 			args = append(args, "-profile:v", p.Profile)
@@ -127,21 +130,34 @@ func linearHLSArgs(input, output string, p LinearEncoding) ([]string, error) {
 		}
 
 	}
-	if p.ConvertAudio {
-		args = append(args, graph.Audio...)
-	}
+	args = append(args, graph.Audio...)
 	if p.Fragmented {
 		if p.Audio && p.CopyAAC && !p.ConvertAudio {
 			args = append(args, "-bsf:a", "aac_adtstoasc")
 		}
-		if p.CopyHEVC && !p.ConvertVideo {
-			args = append(args, "-tag:v", "hvc1")
+		videoCodec, copiedAudioCodec, profile := "", "", 0
+		if p.Video {
+			if p.Target != nil {
+				videoCodec = p.Target.VideoCodec
+				if !p.ConvertVideo {
+					profile, _ = p.Target.DeliveredDolbyVision()
+				}
+			} else if p.CopyHEVC && !p.ConvertVideo {
+				videoCodec, profile = "hevc", p.CopyDolbyVisionProfile
+			}
 		}
+		if p.Audio && !p.ConvertAudio {
+			copiedAudioCodec = p.AudioCodec
+			if p.Target != nil {
+				copiedAudioCodec = p.Target.AudioCodec
+			}
+		}
+		args = append(args, HLSMuxArgs(true, videoCodec, copiedAudioCodec, profile)...)
 		args = append(args, "-sn", "-dn", "-avoid_negative_ts", "disabled", "-muxdelay", "0", "-f", "hls", "-hls_time", "4", "-hls_list_size", "12", "-hls_flags", "independent_segments+program_date_time", "-hls_segment_type", "fmp4", "-hls_fmp4_init_filename", "init.mp4", "-method", "PUT", "-rw_timeout", "15000000", "-hls_segment_filename", output+"segment-%09d.m4s", output+"index.m3u8")
-		return args, nil
+		return args, hardware, nil
 	}
 	args = append(args, "-sn", "-dn", "-avoid_negative_ts", "disabled", "-muxdelay", "0", "-f", "hls", "-hls_time", "4", "-hls_list_size", "12", "-hls_flags", "independent_segments+program_date_time", "-hls_segment_options", "mpegts_copyts=1", "-method", "PUT", "-rw_timeout", "15000000", "-hls_segment_filename", output+"segment-%09d.ts", output+"index.m3u8")
-	return args, nil
+	return args, hardware, nil
 }
 
 // RunLinearHLS retains the process, private endpoints and optional physical tuner
@@ -158,7 +174,7 @@ func RunLinearHLS(ctx context.Context, supervisor *storage.Supervisor, key, exec
 		}
 	}
 	p.Toolchain = CurrentToolchain()
-	args, e := linearHLSArgs(input, output, p)
+	args, hardware, e := linearHLSArgs(input, output, p)
 	if e != nil {
 		return e
 	}
@@ -167,7 +183,7 @@ func RunLinearHLS(ctx context.Context, supervisor *storage.Supervisor, key, exec
 	if e != nil {
 		return ErrInvalidConfiguration
 	}
-	cmd, e := confinedOutputCommand(executable, args, endpoint, written.Path, libraries...)
+	cmd, e := confinedOutputCommand(executable, args, endpoint, written.Path, hardware, libraries...)
 	if e != nil {
 		return e
 	}

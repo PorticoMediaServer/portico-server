@@ -197,8 +197,8 @@ type EngineCapabilities struct {
 	// display that is not HDR (it tone-maps by itself).
 	ToneMapsHDR bool `json:"toneMapsHdr"`
 	// EmbeddedAudioSwitching is true when the engine can choose between audio
-	// tracks inside an original file. Without it only the first track of an
-	// original is reachable, and any other choice needs an HLS route.
+	// tracks inside an original file. Without it, direct playback uses the first
+	// default-flag track, or the first track if none is flagged.
 	EmbeddedAudioSwitching bool `json:"embeddedAudioSwitching"`
 	// LiveChannels is true when a second engine (mpv) plays live channels: a
 	// timeshift window positioned on the channel's own clock. The native

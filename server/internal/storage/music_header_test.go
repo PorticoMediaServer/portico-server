@@ -37,4 +37,15 @@ func TestScanAudioPrefixIsBoundedAndGuarded(t *testing.T) {
 	if _, err := ReadScanAudioPrefix(ctx, filepath.Join(filepath.Dir(path), "..", "outside.mpc")); err == nil {
 		t.Fatal("inventory root escaped")
 	}
+	for _, input := range []context.Context{context.Background(), ctx} {
+		prefix, err = ReadScanPrefix(input, path, 4096)
+		if err != nil || len(prefix) != 4096 {
+			t.Fatal("container prefix exceeded its bound", len(prefix), err)
+		}
+		for _, limit := range []int64{0, -1, (1 << 20) + 1} {
+			if _, err := ReadScanPrefix(input, path, limit); err == nil {
+				t.Fatal("invalid prefix limit accepted", limit)
+			}
+		}
+	}
 }

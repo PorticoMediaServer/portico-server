@@ -2,19 +2,19 @@ const test=require('node:test'), assert=require('node:assert/strict'),vm=require
 const source=fs.readFileSync(require('node:path').join(__dirname,'../receiver.js'),'utf8');
 async function harness(fixture={}){
  const contracts=await import('../../../../packages/contracts/src/decoders.ts');
- const calls=[],loads=[],metadataUpdates=[],interceptors={},events={},timers=new Map(),storage=new Map(),sent=[],ctxEvents={},senders=[],queueItems=[];let timer=0,at=0,state='PAUSED',listener,urlResolver;
+ const calls=[],loads=[],metadataUpdates=[],interceptors={},events={},timers=new Map(),storage=new Map(),sent=[],ctxEvents={},senders=[],queueItems=[],trackSelections=[];let timer=0,at=0,state='PAUSED',listener,urlResolver,activeAudio,activeText=[],tracksReady=true;
  // The real SDK exposes QUEUE_NEXT/PREV enum values but rejects them as interceptors.
  const supportedInterceptors=new Set(['LOAD','PLAY','PAUSE','SEEK','STOP','PRELOAD','QUEUE_INSERT','QUEUE_LOAD','QUEUE_UPDATE','QUEUE_REMOVE','QUEUE_REORDER','GET_STATUS','MEDIA_STATUS','CLOUD_STATUS','QUEUE_GET_ITEMS','QUEUE_GET_ITEM_IDS']);
- const manager={setMediaUrlResolver:fn=>urlResolver=fn,getMediaInformation:()=>loads.at(-1)?.media,setMediaInformation:(media,broadcast)=>metadataUpdates.push({media,broadcast}),getQueueManager:()=>({insertItems:items=>{for(const item of items)queueItems.push({...item,itemId:queueItems.length+1});},getItems:()=>queueItems,getCurrentItem:()=>queueItems[0],removeItems:ids=>{for(let i=queueItems.length-1;i>=0;i--)if(ids.includes(queueItems[i].itemId))queueItems.splice(i,1);}}),getCurrentTimeSec:()=>at,getPlayerState:()=>state,load:async x=>{if(fixture.cafLoadWait){fixture.cafLoadCalled?.();await fixture.cafLoadWait;}if(fixture.loadFails||(fixture.nextLoadFails&&loads.length))throw new Error('decode_error');if(fixture.localInterceptors&&interceptors.LOAD){x=await interceptors.LOAD(x);if(!x)return;}loads.push(x);document.getElementById('player').ended=false;if(x.queueData){queueItems.length=0;for(const item of x.queueData.items)queueItems.push({...item,itemId:queueItems.length+1});}state=x.autoplay?'PLAYING':'PAUSED'},sendLocalMediaRequest:x=>{assert(Number.isSafeInteger(x.requestId)&&x.requestId>0);const handle=()=>{if(x.type==='PLAY')state='PLAYING';if(x.type==='PAUSE')state='PAUSED';if(x.type==='STOP')state='IDLE';if(x.type==='SEEK')at=x.currentTime;};if(fixture.localInterceptors&&interceptors[x.type])Promise.resolve(interceptors[x.type](x)).then(y=>{if(y)handle();});else handle();},pause:()=>state='PAUSED',play:()=>state='PLAYING',seek:x=>at=x,stop:()=>state='IDLE',setMessageInterceptor:(k,v)=>{assert(supportedInterceptors.has(k),'unsupported CAF interceptor '+k);interceptors[k]=v;},addEventListener:(k,v)=>events[k]=v,getAudioTracksManager:()=>({getTracks:()=>[],setActiveById:()=>{}}),getTextTracksManager:()=>({getTracks:()=>[],setActiveByIds:()=>{}})};
+ const manager={setMediaUrlResolver:fn=>urlResolver=fn,getMediaInformation:()=>loads.at(-1)?.media,setMediaInformation:(media,broadcast)=>metadataUpdates.push({media,broadcast}),getQueueManager:()=>({insertItems:items=>{for(const item of items)queueItems.push({...item,itemId:queueItems.length+1});},getItems:()=>queueItems,getCurrentItem:()=>queueItems[0],removeItems:ids=>{for(let i=queueItems.length-1;i>=0;i--)if(ids.includes(queueItems[i].itemId))queueItems.splice(i,1);}}),getCurrentTimeSec:()=>at,getPlayerState:()=>state,load:async x=>{if(fixture.cafLoadWait){fixture.cafLoadCalled?.();await fixture.cafLoadWait;}if(fixture.loadFails||(fixture.nextLoadFails&&loads.length))throw new Error('decode_error');if(fixture.localInterceptors&&interceptors.LOAD){x=await interceptors.LOAD(x);if(!x)return;}loads.push(x);tracksReady=!fixture.deferTracks;activeAudio=fixture.audioTracks?.[0]?.trackId;activeText=x.activeTrackIds?Array.from(x.activeTrackIds):Array.from(fixture.defaultTextIds||[]);document.getElementById('player').ended=false;if(x.queueData){queueItems.length=0;for(const item of x.queueData.items)queueItems.push({...item,itemId:queueItems.length+1});}state=x.autoplay?'PLAYING':'PAUSED'},sendLocalMediaRequest:x=>{assert(Number.isSafeInteger(x.requestId)&&x.requestId>0);const handle=()=>{if(x.type==='PLAY')state='PLAYING';if(x.type==='PAUSE')state='PAUSED';if(x.type==='STOP')state='IDLE';if(x.type==='SEEK')at=x.currentTime;};if(fixture.localInterceptors&&interceptors[x.type])Promise.resolve(interceptors[x.type](x)).then(y=>{if(y)handle();});else handle();},pause:()=>state='PAUSED',play:()=>state='PLAYING',seek:x=>at=x,stop:()=>state='IDLE',setMessageInterceptor:(k,v)=>{assert(supportedInterceptors.has(k),'unsupported CAF interceptor '+k);interceptors[k]=v;},addEventListener:(k,v)=>events[k]=v,getAudioTracksManager:()=>({getTracks:()=>tracksReady?(fixture.audioTracks||[]):[],getActiveId:()=>activeAudio,setActiveById:id=>{activeAudio=id;trackSelections.push({audio:id});}}),getTextTracksManager:()=>({getTracks:()=>tracksReady?(loads.at(-1)?.media.tracks||fixture.textTracks||[]):[],getActiveIds:()=>activeText.slice(),setActiveByIds:ids=>{activeText=Array.from(ids);trackSelections.push({text:activeText.slice()});}})};
  const castContext={getDeviceCapabilities:()=>fixture.caps||{},getDeviceInformation:()=>fixture.info||{},canDisplayType:(mime,codecs,width,height,fps)=>{assert(!mime.includes(';'));return !!fixture.supports?.(mime,codecs,width,height,fps)},getPlayerManager:()=>manager,addCustomMessageListener:(ns,fn)=>listener=fn,sendCustomMessage:(ns,id,body)=>{sent.push({id,body});fixture.senderEvent?.(id,body)},addEventListener:(k,v)=>ctxEvents[k]=v,getSenders:()=>senders,getSender:id=>({id,userAgent:fixture.senderUA||'Browser'}),start:()=>{}};
  const nodes={};const document={getElementById:id=>nodes[id]??=( {textContent:'',attrs:{},setAttribute(k,v){this.attrs[k]=v},removeAttribute(k){delete this.attrs[k]},addEventListener:()=>{}} )};
- const cast={framework:{CastReceiverContext:{getInstance:()=>castContext},messages:{MessageType:Object.fromEntries(['LOAD','PLAY','PAUSE','SEEK','STOP','PRELOAD','QUEUE_INSERT','QUEUE_LOAD','QUEUE_UPDATE','QUEUE_REMOVE','QUEUE_REORDER','QUEUE_NEXT','QUEUE_PREV','GET_STATUS','MEDIA_STATUS','CLOUD_STATUS','QUEUE_GET_ITEMS','QUEUE_GET_ITEM_IDS'].map(x=>[x,x]))},events:{EndedReason:{END_OF_STREAM:'END_OF_STREAM'},EventType:Object.fromEntries(['ERROR','BUFFERING','MEDIA_FINISHED','PLAYER_LOAD_COMPLETE','PLAYER_LOADING','LOADED_DATA','TIME_UPDATE','DURATION_CHANGE','MEDIA_STATUS','PAUSE','PLAYING','SEEKED'].map(x=>[x,x]))},system:{EventType:{SENDER_CONNECTED:'connect',SENDER_DISCONNECTED:'disconnect',SHUTDOWN:'shutdown'},MessageType:{JSON:'json'}}}};
+ const cast={framework:{CastReceiverContext:{getInstance:()=>castContext},messages:{MessageType:Object.fromEntries(['LOAD','PLAY','PAUSE','SEEK','STOP','PRELOAD','QUEUE_INSERT','QUEUE_LOAD','QUEUE_UPDATE','QUEUE_REMOVE','QUEUE_REORDER','QUEUE_NEXT','QUEUE_PREV','GET_STATUS','MEDIA_STATUS','CLOUD_STATUS','QUEUE_GET_ITEMS','QUEUE_GET_ITEM_IDS'].map(x=>[x,x]))},events:{EndedReason:{END_OF_STREAM:'END_OF_STREAM',ERROR:'ERROR'},EventType:Object.fromEntries(['ERROR','BUFFERING','MEDIA_FINISHED','PLAYER_LOAD_COMPLETE','PLAYER_LOADING','LOADED_DATA','TIME_UPDATE','DURATION_CHANGE','MEDIA_STATUS','PAUSE','PLAYING','SEEKED'].map(x=>[x,x]))},system:{EventType:{SENDER_CONNECTED:'connect',SENDER_DISCONNECTED:'disconnect',SHUTDOWN:'shutdown'},MessageType:{JSON:'json'}}}};
  let failed=false,expired=false,preparing=!!fixture.preparing,generation=1,registeredBinding,controllerExpired=false,acceptedStops=0;
  const presentation=(start,mediaUrl)=>{
-  const url=mediaUrl===undefined?(fixture.direct?'/v1/media/grant':'/v1/media/grant/master.m3u8'):mediaUrl;
-  return {generation,engine:'native',mode:fixture.direct?'direct':'stream',url,container:fixture.container||(fixture.direct?'mp4':'fmp4_hls'),startPositionMs:start||0,subtitles:[],decision:fixture.audioOnly?{audio:{action:'copy',reasons:[]}}:fixture.transcode?{video:{action:'transcode',reasons:[]}}:{video:{action:'copy',reasons:[]}},...(fixture.audioRender?{audioRender:{version:2,id:'render-1',url,...fixture.audioRender}}:{})};
+  const url=mediaUrl===undefined?(fixture.mediaUrl?fixture.mediaUrl(generation):fixture.direct?'/v1/media/grant':'/v1/media/grant/master.m3u8'):mediaUrl;
+  return {generation,engine:'native',mode:fixture.direct?'direct':'stream',url,container:fixture.container||(fixture.direct?'mp4':'fmp4_hls'),startPositionMs:start||0,subtitles:typeof fixture.subtitles==='function'?fixture.subtitles(generation):fixture.subtitles||[],...(fixture.subtitle?{subtitle:fixture.subtitle}:{}),decision:fixture.audioOnly?{audio:{action:'copy',reasons:[]}}:fixture.transcode?{video:{action:'transcode',reasons:[]}}:{video:{action:'copy',reasons:[]}},...(fixture.audioRender?{audioRender:{version:2,id:'render-1',url,...fixture.audioRender}}:{})};
  };
- const sessionFor=(body,start)=>({id:fixture.nextSessionId||'ps_1',revision:String(generation),kind:'vod',role:'local',state:'playing',itemId:body?.itemId||'movie',...(body?.queue?{queue:body.queue}:fixture.queue?{queue:{queueId:'q-1',entryId:'entry-1'}}:{}),lease:{expiresAt:'2099-01-01T00:00:00Z',reportEveryMs:10000},presentation:presentation(start)});
+ const sessionFor=(body,start)=>({id:fixture.nextSessionId||'ps_1',revision:String(generation),kind:'vod',role:'local',state:'playing',itemId:body?.itemId||'movie',...(body?.versionId||fixture.versionId?{versionId:body?.versionId||fixture.versionId}:{}),...(body?.queue?{queue:body.queue}:fixture.queue?{queue:{queueId:'q-1',entryId:'entry-1'}}:{}),lease:{expiresAt:'2099-01-01T00:00:00Z',reportEveryMs:10000},presentation:presentation(start)});
  const reply=(payload,status=200)=>new Response(status===204?null:JSON.stringify(payload),{status});
  const context={PorticoCastContracts:contracts,document,cast,navigator:fixture.mediaCapabilities?{mediaCapabilities:fixture.mediaCapabilities}:{},URL,URLSearchParams,TextDecoder,AbortController,Uint8Array,console,Number,Promise,setTimeout:(fn,ms)=>{const id=++timer,invoke=()=>{timers.delete(id);fn()};const handle=fixture.schedule?.(invoke,ms);timers.set(id,{fn:invoke,ms,handle});return id},clearTimeout:id=>{const value=timers.get(id);if(value)fixture.cancel?.(value.handle);timers.delete(id)},setInterval:(fn,ms)=>{timers.set(++timer,{fn,ms});return timer},clearInterval:id=>timers.delete(id),fetch:async(url,options)=>{
   const body=options.body?JSON.parse(options.body):undefined;calls.push({url,body,method:options.method,headers:options.headers});
@@ -54,8 +54,10 @@ async function harness(fixture={}){
   }
   if(path.endsWith('/timeline')){if(fixture.timelineDown)throw new Error('network down');if(fixture.revoked)return reply({error:{code:'unauthorized'}},401);if(fixture.expired&&!expired){expired=true;return reply({error:{code:'unauthorized'}},401)};return reply({},204);}
   if(path==='/v1/playback/sessions/ps_1'&&options.method==='PATCH'){
+   if(fixture.patchWait){fixture.patchCalled?.();await fixture.patchWait;}
+   if(fixture.patchFailure)return reply({error:{code:fixture.patchFailure}},422);
    if(options.headers['If-Match']!==String(generation))return reply({error:{code:'precondition_failed',current:sessionFor({},0)}},412);
-   generation++;return reply(sessionFor({},body.seek?body.seek.positionMs:0));
+   generation++;return reply(sessionFor({},body.seek?body.seek.positionMs:body.positionMs||0));
   }
   if((path==='/v1/playback/sessions/ps_1'||path==='/v1/playback/sessions/ps_known')&&options.method==='DELETE'){if(fixture.stopWait){fixture.stopCalled?.();await fixture.stopWait;}if(body?.expectedGeneration!==undefined&&body.expectedGeneration!==generation)return reply({error:{code:'revision_mismatch'}},412);if(fixture.cleanupStatus)return reply({error:{code:'precondition_failed'}},fixture.cleanupStatus);acceptedStops++;return reply({},204);}
   if(path.startsWith('/v1/cast/devices/')&&options.method==='DELETE')return reply({},204);
@@ -66,7 +68,7 @@ async function harness(fixture={}){
  context.window={cast,porticoCastView:fixture.view,porticoCastText:fixture.text,addEventListener:(name,fn)=>{ctxEvents['window:'+name]=fn},crypto:crypto.webcrypto,location:{origin:'https://cast.getportico.tv'},localStorage:{getItem:k=>storage.get(k),setItem:(k,v)=>storage.set(k,v),removeItem:k=>storage.delete(k)}};
  if(!fixture.text)vm.runInNewContext(fs.readFileSync(require('node:path').join(__dirname,'..','receiver-text.js'),'utf8'),context);
  vm.runInNewContext(source,context);await new Promise(setImmediate);
- return {serverState:()=>({generation,acceptedStops}),replaceServerGeneration:()=>{generation++},finish:()=>{document.getElementById('player').ended=true;state='IDLE';events.MEDIA_FINISHED({endedReason:'END_OF_STREAM'});},metadataUpdates,resolved:request=>urlResolver(request),receiver:context.window.porticoCastReceiver,calls,loads,interceptors,events,castContext,timers,manager,sent,ctxEvents,senders,nodes,storage,queueItems,message:async(senderId,data)=>{listener({senderId,data});for(let i=0;i<20;i++)await new Promise(setImmediate);},fire:id=>{const t=timers.get(id);timers.delete(id);t.fn();},uiState:()=>nodes.ui?.attrs['data-state']};
+ return {trackSelections,activeTracks:()=>({audio:activeAudio,text:activeText.slice()}),readyTracks:()=>{tracksReady=true;},serverState:()=>({generation,acceptedStops}),replaceServerGeneration:()=>{generation++},finish:()=>{document.getElementById('player').ended=true;state='IDLE';events.MEDIA_FINISHED({endedReason:'END_OF_STREAM'});},metadataUpdates,resolved:request=>urlResolver(request),receiver:context.window.porticoCastReceiver,calls,loads,interceptors,events,castContext,timers,manager,sent,ctxEvents,senders,nodes,storage,queueItems,message:async(senderId,data)=>{listener({senderId,data});for(let i=0;i<20;i++)await new Promise(setImmediate);},fire:id=>{const t=timers.get(id);timers.delete(id);t.fn();},uiState:()=>nodes.ui?.attrs['data-state']};
 }
 for(const [name,fixture,want]of[
  ['Chromecast 3',{supports:()=>false},['h264','vp8']],
@@ -991,4 +993,153 @@ test('CAF rejection retains conditional original 201 cleanup across unobserved s
   assert.equal(h.receiver.state().playbackId,null);assert.equal(h.loads.length,0);assert.equal(h.uiState(),'error');
   assert.equal(h.calls.filter(c=>c.url.endsWith('/v1/cast/reconnect')).length,0);
  }
+});
+
+for(const code of [102,104,110,315])test('CAF decoder error '+code+' replans the captured position and paused state (AUD-playback-CAST-01)',async()=>{
+ const h=await harness({transcode:true});await h.receiver.redeem('ABCD');await h.receiver.startPlayback('movie',37);
+ h.manager.seek(59);h.manager.pause();h.events.ERROR({detailedErrorCode:code});h.manager.stop();h.events.MEDIA_FINISHED({endedReason:'ERROR'});await settle();
+ const patches=h.calls.filter(c=>c.method==='PATCH');assert.equal(patches.length,1);assert.equal(patches[0].body.failure.code,'decode_error');assert.equal(patches[0].body.positionMs,59000);
+ assert.equal(h.loads.length,2);assert.equal(h.loads[1].currentTime,59);assert.equal(h.loads[1].autoplay,false);assert.equal(h.receiver.state().playbackId,'ps_1');
+});
+for(const code of [103,301,311,312])test('CAF network error '+code+' retries the same presentation without a decoder failure (AUD-playback-CAST-01)',async()=>{
+ const h=await harness({queue:true,audioTracks:[{trackId:7},{trackId:9}],textTracks:[{trackId:5},{trackId:6}],defaultTextIds:[5]});await h.receiver.redeem('ABCD');await h.receiver.startPlayback('movie',37,null,undefined,{queueId:'q-1',entryId:'entry-1'});
+ h.manager.seek(61);h.manager.pause();h.manager.getAudioTracksManager().setActiveById(9);h.manager.getTextTracksManager().setActiveByIds([6]);
+ h.events.ERROR({detailedErrorCode:code});await settle();assert.equal(h.loads.length,1);assert(!h.calls.some(c=>c.method==='PATCH'));
+ await fireAll(h,1000);
+ assert.equal(h.loads.length,2);assert.equal(h.resolved(h.loads[1]),h.resolved(h.loads[0]));assert.equal(h.loads[1].currentTime,61);assert.equal(h.loads[1].autoplay,false);
+ assert.deepEqual(h.activeTracks(),{audio:9,text:[6]});assert(h.loads[1].queueData);assert.equal(h.calls.filter(c=>c.url.endsWith('/v1/playback/sessions')).length,1);assert(!h.calls.some(c=>c.method==='PATCH'));
+});
+test('network retry exhaustion is terminal and leaves all three decoder fallbacks available (AUD-playback-CAST-01)',async()=>{
+ const h=await harness();await h.receiver.redeem('ABCD');await h.receiver.startPlayback('movie',0);
+ for(const delay of [1000,2000,5000]){h.events.ERROR({detailedErrorCode:301});await settle();await fireAll(h,delay);}
+ for(let i=0;i<3;i++){h.events.ERROR({detailedErrorCode:102});await settle();}
+ assert.equal(h.calls.filter(c=>c.method==='PATCH').length,3,'network faults did not spend decoder attempts');
+ h.events.ERROR({detailedErrorCode:301});await settle();assert.equal(h.receiver.state().playbackId,null);assert.equal(h.uiState(),'error');assert(h.calls.some(c=>c.method==='DELETE'));
+});
+test('actual advancing media resets network retry backoff (AUD-playback-CAST-01)',async()=>{
+ const h=await harness();await h.receiver.redeem('ABCD');await h.receiver.startPlayback('movie',0);
+ h.events.ERROR({detailedErrorCode:301});await fireAll(h,1000);h.manager.seek(1);h.events.TIME_UPDATE();
+ const before=new Set(h.timers.keys());h.events.ERROR({detailedErrorCode:311});await settle();const retries=[...h.timers].filter(([id])=>!before.has(id)).map(([,timer])=>timer.ms);assert(retries.includes(1000));assert(!retries.includes(2000));
+});
+for(const ended of [false,true])test((ended?'unhandled MEDIA_FINISHED(ERROR)':'terminal CAF ERROR 905')+' closes the occurrence and shows the error card (AUD-playback-CAST-01)',async()=>{
+ const h=await harness();await h.receiver.redeem('ABCD');await h.receiver.startPlayback('movie',0);
+ if(ended){h.manager.stop();h.events.MEDIA_FINISHED({endedReason:'ERROR'});}else h.events.ERROR({detailedErrorCode:905});
+ await settle();assert.equal(h.receiver.state().playbackId,null);assert.equal(h.uiState(),'error');assert(!h.calls.some(c=>c.method==='PATCH'));assert(h.calls.some(c=>c.method==='DELETE'));
+ await fireAll(h,20000);assert.equal(h.uiState(),'idle');
+});
+test('a decoder failure after its third recovery stops instead of reviving the failed picture (AUD-playback-CAST-01)',async()=>{
+ const h=await harness();await h.receiver.redeem('ABCD');await h.receiver.startPlayback('movie',0);
+ for(let i=0;i<4;i++){h.events.ERROR({detailedErrorCode:102});await settle();}
+ assert.equal(h.calls.filter(c=>c.method==='PATCH').length,3);assert.equal(h.receiver.state().playbackId,null);assert.equal(h.uiState(),'error');
+});
+const selectedSidecar={trackId:'s3',kind:'text',delivery:'sidecar'};
+const sidecarFile=(grant='grant',extra={})=>({trackId:'s3',format:'webvtt',url:'/v1/media/subtitles/'+grant+'/s3/1.vtt',timeDomain:'source-relative',offsetMs:0,...extra});
+test('direct WebVTT sidecars use the current grant and active CAF track while status strips the URL (AUD-playback-CAST-02)',async()=>{
+ const h=await harness({direct:true,subtitle:selectedSidecar,subtitles:[sidecarFile()]});await h.message('phone',{type:'pair',code:'ABCD',origin:'https://server.test'});await h.receiver.startPlayback('movie',37,null,'s3');
+ const load=h.loads[0];assert.equal(load.currentTime,37);assert.deepEqual(j(load.activeTrackIds),[1]);assert.deepEqual(j(load.media.tracks),[{trackId:1,type:'TEXT',subtype:'SUBTITLES',trackContentId:'https://server.test/v1/media/subtitles/grant/s3/1.vtt',trackContentType:'text/vtt'}]);
+ const status=h.interceptors.MEDIA_STATUS({type:'MEDIA_STATUS',media:load.media,activeTrackIds:load.activeTrackIds});assert.deepEqual(j(status.activeTrackIds),[1]);assert.equal(status.media.tracks[0].type,'TEXT');assert(!JSON.stringify(status).includes('/v1/media/'));
+});
+for(const [label,fixture]of[
+ ['HLS',{subtitle:selectedSidecar,subtitles:[sidecarFile()]}],
+ ['burned subtitles',{direct:true,subtitle:{trackId:'s3',kind:'ass',delivery:'burn'},subtitles:[]}],
+ ['subtitles off',{direct:true,subtitles:[]}]
+])test(label+' keeps its existing CAF subtitle path (AUD-playback-CAST-02)',async()=>{
+ const h=await harness(fixture);await h.receiver.redeem('ABCD');await h.receiver.startPlayback('movie',0);
+ assert.equal(h.loads[0].media.tracks,undefined);assert.equal(h.loads[0].activeTrackIds,undefined);
+});
+for(const [label,file]of[
+ ['another grant',sidecarFile('old-grant')],['an external URL',sidecarFile('grant',{url:'https://other.test/subtitle.vtt'})],['unapplied timing',sidecarFile('grant',{offsetMs:250})]
+])test('direct sidecars refuse '+label+' instead of silently loading it (AUD-playback-CAST-02)',async()=>{
+ const h=await harness({direct:true,subtitle:selectedSidecar,subtitles:[file]});await h.receiver.redeem('ABCD');await assert.rejects(h.receiver.startPlayback('movie',0),/unsupported_subtitle_presentation/);
+ assert.equal(h.loads.length,0);assert(h.calls.some(c=>c.method==='DELETE'));assert.equal(h.uiState(),'error');
+});
+test('a replanned direct sidecar binds the new grant and retains subtitles off (AUD-playback-CAST-02, AUD-playback-V05)',async()=>{
+ const h=await harness({direct:true,transcode:true,subtitle:selectedSidecar,mediaUrl:g=>'/v1/media/grant-'+g,subtitles:g=>[sidecarFile('grant-'+g)]});await h.message('phone',{type:'pair',code:'ABCD',origin:''});await h.receiver.startPlayback('movie',37,null,'s3');
+ await h.message('phone',{type:'subtitles',trackIds:[]});await h.interceptors.SEEK({senderId:'phone',currentTime:120});await settle();
+ assert.equal(h.loads.length,2);assert.equal(h.loads[1].media.tracks[0].trackContentId,'/v1/media/subtitles/grant-2/s3/1.vtt');assert.deepEqual(j(h.loads[1].activeTrackIds),[]);assert.deepEqual(h.activeTracks().text,[]);
+});
+test('CAF audio and text selections are restored when reload track discovery finishes (AUD-playback-V05)',async()=>{
+ const fixture={transcode:true,audioTracks:[{trackId:1},{trackId:2}],textTracks:[{trackId:3},{trackId:4}],defaultTextIds:[3]},h=await harness(fixture);await h.message('phone',{type:'pair',code:'ABCD',origin:''});await h.receiver.startPlayback('movie',0);
+ await h.message('phone',{type:'audio',trackId:2});await h.message('phone',{type:'subtitles',trackIds:[4]});fixture.deferTracks=true;
+ await h.interceptors.SEEK({senderId:'phone',currentTime:120});await settle();assert.deepEqual(h.activeTracks(),{audio:1,text:[3]});
+ h.readyTracks();h.events.PLAYER_LOAD_COMPLETE?.();assert.deepEqual(h.activeTracks(),{audio:2,text:[4]});
+ h.manager.getAudioTracksManager().setActiveById(1);h.events.LOADED_DATA();assert.equal(h.activeTracks().audio,1,'a later event cannot replay an already restored choice');
+ fixture.deferTracks=false;await h.receiver.startPlayback('other',0);h.events.PLAYER_LOAD_COMPLETE?.();assert.deepEqual(h.activeTracks(),{audio:1,text:[3]},'choices do not cross to a different playback session');
+});
+test('reload never selects a retained CAF id absent from the new presentation (AUD-playback-V05)',async()=>{
+ const fixture={transcode:true,audioTracks:[{trackId:1},{trackId:2}],textTracks:[{trackId:3},{trackId:4}],defaultTextIds:[3]},h=await harness(fixture);await h.message('phone',{type:'pair',code:'ABCD',origin:''});await h.receiver.startPlayback('movie',0);
+ await h.message('phone',{type:'audio',trackId:2});await h.message('phone',{type:'subtitles',trackIds:[4]});h.trackSelections.length=0;fixture.audioTracks=[{trackId:1}];fixture.textTracks=[{trackId:3}];
+ await h.interceptors.SEEK({senderId:'phone',currentTime:120});await settle();h.events.PLAYER_LOAD_COMPLETE?.();assert.equal(h.trackSelections.length,0);
+});
+test('unsupported stall fallback keeps queue, version, subtitles, clock and pause (AUD-playback-CAST-05)',async()=>{
+ const fixture={queue:true,patchFailure:'unsupported_media',versionId:'cut-a',subtitle:selectedSidecar,textTracks:[{trackId:3}],defaultTextIds:[3]},h=await harness(fixture);await h.receiver.redeem('ABCD');await h.receiver.startPlayback('movie',0,null,'s3',{queueId:'q-1',entryId:'entry-1'});
+ h.manager.seek(83);h.manager.pause();h.events.BUFFERING({isBuffering:true});await fireAll(h,20000);
+ const starts=h.calls.filter(c=>c.url.endsWith('/v1/playback/sessions')&&c.method==='POST');assert.equal(starts.length,2);assert.deepEqual(starts[1].body.queue,{queueId:'q-1',entryId:'entry-1'});assert.deepEqual(starts[1].body.subtitles,{trackId:'s3'});assert.equal(starts[1].body.versionId,'cut-a');assert.equal(starts[1].body.startPositionMs,83000);assert.equal(h.loads[1].autoplay,false);assert.deepEqual(h.activeTracks().text,[3]);
+});
+test('deferred stall recovery cannot patch the replacement occurrence (AUD-playback-V07)',async()=>{
+ const fixture={},h=await harness(fixture);await h.receiver.redeem('ABCD');await h.receiver.startPlayback('movie',0);
+ let release;fixture.startWait=new Promise(r=>release=r);const replacement=h.receiver.startPlayback('other',0);await settle();h.events.BUFFERING({isBuffering:true});const stall=[...h.timers].find(([,t])=>t.ms===20000);h.fire(stall[0]);release();await replacement;await settle();
+ assert.equal(h.loads.length,2);assert(!h.calls.some(c=>c.method==='PATCH'));assert.equal(h.uiState(),'playing');
+ for(let i=0;i<3;i++){h.events.ERROR({detailedErrorCode:102});await settle();}assert.equal(h.calls.filter(c=>c.method==='PATCH').length,3,'a stale error also cannot spend the replacement recovery budget');
+});
+test('delayed network recovery cannot reload or end a new occurrence (AUD-playback-V07)',async()=>{
+ const h=await harness();await h.receiver.redeem('ABCD');await h.receiver.startPlayback('movie',0);h.events.ERROR({detailedErrorCode:301});await settle();
+ await h.receiver.startPlayback('other',0);await fireAll(h,1000);assert.equal(h.loads.length,2);assert.equal(h.receiver.state().playbackId,'ps_1');assert.equal(h.uiState(),'playing');assert(!h.calls.some(c=>c.method==='PATCH'||c.method==='DELETE'));
+});
+test('receiver carries an explicit Cast version into playback and private status (AUD-playback-V02)',async()=>{
+ const h=await harness();await h.message('phone',{type:'pair',code:'ABCD',origin:''});await h.message('phone',{type:'load',itemId:'movie',versionId:'cut-a'});
+ const starts=h.calls.filter(c=>c.url.endsWith('/v1/playback/sessions')&&c.method==='POST');assert.equal(starts[0].body.versionId,'cut-a');await h.message('phone',{type:'status'});assert.equal(h.sent.filter(m=>m.body.type==='status').at(-1).body.versionId,'cut-a');
+ await h.message('phone',{type:'load',itemId:'movie',versionId:'../bad'});assert.equal(h.calls.filter(c=>c.url.endsWith('/v1/playback/sessions')&&c.method==='POST').length,1,'a malformed version is not silently dropped');
+});
+test('CAF load carries its explicit version and subtitle request (AUD-playback-V02)',async()=>{
+ const h=await harness();await h.message('phone',{type:'pair',code:'ABCD',origin:''});await h.interceptors.LOAD({senderId:'phone',media:{customData:{itemId:'movie',versionId:'cut-a',subtitleTrackId:'s3'}}});
+ const start=h.calls.find(c=>c.url.endsWith('/v1/playback/sessions')&&c.method==='POST');assert.equal(start.body.versionId,'cut-a');assert.deepEqual(start.body.subtitles,{trackId:'s3'});
+});
+test('a Cast transfer cannot reuse its accepted start with a different version (AUD-playback-V02)',async()=>{
+ const h=await harness();await h.receiver.redeem('ABCD');const queue={queueId:'q-1',entryId:'entry-1',transferId:'transfer-1'};
+ await h.receiver.startPlayback('movie',0,null,undefined,queue,undefined,undefined,'cut-a');await h.receiver.startPlayback('movie',0,null,undefined,queue,undefined,undefined,'cut-a');
+ await assert.rejects(h.receiver.startPlayback('movie',0,null,undefined,queue,undefined,undefined,'cut-b'),/cast_transfer_changed/);assert.equal(h.calls.filter(c=>c.url.endsWith('/v1/playback/sessions')&&c.method==='POST').length,1);
+});
+test('network load rejections use the bounded backoff before the terminal card (AUD-playback-CAST-01)',async()=>{
+ const fixture={},h=await harness(fixture);await h.receiver.redeem('ABCD');await h.receiver.startPlayback('movie',0);fixture.nextLoadFails=true;h.manager.seek(47);h.manager.pause();h.events.ERROR({detailedErrorCode:301});
+ for(const delay of [1000,2000,5000]){assert.equal(h.receiver.state().playbackId,'ps_1');assert([...h.timers.values()].some(t=>t.ms===delay));await fireAll(h,delay);}
+ assert.equal(h.receiver.state().playbackId,null);assert.equal(h.uiState(),'error');assert(!h.calls.some(c=>c.method==='PATCH'));assert(h.calls.some(c=>c.method==='DELETE'));
+});
+test('decoder recovery retains tracks captured before CAF clears its failed deck (AUD-playback-V05)',async()=>{
+ const fixture={transcode:true,audioTracks:[{trackId:1},{trackId:2}],textTracks:[{trackId:3},{trackId:4}],defaultTextIds:[3]},h=await harness(fixture);await h.receiver.redeem('ABCD');await h.receiver.startPlayback('movie',0);
+ h.manager.getAudioTracksManager().setActiveById(2);h.manager.getTextTracksManager().setActiveByIds([4]);h.events.ERROR({detailedErrorCode:102});
+ h.manager.getAudioTracksManager().setActiveById(1);h.manager.getTextTracksManager().setActiveByIds([]);await settle();assert.deepEqual(h.activeTracks(),{audio:2,text:[4]});
+});
+test('an idle buffering event cannot recover a subsequently started occurrence (AUD-playback-V07)',async()=>{
+ const h=await harness();await h.receiver.redeem('ABCD');h.events.BUFFERING({isBuffering:true});const pending=[...h.timers].find(([,t])=>t.ms===20000)[1].fn;
+ await h.receiver.startPlayback('movie',0);pending();await settle();assert(!h.calls.some(c=>c.method==='PATCH'));assert.equal(h.loads.length,1);
+});
+test('receiver shutdown retires delayed recovery before CAF can be loaded again (AUD-playback-V07)',async()=>{
+ const h=await harness();await h.receiver.redeem('ABCD');await h.receiver.startPlayback('movie',0);h.events.ERROR({detailedErrorCode:301});h.ctxEvents.shutdown();await fireAll(h,1000);
+ assert.equal(h.loads.length,1);assert(!h.calls.some(c=>c.method==='PATCH'||c.method==='DELETE'));
+});
+test('stall fallback does not mistake burned captions for a CAF subtitle-off choice (AUD-playback-CAST-05)',async()=>{
+ const h=await harness({patchFailure:'unsupported_media',subtitle:{trackId:'s3',kind:'ass',delivery:'burn'}});await h.receiver.redeem('ABCD');await h.receiver.startPlayback('movie',0,null,'s3');
+ h.events.BUFFERING({isBuffering:true});await fireAll(h,20000);const starts=h.calls.filter(c=>c.url.endsWith('/v1/playback/sessions')&&c.method==='POST');assert.equal(starts.length,2);assert.deepEqual(starts[1].body.subtitles,{trackId:'s3'});
+});
+test('an unhandled fatal ERROR terminates during network retry backoff (AUD-playback-CAST-01)',async()=>{
+ const h=await harness();await h.receiver.redeem('ABCD');await h.receiver.startPlayback('movie',0);h.events.ERROR({detailedErrorCode:301});await settle();
+ h.events.ERROR({detailedErrorCode:905});await settle();assert.equal(h.receiver.state().playbackId,null);assert.equal(h.uiState(),'error');
+ await fireAll(h,1000);assert.equal(h.loads.length,1);assert(!h.calls.some(c=>c.method==='PATCH'));
+});
+test('an unhandled fatal ERROR is not suppressed by queued decoder recovery (AUD-playback-CAST-01)',async()=>{
+ const h=await harness();await h.receiver.redeem('ABCD');await h.receiver.startPlayback('movie',0);h.events.ERROR({detailedErrorCode:102});h.events.ERROR({detailedErrorCode:905});await settle();
+ assert.equal(h.receiver.state().playbackId,null);assert.equal(h.uiState(),'error');assert.equal(h.loads.length,1);assert(!h.calls.some(c=>c.method==='PATCH'));
+});
+
+for(const code of [101,903,904,900,901,902,906,999])test('CAF informational or aborted error '+code+' leaves playback running',async()=>{
+ const h=await harness();await h.receiver.redeem('ABCD');await h.receiver.startPlayback('movie',0);
+ h.events.ERROR({detailedErrorCode:code});await settle();
+ assert.equal(h.receiver.state().playbackId,'ps_1');assert.equal(h.loads.length,1);assert.equal(h.uiState(),'playing');
+ assert(!h.calls.some(c=>c.method==='PATCH'||c.method==='DELETE'));
+});
+test('CAF MEDIA_UNKNOWN 100 terminates playback',async()=>{
+ const h=await harness();await h.receiver.redeem('ABCD');await h.receiver.startPlayback('movie',0);
+ h.events.ERROR({detailedErrorCode:100});await settle();
+ assert.equal(h.receiver.state().playbackId,null);assert.equal(h.uiState(),'error');assert(h.calls.some(c=>c.method==='DELETE'));
 });

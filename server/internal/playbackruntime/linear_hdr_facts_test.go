@@ -61,3 +61,20 @@ func TestLinearMalformedVideoSideDataRefusesBeforePlanning(t *testing.T) {
 		t.Fatal("malformed Dolby configuration silently became SDR")
 	}
 }
+
+func TestLinearPlanCarriesUntouchedDolbyVisionProfile(t *testing.T) {
+	client := playback.BaselineClientProfile()
+	client.Video = []playback.ClientVideoCodec{{Codec: "hevc", BitDepths: []int{10}, DynamicRanges: []string{assets.RangeDolbyVision, assets.RangeHDR10}, DolbyVisionProfiles: []int{5, 7, 8}, CodecTags: []string{"hvc1", "dvh1", "dvhe"}, MaxWidth: 3840, MaxHeight: 2160}}
+	client.Display.DynamicRanges = []string{assets.RangeDolbyVision, assets.RangeHDR10}
+	client.Transports = []playback.ClientTransport{{Transport: playback.TransportHLSFMP4, Containers: []string{"fmp4"}, Video: []string{"hevc"}}}
+	work := playback.LinearWork{ClientProfile: client, TranscodingEnabled: false}
+	work.Selection.Quality.Mode = "original"
+	for _, profile := range []int{5, 7, 8} {
+		compatibility := map[int]int{5: 0, 7: 6, 8: 1}[profile]
+		raw := []byte(fmt.Sprintf(`{"streams":[{"codec_type":"video","codec_name":"hevc","profile":"Main 10","pix_fmt":"yuv420p10le","width":1920,"height":1080,"avg_frame_rate":"25/1","field_order":"progressive","side_data_list":[{"side_data_type":"DOVI configuration record","dv_profile":%d,"dv_level":6,"rpu_present_flag":1,"bl_present_flag":1,"dv_bl_signal_compatibility_id":%d}]}]}`, profile, compatibility))
+		plan, err := linearPlan(raw, work, playback.LinearFragmentedOnly)
+		if err != nil || !plan.Fragmented || !plan.CopyHEVC || plan.ConvertVideo || plan.Target != nil || plan.CopyDolbyVisionProfile != profile {
+			t.Fatalf("profile %d lost its copied signalling without a conversion target: %+v %v", profile, plan, err)
+		}
+	}
+}

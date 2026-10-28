@@ -501,11 +501,10 @@ func registerPlaybackV1Sessions(r *apikit.Registry, d Dependencies) {
 	v1Route(r, apikit.Metadata{Admission: laneSecurityFence, ID: "get_playback_session", Method: "GET", Path: "/v1/playback/sessions/{id}", Summary: "Read a playback session",
 		Access: apikit.Device, Requires: apikit.ScopeRead, Lane: apikit.Media, Cost: apikit.Constant, Status: 200, Errors: []string{"unauthorized", "not_found"}},
 		func(ctx context.Context, q *http.Request, _ noBody) (playbackv1.SessionView, error) {
-			v, err := d.playbackV1().Get(ctx, d.v1ServiceCaller(q, callerFrom(ctx)), q.PathValue("id"))
-			if err == nil {
-				setSessionHeaders(ctx, v)
-			}
-			return v, err
+			// The command revision does not change for lease renewals or renderer
+			// observations. Let apikit hash the complete response for GET; PATCH
+			// continues to use the revision carried in the body for If-Match.
+			return d.playbackV1().Get(ctx, d.v1ServiceCaller(q, callerFrom(ctx)), q.PathValue("id"))
 		})
 	v1Route(r, apikit.Metadata{Admission: lanePlayback, ID: "change_playback_session", Method: "PATCH", Path: "/v1/playback/sessions/{id}", Summary: "Change tracks, quality, version or state, or report that the player failed; a change to the bytes re-plans the same session as a new generation and keeps its queue",
 		Access: apikit.Device, Requires: apikit.ScopePlayback, Lane: apikit.Media, Cost: apikit.Constant, BodyLimit: 4 << 10, Status: 200,

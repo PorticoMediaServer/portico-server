@@ -290,3 +290,26 @@ func TestDemandToleranceDoesNotRestartNearEdgeOrTargetStartup(t *testing.T) {
 		t.Fatal("near-edge demand restarted")
 	}
 }
+
+func TestCanceledRenditionPlanLoadKeepsAlternateAvailable(t *testing.T) {
+	ctx, _, h, session, _ := renditionFixture(t)
+	plan, err := loadDeliveryPlan(ctx, h.db, session.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	r := plan.Renditions[1]
+	var generation int
+	if err := h.db.QueryRowContext(ctx, `SELECT generation FROM playback_sessions WHERE id=?`, session.ID).Scan(&generation); err != nil {
+		t.Fatal(err)
+	}
+	cancelled, cancel := context.WithCancel(ctx)
+	cancel()
+	h.produceRendition(cancelled, session.ID, r, 0, &hlsWindow{}, generation)
+	plan, err = loadDeliveryPlan(ctx, h.db, session.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if plan.Renditions[1] != r {
+		t.Fatalf("cancelled plan load poisoned the shared rendition: %+v", plan.Renditions[1])
+	}
+}

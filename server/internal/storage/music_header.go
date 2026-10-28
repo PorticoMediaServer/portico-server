@@ -13,6 +13,15 @@ import (
 // ReadScanAudioPrefix reads at most one MiB through the scan's existing root,
 // helper and authority. It never reads the rest of a large music file.
 func ReadScanAudioPrefix(ctx context.Context, path string) ([]byte, error) {
+	return ReadScanPrefix(ctx, path, 1<<20)
+}
+
+// ReadScanPrefix uses the same inventory authority as audio header reads, with
+// a smaller bound for container headers. It never captures the rest of a file.
+func ReadScanPrefix(ctx context.Context, path string, limit int64) ([]byte, error) {
+	if limit <= 0 || limit > 1<<20 {
+		return nil, ErrRemoteLimit
+	}
 	if err := CheckScanRead(ctx, path); err != nil {
 		return nil, err
 	}
@@ -26,7 +35,7 @@ func ReadScanAudioPrefix(ctx context.Context, path string) ([]byte, error) {
 			return nil, err
 		}
 		defer f.Close()
-		return scanAudioPrefix(f)
+		return scanPrefix(f, limit)
 	}
 	c := input.client
 	if c.IsRemote(path) {
@@ -37,7 +46,7 @@ func ReadScanAudioPrefix(ctx context.Context, path string) ([]byte, error) {
 			return nil, err
 		}
 	}
-	req := request{Operation: "inventory-audio-prefix", Path: path, Inventory: &r}
+	req := request{Operation: "inventory-audio-prefix", Path: path, Inventory: &r, Limit: limit}
 	if c.MountedRoot != nil {
 		req.MountedRoot = c.MountedRoot(path)
 	}
@@ -49,8 +58,8 @@ func ReadScanAudioPrefix(ctx context.Context, path string) ([]byte, error) {
 	var prefix []byte
 	err = c.Supervisor.Run(ctx, "scan:"+input.source, cmd, func(rd io.Reader) error {
 		var err error
-		prefix, err = io.ReadAll(io.LimitReader(rd, (1<<20)+1))
-		if len(prefix) > 1<<20 {
+		prefix, err = io.ReadAll(io.LimitReader(rd, limit+1))
+		if int64(len(prefix)) > limit {
 			return ErrInventoryChanged
 		}
 		return err
@@ -58,12 +67,12 @@ func ReadScanAudioPrefix(ctx context.Context, path string) ([]byte, error) {
 	return prefix, err
 }
 
-func scanAudioPrefix(f *os.File) ([]byte, error) {
+func scanPrefix(f *os.File, limit int64) ([]byte, error) {
 	before, err := f.Stat()
 	if err != nil || !before.Mode().IsRegular() {
 		return nil, ErrInventoryChanged
 	}
-	prefix, err := io.ReadAll(io.LimitReader(f, 1<<20))
+	prefix, err := io.ReadAll(io.LimitReader(f, limit))
 	if err != nil {
 		return nil, err
 	}
@@ -75,7 +84,7 @@ func scanAudioPrefix(f *os.File) ([]byte, error) {
 }
 
 func inventoryAudioPrefixHelper(r request, out io.Writer) error {
-	if r.Inventory == nil {
+	if r.Inventory == nil || r.Limit <= 0 || r.Limit > 1<<20 {
 		return ErrInventoryChanged
 	}
 	f, err := openInventoryContent(*r.Inventory)
@@ -83,7 +92,7 @@ func inventoryAudioPrefixHelper(r request, out io.Writer) error {
 		return err
 	}
 	defer f.Close()
-	prefix, err := scanAudioPrefix(f)
+	prefix, err := scanPrefix(f, r.Limit)
 	if err != nil {
 		return err
 	}

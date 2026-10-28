@@ -358,10 +358,9 @@ func planDelivery(in DeliveryInput) (p DeliveryPlan, err error) {
 					p.Trace.Notes = append(p.Trace.Notes, NoteDeviceToneMaps)
 				}
 			}
-			// A copied HDR10+ picture keeps its dynamic metadata only on a
-			// device that declares HDR10+; everywhere else it is the HDR10
-			// base picture and the panel says so (VIDEO.md VS-2b).
-			if v := videoOf(source); v != nil && v.DynamicRange == assets.RangeHDR10 && v.HDR10Plus && p.VideoAction != "convert" && !declaresHDR10Plus(client, p.OutputVideoCodec) {
+			// Conversion drops HDR10+ metadata. A copied picture keeps it
+			// only on a device that declares HDR10+ (VIDEO.md VS-2b).
+			if v := videoOf(source); v != nil && v.HDR10Plus && (p.VideoAction == "convert" || !declaresHDR10Plus(client, p.OutputVideoCodec)) {
 				p.Trace.Notes = append(p.Trace.Notes, NoteHDR10PlusLost)
 			}
 			// A track that reaches the device as it is in the file, and that
@@ -420,6 +419,16 @@ func planDelivery(in DeliveryInput) (p DeliveryPlan, err error) {
 		explicit = in.AudioStream
 	}
 	audio, chosenBy := chooseAudioWithPolicy(source.Audio, explicit, in.CarriedAudioLanguage, in.PreferredAudioLanguages, in.OriginalLanguage, in.AudioTrackChoice, in.PreferAudioDescription, client)
+	var defaultAudio *SourceAudio
+	if len(source.Audio) > 0 {
+		defaultAudio = &source.Audio[0]
+		for i := range source.Audio {
+			if source.Audio[i].Default {
+				defaultAudio = &source.Audio[i]
+				break
+			}
+		}
+	}
 	video := source.Video
 	if video != nil {
 		p.SourceVideoCodec, p.OutputVideoCodec = video.Codec, video.Codec
@@ -520,7 +529,7 @@ func planDelivery(in DeliveryInput) (p DeliveryPlan, err error) {
 		var best []RouteRejection
 		matched := false
 		for _, t := range client.Transports {
-			if t.Transport != TransportDirect || !containsString(t.Containers, source.Container) {
+			if t.Transport != TransportDirect || !containersAllow(t.Containers, source.Container) {
 				continue
 			}
 			var r []RouteRejection
@@ -529,7 +538,8 @@ func planDelivery(in DeliveryInput) (p DeliveryPlan, err error) {
 			}
 			if audio != nil {
 				r = append(r, audioRejections(audio, client, t)...)
-				if audio.Ordinal != 0 && !client.EmbeddedAudioSwitching {
+				// Without embedded switching, the original plays its engine-default track.
+				if len(source.Audio) > 1 && !client.EmbeddedAudioSwitching && audio.Index != defaultAudio.Index {
 					r = append(r, RouteRejection{RejectAudioTrack, fmt.Sprintf("track %d", audio.Ordinal+1)})
 				}
 			}
@@ -703,19 +713,26 @@ func planDelivery(in DeliveryInput) (p DeliveryPlan, err error) {
 		}
 	}
 
-	// The audio-track rule is a preference, not an impossibility: the original
-	// still plays, only with its first track. When nothing else is admissible
-	// (no converter on this server, conversion turned off) that beats refusing
-	// the title, and the trace says which track the viewer is actually hearing.
+	// The audio-track rule is a preference, not an impossibility: when no
+	// other route is admissible, play the engine-default track if the matching
+	// direct transport can decode it. The trace reports the substituted track.
 	if len(candidates) == 0 {
-		if original := routeEvaluation(trace, DeliveryOriginal); original != nil && len(original.Rejections) == 1 && original.Rejections[0].Code == RejectAudioTrack && len(source.Audio) > 0 {
-			original.Admissible = true
-			trace.Notes = append(trace.Notes, NoteFirstAudioTrackPlayed)
-			audio = &source.Audio[0]
-			p.SourceAudioCodec, p.OutputAudioCodec, p.AudioStream = audio.Codec, audio.Codec, audio.Index
-			trace.Audio = traceAudioSource(audio, "only_reachable_track", len(source.Audio))
-			code := ReasonDirectPlayCompatible
-			candidates = append(candidates, candidate{DeliveryOriginal, costDirect, "direct", TransportDirect, []string{code}, 0})
+		if original := routeEvaluation(trace, DeliveryOriginal); original != nil && len(original.Rejections) == 1 && original.Rejections[0].Code == RejectAudioTrack && defaultAudio != nil {
+			for _, t := range client.Transports {
+				if t.Transport != TransportDirect || !containersAllow(t.Containers, source.Container) || len(audioRejections(defaultAudio, client, t)) > 0 || bitrateOver(max(defaultAudio.BitRate, defaultAudio.MaxBitRate), in.Target.MaxAudioBitrateBPS) {
+					continue
+				}
+				if video != nil && len(videoRejections(video, client, t, in.Target.AllowHDR, false)) > 0 {
+					continue
+				}
+				original.Admissible = true
+				trace.Notes = append(trace.Notes, NoteFirstAudioTrackPlayed)
+				audio = defaultAudio
+				p.SourceAudioCodec, p.OutputAudioCodec, p.AudioStream = audio.Codec, audio.Codec, audio.Index
+				trace.Audio = traceAudioSource(audio, "only_reachable_track", len(source.Audio))
+				candidates = append(candidates, candidate{DeliveryOriginal, costDirect, "direct", TransportDirect, []string{ReasonDirectPlayCompatible}, 0})
+				break
+			}
 		}
 	}
 	if len(candidates) == 0 {
