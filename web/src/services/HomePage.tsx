@@ -45,6 +45,7 @@ function BoundHome({account, session}: {account: ServicesAccount; session: Omit<
   const [intent,setIntent]=useState<'join'|'setup'|'local'>();
   const [reveal,setReveal]=useState(0);
   const reload=useCallback(()=>{setIntent(undefined);retry(value=>value+1);},[]);
+  const enterLocal=useCallback(()=>setIntent('local'),[]);
   // Same-document anchor navigation keeps working without remounting Home; only the
   // two supported sections become intent, and each is consumed once.
   useLayoutEffect(() => {
@@ -90,7 +91,7 @@ function BoundHome({account, session}: {account: ServicesAccount; session: Omit<
     onHelp={()=>window.open('https://getportico.tv/docs/','_blank','noopener,noreferrer')}
     onSignOut={()=>{void account.service.logoutIfCurrent(accountIdentity(session)).catch(setError);}} />} />;
   return <DocumentBootReady><ServicesDirectoryPage account={account} session={session} api={api} initial={servers} sourceCurrent={sourceCurrent} header={header}
-    onEmpty={reload} onJoin={()=>setIntent('join')} onSetup={()=>setIntent('setup')} onLocal={()=>setIntent('local')} /></DocumentBootReady>;
+    onEmpty={reload} onJoin={()=>setIntent('join')} onSetup={()=>setIntent('setup')} onLocal={enterLocal} /></DocumentBootReady>;
 }
 function Start({account, session, servers, sourceCurrent, initialSection, reveal = 0}: {account: ServicesAccount; session: Omit<HostedSession, 'refreshToken'>; servers: WorkspaceServers; sourceCurrent: () => boolean; initialSection?: 'join'|'setup'; reveal?: number}) {
   const {t} = useMemo(servicesI18n, []);
