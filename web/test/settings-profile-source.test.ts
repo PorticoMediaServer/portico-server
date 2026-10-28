@@ -1,9 +1,10 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import type {DirectSnapshot} from '@core/profile-management.ts';
 import {ProfileSettingsSource} from '../src/screens/settings/account-profile/source.ts';
 import {changeProfileSetting, profileSettingState} from '../src/screens/settings/account-profile/rows.ts';
 
-function fixture() {
+function fixture(observer?: (snapshot: DirectSnapshot) => void) {
   let current = true, hold: Promise<void> | undefined, release!: () => void, fail = false;
   const document = {
     authority: 'local', serverId: 'server', canManage: true,
@@ -19,7 +20,7 @@ function fixture() {
     calls.push({path, method, body, signal});await hold;
     if (fail) throw new Error('offline');
     return structuredClone(document) as T;
-  }}, {serverId: 'server', accountId: 'account', profileId: 'main'}, () => current);
+  }}, {serverId: 'server', accountId: 'account', profileId: 'main'}, () => current, undefined, observer);
   return {source, calls, retire: () => {current = false;}, hold: () => {hold = new Promise(resolve => {release = resolve;});}, release: () => {hold = undefined;release();},
     fail: () => {fail = true;}, change: (fn: (value: typeof document) => void) => fn(document)};
 }
@@ -89,4 +90,30 @@ test('selection, buffered input admission, write admission and disposal refuse l
 
 test('unreadable quiet profile keeps confirmed document and returns the original failure',async()=>{
  const f=fixture();await f.source.load();const before=f.source.getSnapshot();f.fail();const result=await f.source.refresh();assert.equal(result.kind,'unreadable');if(result.kind==='unreadable')assert.equal((result.error as Error).message,'offline');assert.equal(f.source.getSnapshot(),before);f.source.dispose();
+});
+
+
+test('strict direct observations synchronously retire the original shell before Profile publication, even during input settlement',async()=>{
+ for(const loss of ['missing','disabled','management'] as const){let f!:ReturnType<typeof fixture>,observations=0;const publications:unknown[]=[];
+  f=fixture(snapshot=>{observations++;assert.equal(f.source.getSnapshot().document,undefined);assert.equal(snapshot.account.disabled,loss==='disabled');f.retire();});
+  if(loss==='missing')f.change(d=>{d.profiles.splice(0,1);d.account.primaryProfileId='child';d.profiles[0].primary=true;d.profiles[0].position=0;});
+  if(loss==='disabled')f.change(d=>{d.account.disabled=true;});
+  if(loss==='management')f.change(d=>{d.canManage=false;for(const key of Object.keys(d.capabilities))d.capabilities[key as keyof typeof d.capabilities]=false;});
+  f.hold();const pending=f.source.load();f.source.setQuietInputActive(true);f.source.subscribe(()=>{publications.push(f.source.getSnapshot().document);});f.release();await pending;
+  assert.equal(observations,1);assert.deepEqual(publications,[]);assert.equal(f.source.getSnapshot().document,undefined);f.source.dispose();
+ }
+});
+
+test('quiet direct authority observation retires synchronously before adopting an ineligible document',async()=>{
+ let f!:ReturnType<typeof fixture>,retire=false,observations=0;f=fixture(snapshot=>{observations++;if(retire){assert.equal(snapshot.account.disabled,true);assert.equal(f.source.getSnapshot().document?.account.disabled,false);f.retire();}});
+ await f.source.load();const before=f.source.getSnapshot();let publications=0;f.source.subscribe(()=>publications++);f.change(d=>{d.account.disabled=true;});retire=true;
+ assert.deepEqual(await f.source.refresh(),{kind:'deferred'});assert.equal(observations,2);assert.equal(publications,0);assert.equal(before.document?.account.disabled,false);assert.equal(f.source.getSnapshot().document,undefined);f.source.dispose();
+});
+
+test('cancelled, superseded, disposed and malformed Profile reads cannot feed direct authority observation',async()=>{
+ for(const action of ['input','selection','newer','dispose','malformed'] as const){let observations=0;const f=fixture(()=>{observations++;});await f.source.load();assert.equal(observations,1);f.hold();const pending=f.source.refresh();
+  if(action==='input')f.source.setQuietInputActive(true);if(action==='selection')f.source.select('child');if(action==='dispose')f.source.dispose();
+  let newer:Promise<unknown>|undefined;if(action==='newer')newer=f.source.refresh();if(action==='malformed')f.change(d=>{d.serverId='foreign';});
+  f.release();await pending;await newer;assert.equal(observations,action==='newer'?2:1);f.source.dispose();
+ }
 });
