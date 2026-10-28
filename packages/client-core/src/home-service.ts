@@ -19,6 +19,45 @@
 import {appendHomeRowPage, fetchHome, fetchHomeLayout, fetchHomeRow, hasFencedHomeMembership, hasHomeRowContent, resetHomeLayout, saveHomeLayout, type HomeApi, type HomeDocument, type HomeLayout, type HomeLayoutView} from './home.ts';
 import {isStaleAnswer, mergeRevalidatedList} from './freshness-actions.ts';
 
+/** Manifest facts only; the revision is the exact parsed Home revision. */
+export type HomeAuthorityObservation = Readonly<{
+  serverId: string; viewerFence: string; revision: HomeDocument['revision'];
+  generation: number; quiet: number; at: number;
+}>;
+export type HomeObservationOptions = Readonly<{
+  serverId: string;
+  isCurrent(): boolean;
+  observe(o: HomeAuthorityObservation): 'accept' | 'retire';
+  retire(): void;
+  mismatch(): void;
+}>;
+export type HomeServiceOptions = Readonly<{
+  timeoutMs?: number; initialLimit?: number; observation?: HomeObservationOptions;
+}>;
+/** Terminal for this admitted Home owner, including ordinary-error fallback paths. */
+export class HomeAuthorityRetired extends Error {
+  constructor() { super('Home authority retired'); this.name = 'HomeAuthorityRetired'; }
+}
+type ManifestBorrower = {
+  current(): boolean;
+  finish(document?: HomeDocument, error?: unknown): void;
+};
+type ManifestFlight = {
+  serial: number; generation: number; quiet: number; controller: AbortController;
+  borrowers: Set<ManifestBorrower>; classifying: boolean; done: Promise<void>;
+};
+
+type DisplayOutcome = 'adopted' | 'not-answered' | 'superseded';
+type DisplayBorrower = {
+  settled: boolean;
+  settle(): Promise<void>;
+  finish(outcome: DisplayOutcome, error?: unknown): void;
+};
+type DisplayFlight = {
+  document: HomeDocument; generation: number; serial: number; quiet: number;
+  controller: AbortController; borrowers: Set<DisplayBorrower>;
+};
+
 /** One original layout editor opening; it never becomes the next editor. */
 export type HomeLayoutWriteLifetime = Readonly<{signal: AbortSignal; isCurrent(): boolean}>;
 const layoutRetired = () => Object.assign(new Error('Home layout opening retired'), {name: 'AbortError'});
@@ -92,7 +131,7 @@ export class HomeService {
   private generation = 0;
   /** Quiet reads are numbered too: a settled read older than the newest accepted quiet read is stale. */
   private quiet = 0;
-  private reading?: {controller: AbortController; promise: Promise<void>};
+  private reading?: {controller: AbortController; promise: Promise<void>; serial: number};
   private pages = new Map<string, AbortController>();
   private disposed = false;
   private hydrationGeneration = 0;
@@ -104,19 +143,27 @@ export class HomeService {
   private readonly api: () => HomeApi;
   private readonly timeoutMs: number;
   private readonly initialLimit: number | undefined;
+  private readonly observation?: HomeObservationOptions;
+  private retired = false;
+  private baseline?: string;
+  private privateReadSerial = 0;
+  private manifest?: ManifestFlight;
+  private display?: DisplayFlight;
 
   /** `api` may be a function so a renewed sign-in is picked up without a new service. */
-  constructor(api: HomeApi | (() => HomeApi), options: {timeoutMs?: number; initialLimit?: number} = {}) {
+  constructor(api: HomeApi | (() => HomeApi), options: HomeServiceOptions = {}) {
     if (options.initialLimit !== undefined && (!Number.isSafeInteger(options.initialLimit) || options.initialLimit < 1 || options.initialLimit > 60)) throw new RangeError('Home initialLimit must be an integer from 1 to 60');
     this.api = typeof api === 'function' ? api : () => api;
     this.timeoutMs = options.timeoutMs ?? 15_000;
     this.initialLimit = options.initialLimit;
+    this.observation = options.observation;
   }
 
   /** Declares the row ids that are visible or about to be. A deferred row loads when first
    * declared; the rest stay as they are until asked for. `undefined` loads every row again. */
   setRowDemand(ids: readonly string[] | undefined): void {
     this.demand = ids ? new Set(ids) : undefined;
+    // oxlint-disable-next-line unicorn/no-useless-spread -- Demand callbacks may change waiting membership.
     for (const [id, start] of [...this.waiting]) if (this.wanted(id)) { this.waiting.delete(id); start(); }
   }
   /** The `for_you` placeholder is replaced by its family's rows; either id asks for it. */
@@ -128,13 +175,233 @@ export class HomeService {
   getSnapshot = (): HomeSnapshot => this.state;
   subscribe = (listener: () => void): (() => void) => { this.listeners.add(listener); return () => { this.listeners.delete(listener); }; };
   private publish(patch: Partial<HomeSnapshot>): void {
-    if (this.disposed) return;
+    if (!this.ownerCurrent()) return;
     this.state = Object.freeze({...this.state, ...patch});
+    if (this.display && this.display.document !== this.state.document) {
+      this.display.controller.abort();
+      this.display = undefined;
+    }
     const listeners = [...this.listeners];
-    for (const listener of listeners) listener();
+    for (const listener of listeners) { if (this.observation && !this.ownerCurrent()) break; listener(); }
+  }
+
+  private ownerCurrent(): boolean {
+    if (this.disposed || this.retired) return false;
+    try { return !this.observation || this.observation.isCurrent(); } catch { return false; }
+  }
+
+  private retireAuthority(): HomeAuthorityRetired {
+    if (!this.retired) {
+      this.retired = true;
+      this.display?.controller.abort();
+      this.manifest?.controller.abort();
+      for (const controller of this.hydrations) controller.abort();
+      this.waiting.clear();
+      for (const controller of this.pages.values()) controller.abort();
+      this.observation?.retire();
+    }
+    return new HomeAuthorityRetired();
+  }
+
+  /** Current, parsed row proof only. Children have their own Home fence. */
+  private rowMismatch(row: HomeDocument['rows'][number], fence: string): boolean {
+    if (row.viewerFence === fence && !row.children?.some(child => child.viewerFence !== fence)) return false;
+    this.observation?.mismatch();
+    return true;
+  }
+
+  private advanceQuiet(): number {
+    this.display?.controller.abort();
+    this.display = undefined;
+    return ++this.quiet;
+  }
+
+  /** One service-owned network flight; callers own only their borrow, never its controller. */
+  private async observedRead(signal: AbortSignal | undefined, witness: () => boolean): Promise<HomeDocument | undefined> {
+    const serial = this.privateReadSerial, generation = this.generation;
+    const admitted = () => this.ownerCurrent() && !signal?.aborted && serial === this.privateReadSerial && generation === this.generation;
+    const current = () => {
+      try { return admitted() && witness() && admitted(); }
+      catch { return false; }
+    };
+    if (!current()) return;
+    // An acknowledged write/load cannot join a pre-barrier read. Wait for release,
+    // then all same-serial waiters converge on exactly one new flight.
+    while (this.manifest && (this.manifest.controller.signal.aborted || this.manifest.serial !== serial || this.manifest.generation !== generation)) {
+      const previous = this.manifest;
+      await new Promise<void>(resolve => {
+        const stop = () => resolve();
+        signal?.addEventListener('abort', stop, {once: true});
+        void previous.done.then(() => { signal?.removeEventListener('abort', stop); resolve(); });
+      });
+      if (!current()) return;
+    }
+    if (!current()) return;
+    let flight = this.manifest;
+    let start = false, release = () => {};
+    if (!flight) {
+      const done = new Promise<void>(resolve => { release = resolve; });
+      flight = {serial, generation, quiet: this.quiet, controller: new AbortController(), borrowers: new Set(), classifying: false, done};
+      this.manifest = flight;
+      start = true;
+    }
+    const owned = flight;
+    const answer = new Promise<HomeDocument | undefined>((resolve, reject) => {
+      const stop = () => { if (!owned.classifying) borrower.finish(); };
+      const borrower: ManifestBorrower = {
+        current,
+        finish: (document, error) => {
+          if (!owned.borrowers.delete(borrower)) return;
+          signal?.removeEventListener('abort', stop);
+          if (!owned.borrowers.size) owned.controller.abort();
+          if (error !== undefined) reject(error); else resolve(document);
+        },
+      };
+      owned.borrowers.add(borrower);
+      signal?.addEventListener('abort', stop, {once: true});
+    });
+    if (start) void this.runManifest(owned, release);
+    return answer;
+  }
+
+  private async runManifest(flight: ManifestFlight, release: () => void): Promise<void> {
+    let document: HomeDocument | undefined, error: unknown;
+    try {
+      document = await this.read(flight.controller.signal);
+      if (![...flight.borrowers].some(borrower => borrower.current())) document = undefined;
+      if (document) {
+        flight.classifying = true;
+        const observation = this.observation!;
+        if (document.serverId !== observation.serverId) throw this.retireAuthority();
+        const verdict = observation.observe(Object.freeze({serverId: document.serverId, viewerFence: document.viewerFence,
+          revision: document.revision, generation: flight.generation, quiet: flight.quiet, at: Date.now()}));
+        if (verdict === 'retire' || !this.ownerCurrent() || this.baseline !== undefined && document.viewerFence !== this.baseline) throw this.retireAuthority();
+        if (Array.from(flight.borrowers).some(borrower => borrower.current())) this.baseline ??= document.viewerFence;
+        else document = undefined;
+      }
+    } catch (caught) { error = caught; }
+    finally {
+      // Release network ownership before resolving any display borrower (and settle).
+      flight.classifying = false;
+      if (this.manifest === flight) this.manifest = undefined;
+      release();
+    }
+    for (const borrower of flight.borrowers) {
+      if (error instanceof HomeAuthorityRetired) borrower.finish(undefined, error);
+      else if (!borrower.current()) borrower.finish();
+      else borrower.finish(document, error);
+    }
+  }
+
+  /** Off-Home authority proof: no snapshot, row, paging or display-ticket changes. */
+  async authority(context: {signal?: AbortSignal; isCurrent(): boolean}): Promise<'answered' | 'superseded'> {
+    if (!this.observation) return 'superseded';
+    const generation = this.generation, serial = this.privateReadSerial;
+    const current = () => generation === this.generation && serial === this.privateReadSerial && context.isCurrent();
+    const fresh = await this.observedRead(context.signal, current);
+    return fresh && this.ownerCurrent() && !context.signal?.aborted && current() ? 'answered' : 'superseded';
+  }
+
+  /** Same shown-document callers share adoption, with independently cancellable waits. */
+  async refresh(context?: {signal?: AbortSignal; settle?: () => Promise<void>}): Promise<DisplayOutcome> {
+    if (!this.ownerCurrent() || context?.signal?.aborted) return 'superseded';
+    const document = this.state.document;
+    if (this.state.phase !== 'ready' || !document) return 'not-answered';
+    // This additive entry has no effect on omitted-option revalidate's old path.
+    if (!this.observation) return this.refreshUnobserved(context);
+    let flight = this.display, start = false;
+    if (!flight || flight.document !== document || !this.displayCurrent(flight)) {
+      const quiet = this.advanceQuiet();
+      flight = {document, quiet, serial: this.privateReadSerial, generation: this.generation,
+        controller: new AbortController(), borrowers: new Set()};
+      this.display = flight;
+      start = true;
+    }
+    const owned = flight;
+    const answer = new Promise<DisplayOutcome>((resolve, reject) => {
+      let settled: Promise<void> | undefined, cancel = () => {};
+      const cancelled = new Promise<void>(yes => { cancel = yes; });
+      const stop = () => borrower.finish('superseded');
+      const borrower: DisplayBorrower = {
+        settled: false,
+        settle: () => {
+          // A cancelled borrow's callback must never start later.
+          if (!owned.borrowers.has(borrower) || owned.controller.signal.aborted) return Promise.resolve();
+          return settled ??= Promise.race([Promise.resolve().then(() => {
+            if (owned.borrowers.has(borrower) && !owned.controller.signal.aborted) return context?.settle?.();
+          }), cancelled]);
+        },
+        finish: (outcome, error) => {
+          if (!owned.borrowers.delete(borrower)) return;
+          context?.signal?.removeEventListener('abort', stop);
+          owned.controller.signal.removeEventListener('abort', cancel);
+          cancel();
+          if (!owned.borrowers.size) owned.controller.abort();
+          if (error !== undefined) reject(error); else resolve(outcome);
+        },
+      };
+      owned.borrowers.add(borrower);
+      context?.signal?.addEventListener('abort', stop, {once: true});
+      owned.controller.signal.addEventListener('abort', cancel, {once: true});
+    });
+    if (start) void this.runDisplay(owned);
+    return answer;
+  }
+
+  private displayCurrent(flight: DisplayFlight): boolean {
+    return this.ownerCurrent() && !flight.controller.signal.aborted && flight.generation === this.generation
+      && flight.serial === this.privateReadSerial && flight.quiet === this.quiet;
+  }
+
+  private async runDisplay(flight: DisplayFlight): Promise<void> {
+    const current = () => this.displayCurrent(flight) && this.state.document === flight.document;
+    let outcome: DisplayOutcome = 'superseded', error: unknown;
+    try {
+      const fresh = await this.observedRead(flight.controller.signal, current);
+      if (!fresh || !current()) return;
+      // A caller joining during settlement shares the same answer, but its own
+      // settle must finish too. Cancelling it releases only its wait.
+      while (current()) {
+        const pending = [...flight.borrowers].filter(borrower => !borrower.settled);
+        if (!pending.length) break;
+        for (const borrower of pending) borrower.settled = true;
+        await Promise.all(pending.map(borrower => borrower.settle()));
+      }
+      if (!current()) return;
+      if (this.state.phase !== 'ready' || !this.state.document) { outcome = 'not-answered'; return; }
+      const merged = mergeHomeDocument(this.state.document, fresh);
+      if (this.display === flight) this.display = undefined;
+      if (merged !== this.state.document) this.publish({document: merged});
+      if (!this.displayCurrent(flight) || this.state.document !== merged) return;
+      this.hydrateRows(fresh, flight.quiet);
+      if (this.displayCurrent(flight)) outcome = 'adopted';
+    } catch (caught) {
+      if (caught instanceof HomeAuthorityRetired || current()) error = caught;
+    } finally {
+      if (this.display === flight) this.display = undefined;
+      for (const borrower of flight.borrowers) borrower.finish(outcome, error);
+    }
+  }
+
+  private async refreshUnobserved(context?: {signal?: AbortSignal; settle?: () => Promise<void>}): Promise<DisplayOutcome> {
+    const generation = this.generation, quiet = this.advanceQuiet();
+    const current = () => this.ownerCurrent() && generation === this.generation && quiet === this.quiet && !context?.signal?.aborted;
+    try {
+      const fresh = await this.read(context?.signal ?? new AbortController().signal);
+      if (!current()) return 'superseded';
+      await context?.settle?.();
+      if (!current()) return 'superseded';
+      if (this.state.phase !== 'ready' || !this.state.document) return 'not-answered';
+      const merged = mergeHomeDocument(this.state.document, fresh);
+      if (merged !== this.state.document) this.publish({document: merged});
+      if (!current()) return 'superseded';
+      this.hydrateRows(fresh, quiet);
+      return current() ? 'adopted' : 'superseded';
+    } catch (error) { if (!current()) return 'superseded'; throw error; }
   }
 
   private hydrateRows(fresh: HomeDocument, quiet?: number): void {
+    if (!this.ownerCurrent()) return;
     const shown = this.state.document;
     if (shown && shown.serverId === fresh.serverId && shown.viewerFence === fresh.viewerFence && fresh.layout.revision < shown.layout.revision) return;
     const epoch = ++this.hydrationGeneration;
@@ -146,7 +413,7 @@ export class HomeService {
     let running = 0;
     const consume = async () => {
       running++;
-      try { while (queue.length && !this.disposed && epoch === this.hydrationGeneration && (quiet === undefined || quiet === this.quiet)) {
+      try { while (queue.length && this.ownerCurrent() && epoch === this.hydrationGeneration && (quiet === undefined || quiet === this.quiet)) {
         const descriptor = queue.shift()!;
         const controller = new AbortController();
         this.hydrations.add(controller);
@@ -162,14 +429,15 @@ export class HomeService {
             }),
           ]);
           const shown = this.state.document;
-          if (this.disposed || mine !== this.generation || (quiet !== undefined && quiet !== this.quiet) || epoch !== this.hydrationGeneration || controller.signal.aborted || !shown || shown.viewerFence !== fresh.viewerFence || shown.serverId !== fresh.serverId || row.viewerFence !== fresh.viewerFence || row.children?.some(child => child.viewerFence !== fresh.viewerFence)) continue;
+          if (!this.ownerCurrent() || mine !== this.generation || (quiet !== undefined && quiet !== this.quiet) || epoch !== this.hydrationGeneration || controller.signal.aborted || !shown || shown.viewerFence !== fresh.viewerFence || shown.serverId !== fresh.serverId) continue;
+          if (this.rowMismatch(row, fresh.viewerFence) || !this.ownerCurrent()) continue;
           const replacements = row.children ?? [row];
           const rows = shown.rows.flatMap(old => old.id === descriptor.id || descriptor.id === 'for_you' && old.family === 'for_you' ? [] : [old]);
           const at = shown.rows.findIndex(old => old.id === descriptor.id || descriptor.id === 'for_you' && old.family === 'for_you');
           rows.splice(Math.max(0, at), 0, ...replacements.filter(next => hasHomeRowContent(next) || next.critical));
           this.publish({document: mergeHomeDocument(shown, Object.freeze({...shown, rows: Object.freeze(rows)})), error: undefined});
         } catch (error) {
-          if(permissionDenied(error)&&!this.disposed&&mine===this.generation&&(quiet===undefined||quiet===this.quiet)&&epoch===this.hydrationGeneration&&!controller.signal.aborted)this.removeRow(descriptor.id);
+          if(permissionDenied(error)&&this.ownerCurrent()&&mine===this.generation&&(quiet===undefined||quiet===this.quiet)&&epoch===this.hydrationGeneration&&!controller.signal.aborted)this.removeRow(descriptor.id);
           // A failed shelf keeps its previous cards. Other shelves continue;
           // the next quiet Home refresh retries the deferred endpoint.
         } finally { if (timer) clearTimeout(timer); controller.signal.removeEventListener('abort', abort); this.hydrations.delete(controller); }
@@ -179,7 +447,7 @@ export class HomeService {
     for (const row of fresh.rows) {
       if (!row.deferred) continue;
       if (this.wanted(row.id)) queue.push(row);
-      else this.waiting.set(row.id, () => { if (epoch === this.hydrationGeneration) { queue.push(row); pump(); } });
+      else this.waiting.set(row.id, () => { if (this.ownerCurrent() && epoch === this.hydrationGeneration) { queue.push(row); pump(); } });
     }
     pump();
   }
@@ -195,14 +463,13 @@ export class HomeService {
     const stop = () => controller.abort();
     signal.addEventListener('abort', stop, {once: true});
     try {
-      return await Promise.race([
-        fetchHome(this.api(), this.initialLimit, controller.signal),
-        new Promise<never>((_, reject) => {
-          abort = () => reject(Object.assign(new Error('home_read_cancelled'), {name: 'AbortError'}));
-          controller.signal.addEventListener('abort', abort, {once: true});
-          timer = setTimeout(() => { reject(Object.assign(new Error('home_read_timeout'), {code: 'request_timeout', retryable: true})); controller.abort(); }, this.timeoutMs);
-        }),
-      ]);
+      if (this.observation && (signal.aborted || !this.ownerCurrent())) throw Object.assign(new Error('home_read_cancelled'), {name: 'AbortError'});
+      const cancellation = new Promise<never>((_, reject) => {
+        abort = () => reject(Object.assign(new Error('home_read_cancelled'), {name: 'AbortError'}));
+        controller.signal.addEventListener('abort', abort, {once: true});
+        timer = setTimeout(() => { reject(Object.assign(new Error('home_read_timeout'), {code: 'request_timeout', retryable: true})); controller.abort(); }, this.timeoutMs);
+      });
+      return await Promise.race([cancellation, fetchHome(this.api(), this.initialLimit, controller.signal)]);
     } finally {
       if (timer) clearTimeout(timer);
       controller.signal.removeEventListener('abort', abort);
@@ -212,29 +479,33 @@ export class HomeService {
 
   /** The first read, or an explicit refresh. `clear` drops what is shown first (another profile's taste was reset). Concurrent calls share one read. */
   load(options: {clear?: boolean} = {}): Promise<void> {
-    if (this.disposed) return Promise.resolve();
-    if (this.reading && !options.clear) return this.reading.promise;
+    if (!this.ownerCurrent()) return Promise.resolve();
+    if (this.reading && !options.clear && (!this.observation || this.reading.serial === this.privateReadSerial)) return this.reading.promise;
     this.reading?.controller.abort();
     const mine = ++this.generation, controller = new AbortController();
+    if (this.observation) this.privateReadSerial++;
     // An explicit load/clear invalidates every outstanding quiet read.
-    this.quiet++;
+    this.advanceQuiet();
     for (const page of this.pages.values()) page.abort();
     this.pages.clear();
+    const ticket = this.quiet, serial = this.privateReadSerial;
+    const current = () => this.ownerCurrent() && mine === this.generation && (!this.observation || ticket === this.quiet && serial === this.privateReadSerial) && !controller.signal.aborted;
     this.publish({phase: 'loading', error: undefined, paging: none, ...(options.clear ? {document: undefined} : {})});
     const promise = (async () => {
       try {
-        const document = await this.read(controller.signal);
-        if (this.disposed || mine !== this.generation) return;
+        const document = this.observation ? await this.observedRead(controller.signal, current) : await this.read(controller.signal);
+        if (!document || !current()) return;
         this.publish({phase: 'ready', document: this.state.document ? mergeHomeDocument(this.state.document, document) : document, error: undefined});
-        this.hydrateRows(document);
+        if (current()) this.hydrateRows(document, this.observation ? ticket : undefined);
       } catch (error) {
-        if (this.disposed || mine !== this.generation || controller.signal.aborted) return;
+        if (error instanceof HomeAuthorityRetired) throw error;
+        if (!current()) return;
         this.publish({phase: 'error', error});
       } finally {
         if (this.reading?.controller === controller) this.reading = undefined;
       }
     })();
-    this.reading = {controller, promise};
+    this.reading = {controller, promise, serial};
     return promise;
   }
 
@@ -242,8 +513,9 @@ export class HomeService {
 
   /** The quiet read: merge the server's current Home into what is shown. Rejects when the read failed; nothing changes then. */
   async revalidate(context?: {signal?: AbortSignal; settle?: () => Promise<void>}): Promise<void> {
+    if (this.observation) { await this.refresh(context); return; }
     if (this.disposed || this.state.phase !== 'ready' || !this.state.document) return;
-    const mine = this.generation, ticket = ++this.quiet, controller = new AbortController(), stop = () => controller.abort();
+    const mine = this.generation, ticket = this.advanceQuiet(), controller = new AbortController(), stop = () => controller.abort();
     const current = () => !this.disposed && mine === this.generation && ticket === this.quiet && !controller.signal.aborted;
     context?.signal?.addEventListener('abort', stop, {once: true});
     try {
@@ -269,14 +541,14 @@ export class HomeService {
     const shown = this.state.document;
     const row = shown?.rows.find(r => r.id === rowId);
     const request = {rowId, requestedCursor: row?.nextCursor};
-    if (this.disposed) return {...request, status: 'ignored', applied: false, reason: 'disposed'};
+    if (!this.ownerCurrent()) return {...request, status: 'ignored', applied: false, reason: 'disposed'};
     if (this.state.phase !== 'ready') return {...request, status: 'refused', applied: false, reason: 'not_ready'};
     if (!shown || !row) return {...request, status: 'refused', applied: false, reason: 'row_missing'};
     if (!row.nextCursor) return {...request, status: 'refused', applied: false, reason: 'no_cursor'};
     if (this.pages.has(rowId)) return {...request, status: 'refused', applied: false, reason: 'already_paging'};
     const mine = this.generation, controller = new AbortController(), cursor = row.nextCursor;
     const ignored = (reason: Extract<HomePageOutcome, {status: 'ignored'}>['reason']): HomePageOutcome => ({...request, status: 'ignored', applied: false, reason});
-    const cancelled = (): HomePageOutcome | undefined => this.disposed ? ignored('disposed') : mine !== this.generation ? ignored('superseded') : controller.signal.aborted ? ignored('aborted') : undefined;
+    const cancelled = (): HomePageOutcome | undefined => !this.ownerCurrent() ? ignored('disposed') : mine !== this.generation ? ignored('superseded') : controller.signal.aborted ? ignored('aborted') : undefined;
     const opposed = (): HomePageOutcome | undefined => {
       const stopped = cancelled();
       if (stopped) return stopped;
@@ -306,7 +578,7 @@ export class HomeService {
       const page = await Promise.race([fetchHomeRow(this.api(), rowId, {cursor,limit:row.limit||undefined,group:row.live?.group||undefined,sourceId:row.seeAll?.type==='guide'?row.seeAll.sourceId:undefined}, controller.signal), cancellation]);
       const outdated = opposed();
       if (outdated) return outdated;
-      if (page.viewerFence !== shown.viewerFence) return ignored('viewer_changed');
+      if ((this.observation ? this.rowMismatch(page, shown.viewerFence) : page.viewerFence !== shown.viewerFence) || !this.ownerCurrent()) return ignored('viewer_changed');
       const next = appendHomeRowPage(row, page);
       const seen = new Set(row.entries.map(entry => entry.id));
       const firstItemId = next.entries.find(entry => !seen.has(entry.id))?.id ?? null;
@@ -319,6 +591,7 @@ export class HomeService {
       if (this.state.document?.rows.find(r => r.id === rowId) !== next) return ignored('row_changed');
       return {...request, status: 'applied', applied: true, firstItemId};
     } catch (error) {
+      if (error instanceof HomeAuthorityRetired) throw error;
       const outdated = opposed();
       if (outdated) return outdated;
       done();
@@ -332,9 +605,13 @@ export class HomeService {
           this.publish({document: Object.freeze({...document, rows: Object.freeze(document.rows.map(r => r.id === rowId ? Object.freeze({...r, nextCursor: ''}) : r))})});
         }
         try {
-          await this.revalidate();
+          if (this.observation) {
+            const outcome = await this.refresh();
+            if (outcome !== 'adopted') return cancelled() ?? ignored('superseded');
+          } else await this.revalidate();
           return cancelled() ?? {...request, status: 'revalidated', applied: false};
-        } catch {
+        } catch (error) {
+          if (error instanceof HomeAuthorityRetired) throw error;
           return cancelled() ?? {...request, status: 'stale', applied: false};
         }
       }
@@ -346,10 +623,17 @@ export class HomeService {
     }
   }
 
-  loadLayout = (signal?: AbortSignal): Promise<HomeLayoutView> => fetchHomeLayout(this.api(), signal);
+  loadLayout = (signal?: AbortSignal): Promise<HomeLayoutView> => {
+    if (!this.observation) return fetchHomeLayout(this.api(), signal);
+    if (!this.ownerCurrent() || signal?.aborted) return Promise.reject(layoutRetired());
+    return fetchHomeLayout(this.api(), signal).then(layout => {
+      if (!this.ownerCurrent() || signal?.aborted) throw layoutRetired();
+      return layout;
+    });
+  };
 
   private assertLayoutCurrent(lifetime?: HomeLayoutWriteLifetime): void {
-    let live = !this.disposed && !lifetime?.signal.aborted;
+    let live = this.ownerCurrent() && !lifetime?.signal.aborted;
     try {if (lifetime && !lifetime.isCurrent()) live = false;} catch {live = false;}
     if (!live) throw layoutRetired();
   }
@@ -360,23 +644,34 @@ export class HomeService {
     if (revision === undefined) throw new Error('Home is not loaded.');
     try {
       const saved = await saveHomeLayout(this.api(), {expectedRevision: revision, rowOrder, hiddenRowIds, idempotencyKey: idempotencyKey()}, lifetime?.signal);
+      this.acknowledgeLayout();
       this.assertLayoutCurrent(lifetime);
       await this.afterLayout(lifetime);this.assertLayoutCurrent(lifetime);return saved;
-    } catch (error) {this.assertLayoutCurrent(lifetime);throw error;}
+    } catch (error) {if (error instanceof HomeAuthorityRetired) throw error;this.assertLayoutCurrent(lifetime);throw error;}
   }
 
   async resetLayout(idempotencyKey: () => string, expectedRevision?: number, lifetime?: HomeLayoutWriteLifetime): Promise<void> {
     this.assertLayoutCurrent(lifetime);
     try {
       await resetHomeLayout(this.api(), idempotencyKey(), lifetime?.signal, expectedRevision);
+      this.acknowledgeLayout();
       this.assertLayoutCurrent(lifetime);
       await this.afterLayout(lifetime);this.assertLayoutCurrent(lifetime);
-    } catch (error) {this.assertLayoutCurrent(lifetime);throw error;}
+    } catch (error) {if (error instanceof HomeAuthorityRetired) throw error;this.assertLayoutCurrent(lifetime);throw error;}
+  }
+
+  private acknowledgeLayout(): void {
+    if (!this.observation) return;
+    // The write was acknowledged even if the editor retired while awaiting it.
+    // Its pre-write reads/shelves can no longer represent current Home.
+    this.privateReadSerial++;
+    this.advanceQuiet();
   }
 
   /** The rows follow a new arrangement at once, without a loading state when Home is already showing. */
   private async afterLayout(lifetime?: HomeLayoutWriteLifetime): Promise<void> {
-    this.quiet++;
+    if (this.observation) { await this.afterObservedLayout(lifetime); return; }
+    this.advanceQuiet();
     if (lifetime) {
       this.assertLayoutCurrent(lifetime);
       if (this.state.phase === 'ready' && this.state.document) {
@@ -384,10 +679,10 @@ export class HomeService {
         try {
           const fresh = await this.read(lifetime.signal);this.assertLayoutCurrent(lifetime);
           if (mine === this.generation && this.state.document) {
-            this.quiet++;
+            this.advanceQuiet();
             this.publish({document: mergeHomeDocument(this.state.document, fresh)});this.hydrateRows(fresh);
           }
-        } catch (error) {this.assertLayoutCurrent(lifetime);throw error;}
+        } catch (error) {if (error instanceof HomeAuthorityRetired) throw error;this.assertLayoutCurrent(lifetime);throw error;}
       }
       // A supplied opening never falls through to load(), whose lifecycle is
       // the persistent Home owner rather than this editor's captured lifetime.
@@ -398,7 +693,7 @@ export class HomeService {
       try {
         const fresh = await this.read(new AbortController().signal);
         if (!this.disposed && mine === this.generation && this.state.document) {
-          this.quiet++;
+          this.advanceQuiet();
           this.publish({document: mergeHomeDocument(this.state.document, fresh)});this.hydrateRows(fresh);
         }
         return;
@@ -407,10 +702,33 @@ export class HomeService {
     await this.load();
   }
 
+  private async afterObservedLayout(lifetime?: HomeLayoutWriteLifetime): Promise<void> {
+    this.assertLayoutCurrent(lifetime);
+    const mine = this.generation, ticket = this.quiet, serial = this.privateReadSerial;
+    const current = () => this.ownerCurrent() && mine === this.generation && ticket === this.quiet && serial === this.privateReadSerial && !lifetime?.signal.aborted && (!lifetime || lifetime.isCurrent());
+    if (this.state.phase === 'ready' && this.state.document) {
+      try {
+        const fresh = await this.observedRead(lifetime?.signal, current);
+        this.assertLayoutCurrent(lifetime);
+        if (!fresh || !current()) return;
+        this.publish({document: mergeHomeDocument(this.state.document!, fresh)});
+        if (current()) this.hydrateRows(fresh, ticket);
+        return;
+      } catch (error) {
+        if (error instanceof HomeAuthorityRetired) throw error;
+        this.assertLayoutCurrent(lifetime);
+        if (lifetime) throw error;
+        if (!current()) return;
+        // Ordinary failures retain the persistent owner's existing load fallback.
+      }
+    }
+    if (!lifetime && current()) await this.load();
+  }
+
   /** Take an entry out of every row at once (an optimistic removal the screen has just asked the server for); returns the way to put the rows back. */
   withoutEntry(entryId: string): () => void {
     const before = this.state.document;
-    if (!before) return () => {};
+    if (!this.ownerCurrent() || !before) return () => {};
     let touched = false;
     const rows = before.rows.map(row => {
       if (!row.entries.some(e => e.id === entryId)) return row;
@@ -420,12 +738,20 @@ export class HomeService {
     if (!touched) return () => {};
     const after = Object.freeze({...before, rows: Object.freeze(rows)});
     this.publish({document: after});
-    return () => { if (this.state.document === after) this.publish({document: before}); else void this.revalidate().catch(() => {}); };
+    return () => {
+      if (!this.ownerCurrent()) return;
+      if (this.state.document === after) this.publish({document: before});
+      else void this.revalidate().catch(error => {
+        // Retirement is terminal and already fenced synchronously; no fallback.
+        if (error instanceof HomeAuthorityRetired) return;
+      });
+    };
   }
 
   dispose(): void {
     this.disposed = true;
-    this.quiet++;
+    this.manifest?.controller.abort();
+    this.advanceQuiet();
     this.hydrationGeneration++;
     for (const controller of this.hydrations) controller.abort();
     this.hydrations.clear();
