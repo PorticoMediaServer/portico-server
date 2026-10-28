@@ -16,6 +16,7 @@ import (
 	"portico.local/server/internal/identity"
 	"portico.local/server/internal/playback"
 	"portico.local/server/internal/playbackv1"
+	"portico.local/server/internal/storage"
 )
 
 // Playback Protocol v1 (Spec — Playback Protocol v1) is served from the typed
@@ -159,7 +160,7 @@ func v1Error(err error) error {
 	switch {
 	case errors.Is(err, catalog.ErrDiscSelectionChanged):
 		code = "revision_mismatch"
-	case errors.Is(err, catalog.ErrSourceBusy):
+	case errors.Is(err, catalog.ErrSourceBusy), errors.Is(err, storage.ErrPlaybackSource), errors.Is(err, storage.ErrPlaybackTimeout), errors.Is(err, storage.ErrBusy):
 		code = "source_unavailable"
 	case errors.Is(err, catalog.ErrDiscPreparing):
 		code = "source_unavailable"
