@@ -70,6 +70,7 @@ func registerReadingFacetQueryRoutes(registry *apikit.Registry, d Dependencies) 
 	}
 	m.ID, m.Method, m.Summary, m.Status = "delete_library_reading_facet_query", "DELETE", "Release this caller's Reading facet interest", 204
 	m.SuccessStatuses, m.ResponseHeaders = nil, nil
+	m.NoResponseBody = true
 	return apikit.RegisterRaw(registry, apikit.RawRoute[struct{}, struct{}]{Metadata: m, Serve: d.deleteReadingFacetQuery})
 }
 

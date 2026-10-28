@@ -123,6 +123,7 @@ type Dependencies struct {
 	// retains the current foreground path until all clients support preparation.
 	PrepareBrowseSelections bool
 	PrepareReadingFacets    bool
+	PrepareReadingBrowse    bool
 	Reading                 *reading.Service
 	Ingestion               *ingestion.Service
 	Playback                *playback.Service
