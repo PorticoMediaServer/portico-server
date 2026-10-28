@@ -61,6 +61,23 @@ function rows(source:Partial<Record<PlaybackInfoField,string|undefined>>,deliver
 
 /** One pure headless projection for every platform. No identity/URL, quality
  * ceiling, receiver capability, output rate or screen mode is synthesized. */
+/** The losses this occurrence actually has: object-audio losses the planner assumed are dropped
+ * when the same occurrence's output observation proves a copied bitstream kept its objects.
+ * Every other loss stays as the server reported it. Notices and the comparison both use this. */
+export function reconciledPlaybackLosses(info:PlaybackInfo,observed:ObservedPlayback|undefined):PlaybackInfo['losses']{
+ if(!info.routes.sound)return info.losses;
+ const source=info.source.audio,target=info.delivered.audio;
+ const copied=info.routes.sound!=='converted'&&source?.codec===target?.codec;
+ const sameFormat=(!source?.profile||!target?.profile||source.profile===target.profile)&&(!source?.variant||!target?.variant||source.variant===target.variant);
+ return info.losses.filter(loss=>{
+  if(loss.feature!=='atmos'&&loss.feature!=='dtsx')return true;
+  // A same-occurrence output observation can disprove the planner's decode
+  // assumption for a copied bitstream. A converted track still lost its objects.
+  // Generic DTS/DTS-HD output does not prove that its DTS:X objects survived.
+  const passthrough=loss.feature==='atmos'&&observed?.audio?.handling==='passthrough'&&observed.audio.codec===target?.codec&&sameFormat;
+  return !(copied&&source?.objectAudio===loss.feature&&(observed?.audio?.objectAudio===loss.feature||passthrough));
+ });
+}
 export function playbackInfoProjection(info:PlaybackInfo,observed:ObservedPlayback|undefined,words:PlaybackInfoWords):PlaybackComparisonProjection {
  const number=new Intl.NumberFormat(words.locale,{maximumFractionDigits:3});
  const picture=(v:PlaybackPictureFacts|undefined):Partial<Record<PlaybackInfoField,string|undefined>>=>{
@@ -81,18 +98,7 @@ export function playbackInfoProjection(info:PlaybackInfo,observed:ObservedPlayba
  if(info.routes.sound){
   const delivered=sound(info.delivered.audio);
   if(observed?.audio)delivered.output=words.output(observed.audio);
-  const source=info.source.audio,target=info.delivered.audio;
-  const copied=info.routes.sound!=='converted'&&source?.codec===target?.codec;
-  const sameFormat=(!source?.profile||!target?.profile||source.profile===target.profile)&&(!source?.variant||!target?.variant||source.variant===target.variant);
-  const losses=info.losses.filter(loss=>{
-   if(loss.feature!=='atmos'&&loss.feature!=='dtsx')return false;
-   // A same-occurrence output observation can disprove the planner's decode
-   // assumption for a copied bitstream. A converted track still lost its objects.
-   // Generic DTS/DTS-HD output does not prove that its DTS:X objects survived.
-   const passthrough=loss.feature==='atmos'&&observed?.audio?.handling==='passthrough'&&observed.audio.codec===target?.codec&&sameFormat;
-   const preserved=copied&&source?.objectAudio===loss.feature&&(observed?.audio?.objectAudio===loss.feature||passthrough);
-   return !preserved;
-  });
+  const losses=reconciledPlaybackLosses(info,observed).filter(loss=>loss.feature==='atmos'||loss.feature==='dtsx');
   sections.push(Object.freeze({kind:'sound',route:info.routes.sound,rows:rows(sound(info.source.audio),delivered,['format','channels','sampleRate','output']),losses:Object.freeze(losses.map(loss=>words.loss(loss)))}));
  }
  if(info.routes.subtitles){

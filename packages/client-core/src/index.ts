@@ -2362,7 +2362,7 @@ export {librarySonicStatus,type LibrarySonicStatusLine} from './server-admin/lib
 export {parsePlaybackInfo} from './playback-v1/playback-info.ts';
 export type {PlaybackInfo, PlaybackRoute, PlaybackPictureFacts, PlaybackSoundFacts, PlaybackSubtitleFacts, PlaybackMediaFacts, PlaybackReplacement} from './playback-v1/playback-info.ts';
 
-export {playbackInfoProjection} from './playback-info-projection.ts';
+export {playbackInfoProjection, reconciledPlaybackLosses} from './playback-info-projection.ts';
 export type {PlaybackInfoWords, PlaybackComparisonProjection, PlaybackInfoRow, PlaybackInfoField} from './playback-info-projection.ts';
 export {videoAudioChannelName} from './video-track-labels.ts';
 

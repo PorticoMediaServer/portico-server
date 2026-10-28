@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {playbackInfoProjection,type PlaybackInfoWords} from '../src/playback-info-projection.ts';
+import {playbackInfoProjection,reconciledPlaybackLosses,type PlaybackInfoWords} from '../src/playback-info-projection.ts';
 import {parsePlaybackInfo} from '../src/playback-v1/playback-info.ts';
 
 const raw=()=>({route:'converted',routes:{picture:'converted',sound:'converted',subtitles:'original'},reason:{kind:'format'},
@@ -73,4 +73,11 @@ test('a copied codec with a different delivered variant or profile retains loss 
   assert.deepEqual(playbackInfoProjection(info,{audio:{handling:'passthrough',codec:'eac3'}},words).sections[0]!.losses,['atmos lost']);
   assert.deepEqual(playbackInfoProjection(info,{audio:{handling:'passthrough',codec:'eac3',objectAudio:'atmos'}},words).sections[0]!.losses,[]);
  }
+});
+
+test('the exported reconciliation is what the comparison shows, and keeps every other loss',()=>{
+ const info=parsePlaybackInfo({route:'repackaged',routes:{sound:'repackaged'},reason:{kind:'container'},source:{audio:{codec:'eac3',objectAudio:'atmos'}},delivered:{audio:{codec:'eac3',delivery:'decoded'}},losses:[{feature:'atmos',replacement:{audioCodec:'eac3'}},{feature:'hdr',replacement:{dynamicRange:'sdr'}}],network:'home',basis:'committed_delivery_plan'});assert.ok(info);
+ assert.deepEqual(reconciledPlaybackLosses(info,{audio:{handling:'passthrough',codec:'eac3'}}).map(loss=>loss.feature),['hdr']);
+ assert.deepEqual(reconciledPlaybackLosses(info,undefined).map(loss=>loss.feature),['atmos','hdr']);
+ assert.deepEqual(reconciledPlaybackLosses({...info,routes:{}},{audio:{handling:'passthrough',codec:'eac3'}}).map(loss=>loss.feature),['atmos','hdr'],'no sound route: nothing is reconciled');
 });
