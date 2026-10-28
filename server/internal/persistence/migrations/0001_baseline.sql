@@ -10956,3 +10956,205 @@ CREATE INDEX inventory_reading_seals_job ON inventory_reading_seals(job_id,top_l
 CREATE TRIGGER inventory_reading_seal_immutable BEFORE UPDATE ON inventory_reading_seals BEGIN
  SELECT RAISE(ABORT,'Reading closure seals are immutable');
 END;
+
+-- P2-52 MusicBrainz base accounting. Fresh baseline only; no retained-data backfill.
+-- Acceptance is positivity, never the cardinality of these symmetric references.
+CREATE TABLE mb_evidence_totals(
+ singleton INTEGER PRIMARY KEY CHECK(singleton=1),
+ releases INTEGER NOT NULL CHECK(releases>=0),
+ recordings INTEGER NOT NULL CHECK(recordings>=0),
+ charge INTEGER NOT NULL CHECK(charge>=0)
+) STRICT;
+INSERT INTO mb_evidence_totals VALUES(1,0,0,0);
+CREATE TABLE mb_release_accounting(
+ revision_id TEXT PRIMARY KEY REFERENCES mb_release_evidence(revision_id) ON DELETE CASCADE,
+ charge INTEGER NOT NULL CHECK(charge>=512),
+ direct_refs INTEGER NOT NULL DEFAULT 0 CHECK(direct_refs>=0)
+) STRICT;
+CREATE TABLE mb_recording_accounting(
+ revision_id TEXT PRIMARY KEY REFERENCES mb_recording_evidence(revision_id) ON DELETE CASCADE,
+ charge INTEGER NOT NULL CHECK(charge>=512),
+ direct_refs INTEGER NOT NULL DEFAULT 0 CHECK(direct_refs>=0),
+ release_refs INTEGER NOT NULL DEFAULT 0 CHECK(release_refs>=0)
+) STRICT;
+-- Both the grouped window and any exact pair probe start with the release.
+-- A recording-only index would examine unrelated shared-release tracks.
+CREATE INDEX mb_release_track_release_recording ON mb_release_tracks(release_revision,recording_revision);
+CREATE TRIGGER mb_account_release_insert AFTER INSERT ON mb_release_accounting
+BEGIN
+ UPDATE mb_evidence_totals SET releases=releases+1,charge=charge+NEW.charge WHERE singleton=1;
+END;
+CREATE TRIGGER mb_account_release_delete AFTER DELETE ON mb_release_accounting WHEN OLD.direct_refs=0
+BEGIN
+ UPDATE mb_evidence_totals SET releases=releases-1,charge=charge-OLD.charge WHERE singleton=1;
+END;
+CREATE TRIGGER mb_account_release_update AFTER UPDATE OF charge,direct_refs ON mb_release_accounting
+WHEN OLD.charge<>NEW.charge OR OLD.direct_refs<>NEW.direct_refs
+BEGIN
+ UPDATE mb_evidence_totals SET
+ releases=releases+(NEW.direct_refs=0)-(OLD.direct_refs=0),
+ charge=charge+(NEW.direct_refs=0)*NEW.charge-(OLD.direct_refs=0)*OLD.charge
+ WHERE singleton=1 AND (OLD.direct_refs=0 OR NEW.direct_refs=0);
+END;
+-- Named indivisible exception: one old and one new release, each <=10k tracks.
+-- No accepted-link scan. Repeated recordings are grouped inside this release.
+CREATE TRIGGER mb_account_release_acceptance AFTER UPDATE OF direct_refs ON mb_release_accounting
+WHEN (OLD.direct_refs=0)<>(NEW.direct_refs=0)
+BEGIN
+ UPDATE mb_recording_accounting
+ SET release_refs=release_refs+refs.n*CASE WHEN NEW.direct_refs>0 THEN 1 ELSE -1 END
+ FROM (SELECT recording_revision,count(*) AS n FROM mb_release_tracks INDEXED BY mb_release_track_release_recording
+       WHERE release_revision=NEW.revision_id GROUP BY recording_revision) AS refs
+ WHERE revision_id=refs.recording_revision;
+END;
+CREATE TRIGGER mb_account_recording_insert AFTER INSERT ON mb_recording_accounting
+BEGIN
+ UPDATE mb_evidence_totals SET recordings=recordings+1,charge=charge+NEW.charge WHERE singleton=1;
+END;
+CREATE TRIGGER mb_account_recording_delete AFTER DELETE ON mb_recording_accounting
+WHEN OLD.direct_refs=0 AND OLD.release_refs=0
+BEGIN
+ UPDATE mb_evidence_totals SET recordings=recordings-1,charge=charge-OLD.charge WHERE singleton=1;
+END;
+CREATE TRIGGER mb_account_recording_update AFTER UPDATE OF charge,direct_refs,release_refs ON mb_recording_accounting
+WHEN (OLD.charge<>NEW.charge OR OLD.direct_refs<>NEW.direct_refs OR OLD.release_refs<>NEW.release_refs)
+ AND ((OLD.direct_refs=0 AND OLD.release_refs=0) OR (NEW.direct_refs=0 AND NEW.release_refs=0))
+BEGIN
+ UPDATE mb_evidence_totals SET
+ recordings=recordings+(NEW.direct_refs=0 AND NEW.release_refs=0)-(OLD.direct_refs=0 AND OLD.release_refs=0),
+ charge=charge+(NEW.direct_refs=0 AND NEW.release_refs=0)*NEW.charge-(OLD.direct_refs=0 AND OLD.release_refs=0)*OLD.charge
+ WHERE singleton=1;
+END;
+
+CREATE TRIGGER mb_account_release_evidence_insert AFTER INSERT ON mb_release_evidence
+BEGIN
+ INSERT INTO mb_release_accounting(revision_id,charge) VALUES(NEW.revision_id,length(CAST(NEW.payload AS BLOB))*8+512);
+END;
+
+CREATE TRIGGER mb_account_recording_evidence_insert AFTER INSERT ON mb_recording_evidence
+BEGIN
+ INSERT INTO mb_recording_accounting(revision_id,charge) VALUES(NEW.revision_id,length(CAST(NEW.payload AS BLOB))*8+512);
+END;
+
+CREATE TRIGGER mb_account_mb_recording_credits_insert AFTER INSERT ON mb_recording_credits
+BEGIN
+ UPDATE mb_recording_accounting SET charge=charge+512 WHERE revision_id=NEW.revision_id;
+END;
+
+CREATE TRIGGER mb_account_mb_recording_credits_delete AFTER DELETE ON mb_recording_credits
+BEGIN
+ UPDATE mb_recording_accounting SET charge=charge-512 WHERE revision_id=OLD.revision_id;
+END;
+
+CREATE TRIGGER mb_account_mb_release_credits_insert AFTER INSERT ON mb_release_credits
+BEGIN
+ UPDATE mb_release_accounting SET charge=charge+512 WHERE revision_id=NEW.revision_id;
+END;
+
+CREATE TRIGGER mb_account_mb_release_credits_delete AFTER DELETE ON mb_release_credits
+BEGIN
+ UPDATE mb_release_accounting SET charge=charge-512 WHERE revision_id=OLD.revision_id;
+END;
+
+CREATE TRIGGER mb_account_mb_release_group_types_insert AFTER INSERT ON mb_release_group_types
+BEGIN
+ UPDATE mb_release_accounting SET charge=charge+512 WHERE revision_id=NEW.release_revision;
+END;
+
+CREATE TRIGGER mb_account_mb_release_group_types_delete AFTER DELETE ON mb_release_group_types
+BEGIN
+ UPDATE mb_release_accounting SET charge=charge-512 WHERE revision_id=OLD.release_revision;
+END;
+
+CREATE TRIGGER mb_account_mb_release_media_insert AFTER INSERT ON mb_release_media
+BEGIN
+ UPDATE mb_release_accounting SET charge=charge+512 WHERE revision_id=NEW.release_revision;
+END;
+
+CREATE TRIGGER mb_account_mb_release_media_delete AFTER DELETE ON mb_release_media
+BEGIN
+ UPDATE mb_release_accounting SET charge=charge-512 WHERE revision_id=OLD.release_revision;
+END;
+
+CREATE TRIGGER mb_account_mb_release_tracks_insert AFTER INSERT ON mb_release_tracks
+BEGIN
+ UPDATE mb_release_accounting SET charge=charge+512 WHERE revision_id=NEW.release_revision;
+ UPDATE mb_recording_accounting SET release_refs=release_refs+1
+ WHERE revision_id=NEW.recording_revision
+ AND EXISTS(SELECT 1 FROM mb_release_accounting WHERE revision_id=NEW.release_revision AND direct_refs>0);
+END;
+
+CREATE TRIGGER mb_account_mb_release_tracks_delete AFTER DELETE ON mb_release_tracks
+BEGIN
+ UPDATE mb_release_accounting SET charge=charge-512 WHERE revision_id=OLD.release_revision;
+ UPDATE mb_recording_accounting SET release_refs=release_refs-1
+ WHERE revision_id=OLD.recording_revision
+ AND EXISTS(SELECT 1 FROM mb_release_accounting WHERE revision_id=OLD.release_revision AND direct_refs>0);
+END;
+
+CREATE TRIGGER mb_account_mb_track_credits_insert AFTER INSERT ON mb_track_credits
+BEGIN
+ UPDATE mb_release_accounting SET charge=charge+512 WHERE revision_id=NEW.release_revision;
+END;
+
+CREATE TRIGGER mb_account_mb_track_credits_delete AFTER DELETE ON mb_track_credits
+BEGIN
+ UPDATE mb_release_accounting SET charge=charge-512 WHERE revision_id=OLD.release_revision;
+END;
+
+CREATE TRIGGER mb_account_mb_album_links_release_revision_insert AFTER INSERT ON mb_album_links
+WHEN NEW.release_revision IS NOT NULL
+BEGIN
+ UPDATE mb_release_accounting SET direct_refs=direct_refs+1 WHERE revision_id=NEW.release_revision;
+END;
+
+CREATE TRIGGER mb_account_mb_album_links_release_revision_delete AFTER DELETE ON mb_album_links
+WHEN OLD.release_revision IS NOT NULL
+BEGIN
+ UPDATE mb_release_accounting SET direct_refs=direct_refs-1 WHERE revision_id=OLD.release_revision;
+END;
+
+CREATE TRIGGER mb_account_mb_album_links_release_revision_update AFTER UPDATE OF release_revision ON mb_album_links
+WHEN OLD.release_revision IS NOT NEW.release_revision
+BEGIN
+ UPDATE mb_release_accounting SET direct_refs=direct_refs-1 WHERE revision_id=OLD.release_revision;
+ UPDATE mb_release_accounting SET direct_refs=direct_refs+1 WHERE revision_id=NEW.release_revision;
+END;
+
+CREATE TRIGGER mb_account_mb_song_links_release_revision_insert AFTER INSERT ON mb_song_links
+WHEN NEW.release_revision IS NOT NULL
+BEGIN
+ UPDATE mb_release_accounting SET direct_refs=direct_refs+1 WHERE revision_id=NEW.release_revision;
+END;
+
+CREATE TRIGGER mb_account_mb_song_links_release_revision_delete AFTER DELETE ON mb_song_links
+WHEN OLD.release_revision IS NOT NULL
+BEGIN
+ UPDATE mb_release_accounting SET direct_refs=direct_refs-1 WHERE revision_id=OLD.release_revision;
+END;
+
+CREATE TRIGGER mb_account_mb_song_links_release_revision_update AFTER UPDATE OF release_revision ON mb_song_links
+WHEN OLD.release_revision IS NOT NEW.release_revision
+BEGIN
+ UPDATE mb_release_accounting SET direct_refs=direct_refs-1 WHERE revision_id=OLD.release_revision;
+ UPDATE mb_release_accounting SET direct_refs=direct_refs+1 WHERE revision_id=NEW.release_revision;
+END;
+
+CREATE TRIGGER mb_account_mb_song_links_recording_revision_insert AFTER INSERT ON mb_song_links
+WHEN NEW.recording_revision IS NOT NULL
+BEGIN
+ UPDATE mb_recording_accounting SET direct_refs=direct_refs+1 WHERE revision_id=NEW.recording_revision;
+END;
+
+CREATE TRIGGER mb_account_mb_song_links_recording_revision_delete AFTER DELETE ON mb_song_links
+WHEN OLD.recording_revision IS NOT NULL
+BEGIN
+ UPDATE mb_recording_accounting SET direct_refs=direct_refs-1 WHERE revision_id=OLD.recording_revision;
+END;
+
+CREATE TRIGGER mb_account_mb_song_links_recording_revision_update AFTER UPDATE OF recording_revision ON mb_song_links
+WHEN OLD.recording_revision IS NOT NEW.recording_revision
+BEGIN
+ UPDATE mb_recording_accounting SET direct_refs=direct_refs-1 WHERE revision_id=OLD.recording_revision;
+ UPDATE mb_recording_accounting SET direct_refs=direct_refs+1 WHERE revision_id=NEW.recording_revision;
+END;

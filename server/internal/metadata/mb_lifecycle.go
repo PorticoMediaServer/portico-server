@@ -127,7 +127,9 @@ func (s *Service) mbReconcileAlbums(ctx context.Context) (bool, error) {
 	return true, nil
 }
 func (s *Service) cleanupMusicBrainz(ctx context.Context) error {
-	gated2, e := dbwork.Begin(ctx, s.db, dbwork.ClassBackgroundMedia)
+	// A release can own 10,000 tracks. Never multiply the indivisible record
+	// exception by the old 100-release cleanup batch.
+	gated2, e := dbwork.Begin(dbwork.WithPlan(ctx, mbPublicationAccountingPlan), s.db, dbwork.ClassBackgroundMedia)
 	if e != nil {
 		return e
 	}
@@ -145,7 +147,7 @@ func (s *Service) cleanupMusicBrainz(ctx context.Context) error {
 			return e
 		}
 	}
-	if _, e = tx.ExecContext(ctx, `DELETE FROM mb_release_evidence WHERE revision_id IN(SELECT r.revision_id FROM mb_release_evidence r WHERE r.observed_at<? AND NOT EXISTS(SELECT 1 FROM mb_album_links l WHERE l.release_revision=r.revision_id) AND NOT EXISTS(SELECT 1 FROM mb_song_links l WHERE l.release_revision=r.revision_id) AND NOT EXISTS(SELECT 1 FROM mb_release_aliases a WHERE a.evidence_revision=r.revision_id) AND NOT EXISTS(SELECT 1 FROM mb_publication_operations o WHERE o.accepted_release_revision=r.revision_id OR o.result_release_revision=r.revision_id) AND NOT EXISTS(SELECT 1 FROM mb_album_reconciliations c WHERE c.release_revision=r.revision_id) ORDER BY r.observed_at,r.revision_id LIMIT 100)`, cutoff); e != nil {
+	if _, e = tx.ExecContext(ctx, `DELETE FROM mb_release_evidence WHERE revision_id IN(SELECT r.revision_id FROM mb_release_evidence r JOIN mb_release_accounting a ON a.revision_id=r.revision_id WHERE r.observed_at<? AND a.direct_refs=0 AND NOT EXISTS(SELECT 1 FROM mb_release_aliases a WHERE a.evidence_revision=r.revision_id) AND NOT EXISTS(SELECT 1 FROM mb_publication_operations o WHERE o.accepted_release_revision=r.revision_id OR o.result_release_revision=r.revision_id) AND NOT EXISTS(SELECT 1 FROM mb_album_reconciliations c WHERE c.release_revision=r.revision_id) ORDER BY r.observed_at,r.revision_id LIMIT 1)`, cutoff); e != nil {
 		return e
 	}
 	if _, e = tx.ExecContext(ctx, `DELETE FROM mb_recording_evidence WHERE revision_id IN(SELECT r.revision_id FROM mb_recording_evidence r WHERE r.observed_at<? AND NOT EXISTS(SELECT 1 FROM mb_song_links l WHERE l.recording_revision=r.revision_id) AND NOT EXISTS(SELECT 1 FROM mb_release_tracks t WHERE t.recording_revision=r.revision_id) AND NOT EXISTS(SELECT 1 FROM mb_recording_aliases a WHERE a.evidence_revision=r.revision_id) AND NOT EXISTS(SELECT 1 FROM mb_publication_operations o WHERE o.accepted_recording_revision=r.revision_id OR o.result_recording_revision=r.revision_id) ORDER BY r.observed_at,r.revision_id LIMIT 100)`, cutoff); e != nil {
