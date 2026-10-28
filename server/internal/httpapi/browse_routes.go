@@ -242,6 +242,17 @@ func (d Dependencies) browseHandler(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
+	if d.PrepareReadingBrowse {
+		var kind string
+		if err := d.DB.QueryRowContext(r.Context(), `SELECT kind FROM libraries WHERE id=?`, r.PathValue("id")).Scan(&kind); err != nil {
+			browseFailure(w, err)
+			return
+		}
+		if kind == "book" || kind == "comic" {
+			d.readingBrowsePreparedHandler(w, r)
+			return
+		}
+	}
 	var body browseRequestBody
 	if e := decode(w, r, &body); e != nil {
 		failure(w, e)

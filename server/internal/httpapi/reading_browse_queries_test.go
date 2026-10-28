@@ -474,3 +474,42 @@ func TestReadingBrowseReadyDeliveryRefusesAggregateAndGiantWithoutLeaseLeak(t *t
 		}
 	}
 }
+
+func TestReadingBrowsePublicCohortDispatchAndProofRefusal(t *testing.T) {
+	f := newReadingFixture(t, "book", "pdf")
+	readingSeriesDrain(t, f)
+	path := "/v1/libraries/" + f.library + "/browse"
+	body := map[string]any{"pivot": "books", "limit": 1, "range": map[string]any{"start": 0}}
+	oracle := preparedReadingHTTP(t, New(f.d), "POST", path, f.f.owner.AccessToken, body, nil)
+	if oracle.Code != 200 {
+		t.Fatal(oracle.Code, oracle.Body.String())
+	}
+	store, release := readingFacetTestStore(t, f, true)
+	f.d.PrepareReadingBrowse = true
+	h := New(f.d)
+	pending := preparedReadingHTTP(t, h, "POST", path, f.f.owner.AccessToken, body, nil)
+	var envelope ReadingBrowsePreparing
+	if pending.Code != 202 || json.Unmarshal(pending.Body.Bytes(), &envelope) != nil || envelope.State != "preparing" || envelope.Kind != "reading-browse-preparing" || pending.Header().Get("Retry-After") != "1" || pending.Header().Get("Location") == "" {
+		t.Fatal(pending.Code, pending.Header(), pending.Body.String())
+	}
+	body["selectionBasis"] = strings.Repeat("a", 64)
+	refused := preparedReadingHTTP(t, h, "POST", path, f.f.owner.AccessToken, body, nil)
+	if refused.Code != 409 {
+		t.Fatal("supplied whole-selection proof was ignored", refused.Code, refused.Body.String())
+	}
+	release()
+	ready := readingFacetReady(t, f, h, pending.Header().Get("Location"))
+	var want, got catalog.BrowseResult
+	if err := json.Unmarshal(oracle.Body.Bytes(), &want); err != nil {
+		t.Fatal(err)
+	}
+	if err := json.Unmarshal(ready.Body.Bytes(), &got); err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(want, got) {
+		t.Fatalf("prepared public browse changed page: want=%+v got=%+v", want, got)
+	}
+	if store.Stats().Deliveries != 0 {
+		t.Fatal("public page leaked delivery", store.Stats())
+	}
+}

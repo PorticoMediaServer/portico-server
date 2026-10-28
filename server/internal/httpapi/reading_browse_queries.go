@@ -53,10 +53,10 @@ func (r readingBrowseQueryResponse) JSONSchema() map[string]any {
 // The existing foreground POST browse handler is deliberately unchanged.
 func registerReadingBrowseQueryRoutes(registry *apikit.Registry, d Dependencies) error {
 	failures := []string{"invalid_request", "unauthorized", "not_permitted", "not_found", "revision_mismatch", "stale_continuation", "search_busy", "internal"}
-	if err := apikit.RegisterRaw(registry, apikit.RawRoute[noBody, readingBrowseQueryResponse]{Metadata: apikit.Metadata{Admission: laneBrowsing, ID: "get_library_reading_browse_query", Method: "GET", Path: "/v1/libraries/{id}/reading-browse-queries/{queryId}", Summary: "Read an exact prepared Reading browse page", Access: apikit.Device, Requires: apikit.ScopeRead, Lane: apikit.Browsing, Cost: apikit.PageSized, Status: 200, SuccessStatuses: []int{202}, ResponseHeaders: []apikit.ResponseHeader{{Status: 202, Name: "Retry-After", Description: "Minimum polling delay", Required: true}, {Status: 202, Name: "Location", Description: "Library-scoped poll path", Required: true}}, Errors: failures}, Serve: d.readingBrowseQueryHandler}); err != nil {
+	if err := apikit.RegisterRaw(registry, apikit.RawRoute[noBody, readingBrowseQueryResponse]{Metadata: apikit.Metadata{Audience: apikit.Clients, Admission: laneBrowsing, ID: "get_library_reading_browse_query", Method: "GET", Path: "/v1/libraries/{id}/reading-browse-queries/{queryId}", Summary: "Read an exact prepared Reading browse page", Access: apikit.Device, Requires: apikit.ScopeRead, Lane: apikit.Browsing, Cost: apikit.PageSized, Status: 200, SuccessStatuses: []int{202}, ResponseHeaders: []apikit.ResponseHeader{{Status: 202, Name: "Retry-After", Description: "Minimum polling delay", Required: true}, {Status: 202, Name: "Location", Description: "Library-scoped poll path", Required: true}}, Errors: failures}, Serve: d.readingBrowseQueryHandler}); err != nil {
 		return err
 	}
-	return apikit.RegisterRaw(registry, apikit.RawRoute[noBody, noBody]{Metadata: apikit.Metadata{Admission: laneBrowsing, ID: "delete_library_reading_browse_query", Method: "DELETE", Path: "/v1/libraries/{id}/reading-browse-queries/{queryId}", Summary: "Cancel this caller's Reading browse preparation", Access: apikit.Device, Requires: apikit.ScopeRead, Lane: apikit.Browsing, Cost: apikit.Constant, Status: 204, NoResponseBody: true, Errors: failures}, Serve: d.readingBrowseQueryHandler})
+	return apikit.RegisterRaw(registry, apikit.RawRoute[noBody, noBody]{Metadata: apikit.Metadata{Audience: apikit.Clients, Admission: laneBrowsing, ID: "delete_library_reading_browse_query", Method: "DELETE", Path: "/v1/libraries/{id}/reading-browse-queries/{queryId}", Summary: "Cancel this caller's Reading browse preparation", Access: apikit.Device, Requires: apikit.ScopeRead, Lane: apikit.Browsing, Cost: apikit.Constant, Status: 204, NoResponseBody: true, Errors: failures}, Serve: d.readingBrowseQueryHandler})
 }
 func (d Dependencies) readingCountViewer(ctx context.Context, p identity.Principal, library string) (catalog.Viewer, error) {
 	var out catalog.Viewer
@@ -118,6 +118,12 @@ func (d Dependencies) readingBrowsePreparedHandler(w http.ResponseWriter, r *htt
 	var body browseRequestBody
 	if err := decode(w, r, &body); err != nil {
 		failure(w, err)
+		return
+	}
+	// Reading has no whole-view query selector. Never downgrade a supplied
+	// held proof into an unrelated prepared page after a library-kind change.
+	if body.SelectionBasis != "" {
+		readingBrowsePreparationFailure(w, catalog.ErrStaleContinuation)
 		return
 	}
 	query, err := catalog.ParseBrowseQuery(body.Query, "query")
