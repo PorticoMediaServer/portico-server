@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"encoding/hex"
 	"encoding/json"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
@@ -20,7 +21,7 @@ const integrationInlineSources = 16
 // all native kinds in the selected scope; an omitted Limit still means one page.
 type IntegrationItemQuery struct {
 	Sort, Order, AddedAfter, AddedBefore                                 string
-	IncludeFiles                                                         bool
+	IncludeFiles, HasPaths                                               bool
 	IDs                                                                  []string
 	LibraryID, LibraryKind, Kind, ParentID, Provider, ProviderID, Search string
 	Year                                                                 int
@@ -123,6 +124,12 @@ func (s *Service) QueryIntegrationItems(v Viewer, q IntegrationItemQuery, paths 
 	visible, args := v.entityVisibilitySQL("b.entity_id", "cl.library_id")
 	where := `e.retired=0 AND cl.retired=0 AND ` + visible + recordingsClause("e.id", v.Restrictions)
 	add := func(sql string, values ...any) { where += " AND " + sql; args = append(args, values...) }
+	if q.HasPaths {
+		if !paths {
+			return out, &ErrTitleQuery{Field: "hasPaths"}
+		}
+		add(`(EXISTS(SELECT 1 FROM catalog_asset_links path_link JOIN catalog_assets path_asset ON path_asset.id=path_link.asset_id WHERE path_link.entity_id=e.id AND path_link.available=1 AND path_asset.available=1) OR EXISTS(SELECT 1 FROM catalog_identities path_identity JOIN library_sources path_source ON path_source.library_id=cl.library_id AND path_source.enabled=1 WHERE path_identity.public_id=e.public_id AND substr(path_identity.source_key,1,length('show:folder:'||path_source.id||':'))='show:folder:'||path_source.id||':'))`)
+	}
 	if q.LibraryID != "" {
 		if !v.AllowsLibrary(q.LibraryID) {
 			return out, ErrTitleLibrary
@@ -391,6 +398,39 @@ func (s *Service) integrationDecorate(items []IntegrationItem, v Viewer, revisio
 	}
 	if !files {
 		return nil
+	}
+	// Show folder identities are maintained native facts, including aliases
+	// retained after provider merges. Do not infer a series folder from a title
+	// or from whichever episode happened to be on the first page.
+	if paths {
+		rows, e := s.read().QueryContext(s.Context(), `SELECT requested.value,s.root,substr(i.source_key,length('show:folder:'||s.id||':')+1) FROM json_each(?) requested JOIN catalog_entities e ON e.public_id=pid_blob(requested.value) JOIN catalog_libraries cl ON cl.id=e.library_id JOIN catalog_identities i ON i.public_id=e.public_id JOIN library_sources s ON s.library_id=cl.library_id AND s.enabled=1 WHERE substr(i.source_key,1,length('show:folder:'||s.id||':'))='show:folder:'||s.id||':' ORDER BY requested.key,s.id,i.source_key LIMIT 6401`, idsJSON(ids))
+		if e != nil {
+			return e
+		}
+		count := 0
+		for rows.Next() {
+			count++
+			if count > 6400 {
+				rows.Close()
+				return &ErrTitleQuery{Field: "paths"}
+			}
+			var id, root, relative string
+			if e = rows.Scan(&id, &root, &relative); e != nil {
+				rows.Close()
+				return e
+			}
+			relative = filepath.FromSlash(relative)
+			if relative == "." || !filepath.IsLocal(relative) {
+				rows.Close()
+				return &ErrTitleQuery{Field: "paths"}
+			}
+			items[byID[id]].Paths = append(items[byID[id]].Paths, filepath.Join(root, relative))
+		}
+		e = rows.Err()
+		rows.Close()
+		if e != nil {
+			return e
+		}
 	}
 	// Read 17 sources per authorized title in a single SQL batch, then emit
 	// 16 and a signed continuation. LIMIT sits inside the indexed link lookup.

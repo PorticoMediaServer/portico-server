@@ -526186,6 +526186,14 @@
           },
           {
             "in": "query",
+            "name": "hasPaths",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
             "name": "cursor",
             "required": false,
             "schema": {
@@ -527922,6 +527930,14 @@
           {
             "in": "query",
             "name": "includeFiles",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "hasPaths",
             "required": false,
             "schema": {
               "type": "string"

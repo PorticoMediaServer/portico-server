@@ -222,7 +222,24 @@ func (d Dependencies) compatibilityItemsQuery(r *http.Request, q url.Values, mod
 		native.Set("provider", strings.ToLower(pair[0]))
 		native.Set("providerId", pair[1])
 	}
-	if q.Get("sortby") == "DateCreated" || strings.Contains(mode, "latest") {
+	switch strings.ToLower(q.Get("sortby")) {
+	case "":
+	case "datecreated":
+		native.Set("sort", "added")
+	case "sortname", "name":
+		native.Set("sort", "title")
+	default:
+		return nil, &apierror.Error{Code: "invalid_request"}
+	}
+	switch strings.ToLower(q.Get("sortorder")) {
+	case "", "ascending":
+		native.Set("order", "asc")
+	case "descending":
+		native.Set("order", "desc")
+	default:
+		return nil, &apierror.Error{Code: "invalid_request"}
+	}
+	if strings.Contains(mode, "latest") {
 		native.Set("sort", "added")
 		native.Set("order", "desc")
 	}
@@ -231,6 +248,9 @@ func (d Dependencies) compatibilityItemsQuery(r *http.Request, q url.Values, mod
 	}
 	if fields := strings.ToLower(q.Get("fields")); strings.Contains(fields, "path") || strings.Contains(fields, "mediasources") {
 		native.Set("includeFiles", "true")
+		if strings.Contains(fields, "path") && q.Get("anyprovideridequals") == "" {
+			native.Set("hasPaths", "true")
+		}
 	}
 	return native, nil
 }

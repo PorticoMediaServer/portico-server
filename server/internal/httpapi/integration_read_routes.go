@@ -88,7 +88,7 @@ func registerIntegrationReads(registry *apikit.Registry, d Dependencies) error {
 	}}); err != nil {
 		return err
 	}
-	query := []string{"ids", "libraryId", "libraryKind", "kind", "parentId", "provider", "providerId", "year", "search", "sort", "order", "addedAfter", "addedBefore", "includeFiles", "cursor", "limit"}
+	query := []string{"ids", "libraryId", "libraryKind", "kind", "parentId", "provider", "providerId", "year", "search", "sort", "order", "addedAfter", "addedBefore", "includeFiles", "hasPaths", "cursor", "limit"}
 	if err := apikit.Register(registry, apikit.Route[struct{}, catalog.IntegrationItemPage]{Metadata: integrationReadMetadata("integration_items", "/v1/integrations/items", "Read bounded native catalog facts with exact visible totals", query...), Handler: func(ctx context.Context, r *http.Request, _ struct{}) (catalog.IntegrationItemPage, error) {
 		return d.integrationItems(r.WithContext(ctx), "")
 	}}); err != nil {
@@ -125,7 +125,7 @@ func registerIntegrationReads(registry *apikit.Registry, d Dependencies) error {
 	}}); err != nil {
 		return err
 	}
-	if err := apikit.Register(registry, apikit.Route[struct{}, catalog.IntegrationItemPage]{Metadata: integrationReadMetadata("integration_show_seasons", "/v1/integrations/shows/{id}/seasons", "Read a bounded native season hierarchy", "includeFiles", "cursor", "limit"), Handler: func(ctx context.Context, r *http.Request, _ struct{}) (catalog.IntegrationItemPage, error) {
+	if err := apikit.Register(registry, apikit.Route[struct{}, catalog.IntegrationItemPage]{Metadata: integrationReadMetadata("integration_show_seasons", "/v1/integrations/shows/{id}/seasons", "Read a bounded native season hierarchy", "includeFiles", "hasPaths", "cursor", "limit"), Handler: func(ctx context.Context, r *http.Request, _ struct{}) (catalog.IntegrationItemPage, error) {
 		return d.integrationItems(r.WithContext(ctx), "season")
 	}}); err != nil {
 		return err
@@ -228,9 +228,9 @@ func (d Dependencies) integrationCatalogRead(r *http.Request, read func(context.
 
 func (d Dependencies) integrationItems(r *http.Request, hierarchy string) (catalog.IntegrationItemPage, error) {
 	out := catalog.IntegrationItemPage{Items: []catalog.IntegrationItem{}}
-	allowed := []string{"ids", "libraryId", "libraryKind", "kind", "parentId", "provider", "providerId", "year", "search", "sort", "order", "addedAfter", "addedBefore", "includeFiles", "cursor", "limit"}
+	allowed := []string{"ids", "libraryId", "libraryKind", "kind", "parentId", "provider", "providerId", "year", "search", "sort", "order", "addedAfter", "addedBefore", "includeFiles", "hasPaths", "cursor", "limit"}
 	if hierarchy == "season" {
-		allowed = []string{"includeFiles", "cursor", "limit"}
+		allowed = []string{"includeFiles", "hasPaths", "cursor", "limit"}
 	}
 	if hierarchy == "episode" {
 		allowed = []string{"season", "seasonId", "year", "search", "provider", "providerId", "includeFiles", "sort", "order", "addedAfter", "addedBefore", "cursor", "limit"}
@@ -249,6 +249,12 @@ func (d Dependencies) integrationItems(r *http.Request, hierarchy string) (catal
 			return out, &apierror.Error{Code: "invalid_request"}
 		}
 		q.IncludeFiles = raw == "true"
+	}
+	if raw := values.Get("hasPaths"); raw != "" {
+		if raw != "true" && raw != "false" {
+			return out, &apierror.Error{Code: "invalid_request"}
+		}
+		q.HasPaths = raw == "true"
 	}
 	var err error
 	q.Limit, err = integrationReadLimit(r, 50)

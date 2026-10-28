@@ -279,6 +279,7 @@ internal/ingestion/targeted.go	(*Service).startWaitingReports	ExecWrite	ClassBac
 internal/ingestion/targeted.go	(*Service).widenTarget	Begin	ClassBackgroundMedia	-
 internal/ingestion/targeted_strict.go	(*Service).ReportPathsStrict	Begin	ClassBackgroundMedia	-
 internal/ingestion/targeted_strict.go	(*Service).strictSources	Begin	ClassBackgroundMedia	-
+internal/integrationids/ids.go	(Store).Encode	Begin	ClassSecurityFence	-
 internal/livechannels/configuration.go	(*Store).fetchSource	Begin	ClassFrom(ctx, dbwork.ClassInteractive)	-
 internal/livechannels/directory.go	(*Store).DeleteReminder	WithWriteTxContext	ClassSecurityFence	-
 internal/livechannels/directory.go	(*Store).SaveReminder	WithWriteTxContext	ClassSecurityFence	-

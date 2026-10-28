@@ -1,7 +1,7 @@
 import {routePath} from '../../contracts/src/route-paths.ts';
-import {ApiAccessError, apiScopes, type ApiAccessTransport, type ApiScope, type NewApiCredential} from './api-access.ts';
+import {ApiAccessError, apiScopes,apiCredentialStates,type ApiCredentialState, type ApiAccessTransport, type ApiScope, type NewApiCredential} from './api-access.ts';
 
-export type IntegrationAppPassword=Readonly<{id:string;name:string;username:string;accountId:string;profileId:string;scopes:readonly ApiScope[];state:string}>;
+export type IntegrationAppPassword=Readonly<{id:string;name:string;username:string;accountId:string;profileId:string;scopes:readonly ApiScope[];state:ApiCredentialState}>;
 export type IntegrationUser=Readonly<{accountId:string;profileId:string;profileName:string;username:string;role:string;disabled:boolean}>;
 export type IntegrationPage<T>=Readonly<{items:readonly T[];nextCursor?:string}>;
 export type NewIntegrationAppPassword=NewApiCredential&Readonly<{accountId:string;profileId:string}>;
@@ -12,8 +12,8 @@ const text=(v:unknown,max=128):string=>typeof v==='string'&&v.length>0&&v.length
 const optional=(v:unknown,max=512):string|undefined=>v===undefined||v===''?undefined:text(v,max);
 const scopes=(v:unknown):readonly ApiScope[]=>Array.isArray(v)&&v.length>0&&v.length<=apiScopes.length?Object.freeze(v.map(scope=>apiScopes.includes(scope)?scope as ApiScope:bad())):bad();
 export function parseIntegrationAppPassword(raw:unknown):IntegrationAppPassword {
- const v=object(raw);if('secret' in v)bad();
- return Object.freeze({id:text(v.id),name:text(v.name,80),username:text(v.username),accountId:text(v.accountId),profileId:text(v.profileId),scopes:scopes(v.scopes),state:text(v.state,32)});
+ const v=object(raw);if('secret' in v||!apiCredentialStates.includes(v.state as ApiCredentialState))bad();
+ return Object.freeze({id:text(v.id),name:text(v.name,80),username:text(v.username),accountId:text(v.accountId),profileId:text(v.profileId),scopes:scopes(v.scopes),state:v.state as ApiCredentialState});
 }
 function page<T>(raw:unknown,parse:(v:unknown)=>T):IntegrationPage<T>{const v=object(raw);if(!Array.isArray(v.items)||v.items.length>100)bad();return Object.freeze({items:Object.freeze((v.items as unknown[]).map(parse)),nextCursor:optional(v.nextCursor)});}
 export function parseIntegrationUsers(raw:unknown):IntegrationPage<IntegrationUser>{return page(raw,raw=>{

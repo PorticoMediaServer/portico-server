@@ -24074,6 +24074,7 @@ export const routes = [
       "addedAfter",
       "addedBefore",
       "includeFiles",
+      "hasPaths",
       "cursor",
       "limit"
     ],
@@ -24241,6 +24242,7 @@ export const routes = [
     "bodyLimit": 0,
     "query": [
       "includeFiles",
+      "hasPaths",
       "cursor",
       "limit"
     ],

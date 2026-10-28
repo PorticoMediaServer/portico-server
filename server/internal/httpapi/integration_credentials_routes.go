@@ -155,16 +155,23 @@ func registerIntegrationCredentials(registry *apikit.Registry, d Dependencies) e
 			return access.IntegrationKeyPage{}, err
 		}
 		c, ok := identity.APICredentialFrom(ctx)
-		if !ok {
-			return access.IntegrationKeyPage{}, &apierror.Error{Code: "not_permitted"}
-		}
 		p, err := d.foundationCaller(r)
 		if err != nil {
 			return access.IntegrationKeyPage{}, foundationAuthError(err)
 		}
-		auth := func(ctx context.Context, tx *sql.Tx) error {
-			_, err := d.Identity.SessionFamilyTx(ctx, tx, p)
-			return err
+		var auth access.Authorize
+		if !ok {
+			// A signed-in owner has the same explicit recovery authority as the
+			// owner-only per-key reveal route. No foreign administrator flag grants it.
+			if p.Role != identity.TierOwner {
+				return access.IntegrationKeyPage{}, &apierror.Error{Code: "not_permitted"}
+			}
+			auth = d.accessAuthority(p, identity.TierOwner)
+		} else {
+			auth = func(ctx context.Context, tx *sql.Tx) error {
+				_, err := d.Identity.SessionFamilyTx(ctx, tx, p)
+				return err
+			}
 		}
 		out, err := d.Access.Access.IntegrationKeys(ctx, auth, p, c)
 		return out, credentialRouteError(err)

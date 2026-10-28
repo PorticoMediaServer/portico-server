@@ -154,3 +154,44 @@ func TestCompatibilityHeaderNormalization(t *testing.T) {
 		t.Fatal("conflicting proof accepted")
 	}
 }
+
+func TestIntegrationRepeatedLoginsDoNotConsumeOrRevokeNamedKeys(t *testing.T) {
+	f := integrationFixture(t)
+	app := newApp(t, f, "recurring")
+	first := appLogin(t, f, app)
+	w := f.call("POST", "/v1/integrations/keys", first.Token, `{"name":"Persistent tool"}`)
+	if w.Code != 201 {
+		t.Fatalf("mint: %d %s", w.Code, w.Body)
+	}
+	var key access.IssuedCredential
+	if err := json.Unmarshal(w.Body.Bytes(), &key); err != nil {
+		t.Fatal(err)
+	}
+	if key.Credential.Kind != "key" || !strings.HasPrefix(key.Secret, "pk.") || key.Credential.ExpiresAt != "" {
+		t.Fatal("derived named key must follow the native key model and app grant lifetime")
+	}
+	for range access.MaxAccessTokens {
+		appLogin(t, f, app)
+	}
+	if w = f.call("GET", "/v1/me", key.Secret, ""); w.Code != 200 {
+		t.Fatalf("repeated login retired a named key: %d", w.Code)
+	}
+	var count int
+	if err := f.deps.DB.QueryRow(`SELECT count(*) FROM api_credentials WHERE parent_id=? AND kind='integration_session' AND revoked_ms=0`, app.AppPassword.ID).Scan(&count); err != nil || count != access.MaxAccessTokens {
+		t.Fatalf("unbounded login sessions: %d %v", count, err)
+	}
+	w = f.call("GET", "/v1/admin/api-keys", f.owner, "")
+	if w.Code != 200 || !strings.Contains(w.Body.String(), key.Credential.ID) || strings.Contains(w.Body.String(), key.Secret) {
+		t.Fatal("owner key list must include the derived key without its secret")
+	}
+	w = f.call("GET", "/v1/admin/api-keys/"+key.Credential.ID+"/secret", f.owner, "")
+	if w.Code != 200 || !strings.Contains(w.Body.String(), key.Secret) {
+		t.Fatal("owner could not recover a derived key")
+	}
+	if _, err := f.deps.DB.Exec(`UPDATE server_settings SET "integrations.compatibilityEnabled"=0`); err != nil {
+		t.Fatal(err)
+	}
+	if w = f.call("GET", "/v1/me", key.Secret, ""); w.Code != 401 {
+		t.Fatal("disabled app-granted key retained native access")
+	}
+}

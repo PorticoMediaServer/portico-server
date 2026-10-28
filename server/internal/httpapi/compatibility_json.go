@@ -54,7 +54,7 @@ func (p compatibilitySourcePages) writeJSON(w io.Writer) error {
 }
 func (d Dependencies) compatibilitySources(r *http.Request, id string, first any, cursor string) any {
 	return compatibilitySourcePages{first: foreignMediaSources(first), cursor: cursor, fetch: func(cursor string) (map[string]any, error) {
-		return d.integrationCall(r, "GET", "/v1/integrations/items/"+url.PathEscape(id)+"/media-info", url.Values{"cursor": {cursor}, "limit": {"100"}}, nil)
+		return d.integrationCall(r, "GET", "/v1/integrations/items/"+url.PathEscape(id)+"/media-info", url.Values{"cursor": {cursor}, "limit": {"16"}}, nil)
 	}}
 }
 func writeCompatibilityJSON(w io.Writer, v any) error {

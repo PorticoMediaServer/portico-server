@@ -17,6 +17,9 @@ func (d Dependencies) compatibilityHierarchy(w http.ResponseWriter, r *http.Requ
 		return
 	}
 	query := url.Values{"limit": {"100"}}
+	if fields := strings.ToLower(q.Get("fields")); strings.Contains(fields, "mediasources") || strings.Contains(fields, "path") {
+		query.Set("includeFiles", "true")
+	}
 	if season := q.Get("season"); season != "" {
 		query.Set("season", season)
 	}
@@ -144,6 +147,18 @@ func (d Dependencies) compatibilityControl(r *http.Request, q url.Values, mode s
 	if cmd != "pause" && cmd != "unpause" && cmd != "playpause" && cmd != "stop" && cmd != "seek" {
 		return nil, &apierror.Error{Code: "invalid_request"}
 	}
+	if cmd == "stop" {
+		_, e := d.integrationCall(r, "POST", "/v1/playback/controls/"+url.PathEscape(id)+":stop", nil, map[string]any{})
+		if e == nil {
+			return map[string]any{}, nil
+		}
+		refusal, ok := e.(*apierror.Error)
+		if !ok || (refusal.Code != "not_found" && refusal.Code != "not_permitted") {
+			return nil, e
+		}
+		_, e = d.integrationCall(r, "POST", "/v1/admin/sessions/"+url.PathEscape(id)+":terminate", nil, map[string]any{})
+		return map[string]any{}, e
+	}
 	path := "/v1/playback/sessions/" + url.PathEscape(id)
 	current, err := d.integrationCall(r, "GET", path, nil, nil)
 	admin := false
@@ -154,14 +169,9 @@ func (d Dependencies) compatibilityControl(r *http.Request, q url.Values, mode s
 	if err != nil {
 		return nil, err
 	}
-	if cmd == "stop" {
-		if admin {
-			return d.integrationCall(r, "POST", "/v1/admin/sessions/"+url.PathEscape(id)+":terminate", nil, map[string]any{})
-		}
-		return d.integrationCall(r, "DELETE", path, nil, nil)
-	}
+
 	control := compatObject(current["control"])
-	revision := compatText(control["revision"])
+	revision := compatText(current["revision"])
 	state := compatText(control["state"])
 	if admin {
 		revision = compatText(current["revision"])

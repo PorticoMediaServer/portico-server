@@ -13,8 +13,8 @@ import {wireDurations} from './wire-units.ts';
  * row this app cannot read is refused, so a credential or a destination is
  * never missing from what the owner sees and no scope or state is guessed.
  * Receipts are exact too. The delivery log, the title query and the scopes on
- * offer leave out only the row or the value this app cannot read. Secrets pass through exactly once, on the answer to a
- * create or a rotation, and are never kept by this module.
+ * offer leave out only the row or the value this app cannot read. Credential secrets pass through an explicit creation or owner recovery
+ * request and are never kept by this module. Webhook secret rotation is separate.
  */
 import {firstOfEach,keepReadable} from './tolerant.ts';
 export type ApiAccessTransport={request<T>(path:string,method?:string,body?:unknown,signal?:AbortSignal):Promise<T>};

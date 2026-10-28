@@ -320,6 +320,10 @@ func (s *Store) IntegrationKeys(ctx context.Context, auth Authorize, p identity.
 	err = s.snapshot(ctx, auth, func(tx *sql.Tx) error {
 		root := ""
 		switch credential.Kind {
+		case "":
+			if p.Role != identity.TierOwner || credential.ID != "" {
+				return identity.ErrForbidden
+			}
 		case identity.CredentialKindIntegrationSession, identity.CredentialKindKey:
 			if e := tx.QueryRowContext(ctx, `SELECT COALESCE(parent_id,'') FROM api_credentials WHERE id=? AND account_id=? AND profile_id=? AND revoked_ms=0`, credential.ID, p.AccountID, p.ProfileID).Scan(&root); e != nil {
 				return e
@@ -343,6 +347,9 @@ func (s *Store) IntegrationKeys(ctx context.Context, auth Authorize, p identity.
 			}
 			allowed := true
 			for _, scope := range strings.Split(scopes, ",") {
+				if credential.Kind == "" {
+					continue
+				}
 				found := false
 				for _, held := range credential.Scopes {
 					if scope == held || held == "admin" {
