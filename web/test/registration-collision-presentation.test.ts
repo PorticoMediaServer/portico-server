@@ -17,6 +17,7 @@ async function fixture(restored=false){
   const resource=await componentModule(new URL('../src/services/use-account-resource.ts',import.meta.url),{react:h.react});
   const parts=new Proxy({},{get:(_,name)=>String(name)});
   const app=await componentModule(new URL('../src/services/AuthForm.tsx',import.meta.url),{
+    '../shell/DocumentBootReady':{DocumentBootReady:({children}: {children:unknown})=>children},
     react:h.react,'./auth-flow':{ServicesAuthFlow:class extends ServicesAuthFlow {constructor(...args:any[]){super(args[0],args[1],args[2]);flows.push(this);}}},
     './use-account-resource':resource,'./i18n':{servicesI18n:()=>({t:(key:string)=>key})},
     '../kit/accounts':{AuthCodeBoxes:'CodeBoxes',AuthLinks:'Links',AuthPasswordField:'Password'},'../kit/accounts/ServicesAuth':parts,

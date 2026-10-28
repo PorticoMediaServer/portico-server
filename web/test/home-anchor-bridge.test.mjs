@@ -45,6 +45,7 @@ async function mount({hash = '', pathname = '/', search = '', servers = [server(
   const api = {servers: async () => ({items: servers})};
   const m = await componentModule(new URL('../src/services/HomePage.tsx', import.meta.url), {
     react,
+    '../shell/DocumentBootReady': {DocumentBootReady: ({children}) => children},
     './session': {
       accountIdentity: value => ({accountId: value?.account?.id, familyId: value?.familyId}),
       sameAccount: (a, b) => Boolean(a && b && a.accountId === b.accountId && a.familyId === b.familyId),
