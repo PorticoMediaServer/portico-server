@@ -65,10 +65,22 @@ test('account transport sends CSRF/credentials, refuses redirects and excludes r
   await assert.rejects(api.send('https://elsewhere.example', 'GET'), /Invalid account request/);
   await api.settled();
 });
-test('account coordination storage rejects credentials instead of persisting them', async () => {
+test('account coordination storage recovers malformed metadata without retaining credentials', async () => {
   let raw: string | null = null; const storage = new BrowserCredentialStorage({getItem: () => raw, setItem: (_key, value) => { raw = value; }}, 'key');
-  assert.equal(await storage.load(), undefined); raw = '{broken'; await assert.rejects(storage.load());
-  raw = 'x'.repeat(128 * 1024 + 1); await assert.rejects(storage.load(), /too large/);
+  assert.equal(await storage.load(), undefined); raw = '{broken';
+  assert.deepEqual(await storage.load(), {version:1,revocations:[]});
+  assert.equal(raw,'{broken'); // Initial restoration never writes outside the lock.
+  storage.repair(); assert.deepEqual(JSON.parse(raw),{version:1,revocations:[]});
+  raw = JSON.stringify({version:1,revocations:[{familyId:'oversized-pending'}],oldPayload:'x'.repeat(128*1024)});
+  assert.deepEqual(await storage.load(), {version:1,revocations:[{familyId:'oversized-pending'}]});
+  storage.repair(); assert.deepEqual(JSON.parse(raw),{version:1,revocations:[{familyId:'oversized-pending'}]});
+  raw='x'.repeat(4*1024*1024+1);await assert.rejects(storage.load(),/too large/);
+  raw=JSON.stringify({version:1,revocations:[{familyId:'old-family'},'native-secret'],active:{session:{accessToken:'obsolete-secret'}}});
+  assert.deepEqual(await storage.load(),{version:1,revocations:[{familyId:'old-family'}]});
+  storage.repair(); assert.equal(raw.includes('obsolete-secret'),false); assert.equal(raw.includes('native-secret'),false);
+  // The repair rereads the value at lock admission, keeping a successor's tombstone.
+  raw=JSON.stringify({version:1,revocations:[{familyId:'successor-family'}]});
+  storage.repair(); assert.deepEqual(await storage.load(),{version:1,revocations:[{familyId:'successor-family'}]});
 });
 test('hosted flags retain explicit workspace, origin and build metadata', () => {
   assert.deepEqual(webEnvironment({VITE_HOSTED_WEB: 'true', VITE_ACCOUNT_WORKSPACE: 'true', VITE_HOSTED_URL: 'https://accounts.example', VITE_APP_VERSION: 'test', VITE_CAST_APPLICATION_ID: 'cast'}, {hostname: 'custom.example', origin: 'https://custom.example'}), {hostedWeb: true, accountWorkspace: true, hostedUrl: 'https://accounts.example', appVersion: 'test', castApplicationId: 'cast'});

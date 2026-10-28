@@ -27,11 +27,34 @@ export class BrowserCredentialStorage implements CredentialStorage<BrowserAuthor
   private key:string;
   constructor(storage:StoragePort,key:string) {this.storage=storage;this.key=key;}
 
-  async load():Promise<BrowserRecord|undefined> {
-    const raw=this.storage.getItem(this.key);
+  private recover(raw:string|null):BrowserRecord|undefined {
     if(raw===null)return;
-    if(raw.length>maximumBytes)throw new Error('Saved account state is too large.');
-    return parseBrowserCredentialRecord(JSON.parse(raw));
+    // Do not erase a record we cannot inspect within the recovery budget.
+    if(raw.length>4*1024*1024)throw new Error('Saved account state is too large.');
+    let value:unknown;
+    try {
+      value=JSON.parse(raw);
+      if(raw.length>maximumBytes)throw new Error('Oversized account metadata.');
+      return parseBrowserCredentialRecord(value);
+    } catch {
+      // Browser records contain coordination metadata, never credentials. Retire
+      // an obsolete/damaged active record, keeping every valid sign-out tombstone.
+      const revocations:BrowserAuthority[]=[];
+      const pending=(value as {revocations?:unknown})?.revocations;
+      if(Array.isArray(pending)&&pending.length>16)throw new Error('Saved account sign-outs exceeded their limit.');
+      if(Array.isArray(pending))for(const item of pending) {
+        try {revocations.push(...parseBrowserCredentialRecord({version:1,revocations:[item]}).revocations);} catch { /* Not a usable browser-family tombstone. */ }
+      }
+      return {version:1,revocations};
+    }
+  }
+  async load():Promise<BrowserRecord|undefined> {return this.recover(this.storage.getItem(this.key));}
+
+  /** Caller holds the same cross-tab lock as credential writes. Initial reads
+   * remain read-only, so a stale document cannot erase a successor's session. */
+  repair() {
+    const raw=this.storage.getItem(this.key),record=this.recover(raw);
+    if(raw!==null&&record&&JSON.stringify(record)!==raw)this.storage.setItem(this.key,JSON.stringify(record));
   }
 
   async save(record:BrowserRecord) {
@@ -238,13 +261,17 @@ export function browserAccount() {
     runExclusive:operation=>{
       if(!navigator.locks)throw new Error('This browser cannot safely coordinate account sessions. Use a current browser.');
       return navigator.locks.request(key,{signal:AbortSignal.timeout(20000)},async()=>{
-        try{return await operation();}
+        try{storage.repair();return await operation();}
         finally{await api.settled();}
       });
     },
   });
   const sync=()=>{void service.synchronize().catch(()=>{});};
-  addEventListener('storage',event=>{api.observeLegacyCsrf(event);if(event.key===key)sync();});
+  addEventListener('storage',event=>{api.observeLegacyCsrf(event);if(event.key===key||event.key===null)sync();});
+  // Safari can restore a frozen document without delivering its missed storage
+  // events. Re-read under the coordinator lock before accepting account work.
+  addEventListener('pageshow',sync);
+  addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible')sync();});
   addEventListener('online',()=>{void service.retryRevocations().catch(()=>{});});
   // A sign-in is a 90-day window renewed by use of the account service, which a client in daily
   // use against its own server may never need. Renew it about monthly, some minutes after

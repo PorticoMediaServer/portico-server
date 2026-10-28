@@ -22,7 +22,7 @@ export class ServicesAuthFlow {
   private readyIdentity?: AccountIdentity;
   private ids = new AccountAttemptIds(async () => crypto.randomUUID());
   constructor(private readonly account: ServicesAccount, private readonly signedIn: (gesture?: boolean) => void,
-    mode: 'signin' | 'create' | 'forgot' = 'signin', private readonly redirect = (url: string) => location.assign(url)) {
+    mode: 'signin' | 'create' | 'forgot' = 'signin', private readonly redirect = (url: string) => location.assign(url), private readonly providerFailure?: IdentityProvider | 'unknown') {
     this.state = {mode, busy: false, retryAt: 0, resends: 0};
   }
   getSnapshot = () => this.state;
@@ -69,7 +69,7 @@ export class ServicesAuthFlow {
     await this.run(async signal => {
       let options: IdentityOptions;
       try {
-        if (!this.initialContinuation && this.state.mode === 'signin') {
+        if (!this.providerFailure && !this.initialContinuation && this.state.mode === 'signin') {
           // Capture the original browser-bound results once, even if options
           // fail. Retrying capabilities must not discover a successor tab's flow.
           const mode = this.state.mode;
@@ -92,6 +92,10 @@ export class ServicesAuthFlow {
       }
       if (signal.aborted || this.disposed) return;
       this.publish({options, optionsFailed: false});
+      if (this.providerFailure) {
+        this.publish(this.providerFailure === 'unknown' ? {error: new CodedError('request_failed', 'Sign-in could not be completed.')} : {mode: 'provider-stopped', provider: this.providerFailure});
+        return;
+      }
       const original = this.initialContinuation;
       if (this.initialContinuationRetired || original?.mode !== 'signin' || this.state.mode !== original.mode) return;
       const tx = original.transaction;
@@ -137,10 +141,11 @@ export class ServicesAuthFlow {
     });
   }
   provider(provider: IdentityProvider) {
+    // Navigate while the click still owns the gesture. Hosted creates the binding,
+    // PKCE and nonce, then redirects; no fetch, CSRF metadata or saved session can
+    // prevent this first-party navigation from reaching the provider.
     return this.run(async signal => {
-      if (this.state.mode === 'provider-stopped') this.ids.clear('provider');
-      const value = await this.account.client.start(provider, {mode: 'login', requestId: await this.ids.for('provider', {provider})}, signal);
-      if (value.authorizationUrl && !signal.aborted) this.redirect(value.authorizationUrl);
+      if (!signal.aborted) this.redirect(this.account.api.origin + '/auth/sso/' + provider + '/start');
     });
   }
   cancelProvider() {

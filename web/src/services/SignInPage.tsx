@@ -16,7 +16,7 @@ function ReturnLink({href, server}: {href: string; server: string}) {
 }
 
 /** Auth5 + connect19b, composed by ruling29. Only Continue issues an answer. */
-export function RegisteredSignInPage({account, pending}: {account: ServicesAccount; pending: HostedSignIn}) {
+export function RegisteredSignInPage({account, pending, providerFailure}: {account: ServicesAccount; pending: HostedSignIn; providerFailure?: 'google' | 'apple' | 'unknown'}) {
   const {t} = servicesI18n(), session = useSyncExternalStore(account.service.subscribe, account.service.getSnapshot).session;
   const [authenticating, setAuthenticating] = useState(() => !session), [username, setUsername] = useState(session?.account.username ?? '');
   const [busy, setBusy] = useState(false), [error, setError] = useState<unknown>(), [expired, setExpired] = useState(false);
@@ -40,7 +40,7 @@ export function RegisteredSignInPage({account, pending}: {account: ServicesAccou
   if (expired || Date.parse(pending.handoff.expiresAt) <= Date.now()) return <ServicesInvalidLink />;
   const back = <ReturnLink href={pending.handoff.registration.origin} server={pending.serverName} />;
   const lead = t('services.return.lead', {server: pending.serverName});
-  if (!session || authenticating) return <ServicesAuthForm account={account} heading={t('auth.welcomeHome')} lead={lead}
+  if (!session || authenticating) return <ServicesAuthForm account={account} providerFailure={providerFailure} heading={t('auth.welcomeHome')} lead={lead}
     initialUsername={username} before={<HostedError error={error} />} after={back} onSignedIn={gesture => {
       setAuthenticating(false);
       const current = account.service.getSnapshot().session;

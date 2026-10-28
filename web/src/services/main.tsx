@@ -29,6 +29,6 @@ if (entry.native !== 'forwarded' && !(window as Window & {__porticoUnsupportedBr
     // Device metadata only: a failed claim leaves it unset and never blocks sign-in.
     if (!securityEntry) await retireOrdinarySecurityOpening().catch(() => undefined);
     if (!securityEntry) await initializeAppInstallation(import.meta.env.VITE_APP_VERSION ?? '').catch(() => undefined);
-    createRoot(document.getElementById('root')!).render(securityEntry ? <DocumentBootReady><IconSprite/><AccountSecurityReturnEntry arrival={securityEntry}/></DocumentBootReady> : <ServicesApp capture={entry.capture} invalidContinuation={entry.invalidContinuation} join={entry.join} plainShortJoin={entry.plainShortJoin} signIn={entry.signIn} owner={entry.owner} />);
+    createRoot(document.getElementById('root')!).render(securityEntry ? <DocumentBootReady><IconSprite/><AccountSecurityReturnEntry arrival={securityEntry}/></DocumentBootReady> : <ServicesApp capture={entry.capture} invalidContinuation={entry.invalidContinuation} join={entry.join} plainShortJoin={entry.plainShortJoin} signIn={entry.signIn} owner={entry.owner} providerFailure={entry.providerFailure} />);
   }
 }
