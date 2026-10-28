@@ -1,10 +1,15 @@
 package playbackv1
 
 import (
+	"container/list"
 	"context"
+	"crypto/sha256"
 	"database/sql"
+	"encoding/hex"
 	"encoding/json"
+	"fmt"
 	"log"
+	"sort"
 	"sync"
 	"time"
 
@@ -106,17 +111,87 @@ func (s *Service) storeContainerCount(ctx context.Context, c containerCount) {
 	}
 }
 
-// Duration summaries are bounded memoized projections. Their key includes the
-// queue edit revision, current visibility predicate/arguments, and catalogue
-// revisions (asset duration/availability and metadata changes move those).
-// They never retain item IDs, titles, paths or media URLs.
+// Duration summaries are bounded memoized projections. Their key is what the
+// total depends on: the queue's members (layout.membership), the current
+// visibility predicate/arguments, and catalogue revisions (asset
+// duration/availability and metadata changes move those). It is not the queue
+// revision, which every advance moves: keyed on that, each advance in a large
+// queue walked every entry again. They never retain item IDs, titles, paths or
+// media URLs.
 type queueDurationSummary struct {
 	ms    int64
 	known bool
 }
+
+// queueDurationCache keeps the queueDurationLimit most recently used summaries.
 type queueDurationCache struct {
 	sync.Mutex
-	values map[string]queueDurationSummary
+	values map[string]*list.Element
+	order  list.List // most recent first; values are durationEntry
+}
+
+type durationEntry struct {
+	key     string
+	summary queueDurationSummary
+}
+
+const queueDurationLimit = 64
+
+func (c *queueDurationCache) get(key string) (queueDurationSummary, bool) {
+	c.Lock()
+	defer c.Unlock()
+	e, ok := c.values[key]
+	if !ok {
+		return queueDurationSummary{}, false
+	}
+	c.order.MoveToFront(e)
+	return e.Value.(durationEntry).summary, true
+}
+
+func (c *queueDurationCache) put(key string, summary queueDurationSummary) {
+	c.Lock()
+	defer c.Unlock()
+	if c.values == nil {
+		c.values = map[string]*list.Element{}
+	}
+	if e, ok := c.values[key]; ok {
+		e.Value = durationEntry{key, summary}
+		c.order.MoveToFront(e)
+		return
+	}
+	c.values[key] = c.order.PushFront(durationEntry{key, summary})
+	for len(c.values) > queueDurationLimit {
+		oldest := c.order.Back()
+		c.order.Remove(oldest)
+		delete(c.values, oldest.Value.(durationEntry).key)
+	}
+}
+
+// membership digests what the members of a queue are: its segments, the
+// removals inside them, and the shuffle state and play order. Moving through
+// the queue changes none of it.
+func (l *layout) membership() string {
+	h := sha256.New()
+	for _, g := range l.segments {
+		fmt.Fprintf(h, "g%q,%q,%d,%d,%d,%q,%d,%q,%t;", g.id, g.snapshot, g.first, g.count, g.removed, g.state, g.built, g.sourceRevision, g.musicOnly)
+	}
+	snapshots := make([]string, 0, len(l.removals))
+	for snapshot := range l.removals {
+		snapshots = append(snapshots, snapshot)
+	}
+	sort.Strings(snapshots)
+	for _, snapshot := range snapshots {
+		fmt.Fprintf(h, "r%q", snapshot)
+		for _, ordinal := range l.removals[snapshot] {
+			fmt.Fprintf(h, ",%d", ordinal)
+		}
+		h.Write([]byte{';'})
+	}
+	fmt.Fprintf(h, "s%t,%d,%d,%d,%d;", l.q.shuffle, l.q.seed, l.q.lap, l.q.domain, l.q.first)
+	for _, span := range l.spans {
+		fmt.Fprintf(h, "p%t,%d,%d;", span.source, span.start, span.count)
+	}
+	return hex.EncodeToString(h.Sum(nil))
 }
 
 func (s *Service) queueDuration(ctx context.Context, l *layout, p identity.Principal) (queueDurationSummary, error) {
@@ -130,12 +205,9 @@ func (s *Service) queueDuration(ctx context.Context, l *layout, p identity.Princ
 		if err = l.tx.QueryRowContext(ctx, `SELECT COALESCE(group_concat(library_id||':'||revision,','),'') FROM (SELECT library_id,revision FROM library_revisions ORDER BY library_id)`).Scan(&catalog); err != nil {
 			return queueDurationSummary{}, err
 		}
-		raw, _ := json.Marshal([]any{l.q.id, l.q.revision, p.Authority, p.AccountID, p.ProfileID, where, args, catalog})
+		raw, _ := json.Marshal([]any{l.q.id, l.membership(), p.Authority, p.AccountID, p.ProfileID, where, args, catalog})
 		key = string(raw)
-		s.durations.Lock()
-		cached, ok := s.durations.values[key]
-		s.durations.Unlock()
-		if ok {
+		if cached, ok := s.durations.get(key); ok {
 			return cached, nil
 		}
 	}
@@ -157,12 +229,7 @@ func (s *Service) queueDuration(ctx context.Context, l *layout, p identity.Princ
 	}
 	l.chunks = map[string][]byte{}
 	if key != "" {
-		s.durations.Lock()
-		if s.durations.values == nil || len(s.durations.values) >= 64 {
-			s.durations.values = map[string]queueDurationSummary{}
-		}
-		s.durations.values[key] = summary
-		s.durations.Unlock()
+		s.durations.put(key, summary)
 	}
 	return summary, nil
 }
