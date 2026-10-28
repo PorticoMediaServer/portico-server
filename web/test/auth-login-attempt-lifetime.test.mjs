@@ -50,6 +50,7 @@ function hosted() {
   const receipts = new Map();
   let challengeNumber = 0, authenticated = 0, signed = 0, codeFailure;
   const account = {
+    api: {origin: 'https://web.getportico.tv'},
     client: {
       options: async () => options,
       registration: async () => null,
@@ -201,19 +202,21 @@ test('a disposed form publishes no late challenge and starts no factor submissio
   assert.equal(challenges(f).length, 0);
 });
 
-test('abandoning the login leaves an unrelated provider attempt request id intact', async () => {
+test('abandoning a password login preserves direct provider navigation', async () => {
   const {ServicesAuthFlow} = await loadFlow();
   const f = hosted();
-  const flow = new ServicesAuthFlow(f.account, f.signIn, 'signin', () => {});
-  await flow.provider('apple');
+  const destinations = [];
+  const flow = new ServicesAuthFlow(f.account, f.signIn, 'signin', url => destinations.push(url));
+  const first = flow.provider('apple');
+  assert.deepEqual(destinations, ['https://web.getportico.tv/auth/sso/apple/start']); // before awaiting
+  await first;
   await flow.provider('apple');
   await flow.signIn('account', 'password', '');        // an MFA challenge
   flow.go('signin');                                  // Back abandons only the login
   await flow.provider('apple');
   const providers = f.calls.filter(call => call.kind === 'provider');
-  assert.equal(providers.length, 3);
-  assert.equal(providers[1].requestId, providers[0].requestId);
-  assert.equal(providers[2].requestId, providers[0].requestId);   // provider key untouched
+  assert.equal(providers.length, 0); // browser login never uses the JSON start API
+  assert.deepEqual(destinations, Array(3).fill('https://web.getportico.tv/auth/sso/apple/start'));
 
   await flow.signIn('account', 'password', '');
   assert.equal(logins(f).length, 2);
