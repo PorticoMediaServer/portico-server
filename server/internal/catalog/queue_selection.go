@@ -64,7 +64,7 @@ func (s *Service) QueueKeysTx(ctx context.Context, tx *sql.Tx, viewer Viewer, ac
 			return QueueSelection{}, err
 		}
 		if kind == "collection" {
-			fence, err := bulkSelectionFence(s.read(), viewer, JobSelector{})
+			fence, err := s.bulkSelectionFence(tx, viewer, JobSelector{})
 			if err != nil {
 				return QueueSelection{}, err
 			}
