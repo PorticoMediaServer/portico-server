@@ -67,6 +67,9 @@ type facetCacheEntry struct {
 	// wrong, because the counter sees gated transactions and a direct `db.Exec`
 	// is not one. The fence stays the exact per-library revision.
 	publications uint64
+	// cost is the entry's approximate retained bytes, counted against the
+	// cache's byte budget.
+	cost int
 }
 
 // facetCache is a bounded LRU paired with a single-flight map. The LRU evicts
@@ -79,6 +82,9 @@ type facetCache struct {
 	order    *list.List
 	entries  map[string]*list.Element
 	flights  map[string]*flight
+	// used is the cost of the retained entries; puts evict the least recently
+	// used entries until it is within facetCacheBytes.
+	used int
 }
 
 type facetNode struct {
@@ -93,6 +99,19 @@ type flight struct {
 }
 
 const facetCacheEntries = 512
+
+// facetCacheBytes bounds what whole value lists may retain in memory. A
+// library-wide actor list can hold hundreds of thousands of names.
+var facetCacheBytes = 64 << 20
+
+// facetPageCost approximates a page's retained bytes.
+func facetPageCost(page FacetPage) int {
+	cost := 128
+	for _, value := range page.Values {
+		cost += 64 + len(value.Value) + len(value.Label)
+	}
+	return cost
+}
 
 func newFacetCache(capacity int) *facetCache {
 	return &facetCache{capacity: capacity, order: list.New(), entries: map[string]*list.Element{}, flights: map[string]*flight{}}
@@ -111,6 +130,7 @@ func (c *facetCache) get(key string, revision int64) (FacetPage, bool) {
 	if node.entry.revision != revision || !time.Now().Before(node.entry.expires) {
 		c.order.Remove(element)
 		delete(c.entries, key)
+		c.used -= node.entry.cost
 		return FacetPage{}, false
 	}
 	c.order.MoveToFront(element)
@@ -118,21 +138,36 @@ func (c *facetCache) get(key string, revision int64) (FacetPage, bool) {
 }
 
 func (c *facetCache) put(key string, entry facetCacheEntry) {
+	entry.cost = facetPageCost(entry.page)
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	if element, ok := c.entries[key]; ok {
-		element.Value.(*facetNode).entry = entry
-		c.order.MoveToFront(element)
+	if entry.cost > facetCacheBytes/4 {
+		// One list may not crowd out every other entry; it is recomputed.
+		if element, ok := c.entries[key]; ok {
+			c.order.Remove(element)
+			delete(c.entries, key)
+			c.used -= element.Value.(*facetNode).entry.cost
+		}
 		return
 	}
-	c.entries[key] = c.order.PushFront(&facetNode{key: key, entry: entry})
-	for c.order.Len() > c.capacity {
+	if element, ok := c.entries[key]; ok {
+		node := element.Value.(*facetNode)
+		c.used += entry.cost - node.entry.cost
+		node.entry = entry
+		c.order.MoveToFront(element)
+	} else {
+		c.entries[key] = c.order.PushFront(&facetNode{key: key, entry: entry})
+		c.used += entry.cost
+	}
+	for c.order.Len() > c.capacity || c.used > facetCacheBytes {
 		oldest := c.order.Back()
 		if oldest == nil {
 			break
 		}
 		c.order.Remove(oldest)
-		delete(c.entries, oldest.Value.(*facetNode).key)
+		node := oldest.Value.(*facetNode)
+		delete(c.entries, node.key)
+		c.used -= node.entry.cost
 	}
 }
 
@@ -158,4 +193,93 @@ func (c *facetCache) do(key string, compute func() (FacetPage, error)) (FacetPag
 	c.mu.Unlock()
 	close(current.done)
 	return current.page, current.err
+}
+
+// --- ordered results of lists across libraries ----------------------------
+
+// acrossOrdered is one list across libraries in its order, up to one row past
+// the counted maximum: ids, each row's continuation key and title letter.
+type acrossOrdered struct {
+	ids     []int64
+	keys    []string
+	letters []string
+	// capped says the list holds only its first acrossMaximum+1 rows.
+	capped bool
+}
+
+func (o *acrossOrdered) cost() int {
+	cost := 128
+	for i := range o.ids {
+		cost += 48 + len(o.keys[i]) + len(o.letters[i])
+	}
+	return cost
+}
+
+// acrossOrderCache keeps recent ordered lists by their complete revision, so
+// a group's count, letter rail and pages share one expansion of its members.
+// It is bounded in entries, bytes and time.
+type acrossOrderCache struct {
+	mu      sync.Mutex
+	order   *list.List
+	entries map[string]*list.Element
+	used    int
+}
+
+type acrossOrderNode struct {
+	key     string
+	list    *acrossOrdered
+	expires time.Time
+	cost    int
+}
+
+const acrossOrderEntries = 64
+
+var acrossOrderBytes = 16 << 20
+
+func newAcrossOrderCache() *acrossOrderCache {
+	return &acrossOrderCache{order: list.New(), entries: map[string]*list.Element{}}
+}
+
+func (c *acrossOrderCache) get(key string) (*acrossOrdered, bool) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	element, ok := c.entries[key]
+	if !ok {
+		return nil, false
+	}
+	node := element.Value.(*acrossOrderNode)
+	if !time.Now().Before(node.expires) {
+		c.order.Remove(element)
+		delete(c.entries, key)
+		c.used -= node.cost
+		return nil, false
+	}
+	c.order.MoveToFront(element)
+	return node.list, true
+}
+
+func (c *acrossOrderCache) put(key string, ordered *acrossOrdered, ttl time.Duration) {
+	node := &acrossOrderNode{key: key, list: ordered, expires: time.Now().Add(ttl), cost: ordered.cost()}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if element, ok := c.entries[key]; ok {
+		c.used -= element.Value.(*acrossOrderNode).cost
+		c.order.Remove(element)
+		delete(c.entries, key)
+	}
+	if node.cost > acrossOrderBytes/4 {
+		return
+	}
+	c.entries[key] = c.order.PushFront(node)
+	c.used += node.cost
+	for c.order.Len() > acrossOrderEntries || c.used > acrossOrderBytes {
+		oldest := c.order.Back()
+		if oldest == nil {
+			break
+		}
+		c.order.Remove(oldest)
+		evicted := oldest.Value.(*acrossOrderNode)
+		delete(c.entries, evicted.key)
+		c.used -= evicted.cost
+	}
 }

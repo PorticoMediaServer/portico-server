@@ -23,16 +23,20 @@ func (s *Service) queryBrowseKeyRows(query, field string, args ...any) ([]browse
 		if err = rows.Scan(&r.id, &r.entity, &r.kind, &r.title, &r.year, &r.added, &r.sortKey, &r.duration, &r.rating, &key); err != nil {
 			return nil, err
 		}
-		text := formatOrderValue(key)
-		if n, ok := key.(int64); ok {
-			text = strconv.FormatInt(n, 10)
-		} else if n, ok := key.(float64); ok {
-			text = strconv.FormatFloat(n, 'g', -1, 64)
-		}
-		r.keys = map[string]string{field: text}
+		r.keys = map[string]string{field: browseKeyText(key)}
 		out = append(out, r)
 	}
 	return out, rows.Err()
+}
+
+// browseKeyText is a selected sort key as a continuation stores it.
+func browseKeyText(key any) string {
+	if n, ok := key.(int64); ok {
+		return strconv.FormatInt(n, 10)
+	} else if n, ok := key.(float64); ok {
+		return strconv.FormatFloat(n, 'g', -1, 64)
+	}
+	return formatOrderValue(key)
 }
 
 func indexedSortValue(field, key string) (any, error) {
@@ -150,9 +154,9 @@ func (s *Service) seededRandomRange(p pageShape, definition browseSort, desc boo
 func (s *Service) seededRandomPage(p pageShape, definition browseSort, desc bool) ([]browseRow, error) {
 	seed := int64(p.sorts[0].Seed)
 	phase := 0
-	direction, op, firstBound, secondBound := "ASC", ">", `e.random_key>=?`, `e.random_key<?`
+	direction, firstBound, secondBound := "ASC", `e.random_key>=?`, `e.random_key<?`
 	if desc {
-		direction, op, firstBound, secondBound = "DESC", "<", `e.random_key<=?`, `e.random_key>?`
+		direction, firstBound, secondBound = "DESC", `e.random_key<=?`, `e.random_key>?`
 	}
 	var last any
 	var anchor int64
@@ -177,12 +181,16 @@ func (s *Service) seededRandomPage(p pageShape, definition browseSort, desc bool
 			bound = secondBound
 		}
 		args := append(append([]any{}, p.args...), seed)
+		query := `SELECT ` + browseRowColumns + `,e.random_key FROM catalog_browse_rows e JOIN catalog_entities ce ON ce.id=e.entity_id WHERE ` + p.where + ` AND ` + bound + ` ORDER BY e.random_key ` + direction + `,e.entity_id ` + direction + ` LIMIT ?`
 		if last != nil {
-			bound += ` AND (e.random_key` + op + `? OR e.random_key=? AND e.entity_id` + op + `?)`
-			args = append(args, last, last, anchor)
+			// Inside the cursor's phase, seek its key's later ids and then the
+			// later keys, each run limited, instead of filtering the phase
+			// from its seed bound up to the cursor.
+			query, args = browseBoundedSQL(browseRowColumns+",page.order_key", "catalog_browse_rows e JOIN catalog_entities ce ON ce.id=e.entity_id", p.where+` AND `+bound, args, "e.random_key", "e.entity_id", desc, false, last, anchor, p.limit-len(out), 0)
+		} else {
+			args = append(args, p.limit-len(out))
 		}
-		args = append(args, p.limit-len(out))
-		rows, err := s.queryBrowseKeyRows(`SELECT `+browseRowColumns+`,e.random_key FROM catalog_browse_rows e JOIN catalog_entities ce ON ce.id=e.entity_id WHERE `+p.where+` AND `+bound+` ORDER BY e.random_key `+direction+`,e.entity_id `+direction+` LIMIT ?`, definition.ID, args...)
+		rows, err := s.queryBrowseKeyRows(query, definition.ID, args...)
 		if err != nil {
 			return nil, err
 		}
@@ -207,12 +215,15 @@ func personalSortColumn(field string) (column, zero, index string) {
 
 func personalKeyPageSQL(p pageShape, definition browseSort, desc bool) (string, []any, error) {
 	column, zero, index := personalSortColumn(definition.ID)
-	where := `personal.profile_id=? AND personal.library_id=(SELECT id FROM catalog_libraries WHERE library_id=?) AND personal.kind=? AND personal.` + column + `>` + zero + ` AND EXISTS(SELECT 1 FROM catalog_browse_rows e WHERE e.entity_id=personal.entity_id AND ` + p.where + `)`
+	scope := `personal.profile_id=? AND personal.library_id=(SELECT id FROM catalog_libraries WHERE library_id=?) AND personal.kind=?`
+	visible := ` AND EXISTS(SELECT 1 FROM catalog_browse_rows e WHERE e.entity_id=personal.entity_id AND ` + p.where + `)`
+	where := scope + ` AND personal.` + column + `>` + zero + visible
 	args := append([]any{p.request.Profile, p.request.Library, p.kind}, p.args...)
 	direction, op := "ASC", ">"
 	if desc {
 		direction, op = "DESC", "<"
 	}
+	selected := `SELECT personal.entity_id AS id,personal.` + column + ` AS order_key FROM catalog_personal_sort_rows personal INDEXED BY ` + index + ` WHERE `
 	if len(p.seekKeys) > 0 {
 		key, err := indexedSortValue(definition.ID, p.seekKeys[0])
 		if err != nil {
@@ -222,11 +233,35 @@ func personalKeyPageSQL(p pageShape, definition browseSort, desc bool) (string, 
 		if err != nil {
 			return "", nil, ErrCursor
 		}
-		where += ` AND (personal.` + column + op + `? OR personal.` + column + `=? AND personal.entity_id` + op + `?)`
-		args = append(args, key, key, id)
+		// Two limited seeks: the cursor value's later ids, then later values.
+		// An ascending later run is already above the valued bound, and a
+		// second lower bound could make SQLite seek from that bound instead.
+		later := where
+		if !desc && personalValued(key) {
+			later = scope + visible
+		}
+		query := `SELECT id,order_key FROM (SELECT * FROM (` + selected + where + ` AND personal.` + column + `=? AND personal.entity_id` + op + `? ORDER BY personal.entity_id ` + direction + ` LIMIT ?)
+ UNION ALL SELECT * FROM (` + selected + later + ` AND personal.` + column + op + `? ORDER BY personal.` + column + ` ` + direction + `,personal.entity_id ` + direction + ` LIMIT ?)) ORDER BY order_key ` + direction + `,id ` + direction + ` LIMIT ?`
+		bound := append(append([]any{}, args...), key, id, p.limit)
+		bound = append(append(bound, args...), key, p.limit, p.limit)
+		return query, bound, nil
 	}
 	args = append(args, p.limit)
-	return `SELECT personal.entity_id,personal.` + column + ` FROM catalog_personal_sort_rows personal INDEXED BY ` + index + ` WHERE ` + where + ` ORDER BY personal.` + column + ` ` + direction + `,personal.entity_id ` + direction + ` LIMIT ?`, args, nil
+	return selected + where + ` ORDER BY personal.` + column + ` ` + direction + `,personal.entity_id ` + direction + ` LIMIT ?`, args, nil
+}
+
+// personalValued reports a cursor value inside the valued stream: a positive
+// rating or play count, or a non-empty last-played time.
+func personalValued(key any) bool {
+	switch v := key.(type) {
+	case float64:
+		return v > 0
+	case int64:
+		return v > 0
+	case string:
+		return v > ""
+	}
+	return false
 }
 
 func (s *Service) indexedPersonalValuedPage(p pageShape, definition browseSort, desc bool) ([]browseRow, error) {

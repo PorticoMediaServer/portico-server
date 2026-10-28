@@ -6,6 +6,7 @@ import (
 	"portico.local/server/internal/dbwork"
 	"portico.local/server/internal/personalstate"
 	"strconv"
+	"strings"
 	"time"
 )
 
@@ -43,11 +44,17 @@ func savedFilterOptions(all, unwatched, inProgress, watched, favorites int) []Co
 	return []ContentFilter{{ID: "filter", LabelKey: "saved.filter", Options: []ContentFilterOption{{ID: "all", Label: "All", Count: all}, {ID: "unwatched", Label: "Unwatched", Count: unwatched}, {ID: "inProgress", Label: "In progress", Count: inProgress}, {ID: "watched", Label: "Watched", Count: watched}, {ID: "favorites", Label: "Favorites", Count: favorites}}}}
 }
 func (s *Service) Saved(r ContentRequest, libraries []string) (ContentEnvelope, error) {
+	return s.saved(r, libraries, false)
+}
+
+// saved reads one Saved page. countsOnly stops after the envelope, revision,
+// shape and filter counts, for a caller that chooses its own page.
+func (s *Service) saved(r ContentRequest, libraries []string, countsOnly bool) (ContentEnvelope, error) {
 	if dbwork.Snapshot(s.Context()) == nil {
 		var out ContentEnvelope
 		err := dbwork.WithReadSnapshot(s.Context(), s.db, func(ctx context.Context) error {
 			var readErr error
-			out, readErr = s.WithContext(ctx).Saved(r, libraries)
+			out, readErr = s.WithContext(ctx).saved(r, libraries, countsOnly)
 			return readErr
 		})
 		return out, err
@@ -92,35 +99,26 @@ func (s *Service) Saved(r ContentRequest, libraries []string) (ContentEnvelope, 
 	scope := cursorScope{Profile: r.Profile, View: r.View, Section: r.View, Viewer: r.ViewerFence, Sort: r.Sort, Direction: r.Direction, Category: r.Filter + ":" + r.Shape, Limit: r.Limit}
 	scope.Search = readingScope.fence
 	base, baseArgs := savedLeafBase(r, libraries, flag, readingScope)
+	// One pass over the saved set answers both shape counts and every filter
+	// count within the selected shape.
 	shapeCounts := &SavedShapeCounts{}
-	if e = s.read().QueryRow(`SELECT COALESCE(sum(i.kind IN(1,2,3,4,20,21)),0),COALESCE(sum(i.kind IN(5,6,7,8,9,13)),0)`+base, baseArgs...).Scan(&shapeCounts.Posters, &shapeCounts.Squares); e != nil {
+	shape := "1"
+	if predicate := savedShapePredicate(r.Shape); predicate != "" {
+		shape = strings.TrimPrefix(predicate, " AND ")
+	}
+	counted := func(filter string) string {
+		return `,COALESCE(sum(` + shape + ` AND (` + strings.TrimPrefix(savedFilters[filter], " AND ") + `)),0)`
+	}
+	var all, unwatched, inProgress, watched, favorites int
+	if e = s.read().QueryRow(`SELECT COALESCE(sum(i.kind IN(1,2,3,4,20,21)),0),COALESCE(sum(i.kind IN(5,6,7,8,9,13)),0),COALESCE(sum(`+shape+`),0)`+counted("unwatched")+counted("inProgress")+counted("watched")+counted("favorites")+base, baseArgs...).Scan(&shapeCounts.Posters, &shapeCounts.Squares, &all, &unwatched, &inProgress, &watched, &favorites); e != nil {
 		return out, e
 	}
 	out.ShapeCounts = shapeCounts
-	if r.Shape == "posters" {
-		base += ` AND i.kind IN(1,2,3,4,20,21)`
-	}
-	if r.Shape == "squares" {
-		base += ` AND i.kind IN(5,6,7,8,9,13)`
-	}
-
-	var all, unwatched, inProgress, watched, favorites int
-	if e = s.read().QueryRow(`SELECT count(*)`+base, baseArgs...).Scan(&all); e != nil {
-		return out, e
-	}
-	if e = s.read().QueryRow(`SELECT count(*)`+base+savedFilters["unwatched"], baseArgs...).Scan(&unwatched); e != nil {
-		return out, e
-	}
-	if e = s.read().QueryRow(`SELECT count(*)`+base+savedFilters["inProgress"], baseArgs...).Scan(&inProgress); e != nil {
-		return out, e
-	}
-	if e = s.read().QueryRow(`SELECT count(*)`+base+savedFilters["watched"], baseArgs...).Scan(&watched); e != nil {
-		return out, e
-	}
-	if e = s.read().QueryRow(`SELECT count(*)`+base+savedFilters["favorites"], baseArgs...).Scan(&favorites); e != nil {
-		return out, e
-	}
+	base += savedShapePredicate(r.Shape)
 	out.Filters = savedFilterOptions(all, unwatched, inProgress, watched, favorites)
+	if countsOnly {
+		return out, nil
+	}
 	count := map[string]int{"all": all, "unwatched": unwatched, "inProgress": inProgress, "watched": watched, "favorites": favorites}[r.Filter]
 	where := base + filter
 	args := append([]any{}, baseArgs...)

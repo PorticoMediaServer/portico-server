@@ -2,7 +2,9 @@ package catalog
 
 import (
 	"context"
+	"crypto/sha256"
 	"database/sql"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -597,10 +599,31 @@ func (s *Service) browseMeasureScope(viewer Viewer, request FacetRequest) (strin
 	// The revision also binds the library and query vocabulary when used inside
 	// one library, so a cached aggregate cannot cross its pivot or source.
 	revision += ":" + request.Library + ":" + queryFingerprint(query)
+	witness, err := s.measureWitness(request.Library, viewer.Libraries)
+	if err != nil {
+		return "", nil, "", err
+	}
+	revision += ":" + witness
 	if compiler.reading != nil {
 		revision += ":" + compiler.reading.fence()
 	}
 	return `SELECT e.entity_id,e.library_id,e.year FROM catalog_browse_rows e WHERE ` + where, args, revision, nil
+}
+
+// measureWitness is the state a cached count, facet panel or duration reads
+// beyond the order and viewer revisions: each scoped library's raw revision
+// (attribute edges, credits and rating ages advance only that) and the rating
+// classification revision, which a live age restriction reads.
+func (s *Service) measureWitness(library string, libraries []string) (string, error) {
+	if library != "" {
+		libraries = []string{library}
+	}
+	var witness string
+	if err := s.read().QueryRow(`SELECT COALESCE((SELECT group_concat(state,',') FROM (SELECT library_id||':'||revision AS state FROM library_revisions WHERE library_id IN(SELECT value FROM json_each(?)) ORDER BY library_id)),'')||':c'||(SELECT revision FROM catalog_summary_classification_revision WHERE singleton=1)`, idsJSON(libraries)).Scan(&witness); err != nil {
+		return "", err
+	}
+	digest := sha256.Sum256([]byte(witness))
+	return hex.EncodeToString(digest[:12]), nil
 }
 
 func browseAnd(a, b *BrowseNode) *BrowseNode {
@@ -645,77 +668,121 @@ func (s *Service) contextualFacets(viewer Viewer, request FacetRequest) (FacetPa
 		return out, err
 	}
 	out.Revision = revision
-	key := fmt.Sprintf("context:%s:%s:%s:%s:%d:%d:%s:%s", revision, viewer.Profile, RestrictionFence(viewer.Restrictions), request.Field, request.Limit, request.Offset, request.Sort, sorttext.Fold(request.Q))
-	if hit, ok := s.state.facetCache.get(key, 0); ok {
-		return hit, nil
+	// The key leaves out q, the window and the order: each revision's whole
+	// value list is counted once, and every typeahead keystroke, page and
+	// order is served from it, with its total from the same pass.
+	key := fmt.Sprintf("context:%s:%s:%s:%s", revision, viewer.Profile, RestrictionFence(viewer.Restrictions), request.Field)
+	all, ok := s.state.facetCache.get(key, 0)
+	if !ok {
+		all, err = s.state.facetCache.do(key, func() (FacetPage, error) {
+			if hit, ok := s.state.facetCache.get(key, 0); ok {
+				return hit, nil
+			}
+			values, err := s.contextualFacetValues(viewer, request, source, scope, args)
+			if err != nil {
+				return FacetPage{}, err
+			}
+			page := FacetPage{Values: values}
+			s.state.facetCache.put(key, facetCacheEntry{revision: 0, publications: dbwork.Publications(), expires: time.Now().Add(time.Minute), page: page})
+			return page, nil
+		})
+		if err != nil {
+			return out, err
+		}
 	}
-	return s.state.facetCache.do(key, func() (FacetPage, error) {
-		if hit, ok := s.state.facetCache.get(key, 0); ok {
-			return hit, nil
+	needle := sorttext.Fold(request.Q)
+	filtered := make([]FacetValue, 0, len(all.Values))
+	for _, value := range all.Values {
+		if needle == "" || strings.Contains(sorttext.Fold(value.Label), needle) {
+			filtered = append(filtered, value)
 		}
-		// Keep the full SQL source through the value join and name search. A
-		// rare actor/genre or a library after the first 10,000 members must remain
-		// discoverable. Only each reported count and the returned value window are
-		// capped; the revision cache bounds repeated panel/typeahead work.
-		prefix := `WITH targets AS MATERIALIZED (` + scope + `)`
-		// Expand only current visible members before reading values, so one hidden
-		// episode cannot advertise its actor/genre/language via a visible sibling.
-		memberVisible, memberArgs := viewer.itemVisibilitySQL("member.item_id")
-		prefix += `, e AS MATERIALIZED (SELECT DISTINCT target.entity_id,target.library_id,target.year,member.item_id FROM targets target JOIN catalog_browse_memberships member ON member.entity_id=target.entity_id WHERE ` + memberVisible + `)`
-		bound := append(append([]any{}, args...), memberArgs...)
-		where := source.Value + ` IS NOT NULL AND CAST(` + source.Value + ` AS TEXT)<>''`
-		if request.Field == "year" || request.Field == "decade" {
-			where += ` AND e.year BETWEEN 1800 AND 2199`
-		}
-		if request.Q != "" {
-			where += ` AND instr(portico_fold_text(` + source.Label + `),?)>0`
-			bound = append(bound, sorttext.Fold(request.Q))
-		}
-		counted := ` SELECT CAST(` + source.Value + ` AS TEXT) AS value,` + source.Label + ` AS label,count(DISTINCT e.entity_id) AS total FROM e ` + source.Join + ` WHERE ` + where + ` GROUP BY value`
-		order := `total DESC,label COLLATE NOCASE,value`
-		if strings.HasPrefix(request.Sort, "title:") {
-			order = `label COLLATE NOCASE,value`
-			if request.Sort == "title:desc" {
-				order = `label COLLATE NOCASE DESC,value DESC`
+	}
+	if strings.HasPrefix(request.Sort, "title:") {
+		desc := request.Sort == "title:desc"
+		sort.Slice(filtered, func(i, j int) bool {
+			order := compareNoCase(filtered[i].Label, filtered[j].Label)
+			if order == 0 {
+				order = strings.Compare(filtered[i].Value, filtered[j].Value)
 			}
-		}
-		// SQL bounds both the response and Go memory. A missing further value is
-		// true end; the distinct-value count is capped just like entity counts.
-		rows, err := s.read().Query(prefix+counted+` ORDER BY `+order+` LIMIT ? OFFSET ?`, append(bound, request.Limit+1, max(0, request.Offset))...)
-		if err != nil {
-			return out, err
-		}
-		for rows.Next() {
-			var value FacetValue
-			if err = rows.Scan(&value.Value, &value.Label, &value.Count); err != nil {
-				break
+			if desc {
+				return order > 0
 			}
-			if value.Count > browseTotalThreshold {
-				value.Count = browseTotalThreshold
-				value.CountIsLowerBound = true
-			}
-			out.Values = append(out.Values, value)
+			return order < 0
+		})
+	}
+	out.Total = len(filtered)
+	if out.Total > browseTotalThreshold {
+		out.Total, out.TotalIsLowerBound = browseTotalThreshold, true
+	}
+	start := min(max(0, request.Offset), len(filtered))
+	for _, value := range filtered[start:min(start+request.Limit, len(filtered))] {
+		if value.Count > browseTotalThreshold {
+			value.Count, value.CountIsLowerBound = browseTotalThreshold, true
 		}
-		if err == nil {
-			err = rows.Err()
+		out.Values = append(out.Values, value)
+	}
+	return out, nil
+}
+
+// contextualFacetValues counts every value of a field over the measure scope,
+// in the default order: count descending, then label without ASCII case, then
+// value. Keep the full SQL source through the value join: a rare actor/genre
+// or a library after the first 10,000 members must remain discoverable.
+func (s *Service) contextualFacetValues(viewer Viewer, request FacetRequest, source facetSource, scope string, args []any) ([]FacetValue, error) {
+	prefix := `WITH targets AS MATERIALIZED (` + scope + `)`
+	// Expand only current visible members before reading values, so one hidden
+	// episode cannot advertise its actor/genre/language via a visible sibling.
+	memberVisible, memberArgs := viewer.itemVisibilitySQL("member.item_id")
+	prefix += `, e AS MATERIALIZED (SELECT DISTINCT target.entity_id,target.library_id,target.year,member.item_id FROM targets target JOIN catalog_browse_memberships member ON member.entity_id=target.entity_id WHERE ` + memberVisible + `)`
+	bound := append(append([]any{}, args...), memberArgs...)
+	where := source.Value + ` IS NOT NULL AND CAST(` + source.Value + ` AS TEXT)<>''`
+	if request.Field == "year" || request.Field == "decade" {
+		where += ` AND e.year BETWEEN 1800 AND 2199`
+	}
+	rows, err := s.read().Query(prefix+` SELECT CAST(`+source.Value+` AS TEXT) AS value,`+source.Label+` AS label,count(DISTINCT e.entity_id) AS total FROM e `+source.Join+` WHERE `+where+` GROUP BY value`, bound...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	values := []FacetValue{}
+	for rows.Next() {
+		var value FacetValue
+		if err = rows.Scan(&value.Value, &value.Label, &value.Count); err != nil {
+			return nil, err
 		}
-		rows.Close()
-		if err != nil {
-			return out, err
+		values = append(values, value)
+	}
+	if err = rows.Err(); err != nil {
+		return nil, err
+	}
+	sort.Slice(values, func(i, j int) bool {
+		if values[i].Count != values[j].Count {
+			return values[i].Count > values[j].Count
 		}
-		if len(out.Values) > request.Limit {
-			out.Values = out.Values[:request.Limit]
+		if order := compareNoCase(values[i].Label, values[j].Label); order != 0 {
+			return order < 0
 		}
-		if err = s.read().QueryRow(prefix+` SELECT count(*) FROM (`+counted+` LIMIT `+strconv.Itoa(browseTotalThreshold+1)+`)`, bound...).Scan(&out.Total); err != nil {
-			return out, err
-		}
-		if out.Total > browseTotalThreshold {
-			out.Total = browseTotalThreshold
-			out.TotalIsLowerBound = true
-		}
-		s.state.facetCache.put(key, facetCacheEntry{revision: 0, publications: dbwork.Publications(), expires: time.Now().Add(time.Minute), page: out})
-		return out, nil
+		return values[i].Value < values[j].Value
 	})
+	return values, nil
+}
+
+// compareNoCase orders two strings as SQLite's NOCASE collation does: bytes,
+// with only ASCII letters folded.
+func compareNoCase(a, b string) int {
+	for i := 0; i < len(a) && i < len(b); i++ {
+		x, y := a[i], b[i]
+		if 'A' <= x && x <= 'Z' {
+			x += 'a' - 'A'
+		}
+		if 'A' <= y && y <= 'Z' {
+			y += 'a' - 'A'
+		}
+		if x != y {
+			return int(x) - int(y)
+		}
+	}
+	return len(a) - len(b)
 }
 
 func BrowseConjunction(a, b *BrowseNode) *BrowseNode { return browseAnd(a, b) }

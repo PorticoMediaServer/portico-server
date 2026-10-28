@@ -55,20 +55,22 @@ func (s *Service) SavedWithReadingGroups(r ContentRequest, libraries []string, a
 		out, err := s.Saved(r, libraries)
 		return SavedContentEnvelope{ContentEnvelope: out}, err
 	}
-	// Existing leaf metadata/counts use the identical snapshot and predicates.
-	// Its bounded sample is discarded; the union below alone chooses this page.
+	// A group has no leaf read/progress/favorite flag. Such filters select only
+	// ordinary entries, so the leaf page itself is the answer, while All and
+	// poster counts still include private refs. Otherwise the leaf metadata and
+	// counts come from the identical snapshot and predicates, and the union
+	// below alone chooses this page.
+	leafPage := r.Filter != "all" || r.Shape == "squares"
 	metadataRequest := r
-	metadataRequest.Cursor = ""
-	metadataRequest.Limit = 1
-	base, err := s.Saved(metadataRequest, libraries)
+	if !leafPage {
+		metadataRequest.Cursor = ""
+	}
+	base, err := s.saved(metadataRequest, libraries, !leafPage)
 	if err != nil {
 		return SavedContentEnvelope{}, err
 	}
 	out := SavedContentEnvelope{ContentEnvelope: base, SavedRevision: groups.Revision}
-	out.Query.Limit = r.Limit
-	out.Sections = []ContentSection{}
-	out.Empty = nil
-	if out.ShapeCounts == nil {
+	if base.ShapeCounts == nil {
 		return out, ErrReadingProjectionChanged
 	}
 	out.ShapeCounts.Posters += int(groups.Count)
@@ -81,35 +83,26 @@ func (s *Service) SavedWithReadingGroups(r ContentRequest, libraries []string, a
 			}
 		}
 	}
-	// A group has no leaf read/progress/favorite flag. Such filters select only
-	// ordinary entries, while All and poster counts still include private refs.
-	if r.Filter != "all" || r.Shape == "squares" {
-		leaf, err := s.Saved(r, libraries)
-		if err != nil {
-			return out, err
-		}
-		leaf.ShapeCounts = out.ShapeCounts
-		leaf.Filters = out.Filters
-		out.ContentEnvelope = leaf
+	if leafPage {
 		return out, nil
 	}
+	out.Query.Limit = r.Limit
+	out.Sections = []ContentSection{}
+	out.Empty = nil
 	readingScope, err := s.savedReading(r, libraries, "watchlisted")
 	if err != nil {
 		return out, err
 	}
 	leafBase, leafArgs := savedLeafBase(r, libraries, "watchlisted", readingScope)
 	cte, args := savedMixedCTE(r, groups, leafBase, leafArgs, order)
-	// Full-group consistency is checked independently of LIMIT and the anchor.
-	var invalid int
-	if err = s.read().QueryRow(cte+` SELECT count(*) FROM groups WHERE hidden=0 AND (series_id='' OR series_id<>last_id OR title='' OR total<1 OR total>9007199254740991)`, args...).Scan(&invalid); err != nil {
+	// Full-group consistency is checked independently of LIMIT and the anchor,
+	// in the same expansion of the group members as the candidate count.
+	var invalid, count int
+	if err = s.read().QueryRow(cte+` SELECT (SELECT count(*) FROM groups WHERE hidden=0 AND (series_id='' OR series_id<>last_id OR title='' OR total<1 OR total>9007199254740991)),(SELECT count(*) FROM candidates)`, args...).Scan(&invalid, &count); err != nil {
 		return out, err
 	}
 	if invalid != 0 {
 		return out, ErrReadingProjectionChanged
-	}
-	var count int
-	if err = s.read().QueryRow(cte+` SELECT count(*) FROM candidates`, args...).Scan(&count); err != nil {
-		return out, err
 	}
 	scope := cursorScope{Profile: r.Profile, View: r.View, Section: "saved-reading-groups-v1", Library: r.ServerID, Viewer: r.ViewerFence, Sort: r.Sort, Direction: r.Direction, Category: r.Filter + ":" + r.Shape, Limit: r.Limit, Search: readingScope.fence, Collection: groups.Fence}
 	expiry := time.Now().Add(30 * time.Minute).Unix()

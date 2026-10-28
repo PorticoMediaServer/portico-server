@@ -70,6 +70,9 @@ type pageShape struct {
 	// group is the group's own order as (id, pos) SQL, for groupOrder.
 	group     string
 	groupArgs []any
+	// revision is the browse revision, which keys the result's cached rail
+	// and sparse range anchors.
+	revision string
 }
 
 func (p pageShape) primary() (browseSort, bool) {

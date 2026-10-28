@@ -59,23 +59,29 @@ func (s *Service) libraryListeningSection(r ContentRequest, spec listeningSectio
 			walkArgs, col = []any{key, generation, r.Library, int(kindID)}, "v"
 		}
 	}
-	order, op := col+`.sort_key COLLATE NOCASE ASC,`+col+`.entity_id ASC`, ">"
+	direction, op := "ASC", ">"
 	if r.Direction == "desc" {
-		order, op = col+`.sort_key COLLATE NOCASE DESC,`+col+`.entity_id DESC`, "<"
+		direction, op = "DESC", "<"
 	}
-	pageWhere, pageArgs := where, append(walkArgs, args...)
-	offset := start
+	order := col + `.sort_key COLLATE NOCASE ` + direction + `,` + col + `.entity_id ` + direction
+	pageArgs, offset := append(walkArgs, args...), start
+	query := `SELECT e.entity_id,e.sort_key FROM ` + walk + where + ` ORDER BY ` + order + ` LIMIT ? OFFSET ?`
 	if keyed != "" {
 		var k listeningKey
 		if json.Unmarshal([]byte(keyed), &k) != nil || k.ID < 1 {
 			return sec, ErrCursor
 		}
-		pageWhere += ` AND (` + col + `.sort_key COLLATE NOCASE ` + op + ` ? OR (` + col + `.sort_key COLLATE NOCASE = ? AND ` + col + `.entity_id ` + op + ` ?))`
-		pageArgs = append(pageArgs, k.Key, k.Key, k.ID)
+		// Two limited seeks, the key's later ids and then later keys, so a
+		// deep page does not test every earlier title against the cursor.
+		arm := `SELECT e.entity_id AS id,e.sort_key AS sort_key,` + col + `.sort_key AS order_key FROM ` + walk + where
+		query = `SELECT id,sort_key FROM (SELECT * FROM (` + arm + ` AND ` + col + `.sort_key COLLATE NOCASE=? AND ` + col + `.entity_id` + op + `? ORDER BY ` + col + `.entity_id ` + direction + ` LIMIT ?)
+ UNION ALL SELECT * FROM (` + arm + ` AND ` + col + `.sort_key COLLATE NOCASE` + op + `? ORDER BY ` + order + ` LIMIT ?)) ORDER BY order_key COLLATE NOCASE ` + direction + `,id ` + direction + ` LIMIT ? OFFSET ?`
+		bound := append(append([]any{}, pageArgs...), k.Key, k.ID, r.Limit+1)
+		pageArgs = append(append(bound, pageArgs...), k.Key, r.Limit+1)
 		offset = 0
 	}
 	pageArgs = append(pageArgs, r.Limit+1, offset)
-	rows, err := s.read().Query(`SELECT e.entity_id,e.sort_key FROM `+walk+pageWhere+` ORDER BY `+order+` LIMIT ? OFFSET ?`, pageArgs...)
+	rows, err := s.read().Query(query, pageArgs...)
 	if err != nil {
 		return sec, err
 	}

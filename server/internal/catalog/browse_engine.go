@@ -195,6 +195,9 @@ func browseKeyedSorts(selection []BrowseSortSelection) bool {
 // browseBoundedSQL merges two disjoint, bounded index runs. An expanded OR
 // can scan a library prefix; a tuple over an expression can scan every tie.
 // Each arm here seeks either (key, id) or the next key, even with many ties.
+// Each arm selects its rows' columns itself: joining the selected ids back to
+// the serving view during a rebuild would materialize the whole library.
+// `page.order_key` in columns is the row's sort key.
 func browseBoundedSQL(columns, from, where string, args []any, expression, identity string, desc, inclusive bool, key any, anchor int64, limit, offset int) (string, []any) {
 	op, direction := ">", "ASC"
 	if desc {
@@ -204,23 +207,77 @@ func browseBoundedSQL(columns, from, where string, args []any, expression, ident
 	if inclusive {
 		tie += "="
 	}
+	inner, outer := boundedColumns(columns)
 	order := expression + " " + direction + "," + identity + " " + direction
-	arm := `SELECT ` + identity + ` AS id,` + expression + ` AS order_key FROM ` + from + ` WHERE ` + where
+	arm := `SELECT ` + inner + `,` + expression + ` AS order_key,` + identity + ` AS id FROM ` + from + ` WHERE ` + where
 	// The tie arm orders by the identity alone: its key is fixed by equality,
 	// and SQLite does not see that an equality on an expression index's key
 	// satisfies an ORDER BY on the expression, so it would sort every tie
 	// (a whole library of equal durations) before the limit.
-	query := `WITH candidates AS (
+	query := `SELECT ` + outer + ` FROM (
  SELECT * FROM (` + arm + ` AND ` + expression + `=? AND ` + identity + tie + `? ORDER BY ` + identity + " " + direction + ` LIMIT ?)
- UNION ALL SELECT * FROM (` + arm + ` AND ` + expression + op + `? ORDER BY ` + order + ` LIMIT ?))
- SELECT ` + columns + ` FROM candidates page CROSS JOIN ` + from + ` WHERE ` + identity + `=page.id AND ` + where + `
+ UNION ALL SELECT * FROM (` + arm + ` AND ` + expression + op + `? ORDER BY ` + order + ` LIMIT ?)) page
  ORDER BY page.order_key ` + direction + `,page.id ` + direction + ` LIMIT ? OFFSET ?`
 	bound := append(append([]any{}, args...), key, anchor, limit+offset)
 	bound = append(bound, args...)
 	bound = append(bound, key, limit+offset)
-	bound = append(bound, args...)
 	bound = append(bound, limit, offset)
 	return query, bound
+}
+
+// boundedColumns names each selected column for an arm and reads it back from
+// the merged page under the same output name when it is a plain column.
+func boundedColumns(columns string) (inner, outer string) {
+	parts := splitSQLList(columns)
+	inners, outers := make([]string, 0, len(parts)), make([]string, 0, len(parts))
+	used := map[string]bool{"order_key": true, "id": true}
+	for i, column := range parts {
+		if column == "page.order_key" {
+			outers = append(outers, column)
+			continue
+		}
+		name := fmt.Sprintf("c%d", i)
+		if dot := strings.LastIndexByte(column, '.'); dot > 0 && plainSQLName(column[:dot]) && plainSQLName(column[dot+1:]) && !used[column[dot+1:]] {
+			name = column[dot+1:]
+		}
+		used[name] = true
+		inners = append(inners, column+" AS "+name)
+		outers = append(outers, "page."+name)
+	}
+	return strings.Join(inners, ","), strings.Join(outers, ",")
+}
+
+func plainSQLName(name string) bool {
+	if name == "" {
+		return false
+	}
+	for _, r := range name {
+		if !(r == '_' || r >= 'a' && r <= 'z' || r >= 'A' && r <= 'Z' || r >= '0' && r <= '9') {
+			return false
+		}
+	}
+	return true
+}
+
+// splitSQLList splits a select list at its top-level commas.
+func splitSQLList(list string) []string {
+	out := []string{}
+	depth, quoted, start := 0, false, 0
+	for i := 0; i < len(list); i++ {
+		switch c := list[i]; {
+		case c == '\'':
+			quoted = !quoted
+		case quoted:
+		case c == '(':
+			depth++
+		case c == ')':
+			depth--
+		case c == ',' && depth == 0:
+			out = append(out, strings.TrimSpace(list[start:i]))
+			start = i + 1
+		}
+	}
+	return append(out, strings.TrimSpace(list[start:]))
 }
 
 // browseKeyValues types the cursor's stored key for comparison. A year is an
@@ -687,7 +744,17 @@ func (s *Service) browseSelect(request BrowseRequest) (BrowseResult, []browseRow
 	if request.Query != nil && len(sorts) > 0 && sorts[0].Field == "title" && (request.Cursor == "" || request.Seek != nil) {
 		anchors, hit := s.cachedAnchors(out.PageInfo.Revision)
 		if !hit {
-			anchors, err = s.browsePositionIndex(where, order, args, orderArgs)
+			if !restrictionBound && len(sorts) == 1 {
+				// The rail's pass also publishes the result's sparse range
+				// anchors, so a deep range after it does not walk its prefix.
+				var ranges []rangeAnchor
+				anchors, ranges, err = s.browseLetterAndRangeIndex(where, order, args, orderArgs)
+				if err == nil {
+					s.storeRangeAnchors(out.PageInfo.Revision, ranges)
+				}
+			} else {
+				anchors, err = s.browsePositionIndex(where, order, args, orderArgs)
+			}
 			if err != nil {
 				return out, nil, err
 			}
@@ -745,7 +812,7 @@ func (s *Service) browseSelect(request BrowseRequest) (BrowseResult, []browseRow
 		}
 	}
 	shape := pageShape{reading: compiler.reading != nil, group: group, groupArgs: groupArgs, request: request, sorts: sorts, where: where, args: args, unrestricted: unrestricted, unrestrictedArgs: unrestrictedArgs, live: live, liveArgs: liveArgs, order: order, orderArgs: orderArgs,
-		limit: request.Limit, total: total, summary: summary, seekKeys: seekKeys, seekAnchor: seekAnchor}
+		limit: request.Limit, total: total, summary: summary, seekKeys: seekKeys, seekAnchor: seekAnchor, revision: revision}
 	if members := entityKindMembers(pivot); len(members) == 1 {
 		parsed, parseErr := compactcatalog.ParseKind(members[0])
 		if parseErr != nil {
@@ -851,6 +918,35 @@ func (s *Service) browsePositionIndex(where, order string, args, orderArgs []any
 		out = append(out, anchor)
 	}
 	return out, rows.Err()
+}
+
+// browseLetterAndRangeIndex is browsePositionIndex's letter rail and the
+// result's sparse range anchors from one ordered pass under a title sort: the
+// rows that start a letter run or sit on an anchor position.
+func (s *Service) browseLetterAndRangeIndex(where, order string, args, orderArgs []any) ([]BrowsePositionAnchor, []rangeAnchor, error) {
+	query := `SELECT letter,position,order_key,entity_id FROM (SELECT portico_letter(e.sort_key) AS letter,e.sort_key COLLATE NOCASE AS order_key,e.entity_id AS entity_id,ROW_NUMBER() OVER w-1 AS position,lag(portico_letter(e.sort_key)) OVER w AS previous FROM catalog_browse_rows e WHERE ` + where + ` WINDOW w AS (ORDER BY ` + order + `)) WHERE position%` + strconv.Itoa(rangeAnchorEvery) + `=0 OR previous IS NULL OR previous<>letter ORDER BY position`
+	rows, err := s.read().Query(query, append(append([]any{}, args...), orderArgs...)...)
+	if err != nil {
+		return nil, nil, err
+	}
+	defer rows.Close()
+	letters, ranges := []BrowsePositionAnchor{}, []rangeAnchor{}
+	seen := map[string]bool{}
+	for rows.Next() {
+		var letter string
+		var anchor rangeAnchor
+		if err = rows.Scan(&letter, &anchor.position, &anchor.key, &anchor.id); err != nil {
+			return nil, nil, err
+		}
+		if !seen[letter] {
+			seen[letter] = true
+			letters = append(letters, BrowsePositionAnchor{Key: letter, Index: anchor.position})
+		}
+		if anchor.position%rangeAnchorEvery == 0 {
+			ranges = append(ranges, anchor)
+		}
+	}
+	return letters, ranges, rows.Err()
 }
 
 // browseProjection keeps the existing ContentEntry shape: item-backed rows carry

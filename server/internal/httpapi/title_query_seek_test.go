@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"database/sql/driver"
 	"fmt"
+	"regexp"
 	"strings"
 	"testing"
 
@@ -62,10 +63,13 @@ func TestTitleCursorSeeksSortIndex(t *testing.T) {
 							}
 							// The page is read from the serving rows: the current
 							// generation and, during a rebuild, the one it replaces.
-							// Each is entered at the cursor's sort key through its
-							// order index, and the two are walked together in order,
-							// so a page costs its own rows however large the library.
-							seek, retained, sorted := false, false, false
+							// Each is entered twice through its order index, at the
+							// cursor's key after its id and at the next key, and each
+							// run is limited, so a page costs its own rows however
+							// large the library or the cursor's tie cohort. Only the
+							// two bounded runs are merged; the serving view is never
+							// materialized or scanned.
+							tie, retainedTie, seek, retained, scanned := false, false, false, false, false
 							for rows.Next() {
 								var id, parent, unused int
 								var detail string
@@ -74,15 +78,16 @@ func TestTitleCursorSeeksSortIndex(t *testing.T) {
 									t.Fatal(err)
 								}
 								t.Log(detail)
-								ranged := strings.Contains(detail, "kind=? AND") && (strings.Contains(detail, ">?") || strings.Contains(detail, "<?"))
-								if strings.Contains(detail, "SEARCH r USING INDEX catalog_browse_") && ranged {
-									seek = true
+								tied := strings.Contains(detail, "=? AND entity_id>?)") || strings.Contains(detail, "=? AND entity_id<?)")
+								ranged := strings.Contains(detail, "kind=? AND") && (strings.HasSuffix(detail, ">?)") || strings.HasSuffix(detail, "<?)")) && !tied
+								if strings.Contains(detail, "SEARCH r USING INDEX catalog_browse_") {
+									tie, seek = tie || tied, seek || ranged
 								}
-								if strings.Contains(detail, "SEARCH p USING INDEX catalog_browse_") && strings.Contains(detail, "_previous") && ranged {
-									retained = true
+								if strings.Contains(detail, "SEARCH p USING INDEX catalog_browse_") && strings.Contains(detail, "_previous") {
+									retainedTie, retained = retainedTie || tied, retained || ranged
 								}
-								if strings.Contains(detail, "USE TEMP B-TREE") || strings.HasPrefix(detail, "SCAN ") || strings.Contains(detail, "CO-ROUTINE") {
-									sorted = true
+								if strings.Contains(detail, "MATERIALIZE catalog_browse_rows_serving") || strings.Contains(detail, "AUTOMATIC") || servingScan.MatchString(detail) {
+									scanned = true
 								}
 							}
 							err = rows.Err()
@@ -90,11 +95,11 @@ func TestTitleCursorSeeksSortIndex(t *testing.T) {
 							if err != nil {
 								t.Fatal(err)
 							}
-							if !seek || !retained {
-								t.Error("cursor query scans earlier library rows instead of seeking to its sort key")
+							if !tie || !retainedTie || !seek || !retained {
+								t.Error("cursor query does not seek its tie and its later keys in both generations")
 							}
-							if sorted {
-								t.Error("cursor query builds and sorts every later row instead of reading its page in order")
+							if scanned {
+								t.Error("cursor query scans or materializes the serving rows instead of reading two bounded runs")
 							}
 						}
 						if !found {
@@ -113,6 +118,8 @@ func TestTitleCursorSeeksSortIndex(t *testing.T) {
 		}
 	}
 }
+
+var servingScan = regexp.MustCompile(`^SCAN (r|p|e)( |$)`)
 
 // Capture the full statement at the SQL boundary. The general diagnostic trace
 // intentionally truncates SQL, which cannot establish an index seek's plan.

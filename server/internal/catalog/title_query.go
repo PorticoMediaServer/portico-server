@@ -218,6 +218,13 @@ func (s *Service) QueryTitles(viewer Viewer, q TitleQuery) (TitlePage, error) {
 		}
 		fingerprint := sha256.Sum256([]byte(fmt.Sprintf("%d\x00%d\x00%s\x00%s", q.YearFrom, q.YearTo, after, before)))
 		scope = cursorScope{Profile: viewer.Profile, View: "titles:" + q.Kind, Library: q.Library, Viewer: viewer.Fence, Sort: q.Sort, Direction: q.Order, Category: hex.EncodeToString(fingerprint[:8]), Limit: q.Limit}
+		direction := "ASC"
+		if descending {
+			direction = "DESC"
+		}
+		from := `catalog_browse_rows e JOIN catalog_entities ce ON ce.id=e.entity_id JOIN catalog_libraries cl ON cl.id=e.library_id`
+		where += ` AND ` + restriction
+		args = append(args, restrictionArgs...)
 		if q.Cursor != "" {
 			last, err := s.decodeRevisionCursor(q.Cursor, scope, ContentRevision{})
 			if err != nil {
@@ -235,27 +242,19 @@ func (s *Service) QueryTitles(viewer Viewer, q TitleQuery) (TitlePage, error) {
 				}
 				key = year
 			}
-			comparison := ">"
-			if descending {
-				comparison = "<"
-			}
-			// The leading range makes SQLite seek into the ordered index rather
-			// than filter the whole library prefix for the disjunctive tie-break.
-			where += ` AND ` + sortExpression + comparison + `=? AND (` + sortExpression + comparison + `? OR (` + sortExpression + `=? AND e.entity_id` + comparison + `?))`
-			args = append(args, key, key, key, entity)
+			// Two separately limited seeks, the cursor's ties after its id and
+			// then later keys, so a deep page never revisits the tie cohort or
+			// the library prefix before the cursor.
+			query, args = browseBoundedSQL(columns+",page.order_key", from, where, args, sortExpression, "e.entity_id", descending, false, key, entity, q.Limit+1, 0)
+		} else {
+			// The sort value is selected as it is stored, not cast: an
+			// expression over the serving rows makes SQLite build and sort
+			// everything instead of walking the ordered index. A year scans
+			// into the cursor's text just as well.
+			query = `SELECT ` + columns + `,` + strings.TrimSuffix(sortExpression, " COLLATE NOCASE") + ` FROM ` + from + ` WHERE ` + where +
+				` ORDER BY ` + sortExpression + ` ` + direction + `,e.entity_id ` + direction + ` LIMIT ?`
+			args = append(args, q.Limit+1)
 		}
-		direction := "ASC"
-		if descending {
-			direction = "DESC"
-		}
-		// The sort value is selected as it is stored, not cast: an expression
-		// over the serving rows makes SQLite build and sort everything after
-		// the cursor instead of walking the two ordered generations together.
-		// A year scans into the cursor's text just as well.
-		query = `SELECT ` + columns + `,` + strings.TrimSuffix(sortExpression, " COLLATE NOCASE") + ` FROM catalog_browse_rows e JOIN catalog_entities ce ON ce.id=e.entity_id JOIN catalog_libraries cl ON cl.id=e.library_id WHERE ` + where + ` AND ` + restriction +
-			` ORDER BY ` + sortExpression + ` ` + direction + `,e.entity_id ` + direction + ` LIMIT ?`
-		args = append(args, restrictionArgs...)
-		args = append(args, q.Limit+1)
 	}
 	rows, err := s.read().QueryContext(s.Context(), query, args...)
 	if err != nil {

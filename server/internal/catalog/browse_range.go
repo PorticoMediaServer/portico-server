@@ -1,6 +1,10 @@
 package catalog
 
-import "strings"
+import (
+	"sort"
+	"strconv"
+	"strings"
+)
 
 // An arbitrary filtered range has no counted library positions. Resolve its
 // ordering once in SQL and hydrate just the page. Continuations keep seeking
@@ -69,6 +73,13 @@ func (s *Service) filteredRangePage(p pageShape) ([]browseRow, error) {
 		where = `v.class_id=? AND v.generation=? AND v.library_id=(SELECT id FROM catalog_libraries WHERE library_id=?) AND v.kind=? AND (` + where + `)`
 		scopeArgs = append([]any{p.summary.classID, p.summary.generation, p.request.Library, p.kind}, scopeArgs...)
 	}
+	// A deep range under one fact sort, for a viewer whose rows the browse
+	// revision fully decides, seeks the result's nearest sparse anchor.
+	if !class && !p.reading && !primary.Profile && primary.ID != "random" && (p.live == "" || p.live == "1") && len(p.sorts) == 1 && p.revision != "" && p.start >= rangeAnchorEvery {
+		if rows, ok, err := s.anchoredRangePage(p, primary, desc); ok || err != nil {
+			return rows, err
+		}
+	}
 	query := `WITH page AS MATERIALIZED (SELECT ` + row + `.entity_id AS entity_id,` + row + `.sort_key AS sort_key,` + expression + ` AS order_key FROM ` + from + ` WHERE ` + where + ` ORDER BY ` + order + ` LIMIT ? OFFSET ?)
  SELECT ` + browseRowColumns + `,page.order_key FROM page CROSS JOIN catalog_browse_rows e ON e.entity_id=page.entity_id
  CROSS JOIN catalog_entities ce ON ce.id=e.entity_id WHERE ` + live + ` ORDER BY ` + strings.NewReplacer("order_key", "page.order_key", "entity_id", "page.entity_id", "sort_key", "page.sort_key").Replace(order)
@@ -116,4 +127,47 @@ func (s *Service) filteredRangePage(p pageShape) ([]browseRow, error) {
 		}
 	}
 	return rows, nil
+}
+
+// anchoredRangePage reads a deep range from the nearest sparse anchor at or
+// before it: two bounded seeks from the anchor's key, skipping at most
+// rangeAnchorEvery rows. The anchors are read once per browse revision.
+func (s *Service) anchoredRangePage(p pageShape, primary browseSort, desc bool) ([]browseRow, bool, error) {
+	anchors, ok := s.cachedRangeAnchors(p.revision)
+	if !ok {
+		direction := "ASC"
+		if desc {
+			direction = "DESC"
+		}
+		rows, err := s.read().Query(`SELECT position,order_key,entity_id FROM (SELECT `+primary.Expression+` AS order_key,e.entity_id AS entity_id,ROW_NUMBER() OVER (ORDER BY `+primary.Expression+` `+direction+`,e.entity_id `+direction+`)-1 AS position FROM catalog_browse_rows e WHERE `+p.where+`) WHERE position%`+strconv.Itoa(rangeAnchorEvery)+`=0 ORDER BY position`, p.args...)
+		if err != nil {
+			return nil, false, err
+		}
+		for rows.Next() {
+			var anchor rangeAnchor
+			if err = rows.Scan(&anchor.position, &anchor.key, &anchor.id); err != nil {
+				break
+			}
+			anchors = append(anchors, anchor)
+		}
+		if err == nil {
+			err = rows.Err()
+		}
+		rows.Close()
+		if err != nil {
+			return nil, false, err
+		}
+		s.storeRangeAnchors(p.revision, anchors)
+	}
+	i := sort.Search(len(anchors), func(i int) bool { return anchors[i].position > p.start }) - 1
+	if i < 0 {
+		return []browseRow{}, len(anchors) == 0, nil
+	}
+	anchor := anchors[i]
+	if anchor.key == nil {
+		return nil, false, nil
+	}
+	query, bound := browseBoundedSQL(browseRowColumns+",page.order_key", "catalog_browse_rows e JOIN catalog_entities ce ON ce.id=e.entity_id", p.where, p.args, primary.Expression, "e.entity_id", desc, true, anchor.key, anchor.id, p.limit, p.start-anchor.position)
+	rows, err := s.queryBrowseKeyRows(query, primary.ID, bound...)
+	return rows, err == nil, err
 }

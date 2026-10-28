@@ -147,8 +147,35 @@ func (s *Service) acrossMembersForViewer(anchor *BrowseNode, viewer Viewer, rows
 	if err != nil {
 		return "", nil, false, err
 	}
-	prefix, bound := searchGenreMembership(scope, args, viewer)
-	return prefix + ` SELECT entity_id AS id,0 AS pos FROM genres WHERE value=?`, append(bound, anchor.Value), false, nil
+	value, _ := anchor.Value.(string)
+	query, bound := genreMembership(scope, args, viewer, value)
+	return query, bound, false, nil
+}
+
+// genreMembership is searchGenreMembership's titles for one genre, read from
+// the genre's own term postings instead of every title's genres: the term
+// sources whose label is the genre, the episodes of any such show, the visible
+// titles holding those items (or a title with no members, itself), then the
+// same video-title scope.
+func genreMembership(scope string, args []any, viewer Viewer, value string) (string, []any) {
+	memberVisible, memberArgs := viewer.itemVisibilitySQL("member.item_id")
+	query := `WITH genre_sources AS MATERIALIZED (
+	 SELECT ts.entity_id FROM catalog_terms mg CROSS JOIN catalog_term_sources ts INDEXED BY catalog_term_sources_term ON ts.term_id=mg.id WHERE mg.vocab=1 AND mg.label=? AND ts.label_override IS NULL
+	 UNION SELECT ts.entity_id FROM catalog_term_sources ts INDEXED BY catalog_term_sources_overrides CROSS JOIN catalog_terms mg ON mg.id=ts.term_id WHERE ts.label_override=? AND mg.vocab=1
+	 ), genre_items AS MATERIALIZED (
+	 SELECT entity_id AS item FROM genre_sources
+	 UNION SELECT ep.entity_id FROM genre_sources source CROSS JOIN catalog_episodes ep INDEXED BY catalog_episodes_show ON ep.show_id=source.entity_id
+	 ), genre_titles AS MATERIALIZED (
+	 SELECT member.entity_id AS id FROM genre_items CROSS JOIN catalog_browse_memberships member INDEXED BY catalog_browse_membership_item ON member.item_id=genre_items.item WHERE ` + memberVisible + `
+	 UNION SELECT item FROM genre_items WHERE NOT EXISTS(SELECT 1 FROM catalog_browse_memberships member WHERE member.entity_id=genre_items.item)
+	 )
+	 SELECT target.entity_id AS id,0 AS pos FROM genre_titles CROSS JOIN (` + scope + `) target ON target.entity_id=genre_titles.id
+	 JOIN catalog_browse_rows title ON title.entity_id=target.entity_id AND title.kind IN(1,2)
+	 JOIN catalog_libraries library ON library.id=target.library_id AND library.retired=0
+	 JOIN libraries public_library ON public_library.id=library.library_id AND public_library.kind IN('movie','tv','anime')
+	 WHERE ?<>''`
+	bound := append(append([]any{value, value}, memberArgs...), args...)
+	return query, append(bound, value)
 }
 
 const acrossVideoLibraryPredicate = `e.library_id IN(SELECT cl.id FROM catalog_libraries cl JOIN libraries l ON l.id=cl.library_id WHERE cl.retired=0 AND l.kind IN('movie','tv','anime'))`
@@ -364,7 +391,6 @@ func (s *Service) acrossSelect(request AcrossRequest) (BrowseResult, []browseRow
 		args = append(args, liveArgs...)
 	}
 	from := `ord CROSS JOIN catalog_browse_rows e ON e.entity_id=ord.id CROSS JOIN catalog_entities ce ON ce.id=e.entity_id`
-	scoped := append(append([]any{}, memberArgs...), args...)
 
 	start, total, counted := 0, 0, false
 	scope := cursorScope{Viewer: request.fence, Profile: request.profile, View: "across:" + pivot.ID, Sort: canonicalSort(sorts), Category: queryFingerprint(request.Query) + "\x00display:" + request.HomeRowDisplay, Limit: limit}
@@ -392,10 +418,18 @@ func (s *Service) acrossSelect(request AcrossRequest) (BrowseResult, []browseRow
 		}
 		start = request.Range.Start
 	}
+	key, keyArgs, order, orderArgs := acrossOrder(sorts[0], request.profile)
+	// One ordered pass over the group serves its count, its letter rail and
+	// each page, and is kept briefly under the list's complete revision, so a
+	// continuation does not expand every member again. A list past the counted
+	// maximum keeps only its head; a page or rail beyond it reads the group.
+	fresh := request.Cursor == "" && (request.Range == nil || request.Range.Revision == "")
+	walk, err := s.acrossOrdered(request, revision, fresh, group+` SELECT e.entity_id,`+key+`,`+acrossLetterSQL(sorts[0])+` FROM `+from+` WHERE `+where+` ORDER BY `+order+` LIMIT ?`, append(append(append(append(append([]any{}, memberArgs...), keyArgs...), args...), orderArgs...), countLimit+1)...)
+	if err != nil {
+		return out, nil, err
+	}
 	if !counted {
-		if err = s.read().QueryRow(group+` SELECT count(*) FROM (SELECT 1 FROM `+from+` WHERE `+where+` LIMIT ?)`, append(append([]any{}, scoped...), countLimit+1)...).Scan(&total); err != nil {
-			return out, nil, err
-		}
+		total = len(walk.ids)
 	}
 	capped := total > countLimit
 	out.PageInfo.Total, out.PageInfo.TotalIsLowerBound = min(total, countLimit), capped
@@ -404,22 +438,31 @@ func (s *Service) acrossSelect(request AcrossRequest) (BrowseResult, []browseRow
 	}
 	out.PageInfo.Start = start
 
-	key, keyArgs, order, orderArgs := acrossOrder(sorts[0], request.profile)
 	// A title sort publishes where each letter starts, for the letter rail and
 	// for finding a place again after a refresh: one pass over the bounded group.
 	if sorts[0].Field == "title" && request.Cursor == "" && total > 0 {
-		if out.PositionIndex, err = s.acrossLetters(group+` SELECT letter,MIN(position) FROM (SELECT portico_letter(e.sort_key) AS letter,ROW_NUMBER() OVER (ORDER BY `+order+`)-1 AS position FROM `+from+` WHERE `+where+`) GROUP BY letter ORDER BY MIN(position)`, append(append(append([]any{}, memberArgs...), orderArgs...), args...)...); err != nil {
-			return out, nil, err
+		if walk.capped {
+			out.PositionIndex, err = s.acrossLetters(group+` SELECT letter,MIN(position) FROM (SELECT portico_letter(e.sort_key) AS letter,ROW_NUMBER() OVER (ORDER BY `+order+`)-1 AS position FROM `+from+` WHERE `+where+`) GROUP BY letter ORDER BY MIN(position)`, append(append(append([]any{}, memberArgs...), orderArgs...), args...)...)
+			if err != nil {
+				return out, nil, err
+			}
+		} else {
+			out.PositionIndex = acrossOrderedLetters(walk)
 		}
 	}
-	query := group + ` SELECT ` + browseRowColumns + `,` + key + ` FROM ` + from + ` WHERE ` + where + ` ORDER BY ` + order + ` LIMIT ? OFFSET ?`
-	bound := append(append(append([]any{}, memberArgs...), keyArgs...), args...)
 	selectedLimit := limit
 	if capped {
 		selectedLimit++
 	}
-	bound = append(append(bound, orderArgs...), selectedLimit, start)
-	selected, err := s.queryBrowseKeyRows(query, sorts[0].Field, bound...)
+	var selected []browseRow
+	if !walk.capped || start+selectedLimit <= len(walk.ids) {
+		selected, err = s.acrossOrderedRows(walk, start, selectedLimit, sorts[0].Field)
+	} else {
+		query := group + ` SELECT ` + browseRowColumns + `,` + key + ` FROM ` + from + ` WHERE ` + where + ` ORDER BY ` + order + ` LIMIT ? OFFSET ?`
+		bound := append(append(append([]any{}, memberArgs...), keyArgs...), args...)
+		bound = append(append(bound, orderArgs...), selectedLimit, start)
+		selected, err = s.queryBrowseKeyRows(query, sorts[0].Field, bound...)
+	}
 	if err != nil {
 		return out, nil, err
 	}
@@ -438,6 +481,100 @@ func (s *Service) acrossSelect(request AcrossRequest) (BrowseResult, []browseRow
 		}
 	}
 	return out, selected, nil
+}
+
+// acrossLetterSQL is each ordered row's rail letter, read only under a title
+// sort, which is the only order that publishes a letter rail.
+func acrossLetterSQL(selection BrowseSortSelection) string {
+	if selection.Field == "title" {
+		return `portico_letter(e.sort_key)`
+	}
+	return `''`
+}
+
+// acrossOrdered reads a list's order, reusing a recent one with the same
+// revision, library state and restriction for a continuation. A fresh first
+// page always reads the group again.
+func (s *Service) acrossOrdered(request AcrossRequest, revision string, fresh bool, query string, args ...any) (*acrossOrdered, error) {
+	witness, err := s.measureWitness("", request.libraries)
+	if err != nil {
+		return nil, err
+	}
+	key := revision + "\x00" + witness + "\x00" + RestrictionFence(request.restriction)
+	cache := s.state.acrossOrders
+	if !fresh && cache != nil {
+		if ordered, ok := cache.get(key); ok {
+			return ordered, nil
+		}
+	}
+	rows, err := s.read().Query(query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	ordered := &acrossOrdered{}
+	for rows.Next() {
+		var id int64
+		var value any
+		var letter string
+		if err = rows.Scan(&id, &value, &letter); err != nil {
+			return nil, err
+		}
+		ordered.ids, ordered.keys, ordered.letters = append(ordered.ids, id), append(ordered.keys, browseKeyText(value)), append(ordered.letters, letter)
+	}
+	if err = rows.Err(); err != nil {
+		return nil, err
+	}
+	ordered.capped = len(ordered.ids) > min(acrossMaximum, browseTotalThreshold)
+	if cache != nil {
+		cache.put(key, ordered, time.Minute)
+	}
+	return ordered, nil
+}
+
+// acrossOrderedLetters is each letter and the position of its first title.
+func acrossOrderedLetters(ordered *acrossOrdered) []BrowsePositionAnchor {
+	out := []BrowsePositionAnchor{}
+	seen := map[string]bool{}
+	for position, letter := range ordered.letters {
+		if !seen[letter] {
+			seen[letter] = true
+			out = append(out, BrowsePositionAnchor{Key: letter, Index: position})
+		}
+	}
+	return out
+}
+
+// acrossOrderedRows reads one window of an ordered list: only its rows.
+func (s *Service) acrossOrderedRows(ordered *acrossOrdered, start, limit int, field string) ([]browseRow, error) {
+	from, until := min(start, len(ordered.ids)), min(start+limit, len(ordered.ids))
+	if from >= until {
+		return []browseRow{}, nil
+	}
+	ids := make([]any, 0, until-from)
+	for _, id := range ordered.ids[from:until] {
+		ids = append(ids, id)
+	}
+	// Literal ids, not a subquery, so a rebuild's serving rows are searched
+	// by id rather than materialized.
+	rows, err := s.queryBrowseRows(`SELECT `+browseRowColumns+` FROM catalog_browse_rows e CROSS JOIN catalog_entities ce ON ce.id=e.entity_id WHERE e.entity_id IN(`+placeholders(len(ids))+`)`, ids...)
+	if err != nil {
+		return nil, err
+	}
+	byID := make(map[int64]browseRow, len(rows))
+	for _, row := range rows {
+		byID[row.entity] = row
+	}
+	out := make([]browseRow, 0, len(ids))
+	for i := from; i < until; i++ {
+		row, ok := byID[ordered.ids[i]]
+		if !ok {
+			return nil, ErrStaleContinuation
+		}
+		row.keys = map[string]string{field: ordered.keys[i]}
+		out = append(out, row)
+	}
+	return out, nil
 }
 
 // acrossLetters reads a letter index: each letter and the position its first

@@ -105,6 +105,7 @@ type serviceState struct {
 	// count runs once per publication rather than once per first page.
 	anchorMu     sync.Mutex
 	anchorCache  map[string][]BrowsePositionAnchor
+	rangeAnchors map[string][]rangeAnchor
 	browseTotals map[string]int
 	facetCache   *facetCache
 	schemaMu     sync.Mutex
@@ -123,10 +124,13 @@ type serviceState struct {
 	// rec_engine.go.
 	recMu   sync.Mutex
 	recMemo map[string][]recCandidate
+	// acrossOrders holds recent ordered lists across libraries; see
+	// browse_across.go.
+	acrossOrders *acrossOrderCache
 }
 
 func New(db *sql.DB) *Service {
-	return &Service{db: db, state: &serviceState{countCache: map[string]int{}, facetCache: newFacetCache(facetCacheEntries), visibilityRequests: map[string]visibilityRequest{}, visibilityWake: worker.NewSignal()}}
+	return &Service{db: db, state: &serviceState{countCache: map[string]int{}, facetCache: newFacetCache(facetCacheEntries), acrossOrders: newAcrossOrderCache(), visibilityRequests: map[string]visibilityRequest{}, visibilityWake: worker.NewSignal()}}
 }
 func (s *Service) Create(name, kind, path string) (Library, error) {
 	return s.CreateContext(context.Background(), name, kind, path)

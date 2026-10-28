@@ -710,7 +710,9 @@ func (c *browseCompiler) entityPredicate(field browseField, node BrowseNode) (st
 		}
 		return "(" + candidates + clause + ")", nil
 	}
-
+	if clause, ok, err := c.indexedScalar(field, node); ok || err != nil {
+		return clause, err
+	}
 	return c.comparison(field, field.Entity, node.Operator, node.Value)
 }
 
