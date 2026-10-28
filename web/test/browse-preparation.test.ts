@@ -4,7 +4,10 @@ import {routePaths} from '../../packages/contracts/src/route-paths.ts';
 import {BrowseController} from '../src/screens/browse/controller.ts';
 import type {LibraryContentApi} from '../../packages/client-core/src/library-content.ts';
 import type {PreparationResponse} from '../../packages/client-core/src/read-preparation.ts';
-const domainTest = 'get_library_browse_selection_query' in routePaths ? test : test.skip;
+test('web consumes the official generated selection preparation routes', () => {
+  assert.equal(routePaths.get_library_browse_selection_query, '/v1/libraries/{id}/browse-selection-queries/{queryId}');
+  assert.equal(routePaths.delete_library_browse_selection_query, routePaths.get_library_browse_selection_query);
+});
 const tick = async () => {for (let n = 0; n < 40; n++) await Promise.resolve();};
 const pivot = {id: 'movies', labelKey: 'library.movies', entityKinds: ['movie'], defaultSort: [{field: 'title', direction: 'asc'}], supportedViews: ['grid'], browsable: true, paging: 'offset'};
 const caps = {library: {id: 'lib', name: 'Movies', kind: 'movie', defaultView: 'discover'}, pivots: [pivot], resolvedPivot: pivot, fields: [],
@@ -19,7 +22,7 @@ const page = (body: any, selection = true) => ({pivot: 'movies', applied: {query
   entries: [{id: 'movie', kind: 'movie', title: 'Movie', libraryId: 'lib', navigation: {view: 'item'}}],
   pageInfo: {start: body.range.start, total: 1, revision: 'r1', hasMore: false, nextCursor: ''}, ...(selection ? {wholeSelectionPreparing: pending} : {})});
 
-domainTest('web Browse publishes its page immediately and notifies again when whole-selection becomes ready', async t => {
+test('web Browse publishes its page immediately and notifies again when whole-selection becomes ready', async t => {
   t.mock.timers.enable({apis: ['setTimeout', 'Date']}); let notifications = 0;
   const api: LibraryContentApi = {request: async <T>() => caps as T, requestRaw: async (_path, method, options) => method === 'POST' ? ready(page(options?.body)) : ready(whole)};
   const controller = new BrowseController(api, {libraryId: 'lib', pivot: 'movies'}, () => true); controller.subscribe(() => {notifications++;});
@@ -31,7 +34,7 @@ domainTest('web Browse publishes its page immediately and notifies again when wh
   } finally {controller.dispose();}
 });
 
-domainTest('web query switch cancels the captured aggregate and refuses a late response', async t => {
+test('web query switch cancels the captured aggregate and refuses a late response', async t => {
   t.mock.timers.enable({apis: ['setTimeout', 'Date']}); let finish!: (value: PreparationResponse) => void, posts = 0;
   const calls: string[] = [];
   const api: LibraryContentApi = {request: async <T>() => caps as T, requestRaw: async (path, method, options) => {
