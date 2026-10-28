@@ -268,3 +268,24 @@ test('malformed long-poll documents fail into backoff instead of an immediate re
   assert.equal(calls,1);assert.equal(waits.length,1);assert.ok(waits[0]!>0);
  }
 });
+
+test('opt-in retained ownership keeps the background feed indefinitely without making display active', async () => {
+  const timers = manualTimers();
+  let visible = true, retained = false, opens = 0, ended = 0;
+  const visibility = new Set<() => void>(), retention = new Set<() => void>();
+  const events = new EventsClient({http: {send: async () => { throw new Error('unused'); }}, openStream: async (_last, _event, signal) => {
+    opens++; await new Promise<void>(resolve => signal.addEventListener('abort', () => { ended++; resolve(); }, {once: true}));
+  }});
+  const hub = new FreshnessHub(timers);
+  const stop = runEventFeed(events, hub, {...timers, visible: () => visible, busy: () => false,
+    onVisibility: listener => { visibility.add(listener); return () => { visibility.delete(listener); }; },
+    retain: () => retained, onRetain: listener => { retention.add(listener); return () => { retention.delete(listener); }; }});
+  retained = true; retention.forEach(fn => fn()); visible = false; visibility.forEach(fn => fn());
+  await timers.advance(24 * 60 * 60 * 1000);
+  assert.equal(opens, 1); assert.equal(ended, 0); assert.equal(hub.isActive(), false);
+  retained = false; retention.forEach(fn => fn());
+  await timers.advance(29999); assert.equal(ended, 0);
+  retained = true; retention.forEach(fn => fn()); await timers.advance(30000); assert.equal(ended, 0);
+  retained = false; retention.forEach(fn => fn()); await timers.advance(30000); assert.equal(ended, 1);
+  stop(); assert.equal(visibility.size, 0); assert.equal(retention.size, 0); hub.dispose();
+});
