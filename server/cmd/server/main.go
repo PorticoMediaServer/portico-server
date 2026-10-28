@@ -880,12 +880,9 @@ func run() (runErr error) {
 			return errors.New("container transcodes must use /transcode or /config/Transcode; clear the previous temporary-directory override")
 		}
 	}
-	requestedConversion := conversionDirectory
-	conversionDirectory, conversionErr := storagepaths.DiskTranscodeDirectory(conversionDirectory, filepath.Join(layout.Data, "Transcode"), startupMounts())
+	conversionDirectory, memoryDirectory, conversionErr := storagepaths.TranscodeDirectories(conversionDirectory, filepath.Join(layout.Data, "Transcode"), startupMounts())
 	if conversionErr != nil {
 		log.Printf("Media conversion unavailable: %v", conversionErr)
-	} else if conversionDirectory != requestedConversion {
-		log.Printf("RAM-backed conversion storage is unavailable; using disk storage at %s", conversionDirectory)
 	}
 	layout.Transcode = conversionDirectory
 	var hls *playback.HLS
@@ -898,6 +895,13 @@ func run() (runErr error) {
 		hls.SourceStorage = storeIO
 		hls.WindowInputs = subtitleRenderer
 		hls.ConfigureSettings(deliverySettings)
+		if memoryDirectory != "" {
+			if err := hls.ConfigureMemory(memoryDirectory); err != nil {
+				log.Printf("Memory conversion storage unavailable; using disk: %v", err)
+			} else {
+				log.Printf("Conversions use memory at %s, spilling to %s", memoryDirectory, conversionDirectory)
+			}
+		}
 		hls.ConfigureMemberCeiling(memberCeilingReader())
 		hls.ConfigureProbe(ffprobeTool)
 		player.ConfigureHLS(hls)

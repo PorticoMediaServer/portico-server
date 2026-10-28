@@ -4,6 +4,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 )
 
@@ -88,21 +89,25 @@ func TestCleanupRefusesUnknownMountsAndEveryDescendantVolume(t *testing.T) {
 	}
 }
 
-func TestRAMMappedTranscodeCannotBypassDiskOnlyProducer(t *testing.T) {
+func TestRAMMappedTranscodeHasVerifiedDiskSpill(t *testing.T) {
 	mounts := []Mount{{"/", "ext4"}, {"/transcode", "tmpfs"}, {"/dev/shm", "tmpfs"}}
 	l, err := Resolve(Options{Container: true, Mounts: mounts})
-	if err != nil || l.Transcode != "/config/Transcode" || !l.TranscodeFallback {
+	if err != nil || l.Transcode != "/transcode" || l.TranscodeFallback {
 		t.Fatal(l, err)
 	}
-	got, err := DiskTranscodeDirectory("/transcode", "/config/Transcode", mounts)
-	if err != nil || got != "/config/Transcode" {
+	got, memory, err := TranscodeDirectories("/transcode", "/config/Transcode", mounts)
+	wantMemory := ""
+	if runtime.GOOS == "linux" {
+		wantMemory = "/transcode"
+	}
+	if err != nil || got != "/config/Transcode" || memory != wantMemory {
 		t.Fatal(got, err)
 	}
-	if _, err := DiskTranscodeDirectory("/transcode", "/dev/shm/spill", mounts); err == nil {
+	if _, _, err := TranscodeDirectories("/transcode", "/dev/shm/spill", mounts); err == nil {
 		t.Fatal("RAM spill accepted for live FFmpeg output")
 	}
 	for _, unknown := range [][]Mount{nil, {{"/unrelated", "ext4"}}} {
-		if _, err := DiskTranscodeDirectory("/transcode", "/config/Transcode", unknown); err == nil {
+		if _, _, err := TranscodeDirectories("/transcode", "/config/Transcode", unknown); err == nil {
 			t.Fatal("unknown filesystem accepted as disk", unknown)
 		}
 	}

@@ -581,6 +581,12 @@ func (h *HLS) startRenditionOwned(ctx context.Context, id string, r AudioRenditi
 	}
 	h.mu.Lock()
 	defer h.mu.Unlock()
+	if h.moving[id] != nil || h.memoryFull[id] {
+		return ErrSegmentPreparing
+	}
+	if h.cleaning[id] {
+		return ErrSegmentPreparing
+	}
 	if w := h.windows[key]; w != nil {
 		if w.generation != generation {
 			return errOccurrenceClaimed
@@ -652,6 +658,9 @@ func (h *HLS) startRenditionOwned(ctx context.Context, id string, r AudioRenditi
 func (h *HLS) produceRendition(ctx context.Context, id string, r AudioRenditionPlan, from int, w *hlsWindow, generation int) {
 	ctx = withProducerGeneration(ctx, generation)
 	failed := func(code string) {
+		if code == FailureOutOfSpace && h.retryMemoryOutput(id) {
+			return
+		}
 		// Relocation and shutdown cancel the old window, including its plan
 		// load. They must not publish a source failure into the shared plan.
 		if ctx.Err() != nil {
@@ -668,6 +677,11 @@ func (h *HLS) produceRendition(ctx context.Context, id string, r AudioRenditionP
 		failed(FailureSourceUnreadable)
 		return
 	}
+	dir, err := h.createStreamingOutput(ctx, id, plan)
+	if err != nil {
+		failed(FailureOutOfSpace)
+		return
+	}
 	input, remoteInput, err := h.openWindowInput(ctx, id, plan)
 	if err != nil {
 		if ctx.Err() == nil {
@@ -680,11 +694,6 @@ func (h *HLS) produceRendition(ctx context.Context, id string, r AudioRenditionP
 	defer releaseInput()
 	if remoteInput != nil {
 		defer remoteInput.Close()
-	}
-	dir := filepath.Join(h.root, id)
-	if err = os.MkdirAll(dir, 0700); err != nil {
-		failed(FailureOutOfSpace)
-		return
 	}
 	offset := strconv.Itoa(from * HLSSegmentSeconds)
 	args := []string{"-nostdin", "-hide_banner", "-loglevel", "error", "-y", "-protocol_whitelist", "file,pipe"}
@@ -823,7 +832,7 @@ func (h *HLS) produceRendition(ctx context.Context, id string, r AudioRenditionP
 			return subtitles.WindowCommand{Args: copied}, nil
 		})
 		if err != nil {
-			_, _ = tail.Write([]byte(windowConverterDiagnostic(err, "", h.root)))
+			_, _ = tail.Write([]byte(windowConverterDiagnostic(err, "", h.root, h.memoryRoot)))
 		}
 	} else {
 		var progress *vod.ConversionProgressWriter
@@ -893,7 +902,7 @@ func (h *HLS) produceRendition(ctx context.Context, id string, r AudioRenditionP
 }
 
 func (h *HLS) renditionFile(ctx context.Context, id, name string, p *DeliveryPlan) (string, error) {
-	path := filepath.Join(h.root, id, name)
+	path := filepath.Join(h.outputDir(id), name)
 	parts := renditionSegmentName.FindStringSubmatch(name)
 	if parts == nil {
 		if isRenditionInit(name) {
@@ -935,6 +944,13 @@ func (h *HLS) renditionFile(ctx context.Context, id, name string, p *DeliveryPla
 			}
 			if failure != "" {
 				return "", ErrAudioRenditionUnavailable
+			}
+			current := filepath.Join(h.outputDir(id), name)
+			if current != path {
+				path = current
+				if err := h.startRendition(ctx, id, p.Renditions[ordinal], index); err != nil {
+					return "", err
+				}
 			}
 			if segmentReady(path) {
 				h.noteRenditionServed(id, key, index)

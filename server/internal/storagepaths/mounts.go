@@ -7,6 +7,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strconv"
 	"strings"
 )
@@ -79,21 +80,23 @@ func CurrentMounts() ([]Mount, error) {
 	return mounts, nil
 }
 
-// DiskTranscodeDirectory keeps production FFmpeg output off RAM until the
-// producer/serve path supports aggregate bounded RAM with live disk spill.
-// The SpillFile primitive alone does not provide that integration.
-func DiskTranscodeDirectory(requested, fallback string, mounts []Mount) (string, error) {
+// TranscodeDirectories separates bounded Linux tmpfs output from its verified
+// disk spill volume. ramfs has no kernel size bound and is never writable output.
+func TranscodeDirectories(requested, fallback string, mounts []Mount) (disk, memory string, err error) {
 	kind := Filesystem(requested, mounts)
 	if kind == "" {
-		return "", errors.New("conversion filesystem could not be verified; conversion is unavailable until its disk backing can be identified")
+		return "", "", errors.New("conversion filesystem could not be verified; choose a verified disk directory")
 	}
 	if !MemoryFilesystem(kind) {
-		return requested, nil
+		return requested, "", nil
 	}
-	if fallback != "" && Filesystem(fallback, mounts) != "" && !MemoryFilesystem(Filesystem(fallback, mounts)) {
-		return fallback, nil
+	if fallback == "" || Filesystem(fallback, mounts) == "" || MemoryFilesystem(Filesystem(fallback, mounts)) {
+		return "", "", errors.New("RAM-backed conversion storage requires a verified disk spill directory")
 	}
-	return "", errors.New("RAM-backed transcode storage is unavailable until bounded producer spill is integrated; choose a disk directory")
+	if runtime.GOOS == "linux" && kind == "tmpfs" {
+		memory = requested
+	}
+	return fallback, memory, nil
 }
 
 var ErrCleanupUnavailable = errors.New("destructive cleanup cannot be confined to the owned filesystem")
