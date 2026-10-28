@@ -213,9 +213,9 @@ func TestScanClaimSamplesTheTurnAfterWriterAdmission(t *testing.T) {
 	}
 	queued := time.Now()
 	time.Sleep(2 * time.Millisecond)
+	admitted := time.Now()
 	release()
 	close(released)
-	admitted := time.Now()
 	select {
 	case progress := <-done:
 		if progress {
