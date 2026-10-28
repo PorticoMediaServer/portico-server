@@ -1,10 +1,12 @@
 package persistence
 
 import (
+	"bytes"
 	"context"
 	"database/sql"
 	"errors"
 	"fmt"
+	"math"
 	"net/url"
 	"os"
 	"path/filepath"
@@ -19,11 +21,11 @@ import (
 // with the free space there is: salvage writes a second copy beside it.
 var ErrRecoveryNoRoom = errors.New("there is not enough free space to recover this damaged database")
 
-// Salvage bounds: rows read per window, and probes past one stretch of
-// damage (each looks twice as far, so 64 cover any rowid range).
+// Salvage bounds: rows read per window, and midpoint probes into the
+// damaged gaps of one table (a bisection needs about 64 per gap).
 const (
-	salvageWindow      = 64
-	salvageTableFaults = 64
+	salvageWindow = 64
+	salvageProbes = 1024
 )
 
 // salvage rebuilds dir/name from every row that can still be read: a fresh
@@ -256,48 +258,151 @@ func salvageTables(ctx context.Context, db *dbwork.Candidate) ([]salvageTable, e
 
 // copyTable copies every readable row of one table and reports whether that
 // was all of it. It reads forward in key order a window at a time, narrowing
-// to single rows where a window fails, so everything before damage is kept.
-// Past damage, a rowid table probes further and further ahead for the next
-// readable row, then reads backwards from it down to the damage, so no
-// readable row between the two is skipped, and carries on forward from there.
-// A table keyed otherwise cannot be probed by number: it reads the rest of the
-// table backwards from its end, down to the damage.
+// to single rows where a window fails, so everything before damage is kept,
+// then backwards from the end of the table down to the damage. What lies
+// between is a gap of unknown size that may hold readable pages among damaged
+// ones: it is bisected on the first key column (rowid, or the first column of
+// the primary key). A readable row found at a midpoint is copied with every
+// readable row on either side of it, and the parts of the gap still unread
+// become new gaps. Re-reading a row is harmless (copies replace), and a probe
+// budget bounds the work on a badly damaged table.
 func copyTable(ctx context.Context, db *dbwork.Candidate, table salvageTable) (bool, error) {
 	c := newTableCopy(db, table)
-	whole := true
-	var last []any
-	probed := int64(0)
-	for {
-		var faulted bool
-		var err error
-		last, faulted, err = c.run(ctx, last, nil, false)
-		if err != nil || !faulted {
-			return whole && !c.rejected, err
+	_, last, faulted, err := c.run(ctx, nil, nil, false, "", nil)
+	if err != nil || !faulted {
+		return !c.rejected, err
+	}
+	_, low, faulted, err := c.run(ctx, nil, last, true, "", nil)
+	if err != nil || !faulted {
+		return false, err
+	}
+	type gap struct{ lo, hi any } // first-column values; nil lo is the table's start
+	var lo, hi any
+	if last != nil {
+		lo = last[0]
+	}
+	if low == nil {
+		return false, nil // damage at the very end: nothing was read backwards
+	}
+	hi = low[0]
+	gaps := []gap{{lo, hi}}
+	for budget := salvageProbes; len(gaps) > 0 && budget > 0; budget-- {
+		g := gaps[len(gaps)-1]
+		gaps = gaps[:len(gaps)-1]
+		mid, ok := midpoint(g.lo, g.hi)
+		if !ok {
+			continue
 		}
-		whole = false
-		if c.keyed {
-			_, _, err = c.run(ctx, nil, last, true)
+		// Forward from the midpoint, within the gap.
+		first, end, faulted, err := c.run(ctx, nil, nil, false, c.column+`>=? AND `+c.column+`<=?`, []any{mid, g.hi})
+		if err != nil {
 			return false, err
 		}
-		// Never probe from behind a point already found: a row that probes
-		// readable but then fails to copy must not bring the walk back.
-		from := probed
-		if last != nil {
-			if at, _ := last[0].(int64); at > from {
-				from = at
+		if first == nil {
+			if faulted {
+				gaps = append(gaps, gap{mid, g.hi}) // damage at the midpoint itself
+			}
+			gaps = append(gaps, gap{g.lo, mid})
+			continue
+		}
+		if faulted {
+			gaps = append(gaps, gap{end[0], g.hi})
+		}
+		// Backward from the first row found, down to the bottom of the gap.
+		extra, args := c.column+`>=?`, []any{g.lo}
+		if g.lo == nil {
+			extra, args = "", nil
+		}
+		_, bottom, faulted, err := c.run(ctx, first, nil, true, extra, args)
+		if err != nil {
+			return false, err
+		}
+		if faulted {
+			gaps = append(gaps, gap{g.lo, bottom[0]})
+		}
+	}
+	return false, nil
+}
+
+// midpoint is a value strictly between lo and hi of the same SQLite type (nil
+// lo is unbounded below), or false when there is none.
+func midpoint(lo, hi any) (any, bool) {
+	switch h := hi.(type) {
+	case int64:
+		l, ok := lo.(int64)
+		if lo == nil {
+			l, ok = math.MinInt64, true
+		}
+		if !ok || h <= l {
+			return nil, false
+		}
+		span := uint64(h) - uint64(l) // exact even when h-l overflows int64
+		if span < 2 {
+			return nil, false
+		}
+		return l + int64(span/2), true
+	case float64:
+		l, ok := lo.(float64)
+		if lo == nil {
+			l, ok = -math.MaxFloat64, true
+		}
+		m := l/2 + h/2
+		return m, ok && m > l && m < h
+	case string:
+		l, ok := lo.(string)
+		if lo == nil {
+			ok = true
+		}
+		m, between := midBytes([]byte(l), []byte(h))
+		return string(m), ok && between
+	case []byte:
+		l, ok := lo.([]byte)
+		if lo == nil {
+			ok = true
+		}
+		m, between := midBytes(l, h)
+		return m, ok && between
+	}
+	return nil, false
+}
+
+// midBytes is a byte string strictly between a and b in memcmp order (the
+// order SQLite uses for BLOBs and for TEXT under its default collation).
+func midBytes(a, b []byte) ([]byte, bool) {
+	if bytes.Compare(a, b) >= 0 {
+		return nil, false
+	}
+	n := max(len(a), len(b)) + 1
+	pad := func(v []byte) []int {
+		out := make([]int, n)
+		for i := range out {
+			if i < len(v) {
+				out[i] = int(v[i])
 			}
 		}
-		next, ok := c.probe(ctx, from)
-		if !ok {
-			// Nothing ahead reads by seeking; the end may still read backwards.
-			_, _, err = c.run(ctx, nil, last, true)
-			return false, err
-		}
-		if _, _, err = c.run(ctx, []any{next}, last, true); err != nil {
-			return false, err
-		}
-		probed, last = next, []any{next - 1}
+		return out
 	}
+	x, y := pad(a), pad(b)
+	// (x+y)/2 in base 256, most significant byte first.
+	sum := make([]int, n+1)
+	for i := n - 1; i >= 0; i-- {
+		sum[i+1] += x[i] + y[i]
+		sum[i] += sum[i+1] / 256
+		sum[i+1] %= 256
+	}
+	mid := make([]byte, n)
+	carry := 0
+	for i := 0; i <= n; i++ {
+		v := carry*256 + sum[i]
+		if i > 0 {
+			mid[i-1] = byte(v / 2)
+		}
+		carry = v % 2
+	}
+	if trimmed := bytes.TrimRight(mid, "\x00"); bytes.Compare(trimmed, a) > 0 {
+		mid = trimmed
+	}
+	return mid, bytes.Compare(mid, a) > 0 && bytes.Compare(mid, b) < 0
 }
 
 type tableCopy struct {
@@ -305,6 +410,7 @@ type tableCopy struct {
 	keyed  bool
 	keys   int
 	width  int
+	column string
 	from   string
 	order  string
 	key    string
@@ -335,8 +441,8 @@ func newTableCopy(db *dbwork.Candidate, table salvageTable) *tableCopy {
 	}
 	name := quoteIdentifier(table.name)
 	return &tableCopy{
-		db: db, keyed: table.keys != nil, keys: len(keys), width: len(keys) + len(columns),
-		from:  `SELECT ` + keyList + `,` + strings.Join(columns, ",") + ` FROM damaged.` + name,
+		db: db, keyed: table.keys != nil, keys: len(keys), width: len(keys) + len(columns), column: quoteIdentifier(keys[0]),
+		from:  `SELECT ` + selectTyped(append(quoteIdentifiers(keys), columns...)) + ` FROM damaged.` + name,
 		order: keyList, key: key, slots: slots,
 		// A copied row replaces the fresh baseline's seeded one (settings
 		// singletons keep the owner's values). A row the schema itself
@@ -345,19 +451,27 @@ func newTableCopy(db *dbwork.Candidate, table salvageTable) *tableCopy {
 	}
 }
 
-// run copies rows strictly between lower and upper (either may be nil), in
-// ascending or descending key order, until the range ends or a single row
-// cannot be read. It returns the last key copied (lower when none was) and
-// whether it stopped at damage.
-func (c *tableCopy) run(ctx context.Context, upper, lower []any, descending bool) ([]any, bool, error) {
+// run copies rows strictly between lower and upper keys (either may be nil)
+// that also satisfy extra, in ascending or descending key order, until the
+// range ends or a single row cannot be read. It returns the first and last
+// keys it copied (nil when none) and whether it stopped at damage. The
+// returned last key is lower (ascending) or upper (descending) when nothing
+// was copied.
+func (c *tableCopy) run(ctx context.Context, upper, lower []any, descending bool, extra string, extraArgs []any) (first, last []any, faulted bool, err error) {
 	window := salvageWindow
 	at := lower
 	if descending {
 		at = upper
 	}
+	last = at
+	direction := ""
+	if descending {
+		direction = " DESC"
+	}
+	order := ` ORDER BY ` + strings.ReplaceAll(c.order, ",", direction+",") + direction
 	for {
-		query, args := c.from, []any{}
 		var where []string
+		args := []any{}
 		bound := func(op string, key []any) {
 			if key != nil {
 				where = append(where, c.key+op+c.slots)
@@ -371,33 +485,96 @@ func (c *tableCopy) run(ctx context.Context, upper, lower []any, descending bool
 			bound(">", at)
 			bound("<", upper)
 		}
+		if extra != "" {
+			where = append(where, extra)
+			args = append(args, extraArgs...)
+		}
+		query := c.from
 		if len(where) > 0 {
 			query += ` WHERE ` + strings.Join(where, " AND ")
 		}
-		direction := ""
-		if descending {
-			direction = " DESC"
-		}
-		query += ` ORDER BY ` + strings.ReplaceAll(c.order, ",", direction+",") + direction + ` LIMIT ` + fmt.Sprint(window)
-		rows, err := readWindow(ctx, c.db, query, args, c.width)
+		query += order + ` LIMIT ` + fmt.Sprint(window)
+		rows, err := c.read(ctx, query, args)
 		if err != nil {
 			if ctx.Err() != nil {
-				return at, false, ctx.Err()
+				return first, last, false, ctx.Err()
 			}
 			if window > 1 {
 				window = 1
 				continue
 			}
-			return at, true, nil
+			return first, last, true, nil
 		}
 		if len(rows) == 0 {
-			return at, false, nil
+			return first, last, false, nil
 		}
 		if err = c.write(ctx, rows); err != nil {
-			return at, false, err
+			return first, last, false, err
+		}
+		if first == nil {
+			first = rows[0][:c.keys]
 		}
 		at = rows[len(rows)-1][:c.keys]
+		last = at
 	}
+}
+
+// withEmptyBlobs is the insert with X'' in place of each empty BLOB in args,
+// and the remaining arguments, or false when there is none.
+func (c *tableCopy) withEmptyBlobs(args []any) (string, []any, bool) {
+	found := false
+	for _, a := range args {
+		if b, ok := a.([]byte); ok && len(b) == 0 {
+			found = true
+		}
+	}
+	if !found {
+		return "", nil, false
+	}
+	head, _, _ := strings.Cut(c.insert, " VALUES(")
+	slots := make([]string, len(args))
+	kept := make([]any, 0, len(args))
+	for i, a := range args {
+		if b, ok := a.([]byte); ok && len(b) == 0 {
+			slots[i] = "X''"
+			continue
+		}
+		slots[i] = "?"
+		kept = append(kept, a)
+	}
+	return head + " VALUES(" + strings.Join(slots, ",") + ")", kept, true
+}
+
+// selectTyped selects each expression followed, after all of them, by its
+// SQLite type, so read can tell an empty BLOB or TEXT from NULL (the driver
+// returns nil for all three).
+func selectTyped(expressions []string) string {
+	typed := make([]string, 0, 2*len(expressions))
+	typed = append(typed, expressions...)
+	for _, e := range expressions {
+		typed = append(typed, "typeof("+e+")")
+	}
+	return strings.Join(typed, ",")
+}
+
+// read reads one window and restores the exact value of every empty BLOB and
+// TEXT, so a copied row is the row that was read.
+func (c *tableCopy) read(ctx context.Context, query string, args []any) ([][]any, error) {
+	rows, err := readWindow(ctx, c.db, query, args, 2*c.width)
+	for i, row := range rows {
+		for j := 0; j < c.width; j++ {
+			if row[j] == nil {
+				switch fmt.Sprintf("%s", row[c.width+j]) {
+				case "blob":
+					row[j] = []byte{}
+				case "text":
+					row[j] = ""
+				}
+			}
+		}
+		rows[i] = row[:c.width]
+	}
+	return rows, err
 }
 
 func (c *tableCopy) write(ctx context.Context, rows [][]any) error {
@@ -412,7 +589,12 @@ func (c *tableCopy) write(ctx context.Context, rows [][]any) error {
 			if c.keyed {
 				args = row[c.keys:]
 			}
-			if _, err = statement.ExecContext(ctx, args...); err != nil {
+			run := statement.ExecContext
+			if query, literal, ok := c.withEmptyBlobs(args); ok {
+				// The driver binds an empty []byte as NULL; spell it out.
+				run = func(ctx context.Context, _ ...any) (sql.Result, error) { return tx.ExecContext(ctx, query, literal...) }
+			}
+			if _, err = run(ctx, args...); err != nil {
 				if !constraintFailure(err) {
 					return err
 				}
@@ -421,25 +603,6 @@ func (c *tableCopy) write(ctx context.Context, rows [][]any) error {
 		}
 		return nil
 	})
-}
-
-// probe finds a readable row past damage after rowid from, looking 1, 2, 4,
-// … rowids ahead; the backward read that follows recovers what it jumped.
-func (c *tableCopy) probe(ctx context.Context, from int64) (int64, bool) {
-	for skip, tries := int64(1), 0; tries < salvageTableFaults && skip > 0; skip, tries = skip*2, tries+1 {
-		rows, err := readWindow(ctx, c.db, c.from+` WHERE rowid>=? ORDER BY rowid LIMIT 1`, []any{from + skip}, c.width)
-		if err == nil {
-			if len(rows) == 0 {
-				return 0, false
-			}
-			next, _ := rows[0][0].(int64)
-			return next, true
-		}
-		if ctx.Err() != nil {
-			return 0, false
-		}
-	}
-	return 0, false
 }
 
 func readWindow(ctx context.Context, db *dbwork.Candidate, query string, after []any, width int) ([][]any, error) {

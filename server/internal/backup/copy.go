@@ -8,6 +8,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 
@@ -131,7 +132,7 @@ func copyDatabaseGuarded(ctx context.Context, source *sql.DB, dest string, progr
 	}
 	defer file.Close()
 
-	if err = settleStranded(ctx, source); err != nil {
+	if err = settleStranded(ctx, source, limits); err != nil {
 		return err
 	}
 	run := &copyRun{source: source, dest: dest, limits: limits}
@@ -377,31 +378,58 @@ var (
 	stranded   []*copyRun
 )
 
-// settleStranded finishes every stranded backup on source. A new copy never
-// starts while one is still attached.
-func settleStranded(ctx context.Context, source *sql.DB) error {
+// settleStranded finishes every stranded backup on source within the
+// attempt's no-progress budget; a new copy never starts while one is still
+// attached (ErrBackupPressure). Entries are taken out of the registry before
+// waiting, so other sources are not held up. A stranded backup whose database
+// has since closed was finished by the driver as its connections closed, and
+// is dropped.
+func settleStranded(ctx context.Context, source *sql.DB, limits copyLimits) error {
 	strandedMu.Lock()
-	defer strandedMu.Unlock()
-	kept := stranded[:0]
-	var failed error
+	var mine, others []*copyRun
 	for _, r := range stranded {
-		if r.source != source {
-			kept = append(kept, r)
-			continue
-		}
-		if err := r.finish(ctx); err != nil {
-			kept = append(kept, r)
-			failed = err
+		if r.source == source {
+			mine = append(mine, r)
+		} else {
+			others = append(others, r)
 		}
 	}
-	stranded = kept
-	if failed != nil {
-		if ctx.Err() == nil {
-			return ErrBackupPressure
-		}
-		return failed
+	stranded = others
+	strandedMu.Unlock()
+	if len(mine) == 0 {
+		return nil
 	}
-	return nil
+	wait, cancel := context.WithTimeout(ctx, limits.noProgress)
+	defer cancel()
+	var kept []*copyRun
+	var failed error
+	for _, r := range mine {
+		if err := r.finish(wait); err != nil {
+			if closedDatabase(source) {
+				continue
+			}
+			kept, failed = append(kept, r), err
+		}
+	}
+	if len(kept) == 0 {
+		return nil
+	}
+	strandedMu.Lock()
+	stranded = append(stranded, kept...)
+	strandedMu.Unlock()
+	if ctx.Err() != nil {
+		return ctx.Err()
+	}
+	log.Printf("warn: Backup is still releasing an earlier unfinished copy: %v", failed)
+	return ErrBackupPressure
+}
+
+// closedDatabase reports a handle that has been closed.
+func closedDatabase(db *sql.DB) bool {
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+	err := db.PingContext(ctx)
+	return err != nil && strings.Contains(err.Error(), "sql: database is closed")
 }
 
 func (r *copyRun) checkDisk(sourcePath string) error {

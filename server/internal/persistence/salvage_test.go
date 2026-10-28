@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"fmt"
 	"io"
+	"math"
 	"os"
 	"path/filepath"
 	"testing"
@@ -251,11 +252,19 @@ func TestRestoreSalvagesADamagedTable(t *testing.T) {
 		t.Fatal(err)
 	}
 	probe.Close()
-	libraryPage := pageOf(t, path, "libraries", "leaf", 3)
-	creditPage := pageOf(t, path, "catalog_credit_names", "leaf", 3)
-	lostLibraries, lostCredits := cellsOn(t, path, libraryPage), cellsOn(t, path, creditPage)
-	spoil(t, path, libraryPage)
-	spoil(t, path, creditPage)
+	// Two separate damaged pages in each table, readable pages between them.
+	lostLibraries, lostCredits := 0, 0
+	var spoiled []int64
+	for _, nth := range []int{3, 8} {
+		libraryPage := pageOf(t, path, "libraries", "leaf", nth)
+		creditPage := pageOf(t, path, "catalog_credit_names", "leaf", nth)
+		lostLibraries += cellsOn(t, path, libraryPage)
+		lostCredits += cellsOn(t, path, creditPage)
+		spoiled = append(spoiled, libraryPage, creditPage)
+	}
+	for _, page := range spoiled {
+		spoil(t, path, page)
+	}
 
 	report, err := InspectCandidate(ctx, filepath.Dir(path), filepath.Base(path))
 	if err != nil || report.Integrity != "recovered" || report.Recovery == nil || !report.Recovery.Salvaged {
@@ -301,5 +310,34 @@ func TestRestoreSalvagesADamagedTable(t *testing.T) {
 	var triggers int
 	if err = reopened.QueryRow(`SELECT count(*) FROM sqlite_schema WHERE type='trigger'`).Scan(&triggers); err != nil || triggers == 0 {
 		t.Fatalf("salvage dropped the triggers: %d %v", triggers, err)
+	}
+}
+
+func TestSalvageMidpoints(t *testing.T) {
+	for _, c := range []struct {
+		lo, hi any
+		ok     bool
+	}{
+		{int64(1), int64(9), true}, {int64(1), int64(2), false}, {nil, int64(5), true}, {int64(math.MinInt64), int64(math.MaxInt64), true},
+		{"person 00053", "person 00200", true}, {"a", "a\x00", false}, {"", "b", true}, {nil, "a", true},
+		{[]byte{1, 2}, []byte{1, 3}, true}, {2.0, 3.0, true}, {"a", int64(1), false}, {int64(5), int64(5), false},
+	} {
+		m, ok := midpoint(c.lo, c.hi)
+		if ok != c.ok {
+			t.Fatalf("midpoint(%v, %v) = %v, %v", c.lo, c.hi, m, ok)
+		}
+		if !ok {
+			continue
+		}
+		switch hi := c.hi.(type) {
+		case int64:
+			if lo, _ := c.lo.(int64); m.(int64) >= hi || c.lo != nil && m.(int64) <= lo {
+				t.Fatalf("midpoint(%v, %v) = %v", c.lo, c.hi, m)
+			}
+		case string:
+			if lo, _ := c.lo.(string); m.(string) >= hi || m.(string) <= lo && c.lo != nil {
+				t.Fatalf("midpoint(%q, %q) = %q", c.lo, c.hi, m)
+			}
+		}
 	}
 }

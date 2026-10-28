@@ -275,3 +275,47 @@ func TestBackupCarriesOwnerArtworkACollectorMovedAside(t *testing.T) {
 		t.Fatal("the moved-aside owner file was not carried")
 	}
 }
+
+// With the whole artwork folder included, the owner's artwork is still
+// checked against the digest the database names: changed bytes under the
+// same name fail the backup instead of being carried.
+func TestFullArtworkBackupStillChecksOwnerArtwork(t *testing.T) {
+	s, p, state := policyFixture(t)
+	ctx := context.Background()
+	c := catalogtest.New(t, s.db)
+	item := c.Movie(c.Library("films", "Films", "movie", "/fixture"), "/fixture/movie.mkv", "Fixture", 2020)
+	artwork := filepath.Join(state, "Metadata", "artwork")
+	m := metadata.New(s.db, "")
+	if err := m.SetArtworkDirectory(artwork); err != nil {
+		t.Fatal(err)
+	}
+	target := metadata.RepairTarget{Kind: "item", ID: item.Public}
+	auth := func(*sql.Tx) error { return nil }
+	before, err := m.RepairState(ctx, target, auth)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var encoded bytes.Buffer
+	if err = png.Encode(&encoded, image.NewRGBA(image.Rect(0, 0, 24, 36))); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = m.UploadArtwork(ctx, target, "poster", "", before.Revision, encoded.Bytes(), metadata.MBActor{Authority: "local", AccountID: "owner", ProfileID: "profile"}, auth); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = p.Update(ctx, SettingsPatch{IncludeArtwork: ptr(true)}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = s.Create(ctx, KindManual); err != nil {
+		t.Fatalf("a healthy full-artwork backup failed: %v", err)
+	}
+	var blob string
+	if err = s.db.QueryRow(`SELECT s.small_blob FROM artwork_uploads u JOIN artwork_sources s ON s.digest=u.digest`).Scan(&blob); err != nil {
+		t.Fatal(err)
+	}
+	if err = os.WriteFile(filepath.Join(artwork, blob+".img"), []byte("not the uploaded picture"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = s.Create(ctx, KindManual); !errors.Is(err, ErrIntegrity) {
+		t.Fatalf("changed owner artwork was carried: %v", err)
+	}
+}

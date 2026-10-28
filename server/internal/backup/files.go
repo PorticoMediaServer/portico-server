@@ -114,9 +114,9 @@ func copyStateFilesForBackup(ctx context.Context, state, partial string, include
 	// The owner's artwork is always carried, and checked against its digest,
 	// even when the whole folder was walked: the walk skips a file a
 	// collector had moved aside, and owner artwork must not be lost that way.
-	copied := make(map[string]bool, len(entries))
+	copied := make(map[string]string, len(entries))
 	for _, entry := range entries {
-		copied[entry.Name] = true
+		copied[entry.Name] = entry.SHA256
 	}
 	owner, err := copyOwnerArtwork(ctx, state, partial, copied)
 	if err != nil {
@@ -447,7 +447,7 @@ func hashFile(ctx context.Context, folder, name string) (FileEntry, error) {
 
 // Owner references come from the exact finalized SQLite snapshot, including undo
 // history. Remote images are excluded unless explicitly selected/edited by an owner.
-func copyOwnerArtwork(ctx context.Context, state, partial string, copied map[string]bool) ([]FileEntry, error) {
+func copyOwnerArtwork(ctx context.Context, state, partial string, copied map[string]string) ([]FileEntry, error) {
 	u := url.URL{Scheme: "file", Path: filepath.Join(partial, DatabaseName), RawQuery: "mode=ro"}
 	db, e := sql.Open("sqlite", u.String())
 	if e != nil {
@@ -470,7 +470,12 @@ func copyOwnerArtwork(ctx context.Context, state, partial string, copied map[str
 			return nil, ErrIntegrity
 		}
 		name := "Metadata/artwork/" + digest + ".img"
-		if copied[name] {
+		if hash, ok := copied[name]; ok {
+			// Already carried by the whole-folder walk: its bytes must still
+			// be the ones the database names.
+			if hash != digest {
+				return nil, ErrIntegrity
+			}
 			continue
 		}
 		entry, e := copyArtworkBlob(ctx, state, partial, name)

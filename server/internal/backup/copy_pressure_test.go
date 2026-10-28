@@ -262,3 +262,41 @@ func TestNextCopyFinishesAStrandedOne(t *testing.T) {
 		t.Fatalf("%d stranded copies left", left)
 	}
 }
+
+// A stranded copy whose database has since closed was finished by the driver
+// as its connections closed: settling drops it instead of keeping it forever.
+func TestAStrandedCopyOnAClosedDatabaseIsDropped(t *testing.T) {
+	dir := t.TempDir()
+	db, err := dbwork.OpenHandle(filepath.Join(dir, "closed.sqlite"), dbwork.DefaultPolicy())
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx := context.Background()
+	if _, err = dbwork.ExecWrite(ctx, db, dbwork.ClassInteractive, `CREATE TABLE sample(body BLOB); INSERT INTO sample SELECT randomblob(8192) FROM json_each('[1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31,32,33,34,35,36,37,38,39,40]')`); err != nil {
+		t.Fatal(err)
+	}
+	limits := testCopyLimits(dbwork.ClassMaintenance)
+	if err = os.WriteFile(filepath.Join(dir, "stranded.sqlite"), nil, 0600); err != nil {
+		t.Fatal(err)
+	}
+	r := &copyRun{source: db, dest: filepath.Join(dir, "stranded.sqlite"), limits: limits}
+	if _, err = r.step(ctx, backupStepBytes); err != nil || r.backup == nil {
+		t.Fatalf("first step: %v", err)
+	}
+	strandedMu.Lock()
+	stranded = append(stranded, r)
+	strandedMu.Unlock()
+	if err = db.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if err = settleStranded(ctx, db, limits); err != nil {
+		t.Fatalf("settling a closed database's copy: %v", err)
+	}
+	strandedMu.Lock()
+	defer strandedMu.Unlock()
+	for _, left := range stranded {
+		if left == r {
+			t.Fatal("a closed database's copy stayed stranded")
+		}
+	}
+}
