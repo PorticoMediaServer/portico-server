@@ -18,8 +18,8 @@ func TestDurableContinuationAndCancellation(t *testing.T) {
 	if e := os.Mkdir(media, 0700); e != nil {
 		t.Fatal(e)
 	}
-	// Folders are listed and checked a batch to a step: this many take more
-	// than the 32 steps of one process call and fewer than two calls' worth.
+	// This source spans more than one process call. A restart must resume
+	// all bounded pages, even when smaller source pages require more turns.
 	for i := 0; i < 20*storage.MaxInventoryBatch; i++ {
 		if e := os.Mkdir(filepath.Join(media, fmt.Sprint(i)), 0700); e != nil {
 			t.Fatal(e)
@@ -52,10 +52,19 @@ func TestDurableContinuationAndCancellation(t *testing.T) {
 	}
 	defer db.Close()
 	s = New(db, catalog.New(db), assets.Probe{})
-	s.process(context.Background(), job.ID, lib.ID)
-	j, e = s.Get(job.ID)
+	for turn := 0; turn < 100; turn++ {
+		s.process(context.Background(), job.ID, lib.ID)
+		j, e = s.Get(job.ID)
+		if e != nil || j.Status != "running" {
+			break
+		}
+	}
 	if e != nil || j.Status != "complete" {
 		t.Fatalf("restart continuation %+v %v", j, e)
+	}
+	var completed int
+	if e = db.QueryRow(`SELECT count(*) FROM inventory_directories WHERE job_id=? AND state='done'`, job.ID).Scan(&completed); e != nil || completed != 20*storage.MaxInventoryBatch+1 {
+		t.Fatalf("restart lost directory pages: %d %v", completed, e)
 	}
 	job, e = s.Queue(lib.ID)
 	if e != nil {

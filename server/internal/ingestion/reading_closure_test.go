@@ -39,8 +39,23 @@ func closureStart(t *testing.T, files ...string) (*loopFixture, Job, catalog.Lib
 func closureList(t *testing.T, f *loopFixture, job Job, source catalog.LibrarySource, paths ...string) {
 	t.Helper()
 	for _, path := range paths {
-		if e := f.s.readDirectoryPage(context.Background(), job.ID, source, path); e != nil {
-			t.Fatal(e)
+		// A listed directory is complete only after its real bounded pages
+		// reach EOF. Leave every other top-level directory untouched so the
+		// early-publication and independent-bad-top assertions stay meaningful.
+		for turn := 0; ; turn++ {
+			var state string
+			if e := f.db.QueryRow(`SELECT state FROM inventory_directories WHERE job_id=? AND relative_path=?`, job.ID, path).Scan(&state); e != nil {
+				t.Fatal(e)
+			}
+			if state == "done" {
+				break
+			}
+			if state != "pending" || turn == 1000 {
+				t.Fatalf("directory %s did not reach EOF: state=%s turns=%d", path, state, turn)
+			}
+			if e := f.s.readDirectoryPage(context.Background(), job.ID, source, path); e != nil {
+				t.Fatal(e)
+			}
 		}
 	}
 }
