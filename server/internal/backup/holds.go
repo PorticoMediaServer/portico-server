@@ -38,9 +38,9 @@ func holdWait(ctx context.Context, limits copyLimits) (context.Context, context.
 	return context.WithTimeout(dbwork.WithClass(ctx, limits.class), limits.noProgress)
 }
 
-// holdError reports a hold write that ran out of its wait as backup pressure.
+// holdError reports a refused or exhausted hold admission as backup pressure.
 func holdError(ctx context.Context, err error) error {
-	if err != nil && ctx.Err() == nil && errors.Is(err, context.DeadlineExceeded) {
+	if err != nil && ctx.Err() == nil && (errors.Is(err, context.DeadlineExceeded) || errors.Is(err, dbwork.ErrWriterCapacity)) {
 		return ErrBackupPressure
 	}
 	return err
@@ -64,9 +64,18 @@ func (s *Service) advanceHold(ctx context.Context, limits copyLimits, backupID, 
 	wait, cancel := holdWait(ctx, limits)
 	defer cancel()
 	wait = dbwork.WithPlan(wait, dbwork.WritePlan{Name: dbwork.BackupHoldPhasePlanName, Rows: 1, Pages: 4, VMOps: 250_000, Why: "one singleton state update; no indexed state column, foreign-key action or trigger"})
-	_, err := dbwork.ExecWrite(wait, s.db, limits.class,
-		`UPDATE backup_blob_holds SET state=? WHERE singleton=1 AND backup_id=? AND process_epoch=?`, state, backupID, s.epoch)
-	return holdError(ctx, err)
+	for {
+		_, err := dbwork.ExecWrite(wait, s.db, limits.class,
+			`UPDATE backup_blob_holds SET state=? WHERE singleton=1 AND backup_id=? AND process_epoch=?`, state, backupID, s.epoch)
+		if !errors.Is(err, dbwork.ErrWriterCapacity) || wait.Err() != nil {
+			return holdError(ctx, err)
+		}
+		// A WAL reservation refusal has no effect. Keep the finished copy and
+		// retry this idempotent phase within the original no-progress deadline.
+		if err = sleepContext(wait, backupBusyBackoff); err != nil {
+			return holdError(ctx, err)
+		}
+	}
 }
 
 // releaseHold ends the hold whatever happened to the backup, after a

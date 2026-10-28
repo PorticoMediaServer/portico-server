@@ -210,3 +210,32 @@ func TestUnqualifiedShadowReservationDoesNotEnableAdmissionPolicy(t *testing.T) 
 		t.Fatal("actual WAL extent ignored")
 	}
 }
+
+func TestWALReservationDiskFailureRefusesWithoutEffect(t *testing.T) {
+	l := reservationFixture(t)
+	l.probeOK = false
+	g := NewGate()
+	r := &walRequest{ledger: l, bytes: 32768, qualified: true, class: ClassInteractive}
+	start := time.Now()
+	_, e := g.Acquire(context.WithValue(context.Background(), walRequestKey{}, r), ClassInteractive)
+	if !errors.Is(e, ErrWriterCapacity) || time.Since(start) < walCapacityWait || time.Since(start) > walCapacityWait+time.Second {
+		t.Fatal(e, time.Since(start))
+	}
+	if s := l.snapshot(); s.QualifiedWrites != 0 || s.DebitedBytes != 0 {
+		t.Fatal(s)
+	}
+	release, e := g.Acquire(context.Background(), ClassInteractive)
+	if e != nil {
+		t.Fatal(e)
+	}
+	release()
+}
+
+func TestMBPinPagerEnforcementRemainsUnqualified(t *testing.T) {
+	l := reservationFixture(t)
+	ctx := WithPlan(context.Background(), WritePlan{Name: "catalog-one-mb-pin", Pages: 2048})
+	r := walContextForLedger(ctx, l, ClassBackgroundMedia, "").Value(walRequestKey{}).(*walRequest)
+	if r.qualified {
+		t.Fatal("unproved MB pager profile enabled")
+	}
+}

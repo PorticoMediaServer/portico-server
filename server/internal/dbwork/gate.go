@@ -226,8 +226,19 @@ func (g *Gate) acquire(ctx context.Context, class Class, stuck stuckClock) (func
 // acquireTicket waits for t's grant: the shared loop of an ordinary
 // acquisition and the reserved recovery turn.
 func (g *Gate) acquireTicket(ctx context.Context, t *ticket, stuck stuckClock) (func(), error) {
-	class, start := t.class, t.since
+	class := t.class
+	// Only qualified reservations can refuse on capacity. A failed disk probe
+	// or insufficient disk cannot be repaired by checkpointing indefinitely.
+	// One timer per waiting ticket preserves bounded refusal without polling SQL.
+	var capacity *time.Timer
+	var capacityC <-chan time.Time
+	if t.wal != nil && t.wal.qualified {
+		capacity = time.NewTimer(walCapacityWait)
+		capacityC = capacity.C
+		defer capacity.Stop()
+	}
 	g.mu.Lock()
+	start := t.since
 	queued := false
 	for {
 		if t.refused {
@@ -315,6 +326,23 @@ func (g *Gate) acquireTicket(ctx context.Context, t *ticket, stuck stuckClock) (
 		notify := g.notify
 		g.mu.Unlock()
 		select {
+		case <-capacityC:
+			g.mu.Lock()
+			if t.refused || ctx.Err() != nil {
+				continue
+			}
+			if !t.wal.ready() {
+				g.removeWaiterLocked(t, false)
+				g.refuseLocked(t)
+				g.admitBackgroundLocked()
+				if !g.active {
+					g.grant = g.pickWinnerLocked()
+				}
+				g.signalLocked()
+				g.mu.Unlock()
+				return nil, ErrWriterCapacity
+			}
+			capacity.Reset(walCapacityWait)
 		case <-stuck.C:
 			// A hold that outlasts StuckWait is a bug, not load: something is
 			// holding the writer across work that does not belong inside a
@@ -717,8 +745,8 @@ type AdmissionStats struct {
 	// Deferred is background acquisitions waiting before ticket admission.
 	// They are still waiting; none of their work has been dropped.
 	Deferred int `json:"deferred"`
-	// Refused counts user tickets turned away by a full pool, in total and by
-	// class.
+	// Refused counts tickets refused before effects by pool capacity or by a
+	// qualified WAL reservation deadline, in total and by class.
 	Refused        uint64            `json:"refused"`
 	RefusedByClass map[string]uint64 `json:"refusedByClass"`
 	// BusyAfterAdmission counts SQLITE_BUSY or SQLITE_LOCKED met by a write

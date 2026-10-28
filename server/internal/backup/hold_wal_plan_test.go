@@ -2,6 +2,7 @@ package backup
 
 import (
 	"context"
+	"errors"
 	"runtime"
 	"testing"
 
@@ -58,5 +59,24 @@ func TestBackupHoldPhaseSourceAndPhysicalWALBound(t *testing.T) {
 	}
 	if after.Overruns != before.Overruns || after.MeasuredBytes-before.MeasuredBytes > uint64(2*(32+4*(pageSize+24))) {
 		t.Fatalf("source proof exceeded: before %+v after %+v", before, after)
+	}
+}
+
+func TestBackupHoldCapacityRefusalKeepsPressureAndCancellationDistinct(t *testing.T) {
+	ctx := context.Background()
+	if e := holdError(ctx, dbwork.ErrWriterCapacity); !errors.Is(e, ErrBackupPressure) {
+		t.Fatal("hold refused as an unclassified storage error", e)
+	}
+	if e := holdError(ctx, context.DeadlineExceeded); !errors.Is(e, ErrBackupPressure) {
+		t.Fatal(e)
+	}
+	cancelled, cancel := context.WithCancel(ctx)
+	cancel()
+	if e := holdError(cancelled, context.Canceled); !errors.Is(e, context.Canceled) || errors.Is(e, ErrBackupPressure) {
+		t.Fatal("cancellation became pressure", e)
+	}
+	storage := errors.New("unrelated storage failure")
+	if e := holdError(ctx, storage); !errors.Is(e, storage) {
+		t.Fatal("storage failure swallowed", e)
 	}
 }

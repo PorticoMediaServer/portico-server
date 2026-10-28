@@ -89,7 +89,7 @@ func (s *CheckpointSchedule) Tick(ctx context.Context) (CheckpointResult, bool) 
 	}
 	bytes, _ := checkpointFileBytes(s.walPath)
 	soft, hard := ledger.pressure()
-	pressure := bytes >= CheckpointHardFileBytes || hard
+	pressure := bytes >= CheckpointHardFileBytes || hard || ledger.reservationPressure()
 	commits := ChangingCommits()
 	regular := now.Sub(s.lastAttempt) >= CheckpointRegularInterval && (!s.settled || commits != s.settledAt)
 	copying := now.Sub(s.lastAttempt) >= CheckpointCopyInterval && commits != s.settledAt

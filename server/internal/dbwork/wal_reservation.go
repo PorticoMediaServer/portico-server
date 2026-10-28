@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"sync"
+	"time"
 
 	"portico.local/server/internal/diskspace"
 )
@@ -16,6 +17,7 @@ const (
 	walRecoveryBytes  = int64(32 << 20)
 	walEnvelopeBytes  = int64(256 << 20)
 	walEmergencyBytes = int64(32 << 20)
+	walCapacityWait   = 5 * time.Second
 )
 
 // WALReservationStats distinguishes source qualification from measurement.
@@ -44,9 +46,10 @@ type walLedger struct {
 	native                   bool
 	// A source-plan overrun disables enforcement for that plan; no successful
 	// COMMIT is turned into a refusal. Its next write remains instrumented.
-	blocked         map[string]bool
-	lastCheckpoint  CheckpointResult
-	checkpointKnown bool
+	blocked            map[string]bool
+	lastCheckpoint     CheckpointResult
+	checkpointKnown    bool
+	reservationBlocked bool
 }
 
 type walRequest struct {
@@ -130,7 +133,11 @@ func (r *walRequest) ready() bool {
 	if r.class.Background() {
 		limit = walSoftBytes
 	}
-	return l.stats.AdmissionBytes+r.bytes <= limit
+	if l.stats.AdmissionBytes+r.bytes > limit {
+		l.reservationBlocked = true
+		return false
+	}
+	return true
 }
 
 // take runs once with the gate selected, before a connection/BEGIN is taken.
@@ -210,6 +217,18 @@ func (l *walLedger) pressure() (soft, hard bool) {
 	return l.stats.AdmissionBytes >= walSoftBytes, l.stats.AdmissionBytes >= walHardBytes
 }
 
+// reservationPressure is independent of physical WAL length. Qualified media
+// can exhaust its 128MiB admission ledger while the file remains below the hard
+// physical threshold; a soft checkpoint cannot reset behind its waiting ticket.
+func (l *walLedger) reservationPressure() bool {
+	if l == nil {
+		return false
+	}
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	return l.reservationBlocked
+}
+
 // reset is called only while the checkpoint owner's verified reset turn still
 // holds the gate. A PASSIVE copy or an observed file shrink cannot reclaim it.
 func (l *walLedger) reset() {
@@ -231,6 +250,7 @@ func (l *walLedger) reset() {
 	l.stats.PhysicalBytes = size
 	l.stats.DebitedBytes = size
 	l.stats.AdmissionBytes = size
+	l.reservationBlocked = false
 	l.stats.Resets++
 	l.mu.Unlock()
 }
