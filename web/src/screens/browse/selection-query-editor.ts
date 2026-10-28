@@ -24,7 +24,7 @@ export function createQuerySelectionEditor(options: SelectionEditorOptions) {
       if (target.mode !== 'query' || target.summary.types.length !== 1 || !target.summary.every.edit) throw new Error('query-editor-unavailable');
       const query = selectionQuerySelector(target); if (!query.ok) throw new Error('query-editor-refined');
       const fence = viewerFence(); if (!fence) throw new Error('metadata-authority-unavailable');
-      const preview = await fetchBulkMetadataPreview(api, {selector: query.selector, expected: query.expected}, serverId, signal); check();
+      const preview = await fetchBulkMetadataPreview(api, {selector: query.selector, expected: query.expected}, serverId, signal, {isCurrent: options.isCurrent}); check();
       if (viewerFence() !== fence || preview.viewerFence !== fence || preview.total !== target.total || preview.contentKind !== target.summary.types[0].kind) throw new Error('metadata-preview-mismatch');
       grants.set(preview, operation); return preview;
     },

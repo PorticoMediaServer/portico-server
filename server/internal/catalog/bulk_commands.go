@@ -28,10 +28,12 @@ func (e *JobItemError) Error() string { return e.Code }
 // administration (both already depend on catalogue). SQL effects share the job
 // transaction; they do not create per-item idempotency receipts.
 type BulkCommandHooks struct {
-	Validate  func(string, JobPersonalArgs) error
-	Authorize func(context.Context, *sql.Tx, identity.Principal, string) error
-	Capture   func(context.Context, *sql.Tx, identity.Principal, string, string, JobPersonalArgs) (string, error)
-	Apply     func(context.Context, *sql.Tx, identity.Principal, string, string, string, JobPersonalArgs) error
+	// Reading collection membership repeats the established personal Reading admission.
+	ReadingCollectionAuthorize func(context.Context, *sql.Tx, identity.Principal, string) error
+	Validate                   func(string, JobPersonalArgs) error
+	Authorize                  func(context.Context, *sql.Tx, identity.Principal, string) error
+	Capture                    func(context.Context, *sql.Tx, identity.Principal, string, string, JobPersonalArgs) (string, error)
+	Apply                      func(context.Context, *sql.Tx, identity.Principal, string, string, string, JobPersonalArgs) error
 }
 
 func jobActor(p identity.Principal) ResourceActor {
@@ -252,6 +254,18 @@ func (s *Service) applyBulkCommand(ctx context.Context, tx *sql.Tx, p identity.P
 		}
 		return recordBulkMembershipOutcome(tx, job, item, inserted == 1)
 	case "collection-add":
+		var kind int
+		if e := tx.QueryRowContext(ctx, `SELECT kind FROM catalog_entities WHERE public_id=pid_blob(?)`, item).Scan(&kind); e != nil {
+			return e
+		}
+		if kind == 20 || kind == 21 {
+			if e := s.authorizeReadingCollection(ctx, tx, p, item); e != nil {
+				if readingCollectionDenied(e) {
+					return &JobItemError{"not_found"}
+				}
+				return e
+			}
+		}
 		var target string
 		var entity int64
 		if e := tx.QueryRow(`SELECT d.target_id,i.id FROM personal_job_destinations d,catalog_entities i WHERE d.job_id=? AND i.public_id=pid_blob(?)`, job, item).Scan(&target, &entity); e != nil {

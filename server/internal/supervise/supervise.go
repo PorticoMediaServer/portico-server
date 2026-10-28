@@ -99,6 +99,7 @@ func Supervise(ctx context.Context, name string, fn func(context.Context)) {
 
 // Loop is Supervise's body, for a caller that already owns its goroutine.
 func Loop(ctx context.Context, name string, fn func(context.Context)) {
+	ctx = context.WithValue(ctx, operationKey{}, name)
 	wait := BackoffInitial
 	for ctx.Err() == nil {
 		started := time.Now()

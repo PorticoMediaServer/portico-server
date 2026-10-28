@@ -165,7 +165,7 @@ func registerIdentityRoutes(r *apikit.Registry, d Dependencies) {
 	registerDownloadProfileCache(r, d)
 	ownerErrors := []string{"unauthorized", "not_permitted", "not_found", "invalid_request", "internal"}
 	v1Route(r, apikit.Metadata{Audience: apikit.Clients, Admission: laneAdmin, ID: "list_missing_titles", Method: "GET", Path: "/v1/admin/missing-titles", Summary: "List titles whose files are no longer on disk, oldest first, with when each will be removed",
-		Access: apikit.Admin, AdminScope: "libraries", Requires: apikit.ScopeAdmin, Lane: apikit.Default, Cost: apikit.PageSized, Status: 200, Query: []string{"libraryId", "cursor", "limit"}, Errors: ownerErrors},
+		Access: apikit.Admin, AdminScope: "libraries", Requires: apikit.ScopeAdmin, Lane: apikit.Default, Cost: apikit.PageSized, Status: 200, Query: []string{"libraryId", "cursor", "limit"}, QueryIntegers: emptyLimitQuery(50, 200), Errors: ownerErrors},
 		func(ctx context.Context, q *http.Request, _ noBody) (catalog.MissingTitlesPage, error) {
 			limit := 50
 			if raw := q.URL.Query().Get("limit"); raw != "" {

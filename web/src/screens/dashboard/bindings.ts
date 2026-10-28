@@ -1,3 +1,4 @@
+import type {EventsClient} from '@core/playback-v1/events.ts';
 import type {SessionControls} from '@core/playback-controls.ts';
 import type {HttpLocalApi} from '@core/index.ts';
 import {ConsoleClient, type ConsoleScope} from '@core/console.ts';
@@ -20,7 +21,7 @@ import {settingsServerHeader} from '../settings/server-header';
 import type {ArtworkSource} from '../../kit/artwork/types';
 import {DASHBOARD_SESSION_PAGE_SIZE} from './session-window';
 
-export type DashboardEvents = Readonly<{on(type: string, listener: () => void): () => void; onResync?(listener: () => void): () => void}>;
+export type DashboardEvents = Pick<EventsClient, 'on'> & Partial<Pick<EventsClient, 'onResync' | 'onResyncRead' | 'resync'>>;
 export type DashboardAlert = DashboardStatus['alerts'][number];
 export type DashboardSession = AdminSession & Pick<DashboardSessionsPage['items'][number], 'channel' | 'programme'>;
 export type DashboardSessions = Omit<Awaited<ReturnType<AdminSessionsClient['list']>>, 'items'> & {items: readonly DashboardSession[]};
@@ -75,11 +76,15 @@ export function createDashboardBindings(options: DashboardBindingOptions): Dashb
   const assert = (owner = false) => {if (!current()) {close(); throw new DOMException('Dashboard authority changed', 'AbortError');} if (owner && options.role !== 'owner') throw new DOMException('Dashboard authority changed', 'AbortError');};
   const offAuthority = options.subscribeAuthority?.(() => {if (!current()) close();});
   const api: PlayHistoryApi = {request: async <T>(path: string, method?: string, body?: unknown, signal?: AbortSignal): Promise<T> => {
-    assert(); try {const result = await options.api.request<T>(path, method, body, signal ? AbortSignal.any([signal, life.signal]) : life.signal); assert(); return result;} catch (error) {if (error && typeof error === 'object' && 'status' in error && (error.status === 401 || error.status === 403)) close(); throw error;}
+    assert(); try {const readSignal = signal ? AbortSignal.any([signal, life.signal]) : life.signal;
+      const request = () => options.api.request<T>(path, method, body, readSignal);
+      const result = await (options.events?.resync && (!method || method === 'GET') ? options.events.resync.run(readSignal, request) : request()); assert(); return result;} catch (error) {if (error && typeof error === 'object' && 'status' in error && (error.status === 401 || error.status === 403)) close(); throw error;}
   }};
   const http = localV1Http({requestRaw: async (...args: Parameters<HttpLocalApi['requestRaw']>) => {
     assert(); const [path, method, init] = args;
-    const result = await options.api.requestRaw(path, method, {...init, signal: init?.signal ? AbortSignal.any([init.signal, life.signal]) : life.signal}); if (result.status === 401 || result.status === 403) close(); assert(); return result;
+    const readSignal = init?.signal ? AbortSignal.any([init.signal, life.signal]) : life.signal;
+    const request = () => options.api.requestRaw(path, method, {...init, signal: readSignal});
+    const result = await (options.events?.resync && method === 'GET' ? options.events.resync.run(readSignal, request) : request()); if (result.status === 401 || result.status === 403) close(); assert(); return result;
   }});
   const data = new DashboardDataClient(api), sessions = new AdminSessionsClient(http), consoleClient = new ConsoleClient(api, options.scope);
   const controls = playbackControlsService(api.request.bind(api));

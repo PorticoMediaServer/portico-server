@@ -339,7 +339,13 @@ func GenerateWith(definitions []Definition, options Options) (Artifacts, error) 
 			}
 		}
 		for _, key := range d.Query {
-			parameters = append(parameters, map[string]any{"name": key, "in": "query", "required": false, "schema": querySchema(d.Metadata, key)})
+			required := false
+			for _, integer := range d.QueryIntegers {
+				if integer.Name == key {
+					required = integer.Required
+				}
+			}
+			parameters = append(parameters, map[string]any{"name": key, "in": "query", "required": required, "schema": querySchema(d.Metadata, key)})
 		}
 		for _, key := range d.Headers {
 			parameters = append(parameters, map[string]any{"name": key, "in": "header", "required": false, "schema": map[string]any{"type": "string"}})
@@ -475,11 +481,38 @@ func querySchema(m Metadata, name string) map[string]any {
 		if integer.Name != name {
 			continue
 		}
-		out := map[string]any{"type": "integer", "minimum": integer.Minimum, "default": integer.Default}
+		out := map[string]any{"type": "integer"}
+		if !integer.Required && !integer.NoDefault {
+			out["default"] = integer.Default
+		}
+		if integer.DefaultBelowMinimum {
+			out["x-default-below-minimum"] = integer.Minimum
+		} else {
+			out["minimum"] = integer.Minimum
+		}
 		if integer.Clamped {
 			out["x-clamp-maximum"] = integer.Maximum
+		} else if integer.DefaultAboveMaximum {
+			out["x-default-above-maximum"] = integer.Maximum
 		} else {
 			out["maximum"] = integer.Maximum
+		}
+		if integer.ClampMaximum != 0 {
+			out["x-clamp-maximum"] = integer.ClampMaximum
+		}
+		if integer.Description != "" {
+			out["description"] = integer.Description
+		}
+		if integer.DefaultOnInvalid {
+			out["type"] = []string{"integer", "string"}
+			out["x-default-on-invalid"] = true
+		} else if integer.EmptyIsDefault {
+			// An explicitly empty query value is accepted by Get-based parsers.
+			delete(out, "type")
+			out["anyOf"] = []any{map[string]any{"type": "integer"}, map[string]any{"type": "string", "const": ""}}
+		}
+		if integer.EmptyIsDefault {
+			out["x-empty-is-default"] = true
 		}
 		return out
 	}

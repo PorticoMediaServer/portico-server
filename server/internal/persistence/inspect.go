@@ -36,6 +36,7 @@ type CandidateReport struct {
 // a running server's folder is the usual case: its log was mid-write, or the
 // database file and its log were copied at different moments.
 type Recovery struct {
+	ManifestDamage *ManifestRecovery `json:"manifestDamage,omitempty"`
 	// IndexesRebuilt: only indexes were damaged, and were rebuilt from the
 	// table rows. Nothing was lost.
 	IndexesRebuilt bool `json:"indexesRebuilt,omitempty"`
@@ -48,6 +49,23 @@ type Recovery struct {
 	// RemovedRows were readable but named something that was lost, and were
 	// removed so the restored database is consistent.
 	RemovedRows int64 `json:"removedRows,omitempty"`
+}
+
+// ManifestRecovery reports partial file recovery without retaining an unbounded
+// list of damaged regions in memory or in API responses.
+type ManifestRecovery struct {
+	Count              int64            `json:"count"`
+	Regions            []ManifestDamage `json:"regions"`
+	RegionsTruncated   bool             `json:"regionsTruncated,omitempty"`
+	MissingFiles       int64            `json:"missingFiles"`
+	UnverifiedDatabase bool             `json:"unverifiedDatabase,omitempty"`
+}
+type ManifestDamage struct {
+	FirstLine int64  `json:"firstLine"`
+	LastLine  int64  `json:"lastLine"`
+	StartByte int64  `json:"startByte"`
+	EndByte   int64  `json:"endByte"`
+	Reason    string `json:"reason"`
 }
 
 // InspectCandidate checks a restore candidate, dir/name, and makes it usable

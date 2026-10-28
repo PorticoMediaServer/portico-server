@@ -172,6 +172,10 @@ func (s *Service) Run(ctx context.Context) {
 			}
 		}
 		batchStarted := time.Now()
+		_ = s.LookupFanoutStep(ctx)
+		if !dbwork.Yield(ctx) {
+			return 0
+		}
 		_ = s.ScreenFanoutStep(ctx)
 		var batch sync.WaitGroup
 		for i := 0; i < dbwork.BackgroundConcurrency(ctx); i++ {

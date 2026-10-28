@@ -15,7 +15,7 @@ import {GeneratedCover} from '../../kit/artwork';
 import {Skeleton, StateView} from '../../kit/states';
 import {Menu, MenuItem} from '../../kit/overlays';
 import {useLibraryScreenContext} from '../browse/screen-context';
-import {SelectionBar} from '../../kit/selection';
+import {ReadSelectionBar} from './ReadSelectionBar';
 import {ServerMark} from '../../kit/shell';
 import {bulkTargetLimit} from '@core/metadata-bulk.ts';
 import {ReadBulkMetadata} from './ReadBulkMetadata';
@@ -268,8 +268,9 @@ function BoundReadLibrary({captured, libraryId, header, onMore, view}: {captured
   } : undefined);
   if (!isReading || !library) return <StateView title={t('next.states.notFound')} body={t('next.states.notFoundBody')}/>;
   const again = () => setRetry(value => value + 1);
-  return <>{header}{selection && canEdit && <SelectionBar selection={{count: selection.size, kind: library.kind === 'comic' ? 'comic' : 'ebook'}} context={t('next.reader.bulkLimit', {count: bulkTargetLimit})} onExit={() => setSelection(undefined)}
-    actions={{...(selection.size ? {onEdit: (anchor: HTMLElement) => {bulkAnchor.current = anchor; setBulk(Object.freeze([...selection.values()]));}, ownerMark: <ServerMark size={22}/>} : {})}}/>}{retired ? <StateView title={t('next.states.pageFailed')} body={t('next.states.pageFailedBody')} primary={{id: 'retry', label: t('next.states.tryAgain'), onPress: again}}/>
+  return <>{header}{selection && canEdit && <ReadSelectionBar context={context} selection={selection} kind={library.kind === 'comic' ? 'comic' : 'ebook'}
+    current={item => !retired && !!resources && resources.bindings.authority.isCurrent() && item.libraryId === libraryId && resources.books.collection.residentItems().includes(item)}
+    onExit={() => setSelection(undefined)} onEdit={anchor => {bulkAnchor.current = anchor; setBulk(Object.freeze([...selection.values()]));}}/>}{retired ? <StateView title={t('next.states.pageFailed')} body={t('next.states.pageFailedBody')} primary={{id: 'retry', label: t('next.states.tryAgain'), onPress: again}}/>
     : resources ? <LibraryRows resources={resources} libraryId={libraryId} name={library.name} comic={library.kind === 'comic'} view={view} onMore={openMore} onRetry={again} selection={selection} onToggle={canEdit ? toggle : undefined} onExitSelection={() => setSelection(undefined)}/> : <Skeleton height={320}/>}
     {menu && canEdit && <Menu open title={menu.item.title} anchorRef={{current: menu.anchor}} onOpenChange={open => {if (!open) setMenu(undefined);}}>
       <MenuItem onSelect={() => toggle(menu.item)}>{t('next.selection.select')}</MenuItem>

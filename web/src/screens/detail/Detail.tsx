@@ -47,10 +47,10 @@ import {StartRadioMenuItem} from './StartRadio';
 import {PagedShelf} from '../browse/PagedShelf';
 export {DetailLoading} from './Loading';
 
-export type DetailScreenProps = {binding: DetailBindings; itemId: string; libraryId?: string; artworkClaim?: SourceArtClaim};
-export function DetailScreen({binding, itemId, libraryId, artworkClaim}: DetailScreenProps) {
+export type DetailScreenProps = {binding: DetailBindings; itemId: string; libraryId?: string; kind?: string; artworkClaim?: SourceArtClaim};
+export function DetailScreen({binding, itemId, libraryId, kind, artworkClaim}: DetailScreenProps) {
   const [failure, setFailure] = useState<unknown>(), [attempt, setAttempt] = useState(0);
-  useEffect(() => { const request = new AbortController(); setFailure(undefined); void binding.select(libraryId ? {itemId, libraryId} : {itemId}, request.signal).catch(error => { if (!request.signal.aborted) setFailure(error); }); return () => { request.abort(); binding.cancel(); }; }, [binding, itemId, libraryId, attempt]);
+  useEffect(() => { const request = new AbortController(); setFailure(undefined); void binding.select({itemId, libraryId, kind}, request.signal).catch(error => { if (!request.signal.aborted) setFailure(error); }); return () => { request.abort(); binding.cancel(); }; }, [binding, itemId, libraryId, kind, attempt]);
   return failure ? <ScreenProblem context={binding.context} error={failure} retry={() => setAttempt(value => value + 1)} /> : <TitleBody binding={binding} artworkClaim={artworkClaim} />;
 }
 
@@ -62,7 +62,7 @@ export function TitleBody({binding, compact = false, artworkClaim}: {binding: De
   const preferences = useSyncExternalStore(binding.context.preferences.subscribe, binding.context.preferences.getSnapshot, binding.context.preferences.getSnapshot);
   const data = snapshot.data, {tab} = useSyncExternalStore(binding.view.subscribe, binding.view.getSnapshot, binding.view.getSnapshot);
   const recommendations = useSyncExternalStore(binding.recommendations.subscribe, binding.recommendations.getSnapshot, binding.recommendations.getSnapshot);
-  useEffect(() => { if (data?.item.kind === 'movie') void binding.recommendations.select(data, () => binding.service.getSnapshot().data === data); }, [binding, data]);
+  useEffect(() => { if (data?.item.kind === 'movie') void binding.readRecommendations(data); }, [binding, data]);
   // music-plus f7 (MC-9): an album's More like this is the server's own bounded ranking, read
   // for this captured page and item; it ranks by sound once the album is analyzed.
   const [similar, setSimilar] = useState<Readonly<{data: DetailProjection} & Awaited<ReturnType<DetailBindings['readSimilar']>>>>();

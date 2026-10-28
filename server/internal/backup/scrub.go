@@ -45,6 +45,9 @@ func ScrubPreRestoreCopy(ctx context.Context, folder string, scrub func(context.
 			return ErrSourceInvalid
 		}
 	}
+	if manifest.Version == StreamVersion {
+		return scrubStreamPreRestore(ctx, folder, manifest, scrub)
+	}
 	marker := filepath.Join(folder, signInScrubMarker)
 	if manifest.SignInsRemoved {
 		if err = os.Remove(marker); err != nil && !os.IsNotExist(err) {

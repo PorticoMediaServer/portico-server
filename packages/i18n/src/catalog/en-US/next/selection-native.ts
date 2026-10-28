@@ -57,6 +57,7 @@ export const selectionNativeMessages = {
   'next.selection.native.lock': 'Lock edited fields',
   'next.selection.native.lockDescription': 'So refreshes keep what you change.',
   'next.selection.native.mixed': 'Mixed',
+  'next.selection.native.manyValues': 'Many values',
   'next.selection.native.wasMixed': 'was Mixed',
   'next.selection.native.all': 'All {count, number}',
   'next.selection.native.distinct': '{count, plural, one {# value} other {# values}}',

@@ -71,11 +71,18 @@ export function screenLifetime(context: ScreenContext) {
       assert(); active.throwIfAborted(); return value;
     },
     async requestRaw(...args: Parameters<HttpLocalApi['requestRaw']>) {
-      assert();
       const [path, method, options] = args;
+      const metadataPreview = path === '/v1/metadata/bulk/preview'
+        || /^\/v1\/metadata\/bulk\/preview-queries\/[A-Za-z0-9._~-]{1,128}$/.test(path);
+      // This private read handle is cleanup, not a new screen command. The
+      // preparation owner must be able to release it after screen retirement.
+      if (metadataPreview && method === 'DELETE' && options?.singleAttempt) return context.api.requestRaw(path, method, options);
+      assert();
       const active = signal(options?.signal); active.throwIfAborted();
       const value = await context.api.requestRaw(path, method, {...options, signal: active});
-      assert(); active.throwIfAborted(); return value;
+      // Let the preparation owner validate/release a late pending envelope.
+      if (!metadataPreview) {assert(); active.throwIfAborted();}
+      return value;
     },
   };
   return {api, current, assert, signal, dispose: () => life.abort()};

@@ -3,6 +3,7 @@ import {serviceI18n} from '@core/presentation/service-text.ts';
 import {formatClock} from '@core/presentation/content.ts';
 import {ApiError} from '@core/index.ts';
 import type {ContentEntry, ContentProjection} from '@core/library-content.ts';
+import type {RelationPage} from '@core/relation-rows.ts';
 import {Menu, MenuItem} from '../../../kit/overlays';
 import {Artwork, AmbientArt} from '../../../kit/artwork';
 import {Button, Chip} from '../../../kit/controls';
@@ -16,6 +17,7 @@ import {t} from '../text';
 import styles from './audiobooks.module.css';
 import {AudiobookMore} from './More';
 import {TitleRow} from '../Detail';
+import {useRelationRow} from '../relation-row';
 import {useShellWidth} from '../../../shell/viewport';
 
 type Props = {context: ScreenContext; target: AudiobookTarget; onMore?: (target: ContentEntry, anchor: HTMLElement) => void};
@@ -67,7 +69,7 @@ function Narrators({names, linked, onOpen, locale}: {names: readonly string[]; l
 function AudiobookBody({binding, onMore}: {binding: AudiobookBindings; onMore?: Props['onMore']}) {
   const phone = useShellWidth() < 1024;
   const state = useSyncExternalStore(binding.service.subscribe, binding.service.getSnapshot, binding.service.getSnapshot);
-  const [expanded, setExpanded] = useState(false), [chaptersExpanded, setChaptersExpanded] = useState(false), [finished, setFinished] = useState<boolean>(), [watchlisted, setWatchlisted] = useState<boolean>(), [filters, setFilters] = useState<Readonly<{narrator: boolean; series: boolean}>>({narrator: false, series: false}), [moreBooks, setMoreBooks] = useState<Readonly<{token: object; page: ContentProjection; entries: readonly ContentEntry[]}>>();
+  const [expanded, setExpanded] = useState(false), [chaptersExpanded, setChaptersExpanded] = useState(false), [finished, setFinished] = useState<boolean>(), [watchlisted, setWatchlisted] = useState<boolean>(), [filters, setFilters] = useState<Readonly<{narrator: boolean; series: boolean}>>({narrator: false, series: false}), [moreBooks, setMoreBooks] = useState<Readonly<{token: object; page: ContentProjection; value: RelationPage}>>();
   // One captured page operation at a time, claimed synchronously before any I/O.
   const operation = useRef<Operation | undefined>(undefined), [busy, setBusy] = useState<Operation['kind'] | undefined>(undefined);
   const owns = (op: Operation) => {
@@ -116,7 +118,7 @@ function AudiobookBody({binding, onMore}: {binding: AudiobookBindings; onMore?: 
         binding.context.effects.reportError(error);
       });
       // The drawn More audiobooks row is the server's own related books, never a guessed list.
-      void binding.moreBooks(pageAtRender).then(value => {if (live() && reads.current?.token === token) setMoreBooks({token, page: pageAtRender, entries: value});}, error => {
+      void binding.moreBooks(pageAtRender).then(value => {if (live() && reads.current?.token === token) setMoreBooks({token, page: pageAtRender, value});}, error => {
         if (!live()) return;
         if (error instanceof ApiError && [403, 404, 405, 501].includes(error.status)) return;
         binding.context.effects.reportError(error);
@@ -228,9 +230,9 @@ function AudiobookBody({binding, onMore}: {binding: AudiobookBindings; onMore?: 
         })}>{rows.entries.length > CHAPTER_PREVIEW && rows.entries.length >= rows.totalCount ? t('title.showAllChapters', {count: rows.totalCount}) : t('title.showMoreChapters')}</Chip>}
       {rows.nextCursor && (book ? chaptersExpanded : true) && <Button size="small" onClick={() => run(() => {binding.current(page);return binding.service.next(rows.id);})}>{t('title.nextPage')}</Button>}
     </section>}
-    {book && moreBooks && moreBooks.page === page && moreBooks.token === reads.current?.token && moreBooks.entries.length > 0 && <TitleRow heading={t('title.moreAudiobooks')} subtitle={t('title.otherBooksOnServer')} entries={moreBooks.entries} binding={{context: binding.context}} guard={() => {
+    {book && moreBooks && moreBooks.page === page && moreBooks.token === reads.current?.token && <MoreAudiobooksRow binding={binding} page={page} first={moreBooks.value} guard={() => {
       // A retained card belongs to this exact page and read receipt; it may not open after either was replaced.
-      if (!moreBooks || reads.current?.token !== moreBooks.token) throw new DOMException('Book page changed', 'AbortError');
+      if (reads.current?.token !== moreBooks.token) throw new DOMException('Book page changed', 'AbortError');
       binding.current(moreBooks.page);
     }} />}
     {more?.page === page && <Menu open onOpenChange={value => {if (!value) setMore(undefined);}} title={more.entry.title} anchorRef={{current: more.anchor}}>
@@ -240,6 +242,14 @@ function AudiobookBody({binding, onMore}: {binding: AudiobookBindings; onMore?: 
     </Menu>}
     {!book && <section><div className={styles.sectionHead}><h2>{t('next.controls.details')}</h2></div><dl className={styles.details}>{entity.narrators?.length ? <><dt>{t('filter.field.narrator')}</dt><dd>{serviceI18n().list(entity.narrators)}</dd></> : null}{entity.duration !== undefined && <><dt>{t('next.kit.length')}</dt><dd>{duration(entity.duration)}</dd></>}</dl></section>}
   </article>;
+}
+/** The ordinary TitleRow pager supplies visibility demand and the existing square-card shelf.
+ * An empty filtered page still mounts its pending slot, so visible demand can reach later books. */
+function MoreAudiobooksRow({binding, page, first, guard}: {binding: AudiobookBindings; page: ContentProjection; first: RelationPage; guard: () => void}) {
+  const row = useRelationRow(binding.context, first, first.entries, () => binding.moreBooksPager(page, first));
+  if (!row.entries.length && !row.pagination) return null;
+  return <TitleRow heading={t('title.moreAudiobooks')} subtitle={t('title.otherBooksOnServer')} entries={row.entries}
+    binding={{context: binding.context}} guard={guard} pagination={row.pagination}/>;
 }
 function Chapter({entry, index, page, binding}: {entry: ContentEntry; index: number; page: ContentProjection; binding: AudiobookBindings}) {
   const resume = page.listening?.resume;

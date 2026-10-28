@@ -1,14 +1,18 @@
-import {routePath} from '../../../contracts/src/route-paths.ts';
 import type {HomeApi} from '../home.ts';
 import type {JobSelector} from '../bulk-jobs.ts';
 import type {RepairFieldSpec} from '../metadata-repair.ts';
 import type {SelectionIdentity} from '../selection-model/index.ts';
 import {selectionExecutionError} from './execution.ts';
+import {readMetadataPreview, type MetadataPreviewLifetime} from './metadata-preview-preparation.ts';
 
 export type BulkMetadataPreviewTarget = Readonly<{kind: 'item' | 'show' | 'season' | 'album' | 'artist' | 'book'; contentKind: string; id: string; libraryId: string}>;
 export type BulkMetadataPreviewRequest = Readonly<{targets: readonly BulkMetadataPreviewTarget[]; selector?: never; expected?: never} | {targets?: never; selector: JobSelector; expected: {catalogRevision: string}}>;
 export type BulkMetadataValueCount = Readonly<{value: string; count: number}>;
-export type BulkMetadataField = Readonly<{state: 'shared' | 'mixed'; distinctCount: number; value?: string; values: readonly BulkMetadataValueCount[]; entries: readonly BulkMetadataValueCount[]; locked: number; truncated: boolean}>;
+/** Exact small cardinalities and a lower bound are deliberately different states. */
+export type BulkMetadataField = Readonly<{
+  values: readonly BulkMetadataValueCount[]; entries: readonly BulkMetadataValueCount[]; locked: number; truncated: boolean;
+} & ({state: 'shared' | 'mixed'; distinctCount: number; atLeast?: never; value?: string}
+  | {state: 'many'; distinctCount?: never; atLeast: number; value?: never})>;
 export type BulkMetadataPreview = Readonly<{
   serverId: string; viewerFence: string; contentKind: string; kind: BulkMetadataPreviewTarget['kind']; total: number; selectionRevision?: string;
   tabs?: readonly string[];schema: readonly RepairFieldSpec[];
@@ -53,13 +57,19 @@ export function parseBulkMetadataPreview(raw: unknown, request: BulkMetadataPrev
   };
   for (const spec of schema) {
     const field = raw.fields[spec.field];
-    if (!record(field) || !['shared', 'mixed'].includes(String(field.state)) || !count(field.distinctCount) || field.distinctCount < 1 || field.distinctCount > raw.total || !count(field.locked) || field.locked > raw.total || typeof field.truncated !== 'boolean') bad();
+    if (!record(field) || !['shared', 'mixed', 'many'].includes(String(field.state)) || !count(field.locked) || field.locked > raw.total || typeof field.truncated !== 'boolean') bad();
     if (field.state === 'shared' ? !text(field.value) : field.value !== undefined) bad();
     const variants = values(field.values), entries = values(field.entries);
-    if (!variants.length || variants.reduce((n, row) => n + row.count, 0) > (raw.total as number)) bad();
+    if (field.state === 'many') {
+      // The bounded reducer observes exactly K+1 keys; this is never an exact count.
+      if (field.distinctCount !== undefined || field.atLeast !== 65 || field.atLeast > raw.total || variants.length || !field.truncated) bad();
+      fields[spec.field] = Object.freeze({state: 'many', atLeast: field.atLeast, values: variants, entries, locked: field.locked, truncated: true});
+      continue;
+    }
+    if (field.atLeast !== undefined || !count(field.distinctCount) || field.distinctCount < 1 || field.distinctCount > 64 || field.distinctCount > raw.total || !variants.length) bad();
     if (field.state === 'shared' ? field.distinctCount !== 1 : field.distinctCount < 2) bad();
-    if (field.distinctCount < variants.length || !field.truncated && field.distinctCount !== variants.length) bad();
-    if (field.state === 'shared' && (variants.length !== 1 || variants[0].value !== field.value || variants[0].count !== raw.total) || !field.truncated && variants.reduce((n, row) => n + row.count, 0) !== raw.total) bad();
+    if (field.distinctCount !== variants.length) bad();
+    if (field.state === 'shared' && (variants.length !== 1 || variants[0].value !== field.value || variants[0].count !== raw.total) || variants.reduce((n, row) => n + row.count, 0) !== raw.total) bad();
     fields[spec.field] = Object.freeze({state: field.state as 'shared' | 'mixed', distinctCount: field.distinctCount, ...(field.state === 'shared' ? {value: field.value as string} : {}), values: variants, entries, locked: field.locked, truncated: field.truncated});
   }
   const requested = request.targets;
@@ -71,7 +81,7 @@ export function parseBulkMetadataPreview(raw: unknown, request: BulkMetadataPrev
   });
   return Object.freeze({serverId, viewerFence: raw.viewerFence, contentKind: raw.contentKind, kind: raw.kind as BulkMetadataPreviewTarget['kind'], total: raw.total, ...(typeof raw.selectionRevision === 'string' ? {selectionRevision: raw.selectionRevision} : {}), ...(Array.isArray(raw.tabs)?{tabs:Object.freeze(raw.tabs.filter((tab):tab is string=>typeof tab==='string'&&['general','numbers','text','identity'].includes(tab)))}:{}),schema, singleItemFields, excludedFields, fields: Object.freeze(fields), targets: Object.freeze(targets)});
 }
-export async function fetchBulkMetadataPreview(api: HomeApi, request: BulkMetadataPreviewRequest, serverId: string, signal?: AbortSignal): Promise<BulkMetadataPreview> {
+export async function fetchBulkMetadataPreview(api: HomeApi, request: BulkMetadataPreviewRequest, serverId: string, signal?: AbortSignal, lifetime: Omit<MetadataPreviewLifetime, 'signal'> = {}): Promise<BulkMetadataPreview> {
   if (request.targets && (!request.targets.length || request.targets.length > 2048)) throw selectionExecutionError('metadata-preview-limit');
-  return parseBulkMetadataPreview(await api.request(routePath('post_metadata_bulk_preview'), 'POST', request, signal), request, serverId);
+  return readMetadataPreview(api, request, (raw, captured) => parseBulkMetadataPreview(raw, captured, serverId), {...lifetime, signal});
 }

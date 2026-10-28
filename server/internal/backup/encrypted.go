@@ -227,11 +227,7 @@ func encryptFolder(ctx context.Context, folder string, destination *os.Root, mat
 		return e
 	}
 	archive := tar.NewWriter(enc)
-	names := []string{ManifestName}
-	for _, entry := range manifest.Files {
-		names = append(names, entry.Name)
-	}
-	for _, name := range names {
+	e = visitBackupNames(ctx, folder, manifest, func(name string) error {
 		if e = regularManifestFile(folder, name); e != nil {
 			return e
 		}
@@ -253,6 +249,10 @@ func encryptFolder(ctx context.Context, folder string, destination *os.Root, mat
 		if closeErr != nil {
 			return closeErr
 		}
+		return nil
+	})
+	if e != nil {
+		return e
 	}
 	if e = archive.Close(); e != nil {
 		return e
@@ -293,7 +293,7 @@ func encryptedManifest(folder string) (Manifest, error) {
 	if e = json.Unmarshal(raw, &m); e != nil {
 		return m, ErrSourceInvalid
 	}
-	if m.Format != Format || m.Version != Version || len(m.Files) != 0 {
+	if m.Format != Format || (m.Version != Version && m.Version != HashedVersion) || len(m.Files) != 0 {
 		return m, ErrSourceInvalid
 	}
 	if e = regularManifestFile(folder, encryptedPayload); e != nil {
@@ -390,8 +390,6 @@ func (s *Service) decryptSource(ctx context.Context, source Source, password str
 		}
 	}()
 	tr := tar.NewReader(&scrubReader{ctx: ctx, r: enc})
-	seen := map[string]bool{}
-	count := 0
 	for {
 		h, e := tr.Next()
 		if errors.Is(e, io.EOF) {
@@ -400,12 +398,7 @@ func (s *Service) decryptSource(ctx context.Context, source Source, password str
 		if e != nil {
 			return source, func() {}, ErrIntegrity
 		}
-		count++
-		if count > 1_000_000 || h.Typeflag != tar.TypeReg || h.Size < 0 || !safeRelativeFile(h.Name) || h.Name != ManifestName && !restorableFile(h.Name) || seen[h.Name] {
-			return source, func() {}, ErrSourceInvalid
-		}
-		seen[h.Name] = true
-		if h.Name == ManifestName && h.Size > maxManifestBytes {
+		if h.Typeflag != tar.TypeReg || h.Size < 0 || !safeRelativeFile(h.Name) || h.Name != ManifestName && !restorableFile(h.Name) {
 			return source, func() {}, ErrSourceInvalid
 		}
 		if e = checkFreeSpace(tmp, h.Size); e != nil {
@@ -445,8 +438,10 @@ func (s *Service) decryptSource(ctx context.Context, source Source, password str
 			return source, func() {}, ErrIntegrity
 		}
 	}
-	if e = checkSourceHashes(tmp, manifest); e != nil {
-		return source, func() {}, e
+	if manifest.Version != StreamVersion {
+		if e = checkSourceHashes(tmp, manifest); e != nil {
+			return source, func() {}, e
+		}
 	}
 	failed = false
 	return Source{Path: tmp}, cleanup, nil
@@ -482,11 +477,7 @@ func syncRoot(root *os.Root) error {
 
 // Root confines every write even if a selected directory is concurrently renamed.
 func publishPlain(ctx context.Context, folder string, root *os.Root, manifest Manifest) error {
-	names := []string{ManifestName}
-	for _, entry := range manifest.Files {
-		names = append(names, entry.Name)
-	}
-	for _, name := range names {
+	return visitBackupNames(ctx, folder, manifest, func(name string) error {
 		if e := regularManifestFile(folder, name); e != nil {
 			return e
 		}
@@ -510,25 +501,22 @@ func publishPlain(ctx context.Context, folder string, root *os.Root, manifest Ma
 		if e != nil {
 			return e
 		}
-	}
-	dirs := map[string]bool{".": true}
-	for _, name := range names {
-		for d := filepath.Dir(filepath.FromSlash(name)); d != "."; d = filepath.Dir(d) {
-			dirs[d] = true
+		for d := filepath.Dir(filepath.FromSlash(name)); ; d = filepath.Dir(d) {
+			f, e := root.Open(d)
+			if e != nil {
+				return e
+			}
+			e = syncDirectoryHandle(f)
+			f.Close()
+			if e != nil {
+				return e
+			}
+			if d == "." {
+				break
+			}
 		}
-	}
-	for d := range dirs {
-		f, e := root.Open(d)
-		if e != nil {
-			return e
-		}
-		e = syncDirectoryHandle(f)
-		f.Close()
-		if e != nil {
-			return e
-		}
-	}
-	return nil
+		return nil
+	})
 }
 
 // Both barriers must succeed before an encrypted copy can be published. The

@@ -16,11 +16,11 @@ func registerLibrariesHTTPContracts(registry *apikit.Registry) error {
 	}
 
 	// internal/httpapi/admin.go:62
-	if err := apikit.RegisterHTTP[struct{}, catalog.AdminLibraries](registry, apikit.Metadata{Audience: apikit.Integrations, ID: "get_admin_libraries", Method: "GET", Path: "/v1/admin/libraries", Summary: "Read server library", Access: apikit.Admin, AdminScope: "libraries", Requires: apikit.ScopeLibrary, Lane: apikit.Default, Admission: laneAdmin, Cost: apikit.Constant, BodyLimit: 0, Status: 200, Errors: []string{"invalid_request", "unauthorized", "not_permitted", "not_found", "internal"}}); err != nil {
+	if err := apikit.RegisterHTTP[struct{}, catalog.AdminLibraries](registry, apikit.Metadata{Audience: apikit.Integrations, ID: "get_admin_libraries", Method: "GET", Path: "/v1/admin/libraries", Summary: "Read server library", Query: []string{"cursor", "limit"}, QueryIntegers: limitQuery(40, 40), Access: apikit.Admin, AdminScope: "libraries", Requires: apikit.ScopeLibrary, Lane: apikit.Default, Admission: laneAdmin, Cost: apikit.Constant, BodyLimit: 0, Status: 200, Errors: []string{"invalid_request", "unauthorized", "not_permitted", "not_found", "internal"}}); err != nil {
 		return err
 	}
 	// internal/httpapi/admin.go:62
-	if err := apikit.RegisterHTTP[struct{}, catalog.AdminJobs](registry, apikit.Metadata{Audience: apikit.Integrations, ID: "get_admin_jobs", Method: "GET", Path: "/v1/admin/jobs", Summary: "Read server jobs", Access: apikit.Admin, AdminScope: "libraries", Requires: apikit.ScopeLibrary, Lane: apikit.Default, Admission: laneAdmin, Cost: apikit.Constant, BodyLimit: 0, Status: 200, Errors: []string{"invalid_request", "unauthorized", "not_permitted", "not_found", "internal"}}); err != nil {
+	if err := apikit.RegisterHTTP[struct{}, catalog.AdminJobs](registry, apikit.Metadata{Audience: apikit.Integrations, ID: "get_admin_jobs", Method: "GET", Path: "/v1/admin/jobs", Summary: "Read server jobs", Query: []string{"libraryId", "status", "cursor", "limit"}, QueryIntegers: limitQuery(40, 40), Access: apikit.Admin, AdminScope: "libraries", Requires: apikit.ScopeLibrary, Lane: apikit.Default, Admission: laneAdmin, Cost: apikit.Constant, BodyLimit: 0, Status: 200, Errors: []string{"invalid_request", "unauthorized", "not_permitted", "not_found", "internal"}}); err != nil {
 		return err
 	}
 	// internal/httpapi/admin.go:62

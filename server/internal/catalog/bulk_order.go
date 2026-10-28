@@ -117,14 +117,23 @@ func (s *Service) bulkSortKey(ctx context.Context, tx *sql.Tx, v Viewer, selecto
 		desc = append(desc, false)
 		fold = append(fold, false)
 		scope, scoped := browseScopeSQL(q.LibraryID, pivot)
-		args = append(args, item)
-		args = append(args, scoped...)
 		var node *BrowseNode
 		if len(q.Filter) > 0 {
 			if e = json.Unmarshal(q.Filter, &node); e != nil {
 				return "", e
 			}
 		}
+		groupJoin := ""
+		if sorts[0].Field == "groupOrder" {
+			source, sourceArgs, err := s.groupOrderSource(groupOrderTarget(node), nil)
+			if err != nil {
+				return "", err
+			}
+			groupJoin = ` JOIN (` + source + `) ord ON ord.id=e.entity_id`
+			args = append(args, sourceArgs...)
+		}
+		args = append(args, item)
+		args = append(args, scoped...)
 		compiler := &browseCompiler{now: s.recommendationNow(s.browseInstant), profile: v.Profile, restrictions: v.EffectiveRestrictions()}
 		readingEligible, e := s.bindReadingBrowse(q.LibraryID, compiler)
 		if e != nil {
@@ -138,7 +147,7 @@ func (s *Service) bulkSortKey(ctx context.Context, tx *sql.Tx, v Viewer, selecto
 		args = append(args, compiler.args...)
 		order, ordered := browseOrderSQL(v.Profile, sorts)
 		args = append(args, ordered...)
-		prefix, e = scalarKeys(ctx, tx, `SELECT `+strings.Join(expressions, ",")+` FROM catalog_entities item JOIN catalog_browse_memberships bm ON bm.item_id=item.id JOIN catalog_browse_rows e ON e.entity_id=bm.entity_id WHERE item.id=? AND `+scope+` AND `+filter+` ORDER BY `+order+` LIMIT 1`, args, desc, fold)
+		prefix, e = scalarKeys(ctx, tx, `SELECT `+strings.Join(expressions, ",")+` FROM catalog_entities item JOIN catalog_browse_memberships bm ON bm.item_id=item.id JOIN catalog_browse_rows e ON e.entity_id=bm.entity_id`+groupJoin+` WHERE item.id=? AND `+scope+` AND `+filter+` ORDER BY `+order+` LIMIT 1`, args, desc, fold)
 		if e != nil {
 			return "", e
 		}

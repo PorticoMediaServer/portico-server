@@ -90,6 +90,20 @@ func registerCompatibilityRoutes(registry *apikit.Registry, d Dependencies) erro
 				body = 1 << 20
 			}
 			m := apikit.Metadata{Audience: apikit.Integrations, Protocol: apikit.ProtocolCompatibility, ID: id, Method: spec.method, Path: path, Summary: "Integration compatibility: " + spec.id, Access: access, Requires: spec.scope, Lane: apikit.Default, Cost: apikit.PageSized, Admission: laneDefault, Status: 200, BodyLimit: body, Query: compatibilityQueries, Errors: compatibilityErrorCodes()}
+			// Only these compatibility handlers consume limit; the other
+			// operations accept the shared vocabulary but ignore this field.
+			switch spec.id {
+			case "items", "user_items", "latest", "user_latest", "seasons", "episodes":
+				integer := apikit.QueryInteger{Name: "limit", Minimum: 0, Maximum: 5000000, NoDefault: true, EmptyIsDefault: true, Description: "Absent or empty means no overall row limit; explicit zero emits no rows. Native reads remain bounded pages. Limit is a case-insensitive alias."}
+				if spec.id == "latest" || spec.id == "user_latest" {
+					integer.Default, integer.NoDefault = 20, false
+					integer.Description = "Absent or empty means 20 rows; explicit zero emits no rows. Native reads remain bounded pages. Limit is a case-insensitive alias."
+				}
+				m.QueryIntegers = []apikit.QueryInteger{integer}
+				integer.Name = "Limit"
+				m.QueryIntegers = append(m.QueryIntegers, integer)
+			}
+
 			if err := apikit.RegisterRaw[json.RawMessage, json.RawMessage](registry, apikit.RawRoute[json.RawMessage, json.RawMessage]{Metadata: m, Serve: func(w http.ResponseWriter, r *http.Request) { d.serveCompatibility(w, r, spec) }}); err != nil {
 				return err
 			}

@@ -14,7 +14,6 @@ import (
 	"path/filepath"
 	"portico.local/server/internal/artworkref"
 	"portico.local/server/internal/storagepaths"
-	"sort"
 	"strings"
 )
 
@@ -27,7 +26,6 @@ import (
 func stateFiles() []string { return []string{"portico.toml", "Metadata", "Keys"} }
 
 func copyStateFilesForBackup(ctx context.Context, state, partial string, includeArtwork bool) ([]FileEntry, error) {
-	entries := []FileEntry{}
 	for _, rel := range stateFiles() {
 		src := storagepaths.Path(state, filepath.FromSlash(rel))
 		info, err := os.Lstat(src)
@@ -42,7 +40,7 @@ func copyStateFilesForBackup(ctx context.Context, state, partial string, include
 			if err != nil {
 				return nil, err
 			}
-			entries = append(entries, entry)
+			_ = entry
 			continue
 		}
 		if rel == "managed-storage" {
@@ -60,19 +58,12 @@ func copyStateFilesForBackup(ctx context.Context, state, partial string, include
 				if err != nil {
 					return nil, err
 				}
-				entries = append(entries, fileEntry)
+				_ = fileEntry
 			}
 			continue
 		}
-		err = filepath.WalkDir(src, func(path string, entry fs.DirEntry, err error) error {
-			if err != nil {
-				return err
-			}
-			name, err := filepath.Rel(state, path)
-			if err != nil {
-				return err
-			}
-			name = filepath.ToSlash(name)
+		err = walkStateTree(ctx, state, rel, func(name string, entry fs.DirEntry) error {
+			path := filepath.Join(state, filepath.FromSlash(name))
 			if !includeArtwork && excludedDownloadedMetadata(name) {
 				if entry.IsDir() {
 					return filepath.SkipDir
@@ -105,27 +96,15 @@ func copyStateFilesForBackup(ctx context.Context, state, partial string, include
 				}
 				return err
 			}
-			entries = append(entries, fileEntry)
+			_ = fileEntry
 			return nil
 		})
 		if err != nil {
 			return nil, err
 		}
 	}
-	// The owner's artwork is always carried, and checked against its digest,
-	// even when the whole folder was walked: the walk skips a file a
-	// collector had moved aside, and owner artwork must not be lost that way.
-	copied := make(map[string]string, len(entries))
-	for _, entry := range entries {
-		copied[entry.Name] = entry.SHA256
-	}
-	owner, err := copyOwnerArtwork(ctx, state, partial, copied)
-	if err != nil {
-		return nil, err
-	}
-	entries = append(entries, owner...)
-	sort.Slice(entries, func(i, j int) bool { return entries[i].Name < entries[j].Name })
-	return entries, nil
+	_, err := copyOwnerArtwork(ctx, state, partial, nil)
+	return nil, err
 }
 
 // copyOneFile copies one regular file, refusing symlinks, and hashes it.
@@ -213,6 +192,28 @@ func copyOneFileContext(ctx context.Context, src, dst, name string, progress fun
 const maxManifestBytes = 64 << 20
 
 func writeManifest(partial string, manifest Manifest) error {
+	if manifest.Version == StreamVersion {
+		next := filepath.Join(partial, ManifestName+".next")
+		_ = os.Remove(next)
+		defer os.Remove(next)
+		w, err := newStreamManifestWriter(next, manifest)
+		if err != nil {
+			return err
+		}
+		for _, e := range manifest.Files {
+			if err = w.add(e); err != nil {
+				w.file.Close()
+				return err
+			}
+		}
+		if err = w.finish(); err != nil {
+			return err
+		}
+		if err = os.Rename(next, filepath.Join(partial, ManifestName)); err != nil {
+			return err
+		}
+		return syncDirectory(partial)
+	}
 	raw, err := json.MarshalIndent(manifest, "", "  ")
 	if err != nil {
 		return err
@@ -229,6 +230,9 @@ func writeManifest(partial string, manifest Manifest) error {
 
 // readManifest parses a backup folder's manifest, checking its identity.
 func readManifest(dir string) (Manifest, error) {
+	if isStreamManifest(dir) {
+		return readStreamHeader(dir)
+	}
 	var manifest Manifest
 	if err := regularManifestFile(dir, ManifestName); err != nil {
 		return manifest, err
@@ -252,7 +256,7 @@ func readManifest(dir string) (Manifest, error) {
 	if err = json.Unmarshal(raw, &manifest); err != nil {
 		return manifest, err
 	}
-	if manifest.Format != Format || (manifest.Version != Version && manifest.Version != LegacyVersion) {
+	if manifest.Format != Format || (manifest.Version != HashedVersion && manifest.Version != LegacyVersion) {
 		return manifest, ErrInvalid
 	}
 	if _, ok := stateFileNames(manifest.Files); !ok {
@@ -268,7 +272,7 @@ func readManifest(dir string) (Manifest, error) {
 	}
 	// Version 1 ordinary backups omitted the database. Keep that deliberate
 	// recovery path, with SQLite/schema validation still mandatory in Stage.
-	if manifest.Version == Version && !database {
+	if manifest.Version != LegacyVersion && !database {
 		return manifest, ErrSourceInvalid
 	}
 	return manifest, nil
@@ -293,27 +297,32 @@ func (s *Service) estimate(ctx context.Context, includeArtwork bool) (int64, err
 			total += info.Size()
 			continue
 		}
-		confOnly := rel == "managed-storage"
-		_ = filepath.WalkDir(src, func(path string, entry fs.DirEntry, err error) error {
-			name, _ := filepath.Rel(s.state, path)
-			name = filepath.ToSlash(name)
+		err = walkStateTree(ctx, s.state, rel, func(name string, entry fs.DirEntry) error {
 			if !includeArtwork && excludedDownloadedMetadata(name) {
-				if entry != nil && entry.IsDir() {
-					return filepath.SkipDir
+				if entry.IsDir() {
+					return fs.SkipDir
 				}
 				return nil
 			}
-			if err != nil || entry.IsDir() {
+			if entry.IsDir() {
 				return nil
 			}
-			if confOnly && !strings.HasSuffix(entry.Name(), ".conf") {
-				return nil
+			info, err := entry.Info()
+			if err != nil {
+				return err
 			}
-			if info, err := entry.Info(); err == nil && info.Mode().IsRegular() {
-				total += info.Size()
+			if !info.Mode().IsRegular() {
+				return ErrSourceInvalid
 			}
+			if info.Size() > int64(^uint64(0)>>1)-total {
+				return ErrInsufficientDisk
+			}
+			total += info.Size()
 			return nil
 		})
+		if err != nil {
+			return 0, err
+		}
 	}
 	if !includeArtwork {
 		var ownerBytes int64
@@ -402,13 +411,16 @@ func regularManifestFile(root, name string) error {
 // them over an otherwise verified database during candidate inspection. Empty
 // unlisted WALs are harmless and can be created by a concurrent read-only open.
 func checkSourceHashes(dir string, manifest Manifest) error {
-	if err := checkManifestHashes(dir, manifest.Files); err != nil {
+	wal := false
+	err := visitManifest(context.Background(), dir, manifest, func(entry FileEntry) error {
+		wal = wal || entry.Name == DatabaseName+"-wal"
+		return checkManifestHashes(dir, []FileEntry{entry})
+	})
+	if err != nil {
 		return err
 	}
-	for _, entry := range manifest.Files {
-		if entry.Name == DatabaseName+"-wal" {
-			return nil
-		}
+	if wal {
+		return nil
 	}
 	info, err := os.Lstat(filepath.Join(dir, DatabaseName+"-wal"))
 	if os.IsNotExist(err) {
@@ -460,7 +472,6 @@ func copyOwnerArtwork(ctx context.Context, state, partial string, copied map[str
 		return nil, e
 	}
 	defer rows.Close()
-	entries := []FileEntry{}
 	for rows.Next() {
 		var digest string
 		if e = rows.Scan(&digest); e != nil {
@@ -471,7 +482,12 @@ func copyOwnerArtwork(ctx context.Context, state, partial string, copied map[str
 			return nil, ErrIntegrity
 		}
 		name := "Metadata/artwork/" + digest + ".img"
-		if hash, ok := copied[name]; ok {
+		if _, statErr := os.Lstat(filepath.Join(partial, filepath.FromSlash(name))); statErr == nil {
+			existing, e := hashFile(ctx, partial, name)
+			if e != nil {
+				return nil, e
+			}
+			hash := existing.SHA256
 			// Already carried by the whole-folder walk: its bytes must still
 			// be the ones the database names.
 			if hash != digest {
@@ -486,9 +502,8 @@ func copyOwnerArtwork(ctx context.Context, state, partial string, copied map[str
 		if entry.SHA256 != digest {
 			return nil, ErrIntegrity
 		}
-		entries = append(entries, entry)
 	}
-	return entries, rows.Err()
+	return nil, rows.Err()
 }
 
 // artworkTombMarker is the artwork collector's name for a file it has moved

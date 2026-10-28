@@ -81,7 +81,7 @@ export function createSelectionEditor({api, events, requestId, isCurrent, server
       if (operation.target.mode !== 'explicit' || !operation.target.items.every(pick => pick.item.capabilities.edit)) throw new SelectionEditorError('metadata-not-offered');
       const fence = viewerFence(); if (!fence) throw new SelectionEditorError('metadata-authority-unavailable');
       const request = editorPreviewRequest(operation.target);
-      const preview = await fetchBulkMetadataPreview(api, request, serverId, routeSignal); current();
+      const preview = await fetchBulkMetadataPreview(api, request, serverId, routeSignal, {isCurrent}); current();
       if (preview.viewerFence !== fence || viewerFence() !== fence) throw new SelectionEditorError('metadata-authority-changed');
       grants.set(preview, operation); return preview;
     },

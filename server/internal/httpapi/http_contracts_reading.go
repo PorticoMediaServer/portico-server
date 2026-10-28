@@ -39,11 +39,13 @@ func registerReadingHTTPContracts(registry *apikit.Registry) error {
 	}
 	m := metadata("get_reading_items", "GET", "/v1/reading/items", "List visible reading publications", apikit.ScopeRead)
 	m.Query = []string{"libraryId", "cursor", "limit"}
+	m.QueryIntegers = emptyLimitQuery(50, 100)
 	if err := apikit.RegisterHTTP[struct{}, ReadingItemsResponse](registry, m); err != nil {
 		return err
 	}
 	m = metadata("get_reading_continue", "GET", "/v1/reading/continue", "List the viewer's unfinished reading publications", apikit.ScopeRead)
 	m.Query = []string{"libraryId", "cursor", "limit"}
+	m.QueryIntegers = emptyLimitQuery(50, 100)
 	if err := apikit.RegisterHTTP[struct{}, ReadingContinueResponse](registry, m); err != nil {
 		return err
 	}
@@ -79,12 +81,14 @@ func registerReadingHTTPContracts(registry *apikit.Registry) error {
 	}
 	m = metadata("get_reading_search", "GET", "/v1/reading/search", "Search the persisted Reading index across the viewer's ready libraries", apikit.ScopeRead)
 	m.Query = []string{"q", "cursor", "limit", "libraryId"}
+	m.QueryIntegers = emptyLimitQuery(20, 50)
 	m.Errors = append(append([]string{}, m.Errors...), "search_busy")
 	if err := apikit.RegisterHTTP[struct{}, ReadingIndexedSearchResponse](registry, m); err != nil {
 		return err
 	}
 	m = metadata("get_reading_sessions_sessionId_search", "GET", "/v1/reading/sessions/{sessionId}/search", "Search the selected publication's persisted text index", apikit.ScopeRead)
 	m.Query = []string{"q", "cursor", "limit"}
+	m.QueryIntegers = emptyLimitQuery(20, 50)
 	m.Errors = append(append([]string{}, m.Errors...), "search_busy")
 	if err := apikit.RegisterHTTP[struct{}, ReadingSearchResponse](registry, m); err != nil {
 		return err

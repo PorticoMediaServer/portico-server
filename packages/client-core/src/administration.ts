@@ -70,7 +70,12 @@ export type BackupKind='scheduled'|'manual'|'pre-restore';
 export type BackupSummary=Readonly<{id:string;createdAt:string;kind:BackupKind;schemaVersion:number;serverVersion:string;bytes:number;path:string;encrypted?:boolean}>;
 export type BackupRunning=Readonly<{jobId:string;kind?:'manual'|'scheduled';phase:string;bytesDone:number;bytesTotal:number}>;
 export type RestoreOutcome='restored'|'rolled_back';
-export type RestoreRecovery=Readonly<{indexesRebuilt?:boolean;salvaged?:boolean;damagedTables?:readonly string[];removedRows?:number}>;
+export const MANIFEST_DAMAGE_REASONS=Object.freeze(['record_too_large','unreadable_record','invalid_file_entry','entry_hash_mismatch','entry_chain_gap','manifest_end_mismatch','record_after_end','missing_end_record','missing_file','payload_hash_mismatch','duplicate_file','database_hash_mismatch','database_entry_missing'] as const);
+export type ManifestDamageReason=typeof MANIFEST_DAMAGE_REASONS[number];
+/** Lines are one-based; byte offsets are zero-based, with an exclusive end. */
+export type RestoreManifestRegion=Readonly<{firstLine:number;lastLine:number;startByte:number;endByte:number;reason:ManifestDamageReason}>;
+export type RestoreManifestDamage=Readonly<{count:number;regions:readonly RestoreManifestRegion[];regionsTruncated?:boolean;missingFiles:number;unverifiedDatabase?:boolean}>;
+export type RestoreRecovery=Readonly<{indexesRebuilt?:boolean;salvaged?:boolean;damagedTables?:readonly string[];removedRows?:number;manifestDamage?:RestoreManifestDamage}>;
 export type LastRestore=Readonly<{at:string;outcome:RestoreOutcome;reason:string;jobId?:string;schemaVersion?:number;recovery?:RestoreRecovery}>;
 export type BackupResult=Readonly<{jobId:string;backupId?:string;outcome:'completed'|'failed';errorCode?:string}>;
 export type BackupsDocument=Readonly<{lastBackup?:BackupResult;backups:readonly BackupSummary[];running?:BackupRunning;restore?:RestoreProgress;lastRestore?:LastRestore}>;
@@ -408,10 +413,20 @@ export function parseBackupsDocument(v:unknown):BackupsDocument{
  return Object.freeze(doc);
 }
 
+function parseRestoreManifestDamage(v:unknown):RestoreManifestDamage{
+ if(!object(v)||!count(v.count)||v.count===0||!count(v.missingFiles)||(v.regionsTruncated!==undefined&&!flag(v.regionsTruncated))||(v.unverifiedDatabase!==undefined&&!flag(v.unverifiedDatabase)))invalid('manifest damage');
+ const regions=list(v.regions,20,'manifest damage regions').map(region=>{
+  if(!object(region)||!count(region.firstLine)||region.firstLine<1||!count(region.lastLine)||region.lastLine<region.firstLine||!count(region.startByte)||!count(region.endByte)||region.endByte<region.startByte)invalid('manifest damage region');
+  return Object.freeze({firstLine:region.firstLine,lastLine:region.lastLine,startByte:region.startByte,endByte:region.endByte,reason:choice(region.reason,MANIFEST_DAMAGE_REASONS,'manifest damage reason')});
+ });
+ if(regions.length!==Math.min(v.count,20)||(v.regionsTruncated===true)!==(v.count>regions.length))invalid('manifest damage count');
+ return Object.freeze({count:v.count,regions:Object.freeze(regions),missingFiles:v.missingFiles,...(v.regionsTruncated!==undefined?{regionsTruncated:v.regionsTruncated}:{}),...(v.unverifiedDatabase!==undefined?{unverifiedDatabase:v.unverifiedDatabase}:{})});
+}
+
 function parseRestoreRecovery(v:unknown):RestoreRecovery{
  if(!object(v)||(v.indexesRebuilt!==undefined&&typeof v.indexesRebuilt!=='boolean')||(v.salvaged!==undefined&&typeof v.salvaged!=='boolean')||(v.removedRows!==undefined&&!count(v.removedRows)))invalid('restore recovery');
  const damagedTables=v.damagedTables===undefined?undefined:list(v.damagedTables,1000,'damaged tables').map(table=>{if(!filled(table))invalid('damaged table');return table;});
- return Object.freeze({...(v.indexesRebuilt!==undefined?{indexesRebuilt:v.indexesRebuilt as boolean}:{}),...(v.salvaged!==undefined?{salvaged:v.salvaged as boolean}:{}),...(damagedTables?{damagedTables:Object.freeze(damagedTables)}:{}),...(v.removedRows!==undefined?{removedRows:v.removedRows as number}:{})});
+ return Object.freeze({...(v.indexesRebuilt!==undefined?{indexesRebuilt:v.indexesRebuilt as boolean}:{}),...(v.salvaged!==undefined?{salvaged:v.salvaged as boolean}:{}),...(damagedTables?{damagedTables:Object.freeze(damagedTables)}:{}),...(v.removedRows!==undefined?{removedRows:v.removedRows as number}:{}),...(v.manifestDamage!==undefined?{manifestDamage:parseRestoreManifestDamage(v.manifestDamage)}:{})});
 }
 
 /** parseRestoreStaged accepts only a checked or recovered database staged for restart. */

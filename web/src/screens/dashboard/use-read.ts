@@ -12,22 +12,29 @@ export function useDashboardRead<T>(bindings: DashboardBindings, load: (signal: 
   const refresh = useCallback(() => setVersion(v => v + 1), []);
   useLayoutEffect(() => {
     if (!enabled || !bindings.isCurrent()) return;
-    const controller = new AbortController(); let running = false, queued = false;
+    const controller = new AbortController(); let flight: Promise<void> | undefined, queued = false, lastError: unknown;
     setState(previous => previous.loader === load ? {...previous, loading: true, failed: false} : {loader: load, loading: true, failed: false});
-    const read = async () => {
-      if (running) {queued = true; return;}
-      if (controller.signal.aborted || !bindings.isCurrent() || document.hidden) return;
-      running = true;
-      try {const value = await load(controller.signal); if (!controller.signal.aborted && bindings.isCurrent()) setState({loader: load, value, loading: false, failed: false});}
-      catch (error) {if (!controller.signal.aborted && bindings.isCurrent()) {setState({loader: load, loading: false, failed: true}); bindings.effects.reportError(error);}}
-      finally {running = false; if (queued) {queued = false; void read();}}
+    const read = (): Promise<void> => {
+      if (flight) {queued = true; return flight;}
+      if (controller.signal.aborted || !bindings.isCurrent() || document.hidden) return Promise.resolve();
+      flight = Promise.resolve().then(async () => {
+        do {
+          queued = false; lastError = undefined;
+          if (controller.signal.aborted || !bindings.isCurrent() || document.hidden) return;
+          try {const value = await load(controller.signal); if (!controller.signal.aborted && bindings.isCurrent()) setState({loader: load, value, loading: false, failed: false});}
+          catch (error) {lastError = error; if (!controller.signal.aborted && bindings.isCurrent()) {setState({loader: load, loading: false, failed: true}); bindings.effects.reportError(error);}}
+        } while (queued);
+      }).finally(() => {flight = undefined;});
+      return flight;
     };
     const update = () => {void read();};
     const offs = changes.map(type => bindings.events?.on(type, update));
-    offs.push(bindings.events?.onResync?.(update));
-    document.addEventListener('visibilitychange', update);
+    const recovery = bindings.events?.onResyncRead?.(async () => {await read(); if (lastError) throw lastError;}, {open: !document.hidden, admission: 'external'});
+    offs.push(recovery ? () => recovery.dispose() : bindings.events?.onResync?.(update));
+    const visibility = () => {recovery?.setOpen(!document.hidden); update();};
+    document.addEventListener('visibilitychange', visibility);
     const timer = everyMs ? setInterval(update, everyMs) : undefined; update();
-    return () => {controller.abort(); if (timer) clearInterval(timer); offs.forEach(off => off?.()); document.removeEventListener('visibilitychange', update);};
+    return () => {controller.abort(); if (timer) clearInterval(timer); offs.forEach(off => off?.()); document.removeEventListener('visibilitychange', visibility);};
   }, [bindings, load, enabled, everyMs, version, changes]);
   return {...(state.loader === load ? state : {loading: true, failed: false}), refresh};
 }

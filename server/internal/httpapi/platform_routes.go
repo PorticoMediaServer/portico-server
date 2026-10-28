@@ -56,7 +56,7 @@ func registerPlatformRoutes(registry *apikit.Registry, d Dependencies) error {
 		// The library is a query parameter here, so the handler makes the
 		// library and restriction checks itself, inside the query.
 		Access: apikit.Device, Requires: apikit.ScopeRead, Lane: apikit.Browsing, Cost: apikit.PageSized, Status: 200,
-		Query:  []string{"library", "kind", "sort", "order", "yearFrom", "yearTo", "addedAfter", "addedBefore", "provider", "providerId", "cursor", "limit"},
+		Query:  []string{"library", "kind", "sort", "order", "yearFrom", "yearTo", "addedAfter", "addedBefore", "provider", "providerId", "cursor", "limit"}, QueryIntegers: emptyLimitQuery(catalog.TitleQueryDefaultLimit, catalog.TitleQueryMaximumLimit),
 		Errors: []string{"unauthorized", "invalid_request", "invalid_cursor", "cursor_expired", "not_found", "internal"},
 	}, Handler: func(_ context.Context, r *http.Request, _ struct{}) (catalog.TitlePage, error) {
 		empty := catalog.TitlePage{Items: []catalog.TitleRow{}}

@@ -47,13 +47,12 @@ export type SelectionBarProps = Readonly<{
 
 /** Aggregates are supplied by the caller's real schema/preview, never read or guessed by the kit. */
 export type BulkFieldValues = Readonly<{
-  state: 'shared' | 'mixed';
-  distinctCount: number;
   truncated: boolean;
   value?: string;
   values: readonly Readonly<{value: string; count: number; titles?: readonly string[]}>[];
   entries: readonly Readonly<{value: string; count: number}>[];
-}>;
+} & ({state: 'shared' | 'mixed'; distinctCount: number; atLeast?: never}
+  | {state: 'many'; distinctCount?: never; atLeast: number; value?: never})>;
 /** A presentation of latest target outcomes, never a new operation receipt. */
 export type BulkResultView = Pick<BulkReceipt, 'results' | 'updated' | 'failed'>;
 export type BulkListDraft = Readonly<{add: readonly string[]; remove: readonly string[]}>;

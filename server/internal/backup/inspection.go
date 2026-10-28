@@ -56,7 +56,7 @@ func (s *Service) InspectSource(ctx context.Context, source Source) (SourceInspe
 				return out, err
 			}
 			var summary Manifest
-			if json.Unmarshal(raw, &summary) != nil || summary.Format != Format || summary.Version != Version || len(summary.Files) != 0 {
+			if json.Unmarshal(raw, &summary) != nil || summary.Format != Format || (summary.Version != Version && summary.Version != HashedVersion) || len(summary.Files) != 0 {
 				return out, ErrSourceInvalid
 			}
 			prefix, err := s.inspectRootFile(ctx, root, encryptedPayload, 100, false)
@@ -67,7 +67,7 @@ func (s *Service) InspectSource(ctx context.Context, source Source) (SourceInspe
 		} else if !errors.Is(err, os.ErrNotExist) {
 			return out, ErrSourceInvalid
 		} else {
-			raw, err := s.inspectRootFile(ctx, root, ManifestName, maxManifestBytes, true)
+			raw, err := s.inspectRootFile(ctx, root, ManifestName, manifestLineBytes, false)
 			if err != nil {
 				return out, err
 			}
@@ -77,7 +77,15 @@ func (s *Service) InspectSource(ctx context.Context, source Source) (SourceInspe
 				Format  string `json:"format"`
 				Version int    `json:"version"`
 			}
-			if json.Unmarshal(raw, &identity) != nil || identity.Format != Format || identity.Version != Version && identity.Version != LegacyVersion {
+			header := bytes.SplitN(raw, []byte("\n"), 2)[0]
+			if json.Unmarshal(header, &identity) != nil {
+				raw, err = s.inspectRootFile(ctx, root, ManifestName, maxManifestBytes, true)
+				if err != nil {
+					return out, err
+				}
+				header = raw
+			}
+			if json.Unmarshal(header, &identity) != nil || identity.Format != Format || identity.Version != Version && identity.Version != HashedVersion && identity.Version != LegacyVersion {
 				return out, ErrSourceInvalid
 			}
 			prefix, err := s.inspectRootFile(ctx, root, DatabaseName, 100, false)

@@ -82,7 +82,7 @@ func TestBulkMetadataPreviewQueryReportsMoreThan64DistinctValuesWithoutEnumerati
 		t.Fatal(err)
 	}
 	year := preview.Fields["year"]
-	if preview.Total != 70 || len(preview.Targets) != 0 || year.DistinctCount != 70 || len(year.Values) != 64 || !year.Truncated || year.State != "mixed" {
+	if preview.Total != 70 || len(preview.Targets) != 0 || year.DistinctCount != 0 || year.AtLeast != 65 || len(year.Values) != 0 || !year.Truncated || year.State != "many" {
 		t.Fatalf("untruthful bounded aggregate: total=%d targets=%d field=%+v", preview.Total, len(preview.Targets), year)
 	}
 }
@@ -202,7 +202,7 @@ func TestBulkMetadataPreviewPagesPreserveExactCountsAndListEntries(t *testing.T)
 	// Two full pages and a tail. Equal values recur after the 64-value display
 	// boundary, and duplicate tags must still count once per entity.
 	err := dbwork.WithWriteTx(context.Background(), db, dbwork.ClassInteractive, func(tx *sql.Tx) error {
-		_, e := tx.Exec(`WITH RECURSIVE n(x) AS(VALUES(1) UNION ALL SELECT x+1 FROM n WHERE x<131) INSERT INTO catalog_entities(public_id,library_id,kind,title,sort_key,sort_head,year) SELECT randomblob(16),(SELECT id FROM catalog_libraries WHERE library_id='movies'),1,'Paged '||x,'paged '||x,'P',1900+(x%70) FROM n`)
+		_, e := tx.Exec(`WITH RECURSIVE n(x) AS(VALUES(1) UNION ALL SELECT x+1 FROM n WHERE x<131) INSERT INTO catalog_entities(public_id,library_id,kind,title,sort_key,sort_head,year) SELECT randomblob(16),(SELECT id FROM catalog_libraries WHERE library_id='movies'),1,'Paged '||x,'paged '||x,'P',1900+(x%60) FROM n`)
 		if e != nil {
 			return e
 		}
@@ -217,7 +217,7 @@ func TestBulkMetadataPreviewPagesPreserveExactCountsAndListEntries(t *testing.T)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if p.Total != 131 || p.Fields["year"].DistinctCount != 70 || !p.Fields["year"].Truncated || p.Fields["year"].State != "mixed" {
+	if p.Total != 131 || p.Fields["year"].DistinctCount != 60 || p.Fields["year"].Truncated || p.Fields["year"].State != "mixed" {
 		t.Fatal(p.Total, p.Fields["year"])
 	}
 	for _, v := range p.Fields["year"].Values {
@@ -227,7 +227,7 @@ func TestBulkMetadataPreviewPagesPreserveExactCountsAndListEntries(t *testing.T)
 		}
 	}
 	tags := p.Fields["tags"]
-	if tags.DistinctCount != 70 || !tags.Truncated {
+	if tags.DistinctCount != 60 || tags.Truncated {
 		t.Fatal(tags)
 	}
 	found := false

@@ -217,7 +217,18 @@ func registerDownloads(r *apikit.Registry, d Dependencies) {
 		if method != "GET" {
 			failures = write
 		}
-		return apikit.Metadata{Audience: apikit.Clients, Admission: admission(id), ID: id, Method: method, Path: path, Summary: summary, Access: access, Requires: scope(id), Lane: lane, Cost: cost, Status: status, BodyLimit: bodyLimit, Query: query, Errors: failures}
+		var integers []apikit.QueryInteger
+		switch id {
+		case "list_download_preparations":
+			integers = []apikit.QueryInteger{{Name: "limit", Minimum: 1, Default: 50, Maximum: 200, DefaultBelowMinimum: true, DefaultAboveMaximum: true, DefaultOnInvalid: true, EmptyIsDefault: true, Description: "Invalid integer syntax and out-of-range values use the default; integer overflow saturates before normalization."}}
+		case "list_download_revocations":
+			integers = []apikit.QueryInteger{{Name: "limit", Minimum: 1, Default: 200, Maximum: 500, DefaultBelowMinimum: true, DefaultAboveMaximum: true, DefaultOnInvalid: true, EmptyIsDefault: true, Description: "Invalid integer syntax and out-of-range values use the default; integer overflow saturates before normalization."}}
+		case "get_download_usage":
+			integers = emptyLimitQuery(256, 256)
+		case "list_download_requests":
+			integers = emptyLimitQuery(20, downloads.MaxRequestPage)
+		}
+		return apikit.Metadata{Audience: apikit.Clients, Admission: admission(id), ID: id, Method: method, Path: path, Summary: summary, Access: access, Requires: scope(id), Lane: lane, Cost: cost, Status: status, BodyLimit: bodyLimit, Query: query, QueryIntegers: integers, Errors: failures}
 	}
 	v1Route(r, route("get_download_options", "GET", "/v1/items/{itemId}/download-options", "List offline qualities this device can play and this server can produce", apikit.ViewerItem, apikit.Browsing, apikit.PageSized, 200, 0, []string{"versionId"}), func(ctx context.Context, q *http.Request, _ noBody) (downloads.DownloadOptionsView, error) {
 		p, owner, e := d.downloadViewer(q)
@@ -245,12 +256,25 @@ func registerDownloads(r *apikit.Registry, d Dependencies) {
 		}
 		return out, downloadError(e)
 	})
-	v1Route(r, route("list_download_preparations", "GET", "/v1/downloads/preparations", "List this viewer's download claims, newest first", apikit.Device, apikit.Default, apikit.PageSized, 200, 0, []string{"state", "profileId", "cursor", "limit", "ids"}), func(ctx context.Context, q *http.Request, _ noBody) (downloads.Page, error) {
+	v1Route(r, route("list_download_preparations", "GET", "/v1/downloads/preparations", "List this viewer's download claims, newest first", apikit.Device, apikit.Default, apikit.PageSized, 200, 0, []string{"state", "profileId", "cursor", "limit", "ids", "operationId", "deviceId"}), func(ctx context.Context, q *http.Request, _ noBody) (downloads.Page, error) {
 		p, owner, e := d.downloadViewer(q)
 		if e != nil {
 			return downloads.Page{}, e
 		}
 		limit, _ := strconv.Atoi(q.URL.Query().Get("limit"))
+		if q.URL.Query().Has("operationId") || q.URL.Query().Has("deviceId") {
+			if q.URL.Query().Get("operationId") == "" || q.URL.Query().Get("deviceId") == "" || q.URL.Query().Has("ids") || q.URL.Query().Has("state") || q.URL.Query().Has("profileId") {
+				return downloads.Page{}, downloadError(downloads.ErrInput)
+			}
+			if limit == 0 {
+				limit = 20
+			}
+			if limit < 1 || limit > 100 {
+				return downloads.Page{}, downloadError(downloads.ErrInput)
+			}
+			out, e := d.Downloads.ListSelectionAction(ctx, p, q.URL.Query().Get("operationId"), q.URL.Query().Get("deviceId"), q.URL.Query().Get("cursor"), limit)
+			return out, downloadError(e)
+		}
 		var ids []string
 		if value := q.URL.Query().Get("ids"); value != "" {
 			ids = strings.Split(value, ",")

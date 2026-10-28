@@ -35,7 +35,7 @@ func registerMetadataAttention(registry *apikit.Registry, d Dependencies) {
 	failures := []string{"unauthorized", "not_permitted", "not_found", "invalid_request", "revision_mismatch", "rate_limited", "internal"}
 	rate := &personalLimiter{}
 	for _, route := range []struct{ id, path string }{{"get_metadata_attention", "/v1/libraries/{id}/metadata/attention"}, {"get_server_metadata_attention", "/v1/admin/metadata/attention"}} {
-		v1Route(registry, apikit.Metadata{Audience: apikit.Clients, Admission: laneBrowsing, ID: route.id, Method: "GET", Path: route.path, Summary: "List unmatched and uncertain titles with their best candidates", Access: apikit.Admin, AdminScope: "metadata", Requires: apikit.ScopeLibrary, Lane: apikit.Browsing, Cost: apikit.PageSized, Status: 200, Query: []string{"cursor", "limit", "includeInProgress"}, Errors: failures}, func(ctx context.Context, r *http.Request, _ noBody) (metadata.AttentionPage, error) {
+		v1Route(registry, apikit.Metadata{Audience: apikit.Clients, Admission: laneBrowsing, ID: route.id, Method: "GET", Path: route.path, Summary: "List unmatched and uncertain titles with their best candidates", Access: apikit.Admin, AdminScope: "metadata", Requires: apikit.ScopeLibrary, Lane: apikit.Browsing, Cost: apikit.PageSized, Status: 200, Query: []string{"cursor", "limit", "includeInProgress"}, QueryIntegers: emptyLimitQuery(25, 50), Errors: failures}, func(ctx context.Context, r *http.Request, _ noBody) (metadata.AttentionPage, error) {
 			if _, e := d.administrator(r); e != nil {
 				return metadata.AttentionPage{}, e
 			}

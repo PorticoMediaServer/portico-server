@@ -35,7 +35,7 @@ var playlistOperationID = regexp.MustCompile(`^[A-Za-z0-9_-]{1,128}$`)
 func registerPlaylistWindows(registry *apikit.Registry, d Dependencies) {
 	failures := []string{"invalid_request", "invalid_cursor", "unauthorized", "not_found", "revision_mismatch", "idempotency_key_reused", "rate_limited", "internal"}
 	rate := &personalLimiter{}
-	v1Route(registry, apikit.Metadata{Audience: apikit.Clients, Admission: laneBrowsing, ID: "get_playlist_order", Method: "GET", Path: "/v1/playlists/{id}/order", Summary: "Read a revision-fenced window of playlist occurrence IDs", Access: apikit.Device, Requires: apikit.ScopeRead, Lane: apikit.Browsing, Cost: apikit.PageSized, Status: 200, Query: []string{"cursor", "limit"}, Errors: failures}, func(ctx context.Context, r *http.Request, _ noBody) (catalog.PlaylistOrder, error) {
+	v1Route(registry, apikit.Metadata{Audience: apikit.Clients, Admission: laneBrowsing, ID: "get_playlist_order", Method: "GET", Path: "/v1/playlists/{id}/order", Summary: "Read a revision-fenced window of playlist occurrence IDs", Access: apikit.Device, Requires: apikit.ScopeRead, Lane: apikit.Browsing, Cost: apikit.PageSized, Status: 200, Query: []string{"cursor", "limit"}, QueryIntegers: emptyLimitQuery(100, 100), Errors: failures}, func(ctx context.Context, r *http.Request, _ noBody) (catalog.PlaylistOrder, error) {
 		window := catalog.PlaylistOrderWindow{Cursor: r.URL.Query().Get("cursor"), Limit: 100}
 		if value := r.URL.Query().Get("limit"); value != "" {
 			n, e := strconv.Atoi(value)

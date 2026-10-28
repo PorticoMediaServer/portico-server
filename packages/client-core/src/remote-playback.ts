@@ -219,7 +219,8 @@ export class ReceiverHost{
  return this.inboxWork??=this.readInbox(id,signal).finally(()=>{this.inboxWork=undefined;});
  }
  private async readInbox(id:string,signal:AbortSignal){
-  const inbox=await this.api.request<{grants?:unknown[];handoffs?:unknown[]}>(encodedRoutePath("social_get_v1_receivers_id_inbox", {"id": encodeURIComponent(id)}),'GET',undefined,signal);
+  const request=()=>this.api.request<{grants?:unknown[];handoffs?:unknown[]}>(encodedRoutePath("social_get_v1_receivers_id_inbox", {"id": encodeURIComponent(id)}),'GET',undefined,signal);
+  const inbox=await (this.events?.resync?this.events.resync.run(signal,request):request());
   if(signal.aborted)return;
   const asking=(inbox.grants??[]).map(g=>parseReceiverGrant({protocolVersion:SOCIAL_PROTOCOL,serverTime:'',grant:g}))[0];
   if(asking?.id!==this.state.asking?.id)this.publish({asking});
@@ -233,7 +234,8 @@ export class ReceiverHost{
   const events=this.events!;
   const refresh=()=>{const id=this.state.receiver?.id;if(id&&!signal.aborted)void this.refreshInbox(id,signal).catch(e=>{if(status(e)===404)this.publish({receiver:undefined});});};
   const hint=events.on('receiver.inbox_changed',event=>{const value=parseReceiverInboxEvent(event.data);if(value&&(value.kind==='resync'||!value.receiverId||value.receiverId===this.state.receiver?.id))refresh();});
-  const resync=events.onResync(refresh);
+  const recovery=events.onResyncRead?.(async context=>{const id=this.state.receiver?.id;if(id&&!signal.aborted&&!context.signal.aborted)await this.refreshInbox(id,signal);},{priority:0,admission:'external'});
+  const resync=recovery?()=>recovery.dispose():events.onResync(refresh);
   const statusOff=events.subscribeStatus(()=>{const connected=events.getStatus().connected;if(connected!==this.streamConnected){this.streamConnected=connected;this.sleeper?.wake();}});
   this.streamConnected=events.getStatus().connected;
   this.releaseEvents=()=>{hint();resync();statusOff();};

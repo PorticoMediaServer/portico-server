@@ -685,6 +685,9 @@ func FoundationRegistry(d Dependencies) (*apikit.Registry, error) {
 		return nil, err
 	}
 	registerDownloadRequests(registry, d)
+	if err := registerSelectionActions(registry, d); err != nil {
+		return nil, err
+	}
 	registerDownloads(registry, d)
 	registerSocial(registry, d)
 	registerPlaylistWindows(registry, d)
