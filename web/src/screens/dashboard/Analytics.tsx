@@ -57,7 +57,7 @@ function HistoryCharts({history: h, media}: {history: DashboardHistory; media: s
   const [focus, setFocus] = useState<number | undefined>(), [cell, setCell] = useState<{day: number; hour: number; point: TipPoint} | undefined>();
   // Bounded per component: one table per locale, so moving the pointer across the grid
   // re-renders the charts without rebuilding a weekday or hour formatter per cell.
-  const labels = useMemo(() => heatMapLabels(), [defaultI18n.locale]);
+  const locale = defaultI18n.locale, labels = useMemo(() => heatMapLabels(locale), [locale]);
   const total = h.buckets.reduce((s, b) => s + b.kinds.reduce((sum, k) => sum + k.watchedMs, 0), 0), scale = niceScale(Math.max(.5, ...h.buckets.map(b => hours(b.kinds.reduce((sum, k) => sum + k.watchedMs, 0)))) * 1.06, 4), max = scale.top * 3_600_000;
   const kinds = historyKinds.filter(kind => media === 'all' || media === kind);
   const quiet = quietestHours(h.busiestTimes), heatMax = Math.max(1, ...h.busiestTimes.flat());

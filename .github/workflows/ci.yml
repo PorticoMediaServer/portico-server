@@ -278,6 +278,12 @@ jobs:
           done
           exit "$status"
       - if: ${{ !cancelled() }}
+        name: Generated contracts and the Cast bundle are current
+        run: |
+          (cd server && go run ./cmd/apigen)
+          node scripts/cast/generate.mjs
+          git diff --exit-code -- server/api/portico.openapi.json packages/contracts/src server/receiver/cast/contracts.js
+      - if: ${{ !cancelled() }}
         name: Web lint (required)
         run: |
           status=0

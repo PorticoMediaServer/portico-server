@@ -102,6 +102,8 @@ export function WindowedGrid<T>({collection, renderItem, renderPlaceholder, labe
       contents.push({slot, index, content, onFocusCapture});
     }
     return {contents, keys};
+    // The geometry below is a deliberate invalidator: the slots are rebuilt when the grid's shape changes.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [collection, pages, snapshot.generation, snapshot.total, total, pinnedIndex, range.renderFirst, range.renderLast,
     // Restore every original rare geometry invalidator; keep raw scroll (logicalTop/viewport.top) out.
     columns, cardWidth, rowHeight, gap, pitch, stickyOffset, focused, onItemFocus, renderItem, renderPlaceholder]);
