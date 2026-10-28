@@ -61,7 +61,8 @@ func loadOrCreateCursorKey(db *sql.DB) ([]byte, error) {
 	if _, err := rand.Read(key); err != nil {
 		return nil, err
 	}
-	if _, err := db.Exec(`INSERT INTO configuration(key,value) VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value`, cursorKeyName, hex.EncodeToString(key)); err != nil {
+	// First use stores the key as an ordinary interactive configuration write.
+	if _, err := dbwork.ExecWrite(context.Background(), db, dbwork.ClassInteractive, `INSERT INTO configuration(key,value) VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value`, cursorKeyName, hex.EncodeToString(key)); err != nil {
 		return nil, err
 	}
 	return key, nil

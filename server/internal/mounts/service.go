@@ -218,7 +218,8 @@ func loadOrCreateFingerprintKey(db *sql.DB, out *[32]byte) error {
 	if _, err := rand.Read(out[:]); err != nil {
 		return err
 	}
-	_, err := db.Exec(`INSERT INTO configuration(key,value) VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value`, fingerprintKeyName, hex.EncodeToString(out[:]))
+	// First use stores the key as an ordinary interactive configuration write.
+	_, err := dbwork.ExecWrite(context.Background(), db, dbwork.ClassInteractive, `INSERT INTO configuration(key,value) VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value`, fingerprintKeyName, hex.EncodeToString(out[:]))
 	return err
 }
 func (s *Service) List() ([]Mount, error) {

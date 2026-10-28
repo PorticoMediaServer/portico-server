@@ -21,7 +21,10 @@ func PruneIdentityProofs(ctx context.Context, db *sql.DB, now string) error {
 		`DELETE FROM identity_factor_challenges WHERE expires_at<=?`,
 		`DELETE FROM topshelf_tokens WHERE expires_at<=?`,
 	} {
-		if _, err := db.ExecContext(ctx, statement, now); err != nil {
+		// Retention is maintenance-class work. Each statement stays its own
+		// autocommit write, in this order, so a failure in the second leaves the
+		// first reclaimed exactly as the raw shape did.
+		if _, err := dbwork.ExecWrite(ctx, db, dbwork.ClassMaintenance, statement, now); err != nil {
 			return err
 		}
 	}
