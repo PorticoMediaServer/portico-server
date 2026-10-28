@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {FreshnessHub} from '@core/freshness-hub.ts';
 import {parseDirectSnapshot} from '@core/profile-management.ts';
-import {attachShellFactFeed, shellProofChanged} from '../src/shell/facts.ts';
+import {attachShellFactFeed, bindShellFactWake, shellProofChanged} from '../src/shell/facts.ts';
 import {clock, direct, system, harness} from './shell-facts-fixture.ts';
 
 test('five hint groups refresh current display without re-admitting authority; bursts coalesce', async () => {
@@ -23,8 +23,8 @@ test('guide failure cannot discard independently confirmed directory or invent a
   h.owner.request('directory');h.owner.request('server');await h.time.advance(1000);
   assert.equal(h.owner.source.getSnapshot().identity.libraries[0].name,'Cinema');
   assert.equal(h.owner.source.getSnapshot().serverName,'Den');assert.equal(h.owner.source.getSnapshot().identity.liveAvailable,true);
-  const reads=h.calls.length;h.hub.setActive(false);h.hub.setActive(true);h.owner.request('server');await h.time.advance(60000);
-  assert.equal(h.calls.length,reads);assert.equal(h.counts().retired,0);h.dispose();
+  const reads=h.calls.filter(path=>path.startsWith('/v1/guide/sources?')).length;h.hub.setActive(false);h.hub.setActive(true);h.owner.request('server');await h.time.advance(60000);
+  assert.equal(h.calls.filter(path=>path.startsWith('/v1/guide/sources?')).length,reads);assert.equal(h.counts().retired,0);h.dispose();
 });
 test('retained hidden media runs independent authority checks while display remains dormant', async () => {
   const h=harness();h.hub.setActive(false);h.owner.setRetained(true);h.owner.all();await h.time.advance(1000);
@@ -56,4 +56,29 @@ test('first connected relay queues one catch-up without cursor, survives disconn
   connected=true;for(const fn of statuses)fn();assert.equal(catchups,0);connected=false;await time.advance(0);assert.equal(catchups,1);
   connected=true;for(const fn of statuses)fn();await time.advance(0);assert.equal(catchups,1);
   for(const fn of resyncs)fn();assert.equal(catchups,2);current=false;off();hub.dispose();assert.equal(time.pending(),0);assert.equal(statuses.size+resyncs.size,0);
+});
+
+test('independent server inputs retain each failure and full floor, even beside a terminal input', async () => {
+  const h=harness();h.systemFailure(Object.assign(new Error('system refused'),{status:400}));
+  h.preferenceFailure(Object.assign(new Error('preference wait'),{status:429,retryAfterSeconds:7200}));
+  h.owner.request('server');await h.time.advance(1500);
+  const reads=()=>h.calls.filter(path=>path.startsWith('/v1/preferences?')).length;assert.equal(reads(),1);
+  h.systemFailure(undefined);h.hub.setActive(false);h.hub.setActive(true);h.owner.request('server');await h.time.advance(60000);
+  assert.equal(reads(),1,'system retry or wake cannot shorten independent preference floor');
+  h.preferenceFailure(undefined);await h.time.advance(7200000);assert.equal(reads(),2);h.dispose();
+});
+test('malformed Home authority proof stays owed instead of inheriting the legacy terminal parser flag', async () => {
+  const h=harness(),error=Object.assign(new Error('unreadable Home'),{code:'invalid_home',retryable:false});h.homeFailure(error);
+  h.owner.authority();await h.time.advance(1000);assert.equal(h.counts().manifests,1);assert.equal(h.counts().retired,0);
+  h.homeFailure(undefined);await h.time.advance(2500);assert.equal(h.counts().manifests,2);h.dispose();
+});
+
+test('online reconciles retained hidden authority without opening display or depending on a second first-connect', async () => {
+  const h=harness();h.hub.setActive(false);h.owner.setRetained(true);let wakes=0;
+  const page=new EventTarget(),browser=new EventTarget();Object.defineProperty(page,'hidden',{value:true});
+  const off=bindShellFactWake(page as never,browser as never,{isCurrent:()=>true,retained:()=>true,wakeAuth:()=>{wakes++;},invalidate:()=>h.owner.all()});
+  browser.dispatchEvent(new Event('online'));await h.time.advance(1000);
+  assert.equal(wakes,1);assert.equal(h.counts().permission,1);assert.equal(h.counts().manifests,1);
+  assert.equal(h.calls.filter(path=>path==='/v1/libraries'||path==='/v1/system').length,0);
+  off();browser.dispatchEvent(new Event('online'));assert.equal(wakes,1);h.dispose();
 });

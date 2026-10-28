@@ -7,7 +7,7 @@ import {appearancePreferences, regionPreferences} from '@core/preference-effects
 import type {PreferenceSnapshot} from '@core/preferences.ts';
 import {parseDirectSnapshot} from '@core/profile-management.ts';
 import {HomeService} from '@core/home-service.ts';
-import {createShellFactOwner, attachShellFactFeed, shellAccount, type ShellFactWitnesses} from './facts';
+import {createShellFactOwner, attachShellFactFeed, bindShellFactWake, shellAccount, type ShellFactWitnesses} from './facts';
 import type {ShellFactsSource} from './fact-source';
 import {InboxService} from '@core/inbox.ts';
 import {createNotificationScope} from '@core/notification-scope.ts';
@@ -35,7 +35,7 @@ export type ShellFacts = Readonly<{identity: ShellIdentity; preferences: Prefere
 export type ShellAssemblyContext = Readonly<{
   api: HttpLocalApi; session: () => LocalSession; auth: LocalSessionRefresher; events: EventsClient;
   freshness: FreshnessRuntime; home: HomeService; inbox: InboxService; artwork: ShellArtwork;
-  facts: ShellFacts; factsSource?: ShellFactsSource; preferences?: PreferencesReader; epoch: number; viewerFence?: string; isCurrent: () => boolean;
+  facts: ShellFacts; factsSource?: ShellFactsSource; homeAuthority?: () => void; preferences?: PreferencesReader; epoch: number; viewerFence?: string; isCurrent: () => boolean;
   signOut: () => void; signOutPorticoAccount?: () => void; switchProfile:(profileId:string,pin:string,signal:AbortSignal)=>Promise<void>; switchServer:(serverId:string,expectedRevision?:number)=>Promise<void>; savedServers:readonly {id:string;label:string}[];
 }>;
 export type ShellAssembly = Readonly<{
@@ -392,7 +392,7 @@ export class ShellBootstrap {
     const saved=(await (this.environment.actions?.()??browserAppSessionActions()).store.read()).servers;
     const savedServers=await display.choices(saved.map(value=>({pin:value.connection.pin,origin:value.connection.logicalOrigin,signIn:value.signIn})),signal);
     if (!isCurrent()) return;
-    const context: ShellAssemblyContext = {api, session: () => session, auth, events, freshness, home, inbox, artwork, factsSource, get facts() {return facts();}, preferences, epoch, get viewerFence() {return homeFence.viewerFence;}, isCurrent, signOut,signOutPorticoAccount,switchProfile,switchServer:this.selectServer,get savedServers() {return savedServers.map(value => value.id === session.viewer.serverId ? {...value, label: facts().serverName} : value);}};
+    const context: ShellAssemblyContext = {api, session: () => session, auth, events, freshness, home, inbox, artwork, factsSource, homeAuthority: factOwner.authority, get facts() {return facts();}, preferences, epoch, get viewerFence() {return homeFence.viewerFence;}, isCurrent, signOut,signOutPorticoAccount,switchProfile,switchServer:this.selectServer,get savedServers() {return savedServers.map(value => value.id === session.viewer.serverId ? {...value, label: facts().serverName} : value);}};
     const assembly = await this.assemble(context);
     if (!isCurrent()) { assembly.dispose(); return; }
     cleanups.push(() => assembly.dispose());
@@ -406,16 +406,18 @@ export class ShellBootstrap {
     cleanups.push(assembly.subscribe(publishBinding));
     cleanups.push(events.on('notification.changed', () => { void inbox.refreshUnread(); }));
     const restart = () => { if (isCurrent()) this.restart(); };
-    cleanups.push(events.on('libraries.changed', () => factOwner?.request('directory')));
     let regionKey = JSON.stringify(regionPreferences(facts().preferences));
     cleanups.push(preferences.subscribe(() => {
       const next = preferences.getSnapshot('web'); if (!next || !isCurrent()) return;
       const key = JSON.stringify(regionPreferences(next));
       if (key !== regionKey) { regionKey = key; restart(); } else publishBinding();
     }));
-    const refreshPreferences = () => factOwner?.preferences();
-    cleanups.push(events.on('settings.changed', event => { if (event.resource?.id === 'preferences') refreshPreferences(); else if (event.resource?.id === 'server') factOwner?.request('server'); else restart(); }));
-    cleanups.push(events.on('list.changed', event => { const group = event.resource?.id; if (group === 'members' || group === 'liveSources' || group === 'libraryChannels') factOwner?.request(group); }));
+    // Classified hints reach their canonical interests through hub.attach above,
+    // retaining revision/address dedupe rather than invalidating a second time.
+    cleanups.push(events.on('settings.changed', event => {
+      const resource = event.resource?.id;
+      if (resource !== 'preferences' && resource !== 'server') restart();
+    }));
     cleanups.push(attachShellFactFeed(events, freshness.hub, isCurrent, () => {
       factOwner?.all(); void inbox.refreshUnread();
     }));
@@ -427,11 +429,8 @@ export class ShellBootstrap {
     }));
     const retention = () => factOwner?.setRetained(assembly.retainsMedia?.() ?? assembly.busy());
     cleanups.push(assembly.onRetention?.(retention) ?? (() => {})); retention();
-    const wake = () => {
-      if (!globalThis.document.hidden) { auth.wake(); factOwner?.all(); }
-    };
-    globalThis.document.addEventListener('visibilitychange', wake); window.addEventListener('online', wake);
-    cleanups.push(() => { globalThis.document.removeEventListener('visibilitychange', wake); window.removeEventListener('online', wake); });
+    cleanups.push(bindShellFactWake(globalThis.document, window, {isCurrent,
+      retained: () => assembly.retainsMedia?.() ?? assembly.busy(), wakeAuth: () => auth.wake(), invalidate: () => factOwner?.all()}));
     const motion = globalThis.matchMedia('(prefers-reduced-motion: reduce)');
     const applyMotion = () => { globalThis.document.documentElement.dataset.reduceMotion = String(appearancePreferences(preferences.getSnapshot('web') ?? facts().preferences, motion.matches).reducedMotion); };
     applyMotion(); motion.addEventListener('change', applyMotion);

@@ -1,5 +1,5 @@
 import {subscribeFacts} from './fact-source';
-import {createShellHomeDocument} from './home-freshness';
+import {createShellHomeDocument, watchShellHomePreferences} from './home-freshness';
 import {appearancePreferences} from '@core/preference-effects.ts';
 import {homeSelectionContext} from '@core/home-selection/index.ts';
 import type {SelectionContext} from '@core/selection-model/index.ts';
@@ -101,14 +101,9 @@ export const assembleShellBindings: ShellAssembler = async context => {
       if (section) void router.navigate({to: '/settings', search: {scope: 'server', section}}).catch(feedback.reportError);
     });
   resources.push(activity.dispose);
-  let homeLayout = JSON.stringify([currentPreferences().effective['home.rowOrder'], currentPreferences().effective['home.hiddenRowIds']]);
-  if (context.preferences) resources.push(context.preferences.subscribe(() => {
-    if (!current()) return;
-    playerResources?.get()?.runtime.refreshSettings();
-    const nextLayout = JSON.stringify([currentPreferences().effective['home.rowOrder'], currentPreferences().effective['home.hiddenRowIds']]);
-    if (nextLayout !== homeLayout) {homeLayout = nextLayout;void context.home.revalidate().catch(feedback.reportError);}
-    changed();
-  }));
+  if (context.preferences) resources.push(watchShellHomePreferences({read:currentPreferences, subscribe:context.preferences.subscribe,
+    document:homeDisplay.document, isCurrent:current, refreshSettings:() => playerResources?.get()?.runtime.refreshSettings(),
+    authority:() => context.homeAuthority?.(), changed}));
   const getBinding = (): ShellBindings => {
     const visibleDock = dockVisible();
     return {api: context.api, events: context.events, scopeKey: JSON.stringify([viewer.serverId, authority, viewer.accountId, viewer.profileId, captured.sessionFamilyId, context.epoch]),

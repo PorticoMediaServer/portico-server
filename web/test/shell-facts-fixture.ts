@@ -22,7 +22,7 @@ export const direct = () => ({authority:'local', serverId:'server', canManage:tr
 export const system = () => ({id:'server',name:'Study',version:'1',signIn:'local' as const,move:null,setupRequired:false,hostedConfigured:false,hostedAttached:false});
 export function harness(readonlyAccess=false) {
   const time=clock(), hub=new FreshnessHub(time.env), session={sessionFamilyId:'family',accessToken:'private-test-token',viewer:{serverId:'server',authority:'local',accountId:'account',profileId:'profile',role:'owner'}} as LocalSession;
-  let record:unknown=direct(), info=system(), libraries=[{id:'library',name:'Films',kind:'movies'}], guideError:unknown, retired=0, permission=0, manifests=0;
+  let record:unknown=direct(), info=system(), libraries=[{id:'library',name:'Films',kind:'movies'}], guideError:unknown, systemError:unknown, preferenceError:unknown, homeError:unknown, retired=0, permission=0, manifests=0;
   const calls:string[]=[];
   let libraryRead: (()=>Promise<unknown>) | undefined;
   const settings={effective:{},deviceClass:'web'} as ShellFacts['preferences'];
@@ -30,15 +30,16 @@ export function harness(readonlyAccess=false) {
   const initial:ShellFacts={serverName:'Study',preferences:settings,identity:{viewer:session.viewer,serverName:'Study',serverVersion:'1',libraries,
     ...shellAccount(witnesses.direct,'profile'),liveAvailable:true,unread:0,showNotificationDot:false}};
   const api={async request(path:string) {calls.push(path); if (path==='/v1/libraries') return libraryRead ? await libraryRead() : {items:libraries}; if (path==='/v1/direct') return record;
-    if (path==='/v1/system') return info; if (path.startsWith('/v1/guide/sources?')) {if (guideError) throw guideError;return {protocolVersion:GUIDE_PROTOCOL,serverId:'server',viewerFence:'guide',revision:'1',sources:[]};}
+    if (path==='/v1/system') {if(systemError)throw systemError;return info;} if (path.startsWith('/v1/guide/sources?')) {if (guideError) throw guideError;return {protocolVersion:GUIDE_PROTOCOL,serverId:'server',viewerFence:'guide',revision:'1',sources:[]};}
     throw new Error('Unexpected read '+path);}};
   const owner=createShellFactOwner({api:api as never, session:()=>session, hub,initial,witnesses,readonlyAccess,
     isCurrent:()=>retired===0, retire:()=>{retired++;},
-    home:{authority:async()=>{manifests++;return 'answered';}} as never,
-    preferences:{observePreferences:async()=>({kind:'ok',value:settings})} as never,
+    home:{authority:async()=>{manifests++;if(homeError)throw homeError;return 'answered';}} as never,
+    preferences:{observePreferences:async()=>{calls.push('/v1/preferences?deviceClass=web');return preferenceError?{kind:'unreadable',error:preferenceError}:{kind:'ok',value:settings};}} as never,
     auth:{reconcilePermissions:async()=>{permission++;return {kind:'confirmed-unchanged'};}} as never});
   return {time,hub,owner,calls,initial,witnesses,libraryRead:(read?:()=>Promise<unknown>)=>{libraryRead=read;},counts:()=>({retired,permission,manifests}),
     rename:()=>{info={...info,name:'Den'};libraries=[{id:'library',name:'Cinema',kind:'movies'}];const r=direct();r.account.username='updated';r.profiles[0].name='Night';r.account.revision=2;record=r;},
+    systemFailure:(error:unknown)=>{systemError=error;},preferenceFailure:(error:unknown)=>{preferenceError=error;},homeFailure:(error:unknown)=>{homeError=error;},
     direct:(value:unknown)=>{record=value;},guideFailure:(error:unknown)=>{guideError=error;},dispose:()=>{owner.dispose();hub.dispose();}};
 }
 

@@ -40,7 +40,7 @@ export function shellProofChanged(initial: ShellFactWitnesses, next: Partial<She
 function failed(error: unknown): InterestOutcome {
   if (isSharedReadSuperseded(error)) throw error;
   const code = (error as {code?: unknown} | null)?.code;
-  return {kind: 'failed', error, retryable: code === 'invalid_guide_directory' || code === 'invalid_response' || code === 'invalid_system' || !finalAnswer(error)};
+  return {kind: 'failed', error, retryable: code === 'invalid_guide_directory' || code === 'invalid_response' || code === 'invalid_system' || code === 'invalid_home' || !finalAnswer(error)};
 }
 function guideFailure(error: unknown): InterestOutcome {
   const result = failed(error);
@@ -96,7 +96,7 @@ export function createShellFactOwner(o: Readonly<{
     if (result.kind === 'unreadable') return failed(result.error);
     return publish(context, captured, () => source.update({preferences: result.value}));
   };
-  const preferences = add('preferences', [dependsOn.settings('preferences')], async context => {
+  const preferences = add('preferences', [dependsOn.settings('preferences'), dependsOn.settings('server')], async context => {
     try {return await adoptPreference(context, o.session());} catch (error) {return failed(error);}
   });
   const directory = add('directory', [dependsOn.libraries], async context => {
@@ -107,21 +107,24 @@ export function createShellFactOwner(o: Readonly<{
       return await publish(context, captured, () => updateIdentity({libraries: value.items}));
     } catch (error) {return failed(error);}
   });
-  const server = add('server', [dependsOn.settings('server')], async context => {
+  const serverSystem = add('server-system', [dependsOn.settings('server')], async context => {
     const captured = o.session();
-    const results = await Promise.allSettled([
-      (async (): Promise<InterestOutcome> => {
-        const system = parseServerSignIn(await o.api.request(routePath('get_system'), 'GET', undefined, context.signal));
-        if (!sameRequest(captured, context.signal)) return {kind: 'superseded'};
-        if (shellProofChanged(initial, {system}, admitted.viewer.profileId)) {o.retire(); return {kind: 'superseded'};}
-        return publish(context, captured, () => {source.update({serverName: system.name, identity: {...source.getSnapshot().identity, serverName: system.name, serverVersion: system.version}});});
-      })(),
-      (async (): Promise<InterestOutcome> => {try {const value = await guide(context); return await publish(context, captured, () => adoptGuide(value));} catch (error) {return guideFailure(error);}})(),
-      adoptPreference(context, captured),
-    ]);
-    const outcomes = results.map(result => result.status === 'fulfilled' ? result.value : failed(result.reason));
-    return outcomes.find(value => value.kind === 'failed') ?? outcomes.find(value => value.kind === 'superseded') ?? answered;
+    try {
+      const system = parseServerSignIn(await o.api.request(routePath('get_system'), 'GET', undefined, context.signal));
+      if (!sameRequest(captured, context.signal)) return {kind:'superseded'};
+      if (shellProofChanged(initial, {system}, admitted.viewer.profileId)) {o.retire(); return {kind:'superseded'};}
+      return await publish(context, captured, () => source.update({serverName:system.name,
+        identity:{...source.getSnapshot().identity, serverName:system.name, serverVersion:system.version}}));
+    } catch (error) {return failed(error);}
   });
+  const serverGuide = add('server-guide', [dependsOn.settings('server')], async context => {
+    const captured = o.session();
+    try {const value = await guide(context); return await publish(context, captured, () => adoptGuide(value));}
+    catch (error) {return guideFailure(error);}
+  });
+  // A display group can have independent input obligations. Never collapse their
+  // errors/floors into a single selected result that drops another input's debt.
+  const server = {invalidate() {serverSystem.invalidate(); serverGuide.invalidate(); preferences.invalidate();}};
   const guideGroup = (name: 'liveSources' | 'libraryChannels') => add(name, [dependsOn.list(name)], async context => {
     const captured = o.session();
     try {const value = await guide(context); return await publish(context, captured, () => adoptGuide(value));}
@@ -173,7 +176,7 @@ export function createShellFactOwner(o: Readonly<{
   };
   return {
     source, request,
-    preferences: () => preferences.invalidate(),
+    preferences: () => o.hub.note(dependsOn.settings('preferences')),
     authority: () => homeAuthority.invalidate(),
     all() {if (!current()) return; for (const group of ['directory', 'server', 'members', 'liveSources', 'libraryChannels'] as const) request(group); preferences.invalidate(); direct.invalidate(); permission?.invalidate(); homeAuthority.invalidate();},
     setRetained(value: boolean) {if (closed || retained === value) return; retained = value; for (const interest of [homeAuthority, direct, permission]) interest?.setRetained(value);},
@@ -192,4 +195,18 @@ export function attachShellFactFeed(events: EventsClient, hub: FreshnessHub, cur
   const offStatus = events.subscribeStatus(status), offResync = events.onResync(() => {if (current()) invalidate();});
   status();
   return () => {offStatus(); offResync(); if (timer !== undefined) hub.timers.clearTimer(timer);};
+}
+
+/** Platform signals invalidate canonical obligations; hidden display stays paused. */
+export function bindShellFactWake(page: Pick<Document, 'hidden' | 'addEventListener' | 'removeEventListener'>,
+  browser: Pick<Window, 'addEventListener' | 'removeEventListener'>,
+  o: Readonly<{isCurrent(): boolean; retained(): boolean; wakeAuth(): void; invalidate(): void}>) {
+  const foreground = () => {if (o.isCurrent() && !page.hidden) {o.wakeAuth(); o.invalidate();}};
+  const online = () => {
+    if (!o.isCurrent()) return;
+    if (!page.hidden || o.retained()) o.wakeAuth();
+    o.invalidate();
+  };
+  page.addEventListener('visibilitychange', foreground); browser.addEventListener('online', online);
+  return () => {page.removeEventListener('visibilitychange', foreground); browser.removeEventListener('online', online);};
 }
