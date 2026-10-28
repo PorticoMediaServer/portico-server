@@ -65,6 +65,28 @@ func (s *Service) librarySettings(ctx context.Context, tx *sql.Tx, library strin
 	return out, nil
 }
 
+// onlineAdmission rechecks the exact library/provider revision as well as the
+// item's current local-only policy immediately before every provider send.
+func (s *Service) onlineAdmission(ctx context.Context, epoch int64, library, item string, expected ProviderSettings) context.Context {
+	return localonly.WithOnlineAdmission(ctx, s.DB, epoch, localonly.ItemAdmission(item), func(ctx context.Context, tx *sql.Tx) error {
+		var currentLibrary string
+		if err := tx.QueryRowContext(ctx, `SELECT cl.library_id FROM catalog_entities e JOIN catalog_libraries cl ON cl.id=e.library_id WHERE e.public_id=pid_blob(?)`, item).Scan(&currentLibrary); err != nil {
+			return err
+		}
+		if currentLibrary != library {
+			return ErrConflict
+		}
+		current, err := s.librarySettings(ctx, tx, library)
+		if err != nil {
+			return err
+		}
+		if !current.LRCLIB || current.Revision != expected.Revision {
+			return ErrConflict
+		}
+		return nil
+	})
+}
+
 func (s *Service) Settings(ctx context.Context) (ProviderSettings, error) {
 	gated, e := dbwork.BeginSnapshot(ctx, s.DB)
 	if e != nil {
@@ -232,7 +254,7 @@ func (s *Service) Search(ctx context.Context, a Access, in SearchInput, probe st
 		if e = localonly.CheckOnline(ctx, dbwork.ReadHandle(ctx, s.DB), lookupEpoch); e != nil {
 			return out, e
 		}
-		ctx = localonly.WithOnlineAdmission(ctx, s.DB, lookupEpoch)
+		ctx = s.onlineAdmission(ctx, lookupEpoch, a.LibraryID, a.ItemID, settings)
 		found, e = s.Provider.Search(ctx, query)
 		if e != nil {
 			return out, e

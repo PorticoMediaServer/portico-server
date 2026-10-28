@@ -114,8 +114,9 @@ func decodeLinux(text string) (linuxSpec, error) {
 // this helper work here: the trusted outer helper owns a Unix-socket proxy to
 // the bridge, and the inner helper, inside new user/mount/PID/network
 // namespaces, bridges it to the same numeric endpoint. Otherwise the job goes
-// to mediaexec as it is, which sandboxes it with bubblewrap on the host network
-// if only that works, or runs it with the baseline.
+// to mediaexec as it is. Optional mode keeps the existing filesystem sandbox
+// or baseline with a separate unconfined-network report. Required mode refuses
+// that fallback: a filesystem-only sandbox cannot satisfy the requirement.
 func (d decoderJob) command() (*exec.Cmd, error) {
 	if !bridgeSandbox() {
 		return mediaCommand(d.mediaJob())

@@ -47,11 +47,11 @@ func TestMusicScannerConformancePlexTheWallPackedNumbers(t *testing.T) {
 
 	lib, cat := musicConformanceScan(t, root)
 	artist := musicConformanceArtist(t, cat, lib, "Pink Floyd")
-	albums, _, err := cat.Albums(artist, "", 20)
+	albums, _, err := cat.Albums(catalog.Viewer{Libraries: []string{lib.ID}}, artist, "", 20)
 	if err != nil || len(albums) != 1 || albums[0].Title != "The Wall" {
 		t.Fatalf("The Wall album: %+v %v", albums, err)
 	}
-	songs, _, err := cat.AudioItems("profile", albums[0].ID, "album", "", 100)
+	songs, _, err := cat.AudioItems(catalog.Viewer{Profile: "profile", Libraries: []string{lib.ID}}, albums[0].ID, "album", "", 100)
 	if err != nil || len(songs) != len(numbers) {
 		t.Fatalf("The Wall tracks: %d %v", len(songs), err)
 	}
@@ -92,7 +92,7 @@ func TestMusicScannerConformancePlexVariousArtistsCompilation(t *testing.T) {
 	}
 
 	lib, cat := musicConformanceScan(t, root)
-	artists, _, err := cat.Artists(lib.ID, "", 50)
+	artists, _, err := cat.Artists(catalog.Viewer{Libraries: []string{lib.ID}}, lib.ID, "", 50)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -112,11 +112,11 @@ func TestMusicScannerConformancePlexVariousArtistsCompilation(t *testing.T) {
 			t.Fatalf("per-track artist %q missing: %+v", track.artist, artists)
 		}
 	}
-	albums, _, err := cat.Albums(compilation, "", 20)
+	albums, _, err := cat.Albums(catalog.Viewer{Libraries: []string{lib.ID}}, compilation, "", 20)
 	if err != nil || len(albums) != 1 || albums[0].Title != "Guardians Of The Galaxy" {
 		t.Fatalf("compilation album: %+v %v", albums, err)
 	}
-	songs, _, err := cat.AudioItems("profile", albums[0].ID, "album", "", 20)
+	songs, _, err := cat.AudioItems(catalog.Viewer{Profile: "profile", Libraries: []string{lib.ID}}, albums[0].ID, "album", "", 20)
 	if err != nil || len(songs) != len(tracks) {
 		t.Fatalf("compilation tracks: %d %v", len(songs), err)
 	}
@@ -251,7 +251,7 @@ func musicConformanceScanWithDB(t *testing.T, root string) (catalog.Library, *ca
 
 func musicConformanceArtist(t *testing.T, cat *catalog.Service, lib catalog.Library, name string) string {
 	t.Helper()
-	artists, _, err := cat.Artists(lib.ID, "", 50)
+	artists, _, err := cat.Artists(catalog.Viewer{Libraries: []string{lib.ID}}, lib.ID, "", 50)
 	if err != nil {
 		t.Fatal(err)
 	}

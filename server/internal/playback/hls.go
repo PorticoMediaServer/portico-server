@@ -54,6 +54,7 @@ type HLS struct {
 	memberCeiling MemberCeilingReader
 	db            *sql.DB
 	root, binary  string
+	outputRoot    *os.Root
 	mu            sync.Mutex
 	occurrences   occurrenceRegistry
 	cleanupMu     sync.Mutex
@@ -174,7 +175,11 @@ func NewHLS(ctx context.Context, db *sql.DB, root, binary string) (*HLS, error) 
 	if _, e = dbwork.ExecWrite(ctx, db, dbwork.ClassEstablishedPlayback, `DELETE FROM playback_conversion_observations`); e != nil {
 		return nil, e
 	}
-	return &HLS{fmp4: true, SourceStorage: storage.New(helper), db: db, root: root, binary: resolved, active: map[string]context.CancelFunc{}, windows: map[string]*hlsWindow{}, reclaimed: map[string]int{}, usage: map[string]*hlsUsage{}, timelines: map[string]*copyTimeline{}, ffprobe: siblingProbe(resolved), ctx: ctx}, nil
+	outputRoot, e := os.OpenRoot(root)
+	if e != nil {
+		return nil, e
+	}
+	return &HLS{fmp4: true, SourceStorage: storage.New(helper), db: db, root: root, binary: resolved, outputRoot: outputRoot, active: map[string]context.CancelFunc{}, windows: map[string]*hlsWindow{}, reclaimed: map[string]int{}, usage: map[string]*hlsUsage{}, timelines: map[string]*copyTimeline{}, ffprobe: siblingProbe(resolved), ctx: ctx}, nil
 }
 
 // start admits one producer window for a session. A window already covering the
@@ -324,15 +329,19 @@ func (h *HLS) Shutdown(ctx context.Context) error {
 	}
 	h.cancelAll()
 	h.closeOrphanDirectory()
+	var closeErr error
+	if h.outputRoot != nil {
+		closeErr = h.outputRoot.Close()
+	}
 	done := make(chan struct{})
 	supervise.Go("playback.hls.shutdown", func() { h.producers.Wait(); close(done) })
 	select {
 	case <-done:
-		return nil
+		return closeErr
 	case <-ctx.Done():
 		// The caller's budget is the bound. Saying so by name is what lets the
 		// drain barrier report which loop did not finish.
-		return ctx.Err()
+		return errors.Join(ctx.Err(), closeErr)
 	}
 }
 

@@ -12,7 +12,6 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"net/http"
-	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"testing"
@@ -119,10 +118,10 @@ func TestDatasetImportMatchesByProviderIdAndFeedsRecommendations(t *testing.T) {
 	c.Drain()
 	p := newPublisher(t)
 	full := p.build("screen-1", "full", "2026.09.26", screenV1)
+	// The signed manifest may publish assets on a separate HTTPS CDN origin.
+	full.URL = "https://cdn.example/" + full.URL
 	p.domains["screen"] = ManifestDomain{DatasetVersion: "2026.09.26", VocabularyVersion: 1, Full: full}
-	server := httptest.NewServer(p)
-	defer server.Close()
-	s := New(c.DB, Config{ManifestURL: server.URL + "/manifest.json", PublicKey: p.public, Dir: t.TempDir()})
+	s := publisherService(c.DB, p, t.TempDir())
 	if _, err := s.Step(context.Background(), 100); err != nil {
 		t.Fatal(err)
 	}
@@ -210,10 +209,8 @@ func TestDatasetRefusesATamperedManifest(t *testing.T) {
 	p := newPublisher(t)
 	p.domains["screen"] = ManifestDomain{DatasetVersion: "1", Full: p.build("screen-1", "full", "1", screenV1)}
 	p.tamper = true
-	server := httptest.NewServer(p)
-	defer server.Close()
 	dir := t.TempDir()
-	s := New(c.DB, Config{ManifestURL: server.URL + "/manifest.json", PublicKey: p.public, Dir: dir})
+	s := publisherService(c.DB, p, dir)
 	if _, err := s.Step(context.Background(), 100); err == nil {
 		t.Fatal("a tampered manifest was accepted")
 	}

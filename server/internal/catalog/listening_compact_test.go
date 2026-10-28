@@ -171,15 +171,16 @@ func TestCompactListeningReadsProjectedFacts(t *testing.T) {
 	})
 	c.Drain()
 	s := New(c.DB)
-	artists, next, err := s.Artists("music", "", 10)
+	viewer := Viewer{Profile: "profile", Fence: "f", Libraries: []string{"music", "books"}}
+	artists, next, err := s.Artists(viewer, "music", "", 10)
 	if err != nil || next != "" || len(artists) != 2 || artists[0].ID != names["artist"].Public || artists[1].ID != names["guest"].Public {
 		t.Fatalf("artists: %+v %q %v", artists, next, err)
 	}
-	albums, next, err := s.Albums(names["artist"].Public, "", 10)
+	albums, next, err := s.Albums(viewer, names["artist"].Public, "", 10)
 	if err != nil || next != "" || len(albums) != 1 || albums[0].ID != names["album"].Public || albums[0].AlbumArtist != "Artist" || albums[0].PosterURL != "/v1/items/"+names["song"].Public+"/art/poster" {
 		t.Fatalf("albums: %+v %q %v", albums, next, err)
 	}
-	booksPage, next, err := s.Books("profile", "books", "", 10)
+	booksPage, next, err := s.Books(viewer, "books", "", 10)
 	if err != nil || next != "" || len(booksPage) != 1 || booksPage[0].ID != names["book"].Public || booksPage[0].Author != "Author" || booksPage[0].PosterURL != "/v1/items/"+names["part"].Public+"/art/poster" {
 		t.Fatalf("books: %+v %q %v", booksPage, next, err)
 	}
@@ -189,15 +190,15 @@ func TestCompactListeningReadsProjectedFacts(t *testing.T) {
 			t.Fatalf("library for %s: %q %v", entry.kind, got, err)
 		}
 	}
-	songs, next, err := s.AudioItems("profile", names["album"].Public, "album", "", 1)
+	songs, next, err := s.AudioItems(viewer, names["album"].Public, "album", "", 1)
 	if err != nil || next != "" || len(songs) != 1 || songs[0].ID != names["song"].Public || songs[0].Song == nil || songs[0].Song.LocalMetadataIssue != "needs_review" || songs[0].Song.Artist != "Artist; Guest" || songs[0].Duration != 180.25 {
 		t.Fatalf("songs: %+v %q %v", songs, next, err)
 	}
-	parts, next, err := s.AudioItems("profile", names["book"].Public, "book", "", 1)
+	parts, next, err := s.AudioItems(viewer, names["book"].Public, "book", "", 1)
 	if err != nil || next != "" || len(parts) != 1 || parts[0].ID != names["part"].Public || parts[0].BookFile == nil || parts[0].BookFile.BookTitle != "Book" {
 		t.Fatalf("parts: %+v %q %v", parts, next, err)
 	}
-	chapters, next, err := s.BookChapters(names["book"].Public, "", 1)
+	chapters, next, err := s.BookChapters(viewer, names["book"].Public, "", 1)
 	if err != nil || next != "" || len(chapters) != 1 || chapters[0].ID != names["part"].Public+":0" || chapters[0].ItemID != names["part"].Public || chapters[0].EndSeconds != 2.5 {
 		t.Fatalf("chapters: %+v %q %v", chapters, next, err)
 	}

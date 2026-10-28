@@ -235,11 +235,7 @@ func (s *Service) testCandidate(ctx context.Context, input mounts.SourceCandidat
 		generation = strconv.FormatInt(input.Current.BackendRevision, 10)
 	}
 	policy := remotemedia.Policy{Resolver: s.resolver, SourceEndpoints: true}
-	for _, a := range approvals {
-		if len(a.Root) >= 4 && a.Root[:4] == "http" {
-			policy.Approvals = append(policy.Approvals, a)
-		}
-	}
+	policy.Approvals = append(policy.Approvals, approvals...)
 	observe, err := candidateWebDAVObserver(raw, input.Remote, profile, policy, check, observations)
 	if err != nil {
 		return err
@@ -288,11 +284,11 @@ func (s *Service) runCandidateServe(ctx context.Context, source, generation stri
 	if source == "" {
 		source = identity.Token()
 	}
-	proxy, err := remotemedia.StartPolicyProxy(life, policy, identity.Token(), identity.Token(), check)
+	egress, err := s.startRcloneEgress(life, raw, remote, policy, check)
 	if err != nil {
 		return err
 	}
-	defer func() { proxy.Close(); _ = proxy.Wait(context.Background()) }()
+	defer egress.Close()
 	port, err := privateServePort()
 	if err != nil {
 		return err
@@ -305,7 +301,7 @@ func (s *Service) runCandidateServe(ctx context.Context, source, generation stri
 		if err := check(life); err != nil {
 			return err
 		}
-		cmd.Env = append(cmd.Env, "RCLONE_HTTP_PROXY="+proxy.Locator(), "RCLONE_SFTP_HTTP_PROXY=")
+		cmd.Env = append(cmd.Env, "RCLONE_HTTP_PROXY="+egress.HTTPProxy, "RCLONE_SFTP_HTTP_PROXY="+egress.SFTPProxy)
 		return nil
 	}}
 	process, err := rcloneprogram.StartServe(life, program, spec, &candidateServeLease{life: life, check: check})

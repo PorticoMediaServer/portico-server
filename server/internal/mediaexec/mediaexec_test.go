@@ -45,6 +45,9 @@ func resetForTest(t *testing.T) {
 		postures.Lock()
 		postures.byTool, postures.last = map[string]*postureEntry{}, nil
 		postures.Unlock()
+		networkPosture.Lock()
+		networkPosture.unconfined, networkPosture.reason = false, ""
+		networkPosture.Unlock()
 		sandboxProbe = probeSandbox
 	}
 	clear()

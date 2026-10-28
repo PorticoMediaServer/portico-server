@@ -267,6 +267,19 @@ func (d Dependencies) v1Authorize(ctx context.Context, r *http.Request, m apikit
 		}
 		return ctx, nil
 	}
+	// PIN recovery starts from a fresh account-only sign-in when no profile
+	// can be selected. These two operations use the direct account's manage
+	// authority, including its required-factor gate, without becoming viewers.
+	if m.ID == "get_direct_pin_recovery" && m.Method == http.MethodGet && m.Path == "/v1/direct/pin-recovery" ||
+		m.ID == "post_direct_profile_pin_reset" && m.Method == http.MethodPost && m.Path == "/v1/direct/profiles/{id}/pin-reset" {
+		if d.Identity == nil {
+			return nil, &apierror.Error{Code: "internal"}
+		}
+		if _, err := d.Identity.PINRecovery(ctx, directBearer(r)); err != nil {
+			return nil, v1AuthError(err)
+		}
+		return ctx, nil
+	}
 	var p identity.Principal
 	var err error
 	switch {

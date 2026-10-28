@@ -8,6 +8,7 @@ import (
 	"log"
 	"net"
 	"net/http"
+	"net/netip"
 	"net/url"
 	"strconv"
 	"strings"
@@ -19,7 +20,9 @@ import (
 
 // PolicyProxy is the private upstream-rclone policy route. HTTPS is an opaque
 // CONNECT tunnel: no TLS interception, certificates or response/throttle claim.
-// SFTP/SMB never use this route. Source limits belong to the one rclone process.
+// The separate SFTP mode permits only CONNECT to exact native approvals and
+// preserves the hostname rclone uses for SSH host-key verification. SMB has no
+// proven proxy route here. Source limits belong to the one rclone process.
 type PolicyProxy struct {
 	policy        Policy
 	check         func(context.Context) error
@@ -34,9 +37,40 @@ type PolicyProxy struct {
 	tunnels       map[net.Conn]bool
 	closed        bool
 	handlers      sync.WaitGroup
+	sftp          map[string]Approval
 }
 
 func StartPolicyProxy(ctx context.Context, policy Policy, username, password string, check func(context.Context) error) (*PolicyProxy, error) {
+	return startPolicyProxy(ctx, policy, username, password, check, nil)
+}
+
+// StartSFTPPolicyProxy supplies rclone's sftp http_proxy option. It is not an
+// HTTP approval alias: only the saved SFTP scheme/host/port can use its tunnel.
+func StartSFTPPolicyProxy(ctx context.Context, policy Policy, username, password string, check func(context.Context) error) (*PolicyProxy, error) {
+	saved := map[string]Approval{}
+	for _, approval := range policy.Approvals {
+		u, err := url.Parse(approval.Root)
+		if err != nil || u.Scheme != "sftp" {
+			return nil, ErrPolicy
+		}
+		port, err := strconv.Atoi(u.Port())
+		if err != nil {
+			return nil, ErrPolicy
+		}
+		root, err := (NativeEndpoint{Scheme: "sftp", Host: u.Hostname(), Port: port}).Root()
+		if err != nil || root != approval.Root || saved[root].Root != "" {
+			return nil, ErrPolicy
+		}
+		approval.Addresses = append([]string(nil), approval.Addresses...)
+		saved[root] = approval
+	}
+	if len(saved) == 0 || len(saved) > 32 {
+		return nil, ErrPolicy
+	}
+	return startPolicyProxy(ctx, policy, username, password, check, saved)
+}
+
+func startPolicyProxy(ctx context.Context, policy Policy, username, password string, check func(context.Context) error, sftp map[string]Approval) (*PolicyProxy, error) {
 	if username == "" || password == "" || strings.ContainsAny(username, ":\r\n\x00") || strings.ContainsAny(password, "\r\n\x00") || check == nil {
 		return nil, ErrPolicy
 	}
@@ -54,7 +88,7 @@ func StartPolicyProxy(ctx context.Context, policy Policy, username, password str
 	life, cancel := context.WithCancel(ctx)
 	address := ln.Addr().String()
 	locator := url.URL{Scheme: "http", Host: address, User: url.UserPassword(username, password)}
-	p := &PolicyProxy{policy: policy, check: check, authorization: "Basic " + base64.StdEncoding.EncodeToString([]byte(username+":"+password)), locator: locator.String(), life: life, cancel: cancel, listener: ln, done: make(chan struct{}), tunnels: make(map[net.Conn]bool)}
+	p := &PolicyProxy{policy: policy, check: check, authorization: "Basic " + base64.StdEncoding.EncodeToString([]byte(username+":"+password)), locator: locator.String(), life: life, cancel: cancel, listener: ln, done: make(chan struct{}), tunnels: make(map[net.Conn]bool), sftp: sftp}
 	p.server = &http.Server{Handler: p, ReadHeaderTimeout: 10 * time.Second, IdleTimeout: 30 * time.Second, MaxHeaderBytes: 32 << 10, ErrorLog: log.New(io.Discard, "", 0), BaseContext: func(net.Listener) context.Context { return life }}
 	supervise.Go("remotemedia.policy-proxy", func() {
 		_ = p.server.Serve(ln)
@@ -126,7 +160,7 @@ func (p *PolicyProxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	// Only absolute plain HTTP requests belong on the forward route. Redirects
 	// return to rclone, whose next request must pass policy independently.
-	if r.URL == nil || r.URL.Scheme != "http" || r.URL.Host == "" || r.Host != r.URL.Host || r.URL.User != nil || r.URL.Fragment != "" {
+	if p.sftp != nil || r.URL == nil || r.URL.Scheme != "http" || r.URL.Host == "" || r.Host != r.URL.Host || r.URL.User != nil || r.URL.Fragment != "" {
 		w.WriteHeader(http.StatusForbidden)
 		return
 	}
@@ -172,14 +206,24 @@ func stripProxyHopHeaders(header http.Header) {
 	}
 }
 
-func (p *PolicyProxy) connect(w http.ResponseWriter, r *http.Request) {
-	host, port, err := net.SplitHostPort(r.Host)
-	numeric, e := strconv.Atoi(port)
-	if err != nil || e != nil || numeric < 1 || numeric > 65535 || host == "" || strings.ContainsAny(host, "/@\\\x00\r\n") || r.URL == nil || r.URL.Host != r.Host || r.URL.Path != "" || r.URL.RawQuery != "" || r.ContentLength != 0 || len(r.TransferEncoding) != 0 {
-		w.WriteHeader(http.StatusForbidden)
-		return
+func (p *PolicyProxy) connectAddresses(ctx context.Context, host, port string) ([]netip.Addr, error) {
+	if p.sftp != nil {
+		numeric, err := strconv.Atoi(port)
+		if err != nil {
+			return nil, ErrPolicy
+		}
+		endpoint := NativeEndpoint{Scheme: "sftp", Host: host, Port: numeric}
+		root, err := endpoint.Root()
+		if err != nil {
+			return nil, err
+		}
+		approval, ok := p.sftp[root]
+		if !ok {
+			return nil, ErrPolicy
+		}
+		return p.policy.CheckNativeEndpoint(ctx, endpoint, approval)
 	}
-	target := url.URL{Scheme: "https", Host: r.Host, Path: "/"}
+	target := url.URL{Scheme: "https", Host: net.JoinHostPort(host, port), Path: "/"}
 	// CONNECT can enforce host/port/address policy only. An owner-confirmed HTTPS
 	// root's path is opaque; it never becomes an immutable-byte or content grant.
 	policy := p.policy
@@ -192,12 +236,21 @@ func (p *PolicyProxy) connect(w http.ResponseWriter, r *http.Request) {
 			policy.Approvals[i].Root = root.String()
 		}
 	}
-	_, scope, err := policy.admit(r.Context(), target.String())
+	_, scope, err := policy.admit(ctx, target.String())
 	if err != nil {
+		return nil, err
+	}
+	return scope.resolve(ctx, host)
+}
+
+func (p *PolicyProxy) connect(w http.ResponseWriter, r *http.Request) {
+	host, port, err := net.SplitHostPort(r.Host)
+	numeric, e := strconv.Atoi(port)
+	if err != nil || e != nil || numeric < 1 || numeric > 65535 || host == "" || strings.ContainsAny(host, "/@\\\x00\r\n") || r.URL == nil || r.URL.Host != r.Host || r.URL.Path != "" || r.URL.RawQuery != "" || r.ContentLength != 0 || len(r.TransferEncoding) != 0 {
 		w.WriteHeader(http.StatusForbidden)
 		return
 	}
-	ips, err := scope.resolve(r.Context(), host)
+	ips, err := p.connectAddresses(r.Context(), host, port)
 	if err != nil || p.Check(r.Context()) != nil {
 		w.WriteHeader(http.StatusForbidden)
 		return

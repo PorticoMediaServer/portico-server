@@ -110,7 +110,29 @@ func (s *Service) SyncProgress(ctx context.Context, p identity.Principal, operat
 		return out, e
 	}
 	if raw != "" {
-		return out, json.Unmarshal([]byte(raw), &out)
+		if e = json.Unmarshal([]byte(raw), &out); e != nil {
+			return out, e
+		}
+		if e = operations.ReauthorizeReceipt(out.Entries, func(row ProgressResult) string {
+			return row.ItemID
+		}, func(item string) error {
+			return s.visibleItem(ctx, tx, p, item)
+		}, func(row *ProgressResult) {
+			*row = ProgressResult{PlayID: row.PlayID, ItemID: row.ItemID, Outcome: ProgressMissing}
+		}); e != nil {
+			return ProgressReceipt{}, e
+		}
+		out.Applied, out.Conflicts = 0, 0
+		for _, row := range out.Entries {
+			switch row.Outcome {
+			case ProgressApplied:
+				out.Applied++
+			case ProgressHistoryPaused:
+			default:
+				out.Conflicts++
+			}
+		}
+		return out, nil
 	}
 	preferences, _, _, e := operations.EffectivePreferences(tx, p.Viewer, "")
 	if e != nil {

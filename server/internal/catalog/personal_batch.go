@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"portico.local/server/internal/dbwork"
+	"portico.local/server/internal/operations"
 	"portico.local/server/internal/requestinput"
 	"time"
 )
@@ -135,8 +136,32 @@ func (s *Service) SetPersonalBatch(account, profile string, m PersonalBatchMutat
 		if prior != hash {
 			return out, ErrOperationConflict
 		}
-		e = json.Unmarshal([]byte(stored), &out)
-		return out, e
+		if e = json.Unmarshal([]byte(stored), &out); e != nil || authorize == nil {
+			return out, e
+		}
+		gate, err := dbwork.BeginSnapshot(s.Context(), s.db)
+		if err != nil {
+			return PersonalBatchReceipt{}, err
+		}
+		defer gate.Rollback()
+		if err = operations.ReauthorizeReceipt(out.Results, func(row PersonalBatchResult) string {
+			return row.ItemID
+		}, func(item string) error {
+			return authorize(gate.Tx(), item)
+		}, func(row *PersonalBatchResult) {
+			*row = PersonalBatchResult{ItemID: row.ItemID, Code: "not_found", Message: sql.ErrNoRows.Error()}
+		}); err != nil {
+			return PersonalBatchReceipt{}, err
+		}
+		out.Updated, out.Failed = 0, 0
+		for _, row := range out.Results {
+			if row.OK {
+				out.Updated++
+			} else {
+				out.Failed++
+			}
+		}
+		return out, gate.Commit()
 	}
 	if !errors.Is(e, sql.ErrNoRows) {
 		return out, e

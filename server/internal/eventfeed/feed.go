@@ -50,6 +50,9 @@ type Hub struct {
 	next    uint64
 	// LibraryVisible gates library: audiences. Nil delivers none.
 	LibraryVisible func(tx *sql.Tx, p identity.Principal, library string) bool
+	// ContentVisible gates retained profile hints against current catalogue
+	// authority in the page's snapshot. Nil reveals no title identifiers.
+	ContentVisible func(context.Context, *sql.Tx, identity.Principal, string) bool
 }
 type stream struct {
 	id     uint64
@@ -280,6 +283,15 @@ func (h *Hub) Read(ctx context.Context, p identity.Principal, administrative boo
 	// All events and access checks use this one snapshot: each library's
 	// verdict is stable for the page, including denied libraries.
 	visibility := map[string]bool{}
+	contentVisibility := map[string]bool{}
+	visibleContent := func(id string) bool {
+		if visible, checked := contentVisibility[id]; checked {
+			return visible
+		}
+		visible := h.ContentVisible != nil && h.ContentVisible(ctx, tx, p, id)
+		contentVisibility[id] = visible
+		return visible
+	}
 	for rows.Next() {
 		var id, at int64
 		var rowAudience, kind, resourceKind, resource, revision, data string
@@ -297,11 +309,14 @@ func (h *Hub) Read(ctx context.Context, p identity.Principal, administrative boo
 		} else if capacityAudience != "" && rowAudience == capacityAudience {
 			continue
 		}
-		if strings.HasPrefix(rowAudience, "library:") {
+		if strings.HasPrefix(rowAudience, "library:") || rowAudience == audience && resourceKind == "library" {
 			if h.LibraryVisible == nil {
 				continue
 			}
-			library := strings.TrimPrefix(rowAudience, "library:")
+			library := resource
+			if strings.HasPrefix(rowAudience, "library:") {
+				library = strings.TrimPrefix(rowAudience, "library:")
+			}
 			visible, checked := visibility[library]
 			if !checked {
 				visible = h.LibraryVisible(tx, p, library)
@@ -310,6 +325,12 @@ func (h *Hub) Read(ctx context.Context, p identity.Principal, administrative boo
 			if !visible {
 				continue
 			}
+		}
+		if rowAudience == audience {
+			if contentResource(resourceKind) && !visibleContent(resource) {
+				continue
+			}
+			data = visiblePersonalTitles(data, visibleContent)
 		}
 		event := Event{ID: strconv.FormatInt(id, 10), Type: kind, At: time.UnixMilli(at).UTC().Format("2006-01-02T15:04:05.000Z"), Resource: Resource{Kind: resourceKind, ID: resource}, Revision: revision}
 		if json.Valid([]byte(data)) {

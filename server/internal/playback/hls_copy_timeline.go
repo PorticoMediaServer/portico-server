@@ -213,7 +213,7 @@ func probeFormatStart(ctx context.Context, ffprobe string, input *assets.Playbac
 func runProbe(ctx context.Context, ffprobe string, input *assets.PlaybackInput, args ...string) ([]byte, error) {
 	ctx, releaseInput := input.BorrowContext(ctx)
 	defer releaseInput()
-	full := append([]string{"-v", "error", "-protocol_whitelist", "file,pipe"}, args...)
+	full := append([]string{"-v", "error", "-protocol_whitelist", "file,pipe", "-format_whitelist", mediaexec.LocalInputFormats}, args...)
 	full = append(full, input.Options...)
 	full = append(full, input.Argument)
 	// Where /dev/fd shares this process's file offset, the previous child left it

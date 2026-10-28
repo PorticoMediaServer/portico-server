@@ -18,30 +18,33 @@ func pageLimit(limit int) int {
 	return min(limit, BrowseMaximumLimit)
 }
 
-func (s *Service) audioCursorID(id string) (int64, error) {
+func (s *Service) audioCursorID(viewer Viewer, id string) (int64, error) {
 	var entityID int64
-	if err := s.read().QueryRow(`SELECT id FROM catalog_entities WHERE public_id=pid_blob(?)`, id).Scan(&entityID); err != nil {
+	visible, args := viewer.entityVisibilitySQL("e.id", "l.library_id")
+	if err := s.read().QueryRow(`SELECT e.id FROM catalog_entities e JOIN catalog_libraries l ON l.id=e.library_id WHERE e.public_id=pid_blob(?) AND e.retired=0 AND `+visible, append([]any{id}, args...)...).Scan(&entityID); err != nil {
 		return 0, ErrCursor
 	}
 	return entityID, nil
 }
 
-func (s *Service) Artists(library, cursor string, limit int) ([]Artist, string, error) {
+func (s *Service) Artists(viewer Viewer, library, cursor string, limit int) ([]Artist, string, error) {
 	limit = pageLimit(limit)
 	after := int64(0)
 	if cursor != "" {
 		var err error
-		after, err = s.audioCursorID(cursor)
+		after, err = s.audioCursorID(viewer, cursor)
 		if err != nil {
 			return nil, "", err
 		}
 	}
+	visible, args := viewer.entityVisibilitySQL("e.id", "l.library_id")
+	args = append([]any{library, after}, args...)
 	rows, err := s.read().Query(`SELECT pid(e.public_id),l.library_id,e.title FROM catalog_entities e
  JOIN catalog_artists d ON d.entity_id=e.id JOIN catalog_libraries l ON l.id=e.library_id
  WHERE l.library_id=? AND l.retired=0 AND e.kind=5 AND e.retired=0 AND e.id>?
  AND (EXISTS(SELECT 1 FROM catalog_song_artists sa JOIN catalog_songs song ON song.entity_id=sa.song_id WHERE sa.artist_id=e.id)
  OR EXISTS(SELECT 1 FROM catalog_albums a JOIN catalog_songs song ON song.album_id=a.entity_id WHERE a.artist_id=e.id))
- ORDER BY e.id LIMIT ?`, library, after, limit+1)
+ AND `+visible+` ORDER BY e.id LIMIT ?`, append(args, limit+1)...)
 	if err != nil {
 		return nil, "", err
 	}
@@ -62,25 +65,35 @@ func (s *Service) Artists(library, cursor string, limit int) ([]Artist, string, 
 	return out, next, rows.Err()
 }
 
-func (s *Service) Albums(artist, cursor string, limit int) ([]Album, string, error) {
+func (s *Service) Albums(viewer Viewer, artist, cursor string, limit int) ([]Album, string, error) {
+	if err := s.VisibleEntity(s.Context(), viewer, "artist", artist); err != nil {
+		return nil, "", err
+	}
 	limit = pageLimit(limit)
 	after := int64(0)
 	if cursor != "" {
 		var err error
-		after, err = s.audioCursorID(cursor)
+		after, err = s.audioCursorID(viewer, cursor)
 		if err != nil {
 			return nil, "", err
 		}
 	}
+	itemVisible, itemArgs := viewer.itemVisibilitySQL("item.id")
+	visible, args := viewer.entityVisibilitySQL("e.id", "l.library_id")
+	values := append([]any{}, itemArgs...)
+	values = append(values, artist, artist, artist)
+	values = append(values, itemArgs...)
+	values = append(values, after)
+	values = append(values, args...)
 	rows, err := s.read().Query(`SELECT pid(e.public_id),l.library_id,e.title,pid(ar.public_id),ar.title,e.year,a.provider_match_status,
- COALESCE((SELECT pid(item.public_id) FROM catalog_songs s JOIN catalog_entities item ON item.id=s.entity_id JOIN catalog_item_details d ON d.entity_id=item.id WHERE s.album_id=e.id AND d.poster_url<>'' AND item.retired=0 LIMIT 1),''),
+ COALESCE((SELECT pid(item.public_id) FROM catalog_songs s JOIN catalog_entities item ON item.id=s.entity_id JOIN catalog_item_details d ON d.entity_id=item.id WHERE s.album_id=e.id AND d.poster_url<>'' AND `+itemVisible+` LIMIT 1),''),
  a.release_id,a.release_group_id,a.release_date,a.release_country,a.provider_observed_at,`+albumRoleSQL("e", "ar")+`
  FROM catalog_entities e JOIN catalog_albums a ON a.entity_id=e.id
  JOIN catalog_entities ar ON ar.id=a.artist_id
  JOIN catalog_libraries l ON l.id=e.library_id
  WHERE e.kind=6 AND e.retired=0 AND ar.retired=0 AND l.retired=0
- AND (ar.public_id=pid_blob(?) OR EXISTS(SELECT 1 FROM catalog_songs s JOIN catalog_song_artists sa ON sa.song_id=s.entity_id WHERE s.album_id=e.id AND sa.artist_id=(SELECT id FROM catalog_entities WHERE public_id=pid_blob(?))))
- AND e.id>? ORDER BY e.id LIMIT ?`, artist, artist, artist, after, limit+1)
+ AND (ar.public_id=pid_blob(?) OR EXISTS(SELECT 1 FROM catalog_songs s JOIN catalog_song_artists sa ON sa.song_id=s.entity_id JOIN catalog_entities item ON item.id=s.entity_id WHERE s.album_id=e.id AND sa.artist_id=(SELECT id FROM catalog_entities WHERE public_id=pid_blob(?)) AND `+itemVisible+`))
+ AND e.id>? AND `+visible+` ORDER BY e.id LIMIT ?`, append(values, limit+1)...)
 	if err != nil {
 		return nil, "", err
 	}
@@ -106,25 +119,34 @@ func (s *Service) Albums(artist, cursor string, limit int) ([]Album, string, err
 	return out, next, rows.Err()
 }
 
-func (s *Service) Books(profile, library, cursor string, limit int) ([]Book, string, error) {
+func (s *Service) Books(viewer Viewer, library, cursor string, limit int) ([]Book, string, error) {
 	limit = pageLimit(limit)
 	after := int64(0)
 	if cursor != "" {
 		var err error
-		after, err = s.audioCursorID(cursor)
+		after, err = s.audioCursorID(viewer, cursor)
 		if err != nil {
 			return nil, "", err
 		}
 	}
+	artVisible, artArgs := viewer.itemVisibilitySQL("item.id")
+	resumeVisible, resumeArgs := viewer.itemVisibilitySQL("resume_item.id")
+	visible, args := viewer.entityVisibilitySQL("e.id", "l.library_id")
+	values := append([]any{}, artArgs...)
+	values = append(values, viewer.Profile)
+	values = append(values, resumeArgs...)
+	values = append(values, library, after)
+	values = append(values, args...)
 	rows, err := s.read().Query(`SELECT pid(e.public_id),l.library_id,e.title,b.author,b.narrator,b.provider_match_status,
- COALESCE((SELECT pid(item.public_id) FROM catalog_book_files f JOIN catalog_entities item ON item.id=f.entity_id JOIN catalog_item_details d ON d.entity_id=item.id WHERE f.book_id=e.id AND d.poster_url<>'' AND item.retired=0 LIMIT 1),''),
+ COALESCE((SELECT pid(item.public_id) FROM catalog_book_files f JOIN catalog_entities item ON item.id=f.entity_id JOIN catalog_item_details d ON d.entity_id=item.id WHERE f.book_id=e.id AND d.poster_url<>'' AND `+artVisible+` LIMIT 1),''),
  COALESCE(pid(resume_item.public_id),''),COALESCE(r.position,0)
  FROM catalog_entities e JOIN catalog_books b ON b.entity_id=e.id JOIN catalog_libraries l ON l.id=e.library_id
  LEFT JOIN book_resume r ON r.book_id=e.id AND r.profile_id=?
  LEFT JOIN catalog_entities resume_item ON resume_item.id=r.item_id
+ AND EXISTS(SELECT 1 FROM catalog_book_files f WHERE f.entity_id=resume_item.id AND f.book_id=e.id) AND `+resumeVisible+`
  WHERE l.library_id=? AND l.retired=0 AND e.kind=8 AND e.retired=0
  AND e.id>? AND EXISTS(SELECT 1 FROM catalog_book_files f WHERE f.book_id=e.id)
- ORDER BY e.id LIMIT ?`, profile, library, after, limit+1)
+ AND `+visible+` ORDER BY e.id LIMIT ?`, append(values, limit+1)...)
 	if err != nil {
 		return nil, "", err
 	}
@@ -170,7 +192,10 @@ func (s *Service) LibraryForAudioEntity(kind, id string) (string, error) {
 	return library, err
 }
 
-func (s *Service) AudioItems(profile, parent, kind, cursor string, limit int) ([]Item, string, error) {
+func (s *Service) AudioItems(viewer Viewer, parent, kind, cursor string, limit int) ([]Item, string, error) {
+	if err := s.VisibleEntity(s.Context(), viewer, kind, parent); err != nil {
+		return nil, "", err
+	}
 	table, parentColumn, number := "catalog_songs", "album_id", "track_number"
 	if kind == "book" {
 		table, parentColumn, number = "catalog_book_files", "book_id", "part_number"
@@ -179,15 +204,16 @@ func (s *Service) AudioItems(profile, parent, kind, cursor string, limit int) ([
 	disc, track := 0, 0
 	afterName := ""
 	var after int64
+	visible, args := viewer.itemVisibilitySQL("item.id")
 	if cursor != "" {
-		if err := s.read().QueryRow(`SELECT COALESCE(d.disc_number,1),COALESCE(d.`+number+`,0),item.sort_key,item.id FROM `+table+` d JOIN catalog_entities item ON item.id=d.entity_id JOIN catalog_entities p ON p.id=d.`+parentColumn+` WHERE p.public_id=pid_blob(?) AND item.public_id=pid_blob(?)`, parent, cursor).Scan(&disc, &track, &afterName, &after); err != nil {
+		if err := s.read().QueryRow(`SELECT COALESCE(d.disc_number,1),COALESCE(d.`+number+`,0),item.sort_key,item.id FROM `+table+` d JOIN catalog_entities item ON item.id=d.entity_id JOIN catalog_entities p ON p.id=d.`+parentColumn+` WHERE p.public_id=pid_blob(?) AND item.public_id=pid_blob(?) AND `+visible, append([]any{parent, cursor}, args...)...).Scan(&disc, &track, &afterName, &after); err != nil {
 			return nil, "", requestinput.New("invalid audio cursor")
 		}
 	}
 	rows, err := s.read().Query(`SELECT pid(item.public_id) FROM `+table+` d JOIN catalog_entities item ON item.id=d.entity_id JOIN catalog_entities p ON p.id=d.`+parentColumn+`
  WHERE p.public_id=pid_blob(?) AND p.retired=0 AND item.retired=0
  AND (COALESCE(d.disc_number,1),COALESCE(d.`+number+`,0),item.sort_key,item.id)>(?,?,?,?)
- ORDER BY COALESCE(d.disc_number,1),COALESCE(d.`+number+`,0),item.sort_key,item.id LIMIT ?`, parent, disc, track, afterName, after, limit+1)
+ AND `+visible+` ORDER BY COALESCE(d.disc_number,1),COALESCE(d.`+number+`,0),item.sort_key,item.id LIMIT ?`, append(append([]any{parent, disc, track, afterName, after}, args...), limit+1)...)
 	if err != nil {
 		return nil, "", err
 	}
@@ -212,7 +238,7 @@ func (s *Service) AudioItems(profile, parent, kind, cursor string, limit int) ([
 	}
 	out := []Item{}
 	for _, id := range ids {
-		item, err := s.Get(profile, id)
+		item, err := s.Get(viewer.Profile, id)
 		if err != nil {
 			return nil, "", err
 		}
@@ -221,12 +247,16 @@ func (s *Service) AudioItems(profile, parent, kind, cursor string, limit int) ([
 	return out, next, nil
 }
 
-func (s *Service) BookChapters(book, cursor string, limit int) ([]BookChapter, string, error) {
+func (s *Service) BookChapters(viewer Viewer, book, cursor string, limit int) ([]BookChapter, string, error) {
+	if err := s.VisibleEntity(s.Context(), viewer, "book", book); err != nil {
+		return nil, "", err
+	}
 	limit = pageLimit(limit)
 	disc, part, index := 0, 0, 0
 	file := ""
 	fileName := ""
 	var fileID int64
+	visible, args := viewer.itemVisibilitySQL("item.id")
 	if cursor != "" {
 		colon := strings.LastIndexByte(cursor, ':')
 		if colon <= 0 {
@@ -237,7 +267,7 @@ func (s *Service) BookChapters(book, cursor string, limit int) ([]BookChapter, s
 			return nil, "", requestinput.New("invalid chapter cursor")
 		}
 		file, index = cursor[:colon], parsed
-		if err = s.read().QueryRow(`SELECT COALESCE(f.disc_number,1),COALESCE(f.part_number,0),item.sort_key,item.id FROM catalog_book_chapters c JOIN catalog_book_files f ON f.entity_id=c.file_id JOIN catalog_entities item ON item.id=f.entity_id JOIN catalog_entities b ON b.id=f.book_id WHERE b.public_id=pid_blob(?) AND item.public_id=pid_blob(?) AND c.chapter_index=?`, book, file, index).Scan(&disc, &part, &fileName, &fileID); err != nil {
+		if err = s.read().QueryRow(`SELECT COALESCE(f.disc_number,1),COALESCE(f.part_number,0),item.sort_key,item.id FROM catalog_book_chapters c JOIN catalog_book_files f ON f.entity_id=c.file_id JOIN catalog_entities item ON item.id=f.entity_id JOIN catalog_entities b ON b.id=f.book_id WHERE b.public_id=pid_blob(?) AND item.public_id=pid_blob(?) AND c.chapter_index=? AND `+visible, append([]any{book, file, index}, args...)...).Scan(&disc, &part, &fileName, &fileID); err != nil {
 			return nil, "", requestinput.New("invalid chapter cursor")
 		}
 	}
@@ -245,7 +275,7 @@ func (s *Service) BookChapters(book, cursor string, limit int) ([]BookChapter, s
  FROM catalog_book_chapters c JOIN catalog_book_files f ON f.entity_id=c.file_id JOIN catalog_entities item ON item.id=f.entity_id JOIN catalog_entities b ON b.id=f.book_id
  WHERE b.public_id=pid_blob(?) AND b.retired=0 AND item.retired=0
  AND (COALESCE(f.disc_number,1),COALESCE(f.part_number,0),item.sort_key,item.id,c.chapter_index)>(?,?,?,?,?)
- ORDER BY COALESCE(f.disc_number,1),COALESCE(f.part_number,0),item.sort_key,item.id,c.chapter_index LIMIT ?`, book, disc, part, fileName, fileID, index, limit+1)
+ AND `+visible+` ORDER BY COALESCE(f.disc_number,1),COALESCE(f.part_number,0),item.sort_key,item.id,c.chapter_index LIMIT ?`, append(append([]any{book, disc, part, fileName, fileID, index}, args...), limit+1)...)
 	if err != nil {
 		return nil, "", err
 	}

@@ -391,9 +391,16 @@ func (b *Bulk) fetchOne(ctx context.Context, run, item string, providerRevision 
 	if e != nil {
 		return "", e
 	}
+	settings, e := b.Service.librarySettings(ctx, tx, library)
+	if e != nil {
+		return "", e
+	}
+	if !settings.LRCLIB {
+		return "skipped", nil
+	}
 	query := title + " " + artist
 	gated.Rollback()
-	ctx = localonly.WithOnlineAdmission(ctx, b.Service.DB, lookupEpoch)
+	ctx = b.Service.onlineAdmission(ctx, lookupEpoch, library, item, settings)
 	// Local sidecars/embedded lyrics win even when this song has never been
 	// played and therefore has no cached lyric resource yet.
 	if b.Service.Local != nil {
@@ -416,6 +423,9 @@ func (b *Bulk) fetchOne(ctx context.Context, run, item string, providerRevision 
 		// The provider did not look at this song. It is not missing: the run
 		// waits and asks again.
 		return "", errProviderPaused
+	}
+	if errors.Is(e, localonly.Err) || errors.Is(e, ErrConflict) {
+		return "skipped", nil
 	}
 	if e != nil {
 		// A provider outage is not a publication failure for this song.

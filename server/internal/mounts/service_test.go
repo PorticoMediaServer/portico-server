@@ -19,6 +19,7 @@ import (
 	"path/filepath"
 	"portico.local/server/internal/persistence"
 	"portico.local/server/internal/rcloneprogram"
+	"portico.local/server/internal/remotemedia"
 	"portico.local/server/internal/storage"
 	"portico.local/server/internal/storagepaths"
 	"strings"
@@ -35,6 +36,9 @@ func TestMain(m *testing.M) {
 		os.Exit(0)
 	}
 	if len(os.Args) > 2 && os.Args[1] == "lsjson" {
+		if !validPolicyProxy(os.Getenv("RCLONE_HTTP_PROXY")) {
+			os.Exit(2)
+		}
 		for _, arg := range os.Args {
 			if arg == "--stat" {
 				fmt.Print(`{"Path":"","Name":"root","Size":0,"IsDir":true,"ID":"fixture-root","ModTime":"2026-01-01T00:00:00Z"}`)
@@ -61,6 +65,9 @@ func TestMain(m *testing.M) {
 		os.Exit(0)
 	}
 	if len(os.Args) > 3 && os.Args[1] == "mount" {
+		if !validPolicyProxy(os.Getenv("RCLONE_HTTP_PROXY")) {
+			os.Exit(2)
+		}
 		_ = os.WriteFile(os.Args[3]+".fixture-pid", []byte(fmt.Sprint(os.Getpid())), 0600)
 		fmt.Fprintln(os.Stderr, "token=leaky-secret https://private.example/secret")
 		done := make(chan os.Signal, 1)
@@ -86,6 +93,9 @@ func fixture(t *testing.T) (*Service, CreateInput) {
 	t.Cleanup(s.shutdown)
 	// The executable above simulates mounting; command tests need no host FUSE.
 	s.mountSupported = func() bool { return true }
+	s.PrepareSourceEgress = func(ctx context.Context, _ ServeSource) (*SourceEgress, error) {
+		return fixtureEgress(ctx)
+	}
 	s.PrepareSourceCandidate = func(ctx context.Context, input SourceCandidateInput, _ func(*sql.Tx) error) (*SourceCandidatePublication, error) {
 		return &SourceCandidatePublication{Test: func(ctx context.Context, program rcloneprogram.Program, digest string) error {
 			candidate, err := s.candidateFile(input.Configuration)
@@ -339,12 +349,17 @@ func writeMountFixture(path string, data []byte, mode os.FileMode) error {
 // ValidateConfiguration tests an already private candidate. No database write
 // transaction or mount/service lock is held while the provider is contacted.
 func (s *Service) fixtureValidateCandidate(ctx context.Context, executable, digest, remote, file string) error {
-	data, _ := json.Marshal(nativeRequest{Executable: executable, Digest: digest, Remote: remote, ConfigPath: file, PrivateHome: s.work, Password: "", Operation: "stat"})
+	egress, err := fixtureEgress(ctx)
+	if err != nil {
+		return err
+	}
+	defer egress.Close()
+	data, _ := json.Marshal(nativeRequest{Executable: executable, Digest: digest, Remote: remote, ConfigPath: file, PrivateHome: s.work, Password: "", Operation: "stat", HTTPProxy: egress.HTTPProxy})
 	cmd := exec.Command(s.helper, "--portico-rclone-native")
 	cmd.Stdin = bytes.NewReader(data)
 	check, cancel := context.WithTimeout(ctx, 25*time.Second)
 	defer cancel()
-	err := s.validationSupervisor.Run(check, "rclone-configuration", cmd, func(r io.Reader) error {
+	err = s.validationSupervisor.Run(check, "rclone-configuration", cmd, func(r io.Reader) error {
 		raw, e := io.ReadAll(io.LimitReader(r, 65537))
 		if e != nil || len(raw) > 65536 {
 			return ErrConfigInvalid
@@ -359,4 +374,12 @@ func (s *Service) fixtureValidateCandidate(ctx context.Context, executable, dige
 		return storage.ErrRemoteCredentials
 	}
 	return nil
+}
+
+func fixtureEgress(ctx context.Context) (*SourceEgress, error) {
+	proxy, err := remotemedia.StartPolicyProxy(ctx, remotemedia.Policy{}, "fixture", "fixture-proxy", func(ctx context.Context) error { return ctx.Err() })
+	if err != nil {
+		return nil, err
+	}
+	return &SourceEgress{HTTPProxy: proxy.Locator(), Close: func() { proxy.Close(); _ = proxy.Wait(context.Background()) }}, nil
 }

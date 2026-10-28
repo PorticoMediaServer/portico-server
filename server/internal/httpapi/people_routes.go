@@ -5,6 +5,7 @@ import (
 	"errors"
 	"net/http"
 	"portico.local/server/internal/catalog"
+	"portico.local/server/internal/dbwork"
 	"portico.local/server/internal/identity"
 	"portico.local/server/internal/metadata"
 	"strconv"
@@ -166,7 +167,12 @@ func (d Dependencies) peopleRoutes(mux *http.ServeMux) {
 		for _, id := range libraries {
 			allowed[id] = true
 		}
-		out, e := d.Catalog.SetPersonalBatch(p.Authority+":"+p.AccountID, identity.PersonalKey(p.Viewer), body, func(tx *sql.Tx, item string) error {
+		out, e := d.Catalog.WithContext(r.Context()).SetPersonalBatch(p.Authority+":"+p.AccountID, identity.PersonalKey(p.Viewer), body, func(tx *sql.Tx, item string) error {
+			ctx, err := dbwork.BindSnapshot(r.Context(), tx)
+			if err != nil {
+				return err
+			}
+			request := r.WithContext(ctx)
 			var library, kind string
 			var playable bool
 			if err := tx.QueryRow(`SELECT cl.library_id,k.name,k.playable FROM catalog_entities e JOIN catalog_libraries cl ON cl.id=e.library_id JOIN catalog_kinds k ON k.id=e.kind WHERE e.public_id=pid_blob(?)`, item).Scan(&library, &kind, &playable); err != nil {
@@ -182,16 +188,16 @@ func (d Dependencies) peopleRoutes(mux *http.ServeMux) {
 			// A show, album or book (only ever "not interested", which the
 			// catalogue enforces per field) is checked as the container it is.
 			if !playable {
-				viewer, err := d.catalogViewer(r, p, libraries, fence)
+				viewer, err := d.catalogViewer(request, p, libraries, fence)
 				if err != nil {
 					return err
 				}
-				if err = d.Catalog.VisibleEntity(r.Context(), viewer, kind, item); err != nil {
+				if err = d.Catalog.WithContext(ctx).VisibleEntity(ctx, viewer, kind, item); err != nil {
 					return err
 				}
 				return d.resourceAuthorize(tx, p, library)
 			}
-			if err := d.restrictedItem(r, p, item); err != nil {
+			if err := d.restrictedItem(request, p, item); err != nil {
 				if errors.Is(err, identity.ErrContentRestricted) || errors.Is(err, identity.ErrNotVisible) || errors.Is(err, sql.ErrNoRows) {
 					return sql.ErrNoRows
 				}

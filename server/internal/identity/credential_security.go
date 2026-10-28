@@ -388,6 +388,14 @@ func (s *Service) revokeCredentialsTx(ctx context.Context, tx *sql.Tx, account s
 	return s.revokeCredentialsWithReasonTx(ctx, tx, account, RevokedPasswordChange)
 }
 func (s *Service) revokeCredentialsWithReasonTx(ctx context.Context, tx *sql.Tx, account string, reason RevocationReason) error {
+	// Feed grants are independent of session logout, but not of a password
+	// change, recovery or removal of account access. Delete them in the same
+	// transaction so re-enabling an account cannot revive its old grants.
+	if reason == RevokedPasswordChange || reason == RevokedMembershipRemoved {
+		if _, err := tx.ExecContext(ctx, `DELETE FROM topshelf_tokens WHERE account_id=?`, account); err != nil {
+			return err
+		}
+	}
 	// API keys and personal access tokens are not ended here: they have a
 	// lifetime of their own (api_credentials.go), so a password change or an
 	// owner's edit does not silently break what a member has connected. A

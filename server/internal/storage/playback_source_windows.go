@@ -5,9 +5,6 @@ package storage
 import (
 	"context"
 	"os"
-	"time"
-
-	"golang.org/x/sys/windows"
 )
 
 // Converted playback could not work on Windows at all.
@@ -32,51 +29,54 @@ import (
 // ffmpeg asks for read access and read sharing, which this share mode permits;
 // anything trying to modify the file is refused while the stream runs.
 //
-// UNVERIFIED. This has been compiled for windows/amd64 and windows/arm64 and
-// reasoned about; it has not been run on Windows. The behaviour it depends on —
+// Windows runtime validation remains required. The behaviour this depends on —
 // that CreateFileW with dwShareMode = FILE_SHARE_READ blocks other writers and
 // deleters, and that a second reader may still open the file — is documented
 // Win32 behaviour, but "documented" and "observed" are different words.
 
 // OpenPlaybackSource opens the source for a converter and reports what to hand
 // ffmpeg after `-i`. The returned file must stay open until the child exits.
-func (c *Client) OpenPlaybackSource(ctx context.Context, path string, size, modified int64) (*os.File, string, bool, error) {
+func (c *Client) OpenPlaybackSource(ctx context.Context, path string, size, modified int64, bindings ...*PlaybackBinding) (*os.File, string, bool, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, "", false, err
+	}
 	if c != nil && c.Guard != nil {
 		if err := c.Guard(path); err != nil {
 			return nil, "", false, err
 		}
 	}
-	wide, err := windows.UTF16PtrFromString(path)
+	req, err := c.bindPlaybackRequest(request{Path: path, Size: size, ModifiedNS: modified}, bindings)
 	if err != nil {
 		return nil, "", false, ErrPlaybackSource
 	}
-	handle, err := windows.CreateFile(
-		wide,
-		windows.GENERIC_READ,
-		// Readers yes; writers and deleters no. This is the whole mechanism.
-		windows.FILE_SHARE_READ,
-		nil,
-		windows.OPEN_EXISTING,
-		windows.FILE_ATTRIBUTE_NORMAL,
-		0,
-	)
+	if req.MountedRoot != "" {
+		// Managed physical mounts are unsupported on Windows. In particular,
+		// do not turn the explicit mounted binding into a local path fallback.
+		return nil, "", false, ErrPlaybackSource
+	}
+	admitted, err := openPlaybackRequestFile(req)
 	if err != nil {
 		return nil, "", false, ErrPlaybackSource
 	}
-	file := os.NewFile(uintptr(handle), path)
+	defer admitted.Close()
+	// Reuse the scan reader's handle-identity check and locked canonical path.
+	// That path permits a scan-approved in-root symlink without reopening the
+	// mutable link by name in the decoder. The returned file owns the one lock.
+	file, path, closeInput, err := lockWindowsMediaInput(admitted)
+	if err != nil {
+		return nil, "", false, ErrPlaybackSource
+	}
 	info, err := file.Stat()
 	if err != nil || !info.Mode().IsRegular() {
-		file.Close()
+		closeInput()
 		return nil, "", false, ErrPlaybackSource
 	}
 	// The same identity check the descriptor helper makes, on the handle that
 	// will be held for the conversion rather than on a path that could change.
 	if info.Size() != size || info.ModTime().UnixNano() != modified {
-		file.Close()
+		closeInput()
 		return nil, "", false, ErrPlaybackSource
 	}
-	_ = ctx
-	_ = time.Now
 	// The path, not a descriptor: ffmpeg cannot be handed an inherited handle by
 	// number on Windows, and it does not need to be, because nothing can change
 	// the file underneath it while this handle is open.

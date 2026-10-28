@@ -127,7 +127,7 @@ func TestRealLocalAudioScanChaptersArtAndBookResume(t *testing.T) {
 	}
 	musicLib := scan("Music", "music", filepath.Join(root, "music"))
 	bookLib := scan("Books", "audiobook", filepath.Join(root, "books"))
-	artists, _, err := cat.Artists(musicLib.ID, "", 20)
+	artists, _, err := cat.Artists(catalog.Viewer{Libraries: []string{musicLib.ID}}, musicLib.ID, "", 20)
 	if err != nil || len(artists) != 3 {
 		t.Fatal(artists, err)
 	}
@@ -137,11 +137,11 @@ func TestRealLocalAudioScanChaptersArtAndBookResume(t *testing.T) {
 			compilation = artist.ID
 		}
 	}
-	albums, _, err := cat.Albums(compilation, "", 10)
+	albums, _, err := cat.Albums(catalog.Viewer{Libraries: []string{musicLib.ID}}, compilation, "", 10)
 	if err != nil || len(albums) != 1 || albums[0].PosterURL == "" {
 		t.Fatal(albums, err)
 	}
-	songs, _, err := cat.AudioItems("profile", albums[0].ID, "album", "", 10)
+	songs, _, err := cat.AudioItems(catalog.Viewer{Profile: "profile", Libraries: []string{musicLib.ID}}, albums[0].ID, "album", "", 10)
 	if err != nil || len(songs) != 2 {
 		t.Fatal(songs, err)
 	}
@@ -157,15 +157,15 @@ func TestRealLocalAudioScanChaptersArtAndBookResume(t *testing.T) {
 		t.Fatal("embedded art missing", mime, err)
 	}
 	art.Close()
-	bookRows, _, err := cat.Books("profile", bookLib.ID, "", 10)
+	bookRows, _, err := cat.Books(catalog.Viewer{Profile: "profile", Libraries: []string{bookLib.ID}}, bookLib.ID, "", 10)
 	if err != nil || len(bookRows) != 1 || bookRows[0].Title != "Synthetic Book" || bookRows[0].Narrator != "Local Narrator" {
 		t.Fatal(bookRows, err)
 	}
-	files, _, err := cat.AudioItems("profile", bookRows[0].ID, "book", "", 10)
+	files, _, err := cat.AudioItems(catalog.Viewer{Profile: "profile", Libraries: []string{bookLib.ID}}, bookRows[0].ID, "book", "", 10)
 	if err != nil || len(files) != 2 || files[0].Kind != "audiobook_file" {
 		t.Fatal(files, err)
 	}
-	chapters, _, err := cat.BookChapters(bookRows[0].ID, "", 10)
+	chapters, _, err := cat.BookChapters(catalog.Viewer{Libraries: []string{bookLib.ID}}, bookRows[0].ID, "", 10)
 	if err != nil || len(chapters) != 2 || chapters[0].Title != "Opening" || chapters[1].StartSeconds != 2 || chapters[1].EndSeconds != 4 {
 		t.Fatal(chapters, err)
 	}
@@ -260,11 +260,11 @@ func TestRealLocalAudioScanChaptersArtAndBookResume(t *testing.T) {
 	if err = player.Progress(p, resumed.ID, resumed.Generation, 100, 4, "ended"); err != nil {
 		t.Fatal(err)
 	}
-	bookRows, _, err = cat.Books(identity.PersonalKey(p.Viewer), bookLib.ID, "", 10)
+	bookRows, _, err = cat.Books(catalog.Viewer{Profile: identity.PersonalKey(p.Viewer), Libraries: []string{bookLib.ID}}, bookLib.ID, "", 10)
 	if err != nil || bookRows[0].Resume.ItemID != files[1].ID || bookRows[0].Resume.PositionSeconds != 1 {
 		t.Fatal("stale file moved book bookmark", bookRows, err)
 	}
-	other, _, err := cat.Books("other-profile", bookLib.ID, "", 10)
+	other, _, err := cat.Books(catalog.Viewer{Profile: "other-profile", Libraries: []string{bookLib.ID}}, bookLib.ID, "", 10)
 	if err != nil || other[0].Resume != nil {
 		t.Fatal("book bookmark leaked profiles", other, err)
 	}

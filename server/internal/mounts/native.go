@@ -93,6 +93,7 @@ func (b *NativeBackend) target(relative string) (string, error) {
 type nativeRequest struct {
 	Executable, Digest, Remote, ConfigPath, PrivateHome, Password, Operation string
 	Offset, Count                                                            int64
+	HTTPProxy, SFTPProxy                                                     string
 }
 
 // NativeHelper is an allowlisted child boundary. The supervisor kills its entire
@@ -106,6 +107,9 @@ func NativeHelper(input io.Reader, output io.Writer) error {
 		return storage.ErrRemoteConfig
 	}
 	if !filepath.IsAbs(r.Executable) {
+		return storage.ErrRemoteConfig
+	}
+	if !validPolicyProxy(r.HTTPProxy) || r.SFTPProxy != "" && !validPolicyProxy(r.SFTPProxy) {
 		return storage.ErrRemoteConfig
 	}
 	// The parent checks a custom program by version at this start; there is no
@@ -132,7 +136,7 @@ func NativeHelper(input io.Reader, output io.Writer) error {
 	}
 	args = append(args, "--config", r.ConfigPath, "--ask-password=false", "--contimeout=10s", "--timeout=30s", "--low-level-retries=2", "--retries=1", "--log-level=ERROR")
 	cmd := exec.Command(r.Executable, args...)
-	cmd.Env = []string{"PATH=" + os.Getenv("PATH"), "HOME=" + r.PrivateHome, "TMPDIR=" + r.PrivateHome, "RCLONE_CONFIG_PASS=" + r.Password, "RCLONE_ASK_PASSWORD=false"}
+	cmd.Env = []string{"PATH=" + os.Getenv("PATH"), "HOME=" + r.PrivateHome, "TMPDIR=" + r.PrivateHome, "RCLONE_CONFIG_PASS=" + r.Password, "RCLONE_ASK_PASSWORD=false", "RCLONE_HTTP_PROXY=" + r.HTTPProxy, "RCLONE_SFTP_HTTP_PROXY=" + r.SFTPProxy}
 	cmd.Stdout = output
 	cmd.Stderr = io.Discard
 	// Stay in the helper's process group: the owning storage supervisor must also
@@ -148,8 +152,12 @@ func (b *NativeBackend) run(ctx context.Context, relative, operation, lane strin
 }
 func (b *NativeBackend) runOwned(ctx context.Context, relative, operation, lane string, offset, count int64, consume func(io.Reader) error, afterRetired func()) error {
 	var once sync.Once
+	var egress *SourceEgress
 	retire := func() {
 		once.Do(func() {
+			if egress != nil {
+				egress.Close()
+			}
 			if afterRetired != nil {
 				afterRetired()
 			}
@@ -176,7 +184,11 @@ func (b *NativeBackend) runOwned(ctx context.Context, relative, operation, lane 
 			return storage.ErrRemoteBinary
 		}
 	}
-	data, _ := json.Marshal(nativeRequest{b.executable, b.digest, target, b.config, b.service.work, "", operation, offset, count})
+	config, egress, err := b.service.prepareBackendEgress(ctx, b.id, b.generation)
+	if err != nil {
+		return err
+	}
+	data, _ := json.Marshal(nativeRequest{Executable: b.executable, Digest: b.digest, Remote: target, ConfigPath: config, PrivateHome: b.service.work, Operation: operation, Offset: offset, Count: count, HTTPProxy: egress.HTTPProxy, SFTPProxy: egress.SFTPProxy})
 	cmd := exec.Command(b.service.helper, "--portico-rclone-native")
 	cmd.Stdin = bytes.NewReader(data)
 	supervisor := b.service.nativeInventory

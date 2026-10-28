@@ -106,7 +106,7 @@ func seedProofRows(t *testing.T, db *sql.DB, now, future string) {
 		{"token-expired-at-now", now},
 		{"token-future", future},
 	} {
-		mustExec(t, db, `INSERT INTO topshelf_tokens(token_hash,device_id,account_id,profile_id,expires_at) VALUES(?,?,?,?,?)`, row.hash, "device-writer", "acct-writer", "prof-writer", row.expiry)
+		mustExec(t, db, `INSERT INTO topshelf_tokens(token_hash,device_id,account_id,profile_id,expires_at,account_epoch,pin_revision) VALUES(?,?,?,?,?,1,1)`, row.hash, "device-writer", "acct-writer", "prof-writer", row.expiry)
 	}
 }
 

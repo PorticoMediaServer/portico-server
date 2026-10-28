@@ -2885,7 +2885,9 @@ CREATE TABLE identity_factor_challenges(
 CREATE TABLE topshelf_tokens(
  token_hash TEXT PRIMARY KEY, device_id TEXT NOT NULL,
  authority TEXT NOT NULL DEFAULT 'local' CHECK(authority='local'),
- account_id TEXT NOT NULL, profile_id TEXT NOT NULL, expires_at TEXT NOT NULL
+ account_id TEXT NOT NULL, profile_id TEXT NOT NULL, expires_at TEXT NOT NULL,
+ account_epoch INTEGER NOT NULL CHECK(account_epoch>0),
+ pin_revision INTEGER NOT NULL CHECK(pin_revision>0)
 ) STRICT;
 CREATE TABLE content_rating_ages(
  value_key TEXT PRIMARY KEY, minimum_age INTEGER NOT NULL CHECK(minimum_age>=-1)

@@ -852,6 +852,9 @@ func New(d Dependencies) http.Handler {
 			return d.Hosted.AllowedTx(p, library, tx) == nil
 		}
 	}
+	if d.Events != nil && d.Catalog != nil && d.Events.ContentVisible == nil {
+		d.Events.ContentVisible = d.eventContentVisible
+	}
 	// Before the registry, which captures d (lane C's typed admin routes).
 	if d.Administration == nil && d.DB != nil {
 		d.Administration = administration.New(d.DB)
@@ -1261,15 +1264,14 @@ func New(d Dependencies) http.Handler {
 			failure(w, e)
 			return
 		}
-		path, e := d.Playback.HLSFileContext(r.Context(), grant, r.PathValue("file"))
+		f, e := d.Playback.OpenHLSFileContext(r.Context(), grant, r.PathValue("file"))
 		if e != nil {
+			if errors.Is(e, playback.ErrHLSArtifactUnavailable) {
+				w.Header().Set("Retry-After", "1")
+				write(w, 503, map[string]any{"error": map[string]any{"code": "stream_not_ready", "message": "Stream segment is not ready.", "retryable": true}})
+				return
+			}
 			failure(w, e)
-			return
-		}
-		f, e := os.Open(path)
-		if e != nil {
-			w.Header().Set("Retry-After", "1")
-			write(w, 503, map[string]any{"error": map[string]any{"code": "stream_not_ready", "message": "Stream segment is not ready.", "retryable": true}})
 			return
 		}
 		defer f.Close()
@@ -1288,11 +1290,11 @@ func New(d Dependencies) http.Handler {
 			}
 			return e
 		}
-		if strings.HasSuffix(path, ".m3u8") {
+		if strings.HasSuffix(r.PathValue("file"), ".m3u8") {
 			serveHLSManifest(w, r, f, check)
 			return
 		}
-		switch filepath.Ext(path) {
+		switch filepath.Ext(r.PathValue("file")) {
 		case ".mp4":
 			w.Header().Set("Content-Type", "video/mp4")
 		case ".m4s":

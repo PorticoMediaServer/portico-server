@@ -100,13 +100,13 @@ func (b *boundedBuffer) Write(p []byte) (int, error) {
 	return len(p), nil
 }
 func (p Probe) Inspect(ctx context.Context, path string) (Facts, error) {
-	return p.inspect(ctx, path, nil)
+	return p.inspect(ctx, path, []string{"-protocol_whitelist", "file,pipe", "-format_whitelist", mediaexec.LocalInputFormats})
 }
 
 // InspectScan applies bounded local-media probing and rejects network protocols.
 // File List Only never calls this method; ReadGuard is checked again at launch.
 func (p Probe) InspectScan(ctx context.Context, path string) (Facts, error) {
-	return p.inspect(ctx, path, []string{"-protocol_whitelist", "file,pipe", "-probesize", "8388608", "-analyzeduration", "5000000"})
+	return p.inspect(ctx, path, []string{"-protocol_whitelist", "file,pipe", "-format_whitelist", mediaexec.LocalInputFormats, "-probesize", "8388608", "-analyzeduration", "5000000"})
 }
 func (p Probe) InspectRemoteMP4(ctx context.Context, path string) (Facts, error) {
 	facts, e := p.inspect(ctx, path, []string{"-f", "mov", "-enable_drefs", "0", "-use_absolute_path", "0", "-protocol_whitelist", "http,tcp", "-probesize", "8388608", "-analyzeduration", "5000000"})
@@ -347,22 +347,11 @@ func SupportedPath(path string) bool {
 	return false
 }
 func Open(db *sql.DB, id string) (*os.File, error) {
-	var path string
-	var size, modified int64
-	e := db.QueryRow(`SELECT path,size,modified_ns FROM catalog_assets WHERE token=? AND available=1`, id).Scan(&path, &size, &modified)
+	v, e := ResolveCatalogPlaybackSource(context.Background(), db, id)
 	if e != nil {
 		return nil, e
 	}
-	f, e := os.Open(path)
-	if e != nil {
-		return nil, e
-	}
-	info, e := f.Stat()
-	if e != nil || !info.Mode().IsRegular() || info.Size() != size || info.ModTime().UnixNano() != modified {
-		f.Close()
-		return nil, errors.New("source changed; rescan required")
-	}
-	return f, nil
+	return storage.OpenLocalPlaybackFile(v.Path, v.Size, v.ModifiedNS, v.Binding)
 }
 
 // DiscImage reports whether this path is a disc image the bounded disc reader
@@ -398,25 +387,14 @@ func SupportedForKind(path, kind string) bool {
 	return SupportedPath(path) && !audio
 }
 
-// OpenPlayback validates the opened descriptor against the creation-time pin,
-// so a concurrent rescan cannot substitute a new file under an existing grant.
+// OpenPlayback checks pinned size/mtime and current local inventory custody.
+// Immutable session-accepted object identity requires additional persisted pins.
 func OpenPlayback(db *sql.DB, session, grantHash string) (*os.File, error) {
-	var path string
-	var size, modified int64
-	e := db.QueryRow(`SELECT a.path,COALESCE(pin.size,a.size),COALESCE(pin.modified_ns,a.modified_ns) FROM playback_sessions ps JOIN catalog_assets a ON a.token=ps.asset_id LEFT JOIN playback_source_pins pin ON pin.session_id=ps.id WHERE (ps.id=? OR ps.grant_hash=?) AND a.available=1 AND (pin.session_id IS NULL OR (pin.asset_id=a.token AND pin.size=a.size AND pin.modified_ns=a.modified_ns))`, session, grantHash).Scan(&path, &size, &modified)
+	v, e := ResolvePlaybackSource(context.Background(), db, session, grantHash)
 	if e != nil {
 		return nil, e
 	}
-	f, e := os.Open(path)
-	if e != nil {
-		return nil, e
-	}
-	info, e := f.Stat()
-	if e != nil || !info.Mode().IsRegular() || info.Size() != size || info.ModTime().UnixNano() != modified {
-		f.Close()
-		return nil, errors.New("source changed; rescan required")
-	}
-	return f, nil
+	return storage.OpenLocalPlaybackFile(v.Path, v.Size, v.ModifiedNS, v.Binding)
 }
 
 // FFmpeg reports aliases separated by commas. Preserve the demuxer's canonical

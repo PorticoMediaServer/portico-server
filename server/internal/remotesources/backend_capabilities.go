@@ -27,12 +27,14 @@ type backendCapabilities struct {
 func sourceBackendCapabilities(backend, host string) (backendCapabilities, error) {
 	facts := backendCapabilities{Backend: backend, AdmittedOperationsBounded: true, HiddenRetriesWithinOperation: true, ThrottleReportsAsynchronous: true}
 	switch backend {
-	case "sftp", "smb":
+	case "sftp":
+		facts.HTTPProxyConfigured = true
+		facts.SFTPConnectionPoolBounded = true
+	case "smb":
 		facts.NativeDirect = true
 		_, err := netip.ParseAddr(strings.Trim(host, "[]"))
 		facts.NativeHostnameCheckConnectGap = err != nil
-		facts.SFTPConnectionPoolBounded = backend == "sftp"
-		facts.SMBIdlePoolMayExceedOperations = backend == "smb"
+		facts.SMBIdlePoolMayExceedOperations = true
 	case "s3", "b2", "drive", "onedrive", "dropbox", "webdav", "http":
 		facts.HTTPProxyConfigured, facts.HTTPSOpaque = true, true
 	default:

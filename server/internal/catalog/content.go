@@ -403,7 +403,7 @@ func (s *Service) contentOnce(request ContentRequest) (ContentEnvelope, error) {
 			id, kind, title = "files", "book", "Files"
 		}
 		if sectionID == "" || sectionID == id {
-			rows, next, e := s.AudioItems(request.Profile, request.EntityID, kind, inner, request.Limit)
+			rows, next, e := s.AudioItems(request.Viewer, request.EntityID, kind, inner, request.Limit)
 			if e != nil {
 				return out, e
 			}
@@ -412,13 +412,14 @@ func (s *Service) contentOnce(request ContentRequest) (ContentEnvelope, error) {
 				table, column = "catalog_book_files", "book_id"
 			}
 			var count int
-			if e = s.read().QueryRow(`SELECT count(*) FROM `+table+` WHERE `+column+`=(SELECT id FROM catalog_entities WHERE public_id=pid_blob(?))`, request.EntityID).Scan(&count); e != nil {
+			visible, args := request.Viewer.itemVisibilitySQL("d.entity_id")
+			if e = s.read().QueryRow(`SELECT count(*) FROM `+table+` d WHERE d.`+column+`=(SELECT id FROM catalog_entities WHERE public_id=pid_blob(?)) AND `+visible, append([]any{request.EntityID}, args...)...).Scan(&count); e != nil {
 				return out, e
 			}
 			out.Sections = append(out.Sections, contentSection(id, "list", title, contentItems(rows), count, next))
 		}
 		if request.View == "book" && (sectionID == "" || sectionID == "chapters") {
-			rows, next, e := s.BookChapters(request.EntityID, inner, request.Limit)
+			rows, next, e := s.BookChapters(request.Viewer, request.EntityID, inner, request.Limit)
 			if e != nil {
 				return out, e
 			}
@@ -437,7 +438,8 @@ func (s *Service) contentOnce(request ContentRequest) (ContentEnvelope, error) {
 				entries = append(entries, entry)
 			}
 			var count int
-			if e = s.read().QueryRow(`SELECT count(*) FROM catalog_book_chapters c JOIN catalog_book_files f ON f.entity_id=c.file_id WHERE f.book_id=(SELECT id FROM catalog_entities WHERE public_id=pid_blob(?))`, request.EntityID).Scan(&count); e != nil {
+			visible, args := request.Viewer.itemVisibilitySQL("f.entity_id")
+			if e = s.read().QueryRow(`SELECT count(*) FROM catalog_book_chapters c JOIN catalog_book_files f ON f.entity_id=c.file_id WHERE f.book_id=(SELECT id FROM catalog_entities WHERE public_id=pid_blob(?)) AND `+visible, append([]any{request.EntityID}, args...)...).Scan(&count); e != nil {
 				return out, e
 			}
 			out.Sections = append(out.Sections, contentSection("chapters", "list", "Chapters", entries, count, next))

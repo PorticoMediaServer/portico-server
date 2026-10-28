@@ -152,6 +152,15 @@ func userAgent(version string) string {
 // the environment's key; an empty username keeps the environment's account.
 // The next request signs in again with what is now in force.
 func (p *OpenSubtitles) SetCredentials(key, username, password string) {
+	next := p.ownerCredentials(key, username, password)
+	p.credentialMu.Lock()
+	p.credentials = next
+	p.changes++
+	p.credentialMu.Unlock()
+	p.loginRejected.Store(false)
+}
+
+func (p *OpenSubtitles) ownerCredentials(key, username, password string) openSubtitlesCredentials {
 	next := openSubtitlesCredentials{key: strings.TrimSpace(key), username: strings.TrimSpace(username), password: password, ownKey: true, ownAccount: true}
 	if next.key == "" {
 		next.key, next.ownKey = p.environment.key, false
@@ -159,11 +168,14 @@ func (p *OpenSubtitles) SetCredentials(key, username, password string) {
 	if next.username == "" {
 		next.username, next.password, next.ownAccount = p.environment.username, p.environment.password, false
 	}
+	return next
+}
+
+func (p *OpenSubtitles) matchesOwnerCredentials(key, username, password string) bool {
+	expected := p.ownerCredentials(key, username, password)
 	p.credentialMu.Lock()
-	p.credentials = next
-	p.changes++
-	p.credentialMu.Unlock()
-	p.loginRejected.Store(false)
+	defer p.credentialMu.Unlock()
+	return p.credentials == expected
 }
 
 // adoptCredentials runs under the request gate: a change of credentials drops
@@ -185,6 +197,29 @@ func (p *OpenSubtitles) adoptCredentials() {
 	p.observedMu.Lock()
 	p.observed = providerObservation{}
 	p.observedMu.Unlock()
+}
+
+// A request keeps the credentials it adopted, but loses permission to send
+// when the owner replaces them while it is queued or between subrequests.
+func (p *OpenSubtitles) credentialAdmission(ctx context.Context, revision int) context.Context {
+	return metadataprovider.WithNetworkAdmission(ctx, func(ctx context.Context) (func() error, error) {
+		check := func() error {
+			if err := ctx.Err(); err != nil {
+				return err
+			}
+			p.credentialMu.Lock()
+			current := p.changes
+			p.credentialMu.Unlock()
+			if current != revision {
+				return ErrConflict
+			}
+			return nil
+		}
+		if err := check(); err != nil {
+			return nil, err
+		}
+		return check, nil
+	})
 }
 
 func (p *OpenSubtitles) clock() time.Time {
@@ -221,6 +256,7 @@ func (p *OpenSubtitles) request(ctx context.Context, method, path string, body, 
 	}
 	defer leave()
 	p.adoptCredentials()
+	ctx = p.credentialAdmission(ctx, p.adopted)
 	e = p.exchange(ctx, method, path, body, out)
 	p.observe(e)
 	return e
@@ -584,6 +620,10 @@ func (p *OpenSubtitles) SearchMedia(ctx context.Context, media ProviderQuery) ([
 	return out, nil
 }
 func (p *OpenSubtitles) Download(ctx context.Context, id int64) ([]byte, error) {
+	p.credentialMu.Lock()
+	revision := p.changes
+	p.credentialMu.Unlock()
+	ctx = p.credentialAdmission(ctx, revision)
 	check, e := metadataprovider.BeginNetworkAdmission(ctx)
 	if e != nil {
 		return nil, e
@@ -794,6 +834,7 @@ func (p *OpenSubtitles) Check(ctx context.Context) OwnerStatus {
 		return p.OwnerStatus()
 	}
 	p.adoptCredentials()
+	ctx = p.credentialAdmission(ctx, p.adopted)
 	p.loginRejected.Store(false)
 	if p.key != "" {
 		if p.account() {

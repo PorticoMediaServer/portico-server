@@ -2,6 +2,7 @@ package subtitles
 
 import (
 	"context"
+	"database/sql"
 	"strings"
 	"time"
 
@@ -27,6 +28,31 @@ type Provider interface {
 	ID() string
 	Search(context.Context, string, string, int) ([]ProviderCandidate, error)
 	Download(context.Context, int64) ([]byte, error)
+}
+
+// Capture the durable settings revision before releasing the caller's snapshot.
+// Every provider send then reads a fresh snapshot through WithOnlineAdmission.
+// A committed credential change also blocks new work until the runtime adopts
+// those exact settings, closing the commit-to-notification window.
+func (s *Service) onlineAdmission(ctx context.Context, tx *sql.Tx, epoch int64, item string) (context.Context, error) {
+	var revision int64
+	if err := tx.QueryRowContext(ctx, `SELECT revision FROM metadata_runtime_settings WHERE singleton=1`).Scan(&revision); err != nil {
+		return ctx, err
+	}
+	return localonly.WithOnlineAdmission(ctx, s.db, epoch, localonly.ItemAdmission(item), func(ctx context.Context, current *sql.Tx) error {
+		var nowRevision int64
+		var key, username, password string
+		if err := current.QueryRowContext(ctx, `SELECT revision,opensubtitles_api_key,opensubtitles_username,opensubtitles_password FROM metadata_runtime_settings WHERE singleton=1`).Scan(&nowRevision, &key, &username, &password); err != nil {
+			return err
+		}
+		if nowRevision != revision {
+			return ErrConflict
+		}
+		if provider, ok := s.provider.(*OpenSubtitles); ok && !provider.matchesOwnerCredentials(key, username, password) {
+			return ErrConflict
+		}
+		return nil
+	}), nil
 }
 
 func (s *Service) ProviderStatus() ProviderStatus {
@@ -111,13 +137,16 @@ func (s *Service) Search(ctx context.Context, p identity.Principal, item string,
 	if e != nil {
 		return out, e
 	}
+	ctx, e = s.onlineAdmission(ctx, tx, lookupEpoch, item)
+	if e != nil {
+		return out, e
+	}
 	if e = gated.Commit(); e != nil {
 		return out, e
 	}
 	if e = localonly.CheckOnline(ctx, dbwork.ReadHandle(ctx, s.db), lookupEpoch); e != nil {
 		return out, e
 	}
-	ctx = localonly.WithOnlineAdmission(ctx, s.db, lookupEpoch)
 	var candidates []ProviderCandidate
 	if advanced, ok := s.provider.(MediaSearchProvider); ok {
 		candidates, e = advanced.SearchMedia(ctx, media)
@@ -225,13 +254,16 @@ func (s *Service) Apply(ctx context.Context, p identity.Principal, item string, 
 	if e != nil {
 		return Receipt{}, e
 	}
+	ctx, e = s.onlineAdmission(ctx, tx, lookupEpoch, item)
+	if e != nil {
+		return Receipt{}, e
+	}
 	if e = gated3.Commit(); e != nil {
 		return Receipt{}, e
 	}
 	if e = localonly.CheckOnline(ctx, dbwork.ReadHandle(ctx, s.db), lookupEpoch); e != nil {
 		return Receipt{}, e
 	}
-	ctx = localonly.WithOnlineAdmission(ctx, s.db, lookupEpoch)
 	raw, e := s.provider.Download(ctx, file)
 	if e != nil {
 		return Receipt{}, e

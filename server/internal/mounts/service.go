@@ -18,6 +18,7 @@ import (
 	"portico.local/server/internal/storagepaths"
 	"portico.local/server/internal/supervise"
 	"portico.local/server/internal/worker"
+	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -76,6 +77,7 @@ type Service struct {
 	GuardSourceRemoval     func(context.Context, string) (func(), error)
 	NativeInvalidated      func(string)
 	PrepareSourceCandidate func(context.Context, SourceCandidateInput, func(*sql.Tx) error) (*SourceCandidatePublication, error)
+	PrepareSourceEgress    func(context.Context, ServeSource) (*SourceEgress, error)
 	commands               sync.Mutex
 	db                     *sql.DB
 	root, private, helper  string
@@ -581,8 +583,9 @@ func (s *Service) reconcile(ctx context.Context) bool {
 			s.retry[m.ID] = time.Now().Add(30 * time.Second)
 			continue
 		}
-		var executable, remote, configFile string
-		if e = s.db.QueryRow(`SELECT m.executable,m.remote,b.config_file FROM managed_mounts m JOIN mount_backend_configs b ON b.mount_id=m.id WHERE m.id=?`, m.ID).Scan(&executable, &remote, &configFile); e != nil {
+		var executable, remote string
+		var backendGeneration int64
+		if e = s.db.QueryRow(`SELECT m.executable,m.remote,b.generation FROM managed_mounts m JOIN mount_backend_configs b ON b.mount_id=m.id WHERE m.id=?`, m.ID).Scan(&executable, &remote, &backendGeneration); e != nil {
 			continue
 		}
 		// Ruling B-42: no fingerprint custody here. A custom program is checked
@@ -597,23 +600,36 @@ func (s *Service) reconcile(ctx context.Context) bool {
 			s.retry[m.ID] = time.Now().Add(30 * time.Second)
 			continue
 		}
-		request := launch{Executable: executable, Remote: remote, MountPath: m.MountPath, ConfigPath: filepath.Join(s.private, configFile), PrivateHome: s.work, Password: "", Included: m.ProgramIncluded, CachePath: filepath.Join(s.cache, m.ID+".cache"), CacheBytes: m.CacheBytes, CacheFloor: m.CacheFloor}
+		var generation int64
+		if e = s.db.QueryRow(`SELECT restart_generation FROM mount_controls WHERE mount_id=?`, m.ID).Scan(&generation); e != nil {
+			continue
+		}
+		c = newRuntimeChild(generation)
+		config, egress, e := s.prepareBackendEgress(c.lifetime, m.ID, strconv.FormatInt(backendGeneration, 10))
+		if e != nil {
+			c.invalidateRuntime()
+			s.state(m.ID, "unavailable", "Source network policy could not be admitted.")
+			s.retry[m.ID] = time.Now().Add(30 * time.Second)
+			continue
+		}
+		request := launch{Executable: executable, Remote: remote, MountPath: m.MountPath, ConfigPath: config, PrivateHome: s.work, Password: "", Included: m.ProgramIncluded, CachePath: filepath.Join(s.cache, m.ID+".cache"), CacheBytes: m.CacheBytes, CacheFloor: m.CacheFloor, HTTPProxy: egress.HTTPProxy, SFTPProxy: egress.SFTPProxy}
 		cmd := exec.Command(s.helper, "--portico-rclone-guardian")
 		cmd.Env = []string{"PATH=" + os.Getenv("PATH")}
 		cmd.Stdout = io.Discard
 		cmd.Stderr = io.Discard
 		control, e := cmd.StdinPipe()
 		if e != nil {
+			c.invalidateRuntime()
+			egress.Close()
 			continue
 		}
 		if e = cmd.Start(); e != nil {
 			control.Close()
+			c.invalidateRuntime()
+			egress.Close()
 			s.state(m.ID, "failed", "Could not start mount supervisor.")
 			continue
 		}
-		var generation int64
-		_ = s.db.QueryRow(`SELECT restart_generation FROM mount_controls WHERE mount_id=?`, m.ID).Scan(&generation)
-		c = newRuntimeChild(generation)
 		c.control, c.done, c.started = control, make(chan error, 1), time.Now()
 		s.active[m.ID] = c
 		owned := c
@@ -621,7 +637,7 @@ func (s *Service) reconcile(ctx context.Context) bool {
 			// The handoff is deferred so a contained panic still retires the child
 			// rather than leaving whoever waits on it blocked forever.
 			var err error
-			defer func() { owned.invalidateRuntime(); owned.done <- err; control.Close() }()
+			defer func() { owned.invalidateRuntime(); egress.Close(); owned.done <- err; control.Close() }()
 			err = cmd.Wait()
 		})
 		if e = json.NewEncoder(control).Encode(request); e != nil {

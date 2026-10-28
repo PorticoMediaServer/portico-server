@@ -14,8 +14,8 @@ import (
 // cannot substitute different media into a running stream.
 //
 // The returned bool says the file must be placed in the child's ExtraFiles.
-func (c *Client) OpenPlaybackSource(ctx context.Context, path string, size, modified int64) (*os.File, string, bool, error) {
-	file, err := c.OpenPlaybackDescriptor(ctx, path, size, modified)
+func (c *Client) OpenPlaybackSource(ctx context.Context, path string, size, modified int64, bindings ...*PlaybackBinding) (*os.File, string, bool, error) {
+	file, err := c.OpenPlaybackDescriptor(ctx, path, size, modified, bindings...)
 	if err != nil {
 		return nil, "", false, err
 	}

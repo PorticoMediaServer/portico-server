@@ -53,13 +53,17 @@ type PlaybackReader struct {
 	failure atomic.Pointer[playbackFailure]
 }
 
-func (c *Client) OpenPlayback(ctx context.Context, path string, size, modified int64) (*PlaybackReader, error) {
-	return c.openPlayback(ctx, path, size, modified, nil)
+func (c *Client) OpenPlayback(ctx context.Context, path string, size, modified int64, bindings ...*PlaybackBinding) (*PlaybackReader, error) {
+	return c.openPlayback(ctx, path, size, modified, nil, bindings...)
 }
 
-func (c *Client) openPlayback(ctx context.Context, path string, size, modified int64, version *mediasource.Evidence) (*PlaybackReader, error) {
+func (c *Client) openPlayback(ctx context.Context, path string, size, modified int64, version *mediasource.Evidence, bindings ...*PlaybackBinding) (*PlaybackReader, error) {
 	if size < 0 {
 		return nil, ErrPlaybackSource
+	}
+	req, err := c.bindPlaybackRequest(request{Operation: "playback-stream", Path: path, Size: size, ModifiedNS: modified, Version: version}, bindings)
+	if err != nil {
+		return nil, err
 	}
 	if c.Guard != nil {
 		if e := c.Guard(path); e != nil {
@@ -77,8 +81,8 @@ func (c *Client) openPlayback(ctx context.Context, path string, size, modified i
 		timeout = 30 * time.Second
 	}
 	f := &PlaybackReader{ctx: ctx, cancel: cancel, input: writer, calls: make(chan streamCall), timeout: timeout, size: size}
-	req := request{Operation: "playback-stream", Path: path, ManagedArtifact: managed, Size: size, ModifiedNS: modified, Version: version}
-	if c.MountedRoot != nil {
+	req.ManagedArtifact = managed
+	if req.MountedRoot == "" && c.MountedRoot != nil {
 		req.MountedRoot = c.MountedRoot(path)
 	}
 	ready := make(chan error, 1)
@@ -262,7 +266,7 @@ func playbackStreamHelper(req request, in io.Reader, out io.Writer) (result erro
 			_, _ = out.Write([]byte{code, 0, 0, 0, 0})
 		}
 	}()
-	f, e := os.Open(req.Path)
+	f, e := openPlaybackRequestFile(req)
 	if e != nil {
 		return ErrPlaybackSource
 	}
@@ -286,7 +290,7 @@ func playbackStreamHelper(req request, in io.Reader, out io.Writer) (result erro
 		if e != nil || !info.Mode().IsRegular() || info.Size() != req.Size || info.ModTime().UnixNano() != req.ModifiedNS {
 			return ErrPlaybackSource
 		}
-		current, e := os.Stat(req.Path)
+		current, e := playbackCurrentInfo(req)
 		if e != nil || !os.SameFile(info, current) {
 			if req.Version != nil && e == nil {
 				return mediasource.ErrSourceChanged

@@ -58,6 +58,7 @@ func (s *Service) sourceNetworkTx(ctx context.Context, tx *sql.Tx, id, root stri
 		if err != nil {
 			return out, err
 		}
+		out.Policy.Approvals = append(out.Policy.Approvals, out.Native.config.Approval)
 	}
 	if kind == "rclone" {
 		config, err := s.importedSourceConfig(config)
@@ -66,11 +67,7 @@ func (s *Service) sourceNetworkTx(ctx context.Context, tx *sql.Tx, id, root stri
 		}
 		out.Imported = &config
 		out.Policy.SourceEndpoints = true
-		for _, approval := range config.Approvals {
-			if strings.HasPrefix(approval.Root, "http://") || strings.HasPrefix(approval.Root, "https://") {
-				out.Policy.Approvals = append(out.Policy.Approvals, approval)
-			}
-		}
+		out.Policy.Approvals = append(out.Policy.Approvals, config.Approvals...)
 	}
 	rows, err := tx.QueryContext(ctx, `SELECT s.id,s.root,COALESCE(n.revision,0),COALESCE(n.approvals_json,'[]') FROM library_sources s LEFT JOIN library_network_policy n ON n.library_id=s.library_id WHERE s.kind='remote' AND s.enabled=1 ORDER BY s.id`)
 	if err != nil {
@@ -392,22 +389,19 @@ func (s *Service) ensureSourceServe(ctx context.Context, binding SourceReadBindi
 			return nil, storage.ErrRemoteChanged
 		}
 	}
-	var proxy *remotemedia.PolicyProxy
 	if backend == "sftp" || backend == "smb" {
-		// Direct native-scheme approval from this saved source only. Rechecks
-		// cannot pin rclone's later DNS lookup or see its hidden reconnects.
+		// Check retained native configuration before selecting its route.
 		if network.Imported == nil {
 			if err = s.checkNativeMaterial(ctx, network.Native, backend, host, port, material.Configuration); err != nil {
 				return nil, err
 			}
 		}
-	} else {
-		proxy, err = remotemedia.StartPolicyProxy(slot.life, network.Policy, identity.Token(), identity.Token(), slot.Check)
-		if err != nil {
-			return nil, err
-		}
-		slot.proxy = proxy
 	}
+	egress, err := s.startRcloneEgress(slot.life, material.Configuration, material.Remote, network.Policy, slot.Check)
+	if err != nil {
+		return nil, err
+	}
+	slot.egress = egress
 	endpoint, err := privateServePort()
 	if err != nil {
 		return nil, err
@@ -437,11 +431,7 @@ func (s *Service) ensureSourceServe(ctx context.Context, binding SourceReadBindi
 			if err := slot.Check(ctx); err != nil {
 				return err
 			}
-			if proxy != nil {
-				cmd.Env = append(cmd.Env, "RCLONE_HTTP_PROXY="+proxy.Locator())
-			} else {
-				cmd.Env = append(cmd.Env, "RCLONE_SFTP_HTTP_PROXY=")
-			}
+			cmd.Env = append(cmd.Env, "RCLONE_HTTP_PROXY="+egress.HTTPProxy, "RCLONE_SFTP_HTTP_PROXY="+egress.SFTPProxy)
 			return nil
 		}}
 	// Cache controls are existing source facts. Start-only mode always uses the

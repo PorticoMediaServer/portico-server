@@ -38,6 +38,7 @@ import (
 	_ "portico.local/server/internal/thirdparty/sqlite" // the dataset file is a plain SQLite file
 
 	"portico.local/server/internal/dbwork"
+	"portico.local/server/internal/remotemedia"
 )
 
 // The published dataset: its manifest and the Ed25519 key it's signed with.
@@ -80,25 +81,25 @@ type Config struct {
 	ManifestURL string
 	PublicKey   ed25519.PublicKey
 	Dir         string        // where domain files are kept
-	Client      *http.Client  // nil: a client with a generous timeout
+	Client      *http.Client  // optional timeout; egress policy always belongs to the service
 	Interval    time.Duration // how often the manifest is checked (default a day)
 }
 
 // Service keeps the dataset: Step downloads and imports, bounded per call.
 type Service struct {
-	db  *sql.DB
-	cfg Config
-	now func() time.Time
+	db       *sql.DB
+	cfg      Config
+	now      func() time.Time
+	resolver remotemedia.Resolver
 }
 
 func New(db *sql.DB, cfg Config) *Service {
-	if cfg.Client == nil {
-		cfg.Client = &http.Client{Timeout: 10 * time.Minute}
-	}
 	if cfg.Interval <= 0 {
 		cfg.Interval = 24 * time.Hour
 	}
-	return &Service{db: db, cfg: cfg, now: time.Now}
+	s := &Service{db: db, cfg: cfg, now: time.Now}
+	s.cfg.Client = s.datasetClient(cfg.Client)
+	return s
 }
 
 // Enabled reports whether the dataset is configured.
@@ -219,37 +220,29 @@ func (s *Service) FetchManifest(ctx context.Context) (Manifest, error) {
 	if err != nil {
 		return m, err
 	}
-	sig, err := s.get(ctx, s.cfg.ManifestURL+".sig", 4096)
+	signatureURL, err := datasetURL(s.cfg.ManifestURL)
+	if err != nil {
+		return m, err
+	}
+	signatureURL.Path += ".sig"
+	if signatureURL.RawPath != "" {
+		signatureURL.RawPath += ".sig"
+	}
+	sig, err := s.get(ctx, signatureURL.String(), 4096)
 	if err != nil {
 		return m, err
 	}
 	signature, err := base64.StdEncoding.DecodeString(strings.TrimSpace(string(sig)))
 	if err != nil || !ed25519.Verify(s.cfg.PublicKey, body, signature) {
-		return m, errors.New("the title dataset manifest's signature does not verify")
+		return m, datasetFailure("manifest_signature", s.cfg.ManifestURL)
 	}
 	if err = json.Unmarshal(body, &m); err != nil {
-		return m, fmt.Errorf("title dataset manifest: %w", err)
+		return m, datasetFailure("manifest_format", s.cfg.ManifestURL)
 	}
 	if m.SchemaVersion != SchemaVersion {
-		return m, fmt.Errorf("title dataset schema %d; this server reads %d", m.SchemaVersion, SchemaVersion)
+		return m, datasetFailure("schema_unsupported", s.cfg.ManifestURL)
 	}
 	return m, nil
-}
-
-func (s *Service) get(ctx context.Context, target string, limit int64) ([]byte, error) {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, target, nil)
-	if err != nil {
-		return nil, err
-	}
-	res, err := s.cfg.Client.Do(req)
-	if err != nil {
-		return nil, err
-	}
-	defer res.Body.Close()
-	if res.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("%s: %s", target, res.Status)
-	}
-	return io.ReadAll(io.LimitReader(res.Body, limit))
 }
 
 // refresh brings one domain's file to the manifest's version: its deltas when
@@ -325,26 +318,23 @@ func deltaChain(deltas []ManifestFile, installed, target string) []ManifestFile 
 // download fetches a published (gzip) file, checks its size and SHA-256, and
 // writes the decompressed SQLite file next to the installed one.
 func (s *Service) download(ctx context.Context, f ManifestFile) (string, error) {
-	target, err := url.Parse(s.cfg.ManifestURL)
+	target, err := datasetURL(s.cfg.ManifestURL)
 	if err != nil {
 		return "", err
 	}
 	ref, err := url.Parse(f.URL)
 	if err != nil {
-		return "", err
+		return "", datasetFailure("network_policy", s.cfg.ManifestURL)
 	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, target.ResolveReference(ref).String(), nil)
-	if err != nil {
-		return "", err
+	target = target.ResolveReference(ref)
+	if f.Bytes < 1 || f.Bytes > MaxFileBytes {
+		return "", datasetFailure("asset_too_large", target.String())
 	}
-	res, err := s.cfg.Client.Do(req)
+	res, err := s.openDatasetURL(ctx, target.String())
 	if err != nil {
 		return "", err
 	}
 	defer res.Body.Close()
-	if res.StatusCode != http.StatusOK {
-		return "", fmt.Errorf("%s: %s", f.URL, res.Status)
-	}
 	compressed, err := os.CreateTemp(s.cfg.Dir, "download-*.gz")
 	if err != nil {
 		return "", err
@@ -352,14 +342,14 @@ func (s *Service) download(ctx context.Context, f ManifestFile) (string, error) 
 	defer os.Remove(compressed.Name())
 	hash := sha256.New()
 	n, err := io.Copy(io.MultiWriter(compressed, hash), io.LimitReader(res.Body, f.Bytes+1))
-	if err == nil {
-		err = compressed.Close()
+	if closeErr := compressed.Close(); err == nil {
+		err = closeErr
 	}
 	if err != nil {
-		return "", err
+		return "", datasetFailure("response_read", target.String())
 	}
 	if n != f.Bytes || hex.EncodeToString(hash.Sum(nil)) != strings.ToLower(f.SHA256) {
-		return "", fmt.Errorf("%s does not match the signed manifest", f.URL)
+		return "", datasetFailure("asset_integrity", target.String())
 	}
 	in, err := os.Open(compressed.Name())
 	if err != nil {
@@ -380,7 +370,7 @@ func (s *Service) download(ctx context.Context, f ManifestFile) (string, error) 
 		err = closeErr
 	}
 	if err == nil && written > MaxFileBytes {
-		err = fmt.Errorf("%s expands past %d bytes", f.URL, int64(MaxFileBytes))
+		err = datasetFailure("asset_too_large", target.String())
 	}
 	if err != nil {
 		os.Remove(out.Name())
@@ -466,7 +456,7 @@ func (s *Service) applyDelta(ctx context.Context, domain string, f ManifestFile)
 	for _, statement := range statements {
 		if _, err = conn.ExecContext(ctx, statement); err != nil {
 			_, _ = conn.ExecContext(ctx, `ROLLBACK`)
-			return fmt.Errorf("applying %s: %w", f.URL, err)
+			return datasetFailure("apply_failed", s.cfg.ManifestURL)
 		}
 	}
 	_, err = conn.ExecContext(ctx, `DETACH DATABASE delta`)
@@ -474,10 +464,7 @@ func (s *Service) applyDelta(ctx context.Context, domain string, f ManifestFile)
 }
 
 func (s *Service) noteChecked(ctx context.Context, domain, version string, problem error) error {
-	message := ""
-	if problem != nil {
-		message = problem.Error()
-	}
+	message := datasetDiagnostic(problem)
 	w, err := dbwork.Begin(ctx, s.db, dbwork.ClassFrom(ctx, dbwork.ClassBackgroundMedia))
 	if err != nil {
 		return err

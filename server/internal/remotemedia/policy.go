@@ -111,7 +111,10 @@ func hardBlocked(ip netip.Addr) bool {
 			return true
 		}
 	}
-	for _, raw := range []string{"169.254.169.0/24", "169.254.170.0/24"} {
+	// Transition addresses can encode a blocked IPv4 destination. They must
+	// remain closed even under a saved approval; pinning the IPv6 address alone
+	// does not constrain what a translator or tunnel reaches.
+	for _, raw := range []string{"169.254.169.0/24", "169.254.170.0/24", "64:ff9b::/96", "64:ff9b:1::/48", "2002::/16", "2001::/32"} {
 		if netip.MustParsePrefix(raw).Contains(ip) {
 			return true
 		}

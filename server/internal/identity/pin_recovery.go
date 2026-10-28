@@ -2,6 +2,7 @@ package identity
 
 import (
 	"context"
+	"database/sql"
 	"portico.local/server/internal/dbwork"
 	"time"
 
@@ -101,13 +102,7 @@ func (s *Service) PINReset(ctx context.Context, bearer, profile, pin string) (Di
 	if _, e = tx.ExecContext(ctx, `UPDATE direct_profiles SET pin_hash=?,pin_revision=pin_revision+1,revision=revision+1 WHERE id=?`, value, profile); e != nil {
 		return DirectSnapshot{}, e
 	}
-	if _, e = tx.ExecContext(ctx, `DELETE FROM direct_profile_pin_attempts WHERE profile_id=?`, profile); e != nil {
-		return DirectSnapshot{}, e
-	}
-	if _, e = tx.ExecContext(ctx, `DELETE FROM direct_profile_trust WHERE profile_id=?`, profile); e != nil {
-		return DirectSnapshot{}, e
-	}
-	if e = s.revokeDirectTx(ctx, tx, c.account.ID, profile, ""); e != nil {
+	if e = s.retireProfilePINGrantsTx(ctx, tx, c.account.ID, profile); e != nil {
 		return DirectSnapshot{}, e
 	}
 	out, e := s.directSnapshotTx(ctx, tx, c)
@@ -115,6 +110,25 @@ func (s *Service) PINReset(ctx context.Context, bearer, profile, pin string) (Di
 		return out, e
 	}
 	return out, gated2.Commit()
+}
+
+// Every PIN change retires both collected credentials and approvals that have
+// not yet minted a viewing family. Other profiles and ordinary logout keep
+// their own grant lifetimes.
+func (s *Service) retireProfilePINGrantsTx(ctx context.Context, tx *sql.Tx, account, profile string) error {
+	if _, err := tx.ExecContext(ctx, `DELETE FROM direct_profile_pin_attempts WHERE profile_id=?`, profile); err != nil {
+		return err
+	}
+	if _, err := tx.ExecContext(ctx, `DELETE FROM direct_profile_trust WHERE profile_id=?`, profile); err != nil {
+		return err
+	}
+	if _, err := tx.ExecContext(ctx, `DELETE FROM topshelf_tokens WHERE account_id=? AND profile_id=?`, account, profile); err != nil {
+		return err
+	}
+	if _, err := tx.ExecContext(ctx, `UPDATE quick_connect_v1 SET status='cancelled',grant_cipher=NULL,user_hash=NULL WHERE approver_id=? AND status='approved' AND json_extract(CAST(grant_cipher AS TEXT),'$.profileId')=?`, account, profile); err != nil {
+		return err
+	}
+	return s.revokeDirectTx(ctx, tx, account, profile, "")
 }
 
 // AuthCapabilities is the public, pre-authentication descriptor. A client reads it

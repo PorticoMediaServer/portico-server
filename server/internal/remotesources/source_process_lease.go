@@ -8,6 +8,7 @@ import (
 
 	"os"
 	"portico.local/server/internal/dbwork"
+	"portico.local/server/internal/mounts"
 	"portico.local/server/internal/rcloneprogram"
 	"portico.local/server/internal/remotemedia"
 	"portico.local/server/internal/storage"
@@ -27,7 +28,7 @@ type sourceProcessLease struct {
 	cancel             context.CancelFunc
 	released           atomic.Bool
 	process            *rcloneprogram.ServeProcess
-	proxy              *remotemedia.PolicyProxy
+	egress             *mounts.SourceEgress
 	cache              string
 	sequential         bool
 	captureMode        captureReadMode
@@ -232,8 +233,8 @@ func (l *sourceProcessLease) Check(ctx context.Context) error {
 		imported = network.Imported
 	}
 	// DNS/provider checks happen outside the snapshot. A reconnect is admitted
-	// only against this source's saved native approval; the hidden rclone dial
-	// still has the explicitly accepted check/connect gap for hostnames.
+	// only against this source's saved native approval. SFTP's policy tunnel
+	// repeats this at each numeric dial; SMB's direct hostname gap remains.
 	snapshot.Rollback()
 	if native != nil {
 		_, err = (remotemedia.Policy{Resolver: l.service.resolver}).CheckNativeEndpoint(ctx, native.endpoint, native.config.Approval)
@@ -262,9 +263,8 @@ func (l *sourceProcessLease) Release() {
 		return
 	}
 	l.cancel()
-	if l.proxy != nil {
-		l.proxy.Close()
-		_ = l.proxy.Wait(context.Background())
+	if l.egress != nil {
+		l.egress.Close()
 	}
 	if l.cache != "" {
 		_ = os.RemoveAll(l.cache)

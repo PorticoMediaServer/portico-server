@@ -56,81 +56,69 @@ func (d Dependencies) audioRoutes(mux *http.ServeMux) {
 	})
 
 	d.httpHandle(mux, "GET /v1/libraries/{id}/artists", func(w http.ResponseWriter, r *http.Request) {
-		p, err := d.principal(r)
-		if err == nil {
-			err = d.allowedLibrary(r.Context(), p, r.PathValue("id"))
-		}
-		if err != nil {
-			failure(w, err)
-			return
-		}
 		limit, _ := strconv.Atoi(r.URL.Query().Get("limit"))
-		tag := d.gridTag(r, p, gridTagBucket)
-		if gridNotModified(w, r, tag) {
-			return
-		}
-		rows, next, err := d.Catalog.WithContext(r.Context()).Artists(r.PathValue("id"), r.URL.Query().Get("cursor"), limit)
-		if err != nil {
-			failure(w, err)
-			return
-		}
-		setGridTag(w, tag)
-		write(w, 200, map[string]any{"artists": rows, "nextCursor": next})
+		d.serveAudioPage(w, r, "library", "artists", func(cat *catalog.Service, viewer catalog.Viewer) (any, string, error) {
+			return cat.Artists(viewer, r.PathValue("id"), r.URL.Query().Get("cursor"), limit)
+		})
 	})
 	d.httpHandle(mux, "GET /v1/libraries/{id}/books", func(w http.ResponseWriter, r *http.Request) {
-		p, err := d.principal(r)
-		if err == nil {
-			err = d.allowedLibrary(r.Context(), p, r.PathValue("id"))
-		}
-		if err != nil {
-			failure(w, err)
-			return
-		}
 		limit, _ := strconv.Atoi(r.URL.Query().Get("limit"))
-		tag := d.gridTag(r, p, gridTagBucket)
-		if gridNotModified(w, r, tag) {
-			return
-		}
-		rows, next, err := d.Catalog.WithContext(r.Context()).Books(identity.PersonalKey(p.Viewer), r.PathValue("id"), r.URL.Query().Get("cursor"), limit)
-		if err != nil {
-			failure(w, err)
-			return
-		}
-		setGridTag(w, tag)
-		write(w, 200, map[string]any{"books": rows, "nextCursor": next})
+		d.serveAudioPage(w, r, "library", "books", func(cat *catalog.Service, viewer catalog.Viewer) (any, string, error) {
+			return cat.Books(viewer, r.PathValue("id"), r.URL.Query().Get("cursor"), limit)
+		})
 	})
 	for _, route := range []struct{ pattern, kind, collection string }{{"GET /v1/artists/{id}/albums", "artist", "albums"}, {"GET /v1/albums/{id}/songs", "album", "songs"}, {"GET /v1/books/{id}/files", "book", "files"}, {"GET /v1/books/{id}/chapters", "book", "chapters"}} {
 		d.httpHandle(mux, route.pattern, func(w http.ResponseWriter, r *http.Request) {
-			p, err := d.principal(r)
-			if err != nil {
-				failure(w, err)
-				return
-			}
-			library, err := d.Catalog.WithContext(r.Context()).LibraryForAudioEntity(route.kind, r.PathValue("id"))
-			if err == nil {
-				err = d.allowedLibrary(r.Context(), p, library)
-			}
-			if err != nil {
-				failure(w, err)
-				return
-			}
 			limit, _ := strconv.Atoi(r.URL.Query().Get("limit"))
 			cursor := r.URL.Query().Get("cursor")
-			var rows any
-			var next string
-			switch route.collection {
-			case "albums":
-				rows, next, err = d.Catalog.WithContext(r.Context()).Albums(r.PathValue("id"), cursor, limit)
-			case "chapters":
-				rows, next, err = d.Catalog.WithContext(r.Context()).BookChapters(r.PathValue("id"), cursor, limit)
-			default:
-				rows, next, err = d.Catalog.WithContext(r.Context()).AudioItems(identity.PersonalKey(p.Viewer), r.PathValue("id"), route.kind, cursor, limit)
-			}
-			if err != nil {
-				failure(w, err)
-				return
-			}
-			write(w, 200, map[string]any{route.collection: rows, "nextCursor": next})
+			d.serveAudioPage(w, r, route.kind, route.collection, func(cat *catalog.Service, viewer catalog.Viewer) (any, string, error) {
+				switch route.collection {
+				case "albums":
+					return cat.Albums(viewer, r.PathValue("id"), cursor, limit)
+				case "chapters":
+					return cat.BookChapters(viewer, r.PathValue("id"), cursor, limit)
+				default:
+					return cat.AudioItems(viewer, r.PathValue("id"), route.kind, cursor, limit)
+				}
+			})
 		})
 	}
+}
+
+// serveAudioPage authorizes the library before checking its grid validator.
+func (d Dependencies) serveAudioPage(w http.ResponseWriter, r *http.Request, kind, collection string, body func(*catalog.Service, catalog.Viewer) (any, string, error)) {
+	p, err := d.principal(r)
+	if err != nil {
+		failure(w, err)
+		return
+	}
+	cat := d.Catalog.WithContext(r.Context())
+	library := r.PathValue("id")
+	if kind != "library" {
+		library, err = cat.LibraryForAudioEntity(kind, library)
+		if err != nil {
+			failure(w, err)
+			return
+		}
+	}
+	if err = d.allowedLibrary(r.Context(), p, library); err != nil {
+		failure(w, err)
+		return
+	}
+	tag := d.gridTag(r, p, gridTagBucket)
+	if gridNotModified(w, r, tag) {
+		return
+	}
+	viewer, err := d.catalogViewer(r, p, []string{library}, "")
+	if err != nil {
+		failure(w, err)
+		return
+	}
+	rows, next, err := body(cat, viewer)
+	if err != nil {
+		failure(w, err)
+		return
+	}
+	setGridTag(w, tag)
+	write(w, 200, map[string]any{collection: rows, "nextCursor": next})
 }

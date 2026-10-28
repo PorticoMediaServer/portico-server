@@ -78,6 +78,11 @@ func TestHLSManifestRepresentationRangeReloadAndGrantRevocation(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	t.Cleanup(func() {
+		if err := hls.Shutdown(context.Background()); err != nil {
+			t.Error(err)
+		}
+	})
 	player.ConfigureHLS(hls)
 	handler := New(Dependencies{DB: db, Identity: id, Catalog: cat, Ingestion: ingestion.New(db, cat, assets.Probe{}), Playback: player, Hosted: host})
 	setupToken, err := os.ReadFile(storagepaths.Path(root, "setup-token"))
@@ -169,6 +174,33 @@ func TestHLSManifestRepresentationRangeReloadAndGrantRevocation(t *testing.T) {
 	reloaded := get(map[string]string{"If-Modified-Since": time.Now().Add(time.Hour).UTC().Format(http.TimeFormat)})
 	if reloaded.Code != 200 || !strings.Contains(reloaded.Body.String(), "segment-000001.ts") {
 		t.Fatal("fresh playlist reload", reloaded.Code)
+	}
+	t.Run("decoder symlink cannot be served", func(t *testing.T) {
+		outside := filepath.Join(root, "private-stream")
+		if err := os.WriteFile(outside, []byte("private decoder target"), 0600); err != nil {
+			t.Fatal(err)
+		}
+		segment := filepath.Join(dir, "segment-000000.ts")
+		if err := os.Symlink(outside, segment); err != nil {
+			t.Skipf("symlinks unavailable: %v", err)
+		}
+		defer os.Remove(segment)
+		request := httptest.NewRequest("GET", strings.TrimSuffix(session.StreamURL, "master.m3u8")+"segment-000000.ts", nil)
+		response := httptest.NewRecorder()
+		handler.ServeHTTP(response, request)
+		if response.Code != http.StatusServiceUnavailable || strings.Contains(response.Body.String(), "private decoder target") {
+			t.Fatalf("decoder symlink response: %d %s", response.Code, response.Body.String())
+		}
+	})
+	segment := filepath.Join(dir, "segment-000000.ts")
+	if err := os.WriteFile(segment, []byte("ordinary segment"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	request := httptest.NewRequest("GET", strings.TrimSuffix(session.StreamURL, "master.m3u8")+"segment-000000.ts", nil)
+	served := httptest.NewRecorder()
+	handler.ServeHTTP(served, request)
+	if served.Code != http.StatusOK || served.Body.String() != "ordinary segment" {
+		t.Fatalf("ordinary segment response: %d %s", served.Code, served.Body.String())
 	}
 	if err = player.Stop(principal, session.ID); err != nil {
 		t.Fatal(err)

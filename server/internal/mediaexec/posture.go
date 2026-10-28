@@ -159,7 +159,7 @@ func (d described) Error() string { return string(d) }
 
 func describe(p Posture) error {
 	if p.Sandboxed {
-		return described("FFmpeg and ffprobe run in a " + p.Mechanism + " sandbox: no network beyond a private input bridge, no access to the server's own files, output only to each job's folder.")
+		return described("FFmpeg and ffprobe have a " + p.Mechanism + " filesystem sandbox: no access to the server's own files, output only to each job's folder. Network isolation is reported separately: Linux loopback fallback jobs retain the host network unless they use the decoder's isolated bridge, and required sandbox mode refuses that fallback.")
 	}
 	reason := p.Reason
 	if len(reason) > 300 {

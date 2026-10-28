@@ -13,7 +13,7 @@ import (
 // fully isolated reader and converted playback is not yet available.
 const DescriptorPassing = false
 
-func (c *Client) OpenPlaybackDescriptor(context.Context, string, int64, int64) (*os.File, error) {
+func (c *Client) OpenPlaybackDescriptor(context.Context, string, int64, int64, ...*PlaybackBinding) (*os.File, error) {
 	return nil, ErrPlaybackSource
 }
 func playbackDescriptorHelper(request, io.Writer) error { return ErrPlaybackSource }

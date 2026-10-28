@@ -35,15 +35,19 @@ func (s *Server) serveMedia(w http.ResponseWriter, r *http.Request, name string)
 		http.NotFound(w, r)
 		return
 	}
-	var source assets.PlaybackSource
 	var container, video string
 	// A song's or book's file is audio, whatever its embedded cover probes as.
-	err := dbwork.QueryRow(r.Context(), s.DB, `SELECT a.path,a.size,a.modified_ns,a.container,
+	err := dbwork.QueryRow(r.Context(), s.DB, `SELECT a.container,
  CASE WHEN EXISTS(SELECT 1 FROM catalog_asset_links l JOIN catalog_entities e ON e.id=l.entity_id WHERE l.asset_id=a.id AND e.kind IN(7,9)) THEN '' ELSE a.video_codec END FROM catalog_assets a
  WHERE a.token=? AND a.available=1 AND a.container!='strm' AND EXISTS(SELECT 1 FROM catalog_asset_links l
   JOIN catalog_entities e ON e.id=l.entity_id AND e.retired=0 JOIN catalog_kinds k ON k.id=e.kind AND k.playable=1
   JOIN catalog_libraries cl ON cl.id=e.library_id AND cl.retired=0
-  WHERE l.asset_id=a.id AND l.available=1)`, token).Scan(&source.Path, &source.Size, &source.ModifiedNS, &container, &video)
+  WHERE l.asset_id=a.id AND l.available=1)`, token).Scan(&container, &video)
+	if err != nil {
+		http.NotFound(w, r)
+		return
+	}
+	source, err := assets.ResolveCatalogPlaybackSource(r.Context(), s.DB, token)
 	if err != nil {
 		http.NotFound(w, r)
 		return

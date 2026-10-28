@@ -4012,6 +4012,7 @@ export const routes = [
     "errors": [
       "unauthorized",
       "password_change_required",
+      "factor_setup_required",
       "not_permitted",
       "internal"
     ],
@@ -12591,6 +12592,7 @@ export const routes = [
     "errors": [
       "unauthorized",
       "password_change_required",
+      "factor_setup_required",
       "not_permitted",
       "invalid_request",
       "request_in_progress",

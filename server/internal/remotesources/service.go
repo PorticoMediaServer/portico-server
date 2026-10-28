@@ -125,6 +125,7 @@ func New(db *sql.DB, state string, managed *mounts.Service) (*Service, error) {
 	managed.GuardSourceRemoval = s.guardSourceRemoval
 	managed.NativeInvalidated = s.invalidate
 	managed.PrepareSourceCandidate = s.prepareSourceCandidate
+	managed.PrepareSourceEgress = s.prepareMountEgress
 	// No acquisition survives a server process. Remove only our private spool names.
 	if files, e := os.ReadDir(private); e == nil {
 		for _, file := range files {

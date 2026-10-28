@@ -94,8 +94,9 @@ type Job struct {
 	// WriteDirs are the job's private output folders.
 	WriteDirs []string
 	// Loopback is the numeric 127.0.0.1:port bridge the process may connect to,
-	// or empty for none. Only the macOS profile and the baseline use it: on Linux
-	// a bridge job is built by the decoder's own sandbox helper (PreConfined).
+	// or empty for none. Linux bridge isolation uses decoder's verified helper
+	// (PreConfined). Generic Linux loopback jobs retain host network in optional
+	// mode and are refused when the owner requires the sandbox.
 	Loopback string
 	// Hardware jobs may use GPU devices and the system's driver libraries.
 	Hardware bool
@@ -187,6 +188,8 @@ func Argv(job Job) ([]string, error) {
 		return nil, err
 	}
 	var inner []string
+	networkIsolated := job.PreConfined
+	networkReason := "The server admitted a decoder with baseline restrictions only. Its process can use the host network; a protocol whitelist is not network isolation."
 	if job.PreConfined {
 		inner = append([]string{job.Executable}, job.Args...)
 	} else {
@@ -196,9 +199,18 @@ func Argv(job Job) ([]string, error) {
 		}
 		job.Executable = exe
 		posture := postureFor(exe)
-		if setting() == SettingOff {
+		posture.Setting = setting()
+		if posture.Setting == SettingOff {
 			// The owner's choice holds even for a posture decided earlier.
 			posture = Posture{Setting: SettingOff}
+		}
+		if runtime.GOOS == "linux" && job.Loopback != "" {
+			// Only decoder's verified bridge helper can cross into an isolated
+			// namespace. The generic Linux loopback profile retains host network.
+			if posture.Setting == SettingRequired {
+				return nil, ErrSandboxRequired
+			}
+			networkReason = "A direct loopback decoder path retains the host network namespace. Filesystem sandboxing and protocol restrictions do not restrict a compromised decoder's network access. Required sandbox mode refuses this path when the isolated decoder bridge is unavailable."
 		}
 		if !posture.Sandboxed {
 			if posture.Setting == SettingRequired {
@@ -215,12 +227,14 @@ func Argv(job Job) ([]string, error) {
 			if inner, err = sandboxArgv(job, posture); err != nil {
 				return nil, err
 			}
+			networkIsolated = runtime.GOOS != "linux" || job.Loopback == ""
 		}
 	}
 	argv := shimArgv(job, inner)
 	if len(argv) > MaxGeneratedArguments {
 		return nil, ErrInvalidJob
 	}
+	reportNetworkIsolation(networkIsolated, networkReason)
 	noteCommand()
 	return argv, nil
 }

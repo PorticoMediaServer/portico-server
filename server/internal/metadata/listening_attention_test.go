@@ -64,7 +64,7 @@ func TestMusicAndBooksNeedAttention(t *testing.T) {
 		}
 	}
 	assertQuietBook(1)
-	catalogBooks, _, err := catalog.New(c.DB).Books("", "books", "", 25)
+	catalogBooks, _, err := catalog.New(c.DB).Books(catalog.Viewer{Libraries: []string{"books"}}, "books", "", 25)
 	if err != nil || len(catalogBooks) != 1 || catalogBooks[0].ID != book.Public || catalogBooks[0].Title != "Untagged" || catalogBooks[0].Author != "" {
 		t.Fatalf("missing-author book did not remain in the ordinary catalog: %+v %v", catalogBooks, err)
 	}
@@ -88,7 +88,7 @@ func TestMusicAndBooksNeedAttention(t *testing.T) {
 		t.Fatal("ordinary Author edit failed", after, err)
 	}
 	c.Drain()
-	catalogBooks, _, err = catalog.New(c.DB).Books("", "books", "", 25)
+	catalogBooks, _, err = catalog.New(c.DB).Books(catalog.Viewer{Libraries: []string{"books"}}, "books", "", 25)
 	if err != nil || len(catalogBooks) != 1 || catalogBooks[0].ID != book.Public || catalogBooks[0].Author != author {
 		t.Fatal("edited author not in catalog", catalogBooks, err)
 	}

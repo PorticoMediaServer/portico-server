@@ -34,13 +34,15 @@ const (
 	// (mediaexec): available means sandboxed; otherwise the detail says why not
 	// and which baseline restrictions still apply.
 	DecoderSandbox = "decoder_sandbox"
+	// Filesystem confinement does not imply a separate network namespace.
+	DecoderNetworkIsolation = "decoder_network_isolation"
 	// DolbyVision is whether Dolby Vision Profile 5 files converted for screens
 	// without Dolby Vision keep their colors (libplacebo on Vulkan) or are
 	// approximate (COMPAT-04).
 	DolbyVision = "dolby_vision_conversion"
 )
 
-var labels = map[string]string{LiveTV: "Live TV", Recording: "Recording", PreparedMedia: "Prepared media", Hardware: "Hardware encoding", DecoderSandbox: "Decoder sandbox", DolbyVision: "Dolby Vision conversion"}
+var labels = map[string]string{LiveTV: "Live TV", Recording: "Recording", PreparedMedia: "Prepared media", Hardware: "Hardware encoding", DecoderSandbox: "Decoder sandbox", DecoderNetworkIsolation: "Decoder network isolation", DolbyVision: "Dolby Vision conversion"}
 
 var (
 	mu       sync.Mutex

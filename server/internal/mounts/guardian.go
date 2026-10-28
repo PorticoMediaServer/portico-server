@@ -25,6 +25,9 @@ func Guardian(input io.Reader) error {
 	if !filepath.IsAbs(request.Executable) {
 		return errors.New("executable path is required")
 	}
+	if !validPolicyProxy(request.HTTPProxy) || request.SFTPProxy != "" && !validPolicyProxy(request.SFTPProxy) {
+		return errors.New("mount egress policy is required")
+	}
 	// One monitor for the whole guardian life starts before any start work: the
 	// parent closing control cancels the version check and every later wait, and
 	// the same signal drives ongoing child shutdown.
@@ -81,7 +84,7 @@ func Guardian(input io.Reader) error {
 		args = append(args, "--vfs-cache-mode=off")
 	}
 	cmd := exec.Command(request.Executable, args...)
-	cmd.Env = []string{"PATH=" + os.Getenv("PATH"), "HOME=" + request.PrivateHome, "TMPDIR=" + request.PrivateHome, "RCLONE_CONFIG_PASS=" + request.Password}
+	cmd.Env = []string{"PATH=" + os.Getenv("PATH"), "HOME=" + request.PrivateHome, "TMPDIR=" + request.PrivateHome, "RCLONE_CONFIG_PASS=" + request.Password, "RCLONE_HTTP_PROXY=" + request.HTTPProxy, "RCLONE_SFTP_HTTP_PROXY=" + request.SFTPProxy}
 	// Provider logs may contain arbitrary URLs, keys and file names. No raw child
 	// output leaves this boundary; the service records bounded typed events only.
 	cmd.Stdout = io.Discard
@@ -115,4 +118,5 @@ type launch struct {
 	Included                                                         bool
 	CachePath                                                        string
 	CacheBytes, CacheFloor                                           int64
+	HTTPProxy, SFTPProxy                                             string
 }

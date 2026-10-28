@@ -281,6 +281,10 @@ func (s *Service) DecideQuick(ctx context.Context, p Principal, id, code, decisi
 	// family is bound to the TV's installation and not to the approving phone.
 	var cipher []byte
 	if decision == "approve" {
+		var pinRevision int64
+		if e = tx.QueryRowContext(ctx, `SELECT pin_revision FROM direct_profiles WHERE account_id=? AND id=? AND deleted=0`, p.AccountID, p.ProfileID).Scan(&pinRevision); e != nil {
+			return e
+		}
 		// Staging merge (lead quick-connect x be/member M9): the TV's family is
 		// issued later, in PollQuick, so the approver's Portico admission travels
 		// in the sealed approval and is inherited there.
@@ -291,7 +295,7 @@ func (s *Service) DecideQuick(ctx context.Context, p Principal, id, code, decisi
 				return e
 			}
 		}
-		cipher, e = s.sealSetup(quickApproval{AccountID: p.AccountID, ProfileID: p.ProfileID, Epoch: p.Epoch, PorticoAdmitted: admitted, PorticoSigner: signer, PorticoUntil: until}, "quick-approval:"+id)
+		cipher, e = s.sealSetup(quickApproval{AccountID: p.AccountID, ProfileID: p.ProfileID, Epoch: p.Epoch, PINRevision: pinRevision, PorticoAdmitted: admitted, PorticoSigner: signer, PorticoUntil: until}, "quick-approval:"+id)
 		if e != nil {
 			return e
 		}
@@ -560,6 +564,7 @@ type quickApproval struct {
 	AccountID    string `json:"accountId"`
 	ProfileID    string `json:"profileId"`
 	Epoch        int    `json:"epoch"`
+	PINRevision  int64  `json:"pinRevision"`
 	// PorticoAdmitted: the approving session was admitted through Portico
 	// sign-in (be/member M9), so the device's family inherits that admission.
 	PorticoAdmitted bool `json:"porticoAdmitted,omitempty"`
@@ -582,10 +587,11 @@ func (s *Service) issueQuickTx(ctx context.Context, tx *sql.Tx, id string, ciphe
 		return Envelope{}, e
 	}
 	var epoch int
+	var pinRevision int64
 	var disabled, primary bool
 	var role string
-	e := tx.QueryRowContext(ctx, `SELECT a.epoch,m.disabled,m.role,COALESCE((SELECT is_primary FROM direct_profiles WHERE account_id=a.id AND id=? AND deleted=0),0) FROM accounts a JOIN direct_memberships m ON m.account_id=a.id WHERE a.id=?`, a.ProfileID, a.AccountID).Scan(&epoch, &disabled, &role, &primary)
-	if errors.Is(e, sql.ErrNoRows) || e == nil && (epoch != a.Epoch || disabled) {
+	e := tx.QueryRowContext(ctx, `SELECT a.epoch,m.disabled,m.role,p.is_primary,p.pin_revision FROM accounts a JOIN direct_memberships m ON m.account_id=a.id JOIN direct_profiles p ON p.account_id=a.id AND p.id=? AND p.deleted=0 WHERE a.id=?`, a.ProfileID, a.AccountID).Scan(&epoch, &disabled, &role, &primary, &pinRevision)
+	if errors.Is(e, sql.ErrNoRows) || e == nil && (epoch != a.Epoch || disabled || pinRevision != a.PINRevision) {
 		// The approver's credentials changed or access ended since approving.
 		return Envelope{}, &SetupProtocolError{Code: "access_denied"}
 	}

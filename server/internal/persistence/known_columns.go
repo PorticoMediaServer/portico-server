@@ -6072,10 +6072,12 @@ telemetry_rollups.metric
 telemetry_rollups.samples
 telemetry_rollups.status
 telemetry_rollups.total
+topshelf_tokens.account_epoch
 topshelf_tokens.account_id
 topshelf_tokens.authority
 topshelf_tokens.device_id
 topshelf_tokens.expires_at
+topshelf_tokens.pin_revision
 topshelf_tokens.profile_id
 topshelf_tokens.token_hash
 tvdb_episode_credit_evidence.attempts

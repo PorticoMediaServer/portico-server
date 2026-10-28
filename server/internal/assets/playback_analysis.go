@@ -29,7 +29,7 @@ func (p Probe) analysisOutput(ctx context.Context, path string, limit int, args 
 	if binary == "" {
 		binary = mediatools.Resolve("ffprobe")
 	}
-	args = append([]string{"-v", "error", "-protocol_whitelist", "file,pipe", "-probesize", "8388608", "-analyzeduration", "5000000"}, args...)
+	args = append([]string{"-v", "error", "-protocol_whitelist", "file,pipe", "-format_whitelist", mediaexec.LocalInputFormats, "-probesize", "8388608", "-analyzeduration", "5000000"}, args...)
 	args = append(args, path)
 	out := &boundedBuffer{limit: limit}
 	var e error

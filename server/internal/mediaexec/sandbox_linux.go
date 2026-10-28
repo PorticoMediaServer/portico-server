@@ -117,6 +117,9 @@ func LinuxHardwareSandboxArgs(environment [][2]string) []string {
 // /dev/fd/3 reaches the inherited input). Descriptors pass through bubblewrap
 // unchanged.
 func linuxArgv(bwrap string, job Job, disableUserns bool) ([]string, error) {
+	if job.Loopback != "" && setting() == SettingRequired {
+		return nil, ErrSandboxRequired
+	}
 	// The tool's own dependencies, resolved from its ELF headers, plus the
 	// caller's already-resolved exact files.
 	libraries, err := librariesFor(job.Executable, configuredLibraries())
@@ -126,8 +129,9 @@ func linuxArgv(bwrap string, job Job, disableUserns bool) ([]string, error) {
 	libraries = append(append([]string{}, libraries...), job.Libraries...)
 	args := []string{bwrap, "--unshare-user", "--unshare-pid", "--unshare-ipc", "--unshare-uts", "--unshare-cgroup-try"}
 	// A job with a loopback input and no decoder helper keeps the host network
-	// namespace (its protocol whitelist still limits it to that bridge); every
-	// other job has no network at all.
+	// namespace only in optional mode. A protocol whitelist does not confine a
+	// compromised process; required mode refuses this fallback above. Network
+	// posture is reported separately from the filesystem sandbox.
 	if job.Loopback == "" {
 		args = append(args, "--unshare-net")
 	}

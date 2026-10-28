@@ -14,7 +14,7 @@ import (
 	"time"
 )
 
-func TestBlockedSourceOpenDeadlineDoesNotBlockServer(t *testing.T) {
+func TestFIFOPlaybackSourceRejectedWithoutBlocking(t *testing.T) {
 	c, _, _ := playbackFixture(t)
 	p := filepath.Join(t.TempDir(), "blocked-fifo")
 	if e := syscall.Mkfifo(p, 0600); e != nil {
@@ -22,8 +22,27 @@ func TestBlockedSourceOpenDeadlineDoesNotBlockServer(t *testing.T) {
 	}
 	c.Timeout = 100 * time.Millisecond
 	start := time.Now()
-	if _, e := c.OpenPlayback(context.Background(), p, 0, 0); !errors.Is(e, ErrPlaybackTimeout) {
-		t.Fatalf("blocked open %v", e)
+	if _, e := c.OpenPlayback(context.Background(), p, 0, 0); !errors.Is(e, ErrPlaybackSource) {
+		t.Fatalf("FIFO source rejection %v", e)
+	}
+	if time.Since(start) > time.Second {
+		t.Fatal("FIFO source rejection blocked")
+	}
+	waitReaderExit(t, c)
+}
+func TestBlockedSourceOpenDeadlineDoesNotBlockServer(t *testing.T) {
+	c, p, info := playbackFixture(t)
+	script := filepath.Join(t.TempDir(), "blocked-open")
+	// Consume the request so startup reaches the initial-frame read, then
+	// deliberately withhold that frame until the supervisor cancels the helper.
+	if e := os.WriteFile(script, []byte("#!/bin/sh\nIFS= read -r request || exit 1\nsleep 30\n"), 0700); e != nil {
+		t.Fatal(e)
+	}
+	c.Binary = script
+	c.Timeout = 100 * time.Millisecond
+	start := time.Now()
+	if _, e := c.OpenPlayback(context.Background(), p, info.Size(), info.ModTime().UnixNano()); !errors.Is(e, ErrPlaybackTimeout) {
+		t.Fatalf("blocked initial frame %v", e)
 	}
 	if time.Since(start) > time.Second {
 		t.Fatal("open failed to cancel")

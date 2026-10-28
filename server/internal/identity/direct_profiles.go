@@ -260,9 +260,6 @@ func (s *Service) EditDirectProfile(ctx context.Context, bearer, id string, q Di
 		if _, e = tx.ExecContext(ctx, `UPDATE direct_profiles SET pin_hash=?,pin_revision=pin_revision+1 WHERE id=?`, value, id); e != nil {
 			return DirectSnapshot{}, e
 		}
-		if _, e = tx.ExecContext(ctx, `DELETE FROM direct_profile_pin_attempts WHERE profile_id=?`, id); e != nil {
-			return DirectSnapshot{}, e
-		}
 	}
 	if q.Policy != nil {
 		var value any
@@ -283,10 +280,7 @@ func (s *Service) EditDirectProfile(ctx context.Context, bearer, id string, q Di
 	// credential. It takes effect on the profile's next request, because every
 	// request reads the live list, and nobody is signed out for it.
 	if q.PIN != nil {
-		if _, e = tx.ExecContext(ctx, `DELETE FROM direct_profile_trust WHERE profile_id=?`, id); e != nil {
-			return DirectSnapshot{}, e
-		}
-		if e = s.revokeDirectTx(ctx, tx, c.account.ID, id, ""); e != nil {
+		if e = s.retireProfilePINGrantsTx(ctx, tx, c.account.ID, id); e != nil {
 			return DirectSnapshot{}, e
 		}
 	}

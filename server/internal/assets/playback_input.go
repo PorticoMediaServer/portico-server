@@ -12,14 +12,13 @@ import (
 
 // PlaybackInput is a validated source handed to a converter.
 //
-// The two platforms reach the same guarantee — the converter reads the exact
-// file the session was created against, and nothing can substitute another one
-// underneath it — by opposite means, so the difference has to be carried rather
-// than assumed. On Unix a helper transfers an open descriptor and the child
-// inherits it as file descriptor 3. On Windows the server holds the file open
-// with writers and deleters locked out and the child opens the same path by
-// name. Callers therefore ask what to put after `-i` and whether to inherit,
-// instead of writing "/dev/fd/3" and hoping.
+// On Unix a helper transfers the file validated at acquisition and the child
+// inherits it as descriptor 3. On Windows the server holds it open with writers
+// and deleters locked out and the child opens the same path by name. Callers
+// therefore ask what to put after `-i` and whether to inherit. These lifetime
+// fences do not supply missing immutable session-acceptance evidence. In
+// particular, mounted remote inventory retains its managed-mount and size/mtime
+// checks without treating provider object IDs as filesystem inode identity.
 type PlaybackInput struct {
 	// File must stay open until the child exits. On Unix it is the inherited
 	// descriptor; on Windows it is the handle whose share mode is the fence.
@@ -112,7 +111,7 @@ func OpenPlaybackInput(ctx context.Context, db *sql.DB, c *storage.Client, sessi
 	if err != nil {
 		return nil, err
 	}
-	file, argument, inherit, err := c.OpenPlaybackSource(ctx, v.Path, v.Size, v.ModifiedNS)
+	file, argument, inherit, err := c.OpenPlaybackSource(ctx, v.Path, v.Size, v.ModifiedNS, v.Binding)
 	if err != nil {
 		return nil, err
 	}

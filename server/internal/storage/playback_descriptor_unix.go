@@ -20,8 +20,12 @@ const DescriptorPassing = true
 
 // OpenPlaybackDescriptor transfers a validated descriptor, not a source path
 // reopened by the parent. No network-filesystem syscall runs in the parent.
-func (c *Client) OpenPlaybackDescriptor(ctx context.Context, path string, size, modified int64) (*os.File, error) {
-	return c.openPlaybackDescriptorRequest(ctx, request{Operation: "playback-descriptor", Path: path, Size: size, ModifiedNS: modified})
+func (c *Client) OpenPlaybackDescriptor(ctx context.Context, path string, size, modified int64, bindings ...*PlaybackBinding) (*os.File, error) {
+	req, err := c.bindPlaybackRequest(request{Operation: "playback-descriptor", Path: path, Size: size, ModifiedNS: modified}, bindings)
+	if err != nil {
+		return nil, err
+	}
+	return c.openPlaybackDescriptorRequest(ctx, req)
 }
 
 // OpenDiscPlaybackDescriptor pins the exact inventory object beneath its
@@ -73,7 +77,7 @@ func (c *Client) openPlaybackDescriptorRequest(ctx context.Context, req request)
 	defer conn.Close()
 	socket := conn.(*net.UnixConn)
 	req.ManagedArtifact = managed
-	if c.MountedRoot != nil {
+	if req.MountedRoot == "" && c.MountedRoot != nil {
 		req.MountedRoot = c.MountedRoot(path)
 	}
 	body, _ := json.Marshal(req)
@@ -157,7 +161,7 @@ func playbackDescriptorHelper(req request, out io.Writer) error {
 		}
 		f, e = openInventoryContent(*req.Inventory)
 	default:
-		f, e = os.Open(req.Path)
+		f, e = openPlaybackRequestFile(req)
 	}
 	if e != nil {
 		return ErrPlaybackSource
@@ -170,13 +174,12 @@ func playbackDescriptorHelper(req request, out io.Writer) error {
 	if e != nil || (req.Operation == "disc-directory-descriptor" && !info.IsDir() || req.Operation != "disc-directory-descriptor" && !info.Mode().IsRegular()) || info.Size() != req.Size || info.ModTime().UnixNano() != req.ModifiedNS {
 		return ErrPlaybackSource
 	}
-	if req.Inventory != nil {
-		actual, err := FileObjectIdentity(f)
-		if err != nil || req.Identity == "" || actual != req.Identity {
+	if req.Inventory != nil && req.Operation != "playback-descriptor" {
+		if !matchesPlaybackObject(f, *req.Inventory, req.Identity) {
 			return ErrPlaybackSource
 		}
 	}
-	current, e := os.Stat(req.Path)
+	current, e := playbackCurrentInfo(req)
 	if e != nil || !os.SameFile(info, current) {
 		return ErrPlaybackSource
 	}
