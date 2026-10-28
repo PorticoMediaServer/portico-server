@@ -21,8 +21,21 @@ type monitorSource struct {
 	storage.WatchRoot
 	library, classification string
 	generation              int64
+	// remoteOwned is the scheduler-ownership fact: a bound remote source or a
+	// root the storage adapter handles. Either one is enough, so an
+	// inconsistent pair fails closed instead of becoming a local fallback walk.
+	remoteOwned bool
 }
 type pendingFolder struct{ first, last time.Time }
+
+// Seams for the monitor's clock and watch helper. Production keeps the real
+// clock and the real storage watcher.
+var (
+	monitorClock = time.Now
+	monitorWatch = func(s *Service, ctx context.Context, request storage.WatchRequest, emit func(storage.InventoryChange)) error {
+		return s.storage.WatchInventory(ctx, request, emit)
+	}
+)
 
 // The monitor has one bounded native helper, one debounce map, and a periodic
 // fallback. It never stats a library in the server process or judges absence.
@@ -49,7 +62,8 @@ func (s *Service) runMonitor(ctx context.Context) {
 	ready := false
 	nextConfig := time.Time{}
 	add := func(source, relative string, now time.Time) {
-		if _, ok := sources[source]; !ok || !filepath.IsLocal(relative) {
+		owner, ok := sources[source]
+		if !ok || owner.remoteOwned || !filepath.IsLocal(relative) {
 			return
 		}
 		if pending[source] == nil {
@@ -75,12 +89,13 @@ func (s *Service) runMonitor(ctx context.Context) {
 				ready = true
 				continue
 			}
-			add(change.SourceID, change.RelativePath, time.Now())
+			add(change.SourceID, change.RelativePath, monitorClock())
 		case <-ended:
 			ready = false
 			digest = ""
-			nextConfig = time.Now().Add(30 * time.Second)
-		case now := <-ticker.C:
+			nextConfig = monitorClock().Add(30 * time.Second)
+		case <-ticker.C:
+			now := monitorClock()
 			if configurationChanged.Take() {
 				nextConfig = time.Time{}
 			}
@@ -94,12 +109,12 @@ func (s *Service) runMonitor(ctx context.Context) {
 					nextConfig = now.Add(worker.SafetyTick)
 					sources = current
 					for id := range fallback {
-						if _, ok := sources[id]; !ok {
+						if owner, ok := sources[id]; !ok || owner.remoteOwned {
 							delete(fallback, id)
 						}
 					}
 					for id := range pending {
-						if _, ok := sources[id]; !ok {
+						if owner, ok := sources[id]; !ok || owner.remoteOwned {
 							delete(pending, id)
 						}
 					}
@@ -127,7 +142,7 @@ func (s *Service) runMonitor(ctx context.Context) {
 							done := watchDone
 							supervise.Go("ingestion.folder-monitor", func() {
 								defer close(done)
-								err := s.storage.WatchInventory(work, request, func(change storage.InventoryChange) {
+								err := monitorWatch(s, work, request, func(change storage.InventoryChange) {
 									select {
 									case events <- change:
 									case <-work.Done():
@@ -145,6 +160,9 @@ func (s *Service) runMonitor(ctx context.Context) {
 				}
 			}
 			for id, source := range sources {
+				if source.remoteOwned {
+					continue
+				}
 				interval := 15 * time.Minute
 				if source.classification == "network" || !ready {
 					interval = 5 * time.Minute
@@ -161,6 +179,10 @@ func (s *Service) runMonitor(ctx context.Context) {
 			paths := []string{}
 			ids := make([]string, 0, len(pending))
 			for id := range pending {
+				if owner, ok := sources[id]; !ok || owner.remoteOwned {
+					delete(pending, id)
+					continue
+				}
 				ids = append(ids, id)
 			}
 			sort.Strings(ids)
@@ -200,7 +222,7 @@ func (s *Service) runMonitor(ctx context.Context) {
 func (s *Service) monitorConfiguration(ctx context.Context) (map[string]monitorSource, storage.WatchRequest, error) {
 	sources := map[string]monitorSource{}
 	request := storage.WatchRequest{}
-	rows, err := s.db.QueryContext(ctx, `SELECT s.id,s.library_id,s.root,s.root_identity,s.incarnation,s.classification,s.generation,s.follow_symlinks FROM library_sources s LEFT JOIN admin_documents d ON d.scope='library:'||s.library_id WHERE s.enabled=1 AND COALESCE(json_extract(d.body,'$.monitorChanges'),1)=1 AND NOT EXISTS(SELECT 1 FROM dvr_private_libraries p WHERE p.library_id=s.library_id) ORDER BY s.id LIMIT 4096`)
+	rows, err := s.db.QueryContext(ctx, `SELECT s.id,s.library_id,s.root,s.root_identity,s.incarnation,s.classification,s.generation,s.follow_symlinks,s.remote_source_id IS NOT NULL FROM library_sources s LEFT JOIN admin_documents d ON d.scope='library:'||s.library_id WHERE s.enabled=1 AND COALESCE(json_extract(d.body,'$.monitorChanges'),1)=1 AND NOT EXISTS(SELECT 1 FROM dvr_private_libraries p WHERE p.library_id=s.library_id) ORDER BY s.id LIMIT 4096`)
 	if err != nil {
 		return sources, request, err
 	}
@@ -211,10 +233,12 @@ func (s *Service) monitorConfiguration(ctx context.Context) (map[string]monitorS
 	all := []sourceRow{}
 	for rows.Next() {
 		var source sourceRow
-		if err = rows.Scan(&source.SourceID, &source.library, &source.Root, &source.RootIdentity, &source.incarnation, &source.classification, &source.generation, &source.FollowSymlinks); err != nil {
+		var bound bool
+		if err = rows.Scan(&source.SourceID, &source.library, &source.Root, &source.RootIdentity, &source.incarnation, &source.classification, &source.generation, &source.FollowSymlinks, &bound); err != nil {
 			rows.Close()
 			return sources, request, err
 		}
+		source.remoteOwned = bound || (s.storage != nil && s.storage.IsRemote(source.Root))
 		all = append(all, source)
 	}
 	err = rows.Err()
@@ -229,7 +253,7 @@ func (s *Service) monitorConfiguration(ctx context.Context) (map[string]monitorS
 	wireBytes := 256
 	for _, source := range all {
 		sources[source.SourceID] = source.monitorSource
-		if watches >= storage.MaxInventoryWatches || s.storage == nil || s.storage.IsRemote(source.Root) || source.classification == "network" || source.RootIdentity == "" || len(request.Roots) >= storage.MaxWatchRoots {
+		if watches >= storage.MaxInventoryWatches || s.storage == nil || source.remoteOwned || source.classification == "network" || source.RootIdentity == "" || len(request.Roots) >= storage.MaxWatchRoots {
 			continue
 		}
 		root := source.WatchRoot
