@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {invitationCardFacts} from '../src/screens/settings/people-invitation-card.ts';
+import {invitationCardFacts} from '../src/invitation-card.ts';
 
 test('share-card facts contain only server, access and expiry facts', () => {
   const invitation = {expiresAt: '2026-11-01T00:00:00Z', allowedLibraries: ['films'], notes: 'Private note', porticoUsername: 'private-name', email: 'private@example.test'};

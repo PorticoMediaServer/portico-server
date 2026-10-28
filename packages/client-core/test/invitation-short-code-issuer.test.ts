@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {sameShortCode, ShortCodeIssuer} from '../src/kit/accounts/invitation-short-code.ts';
+import {sameShortCode, ShortCodeIssuer} from '../src/invitation-short-code-issuer.ts';
 
 const serverId = 'srv_' + 's'.repeat(43), expiresAt = '2099-01-01T00:00:00Z';
 

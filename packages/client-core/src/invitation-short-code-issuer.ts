@@ -1,6 +1,6 @@
-import type {ServerShortInvitation} from '@core/direct-account.ts';
-import {randomId} from '@core/random-id.ts';
-import {formatShortInvitationCode} from '@core/short-invitation-code.ts';
+import type {ServerShortInvitation} from './direct-account.ts';
+import {randomId} from './random-id.ts';
+import {formatShortInvitationCode} from './short-invitation-code.ts';
 
 export type ShortCodeState =
   | Readonly<{phase: 'idle'}>

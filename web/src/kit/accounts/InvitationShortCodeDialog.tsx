@@ -4,7 +4,7 @@ import type {ServerShortInvitation} from '@core/direct-account.ts';
 import {Button} from '../controls/Button';
 import {Dialog} from '../overlays/Dialog';
 import {AuthError} from './AuthStage';
-import {sameShortCode, ShortCodeIssuer, type ShortCodeRun} from './invitation-short-code';
+import {sameShortCode, ShortCodeIssuer, type ShortCodeRun} from '@core/invitation-short-code-issuer.ts';
 import styles from './invitation-short-code.module.css';
 
 const t = defaultI18n.t;

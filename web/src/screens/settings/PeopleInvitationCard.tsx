@@ -4,7 +4,7 @@ import type {ServerInvitation} from '@core/direct-account.ts';
 import {Button} from '../../kit/controls';
 import wordmark from '../../shell/wordmark.svg';
 import type {SettingsInvitations} from './invitations';
-import {invitationCardFacts} from './people-invitation-card';
+import {invitationCardFacts} from '@core/invitation-card.ts';
 import {invitationPicture} from '../../kit/accounts/invitation-picture';
 import styles from '../../kit/accounts/InvitationCard.module.css';
 
