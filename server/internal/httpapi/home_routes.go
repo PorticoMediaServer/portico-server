@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
+	"portico.local/apikit"
 	"portico.local/server/internal/catalog"
 	"portico.local/server/internal/dbwork"
 	"portico.local/server/internal/identity"
@@ -94,6 +95,9 @@ func (d Dependencies) homeRequestFor(r *http.Request, p identity.Principal, rest
 	request.CommunityActivity = settings.Effective.CommunityActivityEnabled
 	return request, nil
 }
+
+// homeLimitQuery is the published contract homeQueryLimit keeps.
+var homeLimitQuery = apikit.QueryInteger{Name: "limit", Minimum: 1, Default: catalog.HomeRowDefaultLimit, Maximum: catalog.HomeRowMaxLimit, Clamped: true}
 
 func homeQueryLimit(r *http.Request) (int, error) {
 	raw := r.URL.Query().Get("limit")

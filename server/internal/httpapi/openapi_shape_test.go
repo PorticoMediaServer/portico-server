@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"portico.local/apikit"
+	"portico.local/server/internal/catalog"
 )
 
 func TestGeneratedOpenAPIReadBodiesRequiredListsAndRecommendationQueries(t *testing.T) {
@@ -24,50 +25,8 @@ func TestGeneratedOpenAPIReadBodiesRequiredListsAndRecommendationQueries(t *test
 	if err = json.Unmarshal(generated.OpenAPI, &document); err != nil {
 		t.Fatal(err)
 	}
-	var walk func(any)
-	walk = func(value any) {
-		switch v := value.(type) {
-		case map[string]any:
-			for key, child := range v {
-				if key == "properties" {
-					// These keys are property names, not schema keywords. A
-					// property named "required" still has its own schema to check.
-					properties, ok := child.(map[string]any)
-					if !ok {
-						t.Fatalf("invalid schema properties member: %#v", child)
-					}
-					for _, schema := range properties {
-						walk(schema)
-					}
-					continue
-				}
-				if key == "required" {
-					// Parameters and request bodies use a boolean. A schema's
-					// required member must be an array of unique property names.
-					if _, ok := child.(bool); !ok {
-						names, ok := child.([]any)
-						if !ok {
-							t.Fatalf("invalid schema required member: %#v", child)
-						}
-						seen := map[string]bool{}
-						for _, name := range names {
-							text, ok := name.(string)
-							if !ok || text == "" || seen[text] {
-								t.Fatalf("invalid required property name: %#v", name)
-							}
-							seen[text] = true
-						}
-					}
-				}
-				walk(child)
-			}
-		case []any:
-			for _, child := range v {
-				walk(child)
-			}
-		}
-	}
-	walk(document)
+	// GenerateWith already refused an invalid document (apikit.CheckOpenAPI);
+	// what follows pins the shapes F15 fixed.
 	paths, ok := document["paths"].(map[string]any)
 	if !ok || len(paths) == 0 {
 		t.Fatal("generated document has no paths")
@@ -85,13 +44,16 @@ func TestGeneratedOpenAPIReadBodiesRequiredListsAndRecommendationQueries(t *test
 	for _, path := range []string{"/v1/suggestions", "/v1/items/{id}/recommendations"} {
 		operation := paths[path].(map[string]any)["get"].(map[string]any)
 		parameters, _ := operation["parameters"].([]any)
-		found := false
+		var limit map[string]any
 		for _, raw := range parameters {
 			parameter := raw.(map[string]any)
-			found = found || parameter["in"] == "query" && parameter["name"] == "limit"
+			if parameter["in"] == "query" && parameter["name"] == "limit" {
+				limit, _ = parameter["schema"].(map[string]any)
+			}
 		}
-		if !found {
-			t.Fatalf("%s omits the limit query parameter", path)
+		// homeQueryLimit: absent means 12, below 1 is refused, above 60 is 60.
+		if limit == nil || limit["type"] != "integer" || limit["minimum"] != float64(1) || limit["default"] != float64(catalog.HomeRowDefaultLimit) || limit["x-clamp-maximum"] != float64(catalog.HomeRowMaxLimit) || limit["maximum"] != nil {
+			t.Fatalf("%s limit schema: %#v", path, limit)
 		}
 	}
 }

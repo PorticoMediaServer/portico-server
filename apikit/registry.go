@@ -143,6 +143,9 @@ type Metadata struct {
 	Cost                Cost     `json:"cost"`
 	BodyLimit           int64    `json:"bodyLimit"`
 	Query               []string `json:"query,omitempty"`
+	// QueryIntegers publishes bounds for integer query parameters named in
+	// Query. The handler parses and applies them; this is their contract.
+	QueryIntegers []QueryInteger `json:"queryIntegers,omitempty"`
 	Headers             []string `json:"headers,omitempty"`
 	NoResponseBody      bool     `json:"noResponseBody,omitempty"`
 	Errors              []string `json:"errors"`
@@ -160,6 +163,17 @@ type Metadata struct {
 	// Admission names the server pool; Lane describes its broad API work class.
 	Admission string `json:"admission,omitempty"`
 }
+// QueryInteger is an optional integer query parameter, such as a page-size
+// limit. An absent value means Default; one below Minimum is refused. A value
+// above Maximum is refused too, unless Clamped, when it is treated as Maximum.
+type QueryInteger struct {
+	Name    string `json:"name"`
+	Minimum int    `json:"minimum"`
+	Default int    `json:"default"`
+	Maximum int    `json:"maximum"`
+	Clamped bool   `json:"clamped,omitempty"`
+}
+
 type Route[Request, Response any] struct {
 	Metadata
 	Handler func(context.Context, *http.Request, Request) (Response, error)
@@ -519,6 +533,11 @@ func validate(m Metadata) error {
 	// in the generated contracts.
 	if (m.Method == "GET" || m.Method == "HEAD") && m.BodyLimit != 0 {
 		return errors.New("read route declares a request body")
+	}
+	for _, integer := range m.QueryIntegers {
+		if !slices.Contains(m.Query, integer.Name) || integer.Minimum > integer.Default || integer.Default > integer.Maximum {
+			return fmt.Errorf("query integer %q must be a declared query parameter with minimum <= default <= maximum", integer.Name)
+		}
 	}
 	for _, status := range m.SuccessStatuses {
 		if status < 200 || status >= 300 {

@@ -5599,6 +5599,15 @@ export const routes = [
     "query": [
       "limit"
     ],
+    "queryIntegers": [
+      {
+        "name": "limit",
+        "minimum": 1,
+        "default": 12,
+        "maximum": 60,
+        "clamped": true
+      }
+    ],
     "errors": [
       "invalid_request",
       "unauthorized",
@@ -8931,6 +8940,15 @@ export const routes = [
     "bodyLimit": 0,
     "query": [
       "limit"
+    ],
+    "queryIntegers": [
+      {
+        "name": "limit",
+        "minimum": 1,
+        "default": 12,
+        "maximum": 60,
+        "clamped": true
+      }
     ],
     "errors": [
       "invalid_request",
