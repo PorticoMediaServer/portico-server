@@ -45,6 +45,10 @@ func membershipIncarnation(t *testing.T, db *sql.DB, account string) string {
 func mutationRoot(t *testing.T, db *sql.DB, b Binding, installation string, revision int) string {
 	t.Helper()
 	id := fmt.Sprintf("R%021d", revision)
+	// The owner must name a genuinely enrolled, live installation lifetime.
+	if _, err := db.Exec(`INSERT INTO identity_installations(installation_hash,incarnation) VALUES(?,?) ON CONFLICT(incarnation) DO NOTHING`, fmt.Sprintf("%064x", revision), installation); err != nil {
+		t.Fatal(err)
+	}
 	_, err := db.Exec(`INSERT INTO user_mutation_roots(id,installation_incarnation,account_id,profile_id,account_incarnation,profile_incarnation,family_id,registration_revision,state) VALUES(?,?,?,?,?,?,?,?,'active')`,
 		id, installation, b.AccountID, b.ProfileID, membershipIncarnation(t, db, b.AccountID), profileLifetime(t, db, b.AccountID, b.ProfileID), b.FamilyID, revision)
 	if err != nil {

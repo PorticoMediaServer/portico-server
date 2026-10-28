@@ -147,7 +147,7 @@ func DecodeCursor(raw string, plan []Unit) (Cursor, error) {
 		if bytes.Equal(bytes.TrimSpace([]byte(raw)), []byte("null")) {
 			return c, ErrCursor
 		}
-		if len(raw) > CursorLimit {
+		if len(raw) > CursorLimit || !utf8.ValidString(raw) {
 			return c, ErrCursor
 		}
 		d := json.NewDecoder(bytes.NewBufferString(raw))
