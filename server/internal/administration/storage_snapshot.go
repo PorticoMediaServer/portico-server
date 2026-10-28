@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"portico.local/server/internal/storagepaths"
+	"portico.local/server/internal/supervise"
 )
 
 // storageUsageFresh is how long a complete snapshot is served without asking
@@ -69,18 +70,23 @@ func (s *Service) startStorageWalkLocked() {
 	}
 	done := make(chan struct{})
 	u.running = done
-	go func() {
+	supervise.Go("administration.storage-walk", func() {
 		defer close(done)
+		// A walk that panics still ends: the next read starts a fresh one.
+		var result storageUsageResult
+		err := errors.New("storage walk stopped")
+		defer func() {
+			u.mu.Lock()
+			defer u.mu.Unlock()
+			u.running, u.lastErr = nil, err
+			if err == nil {
+				u.complete, u.taken = &result, s.now()
+			}
+		}()
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
 		defer cancel()
-		result, err := s.walkStorage(ctx)
-		u.mu.Lock()
-		defer u.mu.Unlock()
-		u.running, u.lastErr = nil, err
-		if err == nil {
-			u.complete, u.taken = &result, s.now()
-		}
-	}()
+		result, err = s.walkStorage(ctx)
+	})
 }
 
 func (s *Service) walkStorage(ctx context.Context) (storageUsageResult, error) {
