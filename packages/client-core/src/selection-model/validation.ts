@@ -1,3 +1,4 @@
+import {validSelectionBasis} from '../selection-basis.ts';
 import {selectionCapabilities, selectionCapabilityNames, selectionKinds, selectionKindAllowsCapability} from './capabilities.ts';
 import {summarizeQuerySelection} from './query-summary.ts';
 import type {BrowseSelectionContext, SelectionCapabilities, SelectionContext, SelectionItem, SelectionKind, SelectionLimits, SelectionQuery, SelectionQueryType, WholeSelectionSelector} from './types.ts';
@@ -102,13 +103,15 @@ function checkedSelector(input: WholeSelectionSelector): WholeSelectionSelector 
   if ('query' in input) {
     const query = input.query;
     requireSelection(record(query) && catalogueID(query.libraryId) && catalogueID(query.pivot)
-      && Object.keys(query).every(key => ['libraryId', 'pivot', 'filter', 'sort'].includes(key)), 'invalid-query');
+      && Object.keys(query).every(key => ['libraryId', 'pivot', 'filter', 'sort', 'selectionBasis'].includes(key))
+      && (query.selectionBasis === undefined || validSelectionBasis(query.selectionBasis)), 'invalid-query');
     const sort = query.sort;
     requireSelection(sort === undefined || Array.isArray(sort) && sort.length <= 32 && sort.every(value =>
       record(value) && catalogueID(value.field) && (value.direction === 'asc' || value.direction === 'desc')
       && Object.keys(value).every(key => key === 'field' || key === 'direction')), 'invalid-query');
     return Object.freeze({query: Object.freeze({
       libraryId: query.libraryId, pivot: query.pivot,
+      ...(query.selectionBasis === undefined ? {} : {selectionBasis: query.selectionBasis}),
       ...(query.filter === undefined ? {} : {filter: queryJSON(query.filter)}),
       ...(sort === undefined ? {} : {sort: Object.freeze(sort.map(value => Object.freeze({field: value.field, direction: value.direction})))}),
     })});

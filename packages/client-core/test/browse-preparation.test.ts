@@ -30,7 +30,7 @@ function page(start = 0, extras: Record<string, unknown> = {}) {return {pivot: '
   entries: [{id: `book-${start}`, kind: 'book', title: 'Book', libraryId: 'lib', navigation: {view: 'item'}}],
   pageInfo: {start, total: 4, revision: 'r1', hasMore: true, nextCursor: ''}, ...extras};}
 const capabilityCounts = {play: 0, queue: 0, playlist: 0, myList: 4, watched: 4, collection: 4, favorite: 4, download: 0, edit: 4, refresh: 4, delete: 4};
-function whole(extras: Record<string, unknown> = {}) {return {selector: {query: {libraryId: 'lib', pivot: 'books', filter: null, sort: query.sorts}}, catalogRevision: 'r1', total: 4,
+function whole(extras: Record<string, unknown> = {}) {return {selector: {query: {libraryId: 'lib', pivot: 'books', filter: null, sort: query.sorts, selectionBasis: 'a'.repeat(64)}}, catalogRevision: 'r1', total: 4,
   types: [{kind: 'book', count: 4, capabilityCounts, libraries: [{libraryId: 'lib', count: 4}]}], ...extras};}
 function session(answer: LibraryContentApi['requestRaw'], options: Partial<BrowseSessionOptions<ContentEntry>> = {}) {
   return new BrowseSession<ContentEntry>({query, request: async () => {throw new Error('body-only transport used');}, requestRaw: answer,

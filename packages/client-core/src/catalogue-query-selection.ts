@@ -1,3 +1,4 @@
+import {validSelectionBasis} from './selection-basis.ts';
 import {clonePortableDto} from './clone-portable-dto.ts';
 import {parseBrowseNode} from './browse.ts';
 import type {CatalogueSelectionLifetime, CatalogueSelectionQueuePort} from './catalogue-selection.ts';
@@ -20,6 +21,7 @@ export function catalogueQuerySelectionSegments<C>(target: QuerySelectionTarget<
     || !target.summary.types.length || target.summary.types.some(type => !leaves.has(type.kind))
     || !/^browse_[a-f0-9]{64}$/.test(checked.expected.catalogRevision)) throw unavailable();
   const query = checked.selector.query;
+  if (query.selectionBasis !== undefined && !validSelectionBasis(query.selectionBasis)) throw unavailable();
   if (!query.libraryId || !query.pivot || target.summary.library.kind !== 'single'
     || target.summary.library.libraryId !== query.libraryId) throw unavailable();
   const sort = query.sort?.map(value => {
@@ -28,7 +30,7 @@ export function catalogueQuerySelectionSegments<C>(target: QuerySelectionTarget<
   });
   return freeze<readonly SegmentInput[]>([{source: {query: {libraryId: query.libraryId, pivot: query.pivot,
     ...(query.filter === undefined || query.filter === null ? {} : {query: parseBrowseNode(clonePortableDto(query.filter))}),
-    ...(sort?.length ? {sort} : {}), selectionRevision: checked.expected.catalogRevision}}, order: {mode: 'source'}}]);
+    ...(sort?.length ? {sort} : {}), ...(query.selectionBasis === undefined ? {} : {selectionBasis: query.selectionBasis}), selectionRevision: checked.expected.catalogRevision}}, order: {mode: 'source'}}]);
 }
 function current(lifetime: CatalogueSelectionLifetime) {
   if (lifetime.signal.aborted || !lifetime.isCurrent()) throw Object.assign(new Error('Selection retired'), {name: 'AbortError'});
