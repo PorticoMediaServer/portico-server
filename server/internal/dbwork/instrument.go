@@ -790,6 +790,18 @@ type statementHead struct {
 	named     bool
 	unknown   bool // a CTE or several statements: the scope can't be proven
 	authority bool // a write to an authority table (noticeAuthorityWrite)
+	// plainSelect is a single, comment-free plain SELECT: the one read shape an
+	// exact wake may decline. It is a negative classification, so every shape it
+	// cannot read keeps the old write-like behaviour.
+	//
+	// A SELECT is only safe to decline because no registered SQL function,
+	// collation, connection hook, module or extension in this server can write.
+	// That is a census of this build, not a property of SQL: the driver's
+	// arbitrary-callback registration (thirdparty/sqlite, FunctionImpl.Scalar)
+	// would hide a write. Adding any such registration, or enabling
+	// load_extension, requires updating TestNoArbitrarySQLCallbackSurfaces (which
+	// pins the census) and re-reading this exemption before it ships.
+	plainSelect bool
 }
 
 var statementHeads struct {
@@ -807,6 +819,15 @@ func headOf(query string) statementHead {
 	text := strings.ToLower(strings.TrimSpace(query))
 	h := statementHead{unknown: strings.HasPrefix(text, "with ") || strings.Contains(strings.TrimSuffix(text, ";"), ";")}
 	h.table, h.named = writtenTable(text)
+	// A plain SELECT writes nothing, so an exact wake that fires for it is a
+	// false one. Only the ASCII-space spelling after existing trim/case
+	// normalisation is accepted: a comment anywhere, an internal semicolon or a
+	// CTE head all keep the old conservative behaviour, even when the same text
+	// would still execute as a read. INSERT … SELECT begins INSERT and is never
+	// exempt, and a statement-level readonly bit would not prove an arbitrary
+	// callback harmless either (see plainSelect).
+	h.plainSelect = strings.HasPrefix(text, "select ") && !h.unknown &&
+		!strings.Contains(text, "--") && !strings.Contains(text, "/*")
 	if len(query) >= 6 {
 		switch query[0] {
 		case 'i', 'I', 'u', 'U', 'd', 'D', 'r', 'R':
