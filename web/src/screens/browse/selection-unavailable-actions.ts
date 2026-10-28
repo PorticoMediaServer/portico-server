@@ -18,6 +18,10 @@ export function selectionUnavailableActions(actions: SelectionActions, unavailab
     delete result.onPlaylist;
     result.playlistDisabledReason = defaultI18n.t('next.selection.unsupportedSort');
   }
+  if (unavailable?.delete && result.onDelete && !result.deleteDisabledReason && !result.deleteExplanation) {
+    delete result.onDelete;
+    result.deleteDisabledReason = defaultI18n.t('next.selection.unsupportedSort');
+  }
   if (unavailable?.metadataPreview && result.onEdit) {
     delete result.onEdit;
     result.editDisabledReason = defaultI18n.t('next.selection.previewLimit');

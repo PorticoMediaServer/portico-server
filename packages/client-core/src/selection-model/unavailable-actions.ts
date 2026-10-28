@@ -6,6 +6,6 @@ export function validSelectionUnavailableActions(value: unknown): value is Selec
   if (!value || typeof value !== 'object' || Array.isArray(value)
     || ![Object.prototype, null].includes(Object.getPrototypeOf(value))) return false;
   return Object.entries(value).every(([key, reason]) =>
-    (key === 'play' || key === 'queue' || key === 'playlist') ? reason === 'unsupported-sort'
+    (key === 'play' || key === 'queue' || key === 'playlist' || key === 'delete') ? reason === 'unsupported-sort'
       : key === 'metadataPreview' && reason === 'preview-limit');
 }

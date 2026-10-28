@@ -19,7 +19,7 @@ export async function resolveQueryDelete(target: QuerySelectionTarget<BrowseSele
   const check = () => {if (signal.aborted || !ports.isCurrent()) throw new DOMException('Selection retired', 'AbortError');};
   check();
   const checked = selectionQuerySelector(target);
-  if (!queryDeleteTarget(target) || !checked.ok || !('query' in checked.selector)) throw new Error('query-delete-unavailable');
+  if (target.summary.unavailableActions?.delete || !queryDeleteTarget(target) || !checked.ok || !('query' in checked.selector)) throw new Error('query-delete-unavailable');
   const query = structuredClone(checked.selector.query), expected = checked.expected.catalogRevision;
   const filter = query.filter === undefined || query.filter === null ? null : parseBrowseNode(query.filter);
   const body = {pivot: query.pivot, ...(query.selectionBasis === undefined ? {} : {selectionBasis: query.selectionBasis}), ...(filter ? {query: filter} : {}), ...(query.sort?.length ? {sort: query.sort} : {}),

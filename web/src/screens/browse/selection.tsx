@@ -250,6 +250,7 @@ export function createLibrarySelection({playSelection, owner, descriptor, wholeS
   const deleteStore = {subscribe: (listener: () => void) => {deleteListeners.add(listener); return () => {deleteListeners.delete(listener);};}, getSnapshot: () => deleteSession};
   const openDelete = () => {
     const selection = playSelection.getSnapshot().selection, operation = playSelection.captureOperation?.();
+    if (selection && selection.summary.count <= 200 && selection.summary.unavailableActions?.delete) throw new Error('selection-delete-unavailable');
     if (!deletion || deletion.signal.aborted || !deletion.isCurrent() || !selection || selection.summary.library.kind !== 'single' || !operation || operation.target !== selection.target || !playSelection.isOperationCurrent?.(operation)
       || (selection.summary.count <= 200 && (!selection.summary.every.delete || selection.summary.library.kind !== 'single' || operation.target.mode === 'query' && !queryDeleteTarget(operation.target)))) throw new Error('selection-delete-unavailable');
     closeDelete();

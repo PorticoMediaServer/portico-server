@@ -22,7 +22,7 @@ function useActionMenus(selection: SelectionCount, actions: SelectionActions) {
   if (actions.onRemoveFromMyList) extra.push({id: 'remove', label: text('next.selection.removeFromMyList'), icon: 'i-x', onSelect: actions.onRemoveFromMyList});
   if (actions.downloadDisabledReason) extra.push({id: 'download', label: defaultI18n.t('action.download'), icon: 'i-download', disabled: true, description: actions.downloadDisabledReason, onSelect: () => {}});
   if (actions.onRefresh) owner.push({id: 'refresh', label: text('next.selection.refresh'), icon: 'i-refresh', onSelect: actions.onRefresh});
-  if (actions.onDelete || actions.deleteDisabledReason) owner.push({id: 'delete', label: text('next.selection.deleteMenu'), icon: 'i-trash', destructive: true, disabled: !!actions.deleteDisabledReason, description: actions.deleteDisabledReason ?? actions.deleteExplanation, onSelect: () => {actions.onDelete?.();}});
+  if (actions.onDelete || actions.deleteDisabledReason) owner.push({id: 'delete', label: text('next.selection.deleteMenu'), icon: 'i-trash', destructive: true, disabled: !!actions.deleteDisabledReason, description: actions.deleteDisabledReason ?? actions.deleteExplanation, onSelect: () => {if (!actions.deleteDisabledReason) actions.onDelete?.();}});
   const ownerLabel = <span className={styles.ownerMenuLabel}>{actions.ownerMark}<span>{text('next.selection.owner')}</span></span>;
   const moreRow = (item: ActionEntry, ownerRow = false) => <MenuItem key={item.id} icon={item.icon} description={item.description} disabled={item.disabled} selected={item.selected} destructive={item.destructive} onSelect={item.onSelect} className={ownerRow ? styles.moreOwnerRow : undefined}>{item.label}</MenuItem>;
   const menus = <>
