@@ -7379,7 +7379,9 @@ var PorticoCastContracts = (function(exports) {
 						"downloadMaxQuality": { "type": "string" },
 						"ffmpegPath": { "type": "string" },
 						"hardwareBackend": { "type": "string" },
+						"hardwareDecode": { "type": "boolean" },
 						"hardwareDevice": { "type": "string" },
+						"hardwareSelection": { "type": "string" },
 						"hdrToneMapping": { "type": "boolean" },
 						"hdrToneMappingAlgorithm": { "type": "string" },
 						"home.communityActivityEnabled": { "type": "boolean" },
@@ -7668,6 +7670,8 @@ var PorticoCastContracts = (function(exports) {
 						"serverCap",
 						"hardwareBackend",
 						"hardwareDevice",
+						"hardwareSelection",
+						"hardwareDecode",
 						"hdrToneMapping",
 						"hdrToneMappingAlgorithm",
 						"x264Preset",
@@ -7774,7 +7778,9 @@ var PorticoCastContracts = (function(exports) {
 								"downloadMaxQuality": { "type": "string" },
 								"ffmpegPath": { "type": "string" },
 								"hardwareBackend": { "type": "string" },
+								"hardwareDecode": { "type": "boolean" },
 								"hardwareDevice": { "type": "string" },
+								"hardwareSelection": { "type": "string" },
 								"hdrToneMapping": { "type": "boolean" },
 								"hdrToneMappingAlgorithm": { "type": "string" },
 								"home.communityActivityEnabled": { "type": "boolean" },
@@ -8063,6 +8069,8 @@ var PorticoCastContracts = (function(exports) {
 								"serverCap",
 								"hardwareBackend",
 								"hardwareDevice",
+								"hardwareSelection",
+								"hardwareDecode",
 								"hdrToneMapping",
 								"hdrToneMappingAlgorithm",
 								"x264Preset",
@@ -8173,7 +8181,9 @@ var PorticoCastContracts = (function(exports) {
 								"downloadMaxQuality": { "type": "string" },
 								"ffmpegPath": { "type": "string" },
 								"hardwareBackend": { "type": "string" },
+								"hardwareDecode": { "type": "boolean" },
 								"hardwareDevice": { "type": "string" },
+								"hardwareSelection": { "type": "string" },
 								"hdrToneMapping": { "type": "boolean" },
 								"hdrToneMappingAlgorithm": { "type": "string" },
 								"home.communityActivityEnabled": { "type": "boolean" },
@@ -8462,6 +8472,8 @@ var PorticoCastContracts = (function(exports) {
 								"serverCap",
 								"hardwareBackend",
 								"hardwareDevice",
+								"hardwareSelection",
+								"hardwareDecode",
 								"hdrToneMapping",
 								"hdrToneMappingAlgorithm",
 								"x264Preset",
@@ -24314,6 +24326,10 @@ var PorticoCastContracts = (function(exports) {
 							"minimum": -9007199254740991,
 							"type": "integer"
 						},
+						"noticeAudience": {
+							"additionalProperties": { "type": "string" },
+							"type": "object"
+						},
 						"retentionDays": {
 							"maximum": 9007199254740991,
 							"minimum": -9007199254740991,
@@ -24343,7 +24359,8 @@ var PorticoCastContracts = (function(exports) {
 						"storageWarningPercent",
 						"storageCriticalPercent",
 						"certificateWarningDays",
-						"maintenanceIntervalMinutes"
+						"maintenanceIntervalMinutes",
+						"noticeAudience"
 					],
 					"type": "object"
 				},
@@ -29944,7 +29961,9 @@ var PorticoCastContracts = (function(exports) {
 								"downloadMaxQuality": { "type": "string" },
 								"ffmpegPath": { "type": "string" },
 								"hardwareBackend": { "type": "string" },
+								"hardwareDecode": { "type": "boolean" },
 								"hardwareDevice": { "type": "string" },
+								"hardwareSelection": { "type": "string" },
 								"hdrToneMapping": { "type": "boolean" },
 								"hdrToneMappingAlgorithm": { "type": "string" },
 								"home.communityActivityEnabled": { "type": "boolean" },
@@ -30233,6 +30252,8 @@ var PorticoCastContracts = (function(exports) {
 								"serverCap",
 								"hardwareBackend",
 								"hardwareDevice",
+								"hardwareSelection",
+								"hardwareDecode",
 								"hdrToneMapping",
 								"hdrToneMappingAlgorithm",
 								"x264Preset",
@@ -30343,7 +30364,9 @@ var PorticoCastContracts = (function(exports) {
 								"downloadMaxQuality": { "type": "string" },
 								"ffmpegPath": { "type": "string" },
 								"hardwareBackend": { "type": "string" },
+								"hardwareDecode": { "type": "boolean" },
 								"hardwareDevice": { "type": "string" },
+								"hardwareSelection": { "type": "string" },
 								"hdrToneMapping": { "type": "boolean" },
 								"hdrToneMappingAlgorithm": { "type": "string" },
 								"home.communityActivityEnabled": { "type": "boolean" },
@@ -30632,6 +30655,8 @@ var PorticoCastContracts = (function(exports) {
 								"serverCap",
 								"hardwareBackend",
 								"hardwareDevice",
+								"hardwareSelection",
+								"hardwareDecode",
 								"hdrToneMapping",
 								"hdrToneMappingAlgorithm",
 								"x264Preset",
@@ -93998,6 +94023,9 @@ var PorticoCastContracts = (function(exports) {
 		},
 		"GetMetadataSettingsResponse": {
 			"properties": {
+				"acoustidKeyConfigured": { "type": "boolean" },
+				"acoustidKeySource": { "type": "string" },
+				"animeTitles": { "type": "string" },
 				"artworkLanguage": { "type": "string" },
 				"artworkMaxEdge": {
 					"enum": [
@@ -94010,8 +94038,10 @@ var PorticoCastContracts = (function(exports) {
 					"type": "integer"
 				},
 				"artworkPreference": { "type": "string" },
+				"castPhotos": { "type": "boolean" },
 				"defaultLanguage": { "type": "string" },
 				"defaultRegion": { "type": "string" },
+				"fallbackLanguage": { "type": "string" },
 				"includeAdult": { "type": "boolean" },
 				"libraries": {
 					"items": {
@@ -94092,6 +94122,15 @@ var PorticoCastContracts = (function(exports) {
 				"openSubtitlesKeyConfigured": { "type": "boolean" },
 				"openSubtitlesPasswordConfigured": { "type": "boolean" },
 				"openSubtitlesUsername": { "type": "string" },
+				"refreshAll": {
+					"properties": {
+						"requestedAt": { "type": "string" },
+						"running": { "type": "boolean" }
+					},
+					"required": ["running"],
+					"type": "object"
+				},
+				"refreshPolicy": { "type": "string" },
 				"revision": {
 					"maximum": 9007199254740991,
 					"minimum": -9007199254740991,
@@ -94111,7 +94150,14 @@ var PorticoCastContracts = (function(exports) {
 				"openSubtitlesKeyConfigured",
 				"openSubtitlesUsername",
 				"openSubtitlesPasswordConfigured",
-				"openSubtitles"
+				"openSubtitles",
+				"refreshPolicy",
+				"fallbackLanguage",
+				"animeTitles",
+				"castPhotos",
+				"acoustidKeyConfigured",
+				"acoustidKeySource",
+				"refreshAll"
 			],
 			"type": "object"
 		},
@@ -140583,6 +140629,10 @@ var PorticoCastContracts = (function(exports) {
 					"minimum": -9007199254740991,
 					"type": "integer"
 				},
+				"noticeAudience": {
+					"additionalProperties": { "type": "string" },
+					"type": "object"
+				},
 				"storageCriticalPercent": {
 					"maximum": 9007199254740991,
 					"minimum": -9007199254740991,
@@ -140616,6 +140666,10 @@ var PorticoCastContracts = (function(exports) {
 							"minimum": -9007199254740991,
 							"type": "integer"
 						},
+						"noticeAudience": {
+							"additionalProperties": { "type": "string" },
+							"type": "object"
+						},
 						"retentionDays": {
 							"maximum": 9007199254740991,
 							"minimum": -9007199254740991,
@@ -140645,7 +140699,8 @@ var PorticoCastContracts = (function(exports) {
 						"storageWarningPercent",
 						"storageCriticalPercent",
 						"certificateWarningDays",
-						"maintenanceIntervalMinutes"
+						"maintenanceIntervalMinutes",
+						"noticeAudience"
 					],
 					"type": "object"
 				},
@@ -171558,6 +171613,8 @@ var PorticoCastContracts = (function(exports) {
 		},
 		"PutMetadataSettingsRequest": {
 			"properties": {
+				"acoustidKey": { "type": "string" },
+				"animeTitles": { "type": "string" },
 				"artworkLanguage": { "type": "string" },
 				"artworkMaxEdge": {
 					"enum": [
@@ -171570,6 +171627,7 @@ var PorticoCastContracts = (function(exports) {
 					"type": "integer"
 				},
 				"artworkPreference": { "type": "string" },
+				"castPhotos": { "type": "boolean" },
 				"defaultLanguage": { "type": "string" },
 				"defaultRegion": { "type": "string" },
 				"expectedRevision": {
@@ -171577,6 +171635,7 @@ var PorticoCastContracts = (function(exports) {
 					"minimum": -9007199254740991,
 					"type": "integer"
 				},
+				"fallbackLanguage": { "type": "string" },
 				"includeAdult": { "type": "boolean" },
 				"libraries": {
 					"items": {
@@ -171602,6 +171661,7 @@ var PorticoCastContracts = (function(exports) {
 				"openSubtitlesApiKey": { "type": "string" },
 				"openSubtitlesPassword": { "type": "string" },
 				"openSubtitlesUsername": { "type": "string" },
+				"refreshPolicy": { "type": "string" },
 				"tmdbReadToken": { "type": "string" },
 				"tvdbProjectKey": { "type": "string" }
 			},
@@ -171614,6 +171674,9 @@ var PorticoCastContracts = (function(exports) {
 		},
 		"PutMetadataSettingsResponse": {
 			"properties": {
+				"acoustidKeyConfigured": { "type": "boolean" },
+				"acoustidKeySource": { "type": "string" },
+				"animeTitles": { "type": "string" },
 				"artworkLanguage": { "type": "string" },
 				"artworkMaxEdge": {
 					"enum": [
@@ -171626,8 +171689,10 @@ var PorticoCastContracts = (function(exports) {
 					"type": "integer"
 				},
 				"artworkPreference": { "type": "string" },
+				"castPhotos": { "type": "boolean" },
 				"defaultLanguage": { "type": "string" },
 				"defaultRegion": { "type": "string" },
+				"fallbackLanguage": { "type": "string" },
 				"includeAdult": { "type": "boolean" },
 				"libraries": {
 					"items": {
@@ -171708,6 +171773,15 @@ var PorticoCastContracts = (function(exports) {
 				"openSubtitlesKeyConfigured": { "type": "boolean" },
 				"openSubtitlesPasswordConfigured": { "type": "boolean" },
 				"openSubtitlesUsername": { "type": "string" },
+				"refreshAll": {
+					"properties": {
+						"requestedAt": { "type": "string" },
+						"running": { "type": "boolean" }
+					},
+					"required": ["running"],
+					"type": "object"
+				},
+				"refreshPolicy": { "type": "string" },
 				"revision": {
 					"maximum": 9007199254740991,
 					"minimum": -9007199254740991,
@@ -171727,7 +171801,14 @@ var PorticoCastContracts = (function(exports) {
 				"openSubtitlesKeyConfigured",
 				"openSubtitlesUsername",
 				"openSubtitlesPasswordConfigured",
-				"openSubtitles"
+				"openSubtitles",
+				"refreshPolicy",
+				"fallbackLanguage",
+				"animeTitles",
+				"castPhotos",
+				"acoustidKeyConfigured",
+				"acoustidKeySource",
+				"refreshAll"
 			],
 			"type": "object"
 		},
@@ -175963,6 +176044,151 @@ var PorticoCastContracts = (function(exports) {
 			"required": ["items", "limit"],
 			"type": "object"
 		},
+		"RefreshAllMetadataRequest": {
+			"properties": {},
+			"required": [],
+			"type": "object"
+		},
+		"RefreshAllMetadataResponse": {
+			"properties": {
+				"acoustidKeyConfigured": { "type": "boolean" },
+				"acoustidKeySource": { "type": "string" },
+				"animeTitles": { "type": "string" },
+				"artworkLanguage": { "type": "string" },
+				"artworkMaxEdge": {
+					"enum": [
+						1280,
+						1920,
+						2560
+					],
+					"maximum": 9007199254740991,
+					"minimum": -9007199254740991,
+					"type": "integer"
+				},
+				"artworkPreference": { "type": "string" },
+				"castPhotos": { "type": "boolean" },
+				"defaultLanguage": { "type": "string" },
+				"defaultRegion": { "type": "string" },
+				"fallbackLanguage": { "type": "string" },
+				"includeAdult": { "type": "boolean" },
+				"libraries": {
+					"items": {
+						"properties": {
+							"agent": { "type": "string" },
+							"agentOptions": {
+								"items": { "type": "string" },
+								"type": "array"
+							},
+							"canScrub": { "type": "boolean" },
+							"episodeThumbnailMode": { "type": "string" },
+							"id": { "type": "string" },
+							"kind": { "type": "string" },
+							"lyricsSource": { "type": "string" },
+							"managed": { "type": "boolean" },
+							"name": { "type": "string" },
+							"revision": { "type": "string" },
+							"scrubPreviews": { "type": "boolean" }
+						},
+						"required": [
+							"id",
+							"name",
+							"kind",
+							"revision",
+							"agent",
+							"agentOptions",
+							"lyricsSource",
+							"episodeThumbnailMode",
+							"scrubPreviews",
+							"canScrub",
+							"managed"
+						],
+						"type": "object"
+					},
+					"type": "array"
+				},
+				"librariesComplete": { "type": "boolean" },
+				"localArtworkLimitBytes": {
+					"maximum": 9007199254740991,
+					"minimum": -9007199254740991,
+					"type": "integer"
+				},
+				"localArtworkUsedBytes": {
+					"maximum": 9007199254740991,
+					"minimum": -9007199254740991,
+					"type": "integer"
+				},
+				"onlineLookups": { "type": "boolean" },
+				"openSubtitles": {
+					"properties": {
+						"account": { "type": "string" },
+						"accountSource": { "type": "string" },
+						"checkedAt": { "type": "string" },
+						"downloadsAllowed": {
+							"maximum": 9007199254740991,
+							"minimum": -9007199254740991,
+							"type": "integer"
+						},
+						"downloadsRemaining": {
+							"maximum": 9007199254740991,
+							"minimum": -9007199254740991,
+							"type": "integer"
+						},
+						"downloadsResetAt": { "type": "string" },
+						"keySource": { "type": "string" },
+						"problem": { "type": "string" },
+						"retryAt": { "type": "string" }
+					},
+					"required": [
+						"keySource",
+						"accountSource",
+						"account",
+						"downloadsRemaining",
+						"downloadsAllowed"
+					],
+					"type": "object"
+				},
+				"openSubtitlesKeyConfigured": { "type": "boolean" },
+				"openSubtitlesPasswordConfigured": { "type": "boolean" },
+				"openSubtitlesUsername": { "type": "string" },
+				"refreshAll": {
+					"properties": {
+						"requestedAt": { "type": "string" },
+						"running": { "type": "boolean" }
+					},
+					"required": ["running"],
+					"type": "object"
+				},
+				"refreshPolicy": { "type": "string" },
+				"revision": {
+					"maximum": 9007199254740991,
+					"minimum": -9007199254740991,
+					"type": "integer"
+				},
+				"tmdbCredentialConfigured": { "type": "boolean" },
+				"tvdbCredentialConfigured": { "type": "boolean" }
+			},
+			"required": [
+				"localArtworkUsedBytes",
+				"revision",
+				"localArtworkLimitBytes",
+				"includeAdult",
+				"artworkMaxEdge",
+				"tmdbCredentialConfigured",
+				"tvdbCredentialConfigured",
+				"openSubtitlesKeyConfigured",
+				"openSubtitlesUsername",
+				"openSubtitlesPasswordConfigured",
+				"openSubtitles",
+				"refreshPolicy",
+				"fallbackLanguage",
+				"animeTitles",
+				"castPhotos",
+				"acoustidKeyConfigured",
+				"acoustidKeySource",
+				"refreshAll"
+			],
+			"type": "object"
+		},
 		"RefreshItemsMetadataRequest": {
 			"properties": {},
 			"required": [],
@@ -177590,161 +177816,6 @@ var PorticoCastContracts = (function(exports) {
 				}
 			},
 			"required": ["paths", "jobs"],
-			"type": "object"
-		},
-		"ReportPlaybackTimelineRequest": {
-			"properties": {
-				"audioTrackId": { "type": "string" },
-				"bandwidthKbps": {
-					"maximum": 9007199254740991,
-					"minimum": -9007199254740991,
-					"type": "integer"
-				},
-				"bufferedMs": {
-					"maximum": 9007199254740991,
-					"minimum": -9007199254740991,
-					"type": "integer"
-				},
-				"droppedFrames": {
-					"maximum": 9007199254740991,
-					"minimum": -9007199254740991,
-					"type": "integer"
-				},
-				"error": {
-					"properties": {
-						"code": { "type": "string" },
-						"detail": { "type": "string" }
-					},
-					"required": ["code"],
-					"type": "object"
-				},
-				"generation": {
-					"maximum": 9007199254740991,
-					"minimum": -9007199254740991,
-					"type": "integer"
-				},
-				"muted": { "type": "boolean" },
-				"observedPlayback": {
-					"properties": {
-						"audio": {
-							"properties": {
-								"bitDepth": {
-									"maximum": 9007199254740991,
-									"minimum": -9007199254740991,
-									"type": "integer"
-								},
-								"channels": {
-									"maximum": 9007199254740991,
-									"minimum": -9007199254740991,
-									"type": "integer"
-								},
-								"codec": { "type": "string" },
-								"handling": { "type": "string" },
-								"layout": { "type": "string" },
-								"objectAudio": { "type": "string" },
-								"sampleRate": {
-									"maximum": 9007199254740991,
-									"minimum": -9007199254740991,
-									"type": "integer"
-								}
-							},
-							"required": [],
-							"type": "object"
-						},
-						"deliveredBitrateKbps": {
-							"maximum": 9007199254740991,
-							"minimum": -9007199254740991,
-							"type": "integer"
-						},
-						"screen": {
-							"properties": {
-								"dynamicRange": { "type": "string" },
-								"refreshRateHz": { "type": "number" }
-							},
-							"required": [],
-							"type": "object"
-						},
-						"subtitles": {
-							"properties": { "rendering": { "type": "string" } },
-							"required": ["rendering"],
-							"type": "object"
-						},
-						"video": {
-							"properties": {
-								"bitDepth": {
-									"maximum": 9007199254740991,
-									"minimum": -9007199254740991,
-									"type": "integer"
-								},
-								"dynamicRange": { "type": "string" },
-								"frameRateHz": { "type": "number" },
-								"height": {
-									"maximum": 9007199254740991,
-									"minimum": -9007199254740991,
-									"type": "integer"
-								},
-								"width": {
-									"maximum": 9007199254740991,
-									"minimum": -9007199254740991,
-									"type": "integer"
-								}
-							},
-							"required": [],
-							"type": "object"
-						}
-					},
-					"required": [],
-					"type": "object"
-				},
-				"partIndex": {
-					"maximum": 9007199254740991,
-					"minimum": -9007199254740991,
-					"type": "integer"
-				},
-				"positionMs": {
-					"maximum": 9007199254740991,
-					"minimum": -9007199254740991,
-					"type": "integer"
-				},
-				"rate": { "type": "number" },
-				"seeked": { "type": "boolean" },
-				"seq": {
-					"maximum": 9007199254740991,
-					"minimum": -9007199254740991,
-					"type": "integer"
-				},
-				"skipped": {
-					"properties": {
-						"markerId": { "type": "string" },
-						"mode": { "type": "string" },
-						"positionMs": {
-							"maximum": 9007199254740991,
-							"minimum": -9007199254740991,
-							"type": "integer"
-						}
-					},
-					"required": [
-						"markerId",
-						"mode",
-						"positionMs"
-					],
-					"type": "object"
-				},
-				"state": { "type": "string" },
-				"subtitleTrackId": { "type": "string" },
-				"volume": { "type": "number" }
-			},
-			"required": [
-				"seq",
-				"generation",
-				"state",
-				"positionMs"
-			],
-			"type": "object"
-		},
-		"ReportPlaybackTimelineResponse": {
-			"properties": {},
-			"required": [],
 			"type": "object"
 		},
 		"RevalidateDownloadReceiptsRequest": {
