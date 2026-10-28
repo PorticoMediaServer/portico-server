@@ -10430,6 +10430,9 @@ export const schemas = {
             "minimum": -9007199254740991,
             "type": "integer"
           },
+          "memoryCap": {
+            "type": "string"
+          },
           "musicAwayQuality": {
             "type": "string"
           },
@@ -10700,6 +10703,7 @@ export const schemas = {
           "temporaryDirectory",
           "ffmpegPath",
           "sessionStorageMiB",
+          "memoryCap",
           "maxConcurrentSessions",
           "maxHardwareSessions",
           "maxSoftwareSessions",
@@ -10917,6 +10921,9 @@ export const schemas = {
                 "maximum": 9007199254740991,
                 "minimum": -9007199254740991,
                 "type": "integer"
+              },
+              "memoryCap": {
+                "type": "string"
               },
               "musicAwayQuality": {
                 "type": "string"
@@ -11188,6 +11195,7 @@ export const schemas = {
               "temporaryDirectory",
               "ffmpegPath",
               "sessionStorageMiB",
+              "memoryCap",
               "maxConcurrentSessions",
               "maxHardwareSessions",
               "maxSoftwareSessions",
@@ -11422,6 +11430,9 @@ export const schemas = {
                 "minimum": -9007199254740991,
                 "type": "integer"
               },
+              "memoryCap": {
+                "type": "string"
+              },
               "musicAwayQuality": {
                 "type": "string"
               },
@@ -11692,6 +11703,7 @@ export const schemas = {
               "temporaryDirectory",
               "ffmpegPath",
               "sessionStorageMiB",
+              "memoryCap",
               "maxConcurrentSessions",
               "maxHardwareSessions",
               "maxSoftwareSessions",
@@ -40880,6 +40892,9 @@ export const schemas = {
                 "minimum": -9007199254740991,
                 "type": "integer"
               },
+              "memoryCap": {
+                "type": "string"
+              },
               "musicAwayQuality": {
                 "type": "string"
               },
@@ -41150,6 +41165,7 @@ export const schemas = {
               "temporaryDirectory",
               "ffmpegPath",
               "sessionStorageMiB",
+              "memoryCap",
               "maxConcurrentSessions",
               "maxHardwareSessions",
               "maxSoftwareSessions",
@@ -41384,6 +41400,9 @@ export const schemas = {
                 "minimum": -9007199254740991,
                 "type": "integer"
               },
+              "memoryCap": {
+                "type": "string"
+              },
               "musicAwayQuality": {
                 "type": "string"
               },
@@ -41654,6 +41673,7 @@ export const schemas = {
               "temporaryDirectory",
               "ffmpegPath",
               "sessionStorageMiB",
+              "memoryCap",
               "maxConcurrentSessions",
               "maxHardwareSessions",
               "maxSoftwareSessions",
