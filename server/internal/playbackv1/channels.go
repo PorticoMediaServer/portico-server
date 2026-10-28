@@ -13,7 +13,6 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
-	"portico.local/server/internal/catalog"
 	"strconv"
 	"strings"
 	"time"
@@ -373,80 +372,6 @@ func (s *Service) patchChannel(ctx context.Context, c Caller, r row, change Chan
 	s.hub.wake()
 	s.wakeChannels()
 	return s.view(r), nil
-}
-
-// timelineChannel is a channel session's timeline report (§6): it renews the
-// lease, keeps play/pause, and is the channel's observation. A report's
-// generation is the buffer's; an older buffer's report renews and changes
-// nothing. It acknowledges the pending seek once the viewer's position reaches it.
-func (s *Service) timelineChannel(ctx context.Context, r row, report Report) (time.Duration, error) {
-	now := s.now()
-	lease := now.Add(s.lease()).UnixMilli()
-	state := r.state
-	err := dbwork.WithWriteTxContext(ctx, s.DB, dbwork.ClassEstablishedPlayback, func(ctx context.Context, tx *sql.Tx) error {
-		st, err := s.Channels.ReadTx(ctx, tx, rowPrincipal(r), r.id)
-		if err != nil {
-			return err
-		}
-		if report.Seq <= r.lastSeq || strconv.Itoa(report.Generation) != st.Media.BufferGeneration {
-			_, err := tx.ExecContext(ctx, `UPDATE playback_v1_sessions SET lease_expires_ms=? WHERE id=? AND ended_ms=0`, lease, r.id)
-			return err
-		}
-		switch report.State {
-		case "playing", "paused":
-			state = report.State
-		}
-		changed := state != r.state
-		revision := r.revision
-		if changed {
-			revision++
-		}
-		// The runtime snapshot can lag a newly committed buffer. Keep its
-		// durable generation in the acceptance predicate as well.
-		result, err := tx.ExecContext(ctx, `UPDATE playback_v1_sessions SET state=?,position_ms=?,last_seq=?,lease_expires_ms=?,revision=?,updated_ms=?,`+pausedSinceUpdate+` WHERE id=? AND ended_ms=0 AND generation=? AND last_seq<? AND EXISTS(SELECT 1 FROM playback_channel_sessions c WHERE c.session_id=playback_v1_sessions.id AND c.buffer_ordinal=? AND c.ended_ms=0)`, state, report.PositionMs, report.Seq, lease, revision, now.UnixMilli(), state, now.UnixMilli(), r.id, r.generation, report.Seq, report.Generation)
-		if err != nil {
-			return err
-		}
-		if accepted, _ := result.RowsAffected(); accepted == 0 {
-			state = r.state
-			_, err := tx.ExecContext(ctx, `UPDATE playback_v1_sessions SET lease_expires_ms=? WHERE id=? AND ended_ms=0`, lease, r.id)
-			return err
-		}
-		if e := catalog.RecordLivePlaybackTx(tx, r.id, now.UnixMilli(), report.State); e != nil {
-			return e
-		}
-		ack := ""
-		if q := st.Desired.Seek; q != nil && q.Kind == "position" && q.PositionUS != nil && q.Generation == st.Media.BufferGeneration && st.AcknowledgedSeekID != q.ID {
-			target, _ := strconv.ParseInt(*q.PositionUS, 10, 64)
-			if d := report.PositionMs*1000 - target; d >= -1_000_000 && d <= 1_000_000 {
-				ack = q.ID
-			}
-		}
-		// A position outside the window or a gap is recorded as the seek's error;
-		// neither fails the report.
-		if observedErr := s.Channels.ObserveTx(ctx, tx, r.id, st.Media.BufferGeneration, report.Seq, report.PositionMs*1000, ack); observedErr != nil {
-			if !isControlFault(observedErr) {
-				return observedErr
-			}
-		} else if err := playback.StoreObservedPlaybackTx(ctx, tx, r.id, r.device, r.generation, report.Generation, report.Seq, now.UnixMilli(), report.ObservedPlayback); err != nil {
-			return err
-		}
-		if changed {
-			r.state, r.revision = state, revision
-			if err := s.sessionEventsTx(ctx, tx, r, now, false); err != nil {
-				return err
-			}
-		}
-		if report.State == "ended" {
-			return s.endTx(ctx, tx, r, now, "ended", "")
-		}
-		return nil
-	})
-	if err != nil {
-		return 0, err
-	}
-	s.hub.wake()
-	return s.reportEvery(state), nil
 }
 
 func isControlFault(err error) bool {

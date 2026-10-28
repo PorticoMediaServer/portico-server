@@ -255,23 +255,17 @@ type observations struct {
 	loggedAt time.Time
 }
 
-// observations returns the store, or nil while the protocol is not enabled.
+// observations returns the store, made on first use.
 func (s *Service) observations() *observations {
-	if !s.ObservationsEnabled {
-		return nil
-	}
 	s.obsOnce.Do(func() {
 		s.obs = &observations{entries: map[string]*observer{}, kick: make(chan struct{}, 1), loggedAt: s.now()}
 	})
 	return s.obs
 }
 
-// ObservationStats reports the exact counters (zero while disabled).
+// ObservationStats reports the exact counters.
 func (s *Service) ObservationStats() ObservationStats {
-	if o := s.observations(); o != nil {
-		return o.counts.snapshot()
-	}
-	return ObservationStats{}
+	return s.observations().counts.snapshot()
 }
 
 func newEpoch() string {
@@ -281,10 +275,10 @@ func newEpoch() string {
 }
 
 // requireObservationProtocol refuses to create a session for a client that
-// cannot report it, once the protocol is enabled: such a client would play
-// with nobody keeping its lease or its place.
+// cannot report it: such a client would play with nobody keeping its lease or
+// its place.
 func (s *Service) requireObservationProtocol(c Caller) error {
-	if s.observations() != nil && c.PlaybackProtocol < PlaybackProtocol {
+	if c.PlaybackProtocol < PlaybackProtocol {
 		return ErrClientUpdateRequired
 	}
 	return nil
@@ -294,9 +288,6 @@ func (s *Service) requireObservationProtocol(c Caller) error {
 // observations and returns a fresh epoch. It writes nothing.
 func (s *Service) ClaimObserver(ctx context.Context, c Caller, id string, claim ObserverClaim) (ObserverGrant, error) {
 	o := s.observations()
-	if o == nil {
-		return ObserverGrant{}, ErrNotFound
-	}
 	if claim.Generation < 0 || len(claim.Replaces) > 64 {
 		return ObserverGrant{}, &FieldError{Path: "generation"}
 	}
@@ -396,9 +387,6 @@ func (s *Service) Observe(ctx context.Context, c Caller, id string, ob Observati
 		return ObservationAck{}, err
 	}
 	o := s.observations()
-	if o == nil {
-		return ObservationAck{}, ErrNotFound
-	}
 	now := s.now()
 	o.mu.Lock()
 	e := o.entries[id]
@@ -523,9 +511,6 @@ func (s *Service) observationMiss(ctx context.Context, c Caller, id string) erro
 // names no position re-plans from here rather than from the last batch.
 func (s *Service) latestObservedPosition(id string, generation int) (int64, bool) {
 	o := s.observations()
-	if o == nil {
-		return 0, false
-	}
 	o.mu.Lock()
 	defer o.mu.Unlock()
 	e := o.entries[id]
@@ -538,9 +523,6 @@ func (s *Service) latestObservedPosition(id string, generation int) (int64, bool
 // observedBy reports whether the caller's device owns the session's observer.
 func (s *Service) observedBy(id string, c Caller) bool {
 	o := s.observations()
-	if o == nil {
-		return false
-	}
 	o.mu.Lock()
 	defer o.mu.Unlock()
 	e := o.entries[id]
@@ -550,9 +532,6 @@ func (s *Service) observedBy(id string, c Caller) bool {
 // latestObservedState is the state the playing device last reported, if any.
 func (s *Service) latestObservedState(id string) (string, time.Time, bool) {
 	o := s.observations()
-	if o == nil {
-		return "", time.Time{}, false
-	}
 	o.mu.Lock()
 	defer o.mu.Unlock()
 	e := o.entries[id]
@@ -820,12 +799,9 @@ func (s *Service) applyObservationBatch(ctx context.Context, o *observations, ba
 // drainObservationTx writes a session's unwritten sample and credit inside a
 // command's own writer transaction, before the command's effect (Stop, a
 // change, an end). It never changes the session's state or revision: the
-// command decides those. It is a no-op while observations are disabled.
+// command decides those.
 func (s *Service) drainObservationTx(ctx context.Context, tx *sql.Tx, id string) error {
 	o := s.observations()
-	if o == nil {
-		return nil
-	}
 	o.mu.Lock()
 	e := o.entries[id]
 	if e == nil || (!e.dirty && !e.alive && e.credited() == e.applied) {

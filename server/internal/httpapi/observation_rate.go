@@ -10,32 +10,32 @@ import (
 )
 
 const (
-	timelineReportsPerSecond = 10
-	timelineReportBurst      = 20
-	timelineRateEntries      = 4096
-	timelineRateTTL          = time.Minute
+	observationsPerSecond  = 10
+	observationBurst       = 20
+	observationRateEntries = 4096
+	observationRateTTL     = time.Minute
 )
 
-type timelineRateEntry struct {
+type observationRateEntry struct {
 	key         string
 	tokens      float64
 	at, expires time.Time
 }
-type timelineLimiter struct {
+type observationLimiter struct {
 	mu      sync.Mutex
 	order   *list.List
 	entries map[string]*list.Element
 }
 
-func newTimelineLimiter() *timelineLimiter {
-	return &timelineLimiter{order: list.New(), entries: make(map[string]*list.Element)}
+func newObservationLimiter() *observationLimiter {
+	return &observationLimiter{order: list.New(), entries: make(map[string]*list.Element)}
 }
 
 // Applied only after the API's existing authentication and device binding.
-// Normal progress arrives once per ten seconds; a generous burst preserves
-// immediate seeks and state changes while bounding one device's writer traffic.
+// A playing device observes once a second; the headroom covers a handover or a
+// second session on the same device while bounding what one device can send.
 // Profiles, token rotation and session IDs do not mint new buckets.
-func (l *timelineLimiter) allow(c v1Caller, now time.Time) bool {
+func (l *observationLimiter) allow(c v1Caller, now time.Time) bool {
 	if c.DeviceID == "" {
 		return false
 	}
@@ -45,15 +45,15 @@ func (l *timelineLimiter) allow(c v1Caller, now time.Time) bool {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	element, found := l.entries[key]
-	value := timelineRateEntry{key: key, tokens: timelineReportBurst, at: now}
+	value := observationRateEntry{key: key, tokens: observationBurst, at: now}
 	if found {
-		old := element.Value.(timelineRateEntry)
+		old := element.Value.(observationRateEntry)
 		if now.Before(old.expires) {
 			value = old
 			if now.After(value.at) {
-				value.tokens += now.Sub(value.at).Seconds() * timelineReportsPerSecond
-				if value.tokens > timelineReportBurst {
-					value.tokens = timelineReportBurst
+				value.tokens += now.Sub(value.at).Seconds() * observationsPerSecond
+				if value.tokens > observationBurst {
+					value.tokens = observationBurst
 				}
 				value.at = now
 			}
@@ -63,16 +63,16 @@ func (l *timelineLimiter) allow(c v1Caller, now time.Time) bool {
 	if allowed {
 		value.tokens--
 	}
-	value.expires = now.Add(timelineRateTTL)
+	value.expires = now.Add(observationRateTTL)
 	if found {
 		element.Value = value
 		l.order.MoveToFront(element)
 	} else {
 		l.entries[key] = l.order.PushFront(value)
 	}
-	for l.order.Len() > timelineRateEntries {
+	for l.order.Len() > observationRateEntries {
 		old := l.order.Back()
-		delete(l.entries, old.Value.(timelineRateEntry).key)
+		delete(l.entries, old.Value.(observationRateEntry).key)
 		l.order.Remove(old)
 	}
 	return allowed

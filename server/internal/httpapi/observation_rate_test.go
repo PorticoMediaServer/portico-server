@@ -14,10 +14,10 @@ func rateCaller(device string) v1Caller {
 }
 
 func TestTimelineRateBurstRefillAndDeviceIsolation(t *testing.T) {
-	l := newTimelineLimiter()
+	l := newObservationLimiter()
 	now := time.Now()
 	caller := rateCaller("one")
-	for i := 0; i < timelineReportBurst; i++ {
+	for i := 0; i < observationBurst; i++ {
 		if !l.allow(caller, now) {
 			t.Fatal("manual burst was refused before its limit")
 		}
@@ -41,7 +41,7 @@ func TestTimelineRateBurstRefillAndDeviceIsolation(t *testing.T) {
 	}
 	caller = rateCaller("one")
 	now = now.Add(time.Second)
-	for i := 0; i < timelineReportsPerSecond; i++ {
+	for i := 0; i < observationsPerSecond; i++ {
 		if !l.allow(caller, now) {
 			t.Fatal("tokens did not refill at the declared cadence")
 		}
@@ -49,20 +49,20 @@ func TestTimelineRateBurstRefillAndDeviceIsolation(t *testing.T) {
 	if l.allow(caller, now) {
 		t.Fatal("refill exceeded the declared cadence")
 	}
-	if !l.allow(caller, now.Add(timelineRateTTL)) {
+	if !l.allow(caller, now.Add(observationRateTTL)) {
 		t.Fatal("idle bucket did not expire and recover")
 	}
 }
 
 func TestTimelineRateLedgerIsBounded(t *testing.T) {
-	l := newTimelineLimiter()
+	l := newObservationLimiter()
 	now := time.Now()
-	for i := 0; i < timelineRateEntries+100; i++ {
+	for i := 0; i < observationRateEntries+100; i++ {
 		if !l.allow(rateCaller(fmt.Sprintf("device-%d", i)), now) {
 			t.Fatal("full accounting table refused a new legitimate device")
 		}
 	}
-	if len(l.entries) != timelineRateEntries || l.order.Len() != timelineRateEntries {
+	if len(l.entries) != observationRateEntries || l.order.Len() != observationRateEntries {
 		t.Fatal("rate ledger exceeded its memory bound")
 	}
 }

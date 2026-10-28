@@ -76,7 +76,7 @@ func newCarryFixture(t *testing.T, audio bool) *carryFixture {
 	}
 	t.Cleanup(func() { subs.Close() })
 	player.ConfigureSubtitleDelivery(subs)
-	f := &carryFixture{t: t, catalog: catalog, ident: ident, service: New(catalog.DB, player, subs), caller: Caller{Principal: principal, DeviceID: principal.DeviceID}, prefs: operations.New(catalog.DB), prefRev: 1}
+	f := &carryFixture{t: t, catalog: catalog, ident: ident, service: New(catalog.DB, player, subs), caller: Caller{Principal: principal, DeviceID: principal.DeviceID, PlaybackProtocol: PlaybackProtocol}, prefs: operations.New(catalog.DB), prefRev: 1}
 	f.service.ReadyCheck = func(context.Context, playback.Session) (bool, error) { return true, nil }
 	root := t.TempDir()
 	library := catalog.Library("carry-library", "Carry library", "movie", root)
@@ -344,7 +344,7 @@ func TestQueueCarryAdvanceFromAnotherDeviceKeepsContinuation(t *testing.T) {
 	if err != nil || principal.DeviceID == f.caller.DeviceID {
 		t.Fatalf("second device identity: %+v %v", principal.Viewer, err)
 	}
-	controller := Caller{Principal: principal, DeviceID: principal.DeviceID}
+	controller := Caller{Principal: principal, DeviceID: principal.DeviceID, PlaybackProtocol: PlaybackProtocol}
 	caps := f.service.deviceDocument(context.Background(), f.caller.DeviceID)
 	if _, err = f.service.PutCapabilities(context.Background(), principal, controller.DeviceID, "", caps); err != nil {
 		t.Fatal(err)

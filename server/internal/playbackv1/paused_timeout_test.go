@@ -25,8 +25,9 @@ func pausedTestDB(t *testing.T) *sql.DB {
 
 func pausedCaller() Caller {
 	return Caller{
-		Principal: identity.Principal{Viewer: identity.Viewer{Authority: "local", AccountID: "owner", ProfileID: "primary"}},
-		DeviceID:  "dev1",
+		Principal:        identity.Principal{Viewer: identity.Viewer{Authority: "local", AccountID: "owner", ProfileID: "primary"}},
+		DeviceID:         "dev1",
+		PlaybackProtocol: PlaybackProtocol,
 	}
 }
 

@@ -27,7 +27,7 @@ var (
 )
 
 // PlaybackProtocol is the observation protocol a client must declare (the
-// Portico-Playback header) to start or continue playback once it is enabled.
+// Portico-Playback header) to start or continue playback.
 const PlaybackProtocol = 2
 
 // StreamLimitDetail is observed account capacity, never a list of hidden titles.

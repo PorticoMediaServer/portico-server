@@ -6,27 +6,10 @@ import (
 	"errors"
 	"regexp"
 
-	"portico.local/server/internal/dbwork"
 	"portico.local/server/internal/segmentmarkers"
 )
 
 var markerIDPattern = regexp.MustCompile(`^[A-Za-z0-9_-]{1,128}$`)
-
-// recordSkip records a timeline's skip report (spec §4.2) as marker evidence:
-// one row per session and marker (a retried report writes no second row), and
-// one diagnostics entry. Failures are dropped: evidence never fails the report
-// that carried it.
-func (s *Service) recordSkip(ctx context.Context, r row, k SkipReport) {
-	diagnostic := ""
-	err := dbwork.WithWriteTxContext(ctx, s.DB, dbwork.ClassBackgroundMedia, func(ctx context.Context, tx *sql.Tx) error {
-		var err error
-		diagnostic, err = s.recordSkipTx(ctx, tx, r, k)
-		return err
-	})
-	if err == nil && diagnostic != "" && s.SkipEvidence != nil {
-		s.SkipEvidence(ctx, diagnostic, map[string]int64{"count": 1, "durationMs": k.PositionMs})
-	}
-}
 
 // recordSkipTx writes one marker skip in the caller's transaction and returns
 // its diagnostics code ("" when nothing new was recorded). An automatic skip

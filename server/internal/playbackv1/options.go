@@ -278,18 +278,13 @@ type Service struct {
 	build              builder
 	admission          admissionGates
 	queueSweep         queueSweeper
-	// ObservationsEnabled turns on the observation protocol (observations.go):
-	// latest sample in memory, batched writes. Off until every client speaks it.
-	ObservationsEnabled bool
-	obsOnce             sync.Once
-	obs                 *observations
+	obsOnce            sync.Once
+	obs                *observations
 	// Hooks other resources (transfers, queues, groups) attach to sessions.
 	// SkipEvidence records a marker skip in the console's diagnostics lane
 	// (wired by HTTP composition); nil records the skip without diagnostics.
-	SkipEvidence  func(ctx context.Context, code string, fields map[string]int64)
-	timelineHooks []timelineHook
-	afterTimeline []func(context.Context, row, Report)
-	onEnded       func(context.Context, *sql.Tx, row, time.Time) error
+	SkipEvidence func(ctx context.Context, code string, fields map[string]int64)
+	onEnded      func(context.Context, *sql.Tx, row, time.Time) error
 }
 
 // New returns the service for one router.

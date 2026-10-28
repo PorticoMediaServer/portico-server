@@ -12,7 +12,6 @@ import (
 	"time"
 
 	"portico.local/server/internal/dbwork"
-	"portico.local/server/internal/identity"
 	"portico.local/server/internal/playback"
 	"portico.local/server/internal/supervise"
 )
@@ -463,32 +462,6 @@ func (s *Service) Stop(ctx context.Context, c Caller, id string, positionMs *int
 	})
 }
 
-// Report is one timeline report (spec §6, §17.6).
-type Report struct {
-	ObservedPlayback *playback.ObservedPlayback `json:"observedPlayback,omitempty"`
-
-	Seq        int64   `json:"seq"`
-	Generation int     `json:"generation"`
-	State      string  `json:"state"`
-	PositionMs int64   `json:"positionMs"`
-	PartIndex  *int    `json:"partIndex,omitempty"`
-	Rate       float64 `json:"rate,omitempty"`
-	// Seeked says whether this report's position follows a seek or other jump
-	// since the previous report. Presence matters: a report that omits it comes
-	// from a client that cannot answer, so no played interval may be counted
-	// there. It is evidence about the report, never a transport command.
-	Seeked          *bool          `json:"seeked,omitempty"`
-	BufferedMs      int64          `json:"bufferedMs,omitempty"`
-	BandwidthKbps   int64          `json:"bandwidthKbps,omitempty"`
-	DroppedFrames   int64          `json:"droppedFrames,omitempty"`
-	Volume          *float64       `json:"volume,omitempty"`
-	Muted           *bool          `json:"muted,omitempty"`
-	AudioTrackID    string         `json:"audioTrackId,omitempty"`
-	SubtitleTrackID *TrackRef      `json:"subtitleTrackId,omitempty"`
-	Skipped         *SkipReport    `json:"skipped,omitempty"`
-	Error           *ReportedError `json:"error,omitempty"`
-}
-
 // SkipReport is a marker the viewer skipped (spec §4.2): the segment marker's
 // id, whether the skip was automatic (the viewer's preference) or manual, and
 // the position the skip left from. It is evidence, never transport: the client
@@ -503,160 +476,13 @@ type ReportedError struct {
 	Detail string `json:"detail,omitempty"`
 }
 
-// TimelineHooks run inside the report's transaction when an accepted report
-// changes state (transfer commit, group readiness).
-type timelineHook func(ctx context.Context, tx *sql.Tx, r row, report Report, now time.Time) error
-
-// Timeline is POST /v1/playback/sessions/{id}/timeline (spec §6): progress,
-// lease renewal and observation in one call. Reports for another generation or
-// a lower seq renew the lease but change nothing (invariant 3). It returns the
-// cadence for Report-Every-Ms.
-func (s *Service) Timeline(ctx context.Context, c Caller, id string, report Report) (time.Duration, error) {
-	if !report.ObservedPlayback.Valid() {
-		return 0, &FieldError{Path: "observedPlayback"}
-	}
-	switch report.State {
-	case "playing", "paused", "buffering", "ended", "error":
-	default:
-		return 0, &FieldError{Path: "state"}
-	}
-	if report.Seq < 0 || report.PositionMs < 0 || report.PositionMs > maxStartPositionMs {
-		return 0, &FieldError{Path: "seq"}
-	}
-	if k := report.Skipped; k != nil && (!markerIDPattern.MatchString(k.MarkerID) || k.Mode != "automatic" && k.Mode != "manual" || k.PositionMs < 0 || k.PositionMs > maxStartPositionMs) {
-		return 0, &FieldError{Path: "skipped"}
-	}
-	r, err := s.session(ctx, c, id)
-	if err != nil {
-		return 0, err
-	}
-	if r.ended > 0 {
-		return 0, ErrEnded
-	}
-	if r.device != c.DeviceID {
-		// Only the playing device reports; a controller changes state with PATCH.
-		return 0, ErrNotFound
-	}
-	if isChannel(r) {
-		return s.timelineChannel(ctx, r, report)
-	}
-	now := s.now()
-	lease := now.Add(s.lease()).UnixMilli()
-	fresh := report.Generation == r.generation && report.Seq > r.lastSeq && r.state != "preparing"
-	if !fresh {
-		// Replays still renew the lease, but a repeated sequence must not turn
-		// into a writer storm. Keep ample lease headroom and extend at most once
-		// per half report interval (never more than a quarter of the lease).
-		interval := max(time.Millisecond, min(s.reportEvery(r.state)/2, s.lease()/4))
-		threshold := lease - interval.Milliseconds()
-		if r.lease >= threshold {
-			return s.reportEvery(r.state), nil
-		}
-		_, err = dbwork.ExecWrite(ctx, s.DB, dbwork.ClassEstablishedPlayback, `UPDATE playback_v1_sessions SET lease_expires_ms=? WHERE id=? AND ended_ms=0 AND lease_expires_ms<?`, lease, r.id, threshold)
-		return s.reportEvery(r.state), err
-	}
-	state := r.state
-	switch report.State {
-	case "playing", "paused":
-		state = report.State
-	}
-	audio, subtitle := r.audioTrack, r.subtitleTrack
-	if report.AudioTrackID != "" {
-		audio = report.AudioTrackID
-	}
-	if report.SubtitleTrackID != nil {
-		subtitle = string(*report.SubtitleTrackID)
-	}
-	part := r.partIndex
-	if report.PartIndex != nil && *report.PartIndex >= 0 {
-		part = *report.PartIndex
-	}
-	legacy := "playing"
-	switch report.State {
-	case "paused":
-		legacy = "paused"
-	case "ended":
-		legacy = "ended"
-		if !s.endedNearEnd(ctx, r.media, report.PositionMs) {
-			// The player stopped far short of the end (a truncated file, a
-			// stream that broke off): the session ends, but the title is not
-			// finished. It keeps its place instead of being marked watched.
-			legacy = "paused"
-		}
-	case "error":
-		// What the player could not play is remembered for this file on this
-		// device, so the next start or re-plan takes another way.
-		if e := report.Error; e != nil && r.media != "" && engineFailureCodes[e.Code] && len(e.Detail) <= 512 {
-			_, _ = s.Playback.RecordRouteFailure(ctx, c.Principal, r.media, e.Code, e.Detail)
-		}
-	}
-	if r.media != "" {
-		// Resume, played threshold, watch history (respecting pause-history) and
-		// Continue Watching are written by the existing evidence path.
-		if err = s.Playback.ProgressEvidenceContext(ctx, c.Principal, r.media, r.mediaGeneration, report.Seq, float64(report.PositionMs)/1000, legacy, report.Rate, report.Seeked, report.State == "playing"); err != nil && !errors.Is(err, identity.ErrUnauthorized) {
-			return 0, err
-		}
-	}
-	changed := state != r.state
-	err = dbwork.WithWriteTxContext(ctx, s.DB, dbwork.ClassEstablishedPlayback, func(ctx context.Context, tx *sql.Tx) error {
-		revision := r.revision
-		if changed {
-			revision++
-		}
-		res, err := tx.ExecContext(ctx, `UPDATE playback_v1_sessions SET state=?,position_ms=?,last_seq=?,part_index=?,audio_track_id=?,subtitle_track_id=?,bandwidth_kbps=?,lease_expires_ms=?,revision=?,updated_ms=?,`+pausedSinceUpdate+` WHERE id=? AND ended_ms=0 AND last_seq<? AND generation=?`,
-			state, report.PositionMs, report.Seq, part, audio, subtitle, max(report.BandwidthKbps, 0), lease, revision, now.UnixMilli(), state, now.UnixMilli(), r.id, report.Seq, report.Generation)
-		if err != nil {
-			return err
-		}
-		if n, _ := res.RowsAffected(); n == 0 {
-			return nil
-		}
-		if err = playback.StoreObservedPlaybackTx(ctx, tx, r.id, c.DeviceID, r.generation, report.Generation, report.Seq, now.UnixMilli(), report.ObservedPlayback); err != nil {
-			return err
-		}
-		r.state, r.position, r.lastSeq, r.partIndex, r.audioTrack, r.subtitleTrack, r.revision, r.lease = state, report.PositionMs, report.Seq, part, audio, subtitle, revision, lease
-		if changed {
-			if err = s.sessionEventsTx(ctx, tx, r, now, false); err != nil {
-				return err
-			}
-		}
-		for _, hook := range s.timelineHooks {
-			if err = hook(ctx, tx, r, report, now); err != nil {
-				return err
-			}
-		}
-		if report.State == "ended" {
-			return s.endTx(ctx, tx, r, now, "ended", "")
-		}
-		return nil
-	})
-	if err != nil {
-		return 0, err
-	}
-	s.hub.wake()
-	if report.State == "ended" && r.media != "" {
-		_ = s.Playback.StopV1(ctx, r.media)
-	}
-	if report.Skipped != nil && !isChannel(r) {
-		s.recordSkip(ctx, r, *report.Skipped)
-	}
-	for _, after := range s.afterTimeline {
-		after(ctx, r, report)
-	}
-	return s.reportEvery(state), nil
-}
-
-// engineFailureCodes are the timeline error codes that mean the player itself
+// engineFailureCodes are the observation error codes that mean the player itself
 // could not play what it was given (as opposed to the network failing).
 var engineFailureCodes = map[string]bool{"decode_error": true, "source_not_supported": true, "audio_decode_error": true, "manifest_incompatible": true, "engine_error": true}
 
-// endedNearEnd reports whether a player that says it reached the end did so
+// endedNearEndIn reports whether a player that says it reached the end did so
 // within the last fifth of the title. A title whose length is unknown is
 // taken at its word.
-func (s *Service) endedNearEnd(ctx context.Context, media string, positionMs int64) bool {
-	return s.endedNearEndIn(ctx, s.DB, media, positionMs)
-}
-
 func (s *Service) endedNearEndIn(ctx context.Context, q querier, media string, positionMs int64) bool {
 	var duration float64
 	if media == "" || q.QueryRowContext(ctx, `SELECT duration FROM playback_sessions WHERE id=?`, media).Scan(&duration) != nil || duration <= 0 {

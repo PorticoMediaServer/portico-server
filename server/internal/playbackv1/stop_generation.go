@@ -308,10 +308,8 @@ func (s *Service) StopGeneration(ctx context.Context, c Caller, id string, expec
 	if n != 1 {
 		return ErrRevision
 	}
-	if o := s.observations(); o != nil {
-		if err = dbwork.AfterCommit(tx, func() { o.retire(current.id) }); err != nil {
-			return err
-		}
+	if err = dbwork.AfterCommit(tx, func() { s.observations().retire(current.id) }); err != nil {
+		return err
 	}
 	current.ended, current.endReason, current.message, current.revision = now.UnixMilli(), "stopped", "", current.revision+1
 	if err = s.sessionEventsTx(writer, tx, current, now, true); err != nil {
