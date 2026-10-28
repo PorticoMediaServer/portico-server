@@ -85624,6 +85624,15 @@ var PorticoCastContracts = (function(exports) {
 							},
 							"id": { "type": "string" },
 							"nextCursor": { "type": "string" },
+							"order": {
+								"properties": {
+									"last": { "type": "string" },
+									"next": { "type": "string" },
+									"previous": { "type": "string" }
+								},
+								"required": [],
+								"type": "object"
+							},
 							"seeAll": {
 								"properties": {
 									"pivot": {
@@ -89916,6 +89925,15 @@ var PorticoCastContracts = (function(exports) {
 									},
 									"id": { "type": "string" },
 									"nextCursor": { "type": "string" },
+									"order": {
+										"properties": {
+											"last": { "type": "string" },
+											"next": { "type": "string" },
+											"previous": { "type": "string" }
+										},
+										"required": [],
+										"type": "object"
+									},
 									"seeAll": {
 										"properties": {
 											"pivot": {
@@ -102796,6 +102814,15 @@ var PorticoCastContracts = (function(exports) {
 							},
 							"id": { "type": "string" },
 							"nextCursor": { "type": "string" },
+							"order": {
+								"properties": {
+									"last": { "type": "string" },
+									"next": { "type": "string" },
+									"previous": { "type": "string" }
+								},
+								"required": [],
+								"type": "object"
+							},
 							"seeAll": {
 								"properties": {
 									"pivot": {
@@ -108782,6 +108809,15 @@ var PorticoCastContracts = (function(exports) {
 							},
 							"id": { "type": "string" },
 							"nextCursor": { "type": "string" },
+							"order": {
+								"properties": {
+									"last": { "type": "string" },
+									"next": { "type": "string" },
+									"previous": { "type": "string" }
+								},
+								"required": [],
+								"type": "object"
+							},
 							"seeAll": {
 								"properties": {
 									"pivot": {
@@ -111598,7 +111634,74 @@ var PorticoCastContracts = (function(exports) {
 					},
 					"type": "array"
 				},
+				"filters": {
+					"items": {
+						"properties": {
+							"id": { "type": "string" },
+							"labelKey": { "type": "string" },
+							"options": {
+								"items": {
+									"properties": {
+										"count": {
+											"maximum": 9007199254740991,
+											"minimum": -9007199254740991,
+											"type": "integer"
+										},
+										"id": { "type": "string" },
+										"label": { "type": "string" }
+									},
+									"required": [
+										"id",
+										"label",
+										"count"
+									],
+									"type": "object"
+								},
+								"type": "array"
+							}
+						},
+						"required": [
+							"id",
+							"labelKey",
+							"options"
+						],
+						"type": "object"
+					},
+					"type": "array"
+				},
 				"nextCursor": { "type": "string" },
+				"order": {
+					"properties": {
+						"last": { "type": "string" },
+						"next": { "type": "string" },
+						"previous": { "type": "string" }
+					},
+					"required": [],
+					"type": "object"
+				},
+				"query": {
+					"properties": {
+						"category": { "type": "string" },
+						"direction": { "type": "string" },
+						"limit": {
+							"maximum": 9007199254740991,
+							"minimum": -9007199254740991,
+							"type": "integer"
+						},
+						"q": { "type": "string" },
+						"searchMode": { "type": "string" },
+						"sort": { "type": "string" }
+					},
+					"required": [
+						"sort",
+						"direction",
+						"category",
+						"q",
+						"limit",
+						"searchMode"
+					],
+					"type": "object"
+				},
 				"resource": {
 					"properties": {
 						"actions": {
@@ -111793,12 +111896,42 @@ var PorticoCastContracts = (function(exports) {
 						"pinRevision"
 					],
 					"type": "object"
+				},
+				"sorts": {
+					"items": {
+						"properties": {
+							"directions": {
+								"items": { "type": "string" },
+								"type": "array"
+							},
+							"id": { "type": "string" },
+							"labelKey": { "type": "string" }
+						},
+						"required": [
+							"id",
+							"labelKey",
+							"directions"
+						],
+						"type": "object"
+					},
+					"type": "array"
+				},
+				"start": {
+					"maximum": 9007199254740991,
+					"minimum": -9007199254740991,
+					"type": "integer"
+				},
+				"totalCount": {
+					"maximum": 9007199254740991,
+					"minimum": -9007199254740991,
+					"type": "integer"
 				}
 			},
 			"required": [
 				"resource",
 				"entries",
-				"nextCursor"
+				"nextCursor",
+				"start"
 			],
 			"type": "object"
 		},
@@ -129397,35 +129530,38 @@ var PorticoCastContracts = (function(exports) {
 			"type": "object"
 		},
 		"ListDownloadRequestsResponse": {
-			"properties": { "requests": {
-				"items": {
-					"properties": {
-						"createdAt": { "type": "string" },
-						"quality": { "type": "string" },
-						"requestId": { "type": "string" },
-						"state": { "type": "string" },
-						"target": {
-							"properties": {
-								"id": { "type": "string" },
-								"kind": { "type": "string" }
+			"properties": {
+				"nextCursor": { "type": "string" },
+				"requests": {
+					"items": {
+						"properties": {
+							"createdAt": { "type": "string" },
+							"quality": { "type": "string" },
+							"requestId": { "type": "string" },
+							"state": { "type": "string" },
+							"target": {
+								"properties": {
+									"id": { "type": "string" },
+									"kind": { "type": "string" }
+								},
+								"required": ["kind", "id"],
+								"type": "object"
 							},
-							"required": ["kind", "id"],
-							"type": "object"
+							"title": { "type": "string" }
 						},
-						"title": { "type": "string" }
+						"required": [
+							"requestId",
+							"state",
+							"target",
+							"title",
+							"quality",
+							"createdAt"
+						],
+						"type": "object"
 					},
-					"required": [
-						"requestId",
-						"state",
-						"target",
-						"title",
-						"quality",
-						"createdAt"
-					],
-					"type": "object"
-				},
-				"type": "array"
-			} },
+					"type": "array"
+				}
+			},
 			"required": ["requests"],
 			"type": "object"
 		},
