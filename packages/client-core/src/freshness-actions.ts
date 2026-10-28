@@ -9,6 +9,13 @@
  * says something that contradicts the action) is anything said, in plain words.
  */
 
+/** A quiet read is answered only after its current owner actually installs it. */
+export type QuietRefreshOutcome =
+  | Readonly<{kind: 'adopted'}>
+  | Readonly<{kind: 'conflict'}>
+  | Readonly<{kind: 'deferred'; nextAllowedAt?: number}>
+  | Readonly<{kind: 'unreadable'; error: unknown}>;
+
 const STALE_CODES: ReadonlySet<string> = new Set([
   'stale_continuation', 'invalid_cursor', 'revision_conflict', 'resource_conflict', 'conflict',
   'personal_state_conflict', 'playlist_conflict', 'collection_conflict', 'console_conflict', 'administration_conflict',
