@@ -718,7 +718,6 @@ export function decodeReorderLibraryCollectionResponse(input: unknown): types.Re
 export function decodeReorderPlaylistWindowResponse(input: unknown): types.ReorderPlaylistWindowResponse { return decode("ReorderPlaylistWindowResponse", input) as types.ReorderPlaylistWindowResponse; }
 export function decodeReorderSavedCollectionResponse(input: unknown): types.ReorderSavedCollectionResponse { return decode("ReorderSavedCollectionResponse", input) as types.ReorderSavedCollectionResponse; }
 export function decodeReportChangedPathsResponse(input: unknown): types.ReportChangedPathsResponse { return decode("ReportChangedPathsResponse", input) as types.ReportChangedPathsResponse; }
-export function decodeReportPlaybackTimelineResponse(input: unknown): types.ReportPlaybackTimelineResponse { return decode("ReportPlaybackTimelineResponse", input) as types.ReportPlaybackTimelineResponse; }
 export function decodeRevalidateDownloadReceiptsResponse(input: unknown): types.RevalidateDownloadReceiptsResponse { return decode("RevalidateDownloadReceiptsResponse", input) as types.RevalidateDownloadReceiptsResponse; }
 export function decodeRevokeAccessTokenResponse(input: unknown): types.RevokeAccessTokenResponse { return decode("RevokeAccessTokenResponse", input) as types.RevokeAccessTokenResponse; }
 export function decodeRevokeApiKeyResponse(input: unknown): types.RevokeApiKeyResponse { return decode("RevokeApiKeyResponse", input) as types.RevokeApiKeyResponse; }
