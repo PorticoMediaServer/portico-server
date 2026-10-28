@@ -25,6 +25,16 @@ type BrowseSelectionPreparing struct {
 	RetryAfterMs int    `json:"retryAfterMs"`
 }
 
+// BrowseSelectionUnavailable describes an explicit unsupported whole-view
+// action. It carries no guessed total or selector; ordinary page selection stays.
+type BrowseSelectionUnavailable struct {
+	Reason string `json:"reason"`
+}
+
+func (BrowseSelectionUnavailable) JSONSchema() map[string]any {
+	return map[string]any{"type": "object", "additionalProperties": false, "required": []string{"reason"}, "properties": map[string]any{"reason": map[string]any{"type": "string", "enum": []string{"search_not_bounded"}}}}
+}
+
 // CapturedBasis is server-only provenance for the immediate page exposure check.
 // It is absent after JSON transport and never grants access.
 func (p BrowseSelectionPreparing) CapturedBasis() string { return p.basis }

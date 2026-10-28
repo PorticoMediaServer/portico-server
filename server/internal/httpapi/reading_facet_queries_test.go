@@ -429,3 +429,42 @@ func TestReadingFacetQueriesHTTPPolicyChangeCannotReuseReadyHandle(t *testing.T)
 		t.Fatal("policy refusal leaked delivery")
 	}
 }
+
+func TestReadingFacetQueriesPublicCohortDispatch(t *testing.T) {
+	r := newReadingFixture(t, "book", "pdf")
+	readingSeriesOwnerField(t, r, r.item, "author", "Resident Author")
+	readingSeriesDrain(t, r)
+	path := "/v1/libraries/" + r.library + "/facets?field=author&limit=1"
+	oracle := readingHTTP(t, New(r.d), "GET", path, r.f.owner.AccessToken, "", nil)
+	if oracle.Code != 200 {
+		t.Fatal(oracle.Code, oracle.Body.String())
+	}
+	store, release := readingFacetTestStore(t, r, true)
+	r.d.PrepareReadingFacets = true
+	h := New(r.d)
+	pending := readingHTTP(t, h, "GET", path, r.f.owner.AccessToken, "", nil)
+	if pending.Code != 202 || pending.Header().Get("Retry-After") != "1" || pending.Header().Get("Location") == "" {
+		t.Fatal(pending.Code, pending.Header(), pending.Body.String())
+	}
+	release()
+	ready := readingFacetReady(t, r, h, pending.Header().Get("Location"))
+	var want, got catalog.FacetPage
+	if err := json.Unmarshal(oracle.Body.Bytes(), &want); err != nil {
+		t.Fatal(err)
+	}
+	if err := json.Unmarshal(ready.Body.Bytes(), &got); err != nil {
+		t.Fatal(err)
+	}
+	// The new opaque revision binds the complete preparation witness. Facts
+	// and the existing wire shape retain their exact foreground semantics.
+	if len(got.Revision) != 64 {
+		t.Fatal("missing complete facet basis", got.Revision)
+	}
+	want.Revision = got.Revision
+	if !reflect.DeepEqual(want, got) {
+		t.Fatalf("public dispatch changed facet oracle: want=%+v got=%+v", want, got)
+	}
+	if store.Stats().Deliveries != 0 {
+		t.Fatal("public response leaked delivery", store.Stats())
+	}
+}

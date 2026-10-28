@@ -122,6 +122,7 @@ type Dependencies struct {
 	// PrepareBrowseSelections is a startup composition/cohort gate. Default false
 	// retains the current foreground path until all clients support preparation.
 	PrepareBrowseSelections bool
+	PrepareReadingFacets    bool
 	Reading                 *reading.Service
 	Ingestion               *ingestion.Service
 	Playback                *playback.Service
