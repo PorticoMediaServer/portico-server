@@ -37,6 +37,17 @@ func parseCursor(value string) (continuation, error) {
 // returns a bounded immutable page. Partial provider output never becomes a page.
 // The durable inventory owner commits these pages and its continuation atomically.
 func (s *Service) ListPage(ctx context.Context, job, directory, after string) (storage.RemotePage, error) {
+	return s.ListInventoryPage(ctx, job, directory, after, 128)
+}
+
+// ListInventoryPage selects a real bounded page from immutable source evidence.
+// The cursor identifies a source/key boundary, independent of page size, so a
+// restarted scanner can use a smaller next page without skipping any names.
+// Replay is exact for the tuple (source listing, cursor, limit).
+func (s *Service) ListInventoryPage(ctx context.Context, job, directory, after string, limit int) (storage.RemotePage, error) {
+	if limit < 1 || limit > 128 {
+		return storage.RemotePage{}, storage.ErrRemoteLimit
+	}
 	b, relative, ok := s.find(directory)
 	if !ok || b.Removed {
 		return storage.RemotePage{}, storage.ErrRemoteOffline
@@ -95,10 +106,10 @@ func (s *Service) ListPage(ctx context.Context, job, directory, after string) (s
 			return storage.RemotePage{}, err
 		}
 		if !ready {
-			return storage.RemotePage{ID: c.ID, SourceID: b.ID, Directory: directory, Generation: generation, Cursor: after, Next: cursor(continuation{c.ID, ""}), Entries: []storage.Snapshot{}, Pending: true}, nil
+			return storage.RemotePage{Limit: limit, ID: c.ID, SourceID: b.ID, Directory: directory, Generation: generation, Cursor: after, Next: cursor(continuation{c.ID, ""}), Entries: []storage.Snapshot{}, Pending: true}, nil
 		}
 	}
-	rows, err := s.db.QueryContext(ctx, `SELECT snapshot FROM remote_listing_entries WHERE listing_id=? AND name>? ORDER BY name LIMIT 129`, c.ID, c.After)
+	rows, err := s.db.QueryContext(ctx, `SELECT snapshot FROM remote_listing_entries WHERE listing_id=? AND name>? ORDER BY name LIMIT ?`, c.ID, c.After, limit+1)
 	if err != nil {
 		return storage.RemotePage{}, err
 	}
@@ -122,15 +133,15 @@ func (s *Service) ListPage(ctx context.Context, job, directory, after string) (s
 	if readErr != nil {
 		return storage.RemotePage{}, readErr
 	}
-	complete := len(entries) <= 128
+	complete := len(entries) <= limit
 	if !complete {
-		entries = entries[:128]
+		entries = entries[:limit]
 	}
 	last := c.After
 	if len(entries) > 0 {
 		last = entries[len(entries)-1].Path
 	}
-	return storage.RemotePage{ID: c.ID, SourceID: b.ID, Directory: directory, Generation: generation, Cursor: after, Next: cursor(continuation{c.ID, last}), Entries: entries, Complete: complete}, nil
+	return storage.RemotePage{Limit: limit, ID: c.ID, SourceID: b.ID, Directory: directory, Generation: generation, Cursor: after, Next: cursor(continuation{c.ID, last}), Entries: entries, Complete: complete}, nil
 }
 func (s *Service) buildListing(ctx context.Context, b binding, relative, id, generation, owner string, retired func()) error {
 	defer retired()

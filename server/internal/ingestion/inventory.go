@@ -312,7 +312,7 @@ func (s *Service) readDirectoryPage(ctx context.Context, job string, source cata
 	}
 	if s.storage.IsRemote(source.ResolvedPath) {
 		directory := filepath.Join(source.ResolvedPath, relative)
-		remote, err := s.storage.Remote.ListPage(ctx, job, directory, cursor)
+		remote, err := s.storage.Remote.ListInventoryPage(ctx, job, directory, cursor, s.inventoryBatch(ctx))
 		if err != nil {
 			return &directoryReadError{err}
 		}

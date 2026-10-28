@@ -56,7 +56,7 @@ internal/catalog/episodic_reparse.go	(*Service).ReparseEpisodicIssues	WithWriteT
 internal/catalog/inventory.go	(*Service).CommitInventoryAnalysis	Begin	ClassFrom(ctx, dbwork.ClassInteractive)	-
 internal/catalog/inventory.go	(*Service).CommitInventoryDiscRoot	Begin	ClassBackgroundMedia	-
 internal/catalog/inventory.go	(*Service).CommitInventoryNaming	Begin	ClassFrom(ctx, dbwork.ClassInteractive)	-
-internal/catalog/inventory.go	(*Service).CommitInventoryPage	Begin	ClassFrom(ctx, dbwork.ClassInteractive)	-
+internal/catalog/inventory.go	(*Service).CommitInventoryPage	Begin	ClassFrom(ctx, dbwork.ClassInteractive)	inventoryPagesPlan
 internal/catalog/inventory.go	(*Service).CommitInventoryPages	Begin	ClassFrom(ctx, dbwork.ClassInteractive)	inventoryPagesPlan
 internal/catalog/inventory_admin.go	(*Service).AssociateInventoryVersion	Begin	ClassFrom(ctx, dbwork.ClassInteractive)	-
 internal/catalog/inventory_admin.go	(*Service).CheckSource	Begin	ClassFrom(ctx, dbwork.ClassInteractive)	-
@@ -582,7 +582,7 @@ internal/remotesources/configuration.go	(*Service).ConfigureDAV	Begin	ClassBackg
 internal/remotesources/configuration.go	(*Service).RemoveDAV	Begin	ClassBackgroundMedia	-
 internal/remotesources/contact_history.go	(*Service).flushContactBatch	Begin	ClassBackgroundMedia	-
 internal/remotesources/fences.go	(*Service).CheckScan	ExecWrite	ClassBackgroundMedia	-
-internal/remotesources/inventory.go	(*Service).ListPage	ExecWrite	ClassBackgroundMedia	-
+internal/remotesources/inventory.go	(*Service).ListInventoryPage	ExecWrite	ClassBackgroundMedia	-
 internal/remotesources/inventory_native.go	(*Service).startNativeListing	Begin	ClassBackgroundMedia	-
 internal/remotesources/inventory_native.go	(*Service).startNativeListing	ExecWrite	ClassBackgroundMedia	-	×2
 internal/remotesources/inventory_proof.go	(*Service).VerifyInventoryDirectory	ExecWrite	ClassBackgroundMedia	-	×2
@@ -624,6 +624,7 @@ plan	internal/access/invitations.go	(*Store).AcceptPortico	invitationAcceptPlan
 plan	internal/administration/library_settings.go	(*Service).SaveLibrarySettings	librarySettingsPlan
 plan	internal/catalog/admin.go	(*Service).OrderLibraries	libraryOrderPlan
 plan	internal/catalog/delete_title.go	(*Service).RemoveTitle	titleRemovalPlan
+plan	internal/catalog/inventory.go	(*Service).CommitInventoryPage	inventoryPagesPlan
 plan	internal/catalog/inventory.go	(*Service).CommitInventoryPages	inventoryPagesPlan
 plan	internal/catalog/title_merge.go	(*Service).MergeTitles	titleMergePlan
 plan	internal/compactcatalog/derive.go	(*Worker).Step	DrainPlan

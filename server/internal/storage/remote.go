@@ -17,6 +17,7 @@ type RemoteSources interface {
 	InspectRoot(context.Context, string) (Snapshot, error)
 	Stat(context.Context, string) (Snapshot, error)
 	ListPage(context.Context, string, string, string) (RemotePage, error)
+	ListInventoryPage(context.Context, string, string, string, int) (RemotePage, error)
 	CommitPage(context.Context, *sql.Tx, RemotePage) error
 	CheckScan(context.Context, string, string) error
 	ValidateScan(context.Context, *sql.Tx, string, string) error
@@ -35,6 +36,9 @@ func RemoteDirectoryIdentity(source, path string) string {
 }
 
 type RemotePage struct {
+	// Limit is part of this immutable page's identity alongside Cursor. It is
+	// rechecked against private source rows before accepting its observations.
+	Limit                                             int
 	ID, SourceID, Directory, Generation, Cursor, Next string
 	Entries                                           []Snapshot
 	Complete, Pending                                 bool

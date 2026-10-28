@@ -76,7 +76,7 @@ func observationRevision(source LibrarySource, v storage.Snapshot) (string, stri
 	return revision, string(raw), err
 }
 func (s *Service) CommitInventoryPage(ctx context.Context, job, relative, cursor string, page storage.InventoryPage) error {
-	gated, err := dbwork.Begin(ctx, s.db, dbwork.ClassFrom(ctx, dbwork.ClassInteractive))
+	gated, err := dbwork.Begin(dbwork.WithPlan(ctx, inventoryPagesPlan), s.db, dbwork.ClassFrom(ctx, dbwork.ClassInteractive))
 	if err != nil {
 		return err
 	}
@@ -111,7 +111,8 @@ type InventoryPageWrite struct {
 // managed subtitle rows and bounds empty-folder/ignore diagnostic overhead.
 // It does not prove all legal entries fit the default plan: one existing object
 // can invalidate retained relationships/Reading facts, a folder can carry 257
-// ignore diagnostics, and remote ListPage still owns a fixed 128-entry envelope.
+// ignore diagnostics, and a single existing object may still exceed the default class budget.
+// Remote ingestion also requests real pages under the same name allowance.
 // Never slice a listed page or reject a legal write to fit these estimates.
 var inventoryPagesPlan = dbwork.WritePlan{Name: "inventory-pages", Rows: 8192, Pages: 1024, VMOps: 2_000_000, Why: "a folder page's entries publish atomically with their reading-path effects; bounding a page's fan-out is DB-001's publication redesign (writer-discipline item H)"}
 

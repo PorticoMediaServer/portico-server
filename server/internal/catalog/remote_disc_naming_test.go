@@ -321,3 +321,7 @@ func TestCommitInventoryNamingReprovesQueueAndObservation(t *testing.T) {
 		})
 	}
 }
+
+func (r *namingRemote) ListInventoryPage(ctx context.Context, job, directory, after string, limit int) (storage.RemotePage, error) {
+	return r.ListPage(ctx, job, directory, after)
+}
