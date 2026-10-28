@@ -79,9 +79,15 @@ func (h *httpObserver) observe(id string, generation int, sample map[string]any)
 func (h *httpObserver) report(id string, generation int, sample map[string]any) {
 	h.t.Helper()
 	before := h.written(id)
-	if w := h.observe(id, generation, sample); w.Code != 200 {
+	w := h.observe(id, generation, sample)
+	if w.Code != 200 {
 		h.t.Fatalf("observation %s: %d %s", id, w.Code, w.Body.String())
 	}
+	h.waitWritten(id, before)
+}
+
+func (h *httpObserver) waitWritten(id, before string) {
+	h.t.Helper()
 	deadline := time.Now().Add(10 * time.Second)
 	for h.written(id) == before {
 		if time.Now().After(deadline) {

@@ -2,6 +2,7 @@ package httpapi
 
 import (
 	"context"
+	"net/http/httptest"
 	"testing"
 
 	"portico.local/server/internal/playback"
@@ -34,11 +35,15 @@ func TestPlaybackV1StartPreparation(t *testing.T) {
 }
 
 // SEC-02 / invariant 5: a title the profile may not see is 404 on every path:
-// options, start, change, timeline renewal. The session's grant stops working.
+// options, start, change, observer claim and observation renewal. The session's grant stops working.
 func TestPlaybackV1RestrictedTitleIsNotFoundEverywhere(t *testing.T) {
 	f := newV1Fixture(t, 1)
 	var s playbackv1.SessionView
 	f.call("POST", "/v1/playback/sessions", map[string]string{"Idempotency-Key": "restrict-key-0000001"}, startBody(f.items[0], nil), 201, &s)
+	h := newHTTPObserver(t, f.db, func(method, path string, body any) *httptest.ResponseRecorder {
+		return f.raw(method, path, f.owner.AccessToken, nil, body)
+	})
+	epoch := h.claim(s.ID, s.Presentation.Generation)
 	// The profile now refuses unrated titles (every fixture film is unrated).
 	if _, err := f.db.Exec(`INSERT INTO profile_restrictions(profile_id,maximum_age,allow_unrated,revision) VALUES(?,12,0,2) ON CONFLICT(profile_id) DO UPDATE SET maximum_age=12,allow_unrated=0,revision=revision+1`, f.owner.Viewer.ProfileID); err != nil {
 		t.Fatal(err)
@@ -52,7 +57,8 @@ func TestPlaybackV1RestrictedTitleIsNotFoundEverywhere(t *testing.T) {
 		{"GET", "/v1/items/" + f.items[0] + "/playback-options", nil, nil},
 		{"POST", "/v1/playback/sessions", map[string]string{"Idempotency-Key": "restrict-key-0000002"}, startBody(f.items[0], nil)},
 		{"PATCH", "/v1/playback/sessions/" + s.ID, map[string]string{"If-Match": s.Revision}, map[string]any{"quality": map[string]any{"mode": "limit", "maxHeight": 2000}}},
-		{"POST", "/v1/playback/sessions/" + s.ID + "/timeline", nil, map[string]any{"seq": 1, "generation": 1, "state": "playing", "positionMs": 1000, "rate": 1}},
+		{"POST", "/v1/playback/sessions/" + s.ID + "/observer", nil, map[string]any{"generation": 1}},
+		{"PUT", "/v1/playback/sessions/" + s.ID + "/observation", nil, map[string]any{"epoch": epoch, "seq": 1, "generation": 1, "state": "playing", "positionMs": 1000, "rate": 1}},
 	} {
 		if w := f.raw(c.method, c.path, f.owner.AccessToken, c.headers, c.body); w.Code != 404 {
 			t.Errorf("%s %s: %d %s", c.method, c.path, w.Code, w.Body.String())

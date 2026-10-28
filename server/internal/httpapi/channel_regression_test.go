@@ -728,8 +728,9 @@ func TestChannelsAnExhaustedTunerRefusesTheNextViewer(t *testing.T) {
 }
 
 type v1ChannelDriver struct {
-	s   *channelSuite
-	seq map[string]int64
+	s        *channelSuite
+	observer *httpObserver
+	seeks    map[string]int64
 }
 
 func newV1ChannelDriver(t *testing.T, s *channelSuite) channelDriver {
@@ -738,7 +739,7 @@ func newV1ChannelDriver(t *testing.T, s *channelSuite) channelDriver {
 	if w := s.v1("GET", "/v1/capabilities", nil, nil); !strings.Contains(w.Body.String(), `"playback_v1_channels":"enabled"`) {
 		t.Fatalf("capabilities don't offer v1 channels: %s", w.Body)
 	}
-	return &v1ChannelDriver{s: s, seq: map[string]int64{}}
+	return &v1ChannelDriver{s: s, seeks: map[string]int64{}, observer: newHTTPObserver(t, s.f.d.DB, func(method, path string, body any) *httptest.ResponseRecorder { return s.v1(method, path, body, nil) })}
 }
 
 func (d *v1ChannelDriver) name() string { return "v1" }
@@ -841,12 +842,9 @@ func (d *v1ChannelDriver) intent(t *testing.T, h, state string, seekUS *int64, l
 
 func (d *v1ChannelDriver) observe(t *testing.T, h string, v channelView, positionUS int64, _ string) {
 	t.Helper()
-	d.seq[h]++
 	generation, _ := strconv.Atoi(d.read(t, h).BufferGeneration)
-	w := d.s.v1("POST", "/v1/playback/sessions/"+h+"/timeline", map[string]any{"seq": d.seq[h], "generation": generation, "state": "playing", "positionMs": positionUS / 1000}, nil)
-	if w.Code >= 300 {
-		t.Fatalf("timeline %d %s", w.Code, w.Body)
-	}
+	d.seeks[h]++ // These synthetic samples jump to a specified channel position.
+	d.observer.report(h, generation, map[string]any{"state": "playing", "positionMs": positionUS / 1000, "seekSerial": d.seeks[h]})
 }
 
 func (d *v1ChannelDriver) stop(t *testing.T, h string) {

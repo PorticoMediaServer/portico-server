@@ -1,6 +1,7 @@
 package httpapi
 
 import (
+	"net/http/httptest"
 	"testing"
 
 	"portico.local/server/internal/catalog"
@@ -15,7 +16,7 @@ func TestCastReceiverCurrentOccurrenceRoutes(t *testing.T) {
 	for _, tc := range []struct {
 		name          string
 		reportedEnded bool
-	}{{"before_final_timeline", false}, {"after_ended_timeline", true}} {
+	}{{"before_final_observation", false}, {"after_ended_observation", true}} {
 		t.Run(tc.name, func(t *testing.T) {
 			castReceiverCurrentOccurrenceRoutes(t, tc.reportedEnded)
 		})
@@ -60,9 +61,10 @@ func castReceiverCurrentOccurrenceRoutes(t *testing.T, reportedEnded bool) {
 		// A scheduled report may reach the server before the engine's
 		// serialized natural-completion request. The ended occurrence must
 		// retain only the authority needed to complete that same queue entry.
-		f.callAs(bearer, "POST", "/v1/playback/sessions/"+current.ID+"/timeline", nil, playbackv1.Report{
-			Seq: 1, Generation: current.Presentation.Generation, State: "ended", PositionMs: current.Presentation.StartPositionMs, Rate: 1,
-		}, 204, nil)
+		h := newHTTPObserver(t, f.db, func(method, path string, body any) *httptest.ResponseRecorder {
+			return f.as(bearer, method, path, body)
+		})
+		h.report(current.ID, current.Presentation.Generation, map[string]any{"state": "ended", "positionMs": current.Presentation.StartPositionMs})
 	}
 	base := "/v1/queues/" + q.Queue.ID
 	var head playbackv1.QueueView

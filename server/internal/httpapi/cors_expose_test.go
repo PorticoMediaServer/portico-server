@@ -61,20 +61,23 @@ func corsHasName(names []string, want string) bool {
 	return false
 }
 
-// A web client on another origin reads the timeline's report cadence from a
-// response header, which a browser hides unless the server exposes it.
-func TestCrossOriginClientsCanReadTheReportCadence(t *testing.T) {
+// Cross-origin clients can read retry and representation headers; the retired
+// report-cadence header must no longer be exposed.
+func TestCrossOriginClientsCanReadPlaybackHeaders(t *testing.T) {
 	h := corsExposeHandler(t)
-	names := corsExposedNames(t, h, "OPTIONS", corsExposeTestOrigin, "/v1/playback/sessions/s/timeline", false)
-	for _, want := range []string{"Report-Every-Ms", "Retry-After", "ETag", "Idempotent-Replayed"} {
+	names := corsExposedNames(t, h, "OPTIONS", corsExposeTestOrigin, "/v1/playback/sessions/s/observation", false)
+	for _, want := range []string{"Retry-After", "ETag", "Idempotent-Replayed"} {
 		if !corsHasName(names, want) {
 			t.Fatalf("%s is not exposed to an allowed origin: %v", want, names)
 		}
 	}
+	if corsHasName(names, "Report-Every-Ms") {
+		t.Fatalf("retired report cadence is exposed: %v", names)
+	}
 	// A tool on any other origin may call with a token, so its preflight is
 	// answered too; the real request is held to the token rule.
-	if names = corsExposedNames(t, h, "OPTIONS", "https://tool.example", "/v1/playback/sessions/s/timeline", false); !corsHasName(names, "Report-Every-Ms") {
-		t.Fatalf("a token-carrying tool cannot read the cadence: %v", names)
+	if names = corsExposedNames(t, h, "OPTIONS", "https://tool.example", "/v1/playback/sessions/s/observation", false); !corsHasName(names, "Retry-After") {
+		t.Fatalf("a token-carrying tool cannot read retry guidance: %v", names)
 	}
 }
 
@@ -97,12 +100,15 @@ func TestCrossOriginConvertedAudioTrimIsExposed(t *testing.T) {
 		{"converted audio preflight", "OPTIONS", corsExposeTestOrigin, "/v1/media/convert/opus", false},
 	} {
 		names := corsExposedNames(t, h, client.method, client.origin, client.target, client.authorize)
+		if corsHasName(names, "Report-Every-Ms") {
+			t.Fatalf("%s: retired report cadence is exposed: %v", client.name, names)
+		}
 		for _, want := range trim {
 			if !corsHasName(names, want) {
 				t.Fatalf("%s: %s is not exposed to %s: %v", client.name, want, client.origin, names)
 			}
 		}
-		for _, want := range []string{"Report-Every-Ms", "Retry-After", "ETag"} {
+		for _, want := range []string{"Retry-After", "ETag"} {
 			if !corsHasName(names, want) {
 				t.Fatalf("%s: existing %s exposure was lost: %v", client.name, want, names)
 			}

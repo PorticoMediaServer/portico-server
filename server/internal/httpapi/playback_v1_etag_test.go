@@ -1,7 +1,7 @@
 package httpapi
 
 import (
-	"context"
+	"net/http/httptest"
 	"testing"
 	"time"
 
@@ -25,18 +25,13 @@ func TestPlaybackV1SessionConditionalGetIncludesLeaseAndObservedOutput(t *testin
 
 	// A same-state report changes the lease and renderer facts without
 	// invalidating a controller's command revision.
-	now := time.Now().Add(10 * time.Second)
-	f.v1.Now = func() time.Time { return now }
-	p, err := f.id.Authenticate(f.owner.AccessToken)
-	if err != nil {
-		t.Fatal(err)
-	}
+	f.v1.Now = func() time.Time { return time.Now().Add(10 * time.Second) }
 	actual := &playback.ObservedPlayback{Video: &playback.ObservedVideo{Width: 1280, Height: 720}}
-	if _, err = f.v1.Timeline(context.Background(), playbackv1.Caller{Principal: p, DeviceID: p.DeviceID}, started.ID, playbackv1.Report{
-		Seq: 1, Generation: before.Presentation.Generation, State: "playing", PositionMs: 5000, ObservedPlayback: actual,
-	}); err != nil {
-		t.Fatal(err)
-	}
+	h := newHTTPObserver(t, f.db, func(method, path string, body any) *httptest.ResponseRecorder {
+		return f.raw(method, path, f.owner.AccessToken, nil, body)
+	})
+	// This first sample is an edge; wait for its lease and output to be durable.
+	h.report(started.ID, before.Presentation.Generation, map[string]any{"state": "playing", "positionMs": 5000, "observedPlayback": actual})
 	var after playbackv1.SessionView
 	w = f.call("GET", path, map[string]string{"If-None-Match": tag}, nil, 200, &after)
 	if after.Revision != before.Revision || after.Lease.ExpiresAt == before.Lease.ExpiresAt || after.ObservedPlayback == nil || after.ObservedPlayback.Video == nil || *after.ObservedPlayback.Video != *actual.Video {
