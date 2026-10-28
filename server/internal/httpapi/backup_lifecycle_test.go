@@ -10,6 +10,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"portico.local/server/internal/dbwork"
 	"reflect"
 	"strings"
 	"testing"
@@ -192,7 +193,7 @@ func TestBackupSettingsHTTPSecretBoundaryAndEncryptedRestore(t *testing.T) {
 			time.Sleep(10 * time.Millisecond)
 		}
 	} // A genuine producer failure must survive running disappearing in HTTP status.
-	service.SetCopyScrubber(func(context.Context, string) error { return os.ErrPermission })
+	service.SetCopyScrubber(func(context.Context, *dbwork.Candidate) error { return os.ErrPermission })
 	failed, e := service.Start(context.Background(), backup.KindManual, "http-failing-fixture")
 	if e != nil {
 		t.Fatal(e)

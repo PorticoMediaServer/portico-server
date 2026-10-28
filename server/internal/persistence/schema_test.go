@@ -77,7 +77,7 @@ func TestSchemaMismatchRefusesWithoutChangingState(t *testing.T) {
 			}
 			db.Close()
 			assertResetRefusal(t, path)
-			if _, err = InspectCandidate(context.Background(), path); !errors.Is(err, ErrSchemaResetRequired) {
+			if _, err = InspectCandidate(context.Background(), filepath.Dir(path), filepath.Base(path)); !errors.Is(err, ErrSchemaResetRequired) {
 				t.Fatalf("restore accepted mismatch: %v", err)
 			}
 			db, err = dbwork.OpenHandle(path, dbwork.DefaultPolicy())

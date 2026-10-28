@@ -9,6 +9,7 @@ import (
 	"strings"
 	"testing"
 
+	"portico.local/server/internal/dbwork"
 	"portico.local/server/internal/identity"
 	"portico.local/server/internal/testauth"
 )
@@ -53,8 +54,8 @@ func TestABackupWhoseCopyCannotBeScrubbedIsNotKept(t *testing.T) {
 	s, state, _ := testService(t)
 	refusal := errors.New("cannot scrub")
 	var scrubbed string
-	s.SetCopyScrubber(func(_ context.Context, path string) error {
-		scrubbed = path
+	s.SetCopyScrubber(func(_ context.Context, copy *dbwork.Candidate) error {
+		scrubbed = copy.Path()
 		return refusal
 	})
 	if _, err := s.Create(context.Background(), KindManual); !errors.Is(err, refusal) {

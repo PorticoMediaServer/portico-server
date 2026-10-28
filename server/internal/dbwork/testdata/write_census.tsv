@@ -19,8 +19,12 @@ internal/audiofacts/store.go	Fail	ExecWrite	ClassBackgroundMedia	-
 internal/audiofacts/store.go	Save	Begin	ClassBackgroundMedia	-
 internal/audiofacts/store.go	retryOldFailures	ExecWrite	ClassBackgroundMedia	-	×2
 internal/backup/apply.go	VerifyRestored	Begin	ClassMaintenance	-
-internal/backup/checkpoint_guard.go	(*Service).holdWriterCheckpoint	WithWriteTx	ClassMaintenance	-
-internal/backup/checkpoint_guard.go	(*Service).releaseWriterCheckpoint	ExecWrite	ClassMaintenance	-
+internal/backup/copy.go	(*copyRun).abandon	ReserveWriterConn	r.limits.class	-
+internal/backup/copy.go	(*copyRun).step	ReserveWriterConn	r.limits.class	-
+internal/backup/holds.go	(*Service).advanceHold	ExecWrite	ClassMaintenance	-
+internal/backup/holds.go	(*Service).holdBlobs	ExecWrite	ClassMaintenance	-
+internal/backup/holds.go	(*Service).releaseHold	ExecWrite	ClassMaintenance	-
+internal/backup/holds.go	ReleaseInterruptedHold	ExecWrite	ClassMaintenance	-
 internal/backup/policy.go	(*PolicyStore).Update	Begin	ClassMaintenance	-
 internal/catalog/admin.go	(*Service).OrderLibraries	Begin	ClassFrom(ctx, dbwork.ClassInteractive)	libraryOrderPlan
 internal/catalog/admin.go	(*Service).RenameLibrary	Begin	ClassFrom(ctx, dbwork.ClassInteractive)	-
@@ -228,7 +232,6 @@ internal/identity/quick_connect.go	(*Service).StartQuick	Begin	ClassSecurityFenc
 internal/identity/recovery_codes.go	(*Service).ReplaceRecoveryCodes	Begin	ClassSecurityFence	-
 internal/identity/refresh.go	(*Service).RefreshSession	Begin	ClassSecurityFence	-
 internal/identity/restore.go	(*Service).SignEveryoneOutAfterRestore	WithWriteTx	ClassSecurityFence	-
-internal/identity/restore.go	ScrubBackupCopy	WithWriteTx	ClassMaintenance	-
 internal/identity/restrictions.go	(*Service).SetProfileRestrictions	Begin	ClassSecurityFence	-
 internal/identity/self_registration.go	(*Service).Register	Begin	ClassSecurityFence	-
 internal/identity/self_registration.go	(*Service).SaveRegistrationPolicy	WithWriteTx	ClassSecurityFence	-
@@ -467,8 +470,11 @@ internal/persistence/metadata_discovery.go	StoreDiscoverySnapshot	Begin	ClassFro
 internal/persistence/planner_stats.go	RefreshPlannerStatistics	WithWriteTx	ClassMaintenance	-	×2
 internal/persistence/planner_stats.go	dropEmptyTableStatistics	WithWriteTx	ClassMaintenance	-
 internal/persistence/planner_stats.go	ensurePlannerStatTable	WithWriteTx	ClassMaintenance	-
-internal/persistence/rebase.go	RebaseStatePaths	Begin	ClassMaintenance	-
-internal/persistence/rebase.go	RebaseStatePaths	ExecWrite	ClassMaintenance	-
+internal/persistence/rebase.go	RebaseStatePaths	ExecWrite	ClassMaintenance	-	×2
+internal/persistence/rebase.go	rebaseColumn	WithWriteTx	ClassMaintenance	-
+internal/persistence/rebase.go	runRebase	ExecWrite	ClassMaintenance	-
+internal/persistence/rebase.go	runRebase	WithWriteTx	ClassMaintenance	-
+internal/persistence/rebase.go	saveRebasePosition	ExecWrite	ClassMaintenance	-
 internal/persistence/schema.go	installBaseline	Begin	ClassMaintenance	baselinePlan
 internal/persistence/template.go	regenerateDatabaseSecrets	WithWriteTx	ClassMaintenance	-
 internal/playback/activity.go	(*Service).ActivityStop	Begin	ClassEstablishedPlayback	-

@@ -42,8 +42,8 @@ type Recovery struct {
 	// Salvaged: the database was rebuilt into a fresh file from every row
 	// that could still be read.
 	Salvaged bool `json:"salvaged,omitempty"`
-	// DamagedTables are tables where some rows could not be read and are
-	// missing from the restored database.
+	// DamagedTables are tables where some rows could not be read, or broke
+	// the schema's own rules, and are missing from the restored database.
 	DamagedTables []string `json:"damagedTables,omitempty"`
 	// RemovedRows were readable but named something that was lost, and were
 	// removed so the restored database is consistent.

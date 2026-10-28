@@ -7,6 +7,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"portico.local/server/internal/dbwork"
 	"portico.local/server/internal/storagepaths"
 	"testing"
 
@@ -61,7 +62,7 @@ func TestBackupRejectsStructurallyValidDatabaseCorruption(t *testing.T) {
 			if err = writeTestFile(candidate, raw, 0600); err != nil {
 				t.Fatal(err)
 			}
-			if _, err = persistence.InspectCandidate(context.Background(), candidate); err != nil {
+			if _, err = persistence.InspectCandidate(context.Background(), filepath.Dir(candidate), filepath.Base(candidate)); err != nil {
 				t.Fatalf("corruption should be structurally valid: %v", err)
 			}
 			for _, source := range []Source{{BackupID: id}, {Path: folder}} {
@@ -142,31 +143,17 @@ func TestBackupDatabaseManifestVersionsAndStructuralChecks(t *testing.T) {
 
 func TestBackupFinalizesScrubberWALBeforeHashing(t *testing.T) {
 	svc, state, _ := testService(t)
-	var writer *sql.DB
-	defer func() {
-		if writer != nil {
-			writer.Close()
-		}
-	}()
-	svc.SetCopyScrubber(func(ctx context.Context, path string) (err error) {
-		writer, err = sql.Open("sqlite", path)
-		if err != nil {
+	svc.SetCopyScrubber(func(ctx context.Context, copy *dbwork.Candidate) error {
+		if _, err := copy.ExecContext(ctx, `INSERT INTO configuration(key,value) VALUES('wal_marker','scrubbed WAL content')`); err != nil {
 			return err
 		}
-		_, err = writer.ExecContext(ctx, `PRAGMA journal_mode=WAL; PRAGMA wal_autocheckpoint=0; INSERT INTO configuration(key,value) VALUES('wal_marker','scrubbed WAL content')`)
-		if err != nil {
-			return err
-		}
-		if size, err := walBytes(path + "-wal"); err != nil || size == 0 {
+		if size, err := walBytes(copy.Path() + "-wal"); err != nil || size == 0 {
 			t.Fatalf("scrubber WAL fixture: %d %v", size, err)
 		}
-		return nil // Keep a connection open: finalization must explicitly checkpoint.
+		return nil // Finalization must fold the log before hashing.
 	})
 	id, err := svc.Create(context.Background(), KindManual)
 	if err != nil {
-		t.Fatal(err)
-	}
-	if err = writer.Close(); err != nil {
 		t.Fatal(err)
 	}
 	folder := storagepaths.Path(state, BackupsDir, id)

@@ -19,12 +19,12 @@ import (
 // with the free space there is: salvage writes a second copy beside it.
 var ErrRecoveryNoRoom = errors.New("there is not enough free space to recover this damaged database")
 
-// Salvage bounds: rows read per window, unreadable regions skipped in one
-// table before the rest of it is given up, and passes removing rows whose
-// references were lost.
+// Salvage bounds: rows read per window, consecutive unreadable steps in one
+// table before the rest of it is given up (each step doubles, so 64 cover any
+// rowid range), and passes removing rows whose references were lost.
 const (
 	salvageWindow       = 64
-	salvageTableFaults  = 32
+	salvageTableFaults  = 64
 	salvageOrphanPasses = 16
 )
 
@@ -242,9 +242,9 @@ func salvageTables(ctx context.Context, db *dbwork.Candidate) ([]salvageTable, e
 }
 
 // copyTable copies every readable row of one table, in key order, a window at
-// a time. A window that cannot be read is skipped past: for a rowid table by
-// probing further and further ahead for the next readable row, for a table
-// keyed otherwise by giving up the rest of it. It reports whether the whole
+// a time. Past a window that cannot be read, a rowid table is read a row at a
+// time up to the damage and then stepped over it, the step doubling until a
+// row reads again; a table keyed otherwise gives up the rest of it. It reports whether the whole
 // table was copied.
 func copyTable(ctx context.Context, db *dbwork.Candidate, table salvageTable) (bool, error) {
 	columns := quoteIdentifiers(table.columns)
@@ -270,36 +270,58 @@ func copyTable(ctx context.Context, db *dbwork.Candidate, table salvageTable) (b
 	if !keyed {
 		insertColumns, values = "rowid,"+insertColumns, "?,"+values
 	}
-	insert := `INSERT OR IGNORE INTO main.` + name + `(` + insertColumns + `) VALUES(` + values + `)`
+	// A copied row replaces the fresh baseline's seeded one (settings
+	// singletons keep the owner's values). A row the schema itself refuses (a
+	// CHECK, or NOT NULL) is left out and reported.
+	insert := `INSERT OR REPLACE INTO main.` + name + `(` + insertColumns + `) VALUES(` + values + `)`
 
 	var last []any
 	whole := true
-	faults := 0
+	window := salvageWindow
+	faults, skip, steady := 0, int64(0), 0
 	for {
-		var window [][]any
-		var err error
+		query := read
+		args := last
 		if last == nil {
-			window, err = readWindow(ctx, db, first, nil, len(keys)+len(table.columns))
-		} else {
-			window, err = readWindow(ctx, db, read, last, len(keys)+len(table.columns))
+			query, args = first, nil
 		}
+		if window != salvageWindow {
+			query = strings.Replace(query, " LIMIT "+fmt.Sprint(salvageWindow), " LIMIT 1", 1)
+		}
+		rows, err := readWindow(ctx, db, query, args, len(keys)+len(table.columns))
 		if err != nil {
 			if ctx.Err() != nil {
 				return false, ctx.Err()
 			}
 			whole = false
-			if faults++; faults > salvageTableFaults || keyed {
+			if keyed {
 				return false, nil
 			}
-			next, ok := nextReadableRowid(ctx, db, name, last)
-			if !ok {
+			// Narrow to single rows to keep everything before the damage,
+			// then step past it, doubling the step until a row reads again.
+			if window != 1 {
+				window = 1
+				continue
+			}
+			if faults++; faults > salvageTableFaults {
 				return false, nil
 			}
-			last = []any{next - 1}
+			skip = max(1, skip*2)
+			from := int64(0)
+			if last != nil {
+				from, _ = last[0].(int64)
+			}
+			last = []any{from + skip}
 			continue
 		}
-		if len(window) == 0 {
+		if len(rows) == 0 {
 			return whole, nil
+		}
+		if window == 1 {
+			faults, skip = 0, 0
+			if steady++; steady >= salvageWindow {
+				window, steady = salvageWindow, 0
+			}
 		}
 		err = db.WithTx(ctx, func(tx *sql.Tx) error {
 			statement, err := tx.PrepareContext(ctx, insert)
@@ -307,13 +329,16 @@ func copyTable(ctx context.Context, db *dbwork.Candidate, table salvageTable) (b
 				return err
 			}
 			defer statement.Close()
-			for _, row := range window {
+			for _, row := range rows {
 				args := row[len(keys):]
 				if !keyed {
 					args = row
 				}
 				if _, err = statement.ExecContext(ctx, args...); err != nil {
-					return err
+					if !constraintFailure(err) {
+						return err
+					}
+					whole = false
 				}
 			}
 			return nil
@@ -321,7 +346,7 @@ func copyTable(ctx context.Context, db *dbwork.Candidate, table salvageTable) (b
 		if err != nil {
 			return false, err
 		}
-		last = window[len(window)-1][:len(keys)]
+		last = rows[len(rows)-1][:len(keys)]
 	}
 }
 
@@ -344,28 +369,6 @@ func readWindow(ctx context.Context, db *dbwork.Candidate, query string, after [
 		out = append(out, row)
 	}
 	return out, rows.Err()
-}
-
-// nextReadableRowid looks further and further past an unreadable stretch of a
-// rowid table for the next row SQLite can reach.
-func nextReadableRowid(ctx context.Context, db *dbwork.Candidate, table string, last []any) (int64, bool) {
-	from := int64(0)
-	if last != nil {
-		if v, ok := last[0].(int64); ok {
-			from = v
-		}
-	}
-	for step := int64(1); step > 0 && step <= 1<<48; step *= 16 {
-		var next int64
-		err := db.QueryRowContext(ctx, `SELECT rowid FROM damaged.`+table+` WHERE rowid>=? ORDER BY rowid LIMIT 1`, from+step).Scan(&next)
-		if err == nil {
-			return next, true
-		}
-		if errors.Is(err, sql.ErrNoRows) || ctx.Err() != nil {
-			return 0, false
-		}
-	}
-	return 0, false
 }
 
 // removeLostReferences deletes rows whose foreign keys name a row that was
@@ -512,6 +515,12 @@ func rebuildTextIndexes(ctx context.Context, db *dbwork.Candidate) error {
 		}
 	}
 	return nil
+}
+
+// constraintFailure is SQLite's SQLITE_CONSTRAINT, for any constraint.
+func constraintFailure(err error) bool {
+	var coded interface{ Code() int }
+	return errors.As(err, &coded) && coded.Code()&255 == 19
 }
 
 func quoteIdentifier(name string) string { return `"` + strings.ReplaceAll(name, `"`, `""`) + `"` }

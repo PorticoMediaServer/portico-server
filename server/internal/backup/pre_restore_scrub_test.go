@@ -2,18 +2,35 @@ package backup
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"os"
 	"path/filepath"
 	"testing"
+
+	"portico.local/server/internal/dbwork"
 )
+
+// writeTestDatabase writes a small SQLite database holding body.
+func writeTestDatabase(t *testing.T, path, body string) {
+	t.Helper()
+	if err := os.MkdirAll(filepath.Dir(path), 0700); err != nil {
+		t.Fatal(err)
+	}
+	db, err := sql.Open("sqlite", path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	if _, err = db.Exec(`CREATE TABLE sample(body TEXT);INSERT INTO sample VALUES(?)`, body); err != nil {
+		t.Fatal(err)
+	}
+}
 
 func TestPreRestoreScrubResumesWithoutRehashingChangedState(t *testing.T) {
 	folder := t.TempDir()
 	dbPath := filepath.Join(folder, DatabaseName)
-	if err := writeTestFile(dbPath, []byte("database before scrub"), 0600); err != nil {
-		t.Fatal(err)
-	}
+	writeTestDatabase(t, dbPath, "database before scrub")
 	statePath := filepath.Join(folder, "Keys/networking-tls.pem")
 	if err := writeTestFile(statePath, []byte("original certificate"), 0600); err != nil {
 		t.Fatal(err)
@@ -26,8 +43,8 @@ func TestPreRestoreScrubResumesWithoutRehashingChangedState(t *testing.T) {
 		t.Fatal(err)
 	}
 	interrupted := errors.New("interrupted after database scrub")
-	if err = ScrubPreRestoreCopy(context.Background(), folder, func(context.Context, string) error {
-		if err := writeTestFile(dbPath, []byte("scrubbed database"), 0600); err != nil {
+	if err = ScrubPreRestoreCopy(context.Background(), folder, func(ctx context.Context, copy *dbwork.Candidate) error {
+		if _, err := copy.ExecContext(ctx, `UPDATE sample SET body='scrubbed database'`); err != nil {
 			return err
 		}
 		return interrupted
@@ -39,7 +56,7 @@ func TestPreRestoreScrubResumesWithoutRehashingChangedState(t *testing.T) {
 		t.Fatal(err)
 	}
 	calls := 0
-	scrub := func(context.Context, string) error { calls++; return nil }
+	scrub := func(context.Context, *dbwork.Candidate) error { calls++; return nil }
 	if err = ScrubPreRestoreCopy(context.Background(), folder, scrub); !errors.Is(err, ErrIntegrity) {
 		t.Fatalf("changed state file accepted: %v", err)
 	}
@@ -80,7 +97,10 @@ func TestPreRestoreScrubRefusesCorruptDatabaseBeforeMutation(t *testing.T) {
 	if err = writeTestFile(path, []byte("changed database"), 0600); err != nil {
 		t.Fatal(err)
 	}
-	if err = ScrubPreRestoreCopy(context.Background(), folder, func(context.Context, string) error { t.Fatal("corrupt database reached scrubber"); return nil }); !errors.Is(err, ErrIntegrity) {
+	if err = ScrubPreRestoreCopy(context.Background(), folder, func(context.Context, *dbwork.Candidate) error {
+		t.Fatal("corrupt database reached scrubber")
+		return nil
+	}); !errors.Is(err, ErrIntegrity) {
 		t.Fatalf("changed database accepted: %v", err)
 	}
 }
@@ -112,7 +132,7 @@ func TestPreRestoreScrubRefusesDatabaseAndWALSymlinks(t *testing.T) {
 			if err = writeManifest(folder, Manifest{Format: Format, Version: Version, Kind: KindPreRestore, Files: files}); err != nil {
 				t.Fatal(err)
 			}
-			if err = ScrubPreRestoreCopy(context.Background(), folder, func(context.Context, string) error { t.Fatal("symlink reached SQLite scrubber"); return nil }); !errors.Is(err, ErrSourceInvalid) {
+			if err = ScrubPreRestoreCopy(context.Background(), folder, func(context.Context, *dbwork.Candidate) error { t.Fatal("symlink reached SQLite scrubber"); return nil }); !errors.Is(err, ErrSourceInvalid) {
 				t.Fatalf("symlink accepted: %v", err)
 			}
 		})
