@@ -44,6 +44,7 @@ func TestAttentionDismissalAndLowConfidenceSurviveRefresh(t *testing.T) {
 		t.Fatal("provider retry undid Keep as is", page, e)
 	}
 	publicationExec(t, db, `UPDATE catalog_assets SET size=size+1 WHERE id IN(SELECT asset_id FROM catalog_asset_links WHERE entity_id=?)`, item.ID)
+	settleMetadataCatalogue(t, db)
 	page, e = s.Attention(ctx, "lib", "", 25)
 	if e != nil || len(page.Entries) != 1 || page.Entries[0].Reason != "low_confidence" {
 		t.Fatal("changed files did not return to review", page, e)

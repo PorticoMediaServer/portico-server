@@ -143,7 +143,7 @@ func readingFacetStart(t *testing.T, r *readingFixture, h http.Handler) (Reading
 		t.Fatal(err)
 	}
 	location := w.Header().Get("Location")
-	if pending.Kind != "reading-facet-preparing" || pending.State != "preparing" || pending.QueryID == "" || pending.RetryAfterMs != 1000 || w.Header().Get("Retry-After") != "1" || location != readingFacetPollLocation(r.library, readprep.Handle(pending.QueryID)) {
+	if pending.Kind != "reading-facet-preparing" || pending.State != "preparing" || pending.QueryID == "" || pending.RetryAfterMs != readingInitialRetryMs || w.Header().Get("Retry-After") != "0" || location != readingFacetPollLocation(r.library, readprep.Handle(pending.QueryID)) {
 		t.Fatalf("pending: %+v headers=%v", pending, w.Header())
 	}
 	return pending, location
@@ -443,7 +443,7 @@ func TestReadingFacetQueriesPublicCohortDispatch(t *testing.T) {
 	r.d.PrepareReadingFacets = true
 	h := New(r.d)
 	pending := readingHTTP(t, h, "GET", path, r.f.owner.AccessToken, "", nil)
-	if pending.Code != 202 || pending.Header().Get("Retry-After") != "1" || pending.Header().Get("Location") == "" {
+	if pending.Code != 202 || pending.Header().Get("Retry-After") != "0" || pending.Header().Get("Location") == "" {
 		t.Fatal(pending.Code, pending.Header(), pending.Body.String())
 	}
 	release()

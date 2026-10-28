@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {setImmediate} from 'node:timers/promises';
+import {EventEmitter, once} from 'node:events';
 import {HttpLocalApi, type LocalSession} from '../src/index.ts';
 import {UserMutationRecoveryModel, type UserMutationRecoveryApi} from '../src/user-mutation-recovery.ts';
 import {UserMutationCoordinator, emptyUserMutationState, userMutationFingerprint, type UserMutationEntry, type UserMutationState, type UserMutationScope, type UserMutationResponse} from '../src/user-mutations.ts';
@@ -137,6 +138,7 @@ test('actual admission and restart re-entry retain the authored caller ID and or
  const path='/v1/admin/live-sources/'+ 'b'.repeat(48)+'/configuration';
  const writes:{key:string|null;body:typeof body}[]=[];
  const session={accessToken:'test-token',sessionFamilyId:'family',deviceId:'device',viewer:{serverId:'server',authority:'local',accountId:'account',profileId:'profile',role:'owner'}} as LocalSession;
+ const dispatched=new EventEmitter();
  const fetcher=async(received:RequestInfo|URL,init?:RequestInit)=>{
   const endpoint=new URL(String(received)).pathname;
   if(endpoint==='/v1/user-mutations/policy')return Response.json({serverTimeMs:Date.now()});
@@ -144,12 +146,15 @@ test('actual admission and restart re-entry retain the authored caller ID and or
    const entry=store.state.entries[0];return writes.length>1?Response.json({key:entry.key,operation:entry.operation,status:'applied',targetId:'source',revision:24,committedMs:Date.now(),expiresMs:Date.now()+2592000000}):Response.json({error:{code:'receipt_unknown'}},{status:404});
   }
   writes.push({key:new Headers(init?.headers).get('Idempotency-Key'),body:JSON.parse(String(init?.body))});
-  if(writes.length===1)throw new Error('connection lost before acceptance');
+  if(writes.length===1){dispatched.emit('write');throw new Error('connection lost before acceptance');}
   return Response.json({saved:true});
  };
  const oldApi=new HttpLocalApi(scope.origin,session.accessToken,fetcher);oldApi.setUserMutationSession(session);const old=oldApi.configureUserMutations(store),abort=new AbortController();
+ const firstWire=once(dispatched,'write',{signal:AbortSignal.timeout(5000)});
+ try{
  const pending=oldApi.request(path,'PUT',body,abort.signal);const canceled=assert.rejects(pending);
- for(let n=0;n<100&&!writes.length;n++)await setImmediate();assert.equal(writes.length,1);
+ // Observe the actual dispatched write; event-loop turns are not elapsed time.
+ await firstWire;assert.equal(writes.length,1);
  abort.abort();old.dispose();oldApi.setUserMutationSession(undefined);await canceled;
  const original=store.state.entries[0].key;
  assert.equal((store.state.entries[0].body as {operationId:string}).operationId,original);
@@ -157,9 +162,17 @@ test('actual admission and restart re-entry retain the authored caller ID and or
  store.state.entries[0].dueMs=0;delete store.state.entries[0].leaseOwner;delete store.state.entries[0].leaseUntilMs;
  const api=new HttpLocalApi(scope.origin,session.accessToken,fetcher);api.setUserMutationSession(session);const core=api.configureUserMutations(store),model=new UserMutationRecoveryModel({api,coordinator:core,scope:api.getUserMutationScope});
  try{
-  for(let n=0;n<100&&!model.snapshot().rows[0]?.secretFields.length;n++)await setImmediate();
+  // Recovery publication follows startup reconciliation. Subscribe to that
+  // real state transition rather than assuming a number of microtask turns.
+  await new Promise<void>((resolve,reject)=>{
+   const timeout=setTimeout(()=>{off();reject(new Error('Restart did not publish secret re-entry'));},5000);
+   const ready=()=>{if(model.snapshot().rows[0]?.secretFields.length){clearTimeout(timeout);off();resolve();}};
+   const off=model.subscribe(ready);ready();
+  });
+  assert.equal(model.snapshot().rows[0]?.secretFields.length,1);
   await model.reenter(original,{'settings.remote.guideUrl':url});
   assert.equal(writes.length,2);assert.equal(writes[1].key,original);assert.deepEqual(writes[1].body,{...body,operationId:original});
   assert.equal(store.state.entries[0].state,'confirmed');assert.equal(JSON.stringify(store.state).includes('original-private-token'),false);
- }finally{model.dispose();core.dispose();old.dispose();}
+ }finally{model.dispose();core.dispose();}
+ }finally{abort.abort();old.dispose();oldApi.setUserMutationSession(undefined);}
 });

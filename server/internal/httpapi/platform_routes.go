@@ -124,7 +124,7 @@ func registerPlatformRoutes(registry *apikit.Registry, d Dependencies) error {
 	if err != nil {
 		return err
 	}
-	return apikit.Register(registry, apikit.Route[PathsChangedRequest, ingestion.PathReport]{Metadata: apikit.Metadata{Audience: apikit.Integrations, Admission: laneDefault, ID: "report_changed_paths", Method: "POST", Path: "/v1/libraries/paths-changed", Summary: "Report paths that were added, changed or removed, and scan only those folders",
+	if err = apikit.Register(registry, apikit.Route[PathsChangedRequest, ingestion.PathReport]{Metadata: apikit.Metadata{Audience: apikit.Integrations, Admission: laneDefault, ID: "report_changed_paths", Method: "POST", Path: "/v1/libraries/paths-changed", Summary: "Report paths that were added, changed or removed, and scan only those folders",
 		Access: apikit.Owner, Requires: apikit.ScopeLibrary, Lane: apikit.Default, Cost: apikit.PageSized, BodyLimit: 1 << 20, Status: 202,
 		Errors: []string{"unauthorized", "not_permitted", "invalid_request", "body_too_large", "administration_unavailable", "internal"},
 	}, Handler: func(ctx context.Context, r *http.Request, body PathsChangedRequest) (ingestion.PathReport, error) {
@@ -176,5 +176,8 @@ func registerPlatformRoutes(registry *apikit.Registry, d Dependencies) error {
 		default:
 			return empty, &apierror.Error{Code: "internal", Cause: err}
 		}
-	}})
+	}}); err != nil {
+		return err
+	}
+	return registerIntegrationRefreshRoute(registry, d)
 }

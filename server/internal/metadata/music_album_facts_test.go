@@ -68,6 +68,7 @@ func TestMBAlbumLabelFillsEmptyOwnerField(t *testing.T) {
 func TestMBAlbumLabelPreservesOwnerText(t *testing.T) {
 	svc, _ := mbLabelService(t, mbLabelFixture())
 	db := svc.db
+	driveMBCatalogAdoptions(t, db)
 	catalogtest.New(t, db).Fields(mbIntID(t, db, "Local Album"), map[string]any{"label": "Owner Label"})
 	// Publishing the same release again keeps the owner's text.
 	mbCurrentExec(t, db, `UPDATE mb_jobs SET status='pending',attempts=0,next_attempt='',error='',generation=generation+1,revision=revision+1 WHERE kind='album'`)

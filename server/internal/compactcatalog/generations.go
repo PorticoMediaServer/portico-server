@@ -75,7 +75,7 @@ func SearchServingSQL(ctx context.Context, q ReadQuery, query string) (string, e
 }
 
 func beginGeneration(ctx context.Context, tx *sql.Tx) error {
-	_, err := tx.ExecContext(ctx, `UPDATE catalog_generations SET generation=generation+1,retaining=1 WHERE singleton=1 AND retaining=0 AND EXISTS(SELECT 1 FROM catalog_browse_rows WHERE entity_id>0)`)
+	_, err := tx.ExecContext(ctx, `UPDATE catalog_generations SET generation=generation+1,retaining=1,visibility_sequence=(SELECT sequence FROM compact_visibility_source_state WHERE id=1) WHERE singleton=1 AND retaining=0 AND EXISTS(SELECT 1 FROM catalog_browse_rows WHERE entity_id>0)`)
 	return err
 }
 
@@ -85,6 +85,6 @@ func beginGeneration(ctx context.Context, tx *sql.Tx) error {
 // ErrFacetProducerFailed (not endless building); normal worker retries recover.
 // Other legacy domains keep their existing poisoned-unit publication policy.
 func finishGeneration(ctx context.Context, tx *sql.Tx) error {
-	_, err := tx.ExecContext(ctx, `UPDATE catalog_generations SET retaining=0 WHERE singleton=1 AND retaining=1 AND NOT EXISTS(SELECT 1 FROM catalog_derivations WHERE rebuilding=1) AND NOT EXISTS(SELECT 1 FROM catalog_derivation_failures WHERE domain IN(33,36,37,38,39,40,41,42,43,44)) AND NOT EXISTS(SELECT 1 FROM catalog_dirty d WHERE domain IN(18,19,20,25,26,28,31,33,35,36,37,38,39,40,41,42,43,44) AND NOT EXISTS(SELECT 1 FROM catalog_derivation_failures f WHERE f.domain=d.domain AND f.entity_id=d.entity_id))`)
+	_, err := tx.ExecContext(ctx, `UPDATE catalog_generations SET retaining=0 WHERE singleton=1 AND retaining=1 AND NOT EXISTS(SELECT 1 FROM compact_visibility_source_jobs WHERE first_pending<=catalog_generations.visibility_sequence) AND NOT EXISTS(SELECT 1 FROM catalog_browse_row_work) AND NOT EXISTS(SELECT 1 FROM catalog_browse_row_keys) AND NOT EXISTS(SELECT 1 FROM catalog_item_metric_jobs) AND NOT EXISTS(SELECT 1 FROM catalog_browse_counter_repairs) AND NOT EXISTS(SELECT 1 FROM catalog_derivations WHERE rebuilding=1) AND NOT EXISTS(SELECT 1 FROM catalog_derivation_failures WHERE domain IN(33,36,37,38,39,40,41,42,43,44)) AND NOT EXISTS(SELECT 1 FROM catalog_dirty d WHERE domain IN(18,19,20,25,26,28,31,33,35,36,37,38,39,40,41,42,43,44) AND NOT EXISTS(SELECT 1 FROM catalog_derivation_failures f WHERE f.domain=d.domain AND f.entity_id=d.entity_id))`)
 	return err
 }

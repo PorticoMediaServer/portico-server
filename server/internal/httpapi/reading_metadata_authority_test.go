@@ -132,12 +132,22 @@ func TestReadingBulkMetadataPreviewAdmitsReadingTargets(t *testing.T) {
 	b := c.Entity(compactcatalog.Entity{Library: read, Kind: compactcatalog.Ebook, Key: "ebook:two", Title: "Two"}, nil)
 	c.Drain()
 	f.deps.Metadata = metadata.New(f.deps.DB, "test-token")
+	// The production server installs the memory-only preparation scheduler.
+	// Without it this isolated fixture returns capacity refusal before Reading
+	// target admission; no rate-limit bucket is involved.
+	store := installBulkPreviewTestStore(t, f.deps.Catalog)
+	releaseWorker := blockBulkPreviewWorker(t, store)
 	f.handler = New(f.deps)
 	body, _ := json.Marshal(map[string]any{"targets": []map[string]string{
 		{"kind": "item", "contentKind": "ebook", "id": a.Public, "libraryId": "read"},
 		{"kind": "item", "contentKind": "ebook", "id": b.Public, "libraryId": "read"},
 	}})
 	w := f.call("POST", "/v1/metadata/bulk/preview", f.owner, string(body))
+	if w.Code != 202 {
+		t.Fatalf("cold Reading preview did not enter preparation: %d %s", w.Code, w.Body.String())
+	}
+	releaseWorker()
+	w = bulkPreviewHTTPReady(t, f.handler, f.owner, w)
 	var preview metadata.BulkMetadataPreview
 	if w.Code != 200 || json.Unmarshal(w.Body.Bytes(), &preview) != nil || preview.ContentKind != "ebook" || preview.Total != 2 {
 		t.Fatalf("Reading bulk preview %d %s", w.Code, w.Body.String())

@@ -214,16 +214,40 @@ type pathObject struct {
 	Eligible, Context                                                                            bool
 }
 
-func readPathObject(ctx context.Context, tx *sql.Tx, id string) (pathObject, error) {
-	v := pathObject{ID: id}
-	err := tx.QueryRowContext(ctx, `SELECT o.source_id,o.root_incarnation,o.relative_path,o.revision,s.root,s.root_identity,a.path,lib.kind,COALESCE(p.format,''),cl.id,COALESCE(e.id,0),a.id,s.generation,COALESCE(e.kind,20),COALESCE(link.available,0),
+// pathObjectColumns is the one projection that hydrates a raw object. It is
+// shared by the point read and by the bounded batch read in
+// reading_path_batch.go so the two can never disagree about eligibility.
+//
+// reading_publications.asset_id is UNIQUE and catalog_assets.token is UNIQUE,
+// so each raw object hydrates to at most one row: a bounded id batch cannot
+// fan out through this join.
+const pathObjectColumns = `o.id,o.source_id,o.root_incarnation,o.relative_path,o.revision,s.root,s.root_identity,a.path,lib.kind,COALESCE(p.format,''),cl.id,COALESCE(e.id,0),a.id,s.generation,COALESCE(e.kind,20),COALESCE(link.available,0),
  o.retired=0 AND o.state='available' AND o.unsupported_reason='' AND s.incarnation=o.root_incarnation AND COALESCE(e.retired=0 AND e.library_id=cl.id AND cl.retired=0,0) AND a.available=1
  AND ((e.kind=20 AND lib.kind='book' AND p.format IN('epub','pdf')) OR(e.kind=21 AND lib.kind='comic' AND p.format IN('cbz','pdf','cb7','cbr'))) AND (p.format NOT IN('cb7','cbr') OR s.kind='local')
- AND o.id=(SELECT first.id FROM inventory_objects first INDEXED BY inventory_objects_path WHERE first.source_id=o.source_id AND first.relative_path=o.relative_path AND first.retired=0 AND first.asset_id=o.asset_id AND first.root_incarnation=o.root_incarnation ORDER BY first.id LIMIT 1)
- FROM inventory_objects o JOIN library_sources s ON s.id=o.source_id JOIN libraries lib ON lib.id=s.library_id AND lib.kind IN('book','comic') JOIN catalog_libraries cl ON cl.library_id=lib.id JOIN catalog_assets a ON a.token=o.asset_id LEFT JOIN reading_publications p ON p.asset_id=a.id LEFT JOIN catalog_entities e ON e.id=p.item_id LEFT JOIN catalog_asset_links link ON link.entity_id=p.item_id AND link.asset_id=p.asset_id WHERE o.id=? AND o.retired=0`, id).Scan(&v.Source, &v.Incarnation, &v.Relative, &v.Revision, &v.Root, &v.RootIdentity, &v.Actual, &v.LibraryKind, &v.Format, &v.Library, &v.Item, &v.Asset, &v.Generation, &v.Kind, &v.Eligible, &v.Context)
+ AND o.id=(SELECT first.id FROM inventory_objects first INDEXED BY inventory_objects_path WHERE first.source_id=o.source_id AND first.relative_path=o.relative_path AND first.retired=0 AND first.asset_id=o.asset_id AND first.root_incarnation=o.root_incarnation ORDER BY first.id LIMIT 1)`
+
+const pathObjectJoins = ` JOIN library_sources s ON s.id=o.source_id JOIN libraries lib ON lib.id=s.library_id AND lib.kind IN('book','comic') JOIN catalog_libraries cl ON cl.library_id=lib.id JOIN catalog_assets a ON a.token=o.asset_id LEFT JOIN reading_publications p ON p.asset_id=a.id LEFT JOIN catalog_entities e ON e.id=p.item_id LEFT JOIN catalog_asset_links link ON link.entity_id=p.item_id AND link.asset_id=p.asset_id`
+
+func (v *pathObject) scan() []any {
+	return []any{&v.ID, &v.Source, &v.Incarnation, &v.Relative, &v.Revision, &v.Root, &v.RootIdentity, &v.Actual, &v.LibraryKind, &v.Format, &v.Library, &v.Item, &v.Asset, &v.Generation, &v.Kind, &v.Eligible, &v.Context}
+}
+
+// finish applies the Go-side path containment checks the SQL projection cannot
+// express. Both hydration paths call it, so batch and point reads are equal.
+func (v *pathObject) finish() {
+	v.Context = v.Context && v.Actual == rootPrefix(v.Root)+v.Relative && filepath.Clean(filepath.Join(v.Root, v.Relative)) == filepath.Clean(v.Actual)
+	v.Eligible = v.Eligible && v.Context
+}
+
+// pathObjectPointSQL is the single-object hydration. The batch statement in
+// reading_path_batch.go shares the same projection and joins.
+var pathObjectPointSQL = `SELECT ` + pathObjectColumns + ` FROM inventory_objects o` + pathObjectJoins + ` WHERE o.id=? AND o.retired=0`
+
+func readPathObject(ctx context.Context, tx *sql.Tx, id string) (pathObject, error) {
+	var v pathObject
+	err := tx.QueryRowContext(ctx, pathObjectPointSQL, id).Scan(v.scan()...)
 	if err == nil {
-		v.Context = v.Context && v.Actual == rootPrefix(v.Root)+v.Relative && filepath.Clean(filepath.Join(v.Root, v.Relative)) == filepath.Clean(v.Actual)
-		v.Eligible = v.Eligible && v.Context
+		v.finish()
 	}
 	return v, err
 }
@@ -237,13 +261,27 @@ func rootPrefix(root string) string {
 
 // ReadingNormalizeObjectTx normalizes ONE raw object, never its siblings. This
 // seam is used on observation and by the durable feed for all other writers.
+// One object is admitted alone even when its own scalars exceed the window
+// budget, so the point seam stays O(B).
 func ReadingNormalizeObjectTx(ctx context.Context, tx *sql.Tx, id string) error {
-	v, err := readPathObject(ctx, tx, id)
-	if errors.Is(err, sql.ErrNoRows) {
-		_, err = tx.ExecContext(ctx, `DELETE FROM reading_path_object_keys WHERE object_id=?`, id)
+	objects, n, err := readPathObjectsCapped(ctx, tx, []string{id})
+	if err != nil {
 		return err
 	}
-	if err != nil {
+	if n != 1 {
+		return errPathObjectProgress
+	}
+	v, found := objects[id]
+	return normalizePathObjectTx(ctx, tx, id, v, found)
+}
+
+// normalizePathObjectTx is the one-object body shared by the public point seam
+// and the bounded batch sweeps, so both obey the same eligibility, winner,
+// acceptance and restart rules. A raw object absent from the hydration is
+// today's sql.ErrNoRows: its stale key row is dropped and nothing else happens.
+func normalizePathObjectTx(ctx context.Context, tx *sql.Tx, id string, v pathObject, found bool) error {
+	if !found {
+		_, err := tx.ExecContext(ctx, `DELETE FROM reading_path_object_keys WHERE object_id=?`, id)
 		return err
 	}
 	key, parseErr := ReadingDirectoryKey(filepath.ToSlash(filepath.Dir(v.Relative)))
@@ -252,7 +290,7 @@ func ReadingNormalizeObjectTx(ctx context.Context, tx *sql.Tx, id string) error 
 		key = filepath.ToSlash(filepath.Dir(v.Relative))
 	}
 	var scope int64
-	err = tx.QueryRowContext(ctx, `SELECT id FROM reading_path_scope WHERE source_id=? AND incarnation=? AND root_prefix=? AND directory_key=? AND rule_version=?`, v.Source, v.Incarnation, rootPrefix(v.Root), key, readingPathRule).Scan(&scope)
+	err := tx.QueryRowContext(ctx, `SELECT id FROM reading_path_scope WHERE source_id=? AND incarnation=? AND root_prefix=? AND directory_key=? AND rule_version=?`, v.Source, v.Incarnation, rootPrefix(v.Root), key, readingPathRule).Scan(&scope)
 	if errors.Is(err, sql.ErrNoRows) {
 		err = tx.QueryRowContext(ctx, `INSERT INTO reading_path_scope(library_id,source_id,incarnation,root_prefix,directory_key,rule_version,desired,queued) VALUES(?,?,?,?,?,?,?,?) RETURNING id`, v.Library, v.Source, v.Incarnation, rootPrefix(v.Root), key, readingPathRule, v.Context, v.Context).Scan(&scope)
 	}
@@ -385,12 +423,13 @@ func ReadingPathBlockTx(ctx context.Context, tx *sql.Tx, job, relative, reason s
 
 type pathWork struct {
 	Library, Requested, Captured, Asset, Scope, Phase, FenceAsset, FenceScope int64
+	Served                                                                    int64
 	Kind, Key, Object, FenceObject                                            string
 }
 
 func pathWorkStep(ctx context.Context, tx *sql.Tx, limit int, turn int64) (int, error) {
 	var w pathWork
-	err := tx.QueryRowContext(ctx, `SELECT library_id,kind,work_key,requested,captured,after_object,after_asset,after_scope,phase,fence_object,fence_asset,fence_scope FROM reading_path_dirty_work ORDER BY served,kind,work_key LIMIT 1`).Scan(&w.Library, &w.Kind, &w.Key, &w.Requested, &w.Captured, &w.Object, &w.Asset, &w.Scope, &w.Phase, &w.FenceObject, &w.FenceAsset, &w.FenceScope)
+	err := tx.QueryRowContext(ctx, `SELECT library_id,kind,work_key,requested,captured,after_object,after_asset,after_scope,phase,fence_object,fence_asset,fence_scope,served FROM reading_path_dirty_work ORDER BY served,kind,work_key LIMIT 1`).Scan(&w.Library, &w.Kind, &w.Key, &w.Requested, &w.Captured, &w.Object, &w.Asset, &w.Scope, &w.Phase, &w.FenceObject, &w.FenceAsset, &w.FenceScope, &w.Served)
 	if errors.Is(err, sql.ErrNoRows) {
 		return 0, nil
 	}
@@ -412,18 +451,15 @@ func pathWorkStep(ctx context.Context, tx *sql.Tx, limit int, turn int64) (int, 
 	done := false
 	n := 0
 	normalize := func(ids []string) error {
-		for _, id := range ids {
-			if e := ReadingNormalizeObjectTx(ctx, tx, id); e != nil {
-				return e
-			}
-		}
-		return nil
+		return normalizePathObjects(ctx, tx, ids)
 	}
 	switch w.Kind {
 	case "object":
-		err = ReadingNormalizeObjectTx(ctx, tx, w.Key)
-		done = true
-		n = 1
+		// Consecutive 'object' rows that share the head row's served stamp are
+		// contiguous in the queue's exact ORDER BY served,kind,work_key sequence.
+		// They share one bounded hydration, then each row retires or re-arms on
+		// its own requested/captured guard; this helper owns that tail.
+		return pathObjectWorkStep(ctx, tx, w, limit, turn)
 	case "asset", "source":
 		if w.Phase == 0 {
 			q := `SELECT id FROM inventory_objects INDEXED BY inventory_objects_reading_asset_object WHERE asset_id=? AND id>? AND id<=? ORDER BY id LIMIT ?`
@@ -1334,13 +1370,24 @@ func pathCaptureStep(ctx context.Context, tx *sql.Tx, b pathBuild, s pathScope, 
 		_, err = tx.ExecContext(ctx, `UPDATE reading_path_build SET phase='stage' WHERE id=?`, b.ID)
 		return 1, err
 	}
+	// One bounded statement hydrates the raw window without retaining more than
+	// the ordinary byte budget, so it may consume only a prefix. n is that RAW
+	// prefix, including ids whose joins were absent: an id inside the prefix but
+	// absent from the map is today's sql.ErrNoRows and stays behind the durable
+	// after_object cursor below, while ids past n were never read and stay in
+	// front of the cursor for the next step rather than being treated as missing.
+	objects, n, err := readPathObjectsCapped(ctx, tx, ids)
+	if err != nil {
+		return 0, err
+	}
+	if n <= 0 {
+		return 0, errPathObjectProgress
+	}
+	ids = ids[:n]
 	for _, id := range ids {
-		v, e := readPathObject(ctx, tx, id)
-		if errors.Is(e, sql.ErrNoRows) {
+		v, ok := objects[id]
+		if !ok {
 			continue
-		}
-		if e != nil {
-			return 0, e
 		}
 		if !v.Eligible {
 			continue

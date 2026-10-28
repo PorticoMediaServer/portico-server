@@ -140,7 +140,7 @@ func addIntegrationRestrictionWrites(routes map[string]writeRoute) {
 	noCatalogue := map[string]string{
 		"/Users/AuthenticateByName":        "dedicated native app-password exchange; no catalogue lookup, real account passwords/PINs refused",
 		"/Auth/Keys":                       "native scoped key mint only; no catalogue query or catalogue mutation",
-		"/Library/Refresh":                 "unconditionally refuses untargeted refresh; cannot queue a scan or reach catalogue content",
+		"/Library/Refresh":                 "delegates to the owner-only native refresh; a restricted profile is refused before any library is named, and the answer carries no catalogue content",
 		"/Sessions/{id}/Playing/{command}": "only an already-admitted native session can be paused/resumed/seeked/stopped; accepts no catalogue ID or playback start; native account/family/revision and title visibility checks retained (compatibility transport and native control authority tests)",
 	}
 	for path, reason := range noCatalogue {

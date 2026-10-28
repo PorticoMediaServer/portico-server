@@ -110,10 +110,14 @@ func readingQueryRestrictionCheck(method string, facet bool) func(*testing.T) {
 				}
 			}
 		}
-		assertPending := func(w *httptest.ResponseRecorder, path string) {
+		assertPending := func(w *httptest.ResponseRecorder, path string, retryMs int) {
 			t.Helper()
 			var pending ReadingFacetPreparing // Both preparing envelopes have the same fields.
-			if w.Code != 202 || json.Unmarshal(w.Body.Bytes(), &pending) != nil || pending.Kind != kind || pending.State != "preparing" || pending.QueryID == "" || pending.RetryAfterMs != 1000 || w.Header().Get("Retry-After") != "1" || w.Header().Get("Location") != path || path != queryPrefix+pending.QueryID {
+			retrySeconds := "1"
+			if retryMs == readingInitialRetryMs {
+				retrySeconds = "0"
+			}
+			if w.Code != 202 || json.Unmarshal(w.Body.Bytes(), &pending) != nil || pending.Kind != kind || pending.State != "preparing" || pending.QueryID == "" || pending.RetryAfterMs != retryMs || w.Header().Get("Retry-After") != retrySeconds || w.Header().Get("Location") != path || path != queryPrefix+pending.QueryID {
 				t.Fatalf("real restricted preparing control: %d %s %v", w.Code, w.Body.String(), w.Header())
 			}
 			assertNoFacts(w, visible, visibleAuthor)
@@ -122,7 +126,7 @@ func readingQueryRestrictionCheck(method string, facet bool) func(*testing.T) {
 			t.Helper()
 			w := readingHTTP(t, h, startMethod, startPath, token, "", body)
 			path := w.Header().Get("Location")
-			assertPending(w, path)
+			assertPending(w, path, readingInitialRetryMs)
 			return path
 		}
 		assertReady := func(w *httptest.ResponseRecorder, restricted bool) {
@@ -170,7 +174,7 @@ func readingQueryRestrictionCheck(method string, facet bool) func(*testing.T) {
 					assertReady(w, true)
 					return w
 				}
-				assertPending(w, path)
+				assertPending(w, path, readingBrowseRetryMs)
 				time.Sleep(time.Millisecond)
 			}
 		}
@@ -213,7 +217,7 @@ func readingQueryRestrictionCheck(method string, facet bool) func(*testing.T) {
 				if state == "ready" {
 					assertReady(request("GET", path, token), true)
 				} else {
-					assertPending(request("GET", path, token), path)
+					assertPending(request("GET", path, token), path, readingBrowseRetryMs)
 				}
 			}
 			// Both a different profile and an independent session of the same

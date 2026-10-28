@@ -44,6 +44,11 @@ type Service struct {
 	DeepAnalysis  *mediaanalysis.Service
 	LocalMetadata *localmetadata.Service
 	AnalyzeSTRM   func(context.Context, string, string) (assets.Facts, error)
+
+	strictIntentAfter   string
+	strictIntentRetry   time.Time
+	strictIntentFolders map[string]string
+
 	db            *sql.DB
 	catalog       *catalog.Service
 	probe         assets.Probe
@@ -395,10 +400,12 @@ func (s *Service) Run(ctx context.Context) {
 	workerloop.RunWith(life, "ingestion.scan", advanced, wake, func(ctx context.Context) time.Duration {
 		iterationHook(ctx)
 		pending := false
+		intentPending := false
 		{
 			ctx = dbwork.WithBackgroundSpeed(ctx, dbwork.ReadBackgroundSpeed(ctx, s.db))
 			s.recoverPolicyChanges(ctx)
 			s.schedule(ctx)
+			intentPending = s.startStrictIntents(ctx)
 			s.startWaitingReports(ctx)
 			if !time.Now().Before(nextPrune) {
 				var source string
@@ -488,6 +495,9 @@ func (s *Service) Run(ctx context.Context) {
 		s.mu.Unlock()
 		if active > 0 {
 			return quantumPoll
+		}
+		if intentPending {
+			return 2 * time.Second
 		}
 		if pending {
 			return time.Minute
@@ -581,7 +591,7 @@ func (s *Service) processQuantum(ctx context.Context, id, library string) bool {
 		return false
 	}
 	if err = s.readySource(ctx, id, &source); err != nil {
-		if ctx.Err() == nil && !errors.Is(err, storage.ErrBusy) {
+		if !quantumRetryable(ctx, err) {
 			s.fail(ctx, id, sourceID, err)
 		}
 		return false
@@ -618,7 +628,7 @@ func (s *Service) processQuantum(ctx context.Context, id, library string) bool {
 	if err == nil {
 		err = s.readingClosureQuantum(ctx, id, source)
 	}
-	if err != nil && ctx.Err() == nil && !errors.Is(err, context.Canceled) && !errors.Is(err, storage.ErrBusy) {
+	if err != nil && !quantumRetryable(ctx, err) {
 		log.Printf("library scan step %s failed: %v", phase, err)
 		s.fail(ctx, id, sourceID, err)
 	}
@@ -631,6 +641,23 @@ func (s *Service) processQuantum(ctx context.Context, id, library string) bool {
 		s.forgetAnalysing(id)
 	}
 	return err == nil && after != before && after.status == "running"
+}
+
+// quantumRetryable reports a refusal that changed nothing and ends on its own,
+// which the loop revisits on its ordinary schedule instead of failing the run.
+// These are: the quantum's own cancellation, a storage source busy with another
+// operation, and database work the gate or a WAL reset turned away before it
+// began — a read refused while readers are paused for recovery
+// (dbwork.ErrReadPressure), a full writer ticket pool, or a lock the gate could
+// not resolve (dbwork.Overloaded). None of them describes the source, so a
+// failure would discard the run's durable cursor and pending work for a
+// condition that clears without intervention. Corruption, constraints, a full
+// volume, an expired snapshot deadline and unknown failures stay fatal.
+func quantumRetryable(ctx context.Context, err error) bool {
+	if ctx.Err() != nil || errors.Is(err, context.Canceled) || errors.Is(err, storage.ErrBusy) {
+		return true
+	}
+	return errors.Is(err, dbwork.ErrReadPressure) || dbwork.Overloaded(err)
 }
 
 func (s *Service) InterruptSource(ctx context.Context, source string) {

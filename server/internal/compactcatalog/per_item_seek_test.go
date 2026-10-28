@@ -14,6 +14,41 @@ import (
 	"portico.local/server/internal/persistence"
 )
 
+// CaptureFacetProducerFence probes readiness through indexed primary-key
+// ranges, and reads the accepted visibility frontier through first_pending's
+// index with LIMIT 1. The >= min-int ranges cover every legal integer key and
+// stop at the first match; the source target is a captured scalar. None sorts
+// or enumerates source, repair or facet work. Pin the complete statement so
+// changing any barrier requires reviewing its bounds again. Every base-table
+// access remains subject to the ordinary no-SCAN check below.
+const facetProducerFenceStatement = `SELECT s.source_epoch,s.projection_epoch,g.generation,CASE WHEN g.retaining=1 THEN g.visibility_sequence ELSE COALESCE((SELECT first_pending-1 FROM compact_visibility_source_jobs WHERE first_pending>=0 ORDER BY first_pending LIMIT 1),(SELECT sequence FROM compact_visibility_source_state WHERE id=1)) END,COALESCE((SELECT version FROM catalog_derivations WHERE domain=33),0),
+ g.retaining=1
+ OR NOT EXISTS(SELECT 1 FROM catalog_derivations WHERE domain=33 AND version=7)
+ OR NOT EXISTS(SELECT 1 FROM catalog_derivations WHERE domain=36 AND version=1)
+ OR NOT EXISTS(SELECT 1 FROM catalog_derivations WHERE domain=37 AND version=1)
+ OR NOT EXISTS(SELECT 1 FROM catalog_derivations WHERE domain=38 AND version=1)
+ OR NOT EXISTS(SELECT 1 FROM catalog_derivations WHERE domain=39 AND version=1)
+ OR NOT EXISTS(SELECT 1 FROM catalog_derivations WHERE domain=40 AND version=1)
+ OR EXISTS(SELECT 1 FROM catalog_derivations WHERE domain IN(18,19,20,25,26,28,31,33,35,36,37,38,39,40,41,42,43,44) AND rebuilding=1)
+ OR EXISTS(SELECT 1 FROM catalog_dirty WHERE domain IN(18,19,20,25,26,28,31,33,35,36,37,38,39,40,41,42,43,44))
+ OR EXISTS(SELECT 1 FROM catalog_derivation_failures WHERE domain IN(18,19,20,25,26,28,31,33,35,36,37,38,39,40,41,42,43,44))
+ OR EXISTS(SELECT 1 FROM catalog_upstream_sources WHERE domain>=-9223372036854775808)
+ OR EXISTS(SELECT 1 FROM catalog_facet_source_fanouts WHERE domain>=-9223372036854775808)
+ OR EXISTS(SELECT 1 FROM catalog_facet_work WHERE entity_id>=-9223372036854775808)
+ OR EXISTS(SELECT 1 FROM catalog_facet_work_places WHERE entity_id>=-9223372036854775808)
+ OR EXISTS(SELECT 1 FROM catalog_facet_stage WHERE entity_id>=-9223372036854775808)
+ OR EXISTS(SELECT 1 FROM compact_visibility_source_jobs WHERE first_pending<=(CASE WHEN g.retaining=1 THEN g.visibility_sequence ELSE COALESCE((SELECT first_pending-1 FROM compact_visibility_source_jobs WHERE first_pending>=0 ORDER BY first_pending LIMIT 1),(SELECT sequence FROM compact_visibility_source_state WHERE id=1)) END))
+ OR EXISTS(SELECT 1 FROM catalog_browse_row_work WHERE domain IN(18,35))
+ OR EXISTS(SELECT 1 FROM catalog_browse_row_keys WHERE domain IN(18,35))
+ OR EXISTS(SELECT 1 FROM catalog_item_metric_jobs WHERE item_id>=-9223372036854775808)
+ OR EXISTS(SELECT 1 FROM catalog_browse_counter_repairs WHERE entity_id>=-9223372036854775808),
+ EXISTS(SELECT 1 FROM catalog_derivation_failures WHERE domain IN(18,19,20,25,26,28,31,33,35,36,37,38,39,40,41,42,43,44))
+ FROM catalog_facet_source_state s CROSS JOIN catalog_generations g WHERE s.singleton=1 AND g.singleton=1`
+
+// collapse folds a statement's whitespace, so a re-indented or re-wrapped
+// literal still matches while any change of text does not.
+func collapse(query string) string { return strings.Join(strings.Fields(query), " ") }
+
 // Writing and deriving must cost the same per entity in a library of any size.
 // Every SQL statement in this package's production code runs per entity, per
 // file or per batch; a statement that scans a table makes the whole catalogue
@@ -68,6 +103,7 @@ func TestPerItemDerivationStatementsSeek(t *testing.T) {
 		t.Fatal(err)
 	}
 	checked := 0
+	pinnedSeen := false
 	for _, file := range files {
 		if strings.HasSuffix(file, "_test.go") {
 			continue
@@ -139,6 +175,10 @@ func TestPerItemDerivationStatementsSeek(t *testing.T) {
 					}
 				}
 			}
+			pinned := collapse(query) == collapse(facetProducerFenceStatement)
+			if pinned {
+				pinnedSeen = true
+			}
 			bounded := headRead.MatchString(query) && !strings.Contains(plan, "TEMP B-TREE")
 			for _, line := range strings.Split(strings.TrimSpace(plan), "\n") {
 				if !strings.HasPrefix(line, "SCAN ") {
@@ -163,6 +203,9 @@ func TestPerItemDerivationStatementsSeek(t *testing.T) {
 			}
 			return true
 		})
+	}
+	if !pinnedSeen {
+		t.Fatalf("the recorded producer-fence statement is not in this package: re-review the barrier's bounded EXISTS probes and re-pin it")
 	}
 	if checked < 50 {
 		t.Fatalf("only %d statements were checked; the literal scan is broken", checked)

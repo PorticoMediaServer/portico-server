@@ -434,7 +434,10 @@ func (d Dependencies) serveCompatibility(w http.ResponseWriter, r *http.Request,
 			}
 		}
 	case "untargeted_refresh":
-		err = &apierror.Error{Code: "invalid_request", Message: "Send the changed media paths. An untargeted refresh is unavailable."}
+		// A real native refresh: one coalesced ordinary scan per captured
+		// enabled source. Unknown watcher coverage or a restart gap is not
+		// treated as "nothing changed"; busy sources answer deferred.
+		result, err = d.integrationCall(r, "POST", "/v1/integrations/refresh", nil, map[string]any{})
 	case "refresh_item":
 		result, err = d.compatibilityRefresh(r, q)
 	case "transport":

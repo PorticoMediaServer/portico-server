@@ -514,8 +514,11 @@ func restrictionWriteRoutes() map[string]writeRoute {
 		"POST /v1/libraries/{id}/metadata/attention":                          perHidden("POST", "/v1/libraries/ID/metadata/attention", `{}`, "library"),
 		"POST /v1/shows/{id}/metadata/refresh":                                perHidden("POST", "/v1/shows/ID/metadata/refresh", `{}`, "show"),
 		"POST /v1/libraries/paths-changed":                                    perHidden("POST", "/v1/libraries/paths-changed", `{"libraryId":"ID","paths":["film.mkv"]}`, "library"),
-		"POST /v1/me/access-tokens":                                           writeExempt("the caller's credential creation; names scopes, no catalogue ids"),
-		"DELETE /v1/me/access-tokens/{id}":                                    writeExempt("the caller's credential revocation; names no catalogue id"),
+		// Owner-only native refresh: a member is refused before a library is
+		// named, so hidden and absent libraries must be indistinguishable.
+		"POST /v1/integrations/refresh":    perHidden("POST", "/v1/integrations/refresh", `{"libraryId":"ID"}`, "library"),
+		"POST /v1/me/access-tokens":        writeExempt("the caller's credential creation; names scopes, no catalogue ids"),
+		"DELETE /v1/me/access-tokens/{id}": writeExempt("the caller's credential revocation; names no catalogue id"),
 		// The tool endpoint takes a personal access token or an API key, never a
 		// session, and each tool is one of this server's own routes called as
 		// that credential's profile. It is probed with the restricted profile's
