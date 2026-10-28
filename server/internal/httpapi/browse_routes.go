@@ -324,6 +324,7 @@ func (d Dependencies) browseHandler(w http.ResponseWriter, r *http.Request) {
 		}
 		return d.attachWholeSelection(r, p, viewer, cat, browseRequest, body, &out)
 	})
+	defer out.Release()
 	if e != nil {
 		browseFailure(w, e)
 		return

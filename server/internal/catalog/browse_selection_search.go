@@ -149,3 +149,7 @@ func selectionBatchHasLocalSearch(node *BrowseNode) bool {
 	}
 	return visit(node)
 }
+
+// BrowseNeedsLocalSearch distinguishes only the compiler's fallback branch.
+// It is a routing hint, never authority, a count or a ready selection proof.
+func BrowseNeedsLocalSearch(node *BrowseNode) bool { return selectionBatchHasLocalSearch(node) }
