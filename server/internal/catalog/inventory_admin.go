@@ -442,16 +442,18 @@ type InventoryStatus struct {
 	Sources   []InventorySourceStatus `json:"sources"`
 }
 type InventorySourceStatus struct {
-	ID             string `json:"id"`
-	Health         string `json:"health"`
-	LastCompleteAt string `json:"lastCompleteAt"`
-	JobID          string `json:"jobId"`
-	Status         string `json:"status"`
-	Phase          string `json:"phase"`
-	Discovered     int64  `json:"discovered"`
-	Analyzed       int64  `json:"analyzed"`
-	Warnings       int64  `json:"warnings"`
-	PauseReason    string `json:"pauseReason"`
+	DeferredChanges   bool   `json:"deferredChanges,omitempty"`
+	DeferredScanScope string `json:"deferredScanScope,omitempty"`
+	ID                string `json:"id"`
+	Health            string `json:"health"`
+	LastCompleteAt    string `json:"lastCompleteAt"`
+	JobID             string `json:"jobId"`
+	Status            string `json:"status"`
+	Phase             string `json:"phase"`
+	Discovered        int64  `json:"discovered"`
+	Analyzed          int64  `json:"analyzed"`
+	Warnings          int64  `json:"warnings"`
+	PauseReason       string `json:"pauseReason"`
 }
 
 func (s *Service) InventoryStatus(ctx context.Context, library string) (InventoryStatus, error) {
@@ -459,16 +461,17 @@ func (s *Service) InventoryStatus(ctx context.Context, library string) (Inventor
 	if err := s.read().QueryRowContext(ctx, `SELECT revision FROM library_revisions WHERE library_id=?`, library).Scan(&out.Revision); err != nil {
 		return out, err
 	}
-	rows, err := s.read().QueryContext(ctx, `SELECT s.id,s.health,s.last_complete_at,COALESCE(j.id,''),COALESCE(j.status,'not_scanned'),COALESCE(r.phase,''),COALESCE(r.discovered,0),COALESCE(r.analyzed,0),COALESCE(r.warnings,0),COALESCE(r.pause_reason,'') FROM library_sources s LEFT JOIN jobs j ON j.id=COALESCE((SELECT job_id FROM inventory_source_active WHERE source_id=s.id),(SELECT x.job_id FROM inventory_runs x JOIN jobs y ON y.id=x.job_id WHERE x.source_id=s.id ORDER BY y.created_at DESC,y.id DESC LIMIT 1)) LEFT JOIN inventory_runs r ON r.job_id=j.id WHERE s.library_id=? ORDER BY s.id LIMIT 64`, library)
+	rows, err := s.read().QueryContext(ctx, `SELECT s.id,s.health,s.last_complete_at,COALESCE(j.id,''),COALESCE(j.status,'not_scanned'),COALESCE(r.phase,''),COALESCE(r.discovered,0),COALESCE(r.analyzed,0),COALESCE(r.warnings,0),COALESCE(r.pause_reason,''),COALESCE((SELECT CASE i.mode WHEN 'incremental' THEN 'source' ELSE 'folders' END FROM inventory_strict_intents i WHERE i.source_id=s.id AND i.library_id=s.library_id AND i.source_generation=s.generation AND i.root_incarnation=s.incarnation AND i.root_identity=s.root_identity AND i.root=s.root AND i.configured_root=s.configured_root AND i.source_kind=s.kind AND i.follow_symlinks=s.follow_symlinks AND (i.mode<>'strict' OR s.identity_confirmed=1) AND s.enabled=1 AND s.health NOT IN('root_changed','removing') AND NOT EXISTS(SELECT 1 FROM dvr_private_libraries d WHERE d.library_id=s.library_id) LIMIT 1),'') FROM library_sources s LEFT JOIN jobs j ON j.id=COALESCE((SELECT job_id FROM inventory_source_active WHERE source_id=s.id),(SELECT x.job_id FROM inventory_runs x JOIN jobs y ON y.id=x.job_id WHERE x.source_id=s.id ORDER BY y.created_at DESC,y.id DESC LIMIT 1)) LEFT JOIN inventory_runs r ON r.job_id=j.id WHERE s.library_id=? ORDER BY s.id LIMIT 64`, library)
 	if err != nil {
 		return out, err
 	}
 	defer rows.Close()
 	for rows.Next() {
 		var v InventorySourceStatus
-		if err = rows.Scan(&v.ID, &v.Health, &v.LastCompleteAt, &v.JobID, &v.Status, &v.Phase, &v.Discovered, &v.Analyzed, &v.Warnings, &v.PauseReason); err != nil {
+		if err = rows.Scan(&v.ID, &v.Health, &v.LastCompleteAt, &v.JobID, &v.Status, &v.Phase, &v.Discovered, &v.Analyzed, &v.Warnings, &v.PauseReason, &v.DeferredScanScope); err != nil {
 			return out, err
 		}
+		v.DeferredChanges = v.DeferredScanScope != ""
 		out.Sources = append(out.Sources, v)
 	}
 	return out, rows.Err()

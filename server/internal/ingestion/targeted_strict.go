@@ -79,8 +79,9 @@ type strictTarget struct {
 // immediate directory, or the immediate readable parent of a known removed
 // path. It never searches for a known ancestor. Root targets are refused.
 //
-// The batch is atomic. Busy sources and ordinary notice backlogs are refused,
-// rather than putting strict work in the ordinary widening notice queue. An
+// The batch is atomic. Busy sources retain bounded durable intent, separately
+// from the ordinary widening notice queue. At the approved per-source cap an
+// explicit source-wide incremental intent replaces the pending folders. An
 // unstarted strict job may coalesce further reports. Authorization is checked
 // before inspection (library="") and for every matched library in the
 // transaction committing jobs. authorize must be reentrant and must not have
@@ -181,15 +182,56 @@ func (s *Service) ReportPathsStrict(ctx context.Context, paths []string, authori
 	}
 	sort.Strings(ids)
 	out := PathReport{Paths: []ReportedPath{}, Jobs: []Job{}}
+	deferred := map[string]bool{}
+	whole := map[string]bool{}
 	for _, id := range ids {
-		job, e := queueStrictTargetsTx(ctx, tx, id, bySource[id])
-		if e != nil {
-			return empty, e
+		var source strictSource
+		for _, target := range targets {
+			if target.source.id == id {
+				source = target.source
+				break
+			}
 		}
-		out.Jobs = append(out.Jobs, job)
+		var sourceWide bool
+		if err = tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM inventory_strict_intents WHERE source_id=? AND mode='incremental')`, id).Scan(&sourceWide); err != nil {
+			return empty, err
+		}
+		var job Job
+		var e error
+		if !sourceWide {
+			job, e = queueStrictTargetsTx(ctx, tx, id, bySource[id])
+		}
+		var refusal *StrictPathRefusal
+		if sourceWide || (errors.As(e, &refusal) && refusal.Retryable()) {
+			// Path/source proofs and caller authorization above still hold in this
+			// transaction. Failure to obtain a source slot is not failure to accept work.
+			widened, saveErr := maintainIntentsTx(ctx, tx, source, bySource[id], sourceWide)
+			if saveErr != nil {
+				return empty, saveErr
+			}
+			deferred[id] = true
+			whole[id] = widened
+			out.Deferred = true
+		} else if e != nil {
+			return empty, e
+		} else {
+			// A retry can now own folders that were deferred earlier. Retire
+			// only intent actually covered by this real strict job, atomically.
+			if _, e = tx.ExecContext(ctx, `DELETE FROM inventory_strict_intents AS i WHERE i.source_id=? AND i.mode='strict' AND i.library_id=? AND i.source_generation=? AND i.root_incarnation=? AND i.root_identity=? AND i.root=? AND i.configured_root=? AND i.source_kind=? AND i.follow_symlinks=? AND EXISTS(SELECT 1 FROM inventory_run_targets t WHERE t.job_id=? AND (i.relative_path=t.relative_path OR substr(i.relative_path,1,length(t.relative_path)+1)=t.relative_path||?))`, source.id, source.library, source.generation, source.incarnation, source.identity, source.resolved, source.configured, source.kind, source.follow, job.ID, string(filepath.Separator)); e != nil {
+				return empty, e
+			}
+			out.Jobs = append(out.Jobs, job)
+		}
 	}
 	for _, target := range targets {
-		out.Paths = append(out.Paths, ReportedPath{Path: target.path, Status: "queued", LibraryID: target.source.library, SourceID: target.source.id, Folder: target.folder})
+		status, scope := "queued", ""
+		if deferred[target.source.id] {
+			status = "deferred"
+		}
+		if whole[target.source.id] {
+			scope = "source"
+		}
+		out.Paths = append(out.Paths, ReportedPath{Path: target.path, Status: status, ScanScope: scope, LibraryID: target.source.library, SourceID: target.source.id, Folder: target.folder})
 	}
 	if err = gated.Commit(); err != nil {
 		return empty, err

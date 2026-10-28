@@ -128974,6 +128974,12 @@
                       "minimum": -9007199254740991,
                       "type": "integer"
                     },
+                    "deferredChanges": {
+                      "type": "boolean"
+                    },
+                    "deferredScanScope": {
+                      "type": "string"
+                    },
                     "discovered": {
                       "maximum": 9007199254740991,
                       "minimum": -9007199254740991,
@@ -277414,6 +277420,110 @@
         ],
         "type": "object"
       },
+      "RefreshIntegrationsRequest": {
+        "properties": {
+          "libraryId": {
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "RefreshIntegrationsResponse": {
+        "properties": {
+          "deferred": {
+            "type": "boolean"
+          },
+          "jobs": {
+            "items": {
+              "properties": {
+                "analyzed": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                },
+                "error": {
+                  "type": "string"
+                },
+                "id": {
+                  "type": "string"
+                },
+                "jobs": {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                },
+                "phase": {
+                  "type": "string"
+                },
+                "processed": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                },
+                "scanMode": {
+                  "type": "string"
+                },
+                "sourceId": {
+                  "type": "string"
+                },
+                "status": {
+                  "type": "string"
+                },
+                "warnings": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "id",
+                "status",
+                "processed",
+                "analyzed",
+                "warnings"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "paths": {
+            "items": {
+              "properties": {
+                "folder": {
+                  "type": "string"
+                },
+                "libraryId": {
+                  "type": "string"
+                },
+                "path": {
+                  "type": "string"
+                },
+                "scanScope": {
+                  "type": "string"
+                },
+                "sourceId": {
+                  "type": "string"
+                },
+                "status": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "path",
+                "status"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "paths",
+          "jobs"
+        ],
+        "type": "object"
+      },
       "RefreshItemsMetadataRequest": {
         "properties": {},
         "type": "object"
@@ -279619,6 +279729,9 @@
       },
       "ReportChangedPathsResponse": {
         "properties": {
+          "deferred": {
+            "type": "boolean"
+          },
           "jobs": {
             "items": {
               "properties": {
@@ -279683,6 +279796,9 @@
                   "type": "string"
                 },
                 "path": {
+                  "type": "string"
+                },
+                "scanScope": {
                   "type": "string"
                 },
                 "sourceId": {
@@ -536031,6 +536147,185 @@
         "x-scope": "read"
       }
     },
+    "/v1/integrations/refresh": {
+      "post": {
+        "operationId": "refresh_integrations",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "libraryId": {
+                    "type": "string"
+                  }
+                },
+                "type": "object"
+              }
+            }
+          },
+          "required": false
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "deferred": {
+                      "type": "boolean"
+                    },
+                    "jobs": {
+                      "items": {
+                        "properties": {
+                          "analyzed": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "error": {
+                            "type": "string"
+                          },
+                          "id": {
+                            "type": "string"
+                          },
+                          "jobs": {
+                            "items": {
+                              "type": "string"
+                            },
+                            "type": "array"
+                          },
+                          "phase": {
+                            "type": "string"
+                          },
+                          "processed": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "scanMode": {
+                            "type": "string"
+                          },
+                          "sourceId": {
+                            "type": "string"
+                          },
+                          "status": {
+                            "type": "string"
+                          },
+                          "warnings": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "status",
+                          "processed",
+                          "analyzed",
+                          "warnings"
+                        ],
+                        "type": "object"
+                      },
+                      "type": "array"
+                    },
+                    "paths": {
+                      "items": {
+                        "properties": {
+                          "folder": {
+                            "type": "string"
+                          },
+                          "libraryId": {
+                            "type": "string"
+                          },
+                          "path": {
+                            "type": "string"
+                          },
+                          "scanScope": {
+                            "type": "string"
+                          },
+                          "sourceId": {
+                            "type": "string"
+                          },
+                          "status": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "path",
+                          "status"
+                        ],
+                        "type": "object"
+                      },
+                      "type": "array"
+                    }
+                  },
+                  "required": [
+                    "paths",
+                    "jobs"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "error": {
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message"
+                      ],
+                      "type": "object"
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Request refused or unavailable"
+          }
+        },
+        "summary": "Queue a refresh of one library, or of every enabled library",
+        "tags": [
+          "Integrations"
+        ],
+        "x-access": "owner",
+        "x-admission": "default",
+        "x-audience": "Integrations",
+        "x-cost": "page_sized",
+        "x-error-codes": [
+          "unauthorized",
+          "not_permitted",
+          "insufficient_scope",
+          "session_required",
+          "invalid_request",
+          "body_too_large",
+          "not_found",
+          "administration_unavailable",
+          "internal",
+          "database_busy",
+          "writer_capacity"
+        ],
+        "x-lane": "default",
+        "x-max-body-bytes": 1048576,
+        "x-scope": "library"
+      }
+    },
     "/v1/integrations/sessions": {
       "get": {
         "operationId": "integration_sessions",
@@ -588684,6 +588979,9 @@
               "application/json": {
                 "schema": {
                   "properties": {
+                    "deferred": {
+                      "type": "boolean"
+                    },
                     "jobs": {
                       "items": {
                         "properties": {
@@ -588748,6 +589046,9 @@
                             "type": "string"
                           },
                           "path": {
+                            "type": "string"
+                          },
+                          "scanScope": {
                             "type": "string"
                           },
                           "sourceId": {
@@ -600799,6 +601100,12 @@
                                 "maximum": 9007199254740991,
                                 "minimum": -9007199254740991,
                                 "type": "integer"
+                              },
+                              "deferredChanges": {
+                                "type": "boolean"
+                              },
+                              "deferredScanScope": {
+                                "type": "string"
                               },
                               "discovered": {
                                 "maximum": 9007199254740991,

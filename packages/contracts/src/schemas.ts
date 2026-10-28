@@ -125023,6 +125023,12 @@ export const schemas = {
                   "minimum": -9007199254740991,
                   "type": "integer"
                 },
+                "deferredChanges": {
+                  "type": "boolean"
+                },
+                "deferredScanScope": {
+                  "type": "string"
+                },
                 "discovered": {
                   "maximum": 9007199254740991,
                   "minimum": -9007199254740991,
@@ -255336,6 +255342,111 @@ export const schemas = {
     ],
     "type": "object"
   },
+  "RefreshIntegrationsRequest": {
+    "properties": {
+      "libraryId": {
+        "type": "string"
+      }
+    },
+    "required": [],
+    "type": "object"
+  },
+  "RefreshIntegrationsResponse": {
+    "properties": {
+      "deferred": {
+        "type": "boolean"
+      },
+      "jobs": {
+        "items": {
+          "properties": {
+            "analyzed": {
+              "maximum": 9007199254740991,
+              "minimum": -9007199254740991,
+              "type": "integer"
+            },
+            "error": {
+              "type": "string"
+            },
+            "id": {
+              "type": "string"
+            },
+            "jobs": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "phase": {
+              "type": "string"
+            },
+            "processed": {
+              "maximum": 9007199254740991,
+              "minimum": -9007199254740991,
+              "type": "integer"
+            },
+            "scanMode": {
+              "type": "string"
+            },
+            "sourceId": {
+              "type": "string"
+            },
+            "status": {
+              "type": "string"
+            },
+            "warnings": {
+              "maximum": 9007199254740991,
+              "minimum": -9007199254740991,
+              "type": "integer"
+            }
+          },
+          "required": [
+            "id",
+            "status",
+            "processed",
+            "analyzed",
+            "warnings"
+          ],
+          "type": "object"
+        },
+        "type": "array"
+      },
+      "paths": {
+        "items": {
+          "properties": {
+            "folder": {
+              "type": "string"
+            },
+            "libraryId": {
+              "type": "string"
+            },
+            "path": {
+              "type": "string"
+            },
+            "scanScope": {
+              "type": "string"
+            },
+            "sourceId": {
+              "type": "string"
+            },
+            "status": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "path",
+            "status"
+          ],
+          "type": "object"
+        },
+        "type": "array"
+      }
+    },
+    "required": [
+      "paths",
+      "jobs"
+    ],
+    "type": "object"
+  },
   "RefreshItemsMetadataRequest": {
     "properties": {},
     "required": [],
@@ -257553,6 +257664,9 @@ export const schemas = {
   },
   "ReportChangedPathsResponse": {
     "properties": {
+      "deferred": {
+        "type": "boolean"
+      },
       "jobs": {
         "items": {
           "properties": {
@@ -257617,6 +257731,9 @@ export const schemas = {
               "type": "string"
             },
             "path": {
+              "type": "string"
+            },
+            "scanScope": {
               "type": "string"
             },
             "sourceId": {

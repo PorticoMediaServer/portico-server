@@ -866,6 +866,7 @@ export function decodePutStorageSourcesWebdavIdResponse(input: unknown): types.P
 export function decodePutV1ItemsItemIdSubtitlesResourceResponse(input: unknown): types.PutV1ItemsItemIdSubtitlesResourceResponse { return decode("PutV1ItemsItemIdSubtitlesResourceResponse", input) as types.PutV1ItemsItemIdSubtitlesResourceResponse; }
 export function decodeQueryTitlesResponse(input: unknown): types.QueryTitlesResponse { return decode("QueryTitlesResponse", input) as types.QueryTitlesResponse; }
 export function decodeRefreshAllMetadataResponse(input: unknown): types.RefreshAllMetadataResponse { return decode("RefreshAllMetadataResponse", input) as types.RefreshAllMetadataResponse; }
+export function decodeRefreshIntegrationsResponse(input: unknown): types.RefreshIntegrationsResponse { return decode("RefreshIntegrationsResponse", input) as types.RefreshIntegrationsResponse; }
 export function decodeRefreshItemsMetadataResponse(input: unknown): types.RefreshItemsMetadataResponse { return decode("RefreshItemsMetadataResponse", input) as types.RefreshItemsMetadataResponse; }
 export function decodeRefreshShowsMetadataResponse(input: unknown): types.RefreshShowsMetadataResponse { return decode("RefreshShowsMetadataResponse", input) as types.RefreshShowsMetadataResponse; }
 export function decodeReleaseProfileDownloadsCacheResponse(input: unknown): types.ReleaseProfileDownloadsCacheResponse { return decode("ReleaseProfileDownloadsCacheResponse", input) as types.ReleaseProfileDownloadsCacheResponse; }

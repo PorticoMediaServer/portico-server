@@ -7270,6 +7270,23 @@ CREATE TABLE inventory_path_notices(
  source_id TEXT NOT NULL REFERENCES library_sources(id) ON DELETE CASCADE,
  relative_path TEXT NOT NULL, created_ms INTEGER NOT NULL,
  PRIMARY KEY(source_id,relative_path)) WITHOUT ROWID, STRICT;
+-- Accepted source-scoped scan intent. Never query results; no age-based expiry.
+CREATE TABLE inventory_strict_intents(
+ source_id TEXT NOT NULL REFERENCES library_sources(id) ON DELETE CASCADE,
+ relative_path TEXT NOT NULL CHECK(length(relative_path) BETWEEN 1 AND 4096),
+ library_id TEXT NOT NULL REFERENCES libraries(id) ON DELETE CASCADE,
+ source_generation INTEGER NOT NULL,
+ root_incarnation TEXT NOT NULL,
+ root_identity TEXT NOT NULL,
+ root TEXT NOT NULL,
+ configured_root TEXT NOT NULL,
+ source_kind TEXT NOT NULL,
+ follow_symlinks INTEGER NOT NULL CHECK(follow_symlinks IN(0,1)),
+ mode TEXT NOT NULL CHECK(mode IN('strict','incremental')),
+ created_ms INTEGER NOT NULL,
+ CHECK((mode='incremental' AND relative_path='.') OR (mode='strict' AND relative_path<>'.')),
+ PRIMARY KEY(source_id,relative_path)) WITHOUT ROWID, STRICT;
+CREATE INDEX inventory_strict_intents_library ON inventory_strict_intents(library_id,source_id);
 -- Where a library or folder removal has got to, so each short transaction
 -- resumes from its place instead of re-reading what earlier ones finished.
 -- target is a library id or a folder (source) id; the row goes when it ends.

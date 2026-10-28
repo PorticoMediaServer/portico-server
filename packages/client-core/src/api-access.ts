@@ -253,15 +253,19 @@ export function parseTitlePage(raw:unknown):TitlePage{
 export const queryTitles=async(t:ApiAccessTransport,q:TitleQuery,signal?:AbortSignal):Promise<TitlePage>=>parseTitlePage(await t.request<RouteResponse<"query_titles">>(routePath("query_titles") + (query({...q})),'GET',undefined,signal));
 
 export type PathChangeKind='added'|'changed'|'removed';
-export type ReportedPath=Readonly<{path:string;status:'queued'|'outside_libraries'|'invalid';libraryId?:string;sourceId?:string;folder?:string}>;
-export type PathReport=Readonly<{paths:readonly ReportedPath[];jobIds:readonly string[]}>;
+export type ReportedPath=Readonly<{path:string;status:'queued'|'deferred'|'outside_libraries'|'invalid';scanScope?:'source';libraryId?:string;sourceId?:string;folder?:string}>;
+export type PathReport=Readonly<{paths:readonly ReportedPath[];jobIds:readonly string[];deferred:boolean}>;
 export function parsePathReport(raw:unknown):PathReport{
  if(!object(raw))return invalid('path report');
- const paths=list(raw.paths,400,v=>object(v)?Object.freeze({path:text(v.path,8192,'reported path'),status:oneOf(v.status,['queued','outside_libraries','invalid'] as const,'reported path status'),
-  libraryId:optional(v.libraryId,128,'reported library'),sourceId:optional(v.sourceId,128,'reported source'),folder:optional(v.folder,8192,'reported folder')}):invalid('reported path'),'reported paths');
- const jobIds=list(raw.jobs,400,v=>object(v)?filled(v.id,128,'job id'):invalid('job'),'jobs');
- return Object.freeze({paths,jobIds});
+ const paths=list(raw.paths,400,v=>object(v)?Object.freeze({path:text(v.path,8192,'reported path'),status:oneOf(v.status,['queued','deferred','outside_libraries','invalid'] as const,'reported path status'),
+  ...(v.scanScope===undefined?{}:{scanScope:oneOf(v.scanScope,['source'] as const,'reported scan scope')}),libraryId:optional(v.libraryId,128,'reported library'),sourceId:optional(v.sourceId,128,'reported source'),folder:optional(v.folder,8192,'reported folder')}):invalid('reported path'),'reported paths');
+ const jobIds=list(raw.jobs,4096,v=>object(v)?filled(v.id,128,'job id'):invalid('job'),'jobs');
+ return Object.freeze({paths,jobIds,deferred:raw.deferred===undefined?false:flag(raw.deferred,'deferred work')});
 }
 /** Tells the server which absolute paths were added, changed or removed, so it scans only those folders. */
 export const reportChangedPaths=async(t:ApiAccessTransport,paths:readonly Readonly<{path:string;change?:PathChangeKind}>[],signal?:AbortSignal):Promise<PathReport>=>
  parsePathReport(await t.request<RouteResponse<"report_changed_paths">>(routePath("report_changed_paths"),'POST',routeBody("report_changed_paths", {paths:paths.map(p=>p.change?{path:p.path,change:p.change}:{path:p.path})}),signal));
+
+/** Explicit ordinary background refresh; no absence/change result is inferred. */
+export const refreshIntegrationLibraries=async(t:ApiAccessTransport,libraryId?:string,signal?:AbortSignal):Promise<PathReport>=>
+ parsePathReport(await t.request<RouteResponse<"refresh_integrations">>(routePath("refresh_integrations"),'POST',routeBody("refresh_integrations",libraryId?{libraryId}:{}),signal));

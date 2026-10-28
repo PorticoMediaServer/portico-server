@@ -37101,6 +37101,34 @@ export const routes = [
     "admission": "admin"
   },
   {
+    "audience": "Integrations",
+    "id": "refresh_integrations",
+    "method": "POST",
+    "path": "/v1/integrations/refresh",
+    "summary": "Queue a refresh of one library, or of every enabled library",
+    "access": "owner",
+    "requires": "library",
+    "lane": "default",
+    "cost": "page_sized",
+    "bodyLimit": 1048576,
+    "errors": [
+      "unauthorized",
+      "not_permitted",
+      "insufficient_scope",
+      "session_required",
+      "invalid_request",
+      "body_too_large",
+      "not_found",
+      "administration_unavailable",
+      "internal",
+      "database_busy",
+      "writer_capacity"
+    ],
+    "status": 202,
+    "optionalBody": true,
+    "admission": "default"
+  },
+  {
     "audience": "Clients",
     "id": "refresh_items_metadata",
     "method": "POST",

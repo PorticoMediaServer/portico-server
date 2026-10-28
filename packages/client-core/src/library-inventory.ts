@@ -85,7 +85,7 @@ export class LibraryInventoryService {
  objectAction(object:InventoryObject,action:'associate'|'separate',itemId?:string){assert(this.state.objects?.items.some(v=>v.id===object.id&&v.revision===object.revision));assert(action!=='associate'||id(itemId));return this.command('/inventory/'+encodeURIComponent(object.id)+'/'+action,'POST',{revision:object.revision,...(itemId?{itemId}:{})});}
 }
 
-export type InventorySourceStatus=Readonly<{id:string;health:string;lastCompleteAt:string;jobId:string;status:string;phase:string;discovered:number;analyzed:number;warnings:number;pauseReason:string}>;
+export type InventorySourceStatus=Readonly<{id:string;health:string;lastCompleteAt:string;jobId:string;status:string;phase:string;discovered:number;analyzed:number;warnings:number;pauseReason:string;deferredChanges?:boolean;deferredScanScope?:'folders'|'source'}>;
 export type ViewerInventoryStatus=Readonly<{libraryId:string;revision:number;sources:readonly InventorySourceStatus[]}>;
 export type ScanProgress=Readonly<{scanning:boolean;found:number}>;
 /** Header/sidebar indicator input from the viewer-safe inventory status: active while a source is queued or running, with `found` summing discovered files. */
@@ -98,7 +98,7 @@ export function scanProgress(status:ViewerInventoryStatus|null|undefined):ScanPr
 export async function fetchInventoryStatus(api:LibraryContentApi,serverId:string,libraryId:string,signal:AbortSignal):Promise<ViewerInventoryStatus>{
  const raw=await api.request<RouteResponse<"get_libraries_id_inventory_status">>(encodedRoutePath("get_libraries_id_inventory_status", {"id": encodeURIComponent(libraryId)}),'GET',undefined,signal);
  assert(!signal.aborted&&record(raw)&&raw.serverId===serverId&&record(raw.inventory));const v=raw.inventory;assert(v.libraryId===libraryId&&integer(v.revision));
- const sources=list(v.sources,64).map(s=>{assert(record(s)&&id(s.id)&&text(s.health,128)&&text(s.lastCompleteAt,128)&&text(s.jobId,256)&&text(s.status,128)&&text(s.phase,128)&&integer(s.discovered)&&integer(s.analyzed)&&integer(s.warnings)&&text(s.pauseReason,128));return Object.freeze({id:s.id,health:s.health,lastCompleteAt:s.lastCompleteAt,jobId:s.jobId,status:s.status,phase:s.phase,discovered:s.discovered,analyzed:s.analyzed,warnings:s.warnings,pauseReason:s.pauseReason});});
+ const sources=list(v.sources,64).map(s=>{assert(record(s)&&id(s.id)&&text(s.health,128)&&text(s.lastCompleteAt,128)&&text(s.jobId,256)&&text(s.status,128)&&text(s.phase,128)&&integer(s.discovered)&&integer(s.analyzed)&&integer(s.warnings)&&text(s.pauseReason,128)&&(s.deferredChanges===undefined||typeof s.deferredChanges==='boolean')&&(s.deferredScanScope===undefined||s.deferredScanScope==='folders'||s.deferredScanScope==='source')&&(s.deferredScanScope===undefined||s.deferredChanges===true));return Object.freeze({...(s.deferredChanges?{deferredChanges:true,...(s.deferredScanScope?{deferredScanScope:s.deferredScanScope as 'folders'|'source'}:{})}:{}),id:s.id,health:s.health,lastCompleteAt:s.lastCompleteAt,jobId:s.jobId,status:s.status,phase:s.phase,discovered:s.discovered,analyzed:s.analyzed,warnings:s.warnings,pauseReason:s.pauseReason});});
  return Object.freeze({libraryId,revision:v.revision,sources:Object.freeze(sources)});
 }
 // TODO(contracts): use the generated LibraryScanEventData once packages/contracts reaches remediation/frontend

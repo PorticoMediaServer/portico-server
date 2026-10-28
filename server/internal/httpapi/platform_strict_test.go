@@ -3,6 +3,7 @@ package httpapi
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"testing"
@@ -50,7 +51,7 @@ func TestPathsChangedStrictUsesNativeOwnerAndScopeBoundary(t *testing.T) {
 		t.Fatal(err)
 	}
 	busy := f.call("POST", "/v1/libraries/paths-changed", key.Secret, string(body))
-	assertStrictRetry(t, busy.Code, busy.Header().Get("Retry-After"), busy.Body.Bytes(), ingestion.StrictSourceBusy)
+	assertStrictDeferred(t, busy.Code, busy.Body.Bytes(), 202)
 	if err = f.deps.Ingestion.Control(context.Background(), ordinary.ID, "cancel", nil); err != nil {
 		t.Fatal(err)
 	}
@@ -92,11 +93,11 @@ func TestPathsChangedStrictUsesNativeOwnerAndScopeBoundary(t *testing.T) {
 	if _, err = f.deps.DB.Exec(`UPDATE jobs SET status='running' WHERE id=?`, out.Jobs[0].ID); err != nil {
 		t.Fatal(err)
 	}
-	// The adapter keeps native retry semantics and never turns a busy native
-	// source into a full scan or a successful-but-unrecorded update.
+	// The adapter durably accepts the same strict targets while busy; it neither
+	// widens them nor invents a job or a successful-but-unrecorded update.
 	foreignBody, _ := json.Marshal(map[string]any{"Updates": []any{map[string]string{"Path": filepath.Join(root, "New"), "UpdateType": "Created"}}})
 	w = compatibilityCall(f, "POST", "/Library/Media/Updated", key.Secret, string(foreignBody))
-	assertStrictRetry(t, w.Code, w.Header().Get("Retry-After"), w.Body.Bytes(), ingestion.StrictSourceBusy)
+	assertStrictDeferred(t, w.Code, w.Body.Bytes(), 200)
 
 }
 
@@ -113,5 +114,54 @@ func assertStrictRetry(t *testing.T, status int, retryHeader string, body []byte
 	}
 	if status != 503 || retryHeader != "2" || response.Error.Code != "administration_unavailable" || response.Error.Reason != string(reason) || response.Error.Retry != "same_request" || response.Error.RetryAfterMs != 2000 {
 		t.Fatalf("transient strict response: %d Retry-After=%s %s", status, retryHeader, body)
+	}
+}
+
+func assertStrictDeferred(t *testing.T, status int, body []byte, expected int) {
+	t.Helper()
+	var out ingestion.PathReport
+	if err := json.Unmarshal(body, &out); err != nil {
+		t.Fatal(err)
+	}
+	if status != expected || !out.Deferred || len(out.Jobs) != 0 || len(out.Paths) != 1 || out.Paths[0].Status != "deferred" || out.Paths[0].ScanScope != "" {
+		t.Fatalf("not truthful exact-folder acceptance: %d %s", status, body)
+	}
+}
+
+func TestStrictDeferredGlobalCapacityKeepsRetryableBoundary(t *testing.T) {
+	f, library := refreshFixture(t)
+	var source string
+	if err := f.deps.DB.QueryRow(`SELECT id FROM library_sources WHERE library_id=?`, library).Scan(&source); err != nil {
+		t.Fatal(err)
+	}
+	for i := 0; i < 9; i++ {
+		root := filepath.Join(t.TempDir(), fmt.Sprint(i))
+		if _, err := f.deps.DB.Exec(`INSERT INTO library_sources(id,library_id,configured_root,root,root_identity,identity_confirmed) VALUES(?,?,?,?,?,1)`, fmt.Sprintf("capacity-%d", i), library, root, root, "capacity-root"); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, err := f.deps.DB.Exec(`WITH RECURSIVE n(x) AS (SELECT 1 UNION ALL SELECT x+1 FROM n WHERE x<4096) INSERT INTO inventory_strict_intents(source_id,relative_path,library_id,source_generation,root_incarnation,root_identity,root,configured_root,source_kind,follow_symlinks,mode,created_ms) SELECT s.id,'Folder-'||x,s.library_id,s.generation,s.incarnation,s.root_identity,s.root,s.configured_root,s.kind,s.follow_symlinks,'strict',1 FROM n JOIN library_sources s ON s.id='capacity-'||CAST((x-1)/500 AS INTEGER)`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := f.deps.Ingestion.QueueMode(context.Background(), library, source, "", nil); err != nil {
+		t.Fatal(err)
+	}
+	var root string
+	if err := f.deps.DB.QueryRow(`SELECT root FROM library_sources WHERE id=?`, source).Scan(&root); err != nil {
+		t.Fatal(err)
+	}
+	key := issueCredential(t, f, "/v1/admin/api-keys", f.owner, `{"operationId":"strict-global-cap","name":"Library","scopes":["library"]}`)
+	body, _ := json.Marshal(PathsChangedRequest{Mode: "strict", Paths: []PathChange{{Path: filepath.Join(root, "Films"), Change: "added"}}})
+	w := f.call("POST", "/v1/libraries/paths-changed", key.Secret, string(body))
+	assertStrictRetry(t, w.Code, w.Header().Get("Retry-After"), w.Body.Bytes(), ingestion.StrictOverloaded)
+	var intents, jobs int
+	if err := f.deps.DB.QueryRow(`SELECT count(*) FROM inventory_strict_intents`).Scan(&intents); err != nil {
+		t.Fatal(err)
+	}
+	if err := f.deps.DB.QueryRow(`SELECT count(*) FROM jobs`).Scan(&jobs); err != nil {
+		t.Fatal(err)
+	}
+	if intents != 4096 || jobs != 1 {
+		t.Fatal("last-resort capacity answer dropped accepted work or invented a job")
 	}
 }

@@ -766,6 +766,7 @@ var routeLanes = map[string]string{
 	"POST /v1/integrations/authenticate":                                          "security-fence",
 	"POST /v1/integrations/items/{id}/subtitles/refresh":                          "default",
 	"POST /v1/integrations/keys":                                                  "security-fence",
+	"POST /v1/integrations/refresh":                                               "default",
 	"POST /v1/items/{id}/analysis/jobs":                                           "browsing",
 	"POST /v1/items/{id}/analysis/jobs/{job}/control":                             "browsing",
 	"POST /v1/items/{id}/analysis/markers":                                        "browsing",

@@ -149,33 +149,41 @@ func TestStrictPathsNeverEscalateIncompleteOrOverdueSource(t *testing.T) {
 	}
 }
 
-func TestStrictPathsRefuseOrdinaryBusyPendingAndOverload(t *testing.T) {
+func TestStrictPathsDeferOrdinaryBusyPendingAndOverload(t *testing.T) {
 	for _, count := range []int{0, 1, maxPendingNotices} {
 		t.Run(fmt.Sprint(count), func(t *testing.T) {
 			f := newLoopFixture(t, "movie", "Alpha/Film (2000).mkv")
-			reason := StrictSourceBusy
 			if count == 0 {
 				f.queue()
 			} else {
 				f.exec(`WITH RECURSIVE n(x) AS (SELECT 1 UNION ALL SELECT x+1 FROM n WHERE x<?) INSERT INTO inventory_path_notices(source_id,relative_path,created_ms) SELECT ?,'Pending/'||x,1 FROM n`, count, f.source)
-				reason = StrictPendingReports
-				if count == maxPendingNotices {
-					reason = StrictOverloaded
-				}
 			}
-			strictRefused(t, f, reason, filepath.Join(f.root, "Alpha"))
-			if count > 0 && f.count(`SELECT count(*) FROM inventory_path_notices WHERE relative_path='.'`) != 0 {
-				t.Fatal("overload collapsed to root")
+			jobs := f.count(`SELECT count(*) FROM jobs`)
+			out, err := f.s.ReportPathsStrict(context.Background(), []string{filepath.Join(f.root, "Alpha")}, nil)
+			if err != nil || !out.Deferred || len(out.Jobs) != 0 || len(out.Paths) != 1 || out.Paths[0].Status != "deferred" {
+				t.Fatalf("not accepted deferred work: %+v %v", out, err)
+			}
+			if f.count(`SELECT count(*) FROM jobs`) != jobs || f.count(`SELECT count(*) FROM inventory_path_notices`) != count || f.count(`SELECT count(*) FROM inventory_strict_intents`) != 1 {
+				t.Fatal("deferred work fabricated a job, altered ordinary notices, or lost intent")
+			}
+			expected := "strict"
+			if out.Paths[0].ScanScope != "" {
+				t.Fatal("an ordinary backlog widened strict intent")
+			}
+			if f.count(`SELECT count(*) FROM inventory_strict_intents WHERE mode=?`, expected) != 1 {
+				t.Fatal("wrong maintained intent scope")
 			}
 		})
 	}
-	// The strict coalescing capacity also refuses without changing the job.
 	f := newLoopFixture(t, "movie", "Alpha/Film (2000).mkv", "Next/Film (2001).mkv")
 	job := strictJob(t, f, filepath.Join(f.root, "Alpha"))
 	f.exec(`WITH RECURSIVE n(x) AS (SELECT 1 UNION ALL SELECT x+1 FROM n WHERE x<?) INSERT INTO inventory_run_targets(job_id,relative_path) SELECT ?,'Queued/'||x FROM n`, maxPendingNotices-1, job.ID)
-	strictRefused(t, f, StrictOverloaded, filepath.Join(f.root, "Next"))
-	if f.count(`SELECT count(*) FROM inventory_run_targets WHERE job_id=?`, job.ID) != maxPendingNotices {
-		t.Fatal("refusal changed existing targets")
+	out, err := f.s.ReportPathsStrict(context.Background(), []string{filepath.Join(f.root, "Next")}, nil)
+	if err != nil || !out.Deferred || len(out.Jobs) != 0 || out.Paths[0].ScanScope != "" {
+		t.Fatalf("busy strict queue did not retain the exact pending folder: %+v %v", out, err)
+	}
+	if f.count(`SELECT count(*) FROM inventory_run_targets WHERE job_id=?`, job.ID) != maxPendingNotices || f.count(`SELECT count(*) FROM inventory_strict_intents WHERE mode='strict' AND relative_path='Next'`) != 1 {
+		t.Fatal("deferral changed the existing strict job or lost the named folder")
 	}
 }
 
