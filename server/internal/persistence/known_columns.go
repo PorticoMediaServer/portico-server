@@ -1907,6 +1907,7 @@ download_receipts.library_id
 download_receipts.preparation_id
 download_receipts.profile_id
 download_receipts.profile_key
+download_receipts.publication_required
 download_receipts.quality
 download_receipts.revision
 download_receipts.revoked_ms
