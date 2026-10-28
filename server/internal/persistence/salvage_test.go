@@ -308,15 +308,21 @@ func TestRestoreSalvagesADamagedTable(t *testing.T) {
 	// A composite key: three runs of 4,000 rows sharing a first column.
 	exec(`WITH RECURSIVE n(value) AS (SELECT 1 UNION ALL SELECT value+1 FROM n WHERE value<4000) INSERT INTO catalog_dirty(domain,entity_id,revision) SELECT d.value,n.value,n.value FROM n,(SELECT 0 AS value UNION ALL SELECT 1 UNION ALL SELECT 2) d`)
 	folded(t, db, path)
-	var libraries, sources int
+	var libraries, sources, dirty, seededDirty int
 	probe, err := sql.Open("sqlite", path)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err = probe.QueryRow(`SELECT (SELECT count(*) FROM libraries),(SELECT count(*) FROM library_sources)`).Scan(&libraries, &sources); err != nil {
+	if err = probe.QueryRow(`SELECT (SELECT count(*) FROM libraries),(SELECT count(*) FROM library_sources),(SELECT count(*) FROM catalog_dirty),(SELECT count(*) FROM catalog_dirty WHERE domain IN(0,1,2))`).Scan(&libraries, &sources, &dirty, &seededDirty); err != nil {
 		t.Fatal(err)
 	}
 	probe.Close()
+	if seededDirty != 12000 {
+		t.Fatalf("composite fixture seeded %d of 12000 intended rows", seededDirty)
+	}
+	// Library insertion also queues maintained catalogue work. Preserve those
+	// genuine rows in the oracle instead of treating them as salvage invention.
+	t.Logf("before damage: composite rows=%d, seeded=%d, maintained=%d", dirty, seededDirty, dirty-seededDirty)
 	// Two separate damaged pages in each table, readable pages between them.
 	lostLibraries, lostCredits, lostDirty := 0, 0, 0
 	var spoiled []int64
@@ -358,8 +364,8 @@ func TestRestoreSalvagesADamagedTable(t *testing.T) {
 	if n := countIn(t, path, `SELECT count(*) FROM catalog_credit_names`); n != 600-lostCredits {
 		t.Fatalf("salvage kept %d credit names; %d were readable", n, 600-lostCredits)
 	}
-	if n := countIn(t, path, `SELECT count(*) FROM catalog_dirty`); n != 12000-lostDirty {
-		t.Fatalf("salvage kept %d rows of a composite-key table; %d were readable", n, 12000-lostDirty)
+	if n := countIn(t, path, `SELECT count(*) FROM catalog_dirty`); n != dirty-lostDirty {
+		t.Fatalf("salvage kept %d rows of a composite-key table; %d were readable", n, dirty-lostDirty)
 	}
 	for domain := 0; domain < 3; domain++ {
 		if n := countIn(t, path, fmt.Sprintf(`SELECT count(*) FROM catalog_dirty WHERE domain=%d`, domain)); n < 3000 {
