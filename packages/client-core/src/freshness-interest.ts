@@ -1,6 +1,7 @@
 import type {FreshnessDependency, FreshnessHub} from './freshness-hub.ts';
 import {finalAnswer} from './freshness-hub.ts';
-import {isSharedReadSuperseded, supersededRetryError, type SharedReadKey, type SharedWitness} from './freshness-shared.ts';
+import {isSharedReadSuperseded, supersededNextAllowedAt, observationError, type SharedReadKey, type SharedWitness} from './freshness-shared.ts';
+import {addDeadline as add, positiveDeadline as positive, serverDeadline} from './freshness-deadline.ts';
 
 export type InterestOutcome =
   | Readonly<{kind: 'answered'}>
@@ -27,14 +28,6 @@ export type FreshnessInterest = Readonly<{
 
 const MAX_DEADLINE = Number.MAX_VALUE;
 const TIMER_CHUNK = 2_147_000_000;
-const positive = (v: unknown): number => typeof v === 'number' && v > 0 ? Math.min(v, MAX_DEADLINE) : 0;
-const add = (a: number, b: number): number => Math.min(MAX_DEADLINE, a + b);
-
-/** Full retry metadata is deliberately separate from the legacy Document cap. */
-function serverDeadline(error: unknown, now: number): number {
-  const e = error as {retryAfterMs?: unknown; retryAfterSeconds?: unknown} | null;
-  return add(now, Math.max(positive(e?.retryAfterMs), positive(typeof e?.retryAfterSeconds === 'number' ? e.retryAfterSeconds * 1000 : 0)));
-}
 
 export class Interest implements FreshnessInterest {
   private pending = false;
@@ -116,12 +109,25 @@ export class Interest implements FreshnessInterest {
     this.planned = undefined;
     const witness: SharedWitness = this.hub.sharedReads.witness();
     this.running = {controller, token}; this.pending = false;
+    // Only the two current ticket inputs: do not retain errors beyond this read.
+    const observed: Record<SharedReadKey, {error: unknown; deadline: number} | undefined> = {guide: undefined, 'preferences:web': undefined};
+    const learn = (key: SharedReadKey, error: unknown) => {
+      if (key !== 'guide' && key !== 'preferences:web') return;
+      const deadline = this.hub.sharedReads.notBefore(key);
+      this.serverNotBefore = Math.max(this.serverNotBefore, deadline);
+      observed[key] = {error, deadline};
+    };
     let outcome: InterestOutcome;
     try {
       outcome = await this.options.read({signal: controller.signal,
-        shared: (key, read) => this.hub.sharedReads.borrow(token, witness, controller.signal, key, read)});
+        shared: async (key, read) => {
+          try {
+            const value = await this.hub.sharedReads.borrow(token, witness, controller.signal, key, read);
+            learn(key, observationError(key, value)); return value;
+          } catch (error) { learn(key, error); throw error; }
+        }});
     } catch (error) {
-      if (isSharedReadSuperseded(error)) this.serverNotBefore = Math.max(this.serverNotBefore, serverDeadline(supersededRetryError(error), this.hub.timers.now()));
+      if (isSharedReadSuperseded(error)) this.serverNotBefore = Math.max(this.serverNotBefore, supersededNextAllowedAt(error));
       // The guide parser's legacy terminal flag describes unreadable data, not
       // proof of removal. Observation must retry that malformed proof.
       const malformed = (error as {code?: unknown} | null)?.code === 'invalid_guide_directory';
@@ -148,7 +154,12 @@ export class Interest implements FreshnessInterest {
         this.pending = true;
         const now = this.hub.timers.now(), steps = this.hub.tuning.backoffMs;
         this.retryAt = add(now, Math.max(1, steps[Math.min(this.failures - 1, steps.length - 1)] ?? 30_000));
-        this.serverNotBefore = Math.max(this.serverNotBefore, serverDeadline(outcome.error, now));
+        // The shared owner anchored this error at response time. Display waits or
+        // later cohort borrowers must not restart its relative Retry-After clock.
+        let sharedDeadline: number | undefined;
+        for (const input of Object.values(observed)) if (input && input.error === outcome.error) sharedDeadline = Math.max(sharedDeadline ?? 0, input.deadline);
+        const deadline = sharedDeadline ?? serverDeadline(outcome.error, now);
+        this.serverNotBefore = Math.max(this.serverNotBefore, deadline);
       }
     }
     this.plan();

@@ -1,16 +1,19 @@
 import {SHARED_RESULT_BYTES, sharedResultBytes} from './freshness-memory.ts';
+import {positiveDeadline, serverDeadline} from './freshness-deadline.ts';
 
 export type SharedReadKey = 'guide' | 'preferences:web';
 const keys: readonly SharedReadKey[] = ['guide', 'preferences:web'];
 class SharedReadSuperseded extends Error {
-  constructor(readonly retryError?: unknown) { super('The shared read was superseded.'); }
+  constructor(readonly retryError?: unknown, readonly nextAllowedAt?: number) { super('The shared read was superseded.'); }
 }
 /** Adapters must propagate this core-owned control outcome, preserving independent inputs. */
 export function isSharedReadSuperseded(error: unknown): boolean { return error instanceof SharedReadSuperseded; }
-const sharedReadSuperseded = (error?: unknown): Error => new SharedReadSuperseded(error);
+const sharedReadSuperseded = (error?: unknown, nextAllowedAt?: number): Error => new SharedReadSuperseded(error, nextAllowedAt);
 /** @internal A superseded confirmation can still carry a binding server wait. */
 export function supersededRetryError(error: unknown): unknown { return error instanceof SharedReadSuperseded ? error.retryError : undefined; }
-const observationError = (key: SharedReadKey, value: unknown): unknown => key === 'preferences:web' &&
+/** @internal Absolute response-time floor, never reinterpreted as a fresh relative wait. */
+export function supersededNextAllowedAt(error: unknown): number { return error instanceof SharedReadSuperseded ? positiveDeadline(error.nextAllowedAt) : 0; }
+export const observationError = (key: SharedReadKey, value: unknown): unknown => key === 'preferences:web' &&
   value !== null && typeof value === 'object' && (value as {kind?: unknown}).kind === 'unreadable'
   ? (value as {error?: unknown}).error : undefined;
 
@@ -24,11 +27,19 @@ export type SharedWitness = Readonly<Record<SharedReadKey, number>>;
  * callback resolves completely before the next timer callback gets its turn. */
 export class FreshnessSharedReads {
   private versions: Record<SharedReadKey, number> = {guide: 0, 'preferences:web': 0};
+  // Exactly two scalar input floors. Flights, cohort results and dependency
+  // history may all disappear without forgetting a server's absolute deadline.
+  private serverNotBefore: Record<SharedReadKey, number> = {guide: 0, 'preferences:web': 0};
   private planned = new Map<object, number>();
   private flights = new Map<SharedReadKey, Flight>();
   constructor(private now: () => number, private gatherMs: () => number) {}
   reserve(token: object, dueAt: number): void { this.planned.set(token, dueAt); }
   witness(): SharedWitness { return {...this.versions}; }
+  notBefore(key: SharedReadKey): number { return this.serverNotBefore[key]; }
+  private observeFailure(key: SharedReadKey, error: unknown): void {
+    const deadline = isSharedReadSuperseded(error) ? supersededNextAllowedAt(error) : serverDeadline(error, this.now());
+    this.serverNotBefore[key] = Math.max(this.serverNotBefore[key], deadline);
+  }
   move(dependencies?: readonly string[]): void {
     if (!dependencies || dependencies.some(d => d === 'settings:server' || d === 'event:list.changed:liveSources' || d === 'event:list.changed:libraryChannels')) this.versions.guide++;
     if (!dependencies || dependencies.some(d => d === 'settings:server' || d === 'settings:preferences')) this.versions['preferences:web']++;
@@ -45,13 +56,17 @@ export class FreshnessSharedReads {
   }
   async borrow<T>(token: object, witness: SharedWitness, signal: AbortSignal, key: SharedReadKey, read: (signal: AbortSignal) => Promise<T>): Promise<T> {
     if (!keys.includes(key)) throw new Error('Unknown shared read key.');
-    if (signal.aborted || witness[key] !== this.versions[key]) throw sharedReadSuperseded();
+    if (signal.aborted || witness[key] !== this.versions[key]) throw sharedReadSuperseded(undefined, this.notBefore(key));
     let flight = this.flights.get(key);
+    // Already captured borrowers can still receive their identical original
+    // error/observation. A later group cannot use another group's absent floor.
+    const captured = flight?.version === witness[key] && flight.members.has(token);
+    if (!captured && this.notBefore(key) > this.now()) throw sharedReadSuperseded(undefined, this.notBefore(key));
     if (flight && flight.version !== witness[key]) {
       // This borrower cannot use the older answer. Wait for network ownership to
       // release before owing one gathered follow-up, rather than spinning timers.
       const error = await this.released(flight, signal, key);
-      throw sharedReadSuperseded(error);
+      throw sharedReadSuperseded(error, this.notBefore(key));
     }
     if (flight?.complete && !flight.members.has(token)) {
       // Completed answers belong only to the gathered cohort captured at dispatch.
@@ -69,11 +84,13 @@ export class FreshnessSharedReads {
         if (controller.signal.aborted) throw sharedReadSuperseded();
         return read(controller.signal);
       }).then(value => {
+        this.observeFailure(key, observationError(key, value));
         owned.complete = true;
         owned.bytes = 96 + sharedResultBytes(value);
         this.trimResults();
         return value;
       }, error => {
+        this.observeFailure(key, error);
         // Error identity is shared. Do not retain arbitrary error graphs/metadata.
         owned.complete = true; owned.bytes = 96 + sharedResultBytes(error);
         this.trimResults();
@@ -89,10 +106,10 @@ export class FreshnessSharedReads {
     });
     try {
       const value = await Promise.race([owned.promise, cancelled]);
-      if (signal.aborted || owned.controller.signal.aborted || witness[key] !== this.versions[key]) throw sharedReadSuperseded(observationError(key, value));
+      if (signal.aborted || owned.controller.signal.aborted || witness[key] !== this.versions[key]) throw sharedReadSuperseded(observationError(key, value), this.notBefore(key));
       return value as T;
     } catch (error) {
-      if (signal.aborted || owned.controller.signal.aborted || witness[key] !== this.versions[key]) throw sharedReadSuperseded(isSharedReadSuperseded(error) ? supersededRetryError(error) : error);
+      if (signal.aborted || owned.controller.signal.aborted || witness[key] !== this.versions[key]) throw sharedReadSuperseded(isSharedReadSuperseded(error) ? supersededRetryError(error) : error, this.notBefore(key));
       throw error;
     } finally { signal.removeEventListener('abort', stop); }
   }
