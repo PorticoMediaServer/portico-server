@@ -57,7 +57,8 @@ export type BrowseSelectionType=Readonly<{kind:string;count:number;capabilities:
  * selectionBasis is a server-issued full witness independent of the page revision;
  * its absence is supported only for legacy ordinary-200 descriptors. */
 export type BrowseWholeSelection=Readonly<{libraryId:string;pivot:string;filter:BrowseNode|null;sort:readonly BrowseSortSelection[];catalogRevision:string;selectionBasis?:string;total:number;types:readonly BrowseSelectionType[]}>;
-export type BrowseResult=Readonly<{pivot:string;applied:BrowseApplied;entries:readonly ContentEntry[];pageInfo:BrowsePageInfo;positionIndex:readonly BrowsePositionAnchor[];displayTargets?:readonly BrowseDisplayTarget[];wholeSelection?:BrowseWholeSelection}>;
+export type BrowseWholeSelectionUnavailable=Readonly<{reason:'search_not_bounded'}>;
+export type BrowseResult=Readonly<{pivot:string;applied:BrowseApplied;entries:readonly ContentEntry[];pageInfo:BrowsePageInfo;positionIndex:readonly BrowsePositionAnchor[];displayTargets?:readonly BrowseDisplayTarget[];wholeSelection?:BrowseWholeSelection;wholeSelectionUnavailable?:BrowseWholeSelectionUnavailable}>;
 export type BrowseDisplayTarget=Readonly<{membershipId:string;entryId:string}>;
 export type BrowseFacetValue=Readonly<{value:string;label:string;count:number;countIsLowerBound?:boolean;seriesId?:string}>;
 export type BrowseFacetPage=Readonly<{field:string;total:number;values:readonly BrowseFacetValue[];totalIsLowerBound?:boolean;revision?:string}>;
@@ -242,6 +243,11 @@ export function parseBrowseResult(raw:unknown):BrowseResult{
  const applied=raw.applied;
  const appliedQuery=applied.query===undefined||applied.query===null?null:parseBrowseNode(applied.query);
  const appliedSort=rows(applied.sort,3).map(sortSelection);
+ const selectionStates=['wholeSelection','wholeSelectionPreparing','wholeSelectionUnavailable'].filter(key=>raw[key]!==undefined&&raw[key]!==null);
+ if(selectionStates.length>1)bad();
+ const unavailable=raw.wholeSelectionUnavailable;
+ if(unavailable!==undefined&&(!obj(unavailable)||Object.keys(unavailable).length!==1||unavailable.reason!=='search_not_bounded'))bad();
+ const wholeSelectionUnavailable=unavailable===undefined?undefined:freeze({reason:'search_not_bounded' as const});
  const wholeSelection=parseWholeSelection(raw.wholeSelection,{revision:info.revision,pivot:raw.pivot,query:appliedQuery,sort:appliedSort});
  return freeze({
   pivot:raw.pivot,
@@ -253,7 +259,7 @@ export function parseBrowseResult(raw:unknown):BrowseResult{
   entries,
   pageInfo:{start:info.start,total,totalIsLowerBound:lowerBound&&!reachedEnd,revision:info.revision,hasMore:lowerBound?more:info.start+sent.length<total,nextCursor:(info.nextCursor??'') as string,...duration},
   positionIndex,...(displayTargets?{displayTargets}:{}),
-  ...(wholeSelection?{wholeSelection}:{}),
+  ...(wholeSelection?{wholeSelection}:{}),...(wholeSelectionUnavailable?{wholeSelectionUnavailable}:{}),
  });
 }
 

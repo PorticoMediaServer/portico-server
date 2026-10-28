@@ -318,6 +318,7 @@ function CommittedLibrary({captured, library, search, readingMarkAll, frame, res
       ...(runtime ? {enqueue: playSelection.enqueue, enqueueQuery: playSelection.enqueueQuery} : {}),
       owner: context.identity?.viewer.role === 'owner' && context.identity.viewer.authority === 'local',
       descriptor: () => resources.controller.wholeSelection(),
+      wholeSelectionUnavailable: {subscribe: resources.controller.subscribe, getSnapshot: () => resources.controller.wholeSelectionUnavailable()},
       ...(context.identity?.viewer.role === 'owner' && context.identity.viewer.authority === 'local' ? {deletion: {api, serverId: context.scope.serverId, viewerId: context.scope.viewerId,
         requestId: async () => randomId(), signal, isCurrent: current}, editor: {
         api, events: context.events, requestId: async () => randomId(), serverId: context.scope.serverId, viewerId: context.scope.viewerId,

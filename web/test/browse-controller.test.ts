@@ -294,3 +294,26 @@ test('publication listeners cannot replace a newer accepted query with the older
   assert.deepEqual(controller.query().sort, [{field: 'title', direction: 'asc'}]);
  } finally {unsubscribe();controller.dispose();}
 });
+
+
+test('search-unavailable publication reaches the live controller and clears immediately on query or viewer retirement', async () => {
+ let current = true, refuse = true, published = 0;
+ const controller = new BrowseController({async request<T>(path: string, _method?: string, body?: unknown) {
+  if(path.includes('capabilities')) return caps as T;
+  const request = body as {range: {start:number};query?:unknown;sort?:unknown};
+  return {...payload(request.range.start, 1), applied:{query:request.query ?? null,sort:request.sort,seek:null},
+    ...(refuse ? {wholeSelectionUnavailable:{reason:'search_not_bounded'}} : {})} as T;
+ }}, {libraryId:'lib',pivot:'movies'}, () => current);
+ const off = controller.subscribe(() => {published++;});
+ try {
+  await controller.load(); await settle();
+  assert.deepEqual(controller.wholeSelectionUnavailable(), {reason:'search_not_bounded'});
+  assert.equal(controller.collection.itemAt(0)?.entry.id, 'movie-0'); assert.ok(published > 2);
+  refuse = false; controller.setQuery([], {field:'title',direction:'desc'});
+  assert.equal(controller.wholeSelectionUnavailable(), undefined); await settle();
+  assert.equal(controller.wholeSelectionUnavailable(), undefined);
+  refuse = true; controller.setQuery([], {field:'title',direction:'asc'}); await settle();
+  assert.ok(controller.wholeSelectionUnavailable()); current = false;
+  assert.equal(controller.wholeSelectionUnavailable(), undefined);
+ } finally {off();controller.dispose();}
+});

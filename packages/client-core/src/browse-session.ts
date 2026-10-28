@@ -1,4 +1,4 @@
-import {BrowseQueryBuilder, type BrowseCapabilities, type BrowseNode, type BrowseResult, type BrowseSortSelection, type BrowseWholeSelection} from './browse.ts';
+import {BrowseQueryBuilder, type BrowseCapabilities, type BrowseNode, type BrowseResult, type BrowseSortSelection, type BrowseWholeSelection, type BrowseWholeSelectionUnavailable} from './browse.ts';
 import type {FetchPage} from './collections/windowed.ts';
 import type {ContentEntry, LibraryContentApi} from './library-content.ts';
 import {readBrowsePage, readBrowseSelection, releaseBrowseSelection} from './browse-preparation.ts';
@@ -62,6 +62,7 @@ export type BrowseSessionOptions<T> = Readonly<{
   onRevision?: (revision: string) => void;
   /** The server's whole-view descriptor, from this library's first page only. */
   onWhole?: (whole: BrowseWholeSelection) => void;
+  onWholeUnavailable?: (value: BrowseWholeSelectionUnavailable | undefined) => void;
   onPage?: (page: BrowseResult) => void;
   /** The view changed or ended under this query. Later pages refuse until a new session. */
   onStale?: (error: unknown) => void;
@@ -75,6 +76,7 @@ export class BrowseSession<T> {
   private readonly options: BrowseSessionOptions<T>;
   private pinned?: string;
   private whole?: BrowseWholeSelection;
+  private unavailable?: BrowseWholeSelectionUnavailable;
   private ended = false;
   private retired = false;
   private life = new AbortController();
@@ -90,14 +92,15 @@ export class BrowseSession<T> {
   get stale(): boolean {return this.ended;}
   /** The exact whole-view descriptor while this query's pages are current. */
   wholeSelection(): BrowseWholeSelection | undefined {return this.live() && this.pinned ? this.whole : undefined;}
+  wholeSelectionUnavailable(): BrowseWholeSelectionUnavailable | undefined {return this.live() && this.pinned ? this.unavailable : undefined;}
   /** The entry arrived in one of this query's pages, and the query is still current. */
   owns(entry: ContentEntry): boolean {return this.live() && this.entries.has(entry);}
-  retire(): void {this.retired = true; this.life.abort(); this.selection?.abort(); this.entries = new WeakSet(); this.whole = undefined;}
+  retire(): void {this.retired = true; this.life.abort(); this.selection?.abort(); this.entries = new WeakSet(); this.whole = undefined; this.unavailable = undefined;}
   /** Give up the held descriptor (a retry is unsure of it); only a later first page reinstalls it. */
   forgetWholeSelection(): void {this.selection?.abort(); this.selection = undefined; this.whole = undefined;}
   private end(error: unknown): void {
     if (this.retired || this.ended) return;
-    this.ended = true; this.life.abort(); this.selection?.abort(); this.entries = new WeakSet(); this.whole = undefined;
+    this.ended = true; this.life.abort(); this.selection?.abort(); this.entries = new WeakSet(); this.whole = undefined; this.unavailable = undefined;
     this.options.onStale?.(error);
   }
   private startSelection(api: LibraryContentApi, page: BrowseResult, body: unknown, response: PreparationResponse): void {
@@ -132,6 +135,7 @@ export class BrowseSession<T> {
     if (this.retired || !this.options.current() || signal.aborted) {releaseBrowseSelection(api, this.query.libraryId, result.response); throw browseSessionClosed();}
     const page = withLibraryScope(result.page, this.query.libraryId);
     if (page.pivot !== this.query.pivot || page.pageInfo.start !== start || page.entries.length > count
+      || page.wholeSelectionUnavailable && (JSON.stringify(body.query ?? null) !== JSON.stringify(page.applied.query) || JSON.stringify(body.sort ?? []) !== JSON.stringify(page.applied.sort))
       || !page.pageInfo.revision || this.pinned !== undefined && page.pageInfo.revision !== this.pinned) {
       const error = browseRevisionChanged();
       releaseBrowseSelection(api, this.query.libraryId, result.response);
@@ -141,6 +145,17 @@ export class BrowseSession<T> {
     const first = this.pinned === undefined;
     this.pinned = page.pageInfo.revision;
     for (const entry of page.entries) this.entries.add(entry);
+    if (start === 0) {
+      if (page.wholeSelectionUnavailable) {
+        this.selection?.abort(); this.selection = undefined; this.whole = undefined;
+      }
+      const changed = this.unavailable?.reason !== page.wholeSelectionUnavailable?.reason;
+      this.unavailable = page.wholeSelectionUnavailable;
+      if (changed) {
+        this.options.onWholeUnavailable?.(this.unavailable);
+        if (!this.live() || signal.aborted) {releaseBrowseSelection(api, this.query.libraryId, result.response); throw browseSessionClosed();}
+      }
+    }
     // The descriptor is first-page-only and source-bound: a later page never installs or
     // replaces it, and one for another library is not this view even with a matching revision.
     if (start === 0 && page.wholeSelection !== undefined && page.wholeSelection.libraryId === this.query.libraryId
