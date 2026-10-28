@@ -5,6 +5,7 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"portico.local/server/internal/apispec"
@@ -93,6 +94,25 @@ func TestFacetReadHTTPPreparationAndBranchBoundaries(t *testing.T) {
 			t.Fatalf("%s: %d %s", method, w.Code, w.Body)
 		}
 	}
+	pending = catalog.SimpleFacetResult{Fallback: &catalog.SimpleFacetFallbackPage{
+		Kind: "facet-fallback", FacetPage: catalog.FacetPage{Field: "genre", TotalIsLowerBound: true, Values: []catalog.FacetValue{}},
+		Preparation: catalog.SimpleFacetPreparing{Kind: "facet-preparing", State: "preparing", QueryID: "private_query", RetryAfterMs: 1501},
+	}}
+	w = httptest.NewRecorder()
+	d.facetsHandler(w, facetTestRequest(f, "/v1/libraries/movies/facets?field=genre&q=D&limit=7"))
+	if w.Code != 200 || w.Header().Get("Location") != "/v1/facet-queries/private_query" || w.Header().Get("Retry-After") != "2" {
+		t.Fatalf("fallback: %d %v %s", w.Code, w.Header(), w.Body)
+	}
+	if issues := (apispec.Document{}).ValidateJSON(facetSchema[catalog.SimpleFacetFallbackPage](), w.Body.Bytes()); len(issues) != 0 {
+		t.Fatal(issues)
+	}
+	if issues := (apispec.Document{}).ValidateJSON((facetReadResponse{}).JSONSchemaForStatus(202), w.Body.Bytes()); len(issues) == 0 {
+		t.Fatal("fallback accepted as preparing")
+	}
+	bad := []byte(strings.Replace(w.Body.String(), `"totalIsLowerBound":true`, `"totalIsLowerBound":false`, 1))
+	if issues := (apispec.Document{}).ValidateJSON(facetSchema[catalog.SimpleFacetFallbackPage](), bad); len(issues) == 0 {
+		t.Fatal("fallback falsely exact in schema")
+	}
 	for _, suffix := range []string{"&offset=0", "&after=", "&after=x&before=y", "&after=x&pivot=movies"} {
 		w = httptest.NewRecorder()
 		d.facetsHandler(w, facetTestRequest(f, "/v1/libraries/movies/facets?field=genre"+suffix))
@@ -100,7 +120,7 @@ func TestFacetReadHTTPPreparationAndBranchBoundaries(t *testing.T) {
 			t.Fatalf("invalid branch accepted %s: %d %s", suffix, w.Code, w.Body)
 		}
 	}
-	if calls != 1 {
+	if calls != 2 {
 		t.Fatalf("invalid request reached runtime %d times", calls)
 	}
 }

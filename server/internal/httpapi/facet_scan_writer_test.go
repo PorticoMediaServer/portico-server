@@ -26,6 +26,9 @@ import (
 // databases use persistence.Open's production baseline through the admission
 // fixture; no shadow schema, fabricated jobs, media decoder or remote source.
 func TestFacetScanWriterComparisonSmallFixture(t *testing.T) {
+	if os.Getenv("PORTICO_FACET_SCAN_WRITER_COMPARISON") != "1" {
+		t.Skip("opt-in scan timing comparison; set PORTICO_FACET_SCAN_WRITER_COMPARISON=1 and run alone")
+	}
 	media := t.TempDir()
 	for i := 0; i < 32; i++ {
 		name := fmt.Sprintf("Writer Fixture %02d (%d).mp4", i, 1990+i)

@@ -47879,6 +47879,7 @@ export const schemas = {
             "type": "string"
           },
           "kind": {
+            "const": "facet-fallback",
             "type": "string"
           },
           "preparation": {
@@ -47916,10 +47917,11 @@ export const schemas = {
           },
           "total": {
             "maximum": 9007199254740991,
-            "minimum": -9007199254740991,
+            "minimum": 0,
             "type": "integer"
           },
           "totalIsLowerBound": {
+            "const": true,
             "type": "boolean"
           },
           "values": {
@@ -47927,10 +47929,11 @@ export const schemas = {
               "properties": {
                 "count": {
                   "maximum": 9007199254740991,
-                  "minimum": -9007199254740991,
+                  "minimum": 0,
                   "type": "integer"
                 },
                 "countIsLowerBound": {
+                  "const": true,
                   "type": "boolean"
                 },
                 "label": {
@@ -47952,6 +47955,7 @@ export const schemas = {
               ],
               "type": "object"
             },
+            "maxItems": 200,
             "type": "array"
           }
         },
@@ -130941,6 +130945,7 @@ export const schemas = {
             "type": "string"
           },
           "kind": {
+            "const": "facet-fallback",
             "type": "string"
           },
           "preparation": {
@@ -130978,10 +130983,11 @@ export const schemas = {
           },
           "total": {
             "maximum": 9007199254740991,
-            "minimum": -9007199254740991,
+            "minimum": 0,
             "type": "integer"
           },
           "totalIsLowerBound": {
+            "const": true,
             "type": "boolean"
           },
           "values": {
@@ -130989,10 +130995,11 @@ export const schemas = {
               "properties": {
                 "count": {
                   "maximum": 9007199254740991,
-                  "minimum": -9007199254740991,
+                  "minimum": 0,
                   "type": "integer"
                 },
                 "countIsLowerBound": {
+                  "const": true,
                   "type": "boolean"
                 },
                 "label": {
@@ -131014,6 +131021,7 @@ export const schemas = {
               ],
               "type": "object"
             },
+            "maxItems": 200,
             "type": "array"
           }
         },

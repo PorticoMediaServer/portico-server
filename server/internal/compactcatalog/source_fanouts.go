@@ -329,7 +329,7 @@ func (w *upstreamSource) library(ctx context.Context, tx *sql.Tx, limit int) (in
 		if w.flags&sourceScreen == 0 {
 			w.advance()
 		} else {
-			q := `SELECT target_id,target_kind FROM screen_metadata_work INDEXED BY catalog_source_screen_library WHERE library_id=?`
+			q := `SELECT target_id,target_kind FROM screen_metadata_work INDEXED BY screen_metadata_fanout_walk WHERE library_id=?`
 			args := []any{library}
 			if w.has {
 				q += ` AND (target_kind,target_id)>(?,?)`

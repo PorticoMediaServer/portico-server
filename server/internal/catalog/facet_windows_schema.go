@@ -48,3 +48,21 @@ func (SimpleFacetPreparing) JSONSchema() map[string]any {
 	properties["retryAfterMs"] = map[string]any{"type": "integer", "minimum": 1, "maximum": int64(9007199254740991)}
 	return schema
 }
+
+func (SimpleFacetFallbackPage) JSONSchema() map[string]any {
+	type reflected SimpleFacetFallbackPage
+	schema, err := apikit.Schema(reflect.TypeFor[reflected]())
+	if err != nil {
+		panic(err)
+	}
+	properties := schema["properties"].(map[string]any)
+	properties["kind"] = map[string]any{"type": "string", "const": "facet-fallback"}
+	properties["total"] = map[string]any{"type": "integer", "minimum": 0, "maximum": int64(9007199254740991)}
+	properties["totalIsLowerBound"] = map[string]any{"type": "boolean", "const": true}
+	values := properties["values"].(map[string]any)
+	values["maxItems"] = 200
+	row := values["items"].(map[string]any)["properties"].(map[string]any)
+	row["countIsLowerBound"] = map[string]any{"type": "boolean", "const": true}
+	row["count"] = map[string]any{"type": "integer", "minimum": 0, "maximum": int64(9007199254740991)}
+	return schema
+}

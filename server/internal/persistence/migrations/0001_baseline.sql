@@ -6200,7 +6200,6 @@ CREATE TRIGGER compact_visibility_dirty_link_delete AFTER DELETE ON catalog_asse
  INSERT INTO compact_visibility_dirty SELECT c.id,r.entity_id FROM catalog_browse_memberships m JOIN catalog_browse_rows r ON r.entity_id=m.entity_id
   JOIN compact_visibility_classes c ON c.library_id=r.library_id AND c.retired=0 WHERE m.item_id=OLD.entity_id AND r.kind IN(2,3) ON CONFLICT DO NOTHING;
 END;
-CREATE INDEX catalog_source_screen_library ON screen_metadata_work(library_id,target_kind,target_id);
 CREATE INDEX artwork_entity_heads_entity ON artwork_entity_heads(entity_id,kind);
 CREATE INDEX screen_metadata_work_target ON screen_metadata_work(target_id);
 CREATE INDEX mb_jobs_entity ON mb_jobs(entity_id);

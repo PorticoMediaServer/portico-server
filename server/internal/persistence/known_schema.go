@@ -264,7 +264,6 @@ index catalog_song_artists_artist
 index catalog_songs_album_order
 index catalog_songs_listening_order
 index catalog_source_book_files_parent
-index catalog_source_screen_library
 index catalog_source_songs_parent
 index catalog_term_entities
 index catalog_term_source_membership

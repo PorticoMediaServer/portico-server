@@ -30,6 +30,7 @@ func facetAcceptedFixture(t *testing.T) (*sql.DB, FacetBaseScope) {
  CREATE TABLE catalog_dirty(domain INTEGER,entity_id INTEGER);
  CREATE TABLE catalog_derivation_failures(domain INTEGER,entity_id INTEGER);
  CREATE TABLE catalog_facet_source_fanouts(domain INTEGER,source_id INTEGER);
+ CREATE TABLE catalog_upstream_sources(domain INTEGER,source_id INTEGER);
  CREATE TABLE catalog_facet_work(entity_id INTEGER PRIMARY KEY);
  CREATE TABLE catalog_facet_stage(entity_id INTEGER);
  CREATE TABLE catalog_facet_work_places(entity_id INTEGER);
