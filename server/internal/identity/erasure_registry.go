@@ -100,6 +100,7 @@ func CurrentErasureRegistry() []ErasureRule {
 		seen[st.table] = true
 		out = append(out, ErasureRule{Table: st.table, Group: "compiled-profile-purge", Owner: "exact job actor/profile lifetime; compiled indexed scope", Effect: actions[st.table], Handler: "Service.PurgeProfileStep"})
 	}
+	out = append(out, ErasureRule{Table: "playback_start_preparations", Group: "compiled-profile-purge", Owner: "actor operation_id mapper and exact retired owner", Effect: "atomic actor/root delete after child drains", Handler: "Service.PurgeProfileStep"})
 	return out
 }
 

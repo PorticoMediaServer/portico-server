@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"reflect"
 	"regexp"
 	"strconv"
 	"strings"
@@ -125,6 +126,9 @@ func TestProfilePurgeUnitsPrepareAndPlan(t *testing.T) {
 		args := job.purgeArgs(st)
 		query := purgeStepSQL(st, "")
 		switch {
+		case st.preparationRoot:
+			query = purgePreparationActorSQL
+			args = []any{job.account, job.profile}
 		case st.tokenDrain || st.avatarObject:
 			// Custom compiled units are prepared through their exact statements
 			// below; they have no generic candidate predicate.
@@ -565,8 +569,7 @@ VALUES('asset-1','one.mkv',10,1,'matroska','h264','aac',1920,1080,60)`)
 	purgeMustExec(t, db, `INSERT INTO play_history(playback_id,authority,account_id,profile_id,user_name,profile_name,item_id,library_id,kind,title,started_ms,updated_ms) VALUES
 ('pb9','local',?,?,'owner','Owner',1001,'1',1,'One',1,1)`, purgeTestAccount, "profile")
 
-	// Recording bookkeeping that must survive with only its profile attribution
-	// removed.
+	// Recording bookkeeping survives unchanged, including creator attribution.
 	purgeMustExec(t, db, `INSERT INTO live_source_identities(id) VALUES('src1')`)
 	purgeMustExec(t, db, `INSERT INTO dvr_recordings(id,owner_key,authority,account_id,profile_id,source_id,channel_id,programme_id,guide_generation,programme_json,options_json,start_ms,end_ms,priority,revision,state,created_ms,updated_ms)
 VALUES('rec1',?,'local',?,?,'src1','chan','prog','g','{}','{}',1,2,0,1,'completed',1,1)`, key, purgeTestAccount, kid.ID)
@@ -589,6 +592,8 @@ VALUES('rec1',?,'local',?,?,'src1','chan','prog','g','{}','{}',1,2,0,1,'complete
 	}
 	purgeMustExec(t, db, `INSERT INTO user_mutation_receipts(key,scope_id,profile_id,family_id,operation,digest,is_stop,issued_ms,status,profile_incarnation,root_id)
 VALUES('p251_0000000000001_0123456789abcdef0123456789abcdef',?,?,'fam','progress.stop',?,0,1,'applied',?,'')`, scopeID, kid.ID, strings.Repeat("d", 64), preview.Lifetime)
+
+	beforeRecording := purgeRecordingSnapshot(t, db, "rec1")
 
 	if err := purgeDrainReportForTest(t, s, ctx, login.AccountToken, kid.ID, preview.Revision); err != nil {
 		t.Fatal(err)
@@ -657,7 +662,7 @@ VALUES('p251_0000000000001_0123456789abcdef0123456789abcdef',?,?,'fam','progress
 	}
 
 	// Retained policy rows: play history, the primary profile's own state, the
-	// recording bookkeeping (with attribution scrubbed) and the sanitized root.
+	// recording bookkeeping (unchanged attribution) and the sanitized root.
 	if got := count(`SELECT count(*) FROM play_history WHERE profile_id=?`, kid.ID); got != 2 {
 		t.Errorf("retained play history for the removed profile = %d, want 2", got)
 	}
@@ -667,12 +672,15 @@ VALUES('p251_0000000000001_0123456789abcdef0123456789abcdef',?,?,'fam','progress
 	if got := count(`SELECT count(*) FROM personal_items WHERE profile_id=?`, primaryKey); got != 1 {
 		t.Errorf("primary profile personal rows changed = %d", got)
 	}
+	if !reflect.DeepEqual(beforeRecording, purgeRecordingSnapshot(t, db, "rec1")) {
+		t.Fatal("a retained recording row changed during profile erase")
+	}
 	var recordingProfile, ownerKey string
 	if err := db.QueryRow(`SELECT profile_id,owner_key FROM dvr_recordings WHERE id='rec1'`).Scan(&recordingProfile, &ownerKey); err != nil {
 		t.Fatalf("recording was deleted: %v", err)
 	}
-	if recordingProfile != "" || ownerKey != key {
-		t.Errorf("recording attribution not scrubbed: profile=%q owner=%q", recordingProfile, ownerKey)
+	if recordingProfile != kid.ID || ownerKey != key {
+		t.Errorf("retained recording attribution changed: profile=%q owner=%q", recordingProfile, ownerKey)
 	}
 	var name, art string
 	var deleted, position int
@@ -908,52 +916,35 @@ func TestProfilePurgeCursorDigest(t *testing.T) {
 // from the pending predicate instead of rewriting it forever.
 func TestProfilePurgeScrubUnitsLeaveThePendingPredicate(t *testing.T) {
 	s, db, _, kid, _ := profilePurgeFixture(t)
-	ctx := context.Background()
-	job := purgeTestJob(purgeTestAccount, kid.ID)
 	key := purgeTestPersonal(kid.ID)
-	if _, err := db.Exec(`INSERT INTO live_source_identities(id) VALUES('src1')`); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := db.Exec(`INSERT INTO dvr_recordings(id,owner_key,authority,account_id,profile_id,source_id,channel_id,programme_id,guide_generation,programme_json,options_json,start_ms,end_ms,priority,revision,state,created_ms,updated_ms)
-VALUES('scrub-rec',?,'local',?,?,'src1','chan','prog','g','{}','{}',1,2,0,1,'completed',1,1)`, key, purgeTestAccount, kid.ID); err != nil {
-		t.Fatal(err)
-	}
-	plan := profilePurgeUnits(s, job)
-	run := func(name string, expectChanged bool) {
-		t.Helper()
-		index := -1
-		for i := range plan {
-			if plan[i].Name == name {
-				index = i
-			}
+	purgeMustExec(t, db, `INSERT INTO catalog_personal_sort_entity_jobs(entity_id,profile_cursor) VALUES(1,?)`, key)
+	job := purgeTestJob(purgeTestAccount, kid.ID)
+	var unit phasedpurge.Unit
+	for _, u := range profilePurgeUnits(s, job) {
+		if u.Name == "catalog-sort-entity-cursor" {
+			unit = u
 		}
-		if index < 0 {
-			t.Fatalf("unit %s missing", name)
-		}
-		tx, err := db.BeginTx(ctx, nil)
+	}
+	for _, want := range []bool{true, false} {
+		tx, err := db.Begin()
 		if err != nil {
 			t.Fatal(err)
 		}
-		out, err := plan[index].Run(ctx, tx, nil)
+		out, err := unit.Run(t.Context(), tx, nil)
 		if err != nil {
 			tx.Rollback()
-			t.Fatalf("unit %s: %v", name, err)
+			t.Fatal(err)
 		}
 		if err = tx.Commit(); err != nil {
 			t.Fatal(err)
 		}
-		if out.Changed != expectChanged {
-			t.Fatalf("unit %s changed=%v want %v", name, out.Changed, expectChanged)
+		if out.Changed != want {
+			t.Fatalf("cursor rewrite repeated: %+v", out)
 		}
 	}
-	run("dvr-recordings-scrub", true)
-	run("dvr-recordings-scrub", false)
-	var profile string
-	if err := db.QueryRow(`SELECT profile_id FROM dvr_recordings WHERE id='scrub-rec'`).Scan(&profile); err != nil {
-		t.Fatal(err)
-	}
-	if profile != "" {
-		t.Fatalf("recording attribution not scrubbed: %q", profile)
+	var cursor string
+	if err := db.QueryRow(`SELECT profile_cursor FROM catalog_personal_sort_entity_jobs WHERE entity_id=1`).Scan(&cursor); err != nil || cursor != "" {
+		t.Fatalf("cursor not scrubbed: %q %v", cursor, err)
 	}
 }
 
@@ -1038,5 +1029,74 @@ func TestProfilePurgeAvatarCustodyUniqueSharedAndRestart(t *testing.T) {
 				t.Fatalf("avatar privacy: blobs=%d want%d links=%d", blobs, want, links)
 			}
 		})
+	}
+}
+
+func purgeRecordingSnapshot(t *testing.T, db *sql.DB, id string) []any {
+	t.Helper()
+	rows, err := db.Query(`SELECT * FROM dvr_recordings WHERE id=?`, id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer rows.Close()
+	cols, err := rows.Columns()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !rows.Next() {
+		t.Fatal("recording missing")
+	}
+	values := make([]any, len(cols))
+	ptr := make([]any, len(cols))
+	for i := range values {
+		ptr[i] = &values[i]
+	}
+	if err = rows.Scan(ptr...); err != nil {
+		t.Fatal(err)
+	}
+	return values
+}
+
+func TestProfilePurgeRecordingRevisionLivesExactlyAsLongAsRecording(t *testing.T) {
+	s, db, _, kid, _ := profilePurgeFixture(t)
+	ctx := context.Background()
+	key := purgeTestPersonal(kid.ID)
+	purgeMustExec(t, db, `INSERT INTO live_source_identities(id) VALUES('kept-source')`)
+	purgeMustExec(t, db, `INSERT INTO dvr_recordings(id,owner_key,authority,account_id,profile_id,source_id,channel_id,programme_id,guide_generation,programme_json,options_json,start_ms,end_ms,priority,revision,state,created_ms,updated_ms) VALUES('kept-recording',?,'local',?,?,'kept-source','c','p','g','{}','{}',1,2,0,1,'completed',1,1)`, key, purgeTestAccount, kid.ID)
+	purgeMustExec(t, db, `INSERT INTO dvr_owner_revisions VALUES(?,77)`, key)
+	var unit phasedpurge.Unit
+	for _, candidate := range profilePurgeUnits(s, purgeTestJob(purgeTestAccount, kid.ID)) {
+		if candidate.Name == "dvr-owner-revisions" {
+			unit = candidate
+		}
+	}
+	if unit.Name == "" {
+		t.Fatal("missing revision unit")
+	}
+	tx, err := db.BeginTx(ctx, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer tx.Rollback()
+	out, err := unit.Run(ctx, tx, nil)
+	if err != nil || out.Changed || !out.Drained {
+		t.Fatalf("retained revision: %+v %v", out, err)
+	}
+	var revision int64
+	if err = tx.QueryRow(`SELECT revision FROM dvr_owner_revisions WHERE owner_key=?`, key).Scan(&revision); err != nil || revision != 77 {
+		t.Fatalf("revision lost: %d %v", revision, err)
+	}
+	// Any recording row, including a state='deleted' media tombstone, retains the
+	// counter. Physical removal of the last row makes the counter erasable.
+	if _, err = tx.Exec(`DELETE FROM dvr_recordings WHERE id='kept-recording'`); err != nil {
+		t.Fatal(err)
+	}
+	out, err = unit.Run(ctx, tx, nil)
+	if err != nil || !out.Changed {
+		t.Fatalf("last recording gone: %+v %v", out, err)
+	}
+	var n int
+	if err = tx.QueryRow(`SELECT count(*) FROM dvr_owner_revisions WHERE owner_key=?`, key).Scan(&n); err != nil || n != 0 {
+		t.Fatalf("orphan counter: %d %v", n, err)
 	}
 }

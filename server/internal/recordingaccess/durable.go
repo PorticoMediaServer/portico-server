@@ -69,3 +69,45 @@ func (p Policy) MemberTx(ctx context.Context, tx *sql.Tx, owner livechannels.Own
 	}
 	return localOwner, nil
 }
+
+// RetainedCapture is continuation of already-started library media, never an
+// admission grant. The DVR owner must first prove its exact active claim and
+// recording/finalizing state; this policy only checks the exceptional creator.
+func (p Policy) RetainedCapture(ctx context.Context, tx *sql.Tx, owner livechannels.Owner, source, channel string) error {
+	if tx == nil || !owner.Valid() || owner.Authority != "local" {
+		return livechannels.ErrDenied
+	}
+	var primary string
+	var retired, wasPrimary bool
+	err := tx.QueryRowContext(ctx, `SELECT a.profile_id,p.deleted,p.is_primary FROM direct_profiles p JOIN accounts a ON a.id=p.account_id WHERE p.id=? AND p.account_id=?`, owner.ProfileID, owner.AccountID).Scan(&primary, &retired, &wasPrimary)
+	if errors.Is(err, sql.ErrNoRows) {
+		return livechannels.ErrDenied
+	}
+	if err != nil {
+		return err
+	}
+	if !retired || wasPrimary {
+		return livechannels.ErrDenied
+	}
+	// Recheck account/member and cached authority through its current live main
+	// profile. This does not inherit the main profile's recording grant or widen
+	// the old child's source classification.
+	main := livechannels.Owner{Authority: "local", AccountID: owner.AccountID, ProfileID: primary}
+	if _, err = p.MemberTx(ctx, tx, main); err != nil {
+		return err
+	}
+	var access string
+	err = tx.QueryRowContext(ctx, `SELECT COALESCE(x.viewer_access,'owner-only') FROM live_source_identities s LEFT JOIN live_source_settings x ON x.source_id=s.id WHERE s.id=?`, source).Scan(&access)
+	if errors.Is(err, sql.ErrNoRows) {
+		return livechannels.ErrDenied
+	}
+	if err != nil {
+		return err
+	}
+	// A secondary profile could only have started on a server-members source.
+	// A subsequent owner-only change therefore revokes this continuation too.
+	if access != "server-members" {
+		return livechannels.ErrDenied
+	}
+	return ctx.Err()
+}
