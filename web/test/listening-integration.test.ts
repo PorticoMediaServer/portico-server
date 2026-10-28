@@ -300,7 +300,7 @@ test('actual ListeningPanels callbacks consume retired save/editor failures whil
 /** Actual persistent WatchPlayback + actual committed host hook + audiobook
  * composition, using supplied runtime/core transports and inert DOM/media ports.
  * This establishes wiring and original lifetimes, never browser rendering. */
-async function mountedPlayback(kind:'music'|'audiobook'='audiobook',settings?:{role?:'owner'|'admin'|'member';primary?:boolean;manage?:boolean;library?:boolean;facts?:boolean;enabled?:boolean;lyrics?:'lrc'|'text'|'404'|'error'|'empty'}){
+async function mountedPlayback(kind:'music'|'audiobook'='audiobook',settings?:{role?:'owner'|'admin'|'member';primary?:boolean;manage?:boolean;library?:boolean;facts?:boolean;enabled?:boolean;lyrics?:'lrc'|'text'|'404'|'error'|'empty';liveFacts?:boolean}){
   const f=harness({kind,expanded:false}),events=new EventTarget(),navigations:unknown[]=[];
   if(settings?.lyrics)f.lyricsMode(settings.lyrics);
   const oldDocument=globalThis.document,oldHTMLElement=globalThis.HTMLElement;globalThis.HTMLElement=class {} as typeof HTMLElement;
@@ -342,10 +342,12 @@ async function mountedPlayback(kind:'music'|'audiobook'='audiobook',settings?:{r
   const makeContext=():any=>({isCurrent:()=>{predicate?.();return contextCurrent;},session:()=>{sessionRead?.();return session;},api:{},epoch:1,preferences:{subscribe:()=>()=>{},getSnapshot:()=>preferences},
     ...(settings&&settings.facts!==false?{facts:{identity,preferences,serverName:'Server'}}:{})});
   let context=makeContext();
+  const factListeners=new Set<()=>void>();
+  if(settings?.liveFacts)context.factsSource={getSnapshot:()=>context.facts,subscribe:(listener:()=>void)=>{factListeners.add(listener);return()=>{factListeners.delete(listener);};}};
   const errors:unknown[]=[];
   const binding:any={runtime:f.runtime,artwork:{foreground:()=>undefined,ambient:()=>undefined},environment:defaultI18n,skips:{back:15,forward:30},reportError:(e:unknown)=>errors.push(e)};
   const show=()=>{let result:any;for(let i=0;i<5;i++)result=tree(h.render(()=>playback.WatchPlayback({binding,context})));return result;};
-  return{f,show,errors,navigations,retireContext(){contextCurrent=false;},holdNavigation(){return navigationWait=deferred<void>();},get context(){return context;},set onCurrent(value:(()=>void)|undefined){predicate=value;},set onSessionRead(value:(()=>void)|undefined){sessionRead=value;},setSession(value:any){session=value;},replaceContext(){context=makeContext();},close(){f.retire();globalThis.document=oldDocument;globalThis.HTMLElement=oldHTMLElement;}};
+  return{f,show,errors,navigations,publishFacts(value:any){context.facts=value;for(const listener of [...factListeners])listener();},factSubscriptions:()=>factListeners.size,retireContext(){contextCurrent=false;},holdNavigation(){return navigationWait=deferred<void>();},get context(){return context;},set onCurrent(value:(()=>void)|undefined){predicate=value;},set onSessionRead(value:(()=>void)|undefined){sessionRead=value;},setSession(value:any){session=value;},replaceContext(){context=makeContext();},close(){f.retire();globalThis.document=oldDocument;globalThis.HTMLElement=oldHTMLElement;}};
 }
 
 test('actual persistent host mounts an audiobook and collapses to its retained dock with one media attachment and no extra capture',async()=>{
@@ -501,4 +503,25 @@ test('an expanded transport policy reserves its mutation slot across panel chang
     assert.equal(f.calls.policies.length, 1);assert.equal(owner.getSnapshot().policyBusy, false);
     assert.equal(owner.getSnapshot().panel, 'lyrics');
   } finally {owner.dispose();}
+});
+
+
+test('fact notification reissues only Lyrics Settings receipt on the same mounted media/lyrics/queue owner',async()=>{
+  const h=await mountedPlayback('music',{lyrics:'404',liveFacts:true});try{
+    let ui=await openEmptyHost(h),old=librarySettingsButton(ui)!.props.onClick;const captures=h.f.calls.captures,lyricReads=h.f.calls.lyrics,editReads=h.f.calls.edits.length;
+    assert.equal(h.factSubscriptions(),1);
+    const facts=h.context.facts;h.publishFacts({...facts,serverName:'Renamed',identity:{...facts.identity,profileName:'Renamed',libraries:facts.identity.libraries.map((row:any)=>({...row,name:'Renamed music'}))}});
+    old();await tick();assert.deepEqual(h.navigations,[]);ui=h.show();assert.ok(librarySettingsButton(ui));
+    assert.equal(h.f.calls.captures,captures);assert.equal(h.f.calls.lyrics,lyricReads);assert.equal(h.f.calls.edits.length,editReads);assert.equal(h.f.calls.mounts,1);assert.equal(h.f.calls.unmounts,0);
+    librarySettingsButton(ui)!.props.onClick();await tick();assert.equal(h.navigations.length,1);
+    h.publishFacts({...h.context.facts,identity:{...h.context.facts.identity,capabilities:{manageServer:false}}});ui=h.show();assert.equal(librarySettingsButton(ui),undefined);
+  }finally{h.close();assert.equal(h.factSubscriptions(),0);}
+});
+
+test('fact replacement retires a pending Settings navigation flight without reporting its failure into the reissued offer',async()=>{
+  const h=await mountedPlayback('music',{lyrics:'404',liveFacts:true});try{
+    const ui=await openEmptyHost(h),held=h.holdNavigation();librarySettingsButton(ui)!.props.onClick();await tick();
+    h.publishFacts({...h.context.facts,serverName:'Renamed'});assert.ok(librarySettingsButton(h.show()));
+    held.reject(new Error('retired_navigation'));await tick();assert.equal(h.errors.length,0);assert.equal(h.f.calls.mounts,1);assert.equal(h.f.calls.unmounts,0);
+  }finally{h.close();assert.equal(h.factSubscriptions(),0);}
 });

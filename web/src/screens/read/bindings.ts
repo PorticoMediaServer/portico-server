@@ -1,3 +1,5 @@
+import type {ShellFactsSource} from '../../shell/fact-source';
+import {subscribePresentation} from '../../shell/fact-hooks';
 import {ReadingError, type HttpLocalApi, type LocalSession, type PreferenceSnapshot, type ReadingClient, type ReadingSession} from '@portico/client-core';
 import type {ReadPreferenceSource} from './preferences';
 import type {ReaderMountAuthority} from './mount';
@@ -5,7 +7,7 @@ import type {ReaderMountAuthority} from './mount';
 export type ReadBindingContext = Readonly<{
   api: Pick<HttpLocalApi, 'reading'>; session: () => Pick<LocalSession, 'viewer' | 'sessionFamilyId'>;
   isCurrent: () => boolean; preferences?: Omit<ReadPreferenceSource, 'getSnapshot'> & Readonly<{getSnapshot: () => PreferenceSnapshot | undefined}>;
-  facts: Readonly<{preferences: PreferenceSnapshot}>;
+  facts: Readonly<{preferences: PreferenceSnapshot}>; factsSource?: ShellFactsSource;
 }>;
 export type ReadBindings = Readonly<{
   client: ReadingClient; authority: ReaderMountAuthority; preferences: ReadPreferenceSource;
@@ -67,7 +69,7 @@ export function createReadBindings(context: ReadBindingContext): ReadBindings {
   };
   const preferences: ReadPreferenceSource = Object.freeze({
     getSnapshot: () => context.preferences?.getSnapshot() ?? context.facts.preferences,
-    subscribe: listener => context.preferences?.subscribe(listener) ?? (() => {}),
+    subscribe: listener => subscribePresentation(context, listener),
   });
   return Object.freeze({client: owner, authority, preferences, open, close, dispose});
 }

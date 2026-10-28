@@ -1,3 +1,4 @@
+import type {QuietRefreshOutcome} from '@core/freshness-actions.ts';
 import {ReadOnlySignInClient, type SignInSettings} from '@core/account-move.ts';
 import type {ManagementCapabilities, ProfileAPI} from '@core/profile-management.ts';
 import type {SignInKind} from '@core/app-sessions.ts';
@@ -28,6 +29,8 @@ export class SignInSettingsSource {
   private snapshot: Snapshot = empty;
   private loading?: Promise<void>;
   private closed = false;
+  private quietRead?: AbortController;
+  invalidateQuiet = () => {this.quietRead?.abort();this.quietRead=undefined;};
   constructor(api: ProfileAPI, private readonly options: SignInSettingsSourceOptions) {
     this.client = new ReadOnlySignInClient(api, options);
     this.ownerSwitch = options.ownerSwitch;
@@ -41,10 +44,24 @@ export class SignInSettingsSource {
     this.snapshot = Object.freeze(snapshot);
     for (const listener of this.listeners) listener();
   }
+  refresh = async (): Promise<QuietRefreshOutcome> => {
+    if (!this.current() || this.loading || !this.snapshot.document) return {kind: 'deferred'};
+    this.invalidateQuiet();const before = this.snapshot.document, read = this.quietRead = new AbortController();
+    try {
+      const document = await this.client.read(AbortSignal.any([this.lifetime.signal,read.signal]));
+      if (!this.current() || read.signal.aborted || this.snapshot.document !== before) return {kind: 'deferred'};
+      if (document.signIn !== this.options.signIn) {this.dispose();this.options.onAuthorityChanged();return {kind: 'deferred'};}
+      this.publish({...this.snapshot, document});return {kind: 'adopted'};
+    } catch (error) {
+      if (!this.current()) return {kind: 'deferred'};
+      if ([401, 403].includes((error as {status?: number})?.status ?? 0)) {this.dispose();this.options.onAuthorityChanged();}
+      return read.signal.aborted?{kind:'deferred'}:{kind: 'unreadable', error};
+    } finally {if(this.quietRead===read)this.quietRead=undefined;}
+  };
   load = (): Promise<void> => {
     if (!this.current() || this.snapshot.document) return Promise.resolve();
     if (this.loading) return this.loading;
-    this.publish({loading: true});
+    this.invalidateQuiet();this.publish({loading: true});
     const task = this.client.read(this.lifetime.signal).then(document => {
       if (!this.current()) return;
       if (document.signIn !== this.options.signIn) {this.dispose();this.options.onAuthorityChanged();return;}
@@ -72,7 +89,7 @@ export class SignInSettingsSource {
   };
   dispose = () => {
     if (this.closed) return;
-    this.closed = true;this.lifetime.abort();this.client.dispose();this.ownerSwitch?.dispose();this.localOwnerTransfer?.dispose();this.snapshot = empty;
+    this.invalidateQuiet();this.closed = true;this.lifetime.abort();this.client.dispose();this.ownerSwitch?.dispose();this.localOwnerTransfer?.dispose();this.snapshot = empty;
     for (const listener of this.listeners) listener();
     this.listeners.clear();
   };

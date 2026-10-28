@@ -1,3 +1,4 @@
+import {useShellFacts} from '../../shell/fact-hooks';
 import {useEffect, useMemo, useRef, useState} from 'react';
 import {useLocation} from '@tanstack/react-router';
 import {defaultI18n} from '@i18n';
@@ -21,6 +22,7 @@ const t = defaultI18n.t;
 /** A remembered choice is navigation only. Every use revalidates it with the original
  * viewer's library endpoint; it never filters the profile's Mixes source. */
 export function useMusicLibrarySummary(captured: ProtectedLibraryScreen | undefined, libraryId: string, enabled: boolean) {
+  useShellFacts(captured?.context);
   const context = captured?.context, href = useLocation({select: location => location.href});
   const [attempt, setAttempt] = useState(0);
   const [read, setRead] = useState<Readonly<{context: ShellAssemblyContext; key: string; href: string; libraryId: string; libraries?: Summaries; failed?: boolean}>>();
@@ -37,7 +39,7 @@ export function useMusicLibrarySummary(captured: ProtectedLibraryScreen | undefi
   }, [context, libraryId, enabled, attempt, href]);
   const current = enabled && context && context.isCurrent() && read?.context === context && read.href === href && read.libraryId === libraryId && read.key === principal(context) ? read : undefined;
   return {phase: current ? current.failed ? 'error' as const : 'ready' as const : 'loading' as const,
-    library: current?.libraries?.find(value => value.id === libraryId && value.kind === 'music'),
+    library: (() => {const row = current?.libraries?.find(value => value.id === libraryId && value.kind === 'music'), display = context?.facts.identity.libraries.find(value => value.id === libraryId);return row && display ? {...row, name: display.name, kind: display.kind} : row;})(),
     libraries: current?.libraries,
     retry: () => {setRead(undefined);setAttempt(value => value + 1);}};
 }
@@ -45,6 +47,7 @@ export function useMusicLibrarySummary(captured: ProtectedLibraryScreen | undefi
 /** The existing library-switcher menu, kept on Home so cancelling leaves its route,
  * scroll and playback untouched. A chooser command belongs to its original read. */
 export function MusicDiscoverMore({captured}: {captured: ProtectedLibraryScreen}) {
+  useShellFacts(captured.context);
   const context = captured.context, href = useLocation({select: location => location.href});
   const anchor = useRef<HTMLButtonElement>(null);
   const owner = useMemo(() => {
@@ -90,6 +93,6 @@ export function MusicDiscoverMore({captured}: {captured: ProtectedLibraryScreen}
   return <><button ref={anchor} type="button" className={styles.more} disabled={busy} onClick={begin}>{t('next.controls.more')}<Icon name="i-right" size={16}/></button>
     <Menu open={!!shown} onOpenChange={value => {if (!value && activeChoice.current) close();}} title={t('next.browse.switchLibrary')}
       accessibilityLabel={t('next.browse.switchLibrary')} anchorRef={anchor} returnFocusRef={anchor} placement="bottom-end" width={252}>
-      {shown?.libraries.map(library => <MenuItem key={library.id} onSelect={() => select(shown, library.id)}>{library.name}</MenuItem>)}
+      {shown?.libraries.map(library => <MenuItem key={library.id} onSelect={() => select(shown, library.id)}>{context.facts.identity.libraries.find(row => row.id === library.id)?.name ?? library.name}</MenuItem>)}
     </Menu></>;
 }

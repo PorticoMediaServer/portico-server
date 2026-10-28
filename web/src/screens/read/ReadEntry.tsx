@@ -1,3 +1,4 @@
+import {forwardFacts} from '../../shell/fact-source';
 import {useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore} from 'react';
 import {useLocation} from '@tanstack/react-router';
 import {defaultI18n} from '@i18n';
@@ -102,8 +103,7 @@ function ReadEntryBody({captured, itemId, sourceId, active = true, onClose, rece
   useEffect(() => {
     retireContentsTarget(captured.context, stagedContents);
     const original = receiver.context;
-    const bindingContext: ReadBindingContext = {api: original.api, session: original.session, preferences: original.preferences, facts: original.facts,
-      isCurrent: () => original.isCurrent() && receiver.current()};
+    const bindingContext: ReadBindingContext = forwardFacts(original, {isCurrent: () => original.isCurrent() && receiver.current()});
     const life = new AbortController(), bindings = createReadBindings(bindingContext);
     let alive = true, fonts: ReadFonts | undefined, publication: ReadingPublication | undefined;
     let reader: ReturnType<typeof bindReadPreferences> | undefined, progress: ReturnType<typeof bindReadingProgress> | undefined;

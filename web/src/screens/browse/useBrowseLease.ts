@@ -1,3 +1,4 @@
+import {forwardIdentity} from '../detail/context';
 import {useRef, useLayoutEffect, useState} from 'react';
 import {LibraryContentService} from '@core/library-content.ts';
 import {screenLifetime, type ScreenContext} from '../detail/context';
@@ -33,7 +34,7 @@ export function useBrowseLease(context: ScreenContext, sourceKey: string, routeK
     };
     const controller = new BrowseController(life.api, JSON.parse(sourceKey) as BrowseSource, current);
     const service = new LibraryContentService({api: life.api, scope: context.scope});
-    const screen: ScreenContext = {...context, isCurrent: current};
+    const screen: ScreenContext = forwardIdentity(context, {isCurrent: current});
     const lease: BrowseLease = {id: crypto.randomUUID(), context, screen, sourceKey, routeKey, playbackOwner, life, controller, service};
     publish(lease);
     return () => {life.dispose();controller.dispose();service.dispose();};

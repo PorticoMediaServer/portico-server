@@ -108,5 +108,8 @@ export class WebPreparingStarts {
       },
     });
   }
+  /** The canonical owner includes late authenticated cleanup after a view retires. */
+  pending = (): boolean => this.custody.pending();
+  subscribePending = (listener: () => void): (() => void) => this.custody.subscribePending(listener);
   dispose = () => {this.custody.dispose();};
 }

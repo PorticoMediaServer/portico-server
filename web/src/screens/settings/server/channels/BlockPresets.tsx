@@ -1,5 +1,5 @@
 import {channelFieldLabel, channelFieldMessage} from '@core/server-admin/channel-catalogue.ts';
-import {useCallback, useEffect, useLayoutEffect, useMemo, useState, useSyncExternalStore} from 'react';
+import {useCallback, useEffect, useLayoutEffect,useRef, useMemo, useState, useSyncExternalStore} from 'react';
 import {defaultI18n} from '@i18n';
 import type {Library} from '@core/index.ts';
 import type {ChannelApi} from '@core/channel-guide.ts';
@@ -44,7 +44,9 @@ function PresetForm({source,api,libraries,isCurrent,reportError,close,original}:
   const state=useSyncExternalStore(source.subscribe,source.getSnapshot,source.getSnapshot);
   const [draft,setDraft]=useState(()=>({name:original?.name??'',body:original?structuredClone(original.body):{libraryId:'',criteria:[],order:'shuffle',durationMinutes:240,startMinute:-1,days:[],description:''} as BlockPresetBody}));
   const [authority]=useState(()=>({draft})),[fields,setFields]=useState<ChannelFieldsSource>(),[error,setError]=useState(false);
-  useLayoutEffect(()=>{const next=new ChannelFieldsSource(api,libraries,isCurrent,reportError);setFields(next);return next.dispose;},[api,libraries,isCurrent,reportError]);
+  const libraryScope=JSON.stringify(libraries.map(library=>[library.id,library.kind]));
+  const setupLibraries=useRef(libraries);useLayoutEffect(()=>{setupLibraries.current=libraries;});
+  useLayoutEffect(()=>{const next=new ChannelFieldsSource(api,setupLibraries.current,isCurrent,reportError);setFields(next);return next.dispose;},[api,libraryScope,isCurrent,reportError]);
   useEffect(()=>{if(fields)void fields.select(draft.body.libraryId?[draft.body.libraryId]:[]);},[fields,draft.body.libraryId]);
   const locked=state.busy||!!state.pending||state.reconcile;
   const change=(next:typeof draft)=>{if(!isCurrent()||locked||source.getSnapshot().busy||source.getSnapshot().pending||source.getSnapshot().reconcile||authority.draft!==draft)return;authority.draft=next;setDraft(next);setError(false);};

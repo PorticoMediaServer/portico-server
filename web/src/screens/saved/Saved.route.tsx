@@ -1,3 +1,4 @@
+import {forwardIdentity} from '../detail/context';
 import {createSavedCatalogueSelection, savedCatalogueEntry} from './catalogue-selection';
 import {useRef, useLayoutEffect, useMemo, useState, useSyncExternalStore} from 'react';
 import {useSearch} from '@tanstack/react-router';
@@ -56,7 +57,7 @@ function BoundSaved({captured, owner}: {captured: ProtectedLibraryScreen; owner:
     const originalReader = Object.freeze({...savedReaderRoute(originalRoute)});
     const current = () => !lifetime.signal.aborted && context.isCurrent() && owner.runtime.operations.current && savedLocationCurrent(routeKey);
     const signal = (input?: AbortSignal) => input ? AbortSignal.any([lifetime.signal, input]) : lifetime.signal;
-    const original: ScreenContext = {...context, isCurrent: current};
+    const original: ScreenContext = forwardIdentity(context, {isCurrent: current});
     const operations = new SavedOperations(current), borrowed = owner.runtime;
     const selection = createSavedCatalogueSelection(original, borrowed, savedReaderRoute(originalRoute),
       {serverId: viewer.serverId, authority: viewer.authority, accountId: viewer.accountId, profileId: viewer.profileId},

@@ -1,3 +1,4 @@
+import {forwardIdentity} from '../detail/context';
 import {useCallback, useLayoutEffect, useState, useSyncExternalStore} from 'react';
 import {useLocation, useSearch} from '@tanstack/react-router';
 import {randomId} from '@core/random-id.ts';
@@ -52,7 +53,7 @@ function useSearchLease(context: ScreenContext | undefined, captured: ProtectedL
     const viewer = assembly.session().viewer;
     if (viewer.authority !== 'local' && viewer.authority !== 'hosted') return;
     let live = true;
-    const current = () => live && context.isCurrent(), original: ScreenContext = {...context, isCurrent: current};
+    const current = () => live && context.isCurrent(), original: ScreenContext = forwardIdentity(context, {isCurrent: current});
     const binding = createSearchBindings(original);
     const selection = createSearchSelection(original, binding.results,
       {serverId: viewer.serverId, authority: viewer.authority, accountId: viewer.accountId, profileId: viewer.profileId},

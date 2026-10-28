@@ -1,3 +1,4 @@
+import type {QuietRefreshOutcome} from '@core/freshness-actions.ts';
 import {defaultI18n} from '@i18n';
 import {routePath} from '../../../../../packages/contracts/src/routes.ts';
 import {certificateForm} from '@core/server-admin/server-forms.ts';
@@ -59,6 +60,9 @@ export class CertificateFormSource {
     this.listeners.add(listener);const stop = this.form.subscribe(listener);
     return () => {this.listeners.delete(listener);stop();};
   };
+  invalidateQuiet = () => this.form.invalidateQuiet();
+  quietBlocked = () => !this.current() || !!(this.loading || this.retrying) || this.getSnapshot().saving || this.getSnapshot().saveError !== undefined;
+  refresh = async (): Promise<QuietRefreshOutcome> => this.quietBlocked() ? {kind: 'deferred'} : this.form.refresh();
   load = (): Promise<void> => {
     if (!this.current()) return Promise.resolve();
     if (this.loading) return this.loading;
@@ -98,6 +102,7 @@ export class CertificateFormSource {
     if (this.retrying) return this.retrying;
     const state = this.getSnapshot();
     if (!this.claimed() || !state.draft?.enabled || state.saving || state.dirty) return Promise.resolve();
+    this.form.invalidateQuiet();
     const pending = Promise.resolve().then(async () => {
       this.assert();await retryCertificate(this.certificates, this.life.signal);this.assert();await this.load();
     }).finally(() => {
