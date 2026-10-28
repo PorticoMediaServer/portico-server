@@ -36,6 +36,7 @@ type ReaderLifetimeStats struct {
 }
 
 type readerScope struct {
+	wal                      *walLedger // shared while any pool/overlapping OpenHandle remains alive
 	plannerGeneration        atomic.Uint64
 	mu                       sync.Mutex
 	key                      string
@@ -108,6 +109,7 @@ func releaseReaderScope(s *readerScope) {
 	s.connections--
 	if s.connections == 0 {
 		delete(readerScopes.byName, s.key)
+		releaseWALLedger(s)
 	}
 }
 
