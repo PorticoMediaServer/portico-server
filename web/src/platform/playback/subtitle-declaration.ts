@@ -9,14 +9,36 @@
  * It writes `engines.native.subtitleRendering` when the
  * document has engines (the capability document), and the older `subtitles.styled` / `.bitmap`
  * lists when it does not.
+ *
+ * Styled and image subtitles are drawn on a canvas over the video (`subtitles/drawn-surface.ts`).
+ * The player never hands its video to the system's full-screen player (on iPhone, full screen
+ * fills Safari's window), so a drawn subtitle is seen wherever the picture is. Picture in Picture
+ * and AirPlay cannot carry it; the player keeps the picture on the page for those.
  */
 export type SubtitleRenderingKind = 'text' | 'ass' | 'pgs' | 'vobsub' | 'dvb';
 
-/** Only the subtitle renderer actually mounted by this platform is declared. */
-export function subtitleRenderingKinds(): SubtitleRenderingKind[] {
-  // The Phase 1 platform runtime mounts the real text surface. Styled/image overlays belong to
-  // Phase 4 and are not declared to the server until that actual renderer is integrated.
-  return ['text'];
+export type RenderingFacts = {
+  /** A canvas can be put over the video and workers exist. */
+  canvas: boolean;
+  /** WebAssembly can be compiled (styled subtitles need it). */
+  webAssembly: boolean;
+};
+
+function browserFacts(): RenderingFacts {
+  const safe = (probe: () => boolean) => { try { return probe(); } catch { return false; } };
+  return {
+    canvas: safe(() => typeof document !== 'undefined' && typeof document.createElement('canvas').getContext === 'function' && typeof Worker === 'function'),
+    webAssembly: safe(() => typeof WebAssembly === 'object' && typeof WebAssembly.instantiate === 'function'),
+  };
+}
+
+/** The subtitle kinds this browser draws: text always, the rest where the overlay canvas can. */
+export function subtitleRenderingKinds(facts: RenderingFacts = browserFacts()): SubtitleRenderingKind[] {
+  const kinds: SubtitleRenderingKind[] = ['text'];
+  if (!facts.canvas) return kinds;
+  if (facts.webAssembly) kinds.push('ass');
+  kinds.push('pgs', 'vobsub', 'dvb');
+  return kinds;
 }
 
 type Fields = Record<string, unknown>;

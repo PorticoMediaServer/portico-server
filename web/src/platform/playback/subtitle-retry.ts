@@ -69,8 +69,8 @@ export async function revalidateTextSubtitles<T>(ports: {
   await load();
 }
 
-/** One selected image key/epoch owns this bounded retry budget and its timer. */
-export class ImageSubtitleRetry {
+/** One selected drawn key/epoch owns this bounded retry budget and its timer. */
+export class DrawnSubtitleRetry {
   private timer?: unknown;
   private attempts = 0;
   private retired = false;
@@ -84,6 +84,8 @@ export class ImageSubtitleRetry {
     }, delay);
     return true;
   }
+  /** A retry is already waiting for its timer. */
+  get pending(): boolean { return this.timer !== undefined; }
   dispose() {
     this.retired = true;
     if (this.timer !== undefined) this.ports.clearTimer(this.timer);

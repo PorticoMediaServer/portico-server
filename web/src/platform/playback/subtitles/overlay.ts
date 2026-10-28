@@ -62,8 +62,7 @@ export type OverlayEnvironment = {
 export type RendererFactory = (kind: DrawnSubtitleSource['kind']) => Promise<DrawnSubtitleRenderer>;
 
 /* The renderers are separate chunks: neither is fetched until a subtitle of its kind is chosen. */
-/* This port draws image subtitles only; a styled source has no renderer here. */
-const loadRenderer: RendererFactory = async kind => { if (kind !== 'pgs' && kind !== 'vobsub' && kind !== 'dvb') throw new Error('unsupported_subtitle_renderer'); return new (await import('./image-renderer.ts')).ImageSubtitleRenderer(); };
+const loadRenderer: RendererFactory = async kind => kind === 'ass' ? new (await import('./ass-renderer.ts')).StyledSubtitleRenderer() : new (await import('./image-renderer.ts')).ImageSubtitleRenderer();
 
 function browserEnvironment(): OverlayEnvironment {
   return {

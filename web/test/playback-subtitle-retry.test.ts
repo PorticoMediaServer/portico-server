@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {ImageSubtitleRetry, revalidateTextSubtitles, subtitleFetch, transientSubtitleFailure} from '../src/platform/playback/subtitle-retry.ts';
+import {DrawnSubtitleRetry, revalidateTextSubtitles, subtitleFetch, transientSubtitleFailure} from '../src/platform/playback/subtitle-retry.ts';
 
 let networkFailure: unknown;
 await assert.rejects(subtitleFetch(async () => {throw new TypeError('network');})('https://server.example/subtitle'), error => {networkFailure = error;return true;});
@@ -47,20 +47,21 @@ function timers() {const pending = new Map<number, {fn(): void; ms: number}>();l
   pending, setTimer: (fn: () => void, ms: number) => {const id = ++serial;pending.set(id, {fn, ms});return id;}, clearTimer: (id: unknown) => {pending.delete(id as number);},
   fire: () => {const next = pending.entries().next().value;assert.ok(next, 'a scheduled retry is required');pending.delete(next[0]);next[1].fn();},
 };}
-test('image subtitles retry transport failures with a bounded budget and reject explicit refusal', () => {
+test('drawn subtitles retry transport failures with a bounded budget and reject explicit refusal', () => {
   const clock = timers();let retries = 0;
-  const retry = new ImageSubtitleRetry({...clock, current: () => true, retry: () => {retries++;}});
+  const retry = new DrawnSubtitleRetry({...clock, current: () => true, retry: () => {retries++;}});
   for (const delay of [1000, 2000, 5000]) {
     assert.equal(retry.schedule(networkFailure), true);assert.equal(retry.schedule(networkFailure), false);
-    assert.equal([...clock.pending.values()][0]!.ms, delay);clock.fire();
+    assert.equal(retry.pending, true, 'a second failure while one waits is not a reason to give up');
+    assert.equal([...clock.pending.values()][0]!.ms, delay);clock.fire();assert.equal(retry.pending, false);
   }
   assert.equal(retries, 3);assert.equal(retry.schedule({status: 503}), false);assert.equal(clock.pending.size, 0);
-  const refused = new ImageSubtitleRetry({...clock, current: () => true, retry: () => {assert.fail('refusals must not retry');}});
+  const refused = new DrawnSubtitleRetry({...clock, current: () => true, retry: () => {assert.fail('refusals must not retry');}});
   for (const status of [401, 403, 404, 410]) assert.equal(refused.schedule({status}), false);
 });
-test('retiring the selected image key cancels its timer and a stale epoch cannot retry', () => {
+test('retiring the selected drawn key cancels its timer and a stale epoch cannot retry', () => {
   const clock = timers();let current = true, retries = 0;
-  const retry = new ImageSubtitleRetry({...clock, current: () => current, retry: () => {retries++;}});
+  const retry = new DrawnSubtitleRetry({...clock, current: () => current, retry: () => {retries++;}});
   retry.schedule({status: 503});current = false;clock.fire();assert.equal(retries, 0);
   current = true;retry.schedule(networkFailure);retry.dispose();assert.equal(clock.pending.size, 0);
   assert.equal(retry.schedule(networkFailure), false);
