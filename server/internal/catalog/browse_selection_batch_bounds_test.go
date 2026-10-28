@@ -2,6 +2,7 @@ package catalog
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -10,6 +11,7 @@ import (
 	"testing"
 
 	"portico.local/server/internal/catalogtest"
+	"portico.local/server/internal/compactcatalog"
 	"portico.local/server/internal/dbwork"
 	"portico.local/server/internal/identity"
 )
@@ -255,5 +257,100 @@ func TestSelectionBatchPreviousTombstonesOneRowLimitOracle(t *testing.T) {
 	got := finishSelectionBatch(t, s, state, witness, HomeActionAuthority{}, 1)
 	if !reflect.DeepEqual(got, oracle) {
 		t.Fatal(got, oracle)
+	}
+}
+
+// Rejected credit labels are source input too. Each guard is a separate unit,
+// so two legal large labels never consume a multi-scalar budget exception.
+func TestSelectionBatchCreditGuardBytesAndYield(t *testing.T) {
+	c := catalogtest.Open(t)
+	lib := c.Library("m", "Movies", "movie", "/m")
+	item := c.Movie(lib, "/m/a.mkv", "A", 2020)
+	label := strings.Repeat("界", 200)
+	c.Write(func(ctx context.Context, tx *sql.Tx) error {
+		return compactcatalog.SetCreditsTx(ctx, tx, item.ID, "fixture", []compactcatalog.Credit{{PersonKey: "person", PersonName: "Person", CreditedName: "Person", Role: label, Department: label}})
+	})
+	c.Drain()
+	s := New(c.DB)
+	v := Viewer{Profile: "p", Fence: "f", Libraries: []string{"m"}}
+	for _, field := range []string{"cast", "crew", "actor", "director", "writer"} {
+		t.Run(field, func(t *testing.T) {
+			node, err := ParseBrowseQuery(json.RawMessage(fmt.Sprintf(`{"field":%q,"operator":"equals","value":"missing"}`, field)), "query")
+			if err != nil {
+				t.Fatal(err)
+			}
+			state, oracle, witness := selectionBatchFixture(t, s, v, BrowseRequest{Library: "m", Pivot: "movies", Query: node, Limit: 1}, HomeActionAuthority{})
+			guards := 0
+			for !state.Complete() {
+				next, one, err := s.StepBrowseSelectionBatch(context.Background(), state, witness, SelectionBatchLimits{Rows: 1})
+				if err != nil {
+					t.Fatal(err)
+				}
+				if one.DecodedBytes >= len(label) {
+					guards++
+					actual, work, err := s.StepBrowseSelectionBatch(context.Background(), state, witness, SelectionBatchLimits{Bytes: 512})
+					if err != nil {
+						t.Fatal(err)
+					}
+					if work.Rows != 1 || work.DecodedBytes != len(label) || work.TransientScalarBytes != len(label) || !reflect.DeepEqual(next, actual) {
+						t.Fatalf("guard did not yield after one lossless scalar: %+v", work)
+					}
+				}
+				state = next
+			}
+			expected := 1
+			if field == "director" || field == "writer" {
+				expected = 2
+			}
+			if guards != expected {
+				t.Fatalf("guard scalar units=%d want %d", guards, expected)
+			}
+			got := finishSelectionBatch(t, s, state, witness, HomeActionAuthority{}, 1)
+			if !reflect.DeepEqual(got, oracle) {
+				t.Fatalf("got %+v want %+v", got, oracle)
+			}
+		})
+	}
+}
+
+func TestSelectionBatchCreditGuardOracle(t *testing.T) {
+	c := catalogtest.Open(t)
+	lib := c.Library("m", "Movies", "movie", "/m")
+	labels := [][2]string{{"Director", "Other"}, {"Other", "Directing"}, {"Writer", "Other"}, {"Other", "Writing"}, {"Actor", "Acting"}, {"Other", "Other"}}
+	for i, pair := range labels {
+		item := c.Movie(lib, fmt.Sprintf("/m/%d.mkv", i), fmt.Sprintf("Film %d", i), 2020)
+		c.Write(func(ctx context.Context, tx *sql.Tx) error {
+			return compactcatalog.SetCreditsTx(ctx, tx, item.ID, "fixture", []compactcatalog.Credit{{PersonKey: "same-person", PersonName: "Guard Name", CreditedName: "Guard Name", Role: pair[0], Department: pair[1]}})
+		})
+	}
+	c.Drain()
+	var token string
+	if err := c.DB.QueryRow(`SELECT token FROM catalog_people LIMIT 1`).Scan(&token); err != nil {
+		t.Fatal(err)
+	}
+	s := New(c.DB)
+	v := Viewer{Profile: "p", Fence: "f", Libraries: []string{"m"}}
+	for _, field := range []string{"cast", "crew", "actor", "director", "writer"} {
+		for _, operator := range []string{"equals", "not-in"} {
+			t.Run(field+"/"+operator, func(t *testing.T) {
+				value := any("Guard Name")
+				if field == "cast" || field == "crew" {
+					value = token
+				}
+				if operator == "not-in" {
+					value = []any{value}
+				}
+				raw, _ := json.Marshal(BrowseNode{Field: field, Operator: operator, Value: value})
+				query, err := ParseBrowseQuery(raw, "query")
+				if err != nil {
+					t.Fatal(err)
+				}
+				state, oracle, witness := selectionBatchFixture(t, s, v, BrowseRequest{Library: "m", Pivot: "movies", Query: query, Limit: 1}, HomeActionAuthority{})
+				got := finishSelectionBatch(t, s, state, witness, HomeActionAuthority{}, 1)
+				if !reflect.DeepEqual(got, oracle) {
+					t.Fatalf("got %+v want %+v", got, oracle)
+				}
+			})
+		}
 	}
 }

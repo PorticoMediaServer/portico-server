@@ -21,6 +21,7 @@ type selectionBatchTest struct {
 	rangeStart                                 int64
 	global                                     bool
 	streams                                    []selectionBatchTest
+	creditGuards                               []selectionBatchCreditGuard
 	scalar                                     string
 	sizeSQL                                    string
 	value                                      string
@@ -32,8 +33,15 @@ type selectionBatchTest struct {
 	profileArgs                                []any
 }
 
+type selectionBatchCreditGuard struct {
+	column, condition string
+}
+
 func (t selectionBatchTest) bytes() int {
-	n := cap(t.streams) * int(unsafe.Sizeof(selectionBatchTest{}))
+	n := cap(t.streams)*int(unsafe.Sizeof(selectionBatchTest{})) + cap(t.creditGuards)*int(unsafe.Sizeof(selectionBatchCreditGuard{}))
+	for _, guard := range t.creditGuards {
+		n += len(guard.column) + len(guard.condition)
+	}
 	for _, stream := range t.streams {
 		n += stream.bytes()
 	}
@@ -45,6 +53,8 @@ type selectionBatchRelationCursor struct {
 	previousPending            [2]int64
 	previousReady, previousEOF bool
 	stream                     int
+	creditGuard                int
+	creditGuardMatched         bool
 	phase                      int
 	pending                    []any
 	members                    selectionBatchMemberCursor
@@ -377,6 +387,28 @@ func selectionBatchCompileTest(node BrowseNode, profile string, groupSearch bool
 	test.join = field.Join
 	test.condition = condition
 	test.args = c.args
+	// Evaluate each role/department label in its own resumable raw unit. Keep
+	// guards out of the value join: rejected labels still consume their UTF-8
+	// bytes, and two large guard labels cannot share one scalar overrun.
+	switch field.ID {
+	case "cast", "crew":
+		condition := "lower(label.label) IN('acting','cast')"
+		if field.ID == "crew" {
+			condition = "NOT (" + condition + ")"
+		}
+		test.creditGuards = []selectionBatchCreditGuard{{"department_id", condition}}
+		test.join = `JOIN catalog_credits credit ON credit.entity_id=bei.item_id AND credit.ord=raw.ord JOIN catalog_people person ON person.id=credit.person_id`
+	case "actor", "director", "writer":
+		test.join = `JOIN catalog_credits cc ON cc.entity_id=bei.item_id AND cc.ord=raw.ord`
+		switch field.ID {
+		case "actor":
+			test.creditGuards = []selectionBatchCreditGuard{{"department_id", "label.label='Acting'"}}
+		case "director":
+			test.creditGuards = []selectionBatchCreditGuard{{"role_id", "label.label='Director'"}, {"department_id", "label.label='Directing'"}}
+		case "writer":
+			test.creditGuards = []selectionBatchCreditGuard{{"role_id", "label.label IN('Writer','Screenplay')"}, {"department_id", "label.label='Writing'"}}
+		}
+	}
 	return test, nil
 }
 
@@ -473,6 +505,24 @@ func (s *Service) selectionBatchRelation(test selectionBatchTest, entity int64, 
 		return false, false, nil
 	}
 
+	if cursor.creditGuard < len(test.creditGuards) {
+		guard := test.creditGuards[cursor.creditGuard]
+		var encoded int64
+		err := s.read().QueryRow(`SELECT 2*COALESCE(length(CAST(label.label AS BLOB)),0)+CASE WHEN (`+guard.condition+`) THEN 1 ELSE 0 END FROM catalog_credits cc LEFT JOIN catalog_credit_labels label ON label.id=cc.`+guard.column+` WHERE cc.entity_id=? AND cc.ord=?`, cursor.rawOwner, cursor.pending[0]).Scan(&encoded)
+		if err != nil {
+			return false, false, err
+		}
+		*scalarBytes = int(encoded / 2)
+		cursor.creditGuardMatched = cursor.creditGuardMatched || encoded%2 != 0
+		cursor.creditGuard++
+		return false, false, nil
+	}
+	if len(test.creditGuards) > 0 && !cursor.creditGuardMatched {
+		cursor.keys, cursor.pending = cursor.pending, nil
+		cursor.creditGuard, cursor.phase = 0, 0
+		return false, false, nil
+	}
+
 	aliases := make([]string, 0, len(keys)+1)
 	args := slices.Clone(cursor.pending)
 	for _, key := range keys {
@@ -495,6 +545,8 @@ func (s *Service) selectionBatchRelation(test selectionBatchTest, entity int64, 
 	}
 	cursor.keys = cursor.pending
 	cursor.pending = nil
+	cursor.creditGuard = 0
+	cursor.creditGuardMatched = false
 	cursor.phase = 0
 	return false, yes, nil
 }
