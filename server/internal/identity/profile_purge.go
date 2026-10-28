@@ -47,7 +47,7 @@ const (
 	// purgePlanVersion changes whenever a builder or predicate semantic changes.
 	// It is mixed into the cursor digest together with the literal SQL of every
 	// unit, so a builder edit cannot silently reinterpret an old cursor.
-	purgePlanVersion = "p2-62-profile-purge-v5"
+	purgePlanVersion = "p2-62-profile-purge-v6-share-edges"
 )
 
 // purgeRevokeFamilySQL is the one compiled statement of the revocation unit.
