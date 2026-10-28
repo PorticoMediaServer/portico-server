@@ -96,7 +96,17 @@ def main():
     staged.mkdir(mode=0o700)
     python = WORK / 'runtime/venv/bin/python3'
     ffmpeg = HOME / 'work/fixtures/portico-v3/runtime/bundle/bin/ffmpeg'
-    run([python, generator / 'generate.py', '--root', staged, '--ffmpeg', ffmpeg])
+    # The generator hardlinks its procedural Dolby Vision inputs. Copy source
+    # inputs first: reusing them would change ctime on the still-active/retired
+    # library's shared inodes. Remove this copy before new scans can observe it.
+    isolated_source = task / 'reset-source'
+    if isolated_source.exists():
+        parser.error('Isolated reset source exists; reconcile the prior attempt')
+    shutil.copytree(source, isolated_source)
+    try:
+        run([python, isolated_source / 'fixtures/test-library/generate.py', '--root', staged, '--ffmpeg', ffmpeg])
+    finally:
+        shutil.rmtree(isolated_source)
     stamp = datetime.datetime.now(datetime.timezone.utc).strftime('%Y%m%dT%H%M%SZ')
     unit = HOME / '.config/systemd/user/portico-test-server.service'
     deployment = json.loads((WORK / 'deployment.json').read_text())
