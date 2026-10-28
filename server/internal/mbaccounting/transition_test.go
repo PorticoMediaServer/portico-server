@@ -58,12 +58,21 @@ func unpinFixture(t *testing.T, db *sql.DB, tracks int) mbaccounting.Change {
 			}
 			exec(t, tx, `INSERT INTO mb_release_tracks(release_revision,track_id,medium_position,position,number,title,artist,recording_revision) VALUES('release',?,1,?,'','T','A',?)`, fmt.Sprintf("%05d", n), n+1, rec)
 		}
-		exec(t, tx, `UPDATE mb_accounting_state SET phase='flip' WHERE singleton=1`)
-		exec(t, tx, `UPDATE mb_release_accounting SET direct_refs=1 WHERE revision_id='release'`)
-		exec(t, tx, `UPDATE mb_recording_accounting_base SET release_refs=(SELECT count(*) FROM mb_release_tracks WHERE recording_revision=revision_id)`)
-		exec(t, tx, `UPDATE mb_accounting_state SET phase='idle' WHERE singleton=1`)
 		return nil
 	})
+	// Seed acceptance through the same coordinator, without forging a phase or
+	// assigning counters. The callback models this domain-independent fixture's
+	// single release-reference insertion; domain tests cover actual link rows.
+	pin := mbaccounting.Change{Owner: mbaccounting.Owner{Kind: "publication", Operation: "fixture-pin", Generation: 1}, ID: "fixture-pin", Link: "album", Entity: 1, Digest: "fixture-pin", NewRelease: "release"}
+	writer(t, db, func(tx *sql.Tx) error { _, e := mbaccounting.BeginTx(context.Background(), tx, pin); return e })
+	prepare(t, db, pin)
+	writer(t, db, func(tx *sql.Tx) error {
+		return mbaccounting.FlipTx(context.Background(), tx, pin, func() error {
+			_, e := tx.Exec(`UPDATE mb_release_accounting SET direct_refs=1 WHERE revision_id='release'`)
+			return e
+		}, func() error { return nil })
+	})
+	fold(t, db)
 	return mbaccounting.Change{Owner: mbaccounting.Owner{Kind: "entity-mutation", Operation: "mutation", Generation: 1}, ID: "transition", Link: "album", Entity: 1, Digest: "pin-digest", OldRelease: "release"}
 }
 func state(t *testing.T, db *sql.DB) mbaccounting.State {
@@ -302,5 +311,71 @@ func TestAccountingPrivateOwnerDoesNotBlockUserOrPlaybackWriters(t *testing.T) {
 		if state(t, db).Phase != "prepare" {
 			t.Fatal("ordinary writer changed accounting custody")
 		}
+	}
+}
+
+func TestAccountingPhaseGuardAllowsOnlyTheApprovedEdges(t *testing.T) {
+	db := accountingDB(t)
+	c := unpinFixture(t, db, 0)
+	edges := map[string]map[string]bool{
+		"idle":    {"prepare": true},
+		"prepare": {"ready": true, "fold": true},
+		"ready":   {"flip": true, "fold": true},
+		"flip":    {"fold": true},
+		"fold":    {"idle": true},
+	}
+	checked := map[string]bool{}
+	check := func(tx *sql.Tx, from string) {
+		t.Helper()
+		var got string
+		if e := tx.QueryRow(`SELECT phase FROM mb_accounting_state WHERE singleton=1`).Scan(&got); e != nil || got != from {
+			t.Fatal(from, got, e)
+		}
+		checked[from] = true
+		for _, to := range []string{"idle", "prepare", "ready", "flip", "fold"} {
+			if to == from || edges[from][to] {
+				continue
+			}
+			if _, e := tx.Exec(`UPDATE mb_accounting_state SET phase=? WHERE singleton=1`, to); e == nil {
+				t.Fatalf("illegal phase %s -> %s passed", from, to)
+			}
+			if e := tx.QueryRow(`SELECT phase FROM mb_accounting_state WHERE singleton=1`).Scan(&got); e != nil || got != from {
+				t.Fatal("refused transition changed phase", from, to, got, e)
+			}
+		}
+		if _, e := tx.Exec(`UPDATE mb_accounting_state SET phase=? WHERE singleton=1`, from); e != nil {
+			t.Fatal("same-phase progress refused", from, e)
+		}
+	}
+	writer(t, db, func(tx *sql.Tx) error {
+		check(tx, "idle")
+		_, e := mbaccounting.BeginTx(context.Background(), tx, c)
+		return e
+	})
+	writer(t, db, func(tx *sql.Tx) error { check(tx, "prepare"); return nil })
+	prepare(t, db, c) // prepare -> ready
+	writer(t, db, func(tx *sql.Tx) error {
+		check(tx, "ready")
+		return mbaccounting.FlipTx(context.Background(), tx, c, func() error {
+			check(tx, "flip") // ready -> flip; FlipTx subsequently takes flip -> fold.
+			_, e := tx.Exec(`UPDATE mb_release_accounting SET direct_refs=0 WHERE revision_id='release'`)
+			return e
+		}, func() error { return nil })
+	})
+	writer(t, db, func(tx *sql.Tx) error { check(tx, "fold"); return nil })
+	fold(t, db) // fold -> idle
+	// The two legal abort edges must also work through the real coordinator.
+	pin := c
+	pin.ID, pin.Digest, pin.OldRelease, pin.NewRelease = "abort-prepare", "abort-prepare", "", "release"
+	writer(t, db, func(tx *sql.Tx) error { _, e := mbaccounting.BeginTx(context.Background(), tx, pin); return e })
+	writer(t, db, func(tx *sql.Tx) error { return mbaccounting.AbortTx(context.Background(), tx, pin.Owner) }) // prepare -> fold
+	fold(t, db)
+	pin.ID, pin.Digest = "abort-ready", "abort-ready"
+	writer(t, db, func(tx *sql.Tx) error { _, e := mbaccounting.BeginTx(context.Background(), tx, pin); return e })
+	prepare(t, db, pin)
+	writer(t, db, func(tx *sql.Tx) error { return mbaccounting.AbortTx(context.Background(), tx, pin.Owner) }) // ready -> fold
+	fold(t, db)
+	if len(checked) != 5 || state(t, db).Phase != "idle" {
+		t.Fatal("phase coverage or final state", checked)
 	}
 }

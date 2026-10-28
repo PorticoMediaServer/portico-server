@@ -12311,6 +12311,8 @@ CREATE TABLE mb_recording_accounting_next(         -- private facts, never autho
  PRIMARY KEY(transition_id,revision_id)
 ) STRICT;
 
+CREATE INDEX mb_recording_accounting_next_revision ON mb_recording_accounting_next(revision_id);
+
 CREATE VIEW mb_recording_accounting AS
 SELECT b.revision_id,b.charge,b.observed_at,b.retention_refs,b.direct_refs,b.release_refs
 FROM mb_recording_accounting_base AS b
@@ -12345,6 +12347,15 @@ WHEN NEW.published_next<>OLD.published_next
  AND NOT (OLD.published_next=0 AND NEW.published_next=1 AND OLD.phase='flip' AND NEW.phase='flip')
  AND NOT (OLD.published_next=1 AND NEW.published_next=0 AND NEW.phase='idle')
 BEGIN SELECT RAISE(ABORT,'MusicBrainz accounting pointer moved outside its phase'); END;
+
+CREATE TRIGGER mb_accounting_state_phase BEFORE UPDATE OF phase ON mb_accounting_state
+WHEN NEW.phase<>OLD.phase AND NOT (
+ (OLD.phase='idle' AND NEW.phase='prepare') OR
+ (OLD.phase='prepare' AND NEW.phase IN('ready','fold')) OR
+ (OLD.phase='ready' AND NEW.phase IN('flip','fold')) OR
+ (OLD.phase='flip' AND NEW.phase='fold') OR
+ (OLD.phase='fold' AND NEW.phase='idle'))
+BEGIN SELECT RAISE(ABORT,'invalid MusicBrainz accounting phase'); END;
 
 CREATE TRIGGER mb_account_recording_update
 AFTER UPDATE OF charge,direct_refs,release_refs ON mb_recording_accounting_base
