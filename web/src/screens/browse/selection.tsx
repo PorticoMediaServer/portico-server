@@ -193,9 +193,10 @@ function LibrarySelectionToolbar(props: LibrarySelectionOptions & {visible: Visi
   return <SelectionBars
     selection={{count: summary.count, kind: summary.types.length === 1 ? summary.types[0].kind : undefined}}
     actions={{
+      ...(queryHeld && summary.count > 200 && summary.every.download ? {downloadDisabledReason: defaultI18n.t('error.unavailable')} : {}),
       ...(props.deletion && summary.library.kind === 'single' && summary.count <= 200 && summary.every.delete && (current.selection.target?.mode === 'explicit' || current.selection.target?.mode === 'query' && queryDeleteTarget(current.selection.target)) && queueLease ? {onDelete: () => {try {props.openDelete();} catch (error) {reportError(error);}}} : {}),
 ...(props.owner && props.deletion && summary.library.kind !== 'single' ? {deleteDisabledReason: defaultI18n.t('next.selection.oneLibrary')} : {}),
-      ...(props.owner && props.deletion && summary.library.kind === 'single' && summary.count > 200 && queueLease ? {onDelete: () => {try {props.openDelete();} catch (error) {reportError(error);}}, deleteExplanation: defaultI18n.t('next.selection.tooMany')} : {}),
+      ...(props.owner && props.deletion && summary.library.kind === 'single' && summary.count > 200 && queueLease ? queryHeld ? {deleteDisabledReason: defaultI18n.t('next.selection.tooMany')} : {onDelete: () => {try {props.openDelete();} catch (error) {reportError(error);}}, deleteExplanation: defaultI18n.t('next.selection.tooMany')} : {}),
       ...(props.editor && summary.every.edit && (summary.types.length === 1 || !!playSelection.keepOnly) && (current.selection.target?.mode === 'explicit' || summary.types.length > 1 && !!playSelection.keepOnly || current.selection.target?.mode === 'query' && selectionQuerySelector(current.selection.target).ok) && queueLease ? {onEdit: (anchor: HTMLElement) => {try {props.openEditor(anchor);} catch (error) {reportError(error);}}, editMode: summary.types.length > 1 ? 'mixed' as const : 'editable' as const} : {}),
       ...(canPlay ? {onPlay: () => { void playSelection.play().catch(reportError); }} : {}),
       ...(offers.watched ? {onWatchedChange: (watched: boolean) => { void personal({watched}).catch(reportError); }} : {}),
