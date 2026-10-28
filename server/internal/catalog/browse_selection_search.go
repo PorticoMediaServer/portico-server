@@ -8,6 +8,7 @@ import (
 	"unsafe"
 
 	"portico.local/server/internal/facettext"
+	"portico.local/server/internal/thirdparty/sqlite"
 )
 
 // Enable only after every proof-bearing consumer is qualified. The ordinary
@@ -15,16 +16,22 @@ import (
 const selectionBatchLocalSearchEnabled = false
 
 type selectionBatchSearch struct {
-	phrases string
-	cjk     []string
+	phrases     string
+	queryBytes  int64
+	phraseCount int
+	cjk         []string
 }
 
 func newSelectionBatchSearch(normalized string) (*selectionBatchSearch, error) {
-	raw, err := json.Marshal(facettext.SearchTerms(normalized))
+	terms := facettext.SearchTerms(normalized)
+	raw, err := json.Marshal(terms)
 	if err != nil {
 		return nil, err
 	}
-	p := &selectionBatchSearch{phrases: string(raw)}
+	p := &selectionBatchSearch{phrases: string(raw), phraseCount: len(terms)}
+	for _, term := range terms {
+		p.queryBytes += int64(len(term))
+	}
 	// Browse intentionally uses the original whitespace-normalized words here,
 	// unlike /search's folded-word check. Preserve its actual oracle.
 	for _, word := range strings.Fields(normalized) {
@@ -46,13 +53,38 @@ func (p *selectionBatchSearch) bytes() int {
 type selectionSearchWork struct {
 	documentTokens, queryTokens, tokenBytes int64
 	transientBytes                          int
+	probeBytes                              int
 }
 
-func (s *Service) selectionBatchSearchMatches(p *selectionBatchSearch, entity int64, sourceBytes *int, work *selectionSearchWork) (bool, error) {
+func (s *Service) selectionBatchSearchMatches(p *selectionBatchSearch, entity int64, sourceBytes *int, work *selectionSearchWork, reserve func(int64) error) (bool, error) {
 	// s.read resolves the search serving slot in the same snapshot as the
 	// complete witness. There is no MATCH/vocabulary scan or metadata rebuild.
+	var documentBytes, kindBytes, normalizedBytes int64
+	err := s.read().QueryRow(`SELECT length(CAST(d.search AS BLOB)),length(CAST(d.kind AS BLOB)),length(CAST(d.normalized AS BLOB)) FROM catalog_search_documents d WHERE d.entity_id=?`, entity).Scan(&documentBytes, &kindBytes, &normalizedBytes)
+	if errors.Is(err, sql.ErrNoRows) {
+		return false, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	// Metadata length probes touch the actual SQLite scalar. Charge them as
+	// examined source too, even if its pages are hot. No Go/native text copy is
+	// made before its peak reservation; one legal cell remains O(B).
+	peak := sqlite.SearchMatchTransientBound(documentBytes+kindBytes, p.queryBytes, p.phraseCount) + 4*normalizedBytes + int64(16*len(p.phrases)) + 65536
+	maxInt := int64(int(^uint(0) >> 1))
+	if documentBytes < 0 || kindBytes < 0 || normalizedBytes < 0 || peak < 0 || peak > maxInt || documentBytes+kindBytes+normalizedBytes > maxInt {
+		return false, ErrSelectionBatchCapacity
+	}
+	work.probeBytes = int(documentBytes + kindBytes + normalizedBytes)
+	if reserve != nil {
+		if err = reserve(peak); err != nil {
+			return false, err
+		}
+	} else if peak > 32<<20 {
+		return false, ErrSelectionBatchCapacity
+	}
 	var raw, normalized string
-	err := s.read().QueryRow(`SELECT portico_search_match(d.search,d.kind,?),d.normalized FROM catalog_search_documents d WHERE d.entity_id=?`, p.phrases, entity).Scan(&raw, &normalized)
+	err = s.read().QueryRow(`SELECT portico_search_match(d.search,d.kind,?),d.normalized FROM catalog_search_documents d WHERE d.entity_id=?`, p.phrases, entity).Scan(&raw, &normalized)
 	if errors.Is(err, sql.ErrNoRows) {
 		return false, nil
 	}
@@ -76,7 +108,7 @@ func (s *Service) selectionBatchSearchMatches(p *selectionBatchSearch, entity in
 	// no document, normalized text or token list survives this one unit.
 	*sourceBytes += int(result.SourceBytes+result.QueryBytes) + len(normalized) + 2*len(raw)
 	work.documentTokens, work.queryTokens, work.tokenBytes = result.DocumentTokens, result.QueryTokens, result.TokenBytes
-	work.transientBytes = int(result.TransientBytes) + 2*len(normalized) + 3*len(raw)
+	work.transientBytes = int(peak)
 	if !result.Match {
 		return false, nil
 	}
