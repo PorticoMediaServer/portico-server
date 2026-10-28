@@ -4,7 +4,9 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"portico.local/server/internal/identity"
 	"reflect"
+	"strings"
 	"testing"
 	"unsafe"
 
@@ -14,13 +16,13 @@ import (
 
 // This factory exercises the real background count computation independently of
 // the public admission switch, which stays off until the full cohort is checked.
-func prepareLocalConversion(t *testing.T, s *Service, v Viewer, q *BrowseNode) (BrowseSelectionPreparing, string) {
+func prepareLocalConversion(t *testing.T, s *Service, v Viewer, q *BrowseNode, sorts ...BrowseSortSelection) (BrowseSelectionPreparing, string) {
 	t.Helper()
 	var pending BrowseSelectionPreparing
 	var revision string
 	err := dbwork.WithReadSnapshot(context.Background(), s.db, func(ctx context.Context) error {
 		read := s.WithContext(ctx)
-		page, err := read.BrowseEntities(v, BrowseRequest{Library: "a", Pivot: "movies", Query: q, Limit: 1})
+		page, err := read.BrowseEntities(v, BrowseRequest{Library: "a", Pivot: "movies", Query: q, Sort: sorts, Limit: 1})
 		if err != nil {
 			return err
 		}
@@ -123,5 +125,97 @@ func TestPreparedLocalConversionUsesCompleteIDsAndLiveBasis(t *testing.T) {
 	})
 	if !errors.Is(err, ErrStaleContinuation) {
 		t.Fatalf("late drift %v", err)
+	}
+}
+
+func TestPreparedLocalConversionMaintainedSortParity(t *testing.T) {
+	_, s, _ := browseFixture(t)
+	localOrderedStore(t, s)
+	v := Viewer{Profile: "p", Fence: "browse", Libraries: []string{"a"}}
+	q := &BrowseNode{Not: &BrowseNode{Field: "search", Operator: "contains", Value: "unmatched"}}
+	for _, d := range browseSorts {
+		if !containsString(d.ApplicableKinds, "movie") {
+			continue
+		}
+		for _, direction := range d.Directions {
+			selected := BrowseSortSelection{Field: d.ID, Direction: direction}
+			if !LocalSearchQueueSupported(q, []BrowseSortSelection{selected}) {
+				continue
+			}
+			t.Run(d.ID+"/"+direction, func(t *testing.T) {
+				oracle, e := s.BrowseEntities(v, BrowseRequest{Library: "a", Pivot: "movies", Query: q, Sort: []BrowseSortSelection{selected}, Limit: 200})
+				if e != nil {
+					t.Fatal(e)
+				}
+				pending, revision := prepareLocalConversion(t, s, v, q, selected)
+				ready := awaitSelectionPreparation(t, s, v, pending.QueryID, SelectionPreparationAccess{Caller: "conversion-test", Check: func(*Service) error { return nil }}, HomeActionAuthority{})
+				defer ready.Release()
+				page, e := s.BrowseEntities(v, BrowseRequest{Library: "a", Pivot: "movies", Query: q, Sort: []BrowseSortSelection{selected}, SelectionBasis: pending.basis, Limit: 200, Range: &BrowseRange{Start: 0, Revision: revision}})
+				if e != nil {
+					t.Fatal(e)
+				}
+				defer page.Release()
+				if len(page.Entries) != len(oracle.Entries) {
+					t.Fatal("cardinality")
+				}
+				for i, entry := range page.Entries {
+					if entry.ID != oracle.Entries[i].ID || entry.Title != oracle.Entries[i].Title {
+						t.Fatalf("order %v != %v", page.Entries, oracle.Entries)
+					}
+				}
+			})
+		}
+	}
+}
+
+func TestPreparedLocalConversionByteAdmissionAndJobsFence(t *testing.T) {
+	db, s, names := browseFixture(t)
+	localOrderedStore(t, s)
+	v := Viewer{Profile: "p", Fence: "browse-route", Libraries: []string{"a"}}
+	q := &BrowseNode{Field: "search", Operator: "contains", Value: "a"}
+	// A large legal serving title exercises conversion byte admission. Capture
+	// the complete witness after this base-fact change.
+	if _, err := db.Exec(`UPDATE catalog_browse_rows SET title=? WHERE entity_id=?`, strings.Repeat("x", 3<<20), names["m1"].ID); err != nil {
+		t.Fatal(err)
+	}
+	pending, revision := prepareLocalConversion(t, s, v, q)
+	ready := awaitSelectionPreparation(t, s, v, pending.QueryID, SelectionPreparationAccess{Caller: "conversion-test", Check: func(*Service) error { return nil }}, HomeActionAuthority{})
+	defer ready.Release()
+	jobs := v
+	jobs.Fence = "jobs-route"
+	err := dbwork.WithReadSnapshot(context.Background(), db, func(ctx context.Context) error {
+		read := s.WithContext(ctx)
+		// The real local admission branch is gated until final qualification. Its
+		// revision/provenance seam is tested here with a different route fence.
+		proof, e := read.resolvePreparedBrowseSelection(jobs, ready.Ready.Selector.Query, revision, false)
+		if e != nil {
+			return e
+		}
+		proof.Release()
+		old, e := read.bulkReplayBound(jobs, &ready.Ready.Selector.Query)
+		if e != nil {
+			return e
+		}
+		if old.Revision == revision {
+			t.Fatal("fixture does not distinguish route fences")
+		}
+		if selectionBatchLocalSearchEnabled {
+			got, _, e := read.bulkSelection(identity.Principal{}, jobs, JobRequest{Command: "personal-state", Selector: JobSelector{Query: &ready.Ready.Selector.Query}, Expected: &JobExpected{CatalogRevision: revision}})
+			if e != nil {
+				return e
+			}
+			if got != bulkReplaySelection {
+				t.Fatalf("wrong replay %q", got)
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	_, err = s.BrowseEntities(v, BrowseRequest{Library: "a", Pivot: "movies", Query: q, SelectionBasis: pending.basis, Limit: 200, Range: &BrowseRange{Start: 0, Revision: revision}})
+	if !errors.Is(err, readprep.ErrCapacity) {
+		t.Fatalf("large source accepted: %v", err)
 	}
 }
