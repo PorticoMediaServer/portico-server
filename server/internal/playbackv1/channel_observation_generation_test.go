@@ -6,7 +6,7 @@ import (
 	"time"
 )
 
-func TestChannelTimelineOldBufferRenewsOnlyLease(t *testing.T) {
+func TestChannelObservationOldBufferRenewsOnlyLease(t *testing.T) {
 	for _, reportedState := range []string{"paused", "ended", "playing"} {
 		t.Run(reportedState, func(t *testing.T) {
 			db := pausedTestDB(t)
@@ -29,10 +29,17 @@ func TestChannelTimelineOldBufferRenewsOnlyLease(t *testing.T) {
 			if err = db.QueryRow(`SELECT count(*) FROM api_events`).Scan(&eventsBefore); err != nil {
 				t.Fatal(err)
 			}
-			every, err := s.Timeline(ctx, pausedCaller(), before.id, Report{Seq: 100, Generation: 7, State: reportedState, PositionMs: 99000})
-			if err != nil || every != ReportPlaying {
-				t.Fatalf("old buffer report: cadence=%s error=%v", every, err)
+			r := newReporter(t, s, pausedCaller())
+			grant, err := s.ClaimObserver(ctx, pausedCaller(), before.id, ObserverClaim{Generation: 7})
+			if err != nil || grant.EveryMs != ObservationEvery.Milliseconds() || grant.LeaseUntil.UnixMilli() != before.lease {
+				t.Fatalf("observer grant: %+v error=%v", grant, err)
 			}
+			r.epochs[before.id], r.seq[before.id] = grant.Epoch, 99
+			ack, err := r.observe(before.id, Observation{Generation: 7, State: reportedState, PositionMs: 99000})
+			if err != nil || ack.AcceptedSeq != 100 || ack.LeaseUntil.UnixMilli() != before.lease {
+				t.Fatalf("old buffer observation: ack=%+v error=%v", ack, err)
+			}
+			r.apply(before.id)
 			after, err := loadRow(ctx, db, before.id)
 			if err != nil {
 				t.Fatal(err)
@@ -56,9 +63,10 @@ func TestChannelTimelineOldBufferRenewsOnlyLease(t *testing.T) {
 				t.Fatalf("old buffer recorded watch history: count=%d error=%v", history, err)
 			}
 
-			// The rejected high sequence did not consume the new buffer's next
-			// report. Its lower, fresh sequence still changes state and position.
-			if _, err = s.Timeline(ctx, pausedCaller(), before.id, Report{Seq: 5, Generation: 8, State: "paused", PositionMs: 6000}); err != nil {
+			// Epoch sequences span buffer generations; durable sequences advance
+			// only on an applied sample. The stale high sequence did not consume
+			// durable sequence 5, which the fresh buffer now writes.
+			if err = r.report(before.id, Observation{Generation: 8, State: "paused", PositionMs: 6000}); err != nil {
 				t.Fatal(err)
 			}
 			current, err := loadRow(ctx, db, before.id)
@@ -71,9 +79,11 @@ func TestChannelTimelineOldBufferRenewsOnlyLease(t *testing.T) {
 			if _, err = db.Exec(`UPDATE playback_channel_sessions SET buffer_ordinal=9 WHERE session_id='buffer-fence'`); err != nil {
 				t.Fatal(err)
 			}
-			if every, err = s.Timeline(ctx, pausedCaller(), before.id, Report{Seq: 200, Generation: 8, State: "playing", PositionMs: 99000}); err != nil || every != ReportPaused {
-				t.Fatalf("lagging callback report: cadence=%s error=%v", every, err)
+			ack, err = r.observe(before.id, Observation{Generation: 8, State: "playing", PositionMs: 99000})
+			if err != nil || ack.LeaseUntil.UnixMilli() != current.lease {
+				t.Fatalf("lagging callback observation: ack=%+v error=%v", ack, err)
 			}
+			r.apply(before.id)
 			lagged, err := loadRow(ctx, db, before.id)
 			if err != nil {
 				t.Fatal(err)

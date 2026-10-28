@@ -72,6 +72,18 @@ func (r *reporter) report(id string, ob Observation) error {
 // fails the test if any is left unwritten.
 func (r *reporter) apply(ids ...string) {
 	r.t.Helper()
+	r.applySamples(false, ids...)
+}
+
+// applyDue runs only work whose batch deadline has arrived, including
+// lease-only renewals. Immediate replays must leave that deadline untouched.
+func (r *reporter) applyDue(ids ...string) {
+	r.t.Helper()
+	r.applySamples(true, ids...)
+}
+
+func (r *reporter) applySamples(dueOnly bool, ids ...string) {
+	r.t.Helper()
 	o := r.s.observations()
 	deadline := time.Now().Add(10 * time.Second)
 	for {
@@ -83,6 +95,7 @@ func (r *reporter) apply(ids ...string) {
 			case e == nil:
 			case e.busy:
 				waiting = true
+			case dueOnly && (e.due().IsZero() || e.due().After(r.s.now())):
 			default:
 				e.busy = true
 				batch = append(batch, e)
@@ -103,7 +116,7 @@ func (r *reporter) apply(ids ...string) {
 	o.mu.Lock()
 	defer o.mu.Unlock()
 	for _, id := range ids {
-		if e := o.entries[id]; e != nil && e.dirty {
+		if e := o.entries[id]; e != nil && e.dirty && (!dueOnly || !e.due().After(r.s.now())) {
 			r.t.Fatalf("observation for %s was not written (%d failed batches)", id, o.counts.batchesFailed.Load())
 		}
 	}

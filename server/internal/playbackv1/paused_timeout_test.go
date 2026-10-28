@@ -52,19 +52,21 @@ func pausedState(t *testing.T, db *sql.DB, id string) (state string, pausedSince
 }
 
 // Entering paused stamps when; staying paused keeps the stamp; any other state
-// clears it — through both timeline reports and PATCH.
+// clears it — through both observations and PATCH.
 func TestPausedSinceSetOnEnterKeptWhilePausedClearedOnResume(t *testing.T) {
 	ctx := context.Background()
 	db := pausedTestDB(t)
-	now := time.UnixMilli(1_750_000_000_000)
+	clock := &observationClock{at: time.UnixMilli(1_750_000_000_000)}
+	now := clock.now()
 	// A long lease: the test moves the clock minutes at a time and must not
 	// trip lease expiry.
-	s := &Service{DB: db, Now: func() time.Time { return now }, LeaseDuration: 2 * time.Hour}
+	s := &Service{DB: db, Now: clock.now, LeaseDuration: 2 * time.Hour}
 	c := pausedCaller()
 	insertPausedSession(t, db, "ps_play", "vod", "playing", now.UnixMilli(), 0)
+	r := newReporter(t, s, c)
 
 	// A paused report enters paused: stamp now.
-	if _, err := s.Timeline(ctx, c, "ps_play", Report{Seq: 1, Generation: 1, State: "paused", PositionMs: 1000}); err != nil {
+	if err := r.report("ps_play", Observation{Generation: 1, State: "paused", PositionMs: 1000}); err != nil {
 		t.Fatal(err)
 	}
 	state, stamp, _ := pausedState(t, db, "ps_play")
@@ -73,8 +75,13 @@ func TestPausedSinceSetOnEnterKeptWhilePausedClearedOnResume(t *testing.T) {
 	}
 
 	// Another paused report stays paused: keep the old stamp.
-	now = now.Add(5 * time.Minute)
-	if _, err := s.Timeline(ctx, c, "ps_play", Report{Seq: 2, Generation: 1, State: "paused", PositionMs: 1000}); err != nil {
+	clock.add(5 * time.Minute)
+	now = clock.now()
+	// The simulated reporting gap exceeds observationIdle. Reclaim before
+	// reporting again whether or not the worker already retired the owner.
+	delete(r.epochs, "ps_play")
+	r.seq["ps_play"] = 0
+	if err := r.report("ps_play", Observation{Generation: 1, State: "paused", PositionMs: 1000}); err != nil {
 		t.Fatal(err)
 	}
 	if state, stamp, _ := pausedState(t, db, "ps_play"); state != "paused" || stamp != now.Add(-5*time.Minute).UnixMilli() {
@@ -82,7 +89,7 @@ func TestPausedSinceSetOnEnterKeptWhilePausedClearedOnResume(t *testing.T) {
 	}
 
 	// A playing report resumes: clear to 0.
-	if _, err := s.Timeline(ctx, c, "ps_play", Report{Seq: 3, Generation: 1, State: "playing", PositionMs: 2000}); err != nil {
+	if err := r.report("ps_play", Observation{Generation: 1, State: "playing", PositionMs: 2000}); err != nil {
 		t.Fatal(err)
 	}
 	if state, stamp, _ := pausedState(t, db, "ps_play"); state != "playing" || stamp != 0 {
@@ -91,7 +98,8 @@ func TestPausedSinceSetOnEnterKeptWhilePausedClearedOnResume(t *testing.T) {
 
 	// PATCH to paused stamps now too (revision is 3 after the three reports:
 	// two of them changed state).
-	now = now.Add(time.Minute)
+	clock.add(time.Minute)
+	now = clock.now()
 	if _, err := s.Patch(ctx, c, "ps_play", "3", Change{State: "paused"}); err != nil {
 		t.Fatal(err)
 	}
@@ -100,7 +108,8 @@ func TestPausedSinceSetOnEnterKeptWhilePausedClearedOnResume(t *testing.T) {
 	}
 
 	// A PATCH that leaves the session paused keeps the stamp.
-	now = now.Add(time.Minute)
+	clock.add(time.Minute)
+	now = clock.now()
 	if _, err := s.Patch(ctx, c, "ps_play", "4", Change{}); err != nil {
 		t.Fatal(err)
 	}

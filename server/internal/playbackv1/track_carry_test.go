@@ -69,7 +69,9 @@ func newCarryFixture(t *testing.T, audio bool) *carryFixture {
 		t.Fatal(err)
 	}
 	subs, err := subtitles.New(subtitles.Options{DB: catalog.DB, Directory: t.TempDir(), Storage: storage.New(binary), HelperBinary: binary,
-		Authorize: func(_ context.Context, _ *sql.Tx, p identity.Principal, _ string) (identity.Principal, error) { return p, nil },
+		Authorize: func(_ context.Context, _ *sql.Tx, p identity.Principal, _ string) (identity.Principal, error) {
+			return p, nil
+		},
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -308,7 +310,7 @@ func TestQueueCarryAdvanceRetainsLanguagesAcrossFilesAndEndedCompletion(t *testi
 			reason := "next"
 			if end {
 				reason = "completion"
-				if _, err := f.service.Timeline(context.Background(), f.caller, chosen.ID, Report{Seq: 1, Generation: chosen.Presentation.Generation, State: "ended", PositionMs: 5400000}); err != nil {
+				if err := newReporter(t, f.service, f.caller).report(chosen.ID, Observation{Generation: chosen.Presentation.Generation, State: "ended", PositionMs: 5400000}); err != nil {
 					t.Fatal(err)
 				}
 			}
@@ -414,10 +416,15 @@ func TestQueueCarryFreshStartReplayAndLateSourceFences(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err = f.service.Timeline(context.Background(), f.caller, chosen.ID, Report{Seq: 100, Generation: chosen.Presentation.Generation, State: "playing", PositionMs: 99999}); !errors.Is(err, ErrEnded) {
+	r := newReporter(t, f.service, f.caller)
+	if _, err = r.observe(chosen.ID, Observation{Generation: chosen.Presentation.Generation, State: "playing", PositionMs: 99999}); !errors.Is(err, ErrEnded) {
 		t.Fatalf("late predecessor report: %v", err)
 	}
-	if _, err = f.service.Timeline(context.Background(), f.caller, fresh.ID, Report{Seq: 100, Generation: 0, State: "playing", PositionMs: 99999}); err != nil {
+	// Claim the current presentation before sending a late sample for its predecessor.
+	if _, err = r.claim(fresh.ID, changed.Presentation.Generation); err != nil {
+		t.Fatal(err)
+	}
+	if err = r.report(fresh.ID, Observation{Generation: 0, State: "playing", PositionMs: 99999}); err != nil {
 		t.Fatal(err)
 	}
 	after, err := loadRow(context.Background(), f.catalog.DB, fresh.ID)

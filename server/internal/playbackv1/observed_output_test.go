@@ -12,12 +12,13 @@ import (
 	"portico.local/server/internal/playback"
 )
 
-func TestTimelineObservedOutputRequiresCurrentDeviceGenerationAndSequence(t *testing.T) {
+func TestObservationObservedOutputRequiresCurrentDeviceGenerationAndSequence(t *testing.T) {
 	db := pausedTestDB(t)
 	ctx := context.Background()
 	now := time.UnixMilli(1_750_000_000_000)
 	s := &Service{DB: db, Now: func() time.Time { return now }}
 	caller := pausedCaller()
+	r := newReporter(t, s, caller)
 	insertPausedSession(t, db, "observed", "vod", "playing", now.UnixMilli(), 0)
 	read := func(generation int) *playback.ObservedPlayback {
 		t.Helper()
@@ -33,27 +34,30 @@ func TestTimelineObservedOutputRequiresCurrentDeviceGenerationAndSequence(t *tes
 		return got
 	}
 	actual := &playback.ObservedPlayback{Video: &playback.ObservedVideo{Width: 1920, Height: 1080}, Audio: &playback.ObservedAudioOutput{SampleRate: 44100, Channels: 2}}
-	if _, err := s.Timeline(ctx, caller, "observed", Report{Seq: 1, Generation: 1, State: "playing", ObservedPlayback: actual}); err != nil {
+	if err := r.report("observed", Observation{Generation: 1, State: "playing", ObservedPlayback: actual}); err != nil {
 		t.Fatal(err)
 	}
 	if got := read(1); !reflect.DeepEqual(got, actual) {
 		t.Fatalf("actual sparse output lost: %+v", got)
 	}
 	wrong := &playback.ObservedPlayback{Screen: &playback.ObservedScreen{DynamicRange: "dolby_vision"}}
-	for _, report := range []Report{{Seq: 1, Generation: 1, State: "playing", ObservedPlayback: wrong}, {Seq: 2, Generation: 0, State: "playing", ObservedPlayback: wrong}} {
-		if _, err := s.Timeline(ctx, caller, "observed", report); err != nil {
+	for _, ob := range []Observation{{Seq: 1, Generation: 1, State: "playing", ObservedPlayback: wrong}, {Seq: 2, Generation: 0, State: "playing", ObservedPlayback: wrong}} {
+		ob.Epoch = r.epochs["observed"]
+		if _, err := s.Observe(ctx, caller, "observed", ob); err != nil {
 			t.Fatal(err)
 		}
+		r.apply("observed")
 		if !reflect.DeepEqual(read(1), actual) {
 			t.Fatal("replay/stale generation replaced actual output")
 		}
 	}
+	r.seq["observed"] = 2
 	controller := caller
 	controller.DeviceID = "other-device"
-	if _, err := s.Timeline(ctx, controller, "observed", Report{Seq: 2, Generation: 1, State: "playing", ObservedPlayback: wrong}); !errors.Is(err, ErrNotFound) {
+	if _, err := s.Observe(ctx, controller, "observed", Observation{Epoch: r.epochs["observed"], Seq: 3, Generation: 1, State: "playing", ObservedPlayback: wrong}); !errors.Is(err, ErrNotFound) {
 		t.Fatalf("controller supplied output: %v", err)
 	}
-	if _, err := s.Timeline(ctx, caller, "observed", Report{Seq: 2, Generation: 1, State: "playing", ObservedPlayback: &playback.ObservedPlayback{}}); err != nil {
+	if err := r.report("observed", Observation{Generation: 1, State: "playing", ObservedPlayback: &playback.ObservedPlayback{}}); err != nil {
 		t.Fatal(err)
 	}
 	if got := read(1); !reflect.DeepEqual(got, &playback.ObservedPlayback{}) {
@@ -70,13 +74,13 @@ func TestTimelineObservedOutputRequiresCurrentDeviceGenerationAndSequence(t *tes
 	if got := read(1); got != nil {
 		t.Fatalf("obsolete generation remained readable: %+v", got)
 	}
-	if _, err := s.Timeline(ctx, caller, "observed", Report{Seq: 1, Generation: 2, State: "playing", ObservedPlayback: actual}); err != nil {
+	if err := r.report("observed", Observation{Generation: 2, State: "playing", ObservedPlayback: actual}); err != nil {
 		t.Fatal(err)
 	}
 	if !reflect.DeepEqual(read(2), actual) {
 		t.Fatal("current-generation report was not stored")
 	}
-	if _, err := s.Timeline(ctx, caller, "observed", Report{Seq: 2, Generation: 2, State: "ended"}); err != nil {
+	if err := r.report("observed", Observation{Generation: 2, State: "ended"}); err != nil {
 		t.Fatal(err)
 	}
 	if got := read(2); got != nil {
@@ -84,7 +88,7 @@ func TestTimelineObservedOutputRequiresCurrentDeviceGenerationAndSequence(t *tes
 	}
 }
 
-func TestObservedOutputStoreCannotBypassAcceptedTimelineBinding(t *testing.T) {
+func TestObservedOutputStoreCannotBypassAcceptedObservationBinding(t *testing.T) {
 	db := pausedTestDB(t)
 	ctx := context.Background()
 	now := time.UnixMilli(1_750_000_000_000)
@@ -158,6 +162,7 @@ func TestObservedLiveOutputKeepsSessionAndBufferGenerationsDistinct(t *testing.T
 	}
 	authority := &observedChannelAuthority{generation: "7"}
 	s := &Service{DB: db, Channels: authority, Now: func() time.Time { return now }}
+	r := newReporter(t, s, pausedCaller())
 	actual := &playback.ObservedPlayback{Video: &playback.ObservedVideo{Width: 1280, Height: 720}}
 	read := func(sessionGeneration, bufferGeneration int) *playback.ObservedPlayback {
 		t.Helper()
@@ -172,7 +177,7 @@ func TestObservedLiveOutputKeepsSessionAndBufferGenerationsDistinct(t *testing.T
 		}
 		return got
 	}
-	if _, err = s.Timeline(ctx, pausedCaller(), "observed-live", Report{Seq: 1, Generation: 7, State: "playing", ObservedPlayback: actual}); err != nil {
+	if err = r.report("observed-live", Observation{Generation: 7, State: "playing", ObservedPlayback: actual}); err != nil {
 		t.Fatal(err)
 	}
 	if !reflect.DeepEqual(read(1, 7), actual) || read(7, 7) != nil || read(1, 1) != nil {
@@ -193,18 +198,18 @@ func TestObservedLiveOutputKeepsSessionAndBufferGenerationsDistinct(t *testing.T
 		t.Fatal("live GET inherited old buffer output", view.ObservedPlayback, err)
 	}
 
-	if _, err = s.Timeline(ctx, pausedCaller(), "observed-live", Report{Seq: 2, Generation: 8, State: "playing", ObservedPlayback: actual}); err != nil {
+	if err = r.report("observed-live", Observation{Generation: 8, State: "playing", ObservedPlayback: actual}); err != nil {
 		t.Fatal(err)
 	}
 	wrong := &playback.ObservedPlayback{Screen: &playback.ObservedScreen{DynamicRange: "hdr10"}}
-	if _, err = s.Timeline(ctx, pausedCaller(), "observed-live", Report{Seq: 3, Generation: 7, State: "playing", ObservedPlayback: wrong}); err != nil {
+	if err = r.report("observed-live", Observation{Generation: 7, State: "playing", ObservedPlayback: wrong}); err != nil {
 		t.Fatal(err)
 	}
 	if !reflect.DeepEqual(read(1, 8), actual) {
 		t.Fatal("stale buffer changed output")
 	}
 	authority.reject = true
-	if _, err = s.Timeline(ctx, pausedCaller(), "observed-live", Report{Seq: 4, Generation: 8, State: "playing", ObservedPlayback: wrong}); err != nil {
+	if err = r.report("observed-live", Observation{Generation: 8, State: "playing", ObservedPlayback: wrong}); err != nil {
 		t.Fatal(err)
 	}
 	if !reflect.DeepEqual(read(1, 8), actual) {
@@ -216,7 +221,7 @@ func TestObservedLiveOutputKeepsSessionAndBufferGenerationsDistinct(t *testing.T
 	if _, err = db.Exec(`UPDATE playback_channel_sessions SET buffer_ordinal=9 WHERE session_id='observed-live'`); err != nil {
 		t.Fatal(err)
 	}
-	if _, err = s.Timeline(ctx, pausedCaller(), "observed-live", Report{Seq: 5, Generation: 8, State: "playing", ObservedPlayback: wrong}); err != nil {
+	if err = r.report("observed-live", Observation{Generation: 8, State: "playing", ObservedPlayback: wrong}); err != nil {
 		t.Fatal(err)
 	}
 	if read(1, 8) != nil || read(1, 9) != nil {
@@ -224,7 +229,7 @@ func TestObservedLiveOutputKeepsSessionAndBufferGenerationsDistinct(t *testing.T
 	}
 }
 
-// The authorized session GET is the read side of the existing timeline's
+// The authorized session GET is the read side of the observation protocol's
 // sparse output snapshot, not a new output observation writer or source plan.
 func TestSessionGetPublishesOnlyCurrentObservedOutput(t *testing.T) {
 	db := pausedTestDB(t)
@@ -232,6 +237,7 @@ func TestSessionGetPublishesOnlyCurrentObservedOutput(t *testing.T) {
 	now := time.UnixMilli(1_750_000_000_000)
 	service := &Service{DB: db, Now: func() time.Time { return now }}
 	caller := pausedCaller()
+	r := newReporter(t, service, caller)
 	insertPausedSession(t, db, "read-output", "vod", "playing", now.UnixMilli(), 0)
 	get := func() SessionView {
 		t.Helper()
@@ -245,7 +251,7 @@ func TestSessionGetPublishesOnlyCurrentObservedOutput(t *testing.T) {
 		t.Fatal("unreported output inferred from session/quality/source")
 	}
 	actual := &playback.ObservedPlayback{Video: &playback.ObservedVideo{Width: 1920, Height: 1080}, Audio: &playback.ObservedAudioOutput{SampleRate: 44100, Channels: 2}}
-	if _, err := service.Timeline(ctx, caller, "read-output", Report{Seq: 1, Generation: 1, State: "playing", ObservedPlayback: actual}); err != nil {
+	if err := r.report("read-output", Observation{Generation: 1, State: "playing", ObservedPlayback: actual}); err != nil {
 		t.Fatal(err)
 	}
 	if view := get(); !reflect.DeepEqual(view.ObservedPlayback, actual) || view.ObservedPlayback.Screen != nil {
@@ -261,7 +267,7 @@ func TestSessionGetPublishesOnlyCurrentObservedOutput(t *testing.T) {
 	if _, err := service.Get(ctx, other, "read-output"); !errors.Is(err, ErrNotFound) {
 		t.Fatal("output crossed profile authority", err)
 	}
-	if _, err := service.Timeline(ctx, caller, "read-output", Report{Seq: 2, Generation: 1, State: "playing", ObservedPlayback: &playback.ObservedPlayback{}}); err != nil {
+	if err := r.report("read-output", Observation{Generation: 1, State: "playing", ObservedPlayback: &playback.ObservedPlayback{}}); err != nil {
 		t.Fatal(err)
 	}
 	if !reflect.DeepEqual(get().ObservedPlayback, &playback.ObservedPlayback{}) {
@@ -273,13 +279,13 @@ func TestSessionGetPublishesOnlyCurrentObservedOutput(t *testing.T) {
 	if get().ObservedPlayback != nil {
 		t.Fatal("new presentation inherited previous output")
 	}
-	if _, err := service.Timeline(ctx, caller, "read-output", Report{Seq: 1, Generation: 2, State: "playing", ObservedPlayback: actual}); err != nil {
+	if err := r.report("read-output", Observation{Generation: 2, State: "playing", ObservedPlayback: actual}); err != nil {
 		t.Fatal(err)
 	}
 	if !reflect.DeepEqual(get().ObservedPlayback, actual) {
 		t.Fatal("new accepted output missing")
 	}
-	if _, err := service.Timeline(ctx, caller, "read-output", Report{Seq: 2, Generation: 2, State: "ended"}); err != nil {
+	if err := r.report("read-output", Observation{Generation: 2, State: "ended"}); err != nil {
 		t.Fatal(err)
 	}
 	if get().ObservedPlayback != nil {
