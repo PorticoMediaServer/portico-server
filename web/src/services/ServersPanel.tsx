@@ -75,7 +75,7 @@ export function ServersPanel({api}: {api: WorkspaceApi}) {
       {server.ownedByMe ? <ServicesQuiet>{t('web.hostedAccount.leaveOwner')}</ServicesQuiet> : <Button size="small" disabled={busy} onClick={() => setLeaving(server)}>{t('web.hostedAccount.leaveServer')}</Button>}
     </ServicesWorkspaceRow>;}) : <ServicesEmpty title={t('services.workspace.emptyServers')} description={t('services.workspace.emptyServersBody')}
       actions={<><Button size="small" variant="primary" onClick={() => location.assign('/#join')}>{t('services.start.join')}</Button><Button size="small" onClick={() => location.assign('/#setup')}>{t('services.start.setup')}</Button></>} />}</ServicesGroup>}
-    {allOffline ? <ServicesGroup title={t('web.hostedAccount.stillWorks')}>
+    {allOffline ? <ServicesGroup title={t('web.hostedAccount.accountActions')}>
       <ServicesWorkspaceRow icon="i-person" title={t('web.hostedAccount.stillWorksAccount')} help={t('web.hostedAccount.stillWorksAccountBody')}>
         <Button size="small" variant="glass" icon="i-right" iconOnly aria-label={t('web.hostedAccount.stillWorksAccount')} onClick={() => location.assign('/account')} />
       </ServicesWorkspaceRow>

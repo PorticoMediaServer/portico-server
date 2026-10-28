@@ -1,6 +1,11 @@
 import {browserOwnsBackTransition} from './model';
 
-type MotionRouter = {update(options: {defaultViewTransition: boolean}): void;
+/** motion.html 3.1: a page change is a View Transition. A same-page change (a library
+ * tab, a Settings section, any query-only update) keeps the page and its controls still;
+ * the screen's own content motion owns it. Browsers without transition types keep the
+ * page transition for every navigation. */
+export const pageViewTransition = Object.freeze({types: ({pathChanged}: {pathChanged: boolean}) => pathChanged ? ['page'] : false as const});
+type MotionRouter = {update(options: {defaultViewTransition: boolean | typeof pageViewTransition}): void;
   state?: {matches: readonly unknown[]};
   subscribe?: (event: 'onRendered', listener: () => void) => () => void;
 };
@@ -20,7 +25,7 @@ export function bindShellRouteMotion(router: MotionRouter, browser: Window = win
   const pop = (event: PopStateEvent) => suppress(event, true);
   const navigate = (event: Event) => { const signal = event as NavigationSignal; suppress(signal, signal.navigationType === 'traverse'); };
   const navigation = (browser as Window & {navigation?: EventTarget}).navigation;
-  const release = () => { ownedByBrowser = false; router.update({defaultViewTransition: true}); };
+  const release = () => { ownedByBrowser = false; router.update({defaultViewTransition: pageViewTransition}); };
   // The first native snapshot cannot be a prerequisite for mounting the router.
   // A real commit (including one before this effect) enables ordinary motion.
   const offRendered = router.subscribe?.('onRendered', () => {if (!ownedByBrowser) release();});

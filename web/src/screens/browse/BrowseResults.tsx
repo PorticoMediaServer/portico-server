@@ -101,7 +101,7 @@ export function BrowseResults(props: BrowseResultsProps) {
   const width = list ? Math.max(1, size.grid || size.width) : size.grid > 0 ? (size.grid - (painted - 1) * gap) / painted - .01 : cardWidth;
   const height = musicGenres ? 152 : width / ratio + (shape === 'collection' ? 0 : gridCaption);
   const gutter = {'--grid-overflow': `${overflow}px`} as CSSProperties;
-  if (failed) return <StateView title={t('next.states.pageFailed')} body={t('next.states.pageFailedBody')} primary={{id: 'retry', label: t('next.states.tryAgain'), onPress: controller.retry}}/>;
+  if (failed) return <StateView variant="page" title={t('next.states.pageFailed')} body={t('next.states.pageFailedBody')} primary={{id: 'retry', label: t('next.states.tryAgain'), onPress: controller.retry}}/>;
   return <div className={styles.results} ref={root} data-view={view} data-music={music || undefined} data-reading={reading || undefined} data-shape={tiles ? 'collection' : undefined} data-empty={snapshot.total === 0 ? '' : undefined} style={gutter}>
     {tiles && <p className={styles.collectionsNote}><Icon name="i-layers" size={18}/>{t('next.browse.collectionsAutomatic')}</p>}
     {list && <div className={styles.listHead} role="row">{drawnColumns.map(column => {

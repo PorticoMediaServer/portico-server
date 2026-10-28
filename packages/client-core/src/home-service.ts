@@ -33,6 +33,10 @@ export type HomeObservationOptions = Readonly<{
 }>;
 export type HomeServiceOptions = Readonly<{
   timeoutMs?: number; initialLimit?: number; observation?: HomeObservationOptions;
+  /** The least time between two whole-Home refreshes asked for by a stale row page. While a
+   * library is being scanned every continuation goes stale within a second; without this the
+   * row asks again as soon as Home is brought up to date, and Home reloads twice a second. */
+  staleRefreshEveryMs?: number; now?: () => number;
 }>;
 /** Terminal for this admitted Home owner, including ordinary-error fallback paths. */
 export class HomeAuthorityRetired extends Error {
@@ -157,7 +161,12 @@ export class HomeService {
     this.timeoutMs = options.timeoutMs ?? 15_000;
     this.initialLimit = options.initialLimit;
     this.observation = options.observation;
+    this.staleRefreshEveryMs = options.staleRefreshEveryMs ?? 5_000;
+    this.now = options.now ?? Date.now;
   }
+  private readonly staleRefreshEveryMs: number;
+  private readonly now: () => number;
+  private lastStaleRefresh = -Infinity;
 
   /** Declares the row ids that are visible or about to be. A deferred row loads when first
    * declared; the rest stay as they are until asked for. `undefined` loads every row again. */
@@ -600,10 +609,13 @@ export class HomeService {
       if(permissionDenied(error)){this.removeRow(rowId);return {...request, status: 'refused', applied: false, reason: 'permission_denied'};}
       // Out of date, not broken: bring the whole of Home up to date in place and let the row continue from there.
       if (isStaleAnswer(error)) {
-        const document = this.state.document;
-        if (hasFencedHomeMembership(rowId) && document && document.rows.find(r => r.id === rowId)?.nextCursor === cursor) {
+        const document = this.state.document, now = this.now(), recently = now - this.lastStaleRefresh < this.staleRefreshEveryMs;
+        // A row refreshed a moment ago stops asking (it keeps its cards) until Home's own quiet read brings a new cursor.
+        if ((recently || hasFencedHomeMembership(rowId)) && document && document.rows.find(r => r.id === rowId)?.nextCursor === cursor) {
           this.publish({document: Object.freeze({...document, rows: Object.freeze(document.rows.map(r => r.id === rowId ? Object.freeze({...r, nextCursor: ''}) : r))})});
         }
+        if (recently) return cancelled() ?? {...request, status: 'stale', applied: false};
+        this.lastStaleRefresh = now;
         try {
           if (this.observation) {
             const outcome = await this.refresh();

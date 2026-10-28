@@ -151,8 +151,6 @@ func actionError(err error) error {
 		return &apierror.Error{Code: "invalid_request", Cause: err}
 	}
 	switch {
-	case errors.Is(err, identity.ErrUnauthorized):
-		return &apierror.Error{Code: "unauthorized", Cause: err}
 	case errors.Is(err, identity.ErrNotVisible), errors.Is(err, downloads.ErrNotFound):
 		return &apierror.Error{Code: "not_found", Cause: err}
 	case errors.Is(err, selectionactions.ErrInput), errors.Is(err, catalog.ErrSelectionBatchUnsupported):
@@ -167,9 +165,24 @@ func actionError(err error) error {
 		return &apierror.Error{Code: "not_found", Cause: err}
 	case errors.Is(err, administration.ErrDenied), errors.Is(err, downloads.ErrPolicy), errors.Is(err, identity.ErrForbidden):
 		return &apierror.Error{Code: "not_permitted", Cause: err}
+	// Identity refusal values deliberately also match ErrUnauthorized. Resolve
+	// concealed and policy refusals first, as the ordinary typed routes do.
+	case errors.Is(err, identity.ErrUnauthorized):
+		return &apierror.Error{Code: "unauthorized", Cause: err}
 	}
 	return err
 }
+
+// A missing library is concealed at the route scope boundary. Only the later
+// bounded selection proof uses sql.ErrNoRows as a stale-continuation witness.
+func (d Dependencies) selectionActionScope(r *http.Request) (identity.Principal, catalog.Viewer, error) {
+	p, viewer, err := d.browseSelectionQueryScope(r)
+	if errors.Is(err, sql.ErrNoRows) {
+		err = identity.ErrNotVisible
+	}
+	return p, viewer, err
+}
+
 func actionFailure(w http.ResponseWriter, err error) {
 	policyErrors.Write(w, w.Header().Get("X-Request-Id"), actionError(actionPreparationError(err)))
 }
@@ -207,7 +220,7 @@ func (d Dependencies) createSelectionActionPreparation(w http.ResponseWriter, r 
 		actionFailure(w, err)
 		return
 	}
-	p, viewer, err := d.browseSelectionQueryScope(r)
+	p, viewer, err := d.selectionActionScope(r)
 	if err != nil {
 		actionFailure(w, err)
 		return
@@ -231,7 +244,7 @@ func (d Dependencies) createSelectionActionPreparation(w http.ResponseWriter, r 
 }
 
 func (d Dependencies) pollSelectionAction(r *http.Request) (identity.Principal, catalog.Viewer, readprep.Result, error) {
-	p, viewer, err := d.browseSelectionQueryScope(r)
+	p, viewer, err := d.selectionActionScope(r)
 	if err != nil {
 		return p, viewer, readprep.Result{}, err
 	}
@@ -336,7 +349,7 @@ func (d Dependencies) deleteSelectionActionPreparation(w http.ResponseWriter, r 
 		actionFailure(w, selectionactions.ErrInput)
 		return
 	}
-	p, viewer, err := d.browseSelectionQueryScope(r)
+	p, viewer, err := d.selectionActionScope(r)
 	if err != nil {
 		actionFailure(w, err)
 		return
@@ -347,7 +360,7 @@ func (d Dependencies) deleteSelectionActionPreparation(w http.ResponseWriter, r 
 		return
 	}
 	if store := d.Catalog.ReadPreparations(); store != nil {
-		err = store.Cancel(r.Context(), access.Caller, readprep.Handle(r.PathValue("preparationId")))
+		err = store.CancelNamespace(r.Context(), access.Caller, readprep.Handle(r.PathValue("preparationId")), "selection-action-v1")
 	}
 	if err != nil {
 		actionFailure(w, err)
@@ -360,7 +373,7 @@ func (d Dependencies) confirmSelectionAction(ctx context.Context, r *http.Reques
 	if r.URL.RawQuery != "" || !actionWireID(in.OperationID) || in.PreparationID == "" {
 		return selectionactions.Job{}, actionError(selectionactions.ErrInput)
 	}
-	p, viewer, err := d.browseSelectionQueryScope(r)
+	p, viewer, err := d.selectionActionScope(r)
 	if err != nil {
 		return selectionactions.Job{}, err
 	}

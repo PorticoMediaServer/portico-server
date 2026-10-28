@@ -107,7 +107,7 @@ export function BrowseFilters({controller, model, labels, compact, medium = fals
   }, [controller, opening, signature, fields, predicates, queries, openFields, reportError, state.queryRevision, state.capabilities]);
   const displayed = Object.fromEntries(fields.map(field => {
     const kind = filterControlOf(field), descriptor = filterValuesField(field), own = atomic.filter(node => node.field === field.id || node.field === descriptor.field);
-    const summary = fieldSelectionSummary(field, own, value => facets[field.id]?.values.find(option => option.value === String(value))?.label ?? valueLabel(String(value)));
+    const summary = fieldSelectionSummary(field, own, value => facets[field.id]?.values.find(option => option.value === String(value))?.label ?? valueLabel(String(value)), t);
     let value: FilterFieldState;
     if (kind === 'values') {
       const included = own.filter(node => !['not-in', 'not-equals'].includes(node.operator)).flatMap(node => (Array.isArray(node.value) ? node.value : [node.value]).filter((value): value is string | number => typeof value === 'string' || typeof value === 'number').map(String));

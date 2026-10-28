@@ -2,6 +2,8 @@ import type {ReactNode} from 'react';
 import {createI18n, deviceRegion, resolveRegion} from '@i18n';
 import {Icon, type IconName} from '../Icon';
 import {Button} from '../controls';
+import {ColourBackdrop} from '../artwork';
+import {useSizeClass} from '../theme';
 import styles from './server-directory-page.module.css';
 
 const t = createI18n(resolveRegion(undefined, deviceRegion())).t;
@@ -12,10 +14,11 @@ export type DirectoryServer = Readonly<{id: string; name: string; online: boolea
 
 /** connect 1 and 28/31c: the root server directory. Presentation only — the
  * caller owns ordering, opening, retrying, the countdown and every guard. */
-export function ServicesServerDirectory({header, servers, offline, seconds, pendingId, error, signedInAs, checked, busy = false, onOpen, onAccount, onJoin, onSetup, onRefresh, onDifferentAccount, onLocal}: {
+export function ServicesServerDirectory({header, servers, offline, connecting = false, seconds, pendingId, error, signedInAs, checked, busy = false, onOpen, onAccount, onJoin, onSetup, onRefresh, onDifferentAccount, onLocal}: {
   header: ReactNode;
   servers: readonly DirectoryServer[];
   offline: boolean;
+  connecting?: boolean;
   seconds: number;
   pendingId?: string;
   error?: ReactNode;
@@ -48,12 +51,14 @@ export function ServicesServerDirectory({header, servers, offline, seconds, pend
     <span className={styles.text}><b>{title}</b>{body && <small>{body}</small>}</span>
     <Icon name="i-right" size={20} />
   </button>;
+  // connect 1 (round), 28 (side, every server offline) and 31 (phone, top) each draw their backdrop.
+  const compact = useSizeClass() === 'compact';
   return <div className={styles.page}>
-    {header}
+    {header}<ColourBackdrop viewport shape={compact ? 'top' : offline ? 'side' : 'round'} />
     <main className={styles.main}>
       <header className={styles.head}>
         <p className={styles.why}>{offline ? t('web.chooser.offlineWhy') : t('web.chooser.signedInAs', {name: signedInAs})}</p>
-        <h1>{t(offline ? 'web.chooser.offlineTitle' : 'web.chooser.title')}</h1>
+        <h1>{t(connecting ? 'web.chooser.connectingToServer' : offline ? 'web.chooser.offlineTitle' : 'web.chooser.title')}</h1>
         <p className={styles.lede}>{offline
           ? <><span className={styles.desktopOnly}>{t('web.chooser.offlineBody')}</span><span className={styles.phoneOnly}>{t('web.chooser.offlineBodyPhone')}</span></>
           : t('web.chooser.lede')}</p>
@@ -67,10 +72,10 @@ export function ServicesServerDirectory({header, servers, offline, seconds, pend
             <svg className={styles.ring} viewBox="0 0 24 24" aria-hidden="true"><circle className={styles.ringTrack} cx="12" cy="12" r="9" /><circle className={styles.ringArc} cx="12" cy="12" r="9" /></svg>
             {t('web.chooser.checkingAgain', {seconds})}
           </div>
-          {owned && <p className={styles.hint}>{t('web.hostedAccount.offlineOwnerHint')}</p>}
+          {owned && !connecting && <p className={styles.hint}>{t('web.hostedAccount.offlineOwnerHint')}</p>}
         </section>
         <section className={styles.card}>
-          <h2>{t('web.hostedAccount.stillWorks')}</h2>
+          <h2>{t('web.hostedAccount.accountActions')}</h2>
           <div className={styles.workRows}>
             {work('i-person', t('web.hostedAccount.stillWorksAccount'), t('web.hostedAccount.stillWorksAccountBody'), onAccount)}
             {work('i-link', t('web.hostedAccount.stillWorksJoin'), <span className={styles.desktopOnly}>{t('web.hostedAccount.stillWorksJoinBody')}</span>, onJoin)}

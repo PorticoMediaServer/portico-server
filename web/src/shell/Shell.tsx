@@ -92,7 +92,7 @@ function ShellFrame({identity, OwnerActivity, dockVisible, serverAway, onSignOut
   const profileDisplay = profileChoice && identity.profiles.find(profile => profile.id === profileChoice.id) || profileChoice;
   useEffect(()=>()=>profileRequest.current?.abort(),[]);
   const chooseProfile=async(profile:ProfileIdentity,pin='')=>{if(!onSwitchProfile || profileProof.current !== JSON.stringify([switchAuthorityKey(identity), profileTargetKey(profile)]))return;profileRequest.current?.abort();const controller=profileRequest.current=new AbortController();setProfileBusy(true);setProfileError(undefined);try{await onSwitchProfile(profile.id,pin,controller.signal);if(!controller.signal.aborted)setProfileChoice(undefined);}catch(error){if(!controller.signal.aborted)setProfileError(error);}finally{if(profileRequest.current===controller)setProfileBusy(false);}};
-  const home = pathname === '/', settingsArea = pathname === '/settings' || pathname === '/dashboard', [accountOpen, setAccountOpen] = useState(false), [moreOpen, setMoreOpen] = useState(false);
+  const home = pathname === '/', [accountOpen, setAccountOpen] = useState(false), [moreOpen, setMoreOpen] = useState(false);
   const [switchOpening, setSwitchOpening] = useState<SwitchProfileServerOpening>(), [hostedSelection, setHostedSelection] = useState<HostedSwitchSelection>();
   const switchOwner = useRef<SwitchProfileServerOpening | undefined>(undefined);
   const offerKey = switchOfferKey(identity);
@@ -122,7 +122,6 @@ function ShellFrame({identity, OwnerActivity, dockVisible, serverAway, onSignOut
     });
     switchOwner.current = opening; setSwitchOpening(opening);
   };
-  const heroPage = home || pathname.startsWith('/item/') || pathname.startsWith('/person/');
   const {viewer} = identity;
   useEffect(() => {
     if (!pathname.startsWith('/library/')) return;
@@ -173,7 +172,7 @@ function ShellFrame({identity, OwnerActivity, dockVisible, serverAway, onSignOut
     {chrome.os === 'windows' && !chrome.fullscreen && sizeClass === 'medium' && <div className={styles.captionShade} data-on={scrolled || undefined} aria-hidden="true" />}
     {captionRenderer && <div data-window-chrome-host data-window-no-drag>{captionRenderer}</div>}
     <div className={styles.navigation} data-shell-navigation>
-      {desktop ? <nav className={styles.topnav} data-solid={scrolled || (!heroPage && !settingsArea)} data-window-drag-region="page-topbar" aria-label={t('next.home.shell.main')}>
+      {desktop ? <nav className={styles.topnav} data-solid={scrolled} data-window-drag-region="page-topbar" aria-label={t('next.home.shell.main')}>
         <Link className={styles.brand} to="/" data-window-no-drag aria-label={t('next.platform.appName')}><img src={wordmark} alt="" /></Link>
         <DesktopNavigation libraries={identity.libraries} liveAvailable={identity.liveAvailable} activeLibraryId={activeLibrary} moreOpen={moreOpen} onMoreOpenChange={setMoreOpen} />
         <div className={styles.tools} data-window-no-drag>

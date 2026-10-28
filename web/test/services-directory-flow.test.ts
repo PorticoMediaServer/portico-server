@@ -10,12 +10,12 @@ const server: DirectoryItem={id:'srv_'+'a'.repeat(43),name:'Original server',bas
 const directory=(items: DirectoryItem[])=>({items,version:'1',watch:'1',membershipEnding:undefined});
 const deferred=<T,>()=>{let resolve!:(value:T)=>void;const promise=new Promise<T>(done=>{resolve=done;});return{promise,resolve};};
 function fixture(){
- let current=true,reads=0,connections=0,disposed=0;
+ let current=true,reads=0,connections=0,disposed=0,now=1000;
  let read=async()=>directory([server]),connect=async()=>({origin:'https://server.example',dispose:()=>{disposed++;}});
  const destinations:string[]=[], contacts: Parameters<typeof contactKnownServerForOwnerRecovery>[0][]=[], purposes: (string|undefined)[]=[];
  let contact: typeof contactKnownServerForOwnerRecovery = async captured => {contacts.push({...captured});return {purpose:'owner-recovery',origin:captured.baseUrl,serverId:captured.serverId,signInURL:captured.baseUrl+'/sign-in'};};
- const flow=new ServicesDirectoryFlow(directory([server]),{current:()=>current,read:()=>{reads++;return read();},connect:()=>{connections++;return connect();},contact:(captured,options)=>contact(captured,options),navigate:(origin,purpose)=>{destinations.push(origin);purposes.push(purpose);},empty:()=>{},now:()=>1000});
- return{flow,destinations,contacts,purposes,contact:(value:typeof contact)=>{contact=value;},get reads(){return reads;},get connections(){return connections;},get disposed(){return disposed;},retire:()=>{current=false;},read:(value:typeof read)=>{read=value;},connect:(value:typeof connect)=>{connect=value;}};
+ const flow=new ServicesDirectoryFlow(directory([server]),{current:()=>current,read:()=>{reads++;return read();},connect:()=>{connections++;return connect();},contact:(captured,options)=>contact(captured,options),navigate:(origin,purpose)=>{destinations.push(origin);purposes.push(purpose);},empty:()=>{},now:()=>now});
+ return{flow,destinations,contacts,purposes,now:(value:number)=>{now=value;},contact:(value:typeof contact)=>{contact=value;},get reads(){return reads;},get connections(){return connections;},get disposed(){return disposed;},retire:()=>{current=false;},read:(value:typeof read)=>{read=value;},connect:(value:typeof connect)=>{connect=value;}};
 }
 test('directory proves exact fresh server before origin-only handoff and closes owned routes',async()=>{
  const f=fixture();await f.flow.open(server,f.flow.getSnapshot());assert.deepEqual(f.destinations,['https://server.example']);assert.equal(f.connections,1);assert.equal(f.disposed,1);f.flow.dispose();
@@ -82,4 +82,19 @@ test('automatic account retry respects Retry-After floor and only source-known f
  assert.equal(directoryFailurePhase(new RouteError('route_unavailable','server'),false),'unreachable');
  assert.equal(directoryFailurePhase(accountDirectoryFailure(new TypeError('network')),false),'account-waiting');
  assert.equal(directoryFailurePhase(accountDirectoryFailure(new ApiError(403,'forbidden','forbidden',false)),false),undefined);f.flow.dispose();
+});
+
+
+test('the connecting grace lasts40 seconds from this opening and refresh never restarts it',async()=>{
+ const f=fixture();assert.equal(f.flow.inConnectingGrace(),true);
+ f.now(40999);assert.equal(f.flow.inConnectingGrace(),true);
+ f.now(41000);assert.equal(f.flow.inConnectingGrace(),false);
+ await f.flow.refresh(f.flow.getSnapshot());assert.equal(f.flow.inConnectingGrace(),false);
+ f.now(90000);assert.equal(f.flow.inConnectingGrace(),false);f.flow.dispose();
+});
+test('a server that answers during the connecting grace opens immediately',async()=>{
+ const f=fixture(),gate=deferred<{origin:string;dispose:()=>void}>();f.connect(()=>gate.promise);
+ const pending=f.flow.open(server,f.flow.getSnapshot(),true);await new Promise(resolve=>setImmediate(resolve));
+ f.now(2000);gate.resolve({origin:server.baseUrl,dispose:()=>{}});await pending;
+ assert.equal(f.flow.inConnectingGrace(),true);assert.deepEqual(f.destinations,[server.baseUrl]);f.flow.dispose();
 });

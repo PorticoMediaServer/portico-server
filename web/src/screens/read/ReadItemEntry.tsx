@@ -159,7 +159,7 @@ function BoundReadItem({captured, handoff, eligibility}: {captured: Captured; ha
   </div> : null;
   if (current(attempt) && detail.attempt === attempt && detail.failed) return <>
     {phoneBack}
-    <StateView title={t('next.states.pageFailed')} body={t('next.states.pageFailedBody')}
+    <StateView variant="page" title={t('next.states.pageFailed')} body={t('next.states.pageFailedBody')}
       primary={{id: 'retry', label: t('next.states.tryAgain'), onPress: () => refresh(attempt)}}/>
     {versionChooser}
   </>;

@@ -19,7 +19,7 @@ function router() {
     fireRendered: () => {for (const listener of [...rendered]) listener();},
     router: {
       state: {matches: [] as readonly unknown[]},
-      update: (value: {defaultViewTransition: boolean}) => {updates.push(value.defaultViewTransition);},
+      update: (value: {defaultViewTransition: unknown}) => {updates.push(value.defaultViewTransition !== false);},
       subscribe: (_event: 'onRendered', listener: () => void) => {
         rendered.push(listener);
         return () => {const index = rendered.indexOf(listener); if (index >= 0) rendered.splice(index, 1);};

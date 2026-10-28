@@ -45,6 +45,8 @@ export type HomeEffects = Readonly<{
   play: (entry: ContentEntry, target: ContentEntry) => Promise<void>;
   playChannel: (channel: GuideChannel) => Promise<void>;
   openEntry: (entry: ContentEntry) => void;
+  /** Where opening an entry goes, as a link address; undefined when it is not a page (a radio seed). */
+  entryHref?: (entry: ContentEntry) => string | undefined;
   openSeeAll: (target: HomeSeeAll) => void;
   openMore: (row: HomeRow, entry: ContentEntry, anchor: HTMLElement) => void;
   setMyList: (spotlight: HomeSpotlight) => Promise<void>;
@@ -166,6 +168,7 @@ export function HomeView({service, customization, document, nowMs, onMore, refre
   return <div className={styles.home} data-size-class={sizeClass} data-home-document={document.viewerFence}>
     {candidates.length > 0 && <div ref={hero.ref}><Hero<Spotlight> candidates={candidates} platform={platform} sizeClass={sizeClass} visible={hero.visible} reducedMotion={appearance?.reducedMotion ?? reducedMotion}
       renderReason={slide => slide.reason}
+      titleLink={slide => { const href = effects.entryHref?.(slide.entry); return href ? {href, open: () => effects.openEntry(slide.entry)} : undefined; }}
       renderMetadata={slide => <HeroFacts parts={slide.facts} platform={platform} sizeClass={sizeClass} />}
       renderArtwork={(slide, context) => <HomeHeroArtwork slide={slide} context={context} platform={platform} artwork={artwork} appearance={appearance} heroPixels={heroPixels} />}
       renderThumbnail={(slide, context) => <Artwork source={artwork.foreground(slide.artwork.backdropUrl ?? slide.artwork.posterUrl, 132 * devicePixelRatio, 16 / 9, {group: 'home-thumbnails', order: context.index})} alt="" visible={context.visible} />}

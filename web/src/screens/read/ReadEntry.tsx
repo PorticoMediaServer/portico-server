@@ -176,7 +176,7 @@ function ReadEntryBody({captured, itemId, sourceId, active = true, onClose, rece
   if (state.book) return <ReaderBook key={state.book.session.manifest.sessionId} book={state.book} active={active} reportError={reportError} onSearchAll={query => {if (!active || !currentReading()) return; void router.navigate({to: '/search/reading', search: {q: query}}).catch(error => {if (currentReading()) reportError(error);});}} onOpenSettings={() => {if (!currentReading()) return;void router.navigate({to: '/settings', search: {scope: 'account', section: 'reading'}}).catch(reportError);}} onBack={() => {if (currentReading()) (onClose ?? (() => router.history.back()))();}}/>;
   /** The drawn way back stays available while a book is opening and when it cannot open. */
   const leave = () => {if (currentReading()) (onClose ?? (() => router.history.back()))();};
-  if (state.failed) return <StateView title={t('next.states.pageFailed')} body={t('next.states.pageFailedBody')}
+  if (state.failed) return <StateView variant="page" title={t('next.states.pageFailed')} body={t('next.states.pageFailedBody')}
     primary={{id: 'retry', label: t('next.states.tryAgain'), onPress: () => {if (currentReading()) setRetry(value => value + 1);}}}
     secondary={{id: 'back', label: t('next.reader.back'), onPress: leave}}/>;
   return <div className={styles.loading}><span className={styles.escape}><Button variant="glass" icon="i-left" iconOnly aria-label={t('next.reader.back')} onClick={leave}/></span><Skeleton height="100dvh"/></div>;

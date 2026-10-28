@@ -137,8 +137,37 @@ export function nextToolbarSort(capabilities: BrowseCapabilities, sort: BrowseSo
   return {field: fieldId, direction: cap.defaultDirection};
 }
 
-/** The values a field currently selects, as the chip summarises them ("Drama, Comedy", "1990–1999", "Yes"). */
-export function fieldSelectionSummary(field: BrowseFieldCapability, predicates: readonly ToolbarPredicate[], formatValue: (v: unknown) => string): string | undefined {
+/**
+ * A range on a field with a unit, in the words its presets use (H10): "Under 30 min", "60–90 min",
+ * "4 stars or more", "80% or higher". The wire value (milliseconds, a 0–10 rating) never shows.
+ * Undefined when the field has no unit or the predicates are not a range.
+ */
+export function rangeSelectionLabel(fieldId: string, predicates: readonly ToolbarPredicate[], t: (id: MessageId, values?: MessageValues) => string): string | undefined {
+  let low: number | undefined, high: number | undefined;
+  for (const p of predicates) {
+    const value = p.value;
+    if (p.operator === 'between' && Array.isArray(value) && typeof value[0] === 'number' && typeof value[1] === 'number') { low = value[0]; high = value[1]; }
+    else if ((p.operator === 'at-least' || p.operator === 'greater-than') && typeof value === 'number') low = value;
+    else if ((p.operator === 'at-most' || p.operator === 'less-than') && typeof value === 'number') high = value;
+    else return undefined;
+  }
+  if (low === undefined && high === undefined) return undefined;
+  const number = (value: number) => Number(value.toFixed(1));
+  if (fieldId === 'durationMs') {
+    const minutes = (value: number) => Math.round(value / 60000);
+    if (low !== undefined && high !== undefined) return t('filter.preset.durationBetween', {from: minutes(low), to: minutes(high)});
+    return high !== undefined ? t('filter.preset.durationUnder', {minutes: minutes(high)}) : t('filter.preset.durationOver', {minutes: minutes(low!)});
+  }
+  if (high !== undefined) return undefined;
+  if (fieldId === 'personalRating') return t('filter.preset.stars' as MessageId, {count: number(low! / 2)});
+  if (fieldId === 'criticRating') return t('filter.preset.percent' as MessageId, {value: number(low!)});
+  if (fieldId === 'communityRating') return t('filter.preset.atLeast' as MessageId, {value: number(low!)});
+  return undefined;
+}
+
+/** The values a field currently selects, as the chip summarises them ("Drama, Comedy", "1990–1999", "Yes").
+ * Given `t`, a range on a field with a unit reads as its preset words ("60–90 min"). */
+export function fieldSelectionSummary(field: BrowseFieldCapability, predicates: readonly ToolbarPredicate[], formatValue: (v: unknown) => string, t?: (id: MessageId, values?: MessageValues) => string): string | undefined {
   const mine = predicates.filter(p => p.field === field.id);
   if (!mine.length) return undefined;
   const parts: string[] = [];
@@ -151,7 +180,9 @@ export function fieldSelectionSummary(field: BrowseFieldCapability, predicates: 
       default: parts.push(Array.isArray(p.value) ? p.value.map(formatValue).join(', ') : formatValue(p.value));
     }
   }
-  if (low !== undefined || high !== undefined) parts.push(low !== undefined && high !== undefined ? `${formatValue(low)}–${formatValue(high)}` : low !== undefined ? `≥ ${formatValue(low)}` : `≤ ${formatValue(high)}`);
+  const ranged = t && (low !== undefined || high !== undefined) ? rangeSelectionLabel(field.id, mine.filter(p => ['between', 'at-least', 'greater-than', 'at-most', 'less-than'].includes(p.operator)), t) : undefined;
+  if (ranged) parts.push(ranged);
+  else if (low !== undefined || high !== undefined) parts.push(low !== undefined && high !== undefined ? `${formatValue(low)}–${formatValue(high)}` : low !== undefined ? `≥ ${formatValue(low)}` : `≤ ${formatValue(high)}`);
   return parts.join(', ');
 }
 
@@ -236,6 +267,8 @@ export function appliedFilterLabel(p: ToolbarPredicate, fieldName: (fieldId: str
   const field = fieldName(decade ? 'year' : p.field);
   const one = (v: unknown) => (decade ? `${String(v)}s` : v === true ? t('lib.yes') : v === false ? t('lib.no') : browseValueLabel(String(v)));
   const value = Array.isArray(p.value) ? p.value.map(one).join(', ') : p.value === null || p.value === undefined ? '' : one(p.value);
+  const ranged = ['between', 'at-least', 'greater-than', 'at-most', 'less-than'].includes(p.operator) ? rangeSelectionLabel(p.field, [p], t) : undefined;
+  if (ranged) return t('filter.applied.is', {field, value: ranged});
   switch (p.operator) {
     case 'within-last-days': return p.value === 365 ? t('filter.preset.lastYear') : t('filter.preset.lastDays', {count: Number(p.value)});
     case 'is-present': return t('filter.applied.has', {field: field.toLowerCase()});

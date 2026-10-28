@@ -80,7 +80,7 @@ test('new models have a strict renderer/endpoint/state-free import boundary', as
         assert.equal([...source.matchAll(/['"]\.\.\/\.\.\/browse\.ts['"]/g)].length, 1, `${name}: no additional runtime import/reexport of browse`);
         continue;
       }
-      assert.ok(/^\.\/[a-z-]+\.ts$/.test(dependency!) || name === 'tracks.ts' && dependency === '../language.ts' || name === 'text.ts' && dependency === '../../../../i18n/src/catalog/en-US/next/shared.ts' || name === 'browse.ts' && dependency === '../browse-toolbar.ts', `${name}: ${dependency}`);
+      assert.ok(/^\.\/[a-z-]+\.ts$/.test(dependency!) || name === 'tracks.ts' && dependency === '../language.ts' || name === 'text.ts' && dependency === '../../../../i18n/src/catalog/en-US/next/shared.ts' || (name === 'browse.ts' || name === 'filters.ts') && dependency === '../browse-toolbar.ts', `${name}: ${dependency}`);
     }
   }
   const language = await readFile(new URL('../src/presentation/language.ts', import.meta.url), 'utf8');

@@ -79,7 +79,7 @@ export function LibraryScreen(bindings: LibraryBindings) {
   // A failed browse answer keeps the library the viewer is already in: its name, switcher
   // and tabs are known facts, and losing them would move the viewer out of context.
   if (state.phase === 'error') return <div className={styles.library}><LibraryIdentity {...bindings}/>
-    <StateView title={t('next.states.pageFailed')} body={t('next.states.pageFailedBody')} primary={{id: 'retry', label: t('next.states.tryAgain'), onPress: controller.retry}}/></div>;
+    <StateView variant="page" title={t('next.states.pageFailed')} body={t('next.states.pageFailedBody')} primary={{id: 'retry', label: t('next.states.tryAgain'), onPress: controller.retry}}/></div>;
   return <div className={styles.library}>
     <LibraryIdentity {...bindings}/>
     {state.phase === 'ready' && state.capabilities && state.sort ? <LibraryBrowse {...bindings}/> : <LoadingGrid key={bindings.library.id} width={width}/>}

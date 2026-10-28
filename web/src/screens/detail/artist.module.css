@@ -1,6 +1,15 @@
 /* desktop-listen's artist page on the current kit. */
 .page { padding: 24px var(--shell-gutter, 40px) 80px; color: var(--color-text); }
 .bar { display: flex; align-items: center; gap: 12px; min-height: 44px; }
+/* desktop-listen#artist: under the desktop top bar the 640px hero runs from the top of the page,
+   under the bar, with no back row. The rail and phone keep their back row. */
+:global([data-navigation='topbar']) .page { padding-top: 0; }
+:global([data-navigation='topbar']) .bar { display: none; }
+:global([data-navigation='topbar']) .hero { margin-top: 0; }
+/* A row carries its own gutter; inside this padded page it bleeds back to the edge so its heading
+   and first card sit on the page gutter, not twice it. */
+.page > [data-layout-row] { margin-inline: calc(-1 * var(--shell-gutter, 40px)); }
+.albums > [data-layout-row] { margin-left: calc(-1 * var(--shell-gutter, 40px)); }
 .barTitle { font-size: var(--type-body-size); font-weight: var(--type-caption-strong-weight); color: var(--color-text-secondary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .hero { position: relative; height: 640px; margin: 8px calc(-1 * var(--shell-gutter, 40px)) 32px; overflow: hidden; }
 .disc { position: absolute; z-index: var(--layer-content); top: 132px; right: 140px; width: 380px; height: 380px; border-radius: 50%; }

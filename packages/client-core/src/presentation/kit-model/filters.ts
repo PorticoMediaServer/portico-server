@@ -1,5 +1,6 @@
 import type {BrowseOperator, BrowseScalar} from '../../browse.ts';
 import {part, type FactPart, type KitMessageId, type TextEnvironment} from './text.ts';
+import {rangeSelectionLabel} from '../browse-toolbar.ts';
 
 export type FilterOperator = BrowseOperator;
 export type FilterValue = BrowseScalar | null | undefined;
@@ -19,6 +20,11 @@ const operators = {
 /** Value labels come from the capability owner; arbitrary metadata punctuation is preserved. */
 export function appliedFilterParts(predicate: AppliedFilter, fieldName: (id: string) => string, env: TextEnvironment, valueName: (value: string | number) => string = String): AppliedFilterModel {
   const {t} = env, fieldId = predicate.field === 'decade' ? 'year' : predicate.field;
+  // H10: a range on a field with a unit reads as one phrase in its preset words ("60–90 min"),
+  // never as wire values with an operator ("between 3600000 5400000").
+  const ranged = rangeSelectionLabel(predicate.field, [predicate as Parameters<typeof rangeSelectionLabel>[1][number]], t as Parameters<typeof rangeSelectionLabel>[2]);
+  if (ranged) return Object.freeze({rawValue: predicate.value, fieldId, field: part('field', fieldName(fieldId), 'context'), operator: 'equals' as const,
+    operatorPart: part('operator', '', 'context'), values: Object.freeze([part('value-0', ranged)]), negated: false, presence: undefined});
   const presence = predicate.operator === 'is-present' ? 'present' : predicate.operator === 'is-missing' ? 'missing' : undefined;
   const raw = Array.isArray(predicate.value) ? predicate.value : [predicate.value];
   const relative = predicate.operator === 'within-last-days';

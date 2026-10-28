@@ -24,7 +24,7 @@ export function HomeRowScreen({row, browse, onBack, onPlay, onShuffle, ambient}:
   const state = useSyncExternalStore(controller.subscribe, controller.getSnapshot, controller.getSnapshot);
   const ambientView = ambient && ambient.length ? homeRowAmbientView(ambient, compact) : undefined;
   useEffect(() => {void controller.load();}, [controller]);
-  if (state.phase === 'error') return <StateView title={defaultI18n.t('next.states.pageFailed')} body={defaultI18n.t('next.states.pageFailedBody')} primary={{id: 'retry', label: defaultI18n.t('next.states.tryAgain'), onPress: controller.retry}}/>;
+  if (state.phase === 'error') return <StateView variant="page" title={defaultI18n.t('next.states.pageFailed')} body={defaultI18n.t('next.states.pageFailedBody')} primary={{id: 'retry', label: defaultI18n.t('next.states.tryAgain'), onPress: controller.retry}}/>;
   return <section className={styles.homeRow} data-home-row={row.id}>
     {ambientView && <AmbientArt className={compact ? styles.ambientPhone : styles.ambient} {...ambientView} width="100%" height={compact ? 760 : 560}/>}
     <header className={styles.header}>

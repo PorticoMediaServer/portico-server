@@ -149,6 +149,10 @@ export type FreshnessHubOptions = Partial<FreshnessTimers> & Readonly<{
   progressGatherMs?: number;
   /** The least time between two reads of one document that only progress asked for. */
   progressEveryMs?: number;
+  /** The least time between two reads of one open document that content asked for. A library
+   * being scanned moves several times a second; a screen showing it reads again at this pace,
+   * not on every hint. A change after a quiet spell is still read after `gatherMs`. */
+  contentEveryMs?: number;
   /** How long input must have paused before a read may change what is on screen. */
   settleMs?: number;
   /** The longest a read waits for that pause. */
@@ -234,6 +238,7 @@ class Document implements FreshDocument {
   private timerAt = 0;
   private failures = 0;
   private lastProgressRead = -Infinity;
+  private lastContentRead = -Infinity;
   private disposed = false;
   private listeners = new Set<() => void>();
   private state: FreshDocumentState = Object.freeze({stale: false, revalidating: false, failures: 0});
@@ -316,6 +321,7 @@ class Document implements FreshDocument {
     const o = this.hub.tuning;
     let wait = delay ?? (this.urgency === 1 ? o.progressGatherMs : o.gatherMs);
     if (delay === undefined && this.urgency === 1) wait = Math.max(wait, this.lastProgressRead + o.progressEveryMs - this.hub.timers.now());
+    if (delay === undefined && this.urgency === 2) wait = Math.max(wait, this.lastContentRead + o.contentEveryMs - this.hub.timers.now());
     // Clients told the same thing at the same moment do not all ask at once.
     wait = Math.round(wait * (1 + this.hub.timers.random() * 0.25));
     const at = this.hub.timers.now() + wait;
@@ -366,6 +372,7 @@ class Document implements FreshDocument {
       // A refusal the server will repeat (gone, not allowed) is an answer too: the screen's own state says so.
       this.failures = 0;
       if (answered === 1) this.lastProgressRead = this.hub.timers.now();
+      else if (filled) this.lastContentRead = this.hub.timers.now();
       this.hub.report(this.source, true);
       this.publish();
       this.plan();
@@ -380,7 +387,7 @@ class Document implements FreshDocument {
   }
 }
 
-type Tuning = Required<Pick<FreshnessHubOptions, 'gatherMs' | 'progressGatherMs' | 'progressEveryMs' | 'settleMs' | 'settleLimitMs' | 'backoffMs' | 'sustainedMs'>>;
+type Tuning = Required<Pick<FreshnessHubOptions, 'gatherMs' | 'progressGatherMs' | 'progressEveryMs' | 'contentEveryMs' | 'settleMs' | 'settleLimitMs' | 'backoffMs' | 'sustainedMs'>>;
 
 export class FreshnessHub {
   readonly timers: FreshnessTimers;
@@ -417,6 +424,7 @@ export class FreshnessHub {
       gatherMs: options.gatherMs ?? 400,
       progressGatherMs: options.progressGatherMs ?? 3000,
       progressEveryMs: options.progressEveryMs ?? 15_000,
+      contentEveryMs: options.contentEveryMs ?? 5_000,
       settleMs: options.settleMs ?? 350,
       settleLimitMs: options.settleLimitMs ?? 8000,
       backoffMs: options.backoffMs ?? [2000, 5000, 10_000, 20_000, 30_000, 60_000],

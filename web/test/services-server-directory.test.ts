@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {decodeServersListResponse} from '../../packages/contracts/src/hosted/decoders.ts';
 import {servicesServerDirectoryCopy} from '../src/services/server-directory.ts';
+import {catalogue,enUS,supportedLocales} from '../../packages/i18n/src/catalog/index.ts';
 import {servicesI18n} from '../src/services/i18n.ts';
 
 const i18n=servicesI18n();
@@ -28,4 +29,9 @@ test('quiet/dormant presence retains the drawn absolute last-seen date',()=>{
 test('an unknown status never claims Online, and missing presence never fabricates a time',()=>{
   assert.notEqual(servicesServerDirectoryCopy(server({status:'online'}),i18n).presence,i18n.t('web.hostedAccount.serverOnline'));
   assert.equal(servicesServerDirectoryCopy(server({status:'quiet',presence:{lastSeenAt:null}}),i18n).presence,undefined);
+});
+
+
+test('Account actions is catalogue-backed in every supported locale',()=>{
+ for(const locale of supportedLocales)assert.equal(catalogue(locale)['web.hostedAccount.accountActions']??enUS['web.hostedAccount.accountActions'],'Account actions',locale);
 });

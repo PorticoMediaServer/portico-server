@@ -138,7 +138,7 @@ function LibraryRows({resources, libraryId, name, comic, view, onMore, onRetry, 
   const now = new Date(), today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
   /** The same rows at phone width take the handheld scale and gutters (phone-read 1). */
   const platform = width < 600 ? 'phone-web' as const : 'desktop' as const;
-  if (state.status === 'error') return <StateView title={t('next.states.pageFailed')} body={t('next.states.pageFailedBody')}
+  if (state.status === 'error') return <StateView variant="page" title={t('next.states.pageFailed')} body={t('next.states.pageFailedBody')}
     primary={{id: 'retry', label: t('next.states.tryAgain'), onPress: onRetry}}/>;
   const resume = reading.status === 'error' ? [] : resources.resume.collection.residentItems();
   if (state.total === 0 && resume.length === 0) return <StateView title={t('library.emptyLibrary')} body={t('library.emptyLibraryBody')}/>;
