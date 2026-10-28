@@ -80,7 +80,7 @@ try {
       await username.fill(cfg.hosted.username);
       await page.locator('input[name=password]').fill(cfg.hosted.password);
       await page.getByRole('button', {name: 'Continue', exact: true}).click(); signedIn = true;
-    } else if (await visible(page.getByRole('button', {name: 'Approve', exact: true}))) {
+    } else if (!receipt.approved && await visible(page.getByRole('button', {name: 'Approve', exact: true}))) {
       phase = 'signed-owner-approval';
       await page.getByRole('button', {name: 'Approve', exact: true}).click(); receipt.approved = true;
     } else if (await visible(page.getByRole('button', {name: /^Return to /}))) {

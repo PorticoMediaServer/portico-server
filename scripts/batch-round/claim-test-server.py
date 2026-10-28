@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Drive the production confirmed web owner move on mini-2. No manual claim protocol."""
 import argparse
+import hashlib
 import json
 import os
 from pathlib import Path
@@ -30,6 +31,10 @@ def main():
         parser.error('Use a new report path; preserve previous attempt evidence')
     cfg = private(args.credentials)
     hosted = private(args.hosted_credentials)
+    server_id = cfg.get('fixtureStateV3', {}).get('serverId')
+    if not isinstance(server_id, str) or not server_id:
+        parser.error('Fresh server identity receipt required before browser setup')
+    profile = '/home/justin/.local/share/portico-testing/P2-53-owner-web-' + hashlib.sha256(server_id.encode()).hexdigest()[:12]
     payload = json.dumps({'owner': cfg['owner'], 'hosted': {'username': hosted['username'], 'password': hosted['password']}}).encode()
     # The operator first establishes the verified mini-2 localhost49300 tunnel.
     # Only source is copied; credential bytes travel through encrypted stdin.
@@ -38,7 +43,7 @@ def main():
     subprocess.run(['ssh', '-oBatchMode=yes', target, 'mkdir', '-p', remote], check=True)
     subprocess.run(['scp', '-q', str(Path(__file__).with_name('web-owner-move.mjs')), target + ':' + remote + '/web-owner-move.mjs'], check=True)
     command = ('PORTICO_PLAYWRIGHT_MODULE=' + remote + '/.scratch/browser/node_modules/playwright-core/index.mjs '
-               'PORTICO_OWNER_PROFILE=/home/justin/.local/share/portico-testing/P2-53-owner-web '
+               'PORTICO_OWNER_PROFILE=' + profile + ' '
                'node ' + remote + '/web-owner-move.mjs --execute')
     try:
         result = subprocess.run(['ssh', '-oBatchMode=yes', target, command], input=payload, stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=300)
