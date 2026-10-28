@@ -152,14 +152,14 @@ jobs:
       - if: ${{ !cancelled() }}
         run: npm run check:web
       - if: ${{ !cancelled() }}
-        run: npm run build --workspace portico-web-next
+        run: npm run build --workspace portico-web
 
       - if: ${{ !cancelled() }}
         run: npm run check:player
       - if: ${{ !cancelled() }}
         run: npm run check:reader
       - if: ${{ !cancelled() }}
-        run: npm run check --workspace portico-web-next
+        run: npm run check --workspace portico-web
 
   security:
     if: ${{ inputs.scope == 'all' }}

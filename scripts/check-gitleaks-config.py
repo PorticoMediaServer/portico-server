@@ -15,9 +15,9 @@ def main():
     config = Path(".gitleaks.toml").resolve()
     ignore = Path(".gitleaksignore").resolve()
     expression = "this.api," + "proof=this.moveProof;"
-    account = "web-next/src/platform/account-entry.ts"
+    account = "web/src/platform/account-entry.ts"
     helper = "scripts/check-gitleaks-config.py"
-    services = "web-next/test/services-links-browser.mjs"
+    services = "web/test/services-links-browser.mjs"
     with tempfile.TemporaryDirectory(dir=os.environ.get("TMPDIR")) as scratch:
         root = Path(scratch)
         (root / account).parent.mkdir(parents=True)

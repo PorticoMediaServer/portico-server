@@ -1,7 +1,7 @@
 // Campaign v2 web core-flow walk for Search, Settings, Read and Live.
-// Runs the built web-next bundle against a disposable same-origin server.
+// Runs the built web bundle against a disposable same-origin server.
 // Environment (all required):
-//   PORTICO_FLOW_BASE      origin serving web-next and /v1
+//   PORTICO_FLOW_BASE      origin serving web and /v1
 //   PORTICO_FLOW_CREDS     path to a JSON file written by run.py (never argv)
 //   PORTICO_FLOW_OUTPUT    directory for report.json and screenshots
 //   PORTICO_PLAYWRIGHT_MODULE  file:// URL of a playwright-core entry module

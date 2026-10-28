@@ -27,8 +27,8 @@ TEST_INPUTS = (
     'packages/client-core/src/music-preferences.ts',
     'packages/client-core/src/audiobook-preferences.ts',
     'packages/client-core/src/preference-effects.ts',
-    'web-next/src/shell/bootstrap.ts',
-    'web-next/src/shell/settings.ts',
+    'web/src/shell/bootstrap.ts',
+    'web/src/shell/settings.ts',
     'third_party/rclone/bundle.lock.json',
 )
 

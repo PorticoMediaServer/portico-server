@@ -1,5 +1,5 @@
 import type {PlayerEvent, PlayerObservation, PlayerSource} from '../../../packages/client-core/src/playback-v1/port.ts';
-import type {PlaybackMediaPort, VideoLike, WebMediaPlayerOptions, WebPlayerNotice} from '../../../web-next/src/platform/playback/index.ts';
+import type {PlaybackMediaPort, VideoLike, WebMediaPlayerOptions, WebPlayerNotice} from '../../../web/src/platform/playback/index.ts';
 import type {Bridge, NativeCommand} from './bridge.ts';
 import {NativeHole} from './surface.ts';
 import type {PlaybackSnapshot} from '../../../packages/client-core/src/index.ts';

@@ -1,7 +1,7 @@
 import {createEpubAdapter,createReadingController,loadLiterataFont,sourceFromBlob} from '../../src/index.ts';
 import {parsePreferenceSnapshot,readingPreferences,readingPreferencesPatch,type PreferenceSnapshot,type ReadingPreferencesChange} from '@portico/client-core';
 import bootstrap from '../../../../server/testdata/contracts/get-bootstrap.json';
-import manropeUrl from '../../../../web-next/src/kit/fonts/manrope-var-latin.woff2?url';
+import manropeUrl from '../../../../web/src/kit/fonts/manrope-var-latin.woff2?url';
 import {sha256} from '@noble/hashes/sha2.js';
 
 // Verification fixture only: these are controlled confirmed snapshots of the

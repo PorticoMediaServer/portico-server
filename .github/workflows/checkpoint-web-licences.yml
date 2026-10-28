@@ -57,7 +57,7 @@ jobs:
           const root = process.cwd(), lock = JSON.parse(readFileSync('package-lock.json', 'utf8'));
           let hydrated = 0;
           for (const item of productionPackages(lockPackages(lock))) {
-            if (item.name.startsWith('@portico/') || item.name === 'portico-web-next') continue;
+            if (item.name.startsWith('@portico/') || item.name === 'portico-web') continue;
             const directory = path.resolve(root, item.path);
             if (existsSync(path.join(directory, 'package.json'))) continue;
             const entry = lock.packages[item.path];
@@ -80,16 +80,16 @@ jobs:
       - name: Run the existing licence generator
         run: |
           status=0
-          node --experimental-strip-types web-next/scripts/licences.ts > "$RUNNER_TEMP/web-licences/generate.log" 2>&1 || status=$?
+          node --experimental-strip-types web/scripts/licences.ts > "$RUNNER_TEMP/web-licences/generate.log" 2>&1 || status=$?
           echo "exit=$status"
           tail -n 20 "$RUNNER_TEMP/web-licences/generate.log"
           exit "$status"
       - name: Preserve the generated inventory only
         run: |
           git diff --name-only > "$RUNNER_TEMP/web-licences/changed-paths.log"
-          if grep -vx 'web-next/src/generated/licences.json' "$RUNNER_TEMP/web-licences/changed-paths.log"; then exit 1; fi
-          git diff --binary -- web-next/src/generated/licences.json > "$RUNNER_TEMP/web-licences/generation.patch"
-          cp web-next/src/generated/licences.json "$RUNNER_TEMP/web-licences/licences.json"
+          if grep -vx 'web/src/generated/licences.json' "$RUNNER_TEMP/web-licences/changed-paths.log"; then exit 1; fi
+          git diff --binary -- web/src/generated/licences.json > "$RUNNER_TEMP/web-licences/generation.patch"
+          cp web/src/generated/licences.json "$RUNNER_TEMP/web-licences/licences.json"
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         if: ${{ always() }}
         with:

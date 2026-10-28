@@ -1,4 +1,4 @@
-import type {SavedDownloadsPort,SavedDownloadsSnapshot,SavedDownloadsError,SavedLocalDownload} from '../../../web-next/src/screens/saved/downloads-port.ts';
+import type {SavedDownloadsPort,SavedDownloadsSnapshot,SavedDownloadsError,SavedLocalDownload} from '../../../web/src/screens/saved/downloads-port.ts';
 import type {DesktopDownloadStore,DownloadCursor,LocalDownload,LocalSelection} from './downloads.ts';
 
 /** All three operations are provided by the native folder owner, never a web path. */

@@ -1,5 +1,5 @@
-import {parseEqualizer,type EqualizerSettings} from '../../../web-next/src/platform/playback/audio/equalizer.ts';
-import type {EqualizerPort} from '../../../web-next/src/kit/media/equalizer-port.ts';
+import {parseEqualizer,type EqualizerSettings} from '../../../web/src/platform/playback/audio/equalizer.ts';
+import type {EqualizerPort} from '../../../web/src/kit/media/equalizer-port.ts';
 import {desktopEqualizer,type EqualizerSnapshot} from './equalizer.ts';
 
 type NativeEqualizer = typeof desktopEqualizer;

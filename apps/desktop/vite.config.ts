@@ -1,8 +1,8 @@
 import {defineConfig,mergeConfig} from 'vite';
 import {fileURLToPath} from 'node:url';
-import web from '../../web-next/vite.config.ts';
+import web from '../../web/vite.config.ts';
 
-const root = fileURLToPath(new URL('../../web-next', import.meta.url));
+const root = fileURLToPath(new URL('../../web', import.meta.url));
 const entry = fileURLToPath(new URL('./src/main.ts', import.meta.url));
 // Reuse the original HTML, React entry, router, CSS, controls and responsive rules. Only the
 // entry installs a different MediaPlayer before importing the existing app.

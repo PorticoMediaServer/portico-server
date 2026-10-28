@@ -31,7 +31,7 @@ const chromiumPath = options.chromium ?? process.env.PORTICO_CHROMIUM ??
 if (!chromiumPath) throw new Error('No Chromium executable found; pass --chromium');
 const only = options.only, slide = Number(options.slide ?? 0);
 const viewportWidth = 1440;
-const fontFile = join(root, 'web-next/src/kit/fonts/manrope-var-latin.woff2');
+const fontFile = join(root, 'web/src/kit/fonts/manrope-var-latin.woff2');
 
 const types = {'.html': 'text/html; charset=utf-8', '.css': 'text/css; charset=utf-8', '.js': 'text/javascript', '.mjs': 'text/javascript', '.json': 'application/json',
   '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.png': 'image/png', '.svg': 'image/svg+xml', '.webp': 'image/webp', '.woff2': 'font/woff2', '.avif': 'image/avif'};
@@ -59,7 +59,7 @@ async function serve(build) {
   throw new Error('vite did not start: ' + viteLog.slice(-400));
 }
 const vitePort = 5400 + Math.floor(Math.random() * 300);
-const vite = spawn(process.execPath, [join(root, 'node_modules/vite/bin/vite.js'), '--host', '127.0.0.1', '--port', String(vitePort), '--strictPort'], {cwd: join(root, 'web-next'), stdio: ['ignore', 'pipe', 'pipe']});
+const vite = spawn(process.execPath, [join(root, 'node_modules/vite/bin/vite.js'), '--host', '127.0.0.1', '--port', String(vitePort), '--strictPort'], {cwd: join(root, 'web'), stdio: ['ignore', 'pipe', 'pipe']});
 Object.assign(vite, {port: vitePort});
 let viteLog = '';
 vite.stdout.on('data', bytes => viteLog += bytes);

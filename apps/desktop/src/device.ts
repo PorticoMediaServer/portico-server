@@ -1,5 +1,5 @@
 import {invoke} from '@tauri-apps/api/core';
-import type {SettingsDeviceFacts,SettingsDevicePort} from '../../../web-next/src/platform/settings-platform.ts';
+import type {SettingsDeviceFacts,SettingsDevicePort} from '../../../web/src/platform/settings-platform.ts';
 
 /** Explicit projection: native diagnostics, paths, document defaults and update guesses
  * cannot become Settings facts. A facts-only port has no write method. */

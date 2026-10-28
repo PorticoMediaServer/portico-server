@@ -9,20 +9,20 @@ import {licenceSections, parseLicenceData, type LicenceData} from '../../package
 const root = new URL('../../', import.meta.url);
 const file = new URL('../src/generated/licences.json', import.meta.url);
 const data = JSON.parse(readFileSync(file, 'utf8')) as LicenceData;
-const REGENERATE = 'run: node --experimental-strip-types web-next/scripts/licences.ts';
+const REGENERATE = 'run: node --experimental-strip-types web/scripts/licences.ts';
 
 test('the licence list is current: every inventory it was generated from is unchanged', () => {
   assert.ok(Object.keys(data.inputs).includes('package-lock.json'));
   assert.ok(Object.keys(data.inputs).includes('server/go.sum'));
   for (const [rel, digest] of Object.entries(data.inputs)) {
     const now = createHash('sha256').update(readFileSync(new URL(rel, root))).digest('hex');
-    assert.equal(now, digest, `${rel} changed since web-next/src/generated/licences.json was generated; ${REGENERATE}`);
+    assert.equal(now, digest, `${rel} changed since web/src/generated/licences.json was generated; ${REGENERATE}`);
   }
 });
 
 test('every production package of the lockfile is listed, and nothing else from npm', () => {
   const lock = JSON.parse(readFileSync(new URL('package-lock.json', root), 'utf8'));
-  const expected = productionPackages(lockPackages(lock)).filter(p => !p.name.startsWith('@portico/') && p.name !== 'portico-web-next').map(p => `${p.name}@${p.version}`).sort();
+  const expected = productionPackages(lockPackages(lock)).filter(p => !p.name.startsWith('@portico/') && p.name !== 'portico-web').map(p => `${p.name}@${p.version}`).sort();
   const listed = data.components.filter(c => c.id.startsWith('npm:')).map(c => `${c.name}@${c.version}`).sort();
   assert.deepEqual(listed, expected, REGENERATE);
   // Development tooling never appears.

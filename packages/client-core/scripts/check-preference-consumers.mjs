@@ -8,7 +8,7 @@
  * there is no OpenAPI enum of preference keys (verified: `server/api`
  * mentions preferences only in prose), so the registry source is the list.
  *
- * Readers count in client code (`web-next/src`,
+ * Readers count in client code (`web/src`,
  * the native app's `apps/native/src` (portico-react-native), `packages/client-core/src`, `packages/i18n/src`)
  * and in server code (`server/internal`): a key enforced
  * server-side (delivery policy, personal activity, search history, home
@@ -41,7 +41,7 @@ const REGISTRY = join(root, 'server/internal/operations/preferences.go');
 const nativeRepo = process.env.PORTICO_REACT_NATIVE_REPO;
 const nativeSource = resolve(nativeRepo ?? join(root, '..', 'portico-react-native'), 'apps/native/src');
 const SEARCH_ROOTS = [
-  'web-next/src',
+  'web/src',
   'packages/client-core/src',
   'packages/i18n/src',
   'server/internal',

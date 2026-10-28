@@ -10,7 +10,7 @@ const browse = ['movieCapabilities', 'musicCapabilities', 'songResponse', 'drawn
 function fixture(t: TestContext) {
   const base = mkdtempSync(join(tmpdir(), 'gallery-input-test-'));
   t.after(() => rmSync(base, {recursive: true, force: true}));
-  const root = join(base, 'private'), repo = join(base, 'public'), app = join(repo, 'web-next');
+  const root = join(base, 'private'), repo = join(base, 'public'), app = join(repo, 'web');
   mkdirSync(root); mkdirSync(join(app, 'src/dev/families'), {recursive: true});
   writeFileSync(join(root, 'example.html'), '<h1>Public synthetic example</h1>');
   const families = {layout: Object.fromEntries(layout.map(key => [key, 'example.html'])), browse: Object.fromEntries(browse.map(key => [key, 'example.html']))};

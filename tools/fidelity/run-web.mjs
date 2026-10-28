@@ -31,7 +31,7 @@ export async function compareWebScreen({referenceURL, adapter = auth4}) {
     selector: referenceSelector, windowViewport: adapter.referenceWindowViewport, viewport,
     anchors: adapter.reference, repeats: adapter.repeats?.reference, component: adapter.component === true,
     motion: adapter.referenceMotion, motionTimeoutMs: adapter.referenceMotionTimeoutMs}) : undefined;
-  const vite = await createServer({root: join(root, 'web-next'), configFile: join(root, 'web-next/vite.config.ts'),
+  const vite = await createServer({root: join(root, 'web'), configFile: join(root, 'web/vite.config.ts'),
     cacheDir: join(process.env.TMPDIR, 'fidelity-vite'), server: {host: '127.0.0.1', port: 0, strictPort: false}});
   try {
     await vite.listen();

@@ -30,7 +30,7 @@
 FROM node:24.21.0-bookworm@sha256:3d27e5c11e5786e309ec3e03f93ae536eb36e6e5eb3714d5eb3300a36157add0 AS web
 WORKDIR /src
 COPY package.json package-lock.json ./
-COPY web-next ./web-next
+COPY web ./web
 COPY packages ./packages
 COPY third_party/hls.js ./third_party/hls.js
 # The subtitle renderer and its fonts: the web build copies them, unchanged, into the application.
@@ -44,7 +44,7 @@ ARG PORTICO_VERSION
 ARG PORTICO_BUILT_AT
 RUN PORTICO_VERSION="$PORTICO_VERSION" PORTICO_BUILT_AT="$PORTICO_BUILT_AT" node scripts/container-release.mjs
 RUN npm ci --ignore-scripts --no-audit --no-fund
-WORKDIR /src/web-next
+WORKDIR /src/web
 # This is the server-hosted application: no VITE_* switch reaches the build, so
 # the Portico Services entry (VITE_HOSTED_WEB with VITE_ACCOUNT_WORKSPACE) stays off.
 RUN test -z "$(env | grep '^VITE_')" && test -z "$(find . -maxdepth 1 -name '.env*')" \
@@ -138,7 +138,7 @@ COPY server/internal/imagework/SCALE_LICENSE /usr/share/doc/portico/licenses/ima
 COPY server/internal/thirdparty/sqlite/LICENSE /usr/share/doc/portico/licenses/sqlite-driver.txt
 COPY server/internal/mediaexec/fonts/LICENSE /usr/share/doc/portico/licenses/decoder-fonts.txt
 COPY third_party/hls.js/LICENSE /usr/share/doc/portico/licenses/hls-js.txt
-COPY web-next/src/kit/fonts/OFL.txt /usr/share/doc/portico/licenses/manrope.txt
+COPY web/src/kit/fonts/OFL.txt /usr/share/doc/portico/licenses/manrope.txt
 COPY packages/design/LICENSE-LUCIDE /usr/share/doc/portico/licenses/lucide.txt
 COPY --from=rclone /rclone/LICENSE /usr/share/doc/portico/licenses/rclone.txt
 COPY --from=rclone /rclone/DEPENDENCY-NOTICES.txt /usr/share/doc/portico/licenses/rclone-dependencies.txt

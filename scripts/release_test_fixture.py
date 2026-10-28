@@ -27,7 +27,7 @@ PORTABLE_INPUTS = (
     "server/internal/thirdparty/sqlite/LICENSE",
     "server/internal/mediaexec/fonts/LICENSE", "third_party/hls.js/LICENSE",
     "third_party/reader", "packages/reader-core/assets/OFL.txt",
-    "web-next/src/kit/fonts/OFL.txt", "packages/design/LICENSE-LUCIDE",
+    "web/src/kit/fonts/OFL.txt", "packages/design/LICENSE-LUCIDE",
 )
 
 

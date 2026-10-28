@@ -16,8 +16,8 @@ The wrapper is MIT (`LICENSE`). The compiled worker contains several libraries u
 
 ## How the web app uses it
 
-`vendoredFiles()` in `web-next/scripts/config.mjs` serves the `files/` folder unchanged under `/vendor/libass-wasm-4.2.4/` in development and copies them there in a build. A build also copies `LICENSE`, `COPYRIGHT` and `OFL-1.1.txt` into that folder, so the notices are distributed with the files. They are meant to be requested only when a viewer selects a styled track; the web player does not draw styled subtitles yet, so the server burns them in. The server's content security policy allows WebAssembly compilation (`'wasm-unsafe-eval'`) for this.
+`vendoredFiles()` in `web/scripts/config.mjs` serves the `files/` folder unchanged under `/vendor/libass-wasm-4.2.4/` in development and copies them there in a build. A build also copies `LICENSE`, `COPYRIGHT` and `OFL-1.1.txt` into that folder, so the notices are distributed with the files. They are meant to be requested only when a viewer selects a styled track; the web player does not draw styled subtitles yet, so the server burns them in. The server's content security policy allows WebAssembly compilation (`'wasm-unsafe-eval'`) for this.
 
 ## Updating
 
-Download the new archive into this folder, read its `package.json`, `LICENSE` and `COPYRIGHT` again, replace the four files, update `provenance.json` and the version in the served path (`web-next/scripts/config.mjs`), and run `verify.py`.
+Download the new archive into this folder, read its `package.json`, `LICENSE` and `COPYRIGHT` again, replace the four files, update `provenance.json` and the version in the served path (`web/scripts/config.mjs`), and run `verify.py`.

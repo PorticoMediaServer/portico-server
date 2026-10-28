@@ -1,5 +1,5 @@
 import {invoke} from '@tauri-apps/api/core';
-import type {WindowChromeState} from '../../../web-next/src/platform/window-chrome.ts';
+import type {WindowChromeState} from '../../../web/src/platform/window-chrome.ts';
 
 export type WindowChromeHostState = WindowChromeState;
 export type CaptionNames = Readonly<{minimize:string;maximize:string;restore:string;close:string}>;

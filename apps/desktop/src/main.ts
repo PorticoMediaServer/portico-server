@@ -1,25 +1,25 @@
-import {installPlaybackEnvironment} from '../../../web-next/src/platform/playback/index.ts';
-import {installSavedDownloadsBinder} from '../../../web-next/src/screens/saved/native-binding.ts';
+import {installPlaybackEnvironment} from '../../../web/src/platform/playback/index.ts';
+import {installSavedDownloadsBinder} from '../../../web/src/screens/saved/native-binding.ts';
 import {nativeBridge} from './bridge';
 import {DesktopMediaPlayer} from './player';
-import {installWindowChromeHost,type WindowChromeInstallation} from '../../../web-next/src/platform/window-chrome.ts';
+import {installWindowChromeHost,type WindowChromeInstallation} from '../../../web/src/platform/window-chrome.ts';
 import {createDesktopNativeWindowHost} from './window-native-host.ts';
 import {nativeWindowBridge} from './window';
-import {installSettingsPlatform} from '../../../web-next/src/platform/settings-platform.ts';
+import {installSettingsPlatform} from '../../../web/src/platform/settings-platform.ts';
 import {DesktopSettingsEqualizer,desktopEqualizerPort} from './SettingsEqualizer';
 import {createDesktopDevicePort,nativeDeviceFacts} from './device';
 import {nativeCapabilities} from './capabilities';
-import {installPlatformInstallationProvider} from '../../../web-next/src/platform/installation-provider.ts';
+import {installPlatformInstallationProvider} from '../../../web/src/platform/installation-provider.ts';
 import {nativeInstallation} from './installation';
 import {createDesktopDownloadsHost} from './downloads-host.ts';
 import {createDesktopAppLifetime} from './app-lifetime.ts';
 import {installDesktopCloseHost} from './close-host.ts';
-import {browserViewerStorage} from '../../../web-next/src/platform/viewer-selection-storage.ts';
-import {installOfflineDownloads} from '../../../web-next/src/shell/offline-downloads.ts';
-import {observeBrowserSessionChanges} from '../../../web-next/src/platform/server-connections.ts';
-import {OfflineMediaHost} from '../../../web-next/src/shell/offline-media.ts';
-import {installPlaybackAdoptionRetirement} from '../../../web-next/src/shell/playback-media-owner.ts';
-import type {VideoLike, WebMediaPlayerOptions, WebLocalQueueResource} from '../../../web-next/src/platform/playback/index.ts';
+import {browserViewerStorage} from '../../../web/src/platform/viewer-selection-storage.ts';
+import {installOfflineDownloads} from '../../../web/src/shell/offline-downloads.ts';
+import {observeBrowserSessionChanges} from '../../../web/src/platform/server-connections.ts';
+import {OfflineMediaHost} from '../../../web/src/shell/offline-media.ts';
+import {installPlaybackAdoptionRetirement} from '../../../web/src/shell/playback-media-owner.ts';
+import type {VideoLike, WebMediaPlayerOptions, WebLocalQueueResource} from '../../../web/src/platform/playback/index.ts';
 import {offlineDownloadScope} from './offline-scope.ts';
 
 const lifetime=createDesktopAppLifetime();
@@ -191,7 +191,7 @@ async function startDesktop(){
     }
   }
   // The original app owns all screen/router/React assembly and captured viewers.
-  await lifetime.importWebApp(()=>import('../../../web-next/src/main.tsx'));
+  await lifetime.importWebApp(()=>import('../../../web/src/main.tsx'));
   if(import.meta.env.DEV)void import('./dev-measurement.ts').then(module=>module.installDesktopMeasurement(lifetime.signal)).catch(()=>console.warn('desktop_measurement_unavailable'));
 }
 void startDesktop().catch(error=>{

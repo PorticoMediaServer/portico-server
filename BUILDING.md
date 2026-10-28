@@ -17,7 +17,7 @@ npm ci
 make build-web
 GOFLAGS=-p=2 make build-server
 mkdir -p .scratch/state
-PORTICO_DATA_DIR="$PWD/.scratch/state" PORTICO_WEB_DIR="$PWD/web-next/dist" \
+PORTICO_DATA_DIR="$PWD/.scratch/state" PORTICO_WEB_DIR="$PWD/web/dist" \
   PORTICO_BIND=127.0.0.1:32500 ./dist/portico-server
 ```
 
@@ -34,7 +34,7 @@ state and web environment. Development and release trust roots differ.
 Run focused checks while editing, for example:
 
 ```sh
-(cd web-next && npx tsc --noEmit)
+(cd web && npx tsc --noEmit)
 (cd server && GOFLAGS=-p=2 go test ./internal/naming -run Test)
 ```
 

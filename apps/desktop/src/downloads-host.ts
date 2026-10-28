@@ -1,5 +1,5 @@
-import type {SavedDownloadsBinder,SavedDownloadsBinding} from '../../../web-next/src/screens/saved/native-binding.ts';
-import type {WebPlaybackEnvironment,WebLocalQueueController} from '../../../web-next/src/platform/playback/types.ts';
+import type {SavedDownloadsBinder,SavedDownloadsBinding} from '../../../web/src/screens/saved/native-binding.ts';
+import type {WebPlaybackEnvironment,WebLocalQueueController} from '../../../web/src/platform/playback/types.ts';
 import {localPlaybackScope,type LocalPlaybackScope} from '../../../packages/player-core/src/index.ts';
 import {DesktopDownloadStore,nativeDownloadsBridge,downloadFailure,type NativeDownloadsBridge,type LocalSelection} from './downloads.ts';
 import {DesktopLocalPlaybackBroker} from './local-playback.ts';

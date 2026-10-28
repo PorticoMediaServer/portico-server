@@ -2,13 +2,13 @@
 """Disposable same-origin stack for the web core-flow walk (Search, Settings, Read, Live).
 
 Builds a release-shaped server process against throwaway state, serves a built
-web-next bundle from that same origin, provisions a local owner, creates one
+web bundle from that same origin, provisions a local owner, creates one
 book library with one lawful EPUB fixture, scans it, then hands the origin to
 tools/web-core-flows/flows.mjs. Nothing here touches Hosted, the demo server or
 any real credential.
 
 Usage:
-  python3 tools/web-core-flows/run.py --scratch DIR --web-dir web-next/dist \
+  python3 tools/web-core-flows/run.py --scratch DIR --web-dir web/dist \
       --output DIR --playwright /path/to/playwright-core/index.mjs
 
 The scratch tree holds a throwaway owner password and must not be published.
@@ -242,7 +242,7 @@ def main():
     if scratch == ROOT or ROOT in scratch.parents:
         parser.error('scratch must live outside the repository')
     if not (args.web_dir / 'index.html').is_file():
-        parser.error('web-dir has no index.html; build portico-web-next first')
+        parser.error('web-dir has no index.html; build portico-web first')
     scratch.mkdir(parents=True, exist_ok=True, mode=0o700)
     output.mkdir(parents=True, exist_ok=True)
     os.umask(0o077)

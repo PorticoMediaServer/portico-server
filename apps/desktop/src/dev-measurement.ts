@@ -1,6 +1,6 @@
 import {invoke} from '@tauri-apps/api/core';
 import {collectDesktopMeasurement} from './measurement-transport.ts';
-import {gallerySearch} from '../../../web-next/src/platform/gallery-search.ts';
+import {gallerySearch} from '../../../web/src/platform/gallery-search.ts';
 
 /** DEV transport only. The shared collector and validator remain the sole
  * measurement implementation; this module never creates or alters screen DOM. */
@@ -8,7 +8,7 @@ export async function installDesktopMeasurement(signal:AbortSignal){
   if(!import.meta.env.DEV)return;
   const options=await invoke<unknown>('desktop_measurement_options');
   if(options===null||signal.aborted)return;
-  const {loadGalleryFamilies}=await import('../../../web-next/src/dev/gallery-registry.ts');
+  const {loadGalleryFamilies}=await import('../../../web/src/dev/gallery-registry.ts');
   const query=gallerySearch(Object.fromEntries(new URLSearchParams(location.search)));
   if(!query.family||!query.case)throw new Error('desktop_measurement_unmounted');
   const families=await loadGalleryFamilies(query.family);

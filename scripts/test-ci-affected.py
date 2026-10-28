@@ -96,13 +96,13 @@ class SelectionTests(unittest.TestCase):
         directory = self.root / 'packages/client-core'
         self.file('packages/client-core/package.json', '{"exports":{"./selection-model":"./src/selection-model/index.ts"}}')
         source = self.file('packages/client-core/src/selection-model/index.ts', 'export const value=1')
-        caller = self.file('web-next/test/selection.test.ts', "import {value} from '@portico/client-core/selection-model'")
+        caller = self.file('web/test/selection.test.ts', "import {value} from '@portico/client-core/selection-model'")
         self.assertEqual(ci.dependencies(caller, {source, caller}, {'@portico/client-core': directory}), {source})
 
     def test_declared_web_aliases_and_js_extension_reach_source(self):
         source = self.file('packages/client-core/src/index.ts', 'export const value=1')
-        item = self.file('web-next/src/item.ts', 'export const item=1')
-        caller = self.file('web-next/test/entry.test.ts', "import '@core'; import '@/item.js'")
+        item = self.file('web/src/item.ts', 'export const item=1')
+        caller = self.file('web/test/entry.test.ts', "import '@core'; import '@/item.js'")
         self.assertEqual(ci.dependencies(caller, {source, item, caller}, {}), {source, item})
 
     def test_transitive_imports_select_affected_test_not_unrelated(self):
@@ -147,7 +147,7 @@ class SelectionTests(unittest.TestCase):
                          "apps/native")
         self.assertEqual(ci.route(Path("packages/player-core/test/choices.test.ts"), True),
                          "packages/player-core")
-        self.assertEqual(ci.route(Path("web-next/test/viewer-storage.test.ts"), True), "web-next")
+        self.assertEqual(ci.route(Path("web/test/viewer-storage.test.ts"), True), "web")
         self.assertEqual(ci.route(Path("server/receiver/cast/test/cast.test.ts"), False), ".")
 
     def test_portable_tooling_routes_and_explicit_desktop_scope(self):
@@ -155,8 +155,8 @@ class SelectionTests(unittest.TestCase):
                      'tools/fidelity/measurement.browser.test.mjs',
                      'tools/web-core-flows/reading-response-path.test.mjs'):
             self.assertEqual(ci.route(Path(file), False), '.')
-        self.assertEqual(ci.route(Path('web-next/src/screens/detail/audiobooks/bindings.test.ts'), False), 'web-next')
-        self.assertEqual(ci.route(Path('web-next/src/screens/search/ds-web-search-r46-on-now.test.mjs'), False), 'web-next')
+        self.assertEqual(ci.route(Path('web/src/screens/detail/audiobooks/bindings.test.ts'), False), 'web')
+        self.assertEqual(ci.route(Path('web/src/screens/search/ds-web-search-r46-on-now.test.mjs'), False), 'web')
         self.assertIn('Desktop', ci.out_of_scope(ci.ROOT / 'apps/desktop/test/device.test.ts'))
         self.assertIsNone(ci.out_of_scope(ci.ROOT / 'tools/fidelity/native-window.test.mjs'))
 

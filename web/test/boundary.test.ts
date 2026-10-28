@@ -9,7 +9,7 @@ function fixture(t: import('node:test').TestContext) {
   const base = mkdtempSync(join(tmpdir(), 'portico-boundary-'));
   const repo = join(base, 'ui-2026', 'repo');
   mkdirSync(repo, {recursive: true});
-  const app = join(repo, 'web-next'), src = join(app, 'src');
+  const app = join(repo, 'web'), src = join(app, 'src');
   mkdirSync(src, {recursive: true});
   t.after(() => rmSync(base, {recursive: true, force: true}));
   const write = (name: string, code: string) => { const p = join(src, name); mkdirSync(join(p, '..'), {recursive: true}); writeFileSync(p, code); };

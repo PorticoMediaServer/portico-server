@@ -44,8 +44,8 @@ if (process.env.PORTICO_SERVICES_SCENARIO === 'device') report.qualification = '
 try {
   const port = process.env.PORTICO_SERVICES_SCENARIO === 'auth' ? 19495 : await freePort(), debugPort = await freePort();
   const config = path.join(temporary, 'vite.config.mjs');
-  writeFileSync(config, `import base from ${JSON.stringify(path.join(repository, 'web-next/vite.config.ts'))};
-export default async env => {const config=await(typeof base==='function'?base(env):base);return {...config, root:${JSON.stringify(path.join(repository, 'web-next'))}, cacheDir:${JSON.stringify(path.join(temporary, 'vite-cache'))},server:{...config.server,host:'127.0.0.1',port:${port},strictPort:true}}};\n`);
+  writeFileSync(config, `import base from ${JSON.stringify(path.join(repository, 'web/vite.config.ts'))};
+export default async env => {const config=await(typeof base==='function'?base(env):base);return {...config, root:${JSON.stringify(path.join(repository, 'web'))}, cacheDir:${JSON.stringify(path.join(temporary, 'vite-cache'))},server:{...config.server,host:'127.0.0.1',port:${port},strictPort:true}}};\n`);
   const viteLog = openSync(path.join(output, 'services-vite.log'), 'w', 0o600);
   vite = spawn(process.execPath, [path.join(repository, 'node_modules/vite/bin/vite.js'), '--config', config], {cwd: repository, env: process.env, stdio: ['ignore', viteLog, viteLog]});
   for (let attempt = 0; attempt < 60; attempt++) {

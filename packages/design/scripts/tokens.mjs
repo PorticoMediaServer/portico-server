@@ -1,10 +1,10 @@
-// Canonical CSS projection for web-next. Run from any working directory.
+// Canonical CSS projection for web. Run from any working directory.
 import {mkdirSync, readFileSync, writeFileSync} from 'node:fs';
 import {dirname, resolve} from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {colors, profileArtColors, spacing, spacingGrid, radii, platformRadii, motion, easings, springs, springTiming, reducedMotion, layout, layers, targets, typography, fixedTypeMetrics, typeScale, watchEndType, componentSpec} from '../src/index.ts';
 
-export const tokenCssPath = fileURLToPath(new URL('../../../web-next/src/kit/tokens.css', import.meta.url));
+export const tokenCssPath = fileURLToPath(new URL('../../../web/src/kit/tokens.css', import.meta.url));
 const kebab = value => value.replace(/[A-Z]/g, letter => '-' + letter.toLowerCase());
 const rem = px => `${Number((px / 16).toFixed(6))}rem`;
 const px = value => `${value}px`;
@@ -104,12 +104,12 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
     let current;
     try { current = readFileSync(tokenCssPath, 'utf8'); } catch (error) { if (error.code !== 'ENOENT') throw error; }
     if (current !== renderTokens()) {
-      console.error('web-next/src/kit/tokens.css is missing or stale. Run node packages/design/scripts/tokens.mjs.');
+      console.error('web/src/kit/tokens.css is missing or stale. Run node packages/design/scripts/tokens.mjs.');
       process.exitCode = 1;
-    } else console.log('web-next/src/kit/tokens.css matches the canonical design tokens.');
+    } else console.log('web/src/kit/tokens.css matches the canonical design tokens.');
   } else {
     mkdirSync(dirname(tokenCssPath), {recursive: true});
     writeFileSync(tokenCssPath, renderTokens());
-    console.log('Wrote web-next/src/kit/tokens.css.');
+    console.log('Wrote web/src/kit/tokens.css.');
   }
 }

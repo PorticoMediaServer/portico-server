@@ -7,7 +7,7 @@ const sourceFiles = [
   'src/screens/live/SeriesRules.tsx', 'src/kit/dvr/RecordingsLayout.tsx',
   'src/kit/dvr/RuleCard.tsx', 'src/kit/overlays/SidePanel.tsx',
 ];
-const preferredKeys = [...new Set(sourceFiles.flatMap(path => [...readFileSync(new URL('../../web-next/' + path, import.meta.url), 'utf8').matchAll(/\bt\(\s*['"]([^'"]+)['"]/g)].map(value => value[1])).concat([
+const preferredKeys = [...new Set(sourceFiles.flatMap(path => [...readFileSync(new URL('../../web/' + path, import.meta.url), 'utf8').matchAll(/\bt\(\s*['"]([^'"]+)['"]/g)].map(value => value[1])).concat([
   'next.home.shell.home', 'search.chip.movies', 'next.settingsSpec.server.libraries.panels.newLibrary.tabs.0.groups.0.rows.1.control.options.1.label',
   'web.libraries.kindAnime', 'pref.group.music.title', 'search.chip.audiobooks', 'next.home.shell.live', 'next.overlays.close',
   'recordings.on', 'recordings.paused', 'guide.newOnly', 'recordings.startEarly', 'recordings.endLate', 'next.controls.episodes',

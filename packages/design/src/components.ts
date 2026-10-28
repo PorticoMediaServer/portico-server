@@ -2,7 +2,7 @@
  * Portico component specification.
  *
  * Exact measurements and states for the shared primitives, so web
- * (`web-next/src/kit`) and native (`apps/native/src-next/kit`) build the
+ * (`web/src/kit`) and native (`apps/native/src-next/kit`) build the
  * same components. Numbers are CSS px on web and points on iOS/iPadOS; the
  * `tv` column is design pixels on the 1920×1080 ten-foot canvas. Colours are
  * token names from `colors` (never literals). The prose rules are in

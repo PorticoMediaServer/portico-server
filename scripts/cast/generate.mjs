@@ -3,8 +3,8 @@ import { fileURLToPath } from 'node:url';
 import { resolve } from 'node:path';
 
 const root = fileURLToPath(new URL('../../', import.meta.url));
-// Resolve the existing exact locked web-next toolchain, not an ambient binary.
-const require = createRequire(resolve(root, 'web-next/package.json'));
+// Resolve the existing exact locked web toolchain, not an ambient binary.
+const require = createRequire(resolve(root, 'web/package.json'));
 const { rolldown } = await import(require.resolve('rolldown'));
 const bundle = await rolldown({ cwd: root, platform: 'browser', input: resolve(root, 'scripts/cast/contracts.ts') });
 try {

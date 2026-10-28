@@ -12,7 +12,7 @@ const {chromium} = await import(pathToFileURL(process.env.PORTICO_BROWSER_MODULE
 const designLink = resolve('../../design-ui-v1');
 await symlink(reference, designLink);
 const origin = 'http://127.0.0.1:5188';
-const server = spawn(process.execPath, [resolve('node_modules/vite/bin/vite.js'), '--host', '127.0.0.1', '--port', '5188'], {cwd: resolve('web-next'), detached: true, stdio: ['ignore', 'pipe', 'pipe']});
+const server = spawn(process.execPath, [resolve('node_modules/vite/bin/vite.js'), '--host', '127.0.0.1', '--port', '5188'], {cwd: resolve('web'), detached: true, stdio: ['ignore', 'pipe', 'pipe']});
 let log = '';
 server.stdout.on('data', data => {log += data;});server.stderr.on('data', data => {log += data;});
 let browser;

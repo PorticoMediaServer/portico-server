@@ -1,5 +1,5 @@
 import {useEffect} from 'react';
-import {DeviceEqualizer} from '../../../web-next/src/kit/media/Equalizer';
+import {DeviceEqualizer} from '../../../web/src/kit/media/Equalizer';
 import {createDesktopEqualizerPort} from './equalizer-port';
 
 const errors=new Set<(error:unknown)=>void>();

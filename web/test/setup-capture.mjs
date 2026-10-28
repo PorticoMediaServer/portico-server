@@ -13,7 +13,7 @@ assert.match(process.version, /^v(22|24)\./, `capture needs Node 22 or 24 (repo 
 const require = createRequire(join(process.env.PORTICO_BROWSER_TOOLS_DIR, 'loader.cjs'));
 const {chromium} = require('playwright-core');
 process.env.PORTICO_DEV_SERVER_URL = 'http://127.0.0.1:1';
-const vite = await createServer({root: resolve('web-next'), configFile: resolve('web-next/vite.config.ts'),
+const vite = await createServer({root: resolve('web'), configFile: resolve('web/vite.config.ts'),
   cacheDir: join(process.env.TMPDIR, 'setup-vite'), server: {host: '127.0.0.1', port: 0, strictPort: false}});
 const source = await readFile(`${design}/design/ui-v1/auth.html`, 'utf8');
 const kit = await readFile(`${design}/design/ui-v1/kit.css`, 'utf8');

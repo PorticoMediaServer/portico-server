@@ -66,7 +66,7 @@ export async function load(url, context, next) {
   return next(url, context);
 }
 
-/** Vite's development URL for an imported asset, rooted at the web-next tree. */
+/** Vite's development URL for an imported asset, rooted at the web tree. */
 function assetUrl(filename) {
   return '/' + path.relative(root, filename).split(path.sep).join('/');
 }

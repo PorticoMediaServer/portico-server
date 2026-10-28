@@ -1,7 +1,7 @@
 // Generates the web app's open-source licence list (Settings › About › Open-source licenses):
 //
-//   node --experimental-strip-types web-next/scripts/licences.ts           # write the inventory
-//   node --experimental-strip-types web-next/scripts/licences.ts --check   # fail if it differs from a fresh run
+//   node --experimental-strip-types web/scripts/licences.ts           # write the inventory
+//   node --experimental-strip-types web/scripts/licences.ts --check   # fail if it differs from a fresh run
 //
 // What it lists, from the real inventories:
 //   * Portico itself (LICENSE, GPL-3.0-or-later) and where its source is published.
@@ -15,7 +15,7 @@
 //     modules linked into it on every release platform (`go list -deps`, offline), the vendored
 //     server code and fonts, and the qualified FFmpeg build.
 //
-// Every repository file read is recorded with its SHA-256 in `inputs`; web-next/test/licences.test.ts
+// Every repository file read is recorded with its SHA-256 in `inputs`; web/test/licences.test.ts
 // fails when any of them changes without the file being generated again. Needs node_modules and
 // Go's module cache (both present after the usual `npm ci` and a server build); no network.
 import {createHash} from 'node:crypto';
@@ -28,7 +28,7 @@ import {standardLicenceText} from '../../packages/client-core/src/licences/stand
 import {parseLicenceData, type LicenceData, type LicenceSource} from '../../packages/client-core/src/presentation/licences.ts';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
-export const OUTPUT = 'web-next/src/generated/licences.json';
+export const OUTPUT = 'web/src/generated/licences.json';
 
 /** Other-platform optional packages are absent after a normal host npm ci. Retain
  * their already-recorded full notices only when the complete lock is identical. */
@@ -74,7 +74,7 @@ function npmComponents(read: (rel: string) => string): CollectedComponent[] {
   const retained = existsSync(path.join(root, OUTPUT)) ? parseLicenceData(JSON.parse(readOutside(path.join(root, OUTPUT)))) ?? undefined : undefined;
   const out: CollectedComponent[] = [];
   for (const p of productionPackages(lockPackages(lock))) {
-    if (p.name.startsWith('@portico/') || p.name === 'portico-web-next') continue;
+    if (p.name.startsWith('@portico/') || p.name === 'portico-web') continue;
     const dir = path.join(root, p.path);
     const installed = existsSync(path.join(dir, 'package.json')) ? JSON.parse(readOutside(path.join(dir, 'package.json'))) : undefined;
     if (!installed) {
@@ -115,7 +115,7 @@ function subtitleAndFontComponents(read: (rel: string) => string): CollectedComp
     if (!text) throw new Error(`licences: no ${f.license} text for ${f.family}`);
     out.push({id: `font:${f.family}`, name: f.family, version: f.package.split(' ').slice(1).join(' '), licence: f.license, group: 'fonts', text, url: f.upstream.split(' ')[0], ...(f.copyright ? {copyright: [f.copyright]} : {})});
   }
-  out.push({id: 'font:manrope', name: 'Manrope', licence: 'OFL-1.1', group: 'fonts', text: read('web-next/src/kit/fonts/OFL.txt'), url: 'https://github.com/googlefonts/manrope'});
+  out.push({id: 'font:manrope', name: 'Manrope', licence: 'OFL-1.1', group: 'fonts', text: read('web/src/kit/fonts/OFL.txt'), url: 'https://github.com/googlefonts/manrope'});
   out.push({id: 'icons:lucide', name: 'Lucide icons', licence: 'ISC', group: 'fonts', text: read('packages/design/LICENSE-LUCIDE'), url: 'https://lucide.dev'});
   return out;
 }
@@ -191,7 +191,7 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === path.resolve(process.a
   if (process.argv.includes('--check')) {
     const current = existsSync(file) ? readFileSync(file, 'utf8') : '';
     if (current !== text) {
-      console.error(`licences: ${OUTPUT} is out of date. Run: node --experimental-strip-types web-next/scripts/licences.ts`);
+      console.error(`licences: ${OUTPUT} is out of date. Run: node --experimental-strip-types web/scripts/licences.ts`);
       process.exit(1);
     }
     console.log(`licences: ${OUTPUT} is up to date`);

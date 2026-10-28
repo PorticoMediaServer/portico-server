@@ -9,7 +9,7 @@ assert.equal(process.version, `v${version}`, 'use the repo-declared Node version
 const require = createRequire(join(process.env.PORTICO_BROWSER_TOOLS_DIR, 'loader.cjs'));
 const {chromium} = require('playwright-core');
 process.env.PORTICO_DEV_SERVER_URL = 'http://127.0.0.1:1';
-const server = await createServer({root: resolve('web-next'), configFile: resolve('web-next/vite.config.ts'), cacheDir: join(process.env.TMPDIR, 'saved-vite'), server: {host: '127.0.0.1', port: 0, strictPort: false}});
+const server = await createServer({root: resolve('web'), configFile: resolve('web/vite.config.ts'), cacheDir: join(process.env.TMPDIR, 'saved-vite'), server: {host: '127.0.0.1', port: 0, strictPort: false}});
 let browser;
 try {
   await server.listen();

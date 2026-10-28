@@ -23,7 +23,7 @@ async function walk(name) {
   }
 }
 async function add(name) { sourceFiles.push({path:name, sha256:createHash('sha256').update(await readFile(name)).digest('hex')}); }
-for (const dir of ['server','apikit','web-next','packages','third_party/hls.js','third_party/libass-wasm','third_party/subtitle-fonts']) await walk(dir);
+for (const dir of ['server','apikit','web','packages','third_party/hls.js','third_party/libass-wasm','third_party/subtitle-fonts']) await walk(dir);
 for (const name of ['package.json','package-lock.json','scripts/container-release.mjs','Dockerfile']) await add(name);
 const sourceDigest = createHash('sha256').update(JSON.stringify(sourceFiles)).digest('hex');
 const buildId = `container-${version}-${sourceDigest.slice(0,16)}`;

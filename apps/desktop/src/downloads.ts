@@ -1,5 +1,5 @@
 import {invoke} from '@tauri-apps/api/core';
-import {sameSavedDownloadsScope,type SavedLocalDownloadGroup,type SavedLocalGroupSelector,type SavedOtherDownloadsConfirmation} from '../../../web-next/src/screens/saved/downloads-port.ts';
+import {sameSavedDownloadsScope,type SavedLocalDownloadGroup,type SavedLocalGroupSelector,type SavedOtherDownloadsConfirmation} from '../../../web/src/screens/saved/downloads-port.ts';
 import {parseDownloadTitle, type DownloadTitle, type DownloadReceipt} from '../../../packages/client-core/src/downloads.ts';
 
 // App-owned transport. UI owners consume the canonical web port after its MAIN landing.

@@ -169,7 +169,7 @@ test('row subtitle CSS projects the TV size without changing desktop or phone te
   }
 });
 
-test('web-next CSS is deterministic, complete and byte-identical to the canonical projection', () => {
+test('web CSS is deterministic, complete and byte-identical to the canonical projection', () => {
   const css = renderTokens();
   assert.equal(css, renderTokens());
   assert.equal(readFileSync(tokenCssPath, 'utf8'), css);
@@ -198,7 +198,7 @@ test('generator check rejects missing and stale files without writing', () => {
     const source = fileURLToPath(new URL('../../design', import.meta.url));
     cpSync(source, join(dir, 'packages/design'), {recursive: true});
     const script = join(dir, 'packages/design/scripts/tokens.mjs');
-    const out = join(dir, 'web-next/src/kit/tokens.css');
+    const out = join(dir, 'web/src/kit/tokens.css');
     const run = (...args: string[]) => spawnSync(process.execPath, [script, ...args], {cwd: tmpdir(), encoding: 'utf8'});
     assert.equal(run('--check').status, 1);
     assert.throws(() => readFileSync(out), {code: 'ENOENT'});

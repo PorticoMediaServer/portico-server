@@ -1,6 +1,6 @@
 import {invoke} from '@tauri-apps/api/core';
-import type {EqualizerSettings} from '../../../web-next/src/platform/playback/audio/equalizer.ts';
-export type {EqualizerSettings} from '../../../web-next/src/platform/playback/audio/equalizer.ts';
+import type {EqualizerSettings} from '../../../web/src/platform/playback/audio/equalizer.ts';
+export type {EqualizerSettings} from '../../../web/src/platform/playback/audio/equalizer.ts';
 
 // No output/account/source identifier: Settings and the player's future shortcut use this
 // single app-local native preference. Shared controls follow music-plus.html at 812dacac.

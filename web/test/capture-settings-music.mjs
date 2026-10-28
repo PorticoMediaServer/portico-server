@@ -1,4 +1,4 @@
-// Remote-only comparison harness for the Server Remote sources screen.
+// Remote-only comparison harness for the Account Settings Music screen.
 // It starts the exact built app against a fresh disposable server, signs in with
 // throwaway credentials, and captures the approved read-only Settings mock at
 // the same 1440x1000 logical viewport and state. No reference bytes are written
@@ -7,7 +7,7 @@
 // Run on the external runner:
 //   PORTICO_RUNNER_OUTPUT=/abs/out PORTICO_RUNNER_SECONDARY_SOURCE=/abs/portico-internal \
 //   PORTICO_SERVER_BIN=/abs/dist/portico-server PORTICO_CHROMIUM=/usr/bin/chromium \
-//   node web-next/test/capture-settings-remote-sources.mjs
+//   node web/test/capture-settings-music.mjs
 import {spawn} from 'node:child_process';
 import {createServer} from 'node:http';
 import {mkdir, mkdtemp, readFile, rm, writeFile} from 'node:fs/promises';
@@ -15,7 +15,6 @@ import {existsSync} from 'node:fs';
 import {extname, join, resolve} from 'node:path';
 import {randomBytes, randomUUID} from 'node:crypto';
 import net from 'node:net';
-import {networkInterfaces} from 'node:os';
 
 const output = process.env.PORTICO_RUNNER_OUTPUT;
 const secondary = process.env.PORTICO_RUNNER_SECONDARY_SOURCE;
@@ -62,11 +61,7 @@ class Driver {
     this.ready = new Promise((resolve, reject) => {this.socket.onopen = resolve; this.socket.onerror = reject;});
     this.socket.onmessage = event => {
       const message = JSON.parse(event.data);
-      if (!message.id) {
-        if (message.method === 'Runtime.exceptionThrown') console.error('PAGE EXCEPTION', JSON.stringify(message.params.exceptionDetails).slice(0, 4000));
-        if (message.method === 'Runtime.consoleAPICalled' && message.params.type === 'error') console.error('PAGE CONSOLE', JSON.stringify(message.params.args).slice(0, 2000));
-        return;
-      }
+      if (!message.id) return;
       const task = this.pending.get(message.id); if (!task) return;
       this.pending.delete(message.id); clearTimeout(task.timer);
       if (message.error) task.reject(new Error(`${message.error.code}: ${message.error.message}`)); else task.resolve(message.result);
@@ -98,40 +93,6 @@ class Driver {
   async screenshot(file) {const {data} = await this.send('Page.captureScreenshot', {format: 'png', fromSurface: true, captureBeyondViewport: false}); await writeFile(file, Buffer.from(data, 'base64'));}
 }
 
-/** A local, disposable WebDAV origin for the real source setup. It lists one
- * small file and serves byte ranges; no product data or credential is used. */
-const davBytes = Buffer.alloc(65536, 7);
-function davOrigin() {
-  return createServer((request, response) => {
-    const path = new URL(request.url, 'http://127.0.0.1').pathname;
-    if (request.method === 'OPTIONS') { response.writeHead(200, {'DAV': '1,2', 'Allow': 'OPTIONS, PROPFIND, GET, HEAD', 'MS-Author-Via': 'DAV'}); response.end(); return; }
-    if (request.method === 'PROPFIND') {
-      const base = path.endsWith('/') ? path : path + '/';
-      const fileHref = `${base}sample.mp4`;
-      const prop = (href, collection) => `<D:response><D:href>${href}</D:href><D:propstat><D:prop><D:resourcetype>${collection ? '<D:collection/>' : ''}</D:resourcetype><D:displayname>${collection ? 'Archive' : 'sample.mp4'}</D:displayname><D:getcontentlength>${collection ? 0 : davBytes.length}</D:getcontentlength>${collection ? '' : '<D:getcontenttype>video/mp4</D:getcontenttype>'}<D:getetag>"${collection ? 'root' : 'sample'}"</D:getetag><D:getlastmodified>Sat, 24 Oct 2026 00:00:00 GMT</D:getlastmodified></D:prop><D:status>HTTP/1.1 200 OK</D:status></D:propstat></D:response>`;
-      const body = path === fileHref ? prop(fileHref, false) : prop(base, true) + prop(fileHref, false);
-      response.writeHead(207, {'Content-Type': 'application/xml; charset=utf-8'});
-      response.end(`<?xml version="1.0" encoding="utf-8"?><D:multistatus xmlns:D="DAV:">${body}</D:multistatus>`);
-      return;
-    }
-    if (request.method === 'HEAD') { response.writeHead(200, {'Content-Length': davBytes.length, 'Content-Type': 'video/mp4', 'Accept-Ranges': 'bytes'}); response.end(); return; }
-    if (request.method === 'GET') {
-      const range = /^bytes=(\d*)-(\d*)$/.exec(request.headers.range ?? '');
-      if (range) {
-        const start = Math.max(0, Math.min(Number(range[1] || 0), davBytes.length - 1));
-        const end = Math.max(start, Math.min(Number(range[2] || davBytes.length - 1), davBytes.length - 1));
-        response.writeHead(206, {'Content-Length': end - start + 1, 'Content-Range': `bytes ${start}-${end}/${davBytes.length}`, 'Accept-Ranges': 'bytes', 'Content-Type': 'video/mp4'});
-        response.end(davBytes.subarray(start, end + 1));
-      } else { response.writeHead(200, {'Content-Length': davBytes.length, 'Content-Type': 'video/mp4', 'Accept-Ranges': 'bytes'}); response.end(davBytes); }
-      return;
-    }
-    response.writeHead(405); response.end();
-  });
-}
-const dav = davOrigin();
-await new Promise(resolve => dav.listen(0, '0.0.0.0', resolve));
-const davPort = dav.address().port;
-const davHost = Object.values(networkInterfaces()).flat().find(address => address && address.family === 'IPv4' && !address.internal)?.address ?? '127.0.0.1';
 const appPort = await freePort(), designPort = await freePort(), chromePort = await freePort();
 const state = await mkdtemp(join(process.env.TMPDIR || '/tmp', 'settings-state-'));
 const media = await mkdtemp(join(process.env.TMPDIR || '/tmp', 'settings-media-'));
@@ -148,7 +109,7 @@ try {
   reference = staticServer(design);
   await new Promise(resolve => reference.listen(designPort, '127.0.0.1', resolve));
   app = spawn(binary, [], {cwd: root, stdio: ['ignore', 'pipe', 'pipe'], env: {...process.env,
-    PORTICO_DATA_DIR: state, PORTICO_WEB_DIR: resolve(root, 'web-next/dist'), PORTICO_BIND: `127.0.0.1:${appPort}`,
+    PORTICO_DATA_DIR: state, PORTICO_WEB_DIR: resolve(root, 'web/dist'), PORTICO_BIND: `127.0.0.1:${appPort}`,
     PORTICO_DISCOVERY: '0', PORTICO_FFMPEG: process.env.PORTICO_FFMPEG || '/usr/bin/ffmpeg', PORTICO_FFPROBE: process.env.PORTICO_FFPROBE || '/usr/bin/ffprobe',
     HTTP_PROXY: 'http://127.0.0.1:9', HTTPS_PROXY: 'http://127.0.0.1:9', ALL_PROXY: 'http://127.0.0.1:9', NO_PROXY: '127.0.0.1,localhost'}});
   let appLog = ''; app.stdout.on('data', bytes => {appLog += bytes;}); app.stderr.on('data', bytes => {appLog += bytes;});
@@ -180,6 +141,18 @@ try {
     if (response.status !== 201) note(`library ${name} refused: ${response.status} ${(await response.text()).slice(0, 160)}`);
   }
 
+  // The approved mock's Music state has Crossfade at 4 seconds, so Smooth
+  // transitions is enabled. Write that through the real preferences route
+  // before the browser signs in; no synthetic row values are injected.
+  const prefs = await json('/v1/preferences?deviceClass=web', {token: created.body.accessToken});
+  if (prefs.status !== 200) throw new Error('preferences read refused: ' + JSON.stringify(prefs.body));
+  const profilePreferences = prefs.body.data.documents.find(document => document.scope === 'profile-server');
+  if (!profilePreferences) throw new Error('profile-server preferences are absent');
+  const changed = await json('/v1/preferences', {method: 'PATCH', token: created.body.accessToken, origin: base,
+    body: {scope: 'profile-server', deviceClass: 'web', expectedRevision: profilePreferences.revision, values: {'music.crossfadeMs': 4000}, idempotencyKey: randomUUID()}});
+  if (changed.status !== 200) throw new Error('crossfade preference refused: ' + JSON.stringify(changed.body));
+  note('crossfade set to 4 seconds through the real preferences route');
+
   browser = spawn(chromium, ['--headless=new', '--no-sandbox', '--disable-dev-shm-usage', '--disable-gpu', '--disable-background-networking',
     '--disable-component-update', '--disable-sync', '--disable-default-apps', '--no-first-run', '--no-default-browser-check', '--remote-allow-origins=*',
     '--host-resolver-rules=MAP * ~NOTFOUND, EXCLUDE localhost, EXCLUDE 127.0.0.1, EXCLUDE fonts.googleapis.com, EXCLUDE fonts.gstatic.com', '--remote-debugging-address=127.0.0.1',
@@ -208,30 +181,35 @@ try {
     await driver.evaluate(`[...document.querySelectorAll('button')].find(button => button.textContent.trim().startsWith(${JSON.stringify(credentials.username)})).click()`);
   }
   await driver.waitFor(`document.querySelector('nav[aria-label="Main"]')`, 30000);
-  await driver.navigate(`${base}/settings?scope=server&section=remote-sources`);
-  await driver.waitFor(`[...document.querySelectorAll('main h1')].some(heading => heading.textContent === 'Remote sources')`, 30000);
-  await driver.waitFor(`[...document.querySelectorAll('main')].some(main => main.innerText.includes('No remote sources yet'))`, 30000);
-  await driver.waitFor(`[...document.querySelectorAll('main')].some(main => main.innerText.includes('Add remote source'))`, 30000);
+  await driver.navigate(`${base}/settings?scope=account&section=music`);
+  await driver.waitFor(`[...document.querySelectorAll('main h1')].some(heading => heading.textContent === 'Music & audiobooks')`, 30000);
+  await driver.waitFor(`document.getElementById('music.audioNormalization')`, 30000);
+  await driver.waitFor(`document.getElementById('music.eq')`, 30000);
+  await driver.waitFor(`document.getElementById('music.qualityAway')`, 30000);
+  await driver.waitFor(`document.getElementById('music.crossfadeMs')?.innerText.includes('4 seconds')`, 30000);
   await sleep(350);
   await driver.evaluate(`document.fonts.ready`);
   await driver.evaluate(`new Promise(resolve => {const settled = document.getAnimations().map(animation => animation.finished.catch(() => {})); Promise.allSettled(settled).then(() => requestAnimationFrame(() => requestAnimationFrame(resolve)));})`);
   await sleep(350);
   const buildShot = resolve(output, 'build.png');
   await driver.screenshot(buildShot);
-  await driver.evaluate(`[...document.querySelectorAll('button')].find(button => button.textContent?.includes('Add remote source'))?.click()`);
-  await driver.waitFor(`document.querySelector('[role="dialog"]')?.innerText.includes('Test connection')`, 15000);
-  const addFacts = await driver.evaluate(`(() => {const dialog = document.querySelector('[role="dialog"]');return {open: !!dialog, text: dialog?.innerText.slice(0, 1200), fields: dialog?.querySelectorAll('input').length ?? 0};})()`);
-  await driver.screenshot(resolve(output, 'add.png'));
-  note(`Add dialog opened: ${JSON.stringify(addFacts)}`);
-  await driver.evaluate(`document.querySelector('[role="dialog"] button[aria-label]')?.click()`);
-  await sleep(250);
+  // The Music row must open the existing controlled EQ page, not a dead link.
+  await driver.evaluate(`document.querySelector('[id="music.eq"] button')?.click()`);
+  await driver.waitFor(`document.querySelector('[role="dialog"] [role="switch"]')`, 15000);
+  await driver.waitFor(`document.querySelector('[role="dialog"]')?.innerText.includes('Reset to flat')`, 15000);
+  const eqFacts = await driver.evaluate(`(() => {const dialog = document.querySelector('[role="dialog"]');
+    return {open: !!dialog, switchChecked: dialog?.querySelector('[role="switch"]')?.getAttribute('aria-checked'),
+      bands: dialog?.querySelectorAll('[role="slider"]').length ?? 0, reset: dialog?.innerText.includes('Reset to flat')};})()`);
+  await driver.screenshot(resolve(output, 'eq.png'));
+  note(`EQ page opened: ${JSON.stringify(eqFacts)}`);
+
   const buildFacts = await driver.evaluate(`(() => {
     const box = element => {const r = element.getBoundingClientRect(); return {x: Math.round(r.x * 100) / 100, y: Math.round(r.y * 100) / 100, w: Math.round(r.width * 100) / 100, h: Math.round(r.height * 100) / 100};};
     const style = element => {const s = getComputedStyle(element); return {fontSize: s.fontSize, lineHeight: s.lineHeight, fontFamily: s.fontFamily, fontWeight: s.fontWeight, color: s.color};};
     return {url: location.href, viewport: {width: innerWidth, height: innerHeight, scrollHeight: document.documentElement.scrollHeight},
       headings: [...document.querySelectorAll('main h1, main h2, main h3')].map(element => ({text: element.textContent, box: box(element), style: style(element)})),
       groups: [...document.querySelectorAll('main section')].map(element => ({title: element.querySelector('h3')?.textContent ?? '', box: box(element)})),
-      rows: [...document.querySelectorAll('main section')].map(element => ({id: element.querySelector('h3')?.textContent ?? '', text: element.innerText.replace(/\\n+/g, ' | '), box: box(element)})),
+      rows: [...document.querySelectorAll('main [id^="music."], main [id^="playback."], main [id^="audiobooks."]')].map(element => ({id: element.id, text: element.innerText.replace(/\\n+/g, ' | '), box: box(element)})),
       nav: [...document.querySelectorAll('nav[aria-label] button')].map(element => ({text: element.textContent.trim(), current: element.getAttribute('aria-current'), box: box(element)})),
       saved: [...document.querySelectorAll('[role="status"]')].map(element => element.textContent.trim()).filter(Boolean),
       bodyText: document.body.innerText.split('\\n').map(line => line.trim()).filter(Boolean)};
@@ -239,9 +217,9 @@ try {
   note(`build captured: ${buildFacts.headings.map(heading => heading.text).join(' / ')}`);
 
   // Approved read-only mock at the same viewport and state.
-  await driver.navigate(`http://127.0.0.1:${designPort}/settings.html?demo=clean#server/remote-sources`);
-  await driver.waitFor(`document.querySelector('#page .pg-h h2')?.textContent === 'Remote sources'`, 30000);
-  await driver.waitFor(`document.querySelector('#page')?.innerText.includes('Add remote source')`, 30000);
+  await driver.navigate(`http://127.0.0.1:${designPort}/settings.html?demo=clean#account/music`);
+  await driver.waitFor(`document.querySelector('#page .pg-h h2')?.textContent === 'Music & audiobooks'`, 30000);
+  await driver.waitFor(`[...document.querySelectorAll('#page .r')].some(row => row.innerText.includes('Volume leveling'))`, 30000);
   await driver.evaluate(`document.fonts.ready`);
   await sleep(450);
   await driver.evaluate(`new Promise(resolve => {const settled = document.getAnimations().map(animation => animation.finished.catch(() => {})); Promise.allSettled(settled).then(() => requestAnimationFrame(() => requestAnimationFrame(resolve)));})`);
@@ -282,7 +260,7 @@ try {
   })()`);
   const pairBytes = Buffer.from(diff.format.split(',')[1], 'base64');
   await writeFile(resolve(output, 'pair.jpg'), pairBytes);
-  const summary = {state: 'server/remote-sources, real empty state; Add dialog captured separately', viewport: {width: 1440, height: 1000},
+  const summary = {state: 'account/music, main groups with the supported Sound, Audiobooks and Quality rows', viewport: {width: 1440, height: 1000},
     build: buildFacts, reference: referenceFacts, raster: {changed: diff.changed, strong: diff.strong, percent: diff.percent, bounds: diff.bounds, bands: diff.bands}};
   await writeFile(resolve(output, 'facts.log'), JSON.stringify(summary, null, 2));
   note(`raster changed=${diff.changed} (${diff.percent}%) strong=${diff.strong} bounds=${JSON.stringify(diff.bounds)}`);
@@ -299,7 +277,6 @@ try {
   try {app?.kill('SIGTERM');} catch {}
   if (app) await Promise.race([new Promise(resolve => app.once('exit', resolve)), sleep(3000)]).catch(() => {});
   try {reference?.close();} catch {}
-  try {dav?.close();} catch {}
   await rm(state, {recursive: true, force: true, maxRetries: 5, retryDelay: 200}).catch(() => {});
   await rm(media, {recursive: true, force: true, maxRetries: 5, retryDelay: 200}).catch(() => {});
   await rm(profile, {recursive: true, force: true, maxRetries: 5, retryDelay: 200}).catch(() => {});

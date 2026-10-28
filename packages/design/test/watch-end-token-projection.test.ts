@@ -91,7 +91,7 @@ test('the published sheet is the exact projected output and keeps those roles', 
   const published = readFileSync(tokenCssPath, 'utf8');
   // This is the actual --check parity: a stale unrelated value fails here even
   // when two fresh renderTokens() calls agree with each other.
-  assert.equal(published, renderTokens(), 'web-next/src/kit/tokens.css must equal the canonical projection');
+  assert.equal(published, renderTokens(), 'web/src/kit/tokens.css must equal the canonical projection');
   for (const selector of scales) assertWatchEnd(only(published, selector), `published ${selector}`);
 });
 

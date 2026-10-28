@@ -87,8 +87,8 @@ MANDATORY_TESTS = {
         "packages/client-core/test/profiles-membership.test.ts",
         "packages/client-core/test/generated-routes.test.ts",
         "packages/client-core/test/credential-scoped-logout.test.ts",
-        "web-next/test/account-entry-authority.test.ts",
-        "web-next/test/viewer-storage.test.ts",
+        "web/test/account-entry-authority.test.ts",
+        "web/test/viewer-storage.test.ts",
     ),
     True: (
         "apps/native/test/next-accounts-entry.test.ts",
@@ -1459,8 +1459,8 @@ def dependencies(file, known, workspaces):
         elif spec in {"@core", "@design", "@i18n"}:
             package = {"@core": "client-core", "@design": "design", "@i18n": "i18n"}[spec]
             base = ROOT / "packages" / package / "src/index.ts"
-        elif spec.startswith("@/") and file.is_relative_to(ROOT / "web-next"):
-            base = ROOT / "web-next/src" / spec[2:]
+        elif spec.startswith("@/") and file.is_relative_to(ROOT / "web"):
+            base = ROOT / "web/src" / spec[2:]
         else:
             workspace = next((name for name in workspaces if spec == name or spec.startswith(name + "/")), None)
             if not workspace:
@@ -1509,8 +1509,8 @@ def route(relative, native):
     parts = relative.parts
     if native and parts[:3] == ("apps", "native", "test"):
         return "apps/native"
-    if parts[0] == "web-next":
-        return "web-next"
+    if parts[0] == "web":
+        return "web"
     if parts[0] == "packages" and len(parts) > 2:
         return "/".join(parts[:2])
     if parts[:4] == ("server", "receiver", "cast", "test"):
@@ -1599,7 +1599,7 @@ def report_directory(index, total):
 
 def js_command(group, file):
     """The exact per-file command: same loader/flags as the suite, one file wide."""
-    if group in ("apps/native", "web-next"):
+    if group in ("apps/native", "web"):
         args = ["node", "--experimental-transform-types", "--import", "./test/register.mjs"]
     else:
         # Package sources may use syntax strip-only mode refuses - a constructor

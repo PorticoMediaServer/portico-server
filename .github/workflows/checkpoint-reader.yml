@@ -32,7 +32,7 @@ jobs:
           cache: npm
       - run: npm ci --no-audit --no-fund
       - name: Build the immutable native guest
-        working-directory: web-next
+        working-directory: web
         run: npx --no-install vite build --config reader-native/vite.config.ts
       - name: Record source and exact guest tree
         run: |

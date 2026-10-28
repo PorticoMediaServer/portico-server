@@ -1,6 +1,6 @@
 # Portico component specification
 
-`src/index.ts` and `src/components.ts` are the shared numeric specification for `web-next/src/kit` and `apps/native/src-next/kit`. The approved `kit.css`, page-local CSS, `DESIGN.md` and answered product questions define their values. The motion table in `motion.html#1` takes precedence over older page timings and reduced-motion rules. Renderers build the components; this package has no renderer or application data.
+`src/index.ts` and `src/components.ts` are the shared numeric specification for `web/src/kit` and `apps/native/src-next/kit`. The approved `kit.css`, page-local CSS, `DESIGN.md` and answered product questions define their values. The motion table in `motion.html#1` takes precedence over older page timings and reduced-motion rules. Renderers build the components; this package has no renderer or application data.
 
 Geometry is in logical pixels, with explicit `web`, `phone`, `tablet` and `tv` columns where the drawings differ. TV is a 1920×1080 canvas. Tablet follows the phone layout below 1024; above that width web uses the desktop layout. Never multiply all TV radii by one factor. Never stretch cards or type to fill a wider screen.
 
@@ -60,7 +60,7 @@ Reduced motion means a 160-ms crossfade, no slide, scale, spring, parallax, drif
 
 ## CSS generation and verification
 
-Run `node packages/design/scripts/tokens.mjs`; it writes only `web-next/src/kit/tokens.css`. Run the same command with `--check` to fail on missing/stale output without writing. It works from any cwd, uses no dependencies and never rewrites `web/`. The scaffold must run `--check` in its checks and import the generated CSS before kit component styles.
+Run `node packages/design/scripts/tokens.mjs`; it writes only `web/src/kit/tokens.css`. Run the same command with `--check` to fail on missing/stale output without writing. It works from any cwd, uses no dependencies and never rewrites `web/`. The scaffold must run `--check` in its checks and import the generated CSS before kit component styles.
 
 CSS exports palette, named and pixel spacing, radii, all component leaves (`--spec-*`), durations, curves, spring samples, targets, layers and responsive type/hero/card tokens. Dimensional lengths use px, type uses rem, tracking uses em, time uses ms and proportions/scales are unitless. `[data-platform="tv"]` selects the TV projection. `.portico-motion` or `[data-portico-motion]` opts a moving layer into the shared motion contract; reduced motion permits only opacity, suppresses automatic animation and removes its motion transform. `[data-motion-gesture]` preserves finger tracking. `[data-reduce-motion="true"]` applies the in-app preference. Renderers must use the exported reduced-motion rules for script-driven motion too.
 

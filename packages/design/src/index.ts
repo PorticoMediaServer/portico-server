@@ -1,7 +1,7 @@
 export {generatedCoverTint, type GeneratedCoverTint} from './generated-cover.ts';
 
 /**
- * Portico's shared design projection. Web (packages/design/scripts/tokens.mjs → web-next/src/kit/tokens.css)
+ * Portico's shared design projection. Web (packages/design/scripts/tokens.mjs → web/src/kit/tokens.css)
  * and native (src-next/kit/theme.ts) read every colour, type role, radius and layer from
  * here, so the platforms can't drift. Contrast is pinned by
  * packages/client-core/test/design-tokens.test.ts: every text tone must stay

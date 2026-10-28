@@ -1,7 +1,7 @@
 import type {LicenceComponent, LicenceData, LicenceGroup, LicenceSource} from '../presentation/licences.ts';
 
 /**
- * Building blocks of the licence generators (web: `web-next/scripts/licences.ts`; the apps:
+ * Building blocks of the licence generators (web: `web/scripts/licences.ts`; the apps:
  * `apps/native/scripts/licences.mts`). Pure: the scripts read the files and pass their contents
  * in, so the same rules (what counts as bundled, how a text is cleaned, how texts are shared)
  * hold for every client and are tested once.

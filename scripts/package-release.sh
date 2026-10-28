@@ -33,7 +33,7 @@ cp "$ROOT/third_party/hls.js/LICENSE" "$PAYLOAD/licenses/hls-js.txt"
 mkdir -p "$PAYLOAD/licenses/reader"
 cp "$ROOT/third_party/reader/"*-LICENSE "$ROOT/third_party/reader/provenance.json" "$PAYLOAD/licenses/reader/"
 cp "$ROOT/packages/reader-core/assets/OFL.txt" "$PAYLOAD/licenses/reader/literata-OFL.txt"
-cp "$ROOT/web-next/src/kit/fonts/OFL.txt" "$PAYLOAD/licenses/manrope.txt"
+cp "$ROOT/web/src/kit/fonts/OFL.txt" "$PAYLOAD/licenses/manrope.txt"
 cp "$ROOT/packages/design/LICENSE-LUCIDE" "$PAYLOAD/licenses/lucide.txt"
 find "$PAYLOAD" \( -name '.DS_Store' -o -name '._*' \) -delete
 printf '{"version":"%s","build":"%s"}\n' "$VERSION" "$BUILD_NUMBER" > "$PAYLOAD/web/portico-build.json"

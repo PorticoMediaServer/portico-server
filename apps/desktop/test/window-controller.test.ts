@@ -2,7 +2,7 @@ import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {createDesktopWindowController} from '../src/window-controller.ts';
 import {createDesktopAppLifetime} from '../src/app-lifetime.ts';
-import {installWindowChromeHost,createWindowChromePublisher,getWindowChromeEnvironment} from '../../../web-next/src/platform/window-chrome.ts';
+import {installWindowChromeHost,createWindowChromePublisher,getWindowChromeEnvironment} from '../../../web/src/platform/window-chrome.ts';
 import type {ChromeUpdate,WindowBridge,WindowSnapshot} from '../src/window.ts';
 
 const observed:WindowSnapshot={os:'windows',fullscreen:false,maximized:false,focused:true,captionHover:0,captions:{minimize:'Minimize',maximize:'Maximize',restore:'Restore',close:'Close'}};

@@ -16,7 +16,7 @@ python3 scripts/schema-sync.py
 
 The deterministic browser IIFE is emitted at
 `server/receiver/cast/contracts.js` and embedded with the receiver. The projection
-uses the existing locked Rolldown from `web-next`; it installs nothing. Generate
+uses the existing locked Rolldown from `web`; it installs nothing. Generate
 it after official apigen, then include the output in the same containing
 canonical generation/mirror cohort. The authored source does not qualify a
 stale or missing generated output.

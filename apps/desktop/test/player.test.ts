@@ -3,7 +3,7 @@ import type {PlaybackSnapshot} from '../../../packages/client-core/src/index.ts'
 import assert from 'node:assert/strict';
 import {DesktopMediaPlayer} from '../src/player.ts';
 import {observation, type Bridge, type NativeCommand, type NativeObservation} from '../src/bridge.ts';
-import type {VideoLike} from '../../../web-next/src/platform/playback/index.ts';
+import type {VideoLike} from '../../../web/src/platform/playback/index.ts';
 import type {DesktopLocalPlayback} from '../src/local-playback.ts';
 import type {LocalPlayerSource} from '../../../packages/client-core/src/playback-v1/local-port.ts';
 

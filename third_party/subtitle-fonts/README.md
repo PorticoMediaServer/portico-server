@@ -1,6 +1,6 @@
 # Fallback fonts for styled subtitles
 
-A styled subtitle names its own fonts and usually carries them. When it does not, or when a line uses a script its font lacks, the browser renderer needs a font that has those letters. The default is Liberation Sans (Latin, Greek, Cyrillic), which comes with the libass build in `third_party/libass-wasm`. The fonts here cover other scripts and are fetched only when a subtitle uses them; the build serves them under `/vendor/subtitle-fonts-1/` (`web-next/scripts/config.mjs`).
+A styled subtitle names its own fonts and usually carries them. When it does not, or when a line uses a script its font lacks, the browser renderer needs a font that has those letters. The default is Liberation Sans (Latin, Greek, Cyrillic), which comes with the libass build in `third_party/libass-wasm`. The fonts here cover other scripts and are fetched only when a subtitle uses them; the build serves them under `/vendor/subtitle-fonts-1/` (`web/scripts/config.mjs`).
 
 | Script | Font | Licence |
 | --- | --- | --- |

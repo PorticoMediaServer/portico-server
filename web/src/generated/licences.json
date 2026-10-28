@@ -2129,7 +2129,7 @@
  ],
  "inputs": {
   "LICENSE": "8ceb4b9ee5adedde47b31e975c1d90c73ad27b6b165a1dcd80c7c545eb65b903",
-  "package-lock.json": "d26f9d19cb0caa0119013104c3827bea06e84273db93596fba8b5846dd53bff7",
+  "package-lock.json": "ecb4e8e6f8032cbe5ec3c18277adba0ccfea2c531a1cf83c5c7ecafaf99c5cbc",
   "packages/design/LICENSE-LUCIDE": "b495047bd93a9b06913511076f504daba17d5bbeb3e0650f3bb53a4220329c57",
   "server/go.mod": "ea34c7e3d085b5fc2664d95c57cd9b8f71542073cfb7184f63e4b90825fddb1e",
   "server/go.sum": "6b3f4af05ef71f96664244e2c210ae98d5d3041506bf74952f68bfea40275feb",
@@ -2147,6 +2147,6 @@
   "third_party/libass-wasm/provenance.json": "bfe51a509a7e3a02ded176f177f3be5daac13cd3401e4989caca113ffa344a98",
   "third_party/subtitle-fonts/OFL-1.1.txt": "3faab92706ea33a0e07905e98656e56940b7b09d7d15d6590c76bc38c1b83316",
   "third_party/subtitle-fonts/provenance.json": "e6705ca70cebee55c057dabc8224f1493e29669725c0c045f89653a07941537a",
-  "web-next/src/kit/fonts/OFL.txt": "d6a309fcfb963d329a93baf9df66fa5f3c23a4be2b5f67edf24d6cafecde12ac"
+  "web/src/kit/fonts/OFL.txt": "d6a309fcfb963d329a93baf9df66fa5f3c23a4be2b5f67edf24d6cafecde12ac"
  }
 }

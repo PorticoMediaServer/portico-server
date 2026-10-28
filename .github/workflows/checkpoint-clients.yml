@@ -86,22 +86,22 @@ jobs:
         name: reader-units
         if: ${{ !cancelled() && steps.deps.outcome == 'success' }}
         run: bash "$RUNNER_TEMP/checkpoint-command" reader-units npm run test:reader
-      - id: next-checks
-        name: next-checks
+      - id: web-checks
+        name: web-checks
         if: ${{ !cancelled() && steps.deps.outcome == 'success' }}
-        run: bash "$RUNNER_TEMP/checkpoint-command" next-checks bash -c 'cd web-next; status=0; npm run tokens || status=1; npm run lint:design || status=1; npm run lint:hooks || status=1; npm run lint:strings || status=1; npm run lint:boundary || status=1; node ../packages/client-core/scripts/check-preference-consumers.mjs || status=1; exit $status'
-      - id: next-types
-        name: next-types
+        run: bash "$RUNNER_TEMP/checkpoint-command" web-checks bash -c 'cd web; status=0; npm run tokens || status=1; npm run lint:design || status=1; npm run lint:hooks || status=1; npm run lint:strings || status=1; npm run lint:boundary || status=1; node ../packages/client-core/scripts/check-preference-consumers.mjs || status=1; exit $status'
+      - id: web-types
+        name: web-types
         if: ${{ !cancelled() && steps.deps.outcome == 'success' }}
-        run: bash "$RUNNER_TEMP/checkpoint-command" next-types npx --no-install tsc --noEmit -p web-next/tsconfig.json
-      - id: next-units
-        name: next-units
+        run: bash "$RUNNER_TEMP/checkpoint-command" web-types npx --no-install tsc --noEmit -p web/tsconfig.json
+      - id: web-units
+        name: web-units
         if: ${{ !cancelled() && steps.deps.outcome == 'success' }}
-        run: bash "$RUNNER_TEMP/checkpoint-command" next-units npm test --workspace portico-web-next
-      - id: next-build
-        name: next-build
+        run: bash "$RUNNER_TEMP/checkpoint-command" web-units npm test --workspace portico-web
+      - id: web-build
+        name: web-build
         if: ${{ !cancelled() && steps.deps.outcome == 'success' }}
-        run: bash "$RUNNER_TEMP/checkpoint-command" next-build npm run build --workspace portico-web-next
+        run: bash "$RUNNER_TEMP/checkpoint-command" web-build npm run build --workspace portico-web
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         if: ${{ always() }}
         with:

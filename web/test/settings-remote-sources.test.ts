@@ -9,7 +9,7 @@ import {transformTsx} from './transform-tsx.mjs';
 const routerModule = `export const router = {state: {location: {href: '/', pathname: '/', search: {}, searchStr: ''}}, subscribe: () => () => {}, navigate: () => {}};`;
 registerHooks({
   resolve(specifier, context, next) {
-    if ((specifier === './router' || specifier === '../router' || specifier.endsWith('/router')) && context.parentURL?.includes('/web-next/src/')) {
+    if ((specifier === './router' || specifier === '../router' || specifier.endsWith('/router')) && context.parentURL?.includes('/web/src/')) {
       return {url: 'remote-sources:router', shortCircuit: true};
     }
     return next(specifier, context);

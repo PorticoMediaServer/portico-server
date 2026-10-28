@@ -1,5 +1,5 @@
 import {localPlayerSource,localPlayerLoadReceipt,type LocalPlayerSource,type LocalPlayerLoadContext,type LocalPlayerLoadReceipt} from '../../../packages/client-core/src/playback-v1/local-port.ts';
-import {sameSavedDownloadsScope} from '../../../web-next/src/screens/saved/downloads-port.ts';
+import {sameSavedDownloadsScope} from '../../../web/src/screens/saved/downloads-port.ts';
 import type {DesktopDownloadStore,PreparedLocalQueue,LocalSelection} from './downloads.ts';
 
 export interface DesktopLocalPlayback {

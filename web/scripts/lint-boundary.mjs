@@ -72,7 +72,7 @@ function cssImports(text) {
   }
   return imports;
 }
-export function lintBoundary({repo, app = resolve(repo, 'web-next'), entries, paths} = {}) {
+export function lintBoundary({repo, app = resolve(repo, 'web'), entries, paths} = {}) {
   repo = resolve(repo); app = resolve(app);
   const devRoot = resolve(app, 'src/dev'), devRootReal = canonical(devRoot), privateAssets = resolve(repo, '../../design-ui-v1/design/ui-v1/assets'), privateAssetsReal = canonical(privateAssets), failures = [], visited = new Set();
   const configPaths = paths ?? JSON.parse(readFileSync(resolve(app, 'tsconfig.json'), 'utf8')).compilerOptions.paths;

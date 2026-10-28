@@ -1,5 +1,5 @@
 {
-  "extends": "../../web-next/tsconfig.json",
+  "extends": "../../web/tsconfig.json",
   "compilerOptions": {"types": ["vite/client", "node"]},
-  "include": ["src", "test", "../../web-next/src/env.d.ts"]
+  "include": ["src", "test", "../../web/src/env.d.ts"]
 }
