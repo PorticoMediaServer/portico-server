@@ -5390,8 +5390,9 @@ CREATE TRIGGER inventory_policy_change AFTER UPDATE ON library_scan_policies BEG
  UPDATE library_configuration SET revision=revision+1,metadata_revision=metadata_revision+1 WHERE library_id=NEW.library_id;
  UPDATE admin_revision SET revision=revision+1 WHERE id=1;
 END;
-CREATE TRIGGER inventory_availability_source AFTER UPDATE OF health,enabled,incarnation,generation ON library_sources BEGIN
- UPDATE library_revisions SET revision=revision+1 WHERE library_id=NEW.library_id;
+CREATE TRIGGER inventory_availability_source AFTER UPDATE OF health,enabled,incarnation,generation ON library_sources
+ WHEN OLD.health IS NOT NEW.health OR OLD.enabled IS NOT NEW.enabled OR OLD.incarnation IS NOT NEW.incarnation OR OLD.generation IS NOT NEW.generation BEGIN
+ UPDATE library_revisions SET revision=revision+1 WHERE library_id=NEW.library_id AND (OLD.enabled IS NOT NEW.enabled OR OLD.incarnation IS NOT NEW.incarnation OR OLD.generation IS NOT NEW.generation OR (OLD.health IN('root_changed','removing')) IS NOT (NEW.health IN('root_changed','removing')));
  UPDATE admin_revision SET revision=revision+1 WHERE id=1;
 END;
 CREATE TRIGGER inventory_availability_object AFTER UPDATE OF state,retired,root_incarnation,unsupported_reason ON inventory_objects
@@ -5721,11 +5722,11 @@ CREATE VIEW inventory_item_availability AS
  SELECT l.entity_id AS item_id,a.token AS asset_id,
  CASE WHEN EXISTS(SELECT 1 FROM dvr_catalog_retirements gone WHERE gone.item_id=l.entity_id) THEN 0
  WHEN EXISTS(SELECT 1 FROM inventory_objects o JOIN library_sources s ON s.id=o.source_id WHERE o.asset_id=a.token AND s.library_id=cl.library_id)
- THEN EXISTS(SELECT 1 FROM inventory_objects o JOIN library_sources s ON s.id=o.source_id WHERE o.asset_id=a.token AND s.library_id=cl.library_id AND o.retired=0 AND o.state='available' AND o.unsupported_reason='' AND s.enabled=1 AND s.health NOT IN('offline','root_changed','removing') AND o.root_incarnation=s.incarnation)
+ THEN EXISTS(SELECT 1 FROM inventory_objects o JOIN library_sources s ON s.id=o.source_id WHERE o.asset_id=a.token AND s.library_id=cl.library_id AND o.retired=0 AND o.state='available' AND o.unsupported_reason='' AND s.enabled=1 AND s.health NOT IN('root_changed','removing') AND o.root_incarnation=s.incarnation)
  ELSE a.available=1 AND CASE
   WHEN EXISTS(SELECT 1 FROM library_sources s WHERE s.library_id=cl.library_id AND (substr(a.path,1,length(rtrim(s.root,'/\'))+1) IN(rtrim(s.root,'/\')||'/',rtrim(s.root,'/\')||'\') OR substr(a.path,1,length(rtrim(s.configured_root,'/\'))+1) IN(rtrim(s.configured_root,'/\')||'/',rtrim(s.configured_root,'/\')||'\')))
-  THEN NOT EXISTS(SELECT 1 FROM library_sources s WHERE s.library_id=cl.library_id AND (substr(a.path,1,length(rtrim(s.root,'/\'))+1) IN(rtrim(s.root,'/\')||'/',rtrim(s.root,'/\')||'\') OR substr(a.path,1,length(rtrim(s.configured_root,'/\'))+1) IN(rtrim(s.configured_root,'/\')||'/',rtrim(s.configured_root,'/\')||'\')) AND (s.enabled=0 OR s.health IN('offline','root_changed','removing')))
-  ELSE NOT EXISTS(SELECT 1 FROM library_sources s WHERE s.library_id=cl.library_id) OR EXISTS(SELECT 1 FROM library_sources s WHERE s.library_id=cl.library_id AND NOT (s.enabled=0 OR s.health IN('offline','root_changed','removing'))) END END AS available
+  THEN NOT EXISTS(SELECT 1 FROM library_sources s WHERE s.library_id=cl.library_id AND (substr(a.path,1,length(rtrim(s.root,'/\'))+1) IN(rtrim(s.root,'/\')||'/',rtrim(s.root,'/\')||'\') OR substr(a.path,1,length(rtrim(s.configured_root,'/\'))+1) IN(rtrim(s.configured_root,'/\')||'/',rtrim(s.configured_root,'/\')||'\')) AND (s.enabled=0 OR s.health IN('root_changed','removing')))
+  ELSE NOT EXISTS(SELECT 1 FROM library_sources s WHERE s.library_id=cl.library_id) OR EXISTS(SELECT 1 FROM library_sources s WHERE s.library_id=cl.library_id AND NOT (s.enabled=0 OR s.health IN('root_changed','removing'))) END END AS available
  FROM catalog_asset_links l JOIN catalog_entities e ON e.id=l.entity_id JOIN catalog_libraries cl ON cl.id=e.library_id JOIN catalog_assets a ON a.id=l.asset_id;
 CREATE VIEW listening_book_context AS
  SELECT e.id,cl.library_id,e.title,b.author,b.narrator,b.local_key,b.series,b.series_position,
@@ -5976,7 +5977,7 @@ CREATE TRIGGER catalog_availability_object_delete AFTER DELETE ON inventory_obje
  ON CONFLICT(domain,entity_id) DO UPDATE SET revision=revision+1;
 END;
 CREATE TRIGGER catalog_availability_source_health AFTER UPDATE OF library_id,health,enabled,incarnation,generation ON library_sources
- WHEN OLD.library_id IS NOT NEW.library_id OR (OLD.health IN('offline','root_changed','removing')) IS NOT (NEW.health IN('offline','root_changed','removing')) OR OLD.enabled IS NOT NEW.enabled OR OLD.incarnation IS NOT NEW.incarnation OR OLD.generation IS NOT NEW.generation BEGIN
+ WHEN OLD.library_id IS NOT NEW.library_id OR (OLD.health IN('root_changed','removing')) IS NOT (NEW.health IN('root_changed','removing')) OR OLD.enabled IS NOT NEW.enabled OR OLD.incarnation IS NOT NEW.incarnation OR OLD.generation IS NOT NEW.generation BEGIN
  UPDATE catalog_facet_source_state SET source_epoch=source_epoch+1 WHERE singleton=1;
  INSERT INTO catalog_dirty(domain,entity_id,revision) SELECT 28,id,1 FROM catalog_libraries WHERE library_id IN(OLD.library_id,NEW.library_id)
  ON CONFLICT(domain,entity_id) DO UPDATE SET revision=revision+1;
@@ -11303,8 +11304,8 @@ CREATE TRIGGER browse_predicate_library_sources_insert AFTER INSERT ON library_s
  BEGIN UPDATE catalog_browse_predicate_epoch SET revision=revision+1 WHERE singleton=1; END;
 CREATE TRIGGER browse_predicate_library_sources_delete AFTER DELETE ON library_sources
  BEGIN UPDATE catalog_browse_predicate_epoch SET revision=revision+1 WHERE singleton=1; END;
-CREATE TRIGGER browse_predicate_library_sources_update AFTER UPDATE OF id,library_id,kind,incarnation,enabled,health,root,configured_root ON library_sources
- WHEN OLD.id IS NOT NEW.id OR OLD.library_id IS NOT NEW.library_id OR OLD.kind IS NOT NEW.kind OR OLD.incarnation IS NOT NEW.incarnation OR OLD.enabled IS NOT NEW.enabled OR OLD.health IS NOT NEW.health OR OLD.root IS NOT NEW.root OR OLD.configured_root IS NOT NEW.configured_root
+CREATE TRIGGER browse_predicate_library_sources_update AFTER UPDATE OF id,library_id,kind,incarnation,enabled,root,configured_root ON library_sources
+ WHEN OLD.id IS NOT NEW.id OR OLD.library_id IS NOT NEW.library_id OR OLD.kind IS NOT NEW.kind OR OLD.incarnation IS NOT NEW.incarnation OR OLD.enabled IS NOT NEW.enabled OR OLD.root IS NOT NEW.root OR OLD.configured_root IS NOT NEW.configured_root
  BEGIN UPDATE catalog_browse_predicate_epoch SET revision=revision+1 WHERE singleton=1; END;
 CREATE TRIGGER browse_predicate_compact_visibility_classes_insert AFTER INSERT ON compact_visibility_classes
  BEGIN UPDATE catalog_browse_predicate_epoch SET revision=revision+1 WHERE singleton=1; END;
@@ -12992,4 +12993,58 @@ CREATE TABLE download_action_transfers(
  closed_ms INTEGER NOT NULL DEFAULT 0 CHECK(closed_ms>=0),
  UNIQUE(profile_key,device_id,operation_id),
  CHECK((closed=0 AND closed_ms=0) OR (closed=1 AND closed_ms>0))
+) STRICT;
+
+-- Source-level reconnect verification; transient disconnects retain catalogue facts.
+CREATE TABLE catalog_source_verification(
+ source_id TEXT PRIMARY KEY,
+ incarnation TEXT NOT NULL,
+ configuration_generation INTEGER NOT NULL,
+ health_epoch INTEGER NOT NULL DEFAULT 1 CHECK(health_epoch>0),
+ pending INTEGER NOT NULL DEFAULT 0 CHECK(pending IN(0,1)),
+ started INTEGER NOT NULL DEFAULT 0 CHECK(started IN(0,1)),
+ after_object TEXT NOT NULL DEFAULT '',
+ fence_object TEXT NOT NULL DEFAULT ''
+) STRICT;
+CREATE INDEX catalog_source_verification_pending ON catalog_source_verification(pending,source_id);
+CREATE TRIGGER catalog_source_verification_health AFTER UPDATE OF health,enabled,incarnation,generation ON library_sources
+ WHEN OLD.health IS NOT NEW.health OR OLD.enabled IS NOT NEW.enabled OR OLD.incarnation IS NOT NEW.incarnation OR OLD.generation IS NOT NEW.generation BEGIN
+ INSERT INTO catalog_source_verification(source_id,incarnation,configuration_generation,pending)
+ VALUES(NEW.id,NEW.incarnation,NEW.generation,
+  NEW.enabled=1 AND OLD.health='offline' AND NEW.health NOT IN('offline','root_changed','removing'))
+ ON CONFLICT(source_id) DO UPDATE SET
+  health_epoch=health_epoch+1,
+  pending=CASE WHEN incarnation<>excluded.incarnation OR configuration_generation<>excluded.configuration_generation THEN excluded.pending ELSE max(pending,excluded.pending) END,
+  started=CASE WHEN incarnation<>excluded.incarnation OR configuration_generation<>excluded.configuration_generation OR (pending=0 AND excluded.pending=1) THEN 0 ELSE started END,
+  after_object=CASE WHEN incarnation<>excluded.incarnation OR configuration_generation<>excluded.configuration_generation OR (pending=0 AND excluded.pending=1) THEN '' ELSE after_object END,
+  fence_object=CASE WHEN incarnation<>excluded.incarnation OR configuration_generation<>excluded.configuration_generation OR (pending=0 AND excluded.pending=1) THEN '' ELSE fence_object END,
+  incarnation=excluded.incarnation,configuration_generation=excluded.configuration_generation;
+END;
+CREATE TRIGGER catalog_source_verification_delete AFTER DELETE ON library_sources BEGIN
+ DELETE FROM catalog_source_verification WHERE source_id=OLD.id;
+END;
+
+-- Actual file-evidence holder maintenance; never triggered by transient source health.
+CREATE TABLE catalog_availability_work(
+ entity_id INTEGER PRIMARY KEY,
+ revision INTEGER NOT NULL,
+ source_epoch INTEGER NOT NULL,
+ phase INTEGER NOT NULL DEFAULT 0 CHECK(phase BETWEEN 0 AND 2),
+ has_asset INTEGER NOT NULL DEFAULT 0 CHECK(has_asset IN(0,1)),
+ after_asset INTEGER NOT NULL DEFAULT 0,
+ asset_id INTEGER,
+ asset_token TEXT NOT NULL DEFAULT '',
+ asset_path TEXT NOT NULL DEFAULT '',
+ asset_available INTEGER NOT NULL DEFAULT 0 CHECK(asset_available IN(0,1)),
+ has_object INTEGER NOT NULL DEFAULT 0 CHECK(has_object IN(0,1)),
+ after_object TEXT NOT NULL DEFAULT '',
+ has_source INTEGER NOT NULL DEFAULT 0 CHECK(has_source IN(0,1)),
+ after_source TEXT NOT NULL DEFAULT '',
+ inventory_seen INTEGER NOT NULL DEFAULT 0 CHECK(inventory_seen IN(0,1)),
+ inventory_available INTEGER NOT NULL DEFAULT 0 CHECK(inventory_available IN(0,1)),
+ source_seen INTEGER NOT NULL DEFAULT 0 CHECK(source_seen IN(0,1)),
+ healthy_seen INTEGER NOT NULL DEFAULT 0 CHECK(healthy_seen IN(0,1)),
+ matching_seen INTEGER NOT NULL DEFAULT 0 CHECK(matching_seen IN(0,1)),
+ matching_unhealthy INTEGER NOT NULL DEFAULT 0 CHECK(matching_unhealthy IN(0,1)),
+ any_available INTEGER NOT NULL DEFAULT 0 CHECK(any_available IN(0,1))
 ) STRICT;
