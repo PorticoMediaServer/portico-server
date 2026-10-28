@@ -3,6 +3,7 @@ import {browseCapabilitiesPath, browseMembershipId, parseBrowseCapabilities, bro
 import {BrowseSession, browseSessionBuilder, browseSessionClosed, type BrowseSessionQuery} from '@core/browse-session.ts';
 import {createWindowedCollection, type WindowedCollection} from '@core/collections/windowed.ts';
 import type {ContentEntry, LibraryContentApi} from '@core/library-content.ts';
+import {readReadingFacet} from '@core/browse-preparation.ts';
 import {isStaleAnswer} from '@core/freshness-actions.ts';
 
 export {withLibraryScope} from '@core/browse-session.ts';
@@ -122,10 +123,13 @@ export class BrowseController {
     if (!this.current() || epoch !== this.epoch) return;
     const session = new BrowseSession<BrowseMember>({query: this.sessionQuery(caps, predicates, sort),
       request: (path, method, body, signal) => this.api.request(path, method, body, signal),
+      ...(this.api.requestRaw ? {requestRaw: this.api.requestRaw.bind(this.api)} : {}),
       current: () => this.current() && epoch === this.epoch,
       item: (entry, page, index) => Object.freeze({membershipId: browseMembershipId(page, index)!, entry}),
       onRevision: revision => this.publish({revision}),
-      onStale: () => this.publish({revision: undefined})});
+      onWhole: () => this.publish({}),
+      onPreparationError: error => this.publish({error}),
+      onStale: error => this.publish({revision: undefined, error})});
     this.session = session;
     this.collection.invalidate(session.fetchPage);
     this.collection.ensureRange(0, 0);
@@ -134,9 +138,12 @@ export class BrowseController {
     const {capabilities: caps, sort} = this.state;
     if (!caps || !sort || !this.current()) throw browseSessionClosed();
     const epoch = this.epoch, body = this.builder(caps, predicates, sort).build();
-    const raw = await this.api.request(browseContextFacetsPath(this.source.libraryId, field, this.source.pivot, body.query, query, 200), 'GET', undefined, signal);
+    const path = browseContextFacetsPath(this.source.libraryId, field, this.source.pivot, body.query, query, 200);
+    const reading = caps.library.kind === 'book' || caps.library.kind === 'comic';
+    const page = reading ? await readReadingFacet(this.api, this.source.libraryId, path, field, {signal, isCurrent: () => this.current() && epoch === this.epoch})
+      : parseBrowseFacets(await this.api.request(path, 'GET', undefined, signal), field);
     if (!this.current() || epoch !== this.epoch || signal.aborted) throw browseSessionClosed();
-    return parseBrowseFacets(raw, field);
+    return page;
   }
   async count(predicates: readonly BrowseNode[], signal: AbortSignal) {
     return (await this.counts([{id: 'draft', predicates}], signal))[0];

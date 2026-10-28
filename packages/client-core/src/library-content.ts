@@ -24,6 +24,7 @@ export interface LibraryContentApi {
   awaitUserMutationsReady?(): Promise<void>;
   getUserMutationCoordinator?(): UserMutationCoordinator | undefined;
   getUserMutationScope?(): UserMutationScope | undefined;
+  requestRaw?(path: string, method: string, options?: Readonly<{headers?: Readonly<Record<string, string>>; body?: unknown; signal?: AbortSignal; deadlineMs?: number; singleAttempt?: boolean}>): Promise<import('./read-preparation.ts').PreparationResponse>;
 }
 export type ContentEntryKind = 'ebook' | 'comic' | 'movie' | 'show' | 'season' | 'episode' | 'artist' | 'album' | 'song' | 'book' | 'audiobook_file' | 'chapter' | 'collection' | 'category' | 'author' | 'book_series' | 'disc' | 'extra' | 'playlist' | 'radio';
 /** `params` fill a parameterised heading (a Discover personal row: "{genre} for you"); name it with `serverTextLabel`. */
