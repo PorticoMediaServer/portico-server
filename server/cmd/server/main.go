@@ -320,13 +320,34 @@ func run() (runErr error) {
 	reporter.finish("listener", nil)
 	ip = listener.Addr().(*net.TCPAddr).IP
 	defer listener.Close()
+	// One http.Server serves this socket for the whole life of the process,
+	// from bind onwards: the startup reporter first, the real handler once it
+	// exists, and the recovery page if startup fails. The connection ceiling and
+	// the TLS classifier are in place from the first connection; the owner's
+	// saved limit and the certificates are applied to them in place later.
+	transport := consoleConnections(listener, connectionBudget(hostlimits.EffectiveMemoryBytes()))
+	direct, e := networking.NewDeferredDirectListener(transport)
+	if e != nil {
+		_ = transport.Close()
+		return e
+	}
+	server := &http.Server{Addr: bind, Handler: transport.protectConsole(handlerSwitch), ConnContext: transport.context, ConnState: transport.state, ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 15 * time.Second, IdleTimeout: 60 * time.Second, MaxHeaderBytes: 32 << 10, HTTP2: serverHTTP2Policy()}
+	served := make(chan struct{})
+	var serveErr error
+	supervise.Go("cmd.http-serve", func() { defer close(served); serveErr = server.Serve(direct) })
+	defer func() { _ = server.Close(); <-served }()
 	defer func() {
 		if runErr == nil || errors.Is(runErr, errRestartRequested) || ctx.Err() != nil {
 			return
 		}
 		reporter.fail(runErr)
+		handlerSwitch.set(reporter)
 		log.Printf("Portico could not start. A recovery page is available on %s; fix the cause and restart the service: %v", listener.Addr(), runErr)
-		serveStartupRecovery(ctx, listener, reporter)
+		select {
+		case <-ctx.Done():
+		case <-served:
+			runErr = errors.Join(runErr, serveErr)
+		}
 		runErr = errors.Join(runErr, ctx.Err())
 	}()
 
@@ -1254,10 +1275,10 @@ func run() (runErr error) {
 	if manager := claimHandler.Remote(); manager != nil {
 		manager.SetAccessURLs(accessURLsProvider(console, manager))
 	}
-	var transport *cappedListener
 	apiDependencies := httpapi.Dependencies{TelemetryContext: ctx, RcloneProgram: &rcloneStatus, DriveOAuth: newDriveOAuth(), CacheDirectory: cache, StorageLayout: &layout, LocalArtworkUsage: localMeta.ArtworkUsage, ConnectionUsage: func() httpapi.ConnectionUsage {
 		held, _ := transport.Held()
-		return httpapi.ConnectionUsage{Ordinary: len(transport.ordinary), Total: held, OrdinaryLimit: cap(transport.ordinary), ConsoleReserve: consoleConnectionReserve}
+		ordinary, ordinaryLimit := transport.ordinaryUsage()
+		return httpapi.ConnectionUsage{Ordinary: ordinary, Total: held, OrdinaryLimit: ordinaryLimit, ConsoleReserve: consoleConnectionReserve}
 	}, Restart: requestRestart, ListeningPort: listener.Addr().(*net.TCPAddr).Port, LocalHTTPURL: networking.LoopbackHTTPURL(listener.Addr()), Events: events, Administration: adminOperations, Backups: backupService, Access: administration, Webhooks: outboundWebhooks, SettingsApplied: func(ctx context.Context) {
 		control.NotifySettingsChanged(ctx)
 		deliverySettings.Refresh(ctx)
@@ -1378,7 +1399,6 @@ func run() (runErr error) {
 	supervise.Supervise(ctx, "cmd.visibility-rebuilder", cat.RunVisibilityRebuilder)
 	supervise.Supervise(ctx, "cmd.compact-catalogue", compactcatalog.NewWorker(db).Run)
 	supervise.Go("cmd.catalogue-retention", func() { compactcatalog.RunRetention(ctx, db) })
-	server := &http.Server{Addr: bind, Handler: handlerSwitch, ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 15 * time.Second, IdleTimeout: 60 * time.Second, MaxHeaderBytes: 32 << 10, HTTP2: serverHTTP2Policy()}
 	connectionLimit := connectionBudget(hostlimits.EffectiveMemoryBytes())
 	if console != nil {
 		appliedConnectionLimit := 0
@@ -1390,19 +1410,15 @@ func run() (runErr error) {
 		}
 		console.AppliedConnectionLimit = &appliedConnectionLimit
 	}
-	transport = consoleConnections(listener, connectionLimit)
-	listener = transport
-	server.ConnContext = transport.context
-	server.ConnState = transport.state
-	transport.ownerRequest = func(r *http.Request) bool {
+	transport.setOrdinaryLimit(connectionLimit)
+	transport.setOwnerRequest(func(r *http.Request) bool {
 		header := r.Header.Get("Authorization")
 		if !strings.HasPrefix(header, "Bearer ") {
 			return false
 		}
 		p, err := ident.Authenticate(strings.TrimPrefix(header, "Bearer "))
 		return err == nil && p.Role == "owner"
-	}
-	server.Handler = transport.protectConsole(handlerSwitch)
+	})
 	// The watchdog and the deferred database housekeeping both start only now, so
 	// neither competes with the work of coming up.
 	supervise.Supervise(ctx, "cmd.database-watchdog", watchdog.Run)
@@ -1442,11 +1458,7 @@ func run() (runErr error) {
 	// A custom certificate serves even with no Hosted manager (unclaimed /
 	// Direct Sign-In): the listener exists whenever either source can serve.
 	{
-		direct, err := networking.NewDirectListenerWithCustom(listener, certificates, customCertificate)
-		if err != nil {
-			return err
-		}
-		defer direct.Close()
+		direct.UseCertificates(certificates, customCertificate)
 		_, port, _ := net.SplitHostPort(listener.Addr().String())
 		numericPort, _ := strconv.Atoi(port)
 		if certificates != nil {
@@ -1462,7 +1474,6 @@ func run() (runErr error) {
 			// close, and bounded like everything else.
 			drain.add("certificates", cancelCertificates, certificateDone)
 		}
-		listener = direct
 	}
 	if manager := claimHandler.Remote(); manager != nil {
 		control.OnRouteLabel(manager.RouteLabel)
@@ -1520,8 +1531,8 @@ func run() (runErr error) {
 			}
 		}
 	}
-	e = server.Serve(listener)
-	if errors.Is(e, http.ErrServerClosed) {
+	<-served
+	if e = serveErr; errors.Is(e, http.ErrServerClosed) {
 		<-httpShutdownDone
 		if restartRequested.Load() {
 			return errRestartRequested

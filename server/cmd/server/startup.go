@@ -48,8 +48,9 @@ func newStartupReporter() *startupReporter { return &startupReporter{} }
 
 func (s *startupReporter) start(name, label string) {
 	s.mu.Lock()
-	defer s.mu.Unlock()
 	s.phases = append(s.phases, startupPhase{Name: name, Label: label, Started: time.Now().UnixMilli()})
+	s.mu.Unlock()
+	startupPhaseHook(name)
 }
 
 func (s *startupReporter) finish(name string, err error) {
@@ -125,6 +126,10 @@ type switchableHandler struct {
 // reporter, before any post-ready maintenance can be mistaken for startup.
 var serverReadyHook = func() {}
 var deferredMaintenanceDoneHook = func() {}
+
+// startupPhaseHook is replaced only by the isolated startup-serving test
+// process, which holds startup at a phase to ask the socket what it answers.
+var startupPhaseHook = func(string) {}
 
 func newSwitchableHandler(initial http.Handler) *switchableHandler {
 	s := &switchableHandler{}

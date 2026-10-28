@@ -32,12 +32,24 @@ import (
 // maximumConnections is the upper bound even on large hosts.
 const maximumConnections = 2048
 
-// cappedListener bounds accepted connections.
+// cappedListener bounds accepted connections. The bound is a counter rather
+// than a fixed-size channel because the listener is serving from the moment the
+// socket is bound, before the owner's saved connection limit can be read: the
+// limit is set once more, in place, when the settings are open.
 type cappedListener struct {
 	net.Listener
-	slots        chan struct{}
-	ordinary     chan struct{}
-	ownerRequest func(*http.Request) bool
+	mu sync.Mutex
+	// limit counts every socket. With a console reserve, ordinaryLimit is the
+	// owner's share of it and limit is ordinaryLimit plus the reserve.
+	limit         int
+	open          int
+	reserved      bool
+	ordinaryLimit int
+	ordinaryOpen  int
+	// freed wakes an accept parked at the ceiling when a slot comes back or the
+	// limit grows; one buffered signal is enough for the single accept loop.
+	freed        chan struct{}
+	ownerRequest atomic.Pointer[func(*http.Request) bool]
 	// held is published so the diagnostics and the log can say how close to the
 	// ceiling the server is running.
 	held      atomic.Int64
@@ -52,11 +64,7 @@ func capConnections(inner net.Listener, limit int) *cappedListener {
 	if limit < 1 {
 		limit = maximumConnections
 	}
-	l := &cappedListener{Listener: inner, slots: make(chan struct{}, limit), done: make(chan struct{})}
-	for i := 0; i < limit; i++ {
-		l.slots <- struct{}{}
-	}
-	return l
+	return &cappedListener{Listener: inner, limit: limit, freed: make(chan struct{}, 1), done: make(chan struct{})}
 }
 
 // boundedDirectListener puts the socket cap under the TLS classifier. net/http
@@ -72,33 +80,67 @@ func boundedDirectListener(raw net.Listener, limit int, build func(net.Listener)
 }
 
 func (l *cappedListener) Accept() (net.Conn, error) {
-	select {
-	case <-l.done:
-		return nil, net.ErrClosed
-	default:
-	}
-	select {
-	case <-l.slots:
-	default:
+	for waited := false; ; {
+		select {
+		case <-l.done:
+			return nil, net.ErrClosed
+		default:
+		}
+		if l.take() {
+			break
+		}
 		// At the ceiling. Wait for a slot rather than accepting a connection there
 		// is no room to serve: the backlog is a better queue than the heap.
-		l.deferred.Add(1)
-		l.warned.Do(func() {
-			log.Printf("Connection ceiling of %d reached; further connections wait in the listen backlog", cap(l.slots))
-		})
+		if !waited {
+			waited = true
+			l.deferred.Add(1)
+			l.warned.Do(func() {
+				log.Printf("Connection ceiling of %d reached; further connections wait in the listen backlog", l.ceiling())
+			})
+		}
 		select {
-		case <-l.slots:
+		case <-l.freed:
 		case <-l.done:
 			return nil, net.ErrClosed
 		}
 	}
 	conn, err := l.Listener.Accept()
 	if err != nil {
-		l.slots <- struct{}{}
+		l.release()
 		return nil, err
 	}
 	l.held.Add(1)
 	return &cappedConn{Conn: conn, listener: l}, nil
+}
+
+func (l *cappedListener) take() bool {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	if l.open >= l.limit {
+		return false
+	}
+	l.open++
+	return true
+}
+
+func (l *cappedListener) release() {
+	l.mu.Lock()
+	l.open--
+	l.mu.Unlock()
+	l.wake()
+}
+
+func (l *cappedListener) wake() {
+	select {
+	case l.freed <- struct{}{}:
+	default:
+	}
+}
+
+func (l *cappedListener) ceiling() int {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	return l.limit
 }
 
 // Closing the transport must also wake an accept parked at the capacity ceiling.
@@ -137,18 +179,15 @@ func (c *cappedConn) Close() error {
 			c.idleTimer.Stop()
 			c.idleTimer = nil
 		}
-		if c.ordinaryHeld {
-			<-c.listener.ordinary
-		}
+		ordinary := c.ordinaryHeld
 		c.mu.Unlock()
-		c.listener.held.Add(-1)
-		select {
-		case c.listener.slots <- struct{}{}:
-		default:
-			// Unreachable: the channel holds exactly the slots handed out. Dropping
-			// one here would shrink the ceiling permanently, so it is worth saying.
-			log.Print("connection slot released twice; the connection ceiling has shrunk")
+		if ordinary {
+			c.listener.mu.Lock()
+			c.listener.ordinaryOpen--
+			c.listener.mu.Unlock()
 		}
+		c.listener.held.Add(-1)
+		c.listener.release()
 	})
 	return err
 }
@@ -168,8 +207,33 @@ type connectionKey struct{}
 
 func consoleConnections(inner net.Listener, limit int) *cappedListener {
 	l := capConnections(inner, limit+consoleConnectionReserve)
-	l.ordinary = make(chan struct{}, limit)
+	l.reserved = true
+	l.ordinaryLimit = limit
 	return l
+}
+
+// setOrdinaryLimit replaces the owner's share in place. Connections already
+// open past a smaller limit finish normally; new ones wait until the count is
+// back under it.
+func (l *cappedListener) setOrdinaryLimit(limit int) {
+	l.mu.Lock()
+	l.ordinaryLimit = limit
+	l.limit = limit + consoleConnectionReserve
+	l.mu.Unlock()
+	l.wake()
+}
+
+// ordinaryUsage reports the open ordinary connections and their limit.
+func (l *cappedListener) ordinaryUsage() (open, limit int) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	return l.ordinaryOpen, l.ordinaryLimit
+}
+
+// setOwnerRequest installs the owner check once identity is open; until then
+// no request can prove it is the owner's.
+func (l *cappedListener) setOwnerRequest(owner func(*http.Request) bool) {
+	l.ownerRequest.Store(&owner)
 }
 
 func (l *cappedListener) context(ctx context.Context, conn net.Conn) context.Context {
@@ -185,8 +249,8 @@ func (l *cappedListener) protectConsole(next http.Handler) http.Handler {
 		// Route authorization still runs normally. The reserve also carries the
 		// console shell and sign-in, so an owner without a warm session can enter.
 		console := !strings.HasPrefix(r.URL.Path, "/v1/") || strings.HasPrefix(r.URL.Path, "/v1/admin/") || strings.HasPrefix(r.URL.Path, "/v1/auth/") || strings.HasPrefix(r.URL.Path, "/v1/direct/") || r.URL.Path == "/v1/server" || r.URL.Path == "/v1/system" || r.URL.Path == "/v1/capabilities" || r.URL.Path == "/v1/readiness" || strings.HasPrefix(r.URL.Path, "/v1/sessions") || r.URL.Path == "/v1/networking/connection" || strings.HasPrefix(r.URL.Path, "/v1/setup")
-		if !console && r.Method == http.MethodGet && (r.URL.Path == "/v1/bootstrap" || r.URL.Path == "/v1/preferences" || r.URL.Path == "/v1/console/registry") && l.ownerRequest != nil {
-			console = l.ownerRequest(r)
+		if owner := l.ownerRequest.Load(); !console && owner != nil && r.Method == http.MethodGet && (r.URL.Path == "/v1/bootstrap" || r.URL.Path == "/v1/preferences" || r.URL.Path == "/v1/console/registry") {
+			console = (*owner)(r)
 		}
 		// The reserve is for a person at the console. A script with an API key
 		// or access token takes an ordinary connection whatever it asks for, so
@@ -217,19 +281,21 @@ func (l *cappedListener) protectConsole(next http.Handler) http.Handler {
 func (c *cappedConn) admitOrdinary() bool {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	if c.ordinaryHeld || c.listener.ordinary == nil {
+	if c.ordinaryHeld || !c.listener.reserved {
 		return true
 	}
 	if c.closed {
 		return false
 	}
-	select {
-	case c.listener.ordinary <- struct{}{}:
-		c.ordinaryHeld = true
-		return true
-	default:
+	l := c.listener
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	if l.ordinaryOpen >= l.ordinaryLimit {
 		return false
 	}
+	l.ordinaryOpen++
+	c.ordinaryHeld = true
+	return true
 }
 
 // HTTP/2 reports an initial idle state after its preface, before its first

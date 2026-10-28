@@ -14,7 +14,7 @@ func TestOwnerMediaUsesOrdinaryConnections(t *testing.T) {
 		t.Fatal(err)
 	}
 	cap := consoleConnections(raw, 1)
-	cap.ownerRequest = func(r *http.Request) bool { return r.Header.Get("Authorization") == "Bearer owner-session" }
+	cap.setOwnerRequest(func(r *http.Request) bool { return r.Header.Get("Authorization") == "Bearer owner-session" })
 	started, release := make(chan struct{}), make(chan struct{})
 	h := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path == "/v1/media/hold" {

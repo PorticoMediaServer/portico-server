@@ -7,6 +7,7 @@ import (
 	"net"
 	"portico.local/server/internal/supervise"
 	"sync"
+	"sync/atomic"
 	"time"
 )
 
@@ -25,6 +26,15 @@ type DirectListener struct {
 	mu       sync.Mutex
 	pending  map[*countedTLSConn]struct{}
 	err      error
+	// source is replaced once when a deferred listener learns its certificates.
+	source atomic.Pointer[certificateSource]
+}
+
+// certificateSource is the pair of TLS callbacks one set of certificate
+// owners implies. verify is nil when no certificate can be served.
+type certificateSource struct {
+	get    func(*tls.ClientHelloInfo) (*tls.Certificate, error)
+	verify func(tls.ConnectionState) error
 }
 
 func NewDirectListener(inner net.Listener, manager *CertificateManager) (*DirectListener, error) {
@@ -42,6 +52,19 @@ func NewDirectListenerWithCustom(inner net.Listener, manager *CertificateManager
 // NewDirectListenerWithTLSConfig lets an embedding server supply its own
 // certificate source while keeping the same socket classifier and ALPN path.
 // The caller retains responsibility for the certificate's trust policy.
+// NewDeferredDirectListener starts classifying at once, before the server
+// knows its certificates: plain HTTP is served from the first connection, and a
+// TLS handshake fails as it would with no certificate until UseCertificates.
+func NewDeferredDirectListener(inner net.Listener) (*DirectListener, error) {
+	return newDirectListener(inner, nil, nil, nil)
+}
+
+// UseCertificates installs the certificate owners on a listener that is
+// already serving. Handshakes that start afterwards use them.
+func (l *DirectListener) UseCertificates(manager *CertificateManager, custom *CustomCertificate) {
+	l.source.Store(newCertificateSource(manager, custom))
+}
+
 func NewDirectListenerWithTLSConfig(inner net.Listener, config *tls.Config) (*DirectListener, error) {
 	if config == nil {
 		return nil, ErrInvalid
@@ -54,13 +77,33 @@ func newDirectListener(inner net.Listener, manager *CertificateManager, override
 		return nil, ErrInvalid
 	}
 	l := &DirectListener{Listener: inner, ready: make(chan net.Conn, 64), done: make(chan struct{}), classify: make(chan struct{}, 64), pending: map[*countedTLSConn]struct{}{}}
-	getCertificate := func(*tls.ClientHelloInfo) (*tls.Certificate, error) { return nil, ErrUnavailable }
+	l.source.Store(newCertificateSource(manager, custom))
+	l.config = &tls.Config{MinVersion: tls.VersionTLS12, NextProtos: []string{"h2", "http/1.1"},
+		GetCertificate: func(hello *tls.ClientHelloInfo) (*tls.Certificate, error) { return l.source.Load().get(hello) },
+		VerifyConnection: func(state tls.ConnectionState) error {
+			if verify := l.source.Load().verify; verify != nil {
+				return verify(state)
+			}
+			return nil
+		}}
+	if override != nil {
+		l.config = override.Clone()
+		if l.config.MinVersion < tls.VersionTLS12 {
+			l.config.MinVersion = tls.VersionTLS12
+		}
+		l.config.NextProtos = []string{"h2", "http/1.1"}
+	}
+	supervise.Go("networking.direct-listener.accept", func() { l.acceptLoop() })
+	return l, nil
+}
+func newCertificateSource(manager *CertificateManager, custom *CustomCertificate) *certificateSource {
+	source := &certificateSource{get: func(*tls.ClientHelloInfo) (*tls.Certificate, error) { return nil, ErrUnavailable }}
 	if manager != nil {
-		getCertificate = manager.GetCertificate
+		source.get = manager.GetCertificate
 	}
 	if custom != nil {
-		managerGet := getCertificate
-		getCertificate = func(hello *tls.ClientHelloInfo) (*tls.Certificate, error) {
+		managerGet := source.get
+		source.get = func(hello *tls.ClientHelloInfo) (*tls.Certificate, error) {
 			if cert, e := custom.Get(hello); e == nil && cert != nil {
 				return cert, nil
 			} else if hello != nil && custom.Serves(hello.ServerName) {
@@ -72,19 +115,11 @@ func newDirectListener(inner net.Listener, manager *CertificateManager, override
 			return managerGet(hello)
 		}
 	}
-	l.config = &tls.Config{MinVersion: tls.VersionTLS12, GetCertificate: getCertificate, NextProtos: []string{"h2", "http/1.1"}}
-	if override != nil {
-		l.config = override.Clone()
-		if l.config.MinVersion < tls.VersionTLS12 {
-			l.config.MinVersion = tls.VersionTLS12
-		}
-		l.config.NextProtos = []string{"h2", "http/1.1"}
-	}
 	// Resumed sessions must still be fenced by live claim authority. Go rotates
 	// in-memory ticket keys automatically; no ticket key is persisted. A custom
 	// certificate is not claim-fenced.
 	if manager != nil || custom != nil {
-		l.config.VerifyConnection = func(state tls.ConnectionState) error {
+		source.verify = func(state tls.ConnectionState) error {
 			// A58: a full handshake already ran GetCertificate (and its
 			// authority fence) moments ago; only a resumed session skipped it.
 			if !state.DidResume {
@@ -106,8 +141,7 @@ func newDirectListener(inner net.Listener, manager *CertificateManager, override
 			return e
 		}
 	}
-	supervise.Go("networking.direct-listener.accept", func() { l.acceptLoop() })
-	return l, nil
+	return source
 }
 func (l *DirectListener) acceptLoop() {
 	for {
