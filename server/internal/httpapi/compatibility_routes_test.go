@@ -28,25 +28,39 @@ func compatibilityCall(f administrationFixture, method, path, secret, body strin
 }
 func TestCompatibilityDisabledPublicAndDeclaredAliasBoundary(t *testing.T) {
 	f := administrationFixtureNew(t)
-	for _, path := range []string{"/System/Info/Public", "/system/info/public", "/mediabrowser/System/Info/Public"} {
+	for _, path := range []string{"/System/Info/Public", "/system/info/public", "/mediabrowser/System/Info/Public", "/mediabrowser/system/info/public"} {
 		w := compatibilityCall(f, "GET", path, "", "")
 		if w.Code != 404 || w.Header().Get("Cache-Control") != "no-store" {
 			t.Fatalf("disabled compatibility %s: %d", path, w.Code)
 		}
 	}
+	if w := compatibilityCall(f, "GET", "/Items", f.member, ""); w.Code != 404 {
+		t.Fatalf("disabled authenticated route: %d %s", w.Code, w.Body)
+	}
 	if _, err := f.deps.DB.Exec(`INSERT INTO server_settings(singleton,"integrations.compatibilityEnabled") VALUES(1,1) ON CONFLICT(singleton) DO UPDATE SET "integrations.compatibilityEnabled"=1`); err != nil {
 		t.Fatal(err)
 	}
-	for _, path := range []string{"/System/Info/Public", "/system/info/public", "/mediabrowser/System/Info/Public"} {
+	for _, path := range []string{"/System/Info/Public", "/system/info/public", "/mediabrowser/System/Info/Public", "/mediabrowser/system/info/public"} {
 		w := compatibilityCall(f, "GET", path, "", "")
 		if w.Code != 200 || !strings.Contains(w.Body.String(), `"ProductName":"Portico"`) {
 			t.Fatalf("public compatibility %s: %d %s", path, w.Code, w.Body)
 		}
 	}
+	if w := compatibilityCall(f, "GET", "/Items", f.member, ""); w.Code != 200 {
+		t.Fatalf("enabled authenticated route: %d %s", w.Code, w.Body)
+	}
 	for _, path := range []string{"/Videos/anything/stream", "/socket", "/Sessions/Playing/Progress"} {
 		w := compatibilityCall(f, "POST", path, "", `{}`)
 		if w.Code == 200 {
 			t.Fatalf("undeclared player API unexpectedly succeeded: %s", path)
+		}
+	}
+	if _, err := f.deps.DB.Exec(`UPDATE server_settings SET "integrations.compatibilityEnabled"=0 WHERE singleton=1`); err != nil {
+		t.Fatal(err)
+	}
+	for _, request := range []struct{ path, token string }{{"/System/Info/Public", ""}, {"/Items", f.member}} {
+		if w := compatibilityCall(f, "GET", request.path, request.token, ""); w.Code != 404 {
+			t.Fatalf("disabled again: %s %d %s", request.path, w.Code, w.Body)
 		}
 	}
 }
