@@ -18,6 +18,7 @@ func TestRestrictedProfileCountsMatchWhatIsShown(t *testing.T) {
 	m := buildRestrictionMatrix(t)
 	visible, perLibrary := m.visibleItemCounts(t)
 	visiblePeople := m.visiblePeopleCount(t)
+	visibleEntities := m.visibleIntegrationEntities(t)
 	checked := 0
 	check := func(pattern, method, path, body string) {
 		status, response := m.call(method, path, body, "restricted")
@@ -35,6 +36,15 @@ func TestRestrictedProfileCountsMatchWhatIsShown(t *testing.T) {
 		for library, n := range perLibrary {
 			if strings.Contains(path, "/libraries/"+library+"/") {
 				bound = n
+			}
+		}
+		// Integration Items counts catalogue entities, including visible shows and
+		// seasons. Keep its exact entity oracle separate from playable-title counts.
+		if pattern == "GET /v1/integrations/items" {
+			expected := integrationCountMatches(visibleEntities, path)
+			bound = len(expected)
+			for _, finding := range integrationEntityCountFindings(response, expected) {
+				t.Errorf("%s: %s: %s", pattern, path, finding)
 			}
 		}
 		for _, finding := range totalsAbove(v, "", bound, visiblePeople) {

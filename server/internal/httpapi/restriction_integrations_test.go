@@ -70,7 +70,10 @@ func addIntegrationRestrictionReads(routes map[string]restrictionRoute) {
 	routes["GET /v1/integrations/libraries"] = static("/v1/integrations/libraries?limit=100")
 	routes["GET /v1/integrations/sessions"] = static("/v1/integrations/sessions?limit=100")
 	routes["GET /v1/integrations/items"] = probe(func(m *restrictionEnv) []string {
-		out := []string{"/v1/integrations/items?limit=100&includeFiles=true"}
+		out := []string{"/v1/integrations/items?limit=100&includeFiles=true", "/v1/integrations/items?limit=2"}
+		for _, kind := range []string{"movie", "show", "season", "episode"} {
+			out = append(out, "/v1/integrations/items?kind="+kind+"&limit=100")
+		}
 		for _, id := range append(m.hiddenItemSamples(), m.visibleMovie) {
 			out = append(out, "/v1/integrations/items?ids="+url.QueryEscape(id)+"&includeFiles=true")
 		}

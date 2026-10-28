@@ -13,7 +13,7 @@ import (
 // A backup is a plain copy of the database, and a restore puts an older copy
 // back. Two things must not follow from that:
 //
-//   - A copy of a backup must not be a way in. The database holds, for every
+//   - A copy of a backup must not resume a human sign-in. The database holds, for every
 //     signed-in device, what is needed to keep it signed in: the stored answer
 //     to its last renewal (its current tokens), pending sign-in codes and their
 //     answers, the first-run receipt. Anyone who could read a backup could use
@@ -24,7 +24,7 @@ import (
 //     remembers them as they were.
 //
 // Both are closed the same way, with no step for the owner. Every backup copy
-// has its sessions ended and its live secrets removed as it is written
+// has its human sessions ended and their live secrets removed as it is written
 // (ScrubBackupCopy), so a backup holds no sign-in at all. And when a restore
 // has just been applied, everyone is signed out before the server answers a
 // request (SignEveryoneOutAfterRestore), whatever the restored copy held: an
@@ -34,7 +34,10 @@ import (
 // an owner has connected to the server keeps working across a restore, as it
 // does across a password change. A key that was live when the backup was taken
 // is live again after it is restored, including one revoked in between; the
-// owner sees it in the key list and can revoke it again.
+// owner sees it in the key list and can revoke it again. Named integration
+// app passwords are persistent service credentials too. Owner-recoverable keys
+// and app passwords keep their recoverable storage in the local backup; personal
+// access tokens remain digest-only. Account passwords and PINs remain one-way.
 //
 // People sign in again after a restore. Their accounts, profiles, passwords,
 // second factors, devices and everything they saved are untouched; so is each
@@ -51,8 +54,9 @@ var sessionScrub = []struct{ table, statement string }{
 	// The tokens of every session that is now ended. An API key or personal
 	// access token is not a sign-in and is not ended here: it has a lifetime of
 	// its own (api_credentials.go), the schema keeps its family from being
-	// swept above, and so its one token stays. What a backup holds of it is a
-	// digest of its secret, which is no use to a reader of the file.
+	// swept above, and so its one token stays. API keys and app passwords also
+	// retain owner-recoverable secrets by product policy; local backups carry
+	// those secrets. Human session renewal credentials are removed below.
 	{"authorization_family_tokens", `UPDATE authorization_family_tokens SET retired=1 WHERE retired=0 AND family_id NOT IN(SELECT id FROM authorization_session_families WHERE revoked=0)`},
 	// Renewal: the credentials themselves, and the stored answers that hold a
 	// session's current tokens in the clear.

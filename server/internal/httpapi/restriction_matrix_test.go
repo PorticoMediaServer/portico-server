@@ -825,14 +825,15 @@ func prefixed(prefix string, ids []string, suffix ...string) []string {
 type restrictionEnv struct {
 	routeInventory map[string]string
 
-	downloads  *downloads.Service
-	db         *sql.DB
-	catalog    *catalog.Service
-	fixtures   *catalogtest.Catalog
-	names      catalogtest.Names
-	itemsByID  map[string]catalogtest.Item
-	principals map[string]identity.Principal
-	bulkAccess catalog.BulkAccess
+	downloads        *downloads.Service
+	db               *sql.DB
+	catalog          *catalog.Service
+	fixtures         *catalogtest.Catalog
+	names            catalogtest.Names
+	itemsByID        map[string]catalogtest.Item
+	principals       map[string]identity.Principal
+	bulkAccess       catalog.BulkAccess
+	visibilityOracle catalog.Viewer
 
 	call            func(method, path, body, viewer string) (int, string)
 	callWithin      func(method, path, viewer string, limit time.Duration) (int, string)
@@ -1116,7 +1117,7 @@ func buildRestrictionMatrix(t *testing.T) *restrictionEnv {
 	// the fixture before deriving its hidden/visible marker sets.
 	catalogFixtures.Drain()
 
-	m := &restrictionEnv{downloads: offline, db: db, catalog: cat, fixtures: catalogFixtures, names: catalogtest.Names{}, itemsByID: map[string]catalogtest.Item{}, principals: principals, bulkAccess: (Dependencies{DB: db, Identity: ident, Hosted: host}).bulkAccess, statuses: map[string][]int{}, libraries: all, hiddenItems: map[string][]string{}, hiddenEntities: map[string][]string{}, visibleEntities: map[string][]string{}}
+	m := &restrictionEnv{visibilityOracle: oracle, downloads: offline, db: db, catalog: cat, fixtures: catalogFixtures, names: catalogtest.Names{}, itemsByID: map[string]catalogtest.Item{}, principals: principals, bulkAccess: (Dependencies{DB: db, Identity: ident, Hosted: host}).bulkAccess, statuses: map[string][]int{}, libraries: all, hiddenItems: map[string][]string{}, hiddenEntities: map[string][]string{}, visibleEntities: map[string][]string{}}
 	m.routeInventory = restrictionRouteInventory(t, deps.self.registry, routeLanes)
 	rows, err := db.Query(`SELECT e.id,pid(e.public_id),k.name,i.source_key FROM catalog_entities e JOIN catalog_kinds k ON k.id=e.kind JOIN catalog_identities i ON i.public_id=e.public_id WHERE k.playable=1 ORDER BY e.id`)
 	if err != nil {

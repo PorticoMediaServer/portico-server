@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"testing"
 
+	"portico.local/server/internal/access"
 	"portico.local/server/internal/dbwork"
 	"portico.local/server/internal/identity"
 )
@@ -44,7 +45,7 @@ func TestAKeyOutlivesABackupAndARestoreAndSessionsDoNot(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for name, secret := range map[string]string{"key": key.Secret, "token": token.Secret} {
+	for name, secret := range map[string]string{"token": token.Secret, "revoked token": gone.Secret} {
 		if bytes.Contains(raw, []byte(secret)) {
 			t.Fatalf("the backup copy holds the %s's secret", name)
 		}
@@ -54,6 +55,16 @@ func TestAKeyOutlivesABackupAndARestoreAndSessionsDoNot(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer copyDB.Close()
+	// Named API keys are owner-recoverable, and that recovery survives backup.
+	// Personal tokens remain digest-only; human sign-ins are still scrubbed below.
+	recovered, err := access.New(copyDB).RevealCredential(ctx, func(context.Context, *sql.Tx) error { return nil }, key.Credential.ID, identity.CredentialKindKey)
+	if err != nil || recovered.Secret != key.Secret {
+		t.Fatalf("backup lost owner key recovery: %v", err)
+	}
+	var recoverableTokens int
+	if err = copyDB.QueryRow(`SELECT count(*) FROM api_credentials WHERE kind='token' AND secret<>''`).Scan(&recoverableTokens); err != nil || recoverableTokens != 0 {
+		t.Fatalf("backup changed personal token storage: %d %v", recoverableTokens, err)
+	}
 	for what, check := range map[string]struct {
 		query string
 		want  int
