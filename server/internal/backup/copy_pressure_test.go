@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"sync"
@@ -301,4 +302,39 @@ func TestAStrandedCopyOnAClosedDatabaseIsDropped(t *testing.T) {
 			t.Fatal("a closed database's copy stayed stranded")
 		}
 	}
+}
+
+// Settling runs from several backup services at once; the registry is shared.
+func TestConcurrentSettlingIsRaceFree(t *testing.T) {
+	dir := t.TempDir()
+	ctx := context.Background()
+	limits := testCopyLimits(dbwork.ClassMaintenance)
+	var sources []*sql.DB
+	for i := 0; i < 4; i++ {
+		db, err := dbwork.OpenHandle(filepath.Join(dir, fmt.Sprintf("s%d.sqlite", i)), dbwork.DefaultPolicy())
+		if err != nil {
+			t.Fatal(err)
+		}
+		sources = append(sources, db)
+		strandedMu.Lock()
+		stranded = append(stranded, &copyRun{source: db})
+		strandedMu.Unlock()
+		if i%2 == 0 {
+			db.Close()
+		} else {
+			t.Cleanup(func() { db.Close() })
+		}
+	}
+	var wg sync.WaitGroup
+	for _, db := range sources {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			_ = settleStranded(ctx, db, limits)
+		}()
+	}
+	wg.Wait()
+	strandedMu.Lock()
+	stranded = nil
+	strandedMu.Unlock()
 }

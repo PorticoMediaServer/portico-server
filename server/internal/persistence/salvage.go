@@ -1,7 +1,6 @@
 package persistence
 
 import (
-	"bytes"
 	"context"
 	"database/sql"
 	"errors"
@@ -21,12 +20,8 @@ import (
 // with the free space there is: salvage writes a second copy beside it.
 var ErrRecoveryNoRoom = errors.New("there is not enough free space to recover this damaged database")
 
-// Salvage bounds: rows read per window, and midpoint probes into the
-// damaged gaps of one table (a bisection needs about 64 per gap).
-const (
-	salvageWindow = 64
-	salvageProbes = 1024
-)
+// salvageWindow is the rows read per window.
+const salvageWindow = 64
 
 // salvage rebuilds dir/name from every row that can still be read: a fresh
 // copy of this baseline is installed beside it, the damaged file is attached
@@ -257,85 +252,30 @@ func salvageTables(ctx context.Context, db *dbwork.Candidate) ([]salvageTable, e
 }
 
 // copyTable copies every readable row of one table and reports whether that
-// was all of it. It reads forward in key order a window at a time, narrowing
-// to single rows where a window fails, so everything before damage is kept,
-// then backwards from the end of the table down to the damage. What lies
-// between is a gap of unknown size that may hold readable pages among damaged
-// ones. It is bisected on the key (rowid, or the primary key column by column,
-// so a composite key whose leading columns repeat is still split): a readable
-// row found at a midpoint is copied with every readable row on either side of
-// it, and the parts still unread become new gaps. Re-reading a row is harmless
-// (copies replace), and a probe budget bounds the work on a badly damaged
-// table. Bisection follows SQLite's default ordering (integers, reals, then
-// BINARY-collated text and blobs); a key ordered otherwise is still copied up
-// to and back from the damage, but its gaps may not all be recovered.
+// was all of it. It first reads the whole table in key order. If that meets
+// damage, it walks the table's b-tree itself (leafRanges): interior pages name
+// each leaf and the keys that bound it, so every leaf can then be read on its
+// own by key range, and exactly the leaves that cannot be read are lost.
+// Re-reading rows the first pass already copied is harmless (copies replace).
 func copyTable(ctx context.Context, db *dbwork.Candidate, table salvageTable) (bool, error) {
 	c := newTableCopy(db, table)
-	_, last, faulted, err := c.run(ctx, nil, nil, false)
+	_, _, faulted, err := c.run(ctx, nil, nil)
 	if err != nil || !faulted {
 		return !c.rejected, err
 	}
-	_, low, faulted, err := c.run(ctx, nil, last, true)
-	if err != nil || !faulted || low == nil {
+	ranges, err := leafRanges(ctx, db, table.name, c.keys, !c.keyed)
+	if err != nil {
 		return false, err
 	}
-	type gap struct{ lo, hi []any }
-	lo := last
-	if lo == nil {
-		lo = []any{negInf}
-	}
-	gaps := []gap{{lo, low}}
-	for budget := salvageProbes; len(gaps) > 0 && budget > 0; budget-- {
-		g := gaps[len(gaps)-1]
-		gaps = gaps[:len(gaps)-1]
-		i := firstDifference(g.lo, g.hi, c.keys)
-		if i < 0 {
-			continue
-		}
-		lv, hv := element(g.lo, i), element(g.hi, i)
-		if lv == posInf || hv == negInf {
-			continue // nothing lies between
-		}
-		prefix := g.lo[:min(i, len(g.lo))]
-		if len(prefix) < i {
-			prefix = g.hi[:i]
-		}
-		mid, ok := midpoint(finite(lv), finite(hv))
-		if !ok {
-			if i == c.keys-1 {
-				continue // adjacent values: no key between them
-			}
-			// The two ends differ here by adjacent values; what lies between
-			// shares one end's value and differs further on.
-			if lv != negInf {
-				gaps = append(gaps, gap{g.lo, append(append([]any{}, g.lo[:i+1]...), posInf)})
-			}
-			if hv != posInf {
-				gaps = append(gaps, gap{append(append([]any{}, g.hi[:i+1]...), negInf), g.hi})
+	for _, r := range ranges {
+		if row, ok := c.fromRecord(r.row); ok {
+			if err = c.write(ctx, [][]any{row}); err != nil {
+				return false, err
 			}
 			continue
 		}
-		at := append(append(append([]any{}, prefix...), mid), negInf) // just below (prefix, mid)
-		first, end, faulted, err := c.run(ctx, g.hi, at, false)
-		if err != nil {
+		if _, _, _, err = c.run(ctx, r.hi, r.lo); err != nil {
 			return false, err
-		}
-		if first == nil {
-			if faulted {
-				gaps = append(gaps, gap{at, g.hi}) // damage at the midpoint itself
-			}
-			gaps = append(gaps, gap{g.lo, at})
-			continue
-		}
-		if faulted {
-			gaps = append(gaps, gap{end, g.hi})
-		}
-		_, bottom, faulted, err := c.run(ctx, first, g.lo, true)
-		if err != nil {
-			return false, err
-		}
-		if faulted {
-			gaps = append(gaps, gap{g.lo, bottom})
 		}
 	}
 	return false, nil
@@ -350,161 +290,6 @@ const (
 	posInf infinity = 1
 )
 
-func element(tuple []any, i int) any {
-	if i < len(tuple) {
-		return tuple[i]
-	}
-	if len(tuple) > 0 {
-		if inf, ok := tuple[len(tuple)-1].(infinity); ok {
-			return inf
-		}
-	}
-	return negInf
-}
-
-func finite(v any) any {
-	if _, ok := v.(infinity); ok {
-		return nil
-	}
-	return v
-}
-
-// firstDifference is the first key column where two bounds differ, or -1.
-func firstDifference(lo, hi []any, keys int) int {
-	for i := 0; i < keys; i++ {
-		l, h := element(lo, i), element(hi, i)
-		if _, ok := l.(infinity); ok {
-			return i
-		}
-		if _, ok := h.(infinity); ok {
-			return i
-		}
-		lb, lok := l.([]byte)
-		hb, hok := h.([]byte)
-		if lok && hok {
-			if !bytes.Equal(lb, hb) {
-				return i
-			}
-			continue
-		}
-		if lok || hok || l != h {
-			return i
-		}
-	}
-	return -1
-}
-
-// midpoint is a value strictly between lo and hi of one SQLite type, where a
-// nil end is unbounded, or false when there is none.
-func midpoint(lo, hi any) (any, bool) {
-	kind := hi
-	if kind == nil {
-		kind = lo
-	}
-	switch kind.(type) {
-	case int64:
-		l, lok := lo.(int64)
-		h, hok := hi.(int64)
-		if lo == nil {
-			l, lok = math.MinInt64, true
-		}
-		if hi == nil {
-			h, hok = math.MaxInt64, true
-		}
-		if !lok || !hok || h <= l {
-			return nil, false
-		}
-		span := uint64(h) - uint64(l) // exact even when h-l overflows int64
-		if span < 2 {
-			return nil, false
-		}
-		return l + int64(span/2), true
-	case float64:
-		l, lok := lo.(float64)
-		h, hok := hi.(float64)
-		if lo == nil {
-			l, lok = -math.MaxFloat64, true
-		}
-		if hi == nil {
-			h, hok = math.MaxFloat64, true
-		}
-		m := l/2 + h/2
-		return m, lok && hok && m > l && m < h
-	case string:
-		l, lok := lo.(string)
-		h, hok := hi.(string)
-		if !(lok || lo == nil) || !(hok || hi == nil) {
-			return nil, false
-		}
-		var upper []byte
-		if hi != nil {
-			upper = []byte(h)
-		}
-		m, between := midBytes([]byte(l), upper, hi == nil)
-		return string(m), between
-	case []byte:
-		l, lok := lo.([]byte)
-		h, hok := hi.([]byte)
-		if !(lok || lo == nil) || !(hok || hi == nil) {
-			return nil, false
-		}
-		m, between := midBytes(l, h, hi == nil)
-		return m, between
-	}
-	return nil, false
-}
-
-// midBytes is a byte string strictly between a and b in memcmp order (the
-// order SQLite uses for BLOBs and for TEXT under its default collation); b is
-// unbounded when open.
-func midBytes(a, b []byte, open bool) ([]byte, bool) {
-	between := func(m []byte) bool { return bytes.Compare(m, a) > 0 && (open || bytes.Compare(m, b) < 0) }
-	if open {
-		m := append(append([]byte{}, a...), 0x80)
-		return m, true
-	}
-	if bytes.Compare(a, b) >= 0 {
-		return nil, false
-	}
-	n := max(len(a), len(b)) + 1
-	pad := func(v []byte) []int {
-		out := make([]int, n)
-		for i := range out {
-			if i < len(v) {
-				out[i] = int(v[i])
-			}
-		}
-		return out
-	}
-	x, y := pad(a), pad(b)
-	// (x+y)/2 in base 256, most significant byte first.
-	sum := make([]int, n+1)
-	for i := n - 1; i >= 0; i-- {
-		sum[i+1] += x[i] + y[i]
-		sum[i] += sum[i+1] / 256
-		sum[i+1] %= 256
-	}
-	mid := make([]byte, n)
-	carry := 0
-	for i := 0; i <= n; i++ {
-		v := carry*256 + sum[i]
-		if i > 0 {
-			mid[i-1] = byte(v / 2)
-		}
-		carry = v % 2
-	}
-	if trimmed := bytes.TrimRight(mid, "\x00"); between(trimmed) {
-		return trimmed, true
-	}
-	if between(mid) {
-		return mid, true
-	}
-	// a and b differ only in trailing zero bytes ("a" and "a\x00\x00"): the
-	// next string after a may still lie between.
-	next := append(append([]byte{}, a...), 0)
-	return next, between(next)
-}
-
 type tableCopy struct {
 	db         *dbwork.Candidate
 	keyed      bool
@@ -514,6 +299,10 @@ type tableCopy struct {
 	order      string
 	keyColumns []string
 	insert     string
+	// columns and keyNames are the table's copied columns and key columns,
+	// unquoted (fromRecord).
+	columns  []string
+	keyNames []string
 	// rejected is set when the schema refused a readable row.
 	rejected bool
 }
@@ -533,6 +322,7 @@ func newTableCopy(db *dbwork.Candidate, table salvageTable) *tableCopy {
 	name := quoteIdentifier(table.name)
 	return &tableCopy{
 		db: db, keyed: table.keys != nil, keys: len(keys), width: len(keys) + len(columns), keyColumns: quoteIdentifiers(keys),
+		columns: table.columns, keyNames: keys,
 		from:  `SELECT ` + selectTyped(append(quoteIdentifiers(keys), columns...)) + ` FROM damaged.` + name,
 		order: keyList,
 		// A copied row replaces the fresh baseline's seeded one (settings
@@ -542,38 +332,31 @@ func newTableCopy(db *dbwork.Candidate, table salvageTable) *tableCopy {
 	}
 }
 
-// run copies rows strictly between the lower and upper bounds (either may be
-// nil), in ascending or descending key order, until the range ends or a single
-// row cannot be read. It returns the first and last keys it copied (nil when
-// none) and whether it stopped at damage. The returned last key is lower
-// (ascending) or upper (descending) when nothing was copied.
-func (c *tableCopy) run(ctx context.Context, upper, lower []any, descending bool) (first, last []any, faulted bool, err error) {
+// run copies rows above lower and below upper (either may be nil) in key
+// order, until the range ends or a single row cannot be read. It returns the
+// first and last keys it copied (nil when none; last is lower when nothing was
+// copied) and whether it stopped at damage.
+//
+// A composite lower bound is not given to SQLite as a row value: SQLite does
+// not seek on (a,b)>(x,y) but scans from the start of a=x, which would read
+// every leaf of that run, damaged ones included. It is read as a sequence of
+// seekable ranges instead: a=x AND b>y, then a>x, and so on outwards.
+func (c *tableCopy) run(ctx context.Context, upper, lower []any) (first, last []any, faulted bool, err error) {
 	window := salvageWindow
-	at := lower
-	if descending {
-		at = upper
-	}
-	last = at
-	direction := ""
-	if descending {
-		direction = " DESC"
-	}
-	order := ` ORDER BY ` + strings.ReplaceAll(c.order, ",", direction+",") + direction
+	at, level := lower, c.deepest(lower)
+	last = lower
+	order := ` ORDER BY ` + c.order
 	for {
 		var where []string
 		args := []any{}
-		add := func(tuple []any, above bool) {
-			if clause, values, ok := c.bound(tuple, above); ok {
-				where = append(where, clause)
-				args = append(args, values...)
-			}
+		if at != nil {
+			clause, values := c.lowerClause(at, level)
+			where = append(where, clause)
+			args = append(args, values...)
 		}
-		if descending {
-			add(at, false)
-			add(lower, true)
-		} else {
-			add(at, true)
-			add(upper, false)
+		if clause, values, ok := c.bound(upper, false); ok {
+			where = append(where, clause)
+			args = append(args, values...)
 		}
 		query := c.from
 		if len(where) > 0 {
@@ -592,6 +375,10 @@ func (c *tableCopy) run(ctx context.Context, upper, lower []any, descending bool
 			return first, last, true, nil
 		}
 		if len(rows) == 0 {
+			if at != nil && level > 0 {
+				level-- // this run of the leading columns is done: widen
+				continue
+			}
 			return first, last, false, nil
 		}
 		if err = c.write(ctx, rows); err != nil {
@@ -601,8 +388,59 @@ func (c *tableCopy) run(ctx context.Context, upper, lower []any, descending bool
 			first = rows[0][:c.keys]
 		}
 		at = rows[len(rows)-1][:c.keys]
-		last = at
+		level, last = c.keys-1, at
 	}
+}
+
+// deepest is the last key column a lower bound constrains.
+func (c *tableCopy) deepest(tuple []any) int {
+	n := len(tuple)
+	if n > 0 {
+		if _, ok := tuple[n-1].(infinity); ok {
+			n--
+		}
+	}
+	return max(n-1, 0)
+}
+
+// lowerClause is the seekable condition for keys above tuple that agree with
+// it on the columns before level: equality there, a range on column level.
+// The range includes the value only at the bound's own last column when the
+// bound ends in negInf (from a leaf or separator start).
+func (c *tableCopy) lowerClause(tuple []any, level int) (string, []any) {
+	n := len(tuple)
+	inclusive := false
+	if n > 0 {
+		if inf, ok := tuple[n-1].(infinity); ok {
+			n--
+			inclusive = inf == negInf
+		}
+	}
+	if n == 0 {
+		return "1", nil
+	}
+	if c.keys == 1 {
+		clause, values, _ := c.bound(tuple, true)
+		return clause, values
+	}
+	var parts []string
+	var values []any
+	value := func(v any) string {
+		if b, ok := v.([]byte); ok && len(b) == 0 {
+			return "X''"
+		}
+		values = append(values, v)
+		return "?"
+	}
+	for j := 0; j < level; j++ {
+		parts = append(parts, c.keyColumns[j]+"="+value(tuple[j]))
+	}
+	op := ">"
+	if inclusive && level == n-1 {
+		op = ">="
+	}
+	parts = append(parts, c.keyColumns[level]+op+value(tuple[level]))
+	return strings.Join(parts, " AND "), values
 }
 
 // bound is the condition that keys lie above (above) or below a bound tuple.
@@ -641,6 +479,14 @@ func (c *tableCopy) bound(tuple []any, above bool) (string, []any, bool) {
 		values = append(values, v)
 	}
 	if n == 1 {
+		if op == ">" && !c.keyed {
+			// rowid>N positions on N before stepping past it, which reads the
+			// leaf holding N; a leaf after a damaged one must be reached
+			// without touching it.
+			if v, ok := values[0].(int64); ok && v < math.MaxInt64 {
+				return columns[0] + ">=?", []any{v + 1}, true
+			}
+		}
 		return columns[0] + op + slots[0], values, true
 	}
 	return "(" + strings.Join(columns, ",") + ")" + op + "(" + strings.Join(slots, ",") + ")", values, true
@@ -702,6 +548,31 @@ func (c *tableCopy) read(ctx context.Context, query string, args []any) ([][]any
 		rows[i] = row[:c.width]
 	}
 	return rows, err
+}
+
+// fromRecord arranges a WITHOUT ROWID row decoded from its b-tree record
+// (primary key columns first, then the others in table order) as a row read
+// by c, or false when it does not have exactly the table's columns.
+func (c *tableCopy) fromRecord(record []any) ([]any, bool) {
+	if record == nil || len(record) != len(c.columns) {
+		return nil, false
+	}
+	row := make([]any, 0, c.width)
+	row = append(row, record[:c.keys]...)
+	key := map[string]int{}
+	for i, name := range c.keyNames {
+		key[name] = i
+	}
+	rest := c.keys
+	for _, name := range c.columns {
+		if i, ok := key[name]; ok {
+			row = append(row, record[i])
+			continue
+		}
+		row = append(row, record[rest])
+		rest++
+	}
+	return row, true
 }
 
 func (c *tableCopy) write(ctx context.Context, rows [][]any) error {

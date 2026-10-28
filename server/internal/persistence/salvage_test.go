@@ -5,7 +5,6 @@ import (
 	"database/sql"
 	"fmt"
 	"io"
-	"math"
 	"os"
 	"path/filepath"
 	"testing"
@@ -196,6 +195,32 @@ func indexOn(t *testing.T, path, table string) string {
 	return name
 }
 
+type leaf struct{ page, cells int }
+
+// leavesInKeyOrder lists a b-tree's leaves in key order (dbstat's path).
+func leavesInKeyOrder(t *testing.T, path, name string) []leaf {
+	t.Helper()
+	db, err := sql.Open("sqlite", path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	rows, err := db.Query(`SELECT pageno,ncell FROM dbstat WHERE name=? AND pagetype='leaf' ORDER BY path`, name)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer rows.Close()
+	var out []leaf
+	for rows.Next() {
+		var l leaf
+		if err = rows.Scan(&l.page, &l.cells); err != nil {
+			t.Fatal(err)
+		}
+		out = append(out, l)
+	}
+	return out
+}
+
 // cellsOn is how many rows a b-tree page holds, from dbstat.
 func cellsOn(t *testing.T, path string, page int64) int {
 	t.Helper()
@@ -242,8 +267,8 @@ func TestRestoreSalvagesADamagedTable(t *testing.T) {
 	// A table keyed by name, not rowid.
 	exec(`INSERT INTO catalog_credit_names(name,credits) WITH RECURSIVE n(value) AS (SELECT 1 UNION ALL SELECT value+1 FROM n WHERE value<600) SELECT printf('person %05d %s',value,'` + longName + `'),value FROM n`)
 	exec(`INSERT INTO catalog_people_names(name) VALUES('Ada Lovelace'),('Grace Hopper')`)
-	// A composite key whose first column never changes.
-	exec(`WITH RECURSIVE n(value) AS (SELECT 1 UNION ALL SELECT value+1 FROM n WHERE value<4000) INSERT INTO catalog_dirty(domain,entity_id,revision) SELECT 1,value,value FROM n`)
+	// A composite key: three runs of 4,000 rows sharing a first column.
+	exec(`WITH RECURSIVE n(value) AS (SELECT 1 UNION ALL SELECT value+1 FROM n WHERE value<4000) INSERT INTO catalog_dirty(domain,entity_id,revision) SELECT d.value,n.value,n.value FROM n,(SELECT 0 AS value UNION ALL SELECT 1 UNION ALL SELECT 2) d`)
 	folded(t, db, path)
 	var libraries, sources int
 	probe, err := sql.Open("sqlite", path)
@@ -260,11 +285,23 @@ func TestRestoreSalvagesADamagedTable(t *testing.T) {
 	for _, nth := range []int{3, 8} {
 		libraryPage := pageOf(t, path, "libraries", "leaf", nth)
 		creditPage := pageOf(t, path, "catalog_credit_names", "leaf", nth)
-		dirtyPage := pageOf(t, path, "catalog_dirty", "leaf", nth)
 		lostLibraries += cellsOn(t, path, libraryPage)
 		lostCredits += cellsOn(t, path, creditPage)
-		lostDirty += cellsOn(t, path, dirtyPage)
-		spoiled = append(spoiled, libraryPage, creditPage, dirtyPage)
+		spoiled = append(spoiled, libraryPage, creditPage)
+	}
+	// The composite table loses the leaf where its second run starts and one
+	// near its end (round 4 of the review: a whole run was once lost here).
+	leaves := leavesInKeyOrder(t, path, "catalog_dirty")
+	held := 0
+	for i, leaf := range leaves {
+		if held += leaf.cells; held >= 4001 || i == len(leaves)-4 {
+			lostDirty += leaf.cells
+			spoiled = append(spoiled, int64(leaf.page))
+			if i >= len(leaves)-4 {
+				break
+			}
+			held = -1 << 30 // only the first leaf past row 4,000
+		}
 	}
 	for _, page := range spoiled {
 		spoil(t, path, page)
@@ -283,8 +320,13 @@ func TestRestoreSalvagesADamagedTable(t *testing.T) {
 	if n := countIn(t, path, `SELECT count(*) FROM catalog_credit_names`); n != 600-lostCredits {
 		t.Fatalf("salvage kept %d credit names; %d were readable", n, 600-lostCredits)
 	}
-	if n := countIn(t, path, `SELECT count(*) FROM catalog_dirty`); n != 4000-lostDirty {
-		t.Fatalf("salvage kept %d rows of a composite-key table; %d were readable", n, 4000-lostDirty)
+	if n := countIn(t, path, `SELECT count(*) FROM catalog_dirty`); n != 12000-lostDirty {
+		t.Fatalf("salvage kept %d rows of a composite-key table; %d were readable", n, 12000-lostDirty)
+	}
+	for domain := 0; domain < 3; domain++ {
+		if n := countIn(t, path, fmt.Sprintf(`SELECT count(*) FROM catalog_dirty WHERE domain=%d`, domain)); n < 3000 {
+			t.Fatalf("salvage kept only %d rows of run %d", n, domain)
+		}
 	}
 	// The sources of lost libraries are gone, and nothing else.
 	// Each library has two sources (its own and the fixture's).
@@ -317,34 +359,5 @@ func TestRestoreSalvagesADamagedTable(t *testing.T) {
 	var triggers int
 	if err = reopened.QueryRow(`SELECT count(*) FROM sqlite_schema WHERE type='trigger'`).Scan(&triggers); err != nil || triggers == 0 {
 		t.Fatalf("salvage dropped the triggers: %d %v", triggers, err)
-	}
-}
-
-func TestSalvageMidpoints(t *testing.T) {
-	for _, c := range []struct {
-		lo, hi any
-		ok     bool
-	}{
-		{int64(1), int64(9), true}, {int64(1), int64(2), false}, {nil, int64(5), true}, {int64(math.MinInt64), int64(math.MaxInt64), true},
-		{"person 00053", "person 00200", true}, {"a", "a\x00", false}, {"a", "a\x00\x00", true}, {"a", nil, true}, {"", "b", true}, {nil, "a", true},
-		{[]byte{1, 2}, []byte{1, 3}, true}, {2.0, 3.0, true}, {"a", int64(1), false}, {int64(5), int64(5), false},
-	} {
-		m, ok := midpoint(c.lo, c.hi)
-		if ok != c.ok {
-			t.Fatalf("midpoint(%v, %v) = %v, %v", c.lo, c.hi, m, ok)
-		}
-		if !ok {
-			continue
-		}
-		switch hi := c.hi.(type) {
-		case int64:
-			if lo, _ := c.lo.(int64); m.(int64) >= hi || c.lo != nil && m.(int64) <= lo {
-				t.Fatalf("midpoint(%v, %v) = %v", c.lo, c.hi, m)
-			}
-		case string:
-			if lo, _ := c.lo.(string); m.(string) >= hi || m.(string) <= lo && c.lo != nil {
-				t.Fatalf("midpoint(%q, %q) = %q", c.lo, c.hi, m)
-			}
-		}
 	}
 }

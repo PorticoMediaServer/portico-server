@@ -385,6 +385,8 @@ var (
 // has since closed was finished by the driver as its connections closed, and
 // is dropped.
 func settleStranded(ctx context.Context, source *sql.DB, limits copyLimits) error {
+	// Fresh slices throughout: the registry never shares a backing array
+	// with a slice read outside its lock.
 	strandedMu.Lock()
 	var mine, others []*copyRun
 	for _, r := range stranded {
@@ -394,7 +396,7 @@ func settleStranded(ctx context.Context, source *sql.DB, limits copyLimits) erro
 			others = append(others, r)
 		}
 	}
-	stranded = others
+	stranded = append([]*copyRun(nil), others...)
 	strandedMu.Unlock()
 	dropClosed(others)
 	if len(mine) == 0 {
@@ -439,7 +441,7 @@ func dropClosed(candidates []*copyRun) {
 		return
 	}
 	strandedMu.Lock()
-	kept := stranded[:0]
+	kept := make([]*copyRun, 0, len(stranded))
 	for _, r := range stranded {
 		if !closed[r] {
 			kept = append(kept, r)
